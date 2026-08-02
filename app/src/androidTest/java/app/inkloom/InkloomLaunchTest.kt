@@ -18,16 +18,41 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.core.app.ApplicationProvider
 import androidx.compose.ui.geometry.Offset
 import org.junit.Assert.assertTrue
 import org.junit.Rule
+import org.junit.rules.RuleChain
+import org.junit.rules.TestRule
+import org.junit.runners.model.Statement
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class InkloomLaunchTest {
-    @get:Rule
     val composeRule = createAndroidComposeRule<MainActivity>()
+
+    private val forceEnglishRule = TestRule { base, _ ->
+        object : Statement() {
+            override fun evaluate() {
+                ApplicationProvider.getApplicationContext<android.content.Context>()
+                    .getSharedPreferences("inkloom_settings", android.content.Context.MODE_PRIVATE)
+                    .edit()
+                    .putString("language", "ENGLISH")
+                    .commit()
+                base.evaluate()
+            }
+        }
+    }
+
+    @get:Rule
+    val rules: RuleChain = RuleChain.outerRule(forceEnglishRule).around(composeRule)
+
+    private fun createNotebookAndOpenEditor() {
+        composeRule.onNodeWithText("New Note").performClick()
+        composeRule.onNodeWithText("Create notebook").assertIsDisplayed()
+        composeRule.onNodeWithText("Create").performClick()
+    }
 
     @Test fun libraryScreenLaunches() {
         composeRule.onNodeWithText("Inkloom").assertIsDisplayed()
@@ -48,7 +73,7 @@ class InkloomLaunchTest {
 
     @Test fun stickyNoteDoubleTapOpensItsInkSubcanvas() {
         val noteText = "Sticky canvas test"
-        composeRule.onNodeWithText("New Note").performClick()
+        createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("More tools").performClick()
         composeRule.onNodeWithText("Note").performClick()
         composeRule.onNodeWithText("New sticky note").assertIsDisplayed()
@@ -62,14 +87,14 @@ class InkloomLaunchTest {
     }
 
     @Test fun editorExposesUnifiedPageAndPdfSearch() {
-        composeRule.onNodeWithText("New Note").performClick()
+        createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Search this note").performClick()
 
         composeRule.onNodeWithText("Page, note, or PDF text").assertIsDisplayed()
     }
 
     @Test fun editorInsertsAValidatedLinkCard() {
-        composeRule.onNodeWithText("New Note").performClick()
+        createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("More tools").performClick()
         composeRule.onNodeWithText("Link").performClick()
         composeRule.onNodeWithText("Insert link").assertIsDisplayed()
@@ -83,7 +108,7 @@ class InkloomLaunchTest {
     }
 
     @Test fun floatingToolbarDragPersistsItsFreeCanvasPosition() {
-        composeRule.onNodeWithText("New Note").performClick()
+        createNotebookAndOpenEditor()
         val preferences = composeRule.activity.getSharedPreferences("inkloom_settings", android.content.Context.MODE_PRIVATE)
         val beforeX = preferences.getFloat("toolbarOffsetXDp", 16f)
         val beforeY = preferences.getFloat("toolbarOffsetYDp", 16f)
@@ -100,7 +125,7 @@ class InkloomLaunchTest {
     }
 
     @Test fun compactToolbarKeepsBrushAndDockControlsInAContextPanel() {
-        composeRule.onNodeWithText("New Note").performClick()
+        createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Tool controls").performClick()
 
         composeRule.onNodeWithText("Pen controls").assertIsDisplayed()
@@ -112,7 +137,7 @@ class InkloomLaunchTest {
         val preferences = composeRule.activity.getSharedPreferences("inkloom_settings", android.content.Context.MODE_PRIVATE)
         val original = preferences.getString("selectionShape", "FREEFORM")
         try {
-            composeRule.onNodeWithText("New Note").performClick()
+            createNotebookAndOpenEditor()
             composeRule.onNodeWithContentDescription("Select").performClick()
             composeRule.onNodeWithContentDescription("Tool controls").performClick()
 
@@ -127,7 +152,7 @@ class InkloomLaunchTest {
     }
 
     @Test fun layerPanelDuplicatesAndMergesAContentLayer() {
-        composeRule.onNodeWithText("New Note").performClick()
+        createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Layers").performClick()
         composeRule.onAllNodes(hasContentDescription("Layer actions")).onFirst().performClick()
         composeRule.onNodeWithText("Duplicate layer").performClick()
