@@ -97,6 +97,7 @@ fun InkloomApp(initialIntent: Intent?) {
     val viewModel: InkloomViewModel = viewModel()
     val libraryState by viewModel.state.collectAsState()
     val repository = remember { BrushImportRepository(context) }
+    var pendingBrushExport by remember { mutableStateOf<ImportedBrush?>(null) }
     val brushStore = remember { BrushMetadataStore(context) }
     val settingsStore = remember { AppSettingsStore(context) }
     var settings by remember { mutableStateOf(settingsStore.load()) }
@@ -134,6 +135,11 @@ fun InkloomApp(initialIntent: Intent?) {
     }
     val imageExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { uri -> if (uri != null) runCatching { viewModel.exportCurrentPage(uri) }.onFailure { importError = it.message } }
     val bundleExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri -> if (uri != null) runCatching { viewModel.exportCurrentBundle(uri) }.onFailure { importError = it.message } }
+    val brushExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.inkloom.brush+zip")) { uri ->
+        val brush = pendingBrushExport
+        pendingBrushExport = null
+        if (uri != null && brush != null) repository.export(brush, uri).onFailure { importError = it.message }
+    }
     val pageImagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) runCatching {
             context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -192,7 +198,12 @@ fun InkloomApp(initialIntent: Intent?) {
             importError = importError,
             onBack = { destination = AppDestination.LIBRARY },
             onToggleBrushes = { brushesOpen = !brushesOpen },
-            onImportBrushes = { brushPicker.launch(arrayOf("application/octet-stream", "application/zip", "image/*")) },
+            onImportBrushes = { brushPicker.launch(arrayOf("application/octet-stream", "application/zip", "application/vnd.inkloom.brush+zip", "image/*")) },
+            onExportBrush = { brush ->
+                pendingBrushExport = brush
+                val safeName = brush.name.replace(Regex("[^A-Za-z0-9._-]"), "_").trim('_').ifBlank { "Inkloom-Brush" }
+                brushExportPicker.launch("$safeName.inkbrush")
+            },
             onUpdateBrush = { updated -> importedBrushes = importedBrushes.map { if (it.id == updated.id) updated else it }; brushStore.save(importedBrushes) },
             onDeleteBrush = { brushId -> importedBrushes = importedBrushes.filterNot { it.id == brushId }; brushStore.save(importedBrushes) },
             onDismissError = { importError = null },
@@ -406,6 +417,7 @@ private fun EditorScreen(
     onBack: () -> Unit,
     onToggleBrushes: () -> Unit,
     onImportBrushes: () -> Unit,
+    onExportBrush: (ImportedBrush) -> Unit,
     onUpdateBrush: (ImportedBrush) -> Unit,
     onDeleteBrush: (String) -> Unit,
     onDismissError: () -> Unit,
@@ -672,6 +684,7 @@ private fun EditorScreen(
                     }
                 },
                 onImportBrushes = onImportBrushes,
+                onExportBrush = onExportBrush,
                 onUpdateBrush = { updated -> onUpdateBrush(updated); if (activeBrush?.id == updated.id) { activeBrush = updated; brushSize = updated.defaultSize } },
                 onDeleteBrush = { brushId -> onDeleteBrush(brushId); if (activeBrush?.id == brushId) { activeBrush = null; selectedBrushId = null } },
             )
@@ -1769,6 +1782,7 @@ private fun BrushPanel(
     selectedBrushId: String?,
     onBrushSelected: (ImportedBrush) -> Unit,
     onImportBrushes: () -> Unit,
+    onExportBrush: (ImportedBrush) -> Unit,
     onUpdateBrush: (ImportedBrush) -> Unit,
     onDeleteBrush: (String) -> Unit,
 ) {
@@ -1807,6 +1821,7 @@ private fun BrushPanel(
                         onReport = { reportBrush = brush },
                         onEdit = { editBrush = brush },
                         onHistory = { historyBrush = brush },
+                        onExport = { onExportBrush(brush) },
                         onFavorite = { onUpdateBrush(brush.copy(favorite = !brush.favorite)) },
                         onHide = { onUpdateBrush(brush.copy(hidden = !brush.hidden)) },
                         onDelete = { historyStore.clear(brush.id); historyRevision++; onDeleteBrush(brush.id) },
@@ -1930,7 +1945,7 @@ private fun BrushVersionHistoryDialog(
 private fun Float.oneDecimal(): String = String.format(java.util.Locale.ROOT, "%.1f", this)
 
 @Composable
-private fun ImportedBrushRow(brush: ImportedBrush, selected: Boolean, onSelect: () -> Unit, onReport: () -> Unit, onEdit: () -> Unit, onHistory: () -> Unit, onFavorite: () -> Unit, onHide: () -> Unit, onDelete: () -> Unit) {
+private fun ImportedBrushRow(brush: ImportedBrush, selected: Boolean, onSelect: () -> Unit, onReport: () -> Unit, onEdit: () -> Unit, onHistory: () -> Unit, onExport: () -> Unit, onFavorite: () -> Unit, onHide: () -> Unit, onDelete: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     Card(
         modifier = Modifier.clickable(onClick = onSelect),
@@ -1952,6 +1967,7 @@ private fun ImportedBrushRow(brush: ImportedBrush, selected: Boolean, onSelect: 
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(text = { Text("Conversion report") }, onClick = { menu = false; onReport() })
                     DropdownMenuItem(text = { Text("Version history") }, onClick = { menu = false; onHistory() })
+                    DropdownMenuItem(text = { Text("Export Inkloom preset") }, onClick = { menu = false; onExport() })
                     DropdownMenuItem(text = { Text(if (brush.hidden) "Unhide" else "Hide") }, onClick = { menu = false; onHide() })
                     DropdownMenuItem(text = { Text("Remove from library") }, onClick = { menu = false; onDelete() })
                 }
