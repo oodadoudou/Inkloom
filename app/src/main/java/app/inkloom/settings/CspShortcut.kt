@@ -61,12 +61,25 @@ object CspShortcutResolver {
         ShortcutBinding(ShortcutAction.TOGGLE_ERASER, ShortcutChord(KeyEvent.KEYCODE_E)),
         ShortcutBinding(ShortcutAction.SELECT_TOOL, ShortcutChord(KeyEvent.KEYCODE_M)),
         ShortcutBinding(ShortcutAction.SELECT_TOOL, ShortcutChord(KeyEvent.KEYCODE_O)),
-        ShortcutBinding(ShortcutAction.BRUSH_SIZE_DECREASE, ShortcutChord(KeyEvent.KEYCODE_LEFT_BRACKET)),
-        ShortcutBinding(ShortcutAction.BRUSH_SIZE_INCREASE, ShortcutChord(KeyEvent.KEYCODE_RIGHT_BRACKET)),
+        ShortcutBinding(ShortcutAction.BRUSH_SIZE_DECREASE, ShortcutChord(KeyEvent.KEYCODE_RIGHT_BRACKET)),
+        ShortcutBinding(ShortcutAction.BRUSH_SIZE_INCREASE, ShortcutChord(KeyEvent.KEYCODE_LEFT_BRACKET)),
         ShortcutBinding(ShortcutAction.PREVIOUS_BRUSH, ShortcutChord(KeyEvent.KEYCODE_COMMA)),
         ShortcutBinding(ShortcutAction.NEXT_BRUSH, ShortcutChord(KeyEvent.KEYCODE_PERIOD)),
         ShortcutBinding(ShortcutAction.TOGGLE_PANELS, ShortcutChord(KeyEvent.KEYCODE_TAB)),
     )
+
+    private val legacyReversedBrushSizeDefaults: List<ShortcutBinding> by lazy {
+        defaultBindings.map { binding ->
+            when (binding.action) {
+                ShortcutAction.BRUSH_SIZE_DECREASE -> binding.copy(chord = ShortcutChord(KeyEvent.KEYCODE_LEFT_BRACKET))
+                ShortcutAction.BRUSH_SIZE_INCREASE -> binding.copy(chord = ShortcutChord(KeyEvent.KEYCODE_RIGHT_BRACKET))
+                else -> binding
+            }
+        }
+    }
+
+    fun migrateLegacyDefaults(bindings: List<ShortcutBinding>): List<ShortcutBinding> =
+        if (bindings == legacyReversedBrushSizeDefaults) defaultBindings else bindings
 
     fun resolve(chord: ShortcutChord, bindings: List<ShortcutBinding> = defaultBindings, deviceDescriptor: String? = null): ShortcutAction? =
         resolveBinding(chord, bindings, deviceDescriptor)?.action

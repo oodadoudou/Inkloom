@@ -172,7 +172,7 @@ object ShortcutBindingCodec {
                 }
             }.getOrNull()
         }
-        return decoded.takeIf(List<ShortcutBinding>::isNotEmpty) ?: CspShortcutResolver.defaultBindings
+        return decoded.takeIf(List<ShortcutBinding>::isNotEmpty)?.let(CspShortcutResolver::migrateLegacyDefaults) ?: CspShortcutResolver.defaultBindings
     }
 
     private fun encodeText(value: String?): String = value?.toByteArray(Charsets.UTF_8)?.let { java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(it) }.orEmpty()

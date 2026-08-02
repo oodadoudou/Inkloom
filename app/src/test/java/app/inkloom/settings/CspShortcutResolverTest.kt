@@ -11,8 +11,8 @@ class CspShortcutResolverTest {
         assertEquals(ShortcutAction.PEN_OR_PENCIL_GROUP, resolve(KeyEvent.KEYCODE_P))
         assertEquals(ShortcutAction.BRUSH_GROUP, resolve(KeyEvent.KEYCODE_B))
         assertEquals(ShortcutAction.TOGGLE_ERASER, resolve(KeyEvent.KEYCODE_E))
-        assertEquals(ShortcutAction.BRUSH_SIZE_DECREASE, resolve(KeyEvent.KEYCODE_LEFT_BRACKET))
-        assertEquals(ShortcutAction.BRUSH_SIZE_INCREASE, resolve(KeyEvent.KEYCODE_RIGHT_BRACKET))
+        assertEquals(ShortcutAction.BRUSH_SIZE_DECREASE, resolve(KeyEvent.KEYCODE_RIGHT_BRACKET))
+        assertEquals(ShortcutAction.BRUSH_SIZE_INCREASE, resolve(KeyEvent.KEYCODE_LEFT_BRACKET))
         assertEquals(ShortcutAction.OPACITY_DECREASE, resolve(KeyEvent.KEYCODE_LEFT_BRACKET, ctrl = true))
         assertEquals(ShortcutAction.OPACITY_INCREASE, resolve(KeyEvent.KEYCODE_RIGHT_BRACKET, ctrl = true))
     }
@@ -47,6 +47,22 @@ class CspShortcutResolverTest {
 
         assertEquals(ShortcutAction.BRUSH_GROUP, CspShortcutResolver.resolve(ShortcutChord(KeyEvent.KEYCODE_B), listOf(binding), "toolbox-1"))
         assertNull(CspShortcutResolver.resolve(ShortcutChord(KeyEvent.KEYCODE_B), listOf(binding), "keyboard-2"))
+    }
+
+    @Test fun migratesOnlyTheFormerReversedDefaultBrushSizePair() {
+        val oldDefaults = CspShortcutResolver.defaultBindings.map { binding ->
+            when (binding.action) {
+                ShortcutAction.BRUSH_SIZE_DECREASE -> binding.copy(chord = ShortcutChord(KeyEvent.KEYCODE_LEFT_BRACKET))
+                ShortcutAction.BRUSH_SIZE_INCREASE -> binding.copy(chord = ShortcutChord(KeyEvent.KEYCODE_RIGHT_BRACKET))
+                else -> binding
+            }
+        }
+        assertEquals(CspShortcutResolver.defaultBindings, CspShortcutResolver.migrateLegacyDefaults(oldDefaults))
+
+        val customized = oldDefaults.map { binding ->
+            if (binding.action == ShortcutAction.TOGGLE_ERASER) binding.copy(chord = ShortcutChord(KeyEvent.KEYCODE_R)) else binding
+        }
+        assertEquals(customized, CspShortcutResolver.migrateLegacyDefaults(customized))
     }
 
     private fun resolve(keyCode: Int, ctrl: Boolean = false, alt: Boolean = false, shift: Boolean = false) =
