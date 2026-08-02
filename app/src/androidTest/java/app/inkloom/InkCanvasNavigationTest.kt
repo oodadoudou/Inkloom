@@ -14,6 +14,7 @@ import app.inkloom.settings.ShortcutPhase
 import app.inkloom.settings.ShortcutTrigger
 import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -106,6 +107,27 @@ class InkCanvasNavigationTest {
 
         assertEquals("Rotate navigation must never leave stylus ink", 0, committed)
         assertEquals(20f, rotation, .001f)
+    }
+
+    @Test fun unmappedToolboxKeysStillReportRawDiagnosticFields() {
+        val view = canvas()
+        var keyCode = -1
+        var scanCode = -1
+        var phase: ShortcutPhase? = null
+        var matched = true
+        view.onKeyInputDiagnostic = {
+            keyCode = it.keyCode
+            scanCode = it.scanCode
+            phase = it.phase
+            matched = it.matchedAction != null
+        }
+
+        view.onKeyDown(KeyEvent.KEYCODE_F12, KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_F12))
+
+        assertEquals(KeyEvent.KEYCODE_F12, keyCode)
+        assertEquals(0, scanCode)
+        assertEquals(ShortcutPhase.PRESS, phase)
+        assertFalse("Unmapped hardware input must remain visible in diagnostics", matched)
     }
 
     private fun canvas(): InkCanvasView {

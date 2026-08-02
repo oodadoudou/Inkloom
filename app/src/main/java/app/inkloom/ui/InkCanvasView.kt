@@ -63,6 +63,8 @@ import app.inkloom.document.WaterEdge
 import app.inkloom.document.WetMixDynamics
 import app.inkloom.model.EditorTool
 import app.inkloom.settings.CspShortcutResolver
+import app.inkloom.settings.KeyInputDiagnostic
+import app.inkloom.settings.ShortcutAction
 import app.inkloom.settings.ShortcutActivation
 import app.inkloom.settings.ShortcutBinding
 import app.inkloom.settings.ShortcutChord
@@ -293,6 +295,7 @@ class InkCanvasView(context: Context) : View(context) {
     var onPdfGotoLink: (PdfGotoLink) -> Unit = {}
     var onUndoGesture: () -> Unit = {}
     var onInputDiagnostic: (String, Float, Float, Int) -> Unit = { _, _, _, _ -> }
+    var onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit = {}
     var onShortcutAction: (ShortcutActivation) -> Unit = {}
     var shortcutBindings: List<ShortcutBinding> = CspShortcutResolver.defaultBindings
 
@@ -322,7 +325,9 @@ class InkCanvasView(context: Context) : View(context) {
             ),
             shortcutBindings,
             event.device?.descriptor,
-        ) ?: return super.onKeyDown(keyCode, event)
+        )
+        onKeyInputDiagnostic(event.toDiagnostic(ShortcutPhase.PRESS, binding?.action))
+        binding ?: return super.onKeyDown(keyCode, event)
         if (event.repeatCount == 0 || CspShortcutResolver.isRepeatable(binding.action)) onShortcutAction(ShortcutActivation(binding.action, ShortcutPhase.PRESS, binding.trigger))
         return true
     }
@@ -338,10 +343,25 @@ class InkCanvasView(context: Context) : View(context) {
             ),
             shortcutBindings,
             event.device?.descriptor,
-        ) ?: return super.onKeyUp(keyCode, event)
+        )
+        onKeyInputDiagnostic(event.toDiagnostic(ShortcutPhase.RELEASE, binding?.action))
+        binding ?: return super.onKeyUp(keyCode, event)
         if (binding.trigger == ShortcutTrigger.HOLD) onShortcutAction(ShortcutActivation(binding.action, ShortcutPhase.RELEASE, binding.trigger))
         return true
     }
+
+    private fun KeyEvent.toDiagnostic(phase: ShortcutPhase, matchedAction: ShortcutAction?): KeyInputDiagnostic =
+        KeyInputDiagnostic(
+            phase = phase,
+            keyCode = keyCode,
+            scanCode = scanCode,
+            metaState = metaState,
+            deviceId = deviceId,
+            deviceName = device?.name,
+            deviceDescriptor = device?.descriptor,
+            source = source,
+            matchedAction = matchedAction,
+        )
 
     fun setDocumentStrokes(value: List<InkStroke>, historyKey: String) {
         if (strokeHistoryKey != historyKey) {

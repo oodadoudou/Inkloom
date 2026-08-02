@@ -70,6 +70,18 @@ data class ShortcutActivation(
     val trigger: ShortcutTrigger,
 )
 
+data class KeyInputDiagnostic(
+    val phase: ShortcutPhase,
+    val keyCode: Int,
+    val scanCode: Int,
+    val metaState: Int,
+    val deviceId: Int,
+    val deviceName: String?,
+    val deviceDescriptor: String?,
+    val source: Int,
+    val matchedAction: ShortcutAction?,
+)
+
 object CspShortcutResolver {
     val defaultBindings: List<ShortcutBinding> = listOf(
         ShortcutBinding(ShortcutAction.REDO, ShortcutChord(KeyEvent.KEYCODE_Z, ctrl = true, shift = true)),
