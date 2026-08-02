@@ -118,6 +118,14 @@ class FileDocumentStoreTest {
             thicknessVertical = true,
             ribbon = true,
             tipSequenceMode = BrushTipSequence.REVERSE,
+            spray = true,
+            sprayParticleRotationDegrees = 28f,
+            sprayParticleFollowStrokeDirection = true,
+            sprayParticleRandomRotationDegrees = 72f,
+            dualSpray = true,
+            dualSprayParticleRotationDegrees = -14f,
+            dualSprayParticleFollowStylusOrientation = true,
+            dualSprayParticleRandomRotationDegrees = 45f,
             sizeSecondaryDynamics = dynamics,
         )
         val document = InkDocument(title = "Dynamics", pages = listOf(InkPage(strokes = listOf(stroke))))
@@ -130,6 +138,12 @@ class FileDocumentStoreTest {
         assertEquals(true, restored.thicknessVertical)
         assertEquals(true, restored.ribbon)
         assertEquals(BrushTipSequence.REVERSE, restored.tipSequenceMode)
+        assertEquals(28f, restored.sprayParticleRotationDegrees)
+        assertEquals(true, restored.sprayParticleFollowStrokeDirection)
+        assertEquals(72f, restored.sprayParticleRandomRotationDegrees)
+        assertEquals(-14f, restored.dualSprayParticleRotationDegrees)
+        assertEquals(true, restored.dualSprayParticleFollowStylusOrientation)
+        assertEquals(45f, restored.dualSprayParticleRandomRotationDegrees)
         assertEquals(stroke.masks, restored.masks)
     }
 

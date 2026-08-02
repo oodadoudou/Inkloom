@@ -499,10 +499,14 @@ class DocumentAssetService(private val context: Context) {
             val offset = if (stroke.spray) SprayGeometry.offset(brushDiameter / 2f, scatterRandom.nextFloat(), scatterRandom.nextFloat(), stroke.sprayBias) else SprayOffset(0f, 0f)
             val drawX = x + offset.x; val drawY = y + offset.y
             val thicknessDynamic = pressureDynamic(stroke.thicknessPressureEnabled, stroke.thicknessPressureMinimum, stroke.thicknessPressureCurve, pressure) * secondaryDynamic(stroke.thicknessSecondaryDynamics, point, stroke.renderSeed, SALT_THICKNESS)
-            val angle = stroke.rotationDegrees +
-                (if (stroke.followStylusOrientation) Math.toDegrees(point.orientation.toDouble()).toFloat() else 0f) +
-                (if (stroke.followStrokeDirection || stroke.ribbon) StrokeStampSampler.directionDegrees(sampledPoints, index, width.toFloat(), height.toFloat()) else 0f) +
-                (rotationRandom.nextFloat() - .5f) * 2f * stroke.randomRotationDegrees.coerceIn(0f, 180f)
+            val followsStroke = BrushStampRotation.followsStroke(stroke, dual = false)
+            val angle = BrushStampRotation.degrees(
+                stroke = stroke,
+                dual = false,
+                stylusOrientationRadians = point.orientation,
+                strokeDirectionDegrees = if (followsStroke) StrokeStampSampler.directionDegrees(sampledPoints, index, width.toFloat(), height.toFloat()) else 0f,
+                randomUnit = rotationRandom.nextFloat(),
+            )
             val thicknessScale = stroke.thickness.coerceIn(.05f, 2f) * thicknessDynamic
             val tipScale = BrushTipTransform.scale(tip.width, tip.height, diameter, thicknessScale, stroke.thicknessVertical)
             val scaleX = tipScale.x
@@ -553,10 +557,14 @@ class DocumentAssetService(private val context: Context) {
             val drawY = point.y * height + offset.y
             val thicknessDynamic = pressureDynamic(stroke.thicknessPressureEnabled, stroke.thicknessPressureMinimum, stroke.thicknessPressureCurve, pressure) * secondaryDynamic(stroke.thicknessSecondaryDynamics, point, stroke.renderSeed, SALT_THICKNESS)
             val tipScale = BrushTipTransform.scale(tip.width, tip.height, diameter, stroke.dualThickness.coerceIn(.05f, 2f) * thicknessDynamic, stroke.dualThicknessVertical)
-            val angle = stroke.dualRotationDegrees +
-                (if (stroke.dualFollowStylusOrientation) Math.toDegrees(point.orientation.toDouble()).toFloat() else 0f) +
-                (if (stroke.dualFollowStrokeDirection || stroke.dualRibbon) StrokeStampSampler.directionDegrees(sampledPoints, index, width.toFloat(), height.toFloat()) else 0f) +
-                (rotationRandom.nextFloat() - .5f) * 2f * stroke.dualRandomRotationDegrees.coerceIn(0f, 180f)
+            val followsStroke = BrushStampRotation.followsStroke(stroke, dual = true)
+            val angle = BrushStampRotation.degrees(
+                stroke = stroke,
+                dual = true,
+                stylusOrientationRadians = point.orientation,
+                strokeDirectionDegrees = if (followsStroke) StrokeStampSampler.directionDegrees(sampledPoints, index, width.toFloat(), height.toFloat()) else 0f,
+                randomUnit = rotationRandom.nextFloat(),
+            )
             val matrix = Matrix().apply { postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(tipScale.x, tipScale.y); postRotate(angle); postTranslate(drawX, drawY) }
             val opacityDynamic = pressureDynamic(stroke.opacityPressureEnabled, stroke.opacityPressureMinimum, stroke.opacityPressureCurve, pressure) * secondaryDynamic(stroke.opacitySecondaryDynamics, point, stroke.renderSeed, SALT_OPACITY)
             val flowDynamic = pressureDynamic(stroke.flowPressureEnabled, stroke.flowPressureMinimum, stroke.flowPressureCurve, pressure) * secondaryDynamic(stroke.flowSecondaryDynamics, point, stroke.renderSeed, SALT_FLOW)

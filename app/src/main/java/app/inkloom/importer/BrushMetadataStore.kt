@@ -88,6 +88,10 @@ class BrushMetadataStore(context: Context) {
                         sprayParticleSizeSyncBrushSize = item.optBoolean("sprayParticleSizeSyncBrushSize", true),
                         sprayDensity = item.optDouble("sprayDensity", 1.0).toFloat().coerceIn(1f, 100f),
                         sprayBias = item.optDouble("sprayBias", 0.0).toFloat().coerceIn(-100f, 100f),
+                        sprayParticleRotationDegrees = item.optDouble("sprayParticleRotationDegrees", 0.0).toFloat().coerceIn(-360f, 360f),
+                        sprayParticleFollowStylusOrientation = item.optBoolean("sprayParticleFollowStylusOrientation", false),
+                        sprayParticleFollowStrokeDirection = item.optBoolean("sprayParticleFollowStrokeDirection", false),
+                        sprayParticleRandomRotationDegrees = item.optDouble("sprayParticleRandomRotationDegrees", 0.0).toFloat().coerceIn(0f, 180f),
                         ribbon = item.optBoolean("ribbon", false),
                         tipSequenceMode = item.optInt("tipSequenceMode", 0).coerceIn(0, 5),
                         dualBrush = item.optBoolean("dualBrush", false),
@@ -108,6 +112,10 @@ class BrushMetadataStore(context: Context) {
                         dualSprayParticleSizeSyncBrushSize = item.optBoolean("dualSprayParticleSizeSyncBrushSize", true),
                         dualSprayDensity = item.optDouble("dualSprayDensity", 1.0).toFloat().coerceIn(1f, 100f),
                         dualSprayBias = item.optDouble("dualSprayBias", 0.0).toFloat().coerceIn(-100f, 100f),
+                        dualSprayParticleRotationDegrees = item.optDouble("dualSprayParticleRotationDegrees", 0.0).toFloat().coerceIn(-360f, 360f),
+                        dualSprayParticleFollowStylusOrientation = item.optBoolean("dualSprayParticleFollowStylusOrientation", false),
+                        dualSprayParticleFollowStrokeDirection = item.optBoolean("dualSprayParticleFollowStrokeDirection", false),
+                        dualSprayParticleRandomRotationDegrees = item.optDouble("dualSprayParticleRandomRotationDegrees", 0.0).toFloat().coerceIn(0f, 180f),
                         dualTipSequenceMode = item.optInt("dualTipSequenceMode", 0).coerceIn(0, 5),
                         dualCompositeMode = item.optInt("dualCompositeMode", 0),
                         taperMode = taperMode,
@@ -204,6 +212,10 @@ class BrushMetadataStore(context: Context) {
                     .put("sprayParticleSizeSyncBrushSize", brush.sprayParticleSizeSyncBrushSize)
                     .put("sprayDensity", brush.sprayDensity)
                     .put("sprayBias", brush.sprayBias)
+                    .put("sprayParticleRotationDegrees", brush.sprayParticleRotationDegrees)
+                    .put("sprayParticleFollowStylusOrientation", brush.sprayParticleFollowStylusOrientation)
+                    .put("sprayParticleFollowStrokeDirection", brush.sprayParticleFollowStrokeDirection)
+                    .put("sprayParticleRandomRotationDegrees", brush.sprayParticleRandomRotationDegrees)
                     .put("ribbon", brush.ribbon)
                     .put("tipSequenceMode", brush.tipSequenceMode)
                     .put("dualBrush", brush.dualBrush)
@@ -224,6 +236,10 @@ class BrushMetadataStore(context: Context) {
                     .put("dualSprayParticleSizeSyncBrushSize", brush.dualSprayParticleSizeSyncBrushSize)
                     .put("dualSprayDensity", brush.dualSprayDensity)
                     .put("dualSprayBias", brush.dualSprayBias)
+                    .put("dualSprayParticleRotationDegrees", brush.dualSprayParticleRotationDegrees)
+                    .put("dualSprayParticleFollowStylusOrientation", brush.dualSprayParticleFollowStylusOrientation)
+                    .put("dualSprayParticleFollowStrokeDirection", brush.dualSprayParticleFollowStrokeDirection)
+                    .put("dualSprayParticleRandomRotationDegrees", brush.dualSprayParticleRandomRotationDegrees)
                     .put("dualTipSequenceMode", brush.dualTipSequenceMode)
                     .put("dualCompositeMode", brush.dualCompositeMode)
                     .put("taperMode", brush.taperMode.name)

@@ -15,5 +15,12 @@ class SutRotationDecoderTest {
         val decoded = SutRotationDecoder.decode(0x93)
         assertEquals(SutRotationMode.DIRECTION_OF_LINE, decoded.mode)
         assertEquals(0x90, decoded.additionalDynamicsFlags)
+        assertEquals(true, decoded.randomEnabled)
+        assertEquals(0x10, decoded.unsupportedDynamicsFlags)
+    }
+
+    @Test fun aStoredRandomScaleDoesNotMatterUnlessItsFlagIsEnabled() {
+        assertEquals(false, SutRotationDecoder.decode(3).randomEnabled)
+        assertEquals(true, SutRotationDecoder.decode(0x83).randomEnabled)
     }
 }
