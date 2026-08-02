@@ -61,6 +61,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import app.inkloom.document.*
 import app.inkloom.importer.BrushImportRepository
 import app.inkloom.importer.BrushMetadataStore
+import app.inkloom.importer.BrushVersion
+import app.inkloom.importer.BrushVersionHistoryStore
 import app.inkloom.model.*
 import app.inkloom.settings.AppSettings
 import app.inkloom.settings.AppSettingsStore
@@ -74,6 +76,8 @@ import app.inkloom.settings.ToolbarDock
 import app.inkloom.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.text.DateFormat
+import java.util.Date
 
 private enum class AppDestination { LIBRARY, EDITOR }
 
@@ -1768,8 +1772,12 @@ private fun BrushPanel(
     onUpdateBrush: (ImportedBrush) -> Unit,
     onDeleteBrush: (String) -> Unit,
 ) {
+    val context = LocalContext.current
+    val historyStore = remember { BrushVersionHistoryStore(context) }
     var reportBrush by remember { mutableStateOf<ImportedBrush?>(null) }
     var editBrush by remember { mutableStateOf<ImportedBrush?>(null) }
+    var historyBrush by remember { mutableStateOf<ImportedBrush?>(null) }
+    var historyRevision by remember { mutableIntStateOf(0) }
     var search by remember { mutableStateOf("") }
     var format by remember { mutableStateOf<BrushFormat?>(null) }
     var favoritesOnly by remember { mutableStateOf(false) }
@@ -1798,9 +1806,10 @@ private fun BrushPanel(
                         onSelect = { onBrushSelected(brush) },
                         onReport = { reportBrush = brush },
                         onEdit = { editBrush = brush },
+                        onHistory = { historyBrush = brush },
                         onFavorite = { onUpdateBrush(brush.copy(favorite = !brush.favorite)) },
                         onHide = { onUpdateBrush(brush.copy(hidden = !brush.hidden)) },
-                        onDelete = { onDeleteBrush(brush.id) },
+                        onDelete = { historyStore.clear(brush.id); historyRevision++; onDeleteBrush(brush.id) },
                     )
                 }
             }
@@ -1829,7 +1838,36 @@ private fun BrushPanel(
             },
         )
     }
-    editBrush?.let { brush -> BrushEditorDialog(brush, onDismiss = { editBrush = null }, onSave = { onUpdateBrush(it); editBrush = null }) }
+    editBrush?.let { brush ->
+        BrushEditorDialog(
+            brush,
+            onDismiss = { editBrush = null },
+            onSave = { updated ->
+                if (updated != brush) {
+                    historyStore.record(brush)
+                    historyRevision++
+                    onUpdateBrush(updated)
+                }
+                editBrush = null
+            },
+        )
+    }
+    historyBrush?.let { selected ->
+        val current = brushes.firstOrNull { it.id == selected.id } ?: selected
+        val versions = remember(selected.id, historyRevision) { historyStore.versions(selected.id) }
+        BrushVersionHistoryDialog(
+            brush = current,
+            versions = versions,
+            onDismiss = { historyBrush = null },
+            onRestore = { version ->
+                historyStore.record(current)
+                onUpdateBrush(historyStore.restore(current, version))
+                historyRevision++
+                historyBrush = null
+            },
+            onDelete = { version -> historyStore.delete(version.versionId); historyRevision++ },
+        )
+    }
 }
 
 @Composable
@@ -1841,7 +1879,58 @@ private fun BrushRow(name: String, color: Color, selected: Boolean) {
 }
 
 @Composable
-private fun ImportedBrushRow(brush: ImportedBrush, selected: Boolean, onSelect: () -> Unit, onReport: () -> Unit, onEdit: () -> Unit, onFavorite: () -> Unit, onHide: () -> Unit, onDelete: () -> Unit) {
+private fun BrushVersionHistoryDialog(
+    brush: ImportedBrush,
+    versions: List<BrushVersion>,
+    onDismiss: () -> Unit,
+    onRestore: (BrushVersion) -> Unit,
+    onDelete: (BrushVersion) -> Unit,
+) {
+    val formatter = remember { DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Version history") },
+        text = {
+            Column(Modifier.widthIn(min = 340.dp, max = 480.dp)) {
+                Text(brush.name, fontSize = 13.sp)
+                Text("Inkloom saves the previous preset before every brush edit.", color = MutedInk, fontSize = 11.sp)
+                Spacer(Modifier.height(10.dp))
+                if (versions.isEmpty()) {
+                    Text("No previous versions yet. Edit and save this brush to create one.", color = MutedInk)
+                } else {
+                    LazyColumn(Modifier.heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(versions, key = { it.versionId }) { version ->
+                            OutlinedCard {
+                                Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    BrushTipPreview(version.snapshot, Modifier.size(42.dp))
+                                    Spacer(Modifier.width(10.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(version.snapshot.name, maxLines = 1, fontSize = 13.sp)
+                                        Text(formatter.format(Date(version.savedAt)), color = MutedInk, fontSize = 10.sp)
+                                        Text(
+                                            "${version.snapshot.defaultSize.oneDecimal()} px · ${(version.snapshot.defaultOpacity * 100f).toInt()}% opacity · ${version.snapshot.spacing.oneDecimal()} spacing",
+                                            color = MutedInk,
+                                            fontSize = 10.sp,
+                                            maxLines = 1,
+                                        )
+                                    }
+                                    TextButton(onClick = { onRestore(version) }) { Text("Restore") }
+                                    IconButton(onClick = { onDelete(version) }) { Icon(Icons.Outlined.Delete, "Delete this brush version") }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+    )
+}
+
+private fun Float.oneDecimal(): String = String.format(java.util.Locale.ROOT, "%.1f", this)
+
+@Composable
+private fun ImportedBrushRow(brush: ImportedBrush, selected: Boolean, onSelect: () -> Unit, onReport: () -> Unit, onEdit: () -> Unit, onHistory: () -> Unit, onFavorite: () -> Unit, onHide: () -> Unit, onDelete: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     Card(
         modifier = Modifier.clickable(onClick = onSelect),
@@ -1862,6 +1951,7 @@ private fun ImportedBrushRow(brush: ImportedBrush, selected: Boolean, onSelect: 
                 IconButton(onClick = { menu = true }, modifier = Modifier.size(30.dp)) { Icon(Icons.Default.MoreVert, "Brush actions", modifier = Modifier.size(18.dp)) }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(text = { Text("Conversion report") }, onClick = { menu = false; onReport() })
+                    DropdownMenuItem(text = { Text("Version history") }, onClick = { menu = false; onHistory() })
                     DropdownMenuItem(text = { Text(if (brush.hidden) "Unhide" else "Hide") }, onClick = { menu = false; onHide() })
                     DropdownMenuItem(text = { Text("Remove from library") }, onClick = { menu = false; onDelete() })
                 }
