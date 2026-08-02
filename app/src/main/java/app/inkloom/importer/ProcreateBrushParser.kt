@@ -92,6 +92,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         val wetEdges = metadata.float("wetEdgesAmount").coerceIn(0f, 1f)
         val burntEdges = metadata.float("burntEdgesAmount").coerceIn(0f, 1f)
         val wetMix = max(metadata.float("dynamicsMix"), metadata.float("dynamicsPressureMix")).coerceIn(0f, 1f)
+        val paintLoad = metadata.float("dynamicsLoad").coerceIn(0f, 1f)
         val wetAccumulation = metadata.float("dynamicsWetAccumulation").coerceIn(0f, 1f)
         val smudgeAccumulation = metadata.float("dynamicsSmudgeAccumulation").coerceIn(0f, 1f)
         val watercolor = wetMix > .001f || wetEdges > .01f || burntEdges > .01f
@@ -143,7 +144,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             randomRotationDegrees = randomRotation,
             watercolor = watercolor,
             colorMix = wetMix,
-            paintMix = max(wetAccumulation, smudgeAccumulation),
+            paintMix = max(paintLoad, max(wetAccumulation, smudgeAccumulation)),
             spray = scatterSpread > .01f,
             sprayParticleSize = 100f,
             sprayParticleSizeSyncBrushSize = true,
@@ -326,7 +327,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
     )
 
     companion object {
-        const val CURRENT_VERSION = 3
+        const val CURRENT_VERSION = 4
         private const val MAX_ENTRIES = 4_096
         private const val MAX_ENTRY_BYTES = 32L * 1024L * 1024L
         private const val MAX_EXPANDED_BYTES = 384L * 1024L * 1024L
