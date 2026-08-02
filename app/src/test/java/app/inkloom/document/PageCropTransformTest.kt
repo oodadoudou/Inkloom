@@ -92,4 +92,15 @@ class PageCropTransformTest {
         assertEquals(.5f, projected.right, .0001f)
         assertEquals(.75f, projected.bottom, .0001f)
     }
+
+    @Test fun cropProjectsPdfGotoLinksAndDropsInvisibleSources() {
+        val visible = PdfGotoLink(listOf(PdfTextBounds(.1f, .25f, .5f, .55f)), "target")
+        val hidden = PdfGotoLink(listOf(PdfTextBounds(.82f, .8f, .9f, .9f)), "target")
+
+        val links = PageCropTransform.project(InkPage(crop = PageCrop(.2f, .1f, .8f, .7f), pdfGotoLinks = listOf(visible, hidden))).pdfGotoLinks
+
+        assertEquals(1, links.size)
+        assertEquals(0f, links.single().bounds.single().left, .0001f)
+        assertEquals(.75f, links.single().bounds.single().bottom, .0001f)
+    }
 }

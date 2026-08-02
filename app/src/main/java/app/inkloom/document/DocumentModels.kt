@@ -38,6 +38,8 @@ data class InkPage(
     val bookmarked: Boolean = false,
     val pdfTextBlocks: List<PdfTextBlock> = emptyList(),
     val pdfTextIndexVersion: Int = 0,
+    val pdfGotoLinks: List<PdfGotoLink> = emptyList(),
+    val pdfLinkIndexVersion: Int = 0,
 )
 
 @Serializable
@@ -60,6 +62,15 @@ data class PdfTextBounds(
     val top: Float,
     val right: Float,
     val bottom: Float,
+)
+
+@Serializable
+data class PdfGotoLink(
+    val bounds: List<PdfTextBounds>,
+    val destinationPageId: String,
+    val destinationX: Float = 0f,
+    val destinationY: Float = 0f,
+    val destinationZoom: Float = 0f,
 )
 
 object LayerIds {

@@ -35,16 +35,26 @@ class DocumentAssetService(private val context: Context) {
         val asset = copyAsset(uri, "pdf")
         val descriptor = ParcelFileDescriptor.open(asset, ParcelFileDescriptor.MODE_READ_ONLY)
         val renderer = PdfRenderer(descriptor)
+        val pageIds = List(renderer.pageCount) { UUID.randomUUID().toString() }
+        val destinationPages = pageIds.mapIndexed { index, id ->
+            renderer.openPage(index).use { page ->
+                index to PdfDestinationPage(id, page.width.toFloat(), page.height.toFloat())
+            }
+        }.toMap()
         val pages = (0 until renderer.pageCount).map { index ->
             renderer.openPage(index).use { page ->
                 val textBlocks = if (indexText) extractPdfText(page) else null
+                val gotoLinks = if (indexText) extractPdfGotoLinks(page, destinationPages) else null
                 InkPage(
+                    id = pageIds[index],
                     title = "Page ${index + 1}",
                     width = page.width.toFloat(),
                     height = page.height.toFloat(),
                     background = PageBackground.Pdf(asset.absolutePath, index),
                     pdfTextBlocks = textBlocks.orEmpty(),
                     pdfTextIndexVersion = if (textBlocks != null) PDF_TEXT_INDEX_VERSION else 0,
+                    pdfGotoLinks = gotoLinks.orEmpty(),
+                    pdfLinkIndexVersion = if (gotoLinks != null) PDF_LINK_INDEX_VERSION else 0,
                 )
             }
         }
@@ -55,18 +65,33 @@ class DocumentAssetService(private val context: Context) {
 
     fun indexPdfText(document: InkDocument): InkDocument {
         if (Build.VERSION.SDK_INT < 35) return document
-        val updates = mutableMapOf<String, Pair<List<PdfTextBlock>, Int>>()
+        val updates = mutableMapOf<String, PdfPageIndexUpdate>()
         document.pages
-            .filter { it.background is PageBackground.Pdf && it.pdfTextIndexVersion < PDF_TEXT_INDEX_VERSION }
+            .filter { it.background is PageBackground.Pdf && (it.pdfTextIndexVersion < PDF_TEXT_INDEX_VERSION || it.pdfLinkIndexVersion < PDF_LINK_INDEX_VERSION) }
             .groupBy { (it.background as PageBackground.Pdf).assetPath }
             .forEach { (assetPath, pages) ->
                 val descriptor = runCatching { ParcelFileDescriptor.open(File(assetPath), ParcelFileDescriptor.MODE_READ_ONLY) }.getOrNull() ?: return@forEach
                 val renderer = runCatching { PdfRenderer(descriptor) }.getOrElse { descriptor.close(); return@forEach }
                 try {
+                    val destinationPages = document.pages.filter { page -> (page.background as? PageBackground.Pdf)?.assetPath == assetPath }.associate { page ->
+                        val rotation = page.backgroundRotationQuarterTurns.mod(4)
+                        val sourceWidth = if (rotation % 2 == 0) page.width else page.height
+                        val sourceHeight = if (rotation % 2 == 0) page.height else page.width
+                        (page.background as PageBackground.Pdf).pageIndex to PdfDestinationPage(page.id, sourceWidth, sourceHeight, rotation)
+                    }
                     pages.forEach pageLoop@{ inkPage ->
                         val pageIndex = (inkPage.background as PageBackground.Pdf).pageIndex
                         if (pageIndex !in 0 until renderer.pageCount) return@pageLoop
-                        val textBlocks = runCatching { renderer.openPage(pageIndex).use(::extractPdfText) }.getOrNull() ?: return@pageLoop
+                        val indexed = runCatching {
+                            renderer.openPage(pageIndex).use { pdfPage ->
+                                PdfPageIndexUpdate(
+                                    textBlocks = extractPdfText(pdfPage) ?: return@use null,
+                                    gotoLinks = extractPdfGotoLinks(pdfPage, destinationPages) ?: return@use null,
+                                )
+                            }
+                        }.getOrNull() ?: return@pageLoop
+                        val textBlocks = indexed.textBlocks
+                        val gotoLinks = indexed.gotoLinks
                         val rotatedBlocks = textBlocks.map { block ->
                             block.copy(bounds = block.bounds.map { sourceBounds ->
                                 generateSequence(sourceBounds, PageGeometry::rotateTextBoundsClockwise)
@@ -74,7 +99,12 @@ class DocumentAssetService(private val context: Context) {
                                     .first()
                             })
                         }
-                        updates[inkPage.id] = rotatedBlocks to PDF_TEXT_INDEX_VERSION
+                        val rotatedLinks = gotoLinks.map { link -> link.copy(bounds = link.bounds.map { sourceBounds ->
+                            generateSequence(sourceBounds, PageGeometry::rotateTextBoundsClockwise)
+                                .drop(inkPage.backgroundRotationQuarterTurns.mod(4))
+                                .first()
+                        }) }
+                        updates[inkPage.id] = PdfPageIndexUpdate(rotatedBlocks, rotatedLinks)
                     }
                 } finally {
                     renderer.close()
@@ -84,7 +114,7 @@ class DocumentAssetService(private val context: Context) {
         if (updates.isEmpty()) return document
         return document.copy(
             pages = document.pages.map { page ->
-                updates[page.id]?.let { (blocks, version) -> page.copy(pdfTextBlocks = blocks, pdfTextIndexVersion = version) } ?: page
+                updates[page.id]?.let { update -> page.copy(pdfTextBlocks = update.textBlocks, pdfTextIndexVersion = PDF_TEXT_INDEX_VERSION, pdfGotoLinks = update.gotoLinks, pdfLinkIndexVersion = PDF_LINK_INDEX_VERSION) } ?: page
             },
             updatedAt = System.currentTimeMillis(),
         )
@@ -291,6 +321,34 @@ class DocumentAssetService(private val context: Context) {
                     }
                     add(PdfTextBlock(text, bounds))
                 }
+            }
+        }.getOrNull()
+    }
+
+    private fun extractPdfGotoLinks(page: PdfRenderer.Page, destinationPages: Map<Int, PdfDestinationPage>): List<PdfGotoLink>? {
+        if (Build.VERSION.SDK_INT < 35) return null
+        return runCatching {
+            page.gotoLinks.take(MAX_PDF_GOTO_LINKS_PER_PAGE).mapNotNull { source ->
+                val destination = source.destination
+                val destinationPage = destinationPages[destination.pageNumber] ?: return@mapNotNull null
+                val bounds = source.bounds.take(MAX_PDF_BOUNDS_PER_LINK).mapNotNull { rect ->
+                    val left = (rect.left / page.width.coerceAtLeast(1)).coerceIn(0f, 1f)
+                    val top = (rect.top / page.height.coerceAtLeast(1)).coerceIn(0f, 1f)
+                    val right = (rect.right / page.width.coerceAtLeast(1)).coerceIn(0f, 1f)
+                    val bottom = (rect.bottom / page.height.coerceAtLeast(1)).coerceIn(0f, 1f)
+                    PdfTextBounds(left, top, right, bottom).takeIf { left.isFinite() && top.isFinite() && right.isFinite() && bottom.isFinite() && right > left && bottom > top }
+                }
+                if (bounds.isEmpty()) return@mapNotNull null
+                val targetPage = destinationPages[destination.pageNumber] ?: return@mapNotNull null
+                var link = PdfGotoLink(
+                    bounds = bounds,
+                    destinationPageId = destinationPage.id,
+                    destinationX = (destination.xCoordinate / targetPage.width.coerceAtLeast(1f)).takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: 0f,
+                    destinationY = (destination.yCoordinate / targetPage.height.coerceAtLeast(1f)).takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: 0f,
+                    destinationZoom = destination.zoom.takeIf(Float::isFinite)?.coerceIn(0f, 8f) ?: 0f,
+                )
+                repeat(destinationPage.rotationQuarterTurns.mod(4)) { link = PdfGotoLinkNavigation.rotateDestinationClockwise(link) }
+                link
             }
         }.getOrNull()
     }
@@ -656,11 +714,14 @@ class DocumentAssetService(private val context: Context) {
         const val DUAL_ROTATION_SEED = 0x61B8D2A3L
         const val DUAL_SEQUENCE_SEED = 0x35A71C9E
         const val PDF_TEXT_INDEX_VERSION = 1
+        const val PDF_LINK_INDEX_VERSION = 1
         const val MAX_PDF_TEXT_CHARACTERS_PER_PAGE = 1_000_000
         const val MAX_PDF_TEXT_BLOCKS_PER_PAGE = 20_000
         const val MAX_PDF_BOUNDS_PER_BLOCK = 4_096
         const val MAX_PDF_BOUNDS_LOOKUPS_PER_PAGE = 512
         const val MAX_PDF_SEARCH_NEEDLE_CHARACTERS = 128
+        const val MAX_PDF_GOTO_LINKS_PER_PAGE = 512
+        const val MAX_PDF_BOUNDS_PER_LINK = 16
     }
 
     private fun copyAsset(uri: Uri, extension: String): File {
@@ -677,3 +738,15 @@ class DocumentAssetService(private val context: Context) {
     }
 
 }
+
+private data class PdfDestinationPage(
+    val id: String,
+    val width: Float,
+    val height: Float,
+    val rotationQuarterTurns: Int = 0,
+)
+
+private data class PdfPageIndexUpdate(
+    val textBlocks: List<PdfTextBlock>,
+    val gotoLinks: List<PdfGotoLink>,
+)

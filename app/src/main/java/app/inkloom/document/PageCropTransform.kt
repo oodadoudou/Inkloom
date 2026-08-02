@@ -23,6 +23,9 @@ object PageCropTransform {
             crop = PageCrop(),
             strokes = page.strokes.map { stroke -> stroke.copy(points = stroke.points.map { point -> project(point, crop) }, masks = stroke.masks.map { mask -> mask.copy(x = (mask.x - crop.left) / width(crop), y = (mask.y - crop.top) / height(crop), radiusX = mask.radiusX / width(crop), radiusY = mask.radiusY / height(crop)) }) },
             elements = page.elements.map { project(it, crop) },
+            pdfGotoLinks = page.pdfGotoLinks.mapNotNull { link ->
+                link.copy(bounds = link.bounds.mapNotNull { project(it, crop) }).takeIf { it.bounds.isNotEmpty() }
+            },
         )
     }
 

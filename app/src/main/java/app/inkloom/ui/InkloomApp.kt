@@ -489,6 +489,7 @@ private fun EditorScreen(
     var inputDiagnostic by remember { mutableStateOf("Waiting for input") }
     var searchOpen by remember { mutableStateOf(false) }
     var searchFocus by remember(document.id) { mutableStateOf<PageSearchHit?>(null) }
+    var pdfLinkFocus by remember(document.id) { mutableStateOf<Pair<String, PdfTextBounds>?>(null) }
     var outlineOpen by remember { mutableStateOf(false) }
     var documentQuery by remember { mutableStateOf("") }
     var textInsertOpen by remember { mutableStateOf(false) }
@@ -579,7 +580,15 @@ private fun EditorScreen(
                     shapeKind = insertShape,
                     activeLayerId = activeLayerId,
                     localEraser = localEraser,
-                    searchBounds = searchFocus?.takeIf { it.pageId == selectedPage.id }?.bounds,
+                    searchBounds = searchFocus?.takeIf { it.pageId == selectedPage.id }?.bounds ?: pdfLinkFocus?.takeIf { it.first == selectedPage.id }?.second,
+                    onPdfGotoLink = { link ->
+                        document.pages.firstOrNull { it.id == link.destinationPageId }?.let { target ->
+                            searchFocus = null
+                            pdfLinkFocus = target.id to PdfGotoLinkNavigation.destinationBounds(link)
+                            onSelectPage(target.id)
+                            if (link.destinationZoom > 0f) zoom = link.destinationZoom.coerceIn(.6f, 2.5f)
+                        }
+                    },
                     onInputDiagnostic = { kind, pressure, tilt, buttons -> inputDiagnostic = "$kind  pressure ${"%.3f".format(pressure)}  tilt ${"%.2f".format(Math.toDegrees(tilt.toDouble()))}°  buttons $buttons" },
                 )
                 val dockVertical = settings.toolbarDock in setOf(ToolbarDock.LEFT, ToolbarDock.RIGHT) || (settings.toolbarDock == ToolbarDock.FREE && settings.verticalToolbar)
@@ -889,7 +898,7 @@ private fun PageRail(document: InkDocument, documents: List<InkDocument>, select
 }
 
 @Composable
-private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, onZoom: (Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onUndoGesture: () -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, localEraser: Boolean, searchBounds: PdfTextBounds?, onInputDiagnostic: (String, Float, Float, Int) -> Unit) {
+private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, onZoom: (Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onUndoGesture: () -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, localEraser: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val backgroundVisible = page.layers.firstOrNull { it.role == LayerRole.BACKGROUND }?.visible != false
     val background = remember(page.id, page.background, page.backgroundRotationQuarterTurns, page.crop, backgroundVisible) { if (backgroundVisible) runCatching { assets.renderBackground(page.background, 1200, page.backgroundRotationQuarterTurns, page.crop) }.getOrNull() else null }
@@ -921,6 +930,8 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onStrokesReplaced = { removed, replacements, indices -> onStrokesReplaced(documentId, page.id, removed, replacements.map { PageCropTransform.unproject(it, page.crop) }, indices) }
                 view.onViewportScale = onZoom
                 view.onViewportPan = onPan
+                view.pdfGotoLinks = renderedPage.pdfGotoLinks
+                view.onPdfGotoLink = onPdfGotoLink
                 view.onUndoGesture = onUndoGesture
                 view.onInputDiagnostic = onInputDiagnostic
                 onView(view)
@@ -942,6 +953,8 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.applyBrushConfiguration(tool, settings, activeBrush, brushSize, brushOpacity, brushColor, localEraser)
                 view.onViewportScale = onZoom
                 view.onViewportPan = onPan
+                view.pdfGotoLinks = renderedPage.pdfGotoLinks
+                view.onPdfGotoLink = onPdfGotoLink
                 view.onUndoGesture = onUndoGesture
                 view.onInputDiagnostic = onInputDiagnostic
             },

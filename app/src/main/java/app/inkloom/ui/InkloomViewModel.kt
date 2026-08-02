@@ -69,7 +69,9 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     fun deletePermanently(documentId: String) { store.deletePermanently(documentId); refresh() }
     fun duplicateDocument(documentId: String) {
         val source = store.get(documentId) ?: return
-        val copy = source.copy(id = java.util.UUID.randomUUID().toString(), title = "${source.title} copy", createdAt = System.currentTimeMillis(), updatedAt = System.currentTimeMillis(), pages = source.pages.map { page -> page.copy(id = java.util.UUID.randomUUID().toString(), strokes = page.strokes.map { it.copy(id = java.util.UUID.randomUUID().toString()) }, elements = page.elements.map(::copyElement)) })
+        val pageIds = source.pages.associate { it.id to java.util.UUID.randomUUID().toString() }
+        val copiedPages = source.pages.map { page -> page.copy(id = pageIds.getValue(page.id), strokes = page.strokes.map { it.copy(id = java.util.UUID.randomUUID().toString()) }, elements = page.elements.map(::copyElement)) }
+        val copy = source.copy(id = java.util.UUID.randomUUID().toString(), title = "${source.title} copy", createdAt = System.currentTimeMillis(), updatedAt = System.currentTimeMillis(), pages = PdfGotoLinkNavigation.remapDestinations(copiedPages, pageIds))
         store.save(copy); refresh()
     }
     fun moveToFolder(documentId: String, folderId: String?) = update(documentId) { it.copy(folderId = folderId, updatedAt = System.currentTimeMillis()) }
@@ -90,7 +92,11 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
 
     fun duplicatePage(documentId: String, pageId: String) = update(documentId) { document ->
         val source = document.pages.first { it.id == pageId }
-        val copy = source.copy(id = java.util.UUID.randomUUID().toString(), title = "${source.title} copy", strokes = source.strokes.map { it.copy(id = java.util.UUID.randomUUID().toString()) }, elements = source.elements.map(::copyElement))
+        val copiedPageId = java.util.UUID.randomUUID().toString()
+        val copy = PdfGotoLinkNavigation.remapDestinations(
+            listOf(source.copy(id = copiedPageId, title = "${source.title} copy", strokes = source.strokes.map { it.copy(id = java.util.UUID.randomUUID().toString()) }, elements = source.elements.map(::copyElement))),
+            mapOf(source.id to copiedPageId),
+        ).single()
         val index = document.pages.indexOf(source) + 1
         val pages = document.pages.toMutableList().apply { add(index, copy) }
         mutableState.value = mutableState.value.copy(selectedPageId = copy.id)
@@ -157,7 +163,10 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     fun setPageCrop(documentId: String, pageId: String, crop: PageCrop) = updatePage(documentId, pageId) { page ->
         page.copy(crop = PageCropTransform.normalized(crop))
     }
-    fun rotatePageClockwise(documentId: String, pageId: String) = updatePage(documentId, pageId, PageGeometry::rotateClockwise)
+    fun rotatePageClockwise(documentId: String, pageId: String) = update(documentId) { document ->
+        val rotated = document.pages.map { page -> if (page.id == pageId) PageGeometry.rotateClockwise(page) else page }
+        document.copy(pages = PdfGotoLinkNavigation.rotateDestinationCoordinates(rotated, pageId), updatedAt = System.currentTimeMillis())
+    }
 
     fun addLayer(documentId: String, pageId: String, name: String = "Layer") = updatePage(documentId, pageId) { page ->
         val suffix = page.layers.count { it.role == LayerRole.CUSTOM } + 1

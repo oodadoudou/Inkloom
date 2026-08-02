@@ -67,4 +67,15 @@ class PageGeometryTest {
         assertEquals(.8f, rotated.right, .0001f)
         assertEquals(.4f, rotated.bottom, .0001f)
     }
+
+    @Test fun rotationKeepsPdfGotoLinkSourceAligned() {
+        val page = InkPage(pdfGotoLinks = listOf(PdfGotoLink(listOf(PdfTextBounds(.1f, .2f, .4f, .3f)), "target")))
+
+        val rotated = PageGeometry.rotateClockwise(page).pdfGotoLinks.single().bounds.single()
+
+        assertEquals(.7f, rotated.left, .0001f)
+        assertEquals(.1f, rotated.top, .0001f)
+        assertEquals(.8f, rotated.right, .0001f)
+        assertEquals(.4f, rotated.bottom, .0001f)
+    }
 }

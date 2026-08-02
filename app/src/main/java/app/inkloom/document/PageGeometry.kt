@@ -31,6 +31,7 @@ object PageGeometry {
             },
             elements = page.elements.map { rotateElementClockwise(it, oldWidth, oldHeight) },
             pdfTextBlocks = page.pdfTextBlocks.map { block -> block.copy(bounds = block.bounds.map(::rotateTextBoundsClockwise)) },
+            pdfGotoLinks = page.pdfGotoLinks.map { link -> link.copy(bounds = link.bounds.map(::rotateTextBoundsClockwise)) },
         )
     }
 

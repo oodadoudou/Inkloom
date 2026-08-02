@@ -17,6 +17,7 @@ import android.graphics.PorterDuffXfermode
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
+import android.view.ViewConfiguration
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
 import app.inkloom.document.StrokeMaskDab
@@ -32,6 +33,8 @@ import app.inkloom.document.LassoGeometry
 import app.inkloom.document.LassoSelectionPolicy
 import app.inkloom.document.PressureCalibration
 import app.inkloom.document.PageElement
+import app.inkloom.document.PdfGotoLink
+import app.inkloom.document.PdfGotoLinkNavigation
 import app.inkloom.document.ShapeGeometry
 import app.inkloom.document.ShapeKind
 import app.inkloom.document.ShapePoint
@@ -81,6 +84,11 @@ class InkCanvasView(context: Context) : View(context) {
     private var lastY = 0f
     private var navigationX = 0f
     private var navigationY = 0f
+    private var navigationDownX = 0f
+    private var navigationDownY = 0f
+    private var navigationMoved = false
+    private var navigationTapEligible = false
+    private val navigationTouchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
     private var lastTwoFingerTap = 0L
     private var activeTool: EditorTool? = null
     private var lastStylusSeenAt = Long.MIN_VALUE
@@ -223,6 +231,8 @@ class InkCanvasView(context: Context) : View(context) {
     var onStrokesReplaced: (List<String>, List<InkStroke>, List<Int>) -> Unit = { removed, replacements, _ -> removed.forEach(onStrokeRemoved); replacements.forEach(onStrokeCommitted) }
     var onViewportScale: (Float, Float, Float) -> Unit = { _, _, _ -> }
     var onViewportPan: (Float, Float) -> Unit = { _, _ -> }
+    var pdfGotoLinks: List<PdfGotoLink> = emptyList()
+    var onPdfGotoLink: (PdfGotoLink) -> Unit = {}
     var onUndoGesture: () -> Unit = {}
     var onInputDiagnostic: (String, Float, Float, Int) -> Unit = { _, _, _, _ -> }
 
@@ -561,15 +571,40 @@ class InkCanvasView(context: Context) : View(context) {
             if (activeTool != null) return true
             scaleDetector.onTouchEvent(event)
             when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> { navigationX = event.x; navigationY = event.y }
-                MotionEvent.ACTION_POINTER_DOWN -> if (event.pointerCount == 2 && twoFingerDoubleTapUndo) {
-                    val now = event.eventTime
-                    if (now - lastTwoFingerTap in 40..360) { onUndoGesture(); lastTwoFingerTap = 0L } else lastTwoFingerTap = now
+                MotionEvent.ACTION_DOWN -> {
+                    navigationX = event.x; navigationY = event.y
+                    navigationDownX = event.x; navigationDownY = event.y
+                    navigationMoved = false
+                    navigationTapEligible = eventToolType == MotionEvent.TOOL_TYPE_FINGER &&
+                        event.getTouchMajor(pointerIndex) < StylusInputClassifier.PALM_TOUCH_MAJOR_PX &&
+                        elapsedSinceStylus > StylusInputClassifier.RECENT_STYLUS_WINDOW_MS
+                }
+                MotionEvent.ACTION_POINTER_DOWN -> {
+                    navigationMoved = true
+                    navigationTapEligible = false
+                    if (event.pointerCount == 2 && twoFingerDoubleTapUndo) {
+                        val now = event.eventTime
+                        if (now - lastTwoFingerTap in 40..360) { onUndoGesture(); lastTwoFingerTap = 0L } else lastTwoFingerTap = now
+                    }
                 }
                 MotionEvent.ACTION_MOVE -> if (event.pointerCount == 1 && !scaleDetector.isInProgress) {
+                    if (hypot(event.x - navigationDownX, event.y - navigationDownY) > navigationTouchSlop) navigationMoved = true
                     onViewportPan(event.x - navigationX, event.y - navigationY)
                     navigationX = event.x; navigationY = event.y
                 }
+                MotionEvent.ACTION_UP -> {
+                    val movedFromDown = navigationMoved || hypot(event.x - navigationDownX, event.y - navigationDownY) > navigationTouchSlop
+                    if (navigationTapEligible && !movedFromDown && !scaleDetector.isInProgress) {
+                        PdfGotoLinkNavigation.hit(
+                            pdfGotoLinks,
+                            (event.x / width.coerceAtLeast(1)).coerceIn(0f, 1f),
+                            (event.y / height.coerceAtLeast(1)).coerceIn(0f, 1f),
+                        )?.let(onPdfGotoLink)
+                        performClick()
+                    }
+                    navigationTapEligible = false
+                }
+                MotionEvent.ACTION_CANCEL -> navigationTapEligible = false
             }
             return true
         }
