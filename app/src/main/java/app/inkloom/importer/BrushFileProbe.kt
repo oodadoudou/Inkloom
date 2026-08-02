@@ -18,6 +18,7 @@ object BrushFileProbe {
         val format = when {
             data.startsWith(sqliteMagic) && extension == "sut" -> BrushFormat.SUT
             isAbr(data) -> BrushFormat.ABR
+            extension == "inkbrush" && isZip(data) -> BrushFormat.INKLOOM
             (extension == "brush" || extension == "brushset") && data.size >= 4 && data[0] == 'P'.code.toByte() && data[1] == 'K'.code.toByte() -> BrushFormat.PROCREATE
             extension in setOf("png", "jpg", "jpeg", "webp") -> BrushFormat.IMAGE
             else -> BrushFormat.UNKNOWN
@@ -25,7 +26,7 @@ object BrushFileProbe {
         val compatibility = when (format) {
             BrushFormat.ABR -> Compatibility.BASIC
             BrushFormat.SUT, BrushFormat.PROCREATE -> Compatibility.BASIC
-            BrushFormat.IMAGE -> Compatibility.COMPLETE
+            BrushFormat.INKLOOM, BrushFormat.IMAGE -> Compatibility.COMPLETE
             BrushFormat.UNKNOWN -> Compatibility.FAILED
             BrushFormat.SYSTEM -> Compatibility.COMPLETE
         }
@@ -33,6 +34,7 @@ object BrushFileProbe {
             BrushFormat.ABR -> listOf("ABR signature verified", "ABR 6.x sampled-tip extraction will be attempted", "Unsupported dynamics remain on safe Inkloom defaults")
             BrushFormat.SUT -> listOf("CSP SQLite container verified", "Source is eligible for parameter, material-reference and effector-curve decoding", "Unsupported CSP-only behavior is listed separately after conversion")
             BrushFormat.PROCREATE -> listOf("Procreate ZIP container recognized", "Shape, grain, NSKeyedArchive settings and Dual Brush payloads will be decoded", "Unverified rendering and wet-mix behavior will be reported explicitly")
+            BrushFormat.INKLOOM -> listOf("Inkloom brush package recognized", "Full preset metadata and referenced assets will be integrity checked and materialized")
             BrushFormat.IMAGE -> listOf("Raster tip recognized", "Alpha or luminance will define the tip", "Spacing and pressure use safe defaults")
             BrushFormat.UNKNOWN -> listOf("No supported file signature was found")
             BrushFormat.SYSTEM -> emptyList()
@@ -52,6 +54,8 @@ object BrushFileProbe {
         val marker = bytes.copyOfRange(4, 8).decodeToString()
         return version in 1..10 && marker == "8BIM"
     }
+
+    private fun isZip(bytes: ByteArray): Boolean = bytes.size >= 4 && bytes[0] == 'P'.code.toByte() && bytes[1] == 'K'.code.toByte()
 
     private fun ByteArray.startsWith(prefix: ByteArray): Boolean =
         size >= prefix.size && prefix.indices.all { this[it] == prefix[it] }

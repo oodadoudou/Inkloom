@@ -14,6 +14,7 @@ class BrushImportRepository(context: Context) {
     private val sutParser = SutBrushParser(File(context.filesDir, "brush-assets"))
     private val abrParser = AbrBrushParser(File(context.filesDir, "abr-assets"))
     private val procreateParser = ProcreateBrushParser(File(context.filesDir, "procreate-assets"))
+    private val inkloomPackage = InkloomBrushPackage(File(context.filesDir, "inkloom-brush-assets"))
 
     fun import(uri: Uri): Result<ImportedBrush> = importAll(uri).map { it.first() }
 
@@ -56,8 +57,14 @@ class BrushImportRepository(context: Context) {
             app.inkloom.model.BrushFormat.SUT -> listOf(sutParser.enrich(target, hash, retained))
             app.inkloom.model.BrushFormat.ABR -> abrParser.enrich(target, hash, retained)
             app.inkloom.model.BrushFormat.PROCREATE -> procreateParser.enrich(target, hash, retained)
+            app.inkloom.model.BrushFormat.INKLOOM -> listOf(inkloomPackage.read(target, hash, retained))
             else -> listOf(retained)
         }
+    }
+
+    fun export(brush: ImportedBrush, uri: Uri): Result<Unit> = runCatching {
+        resolver.openOutputStream(uri, "w")?.use { output -> inkloomPackage.write(brush, output) }
+            ?: error("The selected destination could not be opened")
     }
 
     fun refreshMetadata(brush: ImportedBrush): ImportedBrush {
@@ -72,6 +79,7 @@ class BrushImportRepository(context: Context) {
             brush.format == app.inkloom.model.BrushFormat.SUT && brush.parserVersion < SutBrushParser.CURRENT_VERSION -> listOf(sutParser.enrich(source, hash, brush))
             brush.format == app.inkloom.model.BrushFormat.ABR && brush.parserVersion < AbrBrushParser.CURRENT_VERSION -> abrParser.enrich(source, hash, brush)
             brush.format == app.inkloom.model.BrushFormat.PROCREATE && brush.parserVersion < ProcreateBrushParser.CURRENT_VERSION -> procreateParser.enrich(source, hash, brush)
+            brush.format == app.inkloom.model.BrushFormat.INKLOOM && brush.parserVersion < InkloomBrushPackage.CURRENT_VERSION -> listOf(inkloomPackage.read(source, hash, brush))
             else -> listOf(brush)
         }
     }

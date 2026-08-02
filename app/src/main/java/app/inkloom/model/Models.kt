@@ -5,6 +5,7 @@ import app.inkloom.document.BrushCurvePoint
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushTaperMode
 import java.util.UUID
+import kotlinx.serialization.Serializable
 
 data class Notebook(
     val id: String = UUID.randomUUID().toString(),
@@ -15,14 +16,17 @@ data class Notebook(
     val isPdf: Boolean = false,
 )
 
+@Serializable
 enum class BrushFormat(val label: String) {
-    SYSTEM("System"), ABR("ABR"), SUT("CSP / SUT"), PROCREATE("Procreate"), IMAGE("Image tip"), UNKNOWN("Unknown")
+    SYSTEM("System"), INKLOOM("Inkloom"), ABR("ABR"), SUT("CSP / SUT"), PROCREATE("Procreate"), IMAGE("Image tip"), UNKNOWN("Unknown")
 }
 
+@Serializable
 enum class Compatibility(val label: String) {
     COMPLETE("Complete conversion"), HIGH("Highly compatible"), BASIC("Basic conversion"), EXTRACTED("Tip extracted"), FAILED("Unsupported")
 }
 
+@Serializable
 data class ImportedBrush(
     val id: String = UUID.randomUUID().toString(),
     val name: String,

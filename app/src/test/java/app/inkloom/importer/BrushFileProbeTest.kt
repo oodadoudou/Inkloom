@@ -24,6 +24,14 @@ class BrushFileProbeTest {
         assertEquals(BrushFormat.UNKNOWN, invalid.format)
     }
 
+    @Test fun inkloomPresetRequiresItsExtensionAndZipSignature() {
+        val bytes = byteArrayOf(0x50, 0x4b, 3, 4, 0, 0, 0, 0)
+        val result = BrushFileProbe.probe("portable.inkbrush", bytes.size.toLong(), ByteArrayInputStream(bytes))
+
+        assertEquals(BrushFormat.INKLOOM, result.format)
+        assertEquals(Compatibility.COMPLETE, result.compatibility)
+    }
+
     @Test fun recognizesSutSqliteContainer() {
         val bytes = "SQLite format 3\u0000".encodeToByteArray() + ByteArray(48)
         val result = BrushFileProbe.probe("sample.sut", bytes.size.toLong(), ByteArrayInputStream(bytes))
