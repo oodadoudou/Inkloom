@@ -115,7 +115,7 @@ sealed interface PageBackground {
 }
 
 @Serializable
-enum class PaperPattern { PLAIN, GRID, DOT, RULED }
+enum class PaperPattern { PLAIN, GRID, DOT, RULED, CORNELL }
 
 @Serializable
 data class StrokePoint(val x: Float, val y: Float, val pressure: Float = 1f, val timeMs: Long = 0, val tilt: Float = 0f, val orientation: Float = 0f, val velocity: Float = 0f)

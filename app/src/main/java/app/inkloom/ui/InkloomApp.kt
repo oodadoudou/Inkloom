@@ -1380,7 +1380,7 @@ private fun PageRail(document: InkDocument, documents: List<InkDocument>, select
                         PaperPattern.entries.forEach { pattern ->
                             val selected = (page.background as? PageBackground.Paper)?.pattern == pattern
                             ListItem(
-                                headlineContent = { Text(when (pattern) { PaperPattern.PLAIN -> tr("Blank", "空白"); PaperPattern.RULED -> tr("Ruled", "横线"); PaperPattern.GRID -> tr("Grid", "方格"); PaperPattern.DOT -> tr("Dot grid", "点阵") }) },
+                                headlineContent = { Text(when (pattern) { PaperPattern.PLAIN -> tr("Blank", "空白"); PaperPattern.RULED -> tr("Ruled", "横线"); PaperPattern.GRID -> tr("Grid", "方格"); PaperPattern.DOT -> tr("Dot grid", "点阵"); PaperPattern.CORNELL -> tr("Cornell notes", "康奈尔笔记") }) },
                                 leadingContent = { Icon(if (selected) Icons.Outlined.RadioButtonChecked else Icons.Outlined.RadioButtonUnchecked, null) },
                                 modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable { onSetTemplate(document.id, page.id, pattern); templateOpen = false },
                             )
@@ -1446,6 +1446,17 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 PaperPattern.RULED -> { var y = 36f; while (y < size.height) { drawLine(Color(0xFFE3E3E3), Offset(0f, y), Offset(size.width, y)); y += 36f } }
                 PaperPattern.GRID -> { var x = 0f; while (x < size.width) { drawLine(Color(0xFFE3E3E3), Offset(x, 0f), Offset(x, size.height)); x += 32f }; var y = 0f; while (y < size.height) { drawLine(Color(0xFFE3E3E3), Offset(0f, y), Offset(size.width, y)); y += 32f } }
                 PaperPattern.DOT -> { var x = 8f; while (x < size.width) { var y = 8f; while (y < size.height) { drawCircle(Color(0xFFD9D9D9), 1.4f, Offset(x, y)); y += 28f }; x += 28f } }
+                PaperPattern.CORNELL -> {
+                    val lineColor = Color(0xFFD4D4D4)
+                    val cueX = size.width * .28f
+                    val summaryY = size.height * .78f
+                    drawLine(lineColor, Offset(cueX, 0f), Offset(cueX, summaryY), strokeWidth = 1.5f)
+                    drawLine(lineColor, Offset(0f, summaryY), Offset(size.width, summaryY), strokeWidth = 1.5f)
+                    var y = 36f
+                    while (y < summaryY) { drawLine(Color(0xFFE7E7E7), Offset(cueX, y), Offset(size.width, y)); y += 36f }
+                    y = summaryY + 36f
+                    while (y < size.height) { drawLine(Color(0xFFE7E7E7), Offset(0f, y), Offset(size.width, y)); y += 36f }
+                }
             }
         }
         AndroidView(
