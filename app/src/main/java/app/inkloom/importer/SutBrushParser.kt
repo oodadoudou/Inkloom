@@ -40,7 +40,7 @@ class SutBrushParser(private val assetDirectory: File) {
             val taper = SutTaperDecoder.decode(values.float("BrushInOutType").toInt(), values.float("BrushUseIn") > 0f, values.float("BrushInLength", 20f), values.float("BrushInRatio", 30f), values.float("BrushInLengthUnit").toInt(), values.float("BrushUseOut") > 0f, values.float("BrushOutLength", 20f), values.float("BrushOutRatio", 30f), values.float("BrushOutLengthUnit").toInt(), sizeTaperTarget?.enabled == true, sizeTaperTarget?.minimumPercent ?: 0f)
             fallback.copy(
                 name = values["NodeName"] as? String ?: fallback.name,
-                compatibility = if (watercolor || dual) Compatibility.BASIC else Compatibility.HIGH,
+                compatibility = if (watercolor || dual || tips.isNotEmpty()) Compatibility.BASIC else Compatibility.HIGH,
                 tipPreviewPath = tip?.absolutePath,
                 tipPreviewPaths = tips.map(File::getAbsolutePath),
                 dualTipPreviewPaths = dualTips.map(File::getAbsolutePath),
@@ -144,7 +144,8 @@ class SutBrushParser(private val assetDirectory: File) {
                 parserVersion = CURRENT_VERSION,
                 report = buildList {
                     add("CSP SQLite variant and tool name decoded")
-                    add(if (tips.isNotEmpty()) "${tips.size} CSP brush-tip material preview${if (tips.size == 1) "" else "s"} extracted in source order" else "No embedded brush-tip thumbnail was available")
+                    add(if (tips.isNotEmpty()) "${tips.size} CSP brush-tip material preview${if (tips.size == 1) "" else "s"} extracted in source order; transparent preview padding removed before stamping" else "No embedded brush-tip thumbnail was available")
+                    if (tips.isNotEmpty()) add("The protected CSP C2F material layer is retained inside the original SUT; Inkloom uses its normalized preview raster until that proprietary layer encoding can be decoded safely")
                     if (grain != null) add("Referenced CSP paper texture mapped at ${values.float("TextureDensity").toInt()}% density, ${values.float("TextureScale2", 100f)}% scale, ${values.float("TextureRotate")}° rotation, brightness ${values.float("TextureBrightness").toInt()}, contrast ${values.float("TextureContrast").toInt()}, invert ${values.float("TextureReverseDensity") > 0f}, emphasize ${values.float("TextureStressDensity") > 0f}")
                     add("Size${if (values.float("BrushSizeUnit").toInt() == SutUnitConverter.MILLIMETERS) " converted from mm to the 1600 px reference page" else ""}, opacity, flow, hardness, spacing, thickness and rotation mapped")
                     if (values.float("FlickerReduction") > 0f) add("CSP stabilization ${values.float("FlickerReduction").toInt()} mapped${if (values.float("FlickerReductionBySpeed") > 0f && values.float("FlickerReduction") < 30f) " with speed adjustment mode ${values.float("FlickerReductionBySpeedType", 1f).toInt()}" else ""}")
@@ -156,7 +157,7 @@ class SutBrushParser(private val assetDirectory: File) {
                     val secondarySources = listOf("size" to sizeEffector, "opacity" to opacityEffector, "flow" to flowEffector, "spacing" to spacingEffector, "thickness" to thicknessEffector).mapNotNull { (label, effector) -> effector?.sourceSummary()?.takeIf(String::isNotBlank)?.let { "$label $it" } }
                     if (secondarySources.isNotEmpty()) add("CSP secondary dynamics decoded: ${secondarySources.joinToString()}")
                     if (watercolor) add("Watercolor/color-mixing parameters detected; wet pigment simulation is approximated")
-                    if (dual) add(if (dualTips.isNotEmpty()) "CSP Dual Brush mapped with ${dualTips.size} real secondary tip(s), independent size/flow/spacing/hardness/thickness/rotation and retained composite mode ${values.float("DualBrushCompositeMode").toInt()}" else "Dual Brush detected, but no referenced secondary-tip thumbnail could be extracted; main-tip fallback retained")
+                    if (dual) add(if (dualTips.isNotEmpty()) "CSP Dual Brush mapped with ${dualTips.size} referenced secondary material preview(s), independent size/flow/spacing/hardness/thickness/rotation and retained composite mode ${values.float("DualBrushCompositeMode").toInt()}" else "Dual Brush detected, but no referenced secondary-tip thumbnail could be extracted; main-tip fallback retained")
                     if (values.float("BrushUseSpray") > 0f) add("Spray behavior mapped with particle size/unit, brush-size linking, density, center bias and independent particle direction${if (sprayRotation.randomEnabled) "/random angle" else ""}")
                     if (values.float("DualUseSpray") > 0f) add("Dual spray mapped with particle size/unit, brush-size linking, density, center bias and independent particle direction${if (dualSprayRotation.randomEnabled) "/random angle" else ""}")
                     if (values.float("BrushRibbon") > 0f) add("CSP Ribbon detected; source aspect ratio, tangent alignment and continuous placement enabled")
@@ -179,10 +180,10 @@ class SutBrushParser(private val assetDirectory: File) {
         return materials.mapNotNull { (path, tar) ->
             val position = listOf(path.encodeToByteArray(), path.toByteArray(Charsets.UTF_16BE), path.toByteArray(Charsets.UTF_16LE)).map { encoded -> reference.indexOf(encoded) }.filter { it >= 0 }.minOrNull() ?: return@mapNotNull null
             val png = tarEntry(tar, "thumbnail/thumbnail.png") ?: return@mapNotNull null
-            Triple(position, path, png)
+            Triple(position, path, SutMaterialThumbnailNormalizer.normalize(png).png)
         }.distinctBy { it.second }.sortedBy { it.first }.mapIndexed { index, (_, _, png) ->
             val numberedSuffix = if (index == 0) suffix else "$suffix-${index + 1}"
-            File(assetDirectory, "$hash-$numberedSuffix.png").also { target -> if (!target.exists()) target.writeBytes(png) }
+            File(assetDirectory, "$hash-sut-v$CURRENT_VERSION-$numberedSuffix.png").also { target -> if (!target.exists()) target.writeBytes(png) }
         }
     }
 
@@ -220,6 +221,6 @@ class SutBrushParser(private val assetDirectory: File) {
     private fun SutEffector?.secondaryDynamics(): BrushSecondaryDynamics = this?.let { effector -> BrushSecondaryDynamics(tiltEnabled = effector.tiltEnabled, tiltMinimum = effector.tiltMinimum, velocityEnabled = effector.velocityEnabled, velocityMinimum = effector.velocityMinimum, velocityCurve = effector.velocityCurve, randomEnabled = effector.randomEnabled, randomMinimum = effector.randomMinimum) } ?: BrushSecondaryDynamics()
     private fun SutEffector.sourceSummary(): String = buildList { if (tiltEnabled) add("tilt"); if (velocityEnabled) add("velocity"); if (randomEnabled) add("random") }.joinToString("+")
     companion object {
-        const val CURRENT_VERSION = 14
+        const val CURRENT_VERSION = 15
     }
 }

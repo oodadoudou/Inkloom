@@ -2,6 +2,7 @@ package app.inkloom
 
 import android.content.ContentValues
 import android.database.sqlite.SQLiteDatabase
+import android.graphics.BitmapFactory
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.importer.BrushMetadataStore
@@ -18,6 +19,60 @@ import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 class SutSprayRotationParserTest {
+    @Test fun userProvidedSutCorpusReparsesWithVersionedNormalizedMaterialTips() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val arguments = InstrumentationRegistry.getArguments()
+        val required = arguments.getString("requireSutSamples") == "true"
+        val sampleRoots = listOf(
+            File(context.filesDir, "sut-samples"),
+            File(context.getExternalFilesDir(null), "sut-samples"),
+        )
+        val samples = sampleRoots.asSequence()
+            .flatMap { root -> root.walkTopDown().asSequence() }
+            .filter { it.isFile && it.extension.equals("sut", true) }
+            .distinctBy(File::getName)
+            .toList()
+        if (samples.isEmpty() && !required) return
+        assertTrue("Expected the pushed user SUT corpus", samples.size >= 10)
+        val assetRoot = File(context.cacheDir, "sut-real-assets-${System.nanoTime()}").apply { mkdirs() }
+        try {
+            val parser = SutBrushParser(assetRoot)
+            val parsed = samples.map { source ->
+                parser.enrich(
+                    source,
+                    source.name.hashCode().toUInt().toString(16),
+                    ImportedBrush(
+                        name = source.nameWithoutExtension,
+                        format = BrushFormat.SUT,
+                        compatibility = Compatibility.EXTRACTED,
+                        sizeBytes = source.length(),
+                        report = emptyList(),
+                    ),
+                )
+            }
+            parsed.forEach { brush ->
+                assertEquals(15, brush.parserVersion)
+                assertFalse(brush.report.any { it.startsWith("SUT parameter parsing failed") })
+                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v15-")) }
+            }
+            assertTrue("Expected embedded CSP material previews", parsed.any { it.tipPreviewPaths.isNotEmpty() })
+
+            val normalizedTipSizes = parsed.flatMap { brush ->
+                brush.tipPreviewPaths.mapNotNull { path ->
+                    BitmapFactory.decodeFile(path)?.let { bitmap ->
+                        (bitmap.width to bitmap.height).also { bitmap.recycle() }
+                    }
+                }
+            }
+            assertTrue(
+                "Expected the normalized 252 x 150 flat-watercolor material preview",
+                (252 to 150) in normalizedTipSizes,
+            )
+        } finally {
+            assetRoot.deleteRecursively()
+        }
+    }
+
     @Test fun sutRandomAnglesRequireTheirFlagsAndSprayUsesIndependentDirection() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val root = File(context.cacheDir, "sut-spray-${System.nanoTime()}").apply { mkdirs() }
@@ -39,7 +94,7 @@ class SutSprayRotationParserTest {
             assertTrue(brush.dualSprayParticleFollowStylusOrientation)
             assertFalse(brush.dualSprayParticleFollowStrokeDirection)
             assertEquals(90f, brush.dualSprayParticleRandomRotationDegrees, .0001f)
-            assertEquals(14, brush.parserVersion)
+            assertEquals(15, brush.parserVersion)
         } finally {
             root.deleteRecursively()
         }
