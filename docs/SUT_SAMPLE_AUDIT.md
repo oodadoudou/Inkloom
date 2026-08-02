@@ -43,6 +43,13 @@ The previous parser would have incorrectly enabled pressure for those 14 retaine
 - Source tips range from `33×300` to `300×300`. The previous renderer normalized every tip to a square, destroying long and flat brush shapes. Version 0.8.0 scales by the source's longest dimension, preserves its aspect ratio, and applies CSP's horizontal/vertical thickness direction on the correct axis.
 - Parser version 12 retains paper-texture density, scale, rotation, brightness, contrast, inversion and density emphasis. For example, `Painting brush.sut` stores 153% scale, `-59` brightness and `-14` contrast; the previous stretched mask ignored all three. Display/export now share a tiled, transformed texture sampler while still clearly reporting the separate old-C2F full-resolution limitation below.
 
+## Physical size, stabilization, and alpha-texture audit
+
+- `BrushSizeUnit=2` presets are physical millimetre brushes. Parser version 13 converts those values to Inkloom's reference-pixel model instead of treating millimetres as raw pixels; pixel-unit presets are retained directly.
+- CSP `FlickerReduction`, `FlickerReductionBySpeed`, and `FlickerReductionBySpeedType` are retained as per-brush stabilization, speed adjustment, and the corresponding slow/fast response mode. They combine with the user's global stabilizer without discarding the imported preset's intent.
+- Several real material thumbnails store useful density as alpha over black RGB. For example, the audited `Painting brush.sut` grain has black RGB with non-uniform alpha. RGB-only sampling collapsed it to a solid mask. Parser/renderer version 13 composites that alpha into effective luminance, and the live canvas and PNG/PDF path now use one shared decoder.
+- Pure JVM texture tests and an Android bitmap instrumentation test cover the alpha-only mask case.
+
 ## C2F material container findings
 
 - Each audited `material_0.layer` uses the old `89 C2F` container, not the modern `CSFCHUNK` `.clip` container.

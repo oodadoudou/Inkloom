@@ -3,11 +3,12 @@
 Tested on 2026-08-02 with the project-local `inkloom_api35_tablet` AVD:
 
 - Android API 35 / Android 15, ARM64, 2560×1600 Pixel Tablet profile.
-- Inkloom `0.28.0` (`versionCode 29`, `targetSdk 35`).
-- Three instrumentation tests passed: library launch, Settings/input-controls access, and Android bitmap verification of extracted ABR mask orientation.
+- Inkloom `0.29.0` (`versionCode 30`, `targetSdk 35`).
+- Four instrumentation tests passed: library launch, Settings/input-controls access, Android bitmap verification of extracted ABR mask orientation, and alpha-aware CSP texture-mask decoding.
 - Cold launch reported `Status: ok` and the Inkloom process remained alive.
 - App-scoped log inspection found no fatal exception, Android runtime crash, or ANR.
-- The final 87 JVM tests passed with zero failures, errors, or skips; Android Lint and debug/debug-test APK assembly also passed. This includes both authorized real ABR files and a 5,000-stroke deterministic sampling regression (93 ms on the build host).
+- The final 91 JVM tests passed with zero failures, errors, or skips; Android Lint and debug/debug-test APK assembly also passed. This includes both authorized real ABR files and a 5,000-stroke deterministic sampling regression (63 ms on the build host).
+- The Library, Editor, Brush Library and both Settings sections were visually inspected at 2560×1600 after installation. App chrome and Material container surfaces are monochrome; drawing-color swatches remain intentionally available as content colors.
 
 Visual evidence:
 
