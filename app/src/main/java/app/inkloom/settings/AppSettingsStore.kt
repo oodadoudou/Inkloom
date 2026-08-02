@@ -40,12 +40,13 @@ enum class SelectionFilter { ALL, ACTIVE_LAYER, CURRENT_BRUSH, CURRENT_COLOR }
 
 class AppSettingsStore(context: Context) {
     private val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
+    private val systemLanguage = UiLanguage.fromLanguageTag(context.resources.configuration.locales[0]?.toLanguageTag())
 
     fun load(): AppSettings {
         val pressureMinimum = preferences.getFloat("pressureMinimumInput", 0f).coerceIn(0f, .95f)
         val pressureMaximum = preferences.getFloat("pressureMaximumInput", 1f).coerceIn(pressureMinimum + .05f, 1f)
         return AppSettings(
-            language = enumValue(preferences.getString("language", null), UiLanguage.ENGLISH),
+            language = enumValue(preferences.getString("language", null), systemLanguage),
             fingerDrawing = preferences.getBoolean("fingerDrawing", false),
             showPageRail = preferences.getBoolean("showPageRail", true),
             showToolbar = preferences.getBoolean("showToolbar", true),
