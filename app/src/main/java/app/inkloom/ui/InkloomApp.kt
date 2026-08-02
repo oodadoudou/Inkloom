@@ -1078,6 +1078,10 @@ private fun EditorScreen(
                             ShortcutAction.OPACITY_INCREASE -> updateBrushOpacity(.05f)
                             ShortcutAction.PREVIOUS_BRUSH -> ShortcutBrushSelection.adjacent(brushes, activeBrush?.id, -1)?.let(::selectImportedBrush)
                             ShortcutAction.NEXT_BRUSH -> ShortcutBrushSelection.adjacent(brushes, activeBrush?.id, 1)?.let(::selectImportedBrush)
+                            ShortcutAction.CUT_SELECTION -> if (selectedElementId != null) Toast.makeText(context, inkOnlyClipboardMessage, Toast.LENGTH_SHORT).show() else if (canvasView?.cutSelectionToClipboard() != true) Toast.makeText(context, selectBeforeCutMessage, Toast.LENGTH_SHORT).show()
+                            ShortcutAction.COPY_SELECTION -> if (selectedElementId != null) Toast.makeText(context, inkOnlyClipboardMessage, Toast.LENGTH_SHORT).show() else if (canvasView?.copySelectionToClipboard() != true) Toast.makeText(context, selectBeforeCopyMessage, Toast.LENGTH_SHORT).show()
+                            ShortcutAction.PASTE_SELECTION -> { selectedElementId = null; if (canvasView?.pasteSelectionFromClipboard() != true) Toast.makeText(context, noInkClipboardMessage, Toast.LENGTH_SHORT).show() }
+                            ShortcutAction.DELETE_SELECTION -> selectedElementId?.let { onRemoveElement(document.id, selectedPage.id, it); selectedElementId = null } ?: canvasView?.deleteSelection()
                             ShortcutAction.UNDO -> canvasView?.undo()
                             ShortcutAction.REDO -> canvasView?.redo()
                             ShortcutAction.NEW_LAYER -> onAddLayer(document.id, selectedPage.id, "Layer")
@@ -1085,6 +1089,14 @@ private fun EditorScreen(
                             ShortcutAction.ZOOM_OUT -> { val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY), .9f, 0f, 0f, geometry = currentViewportGeometry()); zoom = next.scale; panX = next.panX; panY = next.panY }
                             ShortcutAction.ZOOM_IN -> { val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY), 1.1f, 0f, 0f, geometry = currentViewportGeometry()); zoom = next.scale; panX = next.panX; panY = next.panY }
                             ShortcutAction.FIT_PAGE -> { zoom = 1f; panX = 0f; panY = 0f }
+                            ShortcutAction.PREVIOUS_PAGE -> document.pages.indexOfFirst { it.id == selectedPage.id }.takeIf { it > 0 }?.let { onSelectPage(document.pages[it - 1].id) }
+                            ShortcutAction.NEXT_PAGE -> document.pages.indexOfFirst { it.id == selectedPage.id }.takeIf { it in 0 until document.pages.lastIndex }?.let { onSelectPage(document.pages[it + 1].id) }
+                            ShortcutAction.TOGGLE_BRUSH_PANEL -> onToggleBrushes()
+                            ShortcutAction.TOGGLE_LAYER_PANEL -> {
+                                val open = !layersOpen
+                                layersOpen = open
+                                onSettingsChange(settings.copy(showLayerPanel = open))
+                            }
                             ShortcutAction.TOGGLE_PANELS -> if (!panelsHiddenByShortcut) {
                                 pageRailBeforeShortcut = settings.showPageRail
                                 toolbarBeforeShortcut = settings.showToolbar
@@ -3244,6 +3256,10 @@ private fun shortcutActionLabel(action: ShortcutAction): String = when (action) 
     ShortcutAction.OPACITY_INCREASE -> tr("Increase opacity", "提高不透明度")
     ShortcutAction.PREVIOUS_BRUSH -> tr("Previous brush", "上一个笔刷")
     ShortcutAction.NEXT_BRUSH -> tr("Next brush", "下一个笔刷")
+    ShortcutAction.CUT_SELECTION -> tr("Cut selection", "剪切选区")
+    ShortcutAction.COPY_SELECTION -> tr("Copy selection", "复制选区")
+    ShortcutAction.PASTE_SELECTION -> tr("Paste selection", "粘贴选区")
+    ShortcutAction.DELETE_SELECTION -> tr("Delete selection", "删除选区")
     ShortcutAction.UNDO -> tr("Undo", "撤销")
     ShortcutAction.REDO -> tr("Redo", "重做")
     ShortcutAction.NEW_LAYER -> tr("New raster layer", "新建栅格图层")
@@ -3251,6 +3267,10 @@ private fun shortcutActionLabel(action: ShortcutAction): String = when (action) 
     ShortcutAction.ZOOM_OUT -> tr("Zoom out", "缩小")
     ShortcutAction.ZOOM_IN -> tr("Zoom in", "放大")
     ShortcutAction.FIT_PAGE -> tr("Fit page", "适合页面")
+    ShortcutAction.PREVIOUS_PAGE -> tr("Previous page", "上一页")
+    ShortcutAction.NEXT_PAGE -> tr("Next page", "下一页")
+    ShortcutAction.TOGGLE_BRUSH_PANEL -> tr("Show / hide brush panel", "显示／隐藏笔刷栏")
+    ShortcutAction.TOGGLE_LAYER_PANEL -> tr("Show / hide layer panel", "显示／隐藏图层栏")
     ShortcutAction.TOGGLE_PANELS -> tr("Hide / show panels", "隐藏／显示面板")
     ShortcutAction.SAVE_CHECKPOINT -> tr("Save checkpoint", "保存检查点")
 }

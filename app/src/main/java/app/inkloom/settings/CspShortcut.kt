@@ -15,6 +15,10 @@ enum class ShortcutAction {
     OPACITY_INCREASE,
     PREVIOUS_BRUSH,
     NEXT_BRUSH,
+    CUT_SELECTION,
+    COPY_SELECTION,
+    PASTE_SELECTION,
+    DELETE_SELECTION,
     UNDO,
     REDO,
     NEW_LAYER,
@@ -22,6 +26,10 @@ enum class ShortcutAction {
     ZOOM_OUT,
     ZOOM_IN,
     FIT_PAGE,
+    PREVIOUS_PAGE,
+    NEXT_PAGE,
+    TOGGLE_BRUSH_PANEL,
+    TOGGLE_LAYER_PANEL,
     TOGGLE_PANELS,
     SAVE_CHECKPOINT,
 }
@@ -64,6 +72,10 @@ object CspShortcutResolver {
         ShortcutBinding(ShortcutAction.ZOOM_IN, ShortcutChord(KeyEvent.KEYCODE_NUMPAD_ADD, ctrl = true)),
         ShortcutBinding(ShortcutAction.FIT_PAGE, ShortcutChord(KeyEvent.KEYCODE_0, ctrl = true)),
         ShortcutBinding(ShortcutAction.SAVE_CHECKPOINT, ShortcutChord(KeyEvent.KEYCODE_S, ctrl = true)),
+        ShortcutBinding(ShortcutAction.CUT_SELECTION, ShortcutChord(KeyEvent.KEYCODE_X, ctrl = true)),
+        ShortcutBinding(ShortcutAction.COPY_SELECTION, ShortcutChord(KeyEvent.KEYCODE_C, ctrl = true)),
+        ShortcutBinding(ShortcutAction.PASTE_SELECTION, ShortcutChord(KeyEvent.KEYCODE_V, ctrl = true)),
+        ShortcutBinding(ShortcutAction.DELETE_SELECTION, ShortcutChord(KeyEvent.KEYCODE_FORWARD_DEL)),
         ShortcutBinding(ShortcutAction.OPACITY_DECREASE, ShortcutChord(KeyEvent.KEYCODE_LEFT_BRACKET, ctrl = true)),
         ShortcutBinding(ShortcutAction.OPACITY_INCREASE, ShortcutChord(KeyEvent.KEYCODE_RIGHT_BRACKET, ctrl = true)),
         ShortcutBinding(ShortcutAction.PEN_OR_PENCIL_GROUP, ShortcutChord(KeyEvent.KEYCODE_P)),
@@ -85,8 +97,19 @@ object CspShortcutResolver {
         ShortcutAction.ZOOM_IN,
     )
 
+    private val clipboardCommandsAddedAfterWorkspaceDefaults = setOf(
+        ShortcutAction.CUT_SELECTION,
+        ShortcutAction.COPY_SELECTION,
+        ShortcutAction.PASTE_SELECTION,
+        ShortcutAction.DELETE_SELECTION,
+    )
+
+    private val workspaceDefaultsBeforeClipboard: List<ShortcutBinding> by lazy {
+        defaultBindings.filterNot { it.action in clipboardCommandsAddedAfterWorkspaceDefaults }
+    }
+
     private val previousDefaultBindings: List<ShortcutBinding> by lazy {
-        defaultBindings.filterNot { it.action in commandsAddedAfterInitialDefaults }
+        workspaceDefaultsBeforeClipboard.filterNot { it.action in commandsAddedAfterInitialDefaults }
     }
 
     private val legacyReversedBrushSizeDefaults: List<ShortcutBinding> by lazy {
@@ -100,7 +123,7 @@ object CspShortcutResolver {
     }
 
     fun migrateLegacyDefaults(bindings: List<ShortcutBinding>): List<ShortcutBinding> =
-        if (bindings == legacyReversedBrushSizeDefaults || bindings == previousDefaultBindings) defaultBindings else bindings
+        if (bindings == workspaceDefaultsBeforeClipboard || bindings == legacyReversedBrushSizeDefaults || bindings == previousDefaultBindings) defaultBindings else bindings
 
     fun resolve(chord: ShortcutChord, bindings: List<ShortcutBinding> = defaultBindings, deviceDescriptor: String? = null): ShortcutAction? =
         resolveBinding(chord, bindings, deviceDescriptor)?.action

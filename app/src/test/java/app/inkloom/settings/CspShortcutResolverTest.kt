@@ -38,6 +38,10 @@ class CspShortcutResolverTest {
         assertEquals(ShortcutAction.ZOOM_OUT, resolve(KeyEvent.KEYCODE_NUMPAD_SUBTRACT, ctrl = true))
         assertEquals(ShortcutAction.ZOOM_IN, resolve(KeyEvent.KEYCODE_NUMPAD_ADD, ctrl = true))
         assertEquals(ShortcutAction.FIT_PAGE, resolve(KeyEvent.KEYCODE_0, ctrl = true))
+        assertEquals(ShortcutAction.CUT_SELECTION, resolve(KeyEvent.KEYCODE_X, ctrl = true))
+        assertEquals(ShortcutAction.COPY_SELECTION, resolve(KeyEvent.KEYCODE_C, ctrl = true))
+        assertEquals(ShortcutAction.PASTE_SELECTION, resolve(KeyEvent.KEYCODE_V, ctrl = true))
+        assertEquals(ShortcutAction.DELETE_SELECTION, resolve(KeyEvent.KEYCODE_FORWARD_DEL))
         assertEquals(ShortcutAction.TOGGLE_PANELS, resolve(KeyEvent.KEYCODE_TAB))
         assertNull(resolve(KeyEvent.KEYCODE_P, ctrl = true))
     }
@@ -66,7 +70,16 @@ class CspShortcutResolverTest {
     }
 
     @Test fun migratesOnlyTheFormerReversedDefaultBrushSizePair() {
-        val addedActions = setOf(ShortcutAction.NEW_LAYER, ShortcutAction.MERGE_LAYER_DOWN, ShortcutAction.ZOOM_OUT, ShortcutAction.ZOOM_IN)
+        val addedActions = setOf(
+            ShortcutAction.NEW_LAYER,
+            ShortcutAction.MERGE_LAYER_DOWN,
+            ShortcutAction.ZOOM_OUT,
+            ShortcutAction.ZOOM_IN,
+            ShortcutAction.CUT_SELECTION,
+            ShortcutAction.COPY_SELECTION,
+            ShortcutAction.PASTE_SELECTION,
+            ShortcutAction.DELETE_SELECTION,
+        )
         val oldDefaults = CspShortcutResolver.defaultBindings.filterNot { it.action in addedActions }.map { binding ->
             when (binding.action) {
                 ShortcutAction.BRUSH_SIZE_DECREASE -> binding.copy(chord = ShortcutChord(KeyEvent.KEYCODE_LEFT_BRACKET))
@@ -79,6 +92,15 @@ class CspShortcutResolverTest {
         val customized = oldDefaults.map { binding ->
             if (binding.action == ShortcutAction.TOGGLE_ERASER) binding.copy(chord = ShortcutChord(KeyEvent.KEYCODE_R)) else binding
         }
+        assertEquals(customized, CspShortcutResolver.migrateLegacyDefaults(customized))
+    }
+
+    @Test fun migratesExactWorkspaceDefaultsToClipboardDefaultsWithoutChangingCustomBindings() {
+        val clipboardActions = setOf(ShortcutAction.CUT_SELECTION, ShortcutAction.COPY_SELECTION, ShortcutAction.PASTE_SELECTION, ShortcutAction.DELETE_SELECTION)
+        val formerDefaults = CspShortcutResolver.defaultBindings.filterNot { it.action in clipboardActions }
+        assertEquals(CspShortcutResolver.defaultBindings, CspShortcutResolver.migrateLegacyDefaults(formerDefaults))
+
+        val customized = formerDefaults.map { if (it.action == ShortcutAction.TOGGLE_ERASER) it.copy(chord = ShortcutChord(KeyEvent.KEYCODE_R)) else it }
         assertEquals(customized, CspShortcutResolver.migrateLegacyDefaults(customized))
     }
 
