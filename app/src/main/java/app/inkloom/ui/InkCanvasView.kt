@@ -546,7 +546,7 @@ class InkCanvasView(context: Context) : View(context) {
                         selectionGestureBefore?.let { commitStrokeEdit(it, strokes) }
                     } else if (!movingSelection) {
                         appendLassoPoint(normalizedX, normalizedY)
-                        selectedStrokeIds += strokes.filter { it.id !in protectedStrokeIds && LassoGeometry.selects(lassoPoints, it) }.map(InkStroke::id)
+                        selectWithLasso(lassoPoints)
                     }
                     lassoPoints.clear(); movingSelection = false; selectionMoved = false; selectionGestureBefore = null
                 } else if (activeTool == EditorTool.SHAPE) {
@@ -608,6 +608,34 @@ class InkCanvasView(context: Context) : View(context) {
         val point = StrokePoint(x.coerceIn(0f, 1f), y.coerceIn(0f, 1f))
         val previous = lassoPoints.lastOrNull()
         if (previous == null || hypot((point.x - previous.x).toDouble(), (point.y - previous.y).toDouble()) > .0015) lassoPoints += point
+    }
+
+    private fun selectWithLasso(polygon: List<StrokePoint>) {
+        if (polygon.size < 3) return
+        val before = strokes.toList()
+        val rebuilt = mutableListOf<InkStroke>()
+        val selected = linkedSetOf<String>()
+        var splitOccurred = false
+        before.forEach { stroke ->
+            if (stroke.id in protectedStrokeIds) {
+                rebuilt += stroke
+            } else {
+                val partition = LassoGeometry.partition(polygon, stroke)
+                splitOccurred = splitOccurred || partition.changed
+                partition.pieces.forEach { piece ->
+                    rebuilt += piece.stroke
+                    if (piece.selected) selected += piece.stroke.id
+                }
+            }
+        }
+        selectedStrokeIds.clear()
+        selectedStrokeIds += selected
+        if (splitOccurred) {
+            strokes.clear()
+            strokes += rebuilt
+            commitStrokeEdit(before, strokes)
+            invalidateStrokeCache()
+        }
     }
 
     private fun addPoint(x: Float, y: Float, pressure: Float, time: Long, tilt: Float, orientation: Float) {
