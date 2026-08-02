@@ -549,7 +549,10 @@ class DocumentAssetService(private val context: Context) {
         }
         val taper = StrokeTaper.factors(sampledPoints, width.toFloat(), height.toFloat(), stroke.taperMode, stroke.taperStartEnabled, stroke.taperStartLength, stroke.taperStartLengthUnit, stroke.taperStartMinimum, stroke.taperEndEnabled, stroke.taperEndLength, stroke.taperEndLengthUnit, stroke.taperEndMinimum)
         sampledPoints.forEachIndexed { index, point ->
-            val tipIndex = BrushTipSequence.index(stroke.tipSequenceMode, index, tips.size, stroke.renderSeed, stroke.ribbon) ?: return@forEachIndexed
+            val stampsAtPoint = BrushStampCount.resolve(stroke.stampCount, stroke.stampCountJitter, stroke.renderSeed, index)
+            repeat(stampsAtPoint) stamp@ { repeatIndex ->
+            val sequenceIndex = index * 16 + repeatIndex
+            val tipIndex = BrushTipSequence.index(stroke.tipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed, stroke.ribbon) ?: return@stamp
             val tip = tips[tipIndex]
             val x = point.x * width; val y = point.y * height
             val pressure = point.pressure.coerceIn(0f, 1f)
@@ -588,6 +591,7 @@ class DocumentAssetService(private val context: Context) {
             paint.colorFilter = PorterDuffColorFilter(stroke.colorArgb.toInt(), PorterDuff.Mode.SRC_IN)
             paint.alpha = mainAlpha
             canvas.drawBitmap(tip, matrix, paint)
+            }
         }
         if (stroke.dualBrush && dualTips.isNotEmpty()) drawDualStampStroke(canvas, stroke, dualTips, width, height, paint)
         paint.colorFilter = null
@@ -606,7 +610,10 @@ class DocumentAssetService(private val context: Context) {
         }
         val taper = StrokeTaper.factors(sampledPoints, width.toFloat(), height.toFloat(), stroke.taperMode, stroke.taperStartEnabled, stroke.taperStartLength, stroke.taperStartLengthUnit, stroke.taperStartMinimum, stroke.taperEndEnabled, stroke.taperEndLength, stroke.taperEndLengthUnit, stroke.taperEndMinimum)
         sampledPoints.forEachIndexed { index, point ->
-            val tipIndex = BrushTipSequence.index(stroke.dualTipSequenceMode, index, tips.size, stroke.renderSeed xor DUAL_SEQUENCE_SEED, stroke.dualRibbon) ?: return@forEachIndexed
+            val stampsAtPoint = BrushStampCount.resolve(stroke.dualStampCount, stroke.dualStampCountJitter, stroke.renderSeed, index, dual = true)
+            repeat(stampsAtPoint) stamp@ { repeatIndex ->
+            val sequenceIndex = index * 16 + repeatIndex
+            val tipIndex = BrushTipSequence.index(stroke.dualTipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed xor DUAL_SEQUENCE_SEED, stroke.dualRibbon) ?: return@stamp
             val tip = tips[tipIndex]
             val pressure = point.pressure.coerceIn(0f, 1f)
             val brushDiameter = (stroke.width * width / 1600f * stroke.dualSizeScale.coerceIn(.01f, 8f) * taper[index] * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.renderSeed, SALT_SIZE)).coerceAtLeast(.25f)
@@ -630,6 +637,7 @@ class DocumentAssetService(private val context: Context) {
             paint.colorFilter = PorterDuffColorFilter(stroke.colorArgb.toInt(), PorterDuff.Mode.SRC_IN)
             paint.alpha = (stroke.opacity * opacityDynamic * stroke.dualFlow.coerceIn(0f, 1f) * flowDynamic * WetMixDynamics.alphaMultiplier(stroke.watercolor, stroke.colorMix, stroke.paintMix)).coerceIn(.01f, 1f).times(255).toInt()
             canvas.drawBitmap(tip, matrix, paint)
+            }
         }
     }
 

@@ -105,6 +105,8 @@ class ProcreateBrushParserTest {
             assertTrue(brushes.any { it.spraySpread > 0f })
             assertTrue(brushes.any { it.randomRotationDegrees > 0f })
             assertTrue(brushes.any { it.strokeRotationJitterDegrees > 0f })
+            assertTrue(brushes.any { it.stampCount > 1 })
+            assertTrue(brushes.any { it.stampCountJitter > 0f })
             assertTrue(brushes.any { it.spray && it.randomRotationDegrees > 0f && it.sprayParticleRandomRotationDegrees == it.randomRotationDegrees })
             assertEquals(23, brushes.count { it.grainOffsetJitter })
             assertTrue(brushes.any { brush -> brush.report.any { it.contains("stroke-path jitter") } })

@@ -100,6 +100,8 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         val scatterSpread = plotJitter
         val randomRotation = Math.toDegrees(abs(metadata.float("shapeScatter")).toDouble()).toFloat().coerceIn(0f, 180f)
         val strokeRotationJitter = if (metadata.boolean("shapeRandomise")) 180f else 0f
+        val stampCount = (metadata.float("shapeCount", .0625f) * 16f).toInt().coerceIn(1, 16)
+        val stampCountJitter = metadata.float("shapeCountJitter").coerceIn(0f, 1f)
         val shapeRotation = Math.toDegrees(metadata.float("shapeAngle").toDouble()).toFloat().coerceIn(-360f, 360f)
         val followsStylus = metadata.boolean("shapeAzimuth")
         val followsStroke = metadata.boolean("oriented")
@@ -147,13 +149,15 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             followStrokeDirection = followsStroke,
             randomRotationDegrees = randomRotation,
             strokeRotationJitterDegrees = strokeRotationJitter,
+            stampCount = stampCount,
+            stampCountJitter = stampCountJitter,
             watercolor = watercolor,
             colorMix = wetMix,
             paintMix = max(paintLoad, max(wetAccumulation, smudgeAccumulation)),
             spray = scatterSpread > .01f,
             sprayParticleSize = 100f,
             sprayParticleSizeSyncBrushSize = true,
-            sprayDensity = (metadata.float("shapeCount", .0625f) * 16f).coerceIn(1f, 100f),
+            sprayDensity = 1f,
             sprayBias = 0f,
             spraySpread = scatterSpread,
             sprayParticleRotationDegrees = shapeRotation,
@@ -171,6 +175,8 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             dualFollowStrokeDirection = dualMapped?.followStroke ?: false,
             dualRandomRotationDegrees = dualMapped?.randomRotation ?: 0f,
             dualStrokeRotationJitterDegrees = dualMapped?.strokeRotationJitter ?: 0f,
+            dualStampCount = dualMapped?.stampCount ?: 1,
+            dualStampCountJitter = dualMapped?.stampCountJitter ?: 0f,
             dualSpray = dualMapped?.spray ?: false,
             dualSprayDensity = dualMapped?.density ?: 1f,
             dualSpraySpread = dualMapped?.spread ?: 1f,
@@ -211,6 +217,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
                 if (sources.isNotEmpty()) add("Procreate dynamics mapped: ${sources.joinToString()}")
                 if (randomRotation > DYNAMIC_EPSILON) add("Procreate Shape Scatter mapped to independent per-stamp rotation")
                 if (strokeRotationJitter > DYNAMIC_EPSILON) add("Procreate Randomized mapped to one deterministic starting rotation per stroke")
+                if (stampCount > 1 || stampCountJitter > DYNAMIC_EPSILON) add("Procreate Shape Count $stampCount and Count Jitter mapped as repeated stamps at each plot point")
                 if (scatterSpread > DYNAMIC_EPSILON) add("Procreate stroke-path jitter mapped as positional spread")
                 if (metadata.boolean("textureOffsetJitter")) add("Procreate Grain Offset Jitter mapped to a deterministic texture origin for each stroke")
                 if (dualMetadata != null) add(if (dualShape != null) "Procreate Sub01 Dual Brush extracted with independent shape and core dynamics; combine mode ${metadata.int("dualBlendMode")} retained" else "Procreate Sub01 metadata found, but its shape source was missing")
@@ -235,9 +242,11 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             followStroke = metadata.boolean("oriented"),
             randomRotation = Math.toDegrees(abs(metadata.float("shapeScatter")).toDouble()).toFloat().coerceIn(0f, 180f),
             strokeRotationJitter = if (metadata.boolean("shapeRandomise")) 180f else 0f,
+            stampCount = (metadata.float("shapeCount", .0625f) * 16f).toInt().coerceIn(1, 16),
+            stampCountJitter = metadata.float("shapeCountJitter").coerceIn(0f, 1f),
             spray = spread > DYNAMIC_EPSILON,
             spread = spread,
-            density = (metadata.float("shapeCount", .0625f) * 16f).coerceIn(1f, 100f),
+            density = 1f,
         )
     }
 
@@ -337,13 +346,15 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         val followStroke: Boolean,
         val randomRotation: Float,
         val strokeRotationJitter: Float,
+        val stampCount: Int,
+        val stampCountJitter: Float,
         val spray: Boolean,
         val spread: Float,
         val density: Float,
     )
 
     companion object {
-        const val CURRENT_VERSION = 5
+        const val CURRENT_VERSION = 6
         private const val MAX_ENTRIES = 4_096
         private const val MAX_ENTRY_BYTES = 32L * 1024L * 1024L
         private const val MAX_EXPANDED_BYTES = 384L * 1024L * 1024L

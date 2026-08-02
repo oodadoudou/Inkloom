@@ -1067,6 +1067,8 @@ private fun InkCanvasView.applyBrushConfiguration(
     followStrokeDirection = activeBrush?.followStrokeDirection ?: false
     randomRotationDegrees = activeBrush?.randomRotationDegrees ?: 0f
     strokeRotationJitterDegrees = activeBrush?.strokeRotationJitterDegrees ?: 0f
+    stampCount = activeBrush?.stampCount ?: 1
+    stampCountJitter = activeBrush?.stampCountJitter ?: 0f
     brushWatercolor = activeBrush?.watercolor ?: false
     brushColorMix = activeBrush?.colorMix ?: 0f
     brushPaintMix = activeBrush?.paintMix ?: 0f
@@ -1095,6 +1097,8 @@ private fun InkCanvasView.applyBrushConfiguration(
     dualFollowStrokeDirection = activeBrush?.dualFollowStrokeDirection ?: false
     dualRandomRotationDegrees = activeBrush?.dualRandomRotationDegrees ?: 0f
     dualStrokeRotationJitterDegrees = activeBrush?.dualStrokeRotationJitterDegrees ?: 0f
+    dualStampCount = activeBrush?.dualStampCount ?: 1
+    dualStampCountJitter = activeBrush?.dualStampCountJitter ?: 0f
     dualRibbon = activeBrush?.dualRibbon ?: false
     dualSpray = activeBrush?.dualSpray ?: false
     dualSprayParticleSize = activeBrush?.dualSprayParticleSize ?: 100f
@@ -2210,6 +2214,8 @@ private fun BrushEditorDialog(brush: ImportedBrush, onDismiss: () -> Unit, onSav
                 item { SettingSwitch("Follow stroke direction", "Rotates the tip along the drawn path.", draft.followStrokeDirection) { draft = draft.copy(followStrokeDirection = it) } }
                 item { BrushSettingSlider("Random rotation", draft.randomRotationDegrees, 0f..180f) { draft = draft.copy(randomRotationDegrees = it) } }
                 item { BrushSettingSlider("Random start rotation", draft.strokeRotationJitterDegrees, 0f..180f) { draft = draft.copy(strokeRotationJitterDegrees = it) } }
+                item { BrushSettingSlider("Stamp count", draft.stampCount.toFloat(), 1f..16f) { draft = draft.copy(stampCount = it.toInt().coerceIn(1, 16)) } }
+                item { BrushSettingSlider("Stamp count jitter", draft.stampCountJitter, 0f..1f) { draft = draft.copy(stampCountJitter = it) } }
                 item { BrushSettingSlider("Color mix", draft.colorMix, 0f..1f) { draft = draft.copy(colorMix = it) } }
                 item { BrushSettingSlider("Paint mix", draft.paintMix, 0f..1f) { draft = draft.copy(paintMix = it) } }
                 item { SettingSwitch("Watercolor approximation", "Uses translucent layered stamps.", draft.watercolor) { draft = draft.copy(watercolor = it) } }
@@ -2243,6 +2249,8 @@ private fun BrushEditorDialog(brush: ImportedBrush, onDismiss: () -> Unit, onSav
                 if (draft.dualBrush) item { SettingSwitch("Secondary follows stroke", null, draft.dualFollowStrokeDirection) { draft = draft.copy(dualFollowStrokeDirection = it) } }
                 if (draft.dualBrush) item { BrushSettingSlider("Secondary random rotation", draft.dualRandomRotationDegrees, 0f..180f) { draft = draft.copy(dualRandomRotationDegrees = it) } }
                 if (draft.dualBrush) item { BrushSettingSlider("Secondary random start rotation", draft.dualStrokeRotationJitterDegrees, 0f..180f) { draft = draft.copy(dualStrokeRotationJitterDegrees = it) } }
+                if (draft.dualBrush) item { BrushSettingSlider("Secondary stamp count", draft.dualStampCount.toFloat(), 1f..16f) { draft = draft.copy(dualStampCount = it.toInt().coerceIn(1, 16)) } }
+                if (draft.dualBrush) item { BrushSettingSlider("Secondary count jitter", draft.dualStampCountJitter, 0f..1f) { draft = draft.copy(dualStampCountJitter = it) } }
                 if (draft.dualBrush) item { SettingSwitch("Secondary Ribbon", null, draft.dualRibbon) { draft = draft.copy(dualRibbon = it) } }
                 if (draft.dualBrush) item { SettingSwitch("Secondary spray/scatter", null, draft.dualSpray) { draft = draft.copy(dualSpray = it) } }
                 if (draft.dualBrush && draft.dualSpray) item { BrushSettingSlider("Secondary particle size", draft.dualSprayParticleSize, .01f..400f) { draft = draft.copy(dualSprayParticleSize = it) } }

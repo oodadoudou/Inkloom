@@ -85,6 +85,8 @@ class BrushMetadataStore(
                         followStrokeDirection = item.optBoolean("followStrokeDirection", false),
                         randomRotationDegrees = item.optDouble("randomRotationDegrees", 0.0).toFloat(),
                         strokeRotationJitterDegrees = item.optDouble("strokeRotationJitterDegrees", 0.0).toFloat().coerceIn(0f, 180f),
+                        stampCount = item.optInt("stampCount", 1).coerceIn(1, 16),
+                        stampCountJitter = item.optDouble("stampCountJitter", 0.0).toFloat().coerceIn(0f, 1f),
                         watercolor = item.optBoolean("watercolor", false),
                         colorMix = item.optDouble("colorMix", 0.0).toFloat(),
                         paintMix = item.optDouble("paintMix", 0.0).toFloat(),
@@ -113,6 +115,8 @@ class BrushMetadataStore(
                         dualFollowStrokeDirection = item.optBoolean("dualFollowStrokeDirection", false),
                         dualRandomRotationDegrees = item.optDouble("dualRandomRotationDegrees", 0.0).toFloat().coerceIn(0f, 180f),
                         dualStrokeRotationJitterDegrees = item.optDouble("dualStrokeRotationJitterDegrees", 0.0).toFloat().coerceIn(0f, 180f),
+                        dualStampCount = item.optInt("dualStampCount", 1).coerceIn(1, 16),
+                        dualStampCountJitter = item.optDouble("dualStampCountJitter", 0.0).toFloat().coerceIn(0f, 1f),
                         dualRibbon = item.optBoolean("dualRibbon", false),
                         dualSpray = item.optBoolean("dualSpray", false),
                         dualSprayParticleSize = item.optDouble("dualSprayParticleSize", 100.0).toFloat().coerceIn(.01f, 4000f),
@@ -215,6 +219,8 @@ class BrushMetadataStore(
                     .put("followStrokeDirection", brush.followStrokeDirection)
                     .put("randomRotationDegrees", brush.randomRotationDegrees)
                     .put("strokeRotationJitterDegrees", brush.strokeRotationJitterDegrees)
+                    .put("stampCount", brush.stampCount)
+                    .put("stampCountJitter", brush.stampCountJitter)
                     .put("watercolor", brush.watercolor)
                     .put("colorMix", brush.colorMix)
                     .put("paintMix", brush.paintMix)
@@ -243,6 +249,8 @@ class BrushMetadataStore(
                     .put("dualFollowStrokeDirection", brush.dualFollowStrokeDirection)
                     .put("dualRandomRotationDegrees", brush.dualRandomRotationDegrees)
                     .put("dualStrokeRotationJitterDegrees", brush.dualStrokeRotationJitterDegrees)
+                    .put("dualStampCount", brush.dualStampCount)
+                    .put("dualStampCountJitter", brush.dualStampCountJitter)
                     .put("dualRibbon", brush.dualRibbon)
                     .put("dualSpray", brush.dualSpray)
                     .put("dualSprayParticleSize", brush.dualSprayParticleSize)
