@@ -896,6 +896,7 @@ private fun EditorScreen(
             if (brushesOpen && settings.brushPanelDock == WorkspacePanelDock.LEFT) BrushPanel(
                 brushes = brushes,
                 selectedBrushId = selectedBrushId,
+                settings = settings,
                 dock = settings.brushPanelDock,
                 onDock = { onSettingsChange(settings.copy(brushPanelDock = it)) },
                 onClose = { if (brushesOpen) onToggleBrushes() },
@@ -1154,6 +1155,7 @@ private fun EditorScreen(
             if (brushesOpen && settings.brushPanelDock == WorkspacePanelDock.RIGHT) BrushPanel(
                 brushes = brushes,
                 selectedBrushId = selectedBrushId,
+                settings = settings,
                 dock = settings.brushPanelDock,
                 onDock = { onSettingsChange(settings.copy(brushPanelDock = it)) },
                 onClose = { if (brushesOpen) onToggleBrushes() },
@@ -2396,6 +2398,7 @@ private fun LayerPanel(
 private fun BrushPanel(
     brushes: List<ImportedBrush>,
     selectedBrushId: String?,
+    settings: AppSettings,
     dock: WorkspacePanelDock,
     onDock: (WorkspacePanelDock) -> Unit,
     onClose: () -> Unit,
@@ -2510,6 +2513,7 @@ private fun BrushPanel(
     editBrush?.let { brush ->
         BrushEditorDialog(
             brush,
+            settings,
             onDismiss = { editBrush = null },
             onSave = { updated ->
                 if (updated != brush) {
@@ -2747,7 +2751,7 @@ private fun BrushTipPreview(brush: ImportedBrush, modifier: Modifier = Modifier)
 }
 
 @Composable
-private fun BrushEditorDialog(brush: ImportedBrush, onDismiss: () -> Unit, onSave: (ImportedBrush) -> Unit) {
+private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDismiss: () -> Unit, onSave: (ImportedBrush) -> Unit) {
     var draft by remember(brush.id) { mutableStateOf(brush) }
     var tagText by remember(brush.id) { mutableStateOf(brush.tags.joinToString(", ")) }
     AlertDialog(
@@ -2758,6 +2762,7 @@ private fun BrushEditorDialog(brush: ImportedBrush, onDismiss: () -> Unit, onSav
                 item { OutlinedTextField(draft.name, { draft = draft.copy(name = it) }, label = { Text(tr("Brush name", "笔刷名称")) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(draft.groupName, { draft = draft.copy(groupName = it.take(BrushGroupOperations.MAX_NAME_LENGTH)) }, label = { Text(tr("Group", "分组")) }, supportingText = { Text(tr("Leave empty for Ungrouped", "留空则归入“未分组”")) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(tagText, { tagText = it }, label = { Text(tr("Tags", "标签")) }, supportingText = { Text(tr("Separate tags with commas", "使用逗号分隔标签")) }, modifier = Modifier.fillMaxWidth()) }
+                item { BrushTestArea(draft, settings) }
                 item { BrushSettingSlider("Size", draft.defaultSize, .5f..400f) { draft = draft.copy(defaultSize = it) } }
                 item { BrushSettingSlider("Stabilization", draft.stabilization, 0f..0.9f) { draft = draft.copy(stabilization = it) } }
                 item { SettingSwitch("Adjust stabilization by speed", "Uses the imported CSP correction behavior when available.", draft.stabilizationBySpeed) { draft = draft.copy(stabilizationBySpeed = it) } }
@@ -2868,6 +2873,51 @@ private fun BrushEditorDialog(brush: ImportedBrush, onDismiss: () -> Unit, onSav
         confirmButton = { Button(onClick = { onSave(draft.copy(name = draft.name.trim().ifBlank { brush.name }, groupName = BrushGroupOperations.normalize(draft.groupName), tags = tagText.split(',').map(String::trim).filter(String::isNotBlank).distinct().take(24))) }) { Text(tr("Save preset", "保存预设")) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Cancel", "取消")) } },
     )
+}
+
+@Composable
+private fun BrushTestArea(brush: ImportedBrush, settings: AppSettings) {
+    var strokes by remember(brush.id) { mutableStateOf(emptyList<InkStroke>()) }
+    var canvasView by remember(brush.id) { mutableStateOf<InkCanvasView?>(null) }
+    Column(
+        Modifier.fillMaxWidth().padding(vertical = 6.dp).border(1.dp, OutlineSoft, RoundedCornerShape(10.dp)).padding(8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(tr("LIVE TEST AREA", "实时试笔区"), color = Sage, fontSize = 11.sp)
+                Text(tr("Uses the current Inkloom brush engine. Test strokes are never added to the note.", "使用当前 Inkloom 笔刷引擎；试笔不会写入笔记。"), color = MutedInk, fontSize = 10.sp)
+            }
+            IconButton(onClick = { canvasView?.undo() }, enabled = strokes.isNotEmpty(), modifier = Modifier.size(34.dp)) { Icon(Icons.Outlined.Undo, tr("Undo test stroke", "撤销试笔"), Modifier.size(18.dp)) }
+            IconButton(onClick = { strokes = emptyList(); canvasView?.setDocumentStrokes(emptyList(), "brush-test:${brush.id}:clear") }, enabled = strokes.isNotEmpty(), modifier = Modifier.size(34.dp)) { Icon(Icons.Outlined.DeleteSweep, tr("Clear test area", "清空试笔区"), Modifier.size(18.dp)) }
+        }
+        AndroidView(
+            factory = { context -> InkCanvasView(context).also { view ->
+                canvasView = view
+                view.activeLayerId = LayerIds.INK
+                view.pageModelWidth = 900f
+                view.pageModelHeight = 240f
+                view.onStrokeCommitted = { stroke -> strokes = strokes + stroke }
+                view.onStrokeRemoved = { id -> strokes = strokes.filterNot { it.id == id } }
+                view.onStrokesReplaced = { removed, replacements, _ -> strokes = strokes.filterNot { it.id in removed.toSet() } + replacements }
+            } },
+            update = { view ->
+                canvasView = view
+                view.applyBrushConfiguration(EditorTool.PEN, settings, brush, brush.defaultSize, brush.defaultOpacity, AndroidColor.rgb(17, 17, 17), EraserPreset.NORMAL_FREE)
+                view.activeLayerId = LayerIds.INK
+                view.pageModelWidth = 900f
+                view.pageModelHeight = 240f
+                view.setDocumentStrokes(strokes, "brush-test:${brush.id}")
+                view.setProtectedStrokeIds(emptySet())
+                view.setProtectedLayerIds(emptySet())
+                view.onStrokeCommitted = { stroke -> strokes = strokes + stroke }
+                view.onStrokeRemoved = { id -> strokes = strokes.filterNot { it.id == id } }
+                view.onStrokesReplaced = { removed, replacements, _ -> strokes = strokes.filterNot { it.id in removed.toSet() } + replacements }
+            },
+            modifier = Modifier.fillMaxWidth().height(132.dp).clip(RoundedCornerShape(8.dp)).background(Color.White),
+        )
+        Text(tr("Stylus draws here. Finger input follows the app's finger-drawing setting.", "请用触控笔在此试画；手指输入遵循应用的“手指书写”设置。"), color = MutedInk, fontSize = 10.sp)
+    }
 }
 
 @Composable
