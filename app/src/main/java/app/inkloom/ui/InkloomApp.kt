@@ -701,7 +701,7 @@ private fun EditorScreen(
     if (shapeInsertOpen) AlertDialog(
         onDismissRequest = { shapeInsertOpen = false },
         title = { Text("Draw shape") },
-        text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { Text("Choose a shape, then drag on the page with the pen. Lines and arrows snap to nearby 45° angles.", color = MutedInk, fontSize = 12.sp); LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { ShapeKind.entries.forEach { kind -> item { FilterChip(selected = insertShape == kind, onClick = { insertShape = kind }, label = { Text(kind.name.lowercase().replaceFirstChar(Char::uppercase)) }) } } } } },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { Text("Choose a shape, then drag on the page with the pen. Lines and arrows snap to nearby 45° angles; Freeform follows the pen and closes the polygon automatically.", color = MutedInk, fontSize = 12.sp); LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { ShapeKind.entries.forEach { kind -> item { FilterChip(selected = insertShape == kind, onClick = { insertShape = kind }, label = { Text(kind.name.lowercase().replaceFirstChar(Char::uppercase)) }) } } } } },
         confirmButton = { Button(onClick = { shapeInsertOpen = false; tool = EditorTool.SHAPE; canvasView?.tool = EditorTool.SHAPE }) { Text("Draw") } },
         dismissButton = { TextButton(onClick = { shapeInsertOpen = false }) { Text("Cancel") } },
     )
@@ -1161,7 +1161,14 @@ private fun ObjectElementView(
                 val stroke = androidx.compose.ui.graphics.drawscope.Stroke(element.strokeWidth.coerceIn(1f, 40f))
                 val triangle = androidx.compose.ui.graphics.Path().apply { moveTo(size.width / 2f, 0f); lineTo(size.width, size.height); lineTo(0f, size.height); close() }
                 val diamond = androidx.compose.ui.graphics.Path().apply { moveTo(size.width / 2f, 0f); lineTo(size.width, size.height / 2f); lineTo(size.width / 2f, size.height); lineTo(0f, size.height / 2f); close() }
-                element.fillArgb?.let { fill -> when (element.kind) { ShapeKind.ELLIPSE -> drawOval(Color(fill)); ShapeKind.RECTANGLE -> drawRect(Color(fill)); ShapeKind.TRIANGLE -> drawPath(triangle, Color(fill)); ShapeKind.DIAMOND -> drawPath(diamond, Color(fill)); else -> Unit } }
+                val freeform = androidx.compose.ui.graphics.Path().apply {
+                    element.path.firstOrNull()?.let { first ->
+                        moveTo(first.x * size.width, first.y * size.height)
+                        for (index in 1 until element.path.size) { val vertex = element.path[index]; lineTo(vertex.x * size.width, vertex.y * size.height) }
+                        close()
+                    }
+                }
+                element.fillArgb?.let { fill -> when (element.kind) { ShapeKind.ELLIPSE -> drawOval(Color(fill)); ShapeKind.RECTANGLE -> drawRect(Color(fill)); ShapeKind.TRIANGLE -> drawPath(triangle, Color(fill)); ShapeKind.DIAMOND -> drawPath(diamond, Color(fill)); ShapeKind.FREEFORM -> drawPath(freeform, Color(fill)); else -> Unit } }
                 when (element.kind) {
                     ShapeKind.ELLIPSE -> drawOval(color, style = stroke)
                     ShapeKind.RECTANGLE -> drawRect(color, style = stroke)
@@ -1169,6 +1176,7 @@ private fun ObjectElementView(
                     ShapeKind.DIAMOND -> drawPath(diamond, color, style = stroke)
                     ShapeKind.LINE -> drawLine(color, Offset(0f, size.height / 2f), Offset(size.width, size.height / 2f), strokeWidth = element.strokeWidth)
                     ShapeKind.ARROW -> { val y = size.height / 2f; drawLine(color, Offset(0f, y), Offset(size.width, y), strokeWidth = element.strokeWidth); drawLine(color, Offset(size.width, y), Offset(size.width - 24f, y - 16f), strokeWidth = element.strokeWidth); drawLine(color, Offset(size.width, y), Offset(size.width - 24f, y + 16f), strokeWidth = element.strokeWidth) }
+                    ShapeKind.FREEFORM -> drawPath(freeform, color, style = stroke)
                 }
             }
             is PageElement.Image -> {
@@ -1360,7 +1368,10 @@ private fun ElementEditorDialog(element: PageElement, onDismiss: () -> Unit, onS
                     item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text("Color", Modifier.weight(1f)); BrushColorPicker(current.colorArgb.toInt()) { draft = current.copy(colorArgb = it.toUInt().toLong()) } } }
                 }
                 is PageElement.Shape -> {
-                    item { LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { ShapeKind.entries.forEach { kind -> item { FilterChip(selected = current.kind == kind, onClick = { draft = current.copy(kind = kind) }, label = { Text(kind.name.lowercase().replaceFirstChar(Char::uppercase)) }) } } } }
+                    item { LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { ShapeKind.entries.forEach { kind -> item { FilterChip(selected = current.kind == kind, onClick = {
+                        val path = if (kind == ShapeKind.FREEFORM && current.path.size < 3) listOf(ShapeVertex(0f, 0f), ShapeVertex(1f, 0f), ShapeVertex(1f, 1f), ShapeVertex(0f, 1f)) else current.path
+                        draft = current.copy(kind = kind, path = path)
+                    }, label = { Text(kind.name.lowercase().replaceFirstChar(Char::uppercase)) }) } } } }
                     item { BrushSettingSlider("Stroke width", current.strokeWidth, 1f..40f) { draft = current.copy(strokeWidth = it) } }
                     item { SettingSwitch("Fill", "Adds a translucent shape fill.", current.fillArgb != null) { draft = current.copy(fillArgb = if (it) 0x33111111 else null) } }
                     item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text("Stroke color", Modifier.weight(1f)); BrushColorPicker(current.colorArgb.toInt()) { draft = current.copy(colorArgb = it.toUInt().toLong()) } } }

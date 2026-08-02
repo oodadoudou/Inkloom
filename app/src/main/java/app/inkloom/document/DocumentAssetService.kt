@@ -373,7 +373,14 @@ class DocumentAssetService(private val context: Context) {
                 is PageElement.Shape -> {
                     val triangle = Path().apply { moveTo((left + right) / 2f, top); lineTo(right, bottom); lineTo(left, bottom); close() }
                     val diamond = Path().apply { moveTo((left + right) / 2f, top); lineTo(right, (top + bottom) / 2f); lineTo((left + right) / 2f, bottom); lineTo(left, (top + bottom) / 2f); close() }
-                    element.fillArgb?.let { fill -> paint.style = Paint.Style.FILL; paint.color = fill.toInt(); when (element.kind) { ShapeKind.ELLIPSE -> canvas.drawOval(left, top, right, bottom, paint); ShapeKind.RECTANGLE -> canvas.drawRect(left, top, right, bottom, paint); ShapeKind.TRIANGLE -> canvas.drawPath(triangle, paint); ShapeKind.DIAMOND -> canvas.drawPath(diamond, paint); else -> Unit } }
+                    val freeform = Path().apply {
+                        element.path.firstOrNull()?.let { first ->
+                            moveTo(left + first.x * (right - left), top + first.y * (bottom - top))
+                            for (index in 1 until element.path.size) { val vertex = element.path[index]; lineTo(left + vertex.x * (right - left), top + vertex.y * (bottom - top)) }
+                            close()
+                        }
+                    }
+                    element.fillArgb?.let { fill -> paint.style = Paint.Style.FILL; paint.color = fill.toInt(); when (element.kind) { ShapeKind.ELLIPSE -> canvas.drawOval(left, top, right, bottom, paint); ShapeKind.RECTANGLE -> canvas.drawRect(left, top, right, bottom, paint); ShapeKind.TRIANGLE -> canvas.drawPath(triangle, paint); ShapeKind.DIAMOND -> canvas.drawPath(diamond, paint); ShapeKind.FREEFORM -> canvas.drawPath(freeform, paint); else -> Unit } }
                     paint.style = Paint.Style.STROKE; paint.color = element.colorArgb.toInt(); paint.strokeWidth = element.strokeWidth
                     when (element.kind) {
                         ShapeKind.ELLIPSE -> canvas.drawOval(left, top, right, bottom, paint)
@@ -382,6 +389,7 @@ class DocumentAssetService(private val context: Context) {
                         ShapeKind.LINE -> canvas.drawLine(left, (top + bottom) / 2f, right, (top + bottom) / 2f, paint)
                         ShapeKind.ARROW -> { val y = (top + bottom) / 2f; canvas.drawLine(left, y, right, y, paint); canvas.drawLine(right, y, right - 28, y - 18, paint); canvas.drawLine(right, y, right - 28, y + 18, paint) }
                         ShapeKind.RECTANGLE -> canvas.drawRect(left, top, right, bottom, paint)
+                        ShapeKind.FREEFORM -> canvas.drawPath(freeform, paint)
                     }
                 }
                 is PageElement.Image -> ImageAssetDecoder.decodeCropped(element.assetPath, element.crop)?.let { bitmap ->

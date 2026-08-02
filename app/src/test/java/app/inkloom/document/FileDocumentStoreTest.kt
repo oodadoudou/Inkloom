@@ -70,7 +70,8 @@ class FileDocumentStoreTest {
         val document = InkDocument(title = "Objects")
         store.save(document)
         val pageId = document.pages.single().id
-        val shape = PageElement.Shape(x = .2f, y = .3f, width = 400f, height = 220f, rotationDegrees = 30f, opacity = .6f, kind = ShapeKind.ARROW)
+        val path = listOf(ShapeVertex(0f, 0f), ShapeVertex(1f, .2f), ShapeVertex(.7f, 1f))
+        val shape = PageElement.Shape(x = .2f, y = .3f, width = 400f, height = 220f, rotationDegrees = 30f, opacity = .6f, kind = ShapeKind.FREEFORM, path = path)
         store.append(JournalEntry.ElementUpserted(document.id, pageId, shape))
         val transformed = shape.copy(x = .4f, width = 520f, rotationDegrees = 45f)
         store.append(JournalEntry.ElementUpserted(document.id, pageId, transformed))
@@ -79,7 +80,8 @@ class FileDocumentStoreTest {
         assertEquals(.4f, restored.x)
         assertEquals(520f, restored.width)
         assertEquals(45f, restored.rotationDegrees)
-        assertEquals(ShapeKind.ARROW, restored.kind)
+        assertEquals(ShapeKind.FREEFORM, restored.kind)
+        assertEquals(path, restored.path)
 
         store.append(JournalEntry.ElementRemoved(document.id, pageId, shape.id))
         assertTrue(store.get(document.id)!!.pages.single().elements.isEmpty())

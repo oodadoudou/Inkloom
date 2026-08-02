@@ -31,6 +31,22 @@ class PageCropTransformTest {
     }
 
     @Test
+    fun cropProjectionKeepsFreeformLocalGeometry() {
+        val path = listOf(ShapeVertex(0f, .5f), ShapeVertex(.5f, 0f), ShapeVertex(1f, 1f))
+        val original = PageElement.Shape(x = .3f, y = .25f, width = 420f, height = 310f, kind = ShapeKind.FREEFORM, path = path)
+        val crop = PageCrop(.2f, .1f, .8f, .9f)
+
+        val projected = PageCropTransform.project(InkPage(crop = crop, elements = listOf(original))).elements.single() as PageElement.Shape
+        val restored = PageCropTransform.unproject(projected, crop) as PageElement.Shape
+
+        assertEquals(path, projected.path)
+        assertEquals(original.x, restored.x, .0001f)
+        assertEquals(original.y, restored.y, .0001f)
+        assertEquals(original.width, restored.width)
+        assertEquals(original.height, restored.height)
+    }
+
+    @Test
     fun clockwiseRotationMapsCropEdges() {
         val rotated = PageCropTransform.rotateClockwise(PageCrop(.1f, .2f, .7f, .8f))
 

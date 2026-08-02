@@ -60,4 +60,18 @@ class PageTransferTest {
         assertEquals("copy-link", copiedLink.id)
         assertEquals("https://example.com/guide", copiedLink.url)
     }
+
+    @Test fun copiedPagesPreserveFreeformGeometryWithAFreshObjectId() {
+        val path = listOf(ShapeVertex(0f, 0f), ShapeVertex(1f, .3f), ShapeVertex(.4f, 1f))
+        val page = InkPage(id = "page", elements = listOf(PageElement.Shape(id = "polygon", x = .1f, y = .2f, width = 300f, height = 240f, kind = ShapeKind.FREEFORM, path = path)))
+        val source = InkDocument(id = "source", title = "Source", pages = listOf(page))
+        val target = InkDocument(id = "target", title = "Target")
+        val ids = ArrayDeque(listOf("copy-page", "copy-polygon"))
+
+        val copied = PageTransfer.apply(source, target, page.id, copy = true, nextId = ids::removeFirst)!!.target.pages.last().elements.single() as PageElement.Shape
+
+        assertEquals("copy-polygon", copied.id)
+        assertEquals(ShapeKind.FREEFORM, copied.kind)
+        assertEquals(path, copied.path)
+    }
 }

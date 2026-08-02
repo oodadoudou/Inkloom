@@ -61,6 +61,7 @@ class InkCanvasView(context: Context) : View(context) {
     private val lassoPoints = mutableListOf<StrokePoint>()
     private var shapeStart: ShapePoint? = null
     private var shapeEnd: ShapePoint? = null
+    private val shapeFreeformPoints = mutableListOf<ShapePoint>()
     private var movingSelection = false
     private var selectionMoved = false
     private var lastX = 0f
@@ -493,6 +494,8 @@ class InkCanvasView(context: Context) : View(context) {
                 if (activeTool == EditorTool.SHAPE) {
                     shapeStart = ShapePoint(normalizedX, normalizedY)
                     shapeEnd = shapeStart
+                    shapeFreeformPoints.clear()
+                    if (shapeKind == ShapeKind.FREEFORM) appendShapePoint(normalizedX, normalizedY)
                     invalidate(); return true
                 }
                 currentPoints.clear(); currentStrokeId = java.util.UUID.randomUUID().toString(); addPoint(normalizedX, normalizedY, event.pressure, event.eventTime, event.getAxisValue(MotionEvent.AXIS_TILT), event.orientation)
@@ -517,7 +520,12 @@ class InkCanvasView(context: Context) : View(context) {
                         appendLassoPoint(normalizedX, normalizedY)
                     }
                 }
-                else if (activeTool == EditorTool.SHAPE) shapeEnd = ShapeGeometry.snapEnd(shapeStart ?: ShapePoint(normalizedX, normalizedY), ShapePoint(normalizedX, normalizedY), pageModelWidth, pageModelHeight)
+                else if (activeTool == EditorTool.SHAPE) {
+                    if (shapeKind == ShapeKind.FREEFORM) {
+                        for (i in 0 until event.historySize) appendShapePoint(event.getHistoricalX(i) / width.coerceAtLeast(1), event.getHistoricalY(i) / height.coerceAtLeast(1))
+                        appendShapePoint(normalizedX, normalizedY)
+                    } else shapeEnd = ShapeGeometry.snapEnd(shapeStart ?: ShapePoint(normalizedX, normalizedY), ShapePoint(normalizedX, normalizedY), pageModelWidth, pageModelHeight)
+                }
                 else {
                     for (i in 0 until event.historySize) addPoint(event.getHistoricalX(i) / width, event.getHistoricalY(i) / height, event.getHistoricalPressure(i), event.getHistoricalEventTime(i), event.getHistoricalAxisValue(MotionEvent.AXIS_TILT, i), event.getHistoricalOrientation(i))
                     addPoint(normalizedX, normalizedY, event.pressure, event.eventTime, event.getAxisValue(MotionEvent.AXIS_TILT), event.orientation)
@@ -527,7 +535,7 @@ class InkCanvasView(context: Context) : View(context) {
                 if (event.actionMasked == MotionEvent.ACTION_UP) performClick()
                 if (event.actionMasked == MotionEvent.ACTION_CANCEL || event.flags and MotionEvent.FLAG_CANCELED != 0) {
                     currentPoints.clear()
-                    shapeStart = null; shapeEnd = null
+                    shapeStart = null; shapeEnd = null; shapeFreeformPoints.clear()
                     if (activeTool == EditorTool.ERASER) cancelEraserGesture()
                     selectionGestureBefore?.let { restoreStrokeSnapshot(it) }
                     lassoPoints.clear(); movingSelection = false; selectionMoved = false; selectionGestureBefore = null; strokeCacheDirty = true
@@ -550,10 +558,16 @@ class InkCanvasView(context: Context) : View(context) {
                     }
                     lassoPoints.clear(); movingSelection = false; selectionMoved = false; selectionGestureBefore = null
                 } else if (activeTool == EditorTool.SHAPE) {
-                    val start = shapeStart
-                    val end = shapeEnd
-                    if (start != null && end != null) ShapeGeometry.create(shapeKind, start, end, pageModelWidth, pageModelHeight, inkColor.toUInt().toLong(), baseWidth)?.let(onShapeCommitted)
-                    shapeStart = null; shapeEnd = null
+                    val shape = if (shapeKind == ShapeKind.FREEFORM) {
+                        appendShapePoint(normalizedX, normalizedY)
+                        ShapeGeometry.createFreeform(shapeFreeformPoints, pageModelWidth, pageModelHeight, inkColor.toUInt().toLong(), baseWidth)
+                    } else {
+                        val start = shapeStart
+                        val end = shapeEnd
+                        if (start != null && end != null) ShapeGeometry.create(shapeKind, start, end, pageModelWidth, pageModelHeight, inkColor.toUInt().toLong(), baseWidth) else null
+                    }
+                    shape?.let(onShapeCommitted)
+                    shapeStart = null; shapeEnd = null; shapeFreeformPoints.clear()
                 }
                 parent?.requestDisallowInterceptTouchEvent(false)
                 activeTool = null
@@ -574,6 +588,24 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun drawShapePreview(canvas: Canvas) {
+        if (shapeKind == ShapeKind.FREEFORM) {
+            if (shapeFreeformPoints.size < 2) return
+            lassoPath.reset()
+            lassoPath.moveTo(shapeFreeformPoints.first().x * width, shapeFreeformPoints.first().y * height)
+            for (index in 1 until shapeFreeformPoints.size) {
+                val point = shapeFreeformPoints[index]
+                lassoPath.lineTo(point.x * width, point.y * height)
+            }
+            if (shapeFreeformPoints.size >= 3) lassoPath.close()
+            paint.style = Paint.Style.STROKE
+            paint.strokeJoin = Paint.Join.ROUND
+            paint.color = inkColor
+            paint.alpha = 190
+            paint.strokeWidth = baseWidth.coerceAtLeast(2f)
+            canvas.drawPath(lassoPath, paint)
+            paint.alpha = 255
+            return
+        }
         val start = shapeStart ?: return
         val end = shapeEnd ?: return
         val shape = ShapeGeometry.create(shapeKind, start, end, width.toFloat(), height.toFloat(), inkColor.toUInt().toLong(), baseWidth) ?: return
@@ -599,9 +631,17 @@ class InkCanvasView(context: Context) : View(context) {
                 canvas.drawLine(right, centerY, right - 24f, centerY - 16f, paint)
                 canvas.drawLine(right, centerY, right - 24f, centerY + 16f, paint)
             }
+            ShapeKind.FREEFORM -> Unit
         }
         canvas.restore()
         paint.alpha = 255
+    }
+
+    private fun appendShapePoint(x: Float, y: Float) {
+        val point = ShapePoint(x.coerceIn(0f, 1f), y.coerceIn(0f, 1f))
+        val previous = shapeFreeformPoints.lastOrNull()
+        val distance = previous?.let { hypot(((point.x - it.x) * width.coerceAtLeast(1)).toDouble(), ((point.y - it.y) * height.coerceAtLeast(1)).toDouble()) } ?: Double.MAX_VALUE
+        if (distance >= 1.0) shapeFreeformPoints += point
     }
 
     private fun appendLassoPoint(x: Float, y: Float) {
