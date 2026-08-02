@@ -36,6 +36,8 @@ data class InkPage(
     val strokes: List<InkStroke> = emptyList(),
     val elements: List<PageElement> = emptyList(),
     val bookmarked: Boolean = false,
+    val pdfTextBlocks: List<PdfTextBlock> = emptyList(),
+    val pdfTextIndexVersion: Int = 0,
 )
 
 @Serializable
@@ -44,6 +46,20 @@ data class PageCrop(
     val top: Float = 0f,
     val right: Float = 1f,
     val bottom: Float = 1f,
+)
+
+@Serializable
+data class PdfTextBlock(
+    val text: String,
+    val bounds: List<PdfTextBounds> = emptyList(),
+)
+
+@Serializable
+data class PdfTextBounds(
+    val left: Float,
+    val top: Float,
+    val right: Float,
+    val bottom: Float,
 )
 
 object LayerIds {
