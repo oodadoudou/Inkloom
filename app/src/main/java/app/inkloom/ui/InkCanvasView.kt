@@ -26,6 +26,7 @@ import app.inkloom.document.BrushTipTextureDecoder
 import app.inkloom.document.BrushTipTransform
 import app.inkloom.document.BrushTaperMode
 import app.inkloom.document.LassoGeometry
+import app.inkloom.document.LassoSelectionPolicy
 import app.inkloom.document.PressureCalibration
 import app.inkloom.document.PageElement
 import app.inkloom.document.ShapeGeometry
@@ -44,6 +45,8 @@ import app.inkloom.document.StylusInputClassifier
 import app.inkloom.document.WaterEdge
 import app.inkloom.model.EditorTool
 import app.inkloom.settings.StylusButtonAction
+import app.inkloom.settings.SelectionFilter
+import app.inkloom.settings.SelectionMode
 import kotlin.math.ceil
 import kotlin.math.hypot
 import kotlin.math.cos
@@ -192,6 +195,8 @@ class InkCanvasView(context: Context) : View(context) {
     var primaryButtonAction: StylusButtonAction = StylusButtonAction.ERASER
     var secondaryButtonAction: StylusButtonAction = StylusButtonAction.LASSO
     var shapeKind: ShapeKind = ShapeKind.RECTANGLE
+    var selectionMode: SelectionMode = SelectionMode.REPLACE
+    var selectionFilter: SelectionFilter = SelectionFilter.ALL
     var pageModelWidth: Float = 1600f
     var pageModelHeight: Float = 2263f
     var onStrokeCommitted: (InkStroke) -> Unit = {}
@@ -497,7 +502,8 @@ class InkCanvasView(context: Context) : View(context) {
                         selectionGestureBefore = strokes.toList()
                         movingSelection = true
                     } else {
-                        selectedStrokeIds.clear(); movingSelection = false
+                        if (selectionMode == SelectionMode.REPLACE) selectedStrokeIds.clear()
+                        movingSelection = false
                         appendLassoPoint(normalizedX, normalizedY)
                     }
                     lastX = normalizedX; lastY = normalizedY
@@ -669,14 +675,26 @@ class InkCanvasView(context: Context) : View(context) {
         val selected = linkedSetOf<String>()
         var splitOccurred = false
         before.forEach { stroke ->
-            if (stroke.id in protectedStrokeIds) {
+            val previouslySelected = stroke.id in selectedStrokeIds
+            val matchesFilter = when (selectionFilter) {
+                SelectionFilter.ALL -> true
+                SelectionFilter.ACTIVE_LAYER -> stroke.layerId == activeLayerId
+                SelectionFilter.CURRENT_BRUSH -> stroke.brushId == brushId
+                SelectionFilter.CURRENT_COLOR -> stroke.colorArgb.toInt() == inkColor
+            }
+            val shouldPartition = stroke.id !in protectedStrokeIds && matchesFilter &&
+                (selectionMode == SelectionMode.REPLACE || selectionMode == SelectionMode.ADD || previouslySelected)
+            if (!shouldPartition) {
                 rebuilt += stroke
+                val keepSelected = LassoSelectionPolicy.selectedWithoutEligibleIntersection(selectionMode, previouslySelected)
+                if (keepSelected) selected += stroke.id
             } else {
                 val partition = LassoGeometry.partition(polygon, stroke)
                 splitOccurred = splitOccurred || partition.changed
                 partition.pieces.forEach { piece ->
                     rebuilt += piece.stroke
-                    if (piece.selected) selected += piece.stroke.id
+                    val keepSelected = LassoSelectionPolicy.selected(selectionMode, previouslySelected, piece.selected)
+                    if (keepSelected) selected += piece.stroke.id
                 }
             }
         }
