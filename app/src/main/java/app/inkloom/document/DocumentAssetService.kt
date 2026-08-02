@@ -99,11 +99,17 @@ class DocumentAssetService(private val context: Context) {
 
     fun exportPagePng(page: InkPage, uri: Uri) {
         val width = 1600
+        val bitmap = renderPageBitmap(page, width)
+        context.contentResolver.openOutputStream(uri)?.use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } ?: error("Could not open image destination")
+        bitmap.recycle()
+    }
+
+    fun renderPageBitmap(page: InkPage, width: Int): Bitmap {
+        require(width in 1..8192) { "Render width must be between 1 and 8192 pixels" }
         val height = (width * PageCropTransform.visibleHeight(page) / PageCropTransform.visibleWidth(page).coerceAtLeast(1f)).toInt().coerceAtLeast(1)
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         drawPage(Canvas(bitmap), page, width, height)
-        context.contentResolver.openOutputStream(uri)?.use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } ?: error("Could not open image destination")
-        bitmap.recycle()
+        return bitmap
     }
 
     fun exportBundle(document: InkDocument, uri: Uri) {
@@ -115,18 +121,19 @@ class DocumentAssetService(private val context: Context) {
                     is PageBackground.Image -> background.copy(assetPath = "assets/${File(background.assetPath).name}")
                     is PageBackground.Paper -> background
                 },
-                strokes = page.strokes.map { stroke -> stroke.copy(
-                    tipAssetPath = stroke.tipAssetPath?.let { "brush-assets/${File(it).name}" },
-                    tipAssetPaths = stroke.tipAssetPaths.map { "brush-assets/${File(it).name}" },
-                    dualTipAssetPaths = stroke.dualTipAssetPaths.map { "brush-assets/${File(it).name}" },
-                    grainAssetPath = stroke.grainAssetPath?.let { "brush-assets/${File(it).name}" },
-                ) },
-                elements = page.elements.map { element -> when (element) { is PageElement.Image -> element.copy(assetPath = "assets/${File(element.assetPath).name}"); is PageElement.AudioMarker -> element.copy(assetPath = "assets/${File(element.assetPath).name}"); else -> element } },
+                strokes = page.strokes.map { it.portableBrushAssets() },
+                elements = page.elements.map { element -> when (element) {
+                    is PageElement.Image -> element.copy(assetPath = "assets/${File(element.assetPath).name}")
+                    is PageElement.AudioMarker -> element.copy(assetPath = "assets/${File(element.assetPath).name}")
+                    is PageElement.Sticky -> element.copy(strokes = element.strokes.map { it.portableBrushAssets() })
+                    else -> element
+                } },
             ) })
             zip.putNextEntry(ZipEntry("manifest.json")); zip.write(serializer.encodeToString(portable).encodeToByteArray()); zip.closeEntry()
             val assets = document.pages.mapNotNull { page -> when (val background = page.background) { is PageBackground.Pdf -> background.assetPath; is PageBackground.Image -> background.assetPath; else -> null } } + document.pages.flatMap { it.elements }.mapNotNull { element -> when (element) { is PageElement.Image -> element.assetPath; is PageElement.AudioMarker -> element.assetPath; else -> null } }
             writeDistinctFiles(zip, "assets", assets)
-            writeDistinctFiles(zip, "brush-assets", document.pages.flatMap { it.strokes }.flatMap { stroke -> stroke.tipAssetPaths + stroke.dualTipAssetPaths + listOfNotNull(stroke.tipAssetPath, stroke.grainAssetPath) })
+            val allStrokes = document.pages.flatMap { page -> page.strokes + page.elements.filterIsInstance<PageElement.Sticky>().flatMap(PageElement.Sticky::strokes) }
+            writeDistinctFiles(zip, "brush-assets", allStrokes.flatMap { it.brushAssetPaths() })
             File(context.filesDir, "brush-sources").listFiles()?.filter(File::isFile)?.forEach { file -> zip.putNextEntry(ZipEntry("brush-sources/${file.name}")); file.inputStream().use { it.copyTo(zip) }; zip.closeEntry() }
         } } ?: error("Could not open package destination")
     }
@@ -186,13 +193,13 @@ class DocumentAssetService(private val context: Context) {
                         is PageBackground.Image -> background.copy(assetPath = retained(background.assetPath))
                         is PageBackground.Paper -> background
                     },
-                    strokes = page.strokes.map { stroke -> stroke.copy(
-                        tipAssetPath = stroke.tipAssetPath?.let { retained(it, brush = true) },
-                        tipAssetPaths = stroke.tipAssetPaths.map { retained(it, brush = true) },
-                        dualTipAssetPaths = stroke.dualTipAssetPaths.map { retained(it, brush = true) },
-                        grainAssetPath = stroke.grainAssetPath?.let { retained(it, brush = true) },
-                    ) },
-                    elements = page.elements.map { element -> when (element) { is PageElement.Image -> element.copy(assetPath = retained(element.assetPath)); is PageElement.AudioMarker -> element.copy(assetPath = retained(element.assetPath)); else -> element } },
+                    strokes = page.strokes.map { it.withRetainedBrushAssets(::retained) },
+                    elements = page.elements.map { element -> when (element) {
+                        is PageElement.Image -> element.copy(assetPath = retained(element.assetPath))
+                        is PageElement.AudioMarker -> element.copy(assetPath = retained(element.assetPath))
+                        is PageElement.Sticky -> element.copy(strokes = element.strokes.map { it.withRetainedBrushAssets(::retained) })
+                        else -> element
+                    } },
                 ) },
             )
         } finally {
@@ -205,6 +212,23 @@ class DocumentAssetService(private val context: Context) {
             zip.putNextEntry(ZipEntry("$folder/${file.name}")); file.inputStream().use { it.copyTo(zip) }; zip.closeEntry()
         }
     }
+
+    private fun InkStroke.portableBrushAssets() = copy(
+        tipAssetPath = tipAssetPath?.let { "brush-assets/${File(it).name}" },
+        tipAssetPaths = tipAssetPaths.map { "brush-assets/${File(it).name}" },
+        dualTipAssetPaths = dualTipAssetPaths.map { "brush-assets/${File(it).name}" },
+        grainAssetPath = grainAssetPath?.let { "brush-assets/${File(it).name}" },
+    )
+
+    private fun InkStroke.withRetainedBrushAssets(retained: (String, Boolean) -> String) = copy(
+        tipAssetPath = tipAssetPath?.let { retained(it, true) },
+        tipAssetPaths = tipAssetPaths.map { retained(it, true) },
+        dualTipAssetPaths = dualTipAssetPaths.map { retained(it, true) },
+        grainAssetPath = grainAssetPath?.let { retained(it, true) },
+    )
+
+    private fun InkStroke.brushAssetPaths(): List<String> =
+        tipAssetPaths + dualTipAssetPaths + listOfNotNull(tipAssetPath, grainAssetPath)
 
     private fun retainFile(source: File, targetDirectory: File): File {
         val digest = MessageDigest.getInstance("SHA-256")
@@ -225,35 +249,7 @@ class DocumentAssetService(private val context: Context) {
         canvas.drawColor(if (backgroundVisible) paperColor else Color.WHITE)
         if (backgroundVisible) renderBackground(sourcePage.background, width, sourcePage.backgroundRotationQuarterTurns, sourcePage.crop)?.let { bitmap -> canvas.drawBitmap(bitmap, null, android.graphics.Rect(0, 0, width, height), null); bitmap.recycle() }
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
-        page.strokes.filter { it.layerId in visibleLayerIds }.sortedBy { layerOrder[it.layerId] ?: Int.MAX_VALUE }.forEach { stroke ->
-            if (stroke.points.isEmpty()) return@forEach
-            paint.color = stroke.colorArgb.toInt()
-            val tipPaths = stroke.tipAssetPaths.ifEmpty { listOfNotNull(stroke.tipAssetPath) }
-            val tips = tipPaths.mapNotNull { decodeTip(it, stroke.hardness, stroke.grainAssetPath, stroke.grainDensity, stroke.grainScale, stroke.grainRotationDegrees, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized) }
-            if (tips.isNotEmpty()) {
-                val decodedDualTips = if (stroke.dualBrush) stroke.dualTipAssetPaths.mapNotNull { decodeTip(it, stroke.dualHardness, null, 0f) } else emptyList()
-                val dualTips = decodedDualTips.ifEmpty { if (stroke.dualBrush) tips else emptyList() }
-                drawStampStroke(canvas, stroke, tips, dualTips, width, height, paint)
-                decodedDualTips.forEach(Bitmap::recycle)
-                tips.forEach(Bitmap::recycle)
-            }
-            else {
-                val taper = StrokeTaper.factors(stroke.points, width.toFloat(), height.toFloat(), stroke.taperMode, stroke.taperStartEnabled, stroke.taperStartLength, stroke.taperStartLengthUnit, stroke.taperStartMinimum, stroke.taperEndEnabled, stroke.taperEndLength, stroke.taperEndLengthUnit, stroke.taperEndMinimum)
-                if (stroke.points.size == 1) {
-                    val point = stroke.points.first()
-                    val strokeWidth = stroke.width * width / 1600f * (taper.firstOrNull() ?: 1f) * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, point.pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.id, SALT_SIZE)
-                    val alpha = (stroke.opacity * pressureDynamic(stroke.opacityPressureEnabled, stroke.opacityPressureMinimum, stroke.opacityPressureCurve, point.pressure) * secondaryDynamic(stroke.opacitySecondaryDynamics, point, stroke.id, SALT_OPACITY) * stroke.flow * pressureDynamic(stroke.flowPressureEnabled, stroke.flowPressureMinimum, stroke.flowPressureCurve, point.pressure) * secondaryDynamic(stroke.flowSecondaryDynamics, point, stroke.id, SALT_FLOW) * 255).toInt().coerceIn(1, 255)
-                    drawLinePoint(canvas, paint, stroke, point.x * width, point.y * height, strokeWidth, alpha, width)
-                } else stroke.points.zipWithNext().forEachIndexed { pointIndex, (start, end) ->
-                    val point = midpoint(start, end)
-                    val pressure = point.pressure.coerceIn(0f, 1f)
-                    val taperFactor = (taper[pointIndex] + taper[pointIndex + 1]) / 2f
-                    val strokeWidth = stroke.width * width / 1600f * taperFactor * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.id, SALT_SIZE)
-                    val alpha = (stroke.opacity * pressureDynamic(stroke.opacityPressureEnabled, stroke.opacityPressureMinimum, stroke.opacityPressureCurve, pressure) * secondaryDynamic(stroke.opacitySecondaryDynamics, point, stroke.id, SALT_OPACITY) * stroke.flow * pressureDynamic(stroke.flowPressureEnabled, stroke.flowPressureMinimum, stroke.flowPressureCurve, pressure) * secondaryDynamic(stroke.flowSecondaryDynamics, point, stroke.id, SALT_FLOW) * 255).toInt().coerceIn(1, 255)
-                    drawLineSegment(canvas, paint, stroke, start.x * width, start.y * height, end.x * width, end.y * height, strokeWidth, alpha, width)
-                }
-            }
-        }
+        drawStrokes(canvas, page.strokes.filter { it.layerId in visibleLayerIds }.sortedBy { layerOrder[it.layerId] ?: Int.MAX_VALUE }, width, height, paint)
         page.elements.filter { it.layerId in visibleLayerIds }.sortedBy { layerOrder[it.layerId] ?: Int.MAX_VALUE }.forEach { element ->
             val left = element.x * width
             val top = element.y * height
@@ -274,7 +270,25 @@ class DocumentAssetService(private val context: Context) {
                     RichTextFormatter.lines(element.text, element.listStyle).take(maxLines).forEachIndexed { index, line -> canvas.drawText(line, textX, top + paint.textSize + index * lineHeight, paint) }
                     paint.typeface = Typeface.DEFAULT; paint.isUnderlineText = false; paint.textAlign = Paint.Align.LEFT
                 }
-                is PageElement.Sticky -> { paint.style = Paint.Style.FILL; paint.color = element.colorArgb.toInt(); canvas.drawRect(left, top, right, bottom, paint); paint.color = Color.DKGRAY; paint.textSize = 28f; element.text.lineSequence().take(if (element.collapsed) 1 else 8).forEachIndexed { index, line -> canvas.drawText(line, left + 14, top + 38 + index * 34, paint) } }
+                is PageElement.Sticky -> {
+                    paint.style = Paint.Style.FILL
+                    paint.color = element.colorArgb.toInt()
+                    canvas.drawRect(left, top, right, bottom, paint)
+                    paint.color = Color.DKGRAY
+                    paint.textSize = 28f
+                    element.text.lineSequence().take(if (element.collapsed) 1 else 8).forEachIndexed { index, line ->
+                        canvas.drawText(line, left + 14, top + 38 + index * 34, paint)
+                    }
+                    if (!element.collapsed && element.strokes.isNotEmpty()) {
+                        val stickyWidth = (right - left).toInt().coerceAtLeast(1)
+                        val stickyHeight = (bottom - top).toInt().coerceAtLeast(1)
+                        canvas.save()
+                        canvas.clipRect(left, top, right, bottom)
+                        canvas.translate(left, top)
+                        drawStrokes(canvas, element.strokes, stickyWidth, stickyHeight, paint)
+                        canvas.restore()
+                    }
+                }
                 is PageElement.Shape -> {
                     val triangle = Path().apply { moveTo((left + right) / 2f, top); lineTo(right, bottom); lineTo(left, bottom); close() }
                     val diamond = Path().apply { moveTo((left + right) / 2f, top); lineTo(right, (top + bottom) / 2f); lineTo((left + right) / 2f, bottom); lineTo(left, (top + bottom) / 2f); close() }
@@ -306,6 +320,43 @@ class DocumentAssetService(private val context: Context) {
             }
             canvas.restore()
         }
+    }
+
+    private fun drawStrokes(canvas: Canvas, strokes: List<InkStroke>, width: Int, height: Int, paint: Paint) {
+        paint.style = Paint.Style.STROKE
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.strokeJoin = Paint.Join.ROUND
+        strokes.forEach { stroke ->
+            if (stroke.points.isEmpty()) return@forEach
+            paint.color = stroke.colorArgb.toInt()
+            val tipPaths = stroke.tipAssetPaths.ifEmpty { listOfNotNull(stroke.tipAssetPath) }
+            val tips = tipPaths.mapNotNull { decodeTip(it, stroke.hardness, stroke.grainAssetPath, stroke.grainDensity, stroke.grainScale, stroke.grainRotationDegrees, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized) }
+            if (tips.isNotEmpty()) {
+                val decodedDualTips = if (stroke.dualBrush) stroke.dualTipAssetPaths.mapNotNull { decodeTip(it, stroke.dualHardness, null, 0f) } else emptyList()
+                val dualTips = decodedDualTips.ifEmpty { if (stroke.dualBrush) tips else emptyList() }
+                drawStampStroke(canvas, stroke, tips, dualTips, width, height, paint)
+                decodedDualTips.forEach(Bitmap::recycle)
+                tips.forEach(Bitmap::recycle)
+            }
+            else {
+                val taper = StrokeTaper.factors(stroke.points, width.toFloat(), height.toFloat(), stroke.taperMode, stroke.taperStartEnabled, stroke.taperStartLength, stroke.taperStartLengthUnit, stroke.taperStartMinimum, stroke.taperEndEnabled, stroke.taperEndLength, stroke.taperEndLengthUnit, stroke.taperEndMinimum)
+                if (stroke.points.size == 1) {
+                    val point = stroke.points.first()
+                    val strokeWidth = stroke.width * width / 1600f * (taper.firstOrNull() ?: 1f) * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, point.pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.id, SALT_SIZE)
+                    val alpha = (stroke.opacity * pressureDynamic(stroke.opacityPressureEnabled, stroke.opacityPressureMinimum, stroke.opacityPressureCurve, point.pressure) * secondaryDynamic(stroke.opacitySecondaryDynamics, point, stroke.id, SALT_OPACITY) * stroke.flow * pressureDynamic(stroke.flowPressureEnabled, stroke.flowPressureMinimum, stroke.flowPressureCurve, point.pressure) * secondaryDynamic(stroke.flowSecondaryDynamics, point, stroke.id, SALT_FLOW) * 255).toInt().coerceIn(1, 255)
+                    drawLinePoint(canvas, paint, stroke, point.x * width, point.y * height, strokeWidth, alpha, width)
+                } else stroke.points.zipWithNext().forEachIndexed { pointIndex, (start, end) ->
+                    val point = midpoint(start, end)
+                    val pressure = point.pressure.coerceIn(0f, 1f)
+                    val taperFactor = (taper[pointIndex] + taper[pointIndex + 1]) / 2f
+                    val strokeWidth = stroke.width * width / 1600f * taperFactor * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.id, SALT_SIZE)
+                    val alpha = (stroke.opacity * pressureDynamic(stroke.opacityPressureEnabled, stroke.opacityPressureMinimum, stroke.opacityPressureCurve, pressure) * secondaryDynamic(stroke.opacitySecondaryDynamics, point, stroke.id, SALT_OPACITY) * stroke.flow * pressureDynamic(stroke.flowPressureEnabled, stroke.flowPressureMinimum, stroke.flowPressureCurve, pressure) * secondaryDynamic(stroke.flowSecondaryDynamics, point, stroke.id, SALT_FLOW) * 255).toInt().coerceIn(1, 255)
+                    drawLineSegment(canvas, paint, stroke, start.x * width, start.y * height, end.x * width, end.y * height, strokeWidth, alpha, width)
+                }
+            }
+        }
+        paint.colorFilter = null
+        paint.maskFilter = null
     }
 
     private fun drawStampStroke(canvas: Canvas, stroke: InkStroke, tips: List<Bitmap>, dualTips: List<Bitmap>, width: Int, height: Int, paint: Paint) {
