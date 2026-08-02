@@ -96,6 +96,9 @@ class ProcreateBrushParserTest {
             assertTrue(brushes.any { it.sizePressureEnabled })
             assertTrue(brushes.any { it.opacityPressureEnabled })
             assertTrue(brushes.any { it.watercolor })
+            assertTrue(brushes.any { it.taperStartEnabled })
+            assertTrue(brushes.any { it.taperEndEnabled })
+            assertTrue(brushes.any { brush -> brush.report.any { it.contains("Apple Pencil start/end taper") } })
         } finally {
             root.deleteRecursively()
         }

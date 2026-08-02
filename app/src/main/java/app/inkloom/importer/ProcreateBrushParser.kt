@@ -99,9 +99,20 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         val randomRotation = if (metadata.boolean("shapeRandomise")) 180f else shapeScatter
         val plotJitter = metadata.float("plotJitter").coerceAtLeast(0f)
         val spacingJitter = metadata.float("plotSpacingJitter")
-        val taperStartLength = metadata.float("taperStartLength").coerceIn(0f, 1f)
-        val taperEndLength = metadata.float("taperEndLength").coerceIn(0f, 1f)
-        val taperSize = metadata.float("taperSize").coerceIn(0f, 1f)
+        val genericTaperStartLength = metadata.float("taperStartLength").coerceIn(0f, 1f)
+        val genericTaperEndLength = metadata.float("taperEndLength").coerceIn(0f, 1f)
+        val genericTaperSize = metadata.float("taperSize").coerceIn(0f, 1f)
+        val pencilTaperStartLength = metadata.float("pencilTaperStartLength").coerceIn(0f, 1f)
+        val pencilTaperEndLength = metadata.float("pencilTaperEndLength").coerceIn(0f, 1f)
+        val pencilTaperSize = metadata.float("pencilTaperSize").coerceIn(0f, 1f)
+        val taperStartLength = max(genericTaperStartLength, pencilTaperStartLength)
+        val taperEndLength = max(genericTaperEndLength, pencilTaperEndLength)
+        val taperSize = max(genericTaperSize, pencilTaperSize)
+        val stabilization = combinedStrength(
+            metadata.float("plotSmoothing"),
+            metadata.float("plotMovingAverageStabilization"),
+            metadata.float("plotFFTSmoothingAmount"),
+        ).coerceIn(0f, .9f)
         val dualMapped = dualMetadata?.let { mapSecondary(it) }
         val compatibility = if (watercolor || dualMetadata != null || metadata.int("blendMode") !in 0..1) Compatibility.BASIC else Compatibility.HIGH
         return fallback.copy(
@@ -118,7 +129,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             grainContrast = (metadata.float("textureContrast") * 100f).coerceIn(-100f, 100f),
             grainReversed = metadata.boolean("textureInverted"),
             defaultSize = (metadata.float("paintSize", .25f).coerceAtLeast(.01f) * metadata.float("maxSize", .32f).coerceAtLeast(.01f) * 100f).coerceIn(.5f, 400f),
-            stabilization = metadata.float("plotSmoothing").coerceIn(0f, .9f),
+            stabilization = stabilization,
             defaultOpacity = (metadata.float("paintOpacity", 1f) * metadata.float("maxOpacity", 1f)).coerceIn(.01f, 1f),
             spacing = (metadata.float("plotSpacing") * 10f).coerceIn(.01f, 2f),
             spacingSecondaryDynamics = secondaryDynamics(0f, 0f, spacingJitter),
@@ -174,6 +185,8 @@ class ProcreateBrushParser(private val assetDirectory: File) {
                 add(if (shape != null) "Procreate Shape.png extracted as the real stamp source" else "Shape source was missing; line fallback retained")
                 if (grain != null) add("Procreate Grain.png extracted with depth, scale, zoom, rotation, brightness, contrast and invert settings")
                 add("Stroke spacing, smoothing, size/opacity limits, shape angle, roundness, azimuth and direction behavior mapped")
+                if (pencilTaperStartLength > DYNAMIC_EPSILON || pencilTaperEndLength > DYNAMIC_EPSILON) add("Procreate Apple Pencil start/end taper lengths and size floor mapped")
+                if (metadata.float("plotMovingAverageStabilization") > DYNAMIC_EPSILON || metadata.float("plotFFTSmoothingAmount") > DYNAMIC_EPSILON) add("Procreate StreamLine, stabilization and motion filtering combined into Inkloom stabilization")
                 val sources = buildList { if (abs(pressureSize) > DYNAMIC_EPSILON || abs(pressureOpacity) > DYNAMIC_EPSILON) add("pressure"); if (abs(speedSize) > DYNAMIC_EPSILON || abs(speedOpacity) > DYNAMIC_EPSILON) add("speed"); if (abs(tiltSize) > DYNAMIC_EPSILON || abs(tiltOpacity) > DYNAMIC_EPSILON) add("tilt"); if (abs(jitterSize) > DYNAMIC_EPSILON || abs(jitterOpacity) > DYNAMIC_EPSILON) add("random jitter") }
                 if (sources.isNotEmpty()) add("Procreate dynamics mapped: ${sources.joinToString()}")
                 if (dualMetadata != null) add(if (dualShape != null) "Procreate Sub01 Dual Brush extracted with independent shape and core dynamics; combine mode ${metadata.int("dualBlendMode")} retained" else "Procreate Sub01 metadata found, but its shape source was missing")
@@ -199,6 +212,9 @@ class ProcreateBrushParser(private val assetDirectory: File) {
 
     private fun pressureMinimum(amount: Float, explicitMinimum: Float): Float =
         max(explicitMinimum.coerceIn(0f, 1f), 1f - abs(amount).coerceIn(0f, 1f))
+
+    private fun combinedStrength(vararg values: Float): Float =
+        1f - values.fold(1f) { remaining, value -> remaining * (1f - value.coerceIn(0f, 1f)) }
 
     private fun pressureCurve(amount: Float, source: List<BrushCurvePoint>): List<BrushCurvePoint> {
         val base = source.ifEmpty { LINEAR_CURVE }
@@ -292,7 +308,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
     )
 
     companion object {
-        const val CURRENT_VERSION = 1
+        const val CURRENT_VERSION = 2
         private const val MAX_ENTRIES = 4_096
         private const val MAX_ENTRY_BYTES = 32L * 1024L * 1024L
         private const val MAX_EXPANDED_BYTES = 384L * 1024L * 1024L
