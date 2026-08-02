@@ -71,6 +71,16 @@ class StrokeTileIndexTest {
         assertEquals(16, index.tilesFor(broad).size)
     }
 
+    @Test fun scatterSpreadExpandsTheConservativeTileFootprint() {
+        val index = StrokeTileIndex(tileSizePx = 128)
+        val compact = InkStroke(id = "compact", points = listOf(StrokePoint(.5f, .5f)), width = 160f, spray = true, spraySpread = 0f)
+        val broad = compact.copy(id = "broad", spraySpread = 4f)
+
+        index.rebuild(listOf(compact, broad), 1024, 1024)
+
+        assertTrue(index.tilesFor(broad).size > index.tilesFor(compact).size)
+    }
+
     private fun stroke(id: String, x: Float, y: Float) = InkStroke(
         id = id,
         width = 2f,

@@ -554,7 +554,7 @@ class DocumentAssetService(private val context: Context) {
             val pressure = point.pressure.coerceIn(0f, 1f)
             val brushDiameter = (stroke.width * width / 1600f * taper[index] * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.renderSeed, SALT_SIZE)).coerceAtLeast(.25f)
             val diameter = if (stroke.spray) SprayGeometry.particleDiameter(brushDiameter, stroke.sprayParticleSize, stroke.sprayParticleSizeUnit, stroke.sprayParticleSizeSyncBrushSize, width.toFloat()) else brushDiameter
-            val offset = if (stroke.spray) SprayGeometry.offset(brushDiameter / 2f, scatterRandom.nextFloat(), scatterRandom.nextFloat(), stroke.sprayBias) else SprayOffset(0f, 0f)
+            val offset = if (stroke.spray) SprayGeometry.offset(brushDiameter / 2f * stroke.spraySpread.coerceIn(0f, 4f), scatterRandom.nextFloat(), scatterRandom.nextFloat(), stroke.sprayBias) else SprayOffset(0f, 0f)
             val drawX = x + offset.x; val drawY = y + offset.y
             val thicknessDynamic = pressureDynamic(stroke.thicknessPressureEnabled, stroke.thicknessPressureMinimum, stroke.thicknessPressureCurve, pressure) * secondaryDynamic(stroke.thicknessSecondaryDynamics, point, stroke.renderSeed, SALT_THICKNESS)
             val followsStroke = BrushStampRotation.followsStroke(stroke, dual = false)
@@ -610,7 +610,7 @@ class DocumentAssetService(private val context: Context) {
             val pressure = point.pressure.coerceIn(0f, 1f)
             val brushDiameter = (stroke.width * width / 1600f * stroke.dualSizeScale.coerceIn(.01f, 8f) * taper[index] * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.renderSeed, SALT_SIZE)).coerceAtLeast(.25f)
             val diameter = if (stroke.dualSpray) SprayGeometry.particleDiameter(brushDiameter, stroke.dualSprayParticleSize, stroke.dualSprayParticleSizeUnit, stroke.dualSprayParticleSizeSyncBrushSize, width.toFloat()) else brushDiameter
-            val offset = if (stroke.dualSpray) SprayGeometry.offset(brushDiameter / 2f, scatterRandom.nextFloat(), scatterRandom.nextFloat(), stroke.dualSprayBias) else SprayOffset(0f, 0f)
+            val offset = if (stroke.dualSpray) SprayGeometry.offset(brushDiameter / 2f * stroke.dualSpraySpread.coerceIn(0f, 4f), scatterRandom.nextFloat(), scatterRandom.nextFloat(), stroke.dualSprayBias) else SprayOffset(0f, 0f)
             val drawX = point.x * width + offset.x
             val drawY = point.y * height + offset.y
             val thicknessDynamic = pressureDynamic(stroke.thicknessPressureEnabled, stroke.thicknessPressureMinimum, stroke.thicknessPressureCurve, pressure) * secondaryDynamic(stroke.thicknessSecondaryDynamics, point, stroke.renderSeed, SALT_THICKNESS)

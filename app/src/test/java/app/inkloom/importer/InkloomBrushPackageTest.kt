@@ -45,6 +45,7 @@ class InkloomBrushPackageTest {
                 stabilization = .4f,
                 spray = true,
                 sprayDensity = 14f,
+                spraySpread = 2.25f,
                 dualBrush = true,
                 dualSizeScale = .7f,
                 taperMode = BrushTaperMode.DISTANCE,

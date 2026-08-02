@@ -114,6 +114,7 @@ class StrokeTileIndex(val tileSizePx: Int = DEFAULT_TILE_SIZE_PX) {
             particleSize = stroke.sprayParticleSize,
             particleUnit = stroke.sprayParticleSizeUnit,
             particleSync = stroke.sprayParticleSizeSyncBrushSize,
+            spread = stroke.spraySpread,
             pageWidthPx = pageWidthPx,
         ) + edge
         if (!stroke.dualBrush) return main
@@ -125,6 +126,7 @@ class StrokeTileIndex(val tileSizePx: Int = DEFAULT_TILE_SIZE_PX) {
             particleSize = stroke.dualSprayParticleSize,
             particleUnit = stroke.dualSprayParticleSizeUnit,
             particleSync = stroke.dualSprayParticleSizeSyncBrushSize,
+            spread = stroke.dualSpraySpread,
             pageWidthPx = pageWidthPx,
         )
         return max(main, dual)
@@ -137,13 +139,14 @@ class StrokeTileIndex(val tileSizePx: Int = DEFAULT_TILE_SIZE_PX) {
         particleSize: Float,
         particleUnit: Int,
         particleSync: Boolean,
+        spread: Float,
         pageWidthPx: Float,
     ): Float {
         val shapedHalfDiagonal = brushDiameter * max(1f, thickness.coerceIn(.05f, 2f)) * HALF_DIAGONAL_FACTOR
         if (!spray) return shapedHalfDiagonal
         val particleDiameter = SprayGeometry.particleDiameter(brushDiameter, particleSize, particleUnit, particleSync, pageWidthPx)
         val particleHalfDiagonal = particleDiameter * max(1f, thickness.coerceIn(.05f, 2f)) * HALF_DIAGONAL_FACTOR
-        return brushDiameter / 2f + particleHalfDiagonal
+        return brushDiameter / 2f * spread.coerceIn(0f, 4f) + particleHalfDiagonal
     }
 
     companion object {

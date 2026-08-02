@@ -1053,6 +1053,7 @@ private fun InkCanvasView.applyBrushConfiguration(
     sprayParticleSizeSyncBrushSize = activeBrush?.sprayParticleSizeSyncBrushSize ?: true
     sprayDensity = activeBrush?.sprayDensity ?: 1f
     sprayBias = activeBrush?.sprayBias ?: 0f
+    spraySpread = activeBrush?.spraySpread ?: 1f
     sprayParticleRotationDegrees = activeBrush?.sprayParticleRotationDegrees ?: 0f
     sprayParticleFollowStylusOrientation = activeBrush?.sprayParticleFollowStylusOrientation ?: false
     sprayParticleFollowStrokeDirection = activeBrush?.sprayParticleFollowStrokeDirection ?: false
@@ -1077,6 +1078,7 @@ private fun InkCanvasView.applyBrushConfiguration(
     dualSprayParticleSizeSyncBrushSize = activeBrush?.dualSprayParticleSizeSyncBrushSize ?: true
     dualSprayDensity = activeBrush?.dualSprayDensity ?: 1f
     dualSprayBias = activeBrush?.dualSprayBias ?: 0f
+    dualSpraySpread = activeBrush?.dualSpraySpread ?: 1f
     dualSprayParticleRotationDegrees = activeBrush?.dualSprayParticleRotationDegrees ?: 0f
     dualSprayParticleFollowStylusOrientation = activeBrush?.dualSprayParticleFollowStylusOrientation ?: false
     dualSprayParticleFollowStrokeDirection = activeBrush?.dualSprayParticleFollowStrokeDirection ?: false
@@ -2197,6 +2199,7 @@ private fun BrushEditorDialog(brush: ImportedBrush, onDismiss: () -> Unit, onSav
                 if (draft.spray) item { SettingSwitch("Particle size follows brush", "When enabled, particle size is a percentage of the current brush size.", draft.sprayParticleSizeSyncBrushSize) { draft = draft.copy(sprayParticleSizeSyncBrushSize = it) } }
                 if (draft.spray) item { BrushSettingSlider("Particle density", draft.sprayDensity, 1f..100f) { draft = draft.copy(sprayDensity = it) } }
                 if (draft.spray) item { BrushSettingSlider("Spray center bias", draft.sprayBias, -100f..100f) { draft = draft.copy(sprayBias = it) } }
+                if (draft.spray) item { BrushSettingSlider("Scatter spread", draft.spraySpread, 0f..4f) { draft = draft.copy(spraySpread = it) } }
                 if (draft.spray) item { BrushSettingSlider("Particle rotation", draft.sprayParticleRotationDegrees, -180f..180f) { draft = draft.copy(sprayParticleRotationDegrees = it) } }
                 if (draft.spray) item { SettingSwitch("Particles follow stylus", "Uses the independent CSP particle-direction setting.", draft.sprayParticleFollowStylusOrientation) { draft = draft.copy(sprayParticleFollowStylusOrientation = it) } }
                 if (draft.spray) item { SettingSwitch("Particles follow stroke", "Aligns particles with the local path direction.", draft.sprayParticleFollowStrokeDirection) { draft = draft.copy(sprayParticleFollowStrokeDirection = it) } }
@@ -2219,6 +2222,7 @@ private fun BrushEditorDialog(brush: ImportedBrush, onDismiss: () -> Unit, onSav
                 if (draft.dualBrush && draft.dualSpray) item { SettingSwitch("Secondary particles follow brush", null, draft.dualSprayParticleSizeSyncBrushSize) { draft = draft.copy(dualSprayParticleSizeSyncBrushSize = it) } }
                 if (draft.dualBrush && draft.dualSpray) item { BrushSettingSlider("Secondary particle density", draft.dualSprayDensity, 1f..100f) { draft = draft.copy(dualSprayDensity = it) } }
                 if (draft.dualBrush && draft.dualSpray) item { BrushSettingSlider("Secondary center bias", draft.dualSprayBias, -100f..100f) { draft = draft.copy(dualSprayBias = it) } }
+                if (draft.dualBrush && draft.dualSpray) item { BrushSettingSlider("Secondary scatter spread", draft.dualSpraySpread, 0f..4f) { draft = draft.copy(dualSpraySpread = it) } }
                 if (draft.dualBrush && draft.dualSpray) item { BrushSettingSlider("Secondary particle rotation", draft.dualSprayParticleRotationDegrees, -180f..180f) { draft = draft.copy(dualSprayParticleRotationDegrees = it) } }
                 if (draft.dualBrush && draft.dualSpray) item { SettingSwitch("Secondary particles follow stylus", null, draft.dualSprayParticleFollowStylusOrientation) { draft = draft.copy(dualSprayParticleFollowStylusOrientation = it) } }
                 if (draft.dualBrush && draft.dualSpray) item { SettingSwitch("Secondary particles follow stroke", null, draft.dualSprayParticleFollowStrokeDirection) { draft = draft.copy(dualSprayParticleFollowStrokeDirection = it) } }

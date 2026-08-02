@@ -48,6 +48,9 @@ class ProcreateBrushParserTest {
             assertEquals(.2f, brush.sizePressureMinimum, .0001f)
             assertTrue(brush.sizeSecondaryDynamics.velocityEnabled)
             assertTrue(brush.sizeSecondaryDynamics.randomEnabled)
+            assertTrue(brush.spray)
+            assertTrue(brush.spraySpread > 0f)
+            assertEquals(0f, brush.randomRotationDegrees, .0001f)
             assertTrue(brush.watercolor)
             assertTrue(brush.waterEdgeEnabled)
             assertTrue(brush.taperStartEnabled)
@@ -99,6 +102,8 @@ class ProcreateBrushParserTest {
             assertTrue(brushes.any { it.taperStartEnabled })
             assertTrue(brushes.any { it.taperEndEnabled })
             assertTrue(brushes.any { brush -> brush.report.any { it.contains("Apple Pencil start/end taper") } })
+            assertTrue(brushes.any { it.spraySpread > 0f })
+            assertTrue(brushes.any { brush -> brush.report.any { it.contains("positional spread") } })
         } finally {
             root.deleteRecursively()
         }

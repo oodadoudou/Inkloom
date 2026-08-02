@@ -92,6 +92,7 @@ class BrushMetadataStore(
                         sprayParticleSizeSyncBrushSize = item.optBoolean("sprayParticleSizeSyncBrushSize", true),
                         sprayDensity = item.optDouble("sprayDensity", 1.0).toFloat().coerceIn(1f, 100f),
                         sprayBias = item.optDouble("sprayBias", 0.0).toFloat().coerceIn(-100f, 100f),
+                        spraySpread = item.optDouble("spraySpread", 1.0).toFloat().coerceIn(0f, 4f),
                         sprayParticleRotationDegrees = item.optDouble("sprayParticleRotationDegrees", 0.0).toFloat().coerceIn(-360f, 360f),
                         sprayParticleFollowStylusOrientation = item.optBoolean("sprayParticleFollowStylusOrientation", false),
                         sprayParticleFollowStrokeDirection = item.optBoolean("sprayParticleFollowStrokeDirection", false),
@@ -116,6 +117,7 @@ class BrushMetadataStore(
                         dualSprayParticleSizeSyncBrushSize = item.optBoolean("dualSprayParticleSizeSyncBrushSize", true),
                         dualSprayDensity = item.optDouble("dualSprayDensity", 1.0).toFloat().coerceIn(1f, 100f),
                         dualSprayBias = item.optDouble("dualSprayBias", 0.0).toFloat().coerceIn(-100f, 100f),
+                        dualSpraySpread = item.optDouble("dualSpraySpread", 1.0).toFloat().coerceIn(0f, 4f),
                         dualSprayParticleRotationDegrees = item.optDouble("dualSprayParticleRotationDegrees", 0.0).toFloat().coerceIn(-360f, 360f),
                         dualSprayParticleFollowStylusOrientation = item.optBoolean("dualSprayParticleFollowStylusOrientation", false),
                         dualSprayParticleFollowStrokeDirection = item.optBoolean("dualSprayParticleFollowStrokeDirection", false),
@@ -217,6 +219,7 @@ class BrushMetadataStore(
                     .put("sprayParticleSizeSyncBrushSize", brush.sprayParticleSizeSyncBrushSize)
                     .put("sprayDensity", brush.sprayDensity)
                     .put("sprayBias", brush.sprayBias)
+                    .put("spraySpread", brush.spraySpread)
                     .put("sprayParticleRotationDegrees", brush.sprayParticleRotationDegrees)
                     .put("sprayParticleFollowStylusOrientation", brush.sprayParticleFollowStylusOrientation)
                     .put("sprayParticleFollowStrokeDirection", brush.sprayParticleFollowStrokeDirection)
@@ -241,6 +244,7 @@ class BrushMetadataStore(
                     .put("dualSprayParticleSizeSyncBrushSize", brush.dualSprayParticleSizeSyncBrushSize)
                     .put("dualSprayDensity", brush.dualSprayDensity)
                     .put("dualSprayBias", brush.dualSprayBias)
+                    .put("dualSpraySpread", brush.dualSpraySpread)
                     .put("dualSprayParticleRotationDegrees", brush.dualSprayParticleRotationDegrees)
                     .put("dualSprayParticleFollowStylusOrientation", brush.dualSprayParticleFollowStylusOrientation)
                     .put("dualSprayParticleFollowStrokeDirection", brush.dualSprayParticleFollowStrokeDirection)
