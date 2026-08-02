@@ -15,6 +15,10 @@ enum class ShortcutAction {
     NEXT_BRUSH,
     UNDO,
     REDO,
+    NEW_LAYER,
+    MERGE_LAYER_DOWN,
+    ZOOM_OUT,
+    ZOOM_IN,
     FIT_PAGE,
     TOGGLE_PANELS,
     SAVE_CHECKPOINT,
@@ -52,6 +56,10 @@ object CspShortcutResolver {
         ShortcutBinding(ShortcutAction.REDO, ShortcutChord(KeyEvent.KEYCODE_Z, ctrl = true, shift = true)),
         ShortcutBinding(ShortcutAction.UNDO, ShortcutChord(KeyEvent.KEYCODE_Z, ctrl = true)),
         ShortcutBinding(ShortcutAction.REDO, ShortcutChord(KeyEvent.KEYCODE_Y, ctrl = true)),
+        ShortcutBinding(ShortcutAction.NEW_LAYER, ShortcutChord(KeyEvent.KEYCODE_N, ctrl = true, shift = true)),
+        ShortcutBinding(ShortcutAction.MERGE_LAYER_DOWN, ShortcutChord(KeyEvent.KEYCODE_E, ctrl = true)),
+        ShortcutBinding(ShortcutAction.ZOOM_OUT, ShortcutChord(KeyEvent.KEYCODE_NUMPAD_SUBTRACT, ctrl = true)),
+        ShortcutBinding(ShortcutAction.ZOOM_IN, ShortcutChord(KeyEvent.KEYCODE_NUMPAD_ADD, ctrl = true)),
         ShortcutBinding(ShortcutAction.FIT_PAGE, ShortcutChord(KeyEvent.KEYCODE_0, ctrl = true)),
         ShortcutBinding(ShortcutAction.SAVE_CHECKPOINT, ShortcutChord(KeyEvent.KEYCODE_S, ctrl = true)),
         ShortcutBinding(ShortcutAction.OPACITY_DECREASE, ShortcutChord(KeyEvent.KEYCODE_LEFT_BRACKET, ctrl = true)),
@@ -68,8 +76,19 @@ object CspShortcutResolver {
         ShortcutBinding(ShortcutAction.TOGGLE_PANELS, ShortcutChord(KeyEvent.KEYCODE_TAB)),
     )
 
+    private val commandsAddedAfterInitialDefaults = setOf(
+        ShortcutAction.NEW_LAYER,
+        ShortcutAction.MERGE_LAYER_DOWN,
+        ShortcutAction.ZOOM_OUT,
+        ShortcutAction.ZOOM_IN,
+    )
+
+    private val previousDefaultBindings: List<ShortcutBinding> by lazy {
+        defaultBindings.filterNot { it.action in commandsAddedAfterInitialDefaults }
+    }
+
     private val legacyReversedBrushSizeDefaults: List<ShortcutBinding> by lazy {
-        defaultBindings.map { binding ->
+        previousDefaultBindings.map { binding ->
             when (binding.action) {
                 ShortcutAction.BRUSH_SIZE_DECREASE -> binding.copy(chord = ShortcutChord(KeyEvent.KEYCODE_LEFT_BRACKET))
                 ShortcutAction.BRUSH_SIZE_INCREASE -> binding.copy(chord = ShortcutChord(KeyEvent.KEYCODE_RIGHT_BRACKET))
@@ -79,7 +98,7 @@ object CspShortcutResolver {
     }
 
     fun migrateLegacyDefaults(bindings: List<ShortcutBinding>): List<ShortcutBinding> =
-        if (bindings == legacyReversedBrushSizeDefaults) defaultBindings else bindings
+        if (bindings == legacyReversedBrushSizeDefaults || bindings == previousDefaultBindings) defaultBindings else bindings
 
     fun resolve(chord: ShortcutChord, bindings: List<ShortcutBinding> = defaultBindings, deviceDescriptor: String? = null): ShortcutAction? =
         resolveBinding(chord, bindings, deviceDescriptor)?.action
@@ -124,5 +143,7 @@ object CspShortcutResolver {
         ShortcutAction.BRUSH_SIZE_INCREASE,
         ShortcutAction.OPACITY_DECREASE,
         ShortcutAction.OPACITY_INCREASE,
+        ShortcutAction.ZOOM_OUT,
+        ShortcutAction.ZOOM_IN,
     )
 }

@@ -1051,6 +1051,10 @@ private fun EditorScreen(
                             ShortcutAction.NEXT_BRUSH -> ShortcutBrushSelection.adjacent(brushes, activeBrush?.id, 1)?.let(::selectImportedBrush)
                             ShortcutAction.UNDO -> canvasView?.undo()
                             ShortcutAction.REDO -> canvasView?.redo()
+                            ShortcutAction.NEW_LAYER -> onAddLayer(document.id, selectedPage.id, "Layer")
+                            ShortcutAction.MERGE_LAYER_DOWN -> onMergeLayerDown(document.id, selectedPage.id, activeLayerId)?.let { activeLayerId = it }
+                            ShortcutAction.ZOOM_OUT -> { val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY), .9f, 0f, 0f, geometry = currentViewportGeometry()); zoom = next.scale; panX = next.panX; panY = next.panY }
+                            ShortcutAction.ZOOM_IN -> { val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY), 1.1f, 0f, 0f, geometry = currentViewportGeometry()); zoom = next.scale; panX = next.panX; panY = next.panY }
                             ShortcutAction.FIT_PAGE -> { zoom = 1f; panX = 0f; panY = 0f }
                             ShortcutAction.TOGGLE_PANELS -> if (!panelsHiddenByShortcut) {
                                 pageRailBeforeShortcut = settings.showPageRail
@@ -3175,6 +3179,10 @@ private fun shortcutActionLabel(action: ShortcutAction): String = when (action) 
     ShortcutAction.NEXT_BRUSH -> tr("Next brush", "下一个笔刷")
     ShortcutAction.UNDO -> tr("Undo", "撤销")
     ShortcutAction.REDO -> tr("Redo", "重做")
+    ShortcutAction.NEW_LAYER -> tr("New raster layer", "新建栅格图层")
+    ShortcutAction.MERGE_LAYER_DOWN -> tr("Merge with layer below", "与下一图层合并")
+    ShortcutAction.ZOOM_OUT -> tr("Zoom out", "缩小")
+    ShortcutAction.ZOOM_IN -> tr("Zoom in", "放大")
     ShortcutAction.FIT_PAGE -> tr("Fit page", "适合页面")
     ShortcutAction.TOGGLE_PANELS -> tr("Hide / show panels", "隐藏／显示面板")
     ShortcutAction.SAVE_CHECKPOINT -> tr("Save checkpoint", "保存检查点")

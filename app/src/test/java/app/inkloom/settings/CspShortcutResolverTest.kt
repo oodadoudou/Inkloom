@@ -21,6 +21,10 @@ class CspShortcutResolverTest {
         assertEquals(ShortcutAction.UNDO, resolve(KeyEvent.KEYCODE_Z, ctrl = true))
         assertEquals(ShortcutAction.REDO, resolve(KeyEvent.KEYCODE_Z, ctrl = true, shift = true))
         assertEquals(ShortcutAction.REDO, resolve(KeyEvent.KEYCODE_Y, ctrl = true))
+        assertEquals(ShortcutAction.NEW_LAYER, resolve(KeyEvent.KEYCODE_N, ctrl = true, shift = true))
+        assertEquals(ShortcutAction.MERGE_LAYER_DOWN, resolve(KeyEvent.KEYCODE_E, ctrl = true))
+        assertEquals(ShortcutAction.ZOOM_OUT, resolve(KeyEvent.KEYCODE_NUMPAD_SUBTRACT, ctrl = true))
+        assertEquals(ShortcutAction.ZOOM_IN, resolve(KeyEvent.KEYCODE_NUMPAD_ADD, ctrl = true))
         assertEquals(ShortcutAction.FIT_PAGE, resolve(KeyEvent.KEYCODE_0, ctrl = true))
         assertEquals(ShortcutAction.TOGGLE_PANELS, resolve(KeyEvent.KEYCODE_TAB))
         assertNull(resolve(KeyEvent.KEYCODE_P, ctrl = true))
@@ -50,7 +54,8 @@ class CspShortcutResolverTest {
     }
 
     @Test fun migratesOnlyTheFormerReversedDefaultBrushSizePair() {
-        val oldDefaults = CspShortcutResolver.defaultBindings.map { binding ->
+        val addedActions = setOf(ShortcutAction.NEW_LAYER, ShortcutAction.MERGE_LAYER_DOWN, ShortcutAction.ZOOM_OUT, ShortcutAction.ZOOM_IN)
+        val oldDefaults = CspShortcutResolver.defaultBindings.filterNot { it.action in addedActions }.map { binding ->
             when (binding.action) {
                 ShortcutAction.BRUSH_SIZE_DECREASE -> binding.copy(chord = ShortcutChord(KeyEvent.KEYCODE_LEFT_BRACKET))
                 ShortcutAction.BRUSH_SIZE_INCREASE -> binding.copy(chord = ShortcutChord(KeyEvent.KEYCODE_RIGHT_BRACKET))
