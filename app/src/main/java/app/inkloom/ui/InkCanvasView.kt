@@ -44,6 +44,8 @@ import app.inkloom.document.StrokeClipboardCodec
 import app.inkloom.document.StrokeStampSampler
 import app.inkloom.document.StrokeStabilization
 import app.inkloom.document.StrokeTaper
+import app.inkloom.document.StrokeTileIndex
+import app.inkloom.document.StrokeTileKey
 import app.inkloom.document.StylusInputClassifier
 import app.inkloom.document.WaterEdge
 import app.inkloom.model.EditorTool
@@ -89,8 +91,10 @@ class InkCanvasView(context: Context) : View(context) {
     private val tipCache = mutableMapOf<String, Bitmap>()
     private val protectedStrokeIds = mutableSetOf<String>()
     private val protectedLayerIds = mutableSetOf<String>()
-    private var strokeCache: Bitmap? = null
-    private var strokeCacheDirty = true
+    private val strokeTileIndex = StrokeTileIndex()
+    private val strokeTiles = mutableMapOf<StrokeTileKey, Bitmap>()
+    private val dirtyStrokeTiles = linkedSetOf<StrokeTileKey>()
+    internal var onTileRendered: ((StrokeTileKey, Int) -> Unit)? = null
 
     var tool: EditorTool = EditorTool.PEN
     var inkColor: Int = Color.rgb(17, 17, 17)
@@ -256,8 +260,7 @@ class InkCanvasView(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         backgroundBitmap?.let { bitmap -> backgroundDestination.set(0, 0, width, height); canvas.drawBitmap(bitmap, null, backgroundDestination, null) }
-        val cached = ensureStrokeCache()
-        if (cached != null) canvas.drawBitmap(cached, 0f, 0f, null) else strokes.forEach { drawStroke(canvas, it) }
+        if (!drawStrokeTiles(canvas)) strokes.forEach { drawStroke(canvas, it) }
         var selectionLeft = Float.POSITIVE_INFINITY
         var selectionTop = Float.POSITIVE_INFINITY
         var selectionRight = Float.NEGATIVE_INFINITY
@@ -284,33 +287,78 @@ class InkCanvasView(context: Context) : View(context) {
 
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
         super.onSizeChanged(width, height, oldWidth, oldHeight)
-        if (width != oldWidth || height != oldHeight) { strokeCache?.recycle(); strokeCache = null; strokeCacheDirty = true }
+        if (width != oldWidth || height != oldHeight) resetStrokeTiles()
     }
 
     override fun onDetachedFromWindow() {
-        strokeCache?.recycle(); strokeCache = null; strokeCacheDirty = true
+        recycleStrokeTiles()
         tipCache.values.forEach(Bitmap::recycle); tipCache.clear()
         super.onDetachedFromWindow()
     }
 
-    private fun ensureStrokeCache(): Bitmap? {
-        if (width <= 0 || height <= 0 || width.toLong() * height.toLong() > MAX_CACHE_PIXELS) return null
-        val existing = strokeCache
-        val bitmap = if (existing == null || existing.width != width || existing.height != height) {
-            existing?.recycle()
-            runCatching { Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888) }.getOrNull()?.also { strokeCache = it; strokeCacheDirty = true }
-        } else existing
-        bitmap ?: return null
-        if (strokeCacheDirty) {
-            bitmap.eraseColor(Color.TRANSPARENT)
-            val cacheCanvas = Canvas(bitmap)
-            strokes.forEach { drawStroke(cacheCanvas, it) }
-            strokeCacheDirty = false
+    private fun drawStrokeTiles(canvas: Canvas): Boolean {
+        if (width <= 0 || height <= 0 || width.toLong() * height.toLong() > MAX_CACHE_PIXELS) return false
+        if (strokeTileIndex.widthPx != width || strokeTileIndex.heightPx != height) resetStrokeTiles()
+        val keys = strokeTileIndex.allTiles()
+        for (key in keys) {
+            val rect = strokeTileIndex.rect(key)
+            var tile = strokeTiles[key]
+            if (tile == null || tile.width != rect.width || tile.height != rect.height) {
+                tile?.recycle()
+                tile = runCatching { Bitmap.createBitmap(rect.width, rect.height, Bitmap.Config.ARGB_8888) }.getOrNull()
+                if (tile == null) {
+                    recycleStrokeTiles()
+                    return false
+                }
+                strokeTiles[key] = tile
+                dirtyStrokeTiles += key
+            }
         }
-        return bitmap
+        for (key in keys) {
+            val rect = strokeTileIndex.rect(key)
+            val tile = strokeTiles.getValue(key)
+            if (key in dirtyStrokeTiles) {
+                tile.eraseColor(Color.TRANSPARENT)
+                val tileCanvas = Canvas(tile)
+                tileCanvas.translate(-rect.left.toFloat(), -rect.top.toFloat())
+                val candidateIds = strokeTileIndex.candidates(key)
+                var renderedStrokeCount = 0
+                strokes.forEach { stroke ->
+                    if (stroke.id in candidateIds) {
+                        drawStroke(tileCanvas, stroke)
+                        renderedStrokeCount++
+                    }
+                }
+                dirtyStrokeTiles.remove(key)
+                onTileRendered?.invoke(key, renderedStrokeCount)
+            }
+            canvas.drawBitmap(tile, rect.left.toFloat(), rect.top.toFloat(), null)
+        }
+        return true
     }
 
-    private fun invalidateStrokeCache() { strokeCacheDirty = true; invalidate() }
+    private fun resetStrokeTiles() {
+        recycleStrokeTiles()
+        dirtyStrokeTiles += strokeTileIndex.rebuild(strokes, width, height)
+        invalidate()
+    }
+
+    private fun recycleStrokeTiles() {
+        strokeTiles.values.forEach(Bitmap::recycle)
+        strokeTiles.clear()
+        dirtyStrokeTiles.clear()
+    }
+
+    private fun invalidateStrokeCache() = resetStrokeTiles()
+
+    private fun invalidateStrokeCache(before: Collection<InkStroke>, after: Collection<InkStroke>) {
+        if (strokeTileIndex.widthPx != width || strokeTileIndex.heightPx != height) {
+            resetStrokeTiles()
+        } else {
+            dirtyStrokeTiles += strokeTileIndex.update(before, after)
+            invalidate()
+        }
+    }
 
     private fun drawStroke(canvas: Canvas, stroke: InkStroke) {
         if (stroke.masks.isEmpty()) {
@@ -570,6 +618,7 @@ class InkCanvasView(context: Context) : View(context) {
                     if (movingSelection) {
                         val dx = normalizedX - lastX; val dy = normalizedY - lastY
                         if (hypot(dx.toDouble(), dy.toDouble()) > .0001) selectionMoved = true
+                        val movedBefore = strokes.filter { it.id in selectedStrokeIds }
                         selectedStrokeIds.forEach { id ->
                             val index = strokes.indexOfFirst { it.id == id }
                             if (index >= 0) strokes[index] = strokes[index].copy(
@@ -578,7 +627,7 @@ class InkCanvasView(context: Context) : View(context) {
                             )
                         }
                         lastX = normalizedX; lastY = normalizedY
-                        strokeCacheDirty = true
+                        invalidateStrokeCache(movedBefore, strokes.filter { it.id in selectedStrokeIds })
                     } else {
                         for (i in 0 until event.historySize) appendLassoPoint(event.getHistoricalX(i) / width.coerceAtLeast(1), event.getHistoricalY(i) / height.coerceAtLeast(1))
                         appendLassoPoint(normalizedX, normalizedY)
@@ -602,7 +651,7 @@ class InkCanvasView(context: Context) : View(context) {
                     shapeStart = null; shapeEnd = null; shapeFreeformPoints.clear()
                     if (activeTool == EditorTool.ERASER) cancelEraserGesture()
                     selectionGestureBefore?.let { restoreStrokeSnapshot(it) }
-                    lassoPoints.clear(); movingSelection = false; selectionMoved = false; selectionGestureBefore = null; strokeCacheDirty = true
+                    lassoPoints.clear(); movingSelection = false; selectionMoved = false; selectionGestureBefore = null
                 } else if (activeTool == EditorTool.ERASER) {
                     eraseAlong(normalizedX, normalizedY)
                     finishEraserGesture()
@@ -610,7 +659,7 @@ class InkCanvasView(context: Context) : View(context) {
                     val before = strokes.toList()
                     val stroke = makeStroke(currentPoints)
                     strokes += stroke
-                    strokeCacheDirty = true
+                    invalidateStrokeCache(emptyList(), listOf(stroke))
                     commitStrokeEdit(before, strokes)
                     currentPoints.clear()
                 } else if (activeTool == EditorTool.SELECT) {
@@ -750,7 +799,8 @@ class InkCanvasView(context: Context) : View(context) {
             strokes.clear()
             strokes += rebuilt
             commitStrokeEdit(before, strokes)
-            invalidateStrokeCache()
+            val edit = StrokeEdits.difference(before, strokes)
+            invalidateStrokeCache(edit?.before.orEmpty().map { it.stroke }, edit?.after.orEmpty().map { it.stroke })
         }
     }
 
@@ -818,6 +868,8 @@ class InkCanvasView(context: Context) : View(context) {
     private fun eraseAt(x: Float, y: Float) {
         val eraserRadius = eraserRadiusPixels()
         var changed = false
+        val changedBefore = mutableListOf<InkStroke>()
+        val changedAfter = mutableListOf<InkStroke>()
         for (index in strokes.indices.reversed()) {
             val stroke = strokes[index]
             if (stroke.id in protectedStrokeIds) continue
@@ -829,7 +881,10 @@ class InkCanvasView(context: Context) : View(context) {
             if (nonDestructiveEraser) {
                 val dab = StrokeMaskDab(x, y, eraserRadius / width.coerceAtLeast(1), eraserRadius / height.coerceAtLeast(1))
                 if (stroke.masks.lastOrNull()?.let { kotlin.math.abs(it.x - dab.x) < .00001f && kotlin.math.abs(it.y - dab.y) < .00001f } == true) continue
-                strokes[index] = stroke.copy(masks = stroke.masks + dab)
+                val masked = stroke.copy(masks = stroke.masks + dab)
+                strokes[index] = masked
+                changedBefore += stroke
+                changedAfter += masked
                 changed = true
                 continue
             }
@@ -841,9 +896,11 @@ class InkCanvasView(context: Context) : View(context) {
             strokes.removeAt(index)
             selectedStrokeIds.remove(stroke.id)
             if (localEraser) strokes.addAll(index, pieces)
+            changedBefore += stroke
+            changedAfter += pieces
             changed = true
         }
-        if (changed) invalidateStrokeCache()
+        if (changed) invalidateStrokeCache(changedBefore, changedAfter)
     }
 
     private fun eraserRadiusPixels(): Float =
@@ -889,10 +946,11 @@ class InkCanvasView(context: Context) : View(context) {
         val before = strokes.toList()
         val removableIds = strokes.filterNot { it.id in protectedStrokeIds }.mapTo(mutableSetOf()) { it.id }
         if (removableIds.isEmpty()) return
+        val removed = strokes.filter { it.id in removableIds }
         strokes.removeAll { it.id in removableIds }
         selectedStrokeIds.removeAll(removableIds)
         commitStrokeEdit(before, strokes)
-        invalidateStrokeCache()
+        invalidateStrokeCache(removed, emptyList())
     }
 
     private fun commitStrokeEdit(before: List<InkStroke>, after: List<InkStroke>) {
@@ -926,10 +984,12 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun restoreStrokeSnapshot(snapshot: List<InkStroke>) {
+        val before = strokes.toList()
         strokes.clear()
         strokes.addAll(snapshot)
         selectedStrokeIds.retainAll(snapshot.mapTo(mutableSetOf()) { it.id })
-        invalidateStrokeCache()
+        val edit = StrokeEdits.difference(before, snapshot)
+        invalidateStrokeCache(edit?.before.orEmpty().map { it.stroke }, edit?.after.orEmpty().map { it.stroke })
     }
 
     fun scaleSelection(factor: Float) = transformSelection(radiusScale = factor) { dx, dy -> dx * factor to dy * factor }
@@ -947,7 +1007,7 @@ class InkCanvasView(context: Context) : View(context) {
             masks = original.masks.map { it.copy(x = (it.x + .03f).coerceIn(0f, 1f), y = (it.y + .03f).coerceIn(0f, 1f)) },
         ) }
         if (copies.isEmpty()) return
-        strokes += copies; selectedStrokeIds.clear(); selectedStrokeIds += copies.map(InkStroke::id); commitStrokeEdit(before, strokes); invalidateStrokeCache()
+        strokes += copies; selectedStrokeIds.clear(); selectedStrokeIds += copies.map(InkStroke::id); commitStrokeEdit(before, strokes); invalidateStrokeCache(emptyList(), copies)
     }
 
     fun copySelectionToClipboard(): Boolean {
@@ -980,14 +1040,14 @@ class InkCanvasView(context: Context) : View(context) {
         selectedStrokeIds.clear()
         selectedStrokeIds += copies.map(InkStroke::id)
         commitStrokeEdit(before, strokes)
-        invalidateStrokeCache()
+        invalidateStrokeCache(emptyList(), copies)
         return true
     }
 
     fun deleteSelection() {
         if (selectedStrokeIds.isEmpty()) return
         val before = strokes.toList()
-        val ids = selectedStrokeIds.toSet(); strokes.removeAll { it.id in ids }; commitStrokeEdit(before, strokes); selectedStrokeIds.clear(); invalidateStrokeCache()
+        val ids = selectedStrokeIds.toSet(); val removed = strokes.filter { it.id in ids }; strokes.removeAll { it.id in ids }; commitStrokeEdit(before, strokes); selectedStrokeIds.clear(); invalidateStrokeCache(removed, emptyList())
     }
 
     private fun transformSelection(
@@ -1018,7 +1078,7 @@ class InkCanvasView(context: Context) : View(context) {
             if (currentIndex >= 0) strokes[currentIndex] = changed
         }
         commitStrokeEdit(before, strokes)
-        invalidateStrokeCache()
+        invalidateStrokeCache(selected, strokes.filter { it.id in selectedStrokeIds })
     }
 
     private companion object {
