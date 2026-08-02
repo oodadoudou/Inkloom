@@ -23,6 +23,7 @@ import java.util.LinkedHashMap
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
 import app.inkloom.document.StrokeMaskDab
+import app.inkloom.document.StrokeMaskRenderer
 import app.inkloom.document.BrushCurvePoint
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushDynamics
@@ -233,6 +234,9 @@ class InkCanvasView(context: Context) : View(context) {
     var localEraser: Boolean = false
     var nonDestructiveEraser: Boolean = false
     var eraserWidth: Float = 24f
+    var eraserHardness: Float = 1f
+    var eraserOpacity: Float = 1f
+    var eraserPressureSize: Boolean = false
     var fingerDrawingEnabled: Boolean = false
     var twoFingerDoubleTapUndo: Boolean = true
     var pressureSensitivity: Float = 1f
@@ -423,19 +427,7 @@ class InkCanvasView(context: Context) : View(context) {
         }
         val checkpoint = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null)
         drawStrokeContent(canvas, stroke)
-        paint.style = Paint.Style.FILL
-        paint.colorFilter = null
-        paint.maskFilter = null
-        paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
-        stroke.masks.forEach { mask ->
-            val centerX = mask.x * width
-            val centerY = mask.y * height
-            canvas.save()
-            canvas.rotate(mask.rotationDegrees, centerX, centerY)
-            canvas.drawOval(centerX - mask.radiusX * width, centerY - mask.radiusY * height, centerX + mask.radiusX * width, centerY + mask.radiusY * height, paint)
-            canvas.restore()
-        }
-        paint.xfermode = null
+        StrokeMaskRenderer.draw(canvas, paint, stroke.masks, width, height)
         canvas.restoreToCount(checkpoint)
     }
 
@@ -683,7 +675,7 @@ class InkCanvasView(context: Context) : View(context) {
                 }
                 if (activeTool == EditorTool.ERASER) {
                     beginEraserGesture()
-                    eraseAlong(normalizedX, normalizedY)
+                    eraseAlong(normalizedX, normalizedY, event.pressure)
                     return true
                 }
                 if (activeTool == EditorTool.SELECT) {
@@ -712,8 +704,8 @@ class InkCanvasView(context: Context) : View(context) {
             }
             MotionEvent.ACTION_MOVE -> {
                 if (activeTool == EditorTool.ERASER) {
-                    for (i in 0 until event.historySize) eraseAlong(event.getHistoricalX(i) / width.coerceAtLeast(1), event.getHistoricalY(i) / height.coerceAtLeast(1))
-                    eraseAlong(normalizedX, normalizedY)
+                    for (i in 0 until event.historySize) eraseAlong(event.getHistoricalX(i) / width.coerceAtLeast(1), event.getHistoricalY(i) / height.coerceAtLeast(1), event.getHistoricalPressure(i))
+                    eraseAlong(normalizedX, normalizedY, event.pressure)
                 }
                 else if (activeTool == EditorTool.SELECT) {
                     if (movingSelection) {
@@ -756,7 +748,7 @@ class InkCanvasView(context: Context) : View(context) {
                     selectionGestureBefore?.let { restoreStrokeSnapshot(it) }
                     lassoPoints.clear(); movingSelection = false; selectionMoved = false; selectionGestureBefore = null
                 } else if (activeTool == EditorTool.ERASER) {
-                    eraseAlong(normalizedX, normalizedY)
+                    eraseAlong(normalizedX, normalizedY, event.pressure)
                     finishEraserGesture()
                 } else if (activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) && currentPoints.isNotEmpty()) {
                     val before = strokes.toList()
@@ -966,28 +958,28 @@ class InkCanvasView(context: Context) : View(context) {
         lastEraserY = null
     }
 
-    private fun eraseAlong(x: Float, y: Float) {
+    private fun eraseAlong(x: Float, y: Float, pressure: Float) {
         val targetX = x.coerceIn(0f, 1f)
         val targetY = y.coerceIn(0f, 1f)
         val startX = lastEraserX
         val startY = lastEraserY
         if (startX == null || startY == null) {
-            eraseAt(targetX, targetY)
+            eraseAt(targetX, targetY, pressure)
         } else {
             val distancePixels = hypot(((targetX - startX) * width).toDouble(), ((targetY - startY) * height).toDouble()).toFloat()
-            val spacing = (eraserRadiusPixels() * .45f).coerceAtLeast(1f)
+            val spacing = (eraserRadiusPixels(pressure) * .45f).coerceAtLeast(1f)
             val steps = ceil(distancePixels / spacing).toInt().coerceIn(1, MAX_ERASER_SAMPLES_PER_EVENT)
             for (step in 1..steps) {
                 val amount = step / steps.toFloat()
-                eraseAt(startX + (targetX - startX) * amount, startY + (targetY - startY) * amount)
+                eraseAt(startX + (targetX - startX) * amount, startY + (targetY - startY) * amount, pressure)
             }
         }
         lastEraserX = targetX
         lastEraserY = targetY
     }
 
-    private fun eraseAt(x: Float, y: Float) {
-        val eraserRadius = eraserRadiusPixels()
+    private fun eraseAt(x: Float, y: Float, pressure: Float) {
+        val eraserRadius = eraserRadiusPixels(pressure)
         var changed = false
         val changedBefore = mutableListOf<InkStroke>()
         val changedAfter = mutableListOf<InkStroke>()
@@ -1000,7 +992,7 @@ class InkCanvasView(context: Context) : View(context) {
             val radiusY = combinedRadius / height.coerceAtLeast(1)
             if (!StrokeEraser.intersects(stroke, x, y, radiusX, radiusY)) continue
             if (nonDestructiveEraser) {
-                val dab = StrokeMaskDab(x, y, eraserRadius / width.coerceAtLeast(1), eraserRadius / height.coerceAtLeast(1))
+                val dab = StrokeMaskDab(x, y, eraserRadius / width.coerceAtLeast(1), eraserRadius / height.coerceAtLeast(1), hardness = eraserHardness, opacity = eraserOpacity)
                 if (stroke.masks.lastOrNull()?.let { kotlin.math.abs(it.x - dab.x) < .00001f && kotlin.math.abs(it.y - dab.y) < .00001f } == true) continue
                 val masked = stroke.copy(masks = stroke.masks + dab)
                 strokes[index] = masked
@@ -1024,8 +1016,10 @@ class InkCanvasView(context: Context) : View(context) {
         if (changed) invalidateStrokeCache(changedBefore, changedAfter)
     }
 
-    private fun eraserRadiusPixels(): Float =
-        (eraserWidth.coerceIn(.5f, 400f) * width.coerceAtLeast(1) / REFERENCE_WIDTH / 2f).coerceAtLeast(1f)
+    private fun eraserRadiusPixels(pressure: Float): Float {
+        val pressureFactor = if (eraserPressureSize) PressureCalibration.apply(pressure, pressureMinimumInput, pressureMaximumInput, pressureSensitivity).coerceIn(.15f, 1f) else 1f
+        return (eraserWidth.coerceIn(.5f, 400f) * pressureFactor * width.coerceAtLeast(1) / REFERENCE_WIDTH / 2f).coerceAtLeast(1f)
+    }
 
     private fun finishEraserGesture() {
         eraserGestureBefore?.let { commitStrokeEdit(it, strokes) }

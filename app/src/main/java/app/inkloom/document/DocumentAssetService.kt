@@ -517,19 +517,7 @@ class DocumentAssetService(private val context: Context) {
                 }
             }
             if (maskLayer >= 0) {
-                paint.style = Paint.Style.FILL
-                paint.colorFilter = null
-                paint.maskFilter = null
-                paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
-                stroke.masks.forEach { mask ->
-                    val centerX = mask.x * width
-                    val centerY = mask.y * height
-                    canvas.save()
-                    canvas.rotate(mask.rotationDegrees, centerX, centerY)
-                    canvas.drawOval(centerX - mask.radiusX * width, centerY - mask.radiusY * height, centerX + mask.radiusX * width, centerY + mask.radiusY * height, paint)
-                    canvas.restore()
-                }
-                paint.xfermode = null
+                StrokeMaskRenderer.draw(canvas, paint, stroke.masks, width, height)
                 canvas.restoreToCount(maskLayer)
             }
         }

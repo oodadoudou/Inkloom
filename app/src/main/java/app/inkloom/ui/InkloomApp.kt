@@ -68,6 +68,7 @@ import app.inkloom.model.*
 import app.inkloom.settings.AppSettings
 import app.inkloom.settings.AppSettingsStore
 import app.inkloom.settings.ColorPaletteStore
+import app.inkloom.settings.EraserPreset
 import app.inkloom.settings.FloatingToolbarPlacement
 import app.inkloom.settings.SelectionFilter
 import app.inkloom.settings.SelectionMode
@@ -498,7 +499,6 @@ private fun EditorScreen(
     var brushSize by remember { mutableFloatStateOf(settings.penSize) }
     var brushOpacity by remember { mutableFloatStateOf(settings.penOpacity) }
     var brushColor by remember { mutableIntStateOf(AndroidColor.rgb(17, 17, 17)) }
-    var localEraser by remember { mutableStateOf(false) }
     var previousDrawingTool by remember { mutableStateOf(EditorTool.PEN) }
     var previousDrawingBrushId by remember { mutableStateOf<String?>(null) }
     var exportMenu by remember { mutableStateOf(false) }
@@ -610,7 +610,7 @@ private fun EditorScreen(
                     brushColor = brushColor,
                     shapeKind = insertShape,
                     activeLayerId = activeLayerId,
-                    localEraser = localEraser,
+                    eraserPreset = settings.eraserPreset,
                     searchBounds = searchFocus?.takeIf { it.pageId == selectedPage.id }?.bounds ?: pdfLinkFocus?.takeIf { it.first == selectedPage.id }?.second,
                     onPdfGotoLink = { link ->
                         document.pages.firstOrNull { it.id == link.destinationPageId }?.let { target ->
@@ -749,7 +749,7 @@ private fun EditorScreen(
                         EditorTool.AUDIO -> if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) audioOpen = true else audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                         else -> Unit
                     }
-                }, onUndo = { canvasView?.undo() }, onRedo = { canvasView?.redo() }, onScale = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, resizeElement(it, 1.15f)) } } ?: canvasView?.scaleSelection(1.15f) }, onRotate = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, rotateElement(it, 15f)) } } ?: canvasView?.rotateSelection(15f) }, onCopy = { selectedElementId?.let { onDuplicateElement(document.id, selectedPage.id, it) } ?: canvasView?.copySelection() }, onCut = { if (selectedElementId != null) Toast.makeText(context, "Clipboard actions currently apply to ink selections.", Toast.LENGTH_SHORT).show() else if (canvasView?.cutSelectionToClipboard() != true) Toast.makeText(context, "Select ink before cutting.", Toast.LENGTH_SHORT).show() }, onClipboardCopy = { if (selectedElementId != null) Toast.makeText(context, "Clipboard actions currently apply to ink selections.", Toast.LENGTH_SHORT).show() else if (canvasView?.copySelectionToClipboard() != true) Toast.makeText(context, "Select ink before copying.", Toast.LENGTH_SHORT).show() }, onPaste = { selectedElementId = null; if (canvasView?.pasteSelectionFromClipboard() != true) Toast.makeText(context, "The clipboard does not contain Inkloom ink.", Toast.LENGTH_SHORT).show() }, onDelete = { selectedElementId?.let { onRemoveElement(document.id, selectedPage.id, it); selectedElementId = null } ?: canvasView?.deleteSelection() }, selectionShape = settings.selectionShape, selectionMode = settings.selectionMode, selectionFilter = settings.selectionFilter, onSelectionShape = { onSettingsChange(settings.copy(selectionShape = it)) }, onSelectionMode = { onSettingsChange(settings.copy(selectionMode = it)) }, onSelectionFilter = { onSettingsChange(settings.copy(selectionFilter = it)) }, localEraser = localEraser, onToggleLocalEraser = { localEraser = !localEraser; canvasView?.localEraser = localEraser; if (localEraser) onSettingsChange(settings.copy(nonDestructiveEraser = false)) }, nonDestructiveEraser = settings.nonDestructiveEraser, onToggleNonDestructiveEraser = { val enabled = !settings.nonDestructiveEraser; if (enabled) localEraser = false; onSettingsChange(settings.copy(nonDestructiveEraser = enabled)) }, onDrag = { dx, dy ->
+                }, onUndo = { canvasView?.undo() }, onRedo = { canvasView?.redo() }, onScale = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, resizeElement(it, 1.15f)) } } ?: canvasView?.scaleSelection(1.15f) }, onRotate = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, rotateElement(it, 15f)) } } ?: canvasView?.rotateSelection(15f) }, onCopy = { selectedElementId?.let { onDuplicateElement(document.id, selectedPage.id, it) } ?: canvasView?.copySelection() }, onCut = { if (selectedElementId != null) Toast.makeText(context, "Clipboard actions currently apply to ink selections.", Toast.LENGTH_SHORT).show() else if (canvasView?.cutSelectionToClipboard() != true) Toast.makeText(context, "Select ink before cutting.", Toast.LENGTH_SHORT).show() }, onClipboardCopy = { if (selectedElementId != null) Toast.makeText(context, "Clipboard actions currently apply to ink selections.", Toast.LENGTH_SHORT).show() else if (canvasView?.copySelectionToClipboard() != true) Toast.makeText(context, "Select ink before copying.", Toast.LENGTH_SHORT).show() }, onPaste = { selectedElementId = null; if (canvasView?.pasteSelectionFromClipboard() != true) Toast.makeText(context, "The clipboard does not contain Inkloom ink.", Toast.LENGTH_SHORT).show() }, onDelete = { selectedElementId?.let { onRemoveElement(document.id, selectedPage.id, it); selectedElementId = null } ?: canvasView?.deleteSelection() }, selectionShape = settings.selectionShape, selectionMode = settings.selectionMode, selectionFilter = settings.selectionFilter, onSelectionShape = { onSettingsChange(settings.copy(selectionShape = it)) }, onSelectionMode = { onSettingsChange(settings.copy(selectionMode = it)) }, onSelectionFilter = { onSettingsChange(settings.copy(selectionFilter = it)) }, eraserPreset = settings.eraserPreset, onEraserPreset = { preset -> onSettingsChange(settings.copy(eraserPreset = preset, nonDestructiveEraser = preset.usesMask)) }, onDrag = { dx, dy ->
                     val next = FloatingToolbarPlacement.clamp(toolbarX + dx / editorDensity.density, toolbarY + dy / editorDensity.density, toolbarAreaWidth.value, toolbarAreaHeight.value, dockVertical)
                     toolbarX = next.xDp
                     toolbarY = next.yDp
@@ -1019,7 +1019,7 @@ private fun PageRail(document: InkDocument, documents: List<InkDocument>, select
 }
 
 @Composable
-private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, onZoom: (Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onUndoGesture: () -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, localEraser: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onShortcutAction: (ShortcutAction) -> Unit) {
+private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, onZoom: (Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onUndoGesture: () -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onShortcutAction: (ShortcutAction) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val backgroundVisible = page.layers.firstOrNull { it.role == LayerRole.BACKGROUND }?.visible != false
     val background = remember(page.id, page.background, page.backgroundRotationQuarterTurns, page.crop, backgroundVisible) { if (backgroundVisible) runCatching { assets.renderBackground(page.background, 1200, page.backgroundRotationQuarterTurns, page.crop) }.getOrNull() else null }
@@ -1073,7 +1073,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onShapeCommitted = { onElement(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
                 view.onStrokeRemoved = { onRemoveStroke(documentId, page.id, it) }
                 view.onStrokesReplaced = { removed, replacements, indices -> onStrokesReplaced(documentId, page.id, removed, replacements.map { PageCropTransform.unproject(it, page.crop) }, indices) }
-                view.applyBrushConfiguration(tool, settings, activeBrush, brushSize, brushOpacity, brushColor, localEraser)
+                view.applyBrushConfiguration(tool, settings, activeBrush, brushSize, brushOpacity, brushColor, eraserPreset)
                 view.onViewportScale = onZoom
                 view.onViewportPan = onPan
                 view.pdfGotoLinks = renderedPage.pdfGotoLinks
@@ -1111,7 +1111,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 brushSize = brushSize,
                 brushOpacity = brushOpacity,
                 brushColor = brushColor,
-                localEraser = localEraser,
+                eraserPreset = eraserPreset,
                 modifier = Modifier.align(Alignment.TopStart),
             )
         }
@@ -1125,7 +1125,7 @@ private fun InkCanvasView.applyBrushConfiguration(
     brushSize: Float,
     brushOpacity: Float,
     brushColor: Int,
-    localEraser: Boolean,
+    eraserPreset: EraserPreset,
 ) {
     tool = selectedTool
     fingerDrawingEnabled = settings.fingerDrawing
@@ -1143,8 +1143,11 @@ private fun InkCanvasView.applyBrushConfiguration(
     selectionFilter = settings.selectionFilter
     baseWidth = brushSize
     eraserWidth = settings.eraserSize
-    this.localEraser = localEraser
-    nonDestructiveEraser = settings.nonDestructiveEraser
+    this.localEraser = eraserPreset.splitsStroke
+    nonDestructiveEraser = eraserPreset.usesMask
+    eraserHardness = eraserPreset.hardness
+    eraserOpacity = eraserPreset.opacity
+    eraserPressureSize = eraserPreset.pressureSize
     inkOpacity = brushOpacity
     inkColor = brushColor
     brushId = activeBrush?.id ?: if (selectedTool == EditorTool.HIGHLIGHTER) "system-highlighter" else "system-pen"
@@ -1274,7 +1277,7 @@ private fun ObjectElementView(
     brushSize: Float,
     brushOpacity: Float,
     brushColor: Int,
-    localEraser: Boolean,
+    eraserPreset: EraserPreset,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -1417,7 +1420,7 @@ private fun ObjectElementView(
         brushSize = brushSize,
         brushOpacity = brushOpacity,
         brushColor = brushColor,
-        initialLocalEraser = localEraser,
+        initialEraserPreset = eraserPreset,
         onChange = { onChange(it) },
         onDismiss = { stickyInkEditing = false },
     )
@@ -1431,13 +1434,13 @@ private fun StickyInkEditorDialog(
     brushSize: Float,
     brushOpacity: Float,
     brushColor: Int,
-    initialLocalEraser: Boolean,
+    initialEraserPreset: EraserPreset,
     onChange: (PageElement.Sticky) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var draft by remember(sticky.id) { mutableStateOf(sticky) }
     var tool by remember(sticky.id) { mutableStateOf(EditorTool.PEN) }
-    var localEraser by remember(sticky.id) { mutableStateOf(initialLocalEraser) }
+    var eraserPreset by remember(sticky.id) { mutableStateOf(initialEraserPreset) }
     var canvasView by remember(sticky.id) { mutableStateOf<InkCanvasView?>(null) }
     LaunchedEffect(sticky.strokes, sticky.text, sticky.collapsed) { draft = sticky }
 
@@ -1463,11 +1466,7 @@ private fun StickyInkEditorDialog(
                     FilterChip(selected = tool == EditorTool.PEN, onClick = { tool = EditorTool.PEN }, label = { Text("Pen") }, leadingIcon = { Icon(Icons.Outlined.Brush, null, Modifier.size(16.dp)) })
                     FilterChip(selected = tool == EditorTool.HIGHLIGHTER, onClick = { tool = EditorTool.HIGHLIGHTER }, label = { Text("Marker") }, leadingIcon = { Icon(Icons.Outlined.BorderColor, null, Modifier.size(16.dp)) })
                     FilterChip(selected = tool == EditorTool.ERASER, onClick = { tool = EditorTool.ERASER }, label = { Text("Eraser") }, leadingIcon = { Icon(Icons.Outlined.AutoFixOff, null, Modifier.size(16.dp)) })
-                    if (tool == EditorTool.ERASER) FilledIconToggleButton(
-                        checked = localEraser,
-                        onCheckedChange = { localEraser = it },
-                        colors = IconButtonDefaults.filledIconToggleButtonColors(containerColor = Workspace, contentColor = MutedInk, checkedContainerColor = Sage, checkedContentColor = Color.White),
-                    ) { Icon(Icons.Outlined.ContentCut, if (localEraser) "Local eraser on" else "Whole-stroke eraser on") }
+                    if (tool == EditorTool.ERASER) EraserPresetMenu(eraserPreset, { eraserPreset = it })
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { canvasView?.undo() }) { Icon(Icons.Outlined.Undo, "Undo sticky ink") }
@@ -1486,7 +1485,7 @@ private fun StickyInkEditorDialog(
                         factory = { context -> InkCanvasView(context).also { canvasView = it } },
                         update = { view ->
                             canvasView = view
-                            view.applyBrushConfiguration(tool, settings, activeBrush, brushSize, brushOpacity, brushColor, localEraser)
+                            view.applyBrushConfiguration(tool, settings, activeBrush, brushSize, brushOpacity, brushColor, eraserPreset)
                             view.activeLayerId = LayerIds.INK
                             view.pageModelWidth = sticky.width
                             view.pageModelHeight = sticky.height
@@ -1636,8 +1635,52 @@ private fun playAudio(path: String) {
 
 private fun formatDuration(durationMs: Long): String { val total = durationMs / 1000; return "%d:%02d".format(total / 60, total % 60) }
 
+private fun EraserPreset.displayName(): String = when (this) {
+    EraserPreset.NORMAL_FREE -> "Free"
+    EraserPreset.HARD -> "Hard"
+    EraserPreset.SOFT -> "Soft"
+    EraserPreset.HARD_EDGE -> "Hard edge"
+    EraserPreset.SOFT_EDGE -> "Soft edge"
+    EraserPreset.STROKE -> "Whole stroke"
+}
+
 @Composable
-private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, localEraser: Boolean, onToggleLocalEraser: () -> Unit, nonDestructiveEraser: Boolean, onToggleNonDestructiveEraser: () -> Unit, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit, vertical: Boolean, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, modifier: Modifier = Modifier) {
+private fun EraserPresetMenu(selected: EraserPreset, onSelect: (EraserPreset) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        TextButton(onClick = { expanded = true }) { Text(selected.displayName()) }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            EraserPreset.entries.forEach { preset ->
+                DropdownMenuItem(
+                    text = { Text(preset.displayName()) },
+                    leadingIcon = { if (preset == selected) Icon(Icons.Outlined.Check, null) },
+                    onClick = { expanded = false; onSelect(preset) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EraserPresetPicker(selected: EraserPreset, onSelect: (EraserPreset) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        EraserPreset.entries.toList().chunked(3).forEach { row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                row.forEach { preset ->
+                    FilterChip(
+                        selected = selected == preset,
+                        onClick = { onSelect(preset) },
+                        label = { Text(preset.displayName(), fontSize = 10.sp, maxLines = 1) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit, vertical: Boolean, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, modifier: Modifier = Modifier) {
     var moreToolsOpen by remember { mutableStateOf(false) }
     var controlsOpen by remember { mutableStateOf(false) }
     val dragModifier = Modifier.size(32.dp).pointerInput(vertical) {
@@ -1666,10 +1709,8 @@ private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () 
                 onSelectionShape = onSelectionShape,
                 onSelectionMode = onSelectionMode,
                 onSelectionFilter = onSelectionFilter,
-                localEraser = localEraser,
-                onToggleLocalEraser = onToggleLocalEraser,
-                nonDestructiveEraser = nonDestructiveEraser,
-                onToggleNonDestructiveEraser = onToggleNonDestructiveEraser,
+                eraserPreset = eraserPreset,
+                onEraserPreset = onEraserPreset,
                 dragModifier = dragModifier,
                 vertical = vertical,
                 moreToolsOpen = moreToolsOpen,
@@ -1693,7 +1734,7 @@ private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () 
 }
 
 @Composable
-private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, localEraser: Boolean, onToggleLocalEraser: () -> Unit, nonDestructiveEraser: Boolean, onToggleNonDestructiveEraser: () -> Unit, dragModifier: Modifier, vertical: Boolean, moreToolsOpen: Boolean, onMoreToolsOpen: (Boolean) -> Unit, controlsOpen: Boolean, onControlsOpen: (Boolean) -> Unit, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit) {
+private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, dragModifier: Modifier, vertical: Boolean, moreToolsOpen: Boolean, onMoreToolsOpen: (Boolean) -> Unit, controlsOpen: Boolean, onControlsOpen: (Boolean) -> Unit, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit) {
     Icon(Icons.Outlined.DragIndicator, "Drag toolbar", modifier = dragModifier, tint = MutedInk)
     ToolButton(EditorTool.PEN, Icons.Outlined.Edit, "Pen", tool, onTool)
     ToolButton(EditorTool.HIGHLIGHTER, Icons.Outlined.BorderColor, "Mark", tool, onTool)
@@ -1733,8 +1774,8 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
                     }
                 }
                 if (tool == EditorTool.ERASER) {
-                    SettingSwitch("Local eraser", "Destructively split stroke segments.", localEraser) { onToggleLocalEraser() }
-                    SettingSwitch("Mask eraser", "Hide ink without deleting or splitting the original stroke.", nonDestructiveEraser) { onToggleNonDestructiveEraser() }
+                    Text("Eraser brush", color = MutedInk, fontSize = 12.sp)
+                    EraserPresetPicker(eraserPreset, onEraserPreset)
                 }
                 if (tool == EditorTool.SELECT) {
                     Text("Selection", color = MutedInk, fontSize = 12.sp)
@@ -2462,7 +2503,7 @@ private fun SettingsDialog(
                 item { BrushSettingSlider("Marker size", settings.highlighterSize, .5f..400f) { onChange(settings.copy(highlighterSize = it)) } }
                 item { BrushSettingSlider("Marker opacity", settings.highlighterOpacity, .05f..1f) { onChange(settings.copy(highlighterOpacity = it)) } }
                 item { BrushSettingSlider("Eraser size", settings.eraserSize, .5f..400f) { onChange(settings.copy(eraserSize = it)) } }
-                item { OutlinedButton(onClick = { onChange(settings.copy(penSize = 5f, penOpacity = 1f, highlighterSize = 28f, highlighterOpacity = .35f, eraserSize = 24f)) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.RestartAlt, null); Spacer(Modifier.width(8.dp)); Text("Reset tool presets") } }
+                item { OutlinedButton(onClick = { onChange(settings.copy(penSize = 5f, penOpacity = 1f, highlighterSize = 28f, highlighterOpacity = .35f, eraserSize = 24f, eraserPreset = EraserPreset.NORMAL_FREE)) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.RestartAlt, null); Spacer(Modifier.width(8.dp)); Text("Reset tool presets") } }
                 item { Text("PEN BUTTONS", color = Sage, fontSize = 12.sp) }
                 item { StylusActionRow("Primary button", settings.stylusPrimaryButton) { onChange(settings.copy(stylusPrimaryButton = it)) } }
                 item { StylusActionRow("Secondary button", settings.stylusSecondaryButton) { onChange(settings.copy(stylusSecondaryButton = it)) } }

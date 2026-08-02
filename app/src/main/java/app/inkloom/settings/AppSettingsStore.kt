@@ -23,6 +23,7 @@ data class AppSettings(
     val highlighterSize: Float = 28f,
     val highlighterOpacity: Float = .35f,
     val eraserSize: Float = 24f,
+    val eraserPreset: EraserPreset = EraserPreset.NORMAL_FREE,
     val selectionShape: SelectionShape = SelectionShape.FREEFORM,
     val selectionMode: SelectionMode = SelectionMode.REPLACE,
     val selectionFilter: SelectionFilter = SelectionFilter.ALL,
@@ -62,6 +63,7 @@ class AppSettingsStore(context: Context) {
             highlighterSize = preferences.getFloat("highlighterSize", 28f).coerceIn(.5f, 400f),
             highlighterOpacity = preferences.getFloat("highlighterOpacity", .35f).coerceIn(.05f, 1f),
             eraserSize = preferences.getFloat("eraserSize", 24f).coerceIn(.5f, 400f),
+            eraserPreset = enumValue(preferences.getString("eraserPreset", null), EraserPreset.NORMAL_FREE),
             selectionShape = enumValue(preferences.getString("selectionShape", null), SelectionShape.FREEFORM),
             selectionMode = enumValue(preferences.getString("selectionMode", null), SelectionMode.REPLACE),
             selectionFilter = enumValue(preferences.getString("selectionFilter", null), SelectionFilter.ALL),
@@ -91,6 +93,7 @@ class AppSettingsStore(context: Context) {
             .putFloat("highlighterSize", value.highlighterSize)
             .putFloat("highlighterOpacity", value.highlighterOpacity)
             .putFloat("eraserSize", value.eraserSize)
+            .putString("eraserPreset", value.eraserPreset.name)
             .putString("selectionShape", value.selectionShape.name)
             .putString("selectionMode", value.selectionMode.name)
             .putString("selectionFilter", value.selectionFilter.name)
