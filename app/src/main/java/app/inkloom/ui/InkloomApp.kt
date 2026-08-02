@@ -472,6 +472,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onToggleLayerVisibility = viewModel::toggleLayerVisibility,
             onToggleLayerLock = viewModel::toggleLayerLock,
             onSetLayerOpacity = viewModel::setLayerOpacity,
+            onSetLayerBlendMode = viewModel::setLayerBlendMode,
             onMoveLayer = viewModel::moveLayer,
             onDuplicateLayer = viewModel::duplicateLayer,
             onMergeLayerDown = viewModel::mergeLayerDown,
@@ -742,6 +743,7 @@ private fun EditorScreen(
     onToggleLayerVisibility: (String, String, String) -> Unit,
     onToggleLayerLock: (String, String, String) -> Unit,
     onSetLayerOpacity: (String, String, String, Float) -> Unit,
+    onSetLayerBlendMode: (String, String, String, LayerBlendMode) -> Unit,
     onMoveLayer: (String, String, String, Int) -> Unit,
     onDuplicateLayer: (String, String, String) -> String?,
     onMergeLayerDown: (String, String, String) -> String?,
@@ -899,6 +901,7 @@ private fun EditorScreen(
                 onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
                 onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
                 onOpacity = { layerId, value -> onSetLayerOpacity(document.id, selectedPage.id, layerId, value) },
+                onBlendMode = { layerId, mode -> onSetLayerBlendMode(document.id, selectedPage.id, layerId, mode) },
                 onMove = { layerId, delta -> onMoveLayer(document.id, selectedPage.id, layerId, delta) },
                 onDuplicate = { layerId -> onDuplicateLayer(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
                 onMergeDown = { layerId -> onMergeLayerDown(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
@@ -1163,6 +1166,7 @@ private fun EditorScreen(
                 onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
                 onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
                 onOpacity = { layerId, value -> onSetLayerOpacity(document.id, selectedPage.id, layerId, value) },
+                onBlendMode = { layerId, mode -> onSetLayerBlendMode(document.id, selectedPage.id, layerId, mode) },
                 onMove = { layerId, delta -> onMoveLayer(document.id, selectedPage.id, layerId, delta) },
                 onDuplicate = { layerId -> onDuplicateLayer(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
                 onMergeDown = { layerId -> onMergeLayerDown(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
@@ -1452,6 +1456,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
     val visibleLayerIds = page.layers.filter { it.visible }.mapTo(mutableSetOf()) { it.id }
     val lockedLayerIds = page.layers.filter { it.locked }.mapTo(mutableSetOf()) { it.id }
     val layerOpacities = page.layers.associate { it.id to it.opacity }
+    val layerBlendModes = page.layers.associate { it.id to it.blendMode }
     val layerOrder = page.layers.mapIndexed { index, layer -> layer.id to index }.toMap()
     BoxWithConstraints(modifier.shadow(3.dp, RoundedCornerShape(4.dp)).background(paperColor).padding(48.dp)) {
         val density = LocalDensity.current
@@ -1502,6 +1507,9 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.setPageBackground(background)
                 view.activeLayerId = activeLayerId
                 view.layerOpacities = layerOpacities
+                view.layerBlendModes = layerBlendModes
+                view.pagePaperColor = if (renderedPage.background is PageBackground.Paper) (if (backgroundVisible) renderedPage.background.colorArgb.toInt() else AndroidColor.WHITE) else null
+                view.pagePaperPattern = (renderedPage.background as? PageBackground.Paper)?.pattern?.takeIf { backgroundVisible }
                 view.shapeKind = shapeKind
                 view.pageModelWidth = renderedPage.width
                 view.pageModelHeight = renderedPage.height
@@ -2349,6 +2357,7 @@ private fun LayerPanel(
     onVisibility: (String) -> Unit,
     onLock: (String) -> Unit,
     onOpacity: (String, Float) -> Unit,
+    onBlendMode: (String, LayerBlendMode) -> Unit,
     onMove: (String, Int) -> Unit,
     onDuplicate: (String) -> Unit,
     onMergeDown: (String) -> Unit,
@@ -2383,6 +2392,23 @@ private fun LayerPanel(
                 Text("${(activeLayer.opacity * 100f).toInt()}%", color = MutedInk, fontSize = 11.sp)
             }
             Slider(activeLayer.opacity, { onOpacity(activeLayer.id, it) }, valueRange = 0f..1f)
+            Text(tr("Blend mode", "混合模式"), color = MutedInk, fontSize = 11.sp)
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp), contentPadding = PaddingValues(vertical = 4.dp)) {
+                LayerBlendMode.entries.forEach { mode ->
+                    item(mode.name) {
+                        FilterChip(
+                            selected = activeLayer.blendMode == mode,
+                            onClick = { onBlendMode(activeLayer.id, mode) },
+                            label = { Text(when (mode) {
+                                LayerBlendMode.NORMAL -> tr("Normal", "正常")
+                                LayerBlendMode.MULTIPLY -> tr("Multiply", "正片叠底")
+                                LayerBlendMode.SCREEN -> tr("Screen", "滤色")
+                                LayerBlendMode.ADD -> tr("Add", "添加")
+                            }, fontSize = 10.sp) },
+                        )
+                    }
+                }
+            }
         }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(7.dp)) {
             items(page.layers.asReversed(), key = { it.id }) { layer ->

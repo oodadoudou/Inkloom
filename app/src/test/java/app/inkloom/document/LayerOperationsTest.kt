@@ -77,6 +77,7 @@ class LayerOperationsTest {
         assertTrue(LayerOperations.canMergeDown(page, upper.id))
         assertFalse(LayerOperations.canMergeDown(page.copy(layers = page.layers.map { if (it.id == lower.id) it.copy(locked = true) else it }), upper.id))
         assertFalse(LayerOperations.canMergeDown(page.copy(layers = page.layers.map { if (it.id == upper.id) it.copy(visible = false) else it }), upper.id))
+        assertFalse(LayerOperations.canMergeDown(page.copy(layers = page.layers.map { if (it.id == upper.id) it.copy(blendMode = LayerBlendMode.MULTIPLY) else it }), upper.id))
         assertFalse(LayerOperations.canMergeDown(InkPage(), LayerIds.INK))
         assertNull(LayerOperations.mergeDown(page.copy(layers = page.layers.map { if (it.id == upper.id) it.copy(locked = true) else it }), upper.id))
     }

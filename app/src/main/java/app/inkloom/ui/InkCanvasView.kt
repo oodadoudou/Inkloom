@@ -36,6 +36,8 @@ import app.inkloom.document.BrushTaperMode
 import app.inkloom.document.GrainBehavior
 import app.inkloom.document.LassoGeometry
 import app.inkloom.document.LassoSelectionPolicy
+import app.inkloom.document.LayerBlendMode
+import app.inkloom.document.PaperPattern
 import app.inkloom.document.PressureCalibration
 import app.inkloom.document.PageElement
 import app.inkloom.document.PdfGotoLink
@@ -140,6 +142,17 @@ class InkCanvasView(context: Context) : View(context) {
                 resetStrokeTiles()
             }
         }
+    var layerBlendModes: Map<String, LayerBlendMode> = emptyMap()
+        set(value) {
+            if (field != value) {
+                field = value
+                resetStrokeTiles()
+            }
+        }
+    var pagePaperColor: Int? = null
+        set(value) { if (field != value) { field = value; invalidate() } }
+    var pagePaperPattern: PaperPattern? = null
+        set(value) { if (field != value) { field = value; invalidate() } }
     var tipAssetPath: String? = null
     var tipAssetPaths: List<String> = emptyList()
     var dualTipAssetPaths: List<String> = emptyList()
@@ -352,7 +365,8 @@ class InkCanvasView(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         backgroundBitmap?.let { bitmap -> backgroundDestination.set(0, 0, width, height); canvas.drawBitmap(bitmap, null, backgroundDestination, null) }
-        if (!drawStrokeTiles(canvas)) strokes.forEach { drawStroke(canvas, it) }
+            ?: pagePaperColor?.let { color -> canvas.drawColor(color); pagePaperPattern?.let { drawPaperPattern(canvas, it) } }
+        if (!drawStrokeTiles(canvas)) drawLayeredStrokes(canvas, strokes)
         var selectionLeft = Float.POSITIVE_INFINITY
         var selectionTop = Float.POSITIVE_INFINITY
         var selectionRight = Float.NEGATIVE_INFINITY
@@ -376,7 +390,7 @@ class InkCanvasView(context: Context) : View(context) {
             canvas.drawPath(lassoPath, paint)
         }
         drawShapePreview(canvas)
-        if (currentPoints.isNotEmpty()) drawStroke(canvas, makeStroke(currentPoints))
+        if (currentPoints.isNotEmpty()) drawLayeredStrokes(canvas, listOf(makeStroke(currentPoints)))
     }
 
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
@@ -391,6 +405,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun drawStrokeTiles(canvas: Canvas): Boolean {
+        if (layerBlendModes.values.any { it != LayerBlendMode.NORMAL }) return false
         if (width <= 0 || height <= 0 || width.toLong() * height.toLong() > MAX_CACHE_PIXELS) return false
         if (strokeTileIndex.widthPx != width || strokeTileIndex.heightPx != height) resetStrokeTiles()
         val keys = strokeTileIndex.allTiles()
@@ -417,12 +432,9 @@ class InkCanvasView(context: Context) : View(context) {
                 tileCanvas.translate(-rect.left.toFloat(), -rect.top.toFloat())
                 val candidateIds = strokeTileIndex.candidates(key)
                 var renderedStrokeCount = 0
-                strokes.forEach { stroke ->
-                    if (stroke.id in candidateIds) {
-                        drawStroke(tileCanvas, stroke)
-                        renderedStrokeCount++
-                    }
-                }
+                val candidates = strokes.filter { it.id in candidateIds }
+                drawLayeredStrokes(tileCanvas, candidates)
+                renderedStrokeCount = candidates.size
                 dirtyStrokeTiles.remove(key)
                 onTileRendered?.invoke(key, renderedStrokeCount)
             }
@@ -454,17 +466,48 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
+    private fun drawLayeredStrokes(canvas: Canvas, value: List<InkStroke>) {
+        value.groupBy(InkStroke::layerId).forEach { (layerId, layerStrokes) ->
+            val opacity = (layerOpacities[layerId] ?: 1f).coerceIn(0f, 1f)
+            if (opacity <= 0f) return@forEach
+            val blendMode = layerBlendModes[layerId] ?: LayerBlendMode.NORMAL
+            val needsLayer = opacity < .999f || blendMode != LayerBlendMode.NORMAL
+            val checkpoint = if (needsLayer) {
+                canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    alpha = (opacity * 255f).toInt().coerceIn(0, 255)
+                    this.blendMode = when (blendMode) {
+                        LayerBlendMode.NORMAL -> android.graphics.BlendMode.SRC_OVER
+                        LayerBlendMode.MULTIPLY -> android.graphics.BlendMode.MULTIPLY
+                        LayerBlendMode.SCREEN -> android.graphics.BlendMode.SCREEN
+                        LayerBlendMode.ADD -> android.graphics.BlendMode.PLUS
+                    }
+                })
+            } else null
+            layerStrokes.forEach { drawStroke(canvas, it) }
+            checkpoint?.let(canvas::restoreToCount)
+        }
+    }
+
     private fun drawStroke(canvas: Canvas, stroke: InkStroke) {
-        val layerOpacity = layerOpacities[stroke.layerId] ?: 1f
-        val renderedStroke = if (layerOpacity < .999f) stroke.copy(opacity = stroke.opacity * layerOpacity) else stroke
-        if (renderedStroke.masks.isEmpty()) {
-            drawStrokeContent(canvas, renderedStroke)
+        if (stroke.masks.isEmpty()) {
+            drawStrokeContent(canvas, stroke)
             return
         }
         val checkpoint = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null)
-        drawStrokeContent(canvas, renderedStroke)
-        StrokeMaskRenderer.draw(canvas, paint, renderedStroke.masks, width, height)
+        drawStrokeContent(canvas, stroke)
+        StrokeMaskRenderer.draw(canvas, paint, stroke.masks, width, height)
         canvas.restoreToCount(checkpoint)
+    }
+
+    private fun drawPaperPattern(canvas: Canvas, pattern: PaperPattern) {
+        val guide = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(227, 227, 227); strokeWidth = 1.5f; style = Paint.Style.STROKE }
+        when (pattern) {
+            PaperPattern.PLAIN -> Unit
+            PaperPattern.RULED -> { var y = 36f; while (y < height) { canvas.drawLine(0f, y, width.toFloat(), y, guide); y += 36f } }
+            PaperPattern.GRID -> { var x = 0f; while (x < width) { canvas.drawLine(x, 0f, x, height.toFloat(), guide); x += 32f }; var y = 0f; while (y < height) { canvas.drawLine(0f, y, width.toFloat(), y, guide); y += 32f } }
+            PaperPattern.DOT -> { guide.style = Paint.Style.FILL; guide.color = Color.rgb(217, 217, 217); var x = 8f; while (x < width) { var y = 8f; while (y < height) { canvas.drawCircle(x, y, 1.4f, guide); y += 28f }; x += 28f } }
+            PaperPattern.CORNELL -> { val cueX = width * .28f; val summaryY = height * .78f; guide.color = Color.rgb(212, 212, 212); canvas.drawLine(cueX, 0f, cueX, summaryY, guide); canvas.drawLine(0f, summaryY, width.toFloat(), summaryY, guide); guide.color = Color.rgb(231, 231, 231); var y = 36f; while (y < summaryY) { canvas.drawLine(cueX, y, width.toFloat(), y, guide); y += 36f }; y = summaryY + 36f; while (y < height) { canvas.drawLine(0f, y, width.toFloat(), y, guide); y += 36f } }
+        }
     }
 
     private fun drawStrokeContent(canvas: Canvas, stroke: InkStroke) {

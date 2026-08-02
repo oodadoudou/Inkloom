@@ -89,6 +89,9 @@ object LayerIds {
 enum class LayerRole { BACKGROUND, INK, HIGHLIGHT, OBJECTS, CUSTOM }
 
 @Serializable
+enum class LayerBlendMode { NORMAL, MULTIPLY, SCREEN, ADD }
+
+@Serializable
 data class InkLayer(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
@@ -96,6 +99,7 @@ data class InkLayer(
     val visible: Boolean = true,
     val locked: Boolean = false,
     val opacity: Float = 1f,
+    val blendMode: LayerBlendMode = LayerBlendMode.NORMAL,
 )
 
 fun defaultInkLayers(): List<InkLayer> = listOf(

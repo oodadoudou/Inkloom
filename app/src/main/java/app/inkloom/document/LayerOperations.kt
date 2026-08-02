@@ -49,7 +49,9 @@ object LayerOperations {
         return source.role != LayerRole.BACKGROUND &&
             target.role != LayerRole.BACKGROUND &&
             !source.locked && !target.locked &&
-            source.visible == target.visible
+            source.visible == target.visible &&
+            source.blendMode == LayerBlendMode.NORMAL &&
+            target.blendMode == LayerBlendMode.NORMAL
     }
 
     fun mergeDown(page: InkPage, sourceLayerId: String): LayerMutation? {
