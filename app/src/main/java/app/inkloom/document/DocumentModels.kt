@@ -9,7 +9,7 @@ data class InkDocument(
     val id: String = UUID.randomUUID().toString(),
     val title: String,
     val folderId: String? = null,
-    val coverArgb: Long = 0xFFA9C5B9,
+    val coverArgb: Long = 0xFF202020,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
     val favorite: Boolean = false,
@@ -75,7 +75,7 @@ fun defaultInkLayers(): List<InkLayer> = listOf(
 @Serializable
 sealed interface PageBackground {
     @Serializable @SerialName("paper")
-    data class Paper(val colorArgb: Long = 0xFFF7F3EA, val pattern: PaperPattern = PaperPattern.PLAIN) : PageBackground
+    data class Paper(val colorArgb: Long = 0xFFFFFFFF, val pattern: PaperPattern = PaperPattern.PLAIN) : PageBackground
     @Serializable @SerialName("pdf")
     data class Pdf(val assetPath: String, val pageIndex: Int) : PageBackground
     @Serializable @SerialName("image")
@@ -106,7 +106,7 @@ data class BrushSecondaryDynamics(
 data class InkStroke(
     val id: String = UUID.randomUUID().toString(),
     val points: List<StrokePoint>,
-    val colorArgb: Long = 0xFF303D38,
+    val colorArgb: Long = 0xFF111111,
     val width: Float = 5f,
     val opacity: Float = 1f,
     val brushId: String = "system-pencil",
@@ -215,13 +215,13 @@ sealed interface PageElement {
     val layerId: String
 
     @Serializable @SerialName("text")
-    data class Text(override val id: String = UUID.randomUUID().toString(), override val x: Float, override val y: Float, override val width: Float = 600f, override val height: Float = 120f, override val rotationDegrees: Float = 0f, override val opacity: Float = 1f, override val layerId: String = LayerIds.OBJECTS, val text: String, val colorArgb: Long = 0xFF303D38, val textSize: Float = 42f, val bold: Boolean = false, val italic: Boolean = false, val underline: Boolean = false, val alignment: InkTextAlignment = InkTextAlignment.START, val listStyle: TextListStyle = TextListStyle.NONE, val lineSpacing: Float = 1.2f) : PageElement
+    data class Text(override val id: String = UUID.randomUUID().toString(), override val x: Float, override val y: Float, override val width: Float = 600f, override val height: Float = 120f, override val rotationDegrees: Float = 0f, override val opacity: Float = 1f, override val layerId: String = LayerIds.OBJECTS, val text: String, val colorArgb: Long = 0xFF111111, val textSize: Float = 42f, val bold: Boolean = false, val italic: Boolean = false, val underline: Boolean = false, val alignment: InkTextAlignment = InkTextAlignment.START, val listStyle: TextListStyle = TextListStyle.NONE, val lineSpacing: Float = 1.2f) : PageElement
 
     @Serializable @SerialName("sticky")
-    data class Sticky(override val id: String = UUID.randomUUID().toString(), override val x: Float, override val y: Float, override val width: Float = 360f, override val height: Float = 260f, override val rotationDegrees: Float = 0f, override val opacity: Float = 1f, override val layerId: String = LayerIds.OBJECTS, val text: String, val colorArgb: Long = 0xFFFFE7A8, val collapsed: Boolean = false) : PageElement
+    data class Sticky(override val id: String = UUID.randomUUID().toString(), override val x: Float, override val y: Float, override val width: Float = 360f, override val height: Float = 260f, override val rotationDegrees: Float = 0f, override val opacity: Float = 1f, override val layerId: String = LayerIds.OBJECTS, val text: String, val colorArgb: Long = 0xFFE5E5E5, val collapsed: Boolean = false) : PageElement
 
     @Serializable @SerialName("shape")
-    data class Shape(override val id: String = UUID.randomUUID().toString(), override val x: Float, override val y: Float, override val width: Float, override val height: Float, override val rotationDegrees: Float = 0f, override val opacity: Float = 1f, override val layerId: String = LayerIds.OBJECTS, val kind: ShapeKind = ShapeKind.RECTANGLE, val colorArgb: Long = 0xFF303D38, val fillArgb: Long? = null, val strokeWidth: Float = 5f) : PageElement
+    data class Shape(override val id: String = UUID.randomUUID().toString(), override val x: Float, override val y: Float, override val width: Float, override val height: Float, override val rotationDegrees: Float = 0f, override val opacity: Float = 1f, override val layerId: String = LayerIds.OBJECTS, val kind: ShapeKind = ShapeKind.RECTANGLE, val colorArgb: Long = 0xFF111111, val fillArgb: Long? = null, val strokeWidth: Float = 5f) : PageElement
 
     @Serializable @SerialName("image")
     data class Image(override val id: String = UUID.randomUUID().toString(), override val x: Float, override val y: Float, override val width: Float, override val height: Float, override val rotationDegrees: Float = 0f, override val opacity: Float = 1f, override val layerId: String = LayerIds.OBJECTS, val assetPath: String, val crop: ImageCrop = ImageCrop(), val mask: ImageMask = ImageMask.RECTANGLE, val cornerRadius: Float = 24f) : PageElement

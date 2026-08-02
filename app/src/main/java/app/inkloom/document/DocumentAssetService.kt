@@ -41,7 +41,7 @@ class DocumentAssetService(private val context: Context) {
         }
         renderer.close(); descriptor.close()
         require(pages.isNotEmpty()) { "PDF contains no pages" }
-        return InkDocument(title = title.substringBeforeLast('.').ifBlank { "Imported PDF" }, coverArgb = 0xFFD39C98, pages = pages)
+        return InkDocument(title = title.substringBeforeLast('.').ifBlank { "Imported PDF" }, coverArgb = 0xFF707070, pages = pages)
     }
 
     fun importImage(uri: Uri, title: String): InkDocument {
@@ -303,7 +303,7 @@ class DocumentAssetService(private val context: Context) {
                     }
                     canvas.drawBitmap(bitmap, null, destination, paint); canvas.restore(); bitmap.recycle()
                 }
-                is PageElement.AudioMarker -> { paint.style = Paint.Style.FILL; paint.color = 0xFFEDE7F6.toInt(); canvas.drawRoundRect(left, top, right, bottom, 18f, 18f, paint); paint.color = 0xFF332D41.toInt(); paint.textSize = 28f; canvas.drawText("Audio · ${formatDuration(element.durationMs)}", left + 20, top + 42, paint); paint.textSize = 22f; canvas.drawText(element.title, left + 20, top + 76, paint) }
+                is PageElement.AudioMarker -> { paint.style = Paint.Style.FILL; paint.color = 0xFFE7E7E7.toInt(); canvas.drawRoundRect(left, top, right, bottom, 18f, 18f, paint); paint.color = 0xFF111111.toInt(); paint.textSize = 28f; canvas.drawText("Audio · ${formatDuration(element.durationMs)}", left + 20, top + 42, paint); paint.textSize = 22f; canvas.drawText(element.title, left + 20, top + 76, paint) }
             }
             canvas.restore()
         }

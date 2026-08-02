@@ -438,7 +438,7 @@ private fun EditorScreen(
     var activeBrush by remember { mutableStateOf<ImportedBrush?>(null) }
     var brushSize by remember { mutableFloatStateOf(settings.penSize) }
     var brushOpacity by remember { mutableFloatStateOf(settings.penOpacity) }
-    var brushColor by remember { mutableIntStateOf(AndroidColor.rgb(43, 39, 51)) }
+    var brushColor by remember { mutableIntStateOf(AndroidColor.rgb(17, 17, 17)) }
     var exportMenu by remember { mutableStateOf(false) }
     var zoom by remember { mutableFloatStateOf(1f) }
     var panX by remember { mutableFloatStateOf(0f) }
@@ -585,7 +585,7 @@ private fun EditorScreen(
                         else -> Unit
                     }
                 }, onColor = { brushColor = it }, modifier = Modifier.align(dockAlignment).padding(dockPadding).graphicsLayer(translationX = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { toolbarX.dp.toPx() } else 0f, translationY = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { toolbarY.dp.toPx() } else 0f))
-                if (settings.showInputDiagnostics) Surface(Modifier.align(Alignment.BottomCenter).padding(12.dp), shape = RoundedCornerShape(20.dp), color = Color(0xE624212A)) { Text(inputDiagnostic, Modifier.padding(horizontal = 14.dp, vertical = 7.dp), color = Color.White, fontSize = 11.sp) }
+                if (settings.showInputDiagnostics) Surface(Modifier.align(Alignment.BottomCenter).padding(12.dp), shape = RoundedCornerShape(20.dp), color = Color(0xE6111111)) { Text(inputDiagnostic, Modifier.padding(horizontal = 14.dp, vertical = 7.dp), color = Color.White, fontSize = 11.sp) }
             }
             if (layersOpen) LayerPanel(
                 page = selectedPage,
@@ -609,9 +609,9 @@ private fun EditorScreen(
                     brushSize = usedBrush.defaultSize
                     brushOpacity = usedBrush.defaultOpacity
                     brushColor = when (usedBrush.format) {
-                        BrushFormat.ABR -> AndroidColor.rgb(74, 58, 112)
-                        BrushFormat.SUT -> AndroidColor.rgb(43, 39, 51)
-                        else -> AndroidColor.rgb(43, 39, 51)
+                        BrushFormat.ABR -> AndroidColor.rgb(17, 17, 17)
+                        BrushFormat.SUT -> AndroidColor.rgb(17, 17, 17)
+                        else -> AndroidColor.rgb(17, 17, 17)
                     }
                     tool = EditorTool.PEN
                     canvasView?.apply {
@@ -806,9 +806,9 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
             Text("Inkloom local document", color = MutedInk, modifier = Modifier.padding(top = 8.dp, bottom = 24.dp))
             when (renderedPage.background.pattern) {
                 PaperPattern.PLAIN -> Unit
-                PaperPattern.RULED -> repeat(8) { HorizontalDivider(color = Color(0xFFE9EFEC), modifier = Modifier.padding(vertical = 12.dp)) }
-                PaperPattern.GRID -> Canvas(Modifier.fillMaxSize()) { var x = 0f; while (x < size.width) { drawLine(Color(0xFFE9EFEC), Offset(x, 0f), Offset(x, size.height)); x += 32f }; var y = 0f; while (y < size.height) { drawLine(Color(0xFFE9EFEC), Offset(0f, y), Offset(size.width, y)); y += 32f } }
-                PaperPattern.DOT -> Canvas(Modifier.fillMaxSize()) { var x = 8f; while (x < size.width) { var y = 8f; while (y < size.height) { drawCircle(Color(0xFFDDE5E1), 1.4f, Offset(x, y)); y += 28f }; x += 28f } }
+                PaperPattern.RULED -> repeat(8) { HorizontalDivider(color = Color(0xFFE3E3E3), modifier = Modifier.padding(vertical = 12.dp)) }
+                PaperPattern.GRID -> Canvas(Modifier.fillMaxSize()) { var x = 0f; while (x < size.width) { drawLine(Color(0xFFE3E3E3), Offset(x, 0f), Offset(x, size.height)); x += 32f }; var y = 0f; while (y < size.height) { drawLine(Color(0xFFE3E3E3), Offset(0f, y), Offset(size.width, y)); y += 32f } }
+                PaperPattern.DOT -> Canvas(Modifier.fillMaxSize()) { var x = 8f; while (x < size.width) { var y = 8f; while (y < size.height) { drawCircle(Color(0xFFD9D9D9), 1.4f, Offset(x, y)); y += 28f }; x += 28f } }
             }
         }
         AndroidView(
@@ -1046,7 +1046,7 @@ private fun ObjectElementView(
                 if (bitmap != null) androidx.compose.foundation.Image(bitmap.asImageBitmap(), "Page image", Modifier.fillMaxSize().then(maskModifier), contentScale = ContentScale.Crop)
                 else Box(Modifier.fillMaxSize().background(Workspace), contentAlignment = Alignment.Center) { Text("Image unavailable", color = MutedInk, fontSize = 11.sp) }
             }
-            is PageElement.AudioMarker -> Card(Modifier.fillMaxSize(), colors = CardDefaults.cardColors(containerColor = Color(0xFFEDE7F6))) {
+            is PageElement.AudioMarker -> Card(Modifier.fillMaxSize(), colors = CardDefaults.cardColors(containerColor = Color(0xFFE7E7E7))) {
                 Row(Modifier.fillMaxSize().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { playAudio(element.assetPath) }) { Icon(Icons.Default.PlayArrow, "Play audio") }
                     Column(Modifier.weight(1f)) { Text(element.title, maxLines = 1); Text("Audio · ${formatDuration(element.durationMs)}", color = MutedInk, fontSize = 11.sp) }
@@ -1093,7 +1093,7 @@ private fun ElementEditorDialog(element: PageElement, onDismiss: () -> Unit, onS
                 is PageElement.Shape -> {
                     item { LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { ShapeKind.entries.forEach { kind -> item { FilterChip(selected = current.kind == kind, onClick = { draft = current.copy(kind = kind) }, label = { Text(kind.name.lowercase().replaceFirstChar(Char::uppercase)) }) } } } }
                     item { BrushSettingSlider("Stroke width", current.strokeWidth, 1f..40f) { draft = current.copy(strokeWidth = it) } }
-                    item { SettingSwitch("Fill", "Adds a translucent shape fill.", current.fillArgb != null) { draft = current.copy(fillArgb = if (it) 0x336750A4 else null) } }
+                    item { SettingSwitch("Fill", "Adds a translucent shape fill.", current.fillArgb != null) { draft = current.copy(fillArgb = if (it) 0x33111111 else null) } }
                     item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text("Stroke color", Modifier.weight(1f)); BrushColorPicker(current.colorArgb.toInt()) { draft = current.copy(colorArgb = it.toUInt().toLong()) } } }
                 }
                 is PageElement.Image -> {
@@ -1279,7 +1279,7 @@ private fun LayerPanel(
 ) {
     var renameLayer by remember { mutableStateOf<InkLayer?>(null) }
     var renameValue by remember { mutableStateOf("") }
-    Column(Modifier.width(300.dp).fillMaxHeight().background(Color(0xFFF9F7FC)).padding(12.dp)) {
+    Column(Modifier.width(300.dp).fillMaxHeight().background(Color(0xFFF7F7F7)).padding(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Layers", fontSize = 20.sp)
@@ -1353,7 +1353,7 @@ private fun BrushPanel(
     val visibleBrushes = brushes.filter { brush ->
         (showHidden || !brush.hidden) && (!favoritesOnly || brush.favorite) && (format == null || brush.format == format) && (search.isBlank() || brush.name.contains(search, true) || brush.tags.any { it.contains(search, true) })
     }.sortedWith(compareByDescending<ImportedBrush> { it.favorite }.thenByDescending { it.lastUsedAt }.thenBy { it.name.lowercase() })
-    Column(Modifier.width(330.dp).fillMaxHeight().background(Color(0xFFF9F7FC)).padding(12.dp)) {
+    Column(Modifier.width(330.dp).fillMaxHeight().background(Color(0xFFF7F7F7)).padding(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) { Text("Brush Library", fontSize = 20.sp, modifier = Modifier.weight(1f)); IconButton(onClick = onImportBrushes) { Icon(Icons.Outlined.Add, "Import") } }
         Text("Imported presets · compact view", fontSize = 11.sp, color = MutedInk)
         Spacer(Modifier.height(8.dp))

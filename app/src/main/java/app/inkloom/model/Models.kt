@@ -135,11 +135,11 @@ enum class EditorTool { PEN, HIGHLIGHTER, ERASER, SELECT, SHAPE, TEXT, NOTE, IMA
 
 object DemoContent {
     val notebooks = listOf(
-        Notebook(title = "Distributed Systems", subtitle = "Just edited · 18 pages", cover = Color(0xFFA9C5B9), pageCount = 18),
-        Notebook(title = "CS336 Reading Notes", subtitle = "Yesterday · 42 pages", cover = Color(0xFFAABCD5), pageCount = 42),
-        Notebook(title = "DSpark Paper", subtitle = "PDF · 16 annotations", cover = Color(0xFFD39C98), pageCount = 16, isPdf = true),
-        Notebook(title = "Human Anatomy", subtitle = "3 days ago · 12 pages", cover = Color(0xFFD9C39A), pageCount = 12),
-        Notebook(title = "Meeting Notes", subtitle = "Jul 30 · 8 pages", cover = Color(0xFFB6CFC4), pageCount = 8),
-        Notebook(title = "Swedish Vocab", subtitle = "Jul 28 · 24 pages", cover = Color(0xFFC4AECF), pageCount = 24),
+        Notebook(title = "Distributed Systems", subtitle = "Just edited · 18 pages", cover = Color(0xFF202020), pageCount = 18),
+        Notebook(title = "CS336 Reading Notes", subtitle = "Yesterday · 42 pages", cover = Color(0xFF4A4A4A), pageCount = 42),
+        Notebook(title = "DSpark Paper", subtitle = "PDF · 16 annotations", cover = Color(0xFF707070), pageCount = 16, isPdf = true),
+        Notebook(title = "Human Anatomy", subtitle = "3 days ago · 12 pages", cover = Color(0xFF929292), pageCount = 12),
+        Notebook(title = "Meeting Notes", subtitle = "Jul 30 · 8 pages", cover = Color(0xFFB5B5B5), pageCount = 8),
+        Notebook(title = "Swedish Vocab", subtitle = "Jul 28 · 24 pages", cover = Color(0xFFD0D0D0), pageCount = 24),
     )
 }
