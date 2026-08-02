@@ -55,6 +55,40 @@ class InkCanvasNavigationTest {
         assertEquals("The interrupted finger stroke must not leave ink", 0, committed)
     }
 
+    @Test fun optionalTwoFingerRotationUsesAStableAnchorWithoutCommittingInk() {
+        val view = canvas().apply {
+            tool = EditorTool.PEN
+            fingerDrawingEnabled = false
+            twoFingerRotationEnabled = true
+        }
+        var committed = 0
+        var rotation = 0f
+        view.onStrokeCommitted = { committed++ }
+        view.onViewportRotate = { rotation += it }
+
+        send(view, 0L, MotionEvent.ACTION_DOWN, point(0, 100f, 100f))
+        send(view, 10L, MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), point(0, 100f, 100f), point(1, 300f, 100f))
+        send(view, 30L, MotionEvent.ACTION_MOVE, point(0, 200f, 0f), point(1, 200f, 200f))
+        send(view, 50L, MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), point(0, 200f, 0f), point(1, 200f, 200f))
+        send(view, 60L, MotionEvent.ACTION_MOVE, point(0, 230f, 30f))
+        send(view, 70L, MotionEvent.ACTION_UP, point(0, 230f, 30f))
+
+        assertEquals("Navigation gestures must never leave ink", 0, committed)
+        assertEquals(90f, rotation, .001f)
+    }
+
+    @Test fun twoFingerRotationDoesNothingWhenTheSettingIsOff() {
+        val view = canvas().apply { twoFingerRotationEnabled = false }
+        var rotation = 0f
+        view.onViewportRotate = { rotation += it }
+
+        send(view, 0L, MotionEvent.ACTION_DOWN, point(0, 100f, 100f))
+        send(view, 10L, MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), point(0, 100f, 100f), point(1, 300f, 100f))
+        send(view, 30L, MotionEvent.ACTION_MOVE, point(0, 200f, 0f), point(1, 200f, 200f))
+
+        assertEquals(0f, rotation, .001f)
+    }
+
     @Test fun holdShortcutEmitsPressAndReleaseForTemporaryToolSwitching() {
         val view = canvas().apply {
             shortcutBindings = listOf(ShortcutBinding(ShortcutAction.TOGGLE_ERASER, ShortcutChord(KeyEvent.KEYCODE_E), ShortcutTrigger.HOLD))

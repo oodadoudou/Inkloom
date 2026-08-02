@@ -58,6 +58,7 @@ import app.inkloom.document.StrokeTileIndex
 import app.inkloom.document.StrokeTileKey
 import app.inkloom.document.StylusInputClassifier
 import app.inkloom.document.TwoFingerTapUndoGesture
+import app.inkloom.document.TwoPointerRotationGesture
 import app.inkloom.document.ViewportTransform
 import app.inkloom.document.WaterEdge
 import app.inkloom.document.WetMixDynamics
@@ -108,6 +109,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var navigationTapEligible = false
     private val navigationTouchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
     private val twoFingerTapUndoGesture = TwoFingerTapUndoGesture(navigationTouchSlop)
+    private val twoPointerRotationGesture = TwoPointerRotationGesture()
     private var activeTool: EditorTool? = null
     private var activeInputWasStylus = false
     private var lastStylusSeenAt = Long.MIN_VALUE
@@ -270,6 +272,7 @@ class InkCanvasView(context: Context) : View(context) {
     var eraserTipAssetPath: String? = null
     var fingerDrawingEnabled: Boolean = false
     var twoFingerDoubleTapUndo: Boolean = true
+    var twoFingerRotationEnabled: Boolean = false
     var pressureSensitivity: Float = 1f
     var pressureMinimumInput: Float = 0f
     var pressureMaximumInput: Float = 1f
@@ -721,6 +724,7 @@ class InkCanvasView(context: Context) : View(context) {
             scaleDetector.onTouchEvent(event)
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    twoPointerRotationGesture.reset()
                     navigationX = event.x; navigationY = event.y
                     navigationDownX = event.x; navigationDownY = event.y
                     navigationMoved = false
@@ -738,6 +742,9 @@ class InkCanvasView(context: Context) : View(context) {
                     val focus = event.centroid()
                     navigationX = focus.first
                     navigationY = focus.second
+                    if (twoFingerRotationEnabled && event.pointerCount == 2) {
+                        twoPointerRotationGesture.begin(event.getX(0), event.getY(0), event.getX(1), event.getY(1))
+                    } else twoPointerRotationGesture.reset()
                 }
                 MotionEvent.ACTION_POINTER_UP -> {
                     if (event.pointerCount == 2 && twoFingerDoubleTapUndo && twoFingerTapUndoGesture.finish(event.eventTime)) onUndoGesture()
@@ -749,10 +756,18 @@ class InkCanvasView(context: Context) : View(context) {
                     }
                     navigationMoved = true
                     navigationTapEligible = false
+                    twoPointerRotationGesture.reset()
                 }
                 MotionEvent.ACTION_MOVE -> if (event.pointerCount >= 2) {
                     val focus = event.centroid()
-                    twoFingerTapUndoGesture.move(focus.first, focus.second, scaleDetector.isInProgress)
+                    val rotationDelta = if (twoFingerRotationEnabled && event.pointerCount == 2) {
+                        twoPointerRotationGesture.update(event.getX(0), event.getY(0), event.getX(1), event.getY(1))
+                    } else {
+                        twoPointerRotationGesture.reset()
+                        null
+                    }
+                    rotationDelta?.let(onViewportRotate)
+                    twoFingerTapUndoGesture.move(focus.first, focus.second, scaleDetector.isInProgress || twoPointerRotationGesture.isRotating)
                     onViewportPan(focus.first - navigationX, focus.second - navigationY)
                     navigationX = focus.first; navigationY = focus.second
                     navigationMoved = true
@@ -766,6 +781,7 @@ class InkCanvasView(context: Context) : View(context) {
                     navigationX = event.x; navigationY = event.y
                 }
                 MotionEvent.ACTION_UP -> {
+                    twoPointerRotationGesture.reset()
                     val movedFromDown = navigationMoved || hypot(event.x - navigationDownX, event.y - navigationDownY) > navigationTouchSlop
                     if (navigationTapEligible && !movedFromDown && !scaleDetector.isInProgress) {
                         PdfGotoLinkNavigation.hit(
@@ -777,7 +793,7 @@ class InkCanvasView(context: Context) : View(context) {
                     }
                     navigationTapEligible = false
                 }
-                MotionEvent.ACTION_CANCEL -> { navigationTapEligible = false; twoFingerTapUndoGesture.cancel() }
+                MotionEvent.ACTION_CANCEL -> { navigationTapEligible = false; twoFingerTapUndoGesture.cancel(); twoPointerRotationGesture.reset() }
             }
             return true
         }

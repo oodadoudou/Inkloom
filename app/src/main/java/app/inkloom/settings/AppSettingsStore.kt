@@ -29,6 +29,7 @@ data class AppSettings(
     val verticalToolbar: Boolean = false,
     val toolbarDock: ToolbarDock = ToolbarDock.FREE,
     val twoFingerDoubleTapUndo: Boolean = true,
+    val twoFingerRotation: Boolean = false,
     val stylusPrimaryButton: StylusButtonAction = StylusButtonAction.ERASER,
     val stylusSecondaryButton: StylusButtonAction = StylusButtonAction.LASSO,
     val pressureSensitivity: Float = 1f,
@@ -90,6 +91,7 @@ class AppSettingsStore(context: Context) {
             verticalToolbar = preferences.getBoolean("verticalToolbar", false),
             toolbarDock = enumValue(preferences.getString("toolbarDock", null), ToolbarDock.FREE),
             twoFingerDoubleTapUndo = preferences.getBoolean("twoFingerDoubleTapUndo", true),
+            twoFingerRotation = preferences.getBoolean("twoFingerRotation", false),
             stylusPrimaryButton = enumValue(preferences.getString("stylusPrimaryButton", null), StylusButtonAction.ERASER),
             stylusSecondaryButton = enumValue(preferences.getString("stylusSecondaryButton", null), StylusButtonAction.LASSO),
             pressureSensitivity = preferences.getFloat("pressureSensitivity", 1f).coerceIn(.25f, 2.5f),
@@ -139,6 +141,7 @@ class AppSettingsStore(context: Context) {
             .putBoolean("verticalToolbar", value.verticalToolbar)
             .putString("toolbarDock", value.toolbarDock.name)
             .putBoolean("twoFingerDoubleTapUndo", value.twoFingerDoubleTapUndo)
+            .putBoolean("twoFingerRotation", value.twoFingerRotation)
             .putString("stylusPrimaryButton", value.stylusPrimaryButton.name)
             .putString("stylusSecondaryButton", value.stylusSecondaryButton.name)
             .putFloat("pressureSensitivity", value.pressureSensitivity)

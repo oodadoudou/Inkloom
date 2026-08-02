@@ -1904,6 +1904,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.pdfGotoLinks = renderedPage.pdfGotoLinks
                 view.onPdfGotoLink = onPdfGotoLink
                 view.onUndoGesture = onUndoGesture
+                view.twoFingerRotationEnabled = settings.twoFingerRotation
                 view.onInputDiagnostic = onInputDiagnostic
                 view.onKeyInputDiagnostic = onKeyInputDiagnostic
                 view.onShortcutAction = onShortcutAction
@@ -1938,6 +1939,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.pdfGotoLinks = renderedPage.pdfGotoLinks
                 view.onPdfGotoLink = onPdfGotoLink
                 view.onUndoGesture = onUndoGesture
+                view.twoFingerRotationEnabled = settings.twoFingerRotation
                 view.onInputDiagnostic = onInputDiagnostic
                 view.onKeyInputDiagnostic = onKeyInputDiagnostic
                 view.onShortcutAction = onShortcutAction
@@ -3526,6 +3528,7 @@ private fun SettingsDialog(
                 item { Text(tr("INPUT", "输入"), color = Sage, fontSize = 12.sp) }
                 item { SettingSwitch(tr("Draw with finger", "手指书写"), tr("Off by default. Fingers navigate and zoom.", "默认关闭；手指用于移动和缩放。"), settings.fingerDrawing) { onChange(settings.copy(fingerDrawing = it)) } }
                 item { SettingSwitch(tr("Two-finger double tap to undo", "双指双击撤销"), tr("Matches common notebook gestures.", "符合常见笔记应用手势。"), settings.twoFingerDoubleTapUndo) { onChange(settings.copy(twoFingerDoubleTapUndo = it)) } }
+                item { SettingSwitch(tr("Two-finger canvas rotation", "双指旋转画布"), tr("Off by default to prevent accidental rotation; R remains available.", "默认关闭以避免误旋转；仍可使用 R 快捷键。"), settings.twoFingerRotation) { onChange(settings.copy(twoFingerRotation = it)) } }
                 item { SettingSwitch(tr("Show input diagnostics", "显示输入诊断"), tr("Displays stylus data plus Toolbox key code, scan code, source and device identity.", "显示手写笔数据，以及 Toolbox 的按键码、扫描码、来源和设备标识。"), settings.showInputDiagnostics) { onChange(settings.copy(showInputDiagnostics = it)) } }
                 item { Text("${tr("Pressure sensitivity", "压感灵敏度")}  ${"%.2f".format(settings.pressureSensitivity)}×") }
                 item { Slider(settings.pressureSensitivity, { onChange(settings.copy(pressureSensitivity = it)) }, valueRange = .25f..2.5f) }
