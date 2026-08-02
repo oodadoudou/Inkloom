@@ -60,6 +60,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.inkloom.document.*
 import app.inkloom.importer.BrushImportRepository
+import app.inkloom.importer.BrushGroupOperations
 import app.inkloom.importer.BrushMetadataStore
 import app.inkloom.importer.BrushVersion
 import app.inkloom.importer.BrushVersionHistoryStore
@@ -80,6 +81,7 @@ import java.text.DateFormat
 import java.util.Date
 
 private enum class AppDestination { LIBRARY, EDITOR }
+private const val UNGROUPED_BRUSH_FILTER = "\u0000ungrouped"
 
 private fun List<ImportedBrush>.distinctImportedBrushes(): List<ImportedBrush> =
     associateBy { brush ->
@@ -1791,14 +1793,29 @@ private fun BrushPanel(
     var reportBrush by remember { mutableStateOf<ImportedBrush?>(null) }
     var editBrush by remember { mutableStateOf<ImportedBrush?>(null) }
     var historyBrush by remember { mutableStateOf<ImportedBrush?>(null) }
+    var moveBrush by remember { mutableStateOf<ImportedBrush?>(null) }
+    var manageGroups by remember { mutableStateOf(false) }
     var historyRevision by remember { mutableIntStateOf(0) }
     var search by remember { mutableStateOf("") }
     var format by remember { mutableStateOf<BrushFormat?>(null) }
     var favoritesOnly by remember { mutableStateOf(false) }
     var showHidden by remember { mutableStateOf(false) }
+    var selectedGroup by remember { mutableStateOf<String?>(null) }
+    val groups = BrushGroupOperations.names(brushes)
+    LaunchedEffect(groups, selectedGroup) {
+        if (selectedGroup != null && selectedGroup != UNGROUPED_BRUSH_FILTER && groups.none { it.equals(selectedGroup, true) }) selectedGroup = null
+    }
     val visibleBrushes = brushes.filter { brush ->
-        (showHidden || !brush.hidden) && (!favoritesOnly || brush.favorite) && (format == null || brush.format == format) && (search.isBlank() || brush.name.contains(search, true) || brush.tags.any { it.contains(search, true) })
+        val normalizedGroup = BrushGroupOperations.normalize(brush.groupName)
+        val groupMatches = when (selectedGroup) {
+            null -> true
+            UNGROUPED_BRUSH_FILTER -> normalizedGroup.isBlank()
+            else -> normalizedGroup.equals(selectedGroup, true)
+        }
+        (showHidden || !brush.hidden) && (!favoritesOnly || brush.favorite) && groupMatches && (format == null || brush.format == format) && (search.isBlank() || brush.name.contains(search, true) || normalizedGroup.contains(search, true) || brush.tags.any { it.contains(search, true) })
     }.sortedWith(compareByDescending<ImportedBrush> { it.favorite }.thenByDescending { it.lastUsedAt }.thenBy { it.name.lowercase() })
+    val brushSections = visibleBrushes.groupBy { BrushGroupOperations.normalize(it.groupName).ifBlank { "Ungrouped" } }
+        .toList().sortedWith(compareBy<Pair<String, List<ImportedBrush>>> { it.first == "Ungrouped" }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.first })
     Column(Modifier.width(330.dp).fillMaxHeight().background(Color(0xFFF7F7F7)).padding(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) { Text("Brush Library", fontSize = 20.sp, modifier = Modifier.weight(1f)); IconButton(onClick = onImportBrushes) { Icon(Icons.Outlined.Add, "Import") } }
         Text("Imported presets · compact view", fontSize = 11.sp, color = MutedInk)
@@ -1810,22 +1827,35 @@ private fun BrushPanel(
             item { FilterChip(selected = favoritesOnly, onClick = { favoritesOnly = !favoritesOnly }, label = { Text("Favorites") }, leadingIcon = { Icon(Icons.Outlined.Star, null, Modifier.size(16.dp)) }) }
             item { FilterChip(selected = showHidden, onClick = { showHidden = !showHidden }, label = { Text("Hidden") }) }
         }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("GROUPS", fontSize = 10.sp, color = MutedInk, modifier = Modifier.weight(1f))
+            IconButton(onClick = { manageGroups = true }, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.DriveFileRenameOutline, "Manage brush groups", Modifier.size(17.dp)) }
+        }
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(bottom = 6.dp)) {
+            item { FilterChip(selected = selectedGroup == null, onClick = { selectedGroup = null }, label = { Text("All") }) }
+            item { FilterChip(selected = selectedGroup == UNGROUPED_BRUSH_FILTER, onClick = { selectedGroup = UNGROUPED_BRUSH_FILTER }, label = { Text("Ungrouped") }) }
+            groups.forEach { group -> item(group) { FilterChip(selected = selectedGroup?.equals(group, true) == true, onClick = { selectedGroup = group }, label = { Text(group, maxLines = 1) }) } }
+        }
         if (brushes.isNotEmpty()) {
             Text("BRUSHES (${visibleBrushes.size}/${brushes.size})", fontSize = 11.sp, color = MutedInk)
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(visibleBrushes, key = { it.id }) { brush ->
-                    ImportedBrushRow(
-                        brush = brush,
-                        selected = brush.id == selectedBrushId,
-                        onSelect = { onBrushSelected(brush) },
-                        onReport = { reportBrush = brush },
-                        onEdit = { editBrush = brush },
-                        onHistory = { historyBrush = brush },
-                        onExport = { onExportBrush(brush) },
-                        onFavorite = { onUpdateBrush(brush.copy(favorite = !brush.favorite)) },
-                        onHide = { onUpdateBrush(brush.copy(hidden = !brush.hidden)) },
-                        onDelete = { historyStore.clear(brush.id); historyRevision++; onDeleteBrush(brush.id) },
-                    )
+                brushSections.forEach { (group, sectionBrushes) ->
+                    item("group:$group") { Text(group.uppercase(), color = MutedInk, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp, start = 2.dp)) }
+                    items(sectionBrushes, key = { it.id }) { brush ->
+                        ImportedBrushRow(
+                            brush = brush,
+                            selected = brush.id == selectedBrushId,
+                            onSelect = { onBrushSelected(brush) },
+                            onReport = { reportBrush = brush },
+                            onEdit = { editBrush = brush },
+                            onHistory = { historyBrush = brush },
+                            onMove = { moveBrush = brush },
+                            onExport = { onExportBrush(brush) },
+                            onFavorite = { onUpdateBrush(brush.copy(favorite = !brush.favorite)) },
+                            onHide = { onUpdateBrush(brush.copy(hidden = !brush.hidden)) },
+                            onDelete = { historyStore.clear(brush.id); historyRevision++; onDeleteBrush(brush.id) },
+                        )
+                    }
                 }
             }
         } else {
@@ -1883,6 +1913,33 @@ private fun BrushPanel(
             onDelete = { version -> historyStore.delete(version.versionId); historyRevision++ },
         )
     }
+    moveBrush?.let { selected ->
+        val current = brushes.firstOrNull { it.id == selected.id } ?: selected
+        BrushMoveToGroupDialog(
+            brush = current,
+            groups = groups,
+            onDismiss = { moveBrush = null },
+            onMove = { group ->
+                val updated = BrushGroupOperations.assign(current, group)
+                if (updated != current) onUpdateBrush(updated)
+                selectedGroup = updated.groupName.takeIf(String::isNotBlank) ?: UNGROUPED_BRUSH_FILTER
+                moveBrush = null
+            },
+        )
+    }
+    if (manageGroups) {
+        BrushGroupManagerDialog(
+            groups = groups,
+            onDismiss = { manageGroups = false },
+            onRename = { oldName, newName ->
+                val updated = BrushGroupOperations.rename(brushes, oldName, newName)
+                updated.zip(brushes).filter { (next, previous) -> next != previous }.forEach { (next, _) -> onUpdateBrush(next) }
+                val normalized = BrushGroupOperations.normalize(newName)
+                selectedGroup = normalized.takeIf(String::isNotBlank) ?: UNGROUPED_BRUSH_FILTER
+                manageGroups = false
+            },
+        )
+    }
 }
 
 @Composable
@@ -1891,6 +1948,67 @@ private fun BrushRow(name: String, color: Color, selected: Boolean) {
         Canvas(Modifier.width(52.dp).height(18.dp)) { drawLine(color, Offset(4f, size.height / 2), Offset(size.width - 4f, size.height / 2), strokeWidth = if (name.contains("Marker")) 9f else 3f, cap = StrokeCap.Round) }
         Spacer(Modifier.width(12.dp)); Text(name, color = if (selected) Sage else Ink)
     }
+}
+
+@Composable
+private fun BrushMoveToGroupDialog(brush: ImportedBrush, groups: List<String>, onDismiss: () -> Unit, onMove: (String) -> Unit) {
+    var groupName by remember(brush.id) { mutableStateOf(brush.groupName) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Move brush") },
+        text = {
+            Column(Modifier.widthIn(min = 320.dp, max = 440.dp)) {
+                Text(brush.name, fontSize = 13.sp)
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = groupName,
+                    onValueChange = { groupName = it.take(BrushGroupOperations.MAX_NAME_LENGTH) },
+                    label = { Text("Group") },
+                    supportingText = { Text("Enter a new name or choose an existing group") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (groups.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(top = 8.dp)) {
+                    groups.forEach { group -> item(group) { FilterChip(selected = groupName.equals(group, true), onClick = { groupName = group }, label = { Text(group, maxLines = 1) }) } }
+                }
+                TextButton(onClick = { onMove("") }) { Text("Move to Ungrouped") }
+            }
+        },
+        confirmButton = { Button(onClick = { onMove(groupName) }, enabled = BrushGroupOperations.normalize(groupName).isNotBlank()) { Text("Move") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun BrushGroupManagerDialog(groups: List<String>, onDismiss: () -> Unit, onRename: (String, String) -> Unit) {
+    var selected by remember(groups) { mutableStateOf(groups.firstOrNull().orEmpty()) }
+    var replacement by remember(selected) { mutableStateOf(selected) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Manage groups") },
+        text = {
+            Column(Modifier.widthIn(min = 320.dp, max = 440.dp)) {
+                if (groups.isEmpty()) {
+                    Text("No groups yet. Move a brush to a new group or enter a group in Brush Studio.", color = MutedInk)
+                } else {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(bottom = 8.dp)) {
+                        groups.forEach { group -> item(group) { FilterChip(selected = selected == group, onClick = { selected = group }, label = { Text(group, maxLines = 1) }) } }
+                    }
+                    OutlinedTextField(
+                        value = replacement,
+                        onValueChange = { replacement = it.take(BrushGroupOperations.MAX_NAME_LENGTH) },
+                        label = { Text("Rename selected group") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text("Renaming to an existing group merges both groups.", color = MutedInk, fontSize = 11.sp)
+                    TextButton(onClick = { onRename(selected, "") }) { Text("Remove group and keep brushes") }
+                }
+            }
+        },
+        confirmButton = { Button(onClick = { onRename(selected, replacement) }, enabled = selected.isNotBlank() && BrushGroupOperations.normalize(replacement).isNotBlank()) { Text("Rename") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+    )
 }
 
 @Composable
@@ -1945,7 +2063,7 @@ private fun BrushVersionHistoryDialog(
 private fun Float.oneDecimal(): String = String.format(java.util.Locale.ROOT, "%.1f", this)
 
 @Composable
-private fun ImportedBrushRow(brush: ImportedBrush, selected: Boolean, onSelect: () -> Unit, onReport: () -> Unit, onEdit: () -> Unit, onHistory: () -> Unit, onExport: () -> Unit, onFavorite: () -> Unit, onHide: () -> Unit, onDelete: () -> Unit) {
+private fun ImportedBrushRow(brush: ImportedBrush, selected: Boolean, onSelect: () -> Unit, onReport: () -> Unit, onEdit: () -> Unit, onHistory: () -> Unit, onMove: () -> Unit, onExport: () -> Unit, onFavorite: () -> Unit, onHide: () -> Unit, onDelete: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     Card(
         modifier = Modifier.clickable(onClick = onSelect),
@@ -1957,7 +2075,7 @@ private fun ImportedBrushRow(brush: ImportedBrush, selected: Boolean, onSelect: 
             Spacer(Modifier.width(9.dp))
             Column(Modifier.weight(1f)) {
                 Text(brush.name, maxLines = 1, fontSize = 13.sp)
-                Text("${brush.format.label} · ${brush.compatibility.label}", color = MutedInk, fontSize = 10.sp, maxLines = 1)
+                Text(listOf(brush.format.label, brush.groupName.takeIf(String::isNotBlank), brush.compatibility.label).filterNotNull().joinToString(" · "), color = MutedInk, fontSize = 10.sp, maxLines = 1)
                 Canvas(Modifier.fillMaxWidth().height(12.dp)) { drawLine(Sage, Offset(2f, size.height / 2), Offset(size.width - 2f, size.height / 2), strokeWidth = (brush.defaultSize / 8f).coerceIn(2f, 10f), cap = StrokeCap.Round) }
             }
             IconButton(onClick = onEdit, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.Tune, "Edit brush", modifier = Modifier.size(18.dp)) }
@@ -1967,6 +2085,7 @@ private fun ImportedBrushRow(brush: ImportedBrush, selected: Boolean, onSelect: 
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(text = { Text("Conversion report") }, onClick = { menu = false; onReport() })
                     DropdownMenuItem(text = { Text("Version history") }, onClick = { menu = false; onHistory() })
+                    DropdownMenuItem(text = { Text("Move to group") }, onClick = { menu = false; onMove() })
                     DropdownMenuItem(text = { Text("Export Inkloom preset") }, onClick = { menu = false; onExport() })
                     DropdownMenuItem(text = { Text(if (brush.hidden) "Unhide" else "Hide") }, onClick = { menu = false; onHide() })
                     DropdownMenuItem(text = { Text("Remove from library") }, onClick = { menu = false; onDelete() })
@@ -1995,6 +2114,7 @@ private fun BrushEditorDialog(brush: ImportedBrush, onDismiss: () -> Unit, onSav
         text = {
             LazyColumn(Modifier.widthIn(min = 360.dp, max = 520.dp).heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 item { OutlinedTextField(draft.name, { draft = draft.copy(name = it) }, label = { Text("Brush name") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(draft.groupName, { draft = draft.copy(groupName = it.take(BrushGroupOperations.MAX_NAME_LENGTH)) }, label = { Text("Group") }, supportingText = { Text("Leave empty for Ungrouped") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(tagText, { tagText = it }, label = { Text("Tags") }, supportingText = { Text("Separate tags with commas") }, modifier = Modifier.fillMaxWidth()) }
                 item { BrushSettingSlider("Size", draft.defaultSize, .5f..400f) { draft = draft.copy(defaultSize = it) } }
                 item { BrushSettingSlider("Stabilization", draft.stabilization, 0f..0.9f) { draft = draft.copy(stabilization = it) } }
@@ -2093,7 +2213,7 @@ private fun BrushEditorDialog(brush: ImportedBrush, onDismiss: () -> Unit, onSav
                 if (draft.dualBrush) item { Text("Imported composite mode ${draft.dualCompositeMode} is retained. Inkloom currently renders it with normal source-over blending until that CSP mode is verified.", color = MutedInk, fontSize = 10.sp) }
             }
         },
-        confirmButton = { Button(onClick = { onSave(draft.copy(name = draft.name.trim().ifBlank { brush.name }, tags = tagText.split(',').map(String::trim).filter(String::isNotBlank).distinct().take(24))) }) { Text("Save preset") } },
+        confirmButton = { Button(onClick = { onSave(draft.copy(name = draft.name.trim().ifBlank { brush.name }, groupName = BrushGroupOperations.normalize(draft.groupName), tags = tagText.split(',').map(String::trim).filter(String::isNotBlank).distinct().take(24))) }) { Text("Save preset") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
