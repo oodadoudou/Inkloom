@@ -139,6 +139,154 @@ private fun localizedImageMask(mask: ImageMask): String = when (mask) {
     ImageMask.OVAL -> tr("Oval", "椭圆")
 }
 
+@Composable
+private fun localizedTaperMode(mode: BrushTaperMode): String = when (mode) {
+    BrushTaperMode.DISTANCE -> tr("Distance", "距离")
+    BrushTaperMode.PERCENTAGE -> tr("Percentage", "百分比")
+    BrushTaperMode.FADE -> tr("Fade", "淡出")
+}
+
+@Composable
+private fun localizedBrushLabel(raw: String): String {
+    if (LocalUiLanguage.current == UiLanguage.ENGLISH) return raw
+    return when (raw) {
+        "Size" -> "大小"
+        "Stabilization" -> "防抖"
+        "Adjust stabilization by speed" -> "根据速度调整防抖"
+        "Uses the imported CSP correction behavior when available." -> "可用时采用导入的 CSP 修正行为。"
+        "Default opacity" -> "默认不透明度"
+        "Use as eraser" -> "用作橡皮擦"
+        "Selects the eraser tool and uses this tip shape to remove ink." -> "选择橡皮擦工具，并使用此笔尖形状擦除墨迹。"
+        "Pressure controls size" -> "压力控制大小"
+        "Uses the imported CSP curve when available." -> "可用时采用导入的 CSP 曲线。"
+        "Minimum size" -> "最小大小"
+        "Size pressure" -> "大小压力"
+        "Pressure controls opacity" -> "压力控制不透明度"
+        "Minimum opacity" -> "最小不透明度"
+        "Opacity pressure" -> "不透明度压力"
+        "Opacity" -> "不透明度"
+        "Pressure controls flow" -> "压力控制流量"
+        "Minimum flow" -> "最小流量"
+        "Flow pressure" -> "流量压力"
+        "Flow" -> "流量"
+        "Pressure controls spacing" -> "压力控制间距"
+        "Imported from CSP Interval dynamics when available." -> "可用时从 CSP 间隔动态导入。"
+        "Minimum spacing" -> "最小间距"
+        "Spacing pressure" -> "间距压力"
+        "Spacing" -> "间距"
+        "Pressure controls thickness" -> "压力控制厚度"
+        "Minimum thickness" -> "最小厚度"
+        "Thickness pressure" -> "厚度压力"
+        "Thickness" -> "厚度"
+        "Starting taper" -> "起笔收尖"
+        "Gradually grows from the configured minimum over the start of the stroke." -> "笔画起始处从设定的最小值逐渐增粗。"
+        "Start length" -> "起笔长度"
+        "Start minimum size" -> "起笔最小大小"
+        "Fade" -> "淡出"
+        "Ending taper" -> "收笔收尖"
+        "Fades from full size toward the configured minimum." -> "从完整大小逐渐淡出到设定的最小值。"
+        "Gradually narrows toward the configured minimum at stroke end." -> "笔画末端逐渐收窄到设定的最小值。"
+        "Fade length" -> "淡出长度"
+        "End length" -> "收笔长度"
+        "End minimum size" -> "收笔最小大小"
+        "Hardness" -> "硬度"
+        "Paper texture density" -> "纸张纹理密度"
+        "Paper texture scale" -> "纸张纹理缩放"
+        "Paper texture rotation" -> "纸张纹理旋转"
+        "Paper texture brightness" -> "纸张纹理亮度"
+        "Paper texture contrast" -> "纸张纹理对比度"
+        "Invert paper texture" -> "反转纸张纹理"
+        "Emphasize paper texture" -> "增强纸张纹理"
+        "Jitter grain origin per stroke" -> "每笔抖动纹理起点"
+        "Keeps each stroke deterministic while avoiding an identical repeated grain start." -> "保持每笔结果稳定，同时避免纹理总从相同位置开始。"
+        "Vertical thickness" -> "垂直厚度"
+        "Applies thickness along the imported tip's vertical axis." -> "沿导入笔尖的垂直轴应用厚度。"
+        "Ribbon stroke" -> "带状笔触"
+        "Preserves the tip aspect ratio and continuously follows the stroke direction." -> "保持笔尖宽高比并持续跟随笔画方向。"
+        "Rotation" -> "旋转"
+        "Follow stylus orientation" -> "跟随触控笔方向"
+        "Uses the pen direction reported by Android." -> "使用 Android 报告的触控笔方向。"
+        "Follow stroke direction" -> "跟随笔画方向"
+        "Rotates the tip along the drawn path." -> "让笔尖沿绘制路径旋转。"
+        "Random rotation" -> "随机旋转"
+        "Random start rotation" -> "随机起始旋转"
+        "Stamp count" -> "笔印数量"
+        "Stamp count jitter" -> "笔印数量抖动"
+        "Color mix" -> "颜色混合"
+        "Paint mix" -> "颜料混合"
+        "Watercolor approximation" -> "水彩近似"
+        "Uses translucent layered stamps." -> "使用半透明的分层笔印。"
+        "Watercolor edge" -> "水彩边缘"
+        "Adds the CSP-style translucent edge pass before the main stamp." -> "在主笔印前添加 CSP 风格的半透明边缘。"
+        "Edge radius" -> "边缘半径"
+        "Edge opacity" -> "边缘不透明度"
+        "Edge darkness" -> "边缘深度"
+        "Edge blur" -> "边缘模糊"
+        "Spray/scatter" -> "喷枪／散布"
+        "Particle size" -> "粒子大小"
+        "Particle size follows brush" -> "粒子大小跟随笔刷"
+        "When enabled, particle size is a percentage of the current brush size." -> "开启后，粒子大小按当前笔刷大小的百分比计算。"
+        "Particle density" -> "粒子密度"
+        "Spray center bias" -> "喷枪中心偏移"
+        "Scatter spread" -> "散布范围"
+        "Particle rotation" -> "粒子旋转"
+        "Particles follow stylus" -> "粒子跟随触控笔"
+        "Uses the independent CSP particle-direction setting." -> "使用独立的 CSP 粒子方向设置。"
+        "Particles follow stroke" -> "粒子跟随笔画"
+        "Aligns particles with the local path direction." -> "让粒子与局部路径方向对齐。"
+        "Particle random rotation" -> "粒子随机旋转"
+        "Dual brush" -> "双重笔刷"
+        "Uses the imported secondary tip as an independent stamp stream." -> "将导入的辅助笔尖作为独立笔印流。"
+        "Secondary size" -> "辅助笔刷大小"
+        "Secondary spacing" -> "辅助笔刷间距"
+        "Secondary flow" -> "辅助笔刷流量"
+        "Secondary hardness" -> "辅助笔刷硬度"
+        "Secondary thickness" -> "辅助笔刷厚度"
+        "Secondary vertical thickness" -> "辅助笔刷垂直厚度"
+        "Secondary rotation" -> "辅助笔刷旋转"
+        "Secondary follows stylus" -> "辅助笔刷跟随触控笔"
+        "Secondary follows stroke" -> "辅助笔刷跟随笔画"
+        "Secondary random rotation" -> "辅助笔刷随机旋转"
+        "Secondary random start rotation" -> "辅助笔刷随机起始旋转"
+        "Secondary stamp count" -> "辅助笔印数量"
+        "Secondary count jitter" -> "辅助笔印数量抖动"
+        "Secondary Ribbon" -> "辅助带状笔触"
+        "Secondary spray/scatter" -> "辅助喷枪／散布"
+        "Secondary particle size" -> "辅助粒子大小"
+        "Secondary particles follow brush" -> "辅助粒子大小跟随笔刷"
+        "Secondary particle density" -> "辅助粒子密度"
+        "Secondary center bias" -> "辅助中心偏移"
+        "Secondary scatter spread" -> "辅助散布范围"
+        "Secondary particle rotation" -> "辅助粒子旋转"
+        "Secondary particles follow stylus" -> "辅助粒子跟随触控笔"
+        "Secondary particles follow stroke" -> "辅助粒子跟随笔画"
+        "Secondary particle random rotation" -> "辅助粒子随机旋转"
+        "Tilt" -> "倾斜"
+        "Tilt minimum" -> "最小倾斜响应"
+        "Velocity" -> "速度"
+        "Velocity minimum" -> "最小速度响应"
+        "Velocity response" -> "速度响应"
+        "Random" -> "随机"
+        "Deterministic per stamp, so export matches the canvas." -> "每个笔印都可重复计算，使导出结果与画布一致。"
+        "Random minimum" -> "最小随机响应"
+        "Text size" -> "文本大小"
+        "Line spacing" -> "行距"
+        "Collapsed" -> "折叠"
+        "Show only the first line." -> "只显示第一行。"
+        "Stroke width" -> "描边宽度"
+        "Fill" -> "填充"
+        "Adds a translucent shape fill." -> "添加半透明形状填充。"
+        "Corner radius" -> "圆角半径"
+        "Left" -> "左侧"
+        "Top" -> "顶部"
+        "Right" -> "右侧"
+        "Bottom" -> "底部"
+        "Width" -> "宽度"
+        "Height" -> "高度"
+        else -> raw
+    }
+}
+
 private fun List<ImportedBrush>.distinctImportedBrushes(): List<ImportedBrush> =
     associateBy { brush ->
         val sourceKey = brush.sha256 ?: "${brush.name}:${brush.sizeBytes}"
@@ -2512,16 +2660,16 @@ private fun BrushEditorDialog(brush: ImportedBrush, onDismiss: () -> Unit, onSav
     var tagText by remember(brush.id) { mutableStateOf(brush.tags.joinToString(", ")) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Row(verticalAlignment = Alignment.CenterVertically) { BrushTipPreview(draft, Modifier.size(48.dp)); Spacer(Modifier.width(12.dp)); Column { Text(draft.name, maxLines = 1); Text("Brush Studio", color = MutedInk, fontSize = 11.sp) } } },
+        title = { Row(verticalAlignment = Alignment.CenterVertically) { BrushTipPreview(draft, Modifier.size(48.dp)); Spacer(Modifier.width(12.dp)); Column { Text(draft.name, maxLines = 1); Text(tr("Brush Studio", "笔刷工作室"), color = MutedInk, fontSize = 11.sp) } } },
         text = {
             LazyColumn(Modifier.widthIn(min = 360.dp, max = 520.dp).heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                item { OutlinedTextField(draft.name, { draft = draft.copy(name = it) }, label = { Text("Brush name") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
-                item { OutlinedTextField(draft.groupName, { draft = draft.copy(groupName = it.take(BrushGroupOperations.MAX_NAME_LENGTH)) }, label = { Text("Group") }, supportingText = { Text("Leave empty for Ungrouped") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
-                item { OutlinedTextField(tagText, { tagText = it }, label = { Text("Tags") }, supportingText = { Text("Separate tags with commas") }, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(draft.name, { draft = draft.copy(name = it) }, label = { Text(tr("Brush name", "笔刷名称")) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(draft.groupName, { draft = draft.copy(groupName = it.take(BrushGroupOperations.MAX_NAME_LENGTH)) }, label = { Text(tr("Group", "分组")) }, supportingText = { Text(tr("Leave empty for Ungrouped", "留空则归入“未分组”")) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(tagText, { tagText = it }, label = { Text(tr("Tags", "标签")) }, supportingText = { Text(tr("Separate tags with commas", "使用逗号分隔标签")) }, modifier = Modifier.fillMaxWidth()) }
                 item { BrushSettingSlider("Size", draft.defaultSize, .5f..400f) { draft = draft.copy(defaultSize = it) } }
                 item { BrushSettingSlider("Stabilization", draft.stabilization, 0f..0.9f) { draft = draft.copy(stabilization = it) } }
                 item { SettingSwitch("Adjust stabilization by speed", "Uses the imported CSP correction behavior when available.", draft.stabilizationBySpeed) { draft = draft.copy(stabilizationBySpeed = it) } }
-                if (draft.stabilizationBySpeed) item { Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { FilterChip(selected = draft.stabilizationBySpeedMode == StrokeStabilization.INCREASE_WHEN_SLOW, onClick = { draft = draft.copy(stabilizationBySpeedMode = StrokeStabilization.INCREASE_WHEN_SLOW) }, label = { Text("More when slow") }); FilterChip(selected = draft.stabilizationBySpeedMode == StrokeStabilization.REDUCE_WHEN_FAST, onClick = { draft = draft.copy(stabilizationBySpeedMode = StrokeStabilization.REDUCE_WHEN_FAST) }, label = { Text("Less when fast") }) } }
+                if (draft.stabilizationBySpeed) item { Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { FilterChip(selected = draft.stabilizationBySpeedMode == StrokeStabilization.INCREASE_WHEN_SLOW, onClick = { draft = draft.copy(stabilizationBySpeedMode = StrokeStabilization.INCREASE_WHEN_SLOW) }, label = { Text(tr("More when slow", "慢速时增强")) }); FilterChip(selected = draft.stabilizationBySpeedMode == StrokeStabilization.REDUCE_WHEN_FAST, onClick = { draft = draft.copy(stabilizationBySpeedMode = StrokeStabilization.REDUCE_WHEN_FAST) }, label = { Text(tr("Less when fast", "快速时减弱")) }) } }
                 item { BrushSettingSlider("Default opacity", draft.defaultOpacity, .01f..1f) { draft = draft.copy(defaultOpacity = it) } }
                 item { SettingSwitch("Use as eraser", "Selects the eraser tool and uses this tip shape to remove ink.", draft.isEraser) { draft = draft.copy(isEraser = it) } }
                 item { SettingSwitch("Pressure controls size", "Uses the imported CSP curve when available.", draft.sizePressureEnabled) { draft = draft.copy(sizePressureEnabled = it) } }
@@ -2544,8 +2692,8 @@ private fun BrushEditorDialog(brush: ImportedBrush, onDismiss: () -> Unit, onSav
                 if (draft.thicknessPressureEnabled) item { BrushSettingSlider("Minimum thickness", draft.thicknessPressureMinimum, 0f..1f) { draft = draft.copy(thicknessPressureMinimum = it) } }
                 if (draft.thicknessPressureEnabled) item { PressureCurveEditor("Thickness pressure", draft.thicknessPressureCurve) { draft = draft.copy(thicknessPressureCurve = it) } }
                 item { SecondaryDynamicsEditor("Thickness", draft.thicknessSecondaryDynamics) { draft = draft.copy(thicknessSecondaryDynamics = it) } }
-                item { Text("TAPER", color = Sage, fontSize = 11.sp) }
-                item { LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { BrushTaperMode.entries.forEach { mode -> item { FilterChip(selected = draft.taperMode == mode, onClick = { val toDistance = mode == BrushTaperMode.DISTANCE && draft.taperMode != BrushTaperMode.DISTANCE; val fromDistance = mode != BrushTaperMode.DISTANCE && draft.taperMode == BrushTaperMode.DISTANCE; draft = draft.copy(taperMode = mode, taperStartEnabled = if (mode == BrushTaperMode.FADE) false else draft.taperStartEnabled, taperStartLength = when { toDistance -> draft.taperStartLength * 100f; fromDistance -> draft.taperStartLength / 100f; else -> draft.taperStartLength }, taperEndLength = when { toDistance -> draft.taperEndLength * 100f; fromDistance -> draft.taperEndLength / 100f; else -> draft.taperEndLength }) }, label = { Text(mode.name.lowercase().replaceFirstChar(Char::uppercase)) }) } } } }
+                item { Text(tr("TAPER", "收尖"), color = Sage, fontSize = 11.sp) }
+                item { LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { BrushTaperMode.entries.forEach { mode -> item { FilterChip(selected = draft.taperMode == mode, onClick = { val toDistance = mode == BrushTaperMode.DISTANCE && draft.taperMode != BrushTaperMode.DISTANCE; val fromDistance = mode != BrushTaperMode.DISTANCE && draft.taperMode == BrushTaperMode.DISTANCE; draft = draft.copy(taperMode = mode, taperStartEnabled = if (mode == BrushTaperMode.FADE) false else draft.taperStartEnabled, taperStartLength = when { toDistance -> draft.taperStartLength * 100f; fromDistance -> draft.taperStartLength / 100f; else -> draft.taperStartLength }, taperEndLength = when { toDistance -> draft.taperEndLength * 100f; fromDistance -> draft.taperEndLength / 100f; else -> draft.taperEndLength }) }, label = { Text(localizedTaperMode(mode)) }) } } } }
                 if (draft.taperMode != BrushTaperMode.FADE) item { SettingSwitch("Starting taper", "Gradually grows from the configured minimum over the start of the stroke.", draft.taperStartEnabled) { draft = draft.copy(taperStartEnabled = it) } }
                 if (draft.taperStartEnabled) item { BrushSettingSlider("Start length", draft.taperStartLength, if (draft.taperMode == BrushTaperMode.DISTANCE) 1f..400f else .01f..1f) { draft = draft.copy(taperStartLength = it) } }
                 if (draft.taperStartEnabled && draft.taperMode == BrushTaperMode.DISTANCE) item { Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { FilterChip(selected = draft.taperStartLengthUnit == 0, onClick = { draft = draft.copy(taperStartLengthUnit = 0) }, label = { Text("px") }); FilterChip(selected = draft.taperStartLengthUnit == 2, onClick = { draft = draft.copy(taperStartLengthUnit = 2) }, label = { Text("mm") }) } }
@@ -2597,7 +2745,7 @@ private fun BrushEditorDialog(brush: ImportedBrush, onDismiss: () -> Unit, onSav
                 if (draft.spray) item { SettingSwitch("Particles follow stroke", "Aligns particles with the local path direction.", draft.sprayParticleFollowStrokeDirection) { draft = draft.copy(sprayParticleFollowStrokeDirection = it) } }
                 if (draft.spray) item { BrushSettingSlider("Particle random rotation", draft.sprayParticleRandomRotationDegrees, 0f..180f) { draft = draft.copy(sprayParticleRandomRotationDegrees = it) } }
                 item { SettingSwitch("Dual brush", "Uses the imported secondary tip as an independent stamp stream.", draft.dualBrush) { draft = draft.copy(dualBrush = it) } }
-                if (draft.dualBrush && draft.dualTipPreviewPaths.isNotEmpty()) item { BrushTipPreview("Secondary tip · ${draft.dualTipPreviewPaths.size} material${if (draft.dualTipPreviewPaths.size == 1) "" else "s"}", draft.dualTipPreviewPaths.first()) }
+                if (draft.dualBrush && draft.dualTipPreviewPaths.isNotEmpty()) item { BrushTipPreview(tr("Secondary tip · ${draft.dualTipPreviewPaths.size} material${if (draft.dualTipPreviewPaths.size == 1) "" else "s"}", "辅助笔尖 · ${draft.dualTipPreviewPaths.size} 个素材"), draft.dualTipPreviewPaths.first()) }
                 if (draft.dualBrush) item { BrushSettingSlider("Secondary size", draft.dualSizeScale, .01f..4f) { draft = draft.copy(dualSizeScale = it) } }
                 if (draft.dualBrush) item { BrushSettingSlider("Secondary spacing", draft.dualSpacing, .01f..2f) { draft = draft.copy(dualSpacing = it) } }
                 if (draft.dualBrush) item { BrushSettingSlider("Secondary flow", draft.dualFlow, 0f..1f) { draft = draft.copy(dualFlow = it) } }
@@ -2622,27 +2770,31 @@ private fun BrushEditorDialog(brush: ImportedBrush, onDismiss: () -> Unit, onSav
                 if (draft.dualBrush && draft.dualSpray) item { SettingSwitch("Secondary particles follow stylus", null, draft.dualSprayParticleFollowStylusOrientation) { draft = draft.copy(dualSprayParticleFollowStylusOrientation = it) } }
                 if (draft.dualBrush && draft.dualSpray) item { SettingSwitch("Secondary particles follow stroke", null, draft.dualSprayParticleFollowStrokeDirection) { draft = draft.copy(dualSprayParticleFollowStrokeDirection = it) } }
                 if (draft.dualBrush && draft.dualSpray) item { BrushSettingSlider("Secondary particle random rotation", draft.dualSprayParticleRandomRotationDegrees, 0f..180f) { draft = draft.copy(dualSprayParticleRandomRotationDegrees = it) } }
-                if (draft.dualBrush) item { Text("Imported composite mode ${draft.dualCompositeMode} is retained. Inkloom currently renders it with normal source-over blending until that CSP mode is verified.", color = MutedInk, fontSize = 10.sp) }
+                if (draft.dualBrush) item { Text(tr("Imported composite mode ${draft.dualCompositeMode} is retained. Inkloom currently renders it with normal source-over blending until that CSP mode is verified.", "已保留导入的合成模式 ${draft.dualCompositeMode}。在完成该 CSP 模式验证前，Inkloom 暂时以普通 source-over 混合方式渲染。"), color = MutedInk, fontSize = 10.sp) }
             }
         },
-        confirmButton = { Button(onClick = { onSave(draft.copy(name = draft.name.trim().ifBlank { brush.name }, groupName = BrushGroupOperations.normalize(draft.groupName), tags = tagText.split(',').map(String::trim).filter(String::isNotBlank).distinct().take(24))) }) { Text("Save preset") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = { Button(onClick = { onSave(draft.copy(name = draft.name.trim().ifBlank { brush.name }, groupName = BrushGroupOperations.normalize(draft.groupName), tags = tagText.split(',').map(String::trim).filter(String::isNotBlank).distinct().take(24))) }) { Text(tr("Save preset", "保存预设")) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Cancel", "取消")) } },
     )
 }
 
 @Composable
 private fun BrushSettingSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onValue: (Float) -> Unit) {
-    Column { Row { Text(label, Modifier.weight(1f), fontSize = 12.sp); Text(if (range.endInclusive > 10f) "%.1f".format(value) else "%.2f".format(value), color = MutedInk, fontSize = 11.sp) }; Slider(value, onValue, valueRange = range) }
+    Column { Row { Text(localizedBrushLabel(label), Modifier.weight(1f), fontSize = 12.sp); Text(if (range.endInclusive > 10f) "%.1f".format(value) else "%.2f".format(value), color = MutedInk, fontSize = 11.sp) }; Slider(value, onValue, valueRange = range) }
 }
 
 @Composable
 private fun SecondaryDynamicsEditor(label: String, value: BrushSecondaryDynamics, onValue: (BrushSecondaryDynamics) -> Unit) {
-    val activeSources = buildList { if (value.tiltEnabled) add("Tilt"); if (value.velocityEnabled) add("Velocity"); if (value.randomEnabled) add("Random") }
+    val activeSources = mutableListOf<String>()
+    if (value.tiltEnabled) activeSources += localizedBrushLabel("Tilt")
+    if (value.velocityEnabled) activeSources += localizedBrushLabel("Velocity")
+    if (value.randomEnabled) activeSources += localizedBrushLabel("Random")
+    val noSecondarySource = tr("No secondary source", "无辅助输入源")
     var expanded by remember(label) { mutableStateOf(activeSources.isNotEmpty()) }
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp).border(1.dp, OutlineSoft, RoundedCornerShape(10.dp)).padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
         Row(Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) { Text("$label input dynamics", color = Sage, fontSize = 11.sp); Text(activeSources.joinToString().ifBlank { "No secondary source" }, color = MutedInk, fontSize = 10.sp) }
-            Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, if (expanded) "Collapse" else "Expand")
+            Column(Modifier.weight(1f)) { Text(tr("$label input dynamics", "${localizedBrushLabel(label)}输入动态"), color = Sage, fontSize = 11.sp); Text(activeSources.joinToString().ifBlank { noSecondarySource }, color = MutedInk, fontSize = 10.sp) }
+            Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, if (expanded) tr("Collapse", "折叠") else tr("Expand", "展开"))
         }
         if (expanded) {
             SettingSwitch("Tilt", null, value.tiltEnabled) { onValue(value.copy(tiltEnabled = it)) }
@@ -2660,7 +2812,7 @@ private fun SecondaryDynamicsEditor(label: String, value: BrushSecondaryDynamics
 private fun BrushGrainPreview(path: String, density: Float) {
     val bitmap = remember(path) { android.graphics.BitmapFactory.decodeFile(path) }
     DisposableEffect(bitmap) { onDispose { bitmap?.recycle() } }
-    Column { Text("Paper texture · ${(density * 100).toInt()}%", fontSize = 11.sp, color = MutedInk); if (bitmap != null) androidx.compose.foundation.Image(bitmap.asImageBitmap(), "Paper texture", Modifier.fillMaxWidth().height(90.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop) }
+    Column { Text(tr("Paper texture · ${(density * 100).toInt()}%", "纸张纹理 · ${(density * 100).toInt()}%"), fontSize = 11.sp, color = MutedInk); if (bitmap != null) androidx.compose.foundation.Image(bitmap.asImageBitmap(), tr("Paper texture", "纸张纹理"), Modifier.fillMaxWidth().height(90.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop) }
 }
 
 @Composable
@@ -2677,7 +2829,7 @@ private fun BrushTipPreview(label: String, path: String) {
 private fun PressureCurveEditor(label: String, points: List<BrushCurvePoint>, onPoints: (List<BrushCurvePoint>) -> Unit) {
     val shown = points.ifEmpty { listOf(BrushCurvePoint(0f, 0f), BrushCurvePoint(1f, 1f)) }
     Column {
-        Row(verticalAlignment = Alignment.CenterVertically) { Text("$label · ${shown.size} points", fontSize = 11.sp, color = MutedInk, modifier = Modifier.weight(1f)); TextButton(onClick = { onPoints(listOf(BrushCurvePoint(0f, 0f), BrushCurvePoint(1f, 1f))) }) { Text("Linear") }; TextButton(onClick = { onPoints(listOf(BrushCurvePoint(0f, 0f), BrushCurvePoint(.35f, .62f), BrushCurvePoint(1f, 1f))) }) { Text("Soft") }; TextButton(onClick = { onPoints(listOf(BrushCurvePoint(0f, 0f), BrushCurvePoint(.65f, .25f), BrushCurvePoint(1f, 1f))) }) { Text("Firm") } }
+        Row(verticalAlignment = Alignment.CenterVertically) { Text(tr("$label · ${shown.size} points", "${localizedBrushLabel(label)} · ${shown.size} 个控制点"), fontSize = 11.sp, color = MutedInk, modifier = Modifier.weight(1f)); TextButton(onClick = { onPoints(listOf(BrushCurvePoint(0f, 0f), BrushCurvePoint(1f, 1f))) }) { Text(tr("Linear", "线性")) }; TextButton(onClick = { onPoints(listOf(BrushCurvePoint(0f, 0f), BrushCurvePoint(.35f, .62f), BrushCurvePoint(1f, 1f))) }) { Text(tr("Soft", "柔和")) }; TextButton(onClick = { onPoints(listOf(BrushCurvePoint(0f, 0f), BrushCurvePoint(.65f, .25f), BrushCurvePoint(1f, 1f))) }) { Text(tr("Firm", "硬朗")) } }
         Canvas(Modifier.fillMaxWidth().height(72.dp).background(Workspace, RoundedCornerShape(8.dp)).padding(8.dp)) {
             drawLine(OutlineSoft, Offset(0f, size.height), Offset(size.width, 0f), 1f)
             shown.zipWithNext().forEach { (start, end) -> drawLine(Sage, Offset(start.x * size.width, (1f - start.y) * size.height), Offset(end.x * size.width, (1f - end.y) * size.height), 3f, cap = StrokeCap.Round) }
@@ -2874,7 +3026,7 @@ private fun PressureCurvePreview(minimumInput: Float, maximumInput: Float, sensi
 @Composable
 private fun SettingSwitch(title: String, subtitle: String?, checked: Boolean, onChecked: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) { Text(title); if (subtitle != null) Text(subtitle, color = MutedInk, fontSize = 11.sp) }
+        Column(Modifier.weight(1f)) { Text(localizedBrushLabel(title)); if (subtitle != null) Text(localizedBrushLabel(subtitle), color = MutedInk, fontSize = 11.sp) }
         Switch(checked = checked, onCheckedChange = onChecked)
     }
 }
