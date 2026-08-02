@@ -52,6 +52,7 @@ import app.inkloom.model.EditorTool
 import app.inkloom.settings.StylusButtonAction
 import app.inkloom.settings.SelectionFilter
 import app.inkloom.settings.SelectionMode
+import app.inkloom.settings.SelectionShape
 import kotlin.math.ceil
 import kotlin.math.hypot
 import kotlin.math.cos
@@ -211,6 +212,7 @@ class InkCanvasView(context: Context) : View(context) {
     var primaryButtonAction: StylusButtonAction = StylusButtonAction.ERASER
     var secondaryButtonAction: StylusButtonAction = StylusButtonAction.LASSO
     var shapeKind: ShapeKind = ShapeKind.RECTANGLE
+    var selectionShape: SelectionShape = SelectionShape.FREEFORM
     var selectionMode: SelectionMode = SelectionMode.REPLACE
     var selectionFilter: SelectionFilter = SelectionFilter.ALL
     var pageModelWidth: Float = 1600f
@@ -274,10 +276,12 @@ class InkCanvasView(context: Context) : View(context) {
             paint.style = Paint.Style.STROKE; paint.color = Color.rgb(17, 17, 17); paint.alpha = 255; paint.strokeWidth = 2f
             canvas.drawRect(selectionLeft - 14, selectionTop - 14, selectionRight + 14, selectionBottom + 14, paint)
         }
-        if (lassoPoints.size >= 2) {
+        val selectionPreview = selectionPolygon()
+        if (selectionPreview.size >= 2) {
             lassoPath.reset()
-            lassoPath.moveTo(lassoPoints.first().x * width, lassoPoints.first().y * height)
-            for (index in 1 until lassoPoints.size) lassoPath.lineTo(lassoPoints[index].x * width, lassoPoints[index].y * height)
+            lassoPath.moveTo(selectionPreview.first().x * width, selectionPreview.first().y * height)
+            for (index in 1 until selectionPreview.size) lassoPath.lineTo(selectionPreview[index].x * width, selectionPreview[index].y * height)
+            if (selectionShape == SelectionShape.RECTANGLE) lassoPath.close()
             paint.style = Paint.Style.STROKE; paint.color = Color.rgb(98, 98, 98); paint.alpha = 220; paint.strokeWidth = 2f
             canvas.drawPath(lassoPath, paint)
         }
@@ -595,7 +599,7 @@ class InkCanvasView(context: Context) : View(context) {
                     } else {
                         if (selectionMode == SelectionMode.REPLACE) selectedStrokeIds.clear()
                         movingSelection = false
-                        appendLassoPoint(normalizedX, normalizedY)
+                        appendSelectionPoint(normalizedX, normalizedY)
                     }
                     lastX = normalizedX; lastY = normalizedY
                     invalidate(); return true
@@ -629,8 +633,10 @@ class InkCanvasView(context: Context) : View(context) {
                         lastX = normalizedX; lastY = normalizedY
                         invalidateStrokeCache(movedBefore, strokes.filter { it.id in selectedStrokeIds })
                     } else {
-                        for (i in 0 until event.historySize) appendLassoPoint(event.getHistoricalX(i) / width.coerceAtLeast(1), event.getHistoricalY(i) / height.coerceAtLeast(1))
-                        appendLassoPoint(normalizedX, normalizedY)
+                        if (selectionShape == SelectionShape.FREEFORM) {
+                            for (i in 0 until event.historySize) appendSelectionPoint(event.getHistoricalX(i) / width.coerceAtLeast(1), event.getHistoricalY(i) / height.coerceAtLeast(1))
+                        }
+                        appendSelectionPoint(normalizedX, normalizedY)
                     }
                 }
                 else if (activeTool == EditorTool.SHAPE) {
@@ -666,8 +672,8 @@ class InkCanvasView(context: Context) : View(context) {
                     if (movingSelection && selectionMoved) {
                         selectionGestureBefore?.let { commitStrokeEdit(it, strokes) }
                     } else if (!movingSelection) {
-                        appendLassoPoint(normalizedX, normalizedY)
-                        selectWithLasso(lassoPoints)
+                        appendSelectionPoint(normalizedX, normalizedY)
+                        selectWithLasso(selectionPolygon())
                     }
                     lassoPoints.clear(); movingSelection = false; selectionMoved = false; selectionGestureBefore = null
                 } else if (activeTool == EditorTool.SHAPE) {
@@ -761,6 +767,24 @@ class InkCanvasView(context: Context) : View(context) {
         val point = StrokePoint(x.coerceIn(0f, 1f), y.coerceIn(0f, 1f))
         val previous = lassoPoints.lastOrNull()
         if (previous == null || hypot((point.x - previous.x).toDouble(), (point.y - previous.y).toDouble()) > .0015) lassoPoints += point
+    }
+
+    private fun appendSelectionPoint(x: Float, y: Float) {
+        if (selectionShape == SelectionShape.FREEFORM) {
+            appendLassoPoint(x, y)
+            return
+        }
+        val point = StrokePoint(x.coerceIn(0f, 1f), y.coerceIn(0f, 1f))
+        when (lassoPoints.size) {
+            0 -> lassoPoints += point
+            1 -> lassoPoints += point
+            else -> lassoPoints[1] = point
+        }
+    }
+
+    private fun selectionPolygon(): List<StrokePoint> = when (selectionShape) {
+        SelectionShape.FREEFORM -> lassoPoints
+        SelectionShape.RECTANGLE -> if (lassoPoints.size >= 2) LassoGeometry.rectangle(lassoPoints.first(), lassoPoints.last()) else emptyList()
     }
 
     private fun selectWithLasso(polygon: List<StrokePoint>) {

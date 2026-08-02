@@ -13,6 +13,20 @@ data class LassoStrokePartition(
 )
 
 object LassoGeometry {
+    fun rectangle(start: StrokePoint, end: StrokePoint, minimumExtent: Float = MINIMUM_RECTANGLE_EXTENT): List<StrokePoint> {
+        val left = minOf(start.x, end.x).coerceIn(0f, 1f)
+        val top = minOf(start.y, end.y).coerceIn(0f, 1f)
+        val right = maxOf(start.x, end.x).coerceIn(0f, 1f)
+        val bottom = maxOf(start.y, end.y).coerceIn(0f, 1f)
+        if (right - left < minimumExtent || bottom - top < minimumExtent) return emptyList()
+        return listOf(
+            StrokePoint(left, top),
+            StrokePoint(right, top),
+            StrokePoint(right, bottom),
+            StrokePoint(left, bottom),
+        )
+    }
+
     fun contains(polygon: List<StrokePoint>, point: StrokePoint): Boolean {
         if (polygon.size < 3) return false
         var inside = false
@@ -115,4 +129,5 @@ object LassoGeometry {
 
     private const val GEOMETRY_EPSILON = 0.000001f
     private const val PARAMETER_EPSILON = 0.00001f
+    private const val MINIMUM_RECTANGLE_EXTENT = 0.0005f
 }

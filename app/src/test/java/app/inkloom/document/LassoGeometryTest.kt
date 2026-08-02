@@ -17,6 +17,20 @@ class LassoGeometryTest {
         assertFalse(LassoGeometry.contains(square.take(2), StrokePoint(.5f, .5f)))
     }
 
+    @Test fun rectangleNormalizesReverseDragCorners() {
+        val rectangle = LassoGeometry.rectangle(StrokePoint(.8f, .7f), StrokePoint(.2f, .3f))
+
+        assertEquals(
+            listOf(.2f to .3f, .8f to .3f, .8f to .7f, .2f to .7f),
+            rectangle.map { it.x to it.y },
+        )
+        assertTrue(LassoGeometry.contains(rectangle, StrokePoint(.5f, .5f)))
+    }
+
+    @Test fun rectangleRejectsTapSizedGestures() {
+        assertTrue(LassoGeometry.rectangle(StrokePoint(.5f, .5f), StrokePoint(.5001f, .5001f)).isEmpty())
+    }
+
     @Test fun selectsAStrokeWhenAnySampleFallsInside() {
         assertTrue(LassoGeometry.selects(square, InkStroke(points = listOf(StrokePoint(.1f, .1f), StrokePoint(.4f, .4f)))))
         assertFalse(LassoGeometry.selects(square, InkStroke(points = listOf(StrokePoint(.05f, .05f), StrokePoint(.1f, .1f)))))

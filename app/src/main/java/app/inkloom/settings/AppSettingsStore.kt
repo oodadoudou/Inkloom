@@ -23,6 +23,7 @@ data class AppSettings(
     val highlighterSize: Float = 28f,
     val highlighterOpacity: Float = .35f,
     val eraserSize: Float = 24f,
+    val selectionShape: SelectionShape = SelectionShape.FREEFORM,
     val selectionMode: SelectionMode = SelectionMode.REPLACE,
     val selectionFilter: SelectionFilter = SelectionFilter.ALL,
     val nonDestructiveEraser: Boolean = false,
@@ -30,6 +31,7 @@ data class AppSettings(
 
 enum class StylusButtonAction { ERASER, LASSO, NONE }
 enum class ToolbarDock { FREE, TOP, BOTTOM, LEFT, RIGHT }
+enum class SelectionShape { FREEFORM, RECTANGLE }
 enum class SelectionMode { REPLACE, ADD, SUBTRACT, INTERSECT }
 enum class SelectionFilter { ALL, ACTIVE_LAYER, CURRENT_BRUSH, CURRENT_COLOR }
 
@@ -60,6 +62,7 @@ class AppSettingsStore(context: Context) {
             highlighterSize = preferences.getFloat("highlighterSize", 28f).coerceIn(.5f, 400f),
             highlighterOpacity = preferences.getFloat("highlighterOpacity", .35f).coerceIn(.05f, 1f),
             eraserSize = preferences.getFloat("eraserSize", 24f).coerceIn(.5f, 400f),
+            selectionShape = enumValue(preferences.getString("selectionShape", null), SelectionShape.FREEFORM),
             selectionMode = enumValue(preferences.getString("selectionMode", null), SelectionMode.REPLACE),
             selectionFilter = enumValue(preferences.getString("selectionFilter", null), SelectionFilter.ALL),
             nonDestructiveEraser = preferences.getBoolean("nonDestructiveEraser", false),
@@ -88,6 +91,7 @@ class AppSettingsStore(context: Context) {
             .putFloat("highlighterSize", value.highlighterSize)
             .putFloat("highlighterOpacity", value.highlighterOpacity)
             .putFloat("eraserSize", value.eraserSize)
+            .putString("selectionShape", value.selectionShape.name)
             .putString("selectionMode", value.selectionMode.name)
             .putString("selectionFilter", value.selectionFilter.name)
             .putBoolean("nonDestructiveEraser", value.nonDestructiveEraser)

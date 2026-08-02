@@ -97,6 +97,24 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("Opacity", substring = true).assertIsDisplayed()
     }
 
+    @Test fun selectionControlsExposePersistentFreeformAndRectangleModes() {
+        val preferences = composeRule.activity.getSharedPreferences("inkloom_settings", android.content.Context.MODE_PRIVATE)
+        val original = preferences.getString("selectionShape", "FREEFORM")
+        try {
+            composeRule.onNodeWithText("New Note").performClick()
+            composeRule.onNodeWithContentDescription("Select").performClick()
+            composeRule.onNodeWithContentDescription("Tool controls").performClick()
+
+            composeRule.onNodeWithText("Freeform").assertIsDisplayed()
+            composeRule.onNodeWithText("Rectangle").performClick()
+            composeRule.waitForIdle()
+
+            assertTrue(preferences.getString("selectionShape", null) == "RECTANGLE")
+        } finally {
+            preferences.edit().putString("selectionShape", original).commit()
+        }
+    }
+
     @Test fun layerPanelDuplicatesAndMergesAContentLayer() {
         composeRule.onNodeWithText("New Note").performClick()
         composeRule.onNodeWithContentDescription("Layers").performClick()

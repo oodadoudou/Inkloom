@@ -1,5 +1,7 @@
 package app.inkloom
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.view.InputDevice
 import android.view.MotionEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -9,9 +11,11 @@ import app.inkloom.document.StrokePoint
 import app.inkloom.model.EditorTool
 import app.inkloom.settings.SelectionFilter
 import app.inkloom.settings.SelectionMode
+import app.inkloom.settings.SelectionShape
 import app.inkloom.settings.AppSettingsStore
 import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -22,12 +26,57 @@ class LassoSelectionModesTest {
         val store = AppSettingsStore(context)
         val original = store.load()
         try {
-            store.save(original.copy(selectionMode = SelectionMode.SUBTRACT, selectionFilter = SelectionFilter.CURRENT_BRUSH))
+            store.save(original.copy(selectionShape = SelectionShape.RECTANGLE, selectionMode = SelectionMode.SUBTRACT, selectionFilter = SelectionFilter.CURRENT_BRUSH))
             val restored = store.load()
+            assertEquals(SelectionShape.RECTANGLE, restored.selectionShape)
             assertEquals(SelectionMode.SUBTRACT, restored.selectionMode)
             assertEquals(SelectionFilter.CURRENT_BRUSH, restored.selectionFilter)
         } finally {
             store.save(original)
+        }
+    }
+
+    @Test fun rectangleGestureSplitsAndSelectsOnlyTheDraggedRegion() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val crossing = InkStroke(
+                id = "crossing",
+                points = listOf(StrokePoint(.1f, .5f), StrokePoint(.9f, .5f)),
+            )
+            val edits = mutableListOf<CapturedEdit>()
+            val view = configuredView(listOf(crossing), edits).apply { selectionShape = SelectionShape.RECTANGLE }
+
+            view.rectangle(.4f, .3f, .6f, .7f)
+
+            assertEquals(1, edits.size)
+            assertEquals(listOf("crossing"), edits.single().removedIds)
+            assertEquals(3, edits.single().replacements.size)
+            val selected = edits.single().replacements[1]
+            assertEquals(.4f, selected.points.first().x, .001f)
+            assertEquals(.6f, selected.points.last().x, .001f)
+
+            view.deleteSelection()
+            assertEquals(listOf(selected.id), edits.last().removedIds)
+        }
+    }
+
+    @Test fun rectangleGestureDrawsAClosedLivePreview() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val view = configuredView(emptyList(), mutableListOf()).apply { selectionShape = SelectionShape.RECTANGLE }
+            view.dispatchStylus(MotionEvent.ACTION_DOWN, 200f, 250f, 10L)
+            view.dispatchStylus(MotionEvent.ACTION_MOVE, 800f, 750f, 20L)
+            val bitmap = Bitmap.createBitmap(1_000, 1_000, Bitmap.Config.ARGB_8888)
+            try {
+                view.draw(Canvas(bitmap))
+
+                val topBorderPixels = (190..810).count { x -> bitmap.getPixel(x, 250) ushr 24 != 0 }
+                assertTrue("Rectangle preview top edge was not rendered", topBorderPixels > 500)
+                assertEquals(0, bitmap.getPixel(500, 500) ushr 24)
+            } finally {
+                bitmap.recycle()
+                view.dispatchStylus(MotionEvent.ACTION_CANCEL, 800f, 750f, 30L)
+            }
         }
     }
 
@@ -90,6 +139,12 @@ class LassoSelectionModesTest {
         dispatchStylus(MotionEvent.ACTION_MOVE, right * 1_000f, bottom * 1_000f, 30L)
         dispatchStylus(MotionEvent.ACTION_MOVE, left * 1_000f, bottom * 1_000f, 40L)
         dispatchStylus(MotionEvent.ACTION_UP, left * 1_000f, top * 1_000f, 50L)
+    }
+
+    private fun InkCanvasView.rectangle(left: Float, top: Float, right: Float, bottom: Float) {
+        dispatchStylus(MotionEvent.ACTION_DOWN, left * 1_000f, top * 1_000f, 10L)
+        dispatchStylus(MotionEvent.ACTION_MOVE, right * 1_000f, bottom * 1_000f, 20L)
+        dispatchStylus(MotionEvent.ACTION_UP, right * 1_000f, bottom * 1_000f, 30L)
     }
 
     private fun InkCanvasView.dispatchStylus(action: Int, x: Float, y: Float, time: Long) {
