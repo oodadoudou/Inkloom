@@ -1,6 +1,9 @@
 package app.inkloom.ui
 
 import android.content.Context
+import android.content.ClipData
+import android.content.ClipDescription
+import android.content.ClipboardManager
 import android.graphics.Bitmap
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
@@ -33,6 +36,7 @@ import app.inkloom.document.StrokeEdit
 import app.inkloom.document.StrokeEditHistory
 import app.inkloom.document.StrokeEdits
 import app.inkloom.document.StrokeEraser
+import app.inkloom.document.StrokeClipboardCodec
 import app.inkloom.document.StrokeStampSampler
 import app.inkloom.document.StrokeStabilization
 import app.inkloom.document.StrokeTaper
@@ -78,6 +82,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
     private val tipCache = mutableMapOf<String, Bitmap>()
     private val protectedStrokeIds = mutableSetOf<String>()
+    private val protectedLayerIds = mutableSetOf<String>()
     private var strokeCache: Bitmap? = null
     private var strokeCacheDirty = true
 
@@ -226,6 +231,8 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     fun setProtectedStrokeIds(value: Set<String>) { protectedStrokeIds.clear(); protectedStrokeIds.addAll(value); selectedStrokeIds.removeAll(value) }
+
+    fun setProtectedLayerIds(value: Set<String>) { protectedLayerIds.clear(); protectedLayerIds.addAll(value); selectedStrokeIds.removeAll(strokes.filter { it.layerId in value }.mapTo(mutableSetOf(), InkStroke::id)) }
 
     fun setPageBackground(bitmap: Bitmap?) { backgroundBitmap = bitmap; invalidate() }
 
@@ -472,6 +479,11 @@ class InkCanvasView(context: Context) : View(context) {
             MotionEvent.ACTION_DOWN -> {
                 parent?.requestDisallowInterceptTouchEvent(true)
                 activeTool = resolveTool(event, eventToolType)
+                if (activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) && activeLayerId in protectedLayerIds) {
+                    activeTool = null
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                    return true
+                }
                 if (activeTool == EditorTool.ERASER) {
                     beginEraserGesture()
                     eraseAlong(normalizedX, normalizedY)
@@ -827,8 +839,8 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun editTouchesProtectedLayer(edit: StrokeEdit): Boolean {
-        val protectedLayerIds = strokes.filter { it.id in protectedStrokeIds }.mapTo(mutableSetOf()) { it.layerId }
-        return (edit.before + edit.after).any { it.stroke.layerId in protectedLayerIds }
+        val protectedLayers = protectedLayerIds + strokes.filter { it.id in protectedStrokeIds }.map(InkStroke::layerId)
+        return (edit.before + edit.after).any { it.stroke.layerId in protectedLayers }
     }
 
     private fun persistStrokeTransition(
@@ -861,6 +873,40 @@ class InkCanvasView(context: Context) : View(context) {
         val copies = strokes.filter { it.id in selectedStrokeIds }.map { original -> original.copy(id = java.util.UUID.randomUUID().toString(), points = original.points.map { it.copy(x = (it.x + .03f).coerceIn(0f, 1f), y = (it.y + .03f).coerceIn(0f, 1f)) }) }
         if (copies.isEmpty()) return
         strokes += copies; selectedStrokeIds.clear(); selectedStrokeIds += copies.map(InkStroke::id); commitStrokeEdit(before, strokes); invalidateStrokeCache()
+    }
+
+    fun copySelectionToClipboard(): Boolean {
+        val selected = strokes.filter { it.id in selectedStrokeIds }
+        val encoded = StrokeClipboardCodec.encode(selected) ?: return false
+        val clip = ClipData(
+            ClipDescription("Inkloom strokes", arrayOf(StrokeClipboardCodec.MIME_TYPE)),
+            ClipData.Item(encoded),
+        )
+        context.getSystemService(ClipboardManager::class.java).setPrimaryClip(clip)
+        return true
+    }
+
+    fun cutSelectionToClipboard(): Boolean {
+        if (!copySelectionToClipboard()) return false
+        deleteSelection()
+        return true
+    }
+
+    fun pasteSelectionFromClipboard(): Boolean {
+        if (activeLayerId in protectedLayerIds) return false
+        val clipboard = context.getSystemService(ClipboardManager::class.java)
+        val clip = clipboard.primaryClip ?: return false
+        if (clip.itemCount < 1 || !clip.description.hasMimeType(StrokeClipboardCodec.MIME_TYPE)) return false
+        val payload = StrokeClipboardCodec.decode(clip.getItemAt(0).coerceToText(context)) ?: return false
+        val copies = StrokeClipboardCodec.materialize(payload, activeLayerId)
+        if (copies.isEmpty()) return false
+        val before = strokes.toList()
+        strokes += copies
+        selectedStrokeIds.clear()
+        selectedStrokeIds += copies.map(InkStroke::id)
+        commitStrokeEdit(before, strokes)
+        invalidateStrokeCache()
+        return true
     }
 
     fun deleteSelection() {

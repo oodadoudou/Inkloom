@@ -594,7 +594,7 @@ private fun EditorScreen(
                         EditorTool.AUDIO -> if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) audioOpen = true else audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                         else -> Unit
                     }
-                }, onUndo = { canvasView?.undo() }, onRedo = { canvasView?.redo() }, onScale = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, resizeElement(it, 1.15f)) } } ?: canvasView?.scaleSelection(1.15f) }, onRotate = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, rotateElement(it, 15f)) } } ?: canvasView?.rotateSelection(15f) }, onCopy = { selectedElementId?.let { onDuplicateElement(document.id, selectedPage.id, it) } ?: canvasView?.copySelection() }, onDelete = { selectedElementId?.let { onRemoveElement(document.id, selectedPage.id, it); selectedElementId = null } ?: canvasView?.deleteSelection() }, localEraser = localEraser, onToggleLocalEraser = { localEraser = !localEraser; canvasView?.localEraser = localEraser }, onDrag = { dx, dy ->
+                }, onUndo = { canvasView?.undo() }, onRedo = { canvasView?.redo() }, onScale = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, resizeElement(it, 1.15f)) } } ?: canvasView?.scaleSelection(1.15f) }, onRotate = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, rotateElement(it, 15f)) } } ?: canvasView?.rotateSelection(15f) }, onCopy = { selectedElementId?.let { onDuplicateElement(document.id, selectedPage.id, it) } ?: canvasView?.copySelection() }, onCut = { if (selectedElementId != null) Toast.makeText(context, "Clipboard actions currently apply to ink selections.", Toast.LENGTH_SHORT).show() else if (canvasView?.cutSelectionToClipboard() != true) Toast.makeText(context, "Select ink before cutting.", Toast.LENGTH_SHORT).show() }, onClipboardCopy = { if (selectedElementId != null) Toast.makeText(context, "Clipboard actions currently apply to ink selections.", Toast.LENGTH_SHORT).show() else if (canvasView?.copySelectionToClipboard() != true) Toast.makeText(context, "Select ink before copying.", Toast.LENGTH_SHORT).show() }, onPaste = { selectedElementId = null; if (canvasView?.pasteSelectionFromClipboard() != true) Toast.makeText(context, "The clipboard does not contain Inkloom ink.", Toast.LENGTH_SHORT).show() }, onDelete = { selectedElementId?.let { onRemoveElement(document.id, selectedPage.id, it); selectedElementId = null } ?: canvasView?.deleteSelection() }, localEraser = localEraser, onToggleLocalEraser = { localEraser = !localEraser; canvasView?.localEraser = localEraser }, onDrag = { dx, dy ->
                     val next = FloatingToolbarPlacement.clamp(toolbarX + dx / editorDensity.density, toolbarY + dy / editorDensity.density, toolbarAreaWidth.value, toolbarAreaHeight.value, dockVertical)
                     toolbarX = next.xDp
                     toolbarY = next.yDp
@@ -901,6 +901,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.tool = tool
                 view.setDocumentStrokes(renderedPage.strokes.filter { it.layerId in visibleLayerIds }.sortedBy { layerOrder[it.layerId] ?: Int.MAX_VALUE }, "$documentId:${page.id}")
                 view.setProtectedStrokeIds(page.strokes.filter { it.layerId in lockedLayerIds }.mapTo(mutableSetOf()) { it.id })
+                view.setProtectedLayerIds(lockedLayerIds)
                 view.setPageBackground(background)
                 view.activeLayerId = activeLayerId
                 view.shapeKind = shapeKind
@@ -1450,7 +1451,7 @@ private fun playAudio(path: String) {
 private fun formatDuration(durationMs: Long): String { val total = durationMs / 1000; return "%d:%02d".format(total / 60, total % 60) }
 
 @Composable
-private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onDelete: () -> Unit, localEraser: Boolean, onToggleLocalEraser: () -> Unit, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit, vertical: Boolean, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, modifier: Modifier = Modifier) {
+private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, localEraser: Boolean, onToggleLocalEraser: () -> Unit, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit, vertical: Boolean, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, modifier: Modifier = Modifier) {
     var moreToolsOpen by remember { mutableStateOf(false) }
     var controlsOpen by remember { mutableStateOf(false) }
     val dragModifier = Modifier.size(32.dp).pointerInput(vertical) {
@@ -1469,6 +1470,9 @@ private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () 
                 onScale = onScale,
                 onRotate = onRotate,
                 onCopy = onCopy,
+                onCut = onCut,
+                onClipboardCopy = onClipboardCopy,
+                onPaste = onPaste,
                 onDelete = onDelete,
                 localEraser = localEraser,
                 onToggleLocalEraser = onToggleLocalEraser,
@@ -1495,7 +1499,7 @@ private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () 
 }
 
 @Composable
-private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onDelete: () -> Unit, localEraser: Boolean, onToggleLocalEraser: () -> Unit, dragModifier: Modifier, vertical: Boolean, moreToolsOpen: Boolean, onMoreToolsOpen: (Boolean) -> Unit, controlsOpen: Boolean, onControlsOpen: (Boolean) -> Unit, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit) {
+private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, localEraser: Boolean, onToggleLocalEraser: () -> Unit, dragModifier: Modifier, vertical: Boolean, moreToolsOpen: Boolean, onMoreToolsOpen: (Boolean) -> Unit, controlsOpen: Boolean, onControlsOpen: (Boolean) -> Unit, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit) {
     Icon(Icons.Outlined.DragIndicator, "Drag toolbar", modifier = dragModifier, tint = MutedInk)
     ToolButton(EditorTool.PEN, Icons.Outlined.Edit, "Pen", tool, onTool)
     ToolButton(EditorTool.HIGHLIGHTER, Icons.Outlined.BorderColor, "Mark", tool, onTool)
@@ -1540,8 +1544,13 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                         CompactToolbarIconButton(onScale, "Scale selection") { Icon(Icons.Outlined.ZoomOutMap, null) }
                         CompactToolbarIconButton(onRotate, "Rotate selection") { Icon(Icons.Outlined.RotateRight, null) }
-                        CompactToolbarIconButton(onCopy, "Copy selection") { Icon(Icons.Outlined.ContentCopy, null) }
+                        CompactToolbarIconButton(onCopy, "Duplicate selection") { Icon(Icons.Outlined.ControlPointDuplicate, null) }
                         CompactToolbarIconButton(onDelete, "Delete selection") { Icon(Icons.Outlined.Delete, null) }
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        CompactToolbarIconButton(onCut, "Cut ink selection") { Icon(Icons.Outlined.ContentCut, null) }
+                        CompactToolbarIconButton(onClipboardCopy, "Copy ink selection to clipboard") { Icon(Icons.Outlined.ContentCopy, null) }
+                        CompactToolbarIconButton(onPaste, "Paste ink selection") { Icon(Icons.Outlined.ContentPaste, null) }
                     }
                 }
                 HorizontalDivider()
