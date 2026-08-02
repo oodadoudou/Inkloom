@@ -5,6 +5,7 @@ import android.view.MotionEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.document.InkStroke
+import app.inkloom.document.StrokeMaskDab
 import app.inkloom.document.StrokePoint
 import app.inkloom.model.EditorTool
 import app.inkloom.ui.InkCanvasView
@@ -15,6 +16,64 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class InkCanvasLassoTest {
+    @Test fun draggingASelectionMovesItsMasksWithItsPoints() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val original = InkStroke(
+                id = "masked-drag",
+                points = listOf(StrokePoint(.3f, .5f), StrokePoint(.7f, .5f)),
+                masks = listOf(StrokeMaskDab(.4f, .5f, .04f, .02f)),
+            )
+            val edits = mutableListOf<CapturedEdit>()
+            val view = configuredView(original, edits)
+            view.drawSquareLasso()
+
+            view.dispatchStylus(MotionEvent.ACTION_DOWN, 500f, 500f, 60L)
+            view.dispatchStylus(MotionEvent.ACTION_MOVE, 600f, 600f, 70L)
+            view.dispatchStylus(MotionEvent.ACTION_UP, 600f, 600f, 80L)
+
+            val moved = edits.last().replacements.single()
+            assertEquals(.5f, moved.masks.single().x, .0001f)
+            assertEquals(.6f, moved.masks.single().y, .0001f)
+            assertEquals(.4f, moved.points.first().x, .0001f)
+            assertEquals(.6f, moved.points.first().y, .0001f)
+        }
+    }
+
+    @Test fun selectionScaleRotateAndCopyKeepMaskGeometryAttached() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val original = InkStroke(
+                id = "masked",
+                points = listOf(StrokePoint(.3f, .5f), StrokePoint(.7f, .5f)),
+                masks = listOf(StrokeMaskDab(.4f, .5f, .04f, .02f, 15f)),
+            )
+            val edits = mutableListOf<CapturedEdit>()
+            val view = configuredView(original, edits)
+            view.drawSquareLasso()
+
+            view.scaleSelection(2f)
+            val scaled = edits.last().replacements.single()
+            assertEquals(.3f, scaled.masks.single().x, .0001f)
+            assertEquals(.5f, scaled.masks.single().y, .0001f)
+            assertEquals(.08f, scaled.masks.single().radiusX, .0001f)
+            assertEquals(.04f, scaled.masks.single().radiusY, .0001f)
+
+            view.rotateSelection(90f)
+            val rotated = edits.last().replacements.single()
+            assertEquals(.5f, rotated.masks.single().x, .0001f)
+            assertEquals(.3f, rotated.masks.single().y, .0001f)
+            assertEquals(105f, rotated.masks.single().rotationDegrees, .0001f)
+
+            view.copySelection()
+            val copied = edits.last().replacements.single()
+            assertEquals(.53f, copied.masks.single().x, .0001f)
+            assertEquals(.33f, copied.masks.single().y, .0001f)
+            assertEquals(rotated.masks.single().radiusX, copied.masks.single().radiusX, .0001f)
+            assertEquals(rotated.masks.single().rotationDegrees, copied.masks.single().rotationDegrees, .0001f)
+        }
+    }
+
     @Test fun partialLassoSplitsAndDeletesOnlyTheEnclosedSegment() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {

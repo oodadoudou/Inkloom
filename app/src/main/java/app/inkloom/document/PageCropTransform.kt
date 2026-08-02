@@ -21,14 +21,14 @@ object PageCropTransform {
             width = page.width * width(crop),
             height = page.height * height(crop),
             crop = PageCrop(),
-            strokes = page.strokes.map { stroke -> stroke.copy(points = stroke.points.map { point -> project(point, crop) }) },
+            strokes = page.strokes.map { stroke -> stroke.copy(points = stroke.points.map { point -> project(point, crop) }, masks = stroke.masks.map { mask -> mask.copy(x = (mask.x - crop.left) / width(crop), y = (mask.y - crop.top) / height(crop), radiusX = mask.radiusX / width(crop), radiusY = mask.radiusY / height(crop)) }) },
             elements = page.elements.map { project(it, crop) },
         )
     }
 
     fun unproject(stroke: InkStroke, cropValue: PageCrop): InkStroke {
         val crop = normalized(cropValue)
-        return stroke.copy(points = stroke.points.map { point -> unproject(point, crop) })
+        return stroke.copy(points = stroke.points.map { point -> unproject(point, crop) }, masks = stroke.masks.map { mask -> mask.copy(x = crop.left + mask.x * width(crop), y = crop.top + mask.y * height(crop), radiusX = mask.radiusX * width(crop), radiusY = mask.radiusY * height(crop)) })
     }
 
     fun unproject(element: PageElement, cropValue: PageCrop): PageElement {

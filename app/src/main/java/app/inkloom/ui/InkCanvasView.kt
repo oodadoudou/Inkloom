@@ -314,7 +314,14 @@ class InkCanvasView(context: Context) : View(context) {
         paint.colorFilter = null
         paint.maskFilter = null
         paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
-        stroke.masks.forEach { mask -> canvas.drawOval((mask.x - mask.radiusX) * width, (mask.y - mask.radiusY) * height, (mask.x + mask.radiusX) * width, (mask.y + mask.radiusY) * height, paint) }
+        stroke.masks.forEach { mask ->
+            val centerX = mask.x * width
+            val centerY = mask.y * height
+            canvas.save()
+            canvas.rotate(mask.rotationDegrees, centerX, centerY)
+            canvas.drawOval(centerX - mask.radiusX * width, centerY - mask.radiusY * height, centerX + mask.radiusX * width, centerY + mask.radiusY * height, paint)
+            canvas.restore()
+        }
         paint.xfermode = null
         canvas.restoreToCount(checkpoint)
     }
@@ -548,7 +555,10 @@ class InkCanvasView(context: Context) : View(context) {
                         if (hypot(dx.toDouble(), dy.toDouble()) > .0001) selectionMoved = true
                         selectedStrokeIds.forEach { id ->
                             val index = strokes.indexOfFirst { it.id == id }
-                            if (index >= 0) strokes[index] = strokes[index].copy(points = strokes[index].points.map { it.copy(x = (it.x + dx).coerceIn(0f, 1f), y = (it.y + dy).coerceIn(0f, 1f)) })
+                            if (index >= 0) strokes[index] = strokes[index].copy(
+                                points = strokes[index].points.map { it.copy(x = (it.x + dx).coerceIn(0f, 1f), y = (it.y + dy).coerceIn(0f, 1f)) },
+                                masks = strokes[index].masks.map { it.copy(x = (it.x + dx).coerceIn(0f, 1f), y = (it.y + dy).coerceIn(0f, 1f)) },
+                            )
                         }
                         lastX = normalizedX; lastY = normalizedY
                         strokeCacheDirty = true
@@ -905,16 +915,20 @@ class InkCanvasView(context: Context) : View(context) {
         invalidateStrokeCache()
     }
 
-    fun scaleSelection(factor: Float) = transformSelection { dx, dy -> dx * factor to dy * factor }
+    fun scaleSelection(factor: Float) = transformSelection(radiusScale = factor) { dx, dy -> dx * factor to dy * factor }
 
     fun rotateSelection(degrees: Float) {
         val radians = Math.toRadians(degrees.toDouble())
-        transformSelection { dx, dy -> (dx * cos(radians) - dy * sin(radians)).toFloat() to (dx * sin(radians) + dy * cos(radians)).toFloat() }
+        transformSelection(rotationDeltaDegrees = degrees) { dx, dy -> (dx * cos(radians) - dy * sin(radians)).toFloat() to (dx * sin(radians) + dy * cos(radians)).toFloat() }
     }
 
     fun copySelection() {
         val before = strokes.toList()
-        val copies = strokes.filter { it.id in selectedStrokeIds }.map { original -> original.copy(id = java.util.UUID.randomUUID().toString(), points = original.points.map { it.copy(x = (it.x + .03f).coerceIn(0f, 1f), y = (it.y + .03f).coerceIn(0f, 1f)) }) }
+        val copies = strokes.filter { it.id in selectedStrokeIds }.map { original -> original.copy(
+            id = java.util.UUID.randomUUID().toString(),
+            points = original.points.map { it.copy(x = (it.x + .03f).coerceIn(0f, 1f), y = (it.y + .03f).coerceIn(0f, 1f)) },
+            masks = original.masks.map { it.copy(x = (it.x + .03f).coerceIn(0f, 1f), y = (it.y + .03f).coerceIn(0f, 1f)) },
+        ) }
         if (copies.isEmpty()) return
         strokes += copies; selectedStrokeIds.clear(); selectedStrokeIds += copies.map(InkStroke::id); commitStrokeEdit(before, strokes); invalidateStrokeCache()
     }
@@ -959,14 +973,30 @@ class InkCanvasView(context: Context) : View(context) {
         val ids = selectedStrokeIds.toSet(); strokes.removeAll { it.id in ids }; commitStrokeEdit(before, strokes); selectedStrokeIds.clear(); invalidateStrokeCache()
     }
 
-    private fun transformSelection(transform: (Float, Float) -> Pair<Float, Float>) {
+    private fun transformSelection(
+        radiusScale: Float = 1f,
+        rotationDeltaDegrees: Float = 0f,
+        transform: (Float, Float) -> Pair<Float, Float>,
+    ) {
         val before = strokes.toList()
         val selected = strokes.filter { it.id in selectedStrokeIds }
         val points = selected.flatMap(InkStroke::points)
         if (points.isEmpty()) return
         val centerX = points.map(StrokePoint::x).average().toFloat(); val centerY = points.map(StrokePoint::y).average().toFloat()
         selected.forEach { current ->
-            val changed = current.copy(points = current.points.map { point -> val (x, y) = transform(point.x - centerX, point.y - centerY); point.copy(x = (centerX + x).coerceIn(0f, 1f), y = (centerY + y).coerceIn(0f, 1f)) })
+            val changed = current.copy(
+                points = current.points.map { point -> val (x, y) = transform(point.x - centerX, point.y - centerY); point.copy(x = (centerX + x).coerceIn(0f, 1f), y = (centerY + y).coerceIn(0f, 1f)) },
+                masks = current.masks.map { mask ->
+                    val (x, y) = transform(mask.x - centerX, mask.y - centerY)
+                    mask.copy(
+                        x = (centerX + x).coerceIn(0f, 1f),
+                        y = (centerY + y).coerceIn(0f, 1f),
+                        radiusX = mask.radiusX * radiusScale,
+                        radiusY = mask.radiusY * radiusScale,
+                        rotationDegrees = mask.rotationDegrees + rotationDeltaDegrees,
+                    )
+                },
+            )
             val currentIndex = strokes.indexOfFirst { it.id == current.id }
             if (currentIndex >= 0) strokes[currentIndex] = changed
         }

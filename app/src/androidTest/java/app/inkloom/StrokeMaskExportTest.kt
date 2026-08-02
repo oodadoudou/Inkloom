@@ -35,4 +35,24 @@ class StrokeMaskExportTest {
             bitmap.recycle()
         }
     }
+
+    @Test fun flattenedExportHonorsMaskRotation() {
+        val service = DocumentAssetService(ApplicationProvider.getApplicationContext())
+        val stroke = InkStroke(
+            id = "rotated-mask",
+            width = 100f,
+            colorArgb = 0xFF000000,
+            points = listOf(StrokePoint(.2f, .5f), StrokePoint(.8f, .5f)),
+            masks = listOf(StrokeMaskDab(.5f, .5f, .02f, .12f, 90f)),
+        )
+        val page = InkPage(width = 1_000f, height = 1_000f, background = PageBackground.Paper(0xFFFFFFFF), strokes = listOf(stroke))
+
+        val bitmap = service.renderPageBitmap(page, 1_000)
+        try {
+            assertEquals(Color.WHITE, bitmap.getPixel(410, 500))
+            assertEquals(Color.BLACK, bitmap.getPixel(350, 500))
+        } finally {
+            bitmap.recycle()
+        }
+    }
 }

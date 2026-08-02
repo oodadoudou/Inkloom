@@ -22,6 +22,7 @@ object StrokeClipboardCodec {
     private const val MAX_ENCODED_CHARS = 2_000_000
     private const val MAX_STROKES = 500
     private const val MAX_POINTS = 100_000
+    private const val MAX_MASKS = 100_000
     private val json = Json { ignoreUnknownKeys = true }
 
     fun encode(strokes: List<InkStroke>): String? {
@@ -54,15 +55,17 @@ object StrokeClipboardCodec {
                 id = nextId(),
                 layerId = targetLayerId,
                 points = stroke.points.map { point -> point.copy(x = (point.x + dx).coerceIn(0f, 1f), y = (point.y + dy).coerceIn(0f, 1f)) },
+                masks = stroke.masks.map { mask -> mask.copy(x = (mask.x + dx).coerceIn(0f, 1f), y = (mask.y + dy).coerceIn(0f, 1f)) },
             )
         }
     }
 
     private fun valid(strokes: List<InkStroke>): Boolean {
-        if (strokes.isEmpty() || strokes.size > MAX_STROKES || strokes.sumOf { it.points.size } > MAX_POINTS) return false
+        if (strokes.isEmpty() || strokes.size > MAX_STROKES || strokes.sumOf { it.points.size } > MAX_POINTS || strokes.sumOf { it.masks.size } > MAX_MASKS) return false
         return strokes.all { stroke ->
             stroke.points.isNotEmpty() && stroke.width.isFinite() && stroke.width in .01f..10_000f && stroke.opacity.isFinite() && stroke.opacity in 0f..1f &&
-                stroke.points.all { point -> point.x.isFinite() && point.y.isFinite() && point.pressure.isFinite() && point.x in 0f..1f && point.y in 0f..1f && point.pressure in 0f..1f }
+                stroke.points.all { point -> point.x.isFinite() && point.y.isFinite() && point.pressure.isFinite() && point.x in 0f..1f && point.y in 0f..1f && point.pressure in 0f..1f } &&
+                stroke.masks.all { mask -> mask.x.isFinite() && mask.y.isFinite() && mask.radiusX.isFinite() && mask.radiusY.isFinite() && mask.rotationDegrees.isFinite() && mask.x in 0f..1f && mask.y in 0f..1f && mask.radiusX in 0f..10f && mask.radiusY in 0f..10f }
         }
     }
 }

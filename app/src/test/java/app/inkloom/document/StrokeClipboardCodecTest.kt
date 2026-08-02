@@ -26,7 +26,7 @@ class StrokeClipboardCodecTest {
     }
 
     @Test fun pasteRegeneratesIdsTargetsActiveLayerAndKeepsGroupGeometry() {
-        val first = InkStroke(id = "a", renderSeed = 11, layerId = "old", points = listOf(StrokePoint(.85f, .2f), StrokePoint(.95f, .3f)))
+        val first = InkStroke(id = "a", renderSeed = 11, layerId = "old", points = listOf(StrokePoint(.85f, .2f), StrokePoint(.95f, .3f)), masks = listOf(StrokeMaskDab(.9f, .25f, .04f, .02f, 35f)))
         val second = InkStroke(id = "b", renderSeed = 22, layerId = "other", points = listOf(StrokePoint(.4f, .7f)))
         val ids = ArrayDeque(listOf("copy-a", "copy-b"))
 
@@ -38,6 +38,11 @@ class StrokeClipboardCodecTest {
         assertEquals(.88f, pasted.first().points.first().x, .0001f)
         assertEquals(.98f, pasted.first().points.last().x, .0001f)
         assertEquals(.43f, pasted.last().points.single().x, .0001f)
+        assertEquals(.93f, pasted.first().masks.single().x, .0001f)
+        assertEquals(.28f, pasted.first().masks.single().y, .0001f)
+        assertEquals(.04f, pasted.first().masks.single().radiusX, .0001f)
+        assertEquals(.02f, pasted.first().masks.single().radiusY, .0001f)
+        assertEquals(35f, pasted.first().masks.single().rotationDegrees, .0001f)
     }
 
     @Test fun rejectsOversizedMalformedAndOutOfBoundsPayloads() {

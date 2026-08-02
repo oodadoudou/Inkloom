@@ -219,7 +219,7 @@ data class InkStroke(
 )
 
 @Serializable
-data class StrokeMaskDab(val x: Float, val y: Float, val radiusX: Float, val radiusY: Float)
+data class StrokeMaskDab(val x: Float, val y: Float, val radiusX: Float, val radiusY: Float, val rotationDegrees: Float = 0f)
 
 @Serializable
 enum class BrushTaperMode { DISTANCE, PERCENTAGE, FADE }
