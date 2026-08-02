@@ -797,6 +797,7 @@ private fun EditorScreen(
     var rotateToolHeld by remember { mutableStateOf(false) }
     fun exitCanvasNavigation() { handToolEnabled = false; handToolHeld = false; rotateToolEnabled = false; rotateToolHeld = false }
     var exportMenu by remember { mutableStateOf(false) }
+    var viewMenu by remember { mutableStateOf(false) }
     var zoom by remember { mutableFloatStateOf(1f) }
     var panX by remember { mutableFloatStateOf(0f) }
     var panY by remember { mutableFloatStateOf(0f) }
@@ -808,6 +809,19 @@ private fun EditorScreen(
         if (viewportWidthPx <= 0f || viewportHeightPx <= 0f || view.width <= 0 || view.height <= 0) return null
         return ViewportGeometry(viewportWidthPx, viewportHeightPx, view.width.toFloat(), view.height.toFloat())
     }
+    fun applyViewport(next: ViewportState) { zoom = next.scale; panX = next.panX; panY = next.panY; viewRotation = next.rotationDegrees }
+    fun fitPage() { applyViewport(ViewportState(1f, 0f, 0f, 0f)); exitCanvasNavigation() }
+    fun actualSize() {
+        val view = canvasView ?: return
+        if (view.width <= 0) return
+        applyViewport(ViewportTransform.actualSize(ViewportState(zoom, panX, panY, viewRotation), PageCropTransform.visibleWidth(selectedPage), view.width.toFloat(), currentViewportGeometry()))
+    }
+    fun fitWidth() {
+        val view = canvasView ?: return
+        if (view.width <= 0 || viewportWidthPx <= 0f) return
+        applyViewport(ViewportTransform.fitWidth(ViewportState(zoom, panX, panY, viewRotation), viewportWidthPx, view.width.toFloat(), currentViewportGeometry()))
+    }
+    fun resetViewRotation() { applyViewport(ViewportTransform.resetRotation(ViewportState(zoom, panX, panY, viewRotation), currentViewportGeometry())); exitCanvasNavigation() }
     var toolbarX by remember { mutableFloatStateOf(settings.toolbarOffsetXDp) }
     var toolbarY by remember { mutableFloatStateOf(settings.toolbarOffsetYDp) }
     var pagePanelBounds by remember {
@@ -917,7 +931,16 @@ private fun EditorScreen(
             IconButton(onClick = { onSettingsChange(settings.copy(showToolbar = !settings.showToolbar)) }) { Icon(if (settings.showToolbar) Icons.Outlined.VisibilityOff else Icons.Outlined.Build, tr("Toggle toolbar", "显示或隐藏工具栏")) }
             IconButton(onClick = { val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY, viewRotation), .9f, 0f, 0f, geometry = currentViewportGeometry()); zoom = next.scale; panX = next.panX; panY = next.panY }) { Icon(Icons.Outlined.ZoomOut, tr("Zoom out", "缩小")) }
             IconButton(onClick = { val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY, viewRotation), 1.1f, 0f, 0f, geometry = currentViewportGeometry()); zoom = next.scale; panX = next.panX; panY = next.panY }) { Icon(Icons.Outlined.ZoomIn, tr("Zoom in", "放大")) }
-            IconButton(onClick = { zoom = 1f; panX = 0f; panY = 0f; viewRotation = 0f; exitCanvasNavigation() }) { Icon(Icons.Outlined.CenterFocusStrong, tr("Reset view", "重置视图")) }
+            IconButton(onClick = ::fitPage) { Icon(Icons.Outlined.CenterFocusStrong, tr("Fit page", "适合页面")) }
+            Box {
+                TextButton(onClick = { viewMenu = true }, contentPadding = PaddingValues(horizontal = 6.dp)) { Text("${(zoom * 100f).toInt()}%", fontSize = 11.sp) }
+                DropdownMenu(expanded = viewMenu, onDismissRequest = { viewMenu = false }) {
+                    DropdownMenuItem(text = { Text(tr("Fit page · Ctrl+0", "适合页面 · Ctrl+0")) }, onClick = { viewMenu = false; fitPage() })
+                    DropdownMenuItem(text = { Text(tr("Actual size · Ctrl+Alt+0", "实际大小 · Ctrl+Alt+0")) }, onClick = { viewMenu = false; actualSize() })
+                    DropdownMenuItem(text = { Text(tr("Fit width", "适合宽度")) }, onClick = { viewMenu = false; fitWidth() })
+                    DropdownMenuItem(text = { Text(tr("Reset rotation", "重置旋转")) }, onClick = { viewMenu = false; resetViewRotation() })
+                }
+            }
             IconButton(onClick = onExport) { Icon(Icons.Outlined.Share, tr("Export PDF", "导出 PDF")) }
             Box {
                 IconButton(onClick = { exportMenu = true }) { Icon(Icons.Outlined.MoreHoriz, tr("More exports", "更多导出选项")) }
@@ -1182,7 +1205,10 @@ private fun EditorScreen(
                             ShortcutAction.MERGE_LAYER_DOWN -> onMergeLayerDown(document.id, selectedPage.id, activeLayerId)?.let { activeLayerId = it }
                             ShortcutAction.ZOOM_OUT -> { val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY, viewRotation), .9f, 0f, 0f, geometry = currentViewportGeometry()); zoom = next.scale; panX = next.panX; panY = next.panY }
                             ShortcutAction.ZOOM_IN -> { val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY, viewRotation), 1.1f, 0f, 0f, geometry = currentViewportGeometry()); zoom = next.scale; panX = next.panX; panY = next.panY }
-                            ShortcutAction.FIT_PAGE -> { zoom = 1f; panX = 0f; panY = 0f; viewRotation = 0f; exitCanvasNavigation() }
+                            ShortcutAction.FIT_PAGE -> fitPage()
+                            ShortcutAction.ACTUAL_SIZE -> actualSize()
+                            ShortcutAction.FIT_WIDTH -> fitWidth()
+                            ShortcutAction.RESET_VIEW_ROTATION -> resetViewRotation()
                             ShortcutAction.PREVIOUS_PAGE -> document.pages.indexOfFirst { it.id == selectedPage.id }.takeIf { it > 0 }?.let { onSelectPage(document.pages[it - 1].id) }
                             ShortcutAction.NEXT_PAGE -> document.pages.indexOfFirst { it.id == selectedPage.id }.takeIf { it in 0 until document.pages.lastIndex }?.let { onSelectPage(document.pages[it + 1].id) }
                             ShortcutAction.TOGGLE_BRUSH_PANEL -> onToggleBrushes()
@@ -3692,6 +3718,9 @@ private fun shortcutActionLabel(action: ShortcutAction): String = when (action) 
     ShortcutAction.ZOOM_OUT -> tr("Zoom out", "缩小")
     ShortcutAction.ZOOM_IN -> tr("Zoom in", "放大")
     ShortcutAction.FIT_PAGE -> tr("Fit page", "适合页面")
+    ShortcutAction.ACTUAL_SIZE -> tr("Actual size (100%)", "实际大小（100%）")
+    ShortcutAction.FIT_WIDTH -> tr("Fit width", "适合宽度")
+    ShortcutAction.RESET_VIEW_ROTATION -> tr("Reset view rotation", "重置视图旋转")
     ShortcutAction.PREVIOUS_PAGE -> tr("Previous page", "上一页")
     ShortcutAction.NEXT_PAGE -> tr("Next page", "下一页")
     ShortcutAction.TOGGLE_BRUSH_PANEL -> tr("Show / hide brush panel", "显示／隐藏笔刷栏")

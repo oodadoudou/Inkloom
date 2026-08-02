@@ -57,6 +57,32 @@ object ViewportTransform {
     fun rotateBy(current: ViewportState, deltaDegrees: Float, geometry: ViewportGeometry? = null): ViewportState =
         clamp(current.copy(rotationDegrees = normalizeDegrees(current.rotationDegrees + deltaDegrees)), geometry)
 
+    fun actualSize(
+        current: ViewportState,
+        pageModelWidth: Float,
+        pageViewWidth: Float,
+        geometry: ViewportGeometry? = null,
+        maximumScale: Float = 8f,
+    ): ViewportState {
+        val scale = (pageModelWidth / pageViewWidth.coerceAtLeast(1f)).coerceIn(1f, maximumScale)
+        return clamp(current.copy(scale = scale, panX = 0f, panY = 0f), geometry)
+    }
+
+    fun fitWidth(
+        current: ViewportState,
+        viewportWidth: Float,
+        pageViewWidth: Float,
+        geometry: ViewportGeometry? = null,
+        horizontalFill: Float = .94f,
+        maximumScale: Float = 8f,
+    ): ViewportState {
+        val scale = (viewportWidth.coerceAtLeast(1f) * horizontalFill.coerceIn(.5f, 1f) / pageViewWidth.coerceAtLeast(1f)).coerceIn(1f, maximumScale)
+        return clamp(current.copy(scale = scale, panX = 0f, panY = 0f), geometry)
+    }
+
+    fun resetRotation(current: ViewportState, geometry: ViewportGeometry? = null): ViewportState =
+        clamp(current.copy(rotationDegrees = 0f), geometry)
+
     fun clamp(current: ViewportState, geometry: ViewportGeometry?): ViewportState {
         if (current.scale <= 1.0001f) return current.copy(panX = 0f, panY = 0f)
         geometry ?: return current

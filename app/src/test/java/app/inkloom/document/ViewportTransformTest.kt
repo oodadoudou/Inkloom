@@ -72,4 +72,31 @@ class ViewportTransformTest {
         assertEquals(-170f, ViewportTransform.rotateBy(ViewportState(2f, 0f, 0f, 170f), 20f).rotationDegrees, .001f)
         assertEquals(170f, ViewportTransform.rotateBy(ViewportState(2f, 0f, 0f, -170f), -20f).rotationDegrees, .001f)
     }
+
+    @Test fun actualSizeMapsOneDocumentPixelToOneCanvasPixel() {
+        val after = ViewportTransform.actualSize(ViewportState(1.6f, 200f, -100f, 15f), pageModelWidth = 1600f, pageViewWidth = 1000f)
+
+        assertEquals(1.6f, after.scale, .001f)
+        assertEquals(0f, after.panX, .001f)
+        assertEquals(0f, after.panY, .001f)
+        assertEquals(15f, after.rotationDegrees, .001f)
+    }
+
+    @Test fun fitWidthUsesTheAvailableViewportAndCentersThePage() {
+        val after = ViewportTransform.fitWidth(ViewportState(3f, 500f, -300f), viewportWidth = 1200f, pageViewWidth = 600f)
+
+        assertEquals(1.88f, after.scale, .001f)
+        assertEquals(0f, after.panX, .001f)
+        assertEquals(0f, after.panY, .001f)
+    }
+
+    @Test fun resetRotationKeepsTheCurrentZoomRecoverable() {
+        val geometry = ViewportGeometry(viewportWidth = 1200f, viewportHeight = 800f, pageWidth = 600f, pageHeight = 760f)
+        val after = ViewportTransform.resetRotation(ViewportState(2f, 900f, -700f, 91f), geometry)
+
+        assertEquals(2f, after.scale, .001f)
+        assertEquals(0f, after.rotationDegrees, .001f)
+        assertEquals(900f, after.panX, .001f)
+        assertEquals(-700f, after.panY, .001f)
+    }
 }
