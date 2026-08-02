@@ -186,12 +186,13 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         if (page.layers.firstOrNull { it.id == stroke.layerId }?.locked == true) return
         store.append(JournalEntry.StrokeRemoved(documentId, pageId, strokeId)); refreshSelection()
     }
-    fun replaceStrokes(documentId: String, pageId: String, removedStrokeIds: List<String>, strokes: List<InkStroke>) {
+    fun replaceStrokes(documentId: String, pageId: String, removedStrokeIds: List<String>, strokes: List<InkStroke>, replacementIndices: List<Int>) {
         val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return
         val lockedLayerIds = page.layers.filter { it.locked }.mapTo(mutableSetOf()) { it.id }
         if (page.strokes.any { it.id in removedStrokeIds && it.layerId in lockedLayerIds }) return
         if (strokes.any { replacement -> page.layers.none { it.id == replacement.layerId && it.visible && !it.locked } }) return
-        store.append(JournalEntry.StrokesReplaced(documentId, pageId, removedStrokeIds.distinct(), strokes)); refreshSelection()
+        if (replacementIndices.size != strokes.size) return
+        store.append(JournalEntry.StrokesReplaced(documentId, pageId, removedStrokeIds.distinct(), strokes, replacementIndices)); refreshSelection()
     }
     fun addElement(documentId: String, pageId: String, element: PageElement) {
         val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return

@@ -29,6 +29,10 @@ import app.inkloom.document.ShapeGeometry
 import app.inkloom.document.ShapeKind
 import app.inkloom.document.ShapePoint
 import app.inkloom.document.SprayGeometry
+import app.inkloom.document.StrokeEdit
+import app.inkloom.document.StrokeEditHistory
+import app.inkloom.document.StrokeEdits
+import app.inkloom.document.StrokeEraser
 import app.inkloom.document.StrokeStampSampler
 import app.inkloom.document.StrokeStabilization
 import app.inkloom.document.StrokeTaper
@@ -36,6 +40,7 @@ import app.inkloom.document.StylusInputClassifier
 import app.inkloom.document.WaterEdge
 import app.inkloom.model.EditorTool
 import app.inkloom.settings.StylusButtonAction
+import kotlin.math.ceil
 import kotlin.math.hypot
 import kotlin.math.cos
 import kotlin.math.max
@@ -43,12 +48,16 @@ import kotlin.math.sin
 
 class InkCanvasView(context: Context) : View(context) {
     private val strokes = mutableListOf<InkStroke>()
-    private val redo = mutableListOf<InkStroke>()
+    private val editHistory = StrokeEditHistory()
     private val currentPoints = mutableListOf<StrokePoint>()
     private var currentStrokeId = java.util.UUID.randomUUID().toString()
     private var backgroundBitmap: Bitmap? = null
     private val selectedStrokeIds = linkedSetOf<String>()
-    private val selectionBeforeMove = linkedMapOf<String, InkStroke>()
+    private var selectionGestureBefore: List<InkStroke>? = null
+    private var eraserGestureBefore: List<InkStroke>? = null
+    private var lastEraserX: Float? = null
+    private var lastEraserY: Float? = null
+    private var strokeHistoryKey: String? = null
     private val lassoPoints = mutableListOf<StrokePoint>()
     private var shapeStart: ShapePoint? = null
     private var shapeEnd: ShapePoint? = null
@@ -182,7 +191,7 @@ class InkCanvasView(context: Context) : View(context) {
     var onStrokeCommitted: (InkStroke) -> Unit = {}
     var onShapeCommitted: (PageElement.Shape) -> Unit = {}
     var onStrokeRemoved: (String) -> Unit = {}
-    var onStrokesReplaced: (List<String>, List<InkStroke>) -> Unit = { removed, replacements -> removed.forEach(onStrokeRemoved); replacements.forEach(onStrokeCommitted) }
+    var onStrokesReplaced: (List<String>, List<InkStroke>, List<Int>) -> Unit = { removed, replacements, _ -> removed.forEach(onStrokeRemoved); replacements.forEach(onStrokeCommitted) }
     var onViewportScale: (Float, Float, Float) -> Unit = { _, _, _ -> }
     var onViewportPan: (Float, Float) -> Unit = { _, _ -> }
     var onUndoGesture: () -> Unit = {}
@@ -199,8 +208,20 @@ class InkCanvasView(context: Context) : View(context) {
 
     init { setBackgroundColor(Color.TRANSPARENT); isFocusable = true }
 
-    fun setDocumentStrokes(value: List<InkStroke>) {
-        if (strokes != value) { strokes.clear(); strokes.addAll(value); selectedStrokeIds.retainAll(value.mapTo(mutableSetOf()) { it.id }); redo.clear(); invalidateStrokeCache() }
+    fun setDocumentStrokes(value: List<InkStroke>, historyKey: String) {
+        if (strokeHistoryKey != historyKey) {
+            strokeHistoryKey = historyKey
+            editHistory.clear()
+            selectionGestureBefore = null
+            eraserGestureBefore = null
+        }
+        if (strokes != value) {
+            editHistory.clear()
+            strokes.clear()
+            strokes.addAll(value)
+            selectedStrokeIds.retainAll(value.mapTo(mutableSetOf()) { it.id })
+            invalidateStrokeCache()
+        }
     }
 
     fun setProtectedStrokeIds(value: Set<String>) { protectedStrokeIds.clear(); protectedStrokeIds.addAll(value); selectedStrokeIds.removeAll(value) }
@@ -450,13 +471,17 @@ class InkCanvasView(context: Context) : View(context) {
             MotionEvent.ACTION_DOWN -> {
                 parent?.requestDisallowInterceptTouchEvent(true)
                 activeTool = resolveTool(event, eventToolType)
-                if (activeTool == EditorTool.ERASER) { eraseAt(normalizedX, normalizedY); return true }
+                if (activeTool == EditorTool.ERASER) {
+                    beginEraserGesture()
+                    eraseAlong(normalizedX, normalizedY)
+                    return true
+                }
                 if (activeTool == EditorTool.SELECT) {
                     val hit = strokes.getOrNull(findStroke(normalizedX, normalizedY, .035f))
-                    lassoPoints.clear(); selectionBeforeMove.clear(); selectionMoved = false
+                    lassoPoints.clear(); selectionGestureBefore = null; selectionMoved = false
                     if (hit != null) {
                         if (hit.id !in selectedStrokeIds) { selectedStrokeIds.clear(); selectedStrokeIds += hit.id }
-                        strokes.filter { it.id in selectedStrokeIds }.forEach { selectionBeforeMove[it.id] = it }
+                        selectionGestureBefore = strokes.toList()
                         movingSelection = true
                     } else {
                         selectedStrokeIds.clear(); movingSelection = false
@@ -470,10 +495,13 @@ class InkCanvasView(context: Context) : View(context) {
                     shapeEnd = shapeStart
                     invalidate(); return true
                 }
-                redo.clear(); currentPoints.clear(); currentStrokeId = java.util.UUID.randomUUID().toString(); addPoint(normalizedX, normalizedY, event.pressure, event.eventTime, event.getAxisValue(MotionEvent.AXIS_TILT), event.orientation)
+                currentPoints.clear(); currentStrokeId = java.util.UUID.randomUUID().toString(); addPoint(normalizedX, normalizedY, event.pressure, event.eventTime, event.getAxisValue(MotionEvent.AXIS_TILT), event.orientation)
             }
             MotionEvent.ACTION_MOVE -> {
-                if (activeTool == EditorTool.ERASER) eraseAt(normalizedX, normalizedY)
+                if (activeTool == EditorTool.ERASER) {
+                    for (i in 0 until event.historySize) eraseAlong(event.getHistoricalX(i) / width.coerceAtLeast(1), event.getHistoricalY(i) / height.coerceAtLeast(1))
+                    eraseAlong(normalizedX, normalizedY)
+                }
                 else if (activeTool == EditorTool.SELECT) {
                     if (movingSelection) {
                         val dx = normalizedX - lastX; val dy = normalizedY - lastY
@@ -500,23 +528,27 @@ class InkCanvasView(context: Context) : View(context) {
                 if (event.actionMasked == MotionEvent.ACTION_CANCEL || event.flags and MotionEvent.FLAG_CANCELED != 0) {
                     currentPoints.clear()
                     shapeStart = null; shapeEnd = null
-                    selectionBeforeMove.forEach { (id, original) -> strokes.indexOfFirst { it.id == id }.takeIf { it >= 0 }?.let { strokes[it] = original } }
-                    lassoPoints.clear(); movingSelection = false; selectionMoved = false; selectionBeforeMove.clear(); strokeCacheDirty = true
+                    if (activeTool == EditorTool.ERASER) cancelEraserGesture()
+                    selectionGestureBefore?.let { restoreStrokeSnapshot(it) }
+                    lassoPoints.clear(); movingSelection = false; selectionMoved = false; selectionGestureBefore = null; strokeCacheDirty = true
+                } else if (activeTool == EditorTool.ERASER) {
+                    eraseAlong(normalizedX, normalizedY)
+                    finishEraserGesture()
                 } else if (activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) && currentPoints.isNotEmpty()) {
+                    val before = strokes.toList()
                     val stroke = makeStroke(currentPoints)
                     strokes += stroke
                     strokeCacheDirty = true
-                    onStrokeCommitted(stroke)
+                    commitStrokeEdit(before, strokes)
                     currentPoints.clear()
                 } else if (activeTool == EditorTool.SELECT) {
                     if (movingSelection && selectionMoved) {
-                        val moved = strokes.filter { it.id in selectedStrokeIds }
-                        onStrokesReplaced(selectionBeforeMove.keys.toList(), moved)
+                        selectionGestureBefore?.let { commitStrokeEdit(it, strokes) }
                     } else if (!movingSelection) {
                         appendLassoPoint(normalizedX, normalizedY)
                         selectedStrokeIds += strokes.filter { it.id !in protectedStrokeIds && LassoGeometry.selects(lassoPoints, it) }.map(InkStroke::id)
                     }
-                    lassoPoints.clear(); movingSelection = false; selectionMoved = false; selectionBeforeMove.clear()
+                    lassoPoints.clear(); movingSelection = false; selectionMoved = false; selectionGestureBefore = null
                 } else if (activeTool == EditorTool.SHAPE) {
                     val start = shapeStart
                     val end = shapeEnd
@@ -613,53 +645,140 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun makeStroke(points: List<StrokePoint>) = InkStroke(id = currentStrokeId, points = points.toList(), colorArgb = inkColor.toUInt().toLong(), width = baseWidth, opacity = inkOpacity, brushId = brushId, layerId = activeLayerId, tipAssetPath = tipAssetPath, tipAssetPaths = tipAssetPaths.ifEmpty { listOfNotNull(tipAssetPath) }, dualTipAssetPaths = dualTipAssetPaths, grainAssetPath = grainAssetPath, grainDensity = grainDensity, grainScale = grainScale, grainRotationDegrees = grainRotationDegrees, grainBrightness = grainBrightness, grainContrast = grainContrast, grainReversed = grainReversed, grainEmphasized = grainEmphasized, spacing = brushSpacing, flow = brushFlow, hardness = brushHardness, thickness = brushThickness, thicknessVertical = brushThicknessVertical, rotationDegrees = brushRotation, followStylusOrientation = followStylusOrientation, followStrokeDirection = followStrokeDirection, randomRotationDegrees = randomRotationDegrees, watercolor = brushWatercolor, colorMix = brushColorMix, paintMix = brushPaintMix, spray = brushSpray, sprayParticleSize = sprayParticleSize, sprayParticleSizeUnit = sprayParticleSizeUnit, sprayParticleSizeSyncBrushSize = sprayParticleSizeSyncBrushSize, sprayDensity = sprayDensity, sprayBias = sprayBias, ribbon = brushRibbon, tipSequenceMode = brushTipSequenceMode, dualBrush = brushDual, dualSizeScale = dualSizeScale, dualSpacing = dualSpacing, dualFlow = dualFlow, dualHardness = dualHardness, dualThickness = dualThickness, dualThicknessVertical = dualThicknessVertical, dualRotationDegrees = dualRotationDegrees, dualFollowStylusOrientation = dualFollowStylusOrientation, dualFollowStrokeDirection = dualFollowStrokeDirection, dualRandomRotationDegrees = dualRandomRotationDegrees, dualRibbon = dualRibbon, dualSpray = dualSpray, dualSprayParticleSize = dualSprayParticleSize, dualSprayParticleSizeUnit = dualSprayParticleSizeUnit, dualSprayParticleSizeSyncBrushSize = dualSprayParticleSizeSyncBrushSize, dualSprayDensity = dualSprayDensity, dualSprayBias = dualSprayBias, dualTipSequenceMode = dualTipSequenceMode, dualCompositeMode = dualCompositeMode, taperMode = taperMode, taperStartEnabled = taperStartEnabled, taperStartLength = taperStartLength, taperStartLengthUnit = taperStartLengthUnit, taperStartMinimum = taperStartMinimum, taperEndEnabled = taperEndEnabled, taperEndLength = taperEndLength, taperEndLengthUnit = taperEndLengthUnit, taperEndMinimum = taperEndMinimum, waterEdgeEnabled = waterEdgeEnabled, waterEdgeRadius = waterEdgeRadius, waterEdgeRadiusUnit = waterEdgeRadiusUnit, waterEdgeOpacity = waterEdgeOpacity, waterEdgeDarkness = waterEdgeDarkness, waterEdgeBlur = waterEdgeBlur, waterEdgeBlurUnit = waterEdgeBlurUnit, sizePressureEnabled = sizePressureEnabled, sizePressureMinimum = sizePressureMinimum, sizePressureCurve = sizePressureCurve, sizeSecondaryDynamics = sizeSecondaryDynamics, opacityPressureEnabled = opacityPressureEnabled, opacityPressureMinimum = opacityPressureMinimum, opacityPressureCurve = opacityPressureCurve, opacitySecondaryDynamics = opacitySecondaryDynamics, flowPressureEnabled = flowPressureEnabled, flowPressureMinimum = flowPressureMinimum, flowPressureCurve = flowPressureCurve, flowSecondaryDynamics = flowSecondaryDynamics, spacingPressureEnabled = spacingPressureEnabled, spacingPressureMinimum = spacingPressureMinimum, spacingPressureCurve = spacingPressureCurve, spacingSecondaryDynamics = spacingSecondaryDynamics, thicknessPressureEnabled = thicknessPressureEnabled, thicknessPressureMinimum = thicknessPressureMinimum, thicknessPressureCurve = thicknessPressureCurve, thicknessSecondaryDynamics = thicknessSecondaryDynamics)
 
+    private fun beginEraserGesture() {
+        eraserGestureBefore = strokes.toList()
+        lastEraserX = null
+        lastEraserY = null
+    }
+
+    private fun eraseAlong(x: Float, y: Float) {
+        val targetX = x.coerceIn(0f, 1f)
+        val targetY = y.coerceIn(0f, 1f)
+        val startX = lastEraserX
+        val startY = lastEraserY
+        if (startX == null || startY == null) {
+            eraseAt(targetX, targetY)
+        } else {
+            val distancePixels = hypot(((targetX - startX) * width).toDouble(), ((targetY - startY) * height).toDouble()).toFloat()
+            val spacing = (eraserRadiusPixels() * .45f).coerceAtLeast(1f)
+            val steps = ceil(distancePixels / spacing).toInt().coerceIn(1, MAX_ERASER_SAMPLES_PER_EVENT)
+            for (step in 1..steps) {
+                val amount = step / steps.toFloat()
+                eraseAt(startX + (targetX - startX) * amount, startY + (targetY - startY) * amount)
+            }
+        }
+        lastEraserX = targetX
+        lastEraserY = targetY
+    }
+
     private fun eraseAt(x: Float, y: Float) {
-        val threshold = .025f + eraserWidth.coerceIn(.5f, 400f) / 4000f
-        val index = findStroke(x, y, threshold)
-        if (index >= 0) {
-            val removed = strokes.removeAt(index)
-            selectedStrokeIds.remove(removed.id)
-            onStrokeRemoved(removed.id)
-            if (localEraser) {
-                val pieces = splitOutside(removed, x, y, threshold)
-                strokes.addAll(index, pieces)
-                pieces.forEach(onStrokeCommitted)
-            } else redo += removed
-            invalidateStrokeCache()
+        val eraserRadius = eraserRadiusPixels()
+        var changed = false
+        for (index in strokes.indices.reversed()) {
+            val stroke = strokes[index]
+            if (stroke.id in protectedStrokeIds) continue
+            val strokeRadius = stroke.width.coerceIn(.1f, 800f) * width.coerceAtLeast(1) / REFERENCE_WIDTH / 2f
+            val combinedRadius = eraserRadius + strokeRadius
+            val radiusX = combinedRadius / width.coerceAtLeast(1)
+            val radiusY = combinedRadius / height.coerceAtLeast(1)
+            if (!StrokeEraser.intersects(stroke, x, y, radiusX, radiusY)) continue
+            val pieces = if (localEraser) {
+                StrokeEraser.erase(stroke, x, y, radiusX, radiusY)?.replacements ?: continue
+            } else {
+                emptyList()
+            }
+            strokes.removeAt(index)
+            selectedStrokeIds.remove(stroke.id)
+            if (localEraser) strokes.addAll(index, pieces)
+            changed = true
         }
+        if (changed) invalidateStrokeCache()
     }
 
-    private fun splitOutside(stroke: InkStroke, x: Float, y: Float, threshold: Float): List<InkStroke> {
-        val groups = mutableListOf<MutableList<StrokePoint>>()
-        stroke.points.forEach { point ->
-            val outside = hypot((point.x - x).toDouble(), (point.y - y).toDouble()) > threshold
-            if (outside) {
-                if (groups.isEmpty() || groups.last().isEmpty()) groups.add(mutableListOf())
-                groups.last() += point
-            } else if (groups.isNotEmpty() && groups.last().isNotEmpty()) groups.add(mutableListOf())
-        }
-        return groups.filter { it.size >= 2 }.map { stroke.copy(id = java.util.UUID.randomUUID().toString(), points = it) }
+    private fun eraserRadiusPixels(): Float =
+        (eraserWidth.coerceIn(.5f, 400f) * width.coerceAtLeast(1) / REFERENCE_WIDTH / 2f).coerceAtLeast(1f)
+
+    private fun finishEraserGesture() {
+        eraserGestureBefore?.let { commitStrokeEdit(it, strokes) }
+        eraserGestureBefore = null
+        lastEraserX = null
+        lastEraserY = null
     }
 
-    private fun findStroke(x: Float, y: Float, threshold: Float): Int = strokes.indexOfLast { stroke -> stroke.id !in protectedStrokeIds && stroke.points.any { hypot((it.x - x).toDouble(), (it.y - y).toDouble()) <= threshold } }
+    private fun cancelEraserGesture() {
+        eraserGestureBefore?.let(::restoreStrokeSnapshot)
+        eraserGestureBefore = null
+        lastEraserX = null
+        lastEraserY = null
+    }
+
+    private fun findStroke(x: Float, y: Float, threshold: Float): Int = strokes.indexOfLast { stroke ->
+        stroke.id !in protectedStrokeIds && StrokeEraser.intersects(stroke, x, y, threshold, threshold)
+    }
 
     fun undo() {
-        val index = strokes.indexOfLast { it.id !in protectedStrokeIds }
-        if (index >= 0) {
-            val removed = strokes.removeAt(index); selectedStrokeIds.remove(removed.id); redo += removed; onStrokeRemoved(removed.id); invalidateStrokeCache()
+        val edit = editHistory.takeUndo() ?: return
+        if (editTouchesProtectedLayer(edit)) {
+            editHistory.takeRedo()
+            return
         }
+        applyStrokeEdit(edit, forward = false)
     }
 
     fun redo() {
-        if (redo.isNotEmpty()) {
-            val restored = redo.removeAt(redo.lastIndex); strokes += restored; onStrokeCommitted(restored); invalidateStrokeCache()
+        val edit = editHistory.takeRedo() ?: return
+        if (editTouchesProtectedLayer(edit)) {
+            editHistory.takeUndo()
+            return
         }
+        applyStrokeEdit(edit, forward = true)
     }
 
     fun clearInk() {
-        val removable = strokes.filterNot { it.id in protectedStrokeIds }
-        removable.forEach { onStrokeRemoved(it.id) }
-        selectedStrokeIds.removeAll(removable.mapTo(mutableSetOf()) { it.id }); strokes.removeAll(removable.toSet()); redo.clear(); invalidateStrokeCache()
+        val before = strokes.toList()
+        val removableIds = strokes.filterNot { it.id in protectedStrokeIds }.mapTo(mutableSetOf()) { it.id }
+        if (removableIds.isEmpty()) return
+        strokes.removeAll { it.id in removableIds }
+        selectedStrokeIds.removeAll(removableIds)
+        commitStrokeEdit(before, strokes)
+        invalidateStrokeCache()
+    }
+
+    private fun commitStrokeEdit(before: List<InkStroke>, after: List<InkStroke>) {
+        val edit = StrokeEdits.difference(before, after) ?: return
+        editHistory.record(edit)
+        persistStrokeTransition(edit.before, edit.after)
+    }
+
+    private fun applyStrokeEdit(edit: StrokeEdit, forward: Boolean) {
+        val remove = if (forward) edit.before else edit.after
+        val insert = if (forward) edit.after else edit.before
+        val updated = StrokeEdits.apply(strokes, remove, insert)
+        restoreStrokeSnapshot(updated)
+        persistStrokeTransition(remove, insert)
+    }
+
+    private fun editTouchesProtectedLayer(edit: StrokeEdit): Boolean {
+        val protectedLayerIds = strokes.filter { it.id in protectedStrokeIds }.mapTo(mutableSetOf()) { it.layerId }
+        return (edit.before + edit.after).any { it.stroke.layerId in protectedLayerIds }
+    }
+
+    private fun persistStrokeTransition(
+        remove: List<app.inkloom.document.PositionedStroke>,
+        insert: List<app.inkloom.document.PositionedStroke>,
+    ) {
+        onStrokesReplaced(
+            remove.map { it.stroke.id },
+            insert.map { it.stroke },
+            insert.map { it.index },
+        )
+    }
+
+    private fun restoreStrokeSnapshot(snapshot: List<InkStroke>) {
+        strokes.clear()
+        strokes.addAll(snapshot)
+        selectedStrokeIds.retainAll(snapshot.mapTo(mutableSetOf()) { it.id })
+        invalidateStrokeCache()
     }
 
     fun scaleSelection(factor: Float) = transformSelection { dx, dy -> dx * factor to dy * factor }
@@ -670,34 +789,37 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     fun copySelection() {
+        val before = strokes.toList()
         val copies = strokes.filter { it.id in selectedStrokeIds }.map { original -> original.copy(id = java.util.UUID.randomUUID().toString(), points = original.points.map { it.copy(x = (it.x + .03f).coerceIn(0f, 1f), y = (it.y + .03f).coerceIn(0f, 1f)) }) }
         if (copies.isEmpty()) return
-        strokes += copies; selectedStrokeIds.clear(); selectedStrokeIds += copies.map(InkStroke::id); onStrokesReplaced(emptyList(), copies); invalidateStrokeCache()
+        strokes += copies; selectedStrokeIds.clear(); selectedStrokeIds += copies.map(InkStroke::id); commitStrokeEdit(before, strokes); invalidateStrokeCache()
     }
 
     fun deleteSelection() {
         if (selectedStrokeIds.isEmpty()) return
-        val ids = selectedStrokeIds.toSet(); strokes.removeAll { it.id in ids }; onStrokesReplaced(ids.toList(), emptyList()); selectedStrokeIds.clear(); invalidateStrokeCache()
+        val before = strokes.toList()
+        val ids = selectedStrokeIds.toSet(); strokes.removeAll { it.id in ids }; commitStrokeEdit(before, strokes); selectedStrokeIds.clear(); invalidateStrokeCache()
     }
 
     private fun transformSelection(transform: (Float, Float) -> Pair<Float, Float>) {
+        val before = strokes.toList()
         val selected = strokes.filter { it.id in selectedStrokeIds }
         val points = selected.flatMap(InkStroke::points)
         if (points.isEmpty()) return
         val centerX = points.map(StrokePoint::x).average().toFloat(); val centerY = points.map(StrokePoint::y).average().toFloat()
-        val changedStrokes = selected.map { current ->
+        selected.forEach { current ->
             val changed = current.copy(points = current.points.map { point -> val (x, y) = transform(point.x - centerX, point.y - centerY); point.copy(x = (centerX + x).coerceIn(0f, 1f), y = (centerY + y).coerceIn(0f, 1f)) })
             val currentIndex = strokes.indexOfFirst { it.id == current.id }
             if (currentIndex >= 0) strokes[currentIndex] = changed
-            changed
         }
-        onStrokesReplaced(selected.map(InkStroke::id), changedStrokes)
+        commitStrokeEdit(before, strokes)
         invalidateStrokeCache()
     }
 
     private companion object {
         const val REFERENCE_WIDTH = 1600f
         const val MAX_CACHE_PIXELS = 16_000_000L
+        const val MAX_ERASER_SAMPLES_PER_EVENT = 256
         const val VELOCITY_FULL_SCALE_PX_PER_MS = 2f
         const val VELOCITY_SMOOTHING = .65f
         const val SALT_SIZE = 11

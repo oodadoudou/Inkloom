@@ -415,7 +415,7 @@ private fun EditorScreen(
     onDeleteLayer: (String, String, String) -> Unit,
     onStroke: (String, String, InkStroke) -> Unit,
     onRemoveStroke: (String, String, String) -> Unit,
-    onStrokesReplaced: (String, String, List<String>, List<InkStroke>) -> Unit,
+    onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit,
     onElement: (String, String, PageElement) -> Unit,
     onRemoveElement: (String, String, String) -> Unit,
     onDuplicateElement: (String, String, String) -> Unit,
@@ -439,6 +439,7 @@ private fun EditorScreen(
     var brushSize by remember { mutableFloatStateOf(settings.penSize) }
     var brushOpacity by remember { mutableFloatStateOf(settings.penOpacity) }
     var brushColor by remember { mutableIntStateOf(AndroidColor.rgb(17, 17, 17)) }
+    var localEraser by remember { mutableStateOf(false) }
     var exportMenu by remember { mutableStateOf(false) }
     var zoom by remember { mutableFloatStateOf(1f) }
     var panX by remember { mutableFloatStateOf(0f) }
@@ -537,6 +538,7 @@ private fun EditorScreen(
                     brushColor = brushColor,
                     shapeKind = insertShape,
                     activeLayerId = activeLayerId,
+                    localEraser = localEraser,
                     onInputDiagnostic = { kind, pressure, tilt, buttons -> inputDiagnostic = "$kind  pressure ${"%.3f".format(pressure)}  tilt ${"%.2f".format(Math.toDegrees(tilt.toDouble()))}°  buttons $buttons" },
                 )
                 val dockVertical = settings.toolbarDock in setOf(ToolbarDock.LEFT, ToolbarDock.RIGHT) || (settings.toolbarDock == ToolbarDock.FREE && settings.verticalToolbar)
@@ -567,7 +569,7 @@ private fun EditorScreen(
                         EditorTool.AUDIO -> if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) audioOpen = true else audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                         else -> Unit
                     }
-                }, onUndo = { canvasView?.undo() }, onRedo = { canvasView?.redo() }, onScale = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, resizeElement(it, 1.15f)) } } ?: canvasView?.scaleSelection(1.15f) }, onRotate = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, rotateElement(it, 15f)) } } ?: canvasView?.rotateSelection(15f) }, onCopy = { selectedElementId?.let { onDuplicateElement(document.id, selectedPage.id, it) } ?: canvasView?.copySelection() }, onDelete = { selectedElementId?.let { onRemoveElement(document.id, selectedPage.id, it); selectedElementId = null } ?: canvasView?.deleteSelection() }, onToggleLocalEraser = { canvasView?.let { view -> view.localEraser = !view.localEraser } }, onDrag = { dx, dy -> toolbarX = (toolbarX + dx / editorDensity.density).coerceIn(-editorWidth.value * .48f, editorWidth.value * .48f); toolbarY = (toolbarY + dy / editorDensity.density).coerceIn(-editorHeight.value * .15f, editorHeight.value * .72f) }, onDragEnd = { onSettingsChange(settings.copy(toolbarDock = ToolbarDock.FREE, toolbarOffsetXDp = toolbarX, toolbarOffsetYDp = toolbarY, verticalToolbar = dockVertical)) }, vertical = dockVertical, onToggleOrientation = { onSettingsChange(settings.copy(toolbarDock = ToolbarDock.FREE, verticalToolbar = !dockVertical)) }, onResetPosition = { toolbarX = 0f; toolbarY = 0f; onSettingsChange(settings.copy(toolbarDock = ToolbarDock.FREE, toolbarOffsetXDp = 0f, toolbarOffsetYDp = 0f)) }, brushSize = brushSize, brushOpacity = brushOpacity, brushColor = brushColor, onSize = { raw ->
+                }, onUndo = { canvasView?.undo() }, onRedo = { canvasView?.redo() }, onScale = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, resizeElement(it, 1.15f)) } } ?: canvasView?.scaleSelection(1.15f) }, onRotate = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, rotateElement(it, 15f)) } } ?: canvasView?.rotateSelection(15f) }, onCopy = { selectedElementId?.let { onDuplicateElement(document.id, selectedPage.id, it) } ?: canvasView?.copySelection() }, onDelete = { selectedElementId?.let { onRemoveElement(document.id, selectedPage.id, it); selectedElementId = null } ?: canvasView?.deleteSelection() }, localEraser = localEraser, onToggleLocalEraser = { localEraser = !localEraser; canvasView?.localEraser = localEraser }, onDrag = { dx, dy -> toolbarX = (toolbarX + dx / editorDensity.density).coerceIn(-editorWidth.value * .48f, editorWidth.value * .48f); toolbarY = (toolbarY + dy / editorDensity.density).coerceIn(-editorHeight.value * .15f, editorHeight.value * .72f) }, onDragEnd = { onSettingsChange(settings.copy(toolbarDock = ToolbarDock.FREE, toolbarOffsetXDp = toolbarX, toolbarOffsetYDp = toolbarY, verticalToolbar = dockVertical)) }, vertical = dockVertical, onToggleOrientation = { onSettingsChange(settings.copy(toolbarDock = ToolbarDock.FREE, verticalToolbar = !dockVertical)) }, onResetPosition = { toolbarX = 0f; toolbarY = 0f; onSettingsChange(settings.copy(toolbarDock = ToolbarDock.FREE, toolbarOffsetXDp = 0f, toolbarOffsetYDp = 0f)) }, brushSize = brushSize, brushOpacity = brushOpacity, brushColor = brushColor, onSize = { raw ->
                     val value = raw.coerceIn(.5f, 400f)
                     brushSize = value
                     when (tool) {
@@ -788,7 +790,7 @@ private fun PageRail(document: InkDocument, documents: List<InkDocument>, select
 }
 
 @Composable
-private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, onZoom: (Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onUndoGesture: () -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, onInputDiagnostic: (String, Float, Float, Int) -> Unit) {
+private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, onZoom: (Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onUndoGesture: () -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, localEraser: Boolean, onInputDiagnostic: (String, Float, Float, Int) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val backgroundVisible = page.layers.firstOrNull { it.role == LayerRole.BACKGROUND }?.visible != false
     val background = remember(page.id, page.background, page.backgroundRotationQuarterTurns, page.crop, backgroundVisible) { if (backgroundVisible) runCatching { assets.renderBackground(page.background, 1200, page.backgroundRotationQuarterTurns, page.crop) }.getOrNull() else null }
@@ -817,7 +819,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onStrokeCommitted = { onStroke(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
                 view.onShapeCommitted = { onElement(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
                 view.onStrokeRemoved = { onRemoveStroke(documentId, page.id, it) }
-                view.onStrokesReplaced = { removed, replacements -> onStrokesReplaced(documentId, page.id, removed, replacements.map { PageCropTransform.unproject(it, page.crop) }) }
+                view.onStrokesReplaced = { removed, replacements, indices -> onStrokesReplaced(documentId, page.id, removed, replacements.map { PageCropTransform.unproject(it, page.crop) }, indices) }
                 view.onViewportScale = onZoom
                 view.onViewportPan = onPan
                 view.onUndoGesture = onUndoGesture
@@ -826,7 +828,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
             } },
             update = { view ->
                 view.tool = tool
-                view.setDocumentStrokes(renderedPage.strokes.filter { it.layerId in visibleLayerIds }.sortedBy { layerOrder[it.layerId] ?: Int.MAX_VALUE })
+                view.setDocumentStrokes(renderedPage.strokes.filter { it.layerId in visibleLayerIds }.sortedBy { layerOrder[it.layerId] ?: Int.MAX_VALUE }, "$documentId:${page.id}")
                 view.setProtectedStrokeIds(page.strokes.filter { it.layerId in lockedLayerIds }.mapTo(mutableSetOf()) { it.id })
                 view.setPageBackground(background)
                 view.activeLayerId = activeLayerId
@@ -836,7 +838,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onStrokeCommitted = { onStroke(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
                 view.onShapeCommitted = { onElement(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
                 view.onStrokeRemoved = { onRemoveStroke(documentId, page.id, it) }
-                view.onStrokesReplaced = { removed, replacements -> onStrokesReplaced(documentId, page.id, removed, replacements.map { PageCropTransform.unproject(it, page.crop) }) }
+                view.onStrokesReplaced = { removed, replacements, indices -> onStrokesReplaced(documentId, page.id, removed, replacements.map { PageCropTransform.unproject(it, page.crop) }, indices) }
                 view.fingerDrawingEnabled = settings.fingerDrawing
                 view.twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo
                 view.pressureSensitivity = settings.pressureSensitivity
@@ -849,6 +851,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.secondaryButtonAction = settings.stylusSecondaryButton
                 view.baseWidth = brushSize
                 view.eraserWidth = settings.eraserSize
+                view.localEraser = localEraser
                 view.inkOpacity = brushOpacity
                 view.inkColor = brushColor
                 view.brushId = activeBrush?.id ?: if (tool == EditorTool.HIGHLIGHTER) "system-highlighter" else "system-pen"
@@ -1146,7 +1149,7 @@ private fun playAudio(path: String) {
 private fun formatDuration(durationMs: Long): String { val total = durationMs / 1000; return "%d:%02d".format(total / 60, total % 60) }
 
 @Composable
-private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onDelete: () -> Unit, onToggleLocalEraser: () -> Unit, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit, vertical: Boolean, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, modifier: Modifier = Modifier) {
+private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onDelete: () -> Unit, localEraser: Boolean, onToggleLocalEraser: () -> Unit, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit, vertical: Boolean, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, modifier: Modifier = Modifier) {
     val dragModifier = Modifier.size(34.dp).pointerInput(vertical) {
         detectDragGestures(
             onDragEnd = onDragEnd,
@@ -1156,18 +1159,18 @@ private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () 
     Surface(modifier.shadow(10.dp, RoundedCornerShape(32.dp)), shape = RoundedCornerShape(32.dp), color = Color.White) {
         if (vertical) {
             Column(Modifier.heightIn(max = 680.dp).verticalScroll(rememberScrollState()).padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                ToolDockItems(tool, onTool, onUndo, onRedo, onScale, onRotate, onCopy, onDelete, onToggleLocalEraser, dragModifier, vertical, onToggleOrientation, onResetPosition, brushSize, brushOpacity, brushColor, onSize, onOpacity, onColor)
+                ToolDockItems(tool, onTool, onUndo, onRedo, onScale, onRotate, onCopy, onDelete, localEraser, onToggleLocalEraser, dragModifier, vertical, onToggleOrientation, onResetPosition, brushSize, brushOpacity, brushColor, onSize, onOpacity, onColor)
             }
         } else {
             Row(Modifier.widthIn(max = 1050.dp).horizontalScroll(rememberScrollState()).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                ToolDockItems(tool, onTool, onUndo, onRedo, onScale, onRotate, onCopy, onDelete, onToggleLocalEraser, dragModifier, vertical, onToggleOrientation, onResetPosition, brushSize, brushOpacity, brushColor, onSize, onOpacity, onColor)
+                ToolDockItems(tool, onTool, onUndo, onRedo, onScale, onRotate, onCopy, onDelete, localEraser, onToggleLocalEraser, dragModifier, vertical, onToggleOrientation, onResetPosition, brushSize, brushOpacity, brushColor, onSize, onOpacity, onColor)
             }
         }
     }
 }
 
 @Composable
-private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onDelete: () -> Unit, onToggleLocalEraser: () -> Unit, modifier: Modifier, vertical: Boolean, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit) {
+private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onDelete: () -> Unit, localEraser: Boolean, onToggleLocalEraser: () -> Unit, modifier: Modifier, vertical: Boolean, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit) {
     Icon(Icons.Outlined.DragIndicator, "Drag toolbar", modifier = modifier, tint = MutedInk)
     IconButton(onClick = onToggleOrientation) { Icon(if (vertical) Icons.Outlined.SwapHoriz else Icons.Outlined.SwapVert, "Change toolbar orientation") }
     IconButton(onClick = onResetPosition) { Icon(Icons.Outlined.CenterFocusStrong, "Reset toolbar position") }
@@ -1196,7 +1199,18 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
         IconButton(onClick = onCopy) { Icon(Icons.Outlined.ContentCopy, "Copy selection") }
         IconButton(onClick = onDelete) { Icon(Icons.Outlined.Delete, "Delete selection") }
     }
-    if (tool == EditorTool.ERASER) IconButton(onClick = onToggleLocalEraser) { Icon(Icons.Outlined.ContentCut, "Toggle whole/local eraser") }
+    if (tool == EditorTool.ERASER) FilledIconToggleButton(
+        checked = localEraser,
+        onCheckedChange = { onToggleLocalEraser() },
+        colors = IconButtonDefaults.filledIconToggleButtonColors(
+            containerColor = Workspace,
+            contentColor = MutedInk,
+            checkedContainerColor = Sage,
+            checkedContentColor = Color.White,
+        ),
+    ) {
+        Icon(Icons.Outlined.ContentCut, if (localEraser) "Local eraser on" else "Whole-stroke eraser on")
+    }
 }
 
 @Composable
