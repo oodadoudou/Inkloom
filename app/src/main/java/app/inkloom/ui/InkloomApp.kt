@@ -234,7 +234,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onDeletePage = { documentId, pageId -> viewModel.deletePage(documentId, pageId) },
             onMovePage = viewModel::movePage,
             onTransferPage = viewModel::transferPage,
-            onCycleTemplate = viewModel::cycleTemplate,
+            onSetPageTemplate = viewModel::setPageTemplate,
             onToggleBookmark = viewModel::toggleBookmark,
             onChangePageOutlineLevel = viewModel::changePageOutlineLevel,
             onTogglePageOutlineCollapsed = viewModel::togglePageOutlineCollapsed,
@@ -454,7 +454,7 @@ private fun EditorScreen(
     onDeletePage: (String, String) -> Unit,
     onMovePage: (String, String, Int) -> Unit,
     onTransferPage: (String, String, String, Boolean) -> Unit,
-    onCycleTemplate: (String, String) -> Unit,
+    onSetPageTemplate: (String, String, PaperPattern) -> Unit,
     onToggleBookmark: (String, String) -> Unit,
     onChangePageOutlineLevel: (String, String, Int) -> Unit,
     onTogglePageOutlineCollapsed: (String, String) -> Unit,
@@ -578,7 +578,7 @@ private fun EditorScreen(
         BoxWithConstraints(Modifier.weight(1f)) {
         val editorWidth = maxWidth
         Row(Modifier.fillMaxSize()) {
-            if (editorWidth >= 700.dp && settings.showPageRail) PageRail(document, documents, selectedPage.id, onSelectPage, onAddPage, onDuplicatePage, onDeletePage, onMovePage, onTransferPage, onCycleTemplate, onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata, onClearPageInk, onSetPageCrop, onRotatePage)
+            if (editorWidth >= 700.dp && settings.showPageRail) PageRail(document, documents, selectedPage.id, onSelectPage, onAddPage, onDuplicatePage, onDeletePage, onMovePage, onTransferPage, onSetPageTemplate, onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata, onClearPageInk, onSetPageCrop, onRotatePage)
             if ((!brushesOpen && !layersOpen) || editorWidth >= 900.dp) BoxWithConstraints(Modifier.weight(1f).fillMaxHeight().background(Workspace), contentAlignment = Alignment.Center) {
                 val toolbarAreaWidth = maxWidth
                 val toolbarAreaHeight = maxHeight
@@ -931,7 +931,7 @@ private fun EditorScreen(
 }
 
 @Composable
-private fun PageRail(document: InkDocument, documents: List<InkDocument>, selectedPageId: String, onSelect: (String) -> Unit, onAdd: () -> Unit, onDuplicate: (String, String) -> Unit, onDelete: (String, String) -> Unit, onMove: (String, String, Int) -> Unit, onTransfer: (String, String, String, Boolean) -> Unit, onCycleTemplate: (String, String) -> Unit, onToggleBookmark: (String, String) -> Unit, onOutlineLevel: (String, String, Int) -> Unit, onOutlineCollapsed: (String, String) -> Unit, onRename: (String, String, String) -> Unit, onMetadata: (String, String, String?, List<String>) -> Unit, onClearInk: (String, String) -> Unit, onCrop: (String, String, PageCrop) -> Unit, onRotate: (String, String) -> Unit) {
+private fun PageRail(document: InkDocument, documents: List<InkDocument>, selectedPageId: String, onSelect: (String) -> Unit, onAdd: () -> Unit, onDuplicate: (String, String) -> Unit, onDelete: (String, String) -> Unit, onMove: (String, String, Int) -> Unit, onTransfer: (String, String, String, Boolean) -> Unit, onSetTemplate: (String, String, PaperPattern) -> Unit, onToggleBookmark: (String, String) -> Unit, onOutlineLevel: (String, String, Int) -> Unit, onOutlineCollapsed: (String, String) -> Unit, onRename: (String, String, String) -> Unit, onMetadata: (String, String, String?, List<String>) -> Unit, onClearInk: (String, String) -> Unit, onCrop: (String, String, PageCrop) -> Unit, onRotate: (String, String) -> Unit) {
     val transferTargets = documents.filter { it.id != document.id && it.trashedAt == null }
     LazyColumn(Modifier.width(112.dp).fillMaxHeight().padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Row(verticalAlignment = Alignment.CenterVertically) { Text("Pages", Modifier.weight(1f), color = Ink, maxLines = 1); IconButton(onClick = onAdd, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Add, "Add page") } } }
@@ -943,6 +943,7 @@ private fun PageRail(document: InkDocument, documents: List<InkDocument>, select
             var metadataOpen by remember { mutableStateOf(false) }
             var clearOpen by remember { mutableStateOf(false) }
             var transferOpen by remember { mutableStateOf(false) }
+            var templateOpen by remember { mutableStateOf(false) }
             var cropOpen by remember { mutableStateOf(false) }
             var cropDraft by remember(page.crop) { mutableStateOf(page.crop) }
             var title by remember(page.title) { mutableStateOf(page.title) }
@@ -970,7 +971,7 @@ private fun PageRail(document: InkDocument, documents: List<InkDocument>, select
                         DropdownMenuItem(text = { Text("Increase outline indent") }, enabled = pageIndex > 0 && page.outlineLevel < 3 && page.outlineLevel <= document.pages[pageIndex - 1].outlineLevel, onClick = { menu = false; onOutlineLevel(document.id, page.id, 1) })
                         DropdownMenuItem(text = { Text("Decrease outline indent") }, enabled = page.outlineLevel > 0, onClick = { menu = false; onOutlineLevel(document.id, page.id, -1) })
                         if (hasOutlineChildren) DropdownMenuItem(text = { Text(if (page.outlineCollapsed) "Expand outline children" else "Collapse outline children") }, onClick = { menu = false; onOutlineCollapsed(document.id, page.id) })
-                        DropdownMenuItem(text = { Text("Change template") }, enabled = page.background is PageBackground.Paper, onClick = { menu = false; onCycleTemplate(document.id, page.id) })
+                        DropdownMenuItem(text = { Text("Page template") }, enabled = page.background is PageBackground.Paper, onClick = { menu = false; templateOpen = true })
                         DropdownMenuItem(text = { Text("Crop page") }, onClick = { menu = false; cropDraft = page.crop; cropOpen = true })
                         DropdownMenuItem(text = { Text("Rotate 90° clockwise") }, onClick = { menu = false; onRotate(document.id, page.id) })
                         DropdownMenuItem(text = { Text(if (page.bookmarked) "Remove bookmark" else "Bookmark") }, onClick = { menu = false; onToggleBookmark(document.id, page.id) })
@@ -981,6 +982,23 @@ private fun PageRail(document: InkDocument, documents: List<InkDocument>, select
             }
             if (renameOpen) AlertDialog(onDismissRequest = { renameOpen = false }, title = { Text("Rename page") }, text = { OutlinedTextField(title, { title = it }, singleLine = true) }, confirmButton = { TextButton(onClick = { onRename(document.id, page.id, title); renameOpen = false }) { Text("Save") } }, dismissButton = { TextButton(onClick = { renameOpen = false }) { Text("Cancel") } })
             if (metadataOpen) AlertDialog(onDismissRequest = { metadataOpen = false }, title = { Text("Page metadata") }, text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { OutlinedTextField(customNumber, { customNumber = it }, label = { Text("Custom page number") }, singleLine = true); OutlinedTextField(tags, { tags = it }, label = { Text("Tags") }, supportingText = { Text("Separate tags with commas") }) } }, confirmButton = { TextButton(onClick = { onMetadata(document.id, page.id, customNumber, tags.split(',')); metadataOpen = false }) { Text("Save") } }, dismissButton = { TextButton(onClick = { metadataOpen = false }) { Text("Cancel") } })
+            if (templateOpen) AlertDialog(
+                onDismissRequest = { templateOpen = false },
+                title = { Text("Choose page template") },
+                text = {
+                    Column(Modifier.widthIn(min = 320.dp, max = 480.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        PaperPattern.entries.forEach { pattern ->
+                            val selected = (page.background as? PageBackground.Paper)?.pattern == pattern
+                            ListItem(
+                                headlineContent = { Text(when (pattern) { PaperPattern.PLAIN -> "Blank"; PaperPattern.RULED -> "Ruled"; PaperPattern.GRID -> "Grid"; PaperPattern.DOT -> "Dot grid" }) },
+                                leadingContent = { Icon(if (selected) Icons.Outlined.RadioButtonChecked else Icons.Outlined.RadioButtonUnchecked, null) },
+                                modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable { onSetTemplate(document.id, page.id, pattern); templateOpen = false },
+                            )
+                        }
+                    }
+                },
+                confirmButton = { TextButton(onClick = { templateOpen = false }) { Text("Cancel") } },
+            )
             if (clearOpen) AlertDialog(onDismissRequest = { clearOpen = false }, title = { Text("Clear page ink?") }, text = { Text("All strokes on unlocked layers will be removed. Locked-layer ink is preserved.") }, confirmButton = { TextButton(onClick = { onClearInk(document.id, page.id); clearOpen = false }) { Text("Clear") } }, dismissButton = { TextButton(onClick = { clearOpen = false }) { Text("Cancel") } })
             if (cropOpen) AlertDialog(
                 onDismissRequest = { cropOpen = false },
@@ -1032,14 +1050,12 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
         val density = LocalDensity.current
         val canvasWidthPx = with(density) { maxWidth.toPx() }.coerceAtLeast(1f)
         val canvasHeightPx = with(density) { maxHeight.toPx() }.coerceAtLeast(1f)
-        if (backgroundVisible && renderedPage.background is PageBackground.Paper) Column {
-            Text(renderedPage.title, fontSize = 28.sp)
-            Text("Inkloom local document", color = MutedInk, modifier = Modifier.padding(top = 8.dp, bottom = 24.dp))
+        if (backgroundVisible && renderedPage.background is PageBackground.Paper) Canvas(Modifier.fillMaxSize()) {
             when (renderedPage.background.pattern) {
                 PaperPattern.PLAIN -> Unit
-                PaperPattern.RULED -> repeat(8) { HorizontalDivider(color = Color(0xFFE3E3E3), modifier = Modifier.padding(vertical = 12.dp)) }
-                PaperPattern.GRID -> Canvas(Modifier.fillMaxSize()) { var x = 0f; while (x < size.width) { drawLine(Color(0xFFE3E3E3), Offset(x, 0f), Offset(x, size.height)); x += 32f }; var y = 0f; while (y < size.height) { drawLine(Color(0xFFE3E3E3), Offset(0f, y), Offset(size.width, y)); y += 32f } }
-                PaperPattern.DOT -> Canvas(Modifier.fillMaxSize()) { var x = 8f; while (x < size.width) { var y = 8f; while (y < size.height) { drawCircle(Color(0xFFD9D9D9), 1.4f, Offset(x, y)); y += 28f }; x += 28f } }
+                PaperPattern.RULED -> { var y = 36f; while (y < size.height) { drawLine(Color(0xFFE3E3E3), Offset(0f, y), Offset(size.width, y)); y += 36f } }
+                PaperPattern.GRID -> { var x = 0f; while (x < size.width) { drawLine(Color(0xFFE3E3E3), Offset(x, 0f), Offset(x, size.height)); x += 32f }; var y = 0f; while (y < size.height) { drawLine(Color(0xFFE3E3E3), Offset(0f, y), Offset(size.width, y)); y += 32f } }
+                PaperPattern.DOT -> { var x = 8f; while (x < size.width) { var y = 8f; while (y < size.height) { drawCircle(Color(0xFFD9D9D9), 1.4f, Offset(x, y)); y += 28f }; x += 28f } }
             }
         }
         AndroidView(
