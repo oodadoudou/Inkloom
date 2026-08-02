@@ -612,8 +612,8 @@ private fun EditorScreen(
         Row(Modifier.height(44.dp).fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, "Back") }
             Text("${document.title} · ${selectedPage.title}", Modifier.weight(1f))
-            IconButton(onClick = { layersOpen = false; onToggleBrushes() }) { Icon(Icons.Outlined.Brush, "Brushes") }
-            IconButton(onClick = { if (brushesOpen) onToggleBrushes(); layersOpen = !layersOpen }) { Icon(Icons.Outlined.Layers, "Layers") }
+            IconButton(onClick = onToggleBrushes) { Icon(Icons.Outlined.Brush, "Brushes") }
+            IconButton(onClick = { layersOpen = !layersOpen }) { Icon(Icons.Outlined.Layers, "Layers") }
             IconButton(onClick = { outlineOpen = true }) { Icon(Icons.Outlined.FormatListBulleted, "Page outline") }
             IconButton(onClick = { onSettingsChange(settings.copy(showPageRail = !settings.showPageRail)) }) { Icon(if (settings.showPageRail) Icons.Outlined.ViewSidebar else Icons.Outlined.TableRows, "Toggle pages") }
             IconButton(onClick = { onSettingsChange(settings.copy(showToolbar = !settings.showToolbar)) }) { Icon(if (settings.showToolbar) Icons.Outlined.VisibilityOff else Icons.Outlined.Build, "Toggle toolbar") }
@@ -838,6 +838,8 @@ private fun EditorScreen(
             if (layersOpen) LayerPanel(
                 page = selectedPage,
                 activeLayerId = activeLayerId,
+                brushColor = brushColor,
+                onColor = { brushColor = it },
                 onSelect = { activeLayerId = it },
                 onAdd = { onAddLayer(document.id, selectedPage.id, "Layer") },
                 onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
@@ -1968,6 +1970,8 @@ private fun ToolButton(value: EditorTool, icon: ImageVector, label: String, sele
 private fun LayerPanel(
     page: InkPage,
     activeLayerId: String,
+    brushColor: Int,
+    onColor: (Int) -> Unit,
     onSelect: (String) -> Unit,
     onAdd: () -> Unit,
     onRename: (String, String) -> Unit,
@@ -1980,15 +1984,25 @@ private fun LayerPanel(
 ) {
     var renameLayer by remember { mutableStateOf<InkLayer?>(null) }
     var renameValue by remember { mutableStateOf("") }
-    Column(Modifier.width(300.dp).fillMaxHeight().background(Color(0xFFF7F7F7)).padding(12.dp)) {
+    Column(Modifier.width(280.dp).fillMaxHeight().background(Color(0xFFF7F7F7)).padding(10.dp)) {
+        Surface(Modifier.fillMaxWidth(), color = Color.White, shape = RoundedCornerShape(10.dp), border = CardDefaults.outlinedCardBorder()) {
+            Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Color", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Active drawing color", fontSize = 10.sp, color = MutedInk)
+                }
+                BrushColorPicker(brushColor, onColor)
+            }
+        }
+        Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Layers", fontSize = 20.sp)
-                Text("Choose an unlocked layer to write into it", fontSize = 11.sp, color = MutedInk)
+                Text("Layers", fontSize = 18.sp)
+                Text("Visible canvas stack", fontSize = 10.sp, color = MutedInk)
             }
             IconButton(onClick = onAdd) { Icon(Icons.Default.Add, "Add layer") }
         }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(8.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(7.dp)) {
             items(page.layers.asReversed(), key = { it.id }) { layer ->
                 var menu by remember { mutableStateOf(false) }
@@ -1998,21 +2012,21 @@ private fun LayerPanel(
                     colors = CardDefaults.cardColors(containerColor = if (layer.id == activeLayerId) SageContainer else Color.White),
                     border = if (layer.id == activeLayerId) CardDefaults.outlinedCardBorder().copy(width = 2.dp, brush = androidx.compose.ui.graphics.SolidColor(Sage)) else CardDefaults.outlinedCardBorder(),
                 ) {
-                    Row(Modifier.heightIn(min = 54.dp).padding(start = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.heightIn(min = 48.dp).padding(start = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             when (layer.role) { LayerRole.BACKGROUND -> Icons.Outlined.Image; LayerRole.HIGHLIGHT -> Icons.Outlined.BorderColor; LayerRole.OBJECTS -> Icons.Outlined.Widgets; else -> Icons.Outlined.Layers },
                             contentDescription = null,
                             tint = if (layer.visible) Ink else MutedInk,
                         )
-                        Spacer(Modifier.width(10.dp))
+                        Spacer(Modifier.width(7.dp))
                         Column(Modifier.weight(1f)) {
                             Text(layer.name, maxLines = 1, color = if (layer.visible) Ink else MutedInk)
                             Text(layer.role.name.lowercase().replaceFirstChar(Char::uppercase), fontSize = 10.sp, color = MutedInk)
                         }
-                        IconButton(onClick = { onVisibility(layer.id) }) { Icon(if (layer.visible) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff, if (layer.visible) "Hide ${layer.name}" else "Show ${layer.name}") }
-                        IconButton(onClick = { onLock(layer.id) }) { Icon(if (layer.locked) Icons.Outlined.Lock else Icons.Outlined.LockOpen, if (layer.locked) "Unlock ${layer.name}" else "Lock ${layer.name}") }
+                        IconButton(onClick = { onVisibility(layer.id) }, modifier = Modifier.size(34.dp)) { Icon(if (layer.visible) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff, if (layer.visible) "Hide ${layer.name}" else "Show ${layer.name}", Modifier.size(18.dp)) }
+                        IconButton(onClick = { onLock(layer.id) }, modifier = Modifier.size(34.dp)) { Icon(if (layer.locked) Icons.Outlined.Lock else Icons.Outlined.LockOpen, if (layer.locked) "Unlock ${layer.name}" else "Lock ${layer.name}", Modifier.size(18.dp)) }
                         Box {
-                            IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "Layer actions") }
+                            IconButton(onClick = { menu = true }, modifier = Modifier.size(34.dp)) { Icon(Icons.Default.MoreVert, "Layer actions", Modifier.size(18.dp)) }
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                                 DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; renameLayer = layer; renameValue = layer.name })
                                 DropdownMenuItem(text = { Text("Move up") }, enabled = page.layers.last().id != layer.id, onClick = { menu = false; onMove(layer.id, 1) })
