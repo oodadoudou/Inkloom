@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.inkloom.document.*
+import app.inkloom.model.ImportedBrush
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,6 +28,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     private val store = FileDocumentStore(application.filesDir)
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
     private val indexFile = File(application.filesDir, "library.json")
+    private val backupService = LibraryBackupService(application.filesDir)
     val assets = DocumentAssetService(application)
     private val mutableState = MutableStateFlow(LibraryUiState())
     val state = mutableState.asStateFlow()
@@ -257,6 +259,38 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     fun exportCurrent(uri: Uri) { currentDocument()?.let { assets.exportPdf(it, uri) } }
     fun exportCurrentPage(uri: Uri) { currentPage()?.let { assets.exportPagePng(it, uri) } }
     fun exportCurrentBundle(uri: Uri) { currentDocument()?.let { assets.exportBundle(it, uri) } }
+
+    fun exportLibraryBackup(uri: Uri, brushes: List<ImportedBrush>, onComplete: (Result<Unit>) -> Unit) {
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    getApplication<Application>().contentResolver.openOutputStream(uri)?.use { output ->
+                        backupService.export(store.list(), loadFolders(), brushes, output)
+                    } ?: error("Could not open the backup destination")
+                }
+            }
+            onComplete(result)
+        }
+    }
+
+    fun restoreLibraryBackup(uri: Uri, onComplete: (Result<LibraryRestoreResult>) -> Unit) {
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val restored = getApplication<Application>().contentResolver.openInputStream(uri)?.use(backupService::restore)
+                        ?: error("Selected backup is unreadable")
+                    restored.documents.forEach(store::save)
+                    saveFolders(loadFolders() + restored.folders)
+                    restored
+                }
+            }
+            result.getOrNull()?.let { restored ->
+                refresh()
+                restored.documents.firstOrNull()?.let { select(it.id) }
+            }
+            onComplete(result)
+        }
+    }
 
     fun indexPdfText(documentId: String) {
         if (documentId in mutableState.value.pdfIndexingDocumentIds) return

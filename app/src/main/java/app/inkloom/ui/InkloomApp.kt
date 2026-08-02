@@ -137,6 +137,21 @@ fun InkloomApp(initialIntent: Intent?) {
     }
     val imageExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { uri -> if (uri != null) runCatching { viewModel.exportCurrentPage(uri) }.onFailure { importError = it.message } }
     val bundleExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri -> if (uri != null) runCatching { viewModel.exportCurrentBundle(uri) }.onFailure { importError = it.message } }
+    val libraryBackupExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri != null) viewModel.exportLibraryBackup(uri, importedBrushes) { result ->
+            result.onSuccess { Toast.makeText(context, "Library backup saved.", Toast.LENGTH_LONG).show() }
+                .onFailure { importError = it.message }
+        }
+    }
+    val libraryBackupImportPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) viewModel.restoreLibraryBackup(uri) { result ->
+            result.onSuccess { restored ->
+                importedBrushes = (importedBrushes + restored.brushes).distinctImportedBrushes()
+                brushStore.save(importedBrushes)
+                Toast.makeText(context, "Restored ${restored.documents.size} notes and ${restored.brushes.size} brushes.", Toast.LENGTH_LONG).show()
+            }.onFailure { importError = it.message }
+        }
+    }
     val brushExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.inkloom.brush+zip")) { uri ->
         val brush = pendingBrushExport
         pendingBrushExport = null
@@ -250,7 +265,13 @@ fun InkloomApp(initialIntent: Intent?) {
             onSettingsChange = ::updateSettings,
         )
     }
-    if (settingsOpen) SettingsDialog(settings, onChange = ::updateSettings, onDismiss = { settingsOpen = false })
+    if (settingsOpen) SettingsDialog(
+        settings,
+        onChange = ::updateSettings,
+        onExportBackup = { libraryBackupExportPicker.launch("Inkloom-library-backup.inkloom-backup.zip") },
+        onRestoreBackup = { libraryBackupImportPicker.launch(arrayOf("application/zip", "application/octet-stream")) },
+        onDismiss = { settingsOpen = false },
+    )
 }
 
 private enum class LibraryFilter { ALL, FAVORITES, ARCHIVED, TRASH, PDF }
@@ -2292,7 +2313,13 @@ private fun PressureCurveEditor(label: String, points: List<BrushCurvePoint>, on
 }
 
 @Composable
-private fun SettingsDialog(settings: AppSettings, onChange: (AppSettings) -> Unit, onDismiss: () -> Unit) {
+private fun SettingsDialog(
+    settings: AppSettings,
+    onChange: (AppSettings) -> Unit,
+    onExportBackup: () -> Unit,
+    onRestoreBackup: () -> Unit,
+    onDismiss: () -> Unit,
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
@@ -2328,6 +2355,10 @@ private fun SettingsDialog(settings: AppSettings, onChange: (AppSettings) -> Uni
                 item { Text("Toolbar docking", color = MutedInk, fontSize = 11.sp); LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { ToolbarDock.entries.forEach { dock -> item { FilterChip(selected = settings.toolbarDock == dock, onClick = { onChange(settings.copy(toolbarDock = dock, verticalToolbar = if (dock in setOf(ToolbarDock.LEFT, ToolbarDock.RIGHT)) true else if (dock in setOf(ToolbarDock.TOP, ToolbarDock.BOTTOM)) false else settings.verticalToolbar)) }, label = { Text(dock.name.lowercase().replaceFirstChar(Char::uppercase)) }) } } } }
                 if (settings.toolbarDock == ToolbarDock.FREE) item { SettingSwitch("Vertical toolbar", "Useful on a wide tablet canvas.", settings.verticalToolbar) { onChange(settings.copy(verticalToolbar = it)) } }
                 item { OutlinedButton(onClick = { onChange(settings.copy(toolbarDock = ToolbarDock.FREE, toolbarOffsetXDp = 16f, toolbarOffsetYDp = 16f)) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.CenterFocusStrong, null); Spacer(Modifier.width(8.dp)); Text("Reset toolbar position") } }
+                item { Text("DATA & BACKUP", color = Sage, fontSize = 12.sp) }
+                item { Text("A full backup includes notes, folders, imported brush presets, original brush packages, PDFs, images and audio. Restore always creates new IDs inside a Restored backup folder, so existing work is never overwritten.", color = MutedInk, fontSize = 12.sp) }
+                item { Button(onClick = onExportBackup, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Backup, null); Spacer(Modifier.width(8.dp)); Text("Export full library backup") } }
+                item { OutlinedButton(onClick = onRestoreBackup, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Restore, null); Spacer(Modifier.width(8.dp)); Text("Restore library backup") } }
             }
         },
     )
