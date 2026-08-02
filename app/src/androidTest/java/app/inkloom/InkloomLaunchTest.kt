@@ -9,10 +9,12 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipe
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.compose.ui.geometry.Offset
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -34,7 +36,8 @@ class InkloomLaunchTest {
     @Test fun stickyNoteDoubleTapOpensItsInkSubcanvas() {
         val noteText = "Sticky canvas test"
         composeRule.onNodeWithText("New Note").performClick()
-        composeRule.onNodeWithContentDescription("Note").performClick()
+        composeRule.onNodeWithContentDescription("More tools").performClick()
+        composeRule.onNodeWithText("Note").performClick()
         composeRule.onNodeWithText("New sticky note").assertIsDisplayed()
         composeRule.onNode(hasSetTextAction()).performTextInput(noteText)
         composeRule.onNodeWithText("Insert").performClick()
@@ -54,7 +57,8 @@ class InkloomLaunchTest {
 
     @Test fun editorInsertsAValidatedLinkCard() {
         composeRule.onNodeWithText("New Note").performClick()
-        composeRule.onNodeWithContentDescription("Link").performScrollTo().performClick()
+        composeRule.onNodeWithContentDescription("More tools").performClick()
+        composeRule.onNodeWithText("Link").performClick()
         composeRule.onNodeWithText("Insert link").assertIsDisplayed()
 
         composeRule.onAllNodes(hasSetTextAction()).onFirst().performTextInput("Inkloom docs")
@@ -63,5 +67,31 @@ class InkloomLaunchTest {
 
         composeRule.onNodeWithText("Inkloom docs").assertIsDisplayed()
         composeRule.onNodeWithText("example.com/inkloom").assertIsDisplayed()
+    }
+
+    @Test fun floatingToolbarDragPersistsItsFreeCanvasPosition() {
+        composeRule.onNodeWithText("New Note").performClick()
+        val preferences = composeRule.activity.getSharedPreferences("inkloom_settings", android.content.Context.MODE_PRIVATE)
+        val beforeX = preferences.getFloat("toolbarOffsetXDp", 16f)
+        val beforeY = preferences.getFloat("toolbarOffsetYDp", 16f)
+
+        composeRule.onNodeWithContentDescription("Drag toolbar").performTouchInput {
+            swipe(center, center + Offset(180f, 140f), durationMillis = 600)
+        }
+        composeRule.waitForIdle()
+
+        val afterX = preferences.getFloat("toolbarOffsetXDp", 16f)
+        val afterY = preferences.getFloat("toolbarOffsetYDp", 16f)
+        assertTrue("Toolbar drag should persist a new free position", afterX != beforeX || afterY != beforeY)
+        assertTrue(preferences.getString("toolbarDock", null) == "FREE")
+    }
+
+    @Test fun compactToolbarKeepsBrushAndDockControlsInAContextPanel() {
+        composeRule.onNodeWithText("New Note").performClick()
+        composeRule.onNodeWithContentDescription("Tool controls").performClick()
+
+        composeRule.onNodeWithText("Pen controls").assertIsDisplayed()
+        composeRule.onNodeWithText("Palette position").assertIsDisplayed()
+        composeRule.onNodeWithText("Opacity", substring = true).assertIsDisplayed()
     }
 }

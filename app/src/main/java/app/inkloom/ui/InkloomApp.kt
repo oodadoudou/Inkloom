@@ -43,6 +43,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -63,6 +65,7 @@ import app.inkloom.model.*
 import app.inkloom.settings.AppSettings
 import app.inkloom.settings.AppSettingsStore
 import app.inkloom.settings.ColorPaletteStore
+import app.inkloom.settings.FloatingToolbarPlacement
 import app.inkloom.settings.StylusButtonAction
 import app.inkloom.settings.ToolbarDock
 import app.inkloom.ui.theme.*
@@ -517,10 +520,11 @@ private fun EditorScreen(
         HorizontalDivider(color = OutlineSoft)
         BoxWithConstraints(Modifier.weight(1f)) {
         val editorWidth = maxWidth
-        val editorHeight = maxHeight
         Row(Modifier.fillMaxSize()) {
             if (editorWidth >= 700.dp && settings.showPageRail) PageRail(document, documents, selectedPage.id, onSelectPage, onAddPage, onDuplicatePage, onDeletePage, onMovePage, onTransferPage, onCycleTemplate, onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata, onClearPageInk, onSetPageCrop, onRotatePage)
-            if ((!brushesOpen && !layersOpen) || editorWidth >= 900.dp) Box(Modifier.weight(1f).fillMaxHeight().background(Workspace), contentAlignment = Alignment.Center) {
+            if ((!brushesOpen && !layersOpen) || editorWidth >= 900.dp) BoxWithConstraints(Modifier.weight(1f).fillMaxHeight().background(Workspace), contentAlignment = Alignment.Center) {
+                val toolbarAreaWidth = maxWidth
+                val toolbarAreaHeight = maxHeight
                 PaperCanvas(
                     modifier = Modifier.fillMaxHeight(.88f).aspectRatio((PageCropTransform.visibleWidth(selectedPage) / PageCropTransform.visibleHeight(selectedPage).coerceAtLeast(1f)).coerceIn(.35f, 2.8f)).graphicsLayer(scaleX = zoom, scaleY = zoom, translationX = panX, translationY = panY),
                     tool = tool,
@@ -559,14 +563,22 @@ private fun EditorScreen(
                     ToolbarDock.BOTTOM -> Alignment.BottomCenter
                     ToolbarDock.LEFT -> Alignment.CenterStart
                     ToolbarDock.RIGHT -> Alignment.CenterEnd
-                    ToolbarDock.FREE -> if (dockVertical) Alignment.CenterStart else Alignment.TopCenter
+                    ToolbarDock.FREE -> Alignment.TopStart
                 }
                 val dockPadding = when (settings.toolbarDock) {
                     ToolbarDock.TOP -> PaddingValues(top = 16.dp)
                     ToolbarDock.BOTTOM -> PaddingValues(bottom = 16.dp)
                     ToolbarDock.LEFT -> PaddingValues(start = 16.dp)
                     ToolbarDock.RIGHT -> PaddingValues(end = 16.dp)
-                    ToolbarDock.FREE -> PaddingValues(top = if (dockVertical) 0.dp else 86.dp, start = if (dockVertical) 16.dp else 0.dp)
+                    ToolbarDock.FREE -> PaddingValues(0.dp)
+                }
+                val boundedToolbarPosition = FloatingToolbarPlacement.clamp(toolbarX, toolbarY, toolbarAreaWidth.value, toolbarAreaHeight.value, dockVertical)
+                LaunchedEffect(toolbarAreaWidth.value, toolbarAreaHeight.value, dockVertical, settings.toolbarDock) {
+                    if (settings.toolbarDock == ToolbarDock.FREE && (toolbarX != boundedToolbarPosition.xDp || toolbarY != boundedToolbarPosition.yDp)) {
+                        toolbarX = boundedToolbarPosition.xDp
+                        toolbarY = boundedToolbarPosition.yDp
+                        onSettingsChange(settings.copy(toolbarOffsetXDp = toolbarX, toolbarOffsetYDp = toolbarY))
+                    }
                 }
                 if (settings.showToolbar) ToolDock(tool = tool, onTool = { chosen ->
                     tool = chosen; canvasView?.tool = chosen
@@ -582,7 +594,16 @@ private fun EditorScreen(
                         EditorTool.AUDIO -> if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) audioOpen = true else audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                         else -> Unit
                     }
-                }, onUndo = { canvasView?.undo() }, onRedo = { canvasView?.redo() }, onScale = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, resizeElement(it, 1.15f)) } } ?: canvasView?.scaleSelection(1.15f) }, onRotate = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, rotateElement(it, 15f)) } } ?: canvasView?.rotateSelection(15f) }, onCopy = { selectedElementId?.let { onDuplicateElement(document.id, selectedPage.id, it) } ?: canvasView?.copySelection() }, onDelete = { selectedElementId?.let { onRemoveElement(document.id, selectedPage.id, it); selectedElementId = null } ?: canvasView?.deleteSelection() }, localEraser = localEraser, onToggleLocalEraser = { localEraser = !localEraser; canvasView?.localEraser = localEraser }, onDrag = { dx, dy -> toolbarX = (toolbarX + dx / editorDensity.density).coerceIn(-editorWidth.value * .48f, editorWidth.value * .48f); toolbarY = (toolbarY + dy / editorDensity.density).coerceIn(-editorHeight.value * .15f, editorHeight.value * .72f) }, onDragEnd = { onSettingsChange(settings.copy(toolbarDock = ToolbarDock.FREE, toolbarOffsetXDp = toolbarX, toolbarOffsetYDp = toolbarY, verticalToolbar = dockVertical)) }, vertical = dockVertical, onToggleOrientation = { onSettingsChange(settings.copy(toolbarDock = ToolbarDock.FREE, verticalToolbar = !dockVertical)) }, onResetPosition = { toolbarX = 0f; toolbarY = 0f; onSettingsChange(settings.copy(toolbarDock = ToolbarDock.FREE, toolbarOffsetXDp = 0f, toolbarOffsetYDp = 0f)) }, brushSize = brushSize, brushOpacity = brushOpacity, brushColor = brushColor, onSize = { raw ->
+                }, onUndo = { canvasView?.undo() }, onRedo = { canvasView?.redo() }, onScale = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, resizeElement(it, 1.15f)) } } ?: canvasView?.scaleSelection(1.15f) }, onRotate = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, rotateElement(it, 15f)) } } ?: canvasView?.rotateSelection(15f) }, onCopy = { selectedElementId?.let { onDuplicateElement(document.id, selectedPage.id, it) } ?: canvasView?.copySelection() }, onDelete = { selectedElementId?.let { onRemoveElement(document.id, selectedPage.id, it); selectedElementId = null } ?: canvasView?.deleteSelection() }, localEraser = localEraser, onToggleLocalEraser = { localEraser = !localEraser; canvasView?.localEraser = localEraser }, onDrag = { dx, dy ->
+                    val next = FloatingToolbarPlacement.clamp(toolbarX + dx / editorDensity.density, toolbarY + dy / editorDensity.density, toolbarAreaWidth.value, toolbarAreaHeight.value, dockVertical)
+                    toolbarX = next.xDp
+                    toolbarY = next.yDp
+                }, onDragEnd = { onSettingsChange(settings.copy(toolbarDock = ToolbarDock.FREE, toolbarOffsetXDp = toolbarX, toolbarOffsetYDp = toolbarY, verticalToolbar = dockVertical)) }, vertical = dockVertical, onToggleOrientation = { onSettingsChange(settings.copy(toolbarDock = ToolbarDock.FREE, verticalToolbar = !dockVertical)) }, onResetPosition = {
+                    val reset = FloatingToolbarPlacement.defaultPosition(toolbarAreaWidth.value, toolbarAreaHeight.value, dockVertical)
+                    toolbarX = reset.xDp
+                    toolbarY = reset.yDp
+                    onSettingsChange(settings.copy(toolbarDock = ToolbarDock.FREE, toolbarOffsetXDp = toolbarX, toolbarOffsetYDp = toolbarY))
+                }, onDock = { dock -> onSettingsChange(settings.copy(toolbarDock = dock, verticalToolbar = when (dock) { ToolbarDock.LEFT, ToolbarDock.RIGHT -> true; ToolbarDock.TOP, ToolbarDock.BOTTOM -> false; ToolbarDock.FREE -> dockVertical })) }, brushSize = brushSize, brushOpacity = brushOpacity, brushColor = brushColor, onSize = { raw ->
                     val value = raw.coerceIn(.5f, 400f)
                     brushSize = value
                     when (tool) {
@@ -599,7 +620,7 @@ private fun EditorScreen(
                         EditorTool.HIGHLIGHTER -> onSettingsChange(settings.copy(highlighterOpacity = value))
                         else -> Unit
                     }
-                }, onColor = { brushColor = it }, modifier = Modifier.align(dockAlignment).padding(dockPadding).graphicsLayer(translationX = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { toolbarX.dp.toPx() } else 0f, translationY = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { toolbarY.dp.toPx() } else 0f))
+                }, onColor = { brushColor = it }, modifier = Modifier.align(dockAlignment).padding(dockPadding).graphicsLayer(translationX = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.xDp.dp.toPx() } else 0f, translationY = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.yDp.dp.toPx() } else 0f))
                 if (settings.showInputDiagnostics) Surface(Modifier.align(Alignment.BottomCenter).padding(12.dp), shape = RoundedCornerShape(20.dp), color = Color(0xE6111111)) { Text(inputDiagnostic, Modifier.padding(horizontal = 14.dp, vertical = 7.dp), color = Color.White, fontSize = 11.sp) }
             }
             if (layersOpen) LayerPanel(
@@ -1418,68 +1439,123 @@ private fun playAudio(path: String) {
 private fun formatDuration(durationMs: Long): String { val total = durationMs / 1000; return "%d:%02d".format(total / 60, total % 60) }
 
 @Composable
-private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onDelete: () -> Unit, localEraser: Boolean, onToggleLocalEraser: () -> Unit, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit, vertical: Boolean, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, modifier: Modifier = Modifier) {
-    val dragModifier = Modifier.size(34.dp).pointerInput(vertical) {
+private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onDelete: () -> Unit, localEraser: Boolean, onToggleLocalEraser: () -> Unit, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit, vertical: Boolean, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, modifier: Modifier = Modifier) {
+    var moreToolsOpen by remember { mutableStateOf(false) }
+    var controlsOpen by remember { mutableStateOf(false) }
+    val dragModifier = Modifier.size(32.dp).pointerInput(vertical) {
         detectDragGestures(
             onDragEnd = onDragEnd,
             onDragCancel = onDragEnd,
         ) { change, amount -> change.consume(); onDrag(amount.x, amount.y) }
-    }.padding(5.dp)
-    Surface(modifier.shadow(10.dp, RoundedCornerShape(32.dp)), shape = RoundedCornerShape(32.dp), color = Color.White) {
-        if (vertical) {
-            Column(Modifier.heightIn(max = 680.dp).verticalScroll(rememberScrollState()).padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                ToolDockItems(tool, onTool, onUndo, onRedo, onScale, onRotate, onCopy, onDelete, localEraser, onToggleLocalEraser, dragModifier, vertical, onToggleOrientation, onResetPosition, brushSize, brushOpacity, brushColor, onSize, onOpacity, onColor)
-            }
-        } else {
-            Row(Modifier.widthIn(max = 1050.dp).horizontalScroll(rememberScrollState()).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                ToolDockItems(tool, onTool, onUndo, onRedo, onScale, onRotate, onCopy, onDelete, localEraser, onToggleLocalEraser, dragModifier, vertical, onToggleOrientation, onResetPosition, brushSize, brushOpacity, brushColor, onSize, onOpacity, onColor)
-            }
+    }.padding(6.dp)
+    Surface(modifier.shadow(10.dp, RoundedCornerShape(18.dp)), shape = RoundedCornerShape(18.dp), color = Color.White, tonalElevation = 1.dp) {
+        val content: @Composable () -> Unit = {
+            ToolDockItems(
+                tool = tool,
+                onTool = onTool,
+                onUndo = onUndo,
+                onRedo = onRedo,
+                onScale = onScale,
+                onRotate = onRotate,
+                onCopy = onCopy,
+                onDelete = onDelete,
+                localEraser = localEraser,
+                onToggleLocalEraser = onToggleLocalEraser,
+                dragModifier = dragModifier,
+                vertical = vertical,
+                moreToolsOpen = moreToolsOpen,
+                onMoreToolsOpen = { moreToolsOpen = it },
+                controlsOpen = controlsOpen,
+                onControlsOpen = { controlsOpen = it },
+                onToggleOrientation = onToggleOrientation,
+                onResetPosition = onResetPosition,
+                onDock = onDock,
+                brushSize = brushSize,
+                brushOpacity = brushOpacity,
+                brushColor = brushColor,
+                onSize = onSize,
+                onOpacity = onOpacity,
+                onColor = onColor,
+            )
         }
+        if (vertical) Column(Modifier.padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally) { content() }
+        else Row(Modifier.padding(4.dp), verticalAlignment = Alignment.CenterVertically) { content() }
     }
 }
 
 @Composable
-private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onDelete: () -> Unit, localEraser: Boolean, onToggleLocalEraser: () -> Unit, modifier: Modifier, vertical: Boolean, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit) {
-    Icon(Icons.Outlined.DragIndicator, "Drag toolbar", modifier = modifier, tint = MutedInk)
-    IconButton(onClick = onToggleOrientation) { Icon(if (vertical) Icons.Outlined.SwapHoriz else Icons.Outlined.SwapVert, "Change toolbar orientation") }
-    IconButton(onClick = onResetPosition) { Icon(Icons.Outlined.CenterFocusStrong, "Reset toolbar position") }
+private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onDelete: () -> Unit, localEraser: Boolean, onToggleLocalEraser: () -> Unit, dragModifier: Modifier, vertical: Boolean, moreToolsOpen: Boolean, onMoreToolsOpen: (Boolean) -> Unit, controlsOpen: Boolean, onControlsOpen: (Boolean) -> Unit, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit) {
+    Icon(Icons.Outlined.DragIndicator, "Drag toolbar", modifier = dragModifier, tint = MutedInk)
     ToolButton(EditorTool.PEN, Icons.Outlined.Edit, "Pen", tool, onTool)
     ToolButton(EditorTool.HIGHLIGHTER, Icons.Outlined.BorderColor, "Mark", tool, onTool)
     ToolButton(EditorTool.ERASER, Icons.Outlined.AutoFixOff, "Eraser", tool, onTool)
     ToolButton(EditorTool.SELECT, Icons.Outlined.Gesture, "Select", tool, onTool)
-    ToolButton(EditorTool.SHAPE, Icons.Outlined.Category, "Shape", tool, onTool)
-    ToolButton(EditorTool.TEXT, Icons.Outlined.Title, "Text", tool, onTool)
-    ToolButton(EditorTool.NOTE, Icons.Outlined.StickyNote2, "Note", tool, onTool)
-    ToolButton(EditorTool.LINK, Icons.Outlined.Link, "Link", tool, onTool)
-    ToolButton(EditorTool.IMAGE, Icons.Outlined.Image, "Image", tool, onTool)
-    ToolButton(EditorTool.AUDIO, Icons.Outlined.Mic, "Audio", tool, onTool)
-    if (vertical) HorizontalDivider(Modifier.width(42.dp).padding(vertical = 6.dp)) else VerticalDivider(Modifier.height(42.dp).padding(horizontal = 6.dp))
-    IconButton(onClick = { onSize(brushSize - maxOf(.5f, brushSize * .12f)) }) { Icon(Icons.Outlined.Remove, "Smaller") }
-    Text(if (brushSize < 10f) "%.1f".format(brushSize) else brushSize.toInt().toString(), fontSize = 12.sp, modifier = Modifier.widthIn(min = 30.dp))
-    IconButton(onClick = { onSize(brushSize + maxOf(.5f, brushSize * .12f)) }) { Icon(Icons.Outlined.Add, "Larger") }
-    Box(if (vertical) Modifier.height(82.dp).width(44.dp) else Modifier.width(82.dp)) {
-        Slider(value = brushOpacity, onValueChange = onOpacity, valueRange = .05f..1f, modifier = if (vertical) Modifier.graphicsLayer(rotationZ = -90f).width(82.dp).align(Alignment.Center) else Modifier)
+    Box {
+        CompactToolbarIconButton(onClick = { onMoreToolsOpen(true) }, description = "More tools", selected = tool in setOf(EditorTool.SHAPE, EditorTool.TEXT, EditorTool.NOTE, EditorTool.LINK, EditorTool.IMAGE, EditorTool.AUDIO)) { Icon(Icons.Outlined.Apps, null, Modifier.size(20.dp)) }
+        DropdownMenu(expanded = moreToolsOpen, onDismissRequest = { onMoreToolsOpen(false) }) {
+            listOf(
+                Triple(EditorTool.SHAPE, Icons.Outlined.Category, "Shape"),
+                Triple(EditorTool.TEXT, Icons.Outlined.Title, "Text"),
+                Triple(EditorTool.NOTE, Icons.Outlined.StickyNote2, "Note"),
+                Triple(EditorTool.LINK, Icons.Outlined.Link, "Link"),
+                Triple(EditorTool.IMAGE, Icons.Outlined.Image, "Image"),
+                Triple(EditorTool.AUDIO, Icons.Outlined.Mic, "Audio"),
+            ).forEach { (value, icon, label) ->
+                DropdownMenuItem(text = { Text(label) }, leadingIcon = { Icon(icon, null) }, onClick = { onMoreToolsOpen(false); onTool(value) })
+            }
+        }
     }
-    BrushColorPicker(brushColor, onColor)
-    IconButton(onClick = onUndo) { Icon(Icons.Outlined.Undo, "Undo") }
-    IconButton(onClick = onRedo) { Icon(Icons.Outlined.Redo, "Redo") }
-    if (tool == EditorTool.SELECT) {
-        IconButton(onClick = onScale) { Icon(Icons.Outlined.ZoomOutMap, "Scale selection") }
-        IconButton(onClick = onRotate) { Icon(Icons.Outlined.RotateRight, "Rotate selection") }
-        IconButton(onClick = onCopy) { Icon(Icons.Outlined.ContentCopy, "Copy selection") }
-        IconButton(onClick = onDelete) { Icon(Icons.Outlined.Delete, "Delete selection") }
+    Box {
+        CompactToolbarIconButton(onClick = { onControlsOpen(true) }, description = "Tool controls") { Icon(Icons.Outlined.Tune, null, Modifier.size(20.dp)) }
+        DropdownMenu(expanded = controlsOpen, onDismissRequest = { onControlsOpen(false) }, modifier = Modifier.widthIn(min = 300.dp, max = 360.dp)) {
+            Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("${tool.name.lowercase().replaceFirstChar(Char::uppercase)} controls", fontWeight = FontWeight.SemiBold)
+                if (tool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Size", Modifier.weight(1f), color = MutedInk)
+                        IconButton(onClick = { onSize(brushSize - maxOf(.5f, brushSize * .12f)) }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Remove, "Smaller") }
+                        Text(if (brushSize < 10f) "%.1f".format(brushSize) else brushSize.toInt().toString(), Modifier.width(38.dp), textAlign = TextAlign.Center)
+                        IconButton(onClick = { onSize(brushSize + maxOf(.5f, brushSize * .12f)) }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Add, "Larger") }
+                    }
+                    if (tool != EditorTool.ERASER) {
+                        Text("Opacity  ${(brushOpacity * 100).toInt()}%", color = MutedInk, fontSize = 12.sp)
+                        Slider(value = brushOpacity, onValueChange = onOpacity, valueRange = .05f..1f)
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text("Color", Modifier.weight(1f), color = MutedInk); BrushColorPicker(brushColor, onColor) }
+                    }
+                }
+                if (tool == EditorTool.ERASER) SettingSwitch("Local eraser", "Erase stroke segments instead of whole strokes.", localEraser) { onToggleLocalEraser() }
+                if (tool == EditorTool.SELECT) {
+                    Text("Selection", color = MutedInk, fontSize = 12.sp)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        CompactToolbarIconButton(onScale, "Scale selection") { Icon(Icons.Outlined.ZoomOutMap, null) }
+                        CompactToolbarIconButton(onRotate, "Rotate selection") { Icon(Icons.Outlined.RotateRight, null) }
+                        CompactToolbarIconButton(onCopy, "Copy selection") { Icon(Icons.Outlined.ContentCopy, null) }
+                        CompactToolbarIconButton(onDelete, "Delete selection") { Icon(Icons.Outlined.Delete, null) }
+                    }
+                }
+                HorizontalDivider()
+                Text("Palette position", color = MutedInk, fontSize = 12.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    ToolbarDock.entries.forEach { dock -> AssistChip(onClick = { onDock(dock) }, label = { Text(dock.name.lowercase().replaceFirstChar(Char::uppercase), fontSize = 10.sp) }) }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onToggleOrientation, modifier = Modifier.weight(1f)) { Icon(if (vertical) Icons.Outlined.SwapHoriz else Icons.Outlined.SwapVert, null); Spacer(Modifier.width(5.dp)); Text(if (vertical) "Horizontal" else "Vertical") }
+                    OutlinedButton(onClick = onResetPosition, modifier = Modifier.weight(1f)) { Icon(Icons.Outlined.CenterFocusStrong, null); Spacer(Modifier.width(5.dp)); Text("Reset") }
+                }
+            }
+        }
     }
-    if (tool == EditorTool.ERASER) FilledIconToggleButton(
-        checked = localEraser,
-        onCheckedChange = { onToggleLocalEraser() },
-        colors = IconButtonDefaults.filledIconToggleButtonColors(
-            containerColor = Workspace,
-            contentColor = MutedInk,
-            checkedContainerColor = Sage,
-            checkedContentColor = Color.White,
-        ),
+    CompactToolbarIconButton(onClick = onUndo, description = "Undo") { Icon(Icons.Outlined.Undo, null, Modifier.size(20.dp)) }
+    CompactToolbarIconButton(onClick = onRedo, description = "Redo") { Icon(Icons.Outlined.Redo, null, Modifier.size(20.dp)) }
+}
+
+@Composable
+private fun CompactToolbarIconButton(onClick: () -> Unit, description: String, selected: Boolean = false, content: @Composable () -> Unit) {
+    Box(
+        Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(if (selected) Sage else Color.Transparent).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
     ) {
-        Icon(Icons.Outlined.ContentCut, if (localEraser) "Local eraser on" else "Whole-stroke eraser on")
+        CompositionLocalProvider(LocalContentColor provides if (selected) Color.White else Ink) { Box(Modifier.semantics { contentDescription = description }) { content() } }
     }
 }
 
@@ -1543,9 +1619,8 @@ private fun BrushColorPicker(color: Int, onColor: (Int) -> Unit) {
 
 @Composable
 private fun ToolButton(value: EditorTool, icon: ImageVector, label: String, selected: EditorTool, onTool: (EditorTool) -> Unit) {
-    Column(Modifier.clip(RoundedCornerShape(14.dp)).background(if (value == selected) Sage else Color.Transparent).clickable { onTool(value) }.padding(horizontal = 12.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Icon(icon, label, tint = if (value == selected) Color.White else Ink)
-        Text(label, fontSize = 11.sp, color = if (value == selected) Color.White else Ink)
+    Box(Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(if (value == selected) Sage else Color.Transparent).clickable { onTool(value) }, contentAlignment = Alignment.Center) {
+        Icon(icon, label, Modifier.size(20.dp), tint = if (value == selected) Color.White else Ink)
     }
 }
 
@@ -1934,9 +2009,9 @@ private fun SettingsDialog(settings: AppSettings, onChange: (AppSettings) -> Uni
                 item { Text("INTERFACE", color = Sage, fontSize = 12.sp) }
                 item { SettingSwitch("Show page sidebar", null, settings.showPageRail) { onChange(settings.copy(showPageRail = it)) } }
                 item { SettingSwitch("Show floating toolbar", null, settings.showToolbar) { onChange(settings.copy(showToolbar = it)) } }
-                item { Text("Toolbar docking", color = MutedInk, fontSize = 11.sp); LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { ToolbarDock.entries.forEach { dock -> item { FilterChip(selected = settings.toolbarDock == dock, onClick = { onChange(settings.copy(toolbarDock = dock, toolbarOffsetXDp = 0f, toolbarOffsetYDp = 0f, verticalToolbar = if (dock in setOf(ToolbarDock.LEFT, ToolbarDock.RIGHT)) true else if (dock in setOf(ToolbarDock.TOP, ToolbarDock.BOTTOM)) false else settings.verticalToolbar)) }, label = { Text(dock.name.lowercase().replaceFirstChar(Char::uppercase)) }) } } } }
+                item { Text("Toolbar docking", color = MutedInk, fontSize = 11.sp); LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { ToolbarDock.entries.forEach { dock -> item { FilterChip(selected = settings.toolbarDock == dock, onClick = { onChange(settings.copy(toolbarDock = dock, verticalToolbar = if (dock in setOf(ToolbarDock.LEFT, ToolbarDock.RIGHT)) true else if (dock in setOf(ToolbarDock.TOP, ToolbarDock.BOTTOM)) false else settings.verticalToolbar)) }, label = { Text(dock.name.lowercase().replaceFirstChar(Char::uppercase)) }) } } } }
                 if (settings.toolbarDock == ToolbarDock.FREE) item { SettingSwitch("Vertical toolbar", "Useful on a wide tablet canvas.", settings.verticalToolbar) { onChange(settings.copy(verticalToolbar = it)) } }
-                item { OutlinedButton(onClick = { onChange(settings.copy(toolbarDock = ToolbarDock.FREE, toolbarOffsetXDp = 0f, toolbarOffsetYDp = 0f)) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.CenterFocusStrong, null); Spacer(Modifier.width(8.dp)); Text("Reset toolbar position") } }
+                item { OutlinedButton(onClick = { onChange(settings.copy(toolbarDock = ToolbarDock.FREE, toolbarOffsetXDp = 16f, toolbarOffsetYDp = 16f)) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.CenterFocusStrong, null); Spacer(Modifier.width(8.dp)); Text("Reset toolbar position") } }
             }
         },
     )
