@@ -106,6 +106,39 @@ private val LocalUiLanguage = staticCompositionLocalOf { UiLanguage.ENGLISH }
 @Composable
 private fun tr(english: String, simplifiedChinese: String): String = LocalUiLanguage.current.text(english, simplifiedChinese)
 
+@Composable
+private fun localizedShapeKind(kind: ShapeKind): String = when (kind) {
+    ShapeKind.ELLIPSE -> tr("Ellipse", "椭圆")
+    ShapeKind.RECTANGLE -> tr("Rectangle", "矩形")
+    ShapeKind.TRIANGLE -> tr("Triangle", "三角形")
+    ShapeKind.DIAMOND -> tr("Diamond", "菱形")
+    ShapeKind.LINE -> tr("Line", "直线")
+    ShapeKind.ARROW -> tr("Arrow", "箭头")
+    ShapeKind.FREEFORM -> tr("Freeform", "自由形状")
+}
+
+@Composable
+private fun localizedTextAlignment(alignment: InkTextAlignment): String = when (alignment) {
+    InkTextAlignment.START -> tr("Start", "左对齐")
+    InkTextAlignment.CENTER -> tr("Center", "居中")
+    InkTextAlignment.END -> tr("End", "右对齐")
+}
+
+@Composable
+private fun localizedListStyle(style: TextListStyle): String = when (style) {
+    TextListStyle.NONE -> tr("None", "无")
+    TextListStyle.BULLET -> tr("Bullet", "项目符号")
+    TextListStyle.NUMBERED -> tr("Numbered", "编号")
+    TextListStyle.CHECKBOX -> tr("Checkbox", "复选框")
+}
+
+@Composable
+private fun localizedImageMask(mask: ImageMask): String = when (mask) {
+    ImageMask.RECTANGLE -> tr("Rectangle", "矩形")
+    ImageMask.ROUNDED -> tr("Rounded", "圆角")
+    ImageMask.OVAL -> tr("Oval", "椭圆")
+}
+
 private fun List<ImportedBrush>.distinctImportedBrushes(): List<ImportedBrush> =
     associateBy { brush ->
         val sourceKey = brush.sha256 ?: "${brush.name}:${brush.sizeBytes}"
@@ -162,7 +195,7 @@ fun InkloomApp(initialIntent: Intent?) {
     val bundleExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri -> if (uri != null) runCatching { viewModel.exportCurrentBundle(uri) }.onFailure { importError = it.message } }
     val libraryBackupExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
         if (uri != null) viewModel.exportLibraryBackup(uri, importedBrushes) { result ->
-            result.onSuccess { Toast.makeText(context, "Library backup saved.", Toast.LENGTH_LONG).show() }
+            result.onSuccess { Toast.makeText(context, settings.language.text("Library backup saved.", "资料库备份已保存。"), Toast.LENGTH_LONG).show() }
                 .onFailure { importError = it.message }
         }
     }
@@ -171,7 +204,14 @@ fun InkloomApp(initialIntent: Intent?) {
             result.onSuccess { restored ->
                 importedBrushes = (importedBrushes + restored.brushes).distinctImportedBrushes()
                 brushStore.save(importedBrushes)
-                Toast.makeText(context, "Restored ${restored.documents.size} notes and ${restored.brushes.size} brushes.", Toast.LENGTH_LONG).show()
+                Toast.makeText(
+                    context,
+                    settings.language.text(
+                        "Restored ${restored.documents.size} notes and ${restored.brushes.size} brushes.",
+                        "已恢复 ${restored.documents.size} 份笔记和 ${restored.brushes.size} 支笔刷。",
+                    ),
+                    Toast.LENGTH_LONG,
+                ).show()
             }.onFailure { importError = it.message }
         }
     }
@@ -926,28 +966,29 @@ private fun EditorScreen(
         }
         }
     }
+    val defaultStickyText = tr("New note", "新便签")
     if (textInsertOpen) AlertDialog(
         onDismissRequest = { textInsertOpen = false },
-        title = { Text("Insert text") },
-        text = { OutlinedTextField(insertText, { insertText = it }, minLines = 3, label = { Text("Text") }) },
-        confirmButton = { Button(onClick = { if (insertText.isNotBlank()) onElement(document.id, selectedPage.id, PageCropTransform.unproject(PageElement.Text(x = .18f, y = .2f, text = insertText.trim()), selectedPage.crop)); textInsertOpen = false; tool = EditorTool.SELECT }) { Text("Insert") } },
-        dismissButton = { TextButton(onClick = { textInsertOpen = false }) { Text("Cancel") } },
+        title = { Text(tr("Insert text", "插入文本")) },
+        text = { OutlinedTextField(insertText, { insertText = it }, minLines = 3, label = { Text(tr("Text", "文本")) }) },
+        confirmButton = { Button(onClick = { if (insertText.isNotBlank()) onElement(document.id, selectedPage.id, PageCropTransform.unproject(PageElement.Text(x = .18f, y = .2f, text = insertText.trim()), selectedPage.crop)); textInsertOpen = false; tool = EditorTool.SELECT }) { Text(tr("Insert", "插入")) } },
+        dismissButton = { TextButton(onClick = { textInsertOpen = false }) { Text(tr("Cancel", "取消")) } },
     )
     if (stickyInsertOpen) AlertDialog(
         onDismissRequest = { stickyInsertOpen = false },
-        title = { Text("New sticky note") },
-        text = { OutlinedTextField(insertText, { insertText = it }, minLines = 4, label = { Text("Note") }) },
-        confirmButton = { Button(onClick = { onElement(document.id, selectedPage.id, PageCropTransform.unproject(PageElement.Sticky(x = .55f, y = .25f, text = insertText.trim().ifBlank { "New note" }), selectedPage.crop)); stickyInsertOpen = false; tool = EditorTool.SELECT }) { Text("Insert") } },
-        dismissButton = { TextButton(onClick = { stickyInsertOpen = false }) { Text("Cancel") } },
+        title = { Text(tr("New sticky note", "新建便签")) },
+        text = { OutlinedTextField(insertText, { insertText = it }, minLines = 4, label = { Text(tr("Note", "便签")) }) },
+        confirmButton = { Button(onClick = { onElement(document.id, selectedPage.id, PageCropTransform.unproject(PageElement.Sticky(x = .55f, y = .25f, text = insertText.trim().ifBlank { defaultStickyText }), selectedPage.crop)); stickyInsertOpen = false; tool = EditorTool.SELECT }) { Text(tr("Insert", "插入")) } },
+        dismissButton = { TextButton(onClick = { stickyInsertOpen = false }) { Text(tr("Cancel", "取消")) } },
     )
     if (linkInsertOpen) {
         val normalizedLink = LinkTarget.normalize(insertLinkUrl)
         AlertDialog(
             onDismissRequest = { linkInsertOpen = false },
-            title = { Text("Insert link") },
+            title = { Text(tr("Insert link", "插入链接")) },
             text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(insertLinkTitle, { insertLinkTitle = it }, label = { Text("Title") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(insertLinkUrl, { insertLinkUrl = it }, label = { Text("Web, email, or phone address") }, placeholder = { Text("https://example.com") }, isError = insertLinkUrl.isNotBlank() && normalizedLink == null, supportingText = { Text(if (insertLinkUrl.isNotBlank() && normalizedLink == null) "Use a valid http, https, mailto, or tel address." else "Addresses without a scheme open with HTTPS.") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(insertLinkTitle, { insertLinkTitle = it }, label = { Text(tr("Title", "标题")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(insertLinkUrl, { insertLinkUrl = it }, label = { Text(tr("Web, email, or phone address", "网页、邮箱或电话号码")) }, placeholder = { Text("https://example.com") }, isError = insertLinkUrl.isNotBlank() && normalizedLink == null, supportingText = { Text(if (insertLinkUrl.isNotBlank() && normalizedLink == null) tr("Use a valid http, https, mailto, or tel address.", "请输入有效的 http、https、mailto 或 tel 地址。") else tr("Addresses without a scheme open with HTTPS.", "未填写协议的地址将通过 HTTPS 打开。")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
             } },
             confirmButton = { Button(enabled = normalizedLink != null, onClick = {
                 val url = normalizedLink ?: return@Button
@@ -955,28 +996,28 @@ private fun EditorScreen(
                 onElement(document.id, selectedPage.id, PageCropTransform.unproject(PageElement.Link(x = .18f, y = .2f, title = title, url = url), selectedPage.crop))
                 linkInsertOpen = false
                 tool = EditorTool.SELECT
-            }) { Text("Insert") } },
-            dismissButton = { TextButton(onClick = { linkInsertOpen = false }) { Text("Cancel") } },
+            }) { Text(tr("Insert", "插入")) } },
+            dismissButton = { TextButton(onClick = { linkInsertOpen = false }) { Text(tr("Cancel", "取消")) } },
         )
     }
     if (shapeInsertOpen) AlertDialog(
         onDismissRequest = { shapeInsertOpen = false },
-        title = { Text("Draw shape") },
-        text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { Text("Choose a shape, then drag on the page with the pen. Lines and arrows snap to nearby 45° angles; Freeform follows the pen and closes the polygon automatically.", color = MutedInk, fontSize = 12.sp); LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { ShapeKind.entries.forEach { kind -> item { FilterChip(selected = insertShape == kind, onClick = { insertShape = kind }, label = { Text(kind.name.lowercase().replaceFirstChar(Char::uppercase)) }) } } } } },
-        confirmButton = { Button(onClick = { shapeInsertOpen = false; tool = EditorTool.SHAPE; canvasView?.tool = EditorTool.SHAPE }) { Text("Draw") } },
-        dismissButton = { TextButton(onClick = { shapeInsertOpen = false }) { Text("Cancel") } },
+        title = { Text(tr("Draw shape", "绘制形状")) },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { Text(tr("Choose a shape, then drag on the page with the pen. Lines and arrows snap to nearby 45° angles; Freeform follows the pen and closes the polygon automatically.", "选择形状后用笔在页面上拖动。直线和箭头会吸附到邻近的 45° 角；自由形状会跟随笔迹并自动闭合。"), color = MutedInk, fontSize = 12.sp); LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { ShapeKind.entries.forEach { kind -> item { FilterChip(selected = insertShape == kind, onClick = { insertShape = kind }, label = { Text(localizedShapeKind(kind)) }) } } } } },
+        confirmButton = { Button(onClick = { shapeInsertOpen = false; tool = EditorTool.SHAPE; canvasView?.tool = EditorTool.SHAPE }) { Text(tr("Draw", "绘制")) } },
+        dismissButton = { TextButton(onClick = { shapeInsertOpen = false }) { Text(tr("Cancel", "取消")) } },
     )
     if (audioOpen) AlertDialog(
         onDismissRequest = { if (recording) audioRecorder.cancel(); recording = false; audioOpen = false },
-        title = { Text(if (recording) "Recording audio…" else "Audio note") },
-        text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { OutlinedTextField(audioTitle, { audioTitle = it }, label = { Text("Title") }, singleLine = true, enabled = !recording); Text(if (recording) "Recording locally. Tap Stop and insert when finished." else "Audio remains on this device and is included in editable Inkloom backups.", color = MutedInk) } },
+        title = { Text(if (recording) tr("Recording audio…", "正在录音…") else tr("Audio note", "音频笔记")) },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { OutlinedTextField(audioTitle, { audioTitle = it }, label = { Text(tr("Title", "标题")) }, singleLine = true, enabled = !recording); Text(if (recording) tr("Recording locally. Tap Stop and insert when finished.", "正在本机录音。完成后点按“停止并插入”。") else tr("Audio remains on this device and is included in editable Inkloom backups.", "音频保存在此设备，并会包含在可编辑的 Inkloom 备份中。"), color = MutedInk) } },
         confirmButton = {
-            if (!recording) Button(onClick = { runCatching { audioRecorder.start() }.onSuccess { recording = true }.onFailure { audioError = it.message } }) { Icon(Icons.Default.Mic, null); Spacer(Modifier.width(6.dp)); Text("Start") }
-            else Button(onClick = { runCatching { audioRecorder.stop(audioTitle) }.onSuccess { marker -> onElement(document.id, selectedPage.id, marker); recording = false; audioOpen = false; tool = EditorTool.SELECT }.onFailure { audioError = it.message; recording = false } }) { Icon(Icons.Default.Stop, null); Spacer(Modifier.width(6.dp)); Text("Stop and insert") }
+            if (!recording) Button(onClick = { runCatching { audioRecorder.start() }.onSuccess { recording = true }.onFailure { audioError = it.message } }) { Icon(Icons.Default.Mic, null); Spacer(Modifier.width(6.dp)); Text(tr("Start", "开始")) }
+            else Button(onClick = { runCatching { audioRecorder.stop(audioTitle) }.onSuccess { marker -> onElement(document.id, selectedPage.id, marker); recording = false; audioOpen = false; tool = EditorTool.SELECT }.onFailure { audioError = it.message; recording = false } }) { Icon(Icons.Default.Stop, null); Spacer(Modifier.width(6.dp)); Text(tr("Stop and insert", "停止并插入")) }
         },
-        dismissButton = { TextButton(onClick = { if (recording) audioRecorder.cancel(); recording = false; audioOpen = false }) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = { if (recording) audioRecorder.cancel(); recording = false; audioOpen = false }) { Text(tr("Cancel", "取消")) } },
     )
-    audioError?.let { message -> AlertDialog(onDismissRequest = { audioError = null }, title = { Text("Audio issue") }, text = { Text(message) }, confirmButton = { TextButton(onClick = { audioError = null }) { Text("OK") } }) }
+    audioError?.let { message -> AlertDialog(onDismissRequest = { audioError = null }, title = { Text(tr("Audio issue", "音频问题")) }, text = { Text(message) }, confirmButton = { TextButton(onClick = { audioError = null }) { Text(tr("OK", "确定")) } }) }
     if (outlineOpen) {
         val visibleOutlinePages = PageOutline.visiblePages(document.pages)
         AlertDialog(
@@ -1421,6 +1462,7 @@ private fun ObjectElementView(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val language = LocalUiLanguage.current
     var dragX by remember(element.id) { mutableFloatStateOf(0f) }
     var dragY by remember(element.id) { mutableFloatStateOf(0f) }
     var editing by remember(element.id) { mutableStateOf(false) }
@@ -1448,7 +1490,7 @@ private fun ObjectElementView(
                     onSelect()
                     when (element) {
                         is PageElement.Sticky -> stickyInkEditing = true
-                        is PageElement.Link -> openLink(context, element.url)
+                        is PageElement.Link -> openLink(context, element.url, language)
                         else -> Unit
                     }
                 },
@@ -1518,13 +1560,13 @@ private fun ObjectElementView(
                     ImageMask.ROUNDED -> Modifier.clip(RoundedCornerShape((element.cornerRadius * canvasWidth.value / page.width).coerceIn(0f, 120f).dp))
                     ImageMask.OVAL -> Modifier.clip(CircleShape)
                 }
-                if (bitmap != null) androidx.compose.foundation.Image(bitmap.asImageBitmap(), "Page image", Modifier.fillMaxSize().then(maskModifier), contentScale = ContentScale.Crop)
-                else Box(Modifier.fillMaxSize().background(Workspace), contentAlignment = Alignment.Center) { Text("Image unavailable", color = MutedInk, fontSize = 11.sp) }
+                if (bitmap != null) androidx.compose.foundation.Image(bitmap.asImageBitmap(), tr("Page image", "页面图片"), Modifier.fillMaxSize().then(maskModifier), contentScale = ContentScale.Crop)
+                else Box(Modifier.fillMaxSize().background(Workspace), contentAlignment = Alignment.Center) { Text(tr("Image unavailable", "图片不可用"), color = MutedInk, fontSize = 11.sp) }
             }
             is PageElement.AudioMarker -> Card(Modifier.fillMaxSize(), colors = CardDefaults.cardColors(containerColor = Color(0xFFE7E7E7))) {
                 Row(Modifier.fillMaxSize().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { playAudio(element.assetPath) }) { Icon(Icons.Default.PlayArrow, "Play audio") }
-                    Column(Modifier.weight(1f)) { Text(element.title, maxLines = 1); Text("Audio · ${formatDuration(element.durationMs)}", color = MutedInk, fontSize = 11.sp) }
+                    IconButton(onClick = { playAudio(element.assetPath) }) { Icon(Icons.Default.PlayArrow, tr("Play audio", "播放音频")) }
+                    Column(Modifier.weight(1f)) { Text(element.title, maxLines = 1); Text(tr("Audio · ${formatDuration(element.durationMs)}", "音频 · ${formatDuration(element.durationMs)}"), color = MutedInk, fontSize = 11.sp) }
                 }
             }
             is PageElement.Link -> Card(Modifier.fillMaxSize(), colors = CardDefaults.cardColors(containerColor = Color(0xFFE7E7E7))) {
@@ -1535,20 +1577,20 @@ private fun ObjectElementView(
                         Text(element.title, maxLines = 1, fontWeight = FontWeight.SemiBold)
                         Text(LinkTarget.displayDestination(element.url), color = MutedInk, fontSize = 11.sp, maxLines = 1)
                     }
-                    IconButton(onClick = { openLink(context, element.url) }) { Icon(Icons.Outlined.OpenInNew, "Open link") }
+                    IconButton(onClick = { openLink(context, element.url, language) }) { Icon(Icons.Outlined.OpenInNew, tr("Open link", "打开链接")) }
                 }
             }
         }
         if (selected && editable) Surface(Modifier.align(Alignment.TopEnd).offset(y = (-38).dp), shape = RoundedCornerShape(18.dp), color = Color.White, shadowElevation = 4.dp) {
             Row {
                 if (element is PageElement.Sticky) {
-                    IconButton(onClick = { stickyInkEditing = true }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Brush, "Write inside sticky note", Modifier.size(18.dp)) }
-                    IconButton(onClick = { onChange(element.copy(collapsed = !element.collapsed)) }, modifier = Modifier.size(36.dp)) { Icon(if (element.collapsed) Icons.Outlined.UnfoldMore else Icons.Outlined.UnfoldLess, if (element.collapsed) "Expand sticky note" else "Collapse sticky note", Modifier.size(18.dp)) }
+                    IconButton(onClick = { stickyInkEditing = true }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Brush, tr("Write inside sticky note", "在便签内书写"), Modifier.size(18.dp)) }
+                    IconButton(onClick = { onChange(element.copy(collapsed = !element.collapsed)) }, modifier = Modifier.size(36.dp)) { Icon(if (element.collapsed) Icons.Outlined.UnfoldMore else Icons.Outlined.UnfoldLess, if (element.collapsed) tr("Expand sticky note", "展开便签") else tr("Collapse sticky note", "折叠便签"), Modifier.size(18.dp)) }
                 }
-                if (element is PageElement.Link) IconButton(onClick = { openLink(context, element.url) }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.OpenInNew, "Open link", Modifier.size(18.dp)) }
-                IconButton(onClick = { editing = true }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Tune, "Edit object", Modifier.size(18.dp)) }
-                IconButton(onClick = onDuplicate, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.ContentCopy, "Duplicate object", Modifier.size(18.dp)) }
-                IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Delete, "Delete object", Modifier.size(18.dp)) }
+                if (element is PageElement.Link) IconButton(onClick = { openLink(context, element.url, language) }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.OpenInNew, tr("Open link", "打开链接"), Modifier.size(18.dp)) }
+                IconButton(onClick = { editing = true }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Tune, tr("Edit object", "编辑对象"), Modifier.size(18.dp)) }
+                IconButton(onClick = onDuplicate, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.ContentCopy, tr("Duplicate object", "复制对象"), Modifier.size(18.dp)) }
+                IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Delete, tr("Delete object", "删除对象"), Modifier.size(18.dp)) }
             }
         }
     }
@@ -1600,21 +1642,21 @@ private fun StickyInkEditorDialog(
             Column(Modifier.fillMaxSize().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Column(Modifier.weight(1f)) {
-                        Text("Write inside sticky note", fontWeight = FontWeight.SemiBold)
-                        Text(activeBrush?.name ?: "System pen", color = MutedInk, fontSize = 11.sp, maxLines = 1)
+                        Text(tr("Write inside sticky note", "在便签内书写"), fontWeight = FontWeight.SemiBold)
+                        Text(activeBrush?.name ?: tr("System pen", "系统画笔"), color = MutedInk, fontSize = 11.sp, maxLines = 1)
                     }
-                    FilterChip(selected = tool == EditorTool.PEN, onClick = { tool = EditorTool.PEN }, label = { Text("Pen") }, leadingIcon = { Icon(Icons.Outlined.Brush, null, Modifier.size(16.dp)) })
-                    FilterChip(selected = tool == EditorTool.HIGHLIGHTER, onClick = { tool = EditorTool.HIGHLIGHTER }, label = { Text("Marker") }, leadingIcon = { Icon(Icons.Outlined.BorderColor, null, Modifier.size(16.dp)) })
-                    FilterChip(selected = tool == EditorTool.ERASER, onClick = { tool = EditorTool.ERASER }, label = { Text("Eraser") }, leadingIcon = { Icon(Icons.Outlined.AutoFixOff, null, Modifier.size(16.dp)) })
+                    FilterChip(selected = tool == EditorTool.PEN, onClick = { tool = EditorTool.PEN }, label = { Text(tr("Pen", "钢笔")) }, leadingIcon = { Icon(Icons.Outlined.Brush, null, Modifier.size(16.dp)) })
+                    FilterChip(selected = tool == EditorTool.HIGHLIGHTER, onClick = { tool = EditorTool.HIGHLIGHTER }, label = { Text(tr("Marker", "马克笔")) }, leadingIcon = { Icon(Icons.Outlined.BorderColor, null, Modifier.size(16.dp)) })
+                    FilterChip(selected = tool == EditorTool.ERASER, onClick = { tool = EditorTool.ERASER }, label = { Text(tr("Eraser", "橡皮擦")) }, leadingIcon = { Icon(Icons.Outlined.AutoFixOff, null, Modifier.size(16.dp)) })
                     if (tool == EditorTool.ERASER) EraserPresetMenu(eraserPreset, { eraserPreset = it })
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { canvasView?.undo() }) { Icon(Icons.Outlined.Undo, "Undo sticky ink") }
-                    IconButton(onClick = { canvasView?.redo() }) { Icon(Icons.Outlined.Redo, "Redo sticky ink") }
-                    TextButton(onClick = { persist(strokes = emptyList()) }, enabled = draft.strokes.isNotEmpty()) { Text("Clear ink") }
+                    IconButton(onClick = { canvasView?.undo() }) { Icon(Icons.Outlined.Undo, tr("Undo sticky ink", "撤销便签笔迹")) }
+                    IconButton(onClick = { canvasView?.redo() }) { Icon(Icons.Outlined.Redo, tr("Redo sticky ink", "重做便签笔迹")) }
+                    TextButton(onClick = { persist(strokes = emptyList()) }, enabled = draft.strokes.isNotEmpty()) { Text(tr("Clear ink", "清除笔迹")) }
                     Spacer(Modifier.weight(1f))
-                    TextButton(onClick = { persist(collapsed = !draft.collapsed) }) { Text(if (draft.collapsed) "Expand on page" else "Collapse on page") }
-                    Button(onClick = onDismiss) { Text("Done") }
+                    TextButton(onClick = { persist(collapsed = !draft.collapsed) }) { Text(if (draft.collapsed) tr("Expand on page", "在页面上展开") else tr("Collapse on page", "在页面上折叠")) }
+                    Button(onClick = onDismiss) { Text(tr("Done", "完成")) }
                 }
                 HorizontalDivider()
                 Box(
@@ -1641,7 +1683,7 @@ private fun StickyInkEditorDialog(
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
-                Text("Stylus writes. Fingers navigate unless finger drawing is enabled in Settings. Changes are saved after every completed stroke.", color = MutedInk, fontSize = 11.sp)
+                Text(tr("Stylus writes. Fingers navigate unless finger drawing is enabled in Settings. Changes are saved after every completed stroke.", "触控笔用于书写；除非在设置中开启手指书写，否则手指仅用于导航。每笔完成后都会自动保存。"), color = MutedInk, fontSize = 11.sp)
             }
         }
     }
@@ -1672,54 +1714,54 @@ private fun ElementEditorDialog(element: PageElement, onDismiss: () -> Unit, onS
     val canSave = draft !is PageElement.Link || normalizedDraftLink != null
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Object properties") },
+        title = { Text(tr("Object properties", "对象属性")) },
         text = { LazyColumn(Modifier.widthIn(min = 340.dp, max = 520.dp).heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             when (val current = draft) {
                 is PageElement.Text -> {
-                    item { OutlinedTextField(current.text, { draft = current.copy(text = it) }, label = { Text("Text") }, minLines = 3, modifier = Modifier.fillMaxWidth()) }
+                    item { OutlinedTextField(current.text, { draft = current.copy(text = it) }, label = { Text(tr("Text", "文本")) }, minLines = 3, modifier = Modifier.fillMaxWidth()) }
                     item { BrushSettingSlider("Text size", current.textSize, 16f..160f) { draft = current.copy(textSize = it) } }
                     item { Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        FilterChip(selected = current.bold, onClick = { draft = current.copy(bold = !current.bold) }, label = { Text("Bold", fontWeight = FontWeight.Bold) })
-                        FilterChip(selected = current.italic, onClick = { draft = current.copy(italic = !current.italic) }, label = { Text("Italic", fontStyle = FontStyle.Italic) })
-                        FilterChip(selected = current.underline, onClick = { draft = current.copy(underline = !current.underline) }, label = { Text("Underline", textDecoration = TextDecoration.Underline) })
+                        FilterChip(selected = current.bold, onClick = { draft = current.copy(bold = !current.bold) }, label = { Text(tr("Bold", "粗体"), fontWeight = FontWeight.Bold) })
+                        FilterChip(selected = current.italic, onClick = { draft = current.copy(italic = !current.italic) }, label = { Text(tr("Italic", "斜体"), fontStyle = FontStyle.Italic) })
+                        FilterChip(selected = current.underline, onClick = { draft = current.copy(underline = !current.underline) }, label = { Text(tr("Underline", "下划线"), textDecoration = TextDecoration.Underline) })
                     } }
-                    item { Text("Alignment", color = MutedInk, fontSize = 11.sp); Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { InkTextAlignment.entries.forEach { alignment -> FilterChip(selected = current.alignment == alignment, onClick = { draft = current.copy(alignment = alignment) }, label = { Text(alignment.name.lowercase().replaceFirstChar(Char::uppercase)) }) } } }
-                    item { Text("List style", color = MutedInk, fontSize = 11.sp); LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { TextListStyle.entries.forEach { style -> item { FilterChip(selected = current.listStyle == style, onClick = { draft = current.copy(listStyle = style) }, label = { Text(style.name.lowercase().replaceFirstChar(Char::uppercase)) }) } } } }
+                    item { Text(tr("Alignment", "对齐方式"), color = MutedInk, fontSize = 11.sp); Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { InkTextAlignment.entries.forEach { alignment -> FilterChip(selected = current.alignment == alignment, onClick = { draft = current.copy(alignment = alignment) }, label = { Text(localizedTextAlignment(alignment)) }) } } }
+                    item { Text(tr("List style", "列表样式"), color = MutedInk, fontSize = 11.sp); LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { TextListStyle.entries.forEach { style -> item { FilterChip(selected = current.listStyle == style, onClick = { draft = current.copy(listStyle = style) }, label = { Text(localizedListStyle(style)) }) } } } }
                     item { BrushSettingSlider("Line spacing", current.lineSpacing, .8f..2f) { draft = current.copy(lineSpacing = it) } }
-                    item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text("Color", Modifier.weight(1f)); BrushColorPicker(current.colorArgb.toInt()) { draft = current.copy(colorArgb = it.toUInt().toLong()) } } }
+                    item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text(tr("Color", "颜色"), Modifier.weight(1f)); BrushColorPicker(current.colorArgb.toInt()) { draft = current.copy(colorArgb = it.toUInt().toLong()) } } }
                 }
                 is PageElement.Sticky -> {
-                    item { OutlinedTextField(current.text, { draft = current.copy(text = it) }, label = { Text("Note") }, minLines = 4, modifier = Modifier.fillMaxWidth()) }
+                    item { OutlinedTextField(current.text, { draft = current.copy(text = it) }, label = { Text(tr("Note", "便签")) }, minLines = 4, modifier = Modifier.fillMaxWidth()) }
                     item { SettingSwitch("Collapsed", "Show only the first line.", current.collapsed) { draft = current.copy(collapsed = it) } }
-                    item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text("Color", Modifier.weight(1f)); BrushColorPicker(current.colorArgb.toInt()) { draft = current.copy(colorArgb = it.toUInt().toLong()) } } }
+                    item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text(tr("Color", "颜色"), Modifier.weight(1f)); BrushColorPicker(current.colorArgb.toInt()) { draft = current.copy(colorArgb = it.toUInt().toLong()) } } }
                 }
                 is PageElement.Shape -> {
                     item { LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { ShapeKind.entries.forEach { kind -> item { FilterChip(selected = current.kind == kind, onClick = {
                         val path = if (kind == ShapeKind.FREEFORM && current.path.size < 3) listOf(ShapeVertex(0f, 0f), ShapeVertex(1f, 0f), ShapeVertex(1f, 1f), ShapeVertex(0f, 1f)) else current.path
                         draft = current.copy(kind = kind, path = path)
-                    }, label = { Text(kind.name.lowercase().replaceFirstChar(Char::uppercase)) }) } } } }
+                    }, label = { Text(localizedShapeKind(kind)) }) } } } }
                     item { BrushSettingSlider("Stroke width", current.strokeWidth, 1f..40f) { draft = current.copy(strokeWidth = it) } }
                     item { SettingSwitch("Fill", "Adds a translucent shape fill.", current.fillArgb != null) { draft = current.copy(fillArgb = if (it) 0x33111111 else null) } }
-                    item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text("Stroke color", Modifier.weight(1f)); BrushColorPicker(current.colorArgb.toInt()) { draft = current.copy(colorArgb = it.toUInt().toLong()) } } }
+                    item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text(tr("Stroke color", "描边颜色"), Modifier.weight(1f)); BrushColorPicker(current.colorArgb.toInt()) { draft = current.copy(colorArgb = it.toUInt().toLong()) } } }
                 }
                 is PageElement.Image -> {
-                    item { Text("Image source is retained unchanged. Crop and mask remain reversible and are included in editable backups.", color = MutedInk, fontSize = 12.sp) }
-                    item { Text("Mask", color = MutedInk, fontSize = 11.sp); Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { ImageMask.entries.forEach { mask -> FilterChip(selected = current.mask == mask, onClick = { draft = current.copy(mask = mask) }, label = { Text(mask.name.lowercase().replaceFirstChar(Char::uppercase)) }) } } }
+                    item { Text(tr("Image source is retained unchanged. Crop and mask remain reversible and are included in editable backups.", "图片源文件保持不变。裁剪和蒙版均可撤销，并会包含在可编辑备份中。"), color = MutedInk, fontSize = 12.sp) }
+                    item { Text(tr("Mask", "蒙版"), color = MutedInk, fontSize = 11.sp); Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { ImageMask.entries.forEach { mask -> FilterChip(selected = current.mask == mask, onClick = { draft = current.copy(mask = mask) }, label = { Text(localizedImageMask(mask)) }) } } }
                     if (current.mask == ImageMask.ROUNDED) item { BrushSettingSlider("Corner radius", current.cornerRadius, 0f..200f) { draft = current.copy(cornerRadius = it) } }
-                    item { Text("Crop edges", color = MutedInk, fontSize = 11.sp) }
+                    item { Text(tr("Crop edges", "裁剪边缘"), color = MutedInk, fontSize = 11.sp) }
                     item { BrushSettingSlider("Left", current.crop.left, 0f..0.95f) { draft = current.copy(crop = current.crop.copy(left = it).normalized()) } }
                     item { BrushSettingSlider("Top", current.crop.top, 0f..0.95f) { draft = current.copy(crop = current.crop.copy(top = it).normalized()) } }
                     item { BrushSettingSlider("Right", current.crop.right, 0.05f..1f) { draft = current.copy(crop = current.crop.copy(right = it).normalized()) } }
                     item { BrushSettingSlider("Bottom", current.crop.bottom, 0.05f..1f) { draft = current.copy(crop = current.crop.copy(bottom = it).normalized()) } }
-                    item { OutlinedButton(onClick = { draft = current.copy(crop = ImageCrop()) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.RestartAlt, null); Spacer(Modifier.width(8.dp)); Text("Reset crop") } }
+                    item { OutlinedButton(onClick = { draft = current.copy(crop = ImageCrop()) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.RestartAlt, null); Spacer(Modifier.width(8.dp)); Text(tr("Reset crop", "重置裁剪")) } }
                 }
                 is PageElement.AudioMarker -> {
-                    item { OutlinedTextField(current.title, { draft = current.copy(title = it) }, label = { Text("Title") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
-                    item { Text("Duration ${formatDuration(current.durationMs)} · audio is included in editable backups", color = MutedInk, fontSize = 12.sp) }
+                    item { OutlinedTextField(current.title, { draft = current.copy(title = it) }, label = { Text(tr("Title", "标题")) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+                    item { Text(tr("Duration ${formatDuration(current.durationMs)} · audio is included in editable backups", "时长 ${formatDuration(current.durationMs)} · 音频会包含在可编辑备份中"), color = MutedInk, fontSize = 12.sp) }
                 }
                 is PageElement.Link -> {
-                    item { OutlinedTextField(current.title, { draft = current.copy(title = it) }, label = { Text("Title") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
-                    item { OutlinedTextField(current.url, { draft = current.copy(url = it) }, label = { Text("Web, email, or phone address") }, isError = LinkTarget.normalize(current.url) == null, supportingText = { Text(if (LinkTarget.normalize(current.url) == null) "Use a valid http, https, mailto, or tel address." else LinkTarget.displayDestination(current.url)) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+                    item { OutlinedTextField(current.title, { draft = current.copy(title = it) }, label = { Text(tr("Title", "标题")) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+                    item { OutlinedTextField(current.url, { draft = current.copy(url = it) }, label = { Text(tr("Web, email, or phone address", "网页、邮箱或电话号码")) }, isError = LinkTarget.normalize(current.url) == null, supportingText = { Text(if (LinkTarget.normalize(current.url) == null) tr("Use a valid http, https, mailto, or tel address.", "请输入有效的 http、https、mailto 或 tel 地址。") else LinkTarget.displayDestination(current.url)) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
                 }
             }
             item { BrushSettingSlider("Opacity", draft.opacity, .05f..1f) { draft = setElementOpacity(draft, it) } }
@@ -1733,8 +1775,8 @@ private fun ElementEditorDialog(element: PageElement, onDismiss: () -> Unit, onS
                 link.copy(title = link.title.trim().ifBlank { LinkTarget.displayDestination(url, 48) }, url = url)
             } ?: draft
             onSave(saved)
-        }) { Text("Save") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        }) { Text(tr("Save", "保存")) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Cancel", "取消")) } },
     )
 }
 
@@ -1753,16 +1795,16 @@ private fun setElementSize(element: PageElement, width: Float, height: Float): P
 private fun setElementRotation(element: PageElement, value: Float): PageElement = when (element) { is PageElement.Text -> element.copy(rotationDegrees = value); is PageElement.Sticky -> element.copy(rotationDegrees = value); is PageElement.Shape -> element.copy(rotationDegrees = value); is PageElement.Image -> element.copy(rotationDegrees = value); is PageElement.AudioMarker -> element.copy(rotationDegrees = value); is PageElement.Link -> element.copy(rotationDegrees = value) }
 private fun setElementOpacity(element: PageElement, value: Float): PageElement = when (element) { is PageElement.Text -> element.copy(opacity = value); is PageElement.Sticky -> element.copy(opacity = value); is PageElement.Shape -> element.copy(opacity = value); is PageElement.Image -> element.copy(opacity = value); is PageElement.AudioMarker -> element.copy(opacity = value); is PageElement.Link -> element.copy(opacity = value) }
 
-private fun openLink(context: android.content.Context, rawUrl: String) {
+private fun openLink(context: android.content.Context, rawUrl: String, language: UiLanguage) {
     val url = LinkTarget.normalize(rawUrl)
     if (url == null) {
-        Toast.makeText(context, "This link is not valid or supported.", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, language.text("This link is not valid or supported.", "此链接无效或不受支持。"), Toast.LENGTH_SHORT).show()
         return
     }
     runCatching {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE))
     }.onFailure {
-        Toast.makeText(context, "No app can open this link.", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, language.text("No app can open this link.", "没有应用可以打开此链接。"), Toast.LENGTH_SHORT).show()
     }
 }
 
