@@ -3,6 +3,7 @@ package app.inkloom.settings
 import android.content.Context
 
 data class AppSettings(
+    val language: UiLanguage = UiLanguage.ENGLISH,
     val fingerDrawing: Boolean = false,
     val showPageRail: Boolean = true,
     val showToolbar: Boolean = true,
@@ -43,6 +44,7 @@ class AppSettingsStore(context: Context) {
         val pressureMinimum = preferences.getFloat("pressureMinimumInput", 0f).coerceIn(0f, .95f)
         val pressureMaximum = preferences.getFloat("pressureMaximumInput", 1f).coerceIn(pressureMinimum + .05f, 1f)
         return AppSettings(
+            language = enumValue(preferences.getString("language", null), UiLanguage.ENGLISH),
             fingerDrawing = preferences.getBoolean("fingerDrawing", false),
             showPageRail = preferences.getBoolean("showPageRail", true),
             showToolbar = preferences.getBoolean("showToolbar", true),
@@ -73,6 +75,7 @@ class AppSettingsStore(context: Context) {
 
     fun save(value: AppSettings) {
         preferences.edit()
+            .putString("language", value.language.name)
             .putBoolean("fingerDrawing", value.fingerDrawing)
             .putBoolean("showPageRail", value.showPageRail)
             .putBoolean("showToolbar", value.showToolbar)

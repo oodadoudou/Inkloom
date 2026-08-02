@@ -81,6 +81,8 @@ import app.inkloom.settings.ShortcutBrushGroup
 import app.inkloom.settings.ShortcutBrushSelection
 import app.inkloom.settings.StylusButtonAction
 import app.inkloom.settings.ToolbarDock
+import app.inkloom.settings.UiLanguage
+import app.inkloom.settings.text
 import app.inkloom.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -89,6 +91,10 @@ import java.util.Date
 
 private enum class AppDestination { LIBRARY, EDITOR }
 private const val UNGROUPED_BRUSH_FILTER = "\u0000ungrouped"
+private val LocalUiLanguage = staticCompositionLocalOf { UiLanguage.ENGLISH }
+
+@Composable
+private fun tr(english: String, simplifiedChinese: String): String = LocalUiLanguage.current.text(english, simplifiedChinese)
 
 private fun List<ImportedBrush>.distinctImportedBrushes(): List<ImportedBrush> =
     associateBy { brush ->
@@ -201,6 +207,7 @@ fun InkloomApp(initialIntent: Intent?) {
         }
     }
 
+    CompositionLocalProvider(LocalUiLanguage provides settings.language) {
     when (destination) {
         AppDestination.LIBRARY -> LibraryScreen(
             documents = libraryState.documents,
@@ -289,6 +296,7 @@ fun InkloomApp(initialIntent: Intent?) {
         onRestoreBackup = { libraryBackupImportPicker.launch(arrayOf("application/zip", "application/octet-stream")) },
         onDismiss = { settingsOpen = false },
     )
+    }
 }
 
 private enum class LibraryFilter { ALL, FAVORITES, ARCHIVED, TRASH, PDF }
@@ -2612,43 +2620,48 @@ private fun SettingsDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
-        title = { Text("Inkloom Settings") },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(tr("Done", "完成")) } },
+        title = { Text(tr("Inkloom Settings", "Inkloom 设置")) },
         text = {
             LazyColumn(Modifier.widthIn(min = 320.dp, max = 520.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                item { Text("INPUT", color = Sage, fontSize = 12.sp) }
-                item { SettingSwitch("Draw with finger", "Off by default. Fingers navigate and zoom.", settings.fingerDrawing) { onChange(settings.copy(fingerDrawing = it)) } }
-                item { SettingSwitch("Two-finger double tap to undo", "Matches common notebook gestures.", settings.twoFingerDoubleTapUndo) { onChange(settings.copy(twoFingerDoubleTapUndo = it)) } }
-                item { SettingSwitch("Show stylus diagnostics", "Displays tool type, pressure, tilt and button state for device testing.", settings.showInputDiagnostics) { onChange(settings.copy(showInputDiagnostics = it)) } }
-                item { Text("Pressure sensitivity  ${"%.2f".format(settings.pressureSensitivity)}×") }
+                item { Text(tr("LANGUAGE", "语言"), color = Sage, fontSize = 12.sp) }
+                item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = settings.language == UiLanguage.ENGLISH, onClick = { onChange(settings.copy(language = UiLanguage.ENGLISH)) }, label = { Text("English") })
+                    FilterChip(selected = settings.language == UiLanguage.SIMPLIFIED_CHINESE, onClick = { onChange(settings.copy(language = UiLanguage.SIMPLIFIED_CHINESE)) }, label = { Text("简体中文") })
+                } }
+                item { Text(tr("INPUT", "输入"), color = Sage, fontSize = 12.sp) }
+                item { SettingSwitch(tr("Draw with finger", "手指书写"), tr("Off by default. Fingers navigate and zoom.", "默认关闭；手指用于移动和缩放。"), settings.fingerDrawing) { onChange(settings.copy(fingerDrawing = it)) } }
+                item { SettingSwitch(tr("Two-finger double tap to undo", "双指双击撤销"), tr("Matches common notebook gestures.", "符合常见笔记应用手势。"), settings.twoFingerDoubleTapUndo) { onChange(settings.copy(twoFingerDoubleTapUndo = it)) } }
+                item { SettingSwitch(tr("Show stylus diagnostics", "显示手写笔诊断"), tr("Displays tool type, pressure, tilt and button state for device testing.", "显示工具类型、压力、倾斜与按键状态，便于设备测试。"), settings.showInputDiagnostics) { onChange(settings.copy(showInputDiagnostics = it)) } }
+                item { Text("${tr("Pressure sensitivity", "压感灵敏度")}  ${"%.2f".format(settings.pressureSensitivity)}×") }
                 item { Slider(settings.pressureSensitivity, { onChange(settings.copy(pressureSensitivity = it)) }, valueRange = .25f..2.5f) }
-                item { Text("Pressure onset  ${(settings.pressureMinimumInput * 100).toInt()}%", color = MutedInk, fontSize = 12.sp) }
+                item { Text("${tr("Pressure onset", "起始压力")}  ${(settings.pressureMinimumInput * 100).toInt()}%", color = MutedInk, fontSize = 12.sp) }
                 item { Slider(settings.pressureMinimumInput, { value -> onChange(settings.copy(pressureMinimumInput = value.coerceAtMost(settings.pressureMaximumInput - .05f))) }, valueRange = 0f..0.95f) }
-                item { Text("Full pressure point  ${(settings.pressureMaximumInput * 100).toInt()}%", color = MutedInk, fontSize = 12.sp) }
+                item { Text("${tr("Full pressure point", "满压位置")}  ${(settings.pressureMaximumInput * 100).toInt()}%", color = MutedInk, fontSize = 12.sp) }
                 item { Slider(settings.pressureMaximumInput, { value -> onChange(settings.copy(pressureMaximumInput = value.coerceAtLeast(settings.pressureMinimumInput + .05f))) }, valueRange = 0.05f..1f) }
                 item { PressureCurvePreview(settings.pressureMinimumInput, settings.pressureMaximumInput, settings.pressureSensitivity) }
-                item { Text("Stroke stabilization  ${(settings.stabilization * 100).toInt()}%") }
+                item { Text("${tr("Stroke stabilization", "笔触防抖")}  ${(settings.stabilization * 100).toInt()}%") }
                 item { Slider(settings.stabilization, { onChange(settings.copy(stabilization = it)) }, valueRange = 0f..0.9f) }
-                item { Text("DEFAULT TOOL PRESETS", color = Sage, fontSize = 12.sp) }
-                item { BrushSettingSlider("Pen size", settings.penSize, .5f..400f) { onChange(settings.copy(penSize = it)) } }
-                item { BrushSettingSlider("Pen opacity", settings.penOpacity, .05f..1f) { onChange(settings.copy(penOpacity = it)) } }
-                item { BrushSettingSlider("Marker size", settings.highlighterSize, .5f..400f) { onChange(settings.copy(highlighterSize = it)) } }
-                item { BrushSettingSlider("Marker opacity", settings.highlighterOpacity, .05f..1f) { onChange(settings.copy(highlighterOpacity = it)) } }
-                item { BrushSettingSlider("Eraser size", settings.eraserSize, .5f..400f) { onChange(settings.copy(eraserSize = it)) } }
-                item { OutlinedButton(onClick = { onChange(settings.copy(penSize = 5f, penOpacity = 1f, highlighterSize = 28f, highlighterOpacity = .35f, eraserSize = 24f, eraserPreset = EraserPreset.NORMAL_FREE)) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.RestartAlt, null); Spacer(Modifier.width(8.dp)); Text("Reset tool presets") } }
-                item { Text("PEN BUTTONS", color = Sage, fontSize = 12.sp) }
-                item { StylusActionRow("Primary button", settings.stylusPrimaryButton) { onChange(settings.copy(stylusPrimaryButton = it)) } }
-                item { StylusActionRow("Secondary button", settings.stylusSecondaryButton) { onChange(settings.copy(stylusSecondaryButton = it)) } }
-                item { Text("INTERFACE", color = Sage, fontSize = 12.sp) }
-                item { SettingSwitch("Show page sidebar", null, settings.showPageRail) { onChange(settings.copy(showPageRail = it)) } }
-                item { SettingSwitch("Show floating toolbar", null, settings.showToolbar) { onChange(settings.copy(showToolbar = it)) } }
-                item { Text("Toolbar docking", color = MutedInk, fontSize = 11.sp); LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { ToolbarDock.entries.forEach { dock -> item { FilterChip(selected = settings.toolbarDock == dock, onClick = { onChange(settings.copy(toolbarDock = dock, verticalToolbar = if (dock in setOf(ToolbarDock.LEFT, ToolbarDock.RIGHT)) true else if (dock in setOf(ToolbarDock.TOP, ToolbarDock.BOTTOM)) false else settings.verticalToolbar)) }, label = { Text(dock.name.lowercase().replaceFirstChar(Char::uppercase)) }) } } } }
-                if (settings.toolbarDock == ToolbarDock.FREE) item { SettingSwitch("Vertical toolbar", "Useful on a wide tablet canvas.", settings.verticalToolbar) { onChange(settings.copy(verticalToolbar = it)) } }
-                item { OutlinedButton(onClick = { onChange(settings.copy(toolbarDock = ToolbarDock.FREE, toolbarOffsetXDp = 16f, toolbarOffsetYDp = 16f)) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.CenterFocusStrong, null); Spacer(Modifier.width(8.dp)); Text("Reset toolbar position") } }
-                item { Text("DATA & BACKUP", color = Sage, fontSize = 12.sp) }
-                item { Text("A full backup includes notes, folders, imported brush presets, original brush packages, PDFs, images and audio. Restore always creates new IDs inside a Restored backup folder, so existing work is never overwritten.", color = MutedInk, fontSize = 12.sp) }
-                item { Button(onClick = onExportBackup, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Backup, null); Spacer(Modifier.width(8.dp)); Text("Export full library backup") } }
-                item { OutlinedButton(onClick = onRestoreBackup, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Restore, null); Spacer(Modifier.width(8.dp)); Text("Restore library backup") } }
+                item { Text(tr("DEFAULT TOOL PRESETS", "默认工具预设"), color = Sage, fontSize = 12.sp) }
+                item { BrushSettingSlider(tr("Pen size", "钢笔大小"), settings.penSize, .5f..400f) { onChange(settings.copy(penSize = it)) } }
+                item { BrushSettingSlider(tr("Pen opacity", "钢笔不透明度"), settings.penOpacity, .05f..1f) { onChange(settings.copy(penOpacity = it)) } }
+                item { BrushSettingSlider(tr("Marker size", "标记笔大小"), settings.highlighterSize, .5f..400f) { onChange(settings.copy(highlighterSize = it)) } }
+                item { BrushSettingSlider(tr("Marker opacity", "标记笔不透明度"), settings.highlighterOpacity, .05f..1f) { onChange(settings.copy(highlighterOpacity = it)) } }
+                item { BrushSettingSlider(tr("Eraser size", "橡皮大小"), settings.eraserSize, .5f..400f) { onChange(settings.copy(eraserSize = it)) } }
+                item { OutlinedButton(onClick = { onChange(settings.copy(penSize = 5f, penOpacity = 1f, highlighterSize = 28f, highlighterOpacity = .35f, eraserSize = 24f, eraserPreset = EraserPreset.NORMAL_FREE)) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.RestartAlt, null); Spacer(Modifier.width(8.dp)); Text(tr("Reset tool presets", "重置工具预设")) } }
+                item { Text(tr("PEN BUTTONS", "笔按键"), color = Sage, fontSize = 12.sp) }
+                item { StylusActionRow(tr("Primary button", "主按键"), settings.stylusPrimaryButton) { onChange(settings.copy(stylusPrimaryButton = it)) } }
+                item { StylusActionRow(tr("Secondary button", "副按键"), settings.stylusSecondaryButton) { onChange(settings.copy(stylusSecondaryButton = it)) } }
+                item { Text(tr("INTERFACE", "界面"), color = Sage, fontSize = 12.sp) }
+                item { SettingSwitch(tr("Show page sidebar", "显示页面侧栏"), null, settings.showPageRail) { onChange(settings.copy(showPageRail = it)) } }
+                item { SettingSwitch(tr("Show floating toolbar", "显示浮动工具栏"), null, settings.showToolbar) { onChange(settings.copy(showToolbar = it)) } }
+                item { Text(tr("Toolbar docking", "工具栏停靠"), color = MutedInk, fontSize = 11.sp); LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { ToolbarDock.entries.forEach { dock -> item { FilterChip(selected = settings.toolbarDock == dock, onClick = { onChange(settings.copy(toolbarDock = dock, verticalToolbar = if (dock in setOf(ToolbarDock.LEFT, ToolbarDock.RIGHT)) true else if (dock in setOf(ToolbarDock.TOP, ToolbarDock.BOTTOM)) false else settings.verticalToolbar)) }, label = { Text(when (dock) { ToolbarDock.FREE -> tr("Free", "自由"); ToolbarDock.TOP -> tr("Top", "顶部"); ToolbarDock.BOTTOM -> tr("Bottom", "底部"); ToolbarDock.LEFT -> tr("Left", "左侧"); ToolbarDock.RIGHT -> tr("Right", "右侧") }) }) } } } }
+                if (settings.toolbarDock == ToolbarDock.FREE) item { SettingSwitch(tr("Vertical toolbar", "垂直工具栏"), tr("Useful on a wide tablet canvas.", "适合宽屏平板画布。"), settings.verticalToolbar) { onChange(settings.copy(verticalToolbar = it)) } }
+                item { OutlinedButton(onClick = { onChange(settings.copy(toolbarDock = ToolbarDock.FREE, toolbarOffsetXDp = 16f, toolbarOffsetYDp = 16f)) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.CenterFocusStrong, null); Spacer(Modifier.width(8.dp)); Text(tr("Reset toolbar position", "重置工具栏位置")) } }
+                item { Text(tr("DATA & BACKUP", "数据与备份"), color = Sage, fontSize = 12.sp) }
+                item { Text(tr("A full backup includes notes, folders, imported brush presets, original brush packages, PDFs, images and audio. Restore always creates new IDs inside a Restored backup folder, so existing work is never overwritten.", "完整备份包含笔记、文件夹、导入笔刷预设、原始笔刷包、PDF、图片与音频。恢复时会在“已恢复备份”文件夹中创建新 ID，不会覆盖现有内容。"), color = MutedInk, fontSize = 12.sp) }
+                item { Button(onClick = onExportBackup, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Backup, null); Spacer(Modifier.width(8.dp)); Text(tr("Export full library backup", "导出完整资料库备份")) } }
+                item { OutlinedButton(onClick = onRestoreBackup, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Restore, null); Spacer(Modifier.width(8.dp)); Text(tr("Restore library backup", "恢复资料库备份")) } }
             }
         },
     )
@@ -2657,7 +2670,7 @@ private fun SettingsDialog(
 @Composable
 private fun PressureCurvePreview(minimumInput: Float, maximumInput: Float, sensitivity: Float) {
     Column {
-        Text("Calibrated response", color = MutedInk, fontSize = 11.sp)
+        Text(tr("Calibrated response", "校准响应曲线"), color = MutedInk, fontSize = 11.sp)
         Canvas(Modifier.fillMaxWidth().height(110.dp).clip(RoundedCornerShape(8.dp)).background(Workspace).padding(10.dp)) {
             drawLine(OutlineSoft, Offset(0f, size.height), Offset(size.width, size.height), strokeWidth = 1f)
             drawLine(OutlineSoft, Offset(0f, 0f), Offset(0f, size.height), strokeWidth = 1f)
@@ -2684,5 +2697,5 @@ private fun SettingSwitch(title: String, subtitle: String?, checked: Boolean, on
 
 @Composable
 private fun StylusActionRow(title: String, selected: StylusButtonAction, onSelected: (StylusButtonAction) -> Unit) {
-    Column { Text(title, fontSize = 13.sp); Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { StylusButtonAction.entries.forEach { action -> FilterChip(selected = selected == action, onClick = { onSelected(action) }, label = { Text(action.name.lowercase().replaceFirstChar(Char::uppercase)) }) } } }
+    Column { Text(title, fontSize = 13.sp); Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { StylusButtonAction.entries.forEach { action -> FilterChip(selected = selected == action, onClick = { onSelected(action) }, label = { Text(when (action) { StylusButtonAction.ERASER -> tr("Eraser", "橡皮"); StylusButtonAction.LASSO -> tr("Lasso", "套索"); StylusButtonAction.NONE -> tr("None", "无") }) }) } } }
 }
