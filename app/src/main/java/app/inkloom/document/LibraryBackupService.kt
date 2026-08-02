@@ -218,6 +218,7 @@ class LibraryBackupService(private val filesRoot: File) {
     }
 
     private fun InkStroke.portable(register: (String?, String) -> String?) = copy(
+        masks = masks.map { mask -> mask.copy(tipAssetPath = register(mask.tipAssetPath, BRUSH_ASSETS)) },
         tipAssetPath = register(tipAssetPath, BRUSH_ASSETS),
         tipAssetPaths = tipAssetPaths.mapNotNull { register(it, BRUSH_ASSETS) },
         dualTipAssetPaths = dualTipAssetPaths.mapNotNull { register(it, BRUSH_ASSETS) },
@@ -226,6 +227,7 @@ class LibraryBackupService(private val filesRoot: File) {
 
     private fun InkStroke.restored(brushIds: Map<String, String>, retained: (String?, String) -> String?) = copy(
         brushId = brushIds[brushId] ?: brushId,
+        masks = masks.map { mask -> mask.copy(tipAssetPath = retained(mask.tipAssetPath, BRUSH_ASSETS)) },
         tipAssetPath = retained(tipAssetPath, BRUSH_ASSETS),
         tipAssetPaths = tipAssetPaths.mapNotNull { retained(it, BRUSH_ASSETS) },
         dualTipAssetPaths = dualTipAssetPaths.mapNotNull { retained(it, BRUSH_ASSETS) },

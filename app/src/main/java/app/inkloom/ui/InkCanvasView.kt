@@ -237,6 +237,7 @@ class InkCanvasView(context: Context) : View(context) {
     var eraserHardness: Float = 1f
     var eraserOpacity: Float = 1f
     var eraserPressureSize: Boolean = false
+    var eraserTipAssetPath: String? = null
     var fingerDrawingEnabled: Boolean = false
     var twoFingerDoubleTapUndo: Boolean = true
     var pressureSensitivity: Float = 1f
@@ -992,7 +993,7 @@ class InkCanvasView(context: Context) : View(context) {
             val radiusY = combinedRadius / height.coerceAtLeast(1)
             if (!StrokeEraser.intersects(stroke, x, y, radiusX, radiusY)) continue
             if (nonDestructiveEraser) {
-                val dab = StrokeMaskDab(x, y, eraserRadius / width.coerceAtLeast(1), eraserRadius / height.coerceAtLeast(1), hardness = eraserHardness, opacity = eraserOpacity)
+                val dab = StrokeMaskDab(x, y, eraserRadius / width.coerceAtLeast(1), eraserRadius / height.coerceAtLeast(1), hardness = eraserHardness, opacity = eraserOpacity, tipAssetPath = eraserTipAssetPath)
                 if (stroke.masks.lastOrNull()?.let { kotlin.math.abs(it.x - dab.x) < .00001f && kotlin.math.abs(it.y - dab.y) < .00001f } == true) continue
                 val masked = stroke.copy(masks = stroke.masks + dab)
                 strokes[index] = masked

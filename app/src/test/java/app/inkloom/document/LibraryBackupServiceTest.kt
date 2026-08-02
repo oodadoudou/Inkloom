@@ -44,7 +44,7 @@ class LibraryBackupServiceTest {
             )
             val page = InkPage(
                 background = PageBackground.Pdf(documentAsset.absolutePath, 0),
-                strokes = listOf(InkStroke(points = listOf(StrokePoint(.1f, .2f)), brushId = brush.id, tipAssetPaths = listOf(tip.absolutePath))),
+                strokes = listOf(InkStroke(points = listOf(StrokePoint(.1f, .2f)), brushId = brush.id, tipAssetPaths = listOf(tip.absolutePath), masks = listOf(StrokeMaskDab(.2f, .2f, .04f, .04f, tipAssetPath = tip.absolutePath)))),
                 elements = listOf(sticky),
             )
             val folder = InkFolder(id = "folder-1", name = "School")
@@ -65,6 +65,7 @@ class LibraryBackupServiceTest {
             assertTrue(File((restoredPage.background as PageBackground.Pdf).assetPath).isFile)
             assertEquals(restored.brushes.single().id, restoredPage.strokes.single().brushId)
             assertTrue(File(restoredPage.strokes.single().tipAssetPaths.single()).isFile)
+            assertTrue(File(restoredPage.strokes.single().masks.single().tipAssetPath!!).isFile)
             assertEquals(restored.brushes.single().id, (restoredPage.elements.single() as PageElement.Sticky).strokes.single().brushId)
             assertFalse(restored.documents.single().trashedAt != null)
         } finally {

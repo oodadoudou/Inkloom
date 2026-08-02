@@ -65,7 +65,7 @@ object StrokeClipboardCodec {
         return strokes.all { stroke ->
             stroke.points.isNotEmpty() && stroke.width.isFinite() && stroke.width in .01f..10_000f && stroke.opacity.isFinite() && stroke.opacity in 0f..1f &&
                 stroke.points.all { point -> point.x.isFinite() && point.y.isFinite() && point.pressure.isFinite() && point.x in 0f..1f && point.y in 0f..1f && point.pressure in 0f..1f } &&
-                stroke.masks.all { mask -> mask.x.isFinite() && mask.y.isFinite() && mask.radiusX.isFinite() && mask.radiusY.isFinite() && mask.rotationDegrees.isFinite() && mask.hardness.isFinite() && mask.opacity.isFinite() && mask.x in 0f..1f && mask.y in 0f..1f && mask.radiusX in 0f..10f && mask.radiusY in 0f..10f && mask.hardness in 0f..1f && mask.opacity in 0f..1f }
+                stroke.masks.all { mask -> mask.x.isFinite() && mask.y.isFinite() && mask.radiusX.isFinite() && mask.radiusY.isFinite() && mask.rotationDegrees.isFinite() && mask.hardness.isFinite() && mask.opacity.isFinite() && mask.tipAssetPath.orEmpty().length <= 4_096 && mask.x in 0f..1f && mask.y in 0f..1f && mask.radiusX in 0f..10f && mask.radiusY in 0f..10f && mask.hardness in 0f..1f && mask.opacity in 0f..1f }
         }
     }
 }

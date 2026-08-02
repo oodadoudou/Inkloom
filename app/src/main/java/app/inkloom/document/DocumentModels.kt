@@ -260,6 +260,7 @@ data class StrokeMaskDab(
     val rotationDegrees: Float = 0f,
     val hardness: Float = 1f,
     val opacity: Float = 1f,
+    val tipAssetPath: String? = null,
 )
 
 @Serializable

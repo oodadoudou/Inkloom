@@ -64,6 +64,7 @@ import app.inkloom.document.*
 import app.inkloom.importer.BrushImportRepository
 import app.inkloom.importer.BrushGroupOperations
 import app.inkloom.importer.BrushMetadataStore
+import app.inkloom.importer.BrushRoleClassifier
 import app.inkloom.importer.BrushVersion
 import app.inkloom.importer.BrushVersionHistoryStore
 import app.inkloom.model.*
@@ -689,7 +690,7 @@ private fun EditorScreen(
                             brushSize = usedBrush.defaultSize
                             brushOpacity = usedBrush.defaultOpacity
                             brushColor = AndroidColor.rgb(17, 17, 17)
-                            tool = EditorTool.PEN
+                            tool = if (BrushRoleClassifier.isEraser(usedBrush)) EditorTool.ERASER else EditorTool.PEN
                             if (activeLayerId == LayerIds.HIGHLIGHT || activeLayerId == LayerIds.OBJECTS) activeLayerId = LayerIds.INK
                         }
 
@@ -699,7 +700,7 @@ private fun EditorScreen(
                             when (tool) {
                                 EditorTool.PEN -> if (activeBrush == null) onSettingsChange(settings.copy(penSize = value))
                                 EditorTool.HIGHLIGHTER -> onSettingsChange(settings.copy(highlighterSize = value))
-                                EditorTool.ERASER -> onSettingsChange(settings.copy(eraserSize = value))
+                                EditorTool.ERASER -> if (activeBrush == null) onSettingsChange(settings.copy(eraserSize = value))
                                 else -> Unit
                             }
                         }
@@ -823,7 +824,7 @@ private fun EditorScreen(
                     when (tool) {
                         EditorTool.PEN -> if (activeBrush == null) onSettingsChange(settings.copy(penSize = value))
                         EditorTool.HIGHLIGHTER -> onSettingsChange(settings.copy(highlighterSize = value))
-                        EditorTool.ERASER -> onSettingsChange(settings.copy(eraserSize = value))
+                        EditorTool.ERASER -> if (activeBrush == null) onSettingsChange(settings.copy(eraserSize = value))
                         else -> Unit
                     }
                 }, onOpacity = { raw ->
@@ -867,9 +868,10 @@ private fun EditorScreen(
                         BrushFormat.SUT -> AndroidColor.rgb(17, 17, 17)
                         else -> AndroidColor.rgb(17, 17, 17)
                     }
-                    tool = EditorTool.PEN
+                    val chosenTool = if (BrushRoleClassifier.isEraser(usedBrush)) EditorTool.ERASER else EditorTool.PEN
+                    tool = chosenTool
                     canvasView?.apply {
-                        this.tool = EditorTool.PEN
+                        this.tool = chosenTool
                         inkOpacity = 1f
                         brushId = usedBrush.id
                         baseWidth = usedBrush.defaultSize
@@ -1237,12 +1239,14 @@ private fun InkCanvasView.applyBrushConfiguration(
     selectionMode = settings.selectionMode
     selectionFilter = settings.selectionFilter
     baseWidth = brushSize
-    eraserWidth = settings.eraserSize
-    this.localEraser = eraserPreset.splitsStroke
-    nonDestructiveEraser = eraserPreset.usesMask
-    eraserHardness = eraserPreset.hardness
-    eraserOpacity = eraserPreset.opacity
-    eraserPressureSize = eraserPreset.pressureSize
+    val importedEraser = activeBrush?.takeIf { selectedTool == EditorTool.ERASER && BrushRoleClassifier.isEraser(it) }
+    eraserWidth = if (importedEraser != null) brushSize else settings.eraserSize
+    this.localEraser = if (importedEraser != null) false else eraserPreset.splitsStroke
+    nonDestructiveEraser = if (importedEraser != null) true else eraserPreset.usesMask
+    eraserHardness = importedEraser?.hardness ?: eraserPreset.hardness
+    eraserOpacity = importedEraser?.let { brushOpacity * it.flow }?.coerceIn(.01f, 1f) ?: eraserPreset.opacity
+    eraserPressureSize = importedEraser?.sizePressureEnabled ?: eraserPreset.pressureSize
+    eraserTipAssetPath = importedEraser?.tipPreviewPath
     inkOpacity = brushOpacity
     inkColor = brushColor
     brushId = activeBrush?.id ?: if (selectedTool == EditorTool.HIGHLIGHTER) "system-highlighter" else "system-pen"
@@ -2435,6 +2439,7 @@ private fun BrushEditorDialog(brush: ImportedBrush, onDismiss: () -> Unit, onSav
                 item { SettingSwitch("Adjust stabilization by speed", "Uses the imported CSP correction behavior when available.", draft.stabilizationBySpeed) { draft = draft.copy(stabilizationBySpeed = it) } }
                 if (draft.stabilizationBySpeed) item { Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { FilterChip(selected = draft.stabilizationBySpeedMode == StrokeStabilization.INCREASE_WHEN_SLOW, onClick = { draft = draft.copy(stabilizationBySpeedMode = StrokeStabilization.INCREASE_WHEN_SLOW) }, label = { Text("More when slow") }); FilterChip(selected = draft.stabilizationBySpeedMode == StrokeStabilization.REDUCE_WHEN_FAST, onClick = { draft = draft.copy(stabilizationBySpeedMode = StrokeStabilization.REDUCE_WHEN_FAST) }, label = { Text("Less when fast") }) } }
                 item { BrushSettingSlider("Default opacity", draft.defaultOpacity, .01f..1f) { draft = draft.copy(defaultOpacity = it) } }
+                item { SettingSwitch("Use as eraser", "Selects the eraser tool and uses this tip shape to remove ink.", draft.isEraser) { draft = draft.copy(isEraser = it) } }
                 item { SettingSwitch("Pressure controls size", "Uses the imported CSP curve when available.", draft.sizePressureEnabled) { draft = draft.copy(sizePressureEnabled = it) } }
                 if (draft.sizePressureEnabled) item { BrushSettingSlider("Minimum size", draft.sizePressureMinimum, 0f..1f) { draft = draft.copy(sizePressureMinimum = it) } }
                 if (draft.sizePressureEnabled) item { PressureCurveEditor("Size pressure", draft.sizePressureCurve) { draft = draft.copy(sizePressureCurve = it) } }

@@ -149,6 +149,7 @@ class BrushMetadataStore(
                         waterEdgeBlurUnit = item.optInt("waterEdgeBlurUnit", 0),
                         favorite = item.optBoolean("favorite", false),
                         hidden = item.optBoolean("hidden", false),
+                        isEraser = item.optBoolean("isEraser", false),
                         groupName = BrushGroupOperations.normalize(item.optString("groupName", "")),
                         tags = buildList { for (tagIndex in 0 until tagsArray.length()) add(tagsArray.getString(tagIndex)) },
                         lastUsedAt = item.optLong("lastUsedAt", 0L),
@@ -284,6 +285,7 @@ class BrushMetadataStore(
                     .put("waterEdgeBlurUnit", brush.waterEdgeBlurUnit)
                     .put("favorite", brush.favorite)
                     .put("hidden", brush.hidden)
+                    .put("isEraser", brush.isEraser)
                     .put("groupName", BrushGroupOperations.normalize(brush.groupName))
                     .put("tags", JSONArray(brush.tags))
                     .put("lastUsedAt", brush.lastUsedAt)
