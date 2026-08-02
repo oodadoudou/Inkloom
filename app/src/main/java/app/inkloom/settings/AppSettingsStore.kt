@@ -11,6 +11,18 @@ data class AppSettings(
     val pagePanelDock: WorkspacePanelDock = WorkspacePanelDock.LEFT,
     val brushPanelDock: WorkspacePanelDock = WorkspacePanelDock.RIGHT,
     val layerPanelDock: WorkspacePanelDock = WorkspacePanelDock.RIGHT,
+    val pagePanelXDp: Float = 16f,
+    val pagePanelYDp: Float = 16f,
+    val pagePanelWidthDp: Float = 160f,
+    val pagePanelHeightDp: Float = 640f,
+    val brushPanelXDp: Float = 720f,
+    val brushPanelYDp: Float = 16f,
+    val brushPanelWidthDp: Float = 330f,
+    val brushPanelHeightDp: Float = 680f,
+    val layerPanelXDp: Float = 720f,
+    val layerPanelYDp: Float = 16f,
+    val layerPanelWidthDp: Float = 300f,
+    val layerPanelHeightDp: Float = 620f,
     val showToolbar: Boolean = true,
     val toolbarOffsetXDp: Float = 16f,
     val toolbarOffsetYDp: Float = 16f,
@@ -39,7 +51,7 @@ data class AppSettings(
 
 enum class StylusButtonAction { ERASER, LASSO, NONE }
 enum class ToolbarDock { FREE, TOP, BOTTOM, LEFT, RIGHT }
-enum class WorkspacePanelDock { LEFT, RIGHT }
+enum class WorkspacePanelDock { LEFT, FREE, RIGHT }
 enum class SelectionShape { FREEFORM, RECTANGLE }
 enum class SelectionMode { REPLACE, ADD, SUBTRACT, INTERSECT }
 enum class SelectionFilter { ALL, ACTIVE_LAYER, CURRENT_BRUSH, CURRENT_COLOR }
@@ -60,6 +72,18 @@ class AppSettingsStore(context: Context) {
             pagePanelDock = enumValue(preferences.getString("pagePanelDock", null), WorkspacePanelDock.LEFT),
             brushPanelDock = enumValue(preferences.getString("brushPanelDock", null), WorkspacePanelDock.RIGHT),
             layerPanelDock = enumValue(preferences.getString("layerPanelDock", null), WorkspacePanelDock.RIGHT),
+            pagePanelXDp = preferences.getFloat("pagePanelXDp", 16f).coerceIn(-2400f, 2400f),
+            pagePanelYDp = preferences.getFloat("pagePanelYDp", 16f).coerceIn(-2400f, 2400f),
+            pagePanelWidthDp = preferences.getFloat("pagePanelWidthDp", 160f).coerceIn(80f, 1200f),
+            pagePanelHeightDp = preferences.getFloat("pagePanelHeightDp", 640f).coerceIn(120f, 1600f),
+            brushPanelXDp = preferences.getFloat("brushPanelXDp", 720f).coerceIn(-2400f, 2400f),
+            brushPanelYDp = preferences.getFloat("brushPanelYDp", 16f).coerceIn(-2400f, 2400f),
+            brushPanelWidthDp = preferences.getFloat("brushPanelWidthDp", 330f).coerceIn(80f, 1200f),
+            brushPanelHeightDp = preferences.getFloat("brushPanelHeightDp", 680f).coerceIn(120f, 1600f),
+            layerPanelXDp = preferences.getFloat("layerPanelXDp", 720f).coerceIn(-2400f, 2400f),
+            layerPanelYDp = preferences.getFloat("layerPanelYDp", 16f).coerceIn(-2400f, 2400f),
+            layerPanelWidthDp = preferences.getFloat("layerPanelWidthDp", 300f).coerceIn(80f, 1200f),
+            layerPanelHeightDp = preferences.getFloat("layerPanelHeightDp", 620f).coerceIn(120f, 1600f),
             showToolbar = preferences.getBoolean("showToolbar", true),
             toolbarOffsetXDp = preferences.getFloat("toolbarOffsetXDp", 16f).coerceIn(-1200f, 1200f),
             toolbarOffsetYDp = preferences.getFloat("toolbarOffsetYDp", 16f).coerceIn(-1200f, 1200f),
@@ -97,6 +121,18 @@ class AppSettingsStore(context: Context) {
             .putString("pagePanelDock", value.pagePanelDock.name)
             .putString("brushPanelDock", value.brushPanelDock.name)
             .putString("layerPanelDock", value.layerPanelDock.name)
+            .putFloat("pagePanelXDp", value.pagePanelXDp)
+            .putFloat("pagePanelYDp", value.pagePanelYDp)
+            .putFloat("pagePanelWidthDp", value.pagePanelWidthDp)
+            .putFloat("pagePanelHeightDp", value.pagePanelHeightDp)
+            .putFloat("brushPanelXDp", value.brushPanelXDp)
+            .putFloat("brushPanelYDp", value.brushPanelYDp)
+            .putFloat("brushPanelWidthDp", value.brushPanelWidthDp)
+            .putFloat("brushPanelHeightDp", value.brushPanelHeightDp)
+            .putFloat("layerPanelXDp", value.layerPanelXDp)
+            .putFloat("layerPanelYDp", value.layerPanelYDp)
+            .putFloat("layerPanelWidthDp", value.layerPanelWidthDp)
+            .putFloat("layerPanelHeightDp", value.layerPanelHeightDp)
             .putBoolean("showToolbar", value.showToolbar)
             .putFloat("toolbarOffsetXDp", value.toolbarOffsetXDp)
             .putFloat("toolbarOffsetYDp", value.toolbarOffsetYDp)
