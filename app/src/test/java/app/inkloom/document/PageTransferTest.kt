@@ -22,10 +22,14 @@ class PageTransferTest {
     }
 
     @Test fun copiesPageWithFreshNestedIds() {
-        val page = InkPage(id = "page", strokes = listOf(InkStroke(id = "stroke", points = listOf(StrokePoint(.2f, .2f)))), elements = listOf(PageElement.Text(id = "text", x = .1f, y = .1f, text = "Hello")))
+        val page = InkPage(
+            id = "page",
+            strokes = listOf(InkStroke(id = "stroke", points = listOf(StrokePoint(.2f, .2f)))),
+            elements = listOf(PageElement.Sticky(id = "sticky", x = .1f, y = .1f, text = "Hello", strokes = listOf(InkStroke(id = "sticky-stroke", points = listOf(StrokePoint(.3f, .4f)))))),
+        )
         val source = InkDocument(id = "source", title = "Source", pages = listOf(page))
         val target = InkDocument(id = "target", title = "Target")
-        val ids = ArrayDeque(listOf("copy-page", "copy-stroke", "copy-text"))
+        val ids = ArrayDeque(listOf("copy-page", "copy-stroke", "copy-sticky", "copy-sticky-stroke"))
 
         val result = PageTransfer.apply(source, target, page.id, copy = true, nextId = ids::removeFirst)!!
         val copied = result.target.pages.last()
@@ -33,7 +37,9 @@ class PageTransferTest {
         assertEquals(source, result.source)
         assertEquals("copy-page", copied.id)
         assertEquals("copy-stroke", copied.strokes.single().id)
-        assertEquals("copy-text", copied.elements.single().id)
+        val copiedSticky = copied.elements.single() as PageElement.Sticky
+        assertEquals("copy-sticky", copiedSticky.id)
+        assertEquals("copy-sticky-stroke", copiedSticky.strokes.single().id)
         assertNotEquals(page.id, copied.id)
     }
 

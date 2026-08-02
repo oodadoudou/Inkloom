@@ -228,7 +228,10 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
 
     private fun copyElement(element: PageElement): PageElement = when (element) {
         is PageElement.Text -> element.copy(id = java.util.UUID.randomUUID().toString())
-        is PageElement.Sticky -> element.copy(id = java.util.UUID.randomUUID().toString())
+        is PageElement.Sticky -> element.copy(
+            id = java.util.UUID.randomUUID().toString(),
+            strokes = element.strokes.map { it.copy(id = java.util.UUID.randomUUID().toString()) },
+        )
         is PageElement.Shape -> element.copy(id = java.util.UUID.randomUUID().toString())
         is PageElement.Image -> element.copy(id = java.util.UUID.randomUUID().toString())
         is PageElement.AudioMarker -> element.copy(id = java.util.UUID.randomUUID().toString())

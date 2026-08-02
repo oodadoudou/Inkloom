@@ -206,4 +206,31 @@ class FileDocumentStoreTest {
         assertEquals(72f, restored.cornerRadius)
         assertEquals("/data/image.png", restored.assetPath)
     }
+
+    @Test fun stickySubcanvasStrokesRoundTripWithBrushSnapshot() {
+        val store = FileDocumentStore(Files.createTempDirectory("inkloom-sticky-ink").toFile())
+        val childStroke = InkStroke(
+            id = "sticky-stroke",
+            points = listOf(StrokePoint(.1f, .2f), StrokePoint(.8f, .7f)),
+            brushId = "imported-brush",
+            tipAssetPath = "/data/tip.png",
+            width = 38f,
+        )
+        val sticky = PageElement.Sticky(
+            id = "sticky",
+            x = .2f,
+            y = .3f,
+            text = "Formula",
+            collapsed = true,
+            strokes = listOf(childStroke),
+        )
+        val document = InkDocument(title = "Sticky ink", pages = listOf(InkPage(elements = listOf(sticky))))
+
+        store.save(document)
+
+        val restored = store.get(document.id)!!.pages.single().elements.single() as PageElement.Sticky
+        assertEquals(true, restored.collapsed)
+        assertEquals(listOf(childStroke), restored.strokes)
+        assertEquals("/data/tip.png", restored.strokes.single().tipAssetPath)
+    }
 }
