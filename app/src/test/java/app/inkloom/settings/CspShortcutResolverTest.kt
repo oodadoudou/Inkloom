@@ -32,6 +32,23 @@ class CspShortcutResolverTest {
         assertEquals(false, CspShortcutResolver.isRepeatable(ShortcutAction.TOGGLE_ERASER))
     }
 
+    @Test fun physicalBindingsMatchScanCodeAcrossKeyboardLayouts() {
+        val binding = ShortcutBinding(
+            ShortcutAction.TOGGLE_ERASER,
+            ShortcutChord(KeyEvent.KEYCODE_E, scanCode = 18, matchMode = ShortcutMatchMode.SCAN_CODE),
+        )
+
+        assertEquals(ShortcutAction.TOGGLE_ERASER, CspShortcutResolver.resolve(ShortcutChord(KeyEvent.KEYCODE_UNKNOWN, scanCode = 18), listOf(binding)))
+        assertNull(CspShortcutResolver.resolve(ShortcutChord(KeyEvent.KEYCODE_E, scanCode = 19), listOf(binding)))
+    }
+
+    @Test fun deviceSpecificBindingsIgnoreOtherDevices() {
+        val binding = ShortcutBinding(ShortcutAction.BRUSH_GROUP, ShortcutChord(KeyEvent.KEYCODE_B), deviceDescriptor = "toolbox-1")
+
+        assertEquals(ShortcutAction.BRUSH_GROUP, CspShortcutResolver.resolve(ShortcutChord(KeyEvent.KEYCODE_B), listOf(binding), "toolbox-1"))
+        assertNull(CspShortcutResolver.resolve(ShortcutChord(KeyEvent.KEYCODE_B), listOf(binding), "keyboard-2"))
+    }
+
     private fun resolve(keyCode: Int, ctrl: Boolean = false, alt: Boolean = false, shift: Boolean = false) =
         CspShortcutResolver.resolve(ShortcutChord(keyCode, ctrl, alt, shift))
 }

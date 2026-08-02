@@ -112,21 +112,52 @@ class AppSettingsStore(context: Context) {
 
 object ShortcutBindingCodec {
     fun encode(bindings: List<ShortcutBinding>): String = bindings.joinToString("|") { binding ->
-        listOf(binding.action.name, binding.chord.keyCode, binding.chord.ctrl, binding.chord.alt, binding.chord.shift).joinToString(",")
+        listOf(
+            binding.action.name,
+            binding.chord.keyCode,
+            binding.chord.ctrl,
+            binding.chord.alt,
+            binding.chord.shift,
+            binding.chord.scanCode,
+            binding.chord.matchMode.name,
+            binding.trigger.name,
+            encodeText(binding.deviceDescriptor),
+            encodeText(binding.deviceName),
+        ).joinToString(",")
     }
 
     fun decode(raw: String?): List<ShortcutBinding> {
         if (raw.isNullOrBlank()) return CspShortcutResolver.defaultBindings
         val decoded = raw.split('|').mapNotNull { entry ->
             val fields = entry.split(',')
-            if (fields.size != 5) return@mapNotNull null
             runCatching {
-                ShortcutBinding(
-                    action = enumValueOf(fields[0]),
-                    chord = ShortcutChord(fields[1].toInt(), fields[2].toBooleanStrict(), fields[3].toBooleanStrict(), fields[4].toBooleanStrict()),
-                )
+                if (fields.size == 5) {
+                    ShortcutBinding(
+                        action = enumValueOf(fields[0]),
+                        chord = ShortcutChord(fields[1].toInt(), fields[2].toBooleanStrict(), fields[3].toBooleanStrict(), fields[4].toBooleanStrict()),
+                    )
+                } else {
+                    require(fields.size == 10)
+                    ShortcutBinding(
+                        action = enumValueOf(fields[0]),
+                        chord = ShortcutChord(
+                            keyCode = fields[1].toInt(),
+                            ctrl = fields[2].toBooleanStrict(),
+                            alt = fields[3].toBooleanStrict(),
+                            shift = fields[4].toBooleanStrict(),
+                            scanCode = fields[5].toInt(),
+                            matchMode = enumValueOf(fields[6]),
+                        ),
+                        trigger = enumValueOf(fields[7]),
+                        deviceDescriptor = decodeText(fields[8]),
+                        deviceName = decodeText(fields[9]),
+                    )
+                }
             }.getOrNull()
         }
         return decoded.takeIf(List<ShortcutBinding>::isNotEmpty) ?: CspShortcutResolver.defaultBindings
     }
+
+    private fun encodeText(value: String?): String = value?.toByteArray(Charsets.UTF_8)?.let { java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(it) }.orEmpty()
+    private fun decodeText(value: String): String? = value.takeIf(String::isNotEmpty)?.let { String(java.util.Base64.getUrlDecoder().decode(it), Charsets.UTF_8) }
 }

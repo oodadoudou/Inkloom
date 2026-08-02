@@ -10,7 +10,13 @@ class ShortcutBindingCodecTest {
     fun `bindings round trip through preferences format`() {
         val bindings = listOf(
             ShortcutBinding(ShortcutAction.BRUSH_GROUP, ShortcutChord(KeyEvent.KEYCODE_B)),
-            ShortcutBinding(ShortcutAction.UNDO, ShortcutChord(KeyEvent.KEYCODE_Z, ctrl = true)),
+            ShortcutBinding(
+                ShortcutAction.TOGGLE_ERASER,
+                ShortcutChord(KeyEvent.KEYCODE_E, ctrl = true, scanCode = 18, matchMode = ShortcutMatchMode.SCAN_CODE),
+                trigger = ShortcutTrigger.HOLD,
+                deviceDescriptor = "usb:1234,abcd|toolbox",
+                deviceName = "Wacom Toolbox",
+            ),
         )
 
         assertEquals(bindings, ShortcutBindingCodec.decode(ShortcutBindingCodec.encode(bindings)))
@@ -33,5 +39,13 @@ class ShortcutBindingCodecTest {
         assertEquals(ShortcutAction.TOGGLE_ERASER, CspShortcutResolver.resolve(replacement, updated))
         assertFalse(updated.any { it.action == ShortcutAction.BRUSH_GROUP })
         assertFalse(updated.any { it.action == ShortcutAction.TOGGLE_ERASER && it.chord != replacement })
+    }
+
+    @Test
+    fun `legacy five field bindings remain readable`() {
+        assertEquals(
+            listOf(ShortcutBinding(ShortcutAction.UNDO, ShortcutChord(KeyEvent.KEYCODE_Z, ctrl = true))),
+            ShortcutBindingCodec.decode("UNDO,54,true,false,false"),
+        )
     }
 }

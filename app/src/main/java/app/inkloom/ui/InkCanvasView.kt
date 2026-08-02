@@ -61,9 +61,11 @@ import app.inkloom.document.WaterEdge
 import app.inkloom.document.WetMixDynamics
 import app.inkloom.model.EditorTool
 import app.inkloom.settings.CspShortcutResolver
-import app.inkloom.settings.ShortcutAction
+import app.inkloom.settings.ShortcutActivation
 import app.inkloom.settings.ShortcutBinding
 import app.inkloom.settings.ShortcutChord
+import app.inkloom.settings.ShortcutPhase
+import app.inkloom.settings.ShortcutTrigger
 import app.inkloom.settings.StylusButtonAction
 import app.inkloom.settings.SelectionFilter
 import app.inkloom.settings.SelectionMode
@@ -267,7 +269,7 @@ class InkCanvasView(context: Context) : View(context) {
     var onPdfGotoLink: (PdfGotoLink) -> Unit = {}
     var onUndoGesture: () -> Unit = {}
     var onInputDiagnostic: (String, Float, Float, Int) -> Unit = { _, _, _, _ -> }
-    var onShortcutAction: (ShortcutAction) -> Unit = {}
+    var onShortcutAction: (ShortcutActivation) -> Unit = {}
     var shortcutBindings: List<ShortcutBinding> = CspShortcutResolver.defaultBindings
 
     private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
@@ -286,16 +288,34 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        val action = CspShortcutResolver.resolve(
+        val binding = CspShortcutResolver.resolveBinding(
             ShortcutChord(
                 keyCode = keyCode,
                 ctrl = event.isCtrlPressed,
                 alt = event.isAltPressed,
                 shift = event.isShiftPressed,
+                scanCode = event.scanCode,
             ),
             shortcutBindings,
+            event.device?.descriptor,
         ) ?: return super.onKeyDown(keyCode, event)
-        if (event.repeatCount == 0 || CspShortcutResolver.isRepeatable(action)) onShortcutAction(action)
+        if (event.repeatCount == 0 || CspShortcutResolver.isRepeatable(binding.action)) onShortcutAction(ShortcutActivation(binding.action, ShortcutPhase.PRESS, binding.trigger))
+        return true
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        val binding = CspShortcutResolver.resolveBinding(
+            ShortcutChord(
+                keyCode = keyCode,
+                ctrl = event.isCtrlPressed,
+                alt = event.isAltPressed,
+                shift = event.isShiftPressed,
+                scanCode = event.scanCode,
+            ),
+            shortcutBindings,
+            event.device?.descriptor,
+        ) ?: return super.onKeyUp(keyCode, event)
+        if (binding.trigger == ShortcutTrigger.HOLD) onShortcutAction(ShortcutActivation(binding.action, ShortcutPhase.RELEASE, binding.trigger))
         return true
     }
 

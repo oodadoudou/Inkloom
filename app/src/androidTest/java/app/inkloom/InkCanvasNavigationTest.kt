@@ -1,11 +1,17 @@
 package app.inkloom
 
 import android.view.InputDevice
+import android.view.KeyEvent
 import android.view.MotionEvent
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.model.EditorTool
+import app.inkloom.settings.ShortcutAction
+import app.inkloom.settings.ShortcutBinding
+import app.inkloom.settings.ShortcutChord
+import app.inkloom.settings.ShortcutPhase
+import app.inkloom.settings.ShortcutTrigger
 import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -46,6 +52,21 @@ class InkCanvasNavigationTest {
         send(view, 70L, MotionEvent.ACTION_UP, point(0, 180f, 170f))
 
         assertEquals("The interrupted finger stroke must not leave ink", 0, committed)
+    }
+
+    @Test fun holdShortcutEmitsPressAndReleaseForTemporaryToolSwitching() {
+        val view = canvas().apply {
+            shortcutBindings = listOf(ShortcutBinding(ShortcutAction.TOGGLE_ERASER, ShortcutChord(KeyEvent.KEYCODE_E), ShortcutTrigger.HOLD))
+        }
+        val phases = mutableListOf<ShortcutPhase>()
+        view.onShortcutAction = { phases += it.phase }
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view.onKeyDown(KeyEvent.KEYCODE_E, KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_E))
+            view.onKeyUp(KeyEvent.KEYCODE_E, KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_E))
+        }
+
+        assertEquals(listOf(ShortcutPhase.PRESS, ShortcutPhase.RELEASE), phases)
     }
 
     private fun canvas(): InkCanvasView {

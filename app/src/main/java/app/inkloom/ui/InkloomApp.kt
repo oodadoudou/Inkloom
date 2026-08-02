@@ -81,8 +81,12 @@ import app.inkloom.settings.SelectionFilter
 import app.inkloom.settings.SelectionMode
 import app.inkloom.settings.SelectionShape
 import app.inkloom.settings.ShortcutAction
+import app.inkloom.settings.ShortcutActivation
 import app.inkloom.settings.CspShortcutResolver
 import app.inkloom.settings.ShortcutChord
+import app.inkloom.settings.ShortcutMatchMode
+import app.inkloom.settings.ShortcutPhase
+import app.inkloom.settings.ShortcutTrigger
 import app.inkloom.settings.ShortcutBrushGroup
 import app.inkloom.settings.ShortcutBrushSelection
 import app.inkloom.settings.StylusButtonAction
@@ -707,7 +711,8 @@ private fun EditorScreen(
                         }
                     },
                     onInputDiagnostic = { kind, pressure, tilt, buttons -> inputDiagnostic = "$kind  pressure ${"%.3f".format(pressure)}  tilt ${"%.2f".format(Math.toDegrees(tilt.toDouble()))}°  buttons $buttons" },
-                    onShortcutAction = { action ->
+                    onShortcutAction = { activation ->
+                        val action = activation.action
                         fun selectImportedBrush(brush: ImportedBrush) {
                             val usedBrush = brush.copy(lastUsedAt = System.currentTimeMillis())
                             onUpdateBrush(usedBrush)
@@ -741,8 +746,27 @@ private fun EditorScreen(
                             }
                         }
 
-                        inputDiagnostic = "Shortcut · ${action.name.lowercase().replace('_', ' ')}"
-                        when (action) {
+                        fun restorePreviousDrawingTool() {
+                            tool = previousDrawingTool
+                            val restoredBrush = previousDrawingBrushId?.let { id -> brushes.firstOrNull { it.id == id && !it.hidden } }
+                            activeBrush = restoredBrush
+                            selectedBrushId = restoredBrush?.id
+                            brushSize = restoredBrush?.defaultSize ?: if (tool == EditorTool.HIGHLIGHTER) settings.highlighterSize else settings.penSize
+                            brushOpacity = restoredBrush?.defaultOpacity ?: if (tool == EditorTool.HIGHLIGHTER) settings.highlighterOpacity else settings.penOpacity
+                        }
+
+                        fun enterEraser() {
+                            previousDrawingTool = if (tool == EditorTool.HIGHLIGHTER) EditorTool.HIGHLIGHTER else EditorTool.PEN
+                            previousDrawingBrushId = activeBrush?.id
+                            tool = EditorTool.ERASER
+                            brushSize = settings.eraserSize
+                            brushOpacity = 1f
+                        }
+
+                        inputDiagnostic = "Shortcut · ${action.name.lowercase().replace('_', ' ')} · ${activation.phase.name.lowercase()}"
+                        if (activation.phase == ShortcutPhase.RELEASE) {
+                            if (activation.trigger == ShortcutTrigger.HOLD && action == ShortcutAction.TOGGLE_ERASER && tool == EditorTool.ERASER) restorePreviousDrawingTool()
+                        } else when (action) {
                             ShortcutAction.PEN_OR_PENCIL_GROUP -> {
                                 val target = if (ShortcutBrushSelection.matches(activeBrush, ShortcutBrushGroup.PEN)) ShortcutBrushGroup.PENCIL else ShortcutBrushGroup.PEN
                                 ShortcutBrushSelection.preferred(brushes, target)?.let(::selectImportedBrush) ?: run {
@@ -755,20 +779,9 @@ private fun EditorScreen(
                             }
                             ShortcutAction.BRUSH_GROUP -> ShortcutBrushSelection.preferred(brushes, ShortcutBrushGroup.BRUSH)?.let(::selectImportedBrush)
                                 ?: brushes.filterNot { it.hidden }.maxByOrNull { it.lastUsedAt }?.let(::selectImportedBrush)
-                            ShortcutAction.TOGGLE_ERASER -> if (tool == EditorTool.ERASER) {
-                                tool = previousDrawingTool
-                                val restoredBrush = previousDrawingBrushId?.let { id -> brushes.firstOrNull { it.id == id && !it.hidden } }
-                                activeBrush = restoredBrush
-                                selectedBrushId = restoredBrush?.id
-                                brushSize = restoredBrush?.defaultSize ?: if (tool == EditorTool.HIGHLIGHTER) settings.highlighterSize else settings.penSize
-                                brushOpacity = restoredBrush?.defaultOpacity ?: if (tool == EditorTool.HIGHLIGHTER) settings.highlighterOpacity else settings.penOpacity
-                            } else {
-                                previousDrawingTool = if (tool == EditorTool.HIGHLIGHTER) EditorTool.HIGHLIGHTER else EditorTool.PEN
-                                previousDrawingBrushId = activeBrush?.id
-                                tool = EditorTool.ERASER
-                                brushSize = settings.eraserSize
-                                brushOpacity = 1f
-                            }
+                            ShortcutAction.TOGGLE_ERASER -> if (activation.trigger == ShortcutTrigger.HOLD) {
+                                if (tool != EditorTool.ERASER) enterEraser()
+                            } else if (tool == EditorTool.ERASER) restorePreviousDrawingTool() else enterEraser()
                             ShortcutAction.SELECT_TOOL -> tool = EditorTool.SELECT
                             ShortcutAction.BRUSH_SIZE_DECREASE -> updateBrushSize(1f / 1.1f)
                             ShortcutAction.BRUSH_SIZE_INCREASE -> updateBrushSize(1.1f)
@@ -1144,7 +1157,7 @@ private fun PageRail(document: InkDocument, documents: List<InkDocument>, select
 }
 
 @Composable
-private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, onZoom: (Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onUndoGesture: () -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onShortcutAction: (ShortcutAction) -> Unit) {
+private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, onZoom: (Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onUndoGesture: () -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val backgroundVisible = page.layers.firstOrNull { it.role == LayerRole.BACKGROUND }?.visible != false
     val background = remember(page.id, page.background, page.backgroundRotationQuarterTurns, page.crop, backgroundVisible) { if (backgroundVisible) runCatching { assets.renderBackground(page.background, 1200, page.backgroundRotationQuarterTurns, page.crop) }.getOrNull() else null }
@@ -2696,6 +2709,9 @@ private fun SettingsDialog(
 @Composable
 private fun ShortcutEditorDialog(settings: AppSettings, onChange: (AppSettings) -> Unit, onDismiss: () -> Unit) {
     var listeningFor by remember { mutableStateOf<ShortcutAction?>(null) }
+    var captureMode by remember { mutableStateOf(ShortcutMatchMode.KEY_CODE) }
+    var captureTrigger by remember { mutableStateOf(ShortcutTrigger.PRESS) }
+    var deviceSpecific by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(listeningFor) { if (listeningFor != null) focusRequester.requestFocus() }
     AlertDialog(
@@ -2715,23 +2731,53 @@ private fun ShortcutEditorDialog(settings: AppSettings, onChange: (AppSettings) 
                             listeningFor = null
                             return@onPreviewKeyEvent true
                         }
-                        val chord = ShortcutChord(native.keyCode, native.isCtrlPressed, native.isAltPressed, native.isShiftPressed)
-                        onChange(settings.copy(shortcutBindings = CspShortcutResolver.replace(settings.shortcutBindings, action, chord)))
+                        val effectiveMode = if (captureMode == ShortcutMatchMode.SCAN_CODE && native.scanCode > 0) ShortcutMatchMode.SCAN_CODE else ShortcutMatchMode.KEY_CODE
+                        val chord = ShortcutChord(native.keyCode, native.isCtrlPressed, native.isAltPressed, native.isShiftPressed, native.scanCode, effectiveMode)
+                        val device = native.device.takeIf { deviceSpecific }
+                        onChange(settings.copy(shortcutBindings = CspShortcutResolver.replace(settings.shortcutBindings, action, chord, captureTrigger, device?.descriptor, device?.name)))
                         listeningFor = null
                         true
                     },
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 item { Text(tr("Tap Change, then press a Toolbox or keyboard combination. Assigning a combination already in use moves it to the new action.", "点击“更改”，然后按下 Toolbox 或键盘组合键。已占用的组合键会自动移到新操作。"), color = MutedInk, fontSize = 12.sp) }
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(tr("Capture mode", "捕获方式"), color = MutedInk, fontSize = 11.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            FilterChip(selected = captureMode == ShortcutMatchMode.KEY_CODE, onClick = { captureMode = ShortcutMatchMode.KEY_CODE }, label = { Text(tr("Logical key", "逻辑键")) })
+                            FilterChip(selected = captureMode == ShortcutMatchMode.SCAN_CODE, onClick = { captureMode = ShortcutMatchMode.SCAN_CODE }, label = { Text(tr("Physical scan code", "物理扫描码")) })
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            FilterChip(selected = captureTrigger == ShortcutTrigger.PRESS, onClick = { captureTrigger = ShortcutTrigger.PRESS }, label = { Text(tr("Tap to switch", "单击切换")) })
+                            FilterChip(selected = captureTrigger == ShortcutTrigger.HOLD, onClick = { captureTrigger = ShortcutTrigger.HOLD }, label = { Text(tr("Hold, release to return", "按住，松开返回")) })
+                        }
+                        SettingSwitch(tr("Only this input device", "仅此输入设备"), tr("Off applies the shortcut to every connected keyboard or Toolbox.", "关闭时，此快捷键适用于所有已连接键盘或 Toolbox。"), deviceSpecific) { deviceSpecific = it }
+                    }
+                }
                 items(ShortcutAction.entries, key = { it.name }) { action ->
-                    val chords = settings.shortcutBindings.filter { it.action == action }.map { CspShortcutResolver.display(it.chord) }
+                    val actionBindings = settings.shortcutBindings.filter { it.action == action }
+                    val chords = actionBindings.map { binding ->
+                        buildString {
+                            append(CspShortcutResolver.display(binding.chord))
+                            if (binding.trigger == ShortcutTrigger.HOLD) append(tr(" · hold", " · 按住"))
+                            binding.deviceName?.let { append(" · "); append(it) }
+                        }
+                    }
                     ListItem(
                         headlineContent = { Text(shortcutActionLabel(action), fontSize = 13.sp) },
                         supportingContent = { Text(if (listeningFor == action) tr("Press a key combination…", "请按组合键…") else chords.joinToString(" / ").ifBlank { tr("Not assigned", "未分配") }, color = if (listeningFor == action) Sage else MutedInk) },
                         trailingContent = {
                             Row {
                                 if (chords.isNotEmpty()) IconButton(onClick = { onChange(settings.copy(shortcutBindings = settings.shortcutBindings.filterNot { it.action == action })) }) { Icon(Icons.Outlined.LinkOff, tr("Remove shortcut", "移除快捷键")) }
-                                TextButton(onClick = { listeningFor = action }) { Text(tr("Change", "更改")) }
+                                TextButton(onClick = {
+                                    actionBindings.firstOrNull()?.let { existing ->
+                                        captureMode = existing.chord.matchMode
+                                        captureTrigger = existing.trigger
+                                        deviceSpecific = existing.deviceDescriptor != null
+                                    }
+                                    listeningFor = action
+                                }) { Text(tr("Change", "更改")) }
                             }
                         },
                         colors = ListItemDefaults.colors(containerColor = if (listeningFor == action) SageContainer else Color.Transparent),
