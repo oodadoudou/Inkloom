@@ -73,6 +73,28 @@ class BrushTipTextureDecoderTest {
         }
     }
 
+    @Test
+    fun grainOriginOffsetChangesTheMaskWithoutChangingItsContent() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val root = File(context.cacheDir, "brush-grain-offset-${System.nanoTime()}").apply { mkdirs() }
+        try {
+            val tipFile = File(root, "tip.png")
+            writePng(tipFile, intArrayOf(Color.BLACK, Color.BLACK))
+            val grainFile = File(root, "grain.png")
+            writePng(grainFile, intArrayOf(Color.WHITE, Color.BLACK))
+
+            val base = BrushTipTextureDecoder.decode(tipFile.absolutePath, 1f, grainFile.absolutePath, 1f)!!
+            val shifted = BrushTipTextureDecoder.decode(tipFile.absolutePath, 1f, grainFile.absolutePath, 1f, grainOffsetX = .5f)!!
+
+            assertEquals(Color.alpha(base.getPixel(0, 0)), Color.alpha(shifted.getPixel(1, 0)))
+            assertEquals(Color.alpha(base.getPixel(1, 0)), Color.alpha(shifted.getPixel(0, 0)))
+            base.recycle()
+            shifted.recycle()
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     private fun writePng(file: File, pixels: IntArray, width: Int = 2, height: Int = 1) {
         val bitmap = Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
         file.outputStream().use { output ->

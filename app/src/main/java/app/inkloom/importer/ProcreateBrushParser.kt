@@ -96,10 +96,13 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         val wetAccumulation = metadata.float("dynamicsWetAccumulation").coerceIn(0f, 1f)
         val smudgeAccumulation = metadata.float("dynamicsSmudgeAccumulation").coerceIn(0f, 1f)
         val watercolor = wetMix > .001f || wetEdges > .01f || burntEdges > .01f
-        val shapeScatter = abs(metadata.float("shapeScatter")).coerceIn(0f, 4f)
         val plotJitter = max(abs(metadata.float("plotJitter")), abs(metadata.float("plotJitterLongitudinal"))).coerceIn(0f, 4f)
-        val scatterSpread = max(shapeScatter, plotJitter)
-        val randomRotation = if (metadata.boolean("shapeRandomise")) 180f else 0f
+        val scatterSpread = plotJitter
+        val randomRotation = Math.toDegrees(abs(metadata.float("shapeScatter")).toDouble()).toFloat().coerceIn(0f, 180f)
+        val strokeRotationJitter = if (metadata.boolean("shapeRandomise")) 180f else 0f
+        val shapeRotation = Math.toDegrees(metadata.float("shapeAngle").toDouble()).toFloat().coerceIn(-360f, 360f)
+        val followsStylus = metadata.boolean("shapeAzimuth")
+        val followsStroke = metadata.boolean("oriented")
         val spacingJitter = metadata.float("plotSpacingJitter")
         val genericTaperStartLength = metadata.float("taperStartLength").coerceIn(0f, 1f)
         val genericTaperEndLength = metadata.float("taperEndLength").coerceIn(0f, 1f)
@@ -130,6 +133,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             grainBrightness = (metadata.float("textureBrightness") * 100f).coerceIn(-100f, 100f),
             grainContrast = (metadata.float("textureContrast") * 100f).coerceIn(-100f, 100f),
             grainReversed = metadata.boolean("textureInverted"),
+            grainOffsetJitter = metadata.boolean("textureOffsetJitter"),
             defaultSize = (metadata.float("paintSize", .25f).coerceAtLeast(.01f) * metadata.float("maxSize", .32f).coerceAtLeast(.01f) * 100f).coerceIn(.5f, 400f),
             stabilization = stabilization,
             defaultOpacity = (metadata.float("paintOpacity", 1f) * metadata.float("maxOpacity", 1f)).coerceIn(.01f, 1f),
@@ -138,10 +142,11 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             flow = metadata.float("dynamicsGlazedFlow", 1f).coerceIn(0f, 1f),
             hardness = if (metadata.boolean("shapeFilter", true)) .85f else 1f,
             thickness = metadata.float("shapeRoundness", 1f).coerceIn(.05f, 1f),
-            rotationDegrees = Math.toDegrees(metadata.float("shapeAngle").toDouble()).toFloat().coerceIn(-360f, 360f),
-            followStylusOrientation = metadata.boolean("shapeAzimuth"),
-            followStrokeDirection = metadata.boolean("oriented"),
+            rotationDegrees = shapeRotation,
+            followStylusOrientation = followsStylus,
+            followStrokeDirection = followsStroke,
             randomRotationDegrees = randomRotation,
+            strokeRotationJitterDegrees = strokeRotationJitter,
             watercolor = watercolor,
             colorMix = wetMix,
             paintMix = max(paintLoad, max(wetAccumulation, smudgeAccumulation)),
@@ -151,6 +156,10 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             sprayDensity = (metadata.float("shapeCount", .0625f) * 16f).coerceIn(1f, 100f),
             sprayBias = 0f,
             spraySpread = scatterSpread,
+            sprayParticleRotationDegrees = shapeRotation,
+            sprayParticleFollowStylusOrientation = followsStylus,
+            sprayParticleFollowStrokeDirection = followsStroke,
+            sprayParticleRandomRotationDegrees = randomRotation,
             dualBrush = dualMetadata != null && dualShape != null,
             dualSizeScale = dualMapped?.sizeScale ?: 1f,
             dualSpacing = dualMapped?.spacing ?: .12f,
@@ -161,9 +170,14 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             dualFollowStylusOrientation = dualMapped?.followStylus ?: false,
             dualFollowStrokeDirection = dualMapped?.followStroke ?: false,
             dualRandomRotationDegrees = dualMapped?.randomRotation ?: 0f,
+            dualStrokeRotationJitterDegrees = dualMapped?.strokeRotationJitter ?: 0f,
             dualSpray = dualMapped?.spray ?: false,
             dualSprayDensity = dualMapped?.density ?: 1f,
             dualSpraySpread = dualMapped?.spread ?: 1f,
+            dualSprayParticleRotationDegrees = dualMapped?.rotation ?: 0f,
+            dualSprayParticleFollowStylusOrientation = dualMapped?.followStylus ?: false,
+            dualSprayParticleFollowStrokeDirection = dualMapped?.followStroke ?: false,
+            dualSprayParticleRandomRotationDegrees = dualMapped?.randomRotation ?: 0f,
             dualCompositeMode = metadata.int("dualBlendMode"),
             taperMode = BrushTaperMode.PERCENTAGE,
             taperStartEnabled = taperStartLength > .0001f && taperSize > .0001f,
@@ -189,13 +203,16 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             report = buildList {
                 add("Procreate brush $position/$total decoded from NSKeyedArchive version ${metadata.int("version")}")
                 add(if (shape != null) "Procreate Shape.png extracted as the real stamp source" else "Shape source was missing; line fallback retained")
-                if (grain != null) add("Procreate Grain.png extracted with depth, scale, zoom, rotation, brightness, contrast and invert settings")
+                if (grain != null) add("Procreate Grain.png extracted with depth, scale, zoom, rotation, brightness, contrast, invert and per-stroke offset settings")
                 add("Stroke spacing, smoothing, size/opacity limits, shape angle, roundness, azimuth and direction behavior mapped")
                 if (pencilTaperStartLength > DYNAMIC_EPSILON || pencilTaperEndLength > DYNAMIC_EPSILON) add("Procreate Apple Pencil start/end taper lengths and size floor mapped")
                 if (metadata.float("plotMovingAverageStabilization") > DYNAMIC_EPSILON || metadata.float("plotFFTSmoothingAmount") > DYNAMIC_EPSILON) add("Procreate StreamLine, stabilization and motion filtering combined into Inkloom stabilization")
                 val sources = buildList { if (abs(pressureSize) > DYNAMIC_EPSILON || abs(pressureOpacity) > DYNAMIC_EPSILON) add("pressure"); if (abs(speedSize) > DYNAMIC_EPSILON || abs(speedOpacity) > DYNAMIC_EPSILON) add("speed"); if (abs(tiltSize) > DYNAMIC_EPSILON || abs(tiltOpacity) > DYNAMIC_EPSILON) add("tilt"); if (abs(jitterSize) > DYNAMIC_EPSILON || abs(jitterOpacity) > DYNAMIC_EPSILON) add("random jitter") }
                 if (sources.isNotEmpty()) add("Procreate dynamics mapped: ${sources.joinToString()}")
-                if (scatterSpread > DYNAMIC_EPSILON) add("Procreate shape scatter and stroke jitter mapped as positional spread; random rotation remains independent")
+                if (randomRotation > DYNAMIC_EPSILON) add("Procreate Shape Scatter mapped to independent per-stamp rotation")
+                if (strokeRotationJitter > DYNAMIC_EPSILON) add("Procreate Randomized mapped to one deterministic starting rotation per stroke")
+                if (scatterSpread > DYNAMIC_EPSILON) add("Procreate stroke-path jitter mapped as positional spread")
+                if (metadata.boolean("textureOffsetJitter")) add("Procreate Grain Offset Jitter mapped to a deterministic texture origin for each stroke")
                 if (dualMetadata != null) add(if (dualShape != null) "Procreate Sub01 Dual Brush extracted with independent shape and core dynamics; combine mode ${metadata.int("dualBlendMode")} retained" else "Procreate Sub01 metadata found, but its shape source was missing")
                 if (watercolor) add("Procreate Wet Mix/rendering parameters detected; Inkloom maps load, mix, accumulation and edge behavior to its deterministic wet-brush approximation")
                 if (metadata.int("blendMode") !in 0..1) add("Procreate blend mode ${metadata.int("blendMode")} is retained in the source but rendered source-over until independently verified")
@@ -206,10 +223,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
     }
 
     private fun mapSecondary(metadata: ProcreateKeyedArchive): SecondaryBrush {
-        val spread = max(
-            abs(metadata.float("shapeScatter")),
-            max(abs(metadata.float("plotJitter")), abs(metadata.float("plotJitterLongitudinal"))),
-        ).coerceIn(0f, 4f)
+        val spread = max(abs(metadata.float("plotJitter")), abs(metadata.float("plotJitterLongitudinal"))).coerceIn(0f, 4f)
         return SecondaryBrush(
             sizeScale = (metadata.float("maxSize", .32f) / .32f).coerceIn(.01f, 8f),
             spacing = (metadata.float("plotSpacing") * 10f).coerceIn(.01f, 2f),
@@ -219,7 +233,8 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             rotation = Math.toDegrees(metadata.float("shapeAngle").toDouble()).toFloat().coerceIn(-360f, 360f),
             followStylus = metadata.boolean("shapeAzimuth"),
             followStroke = metadata.boolean("oriented"),
-            randomRotation = if (metadata.boolean("shapeRandomise")) 180f else 0f,
+            randomRotation = Math.toDegrees(abs(metadata.float("shapeScatter")).toDouble()).toFloat().coerceIn(0f, 180f),
+            strokeRotationJitter = if (metadata.boolean("shapeRandomise")) 180f else 0f,
             spray = spread > DYNAMIC_EPSILON,
             spread = spread,
             density = (metadata.float("shapeCount", .0625f) * 16f).coerceIn(1f, 100f),
@@ -321,13 +336,14 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         val followStylus: Boolean,
         val followStroke: Boolean,
         val randomRotation: Float,
+        val strokeRotationJitter: Float,
         val spray: Boolean,
         val spread: Float,
         val density: Float,
     )
 
     companion object {
-        const val CURRENT_VERSION = 4
+        const val CURRENT_VERSION = 5
         private const val MAX_ENTRIES = 4_096
         private const val MAX_ENTRY_BYTES = 32L * 1024L * 1024L
         private const val MAX_EXPANDED_BYTES = 384L * 1024L * 1024L

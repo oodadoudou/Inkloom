@@ -70,6 +70,7 @@ class BrushMetadataStore(
                         grainContrast = item.optDouble("grainContrast", 0.0).toFloat().coerceIn(-100f, 100f),
                         grainReversed = item.optBoolean("grainReversed", false),
                         grainEmphasized = item.optBoolean("grainEmphasized", false),
+                        grainOffsetJitter = item.optBoolean("grainOffsetJitter", false),
                         defaultSize = item.optDouble("defaultSize", 8.0).toFloat(),
                         stabilization = item.optDouble("stabilization", 0.0).toFloat().coerceIn(0f, .9f),
                         stabilizationBySpeed = item.optBoolean("stabilizationBySpeed", false),
@@ -83,6 +84,7 @@ class BrushMetadataStore(
                         followStylusOrientation = item.optBoolean("followStylusOrientation", false),
                         followStrokeDirection = item.optBoolean("followStrokeDirection", false),
                         randomRotationDegrees = item.optDouble("randomRotationDegrees", 0.0).toFloat(),
+                        strokeRotationJitterDegrees = item.optDouble("strokeRotationJitterDegrees", 0.0).toFloat().coerceIn(0f, 180f),
                         watercolor = item.optBoolean("watercolor", false),
                         colorMix = item.optDouble("colorMix", 0.0).toFloat(),
                         paintMix = item.optDouble("paintMix", 0.0).toFloat(),
@@ -110,6 +112,7 @@ class BrushMetadataStore(
                         dualFollowStylusOrientation = item.optBoolean("dualFollowStylusOrientation", false),
                         dualFollowStrokeDirection = item.optBoolean("dualFollowStrokeDirection", false),
                         dualRandomRotationDegrees = item.optDouble("dualRandomRotationDegrees", 0.0).toFloat().coerceIn(0f, 180f),
+                        dualStrokeRotationJitterDegrees = item.optDouble("dualStrokeRotationJitterDegrees", 0.0).toFloat().coerceIn(0f, 180f),
                         dualRibbon = item.optBoolean("dualRibbon", false),
                         dualSpray = item.optBoolean("dualSpray", false),
                         dualSprayParticleSize = item.optDouble("dualSprayParticleSize", 100.0).toFloat().coerceIn(.01f, 4000f),
@@ -197,6 +200,7 @@ class BrushMetadataStore(
                     .put("grainContrast", brush.grainContrast)
                     .put("grainReversed", brush.grainReversed)
                     .put("grainEmphasized", brush.grainEmphasized)
+                    .put("grainOffsetJitter", brush.grainOffsetJitter)
                     .put("defaultSize", brush.defaultSize)
                     .put("stabilization", brush.stabilization)
                     .put("stabilizationBySpeed", brush.stabilizationBySpeed)
@@ -210,6 +214,7 @@ class BrushMetadataStore(
                     .put("followStylusOrientation", brush.followStylusOrientation)
                     .put("followStrokeDirection", brush.followStrokeDirection)
                     .put("randomRotationDegrees", brush.randomRotationDegrees)
+                    .put("strokeRotationJitterDegrees", brush.strokeRotationJitterDegrees)
                     .put("watercolor", brush.watercolor)
                     .put("colorMix", brush.colorMix)
                     .put("paintMix", brush.paintMix)
@@ -237,6 +242,7 @@ class BrushMetadataStore(
                     .put("dualFollowStylusOrientation", brush.dualFollowStylusOrientation)
                     .put("dualFollowStrokeDirection", brush.dualFollowStrokeDirection)
                     .put("dualRandomRotationDegrees", brush.dualRandomRotationDegrees)
+                    .put("dualStrokeRotationJitterDegrees", brush.dualStrokeRotationJitterDegrees)
                     .put("dualRibbon", brush.dualRibbon)
                     .put("dualSpray", brush.dualSpray)
                     .put("dualSprayParticleSize", brush.dualSprayParticleSize)

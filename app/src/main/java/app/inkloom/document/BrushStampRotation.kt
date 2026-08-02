@@ -16,6 +16,7 @@ object BrushStampRotation {
         randomUnit: Float,
     ): Float {
         val spray = if (dual) stroke.dualSpray else stroke.spray
+        val strokeJitter = if (dual) stroke.dualStrokeRotationJitterDegrees else stroke.strokeRotationJitterDegrees
         return degrees(
             fixedDegrees = when {
                 dual && spray -> stroke.dualSprayParticleRotationDegrees
@@ -39,6 +40,7 @@ object BrushStampRotation {
                 else -> stroke.randomRotationDegrees
             },
             randomUnit = randomUnit,
+            strokeRotationDegrees = signedRandom(stroke.renderSeed, if (dual) DUAL_STROKE_SEED else MAIN_STROKE_SEED) * strokeJitter.coerceIn(0f, 180f),
         )
     }
 
@@ -50,8 +52,15 @@ object BrushStampRotation {
         strokeDirectionDegrees: Float,
         randomRotationDegrees: Float,
         randomUnit: Float,
+        strokeRotationDegrees: Float = 0f,
     ): Float = fixedDegrees.coerceIn(-360f, 360f) +
         (if (followStylusOrientation) Math.toDegrees(stylusOrientationRadians.toDouble()).toFloat() else 0f) +
         (if (followStrokeDirection) strokeDirectionDegrees else 0f) +
+        strokeRotationDegrees.coerceIn(-180f, 180f) +
         (randomUnit.coerceIn(0f, 1f) - .5f) * 2f * randomRotationDegrees.coerceIn(0f, 180f)
+
+    private fun signedRandom(renderSeed: Int, salt: Long): Float = java.util.Random(renderSeed.toLong() xor salt).nextFloat() * 2f - 1f
+
+    private const val MAIN_STROKE_SEED = 0x58A71D3BL
+    private const val DUAL_STROKE_SEED = 0x73C4E291L
 }

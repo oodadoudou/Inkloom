@@ -39,15 +39,19 @@ class InkloomBrushPackageTest {
                 grainPreviewPath = grain.absolutePath,
                 grainDensity = .64f,
                 grainScale = 215f,
+                grainOffsetJitter = true,
                 defaultSize = 37f,
                 defaultOpacity = .72f,
                 spacing = .18f,
                 stabilization = .4f,
+                randomRotationDegrees = 45f,
+                strokeRotationJitterDegrees = 180f,
                 spray = true,
                 sprayDensity = 14f,
                 spraySpread = 2.25f,
                 dualBrush = true,
                 dualSizeScale = .7f,
+                dualStrokeRotationJitterDegrees = 90f,
                 taperMode = BrushTaperMode.DISTANCE,
                 taperStartEnabled = true,
                 taperStartLength = 42f,
@@ -90,6 +94,8 @@ class InkloomBrushPackageTest {
             assertEquals(original.defaultOpacity, restored.defaultOpacity, .0001f)
             assertEquals(original.spacing, restored.spacing, .0001f)
             assertEquals(original.grainScale, restored.grainScale, .0001f)
+            assertTrue(restored.grainOffsetJitter)
+            assertEquals(180f, restored.strokeRotationJitterDegrees, .0001f)
             assertEquals(original.sizePressureCurve, restored.sizePressureCurve)
             assertEquals(original.sizeSecondaryDynamics, restored.sizeSecondaryDynamics)
             assertEquals(original.tags, restored.tags)

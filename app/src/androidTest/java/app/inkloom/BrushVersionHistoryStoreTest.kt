@@ -30,6 +30,8 @@ class BrushVersionHistoryStoreTest {
                 defaultSize = 8f,
                 defaultOpacity = .7f,
                 spacing = .2f,
+                grainOffsetJitter = true,
+                strokeRotationJitterDegrees = 180f,
             )
             val store = BrushVersionHistoryStore(context, preferences)
 
@@ -50,6 +52,8 @@ class BrushVersionHistoryStoreTest {
             assertEquals("Original preset", restored.name)
             assertEquals("Inking", restored.groupName)
             assertEquals(5f, restored.defaultSize, .0001f)
+            assertTrue(restored.grainOffsetJitter)
+            assertEquals(180f, restored.strokeRotationJitterDegrees, .0001f)
             assertTrue(restored.favorite)
             assertTrue(restored.hidden)
             assertEquals(999L, restored.lastUsedAt)

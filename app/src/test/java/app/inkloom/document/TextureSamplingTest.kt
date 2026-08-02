@@ -18,6 +18,14 @@ class TextureSamplingTest {
         assertTrue(result.y in 0 until 179)
     }
 
+    @Test fun normalizedOriginOffsetWrapsDeterministically() {
+        val base = TextureSampling.coordinate(0, 0, 8, 8, 8, 8, 100f, 0f)
+        val shifted = TextureSampling.coordinate(0, 0, 8, 8, 8, 8, 100f, 0f, .25f, .5f)
+
+        assertEquals((base.x + 2) % 8, shifted.x)
+        assertEquals((base.y + 4) % 8, shifted.y)
+    }
+
     @Test fun reverseFlipsTheTextureMask() {
         assertEquals(.8f, TextureSampling.mask(.2f, 0f, 0f, false, false), .001f)
         assertEquals(.2f, TextureSampling.mask(.2f, 0f, 0f, true, false), .001f)

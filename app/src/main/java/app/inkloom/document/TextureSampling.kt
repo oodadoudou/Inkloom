@@ -26,6 +26,8 @@ object TextureSampling {
         textureHeight: Int,
         scalePercent: Float,
         rotationDegrees: Float,
+        offsetX: Float = 0f,
+        offsetY: Float = 0f,
     ): TextureCoordinate {
         val scale = (scalePercent / 100f).coerceIn(.01f, 40f)
         val radians = Math.toRadians((-rotationDegrees).toDouble())
@@ -33,8 +35,8 @@ object TextureSampling {
         val localY = (y + .5f - sourceHeight / 2f) / scale
         val rotatedX = localX * cos(radians) - localY * sin(radians)
         val rotatedY = localX * sin(radians) + localY * cos(radians)
-        val textureX = floor(rotatedX * textureWidth / sourceWidth.coerceAtLeast(1) + textureWidth / 2f).toInt().floorMod(textureWidth.coerceAtLeast(1))
-        val textureY = floor(rotatedY * textureHeight / sourceHeight.coerceAtLeast(1) + textureHeight / 2f).toInt().floorMod(textureHeight.coerceAtLeast(1))
+        val textureX = floor(rotatedX * textureWidth / sourceWidth.coerceAtLeast(1) + textureWidth / 2f + offsetX.coerceIn(0f, 1f) * textureWidth).toInt().floorMod(textureWidth.coerceAtLeast(1))
+        val textureY = floor(rotatedY * textureHeight / sourceHeight.coerceAtLeast(1) + textureHeight / 2f + offsetY.coerceIn(0f, 1f) * textureHeight).toInt().floorMod(textureHeight.coerceAtLeast(1))
         return TextureCoordinate(textureX, textureY)
     }
 

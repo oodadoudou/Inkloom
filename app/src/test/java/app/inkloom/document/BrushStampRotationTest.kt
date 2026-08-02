@@ -1,6 +1,8 @@
 package app.inkloom.document
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BrushStampRotationTest {
@@ -56,5 +58,20 @@ class BrushStampRotationTest {
 
         assertEquals(65f, BrushStampRotation.degrees(stroke, true, (Math.PI / 2).toFloat(), 30f, .5f), .0001f)
         assertEquals(false, BrushStampRotation.followsStroke(stroke, true))
+    }
+
+    @Test fun perStrokeJitterIsStableAcrossEveryStamp() {
+        val stroke = InkStroke(
+            renderSeed = 9182,
+            points = listOf(StrokePoint(0f, 0f)),
+            strokeRotationJitterDegrees = 180f,
+        )
+
+        val first = BrushStampRotation.degrees(stroke, false, 0f, 0f, .1f)
+        val second = BrushStampRotation.degrees(stroke, false, 0f, 0f, .9f)
+
+        assertEquals(first, second, .0001f)
+        assertTrue(first in -180f..180f)
+        assertNotEquals(first, BrushStampRotation.degrees(stroke.copy(renderSeed = 9183), false, 0f, 0f, .1f))
     }
 }

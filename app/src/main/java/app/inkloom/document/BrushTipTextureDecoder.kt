@@ -21,6 +21,8 @@ object BrushTipTextureDecoder {
         grainContrast: Float = 0f,
         grainReversed: Boolean = false,
         grainEmphasized: Boolean = false,
+        grainOffsetX: Float = 0f,
+        grainOffsetY: Float = 0f,
     ): Bitmap? = runCatching {
         val source = BitmapFactory.decodeFile(tipPath) ?: return null
         val grain = grainPath?.takeIf { grainDensity > 0f }?.let(BitmapFactory::decodeFile)
@@ -55,6 +57,8 @@ object BrushTipTextureDecoder {
                         grain.height,
                         grainScale,
                         grainRotation,
+                        grainOffsetX,
+                        grainOffsetY,
                     )
                     val sample = grainPixels[coordinate.y * grain.width + coordinate.x]
                     val grainLuminance = (Color.red(sample) * .299f + Color.green(sample) * .587f + Color.blue(sample) * .114f) / 255f

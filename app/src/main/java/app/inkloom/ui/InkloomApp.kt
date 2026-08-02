@@ -1056,6 +1056,7 @@ private fun InkCanvasView.applyBrushConfiguration(
     grainContrast = activeBrush?.grainContrast ?: 0f
     grainReversed = activeBrush?.grainReversed ?: false
     grainEmphasized = activeBrush?.grainEmphasized ?: false
+    grainOffsetJitter = activeBrush?.grainOffsetJitter ?: false
     brushSpacing = activeBrush?.spacing ?: .12f
     brushFlow = activeBrush?.flow ?: 1f
     brushHardness = activeBrush?.hardness ?: 1f
@@ -1065,6 +1066,7 @@ private fun InkCanvasView.applyBrushConfiguration(
     followStylusOrientation = activeBrush?.followStylusOrientation ?: false
     followStrokeDirection = activeBrush?.followStrokeDirection ?: false
     randomRotationDegrees = activeBrush?.randomRotationDegrees ?: 0f
+    strokeRotationJitterDegrees = activeBrush?.strokeRotationJitterDegrees ?: 0f
     brushWatercolor = activeBrush?.watercolor ?: false
     brushColorMix = activeBrush?.colorMix ?: 0f
     brushPaintMix = activeBrush?.paintMix ?: 0f
@@ -1092,6 +1094,7 @@ private fun InkCanvasView.applyBrushConfiguration(
     dualFollowStylusOrientation = activeBrush?.dualFollowStylusOrientation ?: false
     dualFollowStrokeDirection = activeBrush?.dualFollowStrokeDirection ?: false
     dualRandomRotationDegrees = activeBrush?.dualRandomRotationDegrees ?: 0f
+    dualStrokeRotationJitterDegrees = activeBrush?.dualStrokeRotationJitterDegrees ?: 0f
     dualRibbon = activeBrush?.dualRibbon ?: false
     dualSpray = activeBrush?.dualSpray ?: false
     dualSprayParticleSize = activeBrush?.dualSprayParticleSize ?: 100f
@@ -2198,6 +2201,7 @@ private fun BrushEditorDialog(brush: ImportedBrush, onDismiss: () -> Unit, onSav
                 if (draft.grainPreviewPath != null) item { BrushSettingSlider("Paper texture contrast", draft.grainContrast, -100f..100f) { draft = draft.copy(grainContrast = it) } }
                 if (draft.grainPreviewPath != null) item { SettingSwitch("Invert paper texture", null, draft.grainReversed) { draft = draft.copy(grainReversed = it) } }
                 if (draft.grainPreviewPath != null) item { SettingSwitch("Emphasize paper texture", null, draft.grainEmphasized) { draft = draft.copy(grainEmphasized = it) } }
+                if (draft.grainPreviewPath != null) item { SettingSwitch("Jitter grain origin per stroke", "Keeps each stroke deterministic while avoiding an identical repeated grain start.", draft.grainOffsetJitter) { draft = draft.copy(grainOffsetJitter = it) } }
                 item { BrushSettingSlider("Thickness", draft.thickness, .05f..2f) { draft = draft.copy(thickness = it) } }
                 item { SettingSwitch("Vertical thickness", "Applies thickness along the imported tip's vertical axis.", draft.thicknessVertical) { draft = draft.copy(thicknessVertical = it) } }
                 item { SettingSwitch("Ribbon stroke", "Preserves the tip aspect ratio and continuously follows the stroke direction.", draft.ribbon) { draft = draft.copy(ribbon = it) } }
@@ -2205,6 +2209,7 @@ private fun BrushEditorDialog(brush: ImportedBrush, onDismiss: () -> Unit, onSav
                 item { SettingSwitch("Follow stylus orientation", "Uses the pen direction reported by Android.", draft.followStylusOrientation) { draft = draft.copy(followStylusOrientation = it) } }
                 item { SettingSwitch("Follow stroke direction", "Rotates the tip along the drawn path.", draft.followStrokeDirection) { draft = draft.copy(followStrokeDirection = it) } }
                 item { BrushSettingSlider("Random rotation", draft.randomRotationDegrees, 0f..180f) { draft = draft.copy(randomRotationDegrees = it) } }
+                item { BrushSettingSlider("Random start rotation", draft.strokeRotationJitterDegrees, 0f..180f) { draft = draft.copy(strokeRotationJitterDegrees = it) } }
                 item { BrushSettingSlider("Color mix", draft.colorMix, 0f..1f) { draft = draft.copy(colorMix = it) } }
                 item { BrushSettingSlider("Paint mix", draft.paintMix, 0f..1f) { draft = draft.copy(paintMix = it) } }
                 item { SettingSwitch("Watercolor approximation", "Uses translucent layered stamps.", draft.watercolor) { draft = draft.copy(watercolor = it) } }
@@ -2237,6 +2242,7 @@ private fun BrushEditorDialog(brush: ImportedBrush, onDismiss: () -> Unit, onSav
                 if (draft.dualBrush) item { SettingSwitch("Secondary follows stylus", null, draft.dualFollowStylusOrientation) { draft = draft.copy(dualFollowStylusOrientation = it) } }
                 if (draft.dualBrush) item { SettingSwitch("Secondary follows stroke", null, draft.dualFollowStrokeDirection) { draft = draft.copy(dualFollowStrokeDirection = it) } }
                 if (draft.dualBrush) item { BrushSettingSlider("Secondary random rotation", draft.dualRandomRotationDegrees, 0f..180f) { draft = draft.copy(dualRandomRotationDegrees = it) } }
+                if (draft.dualBrush) item { BrushSettingSlider("Secondary random start rotation", draft.dualStrokeRotationJitterDegrees, 0f..180f) { draft = draft.copy(dualStrokeRotationJitterDegrees = it) } }
                 if (draft.dualBrush) item { SettingSwitch("Secondary Ribbon", null, draft.dualRibbon) { draft = draft.copy(dualRibbon = it) } }
                 if (draft.dualBrush) item { SettingSwitch("Secondary spray/scatter", null, draft.dualSpray) { draft = draft.copy(dualSpray = it) } }
                 if (draft.dualBrush && draft.dualSpray) item { BrushSettingSlider("Secondary particle size", draft.dualSprayParticleSize, .01f..400f) { draft = draft.copy(dualSprayParticleSize = it) } }
