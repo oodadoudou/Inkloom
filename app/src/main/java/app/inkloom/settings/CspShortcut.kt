@@ -11,6 +11,7 @@ enum class ShortcutAction {
     HIGHLIGHTER_TOOL,
     SELECT_TOOL,
     HAND_TOOL,
+    ROTATE_VIEW_TOOL,
     SHAPE_TOOL,
     TEXT_TOOL,
     NOTE_TOOL,
@@ -93,6 +94,8 @@ object CspShortcutResolver {
         ShortcutBinding(ShortcutAction.SELECT_TOOL, ShortcutChord(KeyEvent.KEYCODE_O)),
         ShortcutBinding(ShortcutAction.HAND_TOOL, ShortcutChord(KeyEvent.KEYCODE_H)),
         ShortcutBinding(ShortcutAction.HAND_TOOL, ShortcutChord(KeyEvent.KEYCODE_SPACE), ShortcutTrigger.HOLD),
+        ShortcutBinding(ShortcutAction.ROTATE_VIEW_TOOL, ShortcutChord(KeyEvent.KEYCODE_R)),
+        ShortcutBinding(ShortcutAction.ROTATE_VIEW_TOOL, ShortcutChord(KeyEvent.KEYCODE_SPACE, shift = true), ShortcutTrigger.HOLD),
         ShortcutBinding(ShortcutAction.SHAPE_TOOL, ShortcutChord(KeyEvent.KEYCODE_U)),
         ShortcutBinding(ShortcutAction.TEXT_TOOL, ShortcutChord(KeyEvent.KEYCODE_T)),
         ShortcutBinding(ShortcutAction.BRUSH_SIZE_DECREASE, ShortcutChord(KeyEvent.KEYCODE_RIGHT_BRACKET)),
@@ -106,6 +109,7 @@ object CspShortcutResolver {
         ShortcutAction.SHAPE_TOOL,
         ShortcutAction.TEXT_TOOL,
         ShortcutAction.HAND_TOOL,
+        ShortcutAction.ROTATE_VIEW_TOOL,
     )
 
     private val clipboardDefaultsBeforeToolCommands: List<ShortcutBinding> by lazy {

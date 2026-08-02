@@ -89,6 +89,25 @@ class InkCanvasNavigationTest {
         assertTrue("Stylus hand navigation should pan vertically", panY >= 69f)
     }
 
+    @Test fun forcedRotateNavigationRotatesWithAStylusWithoutCommittingInk() {
+        val view = canvas().apply {
+            tool = EditorTool.PEN
+            forceNavigation = true
+            rotateNavigation = true
+        }
+        var committed = 0
+        var rotation = 0f
+        view.onStrokeCommitted = { committed++ }
+        view.onViewportRotate = { rotation += it }
+
+        sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 120f, 160f)
+        sendStylus(view, 20L, MotionEvent.ACTION_MOVE, 200f, 230f)
+        sendStylus(view, 40L, MotionEvent.ACTION_UP, 200f, 230f)
+
+        assertEquals("Rotate navigation must never leave stylus ink", 0, committed)
+        assertEquals(20f, rotation, .001f)
+    }
+
     private fun canvas(): InkCanvasView {
         lateinit var result: InkCanvasView
         InstrumentationRegistry.getInstrumentation().runOnMainSync {

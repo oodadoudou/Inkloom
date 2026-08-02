@@ -1,6 +1,6 @@
 package app.inkloom.document
 
-data class ViewportState(val scale: Float, val panX: Float, val panY: Float)
+data class ViewportState(val scale: Float, val panX: Float, val panY: Float, val rotationDegrees: Float = 0f)
 
 data class ViewportGeometry(
     val viewportWidth: Float,
@@ -18,13 +18,16 @@ object ViewportTransform {
         localDeltaY: Float,
         maximumPan: Float = 2_500f,
         geometry: ViewportGeometry? = null,
-    ): ViewportState = clamp(
-        current.copy(
-            panX = (current.panX + localDeltaX * current.scale).coerceIn(-maximumPan, maximumPan),
-            panY = (current.panY + localDeltaY * current.scale).coerceIn(-maximumPan, maximumPan),
-        ),
-        geometry,
-    )
+    ): ViewportState {
+        val (screenDeltaX, screenDeltaY) = rotate(localDeltaX * current.scale, localDeltaY * current.scale, current.rotationDegrees)
+        return clamp(
+            current.copy(
+                panX = (current.panX + screenDeltaX).coerceIn(-maximumPan, maximumPan),
+                panY = (current.panY + screenDeltaY).coerceIn(-maximumPan, maximumPan),
+            ),
+            geometry,
+        )
+    }
 
     /** Keeps the page point under the gesture focus stationary while changing scale. */
     fun zoomAround(
@@ -38,22 +41,32 @@ object ViewportTransform {
         geometry: ViewportGeometry? = null,
     ): ViewportState {
         val nextScale = (current.scale * factor).coerceIn(minimumScale, maximumScale)
-        if (nextScale <= minimumScale + .0001f) return ViewportState(minimumScale, 0f, 0f)
+        if (nextScale <= minimumScale + .0001f) return current.copy(scale = minimumScale, panX = 0f, panY = 0f)
+        val (screenFocusX, screenFocusY) = rotate(focusOffsetX, focusOffsetY, current.rotationDegrees)
         return clamp(
             ViewportState(
                 scale = nextScale,
-                panX = (current.panX + (current.scale - nextScale) * focusOffsetX).coerceIn(-maximumPan, maximumPan),
-                panY = (current.panY + (current.scale - nextScale) * focusOffsetY).coerceIn(-maximumPan, maximumPan),
+                panX = (current.panX + (current.scale - nextScale) * screenFocusX).coerceIn(-maximumPan, maximumPan),
+                panY = (current.panY + (current.scale - nextScale) * screenFocusY).coerceIn(-maximumPan, maximumPan),
+                rotationDegrees = current.rotationDegrees,
             ),
             geometry,
         )
     }
 
+    fun rotateBy(current: ViewportState, deltaDegrees: Float, geometry: ViewportGeometry? = null): ViewportState =
+        clamp(current.copy(rotationDegrees = normalizeDegrees(current.rotationDegrees + deltaDegrees)), geometry)
+
     fun clamp(current: ViewportState, geometry: ViewportGeometry?): ViewportState {
         if (current.scale <= 1.0001f) return current.copy(panX = 0f, panY = 0f)
         geometry ?: return current
-        val pageWidth = (geometry.pageWidth * current.scale).coerceAtLeast(1f)
-        val pageHeight = (geometry.pageHeight * current.scale).coerceAtLeast(1f)
+        val unrotatedWidth = (geometry.pageWidth * current.scale).coerceAtLeast(1f)
+        val unrotatedHeight = (geometry.pageHeight * current.scale).coerceAtLeast(1f)
+        val radians = Math.toRadians(current.rotationDegrees.toDouble())
+        val cosine = kotlin.math.abs(kotlin.math.cos(radians)).toFloat()
+        val sine = kotlin.math.abs(kotlin.math.sin(radians)).toFloat()
+        val pageWidth = unrotatedWidth * cosine + unrotatedHeight * sine
+        val pageHeight = unrotatedWidth * sine + unrotatedHeight * cosine
         val visibleX = minOf(pageWidth * geometry.minimumVisibleFraction.coerceIn(.05f, .5f), geometry.viewportWidth * .5f).coerceAtLeast(48f)
         val visibleY = minOf(pageHeight * geometry.minimumVisibleFraction.coerceIn(.05f, .5f), geometry.viewportHeight * .5f).coerceAtLeast(48f)
         val maximumX = (geometry.viewportWidth * .5f + pageWidth * .5f - visibleX).coerceAtLeast(0f)
@@ -69,5 +82,14 @@ object ViewportTransform {
     fun remainingPointerIndex(pointerCount: Int, liftedPointerIndex: Int): Int? {
         if (pointerCount < 2 || liftedPointerIndex !in 0 until pointerCount) return null
         return if (liftedPointerIndex == 0) 1 else 0
+    }
+
+    fun normalizeDegrees(value: Float): Float = ((value + 180f) % 360f + 360f) % 360f - 180f
+
+    private fun rotate(x: Float, y: Float, degrees: Float): Pair<Float, Float> {
+        val radians = Math.toRadians(degrees.toDouble())
+        val cosine = kotlin.math.cos(radians).toFloat()
+        val sine = kotlin.math.sin(radians).toFloat()
+        return x * cosine - y * sine to x * sine + y * cosine
     }
 }

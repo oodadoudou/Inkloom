@@ -791,11 +791,14 @@ private fun EditorScreen(
     var previousDrawingOpacity by remember { mutableFloatStateOf(settings.penOpacity) }
     var handToolEnabled by remember { mutableStateOf(false) }
     var handToolHeld by remember { mutableStateOf(false) }
-    fun exitHandNavigation() { handToolEnabled = false; handToolHeld = false }
+    var rotateToolEnabled by remember { mutableStateOf(false) }
+    var rotateToolHeld by remember { mutableStateOf(false) }
+    fun exitCanvasNavigation() { handToolEnabled = false; handToolHeld = false; rotateToolEnabled = false; rotateToolHeld = false }
     var exportMenu by remember { mutableStateOf(false) }
     var zoom by remember { mutableFloatStateOf(1f) }
     var panX by remember { mutableFloatStateOf(0f) }
     var panY by remember { mutableFloatStateOf(0f) }
+    var viewRotation by remember { mutableFloatStateOf(0f) }
     var viewportWidthPx by remember { mutableFloatStateOf(0f) }
     var viewportHeightPx by remember { mutableFloatStateOf(0f) }
     fun currentViewportGeometry(): ViewportGeometry? {
@@ -908,9 +911,9 @@ private fun EditorScreen(
             IconButton(onClick = { outlineOpen = true }) { Icon(Icons.Outlined.FormatListBulleted, tr("Page outline", "页面大纲")) }
             IconButton(onClick = { onSettingsChange(settings.copy(showPageRail = !settings.showPageRail)) }) { Icon(if (settings.showPageRail) Icons.Outlined.ViewSidebar else Icons.Outlined.TableRows, tr("Toggle pages", "显示或隐藏页面栏")) }
             IconButton(onClick = { onSettingsChange(settings.copy(showToolbar = !settings.showToolbar)) }) { Icon(if (settings.showToolbar) Icons.Outlined.VisibilityOff else Icons.Outlined.Build, tr("Toggle toolbar", "显示或隐藏工具栏")) }
-            IconButton(onClick = { val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY), .9f, 0f, 0f, geometry = currentViewportGeometry()); zoom = next.scale; panX = next.panX; panY = next.panY }) { Icon(Icons.Outlined.ZoomOut, tr("Zoom out", "缩小")) }
-            IconButton(onClick = { val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY), 1.1f, 0f, 0f, geometry = currentViewportGeometry()); zoom = next.scale; panX = next.panX; panY = next.panY }) { Icon(Icons.Outlined.ZoomIn, tr("Zoom in", "放大")) }
-            IconButton(onClick = { zoom = 1f; panX = 0f; panY = 0f }) { Icon(Icons.Outlined.CenterFocusStrong, tr("Reset view", "重置视图")) }
+            IconButton(onClick = { val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY, viewRotation), .9f, 0f, 0f, geometry = currentViewportGeometry()); zoom = next.scale; panX = next.panX; panY = next.panY }) { Icon(Icons.Outlined.ZoomOut, tr("Zoom out", "缩小")) }
+            IconButton(onClick = { val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY, viewRotation), 1.1f, 0f, 0f, geometry = currentViewportGeometry()); zoom = next.scale; panX = next.panX; panY = next.panY }) { Icon(Icons.Outlined.ZoomIn, tr("Zoom in", "放大")) }
+            IconButton(onClick = { zoom = 1f; panX = 0f; panY = 0f; viewRotation = 0f; exitCanvasNavigation() }) { Icon(Icons.Outlined.CenterFocusStrong, tr("Reset view", "重置视图")) }
             IconButton(onClick = onExport) { Icon(Icons.Outlined.Share, tr("Export PDF", "导出 PDF")) }
             Box {
                 IconButton(onClick = { exportMenu = true }) { Icon(Icons.Outlined.MoreHoriz, tr("More exports", "更多导出选项")) }
@@ -977,7 +980,7 @@ private fun EditorScreen(
                 onDock = { onSettingsChange(settings.copy(brushPanelDock = it)) },
                 onClose = { if (brushesOpen) onToggleBrushes() },
                 onBrushSelected = { brush ->
-                    exitHandNavigation()
+                    exitCanvasNavigation()
                     val usedBrush = brush.copy(lastUsedAt = System.currentTimeMillis())
                     onUpdateBrush(usedBrush)
                     selectedBrushId = usedBrush.id
@@ -1000,7 +1003,7 @@ private fun EditorScreen(
                 val toolbarAreaWidth = maxWidth
                 val toolbarAreaHeight = maxHeight
                 PaperCanvas(
-                    modifier = Modifier.fillMaxHeight(.88f).aspectRatio((PageCropTransform.visibleWidth(selectedPage) / PageCropTransform.visibleHeight(selectedPage).coerceAtLeast(1f)).coerceIn(.35f, 2.8f)).graphicsLayer(scaleX = zoom, scaleY = zoom, translationX = panX, translationY = panY),
+                    modifier = Modifier.fillMaxHeight(.88f).aspectRatio((PageCropTransform.visibleWidth(selectedPage) / PageCropTransform.visibleHeight(selectedPage).coerceAtLeast(1f)).coerceIn(.35f, 2.8f)).graphicsLayer(scaleX = zoom, scaleY = zoom, translationX = panX, translationY = panY, rotationZ = viewRotation),
                     tool = tool,
                     onView = { canvasView = it },
                     page = selectedPage,
@@ -1016,10 +1019,14 @@ private fun EditorScreen(
                     assets = assets,
                     settings = settings,
                     onZoom = { factor, focusX, focusY ->
-                        val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY), factor, focusX, focusY, geometry = currentViewportGeometry())
+                        val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY, viewRotation), factor, focusX, focusY, geometry = currentViewportGeometry())
                         zoom = next.scale; panX = next.panX; panY = next.panY
                     },
-                    onPan = { dx, dy -> val next = ViewportTransform.panBy(ViewportState(zoom, panX, panY), dx, dy, geometry = currentViewportGeometry()); panX = next.panX; panY = next.panY },
+                    onPan = { dx, dy -> val next = ViewportTransform.panBy(ViewportState(zoom, panX, panY, viewRotation), dx, dy, geometry = currentViewportGeometry()); panX = next.panX; panY = next.panY },
+                    onRotate = { delta ->
+                        val next = ViewportTransform.rotateBy(ViewportState(zoom, panX, panY, viewRotation), delta, currentViewportGeometry())
+                        viewRotation = next.rotationDegrees; panX = next.panX; panY = next.panY
+                    },
                     onUndoGesture = { canvasView?.undo() },
                     activeBrush = activeBrush,
                     brushSize = brushSize,
@@ -1028,7 +1035,8 @@ private fun EditorScreen(
                     shapeKind = insertShape,
                     activeLayerId = activeLayerId,
                     eraserPreset = settings.eraserPreset,
-                    forceNavigation = handToolEnabled || handToolHeld,
+                    forceNavigation = handToolEnabled || handToolHeld || rotateToolEnabled || rotateToolHeld,
+                    rotateNavigation = rotateToolEnabled || rotateToolHeld,
                     searchBounds = searchFocus?.takeIf { it.pageId == selectedPage.id }?.bounds ?: pdfLinkFocus?.takeIf { it.first == selectedPage.id }?.second,
                     onPdfGotoLink = { link ->
                         document.pages.firstOrNull { it.id == link.destinationPageId }?.let { target ->
@@ -1112,24 +1120,25 @@ private fun EditorScreen(
                         inputDiagnostic = "Shortcut · ${action.name.lowercase().replace('_', ' ')} · ${activation.phase.name.lowercase()}"
                         if (activation.phase == ShortcutPhase.RELEASE) {
                             if (activation.trigger == ShortcutTrigger.HOLD && action == ShortcutAction.HAND_TOOL) handToolHeld = false
+                            if (activation.trigger == ShortcutTrigger.HOLD && action == ShortcutAction.ROTATE_VIEW_TOOL) rotateToolHeld = false
                             if (activation.trigger == ShortcutTrigger.HOLD && action == ShortcutAction.TOGGLE_ERASER && tool == EditorTool.ERASER) restorePreviousDrawingTool()
                             if (activation.trigger == ShortcutTrigger.HOLD && action in setOf(ShortcutAction.PEN_OR_PENCIL_GROUP, ShortcutAction.PEN_GROUP, ShortcutAction.PENCIL_GROUP, ShortcutAction.BRUSH_GROUP, ShortcutAction.HIGHLIGHTER_TOOL, ShortcutAction.SELECT_TOOL)) restorePreviousDrawingTool()
                         } else when (action) {
                             ShortcutAction.PEN_OR_PENCIL_GROUP -> {
-                                exitHandNavigation()
+                                exitCanvasNavigation()
                                 if (activation.trigger == ShortcutTrigger.HOLD) rememberDrawingSelection()
                                 val target = if (ShortcutBrushSelection.matches(activeBrush, ShortcutBrushGroup.PEN)) ShortcutBrushGroup.PENCIL else ShortcutBrushGroup.PEN
                                 selectBrushGroup(target, fallbackToSystemPen = true)
                             }
-                            ShortcutAction.PEN_GROUP -> { exitHandNavigation(); if (activation.trigger == ShortcutTrigger.HOLD) rememberDrawingSelection(); selectBrushGroup(ShortcutBrushGroup.PEN, fallbackToSystemPen = true) }
-                            ShortcutAction.PENCIL_GROUP -> { exitHandNavigation(); if (activation.trigger == ShortcutTrigger.HOLD) rememberDrawingSelection(); selectBrushGroup(ShortcutBrushGroup.PENCIL, fallbackToSystemPen = true) }
-                            ShortcutAction.BRUSH_GROUP -> { exitHandNavigation(); if (activation.trigger == ShortcutTrigger.HOLD) rememberDrawingSelection(); selectBrushGroup(ShortcutBrushGroup.BRUSH) }
+                            ShortcutAction.PEN_GROUP -> { exitCanvasNavigation(); if (activation.trigger == ShortcutTrigger.HOLD) rememberDrawingSelection(); selectBrushGroup(ShortcutBrushGroup.PEN, fallbackToSystemPen = true) }
+                            ShortcutAction.PENCIL_GROUP -> { exitCanvasNavigation(); if (activation.trigger == ShortcutTrigger.HOLD) rememberDrawingSelection(); selectBrushGroup(ShortcutBrushGroup.PENCIL, fallbackToSystemPen = true) }
+                            ShortcutAction.BRUSH_GROUP -> { exitCanvasNavigation(); if (activation.trigger == ShortcutTrigger.HOLD) rememberDrawingSelection(); selectBrushGroup(ShortcutBrushGroup.BRUSH) }
                             ShortcutAction.TOGGLE_ERASER -> if (activation.trigger == ShortcutTrigger.HOLD) {
-                                exitHandNavigation()
+                                exitCanvasNavigation()
                                 if (tool != EditorTool.ERASER) enterEraser()
-                            } else { exitHandNavigation(); if (tool == EditorTool.ERASER) restorePreviousDrawingTool() else enterEraser() }
+                            } else { exitCanvasNavigation(); if (tool == EditorTool.ERASER) restorePreviousDrawingTool() else enterEraser() }
                             ShortcutAction.HIGHLIGHTER_TOOL -> {
-                                exitHandNavigation()
+                                exitCanvasNavigation()
                                 if (activation.trigger == ShortcutTrigger.HOLD) rememberDrawingSelection()
                                 selectedBrushId = null
                                 activeBrush = null
@@ -1138,14 +1147,15 @@ private fun EditorScreen(
                                 brushOpacity = settings.highlighterOpacity
                                 activeLayerId = LayerIds.HIGHLIGHT
                             }
-                            ShortcutAction.SELECT_TOOL -> { exitHandNavigation(); if (activation.trigger == ShortcutTrigger.HOLD) rememberDrawingSelection(); tool = EditorTool.SELECT }
-                            ShortcutAction.HAND_TOOL -> if (activation.trigger == ShortcutTrigger.HOLD) handToolHeld = true else handToolEnabled = !handToolEnabled
-                            ShortcutAction.SHAPE_TOOL -> { exitHandNavigation(); tool = EditorTool.SHAPE; shapeInsertOpen = true }
-                            ShortcutAction.TEXT_TOOL -> { exitHandNavigation(); tool = EditorTool.TEXT; insertText = ""; textInsertOpen = true }
-                            ShortcutAction.NOTE_TOOL -> { exitHandNavigation(); tool = EditorTool.NOTE; insertText = ""; stickyInsertOpen = true }
-                            ShortcutAction.LINK_TOOL -> { exitHandNavigation(); tool = EditorTool.LINK; insertLinkTitle = ""; insertLinkUrl = ""; linkInsertOpen = true }
-                            ShortcutAction.IMAGE_TOOL -> { exitHandNavigation(); onInsertImage(); tool = EditorTool.SELECT }
-                            ShortcutAction.AUDIO_TOOL -> { exitHandNavigation(); if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) audioOpen = true else audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) }
+                            ShortcutAction.SELECT_TOOL -> { exitCanvasNavigation(); if (activation.trigger == ShortcutTrigger.HOLD) rememberDrawingSelection(); tool = EditorTool.SELECT }
+                            ShortcutAction.HAND_TOOL -> if (activation.trigger == ShortcutTrigger.HOLD) { rotateToolEnabled = false; rotateToolHeld = false; handToolHeld = true } else { val enable = !handToolEnabled; exitCanvasNavigation(); handToolEnabled = enable }
+                            ShortcutAction.ROTATE_VIEW_TOOL -> if (activation.trigger == ShortcutTrigger.HOLD) { handToolEnabled = false; handToolHeld = false; rotateToolHeld = true } else { val enable = !rotateToolEnabled; exitCanvasNavigation(); rotateToolEnabled = enable }
+                            ShortcutAction.SHAPE_TOOL -> { exitCanvasNavigation(); tool = EditorTool.SHAPE; shapeInsertOpen = true }
+                            ShortcutAction.TEXT_TOOL -> { exitCanvasNavigation(); tool = EditorTool.TEXT; insertText = ""; textInsertOpen = true }
+                            ShortcutAction.NOTE_TOOL -> { exitCanvasNavigation(); tool = EditorTool.NOTE; insertText = ""; stickyInsertOpen = true }
+                            ShortcutAction.LINK_TOOL -> { exitCanvasNavigation(); tool = EditorTool.LINK; insertLinkTitle = ""; insertLinkUrl = ""; linkInsertOpen = true }
+                            ShortcutAction.IMAGE_TOOL -> { exitCanvasNavigation(); onInsertImage(); tool = EditorTool.SELECT }
+                            ShortcutAction.AUDIO_TOOL -> { exitCanvasNavigation(); if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) audioOpen = true else audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) }
                             ShortcutAction.BRUSH_SIZE_DECREASE -> updateBrushSize(1f / 1.1f)
                             ShortcutAction.BRUSH_SIZE_INCREASE -> updateBrushSize(1.1f)
                             ShortcutAction.OPACITY_DECREASE -> updateBrushOpacity(-.05f)
@@ -1160,9 +1170,9 @@ private fun EditorScreen(
                             ShortcutAction.REDO -> canvasView?.redo()
                             ShortcutAction.NEW_LAYER -> onAddLayer(document.id, selectedPage.id, "Layer")
                             ShortcutAction.MERGE_LAYER_DOWN -> onMergeLayerDown(document.id, selectedPage.id, activeLayerId)?.let { activeLayerId = it }
-                            ShortcutAction.ZOOM_OUT -> { val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY), .9f, 0f, 0f, geometry = currentViewportGeometry()); zoom = next.scale; panX = next.panX; panY = next.panY }
-                            ShortcutAction.ZOOM_IN -> { val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY), 1.1f, 0f, 0f, geometry = currentViewportGeometry()); zoom = next.scale; panX = next.panX; panY = next.panY }
-                            ShortcutAction.FIT_PAGE -> { zoom = 1f; panX = 0f; panY = 0f }
+                            ShortcutAction.ZOOM_OUT -> { val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY, viewRotation), .9f, 0f, 0f, geometry = currentViewportGeometry()); zoom = next.scale; panX = next.panX; panY = next.panY }
+                            ShortcutAction.ZOOM_IN -> { val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY, viewRotation), 1.1f, 0f, 0f, geometry = currentViewportGeometry()); zoom = next.scale; panX = next.panX; panY = next.panY }
+                            ShortcutAction.FIT_PAGE -> { zoom = 1f; panX = 0f; panY = 0f; viewRotation = 0f; exitCanvasNavigation() }
                             ShortcutAction.PREVIOUS_PAGE -> document.pages.indexOfFirst { it.id == selectedPage.id }.takeIf { it > 0 }?.let { onSelectPage(document.pages[it - 1].id) }
                             ShortcutAction.NEXT_PAGE -> document.pages.indexOfFirst { it.id == selectedPage.id }.takeIf { it in 0 until document.pages.lastIndex }?.let { onSelectPage(document.pages[it + 1].id) }
                             ShortcutAction.TOGGLE_BRUSH_PANEL -> onToggleBrushes()
@@ -1214,7 +1224,7 @@ private fun EditorScreen(
                     }
                 }
                 if (settings.showToolbar) ToolDock(tool = tool, onTool = { chosen ->
-                    exitHandNavigation()
+                    exitCanvasNavigation()
                     tool = chosen; canvasView?.tool = chosen
                     when (chosen) {
                         EditorTool.PEN -> { activeBrush = null; brushOpacity = settings.penOpacity; brushSize = settings.penSize; if (activeLayerId == LayerIds.HIGHLIGHT || activeLayerId == LayerIds.OBJECTS) activeLayerId = LayerIds.INK }
@@ -1296,7 +1306,7 @@ private fun EditorScreen(
                 onDock = { onSettingsChange(settings.copy(brushPanelDock = it)) },
                 onClose = { if (brushesOpen) onToggleBrushes() },
                 onBrushSelected = { brush ->
-                    exitHandNavigation()
+                    exitCanvasNavigation()
                     val usedBrush = brush.copy(lastUsedAt = System.currentTimeMillis())
                     onUpdateBrush(usedBrush)
                     selectedBrushId = usedBrush.id
@@ -1432,7 +1442,7 @@ private fun EditorScreen(
                 onDock = { onSettingsChange(settings.copy(brushPanelDock = it)) },
                 onClose = { if (brushesOpen) onToggleBrushes() },
                 onBrushSelected = { brush ->
-                    exitHandNavigation()
+                    exitCanvasNavigation()
                     val usedBrush = brush.copy(lastUsedAt = System.currentTimeMillis())
                     onUpdateBrush(usedBrush)
                     selectedBrushId = usedBrush.id
@@ -1835,7 +1845,7 @@ private fun PageRail(
 }
 
 @Composable
-private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, onZoom: (Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onUndoGesture: () -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit) {
+private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, onZoom: (Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val backgroundVisible = page.layers.firstOrNull { it.role == LayerRole.BACKGROUND }?.visible != false
     val background = remember(page.id, page.background, page.backgroundRotationQuarterTurns, page.crop, backgroundVisible) { if (backgroundVisible) runCatching { assets.renderBackground(page.background, 1200, page.backgroundRotationQuarterTurns, page.crop) }.getOrNull() else null }
@@ -1873,12 +1883,14 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
             factory = { context -> InkCanvasView(context).also { view ->
                 view.tool = tool
                 view.forceNavigation = forceNavigation
+                view.rotateNavigation = rotateNavigation
                 view.onStrokeCommitted = { onStroke(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
                 view.onShapeCommitted = { onElement(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
                 view.onStrokeRemoved = { onRemoveStroke(documentId, page.id, it) }
                 view.onStrokesReplaced = { removed, replacements, indices -> onStrokesReplaced(documentId, page.id, removed, replacements.map { PageCropTransform.unproject(it, page.crop) }, indices) }
                 view.onViewportScale = onZoom
                 view.onViewportPan = onPan
+                view.onViewportRotate = onRotate
                 view.pdfGotoLinks = renderedPage.pdfGotoLinks
                 view.onPdfGotoLink = onPdfGotoLink
                 view.onUndoGesture = onUndoGesture
@@ -1891,6 +1903,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
             update = { view ->
                 view.tool = tool
                 view.forceNavigation = forceNavigation
+                view.rotateNavigation = rotateNavigation
                 view.setDocumentStrokes(renderedPage.strokes.filter { it.layerId in visibleLayerIds }.sortedBy { layerOrder[it.layerId] ?: Int.MAX_VALUE }, "$documentId:${page.id}")
                 view.setProtectedStrokeIds(page.strokes.filter { it.layerId in lockedLayerIds }.mapTo(mutableSetOf()) { it.id })
                 view.setProtectedLayerIds(lockedLayerIds)
@@ -1910,6 +1923,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.applyBrushConfiguration(tool, settings, activeBrush, brushSize, brushOpacity, brushColor, eraserPreset)
                 view.onViewportScale = onZoom
                 view.onViewportPan = onPan
+                view.onViewportRotate = onRotate
                 view.pdfGotoLinks = renderedPage.pdfGotoLinks
                 view.onPdfGotoLink = onPdfGotoLink
                 view.onUndoGesture = onUndoGesture
@@ -3639,6 +3653,7 @@ private fun shortcutActionLabel(action: ShortcutAction): String = when (action) 
     ShortcutAction.HIGHLIGHTER_TOOL -> tr("Marker / highlighter", "标记笔／荧光笔")
     ShortcutAction.SELECT_TOOL -> tr("Selection tool", "选择工具")
     ShortcutAction.HAND_TOOL -> tr("Hand / canvas navigation", "抓手／画布导航")
+    ShortcutAction.ROTATE_VIEW_TOOL -> tr("Rotate canvas view", "旋转画布视图")
     ShortcutAction.SHAPE_TOOL -> tr("Shape tool", "形状工具")
     ShortcutAction.TEXT_TOOL -> tr("Text tool", "文字工具")
     ShortcutAction.NOTE_TOOL -> tr("Sticky note", "便笺")

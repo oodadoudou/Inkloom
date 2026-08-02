@@ -49,4 +49,27 @@ class ViewportTransformTest {
 
         assertEquals(ViewportState(1f, 0f, 0f), after)
     }
+
+    @Test fun panningUsesTheRotatedCanvasAxes() {
+        val after = ViewportTransform.panBy(ViewportState(2f, 0f, 0f, 90f), 20f, 5f)
+
+        assertEquals(-10f, after.panX, .001f)
+        assertEquals(40f, after.panY, .001f)
+    }
+
+    @Test fun zoomKeepsTheRotatedFocusPointStationary() {
+        val before = ViewportState(1.5f, 30f, -12f, 90f)
+        val focusX = 160f
+        val focusY = -40f
+        val after = ViewportTransform.zoomAround(before, 2f, focusX, focusY)
+
+        assertEquals(before.panX + before.scale * 40f, after.panX + after.scale * 40f, .001f)
+        assertEquals(before.panY + before.scale * 160f, after.panY + after.scale * 160f, .001f)
+        assertEquals(90f, after.rotationDegrees, .001f)
+    }
+
+    @Test fun rotationNormalizesAcrossRepeatedToolboxInput() {
+        assertEquals(-170f, ViewportTransform.rotateBy(ViewportState(2f, 0f, 0f, 170f), 20f).rotationDegrees, .001f)
+        assertEquals(170f, ViewportTransform.rotateBy(ViewportState(2f, 0f, 0f, -170f), -20f).rotationDegrees, .001f)
+    }
 }

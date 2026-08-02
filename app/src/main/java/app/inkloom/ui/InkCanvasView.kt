@@ -130,6 +130,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     var tool: EditorTool = EditorTool.PEN
     var forceNavigation: Boolean = false
+    var rotateNavigation: Boolean = false
     var inkColor: Int = Color.rgb(17, 17, 17)
     var baseWidth: Float = 5f
     var inkOpacity: Float = 1f
@@ -287,6 +288,7 @@ class InkCanvasView(context: Context) : View(context) {
     var onStrokesReplaced: (List<String>, List<InkStroke>, List<Int>) -> Unit = { removed, replacements, _ -> removed.forEach(onStrokeRemoved); replacements.forEach(onStrokeCommitted) }
     var onViewportScale: (Float, Float, Float) -> Unit = { _, _, _ -> }
     var onViewportPan: (Float, Float) -> Unit = { _, _ -> }
+    var onViewportRotate: (Float) -> Unit = {}
     var pdfGotoLinks: List<PdfGotoLink> = emptyList()
     var onPdfGotoLink: (PdfGotoLink) -> Unit = {}
     var onUndoGesture: () -> Unit = {}
@@ -733,6 +735,10 @@ class InkCanvasView(context: Context) : View(context) {
                     twoFingerTapUndoGesture.move(focus.first, focus.second, scaleDetector.isInProgress)
                     onViewportPan(focus.first - navigationX, focus.second - navigationY)
                     navigationX = focus.first; navigationY = focus.second
+                    navigationMoved = true
+                } else if (!scaleDetector.isInProgress && rotateNavigation) {
+                    onViewportRotate((event.x - navigationX) * VIEW_ROTATION_DEGREES_PER_PIXEL)
+                    navigationX = event.x; navigationY = event.y
                     navigationMoved = true
                 } else if (!scaleDetector.isInProgress) {
                     if (hypot(event.x - navigationDownX, event.y - navigationDownY) > navigationTouchSlop) navigationMoved = true
@@ -1331,6 +1337,7 @@ class InkCanvasView(context: Context) : View(context) {
         const val SALT_THICKNESS = 71
         const val DUAL_SCATTER_SEED = 0x27C4915DL
         const val DUAL_ROTATION_SEED = 0x61B8D2A3L
+        const val VIEW_ROTATION_DEGREES_PER_PIXEL = .25f
         const val DUAL_SEQUENCE_SEED = 0x35A71C9E
         const val MAX_TIP_CACHE_ENTRIES = 64
     }
