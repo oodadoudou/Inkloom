@@ -10,11 +10,15 @@ import app.inkloom.document.BrushTaperMode
 import org.json.JSONArray
 import org.json.JSONObject
 
-class BrushMetadataStore(context: Context) {
-    private val preferences = context.getSharedPreferences("inkloom_brushes", Context.MODE_PRIVATE)
+class BrushMetadataStore(
+    context: Context,
+    preferenceName: String = DEFAULT_PREFERENCES,
+    private val key: String = DEFAULT_KEY,
+) {
+    private val preferences = context.getSharedPreferences(preferenceName, Context.MODE_PRIVATE)
 
     fun load(): List<ImportedBrush> = runCatching {
-        val array = JSONArray(preferences.getString(KEY, "[]"))
+        val array = JSONArray(preferences.getString(key, "[]"))
         buildList {
             for (index in 0 until array.length()) {
                 val item = array.getJSONObject(index)
@@ -286,10 +290,13 @@ class BrushMetadataStore(context: Context) {
                     .put("parserVersion", brush.parserVersion),
             )
         }
-        preferences.edit().putString(KEY, array.toString()).apply()
+        preferences.edit().putString(key, array.toString()).apply()
     }
 
-    private companion object { const val KEY = "imported_brushes" }
+    private companion object {
+        const val DEFAULT_PREFERENCES = "inkloom_brushes"
+        const val DEFAULT_KEY = "imported_brushes"
+    }
     private fun curveJson(points: List<BrushCurvePoint>): JSONArray = JSONArray().apply { points.forEach { put(JSONArray().put(it.x).put(it.y)) } }
     private fun secondaryJson(value: BrushSecondaryDynamics): JSONObject = JSONObject()
         .put("tiltEnabled", value.tiltEnabled)
