@@ -18,7 +18,6 @@ import android.net.Uri
 import android.os.ParcelFileDescriptor
 import java.io.File
 import java.security.MessageDigest
-import kotlin.math.pow
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
@@ -424,22 +423,8 @@ class DocumentAssetService(private val context: Context) {
         paint.maskFilter = blur.takeIf { it > .01f }?.let { BlurMaskFilter(it, BlurMaskFilter.Blur.NORMAL) }
     }
 
-    private fun decodeTip(path: String, hardness: Float, grainPath: String?, grainDensity: Float, grainScale: Float = 100f, grainRotation: Float = 0f, grainBrightness: Float = 0f, grainContrast: Float = 0f, grainReversed: Boolean = false, grainEmphasized: Boolean = false): Bitmap? = runCatching {
-        val source = BitmapFactory.decodeFile(path) ?: return null
-        val grain = grainPath?.takeIf { grainDensity > 0f }?.let(BitmapFactory::decodeFile)
-        val grainPixels = grain?.let { bitmap -> IntArray(bitmap.width * bitmap.height).also { bitmap.getPixels(it, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height) } }
-        val pixels = IntArray(source.width * source.height); source.getPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
-        pixels.indices.forEach { i ->
-            val pixel = pixels[i]
-            val luminance = (Color.red(pixel) * .299f + Color.green(pixel) * .587f + Color.blue(pixel) * .114f).toInt()
-            val base = (255 - luminance) / 255f
-            val shaped = base.toDouble().pow((1.8f - hardness.coerceIn(0f, 1f) * 1.5f).toDouble()).toFloat()
-            val grainMask = if (grain != null && grainPixels != null) { val x = i % source.width; val y = i / source.width; val coordinate = TextureSampling.coordinate(x, y, source.width, source.height, grain.width, grain.height, grainScale, grainRotation); val sample = grainPixels[coordinate.y * grain.width + coordinate.x]; val luminance = (Color.red(sample) * .299f + Color.green(sample) * .587f + Color.blue(sample) * .114f) / 255f; val effectiveLuminance = TextureSampling.effectiveLuminance(luminance, Color.alpha(sample) / 255f); TextureSampling.mask(effectiveLuminance, grainBrightness, grainContrast, grainReversed, grainEmphasized) } else 1f
-            val texture = (1f - grainDensity.coerceIn(0f, 1f)) + grainDensity.coerceIn(0f, 1f) * grainMask
-            pixels[i] = Color.argb((shaped * texture * 255).toInt() * Color.alpha(pixel) / 255, 255, 255, 255)
-        }
-        Bitmap.createBitmap(pixels, source.width, source.height, Bitmap.Config.ARGB_8888).also { source.recycle(); grain?.recycle() }
-    }.getOrNull()
+    private fun decodeTip(path: String, hardness: Float, grainPath: String?, grainDensity: Float, grainScale: Float = 100f, grainRotation: Float = 0f, grainBrightness: Float = 0f, grainContrast: Float = 0f, grainReversed: Boolean = false, grainEmphasized: Boolean = false): Bitmap? =
+        BrushTipTextureDecoder.decode(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized)
 
     private fun rotateQuarterTurns(source: Bitmap?, quarterTurns: Int): Bitmap? {
         source ?: return null

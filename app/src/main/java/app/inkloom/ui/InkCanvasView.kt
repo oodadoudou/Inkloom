@@ -19,6 +19,7 @@ import app.inkloom.document.BrushCurvePoint
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushDynamics
 import app.inkloom.document.BrushTipSequence
+import app.inkloom.document.BrushTipTextureDecoder
 import app.inkloom.document.BrushTipTransform
 import app.inkloom.document.BrushTaperMode
 import app.inkloom.document.LassoGeometry
@@ -32,7 +33,6 @@ import app.inkloom.document.StrokeStampSampler
 import app.inkloom.document.StrokeStabilization
 import app.inkloom.document.StrokeTaper
 import app.inkloom.document.StylusInputClassifier
-import app.inkloom.document.TextureSampling
 import app.inkloom.document.WaterEdge
 import app.inkloom.model.EditorTool
 import app.inkloom.settings.StylusButtonAction
@@ -40,7 +40,6 @@ import kotlin.math.hypot
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.sin
-import kotlin.math.pow
 
 class InkCanvasView(context: Context) : View(context) {
     private val strokes = mutableListOf<InkStroke>()
@@ -417,23 +416,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun loadTip(path: String, hardness: Float, grainPath: String?, grainDensity: Float, grainScale: Float = 100f, grainRotation: Float = 0f, grainBrightness: Float = 0f, grainContrast: Float = 0f, grainReversed: Boolean = false, grainEmphasized: Boolean = false): Bitmap? {
         val key = "$path:${(hardness.coerceIn(0f, 1f) * 20).toInt()}:$grainPath:${(grainDensity.coerceIn(0f, 1f) * 20).toInt()}:${grainScale.toInt()}:${grainRotation.toInt()}:${grainBrightness.toInt()}:${grainContrast.toInt()}:$grainReversed:$grainEmphasized"
-        return tipCache[key] ?: runCatching {
-        val source = android.graphics.BitmapFactory.decodeFile(path) ?: return null
-        val grain = grainPath?.takeIf { grainDensity > 0f }?.let(android.graphics.BitmapFactory::decodeFile)
-        val grainPixels = grain?.let { bitmap -> IntArray(bitmap.width * bitmap.height).also { bitmap.getPixels(it, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height) } }
-        val pixels = IntArray(source.width * source.height)
-        source.getPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
-        pixels.indices.forEach { index ->
-            val pixel = pixels[index]
-            val luminance = (Color.red(pixel) * .299f + Color.green(pixel) * .587f + Color.blue(pixel) * .114f).toInt()
-            val base = (255 - luminance) / 255f
-            val shaped = base.toDouble().pow((1.8f - hardness.coerceIn(0f, 1f) * 1.5f).toDouble()).toFloat()
-            val grainMask = if (grain != null && grainPixels != null) { val x = index % source.width; val y = index / source.width; val coordinate = TextureSampling.coordinate(x, y, source.width, source.height, grain.width, grain.height, grainScale, grainRotation); val sample = grainPixels[coordinate.y * grain.width + coordinate.x]; val luminance = (Color.red(sample) * .299f + Color.green(sample) * .587f + Color.blue(sample) * .114f) / 255f; val effectiveLuminance = TextureSampling.effectiveLuminance(luminance, Color.alpha(sample) / 255f); TextureSampling.mask(effectiveLuminance, grainBrightness, grainContrast, grainReversed, grainEmphasized) } else 1f
-            val texture = (1f - grainDensity.coerceIn(0f, 1f)) + grainDensity.coerceIn(0f, 1f) * grainMask
-            pixels[index] = Color.argb((shaped * texture * 255).toInt() * Color.alpha(pixel) / 255, 255, 255, 255)
-        }
-        Bitmap.createBitmap(pixels, source.width, source.height, Bitmap.Config.ARGB_8888).also { source.recycle(); grain?.recycle(); tipCache[key] = it }
-        }.getOrNull()
+        return tipCache[key] ?: BrushTipTextureDecoder.decode(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized)?.also { tipCache[key] = it }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
