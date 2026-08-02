@@ -43,6 +43,9 @@ tasks.withType<Test>().configureEach {
     providers.gradleProperty("brushSamplesDir").orNull?.let {
         systemProperty("brush.samples.dir", it)
     }
+    providers.gradleProperty("procreateSamplesDir").orNull?.let {
+        systemProperty("procreate.samples.dir", it)
+    }
 }
 
 dependencies {

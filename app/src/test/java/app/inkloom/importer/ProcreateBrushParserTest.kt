@@ -1,0 +1,146 @@
+package app.inkloom.importer
+
+import app.inkloom.model.BrushFormat
+import app.inkloom.model.Compatibility
+import app.inkloom.model.ImportedBrush
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
+import org.junit.Test
+import java.io.File
+import java.util.Base64
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
+
+class ProcreateBrushParserTest {
+    @Test fun keyedArchiveReadsNamesCurvesAndCoreDynamics() {
+        val archive = ProcreateKeyedArchive(Base64.getDecoder().decode(SYNTHETIC_ARCHIVE))
+
+        assertEquals("Synthetic Procreate", archive.string("name"))
+        assertEquals(4, archive.int("version"))
+        assertEquals(.5f, archive.float("paintSize"), .0001f)
+        assertTrue(archive.boolean("shapeAzimuth"))
+        assertEquals(.1f, archive.curve("dynamicsPressureSizeCurve").first().y, .0001f)
+        assertEquals(.9f, archive.curve("dynamicsPressureSizeCurve").last().y, .0001f)
+    }
+
+    @Test fun syntheticBrushMapsShapeGrainPressureSpeedWetMixAndTaper() {
+        val root = temporaryDirectory("synthetic")
+        try {
+            val source = File(root, "synthetic.brush")
+            writeBrush(source)
+
+            val brush = ProcreateBrushParser(File(root, "assets")).enrich(source, "fixture", fallback(source)).single()
+
+            assertEquals("Synthetic Procreate", brush.name)
+            assertEquals(BrushFormat.PROCREATE, brush.format)
+            assertEquals(Compatibility.BASIC, brush.compatibility)
+            assertEquals(20f, brush.defaultSize, .0001f)
+            assertEquals(.6f, brush.defaultOpacity, .0001f)
+            assertEquals(.2f, brush.spacing, .0001f)
+            assertEquals(.3f, brush.stabilization, .0001f)
+            assertEquals(.6f, brush.thickness, .0001f)
+            assertEquals(90f, brush.rotationDegrees, .001f)
+            assertTrue(brush.followStylusOrientation)
+            assertTrue(brush.followStrokeDirection)
+            assertTrue(brush.sizePressureEnabled)
+            assertEquals(.2f, brush.sizePressureMinimum, .0001f)
+            assertTrue(brush.sizeSecondaryDynamics.velocityEnabled)
+            assertTrue(brush.sizeSecondaryDynamics.randomEnabled)
+            assertTrue(brush.watercolor)
+            assertTrue(brush.waterEdgeEnabled)
+            assertTrue(brush.taperStartEnabled)
+            assertTrue(brush.taperEndEnabled)
+            assertTrue(File(brush.tipPreviewPath!!).isFile)
+            assertTrue(File(brush.grainPreviewPath!!).isFile)
+            assertEquals(ProcreateBrushParser.CURRENT_VERSION, brush.parserVersion)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun unsafeZipPathFailsWithoutExtractingAnything() {
+        val root = temporaryDirectory("unsafe")
+        try {
+            val source = File(root, "unsafe.brush")
+            ZipOutputStream(source.outputStream()).use { zip ->
+                zip.putNextEntry(ZipEntry("../Shape.png")); zip.write(byteArrayOf(1)); zip.closeEntry()
+                zip.putNextEntry(ZipEntry("Brush.archive")); zip.write(Base64.getDecoder().decode(SYNTHETIC_ARCHIVE)); zip.closeEntry()
+            }
+
+            val brush = ProcreateBrushParser(File(root, "assets")).enrich(source, "unsafe", fallback(source)).single()
+
+            assertTrue(brush.report.any { it.contains("unsafe path") })
+            assertFalse(File(root, "Shape.png").exists())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun parsesAuthorizedRealBrushsetWhenConfigured() {
+        val sampleRoot = System.getProperty("procreate.samples.dir")?.let(::File)
+        assumeTrue(sampleRoot != null && sampleRoot.isDirectory)
+        val source = sampleRoot!!.walkTopDown().firstOrNull { it.isFile && it.extension.equals("brushset", true) }
+        assumeTrue(source != null)
+        val root = temporaryDirectory("real")
+        try {
+            val brushes = ProcreateBrushParser(File(root, "assets")).enrich(source!!, "real-sample", fallback(source))
+
+            assertEquals(30, brushes.size)
+            assertEquals("白川柏川 挚爱线稿笔", brushes.first().name)
+            assertTrue(brushes.all { it.format == BrushFormat.PROCREATE })
+            assertTrue(brushes.all { it.tipPreviewPath?.let(::File)?.isFile == true })
+            assertTrue(brushes.all { it.grainPreviewPath?.let(::File)?.isFile == true })
+            assertTrue(brushes.any { it.dualBrush && it.dualTipPreviewPaths.isNotEmpty() })
+            assertTrue(brushes.any { it.sizePressureEnabled })
+            assertTrue(brushes.any { it.opacityPressureEnabled })
+            assertTrue(brushes.any { it.watercolor })
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    private fun fallback(source: File) = ImportedBrush(
+        name = source.nameWithoutExtension,
+        format = BrushFormat.PROCREATE,
+        compatibility = Compatibility.BASIC,
+        sizeBytes = source.length(),
+        report = emptyList(),
+    )
+
+    private fun writeBrush(target: File) {
+        ZipOutputStream(target.outputStream()).use { zip ->
+            zip.putNextEntry(ZipEntry("Brush.archive")); zip.write(Base64.getDecoder().decode(SYNTHETIC_ARCHIVE)); zip.closeEntry()
+            zip.putNextEntry(ZipEntry("Shape.png")); zip.write(SYNTHETIC_PNG); zip.closeEntry()
+            zip.putNextEntry(ZipEntry("Grain.png")); zip.write(SYNTHETIC_PNG); zip.closeEntry()
+        }
+    }
+
+    private fun temporaryDirectory(label: String): File =
+        File(System.getProperty("java.io.tmpdir"), "inkloom-procreate-$label-${System.nanoTime()}").apply { mkdirs() }
+
+    private companion object {
+        val SYNTHETIC_PNG = Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+X7o9WQAAAABJRU5ErkJggg==")
+        val SYNTHETIC_ARCHIVE =
+            "YnBsaXN0MDDUAQIDBAUGBwpYJHZlcnNpb25ZJGFyY2hpdmVyVCR0b3BYJG9iamVjdHMSAAGGoF8QD05TS2V5ZWRBcmNoaXZlctEI" +
+            "CVRyb290gAGtCwxOT1JVWFlaXF5hYlUkbnVsbN8QKg0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4" +
+            "OTo7PD0+P0BBQTlCQzlERT5BO0ZHSElKOkRJS0lGPjo5Pz5JO0xNQVRuYW1lV3ZlcnNpb25ZcGFpbnRTaXplV21heFNpemVccGFp" +
+            "bnRPcGFjaXR5Wm1heE9wYWNpdHlbcGxvdFNwYWNpbmddcGxvdFNtb290aGluZ15zaGFwZVJvdW5kbmVzc1pzaGFwZUFuZ2xlXHNo" +
+            "YXBlQXppbXV0aFhvcmllbnRlZFxzaGFwZVNjYXR0ZXJaZ3JhaW5EZXB0aFx0ZXh0dXJlU2NhbGVbdGV4dHVyZVpvb21fEA90ZXh0" +
+            "dXJlUm90YXRpb25fEBF0ZXh0dXJlQnJpZ2h0bmVzc18QD3RleHR1cmVDb250cmFzdF8QD3RleHR1cmVJbnZlcnRlZF8QFGR5bmFt" +
+            "aWNzUHJlc3N1cmVTaXplV21pblNpemVfEBlkeW5hbWljc1ByZXNzdXJlU2l6ZUN1cnZlXxAXZHluYW1pY3NQcmVzc3VyZU9wYWNp" +
+            "dHlabWluT3BhY2l0eV8QHGR5bmFtaWNzUHJlc3N1cmVPcGFjaXR5Q3VydmVfEBFkeW5hbWljc1NwZWVkU2l6ZV8QEmR5bmFtaWNz" +
+            "Sml0dGVyU2l6ZV8QEGR5bmFtaWNzVGlsdFNpemVfEBJkeW5hbWljc0dsYXplZEZsb3ded2V0RWRnZXNBbW91bnRfEBBidXJudEVk" +
+            "Z2VzQW1vdW50W2R5bmFtaWNzTWl4XxATZHluYW1pY3NQcmVzc3VyZU1peF8QF2R5bmFtaWNzV2V0QWNjdW11bGF0aW9uXxAaZHlu" +
+            "YW1pY3NTbXVkZ2VBY2N1bXVsYXRpb25fEBB0YXBlclN0YXJ0TGVuZ3RoXnRhcGVyRW5kTGVuZ3RoWXRhcGVyU2l6ZVlibGVuZE1v" +
+            "ZGVdZHVhbEJsZW5kTW9kZVtzaGFwZUZpbHRlcoACEAQjP+AAAAAAAAAjP9mZmZmZmZojP+mZmZmZmZojP+gAAAAAAAAjP5R64Ueu" +
+            "FHsjP9MzMzMzMzMjP+MzMzMzMzMjP/kh+1RD1vQJIz/mZmZmZmZmI0AAAAAAAAAAIz/QAAAAAAAAI7/JmZmZmZmaIz+5mZmZmZma" +
+            "gAMjv+AAAAAAAAAjP8mZmZmZmZqACCM/5MzMzMzMzRAAEAJfEBNTeW50aGV0aWMgUHJvY3JlYXRl0VBRVnBvaW50c4AE0VNUWk5T" +
+            "Lm9iamVjdHOABaJWV4AGgAdfEBR7MC4wMDAwMDAsIDAuMTAwMDAwfV8QFHsxLjAwMDAwMCwgMC45MDAwMDB90VBbgAnRU12ACqJf" +
+            "YIALgAxfEBR7MC4wMDAwMDAsIDAuMDAwMDAwfV8QFHsxLjAwMDAwMCwgMS4wMDAwMDB9AAgAEQAaACQAKQAyADcASQBMAFEAUwBh" +
+            "AGcAvgDDAMsA1QDdAOoA9QEBAQ8BHgEpATYBPwFMAVcBZAFwAYIBlgGoAboB0QHZAfUCDwIaAjkCTQJiAnUCigKZAqwCuALOAugD" +
+            "BQMYAycDMQM7A0kDVQNXA1kDYgNrA3QDfQOGA48DmAOhA6IDqwO0A70DxgPPA9ED2gPjA+UD7gPwA/IECAQLBBIEFAQXBCIEJAQn" +
+            "BCkEKwRCBFkEXAReBGEEYwRmBGgEagSBAAAAAAAAAgEAAAAAAAAAYwAAAAAAAAAAAAAAAAAABJg="
+    }
+}

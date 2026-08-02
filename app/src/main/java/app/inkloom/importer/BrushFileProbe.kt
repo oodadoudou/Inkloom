@@ -32,7 +32,7 @@ object BrushFileProbe {
         val report = when (format) {
             BrushFormat.ABR -> listOf("ABR signature verified", "ABR 6.x sampled-tip extraction will be attempted", "Unsupported dynamics remain on safe Inkloom defaults")
             BrushFormat.SUT -> listOf("CSP SQLite container verified", "Source is eligible for parameter, material-reference and effector-curve decoding", "Unsupported CSP-only behavior is listed separately after conversion")
-            BrushFormat.PROCREATE -> listOf("Procreate ZIP container recognized", "Internal textured fallback preset created", "Shape, grain and engine-specific wet mixing are not decoded by this parser version")
+            BrushFormat.PROCREATE -> listOf("Procreate ZIP container recognized", "Shape, grain, NSKeyedArchive settings and Dual Brush payloads will be decoded", "Unverified rendering and wet-mix behavior will be reported explicitly")
             BrushFormat.IMAGE -> listOf("Raster tip recognized", "Alpha or luminance will define the tip", "Spacing and pressure use safe defaults")
             BrushFormat.UNKNOWN -> listOf("No supported file signature was found")
             BrushFormat.SYSTEM -> emptyList()
