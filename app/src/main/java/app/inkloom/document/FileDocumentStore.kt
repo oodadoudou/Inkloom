@@ -50,7 +50,15 @@ class FileDocumentStore(private val root: File) {
                 is JournalEntry.StrokeRemoved -> page.copy(strokes = page.strokes.filterNot { it.id == entry.strokeId })
                 is JournalEntry.StrokesReplaced -> {
                     val replacedIds = entry.removedStrokeIds.toSet() + entry.strokes.map(InkStroke::id)
-                    page.copy(strokes = page.strokes.filterNot { it.id in replacedIds } + entry.strokes)
+                    val remaining = page.strokes.filterNot { it.id in replacedIds }.toMutableList()
+                    if (entry.replacementIndices.size == entry.strokes.size) {
+                        entry.strokes.zip(entry.replacementIndices)
+                            .sortedBy { (_, index) -> index }
+                            .forEach { (stroke, index) -> remaining.add(index.coerceIn(0, remaining.size), stroke) }
+                    } else {
+                        remaining += entry.strokes
+                    }
+                    page.copy(strokes = remaining)
                 }
                 is JournalEntry.ElementUpserted -> page.copy(elements = page.elements.filterNot { it.id == entry.element.id } + entry.element)
                 is JournalEntry.ElementRemoved -> page.copy(elements = page.elements.filterNot { it.id == entry.elementId })

@@ -282,7 +282,14 @@ sealed interface JournalEntry {
     @Serializable @SerialName("stroke_removed")
     data class StrokeRemoved(override val documentId: String, override val pageId: String, val strokeId: String, override val timestamp: Long = System.currentTimeMillis()) : JournalEntry
     @Serializable @SerialName("strokes_replaced")
-    data class StrokesReplaced(override val documentId: String, override val pageId: String, val removedStrokeIds: List<String>, val strokes: List<InkStroke>, override val timestamp: Long = System.currentTimeMillis()) : JournalEntry
+    data class StrokesReplaced(
+        override val documentId: String,
+        override val pageId: String,
+        val removedStrokeIds: List<String>,
+        val strokes: List<InkStroke>,
+        val replacementIndices: List<Int> = emptyList(),
+        override val timestamp: Long = System.currentTimeMillis(),
+    ) : JournalEntry
     @Serializable @SerialName("element_upserted")
     data class ElementUpserted(override val documentId: String, override val pageId: String, val element: PageElement, override val timestamp: Long = System.currentTimeMillis()) : JournalEntry
     @Serializable @SerialName("element_removed")

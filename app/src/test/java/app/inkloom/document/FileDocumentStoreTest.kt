@@ -147,6 +147,31 @@ class FileDocumentStoreTest {
         assertEquals(.7f, recovered.first { it.id == "first" }.points.single().x)
     }
 
+    @Test fun positionedStrokeReplacementPreservesExactZOrderAndRecovery() {
+        val store = FileDocumentStore(Files.createTempDirectory("inkloom-positioned-strokes").toFile())
+        val back = InkStroke(id = "back", points = listOf(StrokePoint(.1f, .1f)))
+        val middle = InkStroke(id = "middle", points = listOf(StrokePoint(.2f, .2f)))
+        val front = InkStroke(id = "front", points = listOf(StrokePoint(.3f, .3f)))
+        val document = InkDocument(title = "Order", pages = listOf(InkPage(id = "page", strokes = listOf(back, middle, front))))
+        store.save(document)
+        val leftPiece = middle.copy(id = "left", points = listOf(StrokePoint(.15f, .2f), StrokePoint(.18f, .2f)))
+        val rightPiece = middle.copy(id = "right", points = listOf(StrokePoint(.22f, .2f), StrokePoint(.25f, .2f)))
+
+        store.append(
+            JournalEntry.StrokesReplaced(
+                document.id,
+                "page",
+                removedStrokeIds = listOf(middle.id),
+                strokes = listOf(leftPiece, rightPiece),
+                replacementIndices = listOf(1, 2),
+            ),
+        )
+
+        assertEquals(listOf("back", "left", "right", "front"), store.get(document.id)!!.pages.single().strokes.map(InkStroke::id))
+        assertEquals(1, store.recover())
+        assertEquals(listOf("back", "left", "right", "front"), store.get(document.id)!!.pages.single().strokes.map(InkStroke::id))
+    }
+
     @Test fun richTextPropertiesRoundTrip() {
         val store = FileDocumentStore(Files.createTempDirectory("inkloom-rich-text").toFile())
         val text = PageElement.Text(
