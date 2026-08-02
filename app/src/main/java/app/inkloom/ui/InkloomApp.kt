@@ -49,6 +49,10 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -77,6 +81,8 @@ import app.inkloom.settings.SelectionFilter
 import app.inkloom.settings.SelectionMode
 import app.inkloom.settings.SelectionShape
 import app.inkloom.settings.ShortcutAction
+import app.inkloom.settings.CspShortcutResolver
+import app.inkloom.settings.ShortcutChord
 import app.inkloom.settings.ShortcutBrushGroup
 import app.inkloom.settings.ShortcutBrushSelection
 import app.inkloom.settings.StylusButtonAction
@@ -2621,6 +2627,7 @@ private fun SettingsDialog(
     onRestoreBackup: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var shortcutEditorOpen by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = { TextButton(onClick = onDismiss) { Text(tr("Done", "完成")) } },
@@ -2655,6 +2662,9 @@ private fun SettingsDialog(
                 item { Text(tr("PEN BUTTONS", "笔按键"), color = Sage, fontSize = 12.sp) }
                 item { StylusActionRow(tr("Primary button", "主按键"), settings.stylusPrimaryButton) { onChange(settings.copy(stylusPrimaryButton = it)) } }
                 item { StylusActionRow(tr("Secondary button", "副按键"), settings.stylusSecondaryButton) { onChange(settings.copy(stylusSecondaryButton = it)) } }
+                item { Text(tr("TOOLBOX & KEYBOARD", "TOOLBOX 与键盘"), color = Sage, fontSize = 12.sp) }
+                item { Text(tr("CSP-compatible defaults are active. Customize them for Wacom ExpressKeys, a keyboard, or another Toolbox controller.", "已启用兼容 CSP 的默认键位。可为 Wacom ExpressKey、键盘或其他 Toolbox 控制器自定义。"), color = MutedInk, fontSize = 12.sp) }
+                item { OutlinedButton(onClick = { shortcutEditorOpen = true }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Keyboard, null); Spacer(Modifier.width(8.dp)); Text(tr("Customize shortcuts", "自定义快捷键")) } }
                 item { Text(tr("INTERFACE", "界面"), color = Sage, fontSize = 12.sp) }
                 item { SettingSwitch(tr("Show page sidebar", "显示页面侧栏"), null, settings.showPageRail) { onChange(settings.copy(showPageRail = it)) } }
                 item { SettingSwitch(tr("Show floating toolbar", "显示浮动工具栏"), null, settings.showToolbar) { onChange(settings.copy(showToolbar = it)) } }
@@ -2668,6 +2678,77 @@ private fun SettingsDialog(
             }
         },
     )
+    if (shortcutEditorOpen) ShortcutEditorDialog(settings, onChange, onDismiss = { shortcutEditorOpen = false })
+}
+
+@Composable
+private fun ShortcutEditorDialog(settings: AppSettings, onChange: (AppSettings) -> Unit, onDismiss: () -> Unit) {
+    var listeningFor by remember { mutableStateOf<ShortcutAction?>(null) }
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(listeningFor) { if (listeningFor != null) focusRequester.requestFocus() }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(tr("Toolbox shortcuts", "Toolbox 快捷键")) },
+        text = {
+            LazyColumn(
+                Modifier.widthIn(min = 400.dp, max = 580.dp).heightIn(max = 540.dp)
+                    .focusRequester(focusRequester)
+                    .focusable()
+                    .onPreviewKeyEvent { event ->
+                        val action = listeningFor ?: return@onPreviewKeyEvent false
+                        val native = event.nativeKeyEvent
+                        if (native.action != android.view.KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent true
+                        if (native.keyCode in setOf(android.view.KeyEvent.KEYCODE_CTRL_LEFT, android.view.KeyEvent.KEYCODE_CTRL_RIGHT, android.view.KeyEvent.KEYCODE_ALT_LEFT, android.view.KeyEvent.KEYCODE_ALT_RIGHT, android.view.KeyEvent.KEYCODE_SHIFT_LEFT, android.view.KeyEvent.KEYCODE_SHIFT_RIGHT)) return@onPreviewKeyEvent true
+                        if (native.keyCode == android.view.KeyEvent.KEYCODE_ESCAPE || native.keyCode == android.view.KeyEvent.KEYCODE_BACK) {
+                            listeningFor = null
+                            return@onPreviewKeyEvent true
+                        }
+                        val chord = ShortcutChord(native.keyCode, native.isCtrlPressed, native.isAltPressed, native.isShiftPressed)
+                        onChange(settings.copy(shortcutBindings = CspShortcutResolver.replace(settings.shortcutBindings, action, chord)))
+                        listeningFor = null
+                        true
+                    },
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                item { Text(tr("Tap Change, then press a Toolbox or keyboard combination. Assigning a combination already in use moves it to the new action.", "点击“更改”，然后按下 Toolbox 或键盘组合键。已占用的组合键会自动移到新操作。"), color = MutedInk, fontSize = 12.sp) }
+                items(ShortcutAction.entries, key = { it.name }) { action ->
+                    val chords = settings.shortcutBindings.filter { it.action == action }.map { CspShortcutResolver.display(it.chord) }
+                    ListItem(
+                        headlineContent = { Text(shortcutActionLabel(action), fontSize = 13.sp) },
+                        supportingContent = { Text(if (listeningFor == action) tr("Press a key combination…", "请按组合键…") else chords.joinToString(" / ").ifBlank { tr("Not assigned", "未分配") }, color = if (listeningFor == action) Sage else MutedInk) },
+                        trailingContent = {
+                            Row {
+                                if (chords.isNotEmpty()) IconButton(onClick = { onChange(settings.copy(shortcutBindings = settings.shortcutBindings.filterNot { it.action == action })) }) { Icon(Icons.Outlined.LinkOff, tr("Remove shortcut", "移除快捷键")) }
+                                TextButton(onClick = { listeningFor = action }) { Text(tr("Change", "更改")) }
+                            }
+                        },
+                        colors = ListItemDefaults.colors(containerColor = if (listeningFor == action) SageContainer else Color.Transparent),
+                    )
+                }
+                item { OutlinedButton(onClick = { onChange(settings.copy(shortcutBindings = CspShortcutResolver.defaultBindings)); listeningFor = null }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.RestartAlt, null); Spacer(Modifier.width(8.dp)); Text(tr("Restore CSP defaults", "恢复 CSP 默认键位")) } }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(tr("Done", "完成")) } },
+    )
+}
+
+@Composable
+private fun shortcutActionLabel(action: ShortcutAction): String = when (action) {
+    ShortcutAction.PEN_OR_PENCIL_GROUP -> tr("Switch pen / pencil group", "切换钢笔／铅笔组")
+    ShortcutAction.BRUSH_GROUP -> tr("Switch brush group", "切换 Brushes 组")
+    ShortcutAction.TOGGLE_ERASER -> tr("Toggle eraser and previous tool", "橡皮与上一工具切换")
+    ShortcutAction.SELECT_TOOL -> tr("Selection tool", "选择工具")
+    ShortcutAction.BRUSH_SIZE_DECREASE -> tr("Decrease brush size", "减小笔刷大小")
+    ShortcutAction.BRUSH_SIZE_INCREASE -> tr("Increase brush size", "增大笔刷大小")
+    ShortcutAction.OPACITY_DECREASE -> tr("Decrease opacity", "降低不透明度")
+    ShortcutAction.OPACITY_INCREASE -> tr("Increase opacity", "提高不透明度")
+    ShortcutAction.PREVIOUS_BRUSH -> tr("Previous brush", "上一个笔刷")
+    ShortcutAction.NEXT_BRUSH -> tr("Next brush", "下一个笔刷")
+    ShortcutAction.UNDO -> tr("Undo", "撤销")
+    ShortcutAction.REDO -> tr("Redo", "重做")
+    ShortcutAction.FIT_PAGE -> tr("Fit page", "适合页面")
+    ShortcutAction.TOGGLE_PANELS -> tr("Hide / show panels", "隐藏／显示面板")
+    ShortcutAction.SAVE_CHECKPOINT -> tr("Save checkpoint", "保存检查点")
 }
 
 @Composable
