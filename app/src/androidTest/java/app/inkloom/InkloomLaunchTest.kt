@@ -2,7 +2,9 @@ package app.inkloom
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.doubleClick
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -93,5 +95,19 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("Pen controls").assertIsDisplayed()
         composeRule.onNodeWithText("Palette position").assertIsDisplayed()
         composeRule.onNodeWithText("Opacity", substring = true).assertIsDisplayed()
+    }
+
+    @Test fun layerPanelDuplicatesAndMergesAContentLayer() {
+        composeRule.onNodeWithText("New Note").performClick()
+        composeRule.onNodeWithContentDescription("Layers").performClick()
+        composeRule.onAllNodes(hasContentDescription("Layer actions")).onFirst().performClick()
+        composeRule.onNodeWithText("Duplicate layer").performClick()
+
+        composeRule.onNodeWithText("Objects copy").assertIsDisplayed()
+        composeRule.onAllNodes(hasContentDescription("Layer actions")).onFirst().performClick()
+        composeRule.onNodeWithText("Merge down").performClick()
+
+        assertTrue(composeRule.onAllNodes(hasText("Objects copy")).fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithText("Objects").assertIsDisplayed()
     }
 }

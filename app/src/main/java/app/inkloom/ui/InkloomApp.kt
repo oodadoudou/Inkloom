@@ -211,6 +211,8 @@ fun InkloomApp(initialIntent: Intent?) {
             onToggleLayerVisibility = viewModel::toggleLayerVisibility,
             onToggleLayerLock = viewModel::toggleLayerLock,
             onMoveLayer = viewModel::moveLayer,
+            onDuplicateLayer = viewModel::duplicateLayer,
+            onMergeLayerDown = viewModel::mergeLayerDown,
             onDeleteLayer = viewModel::deleteLayer,
             onStroke = viewModel::addStroke,
             onRemoveStroke = viewModel::removeStroke,
@@ -422,6 +424,8 @@ private fun EditorScreen(
     onToggleLayerVisibility: (String, String, String) -> Unit,
     onToggleLayerLock: (String, String, String) -> Unit,
     onMoveLayer: (String, String, String, Int) -> Unit,
+    onDuplicateLayer: (String, String, String) -> String?,
+    onMergeLayerDown: (String, String, String) -> String?,
     onDeleteLayer: (String, String, String) -> Unit,
     onStroke: (String, String, InkStroke) -> Unit,
     onRemoveStroke: (String, String, String) -> Unit,
@@ -634,6 +638,8 @@ private fun EditorScreen(
                 onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
                 onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
                 onMove = { layerId, delta -> onMoveLayer(document.id, selectedPage.id, layerId, delta) },
+                onDuplicate = { layerId -> onDuplicateLayer(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
+                onMergeDown = { layerId -> onMergeLayerDown(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
                 onDelete = { onDeleteLayer(document.id, selectedPage.id, it) },
             )
             if (brushesOpen) BrushPanel(
@@ -1674,6 +1680,8 @@ private fun LayerPanel(
     onVisibility: (String) -> Unit,
     onLock: (String) -> Unit,
     onMove: (String, Int) -> Unit,
+    onDuplicate: (String) -> Unit,
+    onMergeDown: (String) -> Unit,
     onDelete: (String) -> Unit,
 ) {
     var renameLayer by remember { mutableStateOf<InkLayer?>(null) }
@@ -1715,6 +1723,8 @@ private fun LayerPanel(
                                 DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; renameLayer = layer; renameValue = layer.name })
                                 DropdownMenuItem(text = { Text("Move up") }, enabled = page.layers.last().id != layer.id, onClick = { menu = false; onMove(layer.id, 1) })
                                 DropdownMenuItem(text = { Text("Move down") }, enabled = page.layers.first().id != layer.id, onClick = { menu = false; onMove(layer.id, -1) })
+                                if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text("Duplicate layer") }, onClick = { menu = false; onDuplicate(layer.id) })
+                                if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text("Merge down") }, enabled = LayerOperations.canMergeDown(page, layer.id), onClick = { menu = false; onMergeDown(layer.id) })
                                 if (layer.role == LayerRole.CUSTOM) DropdownMenuItem(text = { Text("Delete layer") }, onClick = { menu = false; onDelete(layer.id) })
                             }
                         }

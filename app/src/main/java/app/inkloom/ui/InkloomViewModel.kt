@@ -182,6 +182,20 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         if (from < 0 || from == to) page else page.copy(layers = page.layers.toMutableList().apply { add(to, removeAt(from)) })
     }
 
+    fun duplicateLayer(documentId: String, pageId: String, layerId: String): String? {
+        val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return null
+        val result = LayerOperations.duplicate(page, layerId) ?: return null
+        updatePage(documentId, pageId) { result.page }
+        return result.activeLayerId
+    }
+
+    fun mergeLayerDown(documentId: String, pageId: String, layerId: String): String? {
+        val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return null
+        val result = LayerOperations.mergeDown(page, layerId) ?: return null
+        updatePage(documentId, pageId) { result.page }
+        return result.activeLayerId
+    }
+
     fun deleteLayer(documentId: String, pageId: String, layerId: String) = updatePage(documentId, pageId) { page ->
         val layer = page.layers.firstOrNull { it.id == layerId } ?: return@updatePage page
         if (layer.role != LayerRole.CUSTOM) page else page.copy(
