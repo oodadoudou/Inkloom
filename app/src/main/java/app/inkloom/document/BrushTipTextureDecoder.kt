@@ -32,10 +32,14 @@ object BrushTipTextureDecoder {
             }
             val pixels = IntArray(source.width * source.height)
             source.getPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
+            val darkBackground = hasDarkBackground(pixels, source.width, source.height)
             pixels.indices.forEach { index ->
                 val pixel = pixels[index]
                 val luminance = (Color.red(pixel) * .299f + Color.green(pixel) * .587f + Color.blue(pixel) * .114f).toInt()
-                val base = (255 - luminance) / 255f
+                // CSP/ABR commonly store black paint on white. Procreate also
+                // permits the inverse convention, so infer it from the quiet
+                // corners and normalize both sources to a white alpha mask.
+                val base = if (darkBackground) luminance / 255f else (255 - luminance) / 255f
                 val shaped = base.toDouble()
                     .pow((1.8f - hardness.coerceIn(0f, 1f) * 1.5f).toDouble())
                     .toFloat()
@@ -79,4 +83,37 @@ object BrushTipTextureDecoder {
             grain?.recycle()
         }
     }.getOrNull()
+
+    private fun hasDarkBackground(pixels: IntArray, width: Int, height: Int): Boolean {
+        val sampleWidth = (width / 16).coerceIn(1, 64)
+        val sampleHeight = (height / 16).coerceIn(1, 64)
+        var luminance = 0L
+        var samples = 0L
+        fun sample(left: Int, top: Int) {
+            for (y in top until (top + sampleHeight).coerceAtMost(height)) {
+                for (x in left until (left + sampleWidth).coerceAtMost(width)) {
+                    val pixel = pixels[y * width + x]
+                    if (Color.alpha(pixel) < 16) continue
+                    luminance += (Color.red(pixel) * 299L + Color.green(pixel) * 587L + Color.blue(pixel) * 114L) / 1000L
+                    samples++
+                }
+            }
+        }
+        sample(0, 0)
+        sample((width - sampleWidth).coerceAtLeast(0), 0)
+        sample(0, (height - sampleHeight).coerceAtLeast(0))
+        sample((width - sampleWidth).coerceAtLeast(0), (height - sampleHeight).coerceAtLeast(0))
+        if (samples == 0L) return false
+        val background = luminance.toFloat() / samples
+        if (background >= 127.5f) return false
+        val brightThreshold = (background + 32f).coerceAtMost(224f)
+        val requiredBrightPixels = (pixels.size / 1_000).coerceAtLeast(1)
+        var brightPixels = 0
+        for (pixel in pixels) {
+            if (Color.alpha(pixel) < 16) continue
+            val value = (Color.red(pixel) * 299f + Color.green(pixel) * 587f + Color.blue(pixel) * 114f) / 1000f
+            if (value > brightThreshold && ++brightPixels >= requiredBrightPixels) return true
+        }
+        return false
+    }
 }

@@ -47,8 +47,34 @@ class BrushTipTextureDecoderTest {
         }
     }
 
-    private fun writePng(file: File, pixels: IntArray) {
-        val bitmap = Bitmap.createBitmap(pixels, 2, 1, Bitmap.Config.ARGB_8888)
+    @Test
+    fun shapeMaskNormalizesBothLightAndDarkBackgroundConventions() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val root = File(context.cacheDir, "brush-shape-convention-${System.nanoTime()}").apply { mkdirs() }
+        try {
+            val lightFile = File(root, "light.png")
+            val darkFile = File(root, "dark.png")
+            val lightPixels = IntArray(64) { Color.WHITE }.also { it[27] = Color.BLACK; it[28] = Color.BLACK; it[35] = Color.BLACK; it[36] = Color.BLACK }
+            val darkPixels = IntArray(64) { Color.BLACK }.also { it[27] = Color.WHITE; it[28] = Color.WHITE; it[35] = Color.WHITE; it[36] = Color.WHITE }
+            writePng(lightFile, lightPixels, 8, 8)
+            writePng(darkFile, darkPixels, 8, 8)
+
+            val light = BrushTipTextureDecoder.decode(lightFile.absolutePath, 1f, null, 0f)!!
+            val dark = BrushTipTextureDecoder.decode(darkFile.absolutePath, 1f, null, 0f)!!
+
+            assertEquals(0, Color.alpha(light.getPixel(0, 0)))
+            assertEquals(255, Color.alpha(light.getPixel(3, 3)))
+            assertEquals(0, Color.alpha(dark.getPixel(0, 0)))
+            assertEquals(255, Color.alpha(dark.getPixel(3, 3)))
+            light.recycle()
+            dark.recycle()
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    private fun writePng(file: File, pixels: IntArray, width: Int = 2, height: Int = 1) {
+        val bitmap = Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
         file.outputStream().use { output ->
             check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
         }
