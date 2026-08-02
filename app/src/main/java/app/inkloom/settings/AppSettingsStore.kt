@@ -6,6 +6,11 @@ data class AppSettings(
     val language: UiLanguage = UiLanguage.ENGLISH,
     val fingerDrawing: Boolean = false,
     val showPageRail: Boolean = true,
+    val showBrushPanel: Boolean = false,
+    val showLayerPanel: Boolean = false,
+    val pagePanelDock: WorkspacePanelDock = WorkspacePanelDock.LEFT,
+    val brushPanelDock: WorkspacePanelDock = WorkspacePanelDock.RIGHT,
+    val layerPanelDock: WorkspacePanelDock = WorkspacePanelDock.RIGHT,
     val showToolbar: Boolean = true,
     val toolbarOffsetXDp: Float = 16f,
     val toolbarOffsetYDp: Float = 16f,
@@ -34,6 +39,7 @@ data class AppSettings(
 
 enum class StylusButtonAction { ERASER, LASSO, NONE }
 enum class ToolbarDock { FREE, TOP, BOTTOM, LEFT, RIGHT }
+enum class WorkspacePanelDock { LEFT, RIGHT }
 enum class SelectionShape { FREEFORM, RECTANGLE }
 enum class SelectionMode { REPLACE, ADD, SUBTRACT, INTERSECT }
 enum class SelectionFilter { ALL, ACTIVE_LAYER, CURRENT_BRUSH, CURRENT_COLOR }
@@ -49,6 +55,11 @@ class AppSettingsStore(context: Context) {
             language = enumValue(preferences.getString("language", null), systemLanguage),
             fingerDrawing = preferences.getBoolean("fingerDrawing", false),
             showPageRail = preferences.getBoolean("showPageRail", true),
+            showBrushPanel = preferences.getBoolean("showBrushPanel", false),
+            showLayerPanel = preferences.getBoolean("showLayerPanel", false),
+            pagePanelDock = enumValue(preferences.getString("pagePanelDock", null), WorkspacePanelDock.LEFT),
+            brushPanelDock = enumValue(preferences.getString("brushPanelDock", null), WorkspacePanelDock.RIGHT),
+            layerPanelDock = enumValue(preferences.getString("layerPanelDock", null), WorkspacePanelDock.RIGHT),
             showToolbar = preferences.getBoolean("showToolbar", true),
             toolbarOffsetXDp = preferences.getFloat("toolbarOffsetXDp", 16f).coerceIn(-1200f, 1200f),
             toolbarOffsetYDp = preferences.getFloat("toolbarOffsetYDp", 16f).coerceIn(-1200f, 1200f),
@@ -81,6 +92,11 @@ class AppSettingsStore(context: Context) {
             .putString("language", value.language.name)
             .putBoolean("fingerDrawing", value.fingerDrawing)
             .putBoolean("showPageRail", value.showPageRail)
+            .putBoolean("showBrushPanel", value.showBrushPanel)
+            .putBoolean("showLayerPanel", value.showLayerPanel)
+            .putString("pagePanelDock", value.pagePanelDock.name)
+            .putString("brushPanelDock", value.brushPanelDock.name)
+            .putString("layerPanelDock", value.layerPanelDock.name)
             .putBoolean("showToolbar", value.showToolbar)
             .putFloat("toolbarOffsetXDp", value.toolbarOffsetXDp)
             .putFloat("toolbarOffsetYDp", value.toolbarOffsetYDp)
