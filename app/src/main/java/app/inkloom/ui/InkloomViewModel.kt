@@ -164,7 +164,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         page.copy(customNumber = customNumber?.trim()?.ifBlank { null }, tags = normalizeTags(tags))
     }
     fun clearPageInk(documentId: String, pageId: String) = updatePage(documentId, pageId) { page ->
-        val locked = page.layers.filter { it.locked }.mapTo(mutableSetOf()) { it.id }
+        val locked = page.layers.filter { LayerHierarchy.effectiveLocked(page.layers, it) }.mapTo(mutableSetOf()) { it.id }
         page.copy(strokes = page.strokes.filter { it.layerId in locked })
     }
     fun setPageCrop(documentId: String, pageId: String, crop: PageCrop) = updatePage(documentId, pageId) { page ->
@@ -180,6 +180,11 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         page.copy(layers = page.layers + InkLayer(name = if (name == "Layer") "Layer $suffix" else name.trim().ifBlank { "Layer $suffix" }))
     }
 
+    fun addLayerFolder(documentId: String, pageId: String) = updatePage(documentId, pageId) { page ->
+        val suffix = page.layers.count { it.role == LayerRole.FOLDER } + 1
+        page.copy(layers = page.layers + InkLayer(name = "Folder $suffix", role = LayerRole.FOLDER))
+    }
+
     fun renameLayer(documentId: String, pageId: String, layerId: String, name: String) = updatePage(documentId, pageId) { page ->
         page.copy(layers = page.layers.map { if (it.id == layerId) it.copy(name = name.trim().ifBlank { it.name }) else it })
     }
@@ -193,11 +198,19 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun setLayerOpacity(documentId: String, pageId: String, layerId: String, opacity: Float) = updatePage(documentId, pageId) { page ->
-        page.copy(layers = page.layers.map { if (it.id == layerId && it.role != LayerRole.BACKGROUND) it.copy(opacity = opacity.coerceIn(0f, 1f)) else it })
+        page.copy(layers = page.layers.map { if (it.id == layerId && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) it.copy(opacity = opacity.coerceIn(0f, 1f)) else it })
     }
 
     fun setLayerBlendMode(documentId: String, pageId: String, layerId: String, blendMode: LayerBlendMode) = updatePage(documentId, pageId) { page ->
-        page.copy(layers = page.layers.map { if (it.id == layerId && it.role != LayerRole.BACKGROUND) it.copy(blendMode = blendMode) else it })
+        page.copy(layers = page.layers.map { if (it.id == layerId && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) it.copy(blendMode = blendMode) else it })
+    }
+
+    fun moveLayerToFolder(documentId: String, pageId: String, layerId: String, folderId: String?) = updatePage(documentId, pageId) { page ->
+        LayerHierarchy.moveToFolder(page, layerId, folderId)
+    }
+
+    fun toggleLayerFolderCollapsed(documentId: String, pageId: String, folderId: String) = updatePage(documentId, pageId) { page ->
+        page.copy(layers = page.layers.map { if (it.id == folderId && it.role == LayerRole.FOLDER) it.copy(collapsed = !it.collapsed) else it })
     }
 
     fun moveLayer(documentId: String, pageId: String, layerId: String, delta: Int) = updatePage(documentId, pageId) { page ->
@@ -222,16 +235,20 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
 
     fun deleteLayer(documentId: String, pageId: String, layerId: String) = updatePage(documentId, pageId) { page ->
         val layer = page.layers.firstOrNull { it.id == layerId } ?: return@updatePage page
-        if (layer.role != LayerRole.CUSTOM) page else page.copy(
-            layers = page.layers.filterNot { it.id == layerId },
-            strokes = page.strokes.map { if (it.layerId == layerId) it.copy(layerId = LayerIds.INK) else it },
-            elements = page.elements.map { element -> if (element.layerId == layerId) element.withLayer(LayerIds.OBJECTS) else element },
-        )
+        when (layer.role) {
+            LayerRole.FOLDER -> LayerHierarchy.removeFolder(page, layerId)
+            LayerRole.CUSTOM -> page.copy(
+                layers = page.layers.filterNot { it.id == layerId },
+                strokes = page.strokes.map { if (it.layerId == layerId) it.copy(layerId = LayerIds.INK) else it },
+                elements = page.elements.map { element -> if (element.layerId == layerId) element.withLayer(LayerIds.OBJECTS) else element },
+            )
+            else -> page
+        }
     }
 
     fun addStroke(documentId: String, pageId: String, stroke: InkStroke) {
         val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return
-        if (page.layers.none { it.id == stroke.layerId && it.visible && !it.locked }) return
+        if (page.layers.none { it.id == stroke.layerId && it.role != LayerRole.FOLDER && LayerHierarchy.effectiveVisible(page.layers, it) && !LayerHierarchy.effectiveLocked(page.layers, it) }) return
         store.append(JournalEntry.StrokeAdded(documentId, pageId, stroke)); refreshSelection()
     }
     fun removeStroke(documentId: String, pageId: String, strokeId: String) {

@@ -39,6 +39,9 @@ class InkloomLaunchTest {
                     .getSharedPreferences("inkloom_settings", android.content.Context.MODE_PRIVATE)
                     .edit()
                     .putString("language", "ENGLISH")
+                    .putBoolean("showLayerPanel", false)
+                    .putBoolean("showBrushPanel", false)
+                    .putBoolean("showPageRail", true)
                     .commit()
                 base.evaluate()
             }
@@ -163,5 +166,21 @@ class InkloomLaunchTest {
 
         assertTrue(composeRule.onAllNodes(hasText("Objects copy")).fetchSemanticsNodes().isEmpty())
         composeRule.onNodeWithText("Objects").assertIsDisplayed()
+    }
+
+    @Test fun layerPanelCreatesFoldersMovesLayersAndCollapsesChildren() {
+        createNotebookAndOpenEditor()
+        composeRule.onNodeWithContentDescription("Layers").performClick()
+        composeRule.onNodeWithContentDescription("Add layer folder").performClick()
+        composeRule.onNodeWithContentDescription("Add layer").performClick()
+
+        composeRule.onNodeWithText("Folder 1").assertIsDisplayed()
+        composeRule.onNodeWithText("Layer 1").assertIsDisplayed()
+        composeRule.onAllNodes(hasContentDescription("Layer actions")).onFirst().performClick()
+        composeRule.onNodeWithText("Move into Folder 1").performClick()
+        composeRule.onNodeWithContentDescription("Collapse folder").performClick()
+
+        assertTrue(composeRule.onAllNodes(hasText("Layer 1")).fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithText("Folder 1").assertIsDisplayed()
     }
 }

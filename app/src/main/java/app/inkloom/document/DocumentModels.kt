@@ -86,7 +86,7 @@ object LayerIds {
 }
 
 @Serializable
-enum class LayerRole { BACKGROUND, INK, HIGHLIGHT, OBJECTS, CUSTOM }
+enum class LayerRole { BACKGROUND, INK, HIGHLIGHT, OBJECTS, CUSTOM, FOLDER }
 
 @Serializable
 enum class LayerBlendMode { NORMAL, MULTIPLY, SCREEN, ADD }
@@ -100,6 +100,8 @@ data class InkLayer(
     val locked: Boolean = false,
     val opacity: Float = 1f,
     val blendMode: LayerBlendMode = LayerBlendMode.NORMAL,
+    val parentId: String? = null,
+    val collapsed: Boolean = false,
 )
 
 fun defaultInkLayers(): List<InkLayer> = listOf(

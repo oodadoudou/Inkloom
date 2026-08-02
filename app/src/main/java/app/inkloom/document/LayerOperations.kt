@@ -16,7 +16,7 @@ object LayerOperations {
         val sourceIndex = page.layers.indexOfFirst { it.id == sourceLayerId }
         if (sourceIndex < 0) return null
         val source = page.layers[sourceIndex]
-        if (source.role == LayerRole.BACKGROUND) return null
+        if (source.role in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) return null
 
         val duplicateId = nextId()
         val duplicate = source.copy(
@@ -46,8 +46,8 @@ object LayerOperations {
         if (sourceIndex <= 0) return false
         val source = page.layers[sourceIndex]
         val target = page.layers[sourceIndex - 1]
-        return source.role != LayerRole.BACKGROUND &&
-            target.role != LayerRole.BACKGROUND &&
+        return source.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) &&
+            target.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) &&
             !source.locked && !target.locked &&
             source.visible == target.visible &&
             source.blendMode == LayerBlendMode.NORMAL &&

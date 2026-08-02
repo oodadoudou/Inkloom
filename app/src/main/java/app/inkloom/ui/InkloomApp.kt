@@ -468,11 +468,14 @@ fun InkloomApp(initialIntent: Intent?) {
             onSetPageCrop = viewModel::setPageCrop,
             onRotatePage = viewModel::rotatePageClockwise,
             onAddLayer = viewModel::addLayer,
+            onAddLayerFolder = viewModel::addLayerFolder,
             onRenameLayer = viewModel::renameLayer,
             onToggleLayerVisibility = viewModel::toggleLayerVisibility,
             onToggleLayerLock = viewModel::toggleLayerLock,
             onSetLayerOpacity = viewModel::setLayerOpacity,
             onSetLayerBlendMode = viewModel::setLayerBlendMode,
+            onMoveLayerToFolder = viewModel::moveLayerToFolder,
+            onToggleLayerFolderCollapsed = viewModel::toggleLayerFolderCollapsed,
             onMoveLayer = viewModel::moveLayer,
             onDuplicateLayer = viewModel::duplicateLayer,
             onMergeLayerDown = viewModel::mergeLayerDown,
@@ -739,11 +742,14 @@ private fun EditorScreen(
     onSetPageCrop: (String, String, PageCrop) -> Unit,
     onRotatePage: (String, String) -> Unit,
     onAddLayer: (String, String, String) -> Unit,
+    onAddLayerFolder: (String, String) -> Unit,
     onRenameLayer: (String, String, String, String) -> Unit,
     onToggleLayerVisibility: (String, String, String) -> Unit,
     onToggleLayerLock: (String, String, String) -> Unit,
     onSetLayerOpacity: (String, String, String, Float) -> Unit,
     onSetLayerBlendMode: (String, String, String, LayerBlendMode) -> Unit,
+    onMoveLayerToFolder: (String, String, String, String?) -> Unit,
+    onToggleLayerFolderCollapsed: (String, String, String) -> Unit,
     onMoveLayer: (String, String, String, Int) -> Unit,
     onDuplicateLayer: (String, String, String) -> String?,
     onMergeLayerDown: (String, String, String) -> String?,
@@ -830,7 +836,7 @@ private fun EditorScreen(
     var layersBeforeShortcut by remember { mutableStateOf(false) }
     LaunchedEffect(selectedPage.layers) {
         val active = selectedPage.layers.firstOrNull { it.id == activeLayerId }
-        if (active == null || active.locked || !active.visible || active.role == LayerRole.BACKGROUND) activeLayerId = selectedPage.layers.firstOrNull { it.visible && !it.locked && it.role != LayerRole.BACKGROUND }?.id ?: LayerIds.INK
+        if (active == null || LayerHierarchy.effectiveLocked(selectedPage.layers, active) || !LayerHierarchy.effectiveVisible(selectedPage.layers, active) || active.role in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) activeLayerId = selectedPage.layers.firstOrNull { LayerHierarchy.effectiveVisible(selectedPage.layers, it) && !LayerHierarchy.effectiveLocked(selectedPage.layers, it) && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) }?.id ?: LayerIds.INK
     }
     val allChangesSavedMessage = tr("All changes are saved.", "所有更改均已保存。")
     val inkOnlyClipboardMessage = tr("Clipboard actions currently apply to ink selections.", "剪贴板操作目前仅适用于墨迹选区。")
@@ -897,11 +903,14 @@ private fun EditorScreen(
                 onColor = { brushColor = it },
                 onSelect = { activeLayerId = it },
                 onAdd = { onAddLayer(document.id, selectedPage.id, "Layer") },
+                onAddFolder = { onAddLayerFolder(document.id, selectedPage.id) },
                 onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
                 onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
                 onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
                 onOpacity = { layerId, value -> onSetLayerOpacity(document.id, selectedPage.id, layerId, value) },
                 onBlendMode = { layerId, mode -> onSetLayerBlendMode(document.id, selectedPage.id, layerId, mode) },
+                onMoveToFolder = { layerId, folderId -> onMoveLayerToFolder(document.id, selectedPage.id, layerId, folderId) },
+                onToggleFolderCollapsed = { onToggleLayerFolderCollapsed(document.id, selectedPage.id, it) },
                 onMove = { layerId, delta -> onMoveLayer(document.id, selectedPage.id, layerId, delta) },
                 onDuplicate = { layerId -> onDuplicateLayer(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
                 onMergeDown = { layerId -> onMergeLayerDown(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
@@ -1162,11 +1171,14 @@ private fun EditorScreen(
                 onColor = { brushColor = it },
                 onSelect = { activeLayerId = it },
                 onAdd = { onAddLayer(document.id, selectedPage.id, "Layer") },
+                onAddFolder = { onAddLayerFolder(document.id, selectedPage.id) },
                 onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
                 onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
                 onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
                 onOpacity = { layerId, value -> onSetLayerOpacity(document.id, selectedPage.id, layerId, value) },
                 onBlendMode = { layerId, mode -> onSetLayerBlendMode(document.id, selectedPage.id, layerId, mode) },
+                onMoveToFolder = { layerId, folderId -> onMoveLayerToFolder(document.id, selectedPage.id, layerId, folderId) },
+                onToggleFolderCollapsed = { onToggleLayerFolderCollapsed(document.id, selectedPage.id, it) },
                 onMove = { layerId, delta -> onMoveLayer(document.id, selectedPage.id, layerId, delta) },
                 onDuplicate = { layerId -> onDuplicateLayer(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
                 onMergeDown = { layerId -> onMergeLayerDown(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
@@ -1453,8 +1465,8 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
     val background = remember(page.id, page.background, page.backgroundRotationQuarterTurns, page.crop, backgroundVisible) { if (backgroundVisible) runCatching { assets.renderBackground(page.background, 1200, page.backgroundRotationQuarterTurns, page.crop) }.getOrNull() else null }
     DisposableEffect(background) { onDispose { background?.recycle() } }
     val paperColor = (page.background as? PageBackground.Paper)?.colorArgb?.let(::Color) ?: Color.White
-    val visibleLayerIds = page.layers.filter { it.visible }.mapTo(mutableSetOf()) { it.id }
-    val lockedLayerIds = page.layers.filter { it.locked }.mapTo(mutableSetOf()) { it.id }
+    val visibleLayerIds = page.layers.filter { LayerHierarchy.effectiveVisible(page.layers, it) && it.role != LayerRole.FOLDER }.mapTo(mutableSetOf()) { it.id }
+    val lockedLayerIds = page.layers.filter { LayerHierarchy.effectiveLocked(page.layers, it) || it.role == LayerRole.FOLDER }.mapTo(mutableSetOf()) { it.id }
     val layerOpacities = page.layers.associate { it.id to it.opacity }
     val layerBlendModes = page.layers.associate { it.id to it.blendMode }
     val layerOrder = page.layers.mapIndexed { index, layer -> layer.id to index }.toMap()
@@ -2353,11 +2365,14 @@ private fun LayerPanel(
     onColor: (Int) -> Unit,
     onSelect: (String) -> Unit,
     onAdd: () -> Unit,
+    onAddFolder: () -> Unit,
     onRename: (String, String) -> Unit,
     onVisibility: (String) -> Unit,
     onLock: (String) -> Unit,
     onOpacity: (String, Float) -> Unit,
     onBlendMode: (String, LayerBlendMode) -> Unit,
+    onMoveToFolder: (String, String?) -> Unit,
+    onToggleFolderCollapsed: (String) -> Unit,
     onMove: (String, Int) -> Unit,
     onDuplicate: (String) -> Unit,
     onMergeDown: (String) -> Unit,
@@ -2383,10 +2398,11 @@ private fun LayerPanel(
             }
             IconButton(onClick = { onDock(if (dock == WorkspacePanelDock.LEFT) WorkspacePanelDock.RIGHT else WorkspacePanelDock.LEFT) }) { Icon(if (dock == WorkspacePanelDock.LEFT) Icons.Outlined.ChevronRight else Icons.Outlined.ChevronLeft, tr("Move layers panel", "移动图层面板")) }
             IconButton(onClick = onClose) { Icon(Icons.Outlined.Close, tr("Close layers panel", "关闭图层面板")) }
+            IconButton(onClick = onAddFolder) { Icon(Icons.Outlined.CreateNewFolder, tr("Add layer folder", "添加图层文件夹")) }
             IconButton(onClick = onAdd) { Icon(Icons.Default.Add, tr("Add layer", "添加图层")) }
         }
         Spacer(Modifier.height(8.dp))
-        page.layers.firstOrNull { it.id == activeLayerId }?.takeIf { it.role != LayerRole.BACKGROUND }?.let { activeLayer ->
+        page.layers.firstOrNull { it.id == activeLayerId }?.takeIf { it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) }?.let { activeLayer ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(tr("Opacity", "不透明度"), Modifier.weight(1f), color = MutedInk, fontSize = 11.sp)
                 Text("${(activeLayer.opacity * 100f).toInt()}%", color = MutedInk, fontSize = 11.sp)
@@ -2411,25 +2427,29 @@ private fun LayerPanel(
             }
         }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-            items(page.layers.asReversed(), key = { it.id }) { layer ->
+            items(LayerHierarchy.panelOrder(page.layers), key = { it.id }) { layer ->
                 var menu by remember { mutableStateOf(false) }
-                val editable = layer.visible && !layer.locked && layer.role != LayerRole.BACKGROUND
+                val effectivelyVisible = LayerHierarchy.effectiveVisible(page.layers, layer)
+                val effectivelyLocked = LayerHierarchy.effectiveLocked(page.layers, layer)
+                val editable = effectivelyVisible && !effectivelyLocked && layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)
+                val depth = LayerHierarchy.depth(page.layers, layer)
                 Card(
-                    modifier = Modifier.fillMaxWidth().clickable(enabled = editable) { onSelect(layer.id) },
+                    modifier = Modifier.fillMaxWidth().padding(start = (depth * 16).dp).clickable(enabled = editable) { onSelect(layer.id) },
                     colors = CardDefaults.cardColors(containerColor = if (layer.id == activeLayerId) SageContainer else Color.White),
                     border = if (layer.id == activeLayerId) CardDefaults.outlinedCardBorder().copy(width = 2.dp, brush = androidx.compose.ui.graphics.SolidColor(Sage)) else CardDefaults.outlinedCardBorder(),
                 ) {
                     Row(Modifier.heightIn(min = 48.dp).padding(start = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            when (layer.role) { LayerRole.BACKGROUND -> Icons.Outlined.Image; LayerRole.HIGHLIGHT -> Icons.Outlined.BorderColor; LayerRole.OBJECTS -> Icons.Outlined.Widgets; else -> Icons.Outlined.Layers },
+                            when (layer.role) { LayerRole.BACKGROUND -> Icons.Outlined.Image; LayerRole.HIGHLIGHT -> Icons.Outlined.BorderColor; LayerRole.OBJECTS -> Icons.Outlined.Widgets; LayerRole.FOLDER -> if (layer.collapsed) Icons.Outlined.Folder else Icons.Outlined.FolderOpen; else -> Icons.Outlined.Layers },
                             contentDescription = null,
-                            tint = if (layer.visible) Ink else MutedInk,
+                            tint = if (effectivelyVisible) Ink else MutedInk,
                         )
                         Spacer(Modifier.width(7.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(layer.name, maxLines = 1, color = if (layer.visible) Ink else MutedInk)
-                            Text(when (layer.role) { LayerRole.BACKGROUND -> tr("Background", "背景"); LayerRole.INK -> tr("Ink", "墨迹"); LayerRole.HIGHLIGHT -> tr("Highlight", "高亮"); LayerRole.OBJECTS -> tr("Objects", "对象"); LayerRole.CUSTOM -> tr("Custom", "自定义") }, fontSize = 10.sp, color = MutedInk)
+                            Text(layer.name, maxLines = 1, color = if (effectivelyVisible) Ink else MutedInk)
+                            Text(when (layer.role) { LayerRole.BACKGROUND -> tr("Background", "背景"); LayerRole.INK -> tr("Ink", "墨迹"); LayerRole.HIGHLIGHT -> tr("Highlight", "高亮"); LayerRole.OBJECTS -> tr("Objects", "对象"); LayerRole.CUSTOM -> tr("Custom", "自定义"); LayerRole.FOLDER -> tr("Folder", "文件夹") }, fontSize = 10.sp, color = MutedInk)
                         }
+                        if (layer.role == LayerRole.FOLDER) IconButton(onClick = { onToggleFolderCollapsed(layer.id) }, modifier = Modifier.size(34.dp)) { Icon(if (layer.collapsed) Icons.Outlined.ExpandMore else Icons.Outlined.ExpandLess, if (layer.collapsed) tr("Expand folder", "展开文件夹") else tr("Collapse folder", "折叠文件夹"), Modifier.size(18.dp)) }
                         IconButton(onClick = { onVisibility(layer.id) }, modifier = Modifier.size(34.dp)) { Icon(if (layer.visible) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff, if (layer.visible) tr("Hide ${layer.name}", "隐藏 ${layer.name}") else tr("Show ${layer.name}", "显示 ${layer.name}"), Modifier.size(18.dp)) }
                         IconButton(onClick = { onLock(layer.id) }, modifier = Modifier.size(34.dp)) { Icon(if (layer.locked) Icons.Outlined.Lock else Icons.Outlined.LockOpen, if (layer.locked) tr("Unlock ${layer.name}", "解锁 ${layer.name}") else tr("Lock ${layer.name}", "锁定 ${layer.name}"), Modifier.size(18.dp)) }
                         Box {
@@ -2438,9 +2458,11 @@ private fun LayerPanel(
                                 DropdownMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { menu = false; renameLayer = layer; renameValue = layer.name })
                                 DropdownMenuItem(text = { Text(tr("Move up", "上移")) }, enabled = page.layers.last().id != layer.id, onClick = { menu = false; onMove(layer.id, 1) })
                                 DropdownMenuItem(text = { Text(tr("Move down", "下移")) }, enabled = page.layers.first().id != layer.id, onClick = { menu = false; onMove(layer.id, -1) })
-                                if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text(tr("Duplicate layer", "复制图层")) }, onClick = { menu = false; onDuplicate(layer.id) })
-                                if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text(tr("Merge down", "向下合并")) }, enabled = LayerOperations.canMergeDown(page, layer.id), onClick = { menu = false; onMergeDown(layer.id) })
-                                if (layer.role == LayerRole.CUSTOM) DropdownMenuItem(text = { Text(tr("Delete layer", "删除图层")) }, onClick = { menu = false; onDelete(layer.id) })
+                                if (layer.parentId != null) DropdownMenuItem(text = { Text(tr("Move out of folder", "移出文件夹")) }, onClick = { menu = false; onMoveToFolder(layer.id, null) })
+                                LayerHierarchy.availableFolders(page.layers, layer.id).forEach { folder -> DropdownMenuItem(text = { Text("${tr("Move into", "移入")} ${folder.name}") }, onClick = { menu = false; onMoveToFolder(layer.id, folder.id) }) }
+                                if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(tr("Duplicate layer", "复制图层")) }, onClick = { menu = false; onDuplicate(layer.id) })
+                                if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(tr("Merge down", "向下合并")) }, enabled = LayerOperations.canMergeDown(page, layer.id), onClick = { menu = false; onMergeDown(layer.id) })
+                                if (layer.role in setOf(LayerRole.CUSTOM, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(if (layer.role == LayerRole.FOLDER) tr("Delete folder", "删除文件夹") else tr("Delete layer", "删除图层")) }, onClick = { menu = false; onDelete(layer.id) })
                             }
                         }
                     }
