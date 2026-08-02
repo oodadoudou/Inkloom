@@ -1,11 +1,53 @@
+# Gradle and Kotlin generated state
 .gradle/
-.idea/
-local.properties
+.kotlin/
 **/build/
+
+# Local Android configuration and native build output
+local.properties
+.cxx/
+.externalNativeBuild/
+.navigation/
+captures/
+
+# Android Studio / IntelliJ user state
+.idea/
 *.iml
-.DS_Store
-.codex-artifacts/
-.toolchains/
+*.ipr
+*.iws
+
+# Signing keys and machine-local secrets
+*.jks
+*.keystore
+*.p12
+keystore.properties
+signing.properties
+secrets.properties
+google-services.json
+.env
+.env.*
+!.env.example
+
+# Local development toolchains and emulator data
 .android-sdk/
 .android-avd/
+.toolchains/
+
+# Codex-generated review and rendering artifacts
+.codex-artifacts/
+
+# Packaged binaries are reproducible from source
 dist/*.apk
+dist/*.aab
+!dist/.gitkeep
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+*.swo
+*~
+
+# macOS metadata
+.DS_Store
+._*
