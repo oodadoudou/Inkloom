@@ -190,6 +190,7 @@ class InkloomBrushPackage(private val assetDirectory: File) {
     private fun sanitize(source: ImportedBrush): ImportedBrush = source.copy(
         name = source.name.trim().ifBlank { "Imported Brush" }.take(120),
         report = source.report.map { it.take(500) }.distinct().take(64),
+        groupName = BrushGroupOperations.normalize(source.groupName),
         tags = source.tags.map(String::trim).filter(String::isNotBlank).distinct().take(24),
         grainDensity = finite(source.grainDensity, 0f).coerceIn(0f, 1f),
         grainScale = finite(source.grainScale, 100f).coerceIn(1f, 4000f),

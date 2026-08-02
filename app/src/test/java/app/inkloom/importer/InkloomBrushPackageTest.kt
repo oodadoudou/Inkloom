@@ -30,6 +30,7 @@ class InkloomBrushPackageTest {
                 compatibility = Compatibility.BASIC,
                 sizeBytes = source.length(),
                 report = listOf("Converted from an authorized source"),
+                groupName = "Textured sketching",
                 sourcePath = source.absolutePath,
                 sha256 = "source-hash",
                 tipPreviewPath = shape.absolutePath,

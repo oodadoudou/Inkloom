@@ -117,6 +117,7 @@ data class ImportedBrush(
     val waterEdgeBlurUnit: Int = 0,
     val favorite: Boolean = false,
     val hidden: Boolean = false,
+    val groupName: String = "",
     val tags: List<String> = emptyList(),
     val lastUsedAt: Long = 0L,
     val defaultOpacity: Float = 1f,

@@ -26,6 +26,7 @@ class BrushVersionHistoryStoreTest {
                 compatibility = Compatibility.BASIC,
                 sizeBytes = 123,
                 report = listOf("fixture"),
+                groupName = "Inking",
                 defaultSize = 8f,
                 defaultOpacity = .7f,
                 spacing = .2f,
@@ -47,6 +48,7 @@ class BrushVersionHistoryStoreTest {
             val restored = store.restore(current, persisted.last())
             assertEquals(current.id, restored.id)
             assertEquals("Original preset", restored.name)
+            assertEquals("Inking", restored.groupName)
             assertEquals(5f, restored.defaultSize, .0001f)
             assertTrue(restored.favorite)
             assertTrue(restored.hidden)
