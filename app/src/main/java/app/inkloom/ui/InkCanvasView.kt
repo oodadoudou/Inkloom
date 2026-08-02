@@ -132,6 +132,14 @@ class InkCanvasView(context: Context) : View(context) {
     var inkOpacity: Float = 1f
     var brushId: String = "system-pencil"
     var activeLayerId: String = app.inkloom.document.LayerIds.INK
+    var layerOpacities: Map<String, Float> = emptyMap()
+        set(value) {
+            val normalized = value.mapValues { (_, opacity) -> opacity.coerceIn(0f, 1f) }
+            if (field != normalized) {
+                field = normalized
+                resetStrokeTiles()
+            }
+        }
     var tipAssetPath: String? = null
     var tipAssetPaths: List<String> = emptyList()
     var dualTipAssetPaths: List<String> = emptyList()
@@ -447,13 +455,15 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun drawStroke(canvas: Canvas, stroke: InkStroke) {
-        if (stroke.masks.isEmpty()) {
-            drawStrokeContent(canvas, stroke)
+        val layerOpacity = layerOpacities[stroke.layerId] ?: 1f
+        val renderedStroke = if (layerOpacity < .999f) stroke.copy(opacity = stroke.opacity * layerOpacity) else stroke
+        if (renderedStroke.masks.isEmpty()) {
+            drawStrokeContent(canvas, renderedStroke)
             return
         }
         val checkpoint = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null)
-        drawStrokeContent(canvas, stroke)
-        StrokeMaskRenderer.draw(canvas, paint, stroke.masks, width, height)
+        drawStrokeContent(canvas, renderedStroke)
+        StrokeMaskRenderer.draw(canvas, paint, renderedStroke.masks, width, height)
         canvas.restoreToCount(checkpoint)
     }
 

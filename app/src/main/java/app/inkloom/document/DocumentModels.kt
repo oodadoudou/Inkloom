@@ -95,6 +95,7 @@ data class InkLayer(
     val role: LayerRole = LayerRole.CUSTOM,
     val visible: Boolean = true,
     val locked: Boolean = false,
+    val opacity: Float = 1f,
 )
 
 fun defaultInkLayers(): List<InkLayer> = listOf(

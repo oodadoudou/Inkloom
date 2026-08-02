@@ -399,13 +399,22 @@ class DocumentAssetService(private val context: Context) {
         val page = PageCropTransform.project(sourcePage)
         val visibleLayerIds = page.layers.filter { it.visible }.mapTo(mutableSetOf()) { it.id }
         val layerOrder = page.layers.mapIndexed { index, layer -> layer.id to index }.toMap()
+        val layerOpacities = page.layers.associate { it.id to it.opacity.coerceIn(0f, 1f) }
         val backgroundVisible = page.layers.firstOrNull { it.role == LayerRole.BACKGROUND }?.visible != false
         val paperColor = (page.background as? PageBackground.Paper)?.colorArgb?.toInt() ?: Color.WHITE
         canvas.drawColor(if (backgroundVisible) paperColor else Color.WHITE)
         if (backgroundVisible) renderBackground(sourcePage.background, width, sourcePage.backgroundRotationQuarterTurns, sourcePage.crop)?.let { bitmap -> canvas.drawBitmap(bitmap, null, android.graphics.Rect(0, 0, width, height), null); bitmap.recycle() }
         if (backgroundVisible) (page.background as? PageBackground.Paper)?.let { drawPaperPattern(canvas, it.pattern, width, height) }
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
-        drawStrokes(canvas, page.strokes.filter { it.layerId in visibleLayerIds }.sortedBy { layerOrder[it.layerId] ?: Int.MAX_VALUE }, width, height, paint)
+        drawStrokes(
+            canvas,
+            page.strokes.filter { it.layerId in visibleLayerIds }
+                .sortedBy { layerOrder[it.layerId] ?: Int.MAX_VALUE }
+                .map { stroke -> stroke.copy(opacity = stroke.opacity * (layerOpacities[stroke.layerId] ?: 1f)) },
+            width,
+            height,
+            paint,
+        )
         page.elements.filter { it.layerId in visibleLayerIds }.sortedBy { layerOrder[it.layerId] ?: Int.MAX_VALUE }.forEach { element ->
             val left = element.x * width
             val top = element.y * height
@@ -413,7 +422,7 @@ class DocumentAssetService(private val context: Context) {
             val bottom = top + element.height / page.height * height
             canvas.save()
             canvas.rotate(element.rotationDegrees, (left + right) / 2f, (top + bottom) / 2f)
-            paint.alpha = (element.opacity.coerceIn(.05f, 1f) * 255).toInt()
+            paint.alpha = ((element.opacity * (layerOpacities[element.layerId] ?: 1f)).coerceIn(0f, 1f) * 255).toInt()
             when (element) {
                 is PageElement.Text -> {
                     paint.style = Paint.Style.FILL; paint.color = element.colorArgb.toInt(); paint.textSize = element.textSize * width / page.width

@@ -80,4 +80,24 @@ class LayerOperationsTest {
         assertFalse(LayerOperations.canMergeDown(InkPage(), LayerIds.INK))
         assertNull(LayerOperations.mergeDown(page.copy(layers = page.layers.map { if (it.id == upper.id) it.copy(locked = true) else it }), upper.id))
     }
+
+    @Test fun mergeDownBakesBothLayerOpacitiesIntoTheirContent() {
+        val lower = InkLayer(id = "lower", name = "Lower", opacity = .5f)
+        val upper = InkLayer(id = "upper", name = "Upper", opacity = .25f)
+        val page = InkPage(
+            layers = defaultInkLayers() + lower + upper,
+            strokes = listOf(
+                InkStroke(id = "lower-stroke", layerId = lower.id, opacity = .8f, points = listOf(StrokePoint(.1f, .1f))),
+                InkStroke(id = "upper-stroke", layerId = upper.id, opacity = .6f, points = listOf(StrokePoint(.2f, .2f))),
+            ),
+            elements = listOf(PageElement.Text(id = "upper-text", x = .2f, y = .2f, layerId = upper.id, opacity = .4f, text = "Upper")),
+        )
+
+        val merged = LayerOperations.mergeDown(page, upper.id)!!.page
+
+        assertEquals(1f, merged.layers.first { it.id == lower.id }.opacity)
+        assertEquals(.4f, merged.strokes.first { it.id == "lower-stroke" }.opacity)
+        assertEquals(.15f, merged.strokes.first { it.id == "upper-stroke" }.opacity)
+        assertEquals(.1f, merged.elements.first { it.id == "upper-text" }.opacity)
+    }
 }

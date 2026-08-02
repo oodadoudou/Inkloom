@@ -192,6 +192,10 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         page.copy(layers = page.layers.map { if (it.id == layerId) it.copy(locked = !it.locked) else it })
     }
 
+    fun setLayerOpacity(documentId: String, pageId: String, layerId: String, opacity: Float) = updatePage(documentId, pageId) { page ->
+        page.copy(layers = page.layers.map { if (it.id == layerId && it.role != LayerRole.BACKGROUND) it.copy(opacity = opacity.coerceIn(0f, 1f)) else it })
+    }
+
     fun moveLayer(documentId: String, pageId: String, layerId: String, delta: Int) = updatePage(documentId, pageId) { page ->
         val from = page.layers.indexOfFirst { it.id == layerId }
         val to = (from + delta).coerceIn(0, page.layers.lastIndex)

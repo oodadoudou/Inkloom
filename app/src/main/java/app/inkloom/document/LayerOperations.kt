@@ -55,16 +55,17 @@ object LayerOperations {
     fun mergeDown(page: InkPage, sourceLayerId: String): LayerMutation? {
         if (!canMergeDown(page, sourceLayerId)) return null
         val sourceIndex = page.layers.indexOfFirst { it.id == sourceLayerId }
+        val source = page.layers[sourceIndex]
         val target = page.layers[sourceIndex - 1]
         val mergedStrokes = page.strokes.filterNot { it.layerId == sourceLayerId || it.layerId == target.id } +
-            page.strokes.filter { it.layerId == target.id } +
-            page.strokes.filter { it.layerId == sourceLayerId }.map { it.copy(layerId = target.id) }
+            page.strokes.filter { it.layerId == target.id }.map { it.copy(opacity = it.opacity * target.opacity) } +
+            page.strokes.filter { it.layerId == sourceLayerId }.map { it.copy(layerId = target.id, opacity = it.opacity * source.opacity) }
         val mergedElements = page.elements.filterNot { it.layerId == sourceLayerId || it.layerId == target.id } +
-            page.elements.filter { it.layerId == target.id } +
-            page.elements.filter { it.layerId == sourceLayerId }.map { it.withLayer(target.id) }
+            page.elements.filter { it.layerId == target.id }.map { it.withOpacity(it.opacity * target.opacity) } +
+            page.elements.filter { it.layerId == sourceLayerId }.map { it.withLayer(target.id).withOpacity(it.opacity * source.opacity) }
         return LayerMutation(
             page = page.copy(
-                layers = page.layers.filterNot { it.id == sourceLayerId },
+                layers = page.layers.filterNot { it.id == sourceLayerId }.map { if (it.id == target.id) it.copy(opacity = 1f) else it },
                 strokes = mergedStrokes,
                 elements = mergedElements,
             ),
@@ -101,5 +102,14 @@ object LayerOperations {
         is PageElement.Image -> copy(layerId = layerId)
         is PageElement.AudioMarker -> copy(layerId = layerId)
         is PageElement.Link -> copy(layerId = layerId)
+    }
+
+    private fun PageElement.withOpacity(value: Float): PageElement = when (this) {
+        is PageElement.Text -> copy(opacity = value)
+        is PageElement.Sticky -> copy(opacity = value)
+        is PageElement.Shape -> copy(opacity = value)
+        is PageElement.Image -> copy(opacity = value)
+        is PageElement.AudioMarker -> copy(opacity = value)
+        is PageElement.Link -> copy(opacity = value)
     }
 }

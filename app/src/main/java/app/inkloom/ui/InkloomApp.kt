@@ -471,6 +471,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onRenameLayer = viewModel::renameLayer,
             onToggleLayerVisibility = viewModel::toggleLayerVisibility,
             onToggleLayerLock = viewModel::toggleLayerLock,
+            onSetLayerOpacity = viewModel::setLayerOpacity,
             onMoveLayer = viewModel::moveLayer,
             onDuplicateLayer = viewModel::duplicateLayer,
             onMergeLayerDown = viewModel::mergeLayerDown,
@@ -740,6 +741,7 @@ private fun EditorScreen(
     onRenameLayer: (String, String, String, String) -> Unit,
     onToggleLayerVisibility: (String, String, String) -> Unit,
     onToggleLayerLock: (String, String, String) -> Unit,
+    onSetLayerOpacity: (String, String, String, Float) -> Unit,
     onMoveLayer: (String, String, String, Int) -> Unit,
     onDuplicateLayer: (String, String, String) -> String?,
     onMergeLayerDown: (String, String, String) -> String?,
@@ -888,6 +890,7 @@ private fun EditorScreen(
                 onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
                 onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
                 onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
+                onOpacity = { layerId, value -> onSetLayerOpacity(document.id, selectedPage.id, layerId, value) },
                 onMove = { layerId, delta -> onMoveLayer(document.id, selectedPage.id, layerId, delta) },
                 onDuplicate = { layerId -> onDuplicateLayer(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
                 onMergeDown = { layerId -> onMergeLayerDown(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
@@ -1147,6 +1150,7 @@ private fun EditorScreen(
                 onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
                 onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
                 onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
+                onOpacity = { layerId, value -> onSetLayerOpacity(document.id, selectedPage.id, layerId, value) },
                 onMove = { layerId, delta -> onMoveLayer(document.id, selectedPage.id, layerId, delta) },
                 onDuplicate = { layerId -> onDuplicateLayer(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
                 onMergeDown = { layerId -> onMergeLayerDown(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
@@ -1435,6 +1439,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
     val paperColor = (page.background as? PageBackground.Paper)?.colorArgb?.let(::Color) ?: Color.White
     val visibleLayerIds = page.layers.filter { it.visible }.mapTo(mutableSetOf()) { it.id }
     val lockedLayerIds = page.layers.filter { it.locked }.mapTo(mutableSetOf()) { it.id }
+    val layerOpacities = page.layers.associate { it.id to it.opacity }
     val layerOrder = page.layers.mapIndexed { index, layer -> layer.id to index }.toMap()
     BoxWithConstraints(modifier.shadow(3.dp, RoundedCornerShape(4.dp)).background(paperColor).padding(48.dp)) {
         val density = LocalDensity.current
@@ -1484,6 +1489,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.setProtectedLayerIds(lockedLayerIds)
                 view.setPageBackground(background)
                 view.activeLayerId = activeLayerId
+                view.layerOpacities = layerOpacities
                 view.shapeKind = shapeKind
                 view.pageModelWidth = renderedPage.width
                 view.pageModelHeight = renderedPage.height
@@ -1515,6 +1521,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
             ObjectElementView(
                 element = element,
                 page = renderedPage,
+                layerOpacity = layerOpacities[element.layerId] ?: 1f,
                 selected = selectedElementId == element.id,
                 editable = tool == EditorTool.SELECT && element.layerId !in lockedLayerIds,
                 canvasWidth = maxWidth,
@@ -1683,6 +1690,7 @@ private fun InkCanvasView.applyBrushConfiguration(
 private fun ObjectElementView(
     element: PageElement,
     page: InkPage,
+    layerOpacity: Float,
     selected: Boolean,
     editable: Boolean,
     canvasWidth: androidx.compose.ui.unit.Dp,
@@ -1720,7 +1728,7 @@ private fun ObjectElementView(
         modifier
             .offset(x = canvasWidth * element.x, y = canvasHeight * element.y)
             .size(objectWidth, objectHeight)
-            .graphicsLayer(rotationZ = element.rotationDegrees, alpha = element.opacity.coerceIn(.05f, 1f), translationX = dragX, translationY = dragY)
+            .graphicsLayer(rotationZ = element.rotationDegrees, alpha = (element.opacity * layerOpacity).coerceIn(0f, 1f), translationX = dragX, translationY = dragY)
             .then(if (selected) Modifier.border(2.dp, Sage, RoundedCornerShape(5.dp)) else Modifier)
             .then(gestureModifier)
             .combinedClickable(
@@ -2328,6 +2336,7 @@ private fun LayerPanel(
     onRename: (String, String) -> Unit,
     onVisibility: (String) -> Unit,
     onLock: (String) -> Unit,
+    onOpacity: (String, Float) -> Unit,
     onMove: (String, Int) -> Unit,
     onDuplicate: (String) -> Unit,
     onMergeDown: (String) -> Unit,
@@ -2356,6 +2365,13 @@ private fun LayerPanel(
             IconButton(onClick = onAdd) { Icon(Icons.Default.Add, tr("Add layer", "添加图层")) }
         }
         Spacer(Modifier.height(8.dp))
+        page.layers.firstOrNull { it.id == activeLayerId }?.takeIf { it.role != LayerRole.BACKGROUND }?.let { activeLayer ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(tr("Opacity", "不透明度"), Modifier.weight(1f), color = MutedInk, fontSize = 11.sp)
+                Text("${(activeLayer.opacity * 100f).toInt()}%", color = MutedInk, fontSize = 11.sp)
+            }
+            Slider(activeLayer.opacity, { onOpacity(activeLayer.id, it) }, valueRange = 0f..1f)
+        }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(7.dp)) {
             items(page.layers.asReversed(), key = { it.id }) { layer ->
                 var menu by remember { mutableStateOf(false) }
