@@ -44,7 +44,16 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         refresh(recovered)
     }
 
-    fun createNote(title: String = "Untitled Note"): InkDocument = InkDocument(title = title).also { store.save(it); refresh(); select(it.id) }
+    fun createNote(title: String = "Untitled Note", coverStyle: CoverStyle = CoverStyle.BLACK): InkDocument = InkDocument(
+        title = title.trim().ifBlank { "Untitled Note" },
+        coverStyle = coverStyle,
+        coverArgb = if (coverStyle in setOf(CoverStyle.WHITE, CoverStyle.WHITE_GRID)) 0xFFF4F4F4 else 0xFF202020,
+    ).also { store.save(it); refresh(); select(it.id) }
+    fun createNoteWithCover(uri: Uri, title: String = "Untitled Note"): InkDocument = InkDocument(
+        title = title.trim().ifBlank { "Untitled Note" },
+        coverStyle = CoverStyle.CUSTOM_IMAGE,
+        coverImagePath = assets.importCoverImage(uri),
+    ).also { store.save(it); refresh(); select(it.id) }
     fun importPdf(uri: Uri, title: String) = assets.importPdf(uri, title, indexText = false).also { document ->
         store.save(document)
         refresh()

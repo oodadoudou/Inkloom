@@ -22,6 +22,7 @@ class LibraryBackupServiceTest {
         val restoreRoot = Files.createTempDirectory("inkloom-backup-target-").toFile()
         try {
             val documentAsset = File(sourceRoot, "document-assets/source.pdf").apply { parentFile!!.mkdirs(); writeBytes(byteArrayOf(1, 2, 3)) }
+            val coverAsset = File(sourceRoot, "document-assets/cover.png").apply { writeBytes(byteArrayOf(10, 11, 12)) }
             val tip = File(sourceRoot, "brush-assets/tip.png").apply { parentFile!!.mkdirs(); writeBytes(byteArrayOf(4, 5, 6)) }
             val brushSource = File(sourceRoot, "brush-sources/source.brush").apply { parentFile!!.mkdirs(); writeBytes(byteArrayOf(7, 8, 9)) }
             val brush = ImportedBrush(
@@ -47,7 +48,7 @@ class LibraryBackupServiceTest {
                 elements = listOf(sticky),
             )
             val folder = InkFolder(id = "folder-1", name = "School")
-            val document = InkDocument(id = "document-1", title = "Lecture", folderId = folder.id, pages = listOf(page))
+            val document = InkDocument(id = "document-1", title = "Lecture", folderId = folder.id, coverStyle = CoverStyle.CUSTOM_IMAGE, coverImagePath = coverAsset.absolutePath, pages = listOf(page))
             val bytes = ByteArrayOutputStream().also { LibraryBackupService(sourceRoot).export(listOf(document), listOf(folder), listOf(brush), it) }.toByteArray()
 
             val restored = LibraryBackupService(restoreRoot).restore(ByteArrayInputStream(bytes))
@@ -59,6 +60,8 @@ class LibraryBackupServiceTest {
             assertNotEquals(folder.id, restored.documents.single().folderId)
             assertNotEquals(brush.id, restored.brushes.single().id)
             val restoredPage = restored.documents.single().pages.single()
+            assertEquals(CoverStyle.CUSTOM_IMAGE, restored.documents.single().coverStyle)
+            assertTrue(File(restored.documents.single().coverImagePath!!).isFile)
             assertTrue(File((restoredPage.background as PageBackground.Pdf).assetPath).isFile)
             assertEquals(restored.brushes.single().id, restoredPage.strokes.single().brushId)
             assertTrue(File(restoredPage.strokes.single().tipAssetPaths.single()).isFile)

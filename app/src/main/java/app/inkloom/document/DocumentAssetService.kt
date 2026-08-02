@@ -139,6 +139,15 @@ class DocumentAssetService(private val context: Context) {
         return PageElement.Image(x = .18f, y = .2f, width = width, height = height, assetPath = asset.absolutePath)
     }
 
+    fun importCoverImage(uri: Uri): String {
+        val extension = context.contentResolver.getType(uri)?.substringAfterLast('/')?.take(8).orEmpty().ifBlank { "image" }
+        val asset = copyAsset(uri, extension)
+        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(asset.absolutePath, options)
+        require(options.outWidth > 0 && options.outHeight > 0) { "Selected cover could not be decoded" }
+        return asset.absolutePath
+    }
+
     fun renderBackground(background: PageBackground, targetWidth: Int, rotationQuarterTurns: Int = 0, crop: PageCrop = PageCrop()): Bitmap? {
         val sourceBitmap = when (background) {
         is PageBackground.Paper -> null
@@ -192,7 +201,9 @@ class DocumentAssetService(private val context: Context) {
     fun exportBundle(document: InkDocument, uri: Uri) {
         val serializer = Json { prettyPrint = true; classDiscriminator = "type" }
         context.contentResolver.openOutputStream(uri)?.use { output -> ZipOutputStream(output).use { zip ->
-            val portable = document.copy(pages = document.pages.map { page -> page.copy(
+            val portable = document.copy(
+                coverImagePath = document.coverImagePath?.let { "assets/${File(it).name}" },
+                pages = document.pages.map { page -> page.copy(
                 background = when (val background = page.background) {
                     is PageBackground.Pdf -> background.copy(assetPath = "assets/${File(background.assetPath).name}")
                     is PageBackground.Image -> background.copy(assetPath = "assets/${File(background.assetPath).name}")
@@ -205,9 +216,10 @@ class DocumentAssetService(private val context: Context) {
                     is PageElement.Sticky -> element.copy(strokes = element.strokes.map { it.portableBrushAssets() })
                     else -> element
                 } },
-            ) })
+                ) },
+            )
             zip.putNextEntry(ZipEntry("manifest.json")); zip.write(serializer.encodeToString(portable).encodeToByteArray()); zip.closeEntry()
-            val assets = document.pages.mapNotNull { page -> when (val background = page.background) { is PageBackground.Pdf -> background.assetPath; is PageBackground.Image -> background.assetPath; else -> null } } + document.pages.flatMap { it.elements }.mapNotNull { element -> when (element) { is PageElement.Image -> element.assetPath; is PageElement.AudioMarker -> element.assetPath; else -> null } }
+            val assets = listOfNotNull(document.coverImagePath) + document.pages.mapNotNull { page -> when (val background = page.background) { is PageBackground.Pdf -> background.assetPath; is PageBackground.Image -> background.assetPath; else -> null } } + document.pages.flatMap { it.elements }.mapNotNull { element -> when (element) { is PageElement.Image -> element.assetPath; is PageElement.AudioMarker -> element.assetPath; else -> null } }
             writeDistinctFiles(zip, "assets", assets)
             val allStrokes = document.pages.flatMap { page -> page.strokes + page.elements.filterIsInstance<PageElement.Sticky>().flatMap(PageElement.Sticky::strokes) }
             writeDistinctFiles(zip, "brush-assets", allStrokes.flatMap { it.brushAssetPaths() })
@@ -260,6 +272,7 @@ class DocumentAssetService(private val context: Context) {
             }
             return decoded.copy(
                 id = UUID.randomUUID().toString(),
+                coverImagePath = decoded.coverImagePath?.let(::retained),
                 createdAt = System.currentTimeMillis(),
                 updatedAt = System.currentTimeMillis(),
                 trashedAt = null,

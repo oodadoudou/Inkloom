@@ -3,12 +3,14 @@ package app.inkloom.ui
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
 import android.graphics.Color as AndroidColor
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -167,6 +169,14 @@ fun InkloomApp(initialIntent: Intent?) {
             viewModel.insertImage(uri)
         }.onFailure { importError = it.message }
     }
+    var pendingCoverTitle by remember { mutableStateOf("Untitled Note") }
+    val coverImagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) runCatching {
+            context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            viewModel.createNoteWithCover(uri, pendingCoverTitle)
+            destination = AppDestination.EDITOR
+        }.onFailure { importError = it.message }
+    }
 
     LaunchedEffect(initialIntent) {
         val uris = buildList<Uri> {
@@ -195,7 +205,8 @@ fun InkloomApp(initialIntent: Intent?) {
             documents = libraryState.documents,
             folders = libraryState.folders,
             onOpen = { viewModel.select(it.id); destination = AppDestination.EDITOR },
-            onNewNote = { viewModel.createNote(); destination = AppDestination.EDITOR },
+            onNewNote = { title, style -> viewModel.createNote(title, style); destination = AppDestination.EDITOR },
+            onImportCover = { title -> pendingCoverTitle = title; coverImagePicker.launch(arrayOf("image/*")) },
             onImport = { documentPicker.launch(arrayOf("application/pdf", "image/*", "application/zip")) },
             onFavorite = viewModel::toggleFavorite,
             onArchive = viewModel::toggleArchive,
@@ -281,10 +292,13 @@ fun InkloomApp(initialIntent: Intent?) {
 private enum class LibraryFilter { ALL, FAVORITES, ARCHIVED, TRASH, PDF }
 
 @Composable
-private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>, onOpen: (InkDocument) -> Unit, onNewNote: () -> Unit, onImport: () -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, onCreateFolder: (String, String?) -> Unit, onMoveToFolder: (String, String?) -> Unit, onDeleteFolder: (String) -> Unit, onSettings: () -> Unit) {
+private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>, onOpen: (InkDocument) -> Unit, onNewNote: (String, CoverStyle) -> Unit, onImportCover: (String) -> Unit, onImport: () -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, onCreateFolder: (String, String?) -> Unit, onMoveToFolder: (String, String?) -> Unit, onDeleteFolder: (String) -> Unit, onSettings: () -> Unit) {
     var filter by remember { mutableStateOf(LibraryFilter.ALL) }
     var search by remember { mutableStateOf("") }
     var folderId by remember { mutableStateOf<String?>(null) }
+    var newNoteOpen by remember { mutableStateOf(false) }
+    var newNoteTitle by remember { mutableStateOf("Untitled Note") }
+    var newNoteCover by remember { mutableStateOf(CoverStyle.BLACK) }
     val visible = documents.filter { document ->
         val matchesSearch = search.isBlank() || document.title.contains(search, true) || document.tags.any { it.contains(search, true) } || document.pages.any { PageSearch.matches(it, search) }
         matchesSearch && (folderId == null || document.folderId == folderId) && when (filter) {
@@ -320,7 +334,7 @@ private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>
                 Spacer(Modifier.width(4.dp))
                 OutlinedButton(onClick = onImport, shape = RoundedCornerShape(50)) { Icon(Icons.Outlined.FileDownload, null); Spacer(Modifier.width(8.dp)); Text("Import") }
                 Spacer(Modifier.width(10.dp))
-                Button(onClick = onNewNote, shape = RoundedCornerShape(50)) {
+                Button(onClick = { newNoteOpen = true }, shape = RoundedCornerShape(50)) {
                     Icon(Icons.Default.Add, null); Spacer(Modifier.width(8.dp)); Text("New Note")
                 }
             }
@@ -348,6 +362,31 @@ private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>
         }
         }
     }
+    if (newNoteOpen) AlertDialog(
+        onDismissRequest = { newNoteOpen = false },
+        title = { Text("Create notebook") },
+        text = {
+            Column(Modifier.widthIn(min = 380.dp, max = 560.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                OutlinedTextField(newNoteTitle, { newNoteTitle = it.take(120) }, label = { Text("Title") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Text("Cover template", color = MutedInk, fontSize = 12.sp)
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(CoverStyle.entries.filterNot { it == CoverStyle.CUSTOM_IMAGE }) { style ->
+                        Card(
+                            Modifier.size(92.dp, 120.dp).clickable { newNoteCover = style },
+                            border = if (newNoteCover == style) androidx.compose.foundation.BorderStroke(2.dp, Ink) else CardDefaults.outlinedCardBorder(),
+                        ) { NotebookCover(InkDocument(title = newNoteTitle, coverStyle = style, coverArgb = if (style in setOf(CoverStyle.WHITE, CoverStyle.WHITE_GRID)) 0xFFF4F4F4 else 0xFF202020), Modifier.fillMaxSize()) }
+                    }
+                }
+                OutlinedButton(onClick = { newNoteOpen = false; onImportCover(newNoteTitle) }, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Outlined.AddPhotoAlternate, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Import image as cover")
+                }
+            }
+        },
+        confirmButton = { Button(onClick = { newNoteOpen = false; onNewNote(newNoteTitle, newNoteCover) }) { Text("Create") } },
+        dismissButton = { TextButton(onClick = { newNoteOpen = false }) { Text("Cancel") } },
+    )
 }
 
 @Composable
@@ -399,7 +438,8 @@ private fun NotebookCard(document: InkDocument, modifier: Modifier, onOpen: (Ink
     var title by remember(document.title) { mutableStateOf(document.title) }
     var tags by remember(document.tags) { mutableStateOf(document.tags.joinToString(", ")) }
     Card(modifier.clickable { onOpen(document) }, colors = CardDefaults.cardColors(containerColor = Color.White), border = CardDefaults.outlinedCardBorder()) {
-        Box(Modifier.fillMaxWidth().weight(1f).background(Color(document.coverArgb))) {
+        Box(Modifier.fillMaxWidth().weight(1f)) {
+            NotebookCover(document, Modifier.fillMaxSize())
             if (document.pages.any { it.background is PageBackground.Pdf }) Surface(Modifier.padding(12.dp), shape = RoundedCornerShape(4.dp), color = Color.White) { Text("PDF", Modifier.padding(7.dp, 4.dp), fontSize = 10.sp) }
             Box(Modifier.align(Alignment.TopEnd)) {
                 IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "Document actions") }
@@ -419,9 +459,6 @@ private fun NotebookCard(document: InkDocument, modifier: Modifier, onOpen: (Ink
                     }
                 }
             }
-            Canvas(Modifier.fillMaxSize().padding(18.dp)) {
-                repeat(3) { index -> drawLine(Color.White.copy(alpha = .65f), Offset(0f, 18f + index * 12f), Offset(size.width * (.9f - index * .08f), 18f + index * 12f), strokeWidth = 2f, cap = StrokeCap.Round) }
-            }
         }
         Column(Modifier.padding(14.dp)) {
             Row { Text(document.title, fontSize = 17.sp, maxLines = 2, modifier = Modifier.weight(1f)); if (document.favorite) Icon(Icons.Default.Star, null, tint = Sage, modifier = Modifier.size(18.dp)) }
@@ -431,6 +468,26 @@ private fun NotebookCard(document: InkDocument, modifier: Modifier, onOpen: (Ink
     }
     if (renameOpen) AlertDialog(onDismissRequest = { renameOpen = false }, title = { Text("Rename note") }, text = { OutlinedTextField(value = title, onValueChange = { title = it }, singleLine = true) }, confirmButton = { TextButton(onClick = { onRename(document.id, title); renameOpen = false }) { Text("Save") } }, dismissButton = { TextButton(onClick = { renameOpen = false }) { Text("Cancel") } })
     if (tagsOpen) AlertDialog(onDismissRequest = { tagsOpen = false }, title = { Text("Note tags") }, text = { OutlinedTextField(value = tags, onValueChange = { tags = it }, supportingText = { Text("Separate tags with commas") }) }, confirmButton = { TextButton(onClick = { onTags(document.id, tags.split(',')); tagsOpen = false }) { Text("Save") } }, dismissButton = { TextButton(onClick = { tagsOpen = false }) { Text("Cancel") } })
+}
+
+@Composable
+private fun NotebookCover(document: InkDocument, modifier: Modifier = Modifier) {
+    val coverBitmap = remember(document.coverImagePath) { document.coverImagePath?.let { path -> runCatching { BitmapFactory.decodeFile(path) }.getOrNull() } }
+    DisposableEffect(coverBitmap) { onDispose { coverBitmap?.recycle() } }
+    val light = document.coverStyle in setOf(CoverStyle.WHITE, CoverStyle.WHITE_GRID)
+    Box(modifier.background(if (light) Color(0xFFF4F4F4) else Color(document.coverArgb))) {
+        if (document.coverStyle == CoverStyle.CUSTOM_IMAGE && coverBitmap != null) {
+            Image(coverBitmap.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        } else Canvas(Modifier.fillMaxSize().padding(14.dp)) {
+            val line = if (light) Color.Black.copy(alpha = .42f) else Color.White.copy(alpha = .7f)
+            when (document.coverStyle) {
+                CoverStyle.BLACK, CoverStyle.WHITE -> repeat(3) { index -> drawLine(line, Offset(0f, 18f + index * 12f), Offset(size.width * (.9f - index * .08f), 18f + index * 12f), strokeWidth = 2f, cap = StrokeCap.Round) }
+                CoverStyle.BLACK_BAND -> { drawRect(Color.White, Offset(0f, size.height * .58f), androidx.compose.ui.geometry.Size(size.width, size.height * .18f)); drawLine(Color.Black, Offset(12f, size.height * .67f), Offset(size.width - 12f, size.height * .67f), strokeWidth = 2f) }
+                CoverStyle.WHITE_GRID -> { var x = 0f; while (x < size.width) { drawLine(line, Offset(x, 0f), Offset(x, size.height), 1f); x += 18f }; var y = 0f; while (y < size.height) { drawLine(line, Offset(0f, y), Offset(size.width, y), 1f); y += 18f } }
+                CoverStyle.CUSTOM_IMAGE -> Unit
+            }
+        }
+    }
 }
 
 @Composable

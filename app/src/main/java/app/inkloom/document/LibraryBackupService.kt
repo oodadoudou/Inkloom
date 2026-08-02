@@ -63,7 +63,7 @@ class LibraryBackupService(private val filesRoot: File) {
             )
         }
         val portableDocuments = documents.map { document ->
-            document.copy(pages = document.pages.map { page ->
+            document.copy(coverImagePath = register(document.coverImagePath, DOCUMENT_ASSETS), pages = document.pages.map { page ->
                 page.copy(
                     background = when (val background = page.background) {
                         is PageBackground.Paper -> background
@@ -146,6 +146,7 @@ class LibraryBackupService(private val filesRoot: File) {
             val restoredDocuments = manifest.documents.map { document ->
                 document.copy(
                     id = UUID.randomUUID().toString(),
+                    coverImagePath = retained(document.coverImagePath, DOCUMENT_ASSETS),
                     folderId = document.folderId?.let(folderIds::get) ?: rootFolder.id,
                     createdAt = now,
                     updatedAt = now,

@@ -10,6 +10,8 @@ data class InkDocument(
     val title: String,
     val folderId: String? = null,
     val coverArgb: Long = 0xFF202020,
+    val coverStyle: CoverStyle = CoverStyle.BLACK,
+    val coverImagePath: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
     val favorite: Boolean = false,
@@ -18,6 +20,9 @@ data class InkDocument(
     val trashedAt: Long? = null,
     val pages: List<InkPage> = listOf(InkPage()),
 )
+
+@Serializable
+enum class CoverStyle { BLACK, WHITE, BLACK_BAND, WHITE_GRID, CUSTOM_IMAGE }
 
 @Serializable
 data class InkPage(
