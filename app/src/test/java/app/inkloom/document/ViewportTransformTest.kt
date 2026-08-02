@@ -16,14 +16,22 @@ class ViewportTransformTest {
 
     @Test fun scaleStopsAtConfiguredBounds() {
         val high = ViewportTransform.zoomAround(ViewportState(3f, 0f, 0f), 3f, 0f, 0f)
-        val low = ViewportTransform.zoomAround(ViewportState(.6f, 0f, 0f), .1f, 0f, 0f)
+        val low = ViewportTransform.zoomAround(ViewportState(1.6f, 340f, -220f), .1f, 200f, -100f)
         assertEquals(4f, high.scale, .001f)
-        assertEquals(.5f, low.scale, .001f)
+        assertEquals(1f, low.scale, .001f)
+        assertEquals(0f, low.panX, .001f)
+        assertEquals(0f, low.panY, .001f)
     }
 
     @Test fun localPanTracksTheFingerAtEveryZoomLevel() {
         val after = ViewportTransform.panBy(ViewportState(2.5f, 10f, -4f), 12f, -8f)
         assertEquals(40f, after.panX, .001f)
         assertEquals(-24f, after.panY, .001f)
+    }
+
+    @Test fun pinchHandoffSelectsTheFingerThatRemainsOnScreen() {
+        assertEquals(1, ViewportTransform.remainingPointerIndex(2, 0))
+        assertEquals(0, ViewportTransform.remainingPointerIndex(2, 1))
+        assertEquals(null, ViewportTransform.remainingPointerIndex(1, 0))
     }
 }

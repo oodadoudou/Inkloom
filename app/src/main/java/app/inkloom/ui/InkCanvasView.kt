@@ -52,6 +52,7 @@ import app.inkloom.document.StrokeTaper
 import app.inkloom.document.StrokeTileIndex
 import app.inkloom.document.StrokeTileKey
 import app.inkloom.document.StylusInputClassifier
+import app.inkloom.document.ViewportTransform
 import app.inkloom.document.WaterEdge
 import app.inkloom.document.WetMixDynamics
 import app.inkloom.model.EditorTool
@@ -601,6 +602,16 @@ class InkCanvasView(context: Context) : View(context) {
                         val now = event.eventTime
                         if (now - lastTwoFingerTap in 40..360) { onUndoGesture(); lastTwoFingerTap = 0L } else lastTwoFingerTap = now
                     }
+                }
+                MotionEvent.ACTION_POINTER_UP -> {
+                    ViewportTransform.remainingPointerIndex(event.pointerCount, event.actionIndex)?.let { remaining ->
+                        navigationX = event.getX(remaining)
+                        navigationY = event.getY(remaining)
+                        navigationDownX = navigationX
+                        navigationDownY = navigationY
+                    }
+                    navigationMoved = true
+                    navigationTapEligible = false
                 }
                 MotionEvent.ACTION_MOVE -> if (event.pointerCount == 1 && !scaleDetector.isInProgress) {
                     if (hypot(event.x - navigationDownX, event.y - navigationDownY) > navigationTouchSlop) navigationMoved = true

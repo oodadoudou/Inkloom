@@ -550,7 +550,7 @@ private fun EditorScreen(
             IconButton(onClick = { outlineOpen = true }) { Icon(Icons.Outlined.FormatListBulleted, "Page outline") }
             IconButton(onClick = { onSettingsChange(settings.copy(showPageRail = !settings.showPageRail)) }) { Icon(if (settings.showPageRail) Icons.Outlined.ViewSidebar else Icons.Outlined.TableRows, "Toggle pages") }
             IconButton(onClick = { onSettingsChange(settings.copy(showToolbar = !settings.showToolbar)) }) { Icon(if (settings.showToolbar) Icons.Outlined.VisibilityOff else Icons.Outlined.Build, "Toggle toolbar") }
-            IconButton(onClick = { zoom = (zoom - .1f).coerceAtLeast(.6f) }) { Icon(Icons.Outlined.ZoomOut, "Zoom out") }
+            IconButton(onClick = { val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY), .9f, 0f, 0f); zoom = next.scale; panX = next.panX; panY = next.panY }) { Icon(Icons.Outlined.ZoomOut, "Zoom out") }
             IconButton(onClick = { zoom = (zoom + .1f).coerceAtMost(2.5f) }) { Icon(Icons.Outlined.ZoomIn, "Zoom in") }
             IconButton(onClick = { zoom = 1f; panX = 0f; panY = 0f }) { Icon(Icons.Outlined.CenterFocusStrong, "Reset view") }
             IconButton(onClick = onExport) { Icon(Icons.Outlined.Share, "Export PDF") }
@@ -607,7 +607,7 @@ private fun EditorScreen(
                             searchFocus = null
                             pdfLinkFocus = target.id to PdfGotoLinkNavigation.destinationBounds(link)
                             onSelectPage(target.id)
-                            if (link.destinationZoom > 0f) zoom = link.destinationZoom.coerceIn(.6f, 2.5f)
+                            if (link.destinationZoom > 0f) zoom = link.destinationZoom.coerceIn(1f, 2.5f)
                         }
                     },
                     onInputDiagnostic = { kind, pressure, tilt, buttons -> inputDiagnostic = "$kind  pressure ${"%.3f".format(pressure)}  tilt ${"%.2f".format(Math.toDegrees(tilt.toDouble()))}°  buttons $buttons" },
