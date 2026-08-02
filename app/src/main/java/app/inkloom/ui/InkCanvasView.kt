@@ -14,6 +14,7 @@ import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.graphics.PorterDuffXfermode
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
@@ -57,6 +58,9 @@ import app.inkloom.document.ViewportTransform
 import app.inkloom.document.WaterEdge
 import app.inkloom.document.WetMixDynamics
 import app.inkloom.model.EditorTool
+import app.inkloom.settings.CspShortcutResolver
+import app.inkloom.settings.ShortcutAction
+import app.inkloom.settings.ShortcutChord
 import app.inkloom.settings.StylusButtonAction
 import app.inkloom.settings.SelectionFilter
 import app.inkloom.settings.SelectionMode
@@ -255,6 +259,7 @@ class InkCanvasView(context: Context) : View(context) {
     var onPdfGotoLink: (PdfGotoLink) -> Unit = {}
     var onUndoGesture: () -> Unit = {}
     var onInputDiagnostic: (String, Float, Float, Int) -> Unit = { _, _, _, _ -> }
+    var onShortcutAction: (ShortcutAction) -> Unit = {}
 
     private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
         override fun onScale(detector: ScaleGestureDetector): Boolean {
@@ -265,7 +270,24 @@ class InkCanvasView(context: Context) : View(context) {
     private val backgroundDestination = android.graphics.Rect()
     private val lassoPath = Path()
 
-    init { setBackgroundColor(Color.TRANSPARENT); isFocusable = true }
+    init {
+        setBackgroundColor(Color.TRANSPARENT)
+        isFocusable = true
+        isFocusableInTouchMode = true
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        val action = CspShortcutResolver.resolve(
+            ShortcutChord(
+                keyCode = keyCode,
+                ctrl = event.isCtrlPressed,
+                alt = event.isAltPressed,
+                shift = event.isShiftPressed,
+            ),
+        ) ?: return super.onKeyDown(keyCode, event)
+        if (event.repeatCount == 0 || CspShortcutResolver.isRepeatable(action)) onShortcutAction(action)
+        return true
+    }
 
     fun setDocumentStrokes(value: List<InkStroke>, historyKey: String) {
         if (strokeHistoryKey != historyKey) {
@@ -589,6 +611,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (tool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.SELECT, EditorTool.SHAPE)) return false
+        if (event.actionMasked == MotionEvent.ACTION_DOWN && !hasFocus()) requestFocus()
         val pointerIndex = event.actionIndex.coerceIn(0, event.pointerCount - 1)
         val eventToolType = event.getToolType(pointerIndex)
         val isStylus = eventToolType == MotionEvent.TOOL_TYPE_STYLUS || eventToolType == MotionEvent.TOOL_TYPE_ERASER

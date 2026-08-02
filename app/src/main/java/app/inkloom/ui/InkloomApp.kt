@@ -72,6 +72,9 @@ import app.inkloom.settings.FloatingToolbarPlacement
 import app.inkloom.settings.SelectionFilter
 import app.inkloom.settings.SelectionMode
 import app.inkloom.settings.SelectionShape
+import app.inkloom.settings.ShortcutAction
+import app.inkloom.settings.ShortcutBrushGroup
+import app.inkloom.settings.ShortcutBrushSelection
 import app.inkloom.settings.StylusButtonAction
 import app.inkloom.settings.ToolbarDock
 import app.inkloom.ui.theme.*
@@ -496,6 +499,8 @@ private fun EditorScreen(
     var brushOpacity by remember { mutableFloatStateOf(settings.penOpacity) }
     var brushColor by remember { mutableIntStateOf(AndroidColor.rgb(17, 17, 17)) }
     var localEraser by remember { mutableStateOf(false) }
+    var previousDrawingTool by remember { mutableStateOf(EditorTool.PEN) }
+    var previousDrawingBrushId by remember { mutableStateOf<String?>(null) }
     var exportMenu by remember { mutableStateOf(false) }
     var zoom by remember { mutableFloatStateOf(1f) }
     var panX by remember { mutableFloatStateOf(0f) }
@@ -530,6 +535,11 @@ private fun EditorScreen(
     DisposableEffect(audioRecorder) { onDispose { audioRecorder.cancel() } }
     var layersOpen by remember { mutableStateOf(false) }
     var activeLayerId by remember(selectedPage.id) { mutableStateOf(LayerIds.INK) }
+    var panelsHiddenByShortcut by remember { mutableStateOf(false) }
+    var pageRailBeforeShortcut by remember { mutableStateOf(settings.showPageRail) }
+    var toolbarBeforeShortcut by remember { mutableStateOf(settings.showToolbar) }
+    var brushesBeforeShortcut by remember { mutableStateOf(false) }
+    var layersBeforeShortcut by remember { mutableStateOf(false) }
     LaunchedEffect(selectedPage.layers) {
         val active = selectedPage.layers.firstOrNull { it.id == activeLayerId }
         if (active == null || active.locked || !active.visible || active.role == LayerRole.BACKGROUND) activeLayerId = selectedPage.layers.firstOrNull { it.visible && !it.locked && it.role != LayerRole.BACKGROUND }?.id ?: LayerIds.INK
@@ -611,6 +621,96 @@ private fun EditorScreen(
                         }
                     },
                     onInputDiagnostic = { kind, pressure, tilt, buttons -> inputDiagnostic = "$kind  pressure ${"%.3f".format(pressure)}  tilt ${"%.2f".format(Math.toDegrees(tilt.toDouble()))}°  buttons $buttons" },
+                    onShortcutAction = { action ->
+                        fun selectImportedBrush(brush: ImportedBrush) {
+                            val usedBrush = brush.copy(lastUsedAt = System.currentTimeMillis())
+                            onUpdateBrush(usedBrush)
+                            selectedBrushId = usedBrush.id
+                            activeBrush = usedBrush
+                            brushSize = usedBrush.defaultSize
+                            brushOpacity = usedBrush.defaultOpacity
+                            brushColor = AndroidColor.rgb(17, 17, 17)
+                            tool = EditorTool.PEN
+                            if (activeLayerId == LayerIds.HIGHLIGHT || activeLayerId == LayerIds.OBJECTS) activeLayerId = LayerIds.INK
+                        }
+
+                        fun updateBrushSize(multiplier: Float) {
+                            val value = (brushSize * multiplier).coerceIn(.5f, 400f)
+                            brushSize = value
+                            when (tool) {
+                                EditorTool.PEN -> if (activeBrush == null) onSettingsChange(settings.copy(penSize = value))
+                                EditorTool.HIGHLIGHTER -> onSettingsChange(settings.copy(highlighterSize = value))
+                                EditorTool.ERASER -> onSettingsChange(settings.copy(eraserSize = value))
+                                else -> Unit
+                            }
+                        }
+
+                        fun updateBrushOpacity(delta: Float) {
+                            val value = (brushOpacity + delta).coerceIn(.05f, 1f)
+                            brushOpacity = value
+                            when (tool) {
+                                EditorTool.PEN -> if (activeBrush == null) onSettingsChange(settings.copy(penOpacity = value))
+                                EditorTool.HIGHLIGHTER -> onSettingsChange(settings.copy(highlighterOpacity = value))
+                                else -> Unit
+                            }
+                        }
+
+                        inputDiagnostic = "Shortcut · ${action.name.lowercase().replace('_', ' ')}"
+                        when (action) {
+                            ShortcutAction.PEN_OR_PENCIL_GROUP -> {
+                                val target = if (ShortcutBrushSelection.matches(activeBrush, ShortcutBrushGroup.PEN)) ShortcutBrushGroup.PENCIL else ShortcutBrushGroup.PEN
+                                ShortcutBrushSelection.preferred(brushes, target)?.let(::selectImportedBrush) ?: run {
+                                    selectedBrushId = null
+                                    activeBrush = null
+                                    tool = EditorTool.PEN
+                                    brushSize = settings.penSize
+                                    brushOpacity = settings.penOpacity
+                                }
+                            }
+                            ShortcutAction.BRUSH_GROUP -> ShortcutBrushSelection.preferred(brushes, ShortcutBrushGroup.BRUSH)?.let(::selectImportedBrush)
+                                ?: brushes.filterNot { it.hidden }.maxByOrNull { it.lastUsedAt }?.let(::selectImportedBrush)
+                            ShortcutAction.TOGGLE_ERASER -> if (tool == EditorTool.ERASER) {
+                                tool = previousDrawingTool
+                                val restoredBrush = previousDrawingBrushId?.let { id -> brushes.firstOrNull { it.id == id && !it.hidden } }
+                                activeBrush = restoredBrush
+                                selectedBrushId = restoredBrush?.id
+                                brushSize = restoredBrush?.defaultSize ?: if (tool == EditorTool.HIGHLIGHTER) settings.highlighterSize else settings.penSize
+                                brushOpacity = restoredBrush?.defaultOpacity ?: if (tool == EditorTool.HIGHLIGHTER) settings.highlighterOpacity else settings.penOpacity
+                            } else {
+                                previousDrawingTool = if (tool == EditorTool.HIGHLIGHTER) EditorTool.HIGHLIGHTER else EditorTool.PEN
+                                previousDrawingBrushId = activeBrush?.id
+                                tool = EditorTool.ERASER
+                                brushSize = settings.eraserSize
+                                brushOpacity = 1f
+                            }
+                            ShortcutAction.SELECT_TOOL -> tool = EditorTool.SELECT
+                            ShortcutAction.BRUSH_SIZE_DECREASE -> updateBrushSize(1f / 1.1f)
+                            ShortcutAction.BRUSH_SIZE_INCREASE -> updateBrushSize(1.1f)
+                            ShortcutAction.OPACITY_DECREASE -> updateBrushOpacity(-.05f)
+                            ShortcutAction.OPACITY_INCREASE -> updateBrushOpacity(.05f)
+                            ShortcutAction.PREVIOUS_BRUSH -> ShortcutBrushSelection.adjacent(brushes, activeBrush?.id, -1)?.let(::selectImportedBrush)
+                            ShortcutAction.NEXT_BRUSH -> ShortcutBrushSelection.adjacent(brushes, activeBrush?.id, 1)?.let(::selectImportedBrush)
+                            ShortcutAction.UNDO -> canvasView?.undo()
+                            ShortcutAction.REDO -> canvasView?.redo()
+                            ShortcutAction.FIT_PAGE -> { zoom = 1f; panX = 0f; panY = 0f }
+                            ShortcutAction.TOGGLE_PANELS -> if (!panelsHiddenByShortcut) {
+                                pageRailBeforeShortcut = settings.showPageRail
+                                toolbarBeforeShortcut = settings.showToolbar
+                                brushesBeforeShortcut = brushesOpen
+                                layersBeforeShortcut = layersOpen
+                                onSettingsChange(settings.copy(showPageRail = false, showToolbar = false))
+                                if (brushesOpen) onToggleBrushes()
+                                layersOpen = false
+                                panelsHiddenByShortcut = true
+                            } else {
+                                onSettingsChange(settings.copy(showPageRail = pageRailBeforeShortcut, showToolbar = toolbarBeforeShortcut))
+                                if (brushesBeforeShortcut && !brushesOpen) onToggleBrushes()
+                                layersOpen = layersBeforeShortcut
+                                panelsHiddenByShortcut = false
+                            }
+                            ShortcutAction.SAVE_CHECKPOINT -> Toast.makeText(context, "All changes are saved.", Toast.LENGTH_SHORT).show()
+                        }
+                    },
                 )
                 val dockVertical = settings.toolbarDock in setOf(ToolbarDock.LEFT, ToolbarDock.RIGHT) || (settings.toolbarDock == ToolbarDock.FREE && settings.verticalToolbar)
                 val dockAlignment = when (settings.toolbarDock) {
@@ -919,7 +1019,7 @@ private fun PageRail(document: InkDocument, documents: List<InkDocument>, select
 }
 
 @Composable
-private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, onZoom: (Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onUndoGesture: () -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, localEraser: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit) {
+private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, onZoom: (Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onUndoGesture: () -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, localEraser: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onShortcutAction: (ShortcutAction) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val backgroundVisible = page.layers.firstOrNull { it.role == LayerRole.BACKGROUND }?.visible != false
     val background = remember(page.id, page.background, page.backgroundRotationQuarterTurns, page.crop, backgroundVisible) { if (backgroundVisible) runCatching { assets.renderBackground(page.background, 1200, page.backgroundRotationQuarterTurns, page.crop) }.getOrNull() else null }
@@ -955,6 +1055,8 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onPdfGotoLink = onPdfGotoLink
                 view.onUndoGesture = onUndoGesture
                 view.onInputDiagnostic = onInputDiagnostic
+                view.onShortcutAction = onShortcutAction
+                view.post { view.requestFocus() }
                 onView(view)
             } },
             update = { view ->
@@ -978,6 +1080,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onPdfGotoLink = onPdfGotoLink
                 view.onUndoGesture = onUndoGesture
                 view.onInputDiagnostic = onInputDiagnostic
+                view.onShortcutAction = onShortcutAction
             },
             modifier = Modifier.fillMaxSize(),
         )
