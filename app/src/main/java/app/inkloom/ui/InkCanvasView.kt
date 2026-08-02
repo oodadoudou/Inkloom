@@ -61,6 +61,7 @@ import app.inkloom.document.WetMixDynamics
 import app.inkloom.model.EditorTool
 import app.inkloom.settings.CspShortcutResolver
 import app.inkloom.settings.ShortcutAction
+import app.inkloom.settings.ShortcutBinding
 import app.inkloom.settings.ShortcutChord
 import app.inkloom.settings.StylusButtonAction
 import app.inkloom.settings.SelectionFilter
@@ -265,6 +266,7 @@ class InkCanvasView(context: Context) : View(context) {
     var onUndoGesture: () -> Unit = {}
     var onInputDiagnostic: (String, Float, Float, Int) -> Unit = { _, _, _, _ -> }
     var onShortcutAction: (ShortcutAction) -> Unit = {}
+    var shortcutBindings: List<ShortcutBinding> = CspShortcutResolver.defaultBindings
 
     private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
         override fun onScale(detector: ScaleGestureDetector): Boolean {
@@ -289,6 +291,7 @@ class InkCanvasView(context: Context) : View(context) {
                 alt = event.isAltPressed,
                 shift = event.isShiftPressed,
             ),
+            shortcutBindings,
         ) ?: return super.onKeyDown(keyCode, event)
         if (event.repeatCount == 0 || CspShortcutResolver.isRepeatable(action)) onShortcutAction(action)
         return true

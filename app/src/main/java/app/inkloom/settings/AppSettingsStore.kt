@@ -29,6 +29,7 @@ data class AppSettings(
     val selectionMode: SelectionMode = SelectionMode.REPLACE,
     val selectionFilter: SelectionFilter = SelectionFilter.ALL,
     val nonDestructiveEraser: Boolean = false,
+    val shortcutBindings: List<ShortcutBinding> = CspShortcutResolver.defaultBindings,
 )
 
 enum class StylusButtonAction { ERASER, LASSO, NONE }
@@ -70,6 +71,7 @@ class AppSettingsStore(context: Context) {
             selectionMode = enumValue(preferences.getString("selectionMode", null), SelectionMode.REPLACE),
             selectionFilter = enumValue(preferences.getString("selectionFilter", null), SelectionFilter.ALL),
             nonDestructiveEraser = preferences.getBoolean("nonDestructiveEraser", false),
+            shortcutBindings = ShortcutBindingCodec.decode(preferences.getString("shortcutBindings", null)),
         )
     }
 
@@ -101,8 +103,30 @@ class AppSettingsStore(context: Context) {
             .putString("selectionMode", value.selectionMode.name)
             .putString("selectionFilter", value.selectionFilter.name)
             .putBoolean("nonDestructiveEraser", value.nonDestructiveEraser)
+            .putString("shortcutBindings", ShortcutBindingCodec.encode(value.shortcutBindings))
             .apply()
     }
 
     private inline fun <reified T : Enum<T>> enumValue(raw: String?, fallback: T): T = runCatching { enumValueOf<T>(raw.orEmpty()) }.getOrDefault(fallback)
+}
+
+object ShortcutBindingCodec {
+    fun encode(bindings: List<ShortcutBinding>): String = bindings.joinToString("|") { binding ->
+        listOf(binding.action.name, binding.chord.keyCode, binding.chord.ctrl, binding.chord.alt, binding.chord.shift).joinToString(",")
+    }
+
+    fun decode(raw: String?): List<ShortcutBinding> {
+        if (raw.isNullOrBlank()) return CspShortcutResolver.defaultBindings
+        val decoded = raw.split('|').mapNotNull { entry ->
+            val fields = entry.split(',')
+            if (fields.size != 5) return@mapNotNull null
+            runCatching {
+                ShortcutBinding(
+                    action = enumValueOf(fields[0]),
+                    chord = ShortcutChord(fields[1].toInt(), fields[2].toBooleanStrict(), fields[3].toBooleanStrict(), fields[4].toBooleanStrict()),
+                )
+            }.getOrNull()
+        }
+        return decoded.takeIf(List<ShortcutBinding>::isNotEmpty) ?: CspShortcutResolver.defaultBindings
+    }
 }

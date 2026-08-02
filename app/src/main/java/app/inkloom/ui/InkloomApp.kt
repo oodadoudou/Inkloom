@@ -1162,6 +1162,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onUndoGesture = onUndoGesture
                 view.onInputDiagnostic = onInputDiagnostic
                 view.onShortcutAction = onShortcutAction
+                view.shortcutBindings = settings.shortcutBindings
                 view.post { view.requestFocus() }
                 onView(view)
             } },
@@ -1187,6 +1188,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onUndoGesture = onUndoGesture
                 view.onInputDiagnostic = onInputDiagnostic
                 view.onShortcutAction = onShortcutAction
+                view.shortcutBindings = settings.shortcutBindings
             },
             modifier = Modifier.fillMaxSize(),
         )

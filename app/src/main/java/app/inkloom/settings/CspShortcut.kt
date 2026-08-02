@@ -27,28 +27,44 @@ data class ShortcutChord(
     val shift: Boolean = false,
 )
 
+data class ShortcutBinding(
+    val action: ShortcutAction,
+    val chord: ShortcutChord,
+)
+
 object CspShortcutResolver {
-    fun resolve(chord: ShortcutChord): ShortcutAction? = with(chord) {
-        when {
-            ctrl && keyCode == KeyEvent.KEYCODE_Z && shift -> ShortcutAction.REDO
-            ctrl && keyCode == KeyEvent.KEYCODE_Z -> ShortcutAction.UNDO
-            ctrl && keyCode == KeyEvent.KEYCODE_Y -> ShortcutAction.REDO
-            ctrl && keyCode == KeyEvent.KEYCODE_0 -> ShortcutAction.FIT_PAGE
-            ctrl && keyCode == KeyEvent.KEYCODE_S -> ShortcutAction.SAVE_CHECKPOINT
-            ctrl && keyCode == KeyEvent.KEYCODE_LEFT_BRACKET -> ShortcutAction.OPACITY_DECREASE
-            ctrl && keyCode == KeyEvent.KEYCODE_RIGHT_BRACKET -> ShortcutAction.OPACITY_INCREASE
-            !ctrl && !alt && keyCode == KeyEvent.KEYCODE_P -> ShortcutAction.PEN_OR_PENCIL_GROUP
-            !ctrl && !alt && keyCode == KeyEvent.KEYCODE_B -> ShortcutAction.BRUSH_GROUP
-            !ctrl && !alt && keyCode == KeyEvent.KEYCODE_E -> ShortcutAction.TOGGLE_ERASER
-            !ctrl && !alt && keyCode in setOf(KeyEvent.KEYCODE_M, KeyEvent.KEYCODE_O) -> ShortcutAction.SELECT_TOOL
-            !ctrl && !alt && keyCode == KeyEvent.KEYCODE_LEFT_BRACKET -> ShortcutAction.BRUSH_SIZE_DECREASE
-            !ctrl && !alt && keyCode == KeyEvent.KEYCODE_RIGHT_BRACKET -> ShortcutAction.BRUSH_SIZE_INCREASE
-            !ctrl && !alt && keyCode == KeyEvent.KEYCODE_COMMA -> ShortcutAction.PREVIOUS_BRUSH
-            !ctrl && !alt && keyCode == KeyEvent.KEYCODE_PERIOD -> ShortcutAction.NEXT_BRUSH
-            !ctrl && !alt && keyCode == KeyEvent.KEYCODE_TAB -> ShortcutAction.TOGGLE_PANELS
-            else -> null
-        }
-    }
+    val defaultBindings: List<ShortcutBinding> = listOf(
+        ShortcutBinding(ShortcutAction.REDO, ShortcutChord(KeyEvent.KEYCODE_Z, ctrl = true, shift = true)),
+        ShortcutBinding(ShortcutAction.UNDO, ShortcutChord(KeyEvent.KEYCODE_Z, ctrl = true)),
+        ShortcutBinding(ShortcutAction.REDO, ShortcutChord(KeyEvent.KEYCODE_Y, ctrl = true)),
+        ShortcutBinding(ShortcutAction.FIT_PAGE, ShortcutChord(KeyEvent.KEYCODE_0, ctrl = true)),
+        ShortcutBinding(ShortcutAction.SAVE_CHECKPOINT, ShortcutChord(KeyEvent.KEYCODE_S, ctrl = true)),
+        ShortcutBinding(ShortcutAction.OPACITY_DECREASE, ShortcutChord(KeyEvent.KEYCODE_LEFT_BRACKET, ctrl = true)),
+        ShortcutBinding(ShortcutAction.OPACITY_INCREASE, ShortcutChord(KeyEvent.KEYCODE_RIGHT_BRACKET, ctrl = true)),
+        ShortcutBinding(ShortcutAction.PEN_OR_PENCIL_GROUP, ShortcutChord(KeyEvent.KEYCODE_P)),
+        ShortcutBinding(ShortcutAction.BRUSH_GROUP, ShortcutChord(KeyEvent.KEYCODE_B)),
+        ShortcutBinding(ShortcutAction.TOGGLE_ERASER, ShortcutChord(KeyEvent.KEYCODE_E)),
+        ShortcutBinding(ShortcutAction.SELECT_TOOL, ShortcutChord(KeyEvent.KEYCODE_M)),
+        ShortcutBinding(ShortcutAction.SELECT_TOOL, ShortcutChord(KeyEvent.KEYCODE_O)),
+        ShortcutBinding(ShortcutAction.BRUSH_SIZE_DECREASE, ShortcutChord(KeyEvent.KEYCODE_LEFT_BRACKET)),
+        ShortcutBinding(ShortcutAction.BRUSH_SIZE_INCREASE, ShortcutChord(KeyEvent.KEYCODE_RIGHT_BRACKET)),
+        ShortcutBinding(ShortcutAction.PREVIOUS_BRUSH, ShortcutChord(KeyEvent.KEYCODE_COMMA)),
+        ShortcutBinding(ShortcutAction.NEXT_BRUSH, ShortcutChord(KeyEvent.KEYCODE_PERIOD)),
+        ShortcutBinding(ShortcutAction.TOGGLE_PANELS, ShortcutChord(KeyEvent.KEYCODE_TAB)),
+    )
+
+    fun resolve(chord: ShortcutChord, bindings: List<ShortcutBinding> = defaultBindings): ShortcutAction? =
+        bindings.firstOrNull { it.chord == chord }?.action
+
+    fun replace(bindings: List<ShortcutBinding>, action: ShortcutAction, chord: ShortcutChord): List<ShortcutBinding> =
+        bindings.filterNot { it.action == action || it.chord == chord } + ShortcutBinding(action, chord)
+
+    fun display(chord: ShortcutChord): String = buildList {
+        if (chord.ctrl) add("Ctrl")
+        if (chord.alt) add("Alt")
+        if (chord.shift) add("Shift")
+        add(KeyEvent.keyCodeToString(chord.keyCode).removePrefix("KEYCODE_").replace('_', ' '))
+    }.joinToString("+")
 
     fun isRepeatable(action: ShortcutAction): Boolean = action in setOf(
         ShortcutAction.BRUSH_SIZE_DECREASE,
