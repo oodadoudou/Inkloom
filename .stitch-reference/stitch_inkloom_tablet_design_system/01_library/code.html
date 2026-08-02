@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Inkloom - Notebook Library</title>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Google Fonts: Noto Sans -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS with custom config -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-secondary-fixed-variant": "#2c4964",
+                        "surface-container-highest": "#e1e3e2",
+                        "inverse-primary": "#abcec1",
+                        "surface-container-low": "#f2f4f3",
+                        "on-primary-fixed-variant": "#2c4d43",
+                        "background": "#f8faf9",
+                        "error-container": "#ffdad6",
+                        "surface-container": "#eceeed",
+                        "outline-variant": "#c1c8c4",
+                        "outline": "#717975",
+                        "on-primary": "#ffffff",
+                        "on-secondary-container": "#45627e",
+                        "primary-container": "#5a7b70",
+                        "tertiary": "#625773",
+                        "primary": "#426258",
+                        "error": "#ba1a1a",
+                        "tertiary-fixed": "#ecdcfe",
+                        "on-background": "#191c1c",
+                        "on-surface": "#191c1c",
+                        "secondary": "#44617d",
+                        "on-error": "#ffffff",
+                        "tertiary-container": "#7b6f8d",
+                        "surface": "#f8faf9",
+                        "on-tertiary-fixed": "#20172f",
+                        "on-surface-variant": "#414845",
+                        "surface-variant": "#e1e3e2",
+                        "on-primary-fixed": "#002018",
+                        "on-error-container": "#93000a",
+                        "secondary-container": "#bfddfe",
+                        "on-primary-container": "#f5fff9",
+                        "surface-container-high": "#e6e9e8",
+                        "on-secondary": "#ffffff",
+                        "on-tertiary-fixed-variant": "#4c425d",
+                        "surface-dim": "#d8dad9",
+                        "surface-tint": "#44655a",
+                        "secondary-fixed": "#cee5ff",
+                        "inverse-on-surface": "#eff1f0",
+                        "surface-bright": "#f8faf9",
+                        "tertiary-fixed-dim": "#cfc1e2",
+                        "on-tertiary-container": "#fffbff",
+                        "primary-fixed-dim": "#abcec1",
+                        "on-secondary-fixed": "#001d33",
+                        "on-tertiary": "#ffffff",
+                        "inverse-surface": "#2e3131",
+                        "secondary-fixed-dim": "#acc9ea",
+                        "surface-container-lowest": "#ffffff",
+                        "primary-fixed": "#c6eadc",
+                        
+                        // Added custom palette for covers based on prompt
+                        "cover-sage": "#a9c4b7",
+                        "cover-blue": "#a9b9cf",
+                        "cover-coral": "#d49f9a",
+                        "cover-amber": "#d6c19a",
+                        "cover-plum": "#c5b3ce"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "2xl": "1rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "side_rail_wide": "200px", 
+                        "sub_bar_height": "40px",
+                        "grid_margin": "24px",
+                        "side_rail_narrow": "140px",
+                        "global_app_bar_height": "56px",
+                        "container_padding": "16px",
+                        "stack_gap": "12px",
+                        "grid_gutter": "16px"
+                    },
+                    "fontFamily": {
+                        "body-md": ["Noto Sans"],
+                        "label-sm": ["Noto Sans"],
+                        "label-lg": ["Noto Sans"],
+                        "display-lg": ["Noto Sans"],
+                        "display-md": ["Noto Sans"],
+                        "headline-sm": ["Noto Sans"],
+                        "body-lg": ["Noto Sans"]
+                    },
+                    "fontSize": {
+                        "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "label-sm": ["10px", {"lineHeight": "14px", "fontWeight": "500"}],
+                        "label-lg": ["14px", {"lineHeight": "20px", "fontWeight": "500"}],
+                        "display-lg": ["32px", {"lineHeight": "40px", "fontWeight": "600"}],
+                        "display-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "500"}],
+                        "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body {
+            background-color: theme('colors.background');
+            color: theme('colors.on-background');
+        }
+        /* Custom scrollbar for webkit */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: theme('colors.outline-variant');
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: theme('colors.outline');
+        }
+    </style>
+</head>
+<body class="font-body-md overflow-hidden h-screen w-screen flex">
+<!-- GlobalTopBar & Shell Wrapper (Top row context for the rail below) -->
+<!-- The prompt implies a combined TopBar/SideRail, but JSON defines them separately. We'll build the layout structure. -->
+<!-- TabletNavigationRail -->
+<nav class="fixed left-0 top-0 h-full w-side_rail_wide flex flex-col py-stack_gap bg-surface dark:bg-on-background border-r border-surface-container-high z-10">
+<!-- Brand Header in Rail -->
+<div class="px-6 mb-8 flex items-center gap-3">
+<div class="w-8 h-8 rounded bg-primary text-on-primary flex items-center justify-center">
+<span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 1;">edit_document</span>
+</div>
+<div>
+<h1 class="font-display-md text-display-md text-primary leading-none">Inkloom</h1>
+<!-- Library context text from screenshot -->
+<span class="text-label-sm text-outline">Library</span>
+</div>
+</div>
+<!-- Scrollable Navigation Items -->
+<div class="flex-1 overflow-y-auto px-3 space-y-1">
+<!-- Active: Library -->
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-primary dark:text-primary-fixed bg-surface-container-low dark:bg-surface-container transition-all" href="#">
+<span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 1;">book</span>
+<span class="font-label-lg text-label-lg">Library</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container transition-all" href="#">
+<span class="material-symbols-outlined text-[20px]">schedule</span>
+<span class="font-label-lg text-label-lg">Recents</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container transition-all" href="#">
+<span class="material-symbols-outlined text-[20px]">grade</span>
+<span class="font-label-lg text-label-lg">Favorites</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container transition-all" href="#">
+<span class="material-symbols-outlined text-[20px]">delete</span>
+<span class="font-label-lg text-label-lg">Trash</span>
+</a>
+<!-- Divider -->
+<div class="my-4 border-t border-surface-container-high mx-3"></div>
+<!-- Folders Section -->
+<div class="px-3 mb-2">
+<span class="text-label-sm text-outline uppercase tracking-wider">Folders</span>
+</div>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container transition-all" href="#">
+<span class="material-symbols-outlined text-[20px]">folder</span>
+<span class="font-label-lg text-label-lg">School</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container transition-all" href="#">
+<span class="material-symbols-outlined text-[20px]">folder</span>
+<span class="font-label-lg text-label-lg">Projects</span>
+</a>
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container transition-all" href="#">
+<span class="material-symbols-outlined text-[20px]">folder</span>
+<span class="font-label-lg text-label-lg">Personal</span>
+</a>
+</div>
+<!-- Footer Setting -->
+<div class="px-3 mt-auto pt-4">
+<a class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-on-surface-variant hover:bg-surface-container transition-all" href="#">
+<span class="material-symbols-outlined text-[20px]">settings</span>
+<span class="font-label-lg text-label-lg">Settings</span>
+</a>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<main class="ml-side_rail_wide flex-1 h-full flex flex-col bg-background overflow-hidden relative">
+<!-- GlobalTopBar (Contextual to the view) -->
+<header class="flex justify-between items-center h-global_app_bar_height px-8 w-full bg-background/80 backdrop-blur-md sticky top-0 z-20">
+<div class="flex-1">
+<!-- Search could go here if needed, matching JSON "on_right" -->
+</div>
+<div class="flex items-center gap-2">
+<button class="p-2 text-on-surface-variant hover:bg-surface-container-high rounded-full transition-colors scale-95 active:scale-90 transition-transform">
+<span class="material-symbols-outlined">search</span>
+</button>
+<button class="p-2 text-on-surface-variant hover:bg-surface-container-high rounded-full transition-colors scale-95 active:scale-90 transition-transform">
+<span class="material-symbols-outlined">sync</span>
+</button>
+<button class="ml-2 w-8 h-8 rounded-full bg-surface-container-highest flex items-center justify-center text-primary-container font-label-lg font-bold">
+                    J
+                </button>
+</div>
+</header>
+<!-- Scrollable Workspace -->
+<div class="flex-1 overflow-y-auto px-8 pb-24">
+<!-- Page Header -->
+<div class="flex justify-between items-end mb-8 mt-6">
+<div>
+<h2 class="font-display-lg text-display-lg text-on-surface mb-1">Good Morning, Jane</h2>
+<p class="text-body-md text-outline">Continue your recent notes, or start with a fresh blank page.</p>
+</div>
+<button class="flex items-center gap-2 bg-primary text-on-primary px-6 py-3 rounded-full hover:opacity-90 transition-opacity font-label-lg shadow-sm">
+<span class="material-symbols-outlined" style="font-variation-settings: 'wght' 300;">add</span>
+                    New Note
+                </button>
+</div>
+<!-- Recents Section -->
+<section class="mb-12">
+<h3 class="font-headline-sm text-headline-sm text-on-surface mb-4">Recents</h3>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+<!-- Card 1 -->
+<div class="bg-surface rounded-xl overflow-hidden shadow-sm border border-surface-container-low flex flex-col group cursor-pointer hover:shadow-md transition-shadow">
+<div class="h-32 bg-cover-sage p-4 relative">
+<!-- Paper lines decoration -->
+<div class="space-y-2 mt-4 opacity-50">
+<div class="h-0.5 bg-white w-full rounded"></div>
+<div class="h-0.5 bg-white w-5/6 rounded"></div>
+<div class="h-0.5 bg-white w-11/12 rounded"></div>
+<div class="h-0.5 bg-white w-4/5 rounded"></div>
+</div>
+</div>
+<div class="p-4 flex-1 flex flex-col justify-between">
+<div>
+<h4 class="font-label-lg text-on-surface mb-1 truncate">Distributed Systems</h4>
+<p class="text-label-sm text-outline">Just edited • 18 pages</p>
+</div>
+<!-- Progress bar -->
+<div class="w-full h-1 bg-surface-container-high rounded-full mt-4">
+<div class="h-full bg-primary rounded-full" style="width: 35%"></div>
+</div>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="bg-surface rounded-xl overflow-hidden shadow-sm border border-surface-container-low flex flex-col group cursor-pointer hover:shadow-md transition-shadow">
+<div class="h-32 bg-cover-blue p-4 relative">
+<div class="space-y-2 mt-4 opacity-50">
+<div class="h-0.5 bg-white w-full rounded"></div>
+<div class="h-0.5 bg-white w-3/4 rounded"></div>
+<div class="h-0.5 bg-white w-5/6 rounded"></div>
+</div>
+</div>
+<div class="p-4 flex-1 flex flex-col justify-between">
+<div>
+<h4 class="font-label-lg text-on-surface mb-1 truncate">CS336 Reading Notes</h4>
+<p class="text-label-sm text-outline">Yesterday • 42 pages</p>
+</div>
+<div class="w-full h-1 bg-surface-container-high rounded-full mt-4">
+<div class="h-full bg-secondary rounded-full" style="width: 15%"></div>
+</div>
+</div>
+</div>
+<!-- Card 3 (PDF) -->
+<div class="bg-surface rounded-xl overflow-hidden shadow-sm border border-surface-container-low flex flex-col group cursor-pointer hover:shadow-md transition-shadow">
+<div class="h-32 bg-cover-coral p-4 relative">
+<div class="bg-white/90 text-[10px] font-bold px-2 py-1 rounded text-coral w-max">PDF</div>
+</div>
+<div class="p-4 flex-1 flex flex-col justify-between">
+<div>
+<h4 class="font-label-lg text-on-surface mb-1 truncate">DSpark Paper</h4>
+<p class="text-label-sm text-outline">PDF • 16 annotations</p>
+</div>
+<div class="w-full h-1 bg-surface-container-high rounded-full mt-4">
+<div class="h-full bg-error rounded-full" style="width: 60%"></div>
+</div>
+</div>
+</div>
+<!-- Card 4 -->
+<div class="bg-surface rounded-xl overflow-hidden shadow-sm border border-surface-container-low flex flex-col group cursor-pointer hover:shadow-md transition-shadow">
+<div class="h-32 bg-cover-amber p-4 relative">
+<div class="space-y-2 mt-4 opacity-50">
+<div class="h-0.5 bg-white w-full rounded"></div>
+<div class="h-0.5 bg-white w-full rounded"></div>
+<div class="h-0.5 bg-white w-4/5 rounded"></div>
+<div class="h-0.5 bg-white w-11/12 rounded"></div>
+</div>
+</div>
+<div class="p-4 flex-1 flex flex-col justify-between">
+<div>
+<h4 class="font-label-lg text-on-surface mb-1 truncate">Human Anatomy</h4>
+<p class="text-label-sm text-outline">3 days ago • 12 pages</p>
+</div>
+<div class="w-full h-1 bg-surface-container-high rounded-full mt-4">
+<div class="h-full bg-surface-container-high rounded-full" style="width: 0%"></div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- All Notes Section -->
+<section>
+<div class="flex items-center justify-between mb-4">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">All Notes</h3>
+<!-- Filter Chips -->
+<div class="flex gap-2">
+<button class="px-4 py-1.5 rounded-full bg-primary text-on-primary font-label-sm">All</button>
+<button class="px-4 py-1.5 rounded-full border border-outline-variant text-on-surface-variant font-label-sm hover:bg-surface-container">Notebooks</button>
+<button class="px-4 py-1.5 rounded-full border border-outline-variant text-on-surface-variant font-label-sm hover:bg-surface-container">PDFs</button>
+</div>
+</div>
+<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6">
+<!-- Vertical Card 1 -->
+<div class="bg-surface rounded-2xl overflow-hidden shadow-sm border border-surface-container-low flex flex-col hover:-translate-y-1 transition-transform duration-200">
+<div class="h-40 bg-cover-sage w-full"></div>
+<div class="p-4 bg-surface">
+<h4 class="font-label-lg text-on-surface mb-1">Distributed Systems</h4>
+<p class="text-label-sm text-outline">Just edited • 18 pages</p>
+</div>
+</div>
+<!-- Vertical Card 2 -->
+<div class="bg-surface rounded-2xl overflow-hidden shadow-sm border border-surface-container-low flex flex-col hover:-translate-y-1 transition-transform duration-200">
+<div class="h-40 bg-cover-blue w-full"></div>
+<div class="p-4 bg-surface">
+<h4 class="font-label-lg text-on-surface mb-1">CS336 Reading Notes</h4>
+<p class="text-label-sm text-outline">Yesterday • 42 pages</p>
+</div>
+</div>
+<!-- Vertical Card 3 -->
+<div class="bg-surface rounded-2xl overflow-hidden shadow-sm border border-surface-container-low flex flex-col hover:-translate-y-1 transition-transform duration-200">
+<div class="h-40 bg-cover-coral w-full relative">
+<!-- Optional PDF badge could go here -->
+</div>
+<div class="p-4 bg-surface">
+<h4 class="font-label-lg text-on-surface mb-1">DSpark Paper</h4>
+<p class="text-label-sm text-outline">PDF • 16 annotations</p>
+</div>
+</div>
+<!-- Vertical Card 4 -->
+<div class="bg-surface rounded-2xl overflow-hidden shadow-sm border border-surface-container-low flex flex-col hover:-translate-y-1 transition-transform duration-200">
+<div class="h-40 bg-cover-amber w-full"></div>
+<div class="p-4 bg-surface">
+<h4 class="font-label-lg text-on-surface mb-1">Human Anatomy</h4>
+<p class="text-label-sm text-outline">3 days ago • 12 pages</p>
+</div>
+</div>
+<!-- Vertical Card 5 -->
+<div class="bg-surface rounded-2xl overflow-hidden shadow-sm border border-surface-container-low flex flex-col hover:-translate-y-1 transition-transform duration-200">
+<div class="h-40 bg-cover-sage w-full opacity-80"></div>
+<div class="p-4 bg-surface">
+<h4 class="font-label-lg text-on-surface mb-1">Meeting Notes</h4>
+<p class="text-label-sm text-outline">Jul 30 • 8 pages</p>
+</div>
+</div>
+<!-- Vertical Card 6 -->
+<div class="bg-surface rounded-2xl overflow-hidden shadow-sm border border-surface-container-low flex flex-col hover:-translate-y-1 transition-transform duration-200">
+<div class="h-40 bg-cover-plum w-full"></div>
+<div class="p-4 bg-surface">
+<h4 class="font-label-lg text-on-surface mb-1">Swedish Vocab</h4>
+<p class="text-label-sm text-outline">Yesterday • 31 pages</p>
+</div>
+</div>
+</div>
+</section>
+</div>
+</main>
+</body></html>

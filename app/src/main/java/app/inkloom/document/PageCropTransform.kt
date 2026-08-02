@@ -1,0 +1,71 @@
+package app.inkloom.document
+
+object PageCropTransform {
+    private const val MIN_SIZE = .05f
+
+    fun normalized(value: PageCrop): PageCrop {
+        val left = value.left.coerceIn(0f, 1f - MIN_SIZE)
+        val top = value.top.coerceIn(0f, 1f - MIN_SIZE)
+        val right = value.right.coerceIn(left + MIN_SIZE, 1f)
+        val bottom = value.bottom.coerceIn(top + MIN_SIZE, 1f)
+        return PageCrop(left, top, right, bottom)
+    }
+
+    fun visibleWidth(page: InkPage): Float = page.width * width(page.crop)
+
+    fun visibleHeight(page: InkPage): Float = page.height * height(page.crop)
+
+    fun project(page: InkPage): InkPage {
+        val crop = normalized(page.crop)
+        return page.copy(
+            width = page.width * width(crop),
+            height = page.height * height(crop),
+            crop = PageCrop(),
+            strokes = page.strokes.map { stroke -> stroke.copy(points = stroke.points.map { point -> project(point, crop) }) },
+            elements = page.elements.map { project(it, crop) },
+        )
+    }
+
+    fun unproject(stroke: InkStroke, cropValue: PageCrop): InkStroke {
+        val crop = normalized(cropValue)
+        return stroke.copy(points = stroke.points.map { point -> unproject(point, crop) })
+    }
+
+    fun unproject(element: PageElement, cropValue: PageCrop): PageElement {
+        val crop = normalized(cropValue)
+        val x = crop.left + element.x * width(crop)
+        val y = crop.top + element.y * height(crop)
+        return element.withPosition(x, y)
+    }
+
+    fun rotateClockwise(value: PageCrop): PageCrop {
+        val crop = normalized(value)
+        return normalized(PageCrop(1f - crop.bottom, crop.left, 1f - crop.top, crop.right))
+    }
+
+    private fun project(point: StrokePoint, crop: PageCrop) = point.copy(
+        x = (point.x - crop.left) / width(crop),
+        y = (point.y - crop.top) / height(crop),
+    )
+
+    private fun unproject(point: StrokePoint, crop: PageCrop) = point.copy(
+        x = crop.left + point.x * width(crop),
+        y = crop.top + point.y * height(crop),
+    )
+
+    private fun project(element: PageElement, crop: PageCrop): PageElement = element.withPosition(
+        (element.x - crop.left) / width(crop),
+        (element.y - crop.top) / height(crop),
+    )
+
+    private fun PageElement.withPosition(x: Float, y: Float): PageElement = when (this) {
+        is PageElement.Text -> copy(x = x, y = y)
+        is PageElement.Sticky -> copy(x = x, y = y)
+        is PageElement.Shape -> copy(x = x, y = y)
+        is PageElement.Image -> copy(x = x, y = y)
+        is PageElement.AudioMarker -> copy(x = x, y = y)
+    }
+
+    private fun width(crop: PageCrop) = (crop.right - crop.left).coerceAtLeast(MIN_SIZE)
+    private fun height(crop: PageCrop) = (crop.bottom - crop.top).coerceAtLeast(MIN_SIZE)
+}

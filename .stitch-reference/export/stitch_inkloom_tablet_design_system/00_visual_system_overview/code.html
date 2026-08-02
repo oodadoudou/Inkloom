@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Inkloom - Design System</title>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Google Fonts: Noto Sans -->
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS with custom config -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-secondary-fixed-variant": "#2c4964",
+                        "surface-container-highest": "#e1e3e2",
+                        "inverse-primary": "#abcec1",
+                        "surface-container-low": "#f2f4f3",
+                        "on-primary-fixed-variant": "#2c4d43",
+                        "background": "#f8faf9",
+                        "error-container": "#ffdad6",
+                        "surface-container": "#eceeed",
+                        "outline-variant": "#c1c8c4",
+                        "outline": "#717975",
+                        "on-primary": "#ffffff",
+                        "on-secondary-container": "#45627e",
+                        "primary-container": "#5a7b70",
+                        "tertiary": "#625773",
+                        "primary": "#426258",
+                        "error": "#ba1a1a",
+                        "tertiary-fixed": "#ecdcfe",
+                        "on-background": "#191c1c",
+                        "on-surface": "#191c1c",
+                        "secondary": "#44617d",
+                        "on-error": "#ffffff",
+                        "tertiary-container": "#7b6f8d",
+                        "surface": "#f8faf9",
+                        "on-tertiary-fixed": "#20172f",
+                        "on-surface-variant": "#414845",
+                        "surface-variant": "#e1e3e2",
+                        "on-primary-fixed": "#002018",
+                        "on-error-container": "#93000a",
+                        "secondary-container": "#bfddfe",
+                        "on-primary-container": "#f5fff9",
+                        "surface-container-high": "#e6e9e8",
+                        "on-secondary": "#ffffff",
+                        "on-tertiary-fixed-variant": "#4c425d",
+                        "surface-dim": "#d8dad9",
+                        "surface-tint": "#44655a",
+                        "secondary-fixed": "#cee5ff",
+                        "inverse-on-surface": "#eff1f0",
+                        "surface-bright": "#f8faf9",
+                        "tertiary-fixed-dim": "#cfc1e2",
+                        "on-tertiary-container": "#fffbff",
+                        "primary-fixed-dim": "#abcec1",
+                        "on-secondary-fixed": "#001d33",
+                        "on-tertiary": "#ffffff",
+                        "inverse-surface": "#2e3131",
+                        "secondary-fixed-dim": "#acc9ea",
+                        "surface-container-lowest": "#ffffff",
+                        "primary-fixed": "#c6eadc"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "side_rail_wide": "160dp",
+                        "sub_bar_height": "40dp",
+                        "grid_margin": "24dp",
+                        "side_rail_narrow": "140dp",
+                        "global_app_bar_height": "48dp",
+                        "container_padding": "16dp",
+                        "stack_gap": "12dp",
+                        "grid_gutter": "16dp"
+                    },
+                    "fontFamily": {
+                        "body-md": ["Noto Sans"],
+                        "label-sm": ["Noto Sans"],
+                        "label-lg": ["Noto Sans"],
+                        "display-lg": ["Noto Sans"],
+                        "display-md": ["Noto Sans"],
+                        "headline-sm": ["Noto Sans"],
+                        "body-lg": ["Noto Sans"]
+                    },
+                    "fontSize": {
+                        "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "label-sm": ["10px", { "lineHeight": "14px", "fontWeight": "500" }],
+                        "label-lg": ["12px", { "lineHeight": "16px", "fontWeight": "500" }],
+                        "display-lg": ["32px", { "lineHeight": "40px", "fontWeight": "600" }],
+                        "display-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "headline-sm": ["20px", { "lineHeight": "28px", "fontWeight": "500" }],
+                        "body-lg": ["16px", { "lineHeight": "24px", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="bg-surface min-h-screen text-on-surface font-body-md antialiased selection:bg-primary selection:text-on-primary">
+<!-- GlobalTopBar -->
+<header class="flex justify-between items-center h-global_app_bar_height px-grid_margin w-full bg-surface-container-lowest border-b border-surface-container">
+<div class="flex items-center gap-4">
+<div class="flex items-center justify-center w-8 h-8 rounded bg-primary text-on-primary">
+<span class="material-symbols-outlined text-sm" style="font-variation-settings: 'FILL' 1;">check</span>
+</div>
+<h1 class="font-display-md text-display-md font-semibold text-primary">Inkloom</h1>
+<span class="text-outline-variant px-2">|</span>
+<span class="font-body-md text-on-surface-variant text-body-md">视觉系统 • 13-14 英寸平板</span>
+</div>
+<div class="flex items-center gap-2 text-on-surface-variant">
+<button class="p-2 hover:bg-surface-container-high rounded-full transition-colors scale-95 active:scale-90 flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+</button>
+<button class="p-2 hover:bg-surface-container-high rounded-full transition-colors scale-95 active:scale-90 flex items-center justify-center">
+<span class="material-symbols-outlined" data-icon="sync">sync</span>
+</button>
+<button class="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center font-label-lg text-label-lg text-primary ml-2 hover:bg-surface-container-high transition-colors scale-95 active:scale-90">
+<span class="material-symbols-outlined" data-icon="account_circle">account_circle</span>
+</button>
+</div>
+</header>
+<!-- Main Content Area -->
+<main class="max-w-[1440px] mx-auto px-12 py-16 flex flex-col gap-16">
+<!-- Header Section -->
+<section class="flex flex-col gap-4">
+<h2 class="font-display-lg text-display-lg text-on-surface">像白纸一样安静，只在需要时出现工具。</h2>
+<p class="font-body-md text-body-md text-outline">16:10 横屏 • 2560 × 1600 设计基线 • 内容颜色与界面主题分离</p>
+</section>
+<!-- Interface Colors Section -->
+<section class="flex flex-col gap-6">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">界面颜色</h3>
+<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6">
+<!-- Color Card 1 -->
+<div class="bg-surface-container-lowest rounded-xl border border-surface-container p-4 flex flex-col gap-4 items-center shadow-sm">
+<div class="w-full h-12 rounded-lg bg-primary"></div>
+<span class="font-label-lg text-label-lg text-on-surface-variant">鼠尾草</span>
+</div>
+<!-- Color Card 2 -->
+<div class="bg-surface-container-lowest rounded-xl border border-surface-container p-4 flex flex-col gap-4 items-center shadow-sm">
+<div class="w-full h-12 rounded-lg bg-secondary"></div>
+<span class="font-label-lg text-label-lg text-on-surface-variant">海盐蓝</span>
+</div>
+<!-- Color Card 3 -->
+<div class="bg-surface-container-lowest rounded-xl border border-surface-container p-4 flex flex-col gap-4 items-center shadow-sm">
+<div class="w-full h-12 rounded-lg bg-tertiary"></div>
+<span class="font-label-lg text-label-lg text-on-surface-variant">灰紫</span>
+</div>
+<!-- Color Card 4 -->
+<div class="bg-surface-container-lowest rounded-xl border border-surface-container p-4 flex flex-col gap-4 items-center shadow-sm">
+<div class="w-full h-12 rounded-lg bg-error-container"></div>
+<span class="font-label-lg text-label-lg text-on-surface-variant">珊瑚</span>
+</div>
+<!-- Color Card 5 -->
+<div class="bg-surface-container-lowest rounded-xl border border-surface-container p-4 flex flex-col gap-4 items-center shadow-sm">
+<div class="w-full h-12 rounded-lg bg-surface-tint"></div>
+<span class="font-label-lg text-label-lg text-on-surface-variant">琥珀</span>
+</div>
+<!-- Color Card 6 -->
+<div class="bg-surface-container-lowest rounded-xl border border-surface-container p-4 flex flex-col gap-4 items-center shadow-sm">
+<div class="w-full h-12 rounded-lg bg-inverse-surface"></div>
+<span class="font-label-lg text-label-lg text-on-surface-variant">石墨</span>
+</div>
+</div>
+</section>
+<!-- Sizing & Components Section -->
+<section class="flex flex-col gap-6">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">尺寸与组件</h3>
+<div class="bg-surface-container-lowest rounded-2xl border border-surface-container p-8 grid grid-cols-1 lg:grid-cols-2 gap-16 shadow-sm">
+<!-- Left: Layout Mockup -->
+<div class="flex flex-col gap-4">
+<h4 class="font-body-md text-body-md font-semibold text-on-surface">大屏三栏</h4>
+<div class="bg-surface-container rounded-xl p-4 flex gap-4 h-[400px]">
+<!-- Left Rail Mock -->
+<div class="w-1/4 bg-surface-container-lowest rounded-lg h-full"></div>
+<!-- Main Canvas Mock -->
+<div class="w-1/2 bg-surface-container-lowest rounded-lg h-full"></div>
+<!-- Right Rail Mock -->
+<div class="w-1/4 bg-surface-container-lowest rounded-lg h-full"></div>
+</div>
+</div>
+<!-- Right: Core Components -->
+<div class="flex flex-col gap-8">
+<h4 class="font-body-md text-body-md font-semibold text-on-surface">核心组件</h4>
+<!-- Brush Tools -->
+<div class="flex gap-4">
+<button class="bg-primary text-on-primary font-label-lg text-label-lg px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-surface-tint transition-colors">
+<span class="material-symbols-outlined text-[18px]">edit</span>
+                            当前笔刷
+                        </button>
+<button class="bg-transparent border border-outline-variant text-on-surface font-label-lg text-label-lg px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined text-[18px]">pentagon</span>
+                            套索
+                        </button>
+</div>
+<!-- Notification Banner -->
+<div class="bg-primary-container/20 border border-primary/20 rounded-xl p-4 flex flex-col gap-2">
+<span class="font-body-md text-body-md text-on-surface">非破坏性操作</span>
+<span class="font-label-lg text-label-lg text-on-surface-variant">PDF、笔迹和笔刷源文件始终可以恢复。</span>
+</div>
+<!-- Color Picker -->
+<div class="flex items-center gap-4 py-2">
+<div class="w-6 h-6 rounded-full bg-inverse-surface cursor-pointer"></div>
+<div class="w-8 h-8 rounded-full bg-primary ring-2 ring-offset-2 ring-on-surface cursor-pointer"></div>
+<div class="w-6 h-6 rounded-full bg-surface-tint cursor-pointer"></div>
+<div class="w-6 h-6 rounded-full bg-error cursor-pointer"></div>
+<div class="w-6 h-6 rounded-full bg-secondary cursor-pointer"></div>
+<div class="w-6 h-6 rounded-full bg-tertiary cursor-pointer"></div>
+</div>
+<!-- Action Buttons -->
+<div class="flex gap-4 pt-4 mt-auto">
+<button class="flex-1 bg-primary text-on-primary font-body-md text-body-md py-3 rounded-xl hover:bg-surface-tint transition-colors">
+                            主要操作
+                        </button>
+<button class="flex-1 bg-transparent border border-outline-variant text-on-surface font-body-md text-body-md py-3 rounded-xl hover:bg-surface-container transition-colors">
+                            次要操作
+                        </button>
+</div>
+</div>
+</div>
+</section>
+</main>
+</body></html>

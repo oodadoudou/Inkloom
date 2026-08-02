@@ -1,0 +1,145 @@
+package app.inkloom.model
+
+import androidx.compose.ui.graphics.Color
+import app.inkloom.document.BrushCurvePoint
+import app.inkloom.document.BrushSecondaryDynamics
+import app.inkloom.document.BrushTaperMode
+import java.util.UUID
+
+data class Notebook(
+    val id: String = UUID.randomUUID().toString(),
+    val title: String,
+    val subtitle: String,
+    val cover: Color,
+    val pageCount: Int,
+    val isPdf: Boolean = false,
+)
+
+enum class BrushFormat(val label: String) {
+    SYSTEM("System"), ABR("ABR"), SUT("CSP / SUT"), PROCREATE("Procreate"), IMAGE("Image tip"), UNKNOWN("Unknown")
+}
+
+enum class Compatibility(val label: String) {
+    COMPLETE("Complete conversion"), HIGH("Highly compatible"), BASIC("Basic conversion"), EXTRACTED("Tip extracted"), FAILED("Unsupported")
+}
+
+data class ImportedBrush(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val format: BrushFormat,
+    val compatibility: Compatibility,
+    val sizeBytes: Long,
+    val report: List<String>,
+    val sourcePath: String? = null,
+    val sha256: String? = null,
+    val tipPreviewPath: String? = null,
+    val tipPreviewPaths: List<String> = emptyList(),
+    val dualTipPreviewPaths: List<String> = emptyList(),
+    val grainPreviewPath: String? = null,
+    val grainDensity: Float = 0f,
+    val grainScale: Float = 100f,
+    val grainRotationDegrees: Float = 0f,
+    val grainBrightness: Float = 0f,
+    val grainContrast: Float = 0f,
+    val grainReversed: Boolean = false,
+    val grainEmphasized: Boolean = false,
+    val defaultSize: Float = 8f,
+    val stabilization: Float = 0f,
+    val stabilizationBySpeed: Boolean = false,
+    val stabilizationBySpeedMode: Int = 1,
+    val spacing: Float = .12f,
+    val flow: Float = 1f,
+    val hardness: Float = 1f,
+    val thickness: Float = 1f,
+    val thicknessVertical: Boolean = false,
+    val rotationDegrees: Float = 0f,
+    val followStylusOrientation: Boolean = false,
+    val followStrokeDirection: Boolean = false,
+    val randomRotationDegrees: Float = 0f,
+    val watercolor: Boolean = false,
+    val colorMix: Float = 0f,
+    val paintMix: Float = 0f,
+    val spray: Boolean = false,
+    val sprayParticleSize: Float = 100f,
+    val sprayParticleSizeUnit: Int = 0,
+    val sprayParticleSizeSyncBrushSize: Boolean = true,
+    val sprayDensity: Float = 1f,
+    val sprayBias: Float = 0f,
+    val ribbon: Boolean = false,
+    val tipSequenceMode: Int = 0,
+    val dualBrush: Boolean = false,
+    val dualSizeScale: Float = 1f,
+    val dualSpacing: Float = .12f,
+    val dualFlow: Float = 1f,
+    val dualHardness: Float = 1f,
+    val dualThickness: Float = 1f,
+    val dualThicknessVertical: Boolean = false,
+    val dualRotationDegrees: Float = 0f,
+    val dualFollowStylusOrientation: Boolean = false,
+    val dualFollowStrokeDirection: Boolean = false,
+    val dualRandomRotationDegrees: Float = 0f,
+    val dualRibbon: Boolean = false,
+    val dualSpray: Boolean = false,
+    val dualSprayParticleSize: Float = 100f,
+    val dualSprayParticleSizeUnit: Int = 0,
+    val dualSprayParticleSizeSyncBrushSize: Boolean = true,
+    val dualSprayDensity: Float = 1f,
+    val dualSprayBias: Float = 0f,
+    val dualTipSequenceMode: Int = 0,
+    val dualCompositeMode: Int = 0,
+    val taperMode: BrushTaperMode = BrushTaperMode.PERCENTAGE,
+    val taperStartEnabled: Boolean = false,
+    val taperStartLength: Float = .2f,
+    val taperStartLengthUnit: Int = 0,
+    val taperStartMinimum: Float = .3f,
+    val taperEndEnabled: Boolean = false,
+    val taperEndLength: Float = .2f,
+    val taperEndLengthUnit: Int = 0,
+    val taperEndMinimum: Float = .3f,
+    val waterEdgeEnabled: Boolean = false,
+    val waterEdgeRadius: Float = 3f,
+    val waterEdgeRadiusUnit: Int = 0,
+    val waterEdgeOpacity: Float = .2f,
+    val waterEdgeDarkness: Float = 0f,
+    val waterEdgeBlur: Float = 0f,
+    val waterEdgeBlurUnit: Int = 0,
+    val favorite: Boolean = false,
+    val hidden: Boolean = false,
+    val tags: List<String> = emptyList(),
+    val lastUsedAt: Long = 0L,
+    val defaultOpacity: Float = 1f,
+    val sizePressureEnabled: Boolean = true,
+    val sizePressureMinimum: Float = .35f,
+    val sizePressureCurve: List<BrushCurvePoint> = emptyList(),
+    val sizeSecondaryDynamics: BrushSecondaryDynamics = BrushSecondaryDynamics(),
+    val opacityPressureEnabled: Boolean = false,
+    val opacityPressureMinimum: Float = 0f,
+    val opacityPressureCurve: List<BrushCurvePoint> = emptyList(),
+    val opacitySecondaryDynamics: BrushSecondaryDynamics = BrushSecondaryDynamics(),
+    val flowPressureEnabled: Boolean = false,
+    val flowPressureMinimum: Float = 0f,
+    val flowPressureCurve: List<BrushCurvePoint> = emptyList(),
+    val flowSecondaryDynamics: BrushSecondaryDynamics = BrushSecondaryDynamics(),
+    val spacingPressureEnabled: Boolean = false,
+    val spacingPressureMinimum: Float = 0f,
+    val spacingPressureCurve: List<BrushCurvePoint> = emptyList(),
+    val spacingSecondaryDynamics: BrushSecondaryDynamics = BrushSecondaryDynamics(),
+    val thicknessPressureEnabled: Boolean = false,
+    val thicknessPressureMinimum: Float = 0f,
+    val thicknessPressureCurve: List<BrushCurvePoint> = emptyList(),
+    val thicknessSecondaryDynamics: BrushSecondaryDynamics = BrushSecondaryDynamics(),
+    val parserVersion: Int = 0,
+)
+
+enum class EditorTool { PEN, HIGHLIGHTER, ERASER, SELECT, SHAPE, TEXT, NOTE, IMAGE, AUDIO }
+
+object DemoContent {
+    val notebooks = listOf(
+        Notebook(title = "Distributed Systems", subtitle = "Just edited · 18 pages", cover = Color(0xFFA9C5B9), pageCount = 18),
+        Notebook(title = "CS336 Reading Notes", subtitle = "Yesterday · 42 pages", cover = Color(0xFFAABCD5), pageCount = 42),
+        Notebook(title = "DSpark Paper", subtitle = "PDF · 16 annotations", cover = Color(0xFFD39C98), pageCount = 16, isPdf = true),
+        Notebook(title = "Human Anatomy", subtitle = "3 days ago · 12 pages", cover = Color(0xFFD9C39A), pageCount = 12),
+        Notebook(title = "Meeting Notes", subtitle = "Jul 30 · 8 pages", cover = Color(0xFFB6CFC4), pageCount = 8),
+        Notebook(title = "Swedish Vocab", subtitle = "Jul 28 · 24 pages", cover = Color(0xFFC4AECF), pageCount = 24),
+    )
+}

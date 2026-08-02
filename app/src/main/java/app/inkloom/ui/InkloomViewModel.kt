@@ -1,0 +1,260 @@
+package app.inkloom.ui
+
+import android.app.Application
+import android.net.Uri
+import androidx.lifecycle.AndroidViewModel
+import app.inkloom.document.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import java.io.File
+
+data class LibraryUiState(val documents: List<InkDocument> = emptyList(), val folders: List<InkFolder> = emptyList(), val selectedDocumentId: String? = null, val selectedPageId: String? = null, val recoveredOperations: Int = 0)
+
+class InkloomViewModel(application: Application) : AndroidViewModel(application) {
+    private val store = FileDocumentStore(application.filesDir)
+    private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
+    private val indexFile = File(application.filesDir, "library.json")
+    val assets = DocumentAssetService(application)
+    private val mutableState = MutableStateFlow(LibraryUiState())
+    val state = mutableState.asStateFlow()
+
+    init {
+        val recovered = store.recover()
+        if (store.list().isEmpty()) {
+            listOf(
+                InkDocument(title = "Distributed Systems", coverArgb = 0xFFA9C5B9, pages = List(3) { InkPage(title = "Page ${it + 1}") }),
+                InkDocument(title = "CS336 Reading Notes", coverArgb = 0xFFAABCD5, pages = List(2) { InkPage(title = "Page ${it + 1}") }),
+            ).forEach(store::save)
+        }
+        refresh(recovered)
+    }
+
+    fun createNote(title: String = "Untitled Note"): InkDocument = InkDocument(title = title).also { store.save(it); refresh(); select(it.id) }
+    fun importPdf(uri: Uri, title: String) = assets.importPdf(uri, title).also { store.save(it); refresh(); select(it.id) }
+    fun importImage(uri: Uri, title: String) = assets.importImage(uri, title).also { store.save(it); refresh(); select(it.id) }
+    fun importBundle(uri: Uri) = assets.importBundle(uri).also { store.save(it); refresh(); select(it.id) }
+    fun insertImage(uri: Uri) {
+        val documentId = mutableState.value.selectedDocumentId ?: return
+        val pageId = mutableState.value.selectedPageId ?: return
+        val crop = store.get(documentId)?.pages?.firstOrNull { it.id == pageId }?.crop ?: PageCrop()
+        addElement(documentId, pageId, PageCropTransform.unproject(assets.importPageImage(uri), crop))
+    }
+    fun select(documentId: String) { val document = store.get(documentId) ?: return; mutableState.value = mutableState.value.copy(selectedDocumentId = documentId, selectedPageId = document.pages.firstOrNull()?.id) }
+    fun selectPage(pageId: String) { mutableState.value = mutableState.value.copy(selectedPageId = pageId) }
+
+    fun rename(documentId: String, title: String) = update(documentId) { it.copy(title = title.ifBlank { it.title }, updatedAt = System.currentTimeMillis()) }
+    fun toggleFavorite(documentId: String) = update(documentId) { it.copy(favorite = !it.favorite, updatedAt = System.currentTimeMillis()) }
+    fun toggleArchive(documentId: String) = update(documentId) { it.copy(archivedAt = if (it.archivedAt == null) System.currentTimeMillis() else null, updatedAt = System.currentTimeMillis()) }
+    fun setDocumentTags(documentId: String, tags: List<String>) = update(documentId) { it.copy(tags = normalizeTags(tags), updatedAt = System.currentTimeMillis()) }
+    fun trash(documentId: String) = update(documentId) { it.copy(trashedAt = System.currentTimeMillis(), updatedAt = System.currentTimeMillis()) }
+    fun restore(documentId: String) = update(documentId) { it.copy(trashedAt = null, updatedAt = System.currentTimeMillis()) }
+    fun deletePermanently(documentId: String) { store.deletePermanently(documentId); refresh() }
+    fun duplicateDocument(documentId: String) {
+        val source = store.get(documentId) ?: return
+        val copy = source.copy(id = java.util.UUID.randomUUID().toString(), title = "${source.title} copy", createdAt = System.currentTimeMillis(), updatedAt = System.currentTimeMillis(), pages = source.pages.map { page -> page.copy(id = java.util.UUID.randomUUID().toString(), strokes = page.strokes.map { it.copy(id = java.util.UUID.randomUUID().toString()) }, elements = page.elements.map(::copyElement)) })
+        store.save(copy); refresh()
+    }
+    fun moveToFolder(documentId: String, folderId: String?) = update(documentId) { it.copy(folderId = folderId, updatedAt = System.currentTimeMillis()) }
+    fun createFolder(name: String, parentId: String? = null) {
+        if (name.isBlank()) return
+        saveFolders(mutableState.value.folders + InkFolder(name = name.trim(), parentId = parentId)); refresh()
+    }
+    fun deleteFolder(folderId: String) {
+        store.list().filter { it.folderId == folderId }.forEach { store.save(it.copy(folderId = null)) }
+        saveFolders(mutableState.value.folders.filterNot { it.id == folderId || it.parentId == folderId }); refresh()
+    }
+
+    fun addPage(documentId: String) = update(documentId) { document ->
+        val page = InkPage(title = "Page ${document.pages.size + 1}")
+        mutableState.value = mutableState.value.copy(selectedPageId = page.id)
+        document.copy(pages = document.pages + page, updatedAt = System.currentTimeMillis())
+    }
+
+    fun duplicatePage(documentId: String, pageId: String) = update(documentId) { document ->
+        val source = document.pages.first { it.id == pageId }
+        val copy = source.copy(id = java.util.UUID.randomUUID().toString(), title = "${source.title} copy", strokes = source.strokes.map { it.copy(id = java.util.UUID.randomUUID().toString()) }, elements = source.elements.map(::copyElement))
+        val index = document.pages.indexOf(source) + 1
+        val pages = document.pages.toMutableList().apply { add(index, copy) }
+        mutableState.value = mutableState.value.copy(selectedPageId = copy.id)
+        document.copy(pages = pages, updatedAt = System.currentTimeMillis())
+    }
+
+    fun deletePage(documentId: String, pageId: String) = update(documentId) { document ->
+        if (document.pages.size == 1) document else {
+            val pages = document.pages.filterNot { it.id == pageId }
+            mutableState.value = mutableState.value.copy(selectedPageId = pages.first().id)
+            document.copy(pages = pages, updatedAt = System.currentTimeMillis())
+        }
+    }
+
+    fun movePage(documentId: String, pageId: String, delta: Int) = update(documentId) { document ->
+        val from = document.pages.indexOfFirst { it.id == pageId }
+        val to = (from + delta).coerceIn(0, document.pages.lastIndex)
+        if (from < 0 || from == to) document else document.copy(pages = document.pages.toMutableList().apply { add(to, removeAt(from)) }, updatedAt = System.currentTimeMillis())
+    }
+
+    fun transferPage(sourceDocumentId: String, pageId: String, targetDocumentId: String, copy: Boolean) {
+        if (sourceDocumentId == targetDocumentId) return
+        val source = store.get(sourceDocumentId) ?: return
+        val target = store.get(targetDocumentId) ?: return
+        val result = PageTransfer.apply(source, target, pageId, copy) ?: return
+        store.save(result.target)
+        if (!copy) store.save(result.source)
+        refresh()
+        mutableState.value = mutableState.value.copy(selectedDocumentId = targetDocumentId, selectedPageId = result.transferredPageId)
+    }
+
+    fun cycleTemplate(documentId: String, pageId: String) = update(documentId) { document ->
+        document.copy(pages = document.pages.map { page ->
+            if (page.id != pageId || page.background !is PageBackground.Paper) page else {
+                val current = page.background.pattern
+                val next = PaperPattern.entries[(current.ordinal + 1) % PaperPattern.entries.size]
+                page.copy(background = page.background.copy(pattern = next))
+            }
+        }, updatedAt = System.currentTimeMillis())
+    }
+
+    fun toggleBookmark(documentId: String, pageId: String) = update(documentId) { document -> document.copy(pages = document.pages.map { if (it.id == pageId) it.copy(bookmarked = !it.bookmarked) else it }, updatedAt = System.currentTimeMillis()) }
+
+    fun changePageOutlineLevel(documentId: String, pageId: String, delta: Int) = update(documentId) { document ->
+        document.copy(pages = PageOutline.changeLevel(document.pages, pageId, delta), updatedAt = System.currentTimeMillis())
+    }
+
+    fun togglePageOutlineCollapsed(documentId: String, pageId: String) = update(documentId) { document ->
+        val index = document.pages.indexOfFirst { it.id == pageId }
+        if (!PageOutline.hasChildren(document.pages, index)) document else document.copy(
+            pages = document.pages.mapIndexed { pageIndex, page -> if (pageIndex == index) page.copy(outlineCollapsed = !page.outlineCollapsed) else page },
+            updatedAt = System.currentTimeMillis(),
+        )
+    }
+
+    fun renamePage(documentId: String, pageId: String, title: String) = updatePage(documentId, pageId) { page -> page.copy(title = title.trim().ifBlank { page.title }) }
+    fun setPageMetadata(documentId: String, pageId: String, customNumber: String?, tags: List<String>) = updatePage(documentId, pageId) { page ->
+        page.copy(customNumber = customNumber?.trim()?.ifBlank { null }, tags = normalizeTags(tags))
+    }
+    fun clearPageInk(documentId: String, pageId: String) = updatePage(documentId, pageId) { page ->
+        val locked = page.layers.filter { it.locked }.mapTo(mutableSetOf()) { it.id }
+        page.copy(strokes = page.strokes.filter { it.layerId in locked })
+    }
+    fun setPageCrop(documentId: String, pageId: String, crop: PageCrop) = updatePage(documentId, pageId) { page ->
+        page.copy(crop = PageCropTransform.normalized(crop))
+    }
+    fun rotatePageClockwise(documentId: String, pageId: String) = updatePage(documentId, pageId, PageGeometry::rotateClockwise)
+
+    fun addLayer(documentId: String, pageId: String, name: String = "Layer") = updatePage(documentId, pageId) { page ->
+        val suffix = page.layers.count { it.role == LayerRole.CUSTOM } + 1
+        page.copy(layers = page.layers + InkLayer(name = if (name == "Layer") "Layer $suffix" else name.trim().ifBlank { "Layer $suffix" }))
+    }
+
+    fun renameLayer(documentId: String, pageId: String, layerId: String, name: String) = updatePage(documentId, pageId) { page ->
+        page.copy(layers = page.layers.map { if (it.id == layerId) it.copy(name = name.trim().ifBlank { it.name }) else it })
+    }
+
+    fun toggleLayerVisibility(documentId: String, pageId: String, layerId: String) = updatePage(documentId, pageId) { page ->
+        page.copy(layers = page.layers.map { if (it.id == layerId) it.copy(visible = !it.visible) else it })
+    }
+
+    fun toggleLayerLock(documentId: String, pageId: String, layerId: String) = updatePage(documentId, pageId) { page ->
+        page.copy(layers = page.layers.map { if (it.id == layerId) it.copy(locked = !it.locked) else it })
+    }
+
+    fun moveLayer(documentId: String, pageId: String, layerId: String, delta: Int) = updatePage(documentId, pageId) { page ->
+        val from = page.layers.indexOfFirst { it.id == layerId }
+        val to = (from + delta).coerceIn(0, page.layers.lastIndex)
+        if (from < 0 || from == to) page else page.copy(layers = page.layers.toMutableList().apply { add(to, removeAt(from)) })
+    }
+
+    fun deleteLayer(documentId: String, pageId: String, layerId: String) = updatePage(documentId, pageId) { page ->
+        val layer = page.layers.firstOrNull { it.id == layerId } ?: return@updatePage page
+        if (layer.role != LayerRole.CUSTOM) page else page.copy(
+            layers = page.layers.filterNot { it.id == layerId },
+            strokes = page.strokes.map { if (it.layerId == layerId) it.copy(layerId = LayerIds.INK) else it },
+            elements = page.elements.map { element -> if (element.layerId == layerId) element.withLayer(LayerIds.OBJECTS) else element },
+        )
+    }
+
+    fun addStroke(documentId: String, pageId: String, stroke: InkStroke) {
+        val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return
+        if (page.layers.none { it.id == stroke.layerId && it.visible && !it.locked }) return
+        store.append(JournalEntry.StrokeAdded(documentId, pageId, stroke)); refreshSelection()
+    }
+    fun removeStroke(documentId: String, pageId: String, strokeId: String) {
+        val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return
+        val stroke = page.strokes.firstOrNull { it.id == strokeId } ?: return
+        if (page.layers.firstOrNull { it.id == stroke.layerId }?.locked == true) return
+        store.append(JournalEntry.StrokeRemoved(documentId, pageId, strokeId)); refreshSelection()
+    }
+    fun replaceStrokes(documentId: String, pageId: String, removedStrokeIds: List<String>, strokes: List<InkStroke>) {
+        val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return
+        val lockedLayerIds = page.layers.filter { it.locked }.mapTo(mutableSetOf()) { it.id }
+        if (page.strokes.any { it.id in removedStrokeIds && it.layerId in lockedLayerIds }) return
+        if (strokes.any { replacement -> page.layers.none { it.id == replacement.layerId && it.visible && !it.locked } }) return
+        store.append(JournalEntry.StrokesReplaced(documentId, pageId, removedStrokeIds.distinct(), strokes)); refreshSelection()
+    }
+    fun addElement(documentId: String, pageId: String, element: PageElement) {
+        val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return
+        if (page.layers.none { it.id == element.layerId && it.visible && !it.locked }) return
+        store.append(JournalEntry.ElementUpserted(documentId, pageId, element)); refreshSelection()
+    }
+    fun removeElement(documentId: String, pageId: String, elementId: String) {
+        val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return
+        val element = page.elements.firstOrNull { it.id == elementId } ?: return
+        if (page.layers.firstOrNull { it.id == element.layerId }?.locked == true) return
+        store.append(JournalEntry.ElementRemoved(documentId, pageId, elementId)); refreshSelection()
+    }
+    fun duplicateElement(documentId: String, pageId: String, elementId: String) {
+        val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return
+        val source = page.elements.firstOrNull { it.id == elementId } ?: return
+        if (page.layers.firstOrNull { it.id == source.layerId }?.locked == true) return
+        val copy = copyElement(source).offsetBy(.03f, .03f)
+        store.append(JournalEntry.ElementUpserted(documentId, pageId, copy)); refreshSelection()
+    }
+
+    fun currentDocument(): InkDocument? = mutableState.value.selectedDocumentId?.let(store::get)
+    fun currentPage(): InkPage? = currentDocument()?.pages?.firstOrNull { it.id == mutableState.value.selectedPageId }
+    fun exportCurrent(uri: Uri) { currentDocument()?.let { assets.exportPdf(it, uri) } }
+    fun exportCurrentPage(uri: Uri) { currentPage()?.let { assets.exportPagePng(it, uri) } }
+    fun exportCurrentBundle(uri: Uri) { currentDocument()?.let { assets.exportBundle(it, uri) } }
+
+    private fun update(id: String, transform: (InkDocument) -> InkDocument) { store.get(id)?.let(transform)?.let(store::save); refreshSelection() }
+    private fun updatePage(documentId: String, pageId: String, transform: (InkPage) -> InkPage) = update(documentId) { document ->
+        document.copy(pages = document.pages.map { if (it.id == pageId) transform(it) else it }, updatedAt = System.currentTimeMillis())
+    }
+    private fun refresh(recovered: Int = mutableState.value.recoveredOperations) { mutableState.value = mutableState.value.copy(documents = store.list(), folders = loadFolders(), recoveredOperations = recovered) }
+    private fun refreshSelection() { refresh(); mutableState.value.selectedDocumentId?.let { id -> if (store.get(id) == null) mutableState.value = mutableState.value.copy(selectedDocumentId = null, selectedPageId = null) } }
+
+    private fun copyElement(element: PageElement): PageElement = when (element) {
+        is PageElement.Text -> element.copy(id = java.util.UUID.randomUUID().toString())
+        is PageElement.Sticky -> element.copy(id = java.util.UUID.randomUUID().toString())
+        is PageElement.Shape -> element.copy(id = java.util.UUID.randomUUID().toString())
+        is PageElement.Image -> element.copy(id = java.util.UUID.randomUUID().toString())
+        is PageElement.AudioMarker -> element.copy(id = java.util.UUID.randomUUID().toString())
+    }
+
+    private fun PageElement.withLayer(layerId: String): PageElement = when (this) {
+        is PageElement.Text -> copy(layerId = layerId)
+        is PageElement.Sticky -> copy(layerId = layerId)
+        is PageElement.Shape -> copy(layerId = layerId)
+        is PageElement.Image -> copy(layerId = layerId)
+        is PageElement.AudioMarker -> copy(layerId = layerId)
+    }
+
+    private fun PageElement.offsetBy(dx: Float, dy: Float): PageElement = when (this) {
+        is PageElement.Text -> copy(x = (x + dx).coerceIn(0f, .95f), y = (y + dy).coerceIn(0f, .95f))
+        is PageElement.Sticky -> copy(x = (x + dx).coerceIn(0f, .95f), y = (y + dy).coerceIn(0f, .95f))
+        is PageElement.Shape -> copy(x = (x + dx).coerceIn(0f, .95f), y = (y + dy).coerceIn(0f, .95f))
+        is PageElement.Image -> copy(x = (x + dx).coerceIn(0f, .95f), y = (y + dy).coerceIn(0f, .95f))
+        is PageElement.AudioMarker -> copy(x = (x + dx).coerceIn(0f, .95f), y = (y + dy).coerceIn(0f, .95f))
+    }
+
+    private fun loadFolders(): List<InkFolder> = if (!indexFile.isFile) emptyList() else runCatching { json.decodeFromString<List<InkFolder>>(indexFile.readText()) }.getOrDefault(emptyList())
+    private fun saveFolders(folders: List<InkFolder>) {
+        val temporary = File(indexFile.parentFile, ".library.json.tmp")
+        temporary.writeText(json.encodeToString(folders))
+        if (!temporary.renameTo(indexFile)) { indexFile.writeText(temporary.readText()); temporary.delete() }
+    }
+
+    private fun normalizeTags(tags: List<String>): List<String> = tags.map(String::trim).filter(String::isNotBlank).distinctBy(String::lowercase).take(24)
+}
