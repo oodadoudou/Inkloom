@@ -1107,7 +1107,7 @@ private fun EditorScreen(
                         inputDiagnostic = "Shortcut · ${action.name.lowercase().replace('_', ' ')} · ${activation.phase.name.lowercase()}"
                         if (activation.phase == ShortcutPhase.RELEASE) {
                             if (activation.trigger == ShortcutTrigger.HOLD && action == ShortcutAction.TOGGLE_ERASER && tool == EditorTool.ERASER) restorePreviousDrawingTool()
-                            if (activation.trigger == ShortcutTrigger.HOLD && action in setOf(ShortcutAction.PEN_OR_PENCIL_GROUP, ShortcutAction.PEN_GROUP, ShortcutAction.PENCIL_GROUP, ShortcutAction.BRUSH_GROUP)) restorePreviousDrawingTool()
+                            if (activation.trigger == ShortcutTrigger.HOLD && action in setOf(ShortcutAction.PEN_OR_PENCIL_GROUP, ShortcutAction.PEN_GROUP, ShortcutAction.PENCIL_GROUP, ShortcutAction.BRUSH_GROUP, ShortcutAction.HIGHLIGHTER_TOOL, ShortcutAction.SELECT_TOOL)) restorePreviousDrawingTool()
                         } else when (action) {
                             ShortcutAction.PEN_OR_PENCIL_GROUP -> {
                                 if (activation.trigger == ShortcutTrigger.HOLD) rememberDrawingSelection()
@@ -1120,7 +1120,22 @@ private fun EditorScreen(
                             ShortcutAction.TOGGLE_ERASER -> if (activation.trigger == ShortcutTrigger.HOLD) {
                                 if (tool != EditorTool.ERASER) enterEraser()
                             } else if (tool == EditorTool.ERASER) restorePreviousDrawingTool() else enterEraser()
-                            ShortcutAction.SELECT_TOOL -> tool = EditorTool.SELECT
+                            ShortcutAction.HIGHLIGHTER_TOOL -> {
+                                if (activation.trigger == ShortcutTrigger.HOLD) rememberDrawingSelection()
+                                selectedBrushId = null
+                                activeBrush = null
+                                tool = EditorTool.HIGHLIGHTER
+                                brushSize = settings.highlighterSize
+                                brushOpacity = settings.highlighterOpacity
+                                activeLayerId = LayerIds.HIGHLIGHT
+                            }
+                            ShortcutAction.SELECT_TOOL -> { if (activation.trigger == ShortcutTrigger.HOLD) rememberDrawingSelection(); tool = EditorTool.SELECT }
+                            ShortcutAction.SHAPE_TOOL -> { tool = EditorTool.SHAPE; shapeInsertOpen = true }
+                            ShortcutAction.TEXT_TOOL -> { tool = EditorTool.TEXT; insertText = ""; textInsertOpen = true }
+                            ShortcutAction.NOTE_TOOL -> { tool = EditorTool.NOTE; insertText = ""; stickyInsertOpen = true }
+                            ShortcutAction.LINK_TOOL -> { tool = EditorTool.LINK; insertLinkTitle = ""; insertLinkUrl = ""; linkInsertOpen = true }
+                            ShortcutAction.IMAGE_TOOL -> { onInsertImage(); tool = EditorTool.SELECT }
+                            ShortcutAction.AUDIO_TOOL -> if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) audioOpen = true else audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                             ShortcutAction.BRUSH_SIZE_DECREASE -> updateBrushSize(1f / 1.1f)
                             ShortcutAction.BRUSH_SIZE_INCREASE -> updateBrushSize(1.1f)
                             ShortcutAction.OPACITY_DECREASE -> updateBrushOpacity(-.05f)
@@ -3606,7 +3621,14 @@ private fun shortcutActionLabel(action: ShortcutAction): String = when (action) 
     ShortcutAction.PENCIL_GROUP -> tr("Switch directly to pencil group", "直接切换到铅笔组")
     ShortcutAction.BRUSH_GROUP -> tr("Switch brush group", "切换 Brushes 组")
     ShortcutAction.TOGGLE_ERASER -> tr("Toggle eraser and previous tool", "橡皮与上一工具切换")
+    ShortcutAction.HIGHLIGHTER_TOOL -> tr("Marker / highlighter", "标记笔／荧光笔")
     ShortcutAction.SELECT_TOOL -> tr("Selection tool", "选择工具")
+    ShortcutAction.SHAPE_TOOL -> tr("Shape tool", "形状工具")
+    ShortcutAction.TEXT_TOOL -> tr("Text tool", "文字工具")
+    ShortcutAction.NOTE_TOOL -> tr("Sticky note", "便笺")
+    ShortcutAction.LINK_TOOL -> tr("Link", "链接")
+    ShortcutAction.IMAGE_TOOL -> tr("Insert image", "插入图片")
+    ShortcutAction.AUDIO_TOOL -> tr("Record audio note", "录音笔记")
     ShortcutAction.BRUSH_SIZE_DECREASE -> tr("Decrease brush size", "减小笔刷大小")
     ShortcutAction.BRUSH_SIZE_INCREASE -> tr("Increase brush size", "增大笔刷大小")
     ShortcutAction.OPACITY_DECREASE -> tr("Decrease opacity", "降低不透明度")
