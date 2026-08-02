@@ -13,6 +13,23 @@ object WorkspacePanelPlacement {
     const val MAX_HEIGHT_DP = 1_000f
 
     fun clamp(
+        bounds: WorkspacePanelBounds,
+        containerWidthDp: Float,
+        containerHeightDp: Float,
+        minimumWidthDp: Float,
+        maximumWidthDp: Float = 520f,
+    ) = clamp(
+        bounds.xDp,
+        bounds.yDp,
+        bounds.widthDp,
+        bounds.heightDp,
+        containerWidthDp,
+        containerHeightDp,
+        minimumWidthDp,
+        maximumWidthDp,
+    )
+
+    fun clamp(
         xDp: Float,
         yDp: Float,
         widthDp: Float,

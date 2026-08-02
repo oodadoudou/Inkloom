@@ -42,6 +42,9 @@ class InkloomLaunchTest {
                     .putBoolean("showLayerPanel", false)
                     .putBoolean("showBrushPanel", false)
                     .putBoolean("showPageRail", true)
+                    .putString("pagePanelDock", "LEFT")
+                    .putString("brushPanelDock", "RIGHT")
+                    .putString("layerPanelDock", "RIGHT")
                     .commit()
                 base.evaluate()
             }
@@ -134,6 +137,32 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("Pen controls").assertIsDisplayed()
         composeRule.onNodeWithText("Palette position").assertIsDisplayed()
         composeRule.onNodeWithText("Opacity", substring = true).assertIsDisplayed()
+    }
+
+    @Test fun brushPanelCanFloatMoveResizeAndReopenInPlace() {
+        createNotebookAndOpenEditor()
+        val preferences = composeRule.activity.getSharedPreferences("inkloom_settings", android.content.Context.MODE_PRIVATE)
+        val beforeX = preferences.getFloat("brushPanelXDp", 720f)
+        val beforeWidth = preferences.getFloat("brushPanelWidthDp", 330f)
+
+        composeRule.onNodeWithContentDescription("Brushes").performClick()
+        composeRule.onNodeWithContentDescription("Change brushes panel docking").performClick()
+        composeRule.onNodeWithText("Float").performClick()
+        composeRule.onNodeWithContentDescription("Drag brushes panel").assertIsDisplayed().performTouchInput {
+            swipe(center, center + Offset(-120f, 90f), durationMillis = 500)
+        }
+        composeRule.onNodeWithContentDescription("Resize brushes panel").assertIsDisplayed().performTouchInput {
+            swipe(center, center + Offset(70f, -60f), durationMillis = 500)
+        }
+        composeRule.waitForIdle()
+
+        assertTrue(preferences.getString("brushPanelDock", null) == "FREE")
+        assertTrue(preferences.getFloat("brushPanelXDp", beforeX) != beforeX)
+        assertTrue(preferences.getFloat("brushPanelWidthDp", beforeWidth) != beforeWidth)
+
+        composeRule.onNodeWithContentDescription("Close brushes panel").performClick()
+        composeRule.onNodeWithContentDescription("Brushes").performClick()
+        composeRule.onNodeWithContentDescription("Resize brushes panel").assertIsDisplayed()
     }
 
     @Test fun selectionControlsExposePersistentFreeformAndRectangleModes() {
