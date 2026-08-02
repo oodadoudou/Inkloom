@@ -2021,8 +2021,8 @@ private fun LayerPanel(
         Surface(Modifier.fillMaxWidth(), color = Color.White, shape = RoundedCornerShape(10.dp), border = CardDefaults.outlinedCardBorder()) {
             Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Color", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    Text("Active drawing color", fontSize = 10.sp, color = MutedInk)
+                    Text(tr("Color", "颜色"), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(tr("Active drawing color", "当前绘画颜色"), fontSize = 10.sp, color = MutedInk)
                 }
                 BrushColorPicker(brushColor, onColor)
             }
@@ -2030,10 +2030,10 @@ private fun LayerPanel(
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Layers", fontSize = 18.sp)
-                Text("Visible canvas stack", fontSize = 10.sp, color = MutedInk)
+                Text(tr("Layers", "图层"), fontSize = 18.sp)
+                Text(tr("Visible canvas stack", "可见画布堆栈"), fontSize = 10.sp, color = MutedInk)
             }
-            IconButton(onClick = onAdd) { Icon(Icons.Default.Add, "Add layer") }
+            IconButton(onClick = onAdd) { Icon(Icons.Default.Add, tr("Add layer", "添加图层")) }
         }
         Spacer(Modifier.height(8.dp))
         LazyColumn(verticalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -2054,19 +2054,19 @@ private fun LayerPanel(
                         Spacer(Modifier.width(7.dp))
                         Column(Modifier.weight(1f)) {
                             Text(layer.name, maxLines = 1, color = if (layer.visible) Ink else MutedInk)
-                            Text(layer.role.name.lowercase().replaceFirstChar(Char::uppercase), fontSize = 10.sp, color = MutedInk)
+                            Text(when (layer.role) { LayerRole.BACKGROUND -> tr("Background", "背景"); LayerRole.INK -> tr("Ink", "墨迹"); LayerRole.HIGHLIGHT -> tr("Highlight", "高亮"); LayerRole.OBJECTS -> tr("Objects", "对象"); LayerRole.CUSTOM -> tr("Custom", "自定义") }, fontSize = 10.sp, color = MutedInk)
                         }
-                        IconButton(onClick = { onVisibility(layer.id) }, modifier = Modifier.size(34.dp)) { Icon(if (layer.visible) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff, if (layer.visible) "Hide ${layer.name}" else "Show ${layer.name}", Modifier.size(18.dp)) }
-                        IconButton(onClick = { onLock(layer.id) }, modifier = Modifier.size(34.dp)) { Icon(if (layer.locked) Icons.Outlined.Lock else Icons.Outlined.LockOpen, if (layer.locked) "Unlock ${layer.name}" else "Lock ${layer.name}", Modifier.size(18.dp)) }
+                        IconButton(onClick = { onVisibility(layer.id) }, modifier = Modifier.size(34.dp)) { Icon(if (layer.visible) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff, if (layer.visible) tr("Hide ${layer.name}", "隐藏 ${layer.name}") else tr("Show ${layer.name}", "显示 ${layer.name}"), Modifier.size(18.dp)) }
+                        IconButton(onClick = { onLock(layer.id) }, modifier = Modifier.size(34.dp)) { Icon(if (layer.locked) Icons.Outlined.Lock else Icons.Outlined.LockOpen, if (layer.locked) tr("Unlock ${layer.name}", "解锁 ${layer.name}") else tr("Lock ${layer.name}", "锁定 ${layer.name}"), Modifier.size(18.dp)) }
                         Box {
-                            IconButton(onClick = { menu = true }, modifier = Modifier.size(34.dp)) { Icon(Icons.Default.MoreVert, "Layer actions", Modifier.size(18.dp)) }
+                            IconButton(onClick = { menu = true }, modifier = Modifier.size(34.dp)) { Icon(Icons.Default.MoreVert, tr("Layer actions", "图层操作"), Modifier.size(18.dp)) }
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                                DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; renameLayer = layer; renameValue = layer.name })
-                                DropdownMenuItem(text = { Text("Move up") }, enabled = page.layers.last().id != layer.id, onClick = { menu = false; onMove(layer.id, 1) })
-                                DropdownMenuItem(text = { Text("Move down") }, enabled = page.layers.first().id != layer.id, onClick = { menu = false; onMove(layer.id, -1) })
-                                if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text("Duplicate layer") }, onClick = { menu = false; onDuplicate(layer.id) })
-                                if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text("Merge down") }, enabled = LayerOperations.canMergeDown(page, layer.id), onClick = { menu = false; onMergeDown(layer.id) })
-                                if (layer.role == LayerRole.CUSTOM) DropdownMenuItem(text = { Text("Delete layer") }, onClick = { menu = false; onDelete(layer.id) })
+                                DropdownMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { menu = false; renameLayer = layer; renameValue = layer.name })
+                                DropdownMenuItem(text = { Text(tr("Move up", "上移")) }, enabled = page.layers.last().id != layer.id, onClick = { menu = false; onMove(layer.id, 1) })
+                                DropdownMenuItem(text = { Text(tr("Move down", "下移")) }, enabled = page.layers.first().id != layer.id, onClick = { menu = false; onMove(layer.id, -1) })
+                                if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text(tr("Duplicate layer", "复制图层")) }, onClick = { menu = false; onDuplicate(layer.id) })
+                                if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text(tr("Merge down", "向下合并")) }, enabled = LayerOperations.canMergeDown(page, layer.id), onClick = { menu = false; onMergeDown(layer.id) })
+                                if (layer.role == LayerRole.CUSTOM) DropdownMenuItem(text = { Text(tr("Delete layer", "删除图层")) }, onClick = { menu = false; onDelete(layer.id) })
                             }
                         }
                     }
@@ -2077,10 +2077,10 @@ private fun LayerPanel(
     renameLayer?.let { layer ->
         AlertDialog(
             onDismissRequest = { renameLayer = null },
-            title = { Text("Rename layer") },
-            text = { OutlinedTextField(renameValue, { renameValue = it }, singleLine = true, label = { Text("Layer name") }) },
-            confirmButton = { TextButton(onClick = { onRename(layer.id, renameValue); renameLayer = null }) { Text("Save") } },
-            dismissButton = { TextButton(onClick = { renameLayer = null }) { Text("Cancel") } },
+            title = { Text(tr("Rename layer", "重命名图层")) },
+            text = { OutlinedTextField(renameValue, { renameValue = it }, singleLine = true, label = { Text(tr("Layer name", "图层名称")) }) },
+            confirmButton = { TextButton(onClick = { onRename(layer.id, renameValue); renameLayer = null }) { Text(tr("Save", "保存")) } },
+            dismissButton = { TextButton(onClick = { renameLayer = null }) { Text(tr("Cancel", "取消")) } },
         )
     }
 }
@@ -2125,30 +2125,30 @@ private fun BrushPanel(
     val brushSections = visibleBrushes.groupBy { BrushGroupOperations.normalize(it.groupName).ifBlank { "Ungrouped" } }
         .toList().sortedWith(compareBy<Pair<String, List<ImportedBrush>>> { it.first == "Ungrouped" }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.first })
     Column(Modifier.width(330.dp).fillMaxHeight().background(Color(0xFFF7F7F7)).padding(12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) { Text("Brush Library", fontSize = 20.sp, modifier = Modifier.weight(1f)); IconButton(onClick = onImportBrushes) { Icon(Icons.Outlined.Add, "Import") } }
-        Text("Imported presets · compact view", fontSize = 11.sp, color = MutedInk)
+        Row(verticalAlignment = Alignment.CenterVertically) { Text(tr("Brush Library", "笔刷库"), fontSize = 20.sp, modifier = Modifier.weight(1f)); IconButton(onClick = onImportBrushes) { Icon(Icons.Outlined.Add, tr("Import", "导入")) } }
+        Text(tr("Imported presets · compact view", "已导入预设 · 紧凑视图"), fontSize = 11.sp, color = MutedInk)
         Spacer(Modifier.height(8.dp))
-        OutlinedTextField(search, { search = it }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, placeholder = { Text("Search brushes") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(search, { search = it }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, placeholder = { Text(tr("Search brushes", "搜索笔刷")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(vertical = 6.dp)) {
-            item { FilterChip(selected = format == null, onClick = { format = null }, label = { Text("All") }) }
+            item { FilterChip(selected = format == null, onClick = { format = null }, label = { Text(tr("All", "全部")) }) }
             BrushFormat.entries.filter { it !in setOf(BrushFormat.SYSTEM, BrushFormat.UNKNOWN) }.forEach { source -> item { FilterChip(selected = format == source, onClick = { format = source }, label = { Text(source.label) }) } }
-            item { FilterChip(selected = favoritesOnly, onClick = { favoritesOnly = !favoritesOnly }, label = { Text("Favorites") }, leadingIcon = { Icon(Icons.Outlined.Star, null, Modifier.size(16.dp)) }) }
-            item { FilterChip(selected = showHidden, onClick = { showHidden = !showHidden }, label = { Text("Hidden") }) }
+            item { FilterChip(selected = favoritesOnly, onClick = { favoritesOnly = !favoritesOnly }, label = { Text(tr("Favorites", "收藏")) }, leadingIcon = { Icon(Icons.Outlined.Star, null, Modifier.size(16.dp)) }) }
+            item { FilterChip(selected = showHidden, onClick = { showHidden = !showHidden }, label = { Text(tr("Hidden", "隐藏")) }) }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("GROUPS", fontSize = 10.sp, color = MutedInk, modifier = Modifier.weight(1f))
-            IconButton(onClick = { manageGroups = true }, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.DriveFileRenameOutline, "Manage brush groups", Modifier.size(17.dp)) }
+            Text(tr("GROUPS", "分组"), fontSize = 10.sp, color = MutedInk, modifier = Modifier.weight(1f))
+            IconButton(onClick = { manageGroups = true }, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.DriveFileRenameOutline, tr("Manage brush groups", "管理笔刷分组"), Modifier.size(17.dp)) }
         }
         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(bottom = 6.dp)) {
-            item { FilterChip(selected = selectedGroup == null, onClick = { selectedGroup = null }, label = { Text("All") }) }
-            item { FilterChip(selected = selectedGroup == UNGROUPED_BRUSH_FILTER, onClick = { selectedGroup = UNGROUPED_BRUSH_FILTER }, label = { Text("Ungrouped") }) }
+            item { FilterChip(selected = selectedGroup == null, onClick = { selectedGroup = null }, label = { Text(tr("All", "全部")) }) }
+            item { FilterChip(selected = selectedGroup == UNGROUPED_BRUSH_FILTER, onClick = { selectedGroup = UNGROUPED_BRUSH_FILTER }, label = { Text(tr("Ungrouped", "未分组")) }) }
             groups.forEach { group -> item(group) { FilterChip(selected = selectedGroup?.equals(group, true) == true, onClick = { selectedGroup = group }, label = { Text(group, maxLines = 1) }) } }
         }
         if (brushes.isNotEmpty()) {
-            Text("BRUSHES (${visibleBrushes.size}/${brushes.size})", fontSize = 11.sp, color = MutedInk)
+            Text("${tr("BRUSHES", "笔刷")} (${visibleBrushes.size}/${brushes.size})", fontSize = 11.sp, color = MutedInk)
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 brushSections.forEach { (group, sectionBrushes) ->
-                    item("group:$group") { Text(group.uppercase(), color = MutedInk, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp, start = 2.dp)) }
+                    item("group:$group") { Text(if (group == "Ungrouped") tr("UNGROUPED", "未分组") else group.uppercase(), color = MutedInk, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp, start = 2.dp)) }
                     items(sectionBrushes, key = { it.id }) { brush ->
                         ImportedBrushRow(
                             brush = brush,
@@ -2168,18 +2168,18 @@ private fun BrushPanel(
                 }
             }
         } else {
-            Spacer(Modifier.height(18.dp)); Text("SOURCES", fontSize = 11.sp, color = MutedInk)
-            Spacer(Modifier.height(10.dp)); listOf("System Brushes" to 12, "ABR" to 0, "CSP / SUT" to 0, "Procreate" to 0, "My Brushes" to 0).forEach { (name, count) ->
+            Spacer(Modifier.height(18.dp)); Text(tr("SOURCES", "来源"), fontSize = 11.sp, color = MutedInk)
+            Spacer(Modifier.height(10.dp)); listOf(tr("System Brushes", "系统笔刷") to 12, "ABR" to 0, "CSP / SUT" to 0, "Procreate" to 0, tr("My Brushes", "我的笔刷") to 0).forEach { (name, count) ->
                 Row(Modifier.fillMaxWidth().padding(vertical = 8.dp)) { Text(name, Modifier.weight(1f)); Text(count.toString(), color = MutedInk, fontSize = 11.sp) }
             }
             Spacer(Modifier.weight(1f))
         }
-        FilledTonalButton(onClick = onImportBrushes, Modifier.fillMaxWidth()) { Icon(Icons.Outlined.FileDownload, null); Spacer(Modifier.width(8.dp)); Text("Import Brushes") }
+        FilledTonalButton(onClick = onImportBrushes, Modifier.fillMaxWidth()) { Icon(Icons.Outlined.FileDownload, null); Spacer(Modifier.width(8.dp)); Text(tr("Import Brushes", "导入笔刷")) }
     }
     reportBrush?.let { brush ->
         AlertDialog(
             onDismissRequest = { reportBrush = null },
-            confirmButton = { TextButton(onClick = { reportBrush = null }) { Text("Done") } },
+            confirmButton = { TextButton(onClick = { reportBrush = null }) { Text(tr("Done", "完成")) } },
             title = { Text(brush.name) },
             text = {
                 Column {
@@ -2187,7 +2187,7 @@ private fun BrushPanel(
                     Spacer(Modifier.height(12.dp))
                     brush.report.forEach { Text("• $it", modifier = Modifier.padding(vertical = 3.dp)) }
                     Spacer(Modifier.height(8.dp))
-                    Text("The original source remains unchanged and can be reconverted by a future parser.", color = MutedInk, fontSize = 12.sp)
+                    Text(tr("The original source remains unchanged and can be reconverted by a future parser.", "原始文件保持不变，未来可使用更新的解析器重新转换。"), color = MutedInk, fontSize = 12.sp)
                 }
             },
         )
@@ -2264,7 +2264,7 @@ private fun BrushMoveToGroupDialog(brush: ImportedBrush, groups: List<String>, o
     var groupName by remember(brush.id) { mutableStateOf(brush.groupName) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Move brush") },
+        title = { Text(tr("Move brush", "移动笔刷")) },
         text = {
             Column(Modifier.widthIn(min = 320.dp, max = 440.dp)) {
                 Text(brush.name, fontSize = 13.sp)
@@ -2272,19 +2272,19 @@ private fun BrushMoveToGroupDialog(brush: ImportedBrush, groups: List<String>, o
                 OutlinedTextField(
                     value = groupName,
                     onValueChange = { groupName = it.take(BrushGroupOperations.MAX_NAME_LENGTH) },
-                    label = { Text("Group") },
-                    supportingText = { Text("Enter a new name or choose an existing group") },
+                    label = { Text(tr("Group", "分组")) },
+                    supportingText = { Text(tr("Enter a new name or choose an existing group", "输入新名称或选择已有分组")) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 if (groups.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(top = 8.dp)) {
                     groups.forEach { group -> item(group) { FilterChip(selected = groupName.equals(group, true), onClick = { groupName = group }, label = { Text(group, maxLines = 1) }) } }
                 }
-                TextButton(onClick = { onMove("") }) { Text("Move to Ungrouped") }
+                TextButton(onClick = { onMove("") }) { Text(tr("Move to Ungrouped", "移到未分组")) }
             }
         },
-        confirmButton = { Button(onClick = { onMove(groupName) }, enabled = BrushGroupOperations.normalize(groupName).isNotBlank()) { Text("Move") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = { Button(onClick = { onMove(groupName) }, enabled = BrushGroupOperations.normalize(groupName).isNotBlank()) { Text(tr("Move", "移动")) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Cancel", "取消")) } },
     )
 }
 
@@ -2294,11 +2294,11 @@ private fun BrushGroupManagerDialog(groups: List<String>, onDismiss: () -> Unit,
     var replacement by remember(selected) { mutableStateOf(selected) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Manage groups") },
+        title = { Text(tr("Manage groups", "管理分组")) },
         text = {
             Column(Modifier.widthIn(min = 320.dp, max = 440.dp)) {
                 if (groups.isEmpty()) {
-                    Text("No groups yet. Move a brush to a new group or enter a group in Brush Studio.", color = MutedInk)
+                    Text(tr("No groups yet. Move a brush to a new group or enter a group in Brush Studio.", "还没有分组。可将笔刷移动到新分组，或在笔刷工作室中输入分组。"), color = MutedInk)
                 } else {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(bottom = 8.dp)) {
                         groups.forEach { group -> item(group) { FilterChip(selected = selected == group, onClick = { selected = group }, label = { Text(group, maxLines = 1) }) } }
@@ -2306,17 +2306,17 @@ private fun BrushGroupManagerDialog(groups: List<String>, onDismiss: () -> Unit,
                     OutlinedTextField(
                         value = replacement,
                         onValueChange = { replacement = it.take(BrushGroupOperations.MAX_NAME_LENGTH) },
-                        label = { Text("Rename selected group") },
+                        label = { Text(tr("Rename selected group", "重命名所选分组")) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    Text("Renaming to an existing group merges both groups.", color = MutedInk, fontSize = 11.sp)
-                    TextButton(onClick = { onRename(selected, "") }) { Text("Remove group and keep brushes") }
+                    Text(tr("Renaming to an existing group merges both groups.", "重命名为已有分组会合并两个分组。"), color = MutedInk, fontSize = 11.sp)
+                    TextButton(onClick = { onRename(selected, "") }) { Text(tr("Remove group and keep brushes", "移除分组并保留笔刷")) }
                 }
             }
         },
-        confirmButton = { Button(onClick = { onRename(selected, replacement) }, enabled = selected.isNotBlank() && BrushGroupOperations.normalize(replacement).isNotBlank()) { Text("Rename") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+        confirmButton = { Button(onClick = { onRename(selected, replacement) }, enabled = selected.isNotBlank() && BrushGroupOperations.normalize(replacement).isNotBlank()) { Text(tr("Rename", "重命名")) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Done", "完成")) } },
     )
 }
 
@@ -2331,14 +2331,14 @@ private fun BrushVersionHistoryDialog(
     val formatter = remember { DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Version history") },
+        title = { Text(tr("Version history", "版本历史")) },
         text = {
             Column(Modifier.widthIn(min = 340.dp, max = 480.dp)) {
                 Text(brush.name, fontSize = 13.sp)
-                Text("Inkloom saves the previous preset before every brush edit.", color = MutedInk, fontSize = 11.sp)
+                Text(tr("Inkloom saves the previous preset before every brush edit.", "Inkloom 会在每次编辑笔刷前保存旧预设。"), color = MutedInk, fontSize = 11.sp)
                 Spacer(Modifier.height(10.dp))
                 if (versions.isEmpty()) {
-                    Text("No previous versions yet. Edit and save this brush to create one.", color = MutedInk)
+                    Text(tr("No previous versions yet. Edit and save this brush to create one.", "还没有历史版本。编辑并保存此笔刷即可创建。"), color = MutedInk)
                 } else {
                     LazyColumn(Modifier.heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         items(versions, key = { it.versionId }) { version ->
@@ -2350,14 +2350,14 @@ private fun BrushVersionHistoryDialog(
                                         Text(version.snapshot.name, maxLines = 1, fontSize = 13.sp)
                                         Text(formatter.format(Date(version.savedAt)), color = MutedInk, fontSize = 10.sp)
                                         Text(
-                                            "${version.snapshot.defaultSize.oneDecimal()} px · ${(version.snapshot.defaultOpacity * 100f).toInt()}% opacity · ${version.snapshot.spacing.oneDecimal()} spacing",
+                                            "${version.snapshot.defaultSize.oneDecimal()} px · ${(version.snapshot.defaultOpacity * 100f).toInt()}% ${tr("opacity", "不透明度")} · ${version.snapshot.spacing.oneDecimal()} ${tr("spacing", "间距")}",
                                             color = MutedInk,
                                             fontSize = 10.sp,
                                             maxLines = 1,
                                         )
                                     }
-                                    TextButton(onClick = { onRestore(version) }) { Text("Restore") }
-                                    IconButton(onClick = { onDelete(version) }) { Icon(Icons.Outlined.Delete, "Delete this brush version") }
+                                    TextButton(onClick = { onRestore(version) }) { Text(tr("Restore", "恢复")) }
+                                    IconButton(onClick = { onDelete(version) }) { Icon(Icons.Outlined.Delete, tr("Delete this brush version", "删除此笔刷版本")) }
                                 }
                             }
                         }
@@ -2365,7 +2365,7 @@ private fun BrushVersionHistoryDialog(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(tr("Done", "完成")) } },
     )
 }
 
@@ -2383,7 +2383,7 @@ private fun ImportedBrushRow(brush: ImportedBrush, selected: Boolean, onSelect: 
         Row(Modifier.padding(8.dp).heightIn(min = 58.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 Icons.Outlined.DragIndicator,
-                "Drag to reorder brush",
+                tr("Drag to reorder brush", "拖动调整笔刷顺序"),
                 Modifier.size(24.dp).pointerInput(brush.id) {
                     detectDragGestures(
                         onDragStart = { dragDistance = 0f },
@@ -2405,17 +2405,17 @@ private fun ImportedBrushRow(brush: ImportedBrush, selected: Boolean, onSelect: 
                 Text(listOf(brush.format.label, brush.groupName.takeIf(String::isNotBlank), brush.compatibility.label).filterNotNull().joinToString(" · "), color = MutedInk, fontSize = 10.sp, maxLines = 1)
                 Canvas(Modifier.fillMaxWidth().height(12.dp)) { drawLine(Sage, Offset(2f, size.height / 2), Offset(size.width - 2f, size.height / 2), strokeWidth = (brush.defaultSize / 8f).coerceIn(2f, 10f), cap = StrokeCap.Round) }
             }
-            IconButton(onClick = onEdit, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.Tune, "Edit brush", modifier = Modifier.size(18.dp)) }
-            IconButton(onClick = onFavorite, modifier = Modifier.size(30.dp)) { Icon(if (brush.favorite) Icons.Default.Star else Icons.Outlined.StarBorder, if (brush.favorite) "Remove favorite" else "Favorite", modifier = Modifier.size(18.dp), tint = if (brush.favorite) Sage else Ink) }
+            IconButton(onClick = onEdit, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.Tune, tr("Edit brush", "编辑笔刷"), modifier = Modifier.size(18.dp)) }
+            IconButton(onClick = onFavorite, modifier = Modifier.size(30.dp)) { Icon(if (brush.favorite) Icons.Default.Star else Icons.Outlined.StarBorder, if (brush.favorite) tr("Remove favorite", "取消收藏") else tr("Favorite", "收藏"), modifier = Modifier.size(18.dp), tint = if (brush.favorite) Sage else Ink) }
             Box {
-                IconButton(onClick = { menu = true }, modifier = Modifier.size(30.dp)) { Icon(Icons.Default.MoreVert, "Brush actions", modifier = Modifier.size(18.dp)) }
+                IconButton(onClick = { menu = true }, modifier = Modifier.size(30.dp)) { Icon(Icons.Default.MoreVert, tr("Brush actions", "笔刷操作"), modifier = Modifier.size(18.dp)) }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text("Conversion report") }, onClick = { menu = false; onReport() })
-                    DropdownMenuItem(text = { Text("Version history") }, onClick = { menu = false; onHistory() })
-                    DropdownMenuItem(text = { Text("Move to group") }, onClick = { menu = false; onMove() })
-                    DropdownMenuItem(text = { Text("Export Inkloom preset") }, onClick = { menu = false; onExport() })
-                    DropdownMenuItem(text = { Text(if (brush.hidden) "Unhide" else "Hide") }, onClick = { menu = false; onHide() })
-                    DropdownMenuItem(text = { Text("Remove from library") }, onClick = { menu = false; onDelete() })
+                    DropdownMenuItem(text = { Text(tr("Conversion report", "转换报告")) }, onClick = { menu = false; onReport() })
+                    DropdownMenuItem(text = { Text(tr("Version history", "版本历史")) }, onClick = { menu = false; onHistory() })
+                    DropdownMenuItem(text = { Text(tr("Move to group", "移到分组")) }, onClick = { menu = false; onMove() })
+                    DropdownMenuItem(text = { Text(tr("Export Inkloom preset", "导出 Inkloom 预设")) }, onClick = { menu = false; onExport() })
+                    DropdownMenuItem(text = { Text(if (brush.hidden) tr("Unhide", "取消隐藏") else tr("Hide", "隐藏")) }, onClick = { menu = false; onHide() })
+                    DropdownMenuItem(text = { Text(tr("Remove from library", "从笔刷库移除")) }, onClick = { menu = false; onDelete() })
                 }
             }
         }
