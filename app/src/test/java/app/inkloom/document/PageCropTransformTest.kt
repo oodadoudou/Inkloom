@@ -49,4 +49,17 @@ class PageCropTransformTest {
         assertEquals(1f, crop.right, .0001f)
         assertEquals(.05f, crop.bottom, .0001f)
     }
+
+    @Test
+    fun pdfSearchBoundsFollowTheVisibleCropAndClipAtItsEdges() {
+        val projected = PageCropTransform.project(
+            PdfTextBounds(.1f, .25f, .5f, .55f),
+            PageCrop(.2f, .1f, .8f, .7f),
+        )!!
+
+        assertEquals(0f, projected.left, .0001f)
+        assertEquals(.25f, projected.top, .0001f)
+        assertEquals(.5f, projected.right, .0001f)
+        assertEquals(.75f, projected.bottom, .0001f)
+    }
 }

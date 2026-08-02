@@ -11,8 +11,16 @@ object PageGeometry {
             crop = PageCropTransform.rotateClockwise(page.crop),
             strokes = page.strokes.map { stroke -> stroke.copy(points = stroke.points.map { point -> point.copy(x = (1f - point.y).coerceIn(0f, 1f), y = point.x.coerceIn(0f, 1f), orientation = point.orientation + (Math.PI / 2).toFloat()) }) },
             elements = page.elements.map { rotateElementClockwise(it, oldWidth, oldHeight) },
+            pdfTextBlocks = page.pdfTextBlocks.map { block -> block.copy(bounds = block.bounds.map(::rotateTextBoundsClockwise)) },
         )
     }
+
+    fun rotateTextBoundsClockwise(bounds: PdfTextBounds) = PdfTextBounds(
+        left = 1f - bounds.bottom,
+        top = bounds.left,
+        right = 1f - bounds.top,
+        bottom = bounds.right,
+    )
 
     private fun rotateElementClockwise(element: PageElement, oldWidth: Float, oldHeight: Float): PageElement {
         val newX = (1f - element.y - element.height / oldHeight).coerceIn(0f, 1f)

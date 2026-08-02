@@ -15,6 +15,7 @@ import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
+import android.os.Build
 import android.os.ParcelFileDescriptor
 import java.io.File
 import java.security.MessageDigest
@@ -29,18 +30,63 @@ class DocumentAssetService(private val context: Context) {
     private val directory = File(context.filesDir, "document-assets").apply { mkdirs() }
     private val brushAssetDirectory = File(context.filesDir, "brush-assets").apply { mkdirs() }
 
-    fun importPdf(uri: Uri, title: String): InkDocument {
+    fun importPdf(uri: Uri, title: String, indexText: Boolean = true): InkDocument {
         val asset = copyAsset(uri, "pdf")
         val descriptor = ParcelFileDescriptor.open(asset, ParcelFileDescriptor.MODE_READ_ONLY)
         val renderer = PdfRenderer(descriptor)
         val pages = (0 until renderer.pageCount).map { index ->
             renderer.openPage(index).use { page ->
-                InkPage(title = "Page ${index + 1}", width = page.width.toFloat(), height = page.height.toFloat(), background = PageBackground.Pdf(asset.absolutePath, index))
+                val textBlocks = if (indexText) extractPdfText(page) else null
+                InkPage(
+                    title = "Page ${index + 1}",
+                    width = page.width.toFloat(),
+                    height = page.height.toFloat(),
+                    background = PageBackground.Pdf(asset.absolutePath, index),
+                    pdfTextBlocks = textBlocks.orEmpty(),
+                    pdfTextIndexVersion = if (textBlocks != null) PDF_TEXT_INDEX_VERSION else 0,
+                )
             }
         }
         renderer.close(); descriptor.close()
         require(pages.isNotEmpty()) { "PDF contains no pages" }
         return InkDocument(title = title.substringBeforeLast('.').ifBlank { "Imported PDF" }, coverArgb = 0xFF707070, pages = pages)
+    }
+
+    fun indexPdfText(document: InkDocument): InkDocument {
+        if (Build.VERSION.SDK_INT < 35) return document
+        val updates = mutableMapOf<String, Pair<List<PdfTextBlock>, Int>>()
+        document.pages
+            .filter { it.background is PageBackground.Pdf && it.pdfTextIndexVersion < PDF_TEXT_INDEX_VERSION }
+            .groupBy { (it.background as PageBackground.Pdf).assetPath }
+            .forEach { (assetPath, pages) ->
+                val descriptor = runCatching { ParcelFileDescriptor.open(File(assetPath), ParcelFileDescriptor.MODE_READ_ONLY) }.getOrNull() ?: return@forEach
+                val renderer = runCatching { PdfRenderer(descriptor) }.getOrElse { descriptor.close(); return@forEach }
+                try {
+                    pages.forEach pageLoop@{ inkPage ->
+                        val pageIndex = (inkPage.background as PageBackground.Pdf).pageIndex
+                        if (pageIndex !in 0 until renderer.pageCount) return@pageLoop
+                        val textBlocks = runCatching { renderer.openPage(pageIndex).use(::extractPdfText) }.getOrNull() ?: return@pageLoop
+                        val rotatedBlocks = textBlocks.map { block ->
+                            block.copy(bounds = block.bounds.map { sourceBounds ->
+                                generateSequence(sourceBounds, PageGeometry::rotateTextBoundsClockwise)
+                                    .drop(inkPage.backgroundRotationQuarterTurns.mod(4))
+                                    .first()
+                            })
+                        }
+                        updates[inkPage.id] = rotatedBlocks to PDF_TEXT_INDEX_VERSION
+                    }
+                } finally {
+                    renderer.close()
+                    descriptor.close()
+                }
+            }
+        if (updates.isEmpty()) return document
+        return document.copy(
+            pages = document.pages.map { page ->
+                updates[page.id]?.let { (blocks, version) -> page.copy(pdfTextBlocks = blocks, pdfTextIndexVersion = version) } ?: page
+            },
+            updatedAt = System.currentTimeMillis(),
+        )
     }
 
     fun importImage(uri: Uri, title: String): InkDocument {
@@ -211,6 +257,41 @@ class DocumentAssetService(private val context: Context) {
         paths.distinct().map(::File).filter(File::isFile).distinctBy { it.name }.forEach { file ->
             zip.putNextEntry(ZipEntry("$folder/${file.name}")); file.inputStream().use { it.copyTo(zip) }; zip.closeEntry()
         }
+    }
+
+    private fun extractPdfText(page: PdfRenderer.Page): List<PdfTextBlock>? {
+        if (Build.VERSION.SDK_INT < 35) return null
+        var remainingCharacters = MAX_PDF_TEXT_CHARACTERS_PER_PAGE
+        var boundsLookups = 0
+        return runCatching {
+            buildList {
+                page.textContents.take(MAX_PDF_TEXT_BLOCKS_PER_PAGE).forEach { content ->
+                    if (remainingCharacters <= 0) return@forEach
+                    val normalized = content.text.replace('\u0000', ' ').replace(Regex("\\s+"), " ").trim()
+                    if (normalized.isEmpty()) return@forEach
+                    val text = normalized.take(remainingCharacters)
+                    remainingCharacters -= text.length
+                    val sourceBounds = content.bounds.ifEmpty {
+                        if (boundsLookups >= MAX_PDF_BOUNDS_LOOKUPS_PER_PAGE) emptyList()
+                        else {
+                            boundsLookups += 1
+                            val needle = text.take(MAX_PDF_SEARCH_NEEDLE_CHARACTERS).trim()
+                            if (needle.isEmpty()) emptyList() else page.searchText(needle).firstOrNull()?.bounds.orEmpty()
+                        }
+                    }
+                    val bounds = sourceBounds.take(MAX_PDF_BOUNDS_PER_BLOCK).mapNotNull { rect ->
+                        val left = (rect.left / page.width.coerceAtLeast(1)).coerceIn(0f, 1f)
+                        val top = (rect.top / page.height.coerceAtLeast(1)).coerceIn(0f, 1f)
+                        val right = (rect.right / page.width.coerceAtLeast(1)).coerceIn(0f, 1f)
+                        val bottom = (rect.bottom / page.height.coerceAtLeast(1)).coerceIn(0f, 1f)
+                        PdfTextBounds(left, top, right, bottom).takeIf {
+                            left.isFinite() && top.isFinite() && right.isFinite() && bottom.isFinite() && right > left && bottom > top
+                        }
+                    }
+                    add(PdfTextBlock(text, bounds))
+                }
+            }
+        }.getOrNull()
     }
 
     private fun InkStroke.portableBrushAssets() = copy(
@@ -528,6 +609,12 @@ class DocumentAssetService(private val context: Context) {
         const val DUAL_SCATTER_SEED = 0x27C4915DL
         const val DUAL_ROTATION_SEED = 0x61B8D2A3L
         const val DUAL_SEQUENCE_SEED = 0x35A71C9E
+        const val PDF_TEXT_INDEX_VERSION = 1
+        const val MAX_PDF_TEXT_CHARACTERS_PER_PAGE = 1_000_000
+        const val MAX_PDF_TEXT_BLOCKS_PER_PAGE = 20_000
+        const val MAX_PDF_BOUNDS_PER_BLOCK = 4_096
+        const val MAX_PDF_BOUNDS_LOOKUPS_PER_PAGE = 512
+        const val MAX_PDF_SEARCH_NEEDLE_CHARACTERS = 128
     }
 
     private fun copyAsset(uri: Uri, extension: String): File {
@@ -542,4 +629,5 @@ class DocumentAssetService(private val context: Context) {
         if (target.exists()) temporary.delete() else check(temporary.renameTo(target)) { "Could not retain imported asset" }
         return target
     }
+
 }

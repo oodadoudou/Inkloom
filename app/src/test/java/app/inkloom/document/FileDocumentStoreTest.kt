@@ -233,4 +233,23 @@ class FileDocumentStoreTest {
         assertEquals(listOf(childStroke), restored.strokes)
         assertEquals("/data/tip.png", restored.strokes.single().tipAssetPath)
     }
+
+    @Test fun nativePdfTextIndexRoundTripsWithoutChangingThePdfBackground() {
+        val store = FileDocumentStore(Files.createTempDirectory("inkloom-pdf-index").toFile())
+        val bounds = PdfTextBounds(.1f, .2f, .7f, .27f)
+        val page = InkPage(
+            background = PageBackground.Pdf("/data/lecture.pdf", 3),
+            pdfTextBlocks = listOf(PdfTextBlock("Searchable lecture text", listOf(bounds))),
+            pdfTextIndexVersion = 1,
+        )
+        val document = InkDocument(title = "PDF index", pages = listOf(page))
+
+        store.save(document)
+
+        val restored = store.get(document.id)!!.pages.single()
+        assertEquals(PageBackground.Pdf("/data/lecture.pdf", 3), restored.background)
+        assertEquals(1, restored.pdfTextIndexVersion)
+        assertEquals(bounds, restored.pdfTextBlocks.single().bounds.single())
+        assertEquals("Searchable lecture text", restored.pdfTextBlocks.single().text)
+    }
 }

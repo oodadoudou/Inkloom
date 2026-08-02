@@ -38,6 +38,21 @@ object PageCropTransform {
         return element.withPosition(x, y)
     }
 
+    fun project(bounds: PdfTextBounds, cropValue: PageCrop): PdfTextBounds? {
+        val crop = normalized(cropValue)
+        val left = maxOf(bounds.left, crop.left)
+        val top = maxOf(bounds.top, crop.top)
+        val right = minOf(bounds.right, crop.right)
+        val bottom = minOf(bounds.bottom, crop.bottom)
+        if (right <= left || bottom <= top) return null
+        return PdfTextBounds(
+            left = ((left - crop.left) / width(crop)).coerceIn(0f, 1f),
+            top = ((top - crop.top) / height(crop)).coerceIn(0f, 1f),
+            right = ((right - crop.left) / width(crop)).coerceIn(0f, 1f),
+            bottom = ((bottom - crop.top) / height(crop)).coerceIn(0f, 1f),
+        )
+    }
+
     fun rotateClockwise(value: PageCrop): PageCrop {
         val crop = normalized(value)
         return normalized(PageCrop(1f - crop.bottom, crop.left, 1f - crop.top, crop.right))

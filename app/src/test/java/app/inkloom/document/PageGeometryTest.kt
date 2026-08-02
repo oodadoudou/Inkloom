@@ -43,4 +43,19 @@ class PageGeometryTest {
         assertEquals(originalText.width, restoredText.width)
         assertEquals(originalText.height, restoredText.height)
     }
+
+    @Test fun rotationKeepsPdfSearchHighlightAligned() {
+        val page = InkPage(
+            width = 1000f,
+            height = 2000f,
+            pdfTextBlocks = listOf(PdfTextBlock("Result", listOf(PdfTextBounds(.1f, .2f, .4f, .3f)))),
+        )
+
+        val rotated = PageGeometry.rotateClockwise(page).pdfTextBlocks.single().bounds.single()
+
+        assertEquals(.7f, rotated.left, .0001f)
+        assertEquals(.1f, rotated.top, .0001f)
+        assertEquals(.8f, rotated.right, .0001f)
+        assertEquals(.4f, rotated.bottom, .0001f)
+    }
 }
