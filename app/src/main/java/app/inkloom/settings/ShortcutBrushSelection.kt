@@ -28,6 +28,7 @@ object ShortcutBrushSelection {
 
     fun adjacent(brushes: List<ImportedBrush>, currentId: String?, delta: Int): ImportedBrush? {
         val visible = brushes.filterNot(ImportedBrush::hidden)
+            .sortedWith(compareBy<ImportedBrush> { it.sortOrder }.thenByDescending { it.favorite }.thenByDescending { it.lastUsedAt }.thenBy { it.name.lowercase() })
         if (visible.isEmpty()) return null
         val current = visible.firstOrNull { it.id == currentId }
         val peers = current?.groupName?.trim()?.takeIf(String::isNotEmpty)?.let { currentGroup ->

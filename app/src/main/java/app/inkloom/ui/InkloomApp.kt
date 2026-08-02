@@ -238,6 +238,7 @@ fun InkloomApp(initialIntent: Intent?) {
             },
             onUpdateBrush = { updated -> importedBrushes = importedBrushes.map { if (it.id == updated.id) updated else it }; brushStore.save(importedBrushes) },
             onDeleteBrush = { brushId -> importedBrushes = importedBrushes.filterNot { it.id == brushId }; brushStore.save(importedBrushes) },
+            onReorderBrush = { brushId, delta -> importedBrushes = BrushGroupOperations.move(importedBrushes, brushId, delta); brushStore.save(importedBrushes) },
             onDismissError = { importError = null },
             onSelectPage = viewModel::selectPage,
             onAddPage = { libraryState.selectedDocumentId?.let(viewModel::addPage) },
@@ -504,6 +505,7 @@ private fun EditorScreen(
     onExportBrush: (ImportedBrush) -> Unit,
     onUpdateBrush: (ImportedBrush) -> Unit,
     onDeleteBrush: (String) -> Unit,
+    onReorderBrush: (String, Int) -> Unit,
     onDismissError: () -> Unit,
     onSelectPage: (String) -> Unit,
     onAddPage: () -> Unit,
@@ -878,6 +880,7 @@ private fun EditorScreen(
                 onExportBrush = onExportBrush,
                 onUpdateBrush = { updated -> onUpdateBrush(updated); if (activeBrush?.id == updated.id) { activeBrush = updated; brushSize = updated.defaultSize } },
                 onDeleteBrush = { brushId -> onDeleteBrush(brushId); if (activeBrush?.id == brushId) { activeBrush = null; selectedBrushId = null } },
+                onReorderBrush = onReorderBrush,
             )
         }
         }
@@ -1013,7 +1016,24 @@ private fun PageRail(document: InkDocument, documents: List<InkDocument>, select
                     if (page.background is PageBackground.Pdf) Text("PDF", fontSize = 9.sp, color = Sage)
                     if (page.bookmarked) Icon(Icons.Default.Bookmark, "Bookmarked", tint = Sage, modifier = Modifier.size(16.dp).align(Alignment.TopEnd))
                 }
-                Row(Modifier.width(70.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                var pageDragDistance by remember(page.id) { mutableFloatStateOf(0f) }
+                Row(Modifier.width(78.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Icon(
+                        Icons.Outlined.DragIndicator,
+                        "Drag to reorder page",
+                        Modifier.size(22.dp).pointerInput(page.id) {
+                            detectDragGestures(
+                                onDragStart = { pageDragDistance = 0f },
+                                onDragEnd = {
+                                    val delta = (pageDragDistance / 52.dp.toPx()).toInt()
+                                    if (delta != 0) onMove(document.id, page.id, delta)
+                                    pageDragDistance = 0f
+                                },
+                                onDragCancel = { pageDragDistance = 0f },
+                            ) { change, amount -> change.consume(); pageDragDistance += amount.y }
+                        },
+                        tint = MutedInk,
+                    )
                     Text(page.customNumber ?: (document.pages.indexOf(page) + 1).toString(), color = if (page.id == selectedPageId) Sage else MutedInk, modifier = Modifier.weight(1f).clip(RoundedCornerShape(5.dp)).clickable { onSelect(page.id) }.padding(vertical = 6.dp), maxLines = 1)
                     if (page.id == selectedPageId) {
                         Box(Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(Workspace).clickable { menu = true }, contentAlignment = Alignment.Center) { Icon(Icons.Default.MoreVert, "Page menu", modifier = Modifier.size(16.dp)) }
@@ -2061,6 +2081,7 @@ private fun BrushPanel(
     onExportBrush: (ImportedBrush) -> Unit,
     onUpdateBrush: (ImportedBrush) -> Unit,
     onDeleteBrush: (String) -> Unit,
+    onReorderBrush: (String, Int) -> Unit,
 ) {
     val context = LocalContext.current
     val historyStore = remember { BrushVersionHistoryStore(context) }
@@ -2087,7 +2108,7 @@ private fun BrushPanel(
             else -> normalizedGroup.equals(selectedGroup, true)
         }
         (showHidden || !brush.hidden) && (!favoritesOnly || brush.favorite) && groupMatches && (format == null || brush.format == format) && (search.isBlank() || brush.name.contains(search, true) || normalizedGroup.contains(search, true) || brush.tags.any { it.contains(search, true) })
-    }.sortedWith(compareByDescending<ImportedBrush> { it.favorite }.thenByDescending { it.lastUsedAt }.thenBy { it.name.lowercase() })
+    }.sortedWith(compareBy<ImportedBrush> { it.sortOrder }.thenByDescending { it.favorite }.thenByDescending { it.lastUsedAt }.thenBy { it.name.lowercase() })
     val brushSections = visibleBrushes.groupBy { BrushGroupOperations.normalize(it.groupName).ifBlank { "Ungrouped" } }
         .toList().sortedWith(compareBy<Pair<String, List<ImportedBrush>>> { it.first == "Ungrouped" }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.first })
     Column(Modifier.width(330.dp).fillMaxHeight().background(Color(0xFFF7F7F7)).padding(12.dp)) {
@@ -2128,6 +2149,7 @@ private fun BrushPanel(
                             onFavorite = { onUpdateBrush(brush.copy(favorite = !brush.favorite)) },
                             onHide = { onUpdateBrush(brush.copy(hidden = !brush.hidden)) },
                             onDelete = { historyStore.clear(brush.id); historyRevision++; onDeleteBrush(brush.id) },
+                            onReorder = { delta -> onReorderBrush(brush.id, delta) },
                         )
                     }
                 }
@@ -2337,14 +2359,32 @@ private fun BrushVersionHistoryDialog(
 private fun Float.oneDecimal(): String = String.format(java.util.Locale.ROOT, "%.1f", this)
 
 @Composable
-private fun ImportedBrushRow(brush: ImportedBrush, selected: Boolean, onSelect: () -> Unit, onReport: () -> Unit, onEdit: () -> Unit, onHistory: () -> Unit, onMove: () -> Unit, onExport: () -> Unit, onFavorite: () -> Unit, onHide: () -> Unit, onDelete: () -> Unit) {
+private fun ImportedBrushRow(brush: ImportedBrush, selected: Boolean, onSelect: () -> Unit, onReport: () -> Unit, onEdit: () -> Unit, onHistory: () -> Unit, onMove: () -> Unit, onExport: () -> Unit, onFavorite: () -> Unit, onHide: () -> Unit, onDelete: () -> Unit, onReorder: (Int) -> Unit) {
     var menu by remember { mutableStateOf(false) }
+    var dragDistance by remember(brush.id) { mutableFloatStateOf(0f) }
     Card(
         modifier = Modifier.clickable(onClick = onSelect),
         colors = CardDefaults.cardColors(containerColor = if (selected) SageContainer else Workspace),
         border = if (selected) CardDefaults.outlinedCardBorder().copy(width = 2.dp, brush = androidx.compose.ui.graphics.SolidColor(Sage)) else CardDefaults.outlinedCardBorder(),
     ) {
         Row(Modifier.padding(8.dp).heightIn(min = 58.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.Outlined.DragIndicator,
+                "Drag to reorder brush",
+                Modifier.size(24.dp).pointerInput(brush.id) {
+                    detectDragGestures(
+                        onDragStart = { dragDistance = 0f },
+                        onDragEnd = {
+                            val delta = (dragDistance / 56.dp.toPx()).toInt()
+                            if (delta != 0) onReorder(delta)
+                            dragDistance = 0f
+                        },
+                        onDragCancel = { dragDistance = 0f },
+                    ) { change, amount -> change.consume(); dragDistance += amount.y }
+                },
+                tint = MutedInk,
+            )
+            Spacer(Modifier.width(4.dp))
             BrushTipPreview(brush, Modifier.size(52.dp))
             Spacer(Modifier.width(9.dp))
             Column(Modifier.weight(1f)) {

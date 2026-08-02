@@ -129,6 +129,7 @@ data class ImportedBrush(
     val groupName: String = "",
     val tags: List<String> = emptyList(),
     val lastUsedAt: Long = 0L,
+    val sortOrder: Int = 0,
     val defaultOpacity: Float = 1f,
     val sizePressureEnabled: Boolean = true,
     val sizePressureMinimum: Float = .35f,

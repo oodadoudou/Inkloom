@@ -9,7 +9,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ShortcutBrushSelectionTest {
-    private fun brush(id: String, name: String, group: String, used: Long = 0, hidden: Boolean = false) = ImportedBrush(
+    private fun brush(id: String, name: String, group: String, used: Long = 0, hidden: Boolean = false, order: Int = 0) = ImportedBrush(
         id = id,
         name = name,
         format = BrushFormat.SUT,
@@ -19,6 +19,7 @@ class ShortcutBrushSelectionTest {
         groupName = group,
         lastUsedAt = used,
         hidden = hidden,
+        sortOrder = order,
     )
 
     @Test fun `group matching accepts CSP style English and Chinese labels`() {
@@ -49,5 +50,11 @@ class ShortcutBrushSelectionTest {
         assertEquals("b", ShortcutBrushSelection.adjacent(brushes, "a", -1)?.id)
         assertEquals("a", ShortcutBrushSelection.adjacent(brushes, "b", 1)?.id)
         assertEquals("c", ShortcutBrushSelection.adjacent(brushes, null, -1)?.id)
+    }
+
+    @Test fun `adjacent follows persisted manual order`() {
+        val brushes = listOf(brush("a", "A", "Pen", order = 2), brush("b", "B", "Pen", order = 0), brush("c", "C", "Pen", order = 1))
+
+        assertEquals("c", ShortcutBrushSelection.adjacent(brushes, "b", 1)?.id)
     }
 }

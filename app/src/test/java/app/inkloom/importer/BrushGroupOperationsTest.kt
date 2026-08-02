@@ -29,6 +29,14 @@ class BrushGroupOperationsTest {
         assertEquals(BrushGroupOperations.MAX_NAME_LENGTH, BrushGroupOperations.normalize("x".repeat(200)).length)
     }
 
+    @Test fun moveReordersOnlyTheSelectedBrushGroup() {
+        val brushes = listOf(brush("A", "Pens"), brush("B", "Pens"), brush("C", "Pencils"))
+        val moved = BrushGroupOperations.move(brushes, "A", 1)
+
+        assertEquals(listOf("B", "A"), moved.filter { it.groupName == "Pens" }.sortedBy { it.sortOrder }.map { it.id })
+        assertEquals(0, moved.single { it.id == "C" }.sortOrder)
+    }
+
     private fun brush(name: String, group: String) = ImportedBrush(
         id = name,
         name = name,
