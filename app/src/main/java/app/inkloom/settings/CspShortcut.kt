@@ -128,8 +128,8 @@ object CspShortcutResolver {
     fun resolve(chord: ShortcutChord, bindings: List<ShortcutBinding> = defaultBindings, deviceDescriptor: String? = null): ShortcutAction? =
         resolveBinding(chord, bindings, deviceDescriptor)?.action
 
-    fun resolveBinding(chord: ShortcutChord, bindings: List<ShortcutBinding> = defaultBindings, deviceDescriptor: String? = null): ShortcutBinding? =
-        bindings.firstOrNull { binding ->
+    fun resolveBinding(chord: ShortcutChord, bindings: List<ShortcutBinding> = defaultBindings, deviceDescriptor: String? = null): ShortcutBinding? {
+        val matching = bindings.filter { binding ->
             val configured = binding.chord
             val codeMatches = when (configured.matchMode) {
                 ShortcutMatchMode.KEY_CODE -> configured.keyCode == chord.keyCode
@@ -138,6 +138,9 @@ object CspShortcutResolver {
             codeMatches && configured.ctrl == chord.ctrl && configured.alt == chord.alt && configured.shift == chord.shift &&
                 (binding.deviceDescriptor == null || binding.deviceDescriptor == deviceDescriptor)
         }
+        return matching.firstOrNull { it.deviceDescriptor == deviceDescriptor && deviceDescriptor != null }
+            ?: matching.firstOrNull { it.deviceDescriptor == null }
+    }
 
     fun replace(
         bindings: List<ShortcutBinding>,
@@ -147,7 +150,8 @@ object CspShortcutResolver {
         deviceDescriptor: String? = null,
         deviceName: String? = null,
     ): List<ShortcutBinding> = bindings.filterNot { existing ->
-        existing.action == action || (sameInput(existing.chord, chord) && (existing.deviceDescriptor == deviceDescriptor || existing.deviceDescriptor == null || deviceDescriptor == null))
+        val sameScope = existing.deviceDescriptor == deviceDescriptor
+        sameScope && (existing.action == action || sameInput(existing.chord, chord))
     } + ShortcutBinding(action, chord, trigger, deviceDescriptor, deviceName)
 
     private fun sameInput(left: ShortcutChord, right: ShortcutChord): Boolean =

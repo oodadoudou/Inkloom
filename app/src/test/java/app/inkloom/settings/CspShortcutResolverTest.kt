@@ -69,6 +69,31 @@ class CspShortcutResolverTest {
         assertNull(CspShortcutResolver.resolve(ShortcutChord(KeyEvent.KEYCODE_B), listOf(binding), "keyboard-2"))
     }
 
+    @Test fun deviceSpecificBindingOverridesTheGlobalChordOnlyOnItsOwnDevice() {
+        val bindings = CspShortcutResolver.defaultBindings + ShortcutBinding(
+            ShortcutAction.TOGGLE_ERASER,
+            ShortcutChord(KeyEvent.KEYCODE_B),
+            deviceDescriptor = "toolbox-1",
+        )
+
+        assertEquals(ShortcutAction.TOGGLE_ERASER, CspShortcutResolver.resolve(ShortcutChord(KeyEvent.KEYCODE_B), bindings, "toolbox-1"))
+        assertEquals(ShortcutAction.BRUSH_GROUP, CspShortcutResolver.resolve(ShortcutChord(KeyEvent.KEYCODE_B), bindings, "keyboard-2"))
+    }
+
+    @Test fun recordingADeviceBindingKeepsTheGlobalCspBindingForTheSameAction() {
+        val updated = CspShortcutResolver.replace(
+            CspShortcutResolver.defaultBindings,
+            ShortcutAction.BRUSH_GROUP,
+            ShortcutChord(KeyEvent.KEYCODE_F3, scanCode = 61, matchMode = ShortcutMatchMode.SCAN_CODE),
+            deviceDescriptor = "toolbox-1",
+            deviceName = "Toolbox",
+        )
+
+        assertEquals(ShortcutAction.BRUSH_GROUP, CspShortcutResolver.resolve(ShortcutChord(KeyEvent.KEYCODE_B), updated, "keyboard-2"))
+        assertEquals(ShortcutAction.BRUSH_GROUP, CspShortcutResolver.resolve(ShortcutChord(KeyEvent.KEYCODE_UNKNOWN, scanCode = 61), updated, "toolbox-1"))
+        assertEquals(2, updated.count { it.action == ShortcutAction.BRUSH_GROUP })
+    }
+
     @Test fun migratesOnlyTheFormerReversedDefaultBrushSizePair() {
         val addedActions = setOf(
             ShortcutAction.NEW_LAYER,

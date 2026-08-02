@@ -3555,7 +3555,7 @@ private fun ShortcutEditorDialog(settings: AppSettings, onChange: (AppSettings) 
                             FilterChip(selected = captureTrigger == ShortcutTrigger.PRESS, onClick = { captureTrigger = ShortcutTrigger.PRESS }, label = { Text(tr("Tap to switch", "单击切换")) })
                             FilterChip(selected = captureTrigger == ShortcutTrigger.HOLD, onClick = { captureTrigger = ShortcutTrigger.HOLD }, label = { Text(tr("Hold, release to return", "按住，松开返回")) })
                         }
-                        SettingSwitch(tr("Only this input device", "仅此输入设备"), tr("Off applies the shortcut to every connected keyboard or Toolbox.", "关闭时，此快捷键适用于所有已连接键盘或 Toolbox。"), deviceSpecific) { deviceSpecific = it }
+                        SettingSwitch(tr("Only this input device", "仅此输入设备"), tr("Keeps the global CSP key while adding a Toolbox-specific mapping.", "保留全局 CSP 键位，同时添加此 Toolbox 的专用映射。"), deviceSpecific) { deviceSpecific = it }
                     }
                 }
                 items(ShortcutAction.entries, key = { it.name }) { action ->
@@ -3573,6 +3573,12 @@ private fun ShortcutEditorDialog(settings: AppSettings, onChange: (AppSettings) 
                         trailingContent = {
                             Row {
                                 if (chords.isNotEmpty()) IconButton(onClick = { onChange(settings.copy(shortcutBindings = settings.shortcutBindings.filterNot { it.action == action })) }) { Icon(Icons.Outlined.LinkOff, tr("Remove shortcut", "移除快捷键")) }
+                                TextButton(onClick = {
+                                    captureMode = ShortcutMatchMode.SCAN_CODE
+                                    captureTrigger = ShortcutTrigger.PRESS
+                                    deviceSpecific = true
+                                    listeningFor = action
+                                }) { Text(tr("Add device", "添加设备")) }
                                 TextButton(onClick = {
                                     actionBindings.firstOrNull()?.let { existing ->
                                         captureMode = existing.chord.matchMode

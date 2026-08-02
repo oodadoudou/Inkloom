@@ -42,6 +42,26 @@ class ShortcutBindingCodecTest {
     }
 
     @Test
+    fun `replacement is scoped to one input device`() {
+        val global = ShortcutBinding(ShortcutAction.BRUSH_GROUP, ShortcutChord(KeyEvent.KEYCODE_B))
+        val toolbox = ShortcutBinding(
+            ShortcutAction.BRUSH_GROUP,
+            ShortcutChord(KeyEvent.KEYCODE_F1, scanCode = 59, matchMode = ShortcutMatchMode.SCAN_CODE),
+            deviceDescriptor = "toolbox-1",
+        )
+
+        val updated = CspShortcutResolver.replace(
+            listOf(global, toolbox),
+            ShortcutAction.BRUSH_GROUP,
+            ShortcutChord(KeyEvent.KEYCODE_F2, scanCode = 60, matchMode = ShortcutMatchMode.SCAN_CODE),
+            deviceDescriptor = "toolbox-1",
+        )
+
+        assertEquals(global, updated.single { it.deviceDescriptor == null })
+        assertEquals(60, updated.single { it.deviceDescriptor == "toolbox-1" }.chord.scanCode)
+    }
+
+    @Test
     fun `legacy five field bindings remain readable`() {
         assertEquals(
             listOf(ShortcutBinding(ShortcutAction.UNDO, ShortcutChord(KeyEvent.KEYCODE_Z, ctrl = true))),
