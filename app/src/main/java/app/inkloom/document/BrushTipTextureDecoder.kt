@@ -3,7 +3,6 @@ package app.inkloom.document
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
-import kotlin.math.pow
 
 /**
  * Builds the white alpha mask used for a brush stamp. Live drawing and exported
@@ -42,9 +41,11 @@ object BrushTipTextureDecoder {
                 // permits the inverse convention, so infer it from the quiet
                 // corners and normalize both sources to a white alpha mask.
                 val base = if (darkBackground) luminance / 255f else (255 - luminance) / 255f
-                val shaped = base.toDouble()
-                    .pow((1.8f - hardness.coerceIn(0f, 1f) * 1.5f).toDouble())
-                    .toFloat()
+                // Imported bitmap tips already contain their final grayscale
+                // density. CSP's Hardness control applies to circular tips, not
+                // material tips, so applying another gamma curve here destroys
+                // the authored edge and texture values.
+                val shaped = base
                 val grainMask = if (grain != null && grainPixels != null) {
                     val x = index % source.width
                     val y = index / source.width

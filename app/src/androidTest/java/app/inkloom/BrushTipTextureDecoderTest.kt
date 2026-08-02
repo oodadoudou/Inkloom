@@ -14,6 +14,27 @@ import java.io.File
 @RunWith(AndroidJUnit4::class)
 class BrushTipTextureDecoderTest {
     @Test
+    fun sampledTipPreservesAuthoredGrayDensityRegardlessOfCircleHardness() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val root = File(context.cacheDir, "brush-tip-density-${System.nanoTime()}").apply { mkdirs() }
+        try {
+            val tipFile = File(root, "tip.png")
+            val pixels = IntArray(64) { Color.WHITE }.also { it[27] = Color.rgb(191, 191, 191) }
+            writePng(tipFile, pixels, 8, 8)
+
+            val soft = BrushTipTextureDecoder.decode(tipFile.absolutePath, 0f, null, 0f)!!
+            val hard = BrushTipTextureDecoder.decode(tipFile.absolutePath, 1f, null, 0f)!!
+
+            assertEquals(64, Color.alpha(soft.getPixel(3, 3)))
+            assertEquals(64, Color.alpha(hard.getPixel(3, 3)))
+            soft.recycle()
+            hard.recycle()
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun blackRgbGrainUsesAlphaAsDensity() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val root = File(context.cacheDir, "brush-tip-texture-${System.nanoTime()}").apply { mkdirs() }
