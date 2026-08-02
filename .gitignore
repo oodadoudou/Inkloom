@@ -36,6 +36,14 @@ google-services.json
 # Codex-generated review and rendering artifacts
 .codex-artifacts/
 
+# Local product/design sources and agent working records
+design/
+tasks/
+.stitch-reference/
+docs/
+/*.docx
+/*.pdf
+
 # Packaged binaries are reproducible from source
 dist/*.apk
 dist/*.aab
