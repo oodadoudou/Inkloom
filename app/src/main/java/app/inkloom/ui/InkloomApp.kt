@@ -1751,13 +1751,14 @@ private fun playAudio(path: String) {
 
 private fun formatDuration(durationMs: Long): String { val total = durationMs / 1000; return "%d:%02d".format(total / 60, total % 60) }
 
+@Composable
 private fun EraserPreset.displayName(): String = when (this) {
-    EraserPreset.NORMAL_FREE -> "Free"
-    EraserPreset.HARD -> "Hard"
-    EraserPreset.SOFT -> "Soft"
-    EraserPreset.HARD_EDGE -> "Hard edge"
-    EraserPreset.SOFT_EDGE -> "Soft edge"
-    EraserPreset.STROKE -> "Whole stroke"
+    EraserPreset.NORMAL_FREE -> tr("Free", "自由橡皮")
+    EraserPreset.HARD -> tr("Hard", "硬橡皮")
+    EraserPreset.SOFT -> tr("Soft", "软橡皮")
+    EraserPreset.HARD_EDGE -> tr("Hard edge", "硬边缘")
+    EraserPreset.SOFT_EDGE -> tr("Soft edge", "软边缘")
+    EraserPreset.STROKE -> tr("Whole stroke", "整笔删除")
 }
 
 @Composable
@@ -1851,85 +1852,85 @@ private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () 
 
 @Composable
 private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, dragModifier: Modifier, vertical: Boolean, moreToolsOpen: Boolean, onMoreToolsOpen: (Boolean) -> Unit, controlsOpen: Boolean, onControlsOpen: (Boolean) -> Unit, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit) {
-    Icon(Icons.Outlined.DragIndicator, "Drag toolbar", modifier = dragModifier, tint = MutedInk)
-    ToolButton(EditorTool.PEN, Icons.Outlined.Edit, "Pen", tool, onTool)
-    ToolButton(EditorTool.HIGHLIGHTER, Icons.Outlined.BorderColor, "Mark", tool, onTool)
-    ToolButton(EditorTool.ERASER, Icons.Outlined.AutoFixOff, "Eraser", tool, onTool)
-    ToolButton(EditorTool.SELECT, Icons.Outlined.Gesture, "Select", tool, onTool)
+    Icon(Icons.Outlined.DragIndicator, tr("Drag toolbar", "拖动工具栏"), modifier = dragModifier, tint = MutedInk)
+    ToolButton(EditorTool.PEN, Icons.Outlined.Edit, tr("Pen", "钢笔"), tool, onTool)
+    ToolButton(EditorTool.HIGHLIGHTER, Icons.Outlined.BorderColor, tr("Marker", "标记笔"), tool, onTool)
+    ToolButton(EditorTool.ERASER, Icons.Outlined.AutoFixOff, tr("Eraser", "橡皮"), tool, onTool)
+    ToolButton(EditorTool.SELECT, Icons.Outlined.Gesture, tr("Select", "选择"), tool, onTool)
     Box {
-        CompactToolbarIconButton(onClick = { onMoreToolsOpen(true) }, description = "More tools", selected = tool in setOf(EditorTool.SHAPE, EditorTool.TEXT, EditorTool.NOTE, EditorTool.LINK, EditorTool.IMAGE, EditorTool.AUDIO)) { Icon(Icons.Outlined.Apps, null, Modifier.size(20.dp)) }
+        CompactToolbarIconButton(onClick = { onMoreToolsOpen(true) }, description = tr("More tools", "更多工具"), selected = tool in setOf(EditorTool.SHAPE, EditorTool.TEXT, EditorTool.NOTE, EditorTool.LINK, EditorTool.IMAGE, EditorTool.AUDIO)) { Icon(Icons.Outlined.Apps, null, Modifier.size(20.dp)) }
         DropdownMenu(expanded = moreToolsOpen, onDismissRequest = { onMoreToolsOpen(false) }) {
             listOf(
-                Triple(EditorTool.SHAPE, Icons.Outlined.Category, "Shape"),
-                Triple(EditorTool.TEXT, Icons.Outlined.Title, "Text"),
-                Triple(EditorTool.NOTE, Icons.Outlined.StickyNote2, "Note"),
-                Triple(EditorTool.LINK, Icons.Outlined.Link, "Link"),
-                Triple(EditorTool.IMAGE, Icons.Outlined.Image, "Image"),
-                Triple(EditorTool.AUDIO, Icons.Outlined.Mic, "Audio"),
+                Triple(EditorTool.SHAPE, Icons.Outlined.Category, tr("Shape", "形状")),
+                Triple(EditorTool.TEXT, Icons.Outlined.Title, tr("Text", "文字")),
+                Triple(EditorTool.NOTE, Icons.Outlined.StickyNote2, tr("Note", "便笺")),
+                Triple(EditorTool.LINK, Icons.Outlined.Link, tr("Link", "链接")),
+                Triple(EditorTool.IMAGE, Icons.Outlined.Image, tr("Image", "图片")),
+                Triple(EditorTool.AUDIO, Icons.Outlined.Mic, tr("Audio", "音频")),
             ).forEach { (value, icon, label) ->
                 DropdownMenuItem(text = { Text(label) }, leadingIcon = { Icon(icon, null) }, onClick = { onMoreToolsOpen(false); onTool(value) })
             }
         }
     }
     Box {
-        CompactToolbarIconButton(onClick = { onControlsOpen(true) }, description = "Tool controls") { Icon(Icons.Outlined.Tune, null, Modifier.size(20.dp)) }
+        CompactToolbarIconButton(onClick = { onControlsOpen(true) }, description = tr("Tool controls", "工具参数")) { Icon(Icons.Outlined.Tune, null, Modifier.size(20.dp)) }
         DropdownMenu(expanded = controlsOpen, onDismissRequest = { onControlsOpen(false) }, modifier = Modifier.widthIn(min = 300.dp, max = 360.dp)) {
             Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("${tool.name.lowercase().replaceFirstChar(Char::uppercase)} controls", fontWeight = FontWeight.SemiBold)
+                Text("${when (tool) { EditorTool.PEN -> tr("Pen", "钢笔"); EditorTool.HIGHLIGHTER -> tr("Marker", "标记笔"); EditorTool.ERASER -> tr("Eraser", "橡皮"); EditorTool.SELECT -> tr("Selection", "选择"); else -> tool.name.lowercase().replaceFirstChar(Char::uppercase) }} ${tr("controls", "参数")}", fontWeight = FontWeight.SemiBold)
                 if (tool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Size", Modifier.weight(1f), color = MutedInk)
-                        IconButton(onClick = { onSize(brushSize - maxOf(.5f, brushSize * .12f)) }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Remove, "Smaller") }
+                        Text(tr("Size", "大小"), Modifier.weight(1f), color = MutedInk)
+                        IconButton(onClick = { onSize(brushSize - maxOf(.5f, brushSize * .12f)) }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Remove, tr("Smaller", "减小")) }
                         Text(if (brushSize < 10f) "%.1f".format(brushSize) else brushSize.toInt().toString(), Modifier.width(38.dp), textAlign = TextAlign.Center)
-                        IconButton(onClick = { onSize(brushSize + maxOf(.5f, brushSize * .12f)) }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Add, "Larger") }
+                        IconButton(onClick = { onSize(brushSize + maxOf(.5f, brushSize * .12f)) }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Add, tr("Larger", "增大")) }
                     }
                     if (tool != EditorTool.ERASER) {
-                        Text("Opacity  ${(brushOpacity * 100).toInt()}%", color = MutedInk, fontSize = 12.sp)
+                        Text("${tr("Opacity", "不透明度")}  ${(brushOpacity * 100).toInt()}%", color = MutedInk, fontSize = 12.sp)
                         Slider(value = brushOpacity, onValueChange = onOpacity, valueRange = .05f..1f)
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text("Color", Modifier.weight(1f), color = MutedInk); BrushColorPicker(brushColor, onColor) }
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text(tr("Color", "颜色"), Modifier.weight(1f), color = MutedInk); BrushColorPicker(brushColor, onColor) }
                     }
                 }
                 if (tool == EditorTool.ERASER) {
-                    Text("Eraser brush", color = MutedInk, fontSize = 12.sp)
+                    Text(tr("Eraser brush", "橡皮笔刷"), color = MutedInk, fontSize = 12.sp)
                     EraserPresetPicker(eraserPreset, onEraserPreset)
                 }
                 if (tool == EditorTool.SELECT) {
-                    Text("Selection", color = MutedInk, fontSize = 12.sp)
+                    Text(tr("Selection", "选择"), color = MutedInk, fontSize = 12.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                        SelectionShape.entries.forEach { shape -> FilterChip(selected = selectionShape == shape, onClick = { onSelectionShape(shape) }, label = { Text(if (shape == SelectionShape.FREEFORM) "Freeform" else "Rectangle", fontSize = 10.sp) }) }
+                        SelectionShape.entries.forEach { shape -> FilterChip(selected = selectionShape == shape, onClick = { onSelectionShape(shape) }, label = { Text(if (shape == SelectionShape.FREEFORM) tr("Freeform", "自由套索") else tr("Rectangle", "矩形"), fontSize = 10.sp) }) }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                        SelectionMode.entries.forEach { mode -> FilterChip(selected = selectionMode == mode, onClick = { onSelectionMode(mode) }, label = { Text(when (mode) { SelectionMode.REPLACE -> "New"; SelectionMode.ADD -> "Add"; SelectionMode.SUBTRACT -> "Subtract"; SelectionMode.INTERSECT -> "Intersect" }, fontSize = 10.sp) }) }
+                        SelectionMode.entries.forEach { mode -> FilterChip(selected = selectionMode == mode, onClick = { onSelectionMode(mode) }, label = { Text(when (mode) { SelectionMode.REPLACE -> tr("New", "新建"); SelectionMode.ADD -> tr("Add", "添加"); SelectionMode.SUBTRACT -> tr("Subtract", "减去"); SelectionMode.INTERSECT -> tr("Intersect", "交集") }, fontSize = 10.sp) }) }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                        SelectionFilter.entries.forEach { filter -> FilterChip(selected = selectionFilter == filter, onClick = { onSelectionFilter(filter) }, label = { Text(when (filter) { SelectionFilter.ALL -> "All"; SelectionFilter.ACTIVE_LAYER -> "Layer"; SelectionFilter.CURRENT_BRUSH -> "Brush"; SelectionFilter.CURRENT_COLOR -> "Color" }, fontSize = 10.sp) }) }
+                        SelectionFilter.entries.forEach { filter -> FilterChip(selected = selectionFilter == filter, onClick = { onSelectionFilter(filter) }, label = { Text(when (filter) { SelectionFilter.ALL -> tr("All", "全部"); SelectionFilter.ACTIVE_LAYER -> tr("Layer", "图层"); SelectionFilter.CURRENT_BRUSH -> tr("Brush", "笔刷"); SelectionFilter.CURRENT_COLOR -> tr("Color", "颜色") }, fontSize = 10.sp) }) }
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        CompactToolbarIconButton(onScale, "Scale selection") { Icon(Icons.Outlined.ZoomOutMap, null) }
-                        CompactToolbarIconButton(onRotate, "Rotate selection") { Icon(Icons.Outlined.RotateRight, null) }
-                        CompactToolbarIconButton(onCopy, "Duplicate selection") { Icon(Icons.Outlined.ControlPointDuplicate, null) }
-                        CompactToolbarIconButton(onDelete, "Delete selection") { Icon(Icons.Outlined.Delete, null) }
+                        CompactToolbarIconButton(onScale, tr("Scale selection", "缩放所选内容")) { Icon(Icons.Outlined.ZoomOutMap, null) }
+                        CompactToolbarIconButton(onRotate, tr("Rotate selection", "旋转所选内容")) { Icon(Icons.Outlined.RotateRight, null) }
+                        CompactToolbarIconButton(onCopy, tr("Duplicate selection", "复制所选内容")) { Icon(Icons.Outlined.ControlPointDuplicate, null) }
+                        CompactToolbarIconButton(onDelete, tr("Delete selection", "删除所选内容")) { Icon(Icons.Outlined.Delete, null) }
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        CompactToolbarIconButton(onCut, "Cut ink selection") { Icon(Icons.Outlined.ContentCut, null) }
-                        CompactToolbarIconButton(onClipboardCopy, "Copy ink selection to clipboard") { Icon(Icons.Outlined.ContentCopy, null) }
-                        CompactToolbarIconButton(onPaste, "Paste ink selection") { Icon(Icons.Outlined.ContentPaste, null) }
+                        CompactToolbarIconButton(onCut, tr("Cut ink selection", "剪切所选墨迹")) { Icon(Icons.Outlined.ContentCut, null) }
+                        CompactToolbarIconButton(onClipboardCopy, tr("Copy ink selection to clipboard", "复制所选墨迹到剪贴板")) { Icon(Icons.Outlined.ContentCopy, null) }
+                        CompactToolbarIconButton(onPaste, tr("Paste ink selection", "粘贴所选墨迹")) { Icon(Icons.Outlined.ContentPaste, null) }
                     }
                 }
                 HorizontalDivider()
-                Text("Palette position", color = MutedInk, fontSize = 12.sp)
+                Text(tr("Palette position", "工具栏位置"), color = MutedInk, fontSize = 12.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                    ToolbarDock.entries.forEach { dock -> AssistChip(onClick = { onDock(dock) }, label = { Text(dock.name.lowercase().replaceFirstChar(Char::uppercase), fontSize = 10.sp) }) }
+                    ToolbarDock.entries.forEach { dock -> AssistChip(onClick = { onDock(dock) }, label = { Text(when (dock) { ToolbarDock.FREE -> tr("Free", "自由"); ToolbarDock.TOP -> tr("Top", "顶部"); ToolbarDock.BOTTOM -> tr("Bottom", "底部"); ToolbarDock.LEFT -> tr("Left", "左侧"); ToolbarDock.RIGHT -> tr("Right", "右侧") }, fontSize = 10.sp) }) }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = onToggleOrientation, modifier = Modifier.weight(1f)) { Icon(if (vertical) Icons.Outlined.SwapHoriz else Icons.Outlined.SwapVert, null); Spacer(Modifier.width(5.dp)); Text(if (vertical) "Horizontal" else "Vertical") }
-                    OutlinedButton(onClick = onResetPosition, modifier = Modifier.weight(1f)) { Icon(Icons.Outlined.CenterFocusStrong, null); Spacer(Modifier.width(5.dp)); Text("Reset") }
+                    OutlinedButton(onClick = onToggleOrientation, modifier = Modifier.weight(1f)) { Icon(if (vertical) Icons.Outlined.SwapHoriz else Icons.Outlined.SwapVert, null); Spacer(Modifier.width(5.dp)); Text(if (vertical) tr("Horizontal", "水平") else tr("Vertical", "垂直")) }
+                    OutlinedButton(onClick = onResetPosition, modifier = Modifier.weight(1f)) { Icon(Icons.Outlined.CenterFocusStrong, null); Spacer(Modifier.width(5.dp)); Text(tr("Reset", "重置")) }
                 }
             }
         }
     }
-    CompactToolbarIconButton(onClick = onUndo, description = "Undo") { Icon(Icons.Outlined.Undo, null, Modifier.size(20.dp)) }
-    CompactToolbarIconButton(onClick = onRedo, description = "Redo") { Icon(Icons.Outlined.Redo, null, Modifier.size(20.dp)) }
+    CompactToolbarIconButton(onClick = onUndo, description = tr("Undo", "撤销")) { Icon(Icons.Outlined.Undo, null, Modifier.size(20.dp)) }
+    CompactToolbarIconButton(onClick = onRedo, description = tr("Redo", "重做")) { Icon(Icons.Outlined.Redo, null, Modifier.size(20.dp)) }
 }
 
 @Composable
@@ -1966,37 +1967,37 @@ private fun BrushColorPicker(color: Int, onColor: (Int) -> Unit) {
         Box(Modifier.size(28.dp).clip(CircleShape).background(Color(color)).border(1.dp, OutlineSoft, CircleShape).clickable { open = true })
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             Column(Modifier.widthIn(min = 280.dp, max = 420.dp).padding(10.dp)) {
-                Text("Colors", fontSize = 12.sp, color = MutedInk)
+                Text(tr("Colors", "颜色"), fontSize = 12.sp, color = MutedInk)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 8.dp)) { items(colors) { value -> Box(Modifier.size(30.dp).clip(CircleShape).background(Color(value)).border(if (value == color) 3.dp else 1.dp, if (value == color) Sage else OutlineSoft, CircleShape).clickable { onColor(value); open = false }) } }
-                TextButton(onClick = { open = false; editorOpen = true }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Palette, null); Spacer(Modifier.width(8.dp)); Text("Custom color and palette") }
+                TextButton(onClick = { open = false; editorOpen = true }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Palette, null); Spacer(Modifier.width(8.dp)); Text(tr("Custom color and palette", "自定义颜色与色板")) }
             }
         }
     }
     if (editorOpen) AlertDialog(
         onDismissRequest = { editorOpen = false },
-        title = { Text("Color and palette") },
+        title = { Text(tr("Color and palette", "颜色与色板")) },
         text = {
             LazyColumn(Modifier.widthIn(min = 340.dp, max = 520.dp).heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 item { Row(verticalAlignment = Alignment.CenterVertically) { Box(Modifier.size(54.dp).clip(CircleShape).background(Color(customColor)).border(1.dp, OutlineSoft, CircleShape)); Spacer(Modifier.width(12.dp)); Text("#${customColor.toUInt().toString(16).padStart(8, '0').uppercase()}") } }
-                item { Text("Hue  ${hue.toInt()}°"); Slider(hue, { hue = it }, valueRange = 0f..360f) }
-                item { Text("Saturation  ${(saturation * 100).toInt()}%"); Slider(saturation, { saturation = it }, valueRange = 0f..1f) }
-                item { Text("Brightness  ${(brightness * 100).toInt()}%"); Slider(brightness, { brightness = it }, valueRange = 0f..1f) }
-                item { OutlinedButton(onClick = { customPalette = paletteStore.add(customColor) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(8.dp)); Text("Add current color to palette") } }
+                item { Text("${tr("Hue", "色相")}  ${hue.toInt()}°"); Slider(hue, { hue = it }, valueRange = 0f..360f) }
+                item { Text("${tr("Saturation", "饱和度")}  ${(saturation * 100).toInt()}%"); Slider(saturation, { saturation = it }, valueRange = 0f..1f) }
+                item { Text("${tr("Brightness", "明度")}  ${(brightness * 100).toInt()}%"); Slider(brightness, { brightness = it }, valueRange = 0f..1f) }
+                item { OutlinedButton(onClick = { customPalette = paletteStore.add(customColor) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(8.dp)); Text(tr("Add current color to palette", "将当前颜色加入色板")) } }
                 if (customPalette.isNotEmpty()) item {
-                    Text("Saved palette", color = MutedInk, fontSize = 11.sp)
+                    Text(tr("Saved palette", "已保存色板"), color = MutedInk, fontSize = 11.sp)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
                         items(customPalette, key = { it }) { value ->
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Box(Modifier.size(32.dp).clip(CircleShape).background(Color(value)).border(1.dp, OutlineSoft, CircleShape).clickable { val values = FloatArray(3); AndroidColor.colorToHSV(value, values); hue = values[0]; saturation = values[1]; brightness = values[2] })
-                                IconButton(onClick = { customPalette = paletteStore.remove(value) }, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.Close, "Remove color", modifier = Modifier.size(14.dp)) }
+                                IconButton(onClick = { customPalette = paletteStore.remove(value) }, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.Close, tr("Remove color", "移除颜色"), modifier = Modifier.size(14.dp)) }
                             }
                         }
                     }
                 }
             }
         },
-        confirmButton = { Button(onClick = { onColor(customColor); editorOpen = false }) { Text("Use color") } },
-        dismissButton = { TextButton(onClick = { editorOpen = false }) { Text("Cancel") } },
+        confirmButton = { Button(onClick = { onColor(customColor); editorOpen = false }) { Text(tr("Use color", "使用此颜色")) } },
+        dismissButton = { TextButton(onClick = { editorOpen = false }) { Text(tr("Cancel", "取消")) } },
     )
 }
 
