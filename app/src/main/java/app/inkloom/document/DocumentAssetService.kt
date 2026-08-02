@@ -11,6 +11,7 @@ import android.graphics.Matrix
 import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
+import android.graphics.PorterDuffXfermode
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import android.graphics.pdf.PdfRenderer
@@ -429,6 +430,7 @@ class DocumentAssetService(private val context: Context) {
         paint.strokeJoin = Paint.Join.ROUND
         strokes.forEach { stroke ->
             if (stroke.points.isEmpty()) return@forEach
+            val maskLayer = if (stroke.masks.isNotEmpty()) canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null) else -1
             paint.color = stroke.colorArgb.toInt()
             val tipPaths = stroke.tipAssetPaths.ifEmpty { listOfNotNull(stroke.tipAssetPath) }
             val tips = tipPaths.mapNotNull { decodeTip(it, stroke.hardness, stroke.grainAssetPath, stroke.grainDensity, stroke.grainScale, stroke.grainRotationDegrees, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized) }
@@ -454,6 +456,15 @@ class DocumentAssetService(private val context: Context) {
                     val alpha = (stroke.opacity * pressureDynamic(stroke.opacityPressureEnabled, stroke.opacityPressureMinimum, stroke.opacityPressureCurve, pressure) * secondaryDynamic(stroke.opacitySecondaryDynamics, point, stroke.renderSeed, SALT_OPACITY) * stroke.flow * pressureDynamic(stroke.flowPressureEnabled, stroke.flowPressureMinimum, stroke.flowPressureCurve, pressure) * secondaryDynamic(stroke.flowSecondaryDynamics, point, stroke.renderSeed, SALT_FLOW) * 255).toInt().coerceIn(1, 255)
                     drawLineSegment(canvas, paint, stroke, start.x * width, start.y * height, end.x * width, end.y * height, strokeWidth, alpha, width)
                 }
+            }
+            if (maskLayer >= 0) {
+                paint.style = Paint.Style.FILL
+                paint.colorFilter = null
+                paint.maskFilter = null
+                paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+                stroke.masks.forEach { mask -> canvas.drawOval((mask.x - mask.radiusX) * width, (mask.y - mask.radiusY) * height, (mask.x + mask.radiusX) * width, (mask.y + mask.radiusY) * height, paint) }
+                paint.xfermode = null
+                canvas.restoreToCount(maskLayer)
             }
         }
         paint.colorFilter = null

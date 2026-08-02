@@ -112,6 +112,7 @@ class FileDocumentStoreTest {
         )
         val stroke = InkStroke(
             points = listOf(StrokePoint(.2f, .3f, velocity = .75f)),
+            masks = listOf(StrokeMaskDab(.4f, .5f, .03f, .02f)),
             tipAssetPath = "/tmp/tip-a.png",
             tipAssetPaths = listOf("/tmp/tip-a.png", "/tmp/tip-b.png"),
             thicknessVertical = true,
@@ -129,6 +130,7 @@ class FileDocumentStoreTest {
         assertEquals(true, restored.thicknessVertical)
         assertEquals(true, restored.ribbon)
         assertEquals(BrushTipSequence.REVERSE, restored.tipSequenceMode)
+        assertEquals(stroke.masks, restored.masks)
     }
 
     @Test fun multiStrokeReplacementIsAtomicAndRecoveryIsIdempotent() {

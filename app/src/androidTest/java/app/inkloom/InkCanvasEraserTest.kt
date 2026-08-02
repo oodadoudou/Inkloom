@@ -16,6 +16,28 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class InkCanvasEraserTest {
     @Test
+    fun maskEraserKeepsOriginalStrokeIdentityAndUndoRemovesMask() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val original = horizontalStroke("masked", .5f)
+            val edits = mutableListOf<CapturedEdit>()
+            val view = configuredView(original, edits).apply { nonDestructiveEraser = true }
+
+            view.dispatchStylus(MotionEvent.ACTION_DOWN, 500f, 500f, 10L)
+            view.dispatchStylus(MotionEvent.ACTION_UP, 500f, 500f, 20L)
+
+            assertEquals(listOf("masked"), edits.single().removedIds)
+            val masked = edits.single().replacements.single()
+            assertEquals("masked", masked.id)
+            assertEquals(1, masked.masks.size)
+            assertEquals(original.points, masked.points)
+
+            view.undo()
+            assertEquals(listOf(original), edits.last().replacements)
+        }
+    }
+
+    @Test
     fun localEraserCommitsOneAtomicEditAndUndoRestoresOriginal() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {

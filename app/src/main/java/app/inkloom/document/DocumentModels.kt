@@ -122,6 +122,7 @@ data class BrushSecondaryDynamics(
 data class InkStroke(
     val id: String = UUID.randomUUID().toString(),
     val renderSeed: Int = id.hashCode(),
+    val masks: List<StrokeMaskDab> = emptyList(),
     val points: List<StrokePoint>,
     val colorArgb: Long = 0xFF111111,
     val width: Float = 5f,
@@ -216,6 +217,9 @@ data class InkStroke(
     val thicknessPressureCurve: List<BrushCurvePoint> = emptyList(),
     val thicknessSecondaryDynamics: BrushSecondaryDynamics = BrushSecondaryDynamics(),
 )
+
+@Serializable
+data class StrokeMaskDab(val x: Float, val y: Float, val radiusX: Float, val radiusY: Float)
 
 @Serializable
 enum class BrushTaperMode { DISTANCE, PERCENTAGE, FADE }

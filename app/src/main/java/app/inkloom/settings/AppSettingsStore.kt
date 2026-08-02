@@ -25,6 +25,7 @@ data class AppSettings(
     val eraserSize: Float = 24f,
     val selectionMode: SelectionMode = SelectionMode.REPLACE,
     val selectionFilter: SelectionFilter = SelectionFilter.ALL,
+    val nonDestructiveEraser: Boolean = false,
 )
 
 enum class StylusButtonAction { ERASER, LASSO, NONE }
@@ -61,6 +62,7 @@ class AppSettingsStore(context: Context) {
             eraserSize = preferences.getFloat("eraserSize", 24f).coerceIn(.5f, 400f),
             selectionMode = enumValue(preferences.getString("selectionMode", null), SelectionMode.REPLACE),
             selectionFilter = enumValue(preferences.getString("selectionFilter", null), SelectionFilter.ALL),
+            nonDestructiveEraser = preferences.getBoolean("nonDestructiveEraser", false),
         )
     }
 
@@ -88,6 +90,7 @@ class AppSettingsStore(context: Context) {
             .putFloat("eraserSize", value.eraserSize)
             .putString("selectionMode", value.selectionMode.name)
             .putString("selectionFilter", value.selectionFilter.name)
+            .putBoolean("nonDestructiveEraser", value.nonDestructiveEraser)
             .apply()
     }
 

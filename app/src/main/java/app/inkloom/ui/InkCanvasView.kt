@@ -13,11 +13,13 @@ import android.graphics.Matrix
 import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
+import android.graphics.PorterDuffXfermode
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.View
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
+import app.inkloom.document.StrokeMaskDab
 import app.inkloom.document.BrushCurvePoint
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushDynamics
@@ -183,6 +185,7 @@ class InkCanvasView(context: Context) : View(context) {
     var thicknessPressureCurve: List<BrushCurvePoint> = emptyList()
     var thicknessSecondaryDynamics: BrushSecondaryDynamics = BrushSecondaryDynamics()
     var localEraser: Boolean = false
+    var nonDestructiveEraser: Boolean = false
     var eraserWidth: Float = 24f
     var fingerDrawingEnabled: Boolean = false
     var twoFingerDoubleTapUndo: Boolean = true
@@ -301,6 +304,22 @@ class InkCanvasView(context: Context) : View(context) {
     private fun invalidateStrokeCache() { strokeCacheDirty = true; invalidate() }
 
     private fun drawStroke(canvas: Canvas, stroke: InkStroke) {
+        if (stroke.masks.isEmpty()) {
+            drawStrokeContent(canvas, stroke)
+            return
+        }
+        val checkpoint = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null)
+        drawStrokeContent(canvas, stroke)
+        paint.style = Paint.Style.FILL
+        paint.colorFilter = null
+        paint.maskFilter = null
+        paint.xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+        stroke.masks.forEach { mask -> canvas.drawOval((mask.x - mask.radiusX) * width, (mask.y - mask.radiusY) * height, (mask.x + mask.radiusX) * width, (mask.y + mask.radiusY) * height, paint) }
+        paint.xfermode = null
+        canvas.restoreToCount(checkpoint)
+    }
+
+    private fun drawStrokeContent(canvas: Canvas, stroke: InkStroke) {
         if (stroke.points.isEmpty()) return
         val tipPaths = stroke.tipAssetPaths.ifEmpty { listOfNotNull(stroke.tipAssetPath) }
         val tips = tipPaths.mapNotNull { loadTip(it, stroke.hardness, stroke.grainAssetPath, stroke.grainDensity, stroke.grainScale, stroke.grainRotationDegrees, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized) }
@@ -780,6 +799,13 @@ class InkCanvasView(context: Context) : View(context) {
             val radiusX = combinedRadius / width.coerceAtLeast(1)
             val radiusY = combinedRadius / height.coerceAtLeast(1)
             if (!StrokeEraser.intersects(stroke, x, y, radiusX, radiusY)) continue
+            if (nonDestructiveEraser) {
+                val dab = StrokeMaskDab(x, y, eraserRadius / width.coerceAtLeast(1), eraserRadius / height.coerceAtLeast(1))
+                if (stroke.masks.lastOrNull()?.let { kotlin.math.abs(it.x - dab.x) < .00001f && kotlin.math.abs(it.y - dab.y) < .00001f } == true) continue
+                strokes[index] = stroke.copy(masks = stroke.masks + dab)
+                changed = true
+                continue
+            }
             val pieces = if (localEraser) {
                 StrokeEraser.erase(stroke, x, y, radiusX, radiusY)?.replacements ?: continue
             } else {
