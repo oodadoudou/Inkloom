@@ -307,7 +307,8 @@ private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>
     var search by remember { mutableStateOf("") }
     var folderId by remember { mutableStateOf<String?>(null) }
     var newNoteOpen by remember { mutableStateOf(false) }
-    var newNoteTitle by remember { mutableStateOf("Untitled Note") }
+    val untitledNoteLabel = tr("Untitled Note", "未命名笔记")
+    var newNoteTitle by remember { mutableStateOf(untitledNoteLabel) }
     var newNoteCover by remember { mutableStateOf(CoverStyle.BLACK) }
     val visible = documents.filter { document ->
         val matchesSearch = search.isBlank() || document.title.contains(search, true) || document.tags.any { it.contains(search, true) } || document.pages.any { PageSearch.matches(it, search) }
@@ -329,41 +330,41 @@ private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>
             Column(Modifier.weight(1f).fillMaxHeight().padding(horizontal = if (compact) 16.dp else 32.dp, vertical = 22.dp)) {
             if (compact) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    item { FilterChip(selected = filter == LibraryFilter.ALL, onClick = { filter = LibraryFilter.ALL }, label = { Text("Library") }) }
-                    item { FilterChip(selected = filter == LibraryFilter.FAVORITES, onClick = { filter = LibraryFilter.FAVORITES }, label = { Text("Favorites") }) }
-                    item { FilterChip(selected = filter == LibraryFilter.ARCHIVED, onClick = { filter = LibraryFilter.ARCHIVED }, label = { Text("Archive") }) }
-                    item { FilterChip(selected = filter == LibraryFilter.TRASH, onClick = { filter = LibraryFilter.TRASH }, label = { Text("Trash") }) }
+                    item { FilterChip(selected = filter == LibraryFilter.ALL, onClick = { filter = LibraryFilter.ALL }, label = { Text(tr("Library", "资料库")) }) }
+                    item { FilterChip(selected = filter == LibraryFilter.FAVORITES, onClick = { filter = LibraryFilter.FAVORITES }, label = { Text(tr("Favorites", "收藏")) }) }
+                    item { FilterChip(selected = filter == LibraryFilter.ARCHIVED, onClick = { filter = LibraryFilter.ARCHIVED }, label = { Text(tr("Archive", "归档")) }) }
+                    item { FilterChip(selected = filter == LibraryFilter.TRASH, onClick = { filter = LibraryFilter.TRASH }, label = { Text(tr("Trash", "废纸篓")) }) }
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Your notebooks", fontSize = 32.sp, color = Ink)
-                    Text("Continue a note or start with a fresh page.", color = MutedInk)
+                    Text(tr("Your notebooks", "你的笔记本"), fontSize = 32.sp, color = Ink)
+                    Text(tr("Continue a note or start with a fresh page.", "继续书写，或从空白页开始。"), color = MutedInk)
                 }
-                IconButton(onClick = onSettings) { Icon(Icons.Outlined.Settings, "Settings") }
+                IconButton(onClick = onSettings) { Icon(Icons.Outlined.Settings, tr("Settings", "设置")) }
                 Spacer(Modifier.width(4.dp))
-                OutlinedButton(onClick = onImport, shape = RoundedCornerShape(50)) { Icon(Icons.Outlined.FileDownload, null); Spacer(Modifier.width(8.dp)); Text("Import") }
+                OutlinedButton(onClick = onImport, shape = RoundedCornerShape(50)) { Icon(Icons.Outlined.FileDownload, null); Spacer(Modifier.width(8.dp)); Text(tr("Import", "导入")) }
                 Spacer(Modifier.width(10.dp))
                 Button(onClick = { newNoteOpen = true }, shape = RoundedCornerShape(50)) {
-                    Icon(Icons.Default.Add, null); Spacer(Modifier.width(8.dp)); Text("New Note")
+                    Icon(Icons.Default.Add, null); Spacer(Modifier.width(8.dp)); Text(tr("New Note", "新建笔记"))
                 }
             }
             Spacer(Modifier.height(26.dp))
-            OutlinedTextField(value = search, onValueChange = { search = it }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, placeholder = { Text("Search notes") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = search, onValueChange = { search = it }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, placeholder = { Text(tr("Search notes", "搜索笔记")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(20.dp))
-            Text("Recents", fontSize = 22.sp)
+            Text(tr("Recents", "最近使用"), fontSize = 22.sp)
             Spacer(Modifier.height(14.dp))
             LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 items(visible.take(4)) { NotebookCard(it, Modifier.width(230.dp).height(215.dp), onOpen, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, folders, onMoveToFolder) }
             }
             Spacer(Modifier.height(28.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("All Notes", fontSize = 22.sp, modifier = Modifier.weight(1f))
-                FilterChip(selected = filter == LibraryFilter.ALL, onClick = { filter = LibraryFilter.ALL }, label = { Text("All") })
+                Text(tr("All Notes", "全部笔记"), fontSize = 22.sp, modifier = Modifier.weight(1f))
+                FilterChip(selected = filter == LibraryFilter.ALL, onClick = { filter = LibraryFilter.ALL }, label = { Text(tr("All", "全部")) })
                 Spacer(Modifier.width(8.dp))
-                FilterChip(selected = filter == LibraryFilter.FAVORITES, onClick = { filter = LibraryFilter.FAVORITES }, label = { Text("Favorites") })
+                FilterChip(selected = filter == LibraryFilter.FAVORITES, onClick = { filter = LibraryFilter.FAVORITES }, label = { Text(tr("Favorites", "收藏")) })
                 Spacer(Modifier.width(8.dp))
-                FilterChip(selected = filter == LibraryFilter.PDF, onClick = { filter = LibraryFilter.PDF }, label = { Text("PDFs") })
+                FilterChip(selected = filter == LibraryFilter.PDF, onClick = { filter = LibraryFilter.PDF }, label = { Text("PDF") })
             }
             Spacer(Modifier.height(12.dp))
             LazyVerticalGrid(columns = GridCells.Adaptive(180.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -374,11 +375,11 @@ private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>
     }
     if (newNoteOpen) AlertDialog(
         onDismissRequest = { newNoteOpen = false },
-        title = { Text("Create notebook") },
+        title = { Text(tr("Create notebook", "新建笔记本")) },
         text = {
             Column(Modifier.widthIn(min = 380.dp, max = 560.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                OutlinedTextField(newNoteTitle, { newNoteTitle = it.take(120) }, label = { Text("Title") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Text("Cover template", color = MutedInk, fontSize = 12.sp)
+                OutlinedTextField(newNoteTitle, { newNoteTitle = it.take(120) }, label = { Text(tr("Title", "标题")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Text(tr("Cover template", "封面模板"), color = MutedInk, fontSize = 12.sp)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(CoverStyle.entries.filterNot { it == CoverStyle.CUSTOM_IMAGE }) { style ->
                         Card(
@@ -390,12 +391,12 @@ private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>
                 OutlinedButton(onClick = { newNoteOpen = false; onImportCover(newNoteTitle) }, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Outlined.AddPhotoAlternate, null)
                     Spacer(Modifier.width(8.dp))
-                    Text("Import image as cover")
+                    Text(tr("Import image as cover", "导入图片作为封面"))
                 }
             }
         },
-        confirmButton = { Button(onClick = { newNoteOpen = false; onNewNote(newNoteTitle, newNoteCover) }) { Text("Create") } },
-        dismissButton = { TextButton(onClick = { newNoteOpen = false }) { Text("Cancel") } },
+        confirmButton = { Button(onClick = { newNoteOpen = false; onNewNote(newNoteTitle, newNoteCover) }) { Text(tr("Create", "创建")) } },
+        dismissButton = { TextButton(onClick = { newNoteOpen = false }) { Text(tr("Cancel", "取消")) } },
     )
 }
 
@@ -404,24 +405,24 @@ private fun LibraryRail(filter: LibraryFilter, onFilter: (LibraryFilter) -> Unit
     var newFolderOpen by remember { mutableStateOf(false) }
     var folderName by remember { mutableStateOf("") }
     Column(Modifier.width(198.dp).fillMaxHeight().padding(16.dp)) {
-        BrandMark("Library")
+        BrandMark(tr("Library", "资料库"))
         Spacer(Modifier.height(34.dp))
-        RailItem(Icons.Outlined.Book, "Library", filter == LibraryFilter.ALL) { onFilter(LibraryFilter.ALL) }
-        RailItem(Icons.Outlined.History, "Recents", filter == LibraryFilter.ALL) { onFilter(LibraryFilter.ALL) }
-        RailItem(Icons.Outlined.StarBorder, "Favorites", filter == LibraryFilter.FAVORITES) { onFilter(LibraryFilter.FAVORITES) }
-        RailItem(Icons.Outlined.Archive, "Archive", filter == LibraryFilter.ARCHIVED) { onFilter(LibraryFilter.ARCHIVED) }
-        RailItem(Icons.Outlined.Delete, "Trash", filter == LibraryFilter.TRASH) { onFilter(LibraryFilter.TRASH) }
+        RailItem(Icons.Outlined.Book, tr("Library", "资料库"), filter == LibraryFilter.ALL) { onFilter(LibraryFilter.ALL) }
+        RailItem(Icons.Outlined.History, tr("Recents", "最近使用"), filter == LibraryFilter.ALL) { onFilter(LibraryFilter.ALL) }
+        RailItem(Icons.Outlined.StarBorder, tr("Favorites", "收藏"), filter == LibraryFilter.FAVORITES) { onFilter(LibraryFilter.FAVORITES) }
+        RailItem(Icons.Outlined.Archive, tr("Archive", "归档"), filter == LibraryFilter.ARCHIVED) { onFilter(LibraryFilter.ARCHIVED) }
+        RailItem(Icons.Outlined.Delete, tr("Trash", "废纸篓"), filter == LibraryFilter.TRASH) { onFilter(LibraryFilter.TRASH) }
         HorizontalDivider(Modifier.padding(vertical = 10.dp), color = OutlineSoft)
-        Row(verticalAlignment = Alignment.CenterVertically) { Text("FOLDERS", fontSize = 11.sp, color = MutedInk, modifier = Modifier.weight(1f)); IconButton(onClick = { newFolderOpen = true }, modifier = Modifier.size(30.dp)) { Icon(Icons.Default.Add, "New folder") } }
+        Row(verticalAlignment = Alignment.CenterVertically) { Text(tr("FOLDERS", "文件夹"), fontSize = 11.sp, color = MutedInk, modifier = Modifier.weight(1f)); IconButton(onClick = { newFolderOpen = true }, modifier = Modifier.size(30.dp)) { Icon(Icons.Default.Add, tr("New folder", "新建文件夹")) } }
         Spacer(Modifier.height(10.dp))
         folders.filter { it.parentId == null }.forEach { folder ->
-            Row(verticalAlignment = Alignment.CenterVertically) { Box(Modifier.weight(1f)) { RailItem(Icons.Outlined.Folder, folder.name, folderId == folder.id) { onFolder(folder.id) } }; IconButton(onClick = { onDeleteFolder(folder.id) }, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.Close, "Delete folder", modifier = Modifier.size(14.dp)) } }
+            Row(verticalAlignment = Alignment.CenterVertically) { Box(Modifier.weight(1f)) { RailItem(Icons.Outlined.Folder, folder.name, folderId == folder.id) { onFolder(folder.id) } }; IconButton(onClick = { onDeleteFolder(folder.id) }, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.Close, tr("Delete folder", "删除文件夹"), modifier = Modifier.size(14.dp)) } }
             folders.filter { it.parentId == folder.id }.forEach { child -> Box(Modifier.padding(start = 16.dp)) { RailItem(Icons.Outlined.FolderOpen, child.name, folderId == child.id) { onFolder(child.id) } } }
         }
         Spacer(Modifier.weight(1f))
-        RailItem(Icons.Outlined.Settings, "Settings", false, onSettings)
+        RailItem(Icons.Outlined.Settings, tr("Settings", "设置"), false, onSettings)
     }
-    if (newFolderOpen) AlertDialog(onDismissRequest = { newFolderOpen = false }, title = { Text("New folder") }, text = { OutlinedTextField(value = folderName, onValueChange = { folderName = it }, singleLine = true) }, confirmButton = { TextButton(onClick = { onCreateFolder(folderName, folderId); folderName = ""; newFolderOpen = false }) { Text("Create") } }, dismissButton = { TextButton(onClick = { newFolderOpen = false }) { Text("Cancel") } })
+    if (newFolderOpen) AlertDialog(onDismissRequest = { newFolderOpen = false }, title = { Text(tr("New folder", "新建文件夹")) }, text = { OutlinedTextField(value = folderName, onValueChange = { folderName = it }, singleLine = true) }, confirmButton = { TextButton(onClick = { onCreateFolder(folderName, folderId); folderName = ""; newFolderOpen = false }) { Text(tr("Create", "创建")) } }, dismissButton = { TextButton(onClick = { newFolderOpen = false }) { Text(tr("Cancel", "取消")) } })
 }
 
 @Composable
@@ -452,32 +453,32 @@ private fun NotebookCard(document: InkDocument, modifier: Modifier, onOpen: (Ink
             NotebookCover(document, Modifier.fillMaxSize())
             if (document.pages.any { it.background is PageBackground.Pdf }) Surface(Modifier.padding(12.dp), shape = RoundedCornerShape(4.dp), color = Color.White) { Text("PDF", Modifier.padding(7.dp, 4.dp), fontSize = 10.sp) }
             Box(Modifier.align(Alignment.TopEnd)) {
-                IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, "Document actions") }
+                IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, tr("Document actions", "笔记操作")) }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     if (document.trashedAt == null) {
-                        DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; renameOpen = true })
-                        DropdownMenuItem(text = { Text("Edit tags") }, onClick = { menu = false; tagsOpen = true })
-                        DropdownMenuItem(text = { Text("Duplicate") }, onClick = { menu = false; onDuplicate(document.id) })
-                        folders.forEach { folder -> DropdownMenuItem(text = { Text("Move to ${folder.name}") }, onClick = { menu = false; onMoveToFolder(document.id, folder.id) }) }
-                        if (document.folderId != null) DropdownMenuItem(text = { Text("Remove from folder") }, onClick = { menu = false; onMoveToFolder(document.id, null) })
-                        DropdownMenuItem(text = { Text(if (document.favorite) "Remove favorite" else "Favorite") }, onClick = { menu = false; onFavorite(document.id) })
-                        DropdownMenuItem(text = { Text(if (document.archivedAt == null) "Archive" else "Unarchive") }, onClick = { menu = false; onArchive(document.id) })
-                        DropdownMenuItem(text = { Text("Move to Trash") }, onClick = { menu = false; onTrash(document.id) })
+                        DropdownMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { menu = false; renameOpen = true })
+                        DropdownMenuItem(text = { Text(tr("Edit tags", "编辑标签")) }, onClick = { menu = false; tagsOpen = true })
+                        DropdownMenuItem(text = { Text(tr("Duplicate", "复制")) }, onClick = { menu = false; onDuplicate(document.id) })
+                        folders.forEach { folder -> DropdownMenuItem(text = { Text("${tr("Move to", "移动到")} ${folder.name}") }, onClick = { menu = false; onMoveToFolder(document.id, folder.id) }) }
+                        if (document.folderId != null) DropdownMenuItem(text = { Text(tr("Remove from folder", "移出文件夹")) }, onClick = { menu = false; onMoveToFolder(document.id, null) })
+                        DropdownMenuItem(text = { Text(if (document.favorite) tr("Remove favorite", "取消收藏") else tr("Favorite", "收藏")) }, onClick = { menu = false; onFavorite(document.id) })
+                        DropdownMenuItem(text = { Text(if (document.archivedAt == null) tr("Archive", "归档") else tr("Unarchive", "取消归档")) }, onClick = { menu = false; onArchive(document.id) })
+                        DropdownMenuItem(text = { Text(tr("Move to Trash", "移到废纸篓")) }, onClick = { menu = false; onTrash(document.id) })
                     } else {
-                        DropdownMenuItem(text = { Text("Restore") }, onClick = { menu = false; onRestore(document.id) })
-                        DropdownMenuItem(text = { Text("Delete permanently") }, onClick = { menu = false; onDelete(document.id) })
+                        DropdownMenuItem(text = { Text(tr("Restore", "恢复")) }, onClick = { menu = false; onRestore(document.id) })
+                        DropdownMenuItem(text = { Text(tr("Delete permanently", "永久删除")) }, onClick = { menu = false; onDelete(document.id) })
                     }
                 }
             }
         }
         Column(Modifier.padding(14.dp)) {
             Row { Text(document.title, fontSize = 17.sp, maxLines = 2, modifier = Modifier.weight(1f)); if (document.favorite) Icon(Icons.Default.Star, null, tint = Sage, modifier = Modifier.size(18.dp)) }
-            Spacer(Modifier.height(6.dp)); Text("${document.pages.size} pages · saved locally", color = MutedInk, fontSize = 11.sp)
+            Spacer(Modifier.height(6.dp)); Text("${document.pages.size} ${tr("pages · saved locally", "页 · 已保存到本机")}", color = MutedInk, fontSize = 11.sp)
             if (document.tags.isNotEmpty()) Text(document.tags.take(3).joinToString("  ") { "#$it" }, color = Sage, fontSize = 10.sp, maxLines = 1)
         }
     }
-    if (renameOpen) AlertDialog(onDismissRequest = { renameOpen = false }, title = { Text("Rename note") }, text = { OutlinedTextField(value = title, onValueChange = { title = it }, singleLine = true) }, confirmButton = { TextButton(onClick = { onRename(document.id, title); renameOpen = false }) { Text("Save") } }, dismissButton = { TextButton(onClick = { renameOpen = false }) { Text("Cancel") } })
-    if (tagsOpen) AlertDialog(onDismissRequest = { tagsOpen = false }, title = { Text("Note tags") }, text = { OutlinedTextField(value = tags, onValueChange = { tags = it }, supportingText = { Text("Separate tags with commas") }) }, confirmButton = { TextButton(onClick = { onTags(document.id, tags.split(',')); tagsOpen = false }) { Text("Save") } }, dismissButton = { TextButton(onClick = { tagsOpen = false }) { Text("Cancel") } })
+    if (renameOpen) AlertDialog(onDismissRequest = { renameOpen = false }, title = { Text(tr("Rename note", "重命名笔记")) }, text = { OutlinedTextField(value = title, onValueChange = { title = it }, singleLine = true) }, confirmButton = { TextButton(onClick = { onRename(document.id, title); renameOpen = false }) { Text(tr("Save", "保存")) } }, dismissButton = { TextButton(onClick = { renameOpen = false }) { Text(tr("Cancel", "取消")) } })
+    if (tagsOpen) AlertDialog(onDismissRequest = { tagsOpen = false }, title = { Text(tr("Note tags", "笔记标签")) }, text = { OutlinedTextField(value = tags, onValueChange = { tags = it }, supportingText = { Text(tr("Separate tags with commas", "使用逗号分隔标签")) }) }, confirmButton = { TextButton(onClick = { onTags(document.id, tags.split(',')); tagsOpen = false }) { Text(tr("Save", "保存")) } }, dismissButton = { TextButton(onClick = { tagsOpen = false }) { Text(tr("Cancel", "取消")) } })
 }
 
 @Composable
