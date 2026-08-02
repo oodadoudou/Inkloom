@@ -17,6 +17,18 @@ class CspShortcutResolverTest {
         assertEquals(ShortcutAction.OPACITY_INCREASE, resolve(KeyEvent.KEYCODE_RIGHT_BRACKET, ctrl = true))
     }
 
+    @Test fun dedicatedToolboxBrushGroupBindingsCanBeConfiguredIndependently() {
+        val bindings = listOf(
+            ShortcutBinding(ShortcutAction.PEN_GROUP, ShortcutChord(KeyEvent.KEYCODE_F1)),
+            ShortcutBinding(ShortcutAction.PENCIL_GROUP, ShortcutChord(KeyEvent.KEYCODE_F2)),
+            ShortcutBinding(ShortcutAction.BRUSH_GROUP, ShortcutChord(KeyEvent.KEYCODE_F3)),
+        )
+
+        assertEquals(ShortcutAction.PEN_GROUP, CspShortcutResolver.resolve(ShortcutChord(KeyEvent.KEYCODE_F1), bindings))
+        assertEquals(ShortcutAction.PENCIL_GROUP, CspShortcutResolver.resolve(ShortcutChord(KeyEvent.KEYCODE_F2), bindings))
+        assertEquals(ShortcutAction.BRUSH_GROUP, CspShortcutResolver.resolve(ShortcutChord(KeyEvent.KEYCODE_F3), bindings))
+    }
+
     @Test fun mapsEditingAndWorkspaceCommandsWithoutStealingModifiedToolKeys() {
         assertEquals(ShortcutAction.UNDO, resolve(KeyEvent.KEYCODE_Z, ctrl = true))
         assertEquals(ShortcutAction.REDO, resolve(KeyEvent.KEYCODE_Z, ctrl = true, shift = true))

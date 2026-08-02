@@ -784,6 +784,8 @@ private fun EditorScreen(
     var brushColor by remember { mutableIntStateOf(AndroidColor.rgb(17, 17, 17)) }
     var previousDrawingTool by remember { mutableStateOf(EditorTool.PEN) }
     var previousDrawingBrushId by remember { mutableStateOf<String?>(null) }
+    var previousDrawingSize by remember { mutableFloatStateOf(settings.penSize) }
+    var previousDrawingOpacity by remember { mutableFloatStateOf(settings.penOpacity) }
     var exportMenu by remember { mutableStateOf(false) }
     var zoom by remember { mutableFloatStateOf(1f) }
     var panX by remember { mutableFloatStateOf(0f) }
@@ -1018,39 +1020,54 @@ private fun EditorScreen(
                             }
                         }
 
+                        fun rememberDrawingSelection() {
+                            previousDrawingTool = tool
+                            previousDrawingBrushId = activeBrush?.id
+                            previousDrawingSize = brushSize
+                            previousDrawingOpacity = brushOpacity
+                        }
+
                         fun restorePreviousDrawingTool() {
                             tool = previousDrawingTool
                             val restoredBrush = previousDrawingBrushId?.let { id -> brushes.firstOrNull { it.id == id && !it.hidden } }
                             activeBrush = restoredBrush
                             selectedBrushId = restoredBrush?.id
-                            brushSize = restoredBrush?.defaultSize ?: if (tool == EditorTool.HIGHLIGHTER) settings.highlighterSize else settings.penSize
-                            brushOpacity = restoredBrush?.defaultOpacity ?: if (tool == EditorTool.HIGHLIGHTER) settings.highlighterOpacity else settings.penOpacity
+                            brushSize = previousDrawingSize
+                            brushOpacity = previousDrawingOpacity
                         }
 
                         fun enterEraser() {
-                            previousDrawingTool = if (tool == EditorTool.HIGHLIGHTER) EditorTool.HIGHLIGHTER else EditorTool.PEN
-                            previousDrawingBrushId = activeBrush?.id
+                            rememberDrawingSelection()
                             tool = EditorTool.ERASER
                             brushSize = settings.eraserSize
                             brushOpacity = 1f
                         }
 
+                        fun selectBrushGroup(group: ShortcutBrushGroup, fallbackToSystemPen: Boolean = false) {
+                            ShortcutBrushSelection.preferred(brushes, group)?.let(::selectImportedBrush) ?: if (fallbackToSystemPen) {
+                                selectedBrushId = null
+                                activeBrush = null
+                                tool = EditorTool.PEN
+                                brushSize = settings.penSize
+                                brushOpacity = settings.penOpacity
+                            } else {
+                                brushes.filterNot { it.hidden }.maxByOrNull { it.lastUsedAt }?.let(::selectImportedBrush)
+                            }
+                        }
+
                         inputDiagnostic = "Shortcut · ${action.name.lowercase().replace('_', ' ')} · ${activation.phase.name.lowercase()}"
                         if (activation.phase == ShortcutPhase.RELEASE) {
                             if (activation.trigger == ShortcutTrigger.HOLD && action == ShortcutAction.TOGGLE_ERASER && tool == EditorTool.ERASER) restorePreviousDrawingTool()
+                            if (activation.trigger == ShortcutTrigger.HOLD && action in setOf(ShortcutAction.PEN_OR_PENCIL_GROUP, ShortcutAction.PEN_GROUP, ShortcutAction.PENCIL_GROUP, ShortcutAction.BRUSH_GROUP)) restorePreviousDrawingTool()
                         } else when (action) {
                             ShortcutAction.PEN_OR_PENCIL_GROUP -> {
+                                if (activation.trigger == ShortcutTrigger.HOLD) rememberDrawingSelection()
                                 val target = if (ShortcutBrushSelection.matches(activeBrush, ShortcutBrushGroup.PEN)) ShortcutBrushGroup.PENCIL else ShortcutBrushGroup.PEN
-                                ShortcutBrushSelection.preferred(brushes, target)?.let(::selectImportedBrush) ?: run {
-                                    selectedBrushId = null
-                                    activeBrush = null
-                                    tool = EditorTool.PEN
-                                    brushSize = settings.penSize
-                                    brushOpacity = settings.penOpacity
-                                }
+                                selectBrushGroup(target, fallbackToSystemPen = true)
                             }
-                            ShortcutAction.BRUSH_GROUP -> ShortcutBrushSelection.preferred(brushes, ShortcutBrushGroup.BRUSH)?.let(::selectImportedBrush)
-                                ?: brushes.filterNot { it.hidden }.maxByOrNull { it.lastUsedAt }?.let(::selectImportedBrush)
+                            ShortcutAction.PEN_GROUP -> { if (activation.trigger == ShortcutTrigger.HOLD) rememberDrawingSelection(); selectBrushGroup(ShortcutBrushGroup.PEN, fallbackToSystemPen = true) }
+                            ShortcutAction.PENCIL_GROUP -> { if (activation.trigger == ShortcutTrigger.HOLD) rememberDrawingSelection(); selectBrushGroup(ShortcutBrushGroup.PENCIL, fallbackToSystemPen = true) }
+                            ShortcutAction.BRUSH_GROUP -> { if (activation.trigger == ShortcutTrigger.HOLD) rememberDrawingSelection(); selectBrushGroup(ShortcutBrushGroup.BRUSH) }
                             ShortcutAction.TOGGLE_ERASER -> if (activation.trigger == ShortcutTrigger.HOLD) {
                                 if (tool != EditorTool.ERASER) enterEraser()
                             } else if (tool == EditorTool.ERASER) restorePreviousDrawingTool() else enterEraser()
@@ -3216,6 +3233,8 @@ private fun ShortcutEditorDialog(settings: AppSettings, onChange: (AppSettings) 
 @Composable
 private fun shortcutActionLabel(action: ShortcutAction): String = when (action) {
     ShortcutAction.PEN_OR_PENCIL_GROUP -> tr("Switch pen / pencil group", "切换钢笔／铅笔组")
+    ShortcutAction.PEN_GROUP -> tr("Switch directly to pen group", "直接切换到钢笔组")
+    ShortcutAction.PENCIL_GROUP -> tr("Switch directly to pencil group", "直接切换到铅笔组")
     ShortcutAction.BRUSH_GROUP -> tr("Switch brush group", "切换 Brushes 组")
     ShortcutAction.TOGGLE_ERASER -> tr("Toggle eraser and previous tool", "橡皮与上一工具切换")
     ShortcutAction.SELECT_TOOL -> tr("Selection tool", "选择工具")

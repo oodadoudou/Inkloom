@@ -4,6 +4,8 @@ import android.view.KeyEvent
 
 enum class ShortcutAction {
     PEN_OR_PENCIL_GROUP,
+    PEN_GROUP,
+    PENCIL_GROUP,
     BRUSH_GROUP,
     TOGGLE_ERASER,
     SELECT_TOOL,
