@@ -580,6 +580,13 @@ private fun EditorScreen(
     var zoom by remember { mutableFloatStateOf(1f) }
     var panX by remember { mutableFloatStateOf(0f) }
     var panY by remember { mutableFloatStateOf(0f) }
+    var viewportWidthPx by remember { mutableFloatStateOf(0f) }
+    var viewportHeightPx by remember { mutableFloatStateOf(0f) }
+    fun currentViewportGeometry(): ViewportGeometry? {
+        val view = canvasView ?: return null
+        if (viewportWidthPx <= 0f || viewportHeightPx <= 0f || view.width <= 0 || view.height <= 0) return null
+        return ViewportGeometry(viewportWidthPx, viewportHeightPx, view.width.toFloat(), view.height.toFloat())
+    }
     var toolbarX by remember { mutableFloatStateOf(settings.toolbarOffsetXDp) }
     var toolbarY by remember { mutableFloatStateOf(settings.toolbarOffsetYDp) }
     val editorDensity = LocalDensity.current
@@ -635,8 +642,8 @@ private fun EditorScreen(
             IconButton(onClick = { outlineOpen = true }) { Icon(Icons.Outlined.FormatListBulleted, tr("Page outline", "页面大纲")) }
             IconButton(onClick = { onSettingsChange(settings.copy(showPageRail = !settings.showPageRail)) }) { Icon(if (settings.showPageRail) Icons.Outlined.ViewSidebar else Icons.Outlined.TableRows, tr("Toggle pages", "显示或隐藏页面栏")) }
             IconButton(onClick = { onSettingsChange(settings.copy(showToolbar = !settings.showToolbar)) }) { Icon(if (settings.showToolbar) Icons.Outlined.VisibilityOff else Icons.Outlined.Build, tr("Toggle toolbar", "显示或隐藏工具栏")) }
-            IconButton(onClick = { val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY), .9f, 0f, 0f); zoom = next.scale; panX = next.panX; panY = next.panY }) { Icon(Icons.Outlined.ZoomOut, tr("Zoom out", "缩小")) }
-            IconButton(onClick = { zoom = (zoom + .1f).coerceAtMost(2.5f) }) { Icon(Icons.Outlined.ZoomIn, tr("Zoom in", "放大")) }
+            IconButton(onClick = { val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY), .9f, 0f, 0f, geometry = currentViewportGeometry()); zoom = next.scale; panX = next.panX; panY = next.panY }) { Icon(Icons.Outlined.ZoomOut, tr("Zoom out", "缩小")) }
+            IconButton(onClick = { val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY), 1.1f, 0f, 0f, geometry = currentViewportGeometry()); zoom = next.scale; panX = next.panX; panY = next.panY }) { Icon(Icons.Outlined.ZoomIn, tr("Zoom in", "放大")) }
             IconButton(onClick = { zoom = 1f; panX = 0f; panY = 0f }) { Icon(Icons.Outlined.CenterFocusStrong, tr("Reset view", "重置视图")) }
             IconButton(onClick = onExport) { Icon(Icons.Outlined.Share, tr("Export PDF", "导出 PDF")) }
             Box {
@@ -652,6 +659,10 @@ private fun EditorScreen(
         HorizontalDivider(color = OutlineSoft)
         BoxWithConstraints(Modifier.weight(1f)) {
         val editorWidth = maxWidth
+        LaunchedEffect(maxWidth, maxHeight) {
+            viewportWidthPx = with(editorDensity) { maxWidth.toPx() }
+            viewportHeightPx = with(editorDensity) { maxHeight.toPx() }
+        }
         Row(Modifier.fillMaxSize()) {
             if (editorWidth >= 700.dp && settings.showPageRail) PageRail(document, documents, selectedPage.id, onSelectPage, onAddPage, onDuplicatePage, onDeletePage, onMovePage, onTransferPage, onSetPageTemplate, onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata, onClearPageInk, onSetPageCrop, onRotatePage)
             if ((!brushesOpen && !layersOpen) || editorWidth >= 900.dp) BoxWithConstraints(Modifier.weight(1f).fillMaxHeight().background(Workspace), contentAlignment = Alignment.Center) {
@@ -674,10 +685,10 @@ private fun EditorScreen(
                     assets = assets,
                     settings = settings,
                     onZoom = { factor, focusX, focusY ->
-                        val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY), factor, focusX, focusY)
+                        val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY), factor, focusX, focusY, geometry = currentViewportGeometry())
                         zoom = next.scale; panX = next.panX; panY = next.panY
                     },
-                    onPan = { dx, dy -> val next = ViewportTransform.panBy(ViewportState(zoom, panX, panY), dx, dy); panX = next.panX; panY = next.panY },
+                    onPan = { dx, dy -> val next = ViewportTransform.panBy(ViewportState(zoom, panX, panY), dx, dy, geometry = currentViewportGeometry()); panX = next.panX; panY = next.panY },
                     onUndoGesture = { canvasView?.undo() },
                     activeBrush = activeBrush,
                     brushSize = brushSize,
@@ -692,7 +703,7 @@ private fun EditorScreen(
                             searchFocus = null
                             pdfLinkFocus = target.id to PdfGotoLinkNavigation.destinationBounds(link)
                             onSelectPage(target.id)
-                            if (link.destinationZoom > 0f) zoom = link.destinationZoom.coerceIn(1f, 2.5f)
+                            if (link.destinationZoom > 0f) zoom = link.destinationZoom.coerceIn(1f, 8f)
                         }
                     },
                     onInputDiagnostic = { kind, pressure, tilt, buttons -> inputDiagnostic = "$kind  pressure ${"%.3f".format(pressure)}  tilt ${"%.2f".format(Math.toDegrees(tilt.toDouble()))}°  buttons $buttons" },

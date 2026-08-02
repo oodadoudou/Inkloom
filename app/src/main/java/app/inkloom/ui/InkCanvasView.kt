@@ -55,6 +55,7 @@ import app.inkloom.document.StrokeTaper
 import app.inkloom.document.StrokeTileIndex
 import app.inkloom.document.StrokeTileKey
 import app.inkloom.document.StylusInputClassifier
+import app.inkloom.document.TwoFingerTapUndoGesture
 import app.inkloom.document.ViewportTransform
 import app.inkloom.document.WaterEdge
 import app.inkloom.document.WetMixDynamics
@@ -100,8 +101,9 @@ class InkCanvasView(context: Context) : View(context) {
     private var navigationMoved = false
     private var navigationTapEligible = false
     private val navigationTouchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
-    private var lastTwoFingerTap = 0L
+    private val twoFingerTapUndoGesture = TwoFingerTapUndoGesture(navigationTouchSlop)
     private var activeTool: EditorTool? = null
+    private var activeInputWasStylus = false
     private var lastStylusSeenAt = Long.MIN_VALUE
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -616,7 +618,10 @@ class InkCanvasView(context: Context) : View(context) {
         val elapsedSinceStylus = if (lastStylusSeenAt == Long.MIN_VALUE) Long.MAX_VALUE else event.eventTime - lastStylusSeenAt
         val isFingerNavigation = StylusInputClassifier.shouldNavigateOrRejectFinger(isStylus, fingerDrawingEnabled, event.pointerCount, event.getTouchMajor(pointerIndex), elapsedSinceStylus)
         if (isFingerNavigation) {
-            if (activeTool != null) return true
+            if (activeTool != null) {
+                if (activeInputWasStylus) return true
+                cancelActiveGestureForNavigation()
+            }
             scaleDetector.onTouchEvent(event)
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
@@ -631,11 +636,15 @@ class InkCanvasView(context: Context) : View(context) {
                     navigationMoved = true
                     navigationTapEligible = false
                     if (event.pointerCount == 2 && twoFingerDoubleTapUndo) {
-                        val now = event.eventTime
-                        if (now - lastTwoFingerTap in 40..360) { onUndoGesture(); lastTwoFingerTap = 0L } else lastTwoFingerTap = now
-                    }
+                        val focus = event.centroid()
+                        twoFingerTapUndoGesture.start(event.eventTime, focus.first, focus.second)
+                    } else twoFingerTapUndoGesture.cancel()
+                    val focus = event.centroid()
+                    navigationX = focus.first
+                    navigationY = focus.second
                 }
                 MotionEvent.ACTION_POINTER_UP -> {
+                    if (event.pointerCount == 2 && twoFingerDoubleTapUndo && twoFingerTapUndoGesture.finish(event.eventTime)) onUndoGesture()
                     ViewportTransform.remainingPointerIndex(event.pointerCount, event.actionIndex)?.let { remaining ->
                         navigationX = event.getX(remaining)
                         navigationY = event.getY(remaining)
@@ -645,7 +654,13 @@ class InkCanvasView(context: Context) : View(context) {
                     navigationMoved = true
                     navigationTapEligible = false
                 }
-                MotionEvent.ACTION_MOVE -> if (event.pointerCount == 1 && !scaleDetector.isInProgress) {
+                MotionEvent.ACTION_MOVE -> if (event.pointerCount >= 2) {
+                    val focus = event.centroid()
+                    twoFingerTapUndoGesture.move(focus.first, focus.second, scaleDetector.isInProgress)
+                    onViewportPan(focus.first - navigationX, focus.second - navigationY)
+                    navigationX = focus.first; navigationY = focus.second
+                    navigationMoved = true
+                } else if (!scaleDetector.isInProgress) {
                     if (hypot(event.x - navigationDownX, event.y - navigationDownY) > navigationTouchSlop) navigationMoved = true
                     onViewportPan(event.x - navigationX, event.y - navigationY)
                     navigationX = event.x; navigationY = event.y
@@ -662,7 +677,7 @@ class InkCanvasView(context: Context) : View(context) {
                     }
                     navigationTapEligible = false
                 }
-                MotionEvent.ACTION_CANCEL -> navigationTapEligible = false
+                MotionEvent.ACTION_CANCEL -> { navigationTapEligible = false; twoFingerTapUndoGesture.cancel() }
             }
             return true
         }
@@ -672,6 +687,7 @@ class InkCanvasView(context: Context) : View(context) {
             MotionEvent.ACTION_DOWN -> {
                 parent?.requestDisallowInterceptTouchEvent(true)
                 activeTool = resolveTool(event, eventToolType)
+                activeInputWasStylus = isStylus
                 if (activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) && activeLayerId in protectedLayerIds) {
                     activeTool = null
                     parent?.requestDisallowInterceptTouchEvent(false)
@@ -783,10 +799,38 @@ class InkCanvasView(context: Context) : View(context) {
                 }
                 parent?.requestDisallowInterceptTouchEvent(false)
                 activeTool = null
+                activeInputWasStylus = false
             }
         }
         invalidate()
         return true
+    }
+
+    private fun MotionEvent.centroid(): Pair<Float, Float> {
+        var x = 0f
+        var y = 0f
+        for (index in 0 until pointerCount) {
+            x += getX(index)
+            y += getY(index)
+        }
+        return x / pointerCount.coerceAtLeast(1) to y / pointerCount.coerceAtLeast(1)
+    }
+
+    private fun cancelActiveGestureForNavigation() {
+        currentPoints.clear()
+        shapeStart = null
+        shapeEnd = null
+        shapeFreeformPoints.clear()
+        if (activeTool == EditorTool.ERASER) cancelEraserGesture()
+        selectionGestureBefore?.let(::restoreStrokeSnapshot)
+        lassoPoints.clear()
+        movingSelection = false
+        selectionMoved = false
+        selectionGestureBefore = null
+        activeTool = null
+        activeInputWasStylus = false
+        parent?.requestDisallowInterceptTouchEvent(false)
+        invalidate()
     }
 
     override fun performClick(): Boolean {

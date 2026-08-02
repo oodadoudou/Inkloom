@@ -17,7 +17,7 @@ class ViewportTransformTest {
     @Test fun scaleStopsAtConfiguredBounds() {
         val high = ViewportTransform.zoomAround(ViewportState(3f, 0f, 0f), 3f, 0f, 0f)
         val low = ViewportTransform.zoomAround(ViewportState(1.6f, 340f, -220f), .1f, 200f, -100f)
-        assertEquals(4f, high.scale, .001f)
+        assertEquals(8f, high.scale, .001f)
         assertEquals(1f, low.scale, .001f)
         assertEquals(0f, low.panX, .001f)
         assertEquals(0f, low.panY, .001f)
@@ -33,5 +33,20 @@ class ViewportTransformTest {
         assertEquals(1, ViewportTransform.remainingPointerIndex(2, 0))
         assertEquals(0, ViewportTransform.remainingPointerIndex(2, 1))
         assertEquals(null, ViewportTransform.remainingPointerIndex(1, 0))
+    }
+
+    @Test fun boundedPanAlwaysLeavesPartOfThePageRecoverable() {
+        val geometry = ViewportGeometry(viewportWidth = 1200f, viewportHeight = 800f, pageWidth = 600f, pageHeight = 760f)
+        val after = ViewportTransform.panBy(ViewportState(3f, 0f, 0f), 20_000f, -20_000f, geometry = geometry)
+
+        assertEquals(1230f, after.panX, .001f)
+        assertEquals(-1198f, after.panY, .001f)
+    }
+
+    @Test fun minimumZoomRecentersEvenAfterExtremePan() {
+        val geometry = ViewportGeometry(viewportWidth = 1200f, viewportHeight = 800f, pageWidth = 600f, pageHeight = 760f)
+        val after = ViewportTransform.zoomAround(ViewportState(2f, 900f, -700f), .01f, 200f, 100f, geometry = geometry)
+
+        assertEquals(ViewportState(1f, 0f, 0f), after)
     }
 }
