@@ -1209,7 +1209,7 @@ private fun BrushColorPicker(color: Int, onColor: (Int) -> Unit) {
     var hue by remember { mutableFloatStateOf(0f) }
     var saturation by remember { mutableFloatStateOf(0f) }
     var brightness by remember { mutableFloatStateOf(0f) }
-    val presets = listOf(0xFF24212A, 0xFF5B4B8A, 0xFFB33A3A, 0xFF235A9F, 0xFFB56A21, 0xFF2E7D60, 0xFFFFFFFF).map { it.toInt() }
+    val presets = listOf(0xFF111111, 0xFF5B4B8A, 0xFFB33A3A, 0xFF235A9F, 0xFFB56A21, 0xFF2E7D60, 0xFFFFFFFF).map { it.toInt() }
     val colors = (presets + customPalette).distinct()
     LaunchedEffect(editorOpen, color) {
         if (editorOpen) {

@@ -73,7 +73,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var strokeCacheDirty = true
 
     var tool: EditorTool = EditorTool.PEN
-    var inkColor: Int = Color.rgb(48, 61, 56)
+    var inkColor: Int = Color.rgb(17, 17, 17)
     var baseWidth: Float = 5f
     var inkOpacity: Float = 1f
     var brushId: String = "system-pencil"
@@ -223,14 +223,14 @@ class InkCanvasView(context: Context) : View(context) {
             selectionRight = maxOf(selectionRight, x); selectionBottom = maxOf(selectionBottom, y)
         } }
         if (selectionLeft.isFinite()) {
-            paint.style = Paint.Style.STROKE; paint.color = Color.rgb(70, 125, 108); paint.alpha = 255; paint.strokeWidth = 2f
+            paint.style = Paint.Style.STROKE; paint.color = Color.rgb(17, 17, 17); paint.alpha = 255; paint.strokeWidth = 2f
             canvas.drawRect(selectionLeft - 14, selectionTop - 14, selectionRight + 14, selectionBottom + 14, paint)
         }
         if (lassoPoints.size >= 2) {
             lassoPath.reset()
             lassoPath.moveTo(lassoPoints.first().x * width, lassoPoints.first().y * height)
             for (index in 1 until lassoPoints.size) lassoPath.lineTo(lassoPoints[index].x * width, lassoPoints[index].y * height)
-            paint.style = Paint.Style.STROKE; paint.color = Color.rgb(70, 125, 108); paint.alpha = 220; paint.strokeWidth = 2f
+            paint.style = Paint.Style.STROKE; paint.color = Color.rgb(98, 98, 98); paint.alpha = 220; paint.strokeWidth = 2f
             canvas.drawPath(lassoPath, paint)
         }
         drawShapePreview(canvas)
