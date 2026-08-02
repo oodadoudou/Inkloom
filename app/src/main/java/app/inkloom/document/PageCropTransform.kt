@@ -79,6 +79,7 @@ object PageCropTransform {
         is PageElement.Shape -> copy(x = x, y = y)
         is PageElement.Image -> copy(x = x, y = y)
         is PageElement.AudioMarker -> copy(x = x, y = y)
+        is PageElement.Link -> copy(x = x, y = y)
     }
 
     private fun width(crop: PageCrop) = (crop.right - crop.left).coerceAtLeast(MIN_SIZE)

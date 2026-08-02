@@ -32,6 +32,7 @@ object PageGeometry {
             is PageElement.Shape -> element.copy(x = newX, y = newY, width = element.height, height = element.width, rotationDegrees = rotation)
             is PageElement.Image -> element.copy(x = newX, y = newY, width = element.height, height = element.width, rotationDegrees = rotation)
             is PageElement.AudioMarker -> element.copy(x = newX, y = newY, width = element.height, height = element.width, rotationDegrees = rotation)
+            is PageElement.Link -> element.copy(x = newX, y = newY, width = element.height, height = element.width, rotationDegrees = rotation)
         }
     }
 

@@ -257,6 +257,20 @@ sealed interface PageElement {
 
     @Serializable @SerialName("audio_marker")
     data class AudioMarker(override val id: String = UUID.randomUUID().toString(), override val x: Float, override val y: Float, override val width: Float = 520f, override val height: Float = 150f, override val rotationDegrees: Float = 0f, override val opacity: Float = 1f, override val layerId: String = LayerIds.OBJECTS, val assetPath: String, val title: String = "Audio note", val durationMs: Long, val createdAt: Long = System.currentTimeMillis()) : PageElement
+
+    @Serializable @SerialName("link")
+    data class Link(
+        override val id: String = UUID.randomUUID().toString(),
+        override val x: Float,
+        override val y: Float,
+        override val width: Float = 620f,
+        override val height: Float = 150f,
+        override val rotationDegrees: Float = 0f,
+        override val opacity: Float = 1f,
+        override val layerId: String = LayerIds.OBJECTS,
+        val title: String,
+        val url: String,
+    ) : PageElement
 }
 
 @Serializable

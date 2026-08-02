@@ -6,7 +6,10 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -47,5 +50,18 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription("Search this note").performClick()
 
         composeRule.onNodeWithText("Page, note, or PDF text").assertIsDisplayed()
+    }
+
+    @Test fun editorInsertsAValidatedLinkCard() {
+        composeRule.onNodeWithText("New Note").performClick()
+        composeRule.onNodeWithContentDescription("Link").performScrollTo().performClick()
+        composeRule.onNodeWithText("Insert link").assertIsDisplayed()
+
+        composeRule.onAllNodes(hasSetTextAction()).onFirst().performTextInput("Inkloom docs")
+        composeRule.onAllNodes(hasSetTextAction()).onLast().performTextInput("example.com/inkloom")
+        composeRule.onNodeWithText("Insert").performClick()
+
+        composeRule.onNodeWithText("Inkloom docs").assertIsDisplayed()
+        composeRule.onNodeWithText("example.com/inkloom").assertIsDisplayed()
     }
 }

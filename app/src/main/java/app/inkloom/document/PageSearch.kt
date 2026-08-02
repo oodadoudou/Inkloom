@@ -23,6 +23,7 @@ object PageSearch {
                 is PageElement.Text -> element.text
                 is PageElement.Sticky -> element.text
                 is PageElement.AudioMarker -> element.title
+                is PageElement.Link -> "${element.title}\n${element.url}"
                 else -> null
             }
             text?.match(query)?.let { return PageSearchHit(page.id, snippet(it, query), PageSearchSource.OBJECT) }

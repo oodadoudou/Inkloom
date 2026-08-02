@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color as AndroidColor
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -464,8 +465,11 @@ private fun EditorScreen(
     var documentQuery by remember { mutableStateOf("") }
     var textInsertOpen by remember { mutableStateOf(false) }
     var stickyInsertOpen by remember { mutableStateOf(false) }
+    var linkInsertOpen by remember { mutableStateOf(false) }
     var shapeInsertOpen by remember { mutableStateOf(false) }
     var insertText by remember { mutableStateOf("") }
+    var insertLinkTitle by remember { mutableStateOf("") }
+    var insertLinkUrl by remember { mutableStateOf("") }
     var insertShape by remember { mutableStateOf(ShapeKind.RECTANGLE) }
     var selectedElementId by remember(selectedPage.id) { mutableStateOf<String?>(null) }
     var audioOpen by remember { mutableStateOf(false) }
@@ -573,6 +577,7 @@ private fun EditorScreen(
                         EditorTool.SHAPE -> shapeInsertOpen = true
                         EditorTool.TEXT -> { insertText = ""; textInsertOpen = true }
                         EditorTool.NOTE -> { insertText = ""; stickyInsertOpen = true }
+                        EditorTool.LINK -> { insertLinkTitle = ""; insertLinkUrl = ""; linkInsertOpen = true }
                         EditorTool.IMAGE -> { onInsertImage(); tool = EditorTool.SELECT }
                         EditorTool.AUDIO -> if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) audioOpen = true else audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                         else -> Unit
@@ -653,6 +658,25 @@ private fun EditorScreen(
         confirmButton = { Button(onClick = { onElement(document.id, selectedPage.id, PageCropTransform.unproject(PageElement.Sticky(x = .55f, y = .25f, text = insertText.trim().ifBlank { "New note" }), selectedPage.crop)); stickyInsertOpen = false; tool = EditorTool.SELECT }) { Text("Insert") } },
         dismissButton = { TextButton(onClick = { stickyInsertOpen = false }) { Text("Cancel") } },
     )
+    if (linkInsertOpen) {
+        val normalizedLink = LinkTarget.normalize(insertLinkUrl)
+        AlertDialog(
+            onDismissRequest = { linkInsertOpen = false },
+            title = { Text("Insert link") },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(insertLinkTitle, { insertLinkTitle = it }, label = { Text("Title") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(insertLinkUrl, { insertLinkUrl = it }, label = { Text("Web, email, or phone address") }, placeholder = { Text("https://example.com") }, isError = insertLinkUrl.isNotBlank() && normalizedLink == null, supportingText = { Text(if (insertLinkUrl.isNotBlank() && normalizedLink == null) "Use a valid http, https, mailto, or tel address." else "Addresses without a scheme open with HTTPS.") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            } },
+            confirmButton = { Button(enabled = normalizedLink != null, onClick = {
+                val url = normalizedLink ?: return@Button
+                val title = insertLinkTitle.trim().ifBlank { LinkTarget.displayDestination(url, 48) }
+                onElement(document.id, selectedPage.id, PageCropTransform.unproject(PageElement.Link(x = .18f, y = .2f, title = title, url = url), selectedPage.crop))
+                linkInsertOpen = false
+                tool = EditorTool.SELECT
+            }) { Text("Insert") } },
+            dismissButton = { TextButton(onClick = { linkInsertOpen = false }) { Text("Cancel") } },
+        )
+    }
     if (shapeInsertOpen) AlertDialog(
         onDismissRequest = { shapeInsertOpen = false },
         title = { Text("Draw shape") },
@@ -1045,6 +1069,7 @@ private fun ObjectElementView(
     localEraser: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     var dragX by remember(element.id) { mutableFloatStateOf(0f) }
     var dragY by remember(element.id) { mutableFloatStateOf(0f) }
     var editing by remember(element.id) { mutableStateOf(false) }
@@ -1070,7 +1095,11 @@ private fun ObjectElementView(
                 onClick = onSelect,
                 onDoubleClick = {
                     onSelect()
-                    if (element is PageElement.Sticky) stickyInkEditing = true
+                    when (element) {
+                        is PageElement.Sticky -> stickyInkEditing = true
+                        is PageElement.Link -> openLink(context, element.url)
+                        else -> Unit
+                    }
                 },
             ),
     ) {
@@ -1139,6 +1168,17 @@ private fun ObjectElementView(
                     Column(Modifier.weight(1f)) { Text(element.title, maxLines = 1); Text("Audio · ${formatDuration(element.durationMs)}", color = MutedInk, fontSize = 11.sp) }
                 }
             }
+            is PageElement.Link -> Card(Modifier.fillMaxSize(), colors = CardDefaults.cardColors(containerColor = Color(0xFFE7E7E7))) {
+                Row(Modifier.fillMaxSize().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Surface(shape = CircleShape, color = Color.White) { Icon(Icons.Outlined.Link, null, Modifier.padding(10.dp), tint = Color(0xFF111111)) }
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(element.title, maxLines = 1, fontWeight = FontWeight.SemiBold)
+                        Text(LinkTarget.displayDestination(element.url), color = MutedInk, fontSize = 11.sp, maxLines = 1)
+                    }
+                    IconButton(onClick = { openLink(context, element.url) }) { Icon(Icons.Outlined.OpenInNew, "Open link") }
+                }
+            }
         }
         if (selected && editable) Surface(Modifier.align(Alignment.TopEnd).offset(y = (-38).dp), shape = RoundedCornerShape(18.dp), color = Color.White, shadowElevation = 4.dp) {
             Row {
@@ -1146,6 +1186,7 @@ private fun ObjectElementView(
                     IconButton(onClick = { stickyInkEditing = true }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Brush, "Write inside sticky note", Modifier.size(18.dp)) }
                     IconButton(onClick = { onChange(element.copy(collapsed = !element.collapsed)) }, modifier = Modifier.size(36.dp)) { Icon(if (element.collapsed) Icons.Outlined.UnfoldMore else Icons.Outlined.UnfoldLess, if (element.collapsed) "Expand sticky note" else "Collapse sticky note", Modifier.size(18.dp)) }
                 }
+                if (element is PageElement.Link) IconButton(onClick = { openLink(context, element.url) }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.OpenInNew, "Open link", Modifier.size(18.dp)) }
                 IconButton(onClick = { editing = true }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Tune, "Edit object", Modifier.size(18.dp)) }
                 IconButton(onClick = onDuplicate, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.ContentCopy, "Duplicate object", Modifier.size(18.dp)) }
                 IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Delete, "Delete object", Modifier.size(18.dp)) }
@@ -1272,6 +1313,8 @@ private fun replaceStickyStrokes(
 @Composable
 private fun ElementEditorDialog(element: PageElement, onDismiss: () -> Unit, onSave: (PageElement) -> Unit) {
     var draft by remember(element.id) { mutableStateOf(element) }
+    val normalizedDraftLink = (draft as? PageElement.Link)?.let { LinkTarget.normalize(it.url) }
+    val canSave = draft !is PageElement.Link || normalizedDraftLink != null
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Object properties") },
@@ -1316,13 +1359,23 @@ private fun ElementEditorDialog(element: PageElement, onDismiss: () -> Unit, onS
                     item { OutlinedTextField(current.title, { draft = current.copy(title = it) }, label = { Text("Title") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
                     item { Text("Duration ${formatDuration(current.durationMs)} · audio is included in editable backups", color = MutedInk, fontSize = 12.sp) }
                 }
+                is PageElement.Link -> {
+                    item { OutlinedTextField(current.title, { draft = current.copy(title = it) }, label = { Text("Title") }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+                    item { OutlinedTextField(current.url, { draft = current.copy(url = it) }, label = { Text("Web, email, or phone address") }, isError = LinkTarget.normalize(current.url) == null, supportingText = { Text(if (LinkTarget.normalize(current.url) == null) "Use a valid http, https, mailto, or tel address." else LinkTarget.displayDestination(current.url)) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+                }
             }
             item { BrushSettingSlider("Opacity", draft.opacity, .05f..1f) { draft = setElementOpacity(draft, it) } }
             item { BrushSettingSlider("Rotation", draft.rotationDegrees, -180f..180f) { draft = setElementRotation(draft, it) } }
             item { BrushSettingSlider("Width", draft.width, 40f..1600f) { draft = setElementSize(draft, it, draft.height) } }
             item { BrushSettingSlider("Height", draft.height, 40f..2263f) { draft = setElementSize(draft, draft.width, it) } }
         } },
-        confirmButton = { Button(onClick = { onSave(draft) }) { Text("Save") } },
+        confirmButton = { Button(enabled = canSave, onClick = {
+            val saved = (draft as? PageElement.Link)?.let { link ->
+                val url = normalizedDraftLink ?: return@Button
+                link.copy(title = link.title.trim().ifBlank { LinkTarget.displayDestination(url, 48) }, url = url)
+            } ?: draft
+            onSave(saved)
+        }) { Text("Save") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
@@ -1333,13 +1386,27 @@ private fun moveElement(element: PageElement, dx: Float, dy: Float): PageElement
     is PageElement.Shape -> element.copy(x = (element.x + dx).coerceIn(0f, .98f), y = (element.y + dy).coerceIn(0f, .98f))
     is PageElement.Image -> element.copy(x = (element.x + dx).coerceIn(0f, .98f), y = (element.y + dy).coerceIn(0f, .98f))
     is PageElement.AudioMarker -> element.copy(x = (element.x + dx).coerceIn(0f, .98f), y = (element.y + dy).coerceIn(0f, .98f))
+    is PageElement.Link -> element.copy(x = (element.x + dx).coerceIn(0f, .98f), y = (element.y + dy).coerceIn(0f, .98f))
 }
 
 private fun resizeElement(element: PageElement, factor: Float): PageElement = setElementSize(element, (element.width * factor).coerceIn(40f, 1600f), (element.height * factor).coerceIn(40f, 2263f))
 private fun rotateElement(element: PageElement, delta: Float): PageElement = setElementRotation(element, ((element.rotationDegrees + delta + 180f) % 360f) - 180f)
-private fun setElementSize(element: PageElement, width: Float, height: Float): PageElement = when (element) { is PageElement.Text -> element.copy(width = width, height = height); is PageElement.Sticky -> element.copy(width = width, height = height); is PageElement.Shape -> element.copy(width = width, height = height); is PageElement.Image -> element.copy(width = width, height = height); is PageElement.AudioMarker -> element.copy(width = width, height = height) }
-private fun setElementRotation(element: PageElement, value: Float): PageElement = when (element) { is PageElement.Text -> element.copy(rotationDegrees = value); is PageElement.Sticky -> element.copy(rotationDegrees = value); is PageElement.Shape -> element.copy(rotationDegrees = value); is PageElement.Image -> element.copy(rotationDegrees = value); is PageElement.AudioMarker -> element.copy(rotationDegrees = value) }
-private fun setElementOpacity(element: PageElement, value: Float): PageElement = when (element) { is PageElement.Text -> element.copy(opacity = value); is PageElement.Sticky -> element.copy(opacity = value); is PageElement.Shape -> element.copy(opacity = value); is PageElement.Image -> element.copy(opacity = value); is PageElement.AudioMarker -> element.copy(opacity = value) }
+private fun setElementSize(element: PageElement, width: Float, height: Float): PageElement = when (element) { is PageElement.Text -> element.copy(width = width, height = height); is PageElement.Sticky -> element.copy(width = width, height = height); is PageElement.Shape -> element.copy(width = width, height = height); is PageElement.Image -> element.copy(width = width, height = height); is PageElement.AudioMarker -> element.copy(width = width, height = height); is PageElement.Link -> element.copy(width = width, height = height) }
+private fun setElementRotation(element: PageElement, value: Float): PageElement = when (element) { is PageElement.Text -> element.copy(rotationDegrees = value); is PageElement.Sticky -> element.copy(rotationDegrees = value); is PageElement.Shape -> element.copy(rotationDegrees = value); is PageElement.Image -> element.copy(rotationDegrees = value); is PageElement.AudioMarker -> element.copy(rotationDegrees = value); is PageElement.Link -> element.copy(rotationDegrees = value) }
+private fun setElementOpacity(element: PageElement, value: Float): PageElement = when (element) { is PageElement.Text -> element.copy(opacity = value); is PageElement.Sticky -> element.copy(opacity = value); is PageElement.Shape -> element.copy(opacity = value); is PageElement.Image -> element.copy(opacity = value); is PageElement.AudioMarker -> element.copy(opacity = value); is PageElement.Link -> element.copy(opacity = value) }
+
+private fun openLink(context: android.content.Context, rawUrl: String) {
+    val url = LinkTarget.normalize(rawUrl)
+    if (url == null) {
+        Toast.makeText(context, "This link is not valid or supported.", Toast.LENGTH_SHORT).show()
+        return
+    }
+    runCatching {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE))
+    }.onFailure {
+        Toast.makeText(context, "No app can open this link.", Toast.LENGTH_SHORT).show()
+    }
+}
 
 private fun playAudio(path: String) {
     var player: android.media.MediaPlayer? = null
@@ -1383,6 +1450,7 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
     ToolButton(EditorTool.SHAPE, Icons.Outlined.Category, "Shape", tool, onTool)
     ToolButton(EditorTool.TEXT, Icons.Outlined.Title, "Text", tool, onTool)
     ToolButton(EditorTool.NOTE, Icons.Outlined.StickyNote2, "Note", tool, onTool)
+    ToolButton(EditorTool.LINK, Icons.Outlined.Link, "Link", tool, onTool)
     ToolButton(EditorTool.IMAGE, Icons.Outlined.Image, "Image", tool, onTool)
     ToolButton(EditorTool.AUDIO, Icons.Outlined.Mic, "Audio", tool, onTool)
     if (vertical) HorizontalDivider(Modifier.width(42.dp).padding(vertical = 6.dp)) else VerticalDivider(Modifier.height(42.dp).padding(horizontal = 6.dp))

@@ -276,6 +276,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         is PageElement.Shape -> element.copy(id = java.util.UUID.randomUUID().toString())
         is PageElement.Image -> element.copy(id = java.util.UUID.randomUUID().toString())
         is PageElement.AudioMarker -> element.copy(id = java.util.UUID.randomUUID().toString())
+        is PageElement.Link -> element.copy(id = java.util.UUID.randomUUID().toString())
     }
 
     private fun PageElement.withLayer(layerId: String): PageElement = when (this) {
@@ -284,6 +285,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         is PageElement.Shape -> copy(layerId = layerId)
         is PageElement.Image -> copy(layerId = layerId)
         is PageElement.AudioMarker -> copy(layerId = layerId)
+        is PageElement.Link -> copy(layerId = layerId)
     }
 
     private fun PageElement.offsetBy(dx: Float, dy: Float): PageElement = when (this) {
@@ -292,6 +294,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         is PageElement.Shape -> copy(x = (x + dx).coerceIn(0f, .95f), y = (y + dy).coerceIn(0f, .95f))
         is PageElement.Image -> copy(x = (x + dx).coerceIn(0f, .95f), y = (y + dy).coerceIn(0f, .95f))
         is PageElement.AudioMarker -> copy(x = (x + dx).coerceIn(0f, .95f), y = (y + dy).coerceIn(0f, .95f))
+        is PageElement.Link -> copy(x = (x + dx).coerceIn(0f, .95f), y = (y + dy).coerceIn(0f, .95f))
     }
 
     private fun loadFolders(): List<InkFolder> = if (!indexFile.isFile) emptyList() else runCatching { json.decodeFromString<List<InkFolder>>(indexFile.readText()) }.getOrDefault(emptyList())

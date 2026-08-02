@@ -398,6 +398,18 @@ class DocumentAssetService(private val context: Context) {
                     canvas.drawBitmap(bitmap, null, destination, paint); canvas.restore(); bitmap.recycle()
                 }
                 is PageElement.AudioMarker -> { paint.style = Paint.Style.FILL; paint.color = 0xFFE7E7E7.toInt(); canvas.drawRoundRect(left, top, right, bottom, 18f, 18f, paint); paint.color = 0xFF111111.toInt(); paint.textSize = 28f; canvas.drawText("Audio · ${formatDuration(element.durationMs)}", left + 20, top + 42, paint); paint.textSize = 22f; canvas.drawText(element.title, left + 20, top + 76, paint) }
+                is PageElement.Link -> {
+                    paint.style = Paint.Style.FILL
+                    paint.color = 0xFFE7E7E7.toInt()
+                    canvas.drawRoundRect(left, top, right, bottom, 18f, 18f, paint)
+                    paint.color = 0xFF111111.toInt()
+                    paint.textSize = 18f
+                    canvas.drawText("LINK ↗", left + 20, top + 30, paint)
+                    paint.textSize = 28f
+                    canvas.drawText(element.title.take(72), left + 20, top + 66, paint)
+                    paint.textSize = 20f
+                    canvas.drawText(LinkTarget.displayDestination(element.url, 92), left + 20, top + 98, paint)
+                }
             }
             canvas.restore()
         }

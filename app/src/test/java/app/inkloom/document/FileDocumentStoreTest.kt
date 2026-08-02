@@ -252,4 +252,24 @@ class FileDocumentStoreTest {
         assertEquals(bounds, restored.pdfTextBlocks.single().bounds.single())
         assertEquals("Searchable lecture text", restored.pdfTextBlocks.single().text)
     }
+
+    @Test fun linkObjectRoundTripsWithItsSafeTargetAndLayout() {
+        val store = FileDocumentStore(Files.createTempDirectory("inkloom-link").toFile())
+        val link = PageElement.Link(
+            id = "link",
+            x = .18f,
+            y = .27f,
+            width = 640f,
+            height = 170f,
+            rotationDegrees = 12f,
+            opacity = .8f,
+            title = "Inkloom guide",
+            url = "https://example.com/inkloom",
+        )
+        val document = InkDocument(title = "Links", pages = listOf(InkPage(elements = listOf(link))))
+
+        store.save(document)
+
+        assertEquals(link, store.get(document.id)!!.pages.single().elements.single())
+    }
 }

@@ -131,7 +131,7 @@ data class ImportedBrush(
     val parserVersion: Int = 0,
 )
 
-enum class EditorTool { PEN, HIGHLIGHTER, ERASER, SELECT, SHAPE, TEXT, NOTE, IMAGE, AUDIO }
+enum class EditorTool { PEN, HIGHLIGHTER, ERASER, SELECT, SHAPE, TEXT, NOTE, LINK, IMAGE, AUDIO }
 
 object DemoContent {
     val notebooks = listOf(

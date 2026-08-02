@@ -37,4 +37,11 @@ class PageSearchTest {
         assertNull(PageSearch.find(page, ""))
         assertNull(PageSearch.find(page, "missing"))
     }
+
+    @Test fun findsLinkTitlesAndDestinationsAsObjectText() {
+        val page = InkPage(elements = listOf(PageElement.Link(x = .1f, y = .1f, title = "Research portal", url = "https://library.example.edu/papers")))
+
+        assertEquals(PageSearchSource.OBJECT, PageSearch.find(page, "Research portal")?.source)
+        assertEquals(PageSearchSource.OBJECT, PageSearch.find(page, "library.example")?.source)
+    }
 }

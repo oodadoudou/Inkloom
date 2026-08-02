@@ -48,4 +48,16 @@ class PageTransferTest {
         assertNull(PageTransfer.apply(source, source, source.pages.single().id, copy = false))
         assertNull(PageTransfer.apply(source, InkDocument(id = "target", title = "Target"), "missing", copy = false))
     }
+
+    @Test fun copiedPagesGiveLinksFreshObjectIdsWithoutChangingTargets() {
+        val page = InkPage(id = "page", elements = listOf(PageElement.Link(id = "link", x = .1f, y = .2f, title = "Guide", url = "https://example.com/guide")))
+        val source = InkDocument(id = "source", title = "Source", pages = listOf(page))
+        val target = InkDocument(id = "target", title = "Target")
+        val ids = ArrayDeque(listOf("copy-page", "copy-link"))
+
+        val copiedLink = PageTransfer.apply(source, target, page.id, copy = true, nextId = ids::removeFirst)!!.target.pages.last().elements.single() as PageElement.Link
+
+        assertEquals("copy-link", copiedLink.id)
+        assertEquals("https://example.com/guide", copiedLink.url)
+    }
 }
