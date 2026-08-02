@@ -92,6 +92,7 @@ import app.inkloom.settings.ShortcutBrushSelection
 import app.inkloom.settings.StylusButtonAction
 import app.inkloom.settings.ToolbarDock
 import app.inkloom.settings.UiLanguage
+import app.inkloom.settings.WorkspacePanelDock
 import app.inkloom.settings.text
 import app.inkloom.ui.theme.*
 import kotlinx.coroutines.Dispatchers
@@ -296,7 +297,6 @@ private fun List<ImportedBrush>.distinctImportedBrushes(): List<ImportedBrush> =
 @Composable
 fun InkloomApp(initialIntent: Intent?) {
     var destination by remember { mutableStateOf(AppDestination.LIBRARY) }
-    var brushesOpen by remember { mutableStateOf(false) }
     var importError by remember { mutableStateOf<String?>(null) }
     var settingsOpen by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -307,6 +307,7 @@ fun InkloomApp(initialIntent: Intent?) {
     val brushStore = remember { BrushMetadataStore(context) }
     val settingsStore = remember { AppSettingsStore(context) }
     var settings by remember { mutableStateOf(settingsStore.load()) }
+    var brushesOpen by remember { mutableStateOf(settings.showBrushPanel) }
     fun updateSettings(value: AppSettings) { settings = value; settingsStore.save(value) }
     var importedBrushes by remember { mutableStateOf(brushStore.load()) }
 
@@ -401,6 +402,7 @@ fun InkloomApp(initialIntent: Intent?) {
             }
             brushStore.save(importedBrushes)
             brushesOpen = true
+            updateSettings(settings.copy(showBrushPanel = true))
             destination = AppDestination.EDITOR
         }
     }
@@ -435,7 +437,11 @@ fun InkloomApp(initialIntent: Intent?) {
             brushes = importedBrushes,
             importError = importError,
             onBack = { destination = AppDestination.LIBRARY },
-            onToggleBrushes = { brushesOpen = !brushesOpen },
+            onToggleBrushes = {
+                val open = !brushesOpen
+                brushesOpen = open
+                updateSettings(settings.copy(showBrushPanel = open))
+            },
             onImportBrushes = { brushPicker.launch(arrayOf("application/octet-stream", "application/zip", "application/vnd.inkloom.brush+zip", "image/*")) },
             onExportBrush = { brush ->
                 pendingBrushExport = brush
@@ -807,7 +813,8 @@ private fun EditorScreen(
     var audioError by remember { mutableStateOf<String?>(null) }
     val audioPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> if (granted) audioOpen = true else audioError = "Microphone permission is required to record an audio note." }
     DisposableEffect(audioRecorder) { onDispose { audioRecorder.cancel() } }
-    var layersOpen by remember { mutableStateOf(false) }
+    var layersOpen by remember { mutableStateOf(settings.showLayerPanel) }
+    LaunchedEffect(settings.showLayerPanel) { layersOpen = settings.showLayerPanel }
     var activeLayerId by remember(selectedPage.id) { mutableStateOf(LayerIds.INK) }
     var panelsHiddenByShortcut by remember { mutableStateOf(false) }
     var pageRailBeforeShortcut by remember { mutableStateOf(settings.showPageRail) }
@@ -830,7 +837,11 @@ private fun EditorScreen(
             IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, tr("Back", "返回")) }
             Text("${document.title} · ${selectedPage.title}", Modifier.weight(1f))
             IconButton(onClick = onToggleBrushes) { Icon(Icons.Outlined.Brush, tr("Brushes", "笔刷")) }
-            IconButton(onClick = { layersOpen = !layersOpen }) { Icon(Icons.Outlined.Layers, tr("Layers", "图层")) }
+            IconButton(onClick = {
+                val open = !layersOpen
+                layersOpen = open
+                onSettingsChange(settings.copy(showLayerPanel = open))
+            }) { Icon(Icons.Outlined.Layers, tr("Layers", "图层")) }
             IconButton(onClick = { outlineOpen = true }) { Icon(Icons.Outlined.FormatListBulleted, tr("Page outline", "页面大纲")) }
             IconButton(onClick = { onSettingsChange(settings.copy(showPageRail = !settings.showPageRail)) }) { Icon(if (settings.showPageRail) Icons.Outlined.ViewSidebar else Icons.Outlined.TableRows, tr("Toggle pages", "显示或隐藏页面栏")) }
             IconButton(onClick = { onSettingsChange(settings.copy(showToolbar = !settings.showToolbar)) }) { Icon(if (settings.showToolbar) Icons.Outlined.VisibilityOff else Icons.Outlined.Build, tr("Toggle toolbar", "显示或隐藏工具栏")) }
@@ -856,7 +867,56 @@ private fun EditorScreen(
             viewportHeightPx = with(editorDensity) { maxHeight.toPx() }
         }
         Row(Modifier.fillMaxSize()) {
-            if (editorWidth >= 700.dp && settings.showPageRail) PageRail(document, documents, selectedPage.id, onSelectPage, onAddPage, onDuplicatePage, onDeletePage, onMovePage, onTransferPage, onSetPageTemplate, onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata, onClearPageInk, onSetPageCrop, onRotatePage)
+            if (editorWidth >= 700.dp && settings.showPageRail && settings.pagePanelDock == WorkspacePanelDock.LEFT) PageRail(
+                document, documents, selectedPage.id, settings.pagePanelDock,
+                onDock = { onSettingsChange(settings.copy(pagePanelDock = it)) },
+                onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
+                onSelectPage, onAddPage, onDuplicatePage, onDeletePage, onMovePage, onTransferPage, onSetPageTemplate,
+                onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
+                onClearPageInk, onSetPageCrop, onRotatePage,
+            )
+            if (layersOpen && settings.layerPanelDock == WorkspacePanelDock.LEFT) LayerPanel(
+                page = selectedPage,
+                activeLayerId = activeLayerId,
+                brushColor = brushColor,
+                dock = settings.layerPanelDock,
+                onDock = { onSettingsChange(settings.copy(layerPanelDock = it)) },
+                onClose = { layersOpen = false; onSettingsChange(settings.copy(showLayerPanel = false)) },
+                onColor = { brushColor = it },
+                onSelect = { activeLayerId = it },
+                onAdd = { onAddLayer(document.id, selectedPage.id, "Layer") },
+                onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
+                onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
+                onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
+                onMove = { layerId, delta -> onMoveLayer(document.id, selectedPage.id, layerId, delta) },
+                onDuplicate = { layerId -> onDuplicateLayer(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
+                onMergeDown = { layerId -> onMergeLayerDown(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
+                onDelete = { onDeleteLayer(document.id, selectedPage.id, it) },
+            )
+            if (brushesOpen && settings.brushPanelDock == WorkspacePanelDock.LEFT) BrushPanel(
+                brushes = brushes,
+                selectedBrushId = selectedBrushId,
+                dock = settings.brushPanelDock,
+                onDock = { onSettingsChange(settings.copy(brushPanelDock = it)) },
+                onClose = { if (brushesOpen) onToggleBrushes() },
+                onBrushSelected = { brush ->
+                    val usedBrush = brush.copy(lastUsedAt = System.currentTimeMillis())
+                    onUpdateBrush(usedBrush)
+                    selectedBrushId = usedBrush.id
+                    activeBrush = usedBrush
+                    brushSize = usedBrush.defaultSize
+                    brushOpacity = usedBrush.defaultOpacity
+                    brushColor = AndroidColor.rgb(17, 17, 17)
+                    val chosenTool = if (BrushRoleClassifier.isEraser(usedBrush)) EditorTool.ERASER else EditorTool.PEN
+                    tool = chosenTool
+                    canvasView?.apply { this.tool = chosenTool; inkOpacity = 1f; brushId = usedBrush.id; baseWidth = usedBrush.defaultSize; inkColor = brushColor }
+                },
+                onImportBrushes = onImportBrushes,
+                onExportBrush = onExportBrush,
+                onUpdateBrush = { updated -> onUpdateBrush(updated); if (activeBrush?.id == updated.id) { activeBrush = updated; brushSize = updated.defaultSize } },
+                onDeleteBrush = { brushId -> onDeleteBrush(brushId); if (activeBrush?.id == brushId) { activeBrush = null; selectedBrushId = null } },
+                onReorderBrush = onReorderBrush,
+            )
             if ((!brushesOpen && !layersOpen) || editorWidth >= 900.dp) BoxWithConstraints(Modifier.weight(1f).fillMaxHeight().background(Workspace), contentAlignment = Alignment.Center) {
                 val toolbarAreaWidth = maxWidth
                 val toolbarAreaHeight = maxHeight
@@ -1065,10 +1125,21 @@ private fun EditorScreen(
                 }, onColor = { brushColor = it }, modifier = Modifier.align(dockAlignment).padding(dockPadding).graphicsLayer(translationX = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.xDp.dp.toPx() } else 0f, translationY = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.yDp.dp.toPx() } else 0f))
                 if (settings.showInputDiagnostics) Surface(Modifier.align(Alignment.BottomCenter).padding(12.dp), shape = RoundedCornerShape(20.dp), color = Color(0xE6111111)) { Text(inputDiagnostic, Modifier.padding(horizontal = 14.dp, vertical = 7.dp), color = Color.White, fontSize = 11.sp) }
             }
-            if (layersOpen) LayerPanel(
+            if (editorWidth >= 700.dp && settings.showPageRail && settings.pagePanelDock == WorkspacePanelDock.RIGHT) PageRail(
+                document, documents, selectedPage.id, settings.pagePanelDock,
+                onDock = { onSettingsChange(settings.copy(pagePanelDock = it)) },
+                onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
+                onSelectPage, onAddPage, onDuplicatePage, onDeletePage, onMovePage, onTransferPage, onSetPageTemplate,
+                onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
+                onClearPageInk, onSetPageCrop, onRotatePage,
+            )
+            if (layersOpen && settings.layerPanelDock == WorkspacePanelDock.RIGHT) LayerPanel(
                 page = selectedPage,
                 activeLayerId = activeLayerId,
                 brushColor = brushColor,
+                dock = settings.layerPanelDock,
+                onDock = { onSettingsChange(settings.copy(layerPanelDock = it)) },
+                onClose = { layersOpen = false; onSettingsChange(settings.copy(showLayerPanel = false)) },
                 onColor = { brushColor = it },
                 onSelect = { activeLayerId = it },
                 onAdd = { onAddLayer(document.id, selectedPage.id, "Layer") },
@@ -1080,9 +1151,12 @@ private fun EditorScreen(
                 onMergeDown = { layerId -> onMergeLayerDown(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
                 onDelete = { onDeleteLayer(document.id, selectedPage.id, it) },
             )
-            if (brushesOpen) BrushPanel(
+            if (brushesOpen && settings.brushPanelDock == WorkspacePanelDock.RIGHT) BrushPanel(
                 brushes = brushes,
                 selectedBrushId = selectedBrushId,
+                dock = settings.brushPanelDock,
+                onDock = { onSettingsChange(settings.copy(brushPanelDock = it)) },
+                onClose = { if (brushesOpen) onToggleBrushes() },
                 onBrushSelected = { brush ->
                     val usedBrush = brush.copy(lastUsedAt = System.currentTimeMillis())
                     onUpdateBrush(usedBrush)
@@ -1223,10 +1297,15 @@ private fun EditorScreen(
 }
 
 @Composable
-private fun PageRail(document: InkDocument, documents: List<InkDocument>, selectedPageId: String, onSelect: (String) -> Unit, onAdd: () -> Unit, onDuplicate: (String, String) -> Unit, onDelete: (String, String) -> Unit, onMove: (String, String, Int) -> Unit, onTransfer: (String, String, String, Boolean) -> Unit, onSetTemplate: (String, String, PaperPattern) -> Unit, onToggleBookmark: (String, String) -> Unit, onOutlineLevel: (String, String, Int) -> Unit, onOutlineCollapsed: (String, String) -> Unit, onRename: (String, String, String) -> Unit, onMetadata: (String, String, String?, List<String>) -> Unit, onClearInk: (String, String) -> Unit, onCrop: (String, String, PageCrop) -> Unit, onRotate: (String, String) -> Unit) {
+private fun PageRail(document: InkDocument, documents: List<InkDocument>, selectedPageId: String, dock: WorkspacePanelDock, onDock: (WorkspacePanelDock) -> Unit, onClose: () -> Unit, onSelect: (String) -> Unit, onAdd: () -> Unit, onDuplicate: (String, String) -> Unit, onDelete: (String, String) -> Unit, onMove: (String, String, Int) -> Unit, onTransfer: (String, String, String, Boolean) -> Unit, onSetTemplate: (String, String, PaperPattern) -> Unit, onToggleBookmark: (String, String) -> Unit, onOutlineLevel: (String, String, Int) -> Unit, onOutlineCollapsed: (String, String) -> Unit, onRename: (String, String, String) -> Unit, onMetadata: (String, String, String?, List<String>) -> Unit, onClearInk: (String, String) -> Unit, onCrop: (String, String, PageCrop) -> Unit, onRotate: (String, String) -> Unit) {
     val transferTargets = documents.filter { it.id != document.id && it.trashedAt == null }
     LazyColumn(Modifier.width(112.dp).fillMaxHeight().padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item { Row(verticalAlignment = Alignment.CenterVertically) { Text(tr("Pages", "页面"), Modifier.weight(1f), color = Ink, maxLines = 1); IconButton(onClick = onAdd, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Add, tr("Add page", "添加页面")) } } }
+        item { Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(tr("Pages", "页面"), Modifier.weight(1f), color = Ink, maxLines = 1)
+            IconButton(onClick = { onDock(if (dock == WorkspacePanelDock.LEFT) WorkspacePanelDock.RIGHT else WorkspacePanelDock.LEFT) }, modifier = Modifier.size(28.dp)) { Icon(if (dock == WorkspacePanelDock.LEFT) Icons.Outlined.ChevronRight else Icons.Outlined.ChevronLeft, tr("Move pages panel", "移动页面面板")) }
+            IconButton(onClick = onClose, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.Close, tr("Close pages panel", "关闭页面面板")) }
+            IconButton(onClick = onAdd, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Add, tr("Add page", "添加页面")) }
+        } }
         items(document.pages, key = { it.id }) { page ->
             val pageIndex = document.pages.indexOf(page)
             val hasOutlineChildren = PageOutline.hasChildren(document.pages, pageIndex)
@@ -2227,6 +2306,9 @@ private fun LayerPanel(
     page: InkPage,
     activeLayerId: String,
     brushColor: Int,
+    dock: WorkspacePanelDock,
+    onDock: (WorkspacePanelDock) -> Unit,
+    onClose: () -> Unit,
     onColor: (Int) -> Unit,
     onSelect: (String) -> Unit,
     onAdd: () -> Unit,
@@ -2256,6 +2338,8 @@ private fun LayerPanel(
                 Text(tr("Layers", "图层"), fontSize = 18.sp)
                 Text(tr("Visible canvas stack", "可见画布堆栈"), fontSize = 10.sp, color = MutedInk)
             }
+            IconButton(onClick = { onDock(if (dock == WorkspacePanelDock.LEFT) WorkspacePanelDock.RIGHT else WorkspacePanelDock.LEFT) }) { Icon(if (dock == WorkspacePanelDock.LEFT) Icons.Outlined.ChevronRight else Icons.Outlined.ChevronLeft, tr("Move layers panel", "移动图层面板")) }
+            IconButton(onClick = onClose) { Icon(Icons.Outlined.Close, tr("Close layers panel", "关闭图层面板")) }
             IconButton(onClick = onAdd) { Icon(Icons.Default.Add, tr("Add layer", "添加图层")) }
         }
         Spacer(Modifier.height(8.dp))
@@ -2312,6 +2396,9 @@ private fun LayerPanel(
 private fun BrushPanel(
     brushes: List<ImportedBrush>,
     selectedBrushId: String?,
+    dock: WorkspacePanelDock,
+    onDock: (WorkspacePanelDock) -> Unit,
+    onClose: () -> Unit,
     onBrushSelected: (ImportedBrush) -> Unit,
     onImportBrushes: () -> Unit,
     onExportBrush: (ImportedBrush) -> Unit,
@@ -2348,7 +2435,12 @@ private fun BrushPanel(
     val brushSections = visibleBrushes.groupBy { BrushGroupOperations.normalize(it.groupName).ifBlank { "Ungrouped" } }
         .toList().sortedWith(compareBy<Pair<String, List<ImportedBrush>>> { it.first == "Ungrouped" }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.first })
     Column(Modifier.width(330.dp).fillMaxHeight().background(Color(0xFFF7F7F7)).padding(12.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) { Text(tr("Brush Library", "笔刷库"), fontSize = 20.sp, modifier = Modifier.weight(1f)); IconButton(onClick = onImportBrushes) { Icon(Icons.Outlined.Add, tr("Import", "导入")) } }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(tr("Brush Library", "笔刷库"), fontSize = 20.sp, modifier = Modifier.weight(1f))
+            IconButton(onClick = { onDock(if (dock == WorkspacePanelDock.LEFT) WorkspacePanelDock.RIGHT else WorkspacePanelDock.LEFT) }) { Icon(if (dock == WorkspacePanelDock.LEFT) Icons.Outlined.ChevronRight else Icons.Outlined.ChevronLeft, tr("Move brushes panel", "移动笔刷面板")) }
+            IconButton(onClick = onClose) { Icon(Icons.Outlined.Close, tr("Close brushes panel", "关闭笔刷面板")) }
+            IconButton(onClick = onImportBrushes) { Icon(Icons.Outlined.Add, tr("Import", "导入")) }
+        }
         Text(tr("Imported presets · compact view", "已导入预设 · 紧凑视图"), fontSize = 11.sp, color = MutedInk)
         Spacer(Modifier.height(8.dp))
         OutlinedTextField(search, { search = it }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, placeholder = { Text(tr("Search brushes", "搜索笔刷")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
