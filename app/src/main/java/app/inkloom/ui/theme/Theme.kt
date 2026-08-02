@@ -43,6 +43,13 @@ private val InkloomColors = lightColorScheme(
     inversePrimary = Color(0xFFD0D0D0),
     surfaceTint = Ink,
     scrim = Color.Black,
+    surfaceBright = Color.White,
+    surfaceDim = Color(0xFFDADADA),
+    surfaceContainer = Color(0xFFF7F7F7),
+    surfaceContainerHigh = Color.White,
+    surfaceContainerHighest = Color(0xFFE7E7E7),
+    surfaceContainerLow = Color(0xFFFAFAFA),
+    surfaceContainerLowest = Color.White,
 )
 
 @Composable
