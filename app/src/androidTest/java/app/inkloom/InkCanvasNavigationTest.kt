@@ -69,6 +69,26 @@ class InkCanvasNavigationTest {
         assertEquals(listOf(ShortcutPhase.PRESS, ShortcutPhase.RELEASE), phases)
     }
 
+    @Test fun forcedHandNavigationPansWithAStylusWithoutCommittingInk() {
+        val view = canvas().apply {
+            tool = EditorTool.PEN
+            forceNavigation = true
+        }
+        var committed = 0
+        var panX = 0f
+        var panY = 0f
+        view.onStrokeCommitted = { committed++ }
+        view.onViewportPan = { dx, dy -> panX += dx; panY += dy }
+
+        sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 120f, 160f)
+        sendStylus(view, 20L, MotionEvent.ACTION_MOVE, 200f, 230f)
+        sendStylus(view, 40L, MotionEvent.ACTION_UP, 200f, 230f)
+
+        assertEquals("Hand navigation must never leave stylus ink", 0, committed)
+        assertTrue("Stylus hand navigation should pan horizontally", panX >= 79f)
+        assertTrue("Stylus hand navigation should pan vertically", panY >= 69f)
+    }
+
     private fun canvas(): InkCanvasView {
         lateinit var result: InkCanvasView
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
@@ -96,6 +116,30 @@ class InkCanvasNavigationTest {
             0,
             0,
             InputDevice.SOURCE_TOUCHSCREEN,
+            0,
+        )
+        try {
+            InstrumentationRegistry.getInstrumentation().runOnMainSync { view.onTouchEvent(event) }
+        } finally {
+            event.recycle()
+        }
+    }
+
+    private fun sendStylus(view: InkCanvasView, time: Long, action: Int, x: Float, y: Float) {
+        val event = MotionEvent.obtain(
+            0L,
+            time,
+            action,
+            1,
+            arrayOf(MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_STYLUS }),
+            arrayOf(MotionEvent.PointerCoords().apply { this.x = x; this.y = y; pressure = .6f; size = .05f }),
+            0,
+            0,
+            1f,
+            1f,
+            0,
+            0,
+            InputDevice.SOURCE_STYLUS,
             0,
         )
         try {

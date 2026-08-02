@@ -129,6 +129,7 @@ class InkCanvasView(context: Context) : View(context) {
     internal var onTileRendered: ((StrokeTileKey, Int) -> Unit)? = null
 
     var tool: EditorTool = EditorTool.PEN
+    var forceNavigation: Boolean = false
     var inkColor: Int = Color.rgb(17, 17, 17)
     var baseWidth: Float = 5f
     var inkOpacity: Float = 1f
@@ -689,10 +690,10 @@ class InkCanvasView(context: Context) : View(context) {
         if (isStylus) lastStylusSeenAt = event.eventTime
         onInputDiagnostic(when (eventToolType) { MotionEvent.TOOL_TYPE_STYLUS -> "Stylus"; MotionEvent.TOOL_TYPE_ERASER -> "Eraser"; MotionEvent.TOOL_TYPE_FINGER -> "Finger"; else -> "Other" }, event.pressure, event.getAxisValue(MotionEvent.AXIS_TILT), event.buttonState)
         val elapsedSinceStylus = if (lastStylusSeenAt == Long.MIN_VALUE) Long.MAX_VALUE else event.eventTime - lastStylusSeenAt
-        val isFingerNavigation = StylusInputClassifier.shouldNavigateOrRejectFinger(isStylus, fingerDrawingEnabled, event.pointerCount, event.getTouchMajor(pointerIndex), elapsedSinceStylus)
+        val isFingerNavigation = forceNavigation || StylusInputClassifier.shouldNavigateOrRejectFinger(isStylus, fingerDrawingEnabled, event.pointerCount, event.getTouchMajor(pointerIndex), elapsedSinceStylus)
         if (isFingerNavigation) {
             if (activeTool != null) {
-                if (activeInputWasStylus) return true
+                if (activeInputWasStylus && !forceNavigation) return true
                 cancelActiveGestureForNavigation()
             }
             scaleDetector.onTouchEvent(event)
