@@ -3,6 +3,7 @@ package app.inkloom
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -11,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
@@ -33,6 +35,14 @@ class InkloomLaunchTest {
     @Test fun settingsExposeInputAndToolControls() {
         composeRule.onNodeWithContentDescription("Settings").performClick()
         composeRule.onNodeWithText("Draw with finger").assertIsDisplayed()
+    }
+
+    @Test fun settingsExposeConflictSafeFullLibraryBackup() {
+        composeRule.onNodeWithContentDescription("Settings").performClick()
+        composeRule.onNode(hasScrollAction()).performScrollToIndex(32)
+
+        composeRule.onNodeWithText("Export full library backup").assertIsDisplayed()
+        composeRule.onNodeWithText("Restore library backup").assertIsDisplayed()
     }
 
     @Test fun stickyNoteDoubleTapOpensItsInkSubcanvas() {
