@@ -616,30 +616,30 @@ private fun EditorScreen(
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Row(Modifier.height(50.dp).fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
             BrandMark(); VerticalDivider(Modifier.padding(horizontal = 18.dp, vertical = 10.dp)); Text(document.title, Modifier.weight(1f))
-            IconButton(onClick = { searchOpen = true }) { Icon(Icons.Outlined.Search, "Search this note") }
-            IconButton(onClick = onSettings) { Icon(Icons.Outlined.Settings, "Settings") }
+            IconButton(onClick = { searchOpen = true }) { Icon(Icons.Outlined.Search, tr("Search this note", "搜索此笔记")) }
+            IconButton(onClick = onSettings) { Icon(Icons.Outlined.Settings, tr("Settings", "设置")) }
             Surface(shape = CircleShape, color = Workspace) { Text("J", Modifier.padding(12.dp, 8.dp)) }
         }
         HorizontalDivider(color = OutlineSoft)
         Row(Modifier.height(44.dp).fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, "Back") }
+            IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, tr("Back", "返回")) }
             Text("${document.title} · ${selectedPage.title}", Modifier.weight(1f))
-            IconButton(onClick = onToggleBrushes) { Icon(Icons.Outlined.Brush, "Brushes") }
-            IconButton(onClick = { layersOpen = !layersOpen }) { Icon(Icons.Outlined.Layers, "Layers") }
-            IconButton(onClick = { outlineOpen = true }) { Icon(Icons.Outlined.FormatListBulleted, "Page outline") }
-            IconButton(onClick = { onSettingsChange(settings.copy(showPageRail = !settings.showPageRail)) }) { Icon(if (settings.showPageRail) Icons.Outlined.ViewSidebar else Icons.Outlined.TableRows, "Toggle pages") }
-            IconButton(onClick = { onSettingsChange(settings.copy(showToolbar = !settings.showToolbar)) }) { Icon(if (settings.showToolbar) Icons.Outlined.VisibilityOff else Icons.Outlined.Build, "Toggle toolbar") }
-            IconButton(onClick = { val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY), .9f, 0f, 0f); zoom = next.scale; panX = next.panX; panY = next.panY }) { Icon(Icons.Outlined.ZoomOut, "Zoom out") }
-            IconButton(onClick = { zoom = (zoom + .1f).coerceAtMost(2.5f) }) { Icon(Icons.Outlined.ZoomIn, "Zoom in") }
-            IconButton(onClick = { zoom = 1f; panX = 0f; panY = 0f }) { Icon(Icons.Outlined.CenterFocusStrong, "Reset view") }
-            IconButton(onClick = onExport) { Icon(Icons.Outlined.Share, "Export PDF") }
+            IconButton(onClick = onToggleBrushes) { Icon(Icons.Outlined.Brush, tr("Brushes", "笔刷")) }
+            IconButton(onClick = { layersOpen = !layersOpen }) { Icon(Icons.Outlined.Layers, tr("Layers", "图层")) }
+            IconButton(onClick = { outlineOpen = true }) { Icon(Icons.Outlined.FormatListBulleted, tr("Page outline", "页面大纲")) }
+            IconButton(onClick = { onSettingsChange(settings.copy(showPageRail = !settings.showPageRail)) }) { Icon(if (settings.showPageRail) Icons.Outlined.ViewSidebar else Icons.Outlined.TableRows, tr("Toggle pages", "显示或隐藏页面栏")) }
+            IconButton(onClick = { onSettingsChange(settings.copy(showToolbar = !settings.showToolbar)) }) { Icon(if (settings.showToolbar) Icons.Outlined.VisibilityOff else Icons.Outlined.Build, tr("Toggle toolbar", "显示或隐藏工具栏")) }
+            IconButton(onClick = { val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY), .9f, 0f, 0f); zoom = next.scale; panX = next.panX; panY = next.panY }) { Icon(Icons.Outlined.ZoomOut, tr("Zoom out", "缩小")) }
+            IconButton(onClick = { zoom = (zoom + .1f).coerceAtMost(2.5f) }) { Icon(Icons.Outlined.ZoomIn, tr("Zoom in", "放大")) }
+            IconButton(onClick = { zoom = 1f; panX = 0f; panY = 0f }) { Icon(Icons.Outlined.CenterFocusStrong, tr("Reset view", "重置视图")) }
+            IconButton(onClick = onExport) { Icon(Icons.Outlined.Share, tr("Export PDF", "导出 PDF")) }
             Box {
-                IconButton(onClick = { exportMenu = true }) { Icon(Icons.Outlined.MoreHoriz, "More exports") }
+                IconButton(onClick = { exportMenu = true }) { Icon(Icons.Outlined.MoreHoriz, tr("More exports", "更多导出选项")) }
                 DropdownMenu(expanded = exportMenu, onDismissRequest = { exportMenu = false }) {
-                    document.pages.forEachIndexed { index, page -> DropdownMenuItem(text = { Text("Go to page ${index + 1}") }, onClick = { exportMenu = false; onSelectPage(page.id) }) }
+                    document.pages.forEachIndexed { index, page -> DropdownMenuItem(text = { Text(tr("Go to page ${index + 1}", "前往第 ${index + 1} 页")) }, onClick = { exportMenu = false; onSelectPage(page.id) }) }
                     HorizontalDivider()
-                    DropdownMenuItem(text = { Text("Export current page PNG") }, onClick = { exportMenu = false; onExportPage() })
-                    DropdownMenuItem(text = { Text("Export editable Inkloom package") }, onClick = { exportMenu = false; onExportBundle() })
+                    DropdownMenuItem(text = { Text(tr("Export current page PNG", "将当前页导出为 PNG")) }, onClick = { exportMenu = false; onExportPage() })
+                    DropdownMenuItem(text = { Text(tr("Export editable Inkloom package", "导出可编辑 Inkloom 文件")) }, onClick = { exportMenu = false; onExportBundle() })
                 }
             }
         }
@@ -951,7 +951,7 @@ private fun EditorScreen(
         val visibleOutlinePages = PageOutline.visiblePages(document.pages)
         AlertDialog(
             onDismissRequest = { outlineOpen = false },
-            title = { Text("Page outline") },
+            title = { Text(tr("Page outline", "页面大纲")) },
             text = {
                 LazyColumn(Modifier.widthIn(min = 360.dp, max = 560.dp).heightIn(max = 480.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     items(visibleOutlinePages, key = { it.id }) { page ->
@@ -959,16 +959,16 @@ private fun EditorScreen(
                         val hasChildren = PageOutline.hasChildren(document.pages, index)
                         ListItem(
                             headlineContent = { Text(page.title, maxLines = 1, fontWeight = if (page.outlineLevel == 0) FontWeight.SemiBold else FontWeight.Normal) },
-                            supportingContent = { Text(listOfNotNull(page.customNumber, page.tags.takeIf { it.isNotEmpty() }?.joinToString(" · ")).joinToString(" · ").ifBlank { "Page ${index + 1}" }, color = MutedInk, maxLines = 1) },
-                            leadingContent = { if (page.bookmarked) Icon(Icons.Default.Bookmark, "Bookmarked", tint = Sage) else Text((index + 1).toString(), color = MutedInk) },
-                            trailingContent = { if (hasChildren) IconButton(onClick = { onTogglePageOutlineCollapsed(document.id, page.id) }) { Icon(if (page.outlineCollapsed) Icons.Default.ArrowRight else Icons.Default.ArrowDropDown, if (page.outlineCollapsed) "Expand" else "Collapse") } },
+                            supportingContent = { Text(listOfNotNull(page.customNumber, page.tags.takeIf { it.isNotEmpty() }?.joinToString(" · ")).joinToString(" · ").ifBlank { tr("Page ${index + 1}", "第 ${index + 1} 页") }, color = MutedInk, maxLines = 1) },
+                            leadingContent = { if (page.bookmarked) Icon(Icons.Default.Bookmark, tr("Bookmarked", "已收藏"), tint = Sage) else Text((index + 1).toString(), color = MutedInk) },
+                            trailingContent = { if (hasChildren) IconButton(onClick = { onTogglePageOutlineCollapsed(document.id, page.id) }) { Icon(if (page.outlineCollapsed) Icons.Default.ArrowRight else Icons.Default.ArrowDropDown, if (page.outlineCollapsed) tr("Expand", "展开") else tr("Collapse", "折叠")) } },
                             modifier = Modifier.padding(start = (page.outlineLevel * 18).dp).clickable { onSelectPage(page.id); outlineOpen = false },
                             colors = ListItemDefaults.colors(containerColor = if (page.id == selectedPage.id) SageContainer else Color.Transparent),
                         )
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { outlineOpen = false }) { Text("Done") } },
+            confirmButton = { TextButton(onClick = { outlineOpen = false }) { Text(tr("Done", "完成")) } },
         )
     }
     if (searchOpen) {
@@ -976,18 +976,18 @@ private fun EditorScreen(
         val unindexedPdfPages = document.pages.count { it.background is PageBackground.Pdf && it.pdfTextIndexVersion == 0 }
         AlertDialog(
             onDismissRequest = { searchOpen = false },
-            title = { Text("Search this note") },
+            title = { Text(tr("Search this note", "搜索此笔记")) },
             text = { Column(Modifier.widthIn(min = 340.dp, max = 560.dp)) {
-                OutlinedTextField(documentQuery, { documentQuery = it; searchFocus = null }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, placeholder = { Text("Page, note, or PDF text") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(documentQuery, { documentQuery = it; searchFocus = null }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, placeholder = { Text(tr("Page, note, or PDF text", "页面、笔记或 PDF 文字")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 if (unindexedPdfPages > 0) Surface(Modifier.fillMaxWidth().padding(top = 10.dp), color = Workspace, shape = RoundedCornerShape(10.dp)) {
                     Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(if (pdfIndexing) "Indexing PDF text…" else "$unindexedPdfPages PDF pages need a text index.", Modifier.weight(1f), color = MutedInk, fontSize = 12.sp)
+                        Text(if (pdfIndexing) tr("Indexing PDF text…", "正在索引 PDF 文字…") else tr("$unindexedPdfPages PDF pages need a text index.", "$unindexedPdfPages 个 PDF 页面需要建立文字索引。"), Modifier.weight(1f), color = MutedInk, fontSize = 12.sp)
                         if (pdfIndexing) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
-                        else TextButton(onClick = { onIndexPdfText(document.id) }) { Text("Index now") }
+                        else TextButton(onClick = { onIndexPdfText(document.id) }) { Text(tr("Index now", "立即索引")) }
                     }
                 }
                 Spacer(Modifier.height(10.dp))
-                if (documentQuery.isNotBlank() && results.isEmpty()) Text("No matching page titles, tags, object text, or indexed PDF text.", color = MutedInk)
+                if (documentQuery.isNotBlank() && results.isEmpty()) Text(tr("No matching page titles, tags, object text, or indexed PDF text.", "没有匹配的页面标题、标签、对象文字或已索引 PDF 文字。"), color = MutedInk)
                 else LazyColumn(Modifier.heightIn(max = 340.dp)) { items(results, key = { (page, _) -> page.id }) { (page, hit) ->
                     ListItem(
                         headlineContent = { Text(page.title) },
@@ -997,17 +997,17 @@ private fun EditorScreen(
                     )
                 } }
             } },
-            confirmButton = { TextButton(onClick = { searchOpen = false }) { Text("Done") } },
+            confirmButton = { TextButton(onClick = { searchOpen = false }) { Text(tr("Done", "完成")) } },
         )
     }
-    if (importError != null) AlertDialog(onDismissRequest = onDismissError, confirmButton = { TextButton(onClick = onDismissError) { Text("OK") } }, title = { Text("Import issue") }, text = { Text(importError) })
+    if (importError != null) AlertDialog(onDismissRequest = onDismissError, confirmButton = { TextButton(onClick = onDismissError) { Text(tr("OK", "确定")) } }, title = { Text(tr("Import issue", "导入问题")) }, text = { Text(importError) })
 }
 
 @Composable
 private fun PageRail(document: InkDocument, documents: List<InkDocument>, selectedPageId: String, onSelect: (String) -> Unit, onAdd: () -> Unit, onDuplicate: (String, String) -> Unit, onDelete: (String, String) -> Unit, onMove: (String, String, Int) -> Unit, onTransfer: (String, String, String, Boolean) -> Unit, onSetTemplate: (String, String, PaperPattern) -> Unit, onToggleBookmark: (String, String) -> Unit, onOutlineLevel: (String, String, Int) -> Unit, onOutlineCollapsed: (String, String) -> Unit, onRename: (String, String, String) -> Unit, onMetadata: (String, String, String?, List<String>) -> Unit, onClearInk: (String, String) -> Unit, onCrop: (String, String, PageCrop) -> Unit, onRotate: (String, String) -> Unit) {
     val transferTargets = documents.filter { it.id != document.id && it.trashedAt == null }
     LazyColumn(Modifier.width(112.dp).fillMaxHeight().padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item { Row(verticalAlignment = Alignment.CenterVertically) { Text("Pages", Modifier.weight(1f), color = Ink, maxLines = 1); IconButton(onClick = onAdd, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Add, "Add page") } } }
+        item { Row(verticalAlignment = Alignment.CenterVertically) { Text(tr("Pages", "页面"), Modifier.weight(1f), color = Ink, maxLines = 1); IconButton(onClick = onAdd, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Add, tr("Add page", "添加页面")) } } }
         items(document.pages, key = { it.id }) { page ->
             val pageIndex = document.pages.indexOf(page)
             val hasOutlineChildren = PageOutline.hasChildren(document.pages, pageIndex)
@@ -1025,13 +1025,13 @@ private fun PageRail(document: InkDocument, documents: List<InkDocument>, select
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(Modifier.size(58.dp, 74.dp).background(Color.White, RoundedCornerShape(5.dp)).border(if (page.id == selectedPageId) 2.dp else 1.dp, if (page.id == selectedPageId) Sage else OutlineSoft, RoundedCornerShape(5.dp)).clickable { onSelect(page.id) }.padding(4.dp)) {
                     if (page.background is PageBackground.Pdf) Text("PDF", fontSize = 9.sp, color = Sage)
-                    if (page.bookmarked) Icon(Icons.Default.Bookmark, "Bookmarked", tint = Sage, modifier = Modifier.size(16.dp).align(Alignment.TopEnd))
+                    if (page.bookmarked) Icon(Icons.Default.Bookmark, tr("Bookmarked", "已收藏"), tint = Sage, modifier = Modifier.size(16.dp).align(Alignment.TopEnd))
                 }
                 var pageDragDistance by remember(page.id) { mutableFloatStateOf(0f) }
                 Row(Modifier.width(78.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     Icon(
                         Icons.Outlined.DragIndicator,
-                        "Drag to reorder page",
+                        tr("Drag to reorder page", "拖动调整页面顺序"),
                         Modifier.size(22.dp).pointerInput(page.id) {
                             detectDragGestures(
                                 onDragStart = { pageDragDistance = 0f },
@@ -1047,80 +1047,80 @@ private fun PageRail(document: InkDocument, documents: List<InkDocument>, select
                     )
                     Text(page.customNumber ?: (document.pages.indexOf(page) + 1).toString(), color = if (page.id == selectedPageId) Sage else MutedInk, modifier = Modifier.weight(1f).clip(RoundedCornerShape(5.dp)).clickable { onSelect(page.id) }.padding(vertical = 6.dp), maxLines = 1)
                     if (page.id == selectedPageId) {
-                        Box(Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(Workspace).clickable { menu = true }, contentAlignment = Alignment.Center) { Icon(Icons.Default.MoreVert, "Page menu", modifier = Modifier.size(16.dp)) }
+                        Box(Modifier.size(26.dp).clip(RoundedCornerShape(7.dp)).background(Workspace).clickable { menu = true }, contentAlignment = Alignment.Center) { Icon(Icons.Default.MoreVert, tr("Page menu", "页面菜单"), modifier = Modifier.size(16.dp)) }
                     } else {
                         Spacer(Modifier.size(26.dp))
                     }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                        DropdownMenuItem(text = { Text("Duplicate") }, onClick = { menu = false; onDuplicate(document.id, page.id) })
-                        DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; renameOpen = true })
-                        DropdownMenuItem(text = { Text("Number and tags") }, onClick = { menu = false; metadataOpen = true })
-                        DropdownMenuItem(text = { Text("Move up") }, enabled = document.pages.first().id != page.id, onClick = { menu = false; onMove(document.id, page.id, -1) })
-                        DropdownMenuItem(text = { Text("Move down") }, enabled = document.pages.last().id != page.id, onClick = { menu = false; onMove(document.id, page.id, 1) })
-                        DropdownMenuItem(text = { Text("Move or copy to note") }, enabled = transferTargets.isNotEmpty(), onClick = { menu = false; transferOpen = true })
-                        DropdownMenuItem(text = { Text("Increase outline indent") }, enabled = pageIndex > 0 && page.outlineLevel < 3 && page.outlineLevel <= document.pages[pageIndex - 1].outlineLevel, onClick = { menu = false; onOutlineLevel(document.id, page.id, 1) })
-                        DropdownMenuItem(text = { Text("Decrease outline indent") }, enabled = page.outlineLevel > 0, onClick = { menu = false; onOutlineLevel(document.id, page.id, -1) })
-                        if (hasOutlineChildren) DropdownMenuItem(text = { Text(if (page.outlineCollapsed) "Expand outline children" else "Collapse outline children") }, onClick = { menu = false; onOutlineCollapsed(document.id, page.id) })
-                        DropdownMenuItem(text = { Text("Page template") }, enabled = page.background is PageBackground.Paper, onClick = { menu = false; templateOpen = true })
-                        DropdownMenuItem(text = { Text("Crop page") }, onClick = { menu = false; cropDraft = page.crop; cropOpen = true })
-                        DropdownMenuItem(text = { Text("Rotate 90° clockwise") }, onClick = { menu = false; onRotate(document.id, page.id) })
-                        DropdownMenuItem(text = { Text(if (page.bookmarked) "Remove bookmark" else "Bookmark") }, onClick = { menu = false; onToggleBookmark(document.id, page.id) })
-                        DropdownMenuItem(text = { Text("Clear unlocked ink") }, enabled = page.strokes.any { stroke -> page.layers.firstOrNull { it.id == stroke.layerId }?.locked != true }, onClick = { menu = false; clearOpen = true })
-                        DropdownMenuItem(text = { Text("Delete") }, enabled = document.pages.size > 1, onClick = { menu = false; onDelete(document.id, page.id) })
+                        DropdownMenuItem(text = { Text(tr("Duplicate", "复制")) }, onClick = { menu = false; onDuplicate(document.id, page.id) })
+                        DropdownMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { menu = false; renameOpen = true })
+                        DropdownMenuItem(text = { Text(tr("Number and tags", "页码与标签")) }, onClick = { menu = false; metadataOpen = true })
+                        DropdownMenuItem(text = { Text(tr("Move up", "上移")) }, enabled = document.pages.first().id != page.id, onClick = { menu = false; onMove(document.id, page.id, -1) })
+                        DropdownMenuItem(text = { Text(tr("Move down", "下移")) }, enabled = document.pages.last().id != page.id, onClick = { menu = false; onMove(document.id, page.id, 1) })
+                        DropdownMenuItem(text = { Text(tr("Move or copy to note", "移动或复制到笔记")) }, enabled = transferTargets.isNotEmpty(), onClick = { menu = false; transferOpen = true })
+                        DropdownMenuItem(text = { Text(tr("Increase outline indent", "增加大纲缩进")) }, enabled = pageIndex > 0 && page.outlineLevel < 3 && page.outlineLevel <= document.pages[pageIndex - 1].outlineLevel, onClick = { menu = false; onOutlineLevel(document.id, page.id, 1) })
+                        DropdownMenuItem(text = { Text(tr("Decrease outline indent", "减少大纲缩进")) }, enabled = page.outlineLevel > 0, onClick = { menu = false; onOutlineLevel(document.id, page.id, -1) })
+                        if (hasOutlineChildren) DropdownMenuItem(text = { Text(if (page.outlineCollapsed) tr("Expand outline children", "展开子页面") else tr("Collapse outline children", "折叠子页面")) }, onClick = { menu = false; onOutlineCollapsed(document.id, page.id) })
+                        DropdownMenuItem(text = { Text(tr("Page template", "页面模板")) }, enabled = page.background is PageBackground.Paper, onClick = { menu = false; templateOpen = true })
+                        DropdownMenuItem(text = { Text(tr("Crop page", "裁剪页面")) }, onClick = { menu = false; cropDraft = page.crop; cropOpen = true })
+                        DropdownMenuItem(text = { Text(tr("Rotate 90° clockwise", "顺时针旋转 90°")) }, onClick = { menu = false; onRotate(document.id, page.id) })
+                        DropdownMenuItem(text = { Text(if (page.bookmarked) tr("Remove bookmark", "取消收藏") else tr("Bookmark", "收藏")) }, onClick = { menu = false; onToggleBookmark(document.id, page.id) })
+                        DropdownMenuItem(text = { Text(tr("Clear unlocked ink", "清除未锁定墨迹")) }, enabled = page.strokes.any { stroke -> page.layers.firstOrNull { it.id == stroke.layerId }?.locked != true }, onClick = { menu = false; clearOpen = true })
+                        DropdownMenuItem(text = { Text(tr("Delete", "删除")) }, enabled = document.pages.size > 1, onClick = { menu = false; onDelete(document.id, page.id) })
                     }
                 }
             }
-            if (renameOpen) AlertDialog(onDismissRequest = { renameOpen = false }, title = { Text("Rename page") }, text = { OutlinedTextField(title, { title = it }, singleLine = true) }, confirmButton = { TextButton(onClick = { onRename(document.id, page.id, title); renameOpen = false }) { Text("Save") } }, dismissButton = { TextButton(onClick = { renameOpen = false }) { Text("Cancel") } })
-            if (metadataOpen) AlertDialog(onDismissRequest = { metadataOpen = false }, title = { Text("Page metadata") }, text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { OutlinedTextField(customNumber, { customNumber = it }, label = { Text("Custom page number") }, singleLine = true); OutlinedTextField(tags, { tags = it }, label = { Text("Tags") }, supportingText = { Text("Separate tags with commas") }) } }, confirmButton = { TextButton(onClick = { onMetadata(document.id, page.id, customNumber, tags.split(',')); metadataOpen = false }) { Text("Save") } }, dismissButton = { TextButton(onClick = { metadataOpen = false }) { Text("Cancel") } })
+            if (renameOpen) AlertDialog(onDismissRequest = { renameOpen = false }, title = { Text(tr("Rename page", "重命名页面")) }, text = { OutlinedTextField(title, { title = it }, singleLine = true) }, confirmButton = { TextButton(onClick = { onRename(document.id, page.id, title); renameOpen = false }) { Text(tr("Save", "保存")) } }, dismissButton = { TextButton(onClick = { renameOpen = false }) { Text(tr("Cancel", "取消")) } })
+            if (metadataOpen) AlertDialog(onDismissRequest = { metadataOpen = false }, title = { Text(tr("Page metadata", "页面信息")) }, text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { OutlinedTextField(customNumber, { customNumber = it }, label = { Text(tr("Custom page number", "自定义页码")) }, singleLine = true); OutlinedTextField(tags, { tags = it }, label = { Text(tr("Tags", "标签")) }, supportingText = { Text(tr("Separate tags with commas", "用逗号分隔标签")) }) } }, confirmButton = { TextButton(onClick = { onMetadata(document.id, page.id, customNumber, tags.split(',')); metadataOpen = false }) { Text(tr("Save", "保存")) } }, dismissButton = { TextButton(onClick = { metadataOpen = false }) { Text(tr("Cancel", "取消")) } })
             if (templateOpen) AlertDialog(
                 onDismissRequest = { templateOpen = false },
-                title = { Text("Choose page template") },
+                title = { Text(tr("Choose page template", "选择页面模板")) },
                 text = {
                     Column(Modifier.widthIn(min = 320.dp, max = 480.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         PaperPattern.entries.forEach { pattern ->
                             val selected = (page.background as? PageBackground.Paper)?.pattern == pattern
                             ListItem(
-                                headlineContent = { Text(when (pattern) { PaperPattern.PLAIN -> "Blank"; PaperPattern.RULED -> "Ruled"; PaperPattern.GRID -> "Grid"; PaperPattern.DOT -> "Dot grid" }) },
+                                headlineContent = { Text(when (pattern) { PaperPattern.PLAIN -> tr("Blank", "空白"); PaperPattern.RULED -> tr("Ruled", "横线"); PaperPattern.GRID -> tr("Grid", "方格"); PaperPattern.DOT -> tr("Dot grid", "点阵") }) },
                                 leadingContent = { Icon(if (selected) Icons.Outlined.RadioButtonChecked else Icons.Outlined.RadioButtonUnchecked, null) },
                                 modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable { onSetTemplate(document.id, page.id, pattern); templateOpen = false },
                             )
                         }
                     }
                 },
-                confirmButton = { TextButton(onClick = { templateOpen = false }) { Text("Cancel") } },
+                confirmButton = { TextButton(onClick = { templateOpen = false }) { Text(tr("Cancel", "取消")) } },
             )
-            if (clearOpen) AlertDialog(onDismissRequest = { clearOpen = false }, title = { Text("Clear page ink?") }, text = { Text("All strokes on unlocked layers will be removed. Locked-layer ink is preserved.") }, confirmButton = { TextButton(onClick = { onClearInk(document.id, page.id); clearOpen = false }) { Text("Clear") } }, dismissButton = { TextButton(onClick = { clearOpen = false }) { Text("Cancel") } })
+            if (clearOpen) AlertDialog(onDismissRequest = { clearOpen = false }, title = { Text(tr("Clear page ink?", "清除页面墨迹？")) }, text = { Text(tr("All strokes on unlocked layers will be removed. Locked-layer ink is preserved.", "将删除所有未锁定图层上的笔画，锁定图层中的墨迹会保留。")) }, confirmButton = { TextButton(onClick = { onClearInk(document.id, page.id); clearOpen = false }) { Text(tr("Clear", "清除")) } }, dismissButton = { TextButton(onClick = { clearOpen = false }) { Text(tr("Cancel", "取消")) } })
             if (cropOpen) AlertDialog(
                 onDismissRequest = { cropOpen = false },
-                title = { Text("Crop page") },
+                title = { Text(tr("Crop page", "裁剪页面")) },
                 text = {
                     LazyColumn(Modifier.widthIn(min = 340.dp, max = 520.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        item { Text("The source PDF/image and all page content remain unchanged. Resetting the crop restores the full page.", color = MutedInk, fontSize = 12.sp) }
-                        item { BrushSettingSlider("Left  ${(cropDraft.left * 100).toInt()}%", cropDraft.left, 0f..0.95f) { cropDraft = PageCropTransform.normalized(cropDraft.copy(left = it)) } }
-                        item { BrushSettingSlider("Top  ${(cropDraft.top * 100).toInt()}%", cropDraft.top, 0f..0.95f) { cropDraft = PageCropTransform.normalized(cropDraft.copy(top = it)) } }
-                        item { BrushSettingSlider("Right  ${(cropDraft.right * 100).toInt()}%", cropDraft.right, .05f..1f) { cropDraft = PageCropTransform.normalized(cropDraft.copy(right = it)) } }
-                        item { BrushSettingSlider("Bottom  ${(cropDraft.bottom * 100).toInt()}%", cropDraft.bottom, .05f..1f) { cropDraft = PageCropTransform.normalized(cropDraft.copy(bottom = it)) } }
-                        item { OutlinedButton(onClick = { cropDraft = PageCrop() }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.RestartAlt, null); Spacer(Modifier.width(8.dp)); Text("Reset to full page") } }
+                        item { Text(tr("The source PDF/image and all page content remain unchanged. Resetting the crop restores the full page.", "源 PDF、图片及页面内容不会改变；重置裁剪即可恢复完整页面。"), color = MutedInk, fontSize = 12.sp) }
+                        item { BrushSettingSlider("${tr("Left", "左")}  ${(cropDraft.left * 100).toInt()}%", cropDraft.left, 0f..0.95f) { cropDraft = PageCropTransform.normalized(cropDraft.copy(left = it)) } }
+                        item { BrushSettingSlider("${tr("Top", "上")}  ${(cropDraft.top * 100).toInt()}%", cropDraft.top, 0f..0.95f) { cropDraft = PageCropTransform.normalized(cropDraft.copy(top = it)) } }
+                        item { BrushSettingSlider("${tr("Right", "右")}  ${(cropDraft.right * 100).toInt()}%", cropDraft.right, .05f..1f) { cropDraft = PageCropTransform.normalized(cropDraft.copy(right = it)) } }
+                        item { BrushSettingSlider("${tr("Bottom", "下")}  ${(cropDraft.bottom * 100).toInt()}%", cropDraft.bottom, .05f..1f) { cropDraft = PageCropTransform.normalized(cropDraft.copy(bottom = it)) } }
+                        item { OutlinedButton(onClick = { cropDraft = PageCrop() }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.RestartAlt, null); Spacer(Modifier.width(8.dp)); Text(tr("Reset to full page", "重置为完整页面")) } }
                     }
                 },
-                confirmButton = { Button(onClick = { onCrop(document.id, page.id, cropDraft); cropOpen = false }) { Text("Apply") } },
-                dismissButton = { TextButton(onClick = { cropOpen = false }) { Text("Cancel") } },
+                confirmButton = { Button(onClick = { onCrop(document.id, page.id, cropDraft); cropOpen = false }) { Text(tr("Apply", "应用")) } },
+                dismissButton = { TextButton(onClick = { cropOpen = false }) { Text(tr("Cancel", "取消")) } },
             )
             if (transferOpen) AlertDialog(
                 onDismissRequest = { transferOpen = false },
-                title = { Text("Move or copy page") },
+                title = { Text(tr("Move or copy page", "移动或复制页面")) },
                 text = {
                     LazyColumn(Modifier.widthIn(min = 360.dp, max = 560.dp).heightIn(max = 360.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         items(transferTargets, key = { it.id }) { target ->
                             ListItem(
                                 headlineContent = { Text(target.title, maxLines = 1) },
-                                supportingContent = { Text("${target.pages.size} pages", color = MutedInk) },
-                                trailingContent = { Row { TextButton(onClick = { onTransfer(document.id, page.id, target.id, false); transferOpen = false }) { Text("Move") }; TextButton(onClick = { onTransfer(document.id, page.id, target.id, true); transferOpen = false }) { Text("Copy") } } },
+                                supportingContent = { Text(tr("${target.pages.size} pages", "${target.pages.size} 页"), color = MutedInk) },
+                                trailingContent = { Row { TextButton(onClick = { onTransfer(document.id, page.id, target.id, false); transferOpen = false }) { Text(tr("Move", "移动")) }; TextButton(onClick = { onTransfer(document.id, page.id, target.id, true); transferOpen = false }) { Text(tr("Copy", "复制")) } } },
                             )
                         }
                     }
                 },
-                confirmButton = { TextButton(onClick = { transferOpen = false }) { Text("Cancel") } },
+                confirmButton = { TextButton(onClick = { transferOpen = false }) { Text(tr("Cancel", "取消")) } },
             )
         }
     }
