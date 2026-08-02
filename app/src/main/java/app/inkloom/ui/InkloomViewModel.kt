@@ -3,14 +3,25 @@ package app.inkloom.ui
 import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import app.inkloom.document.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
 
-data class LibraryUiState(val documents: List<InkDocument> = emptyList(), val folders: List<InkFolder> = emptyList(), val selectedDocumentId: String? = null, val selectedPageId: String? = null, val recoveredOperations: Int = 0)
+data class LibraryUiState(
+    val documents: List<InkDocument> = emptyList(),
+    val folders: List<InkFolder> = emptyList(),
+    val selectedDocumentId: String? = null,
+    val selectedPageId: String? = null,
+    val recoveredOperations: Int = 0,
+    val pdfIndexingDocumentIds: Set<String> = emptySet(),
+)
 
 class InkloomViewModel(application: Application) : AndroidViewModel(application) {
     private val store = FileDocumentStore(application.filesDir)
@@ -32,7 +43,12 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun createNote(title: String = "Untitled Note"): InkDocument = InkDocument(title = title).also { store.save(it); refresh(); select(it.id) }
-    fun importPdf(uri: Uri, title: String) = assets.importPdf(uri, title).also { store.save(it); refresh(); select(it.id) }
+    fun importPdf(uri: Uri, title: String) = assets.importPdf(uri, title, indexText = false).also { document ->
+        store.save(document)
+        refresh()
+        select(document.id)
+        indexPdfText(document.id)
+    }
     fun importImage(uri: Uri, title: String) = assets.importImage(uri, title).also { store.save(it); refresh(); select(it.id) }
     fun importBundle(uri: Uri) = assets.importBundle(uri).also { store.save(it); refresh(); select(it.id) }
     fun insertImage(uri: Uri) {
@@ -218,6 +234,31 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     fun exportCurrent(uri: Uri) { currentDocument()?.let { assets.exportPdf(it, uri) } }
     fun exportCurrentPage(uri: Uri) { currentPage()?.let { assets.exportPagePng(it, uri) } }
     fun exportCurrentBundle(uri: Uri) { currentDocument()?.let { assets.exportBundle(it, uri) } }
+
+    fun indexPdfText(documentId: String) {
+        if (documentId in mutableState.value.pdfIndexingDocumentIds) return
+        val document = store.get(documentId) ?: return
+        if (document.pages.none { it.background is PageBackground.Pdf && it.pdfTextIndexVersion == 0 }) return
+        mutableState.value = mutableState.value.copy(pdfIndexingDocumentIds = mutableState.value.pdfIndexingDocumentIds + documentId)
+        viewModelScope.launch {
+            try {
+                val indexed = withContext(Dispatchers.IO) { store.get(documentId)?.let(assets::indexPdfText) }
+                if (indexed != null) withContext(Dispatchers.IO) {
+                    val latest = store.get(documentId) ?: return@withContext
+                    val indexedPages = indexed.pages.associateBy(InkPage::id)
+                    val mergedPages = latest.pages.map { current ->
+                        val indexedPage = indexedPages[current.id] ?: return@map current
+                        if (current.background != indexedPage.background || current.backgroundRotationQuarterTurns != indexedPage.backgroundRotationQuarterTurns) current
+                        else current.copy(pdfTextBlocks = indexedPage.pdfTextBlocks, pdfTextIndexVersion = indexedPage.pdfTextIndexVersion)
+                    }
+                    if (mergedPages != latest.pages) store.save(latest.copy(pages = mergedPages))
+                }
+            } finally {
+                refreshSelection()
+                mutableState.value = mutableState.value.copy(pdfIndexingDocumentIds = mutableState.value.pdfIndexingDocumentIds - documentId)
+            }
+        }
+    }
 
     private fun update(id: String, transform: (InkDocument) -> InkDocument) { store.get(id)?.let(transform)?.let(store::save); refreshSelection() }
     private fun updatePage(documentId: String, pageId: String, transform: (InkPage) -> InkPage) = update(documentId) { document ->

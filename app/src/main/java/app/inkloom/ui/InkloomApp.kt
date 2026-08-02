@@ -218,6 +218,8 @@ fun InkloomApp(initialIntent: Intent?) {
             onExportBundle = { bundleExportPicker.launch("${viewModel.currentDocument()?.title ?: "Inkloom"}.inkloom.zip") },
             assets = viewModel.assets,
             settings = settings,
+            pdfIndexing = libraryState.selectedDocumentId in libraryState.pdfIndexingDocumentIds,
+            onIndexPdfText = viewModel::indexPdfText,
             onSettings = { settingsOpen = true },
             onSettingsChange = ::updateSettings,
         )
@@ -233,9 +235,7 @@ private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>
     var search by remember { mutableStateOf("") }
     var folderId by remember { mutableStateOf<String?>(null) }
     val visible = documents.filter { document ->
-        val matchesSearch = search.isBlank() || document.title.contains(search, true) || document.tags.any { it.contains(search, true) } || document.pages.any { page ->
-            page.title.contains(search, true) || page.customNumber?.contains(search, true) == true || page.tags.any { it.contains(search, true) } || page.elements.any { element -> when (element) { is PageElement.Text -> element.text.contains(search, true); is PageElement.Sticky -> element.text.contains(search, true); is PageElement.AudioMarker -> element.title.contains(search, true); else -> false } }
-        }
+        val matchesSearch = search.isBlank() || document.title.contains(search, true) || document.tags.any { it.contains(search, true) } || document.pages.any { PageSearch.matches(it, search) }
         matchesSearch && (folderId == null || document.folderId == folderId) && when (filter) {
             LibraryFilter.ALL -> document.trashedAt == null && document.archivedAt == null
             LibraryFilter.FAVORITES -> document.favorite && document.trashedAt == null && document.archivedAt == null
@@ -429,6 +429,8 @@ private fun EditorScreen(
     onExportBundle: () -> Unit,
     assets: DocumentAssetService,
     settings: AppSettings,
+    pdfIndexing: Boolean,
+    onIndexPdfText: (String) -> Unit,
     onSettings: () -> Unit,
     onSettingsChange: (AppSettings) -> Unit,
 ) {
@@ -457,6 +459,7 @@ private fun EditorScreen(
     }
     var inputDiagnostic by remember { mutableStateOf("Waiting for input") }
     var searchOpen by remember { mutableStateOf(false) }
+    var searchFocus by remember(document.id) { mutableStateOf<PageSearchHit?>(null) }
     var outlineOpen by remember { mutableStateOf(false) }
     var documentQuery by remember { mutableStateOf("") }
     var textInsertOpen by remember { mutableStateOf(false) }
@@ -543,6 +546,7 @@ private fun EditorScreen(
                     shapeKind = insertShape,
                     activeLayerId = activeLayerId,
                     localEraser = localEraser,
+                    searchBounds = searchFocus?.takeIf { it.pageId == selectedPage.id }?.bounds,
                     onInputDiagnostic = { kind, pressure, tilt, buttons -> inputDiagnostic = "$kind  pressure ${"%.3f".format(pressure)}  tilt ${"%.2f".format(Math.toDegrees(tilt.toDouble()))}°  buttons $buttons" },
                 )
                 val dockVertical = settings.toolbarDock in setOf(ToolbarDock.LEFT, ToolbarDock.RIGHT) || (settings.toolbarDock == ToolbarDock.FREE && settings.verticalToolbar)
@@ -692,13 +696,31 @@ private fun EditorScreen(
         )
     }
     if (searchOpen) {
-        val results = if (documentQuery.isBlank()) emptyList() else document.pages.filter { page ->
-            page.title.contains(documentQuery, true) || page.customNumber?.contains(documentQuery, true) == true || page.tags.any { it.contains(documentQuery, true) } || page.elements.any { element -> when (element) { is PageElement.Text -> element.text.contains(documentQuery, true); is PageElement.Sticky -> element.text.contains(documentQuery, true); is PageElement.AudioMarker -> element.title.contains(documentQuery, true); else -> false } }
-        }
+        val results = if (documentQuery.isBlank()) emptyList() else document.pages.mapNotNull { page -> PageSearch.find(page, documentQuery)?.let { page to it } }
+        val unindexedPdfPages = document.pages.count { it.background is PageBackground.Pdf && it.pdfTextIndexVersion == 0 }
         AlertDialog(
             onDismissRequest = { searchOpen = false },
             title = { Text("Search this note") },
-            text = { Column(Modifier.widthIn(min = 340.dp, max = 520.dp)) { OutlinedTextField(documentQuery, { documentQuery = it }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, singleLine = true, modifier = Modifier.fillMaxWidth()); Spacer(Modifier.height(10.dp)); if (documentQuery.isNotBlank() && results.isEmpty()) Text("No matching page titles, tags, text, or sticky notes.", color = MutedInk) else LazyColumn(Modifier.heightIn(max = 320.dp)) { items(results, key = { it.id }) { page -> ListItem(headlineContent = { Text(page.title) }, supportingContent = { Text(listOfNotNull(page.customNumber, page.tags.takeIf { it.isNotEmpty() }?.joinToString(" · ")).joinToString(" · ").ifBlank { "Text match" }) }, modifier = Modifier.clickable { onSelectPage(page.id); searchOpen = false }) } } } },
+            text = { Column(Modifier.widthIn(min = 340.dp, max = 560.dp)) {
+                OutlinedTextField(documentQuery, { documentQuery = it; searchFocus = null }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, placeholder = { Text("Page, note, or PDF text") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                if (unindexedPdfPages > 0) Surface(Modifier.fillMaxWidth().padding(top = 10.dp), color = Workspace, shape = RoundedCornerShape(10.dp)) {
+                    Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(if (pdfIndexing) "Indexing PDF text…" else "$unindexedPdfPages PDF pages need a text index.", Modifier.weight(1f), color = MutedInk, fontSize = 12.sp)
+                        if (pdfIndexing) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                        else TextButton(onClick = { onIndexPdfText(document.id) }) { Text("Index now") }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                if (documentQuery.isNotBlank() && results.isEmpty()) Text("No matching page titles, tags, object text, or indexed PDF text.", color = MutedInk)
+                else LazyColumn(Modifier.heightIn(max = 340.dp)) { items(results, key = { (page, _) -> page.id }) { (page, hit) ->
+                    ListItem(
+                        headlineContent = { Text(page.title) },
+                        supportingContent = { Text(hit.snippet, maxLines = 2) },
+                        leadingContent = { Text(when (hit.source) { PageSearchSource.PDF -> "PDF"; PageSearchSource.OBJECT -> "OBJ"; PageSearchSource.PAGE -> "PAGE" }, color = Sage, fontSize = 9.sp) },
+                        modifier = Modifier.clickable { searchFocus = hit; onSelectPage(page.id); searchOpen = false },
+                    )
+                } }
+            } },
             confirmButton = { TextButton(onClick = { searchOpen = false }) { Text("Done") } },
         )
     }
@@ -794,7 +816,7 @@ private fun PageRail(document: InkDocument, documents: List<InkDocument>, select
 }
 
 @Composable
-private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, onZoom: (Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onUndoGesture: () -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, localEraser: Boolean, onInputDiagnostic: (String, Float, Float, Int) -> Unit) {
+private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, onZoom: (Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onUndoGesture: () -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, localEraser: Boolean, searchBounds: PdfTextBounds?, onInputDiagnostic: (String, Float, Float, Int) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val backgroundVisible = page.layers.firstOrNull { it.role == LayerRole.BACKGROUND }?.visible != false
     val background = remember(page.id, page.background, page.backgroundRotationQuarterTurns, page.crop, backgroundVisible) { if (backgroundVisible) runCatching { assets.renderBackground(page.background, 1200, page.backgroundRotationQuarterTurns, page.crop) }.getOrNull() else null }
@@ -851,6 +873,14 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
             },
             modifier = Modifier.fillMaxSize(),
         )
+        searchBounds?.let { PageCropTransform.project(it, page.crop) }?.let { bounds ->
+            Canvas(Modifier.fillMaxSize()) {
+                val topLeft = Offset(bounds.left * size.width, bounds.top * size.height)
+                val highlightSize = androidx.compose.ui.geometry.Size((bounds.right - bounds.left) * size.width, (bounds.bottom - bounds.top) * size.height)
+                drawRect(Color(0x33111111), topLeft = topLeft, size = highlightSize)
+                drawRect(Color(0xFF111111), topLeft = topLeft, size = highlightSize, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx()))
+            }
+        }
         renderedPage.elements.filter { it.layerId in visibleLayerIds }.sortedBy { layerOrder[it.layerId] ?: Int.MAX_VALUE }.forEach { element ->
             ObjectElementView(
                 element = element,

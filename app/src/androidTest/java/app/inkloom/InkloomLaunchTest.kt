@@ -41,4 +41,11 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("Write inside sticky note").assertIsDisplayed()
         composeRule.onNodeWithText("System pen").assertIsDisplayed()
     }
+
+    @Test fun editorExposesUnifiedPageAndPdfSearch() {
+        composeRule.onNodeWithText("New Note").performClick()
+        composeRule.onNodeWithContentDescription("Search this note").performClick()
+
+        composeRule.onNodeWithText("Page, note, or PDF text").assertIsDisplayed()
+    }
 }
