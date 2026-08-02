@@ -72,6 +72,7 @@ class StrokeEraserTest {
     fun preservesTheCompleteBrushSnapshotOnEveryPiece() {
         val stroke = InkStroke(
             id = "source",
+            renderSeed = 77_707,
             points = listOf(StrokePoint(.1f, .5f), StrokePoint(.9f, .5f)),
             width = 42f,
             brushId = "imported-sut",
@@ -88,6 +89,7 @@ class StrokeEraserTest {
             assertEquals(.72f, piece.grainDensity)
             assertTrue(piece.dualBrush)
             assertTrue(piece.watercolor)
+            assertEquals(77_707, piece.renderSeed)
         }
     }
 }

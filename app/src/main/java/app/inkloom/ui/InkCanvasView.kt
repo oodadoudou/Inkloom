@@ -301,38 +301,38 @@ class InkCanvasView(context: Context) : View(context) {
         val scale = width.coerceAtLeast(1) / REFERENCE_WIDTH
         val taper = StrokeTaper.factors(stroke.points, width.toFloat(), height.toFloat(), stroke.taperMode, stroke.taperStartEnabled, stroke.taperStartLength, stroke.taperStartLengthUnit, stroke.taperStartMinimum, stroke.taperEndEnabled, stroke.taperEndLength, stroke.taperEndLengthUnit, stroke.taperEndMinimum)
         if (stroke.points.size == 1) {
-            val point = stroke.points.first(); val strokeWidth = stroke.width * scale * taper.firstOrNull().orDefault() * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, point.pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.id, SALT_SIZE); val alpha = (stroke.opacity * pressureDynamic(stroke.opacityPressureEnabled, stroke.opacityPressureMinimum, stroke.opacityPressureCurve, point.pressure) * secondaryDynamic(stroke.opacitySecondaryDynamics, point, stroke.id, SALT_OPACITY) * stroke.flow * pressureDynamic(stroke.flowPressureEnabled, stroke.flowPressureMinimum, stroke.flowPressureCurve, point.pressure) * secondaryDynamic(stroke.flowSecondaryDynamics, point, stroke.id, SALT_FLOW) * 255).toInt().coerceIn(1, 255); drawLinePoint(canvas, stroke, point.x * width, point.y * height, strokeWidth, alpha)
+            val point = stroke.points.first(); val strokeWidth = stroke.width * scale * taper.firstOrNull().orDefault() * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, point.pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.renderSeed, SALT_SIZE); val alpha = (stroke.opacity * pressureDynamic(stroke.opacityPressureEnabled, stroke.opacityPressureMinimum, stroke.opacityPressureCurve, point.pressure) * secondaryDynamic(stroke.opacitySecondaryDynamics, point, stroke.renderSeed, SALT_OPACITY) * stroke.flow * pressureDynamic(stroke.flowPressureEnabled, stroke.flowPressureMinimum, stroke.flowPressureCurve, point.pressure) * secondaryDynamic(stroke.flowSecondaryDynamics, point, stroke.renderSeed, SALT_FLOW) * 255).toInt().coerceIn(1, 255); drawLinePoint(canvas, stroke, point.x * width, point.y * height, strokeWidth, alpha)
         } else stroke.points.zipWithNext().forEachIndexed { index, (start, end) ->
             val point = midpoint(start, end); val pressure = point.pressure.coerceIn(0f, 1f)
             val taperFactor = (taper[index] + taper[index + 1]) / 2f
-            val strokeWidth = stroke.width * scale * taperFactor * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.id, SALT_SIZE)
-            val alpha = (stroke.opacity * pressureDynamic(stroke.opacityPressureEnabled, stroke.opacityPressureMinimum, stroke.opacityPressureCurve, pressure) * secondaryDynamic(stroke.opacitySecondaryDynamics, point, stroke.id, SALT_OPACITY) * stroke.flow * pressureDynamic(stroke.flowPressureEnabled, stroke.flowPressureMinimum, stroke.flowPressureCurve, pressure) * secondaryDynamic(stroke.flowSecondaryDynamics, point, stroke.id, SALT_FLOW) * 255).toInt().coerceIn(1, 255)
+            val strokeWidth = stroke.width * scale * taperFactor * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.renderSeed, SALT_SIZE)
+            val alpha = (stroke.opacity * pressureDynamic(stroke.opacityPressureEnabled, stroke.opacityPressureMinimum, stroke.opacityPressureCurve, pressure) * secondaryDynamic(stroke.opacitySecondaryDynamics, point, stroke.renderSeed, SALT_OPACITY) * stroke.flow * pressureDynamic(stroke.flowPressureEnabled, stroke.flowPressureMinimum, stroke.flowPressureCurve, pressure) * secondaryDynamic(stroke.flowSecondaryDynamics, point, stroke.renderSeed, SALT_FLOW) * 255).toInt().coerceIn(1, 255)
             drawLineSegment(canvas, stroke, start.x * width, start.y * height, end.x * width, end.y * height, strokeWidth, alpha)
         }
     }
 
     private fun drawStampedStroke(canvas: Canvas, stroke: InkStroke, tips: List<Bitmap>, dualTips: List<Bitmap>) {
         val referenceScale = width.coerceAtLeast(1) / REFERENCE_WIDTH
-        val scatterRandom = java.util.Random(stroke.id.hashCode().toLong())
-        val rotationRandom = java.util.Random(stroke.id.hashCode().toLong() xor 0x49A2B31DL)
+        val scatterRandom = java.util.Random(stroke.renderSeed.toLong())
+        val rotationRandom = java.util.Random(stroke.renderSeed.toLong() xor 0x49A2B31DL)
         val sampledPoints = StrokeStampSampler.sample(stroke.points, width.toFloat(), height.toFloat()) { point ->
             val pressure = point.pressure.coerceIn(0f, 1f)
-            val diameter = (stroke.width * referenceScale * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.id, SALT_SIZE)).coerceAtLeast(1f)
-            val spacingDynamic = pressureDynamic(stroke.spacingPressureEnabled, stroke.spacingPressureMinimum, stroke.spacingPressureCurve, pressure) * secondaryDynamic(stroke.spacingSecondaryDynamics, point, stroke.id, SALT_SPACING)
+            val diameter = (stroke.width * referenceScale * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.renderSeed, SALT_SIZE)).coerceAtLeast(1f)
+            val spacingDynamic = pressureDynamic(stroke.spacingPressureEnabled, stroke.spacingPressureMinimum, stroke.spacingPressureCurve, pressure) * secondaryDynamic(stroke.spacingSecondaryDynamics, point, stroke.renderSeed, SALT_SPACING)
             diameter * (if (stroke.ribbon) stroke.spacing.coerceIn(.01f, .06f) else stroke.spacing.coerceIn(.01f, 2f)) * spacingDynamic.coerceIn(.01f, 1f) / if (stroke.spray) SprayGeometry.particlesPerPlot(stroke.sprayDensity) else 1
         }
         val taper = StrokeTaper.factors(sampledPoints, width.toFloat(), height.toFloat(), stroke.taperMode, stroke.taperStartEnabled, stroke.taperStartLength, stroke.taperStartLengthUnit, stroke.taperStartMinimum, stroke.taperEndEnabled, stroke.taperEndLength, stroke.taperEndLengthUnit, stroke.taperEndMinimum)
         sampledPoints.forEachIndexed { index, point ->
-            val tipIndex = BrushTipSequence.index(stroke.tipSequenceMode, index, tips.size, stroke.id.hashCode(), stroke.ribbon) ?: return@forEachIndexed
+            val tipIndex = BrushTipSequence.index(stroke.tipSequenceMode, index, tips.size, stroke.renderSeed, stroke.ribbon) ?: return@forEachIndexed
             val tip = tips[tipIndex]
             val x = point.x * width; val y = point.y * height
             val pressure = point.pressure.coerceIn(0f, 1f)
-            val brushDiameter = (stroke.width * referenceScale * taper[index] * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.id, SALT_SIZE)).coerceAtLeast(.25f)
+            val brushDiameter = (stroke.width * referenceScale * taper[index] * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.renderSeed, SALT_SIZE)).coerceAtLeast(.25f)
             val diameter = if (stroke.spray) SprayGeometry.particleDiameter(brushDiameter, stroke.sprayParticleSize, stroke.sprayParticleSizeUnit, stroke.sprayParticleSizeSyncBrushSize, width.toFloat()) else brushDiameter
             val offset = if (stroke.spray) SprayGeometry.offset(brushDiameter / 2f, scatterRandom.nextFloat(), scatterRandom.nextFloat(), stroke.sprayBias) else app.inkloom.document.SprayOffset(0f, 0f)
             val drawX = x + offset.x
             val drawY = y + offset.y
-            val dynamicThickness = pressureDynamic(stroke.thicknessPressureEnabled, stroke.thicknessPressureMinimum, stroke.thicknessPressureCurve, pressure) * secondaryDynamic(stroke.thicknessSecondaryDynamics, point, stroke.id, SALT_THICKNESS)
+            val dynamicThickness = pressureDynamic(stroke.thicknessPressureEnabled, stroke.thicknessPressureMinimum, stroke.thicknessPressureCurve, pressure) * secondaryDynamic(stroke.thicknessSecondaryDynamics, point, stroke.renderSeed, SALT_THICKNESS)
             val thicknessScale = stroke.thickness.coerceIn(.05f, 2f) * dynamicThickness
             val tipScale = BrushTipTransform.scale(tip.width, tip.height, diameter, thicknessScale, stroke.thicknessVertical)
             val scaleX = tipScale.x
@@ -348,8 +348,8 @@ class InkCanvasView(context: Context) : View(context) {
                 postTranslate(drawX, drawY)
             }
             paint.colorFilter = PorterDuffColorFilter(stroke.colorArgb.toInt(), PorterDuff.Mode.SRC_IN)
-            val opacityDynamic = pressureDynamic(stroke.opacityPressureEnabled, stroke.opacityPressureMinimum, stroke.opacityPressureCurve, pressure) * secondaryDynamic(stroke.opacitySecondaryDynamics, point, stroke.id, SALT_OPACITY)
-            val flowDynamic = pressureDynamic(stroke.flowPressureEnabled, stroke.flowPressureMinimum, stroke.flowPressureCurve, pressure) * secondaryDynamic(stroke.flowSecondaryDynamics, point, stroke.id, SALT_FLOW)
+            val opacityDynamic = pressureDynamic(stroke.opacityPressureEnabled, stroke.opacityPressureMinimum, stroke.opacityPressureCurve, pressure) * secondaryDynamic(stroke.opacitySecondaryDynamics, point, stroke.renderSeed, SALT_OPACITY)
+            val flowDynamic = pressureDynamic(stroke.flowPressureEnabled, stroke.flowPressureMinimum, stroke.flowPressureCurve, pressure) * secondaryDynamic(stroke.flowSecondaryDynamics, point, stroke.renderSeed, SALT_FLOW)
             val mainAlpha = (stroke.opacity * opacityDynamic * stroke.flow * flowDynamic * if (stroke.watercolor) .72f else 1f).coerceIn(.01f, 1f).times(255).toInt()
             if (stroke.waterEdgeEnabled && stroke.waterEdgeOpacity > 0f) {
                 val edgeRadius = WaterEdge.distancePixels(stroke.waterEdgeRadius, stroke.waterEdgeRadiusUnit, width.toFloat())
@@ -375,33 +375,33 @@ class InkCanvasView(context: Context) : View(context) {
      * semantics are verified this pass deliberately uses Android SRC_OVER. */
     private fun drawDualStampedStroke(canvas: Canvas, stroke: InkStroke, tips: List<Bitmap>) {
         val referenceScale = width.coerceAtLeast(1) / REFERENCE_WIDTH
-        val scatterRandom = java.util.Random(stroke.id.hashCode().toLong() xor DUAL_SCATTER_SEED)
-        val rotationRandom = java.util.Random(stroke.id.hashCode().toLong() xor DUAL_ROTATION_SEED)
+        val scatterRandom = java.util.Random(stroke.renderSeed.toLong() xor DUAL_SCATTER_SEED)
+        val rotationRandom = java.util.Random(stroke.renderSeed.toLong() xor DUAL_ROTATION_SEED)
         val sampledPoints = StrokeStampSampler.sample(stroke.points, width.toFloat(), height.toFloat()) { point ->
             val pressure = point.pressure.coerceIn(0f, 1f)
-            val diameter = (stroke.width * referenceScale * stroke.dualSizeScale.coerceIn(.01f, 8f) * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.id, SALT_SIZE)).coerceAtLeast(1f)
-            val spacingDynamic = pressureDynamic(stroke.spacingPressureEnabled, stroke.spacingPressureMinimum, stroke.spacingPressureCurve, pressure) * secondaryDynamic(stroke.spacingSecondaryDynamics, point, stroke.id, SALT_SPACING)
+            val diameter = (stroke.width * referenceScale * stroke.dualSizeScale.coerceIn(.01f, 8f) * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.renderSeed, SALT_SIZE)).coerceAtLeast(1f)
+            val spacingDynamic = pressureDynamic(stroke.spacingPressureEnabled, stroke.spacingPressureMinimum, stroke.spacingPressureCurve, pressure) * secondaryDynamic(stroke.spacingSecondaryDynamics, point, stroke.renderSeed, SALT_SPACING)
             diameter * (if (stroke.dualRibbon) stroke.dualSpacing.coerceIn(.01f, .06f) else stroke.dualSpacing.coerceIn(.01f, 2f)) * spacingDynamic.coerceIn(.01f, 1f) / if (stroke.dualSpray) SprayGeometry.particlesPerPlot(stroke.dualSprayDensity) else 1
         }
         val taper = StrokeTaper.factors(sampledPoints, width.toFloat(), height.toFloat(), stroke.taperMode, stroke.taperStartEnabled, stroke.taperStartLength, stroke.taperStartLengthUnit, stroke.taperStartMinimum, stroke.taperEndEnabled, stroke.taperEndLength, stroke.taperEndLengthUnit, stroke.taperEndMinimum)
         sampledPoints.forEachIndexed { index, point ->
-            val tipIndex = BrushTipSequence.index(stroke.dualTipSequenceMode, index, tips.size, stroke.id.hashCode() xor DUAL_SEQUENCE_SEED, stroke.dualRibbon) ?: return@forEachIndexed
+            val tipIndex = BrushTipSequence.index(stroke.dualTipSequenceMode, index, tips.size, stroke.renderSeed xor DUAL_SEQUENCE_SEED, stroke.dualRibbon) ?: return@forEachIndexed
             val tip = tips[tipIndex]
             val pressure = point.pressure.coerceIn(0f, 1f)
-            val brushDiameter = (stroke.width * referenceScale * stroke.dualSizeScale.coerceIn(.01f, 8f) * taper[index] * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.id, SALT_SIZE)).coerceAtLeast(.25f)
+            val brushDiameter = (stroke.width * referenceScale * stroke.dualSizeScale.coerceIn(.01f, 8f) * taper[index] * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.renderSeed, SALT_SIZE)).coerceAtLeast(.25f)
             val diameter = if (stroke.dualSpray) SprayGeometry.particleDiameter(brushDiameter, stroke.dualSprayParticleSize, stroke.dualSprayParticleSizeUnit, stroke.dualSprayParticleSizeSyncBrushSize, width.toFloat()) else brushDiameter
             val offset = if (stroke.dualSpray) SprayGeometry.offset(brushDiameter / 2f, scatterRandom.nextFloat(), scatterRandom.nextFloat(), stroke.dualSprayBias) else app.inkloom.document.SprayOffset(0f, 0f)
             val drawX = point.x * width + offset.x
             val drawY = point.y * height + offset.y
-            val dynamicThickness = pressureDynamic(stroke.thicknessPressureEnabled, stroke.thicknessPressureMinimum, stroke.thicknessPressureCurve, pressure) * secondaryDynamic(stroke.thicknessSecondaryDynamics, point, stroke.id, SALT_THICKNESS)
+            val dynamicThickness = pressureDynamic(stroke.thicknessPressureEnabled, stroke.thicknessPressureMinimum, stroke.thicknessPressureCurve, pressure) * secondaryDynamic(stroke.thicknessSecondaryDynamics, point, stroke.renderSeed, SALT_THICKNESS)
             val tipScale = BrushTipTransform.scale(tip.width, tip.height, diameter, stroke.dualThickness.coerceIn(.05f, 2f) * dynamicThickness, stroke.dualThicknessVertical)
             val angle = stroke.dualRotationDegrees +
                 (if (stroke.dualFollowStylusOrientation) Math.toDegrees(point.orientation.toDouble()).toFloat() else 0f) +
                 (if (stroke.dualFollowStrokeDirection || stroke.dualRibbon) StrokeStampSampler.directionDegrees(sampledPoints, index, width.toFloat(), height.toFloat()) else 0f) +
                 (rotationRandom.nextFloat() - .5f) * 2f * stroke.dualRandomRotationDegrees.coerceIn(0f, 180f)
             val matrix = Matrix().apply { postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(tipScale.x, tipScale.y); postRotate(angle); postTranslate(drawX, drawY) }
-            val opacityDynamic = pressureDynamic(stroke.opacityPressureEnabled, stroke.opacityPressureMinimum, stroke.opacityPressureCurve, pressure) * secondaryDynamic(stroke.opacitySecondaryDynamics, point, stroke.id, SALT_OPACITY)
-            val flowDynamic = pressureDynamic(stroke.flowPressureEnabled, stroke.flowPressureMinimum, stroke.flowPressureCurve, pressure) * secondaryDynamic(stroke.flowSecondaryDynamics, point, stroke.id, SALT_FLOW)
+            val opacityDynamic = pressureDynamic(stroke.opacityPressureEnabled, stroke.opacityPressureMinimum, stroke.opacityPressureCurve, pressure) * secondaryDynamic(stroke.opacitySecondaryDynamics, point, stroke.renderSeed, SALT_OPACITY)
+            val flowDynamic = pressureDynamic(stroke.flowPressureEnabled, stroke.flowPressureMinimum, stroke.flowPressureCurve, pressure) * secondaryDynamic(stroke.flowSecondaryDynamics, point, stroke.renderSeed, SALT_FLOW)
             paint.colorFilter = PorterDuffColorFilter(stroke.colorArgb.toInt(), PorterDuff.Mode.SRC_IN)
             paint.alpha = (stroke.opacity * opacityDynamic * stroke.dualFlow.coerceIn(0f, 1f) * flowDynamic * if (stroke.watercolor) .72f else 1f).coerceIn(.01f, 1f).times(255).toInt()
             canvas.drawBitmap(tip, matrix, paint)
@@ -864,7 +864,7 @@ class InkCanvasView(context: Context) : View(context) {
         return BrushDynamics.pressure(enabled, minimum, curve, input)
     }
 
-    private fun secondaryDynamic(dynamics: BrushSecondaryDynamics, point: StrokePoint, strokeId: String, salt: Int): Float = BrushDynamics.secondary(dynamics, point, strokeId.hashCode(), salt)
+    private fun secondaryDynamic(dynamics: BrushSecondaryDynamics, point: StrokePoint, strokeSeed: Int, salt: Int): Float = BrushDynamics.secondary(dynamics, point, strokeSeed, salt)
 
     private fun midpoint(start: StrokePoint, end: StrokePoint) = StrokePoint(
         x = (start.x + end.x) / 2f, y = (start.y + end.y) / 2f,

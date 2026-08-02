@@ -121,6 +121,7 @@ data class BrushSecondaryDynamics(
 @Serializable
 data class InkStroke(
     val id: String = UUID.randomUUID().toString(),
+    val renderSeed: Int = id.hashCode(),
     val points: List<StrokePoint>,
     val colorArgb: Long = 0xFF111111,
     val width: Float = 5f,

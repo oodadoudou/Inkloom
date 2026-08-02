@@ -31,6 +31,7 @@ class LassoGeometryTest {
     @Test fun splitsASparseCrossingStrokeIntoOutsideAndSelectedPieces() {
         val stroke = InkStroke(
             id = "source",
+            renderSeed = 42_424,
             points = listOf(
                 StrokePoint(.1f, .5f, pressure = .2f, timeMs = 0L, tilt = .1f, velocity = .2f),
                 StrokePoint(.9f, .5f, pressure = 1f, timeMs = 100L, tilt = .5f, velocity = .8f),
@@ -43,6 +44,7 @@ class LassoGeometryTest {
         assertTrue(partition.changed)
         assertEquals(listOf(false, true, false), partition.pieces.map(LassoStrokePiece::selected))
         assertEquals(listOf("left", "inside", "right"), partition.pieces.map { it.stroke.id })
+        assertEquals(listOf(42_424, 42_424, 42_424), partition.pieces.map { it.stroke.renderSeed })
         val selected = partition.pieces[1].stroke.points
         assertEquals(.2f, selected.first().x, .0001f)
         assertEquals(.8f, selected.last().x, .0001f)

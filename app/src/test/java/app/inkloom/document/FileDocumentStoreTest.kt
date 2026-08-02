@@ -147,6 +147,22 @@ class FileDocumentStoreTest {
         assertEquals(.7f, recovered.first { it.id == "first" }.points.single().x)
     }
 
+    @Test fun preservesStrokeRenderSeedAndLoadsLegacyStrokesDeterministically() {
+        val json = Json { prettyPrint = true; classDiscriminator = "type"; ignoreUnknownKeys = true }
+        val explicit = InkStroke(
+            id = "explicit-seed",
+            renderSeed = 91_337,
+            points = listOf(StrokePoint(.1f, .2f), StrokePoint(.3f, .4f)),
+        )
+
+        val restored = json.decodeFromString<InkStroke>(json.encodeToString(explicit))
+        assertEquals(91_337, restored.renderSeed)
+
+        val legacy = """{"id":"legacy-stroke","points":[{"x":0.1,"y":0.2}]}"""
+        val legacyRestored = json.decodeFromString<InkStroke>(legacy)
+        assertEquals("legacy-stroke".hashCode(), legacyRestored.renderSeed)
+    }
+
     @Test fun positionedStrokeReplacementPreservesExactZOrderAndRecovery() {
         val store = FileDocumentStore(Files.createTempDirectory("inkloom-positioned-strokes").toFile())
         val back = InkStroke(id = "back", points = listOf(StrokePoint(.1f, .1f)))
