@@ -6,6 +6,7 @@ import app.inkloom.document.BrushTaperMode
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.OutputStream
 import java.util.zip.ZipEntry
@@ -171,9 +172,18 @@ class InkloomBrushPackage(private val assetDirectory: File) {
     private fun readBounded(zip: ZipFile, entry: ZipEntry, limit: Long): ByteArray {
         require(entry.size in 1..limit) { "Inkloom brush manifest exceeds the safety limit" }
         return zip.getInputStream(entry).use { input ->
-            val bytes = input.readNBytes(limit.toInt() + 1)
-            require(bytes.size.toLong() == entry.size && bytes.size <= limit) { "Inkloom brush manifest is truncated or oversized" }
-            bytes
+            val output = ByteArrayOutputStream(entry.size.toInt())
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            var total = 0L
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                total += count
+                require(total <= limit) { "Inkloom brush manifest exceeds the safety limit" }
+                output.write(buffer, 0, count)
+            }
+            require(total == entry.size) { "Inkloom brush manifest is truncated" }
+            output.toByteArray()
         }
     }
 
