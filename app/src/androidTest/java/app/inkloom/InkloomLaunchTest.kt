@@ -1,10 +1,14 @@
 package app.inkloom
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.doubleClick
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Rule
 import org.junit.Test
@@ -22,5 +26,19 @@ class InkloomLaunchTest {
     @Test fun settingsExposeInputAndToolControls() {
         composeRule.onNodeWithContentDescription("Settings").performClick()
         composeRule.onNodeWithText("Draw with finger").assertIsDisplayed()
+    }
+
+    @Test fun stickyNoteDoubleTapOpensItsInkSubcanvas() {
+        val noteText = "Sticky canvas test"
+        composeRule.onNodeWithText("New Note").performClick()
+        composeRule.onNodeWithContentDescription("Note").performClick()
+        composeRule.onNodeWithText("New sticky note").assertIsDisplayed()
+        composeRule.onNode(hasSetTextAction()).performTextInput(noteText)
+        composeRule.onNodeWithText("Insert").performClick()
+
+        composeRule.onNodeWithText(noteText).performTouchInput { doubleClick() }
+
+        composeRule.onNodeWithText("Write inside sticky note").assertIsDisplayed()
+        composeRule.onNodeWithText("System pen").assertIsDisplayed()
     }
 }

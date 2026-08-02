@@ -8,9 +8,11 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -50,6 +52,8 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.inkloom.document.*
 import app.inkloom.importer.BrushImportRepository
@@ -839,109 +843,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onShapeCommitted = { onElement(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
                 view.onStrokeRemoved = { onRemoveStroke(documentId, page.id, it) }
                 view.onStrokesReplaced = { removed, replacements, indices -> onStrokesReplaced(documentId, page.id, removed, replacements.map { PageCropTransform.unproject(it, page.crop) }, indices) }
-                view.fingerDrawingEnabled = settings.fingerDrawing
-                view.twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo
-                view.pressureSensitivity = settings.pressureSensitivity
-                view.pressureMinimumInput = settings.pressureMinimumInput
-                view.pressureMaximumInput = settings.pressureMaximumInput
-                view.stabilization = maxOf(settings.stabilization, activeBrush?.stabilization ?: 0f)
-                view.stabilizationBySpeed = activeBrush?.stabilizationBySpeed ?: false
-                view.stabilizationBySpeedMode = activeBrush?.stabilizationBySpeedMode ?: StrokeStabilization.REDUCE_WHEN_FAST
-                view.primaryButtonAction = settings.stylusPrimaryButton
-                view.secondaryButtonAction = settings.stylusSecondaryButton
-                view.baseWidth = brushSize
-                view.eraserWidth = settings.eraserSize
-                view.localEraser = localEraser
-                view.inkOpacity = brushOpacity
-                view.inkColor = brushColor
-                view.brushId = activeBrush?.id ?: if (tool == EditorTool.HIGHLIGHTER) "system-highlighter" else "system-pen"
-                view.tipAssetPath = activeBrush?.tipPreviewPath
-                view.tipAssetPaths = activeBrush?.tipPreviewPaths.orEmpty()
-                view.dualTipAssetPaths = activeBrush?.dualTipPreviewPaths.orEmpty()
-                view.grainAssetPath = activeBrush?.grainPreviewPath
-                view.grainDensity = activeBrush?.grainDensity ?: 0f
-                view.grainScale = activeBrush?.grainScale ?: 100f
-                view.grainRotationDegrees = activeBrush?.grainRotationDegrees ?: 0f
-                view.grainBrightness = activeBrush?.grainBrightness ?: 0f
-                view.grainContrast = activeBrush?.grainContrast ?: 0f
-                view.grainReversed = activeBrush?.grainReversed ?: false
-                view.grainEmphasized = activeBrush?.grainEmphasized ?: false
-                view.brushSpacing = activeBrush?.spacing ?: .12f
-                view.brushFlow = activeBrush?.flow ?: 1f
-                view.brushHardness = activeBrush?.hardness ?: 1f
-                view.brushThickness = activeBrush?.thickness ?: 1f
-                view.brushThicknessVertical = activeBrush?.thicknessVertical ?: false
-                view.brushRotation = activeBrush?.rotationDegrees ?: 0f
-                view.followStylusOrientation = activeBrush?.followStylusOrientation ?: false
-                view.followStrokeDirection = activeBrush?.followStrokeDirection ?: false
-                view.randomRotationDegrees = activeBrush?.randomRotationDegrees ?: 0f
-                view.brushWatercolor = activeBrush?.watercolor ?: false
-                view.brushColorMix = activeBrush?.colorMix ?: 0f
-                view.brushPaintMix = activeBrush?.paintMix ?: 0f
-                view.brushSpray = activeBrush?.spray ?: false
-                view.sprayParticleSize = activeBrush?.sprayParticleSize ?: 100f
-                view.sprayParticleSizeUnit = activeBrush?.sprayParticleSizeUnit ?: 0
-                view.sprayParticleSizeSyncBrushSize = activeBrush?.sprayParticleSizeSyncBrushSize ?: true
-                view.sprayDensity = activeBrush?.sprayDensity ?: 1f
-                view.sprayBias = activeBrush?.sprayBias ?: 0f
-                view.brushRibbon = activeBrush?.ribbon ?: false
-                view.brushTipSequenceMode = activeBrush?.tipSequenceMode ?: 0
-                view.brushDual = activeBrush?.dualBrush ?: false
-                view.dualSizeScale = activeBrush?.dualSizeScale ?: 1f
-                view.dualSpacing = activeBrush?.dualSpacing ?: .12f
-                view.dualFlow = activeBrush?.dualFlow ?: 1f
-                view.dualHardness = activeBrush?.dualHardness ?: 1f
-                view.dualThickness = activeBrush?.dualThickness ?: 1f
-                view.dualThicknessVertical = activeBrush?.dualThicknessVertical ?: false
-                view.dualRotationDegrees = activeBrush?.dualRotationDegrees ?: 0f
-                view.dualFollowStylusOrientation = activeBrush?.dualFollowStylusOrientation ?: false
-                view.dualFollowStrokeDirection = activeBrush?.dualFollowStrokeDirection ?: false
-                view.dualRandomRotationDegrees = activeBrush?.dualRandomRotationDegrees ?: 0f
-                view.dualRibbon = activeBrush?.dualRibbon ?: false
-                view.dualSpray = activeBrush?.dualSpray ?: false
-                view.dualSprayParticleSize = activeBrush?.dualSprayParticleSize ?: 100f
-                view.dualSprayParticleSizeUnit = activeBrush?.dualSprayParticleSizeUnit ?: 0
-                view.dualSprayParticleSizeSyncBrushSize = activeBrush?.dualSprayParticleSizeSyncBrushSize ?: true
-                view.dualSprayDensity = activeBrush?.dualSprayDensity ?: 1f
-                view.dualSprayBias = activeBrush?.dualSprayBias ?: 0f
-                view.dualTipSequenceMode = activeBrush?.dualTipSequenceMode ?: 0
-                view.dualCompositeMode = activeBrush?.dualCompositeMode ?: 0
-                view.taperMode = activeBrush?.taperMode ?: BrushTaperMode.PERCENTAGE
-                view.taperStartEnabled = activeBrush?.taperStartEnabled ?: false
-                view.taperStartLength = activeBrush?.taperStartLength ?: .2f
-                view.taperStartLengthUnit = activeBrush?.taperStartLengthUnit ?: 0
-                view.taperStartMinimum = activeBrush?.taperStartMinimum ?: .3f
-                view.taperEndEnabled = activeBrush?.taperEndEnabled ?: false
-                view.taperEndLength = activeBrush?.taperEndLength ?: .2f
-                view.taperEndLengthUnit = activeBrush?.taperEndLengthUnit ?: 0
-                view.taperEndMinimum = activeBrush?.taperEndMinimum ?: .3f
-                view.waterEdgeEnabled = activeBrush?.waterEdgeEnabled ?: false
-                view.waterEdgeRadius = activeBrush?.waterEdgeRadius ?: 3f
-                view.waterEdgeRadiusUnit = activeBrush?.waterEdgeRadiusUnit ?: 0
-                view.waterEdgeOpacity = activeBrush?.waterEdgeOpacity ?: .2f
-                view.waterEdgeDarkness = activeBrush?.waterEdgeDarkness ?: 0f
-                view.waterEdgeBlur = activeBrush?.waterEdgeBlur ?: 0f
-                view.waterEdgeBlurUnit = activeBrush?.waterEdgeBlurUnit ?: 0
-                view.sizePressureEnabled = activeBrush?.sizePressureEnabled ?: (tool == EditorTool.PEN)
-                view.sizePressureMinimum = activeBrush?.sizePressureMinimum ?: .35f
-                view.sizePressureCurve = activeBrush?.sizePressureCurve.orEmpty()
-                view.sizeSecondaryDynamics = activeBrush?.sizeSecondaryDynamics ?: BrushSecondaryDynamics()
-                view.opacityPressureEnabled = activeBrush?.opacityPressureEnabled ?: false
-                view.opacityPressureMinimum = activeBrush?.opacityPressureMinimum ?: 0f
-                view.opacityPressureCurve = activeBrush?.opacityPressureCurve.orEmpty()
-                view.opacitySecondaryDynamics = activeBrush?.opacitySecondaryDynamics ?: BrushSecondaryDynamics()
-                view.flowPressureEnabled = activeBrush?.flowPressureEnabled ?: false
-                view.flowPressureMinimum = activeBrush?.flowPressureMinimum ?: 0f
-                view.flowPressureCurve = activeBrush?.flowPressureCurve.orEmpty()
-                view.flowSecondaryDynamics = activeBrush?.flowSecondaryDynamics ?: BrushSecondaryDynamics()
-                view.spacingPressureEnabled = activeBrush?.spacingPressureEnabled ?: false
-                view.spacingPressureMinimum = activeBrush?.spacingPressureMinimum ?: 0f
-                view.spacingPressureCurve = activeBrush?.spacingPressureCurve.orEmpty()
-                view.spacingSecondaryDynamics = activeBrush?.spacingSecondaryDynamics ?: BrushSecondaryDynamics()
-                view.thicknessPressureEnabled = activeBrush?.thicknessPressureEnabled ?: false
-                view.thicknessPressureMinimum = activeBrush?.thicknessPressureMinimum ?: 0f
-                view.thicknessPressureCurve = activeBrush?.thicknessPressureCurve.orEmpty()
-                view.thicknessSecondaryDynamics = activeBrush?.thicknessSecondaryDynamics ?: BrushSecondaryDynamics()
+                view.applyBrushConfiguration(tool, settings, activeBrush, brushSize, brushOpacity, brushColor, localEraser)
                 view.onViewportScale = onZoom
                 view.onViewportPan = onPan
                 view.onUndoGesture = onUndoGesture
@@ -963,12 +865,134 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 onChange = { onElement(documentId, page.id, PageCropTransform.unproject(it, page.crop)) },
                 onDuplicate = { onDuplicateElement(documentId, page.id, element.id) },
                 onDelete = { onRemoveElement(documentId, page.id, element.id); onSelectElement(null) },
+                settings = settings,
+                activeBrush = activeBrush,
+                brushSize = brushSize,
+                brushOpacity = brushOpacity,
+                brushColor = brushColor,
+                localEraser = localEraser,
                 modifier = Modifier.align(Alignment.TopStart),
             )
         }
     }
 }
 
+private fun InkCanvasView.applyBrushConfiguration(
+    selectedTool: EditorTool,
+    settings: AppSettings,
+    activeBrush: ImportedBrush?,
+    brushSize: Float,
+    brushOpacity: Float,
+    brushColor: Int,
+    localEraser: Boolean,
+) {
+    tool = selectedTool
+    fingerDrawingEnabled = settings.fingerDrawing
+    twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo
+    pressureSensitivity = settings.pressureSensitivity
+    pressureMinimumInput = settings.pressureMinimumInput
+    pressureMaximumInput = settings.pressureMaximumInput
+    stabilization = maxOf(settings.stabilization, activeBrush?.stabilization ?: 0f)
+    stabilizationBySpeed = activeBrush?.stabilizationBySpeed ?: false
+    stabilizationBySpeedMode = activeBrush?.stabilizationBySpeedMode ?: StrokeStabilization.REDUCE_WHEN_FAST
+    primaryButtonAction = settings.stylusPrimaryButton
+    secondaryButtonAction = settings.stylusSecondaryButton
+    baseWidth = brushSize
+    eraserWidth = settings.eraserSize
+    this.localEraser = localEraser
+    inkOpacity = brushOpacity
+    inkColor = brushColor
+    brushId = activeBrush?.id ?: if (selectedTool == EditorTool.HIGHLIGHTER) "system-highlighter" else "system-pen"
+    tipAssetPath = activeBrush?.tipPreviewPath
+    tipAssetPaths = activeBrush?.tipPreviewPaths.orEmpty()
+    dualTipAssetPaths = activeBrush?.dualTipPreviewPaths.orEmpty()
+    grainAssetPath = activeBrush?.grainPreviewPath
+    grainDensity = activeBrush?.grainDensity ?: 0f
+    grainScale = activeBrush?.grainScale ?: 100f
+    grainRotationDegrees = activeBrush?.grainRotationDegrees ?: 0f
+    grainBrightness = activeBrush?.grainBrightness ?: 0f
+    grainContrast = activeBrush?.grainContrast ?: 0f
+    grainReversed = activeBrush?.grainReversed ?: false
+    grainEmphasized = activeBrush?.grainEmphasized ?: false
+    brushSpacing = activeBrush?.spacing ?: .12f
+    brushFlow = activeBrush?.flow ?: 1f
+    brushHardness = activeBrush?.hardness ?: 1f
+    brushThickness = activeBrush?.thickness ?: 1f
+    brushThicknessVertical = activeBrush?.thicknessVertical ?: false
+    brushRotation = activeBrush?.rotationDegrees ?: 0f
+    followStylusOrientation = activeBrush?.followStylusOrientation ?: false
+    followStrokeDirection = activeBrush?.followStrokeDirection ?: false
+    randomRotationDegrees = activeBrush?.randomRotationDegrees ?: 0f
+    brushWatercolor = activeBrush?.watercolor ?: false
+    brushColorMix = activeBrush?.colorMix ?: 0f
+    brushPaintMix = activeBrush?.paintMix ?: 0f
+    brushSpray = activeBrush?.spray ?: false
+    sprayParticleSize = activeBrush?.sprayParticleSize ?: 100f
+    sprayParticleSizeUnit = activeBrush?.sprayParticleSizeUnit ?: 0
+    sprayParticleSizeSyncBrushSize = activeBrush?.sprayParticleSizeSyncBrushSize ?: true
+    sprayDensity = activeBrush?.sprayDensity ?: 1f
+    sprayBias = activeBrush?.sprayBias ?: 0f
+    brushRibbon = activeBrush?.ribbon ?: false
+    brushTipSequenceMode = activeBrush?.tipSequenceMode ?: 0
+    brushDual = activeBrush?.dualBrush ?: false
+    dualSizeScale = activeBrush?.dualSizeScale ?: 1f
+    dualSpacing = activeBrush?.dualSpacing ?: .12f
+    dualFlow = activeBrush?.dualFlow ?: 1f
+    dualHardness = activeBrush?.dualHardness ?: 1f
+    dualThickness = activeBrush?.dualThickness ?: 1f
+    dualThicknessVertical = activeBrush?.dualThicknessVertical ?: false
+    dualRotationDegrees = activeBrush?.dualRotationDegrees ?: 0f
+    dualFollowStylusOrientation = activeBrush?.dualFollowStylusOrientation ?: false
+    dualFollowStrokeDirection = activeBrush?.dualFollowStrokeDirection ?: false
+    dualRandomRotationDegrees = activeBrush?.dualRandomRotationDegrees ?: 0f
+    dualRibbon = activeBrush?.dualRibbon ?: false
+    dualSpray = activeBrush?.dualSpray ?: false
+    dualSprayParticleSize = activeBrush?.dualSprayParticleSize ?: 100f
+    dualSprayParticleSizeUnit = activeBrush?.dualSprayParticleSizeUnit ?: 0
+    dualSprayParticleSizeSyncBrushSize = activeBrush?.dualSprayParticleSizeSyncBrushSize ?: true
+    dualSprayDensity = activeBrush?.dualSprayDensity ?: 1f
+    dualSprayBias = activeBrush?.dualSprayBias ?: 0f
+    dualTipSequenceMode = activeBrush?.dualTipSequenceMode ?: 0
+    dualCompositeMode = activeBrush?.dualCompositeMode ?: 0
+    taperMode = activeBrush?.taperMode ?: BrushTaperMode.PERCENTAGE
+    taperStartEnabled = activeBrush?.taperStartEnabled ?: false
+    taperStartLength = activeBrush?.taperStartLength ?: .2f
+    taperStartLengthUnit = activeBrush?.taperStartLengthUnit ?: 0
+    taperStartMinimum = activeBrush?.taperStartMinimum ?: .3f
+    taperEndEnabled = activeBrush?.taperEndEnabled ?: false
+    taperEndLength = activeBrush?.taperEndLength ?: .2f
+    taperEndLengthUnit = activeBrush?.taperEndLengthUnit ?: 0
+    taperEndMinimum = activeBrush?.taperEndMinimum ?: .3f
+    waterEdgeEnabled = activeBrush?.waterEdgeEnabled ?: false
+    waterEdgeRadius = activeBrush?.waterEdgeRadius ?: 3f
+    waterEdgeRadiusUnit = activeBrush?.waterEdgeRadiusUnit ?: 0
+    waterEdgeOpacity = activeBrush?.waterEdgeOpacity ?: .2f
+    waterEdgeDarkness = activeBrush?.waterEdgeDarkness ?: 0f
+    waterEdgeBlur = activeBrush?.waterEdgeBlur ?: 0f
+    waterEdgeBlurUnit = activeBrush?.waterEdgeBlurUnit ?: 0
+    sizePressureEnabled = activeBrush?.sizePressureEnabled ?: (selectedTool == EditorTool.PEN)
+    sizePressureMinimum = activeBrush?.sizePressureMinimum ?: .35f
+    sizePressureCurve = activeBrush?.sizePressureCurve.orEmpty()
+    sizeSecondaryDynamics = activeBrush?.sizeSecondaryDynamics ?: BrushSecondaryDynamics()
+    opacityPressureEnabled = activeBrush?.opacityPressureEnabled ?: false
+    opacityPressureMinimum = activeBrush?.opacityPressureMinimum ?: 0f
+    opacityPressureCurve = activeBrush?.opacityPressureCurve.orEmpty()
+    opacitySecondaryDynamics = activeBrush?.opacitySecondaryDynamics ?: BrushSecondaryDynamics()
+    flowPressureEnabled = activeBrush?.flowPressureEnabled ?: false
+    flowPressureMinimum = activeBrush?.flowPressureMinimum ?: 0f
+    flowPressureCurve = activeBrush?.flowPressureCurve.orEmpty()
+    flowSecondaryDynamics = activeBrush?.flowSecondaryDynamics ?: BrushSecondaryDynamics()
+    spacingPressureEnabled = activeBrush?.spacingPressureEnabled ?: false
+    spacingPressureMinimum = activeBrush?.spacingPressureMinimum ?: 0f
+    spacingPressureCurve = activeBrush?.spacingPressureCurve.orEmpty()
+    spacingSecondaryDynamics = activeBrush?.spacingSecondaryDynamics ?: BrushSecondaryDynamics()
+    thicknessPressureEnabled = activeBrush?.thicknessPressureEnabled ?: false
+    thicknessPressureMinimum = activeBrush?.thicknessPressureMinimum ?: 0f
+    thicknessPressureCurve = activeBrush?.thicknessPressureCurve.orEmpty()
+    thicknessSecondaryDynamics = activeBrush?.thicknessSecondaryDynamics ?: BrushSecondaryDynamics()
+}
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ObjectElementView(
     element: PageElement,
@@ -983,11 +1007,18 @@ private fun ObjectElementView(
     onChange: (PageElement) -> Unit,
     onDuplicate: () -> Unit,
     onDelete: () -> Unit,
+    settings: AppSettings,
+    activeBrush: ImportedBrush?,
+    brushSize: Float,
+    brushOpacity: Float,
+    brushColor: Int,
+    localEraser: Boolean,
     modifier: Modifier = Modifier,
 ) {
     var dragX by remember(element.id) { mutableFloatStateOf(0f) }
     var dragY by remember(element.id) { mutableFloatStateOf(0f) }
     var editing by remember(element.id) { mutableStateOf(false) }
+    var stickyInkEditing by remember(element.id) { mutableStateOf(false) }
     val objectWidth = (canvasWidth * (element.width / page.width)).coerceIn(54.dp, canvasWidth)
     val objectHeight = (canvasHeight * (element.height / page.height)).coerceIn(42.dp, canvasHeight)
     val gestureModifier = if (editable) Modifier.pointerInput(element.id, canvasWidthPx, canvasHeightPx) {
@@ -1004,7 +1035,14 @@ private fun ObjectElementView(
             .graphicsLayer(rotationZ = element.rotationDegrees, alpha = element.opacity.coerceIn(.05f, 1f), translationX = dragX, translationY = dragY)
             .then(if (selected) Modifier.border(2.dp, Sage, RoundedCornerShape(5.dp)) else Modifier)
             .then(gestureModifier)
-            .clickable(enabled = editable, onClick = onSelect),
+            .combinedClickable(
+                enabled = editable,
+                onClick = onSelect,
+                onDoubleClick = {
+                    onSelect()
+                    if (element is PageElement.Sticky) stickyInkEditing = true
+                },
+            ),
     ) {
         when (element) {
             is PageElement.Text -> {
@@ -1021,7 +1059,23 @@ private fun ObjectElementView(
                     modifier = Modifier.fillMaxSize().padding(5.dp),
                 )
             }
-            is PageElement.Sticky -> Card(Modifier.fillMaxSize(), colors = CardDefaults.cardColors(containerColor = Color(element.colorArgb))) { Text(if (element.collapsed) element.text.lineSequence().firstOrNull().orEmpty() else element.text, Modifier.padding(10.dp), maxLines = if (element.collapsed) 1 else 12) }
+            is PageElement.Sticky -> Card(Modifier.fillMaxSize(), colors = CardDefaults.cardColors(containerColor = Color(element.colorArgb))) {
+                Box(Modifier.fillMaxSize()) {
+                    Text(
+                        if (element.collapsed) element.text.lineSequence().firstOrNull().orEmpty() else element.text,
+                        Modifier.padding(10.dp),
+                        maxLines = if (element.collapsed) 1 else 12,
+                    )
+                    if (!element.collapsed && element.strokes.isNotEmpty()) AndroidView(
+                        factory = { context -> InkCanvasView(context).apply { isEnabled = false; tool = EditorTool.SELECT } },
+                        update = { preview ->
+                            preview.setDocumentStrokes(element.strokes, "sticky-preview:${element.id}")
+                            preview.setProtectedStrokeIds(element.strokes.mapTo(mutableSetOf(), InkStroke::id))
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
             is PageElement.Shape -> Canvas(Modifier.fillMaxSize().padding(4.dp)) {
                 val color = Color(element.colorArgb)
                 val stroke = androidx.compose.ui.graphics.drawscope.Stroke(element.strokeWidth.coerceIn(1f, 40f))
@@ -1058,6 +1112,10 @@ private fun ObjectElementView(
         }
         if (selected && editable) Surface(Modifier.align(Alignment.TopEnd).offset(y = (-38).dp), shape = RoundedCornerShape(18.dp), color = Color.White, shadowElevation = 4.dp) {
             Row {
+                if (element is PageElement.Sticky) {
+                    IconButton(onClick = { stickyInkEditing = true }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Brush, "Write inside sticky note", Modifier.size(18.dp)) }
+                    IconButton(onClick = { onChange(element.copy(collapsed = !element.collapsed)) }, modifier = Modifier.size(36.dp)) { Icon(if (element.collapsed) Icons.Outlined.UnfoldMore else Icons.Outlined.UnfoldLess, if (element.collapsed) "Expand sticky note" else "Collapse sticky note", Modifier.size(18.dp)) }
+                }
                 IconButton(onClick = { editing = true }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Tune, "Edit object", Modifier.size(18.dp)) }
                 IconButton(onClick = onDuplicate, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.ContentCopy, "Duplicate object", Modifier.size(18.dp)) }
                 IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Delete, "Delete object", Modifier.size(18.dp)) }
@@ -1065,6 +1123,120 @@ private fun ObjectElementView(
         }
     }
     if (editing) ElementEditorDialog(element, onDismiss = { editing = false }, onSave = { onChange(it); editing = false })
+    if (stickyInkEditing && element is PageElement.Sticky) StickyInkEditorDialog(
+        sticky = element,
+        settings = settings,
+        activeBrush = activeBrush,
+        brushSize = brushSize,
+        brushOpacity = brushOpacity,
+        brushColor = brushColor,
+        initialLocalEraser = localEraser,
+        onChange = { onChange(it) },
+        onDismiss = { stickyInkEditing = false },
+    )
+}
+
+@Composable
+private fun StickyInkEditorDialog(
+    sticky: PageElement.Sticky,
+    settings: AppSettings,
+    activeBrush: ImportedBrush?,
+    brushSize: Float,
+    brushOpacity: Float,
+    brushColor: Int,
+    initialLocalEraser: Boolean,
+    onChange: (PageElement.Sticky) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var draft by remember(sticky.id) { mutableStateOf(sticky) }
+    var tool by remember(sticky.id) { mutableStateOf(EditorTool.PEN) }
+    var localEraser by remember(sticky.id) { mutableStateOf(initialLocalEraser) }
+    var canvasView by remember(sticky.id) { mutableStateOf<InkCanvasView?>(null) }
+    LaunchedEffect(sticky.strokes, sticky.text, sticky.collapsed) { draft = sticky }
+
+    fun persist(strokes: List<InkStroke> = draft.strokes, collapsed: Boolean = draft.collapsed) {
+        val updated = draft.copy(strokes = strokes, collapsed = collapsed)
+        draft = updated
+        onChange(updated)
+    }
+
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(
+            Modifier.fillMaxWidth(.9f).fillMaxHeight(.86f),
+            shape = RoundedCornerShape(22.dp),
+            color = Color.White,
+            shadowElevation = 12.dp,
+        ) {
+            Column(Modifier.fillMaxSize().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Write inside sticky note", fontWeight = FontWeight.SemiBold)
+                        Text(activeBrush?.name ?: "System pen", color = MutedInk, fontSize = 11.sp, maxLines = 1)
+                    }
+                    FilterChip(selected = tool == EditorTool.PEN, onClick = { tool = EditorTool.PEN }, label = { Text("Pen") }, leadingIcon = { Icon(Icons.Outlined.Brush, null, Modifier.size(16.dp)) })
+                    FilterChip(selected = tool == EditorTool.HIGHLIGHTER, onClick = { tool = EditorTool.HIGHLIGHTER }, label = { Text("Marker") }, leadingIcon = { Icon(Icons.Outlined.BorderColor, null, Modifier.size(16.dp)) })
+                    FilterChip(selected = tool == EditorTool.ERASER, onClick = { tool = EditorTool.ERASER }, label = { Text("Eraser") }, leadingIcon = { Icon(Icons.Outlined.AutoFixOff, null, Modifier.size(16.dp)) })
+                    if (tool == EditorTool.ERASER) FilledIconToggleButton(
+                        checked = localEraser,
+                        onCheckedChange = { localEraser = it },
+                        colors = IconButtonDefaults.filledIconToggleButtonColors(containerColor = Workspace, contentColor = MutedInk, checkedContainerColor = Sage, checkedContentColor = Color.White),
+                    ) { Icon(Icons.Outlined.ContentCut, if (localEraser) "Local eraser on" else "Whole-stroke eraser on") }
+                }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { canvasView?.undo() }) { Icon(Icons.Outlined.Undo, "Undo sticky ink") }
+                    IconButton(onClick = { canvasView?.redo() }) { Icon(Icons.Outlined.Redo, "Redo sticky ink") }
+                    TextButton(onClick = { persist(strokes = emptyList()) }, enabled = draft.strokes.isNotEmpty()) { Text("Clear ink") }
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick = { persist(collapsed = !draft.collapsed) }) { Text(if (draft.collapsed) "Expand on page" else "Collapse on page") }
+                    Button(onClick = onDismiss) { Text("Done") }
+                }
+                HorizontalDivider()
+                Box(
+                    Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color(draft.colorArgb)).border(1.dp, Color(0xFFBDBDBD), RoundedCornerShape(12.dp)),
+                ) {
+                    Text(draft.text, Modifier.padding(14.dp), color = Color(0xFF333333), maxLines = 10)
+                    AndroidView(
+                        factory = { context -> InkCanvasView(context).also { canvasView = it } },
+                        update = { view ->
+                            canvasView = view
+                            view.applyBrushConfiguration(tool, settings, activeBrush, brushSize, brushOpacity, brushColor, localEraser)
+                            view.activeLayerId = LayerIds.INK
+                            view.pageModelWidth = sticky.width
+                            view.pageModelHeight = sticky.height
+                            view.setDocumentStrokes(draft.strokes, "sticky:${sticky.id}")
+                            view.setProtectedStrokeIds(emptySet())
+                            view.onStrokeCommitted = { stroke -> persist(strokes = draft.strokes + stroke) }
+                            view.onStrokeRemoved = { strokeId -> persist(strokes = draft.strokes.filterNot { it.id == strokeId }) }
+                            view.onStrokesReplaced = { removedIds, replacements, indices ->
+                                persist(strokes = replaceStickyStrokes(draft.strokes, removedIds, replacements, indices))
+                            }
+                            view.onUndoGesture = { view.undo() }
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                Text("Stylus writes. Fingers navigate unless finger drawing is enabled in Settings. Changes are saved after every completed stroke.", color = MutedInk, fontSize = 11.sp)
+            }
+        }
+    }
+}
+
+private fun replaceStickyStrokes(
+    current: List<InkStroke>,
+    removedIds: List<String>,
+    replacements: List<InkStroke>,
+    replacementIndices: List<Int>,
+): List<InkStroke> {
+    val replacedIds = removedIds.toSet() + replacements.map(InkStroke::id)
+    val result = current.filterNot { it.id in replacedIds }.toMutableList()
+    if (replacementIndices.size == replacements.size) {
+        replacements.zip(replacementIndices).sortedBy { (_, index) -> index }.forEach { (stroke, index) ->
+            result.add(index.coerceIn(0, result.size), stroke)
+        }
+    } else {
+        result += replacements
+    }
+    return result
 }
 
 @Composable
