@@ -2,6 +2,7 @@ package app.inkloom
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.doubleClick
+import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasSetTextAction
@@ -39,7 +40,7 @@ class InkloomLaunchTest {
 
     @Test fun settingsExposeConflictSafeFullLibraryBackup() {
         composeRule.onNodeWithContentDescription("Settings").performClick()
-        composeRule.onNode(hasScrollAction()).performScrollToIndex(32)
+        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Draw with finger"))).performScrollToIndex(32)
 
         composeRule.onNodeWithText("Export full library backup").assertIsDisplayed()
         composeRule.onNodeWithText("Restore library backup").assertIsDisplayed()
