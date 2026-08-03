@@ -55,6 +55,25 @@ class BrushGroupOperationsTest {
         assertEquals(listOf("Drawing", "Drawing/Ink", "Drawing/Ink/Pens", "Painting", "Painting/Oil"), BrushGroupOperations.treePaths(brushes))
     }
 
+    @Test fun registeredEmptyGroupsJoinTheTreeAndSurviveReconciliation() {
+        val brushes = listOf(brush("A", "Drawing/Ink"))
+
+        val registered = BrushGroupOperations.reconcileRegisteredGroups(listOf("Empty/Soft", "Drawing/Ink"), brushes)
+
+        assertEquals(listOf("Empty/Soft", "Drawing/Ink"), registered)
+        assertEquals(listOf("Empty", "Empty/Soft", "Drawing", "Drawing/Ink"), BrushGroupOperations.treePaths(brushes, registered))
+    }
+
+    @Test fun registeredGroupRenameAndMoveIncludeEmptySubtrees() {
+        val groups = listOf("Drawing/Ink", "Painting/Oil", "Drawing/Empty/Soft")
+
+        val renamed = BrushGroupOperations.renameRegisteredGroups(groups, "Drawing/Empty", "Drawing/Erasers")
+        val reordered = BrushGroupOperations.moveRegisteredGroup(renamed, "Drawing/Erasers", -1)
+
+        assertEquals(listOf("Drawing/Erasers/Soft", "Painting/Oil", "Drawing/Ink"), reordered)
+        assertEquals(listOf("Soft", "Painting/Oil", "Drawing/Ink"), BrushGroupOperations.renameRegisteredGroups(reordered, "Drawing/Erasers", ""))
+    }
+
     @Test fun renamingAParentMovesItsEntireSubtree() {
         val brushes = listOf(brush("A", "Drawing/Ink/Pens"), brush("B", "Drawing/Pencil"), brush("C", "Painting/Oil"))
 

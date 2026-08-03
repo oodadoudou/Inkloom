@@ -18,9 +18,15 @@ object BrushGroupOperations {
         .filter(String::isNotBlank)
         .distinctBy(String::lowercase)
 
-    fun treePaths(brushes: List<ImportedBrush>): List<String> {
+    fun reconcileRegisteredGroups(registeredGroups: List<String>, brushes: List<ImportedBrush>): List<String> =
+        (registeredGroups + names(brushes))
+            .map(::normalize)
+            .filter(String::isNotBlank)
+            .distinctBy(String::lowercase)
+
+    fun treePaths(brushes: List<ImportedBrush>, registeredGroups: List<String> = emptyList()): List<String> {
         val discovered = buildList<String> {
-            names(brushes).forEach { path ->
+            reconcileRegisteredGroups(registeredGroups, brushes).forEach { path ->
                 val segments = path.split('/')
                 segments.indices.forEach { index ->
                     val ancestor = segments.take(index + 1).joinToString("/")
@@ -111,6 +117,37 @@ object BrushGroupOperations {
                 brush.copy(groupName = listOf(replacement, suffix).filter(String::isNotBlank).joinToString("/"))
             }
         }
+    }
+
+    fun renameRegisteredGroups(groups: List<String>, oldName: String, newName: String): List<String> {
+        val old = normalize(oldName)
+        val replacement = normalize(newName)
+        if (old.isBlank()) return groups
+        return groups.map { path ->
+            val current = normalize(path)
+            if (!isWithin(current, old)) current else {
+                val suffix = current.drop(old.length).trimStart('/')
+                listOf(replacement, suffix).filter(String::isNotBlank).joinToString("/")
+            }
+        }.filter(String::isNotBlank).distinctBy(String::lowercase)
+    }
+
+    fun moveRegisteredGroup(groups: List<String>, groupName: String, delta: Int): List<String> {
+        if (delta == 0) return groups
+        val normalizedGroups = groups.map(::normalize).filter(String::isNotBlank).distinctBy(String::lowercase)
+        val selected = normalize(groupName)
+        val selectedParent = parent(selected)
+        val siblings = treePaths(emptyList(), normalizedGroups)
+            .filter { parent(it)?.equals(selectedParent, ignoreCase = true) ?: (selectedParent == null && parent(it) == null) }
+            .toMutableList()
+        val from = siblings.indexOfFirst { it.equals(selected, ignoreCase = true) }
+        if (from < 0) return normalizedGroups
+        val to = (from + delta).coerceIn(0, siblings.lastIndex)
+        if (from == to) return normalizedGroups
+        siblings.add(to, siblings.removeAt(from))
+        val matched = normalizedGroups.filter { path -> siblings.any { sibling -> isWithin(path, sibling) } }
+        val reordered = siblings.flatMap { sibling -> matched.filter { path -> isWithin(path, sibling) } }.iterator()
+        return normalizedGroups.map { path -> if (siblings.any { sibling -> isWithin(path, sibling) }) reordered.next() else path }
     }
 
     fun move(brushes: List<ImportedBrush>, brushId: String, delta: Int): List<ImportedBrush> {
