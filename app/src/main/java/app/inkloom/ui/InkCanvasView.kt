@@ -75,14 +75,20 @@ import app.inkloom.document.WaterEdge
 import app.inkloom.document.WetMixDynamics
 import app.inkloom.model.EditorTool
 import app.inkloom.settings.CspShortcutResolver
+import app.inkloom.settings.AxisShortcutBinding
+import app.inkloom.settings.ButtonShortcutBinding
 import app.inkloom.settings.KeyInputDiagnostic
+import app.inkloom.settings.MotionInputDiagnostic
 import app.inkloom.settings.ShortcutAction
 import app.inkloom.settings.ShortcutActivation
 import app.inkloom.settings.ShortcutBinding
 import app.inkloom.settings.ShortcutChord
 import app.inkloom.settings.ShortcutPhase
 import app.inkloom.settings.ShortcutTrigger
+import app.inkloom.settings.ShortcutAxisAccumulator
 import app.inkloom.settings.StylusButtonAction
+import app.inkloom.settings.ToolboxAxis
+import app.inkloom.settings.ToolboxMotionResolver
 import app.inkloom.settings.SelectionFilter
 import app.inkloom.settings.SelectionMode
 import app.inkloom.settings.SelectionShape
@@ -375,8 +381,13 @@ class InkCanvasView(context: Context) : View(context) {
     var onBrushSizeAdjusted: (Float) -> Unit = {}
     var onInputDiagnostic: (String, Float, Float, Int) -> Unit = { _, _, _, _ -> }
     var onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit = {}
+    var onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit = {}
     var onShortcutAction: (ShortcutActivation) -> Unit = {}
     var shortcutBindings: List<ShortcutBinding> = CspShortcutResolver.defaultBindings
+    var shortcutAxisBindings: List<AxisShortcutBinding> = emptyList()
+    var shortcutButtonBindings: List<ButtonShortcutBinding> = emptyList()
+    private val shortcutAxisAccumulator = ShortcutAxisAccumulator()
+    private val heldMotionButtons = mutableMapOf<Pair<String?, Int>, ButtonShortcutBinding>()
 
     private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
         override fun onScale(detector: ScaleGestureDetector): Boolean {
@@ -406,6 +417,11 @@ class InkCanvasView(context: Context) : View(context) {
             twoFingerTapUndoGesture.cancel()
             threeFingerTapRedoGesture.cancel()
             twoPointerRotationGesture.reset()
+            shortcutAxisAccumulator.clear()
+            heldMotionButtons.values.forEach { binding ->
+                ToolboxMotionResolver.buttonActivation(binding, ShortcutPhase.RELEASE)?.let(onShortcutAction)
+            }
+            heldMotionButtons.clear()
             if (brushSizeDragActive) finishBrushSizeDrag(cancelled = true)
         }
     }
@@ -1252,8 +1268,60 @@ class InkCanvasView(context: Context) : View(context) {
             pressedCommands.forEach(::performStylusCommand)
             if (pressedCommands.isNotEmpty() || resolveStylusButtonAction(event.buttonState).isCommand) return true
         }
+        if (!isStylus && event.actionMasked == MotionEvent.ACTION_SCROLL) {
+            val axisOrder = if (event.isFromSource(android.view.InputDevice.SOURCE_ROTARY_ENCODER)) {
+                ToolboxAxis.entries
+            } else {
+                listOf(ToolboxAxis.VERTICAL_SCROLL, ToolboxAxis.HORIZONTAL_SCROLL, ToolboxAxis.ROTARY)
+            }
+            val axisValues = axisOrder.map { axis -> axis to event.getAxisValue(axis.axisCode) }
+            val activeAxis = axisValues.firstOrNull { (_, value) -> value.isFinite() && kotlin.math.abs(value) > 0f }
+            val deviceDescriptor = event.device?.descriptor
+            val matchedAxis = axisValues.firstNotNullOfOrNull { (axis, value) ->
+                if (!value.isFinite() || kotlin.math.abs(value) <= 0f) null
+                else ToolboxMotionResolver.resolveAxis(axis, shortcutAxisBindings, deviceDescriptor)?.let { Triple(axis, value, it) }
+            }
+            if (matchedAxis != null) {
+                val (axis, value, binding) = matchedAxis
+                val activations = binding?.let { shortcutAxisAccumulator.activations(it, value, deviceDescriptor) }.orEmpty()
+                activations.forEach(onShortcutAction)
+                onMotionInputDiagnostic(event.toMotionDiagnostic(axis.axisCode, value, 0, ShortcutAxisAccumulator.actionFor(binding.mode, value * (if (binding.reversed) -1f else 1f) > 0f)))
+                return true
+            }
+            activeAxis?.let { (axis, value) -> onMotionInputDiagnostic(event.toMotionDiagnostic(axis.axisCode, value, 0, null)) }
+        }
+        if (!isStylus && event.actionMasked in setOf(MotionEvent.ACTION_BUTTON_PRESS, MotionEvent.ACTION_BUTTON_RELEASE)) {
+            val phase = if (event.actionMasked == MotionEvent.ACTION_BUTTON_PRESS) ShortcutPhase.PRESS else ShortcutPhase.RELEASE
+            val deviceDescriptor = event.device?.descriptor
+            val actionButton = when {
+                event.actionButton > 0 && event.actionButton.countOneBits() == 1 -> event.actionButton
+                phase == ShortcutPhase.PRESS -> Integer.lowestOneBit(event.buttonState and POINTER_BUTTON_MASK)
+                else -> heldMotionButtons.keys.firstOrNull { it.first == deviceDescriptor }?.second ?: 0
+            }
+            val heldKey = deviceDescriptor to actionButton
+            val resolvedBinding = ToolboxMotionResolver.resolveButton(actionButton, shortcutButtonBindings, deviceDescriptor)
+            val binding = if (phase == ShortcutPhase.RELEASE) heldMotionButtons.remove(heldKey) ?: resolvedBinding else resolvedBinding
+            if (phase == ShortcutPhase.PRESS && binding?.trigger == ShortcutTrigger.HOLD) heldMotionButtons[heldKey] = binding
+            binding?.let { ToolboxMotionResolver.buttonActivation(it, phase) }?.let(onShortcutAction)
+            onMotionInputDiagnostic(event.toMotionDiagnostic(null, 0f, actionButton, binding?.action))
+            if (binding != null) return true
+        }
         return super.onGenericMotionEvent(event)
     }
+
+    private fun MotionEvent.toMotionDiagnostic(axisCode: Int?, axisValue: Float, actionButton: Int, matchedAction: ShortcutAction?): MotionInputDiagnostic =
+        MotionInputDiagnostic(
+            action = actionMasked,
+            axisCode = axisCode,
+            axisValue = axisValue,
+            actionButton = actionButton,
+            buttonState = buttonState,
+            deviceId = deviceId,
+            deviceName = device?.name,
+            deviceDescriptor = device?.descriptor,
+            source = source,
+            matchedAction = matchedAction,
+        )
 
     private fun updateStylusButtonState(buttonState: Int): List<StylusButtonAction> {
         val tracked = buttonState and STYLUS_BUTTON_MASK
@@ -1735,6 +1803,7 @@ class InkCanvasView(context: Context) : View(context) {
         const val DUAL_SEQUENCE_SEED = 0x35A71C9E
         const val MAX_TIP_CACHE_ENTRIES = 64
         const val STYLUS_BUTTON_MASK = MotionEvent.BUTTON_STYLUS_PRIMARY or MotionEvent.BUTTON_STYLUS_SECONDARY
+        const val POINTER_BUTTON_MASK = MotionEvent.BUTTON_PRIMARY or MotionEvent.BUTTON_SECONDARY or MotionEvent.BUTTON_TERTIARY or MotionEvent.BUTTON_BACK or MotionEvent.BUTTON_FORWARD
     }
 
     private fun pressureDynamic(enabled: Boolean, minimum: Float, curve: List<BrushCurvePoint>, input: Float): Float {

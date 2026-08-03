@@ -28,6 +28,8 @@ import androidx.compose.ui.geometry.Offset
 import app.inkloom.importer.BrushGroupStore
 import app.inkloom.document.PageTemplateStore
 import app.inkloom.settings.AppSettingsStore
+import app.inkloom.settings.ToolboxAxis
+import app.inkloom.settings.ToolboxAxisMode
 import app.inkloom.settings.ToolboxQuickSlotKind
 import app.inkloom.settings.WorkspacePanelDock
 import app.inkloom.settings.WorkspacePanelKind
@@ -295,7 +297,7 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("Customize shortcuts").performClick()
         composeRule.onNodeWithText("Search actions or keys").assertIsDisplayed()
         composeRule.onNodeWithText("Brush groups").assertIsDisplayed()
-        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true))).performScrollToIndex(65)
+        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true))).performScrollToIndex(75)
 
         composeRule.onNodeWithText("Import profile").assertIsDisplayed()
         composeRule.onNodeWithText("Export profile").assertIsDisplayed()
@@ -305,7 +307,7 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription("Settings").performClick()
         composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Draw with finger"))).performScrollToIndex(29)
         composeRule.onNodeWithText("Customize shortcuts").performClick()
-        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true))).performScrollToIndex(4)
+        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true))).performScrollToIndex(14)
 
         composeRule.onNodeWithText("BRUSH GROUP TARGETS").assertIsDisplayed()
         composeRule.onAllNodesWithText("Automatic")[0].performClick()
@@ -318,7 +320,7 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription("Settings").performClick()
         composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Draw with finger"))).performScrollToIndex(29)
         composeRule.onNodeWithText("Customize shortcuts").performClick()
-        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true))).performScrollToIndex(4)
+        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true))).performScrollToIndex(14)
         composeRule.onNodeWithText("Configure 8 quick slots").performClick()
 
         composeRule.onNodeWithText("Toolbox quick slots").assertIsDisplayed()
@@ -329,6 +331,18 @@ class InkloomLaunchTest {
         val slot = AppSettingsStore(composeRule.activity).load().toolboxQuickSlots.first()
         assertEquals(ToolboxQuickSlotKind.BRUSH_GROUP, slot.kind)
         assertEquals("Toolbox/Pens", slot.groupPath)
+    }
+
+    @Test fun shortcutEditorConfiguresRotaryBrushSizeControl() {
+        composeRule.onNodeWithContentDescription("Settings").performClick()
+        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Draw with finger"))).performScrollToIndex(29)
+        composeRule.onNodeWithText("Customize shortcuts").performClick()
+        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true))).performScrollToIndex(5)
+        composeRule.onNodeWithContentDescription("Rotary / touch ring quick slot value").performClick()
+        composeRule.onNodeWithText("Brush size").performClick()
+
+        val binding = AppSettingsStore(composeRule.activity).load().shortcutAxisBindings.single { it.axis == ToolboxAxis.ROTARY }
+        assertEquals(ToolboxAxisMode.BRUSH_SIZE, binding.mode)
     }
 
     @Test fun stickyNoteDoubleTapOpensItsInkSubcanvas() {

@@ -81,8 +81,10 @@ import app.inkloom.model.*
 import app.inkloom.settings.AppSettings
 import app.inkloom.settings.AppSettingsBackupCodec
 import app.inkloom.settings.AppSettingsStore
+import app.inkloom.settings.AxisShortcutBinding
 import app.inkloom.settings.BuiltInWorkspace
 import app.inkloom.settings.BuiltInWorkspaces
+import app.inkloom.settings.ButtonShortcutBinding
 import app.inkloom.settings.ColorPaletteStore
 import app.inkloom.settings.CustomWorkspaceCodec
 import app.inkloom.settings.CustomWorkspaceProfile
@@ -97,6 +99,7 @@ import app.inkloom.settings.ShortcutActivation
 import app.inkloom.settings.ShortcutCategory
 import app.inkloom.settings.CspShortcutResolver
 import app.inkloom.settings.KeyInputDiagnostic
+import app.inkloom.settings.MotionInputDiagnostic
 import app.inkloom.settings.ShortcutChord
 import app.inkloom.settings.ShortcutMatchMode
 import app.inkloom.settings.ShortcutPhase
@@ -108,6 +111,9 @@ import app.inkloom.settings.ShortcutBrushSelection
 import app.inkloom.settings.category
 import app.inkloom.settings.StylusButtonAction
 import app.inkloom.settings.ToolbarDock
+import app.inkloom.settings.ToolboxAxis
+import app.inkloom.settings.ToolboxAxisMode
+import app.inkloom.settings.ToolboxMotionResolver
 import app.inkloom.settings.ToolboxQuickSlot
 import app.inkloom.settings.ToolboxQuickSlotKind
 import app.inkloom.settings.ToolboxQuickSlots
@@ -436,7 +442,7 @@ fun InkloomApp(initialIntent: Intent?) {
     }
     val shortcutProfileExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(ShortcutProfileCodec.MIME_TYPE)) { uri ->
         if (uri != null) runCatching {
-            val profile = ShortcutProfile(settings.shortcutBindings, settings.shortcutBrushGroupTargets, settings.toolboxQuickSlots)
+            val profile = ShortcutProfile(settings.shortcutBindings, settings.shortcutBrushGroupTargets, settings.toolboxQuickSlots, settings.shortcutAxisBindings, settings.shortcutButtonBindings)
             context.contentResolver.openOutputStream(uri, "wt")?.use { output -> output.write(ShortcutProfileCodec.encode(profile)) }
                 ?: error("Unable to open the shortcut profile destination.")
             Toast.makeText(context, settings.language.text("Shortcut profile saved.", "快捷键配置已保存。"), Toast.LENGTH_LONG).show()
@@ -446,7 +452,7 @@ fun InkloomApp(initialIntent: Intent?) {
         if (uri != null) runCatching {
             val imported = context.contentResolver.openInputStream(uri)?.use { ShortcutProfileCodec.decodeProfile(it).getOrThrow() }
                 ?: error("Unable to open the shortcut profile.")
-            updateSettings(settings.copy(shortcutBindings = imported.bindings, shortcutBrushGroupTargets = imported.brushGroupTargets, toolboxQuickSlots = imported.quickSlots))
+            updateSettings(settings.copy(shortcutBindings = imported.bindings, shortcutAxisBindings = imported.axisBindings, shortcutButtonBindings = imported.buttonBindings, shortcutBrushGroupTargets = imported.brushGroupTargets, toolboxQuickSlots = imported.quickSlots))
             Toast.makeText(context, settings.language.text("Shortcut profile restored.", "快捷键配置已恢复。"), Toast.LENGTH_LONG).show()
         }.onFailure { importError = it.message }
     }
@@ -1722,6 +1728,13 @@ private fun EditorScreen(
                         val descriptor = diagnostic.deviceDescriptor ?: "—"
                         val action = diagnostic.matchedAction?.name?.lowercase()?.replace('_', ' ') ?: unmappedShortcutText
                         inputDiagnostic = "$device · $keyName · scan ${diagnostic.scanCode} · meta 0x${diagnostic.metaState.toString(16)} · source 0x${diagnostic.source.toString(16)} · id ${diagnostic.deviceId} · $descriptor · $action · ${diagnostic.phase.name.lowercase()}"
+                    },
+                    onMotionInputDiagnostic = { diagnostic ->
+                        val device = diagnostic.deviceName ?: unknownInputDeviceText
+                        val descriptor = diagnostic.deviceDescriptor ?: "—"
+                        val action = diagnostic.matchedAction?.name?.lowercase()?.replace('_', ' ') ?: unmappedShortcutText
+                        val axis = diagnostic.axisCode?.let { "axis $it ${"%.3f".format(diagnostic.axisValue)}" } ?: "button ${diagnostic.actionButton}"
+                        inputDiagnostic = "$device · motion ${diagnostic.action} · $axis · state ${diagnostic.buttonState} · source 0x${diagnostic.source.toString(16)} · id ${diagnostic.deviceId} · $descriptor · $action"
                     },
                     onShortcutAction = { activation ->
                         val action = activation.action
@@ -3485,7 +3498,7 @@ private fun pageTemplateKind(template: PageTemplate): String = when (template.ba
 }
 
 @Composable
-private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, onZoom: (Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit) {
+private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, onZoom: (Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val backgroundVisible = page.layers.firstOrNull { it.role == LayerRole.BACKGROUND }?.visible != false
     val background = remember(page.id, page.background, page.backgroundRotationQuarterTurns, page.crop, backgroundVisible) { if (backgroundVisible) runCatching { assets.renderBackground(page.background, 1200, page.backgroundRotationQuarterTurns, page.crop) }.getOrNull() else null }
@@ -3543,8 +3556,11 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onColorSampled = onColorSampled
                 view.onBrushSizeAdjusted = onBrushSizeAdjusted
                 view.onKeyInputDiagnostic = onKeyInputDiagnostic
+                view.onMotionInputDiagnostic = onMotionInputDiagnostic
                 view.onShortcutAction = onShortcutAction
                 view.shortcutBindings = settings.shortcutBindings
+                view.shortcutAxisBindings = settings.shortcutAxisBindings
+                view.shortcutButtonBindings = settings.shortcutButtonBindings
                 view.post { view.requestFocus() }
                 onView(view)
             } },
@@ -3584,8 +3600,11 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onColorSampled = onColorSampled
                 view.onBrushSizeAdjusted = onBrushSizeAdjusted
                 view.onKeyInputDiagnostic = onKeyInputDiagnostic
+                view.onMotionInputDiagnostic = onMotionInputDiagnostic
                 view.onShortcutAction = onShortcutAction
                 view.shortcutBindings = settings.shortcutBindings
+                view.shortcutAxisBindings = settings.shortcutAxisBindings
+                view.shortcutButtonBindings = settings.shortcutButtonBindings
             },
             modifier = Modifier.fillMaxSize(),
         )
@@ -5587,7 +5606,7 @@ private fun SettingsDialog(
                 item { SettingSwitch(tr("Two-finger double tap to undo", "双指双击撤销"), tr("Matches common notebook gestures.", "符合常见笔记应用手势。"), settings.twoFingerDoubleTapUndo) { onChange(settings.copy(twoFingerDoubleTapUndo = it)) } }
                 item { SettingSwitch(tr("Three-finger tap to redo", "三指轻点重做"), tr("Matches common drawing-app gestures.", "符合常见绘画应用手势。"), settings.threeFingerTapRedo) { onChange(settings.copy(threeFingerTapRedo = it)) } }
                 item { SettingSwitch(tr("Two-finger canvas rotation", "双指旋转画布"), tr("Off by default to prevent accidental rotation; R remains available.", "默认关闭以避免误旋转；仍可使用 R 快捷键。"), settings.twoFingerRotation) { onChange(settings.copy(twoFingerRotation = it)) } }
-                item { SettingSwitch(tr("Show input diagnostics", "显示输入诊断"), tr("Displays stylus data plus Toolbox key code, scan code, source and device identity.", "显示手写笔数据，以及 Toolbox 的按键码、扫描码、来源和设备标识。"), settings.showInputDiagnostics) { onChange(settings.copy(showInputDiagnostics = it)) } }
+                item { SettingSwitch(tr("Show input diagnostics", "显示输入诊断"), tr("Displays stylus data plus Toolbox keys, scan codes, rotary axes, pointer buttons, source and device identity.", "显示手写笔数据，以及 Toolbox 的按键、扫描码、旋钮轴、侧键、来源和设备标识。"), settings.showInputDiagnostics) { onChange(settings.copy(showInputDiagnostics = it)) } }
                 item { Text("${tr("Pressure sensitivity", "压感灵敏度")}  ${"%.2f".format(settings.pressureSensitivity)}×") }
                 item { Slider(settings.pressureSensitivity, { onChange(settings.copy(pressureSensitivity = it)) }, valueRange = .25f..2.5f) }
                 item { Text("${tr("Pressure onset", "起始压力")}  ${(settings.pressureMinimumInput * 100).toInt()}%", color = MutedInk, fontSize = 12.sp) }
@@ -5676,7 +5695,7 @@ private fun ShortcutEditorDialog(settings: AppSettings, brushes: List<ImportedBr
                     },
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                item { Text(tr("Tap Change, then press a Toolbox or keyboard combination. Assigning a combination already in use moves it to the new action.", "点击“更改”，然后按下 Toolbox 或键盘组合键。已占用的组合键会自动移到新操作。"), color = MutedInk, fontSize = 12.sp) }
+                item { Text(tr("Tap Change, then press a Toolbox or keyboard combination. Rotary, touch-ring, wheel and pointer-button mappings are configured below.", "点击“更改”，然后按下 Toolbox 或键盘组合键。旋钮、触控环、滚轮与侧键映射可在下方配置。"), color = MutedInk, fontSize = 12.sp) }
                 item {
                     OutlinedTextField(
                         value = search,
@@ -5708,6 +5727,14 @@ private fun ShortcutEditorDialog(settings: AppSettings, brushes: List<ImportedBr
                         }
                         SettingSwitch(tr("Only this input device", "仅此输入设备"), tr("Keeps the global CSP key while adding a Toolbox-specific mapping.", "保留全局 CSP 键位，同时添加此 Toolbox 的专用映射。"), deviceSpecific) { deviceSpecific = it }
                     }
+                }
+                item { Text(tr("ROTARY & SCROLL", "旋钮与滚轮"), color = MutedInk, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp)) }
+                ToolboxAxis.entries.forEach { axis ->
+                    item("axis-${axis.name}") { ToolboxAxisBindingRow(axis, settings, onChange) }
+                }
+                item { Text(tr("POINTER / TOOLBOX BUTTONS", "鼠标／TOOLBOX 按钮"), color = MutedInk, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp)) }
+                listOf(android.view.MotionEvent.BUTTON_PRIMARY, android.view.MotionEvent.BUTTON_SECONDARY, android.view.MotionEvent.BUTTON_TERTIARY, android.view.MotionEvent.BUTTON_BACK, android.view.MotionEvent.BUTTON_FORWARD).forEachIndexed { index, button ->
+                    item("motion-button-$button") { ToolboxButtonBindingRow(index + 1, button, settings, onChange) }
                 }
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -5781,6 +5808,79 @@ private fun ShortcutEditorDialog(settings: AppSettings, brushes: List<ImportedBr
         confirmButton = { TextButton(onClick = onDismiss) { Text(tr("Done", "完成")) } },
     )
     if (quickSlotsOpen) ToolboxQuickSlotEditorDialog(settings, brushes, brushGroups, onChange, onDismiss = { quickSlotsOpen = false })
+}
+
+@Composable
+private fun ToolboxAxisBindingRow(axis: ToolboxAxis, settings: AppSettings, onChange: (AppSettings) -> Unit) {
+    val binding = settings.shortcutAxisBindings.firstOrNull { it.axis == axis && it.deviceDescriptor == null }
+    val deviceBindings = settings.shortcutAxisBindings.count { it.axis == axis && it.deviceDescriptor != null }
+    val label = when (axis) {
+        ToolboxAxis.ROTARY -> tr("Rotary / touch ring", "旋钮／触控环")
+        ToolboxAxis.VERTICAL_SCROLL -> tr("Vertical wheel", "垂直滚轮")
+        ToolboxAxis.HORIZONTAL_SCROLL -> tr("Horizontal wheel", "水平滚轮")
+    }
+    val modeLabel = when (binding?.mode) {
+        ToolboxAxisMode.BRUSH_SIZE -> tr("Brush size", "笔刷大小")
+        ToolboxAxisMode.OPACITY -> tr("Opacity", "不透明度")
+        ToolboxAxisMode.ZOOM -> tr("Canvas zoom", "画布缩放")
+        null -> tr("Not assigned", "未分配")
+    }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        ToolboxQuickSlotDropdown(
+            label = label,
+            selected = modeLabel,
+            choices = listOf(
+                "" to tr("Not assigned", "未分配"),
+                ToolboxAxisMode.BRUSH_SIZE.name to tr("Brush size", "笔刷大小"),
+                ToolboxAxisMode.OPACITY.name to tr("Opacity", "不透明度"),
+                ToolboxAxisMode.ZOOM.name to tr("Canvas zoom", "画布缩放"),
+            ),
+        ) { selected ->
+            val retained = settings.shortcutAxisBindings.filterNot { it.axis == axis && it.deviceDescriptor == null }
+            val updated = selected.takeIf(String::isNotBlank)?.let { mode ->
+                retained + AxisShortcutBinding(axis, enumValueOf(mode), reversed = binding?.reversed ?: false, sensitivity = binding?.sensitivity ?: 1f, deadZone = binding?.deadZone ?: .01f)
+            } ?: retained
+            onChange(settings.copy(shortcutAxisBindings = updated))
+        }
+        if (binding != null) {
+            SettingSwitch(tr("Reverse direction", "反转方向"), null, binding.reversed) {
+                onChange(settings.copy(shortcutAxisBindings = ToolboxMotionResolver.replaceAxis(settings.shortcutAxisBindings, binding.copy(reversed = it))))
+            }
+            BrushSettingSlider(tr("Axis sensitivity", "轴灵敏度"), binding.sensitivity, .25f..4f) {
+                onChange(settings.copy(shortcutAxisBindings = ToolboxMotionResolver.replaceAxis(settings.shortcutAxisBindings, binding.copy(sensitivity = it))))
+            }
+        }
+        if (deviceBindings > 0) Text(tr("$deviceBindings device-specific mapping(s) retained", "已保留 $deviceBindings 个设备专用映射"), color = MutedInk, fontSize = 10.sp)
+    }
+}
+
+@Composable
+private fun ToolboxButtonBindingRow(index: Int, button: Int, settings: AppSettings, onChange: (AppSettings) -> Unit) {
+    val language = LocalUiLanguage.current
+    val binding = settings.shortcutButtonBindings.firstOrNull { it.button == button && it.deviceDescriptor == null }
+    val deviceBindings = settings.shortcutButtonBindings.count { it.button == button && it.deviceDescriptor != null }
+    val label = tr("Button $index", "按钮 $index")
+    val selected = binding?.let { shortcutActionDisplayLabel(it.action, settings, language) } ?: tr("Not assigned", "未分配")
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        ToolboxQuickSlotDropdown(
+            label = label,
+            selected = selected,
+            choices = listOf("" to tr("Not assigned", "未分配")) + ShortcutAction.entries.map { action -> action.name to shortcutActionDisplayLabel(action, settings, language) },
+        ) { selectedAction ->
+            val retained = settings.shortcutButtonBindings.filterNot { it.button == button && it.deviceDescriptor == null }
+            val updated = selectedAction.takeIf(String::isNotBlank)?.let { action ->
+                retained + ButtonShortcutBinding(button, enumValueOf(action), binding?.trigger ?: ShortcutTrigger.PRESS)
+            } ?: retained
+            onChange(settings.copy(shortcutButtonBindings = updated))
+        }
+        if (binding != null) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FilterChip(selected = binding.trigger == ShortcutTrigger.PRESS, onClick = { onChange(settings.copy(shortcutButtonBindings = ToolboxMotionResolver.replaceButton(settings.shortcutButtonBindings, binding.copy(trigger = ShortcutTrigger.PRESS)))) }, label = { Text(tr("Tap", "单击")) })
+                FilterChip(selected = binding.trigger == ShortcutTrigger.HOLD, onClick = { onChange(settings.copy(shortcutButtonBindings = ToolboxMotionResolver.replaceButton(settings.shortcutButtonBindings, binding.copy(trigger = ShortcutTrigger.HOLD)))) }, label = { Text(tr("Hold / release", "按住／松开")) })
+            }
+        }
+        if (deviceBindings > 0) Text(tr("$deviceBindings device-specific mapping(s) retained", "已保留 $deviceBindings 个设备专用映射"), color = MutedInk, fontSize = 10.sp)
+    }
 }
 
 @Composable

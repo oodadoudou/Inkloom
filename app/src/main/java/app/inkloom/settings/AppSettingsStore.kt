@@ -66,6 +66,8 @@ data class AppSettings(
     val selectionFilter: SelectionFilter = SelectionFilter.ALL,
     val nonDestructiveEraser: Boolean = false,
     val shortcutBindings: List<ShortcutBinding> = CspShortcutResolver.defaultBindings,
+    val shortcutAxisBindings: List<AxisShortcutBinding> = emptyList(),
+    val shortcutButtonBindings: List<ButtonShortcutBinding> = emptyList(),
     val shortcutBrushGroupTargets: ShortcutBrushGroupTargets = ShortcutBrushGroupTargets(),
     val toolboxQuickSlots: List<ToolboxQuickSlot> = ToolboxQuickSlots.normalize(emptyList()),
     val workspaceLayouts: WorkspaceLayoutProfiles = WorkspaceLayoutProfiles(),
@@ -162,6 +164,8 @@ class AppSettingsStore(context: Context) {
             selectionFilter = enumValue(preferences.getString("selectionFilter", null), SelectionFilter.ALL),
             nonDestructiveEraser = preferences.getBoolean("nonDestructiveEraser", false),
             shortcutBindings = ShortcutBindingCodec.decode(preferences.getString("shortcutBindings", null)),
+            shortcutAxisBindings = ToolboxMotionBindingCodec.decodeAxes(preferences.getString("shortcutAxisBindings", null)),
+            shortcutButtonBindings = ToolboxMotionBindingCodec.decodeButtons(preferences.getString("shortcutButtonBindings", null)),
             shortcutBrushGroupTargets = ShortcutBrushGroupTargets(
                 pen = preferences.getString("shortcutPenGroup", "").orEmpty(),
                 pencil = preferences.getString("shortcutPencilGroup", "").orEmpty(),
@@ -243,6 +247,8 @@ class AppSettingsStore(context: Context) {
             .putString("selectionFilter", persisted.selectionFilter.name)
             .putBoolean("nonDestructiveEraser", persisted.nonDestructiveEraser)
             .putString("shortcutBindings", ShortcutBindingCodec.encode(persisted.shortcutBindings))
+            .putString("shortcutAxisBindings", ToolboxMotionBindingCodec.encodeAxes(persisted.shortcutAxisBindings))
+            .putString("shortcutButtonBindings", ToolboxMotionBindingCodec.encodeButtons(persisted.shortcutButtonBindings))
             .putString("shortcutPenGroup", persisted.shortcutBrushGroupTargets.pen)
             .putString("shortcutPencilGroup", persisted.shortcutBrushGroupTargets.pencil)
             .putString("shortcutBrushGroup", persisted.shortcutBrushGroupTargets.brush)

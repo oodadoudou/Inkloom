@@ -27,19 +27,23 @@ class ShortcutProfileCodecTest {
             bindings = CspShortcutResolver.defaultBindings,
             brushGroupTargets = ShortcutBrushGroupTargets("Favorites/Pens", "Favorites/Pencils", "Paint/Brushes"),
             quickSlots = listOf(ToolboxQuickSlot(ToolboxQuickSlotKind.BRUSH, "Favorite ink", brushId = "brush-1")),
+            axisBindings = listOf(AxisShortcutBinding(ToolboxAxis.ROTARY, ToolboxAxisMode.BRUSH_SIZE, sensitivity = 1.5f, deviceDescriptor = "dial-1")),
+            buttonBindings = listOf(ButtonShortcutBinding(android.view.MotionEvent.BUTTON_BACK, ShortcutAction.TOGGLE_ERASER, ShortcutTrigger.HOLD, deviceDescriptor = "dial-1")),
         )
 
         val decoded = ShortcutProfileCodec.decodeProfile(ShortcutProfileCodec.encode(profile)).getOrThrow()
         assertEquals(profile.bindings, decoded.bindings)
         assertEquals(profile.brushGroupTargets, decoded.brushGroupTargets)
         assertEquals(ToolboxQuickSlots.normalize(profile.quickSlots), decoded.quickSlots)
+        assertEquals(profile.axisBindings, decoded.axisBindings)
+        assertEquals(profile.buttonBindings, decoded.buttonBindings)
     }
 
     @Test fun `profile is readable JSON with an explicit format version`() {
         val text = ShortcutProfileCodec.encode(CspShortcutResolver.defaultBindings).toString(Charsets.UTF_8)
 
         assertTrue(text.contains("\"format\": \"inkloom-shortcuts\""))
-        assertTrue(text.contains("\"version\": 3"))
+        assertTrue(text.contains("\"version\": 4"))
         assertTrue(text.contains("\"action\": \"PEN_OR_PENCIL_GROUP\""))
     }
 

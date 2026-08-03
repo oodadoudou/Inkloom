@@ -2,16 +2,23 @@ package app.inkloom
 
 import android.content.Context
 import android.content.res.Configuration
+import android.view.MotionEvent
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.settings.AppSettings
 import app.inkloom.settings.AppSettingsStore
+import app.inkloom.settings.AxisShortcutBinding
+import app.inkloom.settings.ButtonShortcutBinding
 import app.inkloom.settings.CustomWorkspaces
+import app.inkloom.settings.ShortcutAction
 import app.inkloom.settings.ShortcutBrushGroupTargets
+import app.inkloom.settings.ShortcutTrigger
 import app.inkloom.settings.StylusButtonAction
 import app.inkloom.settings.ToolboxQuickSlot
 import app.inkloom.settings.ToolboxQuickSlotKind
 import app.inkloom.settings.ToolbarDock
+import app.inkloom.settings.ToolboxAxis
+import app.inkloom.settings.ToolboxAxisMode
 import app.inkloom.settings.WorkspacePanelDock
 import app.inkloom.settings.WorkspacePanelMode
 import app.inkloom.settings.WorkspacePanelKind
@@ -62,6 +69,23 @@ class AppSettingsStoreTest {
             AppSettingsStore(context).save(AppSettings(toolboxQuickSlots = listOf(slot)))
 
             assertEquals(slot, AppSettingsStore(context).load().toolboxQuickSlots.first())
+        } finally {
+            preferences.edit().clear().commit()
+        }
+    }
+
+    @Test fun toolboxMotionMappingsSurviveReload() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
+        preferences.edit().clear().commit()
+        try {
+            val axes = listOf(AxisShortcutBinding(ToolboxAxis.ROTARY, ToolboxAxisMode.BRUSH_SIZE, reversed = true, sensitivity = 2f, deviceDescriptor = "dial"))
+            val buttons = listOf(ButtonShortcutBinding(MotionEvent.BUTTON_BACK, ShortcutAction.PEN_GROUP, ShortcutTrigger.HOLD, deviceDescriptor = "keys"))
+            AppSettingsStore(context).save(AppSettings(shortcutAxisBindings = axes, shortcutButtonBindings = buttons))
+
+            val restored = AppSettingsStore(context).load()
+            assertEquals(axes, restored.shortcutAxisBindings)
+            assertEquals(buttons, restored.shortcutButtonBindings)
         } finally {
             preferences.edit().clear().commit()
         }
