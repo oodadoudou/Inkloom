@@ -33,11 +33,13 @@ class AppSettingsBackupCodecTest {
             showPageRail = true,
             toolbarDock = ToolbarDock.BOTTOM,
         ).recordWorkspaceFor(WorkspaceOrientation.PORTRAIT)
+        val customWorkspace = CustomWorkspaces.capture("workspace-1", "Desk", settings, WorkspaceOrientation.PORTRAIT)
+        val settingsWithWorkspace = settings.copy(customWorkspaces = listOf(customWorkspace))
         val palette = listOf(0xFF112233.toInt(), 0xFF445566.toInt())
 
-        val restored = AppSettingsBackupCodec.decode(AppSettingsBackupCodec.encode(settings, palette)).getOrThrow()
+        val restored = AppSettingsBackupCodec.decode(AppSettingsBackupCodec.encode(settingsWithWorkspace, palette)).getOrThrow()
 
-        assertEquals(settings, restored.settings)
+        assertEquals(settingsWithWorkspace, restored.settings)
         assertEquals(palette, restored.colorPalette)
     }
 

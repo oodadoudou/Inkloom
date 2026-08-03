@@ -6,12 +6,14 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.settings.AppSettings
 import app.inkloom.settings.AppSettingsStore
+import app.inkloom.settings.CustomWorkspaces
 import app.inkloom.settings.ShortcutBrushGroupTargets
 import app.inkloom.settings.StylusButtonAction
 import app.inkloom.settings.ToolboxQuickSlot
 import app.inkloom.settings.ToolboxQuickSlotKind
 import app.inkloom.settings.ToolbarDock
 import app.inkloom.settings.WorkspacePanelDock
+import app.inkloom.settings.WorkspaceOrientation
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -75,6 +77,25 @@ class AppSettingsStoreTest {
             val restored = AppSettingsStore(context).load()
             assertEquals(StylusButtonAction.UNDO, restored.stylusPrimaryButton)
             assertEquals(StylusButtonAction.HAND, restored.stylusSecondaryButton)
+        } finally {
+            preferences.edit().clear().commit()
+        }
+    }
+
+    @Test fun namedCustomWorkspacesSurviveReload() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
+        preferences.edit().clear().commit()
+        try {
+            val profile = CustomWorkspaces.capture(
+                "workspace-1",
+                "Drawing desk",
+                AppSettings(showBrushPanel = true, brushPanelDock = WorkspacePanelDock.LEFT),
+                WorkspaceOrientation.LANDSCAPE,
+            )
+            AppSettingsStore(context).save(AppSettings(customWorkspaces = listOf(profile)))
+
+            assertEquals(listOf(profile), AppSettingsStore(context).load().customWorkspaces)
         } finally {
             preferences.edit().clear().commit()
         }
