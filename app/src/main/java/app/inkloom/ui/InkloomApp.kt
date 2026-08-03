@@ -115,7 +115,9 @@ import app.inkloom.settings.applyToolboxWorkspace
 import app.inkloom.settings.captureToolboxWorkspace
 import app.inkloom.settings.UiLanguage
 import app.inkloom.settings.WorkspacePanelDock
+import app.inkloom.settings.WorkspacePanelKind
 import app.inkloom.settings.WorkspacePanelMode
+import app.inkloom.settings.WorkspacePanelTabs
 import app.inkloom.settings.WorkspacePanelBounds
 import app.inkloom.settings.WorkspacePanelPlacement
 import app.inkloom.settings.WorkspaceOrientation
@@ -1205,22 +1207,65 @@ private fun EditorScreen(
         LaunchedEffect(visiblePagePanelBounds) { if (pagePanelBounds != visiblePagePanelBounds) pagePanelBounds = visiblePagePanelBounds }
         LaunchedEffect(visibleBrushPanelBounds) { if (brushPanelBounds != visibleBrushPanelBounds) brushPanelBounds = visibleBrushPanelBounds }
         LaunchedEffect(visibleLayerPanelBounds) { if (layerPanelBounds != visibleLayerPanelBounds) layerPanelBounds = visibleLayerPanelBounds }
+        val orderedPanelTabs = WorkspacePanelTabs.normalizeOrder(settings.panelTabOrder)
+        fun visibleTabsAt(dock: WorkspacePanelDock, includePages: Boolean = true) = orderedPanelTabs.filter { panel ->
+            when (panel) {
+                WorkspacePanelKind.PAGES -> includePages && settings.showPageRail && settings.pagePanelDock == dock
+                WorkspacePanelKind.BRUSHES -> brushesOpen && settings.brushPanelDock == dock
+                WorkspacePanelKind.LAYERS -> layersOpen && settings.layerPanelDock == dock
+            }
+        }
+        val leftPanelTabs = visibleTabsAt(WorkspacePanelDock.LEFT, editorWidth >= 700.dp)
+        val rightPanelTabs = visibleTabsAt(WorkspacePanelDock.RIGHT, editorWidth >= 700.dp)
+        val bottomPanelTabs = visibleTabsAt(WorkspacePanelDock.BOTTOM)
+        fun resolvedActive(dock: WorkspacePanelDock, tabs: List<WorkspacePanelKind>): WorkspacePanelKind? =
+            WorkspacePanelTabs.active(settings, dock).takeIf(tabs::contains) ?: tabs.firstOrNull()
+        val leftActivePanel = resolvedActive(WorkspacePanelDock.LEFT, leftPanelTabs)
+        val rightActivePanel = resolvedActive(WorkspacePanelDock.RIGHT, rightPanelTabs)
+        val bottomActivePanel = resolvedActive(WorkspacePanelDock.BOTTOM, bottomPanelTabs)
+        val leftPanelsStacked = WorkspacePanelTabs.isStacked(settings, WorkspacePanelDock.LEFT) && leftPanelTabs.size > 1
+        val rightPanelsStacked = WorkspacePanelTabs.isStacked(settings, WorkspacePanelDock.RIGHT) && rightPanelTabs.size > 1
+        val bottomPanelsStacked = WorkspacePanelTabs.isStacked(settings, WorkspacePanelDock.BOTTOM) && bottomPanelTabs.size > 1
+        fun showPanel(panel: WorkspacePanelKind, dock: WorkspacePanelDock): Boolean = when (dock) {
+            WorkspacePanelDock.LEFT -> !leftPanelsStacked || leftActivePanel == panel
+            WorkspacePanelDock.RIGHT -> !rightPanelsStacked || rightActivePanel == panel
+            WorkspacePanelDock.BOTTOM -> !bottomPanelsStacked || bottomActivePanel == panel
+            WorkspacePanelDock.FREE -> true
+        }
+        fun setDockStacked(dock: WorkspacePanelDock, stacked: Boolean, tabs: List<WorkspacePanelKind>) {
+            var next = WorkspacePanelTabs.withStacked(settings, dock, stacked)
+            if (stacked && WorkspacePanelTabs.active(next, dock) !in tabs) tabs.firstOrNull()?.let { next = WorkspacePanelTabs.withActive(next, dock, it) }
+            onSettingsChange(next)
+        }
+        fun setActivePanel(dock: WorkspacePanelDock, panel: WorkspacePanelKind) =
+            onSettingsChange(WorkspacePanelTabs.withActive(settings, dock, panel))
+        fun movePanelTab(panel: WorkspacePanelKind, delta: Int) =
+            onSettingsChange(settings.copy(panelTabOrder = WorkspacePanelTabs.move(settings.panelTabOrder, panel, delta)))
         val bottomPanelCount = listOf(
             settings.showPageRail && settings.pagePanelDock == WorkspacePanelDock.BOTTOM,
             brushesOpen && settings.brushPanelDock == WorkspacePanelDock.BOTTOM,
             layersOpen && settings.layerPanelDock == WorkspacePanelDock.BOTTOM,
         ).count { it }
         val bottomHasExpandedPanel =
-            (settings.showPageRail && settings.pagePanelDock == WorkspacePanelDock.BOTTOM && settings.pagePanelMode == WorkspacePanelMode.EXPANDED) ||
-            (brushesOpen && settings.brushPanelDock == WorkspacePanelDock.BOTTOM && settings.brushPanelMode == WorkspacePanelMode.EXPANDED) ||
-            (layersOpen && settings.layerPanelDock == WorkspacePanelDock.BOTTOM && settings.layerPanelMode == WorkspacePanelMode.EXPANDED)
+            (WorkspacePanelKind.PAGES in bottomPanelTabs && showPanel(WorkspacePanelKind.PAGES, WorkspacePanelDock.BOTTOM) && settings.pagePanelMode == WorkspacePanelMode.EXPANDED) ||
+            (WorkspacePanelKind.BRUSHES in bottomPanelTabs && showPanel(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.BOTTOM) && settings.brushPanelMode == WorkspacePanelMode.EXPANDED) ||
+            (WorkspacePanelKind.LAYERS in bottomPanelTabs && showPanel(WorkspacePanelKind.LAYERS, WorkspacePanelDock.BOTTOM) && settings.layerPanelMode == WorkspacePanelMode.EXPANDED)
         val bottomNavigationPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         val bottomPanelContentHeight = if (bottomHasExpandedPanel) (workspaceHeightDp * .38f).coerceIn(180f, 320f).dp else 82.dp
         val bottomPanelHeight = bottomPanelContentHeight + bottomNavigationPadding
         val bottomPanelsDescription = tr("Bottom workspace panels", "底部工作区面板")
         Column(Modifier.fillMaxSize()) {
         Row(Modifier.weight(1f).fillMaxWidth()) {
-            if (editorWidth >= 700.dp && settings.showPageRail && settings.pagePanelDock == WorkspacePanelDock.LEFT) PageRail(
+            if (leftPanelTabs.size > 1) DockedPanelTabStrip(
+                dock = WorkspacePanelDock.LEFT,
+                panels = leftPanelTabs,
+                active = leftActivePanel,
+                stacked = leftPanelsStacked,
+                onSelect = { setActivePanel(WorkspacePanelDock.LEFT, it) },
+                onMove = ::movePanelTab,
+                onStacked = { setDockStacked(WorkspacePanelDock.LEFT, it, leftPanelTabs) },
+            )
+            if (editorWidth >= 700.dp && settings.showPageRail && settings.pagePanelDock == WorkspacePanelDock.LEFT && showPanel(WorkspacePanelKind.PAGES, WorkspacePanelDock.LEFT)) PageRail(
                 document, documents, selectedPage.id, settings.pagePanelDock,
                 onDock = { onSettingsChange(settings.copy(pagePanelDock = it)) },
                 onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
@@ -1235,7 +1280,7 @@ private fun EditorScreen(
                 onPanelMode = { onSettingsChange(settings.copy(pagePanelMode = it)) },
                 onPanelLocked = { onSettingsChange(settings.copy(pagePanelLocked = it)) },
             )
-            if (layersOpen && settings.layerPanelDock == WorkspacePanelDock.LEFT) LayerPanel(
+            if (layersOpen && settings.layerPanelDock == WorkspacePanelDock.LEFT && showPanel(WorkspacePanelKind.LAYERS, WorkspacePanelDock.LEFT)) LayerPanel(
                 page = selectedPage,
                 activeLayerId = activeLayerId,
                 brushColor = brushColor,
@@ -1262,7 +1307,7 @@ private fun EditorScreen(
                 onPanelMode = { onSettingsChange(settings.copy(layerPanelMode = it)) },
                 onPanelLocked = { onSettingsChange(settings.copy(layerPanelLocked = it)) },
             )
-            if (brushesOpen && settings.brushPanelDock == WorkspacePanelDock.LEFT) BrushPanel(
+            if (brushesOpen && settings.brushPanelDock == WorkspacePanelDock.LEFT && showPanel(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.LEFT)) BrushPanel(
                 brushes = brushes,
                 registeredGroups = brushGroups,
                 selectedBrushId = selectedBrushId,
@@ -1299,8 +1344,8 @@ private fun EditorScreen(
                 onPanelMode = { onSettingsChange(settings.copy(brushPanelMode = it)) },
                 onPanelLocked = { onSettingsChange(settings.copy(brushPanelLocked = it)) },
             )
-            val hasSideDockedToolPanel = (brushesOpen && settings.brushPanelMode == WorkspacePanelMode.EXPANDED && settings.brushPanelDock in setOf(WorkspacePanelDock.LEFT, WorkspacePanelDock.RIGHT)) ||
-                (layersOpen && settings.layerPanelMode == WorkspacePanelMode.EXPANDED && settings.layerPanelDock in setOf(WorkspacePanelDock.LEFT, WorkspacePanelDock.RIGHT))
+            val hasSideDockedToolPanel = (brushesOpen && settings.brushPanelMode == WorkspacePanelMode.EXPANDED && settings.brushPanelDock in setOf(WorkspacePanelDock.LEFT, WorkspacePanelDock.RIGHT) && showPanel(WorkspacePanelKind.BRUSHES, settings.brushPanelDock)) ||
+                (layersOpen && settings.layerPanelMode == WorkspacePanelMode.EXPANDED && settings.layerPanelDock in setOf(WorkspacePanelDock.LEFT, WorkspacePanelDock.RIGHT) && showPanel(WorkspacePanelKind.LAYERS, settings.layerPanelDock))
             if (!hasSideDockedToolPanel || editorWidth >= 900.dp) BoxWithConstraints(Modifier.weight(1f).fillMaxHeight().background(Workspace), contentAlignment = Alignment.Center) {
                 val toolbarAreaWidth = maxWidth
                 val toolbarAreaHeight = maxHeight
@@ -1641,7 +1686,16 @@ private fun EditorScreen(
                 }, onColor = { brushColor = it }, modifier = Modifier.align(dockAlignment).padding(dockPadding).graphicsLayer(translationX = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.xDp.dp.toPx() } else 0f, translationY = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.yDp.dp.toPx() } else 0f))
                 if (settings.showInputDiagnostics) Surface(Modifier.align(Alignment.BottomCenter).padding(12.dp), shape = RoundedCornerShape(20.dp), color = Color(0xE6111111)) { Text(inputDiagnostic, Modifier.padding(horizontal = 14.dp, vertical = 7.dp), color = Color.White, fontSize = 11.sp) }
             }
-            if (editorWidth >= 700.dp && settings.showPageRail && settings.pagePanelDock == WorkspacePanelDock.RIGHT) PageRail(
+            if (rightPanelTabs.size > 1) DockedPanelTabStrip(
+                dock = WorkspacePanelDock.RIGHT,
+                panels = rightPanelTabs,
+                active = rightActivePanel,
+                stacked = rightPanelsStacked,
+                onSelect = { setActivePanel(WorkspacePanelDock.RIGHT, it) },
+                onMove = ::movePanelTab,
+                onStacked = { setDockStacked(WorkspacePanelDock.RIGHT, it, rightPanelTabs) },
+            )
+            if (editorWidth >= 700.dp && settings.showPageRail && settings.pagePanelDock == WorkspacePanelDock.RIGHT && showPanel(WorkspacePanelKind.PAGES, WorkspacePanelDock.RIGHT)) PageRail(
                 document, documents, selectedPage.id, settings.pagePanelDock,
                 onDock = { onSettingsChange(settings.copy(pagePanelDock = it)) },
                 onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
@@ -1656,7 +1710,7 @@ private fun EditorScreen(
                 onPanelMode = { onSettingsChange(settings.copy(pagePanelMode = it)) },
                 onPanelLocked = { onSettingsChange(settings.copy(pagePanelLocked = it)) },
             )
-            if (layersOpen && settings.layerPanelDock == WorkspacePanelDock.RIGHT) LayerPanel(
+            if (layersOpen && settings.layerPanelDock == WorkspacePanelDock.RIGHT && showPanel(WorkspacePanelKind.LAYERS, WorkspacePanelDock.RIGHT)) LayerPanel(
                 page = selectedPage,
                 activeLayerId = activeLayerId,
                 brushColor = brushColor,
@@ -1683,7 +1737,7 @@ private fun EditorScreen(
                 onPanelMode = { onSettingsChange(settings.copy(layerPanelMode = it)) },
                 onPanelLocked = { onSettingsChange(settings.copy(layerPanelLocked = it)) },
             )
-            if (brushesOpen && settings.brushPanelDock == WorkspacePanelDock.RIGHT) BrushPanel(
+            if (brushesOpen && settings.brushPanelDock == WorkspacePanelDock.RIGHT && showPanel(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.RIGHT)) BrushPanel(
                 brushes = brushes,
                 registeredGroups = brushGroups,
                 selectedBrushId = selectedBrushId,
@@ -1741,7 +1795,16 @@ private fun EditorScreen(
                     .padding(bottom = bottomNavigationPadding)
                     .semantics { contentDescription = bottomPanelsDescription },
             ) {
-                if (settings.showPageRail && settings.pagePanelDock == WorkspacePanelDock.BOTTOM) PageRail(
+                if (bottomPanelTabs.size > 1) DockedPanelTabStrip(
+                    dock = WorkspacePanelDock.BOTTOM,
+                    panels = bottomPanelTabs,
+                    active = bottomActivePanel,
+                    stacked = bottomPanelsStacked,
+                    onSelect = { setActivePanel(WorkspacePanelDock.BOTTOM, it) },
+                    onMove = ::movePanelTab,
+                    onStacked = { setDockStacked(WorkspacePanelDock.BOTTOM, it, bottomPanelTabs) },
+                )
+                if (settings.showPageRail && settings.pagePanelDock == WorkspacePanelDock.BOTTOM && showPanel(WorkspacePanelKind.PAGES, WorkspacePanelDock.BOTTOM)) PageRail(
                     document, documents, selectedPage.id, settings.pagePanelDock,
                     onDock = { onSettingsChange(settings.copy(pagePanelDock = it)) },
                     onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
@@ -1757,7 +1820,7 @@ private fun EditorScreen(
                     onPanelLocked = { onSettingsChange(settings.copy(pagePanelLocked = it)) },
                     modifier = Modifier.weight(1f).fillMaxHeight().border(1.dp, OutlineSoft).padding(12.dp),
                 )
-                if (layersOpen && settings.layerPanelDock == WorkspacePanelDock.BOTTOM) LayerPanel(
+                if (layersOpen && settings.layerPanelDock == WorkspacePanelDock.BOTTOM && showPanel(WorkspacePanelKind.LAYERS, WorkspacePanelDock.BOTTOM)) LayerPanel(
                     page = selectedPage,
                     activeLayerId = activeLayerId,
                     brushColor = brushColor,
@@ -1785,7 +1848,7 @@ private fun EditorScreen(
                     onPanelLocked = { onSettingsChange(settings.copy(layerPanelLocked = it)) },
                     modifier = Modifier.weight(1f).fillMaxHeight().border(1.dp, OutlineSoft).background(Color(0xFFF7F7F7)).padding(10.dp),
                 )
-                if (brushesOpen && settings.brushPanelDock == WorkspacePanelDock.BOTTOM) BrushPanel(
+                if (brushesOpen && settings.brushPanelDock == WorkspacePanelDock.BOTTOM && showPanel(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.BOTTOM)) BrushPanel(
                     brushes = brushes,
                     registeredGroups = brushGroups,
                     selectedBrushId = selectedBrushId,
@@ -2265,6 +2328,93 @@ private fun CustomWorkspaceManagerDialog(
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text(tr("Done", "完成")) } },
     )
+}
+
+@Composable
+private fun DockedPanelTabStrip(
+    dock: WorkspacePanelDock,
+    panels: List<WorkspacePanelKind>,
+    active: WorkspacePanelKind?,
+    stacked: Boolean,
+    onSelect: (WorkspacePanelKind) -> Unit,
+    onMove: (WorkspacePanelKind, Int) -> Unit,
+    onStacked: (Boolean) -> Unit,
+) {
+    @Composable fun title(panel: WorkspacePanelKind): String = when (panel) {
+        WorkspacePanelKind.PAGES -> tr("Pages", "页面")
+        WorkspacePanelKind.BRUSHES -> tr("Brushes", "笔刷")
+        WorkspacePanelKind.LAYERS -> tr("Layers", "图层")
+    }
+    fun icon(panel: WorkspacePanelKind): ImageVector = when (panel) {
+        WorkspacePanelKind.PAGES -> Icons.Outlined.ViewCarousel
+        WorkspacePanelKind.BRUSHES -> Icons.Outlined.Brush
+        WorkspacePanelKind.LAYERS -> Icons.Outlined.Layers
+    }
+    val dockName = when (dock) {
+        WorkspacePanelDock.LEFT -> tr("left", "左侧")
+        WorkspacePanelDock.RIGHT -> tr("right", "右侧")
+        WorkspacePanelDock.BOTTOM -> tr("bottom", "底部")
+        WorkspacePanelDock.FREE -> tr("floating", "浮动")
+    }
+    val stripDescription = tr("$dockName panel tabs", "$dockName 面板标签")
+    Surface(
+        Modifier.width(58.dp).fillMaxHeight().semantics {
+            contentDescription = stripDescription
+        },
+        color = Color(0xFFF1F1F1),
+        border = CardDefaults.outlinedCardBorder(),
+    ) {
+        Column(Modifier.fillMaxSize().padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            if (!stacked) {
+                IconButton(
+                    onClick = { onStacked(true) },
+                    modifier = Modifier.size(50.dp),
+                ) { Icon(Icons.Outlined.ViewAgenda, tr("Stack panels in $dockName dock", "堆叠$dockName 面板")) }
+                Text(tr("Stack", "堆叠"), fontSize = 9.sp, color = MutedInk)
+            } else {
+                panels.forEach { panel ->
+                    var dragDistance by remember(panel, panels) { mutableFloatStateOf(0f) }
+                    val selected = active == panel
+                    val panelTitle = title(panel)
+                    val tabDescription = tr("$panelTitle tab. Drag to reorder.", "$panelTitle 标签，可拖动排序")
+                    Column(
+                        Modifier
+                            .width(52.dp)
+                            .height(62.dp)
+                            .padding(vertical = 2.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (selected) Ink else Color.Transparent)
+                            .semantics { contentDescription = tabDescription }
+                            .clickable { onSelect(panel) }
+                            .pointerInput(panel, panels) {
+                                detectDragGestures(
+                                    onDragStart = { dragDistance = 0f },
+                                    onDragCancel = { dragDistance = 0f },
+                                    onDragEnd = {
+                                        when {
+                                            dragDistance < -20f -> onMove(panel, -1)
+                                            dragDistance > 20f -> onMove(panel, 1)
+                                        }
+                                        dragDistance = 0f
+                                    },
+                                ) { change, amount ->
+                                    change.consume()
+                                    dragDistance += amount.y
+                                }
+                            },
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        Icon(icon(panel), null, Modifier.size(20.dp), tint = if (selected) Color.White else Ink)
+                        Text(panelTitle, fontSize = 9.sp, maxLines = 1, color = if (selected) Color.White else Ink)
+                    }
+                }
+                IconButton(onClick = { onStacked(false) }, modifier = Modifier.size(50.dp)) {
+                    Icon(Icons.Outlined.CallSplit, tr("Separate $dockName panel tabs", "拆分$dockName 面板标签"))
+                }
+            }
+        }
+    }
 }
 
 @Composable

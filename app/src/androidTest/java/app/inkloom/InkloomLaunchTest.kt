@@ -30,6 +30,7 @@ import app.inkloom.document.PageTemplateStore
 import app.inkloom.settings.AppSettingsStore
 import app.inkloom.settings.ToolboxQuickSlotKind
 import app.inkloom.settings.WorkspacePanelDock
+import app.inkloom.settings.WorkspacePanelKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -68,6 +69,13 @@ class InkloomLaunchTest {
                     .remove("pagePanelLocked")
                     .remove("brushPanelLocked")
                     .remove("layerPanelLocked")
+                    .remove("leftDockStacked")
+                    .remove("rightDockStacked")
+                    .remove("bottomDockStacked")
+                    .remove("leftDockActivePanel")
+                    .remove("rightDockActivePanel")
+                    .remove("bottomDockActivePanel")
+                    .remove("panelTabOrder")
                     .commit()
                 BrushGroupStore(ApplicationProvider.getApplicationContext()).save(
                     listOf("Toolbox/Pens", "Toolbox/Pencils", "Toolbox/Brushes"),
@@ -134,6 +142,18 @@ class InkloomLaunchTest {
         assertEquals(WorkspacePanelDock.BOTTOM, restored.pagePanelDock)
         assertEquals(WorkspacePanelDock.BOTTOM, restored.brushPanelDock)
         assertEquals(WorkspacePanelDock.BOTTOM, restored.layerPanelDock)
+
+        composeRule.onNodeWithContentDescription("Stack panels in bottom dock").performClick()
+        composeRule.onNodeWithContentDescription("bottom panel tabs").assertIsDisplayed()
+        assertTrue(AppSettingsStore(composeRule.activity).load().bottomDockStacked)
+        composeRule.onNodeWithContentDescription("Brushes tab. Drag to reorder.").performClick()
+        composeRule.onNodeWithText("Brush Library").assertIsDisplayed()
+        assertEquals(WorkspacePanelKind.BRUSHES, AppSettingsStore(composeRule.activity).load().bottomDockActivePanel)
+        composeRule.onNodeWithContentDescription("Layers tab. Drag to reorder.").performClick()
+        composeRule.onAllNodesWithText("Layers").onLast().assertIsDisplayed()
+        assertEquals(WorkspacePanelKind.LAYERS, AppSettingsStore(composeRule.activity).load().bottomDockActivePanel)
+        composeRule.onNodeWithContentDescription("Separate bottom panel tabs").performClick()
+        assertEquals(false, AppSettingsStore(composeRule.activity).load().bottomDockStacked)
     }
 
     @Test fun builtInWorkspacesSwitchTheCompleteEditorLayout() {
