@@ -57,6 +57,18 @@ class InkloomLaunchTest {
                     .putString("pagePanelDock", "LEFT")
                     .putString("brushPanelDock", "RIGHT")
                     .putString("layerPanelDock", "RIGHT")
+                    .putFloat("pagePanelXDp", 16f)
+                    .putFloat("pagePanelYDp", 16f)
+                    .putFloat("pagePanelWidthDp", 160f)
+                    .putFloat("pagePanelHeightDp", 640f)
+                    .putFloat("brushPanelXDp", 720f)
+                    .putFloat("brushPanelYDp", 16f)
+                    .putFloat("brushPanelWidthDp", 330f)
+                    .putFloat("brushPanelHeightDp", 680f)
+                    .putFloat("layerPanelXDp", 720f)
+                    .putFloat("layerPanelYDp", 16f)
+                    .putFloat("layerPanelWidthDp", 300f)
+                    .putFloat("layerPanelHeightDp", 620f)
                     .remove("shortcutPenGroup")
                     .remove("shortcutPencilGroup")
                     .remove("shortcutBrushGroup")
@@ -419,6 +431,39 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription("Close brushes panel").performClick()
         composeRule.onNodeWithContentDescription("Brushes").performClick()
         composeRule.onNodeWithContentDescription("Resize brushes panel").assertIsDisplayed()
+
+        composeRule.onNodeWithContentDescription("Change brushes panel docking").performClick()
+        composeRule.onNodeWithText("Icon only").performClick()
+        val compactBeforeX = preferences.getFloat("brushPanelXDp", beforeX)
+        composeRule.onNodeWithContentDescription("Drag Brush Library panel").performTouchInput {
+            swipe(Offset(width * .8f, center.y), Offset(width * .2f, center.y), durationMillis = 400)
+        }
+        composeRule.waitUntil(5_000) { preferences.getFloat("brushPanelXDp", compactBeforeX) != compactBeforeX }
+        assertEquals("FREE", preferences.getString("brushPanelDock", null))
+    }
+
+    @Test fun floatingBrushPanelSnapsToLeftAndBottomDockTargets() {
+        createNotebookAndOpenEditor()
+        val preferences = composeRule.activity.getSharedPreferences("inkloom_settings", android.content.Context.MODE_PRIVATE)
+
+        composeRule.onNodeWithContentDescription("Brushes").performClick()
+        composeRule.onNodeWithContentDescription("Change brushes panel docking").performClick()
+        composeRule.onNodeWithText("Float").performClick()
+        repeat(12) {
+            composeRule.onNodeWithContentDescription("Drag brushes panel").performTouchInput {
+                swipe(Offset(width * .8f, center.y), Offset(width * .2f, center.y), durationMillis = 350)
+            }
+        }
+        composeRule.waitUntil(5_000) { preferences.getString("brushPanelDock", null) == "LEFT" }
+        composeRule.onNodeWithText("Brush Library").assertIsDisplayed()
+
+        composeRule.onNodeWithContentDescription("Change brushes panel docking").performClick()
+        composeRule.onNodeWithText("Float").performClick()
+        composeRule.onNodeWithContentDescription("Drag brushes panel").performTouchInput {
+            swipe(Offset(center.x, height * .35f), Offset(center.x, height * .65f), durationMillis = 500)
+        }
+        composeRule.waitUntil(5_000) { preferences.getString("brushPanelDock", null) == "BOTTOM" }
+        composeRule.onNodeWithContentDescription("Bottom workspace panels").assertIsDisplayed()
     }
 
     @Test fun selectionControlsExposePersistentFreeformAndRectangleModes() {
