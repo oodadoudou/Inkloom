@@ -2446,6 +2446,9 @@ private fun InkCanvasView.applyBrushConfiguration(
     sprayParticleRandomRotationDegrees = activeBrush?.sprayParticleRandomRotationDegrees ?: 0f
     brushRibbon = activeBrush?.ribbon ?: false
     brushTipSequenceMode = activeBrush?.tipSequenceMode ?: 0
+    tipFlipHorizontalMode = activeBrush?.tipFlipHorizontalMode ?: 0
+    tipFlipVerticalMode = activeBrush?.tipFlipVerticalMode ?: 0
+    blendTipsWithDarken = activeBrush?.blendTipsWithDarken ?: false
     brushDual = activeBrush?.dualBrush ?: false
     dualSizeScale = activeBrush?.dualSizeScale ?: 1f
     dualSpacing = activeBrush?.dualSpacing ?: .12f
@@ -2473,6 +2476,9 @@ private fun InkCanvasView.applyBrushConfiguration(
     dualSprayParticleFollowStrokeDirection = activeBrush?.dualSprayParticleFollowStrokeDirection ?: false
     dualSprayParticleRandomRotationDegrees = activeBrush?.dualSprayParticleRandomRotationDegrees ?: 0f
     dualTipSequenceMode = activeBrush?.dualTipSequenceMode ?: 0
+    dualTipFlipHorizontalMode = activeBrush?.dualTipFlipHorizontalMode ?: 0
+    dualTipFlipVerticalMode = activeBrush?.dualTipFlipVerticalMode ?: 0
+    dualBlendTipsWithDarken = activeBrush?.dualBlendTipsWithDarken ?: false
     dualCompositeMode = activeBrush?.dualCompositeMode ?: 0
     dualApplyRgb = activeBrush?.dualApplyRgb ?: false
     taperMode = activeBrush?.taperMode ?: BrushTaperMode.PERCENTAGE
@@ -3977,6 +3983,9 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 item { BrushSettingSlider("Thickness", draft.thickness, .05f..2f) { draft = draft.copy(thickness = it) } }
                 item { SettingSwitch("Vertical thickness", "Applies thickness along the imported tip's vertical axis.", draft.thicknessVertical) { draft = draft.copy(thicknessVertical = it) } }
                 item { SettingSwitch("Ribbon stroke", "Preserves the tip aspect ratio and continuously follows the stroke direction.", draft.ribbon) { draft = draft.copy(ribbon = it) } }
+                item { BrushTipFlipModeEditor(tr("Horizontal tip flip", "笔尖水平翻转"), draft.tipFlipHorizontalMode) { draft = draft.copy(tipFlipHorizontalMode = it) } }
+                item { BrushTipFlipModeEditor(tr("Vertical tip flip", "笔尖垂直翻转"), draft.tipFlipVerticalMode) { draft = draft.copy(tipFlipVerticalMode = it) } }
+                item { SettingSwitch(tr("Blend overlapping tips with Darken", "以变暗方式叠加笔尖"), tr("Matches CSP's per-stroke brush-tip overlap mode.", "匹配 CSP 的单笔画笔尖叠加模式。"), draft.blendTipsWithDarken) { draft = draft.copy(blendTipsWithDarken = it) } }
                 item { BrushSettingSlider("Rotation", draft.rotationDegrees, -180f..180f) { draft = draft.copy(rotationDegrees = it) } }
                 item { SettingSwitch("Follow stylus orientation", "Uses the pen direction reported by Android.", draft.followStylusOrientation) { draft = draft.copy(followStylusOrientation = it) } }
                 item { SettingSwitch("Follow stroke direction", "Rotates the tip along the drawn path.", draft.followStrokeDirection) { draft = draft.copy(followStrokeDirection = it) } }
@@ -4020,6 +4029,9 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 if (draft.dualBrush) item { BrushSettingSlider("Secondary stamp count", draft.dualStampCount.toFloat(), 1f..16f) { draft = draft.copy(dualStampCount = it.toInt().coerceIn(1, 16)) } }
                 if (draft.dualBrush) item { BrushSettingSlider("Secondary count jitter", draft.dualStampCountJitter, 0f..1f) { draft = draft.copy(dualStampCountJitter = it) } }
                 if (draft.dualBrush) item { SettingSwitch("Secondary Ribbon", null, draft.dualRibbon) { draft = draft.copy(dualRibbon = it) } }
+                if (draft.dualBrush) item { BrushTipFlipModeEditor(tr("Secondary horizontal flip", "辅助笔尖水平翻转"), draft.dualTipFlipHorizontalMode) { draft = draft.copy(dualTipFlipHorizontalMode = it) } }
+                if (draft.dualBrush) item { BrushTipFlipModeEditor(tr("Secondary vertical flip", "辅助笔尖垂直翻转"), draft.dualTipFlipVerticalMode) { draft = draft.copy(dualTipFlipVerticalMode = it) } }
+                if (draft.dualBrush) item { SettingSwitch(tr("Darken secondary tip overlaps", "辅助笔尖以变暗方式叠加"), null, draft.dualBlendTipsWithDarken) { draft = draft.copy(dualBlendTipsWithDarken = it) } }
                 if (draft.dualBrush) item { SettingSwitch("Secondary spray/scatter", null, draft.dualSpray) { draft = draft.copy(dualSpray = it) } }
                 if (draft.dualBrush && draft.dualSpray) item { BrushSettingSlider("Secondary particle size", draft.dualSprayParticleSize, .01f..400f) { draft = draft.copy(dualSprayParticleSize = it) } }
                 if (draft.dualBrush && draft.dualSpray) item { SettingSwitch("Secondary particles follow brush", null, draft.dualSprayParticleSizeSyncBrushSize) { draft = draft.copy(dualSprayParticleSizeSyncBrushSize = it) } }
@@ -4096,6 +4108,24 @@ private fun BrushTestArea(brush: ImportedBrush, settings: AppSettings) {
 @Composable
 private fun BrushSettingSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onValue: (Float) -> Unit) {
     Column { Row { Text(localizedBrushLabel(label), Modifier.weight(1f), fontSize = 12.sp); Text(if (range.endInclusive > 10f) "%.1f".format(value) else "%.2f".format(value), color = MutedInk, fontSize = 11.sp) }; Slider(value, onValue, valueRange = range) }
+}
+
+@Composable
+private fun BrushTipFlipModeEditor(label: String, value: Int, onValue: (Int) -> Unit) {
+    val modes = listOf(
+        BrushTipFlip.OFF to tr("Off", "关闭"),
+        BrushTipFlip.FLIP to tr("Flip", "翻转"),
+        BrushTipFlip.RANDOM to tr("Random", "随机"),
+        BrushTipFlip.ON_REVERSED_SEQUENCE to tr("On reverse", "反向序列时"),
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, color = MutedInk, fontSize = 11.sp)
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(modes, key = { it.first }) { (mode, text) ->
+                FilterChip(selected = value == mode, onClick = { onValue(mode) }, label = { Text(text) })
+            }
+        }
+    }
 }
 
 @Composable

@@ -103,6 +103,9 @@ class BrushMetadataStore(
                         sprayParticleRandomRotationDegrees = item.optDouble("sprayParticleRandomRotationDegrees", 0.0).toFloat().coerceIn(0f, 180f),
                         ribbon = item.optBoolean("ribbon", false),
                         tipSequenceMode = item.optInt("tipSequenceMode", 0).coerceIn(0, 5),
+                        tipFlipHorizontalMode = item.optInt("tipFlipHorizontalMode", 0).coerceIn(0, 3),
+                        tipFlipVerticalMode = item.optInt("tipFlipVerticalMode", 0).coerceIn(0, 3),
+                        blendTipsWithDarken = item.optBoolean("blendTipsWithDarken", false),
                         dualBrush = item.optBoolean("dualBrush", false),
                         dualSizeScale = item.optDouble("dualSizeScale", 1.0).toFloat().coerceIn(.01f, 8f),
                         dualSpacing = item.optDouble("dualSpacing", .12).toFloat().coerceIn(.01f, 2f),
@@ -130,6 +133,9 @@ class BrushMetadataStore(
                         dualSprayParticleFollowStrokeDirection = item.optBoolean("dualSprayParticleFollowStrokeDirection", false),
                         dualSprayParticleRandomRotationDegrees = item.optDouble("dualSprayParticleRandomRotationDegrees", 0.0).toFloat().coerceIn(0f, 180f),
                         dualTipSequenceMode = item.optInt("dualTipSequenceMode", 0).coerceIn(0, 5),
+                        dualTipFlipHorizontalMode = item.optInt("dualTipFlipHorizontalMode", 0).coerceIn(0, 3),
+                        dualTipFlipVerticalMode = item.optInt("dualTipFlipVerticalMode", 0).coerceIn(0, 3),
+                        dualBlendTipsWithDarken = item.optBoolean("dualBlendTipsWithDarken", false),
                         dualCompositeMode = item.optInt("dualCompositeMode", 0),
                         dualApplyRgb = item.optBoolean("dualApplyRgb", false),
                         taperMode = taperMode,
@@ -240,6 +246,9 @@ class BrushMetadataStore(
                     .put("sprayParticleRandomRotationDegrees", brush.sprayParticleRandomRotationDegrees)
                     .put("ribbon", brush.ribbon)
                     .put("tipSequenceMode", brush.tipSequenceMode)
+                    .put("tipFlipHorizontalMode", brush.tipFlipHorizontalMode)
+                    .put("tipFlipVerticalMode", brush.tipFlipVerticalMode)
+                    .put("blendTipsWithDarken", brush.blendTipsWithDarken)
                     .put("dualBrush", brush.dualBrush)
                     .put("dualSizeScale", brush.dualSizeScale)
                     .put("dualSpacing", brush.dualSpacing)
@@ -267,6 +276,9 @@ class BrushMetadataStore(
                     .put("dualSprayParticleFollowStrokeDirection", brush.dualSprayParticleFollowStrokeDirection)
                     .put("dualSprayParticleRandomRotationDegrees", brush.dualSprayParticleRandomRotationDegrees)
                     .put("dualTipSequenceMode", brush.dualTipSequenceMode)
+                    .put("dualTipFlipHorizontalMode", brush.dualTipFlipHorizontalMode)
+                    .put("dualTipFlipVerticalMode", brush.dualTipFlipVerticalMode)
+                    .put("dualBlendTipsWithDarken", brush.dualBlendTipsWithDarken)
                     .put("dualCompositeMode", brush.dualCompositeMode)
                     .put("dualApplyRgb", brush.dualApplyRgb)
                     .put("taperMode", brush.taperMode.name)

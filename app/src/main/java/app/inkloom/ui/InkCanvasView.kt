@@ -5,6 +5,7 @@ import android.content.ClipData
 import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.graphics.Bitmap
+import android.graphics.BlendMode
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
@@ -31,6 +32,7 @@ import app.inkloom.document.BrushStampCount
 import app.inkloom.document.BrushStampRotation
 import app.inkloom.document.BrushSizeDrag
 import app.inkloom.document.BrushTipSequence
+import app.inkloom.document.BrushTipFlip
 import app.inkloom.document.BrushTipTextureDecoder
 import app.inkloom.document.BrushTipTransform
 import app.inkloom.document.BrushTaperMode
@@ -215,6 +217,9 @@ class InkCanvasView(context: Context) : View(context) {
     var sprayParticleRandomRotationDegrees: Float = 0f
     var brushRibbon: Boolean = false
     var brushTipSequenceMode: Int = 0
+    var tipFlipHorizontalMode: Int = 0
+    var tipFlipVerticalMode: Int = 0
+    var blendTipsWithDarken: Boolean = false
     var brushDual: Boolean = false
     var dualSizeScale: Float = 1f
     var dualSpacing: Float = .12f
@@ -242,6 +247,9 @@ class InkCanvasView(context: Context) : View(context) {
     var dualSprayParticleFollowStrokeDirection: Boolean = false
     var dualSprayParticleRandomRotationDegrees: Float = 0f
     var dualTipSequenceMode: Int = 0
+    var dualTipFlipHorizontalMode: Int = 0
+    var dualTipFlipVerticalMode: Int = 0
+    var dualBlendTipsWithDarken: Boolean = false
     var dualCompositeMode: Int = 0
     var dualApplyRgb: Boolean = false
     var taperMode: BrushTaperMode = BrushTaperMode.PERCENTAGE
@@ -613,7 +621,9 @@ class InkCanvasView(context: Context) : View(context) {
         // A CSP Dual Brush combines its two stamp streams first, then deposits
         // that single result. Isolating the stroke prevents the secondary mode
         // from accidentally blending with older strokes or the page itself.
-        val compositeLayer = if (stroke.dualBrush && dualTips.isNotEmpty()) canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null) else -1
+        val isolateStroke = stroke.blendTipsWithDarken || stroke.dualBrush && dualTips.isNotEmpty()
+        val compositeLayer = if (isolateStroke) canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null) else -1
+        paint.blendMode = if (stroke.blendTipsWithDarken) BlendMode.DARKEN else null
         val referenceScale = width.coerceAtLeast(1) / REFERENCE_WIDTH
         val scatterRandom = java.util.Random(stroke.renderSeed.toLong())
         val rotationRandom = java.util.Random(stroke.renderSeed.toLong() xor 0x49A2B31DL)
@@ -640,8 +650,9 @@ class InkCanvasView(context: Context) : View(context) {
             val dynamicThickness = pressureDynamic(stroke.thicknessPressureEnabled, stroke.thicknessPressureMinimum, stroke.thicknessPressureCurve, pressure) * secondaryDynamic(stroke.thicknessSecondaryDynamics, point, stroke.renderSeed, SALT_THICKNESS)
             val thicknessScale = stroke.thickness.coerceIn(.05f, 2f) * dynamicThickness
             val tipScale = BrushTipTransform.scale(tip.width, tip.height, diameter, thicknessScale, stroke.thicknessVertical)
-            val scaleX = tipScale.x
-            val scaleY = tipScale.y
+            val flip = BrushTipFlip.signs(stroke.tipFlipHorizontalMode, stroke.tipFlipVerticalMode, stroke.tipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed)
+            val scaleX = tipScale.x * flip.x
+            val scaleY = tipScale.y * flip.y
             val followsStroke = BrushStampRotation.followsStroke(stroke, dual = false)
             val angle = BrushStampRotation.degrees(
                 stroke = stroke,
@@ -663,7 +674,7 @@ class InkCanvasView(context: Context) : View(context) {
             if (stroke.waterEdgeEnabled && stroke.waterEdgeOpacity > 0f) {
                 val edgeRadius = WaterEdge.distancePixels(stroke.waterEdgeRadius, stroke.waterEdgeRadiusUnit, width.toFloat())
                 val edgeTipScale = BrushTipTransform.scale(tip.width, tip.height, diameter + edgeRadius * 2f, thicknessScale, stroke.thicknessVertical)
-                val edgeMatrix = Matrix().apply { postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(edgeTipScale.x, edgeTipScale.y); postRotate(angle); postTranslate(drawX, drawY) }
+                val edgeMatrix = Matrix().apply { postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(edgeTipScale.x * flip.x, edgeTipScale.y * flip.y); postRotate(angle); postTranslate(drawX, drawY) }
                 paint.colorFilter = PorterDuffColorFilter(WaterEdge.darkenArgb(stroke.colorArgb.toInt(), stroke.waterEdgeDarkness), PorterDuff.Mode.SRC_IN)
                 paint.alpha = (mainAlpha * stroke.waterEdgeOpacity.coerceIn(0f, 1f)).toInt().coerceIn(1, 255)
                 val blur = WaterEdge.distancePixels(stroke.waterEdgeBlur, stroke.waterEdgeBlurUnit, width.toFloat())
@@ -676,6 +687,7 @@ class InkCanvasView(context: Context) : View(context) {
             canvas.drawBitmap(tip, matrix, paint)
             }
         }
+        paint.blendMode = null
         if (stroke.dualBrush && dualTips.isNotEmpty()) drawDualStampedStroke(canvas, stroke, dualTips)
         if (compositeLayer >= 0) canvas.restoreToCount(compositeLayer)
         paint.colorFilter = null
@@ -683,7 +695,9 @@ class InkCanvasView(context: Context) : View(context) {
 
     /** Draws the secondary stream into the isolated per-stroke composition layer. */
     private fun drawDualStampedStroke(canvas: Canvas, stroke: InkStroke, tips: List<Bitmap>) {
-        paint.blendMode = CspDualBrushBlendMode.resolve(stroke.dualCompositeMode)
+        val compositePaint = Paint().apply { blendMode = CspDualBrushBlendMode.resolve(stroke.dualCompositeMode) }
+        val dualLayer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), compositePaint)
+        paint.blendMode = if (stroke.dualBlendTipsWithDarken) BlendMode.DARKEN else null
         val referenceScale = width.coerceAtLeast(1) / REFERENCE_WIDTH
         val scatterRandom = java.util.Random(stroke.renderSeed.toLong() xor DUAL_SCATTER_SEED)
         val rotationRandom = java.util.Random(stroke.renderSeed.toLong() xor DUAL_ROTATION_SEED)
@@ -708,6 +722,7 @@ class InkCanvasView(context: Context) : View(context) {
             val drawY = point.y * height + offset.y
             val dynamicThickness = pressureDynamic(stroke.thicknessPressureEnabled, stroke.thicknessPressureMinimum, stroke.thicknessPressureCurve, pressure) * secondaryDynamic(stroke.thicknessSecondaryDynamics, point, stroke.renderSeed, SALT_THICKNESS)
             val tipScale = BrushTipTransform.scale(tip.width, tip.height, diameter, stroke.dualThickness.coerceIn(.05f, 2f) * dynamicThickness, stroke.dualThicknessVertical)
+            val flip = BrushTipFlip.signs(stroke.dualTipFlipHorizontalMode, stroke.dualTipFlipVerticalMode, stroke.dualTipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed, dual = true)
             val followsStroke = BrushStampRotation.followsStroke(stroke, dual = true)
             val angle = BrushStampRotation.degrees(
                 stroke = stroke,
@@ -716,7 +731,7 @@ class InkCanvasView(context: Context) : View(context) {
                 strokeDirectionDegrees = if (followsStroke) StrokeStampSampler.directionDegrees(sampledPoints, index, width.toFloat(), height.toFloat()) else 0f,
                 randomUnit = rotationRandom.nextFloat(),
             )
-            val matrix = Matrix().apply { postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(tipScale.x, tipScale.y); postRotate(angle); postTranslate(drawX, drawY) }
+            val matrix = Matrix().apply { postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(tipScale.x * flip.x, tipScale.y * flip.y); postRotate(angle); postTranslate(drawX, drawY) }
             val opacityDynamic = pressureDynamic(stroke.opacityPressureEnabled, stroke.opacityPressureMinimum, stroke.opacityPressureCurve, pressure) * secondaryDynamic(stroke.opacitySecondaryDynamics, point, stroke.renderSeed, SALT_OPACITY)
             val flowDynamic = pressureDynamic(stroke.flowPressureEnabled, stroke.flowPressureMinimum, stroke.flowPressureCurve, pressure) * secondaryDynamic(stroke.flowSecondaryDynamics, point, stroke.renderSeed, SALT_FLOW)
             paint.colorFilter = PorterDuffColorFilter(stroke.colorArgb.toInt(), PorterDuff.Mode.SRC_IN)
@@ -725,6 +740,7 @@ class InkCanvasView(context: Context) : View(context) {
             }
         }
         paint.blendMode = null
+        canvas.restoreToCount(dualLayer)
     }
 
     private fun drawLinePoint(canvas: Canvas, stroke: InkStroke, x: Float, y: Float, strokeWidth: Float, alpha: Int) {
@@ -1257,7 +1273,7 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
-    private fun makeStroke(points: List<StrokePoint>) = InkStroke(id = currentStrokeId, points = points.toList(), colorArgb = inkColor.toUInt().toLong(), width = baseWidth, opacity = inkOpacity, brushId = brushId, layerId = activeLayerId, tipAssetPath = tipAssetPath, tipAssetPaths = tipAssetPaths.ifEmpty { listOfNotNull(tipAssetPath) }, dualTipAssetPaths = dualTipAssetPaths, grainAssetPath = grainAssetPath, grainDensity = grainDensity, grainScale = grainScale, grainRotationDegrees = grainRotationDegrees, grainBrightness = grainBrightness, grainContrast = grainContrast, grainReversed = grainReversed, grainEmphasized = grainEmphasized, grainOffsetJitter = grainOffsetJitter, spacing = brushSpacing, flow = brushFlow, hardness = brushHardness, thickness = brushThickness, thicknessVertical = brushThicknessVertical, rotationDegrees = brushRotation, followStylusOrientation = followStylusOrientation, followStrokeDirection = followStrokeDirection, randomRotationDegrees = randomRotationDegrees, strokeRotationJitterDegrees = strokeRotationJitterDegrees, stampCount = stampCount, stampCountJitter = stampCountJitter, watercolor = brushWatercolor, colorMix = brushColorMix, paintMix = brushPaintMix, spray = brushSpray, sprayParticleSize = sprayParticleSize, sprayParticleSizeUnit = sprayParticleSizeUnit, sprayParticleSizeSyncBrushSize = sprayParticleSizeSyncBrushSize, sprayDensity = sprayDensity, sprayBias = sprayBias, spraySpread = spraySpread, sprayParticleRotationDegrees = sprayParticleRotationDegrees, sprayParticleFollowStylusOrientation = sprayParticleFollowStylusOrientation, sprayParticleFollowStrokeDirection = sprayParticleFollowStrokeDirection, sprayParticleRandomRotationDegrees = sprayParticleRandomRotationDegrees, ribbon = brushRibbon, tipSequenceMode = brushTipSequenceMode, dualBrush = brushDual, dualSizeScale = dualSizeScale, dualSpacing = dualSpacing, dualFlow = dualFlow, dualHardness = dualHardness, dualThickness = dualThickness, dualThicknessVertical = dualThicknessVertical, dualRotationDegrees = dualRotationDegrees, dualFollowStylusOrientation = dualFollowStylusOrientation, dualFollowStrokeDirection = dualFollowStrokeDirection, dualRandomRotationDegrees = dualRandomRotationDegrees, dualStrokeRotationJitterDegrees = dualStrokeRotationJitterDegrees, dualStampCount = dualStampCount, dualStampCountJitter = dualStampCountJitter, dualRibbon = dualRibbon, dualSpray = dualSpray, dualSprayParticleSize = dualSprayParticleSize, dualSprayParticleSizeUnit = dualSprayParticleSizeUnit, dualSprayParticleSizeSyncBrushSize = dualSprayParticleSizeSyncBrushSize, dualSprayDensity = dualSprayDensity, dualSprayBias = dualSprayBias, dualSpraySpread = dualSpraySpread, dualSprayParticleRotationDegrees = dualSprayParticleRotationDegrees, dualSprayParticleFollowStylusOrientation = dualSprayParticleFollowStylusOrientation, dualSprayParticleFollowStrokeDirection = dualSprayParticleFollowStrokeDirection, dualSprayParticleRandomRotationDegrees = dualSprayParticleRandomRotationDegrees, dualTipSequenceMode = dualTipSequenceMode, dualCompositeMode = dualCompositeMode, dualApplyRgb = dualApplyRgb, taperMode = taperMode, taperStartEnabled = taperStartEnabled, taperStartLength = taperStartLength, taperStartLengthUnit = taperStartLengthUnit, taperStartMinimum = taperStartMinimum, taperEndEnabled = taperEndEnabled, taperEndLength = taperEndLength, taperEndLengthUnit = taperEndLengthUnit, taperEndMinimum = taperEndMinimum, waterEdgeEnabled = waterEdgeEnabled, waterEdgeRadius = waterEdgeRadius, waterEdgeRadiusUnit = waterEdgeRadiusUnit, waterEdgeOpacity = waterEdgeOpacity, waterEdgeDarkness = waterEdgeDarkness, waterEdgeBlur = waterEdgeBlur, waterEdgeBlurUnit = waterEdgeBlurUnit, sizePressureEnabled = sizePressureEnabled, sizePressureMinimum = sizePressureMinimum, sizePressureCurve = sizePressureCurve, sizeSecondaryDynamics = sizeSecondaryDynamics, opacityPressureEnabled = opacityPressureEnabled, opacityPressureMinimum = opacityPressureMinimum, opacityPressureCurve = opacityPressureCurve, opacitySecondaryDynamics = opacitySecondaryDynamics, flowPressureEnabled = flowPressureEnabled, flowPressureMinimum = flowPressureMinimum, flowPressureCurve = flowPressureCurve, flowSecondaryDynamics = flowSecondaryDynamics, spacingPressureEnabled = spacingPressureEnabled, spacingPressureMinimum = spacingPressureMinimum, spacingPressureCurve = spacingPressureCurve, spacingSecondaryDynamics = spacingSecondaryDynamics, thicknessPressureEnabled = thicknessPressureEnabled, thicknessPressureMinimum = thicknessPressureMinimum, thicknessPressureCurve = thicknessPressureCurve, thicknessSecondaryDynamics = thicknessSecondaryDynamics)
+    private fun makeStroke(points: List<StrokePoint>) = InkStroke(id = currentStrokeId, points = points.toList(), colorArgb = inkColor.toUInt().toLong(), width = baseWidth, opacity = inkOpacity, brushId = brushId, layerId = activeLayerId, tipAssetPath = tipAssetPath, tipAssetPaths = tipAssetPaths.ifEmpty { listOfNotNull(tipAssetPath) }, dualTipAssetPaths = dualTipAssetPaths, grainAssetPath = grainAssetPath, grainDensity = grainDensity, grainScale = grainScale, grainRotationDegrees = grainRotationDegrees, grainBrightness = grainBrightness, grainContrast = grainContrast, grainReversed = grainReversed, grainEmphasized = grainEmphasized, grainOffsetJitter = grainOffsetJitter, spacing = brushSpacing, flow = brushFlow, hardness = brushHardness, thickness = brushThickness, thicknessVertical = brushThicknessVertical, rotationDegrees = brushRotation, followStylusOrientation = followStylusOrientation, followStrokeDirection = followStrokeDirection, randomRotationDegrees = randomRotationDegrees, strokeRotationJitterDegrees = strokeRotationJitterDegrees, stampCount = stampCount, stampCountJitter = stampCountJitter, watercolor = brushWatercolor, colorMix = brushColorMix, paintMix = brushPaintMix, spray = brushSpray, sprayParticleSize = sprayParticleSize, sprayParticleSizeUnit = sprayParticleSizeUnit, sprayParticleSizeSyncBrushSize = sprayParticleSizeSyncBrushSize, sprayDensity = sprayDensity, sprayBias = sprayBias, spraySpread = spraySpread, sprayParticleRotationDegrees = sprayParticleRotationDegrees, sprayParticleFollowStylusOrientation = sprayParticleFollowStylusOrientation, sprayParticleFollowStrokeDirection = sprayParticleFollowStrokeDirection, sprayParticleRandomRotationDegrees = sprayParticleRandomRotationDegrees, ribbon = brushRibbon, tipSequenceMode = brushTipSequenceMode, tipFlipHorizontalMode = tipFlipHorizontalMode, tipFlipVerticalMode = tipFlipVerticalMode, blendTipsWithDarken = blendTipsWithDarken, dualBrush = brushDual, dualSizeScale = dualSizeScale, dualSpacing = dualSpacing, dualFlow = dualFlow, dualHardness = dualHardness, dualThickness = dualThickness, dualThicknessVertical = dualThicknessVertical, dualRotationDegrees = dualRotationDegrees, dualFollowStylusOrientation = dualFollowStylusOrientation, dualFollowStrokeDirection = dualFollowStrokeDirection, dualRandomRotationDegrees = dualRandomRotationDegrees, dualStrokeRotationJitterDegrees = dualStrokeRotationJitterDegrees, dualStampCount = dualStampCount, dualStampCountJitter = dualStampCountJitter, dualRibbon = dualRibbon, dualSpray = dualSpray, dualSprayParticleSize = dualSprayParticleSize, dualSprayParticleSizeUnit = dualSprayParticleSizeUnit, dualSprayParticleSizeSyncBrushSize = dualSprayParticleSizeSyncBrushSize, dualSprayDensity = dualSprayDensity, dualSprayBias = dualSprayBias, dualSpraySpread = dualSpraySpread, dualSprayParticleRotationDegrees = dualSprayParticleRotationDegrees, dualSprayParticleFollowStylusOrientation = dualSprayParticleFollowStylusOrientation, dualSprayParticleFollowStrokeDirection = dualSprayParticleFollowStrokeDirection, dualSprayParticleRandomRotationDegrees = dualSprayParticleRandomRotationDegrees, dualTipSequenceMode = dualTipSequenceMode, dualTipFlipHorizontalMode = dualTipFlipHorizontalMode, dualTipFlipVerticalMode = dualTipFlipVerticalMode, dualBlendTipsWithDarken = dualBlendTipsWithDarken, dualCompositeMode = dualCompositeMode, dualApplyRgb = dualApplyRgb, taperMode = taperMode, taperStartEnabled = taperStartEnabled, taperStartLength = taperStartLength, taperStartLengthUnit = taperStartLengthUnit, taperStartMinimum = taperStartMinimum, taperEndEnabled = taperEndEnabled, taperEndLength = taperEndLength, taperEndLengthUnit = taperEndLengthUnit, taperEndMinimum = taperEndMinimum, waterEdgeEnabled = waterEdgeEnabled, waterEdgeRadius = waterEdgeRadius, waterEdgeRadiusUnit = waterEdgeRadiusUnit, waterEdgeOpacity = waterEdgeOpacity, waterEdgeDarkness = waterEdgeDarkness, waterEdgeBlur = waterEdgeBlur, waterEdgeBlurUnit = waterEdgeBlurUnit, sizePressureEnabled = sizePressureEnabled, sizePressureMinimum = sizePressureMinimum, sizePressureCurve = sizePressureCurve, sizeSecondaryDynamics = sizeSecondaryDynamics, opacityPressureEnabled = opacityPressureEnabled, opacityPressureMinimum = opacityPressureMinimum, opacityPressureCurve = opacityPressureCurve, opacitySecondaryDynamics = opacitySecondaryDynamics, flowPressureEnabled = flowPressureEnabled, flowPressureMinimum = flowPressureMinimum, flowPressureCurve = flowPressureCurve, flowSecondaryDynamics = flowSecondaryDynamics, spacingPressureEnabled = spacingPressureEnabled, spacingPressureMinimum = spacingPressureMinimum, spacingPressureCurve = spacingPressureCurve, spacingSecondaryDynamics = spacingSecondaryDynamics, thicknessPressureEnabled = thicknessPressureEnabled, thicknessPressureMinimum = thicknessPressureMinimum, thicknessPressureCurve = thicknessPressureCurve, thicknessSecondaryDynamics = thicknessSecondaryDynamics)
 
     private fun beginEraserGesture() {
         eraserGestureBefore = strokes.toList()

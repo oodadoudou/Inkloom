@@ -51,16 +51,21 @@ class SutSprayRotationParserTest {
                 )
             }
             parsed.forEach { brush ->
-                assertEquals(16, brush.parserVersion)
+                assertEquals(17, brush.parserVersion)
                 assertFalse(brush.report.any { it.startsWith("SUT parameter parsing failed") })
-                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v16-")) }
+                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v17-")) }
             }
             assertTrue("Expected embedded CSP material previews", parsed.any { it.tipPreviewPaths.isNotEmpty() })
             val paintingBrush = parsed.firstOrNull { it.name.contains("Painting brush", ignoreCase = true) }
             assertTrue("Expected the supplied CSP Dual Brush sample", paintingBrush?.dualBrush == true)
             assertEquals(7, paintingBrush?.dualCompositeMode)
             assertFalse(paintingBrush?.dualApplyRgb ?: true)
+            assertEquals(2, paintingBrush?.dualTipFlipHorizontalMode)
             assertTrue(paintingBrush?.report?.any { it.contains("Screen composite mode") } == true)
+            assertTrue(paintingBrush?.report?.any { it.contains("secondary brush-tip flip modes mapped") } == true)
+            val silkPen = parsed.firstOrNull { it.name.contains("丝丝笔") }
+            assertTrue("Expected the supplied Darken-overlap pen", silkPen?.blendTipsWithDarken == true)
+            assertTrue(silkPen?.report?.any { it.contains("isolated Darken composition") } == true)
 
             val normalizedTipSizes = parsed.flatMap { brush ->
                 brush.tipPreviewPaths.mapNotNull { path ->
@@ -99,7 +104,7 @@ class SutSprayRotationParserTest {
             assertTrue(brush.dualSprayParticleFollowStylusOrientation)
             assertFalse(brush.dualSprayParticleFollowStrokeDirection)
             assertEquals(90f, brush.dualSprayParticleRandomRotationDegrees, .0001f)
-            assertEquals(16, brush.parserVersion)
+            assertEquals(17, brush.parserVersion)
         } finally {
             root.deleteRecursively()
         }
@@ -120,9 +125,13 @@ class SutSprayRotationParserTest {
                 sprayParticleRotationDegrees = 33f,
                 sprayParticleFollowStrokeDirection = true,
                 sprayParticleRandomRotationDegrees = 54f,
+                tipFlipHorizontalMode = 2,
+                blendTipsWithDarken = true,
                 dualBrush = true,
                 dualCompositeMode = 7,
                 dualApplyRgb = true,
+                dualTipFlipVerticalMode = 3,
+                dualBlendTipsWithDarken = true,
                 dualSpray = true,
                 dualSprayParticleRotationDegrees = -12f,
                 dualSprayParticleFollowStylusOrientation = true,
@@ -136,11 +145,15 @@ class SutSprayRotationParserTest {
             assertEquals(33f, restored.sprayParticleRotationDegrees, .0001f)
             assertTrue(restored.sprayParticleFollowStrokeDirection)
             assertEquals(54f, restored.sprayParticleRandomRotationDegrees, .0001f)
+            assertEquals(2, restored.tipFlipHorizontalMode)
+            assertTrue(restored.blendTipsWithDarken)
             assertEquals(-12f, restored.dualSprayParticleRotationDegrees, .0001f)
             assertTrue(restored.dualSprayParticleFollowStylusOrientation)
             assertEquals(81f, restored.dualSprayParticleRandomRotationDegrees, .0001f)
             assertEquals(7, restored.dualCompositeMode)
             assertTrue(restored.dualApplyRgb)
+            assertEquals(3, restored.dualTipFlipVerticalMode)
+            assertTrue(restored.dualBlendTipsWithDarken)
         } finally {
             context.getSharedPreferences("inkloom_brushes", android.content.Context.MODE_PRIVATE).edit().clear().commit()
         }

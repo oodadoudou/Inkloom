@@ -14,7 +14,7 @@ class SutBrushParser(private val assetDirectory: File) {
         val database = SQLiteDatabase.openDatabase(source.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
         database.use { db ->
             val columns = db.rawQuery("PRAGMA table_info(Variant)", null).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(cursor.getColumnIndexOrThrow("name"))) } }
-            val desired = listOf("Opacity", "BrushSize", "BrushSizeUnit", "FlickerReduction", "FlickerReductionBySpeed", "FlickerReductionBySpeedType", "BrushFlow", "BrushHardness", "BrushInterval", "BrushThickness", "BrushVerticalThicknes", "BrushRotation", "BrushRotationEffector", "BrushRotationRandomScale", "BrushPatternOrderType", "BrushRibbon", "TextureDensity", "TextureReverseDensity", "TextureStressDensity", "TextureScale2", "TextureRotate", "TextureBrightness", "TextureContrast", "BrushUseWaterColor", "BrushMixColor", "BrushMixAlpha", "BrushUseSpray", "BrushSpraySize", "BrushSpraySizeUnit", "BrushSpraySizeSyncBrushSize", "BrushSprayDensity", "BrushSprayBias", "BrushRotationInSpray", "BrushRotationEffectorInSpray", "BrushRotationRandomInSpray", "UseDualBrush", "DualBrushCompositeMode", "ChangeRGBByDual", "SyncDualBrushSize", "DualSize", "DualFlow", "DualHardness", "DualInterval", "DualThickness", "DualVerticalThicknes", "DualRotation", "DualRotationEffector", "DualRotationRandomScale", "DualRibbon", "DualUseSpray", "DualSpraySize", "DualSpraySizeUnit", "DualSpraySizeSyncBrushSize", "DualSprayDensity", "DualSprayBias", "DualRotationInSpray", "DualRotationEffectorInSpray", "DualRotationRandomInSpray", "DualPatternOrderType", "BrushInOutType", "BrushUseIn", "BrushInLength", "BrushInLengthUnit", "BrushInRatio", "BrushUseOut", "BrushOutLength", "BrushOutLengthUnit", "BrushOutRatio", "BrushUseWaterEdge", "BrushWaterEdgeRadius", "BrushWaterEdgeRadiusUnit", "BrushWaterEdgeAlphaPower", "BrushWaterEdgeValuePower", "BrushWaterEdgeBlur", "BrushWaterEdgeBlurUnit").filter(columns::contains)
+            val desired = listOf("Opacity", "BrushSize", "BrushSizeUnit", "FlickerReduction", "FlickerReductionBySpeed", "FlickerReductionBySpeedType", "BrushFlow", "BrushHardness", "BrushInterval", "BrushThickness", "BrushVerticalThicknes", "BrushRotation", "BrushRotationEffector", "BrushRotationRandomScale", "BrushPatternOrderType", "BrushPatternReverseHorizontal", "BrushPatternReverseVertical", "BrushBlendPatternByDarken", "BrushRibbon", "TextureDensity", "TextureReverseDensity", "TextureStressDensity", "TextureScale2", "TextureRotate", "TextureBrightness", "TextureContrast", "BrushUseWaterColor", "BrushMixColor", "BrushMixAlpha", "BrushUseSpray", "BrushSpraySize", "BrushSpraySizeUnit", "BrushSpraySizeSyncBrushSize", "BrushSprayDensity", "BrushSprayBias", "BrushRotationInSpray", "BrushRotationEffectorInSpray", "BrushRotationRandomInSpray", "UseDualBrush", "DualBrushCompositeMode", "ChangeRGBByDual", "SyncDualBrushSize", "DualSize", "DualFlow", "DualHardness", "DualInterval", "DualThickness", "DualVerticalThicknes", "DualRotation", "DualRotationEffector", "DualRotationRandomScale", "DualPatternReverseHorizontal", "DualPatternReverseVertical", "DualBlendPatternByDarken", "DualRibbon", "DualUseSpray", "DualSpraySize", "DualSpraySizeUnit", "DualSpraySizeSyncBrushSize", "DualSprayDensity", "DualSprayBias", "DualRotationInSpray", "DualRotationEffectorInSpray", "DualRotationRandomInSpray", "DualPatternOrderType", "BrushInOutType", "BrushUseIn", "BrushInLength", "BrushInLengthUnit", "BrushInRatio", "BrushUseOut", "BrushOutLength", "BrushOutLengthUnit", "BrushOutRatio", "BrushUseWaterEdge", "BrushWaterEdgeRadius", "BrushWaterEdgeRadiusUnit", "BrushWaterEdgeAlphaPower", "BrushWaterEdgeValuePower", "BrushWaterEdgeBlur", "BrushWaterEdgeBlurUnit").filter(columns::contains)
             val values = db.rawQuery("SELECT n.NodeName, ${desired.joinToString { "v.$it" }} FROM Node n JOIN Variant v ON v.VariantID=n.NodeVariantID LIMIT 1", null).use { cursor ->
                 check(cursor.moveToFirst()) { "SUT has no active brush variant" }
                 desired.associateWith { name -> cursor.number(name) } + ("NodeName" to cursor.getString(cursor.getColumnIndexOrThrow("NodeName")))
@@ -81,6 +81,9 @@ class SutBrushParser(private val assetDirectory: File) {
                 sprayParticleRandomRotationDegrees = if (sprayRotation.randomEnabled) (values.float("BrushRotationRandomInSpray") / 100f * 180f).coerceIn(0f, 180f) else 0f,
                 ribbon = values.float("BrushRibbon") > 0f,
                 tipSequenceMode = values.float("BrushPatternOrderType").toInt().coerceIn(0, 5),
+                tipFlipHorizontalMode = values.float("BrushPatternReverseHorizontal").toInt().coerceIn(0, 3),
+                tipFlipVerticalMode = values.float("BrushPatternReverseVertical").toInt().coerceIn(0, 3),
+                blendTipsWithDarken = values.float("BrushBlendPatternByDarken") > 0f,
                 dualBrush = dual,
                 dualSizeScale = if (values.float("SyncDualBrushSize") > 0f) (values.float("DualSize", 100f) / 100f).coerceIn(.01f, 8f) else (values.float("DualSize", values.float("BrushSize", 8f)) / values.float("BrushSize", 8f).coerceAtLeast(.5f)).coerceIn(.01f, 8f),
                 dualSpacing = (values.float("DualInterval", 12f) / 100f).coerceIn(.01f, 2f),
@@ -104,6 +107,9 @@ class SutBrushParser(private val assetDirectory: File) {
                 dualSprayParticleFollowStrokeDirection = dualSprayRotation.mode == SutRotationMode.DIRECTION_OF_LINE,
                 dualSprayParticleRandomRotationDegrees = if (dualSprayRotation.randomEnabled) (values.float("DualRotationRandomInSpray") / 100f * 180f).coerceIn(0f, 180f) else 0f,
                 dualTipSequenceMode = values.float("DualPatternOrderType").toInt().coerceIn(0, 5),
+                dualTipFlipHorizontalMode = values.float("DualPatternReverseHorizontal").toInt().coerceIn(0, 3),
+                dualTipFlipVerticalMode = values.float("DualPatternReverseVertical").toInt().coerceIn(0, 3),
+                dualBlendTipsWithDarken = values.float("DualBlendPatternByDarken") > 0f,
                 dualCompositeMode = values.float("DualBrushCompositeMode").toInt(),
                 dualApplyRgb = values.float("ChangeRGBByDual") > 0f,
                 taperMode = taper.mode,
@@ -166,6 +172,10 @@ class SutBrushParser(private val assetDirectory: File) {
                     if (values.float("BrushUseSpray") > 0f) add("Spray behavior mapped with particle size/unit, brush-size linking, density, center bias and independent particle direction${if (sprayRotation.randomEnabled) "/random angle" else ""}")
                     if (values.float("DualUseSpray") > 0f) add("Dual spray mapped with particle size/unit, brush-size linking, density, center bias and independent particle direction${if (dualSprayRotation.randomEnabled) "/random angle" else ""}")
                     if (values.float("BrushRibbon") > 0f) add("CSP Ribbon detected; source aspect ratio, tangent alignment and continuous placement enabled")
+                    if (values.float("BrushPatternReverseHorizontal") > 0f || values.float("BrushPatternReverseVertical") > 0f) add("CSP brush-tip flip modes mapped: horizontal ${values.float("BrushPatternReverseHorizontal").toInt()}, vertical ${values.float("BrushPatternReverseVertical").toInt()}")
+                    if (values.float("BrushBlendPatternByDarken") > 0f) add("CSP brush-tip overlaps mapped with isolated Darken composition")
+                    if (dual && (values.float("DualPatternReverseHorizontal") > 0f || values.float("DualPatternReverseVertical") > 0f)) add("CSP secondary brush-tip flip modes mapped: horizontal ${values.float("DualPatternReverseHorizontal").toInt()}, vertical ${values.float("DualPatternReverseVertical").toInt()}")
+                    if (dual && values.float("DualBlendPatternByDarken") > 0f) add("CSP secondary brush-tip overlaps mapped with isolated Darken composition")
                     if (taper.startEnabled) add("CSP starting taper mapped in ${taper.mode.name.lowercase()} mode: ${taper.startLength} effective length (unit ${taper.startLengthUnit}), ${(taper.startMinimum * 100).toInt()}% brush-size minimum")
                     if (taper.endEnabled) add("CSP ending taper mapped in ${taper.mode.name.lowercase()} mode: ${taper.endLength} effective length (unit ${taper.endLengthUnit}), ${(taper.endMinimum * 100).toInt()}% brush-size minimum")
                     if ((values.float("BrushUseIn") > 0f || values.float("BrushUseOut") > 0f) && sizeTaperTarget?.enabled != true) add("CSP Starting/Ending ranges retained, but brush-size target is disabled; no size taper was invented")
@@ -226,6 +236,6 @@ class SutBrushParser(private val assetDirectory: File) {
     private fun SutEffector?.secondaryDynamics(): BrushSecondaryDynamics = this?.let { effector -> BrushSecondaryDynamics(tiltEnabled = effector.tiltEnabled, tiltMinimum = effector.tiltMinimum, velocityEnabled = effector.velocityEnabled, velocityMinimum = effector.velocityMinimum, velocityCurve = effector.velocityCurve, randomEnabled = effector.randomEnabled, randomMinimum = effector.randomMinimum) } ?: BrushSecondaryDynamics()
     private fun SutEffector.sourceSummary(): String = buildList { if (tiltEnabled) add("tilt"); if (velocityEnabled) add("velocity"); if (randomEnabled) add("random") }.joinToString("+")
     companion object {
-        const val CURRENT_VERSION = 16
+        const val CURRENT_VERSION = 17
     }
 }

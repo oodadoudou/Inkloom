@@ -26,6 +26,13 @@ object BrushTipSequence {
         }
     }
 
+    /** True while Reverse repeat is traversing the material list backwards. */
+    fun isReversed(mode: Int, stampIndex: Int, count: Int): Boolean {
+        if (mode != REVERSE || stampIndex < 0 || count < 2) return false
+        val period = count * 2 - 2
+        return stampIndex % period >= count
+    }
+
     private fun shuffledIndex(position: Int, count: Int, seed: Int): Int {
         val values = IntArray(count) { it }
         val random = java.util.Random(seed.toLong())

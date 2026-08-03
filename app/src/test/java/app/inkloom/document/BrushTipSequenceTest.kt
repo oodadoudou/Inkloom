@@ -24,4 +24,9 @@ class BrushTipSequenceTest {
         assertEquals(setOf(0, 1, 2, 3), cycle.filterNotNull().toSet())
         assertNull(BrushTipSequence.index(BrushTipSequence.ONE_RANDOM_CYCLE, 4, 4, 901))
     }
+
+    @Test fun reverseDirectionIsReportedOnlyOnTheDescendingHalf() {
+        assertEquals(listOf(false, false, false, true, false, false, false), (0..6).map { BrushTipSequence.isReversed(BrushTipSequence.REVERSE, it, 3) })
+        assertEquals(false, BrushTipSequence.isReversed(BrushTipSequence.REPEAT, 4, 3))
+    }
 }

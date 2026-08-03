@@ -49,9 +49,15 @@ class InkloomBrushPackageTest {
                 spray = true,
                 sprayDensity = 14f,
                 spraySpread = 2.25f,
+                tipFlipHorizontalMode = 2,
+                tipFlipVerticalMode = 3,
+                blendTipsWithDarken = true,
                 dualBrush = true,
                 dualCompositeMode = 7,
                 dualApplyRgb = true,
+                dualTipFlipHorizontalMode = 1,
+                dualTipFlipVerticalMode = 2,
+                dualBlendTipsWithDarken = true,
                 dualSizeScale = .7f,
                 dualStrokeRotationJitterDegrees = 90f,
                 taperMode = BrushTaperMode.DISTANCE,
@@ -104,6 +110,12 @@ class InkloomBrushPackageTest {
             assertTrue(restored.dualBrush)
             assertEquals(7, restored.dualCompositeMode)
             assertTrue(restored.dualApplyRgb)
+            assertEquals(2, restored.tipFlipHorizontalMode)
+            assertEquals(3, restored.tipFlipVerticalMode)
+            assertTrue(restored.blendTipsWithDarken)
+            assertEquals(1, restored.dualTipFlipHorizontalMode)
+            assertEquals(2, restored.dualTipFlipVerticalMode)
+            assertTrue(restored.dualBlendTipsWithDarken)
             assertTrue(restored.watercolor)
             assertTrue(restored.taperStartEnabled)
             assertEquals(packageFile.absolutePath, restored.sourcePath)

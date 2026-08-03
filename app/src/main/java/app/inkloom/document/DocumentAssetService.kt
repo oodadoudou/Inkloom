@@ -2,6 +2,7 @@ package app.inkloom.document
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BlendMode
 import android.graphics.BitmapFactory
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
@@ -604,7 +605,9 @@ class DocumentAssetService(private val context: Context) {
     }
 
     private fun drawStampStroke(canvas: Canvas, stroke: InkStroke, tips: List<Bitmap>, dualTips: List<Bitmap>, width: Int, height: Int, paint: Paint) {
-        val compositeLayer = if (stroke.dualBrush && dualTips.isNotEmpty()) canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null) else -1
+        val isolateStroke = stroke.blendTipsWithDarken || stroke.dualBrush && dualTips.isNotEmpty()
+        val compositeLayer = if (isolateStroke) canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null) else -1
+        paint.blendMode = if (stroke.blendTipsWithDarken) BlendMode.DARKEN else null
         val scatterRandom = java.util.Random(stroke.renderSeed.toLong())
         val rotationRandom = java.util.Random(stroke.renderSeed.toLong() xor 0x49A2B31DL)
         paint.colorFilter = PorterDuffColorFilter(stroke.colorArgb.toInt(), PorterDuff.Mode.SRC_IN)
@@ -638,8 +641,9 @@ class DocumentAssetService(private val context: Context) {
             )
             val thicknessScale = stroke.thickness.coerceIn(.05f, 2f) * thicknessDynamic
             val tipScale = BrushTipTransform.scale(tip.width, tip.height, diameter, thicknessScale, stroke.thicknessVertical)
-            val scaleX = tipScale.x
-            val scaleY = tipScale.y
+            val flip = BrushTipFlip.signs(stroke.tipFlipHorizontalMode, stroke.tipFlipVerticalMode, stroke.tipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed)
+            val scaleX = tipScale.x * flip.x
+            val scaleY = tipScale.y * flip.y
             val matrix = Matrix().apply { postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(scaleX, scaleY); postRotate(angle); postTranslate(drawX, drawY) }
             val opacityDynamic = pressureDynamic(stroke.opacityPressureEnabled, stroke.opacityPressureMinimum, stroke.opacityPressureCurve, pressure) * secondaryDynamic(stroke.opacitySecondaryDynamics, point, stroke.renderSeed, SALT_OPACITY)
             val flowDynamic = pressureDynamic(stroke.flowPressureEnabled, stroke.flowPressureMinimum, stroke.flowPressureCurve, pressure) * secondaryDynamic(stroke.flowSecondaryDynamics, point, stroke.renderSeed, SALT_FLOW)
@@ -647,7 +651,7 @@ class DocumentAssetService(private val context: Context) {
             if (stroke.waterEdgeEnabled && stroke.waterEdgeOpacity > 0f) {
                 val edgeRadius = WaterEdge.distancePixels(stroke.waterEdgeRadius, stroke.waterEdgeRadiusUnit, width.toFloat())
                 val edgeTipScale = BrushTipTransform.scale(tip.width, tip.height, diameter + edgeRadius * 2f, thicknessScale, stroke.thicknessVertical)
-                val edgeMatrix = Matrix().apply { postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(edgeTipScale.x, edgeTipScale.y); postRotate(angle); postTranslate(drawX, drawY) }
+                val edgeMatrix = Matrix().apply { postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(edgeTipScale.x * flip.x, edgeTipScale.y * flip.y); postRotate(angle); postTranslate(drawX, drawY) }
                 paint.colorFilter = PorterDuffColorFilter(WaterEdge.darkenArgb(stroke.colorArgb.toInt(), stroke.waterEdgeDarkness), PorterDuff.Mode.SRC_IN)
                 paint.alpha = (mainAlpha * stroke.waterEdgeOpacity.coerceIn(0f, 1f)).toInt().coerceIn(1, 255)
                 val blur = WaterEdge.distancePixels(stroke.waterEdgeBlur, stroke.waterEdgeBlurUnit, width.toFloat())
@@ -660,6 +664,7 @@ class DocumentAssetService(private val context: Context) {
             canvas.drawBitmap(tip, matrix, paint)
             }
         }
+        paint.blendMode = null
         if (stroke.dualBrush && dualTips.isNotEmpty()) drawDualStampStroke(canvas, stroke, dualTips, width, height, paint)
         if (compositeLayer >= 0) canvas.restoreToCount(compositeLayer)
         paint.colorFilter = null
@@ -668,7 +673,9 @@ class DocumentAssetService(private val context: Context) {
     /** Export counterpart of InkCanvasView's secondary stamp pass. Keep both algorithms
      * deterministic and equivalent so the page bitmap/PDF matches the live canvas. */
     private fun drawDualStampStroke(canvas: Canvas, stroke: InkStroke, tips: List<Bitmap>, width: Int, height: Int, paint: Paint) {
-        paint.blendMode = CspDualBrushBlendMode.resolve(stroke.dualCompositeMode)
+        val compositePaint = Paint().apply { blendMode = CspDualBrushBlendMode.resolve(stroke.dualCompositeMode) }
+        val dualLayer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), compositePaint)
+        paint.blendMode = if (stroke.dualBlendTipsWithDarken) BlendMode.DARKEN else null
         val scatterRandom = java.util.Random(stroke.renderSeed.toLong() xor DUAL_SCATTER_SEED)
         val rotationRandom = java.util.Random(stroke.renderSeed.toLong() xor DUAL_ROTATION_SEED)
         val sampledPoints = StrokeStampSampler.sample(stroke.points, width.toFloat(), height.toFloat()) { point ->
@@ -692,6 +699,7 @@ class DocumentAssetService(private val context: Context) {
             val drawY = point.y * height + offset.y
             val thicknessDynamic = pressureDynamic(stroke.thicknessPressureEnabled, stroke.thicknessPressureMinimum, stroke.thicknessPressureCurve, pressure) * secondaryDynamic(stroke.thicknessSecondaryDynamics, point, stroke.renderSeed, SALT_THICKNESS)
             val tipScale = BrushTipTransform.scale(tip.width, tip.height, diameter, stroke.dualThickness.coerceIn(.05f, 2f) * thicknessDynamic, stroke.dualThicknessVertical)
+            val flip = BrushTipFlip.signs(stroke.dualTipFlipHorizontalMode, stroke.dualTipFlipVerticalMode, stroke.dualTipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed, dual = true)
             val followsStroke = BrushStampRotation.followsStroke(stroke, dual = true)
             val angle = BrushStampRotation.degrees(
                 stroke = stroke,
@@ -700,7 +708,7 @@ class DocumentAssetService(private val context: Context) {
                 strokeDirectionDegrees = if (followsStroke) StrokeStampSampler.directionDegrees(sampledPoints, index, width.toFloat(), height.toFloat()) else 0f,
                 randomUnit = rotationRandom.nextFloat(),
             )
-            val matrix = Matrix().apply { postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(tipScale.x, tipScale.y); postRotate(angle); postTranslate(drawX, drawY) }
+            val matrix = Matrix().apply { postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(tipScale.x * flip.x, tipScale.y * flip.y); postRotate(angle); postTranslate(drawX, drawY) }
             val opacityDynamic = pressureDynamic(stroke.opacityPressureEnabled, stroke.opacityPressureMinimum, stroke.opacityPressureCurve, pressure) * secondaryDynamic(stroke.opacitySecondaryDynamics, point, stroke.renderSeed, SALT_OPACITY)
             val flowDynamic = pressureDynamic(stroke.flowPressureEnabled, stroke.flowPressureMinimum, stroke.flowPressureCurve, pressure) * secondaryDynamic(stroke.flowSecondaryDynamics, point, stroke.renderSeed, SALT_FLOW)
             paint.colorFilter = PorterDuffColorFilter(stroke.colorArgb.toInt(), PorterDuff.Mode.SRC_IN)
@@ -709,6 +717,7 @@ class DocumentAssetService(private val context: Context) {
             }
         }
         paint.blendMode = null
+        canvas.restoreToCount(dualLayer)
     }
 
     private fun drawLinePoint(canvas: Canvas, paint: Paint, stroke: InkStroke, x: Float, y: Float, strokeWidth: Float, alpha: Int, pageWidth: Int) {
