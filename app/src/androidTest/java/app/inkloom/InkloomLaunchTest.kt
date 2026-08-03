@@ -127,6 +127,43 @@ class InkloomLaunchTest {
         assertEquals(WorkspacePanelDock.BOTTOM, restored.layerPanelDock)
     }
 
+    @Test fun builtInWorkspacesSwitchTheCompleteEditorLayout() {
+        createNotebookAndOpenEditor()
+
+        composeRule.onNodeWithContentDescription("Workspaces").performClick()
+        composeRule.onNodeWithText("Drawing workspace").performClick()
+        composeRule.onNodeWithText("Brush Library").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Layers").onLast().assertIsDisplayed()
+        var restored = AppSettingsStore(composeRule.activity).load()
+        assertEquals(false, restored.showPageRail)
+        assertEquals(true, restored.showBrushPanel)
+        assertEquals(true, restored.showLayerPanel)
+
+        composeRule.onNodeWithContentDescription("Workspaces").performClick()
+        composeRule.onNodeWithText("Reading workspace").performClick()
+        restored = AppSettingsStore(composeRule.activity).load()
+        assertEquals(true, restored.showPageRail)
+        assertEquals(false, restored.showBrushPanel)
+        assertEquals(false, restored.showLayerPanel)
+        assertEquals(false, restored.showToolbar)
+
+        composeRule.onNodeWithContentDescription("Workspaces").performClick()
+        composeRule.onNodeWithText("Minimal workspace").performClick()
+        restored = AppSettingsStore(composeRule.activity).load()
+        assertEquals(false, restored.showPageRail)
+        assertEquals(false, restored.showBrushPanel)
+        assertEquals(false, restored.showLayerPanel)
+        assertEquals(true, restored.showToolbar)
+
+        composeRule.onNodeWithContentDescription("Workspaces").performClick()
+        composeRule.onNodeWithText("Reset current workspace").performClick()
+        restored = AppSettingsStore(composeRule.activity).load()
+        assertEquals(true, restored.showPageRail)
+        assertEquals(false, restored.showBrushPanel)
+        assertEquals(false, restored.showLayerPanel)
+        assertEquals(true, restored.showToolbar)
+    }
+
     @Test fun settingsExposeInputAndToolControls() {
         composeRule.onNodeWithContentDescription("Settings").performClick()
         composeRule.onNodeWithText("Draw with finger").assertIsDisplayed()

@@ -80,6 +80,8 @@ import app.inkloom.model.*
 import app.inkloom.settings.AppSettings
 import app.inkloom.settings.AppSettingsBackupCodec
 import app.inkloom.settings.AppSettingsStore
+import app.inkloom.settings.BuiltInWorkspace
+import app.inkloom.settings.BuiltInWorkspaces
 import app.inkloom.settings.ColorPaletteStore
 import app.inkloom.settings.EraserPreset
 import app.inkloom.settings.FloatingToolbarPlacement
@@ -909,6 +911,7 @@ private fun EditorScreen(
     fun exitCanvasNavigation() { handToolEnabled = false; handToolHeld = false; rotateToolEnabled = false; rotateToolHeld = false }
     var exportMenu by remember { mutableStateOf(false) }
     var viewMenu by remember { mutableStateOf(false) }
+    var workspaceMenu by remember { mutableStateOf(false) }
     var zoom by remember { mutableFloatStateOf(1f) }
     var panX by remember { mutableFloatStateOf(0f) }
     var panY by remember { mutableFloatStateOf(0f) }
@@ -1015,6 +1018,16 @@ private fun EditorScreen(
         val active = selectedPage.layers.firstOrNull { it.id == activeLayerId }
         if (active == null || LayerHierarchy.effectiveLocked(selectedPage.layers, active) || !LayerHierarchy.effectiveVisible(selectedPage.layers, active) || active.role in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) activeLayerId = selectedPage.layers.firstOrNull { LayerHierarchy.effectiveVisible(selectedPage.layers, it) && !LayerHierarchy.effectiveLocked(selectedPage.layers, it) && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) }?.id ?: LayerIds.INK
     }
+    fun applyWorkspaceSnapshot(snapshot: app.inkloom.settings.ToolboxWorkspaceSnapshot) {
+        val restored = settings.applyToolboxWorkspace(snapshot)
+        if (brushesOpen != restored.showBrushPanel) onToggleBrushes()
+        layersOpen = restored.showLayerPanel
+        onSettingsChange(restored)
+    }
+    fun applyBuiltInWorkspace(workspace: BuiltInWorkspace) {
+        workspaceMenu = false
+        applyWorkspaceSnapshot(BuiltInWorkspaces.snapshot(workspace))
+    }
     val allChangesSavedMessage = tr("All changes are saved.", "所有更改均已保存。")
     val inkOnlyClipboardMessage = tr("Clipboard actions currently apply to ink selections.", "剪贴板操作目前仅适用于墨迹选区。")
     val selectBeforeCutMessage = tr("Select ink before cutting.", "请先选择墨迹再剪切。")
@@ -1037,6 +1050,37 @@ private fun EditorScreen(
                 layersOpen = open
                 onSettingsChange(settings.copy(showLayerPanel = open))
             }) { Icon(Icons.Outlined.Layers, tr("Layers", "图层")) }
+            Box {
+                IconButton(onClick = { workspaceMenu = true }) { Icon(Icons.Outlined.DashboardCustomize, tr("Workspaces", "工作区")) }
+                DropdownMenu(expanded = workspaceMenu, onDismissRequest = { workspaceMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Column { Text(tr("Note workspace", "笔记工作区")); Text(tr("Pages and writing tools", "页面与书写工具"), fontSize = 10.sp, color = MutedInk) } },
+                        leadingIcon = { Icon(Icons.Outlined.EditNote, null) },
+                        onClick = { applyBuiltInWorkspace(BuiltInWorkspace.NOTE) },
+                    )
+                    DropdownMenuItem(
+                        text = { Column { Text(tr("Drawing workspace", "绘画工作区")); Text(tr("Brushes, layers, and vertical tools", "笔刷、图层与竖向工具"), fontSize = 10.sp, color = MutedInk) } },
+                        leadingIcon = { Icon(Icons.Outlined.Palette, null) },
+                        onClick = { applyBuiltInWorkspace(BuiltInWorkspace.DRAWING) },
+                    )
+                    DropdownMenuItem(
+                        text = { Column { Text(tr("Reading workspace", "阅读工作区")); Text(tr("Pages with drawing controls hidden", "保留页面并隐藏绘画控制"), fontSize = 10.sp, color = MutedInk) } },
+                        leadingIcon = { Icon(Icons.Outlined.Visibility, null) },
+                        onClick = { applyBuiltInWorkspace(BuiltInWorkspace.READING) },
+                    )
+                    DropdownMenuItem(
+                        text = { Column { Text(tr("Minimal workspace", "极简工作区")); Text(tr("Canvas and compact toolbar only", "仅保留画布与紧凑工具条"), fontSize = 10.sp, color = MutedInk) } },
+                        leadingIcon = { Icon(Icons.Outlined.CropFree, null) },
+                        onClick = { applyBuiltInWorkspace(BuiltInWorkspace.MINIMAL) },
+                    )
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text(tr("Reset current workspace", "重置当前工作区")) },
+                        leadingIcon = { Icon(Icons.Outlined.RestartAlt, null) },
+                        onClick = { applyBuiltInWorkspace(BuiltInWorkspace.RESET) },
+                    )
+                }
+            }
             IconButton(onClick = { outlineOpen = true }) { Icon(Icons.Outlined.FormatListBulleted, tr("Page outline", "页面大纲")) }
             IconButton(onClick = { onSettingsChange(settings.copy(showPageRail = !settings.showPageRail)) }) { Icon(if (settings.showPageRail) Icons.Outlined.ViewSidebar else Icons.Outlined.TableRows, tr("Toggle pages", "显示或隐藏页面栏")) }
             IconButton(onClick = { onSettingsChange(settings.copy(showToolbar = !settings.showToolbar)) }) { Icon(if (settings.showToolbar) Icons.Outlined.VisibilityOff else Icons.Outlined.Build, tr("Toggle toolbar", "显示或隐藏工具栏")) }
@@ -1294,13 +1338,6 @@ private fun EditorScreen(
                             } else {
                                 brushes.filterNot { it.hidden }.maxByOrNull { it.lastUsedAt }?.let(::selectImportedBrush)
                             }
-                        }
-
-                        fun applyWorkspaceSnapshot(snapshot: app.inkloom.settings.ToolboxWorkspaceSnapshot) {
-                            val restored = settings.applyToolboxWorkspace(snapshot)
-                            if (brushesOpen != restored.showBrushPanel) onToggleBrushes()
-                            layersOpen = restored.showLayerPanel
-                            onSettingsChange(restored)
                         }
 
                         fun applyQuickSlot(index: Int, temporary: Boolean) {
