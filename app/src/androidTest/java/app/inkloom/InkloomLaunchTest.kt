@@ -22,6 +22,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.core.app.ApplicationProvider
 import androidx.compose.ui.geometry.Offset
 import app.inkloom.importer.BrushGroupStore
+import app.inkloom.document.PageTemplateStore
 import app.inkloom.settings.AppSettingsStore
 import app.inkloom.settings.ToolboxQuickSlotKind
 import org.junit.Assert.assertEquals
@@ -151,6 +152,23 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription("Search this note").performClick()
 
         composeRule.onNodeWithText("Page, note, or PDF text").assertIsDisplayed()
+    }
+
+    @Test fun newPageChooserSupportsFavoritesAndNotebookDefaults() {
+        createNotebookAndOpenEditor()
+        composeRule.onNodeWithContentDescription("Add page").performClick()
+
+        composeRule.onNodeWithText("Choose template for new page").assertIsDisplayed()
+        composeRule.onNodeWithText("Import image/PDF").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Favorite Grid template").performClick()
+        composeRule.onNodeWithContentDescription("Set Grid as notebook default").performClick()
+
+        val library = PageTemplateStore(composeRule.activity.filesDir).load()
+        assertTrue("builtin-grid" in library.favoriteIds)
+        assertTrue(library.notebookDefaults.values.any { it == "builtin-grid" })
+
+        composeRule.onNodeWithContentDescription("Use Grid template").performClick()
+        composeRule.onNodeWithText("Page 2", substring = true).assertIsDisplayed()
     }
 
     @Test fun editorInsertsAValidatedLinkCard() {

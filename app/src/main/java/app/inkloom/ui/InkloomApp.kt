@@ -314,6 +314,7 @@ fun InkloomApp(initialIntent: Intent?) {
     val context = LocalContext.current
     val viewModel: InkloomViewModel = viewModel()
     val libraryState by viewModel.state.collectAsState()
+    val pageTemplates by viewModel.pageTemplates.collectAsState()
     val repository = remember { BrushImportRepository(context) }
     var pendingBrushExport by remember { mutableStateOf<ImportedBrush?>(null) }
     val brushStore = remember { BrushMetadataStore(context) }
@@ -436,6 +437,20 @@ fun InkloomApp(initialIntent: Intent?) {
             viewModel.insertImage(uri)
         }.onFailure { importError = it.message }
     }
+    val pageTemplatePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) runCatching {
+            context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            val name = context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            } ?: settings.language.text("Imported template", "导入的模板")
+            val imported = viewModel.importPageTemplates(uri, name)
+            Toast.makeText(
+                context,
+                settings.language.text("Imported ${imported.size} page template(s).", "已导入 ${imported.size} 个页面模板。"),
+                Toast.LENGTH_SHORT,
+            ).show()
+        }.onFailure { importError = it.message }
+    }
     var pendingCoverTitle by remember { mutableStateOf("Untitled Note") }
     val coverImagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) runCatching {
@@ -532,12 +547,18 @@ fun InkloomApp(initialIntent: Intent?) {
             onReorderBrush = { brushId, delta -> importedBrushes = BrushGroupOperations.move(importedBrushes, brushId, delta); brushStore.save(importedBrushes) },
             onDismissError = { importError = null },
             onSelectPage = viewModel::selectPage,
-            onAddPage = { libraryState.selectedDocumentId?.let(viewModel::addPage) },
+            pageTemplates = pageTemplates,
+            onAddPage = { templateId -> libraryState.selectedDocumentId?.let { viewModel.addPage(it, templateId) } },
             onDuplicatePage = { documentId, pageId -> viewModel.duplicatePage(documentId, pageId) },
             onDeletePage = { documentId, pageId -> viewModel.deletePage(documentId, pageId) },
             onMovePage = viewModel::movePage,
             onTransferPage = viewModel::transferPage,
-            onSetPageTemplate = viewModel::setPageTemplate,
+            onApplyPageTemplate = viewModel::applyPageTemplate,
+            onImportPageTemplates = { pageTemplatePicker.launch(arrayOf("application/pdf", "image/*")) },
+            onTogglePageTemplateFavorite = viewModel::togglePageTemplateFavorite,
+            onSetNotebookDefaultTemplate = viewModel::setNotebookDefaultTemplate,
+            onSavePageAsTemplate = { documentId, pageId, name -> viewModel.savePageAsTemplate(documentId, pageId, name) },
+            onDeletePageTemplate = viewModel::deletePageTemplate,
             onToggleBookmark = viewModel::toggleBookmark,
             onChangePageOutlineLevel = viewModel::changePageOutlineLevel,
             onTogglePageOutlineCollapsed = viewModel::togglePageOutlineCollapsed,
@@ -813,12 +834,18 @@ private fun EditorScreen(
     onReorderBrush: (String, Int) -> Unit,
     onDismissError: () -> Unit,
     onSelectPage: (String) -> Unit,
-    onAddPage: () -> Unit,
+    pageTemplates: PageTemplateLibrary,
+    onAddPage: (String) -> Unit,
     onDuplicatePage: (String, String) -> Unit,
     onDeletePage: (String, String) -> Unit,
     onMovePage: (String, String, Int) -> Unit,
     onTransferPage: (String, String, String, Boolean) -> Unit,
-    onSetPageTemplate: (String, String, PaperPattern) -> Unit,
+    onApplyPageTemplate: (String, String, String) -> Unit,
+    onImportPageTemplates: () -> Unit,
+    onTogglePageTemplateFavorite: (String) -> Unit,
+    onSetNotebookDefaultTemplate: (String, String?) -> Unit,
+    onSavePageAsTemplate: (String, String, String) -> PageTemplate?,
+    onDeletePageTemplate: (String) -> Unit,
     onToggleBookmark: (String, String) -> Unit,
     onChangePageOutlineLevel: (String, String, Int) -> Unit,
     onTogglePageOutlineCollapsed: (String, String) -> Unit,
@@ -1055,7 +1082,10 @@ private fun EditorScreen(
                 document, documents, selectedPage.id, settings.pagePanelDock,
                 onDock = { onSettingsChange(settings.copy(pagePanelDock = it)) },
                 onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
-                onSelectPage, onAddPage, onDuplicatePage, onDeletePage, onMovePage, onTransferPage, onSetPageTemplate,
+                pageTemplates = pageTemplates,
+                onSelect = onSelectPage, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
+                onApplyTemplate = onApplyPageTemplate, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
+                onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate,
                 onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
                 onClearPageInk, onSetPageCrop, onRotatePage,
             )
@@ -1467,7 +1497,10 @@ private fun EditorScreen(
                 document, documents, selectedPage.id, settings.pagePanelDock,
                 onDock = { onSettingsChange(settings.copy(pagePanelDock = it)) },
                 onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
-                onSelectPage, onAddPage, onDuplicatePage, onDeletePage, onMovePage, onTransferPage, onSetPageTemplate,
+                pageTemplates = pageTemplates,
+                onSelect = onSelectPage, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
+                onApplyTemplate = onApplyPageTemplate, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
+                onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate,
                 onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
                 onClearPageInk, onSetPageCrop, onRotatePage,
             )
@@ -1560,7 +1593,10 @@ private fun EditorScreen(
                 document, documents, selectedPage.id, settings.pagePanelDock,
                 onDock = { onSettingsChange(settings.copy(pagePanelDock = it)) },
                 onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
-                onSelectPage, onAddPage, onDuplicatePage, onDeletePage, onMovePage, onTransferPage, onSetPageTemplate,
+                pageTemplates = pageTemplates,
+                onSelect = onSelectPage, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
+                onApplyTemplate = onApplyPageTemplate, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
+                onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate,
                 onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
                 onClearPageInk, onSetPageCrop, onRotatePage,
                 modifier = Modifier.fillMaxSize().background(Color(0xFFF7F7F7), RoundedCornerShape(12.dp)).padding(12.dp),
@@ -1894,13 +1930,19 @@ private fun PageRail(
     dock: WorkspacePanelDock,
     onDock: (WorkspacePanelDock) -> Unit,
     onClose: () -> Unit,
+    pageTemplates: PageTemplateLibrary,
     onSelect: (String) -> Unit,
-    onAdd: () -> Unit,
+    onAdd: (String) -> Unit,
     onDuplicate: (String, String) -> Unit,
     onDelete: (String, String) -> Unit,
     onMove: (String, String, Int) -> Unit,
     onTransfer: (String, String, String, Boolean) -> Unit,
-    onSetTemplate: (String, String, PaperPattern) -> Unit,
+    onApplyTemplate: (String, String, String) -> Unit,
+    onImportTemplates: () -> Unit,
+    onToggleTemplateFavorite: (String) -> Unit,
+    onSetDefaultTemplate: (String, String?) -> Unit,
+    onSaveAsTemplate: (String, String, String) -> PageTemplate?,
+    onDeleteTemplate: (String) -> Unit,
     onToggleBookmark: (String, String) -> Unit,
     onOutlineLevel: (String, String, Int) -> Unit,
     onOutlineCollapsed: (String, String) -> Unit,
@@ -1917,6 +1959,7 @@ private fun PageRail(
     val dragDescription = tr("Drag pages panel", "拖动页面面板")
     val currentPanelDrag by rememberUpdatedState(onPanelDrag)
     val currentPanelDragEnd by rememberUpdatedState(onPanelDragEnd)
+    var addTemplateOpen by remember(document.id) { mutableStateOf(false) }
     LazyColumn(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -1934,8 +1977,21 @@ private fun PageRail(
             )
             WorkspacePanelDockMenu(dock, onDock, tr("Change pages panel docking", "更改页面面板停靠方式"), Modifier.size(28.dp))
             IconButton(onClick = onClose, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.Close, tr("Close pages panel", "关闭页面面板")) }
-            IconButton(onClick = onAdd, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Add, tr("Add page", "添加页面")) }
-        } }
+            IconButton(onClick = { addTemplateOpen = true }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.Add, tr("Add page", "添加页面")) }
+        }
+            if (addTemplateOpen) PageTemplatePickerDialog(
+                library = pageTemplates,
+                documentId = document.id,
+                title = tr("Choose template for new page", "选择新页面模板"),
+                currentBackground = null,
+                onDismiss = { addTemplateOpen = false },
+                onChoose = { template -> onAdd(template.id); addTemplateOpen = false },
+                onImport = onImportTemplates,
+                onToggleFavorite = onToggleTemplateFavorite,
+                onSetDefault = { onSetDefaultTemplate(document.id, it) },
+                onDelete = onDeleteTemplate,
+            )
+        }
         items(document.pages, key = { it.id }) { page ->
             val pageIndex = document.pages.indexOf(page)
             val hasOutlineChildren = PageOutline.hasChildren(document.pages, pageIndex)
@@ -1945,6 +2001,8 @@ private fun PageRail(
             var clearOpen by remember { mutableStateOf(false) }
             var transferOpen by remember { mutableStateOf(false) }
             var templateOpen by remember { mutableStateOf(false) }
+            var saveTemplateNameOpen by remember { mutableStateOf(false) }
+            var templateName by remember(page.id) { mutableStateOf(page.title) }
             var cropOpen by remember { mutableStateOf(false) }
             var cropDraft by remember(page.crop) { mutableStateOf(page.crop) }
             var title by remember(page.title) { mutableStateOf(page.title) }
@@ -1989,7 +2047,7 @@ private fun PageRail(
                         DropdownMenuItem(text = { Text(tr("Increase outline indent", "增加大纲缩进")) }, enabled = pageIndex > 0 && page.outlineLevel < 3 && page.outlineLevel <= document.pages[pageIndex - 1].outlineLevel, onClick = { menu = false; onOutlineLevel(document.id, page.id, 1) })
                         DropdownMenuItem(text = { Text(tr("Decrease outline indent", "减少大纲缩进")) }, enabled = page.outlineLevel > 0, onClick = { menu = false; onOutlineLevel(document.id, page.id, -1) })
                         if (hasOutlineChildren) DropdownMenuItem(text = { Text(if (page.outlineCollapsed) tr("Expand outline children", "展开子页面") else tr("Collapse outline children", "折叠子页面")) }, onClick = { menu = false; onOutlineCollapsed(document.id, page.id) })
-                        DropdownMenuItem(text = { Text(tr("Page template", "页面模板")) }, enabled = page.background is PageBackground.Paper, onClick = { menu = false; templateOpen = true })
+                        DropdownMenuItem(text = { Text(tr("Page template", "页面模板")) }, onClick = { menu = false; templateOpen = true })
                         DropdownMenuItem(text = { Text(tr("Crop page", "裁剪页面")) }, onClick = { menu = false; cropDraft = page.crop; cropOpen = true })
                         DropdownMenuItem(text = { Text(tr("Rotate 90° clockwise", "顺时针旋转 90°")) }, onClick = { menu = false; onRotate(document.id, page.id) })
                         DropdownMenuItem(text = { Text(if (page.bookmarked) tr("Remove bookmark", "取消收藏") else tr("Bookmark", "收藏")) }, onClick = { menu = false; onToggleBookmark(document.id, page.id) })
@@ -2000,22 +2058,25 @@ private fun PageRail(
             }
             if (renameOpen) AlertDialog(onDismissRequest = { renameOpen = false }, title = { Text(tr("Rename page", "重命名页面")) }, text = { OutlinedTextField(title, { title = it }, singleLine = true) }, confirmButton = { TextButton(onClick = { onRename(document.id, page.id, title); renameOpen = false }) { Text(tr("Save", "保存")) } }, dismissButton = { TextButton(onClick = { renameOpen = false }) { Text(tr("Cancel", "取消")) } })
             if (metadataOpen) AlertDialog(onDismissRequest = { metadataOpen = false }, title = { Text(tr("Page metadata", "页面信息")) }, text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { OutlinedTextField(customNumber, { customNumber = it }, label = { Text(tr("Custom page number", "自定义页码")) }, singleLine = true); OutlinedTextField(tags, { tags = it }, label = { Text(tr("Tags", "标签")) }, supportingText = { Text(tr("Separate tags with commas", "用逗号分隔标签")) }) } }, confirmButton = { TextButton(onClick = { onMetadata(document.id, page.id, customNumber, tags.split(',')); metadataOpen = false }) { Text(tr("Save", "保存")) } }, dismissButton = { TextButton(onClick = { metadataOpen = false }) { Text(tr("Cancel", "取消")) } })
-            if (templateOpen) AlertDialog(
-                onDismissRequest = { templateOpen = false },
-                title = { Text(tr("Choose page template", "选择页面模板")) },
-                text = {
-                    Column(Modifier.widthIn(min = 320.dp, max = 480.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        PaperPattern.entries.forEach { pattern ->
-                            val selected = (page.background as? PageBackground.Paper)?.pattern == pattern
-                            ListItem(
-                                headlineContent = { Text(when (pattern) { PaperPattern.PLAIN -> tr("Blank", "空白"); PaperPattern.RULED -> tr("Ruled", "横线"); PaperPattern.GRID -> tr("Grid", "方格"); PaperPattern.DOT -> tr("Dot grid", "点阵"); PaperPattern.CORNELL -> tr("Cornell notes", "康奈尔笔记") }) },
-                                leadingContent = { Icon(if (selected) Icons.Outlined.RadioButtonChecked else Icons.Outlined.RadioButtonUnchecked, null) },
-                                modifier = Modifier.clip(RoundedCornerShape(10.dp)).clickable { onSetTemplate(document.id, page.id, pattern); templateOpen = false },
-                            )
-                        }
-                    }
-                },
-                confirmButton = { TextButton(onClick = { templateOpen = false }) { Text(tr("Cancel", "取消")) } },
+            if (templateOpen) PageTemplatePickerDialog(
+                library = pageTemplates,
+                documentId = document.id,
+                title = tr("Choose page template", "选择页面模板"),
+                currentBackground = page.background,
+                onDismiss = { templateOpen = false },
+                onChoose = { template -> onApplyTemplate(document.id, page.id, template.id); templateOpen = false },
+                onImport = onImportTemplates,
+                onToggleFavorite = onToggleTemplateFavorite,
+                onSetDefault = { onSetDefaultTemplate(document.id, it) },
+                onSaveCurrent = { templateName = page.title; templateOpen = false; saveTemplateNameOpen = true },
+                onDelete = onDeleteTemplate,
+            )
+            if (saveTemplateNameOpen) AlertDialog(
+                onDismissRequest = { saveTemplateNameOpen = false },
+                title = { Text(tr("Save page as template", "将页面保存为模板")) },
+                text = { OutlinedTextField(templateName, { templateName = it }, label = { Text(tr("Template name", "模板名称")) }, singleLine = true) },
+                confirmButton = { TextButton(onClick = { onSaveAsTemplate(document.id, page.id, templateName); saveTemplateNameOpen = false }) { Text(tr("Save", "保存")) } },
+                dismissButton = { TextButton(onClick = { saveTemplateNameOpen = false }) { Text(tr("Cancel", "取消")) } },
             )
             if (clearOpen) AlertDialog(onDismissRequest = { clearOpen = false }, title = { Text(tr("Clear page ink?", "清除页面墨迹？")) }, text = { Text(tr("All strokes on unlocked layers will be removed. Locked-layer ink is preserved.", "将删除所有未锁定图层上的笔画，锁定图层中的墨迹会保留。")) }, confirmButton = { TextButton(onClick = { onClearInk(document.id, page.id); clearOpen = false }) { Text(tr("Clear", "清除")) } }, dismissButton = { TextButton(onClick = { clearOpen = false }) { Text(tr("Cancel", "取消")) } })
             if (cropOpen) AlertDialog(
@@ -2052,6 +2113,125 @@ private fun PageRail(
             )
         }
     }
+}
+
+@Composable
+private fun PageTemplatePickerDialog(
+    library: PageTemplateLibrary,
+    documentId: String,
+    title: String,
+    currentBackground: PageBackground?,
+    onDismiss: () -> Unit,
+    onChoose: (PageTemplate) -> Unit,
+    onImport: () -> Unit,
+    onToggleFavorite: (String) -> Unit,
+    onSetDefault: (String?) -> Unit,
+    onDelete: (String) -> Unit,
+    onSaveCurrent: (() -> Unit)? = null,
+) {
+    val all = library.allTemplates()
+    val ordered = all.filter { it.id in library.favoriteIds } + all.filterNot { it.id in library.favoriteIds }
+    val defaultId = library.notebookDefaults[documentId] ?: PageTemplateCatalog.blank.id
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(Modifier.widthIn(min = 440.dp, max = 640.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    tr(
+                        "Choose a reusable paper, image, or PDF background. Existing ink and objects are preserved.",
+                        "选择可复用的纸张、图片或 PDF 背景；现有墨迹与对象会完整保留。",
+                    ),
+                    color = MutedInk,
+                    fontSize = 12.sp,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = onImport) { Icon(Icons.Outlined.FileOpen, null); Spacer(Modifier.width(6.dp)); Text(tr("Import image/PDF", "导入图片/PDF")) }
+                    if (onSaveCurrent != null) OutlinedButton(onClick = onSaveCurrent) { Icon(Icons.Outlined.BookmarkAdd, null); Spacer(Modifier.width(6.dp)); Text(tr("Save current", "保存当前页")) }
+                }
+                LazyColumn(Modifier.heightIn(max = 430.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    items(ordered, key = { it.id }) { template ->
+                        val selected = currentBackground == template.background
+                        val builtIn = PageTemplateCatalog.isBuiltIn(template.id)
+                        val isDefault = template.id == defaultId
+                        val displayName = pageTemplateName(template)
+                        val favoriteDescription = tr("Favorite $displayName template", "收藏 $displayName 模板")
+                        val defaultDescription = tr("Set $displayName as notebook default", "将 $displayName 设为笔记默认模板")
+                        val useDescription = tr("Use $displayName template", "使用 $displayName 模板")
+                        ListItem(
+                            headlineContent = { Text(displayName, maxLines = 1) },
+                            supportingContent = {
+                                Text(
+                                    "${pageTemplateKind(template)} · ${template.width.toInt()} × ${template.height.toInt()}" + if (isDefault) tr(" · notebook default", " · 笔记默认") else "",
+                                    color = MutedInk,
+                                    fontSize = 11.sp,
+                                )
+                            },
+                            leadingContent = { PageTemplatePreview(template, selected) },
+                            trailingContent = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(onClick = { onToggleFavorite(template.id) }, modifier = Modifier.size(34.dp).semantics { contentDescription = favoriteDescription }) {
+                                        Icon(if (template.id in library.favoriteIds) Icons.Filled.Star else Icons.Outlined.StarBorder, null, tint = Ink)
+                                    }
+                                    IconButton(onClick = { onSetDefault(if (isDefault) null else template.id) }, modifier = Modifier.size(34.dp).semantics { contentDescription = defaultDescription }) {
+                                        Icon(if (isDefault) Icons.Filled.Home else Icons.Outlined.Home, null, tint = Ink)
+                                    }
+                                    if (!builtIn) IconButton(onClick = { onDelete(template.id) }, modifier = Modifier.size(34.dp)) {
+                                        Icon(Icons.Outlined.Delete, tr("Delete template", "删除模板"), tint = MutedInk)
+                                    }
+                                    TextButton(onClick = { onChoose(template) }, modifier = Modifier.semantics { contentDescription = useDescription }) { Text(if (selected) tr("Selected", "已选择") else tr("Use", "使用")) }
+                                }
+                            },
+                            colors = ListItemDefaults.colors(containerColor = if (selected) Workspace else Color.Transparent),
+                            modifier = Modifier.clip(RoundedCornerShape(10.dp)),
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(tr("Cancel", "取消")) } },
+    )
+}
+
+@Composable
+private fun PageTemplatePreview(template: PageTemplate, selected: Boolean) {
+    val borderColor = if (selected) Ink else OutlineSoft
+    Box(
+        Modifier.size(42.dp, 54.dp).background(Color.White, RoundedCornerShape(4.dp)).border(if (selected) 2.dp else 1.dp, borderColor, RoundedCornerShape(4.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        when (val background = template.background) {
+            is PageBackground.Paper -> Canvas(Modifier.fillMaxSize().padding(4.dp)) {
+                val guide = Color(0xFFD7D7D7)
+                when (background.pattern) {
+                    PaperPattern.PLAIN -> Unit
+                    PaperPattern.RULED -> { var y = 6f; while (y < size.height) { drawLine(guide, Offset(0f, y), Offset(size.width, y)); y += 7f } }
+                    PaperPattern.GRID -> { var x = 5f; while (x < size.width) { drawLine(guide, Offset(x, 0f), Offset(x, size.height)); x += 7f }; var y = 5f; while (y < size.height) { drawLine(guide, Offset(0f, y), Offset(size.width, y)); y += 7f } }
+                    PaperPattern.DOT -> { var x = 4f; while (x < size.width) { var y = 4f; while (y < size.height) { drawCircle(guide, .8f, Offset(x, y)); y += 7f }; x += 7f } }
+                    PaperPattern.CORNELL -> { drawLine(guide, Offset(size.width * .28f, 0f), Offset(size.width * .28f, size.height * .78f)); drawLine(guide, Offset(0f, size.height * .78f), Offset(size.width, size.height * .78f)) }
+                }
+            }
+            is PageBackground.Image -> Icon(Icons.Outlined.Image, null, tint = MutedInk)
+            is PageBackground.Pdf -> Text("PDF", color = Ink, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun pageTemplateName(template: PageTemplate): String = when (template.id) {
+    "builtin-plain" -> tr("Blank", "空白")
+    "builtin-ruled" -> tr("Ruled", "横线")
+    "builtin-grid" -> tr("Grid", "方格")
+    "builtin-dot" -> tr("Dot grid", "点阵")
+    "builtin-cornell" -> tr("Cornell notes", "康奈尔笔记")
+    else -> template.name
+}
+
+@Composable
+private fun pageTemplateKind(template: PageTemplate): String = when (template.background) {
+    is PageBackground.Paper -> tr("Paper", "纸张")
+    is PageBackground.Image -> tr("Image", "图片")
+    is PageBackground.Pdf -> tr("PDF page", "PDF 页面")
 }
 
 @Composable
