@@ -54,6 +54,17 @@ class CspShortcutResolverTest {
         assertNull(resolve(KeyEvent.KEYCODE_P, ctrl = true))
     }
 
+    @Test fun mapsAdditionalOfficialCspAliasesForSupportedCommands() {
+        assertEquals(ShortcutAction.ZOOM_OUT, resolve(KeyEvent.KEYCODE_MINUS, ctrl = true))
+        assertEquals(ShortcutAction.ZOOM_IN, resolve(KeyEvent.KEYCODE_SEMICOLON, ctrl = true))
+        assertEquals(ShortcutAction.CUT_SELECTION, resolve(KeyEvent.KEYCODE_F2))
+        assertEquals(ShortcutAction.COPY_SELECTION, resolve(KeyEvent.KEYCODE_F3))
+        assertEquals(ShortcutAction.PASTE_SELECTION, resolve(KeyEvent.KEYCODE_F4))
+        assertEquals(ShortcutAction.DELETE_SELECTION, resolve(KeyEvent.KEYCODE_DEL))
+        assertEquals(ShortcutAction.DELETE_SELECTION, resolve(KeyEvent.KEYCODE_FORWARD_DEL, ctrl = true))
+        assertEquals(ShortcutAction.DELETE_SELECTION, resolve(KeyEvent.KEYCODE_DEL, ctrl = true))
+    }
+
     @Test fun onlyContinuousAdjustmentsRepeatWhenAKeyIsHeld() {
         assertTrue(CspShortcutResolver.isRepeatable(ShortcutAction.BRUSH_SIZE_INCREASE))
         assertTrue(CspShortcutResolver.isRepeatable(ShortcutAction.OPACITY_DECREASE))
@@ -155,7 +166,7 @@ class CspShortcutResolverTest {
 
     @Test fun migratesExactWorkspaceDefaultsToClipboardDefaultsWithoutChangingCustomBindings() {
         val actionsAddedLater = setOf(ShortcutAction.CUT_SELECTION, ShortcutAction.COPY_SELECTION, ShortcutAction.PASTE_SELECTION, ShortcutAction.DELETE_SELECTION, ShortcutAction.SHAPE_TOOL, ShortcutAction.TEXT_TOOL, ShortcutAction.HAND_TOOL, ShortcutAction.ROTATE_VIEW_TOOL, ShortcutAction.ACTUAL_SIZE, ShortcutAction.EYEDROPPER_TOOL)
-        val formerDefaults = CspShortcutResolver.defaultBindings.filterNot { it.action in actionsAddedLater }
+        val formerDefaults = defaultsBeforeAdditionalAliases().filterNot { it.action in actionsAddedLater }
         assertEquals(CspShortcutResolver.defaultBindings, CspShortcutResolver.migrateLegacyDefaults(formerDefaults))
 
         val customized = formerDefaults.map { if (it.action == ShortcutAction.TOGGLE_ERASER) it.copy(chord = ShortcutChord(KeyEvent.KEYCODE_R)) else it }
@@ -164,7 +175,7 @@ class CspShortcutResolverTest {
 
     @Test fun migratesTheFormerClipboardDefaultsToTheExpandedToolDefaults() {
         val toolActions = setOf(ShortcutAction.SHAPE_TOOL, ShortcutAction.TEXT_TOOL, ShortcutAction.HAND_TOOL, ShortcutAction.ROTATE_VIEW_TOOL, ShortcutAction.ACTUAL_SIZE, ShortcutAction.EYEDROPPER_TOOL)
-        val formerDefaults = CspShortcutResolver.defaultBindings.filterNot { it.action in toolActions }
+        val formerDefaults = defaultsBeforeAdditionalAliases().filterNot { it.action in toolActions }
 
         assertEquals(CspShortcutResolver.defaultBindings, CspShortcutResolver.migrateLegacyDefaults(formerDefaults))
 
@@ -173,17 +184,28 @@ class CspShortcutResolverTest {
     }
 
     @Test fun migratesThePreviousCompleteDefaultsToIncludeActualSize() {
-        val formerDefaults = CspShortcutResolver.defaultBindings.filterNot { it.action in setOf(ShortcutAction.ACTUAL_SIZE, ShortcutAction.EYEDROPPER_TOOL) }
+        val formerDefaults = defaultsBeforeAdditionalAliases().filterNot { it.action in setOf(ShortcutAction.ACTUAL_SIZE, ShortcutAction.EYEDROPPER_TOOL) }
 
         assertEquals(CspShortcutResolver.defaultBindings, CspShortcutResolver.migrateLegacyDefaults(formerDefaults))
     }
 
     @Test fun migratesThePreviousCompleteDefaultsToIncludeTheEyedropper() {
-        val formerDefaults = CspShortcutResolver.defaultBindings.filterNot { it.action == ShortcutAction.EYEDROPPER_TOOL }
+        val formerDefaults = defaultsBeforeAdditionalAliases().filterNot { it.action == ShortcutAction.EYEDROPPER_TOOL }
 
         assertEquals(CspShortcutResolver.defaultBindings, CspShortcutResolver.migrateLegacyDefaults(formerDefaults))
     }
 
     private fun resolve(keyCode: Int, ctrl: Boolean = false, alt: Boolean = false, shift: Boolean = false) =
         CspShortcutResolver.resolve(ShortcutChord(keyCode, ctrl, alt, shift))
+
+    private fun defaultsBeforeAdditionalAliases(): List<ShortcutBinding> = CspShortcutResolver.defaultBindings.filterNot { binding ->
+        binding.action to binding.chord.keyCode in setOf(
+            ShortcutAction.ZOOM_OUT to KeyEvent.KEYCODE_MINUS,
+            ShortcutAction.ZOOM_IN to KeyEvent.KEYCODE_SEMICOLON,
+            ShortcutAction.CUT_SELECTION to KeyEvent.KEYCODE_F2,
+            ShortcutAction.COPY_SELECTION to KeyEvent.KEYCODE_F3,
+            ShortcutAction.PASTE_SELECTION to KeyEvent.KEYCODE_F4,
+            ShortcutAction.DELETE_SELECTION to KeyEvent.KEYCODE_DEL,
+        ) || binding.action == ShortcutAction.DELETE_SELECTION && binding.chord.ctrl
+    }
 }
