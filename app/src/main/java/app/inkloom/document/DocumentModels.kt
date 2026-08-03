@@ -220,6 +220,7 @@ data class InkStroke(
     val dualSprayParticleRandomRotationDegrees: Float = 0f,
     val dualTipSequenceMode: Int = 0,
     val dualCompositeMode: Int = 0,
+    val dualApplyRgb: Boolean = false,
     val taperMode: BrushTaperMode = BrushTaperMode.PERCENTAGE,
     val taperStartEnabled: Boolean = false,
     val taperStartLength: Float = .2f,

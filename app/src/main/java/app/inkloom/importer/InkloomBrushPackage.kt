@@ -230,6 +230,7 @@ class InkloomBrushPackage(private val assetDirectory: File) {
         dualSprayParticleRandomRotationDegrees = finite(source.dualSprayParticleRandomRotationDegrees, 0f).coerceIn(0f, 180f),
         dualTipSequenceMode = source.dualTipSequenceMode.coerceIn(0, 5),
         dualCompositeMode = source.dualCompositeMode.coerceIn(-1024, 1024),
+        dualApplyRgb = source.dualApplyRgb,
         taperStartLength = taperLength(source.taperMode, source.taperStartLength, .2f),
         taperStartLengthUnit = source.taperStartLengthUnit.coerceIn(0, 2),
         taperStartMinimum = finite(source.taperStartMinimum, .3f).coerceIn(0f, 1f),

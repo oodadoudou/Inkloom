@@ -50,6 +50,8 @@ class InkloomBrushPackageTest {
                 sprayDensity = 14f,
                 spraySpread = 2.25f,
                 dualBrush = true,
+                dualCompositeMode = 7,
+                dualApplyRgb = true,
                 dualSizeScale = .7f,
                 dualStrokeRotationJitterDegrees = 90f,
                 taperMode = BrushTaperMode.DISTANCE,
@@ -100,6 +102,8 @@ class InkloomBrushPackageTest {
             assertEquals(original.sizeSecondaryDynamics, restored.sizeSecondaryDynamics)
             assertEquals(original.tags, restored.tags)
             assertTrue(restored.dualBrush)
+            assertEquals(7, restored.dualCompositeMode)
+            assertTrue(restored.dualApplyRgb)
             assertTrue(restored.watercolor)
             assertTrue(restored.taperStartEnabled)
             assertEquals(packageFile.absolutePath, restored.sourcePath)

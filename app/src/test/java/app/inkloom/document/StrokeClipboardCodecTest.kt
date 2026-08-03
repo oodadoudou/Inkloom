@@ -15,6 +15,8 @@ class StrokeClipboardCodecTest {
             brushId = "imported-sut",
             grainDensity = .72f,
             dualBrush = true,
+            dualCompositeMode = 7,
+            dualApplyRgb = true,
             watercolor = true,
         )
 

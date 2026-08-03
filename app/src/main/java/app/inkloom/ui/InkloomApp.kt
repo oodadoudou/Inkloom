@@ -2474,6 +2474,7 @@ private fun InkCanvasView.applyBrushConfiguration(
     dualSprayParticleRandomRotationDegrees = activeBrush?.dualSprayParticleRandomRotationDegrees ?: 0f
     dualTipSequenceMode = activeBrush?.dualTipSequenceMode ?: 0
     dualCompositeMode = activeBrush?.dualCompositeMode ?: 0
+    dualApplyRgb = activeBrush?.dualApplyRgb ?: false
     taperMode = activeBrush?.taperMode ?: BrushTaperMode.PERCENTAGE
     taperStartEnabled = activeBrush?.taperStartEnabled ?: false
     taperStartLength = activeBrush?.taperStartLength ?: .2f
@@ -4029,7 +4030,17 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 if (draft.dualBrush && draft.dualSpray) item { SettingSwitch("Secondary particles follow stylus", null, draft.dualSprayParticleFollowStylusOrientation) { draft = draft.copy(dualSprayParticleFollowStylusOrientation = it) } }
                 if (draft.dualBrush && draft.dualSpray) item { SettingSwitch("Secondary particles follow stroke", null, draft.dualSprayParticleFollowStrokeDirection) { draft = draft.copy(dualSprayParticleFollowStrokeDirection = it) } }
                 if (draft.dualBrush && draft.dualSpray) item { BrushSettingSlider("Secondary particle random rotation", draft.dualSprayParticleRandomRotationDegrees, 0f..180f) { draft = draft.copy(dualSprayParticleRandomRotationDegrees = it) } }
-                if (draft.dualBrush) item { Text(tr("Imported composite mode ${draft.dualCompositeMode} is retained. Inkloom currently renders it with normal source-over blending until that CSP mode is verified.", "已保留导入的合成模式 ${draft.dualCompositeMode}。在完成该 CSP 模式验证前，Inkloom 暂时以普通 source-over 混合方式渲染。"), color = MutedInk, fontSize = 10.sp) }
+                if (draft.dualBrush) item {
+                    val mode = CspDualBrushMode.fromCode(draft.dualCompositeMode)
+                    Text(
+                        tr(
+                            "CSP composite: ${mode?.displayName ?: "Unknown ${draft.dualCompositeMode}"}${if (mode?.nativeBlendSupported == true) " · rendered in an isolated stroke layer" else " · retained with Normal fallback"}${if (draft.dualApplyRgb) " · secondary RGB flag retained" else " · alpha only"}",
+                            "CSP 合成：${mode?.displayName ?: "未知 ${draft.dualCompositeMode}"}${if (mode?.nativeBlendSupported == true) " · 在独立笔画层中渲染" else " · 已保留并使用普通模式回退"}${if (draft.dualApplyRgb) " · 已保留辅助 RGB 标记" else " · 仅透明度"}",
+                        ),
+                        color = MutedInk,
+                        fontSize = 10.sp,
+                    )
+                }
             }
         },
         confirmButton = { Button(onClick = { onSave(draft.copy(name = draft.name.trim().ifBlank { brush.name }, groupName = BrushGroupOperations.normalize(draft.groupName), tags = tagText.split(',').map(String::trim).filter(String::isNotBlank).distinct().take(24))) }) { Text(tr("Save preset", "保存预设")) } },

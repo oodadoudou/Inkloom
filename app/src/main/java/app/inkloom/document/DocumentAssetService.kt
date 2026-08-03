@@ -604,6 +604,7 @@ class DocumentAssetService(private val context: Context) {
     }
 
     private fun drawStampStroke(canvas: Canvas, stroke: InkStroke, tips: List<Bitmap>, dualTips: List<Bitmap>, width: Int, height: Int, paint: Paint) {
+        val compositeLayer = if (stroke.dualBrush && dualTips.isNotEmpty()) canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null) else -1
         val scatterRandom = java.util.Random(stroke.renderSeed.toLong())
         val rotationRandom = java.util.Random(stroke.renderSeed.toLong() xor 0x49A2B31DL)
         paint.colorFilter = PorterDuffColorFilter(stroke.colorArgb.toInt(), PorterDuff.Mode.SRC_IN)
@@ -660,12 +661,14 @@ class DocumentAssetService(private val context: Context) {
             }
         }
         if (stroke.dualBrush && dualTips.isNotEmpty()) drawDualStampStroke(canvas, stroke, dualTips, width, height, paint)
+        if (compositeLayer >= 0) canvas.restoreToCount(compositeLayer)
         paint.colorFilter = null
     }
 
     /** Export counterpart of InkCanvasView's secondary stamp pass. Keep both algorithms
      * deterministic and equivalent so the page bitmap/PDF matches the live canvas. */
     private fun drawDualStampStroke(canvas: Canvas, stroke: InkStroke, tips: List<Bitmap>, width: Int, height: Int, paint: Paint) {
+        paint.blendMode = CspDualBrushBlendMode.resolve(stroke.dualCompositeMode)
         val scatterRandom = java.util.Random(stroke.renderSeed.toLong() xor DUAL_SCATTER_SEED)
         val rotationRandom = java.util.Random(stroke.renderSeed.toLong() xor DUAL_ROTATION_SEED)
         val sampledPoints = StrokeStampSampler.sample(stroke.points, width.toFloat(), height.toFloat()) { point ->
@@ -705,6 +708,7 @@ class DocumentAssetService(private val context: Context) {
             canvas.drawBitmap(tip, matrix, paint)
             }
         }
+        paint.blendMode = null
     }
 
     private fun drawLinePoint(canvas: Canvas, paint: Paint, stroke: InkStroke, x: Float, y: Float, strokeWidth: Float, alpha: Int, pageWidth: Int) {

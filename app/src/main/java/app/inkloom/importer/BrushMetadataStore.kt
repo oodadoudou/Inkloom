@@ -131,6 +131,7 @@ class BrushMetadataStore(
                         dualSprayParticleRandomRotationDegrees = item.optDouble("dualSprayParticleRandomRotationDegrees", 0.0).toFloat().coerceIn(0f, 180f),
                         dualTipSequenceMode = item.optInt("dualTipSequenceMode", 0).coerceIn(0, 5),
                         dualCompositeMode = item.optInt("dualCompositeMode", 0),
+                        dualApplyRgb = item.optBoolean("dualApplyRgb", false),
                         taperMode = taperMode,
                         taperStartEnabled = item.optBoolean("taperStartEnabled", false),
                         taperStartLength = taperLength("taperStartLength", .2f),
@@ -267,6 +268,7 @@ class BrushMetadataStore(
                     .put("dualSprayParticleRandomRotationDegrees", brush.dualSprayParticleRandomRotationDegrees)
                     .put("dualTipSequenceMode", brush.dualTipSequenceMode)
                     .put("dualCompositeMode", brush.dualCompositeMode)
+                    .put("dualApplyRgb", brush.dualApplyRgb)
                     .put("taperMode", brush.taperMode.name)
                     .put("taperStartEnabled", brush.taperStartEnabled)
                     .put("taperStartLength", brush.taperStartLength)
