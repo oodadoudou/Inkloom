@@ -6,12 +6,39 @@ import java.util.UUID
 object BrushGroupOperations {
     private val whitespace = Regex("\\s+")
 
-    fun normalize(value: String): String = value.trim().replace(whitespace, " ").take(MAX_NAME_LENGTH)
+    fun normalize(value: String): String = value
+        .split('/')
+        .map { segment -> segment.trim().replace(whitespace, " ").take(MAX_NAME_LENGTH) }
+        .filter(String::isNotBlank)
+        .joinToString("/")
+        .take(MAX_PATH_LENGTH)
 
     fun names(brushes: List<ImportedBrush>): List<String> = brushes
         .map { normalize(it.groupName) }
         .filter(String::isNotBlank)
         .distinctBy(String::lowercase)
+
+    fun treePaths(brushes: List<ImportedBrush>): List<String> = buildList {
+        names(brushes).forEach { path ->
+            val segments = path.split('/')
+            segments.indices.forEach { index ->
+                val ancestor = segments.take(index + 1).joinToString("/")
+                if (none { it.equals(ancestor, ignoreCase = true) }) add(ancestor)
+            }
+        }
+    }
+
+    fun depth(groupName: String): Int = normalize(groupName).count { it == '/' }
+
+    fun displayName(groupName: String): String = normalize(groupName).substringAfterLast('/')
+
+    fun parent(groupName: String): String? = normalize(groupName).substringBeforeLast('/', "").takeIf(String::isNotBlank)
+
+    fun isWithin(groupName: String, rootGroupName: String): Boolean {
+        val group = normalize(groupName)
+        val root = normalize(rootGroupName)
+        return root.isNotBlank() && (group.equals(root, ignoreCase = true) || group.startsWith("$root/", ignoreCase = true))
+    }
 
     fun assign(brush: ImportedBrush, groupName: String): ImportedBrush = brush.copy(groupName = normalize(groupName))
 
@@ -68,7 +95,13 @@ object BrushGroupOperations {
         val old = normalize(oldName)
         val replacement = normalize(newName)
         if (old.isBlank()) return brushes
-        return brushes.map { brush -> if (normalize(brush.groupName).equals(old, ignoreCase = true)) brush.copy(groupName = replacement) else brush }
+        return brushes.map { brush ->
+            val current = normalize(brush.groupName)
+            if (!isWithin(current, old)) brush else {
+                val suffix = current.drop(old.length).trimStart('/')
+                brush.copy(groupName = listOf(replacement, suffix).filter(String::isNotBlank).joinToString("/"))
+            }
+        }
     }
 
     fun move(brushes: List<ImportedBrush>, brushId: String, delta: Int): List<ImportedBrush> {
@@ -103,4 +136,5 @@ object BrushGroupOperations {
     }
 
     const val MAX_NAME_LENGTH = 40
+    const val MAX_PATH_LENGTH = 160
 }

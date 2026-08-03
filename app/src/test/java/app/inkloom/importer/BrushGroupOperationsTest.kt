@@ -37,6 +37,28 @@ class BrushGroupOperationsTest {
         assertEquals(BrushGroupOperations.MAX_NAME_LENGTH, BrushGroupOperations.normalize("x".repeat(200)).length)
     }
 
+    @Test fun nestedPathsNormalizeSegmentsAndExposeAStableTree() {
+        val brushes = listOf(brush("A", " Drawing / Ink / Pens "), brush("B", "Drawing/Pencil"), brush("C", "Painting/Oil"))
+
+        assertEquals("Drawing/Ink/Pens", BrushGroupOperations.normalize(brushes[0].groupName))
+        assertEquals(listOf("Drawing", "Drawing/Ink", "Drawing/Ink/Pens", "Drawing/Pencil", "Painting", "Painting/Oil"), BrushGroupOperations.treePaths(brushes))
+        assertEquals(2, BrushGroupOperations.depth("Drawing/Ink/Pens"))
+        assertEquals("Pens", BrushGroupOperations.displayName("Drawing/Ink/Pens"))
+        assertEquals("Drawing/Ink", BrushGroupOperations.parent("Drawing/Ink/Pens"))
+        assertTrue(BrushGroupOperations.isWithin("Drawing/Ink/Pens", "drawing"))
+        assertFalse(BrushGroupOperations.isWithin("Painting/Oil", "Drawing"))
+    }
+
+    @Test fun renamingAParentMovesItsEntireSubtree() {
+        val brushes = listOf(brush("A", "Drawing/Ink/Pens"), brush("B", "Drawing/Pencil"), brush("C", "Painting/Oil"))
+
+        val renamed = BrushGroupOperations.rename(brushes, "Drawing", "Sketch")
+        val promoted = BrushGroupOperations.rename(renamed, "Sketch/Ink", "")
+
+        assertEquals(listOf("Sketch/Ink/Pens", "Sketch/Pencil", "Painting/Oil"), renamed.map(ImportedBrush::groupName))
+        assertEquals(listOf("Pens", "Sketch/Pencil", "Painting/Oil"), promoted.map(ImportedBrush::groupName))
+    }
+
     @Test fun moveReordersOnlyTheSelectedBrushGroup() {
         val brushes = listOf(brush("A", "Pens"), brush("B", "Pens"), brush("C", "Pencils"))
         val moved = BrushGroupOperations.move(brushes, "A", 1)
