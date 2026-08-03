@@ -3048,8 +3048,9 @@ private fun BrushPanel(
         }
         (showHidden || !brush.hidden) && (!favoritesOnly || brush.favorite) && groupMatches && (format == null || brush.format == format) && (search.isBlank() || brush.name.contains(search, true) || normalizedGroup.contains(search, true) || brush.tags.any { it.contains(search, true) })
     }.sortedWith(compareBy<ImportedBrush> { it.sortOrder }.thenByDescending { it.favorite }.thenByDescending { it.lastUsedAt }.thenBy { it.name.lowercase() })
+    val groupOrder = groups.mapIndexed { index, group -> group.lowercase() to index }.toMap()
     val brushSections = visibleBrushes.groupBy { BrushGroupOperations.normalize(it.groupName).ifBlank { "Ungrouped" } }
-        .toList().sortedWith(compareBy<Pair<String, List<ImportedBrush>>> { it.first == "Ungrouped" }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.first })
+        .toList().sortedBy { (group, _) -> groupOrder[group.lowercase()] ?: Int.MAX_VALUE }
     val dragDescription = tr("Drag brushes panel", "拖动笔刷面板")
     val currentPanelDrag by rememberUpdatedState(onPanelDrag)
     val currentPanelDragEnd by rememberUpdatedState(onPanelDragEnd)
@@ -3279,11 +3280,12 @@ private fun BrushPanel(
             onDismiss = { manageGroups = false },
             onRename = { oldName, newName ->
                 val updated = BrushGroupOperations.rename(brushes, oldName, newName)
-                updated.zip(brushes).filter { (next, previous) -> next != previous }.forEach { (next, _) -> onUpdateBrush(next) }
+                onReplaceBrushes(updated)
                 val normalized = BrushGroupOperations.normalize(newName)
                 selectedGroup = normalized.takeIf(String::isNotBlank) ?: UNGROUPED_BRUSH_FILTER
                 manageGroups = false
             },
+            onMove = { group, delta -> onReplaceBrushes(BrushGroupOperations.moveGroup(brushes, group, delta)) },
         )
     }
 }
@@ -3366,8 +3368,9 @@ private fun BrushBatchGroupDialog(
 }
 
 @Composable
-private fun BrushGroupManagerDialog(groups: List<String>, onDismiss: () -> Unit, onRename: (String, String) -> Unit) {
-    var selected by remember(groups) { mutableStateOf(groups.firstOrNull().orEmpty()) }
+private fun BrushGroupManagerDialog(groups: List<String>, onDismiss: () -> Unit, onRename: (String, String) -> Unit, onMove: (String, Int) -> Unit) {
+    var selected by remember { mutableStateOf(groups.firstOrNull().orEmpty()) }
+    LaunchedEffect(groups) { if (groups.none { it == selected }) selected = groups.firstOrNull().orEmpty() }
     var replacement by remember(selected) { mutableStateOf(selected) }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -3379,6 +3382,12 @@ private fun BrushGroupManagerDialog(groups: List<String>, onDismiss: () -> Unit,
                 } else {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(bottom = 8.dp)) {
                         groups.forEach { group -> item(group) { FilterChip(selected = selected == group, onClick = { selected = group }, label = { Text(group, maxLines = 1) }) } }
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        val selectedIndex = groups.indexOf(selected)
+                        OutlinedButton(onClick = { onMove(selected, -1) }, enabled = selectedIndex > 0) { Icon(Icons.Outlined.ArrowBack, null, Modifier.size(16.dp)); Spacer(Modifier.width(5.dp)); Text(tr("Earlier", "前移")) }
+                        Spacer(Modifier.width(6.dp))
+                        OutlinedButton(onClick = { onMove(selected, 1) }, enabled = selectedIndex in 0 until groups.lastIndex) { Text(tr("Later", "后移")); Spacer(Modifier.width(5.dp)); Icon(Icons.Outlined.ArrowForward, null, Modifier.size(16.dp)) }
                     }
                     OutlinedTextField(
                         value = replacement,

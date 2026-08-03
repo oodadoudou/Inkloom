@@ -13,6 +13,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.importer.BrushMetadataStore
+import app.inkloom.importer.BrushGroupOperations
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
@@ -83,6 +84,21 @@ class BrushBatchManagementTest {
         val copied = store.load().single { it.name == "Batch A copy" }
         assertNotEquals("batch-a", copied.id)
         assertEquals("Source", copied.groupName)
+    }
+
+    @Test fun groupManagerPersistsUserDefinedGroupOrder() {
+        composeRule.onNodeWithText("New Note").performClick()
+        composeRule.onNodeWithText("Create").performClick()
+        composeRule.onNodeWithContentDescription("Brushes").performClick()
+        composeRule.onNodeWithContentDescription("Manage brush groups").performClick()
+
+        composeRule.onAllNodes(hasText("Target")).onLast().performClick()
+        composeRule.onNodeWithText("Earlier").performClick()
+        composeRule.onNodeWithText("Done").performClick()
+
+        val store = BrushMetadataStore(composeRule.activity)
+        composeRule.waitUntil(5_000) { BrushGroupOperations.names(store.load()).firstOrNull() == "Target" }
+        assertEquals(listOf("Target", "Source"), BrushGroupOperations.names(store.load()))
     }
 
     private companion object {
