@@ -21,9 +21,11 @@ data class AppSettings(
     val leftDockStacked: Boolean = false,
     val rightDockStacked: Boolean = false,
     val bottomDockStacked: Boolean = false,
+    val freeDockStacked: Boolean = false,
     val leftDockActivePanel: WorkspacePanelKind = WorkspacePanelKind.PAGES,
     val rightDockActivePanel: WorkspacePanelKind = WorkspacePanelKind.BRUSHES,
     val bottomDockActivePanel: WorkspacePanelKind = WorkspacePanelKind.PAGES,
+    val freeDockActivePanel: WorkspacePanelKind = WorkspacePanelKind.BRUSHES,
     val panelTabOrder: String = "PAGES,BRUSHES,LAYERS",
     val pagePanelXDp: Float = 16f,
     val pagePanelYDp: Float = 16f,
@@ -114,9 +116,11 @@ class AppSettingsStore(context: Context) {
             leftDockStacked = preferences.getBoolean("leftDockStacked", false),
             rightDockStacked = preferences.getBoolean("rightDockStacked", false),
             bottomDockStacked = preferences.getBoolean("bottomDockStacked", false),
+            freeDockStacked = preferences.getBoolean("freeDockStacked", false),
             leftDockActivePanel = enumValue(preferences.getString("leftDockActivePanel", null), WorkspacePanelKind.PAGES),
             rightDockActivePanel = enumValue(preferences.getString("rightDockActivePanel", null), WorkspacePanelKind.BRUSHES),
             bottomDockActivePanel = enumValue(preferences.getString("bottomDockActivePanel", null), WorkspacePanelKind.PAGES),
+            freeDockActivePanel = enumValue(preferences.getString("freeDockActivePanel", null), WorkspacePanelKind.BRUSHES),
             panelTabOrder = WorkspacePanelTabs.encodeOrder(WorkspacePanelTabs.normalizeOrder(preferences.getString("panelTabOrder", null).orEmpty())),
             pagePanelXDp = preferences.getFloat("pagePanelXDp", 16f).coerceIn(-2400f, 2400f),
             pagePanelYDp = preferences.getFloat("pagePanelYDp", 16f).coerceIn(-2400f, 2400f),
@@ -192,9 +196,11 @@ class AppSettingsStore(context: Context) {
             .putBoolean("leftDockStacked", persisted.leftDockStacked)
             .putBoolean("rightDockStacked", persisted.rightDockStacked)
             .putBoolean("bottomDockStacked", persisted.bottomDockStacked)
+            .putBoolean("freeDockStacked", persisted.freeDockStacked)
             .putString("leftDockActivePanel", persisted.leftDockActivePanel.name)
             .putString("rightDockActivePanel", persisted.rightDockActivePanel.name)
             .putString("bottomDockActivePanel", persisted.bottomDockActivePanel.name)
+            .putString("freeDockActivePanel", persisted.freeDockActivePanel.name)
             .putString("panelTabOrder", WorkspacePanelTabs.encodeOrder(WorkspacePanelTabs.normalizeOrder(persisted.panelTabOrder)))
             .putFloat("pagePanelXDp", persisted.pagePanelXDp)
             .putFloat("pagePanelYDp", persisted.pagePanelYDp)

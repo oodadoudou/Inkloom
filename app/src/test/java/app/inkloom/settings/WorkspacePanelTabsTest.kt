@@ -31,5 +31,14 @@ class WorkspacePanelTabsTest {
         assertFalse(WorkspacePanelTabs.isStacked(selected, WorkspacePanelDock.LEFT))
         assertFalse(WorkspacePanelTabs.isStacked(selected, WorkspacePanelDock.FREE))
         assertEquals(WorkspacePanelKind.LAYERS, WorkspacePanelTabs.active(selected, WorkspacePanelDock.RIGHT))
+
+        val floating = WorkspacePanelTabs.withActive(
+            WorkspacePanelTabs.withStacked(selected, WorkspacePanelDock.FREE, true),
+            WorkspacePanelDock.FREE,
+            WorkspacePanelKind.PAGES,
+        )
+        assertTrue(WorkspacePanelTabs.isStacked(floating, WorkspacePanelDock.FREE))
+        assertEquals(WorkspacePanelKind.PAGES, WorkspacePanelTabs.active(floating, WorkspacePanelDock.FREE))
+        assertEquals(WorkspacePanelKind.LAYERS, WorkspacePanelTabs.active(floating, WorkspacePanelDock.RIGHT))
     }
 }

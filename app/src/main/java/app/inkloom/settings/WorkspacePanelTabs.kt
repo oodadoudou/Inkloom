@@ -31,27 +31,27 @@ object WorkspacePanelTabs {
         WorkspacePanelDock.LEFT -> settings.leftDockStacked
         WorkspacePanelDock.RIGHT -> settings.rightDockStacked
         WorkspacePanelDock.BOTTOM -> settings.bottomDockStacked
-        WorkspacePanelDock.FREE -> false
+        WorkspacePanelDock.FREE -> settings.freeDockStacked
     }
 
     fun active(settings: AppSettings, dock: WorkspacePanelDock): WorkspacePanelKind = when (dock) {
         WorkspacePanelDock.LEFT -> settings.leftDockActivePanel
         WorkspacePanelDock.RIGHT -> settings.rightDockActivePanel
         WorkspacePanelDock.BOTTOM -> settings.bottomDockActivePanel
-        WorkspacePanelDock.FREE -> WorkspacePanelKind.PAGES
+        WorkspacePanelDock.FREE -> settings.freeDockActivePanel
     }
 
     fun withStacked(settings: AppSettings, dock: WorkspacePanelDock, stacked: Boolean): AppSettings = when (dock) {
         WorkspacePanelDock.LEFT -> settings.copy(leftDockStacked = stacked)
         WorkspacePanelDock.RIGHT -> settings.copy(rightDockStacked = stacked)
         WorkspacePanelDock.BOTTOM -> settings.copy(bottomDockStacked = stacked)
-        WorkspacePanelDock.FREE -> settings
+        WorkspacePanelDock.FREE -> settings.copy(freeDockStacked = stacked)
     }
 
     fun withActive(settings: AppSettings, dock: WorkspacePanelDock, panel: WorkspacePanelKind): AppSettings = when (dock) {
         WorkspacePanelDock.LEFT -> settings.copy(leftDockActivePanel = panel)
         WorkspacePanelDock.RIGHT -> settings.copy(rightDockActivePanel = panel)
         WorkspacePanelDock.BOTTOM -> settings.copy(bottomDockActivePanel = panel)
-        WorkspacePanelDock.FREE -> settings
+        WorkspacePanelDock.FREE -> settings.copy(freeDockActivePanel = panel)
     }
 }

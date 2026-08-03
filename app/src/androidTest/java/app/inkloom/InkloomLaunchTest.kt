@@ -84,9 +84,11 @@ class InkloomLaunchTest {
                     .remove("leftDockStacked")
                     .remove("rightDockStacked")
                     .remove("bottomDockStacked")
+                    .remove("freeDockStacked")
                     .remove("leftDockActivePanel")
                     .remove("rightDockActivePanel")
                     .remove("bottomDockActivePanel")
+                    .remove("freeDockActivePanel")
                     .remove("panelTabOrder")
                     .commit()
                 BrushGroupStore(ApplicationProvider.getApplicationContext()).save(

@@ -16,6 +16,8 @@ class WorkspaceLayoutProfilesTest {
             brushPanelLocked = true,
             leftDockStacked = true,
             leftDockActivePanel = WorkspacePanelKind.BRUSHES,
+            freeDockStacked = true,
+            freeDockActivePanel = WorkspacePanelKind.BRUSHES,
             panelTabOrder = "BRUSHES,PAGES,LAYERS",
             brushPanelXDp = 840f,
             toolbarDock = ToolbarDock.LEFT,
@@ -36,6 +38,8 @@ class WorkspaceLayoutProfilesTest {
         assertTrue(restoredLandscape.brushPanelLocked)
         assertTrue(restoredLandscape.leftDockStacked)
         assertEquals(WorkspacePanelKind.BRUSHES, restoredLandscape.leftDockActivePanel)
+        assertTrue(restoredLandscape.freeDockStacked)
+        assertEquals(WorkspacePanelKind.BRUSHES, restoredLandscape.freeDockActivePanel)
         assertEquals("BRUSHES,PAGES,LAYERS", restoredLandscape.panelTabOrder)
         assertEquals(840f, restoredLandscape.brushPanelXDp)
         assertEquals(ToolbarDock.LEFT, restoredLandscape.toolbarDock)

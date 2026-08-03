@@ -20,6 +20,8 @@ class AppSettingsBackupCodecTest {
             brushPanelLocked = true,
             bottomDockStacked = true,
             bottomDockActivePanel = WorkspacePanelKind.LAYERS,
+            freeDockStacked = true,
+            freeDockActivePanel = WorkspacePanelKind.BRUSHES,
             panelTabOrder = "LAYERS,BRUSHES,PAGES",
             brushPanelXDp = 333f,
             toolbarDock = ToolbarDock.LEFT,

@@ -30,9 +30,11 @@ data class ToolboxWorkspaceSnapshot(
     val leftDockStacked: Boolean,
     val rightDockStacked: Boolean,
     val bottomDockStacked: Boolean,
+    val freeDockStacked: Boolean,
     val leftDockActivePanel: WorkspacePanelKind,
     val rightDockActivePanel: WorkspacePanelKind,
     val bottomDockActivePanel: WorkspacePanelKind,
+    val freeDockActivePanel: WorkspacePanelKind,
     val panelTabOrder: String,
     val pagePanelXDp: Float,
     val pagePanelYDp: Float,
@@ -110,8 +112,8 @@ fun AppSettings.captureToolboxWorkspace(): ToolboxWorkspaceSnapshot = ToolboxWor
     pagePanelDock, brushPanelDock, layerPanelDock,
     pagePanelMode, brushPanelMode, layerPanelMode,
     pagePanelLocked, brushPanelLocked, layerPanelLocked,
-    leftDockStacked, rightDockStacked, bottomDockStacked,
-    leftDockActivePanel, rightDockActivePanel, bottomDockActivePanel, panelTabOrder,
+    leftDockStacked, rightDockStacked, bottomDockStacked, freeDockStacked,
+    leftDockActivePanel, rightDockActivePanel, bottomDockActivePanel, freeDockActivePanel, panelTabOrder,
     pagePanelXDp, pagePanelYDp, pagePanelWidthDp, pagePanelHeightDp,
     brushPanelXDp, brushPanelYDp, brushPanelWidthDp, brushPanelHeightDp,
     layerPanelXDp, layerPanelYDp, layerPanelWidthDp, layerPanelHeightDp,
@@ -135,9 +137,11 @@ fun AppSettings.applyToolboxWorkspace(value: ToolboxWorkspaceSnapshot): AppSetti
     leftDockStacked = value.leftDockStacked,
     rightDockStacked = value.rightDockStacked,
     bottomDockStacked = value.bottomDockStacked,
+    freeDockStacked = value.freeDockStacked,
     leftDockActivePanel = value.leftDockActivePanel,
     rightDockActivePanel = value.rightDockActivePanel,
     bottomDockActivePanel = value.bottomDockActivePanel,
+    freeDockActivePanel = value.freeDockActivePanel,
     panelTabOrder = WorkspacePanelTabs.encodeOrder(WorkspacePanelTabs.normalizeOrder(value.panelTabOrder)),
     pagePanelXDp = value.pagePanelXDp,
     pagePanelYDp = value.pagePanelYDp,
@@ -194,8 +198,8 @@ object ToolboxQuickSlotCodec {
         put("pagePanelDock", pagePanelDock.name); put("brushPanelDock", brushPanelDock.name); put("layerPanelDock", layerPanelDock.name)
         put("pagePanelMode", pagePanelMode.name); put("brushPanelMode", brushPanelMode.name); put("layerPanelMode", layerPanelMode.name)
         put("pagePanelLocked", pagePanelLocked); put("brushPanelLocked", brushPanelLocked); put("layerPanelLocked", layerPanelLocked)
-        put("leftDockStacked", leftDockStacked); put("rightDockStacked", rightDockStacked); put("bottomDockStacked", bottomDockStacked)
-        put("leftDockActivePanel", leftDockActivePanel.name); put("rightDockActivePanel", rightDockActivePanel.name); put("bottomDockActivePanel", bottomDockActivePanel.name)
+        put("leftDockStacked", leftDockStacked); put("rightDockStacked", rightDockStacked); put("bottomDockStacked", bottomDockStacked); put("freeDockStacked", freeDockStacked)
+        put("leftDockActivePanel", leftDockActivePanel.name); put("rightDockActivePanel", rightDockActivePanel.name); put("bottomDockActivePanel", bottomDockActivePanel.name); put("freeDockActivePanel", freeDockActivePanel.name)
         put("panelTabOrder", WorkspacePanelTabs.encodeOrder(WorkspacePanelTabs.normalizeOrder(panelTabOrder)))
         put("pagePanelXDp", pagePanelXDp); put("pagePanelYDp", pagePanelYDp); put("pagePanelWidthDp", pagePanelWidthDp); put("pagePanelHeightDp", pagePanelHeightDp)
         put("brushPanelXDp", brushPanelXDp); put("brushPanelYDp", brushPanelYDp); put("brushPanelWidthDp", brushPanelWidthDp); put("brushPanelHeightDp", brushPanelHeightDp)
@@ -208,8 +212,8 @@ object ToolboxQuickSlotCodec {
         optionalEnum("pagePanelDock", WorkspacePanelDock.LEFT), optionalEnum("brushPanelDock", WorkspacePanelDock.RIGHT), optionalEnum("layerPanelDock", WorkspacePanelDock.RIGHT),
         optionalEnum("pagePanelMode", WorkspacePanelMode.EXPANDED), optionalEnum("brushPanelMode", WorkspacePanelMode.EXPANDED), optionalEnum("layerPanelMode", WorkspacePanelMode.EXPANDED),
         optionalBoolean("pagePanelLocked"), optionalBoolean("brushPanelLocked"), optionalBoolean("layerPanelLocked"),
-        optionalBoolean("leftDockStacked"), optionalBoolean("rightDockStacked"), optionalBoolean("bottomDockStacked"),
-        optionalEnum("leftDockActivePanel", WorkspacePanelKind.PAGES), optionalEnum("rightDockActivePanel", WorkspacePanelKind.BRUSHES), optionalEnum("bottomDockActivePanel", WorkspacePanelKind.PAGES),
+        optionalBoolean("leftDockStacked"), optionalBoolean("rightDockStacked"), optionalBoolean("bottomDockStacked"), optionalBoolean("freeDockStacked"),
+        optionalEnum("leftDockActivePanel", WorkspacePanelKind.PAGES), optionalEnum("rightDockActivePanel", WorkspacePanelKind.BRUSHES), optionalEnum("bottomDockActivePanel", WorkspacePanelKind.PAGES), optionalEnum("freeDockActivePanel", WorkspacePanelKind.BRUSHES),
         WorkspacePanelTabs.encodeOrder(WorkspacePanelTabs.normalizeOrder(optionalText("panelTabOrder"))),
         optionalFloat("pagePanelXDp", 16f), optionalFloat("pagePanelYDp", 16f), optionalFloat("pagePanelWidthDp", 160f), optionalFloat("pagePanelHeightDp", 640f),
         optionalFloat("brushPanelXDp", 720f), optionalFloat("brushPanelYDp", 16f), optionalFloat("brushPanelWidthDp", 330f), optionalFloat("brushPanelHeightDp", 680f),

@@ -17,6 +17,8 @@ class ToolboxQuickSlotTest {
             brushPanelLocked = true,
             rightDockStacked = true,
             rightDockActivePanel = WorkspacePanelKind.LAYERS,
+            freeDockStacked = true,
+            freeDockActivePanel = WorkspacePanelKind.BRUSHES,
             panelTabOrder = "BRUSHES,LAYERS,PAGES",
             brushPanelXDp = 321f,
             toolbarDock = ToolbarDock.LEFT,
@@ -53,7 +55,7 @@ class ToolboxQuickSlotTest {
     }
 
     @Test fun `workspace snapshot restores only workspace related settings`() {
-        val snapshot = AppSettings(showPageRail = false, showLayerPanel = true, layerPanelMode = WorkspacePanelMode.ICON_ONLY, layerPanelLocked = true, rightDockStacked = true, rightDockActivePanel = WorkspacePanelKind.LAYERS, panelTabOrder = "LAYERS,BRUSHES,PAGES", toolbarDock = ToolbarDock.BOTTOM).captureToolboxWorkspace()
+        val snapshot = AppSettings(showPageRail = false, showLayerPanel = true, layerPanelMode = WorkspacePanelMode.ICON_ONLY, layerPanelLocked = true, rightDockStacked = true, rightDockActivePanel = WorkspacePanelKind.LAYERS, freeDockStacked = true, freeDockActivePanel = WorkspacePanelKind.LAYERS, panelTabOrder = "LAYERS,BRUSHES,PAGES", toolbarDock = ToolbarDock.BOTTOM).captureToolboxWorkspace()
         val original = AppSettings(fingerDrawing = true, penSize = 42f, showPageRail = true)
 
         val restored = original.applyToolboxWorkspace(snapshot)
@@ -64,6 +66,8 @@ class ToolboxQuickSlotTest {
         assertEquals(true, restored.layerPanelLocked)
         assertEquals(true, restored.rightDockStacked)
         assertEquals(WorkspacePanelKind.LAYERS, restored.rightDockActivePanel)
+        assertEquals(true, restored.freeDockStacked)
+        assertEquals(WorkspacePanelKind.LAYERS, restored.freeDockActivePanel)
         assertEquals("LAYERS,BRUSHES,PAGES", restored.panelTabOrder)
         assertEquals(ToolbarDock.BOTTOM, restored.toolbarDock)
         assertEquals(true, restored.fingerDrawing)
