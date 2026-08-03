@@ -12,6 +12,7 @@ enum class ShortcutAction {
     SELECT_TOOL,
     HAND_TOOL,
     ROTATE_VIEW_TOOL,
+    EYEDROPPER_TOOL,
     SHAPE_TOOL,
     TEXT_TOOL,
     NOTE_TOOL,
@@ -112,6 +113,7 @@ object CspShortcutResolver {
         ShortcutBinding(ShortcutAction.HAND_TOOL, ShortcutChord(KeyEvent.KEYCODE_SPACE), ShortcutTrigger.HOLD),
         ShortcutBinding(ShortcutAction.ROTATE_VIEW_TOOL, ShortcutChord(KeyEvent.KEYCODE_R)),
         ShortcutBinding(ShortcutAction.ROTATE_VIEW_TOOL, ShortcutChord(KeyEvent.KEYCODE_SPACE, shift = true), ShortcutTrigger.HOLD),
+        ShortcutBinding(ShortcutAction.EYEDROPPER_TOOL, ShortcutChord(KeyEvent.KEYCODE_I)),
         ShortcutBinding(ShortcutAction.SHAPE_TOOL, ShortcutChord(KeyEvent.KEYCODE_U)),
         ShortcutBinding(ShortcutAction.TEXT_TOOL, ShortcutChord(KeyEvent.KEYCODE_T)),
         ShortcutBinding(ShortcutAction.BRUSH_SIZE_DECREASE, ShortcutChord(KeyEvent.KEYCODE_RIGHT_BRACKET)),
@@ -128,8 +130,12 @@ object CspShortcutResolver {
         ShortcutAction.ROTATE_VIEW_TOOL,
     )
 
+    private val defaultsBeforeEyedropper: List<ShortcutBinding> by lazy {
+        defaultBindings.filterNot { it.action == ShortcutAction.EYEDROPPER_TOOL }
+    }
+
     private val defaultsBeforeActualSize: List<ShortcutBinding> by lazy {
-        defaultBindings.filterNot { it.action == ShortcutAction.ACTUAL_SIZE }
+        defaultsBeforeEyedropper.filterNot { it.action == ShortcutAction.ACTUAL_SIZE }
     }
 
     private val clipboardDefaultsBeforeToolCommands: List<ShortcutBinding> by lazy {
@@ -169,7 +175,7 @@ object CspShortcutResolver {
     }
 
     fun migrateLegacyDefaults(bindings: List<ShortcutBinding>): List<ShortcutBinding> =
-        if (bindings == defaultsBeforeActualSize || bindings == clipboardDefaultsBeforeToolCommands || bindings == workspaceDefaultsBeforeClipboard || bindings == legacyReversedBrushSizeDefaults || bindings == previousDefaultBindings) defaultBindings else bindings
+        if (bindings == defaultsBeforeEyedropper || bindings == defaultsBeforeActualSize || bindings == clipboardDefaultsBeforeToolCommands || bindings == workspaceDefaultsBeforeClipboard || bindings == legacyReversedBrushSizeDefaults || bindings == previousDefaultBindings) defaultBindings else bindings
 
     fun resolve(chord: ShortcutChord, bindings: List<ShortcutBinding> = defaultBindings, deviceDescriptor: String? = null): ShortcutAction? =
         resolveBinding(chord, bindings, deviceDescriptor)?.action

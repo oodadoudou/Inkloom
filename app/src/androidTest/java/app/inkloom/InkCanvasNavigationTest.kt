@@ -124,6 +124,24 @@ class InkCanvasNavigationTest {
         assertTrue("Stylus hand navigation should pan vertically", panY >= 69f)
     }
 
+    @Test fun eyedropperSamplesTheRenderedPageWithoutCommittingInk() {
+        val sampledRed = android.graphics.Color.rgb(201, 32, 44)
+        val view = canvas().apply {
+            tool = EditorTool.EYEDROPPER
+            pagePaperColor = sampledRed
+        }
+        var sampled: Int? = null
+        var committed = 0
+        view.onColorSampled = { sampled = it }
+        view.onStrokeCommitted = { committed++ }
+
+        sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 120f, 160f)
+        sendStylus(view, 20L, MotionEvent.ACTION_UP, 120f, 160f)
+
+        assertEquals(sampledRed, sampled)
+        assertEquals("Eyedropper input must never leave ink", 0, committed)
+    }
+
     @Test fun forcedRotateNavigationRotatesWithAStylusWithoutCommittingInk() {
         val view = canvas().apply {
             tool = EditorTool.PEN

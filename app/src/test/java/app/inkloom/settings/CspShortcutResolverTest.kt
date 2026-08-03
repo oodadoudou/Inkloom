@@ -17,6 +17,7 @@ class CspShortcutResolverTest {
         assertEquals(ShortcutAction.HAND_TOOL, resolve(KeyEvent.KEYCODE_SPACE))
         assertEquals(ShortcutAction.ROTATE_VIEW_TOOL, resolve(KeyEvent.KEYCODE_R))
         assertEquals(ShortcutAction.ROTATE_VIEW_TOOL, resolve(KeyEvent.KEYCODE_SPACE, shift = true))
+        assertEquals(ShortcutAction.EYEDROPPER_TOOL, resolve(KeyEvent.KEYCODE_I))
         assertEquals(ShortcutAction.BRUSH_SIZE_DECREASE, resolve(KeyEvent.KEYCODE_RIGHT_BRACKET))
         assertEquals(ShortcutAction.BRUSH_SIZE_INCREASE, resolve(KeyEvent.KEYCODE_LEFT_BRACKET))
         assertEquals(ShortcutAction.OPACITY_DECREASE, resolve(KeyEvent.KEYCODE_LEFT_BRACKET, ctrl = true))
@@ -116,6 +117,7 @@ class CspShortcutResolverTest {
             ShortcutAction.HAND_TOOL,
             ShortcutAction.ROTATE_VIEW_TOOL,
             ShortcutAction.ACTUAL_SIZE,
+            ShortcutAction.EYEDROPPER_TOOL,
         )
         val oldDefaults = CspShortcutResolver.defaultBindings.filterNot { it.action in addedActions }.map { binding ->
             when (binding.action) {
@@ -133,7 +135,7 @@ class CspShortcutResolverTest {
     }
 
     @Test fun migratesExactWorkspaceDefaultsToClipboardDefaultsWithoutChangingCustomBindings() {
-        val actionsAddedLater = setOf(ShortcutAction.CUT_SELECTION, ShortcutAction.COPY_SELECTION, ShortcutAction.PASTE_SELECTION, ShortcutAction.DELETE_SELECTION, ShortcutAction.SHAPE_TOOL, ShortcutAction.TEXT_TOOL, ShortcutAction.HAND_TOOL, ShortcutAction.ROTATE_VIEW_TOOL, ShortcutAction.ACTUAL_SIZE)
+        val actionsAddedLater = setOf(ShortcutAction.CUT_SELECTION, ShortcutAction.COPY_SELECTION, ShortcutAction.PASTE_SELECTION, ShortcutAction.DELETE_SELECTION, ShortcutAction.SHAPE_TOOL, ShortcutAction.TEXT_TOOL, ShortcutAction.HAND_TOOL, ShortcutAction.ROTATE_VIEW_TOOL, ShortcutAction.ACTUAL_SIZE, ShortcutAction.EYEDROPPER_TOOL)
         val formerDefaults = CspShortcutResolver.defaultBindings.filterNot { it.action in actionsAddedLater }
         assertEquals(CspShortcutResolver.defaultBindings, CspShortcutResolver.migrateLegacyDefaults(formerDefaults))
 
@@ -142,7 +144,7 @@ class CspShortcutResolverTest {
     }
 
     @Test fun migratesTheFormerClipboardDefaultsToTheExpandedToolDefaults() {
-        val toolActions = setOf(ShortcutAction.SHAPE_TOOL, ShortcutAction.TEXT_TOOL, ShortcutAction.HAND_TOOL, ShortcutAction.ROTATE_VIEW_TOOL, ShortcutAction.ACTUAL_SIZE)
+        val toolActions = setOf(ShortcutAction.SHAPE_TOOL, ShortcutAction.TEXT_TOOL, ShortcutAction.HAND_TOOL, ShortcutAction.ROTATE_VIEW_TOOL, ShortcutAction.ACTUAL_SIZE, ShortcutAction.EYEDROPPER_TOOL)
         val formerDefaults = CspShortcutResolver.defaultBindings.filterNot { it.action in toolActions }
 
         assertEquals(CspShortcutResolver.defaultBindings, CspShortcutResolver.migrateLegacyDefaults(formerDefaults))
@@ -152,7 +154,13 @@ class CspShortcutResolverTest {
     }
 
     @Test fun migratesThePreviousCompleteDefaultsToIncludeActualSize() {
-        val formerDefaults = CspShortcutResolver.defaultBindings.filterNot { it.action == ShortcutAction.ACTUAL_SIZE }
+        val formerDefaults = CspShortcutResolver.defaultBindings.filterNot { it.action in setOf(ShortcutAction.ACTUAL_SIZE, ShortcutAction.EYEDROPPER_TOOL) }
+
+        assertEquals(CspShortcutResolver.defaultBindings, CspShortcutResolver.migrateLegacyDefaults(formerDefaults))
+    }
+
+    @Test fun migratesThePreviousCompleteDefaultsToIncludeTheEyedropper() {
+        val formerDefaults = CspShortcutResolver.defaultBindings.filterNot { it.action == ShortcutAction.EYEDROPPER_TOOL }
 
         assertEquals(CspShortcutResolver.defaultBindings, CspShortcutResolver.migrateLegacyDefaults(formerDefaults))
     }

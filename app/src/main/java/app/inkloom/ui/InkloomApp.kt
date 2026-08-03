@@ -1075,6 +1075,7 @@ private fun EditorScreen(
                         }
                     },
                     onInputDiagnostic = { kind, pressure, tilt, buttons -> inputDiagnostic = "$kind  pressure ${"%.3f".format(pressure)}  tilt ${"%.2f".format(Math.toDegrees(tilt.toDouble()))}°  buttons $buttons" },
+                    onColorSampled = { brushColor = it },
                     onKeyInputDiagnostic = { diagnostic ->
                         val keyName = KeyEvent.keyCodeToString(diagnostic.keyCode).removePrefix("KEYCODE_")
                         val device = diagnostic.deviceName ?: unknownInputDeviceText
@@ -1184,6 +1185,10 @@ private fun EditorScreen(
                             ShortcutAction.SELECT_TOOL -> { exitCanvasNavigation(); if (activation.trigger == ShortcutTrigger.HOLD) rememberDrawingSelection(); tool = EditorTool.SELECT }
                             ShortcutAction.HAND_TOOL -> if (activation.trigger == ShortcutTrigger.HOLD) { rotateToolEnabled = false; rotateToolHeld = false; handToolHeld = true } else { val enable = !handToolEnabled; exitCanvasNavigation(); handToolEnabled = enable }
                             ShortcutAction.ROTATE_VIEW_TOOL -> if (activation.trigger == ShortcutTrigger.HOLD) { handToolEnabled = false; handToolHeld = false; rotateToolHeld = true } else { val enable = !rotateToolEnabled; exitCanvasNavigation(); rotateToolEnabled = enable }
+                            ShortcutAction.EYEDROPPER_TOOL -> {
+                                exitCanvasNavigation()
+                                if (tool == EditorTool.EYEDROPPER) restorePreviousDrawingTool() else { rememberDrawingSelection(); tool = EditorTool.EYEDROPPER }
+                            }
                             ShortcutAction.SHAPE_TOOL -> { exitCanvasNavigation(); tool = EditorTool.SHAPE; shapeInsertOpen = true }
                             ShortcutAction.TEXT_TOOL -> { exitCanvasNavigation(); tool = EditorTool.TEXT; insertText = ""; textInsertOpen = true }
                             ShortcutAction.NOTE_TOOL -> { exitCanvasNavigation(); tool = EditorTool.NOTE; insertText = ""; stickyInsertOpen = true }
@@ -1262,6 +1267,12 @@ private fun EditorScreen(
                 }
                 if (settings.showToolbar) ToolDock(tool = tool, onTool = { chosen ->
                     exitCanvasNavigation()
+                    if (chosen == EditorTool.EYEDROPPER && tool != EditorTool.EYEDROPPER) {
+                        previousDrawingTool = tool
+                        previousDrawingBrushId = activeBrush?.id
+                        previousDrawingSize = brushSize
+                        previousDrawingOpacity = brushOpacity
+                    }
                     tool = chosen; canvasView?.tool = chosen
                     when (chosen) {
                         EditorTool.PEN -> { activeBrush = null; brushOpacity = settings.penOpacity; brushSize = settings.penSize; if (activeLayerId == LayerIds.HIGHLIGHT || activeLayerId == LayerIds.OBJECTS) activeLayerId = LayerIds.INK }
@@ -1882,7 +1893,7 @@ private fun PageRail(
 }
 
 @Composable
-private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, onZoom: (Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit) {
+private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, onZoom: (Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val backgroundVisible = page.layers.firstOrNull { it.role == LayerRole.BACKGROUND }?.visible != false
     val background = remember(page.id, page.background, page.backgroundRotationQuarterTurns, page.crop, backgroundVisible) { if (backgroundVisible) runCatching { assets.renderBackground(page.background, 1200, page.backgroundRotationQuarterTurns, page.crop) }.getOrNull() else null }
@@ -1933,6 +1944,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onUndoGesture = onUndoGesture
                 view.twoFingerRotationEnabled = settings.twoFingerRotation
                 view.onInputDiagnostic = onInputDiagnostic
+                view.onColorSampled = onColorSampled
                 view.onKeyInputDiagnostic = onKeyInputDiagnostic
                 view.onShortcutAction = onShortcutAction
                 view.shortcutBindings = settings.shortcutBindings
@@ -1968,6 +1980,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onUndoGesture = onUndoGesture
                 view.twoFingerRotationEnabled = settings.twoFingerRotation
                 view.onInputDiagnostic = onInputDiagnostic
+                view.onColorSampled = onColorSampled
                 view.onKeyInputDiagnostic = onKeyInputDiagnostic
                 view.onShortcutAction = onShortcutAction
                 view.shortcutBindings = settings.shortcutBindings
@@ -2637,9 +2650,10 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
     ToolButton(EditorTool.ERASER, Icons.Outlined.AutoFixOff, tr("Eraser", "橡皮"), tool, onTool)
     ToolButton(EditorTool.SELECT, Icons.Outlined.Gesture, tr("Select", "选择"), tool, onTool)
     Box {
-        CompactToolbarIconButton(onClick = { onMoreToolsOpen(true) }, description = tr("More tools", "更多工具"), selected = tool in setOf(EditorTool.SHAPE, EditorTool.TEXT, EditorTool.NOTE, EditorTool.LINK, EditorTool.IMAGE, EditorTool.AUDIO)) { Icon(Icons.Outlined.Apps, null, Modifier.size(20.dp)) }
+        CompactToolbarIconButton(onClick = { onMoreToolsOpen(true) }, description = tr("More tools", "更多工具"), selected = tool in setOf(EditorTool.EYEDROPPER, EditorTool.SHAPE, EditorTool.TEXT, EditorTool.NOTE, EditorTool.LINK, EditorTool.IMAGE, EditorTool.AUDIO)) { Icon(Icons.Outlined.Apps, null, Modifier.size(20.dp)) }
         DropdownMenu(expanded = moreToolsOpen, onDismissRequest = { onMoreToolsOpen(false) }) {
             listOf(
+                Triple(EditorTool.EYEDROPPER, Icons.Outlined.Colorize, tr("Eyedropper", "吸管")),
                 Triple(EditorTool.SHAPE, Icons.Outlined.Category, tr("Shape", "形状")),
                 Triple(EditorTool.TEXT, Icons.Outlined.Title, tr("Text", "文字")),
                 Triple(EditorTool.NOTE, Icons.Outlined.StickyNote2, tr("Note", "便笺")),
@@ -3696,6 +3710,7 @@ private fun shortcutActionLabel(action: ShortcutAction): String = when (action) 
     ShortcutAction.SELECT_TOOL -> tr("Selection tool", "选择工具")
     ShortcutAction.HAND_TOOL -> tr("Hand / canvas navigation", "抓手／画布导航")
     ShortcutAction.ROTATE_VIEW_TOOL -> tr("Rotate canvas view", "旋转画布视图")
+    ShortcutAction.EYEDROPPER_TOOL -> tr("Eyedropper", "吸管")
     ShortcutAction.SHAPE_TOOL -> tr("Shape tool", "形状工具")
     ShortcutAction.TEXT_TOOL -> tr("Text tool", "文字工具")
     ShortcutAction.NOTE_TOOL -> tr("Sticky note", "便笺")

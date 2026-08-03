@@ -42,6 +42,7 @@ import app.inkloom.document.PressureCalibration
 import app.inkloom.document.PageElement
 import app.inkloom.document.PdfGotoLink
 import app.inkloom.document.PdfGotoLinkNavigation
+import app.inkloom.document.RenderedColorSampling
 import app.inkloom.document.ShapeGeometry
 import app.inkloom.document.ShapeKind
 import app.inkloom.document.ShapePoint
@@ -110,6 +111,7 @@ class InkCanvasView(context: Context) : View(context) {
     private val navigationTouchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
     private val twoFingerTapUndoGesture = TwoFingerTapUndoGesture(navigationTouchSlop)
     private val twoPointerRotationGesture = TwoPointerRotationGesture()
+    private val colorSampleBitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
     private var activeTool: EditorTool? = null
     private var activeInputWasStylus = false
     private var lastStylusSeenAt = Long.MIN_VALUE
@@ -297,6 +299,7 @@ class InkCanvasView(context: Context) : View(context) {
     var pdfGotoLinks: List<PdfGotoLink> = emptyList()
     var onPdfGotoLink: (PdfGotoLink) -> Unit = {}
     var onUndoGesture: () -> Unit = {}
+    var onColorSampled: (Int) -> Unit = {}
     var onInputDiagnostic: (String, Float, Float, Int) -> Unit = { _, _, _, _ -> }
     var onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit = {}
     var onShortcutAction: (ShortcutActivation) -> Unit = {}
@@ -707,7 +710,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (tool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.SELECT, EditorTool.SHAPE)) return false
+        if (tool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.EYEDROPPER, EditorTool.SELECT, EditorTool.SHAPE)) return false
         if (event.actionMasked == MotionEvent.ACTION_DOWN && !hasFocus()) requestFocus()
         val pointerIndex = event.actionIndex.coerceIn(0, event.pointerCount - 1)
         val eventToolType = event.getToolType(pointerIndex)
@@ -814,6 +817,10 @@ class InkCanvasView(context: Context) : View(context) {
                     eraseAlong(normalizedX, normalizedY, event.pressure)
                     return true
                 }
+                if (activeTool == EditorTool.EYEDROPPER) {
+                    onColorSampled(sampleRenderedColor(event.x, event.y))
+                    return true
+                }
                 if (activeTool == EditorTool.SELECT) {
                     val hit = strokes.getOrNull(findStroke(normalizedX, normalizedY, .035f))
                     lassoPoints.clear(); selectionGestureBefore = null; selectionMoved = false
@@ -839,7 +846,10 @@ class InkCanvasView(context: Context) : View(context) {
                 currentPoints.clear(); currentStrokeId = java.util.UUID.randomUUID().toString(); addPoint(normalizedX, normalizedY, event.pressure, event.eventTime, event.getAxisValue(MotionEvent.AXIS_TILT), event.orientation)
             }
             MotionEvent.ACTION_MOVE -> {
-                if (activeTool == EditorTool.ERASER) {
+                if (activeTool == EditorTool.EYEDROPPER) {
+                    onColorSampled(sampleRenderedColor(event.x, event.y))
+                }
+                else if (activeTool == EditorTool.ERASER) {
                     for (i in 0 until event.historySize) eraseAlong(event.getHistoricalX(i) / width.coerceAtLeast(1), event.getHistoricalY(i) / height.coerceAtLeast(1), event.getHistoricalPressure(i))
                     eraseAlong(normalizedX, normalizedY, event.pressure)
                 }
@@ -883,6 +893,8 @@ class InkCanvasView(context: Context) : View(context) {
                     if (activeTool == EditorTool.ERASER) cancelEraserGesture()
                     selectionGestureBefore?.let { restoreStrokeSnapshot(it) }
                     lassoPoints.clear(); movingSelection = false; selectionMoved = false; selectionGestureBefore = null
+                } else if (activeTool == EditorTool.EYEDROPPER) {
+                    onColorSampled(sampleRenderedColor(event.x, event.y))
                 } else if (activeTool == EditorTool.ERASER) {
                     eraseAlong(normalizedX, normalizedY, event.pressure)
                     finishEraserGesture()
@@ -920,6 +932,14 @@ class InkCanvasView(context: Context) : View(context) {
         }
         invalidate()
         return true
+    }
+
+    private fun sampleRenderedColor(x: Float, y: Float): Int {
+        colorSampleBitmap.eraseColor(Color.TRANSPARENT)
+        val sampleCanvas = Canvas(colorSampleBitmap)
+        sampleCanvas.translate(-x.coerceIn(0f, (width - 1).coerceAtLeast(0).toFloat()), -y.coerceIn(0f, (height - 1).coerceAtLeast(0).toFloat()))
+        draw(sampleCanvas)
+        return RenderedColorSampling.opaqueOverWhite(colorSampleBitmap.getPixel(0, 0))
     }
 
     private fun MotionEvent.centroid(): Pair<Float, Float> {
