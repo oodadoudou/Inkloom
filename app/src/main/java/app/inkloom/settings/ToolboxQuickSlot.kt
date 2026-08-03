@@ -51,6 +51,13 @@ data class ToolboxQuickSlot(
 
 object ToolboxQuickSlots {
     const val COUNT = 8
+    private val actions = listOf(
+        ShortcutAction.QUICK_SLOT_1, ShortcutAction.QUICK_SLOT_2, ShortcutAction.QUICK_SLOT_3, ShortcutAction.QUICK_SLOT_4,
+        ShortcutAction.QUICK_SLOT_5, ShortcutAction.QUICK_SLOT_6, ShortcutAction.QUICK_SLOT_7, ShortcutAction.QUICK_SLOT_8,
+    )
+
+    fun indexOf(action: ShortcutAction): Int? = actions.indexOf(action).takeIf { it >= 0 }
+    fun actionAt(index: Int): ShortcutAction = actions[index.coerceIn(0, COUNT - 1)]
 
     fun normalize(values: List<ToolboxQuickSlot>): List<ToolboxQuickSlot> = List(COUNT) { index ->
         normalize(values.getOrNull(index) ?: ToolboxQuickSlot())

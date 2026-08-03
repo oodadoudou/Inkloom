@@ -1311,6 +1311,8 @@ private fun EditorScreen(
                                 panelsHiddenByShortcut = false
                             }
                             ShortcutAction.SAVE_CHECKPOINT -> Toast.makeText(context, allChangesSavedMessage, Toast.LENGTH_SHORT).show()
+                            ShortcutAction.QUICK_SLOT_1, ShortcutAction.QUICK_SLOT_2, ShortcutAction.QUICK_SLOT_3, ShortcutAction.QUICK_SLOT_4,
+                            ShortcutAction.QUICK_SLOT_5, ShortcutAction.QUICK_SLOT_6, ShortcutAction.QUICK_SLOT_7, ShortcutAction.QUICK_SLOT_8 -> Unit
                         }
                     },
                 )
@@ -4135,6 +4137,7 @@ private fun ShortcutBrushGroupTargetRow(group: ShortcutBrushGroup, selectedPath:
 }
 
 private fun shortcutCategoryLabel(category: ShortcutCategory, language: UiLanguage): String = when (category) {
+    ShortcutCategory.QUICK_ACCESS -> language.text("Quick access", "快速访问")
     ShortcutCategory.TOOLS -> language.text("Tools", "工具")
     ShortcutCategory.BRUSH_GROUPS -> language.text("Brush groups", "笔刷组")
     ShortcutCategory.BRUSH_ADJUSTMENTS -> language.text("Brush adjustments", "笔刷调节")
@@ -4189,6 +4192,11 @@ private fun shortcutActionLabel(action: ShortcutAction, language: UiLanguage): S
     ShortcutAction.TOGGLE_LAYER_PANEL -> language.text("Show / hide layer panel", "显示／隐藏图层栏")
     ShortcutAction.TOGGLE_PANELS -> language.text("Hide / show panels", "隐藏／显示面板")
     ShortcutAction.SAVE_CHECKPOINT -> language.text("Save checkpoint", "保存检查点")
+    ShortcutAction.QUICK_SLOT_1, ShortcutAction.QUICK_SLOT_2, ShortcutAction.QUICK_SLOT_3, ShortcutAction.QUICK_SLOT_4,
+    ShortcutAction.QUICK_SLOT_5, ShortcutAction.QUICK_SLOT_6, ShortcutAction.QUICK_SLOT_7, ShortcutAction.QUICK_SLOT_8 -> {
+        val number = app.inkloom.settings.ToolboxQuickSlots.indexOf(action)?.plus(1) ?: 1
+        language.text("Quick slot $number", "快速槽 $number")
+    }
 }
 
 @Composable

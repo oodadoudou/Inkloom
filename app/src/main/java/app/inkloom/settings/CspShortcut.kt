@@ -45,9 +45,17 @@ enum class ShortcutAction {
     TOGGLE_LAYER_PANEL,
     TOGGLE_PANELS,
     SAVE_CHECKPOINT,
+    QUICK_SLOT_1,
+    QUICK_SLOT_2,
+    QUICK_SLOT_3,
+    QUICK_SLOT_4,
+    QUICK_SLOT_5,
+    QUICK_SLOT_6,
+    QUICK_SLOT_7,
+    QUICK_SLOT_8,
 }
 
-enum class ShortcutCategory { TOOLS, BRUSH_GROUPS, BRUSH_ADJUSTMENTS, EDITING, CANVAS, PAGES, LAYERS, PANELS, FILE }
+enum class ShortcutCategory { QUICK_ACCESS, TOOLS, BRUSH_GROUPS, BRUSH_ADJUSTMENTS, EDITING, CANVAS, PAGES, LAYERS, PANELS, FILE }
 
 fun ShortcutAction.category(): ShortcutCategory = when (this) {
     ShortcutAction.PEN_OR_PENCIL_GROUP, ShortcutAction.PEN_GROUP, ShortcutAction.PENCIL_GROUP, ShortcutAction.BRUSH_GROUP,
@@ -65,6 +73,8 @@ fun ShortcutAction.category(): ShortcutCategory = when (this) {
     ShortcutAction.NEW_LAYER, ShortcutAction.MERGE_LAYER_DOWN -> ShortcutCategory.LAYERS
     ShortcutAction.TOGGLE_BRUSH_PANEL, ShortcutAction.TOGGLE_LAYER_PANEL, ShortcutAction.TOGGLE_PANELS -> ShortcutCategory.PANELS
     ShortcutAction.SAVE_CHECKPOINT -> ShortcutCategory.FILE
+    ShortcutAction.QUICK_SLOT_1, ShortcutAction.QUICK_SLOT_2, ShortcutAction.QUICK_SLOT_3, ShortcutAction.QUICK_SLOT_4,
+    ShortcutAction.QUICK_SLOT_5, ShortcutAction.QUICK_SLOT_6, ShortcutAction.QUICK_SLOT_7, ShortcutAction.QUICK_SLOT_8 -> ShortcutCategory.QUICK_ACCESS
 }
 
 enum class ShortcutMatchMode { KEY_CODE, SCAN_CODE }

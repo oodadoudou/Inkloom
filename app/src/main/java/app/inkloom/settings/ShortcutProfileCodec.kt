@@ -15,6 +15,7 @@ import java.io.InputStream
 data class ShortcutProfile(
     val bindings: List<ShortcutBinding>,
     val brushGroupTargets: ShortcutBrushGroupTargets = ShortcutBrushGroupTargets(),
+    val quickSlots: List<ToolboxQuickSlot> = ToolboxQuickSlots.normalize(emptyList()),
 )
 
 object ShortcutProfileCodec {
@@ -22,7 +23,7 @@ object ShortcutProfileCodec {
     const val MIME_TYPE = "application/json"
     const val MAX_FILE_BYTES = 256 * 1024
     private const val FORMAT = "inkloom-shortcuts"
-    private const val VERSION = 2
+    private const val VERSION = 3
     private const val MAX_BINDINGS = 512
     private const val MAX_DEVICE_TEXT_LENGTH = 512
     private val json = Json { prettyPrint = true }
@@ -55,6 +56,7 @@ object ShortcutProfileCodec {
                 put("pencil", profile.brushGroupTargets.pencil)
                 put("brush", profile.brushGroupTargets.brush)
             })
+            put("quickSlots", json.parseToJsonElement(ToolboxQuickSlotCodec.encode(profile.quickSlots)))
         }
         return json.encodeToString(kotlinx.serialization.json.JsonObject.serializer(), root).toByteArray(Charsets.UTF_8)
     }
@@ -101,7 +103,9 @@ object ShortcutProfileCodec {
                 brush = item.optionalText("brush").orEmpty(),
             ).normalized()
         } ?: ShortcutBrushGroupTargets() else ShortcutBrushGroupTargets()
-        ShortcutProfile(bindings, targets)
+        val quickSlots = if (version >= 3) root["quickSlots"]?.let { ToolboxQuickSlotCodec.decode(it.toString()) }
+            ?: ToolboxQuickSlots.normalize(emptyList()) else ToolboxQuickSlots.normalize(emptyList())
+        ShortcutProfile(bindings, targets, quickSlots)
     }
 
     fun decode(input: InputStream): Result<List<ShortcutBinding>> = runCatching {

@@ -26,16 +26,20 @@ class ShortcutProfileCodecTest {
         val profile = ShortcutProfile(
             bindings = CspShortcutResolver.defaultBindings,
             brushGroupTargets = ShortcutBrushGroupTargets("Favorites/Pens", "Favorites/Pencils", "Paint/Brushes"),
+            quickSlots = listOf(ToolboxQuickSlot(ToolboxQuickSlotKind.BRUSH, "Favorite ink", brushId = "brush-1")),
         )
 
-        assertEquals(profile, ShortcutProfileCodec.decodeProfile(ShortcutProfileCodec.encode(profile)).getOrThrow())
+        val decoded = ShortcutProfileCodec.decodeProfile(ShortcutProfileCodec.encode(profile)).getOrThrow()
+        assertEquals(profile.bindings, decoded.bindings)
+        assertEquals(profile.brushGroupTargets, decoded.brushGroupTargets)
+        assertEquals(ToolboxQuickSlots.normalize(profile.quickSlots), decoded.quickSlots)
     }
 
     @Test fun `profile is readable JSON with an explicit format version`() {
         val text = ShortcutProfileCodec.encode(CspShortcutResolver.defaultBindings).toString(Charsets.UTF_8)
 
         assertTrue(text.contains("\"format\": \"inkloom-shortcuts\""))
-        assertTrue(text.contains("\"version\": 2"))
+        assertTrue(text.contains("\"version\": 3"))
         assertTrue(text.contains("\"action\": \"PEN_OR_PENCIL_GROUP\""))
     }
 
@@ -45,6 +49,7 @@ class ShortcutProfileCodecTest {
         val decoded = ShortcutProfileCodec.decodeProfile(legacy.toByteArray()).getOrThrow()
 
         assertEquals(ShortcutBrushGroupTargets(), decoded.brushGroupTargets)
+        assertEquals(true, decoded.quickSlots.all { it.kind == ToolboxQuickSlotKind.EMPTY })
         assertEquals(ShortcutAction.BRUSH_GROUP, decoded.bindings.single().action)
     }
 
