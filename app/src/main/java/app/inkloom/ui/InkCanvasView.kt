@@ -48,6 +48,7 @@ import app.inkloom.document.GrainBehavior
 import app.inkloom.document.LassoGeometry
 import app.inkloom.document.LassoSelectionPolicy
 import app.inkloom.document.LayerBlendMode
+import app.inkloom.document.LaserTrail
 import app.inkloom.document.PaperPattern
 import app.inkloom.document.PressureCalibration
 import app.inkloom.document.PageElement
@@ -156,6 +157,19 @@ class InkCanvasView(context: Context) : View(context) {
     private var continuousPlotPressure = 1f
     private var continuousPlotTilt = 0f
     private var continuousPlotOrientation = 0f
+    private val laserTrail = LaserTrail()
+    private val laserGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.rgb(255, 45, 85)
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
+    private val laserCorePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
     private val continuousPlotRunnable = object : Runnable {
         override fun run() {
             if (!continuousPlotActive || !brushContinuousPlot || activeTool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) return
@@ -442,6 +456,7 @@ class InkCanvasView(context: Context) : View(context) {
         if (!hasWindowFocus) {
             if (activeTool != null) cancelActiveGestureForNavigation()
             stopContinuousPlot()
+            laserTrail.clear()
             ctrlModifierHeld = false
             altModifierHeld = false
             releaseHeldStylusButtons()
@@ -575,6 +590,7 @@ class InkCanvasView(context: Context) : View(context) {
         }
         drawShapePreview(canvas)
         if (currentPoints.isNotEmpty()) drawLayeredStrokes(canvas, listOf(makeStroke(currentPoints).copy(grainCompositeMode = grainCompositeMode)))
+        drawLaserTrail(canvas, SystemClock.uptimeMillis())
         drawBrushSizePreview(canvas)
     }
 
@@ -588,6 +604,7 @@ class InkCanvasView(context: Context) : View(context) {
         releaseHeldStylusButtons()
         lastStylusButtonState = 0
         stopContinuousPlot()
+        laserTrail.clear()
         recycleStrokeTiles()
         tipCache.values.forEach(Bitmap::recycle); tipCache.clear()
         super.onDetachedFromWindow()
@@ -925,7 +942,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (tool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.EYEDROPPER, EditorTool.SELECT, EditorTool.SHAPE)) return false
+        if (tool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.EYEDROPPER, EditorTool.SELECT, EditorTool.SHAPE, EditorTool.LASER)) return false
         if (event.actionMasked == MotionEvent.ACTION_DOWN && !hasFocus()) requestFocus()
         val pointerIndex = event.actionIndex.coerceIn(0, event.pointerCount - 1)
         val eventToolType = event.getToolType(pointerIndex)
@@ -1139,6 +1156,11 @@ class InkCanvasView(context: Context) : View(context) {
                     if (shapeKind == ShapeKind.FREEFORM) appendShapePoint(normalizedX, normalizedY)
                     invalidate(); return true
                 }
+                if (activeTool == EditorTool.LASER) {
+                    laserTrail.begin(normalizedX, normalizedY, event.eventTime)
+                    invalidate()
+                    return true
+                }
                 currentPoints.clear()
                 currentStrokeId = java.util.UUID.randomUUID().toString()
                 updateContinuousPlotInput(normalizedX, normalizedY, event.pressure, event.getAxisValue(MotionEvent.AXIS_TILT), event.orientation)
@@ -1180,6 +1202,14 @@ class InkCanvasView(context: Context) : View(context) {
                         appendShapePoint(normalizedX, normalizedY)
                     } else shapeEnd = ShapeGeometry.snapEnd(shapeStart ?: ShapePoint(normalizedX, normalizedY), ShapePoint(normalizedX, normalizedY), pageModelWidth, pageModelHeight)
                 }
+                else if (activeTool == EditorTool.LASER) {
+                    for (i in 0 until event.historySize) laserTrail.append(
+                        event.getHistoricalX(i) / width.coerceAtLeast(1),
+                        event.getHistoricalY(i) / height.coerceAtLeast(1),
+                        event.getHistoricalEventTime(i),
+                    )
+                    laserTrail.append(normalizedX, normalizedY, event.eventTime)
+                }
                 else {
                     for (i in 0 until event.historySize) addPoint(event.getHistoricalX(i) / width, event.getHistoricalY(i) / height, event.getHistoricalPressure(i), event.getHistoricalEventTime(i), event.getHistoricalAxisValue(MotionEvent.AXIS_TILT, i), event.getHistoricalOrientation(i))
                     updateContinuousPlotInput(normalizedX, normalizedY, event.pressure, event.getAxisValue(MotionEvent.AXIS_TILT), event.orientation)
@@ -1191,6 +1221,7 @@ class InkCanvasView(context: Context) : View(context) {
                 if (event.actionMasked == MotionEvent.ACTION_UP) performClick()
                 if (event.actionMasked == MotionEvent.ACTION_CANCEL || event.flags and MotionEvent.FLAG_CANCELED != 0) {
                     currentPoints.clear()
+                    if (activeTool == EditorTool.LASER) laserTrail.cancelActive()
                     shapeStart = null; shapeEnd = null; shapeFreeformPoints.clear()
                     if (activeTool == EditorTool.ERASER) cancelEraserGesture()
                     selectionGestureBefore?.let { restoreStrokeSnapshot(it) }
@@ -1226,6 +1257,9 @@ class InkCanvasView(context: Context) : View(context) {
                     }
                     shape?.let(onShapeCommitted)
                     shapeStart = null; shapeEnd = null; shapeFreeformPoints.clear()
+                } else if (activeTool == EditorTool.LASER) {
+                    laserTrail.append(normalizedX, normalizedY, event.eventTime)
+                    laserTrail.end()
                 }
                 parent?.requestDisallowInterceptTouchEvent(false)
                 activeTool = null
@@ -1309,6 +1343,7 @@ class InkCanvasView(context: Context) : View(context) {
     private fun cancelActiveGestureForNavigation() {
         stopContinuousPlot()
         currentPoints.clear()
+        laserTrail.cancelActive()
         shapeStart = null
         shapeEnd = null
         shapeFreeformPoints.clear()
@@ -1322,6 +1357,34 @@ class InkCanvasView(context: Context) : View(context) {
         activeInputWasStylus = false
         parent?.requestDisallowInterceptTouchEvent(false)
         invalidate()
+    }
+
+    fun hasVisibleLaserTrail(nowMs: Long = SystemClock.uptimeMillis()): Boolean = laserTrail.renderPoints(nowMs).isNotEmpty()
+
+    private fun drawLaserTrail(canvas: Canvas, nowMs: Long) {
+        val points = laserTrail.renderPoints(nowMs)
+        if (points.isEmpty()) return
+        val scale = resources.displayMetrics.density.coerceAtLeast(1f)
+        laserGlowPaint.strokeWidth = 18f * scale
+        laserCorePaint.strokeWidth = 4f * scale
+        points.zipWithNext().forEach { (start, end) ->
+            if (start.gestureId != end.gestureId) return@forEach
+            val alpha = (minOf(start.alpha, end.alpha) * 255f).toInt().coerceIn(1, 255)
+            laserGlowPaint.alpha = (alpha * .34f).toInt().coerceIn(1, 255)
+            laserCorePaint.alpha = alpha
+            val startX = start.x * width
+            val startY = start.y * height
+            val endX = end.x * width
+            val endY = end.y * height
+            canvas.drawLine(startX, startY, endX, endY, laserGlowPaint)
+            canvas.drawLine(startX, startY, endX, endY, laserCorePaint)
+        }
+        val head = points.last()
+        laserGlowPaint.alpha = (head.alpha * 100f).toInt().coerceIn(1, 255)
+        laserCorePaint.alpha = (head.alpha * 255f).toInt().coerceIn(1, 255)
+        canvas.drawCircle(head.x * width, head.y * height, 9f * scale, laserGlowPaint)
+        canvas.drawCircle(head.x * width, head.y * height, 2f * scale, laserCorePaint)
+        postInvalidateOnAnimation()
     }
 
     override fun performClick(): Boolean {

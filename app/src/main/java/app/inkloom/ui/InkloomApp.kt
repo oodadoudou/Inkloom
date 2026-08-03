@@ -1871,7 +1871,7 @@ private fun EditorScreen(
                             if (activation.trigger == ShortcutTrigger.HOLD && action == ShortcutAction.HAND_TOOL) handToolHeld = false
                             if (activation.trigger == ShortcutTrigger.HOLD && action == ShortcutAction.ROTATE_VIEW_TOOL) rotateToolHeld = false
                             if (activation.trigger == ShortcutTrigger.HOLD && action == ShortcutAction.TOGGLE_ERASER && tool == EditorTool.ERASER) restorePreviousDrawingTool()
-                            if (activation.trigger == ShortcutTrigger.HOLD && action in setOf(ShortcutAction.PEN_OR_PENCIL_GROUP, ShortcutAction.PEN_GROUP, ShortcutAction.PENCIL_GROUP, ShortcutAction.BRUSH_GROUP, ShortcutAction.HIGHLIGHTER_TOOL, ShortcutAction.SELECT_TOOL, ShortcutAction.EYEDROPPER_TOOL)) restorePreviousDrawingTool()
+                            if (activation.trigger == ShortcutTrigger.HOLD && action in setOf(ShortcutAction.PEN_OR_PENCIL_GROUP, ShortcutAction.PEN_GROUP, ShortcutAction.PENCIL_GROUP, ShortcutAction.BRUSH_GROUP, ShortcutAction.HIGHLIGHTER_TOOL, ShortcutAction.SELECT_TOOL, ShortcutAction.EYEDROPPER_TOOL, ShortcutAction.LASER_TOOL)) restorePreviousDrawingTool()
                             if (activation.trigger == ShortcutTrigger.HOLD) ToolboxQuickSlots.indexOf(action)?.let { index ->
                                 val slot = ToolboxQuickSlots.normalize(settings.toolboxQuickSlots)[index]
                                 when (slot.kind) {
@@ -1921,6 +1921,15 @@ private fun EditorScreen(
                             ShortcutAction.LINK_TOOL -> { exitCanvasNavigation(); tool = EditorTool.LINK; insertLinkTitle = ""; insertLinkUrl = ""; linkInsertOpen = true }
                             ShortcutAction.IMAGE_TOOL -> { exitCanvasNavigation(); onInsertImage(); tool = EditorTool.SELECT }
                             ShortcutAction.AUDIO_TOOL -> { exitCanvasNavigation(); if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) audioOpen = true else audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) }
+                            ShortcutAction.LASER_TOOL -> if (activation.trigger == ShortcutTrigger.HOLD) {
+                                rememberDrawingSelection()
+                                exitCanvasNavigation()
+                                tool = EditorTool.LASER
+                            } else if (tool == EditorTool.LASER) restorePreviousDrawingTool() else {
+                                rememberDrawingSelection()
+                                exitCanvasNavigation()
+                                tool = EditorTool.LASER
+                            }
                             ShortcutAction.BRUSH_SIZE_DECREASE -> updateBrushSize(1f / 1.1f)
                             ShortcutAction.BRUSH_SIZE_INCREASE -> updateBrushSize(1.1f)
                             ShortcutAction.OPACITY_DECREASE -> updateBrushOpacity(-.05f)
@@ -4352,7 +4361,7 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
     ToolButton(EditorTool.ERASER, Icons.Outlined.AutoFixOff, tr("Eraser", "橡皮"), tool, onTool)
     ToolButton(EditorTool.SELECT, Icons.Outlined.Gesture, tr("Select", "选择"), tool, onTool)
     Box {
-        CompactToolbarIconButton(onClick = { onMoreToolsOpen(true) }, description = tr("More tools", "更多工具"), selected = tool in setOf(EditorTool.EYEDROPPER, EditorTool.SHAPE, EditorTool.TEXT, EditorTool.NOTE, EditorTool.LINK, EditorTool.IMAGE, EditorTool.AUDIO)) { Icon(Icons.Outlined.Apps, null, Modifier.size(20.dp)) }
+        CompactToolbarIconButton(onClick = { onMoreToolsOpen(true) }, description = tr("More tools", "更多工具"), selected = tool in setOf(EditorTool.EYEDROPPER, EditorTool.SHAPE, EditorTool.TEXT, EditorTool.NOTE, EditorTool.LINK, EditorTool.IMAGE, EditorTool.AUDIO, EditorTool.LASER)) { Icon(Icons.Outlined.Apps, null, Modifier.size(20.dp)) }
         DropdownMenu(expanded = moreToolsOpen, onDismissRequest = { onMoreToolsOpen(false) }) {
             listOf(
                 Triple(EditorTool.EYEDROPPER, Icons.Outlined.Colorize, tr("Eyedropper", "吸管")),
@@ -4362,6 +4371,7 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
                 Triple(EditorTool.LINK, Icons.Outlined.Link, tr("Link", "链接")),
                 Triple(EditorTool.IMAGE, Icons.Outlined.Image, tr("Image", "图片")),
                 Triple(EditorTool.AUDIO, Icons.Outlined.Mic, tr("Audio", "音频")),
+                Triple(EditorTool.LASER, Icons.Outlined.TrackChanges, tr("Laser pointer", "激光笔")),
             ).forEach { (value, icon, label) ->
                 DropdownMenuItem(text = { Text(label) }, leadingIcon = { Icon(icon, null) }, onClick = { onMoreToolsOpen(false); onTool(value) })
             }
@@ -6238,6 +6248,7 @@ private fun shortcutActionLabel(action: ShortcutAction, language: UiLanguage): S
     ShortcutAction.LINK_TOOL -> language.text("Link", "链接")
     ShortcutAction.IMAGE_TOOL -> language.text("Insert image", "插入图片")
     ShortcutAction.AUDIO_TOOL -> language.text("Record audio note", "录音笔记")
+    ShortcutAction.LASER_TOOL -> language.text("Laser pointer", "激光笔")
     ShortcutAction.BRUSH_SIZE_DECREASE -> language.text("Decrease brush size", "减小笔刷大小")
     ShortcutAction.BRUSH_SIZE_INCREASE -> language.text("Increase brush size", "增大笔刷大小")
     ShortcutAction.OPACITY_DECREASE -> language.text("Decrease opacity", "降低不透明度")
