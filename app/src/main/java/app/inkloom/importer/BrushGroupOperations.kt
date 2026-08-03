@@ -1,6 +1,7 @@
 package app.inkloom.importer
 
 import app.inkloom.model.ImportedBrush
+import java.util.UUID
 
 object BrushGroupOperations {
     private val whitespace = Regex("\\s+")
@@ -14,6 +15,55 @@ object BrushGroupOperations {
         .sortedWith(String.CASE_INSENSITIVE_ORDER)
 
     fun assign(brush: ImportedBrush, groupName: String): ImportedBrush = brush.copy(groupName = normalize(groupName))
+
+    fun assignMany(brushes: List<ImportedBrush>, brushIds: Set<String>, groupName: String): List<ImportedBrush> {
+        if (brushIds.isEmpty()) return brushes
+        val normalized = normalize(groupName)
+        return brushes.map { brush -> if (brush.id in brushIds) brush.copy(groupName = normalized) else brush }
+    }
+
+    fun duplicateMany(
+        brushes: List<ImportedBrush>,
+        brushIds: Set<String>,
+        groupName: String,
+        copySuffix: String = "copy",
+        idFactory: () -> String = { UUID.randomUUID().toString() },
+    ): List<ImportedBrush> {
+        if (brushIds.isEmpty()) return brushes
+        val targetGroup = normalize(groupName)
+        var nextOrder = brushes.filter { normalize(it.groupName).equals(targetGroup, ignoreCase = true) }.maxOfOrNull(ImportedBrush::sortOrder)?.plus(1) ?: 0
+        val copies = brushes.filter { it.id in brushIds }.map { source ->
+            source.copy(
+                id = idFactory(),
+                name = "${source.name} $copySuffix".trim(),
+                groupName = targetGroup,
+                favorite = false,
+                hidden = false,
+                lastUsedAt = 0L,
+                sortOrder = nextOrder++,
+            )
+        }
+        return brushes + copies
+    }
+
+    fun setFavorite(brushes: List<ImportedBrush>, brushIds: Set<String>, favorite: Boolean): List<ImportedBrush> =
+        brushes.map { brush -> if (brush.id in brushIds) brush.copy(favorite = favorite) else brush }
+
+    fun setHidden(brushes: List<ImportedBrush>, brushIds: Set<String>, hidden: Boolean): List<ImportedBrush> =
+        brushes.map { brush -> if (brush.id in brushIds) brush.copy(hidden = hidden) else brush }
+
+    fun removeMany(brushes: List<ImportedBrush>, brushIds: Set<String>): List<ImportedBrush> =
+        brushes.filterNot { it.id in brushIds }
+
+    fun mergeImports(existing: List<ImportedBrush>, additions: List<ImportedBrush>): List<ImportedBrush> {
+        val known = existing.mapTo(mutableSetOf(), ::importIdentity)
+        return existing + additions.filter { known.add(importIdentity(it)) }
+    }
+
+    private fun importIdentity(brush: ImportedBrush): String {
+        val sourceKey = brush.sha256 ?: "${brush.name}:${brush.sizeBytes}"
+        return "$sourceKey:${brush.tipPreviewPath.orEmpty()}"
+    }
 
     fun rename(brushes: List<ImportedBrush>, oldName: String, newName: String): List<ImportedBrush> {
         val old = normalize(oldName)

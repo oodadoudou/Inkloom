@@ -4,6 +4,8 @@ import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BrushGroupOperationsTest {
@@ -35,6 +37,52 @@ class BrushGroupOperationsTest {
 
         assertEquals(listOf("B", "A"), moved.filter { it.groupName == "Pens" }.sortedBy { it.sortOrder }.map { it.id })
         assertEquals(0, moved.single { it.id == "C" }.sortOrder)
+    }
+
+    @Test fun batchAssignmentChangesOnlySelectedBrushes() {
+        val brushes = listOf(brush("A", "Pens"), brush("B", "Pens"), brush("C", "Paint"))
+
+        val moved = BrushGroupOperations.assignMany(brushes, setOf("A", "C"), "  Favorites  ")
+
+        assertEquals(listOf("Favorites", "Pens", "Favorites"), moved.map(ImportedBrush::groupName))
+    }
+
+    @Test fun batchCopiesKeepSourceAssetsAndReceiveFreshLibraryIdentity() {
+        var nextId = 0
+        val brushes = listOf(brush("A", "Pens").copy(sourcePath = "/source/a.sut", favorite = true, hidden = true), brush("B", "Paint"))
+
+        val copied = BrushGroupOperations.duplicateMany(brushes, setOf("A", "B"), "Copies", "副本") { "copy-${nextId++}" }
+
+        assertEquals(listOf("A", "B", "copy-0", "copy-1"), copied.map(ImportedBrush::id))
+        assertEquals(listOf("A 副本", "B 副本"), copied.takeLast(2).map(ImportedBrush::name))
+        assertEquals(listOf("Copies", "Copies"), copied.takeLast(2).map(ImportedBrush::groupName))
+        assertEquals("/source/a.sut", copied[2].sourcePath)
+        assertFalse(copied[2].favorite)
+        assertFalse(copied[2].hidden)
+    }
+
+    @Test fun batchFlagsAndRemovalPreserveEveryUnselectedPreset() {
+        val brushes = listOf(brush("A", "Pens"), brush("B", "Pens"), brush("C", "Paint"))
+        val selected = setOf("A", "C")
+
+        val favorite = BrushGroupOperations.setFavorite(brushes, selected, true)
+        val hidden = BrushGroupOperations.setHidden(favorite, selected, true)
+        val remaining = BrushGroupOperations.removeMany(hidden, selected)
+
+        assertTrue(hidden.single { it.id == "A" }.favorite)
+        assertTrue(hidden.single { it.id == "C" }.hidden)
+        assertEquals(listOf("B"), remaining.map(ImportedBrush::id))
+        assertEquals(brushes[1], remaining.single())
+    }
+
+    @Test fun reimportDeduplicationKeepsIntentionalLibraryCopies() {
+        val original = brush("A", "Pens").copy(sha256 = "same-hash", tipPreviewPath = "/tip.png")
+        val copy = original.copy(id = "A-copy", name = "A copy")
+        val reimport = original.copy(id = "new-import")
+
+        val merged = BrushGroupOperations.mergeImports(listOf(original, copy), listOf(reimport, brush("B", "Paint")))
+
+        assertEquals(listOf("A", "A-copy", "B"), merged.map(ImportedBrush::id))
     }
 
     private fun brush(name: String, group: String) = ImportedBrush(
