@@ -222,6 +222,12 @@ private fun localizedBrushLabel(raw: String): String {
         "Minimum blur" -> "最小模糊"
         "Blur pressure" -> "模糊压力"
         "Blur" -> "模糊"
+        "Pressure controls particle size" -> "压力控制粒子大小"
+        "Minimum particle size" -> "最小粒子大小"
+        "Particle size pressure" -> "粒子大小压力"
+        "Pressure controls particle density" -> "压力控制粒子密度"
+        "Minimum particle density" -> "最小粒子密度"
+        "Particle density pressure" -> "粒子密度压力"
         "Link blur to brush size" -> "模糊跟随笔刷大小"
         "Scales the imported CSP blur when brush size changes." -> "笔刷大小变化时同比缩放导入的 CSP 模糊。"
         "Starting taper" -> "起笔收尖"
@@ -3723,7 +3729,15 @@ private fun InkCanvasView.applyBrushConfiguration(
     sprayParticleSize = activeBrush?.sprayParticleSize ?: 100f
     sprayParticleSizeUnit = activeBrush?.sprayParticleSizeUnit ?: 0
     sprayParticleSizeSyncBrushSize = activeBrush?.sprayParticleSizeSyncBrushSize ?: true
+    sprayParticleSizePressureEnabled = activeBrush?.sprayParticleSizePressureEnabled ?: false
+    sprayParticleSizePressureMinimum = activeBrush?.sprayParticleSizePressureMinimum ?: 0f
+    sprayParticleSizePressureCurve = activeBrush?.sprayParticleSizePressureCurve.orEmpty()
+    sprayParticleSizeSecondaryDynamics = activeBrush?.sprayParticleSizeSecondaryDynamics ?: BrushSecondaryDynamics()
     sprayDensity = activeBrush?.sprayDensity ?: 1f
+    sprayDensityPressureEnabled = activeBrush?.sprayDensityPressureEnabled ?: false
+    sprayDensityPressureMinimum = activeBrush?.sprayDensityPressureMinimum ?: 0f
+    sprayDensityPressureCurve = activeBrush?.sprayDensityPressureCurve.orEmpty()
+    sprayDensitySecondaryDynamics = activeBrush?.sprayDensitySecondaryDynamics ?: BrushSecondaryDynamics()
     sprayBias = activeBrush?.sprayBias ?: 0f
     spraySpread = activeBrush?.spraySpread ?: 1f
     sprayParticleRotationDegrees = activeBrush?.sprayParticleRotationDegrees ?: 0f
@@ -5375,7 +5389,15 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 item { SettingSwitch("Spray/scatter", null, draft.spray) { draft = draft.copy(spray = it) } }
                 if (draft.spray) item { BrushSettingSlider("Particle size", draft.sprayParticleSize, .01f..400f) { draft = draft.copy(sprayParticleSize = it) } }
                 if (draft.spray) item { SettingSwitch("Particle size follows brush", "When enabled, particle size is a percentage of the current brush size.", draft.sprayParticleSizeSyncBrushSize) { draft = draft.copy(sprayParticleSizeSyncBrushSize = it) } }
+                if (draft.spray) item { SettingSwitch("Pressure controls particle size", null, draft.sprayParticleSizePressureEnabled) { draft = draft.copy(sprayParticleSizePressureEnabled = it) } }
+                if (draft.spray && draft.sprayParticleSizePressureEnabled) item { BrushSettingSlider("Minimum particle size", draft.sprayParticleSizePressureMinimum, 0f..1f) { draft = draft.copy(sprayParticleSizePressureMinimum = it) } }
+                if (draft.spray && draft.sprayParticleSizePressureEnabled) item { PressureCurveEditor("Particle size pressure", draft.sprayParticleSizePressureCurve) { draft = draft.copy(sprayParticleSizePressureCurve = it) } }
+                if (draft.spray) item { SecondaryDynamicsEditor("Particle size", draft.sprayParticleSizeSecondaryDynamics) { draft = draft.copy(sprayParticleSizeSecondaryDynamics = it) } }
                 if (draft.spray) item { BrushSettingSlider("Particle density", draft.sprayDensity, 1f..100f) { draft = draft.copy(sprayDensity = it) } }
+                if (draft.spray) item { SettingSwitch("Pressure controls particle density", null, draft.sprayDensityPressureEnabled) { draft = draft.copy(sprayDensityPressureEnabled = it) } }
+                if (draft.spray && draft.sprayDensityPressureEnabled) item { BrushSettingSlider("Minimum particle density", draft.sprayDensityPressureMinimum, 0f..1f) { draft = draft.copy(sprayDensityPressureMinimum = it) } }
+                if (draft.spray && draft.sprayDensityPressureEnabled) item { PressureCurveEditor("Particle density pressure", draft.sprayDensityPressureCurve) { draft = draft.copy(sprayDensityPressureCurve = it) } }
+                if (draft.spray) item { SecondaryDynamicsEditor("Particle density", draft.sprayDensitySecondaryDynamics) { draft = draft.copy(sprayDensitySecondaryDynamics = it) } }
                 if (draft.spray) item { BrushSettingSlider("Spray center bias", draft.sprayBias, -100f..100f) { draft = draft.copy(sprayBias = it) } }
                 if (draft.spray) item { BrushSettingSlider("Scatter spread", draft.spraySpread, 0f..4f) { draft = draft.copy(spraySpread = it) } }
                 if (draft.spray) item { BrushSettingSlider("Particle rotation", draft.sprayParticleRotationDegrees, -180f..180f) { draft = draft.copy(sprayParticleRotationDegrees = it) } }

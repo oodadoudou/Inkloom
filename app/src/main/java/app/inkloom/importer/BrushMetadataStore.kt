@@ -102,7 +102,15 @@ class BrushMetadataStore(
                         sprayParticleSize = item.optDouble("sprayParticleSize", 100.0).toFloat().coerceIn(.01f, 4000f),
                         sprayParticleSizeUnit = item.optInt("sprayParticleSizeUnit", 0),
                         sprayParticleSizeSyncBrushSize = item.optBoolean("sprayParticleSizeSyncBrushSize", true),
+                        sprayParticleSizePressureEnabled = item.optBoolean("sprayParticleSizePressureEnabled", false),
+                        sprayParticleSizePressureMinimum = item.optDouble("sprayParticleSizePressureMinimum", 0.0).toFloat().coerceIn(0f, 1f),
+                        sprayParticleSizePressureCurve = curve("sprayParticleSizePressureCurve"),
+                        sprayParticleSizeSecondaryDynamics = secondary("sprayParticleSizeSecondaryDynamics"),
                         sprayDensity = item.optDouble("sprayDensity", 1.0).toFloat().coerceIn(1f, 100f),
+                        sprayDensityPressureEnabled = item.optBoolean("sprayDensityPressureEnabled", false),
+                        sprayDensityPressureMinimum = item.optDouble("sprayDensityPressureMinimum", 0.0).toFloat().coerceIn(0f, 1f),
+                        sprayDensityPressureCurve = curve("sprayDensityPressureCurve"),
+                        sprayDensitySecondaryDynamics = secondary("sprayDensitySecondaryDynamics"),
                         sprayBias = item.optDouble("sprayBias", 0.0).toFloat().coerceIn(-100f, 100f),
                         spraySpread = item.optDouble("spraySpread", 1.0).toFloat().coerceIn(0f, 4f),
                         sprayParticleRotationDegrees = item.optDouble("sprayParticleRotationDegrees", 0.0).toFloat().coerceIn(-360f, 360f),
@@ -256,7 +264,15 @@ class BrushMetadataStore(
                     .put("sprayParticleSize", brush.sprayParticleSize)
                     .put("sprayParticleSizeUnit", brush.sprayParticleSizeUnit)
                     .put("sprayParticleSizeSyncBrushSize", brush.sprayParticleSizeSyncBrushSize)
+                    .put("sprayParticleSizePressureEnabled", brush.sprayParticleSizePressureEnabled)
+                    .put("sprayParticleSizePressureMinimum", brush.sprayParticleSizePressureMinimum)
+                    .put("sprayParticleSizePressureCurve", curveJson(brush.sprayParticleSizePressureCurve))
+                    .put("sprayParticleSizeSecondaryDynamics", secondaryJson(brush.sprayParticleSizeSecondaryDynamics))
                     .put("sprayDensity", brush.sprayDensity)
+                    .put("sprayDensityPressureEnabled", brush.sprayDensityPressureEnabled)
+                    .put("sprayDensityPressureMinimum", brush.sprayDensityPressureMinimum)
+                    .put("sprayDensityPressureCurve", curveJson(brush.sprayDensityPressureCurve))
+                    .put("sprayDensitySecondaryDynamics", secondaryJson(brush.sprayDensitySecondaryDynamics))
                     .put("sprayBias", brush.sprayBias)
                     .put("spraySpread", brush.spraySpread)
                     .put("sprayParticleRotationDegrees", brush.sprayParticleRotationDegrees)

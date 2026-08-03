@@ -28,6 +28,9 @@ class SutSprayRotationParserTest {
         val sampleRoots = listOf(
             File(context.filesDir, "sut-samples"),
             File(context.getExternalFilesDir(null), "sut-samples"),
+            // adb test installs can clear app-owned storage. A world-readable staging directory
+            // keeps the explicitly supplied corpus available across that reinstall boundary.
+            File("/data/local/tmp/inkloom-sut-v21"),
         )
         val samples = sampleRoots.asSequence()
             .flatMap { root -> root.walkTopDown().asSequence() }
@@ -53,9 +56,9 @@ class SutSprayRotationParserTest {
                 )
             }
             parsed.forEach { brush ->
-                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 21, brush.parserVersion)
+                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 22, brush.parserVersion)
                 assertFalse(brush.report.any { it.startsWith("SUT parameter parsing failed") })
-                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v21-")) }
+                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v22-")) }
             }
             assertTrue("Expected multiple CSP AntiAlias modes in the supplied corpus", parsed.map(ImportedBrush::antiAliasMode).distinct().size >= 3)
             assertTrue(parsed.all { it.antiAliasMode in CspAntiAlias.NONE..CspAntiAlias.STRONG })
@@ -83,6 +86,13 @@ class SutSprayRotationParserTest {
             val continuousBrushes = parsed.filter(ImportedBrush::continuousPlot)
             assertTrue("Expected supplied CSP Continuous spraying brushes", continuousBrushes.size >= 2)
             assertTrue(continuousBrushes.all { brush -> brush.report.any { it.contains("Continuous spraying mapped") } })
+            val particleDynamicsBrush = parsed.firstOrNull { it.sprayParticleSizePressureEnabled && it.sprayParticleSizeSecondaryDynamics.velocityEnabled }
+            assertTrue("Expected the supplied pressure+velocity particle-size dynamics", particleDynamicsBrush != null)
+            assertEquals(.32f, particleDynamicsBrush?.sprayParticleSizePressureMinimum ?: -1f, .001f)
+            assertEquals(.37f, particleDynamicsBrush?.sprayParticleSizeSecondaryDynamics?.velocityMinimum ?: -1f, .001f)
+            val densityDynamicsBrush = parsed.firstOrNull { it.sprayDensitySecondaryDynamics.velocityEnabled }
+            assertTrue("Expected the supplied velocity particle-density dynamics", densityDynamicsBrush != null)
+            assertTrue(densityDynamicsBrush?.report?.any { it.contains("spray density velocity") } == true)
 
             val normalizedTipSizes = parsed.flatMap { brush ->
                 brush.tipPreviewPaths.mapNotNull { path ->
@@ -125,7 +135,7 @@ class SutSprayRotationParserTest {
             assertEquals(CspTextureComposite.HEIGHT, brush.grainCompositeMode)
             assertEquals(CspAntiAlias.WEAK, brush.antiAliasMode)
             assertEquals(CspAntiAlias.STRONG, brush.dualAntiAliasMode)
-            assertEquals(21, brush.parserVersion)
+            assertEquals(22, brush.parserVersion)
         } finally {
             root.deleteRecursively()
         }
@@ -146,6 +156,13 @@ class SutSprayRotationParserTest {
                 sprayParticleRotationDegrees = 33f,
                 sprayParticleFollowStrokeDirection = true,
                 sprayParticleRandomRotationDegrees = 54f,
+                sprayParticleSizePressureEnabled = true,
+                sprayParticleSizePressureMinimum = .25f,
+                sprayParticleSizePressureCurve = listOf(app.inkloom.document.BrushCurvePoint(0f, .1f), app.inkloom.document.BrushCurvePoint(1f, 1f)),
+                sprayParticleSizeSecondaryDynamics = app.inkloom.document.BrushSecondaryDynamics(velocityEnabled = true, velocityMinimum = .35f),
+                sprayDensityPressureEnabled = true,
+                sprayDensityPressureMinimum = .4f,
+                sprayDensitySecondaryDynamics = app.inkloom.document.BrushSecondaryDynamics(randomEnabled = true, randomMinimum = .6f),
                 tipFlipHorizontalMode = 2,
                 blendTipsWithDarken = true,
                 continuousPlot = true,
@@ -177,6 +194,14 @@ class SutSprayRotationParserTest {
             assertEquals(33f, restored.sprayParticleRotationDegrees, .0001f)
             assertTrue(restored.sprayParticleFollowStrokeDirection)
             assertEquals(54f, restored.sprayParticleRandomRotationDegrees, .0001f)
+            assertTrue(restored.sprayParticleSizePressureEnabled)
+            assertEquals(.25f, restored.sprayParticleSizePressureMinimum, .0001f)
+            assertEquals(2, restored.sprayParticleSizePressureCurve.size)
+            assertTrue(restored.sprayParticleSizeSecondaryDynamics.velocityEnabled)
+            assertEquals(.35f, restored.sprayParticleSizeSecondaryDynamics.velocityMinimum, .0001f)
+            assertTrue(restored.sprayDensityPressureEnabled)
+            assertEquals(.4f, restored.sprayDensityPressureMinimum, .0001f)
+            assertTrue(restored.sprayDensitySecondaryDynamics.randomEnabled)
             assertEquals(2, restored.tipFlipHorizontalMode)
             assertTrue(restored.blendTipsWithDarken)
             assertTrue(restored.continuousPlot)

@@ -20,4 +20,32 @@ class SprayGeometryTest {
         val centered = SprayGeometry.offset(100f, .25f, .5f, 100f)
         assertTrue(kotlin.math.hypot(centered.x, centered.y) < kotlin.math.hypot(neutral.x, neutral.y))
     }
+
+    @Test fun cspParticleSizeCombinesPressureAndVelocity() {
+        val stroke = InkStroke(
+            points = emptyList(),
+            sprayParticleSize = 100f,
+            sprayParticleSizePressureEnabled = true,
+            sprayParticleSizePressureMinimum = .2f,
+            sprayParticleSizeSecondaryDynamics = BrushSecondaryDynamics(velocityEnabled = true, velocityMinimum = .4f),
+        )
+
+        assertEquals(8f, SprayDynamics.particleSize(stroke, StrokePoint(0f, 0f, pressure = 0f, velocity = 0f)), .001f)
+        assertEquals(100f, SprayDynamics.particleSize(stroke, StrokePoint(0f, 0f, pressure = 1f, velocity = 1f)), .001f)
+    }
+
+    @Test fun cspParticleDensityUsesImportedVelocityCurveAndBounds() {
+        val stroke = InkStroke(
+            points = emptyList(),
+            sprayDensity = 80f,
+            sprayDensitySecondaryDynamics = BrushSecondaryDynamics(
+                velocityEnabled = true,
+                velocityMinimum = .25f,
+                velocityCurve = listOf(BrushCurvePoint(0f, 0f), BrushCurvePoint(1f, 1f)),
+            ),
+        )
+
+        assertEquals(20f, SprayDynamics.density(stroke, StrokePoint(0f, 0f, velocity = 0f)), .001f)
+        assertEquals(80f, SprayDynamics.density(stroke, StrokePoint(0f, 0f, velocity = 1f)), .001f)
+    }
 }
