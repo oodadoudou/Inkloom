@@ -1,6 +1,7 @@
 package app.inkloom.settings
 
 import android.content.Context
+import androidx.core.content.edit
 
 data class AppSettings(
     val language: UiLanguage = UiLanguage.ENGLISH,
@@ -51,6 +52,7 @@ data class AppSettings(
     val shortcutBindings: List<ShortcutBinding> = CspShortcutResolver.defaultBindings,
     val shortcutBrushGroupTargets: ShortcutBrushGroupTargets = ShortcutBrushGroupTargets(),
     val toolboxQuickSlots: List<ToolboxQuickSlot> = ToolboxQuickSlots.normalize(emptyList()),
+    val workspaceLayouts: WorkspaceLayoutProfiles = WorkspaceLayoutProfiles(),
 )
 
 enum class StylusButtonAction {
@@ -74,11 +76,12 @@ enum class SelectionFilter { ALL, ACTIVE_LAYER, CURRENT_BRUSH, CURRENT_COLOR }
 class AppSettingsStore(context: Context) {
     private val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
     private val systemLanguage = UiLanguage.fromLanguageTag(context.resources.configuration.locales[0]?.toLanguageTag())
+    private val orientation = WorkspaceOrientation.from(context.resources.configuration)
 
     fun load(): AppSettings {
         val pressureMinimum = preferences.getFloat("pressureMinimumInput", 0f).coerceIn(0f, .95f)
         val pressureMaximum = preferences.getFloat("pressureMaximumInput", 1f).coerceIn(pressureMinimum + .05f, 1f)
-        return AppSettings(
+        val loaded = AppSettings(
             language = enumValue(preferences.getString("language", null), systemLanguage),
             fingerDrawing = preferences.getBoolean("fingerDrawing", false),
             showPageRail = preferences.getBoolean("showPageRail", true),
@@ -131,62 +134,71 @@ class AppSettingsStore(context: Context) {
                 brush = preferences.getString("shortcutBrushGroup", "").orEmpty(),
             ).normalized(),
             toolboxQuickSlots = ToolboxQuickSlotCodec.decode(preferences.getString("toolboxQuickSlots", null)),
+            workspaceLayouts = WorkspaceLayoutProfilesCodec.decode(preferences.getString("workspaceLayouts", null)),
         )
+        val selected = loaded.withWorkspaceFor(orientation)
+        if (selected.workspaceLayouts != loaded.workspaceLayouts) {
+            preferences.edit { putString("workspaceLayouts", WorkspaceLayoutProfilesCodec.encode(selected.workspaceLayouts)) }
+        }
+        return selected
     }
 
-    fun save(value: AppSettings) {
+    fun save(value: AppSettings): AppSettings {
+        val persisted = value.recordWorkspaceFor(orientation)
         preferences.edit()
-            .putString("language", value.language.name)
-            .putBoolean("fingerDrawing", value.fingerDrawing)
-            .putBoolean("showPageRail", value.showPageRail)
-            .putBoolean("showBrushPanel", value.showBrushPanel)
-            .putBoolean("showLayerPanel", value.showLayerPanel)
-            .putString("pagePanelDock", value.pagePanelDock.name)
-            .putString("brushPanelDock", value.brushPanelDock.name)
-            .putString("layerPanelDock", value.layerPanelDock.name)
-            .putFloat("pagePanelXDp", value.pagePanelXDp)
-            .putFloat("pagePanelYDp", value.pagePanelYDp)
-            .putFloat("pagePanelWidthDp", value.pagePanelWidthDp)
-            .putFloat("pagePanelHeightDp", value.pagePanelHeightDp)
-            .putFloat("brushPanelXDp", value.brushPanelXDp)
-            .putFloat("brushPanelYDp", value.brushPanelYDp)
-            .putFloat("brushPanelWidthDp", value.brushPanelWidthDp)
-            .putFloat("brushPanelHeightDp", value.brushPanelHeightDp)
-            .putFloat("layerPanelXDp", value.layerPanelXDp)
-            .putFloat("layerPanelYDp", value.layerPanelYDp)
-            .putFloat("layerPanelWidthDp", value.layerPanelWidthDp)
-            .putFloat("layerPanelHeightDp", value.layerPanelHeightDp)
-            .putBoolean("showToolbar", value.showToolbar)
-            .putFloat("toolbarOffsetXDp", value.toolbarOffsetXDp)
-            .putFloat("toolbarOffsetYDp", value.toolbarOffsetYDp)
-            .putBoolean("verticalToolbar", value.verticalToolbar)
-            .putString("toolbarDock", value.toolbarDock.name)
-            .putBoolean("twoFingerDoubleTapUndo", value.twoFingerDoubleTapUndo)
-            .putBoolean("threeFingerTapRedo", value.threeFingerTapRedo)
-            .putBoolean("twoFingerRotation", value.twoFingerRotation)
-            .putString("stylusPrimaryButton", value.stylusPrimaryButton.name)
-            .putString("stylusSecondaryButton", value.stylusSecondaryButton.name)
-            .putFloat("pressureSensitivity", value.pressureSensitivity)
-            .putFloat("pressureMinimumInput", value.pressureMinimumInput)
-            .putFloat("pressureMaximumInput", value.pressureMaximumInput)
-            .putFloat("stabilization", value.stabilization)
-            .putBoolean("showInputDiagnostics", value.showInputDiagnostics)
-            .putFloat("penSize", value.penSize)
-            .putFloat("penOpacity", value.penOpacity)
-            .putFloat("highlighterSize", value.highlighterSize)
-            .putFloat("highlighterOpacity", value.highlighterOpacity)
-            .putFloat("eraserSize", value.eraserSize)
-            .putString("eraserPreset", value.eraserPreset.name)
-            .putString("selectionShape", value.selectionShape.name)
-            .putString("selectionMode", value.selectionMode.name)
-            .putString("selectionFilter", value.selectionFilter.name)
-            .putBoolean("nonDestructiveEraser", value.nonDestructiveEraser)
-            .putString("shortcutBindings", ShortcutBindingCodec.encode(value.shortcutBindings))
-            .putString("shortcutPenGroup", value.shortcutBrushGroupTargets.pen)
-            .putString("shortcutPencilGroup", value.shortcutBrushGroupTargets.pencil)
-            .putString("shortcutBrushGroup", value.shortcutBrushGroupTargets.brush)
-            .putString("toolboxQuickSlots", ToolboxQuickSlotCodec.encode(value.toolboxQuickSlots))
+            .putString("language", persisted.language.name)
+            .putBoolean("fingerDrawing", persisted.fingerDrawing)
+            .putBoolean("showPageRail", persisted.showPageRail)
+            .putBoolean("showBrushPanel", persisted.showBrushPanel)
+            .putBoolean("showLayerPanel", persisted.showLayerPanel)
+            .putString("pagePanelDock", persisted.pagePanelDock.name)
+            .putString("brushPanelDock", persisted.brushPanelDock.name)
+            .putString("layerPanelDock", persisted.layerPanelDock.name)
+            .putFloat("pagePanelXDp", persisted.pagePanelXDp)
+            .putFloat("pagePanelYDp", persisted.pagePanelYDp)
+            .putFloat("pagePanelWidthDp", persisted.pagePanelWidthDp)
+            .putFloat("pagePanelHeightDp", persisted.pagePanelHeightDp)
+            .putFloat("brushPanelXDp", persisted.brushPanelXDp)
+            .putFloat("brushPanelYDp", persisted.brushPanelYDp)
+            .putFloat("brushPanelWidthDp", persisted.brushPanelWidthDp)
+            .putFloat("brushPanelHeightDp", persisted.brushPanelHeightDp)
+            .putFloat("layerPanelXDp", persisted.layerPanelXDp)
+            .putFloat("layerPanelYDp", persisted.layerPanelYDp)
+            .putFloat("layerPanelWidthDp", persisted.layerPanelWidthDp)
+            .putFloat("layerPanelHeightDp", persisted.layerPanelHeightDp)
+            .putBoolean("showToolbar", persisted.showToolbar)
+            .putFloat("toolbarOffsetXDp", persisted.toolbarOffsetXDp)
+            .putFloat("toolbarOffsetYDp", persisted.toolbarOffsetYDp)
+            .putBoolean("verticalToolbar", persisted.verticalToolbar)
+            .putString("toolbarDock", persisted.toolbarDock.name)
+            .putBoolean("twoFingerDoubleTapUndo", persisted.twoFingerDoubleTapUndo)
+            .putBoolean("threeFingerTapRedo", persisted.threeFingerTapRedo)
+            .putBoolean("twoFingerRotation", persisted.twoFingerRotation)
+            .putString("stylusPrimaryButton", persisted.stylusPrimaryButton.name)
+            .putString("stylusSecondaryButton", persisted.stylusSecondaryButton.name)
+            .putFloat("pressureSensitivity", persisted.pressureSensitivity)
+            .putFloat("pressureMinimumInput", persisted.pressureMinimumInput)
+            .putFloat("pressureMaximumInput", persisted.pressureMaximumInput)
+            .putFloat("stabilization", persisted.stabilization)
+            .putBoolean("showInputDiagnostics", persisted.showInputDiagnostics)
+            .putFloat("penSize", persisted.penSize)
+            .putFloat("penOpacity", persisted.penOpacity)
+            .putFloat("highlighterSize", persisted.highlighterSize)
+            .putFloat("highlighterOpacity", persisted.highlighterOpacity)
+            .putFloat("eraserSize", persisted.eraserSize)
+            .putString("eraserPreset", persisted.eraserPreset.name)
+            .putString("selectionShape", persisted.selectionShape.name)
+            .putString("selectionMode", persisted.selectionMode.name)
+            .putString("selectionFilter", persisted.selectionFilter.name)
+            .putBoolean("nonDestructiveEraser", persisted.nonDestructiveEraser)
+            .putString("shortcutBindings", ShortcutBindingCodec.encode(persisted.shortcutBindings))
+            .putString("shortcutPenGroup", persisted.shortcutBrushGroupTargets.pen)
+            .putString("shortcutPencilGroup", persisted.shortcutBrushGroupTargets.pencil)
+            .putString("shortcutBrushGroup", persisted.shortcutBrushGroupTargets.brush)
+            .putString("toolboxQuickSlots", ToolboxQuickSlotCodec.encode(persisted.toolboxQuickSlots))
+            .putString("workspaceLayouts", WorkspaceLayoutProfilesCodec.encode(persisted.workspaceLayouts))
             .apply()
+        return persisted
     }
 
     private inline fun <reified T : Enum<T>> enumValue(raw: String?, fallback: T): T = runCatching { enumValueOf<T>(raw.orEmpty()) }.getOrDefault(fallback)

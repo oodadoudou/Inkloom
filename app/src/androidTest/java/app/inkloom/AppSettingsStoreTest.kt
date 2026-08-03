@@ -1,6 +1,7 @@
 package app.inkloom
 
 import android.content.Context
+import android.content.res.Configuration
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.settings.AppSettings
@@ -9,6 +10,8 @@ import app.inkloom.settings.ShortcutBrushGroupTargets
 import app.inkloom.settings.StylusButtonAction
 import app.inkloom.settings.ToolboxQuickSlot
 import app.inkloom.settings.ToolboxQuickSlotKind
+import app.inkloom.settings.ToolbarDock
+import app.inkloom.settings.WorkspacePanelDock
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -76,4 +79,51 @@ class AppSettingsStoreTest {
             preferences.edit().clear().commit()
         }
     }
+
+    @Test fun landscapeAndPortraitWorkspacesSurviveRotationIndependently() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
+        preferences.edit().clear().commit()
+        val landscapeContext = context.withOrientation(Configuration.ORIENTATION_LANDSCAPE)
+        val portraitContext = context.withOrientation(Configuration.ORIENTATION_PORTRAIT)
+        try {
+            AppSettingsStore(landscapeContext).save(AppSettings(
+                showPageRail = false,
+                showBrushPanel = true,
+                brushPanelDock = WorkspacePanelDock.FREE,
+                brushPanelXDp = 810f,
+                toolbarDock = ToolbarDock.LEFT,
+            ))
+
+            val initialPortrait = AppSettingsStore(portraitContext).load()
+            assertTrue(initialPortrait.showPageRail)
+            assertFalse(initialPortrait.showBrushPanel)
+            assertEquals(720f, initialPortrait.brushPanelXDp)
+            AppSettingsStore(portraitContext).save(initialPortrait.copy(
+                showLayerPanel = true,
+                brushPanelXDp = 32f,
+                toolbarDock = ToolbarDock.BOTTOM,
+            ))
+
+            val landscape = AppSettingsStore(landscapeContext).load()
+            assertFalse(landscape.showPageRail)
+            assertTrue(landscape.showBrushPanel)
+            assertFalse(landscape.showLayerPanel)
+            assertEquals(810f, landscape.brushPanelXDp)
+            assertEquals(ToolbarDock.LEFT, landscape.toolbarDock)
+
+            val portrait = AppSettingsStore(portraitContext).load()
+            assertTrue(portrait.showPageRail)
+            assertFalse(portrait.showBrushPanel)
+            assertTrue(portrait.showLayerPanel)
+            assertEquals(32f, portrait.brushPanelXDp)
+            assertEquals(ToolbarDock.BOTTOM, portrait.toolbarDock)
+        } finally {
+            preferences.edit().clear().commit()
+        }
+    }
+
+    private fun Context.withOrientation(value: Int): Context = createConfigurationContext(
+        Configuration(resources.configuration).apply { orientation = value },
+    )
 }

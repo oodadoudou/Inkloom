@@ -88,24 +88,7 @@ object ToolboxQuickSlots {
         groupPath = value.groupPath.trim().trim('/').split('/').map(String::trim).filter(String::isNotEmpty).joinToString("/").take(240),
         size = value.size.coerceIn(.5f, 400f),
         opacity = value.opacity.coerceIn(.05f, 1f),
-        workspace = value.workspace?.normalized(),
-    )
-
-    private fun ToolboxWorkspaceSnapshot.normalized(): ToolboxWorkspaceSnapshot = copy(
-        pagePanelXDp = pagePanelXDp.coerceIn(-2400f, 2400f),
-        pagePanelYDp = pagePanelYDp.coerceIn(-2400f, 2400f),
-        pagePanelWidthDp = pagePanelWidthDp.coerceIn(80f, 1200f),
-        pagePanelHeightDp = pagePanelHeightDp.coerceIn(120f, 1600f),
-        brushPanelXDp = brushPanelXDp.coerceIn(-2400f, 2400f),
-        brushPanelYDp = brushPanelYDp.coerceIn(-2400f, 2400f),
-        brushPanelWidthDp = brushPanelWidthDp.coerceIn(80f, 1200f),
-        brushPanelHeightDp = brushPanelHeightDp.coerceIn(120f, 1600f),
-        layerPanelXDp = layerPanelXDp.coerceIn(-2400f, 2400f),
-        layerPanelYDp = layerPanelYDp.coerceIn(-2400f, 2400f),
-        layerPanelWidthDp = layerPanelWidthDp.coerceIn(80f, 1200f),
-        layerPanelHeightDp = layerPanelHeightDp.coerceIn(120f, 1600f),
-        toolbarOffsetXDp = toolbarOffsetXDp.coerceIn(-1200f, 1200f),
-        toolbarOffsetYDp = toolbarOffsetYDp.coerceIn(-1200f, 1200f),
+        workspace = value.workspace?.normalizedWorkspace(),
     )
 }
 

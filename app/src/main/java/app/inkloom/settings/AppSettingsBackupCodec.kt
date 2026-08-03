@@ -63,6 +63,7 @@ object AppSettingsBackupCodec {
         put("eraserSize", eraserSize); put("eraserPreset", eraserPreset.name)
         put("selectionShape", selectionShape.name); put("selectionMode", selectionMode.name); put("selectionFilter", selectionFilter.name)
         put("nonDestructiveEraser", nonDestructiveEraser)
+        put("workspaceLayouts", json.parseToJsonElement(WorkspaceLayoutProfilesCodec.encode(workspaceLayouts)))
     }
 
     private fun JsonObject.toSettings(): AppSettings {
@@ -91,6 +92,7 @@ object AppSettingsBackupCodec {
             eraserSize = float("eraserSize", defaults.eraserSize).coerceIn(.5f, 400f), eraserPreset = enum("eraserPreset", defaults.eraserPreset),
             selectionShape = enum("selectionShape", defaults.selectionShape), selectionMode = enum("selectionMode", defaults.selectionMode), selectionFilter = enum("selectionFilter", defaults.selectionFilter),
             nonDestructiveEraser = boolean("nonDestructiveEraser", defaults.nonDestructiveEraser),
+            workspaceLayouts = WorkspaceLayoutProfilesCodec.decode(get("workspaceLayouts")?.toString()),
         )
     }
 

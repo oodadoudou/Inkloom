@@ -28,7 +28,10 @@ class AppSettingsBackupCodecTest {
             shortcutBindings = listOf(ShortcutBinding(ShortcutAction.QUICK_SLOT_1, ShortcutChord(KeyEvent.KEYCODE_F12))),
             shortcutBrushGroupTargets = ShortcutBrushGroupTargets("Pens", "Pencils", "Brushes"),
             toolboxQuickSlots = ToolboxQuickSlots.normalize(listOf(ToolboxQuickSlot(ToolboxQuickSlotKind.TOOL_PRESET, "Red pen", size = 12f, colorArgb = 0xFFAA0000.toInt()))),
-        )
+        ).recordWorkspaceFor(WorkspaceOrientation.LANDSCAPE).copy(
+            showPageRail = true,
+            toolbarDock = ToolbarDock.BOTTOM,
+        ).recordWorkspaceFor(WorkspaceOrientation.PORTRAIT)
         val palette = listOf(0xFF112233.toInt(), 0xFF445566.toInt())
 
         val restored = AppSettingsBackupCodec.decode(AppSettingsBackupCodec.encode(settings, palette)).getOrThrow()

@@ -1,5 +1,7 @@
 package app.inkloom
 
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.hasAnyDescendant
@@ -55,6 +57,7 @@ class InkloomLaunchTest {
                     .remove("shortcutPencilGroup")
                     .remove("shortcutBrushGroup")
                     .remove("toolboxQuickSlots")
+                    .remove("workspaceLayouts")
                     .commit()
                 BrushGroupStore(ApplicationProvider.getApplicationContext()).save(
                     listOf("Toolbox/Pens", "Toolbox/Pencils", "Toolbox/Brushes"),
@@ -75,6 +78,31 @@ class InkloomLaunchTest {
 
     @Test fun libraryScreenLaunches() {
         composeRule.onNodeWithText("Inkloom").assertIsDisplayed()
+    }
+
+    @Test fun rotationKeepsEditorAndRestoresOrientationSpecificWorkspace() {
+        createNotebookAndOpenEditor()
+        composeRule.onNodeWithContentDescription("Toggle pages").performClick()
+        composeRule.waitForIdle()
+        assertTrue(composeRule.onAllNodes(hasContentDescription("Add page")).fetchSemanticsNodes().isEmpty())
+
+        try {
+            composeRule.activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            composeRule.waitUntil(10_000) {
+                composeRule.activity.resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+            }
+            composeRule.onNodeWithContentDescription("Search this note").assertIsDisplayed()
+            assertEquals(true, AppSettingsStore(composeRule.activity).load().showPageRail)
+
+            composeRule.activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            composeRule.waitUntil(10_000) {
+                composeRule.activity.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+            }
+            composeRule.onNodeWithContentDescription("Search this note").assertIsDisplayed()
+            assertEquals(false, AppSettingsStore(composeRule.activity).load().showPageRail)
+        } finally {
+            composeRule.activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        }
     }
 
     @Test fun settingsExposeInputAndToolControls() {

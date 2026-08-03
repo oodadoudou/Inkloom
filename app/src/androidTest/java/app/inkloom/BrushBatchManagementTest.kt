@@ -48,6 +48,7 @@ class BrushBatchManagementTest {
                     .putBoolean("showLayerPanel", false)
                     .putBoolean("showPageRail", false)
                     .putString("brushPanelDock", "RIGHT")
+                    .remove("workspaceLayouts")
                     .commit()
                 val store = BrushMetadataStore(context)
                 store.save(sourceBrushes)

@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -308,7 +309,7 @@ private fun localizedBrushLabel(raw: String): String {
 
 @Composable
 fun InkloomApp(initialIntent: Intent?) {
-    var destination by remember { mutableStateOf(AppDestination.LIBRARY) }
+    var destination by rememberSaveable { mutableStateOf(AppDestination.LIBRARY) }
     var importError by remember { mutableStateOf<String?>(null) }
     var settingsOpen by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -323,7 +324,7 @@ fun InkloomApp(initialIntent: Intent?) {
     val colorPaletteStore = remember { ColorPaletteStore(context) }
     var settings by remember { mutableStateOf(settingsStore.load()) }
     var brushesOpen by remember { mutableStateOf(settings.showBrushPanel) }
-    fun updateSettings(value: AppSettings) { settings = value; settingsStore.save(value) }
+    fun updateSettings(value: AppSettings) { settings = settingsStore.save(value) }
     var importedBrushes by remember { mutableStateOf(brushStore.load()) }
     var brushGroups by remember { mutableStateOf(BrushGroupOperations.reconcileRegisteredGroups(brushGroupStore.load(), importedBrushes)) }
     var pendingBrushImportGroup by remember { mutableStateOf<String?>(null) }
