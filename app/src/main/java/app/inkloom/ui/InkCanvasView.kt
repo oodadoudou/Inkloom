@@ -29,6 +29,7 @@ import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushDynamics
 import app.inkloom.document.BrushStampCount
 import app.inkloom.document.BrushStampRotation
+import app.inkloom.document.BrushSizeDrag
 import app.inkloom.document.BrushTipSequence
 import app.inkloom.document.BrushTipTextureDecoder
 import app.inkloom.document.BrushTipTransform
@@ -115,11 +116,21 @@ class InkCanvasView(context: Context) : View(context) {
     private var activeTool: EditorTool? = null
     private var activeInputWasStylus = false
     private var lastStylusSeenAt = Long.MIN_VALUE
+    private var ctrlModifierHeld = false
+    private var altModifierHeld = false
+    private var brushSizeDragActive = false
+    private var brushSizeDragStartX = 0f
+    private var brushSizeDragStartSize = 0f
+    private var brushSizeDragCurrentSize = 0f
+    private var brushSizeDragPreviewX = 0f
+    private var brushSizeDragPreviewY = 0f
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
+    private val brushSizePreviewPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+    private val brushSizePreviewTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 30f; typeface = android.graphics.Typeface.DEFAULT_BOLD }
     private val tipCache = object : LinkedHashMap<String, Bitmap>(32, .75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Bitmap>): Boolean {
             val remove = size > MAX_TIP_CACHE_ENTRIES
@@ -300,6 +311,7 @@ class InkCanvasView(context: Context) : View(context) {
     var onPdfGotoLink: (PdfGotoLink) -> Unit = {}
     var onUndoGesture: () -> Unit = {}
     var onColorSampled: (Int) -> Unit = {}
+    var onBrushSizeAdjusted: (Float) -> Unit = {}
     var onInputDiagnostic: (String, Float, Float, Int) -> Unit = { _, _, _, _ -> }
     var onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit = {}
     var onShortcutAction: (ShortcutActivation) -> Unit = {}
@@ -320,12 +332,25 @@ class InkCanvasView(context: Context) : View(context) {
         isFocusableInTouchMode = true
     }
 
+    override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
+        super.onWindowFocusChanged(hasWindowFocus)
+        if (!hasWindowFocus) {
+            ctrlModifierHeld = false
+            altModifierHeld = false
+            if (brushSizeDragActive) finishBrushSizeDrag(cancelled = true)
+        }
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (updateModifierState(keyCode, pressed = true)) {
+            onKeyInputDiagnostic(event.toDiagnostic(ShortcutPhase.PRESS, null))
+            return true
+        }
         val binding = CspShortcutResolver.resolveBinding(
             ShortcutChord(
                 keyCode = keyCode,
-                ctrl = event.isCtrlPressed,
-                alt = event.isAltPressed,
+                ctrl = event.isCtrlPressed || ctrlModifierHeld,
+                alt = event.isAltPressed || altModifierHeld,
                 shift = event.isShiftPressed,
                 scanCode = event.scanCode,
             ),
@@ -339,11 +364,15 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (updateModifierState(keyCode, pressed = false)) {
+            onKeyInputDiagnostic(event.toDiagnostic(ShortcutPhase.RELEASE, null))
+            return true
+        }
         val binding = CspShortcutResolver.resolveBinding(
             ShortcutChord(
                 keyCode = keyCode,
-                ctrl = event.isCtrlPressed,
-                alt = event.isAltPressed,
+                ctrl = event.isCtrlPressed || ctrlModifierHeld,
+                alt = event.isAltPressed || altModifierHeld,
                 shift = event.isShiftPressed,
                 scanCode = event.scanCode,
             ),
@@ -368,6 +397,12 @@ class InkCanvasView(context: Context) : View(context) {
             source = source,
             matchedAction = matchedAction,
         )
+
+    private fun updateModifierState(keyCode: Int, pressed: Boolean): Boolean = when (keyCode) {
+        KeyEvent.KEYCODE_CTRL_LEFT, KeyEvent.KEYCODE_CTRL_RIGHT -> { ctrlModifierHeld = pressed; true }
+        KeyEvent.KEYCODE_ALT_LEFT, KeyEvent.KEYCODE_ALT_RIGHT -> { altModifierHeld = pressed; true }
+        else -> false
+    }
 
     fun setDocumentStrokes(value: List<InkStroke>, historyKey: String) {
         if (strokeHistoryKey != historyKey) {
@@ -420,6 +455,7 @@ class InkCanvasView(context: Context) : View(context) {
         }
         drawShapePreview(canvas)
         if (currentPoints.isNotEmpty()) drawLayeredStrokes(canvas, listOf(makeStroke(currentPoints)))
+        drawBrushSizePreview(canvas)
     }
 
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
@@ -717,6 +753,14 @@ class InkCanvasView(context: Context) : View(context) {
         val isStylus = eventToolType == MotionEvent.TOOL_TYPE_STYLUS || eventToolType == MotionEvent.TOOL_TYPE_ERASER
         if (isStylus) lastStylusSeenAt = event.eventTime
         onInputDiagnostic(when (eventToolType) { MotionEvent.TOOL_TYPE_STYLUS -> "Stylus"; MotionEvent.TOOL_TYPE_ERASER -> "Eraser"; MotionEvent.TOOL_TYPE_FINGER -> "Finger"; else -> "Other" }, event.pressure, event.getAxisValue(MotionEvent.AXIS_TILT), event.buttonState)
+        if (brushSizeDragActive) {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_MOVE -> if (event.pointerCount == 1) updateBrushSizeDrag(event.x, event.y) else finishBrushSizeDrag(cancelled = true)
+                MotionEvent.ACTION_UP -> finishBrushSizeDrag(cancelled = false)
+                MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_CANCEL -> finishBrushSizeDrag(cancelled = true)
+            }
+            return true
+        }
         val elapsedSinceStylus = if (lastStylusSeenAt == Long.MIN_VALUE) Long.MAX_VALUE else event.eventTime - lastStylusSeenAt
         val isFingerNavigation = forceNavigation || StylusInputClassifier.shouldNavigateOrRejectFinger(isStylus, fingerDrawingEnabled, event.pointerCount, event.getTouchMajor(pointerIndex), elapsedSinceStylus)
         if (isFingerNavigation) {
@@ -807,6 +851,12 @@ class InkCanvasView(context: Context) : View(context) {
                 parent?.requestDisallowInterceptTouchEvent(true)
                 activeTool = resolveTool(event, eventToolType)
                 activeInputWasStylus = isStylus
+                val motionCtrlPressed = event.metaState and KeyEvent.META_CTRL_ON != 0
+                val motionAltPressed = event.metaState and KeyEvent.META_ALT_ON != 0
+                if ((motionCtrlPressed || ctrlModifierHeld) && (motionAltPressed || altModifierHeld) && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER)) {
+                    beginBrushSizeDrag(event.x, event.y, if (activeTool == EditorTool.ERASER) eraserWidth else baseWidth)
+                    return true
+                }
                 if (activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) && activeLayerId in protectedLayerIds) {
                     activeTool = null
                     parent?.requestDisallowInterceptTouchEvent(false)
@@ -940,6 +990,54 @@ class InkCanvasView(context: Context) : View(context) {
         sampleCanvas.translate(-x.coerceIn(0f, (width - 1).coerceAtLeast(0).toFloat()), -y.coerceIn(0f, (height - 1).coerceAtLeast(0).toFloat()))
         draw(sampleCanvas)
         return RenderedColorSampling.opaqueOverWhite(colorSampleBitmap.getPixel(0, 0))
+    }
+
+    private fun beginBrushSizeDrag(x: Float, y: Float, startSize: Float) {
+        brushSizeDragActive = true
+        brushSizeDragStartX = x
+        brushSizeDragStartSize = startSize.coerceIn(.5f, 400f)
+        brushSizeDragCurrentSize = brushSizeDragStartSize
+        brushSizeDragPreviewX = x
+        brushSizeDragPreviewY = y
+        invalidate()
+    }
+
+    private fun updateBrushSizeDrag(x: Float, y: Float) {
+        brushSizeDragCurrentSize = BrushSizeDrag.resolve(brushSizeDragStartSize, x - brushSizeDragStartX)
+        brushSizeDragPreviewX = x
+        brushSizeDragPreviewY = y
+        if (activeTool == EditorTool.ERASER) eraserWidth = brushSizeDragCurrentSize else baseWidth = brushSizeDragCurrentSize
+        onBrushSizeAdjusted(brushSizeDragCurrentSize)
+        invalidate()
+    }
+
+    private fun finishBrushSizeDrag(cancelled: Boolean) {
+        if (cancelled) {
+            if (activeTool == EditorTool.ERASER) eraserWidth = brushSizeDragStartSize else baseWidth = brushSizeDragStartSize
+            onBrushSizeAdjusted(brushSizeDragStartSize)
+        }
+        brushSizeDragActive = false
+        activeTool = null
+        activeInputWasStylus = false
+        parent?.requestDisallowInterceptTouchEvent(false)
+        invalidate()
+    }
+
+    private fun drawBrushSizePreview(canvas: Canvas) {
+        if (!brushSizeDragActive) return
+        val radius = (brushSizeDragCurrentSize * width.coerceAtLeast(1) / REFERENCE_WIDTH / 2f).coerceAtLeast(3f)
+        brushSizePreviewPaint.strokeWidth = 4f
+        brushSizePreviewPaint.color = Color.WHITE
+        canvas.drawCircle(brushSizeDragPreviewX, brushSizeDragPreviewY, radius, brushSizePreviewPaint)
+        brushSizePreviewPaint.strokeWidth = 2f
+        brushSizePreviewPaint.color = Color.BLACK
+        canvas.drawCircle(brushSizeDragPreviewX, brushSizeDragPreviewY, radius, brushSizePreviewPaint)
+        val label = if (brushSizeDragCurrentSize < 10f) "%.1f".format(brushSizeDragCurrentSize) else brushSizeDragCurrentSize.toInt().toString()
+        brushSizePreviewTextPaint.style = Paint.Style.FILL
+        brushSizePreviewTextPaint.color = Color.WHITE
+        canvas.drawText(label, brushSizeDragPreviewX + radius + 14f, brushSizeDragPreviewY - 6f, brushSizePreviewTextPaint)
+        brushSizePreviewTextPaint.color = Color.BLACK
+        canvas.drawText(label, brushSizeDragPreviewX + radius + 12f, brushSizeDragPreviewY - 8f, brushSizePreviewTextPaint)
     }
 
     private fun MotionEvent.centroid(): Pair<Float, Float> {

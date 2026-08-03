@@ -1076,6 +1076,16 @@ private fun EditorScreen(
                     },
                     onInputDiagnostic = { kind, pressure, tilt, buttons -> inputDiagnostic = "$kind  pressure ${"%.3f".format(pressure)}  tilt ${"%.2f".format(Math.toDegrees(tilt.toDouble()))}°  buttons $buttons" },
                     onColorSampled = { brushColor = it },
+                    onBrushSizeAdjusted = { raw ->
+                        val value = raw.coerceIn(.5f, 400f)
+                        brushSize = value
+                        when (tool) {
+                            EditorTool.PEN -> if (activeBrush == null) onSettingsChange(settings.copy(penSize = value))
+                            EditorTool.HIGHLIGHTER -> onSettingsChange(settings.copy(highlighterSize = value))
+                            EditorTool.ERASER -> if (activeBrush == null) onSettingsChange(settings.copy(eraserSize = value))
+                            else -> Unit
+                        }
+                    },
                     onKeyInputDiagnostic = { diagnostic ->
                         val keyName = KeyEvent.keyCodeToString(diagnostic.keyCode).removePrefix("KEYCODE_")
                         val device = diagnostic.deviceName ?: unknownInputDeviceText
@@ -1893,7 +1903,7 @@ private fun PageRail(
 }
 
 @Composable
-private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, onZoom: (Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit) {
+private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, onZoom: (Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val backgroundVisible = page.layers.firstOrNull { it.role == LayerRole.BACKGROUND }?.visible != false
     val background = remember(page.id, page.background, page.backgroundRotationQuarterTurns, page.crop, backgroundVisible) { if (backgroundVisible) runCatching { assets.renderBackground(page.background, 1200, page.backgroundRotationQuarterTurns, page.crop) }.getOrNull() else null }
@@ -1945,6 +1955,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.twoFingerRotationEnabled = settings.twoFingerRotation
                 view.onInputDiagnostic = onInputDiagnostic
                 view.onColorSampled = onColorSampled
+                view.onBrushSizeAdjusted = onBrushSizeAdjusted
                 view.onKeyInputDiagnostic = onKeyInputDiagnostic
                 view.onShortcutAction = onShortcutAction
                 view.shortcutBindings = settings.shortcutBindings
@@ -1981,6 +1992,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.twoFingerRotationEnabled = settings.twoFingerRotation
                 view.onInputDiagnostic = onInputDiagnostic
                 view.onColorSampled = onColorSampled
+                view.onBrushSizeAdjusted = onBrushSizeAdjusted
                 view.onKeyInputDiagnostic = onKeyInputDiagnostic
                 view.onShortcutAction = onShortcutAction
                 view.shortcutBindings = settings.shortcutBindings

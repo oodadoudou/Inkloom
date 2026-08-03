@@ -142,6 +142,45 @@ class InkCanvasNavigationTest {
         assertEquals("Eyedropper input must never leave ink", 0, committed)
     }
 
+    @Test fun ctrlAltStylusDragAdjustsBrushSizeWithoutCommittingInk() {
+        val view = canvas().apply {
+            tool = EditorTool.PEN
+            baseWidth = 10f
+        }
+        var adjusted = 10f
+        var committed = 0
+        view.onBrushSizeAdjusted = { adjusted = it }
+        view.onStrokeCommitted = { committed++ }
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view.onKeyDown(KeyEvent.KEYCODE_CTRL_LEFT, KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_CTRL_LEFT))
+            view.onKeyDown(KeyEvent.KEYCODE_ALT_LEFT, KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ALT_LEFT))
+        }
+        sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 120f, 160f)
+        sendStylus(view, 20L, MotionEvent.ACTION_MOVE, 300f, 160f)
+        sendStylus(view, 40L, MotionEvent.ACTION_UP, 300f, 160f)
+
+        assertEquals(20f, adjusted, .001f)
+        assertEquals("Brush-size drag must never leave ink", 0, committed)
+    }
+
+    @Test fun cancellingBrushSizeDragRestoresTheStartingSize() {
+        val view = canvas().apply { tool = EditorTool.ERASER; eraserWidth = 18f }
+        var adjusted = 18f
+        view.onBrushSizeAdjusted = { adjusted = it }
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view.onKeyDown(KeyEvent.KEYCODE_CTRL_LEFT, KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_CTRL_LEFT))
+            view.onKeyDown(KeyEvent.KEYCODE_ALT_LEFT, KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ALT_LEFT))
+        }
+
+        sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 120f, 160f)
+        sendStylus(view, 20L, MotionEvent.ACTION_MOVE, 300f, 160f)
+        sendStylus(view, 40L, MotionEvent.ACTION_CANCEL, 300f, 160f)
+
+        assertEquals(18f, adjusted, .001f)
+        assertEquals(18f, view.eraserWidth, .001f)
+    }
+
     @Test fun forcedRotateNavigationRotatesWithAStylusWithoutCommittingInk() {
         val view = canvas().apply {
             tool = EditorTool.PEN
