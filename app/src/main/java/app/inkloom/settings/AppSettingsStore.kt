@@ -18,6 +18,13 @@ data class AppSettings(
     val pagePanelLocked: Boolean = false,
     val brushPanelLocked: Boolean = false,
     val layerPanelLocked: Boolean = false,
+    val leftDockStacked: Boolean = false,
+    val rightDockStacked: Boolean = false,
+    val bottomDockStacked: Boolean = false,
+    val leftDockActivePanel: WorkspacePanelKind = WorkspacePanelKind.PAGES,
+    val rightDockActivePanel: WorkspacePanelKind = WorkspacePanelKind.BRUSHES,
+    val bottomDockActivePanel: WorkspacePanelKind = WorkspacePanelKind.PAGES,
+    val panelTabOrder: String = "PAGES,BRUSHES,LAYERS",
     val pagePanelXDp: Float = 16f,
     val pagePanelYDp: Float = 16f,
     val pagePanelWidthDp: Float = 160f,
@@ -104,6 +111,13 @@ class AppSettingsStore(context: Context) {
             pagePanelLocked = preferences.getBoolean("pagePanelLocked", false),
             brushPanelLocked = preferences.getBoolean("brushPanelLocked", false),
             layerPanelLocked = preferences.getBoolean("layerPanelLocked", false),
+            leftDockStacked = preferences.getBoolean("leftDockStacked", false),
+            rightDockStacked = preferences.getBoolean("rightDockStacked", false),
+            bottomDockStacked = preferences.getBoolean("bottomDockStacked", false),
+            leftDockActivePanel = enumValue(preferences.getString("leftDockActivePanel", null), WorkspacePanelKind.PAGES),
+            rightDockActivePanel = enumValue(preferences.getString("rightDockActivePanel", null), WorkspacePanelKind.BRUSHES),
+            bottomDockActivePanel = enumValue(preferences.getString("bottomDockActivePanel", null), WorkspacePanelKind.PAGES),
+            panelTabOrder = WorkspacePanelTabs.encodeOrder(WorkspacePanelTabs.normalizeOrder(preferences.getString("panelTabOrder", null).orEmpty())),
             pagePanelXDp = preferences.getFloat("pagePanelXDp", 16f).coerceIn(-2400f, 2400f),
             pagePanelYDp = preferences.getFloat("pagePanelYDp", 16f).coerceIn(-2400f, 2400f),
             pagePanelWidthDp = preferences.getFloat("pagePanelWidthDp", 160f).coerceIn(80f, 1200f),
@@ -175,6 +189,13 @@ class AppSettingsStore(context: Context) {
             .putBoolean("pagePanelLocked", persisted.pagePanelLocked)
             .putBoolean("brushPanelLocked", persisted.brushPanelLocked)
             .putBoolean("layerPanelLocked", persisted.layerPanelLocked)
+            .putBoolean("leftDockStacked", persisted.leftDockStacked)
+            .putBoolean("rightDockStacked", persisted.rightDockStacked)
+            .putBoolean("bottomDockStacked", persisted.bottomDockStacked)
+            .putString("leftDockActivePanel", persisted.leftDockActivePanel.name)
+            .putString("rightDockActivePanel", persisted.rightDockActivePanel.name)
+            .putString("bottomDockActivePanel", persisted.bottomDockActivePanel.name)
+            .putString("panelTabOrder", WorkspacePanelTabs.encodeOrder(WorkspacePanelTabs.normalizeOrder(persisted.panelTabOrder)))
             .putFloat("pagePanelXDp", persisted.pagePanelXDp)
             .putFloat("pagePanelYDp", persisted.pagePanelYDp)
             .putFloat("pagePanelWidthDp", persisted.pagePanelWidthDp)

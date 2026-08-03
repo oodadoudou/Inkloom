@@ -59,6 +59,9 @@ object AppSettingsBackupCodec {
         put("pagePanelDock", pagePanelDock.name); put("brushPanelDock", brushPanelDock.name); put("layerPanelDock", layerPanelDock.name)
         put("pagePanelMode", pagePanelMode.name); put("brushPanelMode", brushPanelMode.name); put("layerPanelMode", layerPanelMode.name)
         put("pagePanelLocked", pagePanelLocked); put("brushPanelLocked", brushPanelLocked); put("layerPanelLocked", layerPanelLocked)
+        put("leftDockStacked", leftDockStacked); put("rightDockStacked", rightDockStacked); put("bottomDockStacked", bottomDockStacked)
+        put("leftDockActivePanel", leftDockActivePanel.name); put("rightDockActivePanel", rightDockActivePanel.name); put("bottomDockActivePanel", bottomDockActivePanel.name)
+        put("panelTabOrder", WorkspacePanelTabs.encodeOrder(WorkspacePanelTabs.normalizeOrder(panelTabOrder)))
         put("pagePanelXDp", pagePanelXDp); put("pagePanelYDp", pagePanelYDp); put("pagePanelWidthDp", pagePanelWidthDp); put("pagePanelHeightDp", pagePanelHeightDp)
         put("brushPanelXDp", brushPanelXDp); put("brushPanelYDp", brushPanelYDp); put("brushPanelWidthDp", brushPanelWidthDp); put("brushPanelHeightDp", brushPanelHeightDp)
         put("layerPanelXDp", layerPanelXDp); put("layerPanelYDp", layerPanelYDp); put("layerPanelWidthDp", layerPanelWidthDp); put("layerPanelHeightDp", layerPanelHeightDp)
@@ -85,6 +88,9 @@ object AppSettingsBackupCodec {
             pagePanelDock = enum("pagePanelDock", defaults.pagePanelDock), brushPanelDock = enum("brushPanelDock", defaults.brushPanelDock), layerPanelDock = enum("layerPanelDock", defaults.layerPanelDock),
             pagePanelMode = enum("pagePanelMode", defaults.pagePanelMode), brushPanelMode = enum("brushPanelMode", defaults.brushPanelMode), layerPanelMode = enum("layerPanelMode", defaults.layerPanelMode),
             pagePanelLocked = boolean("pagePanelLocked", defaults.pagePanelLocked), brushPanelLocked = boolean("brushPanelLocked", defaults.brushPanelLocked), layerPanelLocked = boolean("layerPanelLocked", defaults.layerPanelLocked),
+            leftDockStacked = boolean("leftDockStacked", defaults.leftDockStacked), rightDockStacked = boolean("rightDockStacked", defaults.rightDockStacked), bottomDockStacked = boolean("bottomDockStacked", defaults.bottomDockStacked),
+            leftDockActivePanel = enum("leftDockActivePanel", defaults.leftDockActivePanel), rightDockActivePanel = enum("rightDockActivePanel", defaults.rightDockActivePanel), bottomDockActivePanel = enum("bottomDockActivePanel", defaults.bottomDockActivePanel),
+            panelTabOrder = WorkspacePanelTabs.encodeOrder(WorkspacePanelTabs.normalizeOrder(text("panelTabOrder").ifBlank { defaults.panelTabOrder })),
             pagePanelXDp = float("pagePanelXDp", defaults.pagePanelXDp).coerceIn(-2400f, 2400f), pagePanelYDp = float("pagePanelYDp", defaults.pagePanelYDp).coerceIn(-2400f, 2400f),
             pagePanelWidthDp = float("pagePanelWidthDp", defaults.pagePanelWidthDp).coerceIn(80f, 1200f), pagePanelHeightDp = float("pagePanelHeightDp", defaults.pagePanelHeightDp).coerceIn(120f, 1600f),
             brushPanelXDp = float("brushPanelXDp", defaults.brushPanelXDp).coerceIn(-2400f, 2400f), brushPanelYDp = float("brushPanelYDp", defaults.brushPanelYDp).coerceIn(-2400f, 2400f),
