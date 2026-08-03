@@ -49,7 +49,13 @@ class CspShortcutResolverTest {
         assertEquals(ShortcutAction.CUT_SELECTION, resolve(KeyEvent.KEYCODE_X, ctrl = true))
         assertEquals(ShortcutAction.COPY_SELECTION, resolve(KeyEvent.KEYCODE_C, ctrl = true))
         assertEquals(ShortcutAction.PASTE_SELECTION, resolve(KeyEvent.KEYCODE_V, ctrl = true))
+        assertEquals(ShortcutAction.SELECT_ALL, resolve(KeyEvent.KEYCODE_A, ctrl = true))
+        assertEquals(ShortcutAction.DESELECT, resolve(KeyEvent.KEYCODE_D, ctrl = true))
         assertEquals(ShortcutAction.DELETE_SELECTION, resolve(KeyEvent.KEYCODE_FORWARD_DEL))
+        assertEquals(ShortcutAction.SELECT_LAYER_ABOVE, resolve(KeyEvent.KEYCODE_RIGHT_BRACKET, alt = true))
+        assertEquals(ShortcutAction.SELECT_LAYER_BELOW, resolve(KeyEvent.KEYCODE_LEFT_BRACKET, alt = true))
+        assertEquals(ShortcutAction.ROTATE_VIEW_LEFT, resolve(KeyEvent.KEYCODE_MINUS))
+        assertEquals(ShortcutAction.ROTATE_VIEW_RIGHT, resolve(KeyEvent.KEYCODE_6, shift = true))
         assertEquals(ShortcutAction.TOGGLE_PANELS, resolve(KeyEvent.KEYCODE_TAB))
         assertNull(resolve(KeyEvent.KEYCODE_P, ctrl = true))
     }
@@ -63,6 +69,7 @@ class CspShortcutResolverTest {
         assertEquals(ShortcutAction.DELETE_SELECTION, resolve(KeyEvent.KEYCODE_DEL))
         assertEquals(ShortcutAction.DELETE_SELECTION, resolve(KeyEvent.KEYCODE_FORWARD_DEL, ctrl = true))
         assertEquals(ShortcutAction.DELETE_SELECTION, resolve(KeyEvent.KEYCODE_DEL, ctrl = true))
+        assertEquals(ShortcutAction.FIT_PAGE, resolve(KeyEvent.KEYCODE_AT, ctrl = true))
     }
 
     @Test fun onlyContinuousAdjustmentsRepeatWhenAKeyIsHeld() {
@@ -151,7 +158,7 @@ class CspShortcutResolverTest {
             ShortcutAction.ACTUAL_SIZE,
             ShortcutAction.EYEDROPPER_TOOL,
         )
-        val oldDefaults = CspShortcutResolver.defaultBindings.filterNot { it.action in addedActions }.map { binding ->
+        val oldDefaults = defaultsBeforeCurrentCspCommands().filterNot { it.action in addedActions }.map { binding ->
             when (binding.action) {
                 ShortcutAction.BRUSH_SIZE_DECREASE -> binding.copy(chord = ShortcutChord(KeyEvent.KEYCODE_LEFT_BRACKET))
                 ShortcutAction.BRUSH_SIZE_INCREASE -> binding.copy(chord = ShortcutChord(KeyEvent.KEYCODE_RIGHT_BRACKET))
@@ -192,15 +199,39 @@ class CspShortcutResolverTest {
     }
 
     @Test fun migratesThePreviousCompleteDefaultsToIncludeTheEyedropper() {
-        val formerDefaults = defaultsBeforeAdditionalAliases().filterNot { it.action == ShortcutAction.EYEDROPPER_TOOL }
+        val formerDefaults = defaultsBeforeCurrentCspCommands().filterNot { binding ->
+            binding in additionalAliases() || binding.action == ShortcutAction.EYEDROPPER_TOOL
+        }
 
         assertEquals(CspShortcutResolver.defaultBindings, CspShortcutResolver.migrateLegacyDefaults(formerDefaults))
+    }
+
+    @Test fun migratesThePreviousCompleteDefaultsToTheExpandedCspCommandSet() {
+        val formerDefaults = defaultsBeforeCurrentCspCommands()
+
+        assertEquals(CspShortcutResolver.defaultBindings, CspShortcutResolver.migrateLegacyDefaults(formerDefaults))
+
+        val customized = formerDefaults.map { if (it.action == ShortcutAction.BRUSH_GROUP) it.copy(chord = ShortcutChord(KeyEvent.KEYCODE_F12)) else it }
+        assertEquals(customized, CspShortcutResolver.migrateLegacyDefaults(customized))
     }
 
     private fun resolve(keyCode: Int, ctrl: Boolean = false, alt: Boolean = false, shift: Boolean = false) =
         CspShortcutResolver.resolve(ShortcutChord(keyCode, ctrl, alt, shift))
 
-    private fun defaultsBeforeAdditionalAliases(): List<ShortcutBinding> = CspShortcutResolver.defaultBindings.filterNot { binding ->
+    private fun defaultsBeforeAdditionalAliases(): List<ShortcutBinding> = defaultsBeforeCurrentCspCommands().filterNot { it in additionalAliases() }
+
+    private fun defaultsBeforeCurrentCspCommands(): List<ShortcutBinding> = CspShortcutResolver.defaultBindings.filterNot { binding ->
+        binding.action in setOf(
+            ShortcutAction.SELECT_ALL,
+            ShortcutAction.DESELECT,
+            ShortcutAction.SELECT_LAYER_ABOVE,
+            ShortcutAction.SELECT_LAYER_BELOW,
+            ShortcutAction.ROTATE_VIEW_LEFT,
+            ShortcutAction.ROTATE_VIEW_RIGHT,
+        ) || binding.action == ShortcutAction.FIT_PAGE && binding.chord.keyCode == KeyEvent.KEYCODE_AT
+    }
+
+    private fun additionalAliases(): Set<ShortcutBinding> = CspShortcutResolver.defaultBindings.filterTo(mutableSetOf()) { binding ->
         binding.action to binding.chord.keyCode in setOf(
             ShortcutAction.ZOOM_OUT to KeyEvent.KEYCODE_MINUS,
             ShortcutAction.ZOOM_IN to KeyEvent.KEYCODE_SEMICOLON,

@@ -29,12 +29,18 @@ enum class ShortcutAction {
     COPY_SELECTION,
     PASTE_SELECTION,
     DELETE_SELECTION,
+    SELECT_ALL,
+    DESELECT,
     UNDO,
     REDO,
     NEW_LAYER,
     MERGE_LAYER_DOWN,
+    SELECT_LAYER_ABOVE,
+    SELECT_LAYER_BELOW,
     ZOOM_OUT,
     ZOOM_IN,
+    ROTATE_VIEW_LEFT,
+    ROTATE_VIEW_RIGHT,
     FIT_PAGE,
     ACTUAL_SIZE,
     FIT_WIDTH,
@@ -66,11 +72,14 @@ fun ShortcutAction.category(): ShortcutCategory = when (this) {
     ShortcutAction.BRUSH_SIZE_DECREASE, ShortcutAction.BRUSH_SIZE_INCREASE, ShortcutAction.OPACITY_DECREASE,
     ShortcutAction.OPACITY_INCREASE -> ShortcutCategory.BRUSH_ADJUSTMENTS
     ShortcutAction.CUT_SELECTION, ShortcutAction.COPY_SELECTION, ShortcutAction.PASTE_SELECTION, ShortcutAction.DELETE_SELECTION,
+    ShortcutAction.SELECT_ALL, ShortcutAction.DESELECT,
     ShortcutAction.UNDO, ShortcutAction.REDO -> ShortcutCategory.EDITING
-    ShortcutAction.ZOOM_OUT, ShortcutAction.ZOOM_IN, ShortcutAction.FIT_PAGE, ShortcutAction.ACTUAL_SIZE,
+    ShortcutAction.ZOOM_OUT, ShortcutAction.ZOOM_IN, ShortcutAction.ROTATE_VIEW_LEFT, ShortcutAction.ROTATE_VIEW_RIGHT,
+    ShortcutAction.FIT_PAGE, ShortcutAction.ACTUAL_SIZE,
     ShortcutAction.FIT_WIDTH, ShortcutAction.RESET_VIEW_ROTATION -> ShortcutCategory.CANVAS
     ShortcutAction.PREVIOUS_PAGE, ShortcutAction.NEXT_PAGE -> ShortcutCategory.PAGES
-    ShortcutAction.NEW_LAYER, ShortcutAction.MERGE_LAYER_DOWN -> ShortcutCategory.LAYERS
+    ShortcutAction.NEW_LAYER, ShortcutAction.MERGE_LAYER_DOWN, ShortcutAction.SELECT_LAYER_ABOVE,
+    ShortcutAction.SELECT_LAYER_BELOW -> ShortcutCategory.LAYERS
     ShortcutAction.TOGGLE_BRUSH_PANEL, ShortcutAction.TOGGLE_LAYER_PANEL, ShortcutAction.TOGGLE_PANELS -> ShortcutCategory.PANELS
     ShortcutAction.SAVE_CHECKPOINT -> ShortcutCategory.FILE
     ShortcutAction.QUICK_SLOT_1, ShortcutAction.QUICK_SLOT_2, ShortcutAction.QUICK_SLOT_3, ShortcutAction.QUICK_SLOT_4,
@@ -136,12 +145,16 @@ object CspShortcutResolver {
         ShortcutBinding(ShortcutAction.COPY_SELECTION, ShortcutChord(KeyEvent.KEYCODE_F3)),
         ShortcutBinding(ShortcutAction.PASTE_SELECTION, ShortcutChord(KeyEvent.KEYCODE_V, ctrl = true)),
         ShortcutBinding(ShortcutAction.PASTE_SELECTION, ShortcutChord(KeyEvent.KEYCODE_F4)),
+        ShortcutBinding(ShortcutAction.SELECT_ALL, ShortcutChord(KeyEvent.KEYCODE_A, ctrl = true)),
+        ShortcutBinding(ShortcutAction.DESELECT, ShortcutChord(KeyEvent.KEYCODE_D, ctrl = true)),
         ShortcutBinding(ShortcutAction.DELETE_SELECTION, ShortcutChord(KeyEvent.KEYCODE_FORWARD_DEL)),
         ShortcutBinding(ShortcutAction.DELETE_SELECTION, ShortcutChord(KeyEvent.KEYCODE_DEL)),
         ShortcutBinding(ShortcutAction.DELETE_SELECTION, ShortcutChord(KeyEvent.KEYCODE_FORWARD_DEL, ctrl = true)),
         ShortcutBinding(ShortcutAction.DELETE_SELECTION, ShortcutChord(KeyEvent.KEYCODE_DEL, ctrl = true)),
         ShortcutBinding(ShortcutAction.OPACITY_DECREASE, ShortcutChord(KeyEvent.KEYCODE_LEFT_BRACKET, ctrl = true)),
         ShortcutBinding(ShortcutAction.OPACITY_INCREASE, ShortcutChord(KeyEvent.KEYCODE_RIGHT_BRACKET, ctrl = true)),
+        ShortcutBinding(ShortcutAction.SELECT_LAYER_ABOVE, ShortcutChord(KeyEvent.KEYCODE_RIGHT_BRACKET, alt = true)),
+        ShortcutBinding(ShortcutAction.SELECT_LAYER_BELOW, ShortcutChord(KeyEvent.KEYCODE_LEFT_BRACKET, alt = true)),
         ShortcutBinding(ShortcutAction.PEN_OR_PENCIL_GROUP, ShortcutChord(KeyEvent.KEYCODE_P)),
         ShortcutBinding(ShortcutAction.BRUSH_GROUP, ShortcutChord(KeyEvent.KEYCODE_B)),
         ShortcutBinding(ShortcutAction.TOGGLE_ERASER, ShortcutChord(KeyEvent.KEYCODE_E)),
@@ -151,6 +164,8 @@ object CspShortcutResolver {
         ShortcutBinding(ShortcutAction.HAND_TOOL, ShortcutChord(KeyEvent.KEYCODE_SPACE), ShortcutTrigger.HOLD),
         ShortcutBinding(ShortcutAction.ROTATE_VIEW_TOOL, ShortcutChord(KeyEvent.KEYCODE_R)),
         ShortcutBinding(ShortcutAction.ROTATE_VIEW_TOOL, ShortcutChord(KeyEvent.KEYCODE_SPACE, shift = true), ShortcutTrigger.HOLD),
+        ShortcutBinding(ShortcutAction.ROTATE_VIEW_LEFT, ShortcutChord(KeyEvent.KEYCODE_MINUS)),
+        ShortcutBinding(ShortcutAction.ROTATE_VIEW_RIGHT, ShortcutChord(KeyEvent.KEYCODE_6, shift = true)),
         ShortcutBinding(ShortcutAction.EYEDROPPER_TOOL, ShortcutChord(KeyEvent.KEYCODE_I)),
         ShortcutBinding(ShortcutAction.SHAPE_TOOL, ShortcutChord(KeyEvent.KEYCODE_U)),
         ShortcutBinding(ShortcutAction.TEXT_TOOL, ShortcutChord(KeyEvent.KEYCODE_T)),
@@ -158,8 +173,26 @@ object CspShortcutResolver {
         ShortcutBinding(ShortcutAction.BRUSH_SIZE_INCREASE, ShortcutChord(KeyEvent.KEYCODE_LEFT_BRACKET)),
         ShortcutBinding(ShortcutAction.PREVIOUS_BRUSH, ShortcutChord(KeyEvent.KEYCODE_COMMA)),
         ShortcutBinding(ShortcutAction.NEXT_BRUSH, ShortcutChord(KeyEvent.KEYCODE_PERIOD)),
+        ShortcutBinding(ShortcutAction.FIT_PAGE, ShortcutChord(KeyEvent.KEYCODE_AT, ctrl = true)),
         ShortcutBinding(ShortcutAction.TOGGLE_PANELS, ShortcutChord(KeyEvent.KEYCODE_TAB)),
     )
+
+    private val cspCommonActionsAddedAfterPreviousDefaults = setOf(
+        ShortcutAction.SELECT_ALL,
+        ShortcutAction.DESELECT,
+        ShortcutAction.SELECT_LAYER_ABOVE,
+        ShortcutAction.SELECT_LAYER_BELOW,
+        ShortcutAction.ROTATE_VIEW_LEFT,
+        ShortcutAction.ROTATE_VIEW_RIGHT,
+    )
+
+    private val cspCommonAliasesAddedAfterPreviousDefaults = setOf(
+        ShortcutBinding(ShortcutAction.FIT_PAGE, ShortcutChord(KeyEvent.KEYCODE_AT, ctrl = true)),
+    )
+
+    private val defaultsBeforeCspCommonCommands: List<ShortcutBinding> by lazy {
+        defaultBindings.filterNot { it.action in cspCommonActionsAddedAfterPreviousDefaults || it in cspCommonAliasesAddedAfterPreviousDefaults }
+    }
 
     private val additionalCspAliases: Set<ShortcutBinding> by lazy {
         setOf(
@@ -175,7 +208,7 @@ object CspShortcutResolver {
     }
 
     private val defaultsBeforeAdditionalCspAliases: List<ShortcutBinding> by lazy {
-        defaultBindings.filterNot { it in additionalCspAliases }
+        defaultsBeforeCspCommonCommands.filterNot { it in additionalCspAliases }
     }
 
     private val toolCommandsAddedAfterClipboardDefaults = setOf(
@@ -230,7 +263,7 @@ object CspShortcutResolver {
     }
 
     fun migrateLegacyDefaults(bindings: List<ShortcutBinding>): List<ShortcutBinding> =
-        if (bindings == defaultsBeforeAdditionalCspAliases || bindings == defaultsBeforeEyedropper || bindings == defaultsBeforeActualSize || bindings == clipboardDefaultsBeforeToolCommands || bindings == workspaceDefaultsBeforeClipboard || bindings == legacyReversedBrushSizeDefaults || bindings == previousDefaultBindings) defaultBindings else bindings
+        if (bindings == defaultsBeforeCspCommonCommands || bindings == defaultsBeforeAdditionalCspAliases || bindings == defaultsBeforeEyedropper || bindings == defaultsBeforeActualSize || bindings == clipboardDefaultsBeforeToolCommands || bindings == workspaceDefaultsBeforeClipboard || bindings == legacyReversedBrushSizeDefaults || bindings == previousDefaultBindings) defaultBindings else bindings
 
     fun resolve(chord: ShortcutChord, bindings: List<ShortcutBinding> = defaultBindings, deviceDescriptor: String? = null): ShortcutAction? =
         resolveBinding(chord, bindings, deviceDescriptor)?.action

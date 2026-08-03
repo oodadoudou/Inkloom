@@ -1537,6 +1537,26 @@ class InkCanvasView(context: Context) : View(context) {
         return true
     }
 
+    fun selectAllEditableStrokes(): Boolean {
+        val selectable = strokes.asSequence()
+            .filterNot { it.id in protectedStrokeIds || it.layerId in protectedLayerIds }
+            .map(InkStroke::id)
+            .toList()
+        selectedStrokeIds.clear()
+        selectedStrokeIds += selectable
+        invalidate()
+        return selectable.isNotEmpty()
+    }
+
+    fun clearSelection(): Boolean {
+        if (selectedStrokeIds.isEmpty()) return false
+        selectedStrokeIds.clear()
+        lassoPoints.clear()
+        movingSelection = false
+        invalidate()
+        return true
+    }
+
     fun deleteSelection() {
         if (selectedStrokeIds.isEmpty()) return
         val before = strokes.toList()

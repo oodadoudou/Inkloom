@@ -984,6 +984,10 @@ private fun EditorScreen(
         applyViewport(ViewportTransform.fitWidth(ViewportState(zoom, panX, panY, viewRotation), viewportWidthPx, view.width.toFloat(), currentViewportGeometry()))
     }
     fun resetViewRotation() { applyViewport(ViewportTransform.resetRotation(ViewportState(zoom, panX, panY, viewRotation), currentViewportGeometry())); exitCanvasNavigation() }
+    fun rotateViewByShortcut(degrees: Float) {
+        applyViewport(ViewportTransform.rotateBy(ViewportState(zoom, panX, panY, viewRotation), degrees, currentViewportGeometry()))
+        exitCanvasNavigation()
+    }
     var toolbarX by remember { mutableFloatStateOf(settings.toolbarOffsetXDp) }
     var toolbarY by remember { mutableFloatStateOf(settings.toolbarOffsetYDp) }
     var pagePanelBounds by remember {
@@ -1871,12 +1875,18 @@ private fun EditorScreen(
                             ShortcutAction.COPY_SELECTION -> if (selectedElementId != null) Toast.makeText(context, inkOnlyClipboardMessage, Toast.LENGTH_SHORT).show() else if (canvasView?.copySelectionToClipboard() != true) Toast.makeText(context, selectBeforeCopyMessage, Toast.LENGTH_SHORT).show()
                             ShortcutAction.PASTE_SELECTION -> { selectedElementId = null; if (canvasView?.pasteSelectionFromClipboard() != true) Toast.makeText(context, noInkClipboardMessage, Toast.LENGTH_SHORT).show() }
                             ShortcutAction.DELETE_SELECTION -> selectedElementId?.let { onRemoveElement(document.id, selectedPage.id, it); selectedElementId = null } ?: canvasView?.deleteSelection()
+                            ShortcutAction.SELECT_ALL -> { selectedElementId = null; tool = EditorTool.SELECT; canvasView?.selectAllEditableStrokes() }
+                            ShortcutAction.DESELECT -> { selectedElementId = null; canvasView?.clearSelection() }
                             ShortcutAction.UNDO -> canvasView?.undo()
                             ShortcutAction.REDO -> canvasView?.redo()
                             ShortcutAction.NEW_LAYER -> onAddLayer(document.id, selectedPage.id, "Layer")
                             ShortcutAction.MERGE_LAYER_DOWN -> onMergeLayerDown(document.id, selectedPage.id, activeLayerId)?.let { activeLayerId = it }
+                            ShortcutAction.SELECT_LAYER_ABOVE -> LayerShortcutSelection.adjacentEditable(selectedPage.layers, activeLayerId, 1)?.let { activeLayerId = it }
+                            ShortcutAction.SELECT_LAYER_BELOW -> LayerShortcutSelection.adjacentEditable(selectedPage.layers, activeLayerId, -1)?.let { activeLayerId = it }
                             ShortcutAction.ZOOM_OUT -> { val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY, viewRotation), .9f, 0f, 0f, geometry = currentViewportGeometry()); zoom = next.scale; panX = next.panX; panY = next.panY }
                             ShortcutAction.ZOOM_IN -> { val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY, viewRotation), 1.1f, 0f, 0f, geometry = currentViewportGeometry()); zoom = next.scale; panX = next.panX; panY = next.panY }
+                            ShortcutAction.ROTATE_VIEW_LEFT -> rotateViewByShortcut(-5f)
+                            ShortcutAction.ROTATE_VIEW_RIGHT -> rotateViewByShortcut(5f)
                             ShortcutAction.FIT_PAGE -> fitPage()
                             ShortcutAction.ACTUAL_SIZE -> actualSize()
                             ShortcutAction.FIT_WIDTH -> fitWidth()
@@ -5960,12 +5970,18 @@ private fun shortcutActionLabel(action: ShortcutAction, language: UiLanguage): S
     ShortcutAction.COPY_SELECTION -> language.text("Copy selection", "复制选区")
     ShortcutAction.PASTE_SELECTION -> language.text("Paste selection", "粘贴选区")
     ShortcutAction.DELETE_SELECTION -> language.text("Delete selection", "删除选区")
+    ShortcutAction.SELECT_ALL -> language.text("Select all ink strokes", "选择全部墨迹")
+    ShortcutAction.DESELECT -> language.text("Deselect", "取消选择")
     ShortcutAction.UNDO -> language.text("Undo", "撤销")
     ShortcutAction.REDO -> language.text("Redo", "重做")
     ShortcutAction.NEW_LAYER -> language.text("New raster layer", "新建栅格图层")
     ShortcutAction.MERGE_LAYER_DOWN -> language.text("Merge with layer below", "与下一图层合并")
+    ShortcutAction.SELECT_LAYER_ABOVE -> language.text("Select layer above", "选择上一图层")
+    ShortcutAction.SELECT_LAYER_BELOW -> language.text("Select layer below", "选择下一图层")
     ShortcutAction.ZOOM_OUT -> language.text("Zoom out", "缩小")
     ShortcutAction.ZOOM_IN -> language.text("Zoom in", "放大")
+    ShortcutAction.ROTATE_VIEW_LEFT -> language.text("Rotate view left 5°", "视图向左旋转 5°")
+    ShortcutAction.ROTATE_VIEW_RIGHT -> language.text("Rotate view right 5°", "视图向右旋转 5°")
     ShortcutAction.FIT_PAGE -> language.text("Fit page", "适合页面")
     ShortcutAction.ACTUAL_SIZE -> language.text("Actual size (100%)", "实际大小（100%）")
     ShortcutAction.FIT_WIDTH -> language.text("Fit width", "适合宽度")
