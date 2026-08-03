@@ -466,6 +466,42 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription("Bottom workspace panels").assertIsDisplayed()
     }
 
+    @Test fun dockedBrushPanelCanDetachDirectlyFromEveryDockAndLockPreventsIt() {
+        createNotebookAndOpenEditor()
+        val preferences = composeRule.activity.getSharedPreferences("inkloom_settings", android.content.Context.MODE_PRIVATE)
+
+        composeRule.onNodeWithContentDescription("Brushes").performClick()
+        composeRule.onNodeWithContentDescription("Drag brushes panel").performTouchInput {
+            swipe(center, center + Offset(-180f, 0f), durationMillis = 500)
+        }
+        composeRule.waitUntil(5_000) { preferences.getString("brushPanelDock", null) == "FREE" }
+        composeRule.onNodeWithContentDescription("Resize brushes panel").assertIsDisplayed()
+
+        composeRule.onNodeWithContentDescription("Change brushes panel docking").performClick()
+        composeRule.onNodeWithText("Dock left").performClick()
+        composeRule.onNodeWithContentDescription("Drag brushes panel").performTouchInput {
+            swipe(center, center + Offset(180f, 0f), durationMillis = 500)
+        }
+        composeRule.waitUntil(5_000) { preferences.getString("brushPanelDock", null) == "FREE" }
+
+        composeRule.onNodeWithContentDescription("Change brushes panel docking").performClick()
+        composeRule.onNodeWithText("Dock bottom").performClick()
+        composeRule.onNodeWithContentDescription("Drag brushes panel").performTouchInput {
+            swipe(center, center + Offset(0f, -180f), durationMillis = 500)
+        }
+        composeRule.waitUntil(5_000) { preferences.getString("brushPanelDock", null) == "FREE" }
+
+        composeRule.onNodeWithContentDescription("Change brushes panel docking").performClick()
+        composeRule.onNodeWithText("Dock right").performClick()
+        composeRule.onNodeWithContentDescription("Change brushes panel docking").performClick()
+        composeRule.onNodeWithText("Lock position and size").performClick()
+        composeRule.onNodeWithText("Brush Library").performTouchInput {
+            swipe(center, center + Offset(-180f, 0f), durationMillis = 500)
+        }
+        composeRule.waitForIdle()
+        assertEquals("RIGHT", preferences.getString("brushPanelDock", null))
+    }
+
     @Test fun selectionControlsExposePersistentFreeformAndRectangleModes() {
         val preferences = composeRule.activity.getSharedPreferences("inkloom_settings", android.content.Context.MODE_PRIVATE)
         val original = preferences.getString("selectionShape", "FREEFORM")

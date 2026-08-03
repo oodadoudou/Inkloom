@@ -998,6 +998,9 @@ private fun EditorScreen(
     var draggingPanel by remember { mutableStateOf<WorkspacePanelKind?>(null) }
     var panelDragOrigin by remember { mutableStateOf<WorkspacePanelBounds?>(null) }
     var panelDockPreview by remember { mutableStateOf<WorkspacePanelDock?>(null) }
+    var dockedPanelOriginDock by remember { mutableStateOf<WorkspacePanelDock?>(null) }
+    var dockedPanelPreviewBounds by remember { mutableStateOf<WorkspacePanelBounds?>(null) }
+    var dockedPanelTargetDock by remember { mutableStateOf<WorkspacePanelDock?>(null) }
     var panelDragDeltaXDp by remember { mutableFloatStateOf(0f) }
     var panelDragDeltaYDp by remember { mutableFloatStateOf(0f) }
     val editorDensity = LocalDensity.current
@@ -1288,6 +1291,117 @@ private fun EditorScreen(
             panelDragDeltaXDp = 0f
             panelDragDeltaYDp = 0f
         }
+        fun minimumPanelWidth(panel: WorkspacePanelKind): Float = when (panel) {
+            WorkspacePanelKind.PAGES -> 140f
+            WorkspacePanelKind.BRUSHES -> 280f
+            WorkspacePanelKind.LAYERS -> 260f
+        }
+        fun panelName(panel: WorkspacePanelKind): String = when (panel) {
+            WorkspacePanelKind.PAGES -> "pages"
+            WorkspacePanelKind.BRUSHES -> "brushes"
+            WorkspacePanelKind.LAYERS -> "layers"
+        }
+        fun setPanelBounds(panel: WorkspacePanelKind, bounds: WorkspacePanelBounds) {
+            when (panel) {
+                WorkspacePanelKind.PAGES -> pagePanelBounds = bounds
+                WorkspacePanelKind.BRUSHES -> brushPanelBounds = bounds
+                WorkspacePanelKind.LAYERS -> layerPanelBounds = bounds
+            }
+        }
+        fun clearDockedPanelDrag() {
+            draggingPanel = null
+            panelDragOrigin = null
+            dockedPanelOriginDock = null
+            dockedPanelPreviewBounds = null
+            dockedPanelTargetDock = null
+            panelDragDeltaXDp = 0f
+            panelDragDeltaYDp = 0f
+        }
+        fun beginDockedPanelDrag(panel: WorkspacePanelKind, dock: WorkspacePanelDock, savedBounds: WorkspacePanelBounds) {
+            if (dock == WorkspacePanelDock.FREE) return
+            val initialBounds = WorkspacePanelDocking.initialFloatingBounds(
+                dock,
+                savedBounds,
+                workspaceWidthDp,
+                usableWorkspaceHeightDp,
+                minimumPanelWidth(panel),
+            )
+            draggingPanel = panel
+            panelDragOrigin = initialBounds
+            dockedPanelOriginDock = dock
+            dockedPanelPreviewBounds = initialBounds
+            dockedPanelTargetDock = null
+            panelDragDeltaXDp = 0f
+            panelDragDeltaYDp = 0f
+        }
+        fun updateDockedPanelDrag(deltaXPx: Float, deltaYPx: Float) {
+            val panel = draggingPanel ?: return
+            if (dockedPanelOriginDock == null) return
+            val deltaXDp = deltaXPx / editorDensity.density
+            val deltaYDp = deltaYPx / editorDensity.density
+            panelDragDeltaXDp += deltaXDp
+            panelDragDeltaYDp += deltaYDp
+            val current = dockedPanelPreviewBounds ?: panelDragOrigin ?: return
+            val next = WorkspacePanelPlacement.move(
+                current,
+                deltaXDp,
+                deltaYDp,
+                workspaceWidthDp,
+                usableWorkspaceHeightDp,
+                minimumPanelWidth(panel),
+            )
+            dockedPanelPreviewBounds = next
+            dockedPanelTargetDock = WorkspacePanelDocking.target(
+                next,
+                workspaceWidthDp,
+                usableWorkspaceHeightDp,
+                panelDragDeltaXDp,
+                panelDragDeltaYDp,
+            )?.takeIf { it != dockedPanelOriginDock }
+        }
+        fun finishDockedPanelDrag(panel: WorkspacePanelKind, originDock: WorkspacePanelDock) {
+            val preview = dockedPanelPreviewBounds
+            val target = dockedPanelTargetDock
+            val detached = draggingPanel == panel && dockedPanelOriginDock == originDock &&
+                WorkspacePanelDocking.shouldDetach(originDock, panelDragDeltaXDp, panelDragDeltaYDp)
+            clearDockedPanelDrag()
+            if (!detached || preview == null) return
+            activeFloatingPanel = panelName(panel)
+            if (target != null) {
+                var next = when (panel) {
+                    WorkspacePanelKind.PAGES -> settings.copy(pagePanelDock = target)
+                    WorkspacePanelKind.BRUSHES -> settings.copy(brushPanelDock = target)
+                    WorkspacePanelKind.LAYERS -> settings.copy(layerPanelDock = target)
+                }
+                if (WorkspacePanelTabs.isStacked(next, target)) next = WorkspacePanelTabs.withActive(next, target, panel)
+                onSettingsChange(next)
+                return
+            }
+            setPanelBounds(panel, preview)
+            onSettingsChange(when (panel) {
+                WorkspacePanelKind.PAGES -> settings.copy(
+                    pagePanelDock = WorkspacePanelDock.FREE,
+                    pagePanelXDp = preview.xDp,
+                    pagePanelYDp = preview.yDp,
+                    pagePanelWidthDp = preview.widthDp,
+                    pagePanelHeightDp = preview.heightDp,
+                )
+                WorkspacePanelKind.BRUSHES -> settings.copy(
+                    brushPanelDock = WorkspacePanelDock.FREE,
+                    brushPanelXDp = preview.xDp,
+                    brushPanelYDp = preview.yDp,
+                    brushPanelWidthDp = preview.widthDp,
+                    brushPanelHeightDp = preview.heightDp,
+                )
+                WorkspacePanelKind.LAYERS -> settings.copy(
+                    layerPanelDock = WorkspacePanelDock.FREE,
+                    layerPanelXDp = preview.xDp,
+                    layerPanelYDp = preview.yDp,
+                    layerPanelWidthDp = preview.widthDp,
+                    layerPanelHeightDp = preview.heightDp,
+                )
+            })
+        }
         val bottomPanelCount = listOf(
             settings.showPageRail && settings.pagePanelDock == WorkspacePanelDock.BOTTOM,
             brushesOpen && settings.brushPanelDock == WorkspacePanelDock.BOTTOM,
@@ -1325,6 +1439,10 @@ private fun EditorScreen(
                 panelLocked = settings.pagePanelLocked,
                 onPanelMode = { onSettingsChange(settings.copy(pagePanelMode = it)) },
                 onPanelLocked = { onSettingsChange(settings.copy(pagePanelLocked = it)) },
+                onPanelDragStart = { beginDockedPanelDrag(WorkspacePanelKind.PAGES, WorkspacePanelDock.LEFT, pagePanelBounds) },
+                onPanelDrag = ::updateDockedPanelDrag,
+                onPanelDragEnd = { finishDockedPanelDrag(WorkspacePanelKind.PAGES, WorkspacePanelDock.LEFT) },
+                onPanelDragCancel = ::clearDockedPanelDrag,
             )
             if (layersOpen && settings.layerPanelDock == WorkspacePanelDock.LEFT && showPanel(WorkspacePanelKind.LAYERS, WorkspacePanelDock.LEFT)) LayerPanel(
                 page = selectedPage,
@@ -1352,6 +1470,10 @@ private fun EditorScreen(
                 panelLocked = settings.layerPanelLocked,
                 onPanelMode = { onSettingsChange(settings.copy(layerPanelMode = it)) },
                 onPanelLocked = { onSettingsChange(settings.copy(layerPanelLocked = it)) },
+                onPanelDragStart = { beginDockedPanelDrag(WorkspacePanelKind.LAYERS, WorkspacePanelDock.LEFT, layerPanelBounds) },
+                onPanelDrag = ::updateDockedPanelDrag,
+                onPanelDragEnd = { finishDockedPanelDrag(WorkspacePanelKind.LAYERS, WorkspacePanelDock.LEFT) },
+                onPanelDragCancel = ::clearDockedPanelDrag,
             )
             if (brushesOpen && settings.brushPanelDock == WorkspacePanelDock.LEFT && showPanel(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.LEFT)) BrushPanel(
                 brushes = brushes,
@@ -1389,6 +1511,10 @@ private fun EditorScreen(
                 panelLocked = settings.brushPanelLocked,
                 onPanelMode = { onSettingsChange(settings.copy(brushPanelMode = it)) },
                 onPanelLocked = { onSettingsChange(settings.copy(brushPanelLocked = it)) },
+                onPanelDragStart = { beginDockedPanelDrag(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.LEFT, brushPanelBounds) },
+                onPanelDrag = ::updateDockedPanelDrag,
+                onPanelDragEnd = { finishDockedPanelDrag(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.LEFT) },
+                onPanelDragCancel = ::clearDockedPanelDrag,
             )
             val hasSideDockedToolPanel = (brushesOpen && settings.brushPanelMode == WorkspacePanelMode.EXPANDED && settings.brushPanelDock in setOf(WorkspacePanelDock.LEFT, WorkspacePanelDock.RIGHT) && showPanel(WorkspacePanelKind.BRUSHES, settings.brushPanelDock)) ||
                 (layersOpen && settings.layerPanelMode == WorkspacePanelMode.EXPANDED && settings.layerPanelDock in setOf(WorkspacePanelDock.LEFT, WorkspacePanelDock.RIGHT) && showPanel(WorkspacePanelKind.LAYERS, settings.layerPanelDock))
@@ -1755,6 +1881,10 @@ private fun EditorScreen(
                 panelLocked = settings.pagePanelLocked,
                 onPanelMode = { onSettingsChange(settings.copy(pagePanelMode = it)) },
                 onPanelLocked = { onSettingsChange(settings.copy(pagePanelLocked = it)) },
+                onPanelDragStart = { beginDockedPanelDrag(WorkspacePanelKind.PAGES, WorkspacePanelDock.RIGHT, pagePanelBounds) },
+                onPanelDrag = ::updateDockedPanelDrag,
+                onPanelDragEnd = { finishDockedPanelDrag(WorkspacePanelKind.PAGES, WorkspacePanelDock.RIGHT) },
+                onPanelDragCancel = ::clearDockedPanelDrag,
             )
             if (layersOpen && settings.layerPanelDock == WorkspacePanelDock.RIGHT && showPanel(WorkspacePanelKind.LAYERS, WorkspacePanelDock.RIGHT)) LayerPanel(
                 page = selectedPage,
@@ -1782,6 +1912,10 @@ private fun EditorScreen(
                 panelLocked = settings.layerPanelLocked,
                 onPanelMode = { onSettingsChange(settings.copy(layerPanelMode = it)) },
                 onPanelLocked = { onSettingsChange(settings.copy(layerPanelLocked = it)) },
+                onPanelDragStart = { beginDockedPanelDrag(WorkspacePanelKind.LAYERS, WorkspacePanelDock.RIGHT, layerPanelBounds) },
+                onPanelDrag = ::updateDockedPanelDrag,
+                onPanelDragEnd = { finishDockedPanelDrag(WorkspacePanelKind.LAYERS, WorkspacePanelDock.RIGHT) },
+                onPanelDragCancel = ::clearDockedPanelDrag,
             )
             if (brushesOpen && settings.brushPanelDock == WorkspacePanelDock.RIGHT && showPanel(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.RIGHT)) BrushPanel(
                 brushes = brushes,
@@ -1829,6 +1963,10 @@ private fun EditorScreen(
                 panelLocked = settings.brushPanelLocked,
                 onPanelMode = { onSettingsChange(settings.copy(brushPanelMode = it)) },
                 onPanelLocked = { onSettingsChange(settings.copy(brushPanelLocked = it)) },
+                onPanelDragStart = { beginDockedPanelDrag(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.RIGHT, brushPanelBounds) },
+                onPanelDrag = ::updateDockedPanelDrag,
+                onPanelDragEnd = { finishDockedPanelDrag(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.RIGHT) },
+                onPanelDragCancel = ::clearDockedPanelDrag,
             )
         }
         if (bottomPanelCount > 0) {
@@ -1864,6 +2002,10 @@ private fun EditorScreen(
                     panelLocked = settings.pagePanelLocked,
                     onPanelMode = { onSettingsChange(settings.copy(pagePanelMode = it)) },
                     onPanelLocked = { onSettingsChange(settings.copy(pagePanelLocked = it)) },
+                    onPanelDragStart = { beginDockedPanelDrag(WorkspacePanelKind.PAGES, WorkspacePanelDock.BOTTOM, pagePanelBounds) },
+                    onPanelDrag = ::updateDockedPanelDrag,
+                    onPanelDragEnd = { finishDockedPanelDrag(WorkspacePanelKind.PAGES, WorkspacePanelDock.BOTTOM) },
+                    onPanelDragCancel = ::clearDockedPanelDrag,
                     modifier = Modifier.weight(1f).fillMaxHeight().border(1.dp, OutlineSoft).padding(12.dp),
                 )
                 if (layersOpen && settings.layerPanelDock == WorkspacePanelDock.BOTTOM && showPanel(WorkspacePanelKind.LAYERS, WorkspacePanelDock.BOTTOM)) LayerPanel(
@@ -1892,6 +2034,10 @@ private fun EditorScreen(
                     panelLocked = settings.layerPanelLocked,
                     onPanelMode = { onSettingsChange(settings.copy(layerPanelMode = it)) },
                     onPanelLocked = { onSettingsChange(settings.copy(layerPanelLocked = it)) },
+                    onPanelDragStart = { beginDockedPanelDrag(WorkspacePanelKind.LAYERS, WorkspacePanelDock.BOTTOM, layerPanelBounds) },
+                    onPanelDrag = ::updateDockedPanelDrag,
+                    onPanelDragEnd = { finishDockedPanelDrag(WorkspacePanelKind.LAYERS, WorkspacePanelDock.BOTTOM) },
+                    onPanelDragCancel = ::clearDockedPanelDrag,
                     modifier = Modifier.weight(1f).fillMaxHeight().border(1.dp, OutlineSoft).background(Color(0xFFF7F7F7)).padding(10.dp),
                 )
                 if (brushesOpen && settings.brushPanelDock == WorkspacePanelDock.BOTTOM && showPanel(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.BOTTOM)) BrushPanel(
@@ -1930,6 +2076,10 @@ private fun EditorScreen(
                     panelLocked = settings.brushPanelLocked,
                     onPanelMode = { onSettingsChange(settings.copy(brushPanelMode = it)) },
                     onPanelLocked = { onSettingsChange(settings.copy(brushPanelLocked = it)) },
+                    onPanelDragStart = { beginDockedPanelDrag(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.BOTTOM, brushPanelBounds) },
+                    onPanelDrag = ::updateDockedPanelDrag,
+                    onPanelDragEnd = { finishDockedPanelDrag(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.BOTTOM) },
+                    onPanelDragCancel = ::clearDockedPanelDrag,
                     modifier = Modifier.weight(1f).fillMaxHeight().border(1.dp, OutlineSoft).background(Color(0xFFF7F7F7)).padding(12.dp),
                 )
             }
@@ -1938,6 +2088,21 @@ private fun EditorScreen(
         panelDockPreview?.let { dock ->
             WorkspacePanelDocking.previewBounds(dock, workspaceWidthDp, usableWorkspaceHeightDp)?.let { preview ->
                 WorkspacePanelDockPreview(dock, preview)
+            }
+        }
+        val dockedOrigin = dockedPanelOriginDock
+        val dockedPreview = dockedPanelPreviewBounds
+        if (
+            dockedOrigin != null && dockedPreview != null &&
+            WorkspacePanelDocking.shouldDetach(dockedOrigin, panelDragDeltaXDp, panelDragDeltaYDp)
+        ) {
+            val target = dockedPanelTargetDock
+            if (target != null) {
+                WorkspacePanelDocking.previewBounds(target, workspaceWidthDp, usableWorkspaceHeightDp)?.let { preview ->
+                    WorkspacePanelDockPreview(target, preview)
+                }
+            } else {
+                WorkspacePanelFloatPreview(dockedPreview)
             }
         }
         if (settings.showPageRail && settings.pagePanelDock == WorkspacePanelDock.FREE) FloatingWorkspacePanel(
@@ -2586,7 +2751,7 @@ private fun CompactWorkspacePanel(
     val currentPanelDragEnd by rememberUpdatedState(onPanelDragEnd)
     val currentPanelDragCancel by rememberUpdatedState(onPanelDragCancel)
     val compactDragDescription = tr("Drag $title panel", "拖动$title 面板")
-    val draggableModifier = modifier.then(if (dock == WorkspacePanelDock.FREE && !locked) {
+    val draggableModifier = modifier.then(if (!locked) {
         Modifier
             .semantics { contentDescription = compactDragDescription }
             .pointerInput(dock, mode) {
@@ -2637,6 +2802,30 @@ private fun WorkspacePanelDockPreview(dock: WorkspacePanelDock, bounds: Workspac
         WorkspacePanelDock.BOTTOM -> tr("Release to dock bottom", "松开停靠到底部")
         WorkspacePanelDock.FREE -> tr("Keep floating", "保持浮动")
     }
+    Box(
+        Modifier
+            .width(bounds.widthDp.dp)
+            .height(bounds.heightDp.dp)
+            .graphicsLayer(
+                translationX = with(density) { bounds.xDp.dp.toPx() },
+                translationY = with(density) { bounds.yDp.dp.toPx() },
+            )
+            .zIndex(7.5f)
+            .background(Color(0x26000000), RoundedCornerShape(12.dp))
+            .border(4.dp, Ink, RoundedCornerShape(12.dp))
+            .semantics { contentDescription = label },
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(color = Ink, shape = RoundedCornerShape(22.dp)) {
+            Text(label, Modifier.padding(horizontal = 18.dp, vertical = 10.dp), color = Color.White, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+@Composable
+private fun WorkspacePanelFloatPreview(bounds: WorkspacePanelBounds) {
+    val density = LocalDensity.current
+    val label = tr("Release to float", "松开转为浮动面板")
     Box(
         Modifier
             .width(bounds.widthDp.dp)
@@ -2785,8 +2974,8 @@ private fun PageRail(
         item { Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 tr("Pages", "页面"),
-                Modifier.weight(1f).semantics { contentDescription = dragDescription }.then(
-                    if (dock == WorkspacePanelDock.FREE && !panelLocked) Modifier.pointerInput(dock) {
+                Modifier.weight(1f).then(
+                    if (!panelLocked) Modifier.semantics { contentDescription = dragDescription }.pointerInput(dock) {
                         detectDragGestures(onDragStart = { currentPanelDragStart() }, onDragEnd = { currentPanelDragEnd() }, onDragCancel = { currentPanelDragCancel() }) { change, amount ->
                             change.consume()
                             currentPanelDrag(amount.x, amount.y)
@@ -4046,8 +4235,8 @@ private fun LayerPanel(
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(
-                Modifier.weight(1f).semantics { contentDescription = dragDescription }.then(
-                    if (dock == WorkspacePanelDock.FREE && !panelLocked) Modifier.pointerInput(dock) {
+                Modifier.weight(1f).then(
+                    if (!panelLocked) Modifier.semantics { contentDescription = dragDescription }.pointerInput(dock) {
                         detectDragGestures(onDragStart = { currentPanelDragStart() }, onDragEnd = { currentPanelDragEnd() }, onDragCancel = { currentPanelDragCancel() }) { change, amount ->
                             change.consume()
                             currentPanelDrag(amount.x, amount.y)
@@ -4240,8 +4429,8 @@ private fun BrushPanel(
             Text(
                 tr("Brush Library", "笔刷库"),
                 fontSize = if (bottomDocked) 16.sp else 20.sp,
-                modifier = Modifier.weight(1f).semantics { contentDescription = dragDescription }.then(
-                    if (dock == WorkspacePanelDock.FREE && !panelLocked) Modifier.pointerInput(dock) {
+                modifier = Modifier.weight(1f).then(
+                    if (!panelLocked) Modifier.semantics { contentDescription = dragDescription }.pointerInput(dock) {
                         detectDragGestures(onDragStart = { currentPanelDragStart() }, onDragEnd = { currentPanelDragEnd() }, onDragCancel = { currentPanelDragCancel() }) { change, amount ->
                             change.consume()
                             currentPanelDrag(amount.x, amount.y)
