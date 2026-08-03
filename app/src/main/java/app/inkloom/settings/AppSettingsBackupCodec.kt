@@ -70,6 +70,7 @@ object AppSettingsBackupCodec {
         put("toolbarOffsetXDp", toolbarOffsetXDp); put("toolbarOffsetYDp", toolbarOffsetYDp); put("verticalToolbar", verticalToolbar); put("toolbarDock", toolbarDock.name)
         put("singleFingerDoubleTapUndo", singleFingerDoubleTapUndo); put("twoFingerDoubleTapUndo", twoFingerDoubleTapUndo); put("threeFingerTapRedo", threeFingerTapRedo); put("twoFingerRotation", twoFingerRotation)
         put("stylusPrimaryButton", stylusPrimaryButton.name); put("stylusSecondaryButton", stylusSecondaryButton.name)
+        put("stylusPrimaryTrigger", stylusPrimaryTrigger.name); put("stylusSecondaryTrigger", stylusSecondaryTrigger.name)
         put("pressureSensitivity", pressureSensitivity); put("pressureMinimumInput", pressureMinimumInput); put("pressureMaximumInput", pressureMaximumInput)
         put("stabilization", stabilization); put("showInputDiagnostics", showInputDiagnostics)
         put("penSize", penSize); put("penOpacity", penOpacity); put("highlighterSize", highlighterSize); put("highlighterOpacity", highlighterOpacity)
@@ -103,6 +104,7 @@ object AppSettingsBackupCodec {
             verticalToolbar = boolean("verticalToolbar", defaults.verticalToolbar), toolbarDock = enum("toolbarDock", defaults.toolbarDock),
             singleFingerDoubleTapUndo = boolean("singleFingerDoubleTapUndo", defaults.singleFingerDoubleTapUndo), twoFingerDoubleTapUndo = boolean("twoFingerDoubleTapUndo", defaults.twoFingerDoubleTapUndo), threeFingerTapRedo = boolean("threeFingerTapRedo", defaults.threeFingerTapRedo),
             twoFingerRotation = boolean("twoFingerRotation", defaults.twoFingerRotation), stylusPrimaryButton = enum("stylusPrimaryButton", defaults.stylusPrimaryButton), stylusSecondaryButton = enum("stylusSecondaryButton", defaults.stylusSecondaryButton),
+            stylusPrimaryTrigger = enum("stylusPrimaryTrigger", defaults.stylusPrimaryTrigger), stylusSecondaryTrigger = enum("stylusSecondaryTrigger", defaults.stylusSecondaryTrigger),
             pressureSensitivity = float("pressureSensitivity", defaults.pressureSensitivity).coerceIn(.25f, 2.5f), pressureMinimumInput = minimum, pressureMaximumInput = maximum,
             stabilization = float("stabilization", defaults.stabilization).coerceIn(0f, .9f), showInputDiagnostics = boolean("showInputDiagnostics", defaults.showInputDiagnostics),
             penSize = float("penSize", defaults.penSize).coerceIn(.5f, 400f), penOpacity = float("penOpacity", defaults.penOpacity).coerceIn(.05f, 1f),

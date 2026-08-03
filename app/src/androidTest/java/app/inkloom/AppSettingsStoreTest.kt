@@ -99,11 +99,15 @@ class AppSettingsStoreTest {
             AppSettingsStore(context).save(AppSettings(
                 stylusPrimaryButton = StylusButtonAction.UNDO,
                 stylusSecondaryButton = StylusButtonAction.HAND,
+                stylusPrimaryTrigger = ShortcutTrigger.PRESS,
+                stylusSecondaryTrigger = ShortcutTrigger.HOLD,
             ))
 
             val restored = AppSettingsStore(context).load()
             assertEquals(StylusButtonAction.UNDO, restored.stylusPrimaryButton)
             assertEquals(StylusButtonAction.HAND, restored.stylusSecondaryButton)
+            assertEquals(ShortcutTrigger.PRESS, restored.stylusPrimaryTrigger)
+            assertEquals(ShortcutTrigger.HOLD, restored.stylusSecondaryTrigger)
         } finally {
             preferences.edit().clear().commit()
         }

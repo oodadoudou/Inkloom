@@ -8,6 +8,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.model.EditorTool
 import app.inkloom.settings.ShortcutAction
+import app.inkloom.settings.ShortcutActivation
 import app.inkloom.settings.ShortcutBinding
 import app.inkloom.settings.ShortcutChord
 import app.inkloom.settings.ShortcutPhase
@@ -196,6 +197,78 @@ class InkCanvasNavigationTest {
 
         assertEquals(1, undoCount)
         assertEquals("A stylus command button must never leave ink", 0, committed)
+    }
+
+    @Test fun heldStylusEraserButtonEmitsOnePressAndOneReleaseWithoutInk() {
+        val view = canvas().apply {
+            tool = EditorTool.PEN
+            primaryButtonAction = StylusButtonAction.ERASER
+            primaryButtonTrigger = ShortcutTrigger.HOLD
+        }
+        val activations = mutableListOf<ShortcutActivation>()
+        var committed = 0
+        view.onShortcutAction = activations::add
+        view.onStrokeCommitted = { committed++ }
+
+        sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 120f, 160f, MotionEvent.BUTTON_STYLUS_PRIMARY)
+        sendStylus(view, 20L, MotionEvent.ACTION_MOVE, 200f, 230f, MotionEvent.BUTTON_STYLUS_PRIMARY)
+        sendStylus(view, 40L, MotionEvent.ACTION_UP, 200f, 230f)
+
+        assertEquals(listOf(ShortcutPhase.PRESS, ShortcutPhase.RELEASE), activations.map(ShortcutActivation::phase))
+        assertTrue(activations.all { it.action == ShortcutAction.TOGGLE_ERASER && it.trigger == ShortcutTrigger.HOLD })
+        assertEquals(0, committed)
+    }
+
+    @Test fun tapStylusButtonSwitchesOnceAndNeverEmitsRelease() {
+        val view = canvas().apply {
+            tool = EditorTool.PEN
+            secondaryButtonAction = StylusButtonAction.LASSO
+            secondaryButtonTrigger = ShortcutTrigger.PRESS
+        }
+        val activations = mutableListOf<ShortcutActivation>()
+        view.onShortcutAction = activations::add
+
+        sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 120f, 160f, MotionEvent.BUTTON_STYLUS_SECONDARY)
+        sendStylus(view, 20L, MotionEvent.ACTION_UP, 120f, 160f)
+
+        assertEquals(listOf(ShortcutActivation(ShortcutAction.SELECT_TOOL, ShortcutPhase.PRESS, ShortcutTrigger.PRESS)), activations)
+    }
+
+    @Test fun pressingEraserButtonMidStrokeCancelsPartialInkBeforeSwitching() {
+        val view = canvas().apply {
+            tool = EditorTool.PEN
+            primaryButtonAction = StylusButtonAction.ERASER
+            primaryButtonTrigger = ShortcutTrigger.HOLD
+        }
+        val activations = mutableListOf<ShortcutActivation>()
+        var committed = 0
+        view.onShortcutAction = activations::add
+        view.onStrokeCommitted = { committed++ }
+
+        sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 120f, 160f)
+        sendStylus(view, 20L, MotionEvent.ACTION_MOVE, 200f, 230f, MotionEvent.BUTTON_STYLUS_PRIMARY)
+        sendStylus(view, 40L, MotionEvent.ACTION_CANCEL, 200f, 230f, MotionEvent.BUTTON_STYLUS_PRIMARY)
+
+        assertEquals(0, committed)
+        assertEquals(listOf(ShortcutPhase.PRESS, ShortcutPhase.RELEASE), activations.map(ShortcutActivation::phase))
+    }
+
+    @Test fun focusLossReleasesHeldStylusToolAndCancelsPartialInk() {
+        val view = canvas().apply {
+            tool = EditorTool.PEN
+            primaryButtonAction = StylusButtonAction.EYEDROPPER
+            primaryButtonTrigger = ShortcutTrigger.HOLD
+        }
+        val activations = mutableListOf<ShortcutActivation>()
+        var committed = 0
+        view.onShortcutAction = activations::add
+        view.onStrokeCommitted = { committed++ }
+
+        sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 120f, 160f, MotionEvent.BUTTON_STYLUS_PRIMARY)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.onWindowFocusChanged(false) }
+
+        assertEquals(listOf(ShortcutPhase.PRESS, ShortcutPhase.RELEASE), activations.map(ShortcutActivation::phase))
+        assertEquals(0, committed)
     }
 
     @Test fun secondaryStylusButtonCanTriggerRedoOnce() {

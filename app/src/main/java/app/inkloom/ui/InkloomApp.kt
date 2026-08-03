@@ -1841,7 +1841,7 @@ private fun EditorScreen(
                             if (activation.trigger == ShortcutTrigger.HOLD && action == ShortcutAction.HAND_TOOL) handToolHeld = false
                             if (activation.trigger == ShortcutTrigger.HOLD && action == ShortcutAction.ROTATE_VIEW_TOOL) rotateToolHeld = false
                             if (activation.trigger == ShortcutTrigger.HOLD && action == ShortcutAction.TOGGLE_ERASER && tool == EditorTool.ERASER) restorePreviousDrawingTool()
-                            if (activation.trigger == ShortcutTrigger.HOLD && action in setOf(ShortcutAction.PEN_OR_PENCIL_GROUP, ShortcutAction.PEN_GROUP, ShortcutAction.PENCIL_GROUP, ShortcutAction.BRUSH_GROUP, ShortcutAction.HIGHLIGHTER_TOOL, ShortcutAction.SELECT_TOOL)) restorePreviousDrawingTool()
+                            if (activation.trigger == ShortcutTrigger.HOLD && action in setOf(ShortcutAction.PEN_OR_PENCIL_GROUP, ShortcutAction.PEN_GROUP, ShortcutAction.PENCIL_GROUP, ShortcutAction.BRUSH_GROUP, ShortcutAction.HIGHLIGHTER_TOOL, ShortcutAction.SELECT_TOOL, ShortcutAction.EYEDROPPER_TOOL)) restorePreviousDrawingTool()
                             if (activation.trigger == ShortcutTrigger.HOLD) ToolboxQuickSlots.indexOf(action)?.let { index ->
                                 val slot = ToolboxQuickSlots.normalize(settings.toolboxQuickSlots)[index]
                                 when (slot.kind) {
@@ -1877,7 +1877,11 @@ private fun EditorScreen(
                             ShortcutAction.SELECT_TOOL -> { exitCanvasNavigation(); if (activation.trigger == ShortcutTrigger.HOLD) rememberDrawingSelection(); tool = EditorTool.SELECT }
                             ShortcutAction.HAND_TOOL -> if (activation.trigger == ShortcutTrigger.HOLD) { rotateToolEnabled = false; rotateToolHeld = false; handToolHeld = true } else { val enable = !handToolEnabled; exitCanvasNavigation(); handToolEnabled = enable }
                             ShortcutAction.ROTATE_VIEW_TOOL -> if (activation.trigger == ShortcutTrigger.HOLD) { handToolEnabled = false; handToolHeld = false; rotateToolHeld = true } else { val enable = !rotateToolEnabled; exitCanvasNavigation(); rotateToolEnabled = enable }
-                            ShortcutAction.EYEDROPPER_TOOL -> {
+                            ShortcutAction.EYEDROPPER_TOOL -> if (activation.trigger == ShortcutTrigger.HOLD) {
+                                exitCanvasNavigation()
+                                rememberDrawingSelection()
+                                tool = EditorTool.EYEDROPPER
+                            } else {
                                 exitCanvasNavigation()
                                 if (tool == EditorTool.EYEDROPPER) restorePreviousDrawingTool() else { rememberDrawingSelection(); tool = EditorTool.EYEDROPPER }
                             }
@@ -3665,6 +3669,8 @@ private fun InkCanvasView.applyBrushConfiguration(
     stabilizationBySpeedMode = activeBrush?.stabilizationBySpeedMode ?: StrokeStabilization.REDUCE_WHEN_FAST
     primaryButtonAction = settings.stylusPrimaryButton
     secondaryButtonAction = settings.stylusSecondaryButton
+    primaryButtonTrigger = settings.stylusPrimaryTrigger
+    secondaryButtonTrigger = settings.stylusSecondaryTrigger
     selectionShape = settings.selectionShape
     selectionMode = settings.selectionMode
     selectionFilter = settings.selectionFilter
@@ -5624,8 +5630,9 @@ private fun SettingsDialog(
                 item { BrushSettingSlider(tr("Eraser size", "橡皮大小"), settings.eraserSize, .5f..400f) { onChange(settings.copy(eraserSize = it)) } }
                 item { OutlinedButton(onClick = { onChange(settings.copy(penSize = 5f, penOpacity = 1f, highlighterSize = 28f, highlighterOpacity = .35f, eraserSize = 24f, eraserPreset = EraserPreset.NORMAL_FREE)) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.RestartAlt, null); Spacer(Modifier.width(8.dp)); Text(tr("Reset tool presets", "重置工具预设")) } }
                 item { Text(tr("PEN BUTTONS", "笔按键"), color = Sage, fontSize = 12.sp) }
-                item { StylusActionRow(tr("Primary button", "主按键"), settings.stylusPrimaryButton) { onChange(settings.copy(stylusPrimaryButton = it)) } }
-                item { StylusActionRow(tr("Secondary button", "副按键"), settings.stylusSecondaryButton) { onChange(settings.copy(stylusSecondaryButton = it)) } }
+                item { Text(tr("Hold temporarily switches tools and restores the previous brush, size, opacity and color on release. Tap keeps the selected tool active. The pen-tail eraser always erases only while touching the screen.", "“按住”会临时切换工具，松开后恢复原笔刷、大小、不透明度和颜色；“单击”会保持切换后的工具。笔尾橡皮只在接触屏幕时擦除。"), color = MutedInk, fontSize = 11.sp) }
+                item { StylusActionRow(tr("Primary button", "主按键"), settings.stylusPrimaryButton, settings.stylusPrimaryTrigger, { onChange(settings.copy(stylusPrimaryButton = it)) }, { onChange(settings.copy(stylusPrimaryTrigger = it)) }) }
+                item { StylusActionRow(tr("Secondary button", "副按键"), settings.stylusSecondaryButton, settings.stylusSecondaryTrigger, { onChange(settings.copy(stylusSecondaryButton = it)) }, { onChange(settings.copy(stylusSecondaryTrigger = it)) }) }
                 item { Text(tr("TOOLBOX & KEYBOARD", "TOOLBOX 与键盘"), color = Sage, fontSize = 12.sp) }
                 item { Text(tr("CSP-compatible defaults are active. Customize them for Wacom ExpressKeys, a keyboard, or another Toolbox controller.", "已启用兼容 CSP 的默认键位。可为 Wacom ExpressKey、键盘或其他 Toolbox 控制器自定义。"), color = MutedInk, fontSize = 12.sp) }
                 item { OutlinedButton(onClick = { shortcutEditorOpen = true }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Keyboard, null); Spacer(Modifier.width(8.dp)); Text(tr("Customize shortcuts", "自定义快捷键")) } }
@@ -6184,7 +6191,7 @@ private fun SettingSwitch(title: String, subtitle: String?, checked: Boolean, on
 }
 
 @Composable
-private fun StylusActionRow(title: String, selected: StylusButtonAction, onSelected: (StylusButtonAction) -> Unit) {
+private fun StylusActionRow(title: String, selected: StylusButtonAction, trigger: ShortcutTrigger, onSelected: (StylusButtonAction) -> Unit, onTrigger: (ShortcutTrigger) -> Unit) {
     Column {
         Text(title, fontSize = 13.sp)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -6199,6 +6206,14 @@ private fun StylusActionRow(title: String, selected: StylusButtonAction, onSelec
                     StylusButtonAction.NONE -> tr("None", "无")
                 }) })
             }
+        }
+        if (selected !in setOf(StylusButtonAction.UNDO, StylusButtonAction.REDO, StylusButtonAction.NONE)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FilterChip(selected = trigger == ShortcutTrigger.HOLD, onClick = { onTrigger(ShortcutTrigger.HOLD) }, label = { Text(tr("Hold temporarily", "按住临时切换")) })
+                FilterChip(selected = trigger == ShortcutTrigger.PRESS, onClick = { onTrigger(ShortcutTrigger.PRESS) }, label = { Text(tr("Tap to switch", "单击切换")) })
+            }
+        } else if (selected in setOf(StylusButtonAction.UNDO, StylusButtonAction.REDO)) {
+            Text(tr("Runs once when pressed", "按下时执行一次"), color = MutedInk, fontSize = 10.sp)
         }
     }
 }

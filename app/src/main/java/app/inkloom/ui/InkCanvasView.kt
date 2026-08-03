@@ -87,6 +87,7 @@ import app.inkloom.settings.ShortcutPhase
 import app.inkloom.settings.ShortcutTrigger
 import app.inkloom.settings.ShortcutAxisAccumulator
 import app.inkloom.settings.StylusButtonAction
+import app.inkloom.settings.StylusButtonShortcut
 import app.inkloom.settings.ToolboxAxis
 import app.inkloom.settings.ToolboxMotionResolver
 import app.inkloom.settings.SelectionFilter
@@ -136,6 +137,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var ctrlModifierHeld = false
     private var altModifierHeld = false
     private var lastStylusButtonState = 0
+    private val heldStylusButtons = mutableMapOf<Int, Pair<StylusButtonAction, ShortcutTrigger>>()
     private var stylusCommandConsumesContact = false
     private var stylusHandNavigationContact = false
     private var brushSizeDragActive = false
@@ -360,6 +362,8 @@ class InkCanvasView(context: Context) : View(context) {
     var stabilizationBySpeedMode: Int = StrokeStabilization.REDUCE_WHEN_FAST
     var primaryButtonAction: StylusButtonAction = StylusButtonAction.ERASER
     var secondaryButtonAction: StylusButtonAction = StylusButtonAction.LASSO
+    var primaryButtonTrigger: ShortcutTrigger = ShortcutTrigger.HOLD
+    var secondaryButtonTrigger: ShortcutTrigger = ShortcutTrigger.HOLD
     var shapeKind: ShapeKind = ShapeKind.RECTANGLE
     var selectionShape: SelectionShape = SelectionShape.FREEFORM
     var selectionMode: SelectionMode = SelectionMode.REPLACE
@@ -407,9 +411,11 @@ class InkCanvasView(context: Context) : View(context) {
     override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
         super.onWindowFocusChanged(hasWindowFocus)
         if (!hasWindowFocus) {
+            if (activeTool != null) cancelActiveGestureForNavigation()
             stopContinuousPlot()
             ctrlModifierHeld = false
             altModifierHeld = false
+            releaseHeldStylusButtons()
             lastStylusButtonState = 0
             stylusCommandConsumesContact = false
             stylusHandNavigationContact = false
@@ -549,6 +555,9 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     override fun onDetachedFromWindow() {
+        if (activeTool != null) cancelActiveGestureForNavigation()
+        releaseHeldStylusButtons()
+        lastStylusButtonState = 0
         stopContinuousPlot()
         recycleStrokeTiles()
         tipCache.values.forEach(Bitmap::recycle); tipCache.clear()
@@ -890,11 +899,16 @@ class InkCanvasView(context: Context) : View(context) {
         if (isStylus) singleFingerDoubleTapUndoGesture.cancel()
         if (isStylus) lastStylusSeenAt = event.eventTime
         onInputDiagnostic(when (eventToolType) { MotionEvent.TOOL_TYPE_STYLUS -> "Stylus"; MotionEvent.TOOL_TYPE_ERASER -> "Eraser"; MotionEvent.TOOL_TYPE_FINGER -> "Finger"; else -> "Other" }, event.pressure, event.getAxisValue(MotionEvent.AXIS_TILT), event.buttonState)
-        val pressedButtonActions = if (isStylus) updateStylusButtonState(event.buttonState) else emptyList()
+        val buttonTransitions = if (isStylus) updateStylusButtonState(event.buttonState) else emptyList()
+        val pressedButtonActions = buttonTransitions.filter { it.phase == ShortcutPhase.PRESS }.map(StylusButtonTransition::action)
         val pressedCommands = pressedButtonActions.filter(StylusButtonAction::isCommand).distinct()
         val stylusButtonAction = if (isStylus) resolveStylusButtonAction(event.buttonState) else StylusButtonAction.NONE
-        if ((pressedCommands.isNotEmpty() || stylusButtonAction.isCommand) && activeTool != null) cancelActiveGestureForNavigation()
-        pressedCommands.forEach(::performStylusCommand)
+        val pressedContactSwitch = pressedButtonActions.any { it in setOf(StylusButtonAction.ERASER, StylusButtonAction.LASSO, StylusButtonAction.EYEDROPPER) }
+        if ((pressedCommands.isNotEmpty() || pressedContactSwitch) && activeTool != null) {
+            cancelActiveGestureForNavigation()
+            if (pressedContactSwitch) stylusCommandConsumesContact = true
+        }
+        dispatchStylusButtonTransitions(buttonTransitions)
         if (stylusButtonAction.isCommand) stylusCommandConsumesContact = true
         if (StylusButtonAction.HAND in pressedButtonActions) {
             navigationX = event.x
@@ -905,7 +919,13 @@ class InkCanvasView(context: Context) : View(context) {
         }
         if (stylusButtonAction == StylusButtonAction.HAND) stylusHandNavigationContact = true
         if (stylusCommandConsumesContact || stylusButtonAction.isCommand) {
-            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) stylusCommandConsumesContact = false
+            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+                stylusCommandConsumesContact = false
+                if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
+                    releaseHeldStylusButtons()
+                    lastStylusButtonState = 0
+                }
+            }
             return true
         }
         if (brushSizeDragActive) {
@@ -1020,7 +1040,18 @@ class InkCanvasView(context: Context) : View(context) {
                     navigationTapEligible = false
                     stylusHandNavigationContact = false
                 }
-                MotionEvent.ACTION_CANCEL -> { navigationTapEligible = false; singleFingerDoubleTapUndoGesture.cancel(); twoFingerTapUndoGesture.cancel(); threeFingerTapRedoGesture.cancel(); twoPointerRotationGesture.reset(); stylusHandNavigationContact = false }
+                MotionEvent.ACTION_CANCEL -> {
+                    navigationTapEligible = false
+                    singleFingerDoubleTapUndoGesture.cancel()
+                    twoFingerTapUndoGesture.cancel()
+                    threeFingerTapRedoGesture.cancel()
+                    twoPointerRotationGesture.reset()
+                    stylusHandNavigationContact = false
+                    if (isStylus) {
+                        releaseHeldStylusButtons()
+                        lastStylusButtonState = 0
+                    }
+                }
             }
             return true
         }
@@ -1167,6 +1198,10 @@ class InkCanvasView(context: Context) : View(context) {
                 activeInputWasStylus = false
             }
         }
+        if (isStylus && event.actionMasked == MotionEvent.ACTION_CANCEL) {
+            releaseHeldStylusButtons()
+            lastStylusButtonState = 0
+        }
         invalidate()
         return true
     }
@@ -1264,8 +1299,9 @@ class InkCanvasView(context: Context) : View(context) {
         val isStylus = (0 until event.pointerCount).any { index -> event.getToolType(index) == MotionEvent.TOOL_TYPE_STYLUS || event.getToolType(index) == MotionEvent.TOOL_TYPE_ERASER }
         if (isStylus) {
             lastStylusSeenAt = event.eventTime
-            val pressedCommands = updateStylusButtonState(event.buttonState).filter(StylusButtonAction::isCommand).distinct()
-            pressedCommands.forEach(::performStylusCommand)
+            val transitions = updateStylusButtonState(event.buttonState)
+            dispatchStylusButtonTransitions(transitions)
+            val pressedCommands = transitions.filter { it.phase == ShortcutPhase.PRESS }.map(StylusButtonTransition::action).filter(StylusButtonAction::isCommand).distinct()
             if (pressedCommands.isNotEmpty() || resolveStylusButtonAction(event.buttonState).isCommand) return true
         }
         if (!isStylus && event.actionMasked == MotionEvent.ACTION_SCROLL) {
@@ -1323,14 +1359,46 @@ class InkCanvasView(context: Context) : View(context) {
             matchedAction = matchedAction,
         )
 
-    private fun updateStylusButtonState(buttonState: Int): List<StylusButtonAction> {
+    private data class StylusButtonTransition(val action: StylusButtonAction, val trigger: ShortcutTrigger, val phase: ShortcutPhase)
+
+    private fun updateStylusButtonState(buttonState: Int): List<StylusButtonTransition> {
         val tracked = buttonState and STYLUS_BUTTON_MASK
         val newlyPressed = tracked and lastStylusButtonState.inv()
+        val newlyReleased = lastStylusButtonState and tracked.inv()
         lastStylusButtonState = tracked
         return buildList {
-            if (newlyPressed and MotionEvent.BUTTON_STYLUS_PRIMARY != 0) add(primaryButtonAction)
-            if (newlyPressed and MotionEvent.BUTTON_STYLUS_SECONDARY != 0) add(secondaryButtonAction)
+            if (newlyPressed and MotionEvent.BUTTON_STYLUS_PRIMARY != 0) add(stylusButtonPress(MotionEvent.BUTTON_STYLUS_PRIMARY, primaryButtonAction, primaryButtonTrigger))
+            if (newlyPressed and MotionEvent.BUTTON_STYLUS_SECONDARY != 0) add(stylusButtonPress(MotionEvent.BUTTON_STYLUS_SECONDARY, secondaryButtonAction, secondaryButtonTrigger))
+            if (newlyReleased and MotionEvent.BUTTON_STYLUS_PRIMARY != 0) stylusButtonRelease(MotionEvent.BUTTON_STYLUS_PRIMARY)?.let(::add)
+            if (newlyReleased and MotionEvent.BUTTON_STYLUS_SECONDARY != 0) stylusButtonRelease(MotionEvent.BUTTON_STYLUS_SECONDARY)?.let(::add)
         }
+    }
+
+    private fun stylusButtonPress(button: Int, action: StylusButtonAction, trigger: ShortcutTrigger): StylusButtonTransition {
+        if (trigger == ShortcutTrigger.HOLD && !action.isCommand && action != StylusButtonAction.NONE) heldStylusButtons[button] = action to trigger
+        return StylusButtonTransition(action, trigger, ShortcutPhase.PRESS)
+    }
+
+    private fun stylusButtonRelease(button: Int): StylusButtonTransition? {
+        val (action, trigger) = heldStylusButtons.remove(button) ?: return null
+        return StylusButtonTransition(action, trigger, ShortcutPhase.RELEASE)
+    }
+
+    private fun dispatchStylusButtonTransitions(transitions: List<StylusButtonTransition>) {
+        transitions.forEach { transition ->
+            if (transition.phase == ShortcutPhase.PRESS && transition.action.isCommand) {
+                performStylusCommand(transition.action)
+            } else {
+                StylusButtonShortcut.activation(transition.action, transition.trigger, transition.phase)?.let(onShortcutAction)
+            }
+        }
+    }
+
+    private fun releaseHeldStylusButtons() {
+        heldStylusButtons.values.toList().forEach { (action, trigger) ->
+            StylusButtonShortcut.activation(action, trigger, ShortcutPhase.RELEASE)?.let(onShortcutAction)
+        }
+        heldStylusButtons.clear()
     }
 
     private fun resolveStylusButtonAction(buttonState: Int): StylusButtonAction = when {

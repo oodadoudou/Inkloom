@@ -29,6 +29,8 @@ class AppSettingsBackupCodecTest {
             twoFingerRotation = true,
             stylusPrimaryButton = StylusButtonAction.UNDO,
             stylusSecondaryButton = StylusButtonAction.HAND,
+            stylusPrimaryTrigger = ShortcutTrigger.PRESS,
+            stylusSecondaryTrigger = ShortcutTrigger.HOLD,
             pressureSensitivity = 1.7f,
             pressureMinimumInput = .1f,
             pressureMaximumInput = .8f,
