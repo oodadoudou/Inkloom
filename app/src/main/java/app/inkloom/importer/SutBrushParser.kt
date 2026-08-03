@@ -5,6 +5,7 @@ import android.database.sqlite.SQLiteDatabase
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
 import app.inkloom.document.BrushSecondaryDynamics
+import app.inkloom.document.BrushColorDynamics
 import app.inkloom.document.CspTextureComposite
 import app.inkloom.document.CspAntiAlias
 import java.io.File
@@ -16,7 +17,7 @@ class SutBrushParser(private val assetDirectory: File) {
         val database = SQLiteDatabase.openDatabase(source.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
         database.use { db ->
             val columns = db.rawQuery("PRAGMA table_info(Variant)", null).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(cursor.getColumnIndexOrThrow("name"))) } }
-            val desired = listOf("Opacity", "BrushSize", "BrushSizeUnit", "FlickerReduction", "FlickerReductionBySpeed", "FlickerReductionBySpeedType", "BrushFlow", "BrushHardness", "BrushBlurLinkSize", "BrushBlur", "BrushBlurUnit", "BrushBlurEffector", "BrushInterval", "BrushContinuousPlot", "BrushThickness", "BrushVerticalThicknes", "BrushRotation", "BrushRotationEffector", "BrushRotationRandomScale", "BrushPatternOrderType", "BrushPatternReverseHorizontal", "BrushPatternReverseVertical", "BrushBlendPatternByDarken", "BrushRibbon", "TextureDensity", "TextureCompositeMode", "TextureReverseDensity", "TextureStressDensity", "TextureScale2", "TextureRotate", "TextureBrightness", "TextureContrast", "BrushUseWaterColor", "BrushMixColor", "BrushMixAlpha", "BrushUseSpray", "BrushSpraySize", "BrushSpraySizeUnit", "BrushSpraySizeSyncBrushSize", "BrushSprayDensity", "BrushSprayBias", "BrushRotationInSpray", "BrushRotationEffectorInSpray", "BrushRotationRandomInSpray", "UseDualBrush", "DualBrushCompositeMode", "ChangeRGBByDual", "SyncDualBrushSize", "DualSize", "DualFlow", "DualHardness", "DualInterval", "DualThickness", "DualVerticalThicknes", "DualRotation", "DualRotationEffector", "DualRotationRandomScale", "DualPatternReverseHorizontal", "DualPatternReverseVertical", "DualBlendPatternByDarken", "DualRibbon", "DualUseSpray", "DualSpraySize", "DualSpraySizeUnit", "DualSpraySizeSyncBrushSize", "DualSprayDensity", "DualSprayBias", "DualRotationInSpray", "DualRotationEffectorInSpray", "DualRotationRandomInSpray", "DualPatternOrderType", "BrushInOutType", "BrushUseIn", "BrushInLength", "BrushInLengthUnit", "BrushInRatio", "BrushUseOut", "BrushOutLength", "BrushOutLengthUnit", "BrushOutRatio", "BrushUseWaterEdge", "BrushWaterEdgeRadius", "BrushWaterEdgeRadiusUnit", "BrushWaterEdgeAlphaPower", "BrushWaterEdgeValuePower", "BrushWaterEdgeBlur", "BrushWaterEdgeBlurUnit").filter(columns::contains)
+            val desired = listOf("Opacity", "BrushSize", "BrushSizeUnit", "FlickerReduction", "FlickerReductionBySpeed", "FlickerReductionBySpeedType", "BrushFlow", "BrushHardness", "BrushBlurLinkSize", "BrushBlur", "BrushBlurUnit", "BrushBlurEffector", "BrushInterval", "BrushContinuousPlot", "BrushThickness", "BrushVerticalThicknes", "BrushRotation", "BrushRotationEffector", "BrushRotationRandomScale", "BrushPatternOrderType", "BrushPatternReverseHorizontal", "BrushPatternReverseVertical", "BrushBlendPatternByDarken", "BrushRibbon", "BrushChangeColorTarget", "BrushHueChange", "BrushSaturationChange", "BrushValueChange", "TextureDensity", "TextureCompositeMode", "TextureReverseDensity", "TextureStressDensity", "TextureScale2", "TextureRotate", "TextureBrightness", "TextureContrast", "BrushUseWaterColor", "BrushMixColor", "BrushMixAlpha", "BrushUseSpray", "BrushSpraySize", "BrushSpraySizeUnit", "BrushSpraySizeSyncBrushSize", "BrushSprayDensity", "BrushSprayBias", "BrushRotationInSpray", "BrushRotationEffectorInSpray", "BrushRotationRandomInSpray", "UseDualBrush", "DualBrushCompositeMode", "ChangeRGBByDual", "SyncDualBrushSize", "DualSize", "DualFlow", "DualHardness", "DualInterval", "DualThickness", "DualVerticalThicknes", "DualRotation", "DualRotationEffector", "DualRotationRandomScale", "DualPatternReverseHorizontal", "DualPatternReverseVertical", "DualBlendPatternByDarken", "DualRibbon", "DualUseSpray", "DualSpraySize", "DualSpraySizeUnit", "DualSpraySizeSyncBrushSize", "DualSprayDensity", "DualSprayBias", "DualRotationInSpray", "DualRotationEffectorInSpray", "DualRotationRandomInSpray", "DualPatternOrderType", "BrushInOutType", "BrushUseIn", "BrushInLength", "BrushInLengthUnit", "BrushInRatio", "BrushUseOut", "BrushOutLength", "BrushOutLengthUnit", "BrushOutRatio", "BrushUseWaterEdge", "BrushWaterEdgeRadius", "BrushWaterEdgeRadiusUnit", "BrushWaterEdgeAlphaPower", "BrushWaterEdgeValuePower", "BrushWaterEdgeBlur", "BrushWaterEdgeBlurUnit").filter(columns::contains)
             val numericDesired = (desired + listOf("AntiAlias", "DualAntiAlias").filter(columns::contains)).filterNot { it == "BrushBlurEffector" }
             val values = db.rawQuery("SELECT n.NodeName, ${numericDesired.joinToString { "v.$it" }} FROM Node n JOIN Variant v ON v.VariantID=n.NodeVariantID LIMIT 1", null).use { cursor ->
                 check(cursor.moveToFirst()) { "SUT has no active brush variant" }
@@ -32,6 +33,9 @@ class SutBrushParser(private val assetDirectory: File) {
             val paintMixEffector = db.effector("BrushMixAlphaEffector", columns)
             val sprayParticleSizeEffector = db.effector("BrushSpraySizeEffector", columns)
             val sprayDensityEffector = db.effector("BrushSprayDensityEffector", columns)
+            val hueEffector = db.effector("BrushHueChangeEffector", columns)
+            val saturationEffector = db.effector("BrushSaturationChangeEffector", columns)
+            val valueEffector = db.effector("BrushValueChangeEffector", columns)
             val tips = extractMaterialPreviews(db, "BrushPatternImageArray", hash, "tip")
             val dualTips = extractMaterialPreviews(db, "DualPatternImageArray", hash, "dual-tip")
             val tip = tips.firstOrNull()
@@ -80,6 +84,13 @@ class SutBrushParser(private val assetDirectory: File) {
                 followStrokeDirection = rotation.mode == SutRotationMode.DIRECTION_OF_LINE,
                 randomRotationDegrees = if (rotation.randomEnabled) (values.float("BrushRotationRandomScale") / 100f * 180f).coerceIn(0f, 180f) else 0f,
                 continuousPlot = values.float("BrushContinuousPlot") > 0f,
+                colorJitterHueDegrees = values.float("BrushHueChange").coerceIn(-180f, 180f),
+                colorJitterSaturation = values.float("BrushSaturationChange").coerceIn(-100f, 100f),
+                colorJitterValue = values.float("BrushValueChange").coerceIn(-100f, 100f),
+                colorJitterTarget = values.float("BrushChangeColorTarget").toInt().coerceIn(0, 3),
+                colorJitterHueDynamics = hueEffector.colorDynamics(),
+                colorJitterSaturationDynamics = saturationEffector.colorDynamics(),
+                colorJitterValueDynamics = valueEffector.colorDynamics(),
                 watercolor = watercolor,
                 colorMix = (values.float("BrushMixColor") / 100f).coerceIn(0f, 1f),
                 colorMixPressureEnabled = colorMixEffector?.pressureEnabled == true,
@@ -215,6 +226,7 @@ class SutBrushParser(private val assetDirectory: File) {
                     if (values.float("DualUseSpray") > 0f) add("Dual spray mapped with particle size/unit, brush-size linking, density, center bias and independent particle direction${if (dualSprayRotation.randomEnabled) "/random angle" else ""}")
                     if (values.float("BrushRibbon") > 0f) add("CSP Ribbon detected; source aspect ratio, tangent alignment and continuous placement enabled")
                     if (values.float("BrushContinuousPlot") > 0f) add("CSP Continuous spraying mapped: holding the stylus deposits time-based stamps so slow strokes build density")
+                    if (values.float("BrushHueChange") != 0f || values.float("BrushSaturationChange") != 0f || values.float("BrushValueChange") != 0f) add("CSP per-tip color jitter mapped: hue ${values.float("BrushHueChange")}, saturation ${values.float("BrushSaturationChange")}, brightness ${values.float("BrushValueChange")}; deterministic pressure, tilt, velocity and signed random effectors retained")
                     if (values.float("BrushPatternReverseHorizontal") > 0f || values.float("BrushPatternReverseVertical") > 0f) add("CSP brush-tip flip modes mapped: horizontal ${values.float("BrushPatternReverseHorizontal").toInt()}, vertical ${values.float("BrushPatternReverseVertical").toInt()}")
                     if (values.float("BrushBlendPatternByDarken") > 0f) add("CSP brush-tip overlaps mapped with isolated Darken composition")
                     if (dual && (values.float("DualPatternReverseHorizontal") > 0f || values.float("DualPatternReverseVertical") > 0f)) add("CSP secondary brush-tip flip modes mapped: horizontal ${values.float("DualPatternReverseHorizontal").toInt()}, vertical ${values.float("DualPatternReverseVertical").toInt()}")
@@ -277,8 +289,9 @@ class SutBrushParser(private val assetDirectory: File) {
         return rawQuery("SELECT v.$column FROM Node n JOIN Variant v ON v.VariantID=n.NodeVariantID LIMIT 1", null).use { cursor -> if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getBlob(0) else null }
     }
     private fun SutEffector?.secondaryDynamics(): BrushSecondaryDynamics = this?.let { effector -> BrushSecondaryDynamics(tiltEnabled = effector.tiltEnabled, tiltMinimum = effector.tiltMinimum, velocityEnabled = effector.velocityEnabled, velocityMinimum = effector.velocityMinimum, velocityCurve = effector.velocityCurve, randomEnabled = effector.randomEnabled, randomMinimum = effector.randomMinimum) } ?: BrushSecondaryDynamics()
+    private fun SutEffector?.colorDynamics(): BrushColorDynamics = this?.let { effector -> BrushColorDynamics(pressureEnabled = effector.pressureEnabled, pressureMinimum = effector.pressureMinimum, pressureCurve = effector.pressureCurve, tiltEnabled = effector.tiltEnabled, tiltMinimum = effector.tiltMinimum, velocityEnabled = effector.velocityEnabled, velocityMinimum = effector.velocityMinimum, velocityCurve = effector.velocityCurve, randomEnabled = effector.randomEnabled, randomMinimum = effector.randomMinimumSigned) } ?: BrushColorDynamics()
     private fun SutEffector.sourceSummary(): String = buildList { if (tiltEnabled) add("tilt"); if (velocityEnabled) add("velocity"); if (randomEnabled) add("random") }.joinToString("+")
     companion object {
-        const val CURRENT_VERSION = 23
+        const val CURRENT_VERSION = 24
     }
 }

@@ -3729,6 +3729,13 @@ private fun InkCanvasView.applyBrushConfiguration(
     stampCount = activeBrush?.stampCount ?: 1
     stampCountJitter = activeBrush?.stampCountJitter ?: 0f
     brushContinuousPlot = activeBrush?.continuousPlot ?: false
+    colorJitterHueDegrees = activeBrush?.colorJitterHueDegrees ?: 0f
+    colorJitterSaturation = activeBrush?.colorJitterSaturation ?: 0f
+    colorJitterValue = activeBrush?.colorJitterValue ?: 0f
+    colorJitterTarget = activeBrush?.colorJitterTarget ?: 0
+    colorJitterHueDynamics = activeBrush?.colorJitterHueDynamics ?: BrushColorDynamics()
+    colorJitterSaturationDynamics = activeBrush?.colorJitterSaturationDynamics ?: BrushColorDynamics()
+    colorJitterValueDynamics = activeBrush?.colorJitterValueDynamics ?: BrushColorDynamics()
     brushWatercolor = activeBrush?.watercolor ?: false
     brushColorMix = activeBrush?.colorMix ?: 0f
     colorMixPressureEnabled = activeBrush?.colorMixPressureEnabled ?: false
@@ -5391,6 +5398,12 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 item { BrushSettingSlider("Stamp count", draft.stampCount.toFloat(), 1f..16f) { draft = draft.copy(stampCount = it.toInt().coerceIn(1, 16)) } }
                 item { BrushSettingSlider("Stamp count jitter", draft.stampCountJitter, 0f..1f) { draft = draft.copy(stampCountJitter = it) } }
                 item { SettingSwitch(tr("Continuous spraying", "连续喷涂"), tr("Holding the stylus in one place keeps depositing the brush tip, matching CSP slow-stroke density behavior.", "笔尖停留时继续叠加笔刷印章，匹配 CSP 慢速笔画的浓淡行为。"), draft.continuousPlot) { draft = draft.copy(continuousPlot = it) } }
+                item { BrushSettingSlider(tr("Tip hue jitter", "笔尖色相抖动"), draft.colorJitterHueDegrees, -180f..180f) { draft = draft.copy(colorJitterHueDegrees = it) } }
+                if (draft.colorJitterHueDegrees != 0f) item { ColorDynamicsEditor(tr("Hue jitter", "色相抖动"), draft.colorJitterHueDynamics) { draft = draft.copy(colorJitterHueDynamics = it) } }
+                item { BrushSettingSlider(tr("Tip saturation jitter", "笔尖饱和度抖动"), draft.colorJitterSaturation, -100f..100f) { draft = draft.copy(colorJitterSaturation = it) } }
+                if (draft.colorJitterSaturation != 0f) item { ColorDynamicsEditor(tr("Saturation jitter", "饱和度抖动"), draft.colorJitterSaturationDynamics) { draft = draft.copy(colorJitterSaturationDynamics = it) } }
+                item { BrushSettingSlider(tr("Tip brightness jitter", "笔尖明度抖动"), draft.colorJitterValue, -100f..100f) { draft = draft.copy(colorJitterValue = it) } }
+                if (draft.colorJitterValue != 0f) item { ColorDynamicsEditor(tr("Brightness jitter", "明度抖动"), draft.colorJitterValueDynamics) { draft = draft.copy(colorJitterValueDynamics = it) } }
                 item { SettingSwitch("Watercolor approximation", "Uses translucent layered stamps.", draft.watercolor) { draft = draft.copy(watercolor = it) } }
                 item { BrushSettingSlider("Color mix", draft.colorMix, 0f..1f) { draft = draft.copy(colorMix = it) } }
                 if (draft.watercolor) item { SettingSwitch("Pressure controls color mix", null, draft.colorMixPressureEnabled) { draft = draft.copy(colorMixPressureEnabled = it) } }
@@ -5593,6 +5606,30 @@ private fun SecondaryDynamicsEditor(label: String, value: BrushSecondaryDynamics
             if (value.velocityEnabled) PressureCurveEditor("Velocity response", value.velocityCurve) { onValue(value.copy(velocityCurve = it)) }
             SettingSwitch("Random", "Deterministic per stamp, so export matches the canvas.", value.randomEnabled) { onValue(value.copy(randomEnabled = it)) }
             if (value.randomEnabled) BrushSettingSlider("Random minimum", value.randomMinimum, 0f..1f) { onValue(value.copy(randomMinimum = it)) }
+        }
+    }
+}
+
+@Composable
+private fun ColorDynamicsEditor(label: String, value: BrushColorDynamics, onValue: (BrushColorDynamics) -> Unit) {
+    val active = buildList { if (value.pressureEnabled) add(tr("Pressure", "压力")); if (value.tiltEnabled) add(tr("Tilt", "倾斜")); if (value.velocityEnabled) add(tr("Velocity", "速度")); if (value.randomEnabled) add(tr("Random", "随机")) }
+    var expanded by remember(label) { mutableStateOf(active.isNotEmpty()) }
+    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp).border(1.dp, OutlineSoft, RoundedCornerShape(10.dp)).padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Row(Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) { Text(tr("$label input dynamics", "$label 输入动态"), color = Sage, fontSize = 11.sp); Text(active.joinToString().ifBlank { tr("Constant", "固定") }, color = MutedInk, fontSize = 10.sp) }
+            Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null)
+        }
+        if (expanded) {
+            SettingSwitch(tr("Pressure", "压力"), null, value.pressureEnabled) { onValue(value.copy(pressureEnabled = it)) }
+            if (value.pressureEnabled) BrushSettingSlider(tr("Pressure minimum", "压力下限"), value.pressureMinimum, 0f..1f) { onValue(value.copy(pressureMinimum = it)) }
+            if (value.pressureEnabled) PressureCurveEditor(tr("Pressure response", "压力响应"), value.pressureCurve) { onValue(value.copy(pressureCurve = it)) }
+            SettingSwitch(tr("Tilt", "倾斜"), null, value.tiltEnabled) { onValue(value.copy(tiltEnabled = it)) }
+            if (value.tiltEnabled) BrushSettingSlider(tr("Tilt minimum", "倾斜下限"), value.tiltMinimum, 0f..1f) { onValue(value.copy(tiltMinimum = it)) }
+            SettingSwitch(tr("Velocity", "速度"), null, value.velocityEnabled) { onValue(value.copy(velocityEnabled = it)) }
+            if (value.velocityEnabled) BrushSettingSlider(tr("Velocity minimum", "速度下限"), value.velocityMinimum, 0f..1f) { onValue(value.copy(velocityMinimum = it)) }
+            if (value.velocityEnabled) PressureCurveEditor(tr("Velocity response", "速度响应"), value.velocityCurve) { onValue(value.copy(velocityCurve = it)) }
+            SettingSwitch(tr("Random per tip", "逐笔尖随机"), tr("Uses a stable seed so canvas and export match.", "使用稳定随机种子，确保画布与导出一致。"), value.randomEnabled) { onValue(value.copy(randomEnabled = it)) }
+            if (value.randomEnabled) BrushSettingSlider(tr("Signed random minimum", "随机有符号下限"), value.randomMinimum, -1f..1f) { onValue(value.copy(randomMinimum = it)) }
         }
     }
 }

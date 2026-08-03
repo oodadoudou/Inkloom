@@ -11,6 +11,7 @@ data class SutEffector(
     val tiltMinimum: Float,
     val velocityMinimum: Float,
     val randomMinimum: Float,
+    val randomMinimumSigned: Float,
     val velocityScale: Float,
     val curves: List<List<BrushCurvePoint>>,
 ) {
@@ -41,7 +42,8 @@ object SutEffectorDecoder {
         val pressureMinimum = buffer.percent()
         val tiltMinimum = buffer.percent()
         val velocityMinimum = buffer.percent()
-        val randomMinimum = buffer.percent()
+        val randomMinimumSigned = (buffer.int / 100f).coerceIn(-1f, 1f)
+        val randomMinimum = randomMinimumSigned.coerceAtLeast(0f)
         buffer.int // reserved
         buffer.int // pressure curve chunk length
         buffer.int // velocity curve chunk length
@@ -63,7 +65,7 @@ object SutEffectorDecoder {
                 if (points.size == count) add(points.sortedBy(BrushCurvePoint::x))
             }
         }
-        return SutEffector(formatFlags, sourceFlags, pressureMinimum, tiltMinimum, velocityMinimum, randomMinimum, velocityScale, curves)
+        return SutEffector(formatFlags, sourceFlags, pressureMinimum, tiltMinimum, velocityMinimum, randomMinimum, randomMinimumSigned, velocityScale, curves)
     }
 
     private fun ByteBuffer.percent(): Float = (int / 100f).coerceIn(0f, 1f)

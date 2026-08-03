@@ -2,6 +2,7 @@ package app.inkloom.model
 
 import androidx.compose.ui.graphics.Color
 import app.inkloom.document.BrushCurvePoint
+import app.inkloom.document.BrushColorDynamics
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushTaperMode
 import app.inkloom.document.CspTextureComposite
@@ -72,6 +73,13 @@ data class ImportedBrush(
     val stampCount: Int = 1,
     val stampCountJitter: Float = 0f,
     val continuousPlot: Boolean = false,
+    val colorJitterHueDegrees: Float = 0f,
+    val colorJitterSaturation: Float = 0f,
+    val colorJitterValue: Float = 0f,
+    val colorJitterTarget: Int = 0,
+    val colorJitterHueDynamics: BrushColorDynamics = BrushColorDynamics(),
+    val colorJitterSaturationDynamics: BrushColorDynamics = BrushColorDynamics(),
+    val colorJitterValueDynamics: BrushColorDynamics = BrushColorDynamics(),
     val watercolor: Boolean = false,
     val colorMix: Float = 0f,
     val colorMixPressureEnabled: Boolean = false,

@@ -46,6 +46,18 @@ class SutEffectorDecoderTest {
         assertNull(SutEffectorDecoder.decode(invalid))
     }
 
+    @Test fun preservesSignedRandomMinimumForBidirectionalColorDynamics() {
+        val buffer = ByteBuffer.allocate(44).order(ByteOrder.BIG_ENDIAN)
+        buffer.putInt(44); buffer.putInt(0xf0); buffer.putInt(SutEffector.RANDOM)
+        buffer.putInt(0); buffer.putInt(0); buffer.putInt(0); buffer.putInt(-100)
+        buffer.putInt(0); buffer.putInt(0); buffer.putInt(0); buffer.putInt(100)
+
+        val decoded = SutEffectorDecoder.decode(buffer.array())!!
+
+        assertEquals(0f, decoded.randomMinimum, .0001f)
+        assertEquals(-1f, decoded.randomMinimumSigned, .0001f)
+    }
+
     @Test fun retainedCurvesDoNotEnableDisabledSources() {
         val buffer = ByteBuffer.allocate(44 + 12 + 32).order(ByteOrder.BIG_ENDIAN)
         buffer.putInt(44)

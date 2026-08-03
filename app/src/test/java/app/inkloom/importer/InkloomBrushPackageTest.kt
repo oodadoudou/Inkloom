@@ -82,6 +82,11 @@ class InkloomBrushPackageTest {
                 taperMode = BrushTaperMode.DISTANCE,
                 taperStartEnabled = true,
                 taperStartLength = 42f,
+                colorJitterHueDegrees = 17f,
+                colorJitterSaturation = 8f,
+                colorJitterValue = -5f,
+                colorJitterTarget = 1,
+                colorJitterHueDynamics = app.inkloom.document.BrushColorDynamics(randomEnabled = true, randomMinimum = -1f),
                 watercolor = true,
                 colorMix = .65f,
                 colorMixPressureEnabled = true,
@@ -154,6 +159,11 @@ class InkloomBrushPackageTest {
             assertEquals(2, restored.dualTipFlipVerticalMode)
             assertTrue(restored.dualBlendTipsWithDarken)
             assertTrue(restored.watercolor)
+            assertEquals(17f, restored.colorJitterHueDegrees, .0001f)
+            assertEquals(8f, restored.colorJitterSaturation, .0001f)
+            assertEquals(-5f, restored.colorJitterValue, .0001f)
+            assertEquals(1, restored.colorJitterTarget)
+            assertEquals(-1f, restored.colorJitterHueDynamics.randomMinimum, .0001f)
             assertTrue(restored.taperStartEnabled)
             assertEquals(packageFile.absolutePath, restored.sourcePath)
             assertEquals("package-hash", restored.sha256)

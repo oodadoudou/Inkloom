@@ -56,9 +56,9 @@ class SutSprayRotationParserTest {
                 )
             }
             parsed.forEach { brush ->
-                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 23, brush.parserVersion)
+                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 24, brush.parserVersion)
                 assertFalse(brush.report.any { it.startsWith("SUT parameter parsing failed") })
-                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v23-")) }
+                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v24-")) }
             }
             assertTrue("Expected multiple CSP AntiAlias modes in the supplied corpus", parsed.map(ImportedBrush::antiAliasMode).distinct().size >= 3)
             assertTrue(parsed.all { it.antiAliasMode in CspAntiAlias.NONE..CspAntiAlias.STRONG })
@@ -78,6 +78,12 @@ class SutSprayRotationParserTest {
             assertTrue(paintingBrush?.report?.any { it.contains("Screen composite mode") } == true)
             assertTrue(paintingBrush?.report?.any { it.contains("secondary brush-tip flip modes mapped") } == true)
             assertTrue(paintingBrush?.report?.any { it.contains("Height texture composition mapped with documented edge-only behavior") } == true)
+            assertEquals(7f, paintingBrush?.colorJitterHueDegrees ?: -1f, .001f)
+            assertEquals(6f, paintingBrush?.colorJitterSaturation ?: -1f, .001f)
+            assertEquals(0f, paintingBrush?.colorJitterValue ?: -1f, .001f)
+            assertTrue(paintingBrush?.colorJitterHueDynamics?.randomEnabled == true)
+            assertEquals(-1f, paintingBrush?.colorJitterHueDynamics?.randomMinimum ?: 0f, .001f)
+            assertTrue(paintingBrush?.report?.any { it.contains("per-tip color jitter mapped") } == true)
             assertTrue("Expected a supplied Compare-texture sample", parsed.any { it.grainCompositeMode == CspTextureComposite.COMPARE })
             assertTrue("Compare must not be reported as exact", parsed.any { brush -> brush.report.any { it.contains("Compare texture mode retained with conservative density comparison") } })
             val silkPen = parsed.firstOrNull { it.name.contains("丝丝笔") }
@@ -145,7 +151,7 @@ class SutSprayRotationParserTest {
             assertEquals(CspTextureComposite.HEIGHT, brush.grainCompositeMode)
             assertEquals(CspAntiAlias.WEAK, brush.antiAliasMode)
             assertEquals(CspAntiAlias.STRONG, brush.dualAntiAliasMode)
-            assertEquals(23, brush.parserVersion)
+            assertEquals(24, brush.parserVersion)
         } finally {
             root.deleteRecursively()
         }
@@ -185,6 +191,10 @@ class SutSprayRotationParserTest {
                 tipFlipHorizontalMode = 2,
                 blendTipsWithDarken = true,
                 continuousPlot = true,
+                colorJitterHueDegrees = 14f,
+                colorJitterSaturation = 9f,
+                colorJitterTarget = 1,
+                colorJitterHueDynamics = app.inkloom.document.BrushColorDynamics(randomEnabled = true, randomMinimum = -1f),
                 blur = 7.5f,
                 blurUnit = 2,
                 blurLinkedToSize = true,
@@ -230,6 +240,11 @@ class SutSprayRotationParserTest {
             assertEquals(2, restored.tipFlipHorizontalMode)
             assertTrue(restored.blendTipsWithDarken)
             assertTrue(restored.continuousPlot)
+            assertEquals(14f, restored.colorJitterHueDegrees, .0001f)
+            assertEquals(9f, restored.colorJitterSaturation, .0001f)
+            assertEquals(1, restored.colorJitterTarget)
+            assertTrue(restored.colorJitterHueDynamics.randomEnabled)
+            assertEquals(-1f, restored.colorJitterHueDynamics.randomMinimum, .0001f)
             assertEquals(7.5f, restored.blur, .0001f)
             assertEquals(2, restored.blurUnit)
             assertTrue(restored.blurLinkedToSize)

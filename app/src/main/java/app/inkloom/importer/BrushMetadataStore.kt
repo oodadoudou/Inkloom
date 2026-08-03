@@ -7,6 +7,7 @@ import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
 import app.inkloom.document.BrushCurvePoint
+import app.inkloom.document.BrushColorDynamics
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushTaperMode
 import org.json.JSONArray
@@ -45,6 +46,11 @@ class BrushMetadataStore(
                         randomEnabled = value.optBoolean("randomEnabled", false),
                         randomMinimum = value.optDouble("randomMinimum", 0.0).toFloat(),
                     )
+                }
+                fun colorDynamics(key: String): BrushColorDynamics {
+                    val value = item.optJSONObject(key) ?: return BrushColorDynamics()
+                    fun points(name: String): List<BrushCurvePoint> { val source = value.optJSONArray(name) ?: return emptyList(); return buildList { for (pointIndex in 0 until source.length()) { val pair = source.optJSONArray(pointIndex) ?: continue; if (pair.length() >= 2) add(BrushCurvePoint(pair.optDouble(0).toFloat(), pair.optDouble(1).toFloat())) } } }
+                    return BrushColorDynamics(pressureEnabled = value.optBoolean("pressureEnabled"), pressureMinimum = value.optDouble("pressureMinimum").toFloat(), pressureCurve = points("pressureCurve"), tiltEnabled = value.optBoolean("tiltEnabled"), tiltMinimum = value.optDouble("tiltMinimum").toFloat(), velocityEnabled = value.optBoolean("velocityEnabled"), velocityMinimum = value.optDouble("velocityMinimum").toFloat(), velocityCurve = points("velocityCurve"), randomEnabled = value.optBoolean("randomEnabled"), randomMinimum = value.optDouble("randomMinimum", -1.0).toFloat())
                 }
                 val legacyTipPath = item.optString("tipPreviewPath").takeIf { it.isNotBlank() }
                 val tipPaths = buildList { for (pathIndex in 0 until tipPathsArray.length()) tipPathsArray.optString(pathIndex).takeIf(String::isNotBlank)?.let(::add) }.ifEmpty { listOfNotNull(legacyTipPath) }
@@ -95,6 +101,13 @@ class BrushMetadataStore(
                         stampCount = item.optInt("stampCount", 1).coerceIn(1, 16),
                         stampCountJitter = item.optDouble("stampCountJitter", 0.0).toFloat().coerceIn(0f, 1f),
                         continuousPlot = item.optBoolean("continuousPlot", false),
+                        colorJitterHueDegrees = item.optDouble("colorJitterHueDegrees", 0.0).toFloat().coerceIn(-180f, 180f),
+                        colorJitterSaturation = item.optDouble("colorJitterSaturation", 0.0).toFloat().coerceIn(-100f, 100f),
+                        colorJitterValue = item.optDouble("colorJitterValue", 0.0).toFloat().coerceIn(-100f, 100f),
+                        colorJitterTarget = item.optInt("colorJitterTarget", 0).coerceIn(0, 3),
+                        colorJitterHueDynamics = colorDynamics("colorJitterHueDynamics"),
+                        colorJitterSaturationDynamics = colorDynamics("colorJitterSaturationDynamics"),
+                        colorJitterValueDynamics = colorDynamics("colorJitterValueDynamics"),
                         watercolor = item.optBoolean("watercolor", false),
                         colorMix = item.optDouble("colorMix", 0.0).toFloat(),
                         colorMixPressureEnabled = item.optBoolean("colorMixPressureEnabled", false),
@@ -265,6 +278,13 @@ class BrushMetadataStore(
                     .put("stampCount", brush.stampCount)
                     .put("stampCountJitter", brush.stampCountJitter)
                     .put("continuousPlot", brush.continuousPlot)
+                    .put("colorJitterHueDegrees", brush.colorJitterHueDegrees)
+                    .put("colorJitterSaturation", brush.colorJitterSaturation)
+                    .put("colorJitterValue", brush.colorJitterValue)
+                    .put("colorJitterTarget", brush.colorJitterTarget)
+                    .put("colorJitterHueDynamics", colorDynamicsJson(brush.colorJitterHueDynamics))
+                    .put("colorJitterSaturationDynamics", colorDynamicsJson(brush.colorJitterSaturationDynamics))
+                    .put("colorJitterValueDynamics", colorDynamicsJson(brush.colorJitterValueDynamics))
                     .put("watercolor", brush.watercolor)
                     .put("colorMix", brush.colorMix)
                     .put("colorMixPressureEnabled", brush.colorMixPressureEnabled)
@@ -400,4 +420,9 @@ class BrushMetadataStore(
         .put("velocityCurve", curveJson(value.velocityCurve))
         .put("randomEnabled", value.randomEnabled)
         .put("randomMinimum", value.randomMinimum)
+    private fun colorDynamicsJson(value: BrushColorDynamics): JSONObject = JSONObject()
+        .put("pressureEnabled", value.pressureEnabled).put("pressureMinimum", value.pressureMinimum).put("pressureCurve", curveJson(value.pressureCurve))
+        .put("tiltEnabled", value.tiltEnabled).put("tiltMinimum", value.tiltMinimum)
+        .put("velocityEnabled", value.velocityEnabled).put("velocityMinimum", value.velocityMinimum).put("velocityCurve", curveJson(value.velocityCurve))
+        .put("randomEnabled", value.randomEnabled).put("randomMinimum", value.randomMinimum)
 }

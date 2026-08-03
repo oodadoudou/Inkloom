@@ -142,6 +142,20 @@ data class BrushSecondaryDynamics(
 )
 
 @Serializable
+data class BrushColorDynamics(
+    val pressureEnabled: Boolean = false,
+    val pressureMinimum: Float = 0f,
+    val pressureCurve: List<BrushCurvePoint> = emptyList(),
+    val tiltEnabled: Boolean = false,
+    val tiltMinimum: Float = 0f,
+    val velocityEnabled: Boolean = false,
+    val velocityMinimum: Float = 0f,
+    val velocityCurve: List<BrushCurvePoint> = emptyList(),
+    val randomEnabled: Boolean = false,
+    val randomMinimum: Float = -1f,
+)
+
+@Serializable
 data class InkStroke(
     val id: String = UUID.randomUUID().toString(),
     val renderSeed: Int = id.hashCode(),
@@ -182,6 +196,13 @@ data class InkStroke(
     val stampCount: Int = 1,
     val stampCountJitter: Float = 0f,
     val continuousPlot: Boolean = false,
+    val colorJitterHueDegrees: Float = 0f,
+    val colorJitterSaturation: Float = 0f,
+    val colorJitterValue: Float = 0f,
+    val colorJitterTarget: Int = 0,
+    val colorJitterHueDynamics: BrushColorDynamics = BrushColorDynamics(),
+    val colorJitterSaturationDynamics: BrushColorDynamics = BrushColorDynamics(),
+    val colorJitterValueDynamics: BrushColorDynamics = BrushColorDynamics(),
     val watercolor: Boolean = false,
     val colorMix: Float = 0f,
     val colorMixPressureEnabled: Boolean = false,

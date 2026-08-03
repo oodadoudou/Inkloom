@@ -660,18 +660,19 @@ class DocumentAssetService(private val context: Context) {
             val opacityDynamic = pressureDynamic(stroke.opacityPressureEnabled, stroke.opacityPressureMinimum, stroke.opacityPressureCurve, pressure) * secondaryDynamic(stroke.opacitySecondaryDynamics, point, stroke.renderSeed, SALT_OPACITY)
             val flowDynamic = pressureDynamic(stroke.flowPressureEnabled, stroke.flowPressureMinimum, stroke.flowPressureCurve, pressure) * secondaryDynamic(stroke.flowSecondaryDynamics, point, stroke.renderSeed, SALT_FLOW)
             val mainAlpha = (stroke.opacity * opacityDynamic * stroke.flow * flowDynamic * WetMixDynamics.alphaMultiplier(stroke, point)).coerceIn(.01f, 1f).times(255).toInt()
+            val jitteredColor = BrushColorJitter.argb(stroke, point, sequenceIndex)
             if (stroke.waterEdgeEnabled && stroke.waterEdgeOpacity > 0f) {
                 val edgeRadius = WaterEdge.distancePixels(stroke.waterEdgeRadius, stroke.waterEdgeRadiusUnit, width.toFloat())
                 val edgeTipScale = BrushTipTransform.scale(tip.width, tip.height, diameter + edgeRadius * 2f, thicknessScale, stroke.thicknessVertical)
                 val edgeMatrix = Matrix().apply { postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(edgeTipScale.x * flip.x, edgeTipScale.y * flip.y); postRotate(angle); postTranslate(drawX, drawY) }
-                paint.colorFilter = PorterDuffColorFilter(WaterEdge.darkenArgb(stroke.colorArgb.toInt(), stroke.waterEdgeDarkness), PorterDuff.Mode.SRC_IN)
+                paint.colorFilter = PorterDuffColorFilter(WaterEdge.darkenArgb(jitteredColor, stroke.waterEdgeDarkness), PorterDuff.Mode.SRC_IN)
                 paint.alpha = (mainAlpha * stroke.waterEdgeOpacity.coerceIn(0f, 1f)).toInt().coerceIn(1, 255)
                 val blur = WaterEdge.distancePixels(stroke.waterEdgeBlur, stroke.waterEdgeBlurUnit, width.toFloat())
                 paint.maskFilter = blur.takeIf { it > .01f }?.let { BlurMaskFilter(it, BlurMaskFilter.Blur.NORMAL) }
                 canvas.drawBitmap(tip, edgeMatrix, paint)
                 paint.maskFilter = null
             }
-            paint.colorFilter = PorterDuffColorFilter(stroke.colorArgb.toInt(), PorterDuff.Mode.SRC_IN)
+            paint.colorFilter = PorterDuffColorFilter(jitteredColor, PorterDuff.Mode.SRC_IN)
             paint.alpha = mainAlpha
             paint.maskFilter = brushBlurMask(stroke, point, diameter, stroke.width * width / 1600f, width.toFloat())
             canvas.drawBitmap(tip, matrix, paint)
@@ -733,7 +734,7 @@ class DocumentAssetService(private val context: Context) {
             val matrix = Matrix().apply { postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(tipScale.x * flip.x, tipScale.y * flip.y); postRotate(angle); postTranslate(drawX, drawY) }
             val opacityDynamic = pressureDynamic(stroke.opacityPressureEnabled, stroke.opacityPressureMinimum, stroke.opacityPressureCurve, pressure) * secondaryDynamic(stroke.opacitySecondaryDynamics, point, stroke.renderSeed, SALT_OPACITY)
             val flowDynamic = pressureDynamic(stroke.flowPressureEnabled, stroke.flowPressureMinimum, stroke.flowPressureCurve, pressure) * secondaryDynamic(stroke.flowSecondaryDynamics, point, stroke.renderSeed, SALT_FLOW)
-            paint.colorFilter = PorterDuffColorFilter(stroke.colorArgb.toInt(), PorterDuff.Mode.SRC_IN)
+            paint.colorFilter = PorterDuffColorFilter(BrushColorJitter.argb(stroke, point, sequenceIndex), PorterDuff.Mode.SRC_IN)
             paint.alpha = (stroke.opacity * opacityDynamic * stroke.dualFlow.coerceIn(0f, 1f) * flowDynamic * WetMixDynamics.alphaMultiplier(stroke, point)).coerceIn(.01f, 1f).times(255).toInt()
             paint.maskFilter = brushBlurMask(stroke, point, diameter, stroke.width * width / 1600f * stroke.dualSizeScale.coerceIn(.01f, 8f), width.toFloat())
             canvas.drawBitmap(tip, matrix, paint)
@@ -745,21 +746,23 @@ class DocumentAssetService(private val context: Context) {
     }
 
     private fun drawLinePoint(canvas: Canvas, paint: Paint, stroke: InkStroke, point: StrokePoint, x: Float, y: Float, strokeWidth: Float, alpha: Int, pageWidth: Int) {
+        val jitteredColor = BrushColorJitter.argb(stroke, point, point.timeMs.toInt())
         if (stroke.waterEdgeEnabled && stroke.waterEdgeOpacity > 0f) {
-            configureWaterEdge(paint, stroke, strokeWidth, alpha, pageWidth)
+            configureWaterEdge(paint, stroke, strokeWidth, alpha, pageWidth, jitteredColor)
             canvas.drawPoint(x, y, paint)
         }
-        paint.maskFilter = brushBlurMask(stroke, point, strokeWidth, stroke.width * pageWidth / 1600f, pageWidth.toFloat()); paint.color = stroke.colorArgb.toInt(); paint.strokeWidth = strokeWidth; paint.alpha = alpha
+        paint.maskFilter = brushBlurMask(stroke, point, strokeWidth, stroke.width * pageWidth / 1600f, pageWidth.toFloat()); paint.color = jitteredColor; paint.strokeWidth = strokeWidth; paint.alpha = alpha
         canvas.drawPoint(x, y, paint)
         paint.maskFilter = null
     }
 
     private fun drawLineSegment(canvas: Canvas, paint: Paint, stroke: InkStroke, point: StrokePoint, startX: Float, startY: Float, endX: Float, endY: Float, strokeWidth: Float, alpha: Int, pageWidth: Int) {
+        val jitteredColor = BrushColorJitter.argb(stroke, point, point.timeMs.toInt())
         if (stroke.waterEdgeEnabled && stroke.waterEdgeOpacity > 0f) {
-            configureWaterEdge(paint, stroke, strokeWidth, alpha, pageWidth)
+            configureWaterEdge(paint, stroke, strokeWidth, alpha, pageWidth, jitteredColor)
             canvas.drawLine(startX, startY, endX, endY, paint)
         }
-        paint.maskFilter = brushBlurMask(stroke, point, strokeWidth, stroke.width * pageWidth / 1600f, pageWidth.toFloat()); paint.color = stroke.colorArgb.toInt(); paint.strokeWidth = strokeWidth; paint.alpha = alpha
+        paint.maskFilter = brushBlurMask(stroke, point, strokeWidth, stroke.width * pageWidth / 1600f, pageWidth.toFloat()); paint.color = jitteredColor; paint.strokeWidth = strokeWidth; paint.alpha = alpha
         canvas.drawLine(startX, startY, endX, endY, paint)
         paint.maskFilter = null
     }
@@ -771,9 +774,9 @@ class DocumentAssetService(private val context: Context) {
         return radius.takeIf { it > .01f }?.let { BlurMaskFilter(it, BlurMaskFilter.Blur.NORMAL) }
     }
 
-    private fun configureWaterEdge(paint: Paint, stroke: InkStroke, strokeWidth: Float, alpha: Int, pageWidth: Int) {
+    private fun configureWaterEdge(paint: Paint, stroke: InkStroke, strokeWidth: Float, alpha: Int, pageWidth: Int, color: Int) {
         val radius = WaterEdge.distancePixels(stroke.waterEdgeRadius, stroke.waterEdgeRadiusUnit, pageWidth.toFloat())
-        paint.color = WaterEdge.darkenArgb(stroke.colorArgb.toInt(), stroke.waterEdgeDarkness)
+        paint.color = WaterEdge.darkenArgb(color, stroke.waterEdgeDarkness)
         paint.strokeWidth = strokeWidth + radius * 2f
         paint.alpha = (alpha * stroke.waterEdgeOpacity.coerceIn(0f, 1f)).toInt().coerceIn(1, 255)
         val blur = WaterEdge.distancePixels(stroke.waterEdgeBlur, stroke.waterEdgeBlurUnit, pageWidth.toFloat())

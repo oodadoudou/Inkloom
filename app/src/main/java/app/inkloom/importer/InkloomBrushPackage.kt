@@ -1,6 +1,7 @@
 package app.inkloom.importer
 
 import app.inkloom.document.BrushCurvePoint
+import app.inkloom.document.BrushColorDynamics
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushTaperMode
 import app.inkloom.document.CspAntiAlias
@@ -211,6 +212,13 @@ class InkloomBrushPackage(private val assetDirectory: File) {
         thickness = finite(source.thickness, 1f).coerceIn(.05f, 2f),
         rotationDegrees = finite(source.rotationDegrees, 0f).coerceIn(-360f, 360f),
         randomRotationDegrees = finite(source.randomRotationDegrees, 0f).coerceIn(0f, 180f),
+        colorJitterHueDegrees = finite(source.colorJitterHueDegrees, 0f).coerceIn(-180f, 180f),
+        colorJitterSaturation = finite(source.colorJitterSaturation, 0f).coerceIn(-100f, 100f),
+        colorJitterValue = finite(source.colorJitterValue, 0f).coerceIn(-100f, 100f),
+        colorJitterTarget = source.colorJitterTarget.coerceIn(0, 3),
+        colorJitterHueDynamics = colorDynamics(source.colorJitterHueDynamics),
+        colorJitterSaturationDynamics = colorDynamics(source.colorJitterSaturationDynamics),
+        colorJitterValueDynamics = colorDynamics(source.colorJitterValueDynamics),
         colorMix = finite(source.colorMix, 0f).coerceIn(0f, 1f),
         colorMixPressureMinimum = finite(source.colorMixPressureMinimum, 0f).coerceIn(0f, 1f),
         colorMixPressureCurve = curve(source.colorMixPressureCurve),
@@ -300,6 +308,12 @@ class InkloomBrushPackage(private val assetDirectory: File) {
         velocityMinimum = finite(value.velocityMinimum, 0f).coerceIn(0f, 1f),
         velocityCurve = curve(value.velocityCurve),
         randomMinimum = finite(value.randomMinimum, 0f).coerceIn(0f, 1f),
+    )
+
+    private fun colorDynamics(value: BrushColorDynamics): BrushColorDynamics = value.copy(
+        pressureMinimum = finite(value.pressureMinimum, 0f).coerceIn(0f, 1f), pressureCurve = curve(value.pressureCurve),
+        tiltMinimum = finite(value.tiltMinimum, 0f).coerceIn(0f, 1f), velocityMinimum = finite(value.velocityMinimum, 0f).coerceIn(0f, 1f), velocityCurve = curve(value.velocityCurve),
+        randomMinimum = finite(value.randomMinimum, -1f).coerceIn(-1f, 1f),
     )
 
     private fun taperLength(mode: BrushTaperMode, value: Float, fallback: Float): Float =
