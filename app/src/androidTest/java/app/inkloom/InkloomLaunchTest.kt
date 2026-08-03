@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextInput
@@ -20,6 +21,9 @@ import androidx.compose.ui.test.swipe
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.core.app.ApplicationProvider
 import androidx.compose.ui.geometry.Offset
+import app.inkloom.importer.BrushGroupStore
+import app.inkloom.settings.AppSettingsStore
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.rules.RuleChain
@@ -45,7 +49,13 @@ class InkloomLaunchTest {
                     .putString("pagePanelDock", "LEFT")
                     .putString("brushPanelDock", "RIGHT")
                     .putString("layerPanelDock", "RIGHT")
+                    .remove("shortcutPenGroup")
+                    .remove("shortcutPencilGroup")
+                    .remove("shortcutBrushGroup")
                     .commit()
+                BrushGroupStore(ApplicationProvider.getApplicationContext()).save(
+                    listOf("Toolbox/Pens", "Toolbox/Pencils", "Toolbox/Brushes"),
+                )
                 base.evaluate()
             }
         }
@@ -87,6 +97,19 @@ class InkloomLaunchTest {
 
         composeRule.onNodeWithText("Import profile").assertIsDisplayed()
         composeRule.onNodeWithText("Export profile").assertIsDisplayed()
+    }
+
+    @Test fun shortcutEditorMapsCspRolesToRealBrushGroups() {
+        composeRule.onNodeWithContentDescription("Settings").performClick()
+        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Draw with finger"))).performScrollToIndex(29)
+        composeRule.onNodeWithText("Customize shortcuts").performClick()
+        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true))).performScrollToIndex(4)
+
+        composeRule.onNodeWithText("BRUSH GROUP TARGETS").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Automatic")[0].performClick()
+        composeRule.onNodeWithText("Toolbox/Pens").performClick()
+
+        assertEquals("Toolbox/Pens", AppSettingsStore(composeRule.activity).load().shortcutBrushGroupTargets.pen)
     }
 
     @Test fun stickyNoteDoubleTapOpensItsInkSubcanvas() {

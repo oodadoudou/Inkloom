@@ -92,6 +92,7 @@ import app.inkloom.settings.KeyInputDiagnostic
 import app.inkloom.settings.ShortcutChord
 import app.inkloom.settings.ShortcutMatchMode
 import app.inkloom.settings.ShortcutPhase
+import app.inkloom.settings.ShortcutProfile
 import app.inkloom.settings.ShortcutProfileCodec
 import app.inkloom.settings.ShortcutTrigger
 import app.inkloom.settings.ShortcutBrushGroup
@@ -384,16 +385,17 @@ fun InkloomApp(initialIntent: Intent?) {
     }
     val shortcutProfileExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(ShortcutProfileCodec.MIME_TYPE)) { uri ->
         if (uri != null) runCatching {
-            context.contentResolver.openOutputStream(uri, "wt")?.use { output -> output.write(ShortcutProfileCodec.encode(settings.shortcutBindings)) }
+            val profile = ShortcutProfile(settings.shortcutBindings, settings.shortcutBrushGroupTargets)
+            context.contentResolver.openOutputStream(uri, "wt")?.use { output -> output.write(ShortcutProfileCodec.encode(profile)) }
                 ?: error("Unable to open the shortcut profile destination.")
             Toast.makeText(context, settings.language.text("Shortcut profile saved.", "快捷键配置已保存。"), Toast.LENGTH_LONG).show()
         }.onFailure { importError = it.message }
     }
     val shortcutProfileImportPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) runCatching {
-            val imported = context.contentResolver.openInputStream(uri)?.use { ShortcutProfileCodec.decode(it).getOrThrow() }
+            val imported = context.contentResolver.openInputStream(uri)?.use { ShortcutProfileCodec.decodeProfile(it).getOrThrow() }
                 ?: error("Unable to open the shortcut profile.")
-            updateSettings(settings.copy(shortcutBindings = imported))
+            updateSettings(settings.copy(shortcutBindings = imported.bindings, shortcutBrushGroupTargets = imported.brushGroupTargets))
             Toast.makeText(context, settings.language.text("Shortcut profile restored.", "快捷键配置已恢复。"), Toast.LENGTH_LONG).show()
         }.onFailure { importError = it.message }
     }
@@ -551,6 +553,7 @@ fun InkloomApp(initialIntent: Intent?) {
     }
     if (settingsOpen) SettingsDialog(
         settings,
+        brushGroups = brushGroups,
         onChange = ::updateSettings,
         onExportBackup = { libraryBackupExportPicker.launch("Inkloom-library-backup.inkloom-backup.zip") },
         onRestoreBackup = { libraryBackupImportPicker.launch(arrayOf("application/zip", "application/octet-stream")) },
@@ -1210,7 +1213,8 @@ private fun EditorScreen(
                         }
 
                         fun selectBrushGroup(group: ShortcutBrushGroup, fallbackToSystemPen: Boolean = false) {
-                            ShortcutBrushSelection.preferred(brushes, group)?.let(::selectImportedBrush) ?: if (fallbackToSystemPen) {
+                            val targetPath = settings.shortcutBrushGroupTargets.forGroup(group)
+                            ShortcutBrushSelection.preferred(brushes, group, targetPath)?.let(::selectImportedBrush) ?: if (fallbackToSystemPen) {
                                 selectedBrushId = null
                                 activeBrush = null
                                 tool = EditorTool.PEN
@@ -3885,6 +3889,7 @@ private fun PressureCurveEditor(label: String, points: List<BrushCurvePoint>, on
 @Composable
 private fun SettingsDialog(
     settings: AppSettings,
+    brushGroups: List<String>,
     onChange: (AppSettings) -> Unit,
     onExportBackup: () -> Unit,
     onRestoreBackup: () -> Unit,
@@ -3945,11 +3950,11 @@ private fun SettingsDialog(
             }
         },
     )
-    if (shortcutEditorOpen) ShortcutEditorDialog(settings, onChange, onExportShortcuts, onImportShortcuts, onDismiss = { shortcutEditorOpen = false })
+    if (shortcutEditorOpen) ShortcutEditorDialog(settings, brushGroups, onChange, onExportShortcuts, onImportShortcuts, onDismiss = { shortcutEditorOpen = false })
 }
 
 @Composable
-private fun ShortcutEditorDialog(settings: AppSettings, onChange: (AppSettings) -> Unit, onExportShortcuts: () -> Unit, onImportShortcuts: () -> Unit, onDismiss: () -> Unit) {
+private fun ShortcutEditorDialog(settings: AppSettings, brushGroups: List<String>, onChange: (AppSettings) -> Unit, onExportShortcuts: () -> Unit, onImportShortcuts: () -> Unit, onDismiss: () -> Unit) {
     var listeningFor by remember { mutableStateOf<ShortcutAction?>(null) }
     var captureMode by remember { mutableStateOf(ShortcutMatchMode.KEY_CODE) }
     var captureTrigger by remember { mutableStateOf(ShortcutTrigger.PRESS) }
@@ -4030,6 +4035,22 @@ private fun ShortcutEditorDialog(settings: AppSettings, onChange: (AppSettings) 
                         SettingSwitch(tr("Only this input device", "仅此输入设备"), tr("Keeps the global CSP key while adding a Toolbox-specific mapping.", "保留全局 CSP 键位，同时添加此 Toolbox 的专用映射。"), deviceSpecific) { deviceSpecific = it }
                     }
                 }
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(tr("BRUSH GROUP TARGETS", "笔刷组目标"), color = MutedInk, fontSize = 11.sp)
+                        Text(tr("Choose the real groups used by CSP-style P and B shortcuts. Automatic keeps name-based detection.", "选择 CSP 风格 P、B 快捷键实际使用的笔刷组；“自动”会继续按名称识别。"), color = MutedInk, fontSize = 11.sp)
+                        ShortcutBrushGroup.entries.forEach { group ->
+                            ShortcutBrushGroupTargetRow(
+                                group = group,
+                                selectedPath = settings.shortcutBrushGroupTargets.forGroup(group),
+                                groupPaths = brushGroups,
+                                onSelect = { path ->
+                                    onChange(settings.copy(shortcutBrushGroupTargets = settings.shortcutBrushGroupTargets.withGroup(group, path)))
+                                },
+                            )
+                        }
+                    }
+                }
                 groupedActions.forEach { (category, actions) ->
                     item("category-${category.name}") { Text(shortcutCategoryLabel(category, language).uppercase(), color = MutedInk, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)) }
                     items(actions, key = { it.name }) { action ->
@@ -4080,6 +4101,37 @@ private fun ShortcutEditorDialog(settings: AppSettings, onChange: (AppSettings) 
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text(tr("Done", "完成")) } },
     )
+}
+
+@Composable
+private fun ShortcutBrushGroupTargetRow(group: ShortcutBrushGroup, selectedPath: String, groupPaths: List<String>, onSelect: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val label = when (group) {
+        ShortcutBrushGroup.PEN -> tr("Pen", "钢笔")
+        ShortcutBrushGroup.PENCIL -> tr("Pencil", "铅笔")
+        ShortcutBrushGroup.BRUSH -> "Brushes"
+    }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, modifier = Modifier.width(84.dp), fontSize = 12.sp)
+        Box(Modifier.weight(1f)) {
+            OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
+                Text(selectedPath.ifBlank { tr("Automatic", "自动") }, maxLines = 1, modifier = Modifier.weight(1f))
+                Icon(Icons.Outlined.ArrowDropDown, null)
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                DropdownMenuItem(
+                    text = { Text(tr("Automatic", "自动")) },
+                    onClick = { onSelect(""); expanded = false },
+                )
+                groupPaths.forEach { path ->
+                    DropdownMenuItem(
+                        text = { Text(path) },
+                        onClick = { onSelect(path); expanded = false },
+                    )
+                }
+            }
+        }
+    }
 }
 
 private fun shortcutCategoryLabel(category: ShortcutCategory, language: UiLanguage): String = when (category) {

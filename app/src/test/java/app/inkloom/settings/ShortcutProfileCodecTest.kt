@@ -22,12 +22,30 @@ class ShortcutProfileCodecTest {
         assertEquals(bindings, ShortcutProfileCodec.decode(ShortcutProfileCodec.encode(bindings)).getOrThrow())
     }
 
+    @Test fun `portable profile preserves semantic Toolbox brush group targets`() {
+        val profile = ShortcutProfile(
+            bindings = CspShortcutResolver.defaultBindings,
+            brushGroupTargets = ShortcutBrushGroupTargets("Favorites/Pens", "Favorites/Pencils", "Paint/Brushes"),
+        )
+
+        assertEquals(profile, ShortcutProfileCodec.decodeProfile(ShortcutProfileCodec.encode(profile)).getOrThrow())
+    }
+
     @Test fun `profile is readable JSON with an explicit format version`() {
         val text = ShortcutProfileCodec.encode(CspShortcutResolver.defaultBindings).toString(Charsets.UTF_8)
 
         assertTrue(text.contains("\"format\": \"inkloom-shortcuts\""))
-        assertTrue(text.contains("\"version\": 1"))
+        assertTrue(text.contains("\"version\": 2"))
         assertTrue(text.contains("\"action\": \"PEN_OR_PENCIL_GROUP\""))
+    }
+
+    @Test fun `version one profiles remain compatible with automatic group targeting`() {
+        val legacy = """{"format":"inkloom-shortcuts","version":1,"bindings":[{"action":"BRUSH_GROUP","keyCode":30,"ctrl":false,"alt":false,"shift":false,"scanCode":0,"matchMode":"KEY_CODE","trigger":"PRESS"}]}"""
+
+        val decoded = ShortcutProfileCodec.decodeProfile(legacy.toByteArray()).getOrThrow()
+
+        assertEquals(ShortcutBrushGroupTargets(), decoded.brushGroupTargets)
+        assertEquals(ShortcutAction.BRUSH_GROUP, decoded.bindings.single().action)
     }
 
     @Test fun `malformed oversized and unknown version profiles are rejected`() {

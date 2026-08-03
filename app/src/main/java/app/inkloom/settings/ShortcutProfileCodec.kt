@@ -12,23 +12,30 @@ import kotlinx.serialization.json.put
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 
+data class ShortcutProfile(
+    val bindings: List<ShortcutBinding>,
+    val brushGroupTargets: ShortcutBrushGroupTargets = ShortcutBrushGroupTargets(),
+)
+
 object ShortcutProfileCodec {
     const val FILE_EXTENSION = "inkloom-shortcuts.json"
     const val MIME_TYPE = "application/json"
     const val MAX_FILE_BYTES = 256 * 1024
     private const val FORMAT = "inkloom-shortcuts"
-    private const val VERSION = 1
+    private const val VERSION = 2
     private const val MAX_BINDINGS = 512
     private const val MAX_DEVICE_TEXT_LENGTH = 512
     private val json = Json { prettyPrint = true }
 
-    fun encode(bindings: List<ShortcutBinding>): ByteArray {
-        require(bindings.size in 1..MAX_BINDINGS)
+    fun encode(bindings: List<ShortcutBinding>): ByteArray = encode(ShortcutProfile(bindings))
+
+    fun encode(profile: ShortcutProfile): ByteArray {
+        require(profile.bindings.size in 1..MAX_BINDINGS)
         val root = buildJsonObject {
             put("format", FORMAT)
             put("version", VERSION)
             put("bindings", buildJsonArray {
-                bindings.forEach { binding ->
+                profile.bindings.forEach { binding ->
                     add(buildJsonObject {
                         put("action", binding.action.name)
                         put("keyCode", binding.chord.keyCode)
@@ -43,19 +50,27 @@ object ShortcutProfileCodec {
                     })
                 }
             })
+            put("brushGroupTargets", buildJsonObject {
+                put("pen", profile.brushGroupTargets.pen)
+                put("pencil", profile.brushGroupTargets.pencil)
+                put("brush", profile.brushGroupTargets.brush)
+            })
         }
         return json.encodeToString(kotlinx.serialization.json.JsonObject.serializer(), root).toByteArray(Charsets.UTF_8)
     }
 
-    fun decode(bytes: ByteArray): Result<List<ShortcutBinding>> = runCatching {
+    fun decode(bytes: ByteArray): Result<List<ShortcutBinding>> = decodeProfile(bytes).map(ShortcutProfile::bindings)
+
+    fun decodeProfile(bytes: ByteArray): Result<ShortcutProfile> = runCatching {
         require(bytes.isNotEmpty()) { "Shortcut profile is empty." }
         require(bytes.size <= MAX_FILE_BYTES) { "Shortcut profile is too large." }
         val root = json.parseToJsonElement(bytes.toString(Charsets.UTF_8)).jsonObject
         require(root.requiredText("format") == FORMAT) { "Not an Inkloom shortcut profile." }
-        require(root.requiredInt("version") == VERSION) { "Unsupported shortcut profile version." }
+        val version = root.requiredInt("version")
+        require(version in 1..VERSION) { "Unsupported shortcut profile version." }
         val values = root.getValue("bindings").jsonArray
         require(values.size in 1..MAX_BINDINGS) { "Shortcut profile has an invalid binding count." }
-        values.map { value ->
+        val bindings = values.map { value ->
             val item = value.jsonObject
             val descriptor = item.optionalText("deviceDescriptor")
             val name = item.optionalText("deviceName")
@@ -79,9 +94,21 @@ object ShortcutProfileCodec {
                 deviceName = name,
             )
         }.distinct()
+        val targets = if (version >= 2) root["brushGroupTargets"]?.jsonObject?.let { item ->
+            ShortcutBrushGroupTargets(
+                pen = item.optionalText("pen").orEmpty(),
+                pencil = item.optionalText("pencil").orEmpty(),
+                brush = item.optionalText("brush").orEmpty(),
+            ).normalized()
+        } ?: ShortcutBrushGroupTargets() else ShortcutBrushGroupTargets()
+        ShortcutProfile(bindings, targets)
     }
 
     fun decode(input: InputStream): Result<List<ShortcutBinding>> = runCatching {
+        decodeProfile(input).getOrThrow().bindings
+    }
+
+    fun decodeProfile(input: InputStream): Result<ShortcutProfile> = runCatching {
         val output = ByteArrayOutputStream()
         val buffer = ByteArray(8 * 1024)
         var total = 0
@@ -92,7 +119,7 @@ object ShortcutProfileCodec {
             require(total <= MAX_FILE_BYTES) { "Shortcut profile is too large." }
             output.write(buffer, 0, count)
         }
-        decode(output.toByteArray()).getOrThrow()
+        decodeProfile(output.toByteArray()).getOrThrow()
     }
 
     private fun kotlinx.serialization.json.JsonObject.requiredText(key: String): String = getValue(key).jsonPrimitive.content
