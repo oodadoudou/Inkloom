@@ -29,9 +29,12 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
     private val indexFile = File(application.filesDir, "library.json")
     private val backupService = LibraryBackupService(application.filesDir)
+    private val pageTemplateStore = PageTemplateStore(application.filesDir)
     val assets = DocumentAssetService(application)
     private val mutableState = MutableStateFlow(LibraryUiState())
     val state = mutableState.asStateFlow()
+    private val mutablePageTemplates = MutableStateFlow(pageTemplateStore.load())
+    val pageTemplates = mutablePageTemplates.asStateFlow()
 
     init {
         val recovered = store.recover()
@@ -95,8 +98,10 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         saveFolders(mutableState.value.folders.filterNot { it.id == folderId || it.parentId == folderId }); refresh()
     }
 
-    fun addPage(documentId: String) = update(documentId) { document ->
-        val page = InkPage(title = "Page ${document.pages.size + 1}")
+    fun addPage(documentId: String, templateId: String? = null) = update(documentId) { document ->
+        val library = mutablePageTemplates.value
+        val template = library.template(templateId) ?: library.defaultFor(documentId)
+        val page = PageTemplateOperations.newPage(template, "Page ${document.pages.size + 1}")
         mutableState.value = mutableState.value.copy(selectedPageId = page.id)
         document.copy(pages = document.pages + page, updatedAt = System.currentTimeMillis())
     }
@@ -140,9 +145,39 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun setPageTemplate(documentId: String, pageId: String, pattern: PaperPattern) = update(documentId) { document ->
-        document.copy(pages = document.pages.map { page ->
-            if (page.id != pageId || page.background !is PageBackground.Paper) page else page.copy(background = page.background.copy(pattern = pattern))
-        }, updatedAt = System.currentTimeMillis())
+        val template = PageTemplateCatalog.builtIns.first { it.background == PageBackground.Paper(pattern = pattern) }
+        document.copy(pages = document.pages.map { page -> if (page.id == pageId) PageTemplateOperations.apply(page, template) else page }, updatedAt = System.currentTimeMillis())
+    }
+
+    fun applyPageTemplate(documentId: String, pageId: String, templateId: String) = update(documentId) { document ->
+        val template = mutablePageTemplates.value.template(templateId) ?: return@update document
+        document.copy(
+            pages = document.pages.map { page -> if (page.id == pageId) PageTemplateOperations.apply(page, template) else page },
+            updatedAt = System.currentTimeMillis(),
+        )
+    }
+
+    fun importPageTemplates(uri: Uri, displayName: String): List<PageTemplate> = assets.importPageTemplates(uri, displayName).also { imported ->
+        mutablePageTemplates.value = pageTemplateStore.add(imported)
+    }
+
+    fun savePageAsTemplate(documentId: String, pageId: String, name: String): PageTemplate? {
+        val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return null
+        val template = PageTemplateOperations.fromPage(page, name)
+        mutablePageTemplates.value = pageTemplateStore.add(listOf(template))
+        return template
+    }
+
+    fun togglePageTemplateFavorite(templateId: String) {
+        mutablePageTemplates.value = pageTemplateStore.toggleFavorite(templateId)
+    }
+
+    fun setNotebookDefaultTemplate(documentId: String, templateId: String?) {
+        mutablePageTemplates.value = pageTemplateStore.setNotebookDefault(documentId, templateId)
+    }
+
+    fun deletePageTemplate(templateId: String) {
+        mutablePageTemplates.value = pageTemplateStore.delete(templateId)
     }
 
     fun toggleBookmark(documentId: String, pageId: String) = update(documentId) { document -> document.copy(pages = document.pages.map { if (it.id == pageId) it.copy(bookmarked = !it.bookmarked) else it }, updatedAt = System.currentTimeMillis()) }
