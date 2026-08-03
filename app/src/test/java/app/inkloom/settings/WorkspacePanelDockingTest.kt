@@ -23,6 +23,24 @@ class WorkspacePanelDockingTest {
         assertEquals(WorkspacePanelDock.LEFT, WorkspacePanelDocking.target(fullHeightAtLeft, 1_200f, 800f, -80f, 5f))
         assertEquals(WorkspacePanelDock.BOTTOM, WorkspacePanelDocking.target(fullHeightAtLeft, 1_200f, 800f, 5f, 80f))
         assertNull(WorkspacePanelDocking.target(fullHeightAtLeft, 1_200f, 800f, 80f, 5f))
+        assertNull(WorkspacePanelDocking.target(fullHeightAtLeft, 1_200f, 800f, 5f, -80f))
+    }
+
+    @Test fun detachThresholdOnlyAcceptsMovementIntoTheCanvas() {
+        assertEquals(false, WorkspacePanelDocking.shouldDetach(WorkspacePanelDock.LEFT, 47f, 200f))
+        assertEquals(true, WorkspacePanelDocking.shouldDetach(WorkspacePanelDock.LEFT, 48f, 200f))
+        assertEquals(true, WorkspacePanelDocking.shouldDetach(WorkspacePanelDock.RIGHT, -60f, 0f))
+        assertEquals(false, WorkspacePanelDocking.shouldDetach(WorkspacePanelDock.RIGHT, 60f, 0f))
+        assertEquals(true, WorkspacePanelDocking.shouldDetach(WorkspacePanelDock.BOTTOM, 0f, -48f))
+        assertEquals(false, WorkspacePanelDocking.shouldDetach(WorkspacePanelDock.BOTTOM, 200f, 48f))
+    }
+
+    @Test fun detachedPreviewStartsAtItsDockUsingSavedSize() {
+        val saved = WorkspacePanelBounds(300f, 120f, 330f, 500f)
+
+        assertEquals(WorkspacePanelBounds(8f, 120f, 330f, 500f), WorkspacePanelDocking.initialFloatingBounds(WorkspacePanelDock.LEFT, saved, 1_200f, 800f, 280f))
+        assertEquals(WorkspacePanelBounds(862f, 120f, 330f, 500f), WorkspacePanelDocking.initialFloatingBounds(WorkspacePanelDock.RIGHT, saved, 1_200f, 800f, 280f))
+        assertEquals(WorkspacePanelBounds(300f, 292f, 330f, 500f), WorkspacePanelDocking.initialFloatingBounds(WorkspacePanelDock.BOTTOM, saved, 1_200f, 800f, 280f))
     }
 
     @Test fun previewBoundsStayInsideTheWorkspace() {

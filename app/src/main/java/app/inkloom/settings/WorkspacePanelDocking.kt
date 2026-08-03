@@ -2,6 +2,7 @@ package app.inkloom.settings
 
 object WorkspacePanelDocking {
     const val SNAP_DISTANCE_DP = 44f
+    const val DETACH_DISTANCE_DP = 48f
 
     fun target(
         bounds: WorkspacePanelBounds,
@@ -21,7 +22,9 @@ object WorkspacePanelDocking {
                 else -> null
             }
         }
-        if (dragDeltaYDp > 0f) return WorkspacePanelDock.BOTTOM.takeIf { bottomDistance <= SNAP_DISTANCE_DP }
+        if (kotlin.math.abs(dragDeltaYDp) > kotlin.math.abs(dragDeltaXDp)) {
+            return if (dragDeltaYDp > 0f) WorkspacePanelDock.BOTTOM.takeIf { bottomDistance <= SNAP_DISTANCE_DP } else null
+        }
         return listOf(
             WorkspacePanelDock.BOTTOM to bottomDistance,
             WorkspacePanelDock.LEFT to leftDistance,
@@ -29,6 +32,30 @@ object WorkspacePanelDocking {
         ).filter { (_, distance) -> distance <= SNAP_DISTANCE_DP }
             .minByOrNull { (_, distance) -> distance }
             ?.first
+    }
+
+    fun shouldDetach(dock: WorkspacePanelDock, dragDeltaXDp: Float, dragDeltaYDp: Float): Boolean = when (dock) {
+        WorkspacePanelDock.LEFT -> dragDeltaXDp >= DETACH_DISTANCE_DP
+        WorkspacePanelDock.RIGHT -> dragDeltaXDp <= -DETACH_DISTANCE_DP
+        WorkspacePanelDock.BOTTOM -> dragDeltaYDp <= -DETACH_DISTANCE_DP
+        WorkspacePanelDock.FREE -> false
+    }
+
+    fun initialFloatingBounds(
+        dock: WorkspacePanelDock,
+        savedBounds: WorkspacePanelBounds,
+        containerWidthDp: Float,
+        containerHeightDp: Float,
+        minimumWidthDp: Float,
+    ): WorkspacePanelBounds {
+        val clamped = WorkspacePanelPlacement.clamp(savedBounds, containerWidthDp, containerHeightDp, minimumWidthDp)
+        val margin = WorkspacePanelPlacement.MARGIN_DP
+        return when (dock) {
+            WorkspacePanelDock.LEFT -> clamped.copy(xDp = margin)
+            WorkspacePanelDock.RIGHT -> clamped.copy(xDp = (containerWidthDp - margin - clamped.widthDp).coerceAtLeast(margin))
+            WorkspacePanelDock.BOTTOM -> clamped.copy(yDp = (containerHeightDp - margin - clamped.heightDp).coerceAtLeast(margin))
+            WorkspacePanelDock.FREE -> clamped
+        }
     }
 
     fun previewBounds(
