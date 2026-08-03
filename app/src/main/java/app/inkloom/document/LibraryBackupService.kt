@@ -22,6 +22,7 @@ data class LibraryRestoreResult(
     val brushGroups: List<String>,
     val preferences: ByteArray? = null,
     val brushIdMappings: Map<String, String> = emptyMap(),
+    val pageTemplates: PageTemplateLibrary = PageTemplateLibrary(),
 )
 
 /**
@@ -43,12 +44,14 @@ class LibraryBackupService(private val filesRoot: File) {
         output: OutputStream,
         brushGroups: List<String> = emptyList(),
         preferences: ByteArray? = null,
+        pageTemplates: PageTemplateLibrary = PageTemplateLibrary(),
     ) {
         require(documents.size <= MAX_DOCUMENTS) { "Library has too many documents to back up" }
         require(folders.size <= MAX_FOLDERS) { "Library has too many folders to back up" }
         require(brushes.size <= MAX_BRUSHES) { "Library has too many brushes to back up" }
         require(brushGroups.size <= MAX_BRUSH_GROUPS) { "Library has too many brush groups to back up" }
         require(preferences == null || preferences.size <= MAX_PREFERENCES_BYTES) { "Library preferences are too large to back up" }
+        require(pageTemplates.customTemplates.size <= MAX_PAGE_TEMPLATES) { "Library has too many page templates to back up" }
         val portableBrushGroups = BrushGroupOperations.reconcileRegisteredGroups(brushGroups, brushes)
         val assets = linkedMapOf<String, File>()
         fun register(path: String?, folder: String): String? {
@@ -89,6 +92,13 @@ class LibraryBackupService(private val filesRoot: File) {
                 )
             })
         }
+        val portablePageTemplates = pageTemplates.copy(customTemplates = pageTemplates.customTemplates.map { template ->
+            template.copy(background = when (val background = template.background) {
+                is PageBackground.Paper -> background
+                is PageBackground.Pdf -> background.copy(assetPath = register(background.assetPath, DOCUMENT_ASSETS)!!)
+                is PageBackground.Image -> background.copy(assetPath = register(background.assetPath, DOCUMENT_ASSETS)!!)
+            })
+        })
         val manifest = LibraryBackupManifest(
             exportedAt = System.currentTimeMillis(),
             documents = portableDocuments,
@@ -96,6 +106,7 @@ class LibraryBackupService(private val filesRoot: File) {
             brushes = portableBrushes,
             brushGroups = portableBrushGroups,
             preferencesEntry = preferences?.let { PREFERENCES },
+            pageTemplates = portablePageTemplates,
         )
         ZipOutputStream(output.buffered()).use { zip ->
             zip.putNextEntry(ZipEntry(MANIFEST))
@@ -123,7 +134,7 @@ class LibraryBackupService(private val filesRoot: File) {
             require(manifestFile.isFile && manifestFile.length() <= MAX_MANIFEST_BYTES) { "Backup has no valid manifest" }
             val manifest = json.decodeFromString<LibraryBackupManifest>(manifestFile.readText())
             require(manifest.formatVersion in 1..FORMAT_VERSION) { "Backup version ${manifest.formatVersion} is not supported" }
-            require(manifest.documents.size <= MAX_DOCUMENTS && manifest.folders.size <= MAX_FOLDERS && manifest.brushes.size <= MAX_BRUSHES && manifest.brushGroups.size <= MAX_BRUSH_GROUPS) { "Backup manifest exceeds library limits" }
+            require(manifest.documents.size <= MAX_DOCUMENTS && manifest.folders.size <= MAX_FOLDERS && manifest.brushes.size <= MAX_BRUSHES && manifest.brushGroups.size <= MAX_BRUSH_GROUPS && manifest.pageTemplates.customTemplates.size <= MAX_PAGE_TEMPLATES) { "Backup manifest exceeds library limits" }
 
             fun retained(relativePath: String?, folder: String): String? {
                 if (relativePath.isNullOrBlank()) return null
@@ -142,6 +153,7 @@ class LibraryBackupService(private val filesRoot: File) {
             val now = System.currentTimeMillis()
             val rootFolder = InkFolder(name = "Restored backup")
             val folderIds = manifest.folders.associate { it.id to UUID.randomUUID().toString() }
+            val documentIds = manifest.documents.associate { it.id to UUID.randomUUID().toString() }
             val restoredFolders = listOf(rootFolder) + manifest.folders.map { folder ->
                 folder.copy(
                     id = folderIds.getValue(folder.id),
@@ -161,7 +173,7 @@ class LibraryBackupService(private val filesRoot: File) {
             }
             val restoredDocuments = manifest.documents.map { document ->
                 document.copy(
-                    id = UUID.randomUUID().toString(),
+                    id = documentIds.getValue(document.id),
                     coverImagePath = retained(document.coverImagePath, DOCUMENT_ASSETS),
                     folderId = document.folderId?.let(folderIds::get) ?: rootFolder.id,
                     createdAt = now,
@@ -186,6 +198,29 @@ class LibraryBackupService(private val filesRoot: File) {
                     },
                 )
             }
+            val templateIds = manifest.pageTemplates.customTemplates.associate { it.id to UUID.randomUUID().toString() }
+            fun restoredTemplateId(id: String): String? = when {
+                PageTemplateCatalog.isBuiltIn(id) -> id
+                else -> templateIds[id]
+            }
+            val restoredPageTemplates = PageTemplateLibrary(
+                customTemplates = manifest.pageTemplates.customTemplates.map { template ->
+                    template.copy(
+                        id = templateIds.getValue(template.id),
+                        background = when (val background = template.background) {
+                            is PageBackground.Paper -> background
+                            is PageBackground.Pdf -> background.copy(assetPath = retained(background.assetPath, DOCUMENT_ASSETS)!!)
+                            is PageBackground.Image -> background.copy(assetPath = retained(background.assetPath, DOCUMENT_ASSETS)!!)
+                        },
+                    )
+                },
+                favoriteIds = manifest.pageTemplates.favoriteIds.mapNotNullTo(linkedSetOf(), ::restoredTemplateId),
+                notebookDefaults = manifest.pageTemplates.notebookDefaults.mapNotNull { (documentId, templateId) ->
+                    val restoredDocumentId = documentIds[documentId] ?: return@mapNotNull null
+                    val restoredTemplateId = restoredTemplateId(templateId) ?: return@mapNotNull null
+                    restoredDocumentId to restoredTemplateId
+                }.toMap(),
+            )
             val restoredBrushGroups = BrushGroupOperations.reconcileRegisteredGroups(manifest.brushGroups, restoredBrushes)
             val restoredPreferences = manifest.preferencesEntry?.let { entry ->
                 require(entry == PREFERENCES) { "Backup preferences entry is invalid" }
@@ -193,7 +228,7 @@ class LibraryBackupService(private val filesRoot: File) {
                 require(file.isFile && file.length() in 1..MAX_PREFERENCES_BYTES.toLong()) { "Backup has no valid preferences" }
                 file.readBytes()
             }
-            return LibraryRestoreResult(restoredDocuments, restoredFolders, restoredBrushes, restoredBrushGroups, restoredPreferences, brushIds)
+            return LibraryRestoreResult(restoredDocuments, restoredFolders, restoredBrushes, restoredBrushGroups, restoredPreferences, brushIds, restoredPageTemplates)
         } finally {
             staging.deleteRecursively()
         }
@@ -280,10 +315,11 @@ class LibraryBackupService(private val filesRoot: File) {
         val brushes: List<ImportedBrush>,
         val brushGroups: List<String> = emptyList(),
         val preferencesEntry: String? = null,
+        val pageTemplates: PageTemplateLibrary = PageTemplateLibrary(),
     )
 
     private companion object {
-        const val FORMAT_VERSION = 2
+        const val FORMAT_VERSION = 3
         const val MANIFEST = "manifest.json"
         const val PREFERENCES = "preferences.json"
         const val DOCUMENT_ASSETS = "document-assets"
@@ -293,6 +329,7 @@ class LibraryBackupService(private val filesRoot: File) {
         const val MAX_FOLDERS = 10_000
         const val MAX_BRUSHES = 20_000
         const val MAX_BRUSH_GROUPS = 20_000
+        const val MAX_PAGE_TEMPLATES = 200
         const val MAX_PREFERENCES_BYTES = 512 * 1024
         const val MAX_ENTRIES = 50_000
         const val MAX_MANIFEST_BYTES = 128L * 1024 * 1024

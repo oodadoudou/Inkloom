@@ -330,7 +330,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     getApplication<Application>().contentResolver.openOutputStream(uri)?.use { output ->
-                        backupService.export(store.list(), loadFolders(), brushes, output, brushGroups, preferences)
+                        backupService.export(store.list(), loadFolders(), brushes, output, brushGroups, preferences, mutablePageTemplates.value)
                     } ?: error("Could not open the backup destination")
                 }
             }
@@ -346,6 +346,12 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
                         ?: error("Selected backup is unreadable")
                     restored.documents.forEach(store::save)
                     saveFolders(loadFolders() + restored.folders)
+                    val existingTemplates = pageTemplateStore.load()
+                    mutablePageTemplates.value = pageTemplateStore.save(existingTemplates.copy(
+                        customTemplates = (existingTemplates.customTemplates + restored.pageTemplates.customTemplates).distinctBy(PageTemplate::id),
+                        favoriteIds = existingTemplates.favoriteIds + restored.pageTemplates.favoriteIds,
+                        notebookDefaults = existingTemplates.notebookDefaults + restored.pageTemplates.notebookDefaults,
+                    ))
                     restored
                 }
             }
