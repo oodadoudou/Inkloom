@@ -15,6 +15,7 @@ import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.graphics.PorterDuffXfermode
+import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
@@ -133,6 +134,28 @@ class InkCanvasView(context: Context) : View(context) {
     private var brushSizeDragCurrentSize = 0f
     private var brushSizeDragPreviewX = 0f
     private var brushSizeDragPreviewY = 0f
+    private var continuousPlotActive = false
+    private var continuousPlotX = 0f
+    private var continuousPlotY = 0f
+    private var continuousPlotPressure = 1f
+    private var continuousPlotTilt = 0f
+    private var continuousPlotOrientation = 0f
+    private val continuousPlotRunnable = object : Runnable {
+        override fun run() {
+            if (!continuousPlotActive || !brushContinuousPlot || activeTool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) return
+            addPoint(
+                continuousPlotX,
+                continuousPlotY,
+                continuousPlotPressure,
+                SystemClock.uptimeMillis(),
+                continuousPlotTilt,
+                continuousPlotOrientation,
+                force = true,
+            )
+            invalidate()
+            postDelayed(this, CONTINUOUS_PLOT_INTERVAL_MS)
+        }
+    }
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
@@ -206,6 +229,7 @@ class InkCanvasView(context: Context) : View(context) {
     var strokeRotationJitterDegrees: Float = 0f
     var stampCount: Int = 1
     var stampCountJitter: Float = 0f
+    var brushContinuousPlot: Boolean = false
     var brushWatercolor: Boolean = false
     var brushColorMix: Float = 0f
     var brushPaintMix: Float = 0f
@@ -354,6 +378,7 @@ class InkCanvasView(context: Context) : View(context) {
     override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
         super.onWindowFocusChanged(hasWindowFocus)
         if (!hasWindowFocus) {
+            stopContinuousPlot()
             ctrlModifierHeld = false
             altModifierHeld = false
             lastStylusButtonState = 0
@@ -489,6 +514,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     override fun onDetachedFromWindow() {
+        stopContinuousPlot()
         recycleStrokeTiles()
         tipCache.values.forEach(Bitmap::recycle); tipCache.clear()
         super.onDetachedFromWindow()
@@ -635,7 +661,12 @@ class InkCanvasView(context: Context) : View(context) {
         val referenceScale = width.coerceAtLeast(1) / REFERENCE_WIDTH
         val scatterRandom = java.util.Random(stroke.renderSeed.toLong())
         val rotationRandom = java.util.Random(stroke.renderSeed.toLong() xor 0x49A2B31DL)
-        val sampledPoints = StrokeStampSampler.sample(stroke.points, width.toFloat(), height.toFloat()) { point ->
+        val sampledPoints = StrokeStampSampler.sample(
+            stroke.points,
+            width.toFloat(),
+            height.toFloat(),
+            includeStationaryPoints = stroke.continuousPlot,
+        ) { point ->
             val pressure = point.pressure.coerceIn(0f, 1f)
             val diameter = (stroke.width * referenceScale * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.renderSeed, SALT_SIZE)).coerceAtLeast(1f)
             val spacingDynamic = pressureDynamic(stroke.spacingPressureEnabled, stroke.spacingPressureMinimum, stroke.spacingPressureCurve, pressure) * secondaryDynamic(stroke.spacingSecondaryDynamics, point, stroke.renderSeed, SALT_SPACING)
@@ -709,7 +740,12 @@ class InkCanvasView(context: Context) : View(context) {
         val referenceScale = width.coerceAtLeast(1) / REFERENCE_WIDTH
         val scatterRandom = java.util.Random(stroke.renderSeed.toLong() xor DUAL_SCATTER_SEED)
         val rotationRandom = java.util.Random(stroke.renderSeed.toLong() xor DUAL_ROTATION_SEED)
-        val sampledPoints = StrokeStampSampler.sample(stroke.points, width.toFloat(), height.toFloat()) { point ->
+        val sampledPoints = StrokeStampSampler.sample(
+            stroke.points,
+            width.toFloat(),
+            height.toFloat(),
+            includeStationaryPoints = stroke.continuousPlot,
+        ) { point ->
             val pressure = point.pressure.coerceIn(0f, 1f)
             val diameter = (stroke.width * referenceScale * stroke.dualSizeScale.coerceIn(.01f, 8f) * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.renderSeed, SALT_SIZE)).coerceAtLeast(1f)
             val spacingDynamic = pressureDynamic(stroke.spacingPressureEnabled, stroke.spacingPressureMinimum, stroke.spacingPressureCurve, pressure) * secondaryDynamic(stroke.spacingSecondaryDynamics, point, stroke.renderSeed, SALT_SPACING)
@@ -962,7 +998,11 @@ class InkCanvasView(context: Context) : View(context) {
                     if (shapeKind == ShapeKind.FREEFORM) appendShapePoint(normalizedX, normalizedY)
                     invalidate(); return true
                 }
-                currentPoints.clear(); currentStrokeId = java.util.UUID.randomUUID().toString(); addPoint(normalizedX, normalizedY, event.pressure, event.eventTime, event.getAxisValue(MotionEvent.AXIS_TILT), event.orientation)
+                currentPoints.clear()
+                currentStrokeId = java.util.UUID.randomUUID().toString()
+                updateContinuousPlotInput(normalizedX, normalizedY, event.pressure, event.getAxisValue(MotionEvent.AXIS_TILT), event.orientation)
+                addPoint(normalizedX, normalizedY, event.pressure, event.eventTime, event.getAxisValue(MotionEvent.AXIS_TILT), event.orientation)
+                if (brushContinuousPlot && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) startContinuousPlot()
             }
             MotionEvent.ACTION_MOVE -> {
                 if (activeTool == EditorTool.EYEDROPPER) {
@@ -1001,10 +1041,12 @@ class InkCanvasView(context: Context) : View(context) {
                 }
                 else {
                     for (i in 0 until event.historySize) addPoint(event.getHistoricalX(i) / width, event.getHistoricalY(i) / height, event.getHistoricalPressure(i), event.getHistoricalEventTime(i), event.getHistoricalAxisValue(MotionEvent.AXIS_TILT, i), event.getHistoricalOrientation(i))
+                    updateContinuousPlotInput(normalizedX, normalizedY, event.pressure, event.getAxisValue(MotionEvent.AXIS_TILT), event.orientation)
                     addPoint(normalizedX, normalizedY, event.pressure, event.eventTime, event.getAxisValue(MotionEvent.AXIS_TILT), event.orientation)
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                stopContinuousPlot()
                 if (event.actionMasked == MotionEvent.ACTION_UP) performClick()
                 if (event.actionMasked == MotionEvent.ACTION_CANCEL || event.flags and MotionEvent.FLAG_CANCELED != 0) {
                     currentPoints.clear()
@@ -1120,6 +1162,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun cancelActiveGestureForNavigation() {
+        stopContinuousPlot()
         currentPoints.clear()
         shapeStart = null
         shapeEnd = null
@@ -1298,7 +1341,7 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
-    private fun addPoint(x: Float, y: Float, pressure: Float, time: Long, tilt: Float, orientation: Float) {
+    private fun addPoint(x: Float, y: Float, pressure: Float, time: Long, tilt: Float, orientation: Float, force: Boolean = false) {
         val adjustedPressure = PressureCalibration.apply(pressure, pressureMinimumInput, pressureMaximumInput, pressureSensitivity)
         val previous = currentPoints.lastOrNull()
         val rawX = x.coerceIn(0f, 1f)
@@ -1314,7 +1357,26 @@ class InkCanvasView(context: Context) : View(context) {
             pressure = max(.05f, adjustedPressure), timeMs = time, tilt = tilt, orientation = orientation,
             velocity = previous?.let { prior -> prior.velocity * VELOCITY_SMOOTHING + rawVelocity * (1f - VELOCITY_SMOOTHING) } ?: rawVelocity,
         )
-        if (previous == null || hypot((point.x - previous.x).toDouble(), (point.y - previous.y).toDouble()) > .0008) currentPoints += point
+        if (force || previous == null || hypot((point.x - previous.x).toDouble(), (point.y - previous.y).toDouble()) > .0008) currentPoints += point
+    }
+
+    private fun updateContinuousPlotInput(x: Float, y: Float, pressure: Float, tilt: Float, orientation: Float) {
+        continuousPlotX = x.coerceIn(0f, 1f)
+        continuousPlotY = y.coerceIn(0f, 1f)
+        continuousPlotPressure = pressure
+        continuousPlotTilt = tilt
+        continuousPlotOrientation = orientation
+    }
+
+    private fun startContinuousPlot() {
+        stopContinuousPlot()
+        continuousPlotActive = true
+        postDelayed(continuousPlotRunnable, CONTINUOUS_PLOT_INTERVAL_MS)
+    }
+
+    private fun stopContinuousPlot() {
+        continuousPlotActive = false
+        removeCallbacks(continuousPlotRunnable)
     }
 
     private fun resolveTool(event: MotionEvent, toolType: Int): EditorTool {
@@ -1328,7 +1390,7 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
-    private fun makeStroke(points: List<StrokePoint>) = InkStroke(id = currentStrokeId, points = points.toList(), colorArgb = inkColor.toUInt().toLong(), width = baseWidth, opacity = inkOpacity, brushId = brushId, layerId = activeLayerId, tipAssetPath = tipAssetPath, tipAssetPaths = tipAssetPaths.ifEmpty { listOfNotNull(tipAssetPath) }, dualTipAssetPaths = dualTipAssetPaths, grainAssetPath = grainAssetPath, grainDensity = grainDensity, grainScale = grainScale, grainRotationDegrees = grainRotationDegrees, grainBrightness = grainBrightness, grainContrast = grainContrast, grainReversed = grainReversed, grainEmphasized = grainEmphasized, grainOffsetJitter = grainOffsetJitter, spacing = brushSpacing, flow = brushFlow, hardness = brushHardness, thickness = brushThickness, thicknessVertical = brushThicknessVertical, rotationDegrees = brushRotation, followStylusOrientation = followStylusOrientation, followStrokeDirection = followStrokeDirection, randomRotationDegrees = randomRotationDegrees, strokeRotationJitterDegrees = strokeRotationJitterDegrees, stampCount = stampCount, stampCountJitter = stampCountJitter, watercolor = brushWatercolor, colorMix = brushColorMix, paintMix = brushPaintMix, spray = brushSpray, sprayParticleSize = sprayParticleSize, sprayParticleSizeUnit = sprayParticleSizeUnit, sprayParticleSizeSyncBrushSize = sprayParticleSizeSyncBrushSize, sprayDensity = sprayDensity, sprayBias = sprayBias, spraySpread = spraySpread, sprayParticleRotationDegrees = sprayParticleRotationDegrees, sprayParticleFollowStylusOrientation = sprayParticleFollowStylusOrientation, sprayParticleFollowStrokeDirection = sprayParticleFollowStrokeDirection, sprayParticleRandomRotationDegrees = sprayParticleRandomRotationDegrees, ribbon = brushRibbon, tipSequenceMode = brushTipSequenceMode, tipFlipHorizontalMode = tipFlipHorizontalMode, tipFlipVerticalMode = tipFlipVerticalMode, blendTipsWithDarken = blendTipsWithDarken, dualBrush = brushDual, dualSizeScale = dualSizeScale, dualSpacing = dualSpacing, dualFlow = dualFlow, dualHardness = dualHardness, dualThickness = dualThickness, dualThicknessVertical = dualThicknessVertical, dualRotationDegrees = dualRotationDegrees, dualFollowStylusOrientation = dualFollowStylusOrientation, dualFollowStrokeDirection = dualFollowStrokeDirection, dualRandomRotationDegrees = dualRandomRotationDegrees, dualStrokeRotationJitterDegrees = dualStrokeRotationJitterDegrees, dualStampCount = dualStampCount, dualStampCountJitter = dualStampCountJitter, dualRibbon = dualRibbon, dualSpray = dualSpray, dualSprayParticleSize = dualSprayParticleSize, dualSprayParticleSizeUnit = dualSprayParticleSizeUnit, dualSprayParticleSizeSyncBrushSize = dualSprayParticleSizeSyncBrushSize, dualSprayDensity = dualSprayDensity, dualSprayBias = dualSprayBias, dualSpraySpread = dualSpraySpread, dualSprayParticleRotationDegrees = dualSprayParticleRotationDegrees, dualSprayParticleFollowStylusOrientation = dualSprayParticleFollowStylusOrientation, dualSprayParticleFollowStrokeDirection = dualSprayParticleFollowStrokeDirection, dualSprayParticleRandomRotationDegrees = dualSprayParticleRandomRotationDegrees, dualTipSequenceMode = dualTipSequenceMode, dualTipFlipHorizontalMode = dualTipFlipHorizontalMode, dualTipFlipVerticalMode = dualTipFlipVerticalMode, dualBlendTipsWithDarken = dualBlendTipsWithDarken, dualCompositeMode = dualCompositeMode, dualApplyRgb = dualApplyRgb, taperMode = taperMode, taperStartEnabled = taperStartEnabled, taperStartLength = taperStartLength, taperStartLengthUnit = taperStartLengthUnit, taperStartMinimum = taperStartMinimum, taperEndEnabled = taperEndEnabled, taperEndLength = taperEndLength, taperEndLengthUnit = taperEndLengthUnit, taperEndMinimum = taperEndMinimum, waterEdgeEnabled = waterEdgeEnabled, waterEdgeRadius = waterEdgeRadius, waterEdgeRadiusUnit = waterEdgeRadiusUnit, waterEdgeOpacity = waterEdgeOpacity, waterEdgeDarkness = waterEdgeDarkness, waterEdgeBlur = waterEdgeBlur, waterEdgeBlurUnit = waterEdgeBlurUnit, sizePressureEnabled = sizePressureEnabled, sizePressureMinimum = sizePressureMinimum, sizePressureCurve = sizePressureCurve, sizeSecondaryDynamics = sizeSecondaryDynamics, opacityPressureEnabled = opacityPressureEnabled, opacityPressureMinimum = opacityPressureMinimum, opacityPressureCurve = opacityPressureCurve, opacitySecondaryDynamics = opacitySecondaryDynamics, flowPressureEnabled = flowPressureEnabled, flowPressureMinimum = flowPressureMinimum, flowPressureCurve = flowPressureCurve, flowSecondaryDynamics = flowSecondaryDynamics, spacingPressureEnabled = spacingPressureEnabled, spacingPressureMinimum = spacingPressureMinimum, spacingPressureCurve = spacingPressureCurve, spacingSecondaryDynamics = spacingSecondaryDynamics, thicknessPressureEnabled = thicknessPressureEnabled, thicknessPressureMinimum = thicknessPressureMinimum, thicknessPressureCurve = thicknessPressureCurve, thicknessSecondaryDynamics = thicknessSecondaryDynamics)
+    private fun makeStroke(points: List<StrokePoint>) = InkStroke(id = currentStrokeId, points = points.toList(), colorArgb = inkColor.toUInt().toLong(), width = baseWidth, opacity = inkOpacity, brushId = brushId, layerId = activeLayerId, tipAssetPath = tipAssetPath, tipAssetPaths = tipAssetPaths.ifEmpty { listOfNotNull(tipAssetPath) }, dualTipAssetPaths = dualTipAssetPaths, grainAssetPath = grainAssetPath, grainDensity = grainDensity, grainScale = grainScale, grainRotationDegrees = grainRotationDegrees, grainBrightness = grainBrightness, grainContrast = grainContrast, grainReversed = grainReversed, grainEmphasized = grainEmphasized, grainOffsetJitter = grainOffsetJitter, spacing = brushSpacing, flow = brushFlow, hardness = brushHardness, thickness = brushThickness, thicknessVertical = brushThicknessVertical, rotationDegrees = brushRotation, followStylusOrientation = followStylusOrientation, followStrokeDirection = followStrokeDirection, randomRotationDegrees = randomRotationDegrees, strokeRotationJitterDegrees = strokeRotationJitterDegrees, stampCount = stampCount, stampCountJitter = stampCountJitter, continuousPlot = brushContinuousPlot, watercolor = brushWatercolor, colorMix = brushColorMix, paintMix = brushPaintMix, spray = brushSpray, sprayParticleSize = sprayParticleSize, sprayParticleSizeUnit = sprayParticleSizeUnit, sprayParticleSizeSyncBrushSize = sprayParticleSizeSyncBrushSize, sprayDensity = sprayDensity, sprayBias = sprayBias, spraySpread = spraySpread, sprayParticleRotationDegrees = sprayParticleRotationDegrees, sprayParticleFollowStylusOrientation = sprayParticleFollowStylusOrientation, sprayParticleFollowStrokeDirection = sprayParticleFollowStrokeDirection, sprayParticleRandomRotationDegrees = sprayParticleRandomRotationDegrees, ribbon = brushRibbon, tipSequenceMode = brushTipSequenceMode, tipFlipHorizontalMode = tipFlipHorizontalMode, tipFlipVerticalMode = tipFlipVerticalMode, blendTipsWithDarken = blendTipsWithDarken, dualBrush = brushDual, dualSizeScale = dualSizeScale, dualSpacing = dualSpacing, dualFlow = dualFlow, dualHardness = dualHardness, dualThickness = dualThickness, dualThicknessVertical = dualThicknessVertical, dualRotationDegrees = dualRotationDegrees, dualFollowStylusOrientation = dualFollowStylusOrientation, dualFollowStrokeDirection = dualFollowStrokeDirection, dualRandomRotationDegrees = dualRandomRotationDegrees, dualStrokeRotationJitterDegrees = dualStrokeRotationJitterDegrees, dualStampCount = dualStampCount, dualStampCountJitter = dualStampCountJitter, dualRibbon = dualRibbon, dualSpray = dualSpray, dualSprayParticleSize = dualSprayParticleSize, dualSprayParticleSizeUnit = dualSprayParticleSizeUnit, dualSprayParticleSizeSyncBrushSize = dualSprayParticleSizeSyncBrushSize, dualSprayDensity = dualSprayDensity, dualSprayBias = dualSprayBias, dualSpraySpread = dualSpraySpread, dualSprayParticleRotationDegrees = dualSprayParticleRotationDegrees, dualSprayParticleFollowStylusOrientation = dualSprayParticleFollowStylusOrientation, dualSprayParticleFollowStrokeDirection = dualSprayParticleFollowStrokeDirection, dualSprayParticleRandomRotationDegrees = dualSprayParticleRandomRotationDegrees, dualTipSequenceMode = dualTipSequenceMode, dualTipFlipHorizontalMode = dualTipFlipHorizontalMode, dualTipFlipVerticalMode = dualTipFlipVerticalMode, dualBlendTipsWithDarken = dualBlendTipsWithDarken, dualCompositeMode = dualCompositeMode, dualApplyRgb = dualApplyRgb, taperMode = taperMode, taperStartEnabled = taperStartEnabled, taperStartLength = taperStartLength, taperStartLengthUnit = taperStartLengthUnit, taperStartMinimum = taperStartMinimum, taperEndEnabled = taperEndEnabled, taperEndLength = taperEndLength, taperEndLengthUnit = taperEndLengthUnit, taperEndMinimum = taperEndMinimum, waterEdgeEnabled = waterEdgeEnabled, waterEdgeRadius = waterEdgeRadius, waterEdgeRadiusUnit = waterEdgeRadiusUnit, waterEdgeOpacity = waterEdgeOpacity, waterEdgeDarkness = waterEdgeDarkness, waterEdgeBlur = waterEdgeBlur, waterEdgeBlurUnit = waterEdgeBlurUnit, sizePressureEnabled = sizePressureEnabled, sizePressureMinimum = sizePressureMinimum, sizePressureCurve = sizePressureCurve, sizeSecondaryDynamics = sizeSecondaryDynamics, opacityPressureEnabled = opacityPressureEnabled, opacityPressureMinimum = opacityPressureMinimum, opacityPressureCurve = opacityPressureCurve, opacitySecondaryDynamics = opacitySecondaryDynamics, flowPressureEnabled = flowPressureEnabled, flowPressureMinimum = flowPressureMinimum, flowPressureCurve = flowPressureCurve, flowSecondaryDynamics = flowSecondaryDynamics, spacingPressureEnabled = spacingPressureEnabled, spacingPressureMinimum = spacingPressureMinimum, spacingPressureCurve = spacingPressureCurve, spacingSecondaryDynamics = spacingSecondaryDynamics, thicknessPressureEnabled = thicknessPressureEnabled, thicknessPressureMinimum = thicknessPressureMinimum, thicknessPressureCurve = thicknessPressureCurve, thicknessSecondaryDynamics = thicknessSecondaryDynamics)
 
     private fun beginEraserGesture() {
         eraserGestureBefore = strokes.toList()
@@ -1600,6 +1662,7 @@ class InkCanvasView(context: Context) : View(context) {
         const val MAX_ERASER_SAMPLES_PER_EVENT = 256
         const val VELOCITY_FULL_SCALE_PX_PER_MS = 2f
         const val VELOCITY_SMOOTHING = .65f
+        const val CONTINUOUS_PLOT_INTERVAL_MS = 32L
         const val SALT_SIZE = 11
         const val SALT_OPACITY = 23
         const val SALT_FLOW = 37

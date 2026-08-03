@@ -66,6 +66,7 @@ data class ImportedBrush(
     val strokeRotationJitterDegrees: Float = 0f,
     val stampCount: Int = 1,
     val stampCountJitter: Float = 0f,
+    val continuousPlot: Boolean = false,
     val watercolor: Boolean = false,
     val colorMix: Float = 0f,
     val paintMix: Float = 0f,

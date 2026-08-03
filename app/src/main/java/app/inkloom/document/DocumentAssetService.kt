@@ -611,7 +611,12 @@ class DocumentAssetService(private val context: Context) {
         val scatterRandom = java.util.Random(stroke.renderSeed.toLong())
         val rotationRandom = java.util.Random(stroke.renderSeed.toLong() xor 0x49A2B31DL)
         paint.colorFilter = PorterDuffColorFilter(stroke.colorArgb.toInt(), PorterDuff.Mode.SRC_IN)
-        val sampledPoints = StrokeStampSampler.sample(stroke.points, width.toFloat(), height.toFloat()) { point ->
+        val sampledPoints = StrokeStampSampler.sample(
+            stroke.points,
+            width.toFloat(),
+            height.toFloat(),
+            includeStationaryPoints = stroke.continuousPlot,
+        ) { point ->
             val pressure = point.pressure.coerceIn(0f, 1f)
             val diameter = (stroke.width * width / 1600f * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.renderSeed, SALT_SIZE)).coerceAtLeast(1f)
             val spacingDynamic = pressureDynamic(stroke.spacingPressureEnabled, stroke.spacingPressureMinimum, stroke.spacingPressureCurve, pressure) * secondaryDynamic(stroke.spacingSecondaryDynamics, point, stroke.renderSeed, SALT_SPACING)
@@ -678,7 +683,12 @@ class DocumentAssetService(private val context: Context) {
         paint.blendMode = if (stroke.dualBlendTipsWithDarken) BlendMode.DARKEN else null
         val scatterRandom = java.util.Random(stroke.renderSeed.toLong() xor DUAL_SCATTER_SEED)
         val rotationRandom = java.util.Random(stroke.renderSeed.toLong() xor DUAL_ROTATION_SEED)
-        val sampledPoints = StrokeStampSampler.sample(stroke.points, width.toFloat(), height.toFloat()) { point ->
+        val sampledPoints = StrokeStampSampler.sample(
+            stroke.points,
+            width.toFloat(),
+            height.toFloat(),
+            includeStationaryPoints = stroke.continuousPlot,
+        ) { point ->
             val pressure = point.pressure.coerceIn(0f, 1f)
             val diameter = (stroke.width * width / 1600f * stroke.dualSizeScale.coerceIn(.01f, 8f) * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.renderSeed, SALT_SIZE)).coerceAtLeast(1f)
             val spacingDynamic = pressureDynamic(stroke.spacingPressureEnabled, stroke.spacingPressureMinimum, stroke.spacingPressureCurve, pressure) * secondaryDynamic(stroke.spacingSecondaryDynamics, point, stroke.renderSeed, SALT_SPACING)

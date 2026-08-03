@@ -3672,6 +3672,7 @@ private fun InkCanvasView.applyBrushConfiguration(
     strokeRotationJitterDegrees = activeBrush?.strokeRotationJitterDegrees ?: 0f
     stampCount = activeBrush?.stampCount ?: 1
     stampCountJitter = activeBrush?.stampCountJitter ?: 0f
+    brushContinuousPlot = activeBrush?.continuousPlot ?: false
     brushWatercolor = activeBrush?.watercolor ?: false
     brushColorMix = activeBrush?.colorMix ?: 0f
     brushPaintMix = activeBrush?.paintMix ?: 0f
@@ -5297,6 +5298,7 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 item { BrushSettingSlider("Random start rotation", draft.strokeRotationJitterDegrees, 0f..180f) { draft = draft.copy(strokeRotationJitterDegrees = it) } }
                 item { BrushSettingSlider("Stamp count", draft.stampCount.toFloat(), 1f..16f) { draft = draft.copy(stampCount = it.toInt().coerceIn(1, 16)) } }
                 item { BrushSettingSlider("Stamp count jitter", draft.stampCountJitter, 0f..1f) { draft = draft.copy(stampCountJitter = it) } }
+                item { SettingSwitch(tr("Continuous spraying", "连续喷涂"), tr("Holding the stylus in one place keeps depositing the brush tip, matching CSP slow-stroke density behavior.", "笔尖停留时继续叠加笔刷印章，匹配 CSP 慢速笔画的浓淡行为。"), draft.continuousPlot) { draft = draft.copy(continuousPlot = it) } }
                 item { BrushSettingSlider("Color mix", draft.colorMix, 0f..1f) { draft = draft.copy(colorMix = it) } }
                 item { BrushSettingSlider("Paint mix", draft.paintMix, 0f..1f) { draft = draft.copy(paintMix = it) } }
                 item { SettingSwitch("Watercolor approximation", "Uses translucent layered stamps.", draft.watercolor) { draft = draft.copy(watercolor = it) } }

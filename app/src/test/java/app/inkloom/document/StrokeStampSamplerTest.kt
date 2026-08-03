@@ -1,6 +1,7 @@
 package app.inkloom.document
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Test
 
 class StrokeStampSamplerTest {
@@ -47,5 +48,26 @@ class StrokeStampSamplerTest {
         val points = listOf(StrokePoint(0f, 0f), StrokePoint(.5f, 1f))
         assertEquals(45f, StrokeStampSampler.directionDegrees(points, 0, 200f, 100f), .0001f)
         assertEquals(45f, StrokeStampSampler.directionDegrees(points, 1, 200f, 100f), .0001f)
+    }
+
+    @Test fun continuousPlotPreservesTimeBasedStationaryStamps() {
+        val points = listOf(
+            StrokePoint(.5f, .5f, timeMs = 0L),
+            StrokePoint(.5f, .5f, timeMs = 32L),
+            StrokePoint(.5f, .5f, timeMs = 64L),
+        )
+
+        val ordinary = StrokeStampSampler.sample(points, 100f, 100f) { 10f }
+        val continuous = StrokeStampSampler.sample(
+            points,
+            100f,
+            100f,
+            includeStationaryPoints = true,
+        ) { 10f }
+
+        assertEquals(1, ordinary.size)
+        assertEquals(3, continuous.size)
+        assertSame(points[1], continuous[1])
+        assertSame(points[2], continuous[2])
     }
 }

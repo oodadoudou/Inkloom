@@ -12,6 +12,7 @@ object StrokeStampSampler {
         points: List<StrokePoint>,
         canvasWidth: Float,
         canvasHeight: Float,
+        includeStationaryPoints: Boolean = false,
         spacingFor: (StrokePoint) -> Float,
     ): List<StrokePoint> {
         if (points.size <= 1) return points
@@ -24,7 +25,10 @@ object StrokeStampSampler {
             val segmentWidth = (end.x - start.x) * width
             val segmentHeight = (end.y - start.y) * height
             val segmentLength = hypot(segmentWidth.toDouble(), segmentHeight.toDouble()).toFloat()
-            if (segmentLength <= 0f) return@forEach
+            if (segmentLength <= 0f) {
+                if (includeStationaryPoints) result += end
+                return@forEach
+            }
 
             var consumed = 0f
             while (segmentLength - consumed + EPSILON >= distanceUntilNext) {

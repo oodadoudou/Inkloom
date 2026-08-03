@@ -89,6 +89,7 @@ class BrushMetadataStore(
                         strokeRotationJitterDegrees = item.optDouble("strokeRotationJitterDegrees", 0.0).toFloat().coerceIn(0f, 180f),
                         stampCount = item.optInt("stampCount", 1).coerceIn(1, 16),
                         stampCountJitter = item.optDouble("stampCountJitter", 0.0).toFloat().coerceIn(0f, 1f),
+                        continuousPlot = item.optBoolean("continuousPlot", false),
                         watercolor = item.optBoolean("watercolor", false),
                         colorMix = item.optDouble("colorMix", 0.0).toFloat(),
                         paintMix = item.optDouble("paintMix", 0.0).toFloat(),
@@ -233,6 +234,7 @@ class BrushMetadataStore(
                     .put("strokeRotationJitterDegrees", brush.strokeRotationJitterDegrees)
                     .put("stampCount", brush.stampCount)
                     .put("stampCountJitter", brush.stampCountJitter)
+                    .put("continuousPlot", brush.continuousPlot)
                     .put("watercolor", brush.watercolor)
                     .put("colorMix", brush.colorMix)
                     .put("paintMix", brush.paintMix)
