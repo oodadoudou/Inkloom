@@ -53,7 +53,18 @@ data class AppSettings(
     val toolboxQuickSlots: List<ToolboxQuickSlot> = ToolboxQuickSlots.normalize(emptyList()),
 )
 
-enum class StylusButtonAction { ERASER, LASSO, NONE }
+enum class StylusButtonAction {
+    ERASER,
+    LASSO,
+    HAND,
+    EYEDROPPER,
+    UNDO,
+    REDO,
+    NONE;
+
+    val isCommand: Boolean get() = this == UNDO || this == REDO
+}
+
 enum class ToolbarDock { FREE, TOP, BOTTOM, LEFT, RIGHT }
 enum class WorkspacePanelDock { LEFT, FREE, RIGHT }
 enum class SelectionShape { FREEFORM, RECTANGLE }

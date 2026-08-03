@@ -4728,5 +4728,20 @@ private fun SettingSwitch(title: String, subtitle: String?, checked: Boolean, on
 
 @Composable
 private fun StylusActionRow(title: String, selected: StylusButtonAction, onSelected: (StylusButtonAction) -> Unit) {
-    Column { Text(title, fontSize = 13.sp); Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { StylusButtonAction.entries.forEach { action -> FilterChip(selected = selected == action, onClick = { onSelected(action) }, label = { Text(when (action) { StylusButtonAction.ERASER -> tr("Eraser", "橡皮"); StylusButtonAction.LASSO -> tr("Lasso", "套索"); StylusButtonAction.NONE -> tr("None", "无") }) }) } } }
+    Column {
+        Text(title, fontSize = 13.sp)
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(StylusButtonAction.entries, key = { it.name }) { action ->
+                FilterChip(selected = selected == action, onClick = { onSelected(action) }, label = { Text(when (action) {
+                    StylusButtonAction.ERASER -> tr("Eraser", "橡皮")
+                    StylusButtonAction.LASSO -> tr("Lasso", "套索")
+                    StylusButtonAction.HAND -> tr("Hand", "抓手")
+                    StylusButtonAction.EYEDROPPER -> tr("Eyedropper", "吸管")
+                    StylusButtonAction.UNDO -> tr("Undo", "撤销")
+                    StylusButtonAction.REDO -> tr("Redo", "重做")
+                    StylusButtonAction.NONE -> tr("None", "无")
+                }) })
+            }
+        }
+    }
 }

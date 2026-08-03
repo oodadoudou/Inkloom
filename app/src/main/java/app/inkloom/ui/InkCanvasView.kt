@@ -124,6 +124,9 @@ class InkCanvasView(context: Context) : View(context) {
     private var lastStylusSeenAt = Long.MIN_VALUE
     private var ctrlModifierHeld = false
     private var altModifierHeld = false
+    private var lastStylusButtonState = 0
+    private var stylusCommandConsumesContact = false
+    private var stylusHandNavigationContact = false
     private var brushSizeDragActive = false
     private var brushSizeDragStartX = 0f
     private var brushSizeDragStartSize = 0f
@@ -353,6 +356,9 @@ class InkCanvasView(context: Context) : View(context) {
         if (!hasWindowFocus) {
             ctrlModifierHeld = false
             altModifierHeld = false
+            lastStylusButtonState = 0
+            stylusCommandConsumesContact = false
+            stylusHandNavigationContact = false
             twoFingerTapUndoGesture.cancel()
             threeFingerTapRedoGesture.cancel()
             twoPointerRotationGesture.reset()
@@ -785,6 +791,24 @@ class InkCanvasView(context: Context) : View(context) {
         val isStylus = eventToolType == MotionEvent.TOOL_TYPE_STYLUS || eventToolType == MotionEvent.TOOL_TYPE_ERASER
         if (isStylus) lastStylusSeenAt = event.eventTime
         onInputDiagnostic(when (eventToolType) { MotionEvent.TOOL_TYPE_STYLUS -> "Stylus"; MotionEvent.TOOL_TYPE_ERASER -> "Eraser"; MotionEvent.TOOL_TYPE_FINGER -> "Finger"; else -> "Other" }, event.pressure, event.getAxisValue(MotionEvent.AXIS_TILT), event.buttonState)
+        val pressedButtonActions = if (isStylus) updateStylusButtonState(event.buttonState) else emptyList()
+        val pressedCommands = pressedButtonActions.filter(StylusButtonAction::isCommand).distinct()
+        val stylusButtonAction = if (isStylus) resolveStylusButtonAction(event.buttonState) else StylusButtonAction.NONE
+        if ((pressedCommands.isNotEmpty() || stylusButtonAction.isCommand) && activeTool != null) cancelActiveGestureForNavigation()
+        pressedCommands.forEach(::performStylusCommand)
+        if (stylusButtonAction.isCommand) stylusCommandConsumesContact = true
+        if (StylusButtonAction.HAND in pressedButtonActions) {
+            navigationX = event.x
+            navigationY = event.y
+            navigationDownX = event.x
+            navigationDownY = event.y
+            navigationMoved = false
+        }
+        if (stylusButtonAction == StylusButtonAction.HAND) stylusHandNavigationContact = true
+        if (stylusCommandConsumesContact || stylusButtonAction.isCommand) {
+            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) stylusCommandConsumesContact = false
+            return true
+        }
         if (brushSizeDragActive) {
             when (event.actionMasked) {
                 MotionEvent.ACTION_MOVE -> if (event.pointerCount == 1) updateBrushSizeDrag(event.x, event.y) else finishBrushSizeDrag(cancelled = true)
@@ -794,10 +818,11 @@ class InkCanvasView(context: Context) : View(context) {
             return true
         }
         val elapsedSinceStylus = if (lastStylusSeenAt == Long.MIN_VALUE) Long.MAX_VALUE else event.eventTime - lastStylusSeenAt
-        val isFingerNavigation = forceNavigation || StylusInputClassifier.shouldNavigateOrRejectFinger(isStylus, fingerDrawingEnabled, event.pointerCount, event.getTouchMajor(pointerIndex), elapsedSinceStylus)
+        val buttonForcesNavigation = isStylus && (stylusButtonAction == StylusButtonAction.HAND || stylusHandNavigationContact)
+        val isFingerNavigation = forceNavigation || buttonForcesNavigation || StylusInputClassifier.shouldNavigateOrRejectFinger(isStylus, fingerDrawingEnabled, event.pointerCount, event.getTouchMajor(pointerIndex), elapsedSinceStylus)
         if (isFingerNavigation) {
             if (activeTool != null) {
-                if (activeInputWasStylus && !forceNavigation) return true
+                if (activeInputWasStylus && !forceNavigation && !buttonForcesNavigation) return true
                 cancelActiveGestureForNavigation()
             }
             scaleDetector.onTouchEvent(event)
@@ -882,8 +907,9 @@ class InkCanvasView(context: Context) : View(context) {
                         performClick()
                     }
                     navigationTapEligible = false
+                    stylusHandNavigationContact = false
                 }
-                MotionEvent.ACTION_CANCEL -> { navigationTapEligible = false; twoFingerTapUndoGesture.cancel(); threeFingerTapRedoGesture.cancel(); twoPointerRotationGesture.reset() }
+                MotionEvent.ACTION_CANCEL -> { navigationTapEligible = false; twoFingerTapUndoGesture.cancel(); threeFingerTapRedoGesture.cancel(); twoPointerRotationGesture.reset(); stylusHandNavigationContact = false }
             }
             return true
         }
@@ -1116,8 +1142,38 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     override fun onGenericMotionEvent(event: MotionEvent): Boolean {
-        if ((0 until event.pointerCount).any { index -> event.getToolType(index) == MotionEvent.TOOL_TYPE_STYLUS || event.getToolType(index) == MotionEvent.TOOL_TYPE_ERASER }) lastStylusSeenAt = event.eventTime
+        val isStylus = (0 until event.pointerCount).any { index -> event.getToolType(index) == MotionEvent.TOOL_TYPE_STYLUS || event.getToolType(index) == MotionEvent.TOOL_TYPE_ERASER }
+        if (isStylus) {
+            lastStylusSeenAt = event.eventTime
+            val pressedCommands = updateStylusButtonState(event.buttonState).filter(StylusButtonAction::isCommand).distinct()
+            pressedCommands.forEach(::performStylusCommand)
+            if (pressedCommands.isNotEmpty() || resolveStylusButtonAction(event.buttonState).isCommand) return true
+        }
         return super.onGenericMotionEvent(event)
+    }
+
+    private fun updateStylusButtonState(buttonState: Int): List<StylusButtonAction> {
+        val tracked = buttonState and STYLUS_BUTTON_MASK
+        val newlyPressed = tracked and lastStylusButtonState.inv()
+        lastStylusButtonState = tracked
+        return buildList {
+            if (newlyPressed and MotionEvent.BUTTON_STYLUS_PRIMARY != 0) add(primaryButtonAction)
+            if (newlyPressed and MotionEvent.BUTTON_STYLUS_SECONDARY != 0) add(secondaryButtonAction)
+        }
+    }
+
+    private fun resolveStylusButtonAction(buttonState: Int): StylusButtonAction = when {
+        buttonState and MotionEvent.BUTTON_STYLUS_PRIMARY != 0 -> primaryButtonAction
+        buttonState and MotionEvent.BUTTON_STYLUS_SECONDARY != 0 -> secondaryButtonAction
+        else -> StylusButtonAction.NONE
+    }
+
+    private fun performStylusCommand(action: StylusButtonAction) {
+        when (action) {
+            StylusButtonAction.UNDO -> onUndoGesture()
+            StylusButtonAction.REDO -> onRedoGesture()
+            else -> Unit
+        }
     }
 
     private fun drawShapePreview(canvas: Canvas) {
@@ -1263,15 +1319,12 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun resolveTool(event: MotionEvent, toolType: Int): EditorTool {
         if (toolType == MotionEvent.TOOL_TYPE_ERASER) return EditorTool.ERASER
-        val action = when {
-            event.buttonState and MotionEvent.BUTTON_STYLUS_PRIMARY != 0 -> primaryButtonAction
-            event.buttonState and MotionEvent.BUTTON_STYLUS_SECONDARY != 0 -> secondaryButtonAction
-            else -> StylusButtonAction.NONE
-        }
+        val action = resolveStylusButtonAction(event.buttonState)
         return when (action) {
             StylusButtonAction.ERASER -> EditorTool.ERASER
             StylusButtonAction.LASSO -> EditorTool.SELECT
-            StylusButtonAction.NONE -> tool
+            StylusButtonAction.EYEDROPPER -> EditorTool.EYEDROPPER
+            StylusButtonAction.HAND, StylusButtonAction.UNDO, StylusButtonAction.REDO, StylusButtonAction.NONE -> tool
         }
     }
 
@@ -1537,6 +1590,7 @@ class InkCanvasView(context: Context) : View(context) {
         const val VIEW_ROTATION_DEGREES_PER_PIXEL = .25f
         const val DUAL_SEQUENCE_SEED = 0x35A71C9E
         const val MAX_TIP_CACHE_ENTRIES = 64
+        const val STYLUS_BUTTON_MASK = MotionEvent.BUTTON_STYLUS_PRIMARY or MotionEvent.BUTTON_STYLUS_SECONDARY
     }
 
     private fun pressureDynamic(enabled: Boolean, minimum: Float, curve: List<BrushCurvePoint>, input: Float): Float {

@@ -17,6 +17,8 @@ class AppSettingsBackupCodecTest {
             brushPanelXDp = 333f,
             toolbarDock = ToolbarDock.LEFT,
             twoFingerRotation = true,
+            stylusPrimaryButton = StylusButtonAction.UNDO,
+            stylusSecondaryButton = StylusButtonAction.HAND,
             pressureSensitivity = 1.7f,
             pressureMinimumInput = .1f,
             pressureMaximumInput = .8f,

@@ -12,6 +12,7 @@ import app.inkloom.settings.ShortcutBinding
 import app.inkloom.settings.ShortcutChord
 import app.inkloom.settings.ShortcutPhase
 import app.inkloom.settings.ShortcutTrigger
+import app.inkloom.settings.StylusButtonAction
 import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -124,6 +125,75 @@ class InkCanvasNavigationTest {
         }
 
         assertEquals(listOf(ShortcutPhase.PRESS, ShortcutPhase.RELEASE), phases)
+    }
+
+    @Test fun stylusUndoButtonFiresOncePerPressAndNeverCommitsInk() {
+        val view = canvas().apply {
+            tool = EditorTool.PEN
+            primaryButtonAction = StylusButtonAction.UNDO
+        }
+        var undoCount = 0
+        var committed = 0
+        view.onUndoGesture = { undoCount++ }
+        view.onStrokeCommitted = { committed++ }
+
+        sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 120f, 160f, MotionEvent.BUTTON_STYLUS_PRIMARY)
+        sendStylus(view, 20L, MotionEvent.ACTION_MOVE, 200f, 230f)
+        sendStylus(view, 40L, MotionEvent.ACTION_UP, 200f, 230f)
+
+        assertEquals(1, undoCount)
+        assertEquals("A stylus command button must never leave ink", 0, committed)
+    }
+
+    @Test fun secondaryStylusButtonCanTriggerRedoOnce() {
+        val view = canvas().apply {
+            tool = EditorTool.PEN
+            secondaryButtonAction = StylusButtonAction.REDO
+        }
+        var redoCount = 0
+        view.onRedoGesture = { redoCount++ }
+
+        sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 120f, 160f, MotionEvent.BUTTON_STYLUS_SECONDARY)
+        sendStylus(view, 20L, MotionEvent.ACTION_UP, 120f, 160f)
+
+        assertEquals(1, redoCount)
+    }
+
+    @Test fun stylusHandButtonTemporarilyPansAndNeverCommitsInk() {
+        val view = canvas().apply {
+            tool = EditorTool.PEN
+            primaryButtonAction = StylusButtonAction.HAND
+        }
+        var panX = 0f
+        var committed = 0
+        view.onViewportPan = { dx, _ -> panX += dx }
+        view.onStrokeCommitted = { committed++ }
+
+        sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 120f, 160f, MotionEvent.BUTTON_STYLUS_PRIMARY)
+        sendStylus(view, 20L, MotionEvent.ACTION_MOVE, 220f, 160f, MotionEvent.BUTTON_STYLUS_PRIMARY)
+        sendStylus(view, 40L, MotionEvent.ACTION_UP, 220f, 160f)
+
+        assertTrue("The held stylus Hand button must pan", panX >= 99f)
+        assertEquals("Stylus Hand navigation must never leave ink", 0, committed)
+    }
+
+    @Test fun pressingStylusHandButtonMidContactReanchorsWithoutJumping() {
+        val view = canvas().apply {
+            tool = EditorTool.PEN
+            primaryButtonAction = StylusButtonAction.HAND
+        }
+        var panX = 0f
+        var committed = 0
+        view.onViewportPan = { dx, _ -> panX += dx }
+        view.onStrokeCommitted = { committed++ }
+
+        sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 120f, 160f)
+        sendStylus(view, 20L, MotionEvent.ACTION_MOVE, 200f, 160f, MotionEvent.BUTTON_STYLUS_PRIMARY)
+        sendStylus(view, 40L, MotionEvent.ACTION_MOVE, 240f, 160f, MotionEvent.BUTTON_STYLUS_PRIMARY)
+        sendStylus(view, 60L, MotionEvent.ACTION_UP, 240f, 160f)
+
+        assertEquals("The first Hand-button event must establish a new anchor", 40f, panX, .001f)
+        assertEquals("Switching to Hand mid-contact must cancel the partial stroke", 0, committed)
     }
 
     @Test fun forcedHandNavigationPansWithAStylusWithoutCommittingInk() {
@@ -279,7 +349,7 @@ class InkCanvasNavigationTest {
         }
     }
 
-    private fun sendStylus(view: InkCanvasView, time: Long, action: Int, x: Float, y: Float) {
+    private fun sendStylus(view: InkCanvasView, time: Long, action: Int, x: Float, y: Float, buttonState: Int = 0) {
         val event = MotionEvent.obtain(
             0L,
             time,
@@ -288,7 +358,7 @@ class InkCanvasNavigationTest {
             arrayOf(MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_STYLUS }),
             arrayOf(MotionEvent.PointerCoords().apply { this.x = x; this.y = y; pressure = .6f; size = .05f }),
             0,
-            0,
+            buttonState,
             1f,
             1f,
             0,

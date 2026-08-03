@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.settings.AppSettings
 import app.inkloom.settings.AppSettingsStore
 import app.inkloom.settings.ShortcutBrushGroupTargets
+import app.inkloom.settings.StylusButtonAction
 import app.inkloom.settings.ToolboxQuickSlot
 import app.inkloom.settings.ToolboxQuickSlotKind
 import org.junit.Assert.assertEquals
@@ -53,6 +54,24 @@ class AppSettingsStoreTest {
             AppSettingsStore(context).save(AppSettings(toolboxQuickSlots = listOf(slot)))
 
             assertEquals(slot, AppSettingsStore(context).load().toolboxQuickSlots.first())
+        } finally {
+            preferences.edit().clear().commit()
+        }
+    }
+
+    @Test fun stylusButtonCommandsSurviveReload() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
+        preferences.edit().clear().commit()
+        try {
+            AppSettingsStore(context).save(AppSettings(
+                stylusPrimaryButton = StylusButtonAction.UNDO,
+                stylusSecondaryButton = StylusButtonAction.HAND,
+            ))
+
+            val restored = AppSettingsStore(context).load()
+            assertEquals(StylusButtonAction.UNDO, restored.stylusPrimaryButton)
+            assertEquals(StylusButtonAction.HAND, restored.stylusSecondaryButton)
         } finally {
             preferences.edit().clear().commit()
         }
