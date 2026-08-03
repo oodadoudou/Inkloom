@@ -44,6 +44,7 @@ data class AppSettings(
     val toolbarOffsetYDp: Float = 16f,
     val verticalToolbar: Boolean = false,
     val toolbarDock: ToolbarDock = ToolbarDock.FREE,
+    val singleFingerDoubleTapUndo: Boolean = false,
     val twoFingerDoubleTapUndo: Boolean = true,
     val threeFingerTapRedo: Boolean = true,
     val twoFingerRotation: Boolean = false,
@@ -139,6 +140,7 @@ class AppSettingsStore(context: Context) {
             toolbarOffsetYDp = preferences.getFloat("toolbarOffsetYDp", 16f).coerceIn(-1200f, 1200f),
             verticalToolbar = preferences.getBoolean("verticalToolbar", false),
             toolbarDock = enumValue(preferences.getString("toolbarDock", null), ToolbarDock.FREE),
+            singleFingerDoubleTapUndo = preferences.getBoolean("singleFingerDoubleTapUndo", false),
             twoFingerDoubleTapUndo = preferences.getBoolean("twoFingerDoubleTapUndo", true),
             threeFingerTapRedo = preferences.getBoolean("threeFingerTapRedo", true),
             twoFingerRotation = preferences.getBoolean("twoFingerRotation", false),
@@ -219,6 +221,7 @@ class AppSettingsStore(context: Context) {
             .putFloat("toolbarOffsetYDp", persisted.toolbarOffsetYDp)
             .putBoolean("verticalToolbar", persisted.verticalToolbar)
             .putString("toolbarDock", persisted.toolbarDock.name)
+            .putBoolean("singleFingerDoubleTapUndo", persisted.singleFingerDoubleTapUndo)
             .putBoolean("twoFingerDoubleTapUndo", persisted.twoFingerDoubleTapUndo)
             .putBoolean("threeFingerTapRedo", persisted.threeFingerTapRedo)
             .putBoolean("twoFingerRotation", persisted.twoFingerRotation)

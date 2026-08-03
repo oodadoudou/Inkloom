@@ -278,6 +278,7 @@ class InkloomLaunchTest {
     @Test fun settingsExposeInputAndToolControls() {
         composeRule.onNodeWithContentDescription("Settings").performClick()
         composeRule.onNodeWithText("Draw with finger").assertIsDisplayed()
+        composeRule.onNodeWithText("Single-finger double tap to undo").assertIsDisplayed()
     }
 
     @Test fun settingsExposeConflictSafeFullLibraryBackup() {

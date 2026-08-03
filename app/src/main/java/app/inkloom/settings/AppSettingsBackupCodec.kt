@@ -66,7 +66,7 @@ object AppSettingsBackupCodec {
         put("brushPanelXDp", brushPanelXDp); put("brushPanelYDp", brushPanelYDp); put("brushPanelWidthDp", brushPanelWidthDp); put("brushPanelHeightDp", brushPanelHeightDp)
         put("layerPanelXDp", layerPanelXDp); put("layerPanelYDp", layerPanelYDp); put("layerPanelWidthDp", layerPanelWidthDp); put("layerPanelHeightDp", layerPanelHeightDp)
         put("toolbarOffsetXDp", toolbarOffsetXDp); put("toolbarOffsetYDp", toolbarOffsetYDp); put("verticalToolbar", verticalToolbar); put("toolbarDock", toolbarDock.name)
-        put("twoFingerDoubleTapUndo", twoFingerDoubleTapUndo); put("threeFingerTapRedo", threeFingerTapRedo); put("twoFingerRotation", twoFingerRotation)
+        put("singleFingerDoubleTapUndo", singleFingerDoubleTapUndo); put("twoFingerDoubleTapUndo", twoFingerDoubleTapUndo); put("threeFingerTapRedo", threeFingerTapRedo); put("twoFingerRotation", twoFingerRotation)
         put("stylusPrimaryButton", stylusPrimaryButton.name); put("stylusSecondaryButton", stylusSecondaryButton.name)
         put("pressureSensitivity", pressureSensitivity); put("pressureMinimumInput", pressureMinimumInput); put("pressureMaximumInput", pressureMaximumInput)
         put("stabilization", stabilization); put("showInputDiagnostics", showInputDiagnostics)
@@ -99,7 +99,7 @@ object AppSettingsBackupCodec {
             layerPanelWidthDp = float("layerPanelWidthDp", defaults.layerPanelWidthDp).coerceIn(80f, 1200f), layerPanelHeightDp = float("layerPanelHeightDp", defaults.layerPanelHeightDp).coerceIn(120f, 1600f),
             toolbarOffsetXDp = float("toolbarOffsetXDp", defaults.toolbarOffsetXDp).coerceIn(-1200f, 1200f), toolbarOffsetYDp = float("toolbarOffsetYDp", defaults.toolbarOffsetYDp).coerceIn(-1200f, 1200f),
             verticalToolbar = boolean("verticalToolbar", defaults.verticalToolbar), toolbarDock = enum("toolbarDock", defaults.toolbarDock),
-            twoFingerDoubleTapUndo = boolean("twoFingerDoubleTapUndo", defaults.twoFingerDoubleTapUndo), threeFingerTapRedo = boolean("threeFingerTapRedo", defaults.threeFingerTapRedo),
+            singleFingerDoubleTapUndo = boolean("singleFingerDoubleTapUndo", defaults.singleFingerDoubleTapUndo), twoFingerDoubleTapUndo = boolean("twoFingerDoubleTapUndo", defaults.twoFingerDoubleTapUndo), threeFingerTapRedo = boolean("threeFingerTapRedo", defaults.threeFingerTapRedo),
             twoFingerRotation = boolean("twoFingerRotation", defaults.twoFingerRotation), stylusPrimaryButton = enum("stylusPrimaryButton", defaults.stylusPrimaryButton), stylusSecondaryButton = enum("stylusSecondaryButton", defaults.stylusSecondaryButton),
             pressureSensitivity = float("pressureSensitivity", defaults.pressureSensitivity).coerceIn(.25f, 2.5f), pressureMinimumInput = minimum, pressureMaximumInput = maximum,
             stabilization = float("stabilization", defaults.stabilization).coerceIn(0f, .9f), showInputDiagnostics = boolean("showInputDiagnostics", defaults.showInputDiagnostics),

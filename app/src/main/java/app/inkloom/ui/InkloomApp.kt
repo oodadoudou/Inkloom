@@ -3526,6 +3526,8 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onPdfGotoLink = onPdfGotoLink
                 view.onUndoGesture = onUndoGesture
                 view.onRedoGesture = onRedoGesture
+                view.singleFingerDoubleTapUndo = settings.singleFingerDoubleTapUndo
+                view.twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo
                 view.threeFingerTapRedo = settings.threeFingerTapRedo
                 view.twoFingerRotationEnabled = settings.twoFingerRotation
                 view.onInputDiagnostic = onInputDiagnostic
@@ -3565,6 +3567,8 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onPdfGotoLink = onPdfGotoLink
                 view.onUndoGesture = onUndoGesture
                 view.onRedoGesture = onRedoGesture
+                view.singleFingerDoubleTapUndo = settings.singleFingerDoubleTapUndo
+                view.twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo
                 view.threeFingerTapRedo = settings.threeFingerTapRedo
                 view.twoFingerRotationEnabled = settings.twoFingerRotation
                 view.onInputDiagnostic = onInputDiagnostic
@@ -3622,6 +3626,7 @@ private fun InkCanvasView.applyBrushConfiguration(
 ) {
     tool = selectedTool
     fingerDrawingEnabled = settings.fingerDrawing
+    singleFingerDoubleTapUndo = settings.singleFingerDoubleTapUndo
     twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo
     threeFingerTapRedo = settings.threeFingerTapRedo
     pressureSensitivity = settings.pressureSensitivity
@@ -5537,6 +5542,7 @@ private fun SettingsDialog(
                 } }
                 item { Text(tr("INPUT", "输入"), color = Sage, fontSize = 12.sp) }
                 item { SettingSwitch(tr("Draw with finger", "手指书写"), tr("Off by default. Fingers navigate and zoom.", "默认关闭；手指用于移动和缩放。"), settings.fingerDrawing) { onChange(settings.copy(fingerDrawing = it)) } }
+                item { SettingSwitch(tr("Single-finger double tap to undo", "单指双击撤销"), tr("Off by default. Only blank-canvas taps trigger it; drawing, dragging and links are excluded.", "默认关闭；仅空白画布短触生效，书写、拖动和链接均不会触发。"), settings.singleFingerDoubleTapUndo) { onChange(settings.copy(singleFingerDoubleTapUndo = it)) } }
                 item { SettingSwitch(tr("Two-finger double tap to undo", "双指双击撤销"), tr("Matches common notebook gestures.", "符合常见笔记应用手势。"), settings.twoFingerDoubleTapUndo) { onChange(settings.copy(twoFingerDoubleTapUndo = it)) } }
                 item { SettingSwitch(tr("Three-finger tap to redo", "三指轻点重做"), tr("Matches common drawing-app gestures.", "符合常见绘画应用手势。"), settings.threeFingerTapRedo) { onChange(settings.copy(threeFingerTapRedo = it)) } }
                 item { SettingSwitch(tr("Two-finger canvas rotation", "双指旋转画布"), tr("Off by default to prevent accidental rotation; R remains available.", "默认关闭以避免误旋转；仍可使用 R 快捷键。"), settings.twoFingerRotation) { onChange(settings.copy(twoFingerRotation = it)) } }

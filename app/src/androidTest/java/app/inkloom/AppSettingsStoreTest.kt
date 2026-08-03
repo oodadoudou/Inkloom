@@ -29,8 +29,9 @@ class AppSettingsStoreTest {
         val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
         preferences.edit().clear().commit()
         try {
-            AppSettingsStore(context).save(AppSettings(twoFingerRotation = true, threeFingerTapRedo = false))
+            AppSettingsStore(context).save(AppSettings(singleFingerDoubleTapUndo = true, twoFingerRotation = true, threeFingerTapRedo = false))
 
+            assertTrue(AppSettingsStore(context).load().singleFingerDoubleTapUndo)
             assertTrue(AppSettingsStore(context).load().twoFingerRotation)
             assertFalse(AppSettingsStore(context).load().threeFingerTapRedo)
         } finally {

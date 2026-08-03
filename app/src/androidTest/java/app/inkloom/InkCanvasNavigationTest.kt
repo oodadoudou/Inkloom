@@ -22,6 +22,59 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class InkCanvasNavigationTest {
+    @Test fun enabledSingleFingerDoubleTapOnBlankCanvasTriggersUndoOnce() {
+        val view = canvas().apply {
+            fingerDrawingEnabled = false
+            singleFingerDoubleTapUndo = true
+        }
+        var undoCount = 0
+        view.onUndoGesture = { undoCount++ }
+
+        send(view, 1_000L, MotionEvent.ACTION_DOWN, point(0, 300f, 300f))
+        send(view, 1_080L, MotionEvent.ACTION_UP, point(0, 300f, 300f))
+        send(view, 1_220L, MotionEvent.ACTION_DOWN, point(0, 304f, 302f))
+        send(view, 1_300L, MotionEvent.ACTION_UP, point(0, 304f, 302f))
+
+        assertEquals(1, undoCount)
+    }
+
+    @Test fun singleFingerDoubleTapUndoIsDisabledByDefault() {
+        val view = canvas().apply { fingerDrawingEnabled = false }
+        var undoCount = 0
+        view.onUndoGesture = { undoCount++ }
+
+        send(view, 1_000L, MotionEvent.ACTION_DOWN, point(0, 300f, 300f))
+        send(view, 1_080L, MotionEvent.ACTION_UP, point(0, 300f, 300f))
+        send(view, 1_220L, MotionEvent.ACTION_DOWN, point(0, 300f, 300f))
+        send(view, 1_300L, MotionEvent.ACTION_UP, point(0, 300f, 300f))
+
+        assertEquals(0, undoCount)
+    }
+
+    @Test fun dragAndSecondPointerCancelSingleFingerDoubleTapUndo() {
+        val view = canvas().apply {
+            fingerDrawingEnabled = false
+            singleFingerDoubleTapUndo = true
+        }
+        var undoCount = 0
+        view.onUndoGesture = { undoCount++ }
+
+        send(view, 1_000L, MotionEvent.ACTION_DOWN, point(0, 300f, 300f))
+        send(view, 1_080L, MotionEvent.ACTION_UP, point(0, 300f, 300f))
+        send(view, 1_180L, MotionEvent.ACTION_DOWN, point(0, 300f, 300f))
+        send(view, 1_220L, MotionEvent.ACTION_MOVE, point(0, 360f, 300f))
+        send(view, 1_260L, MotionEvent.ACTION_UP, point(0, 360f, 300f))
+
+        send(view, 1_400L, MotionEvent.ACTION_DOWN, point(0, 300f, 300f))
+        send(view, 1_440L, MotionEvent.ACTION_UP, point(0, 300f, 300f))
+        send(view, 1_540L, MotionEvent.ACTION_DOWN, point(0, 300f, 300f))
+        send(view, 1_560L, MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), point(0, 300f, 300f), point(1, 500f, 300f))
+        send(view, 1_600L, MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), point(0, 300f, 300f), point(1, 500f, 300f))
+        send(view, 1_620L, MotionEvent.ACTION_UP, point(0, 300f, 300f))
+
+        assertEquals(0, undoCount)
+    }
+
     @Test fun twoFingerTranslationPansWithoutChangingSpan() {
         val view = canvas().apply { fingerDrawingEnabled = false }
         var panX = 0f

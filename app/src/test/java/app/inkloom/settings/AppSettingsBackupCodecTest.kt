@@ -25,6 +25,7 @@ class AppSettingsBackupCodecTest {
             panelTabOrder = "LAYERS,BRUSHES,PAGES",
             brushPanelXDp = 333f,
             toolbarDock = ToolbarDock.LEFT,
+            singleFingerDoubleTapUndo = true,
             twoFingerRotation = true,
             stylusPrimaryButton = StylusButtonAction.UNDO,
             stylusSecondaryButton = StylusButtonAction.HAND,

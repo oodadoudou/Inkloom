@@ -13,6 +13,29 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class PdfGotoLinkCanvasTest {
+    @Test fun doubleTapOnPdfLinkActivatesTheLinkAndNeverUndoes() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        var activations = 0
+        var undoCount = 0
+        instrumentation.runOnMainSync {
+            val view = InkCanvasView(instrumentation.targetContext).apply {
+                layout(0, 0, 1000, 1000)
+                singleFingerDoubleTapUndo = true
+                pdfGotoLinks = listOf(PdfGotoLink(listOf(PdfTextBounds(.1f, .1f, .3f, .3f)), "target"))
+                onPdfGotoLink = { activations += 1 }
+                onUndoGesture = { undoCount += 1 }
+            }
+
+            view.dispatchFinger(MotionEvent.ACTION_DOWN, 200f, 200f, 1_000L)
+            view.dispatchFinger(MotionEvent.ACTION_UP, 200f, 200f, 1_080L)
+            view.dispatchFinger(MotionEvent.ACTION_DOWN, 200f, 200f, 1_220L)
+            view.dispatchFinger(MotionEvent.ACTION_UP, 200f, 200f, 1_300L)
+        }
+
+        assertEquals(2, activations)
+        assertEquals(0, undoCount)
+    }
+
     @Test fun cleanFingerTapActivatesLinkButDragDoesNot() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         var activations = 0

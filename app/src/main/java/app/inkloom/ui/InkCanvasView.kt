@@ -52,6 +52,7 @@ import app.inkloom.document.RenderedColorSampling
 import app.inkloom.document.ShapeGeometry
 import app.inkloom.document.ShapeKind
 import app.inkloom.document.ShapePoint
+import app.inkloom.document.SingleFingerDoubleTapUndoGesture
 import app.inkloom.document.SprayGeometry
 import app.inkloom.document.StrokeEdit
 import app.inkloom.document.StrokeEditHistory
@@ -116,6 +117,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var navigationMoved = false
     private var navigationTapEligible = false
     private val navigationTouchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+    private val singleFingerDoubleTapUndoGesture = SingleFingerDoubleTapUndoGesture(navigationTouchSlop)
     private val twoFingerTapUndoGesture = TwoFingerTapUndoGesture(navigationTouchSlop)
     private val threeFingerTapRedoGesture = ThreeFingerTapRedoGesture(navigationTouchSlop)
     private val twoPointerRotationGesture = TwoPointerRotationGesture()
@@ -325,6 +327,11 @@ class InkCanvasView(context: Context) : View(context) {
     var eraserPressureSize: Boolean = false
     var eraserTipAssetPath: String? = null
     var fingerDrawingEnabled: Boolean = false
+    var singleFingerDoubleTapUndo: Boolean = false
+        set(value) {
+            field = value
+            if (!value) singleFingerDoubleTapUndoGesture.cancel()
+        }
     var twoFingerDoubleTapUndo: Boolean = true
     var threeFingerTapRedo: Boolean = true
     var twoFingerRotationEnabled: Boolean = false
@@ -384,6 +391,7 @@ class InkCanvasView(context: Context) : View(context) {
             lastStylusButtonState = 0
             stylusCommandConsumesContact = false
             stylusHandNavigationContact = false
+            singleFingerDoubleTapUndoGesture.cancel()
             twoFingerTapUndoGesture.cancel()
             threeFingerTapRedoGesture.cancel()
             twoPointerRotationGesture.reset()
@@ -825,6 +833,7 @@ class InkCanvasView(context: Context) : View(context) {
         val pointerIndex = event.actionIndex.coerceIn(0, event.pointerCount - 1)
         val eventToolType = event.getToolType(pointerIndex)
         val isStylus = eventToolType == MotionEvent.TOOL_TYPE_STYLUS || eventToolType == MotionEvent.TOOL_TYPE_ERASER
+        if (isStylus) singleFingerDoubleTapUndoGesture.cancel()
         if (isStylus) lastStylusSeenAt = event.eventTime
         onInputDiagnostic(when (eventToolType) { MotionEvent.TOOL_TYPE_STYLUS -> "Stylus"; MotionEvent.TOOL_TYPE_ERASER -> "Eraser"; MotionEvent.TOOL_TYPE_FINGER -> "Finger"; else -> "Other" }, event.pressure, event.getAxisValue(MotionEvent.AXIS_TILT), event.buttonState)
         val pressedButtonActions = if (isStylus) updateStylusButtonState(event.buttonState) else emptyList()
@@ -872,10 +881,14 @@ class InkCanvasView(context: Context) : View(context) {
                     navigationTapEligible = eventToolType == MotionEvent.TOOL_TYPE_FINGER &&
                         event.getTouchMajor(pointerIndex) < StylusInputClassifier.PALM_TOUCH_MAJOR_PX &&
                         elapsedSinceStylus > StylusInputClassifier.RECENT_STYLUS_WINDOW_MS
+                    if (singleFingerDoubleTapUndo && navigationTapEligible) {
+                        singleFingerDoubleTapUndoGesture.start(event.eventTime, event.x, event.y)
+                    } else singleFingerDoubleTapUndoGesture.cancel()
                 }
                 MotionEvent.ACTION_POINTER_DOWN -> {
                     navigationMoved = true
                     navigationTapEligible = false
+                    singleFingerDoubleTapUndoGesture.cancel()
                     if (event.pointerCount == 3 && threeFingerTapRedo) {
                         twoFingerTapUndoGesture.cancel()
                         val focus = event.centroid()
@@ -922,10 +935,12 @@ class InkCanvasView(context: Context) : View(context) {
                     navigationX = focus.first; navigationY = focus.second
                     navigationMoved = true
                 } else if (!scaleDetector.isInProgress && rotateNavigation) {
+                    singleFingerDoubleTapUndoGesture.move(event.x, event.y, transforming = false)
                     onViewportRotate((event.x - navigationX) * VIEW_ROTATION_DEGREES_PER_PIXEL)
                     navigationX = event.x; navigationY = event.y
                     navigationMoved = true
                 } else if (!scaleDetector.isInProgress) {
+                    singleFingerDoubleTapUndoGesture.move(event.x, event.y, transforming = false)
                     if (hypot(event.x - navigationDownX, event.y - navigationDownY) > navigationTouchSlop) navigationMoved = true
                     onViewportPan(event.x - navigationX, event.y - navigationY)
                     navigationX = event.x; navigationY = event.y
@@ -935,20 +950,27 @@ class InkCanvasView(context: Context) : View(context) {
                     threeFingerTapRedoGesture.cancel()
                     val movedFromDown = navigationMoved || hypot(event.x - navigationDownX, event.y - navigationDownY) > navigationTouchSlop
                     if (navigationTapEligible && !movedFromDown && !scaleDetector.isInProgress) {
-                        PdfGotoLinkNavigation.hit(
+                        val link = PdfGotoLinkNavigation.hit(
                             pdfGotoLinks,
                             (event.x / width.coerceAtLeast(1)).coerceIn(0f, 1f),
                             (event.y / height.coerceAtLeast(1)).coerceIn(0f, 1f),
-                        )?.let(onPdfGotoLink)
+                        )
+                        if (link != null) {
+                            singleFingerDoubleTapUndoGesture.cancel()
+                            onPdfGotoLink(link)
+                        } else if (singleFingerDoubleTapUndo && singleFingerDoubleTapUndoGesture.finish(event.eventTime)) {
+                            onUndoGesture()
+                        }
                         performClick()
-                    }
+                    } else singleFingerDoubleTapUndoGesture.cancel()
                     navigationTapEligible = false
                     stylusHandNavigationContact = false
                 }
-                MotionEvent.ACTION_CANCEL -> { navigationTapEligible = false; twoFingerTapUndoGesture.cancel(); threeFingerTapRedoGesture.cancel(); twoPointerRotationGesture.reset(); stylusHandNavigationContact = false }
+                MotionEvent.ACTION_CANCEL -> { navigationTapEligible = false; singleFingerDoubleTapUndoGesture.cancel(); twoFingerTapUndoGesture.cancel(); threeFingerTapRedoGesture.cancel(); twoPointerRotationGesture.reset(); stylusHandNavigationContact = false }
             }
             return true
         }
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) singleFingerDoubleTapUndoGesture.cancel()
         val normalizedX = (event.x / width.coerceAtLeast(1)).coerceIn(0f, 1f)
         val normalizedY = (event.y / height.coerceAtLeast(1)).coerceIn(0f, 1f)
         when (event.actionMasked) {
