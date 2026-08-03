@@ -2418,6 +2418,7 @@ private fun InkCanvasView.applyBrushConfiguration(
     grainReversed = activeBrush?.grainReversed ?: false
     grainEmphasized = activeBrush?.grainEmphasized ?: false
     grainOffsetJitter = activeBrush?.grainOffsetJitter ?: false
+    grainCompositeMode = activeBrush?.grainCompositeMode ?: CspTextureComposite.MULTIPLY
     brushSpacing = activeBrush?.spacing ?: .12f
     brushFlow = activeBrush?.flow ?: 1f
     brushHardness = activeBrush?.hardness ?: 1f
@@ -3980,6 +3981,7 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 if (draft.grainPreviewPath != null) item { SettingSwitch("Invert paper texture", null, draft.grainReversed) { draft = draft.copy(grainReversed = it) } }
                 if (draft.grainPreviewPath != null) item { SettingSwitch("Emphasize paper texture", null, draft.grainEmphasized) { draft = draft.copy(grainEmphasized = it) } }
                 if (draft.grainPreviewPath != null) item { SettingSwitch("Jitter grain origin per stroke", "Keeps each stroke deterministic while avoiding an identical repeated grain start.", draft.grainOffsetJitter) { draft = draft.copy(grainOffsetJitter = it) } }
+                if (draft.grainPreviewPath != null) item { BrushTextureCompositeEditor(draft.grainCompositeMode) { draft = draft.copy(grainCompositeMode = it) } }
                 item { BrushSettingSlider("Thickness", draft.thickness, .05f..2f) { draft = draft.copy(thickness = it) } }
                 item { SettingSwitch("Vertical thickness", "Applies thickness along the imported tip's vertical axis.", draft.thicknessVertical) { draft = draft.copy(thicknessVertical = it) } }
                 item { SettingSwitch("Ribbon stroke", "Preserves the tip aspect ratio and continuously follows the stroke direction.", draft.ribbon) { draft = draft.copy(ribbon = it) } }
@@ -4125,6 +4127,28 @@ private fun BrushTipFlipModeEditor(label: String, value: Int, onValue: (Int) -> 
                 FilterChip(selected = value == mode, onClick = { onValue(mode) }, label = { Text(text) })
             }
         }
+    }
+}
+
+@Composable
+private fun BrushTextureCompositeEditor(value: Int, onValue: (Int) -> Unit) {
+    val modes = listOf(
+        CspTextureComposite.MULTIPLY to tr("Multiply / legacy", "正片叠底 / 兼容"),
+        CspTextureComposite.COMPARE to tr("Compare (approx.)", "比较（近似）"),
+        CspTextureComposite.HEIGHT to tr("Height", "高度"),
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(tr("Paper texture mode", "纸张纹理模式"), color = MutedInk, fontSize = 11.sp)
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(modes, key = { it.first }) { (mode, label) ->
+                FilterChip(selected = value == mode, onClick = { onValue(mode) }, label = { Text(label) })
+            }
+        }
+        if (value !in modes.map { it.first }) Text(
+            tr("Imported mode $value is retained; edit only after comparing the preview.", "已保留导入模式 $value；请在对比预览后再修改。"),
+            color = MutedInk,
+            fontSize = 10.sp,
+        )
     }
 }
 

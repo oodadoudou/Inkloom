@@ -3,6 +3,7 @@ package app.inkloom.importer
 import app.inkloom.document.BrushCurvePoint
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushTaperMode
+import app.inkloom.document.CspTextureComposite
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
@@ -40,6 +41,7 @@ class InkloomBrushPackageTest {
                 grainDensity = .64f,
                 grainScale = 215f,
                 grainOffsetJitter = true,
+                grainCompositeMode = CspTextureComposite.HEIGHT,
                 defaultSize = 37f,
                 defaultOpacity = .72f,
                 spacing = .18f,
@@ -103,6 +105,7 @@ class InkloomBrushPackageTest {
             assertEquals(original.spacing, restored.spacing, .0001f)
             assertEquals(original.grainScale, restored.grainScale, .0001f)
             assertTrue(restored.grainOffsetJitter)
+            assertEquals(CspTextureComposite.HEIGHT, restored.grainCompositeMode)
             assertEquals(180f, restored.strokeRotationJitterDegrees, .0001f)
             assertEquals(original.sizePressureCurve, restored.sizePressureCurve)
             assertEquals(original.sizeSecondaryDynamics, restored.sizeSecondaryDynamics)

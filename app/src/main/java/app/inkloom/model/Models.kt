@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.Color
 import app.inkloom.document.BrushCurvePoint
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushTaperMode
+import app.inkloom.document.CspTextureComposite
 import java.util.UUID
 import kotlinx.serialization.Serializable
 
@@ -48,6 +49,7 @@ data class ImportedBrush(
     val grainReversed: Boolean = false,
     val grainEmphasized: Boolean = false,
     val grainOffsetJitter: Boolean = false,
+    val grainCompositeMode: Int = CspTextureComposite.MULTIPLY,
     val defaultSize: Float = 8f,
     val stabilization: Float = 0f,
     val stabilizationBySpeed: Boolean = false,

@@ -1,6 +1,7 @@
 package app.inkloom.importer
 
 import android.content.Context
+import app.inkloom.document.CspTextureComposite
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
@@ -71,6 +72,7 @@ class BrushMetadataStore(
                         grainReversed = item.optBoolean("grainReversed", false),
                         grainEmphasized = item.optBoolean("grainEmphasized", false),
                         grainOffsetJitter = item.optBoolean("grainOffsetJitter", false),
+                        grainCompositeMode = item.optInt("grainCompositeMode", CspTextureComposite.MULTIPLY).coerceIn(0, 64),
                         defaultSize = item.optDouble("defaultSize", 8.0).toFloat(),
                         stabilization = item.optDouble("stabilization", 0.0).toFloat().coerceIn(0f, .9f),
                         stabilizationBySpeed = item.optBoolean("stabilizationBySpeed", false),
@@ -214,6 +216,7 @@ class BrushMetadataStore(
                     .put("grainReversed", brush.grainReversed)
                     .put("grainEmphasized", brush.grainEmphasized)
                     .put("grainOffsetJitter", brush.grainOffsetJitter)
+                    .put("grainCompositeMode", brush.grainCompositeMode)
                     .put("defaultSize", brush.defaultSize)
                     .put("stabilization", brush.stabilization)
                     .put("stabilizationBySpeed", brush.stabilizationBySpeed)

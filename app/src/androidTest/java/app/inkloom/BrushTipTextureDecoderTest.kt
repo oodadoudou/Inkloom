@@ -5,6 +5,7 @@ import android.graphics.Color
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.document.BrushTipTextureDecoder
+import app.inkloom.document.CspTextureComposite
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Test
@@ -111,6 +112,36 @@ class BrushTipTextureDecoderTest {
             assertEquals(Color.alpha(base.getPixel(1, 0)), Color.alpha(shifted.getPixel(0, 0)))
             base.recycle()
             shifted.recycle()
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun cspHeightTexturePreservesSolidTipCenterAndTexturesItsEdge() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val root = File(context.cacheDir, "brush-height-texture-${System.nanoTime()}").apply { mkdirs() }
+        try {
+            val tipFile = File(root, "tip.png")
+            val tipPixels = IntArray(64) { Color.WHITE }.also {
+                it[27] = Color.BLACK
+                it[28] = Color.rgb(127, 127, 127)
+            }
+            writePng(tipFile, tipPixels, 8, 8)
+            val grainFile = File(root, "grain.png")
+            writePng(grainFile, IntArray(64) { Color.WHITE }, 8, 8)
+
+            val height = BrushTipTextureDecoder.decode(
+                tipPath = tipFile.absolutePath,
+                hardness = 1f,
+                grainPath = grainFile.absolutePath,
+                grainDensity = 1f,
+                grainCompositeMode = CspTextureComposite.HEIGHT,
+            )!!
+
+            assertEquals(255, Color.alpha(height.getPixel(3, 3)))
+            assertEquals(0, Color.alpha(height.getPixel(4, 3)))
+            height.recycle()
         } finally {
             root.deleteRecursively()
         }

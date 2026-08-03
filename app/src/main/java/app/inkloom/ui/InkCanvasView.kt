@@ -37,6 +37,7 @@ import app.inkloom.document.BrushTipTextureDecoder
 import app.inkloom.document.BrushTipTransform
 import app.inkloom.document.BrushTaperMode
 import app.inkloom.document.CspDualBrushBlendMode
+import app.inkloom.document.CspTextureComposite
 import app.inkloom.document.GrainBehavior
 import app.inkloom.document.LassoGeometry
 import app.inkloom.document.LassoSelectionPolicy
@@ -189,6 +190,7 @@ class InkCanvasView(context: Context) : View(context) {
     var grainReversed: Boolean = false
     var grainEmphasized: Boolean = false
     var grainOffsetJitter: Boolean = false
+    var grainCompositeMode: Int = CspTextureComposite.MULTIPLY
     var brushSpacing: Float = .12f
     var brushFlow: Float = 1f
     var brushHardness: Float = 1f
@@ -471,7 +473,7 @@ class InkCanvasView(context: Context) : View(context) {
             canvas.drawPath(lassoPath, paint)
         }
         drawShapePreview(canvas)
-        if (currentPoints.isNotEmpty()) drawLayeredStrokes(canvas, listOf(makeStroke(currentPoints)))
+        if (currentPoints.isNotEmpty()) drawLayeredStrokes(canvas, listOf(makeStroke(currentPoints).copy(grainCompositeMode = grainCompositeMode)))
         drawBrushSizePreview(canvas)
     }
 
@@ -596,7 +598,7 @@ class InkCanvasView(context: Context) : View(context) {
         if (stroke.points.isEmpty()) return
         val tipPaths = stroke.tipAssetPaths.ifEmpty { listOfNotNull(stroke.tipAssetPath) }
         val grainOffset = GrainBehavior.offset(stroke.renderSeed, stroke.grainOffsetJitter)
-        val tips = tipPaths.mapNotNull { loadTip(it, stroke.hardness, stroke.grainAssetPath, stroke.grainDensity, stroke.grainScale, stroke.grainRotationDegrees, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized, grainOffset.x, grainOffset.y) }
+        val tips = tipPaths.mapNotNull { loadTip(it, stroke.hardness, stroke.grainAssetPath, stroke.grainDensity, stroke.grainScale, stroke.grainRotationDegrees, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized, grainOffset.x, grainOffset.y, stroke.grainCompositeMode) }
         if (tips.isNotEmpty()) {
             val dualTips = if (stroke.dualBrush) stroke.dualTipAssetPaths.mapNotNull { loadTip(it, stroke.dualHardness, null, 0f) }.ifEmpty { tips } else emptyList()
             drawStampedStroke(canvas, stroke, tips, dualTips)
@@ -770,9 +772,9 @@ class InkCanvasView(context: Context) : View(context) {
         paint.maskFilter = blur.takeIf { it > .01f }?.let { BlurMaskFilter(it, BlurMaskFilter.Blur.NORMAL) }
     }
 
-    private fun loadTip(path: String, hardness: Float, grainPath: String?, grainDensity: Float, grainScale: Float = 100f, grainRotation: Float = 0f, grainBrightness: Float = 0f, grainContrast: Float = 0f, grainReversed: Boolean = false, grainEmphasized: Boolean = false, grainOffsetX: Float = 0f, grainOffsetY: Float = 0f): Bitmap? {
-        val key = "$path:${(hardness.coerceIn(0f, 1f) * 20).toInt()}:$grainPath:${(grainDensity.coerceIn(0f, 1f) * 20).toInt()}:${grainScale.toInt()}:${grainRotation.toInt()}:${grainBrightness.toInt()}:${grainContrast.toInt()}:$grainReversed:$grainEmphasized:${grainOffsetX.toBits()}:${grainOffsetY.toBits()}"
-        return tipCache[key] ?: BrushTipTextureDecoder.decode(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainOffsetX, grainOffsetY)?.also { tipCache[key] = it }
+    private fun loadTip(path: String, hardness: Float, grainPath: String?, grainDensity: Float, grainScale: Float = 100f, grainRotation: Float = 0f, grainBrightness: Float = 0f, grainContrast: Float = 0f, grainReversed: Boolean = false, grainEmphasized: Boolean = false, grainOffsetX: Float = 0f, grainOffsetY: Float = 0f, grainCompositeMode: Int = CspTextureComposite.MULTIPLY): Bitmap? {
+        val key = "$path:${(hardness.coerceIn(0f, 1f) * 20).toInt()}:$grainPath:${(grainDensity.coerceIn(0f, 1f) * 20).toInt()}:${grainScale.toInt()}:${grainRotation.toInt()}:${grainBrightness.toInt()}:${grainContrast.toInt()}:$grainReversed:$grainEmphasized:${grainOffsetX.toBits()}:${grainOffsetY.toBits()}:$grainCompositeMode"
+        return tipCache[key] ?: BrushTipTextureDecoder.decode(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainOffsetX, grainOffsetY, grainCompositeMode)?.also { tipCache[key] = it }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -991,7 +993,7 @@ class InkCanvasView(context: Context) : View(context) {
                     finishEraserGesture()
                 } else if (activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) && currentPoints.isNotEmpty()) {
                     val before = strokes.toList()
-                    val stroke = makeStroke(currentPoints)
+                    val stroke = makeStroke(currentPoints).copy(grainCompositeMode = grainCompositeMode)
                     strokes += stroke
                     invalidateStrokeCache(emptyList(), listOf(stroke))
                     commitStrokeEdit(before, strokes)

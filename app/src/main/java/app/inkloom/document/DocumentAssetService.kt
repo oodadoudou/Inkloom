@@ -571,7 +571,7 @@ class DocumentAssetService(private val context: Context) {
             paint.color = stroke.colorArgb.toInt()
             val tipPaths = stroke.tipAssetPaths.ifEmpty { listOfNotNull(stroke.tipAssetPath) }
             val grainOffset = GrainBehavior.offset(stroke.renderSeed, stroke.grainOffsetJitter)
-            val tips = tipPaths.mapNotNull { decodeTip(it, stroke.hardness, stroke.grainAssetPath, stroke.grainDensity, stroke.grainScale, stroke.grainRotationDegrees, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized, grainOffset.x, grainOffset.y) }
+            val tips = tipPaths.mapNotNull { decodeTip(it, stroke.hardness, stroke.grainAssetPath, stroke.grainDensity, stroke.grainScale, stroke.grainRotationDegrees, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized, grainOffset.x, grainOffset.y, stroke.grainCompositeMode) }
             if (tips.isNotEmpty()) {
                 val decodedDualTips = if (stroke.dualBrush) stroke.dualTipAssetPaths.mapNotNull { decodeTip(it, stroke.dualHardness, null, 0f) } else emptyList()
                 val dualTips = decodedDualTips.ifEmpty { if (stroke.dualBrush) tips else emptyList() }
@@ -747,8 +747,8 @@ class DocumentAssetService(private val context: Context) {
         paint.maskFilter = blur.takeIf { it > .01f }?.let { BlurMaskFilter(it, BlurMaskFilter.Blur.NORMAL) }
     }
 
-    private fun decodeTip(path: String, hardness: Float, grainPath: String?, grainDensity: Float, grainScale: Float = 100f, grainRotation: Float = 0f, grainBrightness: Float = 0f, grainContrast: Float = 0f, grainReversed: Boolean = false, grainEmphasized: Boolean = false, grainOffsetX: Float = 0f, grainOffsetY: Float = 0f): Bitmap? =
-        BrushTipTextureDecoder.decode(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainOffsetX, grainOffsetY)
+    private fun decodeTip(path: String, hardness: Float, grainPath: String?, grainDensity: Float, grainScale: Float = 100f, grainRotation: Float = 0f, grainBrightness: Float = 0f, grainContrast: Float = 0f, grainReversed: Boolean = false, grainEmphasized: Boolean = false, grainOffsetX: Float = 0f, grainOffsetY: Float = 0f, grainCompositeMode: Int = CspTextureComposite.MULTIPLY): Bitmap? =
+        BrushTipTextureDecoder.decode(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainOffsetX, grainOffsetY, grainCompositeMode)
 
     private fun rotateQuarterTurns(source: Bitmap?, quarterTurns: Int): Bitmap? {
         source ?: return null

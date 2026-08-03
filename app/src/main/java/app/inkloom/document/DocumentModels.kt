@@ -164,6 +164,7 @@ data class InkStroke(
     val grainReversed: Boolean = false,
     val grainEmphasized: Boolean = false,
     val grainOffsetJitter: Boolean = false,
+    val grainCompositeMode: Int = CspTextureComposite.MULTIPLY,
     val spacing: Float = .12f,
     val flow: Float = 1f,
     val hardness: Float = 1f,

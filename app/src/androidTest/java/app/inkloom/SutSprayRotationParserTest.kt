@@ -7,6 +7,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.importer.BrushMetadataStore
 import app.inkloom.importer.SutBrushParser
+import app.inkloom.document.CspTextureComposite
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
@@ -51,9 +52,9 @@ class SutSprayRotationParserTest {
                 )
             }
             parsed.forEach { brush ->
-                assertEquals(17, brush.parserVersion)
+                assertEquals(18, brush.parserVersion)
                 assertFalse(brush.report.any { it.startsWith("SUT parameter parsing failed") })
-                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v17-")) }
+                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v18-")) }
             }
             assertTrue("Expected embedded CSP material previews", parsed.any { it.tipPreviewPaths.isNotEmpty() })
             val paintingBrush = parsed.firstOrNull { it.name.contains("Painting brush", ignoreCase = true) }
@@ -61,8 +62,12 @@ class SutSprayRotationParserTest {
             assertEquals(7, paintingBrush?.dualCompositeMode)
             assertFalse(paintingBrush?.dualApplyRgb ?: true)
             assertEquals(2, paintingBrush?.dualTipFlipHorizontalMode)
+            assertEquals(CspTextureComposite.HEIGHT, paintingBrush?.grainCompositeMode)
             assertTrue(paintingBrush?.report?.any { it.contains("Screen composite mode") } == true)
             assertTrue(paintingBrush?.report?.any { it.contains("secondary brush-tip flip modes mapped") } == true)
+            assertTrue(paintingBrush?.report?.any { it.contains("Height texture composition mapped with documented edge-only behavior") } == true)
+            assertTrue("Expected a supplied Compare-texture sample", parsed.any { it.grainCompositeMode == CspTextureComposite.COMPARE })
+            assertTrue("Compare must not be reported as exact", parsed.any { brush -> brush.report.any { it.contains("Compare texture mode retained with conservative density comparison") } })
             val silkPen = parsed.firstOrNull { it.name.contains("丝丝笔") }
             assertTrue("Expected the supplied Darken-overlap pen", silkPen?.blendTipsWithDarken == true)
             assertTrue(silkPen?.report?.any { it.contains("isolated Darken composition") } == true)
@@ -104,7 +109,8 @@ class SutSprayRotationParserTest {
             assertTrue(brush.dualSprayParticleFollowStylusOrientation)
             assertFalse(brush.dualSprayParticleFollowStrokeDirection)
             assertEquals(90f, brush.dualSprayParticleRandomRotationDegrees, .0001f)
-            assertEquals(17, brush.parserVersion)
+            assertEquals(CspTextureComposite.HEIGHT, brush.grainCompositeMode)
+            assertEquals(18, brush.parserVersion)
         } finally {
             root.deleteRecursively()
         }
@@ -127,6 +133,7 @@ class SutSprayRotationParserTest {
                 sprayParticleRandomRotationDegrees = 54f,
                 tipFlipHorizontalMode = 2,
                 blendTipsWithDarken = true,
+                grainCompositeMode = CspTextureComposite.HEIGHT,
                 dualBrush = true,
                 dualCompositeMode = 7,
                 dualApplyRgb = true,
@@ -147,6 +154,7 @@ class SutSprayRotationParserTest {
             assertEquals(54f, restored.sprayParticleRandomRotationDegrees, .0001f)
             assertEquals(2, restored.tipFlipHorizontalMode)
             assertTrue(restored.blendTipsWithDarken)
+            assertEquals(CspTextureComposite.HEIGHT, restored.grainCompositeMode)
             assertEquals(-12f, restored.dualSprayParticleRotationDegrees, .0001f)
             assertTrue(restored.dualSprayParticleFollowStylusOrientation)
             assertEquals(81f, restored.dualSprayParticleRandomRotationDegrees, .0001f)
@@ -163,12 +171,13 @@ class SutSprayRotationParserTest {
         val database = SQLiteDatabase.openOrCreateDatabase(file, null)
         database.use { db ->
             db.execSQL("CREATE TABLE Node (NodeName TEXT NOT NULL, NodeVariantID INTEGER NOT NULL)")
-            db.execSQL("CREATE TABLE Variant (VariantID INTEGER PRIMARY KEY, Opacity REAL, BrushSize REAL, BrushUseSpray INTEGER, BrushRotation REAL, BrushRotationEffector INTEGER, BrushRotationRandomScale REAL, BrushRotationInSpray REAL, BrushRotationEffectorInSpray INTEGER, BrushRotationRandomInSpray REAL, UseDualBrush INTEGER, DualRotation REAL, DualRotationEffector INTEGER, DualRotationRandomScale REAL, DualUseSpray INTEGER, DualRotationInSpray REAL, DualRotationEffectorInSpray INTEGER, DualRotationRandomInSpray REAL)")
+            db.execSQL("CREATE TABLE Variant (VariantID INTEGER PRIMARY KEY, Opacity REAL, BrushSize REAL, TextureCompositeMode INTEGER, BrushUseSpray INTEGER, BrushRotation REAL, BrushRotationEffector INTEGER, BrushRotationRandomScale REAL, BrushRotationInSpray REAL, BrushRotationEffectorInSpray INTEGER, BrushRotationRandomInSpray REAL, UseDualBrush INTEGER, DualRotation REAL, DualRotationEffector INTEGER, DualRotationRandomScale REAL, DualUseSpray INTEGER, DualRotationInSpray REAL, DualRotationEffectorInSpray INTEGER, DualRotationRandomInSpray REAL)")
             db.insertOrThrow("Node", null, ContentValues().apply { put("NodeName", "Particle test"); put("NodeVariantID", 1) })
             db.insertOrThrow("Variant", null, ContentValues().apply {
                 put("VariantID", 1)
                 put("Opacity", 100)
                 put("BrushSize", 20)
+                put("TextureCompositeMode", CspTextureComposite.HEIGHT)
                 put("BrushUseSpray", 1)
                 put("BrushRotation", 5)
                 put("BrushRotationEffector", 3)
