@@ -1,6 +1,7 @@
 package app.inkloom.document
 
 import app.inkloom.model.ImportedBrush
+import app.inkloom.importer.BrushGroupOperations
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
@@ -18,6 +19,7 @@ data class LibraryRestoreResult(
     val documents: List<InkDocument>,
     val folders: List<InkFolder>,
     val brushes: List<ImportedBrush>,
+    val brushGroups: List<String>,
 )
 
 /**
@@ -37,10 +39,13 @@ class LibraryBackupService(private val filesRoot: File) {
         folders: List<InkFolder>,
         brushes: List<ImportedBrush>,
         output: OutputStream,
+        brushGroups: List<String> = emptyList(),
     ) {
         require(documents.size <= MAX_DOCUMENTS) { "Library has too many documents to back up" }
         require(folders.size <= MAX_FOLDERS) { "Library has too many folders to back up" }
         require(brushes.size <= MAX_BRUSHES) { "Library has too many brushes to back up" }
+        require(brushGroups.size <= MAX_BRUSH_GROUPS) { "Library has too many brush groups to back up" }
+        val portableBrushGroups = BrushGroupOperations.reconcileRegisteredGroups(brushGroups, brushes)
         val assets = linkedMapOf<String, File>()
         fun register(path: String?, folder: String): String? {
             if (path.isNullOrBlank()) return null
@@ -85,6 +90,7 @@ class LibraryBackupService(private val filesRoot: File) {
             documents = portableDocuments,
             folders = folders,
             brushes = portableBrushes,
+            brushGroups = portableBrushGroups,
         )
         ZipOutputStream(output.buffered()).use { zip ->
             zip.putNextEntry(ZipEntry(MANIFEST))
@@ -107,7 +113,7 @@ class LibraryBackupService(private val filesRoot: File) {
             require(manifestFile.isFile && manifestFile.length() <= MAX_MANIFEST_BYTES) { "Backup has no valid manifest" }
             val manifest = json.decodeFromString<LibraryBackupManifest>(manifestFile.readText())
             require(manifest.formatVersion == FORMAT_VERSION) { "Backup version ${manifest.formatVersion} is not supported" }
-            require(manifest.documents.size <= MAX_DOCUMENTS && manifest.folders.size <= MAX_FOLDERS && manifest.brushes.size <= MAX_BRUSHES) { "Backup manifest exceeds library limits" }
+            require(manifest.documents.size <= MAX_DOCUMENTS && manifest.folders.size <= MAX_FOLDERS && manifest.brushes.size <= MAX_BRUSHES && manifest.brushGroups.size <= MAX_BRUSH_GROUPS) { "Backup manifest exceeds library limits" }
 
             fun retained(relativePath: String?, folder: String): String? {
                 if (relativePath.isNullOrBlank()) return null
@@ -170,7 +176,8 @@ class LibraryBackupService(private val filesRoot: File) {
                     },
                 )
             }
-            return LibraryRestoreResult(restoredDocuments, restoredFolders, restoredBrushes)
+            val restoredBrushGroups = BrushGroupOperations.reconcileRegisteredGroups(manifest.brushGroups, restoredBrushes)
+            return LibraryRestoreResult(restoredDocuments, restoredFolders, restoredBrushes, restoredBrushGroups)
         } finally {
             staging.deleteRecursively()
         }
@@ -254,6 +261,7 @@ class LibraryBackupService(private val filesRoot: File) {
         val documents: List<InkDocument>,
         val folders: List<InkFolder>,
         val brushes: List<ImportedBrush>,
+        val brushGroups: List<String> = emptyList(),
     )
 
     private companion object {
@@ -265,6 +273,7 @@ class LibraryBackupService(private val filesRoot: File) {
         const val MAX_DOCUMENTS = 10_000
         const val MAX_FOLDERS = 10_000
         const val MAX_BRUSHES = 20_000
+        const val MAX_BRUSH_GROUPS = 20_000
         const val MAX_ENTRIES = 50_000
         const val MAX_MANIFEST_BYTES = 128L * 1024 * 1024
         const val MAX_SINGLE_ASSET_BYTES = 512L * 1024 * 1024
