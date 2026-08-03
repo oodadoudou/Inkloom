@@ -1,0 +1,102 @@
+package app.inkloom.settings
+
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.float
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
+
+data class AppPreferencesBackup(val settings: AppSettings, val colorPalette: List<Int>)
+
+object AppSettingsBackupCodec {
+    const val MAX_BYTES = 512 * 1024
+    private const val FORMAT = "inkloom-app-settings"
+    private const val VERSION = 1
+    private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
+
+    fun encode(settings: AppSettings, colorPalette: List<Int>): ByteArray {
+        val value = buildJsonObject {
+            put("format", FORMAT)
+            put("version", VERSION)
+            put("settings", settings.toJson())
+            put("shortcutProfile", json.parseToJsonElement(ShortcutProfileCodec.encode(ShortcutProfile(settings.shortcutBindings, settings.shortcutBrushGroupTargets, settings.toolboxQuickSlots)).toString(Charsets.UTF_8)))
+            put("colorPalette", buildJsonArray { colorPalette.distinct().take(32).forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) } })
+        }
+        return json.encodeToString(JsonObject.serializer(), value).encodeToByteArray().also {
+            require(it.size <= MAX_BYTES) { "App settings backup is too large" }
+        }
+    }
+
+    fun decode(bytes: ByteArray): Result<AppPreferencesBackup> = runCatching {
+        require(bytes.isNotEmpty() && bytes.size <= MAX_BYTES) { "App settings backup has an invalid size" }
+        val root = json.parseToJsonElement(bytes.toString(Charsets.UTF_8)).jsonObject
+        require(root.text("format") == FORMAT && root.int("version", 0) == VERSION) { "Unsupported app settings backup" }
+        val base = root.getValue("settings").jsonObject.toSettings()
+        val profile = root["shortcutProfile"]?.toString()?.encodeToByteArray()?.let { ShortcutProfileCodec.decodeProfile(it).getOrThrow() }
+            ?: ShortcutProfile(base.shortcutBindings)
+        val palette = root["colorPalette"]?.jsonArray?.mapNotNull { runCatching { it.jsonPrimitive.int }.getOrNull() }?.distinct()?.take(32).orEmpty()
+        AppPreferencesBackup(
+            base.copy(shortcutBindings = profile.bindings, shortcutBrushGroupTargets = profile.brushGroupTargets, toolboxQuickSlots = profile.quickSlots),
+            palette,
+        )
+    }
+
+    private fun AppSettings.toJson() = buildJsonObject {
+        put("language", language.name); put("fingerDrawing", fingerDrawing)
+        put("showPageRail", showPageRail); put("showBrushPanel", showBrushPanel); put("showLayerPanel", showLayerPanel); put("showToolbar", showToolbar)
+        put("pagePanelDock", pagePanelDock.name); put("brushPanelDock", brushPanelDock.name); put("layerPanelDock", layerPanelDock.name)
+        put("pagePanelXDp", pagePanelXDp); put("pagePanelYDp", pagePanelYDp); put("pagePanelWidthDp", pagePanelWidthDp); put("pagePanelHeightDp", pagePanelHeightDp)
+        put("brushPanelXDp", brushPanelXDp); put("brushPanelYDp", brushPanelYDp); put("brushPanelWidthDp", brushPanelWidthDp); put("brushPanelHeightDp", brushPanelHeightDp)
+        put("layerPanelXDp", layerPanelXDp); put("layerPanelYDp", layerPanelYDp); put("layerPanelWidthDp", layerPanelWidthDp); put("layerPanelHeightDp", layerPanelHeightDp)
+        put("toolbarOffsetXDp", toolbarOffsetXDp); put("toolbarOffsetYDp", toolbarOffsetYDp); put("verticalToolbar", verticalToolbar); put("toolbarDock", toolbarDock.name)
+        put("twoFingerDoubleTapUndo", twoFingerDoubleTapUndo); put("threeFingerTapRedo", threeFingerTapRedo); put("twoFingerRotation", twoFingerRotation)
+        put("stylusPrimaryButton", stylusPrimaryButton.name); put("stylusSecondaryButton", stylusSecondaryButton.name)
+        put("pressureSensitivity", pressureSensitivity); put("pressureMinimumInput", pressureMinimumInput); put("pressureMaximumInput", pressureMaximumInput)
+        put("stabilization", stabilization); put("showInputDiagnostics", showInputDiagnostics)
+        put("penSize", penSize); put("penOpacity", penOpacity); put("highlighterSize", highlighterSize); put("highlighterOpacity", highlighterOpacity)
+        put("eraserSize", eraserSize); put("eraserPreset", eraserPreset.name)
+        put("selectionShape", selectionShape.name); put("selectionMode", selectionMode.name); put("selectionFilter", selectionFilter.name)
+        put("nonDestructiveEraser", nonDestructiveEraser)
+    }
+
+    private fun JsonObject.toSettings(): AppSettings {
+        val defaults = AppSettings()
+        val minimum = float("pressureMinimumInput", defaults.pressureMinimumInput).coerceIn(0f, .95f)
+        val maximum = float("pressureMaximumInput", defaults.pressureMaximumInput).coerceIn(minimum + .05f, 1f)
+        return defaults.copy(
+            language = enum("language", defaults.language), fingerDrawing = boolean("fingerDrawing", defaults.fingerDrawing),
+            showPageRail = boolean("showPageRail", defaults.showPageRail), showBrushPanel = boolean("showBrushPanel", defaults.showBrushPanel),
+            showLayerPanel = boolean("showLayerPanel", defaults.showLayerPanel), showToolbar = boolean("showToolbar", defaults.showToolbar),
+            pagePanelDock = enum("pagePanelDock", defaults.pagePanelDock), brushPanelDock = enum("brushPanelDock", defaults.brushPanelDock), layerPanelDock = enum("layerPanelDock", defaults.layerPanelDock),
+            pagePanelXDp = float("pagePanelXDp", defaults.pagePanelXDp).coerceIn(-2400f, 2400f), pagePanelYDp = float("pagePanelYDp", defaults.pagePanelYDp).coerceIn(-2400f, 2400f),
+            pagePanelWidthDp = float("pagePanelWidthDp", defaults.pagePanelWidthDp).coerceIn(80f, 1200f), pagePanelHeightDp = float("pagePanelHeightDp", defaults.pagePanelHeightDp).coerceIn(120f, 1600f),
+            brushPanelXDp = float("brushPanelXDp", defaults.brushPanelXDp).coerceIn(-2400f, 2400f), brushPanelYDp = float("brushPanelYDp", defaults.brushPanelYDp).coerceIn(-2400f, 2400f),
+            brushPanelWidthDp = float("brushPanelWidthDp", defaults.brushPanelWidthDp).coerceIn(80f, 1200f), brushPanelHeightDp = float("brushPanelHeightDp", defaults.brushPanelHeightDp).coerceIn(120f, 1600f),
+            layerPanelXDp = float("layerPanelXDp", defaults.layerPanelXDp).coerceIn(-2400f, 2400f), layerPanelYDp = float("layerPanelYDp", defaults.layerPanelYDp).coerceIn(-2400f, 2400f),
+            layerPanelWidthDp = float("layerPanelWidthDp", defaults.layerPanelWidthDp).coerceIn(80f, 1200f), layerPanelHeightDp = float("layerPanelHeightDp", defaults.layerPanelHeightDp).coerceIn(120f, 1600f),
+            toolbarOffsetXDp = float("toolbarOffsetXDp", defaults.toolbarOffsetXDp).coerceIn(-1200f, 1200f), toolbarOffsetYDp = float("toolbarOffsetYDp", defaults.toolbarOffsetYDp).coerceIn(-1200f, 1200f),
+            verticalToolbar = boolean("verticalToolbar", defaults.verticalToolbar), toolbarDock = enum("toolbarDock", defaults.toolbarDock),
+            twoFingerDoubleTapUndo = boolean("twoFingerDoubleTapUndo", defaults.twoFingerDoubleTapUndo), threeFingerTapRedo = boolean("threeFingerTapRedo", defaults.threeFingerTapRedo),
+            twoFingerRotation = boolean("twoFingerRotation", defaults.twoFingerRotation), stylusPrimaryButton = enum("stylusPrimaryButton", defaults.stylusPrimaryButton), stylusSecondaryButton = enum("stylusSecondaryButton", defaults.stylusSecondaryButton),
+            pressureSensitivity = float("pressureSensitivity", defaults.pressureSensitivity).coerceIn(.25f, 2.5f), pressureMinimumInput = minimum, pressureMaximumInput = maximum,
+            stabilization = float("stabilization", defaults.stabilization).coerceIn(0f, .9f), showInputDiagnostics = boolean("showInputDiagnostics", defaults.showInputDiagnostics),
+            penSize = float("penSize", defaults.penSize).coerceIn(.5f, 400f), penOpacity = float("penOpacity", defaults.penOpacity).coerceIn(.05f, 1f),
+            highlighterSize = float("highlighterSize", defaults.highlighterSize).coerceIn(.5f, 400f), highlighterOpacity = float("highlighterOpacity", defaults.highlighterOpacity).coerceIn(.05f, 1f),
+            eraserSize = float("eraserSize", defaults.eraserSize).coerceIn(.5f, 400f), eraserPreset = enum("eraserPreset", defaults.eraserPreset),
+            selectionShape = enum("selectionShape", defaults.selectionShape), selectionMode = enum("selectionMode", defaults.selectionMode), selectionFilter = enum("selectionFilter", defaults.selectionFilter),
+            nonDestructiveEraser = boolean("nonDestructiveEraser", defaults.nonDestructiveEraser),
+        )
+    }
+
+    private fun JsonObject.text(key: String): String = get(key)?.jsonPrimitive?.content.orEmpty()
+    private fun JsonObject.float(key: String, fallback: Float): Float = runCatching { get(key)?.jsonPrimitive?.float }.getOrNull() ?: fallback
+    private fun JsonObject.int(key: String, fallback: Int): Int = runCatching { get(key)?.jsonPrimitive?.int }.getOrNull() ?: fallback
+    private fun JsonObject.boolean(key: String, fallback: Boolean): Boolean = runCatching { get(key)?.jsonPrimitive?.boolean }.getOrNull() ?: fallback
+    private inline fun <reified T : Enum<T>> JsonObject.enum(key: String, fallback: T): T = runCatching { enumValueOf<T>(text(key)) }.getOrDefault(fallback)
+}

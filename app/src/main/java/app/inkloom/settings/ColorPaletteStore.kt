@@ -16,6 +16,8 @@ class ColorPaletteStore(context: Context) {
 
     fun remove(color: Int): List<Int> = save(load().filterNot { it == color })
 
+    fun replace(colors: List<Int>): List<Int> = save(colors)
+
     private fun save(colors: List<Int>): List<Int> = colors.also { preferences.edit().putString(KEY, ColorPaletteCodec.encode(it)).apply() }
 
     private companion object { const val KEY = "colors" }
