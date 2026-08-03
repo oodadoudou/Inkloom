@@ -70,6 +70,9 @@ class CspShortcutResolverTest {
         assertEquals(ShortcutAction.DELETE_SELECTION, resolve(KeyEvent.KEYCODE_FORWARD_DEL, ctrl = true))
         assertEquals(ShortcutAction.DELETE_SELECTION, resolve(KeyEvent.KEYCODE_DEL, ctrl = true))
         assertEquals(ShortcutAction.FIT_PAGE, resolve(KeyEvent.KEYCODE_AT, ctrl = true))
+        assertEquals(ShortcutAction.TOGGLE_RULER, resolve(KeyEvent.KEYCODE_1, ctrl = true))
+        assertEquals(ShortcutAction.TOGGLE_ALIGNMENT_GUIDES, resolve(KeyEvent.KEYCODE_2, ctrl = true))
+        assertEquals(ShortcutAction.TOGGLE_GRID_SNAP, resolve(KeyEvent.KEYCODE_3, ctrl = true))
     }
 
     @Test fun onlyContinuousAdjustmentsRepeatWhenAKeyIsHeld() {
@@ -219,6 +222,15 @@ class CspShortcutResolverTest {
         assertEquals(customized, CspShortcutResolver.migrateLegacyDefaults(customized))
     }
 
+    @Test fun migratesPreviousDefaultsToOfficialCspCanvasSnapShortcutsWithoutTouchingCustomProfiles() {
+        val snapActions = setOf(ShortcutAction.TOGGLE_RULER, ShortcutAction.TOGGLE_ALIGNMENT_GUIDES, ShortcutAction.TOGGLE_GRID_SNAP)
+        val formerDefaults = CspShortcutResolver.defaultBindings.filterNot { it.action in snapActions }
+        assertEquals(CspShortcutResolver.defaultBindings, CspShortcutResolver.migrateLegacyDefaults(formerDefaults))
+
+        val customized = formerDefaults.map { if (it.action == ShortcutAction.BRUSH_GROUP) it.copy(chord = ShortcutChord(KeyEvent.KEYCODE_F12)) else it }
+        assertEquals(customized, CspShortcutResolver.migrateLegacyDefaults(customized))
+    }
+
     private fun resolve(keyCode: Int, ctrl: Boolean = false, alt: Boolean = false, shift: Boolean = false) =
         CspShortcutResolver.resolve(ShortcutChord(keyCode, ctrl, alt, shift))
 
@@ -232,6 +244,9 @@ class CspShortcutResolverTest {
             ShortcutAction.SELECT_LAYER_BELOW,
             ShortcutAction.ROTATE_VIEW_LEFT,
             ShortcutAction.ROTATE_VIEW_RIGHT,
+            ShortcutAction.TOGGLE_RULER,
+            ShortcutAction.TOGGLE_ALIGNMENT_GUIDES,
+            ShortcutAction.TOGGLE_GRID_SNAP,
         ) || binding.action == ShortcutAction.FIT_PAGE && binding.chord.keyCode == KeyEvent.KEYCODE_AT
     }
 

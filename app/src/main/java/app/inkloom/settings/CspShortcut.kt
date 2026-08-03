@@ -144,6 +144,9 @@ object CspShortcutResolver {
         ShortcutBinding(ShortcutAction.ZOOM_IN, ShortcutChord(KeyEvent.KEYCODE_SEMICOLON, ctrl = true)),
         ShortcutBinding(ShortcutAction.FIT_PAGE, ShortcutChord(KeyEvent.KEYCODE_0, ctrl = true)),
         ShortcutBinding(ShortcutAction.ACTUAL_SIZE, ShortcutChord(KeyEvent.KEYCODE_0, ctrl = true, alt = true)),
+        ShortcutBinding(ShortcutAction.TOGGLE_RULER, ShortcutChord(KeyEvent.KEYCODE_1, ctrl = true)),
+        ShortcutBinding(ShortcutAction.TOGGLE_ALIGNMENT_GUIDES, ShortcutChord(KeyEvent.KEYCODE_2, ctrl = true)),
+        ShortcutBinding(ShortcutAction.TOGGLE_GRID_SNAP, ShortcutChord(KeyEvent.KEYCODE_3, ctrl = true)),
         ShortcutBinding(ShortcutAction.SAVE_CHECKPOINT, ShortcutChord(KeyEvent.KEYCODE_S, ctrl = true)),
         ShortcutBinding(ShortcutAction.CUT_SELECTION, ShortcutChord(KeyEvent.KEYCODE_X, ctrl = true)),
         ShortcutBinding(ShortcutAction.CUT_SELECTION, ShortcutChord(KeyEvent.KEYCODE_F2)),
@@ -183,6 +186,16 @@ object CspShortcutResolver {
         ShortcutBinding(ShortcutAction.TOGGLE_PANELS, ShortcutChord(KeyEvent.KEYCODE_TAB)),
     )
 
+    private val canvasSnapActionsAddedAfterPreviousDefaults = setOf(
+        ShortcutAction.TOGGLE_RULER,
+        ShortcutAction.TOGGLE_ALIGNMENT_GUIDES,
+        ShortcutAction.TOGGLE_GRID_SNAP,
+    )
+
+    private val defaultsBeforeCanvasSnapCommands: List<ShortcutBinding> by lazy {
+        defaultBindings.filterNot { it.action in canvasSnapActionsAddedAfterPreviousDefaults }
+    }
+
     private val cspCommonActionsAddedAfterPreviousDefaults = setOf(
         ShortcutAction.SELECT_ALL,
         ShortcutAction.DESELECT,
@@ -197,7 +210,7 @@ object CspShortcutResolver {
     )
 
     private val defaultsBeforeCspCommonCommands: List<ShortcutBinding> by lazy {
-        defaultBindings.filterNot { it.action in cspCommonActionsAddedAfterPreviousDefaults || it in cspCommonAliasesAddedAfterPreviousDefaults }
+        defaultsBeforeCanvasSnapCommands.filterNot { it.action in cspCommonActionsAddedAfterPreviousDefaults || it in cspCommonAliasesAddedAfterPreviousDefaults }
     }
 
     private val additionalCspAliases: Set<ShortcutBinding> by lazy {
@@ -269,7 +282,7 @@ object CspShortcutResolver {
     }
 
     fun migrateLegacyDefaults(bindings: List<ShortcutBinding>): List<ShortcutBinding> =
-        if (bindings == defaultsBeforeCspCommonCommands || bindings == defaultsBeforeAdditionalCspAliases || bindings == defaultsBeforeEyedropper || bindings == defaultsBeforeActualSize || bindings == clipboardDefaultsBeforeToolCommands || bindings == workspaceDefaultsBeforeClipboard || bindings == legacyReversedBrushSizeDefaults || bindings == previousDefaultBindings) defaultBindings else bindings
+        if (bindings == defaultsBeforeCanvasSnapCommands || bindings == defaultsBeforeCspCommonCommands || bindings == defaultsBeforeAdditionalCspAliases || bindings == defaultsBeforeEyedropper || bindings == defaultsBeforeActualSize || bindings == clipboardDefaultsBeforeToolCommands || bindings == workspaceDefaultsBeforeClipboard || bindings == legacyReversedBrushSizeDefaults || bindings == previousDefaultBindings) defaultBindings else bindings
 
     fun resolve(chord: ShortcutChord, bindings: List<ShortcutBinding> = defaultBindings, deviceDescriptor: String? = null): ShortcutAction? =
         resolveBinding(chord, bindings, deviceDescriptor)?.action
