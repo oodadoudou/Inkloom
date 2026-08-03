@@ -17,6 +17,7 @@ import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
@@ -59,6 +60,7 @@ class InkloomLaunchTest {
                     .remove("shortcutBrushGroup")
                     .remove("toolboxQuickSlots")
                     .remove("workspaceLayouts")
+                    .remove("customWorkspaces")
                     .commit()
                 BrushGroupStore(ApplicationProvider.getApplicationContext()).save(
                     listOf("Toolbox/Pens", "Toolbox/Pencils", "Toolbox/Brushes"),
@@ -162,6 +164,43 @@ class InkloomLaunchTest {
         assertEquals(false, restored.showBrushPanel)
         assertEquals(false, restored.showLayerPanel)
         assertEquals(true, restored.showToolbar)
+    }
+
+    @Test fun customWorkspaceCanBeSavedAppliedDuplicatedAndRenamed() {
+        createNotebookAndOpenEditor()
+
+        composeRule.onNodeWithContentDescription("Workspaces").performClick()
+        composeRule.onNodeWithText("Drawing workspace").performClick()
+        composeRule.onNodeWithContentDescription("Workspaces").performClick()
+        composeRule.onNodeWithText("Save current workspace…").performClick()
+        composeRule.onNodeWithText("Save workspace").assertIsDisplayed()
+        composeRule.onNodeWithText("Save").performClick()
+        composeRule.waitUntil(5_000) { AppSettingsStore(composeRule.activity).load().customWorkspaces.size == 1 }
+
+        composeRule.onNodeWithContentDescription("Workspaces").performClick()
+        composeRule.onNodeWithText("Reading workspace").performClick()
+        assertTrue(AppSettingsStore(composeRule.activity).load().showBrushPanel.not())
+        composeRule.onNodeWithContentDescription("Workspaces").performClick()
+        composeRule.onNodeWithText("My workspace").performClick()
+        val applied = AppSettingsStore(composeRule.activity).load()
+        assertTrue(applied.showBrushPanel)
+        assertTrue(applied.showLayerPanel)
+
+        composeRule.onNodeWithContentDescription("Workspaces").performClick()
+        composeRule.onNodeWithText("Manage custom workspaces…").performClick()
+        composeRule.onNodeWithText("Custom workspaces").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Manage My workspace").performClick()
+        composeRule.onNodeWithText("Duplicate").performClick()
+        composeRule.waitUntil(5_000) { AppSettingsStore(composeRule.activity).load().customWorkspaces.size == 2 }
+        composeRule.onNodeWithText("My workspace copy").assertIsDisplayed()
+
+        composeRule.onNodeWithContentDescription("Manage My workspace copy").performClick()
+        composeRule.onNodeWithText("Rename").performClick()
+        composeRule.onNodeWithText("Workspace name").performTextClearance()
+        composeRule.onNodeWithText("Workspace name").performTextInput("Studio")
+        composeRule.onNodeWithText("Rename").performClick()
+        composeRule.waitUntil(5_000) { AppSettingsStore(composeRule.activity).load().customWorkspaces.any { it.name == "Studio" } }
+        composeRule.onNodeWithText("Studio").assertIsDisplayed()
     }
 
     @Test fun settingsExposeInputAndToolControls() {
