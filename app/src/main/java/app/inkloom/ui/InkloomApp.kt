@@ -3713,6 +3713,7 @@ private fun InkCanvasView.applyBrushConfiguration(
     grainOffsetJitter = activeBrush?.grainOffsetJitter ?: false
     grainCompositeMode = activeBrush?.grainCompositeMode ?: CspTextureComposite.MULTIPLY
     brushSpacing = activeBrush?.spacing ?: .12f
+    brushSpacingMode = activeBrush?.spacingMode ?: CspBrushGap.FIXED
     brushFlow = activeBrush?.flow ?: 1f
     brushHardness = activeBrush?.hardness ?: 1f
     brushAntiAliasMode = activeBrush?.antiAliasMode ?: CspAntiAlias.MEDIUM
@@ -3774,6 +3775,7 @@ private fun InkCanvasView.applyBrushConfiguration(
     brushDual = activeBrush?.dualBrush ?: false
     dualSizeScale = activeBrush?.dualSizeScale ?: 1f
     dualSpacing = activeBrush?.dualSpacing ?: .12f
+    dualSpacingMode = activeBrush?.dualSpacingMode ?: CspBrushGap.FIXED
     dualFlow = activeBrush?.dualFlow ?: 1f
     dualHardness = activeBrush?.dualHardness ?: 1f
     dualAntiAliasMode = activeBrush?.dualAntiAliasMode ?: CspAntiAlias.MEDIUM
@@ -5360,7 +5362,8 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 if (draft.taperEndEnabled) item { BrushSettingSlider(if (draft.taperMode == BrushTaperMode.FADE) "Fade length" else "End length", draft.taperEndLength, if (draft.taperMode == BrushTaperMode.DISTANCE) 1f..400f else .01f..1f) { draft = draft.copy(taperEndLength = it) } }
                 if (draft.taperEndEnabled && draft.taperMode == BrushTaperMode.DISTANCE) item { Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { FilterChip(selected = draft.taperEndLengthUnit == 0, onClick = { draft = draft.copy(taperEndLengthUnit = 0) }, label = { Text("px") }); FilterChip(selected = draft.taperEndLengthUnit == 2, onClick = { draft = draft.copy(taperEndLengthUnit = 2) }, label = { Text("mm") }) } }
                 if (draft.taperEndEnabled) item { BrushSettingSlider("End minimum size", draft.taperEndMinimum, 0f..1f) { draft = draft.copy(taperEndMinimum = it) } }
-                item { BrushSettingSlider("Spacing", draft.spacing, .01f..2f) { draft = draft.copy(spacing = it) } }
+                item { BrushGapModeEditor(tr("Brush-tip gap", "笔尖间隔"), draft.spacingMode) { draft = draft.copy(spacingMode = it) } }
+                if (draft.spacingMode == CspBrushGap.FIXED) item { BrushSettingSlider("Spacing", draft.spacing, .01f..2f) { draft = draft.copy(spacing = it) } }
                 item { BrushSettingSlider("Flow", draft.flow, 0f..1f) { draft = draft.copy(flow = it) } }
                 item { BrushSettingSlider("Hardness", draft.hardness, 0f..1f) { draft = draft.copy(hardness = it) } }
                 item {
@@ -5443,7 +5446,8 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 item { SettingSwitch("Dual brush", "Uses the imported secondary tip as an independent stamp stream.", draft.dualBrush) { draft = draft.copy(dualBrush = it) } }
                 if (draft.dualBrush && draft.dualTipPreviewPaths.isNotEmpty()) item { BrushTipPreview(tr("Secondary tip · ${draft.dualTipPreviewPaths.size} material${if (draft.dualTipPreviewPaths.size == 1) "" else "s"}", "辅助笔尖 · ${draft.dualTipPreviewPaths.size} 个素材"), draft.dualTipPreviewPaths.first()) }
                 if (draft.dualBrush) item { BrushSettingSlider("Secondary size", draft.dualSizeScale, .01f..4f) { draft = draft.copy(dualSizeScale = it) } }
-                if (draft.dualBrush) item { BrushSettingSlider("Secondary spacing", draft.dualSpacing, .01f..2f) { draft = draft.copy(dualSpacing = it) } }
+                if (draft.dualBrush) item { BrushGapModeEditor(tr("Secondary brush-tip gap", "副笔尖间隔"), draft.dualSpacingMode) { draft = draft.copy(dualSpacingMode = it) } }
+                if (draft.dualBrush && draft.dualSpacingMode == CspBrushGap.FIXED) item { BrushSettingSlider("Secondary spacing", draft.dualSpacing, .01f..2f) { draft = draft.copy(dualSpacing = it) } }
                 if (draft.dualBrush) item { BrushSettingSlider("Secondary flow", draft.dualFlow, 0f..1f) { draft = draft.copy(dualFlow = it) } }
                 if (draft.dualBrush) item { BrushSettingSlider("Secondary hardness", draft.dualHardness, 0f..1f) { draft = draft.copy(dualHardness = it) } }
                 if (draft.dualBrush) item {
@@ -5582,6 +5586,25 @@ private fun BrushTextureCompositeEditor(value: Int, onValue: (Int) -> Unit) {
             color = MutedInk,
             fontSize = 10.sp,
         )
+    }
+}
+
+@Composable
+private fun BrushGapModeEditor(label: String, value: Int, onValue: (Int) -> Unit) {
+    val modes = listOf(
+        CspBrushGap.FIXED to tr("Fixed", "固定"),
+        CspBrushGap.WIDE to tr("Wide", "宽"),
+        CspBrushGap.NORMAL to tr("Normal", "普通"),
+        CspBrushGap.NARROW to tr("Narrow", "窄"),
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, color = MutedInk, fontSize = 11.sp)
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(modes, key = { it.first }) { (mode, text) ->
+                FilterChip(selected = CspBrushGap.normalize(value) == mode, onClick = { onValue(mode) }, label = { Text(text) })
+            }
+        }
+        if (value != CspBrushGap.FIXED) Text(tr("Automatic gap ignores the saved Fixed percentage.", "自动间隔不会使用已保存的固定百分比。"), color = MutedInk, fontSize = 10.sp)
     }
 }
 

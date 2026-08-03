@@ -8,6 +8,7 @@ import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushColorDynamics
 import app.inkloom.document.CspTextureComposite
 import app.inkloom.document.CspAntiAlias
+import app.inkloom.document.CspBrushGap
 import java.io.File
 
 class SutBrushParser(private val assetDirectory: File) {
@@ -17,7 +18,7 @@ class SutBrushParser(private val assetDirectory: File) {
         val database = SQLiteDatabase.openDatabase(source.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
         database.use { db ->
             val columns = db.rawQuery("PRAGMA table_info(Variant)", null).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(cursor.getColumnIndexOrThrow("name"))) } }
-            val desired = listOf("Opacity", "BrushSize", "BrushSizeUnit", "FlickerReduction", "FlickerReductionBySpeed", "FlickerReductionBySpeedType", "BrushFlow", "BrushHardness", "BrushBlurLinkSize", "BrushBlur", "BrushBlurUnit", "BrushBlurEffector", "BrushInterval", "BrushContinuousPlot", "BrushThickness", "BrushVerticalThicknes", "BrushRotation", "BrushRotationEffector", "BrushRotationRandomScale", "BrushPatternOrderType", "BrushPatternReverseHorizontal", "BrushPatternReverseVertical", "BrushBlendPatternByDarken", "BrushRibbon", "BrushChangeColorTarget", "BrushHueChange", "BrushSaturationChange", "BrushValueChange", "TextureDensity", "TextureCompositeMode", "TextureReverseDensity", "TextureStressDensity", "TextureScale2", "TextureRotate", "TextureBrightness", "TextureContrast", "BrushUseWaterColor", "BrushMixColor", "BrushMixAlpha", "BrushUseSpray", "BrushSpraySize", "BrushSpraySizeUnit", "BrushSpraySizeSyncBrushSize", "BrushSprayDensity", "BrushSprayBias", "BrushRotationInSpray", "BrushRotationEffectorInSpray", "BrushRotationRandomInSpray", "UseDualBrush", "DualBrushCompositeMode", "ChangeRGBByDual", "SyncDualBrushSize", "DualSize", "DualFlow", "DualHardness", "DualInterval", "DualThickness", "DualVerticalThicknes", "DualRotation", "DualRotationEffector", "DualRotationRandomScale", "DualPatternReverseHorizontal", "DualPatternReverseVertical", "DualBlendPatternByDarken", "DualRibbon", "DualUseSpray", "DualSpraySize", "DualSpraySizeUnit", "DualSpraySizeSyncBrushSize", "DualSprayDensity", "DualSprayBias", "DualRotationInSpray", "DualRotationEffectorInSpray", "DualRotationRandomInSpray", "DualPatternOrderType", "BrushInOutType", "BrushUseIn", "BrushInLength", "BrushInLengthUnit", "BrushInRatio", "BrushUseOut", "BrushOutLength", "BrushOutLengthUnit", "BrushOutRatio", "BrushUseWaterEdge", "BrushWaterEdgeRadius", "BrushWaterEdgeRadiusUnit", "BrushWaterEdgeAlphaPower", "BrushWaterEdgeValuePower", "BrushWaterEdgeBlur", "BrushWaterEdgeBlurUnit").filter(columns::contains)
+            val desired = listOf("Opacity", "BrushSize", "BrushSizeUnit", "FlickerReduction", "FlickerReductionBySpeed", "FlickerReductionBySpeedType", "BrushFlow", "BrushHardness", "BrushBlurLinkSize", "BrushBlur", "BrushBlurUnit", "BrushBlurEffector", "BrushInterval", "BrushAutoIntervalType", "BrushContinuousPlot", "BrushThickness", "BrushVerticalThicknes", "BrushRotation", "BrushRotationEffector", "BrushRotationRandomScale", "BrushPatternOrderType", "BrushPatternReverseHorizontal", "BrushPatternReverseVertical", "BrushBlendPatternByDarken", "BrushRibbon", "BrushChangeColorTarget", "BrushHueChange", "BrushSaturationChange", "BrushValueChange", "TextureDensity", "TextureCompositeMode", "TextureReverseDensity", "TextureStressDensity", "TextureScale2", "TextureRotate", "TextureBrightness", "TextureContrast", "BrushUseWaterColor", "BrushMixColor", "BrushMixAlpha", "BrushUseSpray", "BrushSpraySize", "BrushSpraySizeUnit", "BrushSpraySizeSyncBrushSize", "BrushSprayDensity", "BrushSprayBias", "BrushRotationInSpray", "BrushRotationEffectorInSpray", "BrushRotationRandomInSpray", "UseDualBrush", "DualBrushCompositeMode", "ChangeRGBByDual", "SyncDualBrushSize", "DualSize", "DualFlow", "DualHardness", "DualInterval", "DualAutoIntervalType", "DualThickness", "DualVerticalThicknes", "DualRotation", "DualRotationEffector", "DualRotationRandomScale", "DualPatternReverseHorizontal", "DualPatternReverseVertical", "DualBlendPatternByDarken", "DualRibbon", "DualUseSpray", "DualSpraySize", "DualSpraySizeUnit", "DualSpraySizeSyncBrushSize", "DualSprayDensity", "DualSprayBias", "DualRotationInSpray", "DualRotationEffectorInSpray", "DualRotationRandomInSpray", "DualPatternOrderType", "BrushInOutType", "BrushUseIn", "BrushInLength", "BrushInLengthUnit", "BrushInRatio", "BrushUseOut", "BrushOutLength", "BrushOutLengthUnit", "BrushOutRatio", "BrushUseWaterEdge", "BrushWaterEdgeRadius", "BrushWaterEdgeRadiusUnit", "BrushWaterEdgeAlphaPower", "BrushWaterEdgeValuePower", "BrushWaterEdgeBlur", "BrushWaterEdgeBlurUnit").filter(columns::contains)
             val numericDesired = (desired + listOf("AntiAlias", "DualAntiAlias").filter(columns::contains)).filterNot { it == "BrushBlurEffector" }
             val values = db.rawQuery("SELECT n.NodeName, ${numericDesired.joinToString { "v.$it" }} FROM Node n JOIN Variant v ON v.VariantID=n.NodeVariantID LIMIT 1", null).use { cursor ->
                 check(cursor.moveToFirst()) { "SUT has no active brush variant" }
@@ -71,6 +72,7 @@ class SutBrushParser(private val assetDirectory: File) {
                 stabilizationBySpeedMode = values.float("FlickerReductionBySpeedType", 1f).toInt().coerceIn(0, 1),
                 defaultOpacity = (values.float("Opacity", 100f) / 100f).coerceIn(.01f, 1f),
                 spacing = (values.float("BrushInterval", 12f) / 100f).coerceIn(.01f, 2f),
+                spacingMode = CspBrushGap.normalize(values.float("BrushAutoIntervalType").toInt()),
                 flow = (values.float("BrushFlow", 100f) / 100f).coerceIn(0f, 1f),
                 hardness = (values.float("BrushHardness", 100f) / 100f).coerceIn(0f, 1f),
                 antiAliasMode = CspAntiAlias.normalize(values.float("AntiAlias", CspAntiAlias.MEDIUM.toFloat()).toInt()),
@@ -128,6 +130,7 @@ class SutBrushParser(private val assetDirectory: File) {
                 dualBrush = dual,
                 dualSizeScale = if (values.float("SyncDualBrushSize") > 0f) (values.float("DualSize", 100f) / 100f).coerceIn(.01f, 8f) else (values.float("DualSize", values.float("BrushSize", 8f)) / values.float("BrushSize", 8f).coerceAtLeast(.5f)).coerceIn(.01f, 8f),
                 dualSpacing = (values.float("DualInterval", 12f) / 100f).coerceIn(.01f, 2f),
+                dualSpacingMode = CspBrushGap.normalize(values.float("DualAutoIntervalType").toInt()),
                 dualFlow = (values.float("DualFlow", 100f) / 100f).coerceIn(0f, 1f),
                 dualHardness = (values.float("DualHardness", 100f) / 100f).coerceIn(0f, 1f),
                 dualAntiAliasMode = CspAntiAlias.normalize(values.float("DualAntiAlias", CspAntiAlias.MEDIUM.toFloat()).toInt()),
@@ -205,6 +208,7 @@ class SutBrushParser(private val assetDirectory: File) {
                     else if (textureMode == CspTextureComposite.COMPARE) add("CSP Compare texture mode retained with conservative density comparison; exact raster parity is not claimed${if (grain == null) "; no referenced texture raster was resolved" else ""}")
                     else if (grain != null && textureMode > 0) add("CSP texture mode $textureMode retained with legacy density modulation until its raster equation is verified")
                     add("Size${if (values.float("BrushSizeUnit").toInt() == SutUnitConverter.MILLIMETERS) " converted from mm to the 1600 px reference page" else ""}, opacity, flow, hardness, spacing, thickness and rotation mapped")
+                    if (values.float("BrushAutoIntervalType") > 0f) add("CSP ${CspBrushGap.displayName(values.float("BrushAutoIntervalType").toInt())} automatic brush-tip gap mapped; stale Fixed interval ${values.float("BrushInterval")}% is not used while this mode is active")
                     add("CSP main anti-alias mode ${CspAntiAlias.normalize(values.float("AntiAlias", CspAntiAlias.MEDIUM.toFloat()).toInt())} mapped before material grain composition")
                     if (values.float("BrushBlur") > 0f) add("CSP brush blur mapped at ${values.float("BrushBlur")} ${if (values.float("BrushBlurUnit").toInt() == SutUnitConverter.MILLIMETERS) "mm" else "reference px"}${if (values.float("BrushBlurLinkSize") > 0f) ", linked to the live brush diameter" else ", using a stable radius"}")
                     if (values.float("FlickerReduction") > 0f) add("CSP stabilization ${values.float("FlickerReduction").toInt()} mapped${if (values.float("FlickerReductionBySpeed") > 0f && values.float("FlickerReduction") < 30f) " with speed adjustment mode ${values.float("FlickerReductionBySpeedType", 1f).toInt()}" else ""}")
@@ -292,6 +296,6 @@ class SutBrushParser(private val assetDirectory: File) {
     private fun SutEffector?.colorDynamics(): BrushColorDynamics = this?.let { effector -> BrushColorDynamics(pressureEnabled = effector.pressureEnabled, pressureMinimum = effector.pressureMinimum, pressureCurve = effector.pressureCurve, tiltEnabled = effector.tiltEnabled, tiltMinimum = effector.tiltMinimum, velocityEnabled = effector.velocityEnabled, velocityMinimum = effector.velocityMinimum, velocityCurve = effector.velocityCurve, randomEnabled = effector.randomEnabled, randomMinimum = effector.randomMinimumSigned) } ?: BrushColorDynamics()
     private fun SutEffector.sourceSummary(): String = buildList { if (tiltEnabled) add("tilt"); if (velocityEnabled) add("velocity"); if (randomEnabled) add("random") }.joinToString("+")
     companion object {
-        const val CURRENT_VERSION = 24
+        const val CURRENT_VERSION = 25
     }
 }

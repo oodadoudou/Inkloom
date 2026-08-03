@@ -85,6 +85,7 @@ class BrushMetadataStore(
                         stabilizationBySpeed = item.optBoolean("stabilizationBySpeed", false),
                         stabilizationBySpeedMode = item.optInt("stabilizationBySpeedMode", 1).coerceIn(0, 1),
                         spacing = item.optDouble("spacing", .12).toFloat(),
+                        spacingMode = app.inkloom.document.CspBrushGap.normalize(item.optInt("spacingMode", app.inkloom.document.CspBrushGap.FIXED)),
                         flow = item.optDouble("flow", 1.0).toFloat(),
                         hardness = item.optDouble("hardness", 1.0).toFloat(),
                         antiAliasMode = item.optInt("antiAliasMode", CspAntiAlias.MEDIUM).coerceIn(CspAntiAlias.NONE, CspAntiAlias.STRONG),
@@ -146,6 +147,7 @@ class BrushMetadataStore(
                         dualBrush = item.optBoolean("dualBrush", false),
                         dualSizeScale = item.optDouble("dualSizeScale", 1.0).toFloat().coerceIn(.01f, 8f),
                         dualSpacing = item.optDouble("dualSpacing", .12).toFloat().coerceIn(.01f, 2f),
+                        dualSpacingMode = app.inkloom.document.CspBrushGap.normalize(item.optInt("dualSpacingMode", app.inkloom.document.CspBrushGap.FIXED)),
                         dualFlow = item.optDouble("dualFlow", 1.0).toFloat().coerceIn(0f, 1f),
                         dualHardness = item.optDouble("dualHardness", 1.0).toFloat().coerceIn(0f, 1f),
                         dualAntiAliasMode = item.optInt("dualAntiAliasMode", CspAntiAlias.MEDIUM).coerceIn(CspAntiAlias.NONE, CspAntiAlias.STRONG),
@@ -262,6 +264,7 @@ class BrushMetadataStore(
                     .put("stabilizationBySpeed", brush.stabilizationBySpeed)
                     .put("stabilizationBySpeedMode", brush.stabilizationBySpeedMode)
                     .put("spacing", brush.spacing)
+                    .put("spacingMode", brush.spacingMode)
                     .put("flow", brush.flow)
                     .put("hardness", brush.hardness)
                     .put("antiAliasMode", brush.antiAliasMode)
@@ -323,6 +326,7 @@ class BrushMetadataStore(
                     .put("dualBrush", brush.dualBrush)
                     .put("dualSizeScale", brush.dualSizeScale)
                     .put("dualSpacing", brush.dualSpacing)
+                    .put("dualSpacingMode", brush.dualSpacingMode)
                     .put("dualFlow", brush.dualFlow)
                     .put("dualHardness", brush.dualHardness)
                     .put("dualAntiAliasMode", brush.dualAntiAliasMode)

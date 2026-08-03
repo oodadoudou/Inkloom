@@ -56,9 +56,9 @@ class SutSprayRotationParserTest {
                 )
             }
             parsed.forEach { brush ->
-                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 24, brush.parserVersion)
+                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 25, brush.parserVersion)
                 assertFalse(brush.report.any { it.startsWith("SUT parameter parsing failed") })
-                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v24-")) }
+                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v25-")) }
             }
             assertTrue("Expected multiple CSP AntiAlias modes in the supplied corpus", parsed.map(ImportedBrush::antiAliasMode).distinct().size >= 3)
             assertTrue(parsed.all { it.antiAliasMode in CspAntiAlias.NONE..CspAntiAlias.STRONG })
@@ -92,6 +92,12 @@ class SutSprayRotationParserTest {
             val continuousBrushes = parsed.filter(ImportedBrush::continuousPlot)
             assertTrue("Expected supplied CSP Continuous spraying brushes", continuousBrushes.size >= 2)
             assertTrue(continuousBrushes.all { brush -> brush.report.any { it.contains("Continuous spraying mapped") } })
+            val automaticGapBrushes = parsed.filter { it.spacingMode != app.inkloom.document.CspBrushGap.FIXED }
+            assertEquals("Expected all supplied CSP automatic-gap brushes", 6, automaticGapBrushes.size)
+            assertTrue(automaticGapBrushes.any { it.spacingMode == app.inkloom.document.CspBrushGap.WIDE })
+            assertTrue(automaticGapBrushes.any { it.spacingMode == app.inkloom.document.CspBrushGap.NORMAL })
+            assertTrue(automaticGapBrushes.any { it.spacingMode == app.inkloom.document.CspBrushGap.NARROW })
+            assertTrue(automaticGapBrushes.all { brush -> brush.report.any { it.contains("automatic brush-tip gap mapped") } })
             val particleDynamicsBrush = parsed.firstOrNull { it.sprayParticleSizePressureEnabled && it.sprayParticleSizeSecondaryDynamics.velocityEnabled }
             assertTrue("Expected the supplied pressure+velocity particle-size dynamics", particleDynamicsBrush != null)
             assertEquals(.32f, particleDynamicsBrush?.sprayParticleSizePressureMinimum ?: -1f, .001f)
@@ -151,7 +157,7 @@ class SutSprayRotationParserTest {
             assertEquals(CspTextureComposite.HEIGHT, brush.grainCompositeMode)
             assertEquals(CspAntiAlias.WEAK, brush.antiAliasMode)
             assertEquals(CspAntiAlias.STRONG, brush.dualAntiAliasMode)
-            assertEquals(24, brush.parserVersion)
+            assertEquals(25, brush.parserVersion)
         } finally {
             root.deleteRecursively()
         }
@@ -191,6 +197,8 @@ class SutSprayRotationParserTest {
                 tipFlipHorizontalMode = 2,
                 blendTipsWithDarken = true,
                 continuousPlot = true,
+                spacingMode = app.inkloom.document.CspBrushGap.NARROW,
+                dualSpacingMode = app.inkloom.document.CspBrushGap.WIDE,
                 colorJitterHueDegrees = 14f,
                 colorJitterSaturation = 9f,
                 colorJitterTarget = 1,
@@ -240,6 +248,8 @@ class SutSprayRotationParserTest {
             assertEquals(2, restored.tipFlipHorizontalMode)
             assertTrue(restored.blendTipsWithDarken)
             assertTrue(restored.continuousPlot)
+            assertEquals(app.inkloom.document.CspBrushGap.NARROW, restored.spacingMode)
+            assertEquals(app.inkloom.document.CspBrushGap.WIDE, restored.dualSpacingMode)
             assertEquals(14f, restored.colorJitterHueDegrees, .0001f)
             assertEquals(9f, restored.colorJitterSaturation, .0001f)
             assertEquals(1, restored.colorJitterTarget)

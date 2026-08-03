@@ -46,6 +46,7 @@ class InkloomBrushPackageTest {
                 defaultSize = 37f,
                 defaultOpacity = .72f,
                 spacing = .18f,
+                spacingMode = app.inkloom.document.CspBrushGap.NARROW,
                 stabilization = .4f,
                 antiAliasMode = CspAntiAlias.WEAK,
                 blur = 9.5f,
@@ -71,6 +72,7 @@ class InkloomBrushPackageTest {
                 tipFlipVerticalMode = 3,
                 blendTipsWithDarken = true,
                 dualBrush = true,
+                dualSpacingMode = app.inkloom.document.CspBrushGap.WIDE,
                 dualCompositeMode = 7,
                 dualApplyRgb = true,
                 dualTipFlipHorizontalMode = 1,
@@ -133,6 +135,7 @@ class InkloomBrushPackageTest {
             assertEquals(original.defaultSize, restored.defaultSize, .0001f)
             assertEquals(original.defaultOpacity, restored.defaultOpacity, .0001f)
             assertEquals(original.spacing, restored.spacing, .0001f)
+            assertEquals(app.inkloom.document.CspBrushGap.NARROW, restored.spacingMode)
             assertEquals(CspAntiAlias.WEAK, restored.antiAliasMode)
             assertEquals(CspAntiAlias.STRONG, restored.dualAntiAliasMode)
             assertEquals(original.blur, restored.blur, .0001f)
@@ -150,6 +153,7 @@ class InkloomBrushPackageTest {
             assertEquals(original.sizeSecondaryDynamics, restored.sizeSecondaryDynamics)
             assertEquals(original.tags, restored.tags)
             assertTrue(restored.dualBrush)
+            assertEquals(app.inkloom.document.CspBrushGap.WIDE, restored.dualSpacingMode)
             assertEquals(7, restored.dualCompositeMode)
             assertTrue(restored.dualApplyRgb)
             assertEquals(2, restored.tipFlipHorizontalMode)

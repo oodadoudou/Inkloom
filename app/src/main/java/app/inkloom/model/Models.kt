@@ -7,6 +7,7 @@ import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushTaperMode
 import app.inkloom.document.CspTextureComposite
 import app.inkloom.document.CspAntiAlias
+import app.inkloom.document.CspBrushGap
 import java.util.UUID
 import kotlinx.serialization.Serializable
 
@@ -57,6 +58,7 @@ data class ImportedBrush(
     val stabilizationBySpeed: Boolean = false,
     val stabilizationBySpeedMode: Int = 1,
     val spacing: Float = .12f,
+    val spacingMode: Int = CspBrushGap.FIXED,
     val flow: Float = 1f,
     val hardness: Float = 1f,
     val antiAliasMode: Int = CspAntiAlias.MEDIUM,
@@ -118,6 +120,7 @@ data class ImportedBrush(
     val dualBrush: Boolean = false,
     val dualSizeScale: Float = 1f,
     val dualSpacing: Float = .12f,
+    val dualSpacingMode: Int = CspBrushGap.FIXED,
     val dualFlow: Float = 1f,
     val dualHardness: Float = 1f,
     val dualAntiAliasMode: Int = CspAntiAlias.MEDIUM,
