@@ -61,6 +61,7 @@ import app.inkloom.document.StrokeTileKey
 import app.inkloom.document.StylusInputClassifier
 import app.inkloom.document.TwoFingerTapUndoGesture
 import app.inkloom.document.TwoPointerRotationGesture
+import app.inkloom.document.ThreeFingerTapRedoGesture
 import app.inkloom.document.ViewportTransform
 import app.inkloom.document.WaterEdge
 import app.inkloom.document.WetMixDynamics
@@ -111,6 +112,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var navigationTapEligible = false
     private val navigationTouchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
     private val twoFingerTapUndoGesture = TwoFingerTapUndoGesture(navigationTouchSlop)
+    private val threeFingerTapRedoGesture = ThreeFingerTapRedoGesture(navigationTouchSlop)
     private val twoPointerRotationGesture = TwoPointerRotationGesture()
     private val colorSampleBitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
     private var activeTool: EditorTool? = null
@@ -285,6 +287,7 @@ class InkCanvasView(context: Context) : View(context) {
     var eraserTipAssetPath: String? = null
     var fingerDrawingEnabled: Boolean = false
     var twoFingerDoubleTapUndo: Boolean = true
+    var threeFingerTapRedo: Boolean = true
     var twoFingerRotationEnabled: Boolean = false
     var pressureSensitivity: Float = 1f
     var pressureMinimumInput: Float = 0f
@@ -310,6 +313,7 @@ class InkCanvasView(context: Context) : View(context) {
     var pdfGotoLinks: List<PdfGotoLink> = emptyList()
     var onPdfGotoLink: (PdfGotoLink) -> Unit = {}
     var onUndoGesture: () -> Unit = {}
+    var onRedoGesture: () -> Unit = {}
     var onColorSampled: (Int) -> Unit = {}
     var onBrushSizeAdjusted: (Float) -> Unit = {}
     var onInputDiagnostic: (String, Float, Float, Int) -> Unit = { _, _, _, _ -> }
@@ -337,6 +341,9 @@ class InkCanvasView(context: Context) : View(context) {
         if (!hasWindowFocus) {
             ctrlModifierHeld = false
             altModifierHeld = false
+            twoFingerTapUndoGesture.cancel()
+            threeFingerTapRedoGesture.cancel()
+            twoPointerRotationGesture.reset()
             if (brushSizeDragActive) finishBrushSizeDrag(cancelled = true)
         }
     }
@@ -772,6 +779,7 @@ class InkCanvasView(context: Context) : View(context) {
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     twoPointerRotationGesture.reset()
+                    threeFingerTapRedoGesture.cancel()
                     navigationX = event.x; navigationY = event.y
                     navigationDownX = event.x; navigationDownY = event.y
                     navigationMoved = false
@@ -782,10 +790,17 @@ class InkCanvasView(context: Context) : View(context) {
                 MotionEvent.ACTION_POINTER_DOWN -> {
                     navigationMoved = true
                     navigationTapEligible = false
-                    if (event.pointerCount == 2 && twoFingerDoubleTapUndo) {
+                    if (event.pointerCount == 3 && threeFingerTapRedo) {
+                        twoFingerTapUndoGesture.cancel()
+                        val focus = event.centroid()
+                        threeFingerTapRedoGesture.start(event.eventTime, focus.first, focus.second)
+                    } else if (event.pointerCount == 2 && twoFingerDoubleTapUndo) {
                         val focus = event.centroid()
                         twoFingerTapUndoGesture.start(event.eventTime, focus.first, focus.second)
-                    } else twoFingerTapUndoGesture.cancel()
+                    } else {
+                        twoFingerTapUndoGesture.cancel()
+                        threeFingerTapRedoGesture.cancel()
+                    }
                     val focus = event.centroid()
                     navigationX = focus.first
                     navigationY = focus.second
@@ -794,7 +809,8 @@ class InkCanvasView(context: Context) : View(context) {
                     } else twoPointerRotationGesture.reset()
                 }
                 MotionEvent.ACTION_POINTER_UP -> {
-                    if (event.pointerCount == 2 && twoFingerDoubleTapUndo && twoFingerTapUndoGesture.finish(event.eventTime)) onUndoGesture()
+                    if (event.pointerCount == 3 && threeFingerTapRedo && threeFingerTapRedoGesture.finish(event.eventTime)) onRedoGesture()
+                    else if (event.pointerCount == 2 && twoFingerDoubleTapUndo && twoFingerTapUndoGesture.finish(event.eventTime)) onUndoGesture()
                     ViewportTransform.remainingPointerIndex(event.pointerCount, event.actionIndex)?.let { remaining ->
                         navigationX = event.getX(remaining)
                         navigationY = event.getY(remaining)
@@ -814,7 +830,8 @@ class InkCanvasView(context: Context) : View(context) {
                         null
                     }
                     rotationDelta?.let(onViewportRotate)
-                    twoFingerTapUndoGesture.move(focus.first, focus.second, scaleDetector.isInProgress || twoPointerRotationGesture.isRotating)
+                    if (event.pointerCount == 3) threeFingerTapRedoGesture.move(focus.first, focus.second, scaleDetector.isInProgress)
+                    else twoFingerTapUndoGesture.move(focus.first, focus.second, scaleDetector.isInProgress || twoPointerRotationGesture.isRotating)
                     onViewportPan(focus.first - navigationX, focus.second - navigationY)
                     navigationX = focus.first; navigationY = focus.second
                     navigationMoved = true
@@ -829,6 +846,7 @@ class InkCanvasView(context: Context) : View(context) {
                 }
                 MotionEvent.ACTION_UP -> {
                     twoPointerRotationGesture.reset()
+                    threeFingerTapRedoGesture.cancel()
                     val movedFromDown = navigationMoved || hypot(event.x - navigationDownX, event.y - navigationDownY) > navigationTouchSlop
                     if (navigationTapEligible && !movedFromDown && !scaleDetector.isInProgress) {
                         PdfGotoLinkNavigation.hit(
@@ -840,7 +858,7 @@ class InkCanvasView(context: Context) : View(context) {
                     }
                     navigationTapEligible = false
                 }
-                MotionEvent.ACTION_CANCEL -> { navigationTapEligible = false; twoFingerTapUndoGesture.cancel(); twoPointerRotationGesture.reset() }
+                MotionEvent.ACTION_CANCEL -> { navigationTapEligible = false; twoFingerTapUndoGesture.cancel(); threeFingerTapRedoGesture.cancel(); twoPointerRotationGesture.reset() }
             }
             return true
         }

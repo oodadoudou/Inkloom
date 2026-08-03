@@ -79,7 +79,7 @@ class InkloomLaunchTest {
 
     @Test fun shortcutEditorExposesPortableToolboxProfiles() {
         composeRule.onNodeWithContentDescription("Settings").performClick()
-        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Draw with finger"))).performScrollToIndex(28)
+        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Draw with finger"))).performScrollToIndex(29)
         composeRule.onNodeWithText("Customize shortcuts").performClick()
         composeRule.onNodeWithText("Search actions or keys").assertIsDisplayed()
         composeRule.onNodeWithText("Brush groups").assertIsDisplayed()

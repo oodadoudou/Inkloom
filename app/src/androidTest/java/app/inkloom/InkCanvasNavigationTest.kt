@@ -89,6 +89,28 @@ class InkCanvasNavigationTest {
         assertEquals(0f, rotation, .001f)
     }
 
+    @Test fun threeFingerTapTriggersRedoWithoutCommittingInk() {
+        val view = canvas().apply {
+            tool = EditorTool.PEN
+            fingerDrawingEnabled = false
+            threeFingerTapRedo = true
+        }
+        var redoCount = 0
+        var committed = 0
+        view.onRedoGesture = { redoCount++ }
+        view.onStrokeCommitted = { committed++ }
+
+        send(view, 0L, MotionEvent.ACTION_DOWN, point(0, 100f, 100f))
+        send(view, 20L, MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), point(0, 100f, 100f), point(1, 220f, 100f))
+        send(view, 40L, MotionEvent.ACTION_POINTER_DOWN or (2 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), point(0, 100f, 100f), point(1, 220f, 100f), point(2, 160f, 210f))
+        send(view, 100L, MotionEvent.ACTION_POINTER_UP or (2 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), point(0, 100f, 100f), point(1, 220f, 100f), point(2, 160f, 210f))
+        send(view, 120L, MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), point(0, 100f, 100f), point(1, 220f, 100f))
+        send(view, 140L, MotionEvent.ACTION_UP, point(0, 100f, 100f))
+
+        assertEquals(1, redoCount)
+        assertEquals("Three-finger navigation must never leave ink", 0, committed)
+    }
+
     @Test fun holdShortcutEmitsPressAndReleaseForTemporaryToolSwitching() {
         val view = canvas().apply {
             shortcutBindings = listOf(ShortcutBinding(ShortcutAction.TOGGLE_ERASER, ShortcutChord(KeyEvent.KEYCODE_E), ShortcutTrigger.HOLD))

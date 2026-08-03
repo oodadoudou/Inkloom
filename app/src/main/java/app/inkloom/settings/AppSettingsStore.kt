@@ -29,6 +29,7 @@ data class AppSettings(
     val verticalToolbar: Boolean = false,
     val toolbarDock: ToolbarDock = ToolbarDock.FREE,
     val twoFingerDoubleTapUndo: Boolean = true,
+    val threeFingerTapRedo: Boolean = true,
     val twoFingerRotation: Boolean = false,
     val stylusPrimaryButton: StylusButtonAction = StylusButtonAction.ERASER,
     val stylusSecondaryButton: StylusButtonAction = StylusButtonAction.LASSO,
@@ -91,6 +92,7 @@ class AppSettingsStore(context: Context) {
             verticalToolbar = preferences.getBoolean("verticalToolbar", false),
             toolbarDock = enumValue(preferences.getString("toolbarDock", null), ToolbarDock.FREE),
             twoFingerDoubleTapUndo = preferences.getBoolean("twoFingerDoubleTapUndo", true),
+            threeFingerTapRedo = preferences.getBoolean("threeFingerTapRedo", true),
             twoFingerRotation = preferences.getBoolean("twoFingerRotation", false),
             stylusPrimaryButton = enumValue(preferences.getString("stylusPrimaryButton", null), StylusButtonAction.ERASER),
             stylusSecondaryButton = enumValue(preferences.getString("stylusSecondaryButton", null), StylusButtonAction.LASSO),
@@ -141,6 +143,7 @@ class AppSettingsStore(context: Context) {
             .putBoolean("verticalToolbar", value.verticalToolbar)
             .putString("toolbarDock", value.toolbarDock.name)
             .putBoolean("twoFingerDoubleTapUndo", value.twoFingerDoubleTapUndo)
+            .putBoolean("threeFingerTapRedo", value.threeFingerTapRedo)
             .putBoolean("twoFingerRotation", value.twoFingerRotation)
             .putString("stylusPrimaryButton", value.stylusPrimaryButton.name)
             .putString("stylusSecondaryButton", value.stylusSecondaryButton.name)
