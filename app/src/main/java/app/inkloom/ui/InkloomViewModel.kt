@@ -290,12 +290,12 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     fun exportCurrentPage(uri: Uri) { currentPage()?.let { assets.exportPagePng(it, uri) } }
     fun exportCurrentBundle(uri: Uri) { currentDocument()?.let { assets.exportBundle(it, uri) } }
 
-    fun exportLibraryBackup(uri: Uri, brushes: List<ImportedBrush>, brushGroups: List<String>, onComplete: (Result<Unit>) -> Unit) {
+    fun exportLibraryBackup(uri: Uri, brushes: List<ImportedBrush>, brushGroups: List<String>, preferences: ByteArray?, onComplete: (Result<Unit>) -> Unit) {
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     getApplication<Application>().contentResolver.openOutputStream(uri)?.use { output ->
-                        backupService.export(store.list(), loadFolders(), brushes, output, brushGroups)
+                        backupService.export(store.list(), loadFolders(), brushes, output, brushGroups, preferences)
                     } ?: error("Could not open the backup destination")
                 }
             }

@@ -77,6 +77,7 @@ import app.inkloom.importer.BrushVersion
 import app.inkloom.importer.BrushVersionHistoryStore
 import app.inkloom.model.*
 import app.inkloom.settings.AppSettings
+import app.inkloom.settings.AppSettingsBackupCodec
 import app.inkloom.settings.AppSettingsStore
 import app.inkloom.settings.ColorPaletteStore
 import app.inkloom.settings.EraserPreset
@@ -318,6 +319,7 @@ fun InkloomApp(initialIntent: Intent?) {
     val brushStore = remember { BrushMetadataStore(context) }
     val brushGroupStore = remember { BrushGroupStore(context) }
     val settingsStore = remember { AppSettingsStore(context) }
+    val colorPaletteStore = remember { ColorPaletteStore(context) }
     var settings by remember { mutableStateOf(settingsStore.load()) }
     var brushesOpen by remember { mutableStateOf(settings.showBrushPanel) }
     fun updateSettings(value: AppSettings) { settings = value; settingsStore.save(value) }
@@ -365,9 +367,13 @@ fun InkloomApp(initialIntent: Intent?) {
     val imageExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { uri -> if (uri != null) runCatching { viewModel.exportCurrentPage(uri) }.onFailure { importError = it.message } }
     val bundleExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri -> if (uri != null) runCatching { viewModel.exportCurrentBundle(uri) }.onFailure { importError = it.message } }
     val libraryBackupExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
-        if (uri != null) viewModel.exportLibraryBackup(uri, importedBrushes, brushGroups) { result ->
-            result.onSuccess { Toast.makeText(context, settings.language.text("Library backup saved.", "资料库备份已保存。"), Toast.LENGTH_LONG).show() }
-                .onFailure { importError = it.message }
+        if (uri != null) {
+            val preferences = runCatching { AppSettingsBackupCodec.encode(settings, colorPaletteStore.load()) }
+                .getOrElse { error -> importError = error.message; return@rememberLauncherForActivityResult }
+            viewModel.exportLibraryBackup(uri, importedBrushes, brushGroups, preferences) { result ->
+                result.onSuccess { Toast.makeText(context, settings.language.text("Library backup saved.", "资料库备份已保存。"), Toast.LENGTH_LONG).show() }
+                    .onFailure { importError = it.message }
+            }
         }
     }
     val libraryBackupImportPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -377,6 +383,21 @@ fun InkloomApp(initialIntent: Intent?) {
                 brushStore.save(importedBrushes)
                 brushGroups = BrushGroupOperations.reconcileRegisteredGroups(brushGroups + restored.brushGroups, importedBrushes)
                 brushGroupStore.save(brushGroups)
+                restored.preferences?.let { bytes ->
+                    AppSettingsBackupCodec.decode(bytes).onSuccess { preferences ->
+                        val restoredSettings = preferences.settings.copy(
+                            toolboxQuickSlots = ToolboxQuickSlots.remapBrushIds(preferences.settings.toolboxQuickSlots, restored.brushIdMappings),
+                        )
+                        brushesOpen = restoredSettings.showBrushPanel
+                        updateSettings(restoredSettings)
+                        colorPaletteStore.replace(preferences.colorPalette)
+                    }.onFailure { error ->
+                        importError = settings.language.text(
+                            "Notes and brushes were restored, but app settings were ignored: ${error.message}",
+                            "笔记和笔刷已恢复，但应用设置因损坏而被忽略：${error.message}",
+                        )
+                    }
+                }
                 Toast.makeText(
                     context,
                     settings.language.text(
@@ -2905,7 +2926,7 @@ private fun BrushColorPicker(color: Int, onColor: (Int) -> Unit) {
     }
     val customColor = AndroidColor.HSVToColor(floatArrayOf(hue, saturation, brightness))
     Box {
-        Box(Modifier.size(28.dp).clip(CircleShape).background(Color(color)).border(1.dp, OutlineSoft, CircleShape).clickable { open = true })
+        Box(Modifier.size(28.dp).clip(CircleShape).background(Color(color)).border(1.dp, OutlineSoft, CircleShape).clickable { customPalette = paletteStore.load(); open = true })
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             Column(Modifier.widthIn(min = 280.dp, max = 420.dp).padding(10.dp)) {
                 Text(tr("Colors", "颜色"), fontSize = 12.sp, color = MutedInk)
@@ -4000,7 +4021,7 @@ private fun SettingsDialog(
                 if (settings.toolbarDock == ToolbarDock.FREE) item { SettingSwitch(tr("Vertical toolbar", "垂直工具栏"), tr("Useful on a wide tablet canvas.", "适合宽屏平板画布。"), settings.verticalToolbar) { onChange(settings.copy(verticalToolbar = it)) } }
                 item { OutlinedButton(onClick = { onChange(settings.copy(toolbarDock = ToolbarDock.FREE, toolbarOffsetXDp = 16f, toolbarOffsetYDp = 16f)) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.CenterFocusStrong, null); Spacer(Modifier.width(8.dp)); Text(tr("Reset toolbar position", "重置工具栏位置")) } }
                 item { Text(tr("DATA & BACKUP", "数据与备份"), color = Sage, fontSize = 12.sp) }
-                item { Text(tr("A full backup includes notes, folders, imported brush presets, original brush packages, PDFs, images and audio. Restore always creates new IDs inside a Restored backup folder, so existing work is never overwritten.", "完整备份包含笔记、文件夹、导入笔刷预设、原始笔刷包、PDF、图片与音频。恢复时会在“已恢复备份”文件夹中创建新 ID，不会覆盖现有内容。"), color = MutedInk, fontSize = 12.sp) }
+                item { Text(tr("A full backup includes notes, folders, imported brushes and sources, PDFs, images, audio, input settings, panel layouts, Toolbox shortcuts, quick slots and the custom color palette. Content is restored with new IDs so existing work is never overwritten.", "完整备份包含笔记、文件夹、导入笔刷及源文件、PDF、图片、音频、输入设置、面板布局、Toolbox 快捷键、快速槽与自定义色板。内容恢复时会生成新 ID，不覆盖现有作品。"), color = MutedInk, fontSize = 12.sp) }
                 item { Button(onClick = onExportBackup, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Backup, null); Spacer(Modifier.width(8.dp)); Text(tr("Export full library backup", "导出完整资料库备份")) } }
                 item { OutlinedButton(onClick = onRestoreBackup, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Restore, null); Spacer(Modifier.width(8.dp)); Text(tr("Restore library backup", "恢复资料库备份")) } }
             }

@@ -75,6 +75,18 @@ class ToolboxQuickSlotTest {
         assertEquals("two", ToolboxQuickSlots.preferredBrush(ToolboxQuickSlot(ToolboxQuickSlotKind.BRUSH_GROUP, groupPath = "Favorites/Ink"), brushes)?.id)
     }
 
+    @Test fun `backup restore remaps referenced brush ids without changing system presets`() {
+        val slots = listOf(
+            ToolboxQuickSlot(ToolboxQuickSlotKind.BRUSH, brushId = "old-brush"),
+            ToolboxQuickSlot(ToolboxQuickSlotKind.TOOL_PRESET, brushId = ""),
+        )
+
+        val restored = ToolboxQuickSlots.remapBrushIds(slots, mapOf("old-brush" to "restored-brush"))
+
+        assertEquals("restored-brush", restored[0].brushId)
+        assertEquals("", restored[1].brushId)
+    }
+
     private fun brush(id: String, name: String, group: String, used: Long) = ImportedBrush(
         id = id,
         name = name,
