@@ -3,6 +3,7 @@ package app.inkloom
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasContentDescription
@@ -61,6 +62,12 @@ class InkloomLaunchTest {
                     .remove("toolboxQuickSlots")
                     .remove("workspaceLayouts")
                     .remove("customWorkspaces")
+                    .remove("pagePanelMode")
+                    .remove("brushPanelMode")
+                    .remove("layerPanelMode")
+                    .remove("pagePanelLocked")
+                    .remove("brushPanelLocked")
+                    .remove("layerPanelLocked")
                     .commit()
                 BrushGroupStore(ApplicationProvider.getApplicationContext()).save(
                     listOf("Toolbox/Pens", "Toolbox/Pencils", "Toolbox/Brushes"),
@@ -201,6 +208,37 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("Rename").performClick()
         composeRule.waitUntil(5_000) { AppSettingsStore(composeRule.activity).load().customWorkspaces.any { it.name == "Studio" } }
         composeRule.onNodeWithText("Studio").assertIsDisplayed()
+    }
+
+    @Test fun workspacePanelsCollapseToIconsAndLockTheirPlacement() {
+        createNotebookAndOpenEditor()
+
+        composeRule.onNodeWithContentDescription("Change pages panel docking").performClick()
+        composeRule.onNodeWithText("Collapsed").performClick()
+        composeRule.onNodeWithContentDescription("Expand Pages panel").assertIsDisplayed()
+        assertEquals("COLLAPSED", AppSettingsStore(composeRule.activity).load().pagePanelMode.name)
+
+        composeRule.onNodeWithContentDescription("Change pages panel docking").performClick()
+        composeRule.onNodeWithText("Icon only").performClick()
+        assertEquals("ICON_ONLY", AppSettingsStore(composeRule.activity).load().pagePanelMode.name)
+        composeRule.onNodeWithContentDescription("Change pages panel docking").performClick()
+        composeRule.onNodeWithText("Lock position and size").performClick()
+        assertTrue(AppSettingsStore(composeRule.activity).load().pagePanelLocked)
+        composeRule.onNodeWithContentDescription("Change pages panel docking").performClick()
+        composeRule.onNodeWithText("Dock right").assertIsNotEnabled()
+        composeRule.onNodeWithText("Expanded").performClick()
+
+        composeRule.onNodeWithContentDescription("Workspaces").performClick()
+        composeRule.onNodeWithText("Drawing workspace").performClick()
+        composeRule.onNodeWithContentDescription("Change brushes panel docking").performClick()
+        composeRule.onNodeWithText("Icon only").performClick()
+        composeRule.onNodeWithContentDescription("Expand Brush Library panel").assertIsDisplayed()
+        assertEquals("ICON_ONLY", AppSettingsStore(composeRule.activity).load().brushPanelMode.name)
+
+        composeRule.onNodeWithContentDescription("Change layers panel docking").performClick()
+        composeRule.onNodeWithText("Collapsed").performClick()
+        composeRule.onNodeWithContentDescription("Expand Layers panel").assertIsDisplayed()
+        assertEquals("COLLAPSED", AppSettingsStore(composeRule.activity).load().layerPanelMode.name)
     }
 
     @Test fun settingsExposeInputAndToolControls() {
