@@ -90,6 +90,7 @@ import app.inkloom.settings.KeyInputDiagnostic
 import app.inkloom.settings.ShortcutChord
 import app.inkloom.settings.ShortcutMatchMode
 import app.inkloom.settings.ShortcutPhase
+import app.inkloom.settings.ShortcutProfileCodec
 import app.inkloom.settings.ShortcutTrigger
 import app.inkloom.settings.ShortcutBrushGroup
 import app.inkloom.settings.ShortcutBrushSelection
@@ -370,6 +371,21 @@ fun InkloomApp(initialIntent: Intent?) {
             }.onFailure { importError = it.message }
         }
     }
+    val shortcutProfileExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(ShortcutProfileCodec.MIME_TYPE)) { uri ->
+        if (uri != null) runCatching {
+            context.contentResolver.openOutputStream(uri, "wt")?.use { output -> output.write(ShortcutProfileCodec.encode(settings.shortcutBindings)) }
+                ?: error("Unable to open the shortcut profile destination.")
+            Toast.makeText(context, settings.language.text("Shortcut profile saved.", "快捷键配置已保存。"), Toast.LENGTH_LONG).show()
+        }.onFailure { importError = it.message }
+    }
+    val shortcutProfileImportPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) runCatching {
+            val imported = context.contentResolver.openInputStream(uri)?.use { ShortcutProfileCodec.decode(it).getOrThrow() }
+                ?: error("Unable to open the shortcut profile.")
+            updateSettings(settings.copy(shortcutBindings = imported))
+            Toast.makeText(context, settings.language.text("Shortcut profile restored.", "快捷键配置已恢复。"), Toast.LENGTH_LONG).show()
+        }.onFailure { importError = it.message }
+    }
     val brushExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.inkloom.brush+zip")) { uri ->
         val brush = pendingBrushExport
         pendingBrushExport = null
@@ -509,6 +525,8 @@ fun InkloomApp(initialIntent: Intent?) {
         onChange = ::updateSettings,
         onExportBackup = { libraryBackupExportPicker.launch("Inkloom-library-backup.inkloom-backup.zip") },
         onRestoreBackup = { libraryBackupImportPicker.launch(arrayOf("application/zip", "application/octet-stream")) },
+        onExportShortcuts = { shortcutProfileExportPicker.launch("Inkloom-toolbox.${ShortcutProfileCodec.FILE_EXTENSION}") },
+        onImportShortcuts = { shortcutProfileImportPicker.launch(arrayOf(ShortcutProfileCodec.MIME_TYPE, "text/plain", "application/octet-stream")) },
         onDismiss = { settingsOpen = false },
     )
     }
@@ -3564,6 +3582,8 @@ private fun SettingsDialog(
     onChange: (AppSettings) -> Unit,
     onExportBackup: () -> Unit,
     onRestoreBackup: () -> Unit,
+    onExportShortcuts: () -> Unit,
+    onImportShortcuts: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     var shortcutEditorOpen by remember { mutableStateOf(false) }
@@ -3618,11 +3638,11 @@ private fun SettingsDialog(
             }
         },
     )
-    if (shortcutEditorOpen) ShortcutEditorDialog(settings, onChange, onDismiss = { shortcutEditorOpen = false })
+    if (shortcutEditorOpen) ShortcutEditorDialog(settings, onChange, onExportShortcuts, onImportShortcuts, onDismiss = { shortcutEditorOpen = false })
 }
 
 @Composable
-private fun ShortcutEditorDialog(settings: AppSettings, onChange: (AppSettings) -> Unit, onDismiss: () -> Unit) {
+private fun ShortcutEditorDialog(settings: AppSettings, onChange: (AppSettings) -> Unit, onExportShortcuts: () -> Unit, onImportShortcuts: () -> Unit, onDismiss: () -> Unit) {
     var listeningFor by remember { mutableStateOf<ShortcutAction?>(null) }
     var captureMode by remember { mutableStateOf(ShortcutMatchMode.KEY_CODE) }
     var captureTrigger by remember { mutableStateOf(ShortcutTrigger.PRESS) }
@@ -3705,6 +3725,12 @@ private fun ShortcutEditorDialog(settings: AppSettings, onChange: (AppSettings) 
                     )
                 }
                 item { OutlinedButton(onClick = { onChange(settings.copy(shortcutBindings = CspShortcutResolver.defaultBindings)); listeningFor = null }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.RestartAlt, null); Spacer(Modifier.width(8.dp)); Text(tr("Restore CSP defaults", "恢复 CSP 默认键位")) } }
+                item {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = onImportShortcuts, modifier = Modifier.weight(1f)) { Icon(Icons.Outlined.FileOpen, null); Spacer(Modifier.width(6.dp)); Text(tr("Import profile", "导入配置")) }
+                        OutlinedButton(onClick = onExportShortcuts, modifier = Modifier.weight(1f)) { Icon(Icons.Outlined.SaveAlt, null); Spacer(Modifier.width(6.dp)); Text(tr("Export profile", "导出配置")) }
+                    }
+                }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text(tr("Done", "完成")) } },

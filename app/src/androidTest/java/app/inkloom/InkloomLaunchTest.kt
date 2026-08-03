@@ -77,6 +77,16 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("Restore library backup").assertIsDisplayed()
     }
 
+    @Test fun shortcutEditorExposesPortableToolboxProfiles() {
+        composeRule.onNodeWithContentDescription("Settings").performClick()
+        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Draw with finger"))).performScrollToIndex(28)
+        composeRule.onNodeWithText("Customize shortcuts").performClick()
+        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true))).performScrollToIndex(43)
+
+        composeRule.onNodeWithText("Import profile").assertIsDisplayed()
+        composeRule.onNodeWithText("Export profile").assertIsDisplayed()
+    }
+
     @Test fun stickyNoteDoubleTapOpensItsInkSubcanvas() {
         val noteText = "Sticky canvas test"
         createNotebookAndOpenEditor()
