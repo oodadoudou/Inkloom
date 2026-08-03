@@ -56,9 +56,9 @@ class SutSprayRotationParserTest {
                 )
             }
             parsed.forEach { brush ->
-                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 25, brush.parserVersion)
+                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 26, brush.parserVersion)
                 assertFalse(brush.report.any { it.startsWith("SUT parameter parsing failed") })
-                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v25-")) }
+                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v26-")) }
             }
             assertTrue("Expected multiple CSP AntiAlias modes in the supplied corpus", parsed.map(ImportedBrush::antiAliasMode).distinct().size >= 3)
             assertTrue(parsed.all { it.antiAliasMode in CspAntiAlias.NONE..CspAntiAlias.STRONG })
@@ -115,6 +115,12 @@ class SutSprayRotationParserTest {
             assertEquals(2, wetMixBrush?.colorMixPressureCurve?.size)
             assertEquals(2, wetMixBrush?.paintMixPressureCurve?.size)
             assertTrue(wetMixBrush?.report?.any { it.contains("color mix 2-point") && it.contains("paint load 2-point") } == true)
+            val legacyWetBrush = parsed.firstOrNull { it.name == "かすれベタ平筆" }
+            assertTrue("Expected the supplied legacy-flag flat brush", legacyWetBrush != null)
+            assertTrue("BrushWaterColor must enable wet rendering", legacyWetBrush?.watercolor == true)
+            assertEquals(1f, legacyWetBrush?.colorMix ?: -1f, .001f)
+            assertEquals(1f, legacyWetBrush?.paintMix ?: -1f, .001f)
+            assertTrue(legacyWetBrush?.report?.any { it.contains("legacy BrushWaterColor") } == true)
 
             val normalizedTipSizes = parsed.flatMap { brush ->
                 brush.tipPreviewPaths.mapNotNull { path ->
@@ -157,7 +163,39 @@ class SutSprayRotationParserTest {
             assertEquals(CspTextureComposite.HEIGHT, brush.grainCompositeMode)
             assertEquals(CspAntiAlias.WEAK, brush.antiAliasMode)
             assertEquals(CspAntiAlias.STRONG, brush.dualAntiAliasMode)
-            assertEquals(25, brush.parserVersion)
+            assertEquals(26, brush.parserVersion)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun legacyBrushWaterColorFlagEnablesWetBrushRendering() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val root = File(context.cacheDir, "sut-watercolor-alias-${System.nanoTime()}").apply { mkdirs() }
+        try {
+            val source = File(root, "legacy-watercolor.sut")
+            SQLiteDatabase.openOrCreateDatabase(source, null).use { db ->
+                db.execSQL("CREATE TABLE Node (NodeName TEXT NOT NULL, NodeVariantID INTEGER NOT NULL)")
+                db.execSQL("CREATE TABLE Variant (VariantID INTEGER PRIMARY KEY, Opacity REAL, BrushSize REAL, BrushWaterColor INTEGER, BrushMixColor REAL, BrushMixAlpha REAL)")
+                db.insertOrThrow("Node", null, ContentValues().apply { put("NodeName", "Legacy watercolor"); put("NodeVariantID", 1) })
+                db.insertOrThrow("Variant", null, ContentValues().apply {
+                    put("VariantID", 1)
+                    put("Opacity", 100)
+                    put("BrushSize", 20)
+                    put("BrushWaterColor", 1)
+                    put("BrushMixColor", 72)
+                    put("BrushMixAlpha", 43)
+                })
+            }
+            val fallback = ImportedBrush(name = "Fallback", format = BrushFormat.SUT, compatibility = Compatibility.EXTRACTED, sizeBytes = source.length(), report = emptyList())
+
+            val brush = SutBrushParser(File(root, "assets")).enrich(source, "legacy-watercolor", fallback)
+
+            assertTrue(brush.watercolor)
+            assertEquals(.72f, brush.colorMix, .001f)
+            assertEquals(.43f, brush.paintMix, .001f)
+            assertEquals(26, brush.parserVersion)
+            assertTrue(brush.report.any { it.contains("legacy BrushWaterColor") })
         } finally {
             root.deleteRecursively()
         }
