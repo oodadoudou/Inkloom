@@ -13,6 +13,7 @@ import app.inkloom.settings.ToolboxQuickSlot
 import app.inkloom.settings.ToolboxQuickSlotKind
 import app.inkloom.settings.ToolbarDock
 import app.inkloom.settings.WorkspacePanelDock
+import app.inkloom.settings.WorkspacePanelMode
 import app.inkloom.settings.WorkspaceOrientation
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -112,6 +113,8 @@ class AppSettingsStoreTest {
                 showPageRail = false,
                 showBrushPanel = true,
                 brushPanelDock = WorkspacePanelDock.FREE,
+                brushPanelMode = WorkspacePanelMode.COLLAPSED,
+                brushPanelLocked = true,
                 brushPanelXDp = 810f,
                 toolbarDock = ToolbarDock.LEFT,
             ))
@@ -133,6 +136,8 @@ class AppSettingsStoreTest {
             assertFalse(landscape.showLayerPanel)
             assertEquals(810f, landscape.brushPanelXDp)
             assertEquals(ToolbarDock.LEFT, landscape.toolbarDock)
+            assertEquals(WorkspacePanelMode.COLLAPSED, landscape.brushPanelMode)
+            assertTrue(landscape.brushPanelLocked)
 
             val portrait = AppSettingsStore(portraitContext).load()
             assertTrue(portrait.showPageRail)

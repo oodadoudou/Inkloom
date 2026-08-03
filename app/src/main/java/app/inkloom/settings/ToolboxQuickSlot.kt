@@ -21,6 +21,12 @@ data class ToolboxWorkspaceSnapshot(
     val pagePanelDock: WorkspacePanelDock,
     val brushPanelDock: WorkspacePanelDock,
     val layerPanelDock: WorkspacePanelDock,
+    val pagePanelMode: WorkspacePanelMode,
+    val brushPanelMode: WorkspacePanelMode,
+    val layerPanelMode: WorkspacePanelMode,
+    val pagePanelLocked: Boolean,
+    val brushPanelLocked: Boolean,
+    val layerPanelLocked: Boolean,
     val pagePanelXDp: Float,
     val pagePanelYDp: Float,
     val pagePanelWidthDp: Float,
@@ -95,6 +101,8 @@ object ToolboxQuickSlots {
 fun AppSettings.captureToolboxWorkspace(): ToolboxWorkspaceSnapshot = ToolboxWorkspaceSnapshot(
     showPageRail, showBrushPanel, showLayerPanel, showToolbar,
     pagePanelDock, brushPanelDock, layerPanelDock,
+    pagePanelMode, brushPanelMode, layerPanelMode,
+    pagePanelLocked, brushPanelLocked, layerPanelLocked,
     pagePanelXDp, pagePanelYDp, pagePanelWidthDp, pagePanelHeightDp,
     brushPanelXDp, brushPanelYDp, brushPanelWidthDp, brushPanelHeightDp,
     layerPanelXDp, layerPanelYDp, layerPanelWidthDp, layerPanelHeightDp,
@@ -109,6 +117,12 @@ fun AppSettings.applyToolboxWorkspace(value: ToolboxWorkspaceSnapshot): AppSetti
     pagePanelDock = value.pagePanelDock,
     brushPanelDock = value.brushPanelDock,
     layerPanelDock = value.layerPanelDock,
+    pagePanelMode = value.pagePanelMode,
+    brushPanelMode = value.brushPanelMode,
+    layerPanelMode = value.layerPanelMode,
+    pagePanelLocked = value.pagePanelLocked,
+    brushPanelLocked = value.brushPanelLocked,
+    layerPanelLocked = value.layerPanelLocked,
     pagePanelXDp = value.pagePanelXDp,
     pagePanelYDp = value.pagePanelYDp,
     pagePanelWidthDp = value.pagePanelWidthDp,
@@ -162,6 +176,8 @@ object ToolboxQuickSlotCodec {
     private fun ToolboxWorkspaceSnapshot.toJson() = buildJsonObject {
         put("showPageRail", showPageRail); put("showBrushPanel", showBrushPanel); put("showLayerPanel", showLayerPanel); put("showToolbar", showToolbar)
         put("pagePanelDock", pagePanelDock.name); put("brushPanelDock", brushPanelDock.name); put("layerPanelDock", layerPanelDock.name)
+        put("pagePanelMode", pagePanelMode.name); put("brushPanelMode", brushPanelMode.name); put("layerPanelMode", layerPanelMode.name)
+        put("pagePanelLocked", pagePanelLocked); put("brushPanelLocked", brushPanelLocked); put("layerPanelLocked", layerPanelLocked)
         put("pagePanelXDp", pagePanelXDp); put("pagePanelYDp", pagePanelYDp); put("pagePanelWidthDp", pagePanelWidthDp); put("pagePanelHeightDp", pagePanelHeightDp)
         put("brushPanelXDp", brushPanelXDp); put("brushPanelYDp", brushPanelYDp); put("brushPanelWidthDp", brushPanelWidthDp); put("brushPanelHeightDp", brushPanelHeightDp)
         put("layerPanelXDp", layerPanelXDp); put("layerPanelYDp", layerPanelYDp); put("layerPanelWidthDp", layerPanelWidthDp); put("layerPanelHeightDp", layerPanelHeightDp)
@@ -171,6 +187,8 @@ object ToolboxQuickSlotCodec {
     private fun kotlinx.serialization.json.JsonObject.toWorkspace() = ToolboxWorkspaceSnapshot(
         optionalBoolean("showPageRail"), optionalBoolean("showBrushPanel"), optionalBoolean("showLayerPanel"), optionalBoolean("showToolbar", true),
         optionalEnum("pagePanelDock", WorkspacePanelDock.LEFT), optionalEnum("brushPanelDock", WorkspacePanelDock.RIGHT), optionalEnum("layerPanelDock", WorkspacePanelDock.RIGHT),
+        optionalEnum("pagePanelMode", WorkspacePanelMode.EXPANDED), optionalEnum("brushPanelMode", WorkspacePanelMode.EXPANDED), optionalEnum("layerPanelMode", WorkspacePanelMode.EXPANDED),
+        optionalBoolean("pagePanelLocked"), optionalBoolean("brushPanelLocked"), optionalBoolean("layerPanelLocked"),
         optionalFloat("pagePanelXDp", 16f), optionalFloat("pagePanelYDp", 16f), optionalFloat("pagePanelWidthDp", 160f), optionalFloat("pagePanelHeightDp", 640f),
         optionalFloat("brushPanelXDp", 720f), optionalFloat("brushPanelYDp", 16f), optionalFloat("brushPanelWidthDp", 330f), optionalFloat("brushPanelHeightDp", 680f),
         optionalFloat("layerPanelXDp", 720f), optionalFloat("layerPanelYDp", 16f), optionalFloat("layerPanelWidthDp", 300f), optionalFloat("layerPanelHeightDp", 620f),

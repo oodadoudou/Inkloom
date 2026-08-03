@@ -57,6 +57,8 @@ object AppSettingsBackupCodec {
         put("language", language.name); put("fingerDrawing", fingerDrawing)
         put("showPageRail", showPageRail); put("showBrushPanel", showBrushPanel); put("showLayerPanel", showLayerPanel); put("showToolbar", showToolbar)
         put("pagePanelDock", pagePanelDock.name); put("brushPanelDock", brushPanelDock.name); put("layerPanelDock", layerPanelDock.name)
+        put("pagePanelMode", pagePanelMode.name); put("brushPanelMode", brushPanelMode.name); put("layerPanelMode", layerPanelMode.name)
+        put("pagePanelLocked", pagePanelLocked); put("brushPanelLocked", brushPanelLocked); put("layerPanelLocked", layerPanelLocked)
         put("pagePanelXDp", pagePanelXDp); put("pagePanelYDp", pagePanelYDp); put("pagePanelWidthDp", pagePanelWidthDp); put("pagePanelHeightDp", pagePanelHeightDp)
         put("brushPanelXDp", brushPanelXDp); put("brushPanelYDp", brushPanelYDp); put("brushPanelWidthDp", brushPanelWidthDp); put("brushPanelHeightDp", brushPanelHeightDp)
         put("layerPanelXDp", layerPanelXDp); put("layerPanelYDp", layerPanelYDp); put("layerPanelWidthDp", layerPanelWidthDp); put("layerPanelHeightDp", layerPanelHeightDp)
@@ -81,6 +83,8 @@ object AppSettingsBackupCodec {
             showPageRail = boolean("showPageRail", defaults.showPageRail), showBrushPanel = boolean("showBrushPanel", defaults.showBrushPanel),
             showLayerPanel = boolean("showLayerPanel", defaults.showLayerPanel), showToolbar = boolean("showToolbar", defaults.showToolbar),
             pagePanelDock = enum("pagePanelDock", defaults.pagePanelDock), brushPanelDock = enum("brushPanelDock", defaults.brushPanelDock), layerPanelDock = enum("layerPanelDock", defaults.layerPanelDock),
+            pagePanelMode = enum("pagePanelMode", defaults.pagePanelMode), brushPanelMode = enum("brushPanelMode", defaults.brushPanelMode), layerPanelMode = enum("layerPanelMode", defaults.layerPanelMode),
+            pagePanelLocked = boolean("pagePanelLocked", defaults.pagePanelLocked), brushPanelLocked = boolean("brushPanelLocked", defaults.brushPanelLocked), layerPanelLocked = boolean("layerPanelLocked", defaults.layerPanelLocked),
             pagePanelXDp = float("pagePanelXDp", defaults.pagePanelXDp).coerceIn(-2400f, 2400f), pagePanelYDp = float("pagePanelYDp", defaults.pagePanelYDp).coerceIn(-2400f, 2400f),
             pagePanelWidthDp = float("pagePanelWidthDp", defaults.pagePanelWidthDp).coerceIn(80f, 1200f), pagePanelHeightDp = float("pagePanelHeightDp", defaults.pagePanelHeightDp).coerceIn(120f, 1600f),
             brushPanelXDp = float("brushPanelXDp", defaults.brushPanelXDp).coerceIn(-2400f, 2400f), brushPanelYDp = float("brushPanelYDp", defaults.brushPanelYDp).coerceIn(-2400f, 2400f),

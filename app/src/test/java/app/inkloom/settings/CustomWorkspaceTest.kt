@@ -11,11 +11,14 @@ class CustomWorkspaceTest {
             showPageRail = false,
             showBrushPanel = true,
             brushPanelDock = WorkspacePanelDock.LEFT,
+            brushPanelMode = WorkspacePanelMode.COLLAPSED,
+            brushPanelLocked = true,
         ).recordWorkspaceFor(WorkspaceOrientation.LANDSCAPE).copy(
             showPageRail = true,
             showBrushPanel = false,
             showLayerPanel = true,
             layerPanelDock = WorkspacePanelDock.BOTTOM,
+            layerPanelMode = WorkspacePanelMode.ICON_ONLY,
         )
 
         val profile = CustomWorkspaces.capture("workspace-1", "  Drawing   desk  ", settings, WorkspaceOrientation.PORTRAIT)
@@ -23,9 +26,12 @@ class CustomWorkspaceTest {
         assertEquals("Drawing desk", profile.name)
         assertFalse(profile.layouts.landscape!!.showPageRail)
         assertTrue(profile.layouts.landscape!!.showBrushPanel)
+        assertEquals(WorkspacePanelMode.COLLAPSED, profile.layouts.landscape!!.brushPanelMode)
+        assertTrue(profile.layouts.landscape!!.brushPanelLocked)
         assertTrue(profile.layouts.portrait!!.showPageRail)
         assertTrue(profile.layouts.portrait!!.showLayerPanel)
         assertEquals(WorkspacePanelDock.BOTTOM, profile.layouts.portrait!!.layerPanelDock)
+        assertEquals(WorkspacePanelMode.ICON_ONLY, profile.layouts.portrait!!.layerPanelMode)
     }
 
     @Test fun `apply selects requested orientation and preserves unrelated preferences and library`() {

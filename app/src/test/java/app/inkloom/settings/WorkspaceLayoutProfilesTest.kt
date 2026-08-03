@@ -12,6 +12,8 @@ class WorkspaceLayoutProfilesTest {
             showPageRail = false,
             showBrushPanel = true,
             brushPanelDock = WorkspacePanelDock.FREE,
+            brushPanelMode = WorkspacePanelMode.COLLAPSED,
+            brushPanelLocked = true,
             brushPanelXDp = 840f,
             toolbarDock = ToolbarDock.LEFT,
         ).recordWorkspaceFor(WorkspaceOrientation.LANDSCAPE)
@@ -27,6 +29,8 @@ class WorkspaceLayoutProfilesTest {
         assertFalse(restoredLandscape.showPageRail)
         assertTrue(restoredLandscape.showBrushPanel)
         assertEquals(WorkspacePanelDock.FREE, restoredLandscape.brushPanelDock)
+        assertEquals(WorkspacePanelMode.COLLAPSED, restoredLandscape.brushPanelMode)
+        assertTrue(restoredLandscape.brushPanelLocked)
         assertEquals(840f, restoredLandscape.brushPanelXDp)
         assertEquals(ToolbarDock.LEFT, restoredLandscape.toolbarDock)
 

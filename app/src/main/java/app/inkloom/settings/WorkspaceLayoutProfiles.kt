@@ -88,6 +88,8 @@ object WorkspaceLayoutProfilesCodec {
     private fun ToolboxWorkspaceSnapshot.toJson() = buildJsonObject {
         put("showPageRail", showPageRail); put("showBrushPanel", showBrushPanel); put("showLayerPanel", showLayerPanel); put("showToolbar", showToolbar)
         put("pagePanelDock", pagePanelDock.name); put("brushPanelDock", brushPanelDock.name); put("layerPanelDock", layerPanelDock.name)
+        put("pagePanelMode", pagePanelMode.name); put("brushPanelMode", brushPanelMode.name); put("layerPanelMode", layerPanelMode.name)
+        put("pagePanelLocked", pagePanelLocked); put("brushPanelLocked", brushPanelLocked); put("layerPanelLocked", layerPanelLocked)
         put("pagePanelXDp", pagePanelXDp); put("pagePanelYDp", pagePanelYDp); put("pagePanelWidthDp", pagePanelWidthDp); put("pagePanelHeightDp", pagePanelHeightDp)
         put("brushPanelXDp", brushPanelXDp); put("brushPanelYDp", brushPanelYDp); put("brushPanelWidthDp", brushPanelWidthDp); put("brushPanelHeightDp", brushPanelHeightDp)
         put("layerPanelXDp", layerPanelXDp); put("layerPanelYDp", layerPanelYDp); put("layerPanelWidthDp", layerPanelWidthDp); put("layerPanelHeightDp", layerPanelHeightDp)
@@ -97,6 +99,8 @@ object WorkspaceLayoutProfilesCodec {
     private fun JsonObject.toWorkspace() = ToolboxWorkspaceSnapshot(
         boolean("showPageRail"), boolean("showBrushPanel"), boolean("showLayerPanel"), boolean("showToolbar", true),
         enum("pagePanelDock", WorkspacePanelDock.LEFT), enum("brushPanelDock", WorkspacePanelDock.RIGHT), enum("layerPanelDock", WorkspacePanelDock.RIGHT),
+        enum("pagePanelMode", WorkspacePanelMode.EXPANDED), enum("brushPanelMode", WorkspacePanelMode.EXPANDED), enum("layerPanelMode", WorkspacePanelMode.EXPANDED),
+        boolean("pagePanelLocked"), boolean("brushPanelLocked"), boolean("layerPanelLocked"),
         float("pagePanelXDp", 16f), float("pagePanelYDp", 16f), float("pagePanelWidthDp", 160f), float("pagePanelHeightDp", 640f),
         float("brushPanelXDp", 720f), float("brushPanelYDp", 16f), float("brushPanelWidthDp", 330f), float("brushPanelHeightDp", 680f),
         float("layerPanelXDp", 720f), float("layerPanelYDp", 16f), float("layerPanelWidthDp", 300f), float("layerPanelHeightDp", 620f),

@@ -12,6 +12,12 @@ data class AppSettings(
     val pagePanelDock: WorkspacePanelDock = WorkspacePanelDock.LEFT,
     val brushPanelDock: WorkspacePanelDock = WorkspacePanelDock.RIGHT,
     val layerPanelDock: WorkspacePanelDock = WorkspacePanelDock.RIGHT,
+    val pagePanelMode: WorkspacePanelMode = WorkspacePanelMode.EXPANDED,
+    val brushPanelMode: WorkspacePanelMode = WorkspacePanelMode.EXPANDED,
+    val layerPanelMode: WorkspacePanelMode = WorkspacePanelMode.EXPANDED,
+    val pagePanelLocked: Boolean = false,
+    val brushPanelLocked: Boolean = false,
+    val layerPanelLocked: Boolean = false,
     val pagePanelXDp: Float = 16f,
     val pagePanelYDp: Float = 16f,
     val pagePanelWidthDp: Float = 160f,
@@ -70,6 +76,7 @@ enum class StylusButtonAction {
 
 enum class ToolbarDock { FREE, TOP, BOTTOM, LEFT, RIGHT }
 enum class WorkspacePanelDock { LEFT, FREE, RIGHT, BOTTOM }
+enum class WorkspacePanelMode { EXPANDED, COLLAPSED, ICON_ONLY }
 enum class SelectionShape { FREEFORM, RECTANGLE }
 enum class SelectionMode { REPLACE, ADD, SUBTRACT, INTERSECT }
 enum class SelectionFilter { ALL, ACTIVE_LAYER, CURRENT_BRUSH, CURRENT_COLOR }
@@ -91,6 +98,12 @@ class AppSettingsStore(context: Context) {
             pagePanelDock = enumValue(preferences.getString("pagePanelDock", null), WorkspacePanelDock.LEFT),
             brushPanelDock = enumValue(preferences.getString("brushPanelDock", null), WorkspacePanelDock.RIGHT),
             layerPanelDock = enumValue(preferences.getString("layerPanelDock", null), WorkspacePanelDock.RIGHT),
+            pagePanelMode = enumValue(preferences.getString("pagePanelMode", null), WorkspacePanelMode.EXPANDED),
+            brushPanelMode = enumValue(preferences.getString("brushPanelMode", null), WorkspacePanelMode.EXPANDED),
+            layerPanelMode = enumValue(preferences.getString("layerPanelMode", null), WorkspacePanelMode.EXPANDED),
+            pagePanelLocked = preferences.getBoolean("pagePanelLocked", false),
+            brushPanelLocked = preferences.getBoolean("brushPanelLocked", false),
+            layerPanelLocked = preferences.getBoolean("layerPanelLocked", false),
             pagePanelXDp = preferences.getFloat("pagePanelXDp", 16f).coerceIn(-2400f, 2400f),
             pagePanelYDp = preferences.getFloat("pagePanelYDp", 16f).coerceIn(-2400f, 2400f),
             pagePanelWidthDp = preferences.getFloat("pagePanelWidthDp", 160f).coerceIn(80f, 1200f),
@@ -156,6 +169,12 @@ class AppSettingsStore(context: Context) {
             .putString("pagePanelDock", persisted.pagePanelDock.name)
             .putString("brushPanelDock", persisted.brushPanelDock.name)
             .putString("layerPanelDock", persisted.layerPanelDock.name)
+            .putString("pagePanelMode", persisted.pagePanelMode.name)
+            .putString("brushPanelMode", persisted.brushPanelMode.name)
+            .putString("layerPanelMode", persisted.layerPanelMode.name)
+            .putBoolean("pagePanelLocked", persisted.pagePanelLocked)
+            .putBoolean("brushPanelLocked", persisted.brushPanelLocked)
+            .putBoolean("layerPanelLocked", persisted.layerPanelLocked)
             .putFloat("pagePanelXDp", persisted.pagePanelXDp)
             .putFloat("pagePanelYDp", persisted.pagePanelYDp)
             .putFloat("pagePanelWidthDp", persisted.pagePanelWidthDp)
