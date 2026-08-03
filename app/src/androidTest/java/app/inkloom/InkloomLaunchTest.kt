@@ -504,6 +504,70 @@ class InkloomLaunchTest {
         assertEquals("RIGHT", preferences.getString("brushPanelDock", null))
     }
 
+    @Test fun floatingBrushAndLayerPanelsCanGroupMoveResizeSwitchAndSeparate() {
+        createNotebookAndOpenEditor()
+        val preferences = composeRule.activity.getSharedPreferences("inkloom_settings", android.content.Context.MODE_PRIVATE)
+
+        composeRule.onNodeWithContentDescription("Brushes").performClick()
+        composeRule.onNodeWithContentDescription("Change brushes panel docking").performClick()
+        composeRule.onNodeWithText("Float").performClick()
+        repeat(2) {
+            composeRule.onNodeWithContentDescription("Drag brushes panel").performTouchInput {
+                swipe(center, center + Offset(-300f, 0f), durationMillis = 400)
+            }
+        }
+
+        composeRule.onNodeWithContentDescription("Layers").performClick()
+        composeRule.onNodeWithContentDescription("Change layers panel docking").performClick()
+        composeRule.onNodeWithText("Float").performClick()
+        composeRule.onNodeWithContentDescription("Drag layers panel").performTouchInput {
+            swipe(center, center + Offset(-400f, 0f), durationMillis = 600)
+        }
+        composeRule.waitUntil(5_000) { preferences.getBoolean("freeDockStacked", false) }
+
+        composeRule.onNodeWithContentDescription("Floating panel tabs").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Brushes floating tab. Drag to reorder.").performClick()
+        composeRule.onNodeWithText("Brush Library").assertIsDisplayed()
+
+        val beforeX = preferences.getFloat("brushPanelXDp", 0f)
+        composeRule.onNodeWithContentDescription("Drag brushes panel").performTouchInput {
+            swipe(center, center + Offset(120f, 80f), durationMillis = 500)
+        }
+        composeRule.waitUntil(5_000) { preferences.getFloat("brushPanelXDp", beforeX) != beforeX }
+        assertEquals(preferences.getFloat("brushPanelXDp", 0f), preferences.getFloat("layerPanelXDp", 1f), .01f)
+        assertEquals(preferences.getFloat("brushPanelYDp", 0f), preferences.getFloat("layerPanelYDp", 1f), .01f)
+
+        composeRule.onNodeWithContentDescription("Resize brushes panel").performTouchInput {
+            swipe(center, center + Offset(80f, -40f), durationMillis = 400)
+        }
+        composeRule.waitForIdle()
+        assertEquals(preferences.getFloat("brushPanelWidthDp", 0f), preferences.getFloat("layerPanelWidthDp", 1f), .01f)
+        assertEquals(preferences.getFloat("brushPanelHeightDp", 0f), preferences.getFloat("layerPanelHeightDp", 1f), .01f)
+
+        composeRule.onNodeWithContentDescription("Separate floating panel tabs").performClick()
+        composeRule.waitUntil(5_000) { !preferences.getBoolean("freeDockStacked", true) }
+        assertTrue(composeRule.onAllNodes(hasContentDescription("Floating panel tabs")).fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithContentDescription("Drag brushes panel").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Drag layers panel").assertIsDisplayed()
+
+        composeRule.onNodeWithContentDescription("Drag brushes panel").performTouchInput {
+            swipe(center, center + Offset(30f, 20f), durationMillis = 350)
+        }
+        composeRule.waitUntil(5_000) { preferences.getBoolean("freeDockStacked", false) }
+        repeat(8) {
+            if (preferences.getString("brushPanelDock", null) != "RIGHT") {
+                composeRule.onNodeWithContentDescription("Drag brushes panel").performTouchInput {
+                    swipe(center, center + Offset(240f, 0f), durationMillis = 350)
+                }
+            }
+        }
+        composeRule.waitUntil(5_000) {
+            preferences.getString("brushPanelDock", null) == "RIGHT" && preferences.getString("layerPanelDock", null) == "RIGHT"
+        }
+        assertTrue(preferences.getBoolean("rightDockStacked", false))
+        composeRule.onNodeWithContentDescription("right panel tabs").assertIsDisplayed()
+    }
+
     @Test fun selectionControlsExposePersistentFreeformAndRectangleModes() {
         val preferences = composeRule.activity.getSharedPreferences("inkloom_settings", android.content.Context.MODE_PRIVATE)
         val original = preferences.getString("selectionShape", "FREEFORM")

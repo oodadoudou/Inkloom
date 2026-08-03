@@ -116,6 +116,7 @@ import app.inkloom.settings.captureToolboxWorkspace
 import app.inkloom.settings.UiLanguage
 import app.inkloom.settings.WorkspacePanelDock
 import app.inkloom.settings.WorkspacePanelDocking
+import app.inkloom.settings.WorkspacePanelGrouping
 import app.inkloom.settings.WorkspacePanelKind
 import app.inkloom.settings.WorkspacePanelMode
 import app.inkloom.settings.WorkspacePanelTabs
@@ -998,6 +999,8 @@ private fun EditorScreen(
     var draggingPanel by remember { mutableStateOf<WorkspacePanelKind?>(null) }
     var panelDragOrigin by remember { mutableStateOf<WorkspacePanelBounds?>(null) }
     var panelDockPreview by remember { mutableStateOf<WorkspacePanelDock?>(null) }
+    var panelGroupPreviewTarget by remember { mutableStateOf<WorkspacePanelKind?>(null) }
+    var panelGroupDragOrigins by remember { mutableStateOf<Map<WorkspacePanelKind, WorkspacePanelBounds>>(emptyMap()) }
     var dockedPanelOriginDock by remember { mutableStateOf<WorkspacePanelDock?>(null) }
     var dockedPanelPreviewBounds by remember { mutableStateOf<WorkspacePanelBounds?>(null) }
     var dockedPanelTargetDock by remember { mutableStateOf<WorkspacePanelDock?>(null) }
@@ -1229,19 +1232,22 @@ private fun EditorScreen(
         val leftPanelTabs = visibleTabsAt(WorkspacePanelDock.LEFT, editorWidth >= 700.dp)
         val rightPanelTabs = visibleTabsAt(WorkspacePanelDock.RIGHT, editorWidth >= 700.dp)
         val bottomPanelTabs = visibleTabsAt(WorkspacePanelDock.BOTTOM)
+        val freePanelTabs = visibleTabsAt(WorkspacePanelDock.FREE)
         fun resolvedActive(dock: WorkspacePanelDock, tabs: List<WorkspacePanelKind>): WorkspacePanelKind? =
             WorkspacePanelTabs.active(settings, dock).takeIf(tabs::contains) ?: tabs.firstOrNull()
         val leftActivePanel = resolvedActive(WorkspacePanelDock.LEFT, leftPanelTabs)
         val rightActivePanel = resolvedActive(WorkspacePanelDock.RIGHT, rightPanelTabs)
         val bottomActivePanel = resolvedActive(WorkspacePanelDock.BOTTOM, bottomPanelTabs)
+        val freeActivePanel = resolvedActive(WorkspacePanelDock.FREE, freePanelTabs)
         val leftPanelsStacked = WorkspacePanelTabs.isStacked(settings, WorkspacePanelDock.LEFT) && leftPanelTabs.size > 1
         val rightPanelsStacked = WorkspacePanelTabs.isStacked(settings, WorkspacePanelDock.RIGHT) && rightPanelTabs.size > 1
         val bottomPanelsStacked = WorkspacePanelTabs.isStacked(settings, WorkspacePanelDock.BOTTOM) && bottomPanelTabs.size > 1
+        val freePanelsStacked = WorkspacePanelTabs.isStacked(settings, WorkspacePanelDock.FREE) && freePanelTabs.size > 1
         fun showPanel(panel: WorkspacePanelKind, dock: WorkspacePanelDock): Boolean = when (dock) {
             WorkspacePanelDock.LEFT -> !leftPanelsStacked || leftActivePanel == panel
             WorkspacePanelDock.RIGHT -> !rightPanelsStacked || rightActivePanel == panel
             WorkspacePanelDock.BOTTOM -> !bottomPanelsStacked || bottomActivePanel == panel
-            WorkspacePanelDock.FREE -> true
+            WorkspacePanelDock.FREE -> !freePanelsStacked || freeActivePanel == panel
         }
         fun setDockStacked(dock: WorkspacePanelDock, stacked: Boolean, tabs: List<WorkspacePanelKind>) {
             var next = WorkspacePanelTabs.withStacked(settings, dock, stacked)
@@ -1252,45 +1258,6 @@ private fun EditorScreen(
             onSettingsChange(WorkspacePanelTabs.withActive(settings, dock, panel))
         fun movePanelTab(panel: WorkspacePanelKind, delta: Int) =
             onSettingsChange(settings.copy(panelTabOrder = WorkspacePanelTabs.move(settings.panelTabOrder, panel, delta)))
-        fun beginPanelDrag(panel: WorkspacePanelKind, bounds: WorkspacePanelBounds) {
-            draggingPanel = panel
-            panelDragOrigin = bounds
-            panelDockPreview = null
-            panelDragDeltaXDp = 0f
-            panelDragDeltaYDp = 0f
-        }
-        fun updatePanelDockPreview(bounds: WorkspacePanelBounds, deltaXDp: Float, deltaYDp: Float) {
-            panelDragDeltaXDp += deltaXDp
-            panelDragDeltaYDp += deltaYDp
-            panelDockPreview = WorkspacePanelDocking.target(bounds, workspaceWidthDp, usableWorkspaceHeightDp, panelDragDeltaXDp, panelDragDeltaYDp)
-        }
-        fun finishPanelDrag(panel: WorkspacePanelKind, bounds: WorkspacePanelBounds, persist: (WorkspacePanelBounds) -> Unit) {
-            val target = panelDockPreview
-            draggingPanel = null
-            panelDragOrigin = null
-            panelDockPreview = null
-            panelDragDeltaXDp = 0f
-            panelDragDeltaYDp = 0f
-            if (target == null) {
-                persist(bounds)
-                return
-            }
-            var next = when (panel) {
-                WorkspacePanelKind.PAGES -> settings.copy(pagePanelDock = target)
-                WorkspacePanelKind.BRUSHES -> settings.copy(brushPanelDock = target)
-                WorkspacePanelKind.LAYERS -> settings.copy(layerPanelDock = target)
-            }
-            if (WorkspacePanelTabs.isStacked(next, target)) next = WorkspacePanelTabs.withActive(next, target, panel)
-            onSettingsChange(next)
-        }
-        fun cancelPanelDrag(panel: WorkspacePanelKind, restore: (WorkspacePanelBounds) -> Unit) {
-            if (draggingPanel == panel) panelDragOrigin?.let(restore)
-            draggingPanel = null
-            panelDragOrigin = null
-            panelDockPreview = null
-            panelDragDeltaXDp = 0f
-            panelDragDeltaYDp = 0f
-        }
         fun minimumPanelWidth(panel: WorkspacePanelKind): Float = when (panel) {
             WorkspacePanelKind.PAGES -> 140f
             WorkspacePanelKind.BRUSHES -> 280f
@@ -1308,12 +1275,158 @@ private fun EditorScreen(
                 WorkspacePanelKind.LAYERS -> layerPanelBounds = bounds
             }
         }
+        fun panelBounds(panel: WorkspacePanelKind): WorkspacePanelBounds = when (panel) {
+            WorkspacePanelKind.PAGES -> pagePanelBounds
+            WorkspacePanelKind.BRUSHES -> brushPanelBounds
+            WorkspacePanelKind.LAYERS -> layerPanelBounds
+        }
+        fun settingsWithPanelBounds(base: AppSettings, panel: WorkspacePanelKind, bounds: WorkspacePanelBounds): AppSettings = when (panel) {
+            WorkspacePanelKind.PAGES -> base.copy(pagePanelXDp = bounds.xDp, pagePanelYDp = bounds.yDp, pagePanelWidthDp = bounds.widthDp, pagePanelHeightDp = bounds.heightDp)
+            WorkspacePanelKind.BRUSHES -> base.copy(brushPanelXDp = bounds.xDp, brushPanelYDp = bounds.yDp, brushPanelWidthDp = bounds.widthDp, brushPanelHeightDp = bounds.heightDp)
+            WorkspacePanelKind.LAYERS -> base.copy(layerPanelXDp = bounds.xDp, layerPanelYDp = bounds.yDp, layerPanelWidthDp = bounds.widthDp, layerPanelHeightDp = bounds.heightDp)
+        }
+        fun settingsWithPanelDock(base: AppSettings, panel: WorkspacePanelKind, dock: WorkspacePanelDock): AppSettings = when (panel) {
+            WorkspacePanelKind.PAGES -> base.copy(pagePanelDock = dock)
+            WorkspacePanelKind.BRUSHES -> base.copy(brushPanelDock = dock)
+            WorkspacePanelKind.LAYERS -> base.copy(layerPanelDock = dock)
+        }
+        fun changePanelDock(panel: WorkspacePanelKind, dock: WorkspacePanelDock) {
+            var next = settingsWithPanelDock(settings, panel, dock)
+            if (dock == WorkspacePanelDock.FREE && panel !in freePanelTabs && settings.freeDockStacked && freePanelTabs.isNotEmpty()) {
+                val members = (freePanelTabs + panel).distinct()
+                val groupMinimum = members.maxOf(::minimumPanelWidth)
+                val anchor = panelBounds(freeActivePanel ?: freePanelTabs.first())
+                val shared = WorkspacePanelPlacement.clamp(anchor.copy(widthDp = anchor.widthDp.coerceAtLeast(groupMinimum)), workspaceWidthDp, usableWorkspaceHeightDp, groupMinimum)
+                members.forEach { member ->
+                    setPanelBounds(member, shared)
+                    next = settingsWithPanelBounds(next, member, shared)
+                }
+                next = WorkspacePanelTabs.withActive(next, WorkspacePanelDock.FREE, panel)
+                activeFloatingPanel = panelName(panel)
+            } else if (dock != WorkspacePanelDock.FREE) {
+                if (WorkspacePanelTabs.isStacked(next, dock)) next = WorkspacePanelTabs.withActive(next, dock, panel)
+                if (settings.freeDockActivePanel == panel) freePanelTabs.firstOrNull { it != panel }?.let {
+                    next = WorkspacePanelTabs.withActive(next, WorkspacePanelDock.FREE, it)
+                }
+            }
+            onSettingsChange(next)
+        }
+        fun persistFloatingPanels(panels: List<WorkspacePanelKind>) {
+            var next = settings
+            panels.distinct().forEach { member -> next = settingsWithPanelBounds(next, member, panelBounds(member)) }
+            onSettingsChange(next)
+        }
+        fun beginPanelDrag(panel: WorkspacePanelKind, bounds: WorkspacePanelBounds) {
+            draggingPanel = panel
+            panelDragOrigin = bounds
+            panelGroupDragOrigins = if (freePanelsStacked && panel in freePanelTabs) freePanelTabs.associateWith(::panelBounds) else mapOf(panel to bounds)
+            panelDockPreview = null
+            panelGroupPreviewTarget = null
+            panelDragDeltaXDp = 0f
+            panelDragDeltaYDp = 0f
+        }
+        fun moveFloatingPanel(panel: WorkspacePanelKind, bounds: WorkspacePanelBounds, deltaXDp: Float, deltaYDp: Float): WorkspacePanelBounds {
+            val next = WorkspacePanelPlacement.move(bounds, deltaXDp, deltaYDp, workspaceWidthDp, usableWorkspaceHeightDp, minimumPanelWidth(panel))
+            if (freePanelsStacked && panel in freePanelTabs) {
+                val actualX = next.xDp - bounds.xDp
+                val actualY = next.yDp - bounds.yDp
+                freePanelTabs.forEach { member ->
+                    val memberBounds = panelBounds(member)
+                    setPanelBounds(member, WorkspacePanelPlacement.move(memberBounds, actualX, actualY, workspaceWidthDp, usableWorkspaceHeightDp, minimumPanelWidth(member)))
+                }
+            } else {
+                setPanelBounds(panel, next)
+            }
+            return next
+        }
+        fun resizeFloatingPanel(panel: WorkspacePanelKind, bounds: WorkspacePanelBounds, deltaWidthDp: Float, deltaHeightDp: Float): WorkspacePanelBounds {
+            val groupMinimum = if (freePanelsStacked && panel in freePanelTabs) freePanelTabs.maxOf(::minimumPanelWidth) else minimumPanelWidth(panel)
+            val next = WorkspacePanelPlacement.resize(bounds, deltaWidthDp, deltaHeightDp, workspaceWidthDp, usableWorkspaceHeightDp, groupMinimum)
+            if (freePanelsStacked && panel in freePanelTabs) freePanelTabs.forEach { setPanelBounds(it, next) } else setPanelBounds(panel, next)
+            return next
+        }
+        fun updatePanelDockPreview(panel: WorkspacePanelKind, bounds: WorkspacePanelBounds, deltaXDp: Float, deltaYDp: Float) {
+            panelDragDeltaXDp += deltaXDp
+            panelDragDeltaYDp += deltaYDp
+            panelDockPreview = WorkspacePanelDocking.target(bounds, workspaceWidthDp, usableWorkspaceHeightDp, panelDragDeltaXDp, panelDragDeltaYDp)
+            panelGroupPreviewTarget = if (panelDockPreview == null && !freePanelsStacked) {
+                WorkspacePanelGrouping.target(panel, bounds, freePanelTabs.associateWith(::panelBounds))
+            } else null
+        }
+        fun finishPanelDrag(panel: WorkspacePanelKind, bounds: WorkspacePanelBounds, persist: (WorkspacePanelBounds) -> Unit) {
+            val target = panelDockPreview
+            val groupTarget = panelGroupPreviewTarget
+            val movingGroup = freePanelsStacked && panel in freePanelTabs
+            draggingPanel = null
+            panelDragOrigin = null
+            panelGroupDragOrigins = emptyMap()
+            panelDockPreview = null
+            panelGroupPreviewTarget = null
+            panelDragDeltaXDp = 0f
+            panelDragDeltaYDp = 0f
+            if (target != null) {
+                val members = if (movingGroup) freePanelTabs else listOf(panel)
+                var next = settings
+                members.forEach { member -> next = settingsWithPanelDock(next, member, target) }
+                if (movingGroup) next = WorkspacePanelTabs.withStacked(next.copy(freeDockStacked = false), target, true)
+                if (WorkspacePanelTabs.isStacked(next, target)) next = WorkspacePanelTabs.withActive(next, target, panel)
+                onSettingsChange(next)
+                return
+            }
+            if (groupTarget != null) {
+                val members = (freePanelTabs + panel).distinct()
+                val groupMinimum = members.maxOf(::minimumPanelWidth)
+                val anchor = panelBounds(groupTarget)
+                val shared = WorkspacePanelPlacement.clamp(
+                    anchor.copy(widthDp = anchor.widthDp.coerceAtLeast(groupMinimum)),
+                    workspaceWidthDp,
+                    usableWorkspaceHeightDp,
+                    groupMinimum,
+                )
+                members.forEach { setPanelBounds(it, shared) }
+                var next = settings.copy(freeDockStacked = true, freeDockActivePanel = panel)
+                members.forEach { member -> next = settingsWithPanelBounds(next, member, shared) }
+                activeFloatingPanel = panelName(panel)
+                onSettingsChange(next)
+                return
+            }
+            if (movingGroup) persistFloatingPanels(freePanelTabs) else persist(bounds)
+        }
+        fun cancelPanelDrag(panel: WorkspacePanelKind, restore: (WorkspacePanelBounds) -> Unit) {
+            if (draggingPanel == panel) {
+                if (panelGroupDragOrigins.isNotEmpty()) panelGroupDragOrigins.forEach(::setPanelBounds)
+                else panelDragOrigin?.let(restore)
+            }
+            draggingPanel = null
+            panelDragOrigin = null
+            panelGroupDragOrigins = emptyMap()
+            panelDockPreview = null
+            panelGroupPreviewTarget = null
+            panelDragDeltaXDp = 0f
+            panelDragDeltaYDp = 0f
+        }
+        fun selectFloatingPanel(panel: WorkspacePanelKind) {
+            activeFloatingPanel = panelName(panel)
+            onSettingsChange(WorkspacePanelTabs.withActive(settings, WorkspacePanelDock.FREE, panel))
+        }
+        fun separateFloatingPanels() {
+            var next = settings.copy(freeDockStacked = false)
+            freePanelTabs.forEachIndexed { index, panel ->
+                val base = panelBounds(panel)
+                val separated = WorkspacePanelPlacement.move(base, index * 24f, index * 24f, workspaceWidthDp, usableWorkspaceHeightDp, minimumPanelWidth(panel))
+                setPanelBounds(panel, separated)
+                next = settingsWithPanelBounds(next, panel, separated)
+            }
+            onSettingsChange(next)
+        }
         fun clearDockedPanelDrag() {
             draggingPanel = null
             panelDragOrigin = null
             dockedPanelOriginDock = null
             dockedPanelPreviewBounds = null
             dockedPanelTargetDock = null
+            panelGroupPreviewTarget = null
+            panelGroupDragOrigins = emptyMap()
             panelDragDeltaXDp = 0f
             panelDragDeltaYDp = 0f
         }
@@ -1377,30 +1490,42 @@ private fun EditorScreen(
                 onSettingsChange(next)
                 return
             }
-            setPanelBounds(panel, preview)
-            onSettingsChange(when (panel) {
+            val joinsFloatingGroup = settings.freeDockStacked && freePanelTabs.isNotEmpty()
+            val floatingMembers = if (joinsFloatingGroup) (freePanelTabs + panel).distinct() else listOf(panel)
+            val floatingBounds = if (joinsFloatingGroup) {
+                val groupMinimum = floatingMembers.maxOf(::minimumPanelWidth)
+                val anchor = panelBounds(freeActivePanel ?: freePanelTabs.first())
+                WorkspacePanelPlacement.clamp(anchor.copy(widthDp = anchor.widthDp.coerceAtLeast(groupMinimum)), workspaceWidthDp, usableWorkspaceHeightDp, groupMinimum)
+            } else preview
+            floatingMembers.forEach { setPanelBounds(it, floatingBounds) }
+            var next = when (panel) {
                 WorkspacePanelKind.PAGES -> settings.copy(
                     pagePanelDock = WorkspacePanelDock.FREE,
-                    pagePanelXDp = preview.xDp,
-                    pagePanelYDp = preview.yDp,
-                    pagePanelWidthDp = preview.widthDp,
-                    pagePanelHeightDp = preview.heightDp,
+                    pagePanelXDp = floatingBounds.xDp,
+                    pagePanelYDp = floatingBounds.yDp,
+                    pagePanelWidthDp = floatingBounds.widthDp,
+                    pagePanelHeightDp = floatingBounds.heightDp,
+                    freeDockActivePanel = if (joinsFloatingGroup) panel else settings.freeDockActivePanel,
                 )
                 WorkspacePanelKind.BRUSHES -> settings.copy(
                     brushPanelDock = WorkspacePanelDock.FREE,
-                    brushPanelXDp = preview.xDp,
-                    brushPanelYDp = preview.yDp,
-                    brushPanelWidthDp = preview.widthDp,
-                    brushPanelHeightDp = preview.heightDp,
+                    brushPanelXDp = floatingBounds.xDp,
+                    brushPanelYDp = floatingBounds.yDp,
+                    brushPanelWidthDp = floatingBounds.widthDp,
+                    brushPanelHeightDp = floatingBounds.heightDp,
+                    freeDockActivePanel = if (joinsFloatingGroup) panel else settings.freeDockActivePanel,
                 )
                 WorkspacePanelKind.LAYERS -> settings.copy(
                     layerPanelDock = WorkspacePanelDock.FREE,
-                    layerPanelXDp = preview.xDp,
-                    layerPanelYDp = preview.yDp,
-                    layerPanelWidthDp = preview.widthDp,
-                    layerPanelHeightDp = preview.heightDp,
+                    layerPanelXDp = floatingBounds.xDp,
+                    layerPanelYDp = floatingBounds.yDp,
+                    layerPanelWidthDp = floatingBounds.widthDp,
+                    layerPanelHeightDp = floatingBounds.heightDp,
+                    freeDockActivePanel = if (joinsFloatingGroup) panel else settings.freeDockActivePanel,
                 )
-            })
+            }
+            if (joinsFloatingGroup) floatingMembers.forEach { member -> next = settingsWithPanelBounds(next, member, floatingBounds) }
+            onSettingsChange(next)
         }
         val bottomPanelCount = listOf(
             settings.showPageRail && settings.pagePanelDock == WorkspacePanelDock.BOTTOM,
@@ -1427,7 +1552,7 @@ private fun EditorScreen(
             )
             if (editorWidth >= 700.dp && settings.showPageRail && settings.pagePanelDock == WorkspacePanelDock.LEFT && showPanel(WorkspacePanelKind.PAGES, WorkspacePanelDock.LEFT)) PageRail(
                 document, documents, selectedPage.id, settings.pagePanelDock,
-                onDock = { onSettingsChange(settings.copy(pagePanelDock = it)) },
+                onDock = { changePanelDock(WorkspacePanelKind.PAGES, it) },
                 onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
                 pageTemplates = pageTemplates,
                 onSelect = onSelectPage, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
@@ -1449,7 +1574,7 @@ private fun EditorScreen(
                 activeLayerId = activeLayerId,
                 brushColor = brushColor,
                 dock = settings.layerPanelDock,
-                onDock = { onSettingsChange(settings.copy(layerPanelDock = it)) },
+                onDock = { changePanelDock(WorkspacePanelKind.LAYERS, it) },
                 onClose = { layersOpen = false; onSettingsChange(settings.copy(showLayerPanel = false)) },
                 onColor = { brushColor = it },
                 onSelect = { activeLayerId = it },
@@ -1481,7 +1606,7 @@ private fun EditorScreen(
                 selectedBrushId = selectedBrushId,
                 settings = settings,
                 dock = settings.brushPanelDock,
-                onDock = { onSettingsChange(settings.copy(brushPanelDock = it)) },
+                onDock = { changePanelDock(WorkspacePanelKind.BRUSHES, it) },
                 onClose = { if (brushesOpen) onToggleBrushes() },
                 onBrushSelected = { brush ->
                     exitCanvasNavigation()
@@ -1869,7 +1994,7 @@ private fun EditorScreen(
             )
             if (editorWidth >= 700.dp && settings.showPageRail && settings.pagePanelDock == WorkspacePanelDock.RIGHT && showPanel(WorkspacePanelKind.PAGES, WorkspacePanelDock.RIGHT)) PageRail(
                 document, documents, selectedPage.id, settings.pagePanelDock,
-                onDock = { onSettingsChange(settings.copy(pagePanelDock = it)) },
+                onDock = { changePanelDock(WorkspacePanelKind.PAGES, it) },
                 onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
                 pageTemplates = pageTemplates,
                 onSelect = onSelectPage, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
@@ -1891,7 +2016,7 @@ private fun EditorScreen(
                 activeLayerId = activeLayerId,
                 brushColor = brushColor,
                 dock = settings.layerPanelDock,
-                onDock = { onSettingsChange(settings.copy(layerPanelDock = it)) },
+                onDock = { changePanelDock(WorkspacePanelKind.LAYERS, it) },
                 onClose = { layersOpen = false; onSettingsChange(settings.copy(showLayerPanel = false)) },
                 onColor = { brushColor = it },
                 onSelect = { activeLayerId = it },
@@ -1923,7 +2048,7 @@ private fun EditorScreen(
                 selectedBrushId = selectedBrushId,
                 settings = settings,
                 dock = settings.brushPanelDock,
-                onDock = { onSettingsChange(settings.copy(brushPanelDock = it)) },
+                onDock = { changePanelDock(WorkspacePanelKind.BRUSHES, it) },
                 onClose = { if (brushesOpen) onToggleBrushes() },
                 onBrushSelected = { brush ->
                     exitCanvasNavigation()
@@ -1990,7 +2115,7 @@ private fun EditorScreen(
                 )
                 if (settings.showPageRail && settings.pagePanelDock == WorkspacePanelDock.BOTTOM && showPanel(WorkspacePanelKind.PAGES, WorkspacePanelDock.BOTTOM)) PageRail(
                     document, documents, selectedPage.id, settings.pagePanelDock,
-                    onDock = { onSettingsChange(settings.copy(pagePanelDock = it)) },
+                    onDock = { changePanelDock(WorkspacePanelKind.PAGES, it) },
                     onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
                     pageTemplates = pageTemplates,
                     onSelect = onSelectPage, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
@@ -2013,7 +2138,7 @@ private fun EditorScreen(
                     activeLayerId = activeLayerId,
                     brushColor = brushColor,
                     dock = settings.layerPanelDock,
-                    onDock = { onSettingsChange(settings.copy(layerPanelDock = it)) },
+                    onDock = { changePanelDock(WorkspacePanelKind.LAYERS, it) },
                     onClose = { layersOpen = false; onSettingsChange(settings.copy(showLayerPanel = false)) },
                     onColor = { brushColor = it },
                     onSelect = { activeLayerId = it },
@@ -2046,7 +2171,7 @@ private fun EditorScreen(
                     selectedBrushId = selectedBrushId,
                     settings = settings,
                     dock = settings.brushPanelDock,
-                    onDock = { onSettingsChange(settings.copy(brushPanelDock = it)) },
+                    onDock = { changePanelDock(WorkspacePanelKind.BRUSHES, it) },
                     onClose = { if (brushesOpen) onToggleBrushes() },
                     onBrushSelected = { brush ->
                         exitCanvasNavigation()
@@ -2090,6 +2215,9 @@ private fun EditorScreen(
                 WorkspacePanelDockPreview(dock, preview)
             }
         }
+        panelGroupPreviewTarget?.let { target ->
+            WorkspacePanelGroupPreview(panelBounds(target), target)
+        }
         val dockedOrigin = dockedPanelOriginDock
         val dockedPreview = dockedPanelPreviewBounds
         if (
@@ -2105,7 +2233,7 @@ private fun EditorScreen(
                 WorkspacePanelFloatPreview(dockedPreview)
             }
         }
-        if (settings.showPageRail && settings.pagePanelDock == WorkspacePanelDock.FREE) FloatingWorkspacePanel(
+        if (settings.showPageRail && settings.pagePanelDock == WorkspacePanelDock.FREE && showPanel(WorkspacePanelKind.PAGES, WorkspacePanelDock.FREE)) FloatingWorkspacePanel(
             bounds = visiblePagePanelBounds,
             mode = settings.pagePanelMode,
             locked = settings.pagePanelLocked,
@@ -2114,20 +2242,18 @@ private fun EditorScreen(
             onActivate = { activeFloatingPanel = "pages" },
             onResize = { dx, dy ->
                 activeFloatingPanel = "pages"
-                pagePanelBounds = WorkspacePanelPlacement.resize(
-                    pagePanelBounds,
-                    dx / editorDensity.density,
-                    dy / editorDensity.density,
-                    workspaceWidthDp,
-                    usableWorkspaceHeightDp,
-                    minimumWidthDp = 140f,
-                )
+                pagePanelBounds = resizeFloatingPanel(WorkspacePanelKind.PAGES, pagePanelBounds, dx / editorDensity.density, dy / editorDensity.density)
             },
-            onResizeEnd = { persistPagePanel(pagePanelBounds) },
+            onResizeEnd = { if (freePanelsStacked) persistFloatingPanels(freePanelTabs) else persistPagePanel(pagePanelBounds) },
+            tabs = if (freePanelsStacked) freePanelTabs else emptyList(),
+            activeTab = freeActivePanel,
+            onTab = ::selectFloatingPanel,
+            onMoveTab = ::movePanelTab,
+            onSeparateTabs = ::separateFloatingPanels,
         ) {
             PageRail(
                 document, documents, selectedPage.id, settings.pagePanelDock,
-                onDock = { onSettingsChange(settings.copy(pagePanelDock = it)) },
+                onDock = { changePanelDock(WorkspacePanelKind.PAGES, it) },
                 onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
                 pageTemplates = pageTemplates,
                 onSelect = onSelectPage, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
@@ -2145,15 +2271,15 @@ private fun EditorScreen(
                     activeFloatingPanel = "pages"
                     val deltaXDp = dx / editorDensity.density
                     val deltaYDp = dy / editorDensity.density
-                    val next = WorkspacePanelPlacement.move(pagePanelBounds, deltaXDp, deltaYDp, workspaceWidthDp, usableWorkspaceHeightDp, minimumWidthDp = 140f)
+                    val next = moveFloatingPanel(WorkspacePanelKind.PAGES, pagePanelBounds, deltaXDp, deltaYDp)
                     pagePanelBounds = next
-                    updatePanelDockPreview(next, deltaXDp, deltaYDp)
+                    updatePanelDockPreview(WorkspacePanelKind.PAGES, next, deltaXDp, deltaYDp)
                 },
                 onPanelDragEnd = { finishPanelDrag(WorkspacePanelKind.PAGES, pagePanelBounds, ::persistPagePanel) },
                 onPanelDragCancel = { cancelPanelDrag(WorkspacePanelKind.PAGES) { pagePanelBounds = it } },
             )
         }
-        if (layersOpen && settings.layerPanelDock == WorkspacePanelDock.FREE) FloatingWorkspacePanel(
+        if (layersOpen && settings.layerPanelDock == WorkspacePanelDock.FREE && showPanel(WorkspacePanelKind.LAYERS, WorkspacePanelDock.FREE)) FloatingWorkspacePanel(
             bounds = visibleLayerPanelBounds,
             mode = settings.layerPanelMode,
             locked = settings.layerPanelLocked,
@@ -2162,23 +2288,21 @@ private fun EditorScreen(
             onActivate = { activeFloatingPanel = "layers" },
             onResize = { dx, dy ->
                 activeFloatingPanel = "layers"
-                layerPanelBounds = WorkspacePanelPlacement.resize(
-                    layerPanelBounds,
-                    dx / editorDensity.density,
-                    dy / editorDensity.density,
-                    workspaceWidthDp,
-                    usableWorkspaceHeightDp,
-                    minimumWidthDp = 260f,
-                )
+                layerPanelBounds = resizeFloatingPanel(WorkspacePanelKind.LAYERS, layerPanelBounds, dx / editorDensity.density, dy / editorDensity.density)
             },
-            onResizeEnd = { persistLayerPanel(layerPanelBounds) },
+            onResizeEnd = { if (freePanelsStacked) persistFloatingPanels(freePanelTabs) else persistLayerPanel(layerPanelBounds) },
+            tabs = if (freePanelsStacked) freePanelTabs else emptyList(),
+            activeTab = freeActivePanel,
+            onTab = ::selectFloatingPanel,
+            onMoveTab = ::movePanelTab,
+            onSeparateTabs = ::separateFloatingPanels,
         ) {
             LayerPanel(
                 page = selectedPage,
                 activeLayerId = activeLayerId,
                 brushColor = brushColor,
                 dock = settings.layerPanelDock,
-                onDock = { onSettingsChange(settings.copy(layerPanelDock = it)) },
+                onDock = { changePanelDock(WorkspacePanelKind.LAYERS, it) },
                 onClose = { layersOpen = false; onSettingsChange(settings.copy(showLayerPanel = false)) },
                 onColor = { brushColor = it },
                 onSelect = { activeLayerId = it },
@@ -2205,15 +2329,15 @@ private fun EditorScreen(
                     activeFloatingPanel = "layers"
                     val deltaXDp = dx / editorDensity.density
                     val deltaYDp = dy / editorDensity.density
-                    val next = WorkspacePanelPlacement.move(layerPanelBounds, deltaXDp, deltaYDp, workspaceWidthDp, usableWorkspaceHeightDp, minimumWidthDp = 260f)
+                    val next = moveFloatingPanel(WorkspacePanelKind.LAYERS, layerPanelBounds, deltaXDp, deltaYDp)
                     layerPanelBounds = next
-                    updatePanelDockPreview(next, deltaXDp, deltaYDp)
+                    updatePanelDockPreview(WorkspacePanelKind.LAYERS, next, deltaXDp, deltaYDp)
                 },
                 onPanelDragEnd = { finishPanelDrag(WorkspacePanelKind.LAYERS, layerPanelBounds, ::persistLayerPanel) },
                 onPanelDragCancel = { cancelPanelDrag(WorkspacePanelKind.LAYERS) { layerPanelBounds = it } },
             )
         }
-        if (brushesOpen && settings.brushPanelDock == WorkspacePanelDock.FREE) FloatingWorkspacePanel(
+        if (brushesOpen && settings.brushPanelDock == WorkspacePanelDock.FREE && showPanel(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.FREE)) FloatingWorkspacePanel(
             bounds = visibleBrushPanelBounds,
             mode = settings.brushPanelMode,
             locked = settings.brushPanelLocked,
@@ -2222,16 +2346,14 @@ private fun EditorScreen(
             onActivate = { activeFloatingPanel = "brushes" },
             onResize = { dx, dy ->
                 activeFloatingPanel = "brushes"
-                brushPanelBounds = WorkspacePanelPlacement.resize(
-                    brushPanelBounds,
-                    dx / editorDensity.density,
-                    dy / editorDensity.density,
-                    workspaceWidthDp,
-                    usableWorkspaceHeightDp,
-                    minimumWidthDp = 280f,
-                )
+                brushPanelBounds = resizeFloatingPanel(WorkspacePanelKind.BRUSHES, brushPanelBounds, dx / editorDensity.density, dy / editorDensity.density)
             },
-            onResizeEnd = { persistBrushPanel(brushPanelBounds) },
+            onResizeEnd = { if (freePanelsStacked) persistFloatingPanels(freePanelTabs) else persistBrushPanel(brushPanelBounds) },
+            tabs = if (freePanelsStacked) freePanelTabs else emptyList(),
+            activeTab = freeActivePanel,
+            onTab = ::selectFloatingPanel,
+            onMoveTab = ::movePanelTab,
+            onSeparateTabs = ::separateFloatingPanels,
         ) {
             BrushPanel(
                 brushes = brushes,
@@ -2239,7 +2361,7 @@ private fun EditorScreen(
                 selectedBrushId = selectedBrushId,
                 settings = settings,
                 dock = settings.brushPanelDock,
-                onDock = { onSettingsChange(settings.copy(brushPanelDock = it)) },
+                onDock = { changePanelDock(WorkspacePanelKind.BRUSHES, it) },
                 onClose = { if (brushesOpen) onToggleBrushes() },
                 onBrushSelected = { brush ->
                     exitCanvasNavigation()
@@ -2275,9 +2397,9 @@ private fun EditorScreen(
                     activeFloatingPanel = "brushes"
                     val deltaXDp = dx / editorDensity.density
                     val deltaYDp = dy / editorDensity.density
-                    val next = WorkspacePanelPlacement.move(brushPanelBounds, deltaXDp, deltaYDp, workspaceWidthDp, usableWorkspaceHeightDp, minimumWidthDp = 280f)
+                    val next = moveFloatingPanel(WorkspacePanelKind.BRUSHES, brushPanelBounds, deltaXDp, deltaYDp)
                     brushPanelBounds = next
-                    updatePanelDockPreview(next, deltaXDp, deltaYDp)
+                    updatePanelDockPreview(WorkspacePanelKind.BRUSHES, next, deltaXDp, deltaYDp)
                 },
                 onPanelDragEnd = { finishPanelDrag(WorkspacePanelKind.BRUSHES, brushPanelBounds, ::persistBrushPanel) },
                 onPanelDragCancel = { cancelPanelDrag(WorkspacePanelKind.BRUSHES) { brushPanelBounds = it } },
@@ -2847,6 +2969,35 @@ private fun WorkspacePanelFloatPreview(bounds: WorkspacePanelBounds) {
 }
 
 @Composable
+private fun WorkspacePanelGroupPreview(bounds: WorkspacePanelBounds, target: WorkspacePanelKind) {
+    val density = LocalDensity.current
+    val targetName = when (target) {
+        WorkspacePanelKind.PAGES -> tr("Pages", "页面")
+        WorkspacePanelKind.BRUSHES -> tr("Brushes", "笔刷")
+        WorkspacePanelKind.LAYERS -> tr("Layers", "图层")
+    }
+    val label = tr("Release to group with $targetName", "松开与$targetName 组合")
+    Box(
+        Modifier
+            .width(bounds.widthDp.dp)
+            .height(bounds.heightDp.dp)
+            .graphicsLayer(
+                translationX = with(density) { bounds.xDp.dp.toPx() },
+                translationY = with(density) { bounds.yDp.dp.toPx() },
+            )
+            .zIndex(7.5f)
+            .background(Color(0x26000000), RoundedCornerShape(12.dp))
+            .border(4.dp, Ink, RoundedCornerShape(12.dp))
+            .semantics { contentDescription = label },
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(color = Ink, shape = RoundedCornerShape(22.dp)) {
+            Text(label, Modifier.padding(horizontal = 18.dp, vertical = 10.dp), color = Color.White, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+@Composable
 private fun FloatingWorkspacePanel(
     bounds: WorkspacePanelBounds,
     mode: WorkspacePanelMode,
@@ -2856,6 +3007,11 @@ private fun FloatingWorkspacePanel(
     onActivate: () -> Unit,
     onResize: (Float, Float) -> Unit,
     onResizeEnd: () -> Unit,
+    tabs: List<WorkspacePanelKind> = emptyList(),
+    activeTab: WorkspacePanelKind? = null,
+    onTab: (WorkspacePanelKind) -> Unit = {},
+    onMoveTab: (WorkspacePanelKind, Int) -> Unit = { _, _ -> },
+    onSeparateTabs: () -> Unit = {},
     content: @Composable () -> Unit,
 ) {
     val density = LocalDensity.current
@@ -2885,27 +3041,92 @@ private fun FloatingWorkspacePanel(
             .background(Color(0xFFF7F7F7), RoundedCornerShape(12.dp))
             .border(1.dp, OutlineSoft, RoundedCornerShape(12.dp)),
     ) {
-        content()
-        if (!locked && mode == WorkspacePanelMode.EXPANDED) Box(
-            Modifier
-                .align(Alignment.BottomEnd)
-                .size(30.dp)
-                .clip(RoundedCornerShape(topStart = 10.dp, bottomEnd = 12.dp))
-                .background(Color.White)
-                .semantics { contentDescription = resizeDescription }
-                .pointerInput(Unit) {
-                    detectDragGestures(
-                        onDragStart = { currentActivate() },
-                        onDragEnd = { currentResizeEnd() },
-                        onDragCancel = { currentResizeEnd() },
-                    ) { change, amount ->
-                        change.consume()
-                        currentResize(amount.x, amount.y)
-                    }
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Outlined.OpenInFull, null, Modifier.size(15.dp), tint = MutedInk)
+        Column(Modifier.fillMaxSize()) {
+            if (tabs.size > 1) FloatingPanelTabStrip(tabs, activeTab, locked, onTab, onMoveTab, onSeparateTabs)
+            Box(Modifier.fillMaxWidth().weight(1f)) {
+                content()
+                if (!locked && mode == WorkspacePanelMode.EXPANDED) Box(
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .size(30.dp)
+                        .clip(RoundedCornerShape(topStart = 10.dp, bottomEnd = 12.dp))
+                        .background(Color.White)
+                        .semantics { contentDescription = resizeDescription }
+                        .pointerInput(Unit) {
+                            detectDragGestures(
+                                onDragStart = { currentActivate() },
+                                onDragEnd = { currentResizeEnd() },
+                                onDragCancel = { currentResizeEnd() },
+                            ) { change, amount ->
+                                change.consume()
+                                currentResize(amount.x, amount.y)
+                            }
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Outlined.OpenInFull, null, Modifier.size(15.dp), tint = MutedInk)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FloatingPanelTabStrip(
+    panels: List<WorkspacePanelKind>,
+    active: WorkspacePanelKind?,
+    locked: Boolean,
+    onSelect: (WorkspacePanelKind) -> Unit,
+    onMove: (WorkspacePanelKind, Int) -> Unit,
+    onSeparate: () -> Unit,
+) {
+    @Composable fun title(panel: WorkspacePanelKind): String = when (panel) {
+        WorkspacePanelKind.PAGES -> tr("Pages", "页面")
+        WorkspacePanelKind.BRUSHES -> tr("Brushes", "笔刷")
+        WorkspacePanelKind.LAYERS -> tr("Layers", "图层")
+    }
+    val stripDescription = tr("Floating panel tabs", "浮动面板标签")
+    Surface(
+        Modifier.fillMaxWidth().height(42.dp).semantics { contentDescription = stripDescription },
+        color = Color(0xFFF1F1F1),
+        border = CardDefaults.outlinedCardBorder(),
+    ) {
+        Row(Modifier.fillMaxSize().padding(start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            panels.forEach { panel ->
+                var dragDistance by remember(panel, panels) { mutableFloatStateOf(0f) }
+                val selected = active == panel
+                val panelTitle = title(panel)
+                val tabDescription = tr("$panelTitle floating tab. Drag to reorder.", "$panelTitle 浮动标签，可拖动排序")
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(34.dp)
+                        .padding(horizontal = 2.dp)
+                        .clip(RoundedCornerShape(7.dp))
+                        .background(if (selected) Ink else Color.Transparent)
+                        .semantics { contentDescription = tabDescription }
+                        .clickable { onSelect(panel) }
+                        .then(if (!locked) Modifier.pointerInput(panel, panels) {
+                            detectDragGestures(
+                                onDragStart = { dragDistance = 0f },
+                                onDragCancel = { dragDistance = 0f },
+                                onDragEnd = {
+                                    when {
+                                        dragDistance < -20f -> onMove(panel, -1)
+                                        dragDistance > 20f -> onMove(panel, 1)
+                                    }
+                                    dragDistance = 0f
+                                },
+                            ) { change, amount -> change.consume(); dragDistance += amount.x }
+                        } else Modifier),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(panelTitle, fontSize = 10.sp, maxLines = 1, color = if (selected) Color.White else Ink, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+                }
+            }
+            IconButton(onClick = onSeparate, enabled = !locked, modifier = Modifier.size(38.dp)) {
+                Icon(Icons.Outlined.CallSplit, tr("Separate floating panel tabs", "拆分浮动面板标签"), Modifier.size(18.dp))
+            }
         }
     }
 }
