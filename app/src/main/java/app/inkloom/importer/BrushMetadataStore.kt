@@ -97,7 +97,15 @@ class BrushMetadataStore(
                         continuousPlot = item.optBoolean("continuousPlot", false),
                         watercolor = item.optBoolean("watercolor", false),
                         colorMix = item.optDouble("colorMix", 0.0).toFloat(),
+                        colorMixPressureEnabled = item.optBoolean("colorMixPressureEnabled", false),
+                        colorMixPressureMinimum = item.optDouble("colorMixPressureMinimum", 0.0).toFloat().coerceIn(0f, 1f),
+                        colorMixPressureCurve = curve("colorMixPressureCurve"),
+                        colorMixSecondaryDynamics = secondary("colorMixSecondaryDynamics"),
                         paintMix = item.optDouble("paintMix", 0.0).toFloat(),
+                        paintMixPressureEnabled = item.optBoolean("paintMixPressureEnabled", false),
+                        paintMixPressureMinimum = item.optDouble("paintMixPressureMinimum", 0.0).toFloat().coerceIn(0f, 1f),
+                        paintMixPressureCurve = curve("paintMixPressureCurve"),
+                        paintMixSecondaryDynamics = secondary("paintMixSecondaryDynamics"),
                         spray = item.optBoolean("spray", false),
                         sprayParticleSize = item.optDouble("sprayParticleSize", 100.0).toFloat().coerceIn(.01f, 4000f),
                         sprayParticleSizeUnit = item.optInt("sprayParticleSizeUnit", 0),
@@ -259,7 +267,15 @@ class BrushMetadataStore(
                     .put("continuousPlot", brush.continuousPlot)
                     .put("watercolor", brush.watercolor)
                     .put("colorMix", brush.colorMix)
+                    .put("colorMixPressureEnabled", brush.colorMixPressureEnabled)
+                    .put("colorMixPressureMinimum", brush.colorMixPressureMinimum)
+                    .put("colorMixPressureCurve", curveJson(brush.colorMixPressureCurve))
+                    .put("colorMixSecondaryDynamics", secondaryJson(brush.colorMixSecondaryDynamics))
                     .put("paintMix", brush.paintMix)
+                    .put("paintMixPressureEnabled", brush.paintMixPressureEnabled)
+                    .put("paintMixPressureMinimum", brush.paintMixPressureMinimum)
+                    .put("paintMixPressureCurve", curveJson(brush.paintMixPressureCurve))
+                    .put("paintMixSecondaryDynamics", secondaryJson(brush.paintMixSecondaryDynamics))
                     .put("spray", brush.spray)
                     .put("sprayParticleSize", brush.sprayParticleSize)
                     .put("sprayParticleSizeUnit", brush.sprayParticleSizeUnit)

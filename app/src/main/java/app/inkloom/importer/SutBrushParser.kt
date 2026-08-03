@@ -28,6 +28,8 @@ class SutBrushParser(private val assetDirectory: File) {
             val spacingEffector = db.effector("BrushIntervalEffector", columns)
             val thicknessEffector = db.effector("BrushThicknessEffector", columns)
             val blurEffector = db.effector("BrushBlurEffector", columns)
+            val colorMixEffector = db.effector("BrushMixColorEffector", columns)
+            val paintMixEffector = db.effector("BrushMixAlphaEffector", columns)
             val sprayParticleSizeEffector = db.effector("BrushSpraySizeEffector", columns)
             val sprayDensityEffector = db.effector("BrushSprayDensityEffector", columns)
             val tips = extractMaterialPreviews(db, "BrushPatternImageArray", hash, "tip")
@@ -80,7 +82,15 @@ class SutBrushParser(private val assetDirectory: File) {
                 continuousPlot = values.float("BrushContinuousPlot") > 0f,
                 watercolor = watercolor,
                 colorMix = (values.float("BrushMixColor") / 100f).coerceIn(0f, 1f),
+                colorMixPressureEnabled = colorMixEffector?.pressureEnabled == true,
+                colorMixPressureMinimum = colorMixEffector?.pressureMinimum ?: 0f,
+                colorMixPressureCurve = colorMixEffector?.pressureCurve.orEmpty(),
+                colorMixSecondaryDynamics = colorMixEffector.secondaryDynamics(),
                 paintMix = (values.float("BrushMixAlpha") / 100f).coerceIn(0f, 1f),
+                paintMixPressureEnabled = paintMixEffector?.pressureEnabled == true,
+                paintMixPressureMinimum = paintMixEffector?.pressureMinimum ?: 0f,
+                paintMixPressureCurve = paintMixEffector?.pressureCurve.orEmpty(),
+                paintMixSecondaryDynamics = paintMixEffector.secondaryDynamics(),
                 spray = values.float("BrushUseSpray") > 0f,
                 sprayParticleSize = values.float("BrushSpraySize", 100f).coerceIn(.01f, 4000f),
                 sprayParticleSizeUnit = values.float("BrushSpraySizeUnit").toInt(),
@@ -190,9 +200,9 @@ class SutBrushParser(private val assetDirectory: File) {
                     add(when (rotation.mode) { SutRotationMode.FIXED -> "CSP tip angle mode mapped: fixed"; SutRotationMode.DIRECTION_OF_PEN -> "CSP tip angle mode mapped: direction of pen"; SutRotationMode.DIRECTION_OF_LINE -> "CSP tip angle mode mapped: direction of line"; SutRotationMode.PEN_TWIST -> "CSP tip angle uses pen-barrel twist, which Android MotionEvent does not expose on this engine"; SutRotationMode.UNKNOWN -> "Unknown CSP tip angle mode ${rotation.rawMode}; fixed angle retained" })
                     if (rotation.randomEnabled) add("CSP tip random-angle source mapped at ${values.float("BrushRotationRandomScale").toInt()}% influence")
                     if (rotation.unsupportedDynamicsFlags != 0) add("Additional CSP angle dynamics flags 0x${rotation.unsupportedDynamicsFlags.toString(16)} retained in the source; their combined strengths are not guessed")
-                    val decodedCurves = listOfNotNull(sizeEffector?.pressureCurve?.takeIf { sizeEffector.pressureEnabled }?.let { "size ${it.size}-point" }, opacityEffector?.pressureCurve?.takeIf { opacityEffector.pressureEnabled }?.let { "opacity ${it.size}-point" }, flowEffector?.pressureCurve?.takeIf { flowEffector.pressureEnabled }?.let { "flow ${it.size}-point" }, spacingEffector?.pressureCurve?.takeIf { spacingEffector.pressureEnabled }?.let { "spacing ${it.size}-point" }, thicknessEffector?.pressureCurve?.takeIf { thicknessEffector.pressureEnabled }?.let { "thickness ${it.size}-point" }, blurEffector?.pressureCurve?.takeIf { blurEffector.pressureEnabled }?.let { "blur ${it.size}-point" }, sprayParticleSizeEffector?.pressureCurve?.takeIf { sprayParticleSizeEffector.pressureEnabled }?.let { "spray particle size ${it.size}-point" }, sprayDensityEffector?.pressureCurve?.takeIf { sprayDensityEffector.pressureEnabled }?.let { "spray density ${it.size}-point" })
+                    val decodedCurves = listOfNotNull(sizeEffector?.pressureCurve?.takeIf { sizeEffector.pressureEnabled }?.let { "size ${it.size}-point" }, opacityEffector?.pressureCurve?.takeIf { opacityEffector.pressureEnabled }?.let { "opacity ${it.size}-point" }, flowEffector?.pressureCurve?.takeIf { flowEffector.pressureEnabled }?.let { "flow ${it.size}-point" }, spacingEffector?.pressureCurve?.takeIf { spacingEffector.pressureEnabled }?.let { "spacing ${it.size}-point" }, thicknessEffector?.pressureCurve?.takeIf { thicknessEffector.pressureEnabled }?.let { "thickness ${it.size}-point" }, blurEffector?.pressureCurve?.takeIf { blurEffector.pressureEnabled }?.let { "blur ${it.size}-point" }, colorMixEffector?.pressureCurve?.takeIf { colorMixEffector.pressureEnabled }?.let { "color mix ${it.size}-point" }, paintMixEffector?.pressureCurve?.takeIf { paintMixEffector.pressureEnabled }?.let { "paint load ${it.size}-point" }, sprayParticleSizeEffector?.pressureCurve?.takeIf { sprayParticleSizeEffector.pressureEnabled }?.let { "spray particle size ${it.size}-point" }, sprayDensityEffector?.pressureCurve?.takeIf { sprayDensityEffector.pressureEnabled }?.let { "spray density ${it.size}-point" })
                     if (decodedCurves.isNotEmpty()) add("CSP pressure dynamics decoded: ${decodedCurves.joinToString()}")
-                    val secondarySources = listOf("size" to sizeEffector, "opacity" to opacityEffector, "flow" to flowEffector, "spacing" to spacingEffector, "thickness" to thicknessEffector, "blur" to blurEffector, "spray particle size" to sprayParticleSizeEffector, "spray density" to sprayDensityEffector).mapNotNull { (label, effector) -> effector?.sourceSummary()?.takeIf(String::isNotBlank)?.let { "$label $it" } }
+                    val secondarySources = listOf("size" to sizeEffector, "opacity" to opacityEffector, "flow" to flowEffector, "spacing" to spacingEffector, "thickness" to thicknessEffector, "blur" to blurEffector, "color mix" to colorMixEffector, "paint load" to paintMixEffector, "spray particle size" to sprayParticleSizeEffector, "spray density" to sprayDensityEffector).mapNotNull { (label, effector) -> effector?.sourceSummary()?.takeIf(String::isNotBlank)?.let { "$label $it" } }
                     if (secondarySources.isNotEmpty()) add("CSP secondary dynamics decoded: ${secondarySources.joinToString()}")
                     if (watercolor) add("Watercolor/color-mixing parameters detected; wet pigment simulation is approximated")
                     if (dual) {
@@ -269,6 +279,6 @@ class SutBrushParser(private val assetDirectory: File) {
     private fun SutEffector?.secondaryDynamics(): BrushSecondaryDynamics = this?.let { effector -> BrushSecondaryDynamics(tiltEnabled = effector.tiltEnabled, tiltMinimum = effector.tiltMinimum, velocityEnabled = effector.velocityEnabled, velocityMinimum = effector.velocityMinimum, velocityCurve = effector.velocityCurve, randomEnabled = effector.randomEnabled, randomMinimum = effector.randomMinimum) } ?: BrushSecondaryDynamics()
     private fun SutEffector.sourceSummary(): String = buildList { if (tiltEnabled) add("tilt"); if (velocityEnabled) add("velocity"); if (randomEnabled) add("random") }.joinToString("+")
     companion object {
-        const val CURRENT_VERSION = 22
+        const val CURRENT_VERSION = 23
     }
 }

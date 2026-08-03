@@ -267,7 +267,14 @@ private fun localizedBrushLabel(raw: String): String {
         "Stamp count" -> "笔印数量"
         "Stamp count jitter" -> "笔印数量抖动"
         "Color mix" -> "颜色混合"
+        "Pressure controls color mix" -> "压力控制颜色混合"
+        "Minimum color mix" -> "最小颜色混合"
+        "Color mix pressure" -> "颜色混合压力"
         "Paint mix" -> "颜料混合"
+        "Pressure controls paint load" -> "压力控制颜料量"
+        "Minimum paint load" -> "最小颜料量"
+        "Paint load pressure" -> "颜料量压力"
+        "Paint load" -> "颜料量"
         "Watercolor approximation" -> "水彩近似"
         "Uses translucent layered stamps." -> "使用半透明的分层笔印。"
         "Watercolor edge" -> "水彩边缘"
@@ -3724,7 +3731,15 @@ private fun InkCanvasView.applyBrushConfiguration(
     brushContinuousPlot = activeBrush?.continuousPlot ?: false
     brushWatercolor = activeBrush?.watercolor ?: false
     brushColorMix = activeBrush?.colorMix ?: 0f
+    colorMixPressureEnabled = activeBrush?.colorMixPressureEnabled ?: false
+    colorMixPressureMinimum = activeBrush?.colorMixPressureMinimum ?: 0f
+    colorMixPressureCurve = activeBrush?.colorMixPressureCurve.orEmpty()
+    colorMixSecondaryDynamics = activeBrush?.colorMixSecondaryDynamics ?: BrushSecondaryDynamics()
     brushPaintMix = activeBrush?.paintMix ?: 0f
+    paintMixPressureEnabled = activeBrush?.paintMixPressureEnabled ?: false
+    paintMixPressureMinimum = activeBrush?.paintMixPressureMinimum ?: 0f
+    paintMixPressureCurve = activeBrush?.paintMixPressureCurve.orEmpty()
+    paintMixSecondaryDynamics = activeBrush?.paintMixSecondaryDynamics ?: BrushSecondaryDynamics()
     brushSpray = activeBrush?.spray ?: false
     sprayParticleSize = activeBrush?.sprayParticleSize ?: 100f
     sprayParticleSizeUnit = activeBrush?.sprayParticleSizeUnit ?: 0
@@ -5376,9 +5391,17 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 item { BrushSettingSlider("Stamp count", draft.stampCount.toFloat(), 1f..16f) { draft = draft.copy(stampCount = it.toInt().coerceIn(1, 16)) } }
                 item { BrushSettingSlider("Stamp count jitter", draft.stampCountJitter, 0f..1f) { draft = draft.copy(stampCountJitter = it) } }
                 item { SettingSwitch(tr("Continuous spraying", "连续喷涂"), tr("Holding the stylus in one place keeps depositing the brush tip, matching CSP slow-stroke density behavior.", "笔尖停留时继续叠加笔刷印章，匹配 CSP 慢速笔画的浓淡行为。"), draft.continuousPlot) { draft = draft.copy(continuousPlot = it) } }
-                item { BrushSettingSlider("Color mix", draft.colorMix, 0f..1f) { draft = draft.copy(colorMix = it) } }
-                item { BrushSettingSlider("Paint mix", draft.paintMix, 0f..1f) { draft = draft.copy(paintMix = it) } }
                 item { SettingSwitch("Watercolor approximation", "Uses translucent layered stamps.", draft.watercolor) { draft = draft.copy(watercolor = it) } }
+                item { BrushSettingSlider("Color mix", draft.colorMix, 0f..1f) { draft = draft.copy(colorMix = it) } }
+                if (draft.watercolor) item { SettingSwitch("Pressure controls color mix", null, draft.colorMixPressureEnabled) { draft = draft.copy(colorMixPressureEnabled = it) } }
+                if (draft.watercolor && draft.colorMixPressureEnabled) item { BrushSettingSlider("Minimum color mix", draft.colorMixPressureMinimum, 0f..1f) { draft = draft.copy(colorMixPressureMinimum = it) } }
+                if (draft.watercolor && draft.colorMixPressureEnabled) item { PressureCurveEditor("Color mix pressure", draft.colorMixPressureCurve) { draft = draft.copy(colorMixPressureCurve = it) } }
+                if (draft.watercolor) item { SecondaryDynamicsEditor("Color mix", draft.colorMixSecondaryDynamics) { draft = draft.copy(colorMixSecondaryDynamics = it) } }
+                item { BrushSettingSlider("Paint mix", draft.paintMix, 0f..1f) { draft = draft.copy(paintMix = it) } }
+                if (draft.watercolor) item { SettingSwitch("Pressure controls paint load", null, draft.paintMixPressureEnabled) { draft = draft.copy(paintMixPressureEnabled = it) } }
+                if (draft.watercolor && draft.paintMixPressureEnabled) item { BrushSettingSlider("Minimum paint load", draft.paintMixPressureMinimum, 0f..1f) { draft = draft.copy(paintMixPressureMinimum = it) } }
+                if (draft.watercolor && draft.paintMixPressureEnabled) item { PressureCurveEditor("Paint load pressure", draft.paintMixPressureCurve) { draft = draft.copy(paintMixPressureCurve = it) } }
+                if (draft.watercolor) item { SecondaryDynamicsEditor("Paint load", draft.paintMixSecondaryDynamics) { draft = draft.copy(paintMixSecondaryDynamics = it) } }
                 item { SettingSwitch("Watercolor edge", "Adds the CSP-style translucent edge pass before the main stamp.", draft.waterEdgeEnabled) { draft = draft.copy(waterEdgeEnabled = it) } }
                 if (draft.waterEdgeEnabled) item { BrushSettingSlider("Edge radius", draft.waterEdgeRadius, 0f..80f) { draft = draft.copy(waterEdgeRadius = it) } }
                 if (draft.waterEdgeEnabled) item { Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { FilterChip(selected = draft.waterEdgeRadiusUnit == 0, onClick = { draft = draft.copy(waterEdgeRadiusUnit = 0) }, label = { Text("px") }); FilterChip(selected = draft.waterEdgeRadiusUnit == 2, onClick = { draft = draft.copy(waterEdgeRadiusUnit = 2) }, label = { Text("mm") }) } }

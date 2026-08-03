@@ -56,9 +56,9 @@ class SutSprayRotationParserTest {
                 )
             }
             parsed.forEach { brush ->
-                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 22, brush.parserVersion)
+                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 23, brush.parserVersion)
                 assertFalse(brush.report.any { it.startsWith("SUT parameter parsing failed") })
-                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v22-")) }
+                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v23-")) }
             }
             assertTrue("Expected multiple CSP AntiAlias modes in the supplied corpus", parsed.map(ImportedBrush::antiAliasMode).distinct().size >= 3)
             assertTrue(parsed.all { it.antiAliasMode in CspAntiAlias.NONE..CspAntiAlias.STRONG })
@@ -93,6 +93,16 @@ class SutSprayRotationParserTest {
             val densityDynamicsBrush = parsed.firstOrNull { it.sprayDensitySecondaryDynamics.velocityEnabled }
             assertTrue("Expected the supplied velocity particle-density dynamics", densityDynamicsBrush != null)
             assertTrue(densityDynamicsBrush?.report?.any { it.contains("spray density velocity") } == true)
+            val wetMixBrush = parsed.firstOrNull { it.name.contains("커스텀 평평 수채붓") }
+            assertTrue("Expected the supplied custom flat watercolor brush", wetMixBrush != null)
+            assertTrue(wetMixBrush?.watercolor == true)
+            assertEquals(.26f, wetMixBrush?.colorMix ?: -1f, .001f)
+            assertEquals(.25f, wetMixBrush?.paintMix ?: -1f, .001f)
+            assertTrue(wetMixBrush?.colorMixPressureEnabled == true)
+            assertTrue(wetMixBrush?.paintMixPressureEnabled == true)
+            assertEquals(2, wetMixBrush?.colorMixPressureCurve?.size)
+            assertEquals(2, wetMixBrush?.paintMixPressureCurve?.size)
+            assertTrue(wetMixBrush?.report?.any { it.contains("color mix 2-point") && it.contains("paint load 2-point") } == true)
 
             val normalizedTipSizes = parsed.flatMap { brush ->
                 brush.tipPreviewPaths.mapNotNull { path ->
@@ -135,7 +145,7 @@ class SutSprayRotationParserTest {
             assertEquals(CspTextureComposite.HEIGHT, brush.grainCompositeMode)
             assertEquals(CspAntiAlias.WEAK, brush.antiAliasMode)
             assertEquals(CspAntiAlias.STRONG, brush.dualAntiAliasMode)
-            assertEquals(22, brush.parserVersion)
+            assertEquals(23, brush.parserVersion)
         } finally {
             root.deleteRecursively()
         }
@@ -156,6 +166,15 @@ class SutSprayRotationParserTest {
                 sprayParticleRotationDegrees = 33f,
                 sprayParticleFollowStrokeDirection = true,
                 sprayParticleRandomRotationDegrees = 54f,
+                watercolor = true,
+                colorMix = .6f,
+                colorMixPressureEnabled = true,
+                colorMixPressureMinimum = .2f,
+                colorMixPressureCurve = listOf(app.inkloom.document.BrushCurvePoint(0f, 0f), app.inkloom.document.BrushCurvePoint(1f, 1f)),
+                paintMix = .7f,
+                paintMixPressureEnabled = true,
+                paintMixPressureMinimum = .3f,
+                paintMixSecondaryDynamics = app.inkloom.document.BrushSecondaryDynamics(velocityEnabled = true, velocityMinimum = .4f),
                 sprayParticleSizePressureEnabled = true,
                 sprayParticleSizePressureMinimum = .25f,
                 sprayParticleSizePressureCurve = listOf(app.inkloom.document.BrushCurvePoint(0f, .1f), app.inkloom.document.BrushCurvePoint(1f, 1f)),
@@ -194,6 +213,12 @@ class SutSprayRotationParserTest {
             assertEquals(33f, restored.sprayParticleRotationDegrees, .0001f)
             assertTrue(restored.sprayParticleFollowStrokeDirection)
             assertEquals(54f, restored.sprayParticleRandomRotationDegrees, .0001f)
+            assertTrue(restored.colorMixPressureEnabled)
+            assertEquals(.2f, restored.colorMixPressureMinimum, .0001f)
+            assertEquals(2, restored.colorMixPressureCurve.size)
+            assertTrue(restored.paintMixPressureEnabled)
+            assertEquals(.3f, restored.paintMixPressureMinimum, .0001f)
+            assertTrue(restored.paintMixSecondaryDynamics.velocityEnabled)
             assertTrue(restored.sprayParticleSizePressureEnabled)
             assertEquals(.25f, restored.sprayParticleSizePressureMinimum, .0001f)
             assertEquals(2, restored.sprayParticleSizePressureCurve.size)
