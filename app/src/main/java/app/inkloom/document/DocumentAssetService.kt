@@ -129,6 +129,21 @@ class DocumentAssetService(private val context: Context) {
         return InkDocument(title = title.substringBeforeLast('.').ifBlank { "Imported Image" }, pages = listOf(InkPage(width = width.toFloat(), height = height.toFloat(), background = PageBackground.Image(asset.absolutePath))))
     }
 
+    /** Copies the selected file into private app storage and exposes every PDF page as a reusable template. */
+    fun importPageTemplates(uri: Uri, displayName: String): List<PageTemplate> {
+        val isPdf = context.contentResolver.getType(uri) == "application/pdf" || displayName.endsWith(".pdf", ignoreCase = true)
+        val source = if (isPdf) importPdf(uri, displayName, indexText = false) else importImage(uri, displayName)
+        val baseName = displayName.substringBeforeLast('.').trim().ifBlank { "Imported template" }
+        return source.pages.mapIndexed { index, page ->
+            PageTemplate(
+                name = if (source.pages.size == 1) baseName else "$baseName · ${index + 1}",
+                width = page.width,
+                height = page.height,
+                background = page.background,
+            )
+        }
+    }
+
     fun importPageImage(uri: Uri): PageElement.Image {
         val asset = copyAsset(uri, "image")
         val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
