@@ -20,6 +20,8 @@ data class LibraryRestoreResult(
     val folders: List<InkFolder>,
     val brushes: List<ImportedBrush>,
     val brushGroups: List<String>,
+    val preferences: ByteArray? = null,
+    val brushIdMappings: Map<String, String> = emptyMap(),
 )
 
 /**
@@ -40,11 +42,13 @@ class LibraryBackupService(private val filesRoot: File) {
         brushes: List<ImportedBrush>,
         output: OutputStream,
         brushGroups: List<String> = emptyList(),
+        preferences: ByteArray? = null,
     ) {
         require(documents.size <= MAX_DOCUMENTS) { "Library has too many documents to back up" }
         require(folders.size <= MAX_FOLDERS) { "Library has too many folders to back up" }
         require(brushes.size <= MAX_BRUSHES) { "Library has too many brushes to back up" }
         require(brushGroups.size <= MAX_BRUSH_GROUPS) { "Library has too many brush groups to back up" }
+        require(preferences == null || preferences.size <= MAX_PREFERENCES_BYTES) { "Library preferences are too large to back up" }
         val portableBrushGroups = BrushGroupOperations.reconcileRegisteredGroups(brushGroups, brushes)
         val assets = linkedMapOf<String, File>()
         fun register(path: String?, folder: String): String? {
@@ -91,11 +95,17 @@ class LibraryBackupService(private val filesRoot: File) {
             folders = folders,
             brushes = portableBrushes,
             brushGroups = portableBrushGroups,
+            preferencesEntry = preferences?.let { PREFERENCES },
         )
         ZipOutputStream(output.buffered()).use { zip ->
             zip.putNextEntry(ZipEntry(MANIFEST))
             zip.write(json.encodeToString(manifest).encodeToByteArray())
             zip.closeEntry()
+            preferences?.let { bytes ->
+                zip.putNextEntry(ZipEntry(PREFERENCES))
+                zip.write(bytes)
+                zip.closeEntry()
+            }
             assets.toSortedMap().forEach { (entryName, source) ->
                 zip.putNextEntry(ZipEntry(entryName))
                 source.inputStream().use { it.copyTo(zip) }
@@ -112,7 +122,7 @@ class LibraryBackupService(private val filesRoot: File) {
             val manifestFile = File(staging, MANIFEST)
             require(manifestFile.isFile && manifestFile.length() <= MAX_MANIFEST_BYTES) { "Backup has no valid manifest" }
             val manifest = json.decodeFromString<LibraryBackupManifest>(manifestFile.readText())
-            require(manifest.formatVersion == FORMAT_VERSION) { "Backup version ${manifest.formatVersion} is not supported" }
+            require(manifest.formatVersion in 1..FORMAT_VERSION) { "Backup version ${manifest.formatVersion} is not supported" }
             require(manifest.documents.size <= MAX_DOCUMENTS && manifest.folders.size <= MAX_FOLDERS && manifest.brushes.size <= MAX_BRUSHES && manifest.brushGroups.size <= MAX_BRUSH_GROUPS) { "Backup manifest exceeds library limits" }
 
             fun retained(relativePath: String?, folder: String): String? {
@@ -177,7 +187,13 @@ class LibraryBackupService(private val filesRoot: File) {
                 )
             }
             val restoredBrushGroups = BrushGroupOperations.reconcileRegisteredGroups(manifest.brushGroups, restoredBrushes)
-            return LibraryRestoreResult(restoredDocuments, restoredFolders, restoredBrushes, restoredBrushGroups)
+            val restoredPreferences = manifest.preferencesEntry?.let { entry ->
+                require(entry == PREFERENCES) { "Backup preferences entry is invalid" }
+                val file = File(staging, entry)
+                require(file.isFile && file.length() in 1..MAX_PREFERENCES_BYTES.toLong()) { "Backup has no valid preferences" }
+                file.readBytes()
+            }
+            return LibraryRestoreResult(restoredDocuments, restoredFolders, restoredBrushes, restoredBrushGroups, restoredPreferences, brushIds)
         } finally {
             staging.deleteRecursively()
         }
@@ -194,6 +210,7 @@ class LibraryBackupService(private val filesRoot: File) {
                 val normalized = safeArchivePath(entry.name)
                 require(
                     normalized == MANIFEST ||
+                        normalized == PREFERENCES ||
                         normalized.startsWith("$DOCUMENT_ASSETS/") ||
                         normalized.startsWith("$BRUSH_ASSETS/") ||
                         normalized.startsWith("$BRUSH_SOURCES/"),
@@ -262,11 +279,13 @@ class LibraryBackupService(private val filesRoot: File) {
         val folders: List<InkFolder>,
         val brushes: List<ImportedBrush>,
         val brushGroups: List<String> = emptyList(),
+        val preferencesEntry: String? = null,
     )
 
     private companion object {
-        const val FORMAT_VERSION = 1
+        const val FORMAT_VERSION = 2
         const val MANIFEST = "manifest.json"
+        const val PREFERENCES = "preferences.json"
         const val DOCUMENT_ASSETS = "document-assets"
         const val BRUSH_ASSETS = "brush-assets"
         const val BRUSH_SOURCES = "brush-sources"
@@ -274,6 +293,7 @@ class LibraryBackupService(private val filesRoot: File) {
         const val MAX_FOLDERS = 10_000
         const val MAX_BRUSHES = 20_000
         const val MAX_BRUSH_GROUPS = 20_000
+        const val MAX_PREFERENCES_BYTES = 512 * 1024
         const val MAX_ENTRIES = 50_000
         const val MAX_MANIFEST_BYTES = 128L * 1024 * 1024
         const val MAX_SINGLE_ASSET_BYTES = 512L * 1024 * 1024

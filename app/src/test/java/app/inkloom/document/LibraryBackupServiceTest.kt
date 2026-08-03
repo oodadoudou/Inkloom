@@ -49,7 +49,8 @@ class LibraryBackupServiceTest {
             )
             val folder = InkFolder(id = "folder-1", name = "School")
             val document = InkDocument(id = "document-1", title = "Lecture", folderId = folder.id, coverStyle = CoverStyle.CUSTOM_IMAGE, coverImagePath = coverAsset.absolutePath, pages = listOf(page))
-            val bytes = ByteArrayOutputStream().also { LibraryBackupService(sourceRoot).export(listOf(document), listOf(folder), listOf(brush), it, listOf("Drawing/Ink", "Empty/Erasers")) }.toByteArray()
+            val preferences = "{\"format\":\"test-preferences\"}".toByteArray()
+            val bytes = ByteArrayOutputStream().also { LibraryBackupService(sourceRoot).export(listOf(document), listOf(folder), listOf(brush), it, listOf("Drawing/Ink", "Empty/Erasers"), preferences) }.toByteArray()
 
             val restored = LibraryBackupService(restoreRoot).restore(ByteArrayInputStream(bytes))
 
@@ -57,6 +58,8 @@ class LibraryBackupServiceTest {
             assertEquals(2, restored.folders.size)
             assertEquals(1, restored.brushes.size)
             assertEquals(listOf("Drawing/Ink", "Empty/Erasers"), restored.brushGroups)
+            assertTrue(preferences.contentEquals(restored.preferences))
+            assertEquals(restored.brushes.single().id, restored.brushIdMappings[brush.id])
             assertNotEquals(document.id, restored.documents.single().id)
             assertNotEquals(folder.id, restored.documents.single().folderId)
             assertNotEquals(brush.id, restored.brushes.single().id)
