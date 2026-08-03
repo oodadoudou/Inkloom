@@ -33,6 +33,7 @@ class BrushBatchManagementTest {
         brush("batch-a", "Batch A", "Source", 0),
         brush("batch-b", "Batch B", "Source", 1),
         brush("target-c", "Target C", "Target", 0),
+        brush("nested-d", "Nested Ink", "Source/Ink/Pens", 0),
     )
 
     private val preloadRule = TestRule { base, _ ->
@@ -80,7 +81,7 @@ class BrushBatchManagementTest {
         composeRule.onAllNodes(hasText("Source")).onLast().performClick()
         composeRule.onNodeWithText("Copy selected").performClick()
 
-        composeRule.waitUntil(5_000) { store.load().size == 4 }
+        composeRule.waitUntil(5_000) { store.load().size == 5 }
         val copied = store.load().single { it.name == "Batch A copy" }
         assertNotEquals("batch-a", copied.id)
         assertEquals("Source", copied.groupName)
@@ -98,7 +99,7 @@ class BrushBatchManagementTest {
 
         val store = BrushMetadataStore(composeRule.activity)
         composeRule.waitUntil(5_000) { BrushGroupOperations.names(store.load()).firstOrNull() == "Target" }
-        assertEquals(listOf("Target", "Source"), BrushGroupOperations.names(store.load()))
+        assertEquals(listOf("Target", "Source", "Source/Ink/Pens"), BrushGroupOperations.names(store.load()))
     }
 
     @Test fun selectedGroupBecomesTheBatchImportDestination() {
@@ -109,6 +110,22 @@ class BrushBatchManagementTest {
         composeRule.onNodeWithText("Source").performClick()
 
         composeRule.onNodeWithText("Import into Source").assertIsDisplayed()
+    }
+
+    @Test fun nestedGroupTreeCollapsesAndFiltersAnEntireSubtree() {
+        composeRule.onNodeWithText("New Note").performClick()
+        composeRule.onNodeWithText("Create").performClick()
+        composeRule.onNodeWithContentDescription("Brushes").performClick()
+
+        composeRule.onNodeWithText("Ink").assertIsDisplayed()
+        composeRule.onNodeWithText("Pens").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Collapse group Source").performClick()
+        assertEquals(0, composeRule.onAllNodes(hasText("Ink")).fetchSemanticsNodes().size)
+        composeRule.onNodeWithContentDescription("Expand group Source").performClick()
+        composeRule.onNodeWithText("Ink").performClick()
+
+        composeRule.onNodeWithText("Nested Ink").assertIsDisplayed()
+        composeRule.onNodeWithText("Import into Source/Ink").assertIsDisplayed()
     }
 
     private companion object {

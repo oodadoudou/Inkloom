@@ -3037,22 +3037,25 @@ private fun BrushPanel(
     var selectedBrushIds by remember { mutableStateOf(emptySet<String>()) }
     var batchGroupOperation by remember { mutableStateOf<BrushBatchGroupOperation?>(null) }
     var confirmBatchDelete by remember { mutableStateOf(false) }
+    var collapsedGroupPaths by remember { mutableStateOf(emptySet<String>()) }
     val copiedBrushSuffix = tr("copy", "副本")
     val groups = BrushGroupOperations.names(brushes)
+    val groupTree = BrushGroupOperations.treePaths(brushes)
     val currentBrushIds = brushes.mapTo(linkedSetOf()) { it.id }
     LaunchedEffect(currentBrushIds) {
         selectedBrushIds = selectedBrushIds.intersect(currentBrushIds)
         if (selectedBrushIds.isEmpty() && brushes.isEmpty()) multiSelecting = false
     }
-    LaunchedEffect(groups, selectedGroup) {
-        if (selectedGroup != null && selectedGroup != UNGROUPED_BRUSH_FILTER && groups.none { it.equals(selectedGroup, true) }) selectedGroup = null
+    LaunchedEffect(groupTree, selectedGroup) {
+        collapsedGroupPaths = collapsedGroupPaths.filterTo(linkedSetOf()) { collapsed -> groupTree.any { it.equals(collapsed, true) } }
+        if (selectedGroup != null && selectedGroup != UNGROUPED_BRUSH_FILTER && groupTree.none { it.equals(selectedGroup, true) }) selectedGroup = null
     }
     val visibleBrushes = brushes.filter { brush ->
         val normalizedGroup = BrushGroupOperations.normalize(brush.groupName)
         val groupMatches = when (selectedGroup) {
             null -> true
             UNGROUPED_BRUSH_FILTER -> normalizedGroup.isBlank()
-            else -> normalizedGroup.equals(selectedGroup, true)
+            else -> BrushGroupOperations.isWithin(normalizedGroup, selectedGroup.orEmpty())
         }
         (showHidden || !brush.hidden) && (!favoritesOnly || brush.favorite) && groupMatches && (format == null || brush.format == format) && (search.isBlank() || brush.name.contains(search, true) || normalizedGroup.contains(search, true) || brush.tags.any { it.contains(search, true) })
     }.sortedWith(compareBy<ImportedBrush> { it.sortOrder }.thenByDescending { it.favorite }.thenByDescending { it.lastUsedAt }.thenBy { it.name.lowercase() })
@@ -3097,10 +3100,39 @@ private fun BrushPanel(
             Text(tr("GROUPS", "分组"), fontSize = 10.sp, color = MutedInk, modifier = Modifier.weight(1f))
             IconButton(onClick = { manageGroups = true }, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.DriveFileRenameOutline, tr("Manage brush groups", "管理笔刷分组"), Modifier.size(17.dp)) }
         }
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(bottom = 6.dp)) {
-            item { FilterChip(selected = selectedGroup == null, onClick = { selectedGroup = null }, label = { Text(tr("All", "全部")) }) }
-            item { FilterChip(selected = selectedGroup == UNGROUPED_BRUSH_FILTER, onClick = { selectedGroup = UNGROUPED_BRUSH_FILTER }, label = { Text(tr("Ungrouped", "未分组")) }) }
-            groups.forEach { group -> item(group) { FilterChip(selected = selectedGroup?.equals(group, true) == true, onClick = { selectedGroup = group }, label = { Text(group, maxLines = 1) }) } }
+        val visibleGroupPaths = groupTree.filter { path ->
+            generateSequence(BrushGroupOperations.parent(path), BrushGroupOperations::parent).none { ancestor -> collapsedGroupPaths.any { it.equals(ancestor, true) } }
+        }
+        Surface(color = Color.White, shape = RoundedCornerShape(8.dp), border = CardDefaults.outlinedCardBorder(), modifier = Modifier.fillMaxWidth().heightIn(max = 154.dp).padding(bottom = 6.dp)) {
+            LazyColumn(contentPadding = PaddingValues(vertical = 3.dp)) {
+                item("all") {
+                    Row(Modifier.fillMaxWidth().clickable { selectedGroup = null }.background(if (selectedGroup == null) SageContainer else Color.Transparent).padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.AllInclusive, null, Modifier.size(16.dp)); Spacer(Modifier.width(7.dp)); Text(tr("All brushes", "全部笔刷"), fontSize = 11.sp, modifier = Modifier.weight(1f)); Text(brushes.size.toString(), color = MutedInk, fontSize = 10.sp)
+                    }
+                }
+                item("ungrouped") {
+                    Row(Modifier.fillMaxWidth().clickable { selectedGroup = UNGROUPED_BRUSH_FILTER }.background(if (selectedGroup == UNGROUPED_BRUSH_FILTER) SageContainer else Color.Transparent).padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.FolderOff, null, Modifier.size(16.dp)); Spacer(Modifier.width(7.dp)); Text(tr("Ungrouped", "未分组"), fontSize = 11.sp, modifier = Modifier.weight(1f)); Text(brushes.count { BrushGroupOperations.normalize(it.groupName).isBlank() }.toString(), color = MutedInk, fontSize = 10.sp)
+                    }
+                }
+                items(visibleGroupPaths, key = { "tree:$it" }) { path ->
+                    val hasChildren = groupTree.any { candidate -> BrushGroupOperations.parent(candidate)?.equals(path, true) == true }
+                    val collapsed = collapsedGroupPaths.any { it.equals(path, true) }
+                    val selected = selectedGroup?.equals(path, true) == true
+                    Row(
+                        Modifier.fillMaxWidth().clickable { selectedGroup = path }.background(if (selected) SageContainer else Color.Transparent).padding(start = (6 + BrushGroupOperations.depth(path) * 16).dp, end = 8.dp, top = 3.dp, bottom = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (hasChildren) IconButton(onClick = { collapsedGroupPaths = if (collapsed) collapsedGroupPaths - path else collapsedGroupPaths + path }, modifier = Modifier.size(22.dp)) {
+                            Icon(if (collapsed) Icons.Outlined.ChevronRight else Icons.Outlined.ExpandMore, "${if (collapsed) tr("Expand group", "展开分组") else tr("Collapse group", "折叠分组")} $path", Modifier.size(16.dp))
+                        } else Spacer(Modifier.width(22.dp))
+                        Icon(if (hasChildren) Icons.Outlined.Folder else Icons.Outlined.FolderOpen, null, Modifier.size(15.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(BrushGroupOperations.displayName(path), maxLines = 1, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                        Text(brushes.count { BrushGroupOperations.isWithin(it.groupName, path) }.toString(), color = MutedInk, fontSize = 10.sp)
+                    }
+                }
+            }
         }
         if (multiSelecting) {
             Surface(
@@ -3240,7 +3272,7 @@ private fun BrushPanel(
         val current = brushes.firstOrNull { it.id == selected.id } ?: selected
         BrushMoveToGroupDialog(
             brush = current,
-            groups = groups,
+            groups = groupTree,
             onDismiss = { moveBrush = null },
             onMove = { group ->
                 val updated = BrushGroupOperations.assign(current, group)
@@ -3253,7 +3285,7 @@ private fun BrushPanel(
     batchGroupOperation?.let { operation ->
         BrushBatchGroupDialog(
             count = selectedBrushIds.size,
-            groups = groups,
+            groups = groupTree,
             operation = operation,
             onDismiss = { batchGroupOperation = null },
             onApply = { group ->
@@ -3289,7 +3321,7 @@ private fun BrushPanel(
     }
     if (manageGroups) {
         BrushGroupManagerDialog(
-            groups = groups,
+            groups = groupTree,
             onDismiss = { manageGroups = false },
             onRename = { oldName, newName ->
                 val updated = BrushGroupOperations.rename(brushes, oldName, newName)
@@ -3323,7 +3355,7 @@ private fun BrushMoveToGroupDialog(brush: ImportedBrush, groups: List<String>, o
                 Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
                     value = groupName,
-                    onValueChange = { groupName = it.take(BrushGroupOperations.MAX_NAME_LENGTH) },
+                    onValueChange = { groupName = it.take(BrushGroupOperations.MAX_PATH_LENGTH) },
                     label = { Text(tr("Group", "分组")) },
                     supportingText = { Text(tr("Enter a new name or choose an existing group", "输入新名称或选择已有分组")) },
                     singleLine = true,
@@ -3359,7 +3391,7 @@ private fun BrushBatchGroupDialog(
                 Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
                     value = groupName,
-                    onValueChange = { groupName = it.take(BrushGroupOperations.MAX_NAME_LENGTH) },
+                    onValueChange = { groupName = it.take(BrushGroupOperations.MAX_PATH_LENGTH) },
                     label = { Text(tr("Destination group", "目标分组")) },
                     supportingText = { Text(tr("Enter a new name or choose an existing group", "输入新名称或选择已有分组")) },
                     singleLine = true,
@@ -3404,7 +3436,7 @@ private fun BrushGroupManagerDialog(groups: List<String>, onDismiss: () -> Unit,
                     }
                     OutlinedTextField(
                         value = replacement,
-                        onValueChange = { replacement = it.take(BrushGroupOperations.MAX_NAME_LENGTH) },
+                        onValueChange = { replacement = it.take(BrushGroupOperations.MAX_PATH_LENGTH) },
                         label = { Text(tr("Rename selected group", "重命名所选分组")) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
@@ -3568,7 +3600,7 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
         text = {
             LazyColumn(Modifier.widthIn(min = 360.dp, max = 520.dp).heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 item { OutlinedTextField(draft.name, { draft = draft.copy(name = it) }, label = { Text(tr("Brush name", "笔刷名称")) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
-                item { OutlinedTextField(draft.groupName, { draft = draft.copy(groupName = it.take(BrushGroupOperations.MAX_NAME_LENGTH)) }, label = { Text(tr("Group", "分组")) }, supportingText = { Text(tr("Leave empty for Ungrouped", "留空则归入“未分组”")) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(draft.groupName, { draft = draft.copy(groupName = it.take(BrushGroupOperations.MAX_PATH_LENGTH)) }, label = { Text(tr("Group path", "分组路径")) }, supportingText = { Text(tr("Use / for nested groups; leave empty for Ungrouped", "使用 / 创建嵌套分组；留空则归入“未分组”")) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(tagText, { tagText = it }, label = { Text(tr("Tags", "标签")) }, supportingText = { Text(tr("Separate tags with commas", "使用逗号分隔标签")) }, modifier = Modifier.fillMaxWidth()) }
                 item { BrushTestArea(draft, settings) }
                 item { BrushSettingSlider("Size", draft.defaultSize, .5f..400f) { draft = draft.copy(defaultSize = it) } }
