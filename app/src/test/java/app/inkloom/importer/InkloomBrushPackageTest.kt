@@ -46,6 +46,13 @@ class InkloomBrushPackageTest {
                 defaultOpacity = .72f,
                 spacing = .18f,
                 stabilization = .4f,
+                blur = 9.5f,
+                blurUnit = 2,
+                blurLinkedToSize = true,
+                blurPressureEnabled = true,
+                blurPressureMinimum = .15f,
+                blurPressureCurve = listOf(BrushCurvePoint(0f, .15f), BrushCurvePoint(1f, 1f)),
+                blurSecondaryDynamics = BrushSecondaryDynamics(velocityEnabled = true, velocityMinimum = .3f),
                 randomRotationDegrees = 45f,
                 strokeRotationJitterDegrees = 180f,
                 spray = true,
@@ -103,6 +110,13 @@ class InkloomBrushPackageTest {
             assertEquals(original.defaultSize, restored.defaultSize, .0001f)
             assertEquals(original.defaultOpacity, restored.defaultOpacity, .0001f)
             assertEquals(original.spacing, restored.spacing, .0001f)
+            assertEquals(original.blur, restored.blur, .0001f)
+            assertEquals(original.blurUnit, restored.blurUnit)
+            assertTrue(restored.blurLinkedToSize)
+            assertTrue(restored.blurPressureEnabled)
+            assertEquals(original.blurPressureMinimum, restored.blurPressureMinimum, .0001f)
+            assertEquals(original.blurPressureCurve, restored.blurPressureCurve)
+            assertEquals(original.blurSecondaryDynamics, restored.blurSecondaryDynamics)
             assertEquals(original.grainScale, restored.grainScale, .0001f)
             assertTrue(restored.grainOffsetJitter)
             assertEquals(CspTextureComposite.HEIGHT, restored.grainCompositeMode)

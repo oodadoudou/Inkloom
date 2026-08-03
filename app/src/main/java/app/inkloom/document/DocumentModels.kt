@@ -168,6 +168,9 @@ data class InkStroke(
     val spacing: Float = .12f,
     val flow: Float = 1f,
     val hardness: Float = 1f,
+    val blur: Float = 0f,
+    val blurUnit: Int = 0,
+    val blurLinkedToSize: Boolean = false,
     val thickness: Float = 1f,
     val thicknessVertical: Boolean = false,
     val rotationDegrees: Float = 0f,
@@ -265,6 +268,10 @@ data class InkStroke(
     val thicknessPressureMinimum: Float = 0f,
     val thicknessPressureCurve: List<BrushCurvePoint> = emptyList(),
     val thicknessSecondaryDynamics: BrushSecondaryDynamics = BrushSecondaryDynamics(),
+    val blurPressureEnabled: Boolean = false,
+    val blurPressureMinimum: Float = 0f,
+    val blurPressureCurve: List<BrushCurvePoint> = emptyList(),
+    val blurSecondaryDynamics: BrushSecondaryDynamics = BrushSecondaryDynamics(),
 )
 
 @Serializable

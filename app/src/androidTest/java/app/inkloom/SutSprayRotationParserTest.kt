@@ -52,10 +52,14 @@ class SutSprayRotationParserTest {
                 )
             }
             parsed.forEach { brush ->
-                assertEquals(19, brush.parserVersion)
+                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 20, brush.parserVersion)
                 assertFalse(brush.report.any { it.startsWith("SUT parameter parsing failed") })
-                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v19-")) }
+                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v20-")) }
             }
+            assertTrue("Expected every supplied SUT brush to preserve CSP BrushBlur", parsed.all { it.blur > 0f })
+            assertTrue("Expected the supplied size-linked BrushBlur preset", parsed.any { it.blurLinkedToSize })
+            assertTrue("Expected the supplied millimetre BrushBlur preset", parsed.any { it.blurUnit == 2 })
+            assertTrue("Expected parsed BrushBlur diagnostics", parsed.all { brush -> brush.report.any { it.contains("brush blur", ignoreCase = true) } })
             assertTrue("Expected embedded CSP material previews", parsed.any { it.tipPreviewPaths.isNotEmpty() })
             val paintingBrush = parsed.firstOrNull { it.name.contains("Painting brush", ignoreCase = true) }
             assertTrue("Expected the supplied CSP Dual Brush sample", paintingBrush?.dualBrush == true)
@@ -114,7 +118,7 @@ class SutSprayRotationParserTest {
             assertFalse(brush.dualSprayParticleFollowStrokeDirection)
             assertEquals(90f, brush.dualSprayParticleRandomRotationDegrees, .0001f)
             assertEquals(CspTextureComposite.HEIGHT, brush.grainCompositeMode)
-            assertEquals(19, brush.parserVersion)
+            assertEquals(20, brush.parserVersion)
         } finally {
             root.deleteRecursively()
         }
@@ -138,6 +142,13 @@ class SutSprayRotationParserTest {
                 tipFlipHorizontalMode = 2,
                 blendTipsWithDarken = true,
                 continuousPlot = true,
+                blur = 7.5f,
+                blurUnit = 2,
+                blurLinkedToSize = true,
+                blurPressureEnabled = true,
+                blurPressureMinimum = .2f,
+                blurPressureCurve = listOf(app.inkloom.document.BrushCurvePoint(0f, .2f), app.inkloom.document.BrushCurvePoint(1f, 1f)),
+                blurSecondaryDynamics = app.inkloom.document.BrushSecondaryDynamics(tiltEnabled = true, tiltMinimum = .4f),
                 grainCompositeMode = CspTextureComposite.HEIGHT,
                 dualBrush = true,
                 dualCompositeMode = 7,
@@ -160,6 +171,14 @@ class SutSprayRotationParserTest {
             assertEquals(2, restored.tipFlipHorizontalMode)
             assertTrue(restored.blendTipsWithDarken)
             assertTrue(restored.continuousPlot)
+            assertEquals(7.5f, restored.blur, .0001f)
+            assertEquals(2, restored.blurUnit)
+            assertTrue(restored.blurLinkedToSize)
+            assertTrue(restored.blurPressureEnabled)
+            assertEquals(.2f, restored.blurPressureMinimum, .0001f)
+            assertEquals(2, restored.blurPressureCurve.size)
+            assertTrue(restored.blurSecondaryDynamics.tiltEnabled)
+            assertEquals(.4f, restored.blurSecondaryDynamics.tiltMinimum, .0001f)
             assertEquals(CspTextureComposite.HEIGHT, restored.grainCompositeMode)
             assertEquals(-12f, restored.dualSprayParticleRotationDegrees, .0001f)
             assertTrue(restored.dualSprayParticleFollowStylusOrientation)

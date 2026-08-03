@@ -107,6 +107,14 @@ class StrokeTileIndex(val tileSizePx: Int = DEFAULT_TILE_SIZE_PX) {
             WaterEdge.distancePixels(stroke.waterEdgeRadius, stroke.waterEdgeRadiusUnit, pageWidthPx) +
                 WaterEdge.distancePixels(stroke.waterEdgeBlur, stroke.waterEdgeBlurUnit, pageWidthPx) * BLUR_EXTENT_MULTIPLIER
         } else 0f
+        val mainBlur = BrushBlur.radiusPixels(
+            value = stroke.blur,
+            unit = stroke.blurUnit,
+            linkedToSize = stroke.blurLinkedToSize,
+            currentDiameter = brushDiameter,
+            baseDiameter = brushDiameter,
+            pageWidth = pageWidthPx,
+        ) * BLUR_EXTENT_MULTIPLIER
         val main = stampRadius(
             brushDiameter = brushDiameter,
             thickness = stroke.thickness,
@@ -116,7 +124,7 @@ class StrokeTileIndex(val tileSizePx: Int = DEFAULT_TILE_SIZE_PX) {
             particleSync = stroke.sprayParticleSizeSyncBrushSize,
             spread = stroke.spraySpread,
             pageWidthPx = pageWidthPx,
-        ) + edge
+        ) + edge + mainBlur
         if (!stroke.dualBrush) return main
         val dualDiameter = brushDiameter * stroke.dualSizeScale.coerceIn(.01f, 8f)
         val dual = stampRadius(
@@ -128,7 +136,14 @@ class StrokeTileIndex(val tileSizePx: Int = DEFAULT_TILE_SIZE_PX) {
             particleSync = stroke.dualSprayParticleSizeSyncBrushSize,
             spread = stroke.dualSpraySpread,
             pageWidthPx = pageWidthPx,
-        )
+        ) + BrushBlur.radiusPixels(
+            value = stroke.blur,
+            unit = stroke.blurUnit,
+            linkedToSize = stroke.blurLinkedToSize,
+            currentDiameter = dualDiameter,
+            baseDiameter = dualDiameter,
+            pageWidth = pageWidthPx,
+        ) * BLUR_EXTENT_MULTIPLIER
         return max(main, dual)
     }
 

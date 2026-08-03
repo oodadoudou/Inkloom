@@ -585,14 +585,14 @@ class DocumentAssetService(private val context: Context) {
                     val point = stroke.points.first()
                     val strokeWidth = stroke.width * width / 1600f * (taper.firstOrNull() ?: 1f) * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, point.pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.renderSeed, SALT_SIZE)
                     val alpha = (stroke.opacity * pressureDynamic(stroke.opacityPressureEnabled, stroke.opacityPressureMinimum, stroke.opacityPressureCurve, point.pressure) * secondaryDynamic(stroke.opacitySecondaryDynamics, point, stroke.renderSeed, SALT_OPACITY) * stroke.flow * pressureDynamic(stroke.flowPressureEnabled, stroke.flowPressureMinimum, stroke.flowPressureCurve, point.pressure) * secondaryDynamic(stroke.flowSecondaryDynamics, point, stroke.renderSeed, SALT_FLOW) * WetMixDynamics.alphaMultiplier(stroke.watercolor, stroke.colorMix, stroke.paintMix) * 255).toInt().coerceIn(1, 255)
-                    drawLinePoint(canvas, paint, stroke, point.x * width, point.y * height, strokeWidth, alpha, width)
+                    drawLinePoint(canvas, paint, stroke, point, point.x * width, point.y * height, strokeWidth, alpha, width)
                 } else stroke.points.zipWithNext().forEachIndexed { pointIndex, (start, end) ->
                     val point = midpoint(start, end)
                     val pressure = point.pressure.coerceIn(0f, 1f)
                     val taperFactor = (taper[pointIndex] + taper[pointIndex + 1]) / 2f
                     val strokeWidth = stroke.width * width / 1600f * taperFactor * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.renderSeed, SALT_SIZE)
                     val alpha = (stroke.opacity * pressureDynamic(stroke.opacityPressureEnabled, stroke.opacityPressureMinimum, stroke.opacityPressureCurve, pressure) * secondaryDynamic(stroke.opacitySecondaryDynamics, point, stroke.renderSeed, SALT_OPACITY) * stroke.flow * pressureDynamic(stroke.flowPressureEnabled, stroke.flowPressureMinimum, stroke.flowPressureCurve, pressure) * secondaryDynamic(stroke.flowSecondaryDynamics, point, stroke.renderSeed, SALT_FLOW) * WetMixDynamics.alphaMultiplier(stroke.watercolor, stroke.colorMix, stroke.paintMix) * 255).toInt().coerceIn(1, 255)
-                    drawLineSegment(canvas, paint, stroke, start.x * width, start.y * height, end.x * width, end.y * height, strokeWidth, alpha, width)
+                    drawLineSegment(canvas, paint, stroke, point, start.x * width, start.y * height, end.x * width, end.y * height, strokeWidth, alpha, width)
                 }
             }
             if (maskLayer >= 0) {
@@ -666,7 +666,9 @@ class DocumentAssetService(private val context: Context) {
             }
             paint.colorFilter = PorterDuffColorFilter(stroke.colorArgb.toInt(), PorterDuff.Mode.SRC_IN)
             paint.alpha = mainAlpha
+            paint.maskFilter = brushBlurMask(stroke, point, diameter, stroke.width * width / 1600f, width.toFloat())
             canvas.drawBitmap(tip, matrix, paint)
+            paint.maskFilter = null
             }
         }
         paint.blendMode = null
@@ -723,29 +725,40 @@ class DocumentAssetService(private val context: Context) {
             val flowDynamic = pressureDynamic(stroke.flowPressureEnabled, stroke.flowPressureMinimum, stroke.flowPressureCurve, pressure) * secondaryDynamic(stroke.flowSecondaryDynamics, point, stroke.renderSeed, SALT_FLOW)
             paint.colorFilter = PorterDuffColorFilter(stroke.colorArgb.toInt(), PorterDuff.Mode.SRC_IN)
             paint.alpha = (stroke.opacity * opacityDynamic * stroke.dualFlow.coerceIn(0f, 1f) * flowDynamic * WetMixDynamics.alphaMultiplier(stroke.watercolor, stroke.colorMix, stroke.paintMix)).coerceIn(.01f, 1f).times(255).toInt()
+            paint.maskFilter = brushBlurMask(stroke, point, diameter, stroke.width * width / 1600f * stroke.dualSizeScale.coerceIn(.01f, 8f), width.toFloat())
             canvas.drawBitmap(tip, matrix, paint)
+            paint.maskFilter = null
             }
         }
         paint.blendMode = null
         canvas.restoreToCount(dualLayer)
     }
 
-    private fun drawLinePoint(canvas: Canvas, paint: Paint, stroke: InkStroke, x: Float, y: Float, strokeWidth: Float, alpha: Int, pageWidth: Int) {
+    private fun drawLinePoint(canvas: Canvas, paint: Paint, stroke: InkStroke, point: StrokePoint, x: Float, y: Float, strokeWidth: Float, alpha: Int, pageWidth: Int) {
         if (stroke.waterEdgeEnabled && stroke.waterEdgeOpacity > 0f) {
             configureWaterEdge(paint, stroke, strokeWidth, alpha, pageWidth)
             canvas.drawPoint(x, y, paint)
         }
-        paint.maskFilter = null; paint.color = stroke.colorArgb.toInt(); paint.strokeWidth = strokeWidth; paint.alpha = alpha
+        paint.maskFilter = brushBlurMask(stroke, point, strokeWidth, stroke.width * pageWidth / 1600f, pageWidth.toFloat()); paint.color = stroke.colorArgb.toInt(); paint.strokeWidth = strokeWidth; paint.alpha = alpha
         canvas.drawPoint(x, y, paint)
+        paint.maskFilter = null
     }
 
-    private fun drawLineSegment(canvas: Canvas, paint: Paint, stroke: InkStroke, startX: Float, startY: Float, endX: Float, endY: Float, strokeWidth: Float, alpha: Int, pageWidth: Int) {
+    private fun drawLineSegment(canvas: Canvas, paint: Paint, stroke: InkStroke, point: StrokePoint, startX: Float, startY: Float, endX: Float, endY: Float, strokeWidth: Float, alpha: Int, pageWidth: Int) {
         if (stroke.waterEdgeEnabled && stroke.waterEdgeOpacity > 0f) {
             configureWaterEdge(paint, stroke, strokeWidth, alpha, pageWidth)
             canvas.drawLine(startX, startY, endX, endY, paint)
         }
-        paint.maskFilter = null; paint.color = stroke.colorArgb.toInt(); paint.strokeWidth = strokeWidth; paint.alpha = alpha
+        paint.maskFilter = brushBlurMask(stroke, point, strokeWidth, stroke.width * pageWidth / 1600f, pageWidth.toFloat()); paint.color = stroke.colorArgb.toInt(); paint.strokeWidth = strokeWidth; paint.alpha = alpha
         canvas.drawLine(startX, startY, endX, endY, paint)
+        paint.maskFilter = null
+    }
+
+    private fun brushBlurMask(stroke: InkStroke, point: StrokePoint, diameter: Float, baseDiameter: Float, pageWidth: Float): BlurMaskFilter? {
+        val dynamic = pressureDynamic(stroke.blurPressureEnabled, stroke.blurPressureMinimum, stroke.blurPressureCurve, point.pressure) *
+            secondaryDynamic(stroke.blurSecondaryDynamics, point, stroke.renderSeed, SALT_BLUR)
+        val radius = BrushBlur.radiusPixels(stroke.blur, stroke.blurUnit, stroke.blurLinkedToSize, diameter, baseDiameter, pageWidth) * dynamic
+        return radius.takeIf { it > .01f }?.let { BlurMaskFilter(it, BlurMaskFilter.Blur.NORMAL) }
     }
 
     private fun configureWaterEdge(paint: Paint, stroke: InkStroke, strokeWidth: Float, alpha: Int, pageWidth: Int) {
@@ -808,6 +821,7 @@ class DocumentAssetService(private val context: Context) {
         const val SALT_FLOW = 37
         const val SALT_SPACING = 53
         const val SALT_THICKNESS = 71
+        const val SALT_BLUR = 89
         const val DUAL_SCATTER_SEED = 0x27C4915DL
         const val DUAL_ROTATION_SEED = 0x61B8D2A3L
         const val DUAL_SEQUENCE_SEED = 0x35A71C9E

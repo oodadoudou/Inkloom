@@ -80,6 +80,9 @@ class BrushMetadataStore(
                         spacing = item.optDouble("spacing", .12).toFloat(),
                         flow = item.optDouble("flow", 1.0).toFloat(),
                         hardness = item.optDouble("hardness", 1.0).toFloat(),
+                        blur = item.optDouble("blur", 0.0).toFloat().coerceIn(0f, 400f),
+                        blurUnit = item.optInt("blurUnit", 0).coerceIn(0, 2),
+                        blurLinkedToSize = item.optBoolean("blurLinkedToSize", false),
                         thickness = item.optDouble("thickness", 1.0).toFloat(),
                         thicknessVertical = item.optBoolean("thicknessVertical", false),
                         rotationDegrees = item.optDouble("rotationDegrees", 0.0).toFloat(),
@@ -185,6 +188,10 @@ class BrushMetadataStore(
                         thicknessPressureMinimum = item.optDouble("thicknessPressureMinimum", 0.0).toFloat(),
                         thicknessPressureCurve = curve("thicknessPressureCurve"),
                         thicknessSecondaryDynamics = secondary("thicknessSecondaryDynamics"),
+                        blurPressureEnabled = item.optBoolean("blurPressureEnabled", false),
+                        blurPressureMinimum = item.optDouble("blurPressureMinimum", 0.0).toFloat().coerceIn(0f, 1f),
+                        blurPressureCurve = curve("blurPressureCurve"),
+                        blurSecondaryDynamics = secondary("blurSecondaryDynamics"),
                         parserVersion = item.optInt("parserVersion", 0),
                     ),
                 )
@@ -225,6 +232,9 @@ class BrushMetadataStore(
                     .put("spacing", brush.spacing)
                     .put("flow", brush.flow)
                     .put("hardness", brush.hardness)
+                    .put("blur", brush.blur)
+                    .put("blurUnit", brush.blurUnit)
+                    .put("blurLinkedToSize", brush.blurLinkedToSize)
                     .put("thickness", brush.thickness)
                     .put("thicknessVertical", brush.thicknessVertical)
                     .put("rotationDegrees", brush.rotationDegrees)
@@ -330,6 +340,10 @@ class BrushMetadataStore(
                     .put("thicknessPressureMinimum", brush.thicknessPressureMinimum)
                     .put("thicknessPressureCurve", curveJson(brush.thicknessPressureCurve))
                     .put("thicknessSecondaryDynamics", secondaryJson(brush.thicknessSecondaryDynamics))
+                    .put("blurPressureEnabled", brush.blurPressureEnabled)
+                    .put("blurPressureMinimum", brush.blurPressureMinimum)
+                    .put("blurPressureCurve", curveJson(brush.blurPressureCurve))
+                    .put("blurSecondaryDynamics", secondaryJson(brush.blurSecondaryDynamics))
                     .put("parserVersion", brush.parserVersion),
             )
         }

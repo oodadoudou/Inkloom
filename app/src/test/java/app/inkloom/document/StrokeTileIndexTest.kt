@@ -81,6 +81,16 @@ class StrokeTileIndexTest {
         assertTrue(index.tilesFor(broad).size > index.tilesFor(compact).size)
     }
 
+    @Test fun brushBlurExpandsTheConservativeTileFootprint() {
+        val index = StrokeTileIndex(tileSizePx = 128)
+        val crisp = InkStroke(id = "crisp", points = listOf(StrokePoint(.5f, .5f)), width = 20f)
+        val blurred = crisp.copy(id = "blurred", blur = 120f)
+
+        index.rebuild(listOf(crisp, blurred), 1024, 1024)
+
+        assertTrue(index.tilesFor(blurred).size > index.tilesFor(crisp).size)
+    }
+
     private fun stroke(id: String, x: Float, y: Float) = InkStroke(
         id = id,
         width = 2f,

@@ -204,6 +204,8 @@ class InkloomBrushPackage(private val assetDirectory: File) {
         spacing = finite(source.spacing, .12f).coerceIn(.01f, 2f),
         flow = finite(source.flow, 1f).coerceIn(0f, 1f),
         hardness = finite(source.hardness, 1f).coerceIn(0f, 1f),
+        blur = finite(source.blur, 0f).coerceIn(0f, 400f),
+        blurUnit = source.blurUnit.coerceIn(0, 2),
         thickness = finite(source.thickness, 1f).coerceIn(.05f, 2f),
         rotationDegrees = finite(source.rotationDegrees, 0f).coerceIn(-360f, 360f),
         randomRotationDegrees = finite(source.randomRotationDegrees, 0f).coerceIn(0f, 180f),
@@ -266,6 +268,9 @@ class InkloomBrushPackage(private val assetDirectory: File) {
         thicknessPressureMinimum = finite(source.thicknessPressureMinimum, 0f).coerceIn(0f, 1f),
         thicknessPressureCurve = curve(source.thicknessPressureCurve),
         thicknessSecondaryDynamics = secondary(source.thicknessSecondaryDynamics),
+        blurPressureMinimum = finite(source.blurPressureMinimum, 0f).coerceIn(0f, 1f),
+        blurPressureCurve = curve(source.blurPressureCurve),
+        blurSecondaryDynamics = secondary(source.blurSecondaryDynamics),
     )
 
     private fun curve(points: List<BrushCurvePoint>): List<BrushCurvePoint> = points

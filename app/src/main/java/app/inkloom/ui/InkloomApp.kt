@@ -211,6 +211,13 @@ private fun localizedBrushLabel(raw: String): String {
         "Minimum thickness" -> "最小厚度"
         "Thickness pressure" -> "厚度压力"
         "Thickness" -> "厚度"
+        "Brush blur" -> "笔刷模糊"
+        "Pressure controls blur" -> "压力控制模糊"
+        "Minimum blur" -> "最小模糊"
+        "Blur pressure" -> "模糊压力"
+        "Blur" -> "模糊"
+        "Link blur to brush size" -> "模糊跟随笔刷大小"
+        "Scales the imported CSP blur when brush size changes." -> "笔刷大小变化时同比缩放导入的 CSP 模糊。"
         "Starting taper" -> "起笔收尖"
         "Gradually grows from the configured minimum over the start of the stroke." -> "笔画起始处从设定的最小值逐渐增粗。"
         "Start length" -> "起笔长度"
@@ -3668,6 +3675,9 @@ private fun InkCanvasView.applyBrushConfiguration(
     brushSpacing = activeBrush?.spacing ?: .12f
     brushFlow = activeBrush?.flow ?: 1f
     brushHardness = activeBrush?.hardness ?: 1f
+    brushBlur = activeBrush?.blur ?: 0f
+    brushBlurUnit = activeBrush?.blurUnit ?: 0
+    brushBlurLinkedToSize = activeBrush?.blurLinkedToSize ?: false
     brushThickness = activeBrush?.thickness ?: 1f
     brushThicknessVertical = activeBrush?.thicknessVertical ?: false
     brushRotation = activeBrush?.rotationDegrees ?: 0f
@@ -3765,6 +3775,10 @@ private fun InkCanvasView.applyBrushConfiguration(
     thicknessPressureMinimum = activeBrush?.thicknessPressureMinimum ?: 0f
     thicknessPressureCurve = activeBrush?.thicknessPressureCurve.orEmpty()
     thicknessSecondaryDynamics = activeBrush?.thicknessSecondaryDynamics ?: BrushSecondaryDynamics()
+    blurPressureEnabled = activeBrush?.blurPressureEnabled ?: false
+    blurPressureMinimum = activeBrush?.blurPressureMinimum ?: 0f
+    blurPressureCurve = activeBrush?.blurPressureCurve.orEmpty()
+    blurSecondaryDynamics = activeBrush?.blurSecondaryDynamics ?: BrushSecondaryDynamics()
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -5267,6 +5281,10 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 if (draft.thicknessPressureEnabled) item { BrushSettingSlider("Minimum thickness", draft.thicknessPressureMinimum, 0f..1f) { draft = draft.copy(thicknessPressureMinimum = it) } }
                 if (draft.thicknessPressureEnabled) item { PressureCurveEditor("Thickness pressure", draft.thicknessPressureCurve) { draft = draft.copy(thicknessPressureCurve = it) } }
                 item { SecondaryDynamicsEditor("Thickness", draft.thicknessSecondaryDynamics) { draft = draft.copy(thicknessSecondaryDynamics = it) } }
+                item { SettingSwitch("Pressure controls blur", null, draft.blurPressureEnabled) { draft = draft.copy(blurPressureEnabled = it) } }
+                if (draft.blurPressureEnabled) item { BrushSettingSlider("Minimum blur", draft.blurPressureMinimum, 0f..1f) { draft = draft.copy(blurPressureMinimum = it) } }
+                if (draft.blurPressureEnabled) item { PressureCurveEditor("Blur pressure", draft.blurPressureCurve) { draft = draft.copy(blurPressureCurve = it) } }
+                item { SecondaryDynamicsEditor("Blur", draft.blurSecondaryDynamics) { draft = draft.copy(blurSecondaryDynamics = it) } }
                 item { Text(tr("TAPER", "收尖"), color = Sage, fontSize = 11.sp) }
                 item { LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { BrushTaperMode.entries.forEach { mode -> item { FilterChip(selected = draft.taperMode == mode, onClick = { val toDistance = mode == BrushTaperMode.DISTANCE && draft.taperMode != BrushTaperMode.DISTANCE; val fromDistance = mode != BrushTaperMode.DISTANCE && draft.taperMode == BrushTaperMode.DISTANCE; draft = draft.copy(taperMode = mode, taperStartEnabled = if (mode == BrushTaperMode.FADE) false else draft.taperStartEnabled, taperStartLength = when { toDistance -> draft.taperStartLength * 100f; fromDistance -> draft.taperStartLength / 100f; else -> draft.taperStartLength }, taperEndLength = when { toDistance -> draft.taperEndLength * 100f; fromDistance -> draft.taperEndLength / 100f; else -> draft.taperEndLength }) }, label = { Text(localizedTaperMode(mode)) }) } } } }
                 if (draft.taperMode != BrushTaperMode.FADE) item { SettingSwitch("Starting taper", "Gradually grows from the configured minimum over the start of the stroke.", draft.taperStartEnabled) { draft = draft.copy(taperStartEnabled = it) } }
@@ -5280,6 +5298,9 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 item { BrushSettingSlider("Spacing", draft.spacing, .01f..2f) { draft = draft.copy(spacing = it) } }
                 item { BrushSettingSlider("Flow", draft.flow, 0f..1f) { draft = draft.copy(flow = it) } }
                 item { BrushSettingSlider("Hardness", draft.hardness, 0f..1f) { draft = draft.copy(hardness = it) } }
+                item { BrushSettingSlider("Brush blur", draft.blur, 0f..80f) { draft = draft.copy(blur = it) } }
+                if (draft.blur > 0f) item { Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { FilterChip(selected = draft.blurUnit == 0, onClick = { draft = draft.copy(blurUnit = 0) }, label = { Text(tr("Blur px", "模糊 px")) }); FilterChip(selected = draft.blurUnit == 2, onClick = { draft = draft.copy(blurUnit = 2) }, label = { Text(tr("Blur mm", "模糊 mm")) }) } }
+                item { SettingSwitch("Link blur to brush size", "Scales the imported CSP blur when brush size changes.", draft.blurLinkedToSize) { draft = draft.copy(blurLinkedToSize = it) } }
                 if (draft.grainPreviewPath != null) item { BrushGrainPreview(draft.grainPreviewPath!!, draft.grainDensity) }
                 if (draft.grainPreviewPath != null) item { BrushSettingSlider("Paper texture density", draft.grainDensity, 0f..1f) { draft = draft.copy(grainDensity = it) } }
                 if (draft.grainPreviewPath != null) item { BrushSettingSlider("Paper texture scale", draft.grainScale, 1f..400f) { draft = draft.copy(grainScale = it) } }
