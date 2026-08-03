@@ -27,6 +27,7 @@ import app.inkloom.importer.BrushGroupStore
 import app.inkloom.document.PageTemplateStore
 import app.inkloom.settings.AppSettingsStore
 import app.inkloom.settings.ToolboxQuickSlotKind
+import app.inkloom.settings.WorkspacePanelDock
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -103,6 +104,27 @@ class InkloomLaunchTest {
         } finally {
             composeRule.activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         }
+    }
+
+    @Test fun pagesBrushesAndLayersCanShareTheBottomDock() {
+        createNotebookAndOpenEditor()
+
+        composeRule.onNodeWithContentDescription("Change pages panel docking").performClick()
+        composeRule.onNodeWithText("Dock bottom").performClick()
+        composeRule.onNodeWithContentDescription("Brushes").performClick()
+        composeRule.onNodeWithContentDescription("Change brushes panel docking").performClick()
+        composeRule.onNodeWithText("Dock bottom").performClick()
+        composeRule.onNodeWithContentDescription("Layers").performClick()
+        composeRule.onNodeWithContentDescription("Change layers panel docking").performClick()
+        composeRule.onNodeWithText("Dock bottom").performClick()
+
+        composeRule.onNodeWithContentDescription("Bottom workspace panels").assertIsDisplayed()
+        composeRule.onNodeWithText("Brush Library").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Layers").onLast().assertIsDisplayed()
+        val restored = AppSettingsStore(composeRule.activity).load()
+        assertEquals(WorkspacePanelDock.BOTTOM, restored.pagePanelDock)
+        assertEquals(WorkspacePanelDock.BOTTOM, restored.brushPanelDock)
+        assertEquals(WorkspacePanelDock.BOTTOM, restored.layerPanelDock)
     }
 
     @Test fun settingsExposeInputAndToolControls() {

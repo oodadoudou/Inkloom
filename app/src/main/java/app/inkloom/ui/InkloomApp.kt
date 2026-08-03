@@ -1078,7 +1078,15 @@ private fun EditorScreen(
         LaunchedEffect(visiblePagePanelBounds) { if (pagePanelBounds != visiblePagePanelBounds) pagePanelBounds = visiblePagePanelBounds }
         LaunchedEffect(visibleBrushPanelBounds) { if (brushPanelBounds != visibleBrushPanelBounds) brushPanelBounds = visibleBrushPanelBounds }
         LaunchedEffect(visibleLayerPanelBounds) { if (layerPanelBounds != visibleLayerPanelBounds) layerPanelBounds = visibleLayerPanelBounds }
-        Row(Modifier.fillMaxSize()) {
+        val bottomPanelCount = listOf(
+            settings.showPageRail && settings.pagePanelDock == WorkspacePanelDock.BOTTOM,
+            brushesOpen && settings.brushPanelDock == WorkspacePanelDock.BOTTOM,
+            layersOpen && settings.layerPanelDock == WorkspacePanelDock.BOTTOM,
+        ).count { it }
+        val bottomPanelHeight = (workspaceHeightDp * .38f).coerceIn(180f, 320f).dp
+        val bottomPanelsDescription = tr("Bottom workspace panels", "底部工作区面板")
+        Column(Modifier.fillMaxSize()) {
+        Row(Modifier.weight(1f).fillMaxWidth()) {
             if (editorWidth >= 700.dp && settings.showPageRail && settings.pagePanelDock == WorkspacePanelDock.LEFT) PageRail(
                 document, documents, selectedPage.id, settings.pagePanelDock,
                 onDock = { onSettingsChange(settings.copy(pagePanelDock = it)) },
@@ -1146,8 +1154,9 @@ private fun EditorScreen(
                 onDeleteBrush = { brushId -> onDeleteBrush(brushId); if (activeBrush?.id == brushId) { activeBrush = null; selectedBrushId = null } },
                 onReorderBrush = onReorderBrush,
             )
-            val hasDockedToolPanel = (brushesOpen && settings.brushPanelDock != WorkspacePanelDock.FREE) || (layersOpen && settings.layerPanelDock != WorkspacePanelDock.FREE)
-            if (!hasDockedToolPanel || editorWidth >= 900.dp) BoxWithConstraints(Modifier.weight(1f).fillMaxHeight().background(Workspace), contentAlignment = Alignment.Center) {
+            val hasSideDockedToolPanel = (brushesOpen && settings.brushPanelDock in setOf(WorkspacePanelDock.LEFT, WorkspacePanelDock.RIGHT)) ||
+                (layersOpen && settings.layerPanelDock in setOf(WorkspacePanelDock.LEFT, WorkspacePanelDock.RIGHT))
+            if (!hasSideDockedToolPanel || editorWidth >= 900.dp) BoxWithConstraints(Modifier.weight(1f).fillMaxHeight().background(Workspace), contentAlignment = Alignment.Center) {
                 val toolbarAreaWidth = maxWidth
                 val toolbarAreaHeight = maxHeight
                 PaperCanvas(
@@ -1572,6 +1581,88 @@ private fun EditorScreen(
                 onReorderBrush = onReorderBrush,
             )
         }
+        if (bottomPanelCount > 0) {
+            HorizontalDivider(color = OutlineSoft)
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .height(bottomPanelHeight)
+                    .background(Color(0xFFF7F7F7))
+                    .semantics { contentDescription = bottomPanelsDescription },
+            ) {
+                if (settings.showPageRail && settings.pagePanelDock == WorkspacePanelDock.BOTTOM) PageRail(
+                    document, documents, selectedPage.id, settings.pagePanelDock,
+                    onDock = { onSettingsChange(settings.copy(pagePanelDock = it)) },
+                    onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
+                    pageTemplates = pageTemplates,
+                    onSelect = onSelectPage, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
+                    onApplyTemplate = onApplyPageTemplate, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
+                    onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate,
+                    onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
+                    onClearPageInk, onSetPageCrop, onRotatePage,
+                    modifier = Modifier.weight(1f).fillMaxHeight().border(1.dp, OutlineSoft).padding(12.dp),
+                )
+                if (layersOpen && settings.layerPanelDock == WorkspacePanelDock.BOTTOM) LayerPanel(
+                    page = selectedPage,
+                    activeLayerId = activeLayerId,
+                    brushColor = brushColor,
+                    dock = settings.layerPanelDock,
+                    onDock = { onSettingsChange(settings.copy(layerPanelDock = it)) },
+                    onClose = { layersOpen = false; onSettingsChange(settings.copy(showLayerPanel = false)) },
+                    onColor = { brushColor = it },
+                    onSelect = { activeLayerId = it },
+                    onAdd = { onAddLayer(document.id, selectedPage.id, "Layer") },
+                    onAddFolder = { onAddLayerFolder(document.id, selectedPage.id) },
+                    onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
+                    onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
+                    onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
+                    onOpacity = { layerId, value -> onSetLayerOpacity(document.id, selectedPage.id, layerId, value) },
+                    onBlendMode = { layerId, mode -> onSetLayerBlendMode(document.id, selectedPage.id, layerId, mode) },
+                    onMoveToFolder = { layerId, folderId -> onMoveLayerToFolder(document.id, selectedPage.id, layerId, folderId) },
+                    onToggleFolderCollapsed = { onToggleLayerFolderCollapsed(document.id, selectedPage.id, it) },
+                    onMove = { layerId, delta -> onMoveLayer(document.id, selectedPage.id, layerId, delta) },
+                    onDuplicate = { layerId -> onDuplicateLayer(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
+                    onMergeDown = { layerId -> onMergeLayerDown(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
+                    onDelete = { onDeleteLayer(document.id, selectedPage.id, it) },
+                    modifier = Modifier.weight(1f).fillMaxHeight().border(1.dp, OutlineSoft).background(Color(0xFFF7F7F7)).padding(10.dp),
+                )
+                if (brushesOpen && settings.brushPanelDock == WorkspacePanelDock.BOTTOM) BrushPanel(
+                    brushes = brushes,
+                    registeredGroups = brushGroups,
+                    selectedBrushId = selectedBrushId,
+                    settings = settings,
+                    dock = settings.brushPanelDock,
+                    onDock = { onSettingsChange(settings.copy(brushPanelDock = it)) },
+                    onClose = { if (brushesOpen) onToggleBrushes() },
+                    onBrushSelected = { brush ->
+                        exitCanvasNavigation()
+                        val usedBrush = brush.copy(lastUsedAt = System.currentTimeMillis())
+                        onUpdateBrush(usedBrush)
+                        selectedBrushId = usedBrush.id
+                        activeBrush = usedBrush
+                        brushSize = usedBrush.defaultSize
+                        brushOpacity = usedBrush.defaultOpacity
+                        brushColor = AndroidColor.rgb(17, 17, 17)
+                        val chosenTool = if (BrushRoleClassifier.isEraser(usedBrush)) EditorTool.ERASER else EditorTool.PEN
+                        tool = chosenTool
+                        canvasView?.apply { this.tool = chosenTool; inkOpacity = 1f; brushId = usedBrush.id; baseWidth = usedBrush.defaultSize; inkColor = brushColor }
+                    },
+                    onImportBrushes = onImportBrushes,
+                    onExportBrush = onExportBrush,
+                    onUpdateBrush = { updated -> onUpdateBrush(updated); if (activeBrush?.id == updated.id) { activeBrush = updated; brushSize = updated.defaultSize } },
+                    onReplaceBrushes = { updated ->
+                        onReplaceBrushes(updated)
+                        activeBrush = activeBrush?.let { current -> updated.firstOrNull { it.id == current.id } }
+                        if (activeBrush == null) selectedBrushId = null
+                    },
+                    onReplaceGroups = onReplaceBrushGroups,
+                    onDeleteBrush = { brushId -> onDeleteBrush(brushId); if (activeBrush?.id == brushId) { activeBrush = null; selectedBrushId = null } },
+                    onReorderBrush = onReorderBrush,
+                    modifier = Modifier.weight(1f).fillMaxHeight().border(1.dp, OutlineSoft).background(Color(0xFFF7F7F7)).padding(12.dp),
+                )
+            }
+        }
+        }
         if (settings.showPageRail && settings.pagePanelDock == WorkspacePanelDock.FREE) FloatingWorkspacePanel(
             bounds = visiblePagePanelBounds,
             zIndex = if (activeFloatingPanel == "pages") 6f else 3f,
@@ -1839,6 +1930,7 @@ private fun WorkspacePanelDockMenu(
                     WorkspacePanelDock.LEFT -> Icons.Outlined.ChevronLeft
                     WorkspacePanelDock.FREE -> Icons.Outlined.OpenWith
                     WorkspacePanelDock.RIGHT -> Icons.Outlined.ChevronRight
+                    WorkspacePanelDock.BOTTOM -> Icons.Outlined.KeyboardArrowDown
                 },
                 contentDescription,
             )
@@ -1851,6 +1943,7 @@ private fun WorkspacePanelDockMenu(
                             WorkspacePanelDock.LEFT -> tr("Dock left", "停靠左侧")
                             WorkspacePanelDock.FREE -> tr("Float", "自由浮动")
                             WorkspacePanelDock.RIGHT -> tr("Dock right", "停靠右侧")
+                            WorkspacePanelDock.BOTTOM -> tr("Dock bottom", "停靠底部")
                         })
                     },
                     leadingIcon = {
@@ -1859,6 +1952,7 @@ private fun WorkspacePanelDockMenu(
                                 WorkspacePanelDock.LEFT -> Icons.Outlined.ChevronLeft
                                 WorkspacePanelDock.FREE -> Icons.Outlined.OpenWith
                                 WorkspacePanelDock.RIGHT -> Icons.Outlined.ChevronRight
+                                WorkspacePanelDock.BOTTOM -> Icons.Outlined.KeyboardArrowDown
                             },
                             null,
                         )
@@ -3367,11 +3461,15 @@ private fun BrushPanel(
     val dragDescription = tr("Drag brushes panel", "拖动笔刷面板")
     val currentPanelDrag by rememberUpdatedState(onPanelDrag)
     val currentPanelDragEnd by rememberUpdatedState(onPanelDragEnd)
+    val bottomDocked = dock == WorkspacePanelDock.BOTTOM
+    val visibleGroupPaths = groupTree.filter { path ->
+        generateSequence(BrushGroupOperations.parent(path), BrushGroupOperations::parent).none { ancestor -> collapsedGroupPaths.any { it.equals(ancestor, true) } }
+    }
     Column(modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 tr("Brush Library", "笔刷库"),
-                fontSize = 20.sp,
+                fontSize = if (bottomDocked) 16.sp else 20.sp,
                 modifier = Modifier.weight(1f).semantics { contentDescription = dragDescription }.then(
                     if (dock == WorkspacePanelDock.FREE) Modifier.pointerInput(dock) {
                         detectDragGestures(onDragEnd = { currentPanelDragEnd() }, onDragCancel = { currentPanelDragEnd() }) { change, amount ->
@@ -3389,24 +3487,34 @@ private fun BrushPanel(
             IconButton(onClick = onClose) { Icon(Icons.Outlined.Close, tr("Close brushes panel", "关闭笔刷面板")) }
             IconButton(onClick = { onImportBrushes(selectedGroup?.takeUnless { it == UNGROUPED_BRUSH_FILTER }) }) { Icon(Icons.Outlined.Add, tr("Import", "导入")) }
         }
-        Text(tr("Imported presets · compact view", "已导入预设 · 紧凑视图"), fontSize = 11.sp, color = MutedInk)
-        Spacer(Modifier.height(8.dp))
+        if (!bottomDocked) {
+            Text(tr("Imported presets · compact view", "已导入预设 · 紧凑视图"), fontSize = 11.sp, color = MutedInk)
+            Spacer(Modifier.height(8.dp))
+        }
         OutlinedTextField(search, { search = it }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, placeholder = { Text(tr("Search brushes", "搜索笔刷")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(vertical = 6.dp)) {
-            item { FilterChip(selected = format == null, onClick = { format = null }, label = { Text(tr("All", "全部")) }) }
-            BrushFormat.entries.filter { it !in setOf(BrushFormat.SYSTEM, BrushFormat.UNKNOWN) }.forEach { source -> item { FilterChip(selected = format == source, onClick = { format = source }, label = { Text(source.label) }) } }
-            item { FilterChip(selected = favoritesOnly, onClick = { favoritesOnly = !favoritesOnly }, label = { Text(tr("Favorites", "收藏")) }, leadingIcon = { Icon(Icons.Outlined.Star, null, Modifier.size(16.dp)) }) }
-            item { FilterChip(selected = showHidden, onClick = { showHidden = !showHidden }, label = { Text(tr("Hidden", "隐藏")) }) }
-        }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(tr("GROUPS", "分组"), fontSize = 10.sp, color = MutedInk, modifier = Modifier.weight(1f))
-            IconButton(onClick = { manageGroups = true }, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.DriveFileRenameOutline, tr("Manage brush groups", "管理笔刷分组"), Modifier.size(17.dp)) }
-        }
-        val visibleGroupPaths = groupTree.filter { path ->
-            generateSequence(BrushGroupOperations.parent(path), BrushGroupOperations::parent).none { ancestor -> collapsedGroupPaths.any { it.equals(ancestor, true) } }
-        }
-        Surface(color = Color.White, shape = RoundedCornerShape(8.dp), border = CardDefaults.outlinedCardBorder(), modifier = Modifier.fillMaxWidth().heightIn(max = 154.dp).padding(bottom = 6.dp)) {
-            LazyColumn(contentPadding = PaddingValues(vertical = 3.dp)) {
+        if (bottomDocked) {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(vertical = 3.dp)) {
+                item("all") { FilterChip(selected = selectedGroup == null, onClick = { selectedGroup = null }, label = { Text(tr("All", "全部"), fontSize = 10.sp) }) }
+                item("ungrouped") { FilterChip(selected = selectedGroup == UNGROUPED_BRUSH_FILTER, onClick = { selectedGroup = UNGROUPED_BRUSH_FILTER }, label = { Text(tr("Ungrouped", "未分组"), fontSize = 10.sp) }) }
+                items(groupTree, key = { "bottom:$it" }) { path ->
+                    FilterChip(selected = selectedGroup?.equals(path, true) == true, onClick = { selectedGroup = path }, label = { Text(BrushGroupOperations.displayName(path), fontSize = 10.sp, maxLines = 1) })
+                }
+                item("favorites") { FilterChip(selected = favoritesOnly, onClick = { favoritesOnly = !favoritesOnly }, label = { Text(tr("Favorites", "收藏"), fontSize = 10.sp) }) }
+                item("manage") { IconButton(onClick = { manageGroups = true }, modifier = Modifier.size(34.dp)) { Icon(Icons.Outlined.DriveFileRenameOutline, tr("Manage brush groups", "管理笔刷分组"), Modifier.size(17.dp)) } }
+            }
+        } else {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(vertical = 6.dp)) {
+                item { FilterChip(selected = format == null, onClick = { format = null }, label = { Text(tr("All", "全部")) }) }
+                BrushFormat.entries.filter { it !in setOf(BrushFormat.SYSTEM, BrushFormat.UNKNOWN) }.forEach { source -> item { FilterChip(selected = format == source, onClick = { format = source }, label = { Text(source.label) }) } }
+                item { FilterChip(selected = favoritesOnly, onClick = { favoritesOnly = !favoritesOnly }, label = { Text(tr("Favorites", "收藏")) }, leadingIcon = { Icon(Icons.Outlined.Star, null, Modifier.size(16.dp)) }) }
+                item { FilterChip(selected = showHidden, onClick = { showHidden = !showHidden }, label = { Text(tr("Hidden", "隐藏")) }) }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(tr("GROUPS", "分组"), fontSize = 10.sp, color = MutedInk, modifier = Modifier.weight(1f))
+                IconButton(onClick = { manageGroups = true }, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.DriveFileRenameOutline, tr("Manage brush groups", "管理笔刷分组"), Modifier.size(17.dp)) }
+            }
+            Surface(color = Color.White, shape = RoundedCornerShape(8.dp), border = CardDefaults.outlinedCardBorder(), modifier = Modifier.fillMaxWidth().heightIn(max = 154.dp).padding(bottom = 6.dp)) {
+                LazyColumn(contentPadding = PaddingValues(vertical = 3.dp)) {
                 item("all") {
                     Row(Modifier.fillMaxWidth().clickable { selectedGroup = null }.background(if (selectedGroup == null) SageContainer else Color.Transparent).padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Outlined.AllInclusive, null, Modifier.size(16.dp)); Spacer(Modifier.width(7.dp)); Text(tr("All brushes", "全部笔刷"), fontSize = 11.sp, modifier = Modifier.weight(1f)); Text(brushes.size.toString(), color = MutedInk, fontSize = 10.sp)
@@ -3433,6 +3541,7 @@ private fun BrushPanel(
                         Text(BrushGroupOperations.displayName(path), maxLines = 1, fontSize = 11.sp, modifier = Modifier.weight(1f))
                         Text(brushes.count { BrushGroupOperations.isWithin(it.groupName, path) }.toString(), color = MutedInk, fontSize = 10.sp)
                     }
+                }
                 }
             }
         }
@@ -3516,11 +3625,13 @@ private fun BrushPanel(
             }
             Spacer(Modifier.weight(1f))
         }
-        val importTarget = selectedGroup?.takeUnless { it == UNGROUPED_BRUSH_FILTER }
-        FilledTonalButton(onClick = { onImportBrushes(importTarget) }, Modifier.fillMaxWidth()) {
-            Icon(Icons.Outlined.FileDownload, null)
-            Spacer(Modifier.width(8.dp))
-            Text(importTarget?.let { "${tr("Import into", "导入到")} $it" } ?: tr("Import Brushes", "导入笔刷"), maxLines = 1)
+        if (!bottomDocked) {
+            val importTarget = selectedGroup?.takeUnless { it == UNGROUPED_BRUSH_FILTER }
+            FilledTonalButton(onClick = { onImportBrushes(importTarget) }, Modifier.fillMaxWidth()) {
+                Icon(Icons.Outlined.FileDownload, null)
+                Spacer(Modifier.width(8.dp))
+                Text(importTarget?.let { "${tr("Import into", "导入到")} $it" } ?: tr("Import Brushes", "导入笔刷"), maxLines = 1)
+            }
         }
     }
     reportBrush?.let { brush ->

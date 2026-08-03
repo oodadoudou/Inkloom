@@ -102,6 +102,7 @@ class AppSettingsStoreTest {
             AppSettingsStore(portraitContext).save(initialPortrait.copy(
                 showLayerPanel = true,
                 brushPanelXDp = 32f,
+                layerPanelDock = WorkspacePanelDock.BOTTOM,
                 toolbarDock = ToolbarDock.BOTTOM,
             ))
 
@@ -117,6 +118,7 @@ class AppSettingsStoreTest {
             assertFalse(portrait.showBrushPanel)
             assertTrue(portrait.showLayerPanel)
             assertEquals(32f, portrait.brushPanelXDp)
+            assertEquals(WorkspacePanelDock.BOTTOM, portrait.layerPanelDock)
             assertEquals(ToolbarDock.BOTTOM, portrait.toolbarDock)
         } finally {
             preferences.edit().clear().commit()

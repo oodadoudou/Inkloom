@@ -14,6 +14,7 @@ class AppSettingsBackupCodecTest {
             showBrushPanel = true,
             showLayerPanel = true,
             brushPanelDock = WorkspacePanelDock.FREE,
+            layerPanelDock = WorkspacePanelDock.BOTTOM,
             brushPanelXDp = 333f,
             toolbarDock = ToolbarDock.LEFT,
             twoFingerRotation = true,
