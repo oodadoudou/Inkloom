@@ -10,10 +10,12 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.importer.BrushMetadataStore
 import app.inkloom.importer.BrushGroupOperations
+import app.inkloom.importer.BrushGroupStore
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
@@ -49,10 +51,13 @@ class BrushBatchManagementTest {
                     .commit()
                 val store = BrushMetadataStore(context)
                 store.save(sourceBrushes)
+                val groupStore = BrushGroupStore(context)
+                groupStore.save(emptyList())
                 try {
                     base.evaluate()
                 } finally {
                     store.save(emptyList())
+                    groupStore.save(emptyList())
                 }
             }
         }
@@ -126,6 +131,21 @@ class BrushBatchManagementTest {
 
         composeRule.onNodeWithText("Nested Ink").assertIsDisplayed()
         composeRule.onNodeWithText("Import into Source/Ink").assertIsDisplayed()
+    }
+
+    @Test fun groupManagerCreatesAndPersistsAnEmptyNestedGroup() {
+        composeRule.onNodeWithText("New Note").performClick()
+        composeRule.onNodeWithText("Create").performClick()
+        composeRule.onNodeWithContentDescription("Brushes").performClick()
+        composeRule.onNodeWithContentDescription("Manage brush groups").performClick()
+
+        composeRule.onNodeWithContentDescription("New brush group path").performTextInput("Empty/Erasers")
+        composeRule.onNodeWithText("Create").performClick()
+        composeRule.onNodeWithText("Done").performClick()
+
+        val groups = BrushGroupStore(composeRule.activity).load()
+        assertEquals(listOf("Source", "Target", "Source/Ink/Pens", "Empty/Erasers"), groups)
+        assertEquals(0, BrushMetadataStore(composeRule.activity).load().count { it.groupName == "Empty/Erasers" })
     }
 
     private companion object {

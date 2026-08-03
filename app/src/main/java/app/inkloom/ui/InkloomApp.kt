@@ -70,6 +70,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import app.inkloom.document.*
 import app.inkloom.importer.BrushImportRepository
 import app.inkloom.importer.BrushGroupOperations
+import app.inkloom.importer.BrushGroupStore
 import app.inkloom.importer.BrushMetadataStore
 import app.inkloom.importer.BrushRoleClassifier
 import app.inkloom.importer.BrushVersion
@@ -309,16 +310,20 @@ fun InkloomApp(initialIntent: Intent?) {
     val repository = remember { BrushImportRepository(context) }
     var pendingBrushExport by remember { mutableStateOf<ImportedBrush?>(null) }
     val brushStore = remember { BrushMetadataStore(context) }
+    val brushGroupStore = remember { BrushGroupStore(context) }
     val settingsStore = remember { AppSettingsStore(context) }
     var settings by remember { mutableStateOf(settingsStore.load()) }
     var brushesOpen by remember { mutableStateOf(settings.showBrushPanel) }
     fun updateSettings(value: AppSettings) { settings = value; settingsStore.save(value) }
     var importedBrushes by remember { mutableStateOf(brushStore.load()) }
+    var brushGroups by remember { mutableStateOf(BrushGroupOperations.reconcileRegisteredGroups(brushGroupStore.load(), importedBrushes)) }
     var pendingBrushImportGroup by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         val refreshed = withContext(Dispatchers.IO) { importedBrushes.flatMap(repository::refreshMetadataAll) }.distinctBy(ImportedBrush::id)
         if (refreshed != importedBrushes) { importedBrushes = refreshed; brushStore.save(refreshed) }
+        val reconciledGroups = BrushGroupOperations.reconcileRegisteredGroups(brushGroups, refreshed)
+        if (reconciledGroups != brushGroups) { brushGroups = reconciledGroups; brushGroupStore.save(reconciledGroups) }
     }
 
     val brushPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
@@ -332,6 +337,8 @@ fun InkloomApp(initialIntent: Intent?) {
         pendingBrushImportGroup = null
         importedBrushes = BrushGroupOperations.mergeImports(importedBrushes, additions)
         brushStore.save(importedBrushes)
+        brushGroups = BrushGroupOperations.reconcileRegisteredGroups(brushGroups, importedBrushes)
+        brushGroupStore.save(brushGroups)
         importError = results.firstNotNullOfOrNull { it.exceptionOrNull()?.message }
     }
     val documentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -352,7 +359,7 @@ fun InkloomApp(initialIntent: Intent?) {
     val imageExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/png")) { uri -> if (uri != null) runCatching { viewModel.exportCurrentPage(uri) }.onFailure { importError = it.message } }
     val bundleExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri -> if (uri != null) runCatching { viewModel.exportCurrentBundle(uri) }.onFailure { importError = it.message } }
     val libraryBackupExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
-        if (uri != null) viewModel.exportLibraryBackup(uri, importedBrushes) { result ->
+        if (uri != null) viewModel.exportLibraryBackup(uri, importedBrushes, brushGroups) { result ->
             result.onSuccess { Toast.makeText(context, settings.language.text("Library backup saved.", "资料库备份已保存。"), Toast.LENGTH_LONG).show() }
                 .onFailure { importError = it.message }
         }
@@ -362,6 +369,8 @@ fun InkloomApp(initialIntent: Intent?) {
             result.onSuccess { restored ->
                 importedBrushes = (importedBrushes + restored.brushes).distinctBy(ImportedBrush::id)
                 brushStore.save(importedBrushes)
+                brushGroups = BrushGroupOperations.reconcileRegisteredGroups(brushGroups + restored.brushGroups, importedBrushes)
+                brushGroupStore.save(brushGroups)
                 Toast.makeText(
                     context,
                     settings.language.text(
@@ -425,6 +434,8 @@ fun InkloomApp(initialIntent: Intent?) {
                 }
             }
             brushStore.save(importedBrushes)
+            brushGroups = BrushGroupOperations.reconcileRegisteredGroups(brushGroups, importedBrushes)
+            brushGroupStore.save(brushGroups)
             brushesOpen = true
             updateSettings(settings.copy(showBrushPanel = true))
             destination = AppDestination.EDITOR
@@ -459,6 +470,7 @@ fun InkloomApp(initialIntent: Intent?) {
             selectedPageId = libraryState.selectedPageId,
             brushesOpen = brushesOpen,
             brushes = importedBrushes,
+            brushGroups = brushGroups,
             importError = importError,
             onBack = { destination = AppDestination.LIBRARY },
             onToggleBrushes = {
@@ -475,8 +487,19 @@ fun InkloomApp(initialIntent: Intent?) {
                 val safeName = brush.name.replace(Regex("[^A-Za-z0-9._-]"), "_").trim('_').ifBlank { "Inkloom-Brush" }
                 brushExportPicker.launch("$safeName.inkbrush")
             },
-            onUpdateBrush = { updated -> importedBrushes = importedBrushes.map { if (it.id == updated.id) updated else it }; brushStore.save(importedBrushes) },
-            onReplaceBrushes = { updated -> importedBrushes = updated; brushStore.save(updated) },
+            onUpdateBrush = { updated ->
+                importedBrushes = importedBrushes.map { if (it.id == updated.id) updated else it }
+                brushStore.save(importedBrushes)
+                brushGroups = BrushGroupOperations.reconcileRegisteredGroups(brushGroups, importedBrushes)
+                brushGroupStore.save(brushGroups)
+            },
+            onReplaceBrushes = { updated ->
+                importedBrushes = updated
+                brushStore.save(updated)
+                brushGroups = BrushGroupOperations.reconcileRegisteredGroups(brushGroups, updated)
+                brushGroupStore.save(brushGroups)
+            },
+            onReplaceBrushGroups = { updated -> brushGroups = updated; brushGroupStore.save(updated) },
             onDeleteBrush = { brushId -> importedBrushes = importedBrushes.filterNot { it.id == brushId }; brushStore.save(importedBrushes) },
             onReorderBrush = { brushId, delta -> importedBrushes = BrushGroupOperations.move(importedBrushes, brushId, delta); brushStore.save(importedBrushes) },
             onDismissError = { importError = null },
@@ -747,6 +770,7 @@ private fun EditorScreen(
     selectedPageId: String?,
     brushesOpen: Boolean,
     brushes: List<ImportedBrush>,
+    brushGroups: List<String>,
     importError: String?,
     onBack: () -> Unit,
     onToggleBrushes: () -> Unit,
@@ -754,6 +778,7 @@ private fun EditorScreen(
     onExportBrush: (ImportedBrush) -> Unit,
     onUpdateBrush: (ImportedBrush) -> Unit,
     onReplaceBrushes: (List<ImportedBrush>) -> Unit,
+    onReplaceBrushGroups: (List<String>) -> Unit,
     onDeleteBrush: (String) -> Unit,
     onReorderBrush: (String, Int) -> Unit,
     onDismissError: () -> Unit,
@@ -1027,6 +1052,7 @@ private fun EditorScreen(
             )
             if (brushesOpen && settings.brushPanelDock == WorkspacePanelDock.LEFT) BrushPanel(
                 brushes = brushes,
+                registeredGroups = brushGroups,
                 selectedBrushId = selectedBrushId,
                 settings = settings,
                 dock = settings.brushPanelDock,
@@ -1053,6 +1079,7 @@ private fun EditorScreen(
                     activeBrush = activeBrush?.let { current -> updated.firstOrNull { it.id == current.id } }
                     if (activeBrush == null) selectedBrushId = null
                 },
+                onReplaceGroups = onReplaceBrushGroups,
                 onDeleteBrush = { brushId -> onDeleteBrush(brushId); if (activeBrush?.id == brushId) { activeBrush = null; selectedBrushId = null } },
                 onReorderBrush = onReorderBrush,
             )
@@ -1389,6 +1416,7 @@ private fun EditorScreen(
             )
             if (brushesOpen && settings.brushPanelDock == WorkspacePanelDock.RIGHT) BrushPanel(
                 brushes = brushes,
+                registeredGroups = brushGroups,
                 selectedBrushId = selectedBrushId,
                 settings = settings,
                 dock = settings.brushPanelDock,
@@ -1425,6 +1453,7 @@ private fun EditorScreen(
                     activeBrush = activeBrush?.let { current -> updated.firstOrNull { it.id == current.id } }
                     if (activeBrush == null) selectedBrushId = null
                 },
+                onReplaceGroups = onReplaceBrushGroups,
                 onDeleteBrush = { brushId -> onDeleteBrush(brushId); if (activeBrush?.id == brushId) { activeBrush = null; selectedBrushId = null } },
                 onReorderBrush = onReorderBrush,
             )
@@ -1530,6 +1559,7 @@ private fun EditorScreen(
         ) {
             BrushPanel(
                 brushes = brushes,
+                registeredGroups = brushGroups,
                 selectedBrushId = selectedBrushId,
                 settings = settings,
                 dock = settings.brushPanelDock,
@@ -1556,6 +1586,7 @@ private fun EditorScreen(
                     activeBrush = activeBrush?.let { current -> updated.firstOrNull { it.id == current.id } }
                     if (activeBrush == null) selectedBrushId = null
                 },
+                onReplaceGroups = onReplaceBrushGroups,
                 onDeleteBrush = { brushId -> onDeleteBrush(brushId); if (activeBrush?.id == brushId) { activeBrush = null; selectedBrushId = null } },
                 onReorderBrush = onReorderBrush,
                 modifier = Modifier.fillMaxSize().background(Color(0xFFF7F7F7), RoundedCornerShape(12.dp)).padding(12.dp),
@@ -3004,6 +3035,7 @@ private fun LayerPanel(
 @Composable
 private fun BrushPanel(
     brushes: List<ImportedBrush>,
+    registeredGroups: List<String>,
     selectedBrushId: String?,
     settings: AppSettings,
     dock: WorkspacePanelDock,
@@ -3014,6 +3046,7 @@ private fun BrushPanel(
     onExportBrush: (ImportedBrush) -> Unit,
     onUpdateBrush: (ImportedBrush) -> Unit,
     onReplaceBrushes: (List<ImportedBrush>) -> Unit,
+    onReplaceGroups: (List<String>) -> Unit,
     onDeleteBrush: (String) -> Unit,
     onReorderBrush: (String, Int) -> Unit,
     modifier: Modifier = Modifier.width(330.dp).fillMaxHeight().background(Color(0xFFF7F7F7)).padding(12.dp),
@@ -3040,7 +3073,7 @@ private fun BrushPanel(
     var collapsedGroupPaths by remember { mutableStateOf(emptySet<String>()) }
     val copiedBrushSuffix = tr("copy", "副本")
     val groups = BrushGroupOperations.names(brushes)
-    val groupTree = BrushGroupOperations.treePaths(brushes)
+    val groupTree = BrushGroupOperations.treePaths(brushes, registeredGroups)
     val currentBrushIds = brushes.mapTo(linkedSetOf()) { it.id }
     LaunchedEffect(currentBrushIds) {
         selectedBrushIds = selectedBrushIds.intersect(currentBrushIds)
@@ -3326,11 +3359,22 @@ private fun BrushPanel(
             onRename = { oldName, newName ->
                 val updated = BrushGroupOperations.rename(brushes, oldName, newName)
                 onReplaceBrushes(updated)
+                onReplaceGroups(BrushGroupOperations.reconcileRegisteredGroups(BrushGroupOperations.renameRegisteredGroups(registeredGroups, oldName, newName), updated))
                 val normalized = BrushGroupOperations.normalize(newName)
                 selectedGroup = normalized.takeIf(String::isNotBlank) ?: UNGROUPED_BRUSH_FILTER
                 manageGroups = false
             },
-            onMove = { group, delta -> onReplaceBrushes(BrushGroupOperations.moveGroup(brushes, group, delta)) },
+            onMove = { group, delta ->
+                onReplaceBrushes(BrushGroupOperations.moveGroup(brushes, group, delta))
+                onReplaceGroups(BrushGroupOperations.moveRegisteredGroup(registeredGroups, group, delta))
+            },
+            onCreate = { path ->
+                val normalized = BrushGroupOperations.normalize(path)
+                if (normalized.isNotBlank()) {
+                    onReplaceGroups(BrushGroupOperations.reconcileRegisteredGroups(registeredGroups + normalized, brushes))
+                    selectedGroup = normalized
+                }
+            },
         )
     }
 }
@@ -3413,17 +3457,35 @@ private fun BrushBatchGroupDialog(
 }
 
 @Composable
-private fun BrushGroupManagerDialog(groups: List<String>, onDismiss: () -> Unit, onRename: (String, String) -> Unit, onMove: (String, Int) -> Unit) {
+private fun BrushGroupManagerDialog(groups: List<String>, onDismiss: () -> Unit, onRename: (String, String) -> Unit, onMove: (String, Int) -> Unit, onCreate: (String) -> Unit) {
     var selected by remember { mutableStateOf(groups.firstOrNull().orEmpty()) }
     LaunchedEffect(groups) { if (groups.none { it == selected }) selected = groups.firstOrNull().orEmpty() }
     var replacement by remember(selected) { mutableStateOf(selected) }
+    var newGroupPath by remember { mutableStateOf("") }
+    val normalizedNewGroup = BrushGroupOperations.normalize(newGroupPath)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(tr("Manage groups", "管理分组")) },
         text = {
             Column(Modifier.widthIn(min = 320.dp, max = 440.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = newGroupPath,
+                        onValueChange = { newGroupPath = it.take(BrushGroupOperations.MAX_PATH_LENGTH) },
+                        label = { Text(tr("New group path", "新建分组路径")) },
+                        supportingText = { Text(tr("Use / to create nested groups", "使用 / 创建嵌套分组")) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f).semantics { contentDescription = "New brush group path" },
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Button(
+                        onClick = { onCreate(normalizedNewGroup); selected = normalizedNewGroup; newGroupPath = "" },
+                        enabled = normalizedNewGroup.isNotBlank() && groups.none { it.equals(normalizedNewGroup, true) },
+                    ) { Text(tr("Create", "创建")) }
+                }
+                Spacer(Modifier.height(8.dp))
                 if (groups.isEmpty()) {
-                    Text(tr("No groups yet. Move a brush to a new group or enter a group in Brush Studio.", "还没有分组。可将笔刷移动到新分组，或在笔刷工作室中输入分组。"), color = MutedInk)
+                    Text(tr("No groups yet. Create an empty group above or move a brush into a new path.", "还没有分组。可在上方创建空组，或将笔刷移动到新路径。"), color = MutedInk)
                 } else {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(bottom = 8.dp)) {
                         groups.forEach { group -> item(group) { FilterChip(selected = selected == group, onClick = { selected = group }, label = { Text(group, maxLines = 1) }) } }
