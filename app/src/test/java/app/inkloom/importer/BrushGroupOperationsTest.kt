@@ -49,6 +49,12 @@ class BrushGroupOperationsTest {
         assertFalse(BrushGroupOperations.isWithin("Painting/Oil", "Drawing"))
     }
 
+    @Test fun groupTreeKeepsLateDiscoveredChildrenBesideTheirParent() {
+        val brushes = listOf(brush("A", "Drawing"), brush("B", "Painting/Oil"), brush("C", "Drawing/Ink/Pens"))
+
+        assertEquals(listOf("Drawing", "Drawing/Ink", "Drawing/Ink/Pens", "Painting", "Painting/Oil"), BrushGroupOperations.treePaths(brushes))
+    }
+
     @Test fun renamingAParentMovesItsEntireSubtree() {
         val brushes = listOf(brush("A", "Drawing/Ink/Pens"), brush("B", "Drawing/Pencil"), brush("C", "Painting/Oil"))
 
@@ -67,13 +73,22 @@ class BrushGroupOperationsTest {
         assertEquals(0, moved.single { it.id == "C" }.sortOrder)
     }
 
-    @Test fun moveGroupReordersWholeGroupsAndLeavesUngroupedAtTheEnd() {
+    @Test fun moveGroupReordersWholeGroupsWithoutMovingUngroupedEntries() {
         val brushes = listOf(brush("P1", "Pens"), brush("W1", "Water"), brush("P2", "Pens"), brush("U", ""), brush("I1", "Ink"))
 
         val moved = BrushGroupOperations.moveGroup(brushes, "Ink", -2)
 
         assertEquals(listOf("Ink", "Pens", "Water"), BrushGroupOperations.names(moved))
-        assertEquals(listOf("I1", "P1", "P2", "W1", "U"), moved.map(ImportedBrush::id))
+        assertEquals(listOf("I1", "P1", "P2", "U", "W1"), moved.map(ImportedBrush::id))
+    }
+
+    @Test fun moveGroupReordersNestedSiblingSubtreesWithoutMovingOtherGroups() {
+        val brushes = listOf(brush("P", "Drawing/Pencil"), brush("O", "Painting/Oil"), brush("I", "Drawing/Ink/Pens"), brush("U", ""))
+
+        val moved = BrushGroupOperations.moveGroup(brushes, "Drawing/Ink", -1)
+
+        assertEquals(listOf("I", "O", "P", "U"), moved.map(ImportedBrush::id))
+        assertEquals(listOf("Drawing/Ink/Pens", "Painting/Oil", "Drawing/Pencil"), BrushGroupOperations.names(moved))
     }
 
     @Test fun batchAssignmentChangesOnlySelectedBrushes() {

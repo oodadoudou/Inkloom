@@ -18,13 +18,22 @@ object BrushGroupOperations {
         .filter(String::isNotBlank)
         .distinctBy(String::lowercase)
 
-    fun treePaths(brushes: List<ImportedBrush>): List<String> = buildList {
-        names(brushes).forEach { path ->
-            val segments = path.split('/')
-            segments.indices.forEach { index ->
-                val ancestor = segments.take(index + 1).joinToString("/")
-                if (none { it.equals(ancestor, ignoreCase = true) }) add(ancestor)
+    fun treePaths(brushes: List<ImportedBrush>): List<String> {
+        val discovered = buildList<String> {
+            names(brushes).forEach { path ->
+                val segments = path.split('/')
+                segments.indices.forEach { index ->
+                    val ancestor = segments.take(index + 1).joinToString("/")
+                    if (none { it.equals(ancestor, ignoreCase = true) }) add(ancestor)
+                }
             }
+        }
+        return buildList {
+            fun appendSubtree(path: String) {
+                add(path)
+                discovered.filter { parent(it)?.equals(path, ignoreCase = true) == true }.forEach(::appendSubtree)
+            }
+            discovered.filter { parent(it) == null }.forEach(::appendSubtree)
         }
     }
 
@@ -121,18 +130,17 @@ object BrushGroupOperations {
 
     fun moveGroup(brushes: List<ImportedBrush>, groupName: String, delta: Int): List<ImportedBrush> {
         if (delta == 0) return brushes
-        val groups = names(brushes).toMutableList()
-        val from = groups.indexOfFirst { it.equals(normalize(groupName), ignoreCase = true) }
+        val selected = normalize(groupName)
+        val selectedParent = parent(selected)
+        val groups = treePaths(brushes).filter { parent(it)?.equals(selectedParent, ignoreCase = true) ?: (selectedParent == null && parent(it) == null) }.toMutableList()
+        val from = groups.indexOfFirst { it.equals(selected, ignoreCase = true) }
         if (from < 0) return brushes
         val to = (from + delta).coerceIn(0, groups.lastIndex)
         if (from == to) return brushes
         groups.add(to, groups.removeAt(from))
-        val order = groups.mapIndexed { index, group -> group.lowercase() to index }.toMap()
-        return brushes.withIndex().sortedWith(
-            compareBy<IndexedValue<ImportedBrush>> { indexed ->
-                normalize(indexed.value.groupName).takeIf(String::isNotBlank)?.lowercase()?.let(order::get) ?: Int.MAX_VALUE
-            }.thenBy { it.index },
-        ).map(IndexedValue<ImportedBrush>::value)
+        val matched = brushes.filter { brush -> groups.any { group -> isWithin(brush.groupName, group) } }
+        val reordered = groups.flatMap { group -> matched.filter { brush -> isWithin(brush.groupName, group) } }.iterator()
+        return brushes.map { brush -> if (groups.any { group -> isWithin(brush.groupName, group) }) reordered.next() else brush }
     }
 
     const val MAX_NAME_LENGTH = 40
