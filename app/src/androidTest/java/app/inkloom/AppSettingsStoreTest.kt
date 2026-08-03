@@ -6,6 +6,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.settings.AppSettings
 import app.inkloom.settings.AppSettingsStore
 import app.inkloom.settings.ShortcutBrushGroupTargets
+import app.inkloom.settings.ToolboxQuickSlot
+import app.inkloom.settings.ToolboxQuickSlotKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -37,6 +39,20 @@ class AppSettingsStoreTest {
             AppSettingsStore(context).save(AppSettings(shortcutBrushGroupTargets = targets))
 
             assertEquals(targets, AppSettingsStore(context).load().shortcutBrushGroupTargets)
+        } finally {
+            preferences.edit().clear().commit()
+        }
+    }
+
+    @Test fun toolboxQuickSlotsSurviveReload() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
+        preferences.edit().clear().commit()
+        try {
+            val slot = ToolboxQuickSlot(ToolboxQuickSlotKind.TOOL_PRESET, "Red pen", "brush-1", size = 17f, opacity = .7f, colorArgb = 0xFFAA0000.toInt())
+            AppSettingsStore(context).save(AppSettings(toolboxQuickSlots = listOf(slot)))
+
+            assertEquals(slot, AppSettingsStore(context).load().toolboxQuickSlots.first())
         } finally {
             preferences.edit().clear().commit()
         }

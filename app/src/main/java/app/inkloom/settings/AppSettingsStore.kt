@@ -50,6 +50,7 @@ data class AppSettings(
     val nonDestructiveEraser: Boolean = false,
     val shortcutBindings: List<ShortcutBinding> = CspShortcutResolver.defaultBindings,
     val shortcutBrushGroupTargets: ShortcutBrushGroupTargets = ShortcutBrushGroupTargets(),
+    val toolboxQuickSlots: List<ToolboxQuickSlot> = ToolboxQuickSlots.normalize(emptyList()),
 )
 
 enum class StylusButtonAction { ERASER, LASSO, NONE }
@@ -118,6 +119,7 @@ class AppSettingsStore(context: Context) {
                 pencil = preferences.getString("shortcutPencilGroup", "").orEmpty(),
                 brush = preferences.getString("shortcutBrushGroup", "").orEmpty(),
             ).normalized(),
+            toolboxQuickSlots = ToolboxQuickSlotCodec.decode(preferences.getString("toolboxQuickSlots", null)),
         )
     }
 
@@ -172,6 +174,7 @@ class AppSettingsStore(context: Context) {
             .putString("shortcutPenGroup", value.shortcutBrushGroupTargets.pen)
             .putString("shortcutPencilGroup", value.shortcutBrushGroupTargets.pencil)
             .putString("shortcutBrushGroup", value.shortcutBrushGroupTargets.brush)
+            .putString("toolboxQuickSlots", ToolboxQuickSlotCodec.encode(value.toolboxQuickSlots))
             .apply()
     }
 
