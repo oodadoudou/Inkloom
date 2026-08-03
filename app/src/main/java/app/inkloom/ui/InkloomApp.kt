@@ -314,6 +314,7 @@ fun InkloomApp(initialIntent: Intent?) {
     var brushesOpen by remember { mutableStateOf(settings.showBrushPanel) }
     fun updateSettings(value: AppSettings) { settings = value; settingsStore.save(value) }
     var importedBrushes by remember { mutableStateOf(brushStore.load()) }
+    var pendingBrushImportGroup by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         val refreshed = withContext(Dispatchers.IO) { importedBrushes.flatMap(repository::refreshMetadataAll) }.distinctBy(ImportedBrush::id)
@@ -325,7 +326,11 @@ fun InkloomApp(initialIntent: Intent?) {
             runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             repository.importAll(uri)
         }
-        importedBrushes = BrushGroupOperations.mergeImports(importedBrushes, results.flatMap { it.getOrNull().orEmpty() })
+        val additions = results.flatMap { it.getOrNull().orEmpty() }.let { brushes ->
+            pendingBrushImportGroup?.let { group -> brushes.map { BrushGroupOperations.assign(it, group) } } ?: brushes
+        }
+        pendingBrushImportGroup = null
+        importedBrushes = BrushGroupOperations.mergeImports(importedBrushes, additions)
         brushStore.save(importedBrushes)
         importError = results.firstNotNullOfOrNull { it.exceptionOrNull()?.message }
     }
@@ -461,7 +466,10 @@ fun InkloomApp(initialIntent: Intent?) {
                 brushesOpen = open
                 updateSettings(settings.copy(showBrushPanel = open))
             },
-            onImportBrushes = { brushPicker.launch(arrayOf("application/octet-stream", "application/zip", "application/vnd.inkloom.brush+zip", "image/*")) },
+            onImportBrushes = { group ->
+                pendingBrushImportGroup = group?.let(BrushGroupOperations::normalize)?.takeIf(String::isNotBlank)
+                brushPicker.launch(arrayOf("application/octet-stream", "application/zip", "application/vnd.inkloom.brush+zip", "image/*"))
+            },
             onExportBrush = { brush ->
                 pendingBrushExport = brush
                 val safeName = brush.name.replace(Regex("[^A-Za-z0-9._-]"), "_").trim('_').ifBlank { "Inkloom-Brush" }
@@ -742,7 +750,7 @@ private fun EditorScreen(
     importError: String?,
     onBack: () -> Unit,
     onToggleBrushes: () -> Unit,
-    onImportBrushes: () -> Unit,
+    onImportBrushes: (String?) -> Unit,
     onExportBrush: (ImportedBrush) -> Unit,
     onUpdateBrush: (ImportedBrush) -> Unit,
     onReplaceBrushes: (List<ImportedBrush>) -> Unit,
@@ -3002,7 +3010,7 @@ private fun BrushPanel(
     onDock: (WorkspacePanelDock) -> Unit,
     onClose: () -> Unit,
     onBrushSelected: (ImportedBrush) -> Unit,
-    onImportBrushes: () -> Unit,
+    onImportBrushes: (String?) -> Unit,
     onExportBrush: (ImportedBrush) -> Unit,
     onUpdateBrush: (ImportedBrush) -> Unit,
     onReplaceBrushes: (List<ImportedBrush>) -> Unit,
@@ -3074,7 +3082,7 @@ private fun BrushPanel(
                 if (!multiSelecting) selectedBrushIds = emptySet()
             }) { Icon(if (multiSelecting) Icons.Outlined.Close else Icons.Outlined.Checklist, if (multiSelecting) tr("Cancel brush selection", "取消选择笔刷") else tr("Select multiple brushes", "批量选择笔刷")) }
             IconButton(onClick = onClose) { Icon(Icons.Outlined.Close, tr("Close brushes panel", "关闭笔刷面板")) }
-            IconButton(onClick = onImportBrushes) { Icon(Icons.Outlined.Add, tr("Import", "导入")) }
+            IconButton(onClick = { onImportBrushes(selectedGroup?.takeUnless { it == UNGROUPED_BRUSH_FILTER }) }) { Icon(Icons.Outlined.Add, tr("Import", "导入")) }
         }
         Text(tr("Imported presets · compact view", "已导入预设 · 紧凑视图"), fontSize = 11.sp, color = MutedInk)
         Spacer(Modifier.height(8.dp))
@@ -3174,7 +3182,12 @@ private fun BrushPanel(
             }
             Spacer(Modifier.weight(1f))
         }
-        FilledTonalButton(onClick = onImportBrushes, Modifier.fillMaxWidth()) { Icon(Icons.Outlined.FileDownload, null); Spacer(Modifier.width(8.dp)); Text(tr("Import Brushes", "导入笔刷")) }
+        val importTarget = selectedGroup?.takeUnless { it == UNGROUPED_BRUSH_FILTER }
+        FilledTonalButton(onClick = { onImportBrushes(importTarget) }, Modifier.fillMaxWidth()) {
+            Icon(Icons.Outlined.FileDownload, null)
+            Spacer(Modifier.width(8.dp))
+            Text(importTarget?.let { "${tr("Import into", "导入到")} $it" } ?: tr("Import Brushes", "导入笔刷"), maxLines = 1)
+        }
     }
     reportBrush?.let { brush ->
         AlertDialog(

@@ -101,6 +101,16 @@ class BrushBatchManagementTest {
         assertEquals(listOf("Target", "Source"), BrushGroupOperations.names(store.load()))
     }
 
+    @Test fun selectedGroupBecomesTheBatchImportDestination() {
+        composeRule.onNodeWithText("New Note").performClick()
+        composeRule.onNodeWithText("Create").performClick()
+        composeRule.onNodeWithContentDescription("Brushes").performClick()
+
+        composeRule.onNodeWithText("Source").performClick()
+
+        composeRule.onNodeWithText("Import into Source").assertIsDisplayed()
+    }
+
     private companion object {
         fun brush(id: String, name: String, group: String, order: Int) = ImportedBrush(
             id = id,
