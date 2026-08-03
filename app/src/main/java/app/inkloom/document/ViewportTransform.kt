@@ -19,11 +19,15 @@ object ViewportTransform {
         maximumPan: Float = 2_500f,
         geometry: ViewportGeometry? = null,
     ): ViewportState {
-        val (screenDeltaX, screenDeltaY) = rotate(localDeltaX * current.scale, localDeltaY * current.scale, current.rotationDegrees)
+        val safe = sanitize(current)
+        val deltaX = localDeltaX.takeIf(Float::isFinite) ?: 0f
+        val deltaY = localDeltaY.takeIf(Float::isFinite) ?: 0f
+        val maximumOffset = maximumPan.takeIf { it.isFinite() && it >= 0f } ?: 2_500f
+        val (screenDeltaX, screenDeltaY) = rotate(deltaX * safe.scale, deltaY * safe.scale, safe.rotationDegrees)
         return clamp(
-            current.copy(
-                panX = (current.panX + screenDeltaX).coerceIn(-maximumPan, maximumPan),
-                panY = (current.panY + screenDeltaY).coerceIn(-maximumPan, maximumPan),
+            safe.copy(
+                panX = (safe.panX + screenDeltaX).coerceIn(-maximumOffset, maximumOffset),
+                panY = (safe.panY + screenDeltaY).coerceIn(-maximumOffset, maximumOffset),
             ),
             geometry,
         )
@@ -40,22 +44,30 @@ object ViewportTransform {
         maximumPan: Float = 2_500f,
         geometry: ViewportGeometry? = null,
     ): ViewportState {
-        val nextScale = (current.scale * factor).coerceIn(minimumScale, maximumScale)
-        if (nextScale <= minimumScale + .0001f) return current.copy(scale = minimumScale, panX = 0f, panY = 0f)
-        val (screenFocusX, screenFocusY) = rotate(focusOffsetX, focusOffsetY, current.rotationDegrees)
+        val minimum = minimumScale.takeIf { it.isFinite() && it > 0f } ?: 1f
+        val maximum = maximumScale.takeIf { it.isFinite() && it >= minimum } ?: maxOf(minimum, 8f)
+        val safe = sanitize(current, minimum, maximum)
+        val safeFactor = factor.takeIf { it.isFinite() && it > 0f } ?: 1f
+        val nextScale = (safe.scale * safeFactor).coerceIn(minimum, maximum)
+        val focusX = focusOffsetX.takeIf(Float::isFinite) ?: 0f
+        val focusY = focusOffsetY.takeIf(Float::isFinite) ?: 0f
+        val (screenFocusX, screenFocusY) = rotate(focusX, focusY, safe.rotationDegrees)
+        val maximumOffset = maximumPan.takeIf { it.isFinite() && it >= 0f } ?: 2_500f
+        val next = ViewportState(
+            scale = nextScale,
+            panX = (safe.panX + (safe.scale - nextScale) * screenFocusX).coerceIn(-maximumOffset, maximumOffset),
+            panY = (safe.panY + (safe.scale - nextScale) * screenFocusY).coerceIn(-maximumOffset, maximumOffset),
+            rotationDegrees = safe.rotationDegrees,
+        )
+        if (nextScale <= minimum + .0001f && kotlin.math.abs(safe.rotationDegrees) <= .0001f) return next.copy(panX = 0f, panY = 0f)
         return clamp(
-            ViewportState(
-                scale = nextScale,
-                panX = (current.panX + (current.scale - nextScale) * screenFocusX).coerceIn(-maximumPan, maximumPan),
-                panY = (current.panY + (current.scale - nextScale) * screenFocusY).coerceIn(-maximumPan, maximumPan),
-                rotationDegrees = current.rotationDegrees,
-            ),
+            next,
             geometry,
         )
     }
 
     fun rotateBy(current: ViewportState, deltaDegrees: Float, geometry: ViewportGeometry? = null): ViewportState =
-        clamp(current.copy(rotationDegrees = normalizeDegrees(current.rotationDegrees + deltaDegrees)), geometry)
+        sanitize(current).let { safe -> clamp(safe.copy(rotationDegrees = normalizeDegrees(safe.rotationDegrees + (deltaDegrees.takeIf(Float::isFinite) ?: 0f))), geometry) }
 
     fun actualSize(
         current: ViewportState,
@@ -64,8 +76,11 @@ object ViewportTransform {
         geometry: ViewportGeometry? = null,
         maximumScale: Float = 8f,
     ): ViewportState {
-        val scale = (pageModelWidth / pageViewWidth.coerceAtLeast(1f)).coerceIn(1f, maximumScale)
-        return clamp(current.copy(scale = scale, panX = 0f, panY = 0f), geometry)
+        val modelWidth = pageModelWidth.takeIf { it.isFinite() && it > 0f } ?: 1f
+        val viewWidth = pageViewWidth.takeIf { it.isFinite() && it > 0f } ?: 1f
+        val maximum = maximumScale.takeIf { it.isFinite() && it >= 1f } ?: 8f
+        val scale = (modelWidth / viewWidth).coerceIn(1f, maximum)
+        return clamp(sanitize(current, maximumScale = maximum).copy(scale = scale, panX = 0f, panY = 0f), geometry)
     }
 
     fun fitWidth(
@@ -76,30 +91,36 @@ object ViewportTransform {
         horizontalFill: Float = .94f,
         maximumScale: Float = 8f,
     ): ViewportState {
-        val scale = (viewportWidth.coerceAtLeast(1f) * horizontalFill.coerceIn(.5f, 1f) / pageViewWidth.coerceAtLeast(1f)).coerceIn(1f, maximumScale)
-        return clamp(current.copy(scale = scale, panX = 0f, panY = 0f), geometry)
+        val viewport = viewportWidth.takeIf { it.isFinite() && it > 0f } ?: 1f
+        val page = pageViewWidth.takeIf { it.isFinite() && it > 0f } ?: 1f
+        val fill = horizontalFill.takeIf(Float::isFinite)?.coerceIn(.5f, 1f) ?: .94f
+        val maximum = maximumScale.takeIf { it.isFinite() && it >= 1f } ?: 8f
+        val scale = (viewport * fill / page).coerceIn(1f, maximum)
+        return clamp(sanitize(current, maximumScale = maximum).copy(scale = scale, panX = 0f, panY = 0f), geometry)
     }
 
     fun resetRotation(current: ViewportState, geometry: ViewportGeometry? = null): ViewportState =
-        clamp(current.copy(rotationDegrees = 0f), geometry)
+        clamp(sanitize(current).copy(rotationDegrees = 0f), geometry)
 
     fun clamp(current: ViewportState, geometry: ViewportGeometry?): ViewportState {
-        if (current.scale <= 1.0001f) return current.copy(panX = 0f, panY = 0f)
-        geometry ?: return current
-        val unrotatedWidth = (geometry.pageWidth * current.scale).coerceAtLeast(1f)
-        val unrotatedHeight = (geometry.pageHeight * current.scale).coerceAtLeast(1f)
-        val radians = Math.toRadians(current.rotationDegrees.toDouble())
+        val safe = sanitize(current)
+        if (safe.scale <= 1.0001f && kotlin.math.abs(safe.rotationDegrees) <= .0001f) return safe.copy(panX = 0f, panY = 0f)
+        val validGeometry = geometry?.takeIf { it.viewportWidth.isFinite() && it.viewportHeight.isFinite() && it.pageWidth.isFinite() && it.pageHeight.isFinite() && it.viewportWidth > 0f && it.viewportHeight > 0f && it.pageWidth > 0f && it.pageHeight > 0f } ?: return safe
+        val unrotatedWidth = (validGeometry.pageWidth * safe.scale).coerceAtLeast(1f)
+        val unrotatedHeight = (validGeometry.pageHeight * safe.scale).coerceAtLeast(1f)
+        val radians = Math.toRadians(safe.rotationDegrees.toDouble())
         val cosine = kotlin.math.abs(kotlin.math.cos(radians)).toFloat()
         val sine = kotlin.math.abs(kotlin.math.sin(radians)).toFloat()
         val pageWidth = unrotatedWidth * cosine + unrotatedHeight * sine
         val pageHeight = unrotatedWidth * sine + unrotatedHeight * cosine
-        val visibleX = minOf(pageWidth * geometry.minimumVisibleFraction.coerceIn(.05f, .5f), geometry.viewportWidth * .5f).coerceAtLeast(48f)
-        val visibleY = minOf(pageHeight * geometry.minimumVisibleFraction.coerceIn(.05f, .5f), geometry.viewportHeight * .5f).coerceAtLeast(48f)
-        val maximumX = (geometry.viewportWidth * .5f + pageWidth * .5f - visibleX).coerceAtLeast(0f)
-        val maximumY = (geometry.viewportHeight * .5f + pageHeight * .5f - visibleY).coerceAtLeast(0f)
-        return current.copy(
-            panX = current.panX.coerceIn(-maximumX, maximumX),
-            panY = current.panY.coerceIn(-maximumY, maximumY),
+        val visibleFraction = validGeometry.minimumVisibleFraction.takeIf(Float::isFinite)?.coerceIn(.05f, .5f) ?: .15f
+        val visibleX = minOf(pageWidth * visibleFraction, validGeometry.viewportWidth * .5f).coerceAtLeast(48f)
+        val visibleY = minOf(pageHeight * visibleFraction, validGeometry.viewportHeight * .5f).coerceAtLeast(48f)
+        val maximumX = (validGeometry.viewportWidth * .5f + pageWidth * .5f - visibleX).coerceAtLeast(0f)
+        val maximumY = (validGeometry.viewportHeight * .5f + pageHeight * .5f - visibleY).coerceAtLeast(0f)
+        return safe.copy(
+            panX = safe.panX.coerceIn(-maximumX, maximumX),
+            panY = safe.panY.coerceIn(-maximumY, maximumY),
         )
     }
 
@@ -111,6 +132,16 @@ object ViewportTransform {
     }
 
     fun normalizeDegrees(value: Float): Float = ((value + 180f) % 360f + 360f) % 360f - 180f
+
+    fun sanitize(current: ViewportState, minimumScale: Float = 1f, maximumScale: Float = 8f): ViewportState {
+        val minimum = minimumScale.takeIf { it.isFinite() && it > 0f } ?: 1f
+        val maximum = maximumScale.takeIf { it.isFinite() && it >= minimum } ?: maxOf(minimum, 8f)
+        val scale = current.scale.takeIf(Float::isFinite)?.coerceIn(minimum, maximum) ?: minimum
+        val panX = current.panX.takeIf(Float::isFinite) ?: 0f
+        val panY = current.panY.takeIf(Float::isFinite) ?: 0f
+        val rotation = current.rotationDegrees.takeIf(Float::isFinite)?.let(::normalizeDegrees) ?: 0f
+        return ViewportState(scale, panX, panY, rotation)
+    }
 
     private fun rotate(x: Float, y: Float, degrees: Float): Pair<Float, Float> {
         val radians = Math.toRadians(degrees.toDouble())

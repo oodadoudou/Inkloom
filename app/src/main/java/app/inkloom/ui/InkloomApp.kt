@@ -988,10 +988,10 @@ private fun EditorScreen(
     var saveWorkspaceOpen by remember { mutableStateOf(false) }
     var manageWorkspacesOpen by remember { mutableStateOf(false) }
     var newWorkspaceName by remember { mutableStateOf("") }
-    var zoom by remember { mutableFloatStateOf(1f) }
-    var panX by remember { mutableFloatStateOf(0f) }
-    var panY by remember { mutableFloatStateOf(0f) }
-    var viewRotation by remember { mutableFloatStateOf(0f) }
+    var zoom by remember(document.id) { mutableFloatStateOf(1f) }
+    var panX by remember(document.id) { mutableFloatStateOf(0f) }
+    var panY by remember(document.id) { mutableFloatStateOf(0f) }
+    var viewRotation by remember(document.id) { mutableFloatStateOf(0f) }
     var viewportWidthPx by remember { mutableFloatStateOf(0f) }
     var viewportHeightPx by remember { mutableFloatStateOf(0f) }
     fun currentViewportGeometry(): ViewportGeometry? {
@@ -1000,6 +1000,23 @@ private fun EditorScreen(
         return ViewportGeometry(viewportWidthPx, viewportHeightPx, view.width.toFloat(), view.height.toFloat())
     }
     fun applyViewport(next: ViewportState) { zoom = next.scale; panX = next.panX; panY = next.panY; viewRotation = next.rotationDegrees }
+    val pageViewportStore = remember(document.id) { PageViewportStore() }
+    var viewportPageId by remember(document.id) { mutableStateOf(selectedPage.id) }
+    fun selectPageWithViewport(pageId: String) {
+        if (pageId == viewportPageId) { onSelectPage(pageId); return }
+        pageViewportStore.save(viewportPageId, ViewportState(zoom, panX, panY, viewRotation))
+        applyViewport(pageViewportStore.restore(pageId))
+        viewportPageId = pageId
+        onSelectPage(pageId)
+    }
+    LaunchedEffect(selectedPage.id) {
+        if (selectedPage.id != viewportPageId) {
+            pageViewportStore.save(viewportPageId, ViewportState(zoom, panX, panY, viewRotation))
+            applyViewport(pageViewportStore.restore(selectedPage.id))
+            viewportPageId = selectedPage.id
+        }
+    }
+    LaunchedEffect(document.pages.map(InkPage::id)) { pageViewportStore.retainPages(document.pages.map(InkPage::id).toSet()) }
     fun fitPage() { applyViewport(ViewportState(1f, 0f, 0f, 0f)); exitCanvasNavigation() }
     fun actualSize() {
         val view = canvasView ?: return
@@ -1229,7 +1246,7 @@ private fun EditorScreen(
             Box {
                 IconButton(onClick = { exportMenu = true }) { Icon(Icons.Outlined.MoreHoriz, tr("More exports", "更多导出选项")) }
                 DropdownMenu(expanded = exportMenu, onDismissRequest = { exportMenu = false }) {
-                    document.pages.forEachIndexed { index, page -> DropdownMenuItem(text = { Text(tr("Go to page ${index + 1}", "前往第 ${index + 1} 页")) }, onClick = { exportMenu = false; onSelectPage(page.id) }) }
+                    document.pages.forEachIndexed { index, page -> DropdownMenuItem(text = { Text(tr("Go to page ${index + 1}", "前往第 ${index + 1} 页")) }, onClick = { exportMenu = false; selectPageWithViewport(page.id) }) }
                     HorizontalDivider()
                     DropdownMenuItem(text = { Text(tr("Export current page PNG", "将当前页导出为 PNG")) }, onClick = { exportMenu = false; onExportPage() })
                     DropdownMenuItem(text = { Text(tr("Export editable Inkloom package", "导出可编辑 Inkloom 文件")) }, onClick = { exportMenu = false; onExportBundle() })
@@ -1587,7 +1604,7 @@ private fun EditorScreen(
                 onDock = { changePanelDock(WorkspacePanelKind.PAGES, it) },
                 onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
                 pageTemplates = pageTemplates,
-                onSelect = onSelectPage, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
+                onSelect = ::selectPageWithViewport, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
                 onApplyTemplate = onApplyPageTemplate, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
                 onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate,
                 onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
@@ -1719,7 +1736,7 @@ private fun EditorScreen(
                         document.pages.firstOrNull { it.id == link.destinationPageId }?.let { target ->
                             searchFocus = null
                             pdfLinkFocus = target.id to PdfGotoLinkNavigation.destinationBounds(link)
-                            onSelectPage(target.id)
+                            selectPageWithViewport(target.id)
                             if (link.destinationZoom > 0f) zoom = link.destinationZoom.coerceIn(1f, 8f)
                         }
                     },
@@ -1930,8 +1947,8 @@ private fun EditorScreen(
                             ShortcutAction.ACTUAL_SIZE -> actualSize()
                             ShortcutAction.FIT_WIDTH -> fitWidth()
                             ShortcutAction.RESET_VIEW_ROTATION -> resetViewRotation()
-                            ShortcutAction.PREVIOUS_PAGE -> document.pages.indexOfFirst { it.id == selectedPage.id }.takeIf { it > 0 }?.let { onSelectPage(document.pages[it - 1].id) }
-                            ShortcutAction.NEXT_PAGE -> document.pages.indexOfFirst { it.id == selectedPage.id }.takeIf { it in 0 until document.pages.lastIndex }?.let { onSelectPage(document.pages[it + 1].id) }
+                            ShortcutAction.PREVIOUS_PAGE -> document.pages.indexOfFirst { it.id == selectedPage.id }.takeIf { it > 0 }?.let { selectPageWithViewport(document.pages[it - 1].id) }
+                            ShortcutAction.NEXT_PAGE -> document.pages.indexOfFirst { it.id == selectedPage.id }.takeIf { it in 0 until document.pages.lastIndex }?.let { selectPageWithViewport(document.pages[it + 1].id) }
                             ShortcutAction.TOGGLE_BRUSH_PANEL -> onToggleBrushes()
                             ShortcutAction.TOGGLE_LAYER_PANEL -> {
                                 val open = !layersOpen
@@ -2046,7 +2063,7 @@ private fun EditorScreen(
                 onDock = { changePanelDock(WorkspacePanelKind.PAGES, it) },
                 onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
                 pageTemplates = pageTemplates,
-                onSelect = onSelectPage, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
+                onSelect = ::selectPageWithViewport, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
                 onApplyTemplate = onApplyPageTemplate, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
                 onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate,
                 onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
@@ -2167,7 +2184,7 @@ private fun EditorScreen(
                     onDock = { changePanelDock(WorkspacePanelKind.PAGES, it) },
                     onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
                     pageTemplates = pageTemplates,
-                    onSelect = onSelectPage, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
+                    onSelect = ::selectPageWithViewport, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
                     onApplyTemplate = onApplyPageTemplate, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
                     onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate,
                     onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
@@ -2305,7 +2322,7 @@ private fun EditorScreen(
                 onDock = { changePanelDock(WorkspacePanelKind.PAGES, it) },
                 onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
                 pageTemplates = pageTemplates,
-                onSelect = onSelectPage, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
+                onSelect = ::selectPageWithViewport, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
                 onApplyTemplate = onApplyPageTemplate, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
                 onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate,
                 onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
@@ -2589,7 +2606,7 @@ private fun EditorScreen(
                             supportingContent = { Text(listOfNotNull(page.customNumber, page.tags.takeIf { it.isNotEmpty() }?.joinToString(" · ")).joinToString(" · ").ifBlank { tr("Page ${index + 1}", "第 ${index + 1} 页") }, color = MutedInk, maxLines = 1) },
                             leadingContent = { if (page.bookmarked) Icon(Icons.Default.Bookmark, tr("Bookmarked", "已收藏"), tint = Sage) else Text((index + 1).toString(), color = MutedInk) },
                             trailingContent = { if (hasChildren) IconButton(onClick = { onTogglePageOutlineCollapsed(document.id, page.id) }) { Icon(if (page.outlineCollapsed) Icons.Default.ArrowRight else Icons.Default.ArrowDropDown, if (page.outlineCollapsed) tr("Expand", "展开") else tr("Collapse", "折叠")) } },
-                            modifier = Modifier.padding(start = (page.outlineLevel * 18).dp).clickable { onSelectPage(page.id); outlineOpen = false },
+                            modifier = Modifier.padding(start = (page.outlineLevel * 18).dp).clickable { selectPageWithViewport(page.id); outlineOpen = false },
                             colors = ListItemDefaults.colors(containerColor = if (page.id == selectedPage.id) SageContainer else Color.Transparent),
                         )
                     }
@@ -2620,7 +2637,7 @@ private fun EditorScreen(
                         headlineContent = { Text(page.title) },
                         supportingContent = { Text(hit.snippet, maxLines = 2) },
                         leadingContent = { Text(when (hit.source) { PageSearchSource.PDF -> "PDF"; PageSearchSource.OBJECT -> "OBJ"; PageSearchSource.PAGE -> "PAGE" }, color = Sage, fontSize = 9.sp) },
-                        modifier = Modifier.clickable { searchFocus = hit; onSelectPage(page.id); searchOpen = false },
+                        modifier = Modifier.clickable { searchFocus = hit; selectPageWithViewport(page.id); searchOpen = false },
                     )
                 } }
             } },

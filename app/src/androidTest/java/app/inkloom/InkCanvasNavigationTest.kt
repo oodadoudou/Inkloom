@@ -7,6 +7,9 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.model.EditorTool
+import app.inkloom.document.ViewportGeometry
+import app.inkloom.document.ViewportState
+import app.inkloom.document.ViewportTransform
 import app.inkloom.settings.ShortcutAction
 import app.inkloom.settings.ShortcutActivation
 import app.inkloom.settings.ShortcutBinding
@@ -90,6 +93,38 @@ class InkCanvasNavigationTest {
 
         assertTrue("Two-finger translation should pan horizontally", panX >= 39f)
         assertTrue("Two-finger translation should pan vertically", panY >= 24f)
+    }
+
+    @Test fun pinchPanAndMinimumZoomRemainFiniteRecoverableAndInkFree() {
+        val view = canvas().apply { fingerDrawingEnabled = false }
+        val geometry = ViewportGeometry(1000f, 1000f, 700f, 900f)
+        var state = ViewportState(1f, 0f, 0f)
+        var committed = 0
+        view.onStrokeCommitted = { committed++ }
+        view.onViewportScale = { factor, focusX, focusY -> state = ViewportTransform.zoomAround(state, factor, focusX, focusY, geometry = geometry) }
+        view.onViewportPan = { dx, dy -> state = ViewportTransform.panBy(state, dx, dy, geometry = geometry) }
+
+        send(view, 0L, MotionEvent.ACTION_DOWN, point(0, 400f, 500f))
+        send(view, 10L, MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), point(0, 350f, 500f), point(1, 650f, 500f))
+        send(view, 30L, MotionEvent.ACTION_MOVE, point(0, 250f, 470f), point(1, 750f, 470f))
+        send(view, 50L, MotionEvent.ACTION_MOVE, point(0, 210f, 520f), point(1, 790f, 520f))
+
+        assertTrue("Pinch must enlarge the page; state=$state", state.scale > 1.05f)
+        assertTrue(state.scale.isFinite() && state.panX.isFinite() && state.panY.isFinite())
+
+        send(view, 70L, MotionEvent.ACTION_MOVE, point(0, 300f, 500f), point(1, 700f, 500f))
+        send(view, 90L, MotionEvent.ACTION_MOVE, point(0, 380f, 500f), point(1, 620f, 500f))
+        send(view, 110L, MotionEvent.ACTION_MOVE, point(0, 430f, 500f), point(1, 570f, 500f))
+        send(view, 130L, MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), point(0, 430f, 500f), point(1, 570f, 500f))
+        send(view, 140L, MotionEvent.ACTION_MOVE, point(0, 470f, 530f))
+        send(view, 150L, MotionEvent.ACTION_UP, point(0, 470f, 530f))
+
+        assertTrue(state.scale.isFinite() && state.panX.isFinite() && state.panY.isFinite())
+        state = ViewportTransform.zoomAround(state, .01f, -320f, 180f, geometry = geometry)
+        assertEquals(1f, state.scale, .001f)
+        assertEquals(0f, state.panX, .001f)
+        assertEquals(0f, state.panY, .001f)
+        assertEquals("Navigation sequence must never commit ink", 0, committed)
     }
 
     @Test fun secondFingerCancelsAnInProgressFingerStrokeBeforeNavigation() {
@@ -452,8 +487,12 @@ class InkCanvasNavigationTest {
             MotionEvent.PointerCoords().apply { this.x = x; this.y = y; pressure = 1f; size = .1f; touchMajor = 8f }
 
     private fun send(view: InkCanvasView, time: Long, action: Int, vararg points: Pair<MotionEvent.PointerProperties, MotionEvent.PointerCoords>) {
+        sendAt(view, 0L, time, action, *points)
+    }
+
+    private fun sendAt(view: InkCanvasView, downTime: Long, time: Long, action: Int, vararg points: Pair<MotionEvent.PointerProperties, MotionEvent.PointerCoords>) {
         val event = MotionEvent.obtain(
-            0L,
+            downTime,
             time,
             action,
             points.size,

@@ -99,4 +99,31 @@ class ViewportTransformTest {
         assertEquals(900f, after.panX, .001f)
         assertEquals(-700f, after.panY, .001f)
     }
+
+    @Test fun invalidGestureValuesCanNeverPoisonTheViewport() {
+        val poisoned = ViewportState(Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY, Float.NaN)
+        val zoomed = ViewportTransform.zoomAround(poisoned, Float.NaN, Float.POSITIVE_INFINITY, Float.NaN)
+        val panned = ViewportTransform.panBy(poisoned, Float.NaN, Float.POSITIVE_INFINITY, maximumPan = Float.NaN)
+
+        assertEquals(ViewportState(1f, 0f, 0f, 0f), zoomed)
+        assertEquals(ViewportState(1f, 0f, 0f, 0f), panned)
+    }
+
+    @Test fun rotatedCanvasCanPanAtMinimumZoomToReachClippedCorners() {
+        val geometry = ViewportGeometry(viewportWidth = 900f, viewportHeight = 700f, pageWidth = 600f, pageHeight = 850f)
+        val after = ViewportTransform.panBy(ViewportState(1f, 0f, 0f, 90f), 24f, 12f, geometry = geometry)
+
+        assertEquals(-12f, after.panX, .001f)
+        assertEquals(24f, after.panY, .001f)
+    }
+
+    @Test fun repeatedExtremePinchesAlwaysReturnToCenteredFit() {
+        val geometry = ViewportGeometry(viewportWidth = 1200f, viewportHeight = 800f, pageWidth = 600f, pageHeight = 760f)
+        var state = ViewportState(1f, 0f, 0f)
+        repeat(20) { state = ViewportTransform.zoomAround(state, 1.7f, 480f, -260f, geometry = geometry) }
+        state = ViewportTransform.panBy(state, 100_000f, -100_000f, geometry = geometry)
+        repeat(20) { state = ViewportTransform.zoomAround(state, .4f, -520f, 310f, geometry = geometry) }
+
+        assertEquals(ViewportState(1f, 0f, 0f), state)
+    }
 }
