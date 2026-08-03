@@ -100,6 +100,11 @@ import app.inkloom.settings.ShortcutBrushSelection
 import app.inkloom.settings.category
 import app.inkloom.settings.StylusButtonAction
 import app.inkloom.settings.ToolbarDock
+import app.inkloom.settings.ToolboxQuickSlot
+import app.inkloom.settings.ToolboxQuickSlotKind
+import app.inkloom.settings.ToolboxQuickSlots
+import app.inkloom.settings.applyToolboxWorkspace
+import app.inkloom.settings.captureToolboxWorkspace
 import app.inkloom.settings.UiLanguage
 import app.inkloom.settings.WorkspacePanelDock
 import app.inkloom.settings.WorkspacePanelBounds
@@ -385,7 +390,7 @@ fun InkloomApp(initialIntent: Intent?) {
     }
     val shortcutProfileExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(ShortcutProfileCodec.MIME_TYPE)) { uri ->
         if (uri != null) runCatching {
-            val profile = ShortcutProfile(settings.shortcutBindings, settings.shortcutBrushGroupTargets)
+            val profile = ShortcutProfile(settings.shortcutBindings, settings.shortcutBrushGroupTargets, settings.toolboxQuickSlots)
             context.contentResolver.openOutputStream(uri, "wt")?.use { output -> output.write(ShortcutProfileCodec.encode(profile)) }
                 ?: error("Unable to open the shortcut profile destination.")
             Toast.makeText(context, settings.language.text("Shortcut profile saved.", "快捷键配置已保存。"), Toast.LENGTH_LONG).show()
@@ -395,7 +400,7 @@ fun InkloomApp(initialIntent: Intent?) {
         if (uri != null) runCatching {
             val imported = context.contentResolver.openInputStream(uri)?.use { ShortcutProfileCodec.decodeProfile(it).getOrThrow() }
                 ?: error("Unable to open the shortcut profile.")
-            updateSettings(settings.copy(shortcutBindings = imported.bindings, shortcutBrushGroupTargets = imported.brushGroupTargets))
+            updateSettings(settings.copy(shortcutBindings = imported.bindings, shortcutBrushGroupTargets = imported.brushGroupTargets, toolboxQuickSlots = imported.quickSlots))
             Toast.makeText(context, settings.language.text("Shortcut profile restored.", "快捷键配置已恢复。"), Toast.LENGTH_LONG).show()
         }.onFailure { importError = it.message }
     }
@@ -553,6 +558,7 @@ fun InkloomApp(initialIntent: Intent?) {
     }
     if (settingsOpen) SettingsDialog(
         settings,
+        brushes = importedBrushes,
         brushGroups = brushGroups,
         onChange = ::updateSettings,
         onExportBackup = { libraryBackupExportPicker.launch("Inkloom-library-backup.inkloom-backup.zip") },
@@ -845,6 +851,8 @@ private fun EditorScreen(
     var previousDrawingBrushId by remember { mutableStateOf<String?>(null) }
     var previousDrawingSize by remember { mutableFloatStateOf(settings.penSize) }
     var previousDrawingOpacity by remember { mutableFloatStateOf(settings.penOpacity) }
+    var previousDrawingColor by remember { mutableIntStateOf(AndroidColor.rgb(17, 17, 17)) }
+    var quickSlotWorkspaceBeforeHold by remember { mutableStateOf<app.inkloom.settings.ToolboxWorkspaceSnapshot?>(null) }
     var handToolEnabled by remember { mutableStateOf(false) }
     var handToolHeld by remember { mutableStateOf(false) }
     var rotateToolEnabled by remember { mutableStateOf(false) }
@@ -1194,6 +1202,7 @@ private fun EditorScreen(
                             previousDrawingBrushId = activeBrush?.id
                             previousDrawingSize = brushSize
                             previousDrawingOpacity = brushOpacity
+                            previousDrawingColor = brushColor
                         }
 
                         fun restorePreviousDrawingTool() {
@@ -1203,6 +1212,7 @@ private fun EditorScreen(
                             selectedBrushId = restoredBrush?.id
                             brushSize = previousDrawingSize
                             brushOpacity = previousDrawingOpacity
+                            brushColor = previousDrawingColor
                         }
 
                         fun enterEraser() {
@@ -1225,11 +1235,54 @@ private fun EditorScreen(
                             }
                         }
 
+                        fun applyWorkspaceSnapshot(snapshot: app.inkloom.settings.ToolboxWorkspaceSnapshot) {
+                            val restored = settings.applyToolboxWorkspace(snapshot)
+                            if (brushesOpen != restored.showBrushPanel) onToggleBrushes()
+                            layersOpen = restored.showLayerPanel
+                            onSettingsChange(restored)
+                        }
+
+                        fun applyQuickSlot(index: Int, temporary: Boolean) {
+                            val slot = ToolboxQuickSlots.normalize(settings.toolboxQuickSlots)[index]
+                            when (slot.kind) {
+                                ToolboxQuickSlotKind.EMPTY -> Unit
+                                ToolboxQuickSlotKind.BRUSH, ToolboxQuickSlotKind.BRUSH_GROUP -> {
+                                    if (temporary) rememberDrawingSelection()
+                                    ToolboxQuickSlots.preferredBrush(slot, brushes)?.let(::selectImportedBrush)
+                                }
+                                ToolboxQuickSlotKind.TOOL_PRESET -> {
+                                    if (temporary) rememberDrawingSelection()
+                                    val selected = ToolboxQuickSlots.preferredBrush(slot, brushes)
+                                    if (slot.brushId.isBlank()) {
+                                        selectedBrushId = null
+                                        activeBrush = null
+                                        tool = EditorTool.PEN
+                                        activeLayerId = LayerIds.INK
+                                    } else selected?.let(::selectImportedBrush) ?: return
+                                    brushSize = slot.size
+                                    brushOpacity = slot.opacity
+                                    brushColor = slot.colorArgb
+                                }
+                                ToolboxQuickSlotKind.WORKSPACE -> slot.workspace?.let { workspace ->
+                                    if (temporary) quickSlotWorkspaceBeforeHold = settings.captureToolboxWorkspace()
+                                    applyWorkspaceSnapshot(workspace)
+                                }
+                            }
+                        }
+
                         if (activation.phase == ShortcutPhase.RELEASE) {
                             if (activation.trigger == ShortcutTrigger.HOLD && action == ShortcutAction.HAND_TOOL) handToolHeld = false
                             if (activation.trigger == ShortcutTrigger.HOLD && action == ShortcutAction.ROTATE_VIEW_TOOL) rotateToolHeld = false
                             if (activation.trigger == ShortcutTrigger.HOLD && action == ShortcutAction.TOGGLE_ERASER && tool == EditorTool.ERASER) restorePreviousDrawingTool()
                             if (activation.trigger == ShortcutTrigger.HOLD && action in setOf(ShortcutAction.PEN_OR_PENCIL_GROUP, ShortcutAction.PEN_GROUP, ShortcutAction.PENCIL_GROUP, ShortcutAction.BRUSH_GROUP, ShortcutAction.HIGHLIGHTER_TOOL, ShortcutAction.SELECT_TOOL)) restorePreviousDrawingTool()
+                            if (activation.trigger == ShortcutTrigger.HOLD) ToolboxQuickSlots.indexOf(action)?.let { index ->
+                                val slot = ToolboxQuickSlots.normalize(settings.toolboxQuickSlots)[index]
+                                when (slot.kind) {
+                                    ToolboxQuickSlotKind.BRUSH, ToolboxQuickSlotKind.BRUSH_GROUP, ToolboxQuickSlotKind.TOOL_PRESET -> restorePreviousDrawingTool()
+                                    ToolboxQuickSlotKind.WORKSPACE -> quickSlotWorkspaceBeforeHold?.let(::applyWorkspaceSnapshot).also { quickSlotWorkspaceBeforeHold = null }
+                                    ToolboxQuickSlotKind.EMPTY -> Unit
+                                }
+                            }
                         } else when (action) {
                             ShortcutAction.PEN_OR_PENCIL_GROUP -> {
                                 exitCanvasNavigation()
@@ -1312,7 +1365,7 @@ private fun EditorScreen(
                             }
                             ShortcutAction.SAVE_CHECKPOINT -> Toast.makeText(context, allChangesSavedMessage, Toast.LENGTH_SHORT).show()
                             ShortcutAction.QUICK_SLOT_1, ShortcutAction.QUICK_SLOT_2, ShortcutAction.QUICK_SLOT_3, ShortcutAction.QUICK_SLOT_4,
-                            ShortcutAction.QUICK_SLOT_5, ShortcutAction.QUICK_SLOT_6, ShortcutAction.QUICK_SLOT_7, ShortcutAction.QUICK_SLOT_8 -> Unit
+                            ShortcutAction.QUICK_SLOT_5, ShortcutAction.QUICK_SLOT_6, ShortcutAction.QUICK_SLOT_7, ShortcutAction.QUICK_SLOT_8 -> ToolboxQuickSlots.indexOf(action)?.let { applyQuickSlot(it, activation.trigger == ShortcutTrigger.HOLD) }
                         }
                     },
                 )
@@ -3891,6 +3944,7 @@ private fun PressureCurveEditor(label: String, points: List<BrushCurvePoint>, on
 @Composable
 private fun SettingsDialog(
     settings: AppSettings,
+    brushes: List<ImportedBrush>,
     brushGroups: List<String>,
     onChange: (AppSettings) -> Unit,
     onExportBackup: () -> Unit,
@@ -3952,23 +4006,24 @@ private fun SettingsDialog(
             }
         },
     )
-    if (shortcutEditorOpen) ShortcutEditorDialog(settings, brushGroups, onChange, onExportShortcuts, onImportShortcuts, onDismiss = { shortcutEditorOpen = false })
+    if (shortcutEditorOpen) ShortcutEditorDialog(settings, brushes, brushGroups, onChange, onExportShortcuts, onImportShortcuts, onDismiss = { shortcutEditorOpen = false })
 }
 
 @Composable
-private fun ShortcutEditorDialog(settings: AppSettings, brushGroups: List<String>, onChange: (AppSettings) -> Unit, onExportShortcuts: () -> Unit, onImportShortcuts: () -> Unit, onDismiss: () -> Unit) {
+private fun ShortcutEditorDialog(settings: AppSettings, brushes: List<ImportedBrush>, brushGroups: List<String>, onChange: (AppSettings) -> Unit, onExportShortcuts: () -> Unit, onImportShortcuts: () -> Unit, onDismiss: () -> Unit) {
     var listeningFor by remember { mutableStateOf<ShortcutAction?>(null) }
     var captureMode by remember { mutableStateOf(ShortcutMatchMode.KEY_CODE) }
     var captureTrigger by remember { mutableStateOf(ShortcutTrigger.PRESS) }
     var deviceSpecific by remember { mutableStateOf(false) }
     var search by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf<ShortcutCategory?>(null) }
+    var quickSlotsOpen by remember { mutableStateOf(false) }
     val language = LocalUiLanguage.current
     val groupedActions = ShortcutCategory.entries.mapNotNull { category ->
         if (selectedCategory != null && selectedCategory != category) return@mapNotNull null
         val matches = ShortcutAction.entries.filter { action ->
             action.category() == category && (search.isBlank() || listOf(
-                shortcutActionLabel(action, language),
+                shortcutActionDisplayLabel(action, settings, language),
                 shortcutCategoryLabel(category, language),
                 action.name,
                 settings.shortcutBindings.filter { it.action == action }.joinToString(" ") { CspShortcutResolver.display(it.chord) },
@@ -4051,6 +4106,11 @@ private fun ShortcutEditorDialog(settings: AppSettings, brushGroups: List<String
                                 },
                             )
                         }
+                        OutlinedButton(onClick = { quickSlotsOpen = true }, modifier = Modifier.fillMaxWidth()) {
+                            Icon(Icons.Outlined.DashboardCustomize, null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(tr("Configure 8 quick slots", "配置 8 个快速槽"))
+                        }
                     }
                 }
                 groupedActions.forEach { (category, actions) ->
@@ -4066,7 +4126,7 @@ private fun ShortcutEditorDialog(settings: AppSettings, brushGroups: List<String
                             }
                         }
                         ListItem(
-                            headlineContent = { Text(shortcutActionLabel(action, language), fontSize = 13.sp) },
+                            headlineContent = { Text(shortcutActionDisplayLabel(action, settings, language), fontSize = 13.sp) },
                             supportingContent = { Text(if (listeningFor == action) tr("Press a key combination…", "请按组合键…") else chords.joinToString(" / ").ifBlank { tr("Not assigned", "未分配") }, color = if (listeningFor == action) Sage else MutedInk) },
                             trailingContent = {
                                 Row {
@@ -4103,6 +4163,7 @@ private fun ShortcutEditorDialog(settings: AppSettings, brushGroups: List<String
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text(tr("Done", "完成")) } },
     )
+    if (quickSlotsOpen) ToolboxQuickSlotEditorDialog(settings, brushes, brushGroups, onChange, onDismiss = { quickSlotsOpen = false })
 }
 
 @Composable
@@ -4134,6 +4195,171 @@ private fun ShortcutBrushGroupTargetRow(group: ShortcutBrushGroup, selectedPath:
             }
         }
     }
+}
+
+@Composable
+private fun ToolboxQuickSlotEditorDialog(
+    settings: AppSettings,
+    brushes: List<ImportedBrush>,
+    brushGroups: List<String>,
+    onChange: (AppSettings) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var selectedIndex by remember { mutableIntStateOf(0) }
+    val slots = ToolboxQuickSlots.normalize(settings.toolboxQuickSlots)
+    val slot = slots[selectedIndex]
+    fun updateSlot(value: ToolboxQuickSlot) {
+        val updated = slots.toMutableList().also { it[selectedIndex] = ToolboxQuickSlots.normalize(value) }
+        onChange(settings.copy(toolboxQuickSlots = updated))
+    }
+    var colorText by remember(selectedIndex, slot.colorArgb) { mutableStateOf("#%06X".format(slot.colorArgb and 0xFFFFFF)) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(tr("Toolbox quick slots", "Toolbox 快速槽")) },
+        text = {
+            LazyColumn(Modifier.widthIn(min = 380.dp, max = 560.dp).heightIn(max = 560.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                item {
+                    Text(
+                        tr("Bind a Toolbox key to Quick slot 1–8 in the shortcut list, then choose what the slot restores here.", "先在快捷键列表中为快速槽 1–8 绑定 Toolbox 按键，再在此选择快速槽恢复的内容。"),
+                        color = MutedInk,
+                        fontSize = 12.sp,
+                    )
+                }
+                item {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(ToolboxQuickSlots.COUNT) { index ->
+                            FilterChip(
+                                selected = selectedIndex == index,
+                                onClick = { selectedIndex = index },
+                                label = { Text(tr("Slot ${index + 1}", "槽 ${index + 1}")) },
+                            )
+                        }
+                    }
+                }
+                item {
+                    OutlinedTextField(
+                        value = slot.label,
+                        onValueChange = { updateSlot(slot.copy(label = it)) },
+                        label = { Text(tr("Slot label", "快速槽名称")) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                item {
+                    Text(tr("RESTORE", "恢复内容"), color = MutedInk, fontSize = 11.sp)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(ToolboxQuickSlotKind.entries, key = { it.name }) { kind ->
+                            FilterChip(
+                                selected = slot.kind == kind,
+                                onClick = { updateSlot(slot.copy(kind = kind)) },
+                                label = { Text(toolboxQuickSlotKindLabel(kind)) },
+                            )
+                        }
+                    }
+                }
+                when (slot.kind) {
+                    ToolboxQuickSlotKind.EMPTY -> item { Text(tr("This slot is empty. Its shortcut is ignored safely.", "此快速槽为空；对应快捷键会被安全忽略。"), color = MutedInk, fontSize = 12.sp) }
+                    ToolboxQuickSlotKind.BRUSH -> item {
+                        ToolboxQuickSlotDropdown(
+                            label = tr("Brush", "笔刷"),
+                            selected = brushes.firstOrNull { it.id == slot.brushId }?.name.orEmpty(),
+                            choices = brushes.filterNot(ImportedBrush::hidden).map { it.id to "${it.groupName.ifBlank { tr("Ungrouped", "未分组") }} / ${it.name}" },
+                            onSelect = { updateSlot(slot.copy(brushId = it)) },
+                        )
+                    }
+                    ToolboxQuickSlotKind.BRUSH_GROUP -> item {
+                        ToolboxQuickSlotDropdown(
+                            label = tr("Brush group", "笔刷组"),
+                            selected = slot.groupPath,
+                            choices = brushGroups.map { it to it },
+                            onSelect = { updateSlot(slot.copy(groupPath = it)) },
+                        )
+                    }
+                    ToolboxQuickSlotKind.TOOL_PRESET -> {
+                        item {
+                            ToolboxQuickSlotDropdown(
+                                label = tr("Brush", "笔刷"),
+                                selected = brushes.firstOrNull { it.id == slot.brushId }?.name ?: tr("System pen", "系统钢笔"),
+                                choices = listOf("" to tr("System pen", "系统钢笔")) + brushes.filterNot(ImportedBrush::hidden).map { it.id to "${it.groupName.ifBlank { tr("Ungrouped", "未分组") }} / ${it.name}" },
+                                onSelect = { updateSlot(slot.copy(brushId = it)) },
+                            )
+                        }
+                        item { BrushSettingSlider(tr("Size", "大小"), slot.size, .5f..400f) { updateSlot(slot.copy(size = it)) } }
+                        item { BrushSettingSlider(tr("Opacity", "不透明度"), slot.opacity, .05f..1f) { updateSlot(slot.copy(opacity = it)) } }
+                        item {
+                            OutlinedTextField(
+                                value = colorText,
+                                onValueChange = { raw ->
+                                    colorText = raw.take(9)
+                                    val hex = raw.removePrefix("#")
+                                    if (hex.length == 6) hex.toLongOrNull(16)?.let { rgb -> updateSlot(slot.copy(colorArgb = (0xFF000000L or rgb).toInt())) }
+                                    if (hex.length == 8) hex.toLongOrNull(16)?.let { argb -> updateSlot(slot.copy(colorArgb = argb.toInt())) }
+                                },
+                                label = { Text(tr("Color (#RRGGBB)", "颜色（#RRGGBB）")) },
+                                singleLine = true,
+                                leadingIcon = { Box(Modifier.size(20.dp).background(Color(slot.colorArgb), CircleShape).border(1.dp, OutlineSoft, CircleShape)) },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
+                    ToolboxQuickSlotKind.WORKSPACE -> item {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                if (slot.workspace == null) tr("No workspace captured yet.", "尚未保存工作区。") else tr("A complete panel and toolbar layout is stored in this slot.", "此快速槽已保存完整面板与工具栏布局。"),
+                                color = MutedInk,
+                                fontSize = 12.sp,
+                            )
+                            Button(onClick = { updateSlot(slot.copy(workspace = settings.captureToolboxWorkspace())) }, modifier = Modifier.fillMaxWidth()) {
+                                Icon(Icons.Outlined.PhotoCamera, null)
+                                Spacer(Modifier.width(8.dp))
+                                Text(tr("Capture current workspace", "保存当前工作区"))
+                            }
+                        }
+                    }
+                }
+                item {
+                    OutlinedButton(onClick = { updateSlot(ToolboxQuickSlot()) }, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Outlined.Clear, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(tr("Clear this slot", "清空此快速槽"))
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(tr("Done", "完成")) } },
+    )
+}
+
+@Composable
+private fun ToolboxQuickSlotDropdown(label: String, selected: String, choices: List<Pair<String, String>>, onSelect: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box(Modifier.fillMaxWidth()) {
+        OutlinedButton(
+            onClick = { expanded = true },
+            enabled = choices.isNotEmpty(),
+            modifier = Modifier.fillMaxWidth().semantics { contentDescription = "$label quick slot value" },
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(label, color = MutedInk, fontSize = 10.sp)
+                Text(selected.ifBlank { tr("Choose…", "请选择…") }, maxLines = 1)
+            }
+            Icon(Icons.Outlined.ArrowDropDown, null)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            choices.forEach { (value, name) ->
+                DropdownMenuItem(text = { Text(name) }, onClick = { onSelect(value); expanded = false })
+            }
+        }
+    }
+}
+
+@Composable
+private fun toolboxQuickSlotKindLabel(kind: ToolboxQuickSlotKind): String = when (kind) {
+    ToolboxQuickSlotKind.EMPTY -> tr("Empty", "空")
+    ToolboxQuickSlotKind.BRUSH -> tr("Brush", "笔刷")
+    ToolboxQuickSlotKind.BRUSH_GROUP -> tr("Group", "笔刷组")
+    ToolboxQuickSlotKind.TOOL_PRESET -> tr("Tool preset", "工具预设")
+    ToolboxQuickSlotKind.WORKSPACE -> tr("Workspace", "工作区")
 }
 
 private fun shortcutCategoryLabel(category: ShortcutCategory, language: UiLanguage): String = when (category) {
@@ -4197,6 +4423,13 @@ private fun shortcutActionLabel(action: ShortcutAction, language: UiLanguage): S
         val number = app.inkloom.settings.ToolboxQuickSlots.indexOf(action)?.plus(1) ?: 1
         language.text("Quick slot $number", "快速槽 $number")
     }
+}
+
+private fun shortcutActionDisplayLabel(action: ShortcutAction, settings: AppSettings, language: UiLanguage): String {
+    val base = shortcutActionLabel(action, language)
+    val index = ToolboxQuickSlots.indexOf(action) ?: return base
+    val custom = ToolboxQuickSlots.normalize(settings.toolboxQuickSlots)[index].label
+    return if (custom.isBlank()) base else "$base · $custom"
 }
 
 @Composable

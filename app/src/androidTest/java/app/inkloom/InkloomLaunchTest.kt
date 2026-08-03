@@ -23,6 +23,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.compose.ui.geometry.Offset
 import app.inkloom.importer.BrushGroupStore
 import app.inkloom.settings.AppSettingsStore
+import app.inkloom.settings.ToolboxQuickSlotKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -52,6 +53,7 @@ class InkloomLaunchTest {
                     .remove("shortcutPenGroup")
                     .remove("shortcutPencilGroup")
                     .remove("shortcutBrushGroup")
+                    .remove("toolboxQuickSlots")
                     .commit()
                 BrushGroupStore(ApplicationProvider.getApplicationContext()).save(
                     listOf("Toolbox/Pens", "Toolbox/Pencils", "Toolbox/Brushes"),
@@ -93,7 +95,7 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("Customize shortcuts").performClick()
         composeRule.onNodeWithText("Search actions or keys").assertIsDisplayed()
         composeRule.onNodeWithText("Brush groups").assertIsDisplayed()
-        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true))).performScrollToIndex(55)
+        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true))).performScrollToIndex(65)
 
         composeRule.onNodeWithText("Import profile").assertIsDisplayed()
         composeRule.onNodeWithText("Export profile").assertIsDisplayed()
@@ -110,6 +112,23 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("Toolbox/Pens").performClick()
 
         assertEquals("Toolbox/Pens", AppSettingsStore(composeRule.activity).load().shortcutBrushGroupTargets.pen)
+    }
+
+    @Test fun shortcutEditorConfiguresAnArbitraryGroupQuickSlot() {
+        composeRule.onNodeWithContentDescription("Settings").performClick()
+        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Draw with finger"))).performScrollToIndex(29)
+        composeRule.onNodeWithText("Customize shortcuts").performClick()
+        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true))).performScrollToIndex(4)
+        composeRule.onNodeWithText("Configure 8 quick slots").performClick()
+
+        composeRule.onNodeWithText("Toolbox quick slots").assertIsDisplayed()
+        composeRule.onNodeWithText("Group").performClick()
+        composeRule.onNodeWithContentDescription("Brush group quick slot value").performClick()
+        composeRule.onNodeWithText("Toolbox/Pens").performClick()
+
+        val slot = AppSettingsStore(composeRule.activity).load().toolboxQuickSlots.first()
+        assertEquals(ToolboxQuickSlotKind.BRUSH_GROUP, slot.kind)
+        assertEquals("Toolbox/Pens", slot.groupPath)
     }
 
     @Test fun stickyNoteDoubleTapOpensItsInkSubcanvas() {

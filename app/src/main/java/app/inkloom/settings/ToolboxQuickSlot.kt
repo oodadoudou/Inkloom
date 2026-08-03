@@ -1,5 +1,6 @@
 package app.inkloom.settings
 
+import app.inkloom.model.ImportedBrush
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -58,6 +59,20 @@ object ToolboxQuickSlots {
 
     fun indexOf(action: ShortcutAction): Int? = actions.indexOf(action).takeIf { it >= 0 }
     fun actionAt(index: Int): ShortcutAction = actions[index.coerceIn(0, COUNT - 1)]
+
+    fun preferredBrush(slot: ToolboxQuickSlot, brushes: List<ImportedBrush>): ImportedBrush? = when (slot.kind) {
+        ToolboxQuickSlotKind.BRUSH, ToolboxQuickSlotKind.TOOL_PRESET -> slot.brushId.takeIf(String::isNotEmpty)?.let { id ->
+            brushes.firstOrNull { it.id == id && !it.hidden }
+        }
+        ToolboxQuickSlotKind.BRUSH_GROUP -> {
+            val target = normalize(slot).groupPath
+            brushes.asSequence().filterNot(ImportedBrush::hidden).filter { brush ->
+                val path = brush.groupName.trim().trim('/')
+                target.isNotEmpty() && (path.equals(target, true) || path.startsWith("$target/", true))
+            }.maxWithOrNull(compareBy<ImportedBrush> { it.lastUsedAt }.thenBy { it.name })
+        }
+        ToolboxQuickSlotKind.EMPTY, ToolboxQuickSlotKind.WORKSPACE -> null
+    }
 
     fun normalize(values: List<ToolboxQuickSlot>): List<ToolboxQuickSlot> = List(COUNT) { index ->
         normalize(values.getOrNull(index) ?: ToolboxQuickSlot())

@@ -1,5 +1,8 @@
 package app.inkloom.settings
 
+import app.inkloom.model.BrushFormat
+import app.inkloom.model.Compatibility
+import app.inkloom.model.ImportedBrush
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -64,4 +67,22 @@ class ToolboxQuickSlotTest {
         assertEquals(true, decoded.all { it.kind == ToolboxQuickSlotKind.EMPTY })
         assertNull(decoded.first().workspace)
     }
+
+    @Test fun `quick slots resolve exact brushes and most recent nested group brushes`() {
+        val brushes = listOf(brush("one", "One", "Favorites/Ink", used = 1), brush("two", "Two", "Favorites/Ink/Fine", used = 2))
+
+        assertEquals("one", ToolboxQuickSlots.preferredBrush(ToolboxQuickSlot(ToolboxQuickSlotKind.BRUSH, brushId = "one"), brushes)?.id)
+        assertEquals("two", ToolboxQuickSlots.preferredBrush(ToolboxQuickSlot(ToolboxQuickSlotKind.BRUSH_GROUP, groupPath = "Favorites/Ink"), brushes)?.id)
+    }
+
+    private fun brush(id: String, name: String, group: String, used: Long) = ImportedBrush(
+        id = id,
+        name = name,
+        format = BrushFormat.SUT,
+        compatibility = Compatibility.HIGH,
+        sizeBytes = 1,
+        report = emptyList(),
+        groupName = group,
+        lastUsedAt = used,
+    )
 }
