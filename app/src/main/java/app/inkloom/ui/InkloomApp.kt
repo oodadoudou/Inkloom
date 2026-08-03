@@ -110,6 +110,7 @@ import java.text.DateFormat
 import java.util.Date
 
 private enum class AppDestination { LIBRARY, EDITOR }
+private enum class BrushBatchGroupOperation { MOVE, COPY }
 private const val UNGROUPED_BRUSH_FILTER = "\u0000ungrouped"
 private val LocalUiLanguage = staticCompositionLocalOf { UiLanguage.ENGLISH }
 
@@ -297,12 +298,6 @@ private fun localizedBrushLabel(raw: String): String {
     }
 }
 
-private fun List<ImportedBrush>.distinctImportedBrushes(): List<ImportedBrush> =
-    associateBy { brush ->
-        val sourceKey = brush.sha256 ?: "${brush.name}:${brush.sizeBytes}"
-        "$sourceKey:${brush.tipPreviewPath.orEmpty()}"
-    }.values.toList()
-
 @Composable
 fun InkloomApp(initialIntent: Intent?) {
     var destination by remember { mutableStateOf(AppDestination.LIBRARY) }
@@ -321,7 +316,7 @@ fun InkloomApp(initialIntent: Intent?) {
     var importedBrushes by remember { mutableStateOf(brushStore.load()) }
 
     LaunchedEffect(Unit) {
-        val refreshed = withContext(Dispatchers.IO) { importedBrushes.flatMap(repository::refreshMetadataAll) }.distinctImportedBrushes()
+        val refreshed = withContext(Dispatchers.IO) { importedBrushes.flatMap(repository::refreshMetadataAll) }.distinctBy(ImportedBrush::id)
         if (refreshed != importedBrushes) { importedBrushes = refreshed; brushStore.save(refreshed) }
     }
 
@@ -330,7 +325,7 @@ fun InkloomApp(initialIntent: Intent?) {
             runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             repository.importAll(uri)
         }
-        importedBrushes = (importedBrushes + results.flatMap { it.getOrNull().orEmpty() }).distinctImportedBrushes()
+        importedBrushes = BrushGroupOperations.mergeImports(importedBrushes, results.flatMap { it.getOrNull().orEmpty() })
         brushStore.save(importedBrushes)
         importError = results.firstNotNullOfOrNull { it.exceptionOrNull()?.message }
     }
@@ -360,7 +355,7 @@ fun InkloomApp(initialIntent: Intent?) {
     val libraryBackupImportPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) viewModel.restoreLibraryBackup(uri) { result ->
             result.onSuccess { restored ->
-                importedBrushes = (importedBrushes + restored.brushes).distinctImportedBrushes()
+                importedBrushes = (importedBrushes + restored.brushes).distinctBy(ImportedBrush::id)
                 brushStore.save(importedBrushes)
                 Toast.makeText(
                     context,
@@ -421,7 +416,7 @@ fun InkloomApp(initialIntent: Intent?) {
                     name.endsWith(".inkloom.zip", true) || name.endsWith(".inkloom", true) -> viewModel.importBundle(uri)
                     type == "application/pdf" || name.endsWith(".pdf", true) -> viewModel.importPdf(uri, name)
                     type.startsWith("image/") -> viewModel.importImage(uri, name)
-                    else -> repository.importAll(uri).getOrNull()?.let { brushes -> importedBrushes = (importedBrushes + brushes).distinctImportedBrushes() }
+                    else -> repository.importAll(uri).getOrNull()?.let { brushes -> importedBrushes = BrushGroupOperations.mergeImports(importedBrushes, brushes) }
                 }
             }
             brushStore.save(importedBrushes)
@@ -473,6 +468,7 @@ fun InkloomApp(initialIntent: Intent?) {
                 brushExportPicker.launch("$safeName.inkbrush")
             },
             onUpdateBrush = { updated -> importedBrushes = importedBrushes.map { if (it.id == updated.id) updated else it }; brushStore.save(importedBrushes) },
+            onReplaceBrushes = { updated -> importedBrushes = updated; brushStore.save(updated) },
             onDeleteBrush = { brushId -> importedBrushes = importedBrushes.filterNot { it.id == brushId }; brushStore.save(importedBrushes) },
             onReorderBrush = { brushId, delta -> importedBrushes = BrushGroupOperations.move(importedBrushes, brushId, delta); brushStore.save(importedBrushes) },
             onDismissError = { importError = null },
@@ -749,6 +745,7 @@ private fun EditorScreen(
     onImportBrushes: () -> Unit,
     onExportBrush: (ImportedBrush) -> Unit,
     onUpdateBrush: (ImportedBrush) -> Unit,
+    onReplaceBrushes: (List<ImportedBrush>) -> Unit,
     onDeleteBrush: (String) -> Unit,
     onReorderBrush: (String, Int) -> Unit,
     onDismissError: () -> Unit,
@@ -1043,6 +1040,11 @@ private fun EditorScreen(
                 onImportBrushes = onImportBrushes,
                 onExportBrush = onExportBrush,
                 onUpdateBrush = { updated -> onUpdateBrush(updated); if (activeBrush?.id == updated.id) { activeBrush = updated; brushSize = updated.defaultSize } },
+                onReplaceBrushes = { updated ->
+                    onReplaceBrushes(updated)
+                    activeBrush = activeBrush?.let { current -> updated.firstOrNull { it.id == current.id } }
+                    if (activeBrush == null) selectedBrushId = null
+                },
                 onDeleteBrush = { brushId -> onDeleteBrush(brushId); if (activeBrush?.id == brushId) { activeBrush = null; selectedBrushId = null } },
                 onReorderBrush = onReorderBrush,
             )
@@ -1410,6 +1412,11 @@ private fun EditorScreen(
                 onImportBrushes = onImportBrushes,
                 onExportBrush = onExportBrush,
                 onUpdateBrush = { updated -> onUpdateBrush(updated); if (activeBrush?.id == updated.id) { activeBrush = updated; brushSize = updated.defaultSize } },
+                onReplaceBrushes = { updated ->
+                    onReplaceBrushes(updated)
+                    activeBrush = activeBrush?.let { current -> updated.firstOrNull { it.id == current.id } }
+                    if (activeBrush == null) selectedBrushId = null
+                },
                 onDeleteBrush = { brushId -> onDeleteBrush(brushId); if (activeBrush?.id == brushId) { activeBrush = null; selectedBrushId = null } },
                 onReorderBrush = onReorderBrush,
             )
@@ -1536,6 +1543,11 @@ private fun EditorScreen(
                 onImportBrushes = onImportBrushes,
                 onExportBrush = onExportBrush,
                 onUpdateBrush = { updated -> onUpdateBrush(updated); if (activeBrush?.id == updated.id) { activeBrush = updated; brushSize = updated.defaultSize } },
+                onReplaceBrushes = { updated ->
+                    onReplaceBrushes(updated)
+                    activeBrush = activeBrush?.let { current -> updated.firstOrNull { it.id == current.id } }
+                    if (activeBrush == null) selectedBrushId = null
+                },
                 onDeleteBrush = { brushId -> onDeleteBrush(brushId); if (activeBrush?.id == brushId) { activeBrush = null; selectedBrushId = null } },
                 onReorderBrush = onReorderBrush,
                 modifier = Modifier.fillMaxSize().background(Color(0xFFF7F7F7), RoundedCornerShape(12.dp)).padding(12.dp),
@@ -2993,6 +3005,7 @@ private fun BrushPanel(
     onImportBrushes: () -> Unit,
     onExportBrush: (ImportedBrush) -> Unit,
     onUpdateBrush: (ImportedBrush) -> Unit,
+    onReplaceBrushes: (List<ImportedBrush>) -> Unit,
     onDeleteBrush: (String) -> Unit,
     onReorderBrush: (String, Int) -> Unit,
     modifier: Modifier = Modifier.width(330.dp).fillMaxHeight().background(Color(0xFFF7F7F7)).padding(12.dp),
@@ -3012,7 +3025,17 @@ private fun BrushPanel(
     var favoritesOnly by remember { mutableStateOf(false) }
     var showHidden by remember { mutableStateOf(false) }
     var selectedGroup by remember { mutableStateOf<String?>(null) }
+    var multiSelecting by remember { mutableStateOf(false) }
+    var selectedBrushIds by remember { mutableStateOf(emptySet<String>()) }
+    var batchGroupOperation by remember { mutableStateOf<BrushBatchGroupOperation?>(null) }
+    var confirmBatchDelete by remember { mutableStateOf(false) }
+    val copiedBrushSuffix = tr("copy", "副本")
     val groups = BrushGroupOperations.names(brushes)
+    val currentBrushIds = brushes.mapTo(linkedSetOf()) { it.id }
+    LaunchedEffect(currentBrushIds) {
+        selectedBrushIds = selectedBrushIds.intersect(currentBrushIds)
+        if (selectedBrushIds.isEmpty() && brushes.isEmpty()) multiSelecting = false
+    }
     LaunchedEffect(groups, selectedGroup) {
         if (selectedGroup != null && selectedGroup != UNGROUPED_BRUSH_FILTER && groups.none { it.equals(selectedGroup, true) }) selectedGroup = null
     }
@@ -3045,6 +3068,10 @@ private fun BrushPanel(
                 ),
             )
             WorkspacePanelDockMenu(dock, onDock, tr("Change brushes panel docking", "更改笔刷面板停靠方式"))
+            IconButton(onClick = {
+                multiSelecting = !multiSelecting
+                if (!multiSelecting) selectedBrushIds = emptySet()
+            }) { Icon(if (multiSelecting) Icons.Outlined.Close else Icons.Outlined.Checklist, if (multiSelecting) tr("Cancel brush selection", "取消选择笔刷") else tr("Select multiple brushes", "批量选择笔刷")) }
             IconButton(onClick = onClose) { Icon(Icons.Outlined.Close, tr("Close brushes panel", "关闭笔刷面板")) }
             IconButton(onClick = onImportBrushes) { Icon(Icons.Outlined.Add, tr("Import", "导入")) }
         }
@@ -3066,6 +3093,52 @@ private fun BrushPanel(
             item { FilterChip(selected = selectedGroup == UNGROUPED_BRUSH_FILTER, onClick = { selectedGroup = UNGROUPED_BRUSH_FILTER }, label = { Text(tr("Ungrouped", "未分组")) }) }
             groups.forEach { group -> item(group) { FilterChip(selected = selectedGroup?.equals(group, true) == true, onClick = { selectedGroup = group }, label = { Text(group, maxLines = 1) }) } }
         }
+        if (multiSelecting) {
+            Surface(
+                color = Color.White,
+                shape = RoundedCornerShape(9.dp),
+                border = CardDefaults.outlinedCardBorder(),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+            ) {
+                Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+                    Text("${selectedBrushIds.size} ${tr("selected", "已选择")}", fontSize = 11.sp, color = MutedInk)
+                    val visibleIds = visibleBrushes.mapTo(linkedSetOf()) { it.id }
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp), contentPadding = PaddingValues(top = 4.dp)) {
+                        item {
+                            AssistChip(
+                                onClick = {
+                                    selectedBrushIds = if (visibleIds.isNotEmpty() && selectedBrushIds.containsAll(visibleIds)) selectedBrushIds - visibleIds else selectedBrushIds + visibleIds
+                                },
+                                label = { Text(if (visibleIds.isNotEmpty() && selectedBrushIds.containsAll(visibleIds)) tr("Clear visible", "取消当前列表") else tr("Select visible", "选择当前列表"), fontSize = 10.sp) },
+                            )
+                        }
+                        item { AssistChip(onClick = { batchGroupOperation = BrushBatchGroupOperation.MOVE }, enabled = selectedBrushIds.isNotEmpty(), label = { Text(tr("Move", "移动"), fontSize = 10.sp) }) }
+                        item { AssistChip(onClick = { batchGroupOperation = BrushBatchGroupOperation.COPY }, enabled = selectedBrushIds.isNotEmpty(), label = { Text(tr("Copy", "复制"), fontSize = 10.sp) }) }
+                        item {
+                            AssistChip(
+                                onClick = {
+                                    onReplaceBrushes(BrushGroupOperations.setFavorite(brushes, selectedBrushIds, true))
+                                    selectedBrushIds = emptySet(); multiSelecting = false
+                                },
+                                enabled = selectedBrushIds.isNotEmpty(),
+                                label = { Text(tr("Favorite", "收藏"), fontSize = 10.sp) },
+                            )
+                        }
+                        item {
+                            AssistChip(
+                                onClick = {
+                                    onReplaceBrushes(BrushGroupOperations.setHidden(brushes, selectedBrushIds, true))
+                                    selectedBrushIds = emptySet(); multiSelecting = false
+                                },
+                                enabled = selectedBrushIds.isNotEmpty(),
+                                label = { Text(tr("Hide", "隐藏"), fontSize = 10.sp) },
+                            )
+                        }
+                        item { AssistChip(onClick = { confirmBatchDelete = true }, enabled = selectedBrushIds.isNotEmpty(), label = { Text(tr("Remove", "移除"), fontSize = 10.sp) }) }
+                    }
+                }
+            }
+        }
         if (brushes.isNotEmpty()) {
             Text("${tr("BRUSHES", "笔刷")} (${visibleBrushes.size}/${brushes.size})", fontSize = 11.sp, color = MutedInk)
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -3075,6 +3148,10 @@ private fun BrushPanel(
                         ImportedBrushRow(
                             brush = brush,
                             selected = brush.id == selectedBrushId,
+                            multiSelecting = multiSelecting,
+                            multiSelected = brush.id in selectedBrushIds,
+                            onToggleSelection = { selectedBrushIds = if (brush.id in selectedBrushIds) selectedBrushIds - brush.id else selectedBrushIds + brush.id },
+                            onBeginSelection = { multiSelecting = true; selectedBrushIds = selectedBrushIds + brush.id },
                             onSelect = { onBrushSelected(brush) },
                             onReport = { reportBrush = brush },
                             onEdit = { editBrush = brush },
@@ -3159,6 +3236,43 @@ private fun BrushPanel(
             },
         )
     }
+    batchGroupOperation?.let { operation ->
+        BrushBatchGroupDialog(
+            count = selectedBrushIds.size,
+            groups = groups,
+            operation = operation,
+            onDismiss = { batchGroupOperation = null },
+            onApply = { group ->
+                val updated = when (operation) {
+                    BrushBatchGroupOperation.MOVE -> BrushGroupOperations.assignMany(brushes, selectedBrushIds, group)
+                    BrushBatchGroupOperation.COPY -> BrushGroupOperations.duplicateMany(brushes, selectedBrushIds, group, copiedBrushSuffix)
+                }
+                onReplaceBrushes(updated)
+                selectedGroup = BrushGroupOperations.normalize(group).takeIf(String::isNotBlank) ?: UNGROUPED_BRUSH_FILTER
+                selectedBrushIds = emptySet()
+                multiSelecting = false
+                batchGroupOperation = null
+            },
+        )
+    }
+    if (confirmBatchDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmBatchDelete = false },
+            title = { Text(tr("Remove selected brushes?", "移除所选笔刷？")) },
+            text = { Text(tr("This removes ${selectedBrushIds.size} presets from the brush library. Existing strokes keep their saved brush snapshots and will not change.", "这会从笔刷库移除 ${selectedBrushIds.size} 个预设。已有笔画会保留已保存的笔刷快照，不会发生变化。")) },
+            confirmButton = {
+                Button(onClick = {
+                    selectedBrushIds.forEach(historyStore::clear)
+                    historyRevision++
+                    onReplaceBrushes(BrushGroupOperations.removeMany(brushes, selectedBrushIds))
+                    selectedBrushIds = emptySet()
+                    multiSelecting = false
+                    confirmBatchDelete = false
+                }) { Text(tr("Remove", "移除")) }
+            },
+            dismissButton = { TextButton(onClick = { confirmBatchDelete = false }) { Text(tr("Cancel", "取消")) } },
+        )
+    }
     if (manageGroups) {
         BrushGroupManagerDialog(
             groups = groups,
@@ -3207,6 +3321,46 @@ private fun BrushMoveToGroupDialog(brush: ImportedBrush, groups: List<String>, o
             }
         },
         confirmButton = { Button(onClick = { onMove(groupName) }, enabled = BrushGroupOperations.normalize(groupName).isNotBlank()) { Text(tr("Move", "移动")) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Cancel", "取消")) } },
+    )
+}
+
+@Composable
+private fun BrushBatchGroupDialog(
+    count: Int,
+    groups: List<String>,
+    operation: BrushBatchGroupOperation,
+    onDismiss: () -> Unit,
+    onApply: (String) -> Unit,
+) {
+    var groupName by remember(operation) { mutableStateOf("") }
+    val moving = operation == BrushBatchGroupOperation.MOVE
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (moving) tr("Move selected brushes", "移动所选笔刷") else tr("Copy selected brushes", "复制所选笔刷")) },
+        text = {
+            Column(Modifier.widthIn(min = 320.dp, max = 440.dp)) {
+                Text("$count ${tr("brushes selected", "支笔刷已选择")}", color = MutedInk, fontSize = 12.sp)
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = groupName,
+                    onValueChange = { groupName = it.take(BrushGroupOperations.MAX_NAME_LENGTH) },
+                    label = { Text(tr("Destination group", "目标分组")) },
+                    supportingText = { Text(tr("Enter a new name or choose an existing group", "输入新名称或选择已有分组")) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (groups.isNotEmpty()) LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(top = 8.dp)) {
+                    groups.forEach { group -> item(group) { FilterChip(selected = groupName.equals(group, true), onClick = { groupName = group }, label = { Text(group, maxLines = 1) }) } }
+                }
+                TextButton(onClick = { onApply("") }) { Text(if (moving) tr("Move to Ungrouped", "移到未分组") else tr("Copy to Ungrouped", "复制到未分组")) }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onApply(groupName) }, enabled = BrushGroupOperations.normalize(groupName).isNotBlank()) {
+                Text(if (moving) tr("Move selected", "移动所选") else tr("Copy selected", "复制所选"))
+            }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Cancel", "取消")) } },
     )
 }
@@ -3294,32 +3448,58 @@ private fun BrushVersionHistoryDialog(
 
 private fun Float.oneDecimal(): String = String.format(java.util.Locale.ROOT, "%.1f", this)
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ImportedBrushRow(brush: ImportedBrush, selected: Boolean, onSelect: () -> Unit, onReport: () -> Unit, onEdit: () -> Unit, onHistory: () -> Unit, onMove: () -> Unit, onExport: () -> Unit, onFavorite: () -> Unit, onHide: () -> Unit, onDelete: () -> Unit, onReorder: (Int) -> Unit) {
+private fun ImportedBrushRow(
+    brush: ImportedBrush,
+    selected: Boolean,
+    multiSelecting: Boolean,
+    multiSelected: Boolean,
+    onToggleSelection: () -> Unit,
+    onBeginSelection: () -> Unit,
+    onSelect: () -> Unit,
+    onReport: () -> Unit,
+    onEdit: () -> Unit,
+    onHistory: () -> Unit,
+    onMove: () -> Unit,
+    onExport: () -> Unit,
+    onFavorite: () -> Unit,
+    onHide: () -> Unit,
+    onDelete: () -> Unit,
+    onReorder: (Int) -> Unit,
+) {
     var menu by remember { mutableStateOf(false) }
     var dragDistance by remember(brush.id) { mutableFloatStateOf(0f) }
+    val rowDescription = "${tr("Brush preset", "笔刷预设")} ${brush.name}"
     Card(
-        modifier = Modifier.clickable(onClick = onSelect),
-        colors = CardDefaults.cardColors(containerColor = if (selected) SageContainer else Workspace),
-        border = if (selected) CardDefaults.outlinedCardBorder().copy(width = 2.dp, brush = androidx.compose.ui.graphics.SolidColor(Sage)) else CardDefaults.outlinedCardBorder(),
+        modifier = Modifier.semantics { contentDescription = rowDescription }.combinedClickable(
+            onClick = { if (multiSelecting) onToggleSelection() else onSelect() },
+            onLongClick = onBeginSelection,
+        ),
+        colors = CardDefaults.cardColors(containerColor = if (selected || multiSelected) SageContainer else Workspace),
+        border = if (selected || multiSelected) CardDefaults.outlinedCardBorder().copy(width = 2.dp, brush = androidx.compose.ui.graphics.SolidColor(Sage)) else CardDefaults.outlinedCardBorder(),
     ) {
         Row(Modifier.padding(8.dp).heightIn(min = 58.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                Icons.Outlined.DragIndicator,
-                tr("Drag to reorder brush", "拖动调整笔刷顺序"),
-                Modifier.size(24.dp).pointerInput(brush.id) {
-                    detectDragGestures(
-                        onDragStart = { dragDistance = 0f },
-                        onDragEnd = {
-                            val delta = (dragDistance / 56.dp.toPx()).toInt()
-                            if (delta != 0) onReorder(delta)
-                            dragDistance = 0f
-                        },
-                        onDragCancel = { dragDistance = 0f },
-                    ) { change, amount -> change.consume(); dragDistance += amount.y }
-                },
-                tint = MutedInk,
-            )
+            if (multiSelecting) {
+                Icon(if (multiSelected) Icons.Default.CheckBox else Icons.Outlined.CheckBoxOutlineBlank, if (multiSelected) tr("Selected", "已选择") else tr("Not selected", "未选择"), Modifier.size(24.dp), tint = if (multiSelected) Sage else MutedInk)
+            } else {
+                Icon(
+                    Icons.Outlined.DragIndicator,
+                    tr("Drag to reorder brush", "拖动调整笔刷顺序"),
+                    Modifier.size(24.dp).pointerInput(brush.id) {
+                        detectDragGestures(
+                            onDragStart = { dragDistance = 0f },
+                            onDragEnd = {
+                                val delta = (dragDistance / 56.dp.toPx()).toInt()
+                                if (delta != 0) onReorder(delta)
+                                dragDistance = 0f
+                            },
+                            onDragCancel = { dragDistance = 0f },
+                        ) { change, amount -> change.consume(); dragDistance += amount.y }
+                    },
+                    tint = MutedInk,
+                )
+            }
             Spacer(Modifier.width(4.dp))
             BrushTipPreview(brush, Modifier.size(52.dp))
             Spacer(Modifier.width(9.dp))
@@ -3328,17 +3508,19 @@ private fun ImportedBrushRow(brush: ImportedBrush, selected: Boolean, onSelect: 
                 Text(listOf(brush.format.label, brush.groupName.takeIf(String::isNotBlank), brush.compatibility.label).filterNotNull().joinToString(" · "), color = MutedInk, fontSize = 10.sp, maxLines = 1)
                 Canvas(Modifier.fillMaxWidth().height(12.dp)) { drawLine(Sage, Offset(2f, size.height / 2), Offset(size.width - 2f, size.height / 2), strokeWidth = (brush.defaultSize / 8f).coerceIn(2f, 10f), cap = StrokeCap.Round) }
             }
-            IconButton(onClick = onEdit, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.Tune, tr("Edit brush", "编辑笔刷"), modifier = Modifier.size(18.dp)) }
-            IconButton(onClick = onFavorite, modifier = Modifier.size(30.dp)) { Icon(if (brush.favorite) Icons.Default.Star else Icons.Outlined.StarBorder, if (brush.favorite) tr("Remove favorite", "取消收藏") else tr("Favorite", "收藏"), modifier = Modifier.size(18.dp), tint = if (brush.favorite) Sage else Ink) }
-            Box {
-                IconButton(onClick = { menu = true }, modifier = Modifier.size(30.dp)) { Icon(Icons.Default.MoreVert, tr("Brush actions", "笔刷操作"), modifier = Modifier.size(18.dp)) }
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text(tr("Conversion report", "转换报告")) }, onClick = { menu = false; onReport() })
-                    DropdownMenuItem(text = { Text(tr("Version history", "版本历史")) }, onClick = { menu = false; onHistory() })
-                    DropdownMenuItem(text = { Text(tr("Move to group", "移到分组")) }, onClick = { menu = false; onMove() })
-                    DropdownMenuItem(text = { Text(tr("Export Inkloom preset", "导出 Inkloom 预设")) }, onClick = { menu = false; onExport() })
-                    DropdownMenuItem(text = { Text(if (brush.hidden) tr("Unhide", "取消隐藏") else tr("Hide", "隐藏")) }, onClick = { menu = false; onHide() })
-                    DropdownMenuItem(text = { Text(tr("Remove from library", "从笔刷库移除")) }, onClick = { menu = false; onDelete() })
+            if (!multiSelecting) {
+                IconButton(onClick = onEdit, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.Tune, tr("Edit brush", "编辑笔刷"), modifier = Modifier.size(18.dp)) }
+                IconButton(onClick = onFavorite, modifier = Modifier.size(30.dp)) { Icon(if (brush.favorite) Icons.Default.Star else Icons.Outlined.StarBorder, if (brush.favorite) tr("Remove favorite", "取消收藏") else tr("Favorite", "收藏"), modifier = Modifier.size(18.dp), tint = if (brush.favorite) Sage else Ink) }
+                Box {
+                    IconButton(onClick = { menu = true }, modifier = Modifier.size(30.dp)) { Icon(Icons.Default.MoreVert, tr("Brush actions", "笔刷操作"), modifier = Modifier.size(18.dp)) }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(text = { Text(tr("Conversion report", "转换报告")) }, onClick = { menu = false; onReport() })
+                        DropdownMenuItem(text = { Text(tr("Version history", "版本历史")) }, onClick = { menu = false; onHistory() })
+                        DropdownMenuItem(text = { Text(tr("Move to group", "移到分组")) }, onClick = { menu = false; onMove() })
+                        DropdownMenuItem(text = { Text(tr("Export Inkloom preset", "导出 Inkloom 预设")) }, onClick = { menu = false; onExport() })
+                        DropdownMenuItem(text = { Text(if (brush.hidden) tr("Unhide", "取消隐藏") else tr("Hide", "隐藏")) }, onClick = { menu = false; onHide() })
+                        DropdownMenuItem(text = { Text(tr("Remove from library", "从笔刷库移除")) }, onClick = { menu = false; onDelete() })
+                    }
                 }
             }
         }
