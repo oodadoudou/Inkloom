@@ -44,6 +44,10 @@ import app.inkloom.document.CspDualBrushBlendMode
 import app.inkloom.document.CspAntiAlias
 import app.inkloom.document.CspBrushGap
 import app.inkloom.document.CspTextureComposite
+import app.inkloom.document.CanvasGuideGestureMode
+import app.inkloom.document.CanvasGuideState
+import app.inkloom.document.CanvasGuides
+import app.inkloom.document.CanvasSnapConstraint
 import app.inkloom.document.GrainBehavior
 import app.inkloom.document.LassoGeometry
 import app.inkloom.document.LassoSelectionPolicy
@@ -180,6 +184,12 @@ class InkCanvasView(context: Context) : View(context) {
     private var rulerGestureStart: RulerGuideState? = null
     private var rulerGestureX = 0f
     private var rulerGestureY = 0f
+    private val snapGridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(130, 130, 130); alpha = 70; style = Paint.Style.STROKE; strokeWidth = 1f }
+    private val alignmentGuidePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(20, 110, 220); alpha = 210; style = Paint.Style.STROKE; strokeWidth = 2f }
+    private val alignmentGuideHandlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; alpha = 245; style = Paint.Style.FILL }
+    private var canvasGuideGestureMode: CanvasGuideGestureMode? = null
+    private var canvasGuideGestureStart: CanvasGuideState? = null
+    private var activeCanvasSnapConstraint: CanvasSnapConstraint? = null
     private val continuousPlotRunnable = object : Runnable {
         override fun run() {
             if (!continuousPlotActive || !brushContinuousPlot || activeTool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) return
@@ -412,6 +422,9 @@ class InkCanvasView(context: Context) : View(context) {
     var rulerGuide: RulerGuideState = RulerGuideState()
         set(value) { field = value.normalized(); invalidate() }
     var onRulerGuideChanged: (RulerGuideState) -> Unit = {}
+    var canvasGuideState: CanvasGuideState = CanvasGuideState()
+        set(value) { field = value.normalized(); if (!field.alignmentGuidesEnabled) canvasGuideGestureMode = null; invalidate() }
+    var onCanvasGuideChanged: (CanvasGuideState) -> Unit = {}
     var pressureSensitivity: Float = 1f
     var pressureMinimumInput: Float = 0f
     var pressureMaximumInput: Float = 1f
@@ -475,6 +488,10 @@ class InkCanvasView(context: Context) : View(context) {
             rulerGestureStart?.let { rulerGuide = it }
             rulerGestureMode = null
             rulerGestureStart = null
+            canvasGuideGestureStart?.let { canvasGuideState = it }
+            canvasGuideGestureMode = null
+            canvasGuideGestureStart = null
+            activeCanvasSnapConstraint = null
             ctrlModifierHeld = false
             altModifierHeld = false
             releaseHeldStylusButtons()
@@ -583,6 +600,7 @@ class InkCanvasView(context: Context) : View(context) {
         super.onDraw(canvas)
         backgroundBitmap?.let { bitmap -> backgroundDestination.set(0, 0, width, height); canvas.drawBitmap(bitmap, null, backgroundDestination, null) }
             ?: pagePaperColor?.let { color -> canvas.drawColor(color); pagePaperPattern?.let { drawPaperPattern(canvas, it) } }
+        drawSnapGrid(canvas)
         if (!drawStrokeTiles(canvas)) drawLayeredStrokes(canvas, strokes)
         var selectionLeft = Float.POSITIVE_INFINITY
         var selectionTop = Float.POSITIVE_INFINITY
@@ -608,6 +626,7 @@ class InkCanvasView(context: Context) : View(context) {
         }
         drawShapePreview(canvas)
         if (currentPoints.isNotEmpty()) drawLayeredStrokes(canvas, listOf(makeStroke(currentPoints).copy(grainCompositeMode = grainCompositeMode)))
+        drawAlignmentGuides(canvas)
         drawRulerGuide(canvas)
         drawLaserTrail(canvas, SystemClock.uptimeMillis())
         drawBrushSizePreview(canvas)
@@ -1007,6 +1026,7 @@ class InkCanvasView(context: Context) : View(context) {
             return true
         }
         val elapsedSinceStylus = if (lastStylusSeenAt == Long.MIN_VALUE) Long.MAX_VALUE else event.eventTime - lastStylusSeenAt
+        if (handleCanvasGuideGesture(event, isStylus, elapsedSinceStylus)) return true
         if (handleRulerGesture(event, isStylus, elapsedSinceStylus)) return true
         val buttonForcesNavigation = isStylus && (stylusButtonAction == StylusButtonAction.HAND || stylusHandNavigationContact)
         val isFingerNavigation = forceNavigation || buttonForcesNavigation || StylusInputClassifier.shouldNavigateOrRejectFinger(isStylus, fingerDrawingEnabled, event.pointerCount, event.getTouchMajor(pointerIndex), elapsedSinceStylus)
@@ -1170,7 +1190,8 @@ class InkCanvasView(context: Context) : View(context) {
                     invalidate(); return true
                 }
                 if (activeTool == EditorTool.SHAPE) {
-                    shapeStart = ShapePoint(normalizedX, normalizedY)
+                    val snapped = snapCanvasPoint(normalizedX, normalizedY)
+                    shapeStart = ShapePoint(snapped.x, snapped.y)
                     shapeEnd = shapeStart
                     shapeFreeformPoints.clear()
                     if (shapeKind == ShapeKind.FREEFORM) appendShapePoint(normalizedX, normalizedY)
@@ -1183,6 +1204,9 @@ class InkCanvasView(context: Context) : View(context) {
                 }
                 currentPoints.clear()
                 currentStrokeId = java.util.UUID.randomUUID().toString()
+                activeCanvasSnapConstraint = if (!rulerEnabled && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
+                    CanvasGuides.constraintAt(canvasGuideState, normalizedX, normalizedY, pageModelWidth, pageModelHeight, width.toFloat(), height.toFloat(), GUIDE_SNAP_TOLERANCE_DP * resources.displayMetrics.density)
+                } else null
                 updateContinuousPlotInput(normalizedX, normalizedY, event.pressure, event.getAxisValue(MotionEvent.AXIS_TILT), event.orientation)
                 addPoint(normalizedX, normalizedY, event.pressure, event.eventTime, event.getAxisValue(MotionEvent.AXIS_TILT), event.orientation)
                 if (brushContinuousPlot && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) startContinuousPlot()
@@ -1207,6 +1231,28 @@ class InkCanvasView(context: Context) : View(context) {
                                 masks = strokes[index].masks.map { it.copy(x = (it.x + dx).coerceIn(0f, 1f), y = (it.y + dy).coerceIn(0f, 1f)) },
                             )
                         }
+                        val selectedPoints = strokes.asSequence().filter { it.id in selectedStrokeIds }.flatMap { it.points.asSequence() }.toList()
+                        if (selectedPoints.isNotEmpty()) {
+                            val correction = CanvasGuides.translationForBounds(
+                                canvasGuideState,
+                                selectedPoints.minOf(StrokePoint::x),
+                                selectedPoints.minOf(StrokePoint::y),
+                                selectedPoints.maxOf(StrokePoint::x),
+                                selectedPoints.maxOf(StrokePoint::y),
+                                pageModelWidth,
+                                pageModelHeight,
+                                width.toFloat(),
+                                height.toFloat(),
+                                GUIDE_SNAP_TOLERANCE_DP * resources.displayMetrics.density,
+                            )
+                            if (correction.x != 0f || correction.y != 0f) selectedStrokeIds.forEach { id ->
+                                val index = strokes.indexOfFirst { it.id == id }
+                                if (index >= 0) strokes[index] = strokes[index].copy(
+                                    points = strokes[index].points.map { it.copy(x = (it.x + correction.x).coerceIn(0f, 1f), y = (it.y + correction.y).coerceIn(0f, 1f)) },
+                                    masks = strokes[index].masks.map { it.copy(x = (it.x + correction.x).coerceIn(0f, 1f), y = (it.y + correction.y).coerceIn(0f, 1f)) },
+                                )
+                            }
+                        }
                         lastX = normalizedX; lastY = normalizedY
                         invalidateStrokeCache(movedBefore, strokes.filter { it.id in selectedStrokeIds })
                     } else {
@@ -1220,7 +1266,11 @@ class InkCanvasView(context: Context) : View(context) {
                     if (shapeKind == ShapeKind.FREEFORM) {
                         for (i in 0 until event.historySize) appendShapePoint(event.getHistoricalX(i) / width.coerceAtLeast(1), event.getHistoricalY(i) / height.coerceAtLeast(1))
                         appendShapePoint(normalizedX, normalizedY)
-                    } else shapeEnd = ShapeGeometry.snapEnd(shapeStart ?: ShapePoint(normalizedX, normalizedY), ShapePoint(normalizedX, normalizedY), pageModelWidth, pageModelHeight)
+                    } else {
+                        val angled = ShapeGeometry.snapEnd(shapeStart ?: ShapePoint(normalizedX, normalizedY), ShapePoint(normalizedX, normalizedY), pageModelWidth, pageModelHeight)
+                        val snapped = snapCanvasPoint(angled.x, angled.y)
+                        shapeEnd = ShapePoint(snapped.x, snapped.y)
+                    }
                 }
                 else if (activeTool == EditorTool.LASER) {
                     for (i in 0 until event.historySize) laserTrail.append(
@@ -1282,6 +1332,7 @@ class InkCanvasView(context: Context) : View(context) {
                     laserTrail.end()
                 }
                 parent?.requestDisallowInterceptTouchEvent(false)
+                activeCanvasSnapConstraint = null
                 activeTool = null
                 activeInputWasStylus = false
             }
@@ -1365,6 +1416,8 @@ class InkCanvasView(context: Context) : View(context) {
         currentPoints.clear()
         laserTrail.cancelActive()
         rulerGestureMode = null
+        canvasGuideGestureMode = null
+        activeCanvasSnapConstraint = null
         shapeStart = null
         shapeEnd = null
         shapeFreeformPoints.clear()
@@ -1407,6 +1460,85 @@ class InkCanvasView(context: Context) : View(context) {
         canvas.drawCircle(head.x * width, head.y * height, 2f * scale, laserCorePaint)
         postInvalidateOnAnimation()
     }
+
+    private fun handleCanvasGuideGesture(event: MotionEvent, isStylus: Boolean, elapsedSinceStylus: Long): Boolean {
+        if (isStylus || !canvasGuideState.alignmentGuidesEnabled) return false
+        val existing = canvasGuideGestureMode
+        if (existing == null) {
+            if (forceNavigation || event.actionMasked != MotionEvent.ACTION_DOWN || event.pointerCount != 1 ||
+                elapsedSinceStylus <= StylusInputClassifier.RECENT_STYLUS_WINDOW_MS ||
+                event.getTouchMajor(event.actionIndex) >= StylusInputClassifier.PALM_TOUCH_MAJOR_PX
+            ) return false
+            val hit = CanvasGuides.hitTest(canvasGuideState, event.x, event.y, width.toFloat(), height.toFloat(), GUIDE_TOUCH_RADIUS_DP * resources.displayMetrics.density) ?: return false
+            canvasGuideGestureMode = hit
+            canvasGuideGestureStart = canvasGuideState
+            parent?.requestDisallowInterceptTouchEvent(true)
+            return true
+        }
+        when (event.actionMasked) {
+            MotionEvent.ACTION_MOVE -> if (event.pointerCount == 1) {
+                canvasGuideState = CanvasGuides.move(canvasGuideState, existing, event.x, event.y, width.toFloat(), height.toFloat())
+            }
+            MotionEvent.ACTION_UP -> {
+                onCanvasGuideChanged(canvasGuideState)
+                canvasGuideGestureMode = null
+                canvasGuideGestureStart = null
+                parent?.requestDisallowInterceptTouchEvent(false)
+                performClick()
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                canvasGuideGestureStart?.let { canvasGuideState = it }
+                canvasGuideGestureMode = null
+                canvasGuideGestureStart = null
+                parent?.requestDisallowInterceptTouchEvent(false)
+            }
+        }
+        invalidate()
+        return true
+    }
+
+    private fun drawSnapGrid(canvas: Canvas) {
+        val state = canvasGuideState.normalized()
+        if (!state.gridSnapEnabled || width <= 0 || height <= 0 || pageModelWidth <= 0f || pageModelHeight <= 0f) return
+        val stepX = state.gridSpacing / pageModelWidth * width
+        val stepY = state.gridSpacing / pageModelHeight * height
+        if (stepX < 2f || stepY < 2f) return
+        var x = 0f
+        while (x <= width) {
+            canvas.drawLine(x, 0f, x, height.toFloat(), snapGridPaint)
+            x += stepX
+        }
+        var y = 0f
+        while (y <= height) {
+            canvas.drawLine(0f, y, width.toFloat(), y, snapGridPaint)
+            y += stepY
+        }
+    }
+
+    private fun drawAlignmentGuides(canvas: Canvas) {
+        val state = canvasGuideState.normalized()
+        if (!state.alignmentGuidesEnabled || width <= 0 || height <= 0) return
+        val x = state.verticalGuideX * width
+        val y = state.horizontalGuideY * height
+        val radius = 8f * resources.displayMetrics.density
+        canvas.drawLine(x, 0f, x, height.toFloat(), alignmentGuidePaint)
+        canvas.drawLine(0f, y, width.toFloat(), y, alignmentGuidePaint)
+        canvas.drawCircle(x, radius * 1.6f, radius, alignmentGuideHandlePaint)
+        canvas.drawCircle(radius * 1.6f, y, radius, alignmentGuideHandlePaint)
+        canvas.drawCircle(x, radius * 1.6f, radius, alignmentGuidePaint)
+        canvas.drawCircle(radius * 1.6f, y, radius, alignmentGuidePaint)
+    }
+
+    private fun snapCanvasPoint(x: Float, y: Float) = CanvasGuides.snapPoint(
+        canvasGuideState,
+        x,
+        y,
+        pageModelWidth,
+        pageModelHeight,
+        width.toFloat(),
+        height.toFloat(),
+        GUIDE_SNAP_TOLERANCE_DP * resources.displayMetrics.density,
+    )
 
     private fun handleRulerGesture(event: MotionEvent, isStylus: Boolean, elapsedSinceStylus: Long): Boolean {
         if (isStylus || !rulerEnabled) return false
@@ -1747,7 +1879,9 @@ class InkCanvasView(context: Context) : View(context) {
     private fun addPoint(x: Float, y: Float, pressure: Float, time: Long, tilt: Float, orientation: Float, force: Boolean = false) {
         val adjustedPressure = PressureCalibration.apply(pressure, pressureMinimumInput, pressureMaximumInput, pressureSensitivity)
         val previous = currentPoints.lastOrNull()
-        val constrained = if (rulerEnabled && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) RulerGuide.project(rulerGuide, x, y, width.toFloat(), height.toFloat()) else null
+        val constrained = if (rulerEnabled && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
+            RulerGuide.project(rulerGuide, x, y, width.toFloat(), height.toFloat())
+        } else activeCanvasSnapConstraint?.apply(x, y)
         val rawX = (constrained?.x ?: x).coerceIn(0f, 1f)
         val rawY = (constrained?.y ?: y).coerceIn(0f, 1f)
         val inputVelocity = previous?.let { prior -> val elapsed = (time - prior.timeMs).coerceAtLeast(1L); (hypot(((rawX - prior.x) * width).toDouble(), ((rawY - prior.y) * height).toDouble()).toFloat() / elapsed / VELOCITY_FULL_SCALE_PX_PER_MS).coerceIn(0f, 1f) } ?: 0f
@@ -2077,6 +2211,8 @@ class InkCanvasView(context: Context) : View(context) {
         const val DUAL_ROTATION_SEED = 0x61B8D2A3L
         const val VIEW_ROTATION_DEGREES_PER_PIXEL = .25f
         const val RULER_TOUCH_RADIUS_DP = 38f
+        const val GUIDE_TOUCH_RADIUS_DP = 14f
+        const val GUIDE_SNAP_TOLERANCE_DP = 12f
         const val DUAL_SEQUENCE_SEED = 0x35A71C9E
         const val MAX_TIP_CACHE_ENTRIES = 64
         const val STYLUS_BUTTON_MASK = MotionEvent.BUTTON_STYLUS_PRIMARY or MotionEvent.BUTTON_STYLUS_SECONDARY

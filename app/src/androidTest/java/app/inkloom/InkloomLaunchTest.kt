@@ -59,6 +59,8 @@ class InkloomLaunchTest {
                     .putBoolean("showBrushPanel", false)
                     .putBoolean("showPageRail", true)
                     .putBoolean("rulerEnabled", false)
+                    .putBoolean("gridSnapEnabled", false)
+                    .putBoolean("alignmentGuidesEnabled", false)
                     .putString("pagePanelDock", "LEFT")
                     .putString("brushPanelDock", "RIGHT")
                     .putString("layerPanelDock", "RIGHT")
@@ -135,6 +137,24 @@ class InkloomLaunchTest {
         composeRule.waitUntil(5_000) {
             AppSettingsStore(composeRule.activity).load().rulerSnapDegrees == 5f
         }
+    }
+
+    @Test fun snapGridAndAlignmentGuidesAreReachableFromCompactToolbar() {
+        createNotebookAndOpenEditor()
+
+        composeRule.onNodeWithContentDescription("More tools").performClick()
+        composeRule.onNodeWithText("Show snap grid").performClick()
+        composeRule.waitUntil(5_000) { AppSettingsStore(composeRule.activity).load().gridSnapEnabled }
+
+        composeRule.onNodeWithContentDescription("More tools").performClick()
+        composeRule.onNodeWithText("Show alignment guides").performClick()
+        composeRule.waitUntil(5_000) { AppSettingsStore(composeRule.activity).load().alignmentGuidesEnabled }
+
+        composeRule.onNodeWithContentDescription("Tool controls").performClick()
+        composeRule.onNodeWithText("Snap grid spacing").assertIsDisplayed()
+        composeRule.onNodeWithText("Alignment guides").assertIsDisplayed()
+        composeRule.onNodeWithText("96").performClick()
+        composeRule.waitUntil(5_000) { AppSettingsStore(composeRule.activity).load().gridSpacing == 96f }
     }
 
     @Test fun rotationKeepsEditorAndRestoresOrientationSpecificWorkspace() {

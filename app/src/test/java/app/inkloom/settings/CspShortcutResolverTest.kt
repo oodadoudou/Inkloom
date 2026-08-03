@@ -127,6 +127,8 @@ class CspShortcutResolverTest {
         assertEquals(ShortcutCategory.PANELS, ShortcutAction.TOGGLE_LAYER_PANEL.category())
         assertEquals(ShortcutCategory.TOOLS, ShortcutAction.LASER_TOOL.category())
         assertEquals(ShortcutCategory.CANVAS, ShortcutAction.TOGGLE_RULER.category())
+        assertEquals(ShortcutCategory.CANVAS, ShortcutAction.TOGGLE_GRID_SNAP.category())
+        assertEquals(ShortcutCategory.CANVAS, ShortcutAction.TOGGLE_ALIGNMENT_GUIDES.category())
         assertEquals(ShortcutCategory.QUICK_ACCESS, ShortcutAction.QUICK_SLOT_8.category())
         assertEquals(7, ToolboxQuickSlots.indexOf(ShortcutAction.QUICK_SLOT_8))
     }

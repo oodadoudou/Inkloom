@@ -47,6 +47,8 @@ enum class ShortcutAction {
     FIT_WIDTH,
     RESET_VIEW_ROTATION,
     TOGGLE_RULER,
+    TOGGLE_GRID_SNAP,
+    TOGGLE_ALIGNMENT_GUIDES,
     PREVIOUS_PAGE,
     NEXT_PAGE,
     TOGGLE_BRUSH_PANEL,
@@ -79,7 +81,8 @@ fun ShortcutAction.category(): ShortcutCategory = when (this) {
     ShortcutAction.UNDO, ShortcutAction.REDO -> ShortcutCategory.EDITING
     ShortcutAction.ZOOM_OUT, ShortcutAction.ZOOM_IN, ShortcutAction.ROTATE_VIEW_LEFT, ShortcutAction.ROTATE_VIEW_RIGHT,
     ShortcutAction.FIT_PAGE, ShortcutAction.ACTUAL_SIZE,
-    ShortcutAction.FIT_WIDTH, ShortcutAction.RESET_VIEW_ROTATION, ShortcutAction.TOGGLE_RULER -> ShortcutCategory.CANVAS
+    ShortcutAction.FIT_WIDTH, ShortcutAction.RESET_VIEW_ROTATION, ShortcutAction.TOGGLE_RULER,
+    ShortcutAction.TOGGLE_GRID_SNAP, ShortcutAction.TOGGLE_ALIGNMENT_GUIDES -> ShortcutCategory.CANVAS
     ShortcutAction.PREVIOUS_PAGE, ShortcutAction.NEXT_PAGE -> ShortcutCategory.PAGES
     ShortcutAction.NEW_LAYER, ShortcutAction.MERGE_LAYER_DOWN, ShortcutAction.SELECT_LAYER_ABOVE,
     ShortcutAction.SELECT_LAYER_BELOW -> ShortcutCategory.LAYERS

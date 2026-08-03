@@ -53,6 +53,11 @@ data class AppSettings(
     val rulerCenterY: Float = .5f,
     val rulerAngleDegrees: Float = 0f,
     val rulerSnapDegrees: Float = 15f,
+    val gridSnapEnabled: Boolean = false,
+    val gridSpacing: Float = 64f,
+    val alignmentGuidesEnabled: Boolean = false,
+    val verticalGuideX: Float = .5f,
+    val horizontalGuideY: Float = .5f,
     val stylusPrimaryButton: StylusButtonAction = StylusButtonAction.ERASER,
     val stylusSecondaryButton: StylusButtonAction = StylusButtonAction.LASSO,
     val stylusPrimaryTrigger: ShortcutTrigger = ShortcutTrigger.HOLD,
@@ -158,6 +163,11 @@ class AppSettingsStore(context: Context) {
             rulerCenterY = preferences.getFloat("rulerCenterY", .5f).takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: .5f,
             rulerAngleDegrees = app.inkloom.document.RulerGuideState.normalizeAngle(preferences.getFloat("rulerAngleDegrees", 0f)),
             rulerSnapDegrees = preferences.getFloat("rulerSnapDegrees", 15f).takeIf(Float::isFinite)?.coerceIn(1f, 90f) ?: 15f,
+            gridSnapEnabled = preferences.getBoolean("gridSnapEnabled", false),
+            gridSpacing = preferences.getFloat("gridSpacing", 64f).takeIf(Float::isFinite)?.coerceIn(16f, 400f) ?: 64f,
+            alignmentGuidesEnabled = preferences.getBoolean("alignmentGuidesEnabled", false),
+            verticalGuideX = preferences.getFloat("verticalGuideX", .5f).takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: .5f,
+            horizontalGuideY = preferences.getFloat("horizontalGuideY", .5f).takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: .5f,
             stylusPrimaryButton = enumValue(preferences.getString("stylusPrimaryButton", null), StylusButtonAction.ERASER),
             stylusSecondaryButton = enumValue(preferences.getString("stylusSecondaryButton", null), StylusButtonAction.LASSO),
             stylusPrimaryTrigger = enumValue(preferences.getString("stylusPrimaryTrigger", null), ShortcutTrigger.HOLD),
@@ -248,6 +258,11 @@ class AppSettingsStore(context: Context) {
             .putFloat("rulerCenterY", persisted.rulerCenterY.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: .5f)
             .putFloat("rulerAngleDegrees", app.inkloom.document.RulerGuideState.normalizeAngle(persisted.rulerAngleDegrees))
             .putFloat("rulerSnapDegrees", persisted.rulerSnapDegrees.takeIf(Float::isFinite)?.coerceIn(1f, 90f) ?: 15f)
+            .putBoolean("gridSnapEnabled", persisted.gridSnapEnabled)
+            .putFloat("gridSpacing", persisted.gridSpacing.takeIf(Float::isFinite)?.coerceIn(16f, 400f) ?: 64f)
+            .putBoolean("alignmentGuidesEnabled", persisted.alignmentGuidesEnabled)
+            .putFloat("verticalGuideX", persisted.verticalGuideX.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: .5f)
+            .putFloat("horizontalGuideY", persisted.horizontalGuideY.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: .5f)
             .putString("stylusPrimaryButton", persisted.stylusPrimaryButton.name)
             .putString("stylusSecondaryButton", persisted.stylusSecondaryButton.name)
             .putString("stylusPrimaryTrigger", persisted.stylusPrimaryTrigger.name)

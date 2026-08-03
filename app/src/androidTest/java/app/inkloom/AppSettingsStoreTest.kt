@@ -49,6 +49,24 @@ class AppSettingsStoreTest {
         }
     }
 
+    @Test fun gridAndAlignmentGuidesSurviveReload() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val preferences = context.getSharedPreferences("inkloom_settings", android.content.Context.MODE_PRIVATE)
+        preferences.edit().clear().commit()
+        try {
+            AppSettingsStore(context).save(AppSettings(gridSnapEnabled = true, gridSpacing = 96f, alignmentGuidesEnabled = true, verticalGuideX = .2f, horizontalGuideY = .8f))
+            val restored = AppSettingsStore(context).load()
+
+            assertTrue(restored.gridSnapEnabled)
+            assertEquals(96f, restored.gridSpacing)
+            assertTrue(restored.alignmentGuidesEnabled)
+            assertEquals(.2f, restored.verticalGuideX)
+            assertEquals(.8f, restored.horizontalGuideY)
+        } finally {
+            preferences.edit().clear().commit()
+        }
+    }
+
     @Test fun canvasGesturePreferencesSurviveReload() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
