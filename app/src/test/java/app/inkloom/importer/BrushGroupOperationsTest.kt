@@ -9,10 +9,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BrushGroupOperationsTest {
-    @Test fun groupNamesAreNormalizedDeduplicatedAndSorted() {
+    @Test fun groupNamesAreNormalizedDeduplicatedAndOrdered() {
         val brushes = listOf(brush("A", "  Inking   pens "), brush("B", "watercolor"), brush("C", "INKING PENS"), brush("D", ""))
 
         assertEquals(listOf("Inking pens", "watercolor"), BrushGroupOperations.names(brushes))
+    }
+
+    @Test fun groupNamesKeepTheSavedLibraryOrderInsteadOfAlphabetizing() {
+        val brushes = listOf(brush("Z", "Watercolor"), brush("A", "Inking"), brush("B", "watercolor"))
+
+        assertEquals(listOf("Watercolor", "Inking"), BrushGroupOperations.names(brushes))
     }
 
     @Test fun assignRenameMergeAndUngroupPreserveUnrelatedBrushes() {
@@ -37,6 +43,15 @@ class BrushGroupOperationsTest {
 
         assertEquals(listOf("B", "A"), moved.filter { it.groupName == "Pens" }.sortedBy { it.sortOrder }.map { it.id })
         assertEquals(0, moved.single { it.id == "C" }.sortOrder)
+    }
+
+    @Test fun moveGroupReordersWholeGroupsAndLeavesUngroupedAtTheEnd() {
+        val brushes = listOf(brush("P1", "Pens"), brush("W1", "Water"), brush("P2", "Pens"), brush("U", ""), brush("I1", "Ink"))
+
+        val moved = BrushGroupOperations.moveGroup(brushes, "Ink", -2)
+
+        assertEquals(listOf("Ink", "Pens", "Water"), BrushGroupOperations.names(moved))
+        assertEquals(listOf("I1", "P1", "P2", "W1", "U"), moved.map(ImportedBrush::id))
     }
 
     @Test fun batchAssignmentChangesOnlySelectedBrushes() {

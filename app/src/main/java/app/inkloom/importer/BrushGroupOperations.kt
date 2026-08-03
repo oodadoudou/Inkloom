@@ -12,7 +12,6 @@ object BrushGroupOperations {
         .map { normalize(it.groupName) }
         .filter(String::isNotBlank)
         .distinctBy(String::lowercase)
-        .sortedWith(String.CASE_INSENSITIVE_ORDER)
 
     fun assign(brush: ImportedBrush, groupName: String): ImportedBrush = brush.copy(groupName = normalize(groupName))
 
@@ -85,6 +84,22 @@ object BrushGroupOperations {
         peers.add(to, peers.removeAt(from))
         val order = peers.mapIndexed { index, brush -> brush.id to index }.toMap()
         return brushes.map { brush -> order[brush.id]?.let { brush.copy(sortOrder = it) } ?: brush }
+    }
+
+    fun moveGroup(brushes: List<ImportedBrush>, groupName: String, delta: Int): List<ImportedBrush> {
+        if (delta == 0) return brushes
+        val groups = names(brushes).toMutableList()
+        val from = groups.indexOfFirst { it.equals(normalize(groupName), ignoreCase = true) }
+        if (from < 0) return brushes
+        val to = (from + delta).coerceIn(0, groups.lastIndex)
+        if (from == to) return brushes
+        groups.add(to, groups.removeAt(from))
+        val order = groups.mapIndexed { index, group -> group.lowercase() to index }.toMap()
+        return brushes.withIndex().sortedWith(
+            compareBy<IndexedValue<ImportedBrush>> { indexed ->
+                normalize(indexed.value.groupName).takeIf(String::isNotBlank)?.lowercase()?.let(order::get) ?: Int.MAX_VALUE
+            }.thenBy { it.index },
+        ).map(IndexedValue<ImportedBrush>::value)
     }
 
     const val MAX_NAME_LENGTH = 40
