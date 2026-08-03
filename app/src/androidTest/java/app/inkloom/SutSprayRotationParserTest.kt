@@ -8,6 +8,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.importer.BrushMetadataStore
 import app.inkloom.importer.SutBrushParser
 import app.inkloom.document.CspTextureComposite
+import app.inkloom.document.CspAntiAlias
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
@@ -52,10 +53,12 @@ class SutSprayRotationParserTest {
                 )
             }
             parsed.forEach { brush ->
-                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 20, brush.parserVersion)
+                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 21, brush.parserVersion)
                 assertFalse(brush.report.any { it.startsWith("SUT parameter parsing failed") })
-                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v20-")) }
+                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v21-")) }
             }
+            assertTrue("Expected multiple CSP AntiAlias modes in the supplied corpus", parsed.map(ImportedBrush::antiAliasMode).distinct().size >= 3)
+            assertTrue(parsed.all { it.antiAliasMode in CspAntiAlias.NONE..CspAntiAlias.STRONG })
             assertTrue("Expected every supplied SUT brush to preserve CSP BrushBlur", parsed.all { it.blur > 0f })
             assertTrue("Expected the supplied size-linked BrushBlur preset", parsed.any { it.blurLinkedToSize })
             assertTrue("Expected the supplied millimetre BrushBlur preset", parsed.any { it.blurUnit == 2 })
@@ -64,6 +67,8 @@ class SutSprayRotationParserTest {
             val paintingBrush = parsed.firstOrNull { it.name.contains("Painting brush", ignoreCase = true) }
             assertTrue("Expected the supplied CSP Dual Brush sample", paintingBrush?.dualBrush == true)
             assertEquals(7, paintingBrush?.dualCompositeMode)
+            assertEquals(CspAntiAlias.MEDIUM, paintingBrush?.antiAliasMode)
+            assertEquals(CspAntiAlias.MEDIUM, paintingBrush?.dualAntiAliasMode)
             assertFalse(paintingBrush?.dualApplyRgb ?: true)
             assertEquals(2, paintingBrush?.dualTipFlipHorizontalMode)
             assertEquals(CspTextureComposite.HEIGHT, paintingBrush?.grainCompositeMode)
@@ -118,7 +123,9 @@ class SutSprayRotationParserTest {
             assertFalse(brush.dualSprayParticleFollowStrokeDirection)
             assertEquals(90f, brush.dualSprayParticleRandomRotationDegrees, .0001f)
             assertEquals(CspTextureComposite.HEIGHT, brush.grainCompositeMode)
-            assertEquals(20, brush.parserVersion)
+            assertEquals(CspAntiAlias.WEAK, brush.antiAliasMode)
+            assertEquals(CspAntiAlias.STRONG, brush.dualAntiAliasMode)
+            assertEquals(21, brush.parserVersion)
         } finally {
             root.deleteRecursively()
         }
@@ -149,10 +156,12 @@ class SutSprayRotationParserTest {
                 blurPressureMinimum = .2f,
                 blurPressureCurve = listOf(app.inkloom.document.BrushCurvePoint(0f, .2f), app.inkloom.document.BrushCurvePoint(1f, 1f)),
                 blurSecondaryDynamics = app.inkloom.document.BrushSecondaryDynamics(tiltEnabled = true, tiltMinimum = .4f),
+                antiAliasMode = CspAntiAlias.NONE,
                 grainCompositeMode = CspTextureComposite.HEIGHT,
                 dualBrush = true,
                 dualCompositeMode = 7,
                 dualApplyRgb = true,
+                dualAntiAliasMode = CspAntiAlias.STRONG,
                 dualTipFlipVerticalMode = 3,
                 dualBlendTipsWithDarken = true,
                 dualSpray = true,
@@ -178,6 +187,7 @@ class SutSprayRotationParserTest {
             assertEquals(.2f, restored.blurPressureMinimum, .0001f)
             assertEquals(2, restored.blurPressureCurve.size)
             assertTrue(restored.blurSecondaryDynamics.tiltEnabled)
+            assertEquals(CspAntiAlias.NONE, restored.antiAliasMode)
             assertEquals(.4f, restored.blurSecondaryDynamics.tiltMinimum, .0001f)
             assertEquals(CspTextureComposite.HEIGHT, restored.grainCompositeMode)
             assertEquals(-12f, restored.dualSprayParticleRotationDegrees, .0001f)
@@ -185,6 +195,7 @@ class SutSprayRotationParserTest {
             assertEquals(81f, restored.dualSprayParticleRandomRotationDegrees, .0001f)
             assertEquals(7, restored.dualCompositeMode)
             assertTrue(restored.dualApplyRgb)
+            assertEquals(CspAntiAlias.STRONG, restored.dualAntiAliasMode)
             assertEquals(3, restored.dualTipFlipVerticalMode)
             assertTrue(restored.dualBlendTipsWithDarken)
         } finally {
@@ -196,12 +207,14 @@ class SutSprayRotationParserTest {
         val database = SQLiteDatabase.openOrCreateDatabase(file, null)
         database.use { db ->
             db.execSQL("CREATE TABLE Node (NodeName TEXT NOT NULL, NodeVariantID INTEGER NOT NULL)")
-            db.execSQL("CREATE TABLE Variant (VariantID INTEGER PRIMARY KEY, Opacity REAL, BrushSize REAL, BrushContinuousPlot INTEGER, TextureCompositeMode INTEGER, BrushUseSpray INTEGER, BrushRotation REAL, BrushRotationEffector INTEGER, BrushRotationRandomScale REAL, BrushRotationInSpray REAL, BrushRotationEffectorInSpray INTEGER, BrushRotationRandomInSpray REAL, UseDualBrush INTEGER, DualRotation REAL, DualRotationEffector INTEGER, DualRotationRandomScale REAL, DualUseSpray INTEGER, DualRotationInSpray REAL, DualRotationEffectorInSpray INTEGER, DualRotationRandomInSpray REAL)")
+            db.execSQL("CREATE TABLE Variant (VariantID INTEGER PRIMARY KEY, Opacity REAL, BrushSize REAL, AntiAlias INTEGER, DualAntiAlias INTEGER, BrushContinuousPlot INTEGER, TextureCompositeMode INTEGER, BrushUseSpray INTEGER, BrushRotation REAL, BrushRotationEffector INTEGER, BrushRotationRandomScale REAL, BrushRotationInSpray REAL, BrushRotationEffectorInSpray INTEGER, BrushRotationRandomInSpray REAL, UseDualBrush INTEGER, DualRotation REAL, DualRotationEffector INTEGER, DualRotationRandomScale REAL, DualUseSpray INTEGER, DualRotationInSpray REAL, DualRotationEffectorInSpray INTEGER, DualRotationRandomInSpray REAL)")
             db.insertOrThrow("Node", null, ContentValues().apply { put("NodeName", "Particle test"); put("NodeVariantID", 1) })
             db.insertOrThrow("Variant", null, ContentValues().apply {
                 put("VariantID", 1)
                 put("Opacity", 100)
                 put("BrushSize", 20)
+                put("AntiAlias", CspAntiAlias.WEAK)
+                put("DualAntiAlias", CspAntiAlias.STRONG)
                 put("BrushContinuousPlot", 1)
                 put("TextureCompositeMode", CspTextureComposite.HEIGHT)
                 put("BrushUseSpray", 1)

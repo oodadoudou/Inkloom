@@ -3,6 +3,7 @@ package app.inkloom.importer
 import app.inkloom.document.BrushCurvePoint
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushTaperMode
+import app.inkloom.document.CspAntiAlias
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
@@ -204,6 +205,7 @@ class InkloomBrushPackage(private val assetDirectory: File) {
         spacing = finite(source.spacing, .12f).coerceIn(.01f, 2f),
         flow = finite(source.flow, 1f).coerceIn(0f, 1f),
         hardness = finite(source.hardness, 1f).coerceIn(0f, 1f),
+        antiAliasMode = CspAntiAlias.normalize(source.antiAliasMode),
         blur = finite(source.blur, 0f).coerceIn(0f, 400f),
         blurUnit = source.blurUnit.coerceIn(0, 2),
         thickness = finite(source.thickness, 1f).coerceIn(.05f, 2f),
@@ -225,6 +227,7 @@ class InkloomBrushPackage(private val assetDirectory: File) {
         dualSpacing = finite(source.dualSpacing, .12f).coerceIn(.01f, 2f),
         dualFlow = finite(source.dualFlow, 1f).coerceIn(0f, 1f),
         dualHardness = finite(source.dualHardness, 1f).coerceIn(0f, 1f),
+        dualAntiAliasMode = CspAntiAlias.normalize(source.dualAntiAliasMode),
         dualThickness = finite(source.dualThickness, 1f).coerceIn(.05f, 2f),
         dualRotationDegrees = finite(source.dualRotationDegrees, 0f).coerceIn(-360f, 360f),
         dualRandomRotationDegrees = finite(source.dualRandomRotationDegrees, 0f).coerceIn(0f, 180f),

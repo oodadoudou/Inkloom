@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.document.BrushTipTextureDecoder
 import app.inkloom.document.CspTextureComposite
+import app.inkloom.document.CspAntiAlias
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Test
@@ -14,6 +15,27 @@ import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 class BrushTipTextureDecoderTest {
+    @Test
+    fun cspAntiAliasModesProduceFourDeterministicMaterialEdgeLevels() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val root = File(context.cacheDir, "brush-tip-aa-${System.nanoTime()}").apply { mkdirs() }
+        try {
+            val tipFile = File(root, "tip.png")
+            val pixels = IntArray(64) { Color.WHITE }.also { it[27] = Color.rgb(191, 191, 191) }
+            writePng(tipFile, pixels, 8, 8)
+
+            val alphas = listOf(CspAntiAlias.NONE, CspAntiAlias.WEAK, CspAntiAlias.MEDIUM, CspAntiAlias.STRONG).map { mode ->
+                BrushTipTextureDecoder.decode(tipFile.absolutePath, 1f, null, 0f, antiAliasMode = mode)!!.let { bitmap ->
+                    Color.alpha(bitmap.getPixel(3, 3)).also { bitmap.recycle() }
+                }
+            }
+
+            assertEquals(listOf(0, 16, 64, 127), alphas)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     @Test
     fun sampledTipPreservesAuthoredGrayDensityRegardlessOfCircleHardness() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext

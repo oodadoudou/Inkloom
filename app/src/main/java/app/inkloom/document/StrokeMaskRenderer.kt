@@ -15,6 +15,8 @@ object StrokeMaskRenderer {
     fun draw(canvas: Canvas, paint: Paint, masks: List<StrokeMaskDab>, width: Int, height: Int) {
         val tips = masks.mapNotNull(StrokeMaskDab::tipAssetPath).distinct().associateWith(BitmapFactory::decodeFile)
         paint.style = Paint.Style.FILL
+        paint.isAntiAlias = true
+        paint.isFilterBitmap = true
         paint.colorFilter = null
         paint.maskFilter = null
         paint.alpha = 255

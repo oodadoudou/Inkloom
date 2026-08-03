@@ -2,6 +2,7 @@ package app.inkloom.importer
 
 import android.content.Context
 import app.inkloom.document.CspTextureComposite
+import app.inkloom.document.CspAntiAlias
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
@@ -80,6 +81,7 @@ class BrushMetadataStore(
                         spacing = item.optDouble("spacing", .12).toFloat(),
                         flow = item.optDouble("flow", 1.0).toFloat(),
                         hardness = item.optDouble("hardness", 1.0).toFloat(),
+                        antiAliasMode = item.optInt("antiAliasMode", CspAntiAlias.MEDIUM).coerceIn(CspAntiAlias.NONE, CspAntiAlias.STRONG),
                         blur = item.optDouble("blur", 0.0).toFloat().coerceIn(0f, 400f),
                         blurUnit = item.optInt("blurUnit", 0).coerceIn(0, 2),
                         blurLinkedToSize = item.optBoolean("blurLinkedToSize", false),
@@ -117,6 +119,7 @@ class BrushMetadataStore(
                         dualSpacing = item.optDouble("dualSpacing", .12).toFloat().coerceIn(.01f, 2f),
                         dualFlow = item.optDouble("dualFlow", 1.0).toFloat().coerceIn(0f, 1f),
                         dualHardness = item.optDouble("dualHardness", 1.0).toFloat().coerceIn(0f, 1f),
+                        dualAntiAliasMode = item.optInt("dualAntiAliasMode", CspAntiAlias.MEDIUM).coerceIn(CspAntiAlias.NONE, CspAntiAlias.STRONG),
                         dualThickness = item.optDouble("dualThickness", 1.0).toFloat().coerceIn(.05f, 2f),
                         dualThicknessVertical = item.optBoolean("dualThicknessVertical", false),
                         dualRotationDegrees = item.optDouble("dualRotationDegrees", 0.0).toFloat(),
@@ -232,6 +235,7 @@ class BrushMetadataStore(
                     .put("spacing", brush.spacing)
                     .put("flow", brush.flow)
                     .put("hardness", brush.hardness)
+                    .put("antiAliasMode", brush.antiAliasMode)
                     .put("blur", brush.blur)
                     .put("blurUnit", brush.blurUnit)
                     .put("blurLinkedToSize", brush.blurLinkedToSize)
@@ -269,6 +273,7 @@ class BrushMetadataStore(
                     .put("dualSpacing", brush.dualSpacing)
                     .put("dualFlow", brush.dualFlow)
                     .put("dualHardness", brush.dualHardness)
+                    .put("dualAntiAliasMode", brush.dualAntiAliasMode)
                     .put("dualThickness", brush.dualThickness)
                     .put("dualThicknessVertical", brush.dualThicknessVertical)
                     .put("dualRotationDegrees", brush.dualRotationDegrees)

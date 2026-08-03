@@ -5,6 +5,7 @@ import app.inkloom.document.BrushCurvePoint
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushTaperMode
 import app.inkloom.document.CspTextureComposite
+import app.inkloom.document.CspAntiAlias
 import java.util.UUID
 import kotlinx.serialization.Serializable
 
@@ -57,6 +58,7 @@ data class ImportedBrush(
     val spacing: Float = .12f,
     val flow: Float = 1f,
     val hardness: Float = 1f,
+    val antiAliasMode: Int = CspAntiAlias.MEDIUM,
     val blur: Float = 0f,
     val blurUnit: Int = 0,
     val blurLinkedToSize: Boolean = false,
@@ -94,6 +96,7 @@ data class ImportedBrush(
     val dualSpacing: Float = .12f,
     val dualFlow: Float = 1f,
     val dualHardness: Float = 1f,
+    val dualAntiAliasMode: Int = CspAntiAlias.MEDIUM,
     val dualThickness: Float = 1f,
     val dualThicknessVertical: Boolean = false,
     val dualRotationDegrees: Float = 0f,

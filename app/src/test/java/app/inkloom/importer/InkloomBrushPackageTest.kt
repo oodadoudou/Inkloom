@@ -4,6 +4,7 @@ import app.inkloom.document.BrushCurvePoint
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushTaperMode
 import app.inkloom.document.CspTextureComposite
+import app.inkloom.document.CspAntiAlias
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
@@ -46,6 +47,7 @@ class InkloomBrushPackageTest {
                 defaultOpacity = .72f,
                 spacing = .18f,
                 stabilization = .4f,
+                antiAliasMode = CspAntiAlias.WEAK,
                 blur = 9.5f,
                 blurUnit = 2,
                 blurLinkedToSize = true,
@@ -68,6 +70,7 @@ class InkloomBrushPackageTest {
                 dualTipFlipVerticalMode = 2,
                 dualBlendTipsWithDarken = true,
                 dualSizeScale = .7f,
+                dualAntiAliasMode = CspAntiAlias.STRONG,
                 dualStrokeRotationJitterDegrees = 90f,
                 taperMode = BrushTaperMode.DISTANCE,
                 taperStartEnabled = true,
@@ -110,6 +113,8 @@ class InkloomBrushPackageTest {
             assertEquals(original.defaultSize, restored.defaultSize, .0001f)
             assertEquals(original.defaultOpacity, restored.defaultOpacity, .0001f)
             assertEquals(original.spacing, restored.spacing, .0001f)
+            assertEquals(CspAntiAlias.WEAK, restored.antiAliasMode)
+            assertEquals(CspAntiAlias.STRONG, restored.dualAntiAliasMode)
             assertEquals(original.blur, restored.blur, .0001f)
             assertEquals(original.blurUnit, restored.blurUnit)
             assertTrue(restored.blurLinkedToSize)

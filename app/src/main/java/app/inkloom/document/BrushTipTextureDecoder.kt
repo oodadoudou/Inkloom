@@ -23,6 +23,7 @@ object BrushTipTextureDecoder {
         grainOffsetX: Float = 0f,
         grainOffsetY: Float = 0f,
         grainCompositeMode: Int = CspTextureComposite.MULTIPLY,
+        antiAliasMode: Int = CspAntiAlias.MEDIUM,
     ): Bitmap? = runCatching {
         val source = BitmapFactory.decodeFile(tipPath) ?: return null
         val grain = grainPath?.takeIf { grainDensity > 0f }?.let(BitmapFactory::decodeFile)
@@ -46,7 +47,7 @@ object BrushTipTextureDecoder {
                 // density. CSP's Hardness control applies to circular tips, not
                 // material tips, so applying another gamma curve here destroys
                 // the authored edge and texture values.
-                val shaped = base
+                val shaped = CspAntiAlias.shapeCoverage(base, antiAliasMode)
                 val grainMask = if (grain != null && grainPixels != null) {
                     val x = index % source.width
                     val y = index / source.width

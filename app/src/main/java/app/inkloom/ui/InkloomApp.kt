@@ -230,6 +230,8 @@ private fun localizedBrushLabel(raw: String): String {
         "End length" -> "收笔长度"
         "End minimum size" -> "收笔最小大小"
         "Hardness" -> "硬度"
+        "Anti-alias" -> "抗锯齿"
+        "Secondary anti-alias" -> "辅助笔尖抗锯齿"
         "Paper texture density" -> "纸张纹理密度"
         "Paper texture scale" -> "纸张纹理缩放"
         "Paper texture rotation" -> "纸张纹理旋转"
@@ -3675,6 +3677,7 @@ private fun InkCanvasView.applyBrushConfiguration(
     brushSpacing = activeBrush?.spacing ?: .12f
     brushFlow = activeBrush?.flow ?: 1f
     brushHardness = activeBrush?.hardness ?: 1f
+    brushAntiAliasMode = activeBrush?.antiAliasMode ?: CspAntiAlias.MEDIUM
     brushBlur = activeBrush?.blur ?: 0f
     brushBlurUnit = activeBrush?.blurUnit ?: 0
     brushBlurLinkedToSize = activeBrush?.blurLinkedToSize ?: false
@@ -3712,6 +3715,7 @@ private fun InkCanvasView.applyBrushConfiguration(
     dualSpacing = activeBrush?.dualSpacing ?: .12f
     dualFlow = activeBrush?.dualFlow ?: 1f
     dualHardness = activeBrush?.dualHardness ?: 1f
+    dualAntiAliasMode = activeBrush?.dualAntiAliasMode ?: CspAntiAlias.MEDIUM
     dualThickness = activeBrush?.dualThickness ?: 1f
     dualThicknessVertical = activeBrush?.dualThicknessVertical ?: false
     dualRotationDegrees = activeBrush?.dualRotationDegrees ?: 0f
@@ -5298,6 +5302,14 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 item { BrushSettingSlider("Spacing", draft.spacing, .01f..2f) { draft = draft.copy(spacing = it) } }
                 item { BrushSettingSlider("Flow", draft.flow, 0f..1f) { draft = draft.copy(flow = it) } }
                 item { BrushSettingSlider("Hardness", draft.hardness, 0f..1f) { draft = draft.copy(hardness = it) } }
+                item {
+                    Text(tr("Anti-alias", "抗锯齿"), color = MutedInk, fontSize = 11.sp)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(CspAntiAlias.NONE, CspAntiAlias.WEAK, CspAntiAlias.MEDIUM, CspAntiAlias.STRONG).forEach { mode ->
+                            item { FilterChip(selected = draft.antiAliasMode == mode, onClick = { draft = draft.copy(antiAliasMode = mode) }, label = { Text(when (mode) { CspAntiAlias.NONE -> tr("Off", "关闭"); CspAntiAlias.WEAK -> tr("Weak", "弱"); CspAntiAlias.STRONG -> tr("Strong", "强"); else -> tr("Medium", "中") }) }) }
+                        }
+                    }
+                }
                 item { BrushSettingSlider("Brush blur", draft.blur, 0f..80f) { draft = draft.copy(blur = it) } }
                 if (draft.blur > 0f) item { Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { FilterChip(selected = draft.blurUnit == 0, onClick = { draft = draft.copy(blurUnit = 0) }, label = { Text(tr("Blur px", "模糊 px")) }); FilterChip(selected = draft.blurUnit == 2, onClick = { draft = draft.copy(blurUnit = 2) }, label = { Text(tr("Blur mm", "模糊 mm")) }) } }
                 item { SettingSwitch("Link blur to brush size", "Scales the imported CSP blur when brush size changes.", draft.blurLinkedToSize) { draft = draft.copy(blurLinkedToSize = it) } }
@@ -5351,6 +5363,14 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 if (draft.dualBrush) item { BrushSettingSlider("Secondary spacing", draft.dualSpacing, .01f..2f) { draft = draft.copy(dualSpacing = it) } }
                 if (draft.dualBrush) item { BrushSettingSlider("Secondary flow", draft.dualFlow, 0f..1f) { draft = draft.copy(dualFlow = it) } }
                 if (draft.dualBrush) item { BrushSettingSlider("Secondary hardness", draft.dualHardness, 0f..1f) { draft = draft.copy(dualHardness = it) } }
+                if (draft.dualBrush) item {
+                    Text(tr("Secondary anti-alias", "辅助笔尖抗锯齿"), color = MutedInk, fontSize = 11.sp)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(CspAntiAlias.NONE, CspAntiAlias.WEAK, CspAntiAlias.MEDIUM, CspAntiAlias.STRONG).forEach { mode ->
+                            item { FilterChip(selected = draft.dualAntiAliasMode == mode, onClick = { draft = draft.copy(dualAntiAliasMode = mode) }, label = { Text(when (mode) { CspAntiAlias.NONE -> tr("Off", "关闭"); CspAntiAlias.WEAK -> tr("Weak", "弱"); CspAntiAlias.STRONG -> tr("Strong", "强"); else -> tr("Medium", "中") }) }) }
+                        }
+                    }
+                }
                 if (draft.dualBrush) item { BrushSettingSlider("Secondary thickness", draft.dualThickness, .05f..2f) { draft = draft.copy(dualThickness = it) } }
                 if (draft.dualBrush) item { SettingSwitch("Secondary vertical thickness", null, draft.dualThicknessVertical) { draft = draft.copy(dualThicknessVertical = it) } }
                 if (draft.dualBrush) item { BrushSettingSlider("Secondary rotation", draft.dualRotationDegrees, -180f..180f) { draft = draft.copy(dualRotationDegrees = it) } }
