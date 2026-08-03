@@ -55,6 +55,9 @@ import app.inkloom.document.PageElement
 import app.inkloom.document.PdfGotoLink
 import app.inkloom.document.PdfGotoLinkNavigation
 import app.inkloom.document.RenderedColorSampling
+import app.inkloom.document.RulerGestureMode
+import app.inkloom.document.RulerGuide
+import app.inkloom.document.RulerGuideState
 import app.inkloom.document.ShapeGeometry
 import app.inkloom.document.ShapeKind
 import app.inkloom.document.ShapePoint
@@ -170,6 +173,13 @@ class InkCanvasView(context: Context) : View(context) {
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
+    private val rulerFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(245, 245, 245); alpha = 220; style = Paint.Style.FILL }
+    private val rulerLinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(17, 17, 17); alpha = 210; style = Paint.Style.STROKE; strokeWidth = 2f }
+    private val rulerLabelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(17, 17, 17); textSize = 28f; typeface = android.graphics.Typeface.DEFAULT_BOLD }
+    private var rulerGestureMode: RulerGestureMode? = null
+    private var rulerGestureStart: RulerGuideState? = null
+    private var rulerGestureX = 0f
+    private var rulerGestureY = 0f
     private val continuousPlotRunnable = object : Runnable {
         override fun run() {
             if (!continuousPlotActive || !brushContinuousPlot || activeTool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) return
@@ -397,6 +407,11 @@ class InkCanvasView(context: Context) : View(context) {
     var twoFingerDoubleTapUndo: Boolean = true
     var threeFingerTapRedo: Boolean = true
     var twoFingerRotationEnabled: Boolean = false
+    var rulerEnabled: Boolean = false
+        set(value) { field = value; if (!value) rulerGestureMode = null; invalidate() }
+    var rulerGuide: RulerGuideState = RulerGuideState()
+        set(value) { field = value.normalized(); invalidate() }
+    var onRulerGuideChanged: (RulerGuideState) -> Unit = {}
     var pressureSensitivity: Float = 1f
     var pressureMinimumInput: Float = 0f
     var pressureMaximumInput: Float = 1f
@@ -457,6 +472,9 @@ class InkCanvasView(context: Context) : View(context) {
             if (activeTool != null) cancelActiveGestureForNavigation()
             stopContinuousPlot()
             laserTrail.clear()
+            rulerGestureStart?.let { rulerGuide = it }
+            rulerGestureMode = null
+            rulerGestureStart = null
             ctrlModifierHeld = false
             altModifierHeld = false
             releaseHeldStylusButtons()
@@ -590,6 +608,7 @@ class InkCanvasView(context: Context) : View(context) {
         }
         drawShapePreview(canvas)
         if (currentPoints.isNotEmpty()) drawLayeredStrokes(canvas, listOf(makeStroke(currentPoints).copy(grainCompositeMode = grainCompositeMode)))
+        drawRulerGuide(canvas)
         drawLaserTrail(canvas, SystemClock.uptimeMillis())
         drawBrushSizePreview(canvas)
     }
@@ -988,6 +1007,7 @@ class InkCanvasView(context: Context) : View(context) {
             return true
         }
         val elapsedSinceStylus = if (lastStylusSeenAt == Long.MIN_VALUE) Long.MAX_VALUE else event.eventTime - lastStylusSeenAt
+        if (handleRulerGesture(event, isStylus, elapsedSinceStylus)) return true
         val buttonForcesNavigation = isStylus && (stylusButtonAction == StylusButtonAction.HAND || stylusHandNavigationContact)
         val isFingerNavigation = forceNavigation || buttonForcesNavigation || StylusInputClassifier.shouldNavigateOrRejectFinger(isStylus, fingerDrawingEnabled, event.pointerCount, event.getTouchMajor(pointerIndex), elapsedSinceStylus)
         if (isFingerNavigation) {
@@ -1344,6 +1364,7 @@ class InkCanvasView(context: Context) : View(context) {
         stopContinuousPlot()
         currentPoints.clear()
         laserTrail.cancelActive()
+        rulerGestureMode = null
         shapeStart = null
         shapeEnd = null
         shapeFreeformPoints.clear()
@@ -1385,6 +1406,95 @@ class InkCanvasView(context: Context) : View(context) {
         canvas.drawCircle(head.x * width, head.y * height, 9f * scale, laserGlowPaint)
         canvas.drawCircle(head.x * width, head.y * height, 2f * scale, laserCorePaint)
         postInvalidateOnAnimation()
+    }
+
+    private fun handleRulerGesture(event: MotionEvent, isStylus: Boolean, elapsedSinceStylus: Long): Boolean {
+        if (isStylus || !rulerEnabled) return false
+        val existing = rulerGestureMode
+        if (existing == null) {
+            if (forceNavigation || event.actionMasked != MotionEvent.ACTION_DOWN || event.pointerCount != 1 ||
+                elapsedSinceStylus <= StylusInputClassifier.RECENT_STYLUS_WINDOW_MS ||
+                event.getTouchMajor(event.actionIndex) >= StylusInputClassifier.PALM_TOUCH_MAJOR_PX
+            ) return false
+            val hit = RulerGuide.hitTest(rulerGuide, event.x, event.y, width.toFloat(), height.toFloat(), RULER_TOUCH_RADIUS_DP * resources.displayMetrics.density) ?: return false
+            rulerGestureMode = hit
+            rulerGestureStart = rulerGuide
+            rulerGestureX = event.x
+            rulerGestureY = event.y
+            parent?.requestDisallowInterceptTouchEvent(true)
+            return true
+        }
+        when (event.actionMasked) {
+            MotionEvent.ACTION_MOVE -> if (event.pointerCount == 1) {
+                rulerGuide = when (existing) {
+                    RulerGestureMode.MOVE -> RulerGuide.moveBy(rulerGuide, event.x - rulerGestureX, event.y - rulerGestureY, width.toFloat(), height.toFloat())
+                    RulerGestureMode.ROTATE -> RulerGuide.rotateToward(rulerGuide, event.x, event.y, width.toFloat(), height.toFloat())
+                }
+                rulerGestureX = event.x
+                rulerGestureY = event.y
+            }
+            MotionEvent.ACTION_UP -> {
+                onRulerGuideChanged(rulerGuide)
+                rulerGestureMode = null
+                rulerGestureStart = null
+                parent?.requestDisallowInterceptTouchEvent(false)
+                performClick()
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                rulerGestureStart?.let { rulerGuide = it }
+                rulerGestureMode = null
+                rulerGestureStart = null
+                parent?.requestDisallowInterceptTouchEvent(false)
+            }
+        }
+        invalidate()
+        return true
+    }
+
+    private fun drawRulerGuide(canvas: Canvas) {
+        if (!rulerEnabled || width <= 0 || height <= 0) return
+        val state = rulerGuide.normalized()
+        val radians = Math.toRadians(state.angleDegrees.toDouble())
+        val directionX = cos(radians).toFloat()
+        val directionY = sin(radians).toFloat()
+        val normalX = -directionY
+        val normalY = directionX
+        val centerX = state.centerX * width
+        val centerY = state.centerY * height
+        val halfLength = hypot(width.toDouble(), height.toDouble()).toFloat()
+        val halfBand = 34f * resources.displayMetrics.density
+        val startX = centerX - directionX * halfLength
+        val startY = centerY - directionY * halfLength
+        val endX = centerX + directionX * halfLength
+        val endY = centerY + directionY * halfLength
+        val band = Path().apply {
+            moveTo(startX + normalX * halfBand, startY + normalY * halfBand)
+            lineTo(endX + normalX * halfBand, endY + normalY * halfBand)
+            lineTo(endX - normalX * halfBand, endY - normalY * halfBand)
+            lineTo(startX - normalX * halfBand, startY - normalY * halfBand)
+            close()
+        }
+        canvas.drawPath(band, rulerFillPaint)
+        canvas.drawLine(startX, startY, endX, endY, rulerLinePaint)
+        val tickSpacing = 28f * resources.displayMetrics.density
+        var offset = -halfLength
+        var tickIndex = 0
+        while (offset <= halfLength) {
+            val tickLength = (if (tickIndex % 5 == 0) 18f else 9f) * resources.displayMetrics.density
+            val x = centerX + directionX * offset
+            val y = centerY + directionY * offset
+            canvas.drawLine(x, y, x + normalX * tickLength, y + normalY * tickLength, rulerLinePaint)
+            offset += tickSpacing
+            tickIndex++
+        }
+        val handle = RulerGuide.rotationHandle(state, width.toFloat(), height.toFloat())
+        rulerFillPaint.color = Color.WHITE
+        rulerFillPaint.alpha = 245
+        canvas.drawCircle(handle.x, handle.y, 16f * resources.displayMetrics.density, rulerFillPaint)
+        rulerFillPaint.color = Color.rgb(245, 245, 245)
+        rulerFillPaint.alpha = 220
+        canvas.drawCircle(handle.x, handle.y, 16f * resources.displayMetrics.density, rulerLinePaint)
+        canvas.drawText("${state.angleDegrees.toInt()}°", centerX + normalX * (halfBand + 22f), centerY + normalY * (halfBand + 22f), rulerLabelPaint)
     }
 
     override fun performClick(): Boolean {
@@ -1637,8 +1747,9 @@ class InkCanvasView(context: Context) : View(context) {
     private fun addPoint(x: Float, y: Float, pressure: Float, time: Long, tilt: Float, orientation: Float, force: Boolean = false) {
         val adjustedPressure = PressureCalibration.apply(pressure, pressureMinimumInput, pressureMaximumInput, pressureSensitivity)
         val previous = currentPoints.lastOrNull()
-        val rawX = x.coerceIn(0f, 1f)
-        val rawY = y.coerceIn(0f, 1f)
+        val constrained = if (rulerEnabled && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) RulerGuide.project(rulerGuide, x, y, width.toFloat(), height.toFloat()) else null
+        val rawX = (constrained?.x ?: x).coerceIn(0f, 1f)
+        val rawY = (constrained?.y ?: y).coerceIn(0f, 1f)
         val inputVelocity = previous?.let { prior -> val elapsed = (time - prior.timeMs).coerceAtLeast(1L); (hypot(((rawX - prior.x) * width).toDouble(), ((rawY - prior.y) * height).toDouble()).toFloat() / elapsed / VELOCITY_FULL_SCALE_PX_PER_MS).coerceIn(0f, 1f) } ?: 0f
         val smooth = StrokeStabilization.smoothing(stabilization, stabilizationBySpeed, stabilizationBySpeedMode, inputVelocity)
         val pointX = ((previous?.x ?: rawX) * smooth + rawX * (1f - smooth)).coerceIn(0f, 1f)
@@ -1965,6 +2076,7 @@ class InkCanvasView(context: Context) : View(context) {
         const val DUAL_SCATTER_SEED = 0x27C4915DL
         const val DUAL_ROTATION_SEED = 0x61B8D2A3L
         const val VIEW_ROTATION_DEGREES_PER_PIXEL = .25f
+        const val RULER_TOUCH_RADIUS_DP = 38f
         const val DUAL_SEQUENCE_SEED = 0x35A71C9E
         const val MAX_TIP_CACHE_ENTRIES = 64
         const val STYLUS_BUTTON_MASK = MotionEvent.BUTTON_STYLUS_PRIMARY or MotionEvent.BUTTON_STYLUS_SECONDARY

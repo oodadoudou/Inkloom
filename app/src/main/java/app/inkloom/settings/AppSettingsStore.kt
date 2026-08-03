@@ -48,6 +48,11 @@ data class AppSettings(
     val twoFingerDoubleTapUndo: Boolean = true,
     val threeFingerTapRedo: Boolean = true,
     val twoFingerRotation: Boolean = false,
+    val rulerEnabled: Boolean = false,
+    val rulerCenterX: Float = .5f,
+    val rulerCenterY: Float = .5f,
+    val rulerAngleDegrees: Float = 0f,
+    val rulerSnapDegrees: Float = 15f,
     val stylusPrimaryButton: StylusButtonAction = StylusButtonAction.ERASER,
     val stylusSecondaryButton: StylusButtonAction = StylusButtonAction.LASSO,
     val stylusPrimaryTrigger: ShortcutTrigger = ShortcutTrigger.HOLD,
@@ -148,6 +153,11 @@ class AppSettingsStore(context: Context) {
             twoFingerDoubleTapUndo = preferences.getBoolean("twoFingerDoubleTapUndo", true),
             threeFingerTapRedo = preferences.getBoolean("threeFingerTapRedo", true),
             twoFingerRotation = preferences.getBoolean("twoFingerRotation", false),
+            rulerEnabled = preferences.getBoolean("rulerEnabled", false),
+            rulerCenterX = preferences.getFloat("rulerCenterX", .5f).takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: .5f,
+            rulerCenterY = preferences.getFloat("rulerCenterY", .5f).takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: .5f,
+            rulerAngleDegrees = app.inkloom.document.RulerGuideState.normalizeAngle(preferences.getFloat("rulerAngleDegrees", 0f)),
+            rulerSnapDegrees = preferences.getFloat("rulerSnapDegrees", 15f).takeIf(Float::isFinite)?.coerceIn(1f, 90f) ?: 15f,
             stylusPrimaryButton = enumValue(preferences.getString("stylusPrimaryButton", null), StylusButtonAction.ERASER),
             stylusSecondaryButton = enumValue(preferences.getString("stylusSecondaryButton", null), StylusButtonAction.LASSO),
             stylusPrimaryTrigger = enumValue(preferences.getString("stylusPrimaryTrigger", null), ShortcutTrigger.HOLD),
@@ -233,6 +243,11 @@ class AppSettingsStore(context: Context) {
             .putBoolean("twoFingerDoubleTapUndo", persisted.twoFingerDoubleTapUndo)
             .putBoolean("threeFingerTapRedo", persisted.threeFingerTapRedo)
             .putBoolean("twoFingerRotation", persisted.twoFingerRotation)
+            .putBoolean("rulerEnabled", persisted.rulerEnabled)
+            .putFloat("rulerCenterX", persisted.rulerCenterX.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: .5f)
+            .putFloat("rulerCenterY", persisted.rulerCenterY.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: .5f)
+            .putFloat("rulerAngleDegrees", app.inkloom.document.RulerGuideState.normalizeAngle(persisted.rulerAngleDegrees))
+            .putFloat("rulerSnapDegrees", persisted.rulerSnapDegrees.takeIf(Float::isFinite)?.coerceIn(1f, 90f) ?: 15f)
             .putString("stylusPrimaryButton", persisted.stylusPrimaryButton.name)
             .putString("stylusSecondaryButton", persisted.stylusSecondaryButton.name)
             .putString("stylusPrimaryTrigger", persisted.stylusPrimaryTrigger.name)

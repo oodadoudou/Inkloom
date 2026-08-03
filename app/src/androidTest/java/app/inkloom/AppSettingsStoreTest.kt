@@ -31,6 +31,24 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class AppSettingsStoreTest {
+    @Test fun rulerGuideSurvivesReload() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
+        preferences.edit().clear().commit()
+        try {
+            AppSettingsStore(context).save(AppSettings(rulerEnabled = true, rulerCenterX = .3f, rulerCenterY = .7f, rulerAngleDegrees = -45f, rulerSnapDegrees = 5f))
+
+            val restored = AppSettingsStore(context).load()
+            assertTrue(restored.rulerEnabled)
+            assertEquals(.3f, restored.rulerCenterX)
+            assertEquals(.7f, restored.rulerCenterY)
+            assertEquals(-45f, restored.rulerAngleDegrees)
+            assertEquals(5f, restored.rulerSnapDegrees)
+        } finally {
+            preferences.edit().clear().commit()
+        }
+    }
+
     @Test fun canvasGesturePreferencesSurviveReload() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)

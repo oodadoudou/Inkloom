@@ -28,6 +28,8 @@ import androidx.compose.ui.geometry.Offset
 import app.inkloom.importer.BrushGroupStore
 import app.inkloom.document.PageTemplateStore
 import app.inkloom.settings.AppSettingsStore
+import app.inkloom.settings.ShortcutAction
+import app.inkloom.settings.ShortcutCategory
 import app.inkloom.settings.ToolboxAxis
 import app.inkloom.settings.ToolboxAxisMode
 import app.inkloom.settings.ToolboxQuickSlotKind
@@ -56,6 +58,7 @@ class InkloomLaunchTest {
                     .putBoolean("showLayerPanel", false)
                     .putBoolean("showBrushPanel", false)
                     .putBoolean("showPageRail", true)
+                    .putBoolean("rulerEnabled", false)
                     .putString("pagePanelDock", "LEFT")
                     .putString("brushPanelDock", "RIGHT")
                     .putString("layerPanelDock", "RIGHT")
@@ -112,6 +115,26 @@ class InkloomLaunchTest {
 
     @Test fun libraryScreenLaunches() {
         composeRule.onNodeWithText("Inkloom").assertIsDisplayed()
+    }
+
+    @Test fun rulerIsReachableFromCompactToolbarAndPersists() {
+        createNotebookAndOpenEditor()
+
+        composeRule.onNodeWithContentDescription("More tools").performClick()
+        composeRule.onNodeWithText("Show ruler").assertIsDisplayed().performClick()
+        composeRule.waitUntil(5_000) {
+            AppSettingsStore(composeRule.activity).load().rulerEnabled
+        }
+
+        composeRule.onNodeWithContentDescription("More tools").performClick()
+        composeRule.onNodeWithText("Hide ruler").assertIsDisplayed()
+
+        composeRule.onNodeWithContentDescription("Tool controls").performClick()
+        composeRule.onNodeWithText("Ruler angle snap").assertIsDisplayed()
+        composeRule.onNodeWithText("5°").performClick()
+        composeRule.waitUntil(5_000) {
+            AppSettingsStore(composeRule.activity).load().rulerSnapDegrees == 5f
+        }
     }
 
     @Test fun rotationKeepsEditorAndRestoresOrientationSpecificWorkspace() {
@@ -297,8 +320,9 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("Customize shortcuts").performClick()
         composeRule.onNodeWithText("Search actions or keys").assertIsDisplayed()
         composeRule.onNodeWithText("Brush groups").assertIsDisplayed()
-        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true))).performScrollToIndex(75)
 
+        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true)))
+            .performScrollToIndex(16 + ShortcutCategory.entries.size + ShortcutAction.entries.size)
         composeRule.onNodeWithText("Import profile").assertIsDisplayed()
         composeRule.onNodeWithText("Export profile").assertIsDisplayed()
     }
