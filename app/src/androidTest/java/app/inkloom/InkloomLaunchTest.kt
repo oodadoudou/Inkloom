@@ -81,7 +81,9 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription("Settings").performClick()
         composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Draw with finger"))).performScrollToIndex(28)
         composeRule.onNodeWithText("Customize shortcuts").performClick()
-        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true))).performScrollToIndex(43)
+        composeRule.onNodeWithText("Search actions or keys").assertIsDisplayed()
+        composeRule.onNodeWithText("Brush groups").assertIsDisplayed()
+        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true))).performScrollToIndex(55)
 
         composeRule.onNodeWithText("Import profile").assertIsDisplayed()
         composeRule.onNodeWithText("Export profile").assertIsDisplayed()

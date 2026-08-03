@@ -47,6 +47,26 @@ enum class ShortcutAction {
     SAVE_CHECKPOINT,
 }
 
+enum class ShortcutCategory { TOOLS, BRUSH_GROUPS, BRUSH_ADJUSTMENTS, EDITING, CANVAS, PAGES, LAYERS, PANELS, FILE }
+
+fun ShortcutAction.category(): ShortcutCategory = when (this) {
+    ShortcutAction.PEN_OR_PENCIL_GROUP, ShortcutAction.PEN_GROUP, ShortcutAction.PENCIL_GROUP, ShortcutAction.BRUSH_GROUP,
+    ShortcutAction.PREVIOUS_BRUSH, ShortcutAction.NEXT_BRUSH -> ShortcutCategory.BRUSH_GROUPS
+    ShortcutAction.TOGGLE_ERASER, ShortcutAction.HIGHLIGHTER_TOOL, ShortcutAction.SELECT_TOOL, ShortcutAction.HAND_TOOL,
+    ShortcutAction.ROTATE_VIEW_TOOL, ShortcutAction.EYEDROPPER_TOOL, ShortcutAction.SHAPE_TOOL, ShortcutAction.TEXT_TOOL,
+    ShortcutAction.NOTE_TOOL, ShortcutAction.LINK_TOOL, ShortcutAction.IMAGE_TOOL, ShortcutAction.AUDIO_TOOL -> ShortcutCategory.TOOLS
+    ShortcutAction.BRUSH_SIZE_DECREASE, ShortcutAction.BRUSH_SIZE_INCREASE, ShortcutAction.OPACITY_DECREASE,
+    ShortcutAction.OPACITY_INCREASE -> ShortcutCategory.BRUSH_ADJUSTMENTS
+    ShortcutAction.CUT_SELECTION, ShortcutAction.COPY_SELECTION, ShortcutAction.PASTE_SELECTION, ShortcutAction.DELETE_SELECTION,
+    ShortcutAction.UNDO, ShortcutAction.REDO -> ShortcutCategory.EDITING
+    ShortcutAction.ZOOM_OUT, ShortcutAction.ZOOM_IN, ShortcutAction.FIT_PAGE, ShortcutAction.ACTUAL_SIZE,
+    ShortcutAction.FIT_WIDTH, ShortcutAction.RESET_VIEW_ROTATION -> ShortcutCategory.CANVAS
+    ShortcutAction.PREVIOUS_PAGE, ShortcutAction.NEXT_PAGE -> ShortcutCategory.PAGES
+    ShortcutAction.NEW_LAYER, ShortcutAction.MERGE_LAYER_DOWN -> ShortcutCategory.LAYERS
+    ShortcutAction.TOGGLE_BRUSH_PANEL, ShortcutAction.TOGGLE_LAYER_PANEL, ShortcutAction.TOGGLE_PANELS -> ShortcutCategory.PANELS
+    ShortcutAction.SAVE_CHECKPOINT -> ShortcutCategory.FILE
+}
+
 enum class ShortcutMatchMode { KEY_CODE, SCAN_CODE }
 enum class ShortcutTrigger { PRESS, HOLD }
 enum class ShortcutPhase { PRESS, RELEASE }
@@ -205,6 +225,14 @@ object CspShortcutResolver {
         val sameScope = existing.deviceDescriptor == deviceDescriptor
         sameScope && (existing.action == action || sameInput(existing.chord, chord))
     } + ShortcutBinding(action, chord, trigger, deviceDescriptor, deviceName)
+
+    fun restoreActionDefaults(bindings: List<ShortcutBinding>, action: ShortcutAction): List<ShortcutBinding> {
+        val defaults = defaultBindings.filter { it.action == action }
+        val withoutAction = bindings.filterNot { it.action == action }
+        return withoutAction.filterNot { existing ->
+            defaults.any { default -> existing.deviceDescriptor == default.deviceDescriptor && sameInput(existing.chord, default.chord) }
+        } + defaults
+    }
 
     private fun sameInput(left: ShortcutChord, right: ShortcutChord): Boolean =
         left.ctrl == right.ctrl && left.alt == right.alt && left.shift == right.shift && when {

@@ -102,6 +102,25 @@ class CspShortcutResolverTest {
         assertEquals(2, updated.count { it.action == ShortcutAction.BRUSH_GROUP })
     }
 
+    @Test fun everyShortcutActionHasOneEditorCategory() {
+        assertEquals(ShortcutAction.entries.size, ShortcutAction.entries.map(ShortcutAction::category).size)
+        assertEquals(ShortcutCategory.BRUSH_GROUPS, ShortcutAction.PEN_GROUP.category())
+        assertEquals(ShortcutCategory.BRUSH_ADJUSTMENTS, ShortcutAction.BRUSH_SIZE_INCREASE.category())
+        assertEquals(ShortcutCategory.PANELS, ShortcutAction.TOGGLE_LAYER_PANEL.category())
+    }
+
+    @Test fun restoringOneActionKeepsOtherDeviceMappingsAndAllOfItsCspDefaults() {
+        val customized = CspShortcutResolver.defaultBindings
+            .filterNot { it.action == ShortcutAction.REDO }
+            .plus(ShortcutBinding(ShortcutAction.REDO, ShortcutChord(KeyEvent.KEYCODE_F4), deviceDescriptor = "toolbox"))
+            .plus(ShortcutBinding(ShortcutAction.BRUSH_GROUP, ShortcutChord(KeyEvent.KEYCODE_F3), deviceDescriptor = "toolbox"))
+
+        val restored = CspShortcutResolver.restoreActionDefaults(customized, ShortcutAction.REDO)
+
+        assertEquals(CspShortcutResolver.defaultBindings.filter { it.action == ShortcutAction.REDO }, restored.filter { it.action == ShortcutAction.REDO })
+        assertTrue(restored.any { it.action == ShortcutAction.BRUSH_GROUP && it.deviceDescriptor == "toolbox" })
+    }
+
     @Test fun migratesOnlyTheFormerReversedDefaultBrushSizePair() {
         val addedActions = setOf(
             ShortcutAction.NEW_LAYER,

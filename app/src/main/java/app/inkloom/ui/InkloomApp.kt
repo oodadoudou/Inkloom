@@ -85,6 +85,7 @@ import app.inkloom.settings.SelectionMode
 import app.inkloom.settings.SelectionShape
 import app.inkloom.settings.ShortcutAction
 import app.inkloom.settings.ShortcutActivation
+import app.inkloom.settings.ShortcutCategory
 import app.inkloom.settings.CspShortcutResolver
 import app.inkloom.settings.KeyInputDiagnostic
 import app.inkloom.settings.ShortcutChord
@@ -94,6 +95,7 @@ import app.inkloom.settings.ShortcutProfileCodec
 import app.inkloom.settings.ShortcutTrigger
 import app.inkloom.settings.ShortcutBrushGroup
 import app.inkloom.settings.ShortcutBrushSelection
+import app.inkloom.settings.category
 import app.inkloom.settings.StylusButtonAction
 import app.inkloom.settings.ToolbarDock
 import app.inkloom.settings.UiLanguage
@@ -3647,6 +3649,21 @@ private fun ShortcutEditorDialog(settings: AppSettings, onChange: (AppSettings) 
     var captureMode by remember { mutableStateOf(ShortcutMatchMode.KEY_CODE) }
     var captureTrigger by remember { mutableStateOf(ShortcutTrigger.PRESS) }
     var deviceSpecific by remember { mutableStateOf(false) }
+    var search by remember { mutableStateOf("") }
+    var selectedCategory by remember { mutableStateOf<ShortcutCategory?>(null) }
+    val language = LocalUiLanguage.current
+    val groupedActions = ShortcutCategory.entries.mapNotNull { category ->
+        if (selectedCategory != null && selectedCategory != category) return@mapNotNull null
+        val matches = ShortcutAction.entries.filter { action ->
+            action.category() == category && (search.isBlank() || listOf(
+                shortcutActionLabel(action, language),
+                shortcutCategoryLabel(category, language),
+                action.name,
+                settings.shortcutBindings.filter { it.action == action }.joinToString(" ") { CspShortcutResolver.display(it.chord) },
+            ).any { it.contains(search.trim(), ignoreCase = true) })
+        }
+        matches.takeIf(List<ShortcutAction>::isNotEmpty)?.let { category to it }
+    }
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(listeningFor) { if (listeningFor != null) focusRequester.requestFocus() }
     AlertDialog(
@@ -3677,6 +3694,24 @@ private fun ShortcutEditorDialog(settings: AppSettings, onChange: (AppSettings) 
             ) {
                 item { Text(tr("Tap Change, then press a Toolbox or keyboard combination. Assigning a combination already in use moves it to the new action.", "点击“更改”，然后按下 Toolbox 或键盘组合键。已占用的组合键会自动移到新操作。"), color = MutedInk, fontSize = 12.sp) }
                 item {
+                    OutlinedTextField(
+                        value = search,
+                        onValueChange = { search = it },
+                        leadingIcon = { Icon(Icons.Outlined.Search, null) },
+                        placeholder = { Text(tr("Search actions or keys", "搜索操作或按键")) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                item {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        item { FilterChip(selected = selectedCategory == null, onClick = { selectedCategory = null }, label = { Text(tr("All", "全部")) }) }
+                        items(ShortcutCategory.entries, key = { it.name }) { category ->
+                            FilterChip(selected = selectedCategory == category, onClick = { selectedCategory = if (selectedCategory == category) null else category }, label = { Text(shortcutCategoryLabel(category, language)) })
+                        }
+                    }
+                }
+                item {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(tr("Capture mode", "捕获方式"), color = MutedInk, fontSize = 11.sp)
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -3690,39 +3725,44 @@ private fun ShortcutEditorDialog(settings: AppSettings, onChange: (AppSettings) 
                         SettingSwitch(tr("Only this input device", "仅此输入设备"), tr("Keeps the global CSP key while adding a Toolbox-specific mapping.", "保留全局 CSP 键位，同时添加此 Toolbox 的专用映射。"), deviceSpecific) { deviceSpecific = it }
                     }
                 }
-                items(ShortcutAction.entries, key = { it.name }) { action ->
-                    val actionBindings = settings.shortcutBindings.filter { it.action == action }
-                    val chords = actionBindings.map { binding ->
-                        buildString {
-                            append(CspShortcutResolver.display(binding.chord))
-                            if (binding.trigger == ShortcutTrigger.HOLD) append(tr(" · hold", " · 按住"))
-                            binding.deviceName?.let { append(" · "); append(it) }
-                        }
-                    }
-                    ListItem(
-                        headlineContent = { Text(shortcutActionLabel(action), fontSize = 13.sp) },
-                        supportingContent = { Text(if (listeningFor == action) tr("Press a key combination…", "请按组合键…") else chords.joinToString(" / ").ifBlank { tr("Not assigned", "未分配") }, color = if (listeningFor == action) Sage else MutedInk) },
-                        trailingContent = {
-                            Row {
-                                if (chords.isNotEmpty()) IconButton(onClick = { onChange(settings.copy(shortcutBindings = settings.shortcutBindings.filterNot { it.action == action })) }) { Icon(Icons.Outlined.LinkOff, tr("Remove shortcut", "移除快捷键")) }
-                                TextButton(onClick = {
-                                    captureMode = ShortcutMatchMode.SCAN_CODE
-                                    captureTrigger = ShortcutTrigger.PRESS
-                                    deviceSpecific = true
-                                    listeningFor = action
-                                }) { Text(tr("Add device", "添加设备")) }
-                                TextButton(onClick = {
-                                    actionBindings.firstOrNull()?.let { existing ->
-                                        captureMode = existing.chord.matchMode
-                                        captureTrigger = existing.trigger
-                                        deviceSpecific = existing.deviceDescriptor != null
-                                    }
-                                    listeningFor = action
-                                }) { Text(tr("Change", "更改")) }
+                groupedActions.forEach { (category, actions) ->
+                    item("category-${category.name}") { Text(shortcutCategoryLabel(category, language).uppercase(), color = MutedInk, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)) }
+                    items(actions, key = { it.name }) { action ->
+                        val actionBindings = settings.shortcutBindings.filter { it.action == action }
+                        val defaultBindings = CspShortcutResolver.defaultBindings.filter { it.action == action }
+                        val chords = actionBindings.map { binding ->
+                            buildString {
+                                append(CspShortcutResolver.display(binding.chord))
+                                if (binding.trigger == ShortcutTrigger.HOLD) append(tr(" · hold", " · 按住"))
+                                binding.deviceName?.let { append(" · "); append(it) }
                             }
-                        },
-                        colors = ListItemDefaults.colors(containerColor = if (listeningFor == action) SageContainer else Color.Transparent),
-                    )
+                        }
+                        ListItem(
+                            headlineContent = { Text(shortcutActionLabel(action, language), fontSize = 13.sp) },
+                            supportingContent = { Text(if (listeningFor == action) tr("Press a key combination…", "请按组合键…") else chords.joinToString(" / ").ifBlank { tr("Not assigned", "未分配") }, color = if (listeningFor == action) Sage else MutedInk) },
+                            trailingContent = {
+                                Row {
+                                    if (chords.isNotEmpty()) IconButton(onClick = { onChange(settings.copy(shortcutBindings = settings.shortcutBindings.filterNot { it.action == action })) }) { Icon(Icons.Outlined.LinkOff, tr("Remove shortcut", "移除快捷键")) }
+                                    if (actionBindings != defaultBindings) IconButton(onClick = { onChange(settings.copy(shortcutBindings = CspShortcutResolver.restoreActionDefaults(settings.shortcutBindings, action))) }) { Icon(Icons.Outlined.RestartAlt, tr("Reset this action", "重置此操作")) }
+                                    TextButton(onClick = {
+                                        captureMode = ShortcutMatchMode.SCAN_CODE
+                                        captureTrigger = ShortcutTrigger.PRESS
+                                        deviceSpecific = true
+                                        listeningFor = action
+                                    }) { Text(tr("Add device", "添加设备")) }
+                                    TextButton(onClick = {
+                                        actionBindings.firstOrNull()?.let { existing ->
+                                            captureMode = existing.chord.matchMode
+                                            captureTrigger = existing.trigger
+                                            deviceSpecific = existing.deviceDescriptor != null
+                                        }
+                                        listeningFor = action
+                                    }) { Text(tr("Change", "更改")) }
+                                }
+                            },
+                            colors = ListItemDefaults.colors(containerColor = if (listeningFor == action) SageContainer else Color.Transparent),
+                        )
+                    }
                 }
                 item { OutlinedButton(onClick = { onChange(settings.copy(shortcutBindings = CspShortcutResolver.defaultBindings)); listeningFor = null }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.RestartAlt, null); Spacer(Modifier.width(8.dp)); Text(tr("Restore CSP defaults", "恢复 CSP 默认键位")) } }
                 item {
@@ -3737,50 +3777,61 @@ private fun ShortcutEditorDialog(settings: AppSettings, onChange: (AppSettings) 
     )
 }
 
-@Composable
-private fun shortcutActionLabel(action: ShortcutAction): String = when (action) {
-    ShortcutAction.PEN_OR_PENCIL_GROUP -> tr("Switch pen / pencil group", "切换钢笔／铅笔组")
-    ShortcutAction.PEN_GROUP -> tr("Switch directly to pen group", "直接切换到钢笔组")
-    ShortcutAction.PENCIL_GROUP -> tr("Switch directly to pencil group", "直接切换到铅笔组")
-    ShortcutAction.BRUSH_GROUP -> tr("Switch brush group", "切换 Brushes 组")
-    ShortcutAction.TOGGLE_ERASER -> tr("Toggle eraser and previous tool", "橡皮与上一工具切换")
-    ShortcutAction.HIGHLIGHTER_TOOL -> tr("Marker / highlighter", "标记笔／荧光笔")
-    ShortcutAction.SELECT_TOOL -> tr("Selection tool", "选择工具")
-    ShortcutAction.HAND_TOOL -> tr("Hand / canvas navigation", "抓手／画布导航")
-    ShortcutAction.ROTATE_VIEW_TOOL -> tr("Rotate canvas view", "旋转画布视图")
-    ShortcutAction.EYEDROPPER_TOOL -> tr("Eyedropper", "吸管")
-    ShortcutAction.SHAPE_TOOL -> tr("Shape tool", "形状工具")
-    ShortcutAction.TEXT_TOOL -> tr("Text tool", "文字工具")
-    ShortcutAction.NOTE_TOOL -> tr("Sticky note", "便笺")
-    ShortcutAction.LINK_TOOL -> tr("Link", "链接")
-    ShortcutAction.IMAGE_TOOL -> tr("Insert image", "插入图片")
-    ShortcutAction.AUDIO_TOOL -> tr("Record audio note", "录音笔记")
-    ShortcutAction.BRUSH_SIZE_DECREASE -> tr("Decrease brush size", "减小笔刷大小")
-    ShortcutAction.BRUSH_SIZE_INCREASE -> tr("Increase brush size", "增大笔刷大小")
-    ShortcutAction.OPACITY_DECREASE -> tr("Decrease opacity", "降低不透明度")
-    ShortcutAction.OPACITY_INCREASE -> tr("Increase opacity", "提高不透明度")
-    ShortcutAction.PREVIOUS_BRUSH -> tr("Previous brush", "上一个笔刷")
-    ShortcutAction.NEXT_BRUSH -> tr("Next brush", "下一个笔刷")
-    ShortcutAction.CUT_SELECTION -> tr("Cut selection", "剪切选区")
-    ShortcutAction.COPY_SELECTION -> tr("Copy selection", "复制选区")
-    ShortcutAction.PASTE_SELECTION -> tr("Paste selection", "粘贴选区")
-    ShortcutAction.DELETE_SELECTION -> tr("Delete selection", "删除选区")
-    ShortcutAction.UNDO -> tr("Undo", "撤销")
-    ShortcutAction.REDO -> tr("Redo", "重做")
-    ShortcutAction.NEW_LAYER -> tr("New raster layer", "新建栅格图层")
-    ShortcutAction.MERGE_LAYER_DOWN -> tr("Merge with layer below", "与下一图层合并")
-    ShortcutAction.ZOOM_OUT -> tr("Zoom out", "缩小")
-    ShortcutAction.ZOOM_IN -> tr("Zoom in", "放大")
-    ShortcutAction.FIT_PAGE -> tr("Fit page", "适合页面")
-    ShortcutAction.ACTUAL_SIZE -> tr("Actual size (100%)", "实际大小（100%）")
-    ShortcutAction.FIT_WIDTH -> tr("Fit width", "适合宽度")
-    ShortcutAction.RESET_VIEW_ROTATION -> tr("Reset view rotation", "重置视图旋转")
-    ShortcutAction.PREVIOUS_PAGE -> tr("Previous page", "上一页")
-    ShortcutAction.NEXT_PAGE -> tr("Next page", "下一页")
-    ShortcutAction.TOGGLE_BRUSH_PANEL -> tr("Show / hide brush panel", "显示／隐藏笔刷栏")
-    ShortcutAction.TOGGLE_LAYER_PANEL -> tr("Show / hide layer panel", "显示／隐藏图层栏")
-    ShortcutAction.TOGGLE_PANELS -> tr("Hide / show panels", "隐藏／显示面板")
-    ShortcutAction.SAVE_CHECKPOINT -> tr("Save checkpoint", "保存检查点")
+private fun shortcutCategoryLabel(category: ShortcutCategory, language: UiLanguage): String = when (category) {
+    ShortcutCategory.TOOLS -> language.text("Tools", "工具")
+    ShortcutCategory.BRUSH_GROUPS -> language.text("Brush groups", "笔刷组")
+    ShortcutCategory.BRUSH_ADJUSTMENTS -> language.text("Brush adjustments", "笔刷调节")
+    ShortcutCategory.EDITING -> language.text("Editing", "编辑")
+    ShortcutCategory.CANVAS -> language.text("Canvas", "画布")
+    ShortcutCategory.PAGES -> language.text("Pages", "页面")
+    ShortcutCategory.LAYERS -> language.text("Layers", "图层")
+    ShortcutCategory.PANELS -> language.text("Panels", "面板")
+    ShortcutCategory.FILE -> language.text("File", "文件")
+}
+
+private fun shortcutActionLabel(action: ShortcutAction, language: UiLanguage): String = when (action) {
+    ShortcutAction.PEN_OR_PENCIL_GROUP -> language.text("Switch pen / pencil group", "切换钢笔／铅笔组")
+    ShortcutAction.PEN_GROUP -> language.text("Switch directly to pen group", "直接切换到钢笔组")
+    ShortcutAction.PENCIL_GROUP -> language.text("Switch directly to pencil group", "直接切换到铅笔组")
+    ShortcutAction.BRUSH_GROUP -> language.text("Switch brush group", "切换 Brushes 组")
+    ShortcutAction.TOGGLE_ERASER -> language.text("Toggle eraser and previous tool", "橡皮与上一工具切换")
+    ShortcutAction.HIGHLIGHTER_TOOL -> language.text("Marker / highlighter", "标记笔／荧光笔")
+    ShortcutAction.SELECT_TOOL -> language.text("Selection tool", "选择工具")
+    ShortcutAction.HAND_TOOL -> language.text("Hand / canvas navigation", "抓手／画布导航")
+    ShortcutAction.ROTATE_VIEW_TOOL -> language.text("Rotate canvas view", "旋转画布视图")
+    ShortcutAction.EYEDROPPER_TOOL -> language.text("Eyedropper", "吸管")
+    ShortcutAction.SHAPE_TOOL -> language.text("Shape tool", "形状工具")
+    ShortcutAction.TEXT_TOOL -> language.text("Text tool", "文字工具")
+    ShortcutAction.NOTE_TOOL -> language.text("Sticky note", "便笺")
+    ShortcutAction.LINK_TOOL -> language.text("Link", "链接")
+    ShortcutAction.IMAGE_TOOL -> language.text("Insert image", "插入图片")
+    ShortcutAction.AUDIO_TOOL -> language.text("Record audio note", "录音笔记")
+    ShortcutAction.BRUSH_SIZE_DECREASE -> language.text("Decrease brush size", "减小笔刷大小")
+    ShortcutAction.BRUSH_SIZE_INCREASE -> language.text("Increase brush size", "增大笔刷大小")
+    ShortcutAction.OPACITY_DECREASE -> language.text("Decrease opacity", "降低不透明度")
+    ShortcutAction.OPACITY_INCREASE -> language.text("Increase opacity", "提高不透明度")
+    ShortcutAction.PREVIOUS_BRUSH -> language.text("Previous brush", "上一个笔刷")
+    ShortcutAction.NEXT_BRUSH -> language.text("Next brush", "下一个笔刷")
+    ShortcutAction.CUT_SELECTION -> language.text("Cut selection", "剪切选区")
+    ShortcutAction.COPY_SELECTION -> language.text("Copy selection", "复制选区")
+    ShortcutAction.PASTE_SELECTION -> language.text("Paste selection", "粘贴选区")
+    ShortcutAction.DELETE_SELECTION -> language.text("Delete selection", "删除选区")
+    ShortcutAction.UNDO -> language.text("Undo", "撤销")
+    ShortcutAction.REDO -> language.text("Redo", "重做")
+    ShortcutAction.NEW_LAYER -> language.text("New raster layer", "新建栅格图层")
+    ShortcutAction.MERGE_LAYER_DOWN -> language.text("Merge with layer below", "与下一图层合并")
+    ShortcutAction.ZOOM_OUT -> language.text("Zoom out", "缩小")
+    ShortcutAction.ZOOM_IN -> language.text("Zoom in", "放大")
+    ShortcutAction.FIT_PAGE -> language.text("Fit page", "适合页面")
+    ShortcutAction.ACTUAL_SIZE -> language.text("Actual size (100%)", "实际大小（100%）")
+    ShortcutAction.FIT_WIDTH -> language.text("Fit width", "适合宽度")
+    ShortcutAction.RESET_VIEW_ROTATION -> language.text("Reset view rotation", "重置视图旋转")
+    ShortcutAction.PREVIOUS_PAGE -> language.text("Previous page", "上一页")
+    ShortcutAction.NEXT_PAGE -> language.text("Next page", "下一页")
+    ShortcutAction.TOGGLE_BRUSH_PANEL -> language.text("Show / hide brush panel", "显示／隐藏笔刷栏")
+    ShortcutAction.TOGGLE_LAYER_PANEL -> language.text("Show / hide layer panel", "显示／隐藏图层栏")
+    ShortcutAction.TOGGLE_PANELS -> language.text("Hide / show panels", "隐藏／显示面板")
+    ShortcutAction.SAVE_CHECKPOINT -> language.text("Save checkpoint", "保存检查点")
 }
 
 @Composable
