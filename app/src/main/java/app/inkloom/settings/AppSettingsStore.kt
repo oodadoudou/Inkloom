@@ -49,6 +49,7 @@ data class AppSettings(
     val selectionFilter: SelectionFilter = SelectionFilter.ALL,
     val nonDestructiveEraser: Boolean = false,
     val shortcutBindings: List<ShortcutBinding> = CspShortcutResolver.defaultBindings,
+    val shortcutBrushGroupTargets: ShortcutBrushGroupTargets = ShortcutBrushGroupTargets(),
 )
 
 enum class StylusButtonAction { ERASER, LASSO, NONE }
@@ -112,6 +113,11 @@ class AppSettingsStore(context: Context) {
             selectionFilter = enumValue(preferences.getString("selectionFilter", null), SelectionFilter.ALL),
             nonDestructiveEraser = preferences.getBoolean("nonDestructiveEraser", false),
             shortcutBindings = ShortcutBindingCodec.decode(preferences.getString("shortcutBindings", null)),
+            shortcutBrushGroupTargets = ShortcutBrushGroupTargets(
+                pen = preferences.getString("shortcutPenGroup", "").orEmpty(),
+                pencil = preferences.getString("shortcutPencilGroup", "").orEmpty(),
+                brush = preferences.getString("shortcutBrushGroup", "").orEmpty(),
+            ).normalized(),
         )
     }
 
@@ -163,6 +169,9 @@ class AppSettingsStore(context: Context) {
             .putString("selectionFilter", value.selectionFilter.name)
             .putBoolean("nonDestructiveEraser", value.nonDestructiveEraser)
             .putString("shortcutBindings", ShortcutBindingCodec.encode(value.shortcutBindings))
+            .putString("shortcutPenGroup", value.shortcutBrushGroupTargets.pen)
+            .putString("shortcutPencilGroup", value.shortcutBrushGroupTargets.pencil)
+            .putString("shortcutBrushGroup", value.shortcutBrushGroupTargets.brush)
             .apply()
     }
 

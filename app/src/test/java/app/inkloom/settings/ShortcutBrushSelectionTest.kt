@@ -41,6 +41,29 @@ class ShortcutBrushSelectionTest {
         assertEquals("new", chosen?.id)
     }
 
+    @Test fun `configured target selects an exact or nested custom group before name inference`() {
+        val brushes = listOf(
+            brush("semantic", "Pen", "Imported", used = 99),
+            brush("target", "Opaque tool", "Favorites/Inking", used = 1),
+            brush("nested", "Newest opaque tool", "Favorites/Inking/Fine", used = 2),
+        )
+
+        assertEquals("nested", ShortcutBrushSelection.preferred(brushes, ShortcutBrushGroup.PEN, " Favorites / Inking ")?.id)
+    }
+
+    @Test fun `missing configured target safely falls back to CSP name inference`() {
+        val brushes = listOf(brush("pen", "G-Pen", "Imported", used = 1))
+
+        assertEquals("pen", ShortcutBrushSelection.preferred(brushes, ShortcutBrushGroup.PEN, "Deleted group")?.id)
+    }
+
+    @Test fun `group targets normalize paths and update one role without changing the others`() {
+        val targets = ShortcutBrushGroupTargets(pen = " Pens ", pencil = "Sketch", brush = "Paint")
+            .withGroup(ShortcutBrushGroup.PEN, " Favorites / Inking ")
+
+        assertEquals(ShortcutBrushGroupTargets("Favorites/Inking", "Sketch", "Paint"), targets)
+    }
+
     @Test fun `adjacent wraps inside the current group`() {
         val brushes = listOf(
             brush("a", "A", "Pen"),
