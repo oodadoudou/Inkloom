@@ -37,6 +37,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
@@ -953,7 +954,7 @@ private fun EditorScreen(
             }
         }
         HorizontalDivider(color = OutlineSoft)
-        BoxWithConstraints(Modifier.weight(1f)) {
+        BoxWithConstraints(Modifier.weight(1f).clipToBounds()) {
         val editorWidth = maxWidth
         val workspaceWidthDp = maxWidth.value
         val workspaceHeightDp = maxHeight.value
