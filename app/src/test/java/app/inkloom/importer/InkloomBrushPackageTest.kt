@@ -41,6 +41,7 @@ class InkloomBrushPackageTest {
                 dualTipPreviewPaths = listOf(dual.absolutePath),
                 grainPreviewPath = grain.absolutePath,
                 grainDensity = .64f,
+                grainDensityDynamics = BrushParameterDynamics(pressureEnabled = true, pressureMinimum = .45f),
                 grainScale = 215f,
                 grainOffsetJitter = true,
                 grainCompositeMode = CspTextureComposite.HEIGHT,

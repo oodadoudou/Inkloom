@@ -578,7 +578,7 @@ class DocumentAssetService(private val context: Context) {
                 val decodedDualTips = if (stroke.dualBrush) stroke.dualTipAssetPaths.mapNotNull { decodeTip(it, stroke.dualHardness, null, 0f, antiAliasMode = stroke.dualAntiAliasMode) } else emptyList()
                 val fallbackDualTips = if (stroke.dualBrush && decodedDualTips.isEmpty()) tipPaths.mapNotNull { decodeTip(it, stroke.dualHardness, null, 0f, antiAliasMode = stroke.dualAntiAliasMode) } else emptyList()
                 val dualTips = decodedDualTips.ifEmpty { fallbackDualTips }
-                drawStampStroke(canvas, stroke, tips, dualTips, width, height, paint)
+                drawStampStroke(canvas, stroke, tips, dualTips, tipPaths, grainOffset.x, grainOffset.y, width, height, paint)
                 decodedDualTips.forEach(Bitmap::recycle)
                 fallbackDualTips.forEach(Bitmap::recycle)
                 tips.forEach(Bitmap::recycle)
@@ -610,13 +610,14 @@ class DocumentAssetService(private val context: Context) {
         paint.isFilterBitmap = true
     }
 
-    private fun drawStampStroke(canvas: Canvas, stroke: InkStroke, tips: List<Bitmap>, dualTips: List<Bitmap>, width: Int, height: Int, paint: Paint) {
+    private fun drawStampStroke(canvas: Canvas, stroke: InkStroke, tips: List<Bitmap>, dualTips: List<Bitmap>, tipPaths: List<String>, grainOffsetX: Float, grainOffsetY: Float, width: Int, height: Int, paint: Paint) {
         val isolateStroke = stroke.blendTipsWithDarken || stroke.dualBrush && dualTips.isNotEmpty()
         val compositeLayer = if (isolateStroke) canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null) else -1
         paint.isFilterBitmap = CspAntiAlias.enabled(stroke.antiAliasMode)
         paint.blendMode = if (stroke.blendTipsWithDarken) BlendMode.DARKEN else null
         val scatterRandom = java.util.Random(stroke.renderSeed.toLong())
         val rotationRandom = java.util.Random(stroke.renderSeed.toLong() xor 0x49A2B31DL)
+        val dynamicGrainTips = mutableMapOf<Pair<Int, Int>, Bitmap>()
         paint.colorFilter = PorterDuffColorFilter(stroke.colorArgb.toInt(), PorterDuff.Mode.SRC_IN)
         val sampledPoints = StrokeStampSampler.sample(
             stroke.points,
@@ -636,7 +637,14 @@ class DocumentAssetService(private val context: Context) {
             repeat(stampsAtPoint) stamp@ { repeatIndex ->
             val sequenceIndex = index * 16 + repeatIndex
             val tipIndex = BrushTipSequence.index(stroke.tipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed, stroke.ribbon) ?: return@stamp
-            val tip = tips[tipIndex]
+            val tip = if (GrainDynamics.isDynamic(stroke) && stroke.grainAssetPath != null) {
+                val densityBucket = (GrainDynamics.density(stroke, point) * 20f).toInt().coerceIn(0, 20)
+                dynamicGrainTips.getOrPut(tipIndex to densityBucket) {
+                    tipPaths.getOrNull(tipIndex)?.let { path ->
+                        decodeTip(path, stroke.hardness, stroke.grainAssetPath, densityBucket / 20f, stroke.grainScale, stroke.grainRotationDegrees, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized, grainOffsetX, grainOffsetY, stroke.grainCompositeMode, stroke.antiAliasMode)
+                    } ?: tips[tipIndex]
+                }
+            } else tips[tipIndex]
             val x = point.x * width; val y = point.y * height
             val pressure = point.pressure.coerceIn(0f, 1f)
             val brushDiameter = (stroke.width * width / 1600f * taper[index] * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.renderSeed, SALT_SIZE)).coerceAtLeast(.25f)
@@ -680,6 +688,7 @@ class DocumentAssetService(private val context: Context) {
             paint.maskFilter = null
             }
         }
+        dynamicGrainTips.values.distinct().filter { dynamic -> tips.none { it === dynamic } }.forEach(Bitmap::recycle)
         paint.blendMode = null
         if (stroke.dualBrush && dualTips.isNotEmpty()) {
             paint.isFilterBitmap = CspAntiAlias.enabled(stroke.dualAntiAliasMode)

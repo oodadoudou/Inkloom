@@ -14,6 +14,7 @@ class StrokeClipboardCodecTest {
             width = 33f,
             brushId = "imported-sut",
             grainDensity = .72f,
+            grainDensityDynamics = BrushParameterDynamics(pressureEnabled = true, pressureMinimum = .27f),
             dualBrush = true,
             dualCompositeMode = 7,
             dualApplyRgb = true,

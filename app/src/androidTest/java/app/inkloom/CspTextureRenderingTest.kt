@@ -8,6 +8,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.document.CspTextureComposite
+import app.inkloom.document.BrushParameterDynamics
 import app.inkloom.document.DocumentAssetService
 import app.inkloom.document.InkPage
 import app.inkloom.document.InkStroke
@@ -58,6 +59,51 @@ class CspTextureRenderingTest {
                 assertEquals(exported.getPixel(x, exportY), live.getPixel(x, liveY))
             } finally {
                 legacy.recycle()
+                exported.recycle()
+                live.recycle()
+            }
+        } finally {
+            tip.delete()
+            grain.delete()
+        }
+    }
+
+    @Test fun textureDensityPressureIsAppliedPerStampInExportAndLiveCanvas() {
+        val tip = File(context.cacheDir, "dynamic-grain-tip.png")
+        val grain = File(context.cacheDir, "dynamic-grain.png")
+        writePng(tip, IntArray(64) { Color.BLACK })
+        writePng(grain, IntArray(64) { Color.WHITE })
+        try {
+            val base = InkStroke(
+                points = listOf(StrokePoint(.5f, .5f, pressure = .1f)),
+                colorArgb = 0xFF111111,
+                width = 240f,
+                sizePressureEnabled = false,
+                tipAssetPath = tip.absolutePath,
+                tipAssetPaths = listOf(tip.absolutePath),
+                grainAssetPath = grain.absolutePath,
+                grainDensity = 1f,
+                grainCompositeMode = CspTextureComposite.MULTIPLY,
+            )
+            val dynamic = base.copy(
+                grainDensityDynamics = BrushParameterDynamics(pressureEnabled = true, pressureMinimum = .1f),
+            )
+            val service = DocumentAssetService(context)
+            val fixed = service.renderPageBitmap(InkPage(background = PageBackground.Paper(), strokes = listOf(base)), 400)
+            val exported = service.renderPageBitmap(InkPage(background = PageBackground.Paper(), strokes = listOf(dynamic)), 400)
+            val live = renderLive(dynamic)
+            try {
+                val x = 200
+                val exportY = exported.height / 2
+                val liveY = live.height / 2
+                assertTrue("Full white texture density must remove the opaque tip", Color.red(fixed.getPixel(x, exportY)) > 245)
+                assertTrue("Low pressure must reduce texture strength and preserve most ink", Color.red(exported.getPixel(x, exportY)) < 80)
+                assertTrue(
+                    "Live and export density quantization must remain visually equivalent",
+                    kotlin.math.abs(Color.red(exported.getPixel(x, exportY)) - Color.red(live.getPixel(x, liveY))) <= 12,
+                )
+            } finally {
+                fixed.recycle()
                 exported.recycle()
                 live.recycle()
             }

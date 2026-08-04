@@ -58,9 +58,9 @@ class SutSprayRotationParserTest {
                 )
             }
             parsed.forEach { brush ->
-                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 28, brush.parserVersion)
+                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 29, brush.parserVersion)
                 assertFalse(brush.report.any { it.startsWith("SUT parameter parsing failed") })
-                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v28-")) }
+                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v29-")) }
             }
             assertTrue("Expected multiple CSP AntiAlias modes in the supplied corpus", parsed.map(ImportedBrush::antiAliasMode).distinct().size >= 3)
             assertTrue(parsed.all { it.antiAliasMode in CspAntiAlias.NONE..CspAntiAlias.STRONG })
@@ -181,7 +181,9 @@ class SutSprayRotationParserTest {
             assertEquals(.3f, brush.dualSprayParticleSizeDynamics.pressureMinimum, .001f)
             assertTrue(brush.dualSprayDensityDynamics.secondary.velocityEnabled)
             assertEquals(.55f, brush.dualSprayDensityDynamics.secondary.velocityMinimum, .001f)
-            assertEquals(28, brush.parserVersion)
+            assertTrue(brush.grainDensityDynamics.secondary.tiltEnabled)
+            assertEquals(.65f, brush.grainDensityDynamics.secondary.tiltMinimum, .001f)
+            assertEquals(29, brush.parserVersion)
         } finally {
             root.deleteRecursively()
         }
@@ -212,7 +214,7 @@ class SutSprayRotationParserTest {
             assertTrue(brush.watercolor)
             assertEquals(.72f, brush.colorMix, .001f)
             assertEquals(.43f, brush.paintMix, .001f)
-            assertEquals(28, brush.parserVersion)
+            assertEquals(29, brush.parserVersion)
             assertTrue(brush.report.any { it.contains("legacy BrushWaterColor") })
         } finally {
             root.deleteRecursively()
@@ -268,6 +270,7 @@ class SutSprayRotationParserTest {
                 blurSecondaryDynamics = app.inkloom.document.BrushSecondaryDynamics(tiltEnabled = true, tiltMinimum = .4f),
                 antiAliasMode = CspAntiAlias.NONE,
                 grainCompositeMode = CspTextureComposite.HEIGHT,
+                grainDensityDynamics = app.inkloom.document.BrushParameterDynamics(pressureEnabled = true, pressureMinimum = .57f),
                 dualBrush = true,
                 dualSizeDynamics = app.inkloom.document.BrushParameterDynamics(pressureEnabled = true, pressureMinimum = .22f, pressureCurve = listOf(app.inkloom.document.BrushCurvePoint(0f, .2f), app.inkloom.document.BrushCurvePoint(1f, 1f))),
                 dualFlowDynamics = app.inkloom.document.BrushParameterDynamics(secondary = app.inkloom.document.BrushSecondaryDynamics(velocityEnabled = true, velocityMinimum = .31f)),
@@ -327,6 +330,8 @@ class SutSprayRotationParserTest {
             assertEquals(CspAntiAlias.NONE, restored.antiAliasMode)
             assertEquals(.4f, restored.blurSecondaryDynamics.tiltMinimum, .0001f)
             assertEquals(CspTextureComposite.HEIGHT, restored.grainCompositeMode)
+            assertTrue(restored.grainDensityDynamics.pressureEnabled)
+            assertEquals(.57f, restored.grainDensityDynamics.pressureMinimum, .0001f)
             assertEquals(-12f, restored.dualSprayParticleRotationDegrees, .0001f)
             assertTrue(restored.dualSprayParticleFollowStylusOrientation)
             assertEquals(81f, restored.dualSprayParticleRandomRotationDegrees, .0001f)
@@ -357,7 +362,7 @@ class SutSprayRotationParserTest {
         val database = SQLiteDatabase.openOrCreateDatabase(file, null)
         database.use { db ->
             db.execSQL("CREATE TABLE Node (NodeName TEXT NOT NULL, NodeVariantID INTEGER NOT NULL)")
-            db.execSQL("CREATE TABLE Variant (VariantID INTEGER PRIMARY KEY, Opacity REAL, BrushSize REAL, AntiAlias INTEGER, DualAntiAlias INTEGER, BrushContinuousPlot INTEGER, TextureCompositeMode INTEGER, BrushUseSpray INTEGER, BrushRotation REAL, BrushRotationEffector INTEGER, BrushRotationRandomScale REAL, BrushRotationInSpray REAL, BrushRotationEffectorInSpray INTEGER, BrushRotationRandomInSpray REAL, UseDualBrush INTEGER, DualSizeEffector BLOB, DualFlowEffector BLOB, DualIntervalEffector BLOB, DualThicknessEffector BLOB, DualRotation REAL, DualRotationEffector INTEGER, DualRotationRandomScale REAL, DualUseSpray INTEGER, DualSpraySizeEffector BLOB, DualSprayDensityEffector BLOB, DualRotationInSpray REAL, DualRotationEffectorInSpray INTEGER, DualRotationRandomInSpray REAL)")
+            db.execSQL("CREATE TABLE Variant (VariantID INTEGER PRIMARY KEY, Opacity REAL, BrushSize REAL, AntiAlias INTEGER, DualAntiAlias INTEGER, BrushContinuousPlot INTEGER, TextureCompositeMode INTEGER, TextureDensityEffector BLOB, BrushUseSpray INTEGER, BrushRotation REAL, BrushRotationEffector INTEGER, BrushRotationRandomScale REAL, BrushRotationInSpray REAL, BrushRotationEffectorInSpray INTEGER, BrushRotationRandomInSpray REAL, UseDualBrush INTEGER, DualSizeEffector BLOB, DualFlowEffector BLOB, DualIntervalEffector BLOB, DualThicknessEffector BLOB, DualRotation REAL, DualRotationEffector INTEGER, DualRotationRandomScale REAL, DualUseSpray INTEGER, DualSpraySizeEffector BLOB, DualSprayDensityEffector BLOB, DualRotationInSpray REAL, DualRotationEffectorInSpray INTEGER, DualRotationRandomInSpray REAL)")
             db.insertOrThrow("Node", null, ContentValues().apply { put("NodeName", "Particle test"); put("NodeVariantID", 1) })
             db.insertOrThrow("Variant", null, ContentValues().apply {
                 put("VariantID", 1)
@@ -367,6 +372,7 @@ class SutSprayRotationParserTest {
                 put("DualAntiAlias", CspAntiAlias.STRONG)
                 put("BrushContinuousPlot", 1)
                 put("TextureCompositeMode", CspTextureComposite.HEIGHT)
+                put("TextureDensityEffector", effector(0x20, tiltMinimum = 65))
                 put("BrushUseSpray", 1)
                 put("BrushRotation", 5)
                 put("BrushRotationEffector", 3)

@@ -35,6 +35,7 @@ class SutBrushParser(private val assetDirectory: File) {
             val paintMixEffector = db.effector("BrushMixAlphaEffector", columns)
             val sprayParticleSizeEffector = db.effector("BrushSpraySizeEffector", columns)
             val sprayDensityEffector = db.effector("BrushSprayDensityEffector", columns)
+            val textureDensityEffector = db.effector("TextureDensityEffector", columns)
             val hueEffector = db.effector("BrushHueChangeEffector", columns)
             val saturationEffector = db.effector("BrushSaturationChangeEffector", columns)
             val valueEffector = db.effector("BrushValueChangeEffector", columns)
@@ -68,6 +69,7 @@ class SutBrushParser(private val assetDirectory: File) {
                 dualTipPreviewPaths = dualTips.map(File::getAbsolutePath),
                 grainPreviewPath = grain?.absolutePath,
                 grainDensity = (values.float("TextureDensity") / 100f).coerceIn(0f, 1f),
+                grainDensityDynamics = textureDensityEffector.parameterDynamics(),
                 grainScale = values.float("TextureScale2", 100f).coerceIn(1f, 4000f),
                 grainRotationDegrees = values.float("TextureRotate").coerceIn(-360f, 360f),
                 grainBrightness = values.float("TextureBrightness").coerceIn(-100f, 100f),
@@ -217,7 +219,7 @@ class SutBrushParser(private val assetDirectory: File) {
                     add("CSP SQLite variant and tool name decoded")
                     add(if (tips.isNotEmpty()) "${tips.size} CSP brush-tip material preview${if (tips.size == 1) "" else "s"} extracted in source order; transparent preview padding removed before stamping" else "No embedded brush-tip thumbnail was available")
                     if (tips.isNotEmpty()) add("The protected CSP C2F material layer is retained inside the original SUT; Inkloom uses its normalized preview raster until that proprietary layer encoding can be decoded safely")
-                    if (grain != null) add("Referenced CSP paper texture mapped at ${values.float("TextureDensity").toInt()}% density, ${values.float("TextureScale2", 100f)}% scale, ${values.float("TextureRotate")}° rotation, brightness ${values.float("TextureBrightness").toInt()}, contrast ${values.float("TextureContrast").toInt()}, invert ${values.float("TextureReverseDensity") > 0f}, emphasize ${values.float("TextureStressDensity") > 0f}")
+                    if (grain != null) add("Referenced CSP paper texture mapped at ${values.float("TextureDensity").toInt()}% density${textureDensityEffector?.parameterSourceSummary()?.takeIf(String::isNotBlank)?.let { " with $it dynamics" }.orEmpty()}, ${values.float("TextureScale2", 100f)}% scale, ${values.float("TextureRotate")}° rotation, brightness ${values.float("TextureBrightness").toInt()}, contrast ${values.float("TextureContrast").toInt()}, invert ${values.float("TextureReverseDensity") > 0f}, emphasize ${values.float("TextureStressDensity") > 0f}")
                     val textureMode = values.float("TextureCompositeMode").toInt()
                     if (grain != null && CspTextureComposite.isVerified(textureMode)) add("CSP ${CspTextureComposite.displayName(textureMode)} texture composition mapped with documented edge-only behavior from real-corpus mode $textureMode")
                     else if (textureMode == CspTextureComposite.COMPARE) add("CSP Compare texture mode retained with conservative density comparison; exact raster parity is not claimed${if (grain == null) "; no referenced texture raster was resolved" else ""}")
@@ -320,6 +322,6 @@ class SutBrushParser(private val assetDirectory: File) {
     private fun SutEffector.sourceSummary(): String = buildList { if (tiltEnabled) add("tilt"); if (velocityEnabled) add("velocity"); if (randomEnabled) add("random") }.joinToString("+")
     private fun SutEffector.parameterSourceSummary(): String = buildList { if (pressureEnabled) add("pressure"); sourceSummary().takeIf(String::isNotBlank)?.let(::add) }.joinToString("+")
     companion object {
-        const val CURRENT_VERSION = 28
+        const val CURRENT_VERSION = 29
     }
 }

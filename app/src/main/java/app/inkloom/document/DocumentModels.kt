@@ -181,6 +181,7 @@ data class InkStroke(
     val dualTipAssetPaths: List<String> = emptyList(),
     val grainAssetPath: String? = null,
     val grainDensity: Float = 0f,
+    val grainDensityDynamics: BrushParameterDynamics = BrushParameterDynamics(),
     val grainScale: Float = 100f,
     val grainRotationDegrees: Float = 0f,
     val grainBrightness: Float = 0f,

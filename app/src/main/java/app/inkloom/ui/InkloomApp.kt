@@ -3783,6 +3783,7 @@ private fun InkCanvasView.applyBrushConfiguration(
     dualTipAssetPaths = activeBrush?.dualTipPreviewPaths.orEmpty()
     grainAssetPath = activeBrush?.grainPreviewPath
     grainDensity = activeBrush?.grainDensity ?: 0f
+    grainDensityDynamics = activeBrush?.grainDensityDynamics ?: BrushParameterDynamics()
     grainScale = activeBrush?.grainScale ?: 100f
     grainRotationDegrees = activeBrush?.grainRotationDegrees ?: 0f
     grainBrightness = activeBrush?.grainBrightness ?: 0f
@@ -5521,6 +5522,7 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 item { SettingSwitch("Link blur to brush size", "Scales the imported CSP blur when brush size changes.", draft.blurLinkedToSize) { draft = draft.copy(blurLinkedToSize = it) } }
                 if (draft.grainPreviewPath != null) item { BrushGrainPreview(draft.grainPreviewPath!!, draft.grainDensity) }
                 if (draft.grainPreviewPath != null) item { BrushSettingSlider("Paper texture density", draft.grainDensity, 0f..1f) { draft = draft.copy(grainDensity = it) } }
+                if (draft.grainPreviewPath != null) item { ParameterDynamicsEditor(tr("Paper texture density dynamics", "纸张纹理密度动态"), "Paper texture density", draft.grainDensityDynamics) { draft = draft.copy(grainDensityDynamics = it) } }
                 if (draft.grainPreviewPath != null) item { BrushSettingSlider("Paper texture scale", draft.grainScale, 1f..400f) { draft = draft.copy(grainScale = it) } }
                 if (draft.grainPreviewPath != null) item { BrushSettingSlider("Paper texture rotation", draft.grainRotationDegrees, -180f..180f) { draft = draft.copy(grainRotationDegrees = it) } }
                 if (draft.grainPreviewPath != null) item { BrushSettingSlider("Paper texture brightness", draft.grainBrightness, -100f..100f) { draft = draft.copy(grainBrightness = it) } }
