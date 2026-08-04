@@ -2172,9 +2172,24 @@ private fun EditorScreen(
                     }
                     tool = chosen; canvasView?.tool = chosen
                     when (chosen) {
-                        EditorTool.PEN -> { activeBrush = null; brushOpacity = settings.penOpacity; brushSize = settings.penSize; if (activeLayerId == LayerIds.HIGHLIGHT || activeLayerId == LayerIds.OBJECTS) activeLayerId = LayerIds.INK }
-                        EditorTool.HIGHLIGHTER -> { activeBrush = null; brushOpacity = settings.highlighterOpacity; brushSize = settings.highlighterSize; activeLayerId = LayerIds.HIGHLIGHT }
-                        EditorTool.ERASER -> { brushOpacity = 1f; brushSize = settings.eraserSize }
+                        EditorTool.PEN -> {
+                            val remembered = activeBrush?.takeUnless(BrushRoleClassifier::isEraser)
+                                ?: brushes.filterNot(BrushRoleClassifier::isEraser).maxByOrNull(ImportedBrush::lastUsedAt)
+                            activeBrush = remembered
+                            selectedBrushId = remembered?.id
+                            brushOpacity = remembered?.defaultOpacity ?: settings.penOpacity
+                            brushSize = remembered?.defaultSize ?: settings.penSize
+                            if (activeLayerId == LayerIds.HIGHLIGHT || activeLayerId == LayerIds.OBJECTS) activeLayerId = LayerIds.INK
+                        }
+                        EditorTool.HIGHLIGHTER -> { activeBrush = null; selectedBrushId = null; brushOpacity = settings.highlighterOpacity; brushSize = settings.highlighterSize; activeLayerId = LayerIds.HIGHLIGHT }
+                        EditorTool.ERASER -> {
+                            val remembered = activeBrush?.takeIf(BrushRoleClassifier::isEraser)
+                                ?: brushes.filter(BrushRoleClassifier::isEraser).maxByOrNull(ImportedBrush::lastUsedAt)
+                            activeBrush = remembered
+                            selectedBrushId = remembered?.id
+                            brushOpacity = remembered?.defaultOpacity ?: 1f
+                            brushSize = remembered?.defaultSize ?: settings.eraserSize
+                        }
                         EditorTool.SHAPE -> shapeInsertOpen = true
                         EditorTool.TEXT -> { insertText = ""; textInsertOpen = true }
                         EditorTool.NOTE -> { insertText = ""; stickyInsertOpen = true }
@@ -2192,7 +2207,19 @@ private fun EditorScreen(
                     toolbarX = reset.xDp
                     toolbarY = reset.yDp
                     onSettingsChange(settings.copy(toolbarDock = ToolbarDock.FREE, toolbarOffsetXDp = toolbarX, toolbarOffsetYDp = toolbarY))
-                }, onDock = { dock -> onSettingsChange(settings.copy(toolbarDock = dock, verticalToolbar = when (dock) { ToolbarDock.LEFT, ToolbarDock.RIGHT -> true; ToolbarDock.TOP, ToolbarDock.BOTTOM -> false; ToolbarDock.FREE -> dockVertical })) }, brushSize = brushSize, brushOpacity = brushOpacity, brushColor = brushColor, onSize = { raw ->
+                }, onDock = { dock -> onSettingsChange(settings.copy(toolbarDock = dock, verticalToolbar = when (dock) { ToolbarDock.LEFT, ToolbarDock.RIGHT -> true; ToolbarDock.TOP, ToolbarDock.BOTTOM -> false; ToolbarDock.FREE -> dockVertical })) }, brushSize = brushSize, brushOpacity = brushOpacity, brushColor = brushColor, brushes = brushes, selectedBrushId = selectedBrushId, onBrushPreset = { brush ->
+                    exitCanvasNavigation()
+                    val usedBrush = brush.copy(lastUsedAt = System.currentTimeMillis())
+                    onUpdateBrush(usedBrush)
+                    selectedBrushId = usedBrush.id
+                    activeBrush = usedBrush
+                    brushSize = usedBrush.defaultSize
+                    brushOpacity = usedBrush.defaultOpacity
+                    val chosenTool = if (BrushRoleClassifier.isEraser(usedBrush)) EditorTool.ERASER else EditorTool.PEN
+                    tool = chosenTool
+                    if (chosenTool == EditorTool.PEN && (activeLayerId == LayerIds.HIGHLIGHT || activeLayerId == LayerIds.OBJECTS)) activeLayerId = LayerIds.INK
+                    canvasView?.apply { this.tool = chosenTool; inkOpacity = usedBrush.defaultOpacity; brushId = usedBrush.id; baseWidth = usedBrush.defaultSize; inkColor = brushColor }
+                }, onSize = { raw ->
                     val value = raw.coerceIn(.5f, 400f)
                     brushSize = value
                     when (tool) {
@@ -4622,7 +4649,7 @@ private fun EraserPresetPicker(selected: EraserPreset, onSelect: (EraserPreset) 
 }
 
 @Composable
-private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit, vertical: Boolean, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, modifier: Modifier = Modifier) {
+private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit, vertical: Boolean, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, modifier: Modifier = Modifier) {
     var moreToolsOpen by remember { mutableStateOf(false) }
     var controlsOpen by remember { mutableStateOf(false) }
     val dragModifier = Modifier.size(32.dp).pointerInput(vertical) {
@@ -4683,6 +4710,9 @@ private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () 
                 brushSize = brushSize,
                 brushOpacity = brushOpacity,
                 brushColor = brushColor,
+                brushes = brushes,
+                selectedBrushId = selectedBrushId,
+                onBrushPreset = onBrushPreset,
                 onSize = onSize,
                 onOpacity = onOpacity,
                 onColor = onColor,
@@ -4694,11 +4724,11 @@ private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () 
 }
 
 @Composable
-private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, dragModifier: Modifier, vertical: Boolean, moreToolsOpen: Boolean, onMoreToolsOpen: (Boolean) -> Unit, controlsOpen: Boolean, onControlsOpen: (Boolean) -> Unit, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit) {
+private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, dragModifier: Modifier, vertical: Boolean, moreToolsOpen: Boolean, onMoreToolsOpen: (Boolean) -> Unit, controlsOpen: Boolean, onControlsOpen: (Boolean) -> Unit, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit) {
     Icon(Icons.Outlined.DragIndicator, tr("Drag toolbar", "拖动工具栏"), modifier = dragModifier, tint = MutedInk)
-    ToolButton(EditorTool.PEN, Icons.Outlined.Edit, tr("Pen", "钢笔"), tool, onTool)
+    BrushPresetToolButton(EditorTool.PEN, Icons.Outlined.Brush, tr("Brush", "笔刷"), tool, brushes.filterNot(BrushRoleClassifier::isEraser), selectedBrushId, onTool, onBrushPreset)
     ToolButton(EditorTool.HIGHLIGHTER, Icons.Outlined.BorderColor, tr("Marker", "标记笔"), tool, onTool)
-    ToolButton(EditorTool.ERASER, Icons.Outlined.AutoFixOff, tr("Eraser", "橡皮"), tool, onTool)
+    BrushPresetToolButton(EditorTool.ERASER, Icons.Outlined.AutoFixOff, tr("Eraser", "橡皮"), tool, brushes.filter(BrushRoleClassifier::isEraser), selectedBrushId, onTool, onBrushPreset)
     ToolButton(EditorTool.SELECT, Icons.Outlined.Gesture, tr("Select", "选择"), tool, onTool)
     if (vertical) {
         HorizontalDivider(Modifier.width(30.dp).padding(vertical = 2.dp), color = OutlineSoft)
@@ -5104,8 +5134,71 @@ private fun CspColorChannel(label: String, value: Int, onValue: (Int) -> Unit) {
 
 @Composable
 private fun ToolButton(value: EditorTool, icon: ImageVector, label: String, selected: EditorTool, onTool: (EditorTool) -> Unit) {
-    Box(Modifier.size(36.dp).clip(RoundedCornerShape(2.dp)).background(if (value == selected) Sage else Color.Transparent).clickable { onTool(value) }, contentAlignment = Alignment.Center) {
-        Icon(icon, label, Modifier.size(21.dp), tint = if (value == selected) Color.White else Ink)
+    Box(Modifier.size(32.dp).background(if (value == selected) Color(0xFFD6DCE8) else Color.Transparent).clickable { onTool(value) }, contentAlignment = Alignment.Center) {
+        Icon(icon, label, Modifier.size(19.dp), tint = Ink)
+    }
+}
+
+@Composable
+private fun BrushPresetToolButton(
+    value: EditorTool,
+    icon: ImageVector,
+    label: String,
+    selected: EditorTool,
+    presets: List<ImportedBrush>,
+    selectedBrushId: String?,
+    onTool: (EditorTool) -> Unit,
+    onPreset: (ImportedBrush) -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Box(
+            Modifier
+                .size(32.dp)
+                .background(if (value == selected) Color(0xFFD6DCE8) else Color.Transparent)
+                .clickable {
+                    if (value == selected) open = true else onTool(value)
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, label, Modifier.size(19.dp), tint = Ink)
+            Canvas(Modifier.align(Alignment.BottomEnd).size(8.dp).padding(1.dp)) {
+                val path = Path().apply { moveTo(0f, size.height); lineTo(size.width, size.height); lineTo(size.width, 0f); close() }
+                drawPath(path, MutedInk)
+            }
+        }
+        DropdownMenu(
+            expanded = open,
+            onDismissRequest = { open = false },
+            modifier = Modifier.widthIn(min = 172.dp, max = 224.dp).background(Color(0xFFF4F4F4)),
+        ) {
+            Text(
+                if (value == EditorTool.ERASER) tr("Eraser sub tools", "橡皮子工具") else tr("Brush sub tools", "笔刷子工具"),
+                Modifier.fillMaxWidth().height(25.dp).background(Color(0xFFE4E4E4)).padding(horizontal = 7.dp).wrapContentHeight(Alignment.CenterVertically),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            if (presets.isEmpty()) {
+                Text(tr("No imported presets in this group", "此组还没有导入预设"), Modifier.padding(9.dp), color = MutedInk, fontSize = 10.sp)
+            } else presets.sortedWith(compareBy<ImportedBrush> { it.groupName }.thenBy { it.sortOrder }).forEach { brush ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(42.dp)
+                        .background(if (brush.id == selectedBrushId) Color(0xFFD6DCE8) else Color.Transparent)
+                        .clickable { open = false; onPreset(brush) }
+                        .padding(horizontal = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    BrushTipPreview(brush, Modifier.width(58.dp).height(28.dp))
+                    Spacer(Modifier.width(7.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(brush.name, maxLines = 1, fontSize = 11.sp)
+                        if (brush.groupName.isNotBlank()) Text(BrushGroupOperations.displayName(brush.groupName), maxLines = 1, fontSize = 9.sp, color = MutedInk)
+                    }
+                }
+            }
+        }
     }
 }
 
