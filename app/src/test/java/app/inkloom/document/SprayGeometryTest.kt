@@ -48,4 +48,21 @@ class SprayGeometryTest {
         assertEquals(20f, SprayDynamics.density(stroke, StrokePoint(0f, 0f, velocity = 0f)), .001f)
         assertEquals(80f, SprayDynamics.density(stroke, StrokePoint(0f, 0f, velocity = 1f)), .001f)
     }
+
+    @Test fun dualSprayUsesIndependentParticleDynamics() {
+        val stroke = InkStroke(
+            points = emptyList(),
+            dualSprayParticleSize = 200f,
+            dualSprayParticleSizeDynamics = BrushParameterDynamics(pressureEnabled = true, pressureMinimum = .25f),
+            dualSprayDensity = 80f,
+            dualSprayDensityDynamics = BrushParameterDynamics(
+                secondary = BrushSecondaryDynamics(velocityEnabled = true, velocityMinimum = .5f),
+            ),
+        )
+
+        assertEquals(50f, SprayDynamics.dualParticleSize(stroke, StrokePoint(0f, 0f, pressure = 0f)), .001f)
+        assertEquals(200f, SprayDynamics.dualParticleSize(stroke, StrokePoint(0f, 0f, pressure = 1f)), .001f)
+        assertEquals(40f, SprayDynamics.dualDensity(stroke, StrokePoint(0f, 0f, velocity = 0f)), .001f)
+        assertEquals(80f, SprayDynamics.dualDensity(stroke, StrokePoint(0f, 0f, velocity = 1f)), .001f)
+    }
 }

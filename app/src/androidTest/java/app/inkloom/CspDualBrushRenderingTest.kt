@@ -116,6 +116,55 @@ class CspDualBrushRenderingTest {
         }
     }
 
+    @Test fun secondarySprayParticleSizeUsesItsOwnPressureEffectorOnCanvasAndExport() {
+        val tip = File(context.cacheDir, "dual-spray-dynamics-tip.png")
+        Bitmap.createBitmap(32, 32, Bitmap.Config.ARGB_8888).also { bitmap ->
+            bitmap.eraseColor(Color.BLACK)
+            tip.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            bitmap.recycle()
+        }
+        try {
+            val base = InkStroke(
+                points = listOf(StrokePoint(.5f, .5f, pressure = .1f)),
+                colorArgb = 0xFF111111,
+                width = 240f,
+                flow = 0f,
+                sizePressureEnabled = false,
+                tipAssetPath = tip.absolutePath,
+                tipAssetPaths = listOf(tip.absolutePath),
+                dualBrush = true,
+                dualTipAssetPaths = listOf(tip.absolutePath),
+                dualFlow = 1f,
+                dualSpray = true,
+                dualSpraySpread = 0f,
+                dualSprayParticleSize = 100f,
+                dualSprayParticleSizeSyncBrushSize = true,
+                dualCompositeMode = 1,
+            )
+            val pressureControlled = base.copy(
+                dualSprayParticleSizeDynamics = BrushParameterDynamics(pressureEnabled = true, pressureMinimum = .1f),
+            )
+            val service = DocumentAssetService(context)
+            val independent = service.renderPageBitmap(InkPage(background = PageBackground.Paper(), strokes = listOf(base)), 400)
+            val reduced = service.renderPageBitmap(InkPage(background = PageBackground.Paper(), strokes = listOf(pressureControlled)), 400)
+            val live = renderLiveCanvas(base)
+            try {
+                val x = 222
+                val exportY = independent.height / 2
+                val liveY = live.height / 2
+                assertTrue("Disabled secondary particle pressure must preserve its full footprint", Color.red(independent.getPixel(x, exportY)) < 80)
+                assertTrue("Enabled secondary particle pressure must shrink the particle footprint", Color.red(reduced.getPixel(x, exportY)) > 240)
+                assertEquals(independent.getPixel(x, exportY), live.getPixel(x, liveY))
+            } finally {
+                independent.recycle()
+                reduced.recycle()
+                live.recycle()
+            }
+        } finally {
+            tip.delete()
+        }
+    }
+
     @Test fun fixedHorizontalFlipMirrorsAnAsymmetricImportedTip() {
         val tip = File(context.cacheDir, "asymmetric-flip-tip.png")
         Bitmap.createBitmap(64, 32, Bitmap.Config.ARGB_8888).also { bitmap ->

@@ -707,7 +707,7 @@ class DocumentAssetService(private val context: Context) {
             val diameter = (stroke.width * width / 1600f * stroke.dualSizeScale.coerceIn(.01f, 8f) * pressureDynamic(stroke.dualSizeDynamics.pressureEnabled, stroke.dualSizeDynamics.pressureMinimum, stroke.dualSizeDynamics.pressureCurve, pressure) * secondaryDynamic(stroke.dualSizeDynamics.secondary, point, stroke.renderSeed, SALT_DUAL_SIZE)).coerceAtLeast(1f)
             val spacingDynamic = pressureDynamic(stroke.dualSpacingDynamics.pressureEnabled, stroke.dualSpacingDynamics.pressureMinimum, stroke.dualSpacingDynamics.pressureCurve, pressure) * secondaryDynamic(stroke.dualSpacingDynamics.secondary, point, stroke.renderSeed, SALT_DUAL_SPACING)
             val gapRatio = CspBrushGap.ratio(stroke.dualSpacingMode, stroke.dualSpacing).let { if (stroke.dualRibbon) it.coerceAtMost(.06f) else it }
-            diameter * gapRatio * spacingDynamic.coerceIn(.01f, 1f) / if (stroke.dualSpray) SprayGeometry.particlesPerPlot(stroke.dualSprayDensity) else 1
+            diameter * gapRatio * spacingDynamic.coerceIn(.01f, 1f) / if (stroke.dualSpray) SprayGeometry.particlesPerPlot(SprayDynamics.dualDensity(stroke, point)) else 1
         }
         val taper = StrokeTaper.factors(sampledPoints, width.toFloat(), height.toFloat(), stroke.taperMode, stroke.taperStartEnabled, stroke.taperStartLength, stroke.taperStartLengthUnit, stroke.taperStartMinimum, stroke.taperEndEnabled, stroke.taperEndLength, stroke.taperEndLengthUnit, stroke.taperEndMinimum)
         sampledPoints.forEachIndexed { index, point ->
@@ -718,7 +718,7 @@ class DocumentAssetService(private val context: Context) {
             val tip = tips[tipIndex]
             val pressure = point.pressure.coerceIn(0f, 1f)
             val brushDiameter = (stroke.width * width / 1600f * stroke.dualSizeScale.coerceIn(.01f, 8f) * taper[index] * pressureDynamic(stroke.dualSizeDynamics.pressureEnabled, stroke.dualSizeDynamics.pressureMinimum, stroke.dualSizeDynamics.pressureCurve, pressure) * secondaryDynamic(stroke.dualSizeDynamics.secondary, point, stroke.renderSeed, SALT_DUAL_SIZE)).coerceAtLeast(.25f)
-            val diameter = if (stroke.dualSpray) SprayGeometry.particleDiameter(brushDiameter, stroke.dualSprayParticleSize, stroke.dualSprayParticleSizeUnit, stroke.dualSprayParticleSizeSyncBrushSize, width.toFloat()) else brushDiameter
+            val diameter = if (stroke.dualSpray) SprayGeometry.particleDiameter(brushDiameter, SprayDynamics.dualParticleSize(stroke, point), stroke.dualSprayParticleSizeUnit, stroke.dualSprayParticleSizeSyncBrushSize, width.toFloat()) else brushDiameter
             val offset = if (stroke.dualSpray) SprayGeometry.offset(brushDiameter / 2f * stroke.dualSpraySpread.coerceIn(0f, 4f), scatterRandom.nextFloat(), scatterRandom.nextFloat(), stroke.dualSprayBias) else SprayOffset(0f, 0f)
             val drawX = point.x * width + offset.x
             val drawY = point.y * height + offset.y

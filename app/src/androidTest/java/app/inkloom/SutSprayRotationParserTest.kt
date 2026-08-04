@@ -58,9 +58,9 @@ class SutSprayRotationParserTest {
                 )
             }
             parsed.forEach { brush ->
-                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 27, brush.parserVersion)
+                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 28, brush.parserVersion)
                 assertFalse(brush.report.any { it.startsWith("SUT parameter parsing failed") })
-                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v27-")) }
+                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v28-")) }
             }
             assertTrue("Expected multiple CSP AntiAlias modes in the supplied corpus", parsed.map(ImportedBrush::antiAliasMode).distinct().size >= 3)
             assertTrue(parsed.all { it.antiAliasMode in CspAntiAlias.NONE..CspAntiAlias.STRONG })
@@ -177,7 +177,11 @@ class SutSprayRotationParserTest {
             assertEquals(.4f, brush.dualSpacingDynamics.secondary.tiltMinimum, .001f)
             assertTrue(brush.dualThicknessDynamics.secondary.randomEnabled)
             assertEquals(.45f, brush.dualThicknessDynamics.secondary.randomMinimum, .001f)
-            assertEquals(27, brush.parserVersion)
+            assertTrue(brush.dualSprayParticleSizeDynamics.pressureEnabled)
+            assertEquals(.3f, brush.dualSprayParticleSizeDynamics.pressureMinimum, .001f)
+            assertTrue(brush.dualSprayDensityDynamics.secondary.velocityEnabled)
+            assertEquals(.55f, brush.dualSprayDensityDynamics.secondary.velocityMinimum, .001f)
+            assertEquals(28, brush.parserVersion)
         } finally {
             root.deleteRecursively()
         }
@@ -208,7 +212,7 @@ class SutSprayRotationParserTest {
             assertTrue(brush.watercolor)
             assertEquals(.72f, brush.colorMix, .001f)
             assertEquals(.43f, brush.paintMix, .001f)
-            assertEquals(27, brush.parserVersion)
+            assertEquals(28, brush.parserVersion)
             assertTrue(brush.report.any { it.contains("legacy BrushWaterColor") })
         } finally {
             root.deleteRecursively()
@@ -275,6 +279,8 @@ class SutSprayRotationParserTest {
                 dualTipFlipVerticalMode = 3,
                 dualBlendTipsWithDarken = true,
                 dualSpray = true,
+                dualSprayParticleSizeDynamics = app.inkloom.document.BrushParameterDynamics(pressureEnabled = true, pressureMinimum = .61f),
+                dualSprayDensityDynamics = app.inkloom.document.BrushParameterDynamics(secondary = app.inkloom.document.BrushSecondaryDynamics(velocityEnabled = true, velocityMinimum = .71f)),
                 dualSprayParticleRotationDegrees = -12f,
                 dualSprayParticleFollowStylusOrientation = true,
                 dualSprayParticleRandomRotationDegrees = 81f,
@@ -338,6 +344,10 @@ class SutSprayRotationParserTest {
             assertEquals(.41f, restored.dualSpacingDynamics.secondary.tiltMinimum, .0001f)
             assertTrue(restored.dualThicknessDynamics.secondary.randomEnabled)
             assertEquals(.51f, restored.dualThicknessDynamics.secondary.randomMinimum, .0001f)
+            assertTrue(restored.dualSprayParticleSizeDynamics.pressureEnabled)
+            assertEquals(.61f, restored.dualSprayParticleSizeDynamics.pressureMinimum, .0001f)
+            assertTrue(restored.dualSprayDensityDynamics.secondary.velocityEnabled)
+            assertEquals(.71f, restored.dualSprayDensityDynamics.secondary.velocityMinimum, .0001f)
         } finally {
             context.getSharedPreferences("inkloom_brushes", android.content.Context.MODE_PRIVATE).edit().clear().commit()
         }
@@ -347,7 +357,7 @@ class SutSprayRotationParserTest {
         val database = SQLiteDatabase.openOrCreateDatabase(file, null)
         database.use { db ->
             db.execSQL("CREATE TABLE Node (NodeName TEXT NOT NULL, NodeVariantID INTEGER NOT NULL)")
-            db.execSQL("CREATE TABLE Variant (VariantID INTEGER PRIMARY KEY, Opacity REAL, BrushSize REAL, AntiAlias INTEGER, DualAntiAlias INTEGER, BrushContinuousPlot INTEGER, TextureCompositeMode INTEGER, BrushUseSpray INTEGER, BrushRotation REAL, BrushRotationEffector INTEGER, BrushRotationRandomScale REAL, BrushRotationInSpray REAL, BrushRotationEffectorInSpray INTEGER, BrushRotationRandomInSpray REAL, UseDualBrush INTEGER, DualSizeEffector BLOB, DualFlowEffector BLOB, DualIntervalEffector BLOB, DualThicknessEffector BLOB, DualRotation REAL, DualRotationEffector INTEGER, DualRotationRandomScale REAL, DualUseSpray INTEGER, DualRotationInSpray REAL, DualRotationEffectorInSpray INTEGER, DualRotationRandomInSpray REAL)")
+            db.execSQL("CREATE TABLE Variant (VariantID INTEGER PRIMARY KEY, Opacity REAL, BrushSize REAL, AntiAlias INTEGER, DualAntiAlias INTEGER, BrushContinuousPlot INTEGER, TextureCompositeMode INTEGER, BrushUseSpray INTEGER, BrushRotation REAL, BrushRotationEffector INTEGER, BrushRotationRandomScale REAL, BrushRotationInSpray REAL, BrushRotationEffectorInSpray INTEGER, BrushRotationRandomInSpray REAL, UseDualBrush INTEGER, DualSizeEffector BLOB, DualFlowEffector BLOB, DualIntervalEffector BLOB, DualThicknessEffector BLOB, DualRotation REAL, DualRotationEffector INTEGER, DualRotationRandomScale REAL, DualUseSpray INTEGER, DualSpraySizeEffector BLOB, DualSprayDensityEffector BLOB, DualRotationInSpray REAL, DualRotationEffectorInSpray INTEGER, DualRotationRandomInSpray REAL)")
             db.insertOrThrow("Node", null, ContentValues().apply { put("NodeName", "Particle test"); put("NodeVariantID", 1) })
             db.insertOrThrow("Variant", null, ContentValues().apply {
                 put("VariantID", 1)
@@ -373,6 +383,8 @@ class SutSprayRotationParserTest {
                 put("DualRotationEffector", 3)
                 put("DualRotationRandomScale", 100)
                 put("DualUseSpray", 1)
+                put("DualSpraySizeEffector", effector(0x10, pressureMinimum = 30))
+                put("DualSprayDensityEffector", effector(0x40, velocityMinimum = 55))
                 put("DualRotationInSpray", -25)
                 put("DualRotationEffectorInSpray", 0x81)
                 put("DualRotationRandomInSpray", 50)

@@ -193,7 +193,9 @@ class BrushMetadataStore(
                         dualSprayParticleSize = item.optDouble("dualSprayParticleSize", 100.0).toFloat().coerceIn(.01f, 4000f),
                         dualSprayParticleSizeUnit = item.optInt("dualSprayParticleSizeUnit", 0),
                         dualSprayParticleSizeSyncBrushSize = item.optBoolean("dualSprayParticleSizeSyncBrushSize", true),
+                        dualSprayParticleSizeDynamics = parameterDynamics("dualSprayParticleSizeDynamics"),
                         dualSprayDensity = item.optDouble("dualSprayDensity", 1.0).toFloat().coerceIn(1f, 100f),
+                        dualSprayDensityDynamics = parameterDynamics("dualSprayDensityDynamics"),
                         dualSprayBias = item.optDouble("dualSprayBias", 0.0).toFloat().coerceIn(-100f, 100f),
                         dualSpraySpread = item.optDouble("dualSpraySpread", 1.0).toFloat().coerceIn(0f, 4f),
                         dualSprayParticleRotationDegrees = item.optDouble("dualSprayParticleRotationDegrees", 0.0).toFloat().coerceIn(-360f, 360f),
@@ -376,7 +378,9 @@ class BrushMetadataStore(
                     .put("dualSprayParticleSize", brush.dualSprayParticleSize)
                     .put("dualSprayParticleSizeUnit", brush.dualSprayParticleSizeUnit)
                     .put("dualSprayParticleSizeSyncBrushSize", brush.dualSprayParticleSizeSyncBrushSize)
+                    .put("dualSprayParticleSizeDynamics", parameterDynamicsJson(brush.dualSprayParticleSizeDynamics))
                     .put("dualSprayDensity", brush.dualSprayDensity)
+                    .put("dualSprayDensityDynamics", parameterDynamicsJson(brush.dualSprayDensityDynamics))
                     .put("dualSprayBias", brush.dualSprayBias)
                     .put("dualSpraySpread", brush.dualSpraySpread)
                     .put("dualSprayParticleRotationDegrees", brush.dualSprayParticleRotationDegrees)

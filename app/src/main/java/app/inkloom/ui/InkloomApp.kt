@@ -3876,7 +3876,9 @@ private fun InkCanvasView.applyBrushConfiguration(
     dualSprayParticleSize = activeBrush?.dualSprayParticleSize ?: 100f
     dualSprayParticleSizeUnit = activeBrush?.dualSprayParticleSizeUnit ?: 0
     dualSprayParticleSizeSyncBrushSize = activeBrush?.dualSprayParticleSizeSyncBrushSize ?: true
+    dualSprayParticleSizeDynamics = activeBrush?.dualSprayParticleSizeDynamics ?: BrushParameterDynamics()
     dualSprayDensity = activeBrush?.dualSprayDensity ?: 1f
+    dualSprayDensityDynamics = activeBrush?.dualSprayDensityDynamics ?: BrushParameterDynamics()
     dualSprayBias = activeBrush?.dualSprayBias ?: 0f
     dualSpraySpread = activeBrush?.dualSpraySpread ?: 1f
     dualSprayParticleRotationDegrees = activeBrush?.dualSprayParticleRotationDegrees ?: 0f
@@ -5618,7 +5620,9 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 if (draft.dualBrush) item { SettingSwitch("Secondary spray/scatter", null, draft.dualSpray) { draft = draft.copy(dualSpray = it) } }
                 if (draft.dualBrush && draft.dualSpray) item { BrushSettingSlider("Secondary particle size", draft.dualSprayParticleSize, .01f..400f) { draft = draft.copy(dualSprayParticleSize = it) } }
                 if (draft.dualBrush && draft.dualSpray) item { SettingSwitch("Secondary particles follow brush", null, draft.dualSprayParticleSizeSyncBrushSize) { draft = draft.copy(dualSprayParticleSizeSyncBrushSize = it) } }
+                if (draft.dualBrush && draft.dualSpray) item { ParameterDynamicsEditor(tr("Secondary particle-size dynamics", "辅助喷枪粒子大小动态"), "Secondary particle size", draft.dualSprayParticleSizeDynamics) { draft = draft.copy(dualSprayParticleSizeDynamics = it) } }
                 if (draft.dualBrush && draft.dualSpray) item { BrushSettingSlider("Secondary particle density", draft.dualSprayDensity, 1f..100f) { draft = draft.copy(dualSprayDensity = it) } }
+                if (draft.dualBrush && draft.dualSpray) item { ParameterDynamicsEditor(tr("Secondary particle-density dynamics", "辅助喷枪粒子密度动态"), "Secondary particle density", draft.dualSprayDensityDynamics) { draft = draft.copy(dualSprayDensityDynamics = it) } }
                 if (draft.dualBrush && draft.dualSpray) item { BrushSettingSlider("Secondary center bias", draft.dualSprayBias, -100f..100f) { draft = draft.copy(dualSprayBias = it) } }
                 if (draft.dualBrush && draft.dualSpray) item { BrushSettingSlider("Secondary scatter spread", draft.dualSpraySpread, 0f..4f) { draft = draft.copy(dualSpraySpread = it) } }
                 if (draft.dualBrush && draft.dualSpray) item { BrushSettingSlider("Secondary particle rotation", draft.dualSprayParticleRotationDegrees, -180f..180f) { draft = draft.copy(dualSprayParticleRotationDegrees = it) } }

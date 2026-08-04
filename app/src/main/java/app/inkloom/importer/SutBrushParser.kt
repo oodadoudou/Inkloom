@@ -42,6 +42,8 @@ class SutBrushParser(private val assetDirectory: File) {
             val dualFlowEffector = db.effector("DualFlowEffector", columns)
             val dualSpacingEffector = db.effector("DualIntervalEffector", columns)
             val dualThicknessEffector = db.effector("DualThicknessEffector", columns)
+            val dualSprayParticleSizeEffector = db.effector("DualSpraySizeEffector", columns)
+            val dualSprayDensityEffector = db.effector("DualSprayDensityEffector", columns)
             val tips = extractMaterialPreviews(db, "BrushPatternImageArray", hash, "tip")
             val dualTips = extractMaterialPreviews(db, "DualPatternImageArray", hash, "dual-tip")
             val tip = tips.firstOrNull()
@@ -156,7 +158,9 @@ class SutBrushParser(private val assetDirectory: File) {
                 dualSprayParticleSize = values.float("DualSpraySize", 100f).coerceIn(.01f, 4000f),
                 dualSprayParticleSizeUnit = values.float("DualSpraySizeUnit").toInt(),
                 dualSprayParticleSizeSyncBrushSize = values.float("DualSpraySizeSyncBrushSize", 1f) > 0f,
+                dualSprayParticleSizeDynamics = dualSprayParticleSizeEffector.parameterDynamics(),
                 dualSprayDensity = values.float("DualSprayDensity", 1f).coerceIn(1f, 100f),
+                dualSprayDensityDynamics = dualSprayDensityEffector.parameterDynamics(),
                 dualSprayBias = values.float("DualSprayBias").coerceIn(-100f, 100f),
                 dualSprayParticleRotationDegrees = values.float("DualRotationInSpray").coerceIn(-360f, 360f),
                 dualSprayParticleFollowStylusOrientation = dualSprayRotation.mode == SutRotationMode.DIRECTION_OF_PEN,
@@ -242,7 +246,10 @@ class SutBrushParser(private val assetDirectory: File) {
                         add(if (dualDynamics.isEmpty()) "CSP secondary size, flow, spacing and thickness effectors are independent and disabled; main-tip dynamics are not inherited" else "CSP secondary dynamics decoded independently: ${dualDynamics.joinToString()}")
                     }
                     if (values.float("BrushUseSpray") > 0f) add("Spray behavior mapped with particle size/unit, brush-size linking, density, center bias and independent particle direction${if (sprayRotation.randomEnabled) "/random angle" else ""}")
-                    if (values.float("DualUseSpray") > 0f) add("Dual spray mapped with particle size/unit, brush-size linking, density, center bias and independent particle direction${if (dualSprayRotation.randomEnabled) "/random angle" else ""}")
+                    if (values.float("DualUseSpray") > 0f) {
+                        val dualSprayDynamics = listOf("particle size" to dualSprayParticleSizeEffector, "density" to dualSprayDensityEffector).mapNotNull { (label, effector) -> effector?.parameterSourceSummary()?.takeIf(String::isNotBlank)?.let { "$label $it" } }
+                        add("Dual spray mapped with particle size/unit, brush-size linking, density, center bias and independent particle direction${if (dualSprayRotation.randomEnabled) "/random angle" else ""}${if (dualSprayDynamics.isEmpty()) "" else "; dynamics: ${dualSprayDynamics.joinToString()}"}")
+                    }
                     if (values.float("BrushRibbon") > 0f) add("CSP Ribbon detected; source aspect ratio, tangent alignment and continuous placement enabled")
                     if (values.float("BrushContinuousPlot") > 0f) add("CSP Continuous spraying mapped: holding the stylus deposits time-based stamps so slow strokes build density")
                     if (values.float("BrushHueChange") != 0f || values.float("BrushSaturationChange") != 0f || values.float("BrushValueChange") != 0f) add("CSP per-tip color jitter mapped: hue ${values.float("BrushHueChange")}, saturation ${values.float("BrushSaturationChange")}, brightness ${values.float("BrushValueChange")}; deterministic pressure, tilt, velocity and signed random effectors retained")
@@ -313,6 +320,6 @@ class SutBrushParser(private val assetDirectory: File) {
     private fun SutEffector.sourceSummary(): String = buildList { if (tiltEnabled) add("tilt"); if (velocityEnabled) add("velocity"); if (randomEnabled) add("random") }.joinToString("+")
     private fun SutEffector.parameterSourceSummary(): String = buildList { if (pressureEnabled) add("pressure"); sourceSummary().takeIf(String::isNotBlank)?.let(::add) }.joinToString("+")
     companion object {
-        const val CURRENT_VERSION = 27
+        const val CURRENT_VERSION = 28
     }
 }
