@@ -101,8 +101,10 @@ class InkCanvasNavigationTest {
         var state = ViewportState(1f, 0f, 0f)
         var committed = 0
         view.onStrokeCommitted = { committed++ }
-        view.onViewportScale = { factor, focusX, focusY -> state = ViewportTransform.zoomAround(state, factor, focusX, focusY, geometry = geometry) }
-        view.onViewportPan = { dx, dy -> state = ViewportTransform.panBy(state, dx, dy, geometry = geometry) }
+        view.onViewportScale = { factor, focusX, focusY ->
+            state = ViewportTransform.zoomAroundScreen(state, factor, focusX - 500f, focusY - 500f, geometry = geometry)
+        }
+        view.onViewportPan = { dx, dy -> state = ViewportTransform.panByScreen(state, dx, dy, geometry = geometry) }
 
         send(view, 0L, MotionEvent.ACTION_DOWN, point(0, 400f, 500f))
         send(view, 10L, MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), point(0, 350f, 500f), point(1, 650f, 500f))
@@ -120,11 +122,30 @@ class InkCanvasNavigationTest {
         send(view, 150L, MotionEvent.ACTION_UP, point(0, 470f, 530f))
 
         assertTrue(state.scale.isFinite() && state.panX.isFinite() && state.panY.isFinite())
-        state = ViewportTransform.zoomAround(state, .01f, -320f, 180f, geometry = geometry)
+        state = ViewportTransform.zoomAroundScreen(state, .01f, -320f, 180f, geometry = geometry)
         assertEquals(1f, state.scale, .001f)
         assertEquals(0f, state.panX, .001f)
         assertEquals(0f, state.panY, .001f)
         assertEquals("Navigation sequence must never commit ink", 0, committed)
+    }
+
+    @Test fun twoFingerScreenTranslationIsNotMultipliedAtHighZoom() {
+        val view = canvas().apply { fingerDrawingEnabled = false }
+        var state = ViewportState(scale = 4f, panX = 10f, panY = -5f)
+        view.onViewportScale = { factor, focusX, focusY ->
+            state = ViewportTransform.zoomAroundScreen(state, factor, focusX - 500f, focusY - 500f)
+        }
+        view.onViewportPan = { dx, dy -> state = ViewportTransform.panByScreen(state, dx, dy) }
+
+        send(view, 0L, MotionEvent.ACTION_DOWN, point(0, 350f, 500f))
+        send(view, 10L, MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), point(0, 350f, 500f), point(1, 650f, 500f))
+        send(view, 30L, MotionEvent.ACTION_MOVE, point(0, 390f, 525f), point(1, 690f, 525f))
+        send(view, 50L, MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), point(0, 390f, 525f), point(1, 690f, 525f))
+        send(view, 60L, MotionEvent.ACTION_UP, point(0, 390f, 525f))
+
+        assertEquals(4f, state.scale, .001f)
+        assertEquals("A 40 px finger move must pan exactly 40 px at 4x zoom", 50f, state.panX, .001f)
+        assertEquals("A 25 px finger move must pan exactly 25 px at 4x zoom", 20f, state.panY, .001f)
     }
 
     @Test fun secondFingerCancelsAnInProgressFingerStrokeBeforeNavigation() {

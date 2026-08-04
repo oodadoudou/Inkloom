@@ -52,6 +52,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -995,6 +997,8 @@ private fun EditorScreen(
     var viewRotation by remember(document.id) { mutableFloatStateOf(0f) }
     var viewportWidthPx by remember { mutableFloatStateOf(0f) }
     var viewportHeightPx by remember { mutableFloatStateOf(0f) }
+    var viewportCenterScreenX by remember { mutableFloatStateOf(0f) }
+    var viewportCenterScreenY by remember { mutableFloatStateOf(0f) }
     fun currentViewportGeometry(): ViewportGeometry? {
         val view = canvasView ?: return null
         if (viewportWidthPx <= 0f || viewportHeightPx <= 0f || view.width <= 0 || view.height <= 0) return null
@@ -1258,7 +1262,16 @@ private fun EditorScreen(
             }
         }
         HorizontalDivider(color = OutlineSoft)
-        BoxWithConstraints(Modifier.weight(1f).clipToBounds()) {
+        BoxWithConstraints(
+            Modifier
+                .weight(1f)
+                .clipToBounds()
+                .onGloballyPositioned { coordinates ->
+                    val origin = coordinates.positionOnScreen()
+                    viewportCenterScreenX = origin.x + coordinates.size.width / 2f
+                    viewportCenterScreenY = origin.y + coordinates.size.height / 2f
+                },
+        ) {
         val editorWidth = maxWidth
         val workspaceWidthDp = maxWidth.value
         val workspaceHeightDp = maxHeight.value
@@ -1716,10 +1729,16 @@ private fun EditorScreen(
                     assets = assets,
                     settings = settings,
                     onZoom = { factor, focusX, focusY ->
-                        val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY, viewRotation), factor, focusX, focusY, geometry = currentViewportGeometry())
+                        val next = ViewportTransform.zoomAroundScreen(
+                            ViewportState(zoom, panX, panY, viewRotation),
+                            factor,
+                            focusX - viewportCenterScreenX,
+                            focusY - viewportCenterScreenY,
+                            geometry = currentViewportGeometry(),
+                        )
                         zoom = next.scale; panX = next.panX; panY = next.panY
                     },
-                    onPan = { dx, dy -> val next = ViewportTransform.panBy(ViewportState(zoom, panX, panY, viewRotation), dx, dy, geometry = currentViewportGeometry()); panX = next.panX; panY = next.panY },
+                    onPan = { dx, dy -> val next = ViewportTransform.panByScreen(ViewportState(zoom, panX, panY, viewRotation), dx, dy, geometry = currentViewportGeometry()); panX = next.panX; panY = next.panY },
                     onRotate = { delta ->
                         val next = ViewportTransform.rotateBy(ViewportState(zoom, panX, panY, viewRotation), delta, currentViewportGeometry())
                         viewRotation = next.rotationDegrees; panX = next.panX; panY = next.panY

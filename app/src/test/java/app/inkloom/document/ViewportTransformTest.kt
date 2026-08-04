@@ -29,6 +29,24 @@ class ViewportTransformTest {
         assertEquals(-24f, after.panY, .001f)
     }
 
+    @Test fun screenPanNeverMultipliesMovementByZoom() {
+        val after = ViewportTransform.panByScreen(ViewportState(4f, 10f, -4f), 12f, -8f)
+        assertEquals(22f, after.panX, .001f)
+        assertEquals(-12f, after.panY, .001f)
+    }
+
+    @Test fun screenZoomKeepsThePhysicalFocusStationary() {
+        val before = ViewportState(scale = 2f, panX = 40f, panY = -20f)
+        val focusX = 260f
+        val focusY = -120f
+        val after = ViewportTransform.zoomAroundScreen(before, 1.5f, focusX, focusY)
+        val pageX = (focusX - before.panX) / before.scale
+        val pageY = (focusY - before.panY) / before.scale
+
+        assertEquals(focusX, after.panX + after.scale * pageX, .001f)
+        assertEquals(focusY, after.panY + after.scale * pageY, .001f)
+    }
+
     @Test fun pinchHandoffSelectsTheFingerThatRemainsOnScreen() {
         assertEquals(1, ViewportTransform.remainingPointerIndex(2, 0))
         assertEquals(0, ViewportTransform.remainingPointerIndex(2, 1))

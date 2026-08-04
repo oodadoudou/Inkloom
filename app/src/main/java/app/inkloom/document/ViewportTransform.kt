@@ -11,6 +11,29 @@ data class ViewportGeometry(
 )
 
 object ViewportTransform {
+    /** Applies a screen-space translation. Gesture coordinates must use this path
+     * when the page View itself is scaled, otherwise local deltas change coordinate
+     * systems between MotionEvents and the page appears to drift. */
+    fun panByScreen(
+        current: ViewportState,
+        screenDeltaX: Float,
+        screenDeltaY: Float,
+        maximumPan: Float = 2_500f,
+        geometry: ViewportGeometry? = null,
+    ): ViewportState {
+        val safe = sanitize(current)
+        val deltaX = screenDeltaX.takeIf(Float::isFinite) ?: 0f
+        val deltaY = screenDeltaY.takeIf(Float::isFinite) ?: 0f
+        val maximumOffset = maximumPan.takeIf { it.isFinite() && it >= 0f } ?: 2_500f
+        return clamp(
+            safe.copy(
+                panX = (safe.panX + deltaX).coerceIn(-maximumOffset, maximumOffset),
+                panY = (safe.panY + deltaY).coerceIn(-maximumOffset, maximumOffset),
+            ),
+            geometry,
+        )
+    }
+
     /** Converts movement reported in the page's local coordinates into screen-space panning. */
     fun panBy(
         current: ViewportState,
@@ -64,6 +87,36 @@ object ViewportTransform {
             next,
             geometry,
         )
+    }
+
+    /** Screen-coordinate counterpart of [zoomAround]. The focus is relative to
+     * the stable viewport center, not the already transformed page View. */
+    fun zoomAroundScreen(
+        current: ViewportState,
+        factor: Float,
+        focusOffsetX: Float,
+        focusOffsetY: Float,
+        minimumScale: Float = 1f,
+        maximumScale: Float = 8f,
+        maximumPan: Float = 2_500f,
+        geometry: ViewportGeometry? = null,
+    ): ViewportState {
+        val minimum = minimumScale.takeIf { it.isFinite() && it > 0f } ?: 1f
+        val maximum = maximumScale.takeIf { it.isFinite() && it >= minimum } ?: maxOf(minimum, 8f)
+        val safe = sanitize(current, minimum, maximum)
+        val safeFactor = factor.takeIf { it.isFinite() && it > 0f } ?: 1f
+        val nextScale = (safe.scale * safeFactor).coerceIn(minimum, maximum)
+        val ratio = nextScale / safe.scale.coerceAtLeast(.0001f)
+        val focusX = focusOffsetX.takeIf(Float::isFinite) ?: 0f
+        val focusY = focusOffsetY.takeIf(Float::isFinite) ?: 0f
+        val maximumOffset = maximumPan.takeIf { it.isFinite() && it >= 0f } ?: 2_500f
+        val next = safe.copy(
+            scale = nextScale,
+            panX = (focusX - (focusX - safe.panX) * ratio).coerceIn(-maximumOffset, maximumOffset),
+            panY = (focusY - (focusY - safe.panY) * ratio).coerceIn(-maximumOffset, maximumOffset),
+        )
+        if (nextScale <= minimum + .0001f && kotlin.math.abs(safe.rotationDegrees) <= .0001f) return next.copy(panX = 0f, panY = 0f)
+        return clamp(next, geometry)
     }
 
     fun rotateBy(current: ViewportState, deltaDegrees: Float, geometry: ViewportGeometry? = null): ViewportState =
