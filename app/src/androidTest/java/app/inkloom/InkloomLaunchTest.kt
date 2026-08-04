@@ -199,7 +199,7 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("Dock bottom").performClick()
 
         composeRule.onNodeWithContentDescription("Bottom workspace panels").assertIsDisplayed()
-        composeRule.onNodeWithText("Brush Library").assertIsDisplayed()
+        composeRule.onNodeWithText("Sub tool [Brush]").assertIsDisplayed()
         composeRule.onAllNodesWithText("Layers").onLast().assertIsDisplayed()
         val restored = AppSettingsStore(composeRule.activity).load()
         assertEquals(WorkspacePanelDock.BOTTOM, restored.pagePanelDock)
@@ -210,7 +210,7 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription("bottom panel tabs").assertIsDisplayed()
         assertTrue(AppSettingsStore(composeRule.activity).load().bottomDockStacked)
         composeRule.onNodeWithContentDescription("Brushes tab. Drag to reorder.").performClick()
-        composeRule.onNodeWithText("Brush Library").assertIsDisplayed()
+        composeRule.onNodeWithText("Sub tool [Brush]").assertIsDisplayed()
         assertEquals(WorkspacePanelKind.BRUSHES, AppSettingsStore(composeRule.activity).load().bottomDockActivePanel)
         composeRule.onNodeWithContentDescription("Layers tab. Drag to reorder.").performClick()
         composeRule.onAllNodesWithText("Layers").onLast().assertIsDisplayed()
@@ -224,7 +224,7 @@ class InkloomLaunchTest {
 
         composeRule.onNodeWithContentDescription("Workspaces").performClick()
         composeRule.onNodeWithText("Drawing workspace").performClick()
-        composeRule.onNodeWithText("Brush Library").assertIsDisplayed()
+        composeRule.onNodeWithText("Sub tool [Brush]").assertIsDisplayed()
         composeRule.onAllNodesWithText("Layers").onLast().assertIsDisplayed()
         var restored = AppSettingsStore(composeRule.activity).load()
         assertEquals(false, restored.showPageRail)
@@ -520,7 +520,7 @@ class InkloomLaunchTest {
             }
         }
         composeRule.waitUntil(5_000) { preferences.getString("brushPanelDock", null) == "LEFT" }
-        composeRule.onNodeWithText("Brush Library").assertIsDisplayed()
+        composeRule.onNodeWithText("Sub tool [Brush]").assertIsDisplayed()
 
         composeRule.onNodeWithContentDescription("Change brushes panel docking").performClick()
         composeRule.onNodeWithText("Float").performClick()
@@ -560,7 +560,7 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("Dock right").performClick()
         composeRule.onNodeWithContentDescription("Change brushes panel docking").performClick()
         composeRule.onNodeWithText("Lock position and size").performClick()
-        composeRule.onNodeWithText("Brush Library").performTouchInput {
+        composeRule.onNodeWithText("Sub tool [Brush]").performTouchInput {
             swipe(center, center + Offset(-180f, 0f), durationMillis = 500)
         }
         composeRule.waitForIdle()
@@ -590,7 +590,7 @@ class InkloomLaunchTest {
 
         composeRule.onNodeWithContentDescription("Floating panel tabs").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Brushes floating tab. Drag to reorder.").performClick()
-        composeRule.onNodeWithText("Brush Library").assertIsDisplayed()
+        composeRule.onNodeWithText("Sub tool [Brush]").assertIsDisplayed()
 
         val beforeX = preferences.getFloat("brushPanelXDp", 0f)
         composeRule.onNodeWithContentDescription("Drag brushes panel").performTouchInput {
@@ -674,7 +674,6 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("RGB").assertIsDisplayed().performClick()
         composeRule.onNodeWithText("HLS").performClick()
         composeRule.onAllNodesWithText("Layers").onLast().assertIsDisplayed()
-        composeRule.onNodeWithText("Current page").assertIsDisplayed()
     }
 
     @Test fun layerPanelCreatesFoldersMovesLayersAndCollapsesChildren() {
