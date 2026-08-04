@@ -9,6 +9,8 @@ import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
@@ -115,6 +117,7 @@ class BrushBatchManagementTest {
 
         composeRule.onNodeWithText("Source").performClick()
 
+        composeRule.onNodeWithContentDescription("Add brush or group").performClick()
         composeRule.onNodeWithText("Import into Source").assertIsDisplayed()
     }
 
@@ -124,13 +127,15 @@ class BrushBatchManagementTest {
         composeRule.onNodeWithContentDescription("Brushes").performClick()
 
         composeRule.onNodeWithText("Ink").assertIsDisplayed()
-        composeRule.onNodeWithText("Pens").assertIsDisplayed()
+        composeRule.onNodeWithText("Pens").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Collapse group Source").performScrollTo()
         composeRule.onNodeWithContentDescription("Collapse group Source").performClick()
         assertEquals(0, composeRule.onAllNodes(hasText("Ink")).fetchSemanticsNodes().size)
         composeRule.onNodeWithContentDescription("Expand group Source").performClick()
-        composeRule.onNodeWithText("Ink").performClick()
+        composeRule.onNodeWithText("Ink").performScrollTo().performClick()
 
         composeRule.onNodeWithText("Nested Ink").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Add brush or group").performClick()
         composeRule.onNodeWithText("Import into Source/Ink").assertIsDisplayed()
     }
 
@@ -147,6 +152,25 @@ class BrushBatchManagementTest {
         val groups = BrushGroupStore(composeRule.activity).load()
         assertEquals(listOf("Source", "Target", "Source/Ink/Pens", "Empty/Erasers"), groups)
         assertEquals(0, BrushMetadataStore(composeRule.activity).load().count { it.groupName == "Empty/Erasers" })
+    }
+
+    @Test fun createsAnEditableBrushInsideTheSelectedUserGroup() {
+        composeRule.onNodeWithText("New Note").performClick()
+        composeRule.onNodeWithText("Create").performClick()
+        composeRule.onNodeWithContentDescription("Brushes").performClick()
+        composeRule.onNodeWithText("Source").performClick()
+
+        composeRule.onNodeWithContentDescription("Add brush or group").performClick()
+        composeRule.onNodeWithText("Create blank brush").performClick()
+        composeRule.onNodeWithText("Brush Studio").assertIsDisplayed()
+        val nameField = composeRule.onAllNodes(hasText("New brush")).onLast()
+        nameField.performTextClearance()
+        composeRule.onAllNodes(hasText("Brush name")).onLast().performTextInput("My soft brush")
+        composeRule.onNodeWithText("Save preset").performClick()
+
+        val store = BrushMetadataStore(composeRule.activity)
+        composeRule.waitUntil(5_000) { store.load().any { it.name == "My soft brush" } }
+        assertEquals("Source", store.load().single { it.name == "My soft brush" }.groupName)
     }
 
     private companion object {

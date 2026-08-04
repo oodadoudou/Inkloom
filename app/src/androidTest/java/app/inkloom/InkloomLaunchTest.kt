@@ -18,6 +18,7 @@ import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
@@ -25,6 +26,7 @@ import androidx.compose.ui.test.swipe
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.core.app.ApplicationProvider
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.semantics.SemanticsActions
 import app.inkloom.importer.BrushGroupStore
 import app.inkloom.document.PageTemplateStore
 import app.inkloom.settings.AppSettingsStore
@@ -664,9 +666,13 @@ class InkloomLaunchTest {
     @Test fun pageThumbnailOpensItsCspColorAndLayerStack() {
         createNotebookAndOpenEditor()
 
+        composeRule.onNodeWithContentDescription("Foreground and background colors").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Open layers for this page").performClick()
 
         composeRule.onNodeWithText("Color wheel").assertIsDisplayed()
+        composeRule.onNodeWithText("HLS").assertIsDisplayed()
+        composeRule.onNodeWithText("RGB").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("HLS").performClick()
         composeRule.onAllNodesWithText("Layers").onLast().assertIsDisplayed()
         composeRule.onNodeWithText("Current page").assertIsDisplayed()
     }
@@ -679,9 +685,10 @@ class InkloomLaunchTest {
 
         composeRule.onNodeWithText("Folder 1").assertIsDisplayed()
         composeRule.onNodeWithText("Layer 1").assertIsDisplayed()
-        composeRule.onAllNodes(hasContentDescription("Layer actions")).onFirst().performClick()
-        composeRule.onNodeWithText("Move into Folder 1").performClick()
-        composeRule.onNodeWithContentDescription("Collapse folder").performClick()
+        composeRule.onNodeWithContentDescription("Move layer to folder Layer 1").performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Collapse folder").performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.waitForIdle()
 
         assertTrue(composeRule.onAllNodes(hasText("Layer 1")).fetchSemanticsNodes().isEmpty())
         composeRule.onNodeWithText("Folder 1").assertIsDisplayed()
