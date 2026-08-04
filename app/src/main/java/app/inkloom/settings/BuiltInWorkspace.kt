@@ -11,14 +11,12 @@ object BuiltInWorkspaces {
         return when (workspace) {
             BuiltInWorkspace.NOTE -> defaults.copy(
                 showPageRail = true,
-                showBrushPanel = true,
-                showLayerPanel = true,
+                showBrushPanel = false,
+                showLayerPanel = false,
                 showToolbar = true,
                 pagePanelDock = WorkspacePanelDock.LEFT,
-                brushPanelDock = WorkspacePanelDock.RIGHT,
-                layerPanelDock = WorkspacePanelDock.RIGHT,
-                toolbarDock = ToolbarDock.RIGHT,
-                verticalToolbar = true,
+                toolbarDock = ToolbarDock.TOP,
+                verticalToolbar = false,
             )
             BuiltInWorkspace.DRAWING -> defaults.copy(
                 showPageRail = false,
