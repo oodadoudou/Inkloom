@@ -63,5 +63,41 @@ object WorkspacePanelPlacement {
     fun resize(bounds: WorkspacePanelBounds, deltaWidthDp: Float, deltaHeightDp: Float, containerWidthDp: Float, containerHeightDp: Float, minimumWidthDp: Float) =
         clamp(bounds.xDp, bounds.yDp, bounds.widthDp + deltaWidthDp, bounds.heightDp + deltaHeightDp, containerWidthDp, containerHeightDp, minimumWidthDp)
 
+    /** Resizes from any combination of edges. A zero delta keeps that edge fixed,
+     * so dragging a left or top handle does not make the opposite corner jump. */
+    fun resizeEdges(
+        bounds: WorkspacePanelBounds,
+        leftDeltaDp: Float,
+        topDeltaDp: Float,
+        rightDeltaDp: Float,
+        bottomDeltaDp: Float,
+        containerWidthDp: Float,
+        containerHeightDp: Float,
+        minimumWidthDp: Float,
+    ): WorkspacePanelBounds {
+        val left = finite(bounds.xDp + leftDeltaDp, bounds.xDp)
+        val top = finite(bounds.yDp + topDeltaDp, bounds.yDp)
+        val right = finite(bounds.xDp + bounds.widthDp + rightDeltaDp, bounds.xDp + bounds.widthDp)
+        val bottom = finite(bounds.yDp + bounds.heightDp + bottomDeltaDp, bounds.yDp + bounds.heightDp)
+        val resized = clamp(
+            xDp = left,
+            yDp = top,
+            widthDp = right - left,
+            heightDp = bottom - top,
+            containerWidthDp = containerWidthDp,
+            containerHeightDp = containerHeightDp,
+            minimumWidthDp = minimumWidthDp,
+        )
+        val horizontal = if (leftDeltaDp != 0f && rightDeltaDp == 0f) {
+            val anchoredRight = bounds.xDp + bounds.widthDp
+            resized.copy(xDp = anchoredRight - resized.widthDp)
+        } else resized
+        val vertical = if (topDeltaDp != 0f && bottomDeltaDp == 0f) {
+            val anchoredBottom = bounds.yDp + bounds.heightDp
+            horizontal.copy(yDp = anchoredBottom - horizontal.heightDp)
+        } else horizontal
+        return clamp(vertical, containerWidthDp, containerHeightDp, minimumWidthDp)
+    }
+
     private fun finite(value: Float, fallback: Float) = if (value.isFinite()) value else fallback
 }

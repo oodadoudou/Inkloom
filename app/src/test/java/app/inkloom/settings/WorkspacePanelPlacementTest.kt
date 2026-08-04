@@ -32,6 +32,45 @@ class WorkspacePanelPlacementTest {
         assertEquals(220f, result.heightDp, .001f)
     }
 
+    @Test fun topLeftResizeKeepsTheOppositeCornerAnchored() {
+        val source = WorkspacePanelBounds(300f, 180f, 330f, 420f)
+        val result = WorkspacePanelPlacement.resizeEdges(
+            source,
+            leftDeltaDp = -40f,
+            topDeltaDp = 25f,
+            rightDeltaDp = 0f,
+            bottomDeltaDp = 0f,
+            containerWidthDp = 1_200f,
+            containerHeightDp = 900f,
+            minimumWidthDp = 160f,
+        )
+
+        assertEquals(260f, result.xDp, .001f)
+        assertEquals(205f, result.yDp, .001f)
+        assertEquals(370f, result.widthDp, .001f)
+        assertEquals(395f, result.heightDp, .001f)
+        assertEquals(630f, result.xDp + result.widthDp, .001f)
+        assertEquals(600f, result.yDp + result.heightDp, .001f)
+    }
+
+    @Test fun leftResizeAtMinimumWidthStillKeepsRightEdgeAnchored() {
+        val source = WorkspacePanelBounds(300f, 180f, 200f, 420f)
+        val result = WorkspacePanelPlacement.resizeEdges(
+            source,
+            leftDeltaDp = 180f,
+            topDeltaDp = 0f,
+            rightDeltaDp = 0f,
+            bottomDeltaDp = 0f,
+            containerWidthDp = 1_200f,
+            containerHeightDp = 900f,
+            minimumWidthDp = 160f,
+        )
+
+        assertEquals(340f, result.xDp, .001f)
+        assertEquals(160f, result.widthDp, .001f)
+        assertEquals(500f, result.xDp + result.widthDp, .001f)
+    }
+
     @Test fun narrowWorkspaceKeepsEntirePanelRecoverable() {
         val result = WorkspacePanelPlacement.clamp(50f, 50f, 400f, 500f, 120f, 180f, 160f)
 

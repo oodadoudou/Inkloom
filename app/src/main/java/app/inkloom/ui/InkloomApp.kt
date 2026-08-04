@@ -1405,9 +1405,25 @@ private fun EditorScreen(
             }
             return next
         }
-        fun resizeFloatingPanel(panel: WorkspacePanelKind, bounds: WorkspacePanelBounds, deltaWidthDp: Float, deltaHeightDp: Float): WorkspacePanelBounds {
+        fun resizeFloatingPanel(
+            panel: WorkspacePanelKind,
+            bounds: WorkspacePanelBounds,
+            leftDeltaDp: Float,
+            topDeltaDp: Float,
+            rightDeltaDp: Float,
+            bottomDeltaDp: Float,
+        ): WorkspacePanelBounds {
             val groupMinimum = if (freePanelsStacked && panel in freePanelTabs) freePanelTabs.maxOf(::minimumPanelWidth) else minimumPanelWidth(panel)
-            val next = WorkspacePanelPlacement.resize(bounds, deltaWidthDp, deltaHeightDp, workspaceWidthDp, usableWorkspaceHeightDp, groupMinimum)
+            val next = WorkspacePanelPlacement.resizeEdges(
+                bounds,
+                leftDeltaDp,
+                topDeltaDp,
+                rightDeltaDp,
+                bottomDeltaDp,
+                workspaceWidthDp,
+                usableWorkspaceHeightDp,
+                groupMinimum,
+            )
             if (freePanelsStacked && panel in freePanelTabs) freePanelTabs.forEach { setPanelBounds(it, next) } else setPanelBounds(panel, next)
             return next
         }
@@ -2376,9 +2392,9 @@ private fun EditorScreen(
             zIndex = if (activeFloatingPanel == "pages") 6f else 3f,
             resizeDescription = tr("Resize pages panel", "调整页面面板大小"),
             onActivate = { activeFloatingPanel = "pages" },
-            onResize = { dx, dy ->
+            onResize = { left, top, right, bottom ->
                 activeFloatingPanel = "pages"
-                pagePanelBounds = resizeFloatingPanel(WorkspacePanelKind.PAGES, pagePanelBounds, dx / editorDensity.density, dy / editorDensity.density)
+                pagePanelBounds = resizeFloatingPanel(WorkspacePanelKind.PAGES, pagePanelBounds, left / editorDensity.density, top / editorDensity.density, right / editorDensity.density, bottom / editorDensity.density)
             },
             onResizeEnd = { if (freePanelsStacked) persistFloatingPanels(freePanelTabs) else persistPagePanel(pagePanelBounds) },
             tabs = if (freePanelsStacked) freePanelTabs else emptyList(),
@@ -2422,9 +2438,9 @@ private fun EditorScreen(
             zIndex = if (activeFloatingPanel == "layers") 6f else 4f,
             resizeDescription = tr("Resize layers panel", "调整图层面板大小"),
             onActivate = { activeFloatingPanel = "layers" },
-            onResize = { dx, dy ->
+            onResize = { left, top, right, bottom ->
                 activeFloatingPanel = "layers"
-                layerPanelBounds = resizeFloatingPanel(WorkspacePanelKind.LAYERS, layerPanelBounds, dx / editorDensity.density, dy / editorDensity.density)
+                layerPanelBounds = resizeFloatingPanel(WorkspacePanelKind.LAYERS, layerPanelBounds, left / editorDensity.density, top / editorDensity.density, right / editorDensity.density, bottom / editorDensity.density)
             },
             onResizeEnd = { if (freePanelsStacked) persistFloatingPanels(freePanelTabs) else persistLayerPanel(layerPanelBounds) },
             tabs = if (freePanelsStacked) freePanelTabs else emptyList(),
@@ -2480,9 +2496,9 @@ private fun EditorScreen(
             zIndex = if (activeFloatingPanel == "brushes") 6f else 5f,
             resizeDescription = tr("Resize brushes panel", "调整笔刷面板大小"),
             onActivate = { activeFloatingPanel = "brushes" },
-            onResize = { dx, dy ->
+            onResize = { left, top, right, bottom ->
                 activeFloatingPanel = "brushes"
-                brushPanelBounds = resizeFloatingPanel(WorkspacePanelKind.BRUSHES, brushPanelBounds, dx / editorDensity.density, dy / editorDensity.density)
+                brushPanelBounds = resizeFloatingPanel(WorkspacePanelKind.BRUSHES, brushPanelBounds, left / editorDensity.density, top / editorDensity.density, right / editorDensity.density, bottom / editorDensity.density)
             },
             onResizeEnd = { if (freePanelsStacked) persistFloatingPanels(freePanelTabs) else persistBrushPanel(brushPanelBounds) },
             tabs = if (freePanelsStacked) freePanelTabs else emptyList(),
@@ -3141,7 +3157,7 @@ private fun FloatingWorkspacePanel(
     zIndex: Float,
     resizeDescription: String,
     onActivate: () -> Unit,
-    onResize: (Float, Float) -> Unit,
+    onResize: (Float, Float, Float, Float) -> Unit,
     onResizeEnd: () -> Unit,
     tabs: List<WorkspacePanelKind> = emptyList(),
     activeTab: WorkspacePanelKind? = null,
@@ -3181,28 +3197,84 @@ private fun FloatingWorkspacePanel(
             if (tabs.size > 1) FloatingPanelTabStrip(tabs, activeTab, locked, onTab, onMoveTab, onSeparateTabs)
             Box(Modifier.fillMaxWidth().weight(1f)) {
                 content()
-                if (!locked && mode == WorkspacePanelMode.EXPANDED) Box(
-                    Modifier
-                        .align(Alignment.BottomEnd)
-                        .size(30.dp)
-                        .clip(RoundedCornerShape(topStart = 10.dp, bottomEnd = 12.dp))
-                        .background(Color.White)
-                        .semantics { contentDescription = resizeDescription }
-                        .pointerInput(Unit) {
-                            detectDragGestures(
-                                onDragStart = { currentActivate() },
-                                onDragEnd = { currentResizeEnd() },
-                                onDragCancel = { currentResizeEnd() },
-                            ) { change, amount ->
-                                change.consume()
-                                currentResize(amount.x, amount.y)
-                            }
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.Outlined.OpenInFull, null, Modifier.size(15.dp), tint = MutedInk)
+                if (!locked && mode == WorkspacePanelMode.EXPANDED) {
+                    PanelResizeCorner(
+                        alignment = Alignment.TopStart,
+                        description = "$resizeDescription · ${tr("top left", "左上")}",
+                        onActivate = currentActivate,
+                        onResizeEnd = currentResizeEnd,
+                    ) { dx, dy -> currentResize(dx, dy, 0f, 0f) }
+                    PanelResizeCorner(
+                        alignment = Alignment.TopEnd,
+                        description = "$resizeDescription · ${tr("top right", "右上")}",
+                        onActivate = currentActivate,
+                        onResizeEnd = currentResizeEnd,
+                    ) { dx, dy -> currentResize(0f, dy, dx, 0f) }
+                    PanelResizeCorner(
+                        alignment = Alignment.BottomStart,
+                        description = "$resizeDescription · ${tr("bottom left", "左下")}",
+                        onActivate = currentActivate,
+                        onResizeEnd = currentResizeEnd,
+                    ) { dx, dy -> currentResize(dx, 0f, 0f, dy) }
+                    PanelResizeCorner(
+                        alignment = Alignment.BottomEnd,
+                        description = "$resizeDescription · ${tr("bottom right", "右下")}",
+                        onActivate = currentActivate,
+                        onResizeEnd = currentResizeEnd,
+                    ) { dx, dy -> currentResize(0f, 0f, dx, dy) }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.PanelResizeCorner(
+    alignment: Alignment,
+    description: String,
+    onActivate: () -> Unit,
+    onResizeEnd: () -> Unit,
+    onResize: (Float, Float) -> Unit,
+) {
+    val currentActivate by rememberUpdatedState(onActivate)
+    val currentResize by rememberUpdatedState(onResize)
+    val currentResizeEnd by rememberUpdatedState(onResizeEnd)
+    val top = alignment == Alignment.TopStart || alignment == Alignment.TopEnd
+    val left = alignment == Alignment.TopStart || alignment == Alignment.BottomStart
+    Box(
+        Modifier
+            .align(alignment)
+            .size(32.dp)
+            .zIndex(2f)
+            .clip(
+                RoundedCornerShape(
+                    topStart = if (alignment == Alignment.TopStart) 11.dp else 0.dp,
+                    topEnd = if (alignment == Alignment.TopEnd) 11.dp else 0.dp,
+                    bottomStart = if (alignment == Alignment.BottomStart) 11.dp else 0.dp,
+                    bottomEnd = if (alignment == Alignment.BottomEnd) 11.dp else 0.dp,
+                ),
+            )
+            .background(Color.White.copy(alpha = .88f))
+            .semantics { contentDescription = description }
+            .pointerInput(alignment) {
+                detectDragGestures(
+                    onDragStart = { currentActivate() },
+                    onDragEnd = { currentResizeEnd() },
+                    onDragCancel = { currentResizeEnd() },
+                ) { change, amount ->
+                    change.consume()
+                    currentResize(amount.x, amount.y)
+                }
+            },
+        contentAlignment = alignment,
+    ) {
+        Canvas(Modifier.size(17.dp).padding(3.dp)) {
+            val x = if (left) 1f else size.width - 1f
+            val y = if (top) 1f else size.height - 1f
+            val horizontalEnd = if (left) size.width else 0f
+            val verticalEnd = if (top) size.height else 0f
+            drawLine(MutedInk, Offset(x, y), Offset(horizontalEnd, y), strokeWidth = 2f, cap = StrokeCap.Round)
+            drawLine(MutedInk, Offset(x, y), Offset(x, verticalEnd), strokeWidth = 2f, cap = StrokeCap.Round)
         }
     }
 }
