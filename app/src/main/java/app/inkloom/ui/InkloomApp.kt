@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
@@ -1687,6 +1688,10 @@ private fun EditorScreen(
                 registeredGroups = brushGroups,
                 selectedBrushId = selectedBrushId,
                 settings = settings,
+                brushSize = brushSize,
+                brushOpacity = brushOpacity,
+                onBrushSizeChange = { brushSize = it.coerceIn(.5f, 400f) },
+                onBrushOpacityChange = { brushOpacity = it.coerceIn(.05f, 1f) },
                 dock = settings.brushPanelDock,
                 onDock = { changePanelDock(WorkspacePanelKind.BRUSHES, it) },
                 onClose = { if (brushesOpen) onToggleBrushes() },
@@ -2199,6 +2204,10 @@ private fun EditorScreen(
                 registeredGroups = brushGroups,
                 selectedBrushId = selectedBrushId,
                 settings = settings,
+                brushSize = brushSize,
+                brushOpacity = brushOpacity,
+                onBrushSizeChange = { brushSize = it.coerceIn(.5f, 400f) },
+                onBrushOpacityChange = { brushOpacity = it.coerceIn(.05f, 1f) },
                 dock = settings.brushPanelDock,
                 onDock = { changePanelDock(WorkspacePanelKind.BRUSHES, it) },
                 onClose = { if (brushesOpen) onToggleBrushes() },
@@ -2322,6 +2331,10 @@ private fun EditorScreen(
                     registeredGroups = brushGroups,
                     selectedBrushId = selectedBrushId,
                     settings = settings,
+                    brushSize = brushSize,
+                    brushOpacity = brushOpacity,
+                    onBrushSizeChange = { brushSize = it.coerceIn(.5f, 400f) },
+                    onBrushOpacityChange = { brushOpacity = it.coerceIn(.05f, 1f) },
                     dock = settings.brushPanelDock,
                     onDock = { changePanelDock(WorkspacePanelKind.BRUSHES, it) },
                     onClose = { if (brushesOpen) onToggleBrushes() },
@@ -2512,6 +2525,10 @@ private fun EditorScreen(
                 registeredGroups = brushGroups,
                 selectedBrushId = selectedBrushId,
                 settings = settings,
+                brushSize = brushSize,
+                brushOpacity = brushOpacity,
+                onBrushSizeChange = { brushSize = it.coerceIn(.5f, 400f) },
+                onBrushOpacityChange = { brushOpacity = it.coerceIn(.05f, 1f) },
                 dock = settings.brushPanelDock,
                 onDock = { changePanelDock(WorkspacePanelKind.BRUSHES, it) },
                 onClose = { if (brushesOpen) onToggleBrushes() },
@@ -3218,7 +3235,7 @@ private fun FloatingWorkspacePanel(
                     ) { dx, dy -> currentResize(dx, 0f, 0f, dy) }
                     PanelResizeCorner(
                         alignment = Alignment.BottomEnd,
-                        description = "$resizeDescription · ${tr("bottom right", "右下")}",
+                        description = resizeDescription,
                         onActivate = currentActivate,
                         onResizeEnd = currentResizeEnd,
                     ) { dx, dy -> currentResize(0f, 0f, dx, dy) }
@@ -4934,6 +4951,10 @@ private fun BrushPanel(
     registeredGroups: List<String>,
     selectedBrushId: String?,
     settings: AppSettings,
+    brushSize: Float,
+    brushOpacity: Float,
+    onBrushSizeChange: (Float) -> Unit,
+    onBrushOpacityChange: (Float) -> Unit,
     dock: WorkspacePanelDock,
     onDock: (WorkspacePanelDock) -> Unit,
     onClose: () -> Unit,
@@ -5148,11 +5169,24 @@ private fun BrushPanel(
         }
         if (brushes.isNotEmpty()) {
             Text("${tr("BRUSHES", "笔刷")} (${visibleBrushes.size}/${brushes.size})", fontSize = 11.sp, color = MutedInk)
-            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(if (bottomDocked) 74.dp else 66.dp),
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
+                contentPadding = PaddingValues(vertical = 4.dp),
+            ) {
                 brushSections.forEach { (group, sectionBrushes) ->
-                    item("group:$group") { Text(if (group == "Ungrouped") tr("UNGROUPED", "未分组") else group.uppercase(), color = MutedInk, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp, start = 2.dp)) }
-                    items(sectionBrushes, key = { it.id }) { brush ->
-                        ImportedBrushRow(
+                    item(key = "group:$group", span = { GridItemSpan(maxLineSpan) }) {
+                        Text(
+                            if (group == "Ungrouped") tr("UNGROUPED", "未分组") else group.uppercase(),
+                            color = MutedInk,
+                            fontSize = 9.sp,
+                            modifier = Modifier.padding(top = 4.dp, start = 2.dp),
+                        )
+                    }
+                    items(items = sectionBrushes, key = { it.id }) { brush ->
+                        ImportedBrushTile(
                             brush = brush,
                             selected = brush.id == selectedBrushId,
                             multiSelecting = multiSelecting,
@@ -5180,6 +5214,15 @@ private fun BrushPanel(
             }
             Spacer(Modifier.weight(1f))
         }
+        BrushToolProperties(
+            brush = brushes.firstOrNull { it.id == selectedBrushId },
+            size = brushSize,
+            opacity = brushOpacity,
+            compact = bottomDocked,
+            onSize = onBrushSizeChange,
+            onOpacity = onBrushOpacityChange,
+            onEdit = { brushes.firstOrNull { it.id == selectedBrushId }?.let { editBrush = it } },
+        )
         if (!bottomDocked) {
             val importTarget = selectedGroup?.takeUnless { it == UNGROUPED_BRUSH_FILTER }
             FilledTonalButton(onClick = { onImportBrushes(importTarget) }, Modifier.fillMaxWidth()) {
@@ -5498,6 +5541,156 @@ private fun BrushVersionHistoryDialog(
 }
 
 private fun Float.oneDecimal(): String = String.format(java.util.Locale.ROOT, "%.1f", this)
+
+@Composable
+private fun BrushToolProperties(
+    brush: ImportedBrush?,
+    size: Float,
+    opacity: Float,
+    compact: Boolean,
+    onSize: (Float) -> Unit,
+    onOpacity: (Float) -> Unit,
+    onEdit: () -> Unit,
+) {
+    val normalizedSize = ((size.coerceIn(.5f, 400f) - .5f) / 399.5f).coerceIn(0f, 1f)
+    val sizeSliderPosition = Math.cbrt(normalizedSize.toDouble()).toFloat()
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(top = 5.dp),
+        color = Color(0xFFF0F0F0),
+        border = CardDefaults.outlinedCardBorder(),
+        shape = RoundedCornerShape(6.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 7.dp, vertical = if (compact) 3.dp else 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (brush != null) BrushTipPreview(brush, Modifier.size(if (compact) 36.dp else 43.dp))
+            else Box(
+                Modifier.size(if (compact) 36.dp else 43.dp).clip(RoundedCornerShape(7.dp)).background(Color.White).border(1.dp, OutlineSoft, RoundedCornerShape(7.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Canvas(Modifier.fillMaxSize().padding(7.dp)) {
+                    drawLine(Ink, Offset(1f, this.size.height * .72f), Offset(this.size.width - 1f, this.size.height * .28f), strokeWidth = 6f, cap = StrokeCap.Round)
+                }
+            }
+            Spacer(Modifier.width(7.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(brush?.name ?: tr("System pen", "系统钢笔"), maxLines = 1, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    Text("${size.oneDecimal()} px", color = MutedInk, fontSize = 9.sp)
+                }
+                Slider(
+                    value = sizeSliderPosition,
+                    onValueChange = { position -> onSize(.5f + position * position * position * 399.5f) },
+                    valueRange = 0f..1f,
+                    modifier = Modifier.fillMaxWidth().height(26.dp),
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(tr("Opacity", "不透明度"), color = MutedInk, fontSize = 9.sp, modifier = Modifier.width(49.dp))
+                    Slider(value = opacity.coerceIn(.05f, 1f), onValueChange = onOpacity, valueRange = .05f..1f, modifier = Modifier.weight(1f).height(25.dp))
+                    Text("${(opacity * 100f).toInt()}%", color = MutedInk, fontSize = 9.sp, modifier = Modifier.width(31.dp), textAlign = TextAlign.End)
+                }
+            }
+            IconButton(onClick = onEdit, enabled = brush != null, modifier = Modifier.size(34.dp)) {
+                Icon(Icons.Outlined.Tune, tr("Open sub tool detail", "打开子工具详情"), Modifier.size(18.dp))
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ImportedBrushTile(
+    brush: ImportedBrush,
+    selected: Boolean,
+    multiSelecting: Boolean,
+    multiSelected: Boolean,
+    onToggleSelection: () -> Unit,
+    onBeginSelection: () -> Unit,
+    onSelect: () -> Unit,
+    onReport: () -> Unit,
+    onEdit: () -> Unit,
+    onHistory: () -> Unit,
+    onMove: () -> Unit,
+    onExport: () -> Unit,
+    onFavorite: () -> Unit,
+    onHide: () -> Unit,
+    onDelete: () -> Unit,
+    onReorder: (Int) -> Unit,
+) {
+    var menu by remember { mutableStateOf(false) }
+    var dragX by remember(brush.id) { mutableFloatStateOf(0f) }
+    var dragY by remember(brush.id) { mutableFloatStateOf(0f) }
+    val active = selected || multiSelected
+    val tileDescription = "${tr("Brush preset", "笔刷预设")} ${brush.name}"
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(92.dp)
+            .semantics { contentDescription = tileDescription }
+            .combinedClickable(
+                onClick = { if (multiSelecting) onToggleSelection() else onSelect() },
+                onLongClick = onBeginSelection,
+            ),
+        colors = CardDefaults.cardColors(containerColor = if (active) Color(0xFFE1E1E1) else Color(0xFFF8F8F8)),
+        border = CardDefaults.outlinedCardBorder().copy(
+            width = if (active) 2.dp else 1.dp,
+            brush = androidx.compose.ui.graphics.SolidColor(if (active) Ink else OutlineSoft),
+        ),
+        shape = RoundedCornerShape(5.dp),
+    ) {
+        Column(Modifier.fillMaxSize().padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(Modifier.fillMaxWidth().weight(1f)) {
+                BrushTipPreview(brush, Modifier.fillMaxSize())
+                if (multiSelecting) {
+                    Icon(
+                        if (multiSelected) Icons.Default.CheckBox else Icons.Outlined.CheckBoxOutlineBlank,
+                        if (multiSelected) tr("Selected", "已选择") else tr("Not selected", "未选择"),
+                        Modifier.align(Alignment.TopStart).padding(2.dp).size(17.dp).background(Color.White.copy(alpha = .85f), RoundedCornerShape(3.dp)),
+                        tint = Ink,
+                    )
+                } else if (brush.favorite) {
+                    Icon(Icons.Default.Star, tr("Favorite", "收藏"), Modifier.align(Alignment.TopStart).padding(2.dp).size(15.dp), tint = Ink)
+                }
+                Box(Modifier.align(Alignment.TopEnd)) {
+                    IconButton(onClick = { menu = true }, modifier = Modifier.size(24.dp).background(Color.White.copy(alpha = .86f), RoundedCornerShape(4.dp))) {
+                        Icon(Icons.Default.MoreVert, tr("Brush actions", "笔刷操作"), Modifier.size(15.dp))
+                    }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(text = { Text(tr("Sub tool detail", "子工具详情")) }, onClick = { menu = false; onEdit() })
+                        DropdownMenuItem(text = { Text(if (brush.favorite) tr("Remove favorite", "取消收藏") else tr("Favorite", "收藏")) }, onClick = { menu = false; onFavorite() })
+                        DropdownMenuItem(text = { Text(tr("Move to group", "移到分组")) }, onClick = { menu = false; onMove() })
+                        DropdownMenuItem(text = { Text(tr("Version history", "版本历史")) }, onClick = { menu = false; onHistory() })
+                        DropdownMenuItem(text = { Text(tr("Conversion report", "转换报告")) }, onClick = { menu = false; onReport() })
+                        DropdownMenuItem(text = { Text(tr("Export Inkloom preset", "导出 Inkloom 预设")) }, onClick = { menu = false; onExport() })
+                        DropdownMenuItem(text = { Text(if (brush.hidden) tr("Unhide", "取消隐藏") else tr("Hide", "隐藏")) }, onClick = { menu = false; onHide() })
+                        DropdownMenuItem(text = { Text(tr("Remove from library", "从笔刷库移除")) }, onClick = { menu = false; onDelete() })
+                    }
+                }
+            }
+            Row(Modifier.fillMaxWidth().height(24.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (!multiSelecting) Icon(
+                    Icons.Outlined.DragIndicator,
+                    tr("Drag to reorder brush", "拖动调整笔刷顺序"),
+                    Modifier.size(18.dp).pointerInput(brush.id) {
+                        detectDragGestures(
+                            onDragStart = { dragX = 0f; dragY = 0f },
+                            onDragEnd = {
+                                val distance = if (kotlin.math.abs(dragX) > kotlin.math.abs(dragY)) dragX else dragY
+                                val delta = (distance / 52.dp.toPx()).toInt()
+                                if (delta != 0) onReorder(delta)
+                                dragX = 0f; dragY = 0f
+                            },
+                            onDragCancel = { dragX = 0f; dragY = 0f },
+                        ) { change, amount -> change.consume(); dragX += amount.x; dragY += amount.y }
+                    },
+                    tint = MutedInk,
+                )
+                Text(brush.name, maxLines = 2, fontSize = 9.sp, lineHeight = 10.sp, textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
+            }
+        }
+    }
+}
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
