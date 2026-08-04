@@ -45,9 +45,11 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
@@ -4437,12 +4439,12 @@ private fun ElementEditorDialog(element: PageElement, onDismiss: () -> Unit, onS
                     item { Text(tr("Alignment", "对齐方式"), color = MutedInk, fontSize = 11.sp); Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { InkTextAlignment.entries.forEach { alignment -> FilterChip(selected = current.alignment == alignment, onClick = { draft = current.copy(alignment = alignment) }, label = { Text(localizedTextAlignment(alignment)) }) } } }
                     item { Text(tr("List style", "列表样式"), color = MutedInk, fontSize = 11.sp); LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { TextListStyle.entries.forEach { style -> item { FilterChip(selected = current.listStyle == style, onClick = { draft = current.copy(listStyle = style) }, label = { Text(localizedListStyle(style)) }) } } } }
                     item { BrushSettingSlider("Line spacing", current.lineSpacing, .8f..2f) { draft = current.copy(lineSpacing = it) } }
-                    item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text(tr("Color", "颜色"), Modifier.weight(1f)); BrushColorPicker(current.colorArgb.toInt()) { draft = current.copy(colorArgb = it.toUInt().toLong()) } } }
+                    item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text(tr("Color", "颜色"), Modifier.weight(1f)); BrushColorPicker(current.colorArgb.toInt(), onColor = { draft = current.copy(colorArgb = it.toUInt().toLong()) }) } }
                 }
                 is PageElement.Sticky -> {
                     item { OutlinedTextField(current.text, { draft = current.copy(text = it) }, label = { Text(tr("Note", "便签")) }, minLines = 4, modifier = Modifier.fillMaxWidth()) }
                     item { SettingSwitch("Collapsed", "Show only the first line.", current.collapsed) { draft = current.copy(collapsed = it) } }
-                    item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text(tr("Color", "颜色"), Modifier.weight(1f)); BrushColorPicker(current.colorArgb.toInt()) { draft = current.copy(colorArgb = it.toUInt().toLong()) } } }
+                    item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text(tr("Color", "颜色"), Modifier.weight(1f)); BrushColorPicker(current.colorArgb.toInt(), onColor = { draft = current.copy(colorArgb = it.toUInt().toLong()) }) } }
                 }
                 is PageElement.Shape -> {
                     item { LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { ShapeKind.entries.forEach { kind -> item { FilterChip(selected = current.kind == kind, onClick = {
@@ -4451,7 +4453,7 @@ private fun ElementEditorDialog(element: PageElement, onDismiss: () -> Unit, onS
                     }, label = { Text(localizedShapeKind(kind)) }) } } } }
                     item { BrushSettingSlider("Stroke width", current.strokeWidth, 1f..40f) { draft = current.copy(strokeWidth = it) } }
                     item { SettingSwitch("Fill", "Adds a translucent shape fill.", current.fillArgb != null) { draft = current.copy(fillArgb = if (it) 0x33111111 else null) } }
-                    item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text(tr("Stroke color", "描边颜色"), Modifier.weight(1f)); BrushColorPicker(current.colorArgb.toInt()) { draft = current.copy(colorArgb = it.toUInt().toLong()) } } }
+                    item { Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text(tr("Stroke color", "描边颜色"), Modifier.weight(1f)); BrushColorPicker(current.colorArgb.toInt(), onColor = { draft = current.copy(colorArgb = it.toUInt().toLong()) }) } }
                 }
                 is PageElement.Image -> {
                     item { Text(tr("Image source is retained unchanged. Crop and mask remain reversible and are included in editable backups.", "图片源文件保持不变。裁剪和蒙版均可撤销，并会包含在可编辑备份中。"), color = MutedInk, fontSize = 12.sp) }
@@ -4629,7 +4631,13 @@ private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () 
             onDragCancel = onDragEnd,
         ) { change, amount -> change.consume(); onDrag(amount.x, amount.y) }
     }.padding(6.dp)
-    Surface(modifier.shadow(10.dp, RoundedCornerShape(18.dp)), shape = RoundedCornerShape(18.dp), color = Color.White, tonalElevation = 1.dp) {
+    Surface(
+        modifier.shadow(3.dp, RoundedCornerShape(2.dp)),
+        shape = RoundedCornerShape(2.dp),
+        color = Color(0xFFF8F8F8),
+        border = CardDefaults.outlinedCardBorder(),
+        tonalElevation = 0.dp,
+    ) {
         val content: @Composable () -> Unit = {
             ToolDockItems(
                 tool = tool,
@@ -4680,8 +4688,8 @@ private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () 
                 onColor = onColor,
             )
         }
-        if (vertical) Column(Modifier.padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally) { content() }
-        else Row(Modifier.padding(4.dp), verticalAlignment = Alignment.CenterVertically) { content() }
+        if (vertical) Column(Modifier.padding(2.dp), horizontalAlignment = Alignment.CenterHorizontally) { content() }
+        else Row(Modifier.padding(2.dp), verticalAlignment = Alignment.CenterVertically) { content() }
     }
 }
 
@@ -4692,6 +4700,16 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
     ToolButton(EditorTool.HIGHLIGHTER, Icons.Outlined.BorderColor, tr("Marker", "标记笔"), tool, onTool)
     ToolButton(EditorTool.ERASER, Icons.Outlined.AutoFixOff, tr("Eraser", "橡皮"), tool, onTool)
     ToolButton(EditorTool.SELECT, Icons.Outlined.Gesture, tr("Select", "选择"), tool, onTool)
+    if (vertical) {
+        HorizontalDivider(Modifier.width(30.dp).padding(vertical = 2.dp), color = OutlineSoft)
+        ToolButton(EditorTool.EYEDROPPER, Icons.Outlined.Colorize, tr("Eyedropper", "吸管"), tool, onTool)
+        ToolButton(EditorTool.SHAPE, Icons.Outlined.Category, tr("Shape", "形状"), tool, onTool)
+        ToolButton(EditorTool.TEXT, Icons.Outlined.Title, tr("Text", "文字"), tool, onTool)
+        ToolButton(EditorTool.NOTE, Icons.Outlined.StickyNote2, tr("Note", "便笺"), tool, onTool)
+        ToolButton(EditorTool.IMAGE, Icons.Outlined.Image, tr("Image", "图片"), tool, onTool)
+        ToolButton(EditorTool.LASER, Icons.Outlined.TrackChanges, tr("Laser pointer", "激光笔"), tool, onTool)
+        HorizontalDivider(Modifier.width(30.dp).padding(vertical = 2.dp), color = OutlineSoft)
+    }
     Box {
         CompactToolbarIconButton(onClick = { onMoreToolsOpen(true) }, description = tr("More tools", "更多工具"), selected = rulerEnabled || gridSnapEnabled || alignmentGuidesEnabled || tool in setOf(EditorTool.EYEDROPPER, EditorTool.SHAPE, EditorTool.TEXT, EditorTool.NOTE, EditorTool.LINK, EditorTool.IMAGE, EditorTool.AUDIO, EditorTool.LASER)) { Icon(Icons.Outlined.Apps, null, Modifier.size(20.dp)) }
         DropdownMenu(expanded = moreToolsOpen, onDismissRequest = { onMoreToolsOpen(false) }) {
@@ -4810,6 +4828,12 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
             }
         }
     }
+    if (vertical) {
+        CspToolbarColorSwatches(brushColor, onColor)
+        HorizontalDivider(Modifier.width(30.dp).padding(vertical = 2.dp), color = OutlineSoft)
+    } else {
+        BrushColorPicker(brushColor, onColor, square = true)
+    }
     CompactToolbarIconButton(onClick = onUndo, description = tr("Undo", "撤销")) { Icon(Icons.Outlined.Undo, null, Modifier.size(20.dp)) }
     CompactToolbarIconButton(onClick = onRedo, description = tr("Redo", "重做")) { Icon(Icons.Outlined.Redo, null, Modifier.size(20.dp)) }
 }
@@ -4817,7 +4841,7 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
 @Composable
 private fun CompactToolbarIconButton(onClick: () -> Unit, description: String, selected: Boolean = false, content: @Composable () -> Unit) {
     Box(
-        Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(if (selected) Sage else Color.Transparent).clickable(onClick = onClick),
+        Modifier.size(36.dp).clip(RoundedCornerShape(2.dp)).background(if (selected) Sage else Color.Transparent).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         CompositionLocalProvider(LocalContentColor provides if (selected) Color.White else Ink) { Box(Modifier.semantics { contentDescription = description }) { content() } }
@@ -4825,7 +4849,7 @@ private fun CompactToolbarIconButton(onClick: () -> Unit, description: String, s
 }
 
 @Composable
-private fun BrushColorPicker(color: Int, onColor: (Int) -> Unit) {
+private fun BrushColorPicker(color: Int, onColor: (Int) -> Unit, square: Boolean = false) {
     var open by remember { mutableStateOf(false) }
     var editorOpen by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -4845,7 +4869,8 @@ private fun BrushColorPicker(color: Int, onColor: (Int) -> Unit) {
     }
     val customColor = AndroidColor.HSVToColor(floatArrayOf(hue, saturation, brightness))
     Box {
-        Box(Modifier.size(28.dp).clip(CircleShape).background(Color(color)).border(1.dp, OutlineSoft, CircleShape).clickable { customPalette = paletteStore.load(); open = true })
+        val swatchShape = if (square) RoundedCornerShape(2.dp) else CircleShape
+        Box(Modifier.size(28.dp).clip(swatchShape).background(Color(color)).border(1.dp, OutlineSoft, swatchShape).clickable { customPalette = paletteStore.load(); open = true })
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             Column(Modifier.widthIn(min = 280.dp, max = 420.dp).padding(10.dp)) {
                 Text(tr("Colors", "颜色"), fontSize = 12.sp, color = MutedInk)
@@ -4883,9 +4908,71 @@ private fun BrushColorPicker(color: Int, onColor: (Int) -> Unit) {
 }
 
 @Composable
+private fun CspToolbarColorSwatches(color: Int, onColor: (Int) -> Unit) {
+    val description = tr("Foreground and background colors", "前景色和背景色")
+    Box(
+        Modifier.size(width = 38.dp, height = 43.dp).semantics { contentDescription = description },
+    ) {
+        Box(
+            Modifier.align(Alignment.BottomEnd).size(27.dp).background(Color.White).border(1.dp, Ink, RoundedCornerShape(2.dp)),
+        )
+        Box(Modifier.align(Alignment.TopStart)) { BrushColorPicker(color, onColor, square = true) }
+        Box(
+            Modifier.align(Alignment.BottomStart).size(width = 32.dp, height = 7.dp).border(1.dp, OutlineSoft).background(
+                Brush.horizontalGradient(listOf(Color.White, Color(0xFFD0D0D0), Color.White, Color(0xFFD0D0D0))),
+            ),
+        )
+    }
+}
+
+private data class HslColor(val hue: Float, val saturation: Float, val lightness: Float)
+
+private fun colorToHsl(color: Int): HslColor {
+    val red = AndroidColor.red(color) / 255f
+    val green = AndroidColor.green(color) / 255f
+    val blue = AndroidColor.blue(color) / 255f
+    val maximum = maxOf(red, green, blue)
+    val minimum = minOf(red, green, blue)
+    val delta = maximum - minimum
+    val lightness = (maximum + minimum) / 2f
+    val saturation = if (delta == 0f) 0f else delta / (1f - kotlin.math.abs(2f * lightness - 1f))
+    val hueSector = when {
+        delta == 0f -> 0f
+        maximum == red -> ((green - blue) / delta) % 6f
+        maximum == green -> (blue - red) / delta + 2f
+        else -> (red - green) / delta + 4f
+    }
+    return HslColor((hueSector * 60f).let { if (it < 0f) it + 360f else it }, saturation.coerceIn(0f, 1f), lightness.coerceIn(0f, 1f))
+}
+
+private fun hslToColor(alpha: Int, hue: Float, saturation: Float, lightness: Float): Int {
+    val normalizedHue = ((hue % 360f) + 360f) % 360f
+    val chroma = (1f - kotlin.math.abs(2f * lightness - 1f)) * saturation
+    val section = normalizedHue / 60f
+    val intermediate = chroma * (1f - kotlin.math.abs(section % 2f - 1f))
+    val (rawRed, rawGreen, rawBlue) = when (section.toInt()) {
+        0 -> Triple(chroma, intermediate, 0f)
+        1 -> Triple(intermediate, chroma, 0f)
+        2 -> Triple(0f, chroma, intermediate)
+        3 -> Triple(0f, intermediate, chroma)
+        4 -> Triple(intermediate, 0f, chroma)
+        else -> Triple(chroma, 0f, intermediate)
+    }
+    val match = lightness - chroma / 2f
+    return AndroidColor.argb(
+        alpha,
+        ((rawRed + match) * 255f).toInt().coerceIn(0, 255),
+        ((rawGreen + match) * 255f).toInt().coerceIn(0, 255),
+        ((rawBlue + match) * 255f).toInt().coerceIn(0, 255),
+    )
+}
+
+@Composable
 private fun CspColorPanel(color: Int, onColor: (Int) -> Unit, initiallyExpanded: Boolean = true) {
     var expanded by rememberSaveable(initiallyExpanded) { mutableStateOf(initiallyExpanded) }
+    var channelMode by rememberSaveable { mutableStateOf("HLS") }
     val hsv = remember(color) { FloatArray(3).also { AndroidColor.colorToHSV(color, it) } }
+    val hsl = remember(color) { colorToHsl(color) }
     val hueColor = Color(AndroidColor.HSVToColor(floatArrayOf(hsv[0], 1f, 1f)))
     fun publish(hue: Float = hsv[0], saturation: Float = hsv[1], value: Float = hsv[2]) {
         onColor(AndroidColor.HSVToColor(AndroidColor.alpha(color), floatArrayOf(hue.coerceIn(0f, 360f), saturation.coerceIn(0f, 1f), value.coerceIn(0f, 1f))))
@@ -4940,30 +5027,69 @@ private fun CspColorPanel(color: Int, onColor: (Int) -> Unit, initiallyExpanded:
                             .weight(1f)
                             .height(72.dp)
                             .pointerInput(color) {
-                                fun update(point: Offset) = publish(saturation = point.x / size.width.coerceAtLeast(1), value = 1f - point.y / size.height.coerceAtLeast(1))
+                                fun update(point: Offset) {
+                                    val width = size.width.coerceAtLeast(1).toFloat()
+                                    val height = size.height.coerceAtLeast(1).toFloat()
+                                    val hueWeight = (point.x / width).coerceIn(0f, 1f)
+                                    val blackWeight = ((point.y / height) - hueWeight * .5f).coerceIn(0f, 1f - hueWeight)
+                                    val value = (1f - blackWeight).coerceIn(.001f, 1f)
+                                    publish(saturation = (hueWeight / value).coerceIn(0f, 1f), value = value)
+                                }
                                 detectDragGestures(onDragStart = ::update) { change, _ -> change.consume(); update(change.position) }
                             },
                     ) {
-                        drawRect(Brush.horizontalGradient(listOf(Color.White, hueColor)))
-                        drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black)))
-                        val marker = Offset(hsv[1] * size.width, (1f - hsv[2]) * size.height)
+                        val triangle = Path().apply {
+                            moveTo(0f, 0f)
+                            lineTo(size.width, size.height / 2f)
+                            lineTo(0f, size.height)
+                            close()
+                        }
+                        clipPath(triangle) {
+                            drawRect(Brush.horizontalGradient(listOf(Color.White, hueColor)))
+                            drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black)))
+                        }
+                        drawPath(triangle, Ink, style = Stroke(1f))
+                        val hueWeight = hsv[1] * hsv[2]
+                        val blackWeight = 1f - hsv[2]
+                        val marker = Offset(hueWeight * size.width, (hueWeight * .5f + blackWeight) * size.height)
                         drawCircle(Color.White, 5f, marker)
                         drawCircle(Ink, 5f, marker, style = Stroke(1.5f))
                     }
                 }
                 Spacer(Modifier.height(4.dp))
-                CspColorChannel("R", AndroidColor.red(color)) { onColor(AndroidColor.argb(AndroidColor.alpha(color), it, AndroidColor.green(color), AndroidColor.blue(color))) }
-                CspColorChannel("G", AndroidColor.green(color)) { onColor(AndroidColor.argb(AndroidColor.alpha(color), AndroidColor.red(color), it, AndroidColor.blue(color))) }
-                CspColorChannel("B", AndroidColor.blue(color)) { onColor(AndroidColor.argb(AndroidColor.alpha(color), AndroidColor.red(color), AndroidColor.green(color), it)) }
-                Row(Modifier.fillMaxWidth().height(24.dp).padding(horizontal = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("V", Modifier.width(18.dp), color = MutedInk, fontSize = 9.sp)
-                    Slider(hsv[2], { publish(value = it) }, Modifier.weight(1f).height(24.dp))
-                    Text("${(hsv[2] * 100).toInt()}%", Modifier.width(34.dp), color = MutedInk, fontSize = 9.sp, textAlign = TextAlign.End)
-                    BrushColorPicker(color, onColor)
+                Row(Modifier.fillMaxWidth().padding(horizontal = 7.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    listOf("HLS", "RGB").forEach { mode ->
+                        FilterChip(
+                            selected = channelMode == mode,
+                            onClick = { channelMode = mode },
+                            label = { Text(mode, fontSize = 9.sp) },
+                            modifier = Modifier.height(25.dp),
+                        )
+                    }
+                    Spacer(Modifier.weight(1f))
+                    BrushColorPicker(color, onColor, square = true)
+                }
+                if (channelMode == "RGB") {
+                    CspColorChannel("R", AndroidColor.red(color)) { onColor(AndroidColor.argb(AndroidColor.alpha(color), it, AndroidColor.green(color), AndroidColor.blue(color))) }
+                    CspColorChannel("G", AndroidColor.green(color)) { onColor(AndroidColor.argb(AndroidColor.alpha(color), AndroidColor.red(color), it, AndroidColor.blue(color))) }
+                    CspColorChannel("B", AndroidColor.blue(color)) { onColor(AndroidColor.argb(AndroidColor.alpha(color), AndroidColor.red(color), AndroidColor.green(color), it)) }
+                } else {
+                    CspFloatColorChannel("H", hsl.hue, 0f..360f, "${hsl.hue.toInt()}°") { onColor(hslToColor(AndroidColor.alpha(color), it, hsl.saturation, hsl.lightness)) }
+                    CspFloatColorChannel("L", hsl.lightness, 0f..1f, "${(hsl.lightness * 100f).toInt()}%") { onColor(hslToColor(AndroidColor.alpha(color), hsl.hue, hsl.saturation, it)) }
+                    CspFloatColorChannel("S", hsl.saturation, 0f..1f, "${(hsl.saturation * 100f).toInt()}%") { onColor(hslToColor(AndroidColor.alpha(color), hsl.hue, it, hsl.lightness)) }
                 }
                 Spacer(Modifier.height(4.dp))
             }
         }
+    }
+}
+
+@Composable
+private fun CspFloatColorChannel(label: String, value: Float, range: ClosedFloatingPointRange<Float>, display: String, onValue: (Float) -> Unit) {
+    Row(Modifier.fillMaxWidth().height(20.dp).padding(horizontal = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.width(18.dp), color = MutedInk, fontSize = 9.sp)
+        Slider(value.coerceIn(range.start, range.endInclusive), onValue, Modifier.weight(1f).height(19.dp), valueRange = range)
+        Text(display, Modifier.width(34.dp), color = MutedInk, fontSize = 9.sp, textAlign = TextAlign.End)
     }
 }
 
@@ -4978,8 +5104,8 @@ private fun CspColorChannel(label: String, value: Int, onValue: (Int) -> Unit) {
 
 @Composable
 private fun ToolButton(value: EditorTool, icon: ImageVector, label: String, selected: EditorTool, onTool: (EditorTool) -> Unit) {
-    Box(Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(if (value == selected) Sage else Color.Transparent).clickable { onTool(value) }, contentAlignment = Alignment.Center) {
-        Icon(icon, label, Modifier.size(20.dp), tint = if (value == selected) Color.White else Ink)
+    Box(Modifier.size(36.dp).clip(RoundedCornerShape(2.dp)).background(if (value == selected) Sage else Color.Transparent).clickable { onTool(value) }, contentAlignment = Alignment.Center) {
+        Icon(icon, label, Modifier.size(21.dp), tint = if (value == selected) Color.White else Ink)
     }
 }
 
