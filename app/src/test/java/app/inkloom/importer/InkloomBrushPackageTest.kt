@@ -2,6 +2,7 @@ package app.inkloom.importer
 
 import app.inkloom.document.BrushCurvePoint
 import app.inkloom.document.BrushSecondaryDynamics
+import app.inkloom.document.BrushParameterDynamics
 import app.inkloom.document.BrushTaperMode
 import app.inkloom.document.CspTextureComposite
 import app.inkloom.document.CspAntiAlias
@@ -79,6 +80,10 @@ class InkloomBrushPackageTest {
                 dualTipFlipVerticalMode = 2,
                 dualBlendTipsWithDarken = true,
                 dualSizeScale = .7f,
+                dualSizeDynamics = BrushParameterDynamics(pressureEnabled = true, pressureMinimum = .2f, pressureCurve = listOf(BrushCurvePoint(0f, .1f), BrushCurvePoint(1f, 1f))),
+                dualFlowDynamics = BrushParameterDynamics(secondary = BrushSecondaryDynamics(velocityEnabled = true, velocityMinimum = .3f)),
+                dualSpacingDynamics = BrushParameterDynamics(secondary = BrushSecondaryDynamics(tiltEnabled = true, tiltMinimum = .4f)),
+                dualThicknessDynamics = BrushParameterDynamics(secondary = BrushSecondaryDynamics(randomEnabled = true, randomMinimum = .5f)),
                 dualAntiAliasMode = CspAntiAlias.STRONG,
                 dualStrokeRotationJitterDegrees = 90f,
                 taperMode = BrushTaperMode.DISTANCE,

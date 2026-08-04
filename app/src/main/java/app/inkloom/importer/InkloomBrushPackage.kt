@@ -2,6 +2,7 @@ package app.inkloom.importer
 
 import app.inkloom.document.BrushCurvePoint
 import app.inkloom.document.BrushColorDynamics
+import app.inkloom.document.BrushParameterDynamics
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushTaperMode
 import app.inkloom.document.CspAntiAlias
@@ -245,12 +246,16 @@ class InkloomBrushPackage(private val assetDirectory: File) {
         tipFlipVerticalMode = source.tipFlipVerticalMode.coerceIn(0, 3),
         blendTipsWithDarken = source.blendTipsWithDarken,
         dualSizeScale = finite(source.dualSizeScale, 1f).coerceIn(.01f, 8f),
+        dualSizeDynamics = parameterDynamics(source.dualSizeDynamics),
         dualSpacing = finite(source.dualSpacing, .12f).coerceIn(.01f, 2f),
         dualSpacingMode = app.inkloom.document.CspBrushGap.normalize(source.dualSpacingMode),
+        dualSpacingDynamics = parameterDynamics(source.dualSpacingDynamics),
         dualFlow = finite(source.dualFlow, 1f).coerceIn(0f, 1f),
+        dualFlowDynamics = parameterDynamics(source.dualFlowDynamics),
         dualHardness = finite(source.dualHardness, 1f).coerceIn(0f, 1f),
         dualAntiAliasMode = CspAntiAlias.normalize(source.dualAntiAliasMode),
         dualThickness = finite(source.dualThickness, 1f).coerceIn(.05f, 2f),
+        dualThicknessDynamics = parameterDynamics(source.dualThicknessDynamics),
         dualRotationDegrees = finite(source.dualRotationDegrees, 0f).coerceIn(-360f, 360f),
         dualRandomRotationDegrees = finite(source.dualRandomRotationDegrees, 0f).coerceIn(0f, 180f),
         dualSprayParticleSize = finite(source.dualSprayParticleSize, 100f).coerceIn(.01f, 4000f),
@@ -310,6 +315,12 @@ class InkloomBrushPackage(private val assetDirectory: File) {
         velocityMinimum = finite(value.velocityMinimum, 0f).coerceIn(0f, 1f),
         velocityCurve = curve(value.velocityCurve),
         randomMinimum = finite(value.randomMinimum, 0f).coerceIn(0f, 1f),
+    )
+
+    private fun parameterDynamics(value: BrushParameterDynamics): BrushParameterDynamics = value.copy(
+        pressureMinimum = finite(value.pressureMinimum, 0f).coerceIn(0f, 1f),
+        pressureCurve = curve(value.pressureCurve),
+        secondary = secondary(value.secondary),
     )
 
     private fun colorDynamics(value: BrushColorDynamics): BrushColorDynamics = value.copy(

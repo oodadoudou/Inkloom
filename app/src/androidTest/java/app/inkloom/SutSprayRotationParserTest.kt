@@ -18,6 +18,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 @RunWith(AndroidJUnit4::class)
 class SutSprayRotationParserTest {
@@ -56,9 +58,9 @@ class SutSprayRotationParserTest {
                 )
             }
             parsed.forEach { brush ->
-                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 26, brush.parserVersion)
+                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 27, brush.parserVersion)
                 assertFalse(brush.report.any { it.startsWith("SUT parameter parsing failed") })
-                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v26-")) }
+                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v27-")) }
             }
             assertTrue("Expected multiple CSP AntiAlias modes in the supplied corpus", parsed.map(ImportedBrush::antiAliasMode).distinct().size >= 3)
             assertTrue(parsed.all { it.antiAliasMode in CspAntiAlias.NONE..CspAntiAlias.STRONG })
@@ -77,6 +79,10 @@ class SutSprayRotationParserTest {
             assertEquals(CspTextureComposite.HEIGHT, paintingBrush?.grainCompositeMode)
             assertTrue(paintingBrush?.report?.any { it.contains("Screen composite mode") } == true)
             assertTrue(paintingBrush?.report?.any { it.contains("secondary brush-tip flip modes mapped") } == true)
+            assertTrue("Main size pressure is enabled in the supplied dual brush", paintingBrush?.sizePressureEnabled == true)
+            assertFalse("The supplied secondary size effector is disabled and must not inherit main pressure", paintingBrush?.dualSizeDynamics?.pressureEnabled ?: true)
+            assertFalse("The supplied secondary flow effector is disabled and must not inherit main pressure", paintingBrush?.dualFlowDynamics?.pressureEnabled ?: true)
+            assertTrue(paintingBrush?.report?.any { it.contains("main-tip dynamics are not inherited") } == true)
             assertTrue(paintingBrush?.report?.any { it.contains("Height texture composition mapped with documented edge-only behavior") } == true)
             assertEquals(7f, paintingBrush?.colorJitterHueDegrees ?: -1f, .001f)
             assertEquals(6f, paintingBrush?.colorJitterSaturation ?: -1f, .001f)
@@ -163,7 +169,15 @@ class SutSprayRotationParserTest {
             assertEquals(CspTextureComposite.HEIGHT, brush.grainCompositeMode)
             assertEquals(CspAntiAlias.WEAK, brush.antiAliasMode)
             assertEquals(CspAntiAlias.STRONG, brush.dualAntiAliasMode)
-            assertEquals(26, brush.parserVersion)
+            assertTrue(brush.dualSizeDynamics.pressureEnabled)
+            assertEquals(.25f, brush.dualSizeDynamics.pressureMinimum, .001f)
+            assertTrue(brush.dualFlowDynamics.secondary.velocityEnabled)
+            assertEquals(.35f, brush.dualFlowDynamics.secondary.velocityMinimum, .001f)
+            assertTrue(brush.dualSpacingDynamics.secondary.tiltEnabled)
+            assertEquals(.4f, brush.dualSpacingDynamics.secondary.tiltMinimum, .001f)
+            assertTrue(brush.dualThicknessDynamics.secondary.randomEnabled)
+            assertEquals(.45f, brush.dualThicknessDynamics.secondary.randomMinimum, .001f)
+            assertEquals(27, brush.parserVersion)
         } finally {
             root.deleteRecursively()
         }
@@ -194,7 +208,7 @@ class SutSprayRotationParserTest {
             assertTrue(brush.watercolor)
             assertEquals(.72f, brush.colorMix, .001f)
             assertEquals(.43f, brush.paintMix, .001f)
-            assertEquals(26, brush.parserVersion)
+            assertEquals(27, brush.parserVersion)
             assertTrue(brush.report.any { it.contains("legacy BrushWaterColor") })
         } finally {
             root.deleteRecursively()
@@ -251,6 +265,10 @@ class SutSprayRotationParserTest {
                 antiAliasMode = CspAntiAlias.NONE,
                 grainCompositeMode = CspTextureComposite.HEIGHT,
                 dualBrush = true,
+                dualSizeDynamics = app.inkloom.document.BrushParameterDynamics(pressureEnabled = true, pressureMinimum = .22f, pressureCurve = listOf(app.inkloom.document.BrushCurvePoint(0f, .2f), app.inkloom.document.BrushCurvePoint(1f, 1f))),
+                dualFlowDynamics = app.inkloom.document.BrushParameterDynamics(secondary = app.inkloom.document.BrushSecondaryDynamics(velocityEnabled = true, velocityMinimum = .31f)),
+                dualSpacingDynamics = app.inkloom.document.BrushParameterDynamics(secondary = app.inkloom.document.BrushSecondaryDynamics(tiltEnabled = true, tiltMinimum = .41f)),
+                dualThicknessDynamics = app.inkloom.document.BrushParameterDynamics(secondary = app.inkloom.document.BrushSecondaryDynamics(randomEnabled = true, randomMinimum = .51f)),
                 dualCompositeMode = 7,
                 dualApplyRgb = true,
                 dualAntiAliasMode = CspAntiAlias.STRONG,
@@ -311,6 +329,15 @@ class SutSprayRotationParserTest {
             assertEquals(CspAntiAlias.STRONG, restored.dualAntiAliasMode)
             assertEquals(3, restored.dualTipFlipVerticalMode)
             assertTrue(restored.dualBlendTipsWithDarken)
+            assertTrue(restored.dualSizeDynamics.pressureEnabled)
+            assertEquals(.22f, restored.dualSizeDynamics.pressureMinimum, .0001f)
+            assertEquals(2, restored.dualSizeDynamics.pressureCurve.size)
+            assertTrue(restored.dualFlowDynamics.secondary.velocityEnabled)
+            assertEquals(.31f, restored.dualFlowDynamics.secondary.velocityMinimum, .0001f)
+            assertTrue(restored.dualSpacingDynamics.secondary.tiltEnabled)
+            assertEquals(.41f, restored.dualSpacingDynamics.secondary.tiltMinimum, .0001f)
+            assertTrue(restored.dualThicknessDynamics.secondary.randomEnabled)
+            assertEquals(.51f, restored.dualThicknessDynamics.secondary.randomMinimum, .0001f)
         } finally {
             context.getSharedPreferences("inkloom_brushes", android.content.Context.MODE_PRIVATE).edit().clear().commit()
         }
@@ -320,7 +347,7 @@ class SutSprayRotationParserTest {
         val database = SQLiteDatabase.openOrCreateDatabase(file, null)
         database.use { db ->
             db.execSQL("CREATE TABLE Node (NodeName TEXT NOT NULL, NodeVariantID INTEGER NOT NULL)")
-            db.execSQL("CREATE TABLE Variant (VariantID INTEGER PRIMARY KEY, Opacity REAL, BrushSize REAL, AntiAlias INTEGER, DualAntiAlias INTEGER, BrushContinuousPlot INTEGER, TextureCompositeMode INTEGER, BrushUseSpray INTEGER, BrushRotation REAL, BrushRotationEffector INTEGER, BrushRotationRandomScale REAL, BrushRotationInSpray REAL, BrushRotationEffectorInSpray INTEGER, BrushRotationRandomInSpray REAL, UseDualBrush INTEGER, DualRotation REAL, DualRotationEffector INTEGER, DualRotationRandomScale REAL, DualUseSpray INTEGER, DualRotationInSpray REAL, DualRotationEffectorInSpray INTEGER, DualRotationRandomInSpray REAL)")
+            db.execSQL("CREATE TABLE Variant (VariantID INTEGER PRIMARY KEY, Opacity REAL, BrushSize REAL, AntiAlias INTEGER, DualAntiAlias INTEGER, BrushContinuousPlot INTEGER, TextureCompositeMode INTEGER, BrushUseSpray INTEGER, BrushRotation REAL, BrushRotationEffector INTEGER, BrushRotationRandomScale REAL, BrushRotationInSpray REAL, BrushRotationEffectorInSpray INTEGER, BrushRotationRandomInSpray REAL, UseDualBrush INTEGER, DualSizeEffector BLOB, DualFlowEffector BLOB, DualIntervalEffector BLOB, DualThicknessEffector BLOB, DualRotation REAL, DualRotationEffector INTEGER, DualRotationRandomScale REAL, DualUseSpray INTEGER, DualRotationInSpray REAL, DualRotationEffectorInSpray INTEGER, DualRotationRandomInSpray REAL)")
             db.insertOrThrow("Node", null, ContentValues().apply { put("NodeName", "Particle test"); put("NodeVariantID", 1) })
             db.insertOrThrow("Variant", null, ContentValues().apply {
                 put("VariantID", 1)
@@ -338,6 +365,10 @@ class SutSprayRotationParserTest {
                 put("BrushRotationEffectorInSpray", 0x83)
                 put("BrushRotationRandomInSpray", 40)
                 put("UseDualBrush", 1)
+                put("DualSizeEffector", effector(0x10, pressureMinimum = 25))
+                put("DualFlowEffector", effector(0x40, velocityMinimum = 35))
+                put("DualIntervalEffector", effector(0x20, tiltMinimum = 40))
+                put("DualThicknessEffector", effector(0x80, randomMinimum = 45))
                 put("DualRotation", 8)
                 put("DualRotationEffector", 3)
                 put("DualRotationRandomScale", 100)
@@ -348,4 +379,11 @@ class SutSprayRotationParserTest {
             })
         }
     }
+
+    private fun effector(sourceFlags: Int, pressureMinimum: Int = 0, tiltMinimum: Int = 0, velocityMinimum: Int = 0, randomMinimum: Int = 0): ByteArray =
+        ByteBuffer.allocate(44).order(ByteOrder.BIG_ENDIAN)
+            .putInt(44).putInt(240).putInt(sourceFlags)
+            .putInt(pressureMinimum).putInt(tiltMinimum).putInt(velocityMinimum).putInt(randomMinimum)
+            .putInt(0).putInt(0).putInt(0).putInt(500)
+            .array()
 }

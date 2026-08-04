@@ -10,6 +10,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.document.CspDualBrushBlendMode
 import app.inkloom.document.BrushTipFlip
+import app.inkloom.document.BrushParameterDynamics
 import app.inkloom.document.DocumentAssetService
 import app.inkloom.document.InkPage
 import app.inkloom.document.InkStroke
@@ -68,6 +69,51 @@ class CspDualBrushRenderingTest {
     @Test fun unsupportedCspModesUseExplicitNormalFallback() {
         assertEquals(android.graphics.BlendMode.SRC_OVER, CspDualBrushBlendMode.resolve(4))
         assertEquals(android.graphics.BlendMode.SRC_OVER, CspDualBrushBlendMode.resolve(13))
+    }
+
+    @Test fun secondarySizeUsesItsOwnPressureEffectorOnCanvasAndExport() {
+        val tip = File(context.cacheDir, "dual-independent-dynamics-tip.png")
+        Bitmap.createBitmap(32, 32, Bitmap.Config.ARGB_8888).also { bitmap ->
+            bitmap.eraseColor(Color.BLACK)
+            tip.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            bitmap.recycle()
+        }
+        try {
+            val base = InkStroke(
+                points = listOf(StrokePoint(.5f, .5f, pressure = .1f)),
+                colorArgb = 0xFF111111,
+                width = 200f,
+                tipAssetPath = tip.absolutePath,
+                tipAssetPaths = listOf(tip.absolutePath),
+                sizePressureEnabled = true,
+                sizePressureMinimum = .1f,
+                dualBrush = true,
+                dualTipAssetPaths = listOf(tip.absolutePath),
+                dualSizeScale = 4f,
+                dualCompositeMode = 1,
+            )
+            val inheritedMainWouldShrink = base.copy(
+                dualSizeDynamics = BrushParameterDynamics(pressureEnabled = true, pressureMinimum = .1f),
+            )
+            val service = DocumentAssetService(context)
+            val independent = service.renderPageBitmap(InkPage(background = PageBackground.Paper(), strokes = listOf(base)), 400)
+            val explicitlyPressureControlled = service.renderPageBitmap(InkPage(background = PageBackground.Paper(), strokes = listOf(inheritedMainWouldShrink)), 400)
+            val live = renderLiveCanvas(base)
+            try {
+                val x = 270
+                val exportY = independent.height / 2
+                val liveY = live.height / 2
+                assertTrue("Disabled secondary pressure must keep the large secondary footprint", Color.red(independent.getPixel(x, exportY)) < 80)
+                assertTrue("An explicitly enabled secondary pressure effector must shrink that footprint", Color.red(explicitlyPressureControlled.getPixel(x, exportY)) > 240)
+                assertEquals("Live and export passes must evaluate the same independent secondary dynamics", independent.getPixel(x, exportY), live.getPixel(x, liveY))
+            } finally {
+                independent.recycle()
+                explicitlyPressureControlled.recycle()
+                live.recycle()
+            }
+        } finally {
+            tip.delete()
+        }
     }
 
     @Test fun fixedHorizontalFlipMirrorsAnAsymmetricImportedTip() {

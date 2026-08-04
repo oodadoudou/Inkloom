@@ -141,6 +141,16 @@ data class BrushSecondaryDynamics(
     val randomMinimum: Float = 0f,
 )
 
+/** Complete CSP dynamics for one brush parameter. Secondary brushes have their
+ * own effectors and must not inherit the main tip's pressure/tilt/speed/random input. */
+@Serializable
+data class BrushParameterDynamics(
+    val pressureEnabled: Boolean = false,
+    val pressureMinimum: Float = 0f,
+    val pressureCurve: List<BrushCurvePoint> = emptyList(),
+    val secondary: BrushSecondaryDynamics = BrushSecondaryDynamics(),
+)
+
 @Serializable
 data class BrushColorDynamics(
     val pressureEnabled: Boolean = false,
@@ -241,12 +251,16 @@ data class InkStroke(
     val blendTipsWithDarken: Boolean = false,
     val dualBrush: Boolean = false,
     val dualSizeScale: Float = 1f,
+    val dualSizeDynamics: BrushParameterDynamics = BrushParameterDynamics(),
     val dualSpacing: Float = .12f,
     val dualSpacingMode: Int = CspBrushGap.FIXED,
+    val dualSpacingDynamics: BrushParameterDynamics = BrushParameterDynamics(),
     val dualFlow: Float = 1f,
+    val dualFlowDynamics: BrushParameterDynamics = BrushParameterDynamics(),
     val dualHardness: Float = 1f,
     val dualAntiAliasMode: Int = CspAntiAlias.MEDIUM,
     val dualThickness: Float = 1f,
+    val dualThicknessDynamics: BrushParameterDynamics = BrushParameterDynamics(),
     val dualThicknessVertical: Boolean = false,
     val dualRotationDegrees: Float = 0f,
     val dualFollowStylusOrientation: Boolean = false,

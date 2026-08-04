@@ -3853,12 +3853,16 @@ private fun InkCanvasView.applyBrushConfiguration(
     blendTipsWithDarken = activeBrush?.blendTipsWithDarken ?: false
     brushDual = activeBrush?.dualBrush ?: false
     dualSizeScale = activeBrush?.dualSizeScale ?: 1f
+    dualSizeDynamics = activeBrush?.dualSizeDynamics ?: BrushParameterDynamics()
     dualSpacing = activeBrush?.dualSpacing ?: .12f
     dualSpacingMode = activeBrush?.dualSpacingMode ?: CspBrushGap.FIXED
+    dualSpacingDynamics = activeBrush?.dualSpacingDynamics ?: BrushParameterDynamics()
     dualFlow = activeBrush?.dualFlow ?: 1f
+    dualFlowDynamics = activeBrush?.dualFlowDynamics ?: BrushParameterDynamics()
     dualHardness = activeBrush?.dualHardness ?: 1f
     dualAntiAliasMode = activeBrush?.dualAntiAliasMode ?: CspAntiAlias.MEDIUM
     dualThickness = activeBrush?.dualThickness ?: 1f
+    dualThicknessDynamics = activeBrush?.dualThicknessDynamics ?: BrushParameterDynamics()
     dualThicknessVertical = activeBrush?.dualThicknessVertical ?: false
     dualRotationDegrees = activeBrush?.dualRotationDegrees ?: 0f
     dualFollowStylusOrientation = activeBrush?.dualFollowStylusOrientation ?: false
@@ -5582,9 +5586,12 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 item { SettingSwitch("Dual brush", "Uses the imported secondary tip as an independent stamp stream.", draft.dualBrush) { draft = draft.copy(dualBrush = it) } }
                 if (draft.dualBrush && draft.dualTipPreviewPaths.isNotEmpty()) item { BrushTipPreview(tr("Secondary tip · ${draft.dualTipPreviewPaths.size} material${if (draft.dualTipPreviewPaths.size == 1) "" else "s"}", "辅助笔尖 · ${draft.dualTipPreviewPaths.size} 个素材"), draft.dualTipPreviewPaths.first()) }
                 if (draft.dualBrush) item { BrushSettingSlider("Secondary size", draft.dualSizeScale, .01f..4f) { draft = draft.copy(dualSizeScale = it) } }
+                if (draft.dualBrush) item { ParameterDynamicsEditor(tr("Secondary size dynamics", "辅助笔尖大小动态"), "Secondary size", draft.dualSizeDynamics) { draft = draft.copy(dualSizeDynamics = it) } }
                 if (draft.dualBrush) item { BrushGapModeEditor(tr("Secondary brush-tip gap", "副笔尖间隔"), draft.dualSpacingMode) { draft = draft.copy(dualSpacingMode = it) } }
                 if (draft.dualBrush && draft.dualSpacingMode == CspBrushGap.FIXED) item { BrushSettingSlider("Secondary spacing", draft.dualSpacing, .01f..2f) { draft = draft.copy(dualSpacing = it) } }
+                if (draft.dualBrush) item { ParameterDynamicsEditor(tr("Secondary spacing dynamics", "辅助笔尖间距动态"), "Secondary spacing", draft.dualSpacingDynamics) { draft = draft.copy(dualSpacingDynamics = it) } }
                 if (draft.dualBrush) item { BrushSettingSlider("Secondary flow", draft.dualFlow, 0f..1f) { draft = draft.copy(dualFlow = it) } }
+                if (draft.dualBrush) item { ParameterDynamicsEditor(tr("Secondary flow dynamics", "辅助笔尖流量动态"), "Secondary flow", draft.dualFlowDynamics) { draft = draft.copy(dualFlowDynamics = it) } }
                 if (draft.dualBrush) item { BrushSettingSlider("Secondary hardness", draft.dualHardness, 0f..1f) { draft = draft.copy(dualHardness = it) } }
                 if (draft.dualBrush) item {
                     Text(tr("Secondary anti-alias", "辅助笔尖抗锯齿"), color = MutedInk, fontSize = 11.sp)
@@ -5595,6 +5602,7 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                     }
                 }
                 if (draft.dualBrush) item { BrushSettingSlider("Secondary thickness", draft.dualThickness, .05f..2f) { draft = draft.copy(dualThickness = it) } }
+                if (draft.dualBrush) item { ParameterDynamicsEditor(tr("Secondary thickness dynamics", "辅助笔尖厚度动态"), "Secondary thickness", draft.dualThicknessDynamics) { draft = draft.copy(dualThicknessDynamics = it) } }
                 if (draft.dualBrush) item { SettingSwitch("Secondary vertical thickness", null, draft.dualThicknessVertical) { draft = draft.copy(dualThicknessVertical = it) } }
                 if (draft.dualBrush) item { BrushSettingSlider("Secondary rotation", draft.dualRotationDegrees, -180f..180f) { draft = draft.copy(dualRotationDegrees = it) } }
                 if (draft.dualBrush) item { SettingSwitch("Secondary follows stylus", null, draft.dualFollowStylusOrientation) { draft = draft.copy(dualFollowStylusOrientation = it) } }
@@ -5766,6 +5774,19 @@ private fun SecondaryDynamicsEditor(label: String, value: BrushSecondaryDynamics
             SettingSwitch("Random", "Deterministic per stamp, so export matches the canvas.", value.randomEnabled) { onValue(value.copy(randomEnabled = it)) }
             if (value.randomEnabled) BrushSettingSlider("Random minimum", value.randomMinimum, 0f..1f) { onValue(value.copy(randomMinimum = it)) }
         }
+    }
+}
+
+@Composable
+private fun ParameterDynamicsEditor(title: String, label: String, value: BrushParameterDynamics, onValue: (BrushParameterDynamics) -> Unit) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(title, color = MutedInk, fontSize = 11.sp)
+        SettingSwitch(tr("Pressure", "压力"), null, value.pressureEnabled) { onValue(value.copy(pressureEnabled = it)) }
+        if (value.pressureEnabled) {
+            BrushSettingSlider(tr("Minimum pressure result", "最低压力结果"), value.pressureMinimum, 0f..1f) { onValue(value.copy(pressureMinimum = it)) }
+            PressureCurveEditor(tr("Pressure response", "压力响应"), value.pressureCurve) { onValue(value.copy(pressureCurve = it)) }
+        }
+        SecondaryDynamicsEditor(label, value.secondary) { onValue(value.copy(secondary = it)) }
     }
 }
 

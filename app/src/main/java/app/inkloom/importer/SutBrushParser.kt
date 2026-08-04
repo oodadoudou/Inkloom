@@ -5,6 +5,7 @@ import android.database.sqlite.SQLiteDatabase
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
 import app.inkloom.document.BrushSecondaryDynamics
+import app.inkloom.document.BrushParameterDynamics
 import app.inkloom.document.BrushColorDynamics
 import app.inkloom.document.CspTextureComposite
 import app.inkloom.document.CspAntiAlias
@@ -37,6 +38,10 @@ class SutBrushParser(private val assetDirectory: File) {
             val hueEffector = db.effector("BrushHueChangeEffector", columns)
             val saturationEffector = db.effector("BrushSaturationChangeEffector", columns)
             val valueEffector = db.effector("BrushValueChangeEffector", columns)
+            val dualSizeEffector = db.effector("DualSizeEffector", columns)
+            val dualFlowEffector = db.effector("DualFlowEffector", columns)
+            val dualSpacingEffector = db.effector("DualIntervalEffector", columns)
+            val dualThicknessEffector = db.effector("DualThicknessEffector", columns)
             val tips = extractMaterialPreviews(db, "BrushPatternImageArray", hash, "tip")
             val dualTips = extractMaterialPreviews(db, "DualPatternImageArray", hash, "dual-tip")
             val tip = tips.firstOrNull()
@@ -131,12 +136,16 @@ class SutBrushParser(private val assetDirectory: File) {
                 blendTipsWithDarken = values.float("BrushBlendPatternByDarken") > 0f,
                 dualBrush = dual,
                 dualSizeScale = if (values.float("SyncDualBrushSize") > 0f) (values.float("DualSize", 100f) / 100f).coerceIn(.01f, 8f) else (values.float("DualSize", values.float("BrushSize", 8f)) / values.float("BrushSize", 8f).coerceAtLeast(.5f)).coerceIn(.01f, 8f),
+                dualSizeDynamics = dualSizeEffector.parameterDynamics(),
                 dualSpacing = (values.float("DualInterval", 12f) / 100f).coerceIn(.01f, 2f),
                 dualSpacingMode = CspBrushGap.normalize(values.float("DualAutoIntervalType").toInt()),
+                dualSpacingDynamics = dualSpacingEffector.parameterDynamics(),
                 dualFlow = (values.float("DualFlow", 100f) / 100f).coerceIn(0f, 1f),
+                dualFlowDynamics = dualFlowEffector.parameterDynamics(),
                 dualHardness = (values.float("DualHardness", 100f) / 100f).coerceIn(0f, 1f),
                 dualAntiAliasMode = CspAntiAlias.normalize(values.float("DualAntiAlias", CspAntiAlias.MEDIUM.toFloat()).toInt()),
                 dualThickness = (values.float("DualThickness", 100f) / 100f).coerceIn(.05f, 2f),
+                dualThicknessDynamics = dualThicknessEffector.parameterDynamics(),
                 dualThicknessVertical = values.float("DualVerticalThicknes").toInt() != 0,
                 dualRotationDegrees = values.float("DualRotation"),
                 dualFollowStylusOrientation = dualRotation.mode == SutRotationMode.DIRECTION_OF_PEN,
@@ -227,6 +236,10 @@ class SutBrushParser(private val assetDirectory: File) {
                         val composite = app.inkloom.document.CspDualBrushMode.fromCode(compositeCode)
                         add(if (dualTips.isNotEmpty()) "CSP Dual Brush mapped with ${dualTips.size} referenced secondary material preview(s), independent size/flow/spacing/hardness/thickness/rotation and ${composite?.displayName ?: "unknown $compositeCode"} composite mode${if (values.float("ChangeRGBByDual") > 0f) "; secondary RGB flag retained" else " using alpha-only combination"}" else "Dual Brush detected, but no referenced secondary-tip thumbnail could be extracted; main-tip fallback retained")
                         add("CSP secondary anti-alias mode ${CspAntiAlias.normalize(values.float("DualAntiAlias", CspAntiAlias.MEDIUM.toFloat()).toInt())} retained independently from the main tip")
+                        val dualDynamics = listOf("size" to dualSizeEffector, "flow" to dualFlowEffector, "spacing" to dualSpacingEffector, "thickness" to dualThicknessEffector).mapNotNull { (label, effector) ->
+                            effector?.parameterSourceSummary()?.takeIf(String::isNotBlank)?.let { "$label $it" }
+                        }
+                        add(if (dualDynamics.isEmpty()) "CSP secondary size, flow, spacing and thickness effectors are independent and disabled; main-tip dynamics are not inherited" else "CSP secondary dynamics decoded independently: ${dualDynamics.joinToString()}")
                     }
                     if (values.float("BrushUseSpray") > 0f) add("Spray behavior mapped with particle size/unit, brush-size linking, density, center bias and independent particle direction${if (sprayRotation.randomEnabled) "/random angle" else ""}")
                     if (values.float("DualUseSpray") > 0f) add("Dual spray mapped with particle size/unit, brush-size linking, density, center bias and independent particle direction${if (dualSprayRotation.randomEnabled) "/random angle" else ""}")
@@ -295,9 +308,11 @@ class SutBrushParser(private val assetDirectory: File) {
         return rawQuery("SELECT v.$column FROM Node n JOIN Variant v ON v.VariantID=n.NodeVariantID LIMIT 1", null).use { cursor -> if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getBlob(0) else null }
     }
     private fun SutEffector?.secondaryDynamics(): BrushSecondaryDynamics = this?.let { effector -> BrushSecondaryDynamics(tiltEnabled = effector.tiltEnabled, tiltMinimum = effector.tiltMinimum, velocityEnabled = effector.velocityEnabled, velocityMinimum = effector.velocityMinimum, velocityCurve = effector.velocityCurve, randomEnabled = effector.randomEnabled, randomMinimum = effector.randomMinimum) } ?: BrushSecondaryDynamics()
+    private fun SutEffector?.parameterDynamics(): BrushParameterDynamics = this?.let { effector -> BrushParameterDynamics(pressureEnabled = effector.pressureEnabled, pressureMinimum = effector.pressureMinimum, pressureCurve = effector.pressureCurve, secondary = effector.secondaryDynamics()) } ?: BrushParameterDynamics()
     private fun SutEffector?.colorDynamics(): BrushColorDynamics = this?.let { effector -> BrushColorDynamics(pressureEnabled = effector.pressureEnabled, pressureMinimum = effector.pressureMinimum, pressureCurve = effector.pressureCurve, tiltEnabled = effector.tiltEnabled, tiltMinimum = effector.tiltMinimum, velocityEnabled = effector.velocityEnabled, velocityMinimum = effector.velocityMinimum, velocityCurve = effector.velocityCurve, randomEnabled = effector.randomEnabled, randomMinimum = effector.randomMinimumSigned) } ?: BrushColorDynamics()
     private fun SutEffector.sourceSummary(): String = buildList { if (tiltEnabled) add("tilt"); if (velocityEnabled) add("velocity"); if (randomEnabled) add("random") }.joinToString("+")
+    private fun SutEffector.parameterSourceSummary(): String = buildList { if (pressureEnabled) add("pressure"); sourceSummary().takeIf(String::isNotBlank)?.let(::add) }.joinToString("+")
     companion object {
-        const val CURRENT_VERSION = 26
+        const val CURRENT_VERSION = 27
     }
 }

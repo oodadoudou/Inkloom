@@ -704,8 +704,8 @@ class DocumentAssetService(private val context: Context) {
             includeStationaryPoints = stroke.continuousPlot,
         ) { point ->
             val pressure = point.pressure.coerceIn(0f, 1f)
-            val diameter = (stroke.width * width / 1600f * stroke.dualSizeScale.coerceIn(.01f, 8f) * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.renderSeed, SALT_SIZE)).coerceAtLeast(1f)
-            val spacingDynamic = pressureDynamic(stroke.spacingPressureEnabled, stroke.spacingPressureMinimum, stroke.spacingPressureCurve, pressure) * secondaryDynamic(stroke.spacingSecondaryDynamics, point, stroke.renderSeed, SALT_SPACING)
+            val diameter = (stroke.width * width / 1600f * stroke.dualSizeScale.coerceIn(.01f, 8f) * pressureDynamic(stroke.dualSizeDynamics.pressureEnabled, stroke.dualSizeDynamics.pressureMinimum, stroke.dualSizeDynamics.pressureCurve, pressure) * secondaryDynamic(stroke.dualSizeDynamics.secondary, point, stroke.renderSeed, SALT_DUAL_SIZE)).coerceAtLeast(1f)
+            val spacingDynamic = pressureDynamic(stroke.dualSpacingDynamics.pressureEnabled, stroke.dualSpacingDynamics.pressureMinimum, stroke.dualSpacingDynamics.pressureCurve, pressure) * secondaryDynamic(stroke.dualSpacingDynamics.secondary, point, stroke.renderSeed, SALT_DUAL_SPACING)
             val gapRatio = CspBrushGap.ratio(stroke.dualSpacingMode, stroke.dualSpacing).let { if (stroke.dualRibbon) it.coerceAtMost(.06f) else it }
             diameter * gapRatio * spacingDynamic.coerceIn(.01f, 1f) / if (stroke.dualSpray) SprayGeometry.particlesPerPlot(stroke.dualSprayDensity) else 1
         }
@@ -717,12 +717,12 @@ class DocumentAssetService(private val context: Context) {
             val tipIndex = BrushTipSequence.index(stroke.dualTipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed xor DUAL_SEQUENCE_SEED, stroke.dualRibbon) ?: return@stamp
             val tip = tips[tipIndex]
             val pressure = point.pressure.coerceIn(0f, 1f)
-            val brushDiameter = (stroke.width * width / 1600f * stroke.dualSizeScale.coerceIn(.01f, 8f) * taper[index] * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.renderSeed, SALT_SIZE)).coerceAtLeast(.25f)
+            val brushDiameter = (stroke.width * width / 1600f * stroke.dualSizeScale.coerceIn(.01f, 8f) * taper[index] * pressureDynamic(stroke.dualSizeDynamics.pressureEnabled, stroke.dualSizeDynamics.pressureMinimum, stroke.dualSizeDynamics.pressureCurve, pressure) * secondaryDynamic(stroke.dualSizeDynamics.secondary, point, stroke.renderSeed, SALT_DUAL_SIZE)).coerceAtLeast(.25f)
             val diameter = if (stroke.dualSpray) SprayGeometry.particleDiameter(brushDiameter, stroke.dualSprayParticleSize, stroke.dualSprayParticleSizeUnit, stroke.dualSprayParticleSizeSyncBrushSize, width.toFloat()) else brushDiameter
             val offset = if (stroke.dualSpray) SprayGeometry.offset(brushDiameter / 2f * stroke.dualSpraySpread.coerceIn(0f, 4f), scatterRandom.nextFloat(), scatterRandom.nextFloat(), stroke.dualSprayBias) else SprayOffset(0f, 0f)
             val drawX = point.x * width + offset.x
             val drawY = point.y * height + offset.y
-            val thicknessDynamic = pressureDynamic(stroke.thicknessPressureEnabled, stroke.thicknessPressureMinimum, stroke.thicknessPressureCurve, pressure) * secondaryDynamic(stroke.thicknessSecondaryDynamics, point, stroke.renderSeed, SALT_THICKNESS)
+            val thicknessDynamic = pressureDynamic(stroke.dualThicknessDynamics.pressureEnabled, stroke.dualThicknessDynamics.pressureMinimum, stroke.dualThicknessDynamics.pressureCurve, pressure) * secondaryDynamic(stroke.dualThicknessDynamics.secondary, point, stroke.renderSeed, SALT_DUAL_THICKNESS)
             val tipScale = BrushTipTransform.scale(tip.width, tip.height, diameter, stroke.dualThickness.coerceIn(.05f, 2f) * thicknessDynamic, stroke.dualThicknessVertical)
             val flip = BrushTipFlip.signs(stroke.dualTipFlipHorizontalMode, stroke.dualTipFlipVerticalMode, stroke.dualTipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed, dual = true)
             val followsStroke = BrushStampRotation.followsStroke(stroke, dual = true)
@@ -735,7 +735,7 @@ class DocumentAssetService(private val context: Context) {
             )
             val matrix = Matrix().apply { postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(tipScale.x * flip.x, tipScale.y * flip.y); postRotate(angle); postTranslate(drawX, drawY) }
             val opacityDynamic = pressureDynamic(stroke.opacityPressureEnabled, stroke.opacityPressureMinimum, stroke.opacityPressureCurve, pressure) * secondaryDynamic(stroke.opacitySecondaryDynamics, point, stroke.renderSeed, SALT_OPACITY)
-            val flowDynamic = pressureDynamic(stroke.flowPressureEnabled, stroke.flowPressureMinimum, stroke.flowPressureCurve, pressure) * secondaryDynamic(stroke.flowSecondaryDynamics, point, stroke.renderSeed, SALT_FLOW)
+            val flowDynamic = pressureDynamic(stroke.dualFlowDynamics.pressureEnabled, stroke.dualFlowDynamics.pressureMinimum, stroke.dualFlowDynamics.pressureCurve, pressure) * secondaryDynamic(stroke.dualFlowDynamics.secondary, point, stroke.renderSeed, SALT_DUAL_FLOW)
             paint.colorFilter = PorterDuffColorFilter(BrushColorJitter.argb(stroke, point, sequenceIndex), PorterDuff.Mode.SRC_IN)
             paint.alpha = (stroke.opacity * opacityDynamic * stroke.dualFlow.coerceIn(0f, 1f) * flowDynamic * WetMixDynamics.alphaMultiplier(stroke, point)).coerceIn(.01f, 1f).times(255).toInt()
             paint.maskFilter = brushBlurMask(stroke, point, diameter, stroke.width * width / 1600f * stroke.dualSizeScale.coerceIn(.01f, 8f), width.toFloat())
@@ -836,6 +836,10 @@ class DocumentAssetService(private val context: Context) {
         const val SALT_FLOW = 37
         const val SALT_SPACING = 53
         const val SALT_THICKNESS = 71
+        const val SALT_DUAL_SIZE = 101
+        const val SALT_DUAL_FLOW = 103
+        const val SALT_DUAL_SPACING = 107
+        const val SALT_DUAL_THICKNESS = 109
         const val SALT_BLUR = 89
         const val DUAL_SCATTER_SEED = 0x27C4915DL
         const val DUAL_ROTATION_SEED = 0x61B8D2A3L

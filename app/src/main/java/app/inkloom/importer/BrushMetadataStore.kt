@@ -8,6 +8,7 @@ import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
 import app.inkloom.document.BrushCurvePoint
 import app.inkloom.document.BrushColorDynamics
+import app.inkloom.document.BrushParameterDynamics
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushTaperMode
 import org.json.JSONArray
@@ -51,6 +52,29 @@ class BrushMetadataStore(
                     val value = item.optJSONObject(key) ?: return BrushColorDynamics()
                     fun points(name: String): List<BrushCurvePoint> { val source = value.optJSONArray(name) ?: return emptyList(); return buildList { for (pointIndex in 0 until source.length()) { val pair = source.optJSONArray(pointIndex) ?: continue; if (pair.length() >= 2) add(BrushCurvePoint(pair.optDouble(0).toFloat(), pair.optDouble(1).toFloat())) } } }
                     return BrushColorDynamics(pressureEnabled = value.optBoolean("pressureEnabled"), pressureMinimum = value.optDouble("pressureMinimum").toFloat(), pressureCurve = points("pressureCurve"), tiltEnabled = value.optBoolean("tiltEnabled"), tiltMinimum = value.optDouble("tiltMinimum").toFloat(), velocityEnabled = value.optBoolean("velocityEnabled"), velocityMinimum = value.optDouble("velocityMinimum").toFloat(), velocityCurve = points("velocityCurve"), randomEnabled = value.optBoolean("randomEnabled"), randomMinimum = value.optDouble("randomMinimum", -1.0).toFloat())
+                }
+                fun parameterDynamics(key: String): BrushParameterDynamics {
+                    val value = item.optJSONObject(key) ?: return BrushParameterDynamics()
+                    val points = value.optJSONArray("pressureCurve")
+                    val pressureCurve = buildList { if (points != null) for (pointIndex in 0 until points.length()) { val pair = points.optJSONArray(pointIndex) ?: continue; if (pair.length() >= 2) add(BrushCurvePoint(pair.optDouble(0).toFloat(), pair.optDouble(1).toFloat())) } }
+                    return BrushParameterDynamics(
+                        pressureEnabled = value.optBoolean("pressureEnabled", false),
+                        pressureMinimum = value.optDouble("pressureMinimum", 0.0).toFloat().coerceIn(0f, 1f),
+                        pressureCurve = pressureCurve,
+                        secondary = value.optJSONObject("secondary")?.let { nested ->
+                            val velocityPoints = nested.optJSONArray("velocityCurve")
+                            val velocityCurve = buildList { if (velocityPoints != null) for (pointIndex in 0 until velocityPoints.length()) { val pair = velocityPoints.optJSONArray(pointIndex) ?: continue; if (pair.length() >= 2) add(BrushCurvePoint(pair.optDouble(0).toFloat(), pair.optDouble(1).toFloat())) } }
+                            BrushSecondaryDynamics(
+                                tiltEnabled = nested.optBoolean("tiltEnabled", false),
+                                tiltMinimum = nested.optDouble("tiltMinimum", 0.0).toFloat().coerceIn(0f, 1f),
+                                velocityEnabled = nested.optBoolean("velocityEnabled", false),
+                                velocityMinimum = nested.optDouble("velocityMinimum", 0.0).toFloat().coerceIn(0f, 1f),
+                                velocityCurve = velocityCurve,
+                                randomEnabled = nested.optBoolean("randomEnabled", false),
+                                randomMinimum = nested.optDouble("randomMinimum", 0.0).toFloat().coerceIn(0f, 1f),
+                            )
+                        } ?: BrushSecondaryDynamics(),
+                    )
                 }
                 val legacyTipPath = item.optString("tipPreviewPath").takeIf { it.isNotBlank() }
                 val tipPaths = buildList { for (pathIndex in 0 until tipPathsArray.length()) tipPathsArray.optString(pathIndex).takeIf(String::isNotBlank)?.let(::add) }.ifEmpty { listOfNotNull(legacyTipPath) }
@@ -146,12 +170,16 @@ class BrushMetadataStore(
                         blendTipsWithDarken = item.optBoolean("blendTipsWithDarken", false),
                         dualBrush = item.optBoolean("dualBrush", false),
                         dualSizeScale = item.optDouble("dualSizeScale", 1.0).toFloat().coerceIn(.01f, 8f),
+                        dualSizeDynamics = parameterDynamics("dualSizeDynamics"),
                         dualSpacing = item.optDouble("dualSpacing", .12).toFloat().coerceIn(.01f, 2f),
                         dualSpacingMode = app.inkloom.document.CspBrushGap.normalize(item.optInt("dualSpacingMode", app.inkloom.document.CspBrushGap.FIXED)),
+                        dualSpacingDynamics = parameterDynamics("dualSpacingDynamics"),
                         dualFlow = item.optDouble("dualFlow", 1.0).toFloat().coerceIn(0f, 1f),
+                        dualFlowDynamics = parameterDynamics("dualFlowDynamics"),
                         dualHardness = item.optDouble("dualHardness", 1.0).toFloat().coerceIn(0f, 1f),
                         dualAntiAliasMode = item.optInt("dualAntiAliasMode", CspAntiAlias.MEDIUM).coerceIn(CspAntiAlias.NONE, CspAntiAlias.STRONG),
                         dualThickness = item.optDouble("dualThickness", 1.0).toFloat().coerceIn(.05f, 2f),
+                        dualThicknessDynamics = parameterDynamics("dualThicknessDynamics"),
                         dualThicknessVertical = item.optBoolean("dualThicknessVertical", false),
                         dualRotationDegrees = item.optDouble("dualRotationDegrees", 0.0).toFloat(),
                         dualFollowStylusOrientation = item.optBoolean("dualFollowStylusOrientation", false),
@@ -325,12 +353,16 @@ class BrushMetadataStore(
                     .put("blendTipsWithDarken", brush.blendTipsWithDarken)
                     .put("dualBrush", brush.dualBrush)
                     .put("dualSizeScale", brush.dualSizeScale)
+                    .put("dualSizeDynamics", parameterDynamicsJson(brush.dualSizeDynamics))
                     .put("dualSpacing", brush.dualSpacing)
                     .put("dualSpacingMode", brush.dualSpacingMode)
+                    .put("dualSpacingDynamics", parameterDynamicsJson(brush.dualSpacingDynamics))
                     .put("dualFlow", brush.dualFlow)
+                    .put("dualFlowDynamics", parameterDynamicsJson(brush.dualFlowDynamics))
                     .put("dualHardness", brush.dualHardness)
                     .put("dualAntiAliasMode", brush.dualAntiAliasMode)
                     .put("dualThickness", brush.dualThickness)
+                    .put("dualThicknessDynamics", parameterDynamicsJson(brush.dualThicknessDynamics))
                     .put("dualThicknessVertical", brush.dualThicknessVertical)
                     .put("dualRotationDegrees", brush.dualRotationDegrees)
                     .put("dualFollowStylusOrientation", brush.dualFollowStylusOrientation)
@@ -429,4 +461,9 @@ class BrushMetadataStore(
         .put("tiltEnabled", value.tiltEnabled).put("tiltMinimum", value.tiltMinimum)
         .put("velocityEnabled", value.velocityEnabled).put("velocityMinimum", value.velocityMinimum).put("velocityCurve", curveJson(value.velocityCurve))
         .put("randomEnabled", value.randomEnabled).put("randomMinimum", value.randomMinimum)
+    private fun parameterDynamicsJson(value: BrushParameterDynamics): JSONObject = JSONObject()
+        .put("pressureEnabled", value.pressureEnabled)
+        .put("pressureMinimum", value.pressureMinimum)
+        .put("pressureCurve", curveJson(value.pressureCurve))
+        .put("secondary", secondaryJson(value.secondary))
 }

@@ -17,6 +17,20 @@ class StrokeClipboardCodecTest {
             dualBrush = true,
             dualCompositeMode = 7,
             dualApplyRgb = true,
+            dualSizeDynamics = BrushParameterDynamics(
+                pressureEnabled = true,
+                pressureMinimum = .18f,
+                pressureCurve = listOf(BrushCurvePoint(0f, .1f), BrushCurvePoint(1f, 1f)),
+            ),
+            dualSpacingDynamics = BrushParameterDynamics(
+                secondary = BrushSecondaryDynamics(tiltEnabled = true, tiltMinimum = .33f),
+            ),
+            dualFlowDynamics = BrushParameterDynamics(
+                secondary = BrushSecondaryDynamics(velocityEnabled = true, velocityMinimum = .44f),
+            ),
+            dualThicknessDynamics = BrushParameterDynamics(
+                secondary = BrushSecondaryDynamics(randomEnabled = true, randomMinimum = .55f),
+            ),
             watercolor = true,
         )
 

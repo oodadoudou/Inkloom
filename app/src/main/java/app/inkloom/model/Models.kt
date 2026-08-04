@@ -3,6 +3,7 @@ package app.inkloom.model
 import androidx.compose.ui.graphics.Color
 import app.inkloom.document.BrushCurvePoint
 import app.inkloom.document.BrushColorDynamics
+import app.inkloom.document.BrushParameterDynamics
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushTaperMode
 import app.inkloom.document.CspTextureComposite
@@ -119,12 +120,16 @@ data class ImportedBrush(
     val blendTipsWithDarken: Boolean = false,
     val dualBrush: Boolean = false,
     val dualSizeScale: Float = 1f,
+    val dualSizeDynamics: BrushParameterDynamics = BrushParameterDynamics(),
     val dualSpacing: Float = .12f,
     val dualSpacingMode: Int = CspBrushGap.FIXED,
+    val dualSpacingDynamics: BrushParameterDynamics = BrushParameterDynamics(),
     val dualFlow: Float = 1f,
+    val dualFlowDynamics: BrushParameterDynamics = BrushParameterDynamics(),
     val dualHardness: Float = 1f,
     val dualAntiAliasMode: Int = CspAntiAlias.MEDIUM,
     val dualThickness: Float = 1f,
+    val dualThicknessDynamics: BrushParameterDynamics = BrushParameterDynamics(),
     val dualThicknessVertical: Boolean = false,
     val dualRotationDegrees: Float = 0f,
     val dualFollowStylusOrientation: Boolean = false,
