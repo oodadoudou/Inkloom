@@ -5378,9 +5378,11 @@ private fun BrushPanel(
     val historyStore = remember { BrushVersionHistoryStore(context) }
     var reportBrush by remember { mutableStateOf<ImportedBrush?>(null) }
     var editBrush by remember { mutableStateOf<ImportedBrush?>(null) }
+    var creatingBrushId by remember { mutableStateOf<String?>(null) }
     var historyBrush by remember { mutableStateOf<ImportedBrush?>(null) }
     var moveBrush by remember { mutableStateOf<ImportedBrush?>(null) }
     var manageGroups by remember { mutableStateOf(false) }
+    var addMenu by remember { mutableStateOf(false) }
     var historyRevision by remember { mutableIntStateOf(0) }
     var search by remember { mutableStateOf("") }
     var format by remember { mutableStateOf<BrushFormat?>(null) }
@@ -5417,6 +5419,8 @@ private fun BrushPanel(
     val brushSections = visibleBrushes.groupBy { BrushGroupOperations.normalize(it.groupName).ifBlank { "Ungrouped" } }
         .toList().sortedBy { (group, _) -> groupOrder[group.lowercase()] ?: Int.MAX_VALUE }
     val dragDescription = tr("Drag brushes panel", "拖动笔刷面板")
+    val newBrushName = tr("New brush", "新笔刷")
+    val createdInInkloomReport = tr("Created in Inkloom", "在 Inkloom 中创建")
     val currentPanelDrag by rememberUpdatedState(onPanelDrag)
     val currentPanelDragStart by rememberUpdatedState(onPanelDragStart)
     val currentPanelDragEnd by rememberUpdatedState(onPanelDragEnd)
@@ -5460,7 +5464,42 @@ private fun BrushPanel(
                 if (!multiSelecting) selectedBrushIds = emptySet()
             }, modifier = Modifier.size(30.dp)) { Icon(if (multiSelecting) Icons.Outlined.Close else Icons.Outlined.Checklist, if (multiSelecting) tr("Cancel brush selection", "取消选择笔刷") else tr("Select multiple brushes", "批量选择笔刷"), Modifier.size(17.dp)) }
             IconButton(onClick = onClose, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.Close, tr("Close brushes panel", "关闭笔刷面板"), Modifier.size(17.dp)) }
-            IconButton(onClick = { onImportBrushes(selectedGroup?.takeUnless { it == UNGROUPED_BRUSH_FILTER }) }, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.Add, tr("Import", "导入"), Modifier.size(17.dp)) }
+            Box {
+                IconButton(onClick = { addMenu = true }, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.Add, tr("Add brush or group", "添加笔刷或分组"), Modifier.size(17.dp)) }
+                DropdownMenu(addMenu, { addMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text(tr("Create blank brush", "新建空白笔刷")) },
+                        leadingIcon = { Icon(Icons.Outlined.Brush, null) },
+                        onClick = {
+                            addMenu = false
+                            val created = ImportedBrush(
+                                name = newBrushName,
+                                format = BrushFormat.INKLOOM,
+                                compatibility = Compatibility.COMPLETE,
+                                sizeBytes = 0L,
+                                report = listOf(createdInInkloomReport),
+                                groupName = selectedGroup?.takeUnless { it == UNGROUPED_BRUSH_FILTER }.orEmpty(),
+                                sortOrder = (brushes.maxOfOrNull { it.sortOrder } ?: -1) + 1,
+                            )
+                            creatingBrushId = created.id
+                            editBrush = created
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = {
+                            val destination = selectedGroup?.takeUnless { it == UNGROUPED_BRUSH_FILTER }
+                            Text(if (destination == null) tr("Import brushes", "导入笔刷") else tr("Import into $destination", "导入到 $destination"))
+                        },
+                        leadingIcon = { Icon(Icons.Outlined.FileDownload, null) },
+                        onClick = { addMenu = false; onImportBrushes(selectedGroup?.takeUnless { it == UNGROUPED_BRUSH_FILTER }) },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(tr("Manage groups", "管理分组")) },
+                        leadingIcon = { Icon(Icons.Outlined.CreateNewFolder, null) },
+                        onClick = { addMenu = false; manageGroups = true },
+                    )
+                }
+            }
         }
         if (multiSelecting) Surface(
             color = Color.White,
@@ -5500,7 +5539,7 @@ private fun BrushPanel(
                 Text(tr("GROUPS", "分组"), fontSize = 10.sp, color = MutedInk, modifier = Modifier.weight(1f))
                 IconButton(onClick = { manageGroups = true }, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.DriveFileRenameOutline, tr("Manage brush groups", "管理笔刷分组"), Modifier.size(17.dp)) }
             }
-            Surface(color = Color.White, shape = RoundedCornerShape(3.dp), border = CardDefaults.outlinedCardBorder(), modifier = Modifier.fillMaxWidth().heightIn(max = 108.dp).padding(bottom = 4.dp)) {
+            Surface(color = Color.White, shape = RoundedCornerShape(3.dp), border = CardDefaults.outlinedCardBorder(), modifier = Modifier.fillMaxWidth().heightIn(max = 148.dp).padding(bottom = 4.dp)) {
                 LazyColumn(contentPadding = PaddingValues(vertical = 3.dp)) {
                 item("all") {
                     Row(Modifier.fillMaxWidth().clickable { selectedGroup = null }.background(if (selectedGroup == null) SageContainer else Color.Transparent).padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -5578,7 +5617,7 @@ private fun BrushPanel(
         if (brushes.isNotEmpty()) {
             Text("${tr("BRUSHES", "笔刷")} (${visibleBrushes.size}/${brushes.size})", fontSize = 11.sp, color = MutedInk)
             LazyVerticalGrid(
-                columns = GridCells.Adaptive(if (bottomDocked) 74.dp else 66.dp),
+                columns = GridCells.Adaptive(if (bottomDocked) 86.dp else 112.dp),
                 modifier = Modifier.weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(5.dp),
                 verticalArrangement = Arrangement.spacedBy(5.dp),
@@ -5632,6 +5671,9 @@ private fun BrushPanel(
             onOpacity = onBrushOpacityChange,
             onFlow = { value -> selectedToolBrush?.let { onUpdateBrush(it.copy(flow = value)) } },
             onStabilization = { value -> selectedToolBrush?.let { onUpdateBrush(it.copy(stabilization = value)) } },
+            onRotation = { value -> selectedToolBrush?.let { onUpdateBrush(it.copy(rotationDegrees = value)) } },
+            onHardness = { value -> selectedToolBrush?.let { onUpdateBrush(it.copy(hardness = value)) } },
+            onGrainDensity = { value -> selectedToolBrush?.let { onUpdateBrush(it.copy(grainDensity = value)) } },
             onPressure = { enabled -> selectedToolBrush?.let { onUpdateBrush(it.copy(sizePressureEnabled = enabled)) } },
             onEdit = { brushes.firstOrNull { it.id == selectedBrushId }?.let { editBrush = it } },
         )
@@ -5656,13 +5698,16 @@ private fun BrushPanel(
         BrushEditorDialog(
             brush,
             settings,
-            onDismiss = { editBrush = null },
+            onDismiss = { creatingBrushId = null; editBrush = null },
             onSave = { updated ->
-                if (updated != brush) {
+                if (creatingBrushId == brush.id) {
+                    onReplaceBrushes(brushes + updated)
+                } else if (updated != brush) {
                     historyStore.record(brush)
                     historyRevision++
                     onUpdateBrush(updated)
                 }
+                creatingBrushId = null
                 editBrush = null
             },
         )
@@ -5956,11 +6001,15 @@ private fun BrushToolProperties(
     onOpacity: (Float) -> Unit,
     onFlow: (Float) -> Unit,
     onStabilization: (Float) -> Unit,
+    onRotation: (Float) -> Unit,
+    onHardness: (Float) -> Unit,
+    onGrainDensity: (Float) -> Unit,
     onPressure: (Boolean) -> Unit,
     onEdit: () -> Unit,
 ) {
     val normalizedSize = ((size.coerceIn(.5f, 400f) - .5f) / 399.5f).coerceIn(0f, 1f)
     val sizeSliderPosition = Math.cbrt(normalizedSize.toDouble()).toFloat()
+    var moreProperties by rememberSaveable(brush?.id) { mutableStateOf(false) }
     Surface(
         modifier = Modifier.fillMaxWidth().padding(top = 5.dp),
         color = Color(0xFFF0F0F0),
@@ -6006,7 +6055,19 @@ private fun BrushToolProperties(
         if (brush != null && !compact) {
             HorizontalDivider(color = OutlineSoft)
             CspBrushQuickSlider(tr("Ink density", "墨水浓淡"), brush.flow.coerceIn(.01f, 1f), "${(brush.flow * 100f).toInt()}%", onFlow)
-            CspBrushQuickSlider(tr("Stabilization", "抖动修正"), (brush.stabilization / 100f).coerceIn(0f, 1f), brush.stabilization.toInt().toString()) { onStabilization(it * 100f) }
+            CspBrushQuickSlider(tr("Stabilization", "抖动修正"), (brush.stabilization / .9f).coerceIn(0f, 1f), "${(brush.stabilization / .9f * 100f).toInt()}%") { onStabilization(it * .9f) }
+            Row(
+                Modifier.fillMaxWidth().height(27.dp).clickable { moreProperties = !moreProperties }.padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(tr("More brush properties", "更多笔刷属性"), Modifier.weight(1f), color = MutedInk, fontSize = 9.sp)
+                Icon(if (moreProperties) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, if (moreProperties) tr("Collapse brush properties", "收起笔刷属性") else tr("Expand brush properties", "展开笔刷属性"), Modifier.size(16.dp))
+            }
+            if (moreProperties) {
+                CspBrushQuickSlider(tr("Direction", "方向"), ((brush.rotationDegrees + 180f) / 360f).coerceIn(0f, 1f), "${brush.rotationDegrees.toInt()}°") { onRotation(it * 360f - 180f) }
+                CspBrushQuickSlider(tr("Hardness", "硬度"), brush.hardness.coerceIn(0f, 1f), "${(brush.hardness * 100f).toInt()}%", onHardness)
+                CspBrushQuickSlider(tr("Paper density", "纸质浓度"), brush.grainDensity.coerceIn(0f, 1f), "${(brush.grainDensity * 100f).toInt()}%", onGrainDensity)
+            }
             Row(Modifier.fillMaxWidth().height(30.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(tr("Pen pressure", "笔压"), Modifier.weight(1f), color = MutedInk, fontSize = 9.sp)
                 Switch(brush.sizePressureEnabled, onPressure, Modifier.height(24.dp))
@@ -6221,11 +6282,11 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 item { OutlinedTextField(draft.groupName, { draft = draft.copy(groupName = it.take(BrushGroupOperations.MAX_PATH_LENGTH)) }, label = { Text(tr("Group path", "分组路径")) }, supportingText = { Text(tr("Use / for nested groups; leave empty for Ungrouped", "使用 / 创建嵌套分组；留空则归入“未分组”")) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(tagText, { tagText = it }, label = { Text(tr("Tags", "标签")) }, supportingText = { Text(tr("Separate tags with commas", "使用逗号分隔标签")) }, modifier = Modifier.fillMaxWidth()) }
                 item { BrushTestArea(draft, settings) }
-                item { BrushSettingSlider("Size", draft.defaultSize, .5f..400f) { draft = draft.copy(defaultSize = it) } }
-                item { BrushSettingSlider("Stabilization", draft.stabilization, 0f..0.9f) { draft = draft.copy(stabilization = it) } }
+                item { BrushSettingSlider(tr("Size", "笔刷尺寸"), draft.defaultSize, .5f..400f) { draft = draft.copy(defaultSize = it) } }
+                item { BrushSettingSlider(tr("Stabilization", "抖动修正"), draft.stabilization, 0f..0.9f) { draft = draft.copy(stabilization = it) } }
                 item { SettingSwitch("Adjust stabilization by speed", "Uses the imported CSP correction behavior when available.", draft.stabilizationBySpeed) { draft = draft.copy(stabilizationBySpeed = it) } }
                 if (draft.stabilizationBySpeed) item { Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { FilterChip(selected = draft.stabilizationBySpeedMode == StrokeStabilization.INCREASE_WHEN_SLOW, onClick = { draft = draft.copy(stabilizationBySpeedMode = StrokeStabilization.INCREASE_WHEN_SLOW) }, label = { Text(tr("More when slow", "慢速时增强")) }); FilterChip(selected = draft.stabilizationBySpeedMode == StrokeStabilization.REDUCE_WHEN_FAST, onClick = { draft = draft.copy(stabilizationBySpeedMode = StrokeStabilization.REDUCE_WHEN_FAST) }, label = { Text(tr("Less when fast", "快速时减弱")) }) } }
-                item { BrushSettingSlider("Default opacity", draft.defaultOpacity, .01f..1f) { draft = draft.copy(defaultOpacity = it) } }
+                item { BrushSettingSlider(tr("Default opacity", "默认不透明度"), draft.defaultOpacity, .01f..1f) { draft = draft.copy(defaultOpacity = it) } }
                 item { SettingSwitch("Use as eraser", "Selects the eraser tool and uses this tip shape to remove ink.", draft.isEraser) { draft = draft.copy(isEraser = it) } }
                 item { SettingSwitch("Pressure controls size", "Uses the imported CSP curve when available.", draft.sizePressureEnabled) { draft = draft.copy(sizePressureEnabled = it) } }
                 if (draft.sizePressureEnabled) item { BrushSettingSlider("Minimum size", draft.sizePressureMinimum, 0f..1f) { draft = draft.copy(sizePressureMinimum = it) } }
@@ -6263,8 +6324,8 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 if (draft.taperEndEnabled) item { BrushSettingSlider("End minimum size", draft.taperEndMinimum, 0f..1f) { draft = draft.copy(taperEndMinimum = it) } }
                 item { BrushGapModeEditor(tr("Brush-tip gap", "笔尖间隔"), draft.spacingMode) { draft = draft.copy(spacingMode = it) } }
                 if (draft.spacingMode == CspBrushGap.FIXED) item { BrushSettingSlider("Spacing", draft.spacing, .01f..2f) { draft = draft.copy(spacing = it) } }
-                item { BrushSettingSlider("Flow", draft.flow, 0f..1f) { draft = draft.copy(flow = it) } }
-                item { BrushSettingSlider("Hardness", draft.hardness, 0f..1f) { draft = draft.copy(hardness = it) } }
+                item { BrushSettingSlider(tr("Flow", "墨水浓度"), draft.flow, 0f..1f) { draft = draft.copy(flow = it) } }
+                item { BrushSettingSlider(tr("Hardness", "硬度"), draft.hardness, 0f..1f) { draft = draft.copy(hardness = it) } }
                 item {
                     Text(tr("Anti-alias", "抗锯齿"), color = MutedInk, fontSize = 11.sp)
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -6277,7 +6338,7 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 if (draft.blur > 0f) item { Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { FilterChip(selected = draft.blurUnit == 0, onClick = { draft = draft.copy(blurUnit = 0) }, label = { Text(tr("Blur px", "模糊 px")) }); FilterChip(selected = draft.blurUnit == 2, onClick = { draft = draft.copy(blurUnit = 2) }, label = { Text(tr("Blur mm", "模糊 mm")) }) } }
                 item { SettingSwitch("Link blur to brush size", "Scales the imported CSP blur when brush size changes.", draft.blurLinkedToSize) { draft = draft.copy(blurLinkedToSize = it) } }
                 if (draft.grainPreviewPath != null) item { BrushGrainPreview(draft.grainPreviewPath!!, draft.grainDensity) }
-                if (draft.grainPreviewPath != null) item { BrushSettingSlider("Paper texture density", draft.grainDensity, 0f..1f) { draft = draft.copy(grainDensity = it) } }
+                if (draft.grainPreviewPath != null) item { BrushSettingSlider(tr("Paper texture density", "纸质浓度"), draft.grainDensity, 0f..1f) { draft = draft.copy(grainDensity = it) } }
                 if (draft.grainPreviewPath != null) item { ParameterDynamicsEditor(tr("Paper texture density dynamics", "纸张纹理密度动态"), "Paper texture density", draft.grainDensityDynamics) { draft = draft.copy(grainDensityDynamics = it) } }
                 if (draft.grainPreviewPath != null) item { BrushSettingSlider("Paper texture scale", draft.grainScale, 1f..400f) { draft = draft.copy(grainScale = it) } }
                 if (draft.grainPreviewPath != null) item { BrushSettingSlider("Paper texture rotation", draft.grainRotationDegrees, -180f..180f) { draft = draft.copy(grainRotationDegrees = it) } }
