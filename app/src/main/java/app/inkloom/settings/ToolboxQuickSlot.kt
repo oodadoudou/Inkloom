@@ -216,8 +216,8 @@ object ToolboxQuickSlotCodec {
         optionalEnum("leftDockActivePanel", WorkspacePanelKind.PAGES), optionalEnum("rightDockActivePanel", WorkspacePanelKind.BRUSHES), optionalEnum("bottomDockActivePanel", WorkspacePanelKind.PAGES), optionalEnum("freeDockActivePanel", WorkspacePanelKind.BRUSHES),
         WorkspacePanelTabs.encodeOrder(WorkspacePanelTabs.normalizeOrder(optionalText("panelTabOrder"))),
         optionalFloat("pagePanelXDp", 16f), optionalFloat("pagePanelYDp", 16f), optionalFloat("pagePanelWidthDp", 160f), optionalFloat("pagePanelHeightDp", 640f),
-        optionalFloat("brushPanelXDp", 720f), optionalFloat("brushPanelYDp", 16f), optionalFloat("brushPanelWidthDp", 330f), optionalFloat("brushPanelHeightDp", 680f),
-        optionalFloat("layerPanelXDp", 720f), optionalFloat("layerPanelYDp", 16f), optionalFloat("layerPanelWidthDp", 300f), optionalFloat("layerPanelHeightDp", 620f),
+        optionalFloat("brushPanelXDp", 720f), optionalFloat("brushPanelYDp", 16f), optionalFloat("brushPanelWidthDp", 220f), optionalFloat("brushPanelHeightDp", 680f),
+        optionalFloat("layerPanelXDp", 720f), optionalFloat("layerPanelYDp", 16f), optionalFloat("layerPanelWidthDp", 240f), optionalFloat("layerPanelHeightDp", 620f),
         optionalFloat("toolbarOffsetXDp", 16f), optionalFloat("toolbarOffsetYDp", 16f), optionalBoolean("verticalToolbar"), optionalEnum("toolbarDock", ToolbarDock.FREE),
     )
 

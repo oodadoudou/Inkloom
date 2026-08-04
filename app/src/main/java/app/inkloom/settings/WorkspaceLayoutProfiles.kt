@@ -109,8 +109,8 @@ object WorkspaceLayoutProfilesCodec {
         enum("leftDockActivePanel", WorkspacePanelKind.PAGES), enum("rightDockActivePanel", WorkspacePanelKind.BRUSHES), enum("bottomDockActivePanel", WorkspacePanelKind.PAGES), enum("freeDockActivePanel", WorkspacePanelKind.BRUSHES),
         WorkspacePanelTabs.encodeOrder(WorkspacePanelTabs.normalizeOrder(text("panelTabOrder"))),
         float("pagePanelXDp", 16f), float("pagePanelYDp", 16f), float("pagePanelWidthDp", 160f), float("pagePanelHeightDp", 640f),
-        float("brushPanelXDp", 720f), float("brushPanelYDp", 16f), float("brushPanelWidthDp", 330f), float("brushPanelHeightDp", 680f),
-        float("layerPanelXDp", 720f), float("layerPanelYDp", 16f), float("layerPanelWidthDp", 300f), float("layerPanelHeightDp", 620f),
+        float("brushPanelXDp", 720f), float("brushPanelYDp", 16f), float("brushPanelWidthDp", 220f), float("brushPanelHeightDp", 680f),
+        float("layerPanelXDp", 720f), float("layerPanelYDp", 16f), float("layerPanelWidthDp", 240f), float("layerPanelHeightDp", 620f),
         float("toolbarOffsetXDp", 16f), float("toolbarOffsetYDp", 16f), boolean("verticalToolbar"), enum("toolbarDock", ToolbarDock.FREE),
     ).normalizedWorkspace()
 
