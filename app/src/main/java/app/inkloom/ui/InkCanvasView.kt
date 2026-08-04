@@ -85,6 +85,7 @@ import app.inkloom.document.TwoFingerTapUndoGesture
 import app.inkloom.document.TwoPointerRotationGesture
 import app.inkloom.document.ThreeFingerTapRedoGesture
 import app.inkloom.document.ViewportTransform
+import app.inkloom.document.ViewportState
 import app.inkloom.document.WaterEdge
 import app.inkloom.document.WetMixDynamics
 import app.inkloom.model.EditorTool
@@ -140,6 +141,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var navigationSpan = 0f
     private var navigationMoved = false
     private var navigationTapEligible = false
+    private var externalViewportGestureContact = false
     private val navigationTouchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
     private val singleFingerDoubleTapUndoGesture = SingleFingerDoubleTapUndoGesture(navigationTouchSlop)
     private val twoFingerTapUndoGesture = TwoFingerTapUndoGesture(navigationTouchSlop)
@@ -233,6 +235,14 @@ class InkCanvasView(context: Context) : View(context) {
     var tool: EditorTool = EditorTool.PEN
     var forceNavigation: Boolean = false
     var rotateNavigation: Boolean = false
+    var externalViewportGestures: Boolean = false
+    var viewportInputTransformEnabled: Boolean = false
+    var viewportScale: Float = 1f
+    var viewportPanX: Float = 0f
+    var viewportPanY: Float = 0f
+    var viewportRotationDegrees: Float = 0f
+    var viewportCenterScreenX: Float = 0f
+    var viewportCenterScreenY: Float = 0f
     var inkColor: Int = Color.rgb(17, 17, 17)
     var baseWidth: Float = 5f
     var inkOpacity: Float = 1f
@@ -1028,23 +1038,29 @@ class InkCanvasView(context: Context) : View(context) {
             }
             return true
         }
+        val inputPoint = canvasPoint(event, pointerIndex)
         if (brushSizeDragActive) {
             when (event.actionMasked) {
-                MotionEvent.ACTION_MOVE -> if (event.pointerCount == 1) updateBrushSizeDrag(event.x, event.y) else finishBrushSizeDrag(cancelled = true)
+                MotionEvent.ACTION_MOVE -> if (event.pointerCount == 1) updateBrushSizeDrag(inputPoint.first, inputPoint.second) else finishBrushSizeDrag(cancelled = true)
                 MotionEvent.ACTION_UP -> finishBrushSizeDrag(cancelled = false)
                 MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_CANCEL -> finishBrushSizeDrag(cancelled = true)
             }
             return true
         }
         val elapsedSinceStylus = if (lastStylusSeenAt == Long.MIN_VALUE) Long.MAX_VALUE else event.eventTime - lastStylusSeenAt
-        if (handleCanvasGuideGesture(event, isStylus, elapsedSinceStylus)) return true
-        if (handleRulerGesture(event, isStylus, elapsedSinceStylus)) return true
+        if (handleCanvasGuideGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
+        if (handleRulerGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
         val buttonForcesNavigation = isStylus && (stylusButtonAction == StylusButtonAction.HAND || stylusHandNavigationContact)
         val isFingerNavigation = forceNavigation || buttonForcesNavigation || StylusInputClassifier.shouldNavigateOrRejectFinger(isStylus, fingerDrawingEnabled, event.pointerCount, event.getTouchMajor(pointerIndex), elapsedSinceStylus)
         if (isFingerNavigation) {
             if (activeTool != null) {
                 if (activeInputWasStylus && !forceNavigation && !buttonForcesNavigation) return true
                 cancelActiveGestureForNavigation()
+            }
+            if (externalViewportGestures && (externalViewportGestureContact || event.pointerCount >= 2)) {
+                if (event.pointerCount >= 2) externalViewportGestureContact = true
+                if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) externalViewportGestureContact = false
+                return true
             }
             scaleDetector.onTouchEvent(event)
             when (event.actionMasked) {
@@ -1137,8 +1153,8 @@ class InkCanvasView(context: Context) : View(context) {
                     if (navigationTapEligible && !movedFromDown && !scaleDetector.isInProgress) {
                         val link = PdfGotoLinkNavigation.hit(
                             pdfGotoLinks,
-                            (event.x / width.coerceAtLeast(1)).coerceIn(0f, 1f),
-                            (event.y / height.coerceAtLeast(1)).coerceIn(0f, 1f),
+                            (inputPoint.first / width.coerceAtLeast(1)).coerceIn(0f, 1f),
+                            (inputPoint.second / height.coerceAtLeast(1)).coerceIn(0f, 1f),
                         )
                         if (link != null) {
                             singleFingerDoubleTapUndoGesture.cancel()
@@ -1168,8 +1184,8 @@ class InkCanvasView(context: Context) : View(context) {
             return true
         }
         if (event.actionMasked == MotionEvent.ACTION_DOWN) singleFingerDoubleTapUndoGesture.cancel()
-        val normalizedX = (event.x / width.coerceAtLeast(1)).coerceIn(0f, 1f)
-        val normalizedY = (event.y / height.coerceAtLeast(1)).coerceIn(0f, 1f)
+        val normalizedX = (inputPoint.first / width.coerceAtLeast(1)).coerceIn(0f, 1f)
+        val normalizedY = (inputPoint.second / height.coerceAtLeast(1)).coerceIn(0f, 1f)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 parent?.requestDisallowInterceptTouchEvent(true)
@@ -1178,7 +1194,7 @@ class InkCanvasView(context: Context) : View(context) {
                 val motionCtrlPressed = event.metaState and KeyEvent.META_CTRL_ON != 0
                 val motionAltPressed = event.metaState and KeyEvent.META_ALT_ON != 0
                 if ((motionCtrlPressed || ctrlModifierHeld) && (motionAltPressed || altModifierHeld) && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER)) {
-                    beginBrushSizeDrag(event.x, event.y, if (activeTool == EditorTool.ERASER) eraserWidth else baseWidth)
+                    beginBrushSizeDrag(inputPoint.first, inputPoint.second, if (activeTool == EditorTool.ERASER) eraserWidth else baseWidth)
                     return true
                 }
                 if (activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) && activeLayerId in protectedLayerIds) {
@@ -1192,7 +1208,7 @@ class InkCanvasView(context: Context) : View(context) {
                     return true
                 }
                 if (activeTool == EditorTool.EYEDROPPER) {
-                    onColorSampled(sampleRenderedColor(event.x, event.y))
+                    onColorSampled(sampleRenderedColor(inputPoint.first, inputPoint.second))
                     return true
                 }
                 if (activeTool == EditorTool.SELECT) {
@@ -1234,10 +1250,10 @@ class InkCanvasView(context: Context) : View(context) {
             }
             MotionEvent.ACTION_MOVE -> {
                 if (activeTool == EditorTool.EYEDROPPER) {
-                    onColorSampled(sampleRenderedColor(event.x, event.y))
+                    onColorSampled(sampleRenderedColor(inputPoint.first, inputPoint.second))
                 }
                 else if (activeTool == EditorTool.ERASER) {
-                    for (i in 0 until event.historySize) eraseAlong(event.getHistoricalX(i) / width.coerceAtLeast(1), event.getHistoricalY(i) / height.coerceAtLeast(1), event.getHistoricalPressure(i))
+                    for (i in 0 until event.historySize) historicalCanvasPoint(event, 0, i).let { point -> eraseAlong(point.first / width.coerceAtLeast(1), point.second / height.coerceAtLeast(1), event.getHistoricalPressure(i)) }
                     eraseAlong(normalizedX, normalizedY, event.pressure)
                 }
                 else if (activeTool == EditorTool.SELECT) {
@@ -1278,14 +1294,14 @@ class InkCanvasView(context: Context) : View(context) {
                         invalidateStrokeCache(movedBefore, strokes.filter { it.id in selectedStrokeIds })
                     } else {
                         if (selectionShape == SelectionShape.FREEFORM) {
-                            for (i in 0 until event.historySize) appendSelectionPoint(event.getHistoricalX(i) / width.coerceAtLeast(1), event.getHistoricalY(i) / height.coerceAtLeast(1))
+                            for (i in 0 until event.historySize) historicalCanvasPoint(event, 0, i).let { point -> appendSelectionPoint(point.first / width.coerceAtLeast(1), point.second / height.coerceAtLeast(1)) }
                         }
                         appendSelectionPoint(normalizedX, normalizedY)
                     }
                 }
                 else if (activeTool == EditorTool.SHAPE) {
                     if (shapeKind == ShapeKind.FREEFORM) {
-                        for (i in 0 until event.historySize) appendShapePoint(event.getHistoricalX(i) / width.coerceAtLeast(1), event.getHistoricalY(i) / height.coerceAtLeast(1))
+                        for (i in 0 until event.historySize) historicalCanvasPoint(event, 0, i).let { point -> appendShapePoint(point.first / width.coerceAtLeast(1), point.second / height.coerceAtLeast(1)) }
                         appendShapePoint(normalizedX, normalizedY)
                     } else {
                         val angled = ShapeGeometry.snapEnd(shapeStart ?: ShapePoint(normalizedX, normalizedY), ShapePoint(normalizedX, normalizedY), pageModelWidth, pageModelHeight)
@@ -1294,15 +1310,15 @@ class InkCanvasView(context: Context) : View(context) {
                     }
                 }
                 else if (activeTool == EditorTool.LASER) {
-                    for (i in 0 until event.historySize) laserTrail.append(
-                        event.getHistoricalX(i) / width.coerceAtLeast(1),
-                        event.getHistoricalY(i) / height.coerceAtLeast(1),
+                    for (i in 0 until event.historySize) historicalCanvasPoint(event, 0, i).let { point -> laserTrail.append(
+                        point.first / width.coerceAtLeast(1),
+                        point.second / height.coerceAtLeast(1),
                         event.getHistoricalEventTime(i),
-                    )
+                    ) }
                     laserTrail.append(normalizedX, normalizedY, event.eventTime)
                 }
                 else {
-                    for (i in 0 until event.historySize) addPoint(event.getHistoricalX(i) / width, event.getHistoricalY(i) / height, event.getHistoricalPressure(i), event.getHistoricalEventTime(i), event.getHistoricalAxisValue(MotionEvent.AXIS_TILT, i), event.getHistoricalOrientation(i))
+                    for (i in 0 until event.historySize) historicalCanvasPoint(event, 0, i).let { point -> addPoint(point.first / width, point.second / height, event.getHistoricalPressure(i), event.getHistoricalEventTime(i), event.getHistoricalAxisValue(MotionEvent.AXIS_TILT, i), event.getHistoricalOrientation(i)) }
                     updateContinuousPlotInput(normalizedX, normalizedY, event.pressure, event.getAxisValue(MotionEvent.AXIS_TILT), event.orientation)
                     addPoint(normalizedX, normalizedY, event.pressure, event.eventTime, event.getAxisValue(MotionEvent.AXIS_TILT), event.orientation)
                 }
@@ -1318,7 +1334,7 @@ class InkCanvasView(context: Context) : View(context) {
                     selectionGestureBefore?.let { restoreStrokeSnapshot(it) }
                     lassoPoints.clear(); movingSelection = false; selectionMoved = false; selectionGestureBefore = null
                 } else if (activeTool == EditorTool.EYEDROPPER) {
-                    onColorSampled(sampleRenderedColor(event.x, event.y))
+                    onColorSampled(sampleRenderedColor(inputPoint.first, inputPoint.second))
                 } else if (activeTool == EditorTool.ERASER) {
                     eraseAlong(normalizedX, normalizedY, event.pressure)
                     finishEraserGesture()
@@ -1447,6 +1463,34 @@ class InkCanvasView(context: Context) : View(context) {
         return hypot(getRawX(1) - getRawX(0), getRawY(1) - getRawY(0))
     }
 
+    private fun canvasPoint(event: MotionEvent, pointerIndex: Int = event.actionIndex.coerceIn(0, event.pointerCount - 1)): Pair<Float, Float> {
+        if (!viewportInputTransformEnabled || width <= 0 || height <= 0) return event.getX(pointerIndex) to event.getY(pointerIndex)
+        return ViewportTransform.screenToLocal(
+            event.getRawX(pointerIndex),
+            event.getRawY(pointerIndex),
+            viewportCenterScreenX,
+            viewportCenterScreenY,
+            width.toFloat(),
+            height.toFloat(),
+            ViewportState(viewportScale, viewportPanX, viewportPanY, viewportRotationDegrees),
+        )
+    }
+
+    private fun historicalCanvasPoint(event: MotionEvent, pointerIndex: Int, position: Int): Pair<Float, Float> {
+        if (!viewportInputTransformEnabled || width <= 0 || height <= 0) return event.getHistoricalX(pointerIndex, position) to event.getHistoricalY(pointerIndex, position)
+        val rawOffsetX = event.getRawX(pointerIndex) - event.getX(pointerIndex)
+        val rawOffsetY = event.getRawY(pointerIndex) - event.getY(pointerIndex)
+        return ViewportTransform.screenToLocal(
+            event.getHistoricalX(pointerIndex, position) + rawOffsetX,
+            event.getHistoricalY(pointerIndex, position) + rawOffsetY,
+            viewportCenterScreenX,
+            viewportCenterScreenY,
+            width.toFloat(),
+            height.toFloat(),
+            ViewportState(viewportScale, viewportPanX, viewportPanY, viewportRotationDegrees),
+        )
+    }
+
     private fun cancelActiveGestureForNavigation() {
         stopContinuousPlot()
         currentPoints.clear()
@@ -1497,7 +1541,7 @@ class InkCanvasView(context: Context) : View(context) {
         postInvalidateOnAnimation()
     }
 
-    private fun handleCanvasGuideGesture(event: MotionEvent, isStylus: Boolean, elapsedSinceStylus: Long): Boolean {
+    private fun handleCanvasGuideGesture(event: MotionEvent, canvasX: Float, canvasY: Float, isStylus: Boolean, elapsedSinceStylus: Long): Boolean {
         if (isStylus || !canvasGuideState.alignmentGuidesEnabled) return false
         val existing = canvasGuideGestureMode
         if (existing == null) {
@@ -1505,7 +1549,7 @@ class InkCanvasView(context: Context) : View(context) {
                 elapsedSinceStylus <= StylusInputClassifier.RECENT_STYLUS_WINDOW_MS ||
                 event.getTouchMajor(event.actionIndex) >= StylusInputClassifier.PALM_TOUCH_MAJOR_PX
             ) return false
-            val hit = CanvasGuides.hitTest(canvasGuideState, event.x, event.y, width.toFloat(), height.toFloat(), GUIDE_TOUCH_RADIUS_DP * resources.displayMetrics.density) ?: return false
+            val hit = CanvasGuides.hitTest(canvasGuideState, canvasX, canvasY, width.toFloat(), height.toFloat(), GUIDE_TOUCH_RADIUS_DP * resources.displayMetrics.density) ?: return false
             canvasGuideGestureMode = hit
             canvasGuideGestureStart = canvasGuideState
             parent?.requestDisallowInterceptTouchEvent(true)
@@ -1513,7 +1557,7 @@ class InkCanvasView(context: Context) : View(context) {
         }
         when (event.actionMasked) {
             MotionEvent.ACTION_MOVE -> if (event.pointerCount == 1) {
-                canvasGuideState = CanvasGuides.move(canvasGuideState, existing, event.x, event.y, width.toFloat(), height.toFloat())
+                canvasGuideState = CanvasGuides.move(canvasGuideState, existing, canvasX, canvasY, width.toFloat(), height.toFloat())
             }
             MotionEvent.ACTION_UP -> {
                 onCanvasGuideChanged(canvasGuideState)
@@ -1576,7 +1620,7 @@ class InkCanvasView(context: Context) : View(context) {
         GUIDE_SNAP_TOLERANCE_DP * resources.displayMetrics.density,
     )
 
-    private fun handleRulerGesture(event: MotionEvent, isStylus: Boolean, elapsedSinceStylus: Long): Boolean {
+    private fun handleRulerGesture(event: MotionEvent, canvasX: Float, canvasY: Float, isStylus: Boolean, elapsedSinceStylus: Long): Boolean {
         if (isStylus || !rulerEnabled) return false
         val existing = rulerGestureMode
         if (existing == null) {
@@ -1584,22 +1628,22 @@ class InkCanvasView(context: Context) : View(context) {
                 elapsedSinceStylus <= StylusInputClassifier.RECENT_STYLUS_WINDOW_MS ||
                 event.getTouchMajor(event.actionIndex) >= StylusInputClassifier.PALM_TOUCH_MAJOR_PX
             ) return false
-            val hit = RulerGuide.hitTest(rulerGuide, event.x, event.y, width.toFloat(), height.toFloat(), RULER_TOUCH_RADIUS_DP * resources.displayMetrics.density) ?: return false
+            val hit = RulerGuide.hitTest(rulerGuide, canvasX, canvasY, width.toFloat(), height.toFloat(), RULER_TOUCH_RADIUS_DP * resources.displayMetrics.density) ?: return false
             rulerGestureMode = hit
             rulerGestureStart = rulerGuide
-            rulerGestureX = event.x
-            rulerGestureY = event.y
+            rulerGestureX = canvasX
+            rulerGestureY = canvasY
             parent?.requestDisallowInterceptTouchEvent(true)
             return true
         }
         when (event.actionMasked) {
             MotionEvent.ACTION_MOVE -> if (event.pointerCount == 1) {
                 rulerGuide = when (existing) {
-                    RulerGestureMode.MOVE -> RulerGuide.moveBy(rulerGuide, event.x - rulerGestureX, event.y - rulerGestureY, width.toFloat(), height.toFloat())
-                    RulerGestureMode.ROTATE -> RulerGuide.rotateToward(rulerGuide, event.x, event.y, width.toFloat(), height.toFloat())
+                    RulerGestureMode.MOVE -> RulerGuide.moveBy(rulerGuide, canvasX - rulerGestureX, canvasY - rulerGestureY, width.toFloat(), height.toFloat())
+                    RulerGestureMode.ROTATE -> RulerGuide.rotateToward(rulerGuide, canvasX, canvasY, width.toFloat(), height.toFloat())
                 }
-                rulerGestureX = event.x
-                rulerGestureY = event.y
+                rulerGestureX = canvasX
+                rulerGestureY = canvasY
             }
             MotionEvent.ACTION_UP -> {
                 onRulerGuideChanged(rulerGuide)

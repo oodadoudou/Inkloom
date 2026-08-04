@@ -148,6 +148,31 @@ class InkCanvasNavigationTest {
         assertEquals("A 25 px finger move must pan exactly 25 px at 4x zoom", 20f, state.panY, .001f)
     }
 
+    @Test fun stylusContactMapsBackToTheVisiblePageAfterViewportTransform() {
+        val view = canvas().apply {
+            tool = EditorTool.PEN
+            viewportInputTransformEnabled = true
+            viewportScale = 2f
+            viewportPanX = 100f
+            viewportPanY = -40f
+            viewportCenterScreenX = 500f
+            viewportCenterScreenY = 500f
+        }
+        var firstX = Float.NaN
+        var firstY = Float.NaN
+        view.onStrokeCommitted = { stroke ->
+            firstX = stroke.points.first().x
+            firstY = stroke.points.first().y
+        }
+
+        sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 700f, 660f)
+        sendStylus(view, 20L, MotionEvent.ACTION_MOVE, 720f, 680f)
+        sendStylus(view, 40L, MotionEvent.ACTION_UP, 720f, 680f)
+
+        assertEquals("The rendered pen contact must land under the physical stylus X", .55f, firstX, .002f)
+        assertEquals("The rendered pen contact must land under the physical stylus Y", .60f, firstY, .002f)
+    }
+
     @Test fun secondFingerCancelsAnInProgressFingerStrokeBeforeNavigation() {
         val view = canvas().apply {
             tool = EditorTool.PEN

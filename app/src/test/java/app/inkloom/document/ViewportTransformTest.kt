@@ -47,6 +47,26 @@ class ViewportTransformTest {
         assertEquals(focusY, after.panY + after.scale * pageY, .001f)
     }
 
+    @Test fun screenPointMapsBackToTheSamePagePointAfterZoomPanAndRotation() {
+        val viewport = ViewportState(scale = 2.5f, panX = 90f, panY = -35f, rotationDegrees = 30f)
+        val localX = 640f
+        val localY = 310f
+        val centerX = 900f
+        val centerY = 600f
+        val localWidth = 1_000f
+        val localHeight = 800f
+        val radians = Math.toRadians(viewport.rotationDegrees.toDouble())
+        val dx = (localX - localWidth / 2f) * viewport.scale
+        val dy = (localY - localHeight / 2f) * viewport.scale
+        val screenX = centerX + viewport.panX + dx * kotlin.math.cos(radians).toFloat() - dy * kotlin.math.sin(radians).toFloat()
+        val screenY = centerY + viewport.panY + dx * kotlin.math.sin(radians).toFloat() + dy * kotlin.math.cos(radians).toFloat()
+
+        val mapped = ViewportTransform.screenToLocal(screenX, screenY, centerX, centerY, localWidth, localHeight, viewport)
+
+        assertEquals(localX, mapped.first, .001f)
+        assertEquals(localY, mapped.second, .001f)
+    }
+
     @Test fun pinchHandoffSelectsTheFingerThatRemainsOnScreen() {
         assertEquals(1, ViewportTransform.remainingPointerIndex(2, 0))
         assertEquals(0, ViewportTransform.remainingPointerIndex(2, 1))

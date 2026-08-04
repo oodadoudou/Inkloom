@@ -11,6 +11,29 @@ data class ViewportGeometry(
 )
 
 object ViewportTransform {
+    /** Maps a physical screen point back into the untransformed page View. This
+     * is the inverse of the centered graphicsLayer transform used by the editor. */
+    fun screenToLocal(
+        screenX: Float,
+        screenY: Float,
+        viewportCenterScreenX: Float,
+        viewportCenterScreenY: Float,
+        localWidth: Float,
+        localHeight: Float,
+        viewport: ViewportState,
+    ): Pair<Float, Float> {
+        val safe = sanitize(viewport)
+        val dx = (screenX.takeIf(Float::isFinite) ?: viewportCenterScreenX) - viewportCenterScreenX - safe.panX
+        val dy = (screenY.takeIf(Float::isFinite) ?: viewportCenterScreenY) - viewportCenterScreenY - safe.panY
+        val radians = Math.toRadians((-safe.rotationDegrees).toDouble())
+        val cosine = kotlin.math.cos(radians).toFloat()
+        val sine = kotlin.math.sin(radians).toFloat()
+        val unrotatedX = dx * cosine - dy * sine
+        val unrotatedY = dx * sine + dy * cosine
+        return localWidth.coerceAtLeast(1f) / 2f + unrotatedX / safe.scale to
+            localHeight.coerceAtLeast(1f) / 2f + unrotatedY / safe.scale
+    }
+
     /** Applies a screen-space translation. Gesture coordinates must use this path
      * when the page View itself is scaled, otherwise local deltas change coordinate
      * systems between MotionEvents and the page appears to drift. */
