@@ -1186,7 +1186,7 @@ private fun EditorScreen(
                         onClick = { applyBuiltInWorkspace(BuiltInWorkspace.NOTE) },
                     )
                     DropdownMenuItem(
-                        text = { Column { Text(tr("Drawing workspace · CSP", "绘画工作区 · CSP")); Text(tr("Floating sub tools, properties, layers, and vertical tools", "浮动子工具、工具属性、图层与竖向工具"), fontSize = 10.sp, color = MutedInk) } },
+                        text = { Column { Text(tr("Drawing workspace", "绘画工作区")); Text(tr("CSP layout · floating sub tools, properties, layers, and vertical tools", "CSP 布局 · 浮动子工具、工具属性、图层与竖向工具"), fontSize = 10.sp, color = MutedInk) } },
                         leadingIcon = { Icon(Icons.Outlined.Palette, null) },
                         onClick = { applyBuiltInWorkspace(BuiltInWorkspace.DRAWING) },
                     )

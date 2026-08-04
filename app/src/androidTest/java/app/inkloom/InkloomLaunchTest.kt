@@ -51,7 +51,9 @@ class InkloomLaunchTest {
     private val forceEnglishRule = TestRule { base, _ ->
         object : Statement() {
             override fun evaluate() {
-                ApplicationProvider.getApplicationContext<android.content.Context>()
+                val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+                java.io.File(context.filesDir, "page-templates.json").delete()
+                context
                     .getSharedPreferences("inkloom_settings", android.content.Context.MODE_PRIVATE)
                     .edit()
                     .putString("language", "ENGLISH")
