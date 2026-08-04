@@ -119,6 +119,8 @@ class InkCanvasView(context: Context) : View(context) {
     private val editHistory = StrokeEditHistory()
     private val currentPoints = mutableListOf<StrokePoint>()
     private var currentStrokeId = java.util.UUID.randomUUID().toString()
+    private var liveStrokeBitmap: Bitmap? = null
+    private var liveStrokeCheckpoint = 0
     private var backgroundBitmap: Bitmap? = null
     private val selectedStrokeIds = linkedSetOf<String>()
     private var selectionGestureBefore: List<InkStroke>? = null
@@ -231,6 +233,7 @@ class InkCanvasView(context: Context) : View(context) {
     private val strokeTiles = mutableMapOf<StrokeTileKey, Bitmap>()
     private val dirtyStrokeTiles = linkedSetOf<StrokeTileKey>()
     internal var onTileRendered: ((StrokeTileKey, Int) -> Unit)? = null
+    internal var onLivePreviewRendered: ((Int) -> Unit)? = null
 
     var tool: EditorTool = EditorTool.PEN
     var forceNavigation: Boolean = false
@@ -642,7 +645,7 @@ class InkCanvasView(context: Context) : View(context) {
             canvas.drawPath(lassoPath, paint)
         }
         drawShapePreview(canvas)
-        if (currentPoints.isNotEmpty()) drawLayeredStrokes(canvas, listOf(makeStroke(currentPoints).copy(grainCompositeMode = grainCompositeMode)))
+        drawLiveStroke(canvas)
         drawAlignmentGuides(canvas)
         drawRulerGuide(canvas)
         drawLaserTrail(canvas, SystemClock.uptimeMillis())
@@ -651,7 +654,10 @@ class InkCanvasView(context: Context) : View(context) {
 
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
         super.onSizeChanged(width, height, oldWidth, oldHeight)
-        if (width != oldWidth || height != oldHeight) resetStrokeTiles()
+        if (width != oldWidth || height != oldHeight) {
+            resetLiveStrokePreview()
+            resetStrokeTiles()
+        }
     }
 
     override fun onDetachedFromWindow() {
@@ -661,6 +667,7 @@ class InkCanvasView(context: Context) : View(context) {
         stopContinuousPlot()
         laserTrail.clear()
         recycleStrokeTiles()
+        resetLiveStrokePreview()
         tipCache.values.forEach(Bitmap::recycle); tipCache.clear()
         super.onDetachedFromWindow()
     }
@@ -747,6 +754,49 @@ class InkCanvasView(context: Context) : View(context) {
             layerStrokes.forEach { drawStroke(canvas, it) }
             checkpoint?.let(canvas::restoreToCount)
         }
+    }
+
+    /**
+     * Keeps long in-progress strokes responsive. The stable prefix is rasterized only at coarse
+     * checkpoints; each frame then renders the small live tail instead of replaying every stamp.
+     * The committed stroke is still rendered once from its complete vector data.
+     */
+    private fun drawLiveStroke(canvas: Canvas) {
+        if (currentPoints.isEmpty()) return
+        if (currentPoints.size < LIVE_STROKE_CACHE_START_POINTS || width <= 0 || height <= 0 || width.toLong() * height.toLong() > MAX_CACHE_PIXELS) {
+            drawLayeredStrokes(canvas, listOf(makeStroke(currentPoints)))
+            onLivePreviewRendered?.invoke(currentPoints.size)
+            return
+        }
+        val desiredCheckpoint = ((currentPoints.size - LIVE_STROKE_TAIL_POINTS) / LIVE_STROKE_CHECKPOINT_POINTS) * LIVE_STROKE_CHECKPOINT_POINTS
+        if (desiredCheckpoint > liveStrokeCheckpoint || liveStrokeBitmap?.width != width || liveStrokeBitmap?.height != height) {
+            val bitmap = liveStrokeBitmap?.takeIf { it.width == width && it.height == height } ?: runCatching {
+                Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            }.getOrNull()
+            if (bitmap == null) {
+                drawLayeredStrokes(canvas, listOf(makeStroke(currentPoints)))
+                onLivePreviewRendered?.invoke(currentPoints.size)
+                return
+            }
+            if (bitmap !== liveStrokeBitmap) {
+                liveStrokeBitmap?.recycle()
+                liveStrokeBitmap = bitmap
+            }
+            bitmap.eraseColor(Color.TRANSPARENT)
+            liveStrokeCheckpoint = desiredCheckpoint.coerceAtLeast(1)
+            drawLayeredStrokes(Canvas(bitmap), listOf(makeStroke(currentPoints.take(liveStrokeCheckpoint))))
+        }
+        liveStrokeBitmap?.let { canvas.drawBitmap(it, 0f, 0f, null) }
+        val tailStart = (liveStrokeCheckpoint - 1).coerceAtLeast(0)
+        val tail = currentPoints.subList(tailStart, currentPoints.size)
+        drawLayeredStrokes(canvas, listOf(makeStroke(tail)))
+        onLivePreviewRendered?.invoke(tail.size)
+    }
+
+    private fun resetLiveStrokePreview() {
+        liveStrokeBitmap?.recycle()
+        liveStrokeBitmap = null
+        liveStrokeCheckpoint = 0
     }
 
     private fun drawStroke(canvas: Canvas, stroke: InkStroke) {
@@ -1240,6 +1290,7 @@ class InkCanvasView(context: Context) : View(context) {
                     return true
                 }
                 currentPoints.clear()
+                resetLiveStrokePreview()
                 currentStrokeId = java.util.UUID.randomUUID().toString()
                 activeCanvasSnapConstraint = if (!rulerEnabled && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
                     CanvasGuides.constraintAt(canvasGuideState, normalizedX, normalizedY, pageModelWidth, pageModelHeight, width.toFloat(), height.toFloat(), GUIDE_SNAP_TOLERANCE_DP * resources.displayMetrics.density)
@@ -1328,6 +1379,7 @@ class InkCanvasView(context: Context) : View(context) {
                 if (event.actionMasked == MotionEvent.ACTION_UP) performClick()
                 if (event.actionMasked == MotionEvent.ACTION_CANCEL || event.flags and MotionEvent.FLAG_CANCELED != 0) {
                     currentPoints.clear()
+                    resetLiveStrokePreview()
                     if (activeTool == EditorTool.LASER) laserTrail.cancelActive()
                     shapeStart = null; shapeEnd = null; shapeFreeformPoints.clear()
                     if (activeTool == EditorTool.ERASER) cancelEraserGesture()
@@ -1345,6 +1397,7 @@ class InkCanvasView(context: Context) : View(context) {
                     invalidateStrokeCache(emptyList(), listOf(stroke))
                     commitStrokeEdit(before, strokes)
                     currentPoints.clear()
+                    resetLiveStrokePreview()
                 } else if (activeTool == EditorTool.SELECT) {
                     if (movingSelection && selectionMoved) {
                         selectionGestureBefore?.let { commitStrokeEdit(it, strokes) }
@@ -1494,6 +1547,7 @@ class InkCanvasView(context: Context) : View(context) {
     private fun cancelActiveGestureForNavigation() {
         stopContinuousPlot()
         currentPoints.clear()
+        resetLiveStrokePreview()
         laserTrail.cancelActive()
         rulerGestureMode = null
         canvasGuideGestureMode = null
@@ -2287,6 +2341,9 @@ class InkCanvasView(context: Context) : View(context) {
     private companion object {
         const val REFERENCE_WIDTH = 1600f
         const val MAX_CACHE_PIXELS = 16_000_000L
+        const val LIVE_STROKE_CACHE_START_POINTS = 96
+        const val LIVE_STROKE_CHECKPOINT_POINTS = 96
+        const val LIVE_STROKE_TAIL_POINTS = 48
         const val MAX_ERASER_SAMPLES_PER_EVENT = 256
         const val VELOCITY_FULL_SCALE_PX_PER_MS = 2f
         const val VELOCITY_SMOOTHING = .65f
