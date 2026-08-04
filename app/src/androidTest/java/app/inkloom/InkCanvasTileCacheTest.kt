@@ -17,6 +17,30 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class InkCanvasTileCacheTest {
+    @Test fun longLiveStrokeRendersOnlyItsShortTailPerFrame() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val previewPointCounts = mutableListOf<Int>()
+            val view = InkCanvasView(InstrumentationRegistry.getInstrumentation().targetContext).apply {
+                layout(0, 0, 1024, 1024)
+                tool = EditorTool.PEN
+                onLivePreviewRendered = previewPointCounts::add
+            }
+            val bitmap = Bitmap.createBitmap(1024, 1024, Bitmap.Config.ARGB_8888)
+            try {
+                view.dispatchStylus(MotionEvent.ACTION_DOWN, 100f, 200f, 10L)
+                repeat(250) { point ->
+                    view.dispatchStylus(MotionEvent.ACTION_MOVE, 100f + point * 3f, 200f + (point % 7), 20L + point)
+                }
+                view.draw(Canvas(bitmap))
+
+                assertTrue("Live preview replayed ${previewPointCounts.lastOrNull()} points", previewPointCounts.lastOrNull() in 1..96)
+                view.dispatchStylus(MotionEvent.ACTION_UP, 850f, 200f, 300L)
+            } finally {
+                bitmap.recycle()
+            }
+        }
+    }
+
     @Test fun strokeCrossingTileSeamsRendersWithoutPixelGaps() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val view = InkCanvasView(InstrumentationRegistry.getInstrumentation().targetContext).apply {
