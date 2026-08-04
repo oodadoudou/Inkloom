@@ -63,6 +63,24 @@ class StrokeTileIndex(val tileSizePx: Int = DEFAULT_TILE_SIZE_PX) {
 
     fun candidates(key: StrokeTileKey): Set<String> = tileStrokeIds[key].orEmpty()
 
+    /** Returns only strokes whose conservative tile bounds overlap the supplied pixel rectangle. */
+    fun candidates(leftPx: Float, topPx: Float, rightPx: Float, bottomPx: Float): Set<String> {
+        if (widthPx <= 0 || heightPx <= 0 || columnCount == 0 || rowCount == 0) return emptySet()
+        val left = minOf(leftPx, rightPx).coerceIn(0f, widthPx.toFloat())
+        val right = maxOf(leftPx, rightPx).coerceIn(0f, widthPx.toFloat())
+        val top = minOf(topPx, bottomPx).coerceIn(0f, heightPx.toFloat())
+        val bottom = maxOf(topPx, bottomPx).coerceIn(0f, heightPx.toFloat())
+        val firstColumn = floor(left / tileSizePx).toInt().coerceIn(0, columnCount - 1)
+        val lastColumn = floor((right - .001f).coerceAtLeast(left) / tileSizePx).toInt().coerceIn(firstColumn, columnCount - 1)
+        val firstRow = floor(top / tileSizePx).toInt().coerceIn(0, rowCount - 1)
+        val lastRow = floor((bottom - .001f).coerceAtLeast(top) / tileSizePx).toInt().coerceIn(firstRow, rowCount - 1)
+        return buildSet {
+            for (row in firstRow..lastRow) for (column in firstColumn..lastColumn) {
+                addAll(tileStrokeIds[StrokeTileKey(column, row)].orEmpty())
+            }
+        }
+    }
+
     fun allTiles(): Set<StrokeTileKey> = buildSet {
         repeat(rowCount) { row -> repeat(columnCount) { column -> add(StrokeTileKey(column, row)) } }
     }

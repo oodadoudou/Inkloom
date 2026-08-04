@@ -52,6 +52,21 @@ class StrokeTileIndexTest {
         assertTrue(replacement.id in candidates)
     }
 
+    @Test fun eraserAreaQueryDoesNotScanTheWholePage() {
+        val strokes = List(5_000) { position ->
+            val column = position % 100
+            val row = position / 100
+            stroke("s$position", (column + .5f) / 100f, (row + .5f) / 50f)
+        }
+        val index = StrokeTileIndex(tileSizePx = 128)
+        index.rebuild(strokes, 2_560, 1_600)
+
+        val candidates = index.candidates(1_260f, 780f, 1_300f, 820f)
+
+        assertTrue("Eraser selected ${candidates.size} of ${strokes.size} strokes", candidates.size < 100)
+        assertTrue(candidates.isNotEmpty())
+    }
+
     @Test fun sprayAndDualFootprintsConservativelyReachNeighboringTiles() {
         val index = StrokeTileIndex(tileSizePx = 256)
         val broad = InkStroke(

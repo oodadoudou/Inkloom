@@ -2038,11 +2038,21 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun eraseAt(x: Float, y: Float, pressure: Float) {
         val eraserRadius = eraserRadiusPixels(pressure)
+        if (strokeTileIndex.widthPx != width || strokeTileIndex.heightPx != height) {
+            strokeTileIndex.rebuild(strokes, width, height)
+        }
+        val candidateIds = strokeTileIndex.candidates(
+            x * width - eraserRadius,
+            y * height - eraserRadius,
+            x * width + eraserRadius,
+            y * height + eraserRadius,
+        )
         var changed = false
         val changedBefore = mutableListOf<InkStroke>()
         val changedAfter = mutableListOf<InkStroke>()
         for (index in strokes.indices.reversed()) {
             val stroke = strokes[index]
+            if (stroke.id !in candidateIds) continue
             if (stroke.id in protectedStrokeIds) continue
             val strokeRadius = stroke.width.coerceIn(.1f, 800f) * width.coerceAtLeast(1) / REFERENCE_WIDTH / 2f
             val combinedRadius = eraserRadius + strokeRadius
