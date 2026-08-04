@@ -29,7 +29,7 @@ class WorkspacePanelPlacementTest {
         assertEquals(8f, result.xDp, .001f)
         assertEquals(8f, result.yDp, .001f)
         assertEquals(150f, result.widthDp, .001f)
-        assertEquals(220f, result.heightDp, .001f)
+        assertEquals(120f, result.heightDp, .001f)
     }
 
     @Test fun topLeftResizeKeepsTheOppositeCornerAnchored() {
@@ -78,5 +78,12 @@ class WorkspacePanelPlacementTest {
         assertEquals(8f, result.yDp, .001f)
         assertEquals(104f, result.widthDp, .001f)
         assertEquals(164f, result.heightDp, .001f)
+    }
+
+    @Test fun cspStylePanelsCanShrinkIntoACompactRail() {
+        val result = WorkspacePanelPlacement.clamp(40f, 40f, 20f, 20f, 1_200f, 800f, 96f)
+
+        assertEquals(96f, result.widthDp, .001f)
+        assertEquals(120f, result.heightDp, .001f)
     }
 }

@@ -9,7 +9,7 @@ data class WorkspacePanelBounds(
 
 object WorkspacePanelPlacement {
     const val MARGIN_DP = 8f
-    const val MIN_HEIGHT_DP = 220f
+    const val MIN_HEIGHT_DP = 120f
     const val MAX_HEIGHT_DP = 1_000f
 
     fun clamp(

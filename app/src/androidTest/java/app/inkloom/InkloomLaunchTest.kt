@@ -661,6 +661,16 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("Objects").assertIsDisplayed()
     }
 
+    @Test fun pageThumbnailOpensItsCspColorAndLayerStack() {
+        createNotebookAndOpenEditor()
+
+        composeRule.onNodeWithContentDescription("Open layers for this page").performClick()
+
+        composeRule.onNodeWithText("Color wheel").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Layers").onLast().assertIsDisplayed()
+        composeRule.onNodeWithText("Current page").assertIsDisplayed()
+    }
+
     @Test fun layerPanelCreatesFoldersMovesLayersAndCollapsesChildren() {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Layers").performClick()

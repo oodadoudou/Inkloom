@@ -44,8 +44,10 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
@@ -62,6 +64,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -1277,9 +1280,9 @@ private fun EditorScreen(
         val workspaceHeightDp = maxHeight.value
         val bottomNavigationPadding = 0.dp
         val usableWorkspaceHeightDp = workspaceHeightDp.coerceAtLeast(1f)
-        val visiblePagePanelBounds = WorkspacePanelPlacement.clamp(pagePanelBounds, workspaceWidthDp, usableWorkspaceHeightDp, minimumWidthDp = 140f)
-        val visibleBrushPanelBounds = WorkspacePanelPlacement.clamp(brushPanelBounds, workspaceWidthDp, usableWorkspaceHeightDp, minimumWidthDp = 280f)
-        val visibleLayerPanelBounds = WorkspacePanelPlacement.clamp(layerPanelBounds, workspaceWidthDp, usableWorkspaceHeightDp, minimumWidthDp = 260f)
+        val visiblePagePanelBounds = WorkspacePanelPlacement.clamp(pagePanelBounds, workspaceWidthDp, usableWorkspaceHeightDp, minimumWidthDp = 96f)
+        val visibleBrushPanelBounds = WorkspacePanelPlacement.clamp(brushPanelBounds, workspaceWidthDp, usableWorkspaceHeightDp, minimumWidthDp = 176f)
+        val visibleLayerPanelBounds = WorkspacePanelPlacement.clamp(layerPanelBounds, workspaceWidthDp, usableWorkspaceHeightDp, minimumWidthDp = 176f)
         LaunchedEffect(visiblePagePanelBounds) { if (pagePanelBounds != visiblePagePanelBounds) pagePanelBounds = visiblePagePanelBounds }
         LaunchedEffect(visibleBrushPanelBounds) { if (brushPanelBounds != visibleBrushPanelBounds) brushPanelBounds = visibleBrushPanelBounds }
         LaunchedEffect(visibleLayerPanelBounds) { if (layerPanelBounds != visibleLayerPanelBounds) layerPanelBounds = visibleLayerPanelBounds }
@@ -1321,9 +1324,9 @@ private fun EditorScreen(
         fun movePanelTab(panel: WorkspacePanelKind, delta: Int) =
             onSettingsChange(settings.copy(panelTabOrder = WorkspacePanelTabs.move(settings.panelTabOrder, panel, delta)))
         fun minimumPanelWidth(panel: WorkspacePanelKind): Float = when (panel) {
-            WorkspacePanelKind.PAGES -> 140f
-            WorkspacePanelKind.BRUSHES -> 280f
-            WorkspacePanelKind.LAYERS -> 260f
+            WorkspacePanelKind.PAGES -> 96f
+            WorkspacePanelKind.BRUSHES -> 176f
+            WorkspacePanelKind.LAYERS -> 176f
         }
         fun panelName(panel: WorkspacePanelKind): String = when (panel) {
             WorkspacePanelKind.PAGES -> "pages"
@@ -1633,7 +1636,7 @@ private fun EditorScreen(
                 onDock = { changePanelDock(WorkspacePanelKind.PAGES, it) },
                 onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
                 pageTemplates = pageTemplates,
-                onSelect = ::selectPageWithViewport, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
+                onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> selectPageWithViewport(pageId); layersOpen = true; onSettingsChange(settings.copy(showLayerPanel = true)) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
                 onApplyTemplate = onApplyPageTemplate, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
                 onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate,
                 onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
@@ -2221,7 +2224,7 @@ private fun EditorScreen(
                 onDock = { changePanelDock(WorkspacePanelKind.PAGES, it) },
                 onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
                 pageTemplates = pageTemplates,
-                onSelect = ::selectPageWithViewport, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
+                onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> selectPageWithViewport(pageId); layersOpen = true; onSettingsChange(settings.copy(showLayerPanel = true)) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
                 onApplyTemplate = onApplyPageTemplate, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
                 onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate,
                 onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
@@ -2346,7 +2349,7 @@ private fun EditorScreen(
                     onDock = { changePanelDock(WorkspacePanelKind.PAGES, it) },
                     onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
                     pageTemplates = pageTemplates,
-                    onSelect = ::selectPageWithViewport, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
+                    onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> selectPageWithViewport(pageId); layersOpen = true; onSettingsChange(settings.copy(showLayerPanel = true)) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
                     onApplyTemplate = onApplyPageTemplate, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
                     onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate,
                     onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
@@ -2488,7 +2491,7 @@ private fun EditorScreen(
                 onDock = { changePanelDock(WorkspacePanelKind.PAGES, it) },
                 onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
                 pageTemplates = pageTemplates,
-                onSelect = ::selectPageWithViewport, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
+                onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> selectPageWithViewport(pageId); layersOpen = true; onSettingsChange(settings.copy(showLayerPanel = true)) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
                 onApplyTemplate = onApplyPageTemplate, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
                 onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate,
                 onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
@@ -2497,7 +2500,7 @@ private fun EditorScreen(
                 panelLocked = settings.pagePanelLocked,
                 onPanelMode = { onSettingsChange(settings.copy(pagePanelMode = it)) },
                 onPanelLocked = { onSettingsChange(settings.copy(pagePanelLocked = it)) },
-                modifier = Modifier.fillMaxSize().background(Color(0xFFF7F7F7), RoundedCornerShape(12.dp)).padding(12.dp),
+                modifier = Modifier.fillMaxSize().background(Color(0xFFF7F7F7), RoundedCornerShape(3.dp)).padding(6.dp),
                 onPanelDragStart = { activeFloatingPanel = "pages"; beginPanelDrag(WorkspacePanelKind.PAGES, pagePanelBounds) },
                 onPanelDrag = { dx, dy ->
                     activeFloatingPanel = "pages"
@@ -2555,7 +2558,7 @@ private fun EditorScreen(
                 panelLocked = settings.layerPanelLocked,
                 onPanelMode = { onSettingsChange(settings.copy(layerPanelMode = it)) },
                 onPanelLocked = { onSettingsChange(settings.copy(layerPanelLocked = it)) },
-                modifier = Modifier.fillMaxSize().background(Color(0xFFF7F7F7), RoundedCornerShape(12.dp)).padding(10.dp),
+                modifier = Modifier.fillMaxSize().background(Color(0xFFF7F7F7), RoundedCornerShape(3.dp)).padding(6.dp),
                 onPanelDragStart = { activeFloatingPanel = "layers"; beginPanelDrag(WorkspacePanelKind.LAYERS, layerPanelBounds) },
                 onPanelDrag = { dx, dy ->
                     activeFloatingPanel = "layers"
@@ -2627,7 +2630,7 @@ private fun EditorScreen(
                 panelLocked = settings.brushPanelLocked,
                 onPanelMode = { onSettingsChange(settings.copy(brushPanelMode = it)) },
                 onPanelLocked = { onSettingsChange(settings.copy(brushPanelLocked = it)) },
-                modifier = Modifier.fillMaxSize().background(Color(0xFFF7F7F7), RoundedCornerShape(12.dp)).padding(12.dp),
+                modifier = Modifier.fillMaxSize().background(Color(0xFFF7F7F7), RoundedCornerShape(3.dp)).padding(6.dp),
                 onPanelDragStart = { activeFloatingPanel = "brushes"; beginPanelDrag(WorkspacePanelKind.BRUSHES, brushPanelBounds) },
                 onPanelDrag = { dx, dy ->
                     activeFloatingPanel = "brushes"
@@ -3273,9 +3276,9 @@ private fun FloatingWorkspacePanel(
                 translationY = with(density) { bounds.yDp.dp.toPx() },
             )
             .zIndex(zIndex)
-            .shadow(12.dp, RoundedCornerShape(12.dp))
-            .background(Color(0xFFF7F7F7), RoundedCornerShape(12.dp))
-            .border(1.dp, OutlineSoft, RoundedCornerShape(12.dp)),
+            .shadow(4.dp, RoundedCornerShape(3.dp))
+            .background(Color(0xFFF7F7F7), RoundedCornerShape(3.dp))
+            .border(1.dp, OutlineSoft, RoundedCornerShape(3.dp)),
     ) {
         Column(Modifier.fillMaxSize()) {
             if (tabs.size > 1) FloatingPanelTabStrip(tabs, activeTab, locked, onTab, onMoveTab, onSeparateTabs)
@@ -3379,7 +3382,7 @@ private fun FloatingPanelTabStrip(
     }
     val stripDescription = tr("Floating panel tabs", "浮动面板标签")
     Surface(
-        Modifier.fillMaxWidth().height(42.dp).semantics { contentDescription = stripDescription },
+        Modifier.fillMaxWidth().height(31.dp).semantics { contentDescription = stripDescription },
         color = Color(0xFFF1F1F1),
         border = CardDefaults.outlinedCardBorder(),
     ) {
@@ -3392,9 +3395,9 @@ private fun FloatingPanelTabStrip(
                 Box(
                     Modifier
                         .weight(1f)
-                        .height(34.dp)
+                        .height(27.dp)
                         .padding(horizontal = 2.dp)
-                        .clip(RoundedCornerShape(7.dp))
+                        .clip(RoundedCornerShape(2.dp))
                         .background(if (selected) Ink else Color.Transparent)
                         .semantics { contentDescription = tabDescription }
                         .clickable { onSelect(panel) }
@@ -3433,6 +3436,7 @@ private fun PageRail(
     onClose: () -> Unit,
     pageTemplates: PageTemplateLibrary,
     onSelect: (String) -> Unit,
+    onOpenLayers: (String) -> Unit,
     onAdd: (String) -> Unit,
     onDuplicate: (String, String) -> Unit,
     onDelete: (String, String) -> Unit,
@@ -3456,7 +3460,7 @@ private fun PageRail(
     panelLocked: Boolean = false,
     onPanelMode: (WorkspacePanelMode) -> Unit = {},
     onPanelLocked: (Boolean) -> Unit = {},
-    modifier: Modifier = Modifier.width(112.dp).fillMaxHeight().padding(12.dp),
+    modifier: Modifier = Modifier.width(112.dp).fillMaxHeight().padding(6.dp),
     onPanelDragStart: () -> Unit = {},
     onPanelDrag: (Float, Float) -> Unit = { _, _ -> },
     onPanelDragEnd: () -> Unit = {},
@@ -3489,9 +3493,24 @@ private fun PageRail(
                 tr("Pages", "页面"),
                 Modifier.weight(1f).then(
                     if (!panelLocked) Modifier.semantics { contentDescription = dragDescription }.pointerInput(dock) {
-                        detectDragGestures(onDragStart = { currentPanelDragStart() }, onDragEnd = { currentPanelDragEnd() }, onDragCancel = { currentPanelDragCancel() }) { change, amount ->
-                            change.consume()
-                            currentPanelDrag(amount.x, amount.y)
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            var last = down.position
+                            var moved = false
+                            currentPanelDragStart()
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) break
+                                val amount = change.position - last
+                                if (amount != Offset.Zero) {
+                                    moved = true
+                                    change.consume()
+                                    currentPanelDrag(amount.x, amount.y)
+                                    last = change.position
+                                }
+                            }
+                            if (moved) currentPanelDragEnd() else currentPanelDragCancel()
                         }
                     } else Modifier,
                 ),
@@ -3535,6 +3554,12 @@ private fun PageRail(
                 Box(Modifier.size(58.dp, 74.dp).background(Color.White, RoundedCornerShape(5.dp)).border(if (page.id == selectedPageId) 2.dp else 1.dp, if (page.id == selectedPageId) Sage else OutlineSoft, RoundedCornerShape(5.dp)).clickable { onSelect(page.id) }.padding(4.dp)) {
                     if (page.background is PageBackground.Pdf) Text("PDF", fontSize = 9.sp, color = Sage)
                     if (page.bookmarked) Icon(Icons.Default.Bookmark, tr("Bookmarked", "已收藏"), tint = Sage, modifier = Modifier.size(16.dp).align(Alignment.TopEnd))
+                    Box(
+                        Modifier.align(Alignment.BottomEnd).size(24.dp).background(Color(0xFFE9E9E9), RoundedCornerShape(2.dp)).clickable { onOpenLayers(page.id) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Outlined.Layers, tr("Open layers for this page", "打开此页面的图层"), Modifier.size(15.dp))
+                    }
                 }
                 var pageDragDistance by remember(page.id) { mutableFloatStateOf(0f) }
                 Row(Modifier.width(78.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -4858,6 +4883,100 @@ private fun BrushColorPicker(color: Int, onColor: (Int) -> Unit) {
 }
 
 @Composable
+private fun CspColorPanel(color: Int, onColor: (Int) -> Unit, initiallyExpanded: Boolean = true) {
+    var expanded by rememberSaveable(initiallyExpanded) { mutableStateOf(initiallyExpanded) }
+    val hsv = remember(color) { FloatArray(3).also { AndroidColor.colorToHSV(color, it) } }
+    val hueColor = Color(AndroidColor.HSVToColor(floatArrayOf(hsv[0], 1f, 1f)))
+    fun publish(hue: Float = hsv[0], saturation: Float = hsv[1], value: Float = hsv[2]) {
+        onColor(AndroidColor.HSVToColor(AndroidColor.alpha(color), floatArrayOf(hue.coerceIn(0f, 360f), saturation.coerceIn(0f, 1f), value.coerceIn(0f, 1f))))
+    }
+    Surface(
+        Modifier.fillMaxWidth(),
+        color = Color.White,
+        shape = RoundedCornerShape(3.dp),
+        border = CardDefaults.outlinedCardBorder(),
+    ) {
+        Column {
+            Row(
+                Modifier.fillMaxWidth().height(34.dp).clickable { expanded = !expanded }.padding(horizontal = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(tr("Color wheel", "色环"), Modifier.weight(1f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                Box(Modifier.size(18.dp).background(Color(color)).border(1.dp, OutlineSoft))
+                Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, if (expanded) tr("Collapse color panel", "收起颜色面板") else tr("Expand color panel", "展开颜色面板"), Modifier.size(18.dp))
+            }
+            if (expanded) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 7.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Canvas(
+                        Modifier
+                            .size(72.dp)
+                            .pointerInput(color) {
+                                fun update(point: Offset) {
+                                    val dx = point.x - size.width / 2f
+                                    val dy = point.y - size.height / 2f
+                                    var degrees = Math.toDegrees(kotlin.math.atan2(dy.toDouble(), dx.toDouble())).toFloat()
+                                    if (degrees < 0f) degrees += 360f
+                                    publish(hue = degrees)
+                                }
+                                detectDragGestures(onDragStart = ::update) { change, _ -> change.consume(); update(change.position) }
+                            },
+                    ) {
+                        val ring = size.minDimension * .12f
+                        val radius = size.minDimension / 2f - ring
+                        drawCircle(
+                            Brush.sweepGradient(listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red)),
+                            radius = radius,
+                            style = Stroke(ring),
+                        )
+                        val radians = Math.toRadians(hsv[0].toDouble())
+                        val markerRadius = radius
+                        val marker = Offset(center.x + kotlin.math.cos(radians).toFloat() * markerRadius, center.y + kotlin.math.sin(radians).toFloat() * markerRadius)
+                        drawCircle(Color.White, 5f, marker)
+                        drawCircle(Ink, 5f, marker, style = Stroke(1.5f))
+                        drawCircle(Color(color), radius = radius - ring * .85f)
+                    }
+                    Canvas(
+                        Modifier
+                            .weight(1f)
+                            .height(72.dp)
+                            .pointerInput(color) {
+                                fun update(point: Offset) = publish(saturation = point.x / size.width.coerceAtLeast(1), value = 1f - point.y / size.height.coerceAtLeast(1))
+                                detectDragGestures(onDragStart = ::update) { change, _ -> change.consume(); update(change.position) }
+                            },
+                    ) {
+                        drawRect(Brush.horizontalGradient(listOf(Color.White, hueColor)))
+                        drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black)))
+                        val marker = Offset(hsv[1] * size.width, (1f - hsv[2]) * size.height)
+                        drawCircle(Color.White, 5f, marker)
+                        drawCircle(Ink, 5f, marker, style = Stroke(1.5f))
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                CspColorChannel("R", AndroidColor.red(color)) { onColor(AndroidColor.argb(AndroidColor.alpha(color), it, AndroidColor.green(color), AndroidColor.blue(color))) }
+                CspColorChannel("G", AndroidColor.green(color)) { onColor(AndroidColor.argb(AndroidColor.alpha(color), AndroidColor.red(color), it, AndroidColor.blue(color))) }
+                CspColorChannel("B", AndroidColor.blue(color)) { onColor(AndroidColor.argb(AndroidColor.alpha(color), AndroidColor.red(color), AndroidColor.green(color), it)) }
+                Row(Modifier.fillMaxWidth().height(24.dp).padding(horizontal = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("V", Modifier.width(18.dp), color = MutedInk, fontSize = 9.sp)
+                    Slider(hsv[2], { publish(value = it) }, Modifier.weight(1f).height(24.dp))
+                    Text("${(hsv[2] * 100).toInt()}%", Modifier.width(34.dp), color = MutedInk, fontSize = 9.sp, textAlign = TextAlign.End)
+                    BrushColorPicker(color, onColor)
+                }
+                Spacer(Modifier.height(4.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun CspColorChannel(label: String, value: Int, onValue: (Int) -> Unit) {
+    Row(Modifier.fillMaxWidth().height(20.dp).padding(horizontal = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.width(18.dp), color = MutedInk, fontSize = 9.sp)
+        Slider(value.toFloat(), { onValue(it.toInt().coerceIn(0, 255)) }, Modifier.weight(1f).height(19.dp), valueRange = 0f..255f)
+        Text(value.toString(), Modifier.width(28.dp), color = MutedInk, fontSize = 9.sp, textAlign = TextAlign.End)
+    }
+}
+
+@Composable
 private fun ToolButton(value: EditorTool, icon: ImageVector, label: String, selected: EditorTool, onTool: (EditorTool) -> Unit) {
     Box(Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(if (value == selected) Sage else Color.Transparent).clickable { onTool(value) }, contentAlignment = Alignment.Center) {
         Icon(icon, label, Modifier.size(20.dp), tint = if (value == selected) Color.White else Ink)
@@ -4891,7 +5010,7 @@ private fun LayerPanel(
     panelLocked: Boolean = false,
     onPanelMode: (WorkspacePanelMode) -> Unit = {},
     onPanelLocked: (Boolean) -> Unit = {},
-    modifier: Modifier = Modifier.width(280.dp).fillMaxHeight().background(Color(0xFFF7F7F7)).padding(10.dp),
+    modifier: Modifier = Modifier.width(280.dp).fillMaxHeight().background(Color(0xFFF7F7F7)).padding(6.dp),
     onPanelDragStart: () -> Unit = {},
     onPanelDrag: (Float, Float) -> Unit = { _, _ -> },
     onPanelDragEnd: () -> Unit = {},
@@ -4913,65 +5032,86 @@ private fun LayerPanel(
     }
     var renameLayer by remember { mutableStateOf<InkLayer?>(null) }
     var renameValue by remember { mutableStateOf("") }
+    var blendModeMenu by remember { mutableStateOf(false) }
     val dragDescription = tr("Drag layers panel", "拖动图层面板")
     val currentPanelDrag by rememberUpdatedState(onPanelDrag)
     val currentPanelDragStart by rememberUpdatedState(onPanelDragStart)
     val currentPanelDragEnd by rememberUpdatedState(onPanelDragEnd)
     val currentPanelDragCancel by rememberUpdatedState(onPanelDragCancel)
     Column(modifier) {
-        Surface(Modifier.fillMaxWidth(), color = Color.White, shape = RoundedCornerShape(10.dp), border = CardDefaults.outlinedCardBorder()) {
-            Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(tr("Color", "颜色"), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    Text(tr("Active drawing color", "当前绘画颜色"), fontSize = 10.sp, color = MutedInk)
-                }
-                BrushColorPicker(brushColor, onColor)
-            }
-        }
-        Spacer(Modifier.height(8.dp))
+        CspColorPanel(brushColor, onColor, initiallyExpanded = dock != WorkspacePanelDock.BOTTOM)
+        Spacer(Modifier.height(5.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(
                 Modifier.weight(1f).then(
                     if (!panelLocked) Modifier.semantics { contentDescription = dragDescription }.pointerInput(dock) {
-                        detectDragGestures(onDragStart = { currentPanelDragStart() }, onDragEnd = { currentPanelDragEnd() }, onDragCancel = { currentPanelDragCancel() }) { change, amount ->
-                            change.consume()
-                            currentPanelDrag(amount.x, amount.y)
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            var last = down.position
+                            var moved = false
+                            currentPanelDragStart()
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) break
+                                val amount = change.position - last
+                                if (amount != Offset.Zero) {
+                                    moved = true
+                                    change.consume()
+                                    currentPanelDrag(amount.x, amount.y)
+                                    last = change.position
+                                }
+                            }
+                            if (moved) currentPanelDragEnd() else currentPanelDragCancel()
                         }
                     } else Modifier,
                 ),
             ) {
-                Text(tr("Layers", "图层"), fontSize = 18.sp)
-                Text(tr("Visible canvas stack", "可见画布堆栈"), fontSize = 10.sp, color = MutedInk)
+                Text(tr("Layers", "图层"), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text(tr("Current page", "当前页面"), fontSize = 9.sp, color = MutedInk)
             }
-            WorkspacePanelDockMenu(dock, onDock, tr("Change layers panel docking", "更改图层面板停靠方式"), mode = panelMode, locked = panelLocked, onMode = onPanelMode, onLocked = onPanelLocked)
-            IconButton(onClick = onClose) { Icon(Icons.Outlined.Close, tr("Close layers panel", "关闭图层面板")) }
-            IconButton(onClick = onAddFolder) { Icon(Icons.Outlined.CreateNewFolder, tr("Add layer folder", "添加图层文件夹")) }
-            IconButton(onClick = onAdd) { Icon(Icons.Default.Add, tr("Add layer", "添加图层")) }
+            WorkspacePanelDockMenu(dock, onDock, tr("Change layers panel docking", "更改图层面板停靠方式"), Modifier.size(30.dp), panelMode, panelLocked, onPanelMode, onPanelLocked)
+            IconButton(onClick = onClose, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.Close, tr("Close layers panel", "关闭图层面板"), Modifier.size(17.dp)) }
+            IconButton(onClick = onAddFolder, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.CreateNewFolder, tr("Add layer folder", "添加图层文件夹"), Modifier.size(17.dp)) }
+            IconButton(onClick = onAdd, modifier = Modifier.size(30.dp)) { Icon(Icons.Default.Add, tr("Add layer", "添加图层"), Modifier.size(17.dp)) }
         }
         Spacer(Modifier.height(8.dp))
         page.layers.firstOrNull { it.id == activeLayerId }?.takeIf { it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) }?.let { activeLayer ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(tr("Opacity", "不透明度"), Modifier.weight(1f), color = MutedInk, fontSize = 11.sp)
-                Text("${(activeLayer.opacity * 100f).toInt()}%", color = MutedInk, fontSize = 11.sp)
+            Row(Modifier.fillMaxWidth().height(30.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(tr("Opacity", "不透明度"), Modifier.width(48.dp), color = MutedInk, fontSize = 9.sp)
+                Slider(activeLayer.opacity, { onOpacity(activeLayer.id, it) }, Modifier.weight(1f).height(26.dp), valueRange = 0f..1f)
+                Text("${(activeLayer.opacity * 100f).toInt()}%", Modifier.width(34.dp), color = MutedInk, fontSize = 9.sp, textAlign = TextAlign.End)
             }
-            Slider(activeLayer.opacity, { onOpacity(activeLayer.id, it) }, valueRange = 0f..1f)
-            Text(tr("Blend mode", "混合模式"), color = MutedInk, fontSize = 11.sp)
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp), contentPadding = PaddingValues(vertical = 4.dp)) {
-                LayerBlendMode.entries.forEach { mode ->
-                    item(mode.name) {
-                        FilterChip(
-                            selected = activeLayer.blendMode == mode,
-                            onClick = { onBlendMode(activeLayer.id, mode) },
-                            label = { Text(when (mode) {
+            Box {
+                Row(
+                    Modifier.fillMaxWidth().height(30.dp).border(1.dp, OutlineSoft, RoundedCornerShape(2.dp)).clickable { blendModeMenu = true }.padding(horizontal = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(tr("Blend", "混合"), Modifier.width(48.dp), color = MutedInk, fontSize = 9.sp)
+                    Text(when (activeLayer.blendMode) {
+                        LayerBlendMode.NORMAL -> tr("Normal", "正常")
+                        LayerBlendMode.MULTIPLY -> tr("Multiply", "正片叠底")
+                        LayerBlendMode.SCREEN -> tr("Screen", "滤色")
+                        LayerBlendMode.ADD -> tr("Add", "添加")
+                    }, Modifier.weight(1f), fontSize = 10.sp)
+                    Icon(Icons.Outlined.ExpandMore, tr("Choose blend mode", "选择混合模式"), Modifier.size(16.dp))
+                }
+                DropdownMenu(blendModeMenu, { blendModeMenu = false }) {
+                    LayerBlendMode.entries.forEach { mode ->
+                        DropdownMenuItem(
+                            text = { Text(when (mode) {
                                 LayerBlendMode.NORMAL -> tr("Normal", "正常")
                                 LayerBlendMode.MULTIPLY -> tr("Multiply", "正片叠底")
                                 LayerBlendMode.SCREEN -> tr("Screen", "滤色")
                                 LayerBlendMode.ADD -> tr("Add", "添加")
-                            }, fontSize = 10.sp) },
+                            }) },
+                            trailingIcon = { if (mode == activeLayer.blendMode) Icon(Icons.Outlined.Check, null) },
+                            onClick = { blendModeMenu = false; onBlendMode(activeLayer.id, mode) },
                         )
                     }
                 }
             }
+            Spacer(Modifier.height(4.dp))
         }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(7.dp)) {
             items(LayerHierarchy.panelOrder(page.layers), key = { it.id }) { layer ->
@@ -4980,28 +5120,39 @@ private fun LayerPanel(
                 val effectivelyLocked = LayerHierarchy.effectiveLocked(page.layers, layer)
                 val editable = effectivelyVisible && !effectivelyLocked && layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)
                 val depth = LayerHierarchy.depth(page.layers, layer)
+                val folderToggleDescription = if (layer.collapsed) tr("Expand folder", "展开文件夹") else tr("Collapse folder", "折叠文件夹")
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(start = (depth * 16).dp).clickable(enabled = editable) { onSelect(layer.id) },
                     colors = CardDefaults.cardColors(containerColor = if (layer.id == activeLayerId) SageContainer else Color.White),
                     border = if (layer.id == activeLayerId) CardDefaults.outlinedCardBorder().copy(width = 2.dp, brush = androidx.compose.ui.graphics.SolidColor(Sage)) else CardDefaults.outlinedCardBorder(),
                 ) {
-                    Row(Modifier.heightIn(min = 48.dp).padding(start = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            when (layer.role) { LayerRole.BACKGROUND -> Icons.Outlined.Image; LayerRole.HIGHLIGHT -> Icons.Outlined.BorderColor; LayerRole.OBJECTS -> Icons.Outlined.Widgets; LayerRole.FOLDER -> if (layer.collapsed) Icons.Outlined.Folder else Icons.Outlined.FolderOpen; else -> Icons.Outlined.Layers },
+                    Row(Modifier.heightIn(min = 42.dp).padding(start = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { onVisibility(layer.id) }, modifier = Modifier.size(28.dp)) { Icon(if (layer.visible) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff, if (layer.visible) tr("Hide ${layer.name}", "隐藏 ${layer.name}") else tr("Show ${layer.name}", "显示 ${layer.name}"), Modifier.size(16.dp)) }
+                        if (layer.role == LayerRole.FOLDER) Box(
+                            Modifier.size(22.dp).clickable { onToggleFolderCollapsed(layer.id) }.semantics {
+                                contentDescription = folderToggleDescription
+                            },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(if (layer.collapsed) Icons.Outlined.Folder else Icons.Outlined.FolderOpen, null, Modifier.size(18.dp), tint = if (effectivelyVisible) Ink else MutedInk)
+                        } else Icon(
+                            when (layer.role) { LayerRole.BACKGROUND -> Icons.Outlined.Image; LayerRole.HIGHLIGHT -> Icons.Outlined.BorderColor; LayerRole.OBJECTS -> Icons.Outlined.Widgets; else -> Icons.Outlined.Layers },
                             contentDescription = null,
+                            modifier = Modifier.size(18.dp),
                             tint = if (effectivelyVisible) Ink else MutedInk,
                         )
-                        Spacer(Modifier.width(7.dp))
+                        Spacer(Modifier.width(5.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(layer.name, maxLines = 1, color = if (effectivelyVisible) Ink else MutedInk)
+                            Text(layer.name, maxLines = 1, color = if (effectivelyVisible) Ink else MutedInk, fontSize = 11.sp)
                             Text(when (layer.role) { LayerRole.BACKGROUND -> tr("Background", "背景"); LayerRole.INK -> tr("Ink", "墨迹"); LayerRole.HIGHLIGHT -> tr("Highlight", "高亮"); LayerRole.OBJECTS -> tr("Objects", "对象"); LayerRole.CUSTOM -> tr("Custom", "自定义"); LayerRole.FOLDER -> tr("Folder", "文件夹") }, fontSize = 10.sp, color = MutedInk)
                         }
-                        if (layer.role == LayerRole.FOLDER) IconButton(onClick = { onToggleFolderCollapsed(layer.id) }, modifier = Modifier.size(34.dp)) { Icon(if (layer.collapsed) Icons.Outlined.ExpandMore else Icons.Outlined.ExpandLess, if (layer.collapsed) tr("Expand folder", "展开文件夹") else tr("Collapse folder", "折叠文件夹"), Modifier.size(18.dp)) }
-                        IconButton(onClick = { onVisibility(layer.id) }, modifier = Modifier.size(34.dp)) { Icon(if (layer.visible) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff, if (layer.visible) tr("Hide ${layer.name}", "隐藏 ${layer.name}") else tr("Show ${layer.name}", "显示 ${layer.name}"), Modifier.size(18.dp)) }
-                        IconButton(onClick = { onLock(layer.id) }, modifier = Modifier.size(34.dp)) { Icon(if (layer.locked) Icons.Outlined.Lock else Icons.Outlined.LockOpen, if (layer.locked) tr("Unlock ${layer.name}", "解锁 ${layer.name}") else tr("Lock ${layer.name}", "锁定 ${layer.name}"), Modifier.size(18.dp)) }
+                        if (layer.locked) Icon(Icons.Outlined.Lock, tr("Locked", "已锁定"), Modifier.size(14.dp), tint = MutedInk)
                         Box {
-                            IconButton(onClick = { menu = true }, modifier = Modifier.size(34.dp)) { Icon(Icons.Default.MoreVert, tr("Layer actions", "图层操作"), Modifier.size(18.dp)) }
+                            IconButton(onClick = { menu = true }, modifier = Modifier.size(28.dp)) { Icon(Icons.Default.MoreVert, tr("Layer actions", "图层操作"), Modifier.size(16.dp)) }
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                                DropdownMenuItem(text = { Text(if (layer.visible) tr("Hide layer", "隐藏图层") else tr("Show layer", "显示图层")) }, leadingIcon = { Icon(if (layer.visible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, null) }, onClick = { menu = false; onVisibility(layer.id) })
+                                DropdownMenuItem(text = { Text(if (layer.locked) tr("Unlock layer", "解锁图层") else tr("Lock layer", "锁定图层")) }, leadingIcon = { Icon(if (layer.locked) Icons.Outlined.LockOpen else Icons.Outlined.Lock, null) }, onClick = { menu = false; onLock(layer.id) })
+                                if (layer.role == LayerRole.FOLDER) DropdownMenuItem(text = { Text(if (layer.collapsed) tr("Expand folder", "展开文件夹") else tr("Collapse folder", "折叠文件夹")) }, onClick = { menu = false; onToggleFolderCollapsed(layer.id) })
                                 DropdownMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { menu = false; renameLayer = layer; renameValue = layer.name })
                                 DropdownMenuItem(text = { Text(tr("Move up", "上移")) }, enabled = page.layers.last().id != layer.id, onClick = { menu = false; onMove(layer.id, 1) })
                                 DropdownMenuItem(text = { Text(tr("Move down", "下移")) }, enabled = page.layers.first().id != layer.id, onClick = { menu = false; onMove(layer.id, -1) })
@@ -5053,7 +5204,7 @@ private fun BrushPanel(
     panelLocked: Boolean = false,
     onPanelMode: (WorkspacePanelMode) -> Unit = {},
     onPanelLocked: (Boolean) -> Unit = {},
-    modifier: Modifier = Modifier.width(330.dp).fillMaxHeight().background(Color(0xFFF7F7F7)).padding(12.dp),
+    modifier: Modifier = Modifier.width(330.dp).fillMaxHeight().background(Color(0xFFF7F7F7)).padding(6.dp),
     onPanelDragStart: () -> Unit = {},
     onPanelDrag: (Float, Float) -> Unit = { _, _ -> },
     onPanelDragEnd: () -> Unit = {},
@@ -5129,22 +5280,37 @@ private fun BrushPanel(
             Text(
                 tr("Brush Library", "笔刷库"),
                 fontSize = if (bottomDocked) 16.sp else 20.sp,
-                modifier = Modifier.weight(1f).then(
+                modifier = Modifier.weight(1f).height(40.dp).wrapContentHeight(Alignment.CenterVertically).then(
                     if (!panelLocked) Modifier.semantics { contentDescription = dragDescription }.pointerInput(dock) {
-                        detectDragGestures(onDragStart = { currentPanelDragStart() }, onDragEnd = { currentPanelDragEnd() }, onDragCancel = { currentPanelDragCancel() }) { change, amount ->
-                            change.consume()
-                            currentPanelDrag(amount.x, amount.y)
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            var last = down.position
+                            var moved = false
+                            currentPanelDragStart()
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) break
+                                val amount = change.position - last
+                                if (amount != Offset.Zero) {
+                                    moved = true
+                                    change.consume()
+                                    currentPanelDrag(amount.x, amount.y)
+                                    last = change.position
+                                }
+                            }
+                            if (moved) currentPanelDragEnd() else currentPanelDragCancel()
                         }
                     } else Modifier,
                 ),
             )
-            WorkspacePanelDockMenu(dock, onDock, tr("Change brushes panel docking", "更改笔刷面板停靠方式"), mode = panelMode, locked = panelLocked, onMode = onPanelMode, onLocked = onPanelLocked)
+            WorkspacePanelDockMenu(dock, onDock, tr("Change brushes panel docking", "更改笔刷面板停靠方式"), Modifier.size(30.dp), panelMode, panelLocked, onPanelMode, onPanelLocked)
             IconButton(onClick = {
                 multiSelecting = !multiSelecting
                 if (!multiSelecting) selectedBrushIds = emptySet()
-            }) { Icon(if (multiSelecting) Icons.Outlined.Close else Icons.Outlined.Checklist, if (multiSelecting) tr("Cancel brush selection", "取消选择笔刷") else tr("Select multiple brushes", "批量选择笔刷")) }
-            IconButton(onClick = onClose) { Icon(Icons.Outlined.Close, tr("Close brushes panel", "关闭笔刷面板")) }
-            IconButton(onClick = { onImportBrushes(selectedGroup?.takeUnless { it == UNGROUPED_BRUSH_FILTER }) }) { Icon(Icons.Outlined.Add, tr("Import", "导入")) }
+            }, modifier = Modifier.size(30.dp)) { Icon(if (multiSelecting) Icons.Outlined.Close else Icons.Outlined.Checklist, if (multiSelecting) tr("Cancel brush selection", "取消选择笔刷") else tr("Select multiple brushes", "批量选择笔刷"), Modifier.size(17.dp)) }
+            IconButton(onClick = onClose, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.Close, tr("Close brushes panel", "关闭笔刷面板"), Modifier.size(17.dp)) }
+            IconButton(onClick = { onImportBrushes(selectedGroup?.takeUnless { it == UNGROUPED_BRUSH_FILTER }) }, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.Add, tr("Import", "导入"), Modifier.size(17.dp)) }
         }
         if (!bottomDocked) {
             Text(tr("Imported presets · compact view", "已导入预设 · 紧凑视图"), fontSize = 11.sp, color = MutedInk)
@@ -5297,13 +5463,17 @@ private fun BrushPanel(
             }
             Spacer(Modifier.weight(1f))
         }
+        val selectedToolBrush = brushes.firstOrNull { it.id == selectedBrushId }
         BrushToolProperties(
-            brush = brushes.firstOrNull { it.id == selectedBrushId },
+            brush = selectedToolBrush,
             size = brushSize,
             opacity = brushOpacity,
             compact = bottomDocked,
             onSize = onBrushSizeChange,
             onOpacity = onBrushOpacityChange,
+            onFlow = { value -> selectedToolBrush?.let { onUpdateBrush(it.copy(flow = value)) } },
+            onStabilization = { value -> selectedToolBrush?.let { onUpdateBrush(it.copy(stabilization = value)) } },
+            onPressure = { enabled -> selectedToolBrush?.let { onUpdateBrush(it.copy(sizePressureEnabled = enabled)) } },
             onEdit = { brushes.firstOrNull { it.id == selectedBrushId }?.let { editBrush = it } },
         )
         if (!bottomDocked) {
@@ -5633,6 +5803,9 @@ private fun BrushToolProperties(
     compact: Boolean,
     onSize: (Float) -> Unit,
     onOpacity: (Float) -> Unit,
+    onFlow: (Float) -> Unit,
+    onStabilization: (Float) -> Unit,
+    onPressure: (Boolean) -> Unit,
     onEdit: () -> Unit,
 ) {
     val normalizedSize = ((size.coerceIn(.5f, 400f) - .5f) / 399.5f).coerceIn(0f, 1f)
@@ -5643,8 +5816,9 @@ private fun BrushToolProperties(
         border = CardDefaults.outlinedCardBorder(),
         shape = RoundedCornerShape(6.dp),
     ) {
+        Column(Modifier.fillMaxWidth()) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 7.dp, vertical = if (compact) 3.dp else 6.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 7.dp, vertical = if (compact) 3.dp else 5.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (brush != null) BrushTipPreview(brush, Modifier.size(if (compact) 36.dp else 43.dp))
@@ -5678,6 +5852,26 @@ private fun BrushToolProperties(
                 Icon(Icons.Outlined.Tune, tr("Open sub tool detail", "打开子工具详情"), Modifier.size(18.dp))
             }
         }
+        if (brush != null && !compact) {
+            HorizontalDivider(color = OutlineSoft)
+            CspBrushQuickSlider(tr("Ink density", "墨水浓淡"), brush.flow.coerceIn(.01f, 1f), "${(brush.flow * 100f).toInt()}%", onFlow)
+            CspBrushQuickSlider(tr("Stabilization", "抖动修正"), (brush.stabilization / 100f).coerceIn(0f, 1f), brush.stabilization.toInt().toString()) { onStabilization(it * 100f) }
+            Row(Modifier.fillMaxWidth().height(30.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(tr("Pen pressure", "笔压"), Modifier.weight(1f), color = MutedInk, fontSize = 9.sp)
+                Switch(brush.sizePressureEnabled, onPressure, Modifier.height(24.dp))
+                IconButton(onClick = onEdit, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.ChevronRight, tr("Edit pressure curve and advanced dynamics", "编辑压力曲线与高级动态"), Modifier.size(16.dp)) }
+            }
+        }
+        }
+    }
+}
+
+@Composable
+private fun CspBrushQuickSlider(label: String, value: Float, display: String, onValue: (Float) -> Unit) {
+    Row(Modifier.fillMaxWidth().height(27.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, Modifier.width(72.dp), color = MutedInk, fontSize = 9.sp, maxLines = 1)
+        Slider(value, onValue, Modifier.weight(1f).height(24.dp), valueRange = 0f..1f)
+        Text(display, Modifier.width(32.dp), color = MutedInk, fontSize = 9.sp, textAlign = TextAlign.End)
     }
 }
 
