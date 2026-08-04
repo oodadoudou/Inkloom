@@ -132,6 +132,7 @@ import app.inkloom.settings.WorkspaceOrientation
 import app.inkloom.settings.text
 import app.inkloom.ui.theme.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.text.DateFormat
 import java.util.Date
@@ -4060,12 +4061,7 @@ private fun ObjectElementView(
                 if (bitmap != null) androidx.compose.foundation.Image(bitmap.asImageBitmap(), tr("Page image", "页面图片"), Modifier.fillMaxSize().then(maskModifier), contentScale = ContentScale.Crop)
                 else Box(Modifier.fillMaxSize().background(Workspace), contentAlignment = Alignment.Center) { Text(tr("Image unavailable", "图片不可用"), color = MutedInk, fontSize = 11.sp) }
             }
-            is PageElement.AudioMarker -> Card(Modifier.fillMaxSize(), colors = CardDefaults.cardColors(containerColor = Color(0xFFE7E7E7))) {
-                Row(Modifier.fillMaxSize().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { playAudio(element.assetPath) }) { Icon(Icons.Default.PlayArrow, tr("Play audio", "播放音频")) }
-                    Column(Modifier.weight(1f)) { Text(element.title, maxLines = 1); Text(tr("Audio · ${formatDuration(element.durationMs)}", "音频 · ${formatDuration(element.durationMs)}"), color = MutedInk, fontSize = 11.sp) }
-                }
-            }
+            is PageElement.AudioMarker -> AudioMarkerCard(element)
             is PageElement.Link -> Card(Modifier.fillMaxSize(), colors = CardDefaults.cardColors(containerColor = Color(0xFFE7E7E7))) {
                 Row(Modifier.fillMaxSize().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Surface(shape = CircleShape, color = Color.White) { Icon(Icons.Outlined.Link, null, Modifier.padding(10.dp), tint = Color(0xFF111111)) }
@@ -4305,11 +4301,59 @@ private fun openLink(context: android.content.Context, rawUrl: String, language:
     }
 }
 
-private fun playAudio(path: String) {
+@Composable
+private fun AudioMarkerCard(element: PageElement.AudioMarker) {
+    val language = LocalUiLanguage.current
+    val player = remember(element.assetPath) { preparedAudioPlayer(element.assetPath) }
+    var playing by remember(element.assetPath) { mutableStateOf(false) }
+    var positionMs by remember(element.assetPath) { mutableLongStateOf(0L) }
+    var scrubbing by remember(element.assetPath) { mutableStateOf(false) }
+    val durationMs = (player?.duration?.toLong()?.takeIf { it > 0L } ?: element.durationMs).coerceAtLeast(1L)
+    DisposableEffect(player) {
+        player?.setOnCompletionListener { playing = false; positionMs = 0L; runCatching { it.seekTo(0) } }
+        onDispose { player?.release() }
+    }
+    LaunchedEffect(player, playing, scrubbing) {
+        while (playing) {
+            if (!scrubbing) positionMs = runCatching { player?.currentPosition?.toLong() ?: 0L }.getOrDefault(0L).coerceIn(0L, durationMs)
+            delay(100)
+        }
+    }
+    Card(Modifier.fillMaxSize(), colors = CardDefaults.cardColors(containerColor = Color(0xFFE7E7E7))) {
+        Column(Modifier.fillMaxSize().padding(horizontal = 7.dp, vertical = 3.dp), verticalArrangement = Arrangement.Center) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(
+                    enabled = player != null,
+                    onClick = {
+                        player ?: return@IconButton
+                        if (playing) { player.pause(); playing = false; positionMs = player.currentPosition.toLong() }
+                        else { if (positionMs >= durationMs) { player.seekTo(0); positionMs = 0L }; player.start(); playing = true }
+                    },
+                    modifier = Modifier.size(30.dp),
+                ) { Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, if (playing) language.text("Pause audio", "暂停音频") else language.text("Play audio", "播放音频"), Modifier.size(18.dp)) }
+                Spacer(Modifier.width(5.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(element.title, maxLines = 1, fontSize = 12.sp)
+                    Text("${formatDuration(positionMs)} / ${formatDuration(durationMs)}", color = MutedInk, fontSize = 10.sp)
+                }
+            }
+            Slider(
+                value = positionMs.toFloat().coerceIn(0f, durationMs.toFloat()),
+                onValueChange = { scrubbing = true; positionMs = it.toLong() },
+                onValueChangeFinished = { player?.seekTo(positionMs.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()); scrubbing = false },
+                valueRange = 0f..durationMs.toFloat(),
+                enabled = player != null,
+                modifier = Modifier.fillMaxWidth().height(18.dp).semantics { contentDescription = language.text("Audio timeline", "音频时间轴") },
+            )
+        }
+    }
+}
+
+private fun preparedAudioPlayer(path: String): android.media.MediaPlayer? {
     var player: android.media.MediaPlayer? = null
-    runCatching {
-        player = android.media.MediaPlayer().apply { setDataSource(path); prepare(); setOnCompletionListener { completed -> completed.release() }; start() }
-    }.onFailure { player?.release() }
+    return runCatching {
+        android.media.MediaPlayer().also { created -> player = created; created.setDataSource(path); created.prepare() }
+    }.onFailure { player?.release() }.getOrNull()
 }
 
 private fun formatDuration(durationMs: Long): String { val total = durationMs / 1000; return "%d:%02d".format(total / 60, total % 60) }
