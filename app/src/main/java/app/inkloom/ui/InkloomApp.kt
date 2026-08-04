@@ -2207,7 +2207,21 @@ private fun EditorScreen(
                     toolbarX = reset.xDp
                     toolbarY = reset.yDp
                     onSettingsChange(settings.copy(toolbarDock = ToolbarDock.FREE, toolbarOffsetXDp = toolbarX, toolbarOffsetYDp = toolbarY))
-                }, onDock = { dock -> onSettingsChange(settings.copy(toolbarDock = dock, verticalToolbar = when (dock) { ToolbarDock.LEFT, ToolbarDock.RIGHT -> true; ToolbarDock.TOP, ToolbarDock.BOTTOM -> false; ToolbarDock.FREE -> dockVertical })) }, brushSize = brushSize, brushOpacity = brushOpacity, brushColor = brushColor, brushes = brushes, selectedBrushId = selectedBrushId, onBrushPreset = { brush ->
+                }, onDock = { dock -> onSettingsChange(settings.copy(toolbarDock = dock, verticalToolbar = when (dock) { ToolbarDock.LEFT, ToolbarDock.RIGHT -> true; ToolbarDock.TOP, ToolbarDock.BOTTOM -> false; ToolbarDock.FREE -> dockVertical })) }, brushSize = brushSize, brushOpacity = brushOpacity, brushColor = brushColor, brushes = brushes, selectedBrushId = selectedBrushId, onSystemPreset = { presetTool ->
+                    exitCanvasNavigation()
+                    activeBrush = null
+                    selectedBrushId = null
+                    tool = presetTool
+                    canvasView?.tool = presetTool
+                    if (presetTool == EditorTool.PEN) {
+                        brushSize = settings.penSize
+                        brushOpacity = settings.penOpacity
+                        if (activeLayerId == LayerIds.HIGHLIGHT || activeLayerId == LayerIds.OBJECTS) activeLayerId = LayerIds.INK
+                    } else {
+                        brushSize = settings.eraserSize
+                        brushOpacity = 1f
+                    }
+                }, onBrushPreset = { brush ->
                     exitCanvasNavigation()
                     val usedBrush = brush.copy(lastUsedAt = System.currentTimeMillis())
                     onUpdateBrush(usedBrush)
@@ -2982,19 +2996,18 @@ private fun DockedPanelTabStrip(
     }
     val stripDescription = tr("$dockName panel tabs", "$dockName 面板标签")
     Surface(
-        Modifier.width(58.dp).fillMaxHeight().semantics {
+        Modifier.width(34.dp).fillMaxHeight().semantics {
             contentDescription = stripDescription
         },
         color = Color(0xFFF1F1F1),
         border = CardDefaults.outlinedCardBorder(),
     ) {
-        Column(Modifier.fillMaxSize().padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
             if (!stacked) {
                 IconButton(
                     onClick = { onStacked(true) },
-                    modifier = Modifier.size(50.dp),
+                    modifier = Modifier.size(32.dp),
                 ) { Icon(Icons.Outlined.ViewAgenda, tr("Stack panels in $dockName dock", "堆叠$dockName 面板")) }
-                Text(tr("Stack", "堆叠"), fontSize = 9.sp, color = MutedInk)
             } else {
                 panels.forEach { panel ->
                     var dragDistance by remember(panel, panels) { mutableFloatStateOf(0f) }
@@ -3003,11 +3016,9 @@ private fun DockedPanelTabStrip(
                     val tabDescription = tr("$panelTitle tab. Drag to reorder.", "$panelTitle 标签，可拖动排序")
                     Column(
                         Modifier
-                            .width(52.dp)
-                            .height(62.dp)
-                            .padding(vertical = 2.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (selected) Ink else Color.Transparent)
+                            .width(32.dp)
+                            .height(34.dp)
+                            .background(if (selected) Color(0xFFD6DCE8) else Color.Transparent)
                             .semantics { contentDescription = tabDescription }
                             .clickable { onSelect(panel) }
                             .pointerInput(panel, panels) {
@@ -3029,11 +3040,10 @@ private fun DockedPanelTabStrip(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center,
                     ) {
-                        Icon(icon(panel), null, Modifier.size(20.dp), tint = if (selected) Color.White else Ink)
-                        Text(panelTitle, fontSize = 9.sp, maxLines = 1, color = if (selected) Color.White else Ink)
+                        Icon(icon(panel), panelTitle, Modifier.size(18.dp), tint = Ink)
                     }
                 }
-                IconButton(onClick = { onStacked(false) }, modifier = Modifier.size(50.dp)) {
+                IconButton(onClick = { onStacked(false) }, modifier = Modifier.size(32.dp)) {
                     Icon(Icons.Outlined.CallSplit, tr("Separate $dockName panel tabs", "拆分$dockName 面板标签"))
                 }
             }
@@ -3157,27 +3167,27 @@ private fun CompactWorkspacePanel(
     } else Modifier)
     Surface(draggableModifier, color = Color(0xFFF7F7F7), border = CardDefaults.outlinedCardBorder()) {
         if (mode == WorkspacePanelMode.ICON_ONLY && dock == WorkspacePanelDock.BOTTOM) {
-            Row(Modifier.fillMaxSize().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { onMode(WorkspacePanelMode.EXPANDED) }, modifier = Modifier.size(38.dp)) { Icon(icon, tr("Expand $title panel", "展开$title 面板")) }
+            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { onMode(WorkspacePanelMode.EXPANDED) }, modifier = Modifier.size(26.dp)) { Icon(icon, tr("Expand $title panel", "展开$title 面板"), Modifier.size(16.dp)) }
                 Spacer(Modifier.weight(1f))
                 if (locked) Icon(Icons.Outlined.Lock, tr("Panel locked", "面板已锁定"), Modifier.size(15.dp), tint = MutedInk)
-                WorkspacePanelDockMenu(dock, onDock, dockDescription, Modifier.size(38.dp), mode, locked, onMode, onLocked)
-                IconButton(onClick = onClose, modifier = Modifier.size(38.dp)) { Icon(Icons.Outlined.Close, tr("Close $title panel", "关闭$title 面板")) }
+                WorkspacePanelDockMenu(dock, onDock, dockDescription, Modifier.size(26.dp), mode, locked, onMode, onLocked)
+                IconButton(onClick = onClose, modifier = Modifier.size(26.dp)) { Icon(Icons.Outlined.Close, tr("Close $title panel", "关闭$title 面板"), Modifier.size(15.dp)) }
             }
         } else if (mode == WorkspacePanelMode.ICON_ONLY) {
-            Column(Modifier.fillMaxSize().padding(vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                IconButton(onClick = { onMode(WorkspacePanelMode.EXPANDED) }) { Icon(icon, tr("Expand $title panel", "展开$title 面板")) }
-                WorkspacePanelDockMenu(dock, onDock, dockDescription, Modifier.size(38.dp), mode, locked, onMode, onLocked)
+            Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+                IconButton(onClick = { onMode(WorkspacePanelMode.EXPANDED) }, modifier = Modifier.size(32.dp)) { Icon(icon, tr("Expand $title panel", "展开$title 面板"), Modifier.size(18.dp)) }
+                WorkspacePanelDockMenu(dock, onDock, dockDescription, Modifier.size(32.dp), mode, locked, onMode, onLocked)
                 if (locked) Icon(Icons.Outlined.Lock, tr("Panel locked", "面板已锁定"), Modifier.size(15.dp), tint = MutedInk)
-                IconButton(onClick = onClose, modifier = Modifier.size(38.dp)) { Icon(Icons.Outlined.Close, tr("Close $title panel", "关闭$title 面板")) }
+                IconButton(onClick = onClose, modifier = Modifier.size(32.dp)) { Icon(Icons.Outlined.Close, tr("Close $title panel", "关闭$title 面板"), Modifier.size(16.dp)) }
             }
         } else {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { onMode(WorkspacePanelMode.EXPANDED) }, modifier = Modifier.size(38.dp)) { Icon(icon, tr("Expand $title panel", "展开$title 面板")) }
-                Text(title, Modifier.weight(1f), maxLines = 1, fontWeight = FontWeight.SemiBold)
+            Row(Modifier.fillMaxWidth().height(27.dp).background(Color(0xFFE3E3E3)).padding(horizontal = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { onMode(WorkspacePanelMode.EXPANDED) }, modifier = Modifier.size(23.dp)) { Icon(icon, tr("Expand $title panel", "展开$title 面板"), Modifier.size(14.dp)) }
+                Text(title, Modifier.weight(1f), maxLines = 1, fontWeight = FontWeight.SemiBold, fontSize = 11.sp)
                 if (locked) Icon(Icons.Outlined.Lock, tr("Panel locked", "面板已锁定"), Modifier.size(15.dp), tint = MutedInk)
-                WorkspacePanelDockMenu(dock, onDock, dockDescription, Modifier.size(38.dp), mode, locked, onMode, onLocked)
-                IconButton(onClick = onClose, modifier = Modifier.size(38.dp)) { Icon(Icons.Outlined.Close, tr("Close $title panel", "关闭$title 面板")) }
+                WorkspacePanelDockMenu(dock, onDock, dockDescription, Modifier.size(23.dp), mode, locked, onMode, onLocked)
+                IconButton(onClick = onClose, modifier = Modifier.size(23.dp)) { Icon(Icons.Outlined.Close, tr("Close $title panel", "关闭$title 面板"), Modifier.size(14.dp)) }
             }
         }
     }
@@ -3201,13 +3211,13 @@ private fun WorkspacePanelDockPreview(dock: WorkspacePanelDock, bounds: Workspac
                 translationY = with(density) { bounds.yDp.dp.toPx() },
             )
             .zIndex(7.5f)
-            .background(Color(0x26000000), RoundedCornerShape(12.dp))
-            .border(4.dp, Ink, RoundedCornerShape(12.dp))
+            .background(Color(0x1A000000))
+            .border(1.dp, Ink)
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
     ) {
-        Surface(color = Ink, shape = RoundedCornerShape(22.dp)) {
-            Text(label, Modifier.padding(horizontal = 18.dp, vertical = 10.dp), color = Color.White, fontWeight = FontWeight.SemiBold)
+        Surface(color = Color(0xFFE3E3E3), shape = RoundedCornerShape(0.dp), border = CardDefaults.outlinedCardBorder()) {
+            Text(label, Modifier.padding(horizontal = 9.dp, vertical = 5.dp), color = Ink, fontSize = 10.sp)
         }
     }
 }
@@ -3225,13 +3235,13 @@ private fun WorkspacePanelFloatPreview(bounds: WorkspacePanelBounds) {
                 translationY = with(density) { bounds.yDp.dp.toPx() },
             )
             .zIndex(7.5f)
-            .background(Color(0x26000000), RoundedCornerShape(12.dp))
-            .border(4.dp, Ink, RoundedCornerShape(12.dp))
+            .background(Color(0x1A000000))
+            .border(1.dp, Ink)
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
     ) {
-        Surface(color = Ink, shape = RoundedCornerShape(22.dp)) {
-            Text(label, Modifier.padding(horizontal = 18.dp, vertical = 10.dp), color = Color.White, fontWeight = FontWeight.SemiBold)
+        Surface(color = Color(0xFFE3E3E3), shape = RoundedCornerShape(0.dp), border = CardDefaults.outlinedCardBorder()) {
+            Text(label, Modifier.padding(horizontal = 9.dp, vertical = 5.dp), color = Ink, fontSize = 10.sp)
         }
     }
 }
@@ -3254,13 +3264,13 @@ private fun WorkspacePanelGroupPreview(bounds: WorkspacePanelBounds, target: Wor
                 translationY = with(density) { bounds.yDp.dp.toPx() },
             )
             .zIndex(7.5f)
-            .background(Color(0x26000000), RoundedCornerShape(12.dp))
-            .border(4.dp, Ink, RoundedCornerShape(12.dp))
+            .background(Color(0x1A000000))
+            .border(1.dp, Ink)
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
     ) {
-        Surface(color = Ink, shape = RoundedCornerShape(22.dp)) {
-            Text(label, Modifier.padding(horizontal = 18.dp, vertical = 10.dp), color = Color.White, fontWeight = FontWeight.SemiBold)
+        Surface(color = Color(0xFFE3E3E3), shape = RoundedCornerShape(0.dp), border = CardDefaults.outlinedCardBorder()) {
+            Text(label, Modifier.padding(horizontal = 9.dp, vertical = 5.dp), color = Ink, fontSize = 10.sp)
         }
     }
 }
@@ -3305,9 +3315,9 @@ private fun FloatingWorkspacePanel(
                 translationY = with(density) { bounds.yDp.dp.toPx() },
             )
             .zIndex(zIndex)
-            .shadow(4.dp, RoundedCornerShape(3.dp))
-            .background(Color(0xFFF7F7F7), RoundedCornerShape(3.dp))
-            .border(1.dp, OutlineSoft, RoundedCornerShape(3.dp)),
+            .shadow(2.dp, RoundedCornerShape(0.dp))
+            .background(Color(0xFFF4F4F4))
+            .border(1.dp, Color(0xFF777777)),
     ) {
         Column(Modifier.fillMaxSize()) {
             if (tabs.size > 1) FloatingPanelTabStrip(tabs, activeTab, locked, onTab, onMoveTab, onSeparateTabs)
@@ -3360,17 +3370,8 @@ private fun BoxScope.PanelResizeCorner(
     Box(
         Modifier
             .align(alignment)
-            .size(32.dp)
+            .size(16.dp)
             .zIndex(2f)
-            .clip(
-                RoundedCornerShape(
-                    topStart = if (alignment == Alignment.TopStart) 11.dp else 0.dp,
-                    topEnd = if (alignment == Alignment.TopEnd) 11.dp else 0.dp,
-                    bottomStart = if (alignment == Alignment.BottomStart) 11.dp else 0.dp,
-                    bottomEnd = if (alignment == Alignment.BottomEnd) 11.dp else 0.dp,
-                ),
-            )
-            .background(Color.White.copy(alpha = .88f))
             .semantics { contentDescription = description }
             .pointerInput(alignment) {
                 detectDragGestures(
@@ -3384,13 +3385,13 @@ private fun BoxScope.PanelResizeCorner(
             },
         contentAlignment = alignment,
     ) {
-        Canvas(Modifier.size(17.dp).padding(3.dp)) {
+        Canvas(Modifier.size(10.dp)) {
             val x = if (left) 1f else size.width - 1f
             val y = if (top) 1f else size.height - 1f
             val horizontalEnd = if (left) size.width else 0f
             val verticalEnd = if (top) size.height else 0f
-            drawLine(MutedInk, Offset(x, y), Offset(horizontalEnd, y), strokeWidth = 2f, cap = StrokeCap.Round)
-            drawLine(MutedInk, Offset(x, y), Offset(x, verticalEnd), strokeWidth = 2f, cap = StrokeCap.Round)
+            drawLine(MutedInk, Offset(x, y), Offset(horizontalEnd, y), strokeWidth = 1f)
+            drawLine(MutedInk, Offset(x, y), Offset(x, verticalEnd), strokeWidth = 1f)
         }
     }
 }
@@ -4649,19 +4650,19 @@ private fun EraserPresetPicker(selected: EraserPreset, onSelect: (EraserPreset) 
 }
 
 @Composable
-private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit, vertical: Boolean, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, modifier: Modifier = Modifier) {
+private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit, vertical: Boolean, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, modifier: Modifier = Modifier) {
     var moreToolsOpen by remember { mutableStateOf(false) }
     var controlsOpen by remember { mutableStateOf(false) }
-    val dragModifier = Modifier.size(32.dp).pointerInput(vertical) {
+    val dragModifier = (if (vertical) Modifier.width(32.dp).height(10.dp) else Modifier.width(10.dp).height(32.dp)).pointerInput(vertical) {
         detectDragGestures(
             onDragEnd = onDragEnd,
             onDragCancel = onDragEnd,
         ) { change, amount -> change.consume(); onDrag(amount.x, amount.y) }
-    }.padding(6.dp)
+    }
     Surface(
-        modifier.shadow(3.dp, RoundedCornerShape(2.dp)),
-        shape = RoundedCornerShape(2.dp),
-        color = Color(0xFFF8F8F8),
+        modifier.shadow(1.dp, RoundedCornerShape(0.dp)),
+        shape = RoundedCornerShape(0.dp),
+        color = Color(0xFFF1F1F1),
         border = CardDefaults.outlinedCardBorder(),
         tonalElevation = 0.dp,
     ) {
@@ -4712,23 +4713,38 @@ private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () 
                 brushColor = brushColor,
                 brushes = brushes,
                 selectedBrushId = selectedBrushId,
+                onSystemPreset = onSystemPreset,
                 onBrushPreset = onBrushPreset,
                 onSize = onSize,
                 onOpacity = onOpacity,
                 onColor = onColor,
             )
         }
-        if (vertical) Column(Modifier.padding(2.dp), horizontalAlignment = Alignment.CenterHorizontally) { content() }
-        else Row(Modifier.padding(2.dp), verticalAlignment = Alignment.CenterVertically) { content() }
+        if (vertical) Column(horizontalAlignment = Alignment.CenterHorizontally) { content() }
+        else Row(verticalAlignment = Alignment.CenterVertically) { content() }
     }
 }
 
 @Composable
-private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, dragModifier: Modifier, vertical: Boolean, moreToolsOpen: Boolean, onMoreToolsOpen: (Boolean) -> Unit, controlsOpen: Boolean, onControlsOpen: (Boolean) -> Unit, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit) {
-    Icon(Icons.Outlined.DragIndicator, tr("Drag toolbar", "拖动工具栏"), modifier = dragModifier, tint = MutedInk)
-    BrushPresetToolButton(EditorTool.PEN, Icons.Outlined.Brush, tr("Brush", "笔刷"), tool, brushes.filterNot(BrushRoleClassifier::isEraser), selectedBrushId, onTool, onBrushPreset)
+private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, dragModifier: Modifier, vertical: Boolean, moreToolsOpen: Boolean, onMoreToolsOpen: (Boolean) -> Unit, controlsOpen: Boolean, onControlsOpen: (Boolean) -> Unit, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit) {
+    val dragToolbarDescription = tr("Drag toolbar", "拖动工具栏")
+    Canvas(dragModifier.semantics { contentDescription = dragToolbarDescription }) {
+        val lineColor = Color(0xFF8A8A8A)
+        if (vertical) {
+            repeat(3) { index ->
+                val y = 3f + index * 3f
+                drawLine(lineColor, Offset(size.width * .28f, y), Offset(size.width * .72f, y), 1f)
+            }
+        } else {
+            repeat(3) { index ->
+                val x = 3f + index * 3f
+                drawLine(lineColor, Offset(x, size.height * .28f), Offset(x, size.height * .72f), 1f)
+            }
+        }
+    }
+    BrushPresetToolButton(EditorTool.PEN, Icons.Outlined.Brush, tr("Brush", "笔刷"), tool, brushes.filterNot(BrushRoleClassifier::isEraser), selectedBrushId, eraserPreset, onTool, onSystemPreset, onEraserPreset, onBrushPreset)
     ToolButton(EditorTool.HIGHLIGHTER, Icons.Outlined.BorderColor, tr("Marker", "标记笔"), tool, onTool)
-    BrushPresetToolButton(EditorTool.ERASER, Icons.Outlined.AutoFixOff, tr("Eraser", "橡皮"), tool, brushes.filter(BrushRoleClassifier::isEraser), selectedBrushId, onTool, onBrushPreset)
+    BrushPresetToolButton(EditorTool.ERASER, Icons.Outlined.AutoFixOff, tr("Eraser", "橡皮"), tool, brushes.filter(BrushRoleClassifier::isEraser), selectedBrushId, eraserPreset, onTool, onSystemPreset, onEraserPreset, onBrushPreset)
     ToolButton(EditorTool.SELECT, Icons.Outlined.Gesture, tr("Select", "选择"), tool, onTool)
     if (vertical) {
         HorizontalDivider(Modifier.width(30.dp).padding(vertical = 2.dp), color = OutlineSoft)
@@ -4871,10 +4887,10 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
 @Composable
 private fun CompactToolbarIconButton(onClick: () -> Unit, description: String, selected: Boolean = false, content: @Composable () -> Unit) {
     Box(
-        Modifier.size(36.dp).clip(RoundedCornerShape(2.dp)).background(if (selected) Sage else Color.Transparent).clickable(onClick = onClick),
+        Modifier.size(32.dp).background(if (selected) Color(0xFFD6DCE8) else Color.Transparent).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        CompositionLocalProvider(LocalContentColor provides if (selected) Color.White else Ink) { Box(Modifier.semantics { contentDescription = description }) { content() } }
+        CompositionLocalProvider(LocalContentColor provides Ink) { Box(Modifier.semantics { contentDescription = description }) { content() } }
     }
 }
 
@@ -5147,7 +5163,10 @@ private fun BrushPresetToolButton(
     selected: EditorTool,
     presets: List<ImportedBrush>,
     selectedBrushId: String?,
+    eraserPreset: EraserPreset,
     onTool: (EditorTool) -> Unit,
+    onSystemPreset: (EditorTool) -> Unit,
+    onEraserPreset: (EraserPreset) -> Unit,
     onPreset: (ImportedBrush) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
@@ -5178,9 +5197,34 @@ private fun BrushPresetToolButton(
                 fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,
             )
-            if (presets.isEmpty()) {
-                Text(tr("No imported presets in this group", "此组还没有导入预设"), Modifier.padding(9.dp), color = MutedInk, fontSize = 10.sp)
-            } else presets.sortedWith(compareBy<ImportedBrush> { it.groupName }.thenBy { it.sortOrder }).forEach { brush ->
+            if (value == EditorTool.PEN) {
+                Row(
+                    Modifier.fillMaxWidth().height(38.dp).background(if (selectedBrushId == null && selected == value) Color(0xFFD6DCE8) else Color.Transparent)
+                        .clickable { open = false; onSystemPreset(EditorTool.PEN) }.padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Outlined.Edit, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(tr("System pen", "系统钢笔"), fontSize = 11.sp)
+                }
+            } else {
+                EraserPreset.entries.forEach { preset ->
+                    Row(
+                        Modifier.fillMaxWidth().height(36.dp).background(if (selectedBrushId == null && eraserPreset == preset && selected == value) Color(0xFFD6DCE8) else Color.Transparent)
+                            .clickable { open = false; onSystemPreset(EditorTool.ERASER); onEraserPreset(preset) }.padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Outlined.AutoFixOff, null, Modifier.size(17.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(preset.displayName(), fontSize = 11.sp)
+                    }
+                }
+            }
+            if (presets.isNotEmpty()) {
+                HorizontalDivider()
+                Text(tr("Imported", "已导入"), Modifier.fillMaxWidth().height(22.dp).padding(horizontal = 7.dp).wrapContentHeight(Alignment.CenterVertically), color = MutedInk, fontSize = 9.sp)
+            }
+            presets.sortedWith(compareBy<ImportedBrush> { it.groupName }.thenBy { it.sortOrder }).forEach { brush ->
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -5229,7 +5273,7 @@ private fun LayerPanel(
     panelLocked: Boolean = false,
     onPanelMode: (WorkspacePanelMode) -> Unit = {},
     onPanelLocked: (Boolean) -> Unit = {},
-    modifier: Modifier = Modifier.width(280.dp).fillMaxHeight().background(Color(0xFFF7F7F7)).padding(6.dp),
+    modifier: Modifier = Modifier.width(240.dp).fillMaxHeight().background(Color(0xFFF4F4F4)).border(1.dp, OutlineSoft).padding(2.dp),
     onPanelDragStart: () -> Unit = {},
     onPanelDrag: (Float, Float) -> Unit = { _, _ -> },
     onPanelDragEnd: () -> Unit = {},
@@ -5259,8 +5303,9 @@ private fun LayerPanel(
     val currentPanelDragCancel by rememberUpdatedState(onPanelDragCancel)
     Column(modifier) {
         CspColorPanel(brushColor, onColor, initiallyExpanded = dock != WorkspacePanelDock.BOTTOM)
-        Spacer(Modifier.height(5.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Spacer(Modifier.height(2.dp))
+        Row(Modifier.fillMaxWidth().height(27.dp).background(Color(0xFFE3E3E3)).border(1.dp, OutlineSoft), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.Menu, null, Modifier.size(19.dp).padding(3.dp), tint = MutedInk)
             Column(
                 Modifier.weight(1f).then(
                     if (!panelLocked) Modifier.semantics { contentDescription = dragDescription }.pointerInput(dock) {
@@ -5286,15 +5331,14 @@ private fun LayerPanel(
                     } else Modifier,
                 ),
             ) {
-                Text(tr("Layers", "图层"), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                Text(tr("Current page", "当前页面"), fontSize = 9.sp, color = MutedInk)
+                Text(tr("Layers", "图层"), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
             }
-            WorkspacePanelDockMenu(dock, onDock, tr("Change layers panel docking", "更改图层面板停靠方式"), Modifier.size(30.dp), panelMode, panelLocked, onPanelMode, onPanelLocked)
-            IconButton(onClick = onClose, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.Close, tr("Close layers panel", "关闭图层面板"), Modifier.size(17.dp)) }
-            IconButton(onClick = onAddFolder, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.CreateNewFolder, tr("Add layer folder", "添加图层文件夹"), Modifier.size(17.dp)) }
-            IconButton(onClick = onAdd, modifier = Modifier.size(30.dp)) { Icon(Icons.Default.Add, tr("Add layer", "添加图层"), Modifier.size(17.dp)) }
+            WorkspacePanelDockMenu(dock, onDock, tr("Change layers panel docking", "更改图层面板停靠方式"), Modifier.size(24.dp), panelMode, panelLocked, onPanelMode, onPanelLocked)
+            IconButton(onClick = onAddFolder, modifier = Modifier.size(24.dp)) { Icon(Icons.Outlined.CreateNewFolder, tr("Add layer folder", "添加图层文件夹"), Modifier.size(14.dp)) }
+            IconButton(onClick = onAdd, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Add, tr("Add layer", "添加图层"), Modifier.size(14.dp)) }
+            IconButton(onClick = onClose, modifier = Modifier.size(24.dp)) { Icon(Icons.Outlined.Close, tr("Close layers panel", "关闭图层面板"), Modifier.size(14.dp)) }
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(2.dp))
         page.layers.firstOrNull { it.id == activeLayerId }?.takeIf { it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) }?.let { activeLayer ->
             Row(Modifier.fillMaxWidth().height(30.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(tr("Opacity", "不透明度"), Modifier.width(48.dp), color = MutedInk, fontSize = 9.sp)
@@ -5303,7 +5347,7 @@ private fun LayerPanel(
             }
             Box {
                 Row(
-                    Modifier.fillMaxWidth().height(30.dp).border(1.dp, OutlineSoft, RoundedCornerShape(2.dp)).clickable { blendModeMenu = true }.padding(horizontal = 7.dp),
+                    Modifier.fillMaxWidth().height(27.dp).border(1.dp, OutlineSoft).clickable { blendModeMenu = true }.padding(horizontal = 5.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(tr("Blend", "混合"), Modifier.width(48.dp), color = MutedInk, fontSize = 9.sp)
@@ -5332,7 +5376,7 @@ private fun LayerPanel(
             }
             Spacer(Modifier.height(4.dp))
         }
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(0.dp), modifier = Modifier.border(1.dp, OutlineSoft)) {
             items(LayerHierarchy.panelOrder(page.layers), key = { it.id }) { layer ->
                 var menu by remember { mutableStateOf(false) }
                 var folderMenu by remember { mutableStateOf(false) }
@@ -5346,10 +5390,11 @@ private fun LayerPanel(
                 val folderMenuDescription = "${tr("Move layer to folder", "移动图层到文件夹")} ${layer.name}"
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(start = (depth * 16).dp).clickable(enabled = editable) { onSelect(layer.id) },
-                    colors = CardDefaults.cardColors(containerColor = if (layer.id == activeLayerId) SageContainer else Color.White),
-                    border = if (layer.id == activeLayerId) CardDefaults.outlinedCardBorder().copy(width = 2.dp, brush = androidx.compose.ui.graphics.SolidColor(Sage)) else CardDefaults.outlinedCardBorder(),
+                    shape = RoundedCornerShape(0.dp),
+                    colors = CardDefaults.cardColors(containerColor = if (layer.id == activeLayerId) Color(0xFFD6DCE8) else Color(0xFFF4F4F4)),
+                    border = CardDefaults.outlinedCardBorder().copy(width = 1.dp, brush = androidx.compose.ui.graphics.SolidColor(OutlineSoft)),
                 ) {
-                    Row(Modifier.heightIn(min = 42.dp).padding(start = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.height(39.dp).padding(start = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                         val visibilityDescription = if (layer.visible) tr("Hide ${layer.name}", "隐藏 ${layer.name}") else tr("Show ${layer.name}", "显示 ${layer.name}")
                         Box(Modifier.size(28.dp).clickable { onVisibility(layer.id) }.semantics { contentDescription = visibilityDescription }, contentAlignment = Alignment.Center) {
                             Icon(if (layer.visible) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff, null, Modifier.size(16.dp))
@@ -5370,7 +5415,7 @@ private fun LayerPanel(
                         Spacer(Modifier.width(5.dp))
                         Column(Modifier.weight(1f)) {
                             Text(layer.name, maxLines = 1, color = if (effectivelyVisible) Ink else MutedInk, fontSize = 11.sp)
-                            Text(when (layer.role) { LayerRole.BACKGROUND -> tr("Background", "背景"); LayerRole.INK -> tr("Ink", "墨迹"); LayerRole.HIGHLIGHT -> tr("Highlight", "高亮"); LayerRole.OBJECTS -> tr("Objects", "对象"); LayerRole.CUSTOM -> tr("Custom", "自定义"); LayerRole.FOLDER -> tr("Folder", "文件夹") }, fontSize = 10.sp, color = MutedInk)
+                            Text(when (layer.role) { LayerRole.BACKGROUND -> tr("Background", "背景"); LayerRole.INK -> tr("Ink", "墨迹"); LayerRole.HIGHLIGHT -> tr("Highlight", "高亮"); LayerRole.OBJECTS -> tr("Objects", "对象"); LayerRole.CUSTOM -> tr("Custom", "自定义"); LayerRole.FOLDER -> tr("Folder", "文件夹") }, fontSize = 8.sp, color = MutedInk)
                         }
                         if (layer.locked) Icon(Icons.Outlined.Lock, tr("Locked", "已锁定"), Modifier.size(14.dp), tint = MutedInk)
                         if (folderTargets.isNotEmpty() || layer.parentId != null) Box {
@@ -5447,7 +5492,7 @@ private fun BrushPanel(
     panelLocked: Boolean = false,
     onPanelMode: (WorkspacePanelMode) -> Unit = {},
     onPanelLocked: (Boolean) -> Unit = {},
-    modifier: Modifier = Modifier.width(330.dp).fillMaxHeight().background(Color(0xFFF7F7F7)).padding(6.dp),
+    modifier: Modifier = Modifier.width(220.dp).fillMaxHeight().background(Color(0xFFF4F4F4)).border(1.dp, OutlineSoft).padding(2.dp),
     onPanelDragStart: () -> Unit = {},
     onPanelDrag: (Float, Float) -> Unit = { _, _ -> },
     onPanelDragEnd: () -> Unit = {},
@@ -5523,11 +5568,13 @@ private fun BrushPanel(
         generateSequence(BrushGroupOperations.parent(path), BrushGroupOperations::parent).none { ancestor -> collapsedGroupPaths.any { it.equals(ancestor, true) } }
     }
     Column(modifier) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().height(27.dp).background(Color(0xFFE3E3E3)).border(1.dp, OutlineSoft), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.Menu, null, Modifier.size(19.dp).padding(3.dp), tint = MutedInk)
             Text(
-                tr("Brush Library", "笔刷库"),
-                fontSize = if (bottomDocked) 16.sp else 20.sp,
-                modifier = Modifier.weight(1f).height(40.dp).wrapContentHeight(Alignment.CenterVertically).then(
+                tr("Sub tool [Brush]", "子工具 [笔刷]"),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f).fillMaxHeight().wrapContentHeight(Alignment.CenterVertically).then(
                     if (!panelLocked) Modifier.semantics { contentDescription = dragDescription }.pointerInput(dock) {
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
@@ -5551,14 +5598,13 @@ private fun BrushPanel(
                     } else Modifier,
                 ),
             )
-            WorkspacePanelDockMenu(dock, onDock, tr("Change brushes panel docking", "更改笔刷面板停靠方式"), Modifier.size(30.dp), panelMode, panelLocked, onPanelMode, onPanelLocked)
+            WorkspacePanelDockMenu(dock, onDock, tr("Change brushes panel docking", "更改笔刷面板停靠方式"), Modifier.size(24.dp), panelMode, panelLocked, onPanelMode, onPanelLocked)
             IconButton(onClick = {
                 multiSelecting = !multiSelecting
                 if (!multiSelecting) selectedBrushIds = emptySet()
-            }, modifier = Modifier.size(30.dp)) { Icon(if (multiSelecting) Icons.Outlined.Close else Icons.Outlined.Checklist, if (multiSelecting) tr("Cancel brush selection", "取消选择笔刷") else tr("Select multiple brushes", "批量选择笔刷"), Modifier.size(17.dp)) }
-            IconButton(onClick = onClose, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.Close, tr("Close brushes panel", "关闭笔刷面板"), Modifier.size(17.dp)) }
+            }, modifier = Modifier.size(24.dp)) { Icon(if (multiSelecting) Icons.Outlined.Close else Icons.Outlined.Checklist, if (multiSelecting) tr("Cancel brush selection", "取消选择笔刷") else tr("Select multiple brushes", "批量选择笔刷"), Modifier.size(14.dp)) }
             Box {
-                IconButton(onClick = { addMenu = true }, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.Add, tr("Add brush or group", "添加笔刷或分组"), Modifier.size(17.dp)) }
+                IconButton(onClick = { addMenu = true }, modifier = Modifier.size(24.dp)) { Icon(Icons.Outlined.Add, tr("Add brush or group", "添加笔刷或分组"), Modifier.size(14.dp)) }
                 DropdownMenu(addMenu, { addMenu = false }) {
                     DropdownMenuItem(
                         text = { Text(tr("Create blank brush", "新建空白笔刷")) },
@@ -5593,6 +5639,7 @@ private fun BrushPanel(
                     )
                 }
             }
+            IconButton(onClick = onClose, modifier = Modifier.size(24.dp)) { Icon(Icons.Outlined.Close, tr("Close brushes panel", "关闭笔刷面板"), Modifier.size(14.dp)) }
         }
         if (multiSelecting) Surface(
             color = Color.White,
@@ -5610,7 +5657,15 @@ private fun BrushPanel(
             Text(tr("Imported presets · compact view", "已导入预设 · 紧凑视图"), fontSize = 11.sp, color = MutedInk)
             Spacer(Modifier.height(8.dp))
         }
-        OutlinedTextField(search, { search = it }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, placeholder = { Text(tr("Search brushes", "搜索笔刷")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(
+            search,
+            { search = it },
+            leadingIcon = { Icon(Icons.Outlined.Search, null, Modifier.size(15.dp)) },
+            placeholder = { Text(tr("Search brushes", "搜索笔刷"), fontSize = 10.sp) },
+            textStyle = LocalTextStyle.current.copy(fontSize = 10.sp),
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().height(38.dp),
+        )
         if (bottomDocked) {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(vertical = 3.dp)) {
                 item("all") { FilterChip(selected = selectedGroup == null, onClick = { selectedGroup = null }, label = { Text(tr("All", "全部"), fontSize = 10.sp) }) }
@@ -5632,7 +5687,7 @@ private fun BrushPanel(
                 Text(tr("GROUPS", "分组"), fontSize = 10.sp, color = MutedInk, modifier = Modifier.weight(1f))
                 IconButton(onClick = { manageGroups = true }, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.DriveFileRenameOutline, tr("Manage brush groups", "管理笔刷分组"), Modifier.size(17.dp)) }
             }
-            Surface(color = Color.White, shape = RoundedCornerShape(3.dp), border = CardDefaults.outlinedCardBorder(), modifier = Modifier.fillMaxWidth().heightIn(max = 148.dp).padding(bottom = 4.dp)) {
+            Surface(color = Color.White, shape = RoundedCornerShape(0.dp), border = CardDefaults.outlinedCardBorder(), modifier = Modifier.fillMaxWidth().heightIn(max = 104.dp).padding(bottom = 2.dp)) {
                 LazyColumn(contentPadding = PaddingValues(vertical = 3.dp)) {
                 item("all") {
                     Row(Modifier.fillMaxWidth().clickable { selectedGroup = null }.background(if (selectedGroup == null) SageContainer else Color.Transparent).padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -5709,24 +5764,21 @@ private fun BrushPanel(
         }
         if (brushes.isNotEmpty()) {
             Text("${tr("BRUSHES", "笔刷")} (${visibleBrushes.size}/${brushes.size})", fontSize = 11.sp, color = MutedInk)
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(if (bottomDocked) 86.dp else 112.dp),
-                modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
-                verticalArrangement = Arrangement.spacedBy(5.dp),
-                contentPadding = PaddingValues(vertical = 4.dp),
+            LazyColumn(
+                modifier = Modifier.weight(1f).border(1.dp, OutlineSoft),
+                contentPadding = PaddingValues(vertical = 1.dp),
             ) {
                 brushSections.forEach { (group, sectionBrushes) ->
-                    item(key = "group:$group", span = { GridItemSpan(maxLineSpan) }) {
+                    item(key = "group:$group") {
                         Text(
                             if (group == "Ungrouped") tr("UNGROUPED", "未分组") else group.uppercase(),
                             color = MutedInk,
                             fontSize = 9.sp,
-                            modifier = Modifier.padding(top = 4.dp, start = 2.dp),
+                            modifier = Modifier.fillMaxWidth().height(22.dp).background(Color(0xFFE9E9E9)).padding(horizontal = 6.dp).wrapContentHeight(Alignment.CenterVertically),
                         )
                     }
                     items(items = sectionBrushes, key = { it.id }) { brush ->
-                        ImportedBrushTile(
+                        ImportedBrushRow(
                             brush = brush,
                             selected = brush.id == selectedBrushId,
                             multiSelecting = multiSelecting,
@@ -6298,21 +6350,22 @@ private fun ImportedBrushRow(
     var dragDistance by remember(brush.id) { mutableFloatStateOf(0f) }
     val rowDescription = "${tr("Brush preset", "笔刷预设")} ${brush.name}"
     Card(
-        modifier = Modifier.semantics { contentDescription = rowDescription }.combinedClickable(
+        modifier = Modifier.fillMaxWidth().semantics { contentDescription = rowDescription }.combinedClickable(
             onClick = { if (multiSelecting) onToggleSelection() else onSelect() },
             onLongClick = onBeginSelection,
         ),
-        colors = CardDefaults.cardColors(containerColor = if (selected || multiSelected) SageContainer else Workspace),
-        border = if (selected || multiSelected) CardDefaults.outlinedCardBorder().copy(width = 2.dp, brush = androidx.compose.ui.graphics.SolidColor(Sage)) else CardDefaults.outlinedCardBorder(),
+        shape = RoundedCornerShape(0.dp),
+        colors = CardDefaults.cardColors(containerColor = if (selected || multiSelected) Color(0xFFD6DCE8) else Color(0xFFF4F4F4)),
+        border = CardDefaults.outlinedCardBorder().copy(width = 1.dp, brush = androidx.compose.ui.graphics.SolidColor(OutlineSoft)),
     ) {
-        Row(Modifier.padding(8.dp).heightIn(min = 58.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.height(52.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             if (multiSelecting) {
                 Icon(if (multiSelected) Icons.Default.CheckBox else Icons.Outlined.CheckBoxOutlineBlank, if (multiSelected) tr("Selected", "已选择") else tr("Not selected", "未选择"), Modifier.size(24.dp), tint = if (multiSelected) Sage else MutedInk)
             } else {
                 Icon(
                     Icons.Outlined.DragIndicator,
                     tr("Drag to reorder brush", "拖动调整笔刷顺序"),
-                    Modifier.size(24.dp).pointerInput(brush.id) {
+                    Modifier.size(18.dp).pointerInput(brush.id) {
                         detectDragGestures(
                             onDragStart = { dragDistance = 0f },
                             onDragEnd = {
@@ -6326,19 +6379,18 @@ private fun ImportedBrushRow(
                     tint = MutedInk,
                 )
             }
-            Spacer(Modifier.width(4.dp))
-            BrushTipPreview(brush, Modifier.size(52.dp))
-            Spacer(Modifier.width(9.dp))
+            Spacer(Modifier.width(3.dp))
+            BrushTipPreview(brush, Modifier.width(52.dp).height(40.dp))
+            Spacer(Modifier.width(6.dp))
             Column(Modifier.weight(1f)) {
-                Text(brush.name, maxLines = 1, fontSize = 13.sp)
-                Text(listOf(brush.format.label, brush.groupName.takeIf(String::isNotBlank), brush.compatibility.label).filterNotNull().joinToString(" · "), color = MutedInk, fontSize = 10.sp, maxLines = 1)
-                Canvas(Modifier.fillMaxWidth().height(12.dp)) { drawLine(Sage, Offset(2f, size.height / 2), Offset(size.width - 2f, size.height / 2), strokeWidth = (brush.defaultSize / 8f).coerceIn(2f, 10f), cap = StrokeCap.Round) }
+                Text(brush.name, maxLines = 1, fontSize = 11.sp)
+                Text(listOf(brush.format.label, brush.groupName.takeIf(String::isNotBlank)).filterNotNull().joinToString(" · "), color = MutedInk, fontSize = 9.sp, maxLines = 1)
+                Canvas(Modifier.fillMaxWidth().height(8.dp)) { drawLine(Ink, Offset(1f, size.height / 2), Offset(size.width - 1f, size.height / 2), strokeWidth = (brush.defaultSize / 9f).coerceIn(1.5f, 7f), cap = StrokeCap.Round) }
             }
             if (!multiSelecting) {
-                IconButton(onClick = onEdit, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.Tune, tr("Edit brush", "编辑笔刷"), modifier = Modifier.size(18.dp)) }
-                IconButton(onClick = onFavorite, modifier = Modifier.size(30.dp)) { Icon(if (brush.favorite) Icons.Default.Star else Icons.Outlined.StarBorder, if (brush.favorite) tr("Remove favorite", "取消收藏") else tr("Favorite", "收藏"), modifier = Modifier.size(18.dp), tint = if (brush.favorite) Sage else Ink) }
+                IconButton(onClick = onEdit, modifier = Modifier.size(24.dp)) { Icon(Icons.Outlined.Tune, tr("Edit brush", "编辑笔刷"), modifier = Modifier.size(15.dp)) }
                 Box {
-                    IconButton(onClick = { menu = true }, modifier = Modifier.size(30.dp)) { Icon(Icons.Default.MoreVert, tr("Brush actions", "笔刷操作"), modifier = Modifier.size(18.dp)) }
+                    IconButton(onClick = { menu = true }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.MoreVert, tr("Brush actions", "笔刷操作"), modifier = Modifier.size(15.dp)) }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         DropdownMenuItem(text = { Text(tr("Conversion report", "转换报告")) }, onClick = { menu = false; onReport() })
                         DropdownMenuItem(text = { Text(tr("Version history", "版本历史")) }, onClick = { menu = false; onHistory() })
@@ -6356,7 +6408,7 @@ private fun ImportedBrushRow(
 @Composable
 private fun BrushTipPreview(brush: ImportedBrush, modifier: Modifier = Modifier) {
     val bitmap = remember(brush.tipPreviewPath) { brush.tipPreviewPath?.let { android.graphics.BitmapFactory.decodeFile(it) } }
-    Box(modifier.clip(RoundedCornerShape(8.dp)).background(Color.White).border(1.dp, OutlineSoft, RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+    Box(modifier.background(Color.White).border(1.dp, OutlineSoft), contentAlignment = Alignment.Center) {
         if (bitmap != null) androidx.compose.foundation.Image(bitmap.asImageBitmap(), brush.name, Modifier.fillMaxSize().padding(4.dp))
         else Canvas(Modifier.fillMaxSize().padding(7.dp)) { drawLine(Ink, Offset(2f, size.height * .7f), Offset(size.width - 2f, size.height * .3f), strokeWidth = 7f, cap = StrokeCap.Round) }
     }
