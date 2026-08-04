@@ -23,8 +23,8 @@ object BuiltInWorkspaces {
                 showBrushPanel = true,
                 showLayerPanel = true,
                 showToolbar = true,
-                brushPanelDock = WorkspacePanelDock.FREE,
-                layerPanelDock = WorkspacePanelDock.FREE,
+                brushPanelDock = WorkspacePanelDock.RIGHT,
+                layerPanelDock = WorkspacePanelDock.RIGHT,
                 brushPanelXDp = 880f,
                 brushPanelYDp = 8f,
                 brushPanelWidthDp = 220f,
@@ -33,7 +33,7 @@ object BuiltInWorkspaces {
                 layerPanelYDp = 376f,
                 layerPanelWidthDp = 240f,
                 layerPanelHeightDp = 260f,
-                toolbarDock = ToolbarDock.LEFT,
+                toolbarDock = ToolbarDock.RIGHT,
                 verticalToolbar = true,
             )
             BuiltInWorkspace.READING -> defaults.copy(
