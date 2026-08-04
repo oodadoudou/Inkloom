@@ -5312,6 +5312,18 @@ private fun BrushPanel(
             IconButton(onClick = onClose, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.Close, tr("Close brushes panel", "关闭笔刷面板"), Modifier.size(17.dp)) }
             IconButton(onClick = { onImportBrushes(selectedGroup?.takeUnless { it == UNGROUPED_BRUSH_FILTER }) }, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.Add, tr("Import", "导入"), Modifier.size(17.dp)) }
         }
+        if (multiSelecting) Surface(
+            color = Color.White,
+            shape = RoundedCornerShape(2.dp),
+            border = CardDefaults.outlinedCardBorder(),
+            modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+        ) {
+            Row(Modifier.fillMaxWidth().height(34.dp).padding(start = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("${selectedBrushIds.size} ${tr("selected", "已选择")}", Modifier.weight(1f), fontSize = 10.sp, color = MutedInk)
+                TextButton(onClick = { batchGroupOperation = BrushBatchGroupOperation.MOVE }, enabled = selectedBrushIds.isNotEmpty(), contentPadding = PaddingValues(horizontal = 7.dp)) { Text(tr("Move", "移动"), fontSize = 10.sp) }
+                TextButton(onClick = { batchGroupOperation = BrushBatchGroupOperation.COPY }, enabled = selectedBrushIds.isNotEmpty(), contentPadding = PaddingValues(horizontal = 7.dp)) { Text(tr("Copy", "复制"), fontSize = 10.sp) }
+            }
+        }
         if (!bottomDocked) {
             Text(tr("Imported presets · compact view", "已导入预设 · 紧凑视图"), fontSize = 11.sp, color = MutedInk)
             Spacer(Modifier.height(8.dp))
@@ -5338,7 +5350,7 @@ private fun BrushPanel(
                 Text(tr("GROUPS", "分组"), fontSize = 10.sp, color = MutedInk, modifier = Modifier.weight(1f))
                 IconButton(onClick = { manageGroups = true }, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.DriveFileRenameOutline, tr("Manage brush groups", "管理笔刷分组"), Modifier.size(17.dp)) }
             }
-            Surface(color = Color.White, shape = RoundedCornerShape(8.dp), border = CardDefaults.outlinedCardBorder(), modifier = Modifier.fillMaxWidth().heightIn(max = 154.dp).padding(bottom = 6.dp)) {
+            Surface(color = Color.White, shape = RoundedCornerShape(3.dp), border = CardDefaults.outlinedCardBorder(), modifier = Modifier.fillMaxWidth().heightIn(max = 108.dp).padding(bottom = 4.dp)) {
                 LazyColumn(contentPadding = PaddingValues(vertical = 3.dp)) {
                 item("all") {
                     Row(Modifier.fillMaxWidth().clickable { selectedGroup = null }.background(if (selectedGroup == null) SageContainer else Color.Transparent).padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -5378,7 +5390,6 @@ private fun BrushPanel(
                 modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
             ) {
                 Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
-                    Text("${selectedBrushIds.size} ${tr("selected", "已选择")}", fontSize = 11.sp, color = MutedInk)
                     val visibleIds = visibleBrushes.mapTo(linkedSetOf()) { it.id }
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp), contentPadding = PaddingValues(top = 4.dp)) {
                         item {
@@ -5389,8 +5400,6 @@ private fun BrushPanel(
                                 label = { Text(if (visibleIds.isNotEmpty() && selectedBrushIds.containsAll(visibleIds)) tr("Clear visible", "取消当前列表") else tr("Select visible", "选择当前列表"), fontSize = 10.sp) },
                             )
                         }
-                        item { AssistChip(onClick = { batchGroupOperation = BrushBatchGroupOperation.MOVE }, enabled = selectedBrushIds.isNotEmpty(), label = { Text(tr("Move", "移动"), fontSize = 10.sp) }) }
-                        item { AssistChip(onClick = { batchGroupOperation = BrushBatchGroupOperation.COPY }, enabled = selectedBrushIds.isNotEmpty(), label = { Text(tr("Copy", "复制"), fontSize = 10.sp) }) }
                         item {
                             AssistChip(
                                 onClick = {
@@ -5476,14 +5485,6 @@ private fun BrushPanel(
             onPressure = { enabled -> selectedToolBrush?.let { onUpdateBrush(it.copy(sizePressureEnabled = enabled)) } },
             onEdit = { brushes.firstOrNull { it.id == selectedBrushId }?.let { editBrush = it } },
         )
-        if (!bottomDocked) {
-            val importTarget = selectedGroup?.takeUnless { it == UNGROUPED_BRUSH_FILTER }
-            FilledTonalButton(onClick = { onImportBrushes(importTarget) }, Modifier.fillMaxWidth()) {
-                Icon(Icons.Outlined.FileDownload, null)
-                Spacer(Modifier.width(8.dp))
-                Text(importTarget?.let { "${tr("Import into", "导入到")} $it" } ?: tr("Import Brushes", "导入笔刷"), maxLines = 1)
-            }
-        }
     }
     reportBrush?.let { brush ->
         AlertDialog(
