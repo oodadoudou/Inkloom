@@ -67,7 +67,6 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -1730,62 +1729,6 @@ private fun EditorScreen(
                     .weight(1f)
                     .fillMaxHeight()
                     .background(Workspace)
-                    .pointerInput(document.id, settings.twoFingerRotation) {
-                        awaitEachGesture {
-                            var transforming = false
-                            var previousCentroid = Offset.Zero
-                            var previousSpan = 0f
-                            var previousAngle = 0f
-                            while (true) {
-                                val pointerEvent = awaitPointerEvent(PointerEventPass.Initial)
-                                val pressed = pointerEvent.changes.filter { it.pressed }
-                                if (pressed.size >= 2) {
-                                    val centroid = pressed.fold(Offset.Zero) { sum, change -> sum + change.position } / pressed.size.toFloat()
-                                    val span = pressed.sumOf { change ->
-                                        val dx = (change.position.x - centroid.x).toDouble()
-                                        val dy = (change.position.y - centroid.y).toDouble()
-                                        kotlin.math.sqrt(dx * dx + dy * dy)
-                                    }.toFloat() / pressed.size.toFloat()
-                                    val first = pressed[0].position
-                                    val second = pressed[1].position
-                                    val angle = Math.toDegrees(kotlin.math.atan2((second.y - first.y).toDouble(), (second.x - first.x).toDouble())).toFloat()
-                                    if (transforming && previousSpan > .01f && span > .01f) {
-                                        var next = ViewportTransform.zoomAroundScreen(
-                                            ViewportState(zoom, panX, panY, viewRotation),
-                                            (span / previousSpan).coerceIn(.5f, 2f),
-                                            previousCentroid.x - size.width / 2f,
-                                            previousCentroid.y - size.height / 2f,
-                                            geometry = currentViewportGeometry(),
-                                        )
-                                        next = ViewportTransform.panByScreen(
-                                            next,
-                                            centroid.x - previousCentroid.x,
-                                            centroid.y - previousCentroid.y,
-                                            geometry = currentViewportGeometry(),
-                                        )
-                                        if (settings.twoFingerRotation) {
-                                            var delta = angle - previousAngle
-                                            while (delta > 180f) delta -= 360f
-                                            while (delta < -180f) delta += 360f
-                                            next = ViewportTransform.rotateBy(next, delta, currentViewportGeometry())
-                                        }
-                                        zoom = next.scale
-                                        panX = next.panX
-                                        panY = next.panY
-                                        viewRotation = next.rotationDegrees
-                                    }
-                                    transforming = true
-                                    previousCentroid = centroid
-                                    previousSpan = span
-                                    previousAngle = angle
-                                    pointerEvent.changes.forEach { it.consume() }
-                                } else if (transforming) {
-                                    pointerEvent.changes.forEach { it.consume() }
-                                }
-                                if (pointerEvent.changes.none { it.pressed }) break
-                            }
-                        }
-                    }
                     .onGloballyPositioned { coordinates ->
                         val origin = coordinates.positionOnScreen()
                         viewportCenterScreenX = origin.x + coordinates.size.width / 2f
@@ -1825,11 +1768,26 @@ private fun EditorScreen(
                             geometry = currentViewportGeometry(),
                         )
                         zoom = next.scale; panX = next.panX; panY = next.panY
+                        canvasView?.apply {
+                            viewportScale = next.scale
+                            viewportPanX = next.panX
+                            viewportPanY = next.panY
+                            viewportRotationDegrees = next.rotationDegrees
+                        }
                     },
-                    onPan = { dx, dy -> val next = ViewportTransform.panByScreen(ViewportState(zoom, panX, panY, viewRotation), dx, dy, geometry = currentViewportGeometry()); panX = next.panX; panY = next.panY },
+                    onPan = { dx, dy ->
+                        val next = ViewportTransform.panByScreen(ViewportState(zoom, panX, panY, viewRotation), dx, dy, geometry = currentViewportGeometry())
+                        panX = next.panX; panY = next.panY
+                        canvasView?.apply { viewportPanX = next.panX; viewportPanY = next.panY }
+                    },
                     onRotate = { delta ->
                         val next = ViewportTransform.rotateBy(ViewportState(zoom, panX, panY, viewRotation), delta, currentViewportGeometry())
                         viewRotation = next.rotationDegrees; panX = next.panX; panY = next.panY
+                        canvasView?.apply {
+                            viewportRotationDegrees = next.rotationDegrees
+                            viewportPanX = next.panX
+                            viewportPanY = next.panY
+                        }
                     },
                     onUndoGesture = { canvasView?.undo() },
                     onRedoGesture = { canvasView?.redo() },
@@ -3849,7 +3807,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.tool = tool
                 view.forceNavigation = forceNavigation
                 view.rotateNavigation = rotateNavigation
-                view.externalViewportGestures = true
+                view.externalViewportGestures = false
                 view.viewportInputTransformEnabled = true
                 view.viewportScale = viewportState.scale
                 view.viewportPanX = viewportState.panX
@@ -3893,7 +3851,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.tool = tool
                 view.forceNavigation = forceNavigation
                 view.rotateNavigation = rotateNavigation
-                view.externalViewportGestures = true
+                view.externalViewportGestures = false
                 view.viewportInputTransformEnabled = true
                 view.viewportScale = viewportState.scale
                 view.viewportPanX = viewportState.panX

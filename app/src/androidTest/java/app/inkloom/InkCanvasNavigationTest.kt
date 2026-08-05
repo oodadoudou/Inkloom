@@ -206,6 +206,49 @@ class InkCanvasNavigationTest {
         assertEquals("Stylus coordinates must still inverse-map after zoom, pan and rotation", targetY, strokePoint?.second ?: Float.NaN, .003f)
     }
 
+    @Test fun nativePinchCompletesAndTheNextStylusStrokeUsesTheNewViewport() {
+        val geometry = ViewportGeometry(1000f, 1000f, 1000f, 1000f)
+        var state = ViewportState(scale = 1f, panX = 0f, panY = 0f)
+        val view = canvas().apply {
+            tool = EditorTool.PEN
+            fingerDrawingEnabled = false
+            externalViewportGestures = false
+            viewportInputTransformEnabled = true
+            viewportCenterScreenX = 500f
+            viewportCenterScreenY = 500f
+        }
+        fun synchronize(next: ViewportState) {
+            state = next
+            view.viewportScale = next.scale
+            view.viewportPanX = next.panX
+            view.viewportPanY = next.panY
+            view.viewportRotationDegrees = next.rotationDegrees
+        }
+        view.onViewportScale = { factor, focusX, focusY ->
+            synchronize(ViewportTransform.zoomAroundScreen(state, factor, focusX - 500f, focusY - 500f, geometry = geometry))
+        }
+        view.onViewportPan = { dx, dy -> synchronize(ViewportTransform.panByScreen(state, dx, dy, geometry = geometry)) }
+        var strokePoint: Pair<Float, Float>? = null
+        view.onStrokeCommitted = { stroke -> strokePoint = stroke.points.first().x to stroke.points.first().y }
+
+        send(view, 0L, MotionEvent.ACTION_DOWN, point(0, 350f, 500f))
+        send(view, 10L, MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), point(0, 350f, 500f), point(1, 650f, 500f))
+        send(view, 30L, MotionEvent.ACTION_MOVE, point(0, 250f, 520f), point(1, 750f, 520f))
+        send(view, 50L, MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), point(0, 250f, 520f), point(1, 750f, 520f))
+        send(view, 60L, MotionEvent.ACTION_UP, point(0, 250f, 520f))
+
+        assertTrue("Pinch must update the viewport before stylus input", state.scale > 1.2f)
+        val targetX = .52f
+        val targetY = .48f
+        val screen = screenForLocal(targetX, targetY, state)
+        sendStylus(view, 80L, MotionEvent.ACTION_DOWN, screen.first, screen.second)
+        sendStylus(view, 100L, MotionEvent.ACTION_MOVE, screen.first + 6f, screen.second + 4f)
+        sendStylus(view, 120L, MotionEvent.ACTION_UP, screen.first + 6f, screen.second + 4f)
+
+        assertEquals("Stylus must write immediately after pinch", targetX, strokePoint?.first ?: Float.NaN, .003f)
+        assertEquals("The post-pinch stroke must land under the stylus", targetY, strokePoint?.second ?: Float.NaN, .003f)
+    }
+
     @Test fun secondFingerCancelsAnInProgressFingerStrokeBeforeNavigation() {
         val view = canvas().apply {
             tool = EditorTool.PEN
