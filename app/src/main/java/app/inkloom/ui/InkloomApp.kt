@@ -1190,14 +1190,9 @@ private fun EditorScreen(
                 IconButton(onClick = { workspaceMenu = true }) { Icon(Icons.Outlined.DashboardCustomize, tr("Workspaces", "工作区")) }
                 DropdownMenu(expanded = workspaceMenu, onDismissRequest = { workspaceMenu = false }) {
                     DropdownMenuItem(
-                        text = { Column { Text(tr("Note workspace", "笔记工作区")); Text(tr("Pages and writing tools", "页面与书写工具"), fontSize = 10.sp, color = MutedInk) } },
-                        leadingIcon = { Icon(Icons.Outlined.EditNote, null) },
-                        onClick = { applyBuiltInWorkspace(BuiltInWorkspace.NOTE) },
-                    )
-                    DropdownMenuItem(
-                        text = { Column { Text(tr("Drawing workspace", "绘画工作区")); Text(tr("CSP layout · floating sub tools, properties, layers, and vertical tools", "CSP 布局 · 浮动子工具、工具属性、图层与竖向工具"), fontSize = 10.sp, color = MutedInk) } },
+                        text = { Column { Text(tr("Creative workspace", "创作工作区")); Text(tr("One CSP-style desk for pages, notes, PDFs, brushes and layers", "同一套 CSP 式桌面：页面、笔记、PDF、笔刷和图层"), fontSize = 10.sp, color = MutedInk) } },
                         leadingIcon = { Icon(Icons.Outlined.Palette, null) },
-                        onClick = { applyBuiltInWorkspace(BuiltInWorkspace.DRAWING) },
+                        onClick = { applyBuiltInWorkspace(BuiltInWorkspace.STUDIO) },
                     )
                     DropdownMenuItem(
                         text = { Column { Text(tr("Reading workspace", "阅读工作区")); Text(tr("Pages with drawing controls hidden", "保留页面并隐藏绘画控制"), fontSize = 10.sp, color = MutedInk) } },

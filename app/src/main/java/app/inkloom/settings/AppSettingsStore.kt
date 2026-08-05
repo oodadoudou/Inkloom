@@ -7,8 +7,8 @@ data class AppSettings(
     val language: UiLanguage = UiLanguage.ENGLISH,
     val fingerDrawing: Boolean = false,
     val showPageRail: Boolean = true,
-    val showBrushPanel: Boolean = false,
-    val showLayerPanel: Boolean = false,
+    val showBrushPanel: Boolean = true,
+    val showLayerPanel: Boolean = true,
     val pagePanelDock: WorkspacePanelDock = WorkspacePanelDock.LEFT,
     val brushPanelDock: WorkspacePanelDock = WorkspacePanelDock.RIGHT,
     val layerPanelDock: WorkspacePanelDock = WorkspacePanelDock.RIGHT,
@@ -31,19 +31,19 @@ data class AppSettings(
     val pagePanelYDp: Float = 16f,
     val pagePanelWidthDp: Float = 160f,
     val pagePanelHeightDp: Float = 640f,
-    val brushPanelXDp: Float = 720f,
-    val brushPanelYDp: Float = 16f,
+    val brushPanelXDp: Float = 1760f,
+    val brushPanelYDp: Float = 12f,
     val brushPanelWidthDp: Float = 220f,
     val brushPanelHeightDp: Float = 680f,
-    val layerPanelXDp: Float = 720f,
-    val layerPanelYDp: Float = 16f,
+    val layerPanelXDp: Float = 2000f,
+    val layerPanelYDp: Float = 12f,
     val layerPanelWidthDp: Float = 240f,
-    val layerPanelHeightDp: Float = 620f,
+    val layerPanelHeightDp: Float = 680f,
     val showToolbar: Boolean = true,
     val toolbarOffsetXDp: Float = 16f,
     val toolbarOffsetYDp: Float = 16f,
     val verticalToolbar: Boolean = true,
-    val toolbarDock: ToolbarDock = ToolbarDock.RIGHT,
+    val toolbarDock: ToolbarDock = ToolbarDock.LEFT,
     val singleFingerDoubleTapUndo: Boolean = false,
     val twoFingerDoubleTapUndo: Boolean = true,
     val threeFingerTapRedo: Boolean = true,
@@ -106,6 +106,11 @@ enum class SelectionMode { REPLACE, ADD, SUBTRACT, INTERSECT }
 enum class SelectionFilter { ALL, ACTIVE_LAYER, CURRENT_BRUSH, CURRENT_COLOR }
 
 class AppSettingsStore(context: Context) {
+    private companion object {
+        const val STUDIO_WORKSPACE_VERSION_KEY = "studioWorkspaceVersion"
+        const val STUDIO_WORKSPACE_VERSION = 1
+    }
+
     private val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
     private val systemLanguage = UiLanguage.fromLanguageTag(context.resources.configuration.locales[0]?.toLanguageTag())
     private val orientation = WorkspaceOrientation.from(context.resources.configuration)
@@ -117,8 +122,8 @@ class AppSettingsStore(context: Context) {
             language = enumValue(preferences.getString("language", null), systemLanguage),
             fingerDrawing = preferences.getBoolean("fingerDrawing", false),
             showPageRail = preferences.getBoolean("showPageRail", true),
-            showBrushPanel = preferences.getBoolean("showBrushPanel", false),
-            showLayerPanel = preferences.getBoolean("showLayerPanel", false),
+            showBrushPanel = preferences.getBoolean("showBrushPanel", true),
+            showLayerPanel = preferences.getBoolean("showLayerPanel", true),
             pagePanelDock = enumValue(preferences.getString("pagePanelDock", null), WorkspacePanelDock.LEFT),
             brushPanelDock = enumValue(preferences.getString("brushPanelDock", null), WorkspacePanelDock.RIGHT),
             layerPanelDock = enumValue(preferences.getString("layerPanelDock", null), WorkspacePanelDock.RIGHT),
@@ -141,19 +146,19 @@ class AppSettingsStore(context: Context) {
             pagePanelYDp = preferences.getFloat("pagePanelYDp", 16f).coerceIn(-2400f, 2400f),
             pagePanelWidthDp = preferences.getFloat("pagePanelWidthDp", 160f).coerceIn(80f, 1200f),
             pagePanelHeightDp = preferences.getFloat("pagePanelHeightDp", 640f).coerceIn(120f, 1600f),
-            brushPanelXDp = preferences.getFloat("brushPanelXDp", 720f).coerceIn(-2400f, 2400f),
-            brushPanelYDp = preferences.getFloat("brushPanelYDp", 16f).coerceIn(-2400f, 2400f),
+            brushPanelXDp = preferences.getFloat("brushPanelXDp", 1760f).coerceIn(-2400f, 2400f),
+            brushPanelYDp = preferences.getFloat("brushPanelYDp", 12f).coerceIn(-2400f, 2400f),
             brushPanelWidthDp = preferences.getFloat("brushPanelWidthDp", 220f).coerceIn(80f, 1200f),
             brushPanelHeightDp = preferences.getFloat("brushPanelHeightDp", 680f).coerceIn(120f, 1600f),
-            layerPanelXDp = preferences.getFloat("layerPanelXDp", 720f).coerceIn(-2400f, 2400f),
-            layerPanelYDp = preferences.getFloat("layerPanelYDp", 16f).coerceIn(-2400f, 2400f),
+            layerPanelXDp = preferences.getFloat("layerPanelXDp", 2000f).coerceIn(-2400f, 2400f),
+            layerPanelYDp = preferences.getFloat("layerPanelYDp", 12f).coerceIn(-2400f, 2400f),
             layerPanelWidthDp = preferences.getFloat("layerPanelWidthDp", 240f).coerceIn(80f, 1200f),
-            layerPanelHeightDp = preferences.getFloat("layerPanelHeightDp", 620f).coerceIn(120f, 1600f),
+            layerPanelHeightDp = preferences.getFloat("layerPanelHeightDp", 680f).coerceIn(120f, 1600f),
             showToolbar = preferences.getBoolean("showToolbar", true),
             toolbarOffsetXDp = preferences.getFloat("toolbarOffsetXDp", 16f).coerceIn(-1200f, 1200f),
             toolbarOffsetYDp = preferences.getFloat("toolbarOffsetYDp", 16f).coerceIn(-1200f, 1200f),
             verticalToolbar = preferences.getBoolean("verticalToolbar", true),
-            toolbarDock = enumValue(preferences.getString("toolbarDock", null), ToolbarDock.RIGHT),
+            toolbarDock = enumValue(preferences.getString("toolbarDock", null), ToolbarDock.LEFT),
             singleFingerDoubleTapUndo = preferences.getBoolean("singleFingerDoubleTapUndo", false),
             twoFingerDoubleTapUndo = preferences.getBoolean("twoFingerDoubleTapUndo", true),
             threeFingerTapRedo = preferences.getBoolean("threeFingerTapRedo", true),
@@ -200,6 +205,9 @@ class AppSettingsStore(context: Context) {
             customWorkspaces = CustomWorkspaceCodec.decodeLibrary(preferences.getString("customWorkspaces", null)),
         )
         val selected = loaded.withWorkspaceFor(orientation)
+        if (preferences.getInt(STUDIO_WORKSPACE_VERSION_KEY, 0) < STUDIO_WORKSPACE_VERSION) {
+            return save(BuiltInWorkspaces.unified(selected))
+        }
         if (selected.workspaceLayouts != loaded.workspaceLayouts) {
             preferences.edit { putString("workspaceLayouts", WorkspaceLayoutProfilesCodec.encode(selected.workspaceLayouts)) }
         }
@@ -291,6 +299,7 @@ class AppSettingsStore(context: Context) {
             .putString("toolboxQuickSlots", ToolboxQuickSlotCodec.encode(persisted.toolboxQuickSlots))
             .putString("workspaceLayouts", WorkspaceLayoutProfilesCodec.encode(persisted.workspaceLayouts))
             .putString("customWorkspaces", CustomWorkspaceCodec.encodeLibrary(persisted.customWorkspaces))
+            .putInt(STUDIO_WORKSPACE_VERSION_KEY, STUDIO_WORKSPACE_VERSION)
             .apply()
         return persisted
     }

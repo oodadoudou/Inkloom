@@ -101,7 +101,7 @@ object WorkspaceLayoutProfilesCodec {
     }
 
     private fun JsonObject.toWorkspace() = ToolboxWorkspaceSnapshot(
-        boolean("showPageRail"), boolean("showBrushPanel"), boolean("showLayerPanel"), boolean("showToolbar", true),
+        boolean("showPageRail", true), boolean("showBrushPanel", true), boolean("showLayerPanel", true), boolean("showToolbar", true),
         enum("pagePanelDock", WorkspacePanelDock.LEFT), enum("brushPanelDock", WorkspacePanelDock.RIGHT), enum("layerPanelDock", WorkspacePanelDock.RIGHT),
         enum("pagePanelMode", WorkspacePanelMode.EXPANDED), enum("brushPanelMode", WorkspacePanelMode.EXPANDED), enum("layerPanelMode", WorkspacePanelMode.EXPANDED),
         boolean("pagePanelLocked"), boolean("brushPanelLocked"), boolean("layerPanelLocked"),
@@ -109,9 +109,9 @@ object WorkspaceLayoutProfilesCodec {
         enum("leftDockActivePanel", WorkspacePanelKind.PAGES), enum("rightDockActivePanel", WorkspacePanelKind.BRUSHES), enum("bottomDockActivePanel", WorkspacePanelKind.PAGES), enum("freeDockActivePanel", WorkspacePanelKind.BRUSHES),
         WorkspacePanelTabs.encodeOrder(WorkspacePanelTabs.normalizeOrder(text("panelTabOrder"))),
         float("pagePanelXDp", 16f), float("pagePanelYDp", 16f), float("pagePanelWidthDp", 160f), float("pagePanelHeightDp", 640f),
-        float("brushPanelXDp", 720f), float("brushPanelYDp", 16f), float("brushPanelWidthDp", 220f), float("brushPanelHeightDp", 680f),
-        float("layerPanelXDp", 720f), float("layerPanelYDp", 16f), float("layerPanelWidthDp", 240f), float("layerPanelHeightDp", 620f),
-        float("toolbarOffsetXDp", 16f), float("toolbarOffsetYDp", 16f), boolean("verticalToolbar"), enum("toolbarDock", ToolbarDock.FREE),
+        float("brushPanelXDp", 1760f), float("brushPanelYDp", 12f), float("brushPanelWidthDp", 220f), float("brushPanelHeightDp", 680f),
+        float("layerPanelXDp", 2000f), float("layerPanelYDp", 12f), float("layerPanelWidthDp", 240f), float("layerPanelHeightDp", 680f),
+        float("toolbarOffsetXDp", 16f), float("toolbarOffsetYDp", 16f), boolean("verticalToolbar", true), enum("toolbarDock", ToolbarDock.LEFT),
     ).normalizedWorkspace()
 
     private fun JsonObject.text(key: String): String = get(key)?.jsonPrimitive?.content.orEmpty()

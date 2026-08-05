@@ -1,39 +1,47 @@
 package app.inkloom.settings
 
-enum class BuiltInWorkspace { NOTE, DRAWING, READING, MINIMAL, RESET }
+/**
+ * STUDIO is the one editor surface for notes, PDFs and drawing. NOTE and DRAWING remain as
+ * compatibility aliases for saved Toolbox profiles created by earlier versions.
+ */
+enum class BuiltInWorkspace { STUDIO, NOTE, DRAWING, READING, MINIMAL, RESET }
 
 object BuiltInWorkspaces {
     fun apply(settings: AppSettings, workspace: BuiltInWorkspace): AppSettings =
         settings.applyToolboxWorkspace(snapshot(workspace))
 
+    /** Upgrades both orientations without touching input, brush or document preferences. */
+    fun unified(settings: AppSettings): AppSettings {
+        val studio = snapshot(BuiltInWorkspace.STUDIO)
+        return settings.applyToolboxWorkspace(studio).copy(
+            workspaceLayouts = WorkspaceLayoutProfiles(landscape = studio, portrait = studio),
+        )
+    }
+
     fun snapshot(workspace: BuiltInWorkspace): ToolboxWorkspaceSnapshot {
         val defaults = AppSettings()
         return when (workspace) {
-            BuiltInWorkspace.NOTE -> defaults.copy(
-                showPageRail = true,
-                showBrushPanel = false,
-                showLayerPanel = false,
-                showToolbar = true,
-                pagePanelDock = WorkspacePanelDock.LEFT,
-                toolbarDock = ToolbarDock.TOP,
-                verticalToolbar = false,
-            )
+            BuiltInWorkspace.STUDIO,
+            // Existing shortcuts/profile files can still request either legacy name. They now
+            // intentionally resolve to the same unified CSP-style desk.
+            BuiltInWorkspace.NOTE,
             BuiltInWorkspace.DRAWING -> defaults.copy(
-                showPageRail = false,
+                showPageRail = true,
                 showBrushPanel = true,
                 showLayerPanel = true,
                 showToolbar = true,
+                pagePanelDock = WorkspacePanelDock.LEFT,
                 brushPanelDock = WorkspacePanelDock.RIGHT,
                 layerPanelDock = WorkspacePanelDock.RIGHT,
-                brushPanelXDp = 880f,
-                brushPanelYDp = 8f,
+                brushPanelXDp = 1760f,
+                brushPanelYDp = 12f,
                 brushPanelWidthDp = 220f,
-                brushPanelHeightDp = 360f,
-                layerPanelXDp = 880f,
-                layerPanelYDp = 376f,
+                brushPanelHeightDp = 680f,
+                layerPanelXDp = 2000f,
+                layerPanelYDp = 12f,
                 layerPanelWidthDp = 240f,
-                layerPanelHeightDp = 260f,
-                toolbarDock = ToolbarDock.RIGHT,
+                layerPanelHeightDp = 680f,
+                toolbarDock = ToolbarDock.LEFT,
                 verticalToolbar = true,
             )
             BuiltInWorkspace.READING -> defaults.copy(
