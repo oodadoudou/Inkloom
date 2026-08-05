@@ -6,31 +6,36 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BuiltInWorkspaceTest {
-    @Test fun `drawing workspace exposes brush and layer panels without pages`() {
+    @Test fun `creative workspace exposes pages brushes layers and left tool rail together`() {
         val original = AppSettings(fingerDrawing = true, penSize = 29f)
 
-        val restored = BuiltInWorkspaces.apply(original, BuiltInWorkspace.DRAWING)
+        val restored = BuiltInWorkspaces.apply(original, BuiltInWorkspace.STUDIO)
 
-        assertFalse(restored.showPageRail)
+        assertTrue(restored.showPageRail)
         assertTrue(restored.showBrushPanel)
         assertTrue(restored.showLayerPanel)
         assertEquals(WorkspacePanelDock.RIGHT, restored.brushPanelDock)
         assertEquals(WorkspacePanelDock.RIGHT, restored.layerPanelDock)
-        assertEquals(8f, restored.brushPanelYDp)
-        assertEquals(376f, restored.layerPanelYDp)
-        assertEquals(ToolbarDock.RIGHT, restored.toolbarDock)
+        assertEquals(12f, restored.brushPanelYDp)
+        assertEquals(12f, restored.layerPanelYDp)
+        assertEquals(ToolbarDock.LEFT, restored.toolbarDock)
         assertTrue(restored.verticalToolbar)
         assertTrue(restored.fingerDrawing)
         assertEquals(29f, restored.penSize)
     }
 
-    @Test fun `note reading and minimal workspaces have distinct visibility`() {
+    @Test fun `legacy note and drawing aliases resolve to the creative workspace`() {
         val note = BuiltInWorkspaces.apply(AppSettings(), BuiltInWorkspace.NOTE)
+        val drawing = BuiltInWorkspaces.apply(AppSettings(), BuiltInWorkspace.DRAWING)
+
+        assertEquals(BuiltInWorkspaces.snapshot(BuiltInWorkspace.STUDIO), note.captureToolboxWorkspace())
+        assertEquals(BuiltInWorkspaces.snapshot(BuiltInWorkspace.STUDIO), drawing.captureToolboxWorkspace())
+    }
+
+    @Test fun `reading and minimal layouts remain available as presentation presets`() {
         val reading = BuiltInWorkspaces.apply(AppSettings(), BuiltInWorkspace.READING)
         val minimal = BuiltInWorkspaces.apply(AppSettings(), BuiltInWorkspace.MINIMAL)
 
-        assertTrue(note.showPageRail)
-        assertTrue(note.showToolbar)
         assertFalse(reading.showToolbar)
         assertTrue(reading.showPageRail)
         assertFalse(minimal.showPageRail)
@@ -51,7 +56,7 @@ class BuiltInWorkspaceTest {
 
         val restored = BuiltInWorkspaces.apply(customized, BuiltInWorkspace.RESET)
 
-        assertEquals(AppSettings().captureToolboxWorkspace(), restored.captureToolboxWorkspace())
+        assertEquals(BuiltInWorkspaces.snapshot(BuiltInWorkspace.STUDIO), restored.captureToolboxWorkspace())
         assertEquals(UiLanguage.SIMPLIFIED_CHINESE, restored.language)
         assertEquals(1.8f, restored.pressureSensitivity)
     }

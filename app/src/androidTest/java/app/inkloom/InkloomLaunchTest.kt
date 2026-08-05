@@ -59,6 +59,7 @@ class InkloomLaunchTest {
                     .getSharedPreferences("inkloom_settings", android.content.Context.MODE_PRIVATE)
                     .edit()
                     .putString("language", "ENGLISH")
+                    .putInt("studioWorkspaceVersion", 1)
                     .putBoolean("showLayerPanel", false)
                     .putBoolean("showBrushPanel", false)
                     .putBoolean("showPageRail", true)
@@ -219,15 +220,15 @@ class InkloomLaunchTest {
         assertEquals(false, AppSettingsStore(composeRule.activity).load().bottomDockStacked)
     }
 
-    @Test fun builtInWorkspacesSwitchTheCompleteEditorLayout() {
+    @Test fun creativeWorkspaceKeepsNotesAndDrawingToolsOnOneDesk() {
         createNotebookAndOpenEditor()
 
         composeRule.onNodeWithContentDescription("Workspaces").performClick()
-        composeRule.onNodeWithText("Drawing workspace").performClick()
+        composeRule.onNodeWithText("Creative workspace").performClick()
         composeRule.onNodeWithText("Sub tool [Brush]").assertIsDisplayed()
         composeRule.onAllNodesWithText("Layers").onLast().assertIsDisplayed()
         var restored = AppSettingsStore(composeRule.activity).load()
-        assertEquals(false, restored.showPageRail)
+        assertEquals(true, restored.showPageRail)
         assertEquals(true, restored.showBrushPanel)
         assertEquals(true, restored.showLayerPanel)
 
@@ -251,8 +252,8 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("Reset current workspace").performClick()
         restored = AppSettingsStore(composeRule.activity).load()
         assertEquals(true, restored.showPageRail)
-        assertEquals(false, restored.showBrushPanel)
-        assertEquals(false, restored.showLayerPanel)
+        assertEquals(true, restored.showBrushPanel)
+        assertEquals(true, restored.showLayerPanel)
         assertEquals(true, restored.showToolbar)
     }
 
@@ -260,7 +261,7 @@ class InkloomLaunchTest {
         createNotebookAndOpenEditor()
 
         composeRule.onNodeWithContentDescription("Workspaces").performClick()
-        composeRule.onNodeWithText("Drawing workspace").performClick()
+        composeRule.onNodeWithText("Creative workspace").performClick()
         composeRule.onNodeWithContentDescription("Workspaces").performClick()
         composeRule.onNodeWithText("Save current workspace…").performClick()
         composeRule.onNodeWithText("Save workspace").assertIsDisplayed()
@@ -312,7 +313,7 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("Expanded").performClick()
 
         composeRule.onNodeWithContentDescription("Workspaces").performClick()
-        composeRule.onNodeWithText("Drawing workspace").performClick()
+        composeRule.onNodeWithText("Creative workspace").performClick()
         composeRule.onNodeWithContentDescription("Change brushes panel docking").performClick()
         composeRule.onNodeWithText("Icon only").performClick()
         composeRule.onNodeWithContentDescription("Expand Brush Library panel").assertIsDisplayed()

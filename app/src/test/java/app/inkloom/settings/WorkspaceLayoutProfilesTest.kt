@@ -59,9 +59,9 @@ class WorkspaceLayoutProfilesTest {
         val portrait = landscape.withWorkspaceFor(WorkspaceOrientation.PORTRAIT)
 
         assertTrue(portrait.showPageRail)
-        assertEquals(720f, portrait.brushPanelXDp)
+        assertEquals(1760f, portrait.brushPanelXDp)
         assertEquals(999f, portrait.workspaceLayouts.landscape?.brushPanelXDp)
-        assertEquals(720f, portrait.workspaceLayouts.portrait?.brushPanelXDp)
+        assertEquals(1760f, portrait.workspaceLayouts.portrait?.brushPanelXDp)
     }
 
     @Test fun `codec round trip clamps workspaces and rejects malformed input`() {

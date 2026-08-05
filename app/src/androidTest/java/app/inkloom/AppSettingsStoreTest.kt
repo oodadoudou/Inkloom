@@ -7,6 +7,8 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.settings.AppSettings
 import app.inkloom.settings.AppSettingsStore
+import app.inkloom.settings.BuiltInWorkspaces
+import app.inkloom.settings.captureToolboxWorkspace
 import app.inkloom.settings.AxisShortcutBinding
 import app.inkloom.settings.ButtonShortcutBinding
 import app.inkloom.settings.CustomWorkspaces
@@ -31,6 +33,28 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class AppSettingsStoreTest {
+    @Test fun legacyWorkspaceMigratesToTheCreativeStudioOnce() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
+        preferences.edit().clear().commit()
+        try {
+            preferences.edit()
+                .putBoolean("showPageRail", false)
+                .putBoolean("showBrushPanel", false)
+                .putBoolean("showLayerPanel", false)
+                .putString("toolbarDock", ToolbarDock.RIGHT.name)
+                .commit()
+
+            val migrated = AppSettingsStore(context).load()
+
+            assertEquals(BuiltInWorkspaces.snapshot(app.inkloom.settings.BuiltInWorkspace.STUDIO), migrated.captureToolboxWorkspace())
+            assertEquals(1, preferences.getInt("studioWorkspaceVersion", 0))
+            assertEquals(migrated, AppSettingsStore(context).load())
+        } finally {
+            preferences.edit().clear().commit()
+        }
+    }
+
     @Test fun rulerGuideSurvivesReload() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
@@ -190,8 +214,8 @@ class AppSettingsStoreTest {
 
             val initialPortrait = AppSettingsStore(portraitContext).load()
             assertTrue(initialPortrait.showPageRail)
-            assertFalse(initialPortrait.showBrushPanel)
-            assertEquals(720f, initialPortrait.brushPanelXDp)
+            assertTrue(initialPortrait.showBrushPanel)
+            assertEquals(1760f, initialPortrait.brushPanelXDp)
             AppSettingsStore(portraitContext).save(initialPortrait.copy(
                 showLayerPanel = true,
                 brushPanelXDp = 32f,
@@ -213,7 +237,7 @@ class AppSettingsStoreTest {
 
             val portrait = AppSettingsStore(portraitContext).load()
             assertTrue(portrait.showPageRail)
-            assertFalse(portrait.showBrushPanel)
+            assertTrue(portrait.showBrushPanel)
             assertTrue(portrait.showLayerPanel)
             assertEquals(32f, portrait.brushPanelXDp)
             assertEquals(WorkspacePanelDock.BOTTOM, portrait.layerPanelDock)
