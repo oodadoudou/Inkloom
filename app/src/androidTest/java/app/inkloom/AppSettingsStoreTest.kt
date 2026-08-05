@@ -202,6 +202,7 @@ class AppSettingsStoreTest {
             AppSettingsStore(landscapeContext).save(AppSettings(
                 showPageRail = false,
                 showBrushPanel = true,
+                showLayerPanel = false,
                 brushPanelDock = WorkspacePanelDock.FREE,
                 brushPanelMode = WorkspacePanelMode.COLLAPSED,
                 brushPanelLocked = true,
