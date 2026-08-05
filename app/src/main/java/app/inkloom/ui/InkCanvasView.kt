@@ -1170,6 +1170,9 @@ class InkCanvasView(context: Context) : View(context) {
         val pointerIndex = event.actionIndex.coerceIn(0, event.pointerCount - 1)
         val eventToolType = event.getToolType(pointerIndex)
         val isStylus = eventToolType == MotionEvent.TOOL_TYPE_STYLUS || eventToolType == MotionEvent.TOOL_TYPE_ERASER
+        // Compose owns two-finger transforms in the editor. A consumed POINTER_UP must never
+        // leave this flag latched and block the next stylus contact.
+        if (isStylus && event.actionMasked == MotionEvent.ACTION_DOWN) externalViewportGestureContact = false
         if (isStylus) singleFingerDoubleTapUndoGesture.cancel()
         if (isStylus) lastStylusSeenAt = event.eventTime
         onInputDiagnostic(when (eventToolType) { MotionEvent.TOOL_TYPE_STYLUS -> "Stylus"; MotionEvent.TOOL_TYPE_ERASER -> "Eraser"; MotionEvent.TOOL_TYPE_FINGER -> "Finger"; else -> "Other" }, event.pressure, event.getAxisValue(MotionEvent.AXIS_TILT), event.buttonState)
@@ -1222,8 +1225,10 @@ class InkCanvasView(context: Context) : View(context) {
                 cancelActiveGestureForNavigation()
             }
             if (externalViewportGestures && (externalViewportGestureContact || event.pointerCount >= 2)) {
-                if (event.pointerCount >= 2) externalViewportGestureContact = true
-                if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) externalViewportGestureContact = false
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> externalViewportGestureContact = event.pointerCount >= 2
+                    MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> externalViewportGestureContact = false
+                }
                 return true
             }
             scaleDetector.onTouchEvent(event)

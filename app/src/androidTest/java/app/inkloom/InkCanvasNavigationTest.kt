@@ -173,6 +173,39 @@ class InkCanvasNavigationTest {
         assertEquals("The rendered pen contact must land under the physical stylus Y", .60f, firstY, .002f)
     }
 
+    @Test fun stylusWritesAfterAnExternalPinchWasInterrupted() {
+        val state = ViewportState(scale = 2.4f, panX = 130f, panY = -90f, rotationDegrees = 17f)
+        val view = canvas().apply {
+            tool = EditorTool.PEN
+            fingerDrawingEnabled = false
+            externalViewportGestures = true
+            viewportInputTransformEnabled = true
+            viewportScale = state.scale
+            viewportPanX = state.panX
+            viewportPanY = state.panY
+            viewportRotationDegrees = state.rotationDegrees
+            viewportCenterScreenX = 500f
+            viewportCenterScreenY = 500f
+        }
+        var strokePoint: Pair<Float, Float>? = null
+        view.onStrokeCommitted = { stroke -> strokePoint = stroke.points.first().x to stroke.points.first().y }
+
+        // This intentionally omits the final finger UP. Compose may consume it while owning
+        // the gesture, so the following stylus DOWN is the recovery boundary we must honour.
+        send(view, 0L, MotionEvent.ACTION_DOWN, point(0, 300f, 500f))
+        send(view, 10L, MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), point(0, 300f, 500f), point(1, 700f, 500f))
+
+        val targetX = .61f
+        val targetY = .37f
+        val screen = screenForLocal(targetX, targetY, state)
+        sendStylus(view, 40L, MotionEvent.ACTION_DOWN, screen.first, screen.second)
+        sendStylus(view, 60L, MotionEvent.ACTION_MOVE, screen.first + 9f, screen.second + 7f)
+        sendStylus(view, 80L, MotionEvent.ACTION_UP, screen.first + 9f, screen.second + 7f)
+
+        assertEquals("A stylus DOWN after pinch must begin a stroke", targetX, strokePoint?.first ?: Float.NaN, .003f)
+        assertEquals("Stylus coordinates must still inverse-map after zoom, pan and rotation", targetY, strokePoint?.second ?: Float.NaN, .003f)
+    }
+
     @Test fun secondFingerCancelsAnInProgressFingerStrokeBeforeNavigation() {
         val view = canvas().apply {
             tool = EditorTool.PEN
@@ -582,5 +615,14 @@ class InkCanvasNavigationTest {
         } finally {
             event.recycle()
         }
+    }
+
+    private fun screenForLocal(x: Float, y: Float, state: ViewportState): Pair<Float, Float> {
+        val dx = (x * 1000f - 500f) * state.scale
+        val dy = (y * 1000f - 500f) * state.scale
+        val radians = Math.toRadians(state.rotationDegrees.toDouble())
+        val rotatedX = dx * kotlin.math.cos(radians).toFloat() - dy * kotlin.math.sin(radians).toFloat()
+        val rotatedY = dx * kotlin.math.sin(radians).toFloat() + dy * kotlin.math.cos(radians).toFloat()
+        return 500f + state.panX + rotatedX to 500f + state.panY + rotatedY
     }
 }
