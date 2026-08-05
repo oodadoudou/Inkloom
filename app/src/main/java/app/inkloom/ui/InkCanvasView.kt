@@ -227,6 +227,7 @@ class InkCanvasView(context: Context) : View(context) {
             return remove
         }
     }
+    private var prewarmedBrushSignature: String? = null
     private val protectedStrokeIds = mutableSetOf<String>()
     private val protectedLayerIds = mutableSetOf<String>()
     private val strokeTileIndex = StrokeTileIndex()
@@ -234,6 +235,8 @@ class InkCanvasView(context: Context) : View(context) {
     private val dirtyStrokeTiles = linkedSetOf<StrokeTileKey>()
     internal var onTileRendered: ((StrokeTileKey, Int) -> Unit)? = null
     internal var onLivePreviewRendered: ((Int) -> Unit)? = null
+    /** Test-only guard against re-allocating a page-sized preview surface per stroke. */
+    internal var onLivePreviewSurfaceAllocated: (() -> Unit)? = null
 
     var tool: EditorTool = EditorTool.PEN
     var forceNavigation: Boolean = false
@@ -655,7 +658,7 @@ class InkCanvasView(context: Context) : View(context) {
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
         super.onSizeChanged(width, height, oldWidth, oldHeight)
         if (width != oldWidth || height != oldHeight) {
-            resetLiveStrokePreview()
+            releaseLiveStrokePreview()
             resetStrokeTiles()
         }
     }
@@ -667,7 +670,7 @@ class InkCanvasView(context: Context) : View(context) {
         stopContinuousPlot()
         laserTrail.clear()
         recycleStrokeTiles()
-        resetLiveStrokePreview()
+        releaseLiveStrokePreview()
         tipCache.values.forEach(Bitmap::recycle); tipCache.clear()
         super.onDetachedFromWindow()
     }
@@ -734,7 +737,12 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
-    private fun drawLayeredStrokes(canvas: Canvas, value: List<InkStroke>) {
+    private fun drawLayeredStrokes(
+        canvas: Canvas,
+        value: List<InkStroke>,
+        primaryStampStartIndex: Int = 0,
+        dualStampStartIndex: Int = 0,
+    ) {
         value.groupBy(InkStroke::layerId).forEach { (layerId, layerStrokes) ->
             val opacity = (layerOpacities[layerId] ?: 1f).coerceIn(0f, 1f)
             if (opacity <= 0f) return@forEach
@@ -751,7 +759,7 @@ class InkCanvasView(context: Context) : View(context) {
                     }
                 })
             } else null
-            layerStrokes.forEach { drawStroke(canvas, it) }
+            layerStrokes.forEach { drawStroke(canvas, it, primaryStampStartIndex, dualStampStartIndex) }
             checkpoint?.let(canvas::restoreToCount)
         }
     }
@@ -768,7 +776,18 @@ class InkCanvasView(context: Context) : View(context) {
             onLivePreviewRendered?.invoke(currentPoints.size)
             return
         }
+        val liveStroke = makeStroke(currentPoints)
+        if (liveStroke.taperEndEnabled) {
+            drawLayeredStrokes(canvas, listOf(liveStroke))
+            onLivePreviewRendered?.invoke(currentPoints.size)
+            return
+        }
         val desiredCheckpoint = ((currentPoints.size - LIVE_STROKE_TAIL_POINTS) / LIVE_STROKE_CHECKPOINT_POINTS) * LIVE_STROKE_CHECKPOINT_POINTS
+        if (desiredCheckpoint <= 0) {
+            drawLayeredStrokes(canvas, listOf(makeStroke(currentPoints)))
+            onLivePreviewRendered?.invoke(currentPoints.size)
+            return
+        }
         if (desiredCheckpoint > liveStrokeCheckpoint || liveStrokeBitmap?.width != width || liveStrokeBitmap?.height != height) {
             val bitmap = liveStrokeBitmap?.takeIf { it.width == width && it.height == height } ?: runCatching {
                 Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
@@ -781,32 +800,53 @@ class InkCanvasView(context: Context) : View(context) {
             if (bitmap !== liveStrokeBitmap) {
                 liveStrokeBitmap?.recycle()
                 liveStrokeBitmap = bitmap
+                onLivePreviewSurfaceAllocated?.invoke()
             }
             bitmap.eraseColor(Color.TRANSPARENT)
             liveStrokeCheckpoint = desiredCheckpoint.coerceAtLeast(1)
             drawLayeredStrokes(Canvas(bitmap), listOf(makeStroke(currentPoints.take(liveStrokeCheckpoint))))
         }
         liveStrokeBitmap?.let { canvas.drawBitmap(it, 0f, 0f, null) }
-        val tailStart = (liveStrokeCheckpoint - 1).coerceAtLeast(0)
-        val tail = currentPoints.subList(tailStart, currentPoints.size)
-        drawLayeredStrokes(canvas, listOf(makeStroke(tail)))
-        onLivePreviewRendered?.invoke(tail.size)
+        val tipPaths = liveStroke.tipAssetPaths.ifEmpty { listOfNotNull(liveStroke.tipAssetPath) }
+        if (tipPaths.isEmpty()) {
+            val tailStart = (liveStrokeCheckpoint - 1).coerceAtLeast(0)
+            val tail = currentPoints.subList(tailStart, currentPoints.size)
+            drawLayeredStrokes(canvas, listOf(makeStroke(tail)))
+            onLivePreviewRendered?.invoke(tail.size)
+        } else {
+            val prefix = liveStroke.copy(points = currentPoints.take(liveStrokeCheckpoint))
+            val primaryStart = primaryStampedPoints(prefix).size
+            val dualStart = if (liveStroke.dualBrush) dualStampedPoints(prefix).size else 0
+            drawLayeredStrokes(canvas, listOf(liveStroke), primaryStart, dualStart)
+            onLivePreviewRendered?.invoke((currentPoints.size - liveStrokeCheckpoint).coerceAtLeast(1))
+        }
     }
 
-    private fun resetLiveStrokePreview() {
+    /** Starts a fresh preview without allocating or releasing a page-sized bitmap. */
+    private fun beginLiveStrokePreview() {
+        liveStrokeBitmap?.eraseColor(Color.TRANSPARENT)
+        liveStrokeCheckpoint = 0
+    }
+
+    /** Hides the completed preview. Its backing surface is retained for the next stroke. */
+    private fun finishLiveStrokePreview() {
+        liveStrokeCheckpoint = 0
+    }
+
+    private fun releaseLiveStrokePreview() {
         liveStrokeBitmap?.recycle()
         liveStrokeBitmap = null
         liveStrokeCheckpoint = 0
     }
 
-    private fun drawStroke(canvas: Canvas, stroke: InkStroke) {
+    private fun drawStroke(canvas: Canvas, stroke: InkStroke, primaryStampStartIndex: Int = 0, dualStampStartIndex: Int = 0) {
         if (stroke.masks.isEmpty()) {
-            drawStrokeContent(canvas, stroke)
+            drawStrokeContent(canvas, stroke, primaryStampStartIndex, dualStampStartIndex)
             resetAntiAliasPaint()
             return
         }
         val checkpoint = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null)
-        drawStrokeContent(canvas, stroke)
+        drawStrokeContent(canvas, stroke, primaryStampStartIndex, dualStampStartIndex)
         StrokeMaskRenderer.draw(canvas, paint, stroke.masks, width, height)
         canvas.restoreToCount(checkpoint)
         resetAntiAliasPaint()
@@ -828,7 +868,12 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
-    private fun drawStrokeContent(canvas: Canvas, stroke: InkStroke) {
+    private fun drawStrokeContent(
+        canvas: Canvas,
+        stroke: InkStroke,
+        primaryStampStartIndex: Int = 0,
+        dualStampStartIndex: Int = 0,
+    ) {
         if (stroke.points.isEmpty()) return
         paint.isAntiAlias = CspAntiAlias.enabled(stroke.antiAliasMode)
         paint.isFilterBitmap = CspAntiAlias.enabled(stroke.antiAliasMode)
@@ -837,7 +882,7 @@ class InkCanvasView(context: Context) : View(context) {
         val tips = tipPaths.mapNotNull { loadTip(it, stroke.hardness, stroke.grainAssetPath, stroke.grainDensity, stroke.grainScale, stroke.grainRotationDegrees, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized, grainOffset.x, grainOffset.y, stroke.grainCompositeMode, stroke.antiAliasMode) }
         if (tips.isNotEmpty()) {
             val dualTips = if (stroke.dualBrush) stroke.dualTipAssetPaths.mapNotNull { loadTip(it, stroke.dualHardness, null, 0f, antiAliasMode = stroke.dualAntiAliasMode) }.ifEmpty { tipPaths.mapNotNull { loadTip(it, stroke.dualHardness, null, 0f, antiAliasMode = stroke.dualAntiAliasMode) } } else emptyList()
-            drawStampedStroke(canvas, stroke, tips, dualTips, tipPaths, grainOffset.x, grainOffset.y)
+            drawStampedStroke(canvas, stroke, tips, dualTips, tipPaths, grainOffset.x, grainOffset.y, primaryStampStartIndex, dualStampStartIndex)
             return
         }
         paint.color = stroke.colorArgb.toInt()
@@ -855,7 +900,17 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
-    private fun drawStampedStroke(canvas: Canvas, stroke: InkStroke, tips: List<Bitmap>, dualTips: List<Bitmap>, tipPaths: List<String>, grainOffsetX: Float, grainOffsetY: Float) {
+    private fun drawStampedStroke(
+        canvas: Canvas,
+        stroke: InkStroke,
+        tips: List<Bitmap>,
+        dualTips: List<Bitmap>,
+        tipPaths: List<String>,
+        grainOffsetX: Float,
+        grainOffsetY: Float,
+        stampStartIndex: Int = 0,
+        dualStampStartIndex: Int = 0,
+    ) {
         // A CSP Dual Brush combines its two stamp streams first, then deposits
         // that single result. Isolating the stroke prevents the secondary mode
         // from accidentally blending with older strokes or the page itself.
@@ -866,20 +921,12 @@ class InkCanvasView(context: Context) : View(context) {
         val referenceScale = width.coerceAtLeast(1) / REFERENCE_WIDTH
         val scatterRandom = java.util.Random(stroke.renderSeed.toLong())
         val rotationRandom = java.util.Random(stroke.renderSeed.toLong() xor 0x49A2B31DL)
-        val sampledPoints = StrokeStampSampler.sample(
-            stroke.points,
-            width.toFloat(),
-            height.toFloat(),
-            includeStationaryPoints = stroke.continuousPlot,
-        ) { point ->
-            val pressure = point.pressure.coerceIn(0f, 1f)
-            val diameter = (stroke.width * referenceScale * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.renderSeed, SALT_SIZE)).coerceAtLeast(1f)
-            val spacingDynamic = pressureDynamic(stroke.spacingPressureEnabled, stroke.spacingPressureMinimum, stroke.spacingPressureCurve, pressure) * secondaryDynamic(stroke.spacingSecondaryDynamics, point, stroke.renderSeed, SALT_SPACING)
-            val gapRatio = CspBrushGap.ratio(stroke.spacingMode, stroke.spacing).let { if (stroke.ribbon) it.coerceAtMost(.06f) else it }
-            diameter * gapRatio * spacingDynamic.coerceIn(.01f, 1f) / if (stroke.spray) SprayGeometry.particlesPerPlot(SprayDynamics.density(stroke, point)) else 1
-        }
+        val sampledPoints = primaryStampedPoints(stroke)
+        val safeStart = stampStartIndex.coerceIn(0, sampledPoints.size)
+        advanceStampRandoms(scatterRandom, rotationRandom, stroke, sampledPoints, safeStart, dual = false)
         val taper = StrokeTaper.factors(sampledPoints, width.toFloat(), height.toFloat(), stroke.taperMode, stroke.taperStartEnabled, stroke.taperStartLength, stroke.taperStartLengthUnit, stroke.taperStartMinimum, stroke.taperEndEnabled, stroke.taperEndLength, stroke.taperEndLengthUnit, stroke.taperEndMinimum)
         sampledPoints.forEachIndexed { index, point ->
+            if (index < safeStart) return@forEachIndexed
             val stampsAtPoint = BrushStampCount.resolve(stroke.stampCount, stroke.stampCountJitter, stroke.renderSeed, index)
             repeat(stampsAtPoint) stamp@ { repeatIndex ->
             val sequenceIndex = index * 16 + repeatIndex
@@ -942,21 +989,36 @@ class InkCanvasView(context: Context) : View(context) {
         paint.blendMode = null
         if (stroke.dualBrush && dualTips.isNotEmpty()) {
             paint.isFilterBitmap = CspAntiAlias.enabled(stroke.dualAntiAliasMode)
-            drawDualStampedStroke(canvas, stroke, dualTips)
+            drawDualStampedStroke(canvas, stroke, dualTips, dualStampStartIndex)
         }
         if (compositeLayer >= 0) canvas.restoreToCount(compositeLayer)
         paint.colorFilter = null
     }
 
-    /** Draws the secondary stream into the isolated per-stroke composition layer. */
-    private fun drawDualStampedStroke(canvas: Canvas, stroke: InkStroke, tips: List<Bitmap>) {
-        val compositePaint = Paint().apply { blendMode = CspDualBrushBlendMode.resolve(stroke.dualCompositeMode) }
-        val dualLayer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), compositePaint)
-        paint.blendMode = if (stroke.dualBlendTipsWithDarken) BlendMode.DARKEN else null
+    /**
+     * Sampling remains global for a live stamped stroke. That lets a cached prefix and a freshly
+     * drawn tail share exactly the same spacing, sequence index and random stream as the final
+     * committed stroke, rather than visibly changing shape on pen-up.
+     */
+    private fun primaryStampedPoints(stroke: InkStroke): List<StrokePoint> {
         val referenceScale = width.coerceAtLeast(1) / REFERENCE_WIDTH
-        val scatterRandom = java.util.Random(stroke.renderSeed.toLong() xor DUAL_SCATTER_SEED)
-        val rotationRandom = java.util.Random(stroke.renderSeed.toLong() xor DUAL_ROTATION_SEED)
-        val sampledPoints = StrokeStampSampler.sample(
+        return StrokeStampSampler.sample(
+            stroke.points,
+            width.toFloat(),
+            height.toFloat(),
+            includeStationaryPoints = stroke.continuousPlot,
+        ) { point ->
+            val pressure = point.pressure.coerceIn(0f, 1f)
+            val diameter = (stroke.width * referenceScale * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.renderSeed, SALT_SIZE)).coerceAtLeast(1f)
+            val spacingDynamic = pressureDynamic(stroke.spacingPressureEnabled, stroke.spacingPressureMinimum, stroke.spacingPressureCurve, pressure) * secondaryDynamic(stroke.spacingSecondaryDynamics, point, stroke.renderSeed, SALT_SPACING)
+            val gapRatio = CspBrushGap.ratio(stroke.spacingMode, stroke.spacing).let { if (stroke.ribbon) it.coerceAtMost(.06f) else it }
+            diameter * gapRatio * spacingDynamic.coerceIn(.01f, 1f) / if (stroke.spray) SprayGeometry.particlesPerPlot(SprayDynamics.density(stroke, point)) else 1
+        }
+    }
+
+    private fun dualStampedPoints(stroke: InkStroke): List<StrokePoint> {
+        val referenceScale = width.coerceAtLeast(1) / REFERENCE_WIDTH
+        return StrokeStampSampler.sample(
             stroke.points,
             width.toFloat(),
             height.toFloat(),
@@ -968,8 +1030,46 @@ class InkCanvasView(context: Context) : View(context) {
             val gapRatio = CspBrushGap.ratio(stroke.dualSpacingMode, stroke.dualSpacing).let { if (stroke.dualRibbon) it.coerceAtMost(.06f) else it }
             diameter * gapRatio * spacingDynamic.coerceIn(.01f, 1f) / if (stroke.dualSpray) SprayGeometry.particlesPerPlot(SprayDynamics.dualDensity(stroke, point)) else 1
         }
+    }
+
+    private fun advanceStampRandoms(
+        scatterRandom: java.util.Random,
+        rotationRandom: java.util.Random,
+        stroke: InkStroke,
+        sampledPoints: List<StrokePoint>,
+        startIndex: Int,
+        dual: Boolean,
+    ) {
+        sampledPoints.take(startIndex).forEachIndexed { index, _ ->
+            val stampCount = if (dual) {
+                BrushStampCount.resolve(stroke.dualStampCount, stroke.dualStampCountJitter, stroke.renderSeed, index, dual = true)
+            } else {
+                BrushStampCount.resolve(stroke.stampCount, stroke.stampCountJitter, stroke.renderSeed, index)
+            }
+            repeat(stampCount) {
+                if (if (dual) stroke.dualSpray else stroke.spray) {
+                    scatterRandom.nextFloat()
+                    scatterRandom.nextFloat()
+                }
+                rotationRandom.nextFloat()
+            }
+        }
+    }
+
+    /** Draws the secondary stream into the isolated per-stroke composition layer. */
+    private fun drawDualStampedStroke(canvas: Canvas, stroke: InkStroke, tips: List<Bitmap>, stampStartIndex: Int = 0) {
+        val compositePaint = Paint().apply { blendMode = CspDualBrushBlendMode.resolve(stroke.dualCompositeMode) }
+        val dualLayer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), compositePaint)
+        paint.blendMode = if (stroke.dualBlendTipsWithDarken) BlendMode.DARKEN else null
+        val referenceScale = width.coerceAtLeast(1) / REFERENCE_WIDTH
+        val scatterRandom = java.util.Random(stroke.renderSeed.toLong() xor DUAL_SCATTER_SEED)
+        val rotationRandom = java.util.Random(stroke.renderSeed.toLong() xor DUAL_ROTATION_SEED)
+        val sampledPoints = dualStampedPoints(stroke)
+        val safeStart = stampStartIndex.coerceIn(0, sampledPoints.size)
+        advanceStampRandoms(scatterRandom, rotationRandom, stroke, sampledPoints, safeStart, dual = true)
         val taper = StrokeTaper.factors(sampledPoints, width.toFloat(), height.toFloat(), stroke.taperMode, stroke.taperStartEnabled, stroke.taperStartLength, stroke.taperStartLengthUnit, stroke.taperStartMinimum, stroke.taperEndEnabled, stroke.taperEndLength, stroke.taperEndLengthUnit, stroke.taperEndMinimum)
         sampledPoints.forEachIndexed { index, point ->
+            if (index < safeStart) return@forEachIndexed
             val stampsAtPoint = BrushStampCount.resolve(stroke.dualStampCount, stroke.dualStampCountJitter, stroke.renderSeed, index, dual = true)
             repeat(stampsAtPoint) stamp@ { repeatIndex ->
             val sequenceIndex = index * 16 + repeatIndex
@@ -1048,6 +1148,20 @@ class InkCanvasView(context: Context) : View(context) {
         val normalizedAntiAlias = CspAntiAlias.normalize(antiAliasMode)
         val key = "$path:${(hardness.coerceIn(0f, 1f) * 20).toInt()}:$grainPath:${(grainDensity.coerceIn(0f, 1f) * 20).toInt()}:${grainScale.toInt()}:${grainRotation.toInt()}:${grainBrightness.toInt()}:${grainContrast.toInt()}:$grainReversed:$grainEmphasized:${grainOffsetX.toBits()}:${grainOffsetY.toBits()}:$grainCompositeMode:$normalizedAntiAlias"
         return tipCache[key] ?: BrushTipTextureDecoder.decode(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainOffsetX, grainOffsetY, grainCompositeMode, normalizedAntiAlias)?.also { tipCache[key] = it }
+    }
+
+    /** Decodes a newly selected imported tip before the first pen contact. */
+    fun prewarmBrushAssets() {
+        val primary = tipAssetPaths.ifEmpty { listOfNotNull(tipAssetPath) }
+        val secondary = if (brushDual) dualTipAssetPaths.ifEmpty { primary } else emptyList()
+        if (primary.isEmpty() && secondary.isEmpty()) return
+        val signature = "${primary.joinToString()}|${secondary.joinToString()}|$brushHardness|$dualHardness|$grainAssetPath|$grainDensity|$grainScale|$grainRotationDegrees|$grainBrightness|$grainContrast|$grainReversed|$grainEmphasized|$grainCompositeMode|$brushAntiAliasMode|$dualAntiAliasMode"
+        if (signature == prewarmedBrushSignature) return
+        prewarmedBrushSignature = signature
+        post {
+            primary.forEach { loadTip(it, brushHardness, grainAssetPath, grainDensity, grainScale, grainRotationDegrees, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainCompositeMode = grainCompositeMode, antiAliasMode = brushAntiAliasMode) }
+            secondary.forEach { loadTip(it, dualHardness, null, 0f, antiAliasMode = dualAntiAliasMode) }
+        }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -1290,7 +1404,7 @@ class InkCanvasView(context: Context) : View(context) {
                     return true
                 }
                 currentPoints.clear()
-                resetLiveStrokePreview()
+                beginLiveStrokePreview()
                 currentStrokeId = java.util.UUID.randomUUID().toString()
                 activeCanvasSnapConstraint = if (!rulerEnabled && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
                     CanvasGuides.constraintAt(canvasGuideState, normalizedX, normalizedY, pageModelWidth, pageModelHeight, width.toFloat(), height.toFloat(), GUIDE_SNAP_TOLERANCE_DP * resources.displayMetrics.density)
@@ -1379,7 +1493,7 @@ class InkCanvasView(context: Context) : View(context) {
                 if (event.actionMasked == MotionEvent.ACTION_UP) performClick()
                 if (event.actionMasked == MotionEvent.ACTION_CANCEL || event.flags and MotionEvent.FLAG_CANCELED != 0) {
                     currentPoints.clear()
-                    resetLiveStrokePreview()
+                    finishLiveStrokePreview()
                     if (activeTool == EditorTool.LASER) laserTrail.cancelActive()
                     shapeStart = null; shapeEnd = null; shapeFreeformPoints.clear()
                     if (activeTool == EditorTool.ERASER) cancelEraserGesture()
@@ -1397,7 +1511,7 @@ class InkCanvasView(context: Context) : View(context) {
                     invalidateStrokeCache(emptyList(), listOf(stroke))
                     commitStrokeEdit(before, strokes)
                     currentPoints.clear()
-                    resetLiveStrokePreview()
+                    finishLiveStrokePreview()
                 } else if (activeTool == EditorTool.SELECT) {
                     if (movingSelection && selectionMoved) {
                         selectionGestureBefore?.let { commitStrokeEdit(it, strokes) }
@@ -1547,7 +1661,7 @@ class InkCanvasView(context: Context) : View(context) {
     private fun cancelActiveGestureForNavigation() {
         stopContinuousPlot()
         currentPoints.clear()
-        resetLiveStrokePreview()
+        finishLiveStrokePreview()
         laserTrail.cancelActive()
         rulerGestureMode = null
         canvasGuideGestureMode = null
@@ -2341,9 +2455,9 @@ class InkCanvasView(context: Context) : View(context) {
     private companion object {
         const val REFERENCE_WIDTH = 1600f
         const val MAX_CACHE_PIXELS = 16_000_000L
-        const val LIVE_STROKE_CACHE_START_POINTS = 96
-        const val LIVE_STROKE_CHECKPOINT_POINTS = 96
-        const val LIVE_STROKE_TAIL_POINTS = 48
+        const val LIVE_STROKE_CACHE_START_POINTS = 8
+        const val LIVE_STROKE_CHECKPOINT_POINTS = 16
+        const val LIVE_STROKE_TAIL_POINTS = 8
         const val MAX_ERASER_SAMPLES_PER_EVENT = 256
         const val VELOCITY_FULL_SCALE_PX_PER_MS = 2f
         const val VELOCITY_SMOOTHING = .65f

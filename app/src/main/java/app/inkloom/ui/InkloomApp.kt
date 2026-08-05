@@ -4179,6 +4179,7 @@ private fun InkCanvasView.applyBrushConfiguration(
     blurPressureMinimum = activeBrush?.blurPressureMinimum ?: 0f
     blurPressureCurve = activeBrush?.blurPressureCurve.orEmpty()
     blurSecondaryDynamics = activeBrush?.blurSecondaryDynamics ?: BrushSecondaryDynamics()
+    prewarmBrushAssets()
 }
 
 @OptIn(ExperimentalFoundationApi::class)

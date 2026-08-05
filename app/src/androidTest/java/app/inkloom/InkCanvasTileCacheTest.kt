@@ -11,6 +11,9 @@ import app.inkloom.document.StrokePoint
 import app.inkloom.document.StrokeTileKey
 import app.inkloom.model.EditorTool
 import app.inkloom.ui.InkCanvasView
+import java.io.File
+import java.io.FileOutputStream
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -33,10 +36,77 @@ class InkCanvasTileCacheTest {
                 }
                 view.draw(Canvas(bitmap))
 
-                assertTrue("Live preview replayed ${previewPointCounts.lastOrNull()} points", previewPointCounts.lastOrNull() in 1..96)
+                assertTrue("Live preview replayed ${previewPointCounts.lastOrNull()} points", previewPointCounts.lastOrNull() in 1..16)
                 view.dispatchStylus(MotionEvent.ACTION_UP, 850f, 200f, 300L)
             } finally {
                 bitmap.recycle()
+            }
+        }
+    }
+
+    @Test fun consecutiveLongStrokesReuseOnePreviewSurface() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            var allocations = 0
+            val view = InkCanvasView(InstrumentationRegistry.getInstrumentation().targetContext).apply {
+                layout(0, 0, 1024, 1024)
+                tool = EditorTool.PEN
+                onLivePreviewSurfaceAllocated = { allocations++ }
+            }
+            val bitmap = Bitmap.createBitmap(1024, 1024, Bitmap.Config.ARGB_8888)
+            try {
+                repeat(2) { stroke ->
+                    val y = 200f + stroke * 180f
+                    view.dispatchStylus(MotionEvent.ACTION_DOWN, 100f, y, 1_000L + stroke * 1_000L)
+                    repeat(80) { point ->
+                        view.dispatchStylus(MotionEvent.ACTION_MOVE, 100f + point * 8f, y, 1_020L + stroke * 1_000L + point)
+                    }
+                    view.draw(Canvas(bitmap))
+                    view.dispatchStylus(MotionEvent.ACTION_UP, 760f, y, 1_900L + stroke * 1_000L)
+                }
+
+                assertEquals("A second pen stroke must reuse the existing page preview surface", 1, allocations)
+            } finally {
+                bitmap.recycle()
+            }
+        }
+    }
+
+    @Test fun stampedBrushPreviewMatchesItsCommittedStroke() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val context = InstrumentationRegistry.getInstrumentation().targetContext
+            val tipFile = File.createTempFile("inkloom-live-tip", ".png", context.cacheDir)
+            val sourceTip = Bitmap.createBitmap(24, 24, Bitmap.Config.ARGB_8888)
+            val live = Bitmap.createBitmap(1024, 1024, Bitmap.Config.ARGB_8888)
+            val committed = Bitmap.createBitmap(1024, 1024, Bitmap.Config.ARGB_8888)
+            try {
+                Canvas(sourceTip).drawCircle(12f, 12f, 10f, android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.WHITE })
+                FileOutputStream(tipFile).use { sourceTip.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                val view = InkCanvasView(context).apply {
+                    layout(0, 0, 1024, 1024)
+                    tool = EditorTool.PEN
+                    tipAssetPath = tipFile.absolutePath
+                    tipAssetPaths = listOf(tipFile.absolutePath)
+                    baseWidth = 92f
+                    brushSpacing = .22f
+                }
+                view.dispatchStylus(MotionEvent.ACTION_DOWN, 120f, 260f, 10L)
+                repeat(96) { point ->
+                    view.dispatchStylus(MotionEvent.ACTION_MOVE, 128f + point * 8f, 260f + (point % 9) * 6f, 20L + point)
+                }
+                view.draw(Canvas(live))
+                view.dispatchStylus(MotionEvent.ACTION_UP, 900f, 300f, 140L)
+                view.draw(Canvas(committed))
+
+                val livePixels = IntArray(1024 * 1024)
+                val committedPixels = IntArray(1024 * 1024)
+                live.getPixels(livePixels, 0, 1024, 0, 0, 1024, 1024)
+                committed.getPixels(committedPixels, 0, 1024, 0, 0, 1024, 1024)
+                assertTrue("A stamped brush must not visibly settle or change on pen-up", livePixels.contentEquals(committedPixels))
+            } finally {
+                sourceTip.recycle()
+                live.recycle()
+                committed.recycle()
+                tipFile.delete()
             }
         }
     }
