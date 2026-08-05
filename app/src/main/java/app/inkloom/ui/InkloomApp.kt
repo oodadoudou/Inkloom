@@ -997,6 +997,7 @@ private fun EditorScreen(
     var exportMenu by remember { mutableStateOf(false) }
     var viewMenu by remember { mutableStateOf(false) }
     var workspaceMenu by remember { mutableStateOf(false) }
+    var colorPanelOpen by remember { mutableStateOf(false) }
     var saveWorkspaceOpen by remember { mutableStateOf(false) }
     var manageWorkspacesOpen by remember { mutableStateOf(false) }
     var newWorkspaceName by remember { mutableStateOf("") }
@@ -1166,30 +1167,35 @@ private fun EditorScreen(
     val selectBeforeCutMessage = tr("Select ink before cutting.", "请先选择墨迹再剪切。")
     val selectBeforeCopyMessage = tr("Select ink before copying.", "请先选择墨迹再复制。")
     val noInkClipboardMessage = tr("The clipboard does not contain Inkloom ink.", "剪贴板中没有 Inkloom 墨迹。")
+    val colorsDescription = tr("Colors", "颜色")
+    val searchNoteDescription = tr("Search this note", "搜索此笔记")
     val defaultCustomWorkspaceName = tr("My workspace", "我的工作区")
     val workspaceCopySuffix = tr("copy", "副本")
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        Row(Modifier.height(50.dp).fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-            BrandMark(); VerticalDivider(Modifier.padding(horizontal = 18.dp, vertical = 10.dp)); Text(document.title, Modifier.weight(1f))
-            IconButton(onClick = { searchOpen = true }) { Icon(Icons.Outlined.Search, tr("Search this note", "搜索此笔记")) }
-            IconButton(onClick = onSettings) { Icon(Icons.Outlined.Settings, tr("Settings", "设置")) }
-            Surface(shape = CircleShape, color = Workspace) { Text("J", Modifier.padding(12.dp, 8.dp)) }
-        }
-        HorizontalDivider(color = OutlineSoft)
-        Row(Modifier.height(44.dp).fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.Outlined.ArrowBack, tr("Back", "返回")) }
-            Text("${document.title} · ${selectedPage.title}", Modifier.weight(1f))
-            IconButton(onClick = onToggleBrushes) { Icon(Icons.Outlined.Brush, tr("Brushes", "笔刷")) }
-            IconButton(onClick = {
-                val open = !layersOpen
-                layersOpen = open
-                onSettingsChange(settings.copy(showLayerPanel = open))
-            }) { Icon(Icons.Outlined.Layers, tr("Layers", "图层")) }
+        Row(
+            Modifier.height(52.dp).fillMaxWidth().background(Color(0xFFF8F8F8)).padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(onClick = onBack, contentPadding = PaddingValues(horizontal = 8.dp)) {
+                Text(tr("Gallery", "图库"), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            }
+            Text(
+                document.title,
+                Modifier.widthIn(max = 180.dp).clip(RoundedCornerShape(6.dp)).clickable { searchOpen = true }.semantics { contentDescription = searchNoteDescription }.padding(horizontal = 6.dp, vertical = 4.dp),
+                maxLines = 1,
+                fontSize = 12.sp,
+                color = MutedInk,
+            )
             Box {
-                IconButton(onClick = { workspaceMenu = true }) { Icon(Icons.Outlined.DashboardCustomize, tr("Workspaces", "工作区")) }
-                DropdownMenu(expanded = workspaceMenu, onDismissRequest = { workspaceMenu = false }) {
+                ProcreateTopButton(Icons.Outlined.Build, tr("Actions", "操作"), selected = workspaceMenu, onClick = { workspaceMenu = true })
+                DropdownMenu(expanded = workspaceMenu, onDismissRequest = { workspaceMenu = false }, modifier = Modifier.widthIn(min = 260.dp, max = 360.dp)) {
+                    DropdownMenuItem(text = { Text(tr("Search this notebook", "搜索当前笔记")) }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, onClick = { workspaceMenu = false; searchOpen = true })
+                    DropdownMenuItem(text = { Text(tr("Notebook settings", "笔记设置")) }, leadingIcon = { Icon(Icons.Outlined.Settings, null) }, onClick = { workspaceMenu = false; onSettings() })
+                    DropdownMenuItem(text = { Text(tr("Page outline", "页面大纲")) }, leadingIcon = { Icon(Icons.Outlined.FormatListBulleted, null) }, onClick = { workspaceMenu = false; outlineOpen = true })
+                    DropdownMenuItem(text = { Text(tr("Export PDF", "导出 PDF")) }, leadingIcon = { Icon(Icons.Outlined.Share, null) }, onClick = { workspaceMenu = false; onExport() })
+                    HorizontalDivider()
                     DropdownMenuItem(
-                        text = { Column { Text(tr("Creative workspace", "创作工作区")); Text(tr("One CSP-style desk for pages, notes, PDFs, brushes and layers", "同一套 CSP 式桌面：页面、笔记、PDF、笔刷和图层"), fontSize = 10.sp, color = MutedInk) } },
+                        text = { Column { Text(tr("Procreate workspace", "Procreate 工作区")); Text(tr("Minimal canvas with pop-over pages, brushes and layers", "极简画布与弹出式页面、笔刷和图层"), fontSize = 10.sp, color = MutedInk) } },
                         leadingIcon = { Icon(Icons.Outlined.Palette, null) },
                         onClick = { applyBuiltInWorkspace(BuiltInWorkspace.STUDIO) },
                     )
@@ -1239,25 +1245,115 @@ private fun EditorScreen(
                     )
                 }
             }
-            IconButton(onClick = { outlineOpen = true }) { Icon(Icons.Outlined.FormatListBulleted, tr("Page outline", "页面大纲")) }
-            IconButton(onClick = { onSettingsChange(settings.copy(showPageRail = !settings.showPageRail)) }) { Icon(if (settings.showPageRail) Icons.Outlined.ViewSidebar else Icons.Outlined.TableRows, tr("Toggle pages", "显示或隐藏页面栏")) }
-            IconButton(onClick = { onSettingsChange(settings.copy(showToolbar = !settings.showToolbar)) }) { Icon(if (settings.showToolbar) Icons.Outlined.VisibilityOff else Icons.Outlined.Build, tr("Toggle toolbar", "显示或隐藏工具栏")) }
-            IconButton(onClick = { val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY, viewRotation), .9f, 0f, 0f, geometry = currentViewportGeometry()); zoom = next.scale; panX = next.panX; panY = next.panY }) { Icon(Icons.Outlined.ZoomOut, tr("Zoom out", "缩小")) }
-            IconButton(onClick = { val next = ViewportTransform.zoomAround(ViewportState(zoom, panX, panY, viewRotation), 1.1f, 0f, 0f, geometry = currentViewportGeometry()); zoom = next.scale; panX = next.panX; panY = next.panY }) { Icon(Icons.Outlined.ZoomIn, tr("Zoom in", "放大")) }
-            IconButton(onClick = ::fitPage) { Icon(Icons.Outlined.CenterFocusStrong, tr("Fit page", "适合页面")) }
+            ProcreateTopButton(Icons.Outlined.AutoFixHigh, tr("Adjustments", "调整"), onClick = onSettings)
+            ProcreateTopButton(Icons.Outlined.Gesture, tr("Selection", "选择"), selected = tool == EditorTool.SELECT, onClick = { exitCanvasNavigation(); tool = EditorTool.SELECT; canvasView?.tool = EditorTool.SELECT })
+            ProcreateTopButton(Icons.Outlined.OpenWith, tr("Transform", "变换"), selected = handToolEnabled, onClick = { handToolEnabled = !handToolEnabled; rotateToolEnabled = false })
+            ProcreateTopButton(
+                if (settings.showPageRail) Icons.Outlined.ViewSidebar else Icons.Outlined.TableRows,
+                tr("Toggle pages", "显示或隐藏页面栏"),
+                selected = settings.showPageRail,
+                onClick = { onSettingsChange(settings.copy(showPageRail = !settings.showPageRail)) },
+            )
+            Spacer(Modifier.weight(1f))
+            ProcreateTopButton(Icons.Outlined.Brush, tr("Brushes", "笔刷"), selected = tool == EditorTool.PEN, onClick = {
+                exitCanvasNavigation()
+                val alreadySelected = tool == EditorTool.PEN
+                tool = EditorTool.PEN
+                canvasView?.tool = EditorTool.PEN
+                if (alreadySelected || !brushesOpen) onToggleBrushes()
+            })
+            ProcreateTopButton(Icons.Outlined.BorderColor, tr("Marker", "标记笔"), selected = tool == EditorTool.HIGHLIGHTER, onClick = { exitCanvasNavigation(); tool = EditorTool.HIGHLIGHTER; canvasView?.tool = EditorTool.HIGHLIGHTER; activeBrush = null; selectedBrushId = null; brushSize = settings.highlighterSize; brushOpacity = settings.highlighterOpacity })
+            ProcreateTopButton(Icons.Outlined.AutoFixOff, tr("Eraser", "橡皮"), selected = tool == EditorTool.ERASER, onClick = {
+                exitCanvasNavigation()
+                val alreadySelected = tool == EditorTool.ERASER
+                tool = EditorTool.ERASER
+                canvasView?.tool = EditorTool.ERASER
+                if (alreadySelected) onToggleBrushes()
+            })
+            ProcreateTopButton(Icons.Outlined.Layers, tr("Layers", "图层"), selected = layersOpen, onClick = {
+                val open = !layersOpen
+                layersOpen = open
+                onSettingsChange(settings.copy(showLayerPanel = open))
+            })
             Box {
-                TextButton(onClick = { viewMenu = true }, contentPadding = PaddingValues(horizontal = 6.dp)) { Text("${(zoom * 100f).toInt()}%", fontSize = 11.sp) }
-                DropdownMenu(expanded = viewMenu, onDismissRequest = { viewMenu = false }) {
-                    DropdownMenuItem(text = { Text(tr("Fit page · Ctrl+0", "适合页面 · Ctrl+0")) }, onClick = { viewMenu = false; fitPage() })
-                    DropdownMenuItem(text = { Text(tr("Actual size · Ctrl+Alt+0", "实际大小 · Ctrl+Alt+0")) }, onClick = { viewMenu = false; actualSize() })
-                    DropdownMenuItem(text = { Text(tr("Fit width", "适合宽度")) }, onClick = { viewMenu = false; fitWidth() })
-                    DropdownMenuItem(text = { Text(tr("Reset rotation", "重置旋转")) }, onClick = { viewMenu = false; resetViewRotation() })
+                IconButton(onClick = { colorPanelOpen = true }, modifier = Modifier.size(44.dp)) {
+                    Box(
+                        Modifier.size(30.dp).clip(CircleShape).background(Color(brushColor)).border(2.dp, if (colorPanelOpen) Color(0xFF1688F8) else OutlineSoft, CircleShape).semantics { contentDescription = colorsDescription },
+                    )
+                }
+                DropdownMenu(
+                    expanded = colorPanelOpen,
+                    onDismissRequest = { colorPanelOpen = false },
+                    modifier = Modifier.width(380.dp).background(Color(0xFF2D2D2D)).padding(8.dp),
+                ) {
+                    Text(tr("Colors", "颜色"), Modifier.padding(horizontal = 8.dp, vertical = 4.dp), color = Color.White, fontWeight = FontWeight.SemiBold)
+                    CspColorPanel(brushColor, { brushColor = it })
                 }
             }
-            IconButton(onClick = onExport) { Icon(Icons.Outlined.Share, tr("Export PDF", "导出 PDF")) }
             Box {
-                IconButton(onClick = { exportMenu = true }) { Icon(Icons.Outlined.MoreHoriz, tr("More exports", "更多导出选项")) }
+                ProcreateTopButton(Icons.Outlined.MoreHoriz, tr("More", "更多"), selected = exportMenu, onClick = { exportMenu = true })
                 DropdownMenu(expanded = exportMenu, onDismissRequest = { exportMenu = false }) {
+                    listOf(
+                        Triple(EditorTool.EYEDROPPER, Icons.Outlined.Colorize, tr("Eyedropper", "吸管")),
+                        Triple(EditorTool.SHAPE, Icons.Outlined.Category, tr("Shape", "形状")),
+                        Triple(EditorTool.TEXT, Icons.Outlined.Title, tr("Text", "文字")),
+                        Triple(EditorTool.NOTE, Icons.Outlined.StickyNote2, tr("Note", "便笺")),
+                        Triple(EditorTool.LINK, Icons.Outlined.Link, tr("Link", "链接")),
+                        Triple(EditorTool.IMAGE, Icons.Outlined.Image, tr("Image", "图片")),
+                        Triple(EditorTool.AUDIO, Icons.Outlined.Mic, tr("Audio", "音频")),
+                        Triple(EditorTool.LASER, Icons.Outlined.TrackChanges, tr("Laser pointer", "激光笔")),
+                    ).forEach { (chosen, icon, label) ->
+                        DropdownMenuItem(text = { Text(label) }, leadingIcon = { Icon(icon, null) }, onClick = {
+                            exportMenu = false
+                            exitCanvasNavigation()
+                            tool = chosen
+                            canvasView?.tool = chosen
+                            when (chosen) {
+                                EditorTool.SHAPE -> shapeInsertOpen = true
+                                EditorTool.TEXT -> { insertText = ""; textInsertOpen = true }
+                                EditorTool.NOTE -> { insertText = ""; stickyInsertOpen = true }
+                                EditorTool.LINK -> { insertLinkTitle = ""; insertLinkUrl = ""; linkInsertOpen = true }
+                                EditorTool.IMAGE -> { onInsertImage(); tool = EditorTool.SELECT; canvasView?.tool = EditorTool.SELECT }
+                                EditorTool.AUDIO -> if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) audioOpen = true else audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                else -> Unit
+                            }
+                        })
+                    }
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text(tr(if (settings.rulerEnabled) "Hide ruler" else "Show ruler", if (settings.rulerEnabled) "隐藏直尺" else "显示直尺")) },
+                        leadingIcon = { Icon(Icons.Outlined.Straighten, null) },
+                        trailingIcon = { if (settings.rulerEnabled) Icon(Icons.Outlined.Check, null) },
+                        onClick = { exportMenu = false; onSettingsChange(settings.copy(rulerEnabled = !settings.rulerEnabled)) },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(tr(if (settings.gridSnapEnabled) "Hide snap grid" else "Show snap grid", if (settings.gridSnapEnabled) "隐藏吸附网格" else "显示吸附网格")) },
+                        leadingIcon = { Icon(Icons.Outlined.GridOn, null) },
+                        trailingIcon = { if (settings.gridSnapEnabled) Icon(Icons.Outlined.Check, null) },
+                        onClick = { exportMenu = false; onSettingsChange(settings.copy(gridSnapEnabled = !settings.gridSnapEnabled)) },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(tr(if (settings.alignmentGuidesEnabled) "Hide alignment guides" else "Show alignment guides", if (settings.alignmentGuidesEnabled) "隐藏对齐参考线" else "显示对齐参考线")) },
+                        leadingIcon = { Icon(Icons.Outlined.AlignHorizontalCenter, null) },
+                        trailingIcon = { if (settings.alignmentGuidesEnabled) Icon(Icons.Outlined.Check, null) },
+                        onClick = { exportMenu = false; onSettingsChange(settings.copy(alignmentGuidesEnabled = !settings.alignmentGuidesEnabled)) },
+                    )
+                    if (tool == EditorTool.SELECT) {
+                        HorizontalDivider()
+                        SelectionShape.entries.forEach { shape ->
+                            DropdownMenuItem(
+                                text = { Text(if (shape == SelectionShape.FREEFORM) tr("Freeform", "自由形") else tr("Rectangle", "矩形")) },
+                                trailingIcon = { if (settings.selectionShape == shape) Icon(Icons.Outlined.Check, null) },
+                                onClick = { exportMenu = false; onSettingsChange(settings.copy(selectionShape = shape)) },
+                            )
+                        }
+                    }
+                    HorizontalDivider()
+                    DropdownMenuItem(text = { Text(tr("Fit page", "适合页面")) }, leadingIcon = { Icon(Icons.Outlined.CenterFocusStrong, null) }, onClick = { exportMenu = false; fitPage() })
+                    DropdownMenuItem(text = { Text(tr("Actual size", "实际大小")) }, onClick = { exportMenu = false; actualSize() })
+                    DropdownMenuItem(text = { Text(tr("Fit width", "适合宽度")) }, onClick = { exportMenu = false; fitWidth() })
+                    DropdownMenuItem(text = { Text(tr("Reset rotation", "重置旋转")) }, onClick = { exportMenu = false; resetViewRotation() })
+                    HorizontalDivider()
                     document.pages.forEachIndexed { index, page -> DropdownMenuItem(text = { Text(tr("Go to page ${index + 1}", "前往第 ${index + 1} 页")) }, onClick = { exportMenu = false; selectPageWithViewport(page.id) }) }
                     HorizontalDivider()
                     DropdownMenuItem(text = { Text(tr("Export current page PNG", "将当前页导出为 PNG")) }, onClick = { exportMenu = false; onExportPage() })
@@ -3268,9 +3364,8 @@ private fun FloatingWorkspacePanel(
                 translationY = with(density) { bounds.yDp.dp.toPx() },
             )
             .zIndex(zIndex)
-            .shadow(2.dp, RoundedCornerShape(0.dp))
-            .background(Color(0xFFF4F4F4))
-            .border(1.dp, Color(0xFF777777)),
+            .shadow(8.dp, RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(18.dp)),
     ) {
         Column(Modifier.fillMaxSize()) {
             if (tabs.size > 1) FloatingPanelTabStrip(tabs, activeTab, locked, onTab, onMoveTab, onSeparateTabs)
@@ -3318,8 +3413,6 @@ private fun BoxScope.PanelResizeCorner(
     val currentActivate by rememberUpdatedState(onActivate)
     val currentResize by rememberUpdatedState(onResize)
     val currentResizeEnd by rememberUpdatedState(onResizeEnd)
-    val top = alignment == Alignment.TopStart || alignment == Alignment.TopEnd
-    val left = alignment == Alignment.TopStart || alignment == Alignment.BottomStart
     Box(
         Modifier
             .align(alignment)
@@ -3336,17 +3429,7 @@ private fun BoxScope.PanelResizeCorner(
                     currentResize(amount.x, amount.y)
                 }
             },
-        contentAlignment = alignment,
-    ) {
-        Canvas(Modifier.size(10.dp)) {
-            val x = if (left) 1f else size.width - 1f
-            val y = if (top) 1f else size.height - 1f
-            val horizontalEnd = if (left) size.width else 0f
-            val verticalEnd = if (top) size.height else 0f
-            drawLine(MutedInk, Offset(x, y), Offset(horizontalEnd, y), strokeWidth = 1f)
-            drawLine(MutedInk, Offset(x, y), Offset(x, verticalEnd), strokeWidth = 1f)
-        }
-    }
+    )
 }
 
 @Composable
@@ -4604,9 +4687,27 @@ private fun EraserPresetPicker(selected: EraserPreset, onSelect: (EraserPreset) 
 }
 
 @Composable
+private fun ProcreateTopButton(
+    icon: ImageVector,
+    description: String,
+    selected: Boolean = false,
+    onClick: () -> Unit,
+) {
+    IconButton(onClick = onClick, modifier = Modifier.size(42.dp)) {
+        Icon(
+            icon,
+            description,
+            Modifier.size(23.dp),
+            tint = if (selected) Color(0xFF1688F8) else Ink,
+        )
+    }
+}
+
+@Composable
 private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit, vertical: Boolean, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, modifier: Modifier = Modifier) {
     var moreToolsOpen by remember { mutableStateOf(false) }
     var controlsOpen by remember { mutableStateOf(false) }
+    val dragToolbarDescription = tr("Drag toolbar", "拖动工具栏")
     val dragModifier = (if (vertical) Modifier.width(32.dp).height(10.dp) else Modifier.width(10.dp).height(32.dp)).pointerInput(vertical) {
         detectDragGestures(
             onDragEnd = onDragEnd,
@@ -4614,10 +4715,10 @@ private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () 
         ) { change, amount -> change.consume(); onDrag(amount.x, amount.y) }
     }
     Surface(
-        modifier.shadow(1.dp, RoundedCornerShape(0.dp)),
-        shape = RoundedCornerShape(0.dp),
-        color = Color(0xFFF1F1F1),
-        border = CardDefaults.outlinedCardBorder(),
+        modifier.shadow(if (vertical) 5.dp else 1.dp, if (vertical) RoundedCornerShape(18.dp) else RoundedCornerShape(0.dp)),
+        shape = if (vertical) RoundedCornerShape(18.dp) else RoundedCornerShape(0.dp),
+        color = if (vertical) Color(0xE9262626) else Color(0xFFF1F1F1),
+        border = if (vertical) null else CardDefaults.outlinedCardBorder(),
         tonalElevation = 0.dp,
     ) {
         val content: @Composable () -> Unit = {
@@ -4674,8 +4775,107 @@ private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () 
                 onColor = onColor,
             )
         }
-        if (vertical) Column(horizontalAlignment = Alignment.CenterHorizontally) { content() }
-        else Row(verticalAlignment = Alignment.CenterVertically) { content() }
+        if (vertical) ProcreateSidebar(
+            brushSize = brushSize,
+            brushOpacity = brushOpacity,
+            onSize = onSize,
+            onOpacity = onOpacity,
+            onModify = { onTool(EditorTool.EYEDROPPER) },
+            onUndo = onUndo,
+            onRedo = onRedo,
+            dragModifier = dragModifier.semantics { contentDescription = dragToolbarDescription },
+        ) else Row(verticalAlignment = Alignment.CenterVertically) { content() }
+    }
+}
+
+@Composable
+private fun ProcreateSidebar(
+    brushSize: Float,
+    brushOpacity: Float,
+    onSize: (Float) -> Unit,
+    onOpacity: (Float) -> Unit,
+    onModify: () -> Unit,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
+    dragModifier: Modifier,
+) {
+    val sizeProgress = kotlin.math.sqrt(((brushSize.coerceIn(.5f, 400f) - .5f) / 399.5f).coerceIn(0f, 1f))
+    Column(
+        Modifier.width(48.dp).padding(vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(dragModifier) {
+            Canvas(Modifier.fillMaxSize()) {
+                drawRoundRect(Color(0xFF777777), Offset(size.width * .22f, size.height * .35f), androidx.compose.ui.geometry.Size(size.width * .56f, 2f), androidx.compose.ui.geometry.CornerRadius(1f))
+            }
+        }
+        ProcreateVerticalSlider(
+            progress = sizeProgress,
+            description = tr("Brush size", "笔刷大小"),
+            display = if (brushSize < 10f) "%.1f".format(brushSize) else brushSize.toInt().toString(),
+            onProgress = { onSize(.5f + it * it * 399.5f) },
+        )
+        IconButton(onClick = onModify, modifier = Modifier.size(32.dp)) {
+            Surface(Modifier.size(17.dp), shape = RoundedCornerShape(4.dp), color = Color.Transparent, border = androidx.compose.foundation.BorderStroke(1.5.dp, Color.White)) {}
+        }
+        ProcreateVerticalSlider(
+            progress = ((brushOpacity.coerceIn(.05f, 1f) - .05f) / .95f),
+            description = tr("Brush opacity", "笔刷不透明度"),
+            display = "${(brushOpacity * 100).toInt()}%",
+            onProgress = { onOpacity(.05f + it * .95f) },
+        )
+        IconButton(onClick = onUndo, modifier = Modifier.size(34.dp)) { Icon(Icons.Outlined.Undo, tr("Undo", "撤销"), Modifier.size(20.dp), tint = Color.White) }
+        IconButton(onClick = onRedo, modifier = Modifier.size(34.dp)) { Icon(Icons.Outlined.Redo, tr("Redo", "重做"), Modifier.size(20.dp), tint = Color.White) }
+    }
+}
+
+@Composable
+private fun ProcreateVerticalSlider(
+    progress: Float,
+    description: String,
+    display: String,
+    onProgress: (Float) -> Unit,
+) {
+    var showValue by remember { mutableStateOf(false) }
+    Box {
+        Canvas(
+            Modifier
+                .width(34.dp)
+                .height(118.dp)
+                .semantics { contentDescription = description }
+                .pointerInput(description) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        showValue = true
+                        fun update(y: Float) = onProgress((1f - y / size.height.coerceAtLeast(1)).coerceIn(0f, 1f))
+                        update(down.position.y)
+                        var active = true
+                        while (active) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            update(change.position.y)
+                            change.consume()
+                            active = change.pressed
+                        }
+                        showValue = false
+                    }
+                },
+        ) {
+            val centerX = size.width / 2f
+            val top = 10f
+            val bottom = size.height - 10f
+            drawRoundRect(Color(0xFF4E4E4E), Offset(centerX - 4f, top), androidx.compose.ui.geometry.Size(8f, bottom - top), androidx.compose.ui.geometry.CornerRadius(4f))
+            val thumbY = bottom - (bottom - top) * progress.coerceIn(0f, 1f)
+            drawRoundRect(Color.White, Offset(centerX - 4f, thumbY), androidx.compose.ui.geometry.Size(8f, bottom - thumbY), androidx.compose.ui.geometry.CornerRadius(4f))
+            drawCircle(Color.White, 7f, Offset(centerX, thumbY))
+            drawCircle(Color(0xFF262626), 7f, Offset(centerX, thumbY), style = Stroke(1.5f))
+        }
+        if (showValue) Surface(
+            Modifier.align(Alignment.CenterEnd).graphicsLayer(translationX = 62f),
+            shape = RoundedCornerShape(12.dp),
+            color = Color(0xE6262626),
+        ) { Text(display, Modifier.padding(horizontal = 10.dp, vertical = 5.dp), color = Color.White, fontSize = 11.sp) }
     }
 }
 
@@ -5247,6 +5447,37 @@ private fun LayerPanel(
         )
         return
     }
+    if (dock == WorkspacePanelDock.FREE) {
+        ProcreateLayerPanel(
+            page = page,
+            activeLayerId = activeLayerId,
+            dock = dock,
+            onDock = onDock,
+            panelMode = panelMode,
+            panelLocked = panelLocked,
+            onPanelMode = onPanelMode,
+            onPanelLocked = onPanelLocked,
+            onClose = onClose,
+            onSelect = onSelect,
+            onAdd = onAdd,
+            onAddFolder = onAddFolder,
+            onRename = onRename,
+            onVisibility = onVisibility,
+            onLock = onLock,
+            onOpacity = onOpacity,
+            onBlendMode = onBlendMode,
+            onMove = onMove,
+            onDuplicate = onDuplicate,
+            onMergeDown = onMergeDown,
+            onDelete = onDelete,
+            modifier = modifier,
+            onPanelDragStart = onPanelDragStart,
+            onPanelDrag = onPanelDrag,
+            onPanelDragEnd = onPanelDragEnd,
+            onPanelDragCancel = onPanelDragCancel,
+        )
+        return
+    }
     var renameLayer by remember { mutableStateOf<InkLayer?>(null) }
     var renameValue by remember { mutableStateOf("") }
     var blendModeMenu by remember { mutableStateOf(false) }
@@ -5422,6 +5653,146 @@ private fun LayerPanel(
 }
 
 @Composable
+private fun ProcreateLayerPanel(
+    page: InkPage,
+    activeLayerId: String,
+    dock: WorkspacePanelDock,
+    onDock: (WorkspacePanelDock) -> Unit,
+    panelMode: WorkspacePanelMode,
+    panelLocked: Boolean,
+    onPanelMode: (WorkspacePanelMode) -> Unit,
+    onPanelLocked: (Boolean) -> Unit,
+    onClose: () -> Unit,
+    onSelect: (String) -> Unit,
+    onAdd: () -> Unit,
+    onAddFolder: () -> Unit,
+    onRename: (String, String) -> Unit,
+    onVisibility: (String) -> Unit,
+    onLock: (String) -> Unit,
+    onOpacity: (String, Float) -> Unit,
+    onBlendMode: (String, LayerBlendMode) -> Unit,
+    onMove: (String, Int) -> Unit,
+    onDuplicate: (String) -> Unit,
+    onMergeDown: (String) -> Unit,
+    onDelete: (String) -> Unit,
+    modifier: Modifier,
+    onPanelDragStart: () -> Unit,
+    onPanelDrag: (Float, Float) -> Unit,
+    onPanelDragEnd: () -> Unit,
+    onPanelDragCancel: () -> Unit,
+) {
+    var renameLayer by remember { mutableStateOf<InkLayer?>(null) }
+    var renameValue by remember { mutableStateOf("") }
+    var blendMenu by remember { mutableStateOf(false) }
+    val activeLayer = page.layers.firstOrNull { it.id == activeLayerId }
+    val currentPanelDrag by rememberUpdatedState(onPanelDrag)
+    val currentPanelDragStart by rememberUpdatedState(onPanelDragStart)
+    val currentPanelDragEnd by rememberUpdatedState(onPanelDragEnd)
+    val currentPanelDragCancel by rememberUpdatedState(onPanelDragCancel)
+    val dragDescription = tr("Drag layers panel", "拖动图层面板")
+    val shape = RoundedCornerShape(14.dp)
+    Surface(modifier.shadow(12.dp, shape), shape = shape, color = Color(0xF22D2D2D), contentColor = Color.White) {
+        Column {
+            Row(Modifier.fillMaxWidth().height(46.dp).padding(start = 15.dp, end = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    tr("Layers", "图层"),
+                    Modifier.weight(1f).fillMaxHeight().wrapContentHeight(Alignment.CenterVertically).semantics { contentDescription = dragDescription }.pointerInput(Unit) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            var last = down.position
+                            var moved = false
+                            currentPanelDragStart()
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) break
+                                val amount = change.position - last
+                                if (amount != Offset.Zero) {
+                                    moved = true
+                                    change.consume()
+                                    currentPanelDrag(amount.x, amount.y)
+                                    last = change.position
+                                }
+                            }
+                            if (moved) currentPanelDragEnd() else currentPanelDragCancel()
+                        }
+                    },
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 15.sp,
+                )
+                WorkspacePanelDockMenu(dock, onDock, tr("Change layers panel docking", "更改图层面板停靠方式"), Modifier.size(36.dp), panelMode, panelLocked, onPanelMode, onPanelLocked)
+                IconButton(onClick = onAddFolder, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.CreateNewFolder, tr("Add layer group", "添加图层组"), tint = Color.White) }
+                IconButton(onClick = onAdd, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Add, tr("Add layer", "添加图层"), tint = Color.White) }
+                IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Close, tr("Close layers panel", "关闭图层面板"), tint = Color.White) }
+            }
+            HorizontalDivider(color = Color(0xFF474747))
+            activeLayer?.takeIf { it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) }?.let { layer ->
+                Row(Modifier.fillMaxWidth().height(40.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(tr("Opacity", "不透明度"), Modifier.width(58.dp), color = Color(0xFFBDBDBD), fontSize = 10.sp)
+                    Slider(layer.opacity, { onOpacity(layer.id, it) }, Modifier.weight(1f), valueRange = 0f..1f)
+                    Text("${(layer.opacity * 100).toInt()}%", Modifier.width(38.dp), color = Color(0xFFBDBDBD), fontSize = 9.sp, textAlign = TextAlign.End)
+                }
+                Box {
+                    Row(Modifier.fillMaxWidth().height(34.dp).clickable { blendMenu = true }.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(tr("Blend mode", "混合模式"), Modifier.weight(1f), color = Color(0xFFBDBDBD), fontSize = 10.sp)
+                        Text(layer.blendMode.name.lowercase().replaceFirstChar(Char::uppercase), fontSize = 10.sp)
+                        Icon(Icons.Outlined.ExpandMore, null, Modifier.size(18.dp), tint = Color.White)
+                    }
+                    DropdownMenu(blendMenu, { blendMenu = false }) {
+                        LayerBlendMode.entries.forEach { mode -> DropdownMenuItem(text = { Text(mode.name.lowercase().replaceFirstChar(Char::uppercase)) }, onClick = { blendMenu = false; onBlendMode(layer.id, mode) }) }
+                    }
+                }
+                HorizontalDivider(color = Color(0xFF474747))
+            }
+            LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                items(LayerHierarchy.panelOrder(page.layers), key = { it.id }) { layer ->
+                    var menu by remember { mutableStateOf(false) }
+                    val selected = layer.id == activeLayerId
+                    val depth = LayerHierarchy.depth(page.layers, layer)
+                    val canSelect = layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) && !LayerHierarchy.effectiveLocked(page.layers, layer)
+                    Row(
+                        Modifier.fillMaxWidth().padding(start = (8 + depth * 14).dp, end = 8.dp).height(58.dp).clip(RoundedCornerShape(7.dp)).background(if (selected) Color(0xFF1678D2) else Color(0xFF383838)).clickable(enabled = canSelect) { onSelect(layer.id) }.padding(horizontal = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        IconButton(onClick = { onVisibility(layer.id) }, modifier = Modifier.size(30.dp)) { Icon(if (layer.visible) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank, tr("Toggle layer visibility", "切换图层可见性"), Modifier.size(18.dp), tint = Color.White) }
+                        Surface(Modifier.size(42.dp), shape = RoundedCornerShape(5.dp), color = Color(0xFFF4F4F4)) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(when (layer.role) { LayerRole.BACKGROUND -> Icons.Outlined.Image; LayerRole.HIGHLIGHT -> Icons.Outlined.BorderColor; LayerRole.OBJECTS -> Icons.Outlined.Widgets; LayerRole.FOLDER -> Icons.Outlined.Folder; else -> Icons.Outlined.Layers }, null, Modifier.size(22.dp), tint = Ink)
+                            }
+                        }
+                        Spacer(Modifier.width(9.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(layer.name, maxLines = 1, fontSize = 11.sp, color = Color.White)
+                            Text(if (layer.role == LayerRole.FOLDER) tr("Group", "组") else layer.blendMode.name.first().toString(), fontSize = 9.sp, color = Color(0xFFBDBDBD))
+                        }
+                        if (layer.locked) Icon(Icons.Outlined.Lock, tr("Locked", "已锁定"), Modifier.size(15.dp), tint = Color(0xFFBDBDBD))
+                        Box {
+                            IconButton(onClick = { menu = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.MoreVert, tr("Layer actions", "图层操作"), tint = Color.White) }
+                            DropdownMenu(menu, { menu = false }) {
+                                DropdownMenuItem(text = { Text(if (layer.locked) tr("Unlock", "解锁") else tr("Lock", "锁定")) }, onClick = { menu = false; onLock(layer.id) })
+                                DropdownMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { menu = false; renameLayer = layer; renameValue = layer.name })
+                                DropdownMenuItem(text = { Text(tr("Move up", "上移")) }, onClick = { menu = false; onMove(layer.id, 1) })
+                                DropdownMenuItem(text = { Text(tr("Move down", "下移")) }, onClick = { menu = false; onMove(layer.id, -1) })
+                                if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(tr("Duplicate", "复制")) }, onClick = { menu = false; onDuplicate(layer.id) })
+                                if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(tr("Merge down", "向下合并")) }, enabled = LayerOperations.canMergeDown(page, layer.id), onClick = { menu = false; onMergeDown(layer.id) })
+                                if (layer.role in setOf(LayerRole.CUSTOM, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(tr("Delete", "删除")) }, onClick = { menu = false; onDelete(layer.id) })
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    renameLayer?.let { layer -> AlertDialog(
+        onDismissRequest = { renameLayer = null },
+        title = { Text(tr("Rename layer", "重命名图层")) },
+        text = { OutlinedTextField(renameValue, { renameValue = it }, label = { Text(tr("Layer name", "图层名称")) }, singleLine = true) },
+        confirmButton = { TextButton(onClick = { onRename(layer.id, renameValue); renameLayer = null }) { Text(tr("Save", "保存")) } },
+        dismissButton = { TextButton(onClick = { renameLayer = null }) { Text(tr("Cancel", "取消")) } },
+    ) }
+}
+
+@Composable
 private fun BrushPanel(
     brushes: List<ImportedBrush>,
     registeredGroups: List<String>,
@@ -5463,6 +5834,34 @@ private fun BrushPanel(
             onPanelMode, onPanelLocked, onDock, onClose,
             tr("Change brushes panel docking", "更改笔刷面板停靠方式"), compactModifier,
             onPanelDragStart, onPanelDrag, onPanelDragEnd, onPanelDragCancel,
+        )
+        return
+    }
+    if (dock == WorkspacePanelDock.FREE) {
+        ProcreateBrushLibrary(
+            brushes = brushes,
+            registeredGroups = registeredGroups,
+            selectedBrushId = selectedBrushId,
+            settings = settings,
+            dock = dock,
+            onDock = onDock,
+            panelMode = panelMode,
+            panelLocked = panelLocked,
+            onPanelMode = onPanelMode,
+            onPanelLocked = onPanelLocked,
+            onClose = onClose,
+            onBrushSelected = onBrushSelected,
+            onImportBrushes = onImportBrushes,
+            onExportBrush = onExportBrush,
+            onUpdateBrush = onUpdateBrush,
+            onReplaceBrushes = onReplaceBrushes,
+            onReplaceGroups = onReplaceGroups,
+            onDeleteBrush = onDeleteBrush,
+            modifier = modifier,
+            onPanelDragStart = onPanelDragStart,
+            onPanelDrag = onPanelDrag,
+            onPanelDragEnd = onPanelDragEnd,
+            onPanelDragCancel = onPanelDragCancel,
         )
         return
     }
@@ -5979,6 +6378,212 @@ private fun BrushBatchGroupDialog(
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Cancel", "取消")) } },
+    )
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ProcreateBrushLibrary(
+    brushes: List<ImportedBrush>,
+    registeredGroups: List<String>,
+    selectedBrushId: String?,
+    settings: AppSettings,
+    dock: WorkspacePanelDock,
+    onDock: (WorkspacePanelDock) -> Unit,
+    panelMode: WorkspacePanelMode,
+    panelLocked: Boolean,
+    onPanelMode: (WorkspacePanelMode) -> Unit,
+    onPanelLocked: (Boolean) -> Unit,
+    onClose: () -> Unit,
+    onBrushSelected: (ImportedBrush) -> Unit,
+    onImportBrushes: (String?) -> Unit,
+    onExportBrush: (ImportedBrush) -> Unit,
+    onUpdateBrush: (ImportedBrush) -> Unit,
+    onReplaceBrushes: (List<ImportedBrush>) -> Unit,
+    onReplaceGroups: (List<String>) -> Unit,
+    onDeleteBrush: (String) -> Unit,
+    modifier: Modifier,
+    onPanelDragStart: () -> Unit,
+    onPanelDrag: (Float, Float) -> Unit,
+    onPanelDragEnd: () -> Unit,
+    onPanelDragCancel: () -> Unit,
+) {
+    val systemBrushes = remember {
+        listOf(
+            ImportedBrush(id = "system-technical-pencil", name = "Technical Pencil", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Sketching", defaultSize = 4f, hardness = .82f, stabilization = .08f),
+            ImportedBrush(id = "system-hb-pencil", name = "HB Pencil", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Sketching", defaultSize = 7f, hardness = .62f, stabilization = .04f),
+            ImportedBrush(id = "system-studio-pen", name = "Studio Pen", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Inking", defaultSize = 9f, hardness = 1f, stabilization = .18f),
+            ImportedBrush(id = "system-monoline", name = "Monoline", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Calligraphy", defaultSize = 18f, hardness = 1f, stabilization = .28f),
+            ImportedBrush(id = "system-marker", name = "Studio Marker", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Painting", defaultSize = 34f, defaultOpacity = .68f, hardness = .7f),
+            ImportedBrush(id = "system-soft-airbrush", name = "Soft Airbrush", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Airbrushing", defaultSize = 92f, defaultOpacity = .35f, hardness = .08f, blur = .35f),
+            ImportedBrush(id = "system-hard-eraser", name = "Hard Eraser", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Erasers", defaultSize = 24f, tags = listOf("eraser"), hardness = 1f),
+            ImportedBrush(id = "system-soft-eraser", name = "Soft Eraser", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Erasers", defaultSize = 68f, tags = listOf("eraser"), hardness = .12f, blur = .28f),
+        )
+    }
+    val systemCategories = listOf("Sketching", "Inking", "Calligraphy", "Painting", "Airbrushing", "Erasers")
+    val importedCategories = BrushGroupOperations.treePaths(brushes, registeredGroups)
+    val ungroupedLabel = tr("Imported", "已导入")
+    val newBrushName = tr("New brush", "新笔刷")
+    val createdInInkloom = tr("Created in Inkloom", "在 Inkloom 中创建")
+    val allCategories = listOf(tr("All", "全部")) + systemCategories + importedCategories + ungroupedLabel
+    var selectedCategory by rememberSaveable { mutableStateOf(systemCategories.first()) }
+    var addMenu by remember { mutableStateOf(false) }
+    var manageGroups by remember { mutableStateOf(false) }
+    var editBrush by remember { mutableStateOf<ImportedBrush?>(null) }
+    var menuBrush by remember { mutableStateOf<ImportedBrush?>(null) }
+    val currentPanelDrag by rememberUpdatedState(onPanelDrag)
+    val currentPanelDragStart by rememberUpdatedState(onPanelDragStart)
+    val currentPanelDragEnd by rememberUpdatedState(onPanelDragEnd)
+    val currentPanelDragCancel by rememberUpdatedState(onPanelDragCancel)
+    val dragDescription = tr("Drag brushes panel", "拖动笔刷面板")
+    val allLabel = tr("All", "全部")
+    LaunchedEffect(allCategories) { if (selectedCategory !in allCategories) selectedCategory = allCategories.first() }
+    val displayed = (systemBrushes + brushes.filterNot(ImportedBrush::hidden)).filter { brush ->
+        when (selectedCategory) {
+            allLabel -> true
+            ungroupedLabel -> brush.format != BrushFormat.SYSTEM && BrushGroupOperations.normalize(brush.groupName).isBlank()
+            else -> if (brush.format == BrushFormat.SYSTEM) brush.groupName == selectedCategory else BrushGroupOperations.isWithin(brush.groupName, selectedCategory)
+        }
+    }
+    val panelShape = RoundedCornerShape(14.dp)
+    Surface(
+        modifier = modifier.shadow(12.dp, panelShape),
+        shape = panelShape,
+        color = Color(0xF22D2D2D),
+        contentColor = Color.White,
+    ) {
+        Column {
+            Row(Modifier.fillMaxWidth().height(46.dp).padding(start = 16.dp, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    tr("Brushes", "笔刷"),
+                    Modifier.weight(1f).fillMaxHeight().wrapContentHeight(Alignment.CenterVertically).semantics { contentDescription = dragDescription }.pointerInput(Unit) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            var last = down.position
+                            var moved = false
+                            currentPanelDragStart()
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) break
+                                val amount = change.position - last
+                                if (amount != Offset.Zero) {
+                                    moved = true
+                                    change.consume()
+                                    currentPanelDrag(amount.x, amount.y)
+                                    last = change.position
+                                }
+                            }
+                            if (moved) currentPanelDragEnd() else currentPanelDragCancel()
+                        }
+                    },
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 15.sp,
+                )
+                WorkspacePanelDockMenu(dock, onDock, tr("Change brushes panel docking", "更改笔刷面板停靠方式"), Modifier.size(38.dp), panelMode, panelLocked, onPanelMode, onPanelLocked)
+                Box {
+                    IconButton(onClick = { addMenu = true }, modifier = Modifier.size(38.dp)) { Icon(Icons.Outlined.Add, tr("Add brush or set", "添加笔刷或笔刷组"), tint = Color.White) }
+                    DropdownMenu(expanded = addMenu, onDismissRequest = { addMenu = false }) {
+                        DropdownMenuItem(text = { Text(tr("Create new brush", "新建笔刷")) }, leadingIcon = { Icon(Icons.Outlined.Brush, null) }, onClick = {
+                            addMenu = false
+                            val group = selectedCategory.takeIf { it in importedCategories }
+                            val created = ImportedBrush(name = newBrushName, format = BrushFormat.INKLOOM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = listOf(createdInInkloom), groupName = group.orEmpty())
+                            onReplaceBrushes(brushes + created)
+                            editBrush = created
+                        })
+                        DropdownMenuItem(text = { Text(tr("Import from files", "从文件导入")) }, leadingIcon = { Icon(Icons.Outlined.FileDownload, null) }, onClick = { addMenu = false; onImportBrushes(selectedCategory.takeIf { it in importedCategories }) })
+                        DropdownMenuItem(text = { Text(tr("Manage brush sets", "管理笔刷组")) }, leadingIcon = { Icon(Icons.Outlined.CreateNewFolder, null) }, onClick = { addMenu = false; manageGroups = true })
+                    }
+                }
+                IconButton(onClick = onClose, modifier = Modifier.size(38.dp)) { Icon(Icons.Outlined.Close, tr("Close brushes panel", "关闭笔刷面板"), tint = Color.White) }
+            }
+            HorizontalDivider(color = Color(0xFF474747))
+            Row(Modifier.weight(1f)) {
+                LazyColumn(
+                    Modifier.width(154.dp).fillMaxHeight().background(Color(0xFF252525)),
+                    contentPadding = PaddingValues(vertical = 7.dp),
+                ) {
+                    items(allCategories.distinct(), key = { it }) { category ->
+                        val selected = category == selectedCategory
+                        Text(
+                            category,
+                            Modifier.fillMaxWidth().height(39.dp).background(if (selected) Color(0xFF1678D2) else Color.Transparent).clickable { selectedCategory = category }.padding(horizontal = 14.dp).wrapContentHeight(Alignment.CenterVertically),
+                            color = if (selected) Color.White else Color(0xFFD0D0D0),
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                        )
+                    }
+                }
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    contentPadding = PaddingValues(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    items(displayed, key = { it.id }) { brush ->
+                        val selected = selectedBrushId == brush.id
+                        Box {
+                            Column(
+                                Modifier.fillMaxWidth().height(112.dp).clip(RoundedCornerShape(6.dp)).background(if (selected) Color(0xFF1688F8) else Color(0xFF383838)).combinedClickable(
+                                    onClick = { onBrushSelected(brush) },
+                                    onDoubleClick = { if (brush.format != BrushFormat.SYSTEM) editBrush = brush },
+                                    onLongClick = { if (brush.format != BrushFormat.SYSTEM) menuBrush = brush },
+                                ).padding(7.dp),
+                            ) {
+                                Text(brush.name, color = Color.White, fontSize = 10.sp, maxLines = 1)
+                                Spacer(Modifier.height(4.dp))
+                                Surface(Modifier.fillMaxWidth().weight(1f), shape = RoundedCornerShape(4.dp), color = Color(0xFFF3F3F3)) {
+                                    BrushTipPreview(brush, Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 3.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    menuBrush?.let { brush ->
+        AlertDialog(
+            onDismissRequest = { menuBrush = null },
+            title = { Text(brush.name) },
+            text = { Text(tr("Edit, export or remove this brush.", "编辑、导出或移除此笔刷。")) },
+            confirmButton = { TextButton(onClick = { menuBrush = null; editBrush = brush }) { Text(tr("Edit", "编辑")) } },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { menuBrush = null; onExportBrush(brush) }) { Text(tr("Export", "导出")) }
+                    TextButton(onClick = { menuBrush = null; onDeleteBrush(brush.id) }) { Text(tr("Remove", "移除"), color = MaterialTheme.colorScheme.error) }
+                }
+            },
+        )
+    }
+    editBrush?.let { brush ->
+        BrushEditorDialog(
+            brush = brush,
+            settings = settings,
+            onDismiss = { editBrush = null },
+            onSave = { updated ->
+                if (brushes.any { it.id == updated.id }) onUpdateBrush(updated) else onReplaceBrushes(brushes + updated)
+                editBrush = null
+            },
+        )
+    }
+    if (manageGroups) BrushGroupManagerDialog(
+        groups = importedCategories,
+        onDismiss = { manageGroups = false },
+        onRename = { oldName, newName ->
+            val updated = BrushGroupOperations.rename(brushes, oldName, newName)
+            onReplaceBrushes(updated)
+            onReplaceGroups(BrushGroupOperations.reconcileRegisteredGroups(BrushGroupOperations.renameRegisteredGroups(registeredGroups, oldName, newName), updated))
+        },
+        onMove = { group, delta ->
+            onReplaceBrushes(BrushGroupOperations.moveGroup(brushes, group, delta))
+            onReplaceGroups(BrushGroupOperations.moveRegisteredGroup(registeredGroups, group, delta))
+        },
+        onCreate = { path ->
+            val normalized = BrushGroupOperations.normalize(path)
+            if (normalized.isNotBlank()) onReplaceGroups(BrushGroupOperations.reconcileRegisteredGroups(registeredGroups + normalized, brushes))
+        },
     )
 }
 

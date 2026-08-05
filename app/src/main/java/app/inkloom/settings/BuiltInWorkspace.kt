@@ -23,24 +23,16 @@ object BuiltInWorkspaces {
         return when (workspace) {
             BuiltInWorkspace.STUDIO,
             // Existing shortcuts/profile files can still request either legacy name. They now
-            // intentionally resolve to the same unified CSP-style desk.
+            // intentionally resolve to the same unified Procreate-style desk.
             BuiltInWorkspace.NOTE,
             BuiltInWorkspace.DRAWING -> defaults.copy(
-                showPageRail = true,
-                showBrushPanel = true,
-                showLayerPanel = true,
+                showPageRail = false,
+                showBrushPanel = false,
+                showLayerPanel = false,
                 showToolbar = true,
-                pagePanelDock = WorkspacePanelDock.LEFT,
-                brushPanelDock = WorkspacePanelDock.RIGHT,
-                layerPanelDock = WorkspacePanelDock.RIGHT,
-                brushPanelXDp = 1760f,
-                brushPanelYDp = 12f,
-                brushPanelWidthDp = 220f,
-                brushPanelHeightDp = 680f,
-                layerPanelXDp = 2000f,
-                layerPanelYDp = 12f,
-                layerPanelWidthDp = 240f,
-                layerPanelHeightDp = 680f,
+                pagePanelDock = WorkspacePanelDock.FREE,
+                brushPanelDock = WorkspacePanelDock.FREE,
+                layerPanelDock = WorkspacePanelDock.FREE,
                 toolbarDock = ToolbarDock.LEFT,
                 verticalToolbar = true,
             )

@@ -101,16 +101,16 @@ object WorkspaceLayoutProfilesCodec {
     }
 
     private fun JsonObject.toWorkspace() = ToolboxWorkspaceSnapshot(
-        boolean("showPageRail", true), boolean("showBrushPanel", true), boolean("showLayerPanel", true), boolean("showToolbar", true),
-        enum("pagePanelDock", WorkspacePanelDock.LEFT), enum("brushPanelDock", WorkspacePanelDock.RIGHT), enum("layerPanelDock", WorkspacePanelDock.RIGHT),
+        boolean("showPageRail"), boolean("showBrushPanel"), boolean("showLayerPanel"), boolean("showToolbar", true),
+        enum("pagePanelDock", WorkspacePanelDock.FREE), enum("brushPanelDock", WorkspacePanelDock.FREE), enum("layerPanelDock", WorkspacePanelDock.FREE),
         enum("pagePanelMode", WorkspacePanelMode.EXPANDED), enum("brushPanelMode", WorkspacePanelMode.EXPANDED), enum("layerPanelMode", WorkspacePanelMode.EXPANDED),
         boolean("pagePanelLocked"), boolean("brushPanelLocked"), boolean("layerPanelLocked"),
         boolean("leftDockStacked"), boolean("rightDockStacked"), boolean("bottomDockStacked"), boolean("freeDockStacked"),
         enum("leftDockActivePanel", WorkspacePanelKind.PAGES), enum("rightDockActivePanel", WorkspacePanelKind.BRUSHES), enum("bottomDockActivePanel", WorkspacePanelKind.PAGES), enum("freeDockActivePanel", WorkspacePanelKind.BRUSHES),
         WorkspacePanelTabs.encodeOrder(WorkspacePanelTabs.normalizeOrder(text("panelTabOrder"))),
-        float("pagePanelXDp", 16f), float("pagePanelYDp", 16f), float("pagePanelWidthDp", 160f), float("pagePanelHeightDp", 640f),
-        float("brushPanelXDp", 1760f), float("brushPanelYDp", 12f), float("brushPanelWidthDp", 220f), float("brushPanelHeightDp", 680f),
-        float("layerPanelXDp", 2000f), float("layerPanelYDp", 12f), float("layerPanelWidthDp", 240f), float("layerPanelHeightDp", 680f),
+        float("pagePanelXDp", 18f), float("pagePanelYDp", 18f), float("pagePanelWidthDp", 300f), float("pagePanelHeightDp", 620f),
+        float("brushPanelXDp", 1180f), float("brushPanelYDp", 18f), float("brushPanelWidthDp", 620f), float("brushPanelHeightDp", 620f),
+        float("layerPanelXDp", 1440f), float("layerPanelYDp", 18f), float("layerPanelWidthDp", 420f), float("layerPanelHeightDp", 620f),
         float("toolbarOffsetXDp", 16f), float("toolbarOffsetYDp", 16f), boolean("verticalToolbar", true), enum("toolbarDock", ToolbarDock.LEFT),
     ).normalizedWorkspace()
 
