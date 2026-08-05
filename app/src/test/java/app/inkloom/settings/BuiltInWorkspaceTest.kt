@@ -6,18 +6,19 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BuiltInWorkspaceTest {
-    @Test fun `creative workspace exposes pages brushes layers and left tool rail together`() {
+    @Test fun `procreate workspace starts with popovers hidden and left controls visible`() {
         val original = AppSettings(fingerDrawing = true, penSize = 29f)
 
         val restored = BuiltInWorkspaces.apply(original, BuiltInWorkspace.STUDIO)
 
-        assertTrue(restored.showPageRail)
-        assertTrue(restored.showBrushPanel)
-        assertTrue(restored.showLayerPanel)
-        assertEquals(WorkspacePanelDock.RIGHT, restored.brushPanelDock)
-        assertEquals(WorkspacePanelDock.RIGHT, restored.layerPanelDock)
-        assertEquals(12f, restored.brushPanelYDp)
-        assertEquals(12f, restored.layerPanelYDp)
+        assertFalse(restored.showPageRail)
+        assertFalse(restored.showBrushPanel)
+        assertFalse(restored.showLayerPanel)
+        assertEquals(WorkspacePanelDock.FREE, restored.pagePanelDock)
+        assertEquals(WorkspacePanelDock.FREE, restored.brushPanelDock)
+        assertEquals(WorkspacePanelDock.FREE, restored.layerPanelDock)
+        assertEquals(18f, restored.brushPanelYDp)
+        assertEquals(18f, restored.layerPanelYDp)
         assertEquals(ToolbarDock.LEFT, restored.toolbarDock)
         assertTrue(restored.verticalToolbar)
         assertTrue(restored.fingerDrawing)

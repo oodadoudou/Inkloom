@@ -33,7 +33,7 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class AppSettingsStoreTest {
-    @Test fun legacyWorkspaceMigratesToTheCreativeStudioOnce() {
+    @Test fun legacyWorkspaceMigratesToTheProcreateStudioOnce() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
         preferences.edit().clear().commit()
@@ -48,7 +48,7 @@ class AppSettingsStoreTest {
             val migrated = AppSettingsStore(context).load()
 
             assertEquals(BuiltInWorkspaces.snapshot(app.inkloom.settings.BuiltInWorkspace.STUDIO), migrated.captureToolboxWorkspace())
-            assertEquals(1, preferences.getInt("studioWorkspaceVersion", 0))
+            assertEquals(2, preferences.getInt("studioWorkspaceVersion", 0))
             assertEquals(migrated, AppSettingsStore(context).load())
         } finally {
             preferences.edit().clear().commit()
@@ -214,9 +214,9 @@ class AppSettingsStoreTest {
             ))
 
             val initialPortrait = AppSettingsStore(portraitContext).load()
-            assertTrue(initialPortrait.showPageRail)
-            assertTrue(initialPortrait.showBrushPanel)
-            assertEquals(1760f, initialPortrait.brushPanelXDp)
+            assertFalse(initialPortrait.showPageRail)
+            assertFalse(initialPortrait.showBrushPanel)
+            assertEquals(1180f, initialPortrait.brushPanelXDp)
             AppSettingsStore(portraitContext).save(initialPortrait.copy(
                 showLayerPanel = true,
                 brushPanelXDp = 32f,
@@ -237,8 +237,8 @@ class AppSettingsStoreTest {
             assertEquals("BRUSHES,LAYERS,PAGES", landscape.panelTabOrder)
 
             val portrait = AppSettingsStore(portraitContext).load()
-            assertTrue(portrait.showPageRail)
-            assertTrue(portrait.showBrushPanel)
+            assertFalse(portrait.showPageRail)
+            assertFalse(portrait.showBrushPanel)
             assertTrue(portrait.showLayerPanel)
             assertEquals(32f, portrait.brushPanelXDp)
             assertEquals(WorkspacePanelDock.BOTTOM, portrait.layerPanelDock)

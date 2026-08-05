@@ -46,7 +46,7 @@ class BrushBatchManagementTest {
                 val context = ApplicationProvider.getApplicationContext<Context>()
                 context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE).edit()
                     .putString("language", "ENGLISH")
-                    .putInt("studioWorkspaceVersion", 1)
+                    .putInt("studioWorkspaceVersion", 2)
                     .putBoolean("showBrushPanel", false)
                     .putBoolean("showLayerPanel", false)
                     .putBoolean("showPageRail", false)

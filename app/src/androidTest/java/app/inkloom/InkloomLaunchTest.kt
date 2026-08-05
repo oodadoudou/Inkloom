@@ -59,7 +59,7 @@ class InkloomLaunchTest {
                     .getSharedPreferences("inkloom_settings", android.content.Context.MODE_PRIVATE)
                     .edit()
                     .putString("language", "ENGLISH")
-                    .putInt("studioWorkspaceVersion", 1)
+                    .putInt("studioWorkspaceVersion", 2)
                     .putBoolean("showLayerPanel", false)
                     .putBoolean("showBrushPanel", false)
                     .putBoolean("showPageRail", true)
@@ -127,39 +127,31 @@ class InkloomLaunchTest {
     @Test fun rulerIsReachableFromCompactToolbarAndPersists() {
         createNotebookAndOpenEditor()
 
-        composeRule.onNodeWithContentDescription("More tools").performClick()
+        composeRule.onNodeWithContentDescription("More").performClick()
         composeRule.onNodeWithText("Show ruler").assertIsDisplayed().performClick()
         composeRule.waitUntil(5_000) {
             AppSettingsStore(composeRule.activity).load().rulerEnabled
         }
 
-        composeRule.onNodeWithContentDescription("More tools").performClick()
+        composeRule.onNodeWithContentDescription("More").performClick()
         composeRule.onNodeWithText("Hide ruler").assertIsDisplayed()
 
-        composeRule.onNodeWithContentDescription("Tool controls").performClick()
-        composeRule.onNodeWithText("Ruler angle snap").assertIsDisplayed()
-        composeRule.onNodeWithText("5°").performClick()
-        composeRule.waitUntil(5_000) {
-            AppSettingsStore(composeRule.activity).load().rulerSnapDegrees == 5f
-        }
+        assertTrue(AppSettingsStore(composeRule.activity).load().rulerEnabled)
     }
 
     @Test fun snapGridAndAlignmentGuidesAreReachableFromCompactToolbar() {
         createNotebookAndOpenEditor()
 
-        composeRule.onNodeWithContentDescription("More tools").performClick()
+        composeRule.onNodeWithContentDescription("More").performClick()
         composeRule.onNodeWithText("Show snap grid").performClick()
         composeRule.waitUntil(5_000) { AppSettingsStore(composeRule.activity).load().gridSnapEnabled }
 
-        composeRule.onNodeWithContentDescription("More tools").performClick()
+        composeRule.onNodeWithContentDescription("More").performClick()
         composeRule.onNodeWithText("Show alignment guides").performClick()
         composeRule.waitUntil(5_000) { AppSettingsStore(composeRule.activity).load().alignmentGuidesEnabled }
 
-        composeRule.onNodeWithContentDescription("Tool controls").performClick()
-        composeRule.onNodeWithText("Snap grid spacing").assertIsDisplayed()
-        composeRule.onNodeWithText("Alignment guides").assertIsDisplayed()
-        composeRule.onNodeWithText("96").performClick()
-        composeRule.waitUntil(5_000) { AppSettingsStore(composeRule.activity).load().gridSpacing == 96f }
+        assertTrue(AppSettingsStore(composeRule.activity).load().gridSnapEnabled)
+        assertTrue(AppSettingsStore(composeRule.activity).load().alignmentGuidesEnabled)
     }
 
     @Test fun rotationKeepsEditorAndRestoresOrientationSpecificWorkspace() {
@@ -174,7 +166,7 @@ class InkloomLaunchTest {
                 composeRule.activity.resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
             }
             composeRule.onNodeWithContentDescription("Search this note").assertIsDisplayed()
-            assertEquals(true, AppSettingsStore(composeRule.activity).load().showPageRail)
+            assertEquals(false, AppSettingsStore(composeRule.activity).load().showPageRail)
 
             composeRule.activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
             composeRule.waitUntil(10_000) {
@@ -220,19 +212,21 @@ class InkloomLaunchTest {
         assertEquals(false, AppSettingsStore(composeRule.activity).load().bottomDockStacked)
     }
 
-    @Test fun creativeWorkspaceKeepsNotesAndDrawingToolsOnOneDesk() {
+    @Test fun procreateWorkspaceKeepsNotebookToolsAsPopovers() {
         createNotebookAndOpenEditor()
 
-        composeRule.onNodeWithContentDescription("Workspaces").performClick()
-        composeRule.onNodeWithText("Creative workspace").performClick()
-        composeRule.onNodeWithText("Sub tool [Brush]").assertIsDisplayed()
-        composeRule.onAllNodesWithText("Layers").onLast().assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Actions").performClick()
+        composeRule.onNodeWithText("Procreate workspace").performClick()
         var restored = AppSettingsStore(composeRule.activity).load()
-        assertEquals(true, restored.showPageRail)
-        assertEquals(true, restored.showBrushPanel)
-        assertEquals(true, restored.showLayerPanel)
+        assertEquals(false, restored.showPageRail)
+        assertEquals(false, restored.showBrushPanel)
+        assertEquals(false, restored.showLayerPanel)
+        composeRule.onNodeWithContentDescription("Brushes").performClick()
+        composeRule.onNodeWithText("Technical Pencil").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Layers").performClick()
+        composeRule.onAllNodesWithText("Layers").onLast().assertIsDisplayed()
 
-        composeRule.onNodeWithContentDescription("Workspaces").performClick()
+        composeRule.onNodeWithContentDescription("Actions").performClick()
         composeRule.onNodeWithText("Reading workspace").performClick()
         restored = AppSettingsStore(composeRule.activity).load()
         assertEquals(true, restored.showPageRail)
@@ -240,7 +234,7 @@ class InkloomLaunchTest {
         assertEquals(false, restored.showLayerPanel)
         assertEquals(false, restored.showToolbar)
 
-        composeRule.onNodeWithContentDescription("Workspaces").performClick()
+        composeRule.onNodeWithContentDescription("Actions").performClick()
         composeRule.onNodeWithText("Minimal workspace").performClick()
         restored = AppSettingsStore(composeRule.activity).load()
         assertEquals(false, restored.showPageRail)
@@ -248,36 +242,38 @@ class InkloomLaunchTest {
         assertEquals(false, restored.showLayerPanel)
         assertEquals(true, restored.showToolbar)
 
-        composeRule.onNodeWithContentDescription("Workspaces").performClick()
+        composeRule.onNodeWithContentDescription("Actions").performClick()
         composeRule.onNodeWithText("Reset current workspace").performClick()
         restored = AppSettingsStore(composeRule.activity).load()
-        assertEquals(true, restored.showPageRail)
-        assertEquals(true, restored.showBrushPanel)
-        assertEquals(true, restored.showLayerPanel)
+        assertEquals(false, restored.showPageRail)
+        assertEquals(false, restored.showBrushPanel)
+        assertEquals(false, restored.showLayerPanel)
         assertEquals(true, restored.showToolbar)
     }
 
     @Test fun customWorkspaceCanBeSavedAppliedDuplicatedAndRenamed() {
         createNotebookAndOpenEditor()
 
-        composeRule.onNodeWithContentDescription("Workspaces").performClick()
-        composeRule.onNodeWithText("Creative workspace").performClick()
-        composeRule.onNodeWithContentDescription("Workspaces").performClick()
+        composeRule.onNodeWithContentDescription("Actions").performClick()
+        composeRule.onNodeWithText("Procreate workspace").performClick()
+        composeRule.onNodeWithContentDescription("Brushes").performClick()
+        composeRule.onNodeWithContentDescription("Layers").performClick()
+        composeRule.onNodeWithContentDescription("Actions").performClick()
         composeRule.onNodeWithText("Save current workspace…").performClick()
         composeRule.onNodeWithText("Save workspace").assertIsDisplayed()
         composeRule.onNodeWithText("Save").performClick()
         composeRule.waitUntil(5_000) { AppSettingsStore(composeRule.activity).load().customWorkspaces.size == 1 }
 
-        composeRule.onNodeWithContentDescription("Workspaces").performClick()
+        composeRule.onNodeWithContentDescription("Actions").performClick()
         composeRule.onNodeWithText("Reading workspace").performClick()
         assertTrue(AppSettingsStore(composeRule.activity).load().showBrushPanel.not())
-        composeRule.onNodeWithContentDescription("Workspaces").performClick()
+        composeRule.onNodeWithContentDescription("Actions").performClick()
         composeRule.onNodeWithText("My workspace").performClick()
         val applied = AppSettingsStore(composeRule.activity).load()
         assertTrue(applied.showBrushPanel)
         assertTrue(applied.showLayerPanel)
 
-        composeRule.onNodeWithContentDescription("Workspaces").performClick()
+        composeRule.onNodeWithContentDescription("Actions").performClick()
         composeRule.onNodeWithText("Manage custom workspaces…").performClick()
         composeRule.onNodeWithText("Custom workspaces").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Manage My workspace").performClick()
@@ -312,8 +308,10 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("Dock right").assertIsNotEnabled()
         composeRule.onNodeWithText("Expanded").performClick()
 
-        composeRule.onNodeWithContentDescription("Workspaces").performClick()
-        composeRule.onNodeWithText("Creative workspace").performClick()
+        composeRule.onNodeWithContentDescription("Actions").performClick()
+        composeRule.onNodeWithText("Procreate workspace").performClick()
+        composeRule.onNodeWithContentDescription("Brushes").performClick()
+        composeRule.onNodeWithContentDescription("Layers").performClick()
         composeRule.onNodeWithContentDescription("Change brushes panel docking").performClick()
         composeRule.onNodeWithText("Icon only").performClick()
         composeRule.onNodeWithContentDescription("Expand Brush Library panel").assertIsDisplayed()
@@ -397,7 +395,7 @@ class InkloomLaunchTest {
     @Test fun stickyNoteDoubleTapOpensItsInkSubcanvas() {
         val noteText = "Sticky canvas test"
         createNotebookAndOpenEditor()
-        composeRule.onNodeWithContentDescription("More tools").performClick()
+        composeRule.onNodeWithContentDescription("More").performClick()
         composeRule.onNodeWithText("Note").performClick()
         composeRule.onNodeWithText("New sticky note").assertIsDisplayed()
         composeRule.onNode(hasSetTextAction()).performTextInput(noteText)
@@ -430,12 +428,14 @@ class InkloomLaunchTest {
         assertTrue(library.notebookDefaults.values.any { it == "builtin-grid" })
 
         composeRule.onNodeWithContentDescription("Use Grid template").performClick()
-        composeRule.onNodeWithText("Page 2", substring = true).assertIsDisplayed()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodes(hasContentDescription("Open layers for this page")).fetchSemanticsNodes().size == 2
+        }
     }
 
     @Test fun editorInsertsAValidatedLinkCard() {
         createNotebookAndOpenEditor()
-        composeRule.onNodeWithContentDescription("More tools").performClick()
+        composeRule.onNodeWithContentDescription("More").performClick()
         composeRule.onNodeWithText("Link").performClick()
         composeRule.onNodeWithText("Insert link").assertIsDisplayed()
 
@@ -464,13 +464,11 @@ class InkloomLaunchTest {
         assertTrue(preferences.getString("toolbarDock", null) == "FREE")
     }
 
-    @Test fun compactToolbarKeepsBrushAndDockControlsInAContextPanel() {
+    @Test fun procreateSidebarKeepsBrushSizeAndOpacityImmediatelyAvailable() {
         createNotebookAndOpenEditor()
-        composeRule.onNodeWithContentDescription("Tool controls").performClick()
-
-        composeRule.onNodeWithText("Pen controls").assertIsDisplayed()
-        composeRule.onNodeWithText("Palette position").assertIsDisplayed()
-        composeRule.onNodeWithText("Opacity", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Brush size").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Brush opacity").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Drag toolbar").assertIsDisplayed()
     }
 
     @Test fun brushPanelCanFloatMoveResizeAndReopenInPlace() {
@@ -591,7 +589,7 @@ class InkloomLaunchTest {
 
         composeRule.onNodeWithContentDescription("Floating panel tabs").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Brushes floating tab. Drag to reorder.").performClick()
-        composeRule.onNodeWithText("Sub tool [Brush]").assertIsDisplayed()
+        composeRule.onNodeWithText("Technical Pencil").assertIsDisplayed()
 
         val beforeX = preferences.getFloat("brushPanelXDp", 0f)
         composeRule.onNodeWithContentDescription("Drag brushes panel").performTouchInput {
@@ -637,8 +635,8 @@ class InkloomLaunchTest {
         val original = preferences.getString("selectionShape", "FREEFORM")
         try {
             createNotebookAndOpenEditor()
-            composeRule.onNodeWithContentDescription("Select").performClick()
-            composeRule.onNodeWithContentDescription("Tool controls").performClick()
+            composeRule.onNodeWithContentDescription("Selection").performClick()
+            composeRule.onNodeWithContentDescription("More").performClick()
 
             composeRule.onNodeWithText("Freeform").assertIsDisplayed()
             composeRule.onNodeWithText("Rectangle").performClick()
@@ -664,16 +662,16 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("Objects").assertIsDisplayed()
     }
 
-    @Test fun pageThumbnailOpensItsCspColorAndLayerStack() {
+    @Test fun procreateTopBarOpensColorsAndThePageLayerStack() {
         createNotebookAndOpenEditor()
 
-        composeRule.onNodeWithContentDescription("Foreground and background colors").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Open layers for this page").performClick()
-
+        composeRule.onNodeWithContentDescription("Colors").performClick()
         composeRule.onNodeWithText("Color wheel").assertIsDisplayed()
         composeRule.onNodeWithText("HLS").assertIsDisplayed()
         composeRule.onNodeWithText("RGB").assertIsDisplayed().performClick()
         composeRule.onNodeWithText("HLS").performClick()
+        composeRule.onNodeWithContentDescription("Colors").performClick()
+        composeRule.onNodeWithContentDescription("Open layers for this page").performClick()
         composeRule.onAllNodesWithText("Layers").onLast().assertIsDisplayed()
     }
 
