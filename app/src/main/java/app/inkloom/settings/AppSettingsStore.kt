@@ -2,6 +2,7 @@ package app.inkloom.settings
 
 import android.content.Context
 import androidx.core.content.edit
+import app.inkloom.model.SymmetryMode
 
 data class AppSettings(
     val language: UiLanguage = UiLanguage.ENGLISH,
@@ -49,6 +50,7 @@ data class AppSettings(
     val twoFingerDoubleTapUndo: Boolean = true,
     val threeFingerTapRedo: Boolean = true,
     val twoFingerRotation: Boolean = false,
+    val symmetryMode: SymmetryMode = SymmetryMode.NONE,
     val rulerEnabled: Boolean = false,
     val rulerCenterX: Float = .5f,
     val rulerCenterY: Float = .5f,
@@ -165,6 +167,7 @@ class AppSettingsStore(context: Context) {
             twoFingerDoubleTapUndo = preferences.getBoolean("twoFingerDoubleTapUndo", true),
             threeFingerTapRedo = preferences.getBoolean("threeFingerTapRedo", true),
             twoFingerRotation = preferences.getBoolean("twoFingerRotation", false),
+            symmetryMode = enumValue(preferences.getString("symmetryMode", null), SymmetryMode.NONE),
             rulerEnabled = preferences.getBoolean("rulerEnabled", false),
             rulerCenterX = preferences.getFloat("rulerCenterX", .5f).takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: .5f,
             rulerCenterY = preferences.getFloat("rulerCenterY", .5f).takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: .5f,
@@ -264,6 +267,7 @@ class AppSettingsStore(context: Context) {
             .putBoolean("twoFingerDoubleTapUndo", persisted.twoFingerDoubleTapUndo)
             .putBoolean("threeFingerTapRedo", persisted.threeFingerTapRedo)
             .putBoolean("twoFingerRotation", persisted.twoFingerRotation)
+            .putString("symmetryMode", persisted.symmetryMode.name)
             .putBoolean("rulerEnabled", persisted.rulerEnabled)
             .putFloat("rulerCenterX", persisted.rulerCenterX.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: .5f)
             .putFloat("rulerCenterY", persisted.rulerCenterY.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: .5f)

@@ -92,6 +92,7 @@ import app.inkloom.document.ViewportState
 import app.inkloom.document.WaterEdge
 import app.inkloom.document.WetMixDynamics
 import app.inkloom.model.EditorTool
+import app.inkloom.model.SymmetryMode
 import app.inkloom.settings.CspShortcutResolver
 import app.inkloom.settings.AxisShortcutBinding
 import app.inkloom.settings.ButtonShortcutBinding
@@ -499,6 +500,7 @@ class InkCanvasView(context: Context) : View(context) {
      *  The host persists the mask and creates a [PageElement.Fill]. */
     var onFillCommitted: ((mask: Bitmap, x: Float, y: Float, width: Float, height: Float, colorArgb: Long, opacity: Float) -> Unit)? = null
     var fillSensitivity: Float = .25f
+    var symmetryMode: SymmetryMode = SymmetryMode.NONE
     var onStrokeRemoved: (String) -> Unit = {}
     var onStrokesReplaced: (List<String>, List<InkStroke>, List<Int>) -> Unit = { removed, replacements, _ -> removed.forEach(onStrokeRemoved); replacements.forEach(onStrokeCommitted) }
     var onViewportScale: (Float, Float, Float) -> Unit = { _, _, _ -> }
@@ -703,6 +705,7 @@ class InkCanvasView(context: Context) : View(context) {
             canvas.drawPath(lassoPath, paint)
         }
         drawSelectionHandles(canvas)
+        drawSymmetryGuides(canvas)
         drawShapePreview(canvas)
         drawLiveStroke(canvas)
         drawAlignmentGuides(canvas)
@@ -823,6 +826,11 @@ class InkCanvasView(context: Context) : View(context) {
      */
     private fun drawLiveStroke(canvas: Canvas) {
         if (currentPoints.isEmpty()) return
+        if (symmetryMode != SymmetryMode.NONE) {
+            drawLayeredStrokes(canvas, symmetryStrokes(currentPoints))
+            onLivePreviewRendered?.invoke(currentPoints.size)
+            return
+        }
         if (currentPoints.size < LIVE_STROKE_CACHE_START_POINTS || width <= 0 || height <= 0 || width.toLong() * height.toLong() > MAX_CACHE_PIXELS) {
             drawLayeredStrokes(canvas, listOf(makeStroke(currentPoints)))
             onLivePreviewRendered?.invoke(currentPoints.size)
@@ -1611,9 +1619,9 @@ class InkCanvasView(context: Context) : View(context) {
                     finishEraserGesture()
                 } else if (activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) && currentPoints.isNotEmpty()) {
                     val before = strokes.toList()
-                    val stroke = makeStroke(currentPoints).copy(grainCompositeMode = grainCompositeMode)
-                    strokes += stroke
-                    invalidateStrokeCache(emptyList(), listOf(stroke))
+                    val newStrokes = symmetryStrokes(currentPoints).map { it.copy(grainCompositeMode = grainCompositeMode) }
+                    strokes.addAll(newStrokes)
+                    invalidateStrokeCache(emptyList(), newStrokes)
                     commitStrokeEdit(before, strokes)
                     currentPoints.clear()
                     finishLiveStrokePreview()
@@ -2421,6 +2429,30 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
+    private fun drawSymmetryGuides(canvas: Canvas) {
+        if (symmetryMode == SymmetryMode.NONE || width <= 0 || height <= 0) return
+        paint.style = Paint.Style.STROKE; paint.color = Color.rgb(24, 119, 242); paint.alpha = 120; paint.strokeWidth = 1.5f
+        val cx = width / 2f; val cy = height / 2f
+        when (symmetryMode) {
+            SymmetryMode.HORIZONTAL, SymmetryMode.QUADRANT -> canvas.drawLine(cx, 0f, cx, height.toFloat(), paint)
+            else -> Unit
+        }
+        when (symmetryMode) {
+            SymmetryMode.VERTICAL, SymmetryMode.QUADRANT -> canvas.drawLine(0f, cy, width.toFloat(), cy, paint)
+            else -> Unit
+        }
+        when (symmetryMode) {
+            SymmetryMode.RADIAL_4, SymmetryMode.RADIAL_6, SymmetryMode.RADIAL_8 -> {
+                val n = when (symmetryMode) { SymmetryMode.RADIAL_4 -> 4; SymmetryMode.RADIAL_6 -> 6; SymmetryMode.RADIAL_8 -> 8; else -> 4 }
+                for (k in 0 until n) {
+                    val a = Math.toRadians((360.0 / n * k))
+                    canvas.drawLine(cx, cy, (cx + kotlin.math.cos(a) * width).toFloat(), (cy + kotlin.math.sin(a) * height).toFloat(), paint)
+                }
+            }
+            else -> Unit
+        }
+    }
+
     private fun resolveTool(event: MotionEvent, toolType: Int): EditorTool {
         if (toolType == MotionEvent.TOOL_TYPE_ERASER) return EditorTool.ERASER
         val action = resolveStylusButtonAction(event.buttonState)
@@ -2433,6 +2465,37 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun makeStroke(points: List<StrokePoint>) = InkStroke(id = currentStrokeId, points = points.toList(), colorArgb = inkColor.toUInt().toLong(), width = baseWidth, opacity = inkOpacity, brushId = brushId, layerId = activeLayerId, tipAssetPath = tipAssetPath, tipAssetPaths = tipAssetPaths.ifEmpty { listOfNotNull(tipAssetPath) }, dualTipAssetPaths = dualTipAssetPaths, grainAssetPath = grainAssetPath, grainDensity = grainDensity, grainDensityDynamics = grainDensityDynamics, grainScale = grainScale, grainRotationDegrees = grainRotationDegrees, grainBrightness = grainBrightness, grainContrast = grainContrast, grainReversed = grainReversed, grainEmphasized = grainEmphasized, grainOffsetJitter = grainOffsetJitter, spacing = brushSpacing, spacingMode = brushSpacingMode, flow = brushFlow, hardness = brushHardness, antiAliasMode = brushAntiAliasMode, blur = brushBlur, blurUnit = brushBlurUnit, blurLinkedToSize = brushBlurLinkedToSize, thickness = brushThickness, thicknessVertical = brushThicknessVertical, rotationDegrees = brushRotation, followStylusOrientation = followStylusOrientation, followStrokeDirection = followStrokeDirection, randomRotationDegrees = randomRotationDegrees, strokeRotationJitterDegrees = strokeRotationJitterDegrees, stampCount = stampCount, stampCountJitter = stampCountJitter, continuousPlot = brushContinuousPlot, colorJitterHueDegrees = colorJitterHueDegrees, colorJitterSaturation = colorJitterSaturation, colorJitterValue = colorJitterValue, colorJitterTarget = colorJitterTarget, colorJitterHueDynamics = colorJitterHueDynamics, colorJitterSaturationDynamics = colorJitterSaturationDynamics, colorJitterValueDynamics = colorJitterValueDynamics, watercolor = brushWatercolor, colorMix = brushColorMix, colorMixPressureEnabled = colorMixPressureEnabled, colorMixPressureMinimum = colorMixPressureMinimum, colorMixPressureCurve = colorMixPressureCurve, colorMixSecondaryDynamics = colorMixSecondaryDynamics, paintMix = brushPaintMix, paintMixPressureEnabled = paintMixPressureEnabled, paintMixPressureMinimum = paintMixPressureMinimum, paintMixPressureCurve = paintMixPressureCurve, paintMixSecondaryDynamics = paintMixSecondaryDynamics, spray = brushSpray, sprayParticleSize = sprayParticleSize, sprayParticleSizeUnit = sprayParticleSizeUnit, sprayParticleSizeSyncBrushSize = sprayParticleSizeSyncBrushSize, sprayParticleSizePressureEnabled = sprayParticleSizePressureEnabled, sprayParticleSizePressureMinimum = sprayParticleSizePressureMinimum, sprayParticleSizePressureCurve = sprayParticleSizePressureCurve, sprayParticleSizeSecondaryDynamics = sprayParticleSizeSecondaryDynamics, sprayDensity = sprayDensity, sprayDensityPressureEnabled = sprayDensityPressureEnabled, sprayDensityPressureMinimum = sprayDensityPressureMinimum, sprayDensityPressureCurve = sprayDensityPressureCurve, sprayDensitySecondaryDynamics = sprayDensitySecondaryDynamics, sprayBias = sprayBias, spraySpread = spraySpread, sprayParticleRotationDegrees = sprayParticleRotationDegrees, sprayParticleFollowStylusOrientation = sprayParticleFollowStylusOrientation, sprayParticleFollowStrokeDirection = sprayParticleFollowStrokeDirection, sprayParticleRandomRotationDegrees = sprayParticleRandomRotationDegrees, ribbon = brushRibbon, tipSequenceMode = brushTipSequenceMode, tipFlipHorizontalMode = tipFlipHorizontalMode, tipFlipVerticalMode = tipFlipVerticalMode, blendTipsWithDarken = blendTipsWithDarken, dualBrush = brushDual, dualSizeScale = dualSizeScale, dualSizeDynamics = dualSizeDynamics, dualSpacing = dualSpacing, dualSpacingMode = dualSpacingMode, dualSpacingDynamics = dualSpacingDynamics, dualFlow = dualFlow, dualFlowDynamics = dualFlowDynamics, dualHardness = dualHardness, dualAntiAliasMode = dualAntiAliasMode, dualThickness = dualThickness, dualThicknessDynamics = dualThicknessDynamics, dualThicknessVertical = dualThicknessVertical, dualRotationDegrees = dualRotationDegrees, dualFollowStylusOrientation = dualFollowStylusOrientation, dualFollowStrokeDirection = dualFollowStrokeDirection, dualRandomRotationDegrees = dualRandomRotationDegrees, dualStrokeRotationJitterDegrees = dualStrokeRotationJitterDegrees, dualStampCount = dualStampCount, dualStampCountJitter = dualStampCountJitter, dualRibbon = dualRibbon, dualSpray = dualSpray, dualSprayParticleSize = dualSprayParticleSize, dualSprayParticleSizeUnit = dualSprayParticleSizeUnit, dualSprayParticleSizeSyncBrushSize = dualSprayParticleSizeSyncBrushSize, dualSprayParticleSizeDynamics = dualSprayParticleSizeDynamics, dualSprayDensity = dualSprayDensity, dualSprayDensityDynamics = dualSprayDensityDynamics, dualSprayBias = dualSprayBias, dualSpraySpread = dualSpraySpread, dualSprayParticleRotationDegrees = dualSprayParticleRotationDegrees, dualSprayParticleFollowStylusOrientation = dualSprayParticleFollowStylusOrientation, dualSprayParticleFollowStrokeDirection = dualSprayParticleFollowStrokeDirection, dualSprayParticleRandomRotationDegrees = dualSprayParticleRandomRotationDegrees, dualTipSequenceMode = dualTipSequenceMode, dualTipFlipHorizontalMode = dualTipFlipHorizontalMode, dualTipFlipVerticalMode = dualTipFlipVerticalMode, dualBlendTipsWithDarken = dualBlendTipsWithDarken, dualCompositeMode = dualCompositeMode, dualApplyRgb = dualApplyRgb, taperMode = taperMode, taperStartEnabled = taperStartEnabled, taperStartLength = taperStartLength, taperStartLengthUnit = taperStartLengthUnit, taperStartMinimum = taperStartMinimum, taperEndEnabled = taperEndEnabled, taperEndLength = taperEndLength, taperEndLengthUnit = taperEndLengthUnit, taperEndMinimum = taperEndMinimum, waterEdgeEnabled = waterEdgeEnabled, waterEdgeRadius = waterEdgeRadius, waterEdgeRadiusUnit = waterEdgeRadiusUnit, waterEdgeOpacity = waterEdgeOpacity, waterEdgeDarkness = waterEdgeDarkness, waterEdgeBlur = waterEdgeBlur, waterEdgeBlurUnit = waterEdgeBlurUnit, sizePressureEnabled = sizePressureEnabled, sizePressureMinimum = sizePressureMinimum, sizePressureCurve = sizePressureCurve, sizeSecondaryDynamics = sizeSecondaryDynamics, opacityPressureEnabled = opacityPressureEnabled, opacityPressureMinimum = opacityPressureMinimum, opacityPressureCurve = opacityPressureCurve, opacitySecondaryDynamics = opacitySecondaryDynamics, flowPressureEnabled = flowPressureEnabled, flowPressureMinimum = flowPressureMinimum, flowPressureCurve = flowPressureCurve, flowSecondaryDynamics = flowSecondaryDynamics, spacingPressureEnabled = spacingPressureEnabled, spacingPressureMinimum = spacingPressureMinimum, spacingPressureCurve = spacingPressureCurve, spacingSecondaryDynamics = spacingSecondaryDynamics, thicknessPressureEnabled = thicknessPressureEnabled, thicknessPressureMinimum = thicknessPressureMinimum, thicknessPressureCurve = thicknessPressureCurve, thicknessSecondaryDynamics = thicknessSecondaryDynamics, blurPressureEnabled = blurPressureEnabled, blurPressureMinimum = blurPressureMinimum, blurPressureCurve = blurPressureCurve, blurSecondaryDynamics = blurSecondaryDynamics)
+
+    /** The original stroke plus its symmetry-mirrored copies (each with a fresh id). */
+    private fun symmetryStrokes(points: List<StrokePoint>): List<InkStroke> {
+        val base = makeStroke(points)
+        if (symmetryMode == SymmetryMode.NONE) return listOf(base)
+        return listOf(base) + symmetryMirrors(points).map { makeStroke(it).copy(id = java.util.UUID.randomUUID().toString()) }
+    }
+
+    private fun symmetryMirrors(points: List<StrokePoint>): List<List<StrokePoint>> {
+        val mirrorX: (StrokePoint) -> StrokePoint = { it.copy(x = (1f - it.x).coerceIn(0f, 1f)) }
+        val mirrorY: (StrokePoint) -> StrokePoint = { it.copy(y = (1f - it.y).coerceIn(0f, 1f)) }
+        return when (symmetryMode) {
+            SymmetryMode.NONE -> emptyList()
+            SymmetryMode.HORIZONTAL -> listOf(points.map(mirrorX))
+            SymmetryMode.VERTICAL -> listOf(points.map(mirrorY))
+            SymmetryMode.QUADRANT -> listOf(points.map(mirrorX), points.map(mirrorY), points.map(mirrorX).map(mirrorY))
+            SymmetryMode.RADIAL_4, SymmetryMode.RADIAL_6, SymmetryMode.RADIAL_8 -> {
+                val n = when (symmetryMode) { SymmetryMode.RADIAL_4 -> 4; SymmetryMode.RADIAL_6 -> 6; SymmetryMode.RADIAL_8 -> 8; else -> 4 }
+                (1 until n).map { k -> points.map { rotateAroundCenter(it, 360f / n * k) } }
+            }
+        }
+    }
+
+    private fun rotateAroundCenter(point: StrokePoint, rotationDegrees: Float): StrokePoint {
+        val radians = Math.toRadians(rotationDegrees.toDouble())
+        val cos = kotlin.math.cos(radians).toFloat()
+        val sin = kotlin.math.sin(radians).toFloat()
+        val dx = point.x - .5f
+        val dy = point.y - .5f
+        return point.copy(x = (.5f + dx * cos - dy * sin).coerceIn(0f, 1f), y = (.5f + dx * sin + dy * cos).coerceIn(0f, 1f))
+    }
 
     private fun beginEraserGesture() {
         eraserGestureBefore = strokes.toList()

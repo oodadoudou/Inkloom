@@ -212,6 +212,8 @@ data class ImportedBrush(
 
 enum class EditorTool { PEN, HIGHLIGHTER, ERASER, EYEDROPPER, SELECT, SHAPE, TEXT, NOTE, LINK, IMAGE, AUDIO, LASER, FILL }
 
+enum class SymmetryMode { NONE, HORIZONTAL, VERTICAL, QUADRANT, RADIAL_4, RADIAL_6, RADIAL_8 }
+
 object DemoContent {
     val notebooks = listOf(
         Notebook(title = "Distributed Systems", subtitle = "Just edited · 18 pages", cover = Color(0xFF202020), pageCount = 18),
