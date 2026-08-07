@@ -79,6 +79,7 @@ import app.inkloom.document.StrokeClipboardCodec
 import app.inkloom.document.StrokeStampSampler
 import app.inkloom.document.StrokeStabilization
 import app.inkloom.document.StrokeTaper
+import app.inkloom.document.StrokeTransform
 import app.inkloom.document.StrokeTileIndex
 import app.inkloom.document.StrokeTileKey
 import app.inkloom.document.StylusInputClassifier
@@ -111,6 +112,7 @@ import app.inkloom.settings.SelectionFilter
 import app.inkloom.settings.SelectionMode
 import app.inkloom.settings.SelectionShape
 import kotlin.math.ceil
+import kotlin.math.atan2
 import kotlin.math.hypot
 import kotlin.math.cos
 import kotlin.math.max
@@ -149,6 +151,13 @@ class InkCanvasView(context: Context) : View(context) {
     private val fillPreviewPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { colorFilter = PorterDuffColorFilter(Color.BLACK, PorterDuff.Mode.SRC_IN) }
     private var movingSelection = false
     private var selectionMoved = false
+    private var selectionTransformMode = TRANSFORM_NONE
+    private var selectionTransformCenterX = 0f
+    private var selectionTransformCenterY = 0f
+    private var selectionTransformStartDistance = 0f
+    private var selectionTransformStartAngle = 0f
+    private val selectionHandlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; color = Color.WHITE }
+    private val selectionHandleStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 2f; color = Color.rgb(24, 119, 242) }
     private var lastX = 0f
     private var lastY = 0f
     private var navigationX = 0f
@@ -693,6 +702,7 @@ class InkCanvasView(context: Context) : View(context) {
             paint.style = Paint.Style.STROKE; paint.color = Color.rgb(98, 98, 98); paint.alpha = 220; paint.strokeWidth = 2f
             canvas.drawPath(lassoPath, paint)
         }
+        drawSelectionHandles(canvas)
         drawShapePreview(canvas)
         drawLiveStroke(canvas)
         drawAlignmentGuides(canvas)
@@ -1423,6 +1433,24 @@ class InkCanvasView(context: Context) : View(context) {
                     return true
                 }
                 if (activeTool == EditorTool.SELECT) {
+                    val handleMode = hitSelectionHandle(normalizedX, normalizedY)
+                    if (handleMode != TRANSFORM_NONE) {
+                        val bounds = selectionBounds()
+                        if (bounds != null) {
+                            selectionGestureBefore = strokes.toList()
+                            selectionMoved = false
+                            movingSelection = false
+                            selectionTransformMode = handleMode
+                            selectionTransformCenterX = bounds.centerX()
+                            selectionTransformCenterY = bounds.centerY()
+                            val dx = normalizedX - selectionTransformCenterX
+                            val dy = normalizedY - selectionTransformCenterY
+                            selectionTransformStartDistance = hypot(dx.toDouble(), dy.toDouble()).toFloat().coerceAtLeast(.0001f)
+                            selectionTransformStartAngle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
+                            lastX = normalizedX; lastY = normalizedY
+                            invalidate(); return true
+                        }
+                    }
                     val hit = strokes.getOrNull(findStroke(normalizedX, normalizedY, .035f))
                     lassoPoints.clear(); selectionGestureBefore = null; selectionMoved = false
                     if (hit != null) {
@@ -1478,7 +1506,23 @@ class InkCanvasView(context: Context) : View(context) {
                     eraseAlong(normalizedX, normalizedY, event.pressure)
                 }
                 else if (activeTool == EditorTool.SELECT) {
-                    if (movingSelection) {
+                    if (selectionTransformMode == TRANSFORM_SCALE) {
+                        val dx = normalizedX - selectionTransformCenterX
+                        val dy = normalizedY - selectionTransformCenterY
+                        val scale = (hypot(dx.toDouble(), dy.toDouble()).toFloat() / selectionTransformStartDistance).coerceAtLeast(.01f)
+                        applySelectionTransform(scale, 0f)
+                        selectionMoved = true
+                        lastX = normalizedX; lastY = normalizedY
+                        invalidate()
+                    } else if (selectionTransformMode == TRANSFORM_ROTATE) {
+                        val dx = normalizedX - selectionTransformCenterX
+                        val dy = normalizedY - selectionTransformCenterY
+                        val angle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
+                        applySelectionTransform(1f, normalizeAngleDelta(angle, selectionTransformStartAngle))
+                        selectionMoved = true
+                        lastX = normalizedX; lastY = normalizedY
+                        invalidate()
+                    } else if (movingSelection) {
                         val dx = normalizedX - lastX; val dy = normalizedY - lastY
                         if (hypot(dx.toDouble(), dy.toDouble()) > .0001) selectionMoved = true
                         val movedBefore = strokes.filter { it.id in selectedStrokeIds }
@@ -1556,7 +1600,7 @@ class InkCanvasView(context: Context) : View(context) {
                     shapeStart = null; shapeEnd = null; shapeFreeformPoints.clear()
                     if (activeTool == EditorTool.ERASER) cancelEraserGesture()
                     selectionGestureBefore?.let { restoreStrokeSnapshot(it) }
-                    lassoPoints.clear(); movingSelection = false; selectionMoved = false; selectionGestureBefore = null
+                    lassoPoints.clear(); movingSelection = false; selectionMoved = false; selectionGestureBefore = null; selectionTransformMode = TRANSFORM_NONE
                 } else if (activeTool == EditorTool.FILL) {
                     commitFillGesture()
                     parent?.requestDisallowInterceptTouchEvent(false)
@@ -1574,13 +1618,13 @@ class InkCanvasView(context: Context) : View(context) {
                     currentPoints.clear()
                     finishLiveStrokePreview()
                 } else if (activeTool == EditorTool.SELECT) {
-                    if (movingSelection && selectionMoved) {
+                    if ((movingSelection || selectionTransformMode != TRANSFORM_NONE) && selectionMoved) {
                         selectionGestureBefore?.let { commitStrokeEdit(it, strokes) }
-                    } else if (!movingSelection) {
+                    } else if (!movingSelection && selectionTransformMode == TRANSFORM_NONE) {
                         appendSelectionPoint(normalizedX, normalizedY)
                         selectWithLasso(selectionPolygon())
                     }
-                    lassoPoints.clear(); movingSelection = false; selectionMoved = false; selectionGestureBefore = null
+                    lassoPoints.clear(); movingSelection = false; selectionMoved = false; selectionGestureBefore = null; selectionTransformMode = TRANSFORM_NONE
                 } else if (activeTool == EditorTool.SHAPE) {
                     val shape = if (shapeKind == ShapeKind.FREEFORM) {
                         appendShapePoint(normalizedX, normalizedY)
@@ -1755,6 +1799,7 @@ class InkCanvasView(context: Context) : View(context) {
         movingSelection = false
         selectionMoved = false
         selectionGestureBefore = null
+        selectionTransformMode = TRANSFORM_NONE
         activeTool = null
         activeInputWasStylus = false
         parent?.requestDisallowInterceptTouchEvent(false)
@@ -2316,6 +2361,66 @@ class InkCanvasView(context: Context) : View(context) {
         invalidate()
     }
 
+    private fun normalizeAngleDelta(first: Float, second: Float): Float = ((first - second + 180f).mod(360f)) - 180f
+
+    private fun selectionBounds(): android.graphics.RectF? {
+        var left = Float.POSITIVE_INFINITY; var top = Float.POSITIVE_INFINITY
+        var right = Float.NEGATIVE_INFINITY; var bottom = Float.NEGATIVE_INFINITY
+        strokes.forEach { stroke -> if (stroke.id in selectedStrokeIds) stroke.points.forEach { point ->
+            left = minOf(left, point.x); top = minOf(top, point.y)
+            right = maxOf(right, point.x); bottom = maxOf(bottom, point.y)
+        } }
+        return if (left.isFinite()) android.graphics.RectF(left, top, right, bottom) else null
+    }
+
+    /** Returns TRANSFORM_SCALE / TRANSFORM_ROTATE when the touch lands on a handle, else TRANSFORM_NONE. */
+    private fun hitSelectionHandle(normalizedX: Float, normalizedY: Float): Int {
+        if (selectedStrokeIds.isEmpty()) return TRANSFORM_NONE
+        val bounds = selectionBounds() ?: return TRANSFORM_NONE
+        val touchRadius = SELECTION_HANDLE_TOUCH_PX / width.coerceAtLeast(1)
+        val corners = listOf(
+            bounds.left to bounds.top, bounds.right to bounds.top,
+            bounds.right to bounds.bottom, bounds.left to bounds.bottom,
+        )
+        if (corners.any { hypot((it.first - normalizedX).toDouble(), (it.second - normalizedY).toDouble()).toFloat() <= touchRadius }) return TRANSFORM_SCALE
+        val rotY = (bounds.top - SELECTION_ROTATE_HANDLE_OFFSET_PX / height.coerceAtLeast(1))
+        if (hypot((bounds.centerX() - normalizedX).toDouble(), (rotY - normalizedY).toDouble()).toFloat() <= touchRadius) return TRANSFORM_ROTATE
+        return TRANSFORM_NONE
+    }
+
+    private fun applySelectionTransform(scale: Float, rotation: Float) {
+        val before = selectionGestureBefore ?: return
+        val selectedSet = selectedStrokeIds.toHashSet()
+        val movedBefore = strokes.filter { it.id in selectedSet }
+        val transformed = StrokeTransform.transform(before.filter { it.id in selectedSet }, selectionTransformCenterX, selectionTransformCenterY, scale, rotation, 0f, 0f).associateBy(InkStroke::id)
+        for (i in strokes.indices) {
+            val replacement = transformed[strokes[i].id]
+            if (replacement != null) strokes[i] = replacement
+        }
+        invalidateStrokeCache(movedBefore, strokes.filter { it.id in selectedSet })
+    }
+
+    private fun drawSelectionHandles(canvas: Canvas) {
+        if (selectedStrokeIds.isEmpty()) return
+        val bounds = selectionBounds() ?: return
+        val handleRadius = SELECTION_HANDLE_TOUCH_PX / 3f / width.coerceAtLeast(1)
+        val corners = listOf(
+            bounds.left to bounds.top, bounds.right to bounds.top,
+            bounds.right to bounds.bottom, bounds.left to bounds.bottom,
+        )
+        val rotY = bounds.top - SELECTION_ROTATE_HANDLE_OFFSET_PX / height.coerceAtLeast(1)
+        paint.style = Paint.Style.STROKE; paint.color = Color.rgb(24, 119, 242); paint.alpha = 255; paint.strokeWidth = 2f
+        canvas.drawLine(bounds.centerX() * width, bounds.top * height, bounds.centerX() * width, rotY * height, paint)
+        val drawHandles = listOf(bounds.centerX() to rotY) + corners
+        drawHandles.forEach { (hx, hy) ->
+            val cx = hx * width; val cy = hy * height
+            selectionHandlePaint.color = Color.WHITE
+            canvas.drawCircle(cx, cy, handleRadius * width, selectionHandlePaint)
+            selectionHandleStrokePaint.color = Color.rgb(24, 119, 242)
+            canvas.drawCircle(cx, cy, handleRadius * width, selectionHandleStrokePaint)
+        }
+    }
+
     private fun resolveTool(event: MotionEvent, toolType: Int): EditorTool {
         if (toolType == MotionEvent.TOOL_TYPE_ERASER) return EditorTool.ERASER
         val action = resolveStylusButtonAction(event.buttonState)
@@ -2614,6 +2719,11 @@ class InkCanvasView(context: Context) : View(context) {
         const val VELOCITY_SMOOTHING = .65f
         const val CONTINUOUS_PLOT_INTERVAL_MS = 32L
         const val QUICKSHAPE_HOLD_MS = 120L
+        const val TRANSFORM_NONE = 0
+        const val TRANSFORM_SCALE = 1
+        const val TRANSFORM_ROTATE = 2
+        const val SELECTION_HANDLE_TOUCH_PX = 48f
+        const val SELECTION_ROTATE_HANDLE_OFFSET_PX = 64f
         const val SALT_SIZE = 11
         const val SALT_OPACITY = 23
         const val SALT_FLOW = 37
