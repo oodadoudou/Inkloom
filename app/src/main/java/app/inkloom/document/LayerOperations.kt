@@ -93,6 +93,7 @@ object LayerOperations {
         )
         is PageElement.Shape -> element.copy(id = nextId(), layerId = layerId)
         is PageElement.Image -> element.copy(id = nextId(), layerId = layerId)
+        is PageElement.Fill -> element.copy(id = nextId(), layerId = layerId)
         is PageElement.AudioMarker -> element.copy(id = nextId(), layerId = layerId)
         is PageElement.Link -> element.copy(id = nextId(), layerId = layerId)
     }
@@ -102,6 +103,7 @@ object LayerOperations {
         is PageElement.Sticky -> copy(layerId = layerId)
         is PageElement.Shape -> copy(layerId = layerId)
         is PageElement.Image -> copy(layerId = layerId)
+        is PageElement.Fill -> copy(layerId = layerId)
         is PageElement.AudioMarker -> copy(layerId = layerId)
         is PageElement.Link -> copy(layerId = layerId)
     }
@@ -111,6 +113,7 @@ object LayerOperations {
         is PageElement.Sticky -> copy(opacity = value)
         is PageElement.Shape -> copy(opacity = value)
         is PageElement.Image -> copy(opacity = value)
+        is PageElement.Fill -> copy(opacity = value)
         is PageElement.AudioMarker -> copy(opacity = value)
         is PageElement.Link -> copy(opacity = value)
     }

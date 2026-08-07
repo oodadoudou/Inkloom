@@ -156,6 +156,27 @@ private val LocalUiLanguage = staticCompositionLocalOf { UiLanguage.ENGLISH }
 private fun tr(english: String, simplifiedChinese: String): String = LocalUiLanguage.current.text(english, simplifiedChinese)
 
 @Composable
+private fun layerBlendModeLabel(mode: LayerBlendMode): String = when (mode) {
+    LayerBlendMode.NORMAL -> tr("Normal", "正常")
+    LayerBlendMode.MULTIPLY -> tr("Multiply", "正片叠底")
+    LayerBlendMode.SCREEN -> tr("Screen", "滤色")
+    LayerBlendMode.ADD -> tr("Add", "添加")
+    LayerBlendMode.OVERLAY -> tr("Overlay", "叠加")
+    LayerBlendMode.SOFT_LIGHT -> tr("Soft Light", "柔光")
+    LayerBlendMode.HARD_LIGHT -> tr("Hard Light", "强光")
+    LayerBlendMode.COLOR_DODGE -> tr("Color Dodge", "颜色减淡")
+    LayerBlendMode.COLOR_BURN -> tr("Color Burn", "颜色加深")
+    LayerBlendMode.LIGHTEN -> tr("Lighten", "变亮")
+    LayerBlendMode.DARKEN -> tr("Darken", "变暗")
+    LayerBlendMode.DIFFERENCE -> tr("Difference", "差值")
+    LayerBlendMode.EXCLUSION -> tr("Exclusion", "排除")
+    LayerBlendMode.HUE -> tr("Hue", "色相")
+    LayerBlendMode.SATURATION -> tr("Saturation", "饱和度")
+    LayerBlendMode.COLOR -> tr("Color", "颜色")
+    LayerBlendMode.LUMINOSITY -> tr("Luminosity", "明度")
+}
+
+@Composable
 private fun localizedShapeKind(kind: ShapeKind): String = when (kind) {
     ShapeKind.ELLIPSE -> tr("Ellipse", "椭圆")
     ShapeKind.RECTANGLE -> tr("Rectangle", "矩形")
@@ -1276,9 +1297,15 @@ private fun EditorScreen(
                 onSettingsChange(settings.copy(showLayerPanel = open))
             })
             Box {
-                IconButton(onClick = { colorPanelOpen = true }, modifier = Modifier.size(44.dp)) {
+                Box(
+                    Modifier.size(44.dp).combinedClickable(
+                        onClick = { colorPanelOpen = true },
+                        onLongClick = { exitCanvasNavigation(); tool = EditorTool.FILL; canvasView?.tool = EditorTool.FILL },
+                    ).semantics { contentDescription = colorsDescription },
+                    contentAlignment = Alignment.Center,
+                ) {
                     Box(
-                        Modifier.size(30.dp).clip(CircleShape).background(Color(brushColor)).border(2.dp, if (colorPanelOpen) Color(0xFF1688F8) else OutlineSoft, CircleShape).semantics { contentDescription = colorsDescription },
+                        Modifier.size(30.dp).clip(CircleShape).background(Color(brushColor)).border(2.dp, if (colorPanelOpen) Color(0xFF1688F8) else OutlineSoft, CircleShape),
                     )
                 }
                 DropdownMenu(
@@ -1837,7 +1864,7 @@ private fun EditorScreen(
                 val toolbarAreaWidth = maxWidth
                 val toolbarAreaHeight = maxHeight
                 PaperCanvas(
-                    modifier = Modifier.fillMaxHeight(.88f).aspectRatio((PageCropTransform.visibleWidth(selectedPage) / PageCropTransform.visibleHeight(selectedPage).coerceAtLeast(1f)).coerceIn(.35f, 2.8f)).graphicsLayer(scaleX = zoom, scaleY = zoom, translationX = panX, translationY = panY, rotationZ = viewRotation),
+                    modifier = Modifier.fillMaxHeight(.88f).aspectRatio((PageCropTransform.visibleWidth(selectedPage) / PageCropTransform.visibleHeight(selectedPage).coerceAtLeast(1f)).coerceIn(.35f, 2.8f)),
                     tool = tool,
                     onView = { canvasView = it },
                     page = selectedPage,
@@ -3866,27 +3893,23 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
         val density = LocalDensity.current
         val canvasWidthPx = with(density) { maxWidth.toPx() }.coerceAtLeast(1f)
         val canvasHeightPx = with(density) { maxHeight.toPx() }.coerceAtLeast(1f)
-        if (backgroundVisible && renderedPage.background is PageBackground.Paper) Canvas(Modifier.fillMaxSize()) {
-            when (renderedPage.background.pattern) {
-                PaperPattern.PLAIN -> Unit
-                PaperPattern.RULED -> { var y = 36f; while (y < size.height) { drawLine(Color(0xFFE3E3E3), Offset(0f, y), Offset(size.width, y)); y += 36f } }
-                PaperPattern.GRID -> { var x = 0f; while (x < size.width) { drawLine(Color(0xFFE3E3E3), Offset(x, 0f), Offset(x, size.height)); x += 32f }; var y = 0f; while (y < size.height) { drawLine(Color(0xFFE3E3E3), Offset(0f, y), Offset(size.width, y)); y += 32f } }
-                PaperPattern.DOT -> { var x = 8f; while (x < size.width) { var y = 8f; while (y < size.height) { drawCircle(Color(0xFFD9D9D9), 1.4f, Offset(x, y)); y += 28f }; x += 28f } }
-                PaperPattern.CORNELL -> {
-                    val lineColor = Color(0xFFD4D4D4)
-                    val cueX = size.width * .28f
-                    val summaryY = size.height * .78f
-                    drawLine(lineColor, Offset(cueX, 0f), Offset(cueX, summaryY), strokeWidth = 1.5f)
-                    drawLine(lineColor, Offset(0f, summaryY), Offset(size.width, summaryY), strokeWidth = 1.5f)
-                    var y = 36f
-                    while (y < summaryY) { drawLine(Color(0xFFE7E7E7), Offset(cueX, y), Offset(size.width, y)); y += 36f }
-                    y = summaryY + 36f
-                    while (y < size.height) { drawLine(Color(0xFFE7E7E7), Offset(0f, y), Offset(size.width, y)); y += 36f }
-                }
-            }
-        }
+        val paperMaxWidth = maxWidth
+        val paperMaxHeight = maxHeight
         AndroidView(
             factory = { context -> InkCanvasView(context).also { view ->
+                view.addOnAttachStateChangeListener(object : android.view.View.OnAttachStateChangeListener {
+                    override fun onViewAttachedToWindow(v: android.view.View) {
+                        // The ink canvas renders the viewport transform internally (see
+                        // InkCanvasView.drawPageContent), so the zoomed page extends beyond the
+                        // view's layout bounds. Prevent every hosting view group from clipping it.
+                        var parent = v.parent as? android.view.ViewGroup
+                        while (parent != null) {
+                            parent.clipChildren = false
+                            parent = parent.parent as? android.view.ViewGroup
+                        }
+                    }
+                    override fun onViewDetachedFromWindow(v: android.view.View) {}
+                })
                 view.tool = tool
                 view.forceNavigation = forceNavigation
                 view.rotateNavigation = rotateNavigation
@@ -3900,6 +3923,12 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.viewportCenterScreenY = viewportCenterScreenY
                 view.onStrokeCommitted = { onStroke(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
                 view.onShapeCommitted = { onElement(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
+                view.onFillCommitted = { mask, fx, fy, fw, fh, color, opacity ->
+                    val maskPath = assets.saveFillMask(mask)
+                    mask.recycle()
+                    val fill = PageElement.Fill(x = fx, y = fy, width = fw, height = fh, colorArgb = color, opacity = opacity, layerId = activeLayerId, maskAssetPath = maskPath)
+                    onElement(documentId, page.id, PageCropTransform.unproject(fill, page.crop))
+                }
                 view.onStrokeRemoved = { onRemoveStroke(documentId, page.id, it) }
                 view.onStrokesReplaced = { removed, replacements, indices -> onStrokesReplaced(documentId, page.id, removed, replacements.map { PageCropTransform.unproject(it, page.crop) }, indices) }
                 view.onViewportScale = onZoom
@@ -3910,6 +3939,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onUndoGesture = onUndoGesture
                 view.onRedoGesture = onRedoGesture
                 view.singleFingerDoubleTapUndo = settings.singleFingerDoubleTapUndo
+                view.fillSensitivity = settings.fillSensitivity
                 view.twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo
                 view.threeFingerTapRedo = settings.threeFingerTapRedo
                 view.twoFingerRotationEnabled = settings.twoFingerRotation
@@ -3956,6 +3986,12 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.pageModelHeight = renderedPage.height
                 view.onStrokeCommitted = { onStroke(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
                 view.onShapeCommitted = { onElement(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
+                view.onFillCommitted = { mask, fx, fy, fw, fh, color, opacity ->
+                    val maskPath = assets.saveFillMask(mask)
+                    mask.recycle()
+                    val fill = PageElement.Fill(x = fx, y = fy, width = fw, height = fh, colorArgb = color, opacity = opacity, layerId = activeLayerId, maskAssetPath = maskPath)
+                    onElement(documentId, page.id, PageCropTransform.unproject(fill, page.crop))
+                }
                 view.onStrokeRemoved = { onRemoveStroke(documentId, page.id, it) }
                 view.onStrokesReplaced = { removed, replacements, indices -> onStrokesReplaced(documentId, page.id, removed, replacements.map { PageCropTransform.unproject(it, page.crop) }, indices) }
                 view.applyBrushConfiguration(tool, settings, activeBrush, brushSize, brushOpacity, brushColor, eraserPreset)
@@ -3967,6 +4003,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onUndoGesture = onUndoGesture
                 view.onRedoGesture = onRedoGesture
                 view.singleFingerDoubleTapUndo = settings.singleFingerDoubleTapUndo
+                view.fillSensitivity = settings.fillSensitivity
                 view.twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo
                 view.threeFingerTapRedo = settings.threeFingerTapRedo
                 view.twoFingerRotationEnabled = settings.twoFingerRotation
@@ -3987,37 +4024,48 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
             },
             modifier = Modifier.fillMaxSize(),
         )
-        searchBounds?.let { PageCropTransform.project(it, page.crop) }?.let { bounds ->
-            Canvas(Modifier.fillMaxSize()) {
-                val topLeft = Offset(bounds.left * size.width, bounds.top * size.height)
-                val highlightSize = androidx.compose.ui.geometry.Size((bounds.right - bounds.left) * size.width, (bounds.bottom - bounds.top) * size.height)
-                drawRect(Color(0x33111111), topLeft = topLeft, size = highlightSize)
-                drawRect(Color(0xFF111111), topLeft = topLeft, size = highlightSize, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx()))
+        Box(
+            Modifier.fillMaxSize()
+                .graphicsLayer(
+                    scaleX = viewportState.scale,
+                    scaleY = viewportState.scale,
+                    translationX = viewportState.panX,
+                    translationY = viewportState.panY,
+                    rotationZ = viewportState.rotationDegrees,
+                ),
+        ) {
+            searchBounds?.let { PageCropTransform.project(it, page.crop) }?.let { bounds ->
+                Canvas(Modifier.fillMaxSize()) {
+                    val topLeft = Offset(bounds.left * size.width, bounds.top * size.height)
+                    val highlightSize = androidx.compose.ui.geometry.Size((bounds.right - bounds.left) * size.width, (bounds.bottom - bounds.top) * size.height)
+                    drawRect(Color(0x33111111), topLeft = topLeft, size = highlightSize)
+                    drawRect(Color(0xFF111111), topLeft = topLeft, size = highlightSize, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx()))
+                }
             }
-        }
-        renderedPage.elements.filter { it.layerId in visibleLayerIds }.sortedBy { layerOrder[it.layerId] ?: Int.MAX_VALUE }.forEach { element ->
-            ObjectElementView(
-                element = element,
-                page = renderedPage,
-                layerOpacity = layerOpacities[element.layerId] ?: 1f,
-                selected = selectedElementId == element.id,
-                editable = tool == EditorTool.SELECT && element.layerId !in lockedLayerIds,
-                canvasWidth = maxWidth,
-                canvasHeight = maxHeight,
-                canvasWidthPx = canvasWidthPx,
-                canvasHeightPx = canvasHeightPx,
-                onSelect = { onSelectElement(element.id) },
-                onChange = { onElement(documentId, page.id, PageCropTransform.unproject(it, page.crop)) },
-                onDuplicate = { onDuplicateElement(documentId, page.id, element.id) },
-                onDelete = { onRemoveElement(documentId, page.id, element.id); onSelectElement(null) },
-                settings = settings,
-                activeBrush = activeBrush,
-                brushSize = brushSize,
-                brushOpacity = brushOpacity,
-                brushColor = brushColor,
-                eraserPreset = eraserPreset,
-                modifier = Modifier.align(Alignment.TopStart),
-            )
+            renderedPage.elements.filter { it.layerId in visibleLayerIds }.sortedBy { layerOrder[it.layerId] ?: Int.MAX_VALUE }.forEach { element ->
+                ObjectElementView(
+                    element = element,
+                    page = renderedPage,
+                    layerOpacity = layerOpacities[element.layerId] ?: 1f,
+                    selected = selectedElementId == element.id,
+                    editable = tool == EditorTool.SELECT && element.layerId !in lockedLayerIds,
+                    canvasWidth = paperMaxWidth,
+                    canvasHeight = paperMaxHeight,
+                    canvasWidthPx = canvasWidthPx,
+                    canvasHeightPx = canvasHeightPx,
+                    onSelect = { onSelectElement(element.id) },
+                    onChange = { onElement(documentId, page.id, PageCropTransform.unproject(it, page.crop)) },
+                    onDuplicate = { onDuplicateElement(documentId, page.id, element.id) },
+                    onDelete = { onRemoveElement(documentId, page.id, element.id); onSelectElement(null) },
+                    settings = settings,
+                    activeBrush = activeBrush,
+                    brushSize = brushSize,
+                    brushOpacity = brushOpacity,
+                    brushColor = brushColor,
+                    eraserPreset = eraserPreset,
+                    modifier = Modifier.align(Alignment.TopStart),
+                )
+            }
         }
     }
 }
@@ -4344,6 +4392,17 @@ private fun ObjectElementView(
                 if (bitmap != null) androidx.compose.foundation.Image(bitmap.asImageBitmap(), tr("Page image", "页面图片"), Modifier.fillMaxSize().then(maskModifier), contentScale = ContentScale.Crop)
                 else Box(Modifier.fillMaxSize().background(Workspace), contentAlignment = Alignment.Center) { Text(tr("Image unavailable", "图片不可用"), color = MutedInk, fontSize = 11.sp) }
             }
+            is PageElement.Fill -> {
+                val mask = remember(element.maskAssetPath) { runCatching { android.graphics.BitmapFactory.decodeFile(element.maskAssetPath) }.getOrNull() }
+                DisposableEffect(mask) { onDispose { mask?.recycle() } }
+                if (mask != null) androidx.compose.foundation.Image(
+                    bitmap = mask.asImageBitmap(),
+                    contentDescription = tr("Filled region", "填充区域"),
+                    modifier = Modifier.fillMaxSize(),
+                    colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Color(element.colorArgb), blendMode = androidx.compose.ui.graphics.BlendMode.SrcIn),
+                    contentScale = ContentScale.Fit,
+                )
+            }
             is PageElement.AudioMarker -> AudioMarkerCard(element)
             is PageElement.Link -> Card(Modifier.fillMaxSize(), colors = CardDefaults.cardColors(containerColor = Color(0xFFE7E7E7))) {
                 Row(Modifier.fillMaxSize().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -4539,6 +4598,9 @@ private fun ElementEditorDialog(element: PageElement, onDismiss: () -> Unit, onS
                     item { OutlinedTextField(current.title, { draft = current.copy(title = it) }, label = { Text(tr("Title", "标题")) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
                     item { OutlinedTextField(current.url, { draft = current.copy(url = it) }, label = { Text(tr("Web, email, or phone address", "网页、邮箱或电话号码")) }, isError = LinkTarget.normalize(current.url) == null, supportingText = { Text(if (LinkTarget.normalize(current.url) == null) tr("Use a valid http, https, mailto, or tel address.", "请输入有效的 http、https、mailto 或 tel 地址。") else LinkTarget.displayDestination(current.url)) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
                 }
+                is PageElement.Fill -> {
+                    item { Text(tr("Fill color", "填充颜色") + ": #" + "%08X".format(current.colorArgb), color = MutedInk, fontSize = 11.sp) }
+                }
             }
             item { BrushSettingSlider("Opacity", draft.opacity, .05f..1f) { draft = setElementOpacity(draft, it) } }
             item { BrushSettingSlider("Rotation", draft.rotationDegrees, -180f..180f) { draft = setElementRotation(draft, it) } }
@@ -4561,15 +4623,16 @@ private fun moveElement(element: PageElement, dx: Float, dy: Float): PageElement
     is PageElement.Sticky -> element.copy(x = (element.x + dx).coerceIn(0f, .98f), y = (element.y + dy).coerceIn(0f, .98f))
     is PageElement.Shape -> element.copy(x = (element.x + dx).coerceIn(0f, .98f), y = (element.y + dy).coerceIn(0f, .98f))
     is PageElement.Image -> element.copy(x = (element.x + dx).coerceIn(0f, .98f), y = (element.y + dy).coerceIn(0f, .98f))
+    is PageElement.Fill -> element.copy(x = (element.x + dx).coerceIn(0f, .98f), y = (element.y + dy).coerceIn(0f, .98f))
     is PageElement.AudioMarker -> element.copy(x = (element.x + dx).coerceIn(0f, .98f), y = (element.y + dy).coerceIn(0f, .98f))
     is PageElement.Link -> element.copy(x = (element.x + dx).coerceIn(0f, .98f), y = (element.y + dy).coerceIn(0f, .98f))
 }
 
 private fun resizeElement(element: PageElement, factor: Float): PageElement = setElementSize(element, (element.width * factor).coerceIn(40f, 1600f), (element.height * factor).coerceIn(40f, 2263f))
 private fun rotateElement(element: PageElement, delta: Float): PageElement = setElementRotation(element, ((element.rotationDegrees + delta + 180f) % 360f) - 180f)
-private fun setElementSize(element: PageElement, width: Float, height: Float): PageElement = when (element) { is PageElement.Text -> element.copy(width = width, height = height); is PageElement.Sticky -> element.copy(width = width, height = height); is PageElement.Shape -> element.copy(width = width, height = height); is PageElement.Image -> element.copy(width = width, height = height); is PageElement.AudioMarker -> element.copy(width = width, height = height); is PageElement.Link -> element.copy(width = width, height = height) }
-private fun setElementRotation(element: PageElement, value: Float): PageElement = when (element) { is PageElement.Text -> element.copy(rotationDegrees = value); is PageElement.Sticky -> element.copy(rotationDegrees = value); is PageElement.Shape -> element.copy(rotationDegrees = value); is PageElement.Image -> element.copy(rotationDegrees = value); is PageElement.AudioMarker -> element.copy(rotationDegrees = value); is PageElement.Link -> element.copy(rotationDegrees = value) }
-private fun setElementOpacity(element: PageElement, value: Float): PageElement = when (element) { is PageElement.Text -> element.copy(opacity = value); is PageElement.Sticky -> element.copy(opacity = value); is PageElement.Shape -> element.copy(opacity = value); is PageElement.Image -> element.copy(opacity = value); is PageElement.AudioMarker -> element.copy(opacity = value); is PageElement.Link -> element.copy(opacity = value) }
+private fun setElementSize(element: PageElement, width: Float, height: Float): PageElement = when (element) { is PageElement.Text -> element.copy(width = width, height = height); is PageElement.Sticky -> element.copy(width = width, height = height); is PageElement.Shape -> element.copy(width = width, height = height); is PageElement.Image -> element.copy(width = width, height = height); is PageElement.Fill -> element.copy(width = width, height = height); is PageElement.AudioMarker -> element.copy(width = width, height = height); is PageElement.Link -> element.copy(width = width, height = height) }
+private fun setElementRotation(element: PageElement, value: Float): PageElement = when (element) { is PageElement.Text -> element.copy(rotationDegrees = value); is PageElement.Sticky -> element.copy(rotationDegrees = value); is PageElement.Shape -> element.copy(rotationDegrees = value); is PageElement.Image -> element.copy(rotationDegrees = value); is PageElement.Fill -> element.copy(rotationDegrees = value); is PageElement.AudioMarker -> element.copy(rotationDegrees = value); is PageElement.Link -> element.copy(rotationDegrees = value) }
+private fun setElementOpacity(element: PageElement, value: Float): PageElement = when (element) { is PageElement.Text -> element.copy(opacity = value); is PageElement.Sticky -> element.copy(opacity = value); is PageElement.Shape -> element.copy(opacity = value); is PageElement.Image -> element.copy(opacity = value); is PageElement.Fill -> element.copy(opacity = value); is PageElement.AudioMarker -> element.copy(opacity = value); is PageElement.Link -> element.copy(opacity = value) }
 
 private fun openLink(context: android.content.Context, rawUrl: String, language: UiLanguage) {
     val url = LinkTarget.normalize(rawUrl)
@@ -4911,10 +4974,11 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
         HorizontalDivider(Modifier.width(30.dp).padding(vertical = 2.dp), color = OutlineSoft)
     }
     Box {
-        CompactToolbarIconButton(onClick = { onMoreToolsOpen(true) }, description = tr("More tools", "更多工具"), selected = rulerEnabled || gridSnapEnabled || alignmentGuidesEnabled || tool in setOf(EditorTool.EYEDROPPER, EditorTool.SHAPE, EditorTool.TEXT, EditorTool.NOTE, EditorTool.LINK, EditorTool.IMAGE, EditorTool.AUDIO, EditorTool.LASER)) { Icon(Icons.Outlined.Apps, null, Modifier.size(20.dp)) }
+        CompactToolbarIconButton(onClick = { onMoreToolsOpen(true) }, description = tr("More tools", "更多工具"), selected = rulerEnabled || gridSnapEnabled || alignmentGuidesEnabled || tool in setOf(EditorTool.EYEDROPPER, EditorTool.FILL, EditorTool.SHAPE, EditorTool.TEXT, EditorTool.NOTE, EditorTool.LINK, EditorTool.IMAGE, EditorTool.AUDIO, EditorTool.LASER)) { Icon(Icons.Outlined.Apps, null, Modifier.size(20.dp)) }
         DropdownMenu(expanded = moreToolsOpen, onDismissRequest = { onMoreToolsOpen(false) }) {
             listOf(
                 Triple(EditorTool.EYEDROPPER, Icons.Outlined.Colorize, tr("Eyedropper", "吸管")),
+                Triple(EditorTool.FILL, Icons.Outlined.FormatColorFill, tr("Paint bucket", "油漆桶")),
                 Triple(EditorTool.SHAPE, Icons.Outlined.Category, tr("Shape", "形状")),
                 Triple(EditorTool.TEXT, Icons.Outlined.Title, tr("Text", "文字")),
                 Triple(EditorTool.NOTE, Icons.Outlined.StickyNote2, tr("Note", "便笺")),
@@ -5536,23 +5600,13 @@ private fun LayerPanel(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(tr("Blend", "混合"), Modifier.width(48.dp), color = MutedInk, fontSize = 9.sp)
-                    Text(when (activeLayer.blendMode) {
-                        LayerBlendMode.NORMAL -> tr("Normal", "正常")
-                        LayerBlendMode.MULTIPLY -> tr("Multiply", "正片叠底")
-                        LayerBlendMode.SCREEN -> tr("Screen", "滤色")
-                        LayerBlendMode.ADD -> tr("Add", "添加")
-                    }, Modifier.weight(1f), fontSize = 10.sp)
+                    Text(layerBlendModeLabel(activeLayer.blendMode), Modifier.weight(1f), fontSize = 10.sp)
                     Icon(Icons.Outlined.ExpandMore, tr("Choose blend mode", "选择混合模式"), Modifier.size(16.dp))
                 }
                 DropdownMenu(blendModeMenu, { blendModeMenu = false }) {
                     LayerBlendMode.entries.forEach { mode ->
                         DropdownMenuItem(
-                            text = { Text(when (mode) {
-                                LayerBlendMode.NORMAL -> tr("Normal", "正常")
-                                LayerBlendMode.MULTIPLY -> tr("Multiply", "正片叠底")
-                                LayerBlendMode.SCREEN -> tr("Screen", "滤色")
-                                LayerBlendMode.ADD -> tr("Add", "添加")
-                            }) },
+                            text = { Text(layerBlendModeLabel(mode)) },
                             trailingIcon = { if (mode == activeLayer.blendMode) Icon(Icons.Outlined.Check, null) },
                             onClick = { blendModeMenu = false; onBlendMode(activeLayer.id, mode) },
                         )

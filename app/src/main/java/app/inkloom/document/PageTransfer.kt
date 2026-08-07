@@ -34,6 +34,7 @@ object PageTransfer {
         is PageElement.Sticky -> copy(id = id, strokes = strokes.map { it.copy(id = nextId()) })
         is PageElement.Shape -> copy(id = id)
         is PageElement.Image -> copy(id = id)
+        is PageElement.Fill -> copy(id = id)
         is PageElement.AudioMarker -> copy(id = id)
         is PageElement.Link -> copy(id = id)
     }

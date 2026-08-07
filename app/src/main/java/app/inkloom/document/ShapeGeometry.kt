@@ -142,10 +142,82 @@ object ShapeGeometry {
         return abs(twiceArea).toFloat() / 2f
     }
 
+    /**
+     * QuickShape recognition: turns a rough freehand path into a perfect shape.
+     * Returns a LINE for a nearly-straight open stroke, a RECTANGLE for a closed
+     * stroke with four ~90° corners, an ELLIPSE for any other closed stroke, or
+     * null when the gesture is too short/ambiguous (caller keeps the freeform path).
+     */
+    fun quickShape(
+        rawPoints: List<ShapePoint>,
+        pageWidth: Float,
+        pageHeight: Float,
+        colorArgb: Long,
+        strokeWidth: Float,
+    ): PageElement.Shape? {
+        val safeWidth = pageWidth.coerceAtLeast(1f)
+        val safeHeight = pageHeight.coerceAtLeast(1f)
+        val points = rawPoints.map { ShapePoint(it.x.coerceIn(0f, 1f), it.y.coerceIn(0f, 1f)) }.distinctConsecutive(safeWidth, safeHeight)
+        if (points.size < 3) return null
+        val start = points.first()
+        val end = points.last()
+        val minX = points.minOf(ShapePoint::x); val maxX = points.maxOf(ShapePoint::x)
+        val minY = points.minOf(ShapePoint::y); val maxY = points.maxOf(ShapePoint::y)
+        val bboxW = (maxX - minX) * safeWidth
+        val bboxH = (maxY - minY) * safeHeight
+        val span = hypot(bboxW.toDouble(), bboxH.toDouble()).toFloat().coerceAtLeast(1f)
+        if (span < MINIMUM_EXTENT_PX) return null
+        val closurePx = hypot(((end.x - start.x) * safeWidth).toDouble(), ((end.y - start.y) * safeHeight).toDouble()).toFloat()
+        val closed = closurePx < span * CLOSURE_FRACTION
+        if (!closed) {
+            // Open stroke: snap to a straight line when every point stays near the chord.
+            val maxDeviation = points.maxOf { segmentDistancePx(it, start, end, safeWidth, safeHeight) }
+            if (maxDeviation < span * LINE_TOLERANCE_FRACTION) {
+                return create(ShapeKind.LINE, start, snapEnd(start, end, safeWidth, safeHeight), safeWidth, safeHeight, colorArgb, strokeWidth)
+            }
+            return null
+        }
+        // Closed stroke: find dominant corners with an aggressive simplify pass.
+        val simplified = simplify(points, safeWidth, safeHeight, span * CORNER_TOLERANCE_FRACTION)
+        val corners = if (simplified.size > 1 && hypot(
+                ((simplified.last().x - simplified.first().x) * safeWidth).toDouble(),
+                ((simplified.last().y - simplified.first().y) * safeHeight).toDouble(),
+            ).toFloat() < span * CLOSURE_FRACTION) simplified.dropLast(1) else simplified
+        if (corners.size == 4 && cornersRightish(corners, safeWidth, safeHeight)) {
+            return create(ShapeKind.RECTANGLE, ShapePoint(minX, minY), ShapePoint(maxX, maxY), safeWidth, safeHeight, colorArgb, strokeWidth)
+        }
+        return create(ShapeKind.ELLIPSE, ShapePoint(minX, minY), ShapePoint(maxX, maxY), safeWidth, safeHeight, colorArgb, strokeWidth)
+    }
+
+    private fun cornersRightish(corners: List<ShapePoint>, pageWidth: Float, pageHeight: Float): Boolean {
+        if (corners.size < 3) return false
+        var rightish = 0
+        for (index in corners.indices) {
+            val previous = corners[(index - 1 + corners.size) % corners.size]
+            val current = corners[index]
+            val next = corners[(index + 1) % corners.size]
+            val angle = cornerAngleDegrees(previous, current, next, pageWidth, pageHeight)
+            if (abs(angleDelta(angle, 90f)) <= RIGHT_ANGLE_TOLERANCE_DEGREES) rightish++
+        }
+        return rightish >= 3
+    }
+
+    private fun cornerAngleDegrees(previous: ShapePoint, current: ShapePoint, next: ShapePoint, pageWidth: Float, pageHeight: Float): Float {
+        val ax = (current.x - previous.x) * pageWidth; val ay = (current.y - previous.y) * pageHeight
+        val bx = (next.x - current.x) * pageWidth; val by = (next.y - current.y) * pageHeight
+        val dot = ax * bx + ay * by
+        val cross = ax * by - ay * bx
+        return abs(Math.toDegrees(atan2(cross.toDouble(), dot.toDouble())).toFloat())
+    }
+
     private fun angleDelta(first: Float, second: Float): Float = ((first - second + 180f).mod(360f)) - 180f
 
     private const val MINIMUM_SAMPLE_DISTANCE_PX = 1f
     private const val SIMPLIFY_TOLERANCE_PX = 1.5f
     private const val MINIMUM_EXTENT_PX = 8f
     private const val MINIMUM_AREA_PX = 24f
+    private const val CLOSURE_FRACTION = 0.15f
+    private const val LINE_TOLERANCE_FRACTION = 0.06f
+    private const val CORNER_TOLERANCE_FRACTION = 0.04f
+    private const val RIGHT_ANGLE_TOLERANCE_DEGREES = 22f
 }

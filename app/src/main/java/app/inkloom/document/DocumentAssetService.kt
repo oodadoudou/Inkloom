@@ -155,6 +155,27 @@ class DocumentAssetService(private val context: Context) {
         return PageElement.Image(x = .18f, y = .2f, width = width, height = height, assetPath = asset.absolutePath)
     }
 
+    /** Persists a paint-bucket fill mask PNG and returns its absolute path. */
+    fun saveFillMask(mask: Bitmap): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val temporary = File(directory, ".${System.nanoTime()}.tmp")
+        temporary.outputStream().use { out ->
+            mask.compress(Bitmap.CompressFormat.PNG, 0, out)
+            out.flush()
+        }
+        temporary.inputStream().use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) { val count = input.read(buffer); if (count < 0) break; digest.update(buffer, 0, count) }
+        }
+        val hash = digest.digest().joinToString("") { "%02x".format(it) }
+        val target = File(directory, "$hash.fill-mask.png")
+        if (target.exists()) temporary.delete() else check(temporary.renameTo(target)) { "Could not retain fill mask" }
+        return target.absolutePath
+    }
+
+    /** Loads a fill mask PNG, or null if it cannot be decoded. */
+    fun loadFillMask(maskAssetPath: String): Bitmap? = runCatching { BitmapFactory.decodeFile(maskAssetPath) }.getOrNull()
+
     fun importCoverImage(uri: Uri): String {
         val extension = context.contentResolver.getType(uri)?.substringAfterLast('/')?.take(8).orEmpty().ifBlank { "image" }
         val asset = copyAsset(uri, extension)
@@ -229,13 +250,14 @@ class DocumentAssetService(private val context: Context) {
                 elements = page.elements.map { element -> when (element) {
                     is PageElement.Image -> element.copy(assetPath = "assets/${File(element.assetPath).name}")
                     is PageElement.AudioMarker -> element.copy(assetPath = "assets/${File(element.assetPath).name}")
+                    is PageElement.Fill -> element.copy(maskAssetPath = "assets/${File(element.maskAssetPath).name}")
                     is PageElement.Sticky -> element.copy(strokes = element.strokes.map { it.portableBrushAssets() })
                     else -> element
                 } },
                 ) },
             )
             zip.putNextEntry(ZipEntry("manifest.json")); zip.write(serializer.encodeToString(portable).encodeToByteArray()); zip.closeEntry()
-            val assets = listOfNotNull(document.coverImagePath) + document.pages.mapNotNull { page -> when (val background = page.background) { is PageBackground.Pdf -> background.assetPath; is PageBackground.Image -> background.assetPath; else -> null } } + document.pages.flatMap { it.elements }.mapNotNull { element -> when (element) { is PageElement.Image -> element.assetPath; is PageElement.AudioMarker -> element.assetPath; else -> null } }
+            val assets = listOfNotNull(document.coverImagePath) + document.pages.mapNotNull { page -> when (val background = page.background) { is PageBackground.Pdf -> background.assetPath; is PageBackground.Image -> background.assetPath; else -> null } } + document.pages.flatMap { it.elements }.mapNotNull { element -> when (element) { is PageElement.Image -> element.assetPath; is PageElement.AudioMarker -> element.assetPath; is PageElement.Fill -> element.maskAssetPath; else -> null } }
             writeDistinctFiles(zip, "assets", assets)
             val allStrokes = document.pages.flatMap { page -> page.strokes + page.elements.filterIsInstance<PageElement.Sticky>().flatMap(PageElement.Sticky::strokes) }
             writeDistinctFiles(zip, "brush-assets", allStrokes.flatMap { it.brushAssetPaths() })
@@ -303,6 +325,7 @@ class DocumentAssetService(private val context: Context) {
                     elements = page.elements.map { element -> when (element) {
                         is PageElement.Image -> element.copy(assetPath = retained(element.assetPath))
                         is PageElement.AudioMarker -> element.copy(assetPath = retained(element.assetPath))
+                        is PageElement.Fill -> element.copy(maskAssetPath = retained(element.maskAssetPath))
                         is PageElement.Sticky -> element.copy(strokes = element.strokes.map { it.withRetainedBrushAssets(::retained) })
                         else -> element
                     } },
@@ -422,12 +445,7 @@ class DocumentAssetService(private val context: Context) {
         page.layers.filter { LayerHierarchy.effectiveVisible(page.layers, it) && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) }.forEach { layer ->
             val layerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 alpha = (layer.opacity.coerceIn(0f, 1f) * 255f).toInt().coerceIn(0, 255)
-                blendMode = when (layer.blendMode) {
-                    LayerBlendMode.NORMAL -> android.graphics.BlendMode.SRC_OVER
-                    LayerBlendMode.MULTIPLY -> android.graphics.BlendMode.MULTIPLY
-                    LayerBlendMode.SCREEN -> android.graphics.BlendMode.SCREEN
-                    LayerBlendMode.ADD -> android.graphics.BlendMode.PLUS
-                }
+                blendMode = layer.blendMode.toBlendMode()
             }
             val layerCheckpoint = canvas.saveLayer(null, layerPaint)
             drawStrokes(canvas, page.strokes.filter { it.layerId == layer.id }, width, height, paint)
@@ -504,6 +522,14 @@ class DocumentAssetService(private val context: Context) {
                         ImageMask.OVAL -> canvas.clipPath(Path().apply { addOval(destination, Path.Direction.CW) })
                     }
                     canvas.drawBitmap(bitmap, null, destination, paint); canvas.restore(); bitmap.recycle()
+                }
+                is PageElement.Fill -> loadFillMask(element.maskAssetPath)?.let { mask ->
+                    val destination = android.graphics.RectF(left, top, right, bottom)
+                    val colorPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+                    colorPaint.colorFilter = PorterDuffColorFilter(element.colorArgb.toInt(), PorterDuff.Mode.SRC_IN)
+                    colorPaint.alpha = (element.opacity.coerceIn(0f, 1f) * 255).toInt()
+                    canvas.drawBitmap(mask, null, destination, colorPaint)
+                    mask.recycle()
                 }
                 is PageElement.AudioMarker -> { paint.style = Paint.Style.FILL; paint.color = 0xFFE7E7E7.toInt(); canvas.drawRoundRect(left, top, right, bottom, 18f, 18f, paint); paint.color = 0xFF111111.toInt(); paint.textSize = 28f; canvas.drawText("Audio · ${formatDuration(element.durationMs)}", left + 20, top + 42, paint); paint.textSize = 22f; canvas.drawText(element.title, left + 20, top + 76, paint) }
                 is PageElement.Link -> {

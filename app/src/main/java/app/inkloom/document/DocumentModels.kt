@@ -89,7 +89,12 @@ object LayerIds {
 enum class LayerRole { BACKGROUND, INK, HIGHLIGHT, OBJECTS, CUSTOM, FOLDER }
 
 @Serializable
-enum class LayerBlendMode { NORMAL, MULTIPLY, SCREEN, ADD }
+enum class LayerBlendMode {
+    NORMAL, MULTIPLY, SCREEN, ADD,
+    OVERLAY, SOFT_LIGHT, HARD_LIGHT, COLOR_DODGE, COLOR_BURN,
+    LIGHTEN, DARKEN, DIFFERENCE, EXCLUSION,
+    HUE, SATURATION, COLOR, LUMINOSITY;
+}
 
 @Serializable
 data class InkLayer(
@@ -382,6 +387,9 @@ sealed interface PageElement {
 
     @Serializable @SerialName("image")
     data class Image(override val id: String = UUID.randomUUID().toString(), override val x: Float, override val y: Float, override val width: Float, override val height: Float, override val rotationDegrees: Float = 0f, override val opacity: Float = 1f, override val layerId: String = LayerIds.OBJECTS, val assetPath: String, val crop: ImageCrop = ImageCrop(), val mask: ImageMask = ImageMask.RECTANGLE, val cornerRadius: Float = 24f) : PageElement
+
+    @Serializable @SerialName("fill")
+    data class Fill(override val id: String = UUID.randomUUID().toString(), override val x: Float, override val y: Float, override val width: Float, override val height: Float, override val rotationDegrees: Float = 0f, override val opacity: Float = 1f, override val layerId: String = LayerIds.INK, val colorArgb: Long = 0xFF111111, val maskAssetPath: String) : PageElement
 
     @Serializable @SerialName("audio_marker")
     data class AudioMarker(override val id: String = UUID.randomUUID().toString(), override val x: Float, override val y: Float, override val width: Float = 520f, override val height: Float = 150f, override val rotationDegrees: Float = 0f, override val opacity: Float = 1f, override val layerId: String = LayerIds.OBJECTS, val assetPath: String, val title: String = "Audio note", val durationMs: Long, val createdAt: Long = System.currentTimeMillis()) : PageElement

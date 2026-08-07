@@ -54,6 +54,7 @@ import app.inkloom.document.GrainDynamics
 import app.inkloom.document.LassoGeometry
 import app.inkloom.document.LassoSelectionPolicy
 import app.inkloom.document.LayerBlendMode
+import app.inkloom.document.toBlendMode
 import app.inkloom.document.LaserTrail
 import app.inkloom.document.PaperPattern
 import app.inkloom.document.PressureCalibration
@@ -85,6 +86,7 @@ import app.inkloom.document.TwoFingerTapUndoGesture
 import app.inkloom.document.TwoPointerRotationGesture
 import app.inkloom.document.ThreeFingerTapRedoGesture
 import app.inkloom.document.ViewportTransform
+import app.inkloom.document.FloodFill
 import app.inkloom.document.ViewportState
 import app.inkloom.document.WaterEdge
 import app.inkloom.document.WetMixDynamics
@@ -132,6 +134,19 @@ class InkCanvasView(context: Context) : View(context) {
     private var shapeStart: ShapePoint? = null
     private var shapeEnd: ShapePoint? = null
     private val shapeFreeformPoints = mutableListOf<ShapePoint>()
+    private var shapeFreeformLastMoveAt = 0L
+    private var fillSourceBitmap: Bitmap? = null
+    private var fillSeedX = 0
+    private var fillSeedY = 0
+    private var fillBaseSensitivity = 0f
+    private var fillDragOriginX = 0f
+    private var fillSensitivityNow = 0f
+    private var fillPreviewMask: Bitmap? = null
+    private var fillPreviewLeft = 0f
+    private var fillPreviewTop = 0f
+    private var fillPreviewWidth = 0f
+    private var fillPreviewHeight = 0f
+    private val fillPreviewPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { colorFilter = PorterDuffColorFilter(Color.BLACK, PorterDuff.Mode.SRC_IN) }
     private var movingSelection = false
     private var selectionMoved = false
     private var lastX = 0f
@@ -218,6 +233,7 @@ class InkCanvasView(context: Context) : View(context) {
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
+    private val paperFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val brushSizePreviewPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val brushSizePreviewTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 30f; typeface = android.graphics.Typeface.DEFAULT_BOLD }
     private val tipCache = object : LinkedHashMap<String, Bitmap>(32, .75f, true) {
@@ -469,6 +485,11 @@ class InkCanvasView(context: Context) : View(context) {
     var pageModelHeight: Float = 2263f
     var onStrokeCommitted: (InkStroke) -> Unit = {}
     var onShapeCommitted: (PageElement.Shape) -> Unit = {}
+    /** Paint-bucket fill: receives the fill mask bitmap (page-local pixels) plus the
+     *  mask's bounding box in normalized page coordinates, the fill color and opacity.
+     *  The host persists the mask and creates a [PageElement.Fill]. */
+    var onFillCommitted: ((mask: Bitmap, x: Float, y: Float, width: Float, height: Float, colorArgb: Long, opacity: Float) -> Unit)? = null
+    var fillSensitivity: Float = .25f
     var onStrokeRemoved: (String) -> Unit = {}
     var onStrokesReplaced: (List<String>, List<InkStroke>, List<Int>) -> Unit = { removed, replacements, _ -> removed.forEach(onStrokeRemoved); replacements.forEach(onStrokeCommitted) }
     var onViewportScale: (Float, Float, Float) -> Unit = { _, _, _ -> }
@@ -621,8 +642,33 @@ class InkCanvasView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+        canvas.save()
+        canvas.concat(viewportRenderMatrix())
+        drawPageContent(canvas)
+        canvas.restore()
+    }
+
+    /** The viewport transform in the view's local space. This is the inverse of
+     * [ViewportTransform.screenToLocal], so ink rendered under this transform lands exactly
+     * where the stylus/finger maps when the user touches the screen at any zoom. */
+    private fun viewportRenderMatrix(): Matrix {
+        val matrix = Matrix()
+        val centerX = width / 2f
+        val centerY = height / 2f
+        matrix.setTranslate(centerX + viewportPanX, centerY + viewportPanY)
+        matrix.postRotate(viewportRotationDegrees)
+        matrix.postScale(viewportScale, viewportScale)
+        matrix.postTranslate(-centerX, -centerY)
+        return matrix
+    }
+
+    private fun drawPageContent(canvas: Canvas) {
         backgroundBitmap?.let { bitmap -> backgroundDestination.set(0, 0, width, height); canvas.drawBitmap(bitmap, null, backgroundDestination, null) }
-            ?: pagePaperColor?.let { color -> canvas.drawColor(color); pagePaperPattern?.let { drawPaperPattern(canvas, it) } }
+            ?: pagePaperColor?.let { color ->
+                paperFillPaint.color = color
+                canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paperFillPaint)
+                pagePaperPattern?.let { drawPaperPattern(canvas, it) }
+            }
         drawSnapGrid(canvas)
         if (!drawStrokeTiles(canvas)) drawLayeredStrokes(canvas, strokes)
         var selectionLeft = Float.POSITIVE_INFINITY
@@ -652,6 +698,7 @@ class InkCanvasView(context: Context) : View(context) {
         drawAlignmentGuides(canvas)
         drawRulerGuide(canvas)
         drawLaserTrail(canvas, SystemClock.uptimeMillis())
+        drawFillPreview(canvas)
         drawBrushSizePreview(canvas)
     }
 
@@ -751,12 +798,7 @@ class InkCanvasView(context: Context) : View(context) {
             val checkpoint = if (needsLayer) {
                 canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     alpha = (opacity * 255f).toInt().coerceIn(0, 255)
-                    this.blendMode = when (blendMode) {
-                        LayerBlendMode.NORMAL -> android.graphics.BlendMode.SRC_OVER
-                        LayerBlendMode.MULTIPLY -> android.graphics.BlendMode.MULTIPLY
-                        LayerBlendMode.SCREEN -> android.graphics.BlendMode.SCREEN
-                        LayerBlendMode.ADD -> android.graphics.BlendMode.PLUS
-                    }
+                    this.blendMode = blendMode.toBlendMode()
                 })
             } else null
             layerStrokes.forEach { drawStroke(canvas, it, primaryStampStartIndex, dualStampStartIndex) }
@@ -1165,7 +1207,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (tool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.EYEDROPPER, EditorTool.SELECT, EditorTool.SHAPE, EditorTool.LASER)) return false
+        if (tool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.EYEDROPPER, EditorTool.SELECT, EditorTool.SHAPE, EditorTool.LASER, EditorTool.FILL)) return false
         if (event.actionMasked == MotionEvent.ACTION_DOWN && !hasFocus()) requestFocus()
         val pointerIndex = event.actionIndex.coerceIn(0, event.pointerCount - 1)
         val eventToolType = event.getToolType(pointerIndex)
@@ -1218,7 +1260,7 @@ class InkCanvasView(context: Context) : View(context) {
         if (handleCanvasGuideGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
         if (handleRulerGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
         val buttonForcesNavigation = isStylus && (stylusButtonAction == StylusButtonAction.HAND || stylusHandNavigationContact)
-        val isFingerNavigation = forceNavigation || buttonForcesNavigation || StylusInputClassifier.shouldNavigateOrRejectFinger(isStylus, fingerDrawingEnabled, event.pointerCount, event.getTouchMajor(pointerIndex), elapsedSinceStylus)
+        val isFingerNavigation = forceNavigation || buttonForcesNavigation || (tool != EditorTool.FILL && StylusInputClassifier.shouldNavigateOrRejectFinger(isStylus, fingerDrawingEnabled, event.pointerCount, event.getTouchMajor(pointerIndex), elapsedSinceStylus))
         if (isFingerNavigation) {
             if (activeTool != null) {
                 if (activeInputWasStylus && !forceNavigation && !buttonForcesNavigation) return true
@@ -1408,6 +1450,12 @@ class InkCanvasView(context: Context) : View(context) {
                     invalidate()
                     return true
                 }
+                if (activeTool == EditorTool.FILL) {
+                    parent?.requestDisallowInterceptTouchEvent(true)
+                    beginFillGesture(normalizedX, normalizedY, event.rawX)
+                    invalidate()
+                    return true
+                }
                 currentPoints.clear()
                 beginLiveStrokePreview()
                 currentStrokeId = java.util.UUID.randomUUID().toString()
@@ -1419,7 +1467,10 @@ class InkCanvasView(context: Context) : View(context) {
                 if (brushContinuousPlot && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) startContinuousPlot()
             }
             MotionEvent.ACTION_MOVE -> {
-                if (activeTool == EditorTool.EYEDROPPER) {
+                if (activeTool == EditorTool.FILL) {
+                    adjustFillSensitivity(event.rawX)
+                }
+                else if (activeTool == EditorTool.EYEDROPPER) {
                     onColorSampled(sampleRenderedColor(inputPoint.first, inputPoint.second))
                 }
                 else if (activeTool == EditorTool.ERASER) {
@@ -1473,6 +1524,7 @@ class InkCanvasView(context: Context) : View(context) {
                     if (shapeKind == ShapeKind.FREEFORM) {
                         for (i in 0 until event.historySize) historicalCanvasPoint(event, 0, i).let { point -> appendShapePoint(point.first / width.coerceAtLeast(1), point.second / height.coerceAtLeast(1)) }
                         appendShapePoint(normalizedX, normalizedY)
+                        shapeFreeformLastMoveAt = event.eventTime
                     } else {
                         val angled = ShapeGeometry.snapEnd(shapeStart ?: ShapePoint(normalizedX, normalizedY), ShapePoint(normalizedX, normalizedY), pageModelWidth, pageModelHeight)
                         val snapped = snapCanvasPoint(angled.x, angled.y)
@@ -1500,10 +1552,14 @@ class InkCanvasView(context: Context) : View(context) {
                     currentPoints.clear()
                     finishLiveStrokePreview()
                     if (activeTool == EditorTool.LASER) laserTrail.cancelActive()
+                    if (activeTool == EditorTool.FILL) cancelFillGesture()
                     shapeStart = null; shapeEnd = null; shapeFreeformPoints.clear()
                     if (activeTool == EditorTool.ERASER) cancelEraserGesture()
                     selectionGestureBefore?.let { restoreStrokeSnapshot(it) }
                     lassoPoints.clear(); movingSelection = false; selectionMoved = false; selectionGestureBefore = null
+                } else if (activeTool == EditorTool.FILL) {
+                    commitFillGesture()
+                    parent?.requestDisallowInterceptTouchEvent(false)
                 } else if (activeTool == EditorTool.EYEDROPPER) {
                     onColorSampled(sampleRenderedColor(inputPoint.first, inputPoint.second))
                 } else if (activeTool == EditorTool.ERASER) {
@@ -1528,14 +1584,18 @@ class InkCanvasView(context: Context) : View(context) {
                 } else if (activeTool == EditorTool.SHAPE) {
                     val shape = if (shapeKind == ShapeKind.FREEFORM) {
                         appendShapePoint(normalizedX, normalizedY)
-                        ShapeGeometry.createFreeform(shapeFreeformPoints, pageModelWidth, pageModelHeight, inkColor.toUInt().toLong(), baseWidth)
+                        // QuickShape: when the freehand gesture ends with a brief hold,
+                        // snap the rough path to a perfect line/rectangle/ellipse.
+                        val held = shapeFreeformLastMoveAt > 0L && event.eventTime - shapeFreeformLastMoveAt >= QUICKSHAPE_HOLD_MS
+                        val recognized = if (held) ShapeGeometry.quickShape(shapeFreeformPoints, pageModelWidth, pageModelHeight, inkColor.toUInt().toLong(), baseWidth) else null
+                        recognized ?: ShapeGeometry.createFreeform(shapeFreeformPoints, pageModelWidth, pageModelHeight, inkColor.toUInt().toLong(), baseWidth)
                     } else {
                         val start = shapeStart
                         val end = shapeEnd
                         if (start != null && end != null) ShapeGeometry.create(shapeKind, start, end, pageModelWidth, pageModelHeight, inkColor.toUInt().toLong(), baseWidth) else null
                     }
                     shape?.let(onShapeCommitted)
-                    shapeStart = null; shapeEnd = null; shapeFreeformPoints.clear()
+                    shapeStart = null; shapeEnd = null; shapeFreeformPoints.clear(); shapeFreeformLastMoveAt = 0L
                 } else if (activeTool == EditorTool.LASER) {
                     laserTrail.append(normalizedX, normalizedY, event.eventTime)
                     laserTrail.end()
@@ -1558,7 +1618,7 @@ class InkCanvasView(context: Context) : View(context) {
         colorSampleBitmap.eraseColor(Color.TRANSPARENT)
         val sampleCanvas = Canvas(colorSampleBitmap)
         sampleCanvas.translate(-x.coerceIn(0f, (width - 1).coerceAtLeast(0).toFloat()), -y.coerceIn(0f, (height - 1).coerceAtLeast(0).toFloat()))
-        draw(sampleCanvas)
+        drawPageContent(sampleCanvas)
         return RenderedColorSampling.opaqueOverWhite(colorSampleBitmap.getPixel(0, 0))
     }
 
@@ -1591,6 +1651,20 @@ class InkCanvasView(context: Context) : View(context) {
         activeInputWasStylus = false
         parent?.requestDisallowInterceptTouchEvent(false)
         invalidate()
+    }
+
+    private fun drawFillPreview(canvas: Canvas) {
+        val mask = fillPreviewMask ?: return
+        if (fillPreviewWidth <= 0f || fillPreviewHeight <= 0f) return
+        fillPreviewPaint.colorFilter = PorterDuffColorFilter(inkColor, PorterDuff.Mode.SRC_IN)
+        fillPreviewPaint.alpha = (inkOpacity * 255f).toInt().coerceIn(0, 255)
+        backgroundDestination.set(
+            fillPreviewLeft.toInt(),
+            fillPreviewTop.toInt(),
+            (fillPreviewLeft + fillPreviewWidth).toInt(),
+            (fillPreviewTop + fillPreviewHeight).toInt(),
+        )
+        canvas.drawBitmap(mask, null, backgroundDestination, fillPreviewPaint)
     }
 
     private fun drawBrushSizePreview(canvas: Canvas) {
@@ -1668,6 +1742,7 @@ class InkCanvasView(context: Context) : View(context) {
         currentPoints.clear()
         finishLiveStrokePreview()
         laserTrail.cancelActive()
+        cancelFillGesture()
         rulerGestureMode = null
         canvasGuideGestureMode = null
         activeCanvasSnapConstraint = null
@@ -2170,6 +2245,77 @@ class InkCanvasView(context: Context) : View(context) {
         removeCallbacks(continuousPlotRunnable)
     }
 
+    private fun beginFillGesture(normalizedX: Float, normalizedY: Float, rawX: Float) {
+        val safeWidth = width.coerceAtLeast(1)
+        val safeHeight = height.coerceAtLeast(1)
+        val source = renderVisiblePageBitmap(safeWidth, safeHeight)
+        fillSourceBitmap = source
+        fillSeedX = (normalizedX.coerceIn(0f, 1f) * safeWidth).toInt().coerceIn(0, safeWidth - 1)
+        fillSeedY = (normalizedY.coerceIn(0f, 1f) * safeHeight).toInt().coerceIn(0, safeHeight - 1)
+        fillBaseSensitivity = fillSensitivity
+        fillSensitivityNow = fillBaseSensitivity
+        fillDragOriginX = rawX
+        recomputeFillPreview()
+    }
+
+    private fun adjustFillSensitivity(rawX: Float) {
+        val next = (fillBaseSensitivity + (rawX - fillDragOriginX) / 480f).coerceIn(0f, 1f)
+        if (next != fillSensitivityNow) {
+            fillSensitivityNow = next
+            recomputeFillPreview()
+            invalidate()
+        }
+    }
+
+    private fun recomputeFillPreview() {
+        val source = fillSourceBitmap ?: return
+        val tolerance = (fillSensitivityNow * 200f).toInt().coerceIn(0, 255)
+        val result = FloodFill.fill(source, fillSeedX, fillSeedY, tolerance)
+        fillPreviewMask?.recycle()
+        fillPreviewMask = if (result.isEmpty) null else result.mask
+        val safeWidth = width.coerceAtLeast(1).toFloat()
+        val safeHeight = height.coerceAtLeast(1).toFloat()
+        fillPreviewLeft = result.left / safeWidth
+        fillPreviewTop = result.top / safeHeight
+        fillPreviewWidth = result.width / safeWidth
+        fillPreviewHeight = result.height / safeHeight
+    }
+
+    private fun renderVisiblePageBitmap(pageWidth: Int, pageHeight: Int): Bitmap {
+        val bitmap = Bitmap.createBitmap(pageWidth, pageHeight, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        drawPageContent(canvas)
+        return bitmap
+    }
+
+    private fun commitFillGesture() {
+        val mask = fillPreviewMask
+        if (mask != null && fillPreviewWidth > 0f && fillPreviewHeight > 0f) {
+            val color = inkColor.toUInt().toLong()
+            onFillCommitted?.invoke(
+                mask.copy(Bitmap.Config.ARGB_8888, false),
+                fillPreviewLeft,
+                fillPreviewTop,
+                fillPreviewWidth * pageModelWidth,
+                fillPreviewHeight * pageModelHeight,
+                color,
+                inkOpacity,
+            )
+        }
+        fillPreviewMask = null
+        fillSourceBitmap?.recycle()
+        fillSourceBitmap = null
+        invalidate()
+    }
+
+    private fun cancelFillGesture() {
+        fillPreviewMask?.recycle()
+        fillPreviewMask = null
+        fillSourceBitmap?.recycle()
+        fillSourceBitmap = null
+        invalidate()
+    }
+
     private fun resolveTool(event: MotionEvent, toolType: Int): EditorTool {
         if (toolType == MotionEvent.TOOL_TYPE_ERASER) return EditorTool.ERASER
         val action = resolveStylusButtonAction(event.buttonState)
@@ -2467,6 +2613,7 @@ class InkCanvasView(context: Context) : View(context) {
         const val VELOCITY_FULL_SCALE_PX_PER_MS = 2f
         const val VELOCITY_SMOOTHING = .65f
         const val CONTINUOUS_PLOT_INTERVAL_MS = 32L
+        const val QUICKSHAPE_HOLD_MS = 120L
         const val SALT_SIZE = 11
         const val SALT_OPACITY = 23
         const val SALT_FLOW = 37

@@ -6,6 +6,7 @@ import androidx.core.content.edit
 data class AppSettings(
     val language: UiLanguage = UiLanguage.ENGLISH,
     val fingerDrawing: Boolean = false,
+    val fillSensitivity: Float = .25f,
     val showPageRail: Boolean = false,
     val showBrushPanel: Boolean = false,
     val showLayerPanel: Boolean = false,
@@ -121,6 +122,7 @@ class AppSettingsStore(context: Context) {
         val loaded = AppSettings(
             language = enumValue(preferences.getString("language", null), systemLanguage),
             fingerDrawing = preferences.getBoolean("fingerDrawing", false),
+            fillSensitivity = preferences.getFloat("fillSensitivity", .25f),
             showPageRail = preferences.getBoolean("showPageRail", false),
             showBrushPanel = preferences.getBoolean("showBrushPanel", false),
             showLayerPanel = preferences.getBoolean("showLayerPanel", false),
@@ -219,6 +221,7 @@ class AppSettingsStore(context: Context) {
         preferences.edit()
             .putString("language", persisted.language.name)
             .putBoolean("fingerDrawing", persisted.fingerDrawing)
+            .putFloat("fillSensitivity", persisted.fillSensitivity)
             .putBoolean("showPageRail", persisted.showPageRail)
             .putBoolean("showBrushPanel", persisted.showBrushPanel)
             .putBoolean("showLayerPanel", persisted.showLayerPanel)
