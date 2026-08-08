@@ -690,7 +690,6 @@ class DocumentAssetService(private val context: Context) {
                     drawLinePoint(canvas, paint, stroke, point, point.x * width, point.y * height, strokeWidth, alpha, width)
                 } else stroke.points.zipWithNext().forEachIndexed { pointIndex, (start, end) ->
                     val point = midpoint(start, end)
-                    val pressure = point.pressure.coerceIn(0f, 1f)
                     val taperFactor = (taper[pointIndex] + taper[pointIndex + 1]) / 2f
                     val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
                     val strokeWidth = stroke.width * width / 1600f * taperFactor * dynamics.size
@@ -741,7 +740,6 @@ class DocumentAssetService(private val context: Context) {
                 }
             } else tips[tipIndex]
             val x = point.x * width; val y = point.y * height
-            val pressure = point.pressure.coerceIn(0f, 1f)
             val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
             val brushDiameter = (stroke.width * width / 1600f * taper[index] * dynamics.size).coerceAtLeast(.25f)
             val diameter = if (stroke.spray) SprayGeometry.particleDiameter(brushDiameter, SprayDynamics.particleSize(stroke, point), stroke.sprayParticleSizeUnit, stroke.sprayParticleSizeSyncBrushSize, width.toFloat()) else brushDiameter
@@ -808,7 +806,6 @@ class DocumentAssetService(private val context: Context) {
             val sequenceIndex = index * 16 + repeatIndex
             val tipIndex = BrushTipSequence.index(stroke.dualTipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed xor DUAL_SEQUENCE_SEED, stroke.dualRibbon) ?: return@stamp
             val tip = tips[tipIndex]
-            val pressure = point.pressure.coerceIn(0f, 1f)
             val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point, dual = true)
             val brushDiameter = (stroke.width * width / 1600f * stroke.dualSizeScale.coerceIn(.01f, 8f) * taper[index] * dynamics.size).coerceAtLeast(.25f)
             val diameter = if (stroke.dualSpray) SprayGeometry.particleDiameter(brushDiameter, SprayDynamics.dualParticleSize(stroke, point), stroke.dualSprayParticleSizeUnit, stroke.dualSprayParticleSizeSyncBrushSize, width.toFloat()) else brushDiameter

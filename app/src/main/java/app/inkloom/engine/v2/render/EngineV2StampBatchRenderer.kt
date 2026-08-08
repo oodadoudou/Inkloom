@@ -3,7 +3,6 @@ package app.inkloom.engine.v2.render
 import android.graphics.Bitmap
 import android.graphics.BitmapShader
 import android.graphics.Canvas
-import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
@@ -88,9 +87,7 @@ internal object EngineV2StampBatchRenderer {
             )
             offset += VERTEX_FLOATS_PER_DAB
         }
-        paint.shader = BitmapShader(tip, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).apply {
-            setLocalMatrix(Matrix())
-        }
+        paint.shader = BitmapShader(tip, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
         paint.colorFilter = PorterDuffColorFilter(stroke.colorArgb.toInt(), PorterDuff.Mode.SRC_IN)
         paint.alpha = (stroke.flow.coerceIn(0f, 1f) * 255).toInt()
         canvas.drawVertices(
