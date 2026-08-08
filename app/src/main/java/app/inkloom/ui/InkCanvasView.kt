@@ -24,7 +24,7 @@ import android.view.ViewConfiguration
 import app.inkloom.engine.v2.EngineV2Metrics
 import app.inkloom.engine.v2.EngineV2LatencySnapshot
 import app.inkloom.engine.v2.traceEngineV2
-import app.inkloom.engine.v2.input.StrokeInputModeler
+import app.inkloom.engine.v2.input.NativeStrokeInputModeler
 import java.util.LinkedHashMap
 import java.util.concurrent.Executors
 import app.inkloom.document.InkStroke
@@ -132,7 +132,7 @@ data class LayerElementBitmaps(val base: Bitmap?, val additions: Bitmap?) {
 
 class InkCanvasView(context: Context) : View(context) {
     private val engineV2Metrics = EngineV2Metrics()
-    private val strokeInputModeler = StrokeInputModeler()
+    private val strokeInputModeler = NativeStrokeInputModeler()
     private val strokes = mutableListOf<InkStroke>()
     private val editHistory = StrokeEditHistory()
     private val currentPoints = mutableListOf<StrokePoint>()
@@ -813,6 +813,7 @@ class InkCanvasView(context: Context) : View(context) {
         laserTrail.clear()
         recycleStrokeTiles()
         releaseLiveStrokePreview()
+        strokeInputModeler.close()
         tipCache.values.forEach(Bitmap::recycle); tipCache.clear()
         super.onDetachedFromWindow()
     }
