@@ -214,4 +214,18 @@ class LayerOpacityRenderingTest {
         assertTrue("Exported element crossing the lower alpha must remain", Color.red(bitmap.getPixel(200, 200)) > 220 && Color.green(bitmap.getPixel(200, 200)) < 40)
         bitmap.recycle()
     }
+
+    @Test
+    fun exportAlphaLockKeepsCapturedStrokesAndClipsOnlyAdditions() {
+        val layer = InkLayer(id = "export-alpha", name = "Alpha", alphaLock = true, alphaLockBaseContentIds = listOf("left-export", "right-export"))
+        val left = stroke.copy(id = "left-export", layerId = layer.id, width = 80f, points = listOf(StrokePoint(.25f, .2f), StrokePoint(.25f, .8f)))
+        val right = stroke.copy(id = "right-export", layerId = layer.id, width = 80f, points = listOf(StrokePoint(.75f, .2f), StrokePoint(.75f, .8f)))
+        val added = stroke.copy(id = "added-export", layerId = layer.id, width = 80f, colorArgb = 0xFFFF0000, points = listOf(StrokePoint(.1f, .5f), StrokePoint(.9f, .5f)))
+        val page = InkPage(width = 400f, height = 400f, background = PageBackground.Paper(), layers = defaultInkLayers() + layer, strokes = listOf(left, right, added))
+        val bitmap = DocumentAssetService(ApplicationProvider.getApplicationContext()).renderPageBitmap(page, 400)
+        assertTrue("Captured history must remain intact in export", Color.red(bitmap.getPixel(300, 120)) < 30)
+        assertTrue("Added color outside captured alpha must be hidden in export", Color.green(bitmap.getPixel(200, 200)) > 245)
+        assertTrue("Added color over captured alpha must remain in export", Color.red(bitmap.getPixel(300, 200)) > 220 && Color.green(bitmap.getPixel(300, 200)) < 40)
+        bitmap.recycle()
+    }
 }
