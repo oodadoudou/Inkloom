@@ -2423,7 +2423,7 @@ class InkCanvasView(context: Context) : View(context) {
         smudgeSnapshot?.recycle()
         smudgeSnapshot = renderDocumentPageBitmap(width.coerceAtLeast(1), height.coerceAtLeast(1))
         smudgeSegments.clear()
-        smudgeCurrentColor = sampleSmudgeColor(normalizedX, normalizedY)
+        smudgeCurrentColor = quantizeSmudgeColor(sampleSmudgeColor(normalizedX, normalizedY))
         smudgeSegments += smudgeCurrentColor to mutableListOf(StrokePoint(normalizedX.coerceIn(0f, 1f), normalizedY.coerceIn(0f, 1f), 1f, SystemClock.uptimeMillis()))
         invalidate()
     }
@@ -2431,9 +2431,10 @@ class InkCanvasView(context: Context) : View(context) {
     private fun extendSmudge(normalizedX: Float, normalizedY: Float) {
         val x = normalizedX.coerceIn(0f, 1f)
         val y = normalizedY.coerceIn(0f, 1f)
-        val color = sampleSmudgeColor(x, y)
+        val color = quantizeSmudgeColor(sampleSmudgeColor(x, y))
         if (color != smudgeCurrentColor && smudgeSegments.lastOrNull()?.second?.isNotEmpty() == true) {
-            smudgeSegments += color to mutableListOf()
+            val previousPoint = smudgeSegments.last().second.last()
+            smudgeSegments += color to mutableListOf(previousPoint)
             smudgeCurrentColor = color
         }
         smudgeSegments.lastOrNull()?.second?.let { points ->
@@ -2447,6 +2448,16 @@ class InkCanvasView(context: Context) : View(context) {
         val x = (normalizedX.coerceIn(0f, 1f) * (snapshot.width - 1).coerceAtLeast(0)).toInt()
         val y = (normalizedY.coerceIn(0f, 1f) * (snapshot.height - 1).coerceAtLeast(0)).toInt()
         return snapshot.getPixel(x, y)
+    }
+
+    private fun quantizeSmudgeColor(color: Int): Int {
+        fun channel(value: Int): Int = ((value + SMUDGE_COLOR_QUANTIZATION / 2) / SMUDGE_COLOR_QUANTIZATION * SMUDGE_COLOR_QUANTIZATION).coerceIn(0, 255)
+        return Color.argb(
+            channel(Color.alpha(color)),
+            channel(Color.red(color)),
+            channel(Color.green(color)),
+            channel(Color.blue(color)),
+        )
     }
 
     private fun commitSmudgeGesture() {
@@ -2465,7 +2476,6 @@ class InkCanvasView(context: Context) : View(context) {
             strokes.addAll(newStrokes)
             invalidateStrokeCache(emptyList(), newStrokes)
             commitStrokeEdit(before, strokes)
-            newStrokes.forEach(onStrokeCommitted)
         }
         smudgeSnapshot?.recycle()
         smudgeSnapshot = null
@@ -2902,6 +2912,7 @@ class InkCanvasView(context: Context) : View(context) {
         const val MAX_CACHE_PIXELS = 16_000_000L
         const val FILL_MAX_SAMPLE_DIMENSION = 1_600f
         const val FILL_PREVIEW_THROTTLE_MS = 32L
+        const val SMUDGE_COLOR_QUANTIZATION = 16
         const val LIVE_STROKE_CACHE_START_POINTS = 8
         const val LIVE_STROKE_CHECKPOINT_POINTS = 16
         const val LIVE_STROKE_TAIL_POINTS = 8
