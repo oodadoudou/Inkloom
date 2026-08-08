@@ -87,6 +87,7 @@ import app.inkloom.importer.BrushGroupOperations
 import app.inkloom.importer.BrushGroupStore
 import app.inkloom.importer.BrushMetadataStore
 import app.inkloom.importer.BrushRoleClassifier
+import app.inkloom.importer.BrushSemanticMapper
 import app.inkloom.importer.BrushVersion
 import app.inkloom.importer.BrushVersionHistoryStore
 import app.inkloom.model.*
@@ -6540,10 +6541,23 @@ private fun BrushPanel(
             confirmButton = { TextButton(onClick = { reportBrush = null }) { Text(tr("Done", "完成")) } },
             title = { Text(brush.name) },
             text = {
-                Column {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
                     Text("${brush.format.label} · ${brush.compatibility.label}", color = Sage)
                     Spacer(Modifier.height(12.dp))
                     brush.report.forEach { Text("• $it", modifier = Modifier.padding(vertical = 3.dp)) }
+                    if (brush.semanticMappings.isNotEmpty()) {
+                        Spacer(Modifier.height(12.dp))
+                        Text(tr("ENGINE V2 SEMANTIC MAP", "ENGINE V2 语义映射"), fontSize = 11.sp, color = MutedInk)
+                        brush.semanticMappings.forEach { mapping ->
+                            val fidelity = when (mapping.fidelity) {
+                                app.inkloom.model.SemanticFidelity.EXACT -> tr("Exact", "完整")
+                                app.inkloom.model.SemanticFidelity.APPROXIMATE -> tr("Approximate", "近似")
+                                app.inkloom.model.SemanticFidelity.UNSUPPORTED -> tr("Unsupported", "不支持")
+                            }
+                            Text("• ${mapping.sourceSemantic} → ${mapping.targetRuntime} · $fidelity", modifier = Modifier.padding(top = 5.dp))
+                            if (mapping.note.isNotBlank()) Text(mapping.note, color = MutedInk, fontSize = 11.sp)
+                        }
+                    }
                     Spacer(Modifier.height(8.dp))
                     Text(tr("The original source remains unchanged and can be reconverted by a future parser.", "原始文件保持不变，未来可使用更新的解析器重新转换。"), color = MutedInk, fontSize = 12.sp)
                 }
@@ -6556,12 +6570,13 @@ private fun BrushPanel(
             settings,
             onDismiss = { creatingBrushId = null; editBrush = null },
             onSave = { updated ->
+                val mapped = BrushSemanticMapper.apply(updated)
                 if (creatingBrushId == brush.id) {
-                    onReplaceBrushes(brushes + updated)
-                } else if (updated != brush) {
+                    onReplaceBrushes(brushes + mapped)
+                } else if (mapped != brush) {
                     historyStore.record(brush)
                     historyRevision++
-                    onUpdateBrush(updated)
+                    onUpdateBrush(mapped)
                 }
                 creatingBrushId = null
                 editBrush = null

@@ -32,6 +32,18 @@ enum class Compatibility(val label: String) {
 }
 
 @Serializable
+enum class SemanticFidelity { EXACT, APPROXIMATE, UNSUPPORTED }
+
+/** A durable, user-auditable source-semantic to Engine V2 runtime mapping. */
+@Serializable
+data class BrushSemanticMapping(
+    val sourceSemantic: String,
+    val targetRuntime: String,
+    val fidelity: SemanticFidelity,
+    val note: String = "",
+)
+
+@Serializable
 data class ImportedBrush(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
@@ -208,6 +220,7 @@ data class ImportedBrush(
     val blurPressureCurve: List<BrushCurvePoint> = emptyList(),
     val blurSecondaryDynamics: BrushSecondaryDynamics = BrushSecondaryDynamics(),
     val parserVersion: Int = 0,
+    val semanticMappings: List<BrushSemanticMapping> = emptyList(),
 )
 
 enum class EditorTool { PEN, HIGHLIGHTER, ERASER, EYEDROPPER, SELECT, SHAPE, TEXT, NOTE, LINK, IMAGE, AUDIO, LASER, FILL, SMUDGE }

@@ -59,7 +59,7 @@ class BrushImportRepository(context: Context) {
             app.inkloom.model.BrushFormat.PROCREATE -> procreateParser.enrich(target, hash, retained)
             app.inkloom.model.BrushFormat.INKLOOM -> listOf(inkloomPackage.read(target, hash, retained))
             else -> listOf(retained)
-        }
+        }.map(BrushSemanticMapper::apply)
     }
 
     fun export(brush: ImportedBrush, uri: Uri): Result<Unit> = runCatching {
@@ -81,6 +81,6 @@ class BrushImportRepository(context: Context) {
             brush.format == app.inkloom.model.BrushFormat.PROCREATE && brush.parserVersion < ProcreateBrushParser.CURRENT_VERSION -> procreateParser.enrich(source, hash, brush)
             brush.format == app.inkloom.model.BrushFormat.INKLOOM && brush.parserVersion < InkloomBrushPackage.CURRENT_VERSION -> listOf(inkloomPackage.read(source, hash, brush))
             else -> listOf(brush)
-        }
+        }.map(BrushSemanticMapper::apply)
     }
 }

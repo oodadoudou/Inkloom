@@ -6,6 +6,8 @@ import app.inkloom.document.CspAntiAlias
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
+import app.inkloom.model.BrushSemanticMapping
+import app.inkloom.model.SemanticFidelity
 import app.inkloom.document.BrushCurvePoint
 import app.inkloom.document.BrushColorDynamics
 import app.inkloom.document.BrushParameterDynamics
@@ -30,6 +32,21 @@ class BrushMetadataStore(
                 val tagsArray = item.optJSONArray("tags") ?: JSONArray()
                 val tipPathsArray = item.optJSONArray("tipPreviewPaths") ?: JSONArray()
                 val dualTipPathsArray = item.optJSONArray("dualTipPreviewPaths") ?: JSONArray()
+                val semanticArray = item.optJSONArray("semanticMappings") ?: JSONArray()
+                val semanticMappings = buildList {
+                    for (mappingIndex in 0 until semanticArray.length()) {
+                        val mapping = semanticArray.optJSONObject(mappingIndex) ?: continue
+                        val fidelity = runCatching { SemanticFidelity.valueOf(mapping.optString("fidelity")) }.getOrNull() ?: continue
+                        add(
+                            BrushSemanticMapping(
+                                sourceSemantic = mapping.optString("sourceSemantic"),
+                                targetRuntime = mapping.optString("targetRuntime"),
+                                fidelity = fidelity,
+                                note = mapping.optString("note"),
+                            ),
+                        )
+                    }
+                }
                 fun curve(key: String): List<BrushCurvePoint> {
                     val points = item.optJSONArray(key) ?: return emptyList()
                     return buildList { for (pointIndex in 0 until points.length()) { val pair = points.optJSONArray(pointIndex) ?: continue; if (pair.length() >= 2) add(BrushCurvePoint(pair.optDouble(0).toFloat(), pair.optDouble(1).toFloat())) } }
@@ -258,15 +275,18 @@ class BrushMetadataStore(
                         blurPressureCurve = curve("blurPressureCurve"),
                         blurSecondaryDynamics = secondary("blurSecondaryDynamics"),
                         parserVersion = item.optInt("parserVersion", 0),
+                        semanticMappings = semanticMappings,
                     ),
                 )
             }
         }
-    }.getOrDefault(emptyList())
+    }.getOrDefault(emptyList()).map { brush ->
+        if (brush.semanticMappings.isEmpty()) BrushSemanticMapper.apply(brush) else brush
+    }
 
     fun save(brushes: List<ImportedBrush>) {
         val array = JSONArray()
-        brushes.forEach { brush ->
+        brushes.map(BrushSemanticMapper::apply).forEach { brush ->
             array.put(
                 JSONObject()
                     .put("id", brush.id)
@@ -443,7 +463,8 @@ class BrushMetadataStore(
                     .put("blurPressureMinimum", brush.blurPressureMinimum)
                     .put("blurPressureCurve", curveJson(brush.blurPressureCurve))
                     .put("blurSecondaryDynamics", secondaryJson(brush.blurSecondaryDynamics))
-                    .put("parserVersion", brush.parserVersion),
+                    .put("parserVersion", brush.parserVersion)
+                    .put("semanticMappings", semanticMappingsJson(brush.semanticMappings)),
             )
         }
         preferences.edit().putString(key, array.toString()).apply()
@@ -472,4 +493,15 @@ class BrushMetadataStore(
         .put("pressureMinimum", value.pressureMinimum)
         .put("pressureCurve", curveJson(value.pressureCurve))
         .put("secondary", secondaryJson(value.secondary))
+    private fun semanticMappingsJson(value: List<BrushSemanticMapping>): JSONArray = JSONArray().apply {
+        value.forEach { mapping ->
+            put(
+                JSONObject()
+                    .put("sourceSemantic", mapping.sourceSemantic)
+                    .put("targetRuntime", mapping.targetRuntime)
+                    .put("fidelity", mapping.fidelity.name)
+                    .put("note", mapping.note),
+            )
+        }
+    }
 }
