@@ -58,6 +58,50 @@ class BrushTipTextureDecoderTest {
     }
 
     @Test
+    fun procreateSizeTipIsBoundedBeforeEnteringTheLiveRenderCache() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val root = File(context.cacheDir, "brush-tip-large-${System.nanoTime()}").apply { mkdirs() }
+        try {
+            val tipFile = File(root, "Shape.png")
+            val source = Bitmap.createBitmap(2048, 2048, Bitmap.Config.ARGB_8888)
+            source.eraseColor(Color.WHITE)
+            source.setPixel(1024, 1024, Color.BLACK)
+            tipFile.outputStream().use { source.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            source.recycle()
+
+            val decoded = BrushTipTextureDecoder.decode(tipFile.absolutePath, 1f, null, 0f)
+
+            assertNotNull(decoded)
+            decoded!!
+            assertEquals(512, maxOf(decoded.width, decoded.height))
+            decoded.recycle()
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun nonPowerOfTwoTextureIsStrictlyBoundedWithoutChangingAspectRatio() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val root = File(context.cacheDir, "brush-tip-odd-${System.nanoTime()}").apply { mkdirs() }
+        try {
+            val tipFile = File(root, "Shape.png")
+            val source = Bitmap.createBitmap(1500, 750, Bitmap.Config.ARGB_8888)
+            source.eraseColor(Color.BLACK)
+            tipFile.outputStream().use { source.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            source.recycle()
+
+            val decoded = BrushTipTextureDecoder.decodeSampled(tipFile.absolutePath, 512)!!
+
+            assertEquals(512, decoded.width)
+            assertEquals(256, decoded.height)
+            decoded.recycle()
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun blackRgbGrainUsesAlphaAsDensity() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val root = File(context.cacheDir, "brush-tip-texture-${System.nanoTime()}").apply { mkdirs() }

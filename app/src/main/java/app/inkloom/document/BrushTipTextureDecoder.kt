@@ -9,6 +9,14 @@ import android.graphics.Color
  * pages deliberately share this decoder so imported textures render identically.
  */
 object BrushTipTextureDecoder {
+    /**
+     * Imported brush archives commonly contain 2048-4096px source textures. A live stamp never
+     * needs that many pixels on a tablet, while decoding several full-size tips can exhaust the
+     * render heap and block the first stroke. Keep the authored aspect ratio and density while
+     * placing a hard upper bound on each cached render asset.
+     */
+    internal const val MAX_RENDER_TEXTURE_DIMENSION = 512
+
     fun decode(
         tipPath: String,
         hardness: Float,
@@ -25,8 +33,10 @@ object BrushTipTextureDecoder {
         grainCompositeMode: Int = CspTextureComposite.MULTIPLY,
         antiAliasMode: Int = CspAntiAlias.MEDIUM,
     ): Bitmap? = runCatching {
-        val source = BitmapFactory.decodeFile(tipPath) ?: return null
-        val grain = grainPath?.takeIf { grainDensity > 0f }?.let(BitmapFactory::decodeFile)
+        val source = decodeSampled(tipPath, MAX_RENDER_TEXTURE_DIMENSION) ?: return null
+        val grain = grainPath?.takeIf { grainDensity > 0f }?.let {
+            decodeSampled(it, MAX_RENDER_TEXTURE_DIMENSION)
+        }
         try {
             val grainPixels = grain?.let { bitmap ->
                 IntArray(bitmap.width * bitmap.height).also {
@@ -89,6 +99,35 @@ object BrushTipTextureDecoder {
             grain?.recycle()
         }
     }.getOrNull()
+
+    fun decodeSampled(path: String, maximumDimension: Int): Bitmap? {
+        if (maximumDimension <= 0) return null
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(path, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sampleSize = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / (sampleSize * 2) >= maximumDimension) {
+            sampleSize *= 2
+        }
+        val decoded = BitmapFactory.decodeFile(
+            path,
+            BitmapFactory.Options().apply {
+                inSampleSize = sampleSize
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            },
+        ) ?: return null
+        val decodedMaximum = maxOf(decoded.width, decoded.height)
+        if (decodedMaximum <= maximumDimension) return decoded
+        val scale = maximumDimension.toFloat() / decodedMaximum
+        val scaled = Bitmap.createScaledBitmap(
+            decoded,
+            (decoded.width * scale).toInt().coerceAtLeast(1),
+            (decoded.height * scale).toInt().coerceAtLeast(1),
+            true,
+        )
+        if (scaled !== decoded) decoded.recycle()
+        return scaled
+    }
 
     private fun hasDarkBackground(pixels: IntArray, width: Int, height: Int): Boolean {
         val sampleWidth = (width / 16).coerceIn(1, 64)
