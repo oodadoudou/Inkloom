@@ -23,8 +23,6 @@ import android.view.View
 import android.view.ViewConfiguration
 import androidx.annotation.WorkerThread
 import androidx.annotation.VisibleForTesting
-import app.inkloom.engine.v2.EngineV2Metrics
-import app.inkloom.engine.v2.EngineV2LatencySnapshot
 import app.inkloom.engine.v2.traceEngineV2
 import app.inkloom.engine.v2.input.NativeStrokeInputModeler
 import app.inkloom.engine.v2.brush.EngineV2BrushEvaluator
@@ -137,7 +135,6 @@ data class LayerElementBitmaps(val base: Bitmap?, val additions: Bitmap?) {
 
 class InkCanvasView(context: Context) : View(context) {
     private val renderLock = Any()
-    private val engineV2Metrics = EngineV2Metrics()
     private val strokeInputModeler = NativeStrokeInputModeler()
     private val strokes = mutableListOf<InkStroke>()
     private val editHistory = StrokeEditHistory()
@@ -186,7 +183,6 @@ class InkCanvasView(context: Context) : View(context) {
     private var wetSmudgeRuntime: EngineV2WetSmudgeRuntime? = null
     private var smudgeCurrentColor = 0
     private var smudgeSegments = mutableListOf<Pair<Int, MutableList<StrokePoint>>>()
-    private val smudgePreviewPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var movingSelection = false
     private var selectionMoved = false
     private var selectionTransformMode = TRANSFORM_NONE
@@ -1035,7 +1031,7 @@ class InkCanvasView(context: Context) : View(context) {
         } else for (index in 0 until stroke.points.lastIndex) {
             val start = stroke.points[index]
             val end = stroke.points[index + 1]
-            val point = midpoint(start, end); val pressure = point.pressure.coerceIn(0f, 1f)
+            val point = midpoint(start, end)
             val taperFactor = (taper[index] + taper[index + 1]) / 2f
             val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
             val strokeWidth = stroke.width * scale * taperFactor * dynamics.size
@@ -1087,7 +1083,6 @@ class InkCanvasView(context: Context) : View(context) {
                 } ?: tips[tipIndex]
             } else tips[tipIndex]
             val x = point.x * width; val y = point.y * height
-            val pressure = point.pressure.coerceIn(0f, 1f)
             val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
             val brushDiameter = (stroke.width * referenceScale * taper[index] * dynamics.size).coerceAtLeast(.25f)
             val diameter = if (stroke.spray) SprayGeometry.particleDiameter(brushDiameter, SprayDynamics.particleSize(stroke, point), stroke.sprayParticleSizeUnit, stroke.sprayParticleSizeSyncBrushSize, width.toFloat()) else brushDiameter
@@ -1200,7 +1195,6 @@ class InkCanvasView(context: Context) : View(context) {
             val sequenceIndex = index * 16 + repeatIndex
             val tipIndex = BrushTipSequence.index(stroke.dualTipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed xor DUAL_SEQUENCE_SEED, stroke.dualRibbon) ?: return@stamp
             val tip = tips[tipIndex]
-            val pressure = point.pressure.coerceIn(0f, 1f)
             val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point, dual = true)
             val brushDiameter = (stroke.width * referenceScale * stroke.dualSizeScale.coerceIn(.01f, 8f) * taper[index] * dynamics.size).coerceAtLeast(.25f)
             val diameter = if (stroke.dualSpray) SprayGeometry.particleDiameter(brushDiameter, SprayDynamics.dualParticleSize(stroke, point), stroke.dualSprayParticleSizeUnit, stroke.dualSprayParticleSizeSyncBrushSize, width.toFloat()) else brushDiameter
@@ -1355,9 +1349,6 @@ class InkCanvasView(context: Context) : View(context) {
         val pointerIndex = event.actionIndex.coerceIn(0, event.pointerCount - 1)
         val eventToolType = event.getToolType(pointerIndex)
         val isStylus = eventToolType == MotionEvent.TOOL_TYPE_STYLUS || eventToolType == MotionEvent.TOOL_TYPE_ERASER
-        engineV2Metrics.inputDispatch.recordNanos(
-            (SystemClock.uptimeMillis() - event.eventTime).coerceAtLeast(0L) * 1_000_000L,
-        )
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             // Every new contact stream is a hard recovery boundary. This also recovers from a
             // device/parent that consumed the previous stream's final UP or CANCEL.
@@ -2433,11 +2424,9 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun addPoint(x: Float, y: Float, pressure: Float, time: Long, tilt: Float, orientation: Float, force: Boolean = false) {
-        val startedAt = System.nanoTime()
         traceEngineV2("Inkloom.V2.InputModel") {
             addModeledPointV2(x, y, pressure, time, tilt, orientation, force)
         }
-        engineV2Metrics.inputModel.recordNanos(System.nanoTime() - startedAt)
     }
 
     private fun addModeledPointV2(x: Float, y: Float, pressure: Float, time: Long, tilt: Float, orientation: Float, force: Boolean) {
@@ -2450,7 +2439,6 @@ class InkCanvasView(context: Context) : View(context) {
     /** Copies every historical and current sample into one direct-buffer batch. The event-to-model
      * boundary now incurs one JNI call instead of one call per sample. */
     private fun addMotionEventPoints(event: MotionEvent, pointerIndex: Int) {
-        val startedAt = System.nanoTime()
         traceEngineV2("Inkloom.V2.InputModelBatch") {
             val total = event.historySize + 1
             var sourceIndex = 0
@@ -2488,7 +2476,6 @@ class InkCanvasView(context: Context) : View(context) {
                 sourceIndex += count
             }
         }
-        engineV2Metrics.inputModel.recordNanos(System.nanoTime() - startedAt)
         requestActiveSurfaceFrame()
     }
 
@@ -2540,31 +2527,26 @@ class InkCanvasView(context: Context) : View(context) {
         strokes: List<InkStroke>,
         incrementalStampDraw: Boolean = false,
     ) {
-        val startedAt = System.nanoTime()
-        try {
-            traceEngineV2("Inkloom.V2.ActiveStrokeDraw") {
-                synchronized(renderLock) {
-                    if (!incrementalStampDraw) {
-                        drawLayeredStrokes(canvas, strokes)
-                        strokes.filter { it.tipAssetPath != null || it.tipAssetPaths.isNotEmpty() }.forEach { stroke ->
-                            activePrimaryStampCounts[stroke.id] = primaryStampedPoints(stroke).size
-                            activeDualStampCounts[stroke.id] = if (stroke.dualBrush) dualStampedPoints(stroke).size else 0
-                        }
-                    } else {
-                        strokes.forEach { stroke ->
-                            val primaryCount = primaryStampedPoints(stroke).size
-                            val dualCount = if (stroke.dualBrush) dualStampedPoints(stroke).size else 0
-                            val primaryStart = activePrimaryStampCounts[stroke.id] ?: 0
-                            val dualStart = activeDualStampCounts[stroke.id] ?: 0
-                            drawLayeredStrokes(canvas, listOf(stroke), primaryStart, dualStart)
-                            activePrimaryStampCounts[stroke.id] = primaryCount
-                            activeDualStampCounts[stroke.id] = dualCount
-                        }
+        traceEngineV2("Inkloom.V2.ActiveStrokeDraw") {
+            synchronized(renderLock) {
+                if (!incrementalStampDraw) {
+                    drawLayeredStrokes(canvas, strokes)
+                    strokes.filter { it.tipAssetPath != null || it.tipAssetPaths.isNotEmpty() }.forEach { stroke ->
+                        activePrimaryStampCounts[stroke.id] = primaryStampedPoints(stroke).size
+                        activeDualStampCounts[stroke.id] = if (stroke.dualBrush) dualStampedPoints(stroke).size else 0
+                    }
+                } else {
+                    strokes.forEach { stroke ->
+                        val primaryCount = primaryStampedPoints(stroke).size
+                        val dualCount = if (stroke.dualBrush) dualStampedPoints(stroke).size else 0
+                        val primaryStart = activePrimaryStampCounts[stroke.id] ?: 0
+                        val dualStart = activeDualStampCounts[stroke.id] ?: 0
+                        drawLayeredStrokes(canvas, listOf(stroke), primaryStart, dualStart)
+                        activePrimaryStampCounts[stroke.id] = primaryCount
+                        activeDualStampCounts[stroke.id] = dualCount
                     }
                 }
             }
-        } finally {
-            engineV2Metrics.activeStrokeDraw.recordNanos(System.nanoTime() - startedAt)
         }
     }
 
@@ -2579,12 +2561,6 @@ class InkCanvasView(context: Context) : View(context) {
         currentPoints.clear()
         strokeInputModeler.reset()
     }
-
-    internal fun engineV2LatencySnapshot(): Array<EngineV2LatencySnapshot> = arrayOf(
-        engineV2Metrics.inputDispatch.snapshot(),
-        engineV2Metrics.inputModel.snapshot(),
-        engineV2Metrics.activeStrokeDraw.snapshot(),
-    )
 
     @VisibleForTesting
     internal fun engineV2CommittedTileSnapshot(): EngineV2CommittedTileScene.DebugSnapshot =
@@ -3095,17 +3071,6 @@ class InkCanvasView(context: Context) : View(context) {
             return
         }
         applyStrokeEdit(edit, forward = true)
-    }
-
-    fun clearInk() {
-        val before = strokes.toList()
-        val removableIds = strokes.filterNot { it.id in protectedStrokeIds }.mapTo(mutableSetOf()) { it.id }
-        if (removableIds.isEmpty()) return
-        val removed = strokes.filter { it.id in removableIds }
-        strokes.removeAll { it.id in removableIds }
-        selectedStrokeIds.removeAll(removableIds)
-        commitStrokeEdit(before, strokes)
-        invalidateStrokeCache(removed, emptyList())
     }
 
     private fun commitStrokeEdit(before: List<InkStroke>, after: List<InkStroke>) {
