@@ -2955,7 +2955,7 @@ private fun EditorScreen(
                     ListItem(
                         headlineContent = { Text(page.title) },
                         supportingContent = { Text(hit.snippet, maxLines = 2) },
-                        leadingContent = { Text(when (hit.source) { PageSearchSource.PDF -> "PDF"; PageSearchSource.OBJECT -> "OBJ"; PageSearchSource.PAGE -> "PAGE" }, color = Sage, fontSize = 9.sp) },
+                        leadingContent = { Text(when (hit.source) { PageSearchSource.PDF -> "PDF"; PageSearchSource.OBJECT -> "OBJ"; PageSearchSource.PAGE -> "PAGE"; PageSearchSource.HANDWRITING -> "INK"; PageSearchSource.IMAGE_OCR -> "OCR" }, color = Sage, fontSize = 9.sp) },
                         modifier = Modifier.clickable { searchFocus = hit; selectPageWithViewport(page.id); searchOpen = false },
                     )
                 } }

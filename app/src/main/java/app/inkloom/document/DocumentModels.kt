@@ -45,6 +45,9 @@ data class InkPage(
     val pdfTextIndexVersion: Int = 0,
     val pdfGotoLinks: List<PdfGotoLink> = emptyList(),
     val pdfLinkIndexVersion: Int = 0,
+    val recognizedTextBlocks: List<RecognizedTextBlock> = emptyList(),
+    val handwritingIndexFingerprint: String = "",
+    val imageOcrFingerprint: String = "",
 )
 
 @Serializable
@@ -76,6 +79,20 @@ data class PdfGotoLink(
     val destinationX: Float = 0f,
     val destinationY: Float = 0f,
     val destinationZoom: Float = 0f,
+)
+
+@Serializable
+enum class RecognizedTextSource { HANDWRITING, IMAGE_OCR }
+
+@Serializable
+data class RecognizedTextBlock(
+    val id: String = UUID.randomUUID().toString(),
+    val text: String,
+    val bounds: PdfTextBounds,
+    val source: RecognizedTextSource,
+    val sourceIds: List<String> = emptyList(),
+    val languageTag: String = "",
+    val updatedAt: Long = System.currentTimeMillis(),
 )
 
 object LayerIds {

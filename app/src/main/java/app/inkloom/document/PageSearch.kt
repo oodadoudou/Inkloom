@@ -1,6 +1,6 @@
 package app.inkloom.document
 
-enum class PageSearchSource { PAGE, OBJECT, PDF }
+enum class PageSearchSource { PAGE, OBJECT, HANDWRITING, IMAGE_OCR, PDF }
 
 data class PageSearchHit(
     val pageId: String,
@@ -28,6 +28,23 @@ object PageSearch {
             }
             text?.match(query)?.let { return PageSearchHit(page.id, snippet(it, query), PageSearchSource.OBJECT) }
         }
+
+        page.recognizedTextBlocks.asSequence()
+            .filter { block ->
+                when (block.source) {
+                    RecognizedTextSource.HANDWRITING -> page.handwritingIndexFingerprint == HandwritingIndex.fingerprint(page.strokes)
+                    RecognizedTextSource.IMAGE_OCR -> page.imageOcrFingerprint == ImageOcrIndex.fingerprint(page)
+                }
+            }
+            .forEach { block ->
+                block.text.match(query)?.let {
+                    val source = when (block.source) {
+                        RecognizedTextSource.HANDWRITING -> PageSearchSource.HANDWRITING
+                        RecognizedTextSource.IMAGE_OCR -> PageSearchSource.IMAGE_OCR
+                    }
+                    return PageSearchHit(page.id, snippet(it, query), source, block.bounds)
+                }
+            }
 
         page.pdfTextBlocks.forEach { block ->
             block.text.match(query)?.let {

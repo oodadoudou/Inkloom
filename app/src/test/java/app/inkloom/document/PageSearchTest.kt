@@ -44,4 +44,19 @@ class PageSearchTest {
         assertEquals(PageSearchSource.OBJECT, PageSearch.find(page, "Research portal")?.source)
         assertEquals(PageSearchSource.OBJECT, PageSearch.find(page, "library.example")?.source)
     }
+
+    @Test fun recognizedHandwritingIsSearchableOnlyWhileItsStrokeSnapshotIsCurrent() {
+        val stroke = InkStroke(id = "ink-1", points = listOf(StrokePoint(.1f, .2f), StrokePoint(.2f, .2f)))
+        val bounds = PdfTextBounds(.1f, .18f, .4f, .25f)
+        val indexed = InkPage(
+            strokes = listOf(stroke),
+            recognizedTextBlocks = listOf(RecognizedTextBlock(text = "离线手写识别", bounds = bounds, source = RecognizedTextSource.HANDWRITING, sourceIds = listOf(stroke.id), languageTag = "zh-Hans")),
+            handwritingIndexFingerprint = HandwritingIndex.fingerprint(listOf(stroke)),
+        )
+
+        val hit = PageSearch.find(indexed, "手写")
+        assertEquals(PageSearchSource.HANDWRITING, hit?.source)
+        assertEquals(bounds, hit?.bounds)
+        assertNull(PageSearch.find(indexed.copy(strokes = listOf(stroke.copy(id = "changed"))), "手写"))
+    }
 }
