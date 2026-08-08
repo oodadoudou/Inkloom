@@ -2,6 +2,7 @@ package app.inkloom.ui
 
 import android.content.Context
 import android.view.MotionEvent
+import android.view.PointerIcon
 import android.view.View
 
 /**
@@ -33,6 +34,15 @@ class InkViewportTouchProxy(context: Context) : View(context) {
 
     override fun onGenericMotionEvent(event: MotionEvent): Boolean {
         return forward(event) { canvas, forwarded -> canvas.dispatchGenericMotionEvent(forwarded) }
+    }
+
+    override fun onResolvePointerIcon(event: MotionEvent, pointerIndex: Int): PointerIcon? {
+        val index = pointerIndex.coerceIn(0, event.pointerCount - 1)
+        return if (event.getToolType(index) in setOf(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.TOOL_TYPE_ERASER)) {
+            PointerIcon.getSystemIcon(context, PointerIcon.TYPE_NULL)
+        } else {
+            super.onResolvePointerIcon(event, pointerIndex)
+        }
     }
 
     private inline fun forward(event: MotionEvent, dispatch: (InkCanvasView, MotionEvent) -> Boolean): Boolean {
