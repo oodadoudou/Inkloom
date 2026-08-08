@@ -418,7 +418,33 @@ class InkloomLaunchTest {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Search this note").performClick()
 
-        composeRule.onNodeWithText("Page, note, or PDF text").assertIsDisplayed()
+        composeRule.onNodeWithText("Page, handwriting, image, or PDF text").assertIsDisplayed()
+        composeRule.onNodeWithText("Recognize ink").assertIsDisplayed()
+        composeRule.onNodeWithText("Recognize images").assertIsDisplayed()
+        composeRule.onNodeWithText("Index the whole notebook").assertIsDisplayed()
+    }
+
+    @Test fun editorCreatesAnInternalNotebookPageLink() {
+        createNotebookAndOpenEditor()
+        composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithText("Link").performClick()
+        composeRule.onNodeWithText("Notebook page").performClick()
+
+        composeRule.onNodeWithText("Notebook").assertIsDisplayed()
+        composeRule.onNodeWithText("Page").assertIsDisplayed()
+        composeRule.onNodeWithText("Insert").performClick()
+        composeRule.onNodeWithText("Insert link").assertDoesNotExist()
+    }
+
+    @Test fun pageOutlineExposesEditingActions() {
+        createNotebookAndOpenEditor()
+        composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithText("Page outline").performClick()
+        composeRule.onNodeWithContentDescription("Edit outline item").performClick()
+
+        composeRule.onNodeWithText("Rename").assertIsDisplayed()
+        composeRule.onNodeWithText("Move down").assertIsDisplayed()
+        composeRule.onNodeWithText("Demote level").assertIsDisplayed()
     }
 
     @Test fun newPageChooserSupportsFavoritesAndNotebookDefaults() {
