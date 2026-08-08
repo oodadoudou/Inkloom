@@ -436,7 +436,9 @@ sealed interface PageElement {
         override val opacity: Float = 1f,
         override val layerId: String = LayerIds.OBJECTS,
         val title: String,
-        val url: String,
+        val url: String = "",
+        val targetDocumentId: String? = null,
+        val targetPageId: String? = null,
     ) : PageElement
 }
 

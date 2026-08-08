@@ -711,6 +711,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onRecognizeHandwriting = viewModel::recognizePageHandwriting,
             onRecognizeImages = viewModel::recognizePageImages,
             onConvertHandwriting = viewModel::convertRecognizedHandwritingToText,
+            onOpenInternalLink = { documentId, pageId -> viewModel.select(documentId); viewModel.selectPage(pageId) },
             onSettings = { settingsOpen = true },
             onSettingsChange = ::updateSettings,
         )
@@ -1008,6 +1009,7 @@ private fun EditorScreen(
     onRecognizeHandwriting: (String, String, String, (Result<Int>) -> Unit) -> Unit,
     onRecognizeImages: (String, String, String, (Result<Int>) -> Unit) -> Unit,
     onConvertHandwriting: (String, String, String, Boolean) -> Unit,
+    onOpenInternalLink: (String, String) -> Unit,
     onSettings: () -> Unit,
     onSettingsChange: (AppSettings) -> Unit,
 ) {
@@ -1161,6 +1163,9 @@ private fun EditorScreen(
     var insertText by remember { mutableStateOf("") }
     var insertLinkTitle by remember { mutableStateOf("") }
     var insertLinkUrl by remember { mutableStateOf("") }
+    var insertInternalLink by remember { mutableStateOf(false) }
+    var insertLinkDocumentId by remember(document.id) { mutableStateOf(document.id) }
+    var insertLinkPageId by remember(document.id) { mutableStateOf(selectedPage.id) }
     var insertShape by remember { mutableStateOf(ShapeKind.RECTANGLE) }
     var selectedElementId by remember(selectedPage.id) { mutableStateOf<String?>(null) }
     var audioOpen by remember { mutableStateOf(false) }
@@ -2009,6 +2014,8 @@ private fun EditorScreen(
                             if (link.destinationZoom > 0f) zoom = link.destinationZoom.coerceIn(1f, ViewportTransform.MAXIMUM_SCALE)
                         }
                     },
+                    documents = documents,
+                    onOpenInternalLink = onOpenInternalLink,
                     onInputDiagnostic = { kind, pressure, tilt, buttons -> inputDiagnostic = "$kind  pressure ${"%.3f".format(pressure)}  tilt ${"%.2f".format(Math.toDegrees(tilt.toDouble()))}°  buttons $buttons" },
                     onColorSampled = { brushColor = it },
                     onBrushSizeAdjusted = { raw ->
@@ -2888,17 +2895,58 @@ private fun EditorScreen(
     )
     if (linkInsertOpen) {
         val normalizedLink = LinkTarget.normalize(insertLinkUrl)
+        val targetDocument = documents.firstOrNull { it.id == insertLinkDocumentId } ?: document
+        val targetPage = targetDocument.pages.firstOrNull { it.id == insertLinkPageId } ?: targetDocument.pages.firstOrNull()
         AlertDialog(
             onDismissRequest = { linkInsertOpen = false },
             title = { Text(tr("Insert link", "插入链接")) },
-            text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            text = { Column(Modifier.widthIn(min = 360.dp, max = 560.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(insertLinkTitle, { insertLinkTitle = it }, label = { Text(tr("Title", "标题")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(insertLinkUrl, { insertLinkUrl = it }, label = { Text(tr("Web, email, or phone address", "网页、邮箱或电话号码")) }, placeholder = { Text("https://example.com") }, isError = insertLinkUrl.isNotBlank() && normalizedLink == null, supportingText = { Text(if (insertLinkUrl.isNotBlank() && normalizedLink == null) tr("Use a valid http, https, mailto, or tel address.", "请输入有效的 http、https、mailto 或 tel 地址。") else tr("Addresses without a scheme open with HTTPS.", "未填写协议的地址将通过 HTTPS 打开。")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = !insertInternalLink, onClick = { insertInternalLink = false }, label = { Text(tr("Web link", "网页链接")) })
+                    FilterChip(selected = insertInternalLink, onClick = { insertInternalLink = true }, label = { Text(tr("Notebook page", "笔记页面")) })
+                }
+                if (!insertInternalLink) {
+                    OutlinedTextField(insertLinkUrl, { insertLinkUrl = it }, label = { Text(tr("Web, email, or phone address", "网页、邮箱或电话号码")) }, placeholder = { Text("https://example.com") }, isError = insertLinkUrl.isNotBlank() && normalizedLink == null, supportingText = { Text(if (insertLinkUrl.isNotBlank() && normalizedLink == null) tr("Use a valid http, https, mailto, or tel address.", "请输入有效的 http、https、mailto 或 tel 地址。") else tr("Addresses without a scheme open with HTTPS.", "未填写协议的地址将通过 HTTPS 打开。")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                } else {
+                    Text(tr("Notebook", "笔记本"), color = MutedInk, fontSize = 11.sp)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items(documents.filter { it.trashedAt == null }, key = InkDocument::id) { candidate ->
+                            FilterChip(selected = candidate.id == targetDocument.id, onClick = {
+                                insertLinkDocumentId = candidate.id
+                                insertLinkPageId = candidate.pages.firstOrNull()?.id.orEmpty()
+                            }, label = { Text(candidate.title, maxLines = 1) })
+                        }
+                    }
+                    Text(tr("Page", "页面"), color = MutedInk, fontSize = 11.sp)
+                    LazyColumn(Modifier.heightIn(max = 220.dp)) {
+                        items(targetDocument.pages, key = InkPage::id) { candidate ->
+                            ListItem(
+                                headlineContent = { Text(candidate.title, maxLines = 1) },
+                                supportingContent = { Text(tr("Page ${targetDocument.pages.indexOf(candidate) + 1}", "第 ${targetDocument.pages.indexOf(candidate) + 1} 页"), color = MutedInk) },
+                                leadingContent = { if (candidate.bookmarked) Icon(Icons.Default.Bookmark, null) else Icon(Icons.Outlined.Description, null) },
+                                modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { insertLinkPageId = candidate.id },
+                                colors = ListItemDefaults.colors(containerColor = if (candidate.id == targetPage?.id) Workspace else Color.Transparent),
+                            )
+                        }
+                    }
+                }
             } },
-            confirmButton = { Button(enabled = normalizedLink != null, onClick = {
-                val url = normalizedLink ?: return@Button
-                val title = insertLinkTitle.trim().ifBlank { LinkTarget.displayDestination(url, 48) }
-                onElement(document.id, selectedPage.id, PageCropTransform.unproject(PageElement.Link(x = .18f, y = .2f, title = title, url = url), selectedPage.crop))
+            confirmButton = { Button(enabled = if (insertInternalLink) targetPage != null else normalizedLink != null, onClick = {
+                val link = if (insertInternalLink) {
+                    val page = targetPage ?: return@Button
+                    PageElement.Link(
+                        x = .18f,
+                        y = .2f,
+                        title = insertLinkTitle.trim().ifBlank { page.title },
+                        targetDocumentId = targetDocument.id,
+                        targetPageId = page.id,
+                    )
+                } else {
+                    val url = normalizedLink ?: return@Button
+                    PageElement.Link(x = .18f, y = .2f, title = insertLinkTitle.trim().ifBlank { LinkTarget.displayDestination(url, 48) }, url = url)
+                }
+                onElement(document.id, selectedPage.id, PageCropTransform.unproject(link, selectedPage.crop))
                 linkInsertOpen = false
                 tool = EditorTool.SELECT
             }) { Text(tr("Insert", "插入")) } },
@@ -4092,7 +4140,7 @@ private fun pageTemplateKind(template: PageTemplate): String = when (template.ba
 }
 
 @Composable
-private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit) {
+private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val backgroundVisible = page.layers.firstOrNull { it.role == LayerRole.BACKGROUND }?.visible != false
     val background = remember(page.id, page.background, page.backgroundRotationQuarterTurns, page.crop, backgroundVisible) { if (backgroundVisible) runCatching { assets.renderBackground(page.background, 1200, page.backgroundRotationQuarterTurns, page.crop) }.getOrNull() else null }
@@ -4279,6 +4327,8 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                     onChange = { onElement(documentId, page.id, PageCropTransform.unproject(it, page.crop)) },
                     onDuplicate = { onDuplicateElement(documentId, page.id, element.id) },
                     onDelete = { onRemoveElement(documentId, page.id, element.id); onSelectElement(null) },
+                    internalLinkLabel = (element as? PageElement.Link)?.takeIf(InternalLinkTarget::isInternal)?.let { InternalLinkTarget.label(it, documents) },
+                    onOpenInternalLink = onOpenInternalLink,
                     settings = settings,
                     activeBrush = activeBrush,
                     brushSize = brushSize,
@@ -4505,6 +4555,8 @@ private fun ObjectElementView(
     onChange: (PageElement) -> Unit,
     onDuplicate: () -> Unit,
     onDelete: () -> Unit,
+    internalLinkLabel: String?,
+    onOpenInternalLink: (String, String) -> Unit,
     settings: AppSettings,
     activeBrush: ImportedBrush?,
     brushSize: Float,
@@ -4543,7 +4595,11 @@ private fun ObjectElementView(
                     onSelect()
                     when (element) {
                         is PageElement.Sticky -> stickyInkEditing = true
-                        is PageElement.Link -> openLink(context, element.url, language)
+                        is PageElement.Link -> if (InternalLinkTarget.isInternal(element)) {
+                            val documentId = element.targetDocumentId
+                            val pageId = element.targetPageId
+                            if (documentId != null && pageId != null) onOpenInternalLink(documentId, pageId)
+                        } else openLink(context, element.url, language)
                         else -> Unit
                     }
                 },
@@ -4635,9 +4691,14 @@ private fun ObjectElementView(
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
                         Text(element.title, maxLines = 1, fontWeight = FontWeight.SemiBold)
-                        Text(LinkTarget.displayDestination(element.url), color = MutedInk, fontSize = 11.sp, maxLines = 1)
+                        Text(internalLinkLabel ?: LinkTarget.displayDestination(element.url), color = MutedInk, fontSize = 11.sp, maxLines = 1)
                     }
-                    IconButton(onClick = { openLink(context, element.url, language) }) { Icon(Icons.Outlined.OpenInNew, tr("Open link", "打开链接")) }
+                    IconButton(onClick = {
+                        val documentId = element.targetDocumentId
+                        val pageId = element.targetPageId
+                        if (InternalLinkTarget.isInternal(element) && documentId != null && pageId != null) onOpenInternalLink(documentId, pageId)
+                        else openLink(context, element.url, language)
+                    }) { Icon(if (InternalLinkTarget.isInternal(element)) Icons.Outlined.SubdirectoryArrowRight else Icons.Outlined.OpenInNew, tr("Open link", "打开链接")) }
                 }
             }
             }
@@ -4648,7 +4709,12 @@ private fun ObjectElementView(
                     IconButton(onClick = { stickyInkEditing = true }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Brush, tr("Write inside sticky note", "在便签内书写"), Modifier.size(18.dp)) }
                     IconButton(onClick = { onChange(element.copy(collapsed = !element.collapsed)) }, modifier = Modifier.size(36.dp)) { Icon(if (element.collapsed) Icons.Outlined.UnfoldMore else Icons.Outlined.UnfoldLess, if (element.collapsed) tr("Expand sticky note", "展开便签") else tr("Collapse sticky note", "折叠便签"), Modifier.size(18.dp)) }
                 }
-                if (element is PageElement.Link) IconButton(onClick = { openLink(context, element.url, language) }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.OpenInNew, tr("Open link", "打开链接"), Modifier.size(18.dp)) }
+                if (element is PageElement.Link) IconButton(onClick = {
+                    val documentId = element.targetDocumentId
+                    val pageId = element.targetPageId
+                    if (InternalLinkTarget.isInternal(element) && documentId != null && pageId != null) onOpenInternalLink(documentId, pageId)
+                    else openLink(context, element.url, language)
+                }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.OpenInNew, tr("Open link", "打开链接"), Modifier.size(18.dp)) }
                 IconButton(onClick = { editing = true }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Tune, tr("Edit object", "编辑对象"), Modifier.size(18.dp)) }
                 IconButton(onClick = onDuplicate, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.ContentCopy, tr("Duplicate object", "复制对象"), Modifier.size(18.dp)) }
                 IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Delete, tr("Delete object", "删除对象"), Modifier.size(18.dp)) }
@@ -4772,8 +4838,9 @@ private fun replaceStickyStrokes(
 @Composable
 private fun ElementEditorDialog(element: PageElement, onDismiss: () -> Unit, onSave: (PageElement) -> Unit) {
     var draft by remember(element.id) { mutableStateOf(element) }
-    val normalizedDraftLink = (draft as? PageElement.Link)?.let { LinkTarget.normalize(it.url) }
-    val canSave = draft !is PageElement.Link || normalizedDraftLink != null
+    val defaultLinkedPageTitle = tr("Linked page", "链接页面")
+    val normalizedDraftLink = (draft as? PageElement.Link)?.takeUnless(InternalLinkTarget::isInternal)?.let { LinkTarget.normalize(it.url) }
+    val canSave = (draft as? PageElement.Link)?.let { InternalLinkTarget.isInternal(it) || normalizedDraftLink != null } ?: true
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(tr("Object properties", "对象属性")) },
@@ -4823,7 +4890,9 @@ private fun ElementEditorDialog(element: PageElement, onDismiss: () -> Unit, onS
                 }
                 is PageElement.Link -> {
                     item { OutlinedTextField(current.title, { draft = current.copy(title = it) }, label = { Text(tr("Title", "标题")) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
-                    item { OutlinedTextField(current.url, { draft = current.copy(url = it) }, label = { Text(tr("Web, email, or phone address", "网页、邮箱或电话号码")) }, isError = LinkTarget.normalize(current.url) == null, supportingText = { Text(if (LinkTarget.normalize(current.url) == null) tr("Use a valid http, https, mailto, or tel address.", "请输入有效的 http、https、mailto 或 tel 地址。") else LinkTarget.displayDestination(current.url)) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+                    if (InternalLinkTarget.isInternal(current)) item {
+                        Text(tr("This object links to a notebook page. Create a new link to change its destination.", "此对象链接到笔记页面。如需更改目标，请新建链接。"), color = MutedInk, fontSize = 12.sp)
+                    } else item { OutlinedTextField(current.url, { draft = current.copy(url = it) }, label = { Text(tr("Web, email, or phone address", "网页、邮箱或电话号码")) }, isError = LinkTarget.normalize(current.url) == null, supportingText = { Text(if (LinkTarget.normalize(current.url) == null) tr("Use a valid http, https, mailto, or tel address.", "请输入有效的 http、https、mailto 或 tel 地址。") else LinkTarget.displayDestination(current.url)) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
                 }
                 is PageElement.Fill -> {
                     item { Text(tr("Fill color", "填充颜色") + ": #" + "%08X".format(current.colorArgb), color = MutedInk, fontSize = 11.sp) }
@@ -4836,8 +4905,11 @@ private fun ElementEditorDialog(element: PageElement, onDismiss: () -> Unit, onS
         } },
         confirmButton = { Button(enabled = canSave, onClick = {
             val saved = (draft as? PageElement.Link)?.let { link ->
-                val url = normalizedDraftLink ?: return@Button
-                link.copy(title = link.title.trim().ifBlank { LinkTarget.displayDestination(url, 48) }, url = url)
+                if (InternalLinkTarget.isInternal(link)) link.copy(title = link.title.trim().ifBlank { defaultLinkedPageTitle })
+                else {
+                    val url = normalizedDraftLink ?: return@Button
+                    link.copy(title = link.title.trim().ifBlank { LinkTarget.displayDestination(url, 48) }, url = url)
+                }
             } ?: draft
             onSave(saved)
         }) { Text(tr("Save", "保存")) } },
