@@ -13,6 +13,8 @@ constexpr float kMinimumDistance = 0.0008F;
 constexpr float kVelocityFullScalePxPerMs = 2.0F;
 constexpr float kVelocitySmoothing = 0.65F;
 constexpr jint kIncreaseWhenSlow = 0;
+constexpr float kPi = 3.14159265358979323846F;
+constexpr float kFullTurn = kPi * 2.0F;
 constexpr std::size_t kInputStride = 32;
 constexpr std::size_t kOutputStride = 40;
 constexpr std::uint32_t kInputFlagForce = 1U;
@@ -41,6 +43,14 @@ struct StrokeInputSession {
 
 float clamp01(float value) noexcept {
     return std::clamp(std::isfinite(value) ? value : 0.0F, 0.0F, 1.0F);
+}
+
+float unwrap_orientation(float value, float previous, bool has_previous) noexcept {
+    if (!std::isfinite(value)) return has_previous ? previous : 0.0F;
+    if (!has_previous) return value;
+    while (value - previous > kPi) value -= kFullTurn;
+    while (value - previous < -kPi) value += kFullTurn;
+    return value;
 }
 
 float normalized_velocity(
@@ -113,10 +123,13 @@ bool append_sample(
     jint stabilization_by_speed_mode,
     bool force
 ) noexcept {
+    const std::int64_t normalized_time_ms = session.has_sample
+        ? std::max(sample_time_ms, session.time_ms + 1)
+        : std::max<std::int64_t>(sample_time_ms, 0);
     const float normalized_x = clamp01(raw_x);
     const float normalized_y = clamp01(raw_y);
     const std::int64_t elapsed = session.has_sample
-        ? std::max<std::int64_t>(sample_time_ms - session.time_ms, 1)
+        ? normalized_time_ms - session.time_ms
         : 1;
     const float input_velocity = session.has_sample
         ? normalized_velocity(
@@ -163,9 +176,9 @@ bool append_sample(
         kMinimumPressure,
         1.0F
     );
-    session.time_ms = sample_time_ms;
+    session.time_ms = normalized_time_ms;
     session.tilt = std::isfinite(sample_tilt) ? sample_tilt : 0.0F;
-    session.orientation = std::isfinite(sample_orientation) ? sample_orientation : 0.0F;
+    session.orientation = unwrap_orientation(sample_orientation, session.orientation, session.has_sample);
     session.velocity = modeled_velocity;
     session.has_sample = true;
     return true;

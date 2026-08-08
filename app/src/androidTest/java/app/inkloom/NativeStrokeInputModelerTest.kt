@@ -55,4 +55,19 @@ class NativeStrokeInputModelerTest {
             assertTrue(modeler.velocity(2) > 0f)
         }
     }
+
+    @Test
+    fun orientationAndTimeRemainContinuousAcrossDeviceWrapAndOutOfOrderInput() {
+        NativeStrokeInputModeler().use { modeler ->
+            modeler.putSample(0, .1f, .1f, .5f, 20L, 0f, 3.13f)
+            modeler.putSample(1, .3f, .3f, .5f, 19L, 0f, -3.13f)
+
+            assertEquals(
+                2,
+                modeler.appendBatch(2, 1200, 1600, 0f, false, StrokeStabilization.REDUCE_WHEN_FAST),
+            )
+            assertTrue("Wrapped orientation must continue forward", modeler.orientation(1) > modeler.orientation(0))
+            assertTrue("Modeled timestamps must be monotonic", modeler.timeMs(1) > modeler.timeMs(0))
+        }
+    }
 }
