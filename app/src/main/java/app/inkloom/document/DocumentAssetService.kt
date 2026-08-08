@@ -22,6 +22,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import java.io.File
+import java.io.OutputStream
 import java.security.MessageDigest
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
@@ -210,16 +211,51 @@ class DocumentAssetService(private val context: Context) {
     }
 
     fun exportPdf(document: InkDocument, uri: Uri) {
+        context.contentResolver.openOutputStream(uri)?.use { exportPdf(document, it) } ?: error("Could not open export destination")
+    }
+
+    fun exportPdf(document: InkDocument, output: OutputStream) {
         val pdf = PdfDocument()
-        document.pages.forEachIndexed { index, page ->
-            val outputWidth = 1200
-            val outputHeight = (outputWidth * PageCropTransform.visibleHeight(page) / PageCropTransform.visibleWidth(page).coerceAtLeast(1f)).toInt().coerceAtLeast(1)
-            val pdfPage = pdf.startPage(PdfDocument.PageInfo.Builder(outputWidth, outputHeight, index + 1).create())
-            drawPage(pdfPage.canvas, page, outputWidth, outputHeight)
-            pdf.finishPage(pdfPage)
+        try {
+            document.pages.forEachIndexed { index, page ->
+                val outputWidth = 1200
+                val outputHeight = (outputWidth * PageCropTransform.visibleHeight(page) / PageCropTransform.visibleWidth(page).coerceAtLeast(1f)).toInt().coerceAtLeast(1)
+                val pdfPage = pdf.startPage(PdfDocument.PageInfo.Builder(outputWidth, outputHeight, index + 1).create())
+                drawPage(pdfPage.canvas, page, outputWidth, outputHeight)
+                drawSearchableTextLayer(pdfPage.canvas, page, outputWidth, outputHeight)
+                pdf.finishPage(pdfPage)
+            }
+            pdf.writeTo(output)
+        } finally {
+            pdf.close()
         }
-        context.contentResolver.openOutputStream(uri)?.use(pdf::writeTo) ?: error("Could not open export destination")
-        pdf.close()
+    }
+
+    private fun drawSearchableTextLayer(canvas: Canvas, page: InkPage, width: Int, height: Int) {
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            alpha = 1
+            typeface = Typeface.DEFAULT
+        }
+        val validRecognized = page.recognizedTextBlocks.filter { block ->
+            when (block.source) {
+                RecognizedTextSource.HANDWRITING -> page.handwritingIndexFingerprint == HandwritingIndex.fingerprint(page.strokes)
+                RecognizedTextSource.IMAGE_OCR -> page.imageOcrFingerprint == ImageOcrIndex.fingerprint(page)
+            }
+        }.map { it.text to it.bounds }
+        val indexedPdf = page.pdfTextBlocks.flatMap { block -> block.bounds.map { block.text to it } }
+        (validRecognized + indexedPdf).forEach { (rawText, sourceBounds) ->
+            val bounds = PageCropTransform.project(sourceBounds, page.crop) ?: return@forEach
+            val text = rawText.replace('\u0000', ' ').replace(Regex("\\s+"), " ").trim()
+            if (text.isEmpty()) return@forEach
+            val left = bounds.left * width
+            val baseline = (bounds.bottom * height).coerceIn(1f, height.toFloat())
+            paint.textSize = ((bounds.bottom - bounds.top) * height).coerceIn(4f, 96f)
+            val availableWidth = ((bounds.right - bounds.left) * width).coerceAtLeast(4f)
+            val measuredWidth = paint.measureText(text)
+            if (measuredWidth > availableWidth) paint.textSize = (paint.textSize * availableWidth / measuredWidth).coerceAtLeast(2f)
+            canvas.drawText(text.take(MAX_PDF_TEXT_CHARACTERS_PER_PAGE), left, baseline, paint)
+        }
     }
 
     fun exportPagePng(page: InkPage, uri: Uri) {
