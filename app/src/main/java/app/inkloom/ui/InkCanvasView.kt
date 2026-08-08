@@ -2587,7 +2587,11 @@ class InkCanvasView(context: Context) : View(context) {
             bounds.left to bounds.top, bounds.right to bounds.top,
             bounds.right to bounds.bottom, bounds.left to bounds.bottom,
         )
-        if (corners.any { hypot(((it.first - normalizedX) * width).toDouble(), ((it.second - normalizedY) * height).toDouble()).toFloat() <= SELECTION_HANDLE_TOUCH_PX }) return TRANSFORM_SCALE
+        val boundsWidthPx = (bounds.width() * width).coerceAtLeast(0f)
+        val boundsHeightPx = (bounds.height() * height).coerceAtLeast(0f)
+        if (boundsWidthPx < 1f && boundsHeightPx < 1f) return TRANSFORM_NONE
+        val scaleHandleRadius = if (boundsWidthPx < SELECTION_HANDLE_TOUCH_PX * 2f || boundsHeightPx < SELECTION_HANDLE_TOUCH_PX * 2f) SELECTION_SMALL_HANDLE_TOUCH_PX else SELECTION_HANDLE_TOUCH_PX
+        if (corners.any { hypot(((it.first - normalizedX) * width).toDouble(), ((it.second - normalizedY) * height).toDouble()).toFloat() <= scaleHandleRadius }) return TRANSFORM_SCALE
         val rotY = (bounds.top - SELECTION_ROTATE_HANDLE_OFFSET_PX / height.coerceAtLeast(1))
         if (hypot(((bounds.centerX() - normalizedX) * width).toDouble(), ((rotY - normalizedY) * height).toDouble()).toFloat() <= SELECTION_HANDLE_TOUCH_PX) return TRANSFORM_ROTATE
         return TRANSFORM_NONE
@@ -2970,6 +2974,7 @@ class InkCanvasView(context: Context) : View(context) {
         const val TRANSFORM_SCALE = 1
         const val TRANSFORM_ROTATE = 2
         const val SELECTION_HANDLE_TOUCH_PX = 48f
+        const val SELECTION_SMALL_HANDLE_TOUCH_PX = 10f
         const val SELECTION_ROTATE_HANDLE_OFFSET_PX = 64f
         const val SALT_SIZE = 11
         const val SALT_OPACITY = 23

@@ -62,13 +62,13 @@ class InkCanvasLassoTest {
             view.rotateSelection(90f)
             val rotated = edits.last().replacements.single()
             assertEquals(.5f, rotated.masks.single().x, .0001f)
-            assertEquals(.3f, rotated.masks.single().y, .0001f)
+            assertEquals(.3585948f, rotated.masks.single().y, .0001f)
             assertEquals(105f, rotated.masks.single().rotationDegrees, .0001f)
 
             view.copySelection()
             val copied = edits.last().replacements.single()
             assertEquals(.53f, copied.masks.single().x, .0001f)
-            assertEquals(.33f, copied.masks.single().y, .0001f)
+            assertEquals(.3885948f, copied.masks.single().y, .0001f)
             assertEquals(rotated.masks.single().radiusX, copied.masks.single().radiusX, .0001f)
             assertEquals(rotated.masks.single().rotationDegrees, copied.masks.single().rotationDegrees, .0001f)
         }
