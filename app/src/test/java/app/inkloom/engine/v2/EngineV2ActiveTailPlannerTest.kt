@@ -26,14 +26,30 @@ class EngineV2ActiveTailPlannerTest {
     }
 
     @Test
-    fun importedStampBrushKeepsDeterministicWholeStrokeReplay() {
+    fun ordinaryImportedStampBrushUsesIncrementalDabDrawingWithoutClearing() {
         val planner = EngineV2ActiveTailPlanner()
         val stamped = stroke(8).copy(tipAssetPath = "/tmp/tip.png", tipAssetPaths = listOf("/tmp/tip.png"))
 
         val plan = planner.incremental(listOf(stamped))
 
-        assertTrue(plan.clearBeforeDraw)
+        assertFalse(plan.clearBeforeDraw)
+        assertTrue(plan.incrementalStampDraw)
         assertEquals(stamped.points, plan.strokes.single().points)
+    }
+
+    @Test
+    fun dualBrushKeepsCompleteReplayForCrossTipComposition() {
+        val planner = EngineV2ActiveTailPlanner()
+        val dual = stroke(8).copy(
+            tipAssetPath = "/tmp/tip.png",
+            tipAssetPaths = listOf("/tmp/tip.png"),
+            dualBrush = true,
+        )
+
+        val plan = planner.incremental(listOf(dual))
+
+        assertTrue(plan.clearBeforeDraw)
+        assertFalse(plan.incrementalStampDraw)
     }
 
     private fun stroke(count: Int) = InkStroke(

@@ -68,6 +68,7 @@ internal class EngineV2CanvasHost(context: Context) : FrameLayout(context), Engi
             activeStrokes = emptyList()
             synchronized(activeLock) { tailPlanner.reset() }
             lowLatencyView.clear()
+            canvasView.resetEngineV2ActiveRenderState()
         }
     }
 
@@ -75,11 +76,13 @@ internal class EngineV2CanvasHost(context: Context) : FrameLayout(context), Engi
         activeStrokes = emptyList()
         synchronized(activeLock) { tailPlanner.reset() }
         lowLatencyView.cancel()
+        canvasView.resetEngineV2ActiveRenderState()
     }
 
     @WorkerThread
     private fun drawComplete(canvas: Canvas) {
         canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+        canvasView.resetEngineV2ActiveRenderState()
         val snapshot = activeStrokes
         if (snapshot.isNotEmpty()) canvasView.drawEngineV2ActiveStrokes(canvas, snapshot)
         synchronized(activeLock) { tailPlanner.complete(snapshot) }
@@ -96,13 +99,16 @@ internal class EngineV2CanvasHost(context: Context) : FrameLayout(context), Engi
         if (snapshot.isEmpty()) return
         val plan = synchronized(activeLock) { tailPlanner.incremental(snapshot) }
         if (plan.clearBeforeDraw) canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
-        if (plan.strokes.isNotEmpty()) canvasView.drawEngineV2ActiveStrokes(canvas, plan.strokes)
+        if (plan.strokes.isNotEmpty()) {
+            canvasView.drawEngineV2ActiveStrokes(canvas, plan.strokes, plan.incrementalStampDraw)
+        }
     }
 
     override fun onDetachedFromWindow() {
         canvasView.activeStrokeSurface = null
         activeStrokes = emptyList()
         synchronized(activeLock) { tailPlanner.reset() }
+        canvasView.resetEngineV2ActiveRenderState()
         super.onDetachedFromWindow()
     }
 }

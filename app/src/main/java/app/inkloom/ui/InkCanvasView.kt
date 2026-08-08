@@ -147,6 +147,8 @@ class InkCanvasView(context: Context) : View(context) {
     internal var activeStrokeSurface: EngineV2ActiveStrokeSurface? = null
     private var activeSurfaceFrameScheduled = false
     private var activeSurfaceCommitted = false
+    private val activePrimaryStampCounts = mutableMapOf<String, Int>()
+    private val activeDualStampCounts = mutableMapOf<String, Int>()
     private val activeSurfaceFrame = Runnable {
         activeSurfaceFrameScheduled = false
         val surface = activeStrokeSurface ?: return@Runnable
@@ -947,6 +949,8 @@ class InkCanvasView(context: Context) : View(context) {
         activeSurfaceFrameScheduled = false
         activeSurfaceCommitted = false
         activeStrokeSurface?.cancel()
+        activePrimaryStampCounts.clear()
+        activeDualStampCounts.clear()
     }
 
     private fun finishActiveStrokePreview() {
@@ -963,6 +967,8 @@ class InkCanvasView(context: Context) : View(context) {
         activeSurfaceCommitted = false
         activeStrokeSurface?.cancel()
         activeStrokeTemplate = null
+        activePrimaryStampCounts.clear()
+        activeDualStampCounts.clear()
     }
 
     private fun drawStroke(canvas: Canvas, stroke: InkStroke, primaryStampStartIndex: Int = 0, dualStampStartIndex: Int = 0) {
@@ -2518,14 +2524,43 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     @WorkerThread
-    internal fun drawEngineV2ActiveStrokes(canvas: Canvas, strokes: List<InkStroke>) {
+    internal fun drawEngineV2ActiveStrokes(
+        canvas: Canvas,
+        strokes: List<InkStroke>,
+        incrementalStampDraw: Boolean = false,
+    ) {
         val startedAt = System.nanoTime()
         try {
             traceEngineV2("Inkloom.V2.ActiveStrokeDraw") {
-                synchronized(renderLock) { drawLayeredStrokes(canvas, strokes) }
+                synchronized(renderLock) {
+                    if (!incrementalStampDraw) {
+                        drawLayeredStrokes(canvas, strokes)
+                        strokes.filter { it.tipAssetPath != null || it.tipAssetPaths.isNotEmpty() }.forEach { stroke ->
+                            activePrimaryStampCounts[stroke.id] = primaryStampedPoints(stroke).size
+                            activeDualStampCounts[stroke.id] = if (stroke.dualBrush) dualStampedPoints(stroke).size else 0
+                        }
+                    } else {
+                        strokes.forEach { stroke ->
+                            val primaryCount = primaryStampedPoints(stroke).size
+                            val dualCount = if (stroke.dualBrush) dualStampedPoints(stroke).size else 0
+                            val primaryStart = activePrimaryStampCounts[stroke.id] ?: 0
+                            val dualStart = activeDualStampCounts[stroke.id] ?: 0
+                            drawLayeredStrokes(canvas, listOf(stroke), primaryStart, dualStart)
+                            activePrimaryStampCounts[stroke.id] = primaryCount
+                            activeDualStampCounts[stroke.id] = dualCount
+                        }
+                    }
+                }
             }
         } finally {
             engineV2Metrics.activeStrokeDraw.recordNanos(System.nanoTime() - startedAt)
+        }
+    }
+
+    internal fun resetEngineV2ActiveRenderState() {
+        synchronized(renderLock) {
+            activePrimaryStampCounts.clear()
+            activeDualStampCounts.clear()
         }
     }
 

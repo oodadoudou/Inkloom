@@ -6,7 +6,11 @@ import app.inkloom.document.InkStroke
 internal class EngineV2ActiveTailPlanner {
     private val renderedPointCounts = mutableMapOf<String, Int>()
 
-    data class Plan(val clearBeforeDraw: Boolean, val strokes: List<InkStroke>)
+    data class Plan(
+        val clearBeforeDraw: Boolean,
+        val strokes: List<InkStroke>,
+        val incrementalStampDraw: Boolean = false,
+    )
 
     fun complete(strokes: List<InkStroke>): Plan {
         renderedPointCounts.clear()
@@ -15,9 +19,18 @@ internal class EngineV2ActiveTailPlanner {
     }
 
     fun incremental(strokes: List<InkStroke>): Plan {
-        if (strokes.any(::requiresDeterministicReplay)) return complete(strokes)
+        if (strokes.any(::requiresCompleteReplay)) return complete(strokes)
         val activeIds = strokes.mapTo(mutableSetOf(), InkStroke::id)
         renderedPointCounts.keys.retainAll(activeIds)
+        if (strokes.any(::isStamped)) {
+            val changed = strokes.any { stroke -> stroke.points.size > (renderedPointCounts[stroke.id] ?: 0) }
+            strokes.forEach { renderedPointCounts[it.id] = it.points.size }
+            return Plan(
+                clearBeforeDraw = false,
+                strokes = if (changed) strokes else emptyList(),
+                incrementalStampDraw = true,
+            )
+        }
         val tails = strokes.mapNotNull { stroke ->
             val previousCount = renderedPointCounts[stroke.id] ?: 0
             val currentCount = stroke.points.size
@@ -31,8 +44,10 @@ internal class EngineV2ActiveTailPlanner {
 
     fun reset() = renderedPointCounts.clear()
 
-    private fun requiresDeterministicReplay(stroke: InkStroke): Boolean =
-        stroke.tipAssetPath != null || stroke.tipAssetPaths.isNotEmpty() || stroke.dualBrush ||
-            stroke.spray || stroke.continuousPlot || stroke.taperEndEnabled || stroke.waterEdgeEnabled ||
-            stroke.blur > 0f || stroke.masks.isNotEmpty()
+    private fun isStamped(stroke: InkStroke): Boolean =
+        stroke.tipAssetPath != null || stroke.tipAssetPaths.isNotEmpty()
+
+    private fun requiresCompleteReplay(stroke: InkStroke): Boolean =
+        stroke.dualBrush || stroke.blendTipsWithDarken || stroke.dualBlendTipsWithDarken ||
+            stroke.taperEndEnabled || stroke.masks.isNotEmpty()
 }
