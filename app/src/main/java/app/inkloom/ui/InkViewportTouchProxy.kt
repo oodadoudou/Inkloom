@@ -4,20 +4,20 @@ import android.content.Context
 import android.view.MotionEvent
 import android.view.PointerIcon
 import android.view.View
+import app.inkloom.engine.v2.input.PointerCoordinateMapper
+import app.inkloom.document.ViewportState
 
 /**
  * Extends [InkCanvasView]'s input surface to the full editor viewport.
  *
  * The page View keeps its fitted layout size while its content can be zoomed and panned beyond
- * those bounds. Android hit testing does not follow custom Canvas transforms, so contacts on that
- * visible overflow would otherwise never reach the page. This proxy forwards the untouched
- * pointer stream after converting only its origin from proxy-local to page-View-local space.
+ * those bounds. Android hit testing does not follow the page transform into its visible overflow,
+ * so this proxy maps the complete event through the actual source and destination View matrices.
  */
 class InkViewportTouchProxy(context: Context) : View(context) {
     var target: InkCanvasView? = null
 
-    private val proxyLocation = IntArray(2)
-    private val targetLocation = IntArray(2)
+    private val coordinateMapper = PointerCoordinateMapper()
 
     init {
         setBackgroundColor(android.graphics.Color.TRANSPARENT)
@@ -47,15 +47,12 @@ class InkViewportTouchProxy(context: Context) : View(context) {
 
     private inline fun forward(event: MotionEvent, dispatch: (InkCanvasView, MotionEvent) -> Boolean): Boolean {
         val canvas = target?.takeIf { it.isAttachedToWindow && it.width > 0 && it.height > 0 } ?: return false
-        getLocationInWindow(proxyLocation)
-        canvas.getLocationInWindow(targetLocation)
         val forwarded = MotionEvent.obtain(event)
         return try {
-            forwarded.offsetLocation(
-                (proxyLocation[0] - targetLocation[0]).toFloat(),
-                (proxyLocation[1] - targetLocation[1]).toFloat(),
-            )
-            dispatch(canvas, forwarded)
+            val viewport = if (canvas.proxyContactUsesPageCoordinates(forwarded)) {
+                ViewportState(canvas.viewportScale, canvas.viewportPanX, canvas.viewportPanY, canvas.viewportRotationDegrees)
+            } else null
+            coordinateMapper.map(forwarded, this, canvas, viewport) && dispatch(canvas, forwarded)
         } finally {
             forwarded.recycle()
         }

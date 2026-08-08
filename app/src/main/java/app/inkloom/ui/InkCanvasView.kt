@@ -93,7 +93,6 @@ import app.inkloom.document.TwoPointerRotationGesture
 import app.inkloom.document.ThreeFingerTapRedoGesture
 import app.inkloom.document.ViewportTransform
 import app.inkloom.document.FloodFill
-import app.inkloom.document.ViewportState
 import app.inkloom.document.WaterEdge
 import app.inkloom.document.WetMixDynamics
 import app.inkloom.model.EditorTool
@@ -314,7 +313,6 @@ class InkCanvasView(context: Context) : View(context) {
     var forceNavigation: Boolean = false
     var rotateNavigation: Boolean = false
     var externalViewportGestures: Boolean = false
-    var viewportInputTransformEnabled: Boolean = false
     var viewportScale: Float = 1f
         set(value) { field = value.takeIf(Float::isFinite)?.coerceIn(1f, ViewportTransform.MAXIMUM_SCALE) ?: 1f; invalidate() }
     var viewportPanX: Float = 0f
@@ -2103,25 +2101,11 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun canvasPoint(event: MotionEvent, pointerIndex: Int = event.actionIndex.coerceIn(0, event.pointerCount - 1)): Pair<Float, Float> {
-        if (!viewportInputTransformEnabled || width <= 0 || height <= 0) return event.getX(pointerIndex) to event.getY(pointerIndex)
-        return ViewportTransform.viewToPage(
-            event.getX(pointerIndex),
-            event.getY(pointerIndex),
-            width.toFloat(),
-            height.toFloat(),
-            ViewportState(viewportScale, viewportPanX, viewportPanY, viewportRotationDegrees),
-        )
+        return event.getX(pointerIndex) to event.getY(pointerIndex)
     }
 
     private fun historicalCanvasPoint(event: MotionEvent, pointerIndex: Int, position: Int): Pair<Float, Float> {
-        if (!viewportInputTransformEnabled || width <= 0 || height <= 0) return event.getHistoricalX(pointerIndex, position) to event.getHistoricalY(pointerIndex, position)
-        return ViewportTransform.viewToPage(
-            event.getHistoricalX(pointerIndex, position),
-            event.getHistoricalY(pointerIndex, position),
-            width.toFloat(),
-            height.toFloat(),
-            ViewportState(viewportScale, viewportPanX, viewportPanY, viewportRotationDegrees),
-        )
+        return event.getHistoricalX(pointerIndex, position) to event.getHistoricalY(pointerIndex, position)
     }
 
     private fun cancelActiveGestureForNavigation() {
@@ -2645,6 +2629,20 @@ class InkCanvasView(context: Context) : View(context) {
         engineV2Metrics.inputModel.snapshot(),
         engineV2Metrics.activeStrokeDraw.snapshot(),
     )
+
+    /** The full-screen proxy receives screen-space contacts. Drawing contacts are mapped into the
+     * page once, while navigation remains in screen space so pan deltas do not shrink with zoom. */
+    internal fun proxyContactUsesPageCoordinates(event: MotionEvent): Boolean {
+        if (event.pointerCount != 1 || forceNavigation || viewportGestureActive) return false
+        val type = event.getToolType(0)
+        val stylus = type == MotionEvent.TOOL_TYPE_STYLUS || type == MotionEvent.TOOL_TYPE_ERASER
+        if (stylus) {
+            return resolveStylusButtonAction(event.buttonState) != StylusButtonAction.HAND
+        }
+        val elapsedSinceStylus = if (lastStylusSeenAt == Long.MIN_VALUE) Long.MAX_VALUE else event.eventTime - lastStylusSeenAt
+        return fingerDrawingEnabled && event.getTouchMajor(0) < StylusInputClassifier.PALM_TOUCH_MAJOR_PX &&
+            elapsedSinceStylus !in 0..StylusInputClassifier.RECENT_STYLUS_WINDOW_MS
+    }
 
     private fun updateContinuousPlotInput(x: Float, y: Float, pressure: Float, tilt: Float, orientation: Float) {
         continuousPlotX = x.coerceIn(0f, 1f)

@@ -4059,7 +4059,6 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.forceNavigation = forceNavigation
                 view.rotateNavigation = rotateNavigation
                 view.externalViewportGestures = false
-                view.viewportInputTransformEnabled = tool != EditorTool.SELECT
                 view.viewportScale = viewportState.scale
                 view.viewportPanX = viewportState.panX
                 view.viewportPanY = viewportState.panY
@@ -4109,7 +4108,6 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.forceNavigation = forceNavigation
                 view.rotateNavigation = rotateNavigation
                 view.externalViewportGestures = false
-                view.viewportInputTransformEnabled = tool != EditorTool.SELECT
                 view.viewportScale = viewportState.scale
                 view.viewportPanX = viewportState.panX
                 view.viewportPanY = viewportState.panY

@@ -19,7 +19,6 @@ class InkCanvasHoverCursorTest {
         val view = InkCanvasView(instrumentation.targetContext).apply {
             tool = EditorTool.PEN
             baseWidth = 160f
-            viewportInputTransformEnabled = true
             viewportScale = 2f
             viewportPanX = 100f
             viewportPanY = -50f
@@ -34,8 +33,8 @@ class InkCanvasHoverCursorTest {
 
         val state = view.hoverCursorSnapshot()
         assertEquals(1f, state[0], 0f)
-        assertEquals(800f, state[1], .01f)
-        assertEquals(600f, state[2], .01f)
+        assertEquals(900f, state[1], .01f)
+        assertEquals(550f, state[2], .01f)
         assertEquals(160f, state[3], .01f)
 
         view.baseWidth = 320f

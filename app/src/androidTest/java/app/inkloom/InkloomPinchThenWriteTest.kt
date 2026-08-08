@@ -17,6 +17,7 @@ import app.inkloom.document.FileDocumentStore
 import app.inkloom.document.ViewportState
 import app.inkloom.document.ViewportTransform
 import app.inkloom.ui.InkCanvasView
+import app.inkloom.ui.InkViewportTouchProxy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -200,32 +201,40 @@ class InkloomPinchThenWriteTest {
         // the original AndroidView bounds, which is the clipping regression this test protects.
         val startDy = view.height * .24f
         val endDy = view.height * .30f
+        var setupStrokes = emptyList<app.inkloom.document.InkStroke>()
 
-        // Draw a vertical stroke below the paper's vertical centre so that after zoom it maps below
-        // the canvas's own layout bounds on screen (verifies the host view group is not clipping).
-        // This test is specifically about InkCanvasView drawing beyond its host bounds. Dispatch
-        // locally so status/navigation-bar window offsets cannot turn the setup stroke into a
-        // Compose coordinate-routing test (covered separately by canWriteAfterNativeTwoFingerPinch).
+        // The native pinch/write test covers proxy routing. Here a local stylus stream creates a
+        // deterministic stroke whose transformed rendering is then checked outside layout bounds.
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            val transformWasEnabled = view.viewportInputTransformEnabled
-            view.viewportInputTransformEnabled = false
+            view.onStrokesReplaced = { _, replacements, _ -> setupStrokes = replacements }
             val downTime = android.os.SystemClock.uptimeMillis()
             fun dispatch(action: Int, y: Float, elapsed: Long) {
-                view.dispatchTouchEvent(android.view.MotionEvent.obtain(
+                val event = android.view.MotionEvent.obtain(
                     downTime,
                     downTime + elapsed,
                     action,
-                    view.width / 2f,
-                    view.height / 2f + y,
-                    0,
-                ))
+                    1,
+                    arrayOf(android.view.MotionEvent.PointerProperties().apply {
+                        id = 0
+                        toolType = android.view.MotionEvent.TOOL_TYPE_STYLUS
+                    }),
+                    arrayOf(android.view.MotionEvent.PointerCoords().apply {
+                        x = view.width / 2f
+                        this.y = view.height / 2f + y
+                        pressure = .7f
+                        size = .05f
+                    }),
+                    0, 0, 1f, 1f, 0, 0, android.view.InputDevice.SOURCE_STYLUS, 0,
+                )
+                view.onTouchEvent(event)
+                event.recycle()
             }
             dispatch(android.view.MotionEvent.ACTION_DOWN, startDy, 0)
             dispatch(android.view.MotionEvent.ACTION_MOVE, endDy, 20)
             dispatch(android.view.MotionEvent.ACTION_UP, endDy, 21)
-            view.viewportInputTransformEnabled = transformWasEnabled
+            assertEquals("The local main canvas must commit the setup stroke", 1, (reflectField(view, "strokes") as? List<*>)?.size)
         }
-        composeRule.waitUntil(10_000) { strokeCount() == 1 }
+        assertEquals("The setup stroke must leave the input engine", 1, setupStrokes.size)
 
         fun screenshot(): android.graphics.Bitmap {
             val pfd = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("screencap -p")
@@ -243,6 +252,7 @@ class InkloomPinchThenWriteTest {
 
         // Before zoom, the stroke must be visible at its zoom-1 position (centre x, y 1080..1220).
         composeRule.waitForIdle()
+
         android.os.SystemClock.sleep(500)
         var viewDark = 0
         var strokesAtDraw = -1
@@ -317,6 +327,11 @@ class InkloomPinchThenWriteTest {
             up(0)
         }
         composeRule.waitForIdle()
+        // Viewport recomposition reloads the document scene. Reinstall this local fixture so this
+        // test remains focused on transformed overflow rendering; persistence is covered above.
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view.setDocumentStrokes(setupStrokes, "overflow-render-fixture")
+        }
 
         val scale = reflectField(view, "viewportScale") as Float
         val panX = reflectField(view, "viewportPanX") as Float
@@ -394,7 +409,7 @@ class InkloomPinchThenWriteTest {
             ViewportState(scale, panX, panY),
         )
         sendScreenFingerStroke(overflowX, overflowY, overflowX + 28f, overflowY + 12f)
-        composeRule.waitUntil(10_000) { strokeCount() == 2 }
+        composeRule.waitUntil(10_000) { strokeCount() == 1 }
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val overflowStroke = activeDocumentId?.let { FileDocumentStore(context.filesDir).get(it) }
             ?.pages?.flatMap { it.strokes }?.last()
@@ -422,17 +437,25 @@ class InkloomPinchThenWriteTest {
 
     private fun findInkCanvasView(): InkCanvasView? {
         var found: InkCanvasView? = null
+        var foundArea = -1L
+        var proxyTarget: InkCanvasView? = null
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             fun walk(view: android.view.View) {
-                if (view is InkCanvasView) {
-                    if (found == null) found = view
+                if (view is InkViewportTouchProxy && view.isShown) {
+                    view.target?.takeIf { it.isShown && it.isEnabled }?.let { proxyTarget = it }
+                } else if (view is InkCanvasView && view.isShown && view.isEnabled) {
+                    val area = view.width.toLong() * view.height.toLong()
+                    if (area > foundArea) {
+                        found = view
+                        foundArea = area
+                    }
                 } else if (view is ViewGroup) {
                     for (i in 0 until view.childCount) walk(view.getChildAt(i))
                 }
             }
             walk(composeRule.activity.window.decorView)
         }
-        return found
+        return proxyTarget ?: found
     }
 
     private fun reflectField(target: Any, name: String): Any? {
