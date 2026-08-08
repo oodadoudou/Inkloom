@@ -722,6 +722,9 @@ class InkloomLaunchTest {
         val view = findInkCanvasView()!!
         val selectedColor = view.inkColor
         assertTrue("The test must select a non-default color", selectedColor != AndroidColor.rgb(17, 17, 17))
+        val selectedHsv = FloatArray(3).also { AndroidColor.colorToHSV(selectedColor, it) }
+        assertEquals("SV cursor X must match actual saturation", .78f, selectedHsv[1], .06f)
+        assertEquals("SV cursor Y must match actual brightness", .78f, selectedHsv[2], .06f)
 
         composeRule.onNodeWithContentDescription("Colors").performClick()
         composeRule.onNodeWithContentDescription("Brushes").performClick()
