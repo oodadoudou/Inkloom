@@ -11,6 +11,8 @@ class FileDocumentStore(private val root: File) {
     private val journalFile = File(root, "journal.jsonl")
     private val documents = linkedMapOf<String, InkDocument>()
     private var pendingJournalEntries = 0
+    private var observedDocumentFiles = emptyMap<String, Pair<Long, Long>>()
+    private var observedJournalLength = 0L
 
     init {
         documentsDir.mkdirs()
@@ -23,24 +25,32 @@ class FileDocumentStore(private val root: File) {
         val recovered = readJournal()
         recovered.forEach(::applyEntry)
         pendingJournalEntries = recovered.size
+        captureObservedFiles()
     }
 
     @Synchronized
-    fun list(): List<InkDocument> = documents.values.sortedByDescending { it.updatedAt }
+    fun list(): List<InkDocument> {
+        refreshExternalChanges()
+        return documents.values.sortedByDescending { it.updatedAt }
+    }
 
     @Synchronized
-    fun get(id: String): InkDocument? = documents[id]
+    fun get(id: String): InkDocument? {
+        refreshExternalChanges()
+        return documents[id]
+    }
 
     @Synchronized
     fun save(document: InkDocument) {
         atomicWrite(documentFile(document.id), json.encodeToString(document))
         documents[document.id] = document
+        captureObservedFiles()
     }
 
     @Synchronized
     fun deletePermanently(id: String): Boolean {
         documents.remove(id)
-        return documentFile(id).delete()
+        return documentFile(id).delete().also { captureObservedFiles() }
     }
 
     @Synchronized
@@ -49,6 +59,7 @@ class FileDocumentStore(private val root: File) {
         journalFile.appendText(journalJson.encodeToString<JournalEntry>(entry) + "\n")
         applyEntry(entry)
         pendingJournalEntries++
+        observedJournalLength = journalFile.length()
     }
 
     @Synchronized
@@ -58,6 +69,7 @@ class FileDocumentStore(private val root: File) {
         documents.values.forEach { document -> atomicWrite(documentFile(document.id), json.encodeToString(document)) }
         compactJournal()
         pendingJournalEntries = 0
+        captureObservedFiles()
         return recovered
     }
 
@@ -65,10 +77,38 @@ class FileDocumentStore(private val root: File) {
     fun compactJournal() {
         atomicWrite(journalFile, "")
         pendingJournalEntries = 0
+        observedJournalLength = journalFile.length()
     }
 
     private fun readJournal(): List<JournalEntry> = if (!journalFile.isFile) emptyList() else
         journalFile.readLines().mapNotNull { runCatching { journalJson.decodeFromString<JournalEntry>(it) }.getOrNull() }
+
+    /** File stats are cheap enough for UI refreshes; JSON is reloaded only when a second store
+     * instance (tests, import/export, or recovery tooling) actually changed durable state. */
+    private fun refreshExternalChanges() {
+        val currentDocuments = documentFileSignatures()
+        val currentJournalLength = journalFile.takeIf(File::isFile)?.length() ?: 0L
+        if (currentDocuments == observedDocumentFiles && currentJournalLength == observedJournalLength) return
+        documents.clear()
+        documentsDir.listFiles { file -> file.extension == "json" }
+            ?.mapNotNull { runCatching { json.decodeFromString<InkDocument>(it.readText()) }.getOrNull() }
+            ?.forEach { documents[it.id] = it }
+        val recovered = readJournal()
+        recovered.forEach(::applyEntry)
+        pendingJournalEntries = recovered.size
+        observedDocumentFiles = currentDocuments
+        observedJournalLength = currentJournalLength
+    }
+
+    private fun captureObservedFiles() {
+        observedDocumentFiles = documentFileSignatures()
+        observedJournalLength = journalFile.takeIf(File::isFile)?.length() ?: 0L
+    }
+
+    private fun documentFileSignatures(): Map<String, Pair<Long, Long>> = documentsDir
+        .listFiles { file -> file.extension == "json" }
+        .orEmpty()
+        .associate { file -> file.name to (file.lastModified() to file.length()) }
 
     private fun applyEntry(entry: JournalEntry): InkDocument? {
         val document = documents[entry.documentId] ?: return null
