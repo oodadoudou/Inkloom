@@ -4112,7 +4112,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     brushColor: Int,
     eraserPreset: EraserPreset,
 ) {
-    tool = selectedTool
+    switchInputConfiguration(selectedTool, activeBrush?.id)
     fingerDrawingEnabled = settings.fingerDrawing
     singleFingerDoubleTapUndo = settings.singleFingerDoubleTapUndo
     twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo

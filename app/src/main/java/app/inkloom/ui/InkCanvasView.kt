@@ -269,6 +269,8 @@ class InkCanvasView(context: Context) : View(context) {
     private var hoverCursorX = 0f
     private var hoverCursorY = 0f
     private var hoverCursorUsesEraser = false
+    private var configuredInputTool: EditorTool? = null
+    private var configuredInputBrushId: String? = null
     private val tipCache = object : LinkedHashMap<String, Bitmap>(32, .75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Bitmap>): Boolean {
             val remove = size > MAX_TIP_CACHE_ENTRIES
@@ -1356,6 +1358,25 @@ class InkCanvasView(context: Context) : View(context) {
         prewarmedBrushSignature = signature
         primary.forEach { prewarmTip(it, brushHardness, grainAssetPath, grainDensity, grainScale, grainRotationDegrees, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainCompositeMode = grainCompositeMode, antiAliasMode = brushAntiAliasMode) }
         secondary.forEach { prewarmTip(it, dualHardness, null, 0f, antiAliasMode = dualAntiAliasMode) }
+    }
+
+    /** A palette/tool tap can interrupt a contact stream before Android delivers its final UP.
+     * Treat each tool or preset change as a hard input boundary so that stale navigation,
+     * eraser, stylus-button, or drawing state cannot consume every later contact. */
+    fun switchInputConfiguration(nextTool: EditorTool, nextBrushId: String?) {
+        if (configuredInputTool == nextTool && configuredInputBrushId == nextBrushId) return
+        cancelActiveGestureForNavigation()
+        viewportGestureActive = false
+        externalViewportGestureContact = false
+        pageContactRejected = false
+        stylusCommandConsumesContact = false
+        stylusHandNavigationContact = false
+        // Do not synthesize a hardware-button release here. A HOLD shortcut can legitimately
+        // trigger this reconfiguration (for example pen -> eraser) while the button is still
+        // physically down; its real release event must remain responsible for restoring the tool.
+        configuredInputTool = nextTool
+        configuredInputBrushId = nextBrushId
+        tool = nextTool
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
