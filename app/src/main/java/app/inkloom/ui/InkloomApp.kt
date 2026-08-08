@@ -673,6 +673,8 @@ fun InkloomApp(initialIntent: Intent?) {
             onToggleLayerLock = viewModel::toggleLayerLock,
             onSetLayerOpacity = viewModel::setLayerOpacity,
             onSetLayerBlendMode = viewModel::setLayerBlendMode,
+            onToggleLayerAlphaLock = viewModel::toggleLayerAlphaLock,
+            onToggleLayerClippedToBelow = viewModel::toggleLayerClippedToBelow,
             onMoveLayerToFolder = viewModel::moveLayerToFolder,
             onToggleLayerFolderCollapsed = viewModel::toggleLayerFolderCollapsed,
             onMoveLayer = viewModel::moveLayer,
@@ -967,6 +969,8 @@ private fun EditorScreen(
     onToggleLayerLock: (String, String, String) -> Unit,
     onSetLayerOpacity: (String, String, String, Float) -> Unit,
     onSetLayerBlendMode: (String, String, String, LayerBlendMode) -> Unit,
+    onToggleLayerAlphaLock: (String, String, String) -> Unit,
+    onToggleLayerClippedToBelow: (String, String, String) -> Unit,
     onMoveLayerToFolder: (String, String, String, String?) -> Unit,
     onToggleLayerFolderCollapsed: (String, String, String) -> Unit,
     onMoveLayer: (String, String, String, Int) -> Unit,
@@ -1785,6 +1789,8 @@ private fun EditorScreen(
                 onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
                 onOpacity = { layerId, value -> onSetLayerOpacity(document.id, selectedPage.id, layerId, value) },
                 onBlendMode = { layerId, mode -> onSetLayerBlendMode(document.id, selectedPage.id, layerId, mode) },
+                onToggleAlphaLock = { onToggleLayerAlphaLock(document.id, selectedPage.id, it) },
+                onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
                 onMoveToFolder = { layerId, folderId -> onMoveLayerToFolder(document.id, selectedPage.id, layerId, folderId) },
                 onToggleFolderCollapsed = { onToggleLayerFolderCollapsed(document.id, selectedPage.id, it) },
                 onMove = { layerId, delta -> onMoveLayer(document.id, selectedPage.id, layerId, delta) },
@@ -2373,6 +2379,8 @@ private fun EditorScreen(
                 onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
                 onOpacity = { layerId, value -> onSetLayerOpacity(document.id, selectedPage.id, layerId, value) },
                 onBlendMode = { layerId, mode -> onSetLayerBlendMode(document.id, selectedPage.id, layerId, mode) },
+                onToggleAlphaLock = { onToggleLayerAlphaLock(document.id, selectedPage.id, it) },
+                onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
                 onMoveToFolder = { layerId, folderId -> onMoveLayerToFolder(document.id, selectedPage.id, layerId, folderId) },
                 onToggleFolderCollapsed = { onToggleLayerFolderCollapsed(document.id, selectedPage.id, it) },
                 onMove = { layerId, delta -> onMoveLayer(document.id, selectedPage.id, layerId, delta) },
@@ -2498,8 +2506,10 @@ private fun EditorScreen(
                     onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
                     onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
                     onOpacity = { layerId, value -> onSetLayerOpacity(document.id, selectedPage.id, layerId, value) },
-                    onBlendMode = { layerId, mode -> onSetLayerBlendMode(document.id, selectedPage.id, layerId, mode) },
-                    onMoveToFolder = { layerId, folderId -> onMoveLayerToFolder(document.id, selectedPage.id, layerId, folderId) },
+                onBlendMode = { layerId, mode -> onSetLayerBlendMode(document.id, selectedPage.id, layerId, mode) },
+                onToggleAlphaLock = { onToggleLayerAlphaLock(document.id, selectedPage.id, it) },
+                onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
+                onMoveToFolder = { layerId, folderId -> onMoveLayerToFolder(document.id, selectedPage.id, layerId, folderId) },
                     onToggleFolderCollapsed = { onToggleLayerFolderCollapsed(document.id, selectedPage.id, it) },
                     onMove = { layerId, delta -> onMoveLayer(document.id, selectedPage.id, layerId, delta) },
                     onDuplicate = { layerId -> onDuplicateLayer(document.id, selectedPage.id, layerId)?.let { activeLayerId = it } },
@@ -2667,6 +2677,8 @@ private fun EditorScreen(
                 onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
                 onOpacity = { layerId, value -> onSetLayerOpacity(document.id, selectedPage.id, layerId, value) },
                 onBlendMode = { layerId, mode -> onSetLayerBlendMode(document.id, selectedPage.id, layerId, mode) },
+                onToggleAlphaLock = { onToggleLayerAlphaLock(document.id, selectedPage.id, it) },
+                onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
                 onMoveToFolder = { layerId, folderId -> onMoveLayerToFolder(document.id, selectedPage.id, layerId, folderId) },
                 onToggleFolderCollapsed = { onToggleLayerFolderCollapsed(document.id, selectedPage.id, it) },
                 onMove = { layerId, delta -> onMoveLayer(document.id, selectedPage.id, layerId, delta) },
@@ -3980,6 +3992,8 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.activeLayerId = activeLayerId
                 view.layerOpacities = layerOpacities
                 view.layerBlendModes = layerBlendModes
+                view.alphaLockedLayers = page.layers.filter { it.alphaLock }.mapTo(mutableSetOf()) { it.id }
+                view.clippedLayers = page.layers.filter { it.clippedToBelow }.mapTo(mutableSetOf()) { it.id }
                 view.pagePaperColor = if (renderedPage.background is PageBackground.Paper) (if (backgroundVisible) renderedPage.background.colorArgb.toInt() else AndroidColor.WHITE) else null
                 view.pagePaperPattern = (renderedPage.background as? PageBackground.Paper)?.pattern?.takeIf { backgroundVisible }
                 view.shapeKind = shapeKind
@@ -5494,6 +5508,8 @@ private fun LayerPanel(
     onLock: (String) -> Unit,
     onOpacity: (String, Float) -> Unit,
     onBlendMode: (String, LayerBlendMode) -> Unit,
+    onToggleAlphaLock: (String) -> Unit,
+    onToggleClippedToBelow: (String) -> Unit,
     onMoveToFolder: (String, String?) -> Unit,
     onToggleFolderCollapsed: (String) -> Unit,
     onMove: (String, Int) -> Unit,
@@ -5543,6 +5559,8 @@ private fun LayerPanel(
             onLock = onLock,
             onOpacity = onOpacity,
             onBlendMode = onBlendMode,
+            onToggleAlphaLock = onToggleAlphaLock,
+            onToggleClippedToBelow = onToggleClippedToBelow,
             onMove = onMove,
             onDuplicate = onDuplicate,
             onMergeDown = onMergeDown,
@@ -5693,6 +5711,8 @@ private fun LayerPanel(
                                 DropdownMenuItem(text = { Text(if (layer.visible) tr("Hide layer", "隐藏图层") else tr("Show layer", "显示图层")) }, leadingIcon = { Icon(if (layer.visible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, null) }, onClick = { menu = false; onVisibility(layer.id) })
                                 DropdownMenuItem(text = { Text(if (layer.locked) tr("Unlock layer", "解锁图层") else tr("Lock layer", "锁定图层")) }, leadingIcon = { Icon(if (layer.locked) Icons.Outlined.LockOpen else Icons.Outlined.Lock, null) }, onClick = { menu = false; onLock(layer.id) })
                                 if (layer.role == LayerRole.FOLDER) DropdownMenuItem(text = { Text(if (layer.collapsed) tr("Expand folder", "展开文件夹") else tr("Collapse folder", "折叠文件夹")) }, onClick = { menu = false; onToggleFolderCollapsed(layer.id) })
+                                if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(if (layer.alphaLock) tr("Unlock alpha", "解锁透明度") else tr("Lock alpha", "锁定透明度")) }, leadingIcon = { Icon(if (layer.alphaLock) Icons.Outlined.LockOpen else Icons.Outlined.Lock, null) }, onClick = { menu = false; onToggleAlphaLock(layer.id) })
+                                if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(if (layer.clippedToBelow) tr("Stop clipping", "取消剪贴") else tr("Clipping mask", "剪贴蒙版")) }, leadingIcon = { Icon(if (layer.clippedToBelow) Icons.Outlined.LinkOff else Icons.Outlined.Link, null) }, onClick = { menu = false; onToggleClippedToBelow(layer.id) })
                                 DropdownMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { menu = false; renameLayer = layer; renameValue = layer.name })
                                 if (layer.parentId != null) DropdownMenuItem(text = { Text(tr("Move out of folder", "移出文件夹")) }, onClick = { menu = false; onMoveToFolder(layer.id, null) })
                                 folderTargets.forEach { folder -> DropdownMenuItem(text = { Text("${tr("Move into", "移入")} ${folder.name}") }, onClick = { menu = false; onMoveToFolder(layer.id, folder.id) }) }
@@ -5738,6 +5758,8 @@ private fun ProcreateLayerPanel(
     onLock: (String) -> Unit,
     onOpacity: (String, Float) -> Unit,
     onBlendMode: (String, LayerBlendMode) -> Unit,
+    onToggleAlphaLock: (String) -> Unit,
+    onToggleClippedToBelow: (String) -> Unit,
     onMove: (String, Int) -> Unit,
     onDuplicate: (String) -> Unit,
     onMergeDown: (String) -> Unit,
@@ -5837,6 +5859,8 @@ private fun ProcreateLayerPanel(
                             IconButton(onClick = { menu = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.MoreVert, tr("Layer actions", "图层操作"), tint = Color.White) }
                             DropdownMenu(menu, { menu = false }) {
                                 DropdownMenuItem(text = { Text(if (layer.locked) tr("Unlock", "解锁") else tr("Lock", "锁定")) }, onClick = { menu = false; onLock(layer.id) })
+                                if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(if (layer.alphaLock) tr("Unlock alpha", "解锁透明度") else tr("Lock alpha", "锁定透明度")) }, onClick = { menu = false; onToggleAlphaLock(layer.id) })
+                                if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(if (layer.clippedToBelow) tr("Stop clipping", "取消剪贴") else tr("Clipping mask", "剪贴蒙版")) }, onClick = { menu = false; onToggleClippedToBelow(layer.id) })
                                 DropdownMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { menu = false; renameLayer = layer; renameValue = layer.name })
                                 DropdownMenuItem(text = { Text(tr("Move up", "上移")) }, onClick = { menu = false; onMove(layer.id, 1) })
                                 DropdownMenuItem(text = { Text(tr("Move down", "下移")) }, onClick = { menu = false; onMove(layer.id, -1) })

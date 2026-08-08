@@ -240,6 +240,14 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         page.copy(layers = page.layers.map { if (it.id == layerId && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) it.copy(blendMode = blendMode) else it })
     }
 
+    fun toggleLayerAlphaLock(documentId: String, pageId: String, layerId: String) = updatePage(documentId, pageId) { page ->
+        page.copy(layers = page.layers.map { if (it.id == layerId && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) it.copy(alphaLock = !it.alphaLock) else it })
+    }
+
+    fun toggleLayerClippedToBelow(documentId: String, pageId: String, layerId: String) = updatePage(documentId, pageId) { page ->
+        page.copy(layers = page.layers.map { if (it.id == layerId && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) it.copy(clippedToBelow = !it.clippedToBelow) else it })
+    }
+
     fun moveLayerToFolder(documentId: String, pageId: String, layerId: String, folderId: String?) = updatePage(documentId, pageId) { page ->
         LayerHierarchy.moveToFolder(page, layerId, folderId)
     }

@@ -447,8 +447,9 @@ class DocumentAssetService(private val context: Context) {
                 alpha = (layer.opacity.coerceIn(0f, 1f) * 255f).toInt().coerceIn(0, 255)
                 blendMode = layer.blendMode.toBlendMode()
             }
+            val clipCheckpoint = if (layer.clippedToBelow) canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.SRC_IN }) else -1
             val layerCheckpoint = canvas.saveLayer(null, layerPaint)
-            drawStrokes(canvas, page.strokes.filter { it.layerId == layer.id }, width, height, paint)
+            drawStrokes(canvas, page.strokes.filter { it.layerId == layer.id }, width, height, paint, layer.alphaLock)
             page.elements.filter { it.layerId == layer.id }.forEach { element ->
             val left = element.x * width
             val top = element.y * height
@@ -548,6 +549,7 @@ class DocumentAssetService(private val context: Context) {
             canvas.restore()
             }
             canvas.restoreToCount(layerCheckpoint)
+            if (clipCheckpoint >= 0) canvas.restoreToCount(clipCheckpoint)
         }
     }
 
@@ -587,14 +589,15 @@ class DocumentAssetService(private val context: Context) {
         }
     }
 
-    private fun drawStrokes(canvas: Canvas, strokes: List<InkStroke>, width: Int, height: Int, paint: Paint) {
+    private fun drawStrokes(canvas: Canvas, strokes: List<InkStroke>, width: Int, height: Int, paint: Paint, alphaLocked: Boolean = false) {
         paint.style = Paint.Style.STROKE
         paint.strokeCap = Paint.Cap.ROUND
         paint.strokeJoin = Paint.Join.ROUND
-        strokes.forEach { stroke ->
-            if (stroke.points.isEmpty()) return@forEach
+        strokes.forEachIndexed { index, stroke ->
+            if (stroke.points.isEmpty()) return@forEachIndexed
             paint.isAntiAlias = CspAntiAlias.enabled(stroke.antiAliasMode)
             paint.isFilterBitmap = CspAntiAlias.enabled(stroke.antiAliasMode)
+            val alphaLockCheckpoint = if (alphaLocked && index > 0) canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.SRC_IN }) else -1
             val maskLayer = if (stroke.masks.isNotEmpty()) canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null) else -1
             paint.color = stroke.colorArgb.toInt()
             val tipPaths = stroke.tipAssetPaths.ifEmpty { listOfNotNull(stroke.tipAssetPath) }
@@ -629,6 +632,7 @@ class DocumentAssetService(private val context: Context) {
                 StrokeMaskRenderer.draw(canvas, paint, stroke.masks, width, height)
                 canvas.restoreToCount(maskLayer)
             }
+            if (alphaLockCheckpoint >= 0) canvas.restoreToCount(alphaLockCheckpoint)
         }
         paint.colorFilter = null
         paint.maskFilter = null

@@ -295,6 +295,10 @@ class InkCanvasView(context: Context) : View(context) {
                 resetStrokeTiles()
             }
         }
+    var alphaLockedLayers: Set<String> = emptySet()
+        set(value) { if (field != value) { field = value; resetStrokeTiles() } }
+    var clippedLayers: Set<String> = emptySet()
+        set(value) { if (field != value) { field = value; resetStrokeTiles() } }
     var pagePaperColor: Int? = null
         set(value) { if (field != value) { field = value; invalidate() } }
     var pagePaperPattern: PaperPattern? = null
@@ -737,6 +741,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun drawStrokeTiles(canvas: Canvas): Boolean {
         if (layerBlendModes.values.any { it != LayerBlendMode.NORMAL }) return false
+        if (alphaLockedLayers.isNotEmpty() || clippedLayers.isNotEmpty()) return false
         if (width <= 0 || height <= 0 || width.toLong() * height.toLong() > MAX_CACHE_PIXELS) return false
         if (strokeTileIndex.widthPx != width || strokeTileIndex.heightPx != height) resetStrokeTiles()
         val keys = strokeTileIndex.allTiles()
@@ -806,16 +811,28 @@ class InkCanvasView(context: Context) : View(context) {
         value.groupBy(InkStroke::layerId).forEach { (layerId, layerStrokes) ->
             val opacity = (layerOpacities[layerId] ?: 1f).coerceIn(0f, 1f)
             if (opacity <= 0f) return@forEach
-            val blendMode = layerBlendModes[layerId] ?: LayerBlendMode.NORMAL
-            val needsLayer = opacity < .999f || blendMode != LayerBlendMode.NORMAL
+            val layerBlendMode = layerBlendModes[layerId] ?: LayerBlendMode.NORMAL
+            val alphaLocked = layerId in alphaLockedLayers
+            val clipped = layerId in clippedLayers
+            val needsLayer = opacity < .999f || layerBlendMode != LayerBlendMode.NORMAL || alphaLocked || clipped
+            val clipCheckpoint = if (clipped) canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.blendMode = android.graphics.BlendMode.SRC_IN }) else -1
             val checkpoint = if (needsLayer) {
                 canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     alpha = (opacity * 255f).toInt().coerceIn(0, 255)
-                    this.blendMode = blendMode.toBlendMode()
+                    this.blendMode = layerBlendMode.toBlendMode()
                 })
             } else null
-            layerStrokes.forEach { drawStroke(canvas, it, primaryStampStartIndex, dualStampStartIndex) }
+            layerStrokes.forEachIndexed { index, stroke ->
+                if (alphaLocked && index > 0) {
+                    val lockCheckpoint = canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.blendMode = android.graphics.BlendMode.SRC_IN })
+                    drawStroke(canvas, stroke, primaryStampStartIndex, dualStampStartIndex)
+                    canvas.restoreToCount(lockCheckpoint)
+                } else {
+                    drawStroke(canvas, stroke, primaryStampStartIndex, dualStampStartIndex)
+                }
+            }
             checkpoint?.let(canvas::restoreToCount)
+            if (clipCheckpoint >= 0) canvas.restoreToCount(clipCheckpoint)
         }
     }
 

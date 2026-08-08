@@ -105,6 +105,8 @@ data class InkLayer(
     val locked: Boolean = false,
     val opacity: Float = 1f,
     val blendMode: LayerBlendMode = LayerBlendMode.NORMAL,
+    val alphaLock: Boolean = false,
+    val clippedToBelow: Boolean = false,
     val parentId: String? = null,
     val collapsed: Boolean = false,
 )
