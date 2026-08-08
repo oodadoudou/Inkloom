@@ -286,7 +286,7 @@ class InkCanvasView(context: Context) : View(context) {
     var externalViewportGestures: Boolean = false
     var viewportInputTransformEnabled: Boolean = false
     var viewportScale: Float = 1f
-        set(value) { field = value.takeIf(Float::isFinite)?.coerceIn(1f, 8f) ?: 1f; invalidate() }
+        set(value) { field = value.takeIf(Float::isFinite)?.coerceIn(1f, ViewportTransform.MAXIMUM_SCALE) ?: 1f; invalidate() }
     var viewportPanX: Float = 0f
         set(value) { field = value.takeIf(Float::isFinite) ?: 0f; invalidate() }
     var viewportPanY: Float = 0f
@@ -684,24 +684,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        canvas.save()
-        canvas.concat(viewportRenderMatrix())
         drawPageContent(canvas)
-        canvas.restore()
-    }
-
-    /** The viewport transform in the view's local space. This is the inverse of
-     * [ViewportTransform.screenToLocal], so ink rendered under this transform lands exactly
-     * where the stylus/finger maps when the user touches the screen at any zoom. */
-    private fun viewportRenderMatrix(): Matrix {
-        val matrix = Matrix()
-        val centerX = width / 2f
-        val centerY = height / 2f
-        matrix.setTranslate(centerX + viewportPanX, centerY + viewportPanY)
-        matrix.postRotate(viewportRotationDegrees)
-        matrix.postScale(viewportScale, viewportScale)
-        matrix.postTranslate(-centerX, -centerY)
-        return matrix
     }
 
     private fun drawPageContent(canvas: Canvas, includeInteractionOverlays: Boolean = true) {

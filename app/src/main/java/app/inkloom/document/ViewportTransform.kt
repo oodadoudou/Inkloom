@@ -11,6 +11,9 @@ data class ViewportGeometry(
 )
 
 object ViewportTransform {
+    const val MAXIMUM_SCALE = 16f
+    private const val MAXIMUM_PAN = 50_000f
+
     /** Maps a point reported by the page View back into untransformed page coordinates.
      * Both coordinates live in the same View-local space, so system bars, multi-window offsets,
      * display magnification and window movement cannot introduce an origin mismatch. */
@@ -78,13 +81,13 @@ object ViewportTransform {
         current: ViewportState,
         screenDeltaX: Float,
         screenDeltaY: Float,
-        maximumPan: Float = 2_500f,
+        maximumPan: Float = MAXIMUM_PAN,
         geometry: ViewportGeometry? = null,
     ): ViewportState {
         val safe = sanitize(current)
         val deltaX = screenDeltaX.takeIf(Float::isFinite) ?: 0f
         val deltaY = screenDeltaY.takeIf(Float::isFinite) ?: 0f
-        val maximumOffset = maximumPan.takeIf { it.isFinite() && it >= 0f } ?: 2_500f
+        val maximumOffset = maximumPan.takeIf { it.isFinite() && it >= 0f } ?: MAXIMUM_PAN
         return clamp(
             safe.copy(
                 panX = (safe.panX + deltaX).coerceIn(-maximumOffset, maximumOffset),
@@ -99,13 +102,13 @@ object ViewportTransform {
         current: ViewportState,
         localDeltaX: Float,
         localDeltaY: Float,
-        maximumPan: Float = 2_500f,
+        maximumPan: Float = MAXIMUM_PAN,
         geometry: ViewportGeometry? = null,
     ): ViewportState {
         val safe = sanitize(current)
         val deltaX = localDeltaX.takeIf(Float::isFinite) ?: 0f
         val deltaY = localDeltaY.takeIf(Float::isFinite) ?: 0f
-        val maximumOffset = maximumPan.takeIf { it.isFinite() && it >= 0f } ?: 2_500f
+        val maximumOffset = maximumPan.takeIf { it.isFinite() && it >= 0f } ?: MAXIMUM_PAN
         val (screenDeltaX, screenDeltaY) = rotate(deltaX * safe.scale, deltaY * safe.scale, safe.rotationDegrees)
         return clamp(
             safe.copy(
@@ -123,19 +126,19 @@ object ViewportTransform {
         focusOffsetX: Float,
         focusOffsetY: Float,
         minimumScale: Float = 1f,
-        maximumScale: Float = 8f,
-        maximumPan: Float = 2_500f,
+        maximumScale: Float = MAXIMUM_SCALE,
+        maximumPan: Float = MAXIMUM_PAN,
         geometry: ViewportGeometry? = null,
     ): ViewportState {
         val minimum = minimumScale.takeIf { it.isFinite() && it > 0f } ?: 1f
-        val maximum = maximumScale.takeIf { it.isFinite() && it >= minimum } ?: maxOf(minimum, 8f)
+        val maximum = maximumScale.takeIf { it.isFinite() && it >= minimum } ?: maxOf(minimum, MAXIMUM_SCALE)
         val safe = sanitize(current, minimum, maximum)
         val safeFactor = factor.takeIf { it.isFinite() && it > 0f } ?: 1f
         val nextScale = (safe.scale * safeFactor).coerceIn(minimum, maximum)
         val focusX = focusOffsetX.takeIf(Float::isFinite) ?: 0f
         val focusY = focusOffsetY.takeIf(Float::isFinite) ?: 0f
         val (screenFocusX, screenFocusY) = rotate(focusX, focusY, safe.rotationDegrees)
-        val maximumOffset = maximumPan.takeIf { it.isFinite() && it >= 0f } ?: 2_500f
+        val maximumOffset = maximumPan.takeIf { it.isFinite() && it >= 0f } ?: MAXIMUM_PAN
         val next = ViewportState(
             scale = nextScale,
             panX = (safe.panX + (safe.scale - nextScale) * screenFocusX).coerceIn(-maximumOffset, maximumOffset),
@@ -157,19 +160,19 @@ object ViewportTransform {
         focusOffsetX: Float,
         focusOffsetY: Float,
         minimumScale: Float = 1f,
-        maximumScale: Float = 8f,
-        maximumPan: Float = 2_500f,
+        maximumScale: Float = MAXIMUM_SCALE,
+        maximumPan: Float = MAXIMUM_PAN,
         geometry: ViewportGeometry? = null,
     ): ViewportState {
         val minimum = minimumScale.takeIf { it.isFinite() && it > 0f } ?: 1f
-        val maximum = maximumScale.takeIf { it.isFinite() && it >= minimum } ?: maxOf(minimum, 8f)
+        val maximum = maximumScale.takeIf { it.isFinite() && it >= minimum } ?: maxOf(minimum, MAXIMUM_SCALE)
         val safe = sanitize(current, minimum, maximum)
         val safeFactor = factor.takeIf { it.isFinite() && it > 0f } ?: 1f
         val nextScale = (safe.scale * safeFactor).coerceIn(minimum, maximum)
         val ratio = nextScale / safe.scale.coerceAtLeast(.0001f)
         val focusX = focusOffsetX.takeIf(Float::isFinite) ?: 0f
         val focusY = focusOffsetY.takeIf(Float::isFinite) ?: 0f
-        val maximumOffset = maximumPan.takeIf { it.isFinite() && it >= 0f } ?: 2_500f
+        val maximumOffset = maximumPan.takeIf { it.isFinite() && it >= 0f } ?: MAXIMUM_PAN
         val next = safe.copy(
             scale = nextScale,
             panX = (focusX - (focusX - safe.panX) * ratio).coerceIn(-maximumOffset, maximumOffset),
@@ -187,11 +190,11 @@ object ViewportTransform {
         pageModelWidth: Float,
         pageViewWidth: Float,
         geometry: ViewportGeometry? = null,
-        maximumScale: Float = 8f,
+        maximumScale: Float = MAXIMUM_SCALE,
     ): ViewportState {
         val modelWidth = pageModelWidth.takeIf { it.isFinite() && it > 0f } ?: 1f
         val viewWidth = pageViewWidth.takeIf { it.isFinite() && it > 0f } ?: 1f
-        val maximum = maximumScale.takeIf { it.isFinite() && it >= 1f } ?: 8f
+        val maximum = maximumScale.takeIf { it.isFinite() && it >= 1f } ?: MAXIMUM_SCALE
         val scale = (modelWidth / viewWidth).coerceIn(1f, maximum)
         return clamp(sanitize(current, maximumScale = maximum).copy(scale = scale, panX = 0f, panY = 0f), geometry)
     }
@@ -202,12 +205,12 @@ object ViewportTransform {
         pageViewWidth: Float,
         geometry: ViewportGeometry? = null,
         horizontalFill: Float = .94f,
-        maximumScale: Float = 8f,
+        maximumScale: Float = MAXIMUM_SCALE,
     ): ViewportState {
         val viewport = viewportWidth.takeIf { it.isFinite() && it > 0f } ?: 1f
         val page = pageViewWidth.takeIf { it.isFinite() && it > 0f } ?: 1f
         val fill = horizontalFill.takeIf(Float::isFinite)?.coerceIn(.5f, 1f) ?: .94f
-        val maximum = maximumScale.takeIf { it.isFinite() && it >= 1f } ?: 8f
+        val maximum = maximumScale.takeIf { it.isFinite() && it >= 1f } ?: MAXIMUM_SCALE
         val scale = (viewport * fill / page).coerceIn(1f, maximum)
         return clamp(sanitize(current, maximumScale = maximum).copy(scale = scale, panX = 0f, panY = 0f), geometry)
     }
@@ -246,9 +249,9 @@ object ViewportTransform {
 
     fun normalizeDegrees(value: Float): Float = ((value + 180f) % 360f + 360f) % 360f - 180f
 
-    fun sanitize(current: ViewportState, minimumScale: Float = 1f, maximumScale: Float = 8f): ViewportState {
+    fun sanitize(current: ViewportState, minimumScale: Float = 1f, maximumScale: Float = MAXIMUM_SCALE): ViewportState {
         val minimum = minimumScale.takeIf { it.isFinite() && it > 0f } ?: 1f
-        val maximum = maximumScale.takeIf { it.isFinite() && it >= minimum } ?: maxOf(minimum, 8f)
+        val maximum = maximumScale.takeIf { it.isFinite() && it >= minimum } ?: maxOf(minimum, MAXIMUM_SCALE)
         val scale = current.scale.takeIf(Float::isFinite)?.coerceIn(minimum, maximum) ?: minimum
         val panX = current.panX.takeIf(Float::isFinite) ?: 0f
         val panY = current.panY.takeIf(Float::isFinite) ?: 0f

@@ -1863,7 +1863,7 @@ private fun EditorScreen(
             ) {
                 val toolbarAreaWidth = maxWidth
                 val toolbarAreaHeight = maxHeight
-                AndroidView(
+                if (tool == EditorTool.SELECT) AndroidView(
                     factory = { InkViewportTouchProxy(it) },
                     update = { it.target = canvasView },
                     modifier = Modifier.fillMaxSize(),
@@ -1888,11 +1888,14 @@ private fun EditorScreen(
                     onZoom = { factor, focusX, focusY ->
                         val view = canvasView ?: return@PaperCanvas
                         val current = ViewportState(view.viewportScale, view.viewportPanX, view.viewportPanY, view.viewportRotationDegrees)
+                        val screenFocus = if (tool == EditorTool.SELECT) {
+                            ViewportTransform.pageToView(focusX, focusY, view.width.toFloat(), view.height.toFloat(), current)
+                        } else focusX to focusY
                         val next = ViewportTransform.zoomAroundScreen(
                             current,
                             factor,
-                            focusX - view.width / 2f,
-                            focusY - view.height / 2f,
+                            screenFocus.first - view.width / 2f,
+                            screenFocus.second - view.height / 2f,
                             geometry = currentViewportGeometry(),
                         )
                         applyViewport(next)
@@ -1906,7 +1909,9 @@ private fun EditorScreen(
                     onPan = { dx, dy ->
                         val view = canvasView ?: return@PaperCanvas
                         val current = ViewportState(view.viewportScale, view.viewportPanX, view.viewportPanY, view.viewportRotationDegrees)
-                        val next = ViewportTransform.panByScreen(current, dx, dy, geometry = currentViewportGeometry())
+                        val next = if (tool == EditorTool.SELECT) {
+                            ViewportTransform.panBy(current, dx, dy, geometry = currentViewportGeometry())
+                        } else ViewportTransform.panByScreen(current, dx, dy, geometry = currentViewportGeometry())
                         applyViewport(next)
                         view.apply { viewportPanX = next.panX; viewportPanY = next.panY }
                     },
@@ -1938,7 +1943,7 @@ private fun EditorScreen(
                             searchFocus = null
                             pdfLinkFocus = target.id to PdfGotoLinkNavigation.destinationBounds(link)
                             selectPageWithViewport(target.id)
-                            if (link.destinationZoom > 0f) zoom = link.destinationZoom.coerceIn(1f, 8f)
+                            if (link.destinationZoom > 0f) zoom = link.destinationZoom.coerceIn(1f, ViewportTransform.MAXIMUM_SCALE)
                         }
                     },
                     onInputDiagnostic = { kind, pressure, tilt, buttons -> inputDiagnostic = "$kind  pressure ${"%.3f".format(pressure)}  tilt ${"%.2f".format(Math.toDegrees(tilt.toDouble()))}°  buttons $buttons" },
@@ -2223,6 +2228,11 @@ private fun EditorScreen(
                             horizontalGuideY = guide.horizontalGuideY,
                         ))
                     },
+                )
+                if (tool != EditorTool.SELECT) AndroidView(
+                    factory = { InkViewportTouchProxy(it) },
+                    update = { it.target = canvasView },
+                    modifier = Modifier.fillMaxSize(),
                 )
                 val dockVertical = settings.toolbarDock in setOf(ToolbarDock.LEFT, ToolbarDock.RIGHT) || (settings.toolbarDock == ToolbarDock.FREE && settings.verticalToolbar)
                 val dockAlignment = when (settings.toolbarDock) {
@@ -3918,7 +3928,18 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
     DisposableEffect(layerElementBitmaps) { onDispose { layerElementBitmaps.values.forEach(LayerElementBitmaps::recycle) } }
     val rulerGuide = RulerGuideState(settings.rulerCenterX, settings.rulerCenterY, settings.rulerAngleDegrees, settings.rulerSnapDegrees).normalized()
     val canvasGuide = CanvasGuideState(settings.gridSnapEnabled, settings.gridSpacing, settings.alignmentGuidesEnabled, settings.verticalGuideX, settings.horizontalGuideY).normalized()
-    BoxWithConstraints(modifier.shadow(3.dp, RoundedCornerShape(4.dp)).background(paperColor)) {
+    BoxWithConstraints(
+        modifier
+            .graphicsLayer(
+                scaleX = viewportState.scale,
+                scaleY = viewportState.scale,
+                translationX = viewportState.panX,
+                translationY = viewportState.panY,
+                rotationZ = viewportState.rotationDegrees,
+            )
+            .shadow(3.dp, RoundedCornerShape(4.dp))
+            .background(paperColor),
+    ) {
         val density = LocalDensity.current
         val canvasWidthPx = with(density) { maxWidth.toPx() }.coerceAtLeast(1f)
         val canvasHeightPx = with(density) { maxHeight.toPx() }.coerceAtLeast(1f)
@@ -3926,24 +3947,11 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
         val paperMaxHeight = maxHeight
         AndroidView(
             factory = { context -> InkCanvasView(context).also { view ->
-                view.addOnAttachStateChangeListener(object : android.view.View.OnAttachStateChangeListener {
-                    override fun onViewAttachedToWindow(v: android.view.View) {
-                        // The ink canvas renders the viewport transform internally (see
-                        // InkCanvasView.drawPageContent), so the zoomed page extends beyond the
-                        // view's layout bounds. Prevent every hosting view group from clipping it.
-                        var parent = v.parent as? android.view.ViewGroup
-                        while (parent != null) {
-                            parent.clipChildren = false
-                            parent = parent.parent as? android.view.ViewGroup
-                        }
-                    }
-                    override fun onViewDetachedFromWindow(v: android.view.View) {}
-                })
                 view.tool = tool
                 view.forceNavigation = forceNavigation
                 view.rotateNavigation = rotateNavigation
                 view.externalViewportGestures = false
-                view.viewportInputTransformEnabled = true
+                view.viewportInputTransformEnabled = tool != EditorTool.SELECT
                 view.viewportScale = viewportState.scale
                 view.viewportPanX = viewportState.panX
                 view.viewportPanY = viewportState.panY
@@ -3993,7 +4001,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.forceNavigation = forceNavigation
                 view.rotateNavigation = rotateNavigation
                 view.externalViewportGestures = false
-                view.viewportInputTransformEnabled = true
+                view.viewportInputTransformEnabled = tool != EditorTool.SELECT
                 view.viewportScale = viewportState.scale
                 view.viewportPanX = viewportState.panX
                 view.viewportPanY = viewportState.panY
@@ -4056,16 +4064,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
             },
             modifier = Modifier.fillMaxSize(),
         )
-        Box(
-            Modifier.fillMaxSize()
-                .graphicsLayer(
-                    scaleX = viewportState.scale,
-                    scaleY = viewportState.scale,
-                    translationX = viewportState.panX,
-                    translationY = viewportState.panY,
-                    rotationZ = viewportState.rotationDegrees,
-                ),
-        ) {
+        Box(Modifier.fillMaxSize()) {
             searchBounds?.let { PageCropTransform.project(it, page.crop) }?.let { bounds ->
                 Canvas(Modifier.fillMaxSize()) {
                     val topLeft = Offset(bounds.left * size.width, bounds.top * size.height)

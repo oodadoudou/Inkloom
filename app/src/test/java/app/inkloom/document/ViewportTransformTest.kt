@@ -15,9 +15,9 @@ class ViewportTransformTest {
     }
 
     @Test fun scaleStopsAtConfiguredBounds() {
-        val high = ViewportTransform.zoomAround(ViewportState(3f, 0f, 0f), 3f, 0f, 0f)
+        val high = ViewportTransform.zoomAround(ViewportState(3f, 0f, 0f), 6f, 0f, 0f)
         val low = ViewportTransform.zoomAround(ViewportState(1.6f, 340f, -220f), .1f, 200f, -100f)
-        assertEquals(8f, high.scale, .001f)
+        assertEquals(ViewportTransform.MAXIMUM_SCALE, high.scale, .001f)
         assertEquals(1f, low.scale, .001f)
         assertEquals(0f, low.panX, .001f)
         assertEquals(0f, low.panY, .001f)

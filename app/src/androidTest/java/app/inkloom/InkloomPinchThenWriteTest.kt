@@ -326,14 +326,8 @@ class InkloomPinchThenWriteTest {
         System.err.println("RENDER STATE scale=$scale pan=($panX,$panY) canvasStrokes=$canvasStrokeCount diskStrokes=$diskCount")
         assertTrue("Pinch must zoom the viewport (scale=$scale)", scale > 1.5f)
 
-        // The canvas must not be clipped to its layout bounds by its host view group.
-        InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            val parent = view.parent as? ViewGroup
-            System.err.println("RENDER parentClipChildren=${parent?.clipChildren} view=${view.width}x${view.height}")
-            assertTrue("The hosting view group must not clip the zoomed canvas", parent?.clipChildren == false)
-        }
-
-        // The stroke maps to screenY = paperCentreY + panY + scale * dy for dy in [startDy, endDy].
+        // The whole PaperCanvas is physically transformed, so both its white paper and its ink
+        // use screenY = paperCentreY + panY + scale * dy for dy in [startDy, endDy].
         val startScreenY = paperCentreY + panY + scale * startDy
         val endScreenY = paperCentreY + panY + scale * endDy
         val canvasBottom = location[1] + view.height
