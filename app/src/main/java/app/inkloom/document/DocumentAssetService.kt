@@ -16,6 +16,7 @@ import android.graphics.PorterDuffXfermode
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import app.inkloom.engine.v2.brush.EngineV2BrushEvaluator
+import app.inkloom.engine.v2.render.EngineV2StampBatchRenderer
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Build
@@ -720,6 +721,12 @@ class DocumentAssetService(private val context: Context) {
         paint.colorFilter = PorterDuffColorFilter(stroke.colorArgb.toInt(), PorterDuff.Mode.SRC_IN)
         val sampledPoints = EngineV2BrushEvaluator.sampleStampPoints(stroke, width.toFloat(), height.toFloat(), dual = false)
         val taper = StrokeTaper.factors(sampledPoints, width.toFloat(), height.toFloat(), stroke.taperMode, stroke.taperStartEnabled, stroke.taperStartLength, stroke.taperStartLengthUnit, stroke.taperStartMinimum, stroke.taperEndEnabled, stroke.taperEndLength, stroke.taperEndLengthUnit, stroke.taperEndMinimum)
+        if (tips.size == 1 && EngineV2StampBatchRenderer.draw(canvas, paint, stroke, tips.single(), sampledPoints, 0, width.toFloat(), height.toFloat())) {
+            paint.blendMode = null
+            if (compositeLayer >= 0) canvas.restoreToCount(compositeLayer)
+            paint.colorFilter = null
+            return
+        }
         sampledPoints.forEachIndexed { index, point ->
             val stampsAtPoint = BrushStampCount.resolve(stroke.stampCount, stroke.stampCountJitter, stroke.renderSeed, index)
             repeat(stampsAtPoint) stamp@ { repeatIndex ->

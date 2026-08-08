@@ -31,6 +31,7 @@ import app.inkloom.engine.v2.brush.EngineV2BrushEvaluator
 import app.inkloom.engine.v2.brush.EngineV2WetSmudgeRuntime
 import app.inkloom.engine.v2.render.EngineV2ActiveStrokeSurface
 import app.inkloom.engine.v2.render.EngineV2CommittedTileScene
+import app.inkloom.engine.v2.render.EngineV2StampBatchRenderer
 import java.util.LinkedHashMap
 import java.util.concurrent.Executors
 import app.inkloom.document.InkStroke
@@ -1066,6 +1067,12 @@ class InkCanvasView(context: Context) : View(context) {
         val rotationRandom = java.util.Random(stroke.renderSeed.toLong() xor 0x49A2B31DL)
         val sampledPoints = primaryStampedPoints(stroke)
         val safeStart = stampStartIndex.coerceIn(0, sampledPoints.size)
+        if (tips.size == 1 && EngineV2StampBatchRenderer.draw(canvas, paint, stroke, tips.single(), sampledPoints, safeStart, width.toFloat(), height.toFloat())) {
+            paint.blendMode = null
+            if (compositeLayer >= 0) canvas.restoreToCount(compositeLayer)
+            paint.colorFilter = null
+            return
+        }
         advanceStampRandoms(scatterRandom, rotationRandom, stroke, sampledPoints, safeStart, dual = false)
         val taper = StrokeTaper.factors(sampledPoints, width.toFloat(), height.toFloat(), stroke.taperMode, stroke.taperStartEnabled, stroke.taperStartLength, stroke.taperStartLengthUnit, stroke.taperStartMinimum, stroke.taperEndEnabled, stroke.taperEndLength, stroke.taperEndLengthUnit, stroke.taperEndMinimum)
         sampledPoints.forEachIndexed { index, point ->
