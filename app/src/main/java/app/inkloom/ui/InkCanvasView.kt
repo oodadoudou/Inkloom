@@ -1941,9 +1941,8 @@ class InkCanvasView(context: Context) : View(context) {
                     laserTrail.append(normalizedX, normalizedY, event.eventTime)
                 }
                 else {
-                    for (i in 0 until event.historySize) historicalCanvasPoint(event, 0, i).let { point -> addPoint(point.first / width, point.second / height, event.getHistoricalPressure(i), event.getHistoricalEventTime(i), event.getHistoricalAxisValue(MotionEvent.AXIS_TILT, i), event.getHistoricalOrientation(i)) }
                     updateContinuousPlotInput(normalizedX, normalizedY, event.pressure, event.getAxisValue(MotionEvent.AXIS_TILT), event.orientation)
-                    addPoint(normalizedX, normalizedY, event.pressure, event.eventTime, event.getAxisValue(MotionEvent.AXIS_TILT), event.orientation)
+                    addMotionEventPoints(event, 0)
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -2615,38 +2614,84 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun addModeledPointV2(x: Float, y: Float, pressure: Float, time: Long, tilt: Float, orientation: Float, force: Boolean) {
+        stageNativeInput(0, x, y, pressure, time, tilt, orientation, force)
+        if (strokeInputModeler.appendBatch(1, width, height, stabilization, stabilizationBySpeed, stabilizationBySpeedMode) != 1) return
+        appendNativeOutput(0)
+        requestActiveSurfaceFrame()
+    }
+
+    /** Copies every historical and current sample into one direct-buffer batch. The event-to-model
+     * boundary now incurs one JNI call instead of one call per sample. */
+    private fun addMotionEventPoints(event: MotionEvent, pointerIndex: Int) {
+        val startedAt = System.nanoTime()
+        traceEngineV2("Inkloom.V2.InputModelBatch") {
+            val total = event.historySize + 1
+            var sourceIndex = 0
+            while (sourceIndex < total) {
+                val count = minOf(strokeInputModeler.batchCapacity, total - sourceIndex)
+                for (batchIndex in 0 until count) {
+                    val eventIndex = sourceIndex + batchIndex
+                    val historical = eventIndex < event.historySize
+                    val x = if (historical) event.getHistoricalX(pointerIndex, eventIndex) else event.getX(pointerIndex)
+                    val y = if (historical) event.getHistoricalY(pointerIndex, eventIndex) else event.getY(pointerIndex)
+                    val pressure = if (historical) event.getHistoricalPressure(pointerIndex, eventIndex) else event.getPressure(pointerIndex)
+                    val time = if (historical) event.getHistoricalEventTime(eventIndex) else event.eventTime
+                    val tilt = if (historical) event.getHistoricalAxisValue(MotionEvent.AXIS_TILT, pointerIndex, eventIndex) else event.getAxisValue(MotionEvent.AXIS_TILT, pointerIndex)
+                    val orientation = if (historical) event.getHistoricalOrientation(pointerIndex, eventIndex) else event.getOrientation(pointerIndex)
+                    stageNativeInput(
+                        batchIndex,
+                        x / width.coerceAtLeast(1),
+                        y / height.coerceAtLeast(1),
+                        pressure,
+                        time,
+                        tilt,
+                        orientation,
+                        force = false,
+                    )
+                }
+                val accepted = strokeInputModeler.appendBatch(
+                    count,
+                    width,
+                    height,
+                    stabilization,
+                    stabilizationBySpeed,
+                    stabilizationBySpeedMode,
+                )
+                for (outputIndex in 0 until accepted) appendNativeOutput(outputIndex)
+                sourceIndex += count
+            }
+        }
+        engineV2Metrics.inputModel.recordNanos(System.nanoTime() - startedAt)
+        requestActiveSurfaceFrame()
+    }
+
+    private fun stageNativeInput(index: Int, x: Float, y: Float, pressure: Float, time: Long, tilt: Float, orientation: Float, force: Boolean) {
         val adjustedPressure = PressureCalibration.apply(pressure, pressureMinimumInput, pressureMaximumInput, pressureSensitivity)
         val constrained = if (rulerEnabled && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
             RulerGuide.project(rulerGuide, x, y, width.toFloat(), height.toFloat())
         } else activeCanvasSnapConstraint?.apply(x, y)
-        val rawX = (constrained?.x ?: x).coerceIn(0f, 1f)
-        val rawY = (constrained?.y ?: y).coerceIn(0f, 1f)
-        if (!strokeInputModeler.append(
-                rawX = rawX,
-                rawY = rawY,
-                adjustedPressure = adjustedPressure,
-                sampleTimeMs = time,
-                sampleTilt = tilt,
-                sampleOrientation = orientation,
-                viewportWidthPx = width,
-                viewportHeightPx = height,
-                stabilization = stabilization,
-                stabilizationBySpeed = stabilizationBySpeed,
-                stabilizationBySpeedMode = stabilizationBySpeedMode,
-                force = force,
-            )
-        ) return
-        val point = StrokePoint(
-            x = strokeInputModeler.x,
-            y = strokeInputModeler.y,
-            pressure = strokeInputModeler.pressure,
-            timeMs = strokeInputModeler.timeMs,
-            tilt = strokeInputModeler.tilt,
-            orientation = strokeInputModeler.orientation,
-            velocity = strokeInputModeler.velocity,
+        strokeInputModeler.putSample(
+            index,
+            (constrained?.x ?: x).coerceIn(0f, 1f),
+            (constrained?.y ?: y).coerceIn(0f, 1f),
+            adjustedPressure,
+            time,
+            tilt,
+            orientation,
+            force,
         )
-        currentPoints += point
-        requestActiveSurfaceFrame()
+    }
+
+    private fun appendNativeOutput(index: Int) {
+        currentPoints += StrokePoint(
+            x = strokeInputModeler.x(index),
+            y = strokeInputModeler.y(index),
+            pressure = strokeInputModeler.pressure(index),
+            timeMs = strokeInputModeler.timeMs(index),
+            tilt = strokeInputModeler.tilt(index),
+            orientation = strokeInputModeler.orientation(index),
+            velocity = strokeInputModeler.velocity(index),
+        )
     }
 
     private fun requestActiveSurfaceFrame() {

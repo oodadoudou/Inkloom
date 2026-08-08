@@ -6,15 +6,25 @@ import java.nio.ByteOrder
 /** JNI owner for the single Engine V2 input session. The direct result buffer is allocated once. */
 internal class NativeStrokeInputModeler : AutoCloseable {
     private var handle: Long = nativeCreate().also { check(it != 0L) { "Unable to create Engine V2 input session" } }
-    private val output = ByteBuffer.allocateDirect(OUTPUT_BYTES).order(ByteOrder.nativeOrder())
+    private val input = ByteBuffer.allocateDirect(MAX_BATCH_SAMPLES * INPUT_STRIDE_BYTES).order(ByteOrder.nativeOrder())
+    private val output = ByteBuffer.allocateDirect(MAX_BATCH_SAMPLES * OUTPUT_STRIDE_BYTES).order(ByteOrder.nativeOrder())
 
-    val x: Float get() = output.getFloat(OFFSET_X)
-    val y: Float get() = output.getFloat(OFFSET_Y)
-    val pressure: Float get() = output.getFloat(OFFSET_PRESSURE)
-    val timeMs: Long get() = output.getLong(OFFSET_TIME)
-    val tilt: Float get() = output.getFloat(OFFSET_TILT)
-    val orientation: Float get() = output.getFloat(OFFSET_ORIENTATION)
-    val velocity: Float get() = output.getFloat(OFFSET_VELOCITY)
+    val x: Float get() = x(0)
+    val y: Float get() = y(0)
+    val pressure: Float get() = pressure(0)
+    val timeMs: Long get() = timeMs(0)
+    val tilt: Float get() = tilt(0)
+    val orientation: Float get() = orientation(0)
+    val velocity: Float get() = velocity(0)
+    val batchCapacity: Int get() = MAX_BATCH_SAMPLES
+
+    fun x(index: Int): Float = output.getFloat(outputOffset(index, OFFSET_X))
+    fun y(index: Int): Float = output.getFloat(outputOffset(index, OFFSET_Y))
+    fun pressure(index: Int): Float = output.getFloat(outputOffset(index, OFFSET_PRESSURE))
+    fun timeMs(index: Int): Long = output.getLong(outputOffset(index, OFFSET_TIME))
+    fun tilt(index: Int): Float = output.getFloat(outputOffset(index, OFFSET_TILT))
+    fun orientation(index: Int): Float = output.getFloat(outputOffset(index, OFFSET_ORIENTATION))
+    fun velocity(index: Int): Float = output.getFloat(outputOffset(index, OFFSET_VELOCITY))
 
     fun reset() = nativeReset(requireHandle())
 
@@ -31,11 +41,49 @@ internal class NativeStrokeInputModeler : AutoCloseable {
         stabilizationBySpeed: Boolean,
         stabilizationBySpeedMode: Int,
         force: Boolean = false,
-    ): Boolean = nativeAppend(
-        requireHandle(), rawX, rawY, adjustedPressure, sampleTimeMs, sampleTilt,
-        sampleOrientation, viewportWidthPx, viewportHeightPx, stabilization,
-        stabilizationBySpeed, stabilizationBySpeedMode, force, output,
-    )
+    ): Boolean {
+        putSample(0, rawX, rawY, adjustedPressure, sampleTimeMs, sampleTilt, sampleOrientation, force)
+        return appendBatch(1, viewportWidthPx, viewportHeightPx, stabilization, stabilizationBySpeed, stabilizationBySpeedMode) == 1
+    }
+
+    /** Stages one raw input in the preallocated direct buffer. No object crosses JNI. */
+    fun putSample(
+        index: Int,
+        rawX: Float,
+        rawY: Float,
+        adjustedPressure: Float,
+        sampleTimeMs: Long,
+        sampleTilt: Float,
+        sampleOrientation: Float,
+        force: Boolean = false,
+    ) {
+        require(index in 0 until MAX_BATCH_SAMPLES)
+        val offset = index * INPUT_STRIDE_BYTES
+        input.putFloat(offset + INPUT_OFFSET_X, rawX)
+        input.putFloat(offset + INPUT_OFFSET_Y, rawY)
+        input.putFloat(offset + INPUT_OFFSET_PRESSURE, adjustedPressure)
+        input.putLong(offset + INPUT_OFFSET_TIME, sampleTimeMs)
+        input.putFloat(offset + INPUT_OFFSET_TILT, sampleTilt)
+        input.putFloat(offset + INPUT_OFFSET_ORIENTATION, sampleOrientation)
+        input.putInt(offset + INPUT_OFFSET_FLAGS, if (force) INPUT_FLAG_FORCE else 0)
+    }
+
+    /** Models every staged historical/current sample with one coarse-grained JNI call. */
+    fun appendBatch(
+        sampleCount: Int,
+        viewportWidthPx: Int,
+        viewportHeightPx: Int,
+        stabilization: Float,
+        stabilizationBySpeed: Boolean,
+        stabilizationBySpeedMode: Int,
+    ): Int {
+        if (sampleCount <= 0) return 0
+        require(sampleCount <= MAX_BATCH_SAMPLES)
+        return nativeAppendBatch(
+            requireHandle(), input, sampleCount, viewportWidthPx, viewportHeightPx,
+            stabilization, stabilizationBySpeed, stabilizationBySpeedMode, output,
+        )
+    }
 
     override fun close() {
         val current = handle
@@ -52,25 +100,30 @@ internal class NativeStrokeInputModeler : AutoCloseable {
     private external fun nativeCreate(): Long
     private external fun nativeDestroy(handle: Long)
     private external fun nativeReset(handle: Long)
-    private external fun nativeAppend(
+    private external fun nativeAppendBatch(
         handle: Long,
-        rawX: Float,
-        rawY: Float,
-        adjustedPressure: Float,
-        sampleTimeMs: Long,
-        sampleTilt: Float,
-        sampleOrientation: Float,
+        input: ByteBuffer,
+        sampleCount: Int,
         viewportWidthPx: Int,
         viewportHeightPx: Int,
         stabilization: Float,
         stabilizationBySpeed: Boolean,
         stabilizationBySpeedMode: Int,
-        force: Boolean,
         output: ByteBuffer,
-    ): Boolean
+    ): Int
 
     private companion object {
-        const val OUTPUT_BYTES = 40
+        const val MAX_BATCH_SAMPLES = 256
+        const val INPUT_STRIDE_BYTES = 32
+        const val INPUT_OFFSET_X = 0
+        const val INPUT_OFFSET_Y = 4
+        const val INPUT_OFFSET_PRESSURE = 8
+        const val INPUT_OFFSET_TIME = 16
+        const val INPUT_OFFSET_TILT = 24
+        const val INPUT_OFFSET_ORIENTATION = 28
+        const val INPUT_OFFSET_FLAGS = 12
+        const val INPUT_FLAG_FORCE = 1
+        const val OUTPUT_STRIDE_BYTES = 40
         const val OFFSET_X = 0
         const val OFFSET_Y = 4
         const val OFFSET_PRESSURE = 8
@@ -81,6 +134,11 @@ internal class NativeStrokeInputModeler : AutoCloseable {
 
         init {
             System.loadLibrary("inkloom_engine_v2")
+        }
+
+        fun outputOffset(index: Int, fieldOffset: Int): Int {
+            require(index in 0 until MAX_BATCH_SAMPLES)
+            return index * OUTPUT_STRIDE_BYTES + fieldOffset
         }
     }
 }

@@ -28,4 +28,31 @@ class NativeStrokeInputModelerTest {
             assertEquals(0f, modeler.velocity, .00001f)
         }
     }
+
+    @Test
+    fun historicalSamplesCrossJniAsOneOrderedBatch() {
+        NativeStrokeInputModeler().use { modeler ->
+            modeler.putSample(0, .1f, .2f, .3f, 10L, .1f, .2f)
+            modeler.putSample(1, .2f, .3f, .5f, 12L, .2f, .3f)
+            modeler.putSample(2, .4f, .5f, .8f, 14L, .3f, .4f)
+
+            val accepted = modeler.appendBatch(
+                sampleCount = 3,
+                viewportWidthPx = 1200,
+                viewportHeightPx = 1600,
+                stabilization = 0f,
+                stabilizationBySpeed = false,
+                stabilizationBySpeedMode = StrokeStabilization.REDUCE_WHEN_FAST,
+            )
+
+            assertEquals(3, accepted)
+            assertEquals(.1f, modeler.x(0), .00001f)
+            assertEquals(.2f, modeler.x(1), .00001f)
+            assertEquals(.4f, modeler.x(2), .00001f)
+            assertEquals(10L, modeler.timeMs(0))
+            assertEquals(12L, modeler.timeMs(1))
+            assertEquals(14L, modeler.timeMs(2))
+            assertTrue(modeler.velocity(2) > 0f)
+        }
+    }
 }
