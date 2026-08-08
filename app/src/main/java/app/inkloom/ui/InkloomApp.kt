@@ -28,6 +28,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -4983,6 +4984,8 @@ private fun ProcreateVerticalSlider(
 @Composable
 private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, dragModifier: Modifier, vertical: Boolean, moreToolsOpen: Boolean, onMoreToolsOpen: (Boolean) -> Unit, controlsOpen: Boolean, onControlsOpen: (Boolean) -> Unit, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, symmetryMode: SymmetryMode, onSymmetryMode: (SymmetryMode) -> Unit) {
     val dragToolbarDescription = tr("Drag toolbar", "拖动工具栏")
+    var toolLibraryLayout by rememberSaveable { mutableStateOf(ToolLibraryLayout.LIST) }
+    var toolLibrarySort by rememberSaveable { mutableStateOf(ToolLibrarySort.DEFAULT) }
     val libraryPresets = remember(brushes) {
         val defaults = systemBrushCatalog()
         defaults + brushes.filterNot { imported -> defaults.any { it.id == imported.id } }
@@ -5018,7 +5021,7 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
     Box {
         CompactToolbarIconButton(onClick = { onMoreToolsOpen(true) }, description = tr("More tools", "更多工具"), selected = rulerEnabled || gridSnapEnabled || alignmentGuidesEnabled || tool in setOf(EditorTool.EYEDROPPER, EditorTool.FILL, EditorTool.SMUDGE, EditorTool.SHAPE, EditorTool.TEXT, EditorTool.NOTE, EditorTool.LINK, EditorTool.IMAGE, EditorTool.AUDIO, EditorTool.LASER)) { Icon(Icons.Outlined.Apps, null, Modifier.size(20.dp)) }
         DropdownMenu(expanded = moreToolsOpen, onDismissRequest = { onMoreToolsOpen(false) }) {
-            listOf(
+            val unsortedTools = listOf(
                 Triple(EditorTool.EYEDROPPER, Icons.Outlined.Colorize, tr("Eyedropper", "吸管")),
                 Triple(EditorTool.FILL, Icons.Outlined.FormatColorFill, tr("Paint bucket", "油漆桶")),
                 Triple(EditorTool.SMUDGE, Icons.Outlined.Gesture, tr("Smudge", "涂抹")),
@@ -5029,8 +5032,49 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
                 Triple(EditorTool.IMAGE, Icons.Outlined.Image, tr("Image", "图片")),
                 Triple(EditorTool.AUDIO, Icons.Outlined.Mic, tr("Audio", "音频")),
                 Triple(EditorTool.LASER, Icons.Outlined.TrackChanges, tr("Laser pointer", "激光笔")),
-            ).forEach { (value, icon, label) ->
+            )
+            val displayedTools = if (toolLibrarySort == ToolLibrarySort.NAME) unsortedTools.sortedBy { it.third.lowercase() } else unsortedTools
+            Row(Modifier.width(292.dp).height(40.dp).padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(tr("Tools", "工具"), Modifier.weight(1f), fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                listOf(
+                    ToolLibraryLayout.LIST to Icons.Outlined.ViewList,
+                    ToolLibraryLayout.GRID to Icons.Outlined.GridView,
+                    ToolLibraryLayout.COMPACT to Icons.Outlined.DensitySmall,
+                ).forEach { (layout, icon) ->
+                    IconButton(
+                        onClick = { toolLibraryLayout = layout },
+                        modifier = Modifier.size(30.dp).background(if (toolLibraryLayout == layout) Color(0xFFE2E2E2) else Color.Transparent, RoundedCornerShape(4.dp)),
+                    ) { Icon(icon, layout.name, Modifier.size(16.dp)) }
+                }
+                IconButton(onClick = { toolLibrarySort = if (toolLibrarySort == ToolLibrarySort.DEFAULT) ToolLibrarySort.NAME else ToolLibrarySort.DEFAULT }, modifier = Modifier.size(30.dp)) {
+                    Icon(Icons.Outlined.SortByAlpha, tr("Toggle tool sorting", "切换工具排序"), Modifier.size(16.dp), tint = if (toolLibrarySort == ToolLibrarySort.NAME) Ink else MutedInk)
+                }
+            }
+            HorizontalDivider()
+            if (toolLibraryLayout == ToolLibraryLayout.LIST) displayedTools.forEach { (value, icon, label) ->
                 DropdownMenuItem(text = { Text(label) }, leadingIcon = { Icon(icon, null) }, onClick = { onMoreToolsOpen(false); onTool(value) })
+            } else {
+                val columns = if (toolLibraryLayout == ToolLibraryLayout.COMPACT) 5 else 3
+                Column(Modifier.width(292.dp).padding(5.dp)) {
+                    displayedTools.chunked(columns).forEach { rowTools ->
+                        Row(Modifier.fillMaxWidth()) {
+                            rowTools.forEach { (value, icon, label) ->
+                                Column(
+                                    Modifier.weight(1f).height(if (toolLibraryLayout == ToolLibraryLayout.COMPACT) 44.dp else 68.dp)
+                                        .clickable { onMoreToolsOpen(false); onTool(value) }
+                                        .background(if (tool == value) Color(0xFFE0E0E0) else Color.Transparent, RoundedCornerShape(4.dp))
+                                        .padding(4.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center,
+                                ) {
+                                    Icon(icon, label, Modifier.size(if (toolLibraryLayout == ToolLibraryLayout.COMPACT) 22.dp else 25.dp))
+                                    if (toolLibraryLayout == ToolLibraryLayout.GRID) Text(label, fontSize = 9.sp, maxLines = 1)
+                                }
+                            }
+                            repeat(columns - rowTools.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                    }
+                }
             }
             HorizontalDivider()
             DropdownMenuItem(
@@ -5933,7 +5977,7 @@ private fun BrushPanel(
     panelLocked: Boolean = false,
     onPanelMode: (WorkspacePanelMode) -> Unit = {},
     onPanelLocked: (Boolean) -> Unit = {},
-    modifier: Modifier = Modifier.width(220.dp).fillMaxHeight().background(Color(0xFFF4F4F4)).border(1.dp, OutlineSoft).padding(2.dp),
+    modifier: Modifier = Modifier,
     onPanelDragStart: () -> Unit = {},
     onPanelDrag: (Float, Float) -> Unit = { _, _ -> },
     onPanelDragEnd: () -> Unit = {},
@@ -5996,9 +6040,13 @@ private fun BrushPanel(
     var favoritesOnly by remember { mutableStateOf(false) }
     var showHidden by remember { mutableStateOf(false) }
     var selectedGroup by remember { mutableStateOf<String?>(null) }
+    var requestedLayout by rememberSaveable { mutableStateOf(BrushLibraryLayout.AUTO) }
+    var sortMode by rememberSaveable { mutableStateOf(BrushLibrarySort.CUSTOM) }
+    var sortMenu by remember { mutableStateOf(false) }
     var multiSelecting by remember { mutableStateOf(false) }
     var selectedBrushIds by remember { mutableStateOf(emptySet<String>()) }
     val brushListState = rememberLazyListState()
+    val brushGridState = rememberLazyGridState()
     var batchGroupOperation by remember { mutableStateOf<BrushBatchGroupOperation?>(null) }
     var confirmBatchDelete by remember { mutableStateOf(false) }
     var collapsedGroupPaths by remember { mutableStateOf(emptySet<String>()) }
@@ -6017,7 +6065,7 @@ private fun BrushPanel(
         collapsedGroupPaths = collapsedGroupPaths.filterTo(linkedSetOf()) { collapsed -> groupTree.any { it.equals(collapsed, true) } }
         if (selectedGroup != null && selectedGroup != UNGROUPED_BRUSH_FILTER && groupTree.none { it.equals(selectedGroup, true) }) selectedGroup = null
     }
-    val visibleBrushes = libraryBrushes.filter { brush ->
+    val filteredBrushes = libraryBrushes.filter { brush ->
         val normalizedGroup = BrushGroupOperations.normalize(brush.groupName)
         val groupMatches = when (selectedGroup) {
             null -> true
@@ -6025,13 +6073,22 @@ private fun BrushPanel(
             else -> BrushGroupOperations.isWithin(normalizedGroup, selectedGroup.orEmpty())
         }
         (showHidden || !brush.hidden) && (!favoritesOnly || brush.favorite) && groupMatches && (format == null || brush.format == format) && (search.isBlank() || brush.name.contains(search, true) || normalizedGroup.contains(search, true) || brush.tags.any { it.contains(search, true) })
-    }.sortedWith(compareBy<ImportedBrush> { it.sortOrder }.thenByDescending { it.favorite }.thenByDescending { it.lastUsedAt }.thenBy { it.name.lowercase() })
-    LaunchedEffect(search, format, favoritesOnly, showHidden, selectedGroup) {
+    }
+    val visibleBrushes = when (sortMode) {
+        BrushLibrarySort.CUSTOM -> filteredBrushes.sortedWith(compareBy<ImportedBrush> { it.sortOrder }.thenByDescending { it.favorite }.thenByDescending { it.lastUsedAt })
+        BrushLibrarySort.RECENT -> filteredBrushes.sortedWith(compareByDescending<ImportedBrush> { it.lastUsedAt }.thenBy { it.name.lowercase() })
+        BrushLibrarySort.NAME -> filteredBrushes.sortedBy { it.name.lowercase() }
+        BrushLibrarySort.SIZE -> filteredBrushes.sortedWith(compareByDescending<ImportedBrush> { it.defaultSize }.thenBy { it.name.lowercase() })
+    }
+    LaunchedEffect(search, format, favoritesOnly, showHidden, selectedGroup, sortMode, requestedLayout) {
         brushListState.scrollToItem(0)
+        brushGridState.scrollToItem(0)
     }
     val groupOrder = groups.mapIndexed { index, group -> group.lowercase() to index }.toMap()
-    val brushSections = visibleBrushes.groupBy { BrushGroupOperations.normalize(it.groupName).ifBlank { "Ungrouped" } }
-        .toList().sortedBy { (group, _) -> groupOrder[group.lowercase()] ?: Int.MAX_VALUE }
+    val brushSections = if (sortMode == BrushLibrarySort.CUSTOM) {
+        visibleBrushes.groupBy { BrushGroupOperations.normalize(it.groupName).ifBlank { "Ungrouped" } }
+            .toList().sortedBy { (group, _) -> groupOrder[group.lowercase()] ?: Int.MAX_VALUE }
+    } else listOf("" to visibleBrushes)
     val dragDescription = tr("Drag brushes panel", "拖动笔刷面板")
     val newBrushName = tr("New brush", "新笔刷")
     val createdInInkloomReport = tr("Created in Inkloom", "在 Inkloom 中创建")
@@ -6040,10 +6097,17 @@ private fun BrushPanel(
     val currentPanelDragEnd by rememberUpdatedState(onPanelDragEnd)
     val currentPanelDragCancel by rememberUpdatedState(onPanelDragCancel)
     val bottomDocked = dock == WorkspacePanelDock.BOTTOM
+    val configuration = LocalConfiguration.current
+    val automaticSideWidth = AdaptivePanelLayout.sidePanelWidthDp(configuration.screenWidthDp).dp
+    val resolvedModifier = when (dock) {
+        WorkspacePanelDock.LEFT, WorkspacePanelDock.RIGHT -> modifier.width(automaticSideWidth).fillMaxHeight()
+        WorkspacePanelDock.BOTTOM -> modifier.fillMaxSize()
+        WorkspacePanelDock.FREE -> modifier.fillMaxSize()
+    }.background(Color(0xFFF4F4F4)).border(1.dp, OutlineSoft).padding(2.dp)
     val visibleGroupPaths = groupTree.filter { path ->
         generateSequence(BrushGroupOperations.parent(path), BrushGroupOperations::parent).none { ancestor -> collapsedGroupPaths.any { it.equals(ancestor, true) } }
     }
-    Column(modifier) {
+    Column(resolvedModifier) {
         Row(Modifier.fillMaxWidth().height(27.dp).background(Color(0xFFE3E3E3)).border(1.dp, OutlineSoft), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.Menu, null, Modifier.size(19.dp).padding(3.dp), tint = MutedInk)
             Text(
@@ -6239,41 +6303,107 @@ private fun BrushPanel(
             }
         }
         if (libraryBrushes.isNotEmpty()) {
-            Text("${tr("BRUSHES", "笔刷")} (${visibleBrushes.size}/${libraryBrushes.size})", fontSize = 11.sp, color = MutedInk)
-            LazyColumn(
-                state = brushListState,
-                modifier = Modifier.weight(1f).border(1.dp, OutlineSoft),
-                contentPadding = PaddingValues(vertical = 1.dp),
-            ) {
-                brushSections.forEach { (group, sectionBrushes) ->
-                    item(key = "group:$group") {
-                        Text(
-                            if (group == "Ungrouped") tr("UNGROUPED", "未分组") else group.uppercase(),
-                            color = MutedInk,
-                            fontSize = 9.sp,
-                            modifier = Modifier.fillMaxWidth().height(22.dp).background(Color(0xFFE9E9E9)).padding(horizontal = 6.dp).wrapContentHeight(Alignment.CenterVertically),
-                        )
+            Row(Modifier.fillMaxWidth().height(36.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("${tr("BRUSHES", "笔刷")} (${visibleBrushes.size}/${libraryBrushes.size})", fontSize = 11.sp, color = MutedInk, modifier = Modifier.weight(1f))
+                listOf(
+                    BrushLibraryLayout.AUTO to (Icons.Outlined.AutoAwesome to tr("Automatic layout", "自动布局")),
+                    BrushLibraryLayout.COMPACT to (Icons.Outlined.DensitySmall to tr("Compact layout", "紧凑布局")),
+                    BrushLibraryLayout.LIST to (Icons.Outlined.ViewList to tr("List layout", "列表布局")),
+                    BrushLibraryLayout.GRID to (Icons.Outlined.GridView to tr("Grid layout", "网格布局")),
+                ).forEach { (layout, iconAndLabel) ->
+                    IconButton(
+                        onClick = { requestedLayout = layout },
+                        modifier = Modifier.size(30.dp).background(if (requestedLayout == layout) Color(0xFFE0E0E0) else Color.Transparent, RoundedCornerShape(4.dp)),
+                    ) { Icon(iconAndLabel.first, iconAndLabel.second, Modifier.size(16.dp)) }
+                }
+                Box {
+                    IconButton(onClick = { sortMenu = true }, modifier = Modifier.size(30.dp)) { Icon(Icons.Outlined.Sort, tr("Sort brushes", "笔刷排序"), Modifier.size(17.dp)) }
+                    DropdownMenu(sortMenu, { sortMenu = false }) {
+                        listOf(
+                            BrushLibrarySort.CUSTOM to tr("Custom order", "自定义顺序"),
+                            BrushLibrarySort.RECENT to tr("Recently used", "最近使用"),
+                            BrushLibrarySort.NAME to tr("Name", "名称"),
+                            BrushLibrarySort.SIZE to tr("Default size", "默认尺寸"),
+                        ).forEach { (mode, label) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                leadingIcon = { if (sortMode == mode) Icon(Icons.Outlined.Check, null) },
+                                onClick = { sortMode = mode; sortMenu = false },
+                            )
+                        }
                     }
-                    items(items = sectionBrushes, key = { it.id }) { brush ->
-                        ImportedBrushRow(
-                            brush = brush,
-                            editable = brush.format != BrushFormat.SYSTEM,
-                            selected = brush.id == selectedBrushId,
-                            multiSelecting = multiSelecting,
-                            multiSelected = brush.id in selectedBrushIds,
-                            onToggleSelection = { if (brush.format != BrushFormat.SYSTEM) selectedBrushIds = if (brush.id in selectedBrushIds) selectedBrushIds - brush.id else selectedBrushIds + brush.id },
-                            onBeginSelection = { if (brush.format != BrushFormat.SYSTEM) { multiSelecting = true; selectedBrushIds = selectedBrushIds + brush.id } },
-                            onSelect = { onBrushSelected(brush) },
-                            onReport = { reportBrush = brush },
-                            onEdit = { editBrush = brush },
-                            onHistory = { historyBrush = brush },
-                            onMove = { moveBrush = brush },
-                            onExport = { onExportBrush(brush) },
-                            onFavorite = { onUpdateBrush(brush.copy(favorite = !brush.favorite)) },
-                            onHide = { onUpdateBrush(brush.copy(hidden = !brush.hidden)) },
-                            onDelete = { historyStore.clear(brush.id); historyRevision++; onDeleteBrush(brush.id) },
-                            onReorder = { delta -> onReorderBrush(brush.id, delta) },
-                        )
+                }
+            }
+            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().border(1.dp, OutlineSoft)) {
+                val effectiveLayout = AdaptivePanelLayout.brushLayout(requestedLayout, maxWidth.value, bottomDocked)
+                when (effectiveLayout) {
+                    BrushLibraryLayout.GRID -> LazyVerticalGrid(
+                        columns = GridCells.Adaptive(if (maxWidth < 330.dp) 104.dp else 128.dp),
+                        state = brushGridState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(3.dp),
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                    ) {
+                        items(items = visibleBrushes, key = { it.id }) { brush ->
+                            ImportedBrushTile(
+                                brush = brush,
+                                editable = brush.format != BrushFormat.SYSTEM,
+                                selected = brush.id == selectedBrushId,
+                                multiSelecting = multiSelecting,
+                                multiSelected = brush.id in selectedBrushIds,
+                                onToggleSelection = { if (brush.format != BrushFormat.SYSTEM) selectedBrushIds = if (brush.id in selectedBrushIds) selectedBrushIds - brush.id else selectedBrushIds + brush.id },
+                                onBeginSelection = { if (brush.format != BrushFormat.SYSTEM) { multiSelecting = true; selectedBrushIds = selectedBrushIds + brush.id } },
+                                onSelect = { onBrushSelected(brush) },
+                                onReport = { reportBrush = brush },
+                                onEdit = { editBrush = brush },
+                                onHistory = { historyBrush = brush },
+                                onMove = { moveBrush = brush },
+                                onExport = { onExportBrush(brush) },
+                                onFavorite = { onUpdateBrush(brush.copy(favorite = !brush.favorite)) },
+                                onHide = { onUpdateBrush(brush.copy(hidden = !brush.hidden)) },
+                                onDelete = { historyStore.clear(brush.id); historyRevision++; onDeleteBrush(brush.id) },
+                                onReorder = { delta -> onReorderBrush(brush.id, delta) },
+                            )
+                        }
+                    }
+                    else -> LazyColumn(
+                        state = brushListState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(vertical = 1.dp),
+                    ) {
+                        brushSections.forEach { (group, sectionBrushes) ->
+                            if (group.isNotBlank()) item(key = "group:$group") {
+                                Text(
+                                    if (group == "Ungrouped") tr("UNGROUPED", "未分组") else group.uppercase(),
+                                    color = MutedInk,
+                                    fontSize = 9.sp,
+                                    modifier = Modifier.fillMaxWidth().height(22.dp).background(Color(0xFFE9E9E9)).padding(horizontal = 6.dp).wrapContentHeight(Alignment.CenterVertically),
+                                )
+                            }
+                            items(items = sectionBrushes, key = { it.id }) { brush ->
+                                ImportedBrushRow(
+                                    brush = brush,
+                                    editable = brush.format != BrushFormat.SYSTEM,
+                                    compact = effectiveLayout == BrushLibraryLayout.COMPACT,
+                                    selected = brush.id == selectedBrushId,
+                                    multiSelecting = multiSelecting,
+                                    multiSelected = brush.id in selectedBrushIds,
+                                    onToggleSelection = { if (brush.format != BrushFormat.SYSTEM) selectedBrushIds = if (brush.id in selectedBrushIds) selectedBrushIds - brush.id else selectedBrushIds + brush.id },
+                                    onBeginSelection = { if (brush.format != BrushFormat.SYSTEM) { multiSelecting = true; selectedBrushIds = selectedBrushIds + brush.id } },
+                                    onSelect = { onBrushSelected(brush) },
+                                    onReport = { reportBrush = brush },
+                                    onEdit = { editBrush = brush },
+                                    onHistory = { historyBrush = brush },
+                                    onMove = { moveBrush = brush },
+                                    onExport = { onExportBrush(brush) },
+                                    onFavorite = { onUpdateBrush(brush.copy(favorite = !brush.favorite)) },
+                                    onHide = { onUpdateBrush(brush.copy(hidden = !brush.hidden)) },
+                                    onDelete = { historyStore.clear(brush.id); historyRevision++; onDeleteBrush(brush.id) },
+                                    onReorder = { delta -> onReorderBrush(brush.id, delta) },
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -6921,6 +7051,7 @@ private fun CspBrushQuickSlider(label: String, value: Float, display: String, on
 @Composable
 private fun ImportedBrushTile(
     brush: ImportedBrush,
+    editable: Boolean,
     selected: Boolean,
     multiSelecting: Boolean,
     multiSelected: Boolean,
@@ -6948,8 +7079,8 @@ private fun ImportedBrushTile(
             .height(92.dp)
             .semantics { contentDescription = tileDescription }
             .combinedClickable(
-                onClick = { if (multiSelecting) onToggleSelection() else onSelect() },
-                onLongClick = onBeginSelection,
+                onClick = { if (multiSelecting && editable) onToggleSelection() else onSelect() },
+                onLongClick = if (editable) onBeginSelection else null,
             ),
         colors = CardDefaults.cardColors(containerColor = if (active) Color(0xFFE1E1E1) else Color(0xFFF8F8F8)),
         border = CardDefaults.outlinedCardBorder().copy(
@@ -6971,7 +7102,7 @@ private fun ImportedBrushTile(
                 } else if (brush.favorite) {
                     Icon(Icons.Default.Star, tr("Favorite", "收藏"), Modifier.align(Alignment.TopStart).padding(2.dp).size(15.dp), tint = Ink)
                 }
-                Box(Modifier.align(Alignment.TopEnd)) {
+                if (editable) Box(Modifier.align(Alignment.TopEnd)) {
                     IconButton(onClick = { menu = true }, modifier = Modifier.size(24.dp).background(Color.White.copy(alpha = .86f), RoundedCornerShape(4.dp))) {
                         Icon(Icons.Default.MoreVert, tr("Brush actions", "笔刷操作"), Modifier.size(15.dp))
                     }
@@ -6988,7 +7119,7 @@ private fun ImportedBrushTile(
                 }
             }
             Row(Modifier.fillMaxWidth().height(24.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (!multiSelecting) Icon(
+                if (!multiSelecting && editable) Icon(
                     Icons.Outlined.DragIndicator,
                     tr("Drag to reorder brush", "拖动调整笔刷顺序"),
                     Modifier.size(18.dp).pointerInput(brush.id) {
@@ -7016,6 +7147,7 @@ private fun ImportedBrushTile(
 private fun ImportedBrushRow(
     brush: ImportedBrush,
     editable: Boolean,
+    compact: Boolean = false,
     selected: Boolean,
     multiSelecting: Boolean,
     multiSelected: Boolean,
@@ -7044,7 +7176,7 @@ private fun ImportedBrushRow(
         colors = CardDefaults.cardColors(containerColor = if (selected || multiSelected) Color(0xFFD6DCE8) else Color(0xFFF4F4F4)),
         border = CardDefaults.outlinedCardBorder().copy(width = 1.dp, brush = androidx.compose.ui.graphics.SolidColor(OutlineSoft)),
     ) {
-        Row(Modifier.height(52.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.height(if (compact) 40.dp else 52.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             if (multiSelecting && editable) {
                 Icon(if (multiSelected) Icons.Default.CheckBox else Icons.Outlined.CheckBoxOutlineBlank, if (multiSelected) tr("Selected", "已选择") else tr("Not selected", "未选择"), Modifier.size(24.dp), tint = if (multiSelected) Sage else MutedInk)
             } else if (editable) {
@@ -7066,15 +7198,15 @@ private fun ImportedBrushRow(
                 )
             }
             Spacer(Modifier.width(3.dp))
-            BrushTipPreview(brush, Modifier.width(52.dp).height(40.dp))
+            BrushTipPreview(brush, Modifier.width(if (compact) 42.dp else 52.dp).height(if (compact) 30.dp else 40.dp))
             Spacer(Modifier.width(6.dp))
             Column(Modifier.weight(1f)) {
                 Text(brush.name, maxLines = 1, fontSize = 11.sp)
-                Text(listOf(brush.format.label, brush.groupName.takeIf(String::isNotBlank)).filterNotNull().joinToString(" · "), color = MutedInk, fontSize = 9.sp, maxLines = 1)
-                Canvas(Modifier.fillMaxWidth().height(8.dp)) { drawLine(Ink, Offset(1f, size.height / 2), Offset(size.width - 1f, size.height / 2), strokeWidth = (brush.defaultSize / 9f).coerceIn(1.5f, 7f), cap = StrokeCap.Round) }
+                if (!compact) Text(listOf(brush.format.label, brush.groupName.takeIf(String::isNotBlank)).filterNotNull().joinToString(" · "), color = MutedInk, fontSize = 9.sp, maxLines = 1)
+                Canvas(Modifier.fillMaxWidth().height(if (compact) 6.dp else 8.dp)) { drawLine(Ink, Offset(1f, size.height / 2), Offset(size.width - 1f, size.height / 2), strokeWidth = (brush.defaultSize / 9f).coerceIn(1.5f, 7f), cap = StrokeCap.Round) }
             }
             if (!multiSelecting && editable) {
-                IconButton(onClick = onEdit, modifier = Modifier.size(24.dp)) { Icon(Icons.Outlined.Tune, tr("Edit brush", "编辑笔刷"), modifier = Modifier.size(15.dp)) }
+                if (!compact) IconButton(onClick = onEdit, modifier = Modifier.size(24.dp)) { Icon(Icons.Outlined.Tune, tr("Edit brush", "编辑笔刷"), modifier = Modifier.size(15.dp)) }
                 Box {
                     IconButton(onClick = { menu = true }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.MoreVert, tr("Brush actions", "笔刷操作"), modifier = Modifier.size(15.dp)) }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
