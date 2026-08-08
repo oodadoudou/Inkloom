@@ -24,6 +24,7 @@ data class LibraryUiState(
     val pdfIndexingDocumentIds: Set<String> = emptySet(),
     val handwritingRecognitionPageIds: Set<String> = emptySet(),
     val imageOcrPageIds: Set<String> = emptySet(),
+    val textRecognitionDocumentIds: Set<String> = emptySet(),
 )
 
 class InkloomViewModel(application: Application) : AndroidViewModel(application) {
@@ -443,19 +444,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    buildList {
-                        (snapshot.background as? PageBackground.Image)?.assetPath?.let(::File)?.takeIf(File::isFile)?.let { file ->
-                            addAll(textRecognition.recognizeImage(file, "background", languageTag))
-                        }
-                        snapshot.elements.filterIsInstance<PageElement.Image>().forEach { image ->
-                            val file = File(image.assetPath)
-                            if (file.isFile) {
-                                addAll(textRecognition.recognizeImage(file, image.id, languageTag).mapNotNull { block ->
-                                    RecognizedTextGeometry.mapImageBlock(snapshot, image, block)
-                                })
-                            }
-                        }
-                    }
+                    recognizeImages(snapshot, languageTag)
                 }
             }
             result.getOrNull()?.let { blocks ->
@@ -470,6 +459,50 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
             }
             mutableState.value = mutableState.value.copy(imageOcrPageIds = mutableState.value.imageOcrPageIds - pageId)
             onComplete(result.map(List<RecognizedTextBlock>::size))
+        }
+    }
+
+    fun recognizeDocumentText(
+        documentId: String,
+        languageTag: String,
+        onComplete: (Result<Int>) -> Unit = {},
+    ) {
+        if (documentId in mutableState.value.textRecognitionDocumentIds) return
+        val snapshot = store.get(documentId) ?: return
+        mutableState.value = mutableState.value.copy(textRecognitionDocumentIds = mutableState.value.textRecognitionDocumentIds + documentId)
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    snapshot.pages.associate { page ->
+                        val handwriting = if (page.strokes.isEmpty()) emptyList() else textRecognition.recognizeHandwriting(page, languageTag)
+                        val images = recognizeImages(page, languageTag)
+                        page.id to (handwriting to images)
+                    }
+                }
+            }
+            result.getOrNull()?.let { recognizedPages ->
+                update(documentId) { current ->
+                    current.copy(pages = current.pages.map { page ->
+                        val snapshotPage = snapshot.pages.firstOrNull { it.id == page.id } ?: return@map page
+                        val recognized = recognizedPages[page.id] ?: return@map page
+                        val handwritingFingerprint = HandwritingIndex.fingerprint(snapshotPage.strokes)
+                        val imageFingerprint = ImageOcrIndex.fingerprint(snapshotPage)
+                        val handwritingStillCurrent = HandwritingIndex.fingerprint(page.strokes) == handwritingFingerprint
+                        val imagesStillCurrent = ImageOcrIndex.fingerprint(page) == imageFingerprint
+                        page.copy(
+                            recognizedTextBlocks = page.recognizedTextBlocks.filterNot { block ->
+                                (block.source == RecognizedTextSource.HANDWRITING && handwritingStillCurrent) ||
+                                    (block.source == RecognizedTextSource.IMAGE_OCR && imagesStillCurrent)
+                            } + (if (handwritingStillCurrent) recognized.first else emptyList()) +
+                                (if (imagesStillCurrent) recognized.second else emptyList()),
+                            handwritingIndexFingerprint = if (handwritingStillCurrent) handwritingFingerprint else page.handwritingIndexFingerprint,
+                            imageOcrFingerprint = if (imagesStillCurrent) imageFingerprint else page.imageOcrFingerprint,
+                        )
+                    }, updatedAt = System.currentTimeMillis())
+                }
+            }
+            mutableState.value = mutableState.value.copy(textRecognitionDocumentIds = mutableState.value.textRecognitionDocumentIds - documentId)
+            onComplete(result.map { pages -> pages.values.sumOf { (handwriting, images) -> handwriting.size + images.size } })
         }
     }
 
@@ -503,6 +536,20 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     }
     private fun refresh(recovered: Int = mutableState.value.recoveredOperations) { mutableState.value = mutableState.value.copy(documents = store.list(), folders = loadFolders(), recoveredOperations = recovered) }
     private fun refreshSelection() { refresh(); mutableState.value.selectedDocumentId?.let { id -> if (store.get(id) == null) mutableState.value = mutableState.value.copy(selectedDocumentId = null, selectedPageId = null) } }
+
+    private suspend fun recognizeImages(page: InkPage, languageTag: String): List<RecognizedTextBlock> = buildList {
+        (page.background as? PageBackground.Image)?.assetPath?.let(::File)?.takeIf(File::isFile)?.let { file ->
+            addAll(textRecognition.recognizeImage(file, "background", languageTag))
+        }
+        page.elements.filterIsInstance<PageElement.Image>().forEach { image ->
+            val file = File(image.assetPath)
+            if (file.isFile) {
+                addAll(textRecognition.recognizeImage(file, image.id, languageTag).mapNotNull { block ->
+                    RecognizedTextGeometry.mapImageBlock(page, image, block)
+                })
+            }
+        }
+    }
 
     private fun copyElement(element: PageElement): PageElement = when (element) {
         is PageElement.Text -> element.copy(id = java.util.UUID.randomUUID().toString())

@@ -728,6 +728,8 @@ fun InkloomApp(initialIntent: Intent?) {
             imageOcrRecognizing = libraryState.selectedPageId in libraryState.imageOcrPageIds,
             onRecognizeHandwriting = viewModel::recognizePageHandwriting,
             onRecognizeImages = viewModel::recognizePageImages,
+            documentRecognizing = libraryState.selectedDocumentId in libraryState.textRecognitionDocumentIds,
+            onRecognizeDocument = viewModel::recognizeDocumentText,
             onConvertHandwriting = viewModel::convertRecognizedHandwritingToText,
             onOpenInternalLink = { documentId, pageId -> viewModel.select(documentId); viewModel.selectPage(pageId) },
             onSettings = { settingsOpen = true },
@@ -1027,6 +1029,8 @@ private fun EditorScreen(
     imageOcrRecognizing: Boolean,
     onRecognizeHandwriting: (String, String, String, (Result<Int>) -> Unit) -> Unit,
     onRecognizeImages: (String, String, String, (Result<Int>) -> Unit) -> Unit,
+    documentRecognizing: Boolean,
+    onRecognizeDocument: (String, String, (Result<Int>) -> Unit) -> Unit,
     onConvertHandwriting: (String, String, String, Boolean) -> Unit,
     onOpenInternalLink: (String, String) -> Unit,
     onSettings: () -> Unit,
@@ -3118,6 +3122,22 @@ private fun EditorScreen(
                         if (imageOcrRecognizing) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Icon(Icons.Outlined.DocumentScanner, null)
                         Spacer(Modifier.width(6.dp)); Text(tr("Recognize images", "识别图片"))
                     }
+                }
+                OutlinedButton(
+                    enabled = !documentRecognizing && !handwritingRecognizing && !imageOcrRecognizing,
+                    onClick = {
+                        recognitionMessage = null
+                        onRecognizeDocument(document.id, recognitionLanguageTag) { result ->
+                            recognitionMessage = result.fold(
+                                onSuccess = { count -> if (settings.language == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "整本笔记已识别 $count 行内容。" else "Indexed $count text lines across this notebook." },
+                                onFailure = { error -> error.message ?: if (settings.language == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "整本笔记识别失败。" else "Notebook recognition failed." },
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    if (documentRecognizing) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Icon(Icons.Outlined.AutoStories, null)
+                    Spacer(Modifier.width(6.dp)); Text(tr("Index the whole notebook", "识别整本笔记"))
                 }
                 recognitionMessage?.let { Text(it, Modifier.padding(top = 4.dp), color = MutedInk, fontSize = 12.sp) }
                 if (unindexedPdfPages > 0) Surface(Modifier.fillMaxWidth().padding(top = 10.dp), color = Workspace, shape = RoundedCornerShape(10.dp)) {
