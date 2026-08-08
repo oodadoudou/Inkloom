@@ -49,5 +49,5 @@ internal class EngineV2ActiveTailPlanner {
 
     private fun requiresCompleteReplay(stroke: InkStroke): Boolean =
         stroke.dualBrush || stroke.blendTipsWithDarken || stroke.dualBlendTipsWithDarken ||
-            stroke.taperEndEnabled || stroke.masks.isNotEmpty()
+            stroke.taperEndEnabled || stroke.masks.isNotEmpty() || stroke.opacity < .999f
 }

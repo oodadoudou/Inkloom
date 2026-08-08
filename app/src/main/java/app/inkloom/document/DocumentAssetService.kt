@@ -658,6 +658,13 @@ class DocumentAssetService(private val context: Context) {
             if (stroke.points.isEmpty()) return@forEach
             paint.isAntiAlias = CspAntiAlias.enabled(stroke.antiAliasMode)
             paint.isFilterBitmap = CspAntiAlias.enabled(stroke.antiAliasMode)
+            val opacityLayer = if (stroke.opacity < .999f) canvas.saveLayer(
+                0f,
+                0f,
+                width.toFloat(),
+                height.toFloat(),
+                Paint(Paint.ANTI_ALIAS_FLAG).apply { alpha = (stroke.opacity.coerceIn(0f, 1f) * 255).toInt() },
+            ) else -1
             val maskLayer = if (stroke.masks.isNotEmpty()) canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null) else -1
             paint.color = stroke.colorArgb.toInt()
             val tipPaths = stroke.tipAssetPaths.ifEmpty { listOfNotNull(stroke.tipAssetPath) }
@@ -678,7 +685,7 @@ class DocumentAssetService(private val context: Context) {
                     val point = stroke.points.first()
                     val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
                     val strokeWidth = stroke.width * width / 1600f * (taper.firstOrNull() ?: 1f) * dynamics.size
-                    val alpha = (stroke.opacity * stroke.flow * dynamics.depositedAlpha * 255).toInt().coerceIn(1, 255)
+                    val alpha = (stroke.flow * dynamics.depositedAlpha * 255).toInt().coerceIn(0, 255)
                     drawLinePoint(canvas, paint, stroke, point, point.x * width, point.y * height, strokeWidth, alpha, width)
                 } else stroke.points.zipWithNext().forEachIndexed { pointIndex, (start, end) ->
                     val point = midpoint(start, end)
@@ -686,7 +693,7 @@ class DocumentAssetService(private val context: Context) {
                     val taperFactor = (taper[pointIndex] + taper[pointIndex + 1]) / 2f
                     val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
                     val strokeWidth = stroke.width * width / 1600f * taperFactor * dynamics.size
-                    val alpha = (stroke.opacity * stroke.flow * dynamics.depositedAlpha * 255).toInt().coerceIn(1, 255)
+                    val alpha = (stroke.flow * dynamics.depositedAlpha * 255).toInt().coerceIn(0, 255)
                     drawLineSegment(canvas, paint, stroke, point, start.x * width, start.y * height, end.x * width, end.y * height, strokeWidth, alpha, width)
                 }
             }
@@ -694,6 +701,7 @@ class DocumentAssetService(private val context: Context) {
                 StrokeMaskRenderer.draw(canvas, paint, stroke.masks, width, height)
                 canvas.restoreToCount(maskLayer)
             }
+            if (opacityLayer >= 0) canvas.restoreToCount(opacityLayer)
         }
         paint.colorFilter = null
         paint.maskFilter = null
@@ -747,7 +755,7 @@ class DocumentAssetService(private val context: Context) {
             val scaleX = tipScale.x * flip.x
             val scaleY = tipScale.y * flip.y
             val matrix = Matrix().apply { postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(scaleX, scaleY); postRotate(angle); postTranslate(drawX, drawY) }
-            val mainAlpha = (stroke.opacity * stroke.flow * dynamics.depositedAlpha).coerceIn(.01f, 1f).times(255).toInt()
+            val mainAlpha = (stroke.flow * dynamics.depositedAlpha).coerceIn(0f, 1f).times(255).toInt()
             val jitteredColor = BrushColorJitter.argb(stroke, point, sequenceIndex)
             if (stroke.waterEdgeEnabled && stroke.waterEdgeOpacity > 0f) {
                 val edgeRadius = WaterEdge.distancePixels(stroke.waterEdgeRadius, stroke.waterEdgeRadiusUnit, width.toFloat())
@@ -813,7 +821,7 @@ class DocumentAssetService(private val context: Context) {
             )
             val matrix = Matrix().apply { postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(tipScale.x * flip.x, tipScale.y * flip.y); postRotate(angle); postTranslate(drawX, drawY) }
             paint.colorFilter = PorterDuffColorFilter(BrushColorJitter.argb(stroke, point, sequenceIndex), PorterDuff.Mode.SRC_IN)
-            paint.alpha = (stroke.opacity * stroke.dualFlow.coerceIn(0f, 1f) * dynamics.depositedAlpha).coerceIn(.01f, 1f).times(255).toInt()
+            paint.alpha = (stroke.dualFlow.coerceIn(0f, 1f) * dynamics.depositedAlpha).coerceIn(0f, 1f).times(255).toInt()
             paint.maskFilter = brushBlurMask(stroke, point, diameter, stroke.width * width / 1600f * stroke.dualSizeScale.coerceIn(.01f, 8f), width.toFloat())
             canvas.drawBitmap(tip, matrix, paint)
             paint.maskFilter = null

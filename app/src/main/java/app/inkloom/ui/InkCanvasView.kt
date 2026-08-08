@@ -973,8 +973,14 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun drawStroke(canvas: Canvas, stroke: InkStroke, primaryStampStartIndex: Int = 0, dualStampStartIndex: Int = 0) {
+        val opacityCheckpoint = if (stroke.opacity < .999f) {
+            canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                alpha = (stroke.opacity.coerceIn(0f, 1f) * 255).toInt()
+            })
+        } else -1
         if (stroke.masks.isEmpty()) {
             drawStrokeContent(canvas, stroke, primaryStampStartIndex, dualStampStartIndex)
+            if (opacityCheckpoint >= 0) canvas.restoreToCount(opacityCheckpoint)
             resetAntiAliasPaint()
             return
         }
@@ -982,6 +988,7 @@ class InkCanvasView(context: Context) : View(context) {
         drawStrokeContent(canvas, stroke, primaryStampStartIndex, dualStampStartIndex)
         StrokeMaskRenderer.draw(canvas, paint, stroke.masks, width, height)
         canvas.restoreToCount(checkpoint)
+        if (opacityCheckpoint >= 0) canvas.restoreToCount(opacityCheckpoint)
         resetAntiAliasPaint()
     }
 
@@ -1023,7 +1030,7 @@ class InkCanvasView(context: Context) : View(context) {
         val scale = width.coerceAtLeast(1) / REFERENCE_WIDTH
         val taper = StrokeTaper.factors(stroke.points, width.toFloat(), height.toFloat(), stroke.taperMode, stroke.taperStartEnabled, stroke.taperStartLength, stroke.taperStartLengthUnit, stroke.taperStartMinimum, stroke.taperEndEnabled, stroke.taperEndLength, stroke.taperEndLengthUnit, stroke.taperEndMinimum)
         if (stroke.points.size == 1) {
-            val point = stroke.points.first(); val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point); val strokeWidth = stroke.width * scale * taper.firstOrNull().orDefault() * dynamics.size; val alpha = (stroke.opacity * stroke.flow * dynamics.depositedAlpha * 255).toInt().coerceIn(1, 255); drawLinePoint(canvas, stroke, point, point.x * width, point.y * height, strokeWidth, alpha)
+            val point = stroke.points.first(); val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point); val strokeWidth = stroke.width * scale * taper.firstOrNull().orDefault() * dynamics.size; val alpha = (stroke.flow * dynamics.depositedAlpha * 255).toInt().coerceIn(0, 255); drawLinePoint(canvas, stroke, point, point.x * width, point.y * height, strokeWidth, alpha)
         } else for (index in 0 until stroke.points.lastIndex) {
             val start = stroke.points[index]
             val end = stroke.points[index + 1]
@@ -1031,7 +1038,7 @@ class InkCanvasView(context: Context) : View(context) {
             val taperFactor = (taper[index] + taper[index + 1]) / 2f
             val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
             val strokeWidth = stroke.width * scale * taperFactor * dynamics.size
-            val alpha = (stroke.opacity * stroke.flow * dynamics.depositedAlpha * 255).toInt().coerceIn(1, 255)
+            val alpha = (stroke.flow * dynamics.depositedAlpha * 255).toInt().coerceIn(0, 255)
             drawLineSegment(canvas, stroke, point, start.x * width, start.y * height, end.x * width, end.y * height, strokeWidth, alpha)
         }
     }
@@ -1102,7 +1109,7 @@ class InkCanvasView(context: Context) : View(context) {
             }
             val jitteredColor = BrushColorJitter.argb(stroke, point, sequenceIndex)
             paint.colorFilter = srcInColorFilter(jitteredColor)
-            val mainAlpha = (stroke.opacity * stroke.flow * dynamics.depositedAlpha).coerceIn(.01f, 1f).times(255).toInt()
+            val mainAlpha = (stroke.flow * dynamics.depositedAlpha).coerceIn(0f, 1f).times(255).toInt()
             if (stroke.waterEdgeEnabled && stroke.waterEdgeOpacity > 0f) {
                 val edgeRadius = WaterEdge.distancePixels(stroke.waterEdgeRadius, stroke.waterEdgeRadiusUnit, width.toFloat())
                 val edgeTipScale = BrushTipTransform.scale(tip.width, tip.height, diameter + edgeRadius * 2f, thicknessScale, stroke.thicknessVertical)
@@ -1205,7 +1212,7 @@ class InkCanvasView(context: Context) : View(context) {
             )
             val matrix = secondaryStampMatrix.apply { reset(); postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(tipScale.x * flip.x, tipScale.y * flip.y); postRotate(angle); postTranslate(drawX, drawY) }
             paint.colorFilter = srcInColorFilter(BrushColorJitter.argb(stroke, point, sequenceIndex))
-            paint.alpha = (stroke.opacity * stroke.dualFlow.coerceIn(0f, 1f) * dynamics.depositedAlpha).coerceIn(.01f, 1f).times(255).toInt()
+            paint.alpha = (stroke.dualFlow.coerceIn(0f, 1f) * dynamics.depositedAlpha).coerceIn(0f, 1f).times(255).toInt()
             paint.maskFilter = brushBlurMask(stroke, point, diameter, stroke.width * referenceScale * stroke.dualSizeScale.coerceIn(.01f, 8f), width.toFloat())
             canvas.drawBitmap(tip, matrix, paint)
             paint.maskFilter = null

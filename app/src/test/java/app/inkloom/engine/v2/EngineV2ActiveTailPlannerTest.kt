@@ -52,6 +52,17 @@ class EngineV2ActiveTailPlannerTest {
         assertFalse(plan.incrementalStampDraw)
     }
 
+    @Test
+    fun translucentStrokeKeepsWholeStrokeOpacityCap() {
+        val planner = EngineV2ActiveTailPlanner()
+        val translucent = stroke(8).copy(opacity = .35f)
+
+        val plan = planner.incremental(listOf(translucent))
+
+        assertTrue(plan.clearBeforeDraw)
+        assertFalse(plan.incrementalStampDraw)
+    }
+
     private fun stroke(count: Int) = InkStroke(
         id = "active",
         points = List(count) { index -> StrokePoint(index / 20f, .5f, timeMs = index.toLong()) },
