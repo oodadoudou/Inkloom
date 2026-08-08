@@ -3899,6 +3899,20 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
     val layerOpacities = page.layers.associate { it.id to it.opacity }
     val layerBlendModes = page.layers.associate { it.id to it.blendMode }
     val layerOrder = page.layers.mapIndexed { index, layer -> layer.id to index }.toMap()
+    val layerElementBitmaps = remember(page.elements, page.layers, page.crop, page.backgroundRotationQuarterTurns) {
+        page.layers.mapNotNull { layer ->
+            val elementIds = page.elements.filter { it.layerId == layer.id }.mapTo(linkedSetOf(), PageElement::id)
+            if (elementIds.isEmpty() || !LayerHierarchy.effectiveVisible(page.layers, layer)) return@mapNotNull null
+            val capturedIds = layer.alphaLockBaseContentIds.toSet()
+            val splitAtAlphaLock = layer.alphaLock && capturedIds.isNotEmpty()
+            val baseElementIds = if (splitAtAlphaLock) elementIds.intersect(capturedIds) else elementIds
+            val addedElementIds = if (splitAtAlphaLock) elementIds - capturedIds else emptySet()
+            val base = baseElementIds.takeIf(Set<String>::isNotEmpty)?.let { assets.renderElementLayerBitmap(page, layer.id, 1200, it) }
+            val additions = addedElementIds.takeIf(Set<String>::isNotEmpty)?.let { assets.renderElementLayerBitmap(page, layer.id, 1200, it) }
+            layer.id to LayerElementBitmaps(base, additions)
+        }.toMap()
+    }
+    DisposableEffect(layerElementBitmaps) { onDispose { layerElementBitmaps.values.forEach(LayerElementBitmaps::recycle) } }
     val rulerGuide = RulerGuideState(settings.rulerCenterX, settings.rulerCenterY, settings.rulerAngleDegrees, settings.rulerSnapDegrees).normalized()
     val canvasGuide = CanvasGuideState(settings.gridSnapEnabled, settings.gridSpacing, settings.alignmentGuidesEnabled, settings.verticalGuideX, settings.horizontalGuideY).normalized()
     BoxWithConstraints(modifier.shadow(3.dp, RoundedCornerShape(4.dp)).background(paperColor)) {
@@ -3989,11 +4003,14 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.setProtectedStrokeIds(page.strokes.filter { it.layerId in lockedLayerIds }.mapTo(mutableSetOf()) { it.id })
                 view.setProtectedLayerIds(lockedLayerIds)
                 view.setPageBackground(background)
+                view.setLayerElementBitmaps(layerElementBitmaps)
                 view.activeLayerId = activeLayerId
                 view.layerOpacities = layerOpacities
                 view.layerBlendModes = layerBlendModes
                 view.alphaLockedLayers = page.layers.filter { it.alphaLock }.mapTo(mutableSetOf()) { it.id }
+                view.alphaLockBaseContentIds = page.layers.filter { it.alphaLock }.associate { it.id to it.alphaLockBaseContentIds.toSet() }
                 view.clippedLayers = page.layers.filter { it.clippedToBelow }.mapTo(mutableSetOf()) { it.id }
+                view.layerOrder = page.layers.filter { it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) && LayerHierarchy.effectiveVisible(page.layers, it) }.map(InkLayer::id)
                 view.pagePaperColor = if (renderedPage.background is PageBackground.Paper) (if (backgroundVisible) renderedPage.background.colorArgb.toInt() else AndroidColor.WHITE) else null
                 view.pagePaperPattern = (renderedPage.background as? PageBackground.Paper)?.pattern?.takeIf { backgroundVisible }
                 view.shapeKind = shapeKind
@@ -4079,6 +4096,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                     brushOpacity = brushOpacity,
                     brushColor = brushColor,
                     eraserPreset = eraserPreset,
+                    showContent = false,
                     modifier = Modifier.align(Alignment.TopStart),
                 )
             }
@@ -4304,6 +4322,7 @@ private fun ObjectElementView(
     brushOpacity: Float,
     brushColor: Int,
     eraserPreset: EraserPreset,
+    showContent: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -4341,7 +4360,7 @@ private fun ObjectElementView(
                 },
             ),
     ) {
-        when (element) {
+        if (showContent) when (element) {
             is PageElement.Text -> {
                 val scaledTextSize = (element.textSize * canvasWidth.value / page.width).coerceIn(10f, 40f)
                 Text(

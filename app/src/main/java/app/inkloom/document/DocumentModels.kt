@@ -106,6 +106,8 @@ data class InkLayer(
     val opacity: Float = 1f,
     val blendMode: LayerBlendMode = LayerBlendMode.NORMAL,
     val alphaLock: Boolean = false,
+    /** IDs that formed the alpha mask when locking was enabled. Empty preserves legacy layers. */
+    val alphaLockBaseContentIds: List<String> = emptyList(),
     val clippedToBelow: Boolean = false,
     val parentId: String? = null,
     val collapsed: Boolean = false,

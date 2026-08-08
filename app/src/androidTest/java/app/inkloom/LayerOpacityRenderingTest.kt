@@ -13,9 +13,12 @@ import app.inkloom.document.InkStroke
 import app.inkloom.document.LayerBlendMode
 import app.inkloom.document.LayerRole
 import app.inkloom.document.PageBackground
+import app.inkloom.document.PageElement
+import app.inkloom.document.ShapeKind
 import app.inkloom.document.StrokePoint
 import app.inkloom.document.defaultInkLayers
 import app.inkloom.ui.InkCanvasView
+import app.inkloom.ui.LayerElementBitmaps
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -128,5 +131,87 @@ class LayerOpacityRenderingTest {
                 bitmap.recycle()
             }
         }
+    }
+
+    @Test
+    fun clippedStrokeLayerUsesTheLowerLayerAlphaInsteadOfThePaper() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val lower = InkLayer(id = "lower", name = "Lower")
+            val upper = InkLayer(id = "upper", name = "Upper", clippedToBelow = true)
+            val horizontal = stroke.copy(id = "base", layerId = lower.id, width = 100f, points = listOf(StrokePoint(.1f, .5f), StrokePoint(.9f, .5f)))
+            val vertical = stroke.copy(id = "clip", layerId = upper.id, width = 100f, colorArgb = 0xFFFF0000, points = listOf(StrokePoint(.5f, .1f), StrokePoint(.5f, .9f)))
+            val view = InkCanvasView(InstrumentationRegistry.getInstrumentation().targetContext).apply {
+                layout(0, 0, 400, 400)
+                pagePaperColor = Color.WHITE
+                setDocumentStrokes(listOf(horizontal, vertical), "clip-live")
+                layerOrder = listOf(lower.id, upper.id)
+                clippedLayers = setOf(upper.id)
+            }
+            val bitmap = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(bitmap))
+            assertTrue("Upper content away from lower alpha must be hidden", Color.red(bitmap.getPixel(200, 100)) > 245 && Color.green(bitmap.getPixel(200, 100)) > 245)
+            assertTrue("Upper content at the lower-layer crossing must remain", Color.red(bitmap.getPixel(200, 200)) > 220 && Color.green(bitmap.getPixel(200, 200)) < 40)
+            bitmap.recycle()
+        }
+    }
+
+    @Test
+    fun alphaLockPreservesAllCapturedHistoryAndClipsOnlyNewContent() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val layer = InkLayer(id = "locked", name = "Locked", alphaLock = true, alphaLockBaseContentIds = listOf("left", "right"))
+            val left = stroke.copy(id = "left", layerId = layer.id, width = 80f, points = listOf(StrokePoint(.25f, .2f), StrokePoint(.25f, .8f)))
+            val right = stroke.copy(id = "right", layerId = layer.id, width = 80f, points = listOf(StrokePoint(.75f, .2f), StrokePoint(.75f, .8f)))
+            val added = stroke.copy(id = "added", layerId = layer.id, width = 80f, colorArgb = 0xFFFF0000, points = listOf(StrokePoint(.1f, .5f), StrokePoint(.9f, .5f)))
+            val view = InkCanvasView(InstrumentationRegistry.getInstrumentation().targetContext).apply {
+                layout(0, 0, 400, 400)
+                pagePaperColor = Color.WHITE
+                setDocumentStrokes(listOf(left, right, added), "alpha-lock-live")
+                layerOrder = listOf(layer.id)
+                alphaLockedLayers = setOf(layer.id)
+                alphaLockBaseContentIds = mapOf(layer.id to layer.alphaLockBaseContentIds.toSet())
+            }
+            val bitmap = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(bitmap))
+            assertTrue("The second captured stroke must remain visible", Color.red(bitmap.getPixel(300, 120)) < 30)
+            assertTrue("New paint outside the captured alpha must be absent", Color.red(bitmap.getPixel(200, 200)) > 245)
+            assertTrue("New paint over captured alpha must be visible", Color.red(bitmap.getPixel(300, 200)) > 220 && Color.green(bitmap.getPixel(300, 200)) < 40)
+            bitmap.recycle()
+        }
+    }
+
+    @Test
+    fun elementBitmapsParticipateInLiveClipping() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val lower = InkLayer(id = "lower-element-mask", name = "Lower")
+            val upper = InkLayer(id = "upper-element", name = "Upper", clippedToBelow = true)
+            val horizontal = stroke.copy(id = "element-mask", layerId = lower.id, width = 100f, points = listOf(StrokePoint(.1f, .5f), StrokePoint(.9f, .5f)))
+            val elementBitmap = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+            val view = InkCanvasView(InstrumentationRegistry.getInstrumentation().targetContext).apply {
+                layout(0, 0, 400, 400)
+                pagePaperColor = Color.WHITE
+                setDocumentStrokes(listOf(horizontal), "element-clip-live")
+                setLayerElementBitmaps(mapOf(upper.id to LayerElementBitmaps(elementBitmap, null)))
+                layerOrder = listOf(lower.id, upper.id)
+                clippedLayers = setOf(upper.id)
+            }
+            val output = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(output))
+            assertTrue(Color.red(output.getPixel(200, 100)) > 245 && Color.green(output.getPixel(200, 100)) > 245)
+            assertTrue(Color.red(output.getPixel(200, 200)) > 220 && Color.green(output.getPixel(200, 200)) < 40)
+            output.recycle(); elementBitmap.recycle()
+        }
+    }
+
+    @Test
+    fun exportClipsPageElementsToTheLowerLayer() {
+        val lower = InkLayer(id = "lower-export", name = "Lower")
+        val upper = InkLayer(id = "upper-export", name = "Upper", clippedToBelow = true)
+        val horizontal = stroke.copy(id = "export-mask", layerId = lower.id, width = 100f, points = listOf(StrokePoint(.1f, .5f), StrokePoint(.9f, .5f)))
+        val shape = PageElement.Shape(id = "shape", x = .4f, y = .1f, width = 80f, height = 320f, layerId = upper.id, kind = ShapeKind.RECTANGLE, colorArgb = 0xFFFF0000, fillArgb = 0xFFFF0000)
+        val page = InkPage(width = 400f, height = 400f, background = PageBackground.Paper(), layers = defaultInkLayers() + lower + upper, strokes = listOf(horizontal), elements = listOf(shape))
+        val bitmap = DocumentAssetService(ApplicationProvider.getApplicationContext()).renderPageBitmap(page, 400)
+        assertTrue("Exported element outside the lower alpha must be hidden", Color.green(bitmap.getPixel(200, 100)) > 245)
+        assertTrue("Exported element crossing the lower alpha must remain", Color.red(bitmap.getPixel(200, 200)) > 220 && Color.green(bitmap.getPixel(200, 200)) < 40)
+        bitmap.recycle()
     }
 }

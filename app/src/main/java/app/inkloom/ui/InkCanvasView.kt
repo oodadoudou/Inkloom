@@ -119,6 +119,13 @@ import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.sin
 
+data class LayerElementBitmaps(val base: Bitmap?, val additions: Bitmap?) {
+    fun recycle() {
+        base?.recycle()
+        if (additions !== base) additions?.recycle()
+    }
+}
+
 class InkCanvasView(context: Context) : View(context) {
     private val strokes = mutableListOf<InkStroke>()
     private val editHistory = StrokeEditHistory()
@@ -303,8 +310,13 @@ class InkCanvasView(context: Context) : View(context) {
         }
     var alphaLockedLayers: Set<String> = emptySet()
         set(value) { if (field != value) { field = value; resetStrokeTiles() } }
+    var alphaLockBaseContentIds: Map<String, Set<String>> = emptyMap()
+        set(value) { if (field != value) { field = value; resetStrokeTiles() } }
     var clippedLayers: Set<String> = emptySet()
         set(value) { if (field != value) { field = value; resetStrokeTiles() } }
+    var layerOrder: List<String> = emptyList()
+        set(value) { if (field != value) { field = value; resetStrokeTiles() } }
+    private var layerElementBitmaps: Map<String, LayerElementBitmaps> = emptyMap()
     var pagePaperColor: Int? = null
         set(value) { if (field != value) { field = value; invalidate() } }
     var pagePaperPattern: PaperPattern? = null
@@ -661,6 +673,13 @@ class InkCanvasView(context: Context) : View(context) {
 
     fun setPageBackground(bitmap: Bitmap?) { backgroundBitmap = bitmap; invalidate() }
 
+    fun setLayerElementBitmaps(value: Map<String, LayerElementBitmaps>) {
+        if (layerElementBitmaps != value) {
+            layerElementBitmaps = value
+            resetStrokeTiles()
+        }
+    }
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         canvas.save()
@@ -691,7 +710,7 @@ class InkCanvasView(context: Context) : View(context) {
                 pagePaperPattern?.let { drawPaperPattern(canvas, it) }
             }
         if (includeInteractionOverlays) drawSnapGrid(canvas)
-        if (!drawStrokeTiles(canvas)) drawLayeredStrokes(canvas, strokes)
+        if (!drawStrokeTiles(canvas)) drawLayeredStrokes(canvas, strokes, includeElements = true)
         if (!includeInteractionOverlays) return
         var selectionLeft = Float.POSITIVE_INFINITY
         var selectionTop = Float.POSITIVE_INFINITY
@@ -750,6 +769,7 @@ class InkCanvasView(context: Context) : View(context) {
     private fun drawStrokeTiles(canvas: Canvas): Boolean {
         if (layerBlendModes.values.any { it != LayerBlendMode.NORMAL }) return false
         if (alphaLockedLayers.isNotEmpty() || clippedLayers.isNotEmpty()) return false
+        if (layerElementBitmaps.isNotEmpty()) return false
         if (width <= 0 || height <= 0 || width.toLong() * height.toLong() > MAX_CACHE_PIXELS) return false
         if (strokeTileIndex.widthPx != width || strokeTileIndex.heightPx != height) resetStrokeTiles()
         val keys = strokeTileIndex.allTiles()
@@ -815,33 +835,75 @@ class InkCanvasView(context: Context) : View(context) {
         value: List<InkStroke>,
         primaryStampStartIndex: Int = 0,
         dualStampStartIndex: Int = 0,
+        includeElements: Boolean = false,
     ) {
-        value.groupBy(InkStroke::layerId).forEach { (layerId, layerStrokes) ->
+        val groupedStrokes = value.groupBy(InkStroke::layerId)
+        val availableLayerIds = groupedStrokes.keys + if (includeElements) layerElementBitmaps.keys else emptySet()
+        val orderedLayerIds = (layerOrder.filter { it in availableLayerIds } + availableLayerIds.filterNot { it in layerOrder }).distinct()
+        var previousLayerId: String? = null
+        orderedLayerIds.forEach { layerId ->
+            val layerStrokes = groupedStrokes[layerId].orEmpty()
             val opacity = (layerOpacities[layerId] ?: 1f).coerceIn(0f, 1f)
             if (opacity <= 0f) return@forEach
             val layerBlendMode = layerBlendModes[layerId] ?: LayerBlendMode.NORMAL
-            val alphaLocked = layerId in alphaLockedLayers
             val clipped = layerId in clippedLayers
-            val needsLayer = opacity < .999f || layerBlendMode != LayerBlendMode.NORMAL || alphaLocked || clipped
-            val clipCheckpoint = if (clipped) canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.blendMode = android.graphics.BlendMode.SRC_IN }) else -1
-            val checkpoint = if (needsLayer) {
-                canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            val lowerLayerId = previousLayerId
+            if (!clipped || lowerLayerId != null) {
+                val checkpoint = canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     alpha = (opacity * 255f).toInt().coerceIn(0, 255)
                     this.blendMode = layerBlendMode.toBlendMode()
                 })
-            } else null
-            layerStrokes.forEachIndexed { index, stroke ->
-                if (alphaLocked && index > 0) {
-                    val lockCheckpoint = canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.blendMode = android.graphics.BlendMode.SRC_IN })
-                    drawStroke(canvas, stroke, primaryStampStartIndex, dualStampStartIndex)
-                    canvas.restoreToCount(lockCheckpoint)
-                } else {
-                    drawStroke(canvas, stroke, primaryStampStartIndex, dualStampStartIndex)
+                drawRawLayerContent(canvas, layerId, layerStrokes, includeElements, primaryStampStartIndex, dualStampStartIndex)
+                if (clipped && lowerLayerId != null) {
+                    val maskCheckpoint = canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.DST_IN })
+                    drawRawLayerContent(canvas, lowerLayerId, groupedStrokes[lowerLayerId].orEmpty(), includeElements, primaryStampStartIndex, dualStampStartIndex)
+                    canvas.restoreToCount(maskCheckpoint)
                 }
+                canvas.restoreToCount(checkpoint)
             }
-            checkpoint?.let(canvas::restoreToCount)
-            if (clipCheckpoint >= 0) canvas.restoreToCount(clipCheckpoint)
+            previousLayerId = layerId
         }
+    }
+
+    private fun drawRawLayerContent(
+        canvas: Canvas,
+        layerId: String,
+        layerStrokes: List<InkStroke>,
+        includeElements: Boolean,
+        primaryStampStartIndex: Int,
+        dualStampStartIndex: Int,
+    ) {
+        val elements = if (includeElements) layerElementBitmaps[layerId] else null
+        val baseIds = alphaLockBaseContentIds[layerId].orEmpty()
+        val hasCapturedAlpha = layerId in alphaLockedLayers && baseIds.isNotEmpty()
+        if (!hasCapturedAlpha) {
+            layerStrokes.forEach { drawStroke(canvas, it, primaryStampStartIndex, dualStampStartIndex) }
+            drawElementBitmap(canvas, elements?.base)
+            drawElementBitmap(canvas, elements?.additions)
+            return
+        }
+        val baseStrokes = layerStrokes.filter { it.id in baseIds }
+        val addedStrokes = layerStrokes.filterNot { it.id in baseIds }
+        fun drawBase() {
+            baseStrokes.forEach { drawStroke(canvas, it, primaryStampStartIndex, dualStampStartIndex) }
+            drawElementBitmap(canvas, elements?.base)
+        }
+        drawBase()
+        if (addedStrokes.isNotEmpty() || elements?.additions != null) {
+            val additionsCheckpoint = canvas.saveLayer(null, null)
+            addedStrokes.forEach { drawStroke(canvas, it, primaryStampStartIndex, dualStampStartIndex) }
+            drawElementBitmap(canvas, elements?.additions)
+            val maskCheckpoint = canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.DST_IN })
+            drawBase()
+            canvas.restoreToCount(maskCheckpoint)
+            canvas.restoreToCount(additionsCheckpoint)
+        }
+    }
+
+    private fun drawElementBitmap(canvas: Canvas, bitmap: Bitmap?) {
+        if (bitmap == null || bitmap.isRecycled) return
+        backgroundDestination.set(0, 0, width, height)
+        canvas.drawBitmap(bitmap, null, backgroundDestination, null)
     }
 
     /**

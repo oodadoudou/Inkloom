@@ -241,7 +241,12 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun toggleLayerAlphaLock(documentId: String, pageId: String, layerId: String) = updatePage(documentId, pageId) { page ->
-        page.copy(layers = page.layers.map { if (it.id == layerId && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) it.copy(alphaLock = !it.alphaLock) else it })
+        val existingContentIds = page.strokes.filter { it.layerId == layerId }.map(InkStroke::id) + page.elements.filter { it.layerId == layerId }.map(PageElement::id)
+        page.copy(layers = page.layers.map { layer ->
+            if (layer.id != layerId || layer.role in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) layer
+            else if (layer.alphaLock) layer.copy(alphaLock = false, alphaLockBaseContentIds = emptyList())
+            else layer.copy(alphaLock = true, alphaLockBaseContentIds = existingContentIds)
+        })
     }
 
     fun toggleLayerClippedToBelow(documentId: String, pageId: String, layerId: String) = updatePage(documentId, pageId) { page ->

@@ -235,6 +235,21 @@ class DocumentAssetService(private val context: Context) {
         return bitmap
     }
 
+    fun renderElementLayerBitmap(page: InkPage, layerId: String, width: Int, contentIds: Set<String>? = null): Bitmap {
+        require(width in 1..4096) { "Layer render width must be between 1 and 4096 pixels" }
+        val height = (width * PageCropTransform.visibleHeight(page) / PageCropTransform.visibleWidth(page).coerceAtLeast(1f)).toInt().coerceAtLeast(1)
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        drawPage(
+            Canvas(bitmap), page, width, height,
+            includeBackground = false,
+            includedLayerIds = setOf(layerId),
+            includedContentIds = contentIds,
+            includeStrokes = false,
+            applyLayerEffects = false,
+        )
+        return bitmap
+    }
+
     fun exportBundle(document: InkDocument, uri: Uri) {
         val serializer = Json { prettyPrint = true; classDiscriminator = "type" }
         context.contentResolver.openOutputStream(uri)?.use { output -> ZipOutputStream(output).use { zip ->
@@ -434,23 +449,38 @@ class DocumentAssetService(private val context: Context) {
         return target
     }
 
-    private fun drawPage(canvas: Canvas, sourcePage: InkPage, width: Int, height: Int) {
+    private fun drawPage(
+        canvas: Canvas,
+        sourcePage: InkPage,
+        width: Int,
+        height: Int,
+        includeBackground: Boolean = true,
+        includedLayerIds: Set<String>? = null,
+        includedContentIds: Set<String>? = null,
+        includeStrokes: Boolean = true,
+        applyLayerEffects: Boolean = true,
+    ) {
         val page = PageCropTransform.project(sourcePage)
         val backgroundVisible = page.layers.firstOrNull { it.role == LayerRole.BACKGROUND }?.visible != false
         val paperColor = (page.background as? PageBackground.Paper)?.colorArgb?.toInt() ?: Color.WHITE
-        canvas.drawColor(if (backgroundVisible) paperColor else Color.WHITE)
-        if (backgroundVisible) renderBackground(sourcePage.background, width, sourcePage.backgroundRotationQuarterTurns, sourcePage.crop)?.let { bitmap -> canvas.drawBitmap(bitmap, null, android.graphics.Rect(0, 0, width, height), null); bitmap.recycle() }
-        if (backgroundVisible) (page.background as? PageBackground.Paper)?.let { drawPaperPattern(canvas, it.pattern, width, height) }
+        if (includeBackground) {
+            canvas.drawColor(if (backgroundVisible) paperColor else Color.WHITE)
+            if (backgroundVisible) renderBackground(sourcePage.background, width, sourcePage.backgroundRotationQuarterTurns, sourcePage.crop)?.let { bitmap -> canvas.drawBitmap(bitmap, null, android.graphics.Rect(0, 0, width, height), null); bitmap.recycle() }
+            if (backgroundVisible) (page.background as? PageBackground.Paper)?.let { drawPaperPattern(canvas, it.pattern, width, height) }
+        } else canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
-        page.layers.filter { LayerHierarchy.effectiveVisible(page.layers, it) && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) }.forEach { layer ->
+        val visibleLayers = page.layers.filter { LayerHierarchy.effectiveVisible(page.layers, it) && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) && (includedLayerIds == null || it.id in includedLayerIds) }
+        visibleLayers.forEachIndexed { layerIndex, layer ->
             val layerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 alpha = (layer.opacity.coerceIn(0f, 1f) * 255f).toInt().coerceIn(0, 255)
                 blendMode = layer.blendMode.toBlendMode()
             }
-            val clipCheckpoint = if (layer.clippedToBelow) canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.SRC_IN }) else -1
-            val layerCheckpoint = canvas.saveLayer(null, layerPaint)
-            drawStrokes(canvas, page.strokes.filter { it.layerId == layer.id }, width, height, paint, layer.alphaLock)
-            page.elements.filter { it.layerId == layer.id }.forEach { element ->
+            val layerCheckpoint = if (applyLayerEffects) canvas.saveLayer(null, layerPaint) else canvas.save()
+            fun contentAllowed(id: String, contentIds: Set<String>?): Boolean =
+                (includedContentIds == null || id in includedContentIds) && (contentIds == null || id in contentIds)
+            fun drawLayerItems(targetLayerId: String, contentIds: Set<String>? = null) {
+            if (includeStrokes) drawStrokes(canvas, page.strokes.filter { it.layerId == targetLayerId && contentAllowed(it.id, contentIds) }, width, height, paint)
+            page.elements.filter { it.layerId == targetLayerId && contentAllowed(it.id, contentIds) }.forEach { element ->
             val left = element.x * width
             val top = element.y * height
             val right = left + element.width / page.width * width
@@ -548,8 +578,38 @@ class DocumentAssetService(private val context: Context) {
             }
             canvas.restore()
             }
+            }
+            fun drawLayerWithAlphaLock(targetLayer: InkLayer) {
+                val capturedIds = targetLayer.alphaLockBaseContentIds.toSet()
+                if (!applyLayerEffects || !targetLayer.alphaLock || capturedIds.isEmpty()) {
+                    drawLayerItems(targetLayer.id)
+                    return
+                }
+                drawLayerItems(targetLayer.id, capturedIds)
+                val currentIds = page.strokes.filter { it.layerId == targetLayer.id }.mapTo(mutableSetOf(), InkStroke::id) +
+                    page.elements.filter { it.layerId == targetLayer.id }.mapTo(mutableSetOf(), PageElement::id)
+                val addedIds = currentIds - capturedIds
+                if (addedIds.isNotEmpty()) {
+                    val additionsCheckpoint = canvas.saveLayer(null, null)
+                    drawLayerItems(targetLayer.id, addedIds)
+                    val maskCheckpoint = canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.DST_IN })
+                    drawLayerItems(targetLayer.id, capturedIds)
+                    canvas.restoreToCount(maskCheckpoint)
+                    canvas.restoreToCount(additionsCheckpoint)
+                }
+            }
+            drawLayerWithAlphaLock(layer)
+            if (applyLayerEffects && layer.clippedToBelow) {
+                val lowerLayer = visibleLayers.getOrNull(layerIndex - 1)
+                if (lowerLayer == null) {
+                    canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+                } else {
+                    val maskCheckpoint = canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.DST_IN })
+                    drawLayerWithAlphaLock(lowerLayer)
+                    canvas.restoreToCount(maskCheckpoint)
+                }
+            }
             canvas.restoreToCount(layerCheckpoint)
-            if (clipCheckpoint >= 0) canvas.restoreToCount(clipCheckpoint)
         }
     }
 
