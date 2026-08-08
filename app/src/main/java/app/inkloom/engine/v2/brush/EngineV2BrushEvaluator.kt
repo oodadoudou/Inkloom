@@ -10,6 +10,61 @@ import app.inkloom.document.StrokeStampSampler
 
 /** Shared deterministic evaluator used by realtime, tile replay, thumbnail, PNG and PDF paths. */
 internal object EngineV2BrushEvaluator {
+    data class DabDynamics(
+        val size: Float,
+        val opacity: Float,
+        val flow: Float,
+        val thickness: Float,
+        val blur: Float,
+        val wetAlpha: Float,
+    ) {
+        val depositedAlpha: Float get() = (opacity * flow * wetAlpha).coerceIn(0f, 1f)
+    }
+
+    /**
+     * Compiles every input-driven scalar used by a dab into one deterministic result. Keeping
+     * this evaluation outside both renderers prevents live, tile and export paths from drifting.
+     */
+    fun evaluateDab(stroke: InkStroke, point: StrokePoint, dual: Boolean = false): DabDynamics {
+        val pressure = point.pressure.coerceIn(0f, 1f)
+        val sizeDynamics = if (dual) stroke.dualSizeDynamics else null
+        val flowDynamics = if (dual) stroke.dualFlowDynamics else null
+        val thicknessDynamics = if (dual) stroke.dualThicknessDynamics else null
+        val size = if (sizeDynamics != null) {
+            pressure(sizeDynamics.pressureEnabled, sizeDynamics.pressureMinimum, sizeDynamics.pressureCurve, pressure) *
+                secondary(sizeDynamics.secondary, point, stroke.renderSeed, SALT_DUAL_SIZE)
+        } else {
+            pressure(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, pressure) *
+                secondary(stroke.sizeSecondaryDynamics, point, stroke.renderSeed, SALT_SIZE)
+        }
+        val opacity = pressure(stroke.opacityPressureEnabled, stroke.opacityPressureMinimum, stroke.opacityPressureCurve, pressure) *
+            secondary(stroke.opacitySecondaryDynamics, point, stroke.renderSeed, SALT_OPACITY)
+        val flow = if (flowDynamics != null) {
+            pressure(flowDynamics.pressureEnabled, flowDynamics.pressureMinimum, flowDynamics.pressureCurve, pressure) *
+                secondary(flowDynamics.secondary, point, stroke.renderSeed, SALT_DUAL_FLOW)
+        } else {
+            pressure(stroke.flowPressureEnabled, stroke.flowPressureMinimum, stroke.flowPressureCurve, pressure) *
+                secondary(stroke.flowSecondaryDynamics, point, stroke.renderSeed, SALT_FLOW)
+        }
+        val thickness = if (thicknessDynamics != null) {
+            pressure(thicknessDynamics.pressureEnabled, thicknessDynamics.pressureMinimum, thicknessDynamics.pressureCurve, pressure) *
+                secondary(thicknessDynamics.secondary, point, stroke.renderSeed, SALT_DUAL_THICKNESS)
+        } else {
+            pressure(stroke.thicknessPressureEnabled, stroke.thicknessPressureMinimum, stroke.thicknessPressureCurve, pressure) *
+                secondary(stroke.thicknessSecondaryDynamics, point, stroke.renderSeed, SALT_THICKNESS)
+        }
+        val blur = pressure(stroke.blurPressureEnabled, stroke.blurPressureMinimum, stroke.blurPressureCurve, pressure) *
+            secondary(stroke.blurSecondaryDynamics, point, stroke.renderSeed, SALT_BLUR)
+        return DabDynamics(
+            size = size,
+            opacity = opacity,
+            flow = flow,
+            thickness = thickness,
+            blur = blur,
+            wetAlpha = app.inkloom.document.WetMixDynamics.alphaMultiplier(stroke, point),
+        )
+    }
+
     fun sampleStampPoints(stroke: InkStroke, width: Float, height: Float, dual: Boolean): List<StrokePoint> {
         val pageWidth = width.coerceAtLeast(1f)
         val referenceScale = pageWidth / REFERENCE_WIDTH
@@ -61,7 +116,13 @@ internal object EngineV2BrushEvaluator {
 
     private const val REFERENCE_WIDTH = 1600f
     private const val SALT_SIZE = 11
+    private const val SALT_OPACITY = 31
+    private const val SALT_FLOW = 47
     private const val SALT_SPACING = 53
+    private const val SALT_BLUR = 89
     private const val SALT_DUAL_SIZE = 101
+    private const val SALT_DUAL_FLOW = 103
     private const val SALT_DUAL_SPACING = 107
+    private const val SALT_DUAL_THICKNESS = 109
+    private const val SALT_THICKNESS = 71
 }
