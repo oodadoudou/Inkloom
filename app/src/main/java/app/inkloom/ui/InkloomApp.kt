@@ -1849,9 +1849,7 @@ private fun EditorScreen(
                 onPanelDragEnd = { finishDockedPanelDrag(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.LEFT) },
                 onPanelDragCancel = ::clearDockedPanelDrag,
             )
-            val hasSideDockedToolPanel = (brushesOpen && settings.brushPanelMode == WorkspacePanelMode.EXPANDED && settings.brushPanelDock in setOf(WorkspacePanelDock.LEFT, WorkspacePanelDock.RIGHT) && showPanel(WorkspacePanelKind.BRUSHES, settings.brushPanelDock)) ||
-                (layersOpen && settings.layerPanelMode == WorkspacePanelMode.EXPANDED && settings.layerPanelDock in setOf(WorkspacePanelDock.LEFT, WorkspacePanelDock.RIGHT) && showPanel(WorkspacePanelKind.LAYERS, settings.layerPanelDock))
-            if (!hasSideDockedToolPanel || editorWidth >= 900.dp) BoxWithConstraints(
+            BoxWithConstraints(
                 Modifier
                     .weight(1f)
                     .fillMaxHeight()
@@ -4063,7 +4061,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.shortcutAxisBindings = settings.shortcutAxisBindings
                 view.shortcutButtonBindings = settings.shortcutButtonBindings
             },
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().semantics { contentDescription = "Ink canvas" },
         )
         Box(Modifier.fillMaxSize()) {
             searchBounds?.let { PageCropTransform.project(it, page.crop) }?.let { bounds ->

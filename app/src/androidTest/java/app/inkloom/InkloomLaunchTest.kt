@@ -471,6 +471,18 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription("Drag toolbar").assertIsDisplayed()
     }
 
+    @Test fun dockedBrushLibraryNeverRemovesCanvasInPortrait() {
+        createNotebookAndOpenEditor()
+        composeRule.activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithContentDescription("Brushes").performClick()
+        val canvas = composeRule.onNodeWithContentDescription("Ink canvas").assertIsDisplayed().fetchSemanticsNode()
+        assertTrue("Docking the brush library must leave a usable canvas", canvas.boundsInRoot.width > 0f && canvas.boundsInRoot.height > 0f)
+
+        composeRule.onNodeWithContentDescription("Ink canvas").assertIsDisplayed()
+    }
+
     @Test fun brushPanelCanFloatMoveResizeAndReopenInPlace() {
         createNotebookAndOpenEditor()
         val preferences = composeRule.activity.getSharedPreferences("inkloom_settings", android.content.Context.MODE_PRIVATE)
