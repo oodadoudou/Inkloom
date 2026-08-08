@@ -144,6 +144,8 @@ class InkCanvasView(context: Context) : View(context) {
     private var fillBaseSensitivity = 0f
     private var fillDragOriginX = 0f
     private var fillSensitivityNow = 0f
+    private var fillPreviewTolerance = -1
+    private var fillPreviewComputedAt = 0L
     private var fillPreviewMask: Bitmap? = null
     private var fillPreviewLeft = 0f
     private var fillPreviewTop = 0f
@@ -681,15 +683,16 @@ class InkCanvasView(context: Context) : View(context) {
         return matrix
     }
 
-    private fun drawPageContent(canvas: Canvas) {
+    private fun drawPageContent(canvas: Canvas, includeInteractionOverlays: Boolean = true) {
         backgroundBitmap?.let { bitmap -> backgroundDestination.set(0, 0, width, height); canvas.drawBitmap(bitmap, null, backgroundDestination, null) }
             ?: pagePaperColor?.let { color ->
                 paperFillPaint.color = color
                 canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paperFillPaint)
                 pagePaperPattern?.let { drawPaperPattern(canvas, it) }
             }
-        drawSnapGrid(canvas)
+        if (includeInteractionOverlays) drawSnapGrid(canvas)
         if (!drawStrokeTiles(canvas)) drawLayeredStrokes(canvas, strokes)
+        if (!includeInteractionOverlays) return
         var selectionLeft = Float.POSITIVE_INFINITY
         var selectionTop = Float.POSITIVE_INFINITY
         var selectionRight = Float.NEGATIVE_INFINITY
@@ -1300,7 +1303,7 @@ class InkCanvasView(context: Context) : View(context) {
         if (handleCanvasGuideGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
         if (handleRulerGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
         val buttonForcesNavigation = isStylus && (stylusButtonAction == StylusButtonAction.HAND || stylusHandNavigationContact)
-        val isFingerNavigation = forceNavigation || buttonForcesNavigation || (tool !in setOf(EditorTool.FILL, EditorTool.SMUDGE) && StylusInputClassifier.shouldNavigateOrRejectFinger(isStylus, fingerDrawingEnabled, event.pointerCount, event.getTouchMajor(pointerIndex), elapsedSinceStylus))
+        val isFingerNavigation = forceNavigation || buttonForcesNavigation || StylusInputClassifier.shouldNavigateOrRejectFinger(isStylus, fingerDrawingEnabled, event.pointerCount, event.getTouchMajor(pointerIndex), elapsedSinceStylus)
         if (isFingerNavigation) {
             if (activeTool != null) {
                 if (activeInputWasStylus && !forceNavigation && !buttonForcesNavigation) return true
@@ -1747,10 +1750,10 @@ class InkCanvasView(context: Context) : View(context) {
         fillPreviewPaint.colorFilter = PorterDuffColorFilter(inkColor, PorterDuff.Mode.SRC_IN)
         fillPreviewPaint.alpha = (inkOpacity * 255f).toInt().coerceIn(0, 255)
         backgroundDestination.set(
-            fillPreviewLeft.toInt(),
-            fillPreviewTop.toInt(),
-            (fillPreviewLeft + fillPreviewWidth).toInt(),
-            (fillPreviewTop + fillPreviewHeight).toInt(),
+            (fillPreviewLeft * width).toInt(),
+            (fillPreviewTop * height).toInt(),
+            ((fillPreviewLeft + fillPreviewWidth) * width).toInt(),
+            ((fillPreviewTop + fillPreviewHeight) * height).toInt(),
         )
         canvas.drawBitmap(mask, null, backgroundDestination, fillPreviewPaint)
     }
@@ -2338,28 +2341,34 @@ class InkCanvasView(context: Context) : View(context) {
     private fun beginFillGesture(normalizedX: Float, normalizedY: Float, rawX: Float) {
         val safeWidth = width.coerceAtLeast(1)
         val safeHeight = height.coerceAtLeast(1)
-        val source = renderVisiblePageBitmap(safeWidth, safeHeight)
+        val sampleScale = minOf(1f, FILL_MAX_SAMPLE_DIMENSION / maxOf(safeWidth, safeHeight).toFloat())
+        val sampleWidth = (safeWidth * sampleScale).toInt().coerceAtLeast(1)
+        val sampleHeight = (safeHeight * sampleScale).toInt().coerceAtLeast(1)
+        val source = renderDocumentPageBitmap(sampleWidth, sampleHeight)
         fillSourceBitmap = source
-        fillSeedX = (normalizedX.coerceIn(0f, 1f) * safeWidth).toInt().coerceIn(0, safeWidth - 1)
-        fillSeedY = (normalizedY.coerceIn(0f, 1f) * safeHeight).toInt().coerceIn(0, safeHeight - 1)
+        fillSeedX = (normalizedX.coerceIn(0f, 1f) * sampleWidth).toInt().coerceIn(0, sampleWidth - 1)
+        fillSeedY = (normalizedY.coerceIn(0f, 1f) * sampleHeight).toInt().coerceIn(0, sampleHeight - 1)
         fillBaseSensitivity = fillSensitivity
         fillSensitivityNow = fillBaseSensitivity
         fillDragOriginX = rawX
-        recomputeFillPreview()
+        fillPreviewTolerance = -1
+        recomputeFillPreview(force = true)
     }
 
     private fun adjustFillSensitivity(rawX: Float) {
         val next = (fillBaseSensitivity + (rawX - fillDragOriginX) / 480f).coerceIn(0f, 1f)
         if (next != fillSensitivityNow) {
             fillSensitivityNow = next
-            recomputeFillPreview()
+            recomputeFillPreview(force = false)
             invalidate()
         }
     }
 
-    private fun recomputeFillPreview() {
+    private fun recomputeFillPreview(force: Boolean) {
         val source = fillSourceBitmap ?: return
         val tolerance = (fillSensitivityNow * 200f).toInt().coerceIn(0, 255)
+        val now = SystemClock.uptimeMillis()
+        if (!force && (tolerance == fillPreviewTolerance || now - fillPreviewComputedAt < FILL_PREVIEW_THROTTLE_MS)) return
         val result = FloodFill.fill(source, fillSeedX, fillSeedY, tolerance)
         fillPreviewMask?.recycle()
         fillPreviewMask = if (result.isEmpty) null else result.mask
@@ -2369,16 +2378,20 @@ class InkCanvasView(context: Context) : View(context) {
         fillPreviewTop = result.top / safeHeight
         fillPreviewWidth = result.width / safeWidth
         fillPreviewHeight = result.height / safeHeight
+        fillPreviewTolerance = tolerance
+        fillPreviewComputedAt = now
     }
 
-    private fun renderVisiblePageBitmap(pageWidth: Int, pageHeight: Int): Bitmap {
+    private fun renderDocumentPageBitmap(pageWidth: Int, pageHeight: Int): Bitmap {
         val bitmap = Bitmap.createBitmap(pageWidth, pageHeight, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        drawPageContent(canvas)
+        canvas.scale(pageWidth / width.coerceAtLeast(1).toFloat(), pageHeight / height.coerceAtLeast(1).toFloat())
+        drawPageContent(canvas, includeInteractionOverlays = false)
         return bitmap
     }
 
     private fun commitFillGesture() {
+        recomputeFillPreview(force = true)
         val mask = fillPreviewMask
         if (mask != null && fillPreviewWidth > 0f && fillPreviewHeight > 0f) {
             val color = inkColor.toUInt().toLong()
@@ -2408,7 +2421,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun beginSmudgeGesture(normalizedX: Float, normalizedY: Float) {
         smudgeSnapshot?.recycle()
-        smudgeSnapshot = renderVisiblePageBitmap(width.coerceAtLeast(1), height.coerceAtLeast(1))
+        smudgeSnapshot = renderDocumentPageBitmap(width.coerceAtLeast(1), height.coerceAtLeast(1))
         smudgeSegments.clear()
         smudgeCurrentColor = sampleSmudgeColor(normalizedX, normalizedY)
         smudgeSegments += smudgeCurrentColor to mutableListOf(StrokePoint(normalizedX.coerceIn(0f, 1f), normalizedY.coerceIn(0f, 1f), 1f, SystemClock.uptimeMillis()))
@@ -2887,6 +2900,8 @@ class InkCanvasView(context: Context) : View(context) {
     private companion object {
         const val REFERENCE_WIDTH = 1600f
         const val MAX_CACHE_PIXELS = 16_000_000L
+        const val FILL_MAX_SAMPLE_DIMENSION = 1_600f
+        const val FILL_PREVIEW_THROTTLE_MS = 32L
         const val LIVE_STROKE_CACHE_START_POINTS = 8
         const val LIVE_STROKE_CHECKPOINT_POINTS = 16
         const val LIVE_STROKE_TAIL_POINTS = 8

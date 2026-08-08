@@ -2,6 +2,7 @@ package app.inkloom.document
 
 import android.graphics.Bitmap
 import android.graphics.Color
+import java.util.BitSet
 import kotlin.math.abs
 
 /** Scanline flood fill used by the paint-bucket / ColorDrop tool.
@@ -21,10 +22,18 @@ object FloodFill {
         val seed = source.getPixel(startX, startY)
         val sr = Color.red(seed); val sg = Color.green(seed); val sb = Color.blue(seed); val sa = Color.alpha(seed)
         val tol = tolerance.coerceIn(0, 255)
-        val covered = BooleanArray(w * h)
-        val stack = IntArray(w * h)
+        val pixelCount = w * h
+        val covered = BitSet(pixelCount)
+        val queued = BitSet(pixelCount)
+        var stack = IntArray(minOf(pixelCount, INITIAL_STACK_CAPACITY))
         var sp = 0
-        fun push(x: Int, y: Int) { if (!covered[y * w + x]) { stack[sp++] = y * w + x } }
+        fun push(x: Int, y: Int) {
+            val index = y * w + x
+            if (covered[index] || queued[index]) return
+            if (sp == stack.size) stack = stack.copyOf(minOf(pixelCount, stack.size * 2))
+            stack[sp++] = index
+            queued.set(index)
+        }
         push(startX, startY)
         var minx = w; var maxx = -1; var miny = h; var maxy = -1
         while (sp > 0) {
@@ -38,7 +47,7 @@ object FloodFill {
             var spanUp = false
             var spanDown = false
             while (x < w && !covered[y * w + x] && matches(source.getPixel(x, y), sr, sg, sb, sa, tol)) {
-                covered[y * w + x] = true
+                covered.set(y * w + x)
                 if (x < minx) minx = x; if (x > maxx) maxx = x
                 if (y < miny) miny = y; if (y > maxy) maxy = y
                 if (y > 0) {
@@ -70,4 +79,6 @@ object FloodFill {
             abs(Color.blue(pixel) - sb) <= tol && abs(Color.alpha(pixel) - sa) <= tol
 
     private fun empty(w: Int, h: Int) = Result(Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888), 0, 0, -1, -1)
+
+    private const val INITIAL_STACK_CAPACITY = 4_096
 }
