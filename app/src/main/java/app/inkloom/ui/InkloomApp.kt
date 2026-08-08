@@ -706,6 +706,11 @@ fun InkloomApp(initialIntent: Intent?) {
             settings = settings,
             pdfIndexing = libraryState.selectedDocumentId in libraryState.pdfIndexingDocumentIds,
             onIndexPdfText = viewModel::indexPdfText,
+            handwritingRecognizing = libraryState.selectedPageId in libraryState.handwritingRecognitionPageIds,
+            imageOcrRecognizing = libraryState.selectedPageId in libraryState.imageOcrPageIds,
+            onRecognizeHandwriting = viewModel::recognizePageHandwriting,
+            onRecognizeImages = viewModel::recognizePageImages,
+            onConvertHandwriting = viewModel::convertRecognizedHandwritingToText,
             onSettings = { settingsOpen = true },
             onSettingsChange = ::updateSettings,
         )
@@ -998,6 +1003,11 @@ private fun EditorScreen(
     settings: AppSettings,
     pdfIndexing: Boolean,
     onIndexPdfText: (String) -> Unit,
+    handwritingRecognizing: Boolean,
+    imageOcrRecognizing: Boolean,
+    onRecognizeHandwriting: (String, String, String, (Result<Int>) -> Unit) -> Unit,
+    onRecognizeImages: (String, String, String, (Result<Int>) -> Unit) -> Unit,
+    onConvertHandwriting: (String, String, String, Boolean) -> Unit,
     onSettings: () -> Unit,
     onSettingsChange: (AppSettings) -> Unit,
 ) {
@@ -1141,6 +1151,9 @@ private fun EditorScreen(
     var pdfLinkFocus by remember(document.id) { mutableStateOf<Pair<String, PdfTextBounds>?>(null) }
     var outlineOpen by remember { mutableStateOf(false) }
     var documentQuery by remember { mutableStateOf("") }
+    var recognitionLanguageTag by remember(document.id) { mutableStateOf(if (settings.language == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "zh-Hans" else "en-US") }
+    var recognitionMessage by remember(document.id, selectedPage.id) { mutableStateOf<String?>(null) }
+    var handwritingConversionHit by remember { mutableStateOf<Pair<InkPage, PageSearchHit>?>(null) }
     var textInsertOpen by remember { mutableStateOf(false) }
     var stickyInsertOpen by remember { mutableStateOf(false) }
     var linkInsertOpen by remember { mutableStateOf(false) }
@@ -2941,7 +2954,46 @@ private fun EditorScreen(
             onDismissRequest = { searchOpen = false },
             title = { Text(tr("Search this note", "搜索此笔记")) },
             text = { Column(Modifier.widthIn(min = 340.dp, max = 560.dp)) {
-                OutlinedTextField(documentQuery, { documentQuery = it; searchFocus = null }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, placeholder = { Text(tr("Page, note, or PDF text", "页面、笔记或 PDF 文字")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(documentQuery, { documentQuery = it; searchFocus = null }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, placeholder = { Text(tr("Page, handwriting, image, or PDF text", "页面、手写、图片或 PDF 文字")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    FilterChip(selected = recognitionLanguageTag == "en-US", onClick = { recognitionLanguageTag = "en-US" }, label = { Text("English") })
+                    FilterChip(selected = recognitionLanguageTag == "zh-Hans", onClick = { recognitionLanguageTag = "zh-Hans" }, label = { Text("简体中文") })
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        enabled = !handwritingRecognizing,
+                        onClick = {
+                            recognitionMessage = null
+                            onRecognizeHandwriting(document.id, selectedPage.id, recognitionLanguageTag) { result ->
+                                recognitionMessage = result.fold(
+                                    onSuccess = { count -> if (settings.language == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "已识别 $count 行手写内容。" else "Recognized $count handwriting lines." },
+                                    onFailure = { error -> error.message ?: if (settings.language == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "手写识别失败。" else "Handwriting recognition failed." },
+                                )
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        if (handwritingRecognizing) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Icon(Icons.Outlined.Draw, null)
+                        Spacer(Modifier.width(6.dp)); Text(tr("Recognize ink", "识别手写"))
+                    }
+                    OutlinedButton(
+                        enabled = !imageOcrRecognizing,
+                        onClick = {
+                            recognitionMessage = null
+                            onRecognizeImages(document.id, selectedPage.id, recognitionLanguageTag) { result ->
+                                recognitionMessage = result.fold(
+                                    onSuccess = { count -> if (settings.language == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "已识别 $count 行图片文字。" else "Recognized $count image text lines." },
+                                    onFailure = { error -> error.message ?: if (settings.language == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "图片文字识别失败。" else "Image text recognition failed." },
+                                )
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        if (imageOcrRecognizing) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Icon(Icons.Outlined.DocumentScanner, null)
+                        Spacer(Modifier.width(6.dp)); Text(tr("Recognize images", "识别图片"))
+                    }
+                }
+                recognitionMessage?.let { Text(it, Modifier.padding(top = 4.dp), color = MutedInk, fontSize = 12.sp) }
                 if (unindexedPdfPages > 0) Surface(Modifier.fillMaxWidth().padding(top = 10.dp), color = Workspace, shape = RoundedCornerShape(10.dp)) {
                     Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(if (pdfIndexing) tr("Indexing PDF text…", "正在索引 PDF 文字…") else tr("$unindexedPdfPages PDF pages need a text index.", "$unindexedPdfPages 个 PDF 页面需要建立文字索引。"), Modifier.weight(1f), color = MutedInk, fontSize = 12.sp)
@@ -2950,17 +3002,46 @@ private fun EditorScreen(
                     }
                 }
                 Spacer(Modifier.height(10.dp))
-                if (documentQuery.isNotBlank() && results.isEmpty()) Text(tr("No matching page titles, tags, object text, or indexed PDF text.", "没有匹配的页面标题、标签、对象文字或已索引 PDF 文字。"), color = MutedInk)
+                if (documentQuery.isNotBlank() && results.isEmpty()) Text(tr("No matching page titles, tags, object text, recognized handwriting, image text, or indexed PDF text.", "没有匹配的页面标题、标签、对象文字、已识别手写、图片文字或已索引 PDF 文字。"), color = MutedInk)
                 else LazyColumn(Modifier.heightIn(max = 340.dp)) { items(results, key = { (page, _) -> page.id }) { (page, hit) ->
                     ListItem(
                         headlineContent = { Text(page.title) },
                         supportingContent = { Text(hit.snippet, maxLines = 2) },
                         leadingContent = { Text(when (hit.source) { PageSearchSource.PDF -> "PDF"; PageSearchSource.OBJECT -> "OBJ"; PageSearchSource.PAGE -> "PAGE"; PageSearchSource.HANDWRITING -> "INK"; PageSearchSource.IMAGE_OCR -> "OCR" }, color = Sage, fontSize = 9.sp) },
+                        trailingContent = if (hit.source == PageSearchSource.HANDWRITING && hit.recognizedBlockId != null) {{
+                            TextButton(onClick = { handwritingConversionHit = page to hit }) { Text(tr("To text", "转文字")) }
+                        }} else null,
                         modifier = Modifier.clickable { searchFocus = hit; selectPageWithViewport(page.id); searchOpen = false },
                     )
                 } }
             } },
             confirmButton = { TextButton(onClick = { searchOpen = false }) { Text(tr("Done", "完成")) } },
+        )
+    }
+    handwritingConversionHit?.let { (page, hit) ->
+        AlertDialog(
+            onDismissRequest = { handwritingConversionHit = null },
+            title = { Text(tr("Convert handwriting to text", "手写转文字")) },
+            text = { Text(tr("Keep the original ink, or replace those strokes with editable text?", "保留原始笔迹，还是用可编辑文字替换这些笔画？")) },
+            confirmButton = {
+                Button(onClick = {
+                    hit.recognizedBlockId?.let { onConvertHandwriting(document.id, page.id, it, true) }
+                    handwritingConversionHit = null
+                    searchOpen = false
+                    selectPageWithViewport(page.id)
+                }) { Text(tr("Replace ink", "替换笔迹")) }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { handwritingConversionHit = null }) { Text(tr("Cancel", "取消")) }
+                    TextButton(onClick = {
+                        hit.recognizedBlockId?.let { onConvertHandwriting(document.id, page.id, it, false) }
+                        handwritingConversionHit = null
+                        searchOpen = false
+                        selectPageWithViewport(page.id)
+                    }) { Text(tr("Keep ink", "保留笔迹")) }
+                }
+            },
         )
     }
     if (importError != null) AlertDialog(onDismissRequest = onDismissError, confirmButton = { TextButton(onClick = onDismissError) { Text(tr("OK", "确定")) } }, title = { Text(tr("Import issue", "导入问题")) }, text = { Text(importError) })

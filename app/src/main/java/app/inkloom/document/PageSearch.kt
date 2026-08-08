@@ -7,6 +7,7 @@ data class PageSearchHit(
     val snippet: String,
     val source: PageSearchSource,
     val bounds: PdfTextBounds? = null,
+    val recognizedBlockId: String? = null,
 )
 
 object PageSearch {
@@ -42,7 +43,7 @@ object PageSearch {
                         RecognizedTextSource.HANDWRITING -> PageSearchSource.HANDWRITING
                         RecognizedTextSource.IMAGE_OCR -> PageSearchSource.IMAGE_OCR
                     }
-                    return PageSearchHit(page.id, snippet(it, query), source, block.bounds)
+                    return PageSearchHit(page.id, snippet(it, query), source, block.bounds, block.id)
                 }
             }
 
