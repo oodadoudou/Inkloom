@@ -1152,6 +1152,9 @@ private fun EditorScreen(
     var searchFocus by remember(document.id) { mutableStateOf<PageSearchHit?>(null) }
     var pdfLinkFocus by remember(document.id) { mutableStateOf<Pair<String, PdfTextBounds>?>(null) }
     var outlineOpen by remember { mutableStateOf(false) }
+    var outlineMenuPageId by remember { mutableStateOf<String?>(null) }
+    var outlineRenamePageId by remember { mutableStateOf<String?>(null) }
+    var outlineRenameText by remember { mutableStateOf("") }
     var documentQuery by remember { mutableStateOf("") }
     var recognitionLanguageTag by remember(document.id) { mutableStateOf(if (settings.language == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "zh-Hans" else "en-US") }
     var recognitionMessage by remember(document.id, selectedPage.id) { mutableStateOf<String?>(null) }
@@ -2985,7 +2988,46 @@ private fun EditorScreen(
                             headlineContent = { Text(page.title, maxLines = 1, fontWeight = if (page.outlineLevel == 0) FontWeight.SemiBold else FontWeight.Normal) },
                             supportingContent = { Text(listOfNotNull(page.customNumber, page.tags.takeIf { it.isNotEmpty() }?.joinToString(" · ")).joinToString(" · ").ifBlank { tr("Page ${index + 1}", "第 ${index + 1} 页") }, color = MutedInk, maxLines = 1) },
                             leadingContent = { if (page.bookmarked) Icon(Icons.Default.Bookmark, tr("Bookmarked", "已收藏"), tint = Sage) else Text((index + 1).toString(), color = MutedInk) },
-                            trailingContent = { if (hasChildren) IconButton(onClick = { onTogglePageOutlineCollapsed(document.id, page.id) }) { Icon(if (page.outlineCollapsed) Icons.Default.ArrowRight else Icons.Default.ArrowDropDown, if (page.outlineCollapsed) tr("Expand", "展开") else tr("Collapse", "折叠")) } },
+                            trailingContent = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (hasChildren) IconButton(onClick = { onTogglePageOutlineCollapsed(document.id, page.id) }) { Icon(if (page.outlineCollapsed) Icons.Default.ArrowRight else Icons.Default.ArrowDropDown, if (page.outlineCollapsed) tr("Expand", "展开") else tr("Collapse", "折叠")) }
+                                    Box {
+                                        IconButton(onClick = { outlineMenuPageId = page.id }) { Icon(Icons.Outlined.MoreVert, tr("Edit outline item", "编辑大纲项目")) }
+                                        DropdownMenu(expanded = outlineMenuPageId == page.id, onDismissRequest = { outlineMenuPageId = null }) {
+                                            DropdownMenuItem(
+                                                text = { Text(tr("Rename", "重命名")) },
+                                                leadingIcon = { Icon(Icons.Outlined.Edit, null) },
+                                                onClick = { outlineMenuPageId = null; outlineRenamePageId = page.id; outlineRenameText = page.title },
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text(tr("Move up", "上移")) },
+                                                leadingIcon = { Icon(Icons.Outlined.ArrowUpward, null) },
+                                                enabled = index > 0,
+                                                onClick = { outlineMenuPageId = null; onMovePage(document.id, page.id, -1) },
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text(tr("Move down", "下移")) },
+                                                leadingIcon = { Icon(Icons.Outlined.ArrowDownward, null) },
+                                                enabled = index < document.pages.lastIndex,
+                                                onClick = { outlineMenuPageId = null; onMovePage(document.id, page.id, 1) },
+                                            )
+                                            HorizontalDivider()
+                                            DropdownMenuItem(
+                                                text = { Text(tr("Promote level", "提升层级")) },
+                                                leadingIcon = { Icon(Icons.Outlined.FormatIndentDecrease, null) },
+                                                enabled = page.outlineLevel > 0,
+                                                onClick = { outlineMenuPageId = null; onChangePageOutlineLevel(document.id, page.id, -1) },
+                                            )
+                                            DropdownMenuItem(
+                                                text = { Text(tr("Demote level", "降低层级")) },
+                                                leadingIcon = { Icon(Icons.Outlined.FormatIndentIncrease, null) },
+                                                enabled = index > 0 && page.outlineLevel < 3,
+                                                onClick = { outlineMenuPageId = null; onChangePageOutlineLevel(document.id, page.id, 1) },
+                                            )
+                                        }
+                                    }
+                                }
+                            },
                             modifier = Modifier.padding(start = (page.outlineLevel * 18).dp).clickable { selectPageWithViewport(page.id); outlineOpen = false },
                             colors = ListItemDefaults.colors(containerColor = if (page.id == selectedPage.id) SageContainer else Color.Transparent),
                         )
@@ -2993,6 +3035,15 @@ private fun EditorScreen(
                 }
             },
             confirmButton = { TextButton(onClick = { outlineOpen = false }) { Text(tr("Done", "完成")) } },
+        )
+    }
+    outlineRenamePageId?.let { pageId ->
+        AlertDialog(
+            onDismissRequest = { outlineRenamePageId = null },
+            title = { Text(tr("Rename outline item", "重命名大纲项目")) },
+            text = { OutlinedTextField(outlineRenameText, { outlineRenameText = it }, label = { Text(tr("Page title", "页面标题")) }, singleLine = true) },
+            confirmButton = { Button(enabled = outlineRenameText.isNotBlank(), onClick = { onRenamePage(document.id, pageId, outlineRenameText); outlineRenamePageId = null }) { Text(tr("Save", "保存")) } },
+            dismissButton = { TextButton(onClick = { outlineRenamePageId = null }) { Text(tr("Cancel", "取消")) } },
         )
     }
     if (searchOpen) {
