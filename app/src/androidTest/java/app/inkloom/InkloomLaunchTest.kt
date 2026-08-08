@@ -2,6 +2,11 @@ package app.inkloom
 
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import android.graphics.Color as AndroidColor
+import android.os.SystemClock
+import android.view.InputDevice
+import android.view.MotionEvent
+import android.view.ViewGroup
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.doubleClick
@@ -25,6 +30,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipe
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsActions
 import app.inkloom.importer.BrushGroupStore
@@ -37,6 +43,7 @@ import app.inkloom.settings.ToolboxAxisMode
 import app.inkloom.settings.ToolboxQuickSlotKind
 import app.inkloom.settings.WorkspacePanelDock
 import app.inkloom.settings.WorkspacePanelKind
+import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -687,6 +694,34 @@ class InkloomLaunchTest {
         composeRule.onAllNodesWithText("Layers").onLast().assertIsDisplayed()
     }
 
+    @Test fun dockedBrushSelectionKeepsColorAndRapidPenContactsWritable() {
+        createNotebookAndOpenEditor()
+        composeRule.onNodeWithContentDescription("Colors").performClick()
+        composeRule.onNodeWithContentDescription("Saturation and brightness field").performTouchInput {
+            swipe(Offset(width * .2f, height * .2f), Offset(width * .78f, height * .22f), durationMillis = 250)
+        }
+        composeRule.waitForIdle()
+        val view = findInkCanvasView()!!
+        val selectedColor = view.inkColor
+        assertTrue("The test must select a non-default color", selectedColor != AndroidColor.rgb(17, 17, 17))
+
+        composeRule.onNodeWithContentDescription("Colors").performClick()
+        composeRule.onNodeWithContentDescription("Brushes").performClick()
+        composeRule.onNodeWithText("Technical Pencil").performClick()
+        composeRule.waitUntil(5_000) { view.brushId == "system-technical-pencil" }
+        assertEquals("Changing a docked brush must retain the shared foreground color", selectedColor, view.inkColor)
+
+        var elapsedMs = Long.MAX_VALUE
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val started = SystemClock.elapsedRealtime()
+            repeat(6) { index -> dispatchStylusStroke(view, index) }
+            elapsedMs = SystemClock.elapsedRealtime() - started
+        }
+        val strokes = reflectedField(view, "strokes") as? List<*>
+        assertEquals("Every rapid contact must commit immediately", 6, strokes?.size)
+        assertTrue("Six short strokes must not block the input thread ($elapsedMs ms)", elapsedMs < 1_500L)
+    }
+
     @Test fun layerPanelCreatesFoldersMovesLayersAndCollapsesChildren() {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Layers").performClick()
@@ -702,5 +737,56 @@ class InkloomLaunchTest {
 
         assertTrue(composeRule.onAllNodes(hasText("Layer 1")).fetchSemanticsNodes().isEmpty())
         composeRule.onNodeWithText("Folder 1").assertIsDisplayed()
+    }
+
+    private fun findInkCanvasView(): InkCanvasView? {
+        var found: InkCanvasView? = null
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            fun walk(view: android.view.View) {
+                if (view is InkCanvasView) found = view
+                else if (view is ViewGroup) for (index in 0 until view.childCount) walk(view.getChildAt(index))
+            }
+            walk(composeRule.activity.window.decorView)
+        }
+        return found
+    }
+
+    private fun dispatchStylusStroke(view: InkCanvasView, index: Int) {
+        val downTime = SystemClock.uptimeMillis()
+        val properties = arrayOf(MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_STYLUS })
+        fun event(action: Int, x: Float, y: Float, elapsed: Long): MotionEvent = MotionEvent.obtain(
+            downTime,
+            downTime + elapsed,
+            action,
+            1,
+            properties,
+            arrayOf(MotionEvent.PointerCoords().apply { this.x = x; this.y = y; pressure = .7f; size = .05f }),
+            0,
+            0,
+            1f,
+            1f,
+            0,
+            0,
+            InputDevice.SOURCE_STYLUS,
+            0,
+        )
+        val y = view.height * (.18f + index * .1f)
+        listOf(
+            event(MotionEvent.ACTION_DOWN, view.width * .25f, y, 0),
+            event(MotionEvent.ACTION_MOVE, view.width * .55f, y + 8f, 4),
+            event(MotionEvent.ACTION_UP, view.width * .7f, y + 12f, 8),
+        ).forEach { motion -> try { view.dispatchTouchEvent(motion) } finally { motion.recycle() } }
+    }
+
+    private fun reflectedField(target: Any, name: String): Any? {
+        var type: Class<*>? = target.javaClass
+        while (type != null) {
+            runCatching { type.getDeclaredField(name) }.getOrNull()?.let { field ->
+                field.isAccessible = true
+                return field.get(target)
+            }
+            type = type.superclass
+        }
+        return null
     }
 }

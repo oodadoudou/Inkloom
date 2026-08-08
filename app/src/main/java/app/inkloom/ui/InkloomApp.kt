@@ -1008,7 +1008,9 @@ private fun EditorScreen(
     var activeBrush by remember { mutableStateOf<ImportedBrush?>(null) }
     var brushSize by remember { mutableFloatStateOf(settings.penSize) }
     var brushOpacity by remember { mutableFloatStateOf(settings.penOpacity) }
-    var brushColor by remember { mutableIntStateOf(AndroidColor.rgb(17, 17, 17)) }
+    // Foreground color belongs to the document workspace, not to an individual brush. Keeping it
+    // saveable prevents panel re-layouts and activity recreation from silently restoring black.
+    var brushColor by rememberSaveable(document.id) { mutableIntStateOf(AndroidColor.rgb(17, 17, 17)) }
     var previousDrawingTool by remember { mutableStateOf(EditorTool.PEN) }
     var previousDrawingBrushId by remember { mutableStateOf<String?>(null) }
     var previousDrawingSize by remember { mutableFloatStateOf(settings.penSize) }
@@ -1155,6 +1157,28 @@ private fun EditorScreen(
     var layersOpen by remember { mutableStateOf(settings.showLayerPanel) }
     LaunchedEffect(settings.showLayerPanel) { layersOpen = settings.showLayerPanel }
     var activeLayerId by remember(selectedPage.id) { mutableStateOf(LayerIds.INK) }
+    fun selectWorkspaceBrush(brush: ImportedBrush) {
+        exitCanvasNavigation()
+        val usedBrush = brush.copy(lastUsedAt = System.currentTimeMillis())
+        onUpdateBrush(usedBrush)
+        selectedBrushId = usedBrush.id
+        activeBrush = usedBrush
+        brushSize = usedBrush.defaultSize
+        brushOpacity = usedBrush.defaultOpacity
+        val chosenTool = if (BrushRoleClassifier.isEraser(usedBrush)) EditorTool.ERASER else EditorTool.PEN
+        tool = chosenTool
+        if (chosenTool == EditorTool.PEN && activeLayerId in setOf(LayerIds.HIGHLIGHT, LayerIds.OBJECTS)) activeLayerId = LayerIds.INK
+        // Apply the complete descriptor synchronously. A panel click and the next pen-down can
+        // occur before Compose's AndroidView update block; partial field assignment here used to
+        // leave the input configuration in a stale state and made docked brush selection appear
+        // to disable writing.
+        canvasView?.let { view ->
+            view.activeLayerId = activeLayerId
+            view.applyBrushConfiguration(chosenTool, settings, usedBrush, brushSize, brushOpacity, brushColor, settings.eraserPreset)
+            view.prewarmBrushAssets()
+            view.requestFocus()
+        }
+    }
     var panelsHiddenByShortcut by remember { mutableStateOf(false) }
     var pageRailBeforeShortcut by remember { mutableStateOf(settings.showPageRail) }
     var toolbarBeforeShortcut by remember { mutableStateOf(settings.showToolbar) }
@@ -1817,19 +1841,7 @@ private fun EditorScreen(
                 dock = settings.brushPanelDock,
                 onDock = { changePanelDock(WorkspacePanelKind.BRUSHES, it) },
                 onClose = { if (brushesOpen) onToggleBrushes() },
-                onBrushSelected = { brush ->
-                    exitCanvasNavigation()
-                    val usedBrush = brush.copy(lastUsedAt = System.currentTimeMillis())
-                    onUpdateBrush(usedBrush)
-                    selectedBrushId = usedBrush.id
-                    activeBrush = usedBrush
-                    brushSize = usedBrush.defaultSize
-                    brushOpacity = usedBrush.defaultOpacity
-                    brushColor = AndroidColor.rgb(17, 17, 17)
-                    val chosenTool = if (BrushRoleClassifier.isEraser(usedBrush)) EditorTool.ERASER else EditorTool.PEN
-                    tool = chosenTool
-                    canvasView?.apply { this.tool = chosenTool; inkOpacity = 1f; brushId = usedBrush.id; baseWidth = usedBrush.defaultSize; inkColor = brushColor }
-                },
+                onBrushSelected = ::selectWorkspaceBrush,
                 onImportBrushes = onImportBrushes,
                 onExportBrush = onExportBrush,
                 onUpdateBrush = { updated -> onUpdateBrush(updated); if (activeBrush?.id == updated.id) { activeBrush = updated; brushSize = updated.defaultSize } },
@@ -1975,15 +1987,7 @@ private fun EditorScreen(
                     onShortcutAction = { activation ->
                         val action = activation.action
                         fun selectImportedBrush(brush: ImportedBrush) {
-                            val usedBrush = brush.copy(lastUsedAt = System.currentTimeMillis())
-                            onUpdateBrush(usedBrush)
-                            selectedBrushId = usedBrush.id
-                            activeBrush = usedBrush
-                            brushSize = usedBrush.defaultSize
-                            brushOpacity = usedBrush.defaultOpacity
-                            brushColor = AndroidColor.rgb(17, 17, 17)
-                            tool = if (BrushRoleClassifier.isEraser(usedBrush)) EditorTool.ERASER else EditorTool.PEN
-                            if (activeLayerId == LayerIds.HIGHLIGHT || activeLayerId == LayerIds.OBJECTS) activeLayerId = LayerIds.INK
+                            selectWorkspaceBrush(brush)
                         }
 
                         fun updateBrushSize(multiplier: Float) {
@@ -2316,19 +2320,7 @@ private fun EditorScreen(
                         brushSize = settings.eraserSize
                         brushOpacity = 1f
                     }
-                }, onBrushPreset = { brush ->
-                    exitCanvasNavigation()
-                    val usedBrush = brush.copy(lastUsedAt = System.currentTimeMillis())
-                    onUpdateBrush(usedBrush)
-                    selectedBrushId = usedBrush.id
-                    activeBrush = usedBrush
-                    brushSize = usedBrush.defaultSize
-                    brushOpacity = usedBrush.defaultOpacity
-                    val chosenTool = if (BrushRoleClassifier.isEraser(usedBrush)) EditorTool.ERASER else EditorTool.PEN
-                    tool = chosenTool
-                    if (chosenTool == EditorTool.PEN && (activeLayerId == LayerIds.HIGHLIGHT || activeLayerId == LayerIds.OBJECTS)) activeLayerId = LayerIds.INK
-                    canvasView?.apply { this.tool = chosenTool; inkOpacity = usedBrush.defaultOpacity; brushId = usedBrush.id; baseWidth = usedBrush.defaultSize; inkColor = brushColor }
-                }, onSize = { raw ->
+                }, onBrushPreset = ::selectWorkspaceBrush, onSize = { raw ->
                     val value = raw.coerceIn(.5f, 400f)
                     brushSize = value
                     when (tool) {
@@ -2421,29 +2413,7 @@ private fun EditorScreen(
                 dock = settings.brushPanelDock,
                 onDock = { changePanelDock(WorkspacePanelKind.BRUSHES, it) },
                 onClose = { if (brushesOpen) onToggleBrushes() },
-                onBrushSelected = { brush ->
-                    exitCanvasNavigation()
-                    val usedBrush = brush.copy(lastUsedAt = System.currentTimeMillis())
-                    onUpdateBrush(usedBrush)
-                    selectedBrushId = usedBrush.id
-                    activeBrush = usedBrush
-                    brushSize = usedBrush.defaultSize
-                    brushOpacity = usedBrush.defaultOpacity
-                    brushColor = when (usedBrush.format) {
-                        BrushFormat.ABR -> AndroidColor.rgb(17, 17, 17)
-                        BrushFormat.SUT -> AndroidColor.rgb(17, 17, 17)
-                        else -> AndroidColor.rgb(17, 17, 17)
-                    }
-                    val chosenTool = if (BrushRoleClassifier.isEraser(usedBrush)) EditorTool.ERASER else EditorTool.PEN
-                    tool = chosenTool
-                    canvasView?.apply {
-                        this.tool = chosenTool
-                        inkOpacity = 1f
-                        brushId = usedBrush.id
-                        baseWidth = usedBrush.defaultSize
-                        inkColor = brushColor
-                    }
-                },
+                onBrushSelected = ::selectWorkspaceBrush,
                 onImportBrushes = onImportBrushes,
                 onExportBrush = onExportBrush,
                 onUpdateBrush = { updated -> onUpdateBrush(updated); if (activeBrush?.id == updated.id) { activeBrush = updated; brushSize = updated.defaultSize } },
@@ -2550,19 +2520,7 @@ private fun EditorScreen(
                     dock = settings.brushPanelDock,
                     onDock = { changePanelDock(WorkspacePanelKind.BRUSHES, it) },
                     onClose = { if (brushesOpen) onToggleBrushes() },
-                    onBrushSelected = { brush ->
-                        exitCanvasNavigation()
-                        val usedBrush = brush.copy(lastUsedAt = System.currentTimeMillis())
-                        onUpdateBrush(usedBrush)
-                        selectedBrushId = usedBrush.id
-                        activeBrush = usedBrush
-                        brushSize = usedBrush.defaultSize
-                        brushOpacity = usedBrush.defaultOpacity
-                        brushColor = AndroidColor.rgb(17, 17, 17)
-                        val chosenTool = if (BrushRoleClassifier.isEraser(usedBrush)) EditorTool.ERASER else EditorTool.PEN
-                        tool = chosenTool
-                        canvasView?.apply { this.tool = chosenTool; inkOpacity = 1f; brushId = usedBrush.id; baseWidth = usedBrush.defaultSize; inkColor = brushColor }
-                    },
+                    onBrushSelected = ::selectWorkspaceBrush,
                     onImportBrushes = onImportBrushes,
                     onExportBrush = onExportBrush,
                     onUpdateBrush = { updated -> onUpdateBrush(updated); if (activeBrush?.id == updated.id) { activeBrush = updated; brushSize = updated.defaultSize } },
@@ -2746,19 +2704,7 @@ private fun EditorScreen(
                 dock = settings.brushPanelDock,
                 onDock = { changePanelDock(WorkspacePanelKind.BRUSHES, it) },
                 onClose = { if (brushesOpen) onToggleBrushes() },
-                onBrushSelected = { brush ->
-                    exitCanvasNavigation()
-                    val usedBrush = brush.copy(lastUsedAt = System.currentTimeMillis())
-                    onUpdateBrush(usedBrush)
-                    selectedBrushId = usedBrush.id
-                    activeBrush = usedBrush
-                    brushSize = usedBrush.defaultSize
-                    brushOpacity = usedBrush.defaultOpacity
-                    brushColor = AndroidColor.rgb(17, 17, 17)
-                    val chosenTool = if (BrushRoleClassifier.isEraser(usedBrush)) EditorTool.ERASER else EditorTool.PEN
-                    tool = chosenTool
-                    canvasView?.apply { this.tool = chosenTool; inkOpacity = 1f; brushId = usedBrush.id; baseWidth = usedBrush.defaultSize; inkColor = brushColor }
-                },
+                onBrushSelected = ::selectWorkspaceBrush,
                 onImportBrushes = onImportBrushes,
                 onExportBrush = onExportBrush,
                 onUpdateBrush = { updated -> onUpdateBrush(updated); if (activeBrush?.id == updated.id) { activeBrush = updated; brushSize = updated.defaultSize } },
@@ -5334,6 +5280,7 @@ private fun CspColorPanel(color: Int, onColor: (Int) -> Unit, initiallyExpanded:
     val hsv = remember(color) { FloatArray(3).also { AndroidColor.colorToHSV(color, it) } }
     val hsl = remember(color) { colorToHsl(color) }
     val hueColor = Color(AndroidColor.HSVToColor(floatArrayOf(hsv[0], 1f, 1f)))
+    val saturationValueDescription = tr("Saturation and brightness field", "饱和度和明度区域")
     fun publish(hue: Float = hsv[0], saturation: Float = hsv[1], value: Float = hsv[2]) {
         onColor(AndroidColor.HSVToColor(AndroidColor.alpha(color), floatArrayOf(hue.coerceIn(0f, 360f), saturation.coerceIn(0f, 1f), value.coerceIn(0f, 1f))))
     }
@@ -5386,32 +5333,26 @@ private fun CspColorPanel(color: Int, onColor: (Int) -> Unit, initiallyExpanded:
                         Modifier
                             .weight(1f)
                             .height(72.dp)
+                            .semantics { contentDescription = saturationValueDescription }
                             .pointerInput(color) {
                                 fun update(point: Offset) {
                                     val width = size.width.coerceAtLeast(1).toFloat()
                                     val height = size.height.coerceAtLeast(1).toFloat()
-                                    val hueWeight = (point.x / width).coerceIn(0f, 1f)
-                                    val blackWeight = ((point.y / height) - hueWeight * .5f).coerceIn(0f, 1f - hueWeight)
-                                    val value = (1f - blackWeight).coerceIn(.001f, 1f)
-                                    publish(saturation = (hueWeight / value).coerceIn(0f, 1f), value = value)
+                                    val saturation = (point.x / width).coerceIn(0f, 1f)
+                                    val value = (1f - point.y / height).coerceIn(0f, 1f)
+                                    publish(saturation = saturation, value = value)
                                 }
                                 detectDragGestures(onDragStart = ::update) { change, _ -> change.consume(); update(change.position) }
                             },
                     ) {
-                        val triangle = Path().apply {
-                            moveTo(0f, 0f)
-                            lineTo(size.width, size.height / 2f)
-                            lineTo(0f, size.height)
-                            close()
-                        }
-                        clipPath(triangle) {
-                            drawRect(Brush.horizontalGradient(listOf(Color.White, hueColor)))
-                            drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black)))
-                        }
-                        drawPath(triangle, Ink, style = Stroke(1f))
-                        val hueWeight = hsv[1] * hsv[2]
-                        val blackWeight = 1f - hsv[2]
-                        val marker = Offset(hueWeight * size.width, (hueWeight * .5f + blackWeight) * size.height)
+                        // The rendered field and the inverse pointer mapping intentionally use the
+                        // same rectangular HSV model: X is saturation, Y is inverse value. The old
+                        // triangular barycentric mapping was applied to a rectangular gradient,
+                        // so the selected S/V numbers could not match the color under the cursor.
+                        drawRect(Brush.horizontalGradient(listOf(Color.White, hueColor)))
+                        drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black)))
+                        drawRect(Ink, style = Stroke(1f))
+                        val marker = Offset(hsv[1] * size.width, (1f - hsv[2]) * size.height)
                         drawCircle(Color.White, 5f, marker)
                         drawCircle(Ink, 5f, marker, style = Stroke(1.5f))
                     }
