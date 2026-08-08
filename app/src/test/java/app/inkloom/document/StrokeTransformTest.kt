@@ -18,9 +18,9 @@ class StrokeTransformTest {
     @Test fun uniformScaleScalesWidthAndDistance() {
         val out = StrokeTransform.transform(listOf(stroke(.5f, .0f, width = 4f)), centerX = .5f, centerY = .5f, scale = 2f, rotationDegrees = 0f, translateX = 0f, translateY = 0f)
         assertEquals(8f, out[0].width, .001f)
-        // point (.5, 0) scaled about (.5,.5) by 2 -> (.5, -.5) clamped to (.5, 0)
+        // Off-page geometry is preserved so a later inverse transform remains lossless.
         assertEquals(.5f, out[0].points[0].x, .0001f)
-        assertEquals(0f, out[0].points[0].y, .0001f)
+        assertEquals(-.5f, out[0].points[0].y, .0001f)
     }
 
     @Test fun rotationRotatesAboutCenter() {
@@ -32,5 +32,21 @@ class StrokeTransformTest {
     @Test fun identityReturnsSameStrokes() {
         val s = listOf(stroke(.2f, .3f))
         assertEquals(s, StrokeTransform.transform(s, .5f, .5f, 1f, 0f, 0f, 0f))
+    }
+
+    @Test fun rotationIsRigidOnPortraitPages() {
+        val out = StrokeTransform.transform(
+            listOf(stroke(1f, .5f)),
+            centerX = .5f,
+            centerY = .5f,
+            scale = 1f,
+            rotationDegrees = 90f,
+            translateX = 0f,
+            translateY = 0f,
+            pageWidth = 100f,
+            pageHeight = 200f,
+        )
+        assertEquals(.5f, out.single().points.single().x, .001f)
+        assertEquals(.75f, out.single().points.single().y, .001f)
     }
 }

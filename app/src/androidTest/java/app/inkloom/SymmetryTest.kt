@@ -37,18 +37,20 @@ class SymmetryTest {
     }
 
     @Test fun horizontalSymmetryCommitsMirrorStrokes() {
-        var committed = 0
+        val committed = mutableListOf<InkStroke>()
         val view = canvas {
             tool = EditorTool.PEN
             fingerDrawingEnabled = true
             symmetryMode = SymmetryMode.HORIZONTAL
-            onStrokeCommitted = { committed++ }
+            onStrokeCommitted = committed::add
         }
-        send(view, 0L, MotionEvent.ACTION_DOWN, 100f, 200f)
-        send(view, 20L, MotionEvent.ACTION_MOVE, 150f, 200f)
-        send(view, 40L, MotionEvent.ACTION_UP, 150f, 200f)
+        send(view, 0L, MotionEvent.ACTION_DOWN, 100f, 100f)
+        send(view, 20L, MotionEvent.ACTION_MOVE, 150f, 100f)
+        send(view, 40L, MotionEvent.ACTION_UP, 150f, 100f)
         // Original + 1 horizontal mirror = 2 strokes.
-        assertEquals("Horizontal symmetry should commit the original plus one mirror", 2, committed)
+        assertEquals("Horizontal symmetry should commit the original plus one mirror", 2, committed.size)
+        assertEquals(.25f, committed[1].points.first().x, .01f)
+        assertEquals(.75f, committed[1].points.first().y, .01f)
     }
 
     @Test fun noSymmetryCommitsASingleStroke() {
@@ -62,5 +64,23 @@ class SymmetryTest {
         send(view, 20L, MotionEvent.ACTION_MOVE, 150f, 200f)
         send(view, 40L, MotionEvent.ACTION_UP, 150f, 200f)
         assertEquals(1, committed)
+    }
+
+    @Test fun radialSymmetryUsesPhysicalPageAspectRatio() {
+        val committed = mutableListOf<InkStroke>()
+        val view = canvas {
+            tool = EditorTool.PEN
+            fingerDrawingEnabled = true
+            symmetryMode = SymmetryMode.RADIAL_4
+            pageModelWidth = 100f
+            pageModelHeight = 200f
+            onStrokeCommitted = committed::add
+        }
+        send(view, 0L, MotionEvent.ACTION_DOWN, 300f, 200f)
+        send(view, 20L, MotionEvent.ACTION_MOVE, 320f, 200f)
+        send(view, 40L, MotionEvent.ACTION_UP, 320f, 200f)
+        assertEquals(4, committed.size)
+        assertEquals(.5f, committed[1].points.first().x, .01f)
+        assertEquals(.625f, committed[1].points.first().y, .01f)
     }
 }

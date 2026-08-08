@@ -1476,8 +1476,8 @@ class InkCanvasView(context: Context) : View(context) {
                             selectionTransformMode = handleMode
                             selectionTransformCenterX = bounds.centerX()
                             selectionTransformCenterY = bounds.centerY()
-                            val dx = normalizedX - selectionTransformCenterX
-                            val dy = normalizedY - selectionTransformCenterY
+                            val dx = (normalizedX - selectionTransformCenterX) * pageModelWidth
+                            val dy = (normalizedY - selectionTransformCenterY) * pageModelHeight
                             selectionTransformStartDistance = hypot(dx.toDouble(), dy.toDouble()).toFloat().coerceAtLeast(.0001f)
                             selectionTransformStartAngle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
                             lastX = normalizedX; lastY = normalizedY
@@ -1550,16 +1550,16 @@ class InkCanvasView(context: Context) : View(context) {
                 }
                 else if (activeTool == EditorTool.SELECT) {
                     if (selectionTransformMode == TRANSFORM_SCALE) {
-                        val dx = normalizedX - selectionTransformCenterX
-                        val dy = normalizedY - selectionTransformCenterY
+                        val dx = (normalizedX - selectionTransformCenterX) * pageModelWidth
+                        val dy = (normalizedY - selectionTransformCenterY) * pageModelHeight
                         val scale = (hypot(dx.toDouble(), dy.toDouble()).toFloat() / selectionTransformStartDistance).coerceAtLeast(.01f)
                         applySelectionTransform(scale, 0f)
                         selectionMoved = true
                         lastX = normalizedX; lastY = normalizedY
                         invalidate()
                     } else if (selectionTransformMode == TRANSFORM_ROTATE) {
-                        val dx = normalizedX - selectionTransformCenterX
-                        val dy = normalizedY - selectionTransformCenterY
+                        val dx = (normalizedX - selectionTransformCenterX) * pageModelWidth
+                        val dy = (normalizedY - selectionTransformCenterY) * pageModelHeight
                         val angle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
                         applySelectionTransform(1f, normalizeAngleDelta(angle, selectionTransformStartAngle))
                         selectionMoved = true
@@ -2521,14 +2521,13 @@ class InkCanvasView(context: Context) : View(context) {
     private fun hitSelectionHandle(normalizedX: Float, normalizedY: Float): Int {
         if (selectedStrokeIds.isEmpty()) return TRANSFORM_NONE
         val bounds = selectionBounds() ?: return TRANSFORM_NONE
-        val touchRadius = SELECTION_HANDLE_TOUCH_PX / width.coerceAtLeast(1)
         val corners = listOf(
             bounds.left to bounds.top, bounds.right to bounds.top,
             bounds.right to bounds.bottom, bounds.left to bounds.bottom,
         )
-        if (corners.any { hypot((it.first - normalizedX).toDouble(), (it.second - normalizedY).toDouble()).toFloat() <= touchRadius }) return TRANSFORM_SCALE
+        if (corners.any { hypot(((it.first - normalizedX) * width).toDouble(), ((it.second - normalizedY) * height).toDouble()).toFloat() <= SELECTION_HANDLE_TOUCH_PX }) return TRANSFORM_SCALE
         val rotY = (bounds.top - SELECTION_ROTATE_HANDLE_OFFSET_PX / height.coerceAtLeast(1))
-        if (hypot((bounds.centerX() - normalizedX).toDouble(), (rotY - normalizedY).toDouble()).toFloat() <= touchRadius) return TRANSFORM_ROTATE
+        if (hypot(((bounds.centerX() - normalizedX) * width).toDouble(), ((rotY - normalizedY) * height).toDouble()).toFloat() <= SELECTION_HANDLE_TOUCH_PX) return TRANSFORM_ROTATE
         return TRANSFORM_NONE
     }
 
@@ -2536,7 +2535,7 @@ class InkCanvasView(context: Context) : View(context) {
         val before = selectionGestureBefore ?: return
         val selectedSet = selectedStrokeIds.toHashSet()
         val movedBefore = strokes.filter { it.id in selectedSet }
-        val transformed = StrokeTransform.transform(before.filter { it.id in selectedSet }, selectionTransformCenterX, selectionTransformCenterY, scale, rotation, 0f, 0f).associateBy(InkStroke::id)
+        val transformed = StrokeTransform.transform(before.filter { it.id in selectedSet }, selectionTransformCenterX, selectionTransformCenterY, scale, rotation, 0f, 0f, pageModelWidth, pageModelHeight).associateBy(InkStroke::id)
         for (i in strokes.indices) {
             val replacement = transformed[strokes[i].id]
             if (replacement != null) strokes[i] = replacement
@@ -2570,11 +2569,11 @@ class InkCanvasView(context: Context) : View(context) {
         paint.style = Paint.Style.STROKE; paint.color = Color.rgb(24, 119, 242); paint.alpha = 120; paint.strokeWidth = 1.5f
         val cx = width / 2f; val cy = height / 2f
         when (symmetryMode) {
-            SymmetryMode.HORIZONTAL, SymmetryMode.QUADRANT -> canvas.drawLine(cx, 0f, cx, height.toFloat(), paint)
+            SymmetryMode.VERTICAL, SymmetryMode.QUADRANT -> canvas.drawLine(cx, 0f, cx, height.toFloat(), paint)
             else -> Unit
         }
         when (symmetryMode) {
-            SymmetryMode.VERTICAL, SymmetryMode.QUADRANT -> canvas.drawLine(0f, cy, width.toFloat(), cy, paint)
+            SymmetryMode.HORIZONTAL, SymmetryMode.QUADRANT -> canvas.drawLine(0f, cy, width.toFloat(), cy, paint)
             else -> Unit
         }
         when (symmetryMode) {
@@ -2614,8 +2613,8 @@ class InkCanvasView(context: Context) : View(context) {
         val mirrorY: (StrokePoint) -> StrokePoint = { it.copy(y = (1f - it.y).coerceIn(0f, 1f)) }
         return when (symmetryMode) {
             SymmetryMode.NONE -> emptyList()
-            SymmetryMode.HORIZONTAL -> listOf(points.map(mirrorX))
-            SymmetryMode.VERTICAL -> listOf(points.map(mirrorY))
+            SymmetryMode.HORIZONTAL -> listOf(points.map(mirrorY))
+            SymmetryMode.VERTICAL -> listOf(points.map(mirrorX))
             SymmetryMode.QUADRANT -> listOf(points.map(mirrorX), points.map(mirrorY), points.map(mirrorX).map(mirrorY))
             SymmetryMode.RADIAL_4, SymmetryMode.RADIAL_6, SymmetryMode.RADIAL_8 -> {
                 val n = when (symmetryMode) { SymmetryMode.RADIAL_4 -> 4; SymmetryMode.RADIAL_6 -> 6; SymmetryMode.RADIAL_8 -> 8; else -> 4 }
@@ -2628,9 +2627,11 @@ class InkCanvasView(context: Context) : View(context) {
         val radians = Math.toRadians(rotationDegrees.toDouble())
         val cos = kotlin.math.cos(radians).toFloat()
         val sin = kotlin.math.sin(radians).toFloat()
-        val dx = point.x - .5f
-        val dy = point.y - .5f
-        return point.copy(x = (.5f + dx * cos - dy * sin).coerceIn(0f, 1f), y = (.5f + dx * sin + dy * cos).coerceIn(0f, 1f))
+        val safeWidth = pageModelWidth.coerceAtLeast(.0001f)
+        val safeHeight = pageModelHeight.coerceAtLeast(.0001f)
+        val dx = (point.x - .5f) * safeWidth
+        val dy = (point.y - .5f) * safeHeight
+        return point.copy(x = .5f + (dx * cos - dy * sin) / safeWidth, y = .5f + (dx * sin + dy * cos) / safeHeight)
     }
 
     private fun beginEraserGesture() {
@@ -2798,12 +2799,9 @@ class InkCanvasView(context: Context) : View(context) {
         invalidateStrokeCache(edit?.before.orEmpty().map { it.stroke }, edit?.after.orEmpty().map { it.stroke })
     }
 
-    fun scaleSelection(factor: Float) = transformSelection(radiusScale = factor) { dx, dy -> dx * factor to dy * factor }
+    fun scaleSelection(factor: Float) = transformSelection(factor, 0f)
 
-    fun rotateSelection(degrees: Float) {
-        val radians = Math.toRadians(degrees.toDouble())
-        transformSelection(rotationDeltaDegrees = degrees) { dx, dy -> (dx * cos(radians) - dy * sin(radians)).toFloat() to (dx * sin(radians) + dy * cos(radians)).toFloat() }
-    }
+    fun rotateSelection(degrees: Float) = transformSelection(1f, degrees)
 
     fun copySelection() {
         val before = strokes.toList()
@@ -2876,30 +2874,15 @@ class InkCanvasView(context: Context) : View(context) {
         val ids = selectedStrokeIds.toSet(); val removed = strokes.filter { it.id in ids }; strokes.removeAll { it.id in ids }; commitStrokeEdit(before, strokes); selectedStrokeIds.clear(); invalidateStrokeCache(removed, emptyList())
     }
 
-    private fun transformSelection(
-        radiusScale: Float = 1f,
-        rotationDeltaDegrees: Float = 0f,
-        transform: (Float, Float) -> Pair<Float, Float>,
-    ) {
+    private fun transformSelection(scale: Float, rotationDegrees: Float) {
         val before = strokes.toList()
         val selected = strokes.filter { it.id in selectedStrokeIds }
         val points = selected.flatMap(InkStroke::points)
         if (points.isEmpty()) return
         val centerX = points.map(StrokePoint::x).average().toFloat(); val centerY = points.map(StrokePoint::y).average().toFloat()
+        val transformed = StrokeTransform.transform(selected, centerX, centerY, scale, rotationDegrees, 0f, 0f, pageModelWidth, pageModelHeight).associateBy(InkStroke::id)
         selected.forEach { current ->
-            val changed = current.copy(
-                points = current.points.map { point -> val (x, y) = transform(point.x - centerX, point.y - centerY); point.copy(x = (centerX + x).coerceIn(0f, 1f), y = (centerY + y).coerceIn(0f, 1f)) },
-                masks = current.masks.map { mask ->
-                    val (x, y) = transform(mask.x - centerX, mask.y - centerY)
-                    mask.copy(
-                        x = (centerX + x).coerceIn(0f, 1f),
-                        y = (centerY + y).coerceIn(0f, 1f),
-                        radiusX = mask.radiusX * radiusScale,
-                        radiusY = mask.radiusY * radiusScale,
-                        rotationDegrees = mask.rotationDegrees + rotationDeltaDegrees,
-                    )
-                },
-            )
+            val changed = transformed.getValue(current.id)
             val currentIndex = strokes.indexOfFirst { it.id == current.id }
             if (currentIndex >= 0) strokes[currentIndex] = changed
         }
