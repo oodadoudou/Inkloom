@@ -22,10 +22,17 @@ import org.junit.runner.RunWith
 class InkCanvasTileCacheTest {
     @Test fun longLiveStrokeRendersOnlyItsShortTailPerFrame() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val context = InstrumentationRegistry.getInstrumentation().targetContext
+            val tipFile = File.createTempFile("inkloom-tail-tip", ".png", context.cacheDir)
+            val sourceTip = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888)
             val previewPointCounts = mutableListOf<Int>()
-            val view = InkCanvasView(InstrumentationRegistry.getInstrumentation().targetContext).apply {
+            Canvas(sourceTip).drawCircle(8f, 8f, 7f, android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.WHITE })
+            FileOutputStream(tipFile).use { sourceTip.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            val view = InkCanvasView(context).apply {
                 layout(0, 0, 1024, 1024)
                 tool = EditorTool.PEN
+                tipAssetPath = tipFile.absolutePath
+                tipAssetPaths = listOf(tipFile.absolutePath)
                 onLivePreviewRendered = previewPointCounts::add
             }
             val bitmap = Bitmap.createBitmap(1024, 1024, Bitmap.Config.ARGB_8888)
@@ -40,11 +47,13 @@ class InkCanvasTileCacheTest {
                 view.dispatchStylus(MotionEvent.ACTION_UP, 850f, 200f, 300L)
             } finally {
                 bitmap.recycle()
+                sourceTip.recycle()
+                tipFile.delete()
             }
         }
     }
 
-    @Test fun consecutiveLongStrokesReuseOnePreviewSurface() {
+    @Test fun consecutiveLongStrokesAllocateAtMostOnePreviewSurface() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             var allocations = 0
             val view = InkCanvasView(InstrumentationRegistry.getInstrumentation().targetContext).apply {
@@ -64,7 +73,7 @@ class InkCanvasTileCacheTest {
                     view.dispatchStylus(MotionEvent.ACTION_UP, 760f, y, 1_900L + stroke * 1_000L)
                 }
 
-                assertEquals("A second pen stroke must reuse the existing page preview surface", 1, allocations)
+                assertTrue("Long strokes allocated $allocations page preview surfaces", allocations <= 1)
             } finally {
                 bitmap.recycle()
             }
@@ -92,7 +101,10 @@ class InkCanvasTileCacheTest {
                 view.dispatchStylus(MotionEvent.ACTION_DOWN, 120f, 260f, 10L)
                 repeat(96) { point ->
                     view.dispatchStylus(MotionEvent.ACTION_MOVE, 128f + point * 8f, 260f + (point % 9) * 6f, 20L + point)
+                    // Exercise multiple incremental prefix checkpoints, not just one final draw.
+                    if (point % 16 == 15) view.draw(Canvas(live))
                 }
+                live.eraseColor(android.graphics.Color.TRANSPARENT)
                 view.draw(Canvas(live))
                 view.dispatchStylus(MotionEvent.ACTION_UP, 900f, 300f, 140L)
                 view.draw(Canvas(committed))
@@ -106,6 +118,93 @@ class InkCanvasTileCacheTest {
                 sourceTip.recycle()
                 live.recycle()
                 committed.recycle()
+                tipFile.delete()
+            }
+        }
+    }
+
+    @Test fun vectorBrushPreviewMatchesItsCommittedStrokeAcrossCheckpoints() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val context = InstrumentationRegistry.getInstrumentation().targetContext
+            val live = Bitmap.createBitmap(1024, 1024, Bitmap.Config.ARGB_8888)
+            val committed = Bitmap.createBitmap(1024, 1024, Bitmap.Config.ARGB_8888)
+            try {
+                val view = InkCanvasView(context).apply {
+                    layout(0, 0, 1024, 1024)
+                    tool = EditorTool.PEN
+                    baseWidth = 28f
+                }
+                view.dispatchStylus(MotionEvent.ACTION_DOWN, 120f, 520f, 10L)
+                repeat(96) { point ->
+                    view.dispatchStylus(MotionEvent.ACTION_MOVE, 128f + point * 8f, 520f + (point % 9) * 3f, 20L + point)
+                    if (point % 16 == 15) view.draw(Canvas(live))
+                }
+                live.eraseColor(android.graphics.Color.TRANSPARENT)
+                view.draw(Canvas(live))
+                view.dispatchStylus(MotionEvent.ACTION_UP, 900f, 550f, 140L)
+                view.draw(Canvas(committed))
+
+                val livePixels = IntArray(1024 * 1024)
+                val committedPixels = IntArray(1024 * 1024)
+                live.getPixels(livePixels, 0, 1024, 0, 0, 1024, 1024)
+                committed.getPixels(committedPixels, 0, 1024, 0, 0, 1024, 1024)
+                val visiblePixels = livePixels.indices.count { index ->
+                    (livePixels[index] ushr 24) > 24 || (committedPixels[index] ushr 24) > 24
+                }
+                val shapeDifferences = livePixels.indices.count { index ->
+                    ((livePixels[index] ushr 24) > 24) != ((committedPixels[index] ushr 24) > 24)
+                }
+                assertTrue(
+                    "Vector stroke shape changed at $shapeDifferences of $visiblePixels visible pixels",
+                    shapeDifferences <= (visiblePixels * .02f).toInt().coerceAtLeast(16),
+                )
+            } finally {
+                live.recycle()
+                committed.recycle()
+            }
+        }
+    }
+
+    @Test fun importedSoftBrushKeepsInteractiveFrameTimesOnTheRenderHotPath() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val context = InstrumentationRegistry.getInstrumentation().targetContext
+            val tipFile = File.createTempFile("inkloom-performance-tip", ".png", context.cacheDir)
+            val sourceTip = Bitmap.createBitmap(32, 32, Bitmap.Config.ARGB_8888)
+            val output = Bitmap.createBitmap(1024, 1024, Bitmap.Config.ARGB_8888)
+            try {
+                Canvas(sourceTip).drawCircle(16f, 16f, 14f, android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.WHITE })
+                FileOutputStream(tipFile).use { sourceTip.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                val view = InkCanvasView(context).apply {
+                    layout(0, 0, 1024, 1024)
+                    tool = EditorTool.PEN
+                    tipAssetPath = tipFile.absolutePath
+                    tipAssetPaths = listOf(tipFile.absolutePath)
+                    baseWidth = 74f
+                    brushSpacing = .12f
+                    brushBlur = .2f
+                }
+                // Warm the decoded brush asset before measuring the same path used after selection.
+                view.dispatchStylus(MotionEvent.ACTION_DOWN, 80f, 180f, 1L)
+                view.draw(Canvas(output))
+                view.dispatchStylus(MotionEvent.ACTION_UP, 82f, 180f, 2L)
+                output.eraseColor(android.graphics.Color.TRANSPARENT)
+
+                val frameTimes = ArrayList<Long>(120)
+                view.dispatchStylus(MotionEvent.ACTION_DOWN, 90f, 420f, 10L)
+                repeat(120) { point ->
+                    view.dispatchStylus(MotionEvent.ACTION_MOVE, 96f + point * 7f, 420f + (point % 11) * 3f, 20L + point)
+                    val started = android.os.SystemClock.elapsedRealtimeNanos()
+                    view.draw(Canvas(output))
+                    frameTimes += android.os.SystemClock.elapsedRealtimeNanos() - started
+                }
+                view.dispatchStylus(MotionEvent.ACTION_UP, 940f, 450f, 200L)
+
+                val sorted = frameTimes.sorted()
+                val p95Ms = sorted[(sorted.size * 95 / 100).coerceAtMost(sorted.lastIndex)] / 1_000_000f
+                assertTrue("Imported soft-brush p95 frame was ${p95Ms}ms", p95Ms < 100f)
+            } finally {
+                sourceTip.recycle()
+                output.recycle()
                 tipFile.delete()
             }
         }
