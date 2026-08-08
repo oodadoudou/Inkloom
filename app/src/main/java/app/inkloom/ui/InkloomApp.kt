@@ -81,6 +81,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.core.content.FileProvider
 import app.inkloom.document.*
 import app.inkloom.importer.BrushImportRepository
 import app.inkloom.importer.BrushGroupOperations
@@ -540,6 +541,22 @@ fun InkloomApp(initialIntent: Intent?) {
             viewModel.insertImage(uri)
         }.onFailure { importError = it.message }
     }
+    var pendingPageScan by remember { mutableStateOf<Pair<Uri, java.io.File>?>(null) }
+    val pageScanLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { captured ->
+        val pending = pendingPageScan
+        pendingPageScan = null
+        if (captured && pending != null) runCatching { viewModel.insertImage(pending.first) }.onFailure { importError = it.message }
+        pending?.second?.delete()
+    }
+    fun launchPageScanner() {
+        runCatching {
+            val directory = java.io.File(context.cacheDir, "page-scans").apply { mkdirs() }
+            val file = java.io.File.createTempFile("scan-", ".jpg", directory)
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
+            pendingPageScan = uri to file
+            pageScanLauncher.launch(uri)
+        }.onFailure { importError = it.message }
+    }
     val pageTemplatePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) runCatching {
             context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -693,6 +710,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onRemoveElement = viewModel::removeElement,
             onDuplicateElement = viewModel::duplicateElement,
             onInsertImage = { pageImagePicker.launch(arrayOf("image/*")) },
+            onScanImage = ::launchPageScanner,
             onExport = { exportPicker.launch("${viewModel.currentDocument()?.title ?: "Inkloom"}.pdf") },
             onExportPage = { imageExportPicker.launch("${viewModel.currentDocument()?.title ?: "Inkloom"}-page.png") },
             onExportBundle = { bundleExportPicker.launch("${viewModel.currentDocument()?.title ?: "Inkloom"}.inkloom.zip") },
@@ -995,6 +1013,7 @@ private fun EditorScreen(
     onRemoveElement: (String, String, String) -> Unit,
     onDuplicateElement: (String, String, String) -> Unit,
     onInsertImage: () -> Unit,
+    onScanImage: () -> Unit,
     onExport: () -> Unit,
     onExportPage: () -> Unit,
     onExportBundle: () -> Unit,
@@ -1163,6 +1182,7 @@ private fun EditorScreen(
     var stickyInsertOpen by remember { mutableStateOf(false) }
     var linkInsertOpen by remember { mutableStateOf(false) }
     var shapeInsertOpen by remember { mutableStateOf(false) }
+    var imageInsertOpen by remember { mutableStateOf(false) }
     var insertText by remember { mutableStateOf("") }
     var insertLinkTitle by remember { mutableStateOf("") }
     var insertLinkUrl by remember { mutableStateOf("") }
@@ -1392,7 +1412,7 @@ private fun EditorScreen(
                                 EditorTool.TEXT -> { insertText = ""; textInsertOpen = true }
                                 EditorTool.NOTE -> { insertText = ""; stickyInsertOpen = true }
                                 EditorTool.LINK -> { insertLinkTitle = ""; insertLinkUrl = ""; linkInsertOpen = true }
-                                EditorTool.IMAGE -> { onInsertImage(); tool = EditorTool.SELECT; canvasView?.tool = EditorTool.SELECT }
+                                EditorTool.IMAGE -> { imageInsertOpen = true; tool = EditorTool.SELECT; canvasView?.tool = EditorTool.SELECT }
                                 EditorTool.AUDIO -> if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) audioOpen = true else audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                                 else -> Unit
                             }
@@ -2193,7 +2213,7 @@ private fun EditorScreen(
                             ShortcutAction.TEXT_TOOL -> { exitCanvasNavigation(); tool = EditorTool.TEXT; insertText = ""; textInsertOpen = true }
                             ShortcutAction.NOTE_TOOL -> { exitCanvasNavigation(); tool = EditorTool.NOTE; insertText = ""; stickyInsertOpen = true }
                             ShortcutAction.LINK_TOOL -> { exitCanvasNavigation(); tool = EditorTool.LINK; insertLinkTitle = ""; insertLinkUrl = ""; linkInsertOpen = true }
-                            ShortcutAction.IMAGE_TOOL -> { exitCanvasNavigation(); onInsertImage(); tool = EditorTool.SELECT }
+                            ShortcutAction.IMAGE_TOOL -> { exitCanvasNavigation(); imageInsertOpen = true; tool = EditorTool.SELECT }
                             ShortcutAction.AUDIO_TOOL -> { exitCanvasNavigation(); if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) audioOpen = true else audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) }
                             ShortcutAction.LASER_TOOL -> if (activation.trigger == ShortcutTrigger.HOLD) {
                                 rememberDrawingSelection()
@@ -2354,7 +2374,7 @@ private fun EditorScreen(
                         EditorTool.TEXT -> { insertText = ""; textInsertOpen = true }
                         EditorTool.NOTE -> { insertText = ""; stickyInsertOpen = true }
                         EditorTool.LINK -> { insertLinkTitle = ""; insertLinkUrl = ""; linkInsertOpen = true }
-                        EditorTool.IMAGE -> { onInsertImage(); tool = EditorTool.SELECT }
+                        EditorTool.IMAGE -> { imageInsertOpen = true; tool = EditorTool.SELECT }
                         EditorTool.AUDIO -> if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) audioOpen = true else audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                         else -> Unit
                     }
@@ -2962,6 +2982,13 @@ private fun EditorScreen(
         text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { Text(tr("Choose a shape, then drag on the page with the pen. Lines and arrows snap to nearby 45° angles; Freeform follows the pen and closes the polygon automatically.", "选择形状后用笔在页面上拖动。直线和箭头会吸附到邻近的 45° 角；自由形状会跟随笔迹并自动闭合。"), color = MutedInk, fontSize = 12.sp); LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { ShapeKind.entries.forEach { kind -> item { FilterChip(selected = insertShape == kind, onClick = { insertShape = kind }, label = { Text(localizedShapeKind(kind)) }) } } } } },
         confirmButton = { Button(onClick = { shapeInsertOpen = false; tool = EditorTool.SHAPE; canvasView?.tool = EditorTool.SHAPE }) { Text(tr("Draw", "绘制")) } },
         dismissButton = { TextButton(onClick = { shapeInsertOpen = false }) { Text(tr("Cancel", "取消")) } },
+    )
+    if (imageInsertOpen) AlertDialog(
+        onDismissRequest = { imageInsertOpen = false },
+        title = { Text(tr("Add page image", "添加页面图片")) },
+        text = { Text(tr("Import an existing image or capture a paper page with the device camera. Image text can then be indexed from Search this note.", "导入现有图片，或用设备相机拍摄纸质页面。随后可在“搜索此笔记”中识别图片文字。")) },
+        confirmButton = { Button(onClick = { imageInsertOpen = false; onScanImage() }) { Icon(Icons.Outlined.DocumentScanner, null); Spacer(Modifier.width(6.dp)); Text(tr("Scan page", "扫描页面")) } },
+        dismissButton = { Row { TextButton(onClick = { imageInsertOpen = false }) { Text(tr("Cancel", "取消")) }; TextButton(onClick = { imageInsertOpen = false; onInsertImage() }) { Text(tr("Import image", "导入图片")) } } },
     )
     if (audioOpen) AlertDialog(
         onDismissRequest = { if (recording) audioRecorder.cancel(); recording = false; audioOpen = false },
