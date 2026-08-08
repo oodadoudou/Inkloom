@@ -18,9 +18,11 @@ import android.graphics.PorterDuffXfermode
 import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.PointerIcon
 import android.view.View
 import android.view.ViewConfiguration
 import java.util.LinkedHashMap
+import java.util.concurrent.Executors
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
 import app.inkloom.document.StrokeMaskDab
@@ -262,6 +264,11 @@ class InkCanvasView(context: Context) : View(context) {
     private val paperFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val brushSizePreviewPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val brushSizePreviewTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 30f; typeface = android.graphics.Typeface.DEFAULT_BOLD }
+    private val hoverCursorPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+    private var hoverCursorVisible = false
+    private var hoverCursorX = 0f
+    private var hoverCursorY = 0f
+    private var hoverCursorUsesEraser = false
     private val tipCache = object : LinkedHashMap<String, Bitmap>(32, .75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Bitmap>): Boolean {
             val remove = size > MAX_TIP_CACHE_ENTRIES
@@ -269,6 +276,7 @@ class InkCanvasView(context: Context) : View(context) {
             return remove
         }
     }
+    private val pendingTipLoads = mutableSetOf<String>()
     private var prewarmedBrushSignature: String? = null
     private val protectedStrokeIds = mutableSetOf<String>()
     private val protectedLayerIds = mutableSetOf<String>()
@@ -687,6 +695,43 @@ class InkCanvasView(context: Context) : View(context) {
         drawPageContent(canvas)
     }
 
+    override fun onHoverEvent(event: MotionEvent): Boolean {
+        val pointerIndex = event.actionIndex.coerceIn(0, event.pointerCount - 1)
+        val toolType = event.getToolType(pointerIndex)
+        val stylus = toolType == MotionEvent.TOOL_TYPE_STYLUS || toolType == MotionEvent.TOOL_TYPE_ERASER
+        val cursorTool = if (toolType == MotionEvent.TOOL_TYPE_ERASER) EditorTool.ERASER else tool
+        val drawableTool = cursorTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.SMUDGE)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_HOVER_ENTER, MotionEvent.ACTION_HOVER_MOVE -> {
+                if (!stylus || !drawableTool) {
+                    if (hoverCursorVisible) { hoverCursorVisible = false; invalidate() }
+                    return stylus
+                }
+                val point = canvasPoint(event, pointerIndex)
+                hoverCursorX = point.first
+                hoverCursorY = point.second
+                hoverCursorUsesEraser = cursorTool == EditorTool.ERASER
+                hoverCursorVisible = true
+                invalidate()
+                return true
+            }
+            MotionEvent.ACTION_HOVER_EXIT, MotionEvent.ACTION_CANCEL -> {
+                if (hoverCursorVisible) { hoverCursorVisible = false; invalidate() }
+                return stylus
+            }
+        }
+        return super.onHoverEvent(event)
+    }
+
+    override fun onResolvePointerIcon(event: MotionEvent, pointerIndex: Int): PointerIcon? {
+        val index = pointerIndex.coerceIn(0, event.pointerCount - 1)
+        return if (event.getToolType(index) in setOf(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.TOOL_TYPE_ERASER)) {
+            PointerIcon.getSystemIcon(context, PointerIcon.TYPE_NULL)
+        } else {
+            super.onResolvePointerIcon(event, pointerIndex)
+        }
+    }
+
     private fun drawPageContent(canvas: Canvas, includeInteractionOverlays: Boolean = true) {
         backgroundBitmap?.let { bitmap -> backgroundDestination.set(0, 0, width, height); canvas.drawBitmap(bitmap, null, backgroundDestination, null) }
             ?: pagePaperColor?.let { color ->
@@ -729,6 +774,7 @@ class InkCanvasView(context: Context) : View(context) {
         drawFillPreview(canvas)
         drawSmudgePreview(canvas)
         drawBrushSizePreview(canvas)
+        drawStylusHoverCursor(canvas)
     }
 
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
@@ -1278,8 +1324,26 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun loadTip(path: String, hardness: Float, grainPath: String?, grainDensity: Float, grainScale: Float = 100f, grainRotation: Float = 0f, grainBrightness: Float = 0f, grainContrast: Float = 0f, grainReversed: Boolean = false, grainEmphasized: Boolean = false, grainOffsetX: Float = 0f, grainOffsetY: Float = 0f, grainCompositeMode: Int = CspTextureComposite.MULTIPLY, antiAliasMode: Int = CspAntiAlias.MEDIUM): Bitmap? {
         val normalizedAntiAlias = CspAntiAlias.normalize(antiAliasMode)
-        val key = "$path:${(hardness.coerceIn(0f, 1f) * 20).toInt()}:$grainPath:${(grainDensity.coerceIn(0f, 1f) * 20).toInt()}:${grainScale.toInt()}:${grainRotation.toInt()}:${grainBrightness.toInt()}:${grainContrast.toInt()}:$grainReversed:$grainEmphasized:${grainOffsetX.toBits()}:${grainOffsetY.toBits()}:$grainCompositeMode:$normalizedAntiAlias"
+        val key = tipCacheKey(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainOffsetX, grainOffsetY, grainCompositeMode, normalizedAntiAlias)
+        if (key in pendingTipLoads) return null
         return tipCache[key] ?: BrushTipTextureDecoder.decode(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainOffsetX, grainOffsetY, grainCompositeMode, normalizedAntiAlias)?.also { tipCache[key] = it }
+    }
+
+    private fun tipCacheKey(path: String, hardness: Float, grainPath: String?, grainDensity: Float, grainScale: Float, grainRotation: Float, grainBrightness: Float, grainContrast: Float, grainReversed: Boolean, grainEmphasized: Boolean, grainOffsetX: Float, grainOffsetY: Float, grainCompositeMode: Int, antiAliasMode: Int): String =
+        "$path:${(hardness.coerceIn(0f, 1f) * 20).toInt()}:$grainPath:${(grainDensity.coerceIn(0f, 1f) * 20).toInt()}:${grainScale.toInt()}:${grainRotation.toInt()}:${grainBrightness.toInt()}:${grainContrast.toInt()}:$grainReversed:$grainEmphasized:${grainOffsetX.toBits()}:${grainOffsetY.toBits()}:$grainCompositeMode:${CspAntiAlias.normalize(antiAliasMode)}"
+
+    private fun prewarmTip(path: String, hardness: Float, grainPath: String?, grainDensity: Float, grainScale: Float = 100f, grainRotation: Float = 0f, grainBrightness: Float = 0f, grainContrast: Float = 0f, grainReversed: Boolean = false, grainEmphasized: Boolean = false, grainOffsetX: Float = 0f, grainOffsetY: Float = 0f, grainCompositeMode: Int = CspTextureComposite.MULTIPLY, antiAliasMode: Int = CspAntiAlias.MEDIUM) {
+        val normalizedAntiAlias = CspAntiAlias.normalize(antiAliasMode)
+        val key = tipCacheKey(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainOffsetX, grainOffsetY, grainCompositeMode, normalizedAntiAlias)
+        if (tipCache.containsKey(key) || !pendingTipLoads.add(key)) return
+        TIP_DECODE_EXECUTOR.execute {
+            val decoded = BrushTipTextureDecoder.decode(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainOffsetX, grainOffsetY, grainCompositeMode, normalizedAntiAlias)
+            post {
+                pendingTipLoads.remove(key)
+                if (decoded != null && !decoded.isRecycled) tipCache[key] = decoded
+                invalidate()
+            }
+        }
     }
 
     /** Decodes a newly selected imported tip before the first pen contact. */
@@ -1290,15 +1354,16 @@ class InkCanvasView(context: Context) : View(context) {
         val signature = "${primary.joinToString()}|${secondary.joinToString()}|$brushHardness|$dualHardness|$grainAssetPath|$grainDensity|$grainScale|$grainRotationDegrees|$grainBrightness|$grainContrast|$grainReversed|$grainEmphasized|$grainCompositeMode|$brushAntiAliasMode|$dualAntiAliasMode"
         if (signature == prewarmedBrushSignature) return
         prewarmedBrushSignature = signature
-        post {
-            primary.forEach { loadTip(it, brushHardness, grainAssetPath, grainDensity, grainScale, grainRotationDegrees, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainCompositeMode = grainCompositeMode, antiAliasMode = brushAntiAliasMode) }
-            secondary.forEach { loadTip(it, dualHardness, null, 0f, antiAliasMode = dualAntiAliasMode) }
-        }
+        primary.forEach { prewarmTip(it, brushHardness, grainAssetPath, grainDensity, grainScale, grainRotationDegrees, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainCompositeMode = grainCompositeMode, antiAliasMode = brushAntiAliasMode) }
+        secondary.forEach { prewarmTip(it, dualHardness, null, 0f, antiAliasMode = dualAntiAliasMode) }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (tool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.EYEDROPPER, EditorTool.SELECT, EditorTool.SHAPE, EditorTool.LASER, EditorTool.FILL, EditorTool.SMUDGE)) return false
-        if (event.actionMasked == MotionEvent.ACTION_DOWN && !hasFocus()) requestFocus()
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            if (hoverCursorVisible) { hoverCursorVisible = false; invalidate() }
+            if (!hasFocus()) requestFocus()
+        }
         val pointerIndex = event.actionIndex.coerceIn(0, event.pointerCount - 1)
         val eventToolType = event.getToolType(pointerIndex)
         val isStylus = eventToolType == MotionEvent.TOOL_TYPE_STYLUS || eventToolType == MotionEvent.TOOL_TYPE_ERASER
@@ -1853,6 +1918,29 @@ class InkCanvasView(context: Context) : View(context) {
         brushSizePreviewTextPaint.color = Color.BLACK
         canvas.drawText(label, brushSizeDragPreviewX + radius + 12f, brushSizeDragPreviewY - 8f, brushSizePreviewTextPaint)
     }
+
+    private fun drawStylusHoverCursor(canvas: Canvas) {
+        if (!hoverCursorVisible || activeTool != null || brushSizeDragActive) return
+        val configuredSize = if (hoverCursorUsesEraser) eraserWidth else baseWidth
+        val zoom = viewportScale.coerceAtLeast(1f)
+        val radius = (configuredSize.coerceIn(.1f, 800f) * width.coerceAtLeast(1) / REFERENCE_WIDTH / 2f)
+            .coerceAtLeast(1.5f / zoom)
+        hoverCursorPaint.strokeWidth = 3.5f / zoom
+        hoverCursorPaint.color = Color.WHITE
+        hoverCursorPaint.alpha = 235
+        canvas.drawCircle(hoverCursorX, hoverCursorY, radius, hoverCursorPaint)
+        hoverCursorPaint.strokeWidth = 1.5f / zoom
+        hoverCursorPaint.color = Color.BLACK
+        hoverCursorPaint.alpha = 235
+        canvas.drawCircle(hoverCursorX, hoverCursorY, radius, hoverCursorPaint)
+    }
+
+    internal fun hoverCursorSnapshot(): FloatArray = floatArrayOf(
+        if (hoverCursorVisible) 1f else 0f,
+        hoverCursorX,
+        hoverCursorY,
+        (if (hoverCursorUsesEraser) eraserWidth else baseWidth) * width.coerceAtLeast(1) / REFERENCE_WIDTH,
+    )
 
     private fun MotionEvent.centroid(): Pair<Float, Float> {
         var x = 0f
@@ -2997,6 +3085,9 @@ class InkCanvasView(context: Context) : View(context) {
         const val MAX_TIP_CACHE_ENTRIES = 64
         const val STYLUS_BUTTON_MASK = MotionEvent.BUTTON_STYLUS_PRIMARY or MotionEvent.BUTTON_STYLUS_SECONDARY
         const val POINTER_BUTTON_MASK = MotionEvent.BUTTON_PRIMARY or MotionEvent.BUTTON_SECONDARY or MotionEvent.BUTTON_TERTIARY or MotionEvent.BUTTON_BACK or MotionEvent.BUTTON_FORWARD
+        val TIP_DECODE_EXECUTOR = Executors.newFixedThreadPool(2) { runnable ->
+            Thread(runnable, "inkloom-brush-tip").apply { isDaemon = true }
+        }
     }
 
     private fun pressureDynamic(enabled: Boolean, minimum: Float, curve: List<BrushCurvePoint>, input: Float): Float {

@@ -24,6 +24,18 @@ class InkViewportTouchProxy(context: Context) : View(context) {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        return forward(event) { canvas, forwarded -> canvas.dispatchTouchEvent(forwarded) }
+    }
+
+    override fun onHoverEvent(event: MotionEvent): Boolean {
+        return forward(event) { canvas, forwarded -> canvas.onHoverEvent(forwarded) }
+    }
+
+    override fun onGenericMotionEvent(event: MotionEvent): Boolean {
+        return forward(event) { canvas, forwarded -> canvas.dispatchGenericMotionEvent(forwarded) }
+    }
+
+    private inline fun forward(event: MotionEvent, dispatch: (InkCanvasView, MotionEvent) -> Boolean): Boolean {
         val canvas = target?.takeIf { it.isAttachedToWindow && it.width > 0 && it.height > 0 } ?: return false
         getLocationInWindow(proxyLocation)
         canvas.getLocationInWindow(targetLocation)
@@ -33,7 +45,7 @@ class InkViewportTouchProxy(context: Context) : View(context) {
                 (proxyLocation[0] - targetLocation[0]).toFloat(),
                 (proxyLocation[1] - targetLocation[1]).toFloat(),
             )
-            canvas.dispatchTouchEvent(forwarded)
+            dispatch(canvas, forwarded)
         } finally {
             forwarded.recycle()
         }
