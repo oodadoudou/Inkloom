@@ -1312,9 +1312,9 @@ private fun EditorScreen(
                 DropdownMenu(
                     expanded = colorPanelOpen,
                     onDismissRequest = { colorPanelOpen = false },
-                    modifier = Modifier.width(380.dp).background(Color(0xFF2D2D2D)).padding(8.dp),
+                    modifier = Modifier.width(380.dp).background(Color.White).padding(8.dp),
                 ) {
-                    Text(tr("Colors", "颜色"), Modifier.padding(horizontal = 8.dp, vertical = 4.dp), color = Color.White, fontWeight = FontWeight.SemiBold)
+                    Text(tr("Colors", "颜色"), Modifier.padding(horizontal = 8.dp, vertical = 4.dp), color = Ink, fontWeight = FontWeight.SemiBold)
                     CspColorPanel(brushColor, { brushColor = it })
                 }
             }
@@ -2346,7 +2346,7 @@ private fun EditorScreen(
                         else -> Unit
                     }
                 }, onColor = { brushColor = it }, symmetryMode = settings.symmetryMode, onSymmetryMode = { onSettingsChange(settings.copy(symmetryMode = it)) }, modifier = Modifier.align(dockAlignment).padding(dockPadding).graphicsLayer(translationX = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.xDp.dp.toPx() } else 0f, translationY = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.yDp.dp.toPx() } else 0f))
-                if (settings.showInputDiagnostics) Surface(Modifier.align(Alignment.BottomCenter).padding(12.dp), shape = RoundedCornerShape(20.dp), color = Color(0xE6111111)) { Text(inputDiagnostic, Modifier.padding(horizontal = 14.dp, vertical = 7.dp), color = Color.White, fontSize = 11.sp) }
+                if (settings.showInputDiagnostics) Surface(Modifier.align(Alignment.BottomCenter).padding(12.dp), shape = RoundedCornerShape(20.dp), color = Color.White, border = CardDefaults.outlinedCardBorder(), shadowElevation = 3.dp) { Text(inputDiagnostic, Modifier.padding(horizontal = 14.dp, vertical = 7.dp), color = Ink, fontSize = 11.sp) }
             }
             if (rightPanelTabs.size > 1) DockedPanelTabStrip(
                 dock = WorkspacePanelDock.RIGHT,
@@ -3516,7 +3516,7 @@ private fun FloatingPanelTabStrip(
                         .height(27.dp)
                         .padding(horizontal = 2.dp)
                         .clip(RoundedCornerShape(2.dp))
-                        .background(if (selected) Ink else Color.Transparent)
+                        .background(if (selected) Color(0xFFE1E1E1) else Color.Transparent)
                         .semantics { contentDescription = tabDescription }
                         .clickable { onSelect(panel) }
                         .then(if (!locked) Modifier.pointerInput(panel, panels) {
@@ -3534,7 +3534,7 @@ private fun FloatingPanelTabStrip(
                         } else Modifier),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(panelTitle, fontSize = 10.sp, maxLines = 1, color = if (selected) Color.White else Ink, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+                    Text(panelTitle, fontSize = 10.sp, maxLines = 1, color = Ink, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
                 }
             }
             IconButton(onClick = onSeparate, enabled = !locked, modifier = Modifier.size(38.dp)) {
@@ -4815,8 +4815,9 @@ private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () 
     Surface(
         modifier.shadow(if (vertical) 5.dp else 1.dp, if (vertical) RoundedCornerShape(18.dp) else RoundedCornerShape(0.dp)),
         shape = if (vertical) RoundedCornerShape(18.dp) else RoundedCornerShape(0.dp),
-        color = if (vertical) Color(0xE9262626) else Color(0xFFF1F1F1),
-        border = if (vertical) null else CardDefaults.outlinedCardBorder(),
+        color = Color.White,
+        contentColor = Ink,
+        border = CardDefaults.outlinedCardBorder(),
         tonalElevation = 0.dp,
     ) {
         val content: @Composable () -> Unit = {
@@ -4917,7 +4918,7 @@ private fun ProcreateSidebar(
             onProgress = { onSize(.5f + it * it * 399.5f) },
         )
         IconButton(onClick = onModify, modifier = Modifier.size(32.dp)) {
-            Surface(Modifier.size(17.dp), shape = RoundedCornerShape(4.dp), color = Color.Transparent, border = androidx.compose.foundation.BorderStroke(1.5.dp, Color.White)) {}
+            Surface(Modifier.size(17.dp), shape = RoundedCornerShape(4.dp), color = Color.Transparent, border = androidx.compose.foundation.BorderStroke(1.5.dp, Ink)) {}
         }
         ProcreateVerticalSlider(
             progress = ((brushOpacity.coerceIn(.05f, 1f) - .05f) / .95f),
@@ -4925,8 +4926,8 @@ private fun ProcreateSidebar(
             display = "${(brushOpacity * 100).toInt()}%",
             onProgress = { onOpacity(.05f + it * .95f) },
         )
-        IconButton(onClick = onUndo, modifier = Modifier.size(34.dp)) { Icon(Icons.Outlined.Undo, tr("Undo", "撤销"), Modifier.size(20.dp), tint = Color.White) }
-        IconButton(onClick = onRedo, modifier = Modifier.size(34.dp)) { Icon(Icons.Outlined.Redo, tr("Redo", "重做"), Modifier.size(20.dp), tint = Color.White) }
+        IconButton(onClick = onUndo, modifier = Modifier.size(34.dp)) { Icon(Icons.Outlined.Undo, tr("Undo", "撤销"), Modifier.size(20.dp), tint = Ink) }
+        IconButton(onClick = onRedo, modifier = Modifier.size(34.dp)) { Icon(Icons.Outlined.Redo, tr("Redo", "重做"), Modifier.size(20.dp), tint = Ink) }
     }
 }
 
@@ -4965,17 +4966,18 @@ private fun ProcreateVerticalSlider(
             val centerX = size.width / 2f
             val top = 10f
             val bottom = size.height - 10f
-            drawRoundRect(Color(0xFF4E4E4E), Offset(centerX - 4f, top), androidx.compose.ui.geometry.Size(8f, bottom - top), androidx.compose.ui.geometry.CornerRadius(4f))
+            drawRoundRect(Color(0xFFD4D4D4), Offset(centerX - 4f, top), androidx.compose.ui.geometry.Size(8f, bottom - top), androidx.compose.ui.geometry.CornerRadius(4f))
             val thumbY = bottom - (bottom - top) * progress.coerceIn(0f, 1f)
-            drawRoundRect(Color.White, Offset(centerX - 4f, thumbY), androidx.compose.ui.geometry.Size(8f, bottom - thumbY), androidx.compose.ui.geometry.CornerRadius(4f))
+            drawRoundRect(Ink, Offset(centerX - 4f, thumbY), androidx.compose.ui.geometry.Size(8f, bottom - thumbY), androidx.compose.ui.geometry.CornerRadius(4f))
             drawCircle(Color.White, 7f, Offset(centerX, thumbY))
             drawCircle(Color(0xFF262626), 7f, Offset(centerX, thumbY), style = Stroke(1.5f))
         }
         if (showValue) Surface(
             Modifier.align(Alignment.CenterEnd).graphicsLayer(translationX = 62f),
             shape = RoundedCornerShape(12.dp),
-            color = Color(0xE6262626),
-        ) { Text(display, Modifier.padding(horizontal = 10.dp, vertical = 5.dp), color = Color.White, fontSize = 11.sp) }
+            color = Color.White,
+            border = CardDefaults.outlinedCardBorder(),
+        ) { Text(display, Modifier.padding(horizontal = 10.dp, vertical = 5.dp), color = Ink, fontSize = 11.sp) }
     }
 }
 
@@ -5800,7 +5802,7 @@ private fun ProcreateLayerPanel(
     val currentPanelDragCancel by rememberUpdatedState(onPanelDragCancel)
     val dragDescription = tr("Drag layers panel", "拖动图层面板")
     val shape = RoundedCornerShape(14.dp)
-    Surface(modifier.shadow(12.dp, shape), shape = shape, color = Color(0xF22D2D2D), contentColor = Color.White) {
+    Surface(modifier.shadow(12.dp, shape), shape = shape, color = Color.White, contentColor = Ink, border = CardDefaults.outlinedCardBorder()) {
         Column {
             Row(Modifier.fillMaxWidth().height(46.dp).padding(start = 15.dp, end = 5.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -5830,28 +5832,28 @@ private fun ProcreateLayerPanel(
                     fontSize = 15.sp,
                 )
                 WorkspacePanelDockMenu(dock, onDock, tr("Change layers panel docking", "更改图层面板停靠方式"), Modifier.size(36.dp), panelMode, panelLocked, onPanelMode, onPanelLocked)
-                IconButton(onClick = onAddFolder, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.CreateNewFolder, tr("Add layer group", "添加图层组"), tint = Color.White) }
-                IconButton(onClick = onAdd, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Add, tr("Add layer", "添加图层"), tint = Color.White) }
-                IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Close, tr("Close layers panel", "关闭图层面板"), tint = Color.White) }
+                IconButton(onClick = onAddFolder, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.CreateNewFolder, tr("Add layer group", "添加图层组"), tint = Ink) }
+                IconButton(onClick = onAdd, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Add, tr("Add layer", "添加图层"), tint = Ink) }
+                IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Close, tr("Close layers panel", "关闭图层面板"), tint = Ink) }
             }
-            HorizontalDivider(color = Color(0xFF474747))
+            HorizontalDivider(color = OutlineSoft)
             activeLayer?.takeIf { it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) }?.let { layer ->
                 Row(Modifier.fillMaxWidth().height(40.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(tr("Opacity", "不透明度"), Modifier.width(58.dp), color = Color(0xFFBDBDBD), fontSize = 10.sp)
+                    Text(tr("Opacity", "不透明度"), Modifier.width(58.dp), color = MutedInk, fontSize = 10.sp)
                     Slider(layer.opacity, { onOpacity(layer.id, it) }, Modifier.weight(1f), valueRange = 0f..1f)
-                    Text("${(layer.opacity * 100).toInt()}%", Modifier.width(38.dp), color = Color(0xFFBDBDBD), fontSize = 9.sp, textAlign = TextAlign.End)
+                    Text("${(layer.opacity * 100).toInt()}%", Modifier.width(38.dp), color = MutedInk, fontSize = 9.sp, textAlign = TextAlign.End)
                 }
                 Box {
                     Row(Modifier.fillMaxWidth().height(34.dp).clickable { blendMenu = true }.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(tr("Blend mode", "混合模式"), Modifier.weight(1f), color = Color(0xFFBDBDBD), fontSize = 10.sp)
+                        Text(tr("Blend mode", "混合模式"), Modifier.weight(1f), color = MutedInk, fontSize = 10.sp)
                         Text(layer.blendMode.name.lowercase().replaceFirstChar(Char::uppercase), fontSize = 10.sp)
-                        Icon(Icons.Outlined.ExpandMore, null, Modifier.size(18.dp), tint = Color.White)
+                        Icon(Icons.Outlined.ExpandMore, null, Modifier.size(18.dp), tint = Ink)
                     }
                     DropdownMenu(blendMenu, { blendMenu = false }) {
                         LayerBlendMode.entries.forEach { mode -> DropdownMenuItem(text = { Text(mode.name.lowercase().replaceFirstChar(Char::uppercase)) }, onClick = { blendMenu = false; onBlendMode(layer.id, mode) }) }
                     }
                 }
-                HorizontalDivider(color = Color(0xFF474747))
+                HorizontalDivider(color = OutlineSoft)
             }
             LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 items(LayerHierarchy.panelOrder(page.layers), key = { it.id }) { layer ->
@@ -5860,10 +5862,10 @@ private fun ProcreateLayerPanel(
                     val depth = LayerHierarchy.depth(page.layers, layer)
                     val canSelect = layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) && !LayerHierarchy.effectiveLocked(page.layers, layer)
                     Row(
-                        Modifier.fillMaxWidth().padding(start = (8 + depth * 14).dp, end = 8.dp).height(58.dp).clip(RoundedCornerShape(7.dp)).background(if (selected) Color(0xFF1678D2) else Color(0xFF383838)).clickable(enabled = canSelect) { onSelect(layer.id) }.padding(horizontal = 7.dp),
+                        Modifier.fillMaxWidth().padding(start = (8 + depth * 14).dp, end = 8.dp).height(58.dp).clip(RoundedCornerShape(7.dp)).background(if (selected) Color(0xFFE1E1E1) else Color.White).border(1.dp, if (selected) Ink else OutlineSoft, RoundedCornerShape(7.dp)).clickable(enabled = canSelect) { onSelect(layer.id) }.padding(horizontal = 7.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        IconButton(onClick = { onVisibility(layer.id) }, modifier = Modifier.size(30.dp)) { Icon(if (layer.visible) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank, tr("Toggle layer visibility", "切换图层可见性"), Modifier.size(18.dp), tint = Color.White) }
+                        IconButton(onClick = { onVisibility(layer.id) }, modifier = Modifier.size(30.dp)) { Icon(if (layer.visible) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank, tr("Toggle layer visibility", "切换图层可见性"), Modifier.size(18.dp), tint = Ink) }
                         Surface(Modifier.size(42.dp), shape = RoundedCornerShape(5.dp), color = Color(0xFFF4F4F4)) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(when (layer.role) { LayerRole.BACKGROUND -> Icons.Outlined.Image; LayerRole.HIGHLIGHT -> Icons.Outlined.BorderColor; LayerRole.OBJECTS -> Icons.Outlined.Widgets; LayerRole.FOLDER -> Icons.Outlined.Folder; else -> Icons.Outlined.Layers }, null, Modifier.size(22.dp), tint = Ink)
@@ -5871,12 +5873,12 @@ private fun ProcreateLayerPanel(
                         }
                         Spacer(Modifier.width(9.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(layer.name, maxLines = 1, fontSize = 11.sp, color = Color.White)
-                            Text(if (layer.role == LayerRole.FOLDER) tr("Group", "组") else layer.blendMode.name.first().toString(), fontSize = 9.sp, color = Color(0xFFBDBDBD))
+                            Text(layer.name, maxLines = 1, fontSize = 11.sp, color = Ink)
+                            Text(if (layer.role == LayerRole.FOLDER) tr("Group", "组") else layer.blendMode.name.first().toString(), fontSize = 9.sp, color = MutedInk)
                         }
-                        if (layer.locked) Icon(Icons.Outlined.Lock, tr("Locked", "已锁定"), Modifier.size(15.dp), tint = Color(0xFFBDBDBD))
+                        if (layer.locked) Icon(Icons.Outlined.Lock, tr("Locked", "已锁定"), Modifier.size(15.dp), tint = MutedInk)
                         Box {
-                            IconButton(onClick = { menu = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.MoreVert, tr("Layer actions", "图层操作"), tint = Color.White) }
+                            IconButton(onClick = { menu = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.MoreVert, tr("Layer actions", "图层操作"), tint = Ink) }
                             DropdownMenu(menu, { menu = false }) {
                                 DropdownMenuItem(text = { Text(if (layer.locked) tr("Unlock", "解锁") else tr("Lock", "锁定")) }, onClick = { menu = false; onLock(layer.id) })
                                 if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(if (layer.alphaLock) tr("Unlock alpha", "解锁透明度") else tr("Lock alpha", "锁定透明度")) }, onClick = { menu = false; onToggleAlphaLock(layer.id) })
@@ -6560,8 +6562,9 @@ private fun ProcreateBrushLibrary(
     Surface(
         modifier = modifier.shadow(12.dp, panelShape),
         shape = panelShape,
-        color = Color(0xF22D2D2D),
-        contentColor = Color.White,
+        color = Color.White,
+        contentColor = Ink,
+        border = CardDefaults.outlinedCardBorder(),
     ) {
         Column {
             Row(Modifier.fillMaxWidth().height(46.dp).padding(start = 16.dp, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -6593,7 +6596,7 @@ private fun ProcreateBrushLibrary(
                 )
                 WorkspacePanelDockMenu(dock, onDock, tr("Change brushes panel docking", "更改笔刷面板停靠方式"), Modifier.size(38.dp), panelMode, panelLocked, onPanelMode, onPanelLocked)
                 Box {
-                    IconButton(onClick = { addMenu = true }, modifier = Modifier.size(38.dp)) { Icon(Icons.Outlined.Add, tr("Add brush or set", "添加笔刷或笔刷组"), tint = Color.White) }
+                    IconButton(onClick = { addMenu = true }, modifier = Modifier.size(38.dp)) { Icon(Icons.Outlined.Add, tr("Add brush or set", "添加笔刷或笔刷组"), tint = Ink) }
                     DropdownMenu(expanded = addMenu, onDismissRequest = { addMenu = false }) {
                         DropdownMenuItem(text = { Text(tr("Create new brush", "新建笔刷")) }, leadingIcon = { Icon(Icons.Outlined.Brush, null) }, onClick = {
                             addMenu = false
@@ -6606,20 +6609,20 @@ private fun ProcreateBrushLibrary(
                         DropdownMenuItem(text = { Text(tr("Manage brush sets", "管理笔刷组")) }, leadingIcon = { Icon(Icons.Outlined.CreateNewFolder, null) }, onClick = { addMenu = false; manageGroups = true })
                     }
                 }
-                IconButton(onClick = onClose, modifier = Modifier.size(38.dp)) { Icon(Icons.Outlined.Close, tr("Close brushes panel", "关闭笔刷面板"), tint = Color.White) }
+                IconButton(onClick = onClose, modifier = Modifier.size(38.dp)) { Icon(Icons.Outlined.Close, tr("Close brushes panel", "关闭笔刷面板"), tint = Ink) }
             }
-            HorizontalDivider(color = Color(0xFF474747))
+            HorizontalDivider(color = OutlineSoft)
             Row(Modifier.weight(1f)) {
                 LazyColumn(
-                    Modifier.width(154.dp).fillMaxHeight().background(Color(0xFF252525)),
+                    Modifier.width(154.dp).fillMaxHeight().background(Color.White).border(1.dp, OutlineSoft),
                     contentPadding = PaddingValues(vertical = 7.dp),
                 ) {
                     items(allCategories.distinct(), key = { it }) { category ->
                         val selected = category == selectedCategory
                         Text(
                             category,
-                            Modifier.fillMaxWidth().height(39.dp).background(if (selected) Color(0xFF1678D2) else Color.Transparent).clickable { selectedCategory = category }.padding(horizontal = 14.dp).wrapContentHeight(Alignment.CenterVertically),
-                            color = if (selected) Color.White else Color(0xFFD0D0D0),
+                            Modifier.fillMaxWidth().height(39.dp).background(if (selected) Color(0xFFE1E1E1) else Color.Transparent).clickable { selectedCategory = category }.padding(horizontal = 14.dp).wrapContentHeight(Alignment.CenterVertically),
+                            color = Ink,
                             fontSize = 11.sp,
                             maxLines = 1,
                         )
@@ -6636,13 +6639,13 @@ private fun ProcreateBrushLibrary(
                         val selected = selectedBrushId == brush.id
                         Box {
                             Column(
-                                Modifier.fillMaxWidth().height(112.dp).clip(RoundedCornerShape(6.dp)).background(if (selected) Color(0xFF1688F8) else Color(0xFF383838)).combinedClickable(
+                                Modifier.fillMaxWidth().height(112.dp).clip(RoundedCornerShape(6.dp)).background(if (selected) Color(0xFFE1E1E1) else Color.White).border(1.dp, if (selected) Ink else OutlineSoft, RoundedCornerShape(6.dp)).combinedClickable(
                                     onClick = { onBrushSelected(brush) },
                                     onDoubleClick = { if (brush.format != BrushFormat.SYSTEM) editBrush = brush },
                                     onLongClick = { if (brush.format != BrushFormat.SYSTEM) menuBrush = brush },
                                 ).padding(7.dp),
                             ) {
-                                Text(brush.name, color = Color.White, fontSize = 10.sp, maxLines = 1)
+                                Text(brush.name, color = Ink, fontSize = 10.sp, maxLines = 1)
                                 Spacer(Modifier.height(4.dp))
                                 Surface(Modifier.fillMaxWidth().weight(1f), shape = RoundedCornerShape(4.dp), color = Color(0xFFF3F3F3)) {
                                     BrushTipPreview(brush, Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 3.dp))
