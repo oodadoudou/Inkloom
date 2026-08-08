@@ -24,6 +24,7 @@ import android.view.ViewConfiguration
 import app.inkloom.engine.v2.EngineV2Metrics
 import app.inkloom.engine.v2.EngineV2LatencySnapshot
 import app.inkloom.engine.v2.traceEngineV2
+import app.inkloom.engine.v2.input.StrokeInputModeler
 import java.util.LinkedHashMap
 import java.util.concurrent.Executors
 import app.inkloom.document.InkStroke
@@ -132,6 +133,7 @@ data class LayerElementBitmaps(val base: Bitmap?, val additions: Bitmap?) {
 
 class InkCanvasView(context: Context) : View(context) {
     private val engineV2Metrics = EngineV2Metrics()
+    private val strokeInputModeler = StrokeInputModeler()
     private val strokes = mutableListOf<InkStroke>()
     private val editHistory = StrokeEditHistory()
     private val currentPoints = mutableListOf<StrokePoint>()
@@ -1806,7 +1808,7 @@ class InkCanvasView(context: Context) : View(context) {
                     invalidate()
                     return true
                 }
-                currentPoints.clear()
+                clearActiveStrokeInput()
                 beginLiveStrokePreview()
                 currentStrokeId = java.util.UUID.randomUUID().toString()
                 // Freeze the many brush-engine parameters once per contact. Live rendering then
@@ -1923,7 +1925,7 @@ class InkCanvasView(context: Context) : View(context) {
                 stopContinuousPlot()
                 if (event.actionMasked == MotionEvent.ACTION_UP) performClick()
                 if (event.actionMasked == MotionEvent.ACTION_CANCEL || event.flags and MotionEvent.FLAG_CANCELED != 0) {
-                    currentPoints.clear()
+                    clearActiveStrokeInput()
                     finishLiveStrokePreview()
                     if (activeTool == EditorTool.LASER) laserTrail.cancelActive()
                     if (activeTool == EditorTool.FILL) cancelFillGesture()
@@ -1949,7 +1951,7 @@ class InkCanvasView(context: Context) : View(context) {
                     strokes.addAll(newStrokes)
                     invalidateStrokeCache(emptyList(), newStrokes)
                     commitStrokeEdit(before, strokes)
-                    currentPoints.clear()
+                    clearActiveStrokeInput()
                     finishLiveStrokePreview()
                 } else if (activeTool == EditorTool.SELECT) {
                     if ((movingSelection || selectionTransformMode != TRANSFORM_NONE) && selectionMoved) {
@@ -2124,7 +2126,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun cancelActiveGestureForNavigation() {
         stopContinuousPlot()
-        currentPoints.clear()
+        clearActiveStrokeInput()
         finishLiveStrokePreview()
         laserTrail.cancelActive()
         cancelFillGesture()
@@ -2601,24 +2603,41 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun addModeledPointV2(x: Float, y: Float, pressure: Float, time: Long, tilt: Float, orientation: Float, force: Boolean) {
         val adjustedPressure = PressureCalibration.apply(pressure, pressureMinimumInput, pressureMaximumInput, pressureSensitivity)
-        val previous = currentPoints.lastOrNull()
         val constrained = if (rulerEnabled && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
             RulerGuide.project(rulerGuide, x, y, width.toFloat(), height.toFloat())
         } else activeCanvasSnapConstraint?.apply(x, y)
         val rawX = (constrained?.x ?: x).coerceIn(0f, 1f)
         val rawY = (constrained?.y ?: y).coerceIn(0f, 1f)
-        val inputVelocity = previous?.let { prior -> val elapsed = (time - prior.timeMs).coerceAtLeast(1L); (hypot(((rawX - prior.x) * width).toDouble(), ((rawY - prior.y) * height).toDouble()).toFloat() / elapsed / VELOCITY_FULL_SCALE_PX_PER_MS).coerceIn(0f, 1f) } ?: 0f
-        val smooth = StrokeStabilization.smoothing(stabilization, stabilizationBySpeed, stabilizationBySpeedMode, inputVelocity)
-        val pointX = ((previous?.x ?: rawX) * smooth + rawX * (1f - smooth)).coerceIn(0f, 1f)
-        val pointY = ((previous?.y ?: rawY) * smooth + rawY * (1f - smooth)).coerceIn(0f, 1f)
-        val rawVelocity = previous?.let { prior -> val elapsed = (time - prior.timeMs).coerceAtLeast(1L); (hypot(((pointX - prior.x) * width).toDouble(), ((pointY - prior.y) * height).toDouble()).toFloat() / elapsed / VELOCITY_FULL_SCALE_PX_PER_MS).coerceIn(0f, 1f) } ?: 0f
+        if (!strokeInputModeler.append(
+                rawX = rawX,
+                rawY = rawY,
+                adjustedPressure = adjustedPressure,
+                sampleTimeMs = time,
+                sampleTilt = tilt,
+                sampleOrientation = orientation,
+                viewportWidthPx = width,
+                viewportHeightPx = height,
+                stabilization = stabilization,
+                stabilizationBySpeed = stabilizationBySpeed,
+                stabilizationBySpeedMode = stabilizationBySpeedMode,
+                force = force,
+            )
+        ) return
         val point = StrokePoint(
-            x = pointX,
-            y = pointY,
-            pressure = max(.05f, adjustedPressure), timeMs = time, tilt = tilt, orientation = orientation,
-            velocity = previous?.let { prior -> prior.velocity * VELOCITY_SMOOTHING + rawVelocity * (1f - VELOCITY_SMOOTHING) } ?: rawVelocity,
+            x = strokeInputModeler.x,
+            y = strokeInputModeler.y,
+            pressure = strokeInputModeler.pressure,
+            timeMs = strokeInputModeler.timeMs,
+            tilt = strokeInputModeler.tilt,
+            orientation = strokeInputModeler.orientation,
+            velocity = strokeInputModeler.velocity,
         )
-        if (force || previous == null || hypot((point.x - previous.x).toDouble(), (point.y - previous.y).toDouble()) > .0008) currentPoints += point
+        currentPoints += point
+    }
+
+    private fun clearActiveStrokeInput() {
+        currentPoints.clear()
+        strokeInputModeler.reset()
     }
 
     internal fun engineV2LatencySnapshot(): Array<EngineV2LatencySnapshot> = arrayOf(
@@ -3215,8 +3234,6 @@ class InkCanvasView(context: Context) : View(context) {
         const val LIVE_STROKE_CHECKPOINT_POINTS = 16
         const val LIVE_STROKE_TAIL_POINTS = 8
         const val MAX_ERASER_SAMPLES_PER_EVENT = 256
-        const val VELOCITY_FULL_SCALE_PX_PER_MS = 2f
-        const val VELOCITY_SMOOTHING = .65f
         const val CONTINUOUS_PLOT_INTERVAL_MS = 32L
         const val QUICKSHAPE_HOLD_MS = 120L
         const val TRANSFORM_NONE = 0
