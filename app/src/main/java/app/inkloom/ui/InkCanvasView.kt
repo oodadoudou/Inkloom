@@ -150,6 +150,10 @@ class InkCanvasView(context: Context) : View(context) {
     private var fillPreviewWidth = 0f
     private var fillPreviewHeight = 0f
     private val fillPreviewPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { colorFilter = PorterDuffColorFilter(Color.BLACK, PorterDuff.Mode.SRC_IN) }
+    private var smudgeSnapshot: Bitmap? = null
+    private var smudgeCurrentColor = 0
+    private var smudgeSegments = mutableListOf<Pair<Int, MutableList<StrokePoint>>>()
+    private val smudgePreviewPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private var movingSelection = false
     private var selectionMoved = false
     private var selectionTransformMode = TRANSFORM_NONE
@@ -716,6 +720,7 @@ class InkCanvasView(context: Context) : View(context) {
         drawRulerGuide(canvas)
         drawLaserTrail(canvas, SystemClock.uptimeMillis())
         drawFillPreview(canvas)
+        drawSmudgePreview(canvas)
         drawBrushSizePreview(canvas)
     }
 
@@ -1242,7 +1247,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (tool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.EYEDROPPER, EditorTool.SELECT, EditorTool.SHAPE, EditorTool.LASER, EditorTool.FILL)) return false
+        if (tool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.EYEDROPPER, EditorTool.SELECT, EditorTool.SHAPE, EditorTool.LASER, EditorTool.FILL, EditorTool.SMUDGE)) return false
         if (event.actionMasked == MotionEvent.ACTION_DOWN && !hasFocus()) requestFocus()
         val pointerIndex = event.actionIndex.coerceIn(0, event.pointerCount - 1)
         val eventToolType = event.getToolType(pointerIndex)
@@ -1295,7 +1300,7 @@ class InkCanvasView(context: Context) : View(context) {
         if (handleCanvasGuideGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
         if (handleRulerGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
         val buttonForcesNavigation = isStylus && (stylusButtonAction == StylusButtonAction.HAND || stylusHandNavigationContact)
-        val isFingerNavigation = forceNavigation || buttonForcesNavigation || (tool != EditorTool.FILL && StylusInputClassifier.shouldNavigateOrRejectFinger(isStylus, fingerDrawingEnabled, event.pointerCount, event.getTouchMajor(pointerIndex), elapsedSinceStylus))
+        val isFingerNavigation = forceNavigation || buttonForcesNavigation || (tool !in setOf(EditorTool.FILL, EditorTool.SMUDGE) && StylusInputClassifier.shouldNavigateOrRejectFinger(isStylus, fingerDrawingEnabled, event.pointerCount, event.getTouchMajor(pointerIndex), elapsedSinceStylus))
         if (isFingerNavigation) {
             if (activeTool != null) {
                 if (activeInputWasStylus && !forceNavigation && !buttonForcesNavigation) return true
@@ -1509,6 +1514,12 @@ class InkCanvasView(context: Context) : View(context) {
                     invalidate()
                     return true
                 }
+                if (activeTool == EditorTool.SMUDGE) {
+                    parent?.requestDisallowInterceptTouchEvent(true)
+                    beginSmudgeGesture(normalizedX, normalizedY)
+                    invalidate()
+                    return true
+                }
                 currentPoints.clear()
                 beginLiveStrokePreview()
                 currentStrokeId = java.util.UUID.randomUUID().toString()
@@ -1522,6 +1533,10 @@ class InkCanvasView(context: Context) : View(context) {
             MotionEvent.ACTION_MOVE -> {
                 if (activeTool == EditorTool.FILL) {
                     adjustFillSensitivity(event.rawX)
+                }
+                else if (activeTool == EditorTool.SMUDGE) {
+                    for (i in 0 until event.historySize) historicalCanvasPoint(event, 0, i).let { point -> extendSmudge(point.first / width.coerceAtLeast(1), point.second / height.coerceAtLeast(1)) }
+                    extendSmudge(normalizedX, normalizedY)
                 }
                 else if (activeTool == EditorTool.EYEDROPPER) {
                     onColorSampled(sampleRenderedColor(inputPoint.first, inputPoint.second))
@@ -1622,12 +1637,16 @@ class InkCanvasView(context: Context) : View(context) {
                     finishLiveStrokePreview()
                     if (activeTool == EditorTool.LASER) laserTrail.cancelActive()
                     if (activeTool == EditorTool.FILL) cancelFillGesture()
+                    if (activeTool == EditorTool.SMUDGE) cancelSmudgeGesture()
                     shapeStart = null; shapeEnd = null; shapeFreeformPoints.clear()
                     if (activeTool == EditorTool.ERASER) cancelEraserGesture()
                     selectionGestureBefore?.let { restoreStrokeSnapshot(it) }
                     lassoPoints.clear(); movingSelection = false; selectionMoved = false; selectionGestureBefore = null; selectionTransformMode = TRANSFORM_NONE
                 } else if (activeTool == EditorTool.FILL) {
                     commitFillGesture()
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                } else if (activeTool == EditorTool.SMUDGE) {
+                    commitSmudgeGesture()
                     parent?.requestDisallowInterceptTouchEvent(false)
                 } else if (activeTool == EditorTool.EYEDROPPER) {
                     onColorSampled(sampleRenderedColor(inputPoint.first, inputPoint.second))
@@ -1812,6 +1831,7 @@ class InkCanvasView(context: Context) : View(context) {
         finishLiveStrokePreview()
         laserTrail.cancelActive()
         cancelFillGesture()
+        cancelSmudgeGesture()
         rulerGestureMode = null
         canvasGuideGestureMode = null
         activeCanvasSnapConstraint = null
@@ -2384,6 +2404,82 @@ class InkCanvasView(context: Context) : View(context) {
         fillSourceBitmap?.recycle()
         fillSourceBitmap = null
         invalidate()
+    }
+
+    private fun beginSmudgeGesture(normalizedX: Float, normalizedY: Float) {
+        smudgeSnapshot?.recycle()
+        smudgeSnapshot = renderVisiblePageBitmap(width.coerceAtLeast(1), height.coerceAtLeast(1))
+        smudgeSegments.clear()
+        smudgeCurrentColor = sampleSmudgeColor(normalizedX, normalizedY)
+        smudgeSegments += smudgeCurrentColor to mutableListOf(StrokePoint(normalizedX.coerceIn(0f, 1f), normalizedY.coerceIn(0f, 1f), 1f, SystemClock.uptimeMillis()))
+        invalidate()
+    }
+
+    private fun extendSmudge(normalizedX: Float, normalizedY: Float) {
+        val x = normalizedX.coerceIn(0f, 1f)
+        val y = normalizedY.coerceIn(0f, 1f)
+        val color = sampleSmudgeColor(x, y)
+        if (color != smudgeCurrentColor && smudgeSegments.lastOrNull()?.second?.isNotEmpty() == true) {
+            smudgeSegments += color to mutableListOf()
+            smudgeCurrentColor = color
+        }
+        smudgeSegments.lastOrNull()?.second?.let { points ->
+            if (points.isEmpty() || hypot((points.last().x - x).toDouble(), (points.last().y - y).toDouble()).toFloat() >= .0006f) points += StrokePoint(x, y, 1f, SystemClock.uptimeMillis())
+        }
+        invalidate()
+    }
+
+    private fun sampleSmudgeColor(normalizedX: Float, normalizedY: Float): Int {
+        val snapshot = smudgeSnapshot ?: return inkColor
+        val x = (normalizedX.coerceIn(0f, 1f) * (snapshot.width - 1).coerceAtLeast(0)).toInt()
+        val y = (normalizedY.coerceIn(0f, 1f) * (snapshot.height - 1).coerceAtLeast(0)).toInt()
+        return snapshot.getPixel(x, y)
+    }
+
+    private fun commitSmudgeGesture() {
+        val before = strokes.toList()
+        val newStrokes = smudgeSegments.mapNotNull { (color, points) ->
+            if (points.size < 2) null
+            else makeStroke(points).copy(
+                id = java.util.UUID.randomUUID().toString(),
+                colorArgb = color.toUInt().toLong(),
+                opacity = (inkOpacity * .55f).coerceIn(.05f, 1f),
+                width = (baseWidth * .8f).coerceAtLeast(1f),
+                grainCompositeMode = grainCompositeMode,
+            )
+        }
+        if (newStrokes.isNotEmpty()) {
+            strokes.addAll(newStrokes)
+            invalidateStrokeCache(emptyList(), newStrokes)
+            commitStrokeEdit(before, strokes)
+            newStrokes.forEach(onStrokeCommitted)
+        }
+        smudgeSnapshot?.recycle()
+        smudgeSnapshot = null
+        smudgeSegments.clear()
+        invalidate()
+    }
+
+    private fun cancelSmudgeGesture() {
+        smudgeSnapshot?.recycle()
+        smudgeSnapshot = null
+        smudgeSegments.clear()
+        invalidate()
+    }
+
+    private fun drawSmudgePreview(canvas: Canvas) {
+        if (smudgeSegments.isEmpty()) return
+        val previewStrokes = smudgeSegments.mapNotNull { (color, points) ->
+            if (points.size < 2) null
+            else makeStroke(points).copy(
+                id = java.util.UUID.randomUUID().toString(),
+                colorArgb = color.toUInt().toLong(),
+                opacity = (inkOpacity * .55f).coerceIn(.05f, 1f),
+                width = (baseWidth * .8f).coerceAtLeast(1f),
+                grainCompositeMode = grainCompositeMode,
+            )
+        }
+        if (previewStrokes.isNotEmpty()) drawLayeredStrokes(canvas, previewStrokes)
     }
 
     private fun normalizeAngleDelta(first: Float, second: Float): Float = ((first - second + 180f).mod(360f)) - 180f
