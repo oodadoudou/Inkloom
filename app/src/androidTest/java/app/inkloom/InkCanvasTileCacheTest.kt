@@ -80,6 +80,34 @@ class InkCanvasTileCacheTest {
         }
     }
 
+    @Test fun rapidCommittedStrokesAppendToCleanTilesWithoutReplayingOlderInk() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val view = InkCanvasView(InstrumentationRegistry.getInstrumentation().targetContext).apply {
+                layout(0, 0, 1024, 1024)
+                tool = EditorTool.PEN
+            }
+            val bitmap = Bitmap.createBitmap(1024, 1024, Bitmap.Config.ARGB_8888)
+            try {
+                // Materialize a clean empty tile surface before the first contact.
+                view.draw(Canvas(bitmap))
+                val fullTileRenders = mutableListOf<Int>()
+                view.onTileRendered = { _, strokeCount -> fullTileRenders += strokeCount }
+
+                repeat(6) { stroke ->
+                    val y = 120f + stroke * 125f
+                    view.dispatchStylus(MotionEvent.ACTION_DOWN, 120f, y, 1_000L + stroke * 100L)
+                    view.dispatchStylus(MotionEvent.ACTION_MOVE, 700f, y + 8f, 1_020L + stroke * 100L)
+                    view.dispatchStylus(MotionEvent.ACTION_UP, 820f, y + 10f, 1_040L + stroke * 100L)
+                    view.draw(Canvas(bitmap))
+                }
+
+                assertTrue("Rapid additions must not trigger a full historical tile replay: $fullTileRenders", fullTileRenders.isEmpty())
+            } finally {
+                bitmap.recycle()
+            }
+        }
+    }
+
     @Test fun stampedBrushPreviewMatchesItsCommittedStroke() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val context = InstrumentationRegistry.getInstrumentation().targetContext

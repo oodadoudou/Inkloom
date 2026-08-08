@@ -872,10 +872,31 @@ class InkCanvasView(context: Context) : View(context) {
         if (strokeTileIndex.widthPx != width || strokeTileIndex.heightPx != height) {
             resetStrokeTiles()
         } else {
-            dirtyStrokeTiles += strokeTileIndex.update(before, after)
+            val affectedTiles = strokeTileIndex.update(before, after)
+            if (before.isEmpty() && after.isNotEmpty() && canAppendCommittedInkToTiles(affectedTiles)) {
+                affectedTiles.forEach { key ->
+                    val rect = strokeTileIndex.rect(key)
+                    val tile = strokeTiles.getValue(key)
+                    val tileCanvas = Canvas(tile)
+                    tileCanvas.translate(-rect.left.toFloat(), -rect.top.toFloat())
+                    drawLayeredStrokes(tileCanvas, after.filter { key in strokeTileIndex.tilesFor(it) })
+                    dirtyStrokeTiles.remove(key)
+                }
+            } else {
+                dirtyStrokeTiles += affectedTiles
+            }
             invalidate()
         }
     }
+
+    /** Normal, fully opaque layers are associative, so newly committed ink can be composed once
+     * into clean tiles instead of replaying every earlier stroke before the next pen contact. */
+    private fun canAppendCommittedInkToTiles(affectedTiles: Set<StrokeTileKey>): Boolean =
+        affectedTiles.isNotEmpty() &&
+            layerBlendModes.values.all { it == LayerBlendMode.NORMAL } &&
+            layerOpacities.values.all { it >= .999f } &&
+            alphaLockedLayers.isEmpty() && clippedLayers.isEmpty() && layerElementBitmaps.isEmpty() &&
+            affectedTiles.none { it in dirtyStrokeTiles } && affectedTiles.all(strokeTiles::containsKey)
 
     private fun drawLayeredStrokes(
         canvas: Canvas,
