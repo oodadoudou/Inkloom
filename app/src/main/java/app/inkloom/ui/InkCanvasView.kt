@@ -163,6 +163,8 @@ class InkCanvasView(context: Context) : View(context) {
     private var eraserGestureBefore: List<InkStroke>? = null
     private var lastEraserX: Float? = null
     private var lastEraserY: Float? = null
+    private val eraserStrokeIndices = mutableMapOf<String, Int>()
+    private var eraserMaskBatch: MutableMap<String, MutableList<StrokeMaskDab>>? = null
     private var strokeHistoryKey: String? = null
     private val lassoPoints = mutableListOf<StrokePoint>()
     private var shapeStart: ShapePoint? = null
@@ -2939,11 +2941,15 @@ class InkCanvasView(context: Context) : View(context) {
         eraserGestureBefore = strokes.toList()
         lastEraserX = null
         lastEraserY = null
+        eraserStrokeIndices.clear()
+        if (nonDestructiveEraser) strokes.forEachIndexed { index, stroke -> eraserStrokeIndices[stroke.id] = index }
     }
 
     private fun eraseAlong(x: Float, y: Float, pressure: Float) {
         val before = strokes.toList()
+        beginEraserMaskBatch()
         eraseAlongUnchecked(x, y, pressure)
+        flushEraserMaskBatch()
         invalidateEraserEvent(before)
     }
 
@@ -2951,6 +2957,7 @@ class InkCanvasView(context: Context) : View(context) {
      * touching the committed tile index so eraser cost is independent of Android's packetization. */
     private fun eraseMotionEvent(event: MotionEvent, pointerIndex: Int) {
         val before = strokes.toList()
+        beginEraserMaskBatch()
         for (position in 0 until event.historySize) {
             eraseAlongUnchecked(
                 event.getHistoricalX(pointerIndex, position) / width.coerceAtLeast(1),
@@ -2963,7 +2970,22 @@ class InkCanvasView(context: Context) : View(context) {
             event.getY(pointerIndex) / height.coerceAtLeast(1),
             event.getPressure(pointerIndex),
         )
+        flushEraserMaskBatch()
         invalidateEraserEvent(before)
+    }
+
+    private fun beginEraserMaskBatch() {
+        eraserMaskBatch = if (nonDestructiveEraser) linkedMapOf() else null
+    }
+
+    private fun flushEraserMaskBatch() {
+        val batch = eraserMaskBatch ?: return
+        batch.forEach { (strokeId, additions) ->
+            val index = eraserStrokeIndices[strokeId] ?: return@forEach
+            val stroke = strokes.getOrNull(index)?.takeIf { it.id == strokeId } ?: return@forEach
+            if (additions.isNotEmpty()) strokes[index] = stroke.copy(masks = stroke.masks + additions)
+        }
+        eraserMaskBatch = null
     }
 
     private fun invalidateEraserEvent(before: List<InkStroke>) {
@@ -3000,9 +3022,13 @@ class InkCanvasView(context: Context) : View(context) {
             x * width + eraserRadius,
             y * height + eraserRadius,
         )
-        for (index in strokes.indices.reversed()) {
-            val stroke = strokes[index]
-            if (stroke.id !in candidateIds) continue
+        val candidateIndices: Sequence<Int> = if (nonDestructiveEraser) {
+            candidateIds.asSequence().mapNotNull(eraserStrokeIndices::get).sortedDescending()
+        } else {
+            strokes.indices.reversed().asSequence().filter { strokes[it].id in candidateIds }
+        }
+        for (index in candidateIndices) {
+            val stroke = strokes.getOrNull(index) ?: continue
             if (stroke.id in protectedStrokeIds) continue
             val strokeRadius = stroke.width.coerceIn(.1f, 800f) * width.coerceAtLeast(1) / REFERENCE_WIDTH / 2f
             val combinedRadius = eraserRadius + strokeRadius
@@ -3011,9 +3037,10 @@ class InkCanvasView(context: Context) : View(context) {
             if (!StrokeEraser.intersects(stroke, x, y, radiusX, radiusY)) continue
             if (nonDestructiveEraser) {
                 val dab = StrokeMaskDab(x, y, eraserRadius / width.coerceAtLeast(1), eraserRadius / height.coerceAtLeast(1), hardness = eraserHardness, opacity = eraserOpacity, tipAssetPath = eraserTipAssetPath)
-                if (stroke.masks.lastOrNull()?.let { kotlin.math.abs(it.x - dab.x) < .00001f && kotlin.math.abs(it.y - dab.y) < .00001f } == true) continue
-                val masked = stroke.copy(masks = stroke.masks + dab)
-                strokes[index] = masked
+                val pending = eraserMaskBatch?.getOrPut(stroke.id, ::mutableListOf)
+                val previous = pending?.lastOrNull() ?: stroke.masks.lastOrNull()
+                if (previous?.let { kotlin.math.abs(it.x - dab.x) < .00001f && kotlin.math.abs(it.y - dab.y) < .00001f } == true) continue
+                if (pending != null) pending += dab else strokes[index] = stroke.copy(masks = stroke.masks + dab)
                 continue
             }
             val pieces = if (localEraser) {
@@ -3037,6 +3064,8 @@ class InkCanvasView(context: Context) : View(context) {
         eraserGestureBefore = null
         lastEraserX = null
         lastEraserY = null
+        eraserStrokeIndices.clear()
+        eraserMaskBatch = null
     }
 
     private fun cancelEraserGesture() {
@@ -3044,6 +3073,8 @@ class InkCanvasView(context: Context) : View(context) {
         eraserGestureBefore = null
         lastEraserX = null
         lastEraserY = null
+        eraserStrokeIndices.clear()
+        eraserMaskBatch = null
     }
 
     private fun findStroke(x: Float, y: Float, threshold: Float): Int = strokes.indexOfLast { stroke ->
