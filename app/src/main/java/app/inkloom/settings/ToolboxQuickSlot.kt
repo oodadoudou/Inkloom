@@ -73,7 +73,6 @@ object ToolboxQuickSlots {
     )
 
     fun indexOf(action: ShortcutAction): Int? = actions.indexOf(action).takeIf { it >= 0 }
-    fun actionAt(index: Int): ShortcutAction = actions[index.coerceIn(0, COUNT - 1)]
 
     fun remapBrushIds(values: List<ToolboxQuickSlot>, mappings: Map<String, String>): List<ToolboxQuickSlot> = normalize(values).map { slot ->
         slot.brushId.takeIf(String::isNotEmpty)?.let(mappings::get)?.let { restoredId -> slot.copy(brushId = restoredId) } ?: slot

@@ -1,6 +1,5 @@
 package app.inkloom.model
 
-import androidx.compose.ui.graphics.Color
 import app.inkloom.document.BrushCurvePoint
 import app.inkloom.document.BrushColorDynamics
 import app.inkloom.document.BrushParameterDynamics
@@ -11,15 +10,6 @@ import app.inkloom.document.CspAntiAlias
 import app.inkloom.document.CspBrushGap
 import java.util.UUID
 import kotlinx.serialization.Serializable
-
-data class Notebook(
-    val id: String = UUID.randomUUID().toString(),
-    val title: String,
-    val subtitle: String,
-    val cover: Color,
-    val pageCount: Int,
-    val isPdf: Boolean = false,
-)
 
 @Serializable
 enum class BrushFormat(val label: String) {
@@ -226,14 +216,3 @@ data class ImportedBrush(
 enum class EditorTool { PEN, HIGHLIGHTER, ERASER, EYEDROPPER, SELECT, SHAPE, TEXT, NOTE, LINK, IMAGE, AUDIO, LASER, FILL, SMUDGE }
 
 enum class SymmetryMode { NONE, HORIZONTAL, VERTICAL, QUADRANT, RADIAL_4, RADIAL_6, RADIAL_8 }
-
-object DemoContent {
-    val notebooks = listOf(
-        Notebook(title = "Distributed Systems", subtitle = "Just edited · 18 pages", cover = Color(0xFF202020), pageCount = 18),
-        Notebook(title = "CS336 Reading Notes", subtitle = "Yesterday · 42 pages", cover = Color(0xFF4A4A4A), pageCount = 42),
-        Notebook(title = "DSpark Paper", subtitle = "PDF · 16 annotations", cover = Color(0xFF707070), pageCount = 16, isPdf = true),
-        Notebook(title = "Human Anatomy", subtitle = "3 days ago · 12 pages", cover = Color(0xFF929292), pageCount = 12),
-        Notebook(title = "Meeting Notes", subtitle = "Jul 30 · 8 pages", cover = Color(0xFFB5B5B5), pageCount = 8),
-        Notebook(title = "Swedish Vocab", subtitle = "Jul 28 · 24 pages", cover = Color(0xFFD0D0D0), pageCount = 24),
-    )
-}

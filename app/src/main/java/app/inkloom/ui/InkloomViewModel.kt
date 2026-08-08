@@ -144,11 +144,6 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         mutableState.value = mutableState.value.copy(selectedDocumentId = targetDocumentId, selectedPageId = result.transferredPageId)
     }
 
-    fun setPageTemplate(documentId: String, pageId: String, pattern: PaperPattern) = update(documentId) { document ->
-        val template = PageTemplateCatalog.builtIns.first { it.background == PageBackground.Paper(pattern = pattern) }
-        document.copy(pages = document.pages.map { page -> if (page.id == pageId) PageTemplateOperations.apply(page, template) else page }, updatedAt = System.currentTimeMillis())
-    }
-
     fun applyPageTemplate(documentId: String, pageId: String, templateId: String) = update(documentId) { document ->
         val template = mutablePageTemplates.value.template(templateId) ?: return@update document
         document.copy(

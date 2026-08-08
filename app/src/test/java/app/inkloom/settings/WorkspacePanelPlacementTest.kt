@@ -13,16 +13,6 @@ class WorkspacePanelPlacementTest {
         assertEquals(600f, result.heightDp, .001f)
     }
 
-    @Test fun resizeRespectsPanelAndWorkspaceLimits() {
-        val source = WorkspacePanelBounds(700f, 300f, 330f, 400f)
-        val result = WorkspacePanelPlacement.resize(source, 1_000f, 1_000f, 1_200f, 800f, 160f)
-
-        assertEquals(520f, result.widthDp, .001f)
-        assertEquals(784f, result.heightDp, .001f)
-        assertEquals(672f, result.xDp, .001f)
-        assertEquals(8f, result.yDp, .001f)
-    }
-
     @Test fun malformedValuesRecoverToVisibleFiniteBounds() {
         val result = WorkspacePanelPlacement.clamp(Float.NaN, Float.NEGATIVE_INFINITY, Float.NaN, Float.POSITIVE_INFINITY, 1_000f, 700f, 150f)
 

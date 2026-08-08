@@ -6678,14 +6678,6 @@ private fun BrushPanel(
 }
 
 @Composable
-private fun BrushRow(name: String, color: Color, selected: Boolean) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp).border(if (selected) 2.dp else 1.dp, if (selected) Sage else OutlineSoft, RoundedCornerShape(10.dp)).padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-        Canvas(Modifier.width(52.dp).height(18.dp)) { drawLine(color, Offset(4f, size.height / 2), Offset(size.width - 4f, size.height / 2), strokeWidth = if (name.contains("Marker")) 9f else 3f, cap = StrokeCap.Round) }
-        Spacer(Modifier.width(12.dp)); Text(name, color = if (selected) Sage else Ink)
-    }
-}
-
-@Composable
 private fun BrushMoveToGroupDialog(brush: ImportedBrush, groups: List<String>, onDismiss: () -> Unit, onMove: (String) -> Unit) {
     var groupName by remember(brush.id) { mutableStateOf(brush.groupName) }
     AlertDialog(

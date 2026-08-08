@@ -188,9 +188,6 @@ data class InkStroke(
     val id: String = UUID.randomUUID().toString(),
     val renderSeed: Int = id.hashCode(),
     val engineKind: BrushEngineKind = BrushEngineKind.MESH_INK,
-    val engineMajorVersion: Int = 2,
-    val behaviorRuntimeVersion: Int = 1,
-    val compositorVersion: Int = 1,
     val masks: List<StrokeMaskDab> = emptyList(),
     val points: List<StrokePoint>,
     val colorArgb: Long = 0xFF111111,
@@ -466,9 +463,6 @@ data class PixelBounds(val x: Int, val y: Int, val width: Int, val height: Int)
 
 @Serializable
 data class InkFolder(val id: String = UUID.randomUUID().toString(), val name: String, val parentId: String? = null)
-
-@Serializable
-data class LibraryIndex(val folders: List<InkFolder> = emptyList(), val documentIds: List<String> = emptyList())
 
 @Serializable
 sealed interface JournalEntry {

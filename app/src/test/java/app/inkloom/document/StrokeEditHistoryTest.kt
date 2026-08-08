@@ -1,9 +1,7 @@
 package app.inkloom.document
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class StrokeEditHistoryTest {
@@ -42,19 +40,16 @@ class StrokeEditHistoryTest {
         history.record(second)
 
         assertEquals(second, history.takeUndo())
-        assertTrue(history.canRedo)
         assertEquals(second, history.takeRedo())
-        assertFalse(history.canRedo)
         history.takeUndo()
         history.record(StrokeEdits.difference(listOf(back), listOf(back, front))!!)
-        assertFalse(history.canRedo)
+        assertNull(history.takeRedo())
     }
 
     @Test
     fun emptyDifferenceDoesNotCreateHistory() {
         assertNull(StrokeEdits.difference(listOf(back), listOf(back)))
         val history = StrokeEditHistory()
-        assertFalse(history.canUndo)
         assertNull(history.takeUndo())
     }
 }

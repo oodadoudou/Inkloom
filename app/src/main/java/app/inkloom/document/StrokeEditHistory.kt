@@ -53,7 +53,4 @@ class StrokeEditHistory(private val capacity: Int = 100) {
         undo.clear()
         redo.clear()
     }
-
-    val canUndo: Boolean get() = undo.isNotEmpty()
-    val canRedo: Boolean get() = redo.isNotEmpty()
 }

@@ -60,9 +60,6 @@ object WorkspacePanelPlacement {
     fun move(bounds: WorkspacePanelBounds, deltaXDp: Float, deltaYDp: Float, containerWidthDp: Float, containerHeightDp: Float, minimumWidthDp: Float) =
         clamp(bounds.xDp + deltaXDp, bounds.yDp + deltaYDp, bounds.widthDp, bounds.heightDp, containerWidthDp, containerHeightDp, minimumWidthDp)
 
-    fun resize(bounds: WorkspacePanelBounds, deltaWidthDp: Float, deltaHeightDp: Float, containerWidthDp: Float, containerHeightDp: Float, minimumWidthDp: Float) =
-        clamp(bounds.xDp, bounds.yDp, bounds.widthDp + deltaWidthDp, bounds.heightDp + deltaHeightDp, containerWidthDp, containerHeightDp, minimumWidthDp)
-
     /** Resizes from any combination of edges. A zero delta keeps that edge fixed,
      * so dragging a left or top handle does not make the opposite corner jump. */
     fun resizeEdges(

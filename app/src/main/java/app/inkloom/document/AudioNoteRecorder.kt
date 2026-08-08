@@ -11,8 +11,6 @@ class AudioNoteRecorder(private val context: Context) {
     private var output: File? = null
     private var startedAt = 0L
 
-    val isRecording: Boolean get() = recorder != null
-
     fun start() {
         check(recorder == null) { "A recording is already active" }
         val directory = File(context.filesDir, "audio-notes").apply { mkdirs() }

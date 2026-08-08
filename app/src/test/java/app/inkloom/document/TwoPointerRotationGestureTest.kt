@@ -1,9 +1,7 @@
 package app.inkloom.document
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TwoPointerRotationGestureTest {
@@ -14,7 +12,6 @@ class TwoPointerRotationGestureTest {
         val delta = gesture.update(50f, -50f, 50f, 50f)
 
         assertEquals(90f, delta!!, .001f)
-        assertTrue(gesture.isRotating)
     }
 
     @Test fun `crossing the angle boundary does not jump by a full turn`() {
@@ -30,11 +27,9 @@ class TwoPointerRotationGestureTest {
         val gesture = TwoPointerRotationGesture()
         gesture.begin(0f, 0f, 100f, 0f)
         gesture.update(0f, 0f, 100f, .5f)
-        assertFalse(gesture.isRotating)
 
         gesture.reset()
 
         assertNull(gesture.update(0f, 0f, 0f, 100f))
-        assertFalse(gesture.isRotating)
     }
 }

@@ -67,10 +67,6 @@ class BrushImportRepository(context: Context) {
             ?: error("The selected destination could not be opened")
     }
 
-    fun refreshMetadata(brush: ImportedBrush): ImportedBrush {
-        return refreshMetadataAll(brush).first()
-    }
-
     fun refreshMetadataAll(brush: ImportedBrush): List<ImportedBrush> {
         val source = brush.sourcePath?.let(::File) ?: return listOf(brush)
         val hash = brush.sha256 ?: return listOf(brush)
