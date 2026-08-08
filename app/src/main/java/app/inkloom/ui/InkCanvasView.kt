@@ -1670,8 +1670,7 @@ class InkCanvasView(context: Context) : View(context) {
                     onColorSampled(sampleRenderedColor(inputPoint.first, inputPoint.second))
                 }
                 else if (activeTool == EditorTool.ERASER) {
-                    for (i in 0 until event.historySize) historicalCanvasPoint(event, 0, i).let { point -> eraseAlong(point.first / width.coerceAtLeast(1), point.second / height.coerceAtLeast(1), event.getHistoricalPressure(i)) }
-                    eraseAlong(normalizedX, normalizedY, event.pressure)
+                    eraseMotionEvent(event, 0)
                 }
                 else if (activeTool == EditorTool.SELECT) {
                     if (selectionTransformMode == TRANSFORM_SCALE) {
@@ -2895,6 +2894,36 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun eraseAlong(x: Float, y: Float, pressure: Float) {
+        val before = strokes.toList()
+        eraseAlongUnchecked(x, y, pressure)
+        invalidateEraserEvent(before)
+    }
+
+    /** One MotionEvent may carry many historical stylus samples. Process the whole packet before
+     * touching the committed tile index so eraser cost is independent of Android's packetization. */
+    private fun eraseMotionEvent(event: MotionEvent, pointerIndex: Int) {
+        val before = strokes.toList()
+        for (position in 0 until event.historySize) {
+            eraseAlongUnchecked(
+                event.getHistoricalX(pointerIndex, position) / width.coerceAtLeast(1),
+                event.getHistoricalY(pointerIndex, position) / height.coerceAtLeast(1),
+                event.getHistoricalPressure(pointerIndex, position),
+            )
+        }
+        eraseAlongUnchecked(
+            event.getX(pointerIndex) / width.coerceAtLeast(1),
+            event.getY(pointerIndex) / height.coerceAtLeast(1),
+            event.getPressure(pointerIndex),
+        )
+        invalidateEraserEvent(before)
+    }
+
+    private fun invalidateEraserEvent(before: List<InkStroke>) {
+        val edit = StrokeEdits.difference(before, strokes) ?: return
+        invalidateStrokeCache(edit.before.map { it.stroke }, edit.after.map { it.stroke })
+    }
+
+    private fun eraseAlongUnchecked(x: Float, y: Float, pressure: Float) {
         val targetX = x.coerceIn(0f, 1f)
         val targetY = y.coerceIn(0f, 1f)
         val startX = lastEraserX
@@ -2923,9 +2952,6 @@ class InkCanvasView(context: Context) : View(context) {
             x * width + eraserRadius,
             y * height + eraserRadius,
         )
-        var changed = false
-        val changedBefore = mutableListOf<InkStroke>()
-        val changedAfter = mutableListOf<InkStroke>()
         for (index in strokes.indices.reversed()) {
             val stroke = strokes[index]
             if (stroke.id !in candidateIds) continue
@@ -2940,9 +2966,6 @@ class InkCanvasView(context: Context) : View(context) {
                 if (stroke.masks.lastOrNull()?.let { kotlin.math.abs(it.x - dab.x) < .00001f && kotlin.math.abs(it.y - dab.y) < .00001f } == true) continue
                 val masked = stroke.copy(masks = stroke.masks + dab)
                 strokes[index] = masked
-                changedBefore += stroke
-                changedAfter += masked
-                changed = true
                 continue
             }
             val pieces = if (localEraser) {
@@ -2953,11 +2976,7 @@ class InkCanvasView(context: Context) : View(context) {
             strokes.removeAt(index)
             selectedStrokeIds.remove(stroke.id)
             if (localEraser) strokes.addAll(index, pieces)
-            changedBefore += stroke
-            changedAfter += pieces
-            changed = true
         }
-        if (changed) invalidateStrokeCache(changedBefore, changedAfter)
     }
 
     private fun eraserRadiusPixels(pressure: Float): Float {
