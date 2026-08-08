@@ -4643,8 +4643,9 @@ private fun StickyInkEditorDialog(
                 ) {
                     Text(draft.text, Modifier.padding(14.dp), color = Color(0xFF333333), maxLines = 10)
                     AndroidView(
-                        factory = { context -> InkCanvasView(context).also { canvasView = it } },
-                        update = { view ->
+                        factory = { context -> EngineV2CanvasHost(context).also { canvasView = it.canvasView } },
+                        update = { host ->
+                            val view = host.canvasView
                             canvasView = view
                             view.applyBrushConfiguration(tool, settings, activeBrush, brushSize, brushOpacity, brushColor, eraserPreset)
                             view.activeLayerId = LayerIds.INK
@@ -7551,7 +7552,8 @@ private fun BrushTestArea(brush: ImportedBrush, settings: AppSettings) {
             IconButton(onClick = { strokes = emptyList(); canvasView?.setDocumentStrokes(emptyList(), "brush-test:${brush.id}:clear") }, enabled = strokes.isNotEmpty(), modifier = Modifier.size(34.dp)) { Icon(Icons.Outlined.DeleteSweep, tr("Clear test area", "清空试笔区"), Modifier.size(18.dp)) }
         }
         AndroidView(
-            factory = { context -> InkCanvasView(context).also { view ->
+            factory = { context -> EngineV2CanvasHost(context).also { host ->
+                val view = host.canvasView
                 canvasView = view
                 view.activeLayerId = LayerIds.INK
                 view.pageModelWidth = 900f
@@ -7560,7 +7562,8 @@ private fun BrushTestArea(brush: ImportedBrush, settings: AppSettings) {
                 view.onStrokeRemoved = { id -> strokes = strokes.filterNot { it.id == id } }
                 view.onStrokesReplaced = { removed, replacements, _ -> strokes = strokes.filterNot { it.id in removed.toSet() } + replacements }
             } },
-            update = { view ->
+            update = { host ->
+                val view = host.canvasView
                 canvasView = view
                 view.applyBrushConfiguration(EditorTool.PEN, settings, brush, brush.defaultSize, brush.defaultOpacity, AndroidColor.rgb(17, 17, 17), EraserPreset.NORMAL_FREE)
                 view.activeLayerId = LayerIds.INK

@@ -9,6 +9,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
 import app.inkloom.document.StrokeTileKey
+import app.inkloom.engine.v2.render.EngineV2ActiveStrokeSurface
 import app.inkloom.model.EditorTool
 import app.inkloom.ui.InkCanvasView
 import java.io.File
@@ -20,63 +21,47 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class InkCanvasTileCacheTest {
-    @Test fun longLiveStrokeRendersOnlyItsShortTailPerFrame() {
+    @Test fun longLiveStrokeCoalescesIntoOneV2SurfaceSubmissionPerFrame() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val context = InstrumentationRegistry.getInstrumentation().targetContext
-            val tipFile = File.createTempFile("inkloom-tail-tip", ".png", context.cacheDir)
-            val sourceTip = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888)
-            val previewPointCounts = mutableListOf<Int>()
-            Canvas(sourceTip).drawCircle(8f, 8f, 7f, android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.WHITE })
-            FileOutputStream(tipFile).use { sourceTip.compress(Bitmap.CompressFormat.PNG, 100, it) }
             val view = InkCanvasView(context).apply {
                 layout(0, 0, 1024, 1024)
                 tool = EditorTool.PEN
-                tipAssetPath = tipFile.absolutePath
-                tipAssetPaths = listOf(tipFile.absolutePath)
-                onLivePreviewRendered = previewPointCounts::add
             }
-            val bitmap = Bitmap.createBitmap(1024, 1024, Bitmap.Config.ARGB_8888)
-            try {
-                view.dispatchStylus(MotionEvent.ACTION_DOWN, 100f, 200f, 10L)
-                repeat(250) { point ->
-                    view.dispatchStylus(MotionEvent.ACTION_MOVE, 100f + point * 3f, 200f + (point % 7), 20L + point)
-                }
-                view.draw(Canvas(bitmap))
+            val surface = RecordingActiveSurface(view)
+            view.activeStrokeSurface = surface
+            view.dispatchStylus(MotionEvent.ACTION_DOWN, 100f, 200f, 10L)
+            repeat(250) { point ->
+                view.dispatchStylus(MotionEvent.ACTION_MOVE, 100f + point * 3f, 200f + (point % 7), 20L + point)
+            }
+            view.flushEngineV2ActiveFrame()
 
-                assertTrue("Live preview replayed ${previewPointCounts.lastOrNull()} points", previewPointCounts.lastOrNull() in 1..16)
-                view.dispatchStylus(MotionEvent.ACTION_UP, 850f, 200f, 300L)
-            } finally {
-                bitmap.recycle()
-                sourceTip.recycle()
-                tipFile.delete()
-            }
+            assertEquals("All MOVE events before one display frame must coalesce", 1, surface.renderCount)
+            assertTrue("The V2 packet must contain the modeled stroke", surface.latest.sumOf { it.points.size } > 100)
+            view.dispatchStylus(MotionEvent.ACTION_UP, 850f, 200f, 300L)
         }
     }
 
-    @Test fun consecutiveLongStrokesAllocateAtMostOnePreviewSurface() {
+    @Test fun consecutiveLongStrokesUseOnlyTheV2SurfaceLifecycle() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            var allocations = 0
             val view = InkCanvasView(InstrumentationRegistry.getInstrumentation().targetContext).apply {
                 layout(0, 0, 1024, 1024)
                 tool = EditorTool.PEN
-                onLivePreviewSurfaceAllocated = { allocations++ }
             }
-            val bitmap = Bitmap.createBitmap(1024, 1024, Bitmap.Config.ARGB_8888)
-            try {
-                repeat(2) { stroke ->
-                    val y = 200f + stroke * 180f
-                    view.dispatchStylus(MotionEvent.ACTION_DOWN, 100f, y, 1_000L + stroke * 1_000L)
-                    repeat(80) { point ->
-                        view.dispatchStylus(MotionEvent.ACTION_MOVE, 100f + point * 8f, y, 1_020L + stroke * 1_000L + point)
-                    }
-                    view.draw(Canvas(bitmap))
-                    view.dispatchStylus(MotionEvent.ACTION_UP, 760f, y, 1_900L + stroke * 1_000L)
+            val surface = RecordingActiveSurface(view)
+            view.activeStrokeSurface = surface
+            repeat(2) { stroke ->
+                val y = 200f + stroke * 180f
+                view.dispatchStylus(MotionEvent.ACTION_DOWN, 100f, y, 1_000L + stroke * 1_000L)
+                repeat(80) { point ->
+                    view.dispatchStylus(MotionEvent.ACTION_MOVE, 100f + point * 8f, y, 1_020L + stroke * 1_000L + point)
                 }
-
-                assertTrue("Long strokes allocated $allocations page preview surfaces", allocations <= 1)
-            } finally {
-                bitmap.recycle()
+                view.flushEngineV2ActiveFrame()
+                view.dispatchStylus(MotionEvent.ACTION_UP, 760f, y, 1_900L + stroke * 1_000L)
             }
+
+            assertEquals(2, surface.commitCount)
+            assertTrue("Every contact must reset the transient surface", surface.cancelCount >= 2)
         }
     }
 
@@ -126,14 +111,12 @@ class InkCanvasTileCacheTest {
                     baseWidth = 92f
                     brushSpacing = .22f
                 }
+                view.activeStrokeSurface = RecordingActiveSurface(view, live)
                 view.dispatchStylus(MotionEvent.ACTION_DOWN, 120f, 260f, 10L)
                 repeat(96) { point ->
                     view.dispatchStylus(MotionEvent.ACTION_MOVE, 128f + point * 8f, 260f + (point % 9) * 6f, 20L + point)
-                    // Exercise multiple incremental prefix checkpoints, not just one final draw.
-                    if (point % 16 == 15) view.draw(Canvas(live))
+                    if (point % 16 == 15) view.flushEngineV2ActiveFrame()
                 }
-                live.eraseColor(android.graphics.Color.TRANSPARENT)
-                view.draw(Canvas(live))
                 view.dispatchStylus(MotionEvent.ACTION_UP, 900f, 300f, 140L)
                 view.draw(Canvas(committed))
 
@@ -162,13 +145,12 @@ class InkCanvasTileCacheTest {
                     tool = EditorTool.PEN
                     baseWidth = 28f
                 }
+                view.activeStrokeSurface = RecordingActiveSurface(view, live)
                 view.dispatchStylus(MotionEvent.ACTION_DOWN, 120f, 520f, 10L)
                 repeat(96) { point ->
                     view.dispatchStylus(MotionEvent.ACTION_MOVE, 128f + point * 8f, 520f + (point % 9) * 3f, 20L + point)
-                    if (point % 16 == 15) view.draw(Canvas(live))
+                    if (point % 16 == 15) view.flushEngineV2ActiveFrame()
                 }
-                live.eraseColor(android.graphics.Color.TRANSPARENT)
-                view.draw(Canvas(live))
                 view.dispatchStylus(MotionEvent.ACTION_UP, 900f, 550f, 140L)
                 view.draw(Canvas(committed))
 
@@ -211,9 +193,10 @@ class InkCanvasTileCacheTest {
                     brushSpacing = .12f
                     brushBlur = .2f
                 }
+                view.activeStrokeSurface = RecordingActiveSurface(view, output)
                 // Warm the decoded brush asset before measuring the same path used after selection.
                 view.dispatchStylus(MotionEvent.ACTION_DOWN, 80f, 180f, 1L)
-                view.draw(Canvas(output))
+                view.flushEngineV2ActiveFrame()
                 view.dispatchStylus(MotionEvent.ACTION_UP, 82f, 180f, 2L)
                 output.eraseColor(android.graphics.Color.TRANSPARENT)
 
@@ -222,7 +205,7 @@ class InkCanvasTileCacheTest {
                 repeat(120) { point ->
                     view.dispatchStylus(MotionEvent.ACTION_MOVE, 96f + point * 7f, 420f + (point % 11) * 3f, 20L + point)
                     val started = android.os.SystemClock.elapsedRealtimeNanos()
-                    view.draw(Canvas(output))
+                    view.flushEngineV2ActiveFrame()
                     frameTimes += android.os.SystemClock.elapsedRealtimeNanos() - started
                 }
                 view.dispatchStylus(MotionEvent.ACTION_UP, 940f, 450f, 200L)
@@ -235,6 +218,36 @@ class InkCanvasTileCacheTest {
                 output.recycle()
                 tipFile.delete()
             }
+        }
+    }
+
+    private class RecordingActiveSurface(
+        private val view: InkCanvasView,
+        private val bitmap: Bitmap? = null,
+    ) : EngineV2ActiveStrokeSurface {
+        var renderCount = 0
+        var commitCount = 0
+        var cancelCount = 0
+        var latest: List<InkStroke> = emptyList()
+
+        override fun render(strokes: List<InkStroke>) {
+            renderCount++
+            latest = strokes
+            bitmap?.let {
+                it.eraseColor(android.graphics.Color.TRANSPARENT)
+                view.drawEngineV2ActiveStrokes(Canvas(it), strokes)
+            }
+        }
+
+        override fun commit(strokes: List<InkStroke>) {
+            commitCount++
+            latest = strokes
+        }
+
+        override fun cancel() {
+            cancelCount++
+            latest = emptyList()
+            bitmap?.eraseColor(android.graphics.Color.TRANSPARENT)
         }
     }
 

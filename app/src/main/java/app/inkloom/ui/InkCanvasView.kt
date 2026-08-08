@@ -22,6 +22,7 @@ import android.view.PointerIcon
 import android.view.View
 import android.view.ViewConfiguration
 import androidx.annotation.WorkerThread
+import androidx.annotation.VisibleForTesting
 import app.inkloom.engine.v2.EngineV2Metrics
 import app.inkloom.engine.v2.EngineV2LatencySnapshot
 import app.inkloom.engine.v2.traceEngineV2
@@ -150,10 +151,6 @@ class InkCanvasView(context: Context) : View(context) {
         if (activeTool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) || currentPoints.isEmpty()) return@Runnable
         surface.render(symmetryStrokes(currentPoints))
     }
-    private var liveStrokeBitmap: Bitmap? = null
-    private var liveStrokeCheckpoint = 0
-    private var livePrimaryStampCheckpoint = 0
-    private var liveDualStampCheckpoint = 0
     private var backgroundBitmap: Bitmap? = null
     private val selectedStrokeIds = linkedSetOf<String>()
     private var selectionGestureBefore: List<InkStroke>? = null
@@ -317,9 +314,6 @@ class InkCanvasView(context: Context) : View(context) {
     private val strokeTiles = mutableMapOf<StrokeTileKey, Bitmap>()
     private val dirtyStrokeTiles = linkedSetOf<StrokeTileKey>()
     internal var onTileRendered: ((StrokeTileKey, Int) -> Unit)? = null
-    internal var onLivePreviewRendered: ((Int) -> Unit)? = null
-    /** Test-only guard against re-allocating a page-sized preview surface per stroke. */
-    internal var onLivePreviewSurfaceAllocated: (() -> Unit)? = null
 
     var tool: EditorTool = EditorTool.PEN
     var forceNavigation: Boolean = false
@@ -799,7 +793,6 @@ class InkCanvasView(context: Context) : View(context) {
         drawSelectionHandles(canvas)
         drawSymmetryGuides(canvas)
         drawShapePreview(canvas)
-        if (activeStrokeSurface == null) drawLiveStroke(canvas)
         drawAlignmentGuides(canvas)
         drawRulerGuide(canvas)
         drawLaserTrail(canvas, SystemClock.uptimeMillis())
@@ -812,7 +805,7 @@ class InkCanvasView(context: Context) : View(context) {
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
         super.onSizeChanged(width, height, oldWidth, oldHeight)
         if (width != oldWidth || height != oldHeight) {
-            releaseLiveStrokePreview()
+            releaseActiveStrokePreview()
             resetStrokeTiles()
         }
     }
@@ -824,7 +817,7 @@ class InkCanvasView(context: Context) : View(context) {
         stopContinuousPlot()
         laserTrail.clear()
         recycleStrokeTiles()
-        releaseLiveStrokePreview()
+        releaseActiveStrokePreview()
         removeCallbacks(activeSurfaceFrame)
         activeSurfaceFrameScheduled = false
         strokeInputModeler.close()
@@ -993,142 +986,28 @@ class InkCanvasView(context: Context) : View(context) {
         canvas.drawBitmap(bitmap, null, backgroundDestination, null)
     }
 
-    /**
-     * Keeps long in-progress strokes responsive. The stable prefix is rasterized only at coarse
-     * checkpoints; each frame then renders the small live tail instead of replaying every stamp.
-     * The committed stroke is still rendered once from its complete vector data.
-     */
-    private fun drawLiveStroke(canvas: Canvas) {
-        if (currentPoints.isEmpty()) return
-        val startedAt = System.nanoTime()
-        try {
-            traceEngineV2("Inkloom.V2.ActiveStrokeDraw") { drawLiveStrokeV2(canvas) }
-        } finally {
-            engineV2Metrics.activeStrokeDraw.recordNanos(System.nanoTime() - startedAt)
-        }
-    }
-
-    private fun drawLiveStrokeV2(canvas: Canvas) {
-        if (currentPoints.isEmpty()) return
-        if (symmetryMode != SymmetryMode.NONE) {
-            drawLayeredStrokes(canvas, symmetryStrokes(currentPoints))
-            onLivePreviewRendered?.invoke(currentPoints.size)
-            return
-        }
-        if (currentPoints.size < LIVE_STROKE_CACHE_START_POINTS || width <= 0 || height <= 0 || width.toLong() * height.toLong() > MAX_CACHE_PIXELS) {
-            drawLayeredStrokes(canvas, listOf(makeStroke(currentPoints)))
-            onLivePreviewRendered?.invoke(currentPoints.size)
-            return
-        }
-        val liveStroke = makeStroke(currentPoints)
-        val liveTipPaths = liveStroke.tipAssetPaths.ifEmpty { listOfNotNull(liveStroke.tipAssetPath) }
-        if (liveTipPaths.isEmpty()) {
-            // A vector pen is cheap to replay and drawing it directly is pixel-identical to the
-            // committed stroke. Rasterizing its prefix introduces a second alpha-composition pass
-            // that can make the curve subtly "settle" when the pen is lifted.
-            drawLayeredStrokes(canvas, listOf(liveStroke))
-            onLivePreviewRendered?.invoke(currentPoints.size)
-            return
-        }
-        if (liveStroke.taperEndEnabled) {
-            drawLayeredStrokes(canvas, listOf(liveStroke))
-            onLivePreviewRendered?.invoke(currentPoints.size)
-            return
-        }
-        val desiredCheckpoint = ((currentPoints.size - LIVE_STROKE_TAIL_POINTS) / LIVE_STROKE_CHECKPOINT_POINTS) * LIVE_STROKE_CHECKPOINT_POINTS
-        if (desiredCheckpoint <= 0) {
-            drawLayeredStrokes(canvas, listOf(makeStroke(currentPoints)))
-            onLivePreviewRendered?.invoke(currentPoints.size)
-            return
-        }
-        if (desiredCheckpoint > liveStrokeCheckpoint || liveStrokeBitmap?.width != width || liveStrokeBitmap?.height != height) {
-            val bitmap = liveStrokeBitmap?.takeIf { it.width == width && it.height == height } ?: runCatching {
-                Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-            }.getOrNull()
-            if (bitmap == null) {
-                drawLayeredStrokes(canvas, listOf(makeStroke(currentPoints)))
-                onLivePreviewRendered?.invoke(currentPoints.size)
-                return
-            }
-            if (bitmap !== liveStrokeBitmap) {
-                liveStrokeBitmap?.recycle()
-                liveStrokeBitmap = bitmap
-                liveStrokeCheckpoint = 0
-                livePrimaryStampCheckpoint = 0
-                liveDualStampCheckpoint = 0
-                onLivePreviewSurfaceAllocated?.invoke()
-            }
-            val nextCheckpoint = desiredCheckpoint.coerceAtLeast(1)
-            val checkpointStroke = liveStroke.copy(points = currentPoints.subList(0, nextCheckpoint).toList())
-            val canAppend = liveStrokeCheckpoint > 0 && canAppendLiveCheckpoint(checkpointStroke)
-            if (!canAppend) {
-                bitmap.eraseColor(Color.TRANSPARENT)
-                livePrimaryStampCheckpoint = 0
-                liveDualStampCheckpoint = 0
-            }
-            drawLayeredStrokes(
-                Canvas(bitmap),
-                listOf(checkpointStroke),
-                primaryStampStartIndex = if (canAppend) livePrimaryStampCheckpoint else 0,
-                dualStampStartIndex = if (canAppend) liveDualStampCheckpoint else 0,
-            )
-            liveStrokeCheckpoint = nextCheckpoint
-            livePrimaryStampCheckpoint = primaryStampedPoints(checkpointStroke).size
-            liveDualStampCheckpoint = if (checkpointStroke.dualBrush) dualStampedPoints(checkpointStroke).size else 0
-        }
-        liveStrokeBitmap?.let { canvas.drawBitmap(it, 0f, 0f, null) }
-        val prefix = liveStroke.copy(points = currentPoints.take(liveStrokeCheckpoint))
-        val primaryStart = primaryStampedPoints(prefix).size
-        val dualStart = if (liveStroke.dualBrush) dualStampedPoints(prefix).size else 0
-        drawLayeredStrokes(canvas, listOf(liveStroke), primaryStart, dualStart)
-        onLivePreviewRendered?.invoke((currentPoints.size - liveStrokeCheckpoint).coerceAtLeast(1))
-    }
-
-    /** Starts a fresh preview without allocating or releasing a page-sized bitmap. */
-    private fun beginLiveStrokePreview() {
+    private fun beginActiveStrokePreview() {
         removeCallbacks(activeSurfaceFrame)
         activeSurfaceFrameScheduled = false
         activeSurfaceCommitted = false
         activeStrokeSurface?.cancel()
-        liveStrokeBitmap?.eraseColor(Color.TRANSPARENT)
-        liveStrokeCheckpoint = 0
-        livePrimaryStampCheckpoint = 0
-        liveDualStampCheckpoint = 0
     }
 
-    /** Hides the completed preview. Its backing surface is retained for the next stroke. */
-    private fun finishLiveStrokePreview() {
+    private fun finishActiveStrokePreview() {
         removeCallbacks(activeSurfaceFrame)
         activeSurfaceFrameScheduled = false
         if (!activeSurfaceCommitted) activeStrokeSurface?.cancel()
         activeSurfaceCommitted = false
-        liveStrokeCheckpoint = 0
-        livePrimaryStampCheckpoint = 0
-        liveDualStampCheckpoint = 0
         activeStrokeTemplate = null
     }
 
-    private fun releaseLiveStrokePreview() {
+    private fun releaseActiveStrokePreview() {
         removeCallbacks(activeSurfaceFrame)
         activeSurfaceFrameScheduled = false
         activeSurfaceCommitted = false
         activeStrokeSurface?.cancel()
-        liveStrokeBitmap?.recycle()
-        liveStrokeBitmap = null
-        liveStrokeCheckpoint = 0
-        livePrimaryStampCheckpoint = 0
-        liveDualStampCheckpoint = 0
         activeStrokeTemplate = null
     }
-
-    /** Incremental prefix composition is exact for ordinary normal-blend strokes without tapers.
-     * More complex blend/taper modes keep the conservative full-prefix redraw path. */
-    private fun canAppendLiveCheckpoint(stroke: InkStroke): Boolean =
-        !stroke.taperStartEnabled && !stroke.taperEndEnabled &&
-            !stroke.blendTipsWithDarken && !stroke.dualBrush &&
-            layerBlendModes[stroke.layerId].let { it == null || it == LayerBlendMode.NORMAL } &&
-            (layerOpacities[stroke.layerId] ?: 1f) >= .999f &&
-            stroke.layerId !in alphaLockedLayers && stroke.layerId !in clippedLayers
 
     private fun drawStroke(canvas: Canvas, stroke: InkStroke, primaryStampStartIndex: Int = 0, dualStampStartIndex: Int = 0) {
         if (stroke.masks.isEmpty()) {
@@ -1834,7 +1713,7 @@ class InkCanvasView(context: Context) : View(context) {
                     return true
                 }
                 clearActiveStrokeInput()
-                beginLiveStrokePreview()
+                beginActiveStrokePreview()
                 currentStrokeId = java.util.UUID.randomUUID().toString()
                 // Freeze the many brush-engine parameters once per contact. Live rendering then
                 // copies only the changing point list instead of rebuilding the full descriptor
@@ -1950,7 +1829,7 @@ class InkCanvasView(context: Context) : View(context) {
                 if (event.actionMasked == MotionEvent.ACTION_UP) performClick()
                 if (event.actionMasked == MotionEvent.ACTION_CANCEL || event.flags and MotionEvent.FLAG_CANCELED != 0) {
                     clearActiveStrokeInput()
-                    finishLiveStrokePreview()
+                    finishActiveStrokePreview()
                     if (activeTool == EditorTool.LASER) laserTrail.cancelActive()
                     if (activeTool == EditorTool.FILL) cancelFillGesture()
                     if (activeTool == EditorTool.SMUDGE) cancelSmudgeGesture()
@@ -1978,7 +1857,7 @@ class InkCanvasView(context: Context) : View(context) {
                     activeStrokeSurface?.commit(newStrokes)
                     activeSurfaceCommitted = activeStrokeSurface != null
                     clearActiveStrokeInput()
-                    finishLiveStrokePreview()
+                    finishActiveStrokePreview()
                 } else if (activeTool == EditorTool.SELECT) {
                     if ((movingSelection || selectionTransformMode != TRANSFORM_NONE) && selectionMoved) {
                         selectionGestureBefore?.let { commitStrokeEdit(it, strokes) }
@@ -2139,7 +2018,7 @@ class InkCanvasView(context: Context) : View(context) {
     private fun cancelActiveGestureForNavigation() {
         stopContinuousPlot()
         clearActiveStrokeInput()
-        finishLiveStrokePreview()
+        finishActiveStrokePreview()
         laserTrail.cancelActive()
         cancelFillGesture()
         cancelSmudgeGesture()
@@ -2700,9 +2579,23 @@ class InkCanvasView(context: Context) : View(context) {
         postOnAnimation(activeSurfaceFrame)
     }
 
+    @VisibleForTesting
+    internal fun flushEngineV2ActiveFrame() {
+        if (!activeSurfaceFrameScheduled) return
+        removeCallbacks(activeSurfaceFrame)
+        activeSurfaceFrame.run()
+    }
+
     @WorkerThread
     internal fun drawEngineV2ActiveStrokes(canvas: Canvas, strokes: List<InkStroke>) {
-        synchronized(renderLock) { drawLayeredStrokes(canvas, strokes) }
+        val startedAt = System.nanoTime()
+        try {
+            traceEngineV2("Inkloom.V2.ActiveStrokeDraw") {
+                synchronized(renderLock) { drawLayeredStrokes(canvas, strokes) }
+            }
+        } finally {
+            engineV2Metrics.activeStrokeDraw.recordNanos(System.nanoTime() - startedAt)
+        }
     }
 
     private fun clearActiveStrokeInput() {
@@ -3314,9 +3207,6 @@ class InkCanvasView(context: Context) : View(context) {
         const val FILL_MAX_SAMPLE_DIMENSION = 1_600f
         const val FILL_PREVIEW_THROTTLE_MS = 32L
         const val SMUDGE_COLOR_QUANTIZATION = 16
-        const val LIVE_STROKE_CACHE_START_POINTS = 8
-        const val LIVE_STROKE_CHECKPOINT_POINTS = 16
-        const val LIVE_STROKE_TAIL_POINTS = 8
         const val MAX_ERASER_SAMPLES_PER_EVENT = 256
         const val CONTINUOUS_PLOT_INTERVAL_MS = 32L
         const val QUICKSHAPE_HOLD_MS = 120L
