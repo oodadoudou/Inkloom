@@ -18,7 +18,6 @@ import android.graphics.PorterDuffXfermode
 import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.MotionEvent
-import android.view.ScaleGestureDetector
 import android.view.View
 import android.view.ViewConfiguration
 import java.util.LinkedHashMap
@@ -181,6 +180,9 @@ class InkCanvasView(context: Context) : View(context) {
     private var navigationSpan = 0f
     private var navigationMoved = false
     private var navigationTapEligible = false
+    /** Once two fingers enter viewport navigation, the gesture remains navigation until the last
+     * contact is released. This prevents the remaining finger from becoming an accidental stroke. */
+    private var viewportGestureActive = false
     private var externalViewportGestureContact = false
     private val navigationTouchSlop = ViewConfiguration.get(context).scaledTouchSlop.toFloat()
     private val singleFingerDoubleTapUndoGesture = SingleFingerDoubleTapUndoGesture(navigationTouchSlop)
@@ -190,6 +192,7 @@ class InkCanvasView(context: Context) : View(context) {
     private val colorSampleBitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
     private var activeTool: EditorTool? = null
     private var activeInputWasStylus = false
+    private var pageContactRejected = false
     private var lastStylusSeenAt = Long.MIN_VALUE
     private var ctrlModifierHeld = false
     private var altModifierHeld = false
@@ -283,11 +286,13 @@ class InkCanvasView(context: Context) : View(context) {
     var externalViewportGestures: Boolean = false
     var viewportInputTransformEnabled: Boolean = false
     var viewportScale: Float = 1f
+        set(value) { field = value.takeIf(Float::isFinite)?.coerceIn(1f, 8f) ?: 1f; invalidate() }
     var viewportPanX: Float = 0f
+        set(value) { field = value.takeIf(Float::isFinite) ?: 0f; invalidate() }
     var viewportPanY: Float = 0f
+        set(value) { field = value.takeIf(Float::isFinite) ?: 0f; invalidate() }
     var viewportRotationDegrees: Float = 0f
-    var viewportCenterScreenX: Float = 0f
-    var viewportCenterScreenY: Float = 0f
+        set(value) { field = ViewportTransform.normalizeDegrees(value.takeIf(Float::isFinite) ?: 0f); invalidate() }
     var inkColor: Int = Color.rgb(17, 17, 17)
     var baseWidth: Float = 5f
     var inkOpacity: Float = 1f
@@ -544,9 +549,6 @@ class InkCanvasView(context: Context) : View(context) {
     private val shortcutAxisAccumulator = ShortcutAxisAccumulator()
     private val heldMotionButtons = mutableMapOf<Pair<String?, Int>, ButtonShortcutBinding>()
 
-    private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-        override fun onScale(detector: ScaleGestureDetector): Boolean = true
-    })
     private val backgroundDestination = android.graphics.Rect()
     private val lassoPath = Path()
 
@@ -1317,9 +1319,13 @@ class InkCanvasView(context: Context) : View(context) {
         val pointerIndex = event.actionIndex.coerceIn(0, event.pointerCount - 1)
         val eventToolType = event.getToolType(pointerIndex)
         val isStylus = eventToolType == MotionEvent.TOOL_TYPE_STYLUS || eventToolType == MotionEvent.TOOL_TYPE_ERASER
-        // Compose owns two-finger transforms in the editor. A consumed POINTER_UP must never
-        // leave this flag latched and block the next stylus contact.
-        if (isStylus && event.actionMasked == MotionEvent.ACTION_DOWN) externalViewportGestureContact = false
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            // Every new contact stream is a hard recovery boundary. This also recovers from a
+            // device/parent that consumed the previous stream's final UP or CANCEL.
+            viewportGestureActive = false
+            externalViewportGestureContact = false
+            pageContactRejected = false
+        }
         if (isStylus) singleFingerDoubleTapUndoGesture.cancel()
         if (isStylus) lastStylusSeenAt = event.eventTime
         onInputDiagnostic(when (eventToolType) { MotionEvent.TOOL_TYPE_STYLUS -> "Stylus"; MotionEvent.TOOL_TYPE_ERASER -> "Eraser"; MotionEvent.TOOL_TYPE_FINGER -> "Finger"; else -> "Other" }, event.pressure, event.getAxisValue(MotionEvent.AXIS_TILT), event.buttonState)
@@ -1335,10 +1341,10 @@ class InkCanvasView(context: Context) : View(context) {
         dispatchStylusButtonTransitions(buttonTransitions)
         if (stylusButtonAction.isCommand) stylusCommandConsumesContact = true
         if (StylusButtonAction.HAND in pressedButtonActions) {
-            navigationX = event.rawX
-            navigationY = event.rawY
-            navigationDownX = event.rawX
-            navigationDownY = event.rawY
+            navigationX = event.x
+            navigationY = event.y
+            navigationDownX = event.x
+            navigationDownY = event.y
             navigationMoved = false
         }
         if (stylusButtonAction == StylusButtonAction.HAND) stylusHandNavigationContact = true
@@ -1362,11 +1368,25 @@ class InkCanvasView(context: Context) : View(context) {
             return true
         }
         val elapsedSinceStylus = if (lastStylusSeenAt == Long.MIN_VALUE) Long.MAX_VALUE else event.eventTime - lastStylusSeenAt
-        if (handleCanvasGuideGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
-        if (handleRulerGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
+        val hasStylusPointer = (0 until event.pointerCount).any { index ->
+            event.getToolType(index) == MotionEvent.TOOL_TYPE_STYLUS || event.getToolType(index) == MotionEvent.TOOL_TYPE_ERASER
+        }
+        if (event.pointerCount >= 2 && !hasStylusPointer && !activeInputWasStylus) {
+            viewportGestureActive = true
+            // Canvas navigation always outranks one-finger ruler/guide manipulation.
+            rulerGestureStart?.let { rulerGuide = it }
+            rulerGestureMode = null
+            rulerGestureStart = null
+            canvasGuideGestureStart?.let { canvasGuideState = it }
+            canvasGuideGestureMode = null
+            canvasGuideGestureStart = null
+        }
+        if (!viewportGestureActive && handleCanvasGuideGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
+        if (!viewportGestureActive && handleRulerGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
         val buttonForcesNavigation = isStylus && (stylusButtonAction == StylusButtonAction.HAND || stylusHandNavigationContact)
-        val isFingerNavigation = forceNavigation || buttonForcesNavigation || StylusInputClassifier.shouldNavigateOrRejectFinger(isStylus, fingerDrawingEnabled, event.pointerCount, event.getTouchMajor(pointerIndex), elapsedSinceStylus)
+        val isFingerNavigation = viewportGestureActive || forceNavigation || buttonForcesNavigation || StylusInputClassifier.shouldNavigateOrRejectFinger(isStylus, fingerDrawingEnabled, event.pointerCount, event.getTouchMajor(pointerIndex), elapsedSinceStylus)
         if (isFingerNavigation) {
+            pageContactRejected = false
             if (activeTool != null) {
                 if (activeInputWasStylus && !forceNavigation && !buttonForcesNavigation) return true
                 cancelActiveGestureForNavigation()
@@ -1374,18 +1394,20 @@ class InkCanvasView(context: Context) : View(context) {
             if (externalViewportGestures && (externalViewportGestureContact || event.pointerCount >= 2)) {
                 when (event.actionMasked) {
                     MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> externalViewportGestureContact = event.pointerCount >= 2
-                    MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> externalViewportGestureContact = false
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        externalViewportGestureContact = false
+                        viewportGestureActive = false
+                    }
                 }
                 return true
             }
-            scaleDetector.onTouchEvent(event)
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     twoPointerRotationGesture.reset()
                     navigationSpan = 0f
                     threeFingerTapRedoGesture.cancel()
-                    navigationX = event.rawX; navigationY = event.rawY
-                    navigationDownX = event.rawX; navigationDownY = event.rawY
+                    navigationX = event.x; navigationY = event.y
+                    navigationDownX = event.x; navigationDownY = event.y
                     navigationMoved = false
                     navigationTapEligible = eventToolType == MotionEvent.TOOL_TYPE_FINGER &&
                         event.getTouchMajor(pointerIndex) < StylusInputClassifier.PALM_TOUCH_MAJOR_PX &&
@@ -1409,20 +1431,20 @@ class InkCanvasView(context: Context) : View(context) {
                         twoFingerTapUndoGesture.cancel()
                         threeFingerTapRedoGesture.cancel()
                     }
-                    val focus = event.rawCentroid()
+                    val focus = event.centroid()
                     navigationX = focus.first
                     navigationY = focus.second
-                    navigationSpan = event.rawSpan()
+                    navigationSpan = event.localSpan()
                     if (twoFingerRotationEnabled && event.pointerCount == 2) {
-                        twoPointerRotationGesture.begin(event.getRawX(0), event.getRawY(0), event.getRawX(1), event.getRawY(1))
+                        twoPointerRotationGesture.begin(event.getX(0), event.getY(0), event.getX(1), event.getY(1))
                     } else twoPointerRotationGesture.reset()
                 }
                 MotionEvent.ACTION_POINTER_UP -> {
                     if (event.pointerCount == 3 && threeFingerTapRedo && threeFingerTapRedoGesture.finish(event.eventTime)) onRedoGesture()
                     else if (event.pointerCount == 2 && twoFingerDoubleTapUndo && twoFingerTapUndoGesture.finish(event.eventTime)) onUndoGesture()
                     ViewportTransform.remainingPointerIndex(event.pointerCount, event.actionIndex)?.let { remaining ->
-                        navigationX = event.getRawX(remaining)
-                        navigationY = event.getRawY(remaining)
+                        navigationX = event.getX(remaining)
+                        navigationY = event.getY(remaining)
                         navigationDownX = navigationX
                         navigationDownY = navigationY
                     }
@@ -1432,41 +1454,41 @@ class InkCanvasView(context: Context) : View(context) {
                     twoPointerRotationGesture.reset()
                 }
                 MotionEvent.ACTION_MOVE -> if (event.pointerCount >= 2) {
-                    val focus = event.rawCentroid()
-                    val span = event.rawSpan()
+                    val focus = event.centroid()
+                    val span = event.localSpan()
                     if (navigationSpan > .01f && span > .01f) {
                         onViewportScale((span / navigationSpan).coerceIn(.5f, 2f), navigationX, navigationY)
                     }
                     val rotationDelta = if (twoFingerRotationEnabled && event.pointerCount == 2) {
-                        twoPointerRotationGesture.update(event.getRawX(0), event.getRawY(0), event.getRawX(1), event.getRawY(1))
+                        twoPointerRotationGesture.update(event.getX(0), event.getY(0), event.getX(1), event.getY(1))
                     } else {
                         twoPointerRotationGesture.reset()
                         null
                     }
                     rotationDelta?.let(onViewportRotate)
-                    if (event.pointerCount == 3) threeFingerTapRedoGesture.move(focus.first, focus.second, scaleDetector.isInProgress)
-                    else twoFingerTapUndoGesture.move(focus.first, focus.second, scaleDetector.isInProgress || twoPointerRotationGesture.isRotating)
+                    if (event.pointerCount == 3) threeFingerTapRedoGesture.move(focus.first, focus.second, transforming = true)
+                    else twoFingerTapUndoGesture.move(focus.first, focus.second, scaling = true)
                     onViewportPan(focus.first - navigationX, focus.second - navigationY)
                     navigationX = focus.first; navigationY = focus.second
                     navigationSpan = span
                     navigationMoved = true
-                } else if (!scaleDetector.isInProgress && rotateNavigation) {
+                } else if (rotateNavigation) {
                     singleFingerDoubleTapUndoGesture.move(event.x, event.y, transforming = false)
-                    onViewportRotate((event.rawX - navigationX) * VIEW_ROTATION_DEGREES_PER_PIXEL)
-                    navigationX = event.rawX; navigationY = event.rawY
+                    onViewportRotate((event.x - navigationX) * VIEW_ROTATION_DEGREES_PER_PIXEL)
+                    navigationX = event.x; navigationY = event.y
                     navigationMoved = true
-                } else if (!scaleDetector.isInProgress) {
+                } else {
                     singleFingerDoubleTapUndoGesture.move(event.x, event.y, transforming = false)
-                    if (hypot(event.rawX - navigationDownX, event.rawY - navigationDownY) > navigationTouchSlop) navigationMoved = true
-                    onViewportPan(event.rawX - navigationX, event.rawY - navigationY)
-                    navigationX = event.rawX; navigationY = event.rawY
+                    if (hypot(event.x - navigationDownX, event.y - navigationDownY) > navigationTouchSlop) navigationMoved = true
+                    onViewportPan(event.x - navigationX, event.y - navigationY)
+                    navigationX = event.x; navigationY = event.y
                 }
                 MotionEvent.ACTION_UP -> {
                     twoPointerRotationGesture.reset()
                     navigationSpan = 0f
                     threeFingerTapRedoGesture.cancel()
-                    val movedFromDown = navigationMoved || hypot(event.rawX - navigationDownX, event.rawY - navigationDownY) > navigationTouchSlop
-                    if (navigationTapEligible && !movedFromDown && !scaleDetector.isInProgress) {
+                    val movedFromDown = navigationMoved || hypot(event.x - navigationDownX, event.y - navigationDownY) > navigationTouchSlop
+                    if (navigationTapEligible && !movedFromDown && !viewportGestureActive) {
                         val link = PdfGotoLinkNavigation.hit(
                             pdfGotoLinks,
                             (inputPoint.first / width.coerceAtLeast(1)).coerceIn(0f, 1f),
@@ -1482,6 +1504,7 @@ class InkCanvasView(context: Context) : View(context) {
                     } else singleFingerDoubleTapUndoGesture.cancel()
                     navigationTapEligible = false
                     stylusHandNavigationContact = false
+                    viewportGestureActive = false
                 }
                 MotionEvent.ACTION_CANCEL -> {
                     navigationTapEligible = false
@@ -1491,12 +1514,23 @@ class InkCanvasView(context: Context) : View(context) {
                     twoPointerRotationGesture.reset()
                     navigationSpan = 0f
                     stylusHandNavigationContact = false
+                    viewportGestureActive = false
                     if (isStylus) {
                         releaseHeldStylusButtons()
                         lastStylusButtonState = 0
                     }
                 }
             }
+            return true
+        }
+        if (pageContactRejected) {
+            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) pageContactRejected = false
+            return true
+        }
+        if (event.actionMasked == MotionEvent.ACTION_DOWN &&
+            (inputPoint.first !in 0f..width.toFloat() || inputPoint.second !in 0f..height.toFloat())
+        ) {
+            pageContactRejected = true
             return true
         }
         if (event.actionMasked == MotionEvent.ACTION_DOWN) singleFingerDoubleTapUndoGesture.cancel()
@@ -1575,7 +1609,7 @@ class InkCanvasView(context: Context) : View(context) {
                 }
                 if (activeTool == EditorTool.FILL) {
                     parent?.requestDisallowInterceptTouchEvent(true)
-                    beginFillGesture(normalizedX, normalizedY, event.rawX)
+                    beginFillGesture(normalizedX, normalizedY, event.x)
                     invalidate()
                     return true
                 }
@@ -1597,7 +1631,7 @@ class InkCanvasView(context: Context) : View(context) {
             }
             MotionEvent.ACTION_MOVE -> {
                 if (activeTool == EditorTool.FILL) {
-                    adjustFillSensitivity(event.rawX)
+                    adjustFillSensitivity(event.x)
                 }
                 else if (activeTool == EditorTool.SMUDGE) {
                     for (i in 0 until event.historySize) historicalCanvasPoint(event, 0, i).let { point -> extendSmudge(point.first / width.coerceAtLeast(1), point.second / height.coerceAtLeast(1)) }
@@ -1847,28 +1881,16 @@ class InkCanvasView(context: Context) : View(context) {
         return x / pointerCount.coerceAtLeast(1) to y / pointerCount.coerceAtLeast(1)
     }
 
-    private fun MotionEvent.rawCentroid(): Pair<Float, Float> {
-        var x = 0f
-        var y = 0f
-        for (index in 0 until pointerCount) {
-            x += getRawX(index)
-            y += getRawY(index)
-        }
-        return x / pointerCount.coerceAtLeast(1) to y / pointerCount.coerceAtLeast(1)
-    }
-
-    private fun MotionEvent.rawSpan(): Float {
+    private fun MotionEvent.localSpan(): Float {
         if (pointerCount < 2) return 0f
-        return hypot(getRawX(1) - getRawX(0), getRawY(1) - getRawY(0))
+        return hypot(getX(1) - getX(0), getY(1) - getY(0))
     }
 
     private fun canvasPoint(event: MotionEvent, pointerIndex: Int = event.actionIndex.coerceIn(0, event.pointerCount - 1)): Pair<Float, Float> {
         if (!viewportInputTransformEnabled || width <= 0 || height <= 0) return event.getX(pointerIndex) to event.getY(pointerIndex)
-        return ViewportTransform.screenToLocal(
-            event.getRawX(pointerIndex),
-            event.getRawY(pointerIndex),
-            viewportCenterScreenX,
-            viewportCenterScreenY,
+        return ViewportTransform.viewToPage(
+            event.getX(pointerIndex),
+            event.getY(pointerIndex),
             width.toFloat(),
             height.toFloat(),
             ViewportState(viewportScale, viewportPanX, viewportPanY, viewportRotationDegrees),
@@ -1877,13 +1899,9 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun historicalCanvasPoint(event: MotionEvent, pointerIndex: Int, position: Int): Pair<Float, Float> {
         if (!viewportInputTransformEnabled || width <= 0 || height <= 0) return event.getHistoricalX(pointerIndex, position) to event.getHistoricalY(pointerIndex, position)
-        val rawOffsetX = event.getRawX(pointerIndex) - event.getX(pointerIndex)
-        val rawOffsetY = event.getRawY(pointerIndex) - event.getY(pointerIndex)
-        return ViewportTransform.screenToLocal(
-            event.getHistoricalX(pointerIndex, position) + rawOffsetX,
-            event.getHistoricalY(pointerIndex, position) + rawOffsetY,
-            viewportCenterScreenX,
-            viewportCenterScreenY,
+        return ViewportTransform.viewToPage(
+            event.getHistoricalX(pointerIndex, position),
+            event.getHistoricalY(pointerIndex, position),
             width.toFloat(),
             height.toFloat(),
             ViewportState(viewportScale, viewportPanX, viewportPanY, viewportRotationDegrees),

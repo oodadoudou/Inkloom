@@ -155,8 +155,6 @@ class InkCanvasNavigationTest {
             viewportScale = 2f
             viewportPanX = 100f
             viewportPanY = -40f
-            viewportCenterScreenX = 500f
-            viewportCenterScreenY = 500f
         }
         var firstX = Float.NaN
         var firstY = Float.NaN
@@ -184,8 +182,6 @@ class InkCanvasNavigationTest {
             viewportPanX = state.panX
             viewportPanY = state.panY
             viewportRotationDegrees = state.rotationDegrees
-            viewportCenterScreenX = 500f
-            viewportCenterScreenY = 500f
         }
         var strokePoint: Pair<Float, Float>? = null
         view.onStrokeCommitted = { stroke -> strokePoint = stroke.points.first().x to stroke.points.first().y }
@@ -214,8 +210,6 @@ class InkCanvasNavigationTest {
             fingerDrawingEnabled = false
             externalViewportGestures = false
             viewportInputTransformEnabled = true
-            viewportCenterScreenX = 500f
-            viewportCenterScreenY = 500f
         }
         fun synchronize(next: ViewportState) {
             state = next
@@ -265,6 +259,85 @@ class InkCanvasNavigationTest {
         send(view, 70L, MotionEvent.ACTION_UP, point(0, 180f, 170f))
 
         assertEquals("The interrupted finger stroke must not leave ink", 0, committed)
+    }
+
+    @Test fun remainingFingerAfterPinchStaysNavigationUntilEveryFingerIsUp() {
+        val view = canvas().apply {
+            tool = EditorTool.PEN
+            fingerDrawingEnabled = true
+        }
+        var panX = 0f
+        var panY = 0f
+        var committed = 0
+        view.onViewportPan = { dx, dy -> panX += dx; panY += dy }
+        view.onStrokeCommitted = { committed++ }
+
+        send(view, 0L, MotionEvent.ACTION_DOWN, point(0, 100f, 100f))
+        send(view, 10L, MotionEvent.ACTION_MOVE, point(0, 130f, 100f))
+        send(view, 20L, MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), point(0, 130f, 100f), point(1, 330f, 100f))
+        send(view, 40L, MotionEvent.ACTION_MOVE, point(0, 110f, 110f), point(1, 370f, 110f))
+        send(view, 60L, MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), point(0, 110f, 110f), point(1, 370f, 110f))
+        send(view, 80L, MotionEvent.ACTION_MOVE, point(0, 180f, 150f))
+        send(view, 100L, MotionEvent.ACTION_UP, point(0, 180f, 150f))
+
+        assertEquals("Neither the interrupted stroke nor the remaining navigation finger may leave ink", 0, committed)
+        assertTrue("The remaining finger should continue panning after POINTER_UP", panX >= 79f)
+        assertTrue("The remaining finger should continue panning vertically", panY >= 49f)
+
+        send(view, 120L, MotionEvent.ACTION_DOWN, point(0, 240f, 260f))
+        send(view, 140L, MotionEvent.ACTION_MOVE, point(0, 300f, 320f))
+        send(view, 160L, MotionEvent.ACTION_UP, point(0, 300f, 320f))
+        assertEquals("A fresh finger stream must write immediately after the completed pinch", 1, committed)
+    }
+
+    @Test fun twoFingerNavigationOverridesAnActiveAlignmentGuideDrag() {
+        val view = canvas().apply {
+            tool = EditorTool.PEN
+            fingerDrawingEnabled = true
+            canvasGuideState = app.inkloom.document.CanvasGuideState(alignmentGuidesEnabled = true, verticalGuideX = .5f, horizontalGuideY = .5f)
+        }
+        var scale = 1f
+        var committed = 0
+        view.onViewportScale = { factor, _, _ -> scale *= factor }
+        view.onStrokeCommitted = { committed++ }
+
+        // The first finger intentionally lands on the vertical guide handle.
+        send(view, 0L, MotionEvent.ACTION_DOWN, point(0, 500f, 200f))
+        send(view, 20L, MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), point(0, 500f, 200f), point(1, 700f, 200f))
+        send(view, 40L, MotionEvent.ACTION_MOVE, point(0, 400f, 220f), point(1, 800f, 220f))
+        send(view, 60L, MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), point(0, 400f, 220f), point(1, 800f, 220f))
+        send(view, 80L, MotionEvent.ACTION_UP, point(0, 400f, 220f))
+
+        assertTrue("A guide hit must never block a later two-finger pinch", scale > 1.9f)
+        assertEquals(0, committed)
+        assertEquals(.5f, view.canvasGuideState.verticalGuideX, .001f)
+    }
+
+    @Test fun rapidPinchSamplesAccumulateFromTheLatestViewportWithoutRecomposition() {
+        val view = canvas().apply { fingerDrawingEnabled = false }
+        fun synchronize(next: ViewportState) {
+            view.viewportScale = next.scale
+            view.viewportPanX = next.panX
+            view.viewportPanY = next.panY
+            view.viewportRotationDegrees = next.rotationDegrees
+        }
+        view.onViewportScale = { factor, focusX, focusY ->
+            val current = ViewportState(view.viewportScale, view.viewportPanX, view.viewportPanY, view.viewportRotationDegrees)
+            synchronize(ViewportTransform.zoomAroundScreen(current, factor, focusX - 500f, focusY - 500f))
+        }
+        view.onViewportPan = { dx, dy ->
+            val current = ViewportState(view.viewportScale, view.viewportPanX, view.viewportPanY, view.viewportRotationDegrees)
+            synchronize(ViewportTransform.panByScreen(current, dx, dy))
+        }
+
+        send(view, 0L, MotionEvent.ACTION_DOWN, point(0, 400f, 500f))
+        send(view, 10L, MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), point(0, 400f, 500f), point(1, 600f, 500f))
+        send(view, 20L, MotionEvent.ACTION_MOVE, point(0, 350f, 500f), point(1, 650f, 500f))
+        send(view, 30L, MotionEvent.ACTION_MOVE, point(0, 275f, 500f), point(1, 725f, 500f))
+        send(view, 40L, MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), point(0, 275f, 500f), point(1, 725f, 500f))
+        send(view, 50L, MotionEvent.ACTION_UP, point(0, 275f, 500f))
+
+        assertEquals("200px → 300px → 450px must accumulate to exactly 2.25x", 2.25f, view.viewportScale, .001f)
     }
 
     @Test fun optionalTwoFingerRotationUsesAStableAnchorWithoutCommittingInk() {

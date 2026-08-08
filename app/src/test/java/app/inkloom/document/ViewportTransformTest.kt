@@ -67,6 +67,17 @@ class ViewportTransformTest {
         assertEquals(localY, mapped.second, .001f)
     }
 
+    @Test fun viewLocalForwardAndInverseTransformsAreExactAtAnyViewport() {
+        val viewport = ViewportState(scale = 3.4f, panX = -137f, panY = 82f, rotationDegrees = -27f)
+        val pagePoint = 733f to 214f
+
+        val visiblePoint = ViewportTransform.pageToView(pagePoint.first, pagePoint.second, 1_120f, 760f, viewport)
+        val mappedBack = ViewportTransform.viewToPage(visiblePoint.first, visiblePoint.second, 1_120f, 760f, viewport)
+
+        assertEquals(pagePoint.first, mappedBack.first, .001f)
+        assertEquals(pagePoint.second, mappedBack.second, .001f)
+    }
+
     @Test fun pinchHandoffSelectsTheFingerThatRemainsOnScreen() {
         assertEquals(1, ViewportTransform.remainingPointerIndex(2, 0))
         assertEquals(0, ViewportTransform.remainingPointerIndex(2, 1))

@@ -11,6 +11,43 @@ data class ViewportGeometry(
 )
 
 object ViewportTransform {
+    /** Maps a point reported by the page View back into untransformed page coordinates.
+     * Both coordinates live in the same View-local space, so system bars, multi-window offsets,
+     * display magnification and window movement cannot introduce an origin mismatch. */
+    fun viewToPage(
+        viewX: Float,
+        viewY: Float,
+        viewWidth: Float,
+        viewHeight: Float,
+        viewport: ViewportState,
+    ): Pair<Float, Float> = screenToLocal(
+        viewX,
+        viewY,
+        viewWidth.coerceAtLeast(1f) / 2f,
+        viewHeight.coerceAtLeast(1f) / 2f,
+        viewWidth,
+        viewHeight,
+        viewport,
+    )
+
+    /** Forward counterpart of [viewToPage], used to verify that rendered ink and input share
+     * one exact transform. */
+    fun pageToView(
+        pageX: Float,
+        pageY: Float,
+        viewWidth: Float,
+        viewHeight: Float,
+        viewport: ViewportState,
+    ): Pair<Float, Float> {
+        val safe = sanitize(viewport)
+        val centerX = viewWidth.coerceAtLeast(1f) / 2f
+        val centerY = viewHeight.coerceAtLeast(1f) / 2f
+        val scaledX = ((pageX.takeIf(Float::isFinite) ?: centerX) - centerX) * safe.scale
+        val scaledY = ((pageY.takeIf(Float::isFinite) ?: centerY) - centerY) * safe.scale
+        val (rotatedX, rotatedY) = rotate(scaledX, scaledY, safe.rotationDegrees)
+        return centerX + safe.panX + rotatedX to centerY + safe.panY + rotatedY
+    }
+
     /** Maps a physical screen point back into the untransformed page View. This
      * is the inverse of the centered graphicsLayer transform used by the editor. */
     fun screenToLocal(
