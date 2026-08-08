@@ -28,6 +28,7 @@ import app.inkloom.engine.v2.EngineV2LatencySnapshot
 import app.inkloom.engine.v2.traceEngineV2
 import app.inkloom.engine.v2.input.NativeStrokeInputModeler
 import app.inkloom.engine.v2.render.EngineV2ActiveStrokeSurface
+import app.inkloom.engine.v2.render.EngineV2CommittedTileScene
 import java.util.LinkedHashMap
 import java.util.concurrent.Executors
 import app.inkloom.document.InkStroke
@@ -88,7 +89,6 @@ import app.inkloom.document.StrokeStampSampler
 import app.inkloom.document.StrokeStabilization
 import app.inkloom.document.StrokeTaper
 import app.inkloom.document.StrokeTransform
-import app.inkloom.document.StrokeTileIndex
 import app.inkloom.document.StrokeTileKey
 import app.inkloom.document.StylusInputClassifier
 import app.inkloom.document.TwoFingerTapUndoGesture
@@ -310,10 +310,10 @@ class InkCanvasView(context: Context) : View(context) {
     private var prewarmedBrushSignature: String? = null
     private val protectedStrokeIds = mutableSetOf<String>()
     private val protectedLayerIds = mutableSetOf<String>()
-    private val strokeTileIndex = StrokeTileIndex()
-    private val strokeTiles = mutableMapOf<StrokeTileKey, Bitmap>()
-    private val dirtyStrokeTiles = linkedSetOf<StrokeTileKey>()
-    internal var onTileRendered: ((StrokeTileKey, Int) -> Unit)? = null
+    private val committedScene = EngineV2CommittedTileScene(MAX_CACHE_PIXELS)
+    internal var onTileRendered: ((StrokeTileKey, Int) -> Unit)?
+        get() = committedScene.onTileRendered
+        set(value) { committedScene.onTileRendered = value }
 
     var tool: EditorTool = EditorTool.PEN
     var forceNavigation: Boolean = false
@@ -829,86 +829,40 @@ class InkCanvasView(context: Context) : View(context) {
         if (layerBlendModes.values.any { it != LayerBlendMode.NORMAL }) return false
         if (alphaLockedLayers.isNotEmpty() || clippedLayers.isNotEmpty()) return false
         if (layerElementBitmaps.isNotEmpty()) return false
-        if (width <= 0 || height <= 0 || width.toLong() * height.toLong() > MAX_CACHE_PIXELS) return false
-        if (strokeTileIndex.widthPx != width || strokeTileIndex.heightPx != height) resetStrokeTiles()
-        val keys = strokeTileIndex.allTiles()
-        for (key in keys) {
-            val rect = strokeTileIndex.rect(key)
-            var tile = strokeTiles[key]
-            if (tile == null || tile.width != rect.width || tile.height != rect.height) {
-                tile?.recycle()
-                tile = runCatching { Bitmap.createBitmap(rect.width, rect.height, Bitmap.Config.ARGB_8888) }.getOrNull()
-                if (tile == null) {
-                    recycleStrokeTiles()
-                    return false
-                }
-                strokeTiles[key] = tile
-                dirtyStrokeTiles += key
-            }
+        return committedScene.draw(canvas, strokes, width, height) { target, candidates ->
+            drawLayeredStrokes(target, candidates)
         }
-        for (key in keys) {
-            val rect = strokeTileIndex.rect(key)
-            val tile = strokeTiles.getValue(key)
-            if (key in dirtyStrokeTiles) {
-                tile.eraseColor(Color.TRANSPARENT)
-                val tileCanvas = Canvas(tile)
-                tileCanvas.translate(-rect.left.toFloat(), -rect.top.toFloat())
-                val candidateIds = strokeTileIndex.candidates(key)
-                var renderedStrokeCount = 0
-                val candidates = strokes.filter { it.id in candidateIds }
-                drawLayeredStrokes(tileCanvas, candidates)
-                renderedStrokeCount = candidates.size
-                dirtyStrokeTiles.remove(key)
-                onTileRendered?.invoke(key, renderedStrokeCount)
-            }
-            canvas.drawBitmap(tile, rect.left.toFloat(), rect.top.toFloat(), null)
-        }
-        return true
     }
 
     private fun resetStrokeTiles() {
-        recycleStrokeTiles()
-        dirtyStrokeTiles += strokeTileIndex.rebuild(strokes, width, height)
+        committedScene.reset(strokes, width, height)
         invalidate()
     }
 
-    private fun recycleStrokeTiles() {
-        strokeTiles.values.forEach(Bitmap::recycle)
-        strokeTiles.clear()
-        dirtyStrokeTiles.clear()
-    }
+    private fun recycleStrokeTiles() = committedScene.close()
 
     private fun invalidateStrokeCache() = resetStrokeTiles()
 
     private fun invalidateStrokeCache(before: Collection<InkStroke>, after: Collection<InkStroke>) {
-        if (strokeTileIndex.widthPx != width || strokeTileIndex.heightPx != height) {
-            resetStrokeTiles()
-        } else {
-            val affectedTiles = strokeTileIndex.update(before, after)
-            if (before.isEmpty() && after.isNotEmpty() && canAppendCommittedInkToTiles(affectedTiles)) {
-                affectedTiles.forEach { key ->
-                    val rect = strokeTileIndex.rect(key)
-                    val tile = strokeTiles.getValue(key)
-                    val tileCanvas = Canvas(tile)
-                    tileCanvas.translate(-rect.left.toFloat(), -rect.top.toFloat())
-                    drawLayeredStrokes(tileCanvas, after.filter { key in strokeTileIndex.tilesFor(it) })
-                    dirtyStrokeTiles.remove(key)
-                }
-            } else {
-                dirtyStrokeTiles += affectedTiles
-            }
-            invalidate()
+        committedScene.invalidate(
+            before,
+            after,
+            strokes,
+            width,
+            height,
+            appendCompatible = canAppendCommittedInkToTiles(),
+        ) { target, candidates ->
+            drawLayeredStrokes(target, candidates)
         }
+        invalidate()
     }
 
     /** Normal, fully opaque layers are associative, so newly committed ink can be composed once
      * into clean tiles instead of replaying every earlier stroke before the next pen contact. */
-    private fun canAppendCommittedInkToTiles(affectedTiles: Set<StrokeTileKey>): Boolean =
-        affectedTiles.isNotEmpty() &&
-            layerBlendModes.values.all { it == LayerBlendMode.NORMAL } &&
+    private fun canAppendCommittedInkToTiles(): Boolean =
+        layerBlendModes.values.all { it == LayerBlendMode.NORMAL } &&
             layerOpacities.values.all { it >= .999f } &&
-            alphaLockedLayers.isEmpty() && clippedLayers.isEmpty() && layerElementBitmaps.isEmpty() &&
-            affectedTiles.none { it in dirtyStrokeTiles } && affectedTiles.all(strokeTiles::containsKey)
+            alphaLockedLayers.isEmpty() && clippedLayers.isEmpty() && layerElementBitmaps.isEmpty()
 
     private fun drawLayeredStrokes(
         canvas: Canvas,
@@ -2609,6 +2563,10 @@ class InkCanvasView(context: Context) : View(context) {
         engineV2Metrics.activeStrokeDraw.snapshot(),
     )
 
+    @VisibleForTesting
+    internal fun engineV2CommittedTileSnapshot(): EngineV2CommittedTileScene.DebugSnapshot =
+        committedScene.debugSnapshot()
+
     /** The full-screen proxy receives screen-space contacts. Drawing contacts are mapped into the
      * page once, while navigation remains in screen space so pan deltas do not shrink with zoom. */
     internal fun proxyContactUsesPageCoordinates(event: MotionEvent): Boolean {
@@ -2973,10 +2931,8 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun eraseAt(x: Float, y: Float, pressure: Float) {
         val eraserRadius = eraserRadiusPixels(pressure)
-        if (strokeTileIndex.widthPx != width || strokeTileIndex.heightPx != height) {
-            strokeTileIndex.rebuild(strokes, width, height)
-        }
-        val candidateIds = strokeTileIndex.candidates(
+        committedScene.ensureIndex(strokes, width, height)
+        val candidateIds = committedScene.candidates(
             x * width - eraserRadius,
             y * height - eraserRadius,
             x * width + eraserRadius,

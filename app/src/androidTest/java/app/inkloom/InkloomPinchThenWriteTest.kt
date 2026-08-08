@@ -267,19 +267,18 @@ class InkloomPinchThenWriteTest {
             val firstX = firstPoint?.let { reflectField(it, "x") as? Float }
             val firstY = firstPoint?.let { reflectField(it, "y") as? Float }
             System.err.println("RENDER stroke width=$strokeWidth points=$strokePoints first=($firstX,$firstY)")
-            tilesAtDraw = (reflectField(view, "strokeTiles") as? Map<*, *>)?.size ?: -1
-            dirtyAtDraw = (reflectField(view, "dirtyStrokeTiles") as? Collection<*>)?.size ?: -1
+            val committedScene = view.engineV2CommittedTileSnapshot()
+            tilesAtDraw = committedScene.tileCount
+            dirtyAtDraw = committedScene.dirtyTileCount
             var tileDark = 0
-            val tiles = reflectField(view, "strokeTiles") as? Map<*, *>
-            tiles?.values?.forEach { tile ->
-                val bmp = tile as? android.graphics.Bitmap ?: return@forEach
+            committedScene.tiles.forEach { bmp ->
                 for (y in 0 until bmp.height) for (x in 0 until bmp.width step 2) {
                     val pixel = bmp.getPixel(x, y)
                     if (android.graphics.Color.alpha(pixel) > 0 && android.graphics.Color.red(pixel) + android.graphics.Color.green(pixel) + android.graphics.Color.blue(pixel) < 600) tileDark++
                 }
             }
-            System.err.println("RENDER beforeZoom tileDark=$tileDark tiles=${tiles?.size}")
-            val firstTile = tiles?.values?.firstOrNull() as? android.graphics.Bitmap
+            System.err.println("RENDER beforeZoom tileDark=$tileDark tiles=${committedScene.tileCount}")
+            val firstTile = committedScene.tiles.firstOrNull()
             if (firstTile != null) {
                 val sb = StringBuilder("TILE0 (${firstTile.width}x${firstTile.height})")
                 for (ry in 0 until 16) {
