@@ -27,18 +27,19 @@ class BrushVersionHistoryStore(
 
     @Synchronized
     fun record(brush: ImportedBrush, savedAt: Long = System.currentTimeMillis()): BrushVersion {
+        val canonicalBrush = BrushSemanticMapper.apply(brush)
         val all = store.load()
         val owned = all.mapNotNull(::decode)
             .filter { ownerOf(it.versionId) == brush.id }
             .sortedWith(compareByDescending<BrushVersion> { it.savedAt }.thenByDescending { it.versionId })
-        owned.firstOrNull()?.takeIf { it.snapshot.copy(id = brush.id) == brush }?.let { return it }
+        owned.firstOrNull()?.takeIf { it.snapshot.copy(id = brush.id) == canonicalBrush }?.let { return it }
 
         var suffix = 0
         var versionId: String
         do {
             versionId = encodeId(brush.id, savedAt, suffix++)
         } while (all.any { it.id == versionId })
-        val created = BrushVersion(versionId, savedAt, brush.copy(id = versionId))
+        val created = BrushVersion(versionId, savedAt, canonicalBrush.copy(id = versionId))
         val otherBrushes = all.filter { ownerOf(it.id) != brush.id }
         val retained = (listOf(created.snapshot) + owned.map(BrushVersion::snapshot)).take(MAX_VERSIONS_PER_BRUSH)
         store.save(otherBrushes + retained)
