@@ -174,6 +174,20 @@ class BrushBatchManagementTest {
         assertEquals("Source", store.load().single { it.name == "My soft brush" }.groupName)
     }
 
+    @Test fun dockedLibraryKeepsSystemAndImportedBrushesAsPeerGroups() {
+        composeRule.onNodeWithText("New Note").performClick()
+        composeRule.onNodeWithText("Create").performClick()
+        composeRule.onNodeWithContentDescription("Brushes").performClick()
+
+        composeRule.onNodeWithContentDescription("Brush preset Batch A").assertIsDisplayed()
+        composeRule.onNodeWithText("System").performClick()
+        composeRule.onNodeWithContentDescription("Brush preset Technical Pencil").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("All").performClick()
+        composeRule.onNodeWithText("Source").performScrollTo().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Brush preset Batch A").performScrollTo().assertIsDisplayed()
+    }
+
     private companion object {
         fun brush(id: String, name: String, group: String, order: Int) = ImportedBrush(
             id = id,

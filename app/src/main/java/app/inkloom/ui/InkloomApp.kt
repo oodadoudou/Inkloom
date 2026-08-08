@@ -23,6 +23,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -4102,7 +4103,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
     }
 }
 
-private fun InkCanvasView.applyBrushConfiguration(
+internal fun InkCanvasView.applyBrushConfiguration(
     selectedTool: EditorTool,
     settings: AppSettings,
     activeBrush: ImportedBrush?,
@@ -4984,6 +4985,10 @@ private fun ProcreateVerticalSlider(
 @Composable
 private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, dragModifier: Modifier, vertical: Boolean, moreToolsOpen: Boolean, onMoreToolsOpen: (Boolean) -> Unit, controlsOpen: Boolean, onControlsOpen: (Boolean) -> Unit, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, symmetryMode: SymmetryMode, onSymmetryMode: (SymmetryMode) -> Unit) {
     val dragToolbarDescription = tr("Drag toolbar", "拖动工具栏")
+    val libraryPresets = remember(brushes) {
+        val defaults = systemBrushCatalog()
+        defaults + brushes.filterNot { imported -> defaults.any { it.id == imported.id } }
+    }
     Canvas(dragModifier.semantics { contentDescription = dragToolbarDescription }) {
         val lineColor = Color(0xFF8A8A8A)
         if (vertical) {
@@ -4998,9 +5003,9 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
             }
         }
     }
-    BrushPresetToolButton(EditorTool.PEN, Icons.Outlined.Brush, tr("Brush", "笔刷"), tool, brushes.filterNot(BrushRoleClassifier::isEraser), selectedBrushId, eraserPreset, onTool, onSystemPreset, onEraserPreset, onBrushPreset)
+    BrushPresetToolButton(EditorTool.PEN, Icons.Outlined.Brush, tr("Brush", "笔刷"), tool, libraryPresets.filterNot(BrushRoleClassifier::isEraser), selectedBrushId, eraserPreset, onTool, onSystemPreset, onEraserPreset, onBrushPreset)
     ToolButton(EditorTool.HIGHLIGHTER, Icons.Outlined.BorderColor, tr("Marker", "标记笔"), tool, onTool)
-    BrushPresetToolButton(EditorTool.ERASER, Icons.Outlined.AutoFixOff, tr("Eraser", "橡皮"), tool, brushes.filter(BrushRoleClassifier::isEraser), selectedBrushId, eraserPreset, onTool, onSystemPreset, onEraserPreset, onBrushPreset)
+    BrushPresetToolButton(EditorTool.ERASER, Icons.Outlined.AutoFixOff, tr("Eraser", "橡皮"), tool, libraryPresets.filter(BrushRoleClassifier::isEraser), selectedBrushId, eraserPreset, onTool, onSystemPreset, onEraserPreset, onBrushPreset)
     ToolButton(EditorTool.SELECT, Icons.Outlined.Gesture, tr("Select", "选择"), tool, onTool)
     if (vertical) {
         HorizontalDivider(Modifier.width(30.dp).padding(vertical = 2.dp), color = OutlineSoft)
@@ -5489,7 +5494,7 @@ private fun BrushPresetToolButton(
             }
             if (presets.isNotEmpty()) {
                 HorizontalDivider()
-                Text(tr("Imported", "已导入"), Modifier.fillMaxWidth().height(22.dp).padding(horizontal = 7.dp).wrapContentHeight(Alignment.CenterVertically), color = MutedInk, fontSize = 9.sp)
+                Text(tr("Brush library", "笔刷库"), Modifier.fillMaxWidth().height(22.dp).padding(horizontal = 7.dp).wrapContentHeight(Alignment.CenterVertically), color = MutedInk, fontSize = 9.sp)
             }
             presets.sortedWith(compareBy<ImportedBrush> { it.groupName }.thenBy { it.sortOrder }).forEach { brush ->
                 Row(
@@ -5995,12 +6000,16 @@ private fun BrushPanel(
     var selectedGroup by remember { mutableStateOf<String?>(null) }
     var multiSelecting by remember { mutableStateOf(false) }
     var selectedBrushIds by remember { mutableStateOf(emptySet<String>()) }
+    val brushListState = rememberLazyListState()
     var batchGroupOperation by remember { mutableStateOf<BrushBatchGroupOperation?>(null) }
     var confirmBatchDelete by remember { mutableStateOf(false) }
     var collapsedGroupPaths by remember { mutableStateOf(emptySet<String>()) }
     val copiedBrushSuffix = tr("copy", "副本")
-    val groups = BrushGroupOperations.names(brushes)
-    val groupTree = BrushGroupOperations.treePaths(brushes, registeredGroups)
+    val systemBrushes = remember { systemBrushCatalog() }
+    val libraryBrushes = remember(brushes) { brushes.filterNot { imported -> systemBrushes.any { it.id == imported.id } } + systemBrushes }
+    val systemGroups = remember(systemBrushes) { BrushGroupOperations.names(systemBrushes) }
+    val groups = BrushGroupOperations.names(libraryBrushes)
+    val groupTree = BrushGroupOperations.treePaths(libraryBrushes, registeredGroups + systemGroups)
     val currentBrushIds = brushes.mapTo(linkedSetOf()) { it.id }
     LaunchedEffect(currentBrushIds) {
         selectedBrushIds = selectedBrushIds.intersect(currentBrushIds)
@@ -6010,7 +6019,7 @@ private fun BrushPanel(
         collapsedGroupPaths = collapsedGroupPaths.filterTo(linkedSetOf()) { collapsed -> groupTree.any { it.equals(collapsed, true) } }
         if (selectedGroup != null && selectedGroup != UNGROUPED_BRUSH_FILTER && groupTree.none { it.equals(selectedGroup, true) }) selectedGroup = null
     }
-    val visibleBrushes = brushes.filter { brush ->
+    val visibleBrushes = libraryBrushes.filter { brush ->
         val normalizedGroup = BrushGroupOperations.normalize(brush.groupName)
         val groupMatches = when (selectedGroup) {
             null -> true
@@ -6019,6 +6028,9 @@ private fun BrushPanel(
         }
         (showHidden || !brush.hidden) && (!favoritesOnly || brush.favorite) && groupMatches && (format == null || brush.format == format) && (search.isBlank() || brush.name.contains(search, true) || normalizedGroup.contains(search, true) || brush.tags.any { it.contains(search, true) })
     }.sortedWith(compareBy<ImportedBrush> { it.sortOrder }.thenByDescending { it.favorite }.thenByDescending { it.lastUsedAt }.thenBy { it.name.lowercase() })
+    LaunchedEffect(search, format, favoritesOnly, showHidden, selectedGroup) {
+        brushListState.scrollToItem(0)
+    }
     val groupOrder = groups.mapIndexed { index, group -> group.lowercase() to index }.toMap()
     val brushSections = visibleBrushes.groupBy { BrushGroupOperations.normalize(it.groupName).ifBlank { "Ungrouped" } }
         .toList().sortedBy { (group, _) -> groupOrder[group.lowercase()] ?: Int.MAX_VALUE }
@@ -6120,7 +6132,7 @@ private fun BrushPanel(
             }
         }
         if (!bottomDocked) {
-            Text(tr("Imported presets · compact view", "已导入预设 · 紧凑视图"), fontSize = 11.sp, color = MutedInk)
+            Text(tr("Brush sets · compact view", "笔刷组 · 紧凑视图"), fontSize = 11.sp, color = MutedInk)
             Spacer(Modifier.height(8.dp))
         }
         OutlinedTextField(
@@ -6145,7 +6157,7 @@ private fun BrushPanel(
         } else {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(vertical = 6.dp)) {
                 item { FilterChip(selected = format == null, onClick = { format = null }, label = { Text(tr("All", "全部")) }) }
-                BrushFormat.entries.filter { it !in setOf(BrushFormat.SYSTEM, BrushFormat.UNKNOWN) }.forEach { source -> item { FilterChip(selected = format == source, onClick = { format = source }, label = { Text(source.label) }) } }
+                BrushFormat.entries.filter { it != BrushFormat.UNKNOWN }.forEach { source -> item { FilterChip(selected = format == source, onClick = { format = source }, label = { Text(source.label) }) } }
                 item { FilterChip(selected = favoritesOnly, onClick = { favoritesOnly = !favoritesOnly }, label = { Text(tr("Favorites", "收藏")) }, leadingIcon = { Icon(Icons.Outlined.Star, null, Modifier.size(16.dp)) }) }
                 item { FilterChip(selected = showHidden, onClick = { showHidden = !showHidden }, label = { Text(tr("Hidden", "隐藏")) }) }
             }
@@ -6157,12 +6169,12 @@ private fun BrushPanel(
                 LazyColumn(contentPadding = PaddingValues(vertical = 3.dp)) {
                 item("all") {
                     Row(Modifier.fillMaxWidth().clickable { selectedGroup = null }.background(if (selectedGroup == null) SageContainer else Color.Transparent).padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Outlined.AllInclusive, null, Modifier.size(16.dp)); Spacer(Modifier.width(7.dp)); Text(tr("All brushes", "全部笔刷"), fontSize = 11.sp, modifier = Modifier.weight(1f)); Text(brushes.size.toString(), color = MutedInk, fontSize = 10.sp)
+                        Icon(Icons.Outlined.AllInclusive, null, Modifier.size(16.dp)); Spacer(Modifier.width(7.dp)); Text(tr("All brushes", "全部笔刷"), fontSize = 11.sp, modifier = Modifier.weight(1f)); Text(libraryBrushes.size.toString(), color = MutedInk, fontSize = 10.sp)
                     }
                 }
                 item("ungrouped") {
                     Row(Modifier.fillMaxWidth().clickable { selectedGroup = UNGROUPED_BRUSH_FILTER }.background(if (selectedGroup == UNGROUPED_BRUSH_FILTER) SageContainer else Color.Transparent).padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Outlined.FolderOff, null, Modifier.size(16.dp)); Spacer(Modifier.width(7.dp)); Text(tr("Ungrouped", "未分组"), fontSize = 11.sp, modifier = Modifier.weight(1f)); Text(brushes.count { BrushGroupOperations.normalize(it.groupName).isBlank() }.toString(), color = MutedInk, fontSize = 10.sp)
+                        Icon(Icons.Outlined.FolderOff, null, Modifier.size(16.dp)); Spacer(Modifier.width(7.dp)); Text(tr("Ungrouped", "未分组"), fontSize = 11.sp, modifier = Modifier.weight(1f)); Text(libraryBrushes.count { BrushGroupOperations.normalize(it.groupName).isBlank() }.toString(), color = MutedInk, fontSize = 10.sp)
                     }
                 }
                 items(visibleGroupPaths, key = { "tree:$it" }) { path ->
@@ -6179,7 +6191,7 @@ private fun BrushPanel(
                         Icon(if (hasChildren) Icons.Outlined.Folder else Icons.Outlined.FolderOpen, null, Modifier.size(15.dp))
                         Spacer(Modifier.width(6.dp))
                         Text(BrushGroupOperations.displayName(path), maxLines = 1, fontSize = 11.sp, modifier = Modifier.weight(1f))
-                        Text(brushes.count { BrushGroupOperations.isWithin(it.groupName, path) }.toString(), color = MutedInk, fontSize = 10.sp)
+                        Text(libraryBrushes.count { BrushGroupOperations.isWithin(it.groupName, path) }.toString(), color = MutedInk, fontSize = 10.sp)
                     }
                 }
                 }
@@ -6193,7 +6205,7 @@ private fun BrushPanel(
                 modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
             ) {
                 Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
-                    val visibleIds = visibleBrushes.mapTo(linkedSetOf()) { it.id }
+                    val visibleIds = visibleBrushes.filterNot { it.format == BrushFormat.SYSTEM }.mapTo(linkedSetOf()) { it.id }
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp), contentPadding = PaddingValues(top = 4.dp)) {
                         item {
                             AssistChip(
@@ -6228,9 +6240,10 @@ private fun BrushPanel(
                 }
             }
         }
-        if (brushes.isNotEmpty()) {
-            Text("${tr("BRUSHES", "笔刷")} (${visibleBrushes.size}/${brushes.size})", fontSize = 11.sp, color = MutedInk)
+        if (libraryBrushes.isNotEmpty()) {
+            Text("${tr("BRUSHES", "笔刷")} (${visibleBrushes.size}/${libraryBrushes.size})", fontSize = 11.sp, color = MutedInk)
             LazyColumn(
+                state = brushListState,
                 modifier = Modifier.weight(1f).border(1.dp, OutlineSoft),
                 contentPadding = PaddingValues(vertical = 1.dp),
             ) {
@@ -6246,11 +6259,12 @@ private fun BrushPanel(
                     items(items = sectionBrushes, key = { it.id }) { brush ->
                         ImportedBrushRow(
                             brush = brush,
+                            editable = brush.format != BrushFormat.SYSTEM,
                             selected = brush.id == selectedBrushId,
                             multiSelecting = multiSelecting,
                             multiSelected = brush.id in selectedBrushIds,
-                            onToggleSelection = { selectedBrushIds = if (brush.id in selectedBrushIds) selectedBrushIds - brush.id else selectedBrushIds + brush.id },
-                            onBeginSelection = { multiSelecting = true; selectedBrushIds = selectedBrushIds + brush.id },
+                            onToggleSelection = { if (brush.format != BrushFormat.SYSTEM) selectedBrushIds = if (brush.id in selectedBrushIds) selectedBrushIds - brush.id else selectedBrushIds + brush.id },
+                            onBeginSelection = { if (brush.format != BrushFormat.SYSTEM) { multiSelecting = true; selectedBrushIds = selectedBrushIds + brush.id } },
                             onSelect = { onBrushSelected(brush) },
                             onReport = { reportBrush = brush },
                             onEdit = { editBrush = brush },
@@ -6272,7 +6286,7 @@ private fun BrushPanel(
             }
             Spacer(Modifier.weight(1f))
         }
-        val selectedToolBrush = brushes.firstOrNull { it.id == selectedBrushId }
+        val selectedToolBrush = libraryBrushes.firstOrNull { it.id == selectedBrushId }
         BrushToolProperties(
             brush = selectedToolBrush,
             size = brushSize,
@@ -6494,6 +6508,17 @@ private fun BrushBatchGroupDialog(
     )
 }
 
+private fun systemBrushCatalog(): List<ImportedBrush> = listOf(
+    ImportedBrush(id = "system-technical-pencil", name = "Technical Pencil", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Sketching", defaultSize = 4f, hardness = .82f, stabilization = .08f),
+    ImportedBrush(id = "system-hb-pencil", name = "HB Pencil", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Sketching", defaultSize = 7f, hardness = .62f, stabilization = .04f),
+    ImportedBrush(id = "system-studio-pen", name = "Studio Pen", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Inking", defaultSize = 9f, hardness = 1f, stabilization = .18f),
+    ImportedBrush(id = "system-monoline", name = "Monoline", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Calligraphy", defaultSize = 18f, hardness = 1f, stabilization = .28f),
+    ImportedBrush(id = "system-marker", name = "Studio Marker", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Painting", defaultSize = 34f, defaultOpacity = .68f, hardness = .7f),
+    ImportedBrush(id = "system-soft-airbrush", name = "Soft Airbrush", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Airbrushing", defaultSize = 92f, defaultOpacity = .35f, hardness = .08f, blur = .35f),
+    ImportedBrush(id = "system-hard-eraser", name = "Hard Eraser", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Erasers", defaultSize = 24f, tags = listOf("eraser"), hardness = 1f),
+    ImportedBrush(id = "system-soft-eraser", name = "Soft Eraser", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Erasers", defaultSize = 68f, tags = listOf("eraser"), hardness = .12f, blur = .28f),
+)
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ProcreateBrushLibrary(
@@ -6521,18 +6546,7 @@ private fun ProcreateBrushLibrary(
     onPanelDragEnd: () -> Unit,
     onPanelDragCancel: () -> Unit,
 ) {
-    val systemBrushes = remember {
-        listOf(
-            ImportedBrush(id = "system-technical-pencil", name = "Technical Pencil", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Sketching", defaultSize = 4f, hardness = .82f, stabilization = .08f),
-            ImportedBrush(id = "system-hb-pencil", name = "HB Pencil", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Sketching", defaultSize = 7f, hardness = .62f, stabilization = .04f),
-            ImportedBrush(id = "system-studio-pen", name = "Studio Pen", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Inking", defaultSize = 9f, hardness = 1f, stabilization = .18f),
-            ImportedBrush(id = "system-monoline", name = "Monoline", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Calligraphy", defaultSize = 18f, hardness = 1f, stabilization = .28f),
-            ImportedBrush(id = "system-marker", name = "Studio Marker", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Painting", defaultSize = 34f, defaultOpacity = .68f, hardness = .7f),
-            ImportedBrush(id = "system-soft-airbrush", name = "Soft Airbrush", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Airbrushing", defaultSize = 92f, defaultOpacity = .35f, hardness = .08f, blur = .35f),
-            ImportedBrush(id = "system-hard-eraser", name = "Hard Eraser", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Erasers", defaultSize = 24f, tags = listOf("eraser"), hardness = 1f),
-            ImportedBrush(id = "system-soft-eraser", name = "Soft Eraser", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Erasers", defaultSize = 68f, tags = listOf("eraser"), hardness = .12f, blur = .28f),
-        )
-    }
+    val systemBrushes = remember { systemBrushCatalog() }
     val systemCategories = listOf("Sketching", "Inking", "Calligraphy", "Painting", "Airbrushing", "Erasers")
     val importedCategories = BrushGroupOperations.treePaths(brushes, registeredGroups)
     val ungroupedLabel = tr("Imported", "已导入")
@@ -7003,6 +7017,7 @@ private fun ImportedBrushTile(
 @Composable
 private fun ImportedBrushRow(
     brush: ImportedBrush,
+    editable: Boolean,
     selected: Boolean,
     multiSelecting: Boolean,
     multiSelected: Boolean,
@@ -7024,17 +7039,17 @@ private fun ImportedBrushRow(
     val rowDescription = "${tr("Brush preset", "笔刷预设")} ${brush.name}"
     Card(
         modifier = Modifier.fillMaxWidth().semantics { contentDescription = rowDescription }.combinedClickable(
-            onClick = { if (multiSelecting) onToggleSelection() else onSelect() },
-            onLongClick = onBeginSelection,
+            onClick = { if (multiSelecting && editable) onToggleSelection() else onSelect() },
+            onLongClick = if (editable) onBeginSelection else null,
         ),
         shape = RoundedCornerShape(0.dp),
         colors = CardDefaults.cardColors(containerColor = if (selected || multiSelected) Color(0xFFD6DCE8) else Color(0xFFF4F4F4)),
         border = CardDefaults.outlinedCardBorder().copy(width = 1.dp, brush = androidx.compose.ui.graphics.SolidColor(OutlineSoft)),
     ) {
         Row(Modifier.height(52.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (multiSelecting) {
+            if (multiSelecting && editable) {
                 Icon(if (multiSelected) Icons.Default.CheckBox else Icons.Outlined.CheckBoxOutlineBlank, if (multiSelected) tr("Selected", "已选择") else tr("Not selected", "未选择"), Modifier.size(24.dp), tint = if (multiSelected) Sage else MutedInk)
-            } else {
+            } else if (editable) {
                 Icon(
                     Icons.Outlined.DragIndicator,
                     tr("Drag to reorder brush", "拖动调整笔刷顺序"),
@@ -7060,7 +7075,7 @@ private fun ImportedBrushRow(
                 Text(listOf(brush.format.label, brush.groupName.takeIf(String::isNotBlank)).filterNotNull().joinToString(" · "), color = MutedInk, fontSize = 9.sp, maxLines = 1)
                 Canvas(Modifier.fillMaxWidth().height(8.dp)) { drawLine(Ink, Offset(1f, size.height / 2), Offset(size.width - 1f, size.height / 2), strokeWidth = (brush.defaultSize / 9f).coerceIn(1.5f, 7f), cap = StrokeCap.Round) }
             }
-            if (!multiSelecting) {
+            if (!multiSelecting && editable) {
                 IconButton(onClick = onEdit, modifier = Modifier.size(24.dp)) { Icon(Icons.Outlined.Tune, tr("Edit brush", "编辑笔刷"), modifier = Modifier.size(15.dp)) }
                 Box {
                     IconButton(onClick = { menu = true }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.MoreVert, tr("Brush actions", "笔刷操作"), modifier = Modifier.size(15.dp)) }
@@ -7080,7 +7095,10 @@ private fun ImportedBrushRow(
 
 @Composable
 private fun BrushTipPreview(brush: ImportedBrush, modifier: Modifier = Modifier) {
-    val bitmap = remember(brush.tipPreviewPath) { brush.tipPreviewPath?.let { android.graphics.BitmapFactory.decodeFile(it) } }
+    val bitmap = remember(brush.tipPreviewPath) {
+        brush.tipPreviewPath?.let { app.inkloom.document.BrushTipTextureDecoder.decodeSampled(it, 256) }
+    }
+    DisposableEffect(bitmap) { onDispose { bitmap?.takeUnless(android.graphics.Bitmap::isRecycled)?.recycle() } }
     Box(modifier.background(Color.White).border(1.dp, OutlineSoft), contentAlignment = Alignment.Center) {
         if (bitmap != null) androidx.compose.foundation.Image(bitmap.asImageBitmap(), brush.name, Modifier.fillMaxSize().padding(4.dp))
         else Canvas(Modifier.fillMaxSize().padding(7.dp)) { drawLine(Ink, Offset(2f, size.height * .7f), Offset(size.width - 2f, size.height * .3f), strokeWidth = 7f, cap = StrokeCap.Round) }
@@ -7457,14 +7475,14 @@ private fun ColorDynamicsEditor(label: String, value: BrushColorDynamics, onValu
 
 @Composable
 private fun BrushGrainPreview(path: String, density: Float) {
-    val bitmap = remember(path) { android.graphics.BitmapFactory.decodeFile(path) }
+    val bitmap = remember(path) { app.inkloom.document.BrushTipTextureDecoder.decodeSampled(path, 384) }
     DisposableEffect(bitmap) { onDispose { bitmap?.recycle() } }
     Column { Text(tr("Paper texture · ${(density * 100).toInt()}%", "纸张纹理 · ${(density * 100).toInt()}%"), fontSize = 11.sp, color = MutedInk); if (bitmap != null) androidx.compose.foundation.Image(bitmap.asImageBitmap(), tr("Paper texture", "纸张纹理"), Modifier.fillMaxWidth().height(90.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop) }
 }
 
 @Composable
 private fun BrushTipPreview(label: String, path: String) {
-    val bitmap = remember(path) { android.graphics.BitmapFactory.decodeFile(path) }
+    val bitmap = remember(path) { app.inkloom.document.BrushTipTextureDecoder.decodeSampled(path, 384) }
     DisposableEffect(bitmap) { onDispose { bitmap?.recycle() } }
     Column {
         Text(label, fontSize = 11.sp, color = MutedInk)
