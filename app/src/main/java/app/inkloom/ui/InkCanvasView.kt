@@ -21,6 +21,9 @@ import android.view.MotionEvent
 import android.view.PointerIcon
 import android.view.View
 import android.view.ViewConfiguration
+import app.inkloom.engine.v2.EngineV2Metrics
+import app.inkloom.engine.v2.EngineV2LatencySnapshot
+import app.inkloom.engine.v2.traceEngineV2
 import java.util.LinkedHashMap
 import java.util.concurrent.Executors
 import app.inkloom.document.InkStroke
@@ -128,6 +131,7 @@ data class LayerElementBitmaps(val base: Bitmap?, val additions: Bitmap?) {
 }
 
 class InkCanvasView(context: Context) : View(context) {
+    private val engineV2Metrics = EngineV2Metrics()
     private val strokes = mutableListOf<InkStroke>()
     private val editHistory = StrokeEditHistory()
     private val currentPoints = mutableListOf<StrokePoint>()
@@ -981,6 +985,16 @@ class InkCanvasView(context: Context) : View(context) {
      */
     private fun drawLiveStroke(canvas: Canvas) {
         if (currentPoints.isEmpty()) return
+        val startedAt = System.nanoTime()
+        try {
+            traceEngineV2("Inkloom.V2.ActiveStrokeDraw") { drawLiveStrokeV2(canvas) }
+        } finally {
+            engineV2Metrics.activeStrokeDraw.recordNanos(System.nanoTime() - startedAt)
+        }
+    }
+
+    private fun drawLiveStrokeV2(canvas: Canvas) {
+        if (currentPoints.isEmpty()) return
         if (symmetryMode != SymmetryMode.NONE) {
             drawLayeredStrokes(canvas, symmetryStrokes(currentPoints))
             onLivePreviewRendered?.invoke(currentPoints.size)
@@ -1486,12 +1500,18 @@ class InkCanvasView(context: Context) : View(context) {
         val pointerIndex = event.actionIndex.coerceIn(0, event.pointerCount - 1)
         val eventToolType = event.getToolType(pointerIndex)
         val isStylus = eventToolType == MotionEvent.TOOL_TYPE_STYLUS || eventToolType == MotionEvent.TOOL_TYPE_ERASER
+        engineV2Metrics.inputDispatch.recordNanos(
+            (SystemClock.uptimeMillis() - event.eventTime).coerceAtLeast(0L) * 1_000_000L,
+        )
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             // Every new contact stream is a hard recovery boundary. This also recovers from a
             // device/parent that consumed the previous stream's final UP or CANCEL.
             viewportGestureActive = false
             externalViewportGestureContact = false
             pageContactRejected = false
+            if (isStylus && tool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.SMUDGE)) {
+                requestUnbufferedDispatch(event)
+            }
         }
         if (isStylus) singleFingerDoubleTapUndoGesture.cancel()
         if (isStylus) lastStylusSeenAt = event.eventTime
@@ -2572,6 +2592,14 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun addPoint(x: Float, y: Float, pressure: Float, time: Long, tilt: Float, orientation: Float, force: Boolean = false) {
+        val startedAt = System.nanoTime()
+        traceEngineV2("Inkloom.V2.InputModel") {
+            addModeledPointV2(x, y, pressure, time, tilt, orientation, force)
+        }
+        engineV2Metrics.inputModel.recordNanos(System.nanoTime() - startedAt)
+    }
+
+    private fun addModeledPointV2(x: Float, y: Float, pressure: Float, time: Long, tilt: Float, orientation: Float, force: Boolean) {
         val adjustedPressure = PressureCalibration.apply(pressure, pressureMinimumInput, pressureMaximumInput, pressureSensitivity)
         val previous = currentPoints.lastOrNull()
         val constrained = if (rulerEnabled && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
@@ -2592,6 +2620,12 @@ class InkCanvasView(context: Context) : View(context) {
         )
         if (force || previous == null || hypot((point.x - previous.x).toDouble(), (point.y - previous.y).toDouble()) > .0008) currentPoints += point
     }
+
+    internal fun engineV2LatencySnapshot(): Array<EngineV2LatencySnapshot> = arrayOf(
+        engineV2Metrics.inputDispatch.snapshot(),
+        engineV2Metrics.inputModel.snapshot(),
+        engineV2Metrics.activeStrokeDraw.snapshot(),
+    )
 
     private fun updateContinuousPlotInput(x: Float, y: Float, pressure: Float, tilt: Float, orientation: Float) {
         continuousPlotX = x.coerceIn(0f, 1f)
