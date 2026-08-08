@@ -19,4 +19,12 @@ class AdaptivePanelLayoutTest {
         assertEquals(BrushLibraryLayout.GRID, AdaptivePanelLayout.brushLayout(BrushLibraryLayout.AUTO, 240f, true))
         assertEquals(BrushLibraryLayout.LIST, AdaptivePanelLayout.brushLayout(BrushLibraryLayout.LIST, 240f, true))
     }
+
+    @Test
+    fun dockedWidthKeepsUserChoiceAndProtectsTheCanvas() {
+        assertEquals(330f, AdaptivePanelLayout.dockedSidePanelWidthDp(330f, 1_200f, 176f), 0f)
+        assertEquals(176f, AdaptivePanelLayout.dockedSidePanelWidthDp(40f, 1_200f, 176f), 0f)
+        assertEquals(620f, AdaptivePanelLayout.dockedSidePanelWidthDp(900f, 1_000f, 176f), 0f)
+        assertEquals(324f, AdaptivePanelLayout.dockedSidePanelWidthDp(Float.NaN, 1_200f, 176f), .01f)
+    }
 }

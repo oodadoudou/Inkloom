@@ -60,7 +60,9 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.stylusHoverIcon
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.focusable
@@ -1491,6 +1493,21 @@ private fun EditorScreen(
             WorkspacePanelKind.BRUSHES -> brushPanelBounds
             WorkspacePanelKind.LAYERS -> layerPanelBounds
         }
+        fun dockedPanelWidth(panel: WorkspacePanelKind): Float = AdaptivePanelLayout.dockedSidePanelWidthDp(
+            panelBounds(panel).widthDp,
+            workspaceWidthDp,
+            minimumPanelWidth(panel),
+        )
+        fun resizeDockedPanel(panel: WorkspacePanelKind, dock: WorkspacePanelDock, deltaXPx: Float) {
+            val signedDeltaDp = deltaXPx / editorDensity.density * if (dock == WorkspacePanelDock.LEFT) 1f else -1f
+            val current = panelBounds(panel)
+            val nextWidth = AdaptivePanelLayout.dockedSidePanelWidthDp(
+                current.widthDp + signedDeltaDp,
+                workspaceWidthDp,
+                minimumPanelWidth(panel),
+            )
+            setPanelBounds(panel, current.copy(widthDp = nextWidth))
+        }
         fun settingsWithPanelBounds(base: AppSettings, panel: WorkspacePanelKind, bounds: WorkspacePanelBounds): AppSettings = when (panel) {
             WorkspacePanelKind.PAGES -> base.copy(pagePanelXDp = bounds.xDp, pagePanelYDp = bounds.yDp, pagePanelWidthDp = bounds.widthDp, pagePanelHeightDp = bounds.heightDp)
             WorkspacePanelKind.BRUSHES -> base.copy(brushPanelXDp = bounds.xDp, brushPanelYDp = bounds.yDp, brushPanelWidthDp = bounds.widthDp, brushPanelHeightDp = bounds.heightDp)
@@ -1527,6 +1544,7 @@ private fun EditorScreen(
             panels.distinct().forEach { member -> next = settingsWithPanelBounds(next, member, panelBounds(member)) }
             onSettingsChange(next)
         }
+        fun persistDockedPanel(panel: WorkspacePanelKind) = persistFloatingPanels(listOf(panel))
         fun beginPanelDrag(panel: WorkspacePanelKind, bounds: WorkspacePanelBounds) {
             draggingPanel = panel
             panelDragOrigin = bounds
@@ -1795,6 +1813,12 @@ private fun EditorScreen(
                 onPanelDrag = ::updateDockedPanelDrag,
                 onPanelDragEnd = { finishDockedPanelDrag(WorkspacePanelKind.PAGES, WorkspacePanelDock.LEFT) },
                 onPanelDragCancel = ::clearDockedPanelDrag,
+                modifier = Modifier.width(dockedPanelWidth(WorkspacePanelKind.PAGES).dp).fillMaxHeight().padding(6.dp),
+            )
+            if (editorWidth >= 700.dp && settings.showPageRail && settings.pagePanelDock == WorkspacePanelDock.LEFT && showPanel(WorkspacePanelKind.PAGES, WorkspacePanelDock.LEFT) && settings.pagePanelMode == WorkspacePanelMode.EXPANDED && !settings.pagePanelLocked) DockedSidebarResizeHandle(
+                tr("Resize pages sidebar", "调整页面侧栏宽度"),
+                onResize = { resizeDockedPanel(WorkspacePanelKind.PAGES, WorkspacePanelDock.LEFT, it) },
+                onResizeEnd = { persistDockedPanel(WorkspacePanelKind.PAGES) },
             )
             if (layersOpen && settings.layerPanelDock == WorkspacePanelDock.LEFT && showPanel(WorkspacePanelKind.LAYERS, WorkspacePanelDock.LEFT)) LayerPanel(
                 page = selectedPage,
@@ -1828,6 +1852,12 @@ private fun EditorScreen(
                 onPanelDrag = ::updateDockedPanelDrag,
                 onPanelDragEnd = { finishDockedPanelDrag(WorkspacePanelKind.LAYERS, WorkspacePanelDock.LEFT) },
                 onPanelDragCancel = ::clearDockedPanelDrag,
+                modifier = Modifier.width(dockedPanelWidth(WorkspacePanelKind.LAYERS).dp).fillMaxHeight().background(Color(0xFFF4F4F4)).border(1.dp, OutlineSoft).padding(2.dp),
+            )
+            if (layersOpen && settings.layerPanelDock == WorkspacePanelDock.LEFT && showPanel(WorkspacePanelKind.LAYERS, WorkspacePanelDock.LEFT) && settings.layerPanelMode == WorkspacePanelMode.EXPANDED && !settings.layerPanelLocked) DockedSidebarResizeHandle(
+                tr("Resize layers sidebar", "调整图层侧栏宽度"),
+                onResize = { resizeDockedPanel(WorkspacePanelKind.LAYERS, WorkspacePanelDock.LEFT, it) },
+                onResizeEnd = { persistDockedPanel(WorkspacePanelKind.LAYERS) },
             )
             if (brushesOpen && settings.brushPanelDock == WorkspacePanelDock.LEFT && showPanel(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.LEFT)) BrushPanel(
                 brushes = brushes,
@@ -1861,6 +1891,12 @@ private fun EditorScreen(
                 onPanelDrag = ::updateDockedPanelDrag,
                 onPanelDragEnd = { finishDockedPanelDrag(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.LEFT) },
                 onPanelDragCancel = ::clearDockedPanelDrag,
+                modifier = Modifier.width(dockedPanelWidth(WorkspacePanelKind.BRUSHES).dp).fillMaxHeight(),
+            )
+            if (brushesOpen && settings.brushPanelDock == WorkspacePanelDock.LEFT && showPanel(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.LEFT) && settings.brushPanelMode == WorkspacePanelMode.EXPANDED && !settings.brushPanelLocked) DockedSidebarResizeHandle(
+                tr("Resize brushes sidebar", "调整笔刷侧栏宽度"),
+                onResize = { resizeDockedPanel(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.LEFT, it) },
+                onResizeEnd = { persistDockedPanel(WorkspacePanelKind.BRUSHES) },
             )
             BoxWithConstraints(
                 Modifier
@@ -2349,6 +2385,11 @@ private fun EditorScreen(
                 onMove = ::movePanelTab,
                 onStacked = { setDockStacked(WorkspacePanelDock.RIGHT, it, rightPanelTabs) },
             )
+            if (editorWidth >= 700.dp && settings.showPageRail && settings.pagePanelDock == WorkspacePanelDock.RIGHT && showPanel(WorkspacePanelKind.PAGES, WorkspacePanelDock.RIGHT) && settings.pagePanelMode == WorkspacePanelMode.EXPANDED && !settings.pagePanelLocked) DockedSidebarResizeHandle(
+                tr("Resize pages sidebar", "调整页面侧栏宽度"),
+                onResize = { resizeDockedPanel(WorkspacePanelKind.PAGES, WorkspacePanelDock.RIGHT, it) },
+                onResizeEnd = { persistDockedPanel(WorkspacePanelKind.PAGES) },
+            )
             if (editorWidth >= 700.dp && settings.showPageRail && settings.pagePanelDock == WorkspacePanelDock.RIGHT && showPanel(WorkspacePanelKind.PAGES, WorkspacePanelDock.RIGHT)) PageRail(
                 document, documents, selectedPage.id, settings.pagePanelDock,
                 onDock = { changePanelDock(WorkspacePanelKind.PAGES, it) },
@@ -2367,6 +2408,12 @@ private fun EditorScreen(
                 onPanelDrag = ::updateDockedPanelDrag,
                 onPanelDragEnd = { finishDockedPanelDrag(WorkspacePanelKind.PAGES, WorkspacePanelDock.RIGHT) },
                 onPanelDragCancel = ::clearDockedPanelDrag,
+                modifier = Modifier.width(dockedPanelWidth(WorkspacePanelKind.PAGES).dp).fillMaxHeight().padding(6.dp),
+            )
+            if (layersOpen && settings.layerPanelDock == WorkspacePanelDock.RIGHT && showPanel(WorkspacePanelKind.LAYERS, WorkspacePanelDock.RIGHT) && settings.layerPanelMode == WorkspacePanelMode.EXPANDED && !settings.layerPanelLocked) DockedSidebarResizeHandle(
+                tr("Resize layers sidebar", "调整图层侧栏宽度"),
+                onResize = { resizeDockedPanel(WorkspacePanelKind.LAYERS, WorkspacePanelDock.RIGHT, it) },
+                onResizeEnd = { persistDockedPanel(WorkspacePanelKind.LAYERS) },
             )
             if (layersOpen && settings.layerPanelDock == WorkspacePanelDock.RIGHT && showPanel(WorkspacePanelKind.LAYERS, WorkspacePanelDock.RIGHT)) LayerPanel(
                 page = selectedPage,
@@ -2400,6 +2447,12 @@ private fun EditorScreen(
                 onPanelDrag = ::updateDockedPanelDrag,
                 onPanelDragEnd = { finishDockedPanelDrag(WorkspacePanelKind.LAYERS, WorkspacePanelDock.RIGHT) },
                 onPanelDragCancel = ::clearDockedPanelDrag,
+                modifier = Modifier.width(dockedPanelWidth(WorkspacePanelKind.LAYERS).dp).fillMaxHeight().background(Color(0xFFF4F4F4)).border(1.dp, OutlineSoft).padding(2.dp),
+            )
+            if (brushesOpen && settings.brushPanelDock == WorkspacePanelDock.RIGHT && showPanel(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.RIGHT) && settings.brushPanelMode == WorkspacePanelMode.EXPANDED && !settings.brushPanelLocked) DockedSidebarResizeHandle(
+                tr("Resize brushes sidebar", "调整笔刷侧栏宽度"),
+                onResize = { resizeDockedPanel(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.RIGHT, it) },
+                onResizeEnd = { persistDockedPanel(WorkspacePanelKind.BRUSHES) },
             )
             if (brushesOpen && settings.brushPanelDock == WorkspacePanelDock.RIGHT && showPanel(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.RIGHT)) BrushPanel(
                 brushes = brushes,
@@ -2433,6 +2486,7 @@ private fun EditorScreen(
                 onPanelDrag = ::updateDockedPanelDrag,
                 onPanelDragEnd = { finishDockedPanelDrag(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.RIGHT) },
                 onPanelDragCancel = ::clearDockedPanelDrag,
+                modifier = Modifier.width(dockedPanelWidth(WorkspacePanelKind.BRUSHES).dp).fillMaxHeight(),
             )
         }
         if (bottomPanelCount > 0) {
@@ -3370,26 +3424,62 @@ private fun FloatingWorkspacePanel(
             Box(Modifier.fillMaxWidth().weight(1f)) {
                 content()
                 if (!locked && mode == WorkspacePanelMode.EXPANDED) {
+                    PanelResizeEdge(
+                        alignment = Alignment.CenterStart,
+                        horizontal = false,
+                        pointerIconType = android.view.PointerIcon.TYPE_HORIZONTAL_DOUBLE_ARROW,
+                        description = "$resizeDescription · ${tr("left edge", "左边框")}",
+                        onActivate = currentActivate,
+                        onResizeEnd = currentResizeEnd,
+                    ) { dx, _ -> currentResize(dx, 0f, 0f, 0f) }
+                    PanelResizeEdge(
+                        alignment = Alignment.CenterEnd,
+                        horizontal = false,
+                        pointerIconType = android.view.PointerIcon.TYPE_HORIZONTAL_DOUBLE_ARROW,
+                        description = "$resizeDescription · ${tr("right edge", "右边框")}",
+                        onActivate = currentActivate,
+                        onResizeEnd = currentResizeEnd,
+                    ) { dx, _ -> currentResize(0f, 0f, dx, 0f) }
+                    PanelResizeEdge(
+                        alignment = Alignment.TopCenter,
+                        horizontal = true,
+                        pointerIconType = android.view.PointerIcon.TYPE_VERTICAL_DOUBLE_ARROW,
+                        description = "$resizeDescription · ${tr("top edge", "上边框")}",
+                        onActivate = currentActivate,
+                        onResizeEnd = currentResizeEnd,
+                    ) { _, dy -> currentResize(0f, dy, 0f, 0f) }
+                    PanelResizeEdge(
+                        alignment = Alignment.BottomCenter,
+                        horizontal = true,
+                        pointerIconType = android.view.PointerIcon.TYPE_VERTICAL_DOUBLE_ARROW,
+                        description = "$resizeDescription · ${tr("bottom edge", "下边框")}",
+                        onActivate = currentActivate,
+                        onResizeEnd = currentResizeEnd,
+                    ) { _, dy -> currentResize(0f, 0f, 0f, dy) }
                     PanelResizeCorner(
                         alignment = Alignment.TopStart,
+                        pointerIconType = android.view.PointerIcon.TYPE_TOP_LEFT_DIAGONAL_DOUBLE_ARROW,
                         description = "$resizeDescription · ${tr("top left", "左上")}",
                         onActivate = currentActivate,
                         onResizeEnd = currentResizeEnd,
                     ) { dx, dy -> currentResize(dx, dy, 0f, 0f) }
                     PanelResizeCorner(
                         alignment = Alignment.TopEnd,
+                        pointerIconType = android.view.PointerIcon.TYPE_TOP_RIGHT_DIAGONAL_DOUBLE_ARROW,
                         description = "$resizeDescription · ${tr("top right", "右上")}",
                         onActivate = currentActivate,
                         onResizeEnd = currentResizeEnd,
                     ) { dx, dy -> currentResize(0f, dy, dx, 0f) }
                     PanelResizeCorner(
                         alignment = Alignment.BottomStart,
+                        pointerIconType = android.view.PointerIcon.TYPE_TOP_RIGHT_DIAGONAL_DOUBLE_ARROW,
                         description = "$resizeDescription · ${tr("bottom left", "左下")}",
                         onActivate = currentActivate,
                         onResizeEnd = currentResizeEnd,
                     ) { dx, dy -> currentResize(dx, 0f, 0f, dy) }
                     PanelResizeCorner(
                         alignment = Alignment.BottomEnd,
+                        pointerIconType = android.view.PointerIcon.TYPE_TOP_LEFT_DIAGONAL_DOUBLE_ARROW,
                         description = resizeDescription,
                         onActivate = currentActivate,
                         onResizeEnd = currentResizeEnd,
@@ -3403,6 +3493,7 @@ private fun FloatingWorkspacePanel(
 @Composable
 private fun BoxScope.PanelResizeCorner(
     alignment: Alignment,
+    pointerIconType: Int,
     description: String,
     onActivate: () -> Unit,
     onResizeEnd: () -> Unit,
@@ -3411,11 +3502,14 @@ private fun BoxScope.PanelResizeCorner(
     val currentActivate by rememberUpdatedState(onActivate)
     val currentResize by rememberUpdatedState(onResize)
     val currentResizeEnd by rememberUpdatedState(onResizeEnd)
+    val resizePointerIcon = remember(pointerIconType) { androidx.compose.ui.input.pointer.PointerIcon(pointerIconType) }
     Box(
         Modifier
             .align(alignment)
             .size(16.dp)
-            .zIndex(2f)
+            .zIndex(3f)
+            .pointerHoverIcon(resizePointerIcon, overrideDescendants = true)
+            .stylusHoverIcon(resizePointerIcon, overrideDescendants = true)
             .semantics { contentDescription = description }
             .pointerInput(alignment) {
                 detectDragGestures(
@@ -3428,6 +3522,74 @@ private fun BoxScope.PanelResizeCorner(
                 }
             },
     )
+}
+
+@Composable
+private fun BoxScope.PanelResizeEdge(
+    alignment: Alignment,
+    horizontal: Boolean,
+    pointerIconType: Int,
+    description: String,
+    onActivate: () -> Unit,
+    onResizeEnd: () -> Unit,
+    onResize: (Float, Float) -> Unit,
+) {
+    val currentActivate by rememberUpdatedState(onActivate)
+    val currentResize by rememberUpdatedState(onResize)
+    val currentResizeEnd by rememberUpdatedState(onResizeEnd)
+    val resizePointerIcon = remember(pointerIconType) { androidx.compose.ui.input.pointer.PointerIcon(pointerIconType) }
+    Box(
+        Modifier
+            .align(alignment)
+            .then(if (horizontal) Modifier.fillMaxWidth().height(12.dp) else Modifier.width(12.dp).fillMaxHeight())
+            .zIndex(2f)
+            .pointerHoverIcon(resizePointerIcon, overrideDescendants = true)
+            .stylusHoverIcon(resizePointerIcon, overrideDescendants = true)
+            .semantics { contentDescription = description }
+            .pointerInput(description) {
+                detectDragGestures(
+                    onDragStart = { currentActivate() },
+                    onDragEnd = { currentResizeEnd() },
+                    onDragCancel = { currentResizeEnd() },
+                ) { change, amount ->
+                    change.consume()
+                    currentResize(amount.x, amount.y)
+                }
+            },
+    )
+}
+
+@Composable
+private fun DockedSidebarResizeHandle(
+    description: String,
+    onResize: (Float) -> Unit,
+    onResizeEnd: () -> Unit,
+) {
+    val currentResize by rememberUpdatedState(onResize)
+    val currentResizeEnd by rememberUpdatedState(onResizeEnd)
+    val resizePointerIcon = remember { androidx.compose.ui.input.pointer.PointerIcon(android.view.PointerIcon.TYPE_HORIZONTAL_DOUBLE_ARROW) }
+    Box(
+        Modifier
+            .width(10.dp)
+            .fillMaxHeight()
+            .zIndex(4f)
+            .background(Color.Transparent)
+            .pointerHoverIcon(resizePointerIcon, overrideDescendants = true)
+            .stylusHoverIcon(resizePointerIcon, overrideDescendants = true)
+            .semantics { contentDescription = description }
+            .pointerInput(description) {
+                detectDragGestures(
+                    onDragEnd = { currentResizeEnd() },
+                    onDragCancel = { currentResizeEnd() },
+                ) { change, amount ->
+                    change.consume()
+                    currentResize(amount.x)
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(Modifier.width(1.dp).fillMaxHeight().background(OutlineSoft))
+    }
 }
 
 @Composable
@@ -6038,10 +6200,8 @@ private fun BrushPanel(
     val currentPanelDragEnd by rememberUpdatedState(onPanelDragEnd)
     val currentPanelDragCancel by rememberUpdatedState(onPanelDragCancel)
     val bottomDocked = dock == WorkspacePanelDock.BOTTOM
-    val configuration = LocalConfiguration.current
-    val automaticSideWidth = AdaptivePanelLayout.sidePanelWidthDp(configuration.screenWidthDp).dp
     val resolvedModifier = when (dock) {
-        WorkspacePanelDock.LEFT, WorkspacePanelDock.RIGHT -> modifier.width(automaticSideWidth).fillMaxHeight()
+        WorkspacePanelDock.LEFT, WorkspacePanelDock.RIGHT -> modifier.fillMaxHeight()
         WorkspacePanelDock.BOTTOM -> modifier.fillMaxSize()
         WorkspacePanelDock.FREE -> modifier.fillMaxSize()
     }.background(Color(0xFFF4F4F4)).border(1.dp, OutlineSoft).padding(2.dp)

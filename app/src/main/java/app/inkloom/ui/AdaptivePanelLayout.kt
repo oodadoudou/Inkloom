@@ -30,6 +30,15 @@ internal object AdaptivePanelLayout {
     fun sidePanelWidthDp(screenWidthDp: Int): Float =
         (screenWidthDp * 0.27f).coerceIn(240f, 420f)
 
+    /** Clamps a user-resized dock without forcing it back to the automatic preset on recomposition. */
+    fun dockedSidePanelWidthDp(requestedWidthDp: Float, workspaceWidthDp: Float, minimumWidthDp: Float): Float {
+        val safeWorkspace = workspaceWidthDp.takeIf(Float::isFinite)?.coerceAtLeast(minimumWidthDp) ?: minimumWidthDp
+        val maximum = (safeWorkspace * .62f).coerceIn(minimumWidthDp, 640f)
+        val fallback = sidePanelWidthDp(safeWorkspace.toInt())
+        return requestedWidthDp.takeIf(Float::isFinite)?.coerceIn(minimumWidthDp, maximum)
+            ?: fallback.coerceIn(minimumWidthDp, maximum)
+    }
+
     fun brushLayout(
         requested: BrushLibraryLayout,
         availableWidthDp: Float,

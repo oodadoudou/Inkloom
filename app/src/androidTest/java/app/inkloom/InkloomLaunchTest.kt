@@ -502,6 +502,10 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription("Drag brushes panel").assertIsDisplayed().performTouchInput {
             swipe(center, center + Offset(-120f, 90f), durationMillis = 500)
         }
+        composeRule.onNodeWithContentDescription("Resize brushes panel · left edge").assertIsDisplayed().performTouchInput {
+            swipe(center, center + Offset(-36f, 0f), durationMillis = 350)
+        }
+        composeRule.onNodeWithContentDescription("Resize brushes panel · top edge").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Resize brushes panel").assertIsDisplayed().performTouchInput {
             swipe(center, center + Offset(70f, -60f), durationMillis = 500)
         }
@@ -523,6 +527,20 @@ class InkloomLaunchTest {
         }
         composeRule.waitUntil(5_000) { preferences.getFloat("brushPanelXDp", compactBeforeX) != compactBeforeX }
         assertEquals("FREE", preferences.getString("brushPanelDock", null))
+    }
+
+    @Test fun dockedSidebarInnerBorderResizesAndPersistsItsWidth() {
+        createNotebookAndOpenEditor()
+        val preferences = composeRule.activity.getSharedPreferences("inkloom_settings", android.content.Context.MODE_PRIVATE)
+        composeRule.onNodeWithContentDescription("Brushes").performClick()
+        val before = preferences.getFloat("brushPanelWidthDp", 330f)
+
+        composeRule.onNodeWithContentDescription("Resize brushes sidebar").assertIsDisplayed().performTouchInput {
+            swipe(center, center + Offset(-90f, 0f), durationMillis = 450)
+        }
+
+        composeRule.waitUntil(5_000) { preferences.getFloat("brushPanelWidthDp", before) > before }
+        composeRule.onNodeWithContentDescription("Ink canvas").assertIsDisplayed()
     }
 
     @Test fun floatingBrushPanelSnapsToLeftAndBottomDockTargets() {
