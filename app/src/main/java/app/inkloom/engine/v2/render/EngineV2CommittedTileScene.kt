@@ -3,6 +3,7 @@ package app.inkloom.engine.v2.render
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Rect
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokeTileIndex
 import app.inkloom.document.StrokeTileKey
@@ -53,12 +54,9 @@ internal class EngineV2CommittedTileScene(
             val rect = index.rect(key)
             val tile = tiles.getValue(key)
             if (dirtyTiles.remove(key)) {
-                tile.eraseColor(Color.TRANSPARENT)
-                val tileCanvas = Canvas(tile)
-                tileCanvas.translate(-rect.left.toFloat(), -rect.top.toFloat())
                 val candidateIds = index.candidates(key)
                 val candidates = strokes.filter { it.id in candidateIds }
-                render(tileCanvas, candidates)
+                renderTileWithGutter(tile, rect, candidates, render)
                 onTileRendered?.invoke(key, candidates.size)
             }
             canvas.drawBitmap(tile, rect.left.toFloat(), rect.top.toFloat(), null)
@@ -115,6 +113,54 @@ internal class EngineV2CommittedTileScene(
     )
 
     internal fun debugSnapshot(): DebugSnapshot = DebugSnapshot(tiles.size, dirtyTiles.size, tiles.values.toList())
+
+    /**
+     * Blur, soft tips, rotated stamps and spray need pixels outside a tile while calculating the
+     * pixels inside it. Render dirty content into an ephemeral expanded bitmap and crop only the
+     * tile core into the persistent cache. The cache therefore stays bounded while seams vanish.
+     */
+    private fun renderTileWithGutter(
+        tile: Bitmap,
+        rect: app.inkloom.document.StrokeTileRect,
+        candidates: List<InkStroke>,
+        render: (Canvas, List<InkStroke>) -> Unit,
+    ) {
+        tile.eraseColor(Color.TRANSPARENT)
+        if (candidates.isEmpty()) return
+        val requestedGutter = candidates.maxOfOrNull(index::influenceRadiusPixels)?.let { kotlin.math.ceil(it).toInt() } ?: 0
+        val leftGutter = requestedGutter.coerceAtMost(rect.left)
+        val topGutter = requestedGutter.coerceAtMost(rect.top)
+        val rightGutter = requestedGutter.coerceAtMost(index.widthPx - rect.right)
+        val bottomGutter = requestedGutter.coerceAtMost(index.heightPx - rect.bottom)
+        if (leftGutter == 0 && topGutter == 0 && rightGutter == 0 && bottomGutter == 0) {
+            Canvas(tile).also { it.translate(-rect.left.toFloat(), -rect.top.toFloat()); render(it, candidates) }
+            return
+        }
+        val scratch = runCatching {
+            Bitmap.createBitmap(
+                rect.width + leftGutter + rightGutter,
+                rect.height + topGutter + bottomGutter,
+                Bitmap.Config.ARGB_8888,
+            )
+        }.getOrNull()
+        if (scratch == null) {
+            Canvas(tile).also { it.translate(-rect.left.toFloat(), -rect.top.toFloat()); render(it, candidates) }
+            return
+        }
+        try {
+            val scratchCanvas = Canvas(scratch)
+            scratchCanvas.translate(-(rect.left - leftGutter).toFloat(), -(rect.top - topGutter).toFloat())
+            render(scratchCanvas, candidates)
+            Canvas(tile).drawBitmap(
+                scratch,
+                Rect(leftGutter, topGutter, leftGutter + rect.width, topGutter + rect.height),
+                Rect(0, 0, rect.width, rect.height),
+                null,
+            )
+        } finally {
+            scratch.recycle()
+        }
+    }
 
     private fun recycleTiles() {
         tiles.values.forEach(Bitmap::recycle)

@@ -10,6 +10,7 @@ import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
 import app.inkloom.document.StrokeTileKey
 import app.inkloom.engine.v2.render.EngineV2ActiveStrokeSurface
+import app.inkloom.engine.v2.render.EngineV2CommittedTileScene
 import app.inkloom.model.EditorTool
 import app.inkloom.ui.InkCanvasView
 import java.io.File
@@ -21,6 +22,32 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class InkCanvasTileCacheTest {
+    @Test fun softStrokeTilesRenderWithAnExpandedTransientGutter() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val scene = EngineV2CommittedTileScene(4_000_000)
+            val output = Bitmap.createBitmap(1024, 1024, Bitmap.Config.ARGB_8888)
+            val clips = mutableListOf<android.graphics.Rect>()
+            val stroke = InkStroke(
+                id = "gutter",
+                width = 180f,
+                blur = 80f,
+                points = listOf(StrokePoint(.5f, .5f)),
+            )
+            try {
+                assertTrue(scene.draw(Canvas(output), listOf(stroke), 1024, 1024) { canvas, _ ->
+                    clips += canvas.clipBounds
+                })
+                assertTrue(
+                    "A brush with a wide influence radius must render beyond a 512px tile core: $clips",
+                    clips.any { it.width() > 512 || it.height() > 512 },
+                )
+            } finally {
+                scene.close()
+                output.recycle()
+            }
+        }
+    }
+
     @Test fun longLiveStrokeCoalescesIntoOneV2SurfaceSubmissionPerFrame() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val context = InstrumentationRegistry.getInstrumentation().targetContext

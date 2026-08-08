@@ -98,7 +98,7 @@ class StrokeTileIndex(val tileSizePx: Int = DEFAULT_TILE_SIZE_PX) {
 
     fun tilesFor(stroke: InkStroke): Set<StrokeTileKey> {
         if (stroke.points.isEmpty() || widthPx <= 0 || heightPx <= 0) return emptySet()
-        val expansion = footprintRadiusPixels(stroke, widthPx.toFloat()) + ANTIALIAS_MARGIN_PX
+        val expansion = influenceRadiusPixels(stroke) + ANTIALIAS_MARGIN_PX
         val left = (stroke.points.minOf(StrokePoint::x) * widthPx - expansion).coerceIn(0f, widthPx.toFloat())
         val top = (stroke.points.minOf(StrokePoint::y) * heightPx - expansion).coerceIn(0f, heightPx.toFloat())
         val right = (stroke.points.maxOf(StrokePoint::x) * widthPx + expansion).coerceIn(0f, widthPx.toFloat())
@@ -118,7 +118,9 @@ class StrokeTileIndex(val tileSizePx: Int = DEFAULT_TILE_SIZE_PX) {
         occupied.forEach { key -> tileStrokeIds.getOrPut(key, ::linkedSetOf).add(stroke.id) }
     }
 
-    private fun footprintRadiusPixels(stroke: InkStroke, pageWidthPx: Float): Float {
+    /** Maximum pixel distance this stroke can affect outside its modeled path. */
+    fun influenceRadiusPixels(stroke: InkStroke): Float {
+        val pageWidthPx = widthPx.toFloat().coerceAtLeast(1f)
         val referenceScale = pageWidthPx.coerceAtLeast(1f) / REFERENCE_PAGE_WIDTH
         val brushDiameter = stroke.width.coerceIn(.1f, MAX_BRUSH_WIDTH) * referenceScale
         val edge = if (stroke.waterEdgeEnabled) {
