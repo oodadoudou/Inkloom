@@ -11,7 +11,7 @@ import java.io.File
 
 class AbrSampleDecoderTest {
     @Test fun decodesRawAndPackBitsSamples() {
-        val raw = sample(2, 2, false, byteArrayOf(1, 2, 3, 4))
+        val raw = sample(2, 2, false, byteArrayOf(1, 2, 3, 4), "raw-sample-id")
         val rlePayload = byteArrayOf(
             0, 3, 0, 2, // encoded byte count for each row
             1, 5, 6, // literal run: two bytes
@@ -23,6 +23,7 @@ class AbrSampleDecoderTest {
             file.writeBytes(abr(raw, rle))
             val decoded = AbrSampleDecoder.decode(file)
             assertEquals(2, decoded.size)
+            assertEquals("raw-sample-id".padEnd(36, '0'), decoded[0].id)
             assertArrayEquals(byteArrayOf(1, 2, 3, 4), decoded[0].opacity)
             assertArrayEquals(byteArrayOf(5, 6, 7, 7), decoded[1].opacity)
             assertTrue(decoded[1].compressed)
@@ -69,10 +70,11 @@ class AbrSampleDecoderTest {
         }
     }.toByteArray()
 
-    private fun sample(width: Int, height: Int, compressed: Boolean, payload: ByteArray): ByteArray =
+    private fun sample(width: Int, height: Int, compressed: Boolean, payload: ByteArray, id: String = "fixture-sample-id"): ByteArray =
         ByteArrayOutputStream().also { bytes ->
             DataOutputStream(bytes).use { out ->
-                out.write(ByteArray(37 + 264))
+                out.write(("$" + id.padEnd(36, '0').take(36)).toByteArray(Charsets.ISO_8859_1))
+                out.write(ByteArray(264))
                 out.writeInt(0)
                 out.writeInt(0)
                 out.writeInt(height)

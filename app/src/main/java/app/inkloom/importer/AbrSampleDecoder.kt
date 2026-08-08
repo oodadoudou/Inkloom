@@ -5,6 +5,7 @@ import java.io.File
 import java.io.RandomAccessFile
 
 data class AbrSample(
+    val id: String,
     val width: Int,
     val height: Int,
     /** Photoshop grayscale: 0 is transparent and 255 is fully painted. */
@@ -34,7 +35,8 @@ object AbrSampleDecoder {
             val paddedEnd = checkedAdd(dataStart, (encodedSize + 3L) and -4L, section.second, "ABR sample padding")
             val descriptorBytes = 37L + if (subVersion == 2) 264L else 10L
             require(input.filePointer + descriptorBytes + 19L <= dataEnd) { "ABR sample metadata is truncated" }
-            input.seek(input.filePointer + descriptorBytes)
+            val sampleId = ByteArray(37).also(input::readFully).toString(Charsets.ISO_8859_1).removePrefix("$").trimEnd('\u0000')
+            input.seek(input.filePointer + descriptorBytes - 37L)
             val top = input.readInt()
             val left = input.readInt()
             val bottom = input.readInt()
@@ -54,7 +56,7 @@ object AbrSampleDecoder {
                 1 -> readPackBits(input, dataEnd, width.toInt(), height.toInt(), bytesPerPixel)
                 else -> error("ABR compression type $compression is not supported")
             }
-            samples += AbrSample(width.toInt(), height.toInt(), decoded, compression == 1)
+            samples += AbrSample(sampleId, width.toInt(), height.toInt(), decoded, compression == 1)
             input.seek(paddedEnd)
         }
         require(samples.isNotEmpty()) { "ABR contains no decodable sampled tips" }

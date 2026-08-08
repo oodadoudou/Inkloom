@@ -2,57 +2,23 @@ package app.inkloom.importer
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.io.File
 
 class AbrDescriptorDecoderTest {
-    private fun ostype(s: String): ByteArray = s.toByteArray(Charsets.ISO_8859_1)
-
-    private fun unitFloat(value: Double): ByteArray {
-        val out = ByteArrayOutputStream()
-        DataOutputStream(out).use { d ->
-            d.write(ostype("UntF"))
-            d.write(ostype("#Pct"))
-            d.writeDouble(value)
-        }
-        return out.toByteArray()
-    }
-
-    private fun descriptorWithSettings(spacing: Double, hardness: Double, roundness: Double, angle: Double, diameter: Double): ByteArray {
-        val settings = ByteArrayOutputStream()
-        DataOutputStream(settings).use { d ->
-            d.write(ostype("bset")); d.writeInt(1); d.write(ostype("Blnk")); d.writeInt(5)
-            d.write(ostype("Dmtr")); d.write(ostype("UntF")); d.write(ostype("#Pxl")); d.writeDouble(diameter)
-            d.write(ostype("Spcn")); d.write(unitFloat(spacing))
-            d.write(ostype("Hrdn")); d.write(unitFloat(hardness))
-            d.write(ostype("Rndn")); d.write(unitFloat(roundness))
-            d.write(ostype("Angl")); d.write(ostype("UntF")); d.write(ostype("#Ang")); d.writeDouble(angle)
-        }
-        // top-level descriptor: classId 'brush', version 1, keyType 'Blnk', 1 item, key 'Brsh' -> ObJC settings
-        val top = ByteArrayOutputStream()
-        DataOutputStream(top).use { d ->
-            d.write(ostype("bset")); d.writeInt(1); d.write(ostype("Blnk")); d.writeInt(1)
-            d.write(ostype("Brsh")); d.write(ostype("ObJC")); d.write(settings.toByteArray())
-        }
-        val file = ByteArrayOutputStream()
-        DataOutputStream(file).use { d ->
-            d.writeShort(6); d.writeShort(2)
-            d.write(ostype("8BIM")); d.write(ostype("brsh")); d.writeInt(top.size() + 4)
-            d.write(ostype("bset")); d.write(top.toByteArray())
-        }
-        return file.toByteArray()
-    }
-
-    @Test fun decodesBrushSettingsFromDescriptor() {
-        val file = kotlin.io.path.createTempFile("inkloom-abr-brsh", ".abr").toFile()
+    @Test fun decodesSettingsFromARealActionDescriptorLayout() {
+        val file = kotlin.io.path.createTempFile("inkloom-abr-desc", ".abr").toFile()
         try {
-            file.writeBytes(descriptorWithSettings(25.0, 90.0, 60.0, 30.0, 120.0))
+            file.writeBytes(abrDescriptorFixture())
             val settings = AbrDescriptorDecoder.decode(file)
             assertNotNull(settings)
-            assertEquals(.25f, settings!!.spacingPercent!!, .001f)
+            assertEquals("fixture-sample-id", settings!!.sampleId)
+            assertEquals("Fixture Brush", settings.name)
+            assertEquals(.25f, settings.spacingPercent!!, .001f)
             assertEquals(.90f, settings.hardnessPercent!!, .001f)
             assertEquals(.60f, settings.roundnessPercent!!, .001f)
             assertEquals(30f, settings.angleDegrees!!, .001f)
@@ -62,25 +28,72 @@ class AbrDescriptorDecoderTest {
         }
     }
 
-    @Test fun missingBrshBlockReturnsNull() {
-        val file = kotlin.io.path.createTempFile("inkloom-abr-tiponly", ".abr").toFile()
+    @Test fun malformedDescriptorFailsClosed() {
+        val valid = abrDescriptorFixture()
+        val file = kotlin.io.path.createTempFile("inkloom-abr-trunc", ".abr").toFile()
         try {
-            file.writeBytes(byteArrayOf(0, 6, 0, 2))
-            assertNull(AbrDescriptorDecoder.decode(file))
+            file.writeBytes(valid.copyOf(valid.size / 2))
+            assertTrue(AbrDescriptorDecoder.decodeAll(file).isEmpty())
         } finally {
             file.delete()
         }
     }
 
-    @Test fun truncatedDescriptorReturnsNullSafely() {
-        val bytes = descriptorWithSettings(25.0, 90.0, 60.0, 30.0, 120.0)
-        val truncated = bytes.copyOf(bytes.size / 2)
-        val file = kotlin.io.path.createTempFile("inkloom-abr-trunc", ".abr").toFile()
-        try {
-            file.writeBytes(truncated)
-            assertNull(AbrDescriptorDecoder.decode(file))
-        } finally {
-            file.delete()
+    @Test fun decodesAuthorizedRealAbrDescriptorsWhenConfigured() {
+        val root = System.getProperty("brush.samples.dir")?.let(::File)
+        assumeTrue(root != null && root.isDirectory)
+        val files = root!!.walkTopDown().filter { it.isFile && it.extension.equals("abr", true) }.toList()
+        assumeTrue(files.isNotEmpty())
+        files.forEach { file ->
+            val settings = AbrDescriptorDecoder.decodeAllStrict(file)
+            assertTrue("${file.name} should contain brush descriptors", settings.isNotEmpty())
+            assertTrue("${file.name} should expose real geometry", settings.any { it.diameterPixels != null && it.spacingPercent != null })
         }
     }
+
+    private fun abrDescriptorFixture(): ByteArray {
+        val brush = descriptor("sampledBrush", listOf(
+            entry("Dmtr", "UntF", unit("#Pxl", 120.0)),
+            entry("Spcn", "UntF", unit("#Prc", 25.0)),
+            entry("Hrdn", "UntF", unit("#Prc", 90.0)),
+            entry("Rndn", "UntF", unit("#Prc", 60.0)),
+            entry("Angl", "UntF", unit("#Ang", 30.0)),
+            entry("sampledData", "TEXT", unicode("fixture-sample-id")),
+        ))
+        val preset = descriptor("brushPreset", listOf(
+            entry("Nm  ", "TEXT", unicode("Fixture Brush")),
+            entry("Brsh", "Objc", brush),
+        ))
+        val list = bytes { out -> out.writeInt(1); out.writeBytes("Objc"); out.write(preset) }
+        val top = descriptor("null", listOf(entry("Brsh", "VlLs", list)))
+        val payload = bytes { out -> out.writeInt(16); out.write(top) }
+        return bytes { out ->
+            out.writeShort(6); out.writeShort(2)
+            out.writeBytes("8BIM"); out.writeBytes("desc"); out.writeInt(payload.size); out.write(payload)
+        }
+    }
+
+    private fun descriptor(classId: String, entries: List<ByteArray>): ByteArray = bytes { out ->
+        out.write(unicode("")); out.write(id(classId)); out.writeInt(entries.size); entries.forEach(out::write)
+    }
+
+    private fun entry(key: String, type: String, value: ByteArray): ByteArray = bytes { out ->
+        out.write(id(key)); out.writeBytes(type); out.write(value)
+    }
+
+    private fun id(value: String): ByteArray = bytes { out ->
+        if (value.length == 4) { out.writeInt(0); out.writeBytes(value) }
+        else { out.writeInt(value.length); out.writeBytes(value) }
+    }
+
+    private fun unicode(value: String): ByteArray {
+        val terminated = "$value\u0000"
+        return bytes { out -> out.writeInt(terminated.length); out.write(terminated.toByteArray(Charsets.UTF_16BE)) }
+    }
+
+    private fun unit(unit: String, value: Double): ByteArray = bytes { out -> out.writeBytes(unit); out.writeDouble(value) }
+
+    private fun bytes(block: (DataOutputStream) -> Unit): ByteArray = ByteArrayOutputStream().also { output ->
+        DataOutputStream(output).use(block)
+    }.toByteArray()
 }
