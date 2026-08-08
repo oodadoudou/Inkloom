@@ -20,6 +20,8 @@ internal class EngineV2CanvasHost(context: Context) : FrameLayout(context), Engi
 
     @Volatile
     private var activeStrokes: List<InkStroke> = emptyList()
+    private val activeLock = Any()
+    private val tailPlanner = EngineV2ActiveTailPlanner()
 
     init {
         clipChildren = false
@@ -41,12 +43,12 @@ internal class EngineV2CanvasHost(context: Context) : FrameLayout(context), Engi
         lowLatencyView.setRenderCallback(object : LowLatencyCanvasView.Callback {
             @WorkerThread
             override fun onRedrawRequested(canvas: Canvas, width: Int, height: Int) {
-                drawLatest(canvas)
+                drawComplete(canvas)
             }
 
             @WorkerThread
             override fun onDrawFrontBufferedLayer(canvas: Canvas, width: Int, height: Int) {
-                drawLatest(canvas)
+                drawIncremental(canvas)
             }
         })
     }
@@ -64,25 +66,43 @@ internal class EngineV2CanvasHost(context: Context) : FrameLayout(context), Engi
         // on the following display frame, after stable content has had an opportunity to draw.
         postOnAnimation {
             activeStrokes = emptyList()
+            synchronized(activeLock) { tailPlanner.reset() }
             lowLatencyView.clear()
         }
     }
 
     override fun cancel() {
         activeStrokes = emptyList()
+        synchronized(activeLock) { tailPlanner.reset() }
         lowLatencyView.cancel()
     }
 
     @WorkerThread
-    private fun drawLatest(canvas: Canvas) {
+    private fun drawComplete(canvas: Canvas) {
         canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
         val snapshot = activeStrokes
         if (snapshot.isNotEmpty()) canvasView.drawEngineV2ActiveStrokes(canvas, snapshot)
+        synchronized(activeLock) { tailPlanner.complete(snapshot) }
+    }
+
+    /**
+     * Front-buffer contents persist between callbacks. Simple vector ink can therefore append only
+     * its new tail instead of clearing and replaying an ever-growing stroke. Complex stamp brushes
+     * retain full deterministic replay until their native incremental dab planner lands.
+     */
+    @WorkerThread
+    private fun drawIncremental(canvas: Canvas) {
+        val snapshot = activeStrokes
+        if (snapshot.isEmpty()) return
+        val plan = synchronized(activeLock) { tailPlanner.incremental(snapshot) }
+        if (plan.clearBeforeDraw) canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+        if (plan.strokes.isNotEmpty()) canvasView.drawEngineV2ActiveStrokes(canvas, plan.strokes)
     }
 
     override fun onDetachedFromWindow() {
         canvasView.activeStrokeSurface = null
         activeStrokes = emptyList()
+        synchronized(activeLock) { tailPlanner.reset() }
         super.onDetachedFromWindow()
     }
 }
