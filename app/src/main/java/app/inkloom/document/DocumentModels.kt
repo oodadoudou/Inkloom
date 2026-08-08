@@ -175,9 +175,22 @@ data class BrushColorDynamics(
 )
 
 @Serializable
+enum class BrushEngineKind {
+    MESH_INK,
+    STAMP_RASTER,
+    AIRBRUSH,
+    WET_SMUDGE,
+    ERASE_MASK,
+}
+
+@Serializable
 data class InkStroke(
     val id: String = UUID.randomUUID().toString(),
     val renderSeed: Int = id.hashCode(),
+    val engineKind: BrushEngineKind = BrushEngineKind.MESH_INK,
+    val engineMajorVersion: Int = 2,
+    val behaviorRuntimeVersion: Int = 1,
+    val compositorVersion: Int = 1,
     val masks: List<StrokeMaskDab> = emptyList(),
     val points: List<StrokePoint>,
     val colorArgb: Long = 0xFF111111,
