@@ -18,16 +18,21 @@ object StrokeStampSampler {
         if (points.size <= 1) return points
         val width = canvasWidth.coerceAtLeast(1f)
         val height = canvasHeight.coerceAtLeast(1f)
-        val result = mutableListOf(points.first())
+        // This function runs on every live-stroke frame. Avoid zipWithNext(), which creates a
+        // temporary Pair for every input segment before we have rendered a single stamp.
+        val result = ArrayList<StrokePoint>(points.size.coerceAtLeast(16))
+        result += points.first()
         var distanceUntilNext = spacingFor(points.first()).coerceAtLeast(MINIMUM_SPACING_PX)
 
-        points.zipWithNext().forEach { (start, end) ->
+        for (index in 1 until points.size) {
+            val start = points[index - 1]
+            val end = points[index]
             val segmentWidth = (end.x - start.x) * width
             val segmentHeight = (end.y - start.y) * height
             val segmentLength = hypot(segmentWidth.toDouble(), segmentHeight.toDouble()).toFloat()
             if (segmentLength <= 0f) {
                 if (includeStationaryPoints) result += end
-                return@forEach
+                continue
             }
 
             var consumed = 0f
