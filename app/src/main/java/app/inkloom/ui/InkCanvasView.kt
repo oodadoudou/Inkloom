@@ -28,6 +28,7 @@ import app.inkloom.engine.v2.EngineV2LatencySnapshot
 import app.inkloom.engine.v2.traceEngineV2
 import app.inkloom.engine.v2.input.NativeStrokeInputModeler
 import app.inkloom.engine.v2.brush.EngineV2BrushEvaluator
+import app.inkloom.engine.v2.brush.EngineV2WetSmudgeRuntime
 import app.inkloom.engine.v2.render.EngineV2ActiveStrokeSurface
 import app.inkloom.engine.v2.render.EngineV2CommittedTileScene
 import java.util.LinkedHashMap
@@ -181,7 +182,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var fillPreviewWidth = 0f
     private var fillPreviewHeight = 0f
     private val fillPreviewPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { colorFilter = PorterDuffColorFilter(Color.BLACK, PorterDuff.Mode.SRC_IN) }
-    private var smudgeSnapshot: Bitmap? = null
+    private var wetSmudgeRuntime: EngineV2WetSmudgeRuntime? = null
     private var smudgeCurrentColor = 0
     private var smudgeSegments = mutableListOf<Pair<Int, MutableList<StrokePoint>>>()
     private val smudgePreviewPaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -2690,10 +2691,19 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun beginSmudgeGesture(normalizedX: Float, normalizedY: Float) {
-        smudgeSnapshot?.recycle()
-        smudgeSnapshot = renderDocumentPageBitmap(width.coerceAtLeast(1), height.coerceAtLeast(1))
+        wetSmudgeRuntime?.close()
+        wetSmudgeRuntime = EngineV2WetSmudgeRuntime(
+            source = renderDocumentPageBitmap(width.coerceAtLeast(1), height.coerceAtLeast(1)),
+            startX = normalizedX,
+            startY = normalizedY,
+            radiusPx = baseWidth.coerceAtLeast(1f) * width.coerceAtLeast(1) / REFERENCE_WIDTH / 2f,
+            pickup = (.35f + brushColorMix.coerceIn(0f, 1f) * .65f),
+            load = brushPaintMix.coerceIn(0f, 1f) * .6f,
+            deposit = (inkOpacity * .65f).coerceIn(.05f, 1f),
+            brushColor = inkColor,
+        )
         smudgeSegments.clear()
-        smudgeCurrentColor = quantizeSmudgeColor(sampleSmudgeColor(normalizedX, normalizedY))
+        smudgeCurrentColor = quantizeSmudgeColor(wetSmudgeRuntime?.color ?: inkColor)
         smudgeSegments += smudgeCurrentColor to mutableListOf(StrokePoint(normalizedX.coerceIn(0f, 1f), normalizedY.coerceIn(0f, 1f), 1f, SystemClock.uptimeMillis()))
         invalidate()
     }
@@ -2701,7 +2711,7 @@ class InkCanvasView(context: Context) : View(context) {
     private fun extendSmudge(normalizedX: Float, normalizedY: Float) {
         val x = normalizedX.coerceIn(0f, 1f)
         val y = normalizedY.coerceIn(0f, 1f)
-        val color = quantizeSmudgeColor(sampleSmudgeColor(x, y))
+        val color = quantizeSmudgeColor(wetSmudgeRuntime?.move(x, y, inkColor) ?: inkColor)
         if (color != smudgeCurrentColor && smudgeSegments.lastOrNull()?.second?.isNotEmpty() == true) {
             val previousPoint = smudgeSegments.last().second.last()
             smudgeSegments += color to mutableListOf(previousPoint)
@@ -2711,13 +2721,6 @@ class InkCanvasView(context: Context) : View(context) {
             if (points.isEmpty() || hypot((points.last().x - x).toDouble(), (points.last().y - y).toDouble()).toFloat() >= .0006f) points += StrokePoint(x, y, 1f, SystemClock.uptimeMillis())
         }
         invalidate()
-    }
-
-    private fun sampleSmudgeColor(normalizedX: Float, normalizedY: Float): Int {
-        val snapshot = smudgeSnapshot ?: return inkColor
-        val x = (normalizedX.coerceIn(0f, 1f) * (snapshot.width - 1).coerceAtLeast(0)).toInt()
-        val y = (normalizedY.coerceIn(0f, 1f) * (snapshot.height - 1).coerceAtLeast(0)).toInt()
-        return snapshot.getPixel(x, y)
     }
 
     private fun quantizeSmudgeColor(color: Int): Int {
@@ -2747,15 +2750,15 @@ class InkCanvasView(context: Context) : View(context) {
             invalidateStrokeCache(emptyList(), newStrokes)
             commitStrokeEdit(before, strokes)
         }
-        smudgeSnapshot?.recycle()
-        smudgeSnapshot = null
+        wetSmudgeRuntime?.close()
+        wetSmudgeRuntime = null
         smudgeSegments.clear()
         invalidate()
     }
 
     private fun cancelSmudgeGesture() {
-        smudgeSnapshot?.recycle()
-        smudgeSnapshot = null
+        wetSmudgeRuntime?.close()
+        wetSmudgeRuntime = null
         smudgeSegments.clear()
         invalidate()
     }
