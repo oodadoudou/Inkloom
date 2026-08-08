@@ -27,6 +27,7 @@ import app.inkloom.engine.v2.EngineV2Metrics
 import app.inkloom.engine.v2.EngineV2LatencySnapshot
 import app.inkloom.engine.v2.traceEngineV2
 import app.inkloom.engine.v2.input.NativeStrokeInputModeler
+import app.inkloom.engine.v2.brush.EngineV2BrushEvaluator
 import app.inkloom.engine.v2.render.EngineV2ActiveStrokeSurface
 import app.inkloom.engine.v2.render.EngineV2CommittedTileScene
 import java.util.LinkedHashMap
@@ -1129,35 +1130,11 @@ class InkCanvasView(context: Context) : View(context) {
      * committed stroke, rather than visibly changing shape on pen-up.
      */
     private fun primaryStampedPoints(stroke: InkStroke): List<StrokePoint> {
-        val referenceScale = width.coerceAtLeast(1) / REFERENCE_WIDTH
-        return StrokeStampSampler.sample(
-            stroke.points,
-            width.toFloat(),
-            height.toFloat(),
-            includeStationaryPoints = stroke.continuousPlot,
-        ) { point ->
-            val pressure = point.pressure.coerceIn(0f, 1f)
-            val diameter = (stroke.width * referenceScale * pressureDynamic(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, pressure) * secondaryDynamic(stroke.sizeSecondaryDynamics, point, stroke.renderSeed, SALT_SIZE)).coerceAtLeast(1f)
-            val spacingDynamic = pressureDynamic(stroke.spacingPressureEnabled, stroke.spacingPressureMinimum, stroke.spacingPressureCurve, pressure) * secondaryDynamic(stroke.spacingSecondaryDynamics, point, stroke.renderSeed, SALT_SPACING)
-            val gapRatio = CspBrushGap.ratio(stroke.spacingMode, stroke.spacing).let { if (stroke.ribbon) it.coerceAtMost(.06f) else it }
-            diameter * gapRatio * spacingDynamic.coerceIn(.01f, 1f) / if (stroke.spray) SprayGeometry.particlesPerPlot(SprayDynamics.density(stroke, point)) else 1
-        }
+        return EngineV2BrushEvaluator.sampleStampPoints(stroke, width.toFloat(), height.toFloat(), dual = false)
     }
 
     private fun dualStampedPoints(stroke: InkStroke): List<StrokePoint> {
-        val referenceScale = width.coerceAtLeast(1) / REFERENCE_WIDTH
-        return StrokeStampSampler.sample(
-            stroke.points,
-            width.toFloat(),
-            height.toFloat(),
-            includeStationaryPoints = stroke.continuousPlot,
-        ) { point ->
-            val pressure = point.pressure.coerceIn(0f, 1f)
-            val diameter = (stroke.width * referenceScale * stroke.dualSizeScale.coerceIn(.01f, 8f) * pressureDynamic(stroke.dualSizeDynamics.pressureEnabled, stroke.dualSizeDynamics.pressureMinimum, stroke.dualSizeDynamics.pressureCurve, pressure) * secondaryDynamic(stroke.dualSizeDynamics.secondary, point, stroke.renderSeed, SALT_DUAL_SIZE)).coerceAtLeast(1f)
-            val spacingDynamic = pressureDynamic(stroke.dualSpacingDynamics.pressureEnabled, stroke.dualSpacingDynamics.pressureMinimum, stroke.dualSpacingDynamics.pressureCurve, pressure) * secondaryDynamic(stroke.dualSpacingDynamics.secondary, point, stroke.renderSeed, SALT_DUAL_SPACING)
-            val gapRatio = CspBrushGap.ratio(stroke.dualSpacingMode, stroke.dualSpacing).let { if (stroke.dualRibbon) it.coerceAtMost(.06f) else it }
-            diameter * gapRatio * spacingDynamic.coerceIn(.01f, 1f) / if (stroke.dualSpray) SprayGeometry.particlesPerPlot(SprayDynamics.dualDensity(stroke, point)) else 1
-        }
+        return EngineV2BrushEvaluator.sampleStampPoints(stroke, width.toFloat(), height.toFloat(), dual = true)
     }
 
     private fun advanceStampRandoms(
