@@ -14,6 +14,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 import android.graphics.BitmapFactory
 import android.view.ViewGroup
 import app.inkloom.document.FileDocumentStore
+import app.inkloom.document.ViewportState
+import app.inkloom.document.ViewportTransform
 import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -383,6 +385,45 @@ class InkloomPinchThenWriteTest {
         }
         System.err.println(sb.toString())
         assertTrue("Zoomed ink must be visible on screen below the canvas's layout bounds (dark=$dark)", dark >= 3)
+
+        // The same visible overflow must also remain writable. Android hit testing normally stops
+        // at the untransformed View bounds, so this contact exercises the full-viewport proxy.
+        val overflowX = paperCentreX + panX
+        val overflowY = canvasBottom + 28f
+        assertTrue("The regression contact must be below the original page View", overflowY > canvasBottom)
+        assertTrue("The regression contact must remain on the physical display", overflowY < bitmap.height / scaleY)
+        val expectedPagePoint = ViewportTransform.viewToPage(
+            overflowX - location[0],
+            overflowY - location[1],
+            view.width.toFloat(),
+            view.height.toFloat(),
+            ViewportState(scale, panX, panY),
+        )
+        sendScreenFingerStroke(overflowX, overflowY, overflowX + 28f, overflowY + 12f)
+        composeRule.waitUntil(10_000) { strokeCount() == 2 }
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val overflowStroke = activeDocumentId?.let { FileDocumentStore(context.filesDir).get(it) }
+            ?.pages?.flatMap { it.strokes }?.last()
+        assertEquals("Overflow writing must inverse-map to the physical contact X", expectedPagePoint.first / view.width, overflowStroke?.points?.first()?.x ?: Float.NaN, .004f)
+        assertEquals("Overflow writing must inverse-map to the physical contact Y", expectedPagePoint.second / view.height, overflowStroke?.points?.first()?.y ?: Float.NaN, .004f)
+    }
+
+    private fun sendScreenFingerStroke(startX: Float, startY: Float, endX: Float, endY: Float) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val downTime = android.os.SystemClock.uptimeMillis()
+        fun send(action: Int, x: Float, y: Float, elapsed: Long) {
+            val event = android.view.MotionEvent.obtain(downTime, downTime + elapsed, action, x, y, 0).apply {
+                source = android.view.InputDevice.SOURCE_TOUCHSCREEN
+            }
+            try {
+                instrumentation.sendPointerSync(event)
+            } finally {
+                event.recycle()
+            }
+        }
+        send(android.view.MotionEvent.ACTION_DOWN, startX, startY, 0)
+        send(android.view.MotionEvent.ACTION_MOVE, endX, endY, 20)
+        send(android.view.MotionEvent.ACTION_UP, endX, endY, 40)
     }
 
     private fun findInkCanvasView(): InkCanvasView? {

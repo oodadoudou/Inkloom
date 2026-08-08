@@ -58,7 +58,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -1032,8 +1031,6 @@ private fun EditorScreen(
     var viewRotation by remember(document.id) { mutableFloatStateOf(0f) }
     var viewportWidthPx by remember { mutableFloatStateOf(0f) }
     var viewportHeightPx by remember { mutableFloatStateOf(0f) }
-    var viewportCenterScreenX by remember { mutableFloatStateOf(0f) }
-    var viewportCenterScreenY by remember { mutableFloatStateOf(0f) }
     fun currentViewportGeometry(): ViewportGeometry? {
         val view = canvasView ?: return null
         if (viewportWidthPx <= 0f || viewportHeightPx <= 0f || view.width <= 0 || view.height <= 0) return null
@@ -1859,9 +1856,6 @@ private fun EditorScreen(
                     .fillMaxHeight()
                     .background(Workspace)
                     .onGloballyPositioned { coordinates ->
-                        val origin = coordinates.positionOnScreen()
-                        viewportCenterScreenX = origin.x + coordinates.size.width / 2f
-                        viewportCenterScreenY = origin.y + coordinates.size.height / 2f
                         viewportWidthPx = coordinates.size.width.toFloat()
                         viewportHeightPx = coordinates.size.height.toFloat()
                     },
@@ -1869,6 +1863,11 @@ private fun EditorScreen(
             ) {
                 val toolbarAreaWidth = maxWidth
                 val toolbarAreaHeight = maxHeight
+                AndroidView(
+                    factory = { InkViewportTouchProxy(it) },
+                    update = { it.target = canvasView },
+                    modifier = Modifier.fillMaxSize(),
+                )
                 PaperCanvas(
                     modifier = Modifier.fillMaxHeight(.88f).aspectRatio((PageCropTransform.visibleWidth(selectedPage) / PageCropTransform.visibleHeight(selectedPage).coerceAtLeast(1f)).coerceIn(.35f, 2.8f)),
                     tool = tool,
@@ -1886,18 +1885,18 @@ private fun EditorScreen(
                     assets = assets,
                     settings = settings,
                     viewportState = ViewportState(zoom, panX, panY, viewRotation),
-                    viewportCenterScreenX = viewportCenterScreenX,
-                    viewportCenterScreenY = viewportCenterScreenY,
                     onZoom = { factor, focusX, focusY ->
+                        val view = canvasView ?: return@PaperCanvas
+                        val current = ViewportState(view.viewportScale, view.viewportPanX, view.viewportPanY, view.viewportRotationDegrees)
                         val next = ViewportTransform.zoomAroundScreen(
-                            ViewportState(zoom, panX, panY, viewRotation),
+                            current,
                             factor,
-                            focusX - viewportCenterScreenX,
-                            focusY - viewportCenterScreenY,
+                            focusX - view.width / 2f,
+                            focusY - view.height / 2f,
                             geometry = currentViewportGeometry(),
                         )
-                        zoom = next.scale; panX = next.panX; panY = next.panY
-                        canvasView?.apply {
+                        applyViewport(next)
+                        view.apply {
                             viewportScale = next.scale
                             viewportPanX = next.panX
                             viewportPanY = next.panY
@@ -1905,14 +1904,18 @@ private fun EditorScreen(
                         }
                     },
                     onPan = { dx, dy ->
-                        val next = ViewportTransform.panByScreen(ViewportState(zoom, panX, panY, viewRotation), dx, dy, geometry = currentViewportGeometry())
-                        panX = next.panX; panY = next.panY
-                        canvasView?.apply { viewportPanX = next.panX; viewportPanY = next.panY }
+                        val view = canvasView ?: return@PaperCanvas
+                        val current = ViewportState(view.viewportScale, view.viewportPanX, view.viewportPanY, view.viewportRotationDegrees)
+                        val next = ViewportTransform.panByScreen(current, dx, dy, geometry = currentViewportGeometry())
+                        applyViewport(next)
+                        view.apply { viewportPanX = next.panX; viewportPanY = next.panY }
                     },
                     onRotate = { delta ->
-                        val next = ViewportTransform.rotateBy(ViewportState(zoom, panX, panY, viewRotation), delta, currentViewportGeometry())
-                        viewRotation = next.rotationDegrees; panX = next.panX; panY = next.panY
-                        canvasView?.apply {
+                        val view = canvasView ?: return@PaperCanvas
+                        val current = ViewportState(view.viewportScale, view.viewportPanX, view.viewportPanY, view.viewportRotationDegrees)
+                        val next = ViewportTransform.rotateBy(current, delta, currentViewportGeometry())
+                        applyViewport(next)
+                        view.apply {
                             viewportRotationDegrees = next.rotationDegrees
                             viewportPanX = next.panX
                             viewportPanY = next.panY
@@ -3888,7 +3891,7 @@ private fun pageTemplateKind(template: PageTemplate): String = when (template.ba
 }
 
 @Composable
-private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, viewportState: ViewportState, viewportCenterScreenX: Float, viewportCenterScreenY: Float, onZoom: (Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit) {
+private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val backgroundVisible = page.layers.firstOrNull { it.role == LayerRole.BACKGROUND }?.visible != false
     val background = remember(page.id, page.background, page.backgroundRotationQuarterTurns, page.crop, backgroundVisible) { if (backgroundVisible) runCatching { assets.renderBackground(page.background, 1200, page.backgroundRotationQuarterTurns, page.crop) }.getOrNull() else null }
@@ -3945,8 +3948,6 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.viewportPanX = viewportState.panX
                 view.viewportPanY = viewportState.panY
                 view.viewportRotationDegrees = viewportState.rotationDegrees
-                view.viewportCenterScreenX = viewportCenterScreenX
-                view.viewportCenterScreenY = viewportCenterScreenY
                 view.onStrokeCommitted = { onStroke(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
                 view.onShapeCommitted = { onElement(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
                 view.onFillCommitted = { mask, fx, fy, fw, fh, color, opacity ->
@@ -3997,8 +3998,6 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.viewportPanX = viewportState.panX
                 view.viewportPanY = viewportState.panY
                 view.viewportRotationDegrees = viewportState.rotationDegrees
-                view.viewportCenterScreenX = viewportCenterScreenX
-                view.viewportCenterScreenY = viewportCenterScreenY
                 view.setDocumentStrokes(renderedPage.strokes.filter { it.layerId in visibleLayerIds }.sortedBy { layerOrder[it.layerId] ?: Int.MAX_VALUE }, "$documentId:${page.id}")
                 view.setProtectedStrokeIds(page.strokes.filter { it.layerId in lockedLayerIds }.mapTo(mutableSetOf()) { it.id })
                 view.setProtectedLayerIds(lockedLayerIds)
