@@ -4360,7 +4360,8 @@ private fun ObjectElementView(
                 },
             ),
     ) {
-        if (showContent) when (element) {
+        Box(Modifier.fillMaxSize().graphicsLayer(alpha = if (showContent) 1f else 0f)) {
+            when (element) {
             is PageElement.Text -> {
                 val scaledTextSize = (element.textSize * canvasWidth.value / page.width).coerceIn(10f, 40f)
                 Text(
@@ -4449,6 +4450,7 @@ private fun ObjectElementView(
                     }
                     IconButton(onClick = { openLink(context, element.url, language) }) { Icon(Icons.Outlined.OpenInNew, tr("Open link", "打开链接")) }
                 }
+            }
             }
         }
         if (selected && editable) Surface(Modifier.align(Alignment.TopEnd).offset(y = (-38).dp), shape = RoundedCornerShape(18.dp), color = Color.White, shadowElevation = 4.dp) {
