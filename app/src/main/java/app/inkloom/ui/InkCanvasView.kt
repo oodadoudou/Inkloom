@@ -45,7 +45,6 @@ import app.inkloom.document.BrushParameterDynamics
 import app.inkloom.document.BrushColorJitter
 import app.inkloom.document.BrushBlur
 import app.inkloom.document.BrushSecondaryDynamics
-import app.inkloom.document.BrushDynamics
 import app.inkloom.document.BrushStampCount
 import app.inkloom.document.BrushStampRotation
 import app.inkloom.document.BrushSizeDrag
@@ -101,7 +100,6 @@ import app.inkloom.document.ThreeFingerTapRedoGesture
 import app.inkloom.document.ViewportTransform
 import app.inkloom.document.FloodFill
 import app.inkloom.document.WaterEdge
-import app.inkloom.document.WetMixDynamics
 import app.inkloom.model.EditorTool
 import app.inkloom.model.SymmetryMode
 import app.inkloom.settings.CspShortcutResolver
@@ -3255,16 +3253,6 @@ class InkCanvasView(context: Context) : View(context) {
         const val SELECTION_HANDLE_TOUCH_PX = 48f
         const val SELECTION_SMALL_HANDLE_TOUCH_PX = 10f
         const val SELECTION_ROTATE_HANDLE_OFFSET_PX = 64f
-        const val SALT_SIZE = 11
-        const val SALT_OPACITY = 23
-        const val SALT_FLOW = 37
-        const val SALT_SPACING = 53
-        const val SALT_THICKNESS = 71
-        const val SALT_DUAL_SIZE = 101
-        const val SALT_DUAL_FLOW = 103
-        const val SALT_DUAL_SPACING = 107
-        const val SALT_DUAL_THICKNESS = 109
-        const val SALT_BLUR = 89
         const val DUAL_SCATTER_SEED = 0x27C4915DL
         const val DUAL_ROTATION_SEED = 0x61B8D2A3L
         const val VIEW_ROTATION_DEGREES_PER_PIXEL = .25f
@@ -3282,12 +3270,6 @@ class InkCanvasView(context: Context) : View(context) {
             Thread(runnable, "inkloom-brush-tip").apply { isDaemon = true }
         }
     }
-
-    private fun pressureDynamic(enabled: Boolean, minimum: Float, curve: List<BrushCurvePoint>, input: Float): Float {
-        return BrushDynamics.pressure(enabled, minimum, curve, input)
-    }
-
-    private fun secondaryDynamic(dynamics: BrushSecondaryDynamics, point: StrokePoint, strokeSeed: Int, salt: Int): Float = BrushDynamics.secondary(dynamics, point, strokeSeed, salt)
 
     private fun midpoint(start: StrokePoint, end: StrokePoint) = StrokePoint(
         x = (start.x + end.x) / 2f, y = (start.y + end.y) / 2f,

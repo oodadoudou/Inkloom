@@ -905,12 +905,6 @@ class DocumentAssetService(private val context: Context) {
 
     private fun formatDuration(durationMs: Long): String { val total = durationMs / 1000; return "%d:%02d".format(total / 60, total % 60) }
 
-    private fun pressureDynamic(enabled: Boolean, minimum: Float, curve: List<BrushCurvePoint>, input: Float): Float {
-        return BrushDynamics.pressure(enabled, minimum, curve, input)
-    }
-
-    private fun secondaryDynamic(dynamics: BrushSecondaryDynamics, point: StrokePoint, strokeSeed: Int, salt: Int): Float = BrushDynamics.secondary(dynamics, point, strokeSeed, salt)
-
     private fun midpoint(start: StrokePoint, end: StrokePoint) = StrokePoint(
         x = (start.x + end.x) / 2f, y = (start.y + end.y) / 2f,
         pressure = (start.pressure + end.pressure) / 2f,
@@ -921,16 +915,6 @@ class DocumentAssetService(private val context: Context) {
     )
 
     private companion object {
-        const val SALT_SIZE = 11
-        const val SALT_OPACITY = 23
-        const val SALT_FLOW = 37
-        const val SALT_SPACING = 53
-        const val SALT_THICKNESS = 71
-        const val SALT_DUAL_SIZE = 101
-        const val SALT_DUAL_FLOW = 103
-        const val SALT_DUAL_SPACING = 107
-        const val SALT_DUAL_THICKNESS = 109
-        const val SALT_BLUR = 89
         const val DUAL_SCATTER_SEED = 0x27C4915DL
         const val DUAL_ROTATION_SEED = 0x61B8D2A3L
         const val DUAL_SEQUENCE_SEED = 0x35A71C9E
