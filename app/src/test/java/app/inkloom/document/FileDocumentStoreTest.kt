@@ -9,6 +9,31 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 class FileDocumentStoreTest {
+    @Test fun liveInkJournalDoesNotRewriteWholeDocumentOnEveryStroke() {
+        val root = Files.createTempDirectory("inkloom-live-journal").toFile()
+        val store = FileDocumentStore(root)
+        val document = InkDocument(title = "Realtime")
+        store.save(document)
+        val documentFile = root.resolve("documents/${document.id}.json")
+        val checkpointBytes = documentFile.readBytes()
+
+        repeat(12) { index ->
+            store.append(
+                JournalEntry.StrokeAdded(
+                    document.id,
+                    document.pages.single().id,
+                    InkStroke(id = "rapid-$index", points = List(48) { point -> StrokePoint(point / 48f, index / 12f) }),
+                ),
+            )
+        }
+
+        assertEquals("Pen-up must only append the recovery journal", checkpointBytes.toList(), documentFile.readBytes().toList())
+        assertEquals(12, store.get(document.id)?.pages?.single()?.strokes?.size)
+        assertEquals("A new reader must replay uncheckpointed ink", 12, FileDocumentStore(root).get(document.id)?.pages?.single()?.strokes?.size)
+        assertEquals(12, store.recover())
+        assertEquals(12, FileDocumentStore(root).get(document.id)?.pages?.single()?.strokes?.size)
+    }
+
     @Test fun savesListsAndDeletesDocuments() {
         val store = FileDocumentStore(Files.createTempDirectory("inkloom-store").toFile())
         val document = InkDocument(title = "Persistent note")

@@ -9,41 +9,69 @@ class FileDocumentStore(private val root: File) {
     private val journalJson = Json { ignoreUnknownKeys = true; classDiscriminator = "type" }
     private val documentsDir = File(root, "documents")
     private val journalFile = File(root, "journal.jsonl")
+    private val documents = linkedMapOf<String, InkDocument>()
+    private var pendingJournalEntries = 0
 
-    init { documentsDir.mkdirs() }
+    init {
+        documentsDir.mkdirs()
+        documentsDir.listFiles { file -> file.extension == "json" }
+            ?.mapNotNull { runCatching { json.decodeFromString<InkDocument>(it.readText()) }.getOrNull() }
+            ?.forEach { documents[it.id] = it }
+        // The journal is the durable source of truth between checkpoints. Replaying it into the
+        // in-memory index makes startup and secondary readers see the latest ink without forcing
+        // every pen-up to rewrite and parse the whole document library on the UI thread.
+        val recovered = readJournal()
+        recovered.forEach(::applyEntry)
+        pendingJournalEntries = recovered.size
+    }
 
     @Synchronized
-    fun list(): List<InkDocument> = documentsDir.listFiles { file -> file.extension == "json" }
-        ?.mapNotNull { runCatching { json.decodeFromString<InkDocument>(it.readText()) }.getOrNull() }
-        ?.sortedByDescending { it.updatedAt }
-        .orEmpty()
+    fun list(): List<InkDocument> = documents.values.sortedByDescending { it.updatedAt }
 
-    fun get(id: String): InkDocument? = documentFile(id).takeIf(File::isFile)
-        ?.let { runCatching { json.decodeFromString<InkDocument>(it.readText()) }.getOrNull() }
+    @Synchronized
+    fun get(id: String): InkDocument? = documents[id]
 
-    @Synchronized fun save(document: InkDocument) = atomicWrite(documentFile(document.id), json.encodeToString(document))
-    @Synchronized fun deletePermanently(id: String): Boolean = documentFile(id).delete()
+    @Synchronized
+    fun save(document: InkDocument) {
+        atomicWrite(documentFile(document.id), json.encodeToString(document))
+        documents[document.id] = document
+    }
+
+    @Synchronized
+    fun deletePermanently(id: String): Boolean {
+        documents.remove(id)
+        return documentFile(id).delete()
+    }
 
     @Synchronized
     fun append(entry: JournalEntry) {
         journalFile.parentFile?.mkdirs()
         journalFile.appendText(journalJson.encodeToString<JournalEntry>(entry) + "\n")
-        applyEntry(entry)?.let(::save)
+        applyEntry(entry)
+        pendingJournalEntries++
     }
 
     @Synchronized
     fun recover(): Int {
-        if (!journalFile.isFile) return 0
-        val entries = journalFile.readLines().mapNotNull { runCatching { journalJson.decodeFromString<JournalEntry>(it) }.getOrNull() }
-        entries.forEach { applyEntry(it)?.let(::save) }
+        val recovered = pendingJournalEntries
+        if (recovered == 0) return 0
+        documents.values.forEach { document -> atomicWrite(documentFile(document.id), json.encodeToString(document)) }
         compactJournal()
-        return entries.size
+        pendingJournalEntries = 0
+        return recovered
     }
 
-    @Synchronized fun compactJournal() = atomicWrite(journalFile, "")
+    @Synchronized
+    fun compactJournal() {
+        atomicWrite(journalFile, "")
+        pendingJournalEntries = 0
+    }
+
+    private fun readJournal(): List<JournalEntry> = if (!journalFile.isFile) emptyList() else
+        journalFile.readLines().mapNotNull { runCatching { journalJson.decodeFromString<JournalEntry>(it) }.getOrNull() }
 
     private fun applyEntry(entry: JournalEntry): InkDocument? {
-        val document = get(entry.documentId) ?: return null
+        val document = documents[entry.documentId] ?: return null
         val pages = document.pages.map { page ->
             if (page.id != entry.pageId) page else when (entry) {
                 is JournalEntry.StrokeAdded -> if (page.strokes.any { it.id == entry.stroke.id }) page else page.copy(strokes = page.strokes + entry.stroke)
@@ -64,7 +92,7 @@ class FileDocumentStore(private val root: File) {
                 is JournalEntry.ElementRemoved -> page.copy(elements = page.elements.filterNot { it.id == entry.elementId })
             }
         }
-        return document.copy(pages = pages, updatedAt = entry.timestamp)
+        return document.copy(pages = pages, updatedAt = entry.timestamp).also { documents[it.id] = it }
     }
 
     private fun documentFile(id: String) = File(documentsDir, "${safeId(id)}.json")
