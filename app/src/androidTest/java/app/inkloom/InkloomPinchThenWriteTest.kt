@@ -33,6 +33,7 @@ import java.io.File
 @RunWith(AndroidJUnit4::class)
 class InkloomPinchThenWriteTest {
     val composeRule = createAndroidComposeRule<MainActivity>()
+    private var activeDocumentId: String? = null
 
     private val prepareRule = TestRule { base, _ ->
         object : Statement() {
@@ -40,12 +41,16 @@ class InkloomPinchThenWriteTest {
                 val context = ApplicationProvider.getApplicationContext<android.content.Context>()
                 context.getSharedPreferences("inkloom_settings", android.content.Context.MODE_PRIVATE)
                     .edit()
+                    .clear()
                     .putString("language", "ENGLISH")
                     .putBoolean("fingerDrawing", true)
                     .putBoolean("singleFingerDoubleTapUndo", false)
                     .putBoolean("twoFingerDoubleTapUndo", false)
                     .putBoolean("threeFingerTapRedo", false)
                     .putBoolean("twoFingerRotation", false)
+                    .putBoolean("rulerEnabled", false)
+                    .putBoolean("gridSnapEnabled", false)
+                    .putBoolean("alignmentGuidesEnabled", false)
                     .putBoolean("showInputDiagnostics", false)
                     .putBoolean("showPageRail", true)
                     .putBoolean("showBrushPanel", false)
@@ -70,6 +75,7 @@ class InkloomPinchThenWriteTest {
                 val documentsDir = File(context.filesDir, "documents")
                 documentsDir.listFiles()?.forEach { it.delete() }
                 File(context.filesDir, "journal.jsonl").delete()
+                activeDocumentId = null
                 base.evaluate()
             }
         }
@@ -82,17 +88,22 @@ class InkloomPinchThenWriteTest {
         // Return to the library if a previous test left the editor open.
         runCatching { composeRule.onNodeWithText("Gallery").performClick() }
         composeRule.waitForIdle()
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val store = FileDocumentStore(context.filesDir)
+        val documentIdsBeforeCreate = store.list().mapTo(mutableSetOf()) { it.id }
         composeRule.onNodeWithText("New Note").performClick()
         composeRule.onNodeWithText("Create notebook").assertIsDisplayed()
         composeRule.onNodeWithText("Create").performClick()
         composeRule.waitForIdle()
         composeRule.waitUntil(10_000) { findInkCanvasView() != null }
+        composeRule.waitUntil(10_000) { store.list().any { it.id !in documentIdsBeforeCreate } }
+        activeDocumentId = store.list().first { it.id !in documentIdsBeforeCreate }.id
     }
 
     private fun strokeCount(): Int {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val store = FileDocumentStore(context.filesDir)
-        val doc = store.list().firstOrNull()
+        val doc = activeDocumentId?.let(store::get)
         return doc?.pages?.sumOf { it.strokes.size } ?: 0
     }
 
@@ -182,15 +193,35 @@ class InkloomPinchThenWriteTest {
         view!!.getLocationOnScreen(location)
         val paperCentreX = location[0] + view.width / 2f
         val paperCentreY = location[1] + view.height / 2f
-        val startDy = 279f
-        val endDy = 359f
+        // Keep the entire initial contact inside the current paper even when system insets or
+        // compact toolbars reduce the editor height. The exercised pinch moves this band beyond
+        // the original AndroidView bounds, which is the clipping regression this test protects.
+        val startDy = view.height * .24f
+        val endDy = view.height * .30f
 
         // Draw a vertical stroke below the paper's vertical centre so that after zoom it maps below
         // the canvas's own layout bounds on screen (verifies the host view group is not clipping).
-        composeRule.onRoot().performTouchInput {
-            down(0, Offset(paperCentreX, paperCentreY + startDy))
-            moveTo(0, Offset(paperCentreX, paperCentreY + endDy), delayMillis = 20)
-            up(0)
+        // This test is specifically about InkCanvasView drawing beyond its host bounds. Dispatch
+        // locally so status/navigation-bar window offsets cannot turn the setup stroke into a
+        // Compose coordinate-routing test (covered separately by canWriteAfterNativeTwoFingerPinch).
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val transformWasEnabled = view.viewportInputTransformEnabled
+            view.viewportInputTransformEnabled = false
+            val downTime = android.os.SystemClock.uptimeMillis()
+            fun dispatch(action: Int, y: Float, elapsed: Long) {
+                view.dispatchTouchEvent(android.view.MotionEvent.obtain(
+                    downTime,
+                    downTime + elapsed,
+                    action,
+                    view.width / 2f,
+                    view.height / 2f + y,
+                    0,
+                ))
+            }
+            dispatch(android.view.MotionEvent.ACTION_DOWN, startDy, 0)
+            dispatch(android.view.MotionEvent.ACTION_MOVE, endDy, 20)
+            dispatch(android.view.MotionEvent.ACTION_UP, endDy, 21)
+            view.viewportInputTransformEnabled = transformWasEnabled
         }
         composeRule.waitUntil(10_000) { strokeCount() == 1 }
 
