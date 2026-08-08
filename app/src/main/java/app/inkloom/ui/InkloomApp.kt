@@ -143,6 +143,7 @@ import app.inkloom.settings.WorkspacePanelPlacement
 import app.inkloom.settings.WorkspaceOrientation
 import app.inkloom.settings.text
 import app.inkloom.ui.theme.*
+import app.inkloom.engine.v2.render.EngineV2CanvasHost
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -4054,7 +4055,8 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
         val paperMaxWidth = maxWidth
         val paperMaxHeight = maxHeight
         AndroidView(
-            factory = { context -> InkCanvasView(context).also { view ->
+            factory = { context -> EngineV2CanvasHost(context).also { host ->
+                val view = host.canvasView
                 view.tool = tool
                 view.forceNavigation = forceNavigation
                 view.rotateNavigation = rotateNavigation
@@ -4103,7 +4105,8 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.post { view.requestFocus() }
                 onView(view)
             } },
-            update = { view ->
+            update = { host ->
+                val view = host.canvasView
                 view.tool = tool
                 view.forceNavigation = forceNavigation
                 view.rotateNavigation = rotateNavigation

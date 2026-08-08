@@ -21,10 +21,12 @@ import android.view.MotionEvent
 import android.view.PointerIcon
 import android.view.View
 import android.view.ViewConfiguration
+import androidx.annotation.WorkerThread
 import app.inkloom.engine.v2.EngineV2Metrics
 import app.inkloom.engine.v2.EngineV2LatencySnapshot
 import app.inkloom.engine.v2.traceEngineV2
 import app.inkloom.engine.v2.input.NativeStrokeInputModeler
+import app.inkloom.engine.v2.render.EngineV2ActiveStrokeSurface
 import java.util.LinkedHashMap
 import java.util.concurrent.Executors
 import app.inkloom.document.InkStroke
@@ -131,6 +133,7 @@ data class LayerElementBitmaps(val base: Bitmap?, val additions: Bitmap?) {
 }
 
 class InkCanvasView(context: Context) : View(context) {
+    private val renderLock = Any()
     private val engineV2Metrics = EngineV2Metrics()
     private val strokeInputModeler = NativeStrokeInputModeler()
     private val strokes = mutableListOf<InkStroke>()
@@ -138,6 +141,15 @@ class InkCanvasView(context: Context) : View(context) {
     private val currentPoints = mutableListOf<StrokePoint>()
     private var currentStrokeId = java.util.UUID.randomUUID().toString()
     private var activeStrokeTemplate: InkStroke? = null
+    internal var activeStrokeSurface: EngineV2ActiveStrokeSurface? = null
+    private var activeSurfaceFrameScheduled = false
+    private var activeSurfaceCommitted = false
+    private val activeSurfaceFrame = Runnable {
+        activeSurfaceFrameScheduled = false
+        val surface = activeStrokeSurface ?: return@Runnable
+        if (activeTool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) || currentPoints.isEmpty()) return@Runnable
+        surface.render(symmetryStrokes(currentPoints))
+    }
     private var liveStrokeBitmap: Bitmap? = null
     private var liveStrokeCheckpoint = 0
     private var livePrimaryStampCheckpoint = 0
@@ -712,7 +724,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        drawPageContent(canvas)
+        synchronized(renderLock) { drawPageContent(canvas) }
     }
 
     override fun onHoverEvent(event: MotionEvent): Boolean {
@@ -787,7 +799,7 @@ class InkCanvasView(context: Context) : View(context) {
         drawSelectionHandles(canvas)
         drawSymmetryGuides(canvas)
         drawShapePreview(canvas)
-        drawLiveStroke(canvas)
+        if (activeStrokeSurface == null) drawLiveStroke(canvas)
         drawAlignmentGuides(canvas)
         drawRulerGuide(canvas)
         drawLaserTrail(canvas, SystemClock.uptimeMillis())
@@ -813,6 +825,8 @@ class InkCanvasView(context: Context) : View(context) {
         laserTrail.clear()
         recycleStrokeTiles()
         releaseLiveStrokePreview()
+        removeCallbacks(activeSurfaceFrame)
+        activeSurfaceFrameScheduled = false
         strokeInputModeler.close()
         tipCache.values.forEach(Bitmap::recycle); tipCache.clear()
         super.onDetachedFromWindow()
@@ -1072,6 +1086,10 @@ class InkCanvasView(context: Context) : View(context) {
 
     /** Starts a fresh preview without allocating or releasing a page-sized bitmap. */
     private fun beginLiveStrokePreview() {
+        removeCallbacks(activeSurfaceFrame)
+        activeSurfaceFrameScheduled = false
+        activeSurfaceCommitted = false
+        activeStrokeSurface?.cancel()
         liveStrokeBitmap?.eraseColor(Color.TRANSPARENT)
         liveStrokeCheckpoint = 0
         livePrimaryStampCheckpoint = 0
@@ -1080,6 +1098,10 @@ class InkCanvasView(context: Context) : View(context) {
 
     /** Hides the completed preview. Its backing surface is retained for the next stroke. */
     private fun finishLiveStrokePreview() {
+        removeCallbacks(activeSurfaceFrame)
+        activeSurfaceFrameScheduled = false
+        if (!activeSurfaceCommitted) activeStrokeSurface?.cancel()
+        activeSurfaceCommitted = false
         liveStrokeCheckpoint = 0
         livePrimaryStampCheckpoint = 0
         liveDualStampCheckpoint = 0
@@ -1087,6 +1109,10 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun releaseLiveStrokePreview() {
+        removeCallbacks(activeSurfaceFrame)
+        activeSurfaceFrameScheduled = false
+        activeSurfaceCommitted = false
+        activeStrokeSurface?.cancel()
         liveStrokeBitmap?.recycle()
         liveStrokeBitmap = null
         liveStrokeCheckpoint = 0
@@ -1950,6 +1976,8 @@ class InkCanvasView(context: Context) : View(context) {
                     strokes.addAll(newStrokes)
                     invalidateStrokeCache(emptyList(), newStrokes)
                     commitStrokeEdit(before, strokes)
+                    activeStrokeSurface?.commit(newStrokes)
+                    activeSurfaceCommitted = activeStrokeSurface != null
                     clearActiveStrokeInput()
                     finishLiveStrokePreview()
                 } else if (activeTool == EditorTool.SELECT) {
@@ -1989,7 +2017,7 @@ class InkCanvasView(context: Context) : View(context) {
             releaseHeldStylusButtons()
             lastStylusButtonState = 0
         }
-        postInvalidateOnAnimation()
+        if (activeStrokeSurface == null || activeTool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) postInvalidateOnAnimation()
         return true
     }
 
@@ -2618,6 +2646,18 @@ class InkCanvasView(context: Context) : View(context) {
             velocity = strokeInputModeler.velocity,
         )
         currentPoints += point
+        requestActiveSurfaceFrame()
+    }
+
+    private fun requestActiveSurfaceFrame() {
+        if (activeStrokeSurface == null || activeSurfaceFrameScheduled) return
+        activeSurfaceFrameScheduled = true
+        postOnAnimation(activeSurfaceFrame)
+    }
+
+    @WorkerThread
+    internal fun drawEngineV2ActiveStrokes(canvas: Canvas, strokes: List<InkStroke>) {
+        synchronized(renderLock) { drawLayeredStrokes(canvas, strokes) }
     }
 
     private fun clearActiveStrokeInput() {
