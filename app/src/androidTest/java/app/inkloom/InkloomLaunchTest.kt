@@ -93,7 +93,6 @@ class InkloomLaunchTest {
                     .remove("shortcutBrushGroup")
                     .remove("toolboxQuickSlots")
                     .remove("workspaceLayouts")
-                    .remove("customWorkspaces")
                     .remove("pagePanelMode")
                     .remove("brushPanelMode")
                     .remove("layerPanelMode")
@@ -215,11 +214,11 @@ class InkloomLaunchTest {
         assertEquals(WorkspacePanelDock.FREE, AppSettingsStore(composeRule.activity).load().brushPanelDock)
     }
 
-    @Test fun procreateWorkspaceKeepsNotebookToolsAsPopovers() {
+    @Test fun drawingWorkspaceKeepsNotebookToolsAsPopovers() {
         createNotebookAndOpenEditor()
 
         composeRule.onNodeWithContentDescription("Actions").performClick()
-        composeRule.onNodeWithText("Procreate workspace").performClick()
+        composeRule.onNodeWithText("Drawing workspace").performClick()
         var restored = AppSettingsStore(composeRule.activity).load()
         assertEquals(false, restored.showPageRail)
         assertEquals(false, restored.showBrushPanel)
@@ -246,51 +245,10 @@ class InkloomLaunchTest {
         assertEquals(true, restored.showToolbar)
 
         composeRule.onNodeWithContentDescription("Actions").performClick()
-        composeRule.onNodeWithText("Reset current workspace").performClick()
-        restored = AppSettingsStore(composeRule.activity).load()
-        assertEquals(false, restored.showPageRail)
-        assertEquals(false, restored.showBrushPanel)
-        assertEquals(false, restored.showLayerPanel)
-        assertEquals(true, restored.showToolbar)
-    }
-
-    @Test fun customWorkspaceCanBeSavedAppliedDuplicatedAndRenamed() {
-        createNotebookAndOpenEditor()
-
-        composeRule.onNodeWithContentDescription("Actions").performClick()
-        composeRule.onNodeWithText("Procreate workspace").performClick()
-        composeRule.onNodeWithContentDescription("Brushes").performClick()
-        composeRule.onNodeWithContentDescription("Layers").performClick()
-        composeRule.onNodeWithContentDescription("Actions").performClick()
-        composeRule.onNodeWithText("Save current workspace…").performClick()
-        composeRule.onNodeWithText("Save workspace").assertIsDisplayed()
-        composeRule.onNodeWithText("Save").performClick()
-        composeRule.waitUntil(5_000) { AppSettingsStore(composeRule.activity).load().customWorkspaces.size == 1 }
-
-        composeRule.onNodeWithContentDescription("Actions").performClick()
-        composeRule.onNodeWithText("Reading workspace").performClick()
-        assertTrue(AppSettingsStore(composeRule.activity).load().showBrushPanel.not())
-        composeRule.onNodeWithContentDescription("Actions").performClick()
-        composeRule.onNodeWithText("My workspace").performClick()
-        val applied = AppSettingsStore(composeRule.activity).load()
-        assertTrue(applied.showBrushPanel)
-        assertTrue(applied.showLayerPanel)
-
-        composeRule.onNodeWithContentDescription("Actions").performClick()
-        composeRule.onNodeWithText("Manage custom workspaces…").performClick()
-        composeRule.onNodeWithText("Custom workspaces").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Manage My workspace").performClick()
-        composeRule.onNodeWithText("Duplicate").performClick()
-        composeRule.waitUntil(5_000) { AppSettingsStore(composeRule.activity).load().customWorkspaces.size == 2 }
-        composeRule.onNodeWithText("My workspace copy").assertIsDisplayed()
-
-        composeRule.onNodeWithContentDescription("Manage My workspace copy").performClick()
-        composeRule.onNodeWithText("Rename").performClick()
-        composeRule.onNodeWithText("Workspace name").performTextClearance()
-        composeRule.onNodeWithText("Workspace name").performTextInput("Studio")
-        composeRule.onNodeWithText("Rename").performClick()
-        composeRule.waitUntil(5_000) { AppSettingsStore(composeRule.activity).load().customWorkspaces.any { it.name == "Studio" } }
-        composeRule.onNodeWithText("Studio").assertIsDisplayed()
+        assertEquals(0, composeRule.onAllNodesWithText("Save current workspace…").fetchSemanticsNodes().size)
+        assertEquals(0, composeRule.onAllNodesWithText("Manage custom workspaces…").fetchSemanticsNodes().size)
+        assertEquals(0, composeRule.onAllNodesWithText("Import workspace…").fetchSemanticsNodes().size)
+        assertEquals(0, composeRule.onAllNodesWithText("Reset current workspace").fetchSemanticsNodes().size)
     }
 
     @Test fun workspacePanelsCollapseToIconsAndLockTheirPlacement() {

@@ -18,8 +18,6 @@ import app.inkloom.settings.ShortcutChord
 import app.inkloom.settings.ToolboxQuickSlot
 import app.inkloom.settings.ToolboxQuickSlotKind
 import app.inkloom.settings.UiLanguage
-import app.inkloom.settings.WorkspacePanelDock
-import app.inkloom.settings.captureToolboxWorkspace
 import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -38,23 +36,13 @@ class ToolboxQuickSlotActivationTest {
         object : Statement() {
             override fun evaluate() {
                 val context = ApplicationProvider.getApplicationContext<Context>()
-                val targetWorkspace = AppSettings(
-                    showPageRail = false,
-                    showToolbar = false,
-                    showLayerPanel = true,
-                    layerPanelDock = WorkspacePanelDock.LEFT,
-                ).captureToolboxWorkspace()
-                val bindings = CspShortcutResolver.defaultBindings + listOf(
-                    ShortcutBinding(ShortcutAction.QUICK_SLOT_1, ShortcutChord(KeyEvent.KEYCODE_F12)),
-                    ShortcutBinding(ShortcutAction.QUICK_SLOT_2, ShortcutChord(KeyEvent.KEYCODE_F11)),
-                )
+                val bindings = CspShortcutResolver.defaultBindings + ShortcutBinding(ShortcutAction.QUICK_SLOT_1, ShortcutChord(KeyEvent.KEYCODE_F12))
                 AppSettingsStore(context).save(
                     AppSettings(
                         language = UiLanguage.ENGLISH,
                         shortcutBindings = bindings,
                         toolboxQuickSlots = listOf(
                             ToolboxQuickSlot(ToolboxQuickSlotKind.TOOL_PRESET, "Red 23", size = 23f, opacity = .55f, colorArgb = presetColor),
-                            ToolboxQuickSlot(ToolboxQuickSlotKind.WORKSPACE, "Focus", workspace = targetWorkspace),
                         ),
                     ),
                 )
@@ -82,22 +70,6 @@ class ToolboxQuickSlotActivationTest {
         assertEquals(23f, canvas.baseWidth, .001f)
         assertEquals(.55f, canvas.inkOpacity, .001f)
         assertEquals(presetColor, canvas.inkColor)
-    }
-
-    @Test fun workspaceSlotAppliesPersistedPanelLayout() {
-        openEditor()
-        val canvas = findCanvas(composeRule.activity.window.decorView) ?: error("Ink canvas not found")
-
-        composeRule.activity.runOnUiThread {
-            canvas.onKeyDown(KeyEvent.KEYCODE_F11, KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_F11))
-        }
-        composeRule.waitForIdle()
-        val restored = AppSettingsStore(composeRule.activity).load()
-
-        assertEquals(false, restored.showPageRail)
-        assertEquals(false, restored.showToolbar)
-        assertEquals(true, restored.showLayerPanel)
-        assertEquals(WorkspacePanelDock.LEFT, restored.layerPanelDock)
     }
 
     private fun openEditor() {

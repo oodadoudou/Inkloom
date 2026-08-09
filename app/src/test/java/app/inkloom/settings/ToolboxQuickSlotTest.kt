@@ -4,30 +4,14 @@ import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ToolboxQuickSlotTest {
-    @Test fun `codec preserves brush preset group and workspace slots`() {
-        val workspace = AppSettings(
-            showPageRail = false,
-            showBrushPanel = true,
-            brushPanelDock = WorkspacePanelDock.FREE,
-            brushPanelMode = WorkspacePanelMode.COLLAPSED,
-            brushPanelLocked = true,
-            rightDockStacked = true,
-            rightDockActivePanel = WorkspacePanelKind.LAYERS,
-            freeDockStacked = true,
-            freeDockActivePanel = WorkspacePanelKind.BRUSHES,
-            panelTabOrder = "BRUSHES,LAYERS,PAGES",
-            brushPanelXDp = 321f,
-            toolbarDock = ToolbarDock.LEFT,
-        ).captureToolboxWorkspace()
+    @Test fun `codec preserves brush preset and group slots`() {
         val slots = listOf(
             ToolboxQuickSlot(ToolboxQuickSlotKind.BRUSH, "Ink", brushId = "brush-1"),
             ToolboxQuickSlot(ToolboxQuickSlotKind.BRUSH_GROUP, "Sketch", groupPath = "Favorites/Pencils"),
             ToolboxQuickSlot(ToolboxQuickSlotKind.TOOL_PRESET, "Red 12", brushId = "brush-2", size = 12f, opacity = .6f, colorArgb = 0xFFAA0000.toInt()),
-            ToolboxQuickSlot(ToolboxQuickSlotKind.WORKSPACE, "Drawing", workspace = workspace),
         )
 
         val decoded = ToolboxQuickSlotCodec.decode(ToolboxQuickSlotCodec.encode(slots))
@@ -79,7 +63,6 @@ class ToolboxQuickSlotTest {
 
         assertEquals(ToolboxQuickSlots.COUNT, decoded.size)
         assertEquals(true, decoded.all { it.kind == ToolboxQuickSlotKind.EMPTY })
-        assertNull(decoded.first().workspace)
     }
 
     @Test fun `quick slots resolve exact brushes and most recent nested group brushes`() {

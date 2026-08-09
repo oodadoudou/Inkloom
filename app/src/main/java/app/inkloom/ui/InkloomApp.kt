@@ -103,9 +103,6 @@ import app.inkloom.settings.BuiltInWorkspace
 import app.inkloom.settings.BuiltInWorkspaces
 import app.inkloom.settings.ButtonShortcutBinding
 import app.inkloom.settings.ColorPaletteStore
-import app.inkloom.settings.CustomWorkspaceCodec
-import app.inkloom.settings.CustomWorkspaceProfile
-import app.inkloom.settings.CustomWorkspaces
 import app.inkloom.settings.EraserPreset
 import app.inkloom.settings.FloatingToolbarPlacement
 import app.inkloom.settings.SelectionFilter
@@ -399,7 +396,6 @@ fun InkloomApp(initialIntent: Intent?) {
     val pageTemplates by viewModel.pageTemplates.collectAsState()
     val repository = remember { BrushImportRepository(context) }
     var pendingBrushExport by remember { mutableStateOf<ImportedBrush?>(null) }
-    var pendingWorkspaceExport by remember { mutableStateOf<CustomWorkspaceProfile?>(null) }
     val brushStore = remember { BrushMetadataStore(context) }
     val brushGroupStore = remember { BrushGroupStore(context) }
     val settingsStore = remember { AppSettingsStore(context) }
@@ -507,30 +503,6 @@ fun InkloomApp(initialIntent: Intent?) {
                 ?: error("Unable to open the shortcut profile.")
             updateSettings(settings.copy(shortcutBindings = imported.bindings, shortcutAxisBindings = imported.axisBindings, shortcutButtonBindings = imported.buttonBindings, shortcutBrushGroupTargets = imported.brushGroupTargets, toolboxQuickSlots = imported.quickSlots))
             Toast.makeText(context, settings.language.text("Shortcut profile restored.", "快捷键配置已恢复。"), Toast.LENGTH_LONG).show()
-        }.onFailure { importError = it.message }
-    }
-    val workspaceProfileExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(CustomWorkspaceCodec.MIME_TYPE)) { uri ->
-        val profile = pendingWorkspaceExport
-        pendingWorkspaceExport = null
-        if (uri != null && profile != null) runCatching {
-            context.contentResolver.openOutputStream(uri, "wt")?.use { output -> output.write(CustomWorkspaceCodec.encodeProfile(profile)) }
-                ?: error("Unable to open the workspace profile destination.")
-            Toast.makeText(context, settings.language.text("Workspace exported.", "工作区已导出。"), Toast.LENGTH_LONG).show()
-        }.onFailure { importError = it.message }
-    }
-    val workspaceProfileImportPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) runCatching {
-            require(settings.customWorkspaces.size < CustomWorkspaces.MAX_COUNT) {
-                settings.language.text("The custom workspace library is full.", "自定义工作区数量已达上限。")
-            }
-            val decoded = context.contentResolver.openInputStream(uri)?.use { CustomWorkspaceCodec.decodeProfile(it).getOrThrow() }
-                ?: error("Unable to open the workspace profile.")
-            val imported = decoded.copy(
-                id = UUID.randomUUID().toString(),
-                name = CustomWorkspaces.uniqueName(decoded.name, settings.customWorkspaces),
-            )
-            updateSettings(settings.copy(customWorkspaces = CustomWorkspaces.normalize(settings.customWorkspaces + imported)))
-            Toast.makeText(context, settings.language.text("Workspace imported.", "工作区已导入。"), Toast.LENGTH_LONG).show()
         }.onFailure { importError = it.message }
     }
     val brushExportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/vnd.inkloom.brush+zip")) { uri ->
@@ -717,12 +689,6 @@ fun InkloomApp(initialIntent: Intent?) {
             onExport = { exportPicker.launch("${viewModel.currentDocument()?.title ?: "Inkloom"}.pdf") },
             onExportPage = { imageExportPicker.launch("${viewModel.currentDocument()?.title ?: "Inkloom"}-page.png") },
             onExportBundle = { bundleExportPicker.launch("${viewModel.currentDocument()?.title ?: "Inkloom"}.inkloom.zip") },
-            onExportWorkspace = { profile ->
-                pendingWorkspaceExport = profile
-                val safeName = profile.name.replace(Regex("[^A-Za-z0-9._-]"), "_").trim('_').ifBlank { "Inkloom-Workspace" }
-                workspaceProfileExportPicker.launch("$safeName.${CustomWorkspaceCodec.FILE_EXTENSION}")
-            },
-            onImportWorkspace = { workspaceProfileImportPicker.launch(arrayOf(CustomWorkspaceCodec.MIME_TYPE, "application/json", "text/plain", "application/octet-stream")) },
             assets = viewModel.assets,
             settings = settings,
             pdfIndexing = libraryState.selectedDocumentId in libraryState.pdfIndexingDocumentIds,
@@ -1022,8 +988,6 @@ private fun EditorScreen(
     onExport: () -> Unit,
     onExportPage: () -> Unit,
     onExportBundle: () -> Unit,
-    onExportWorkspace: (CustomWorkspaceProfile) -> Unit,
-    onImportWorkspace: () -> Unit,
     assets: DocumentAssetService,
     settings: AppSettings,
     pdfIndexing: Boolean,
@@ -1041,7 +1005,6 @@ private fun EditorScreen(
 ) {
     if (document == null) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }; return }
     val context = LocalContext.current
-    val workspaceOrientation = WorkspaceOrientation.from(LocalConfiguration.current)
     val audioRecorder = remember { AudioNoteRecorder(context) }
     val selectedPage = document.pages.firstOrNull { it.id == selectedPageId } ?: document.pages.first()
     var tool by remember { mutableStateOf(EditorTool.PEN) }
@@ -1058,7 +1021,6 @@ private fun EditorScreen(
     var previousDrawingSize by remember { mutableFloatStateOf(settings.penSize) }
     var previousDrawingOpacity by remember { mutableFloatStateOf(settings.penOpacity) }
     var previousDrawingColor by remember { mutableIntStateOf(AndroidColor.rgb(17, 17, 17)) }
-    var quickSlotWorkspaceBeforeHold by remember { mutableStateOf<app.inkloom.settings.ToolboxWorkspaceSnapshot?>(null) }
     var handToolEnabled by remember { mutableStateOf(false) }
     var handToolHeld by remember { mutableStateOf(false) }
     var rotateToolEnabled by remember { mutableStateOf(false) }
@@ -1068,9 +1030,6 @@ private fun EditorScreen(
     var viewMenu by remember { mutableStateOf(false) }
     var workspaceMenu by remember { mutableStateOf(false) }
     var colorPanelOpen by remember { mutableStateOf(false) }
-    var saveWorkspaceOpen by remember { mutableStateOf(false) }
-    var manageWorkspacesOpen by remember { mutableStateOf(false) }
-    var newWorkspaceName by remember { mutableStateOf("") }
     var zoom by remember(document.id) { mutableFloatStateOf(1f) }
     var panX by remember(document.id) { mutableFloatStateOf(0f) }
     var panY by remember(document.id) { mutableFloatStateOf(0f) }
@@ -1269,14 +1228,6 @@ private fun EditorScreen(
         workspaceMenu = false
         applyWorkspaceSnapshot(BuiltInWorkspaces.snapshot(workspace))
     }
-    fun applyCustomWorkspace(profile: CustomWorkspaceProfile) {
-        workspaceMenu = false
-        manageWorkspacesOpen = false
-        applyWorkspaceSettings(CustomWorkspaces.apply(settings, profile, workspaceOrientation))
-    }
-    fun replaceCustomWorkspaces(values: List<CustomWorkspaceProfile>) {
-        onSettingsChange(settings.copy(customWorkspaces = CustomWorkspaces.normalize(values)))
-    }
     val allChangesSavedMessage = tr("All changes are saved.", "所有更改均已保存。")
     val inkOnlyClipboardMessage = tr("Clipboard actions currently apply to ink selections.", "剪贴板操作目前仅适用于墨迹选区。")
     val selectBeforeCutMessage = tr("Select ink before cutting.", "请先选择墨迹再剪切。")
@@ -1284,8 +1235,6 @@ private fun EditorScreen(
     val noInkClipboardMessage = tr("The clipboard does not contain Inkloom ink.", "剪贴板中没有 Inkloom 墨迹。")
     val colorsDescription = tr("Colors", "颜色")
     val searchNoteDescription = tr("Search this note", "搜索此笔记")
-    val defaultCustomWorkspaceName = tr("My workspace", "我的工作区")
-    val workspaceCopySuffix = tr("copy", "副本")
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Row(
             Modifier.height(52.dp).fillMaxWidth().background(Color(0xFFF8F8F8)).padding(horizontal = 10.dp),
@@ -1310,7 +1259,7 @@ private fun EditorScreen(
                     DropdownMenuItem(text = { Text(tr("Export PDF", "导出 PDF")) }, leadingIcon = { Icon(Icons.Outlined.Share, null) }, onClick = { workspaceMenu = false; onExport() })
                     HorizontalDivider()
                     DropdownMenuItem(
-                        text = { Column { Text(tr("Procreate workspace", "Procreate 工作区")); Text(tr("Minimal canvas with pop-over pages, brushes and layers", "极简画布与弹出式页面、笔刷和图层"), fontSize = 10.sp, color = MutedInk) } },
+                        text = { Column { Text(tr("Drawing workspace", "绘画工作区")); Text(tr("Minimal canvas with pop-over pages, brushes and layers", "极简画布与弹出式页面、笔刷和图层"), fontSize = 10.sp, color = MutedInk) } },
                         leadingIcon = { Icon(Icons.Outlined.Palette, null) },
                         onClick = { applyBuiltInWorkspace(BuiltInWorkspace.STUDIO) },
                     )
@@ -1325,39 +1274,6 @@ private fun EditorScreen(
                         onClick = { applyBuiltInWorkspace(BuiltInWorkspace.MINIMAL) },
                     )
                     HorizontalDivider()
-                    settings.customWorkspaces.take(5).forEach { profile ->
-                        DropdownMenuItem(
-                            text = { Column { Text(profile.name); Text(tr("Custom workspace", "自定义工作区"), fontSize = 10.sp, color = MutedInk) } },
-                            leadingIcon = { Icon(Icons.Outlined.SpaceDashboard, null) },
-                            onClick = { applyCustomWorkspace(profile) },
-                        )
-                    }
-                    if (settings.customWorkspaces.isNotEmpty()) HorizontalDivider()
-                    DropdownMenuItem(
-                        text = { Text(tr("Save current workspace…", "保存当前工作区…")) },
-                        leadingIcon = { Icon(Icons.Outlined.AddBox, null) },
-                        onClick = {
-                            workspaceMenu = false
-                            newWorkspaceName = CustomWorkspaces.uniqueName(defaultCustomWorkspaceName, settings.customWorkspaces)
-                            saveWorkspaceOpen = true
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text(tr("Manage custom workspaces…", "管理自定义工作区…")) },
-                        leadingIcon = { Icon(Icons.Outlined.Tune, null) },
-                        onClick = { workspaceMenu = false; manageWorkspacesOpen = true },
-                    )
-                    DropdownMenuItem(
-                        text = { Text(tr("Import workspace…", "导入工作区…")) },
-                        leadingIcon = { Icon(Icons.Outlined.FileOpen, null) },
-                        onClick = { workspaceMenu = false; onImportWorkspace() },
-                    )
-                    HorizontalDivider()
-                    DropdownMenuItem(
-                        text = { Text(tr("Reset current workspace", "重置当前工作区")) },
-                        leadingIcon = { Icon(Icons.Outlined.RestartAlt, null) },
-                        onClick = { applyBuiltInWorkspace(BuiltInWorkspace.RESET) },
-                    )
                 }
             }
             ProcreateTopButton(Icons.Outlined.AutoFixHigh, tr("Adjustments", "调整"), onClick = onSettings)
@@ -2130,10 +2046,6 @@ private fun EditorScreen(
                                     brushOpacity = slot.opacity
                                     brushColor = slot.colorArgb
                                 }
-                                ToolboxQuickSlotKind.WORKSPACE -> slot.workspace?.let { workspace ->
-                                    if (temporary) quickSlotWorkspaceBeforeHold = settings.captureToolboxWorkspace()
-                                    applyWorkspaceSnapshot(workspace)
-                                }
                             }
                         }
 
@@ -2149,7 +2061,6 @@ private fun EditorScreen(
                                 val slot = ToolboxQuickSlots.normalize(settings.toolboxQuickSlots)[index]
                                 when (slot.kind) {
                                     ToolboxQuickSlotKind.BRUSH, ToolboxQuickSlotKind.BRUSH_GROUP, ToolboxQuickSlotKind.TOOL_PRESET -> restorePreviousDrawingTool()
-                                    ToolboxQuickSlotKind.WORKSPACE -> quickSlotWorkspaceBeforeHold?.let(::applyWorkspaceSnapshot).also { quickSlotWorkspaceBeforeHold = null }
                                     ToolboxQuickSlotKind.EMPTY -> Unit
                                 }
                             }
@@ -2760,72 +2671,6 @@ private fun EditorScreen(
         }
         }
     }
-    if (saveWorkspaceOpen) {
-        val normalizedName = CustomWorkspaces.normalizeName(newWorkspaceName)
-        val atCapacity = settings.customWorkspaces.size >= CustomWorkspaces.MAX_COUNT
-        AlertDialog(
-            onDismissRequest = { saveWorkspaceOpen = false },
-            title = { Text(tr("Save workspace", "保存工作区")) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(
-                        tr(
-                            "The current layout and its matching landscape or portrait layout are saved together.",
-                            "当前布局及其对应的横屏或竖屏布局会一起保存。",
-                        ),
-                        color = MutedInk,
-                        fontSize = 12.sp,
-                    )
-                    OutlinedTextField(
-                        value = newWorkspaceName,
-                        onValueChange = { newWorkspaceName = it.take(CustomWorkspaces.MAX_NAME_CHARS) },
-                        label = { Text(tr("Workspace name", "工作区名称")) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    if (atCapacity) Text(tr("The custom workspace library is full.", "自定义工作区数量已达上限。"), color = MaterialTheme.colorScheme.error, fontSize = 11.sp)
-                }
-            },
-            confirmButton = {
-                Button(
-                    enabled = normalizedName.isNotBlank() && !atCapacity,
-                    onClick = {
-                        val uniqueName = CustomWorkspaces.uniqueName(normalizedName, settings.customWorkspaces)
-                        val profile = CustomWorkspaces.capture(UUID.randomUUID().toString(), uniqueName, settings, workspaceOrientation)
-                        replaceCustomWorkspaces(settings.customWorkspaces + profile)
-                        saveWorkspaceOpen = false
-                    },
-                ) { Text(tr("Save", "保存")) }
-            },
-            dismissButton = { TextButton(onClick = { saveWorkspaceOpen = false }) { Text(tr("Cancel", "取消")) } },
-        )
-    }
-    if (manageWorkspacesOpen) CustomWorkspaceManagerDialog(
-        profiles = settings.customWorkspaces,
-        onApply = ::applyCustomWorkspace,
-        onUpdate = { profile ->
-            val captured = CustomWorkspaces.capture(profile.id, profile.name, settings, workspaceOrientation)
-            replaceCustomWorkspaces(settings.customWorkspaces.map { if (it.id == profile.id) captured else it })
-        },
-        onRename = { profile, requested ->
-            val others = settings.customWorkspaces.filterNot { it.id == profile.id }
-            val renamed = profile.copy(name = CustomWorkspaces.uniqueName(requested, others))
-            replaceCustomWorkspaces(settings.customWorkspaces.map { if (it.id == profile.id) renamed else it })
-        },
-        onDuplicate = { profile ->
-            if (settings.customWorkspaces.size < CustomWorkspaces.MAX_COUNT) {
-                val duplicate = profile.copy(
-                    id = UUID.randomUUID().toString(),
-                    name = CustomWorkspaces.uniqueName("${profile.name} $workspaceCopySuffix", settings.customWorkspaces),
-                )
-                replaceCustomWorkspaces(settings.customWorkspaces + duplicate)
-            }
-        },
-        onExport = onExportWorkspace,
-        onDelete = { profile -> replaceCustomWorkspaces(settings.customWorkspaces.filterNot { it.id == profile.id }) },
-        onImport = { manageWorkspacesOpen = false; onImportWorkspace() },
-        onDismiss = { manageWorkspacesOpen = false },
-    )
     val defaultStickyText = tr("New note", "新便签")
     if (textInsertOpen) AlertDialog(
         onDismissRequest = { textInsertOpen = false },
@@ -3112,111 +2957,6 @@ private fun EditorScreen(
         )
     }
     if (importError != null) AlertDialog(onDismissRequest = onDismissError, confirmButton = { TextButton(onClick = onDismissError) { Text(tr("OK", "确定")) } }, title = { Text(tr("Import issue", "导入问题")) }, text = { Text(importError) })
-}
-
-@Composable
-private fun CustomWorkspaceManagerDialog(
-    profiles: List<CustomWorkspaceProfile>,
-    onApply: (CustomWorkspaceProfile) -> Unit,
-    onUpdate: (CustomWorkspaceProfile) -> Unit,
-    onRename: (CustomWorkspaceProfile, String) -> Unit,
-    onDuplicate: (CustomWorkspaceProfile) -> Unit,
-    onExport: (CustomWorkspaceProfile) -> Unit,
-    onDelete: (CustomWorkspaceProfile) -> Unit,
-    onImport: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var menuForId by remember { mutableStateOf<String?>(null) }
-    var renameTarget by remember { mutableStateOf<CustomWorkspaceProfile?>(null) }
-    var renameText by remember { mutableStateOf("") }
-    val editing = renameTarget
-    if (editing != null) {
-        val normalizedName = CustomWorkspaces.normalizeName(renameText)
-        AlertDialog(
-            onDismissRequest = { renameTarget = null },
-            title = { Text(tr("Rename workspace", "重命名工作区")) },
-            text = {
-                OutlinedTextField(
-                    value = renameText,
-                    onValueChange = { renameText = it.take(CustomWorkspaces.MAX_NAME_CHARS) },
-                    label = { Text(tr("Workspace name", "工作区名称")) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            },
-            confirmButton = {
-                Button(enabled = normalizedName.isNotBlank(), onClick = {
-                    onRename(editing, normalizedName)
-                    renameTarget = null
-                }) { Text(tr("Rename", "重命名")) }
-            },
-            dismissButton = { TextButton(onClick = { renameTarget = null }) { Text(tr("Cancel", "取消")) } },
-        )
-        return
-    }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(tr("Custom workspaces", "自定义工作区")) },
-        text = {
-            LazyColumn(Modifier.widthIn(min = 380.dp, max = 620.dp).heightIn(max = 480.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                item {
-                    OutlinedButton(onClick = onImport, modifier = Modifier.fillMaxWidth()) {
-                        Icon(Icons.Outlined.FileOpen, null)
-                        Spacer(Modifier.width(8.dp))
-                        Text(tr("Import workspace file", "导入工作区文件"))
-                    }
-                }
-                if (profiles.isEmpty()) item {
-                    Text(tr("No custom workspaces yet. Save the current layout from the workspace menu.", "还没有自定义工作区。请从工作区菜单保存当前布局。"), color = MutedInk, modifier = Modifier.padding(vertical = 18.dp))
-                }
-                items(profiles, key = { it.id }) { profile ->
-                    ListItem(
-                        headlineContent = { Text(profile.name, maxLines = 1) },
-                        supportingContent = { Text(tr("Landscape + portrait", "横屏 + 竖屏"), color = MutedInk, fontSize = 10.sp) },
-                        leadingContent = { Icon(Icons.Outlined.SpaceDashboard, null) },
-                        trailingContent = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                TextButton(onClick = { onApply(profile) }) { Text(tr("Apply", "应用")) }
-                                Box {
-                                    IconButton(onClick = { menuForId = profile.id }) { Icon(Icons.Outlined.MoreVert, tr("Manage ${profile.name}", "管理 ${profile.name}")) }
-                                    DropdownMenu(expanded = menuForId == profile.id, onDismissRequest = { menuForId = null }) {
-                                        DropdownMenuItem(
-                                            text = { Text(tr("Update from current layout", "用当前布局更新")) },
-                                            leadingIcon = { Icon(Icons.Outlined.Save, null) },
-                                            onClick = { menuForId = null; onUpdate(profile) },
-                                        )
-                                        DropdownMenuItem(
-                                            text = { Text(tr("Rename", "重命名")) },
-                                            leadingIcon = { Icon(Icons.Outlined.Edit, null) },
-                                            onClick = { menuForId = null; renameText = profile.name; renameTarget = profile },
-                                        )
-                                        DropdownMenuItem(
-                                            text = { Text(tr("Duplicate", "复制")) },
-                                            leadingIcon = { Icon(Icons.Outlined.ContentCopy, null) },
-                                            enabled = profiles.size < CustomWorkspaces.MAX_COUNT,
-                                            onClick = { menuForId = null; onDuplicate(profile) },
-                                        )
-                                        DropdownMenuItem(
-                                            text = { Text(tr("Export", "导出")) },
-                                            leadingIcon = { Icon(Icons.Outlined.SaveAlt, null) },
-                                            onClick = { menuForId = null; onExport(profile) },
-                                        )
-                                        DropdownMenuItem(
-                                            text = { Text(tr("Delete", "删除")) },
-                                            leadingIcon = { Icon(Icons.Outlined.Delete, null) },
-                                            onClick = { menuForId = null; onDelete(profile) },
-                                        )
-                                    }
-                                }
-                            }
-                        },
-                        colors = ListItemDefaults.colors(containerColor = Workspace),
-                    )
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(tr("Done", "完成")) } },
-    )
 }
 
 @Composable
@@ -8636,20 +8376,6 @@ private fun ToolboxQuickSlotEditorDialog(
                             )
                         }
                     }
-                    ToolboxQuickSlotKind.WORKSPACE -> item {
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(
-                                if (slot.workspace == null) tr("No workspace captured yet.", "尚未保存工作区。") else tr("A complete panel and toolbar layout is stored in this slot.", "此快速槽已保存完整面板与工具栏布局。"),
-                                color = MutedInk,
-                                fontSize = 12.sp,
-                            )
-                            Button(onClick = { updateSlot(slot.copy(workspace = settings.captureToolboxWorkspace())) }, modifier = Modifier.fillMaxWidth()) {
-                                Icon(Icons.Outlined.PhotoCamera, null)
-                                Spacer(Modifier.width(8.dp))
-                                Text(tr("Capture current workspace", "保存当前工作区"))
-                            }
-                        }
-                    }
                 }
                 item {
                     OutlinedButton(onClick = { updateSlot(ToolboxQuickSlot()) }, modifier = Modifier.fillMaxWidth()) {
@@ -8693,7 +8419,6 @@ private fun toolboxQuickSlotKindLabel(kind: ToolboxQuickSlotKind): String = when
     ToolboxQuickSlotKind.BRUSH -> tr("Brush", "笔刷")
     ToolboxQuickSlotKind.BRUSH_GROUP -> tr("Group", "笔刷组")
     ToolboxQuickSlotKind.TOOL_PRESET -> tr("Tool preset", "工具预设")
-    ToolboxQuickSlotKind.WORKSPACE -> tr("Workspace", "工作区")
 }
 
 private fun shortcutCategoryLabel(category: ShortcutCategory, language: UiLanguage): String = when (category) {

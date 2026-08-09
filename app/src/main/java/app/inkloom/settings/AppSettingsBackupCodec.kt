@@ -27,7 +27,6 @@ object AppSettingsBackupCodec {
             put("version", VERSION)
             put("settings", settings.toJson())
             put("shortcutProfile", json.parseToJsonElement(ShortcutProfileCodec.encode(ShortcutProfile(settings.shortcutBindings, settings.shortcutBrushGroupTargets, settings.toolboxQuickSlots, settings.shortcutAxisBindings, settings.shortcutButtonBindings)).toString(Charsets.UTF_8)))
-            put("customWorkspaces", CustomWorkspaceCodec.libraryJson(settings.customWorkspaces))
             put("colorPalette", buildJsonArray { colorPalette.distinct().take(32).forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) } })
         }
         return json.encodeToString(JsonObject.serializer(), value).encodeToByteArray().also {
@@ -50,7 +49,6 @@ object AppSettingsBackupCodec {
                 shortcutButtonBindings = profile.buttonBindings,
                 shortcutBrushGroupTargets = profile.brushGroupTargets,
                 toolboxQuickSlots = profile.quickSlots,
-                customWorkspaces = CustomWorkspaceCodec.decodeLibrary(root["customWorkspaces"]?.toString()),
             ),
             palette,
         )

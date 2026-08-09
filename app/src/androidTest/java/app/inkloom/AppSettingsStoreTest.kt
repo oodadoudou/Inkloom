@@ -11,7 +11,6 @@ import app.inkloom.settings.BuiltInWorkspaces
 import app.inkloom.settings.captureToolboxWorkspace
 import app.inkloom.settings.AxisShortcutBinding
 import app.inkloom.settings.ButtonShortcutBinding
-import app.inkloom.settings.CustomWorkspaces
 import app.inkloom.settings.ShortcutAction
 import app.inkloom.settings.ShortcutBrushGroupTargets
 import app.inkloom.settings.ShortcutTrigger
@@ -181,25 +180,6 @@ class AppSettingsStoreTest {
             val curve = app.inkloom.document.PressureResponseCurve.FIRM
             AppSettingsStore(context).save(AppSettings(pressureResponseCurve = curve))
             assertEquals(curve, AppSettingsStore(context).load().pressureResponseCurve)
-        } finally {
-            preferences.edit().clear().commit()
-        }
-    }
-
-    @Test fun namedCustomWorkspacesSurviveReload() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
-        preferences.edit().clear().commit()
-        try {
-            val profile = CustomWorkspaces.capture(
-                "workspace-1",
-                "Drawing desk",
-                AppSettings(showBrushPanel = true, brushPanelDock = WorkspacePanelDock.LEFT),
-                WorkspaceOrientation.LANDSCAPE,
-            )
-            AppSettingsStore(context).save(AppSettings(customWorkspaces = listOf(profile)))
-
-            assertEquals(listOf(profile), AppSettingsStore(context).load().customWorkspaces)
         } finally {
             preferences.edit().clear().commit()
         }

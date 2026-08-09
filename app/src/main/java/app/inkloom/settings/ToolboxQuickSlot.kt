@@ -11,7 +11,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
-enum class ToolboxQuickSlotKind { EMPTY, BRUSH, BRUSH_GROUP, TOOL_PRESET, WORKSPACE }
+enum class ToolboxQuickSlotKind { EMPTY, BRUSH, BRUSH_GROUP, TOOL_PRESET }
 
 data class ToolboxWorkspaceSnapshot(
     val showPageRail: Boolean,
@@ -62,7 +62,6 @@ data class ToolboxQuickSlot(
     val size: Float = 5f,
     val opacity: Float = 1f,
     val colorArgb: Int = 0xFF111111.toInt(),
-    val workspace: ToolboxWorkspaceSnapshot? = null,
 )
 
 object ToolboxQuickSlots {
@@ -89,7 +88,7 @@ object ToolboxQuickSlots {
                 target.isNotEmpty() && (path.equals(target, true) || path.startsWith("$target/", true))
             }.maxWithOrNull(compareBy<ImportedBrush> { it.lastUsedAt }.thenBy { it.name })
         }
-        ToolboxQuickSlotKind.EMPTY, ToolboxQuickSlotKind.WORKSPACE -> null
+        ToolboxQuickSlotKind.EMPTY -> null
     }
 
     fun normalize(values: List<ToolboxQuickSlot>): List<ToolboxQuickSlot> = List(COUNT) { index ->
@@ -102,7 +101,6 @@ object ToolboxQuickSlots {
         groupPath = value.groupPath.trim().trim('/').split('/').map(String::trim).filter(String::isNotEmpty).joinToString("/").take(240),
         size = value.size.coerceIn(.5f, 400f),
         opacity = value.opacity.coerceIn(.05f, 1f),
-        workspace = value.workspace?.normalizedWorkspace(),
     )
 }
 
@@ -178,7 +176,6 @@ object ToolboxQuickSlotCodec {
     private fun ToolboxQuickSlot.toJson() = buildJsonObject {
         put("kind", kind.name); put("label", label); put("brushId", brushId); put("groupPath", groupPath)
         put("size", size); put("opacity", opacity); put("colorArgb", colorArgb)
-        workspace?.let { workspace -> put("workspace", workspace.toJson()) }
     }
 
     private fun kotlinx.serialization.json.JsonObject.toSlot() = ToolboxQuickSlot(
@@ -189,35 +186,6 @@ object ToolboxQuickSlotCodec {
         size = optionalFloat("size", 5f),
         opacity = optionalFloat("opacity", 1f),
         colorArgb = optionalInt("colorArgb", 0xFF111111.toInt()),
-        workspace = get("workspace")?.jsonObject?.toWorkspace(),
-    )
-
-    private fun ToolboxWorkspaceSnapshot.toJson() = buildJsonObject {
-        put("showPageRail", showPageRail); put("showBrushPanel", showBrushPanel); put("showLayerPanel", showLayerPanel); put("showToolbar", showToolbar)
-        put("pagePanelDock", pagePanelDock.name); put("brushPanelDock", brushPanelDock.name); put("layerPanelDock", layerPanelDock.name)
-        put("pagePanelMode", pagePanelMode.name); put("brushPanelMode", brushPanelMode.name); put("layerPanelMode", layerPanelMode.name)
-        put("pagePanelLocked", pagePanelLocked); put("brushPanelLocked", brushPanelLocked); put("layerPanelLocked", layerPanelLocked)
-        put("leftDockStacked", leftDockStacked); put("rightDockStacked", rightDockStacked); put("bottomDockStacked", bottomDockStacked); put("freeDockStacked", freeDockStacked)
-        put("leftDockActivePanel", leftDockActivePanel.name); put("rightDockActivePanel", rightDockActivePanel.name); put("bottomDockActivePanel", bottomDockActivePanel.name); put("freeDockActivePanel", freeDockActivePanel.name)
-        put("panelTabOrder", WorkspacePanelTabs.encodeOrder(WorkspacePanelTabs.normalizeOrder(panelTabOrder)))
-        put("pagePanelXDp", pagePanelXDp); put("pagePanelYDp", pagePanelYDp); put("pagePanelWidthDp", pagePanelWidthDp); put("pagePanelHeightDp", pagePanelHeightDp)
-        put("brushPanelXDp", brushPanelXDp); put("brushPanelYDp", brushPanelYDp); put("brushPanelWidthDp", brushPanelWidthDp); put("brushPanelHeightDp", brushPanelHeightDp)
-        put("layerPanelXDp", layerPanelXDp); put("layerPanelYDp", layerPanelYDp); put("layerPanelWidthDp", layerPanelWidthDp); put("layerPanelHeightDp", layerPanelHeightDp)
-        put("toolbarOffsetXDp", toolbarOffsetXDp); put("toolbarOffsetYDp", toolbarOffsetYDp); put("verticalToolbar", verticalToolbar); put("toolbarDock", toolbarDock.name)
-    }
-
-    private fun kotlinx.serialization.json.JsonObject.toWorkspace() = ToolboxWorkspaceSnapshot(
-        optionalBoolean("showPageRail"), optionalBoolean("showBrushPanel"), optionalBoolean("showLayerPanel"), optionalBoolean("showToolbar", true),
-        optionalEnum("pagePanelDock", WorkspacePanelDock.LEFT), optionalEnum("brushPanelDock", WorkspacePanelDock.RIGHT), optionalEnum("layerPanelDock", WorkspacePanelDock.RIGHT),
-        optionalEnum("pagePanelMode", WorkspacePanelMode.EXPANDED), optionalEnum("brushPanelMode", WorkspacePanelMode.EXPANDED), optionalEnum("layerPanelMode", WorkspacePanelMode.EXPANDED),
-        optionalBoolean("pagePanelLocked"), optionalBoolean("brushPanelLocked"), optionalBoolean("layerPanelLocked"),
-        optionalBoolean("leftDockStacked"), optionalBoolean("rightDockStacked"), optionalBoolean("bottomDockStacked"), optionalBoolean("freeDockStacked"),
-        optionalEnum("leftDockActivePanel", WorkspacePanelKind.PAGES), optionalEnum("rightDockActivePanel", WorkspacePanelKind.BRUSHES), optionalEnum("bottomDockActivePanel", WorkspacePanelKind.PAGES), optionalEnum("freeDockActivePanel", WorkspacePanelKind.BRUSHES),
-        WorkspacePanelTabs.encodeOrder(WorkspacePanelTabs.normalizeOrder(optionalText("panelTabOrder"))),
-        optionalFloat("pagePanelXDp", 16f), optionalFloat("pagePanelYDp", 16f), optionalFloat("pagePanelWidthDp", 160f), optionalFloat("pagePanelHeightDp", 640f),
-        optionalFloat("brushPanelXDp", 720f), optionalFloat("brushPanelYDp", 16f), optionalFloat("brushPanelWidthDp", 220f), optionalFloat("brushPanelHeightDp", 680f),
-        optionalFloat("layerPanelXDp", 720f), optionalFloat("layerPanelYDp", 16f), optionalFloat("layerPanelWidthDp", 240f), optionalFloat("layerPanelHeightDp", 620f),
-        optionalFloat("toolbarOffsetXDp", 16f), optionalFloat("toolbarOffsetYDp", 16f), optionalBoolean("verticalToolbar"), optionalEnum("toolbarDock", ToolbarDock.FREE),
     )
 
     private fun kotlinx.serialization.json.JsonObject.optionalText(key: String): String = get(key)?.jsonPrimitive?.content.orEmpty()

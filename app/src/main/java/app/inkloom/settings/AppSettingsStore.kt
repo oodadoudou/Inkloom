@@ -88,7 +88,6 @@ data class AppSettings(
     val shortcutBrushGroupTargets: ShortcutBrushGroupTargets = ShortcutBrushGroupTargets(),
     val toolboxQuickSlots: List<ToolboxQuickSlot> = ToolboxQuickSlots.normalize(emptyList()),
     val workspaceLayouts: WorkspaceLayoutProfiles = WorkspaceLayoutProfiles(),
-    val customWorkspaces: List<CustomWorkspaceProfile> = emptyList(),
 )
 
 enum class StylusButtonAction {
@@ -210,7 +209,6 @@ class AppSettingsStore(context: Context) {
             ).normalized(),
             toolboxQuickSlots = ToolboxQuickSlotCodec.decode(preferences.getString("toolboxQuickSlots", null)),
             workspaceLayouts = WorkspaceLayoutProfilesCodec.decode(preferences.getString("workspaceLayouts", null)),
-            customWorkspaces = CustomWorkspaceCodec.decodeLibrary(preferences.getString("customWorkspaces", null)),
         )
         val selected = loaded.withWorkspaceFor(orientation)
         if (preferences.getInt(STUDIO_WORKSPACE_VERSION_KEY, 0) < STUDIO_WORKSPACE_VERSION) {
@@ -309,7 +307,6 @@ class AppSettingsStore(context: Context) {
             .putString("shortcutBrushGroup", persisted.shortcutBrushGroupTargets.brush)
             .putString("toolboxQuickSlots", ToolboxQuickSlotCodec.encode(persisted.toolboxQuickSlots))
             .putString("workspaceLayouts", WorkspaceLayoutProfilesCodec.encode(persisted.workspaceLayouts))
-            .putString("customWorkspaces", CustomWorkspaceCodec.encodeLibrary(persisted.customWorkspaces))
             .putInt(STUDIO_WORKSPACE_VERSION_KEY, STUDIO_WORKSPACE_VERSION)
             .apply()
         return persisted
