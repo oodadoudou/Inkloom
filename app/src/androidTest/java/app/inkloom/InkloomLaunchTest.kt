@@ -562,17 +562,18 @@ class InkloomLaunchTest {
         try {
             createNotebookAndOpenEditor()
             composeRule.onNodeWithContentDescription("Selection").performClick()
-            composeRule.onNodeWithContentDescription("More").performClick()
+            composeRule.onNodeWithContentDescription("Selection").performClick()
+            composeRule.onNodeWithContentDescription("Selection subtools").assertIsDisplayed()
 
-            composeRule.onNodeWithText("Freeform").assertIsDisplayed()
+            composeRule.onNodeWithText("Freehand lasso").assertIsDisplayed()
             composeRule.onNodeWithText("Rectangle").assertIsDisplayed()
             composeRule.onNodeWithText("Ellipse").assertIsDisplayed()
             composeRule.onNodeWithText("Selection brush").performClick()
             composeRule.waitForIdle()
 
             assertTrue(preferences.getString("selectionShape", null) == "BRUSH")
-            composeRule.onNodeWithContentDescription("More").performClick()
-            assertTrue(composeRule.onAllNodesWithText("Selection brush size · 42").fetchSemanticsNodes().isNotEmpty())
+            composeRule.onNodeWithContentDescription("Selection").performClick()
+            assertTrue(composeRule.onAllNodesWithText("Brush size · 42").fetchSemanticsNodes().isNotEmpty())
             assertTrue(composeRule.onAllNodesWithText("Magic wand").fetchSemanticsNodes().isNotEmpty())
             assertTrue(composeRule.onAllNodesWithText("Smart border").fetchSemanticsNodes().isNotEmpty())
         } finally {

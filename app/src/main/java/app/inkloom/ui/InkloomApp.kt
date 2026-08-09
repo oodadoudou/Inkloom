@@ -1047,6 +1047,7 @@ private fun EditorScreen(
     var rotateToolHeld by remember { mutableStateOf(false) }
     fun exitCanvasNavigation() { handToolEnabled = false; handToolHeld = false; rotateToolEnabled = false; rotateToolHeld = false }
     var exportMenu by remember { mutableStateOf(false) }
+    var selectionMenuOpen by remember { mutableStateOf(false) }
     var viewMenu by remember { mutableStateOf(false) }
     var workspaceMenu by remember { mutableStateOf(false) }
     var colorPanelOpen by remember { mutableStateOf(false) }
@@ -1297,7 +1298,48 @@ private fun EditorScreen(
                 }
             }
             ProcreateTopButton(Icons.Outlined.AutoFixHigh, tr("Adjustments", "调整"), onClick = onSettings)
-            ProcreateTopButton(Icons.Outlined.Gesture, tr("Selection", "选择"), selected = tool == EditorTool.SELECT, onClick = { exitCanvasNavigation(); tool = EditorTool.SELECT; canvasView?.tool = EditorTool.SELECT })
+            Box {
+                ProcreateTopButton(Icons.Outlined.Gesture, tr("Selection", "选择"), selected = tool == EditorTool.SELECT, onClick = {
+                    val alreadySelected = tool == EditorTool.SELECT
+                    exitCanvasNavigation()
+                    tool = EditorTool.SELECT
+                    canvasView?.tool = EditorTool.SELECT
+                    selectionMenuOpen = alreadySelected
+                })
+                DropdownMenu(
+                    expanded = selectionMenuOpen,
+                    onDismissRequest = { selectionMenuOpen = false },
+                    modifier = Modifier.widthIn(min = 280.dp, max = 340.dp).semantics { contentDescription = "Selection subtools" },
+                ) {
+                    Text(tr("Selection method", "选区方式"), Modifier.padding(horizontal = 14.dp, vertical = 8.dp), color = Ink, fontWeight = FontWeight.SemiBold)
+                    SelectionShape.entries.forEach { shape ->
+                        DropdownMenuItem(
+                            text = { Text(when (shape) { SelectionShape.SMART_BORDER -> tr("Smart border", "智能边框"); SelectionShape.MAGIC_WAND -> tr("Magic wand", "魔棒"); SelectionShape.FREEFORM -> tr("Freehand lasso", "自由套索"); SelectionShape.RECTANGLE -> tr("Rectangle", "矩形"); SelectionShape.ELLIPSE -> tr("Ellipse", "椭圆"); SelectionShape.BRUSH -> tr("Selection brush", "选区画笔") }) },
+                            trailingIcon = { if (settings.selectionShape == shape) Icon(Icons.Outlined.Check, null) },
+                            onClick = { onSettingsChange(settings.copy(selectionShape = shape)); selectionMenuOpen = false },
+                        )
+                    }
+                    HorizontalDivider()
+                    Text(tr("Selection mode", "选区模式"), Modifier.padding(horizontal = 14.dp, vertical = 6.dp), color = MutedInk, fontSize = 11.sp)
+                    Row(Modifier.padding(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        SelectionMode.entries.forEach { mode ->
+                            FilterChip(
+                                selected = settings.selectionMode == mode,
+                                onClick = { onSettingsChange(settings.copy(selectionMode = mode)) },
+                                label = { Text(when (mode) { SelectionMode.REPLACE -> tr("New", "新建"); SelectionMode.ADD -> tr("Add", "添加"); SelectionMode.SUBTRACT -> tr("Subtract", "减去"); SelectionMode.INTERSECT -> tr("Intersect", "交集") }, fontSize = 9.sp) },
+                            )
+                        }
+                    }
+                    if (settings.selectionShape == SelectionShape.BRUSH) {
+                        Text(tr("Brush size · ${settings.selectionBrushSize.toInt()}", "画笔大小 · ${settings.selectionBrushSize.toInt()}"), Modifier.padding(horizontal = 14.dp, vertical = 4.dp), color = MutedInk, fontSize = 11.sp)
+                        Slider(settings.selectionBrushSize, { onSettingsChange(settings.copy(selectionBrushSize = it)) }, Modifier.padding(horizontal = 14.dp), valueRange = 4f..300f)
+                    }
+                    if (settings.selectionShape in setOf(SelectionShape.SMART_BORDER, SelectionShape.MAGIC_WAND)) {
+                        Text(tr("Recognition threshold · ${(settings.selectionThreshold * 100).toInt()}%", "识别阈值 · ${(settings.selectionThreshold * 100).toInt()}%"), Modifier.padding(horizontal = 14.dp, vertical = 4.dp), color = MutedInk, fontSize = 11.sp)
+                        Slider(settings.selectionThreshold, { onSettingsChange(settings.copy(selectionThreshold = it)) }, Modifier.padding(horizontal = 14.dp), valueRange = 0f..1f)
+                    }
+                }
+            }
             ProcreateTopButton(Icons.Outlined.OpenWith, tr("Move canvas", "移动画布"), selected = handToolEnabled, onClick = { handToolEnabled = !handToolEnabled; rotateToolEnabled = false })
             ProcreateTopButton(
                 if (settings.showPageRail) Icons.Outlined.ViewSidebar else Icons.Outlined.TableRows,
@@ -8198,13 +8240,48 @@ private fun BrushTipPreview(label: String, path: String) {
 @Composable
 private fun PressureCurveEditor(label: String, points: List<BrushCurvePoint>, onPoints: (List<BrushCurvePoint>) -> Unit) {
     val shown = points.ifEmpty { listOf(BrushCurvePoint(0f, 0f), BrushCurvePoint(1f, 1f)) }
+    val currentOnPoints by rememberUpdatedState(onPoints)
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) { Text(tr("$label · ${shown.size} points", "${localizedBrushLabel(label)} · ${shown.size} 个控制点"), fontSize = 11.sp, color = MutedInk, modifier = Modifier.weight(1f)); TextButton(onClick = { onPoints(listOf(BrushCurvePoint(0f, 0f), BrushCurvePoint(1f, 1f))) }) { Text(tr("Linear", "线性")) }; TextButton(onClick = { onPoints(listOf(BrushCurvePoint(0f, 0f), BrushCurvePoint(.35f, .62f), BrushCurvePoint(1f, 1f))) }) { Text(tr("Soft", "柔和")) }; TextButton(onClick = { onPoints(listOf(BrushCurvePoint(0f, 0f), BrushCurvePoint(.65f, .25f), BrushCurvePoint(1f, 1f))) }) { Text(tr("Firm", "硬朗")) } }
-        Canvas(Modifier.fillMaxWidth().height(72.dp).background(Workspace, RoundedCornerShape(8.dp)).padding(8.dp)) {
+        Canvas(
+            Modifier.fillMaxWidth().height(132.dp).background(Workspace, RoundedCornerShape(8.dp)).padding(12.dp)
+                .semantics { contentDescription = "$label editable curve" }
+                .pointerInput(shown) {
+                    var selected = -1
+                    detectDragGestures(
+                        onDragStart = { position ->
+                            selected = shown.indices.minByOrNull { index ->
+                                val point = shown[index]
+                                val dx = position.x - point.x * size.width
+                                val dy = position.y - (1f - point.y) * size.height
+                                dx * dx + dy * dy
+                            } ?: -1
+                        },
+                        onDragEnd = { selected = -1 },
+                        onDragCancel = { selected = -1 },
+                    ) { change, _ ->
+                        val index = selected
+                        if (index !in shown.indices) return@detectDragGestures
+                        change.consume()
+                        val previousX = shown.getOrNull(index - 1)?.x?.plus(.001f) ?: 0f
+                        val nextX = shown.getOrNull(index + 1)?.x?.minus(.001f) ?: 1f
+                        val changed = shown.toMutableList()
+                        val x = if (index == 0 || index == shown.lastIndex) shown[index].x else (change.position.x / size.width).coerceIn(previousX, nextX)
+                        val y = (1f - change.position.y / size.height).coerceIn(0f, 1f)
+                        changed[index] = BrushCurvePoint(x, y)
+                        currentOnPoints(changed)
+                    }
+                },
+        ) {
             drawLine(OutlineSoft, Offset(0f, size.height), Offset(size.width, 0f), 1f)
             shown.zipWithNext().forEach { (start, end) -> drawLine(Sage, Offset(start.x * size.width, (1f - start.y) * size.height), Offset(end.x * size.width, (1f - end.y) * size.height), 3f, cap = StrokeCap.Round) }
-            shown.forEach { drawCircle(Sage, 4f, Offset(it.x * size.width, (1f - it.y) * size.height)) }
+            shown.forEach {
+                val center = Offset(it.x * size.width, (1f - it.y) * size.height)
+                drawCircle(Color.White, 10f, center)
+                drawCircle(Sage, 7f, center)
+            }
         }
+        Text(tr("Drag a control point; the larger handles are optimized for pen and touch.", "拖动控制点进行编辑；加大的触控区域适合数位笔和手指。"), color = MutedInk, fontSize = 10.sp)
     }
 }
 
@@ -8789,18 +8866,26 @@ private fun PressureCurveEditor(values: List<Float>, onChange: (List<Float>) -> 
             TextButton(onClick = { currentOnChange(PressureResponseCurve.FIRM) }) { Text(tr("Firm", "硬朗"), fontSize = 10.sp) }
         }
         Canvas(
-            Modifier.fillMaxWidth().height(130.dp).clip(RoundedCornerShape(8.dp)).background(Workspace)
+            Modifier.fillMaxWidth().height(170.dp).clip(RoundedCornerShape(8.dp)).background(Workspace)
                 .semantics { contentDescription = "Editable pressure curve" }
                 .pointerInput(curve) {
-                    fun update(position: Offset) {
+                    var selectedIndex = -1
+                    fun update(position: Offset, choosePoint: Boolean = false) {
                         if (size.width <= 0 || size.height <= 0) return
-                        val index = ((position.x / size.width).coerceIn(0f, 1f) * 4f + .5f).toInt().coerceIn(1, 3)
+                        if (choosePoint || selectedIndex !in 1..3) {
+                            selectedIndex = (1..3).minBy { index ->
+                                val dx = position.x - size.width * index / 4f
+                                val dy = position.y - size.height * (1f - curve[index])
+                                dx * dx + dy * dy
+                            }
+                        }
+                        val index = selectedIndex
                         val output = (1f - position.y / size.height).coerceIn(0f, 1f)
                         val changed = curve.toMutableList()
                         changed[index] = output.coerceIn(changed[index - 1], changed[index + 1])
                         currentOnChange(PressureResponseCurve.normalize(changed))
                     }
-                    detectDragGestures(onDragStart = ::update) { change, _ ->
+                    detectDragGestures(onDragStart = { update(it, choosePoint = true) }, onDragEnd = { selectedIndex = -1 }, onDragCancel = { selectedIndex = -1 }) { change, _ ->
                         change.consume()
                         update(change.position)
                     }
@@ -8822,8 +8907,8 @@ private fun PressureCurveEditor(values: List<Float>, onChange: (List<Float>) -> 
             }
             drawPath(path, Sage, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3f))
             curve.forEachIndexed { index, output ->
-                drawCircle(Color.White, 7f, Offset(index.toFloat() / curve.lastIndex * size.width, size.height - output * size.height))
-                drawCircle(Sage, 5f, Offset(index.toFloat() / curve.lastIndex * size.width, size.height - output * size.height))
+                drawCircle(Color.White, 11f, Offset(index.toFloat() / curve.lastIndex * size.width, size.height - output * size.height))
+                drawCircle(Sage, 8f, Offset(index.toFloat() / curve.lastIndex * size.width, size.height - output * size.height))
             }
         }
         Text(tr("Drag the three inner points. The curve applies to every pen and pressure-sensitive eraser.", "拖动中间三个控制点；曲线会应用于所有画笔及支持压感的橡皮。"), color = MutedInk, fontSize = 10.sp)
