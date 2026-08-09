@@ -16,6 +16,7 @@ import app.inkloom.model.EditorTool
 import app.inkloom.model.ImportedBrush
 import app.inkloom.settings.AppSettings
 import app.inkloom.settings.EraserPreset
+import app.inkloom.engine.v2.render.EngineV2ActiveStrokeSurface
 import app.inkloom.ui.InkCanvasView
 import app.inkloom.ui.applyBrushConfiguration
 import java.io.File
@@ -64,9 +65,45 @@ class RealBrushCorpusRenderingTest {
             }
 
             representatives.forEach { brush -> assertBrushCommitsAndRenders(brush) }
+            assertSutBrushKeepsRealTimePreview(representatives.first { it.format == BrushFormat.SUT })
             assertEquals(setOf(BrushFormat.PROCREATE, BrushFormat.SUT, BrushFormat.ABR), representatives.mapTo(linkedSetOf(), ImportedBrush::format))
         } finally {
             assetRoot.deleteRecursively()
+        }
+    }
+
+    private fun assertSutBrushKeepsRealTimePreview(brush: ImportedBrush) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val bitmap = Bitmap.createBitmap(1000, 1000, Bitmap.Config.ARGB_8888)
+        val view = InkCanvasView(instrumentation.targetContext).apply {
+            layout(0, 0, 1000, 1000)
+            applyBrushConfiguration(EditorTool.PEN, AppSettings(), brush, brush.defaultSize.coerceIn(20f, 140f), 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
+            prepareBrushAssetsNow()
+        }
+        view.activeStrokeSurface = object : EngineV2ActiveStrokeSurface {
+            override fun render(strokes: List<app.inkloom.document.InkStroke>) {
+                view.drawEngineV2ActiveStrokes(Canvas(bitmap), strokes, incrementalStampDraw = true)
+            }
+            override fun commit(strokes: List<app.inkloom.document.InkStroke>) = Unit
+            override fun cancel() { bitmap.eraseColor(Color.TRANSPARENT) }
+        }
+        try {
+            val frameTimes = ArrayList<Long>(90)
+            instrumentation.runOnMainSync {
+                view.onTouchEvent(stylusEvent(MotionEvent.ACTION_DOWN, 120f, 620f, 100L))
+                repeat(90) { index ->
+                    view.onTouchEvent(stylusEvent(MotionEvent.ACTION_MOVE, 128f + index * 8f, 620f + (index % 7) * 3f, 110L + index))
+                    val started = android.os.SystemClock.elapsedRealtimeNanos()
+                    view.flushEngineV2ActiveFrame()
+                    if (index >= 8) frameTimes += android.os.SystemClock.elapsedRealtimeNanos() - started
+                }
+                view.onTouchEvent(stylusEvent(MotionEvent.ACTION_UP, 860f, 640f, 220L))
+            }
+            val sorted = frameTimes.sorted()
+            val p95Ms = sorted[(sorted.size * 95 / 100).coerceAtMost(sorted.lastIndex)] / 1_000_000f
+            assertTrue("Real SUT ${brush.name} preview p95 was ${p95Ms}ms", p95Ms < 16.7f)
+        } finally {
+            bitmap.recycle()
         }
     }
 
