@@ -9,6 +9,7 @@ import android.view.MotionEvent
 import android.view.ViewGroup
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.hasAnyDescendant
@@ -38,6 +39,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsActions
 import app.inkloom.importer.BrushGroupStore
 import app.inkloom.document.PageTemplateStore
+import app.inkloom.document.PageElement
+import app.inkloom.document.FileDocumentStore
 import app.inkloom.document.SpecialRulerMode
 import app.inkloom.settings.AppSettingsStore
 import app.inkloom.settings.ShortcutAction
@@ -693,6 +696,96 @@ class InkloomLaunchTest {
         assertEquals(app.inkloom.document.GradientKind.DIAMOND, settings.gradientKind)
         assertEquals(app.inkloom.document.GradientEdgeMode.REPEAT, settings.gradientEdgeMode)
         assertEquals(3, settings.gradientStops.size)
+    }
+
+    @Test fun gradientHandlesRemainEditableAfterCommit() {
+        createNotebookAndOpenEditor()
+
+        composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onAllNodesWithText("Gradient").onLast().performClick()
+        composeRule.waitForIdle()
+
+        val view = findInkCanvasView()!!
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val downTime = SystemClock.uptimeMillis()
+            val properties = arrayOf(MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_STYLUS })
+            fun event(action: Int, x: Float, y: Float, elapsed: Long): MotionEvent = MotionEvent.obtain(
+                downTime,
+                downTime + elapsed,
+                action,
+                1,
+                properties,
+                arrayOf(MotionEvent.PointerCoords().apply { this.x = x; this.y = y; pressure = .7f; size = .05f }),
+                0,
+                0,
+                1f,
+                1f,
+                0,
+                0,
+                InputDevice.SOURCE_STYLUS,
+                0,
+            )
+            listOf(
+                event(MotionEvent.ACTION_DOWN, view.width * .2f, view.height * .3f, 0),
+                event(MotionEvent.ACTION_MOVE, view.width * .8f, view.height * .7f, 8),
+                event(MotionEvent.ACTION_MOVE, view.width * .82f, view.height * .72f, 16),
+                event(MotionEvent.ACTION_UP, view.width * .82f, view.height * .72f, 20),
+            ).forEach { motion -> try { view.dispatchTouchEvent(motion) } finally { motion.recycle() } }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithContentDescription("Selection").performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithContentDescription("Ink canvas").performTouchInput { click(center) }
+        composeRule.waitForIdle()
+
+        val store = app.inkloom.document.FileDocumentStore(composeRule.activity.filesDir)
+        val documentId = store.list().maxByOrNull { it.createdAt }!!.id
+        val before = store.get(documentId)!!.pages.single().elements.filterIsInstance<PageElement.Shape>().single { it.gradientEndArgb != null }
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            org.junit.Assert.assertEquals(app.inkloom.model.EditorTool.SELECT, view.tool)
+            val editable = view.javaClass.getDeclaredField("editableGradient").apply { isAccessible = true }.get(view)
+            org.junit.Assert.assertNotNull("editableGradient must be set when a gradient is selected", editable)
+            val downTime = SystemClock.uptimeMillis()
+            val properties = arrayOf(MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_STYLUS })
+            fun event(action: Int, x: Float, y: Float, elapsed: Long): MotionEvent = MotionEvent.obtain(
+                downTime,
+                downTime + elapsed,
+                action,
+                1,
+                properties,
+                arrayOf(MotionEvent.PointerCoords().apply { this.x = x; this.y = y; pressure = .7f; size = .05f }),
+                0,
+                0,
+                1f,
+                1f,
+                0,
+                0,
+                InputDevice.SOURCE_STYLUS,
+                0,
+            )
+            val startX = view.width * before.gradientStartX
+            val startY = view.height * before.gradientStartY
+            listOf(
+                event(MotionEvent.ACTION_DOWN, startX, startY, 0),
+                event(MotionEvent.ACTION_MOVE, startX + view.width * .2f, startY - view.height * .15f, 10),
+                event(MotionEvent.ACTION_MOVE, startX + view.width * .22f, startY - view.height * .18f, 20),
+                event(MotionEvent.ACTION_UP, startX + view.width * .22f, startY - view.height * .18f, 24),
+            ).forEach { motion -> try { view.dispatchTouchEvent(motion) } finally { motion.recycle() } }
+        }
+        composeRule.waitUntil(5_000) {
+            val current = store.get(documentId)!!.pages.single().elements.filterIsInstance<PageElement.Shape>().single { it.id == before.id }
+            current.gradientStartX != before.gradientStartX || current.gradientStartY != before.gradientStartY
+        }
+
+        val after = store.get(documentId)!!.pages.single().elements.filterIsInstance<PageElement.Shape>().single { it.id == before.id }
+        assertTrue(
+            "Dragging the start handle must change gradientStart (${before.gradientStartX},${before.gradientStartY})->(${after.gradientStartX},${after.gradientStartY})",
+            after.gradientStartX != before.gradientStartX || after.gradientStartY != before.gradientStartY,
+        )
+        org.junit.Assert.assertEquals("The end handle must stay anchored while dragging start", before.gradientEndX, after.gradientEndX, .001f)
     }
 
     @Test fun layerPanelCreatesFoldersMovesLayersAndCollapsesChildren() {

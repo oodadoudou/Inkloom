@@ -66,8 +66,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.stylusHoverIcon
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -76,12 +79,11 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -4513,6 +4515,8 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.gradientDefinition = gradientDefinition
                 view.gradientAngleSnapEnabled = settings.gradientAngleSnapEnabled
                 view.gradientAngleSnapDegrees = settings.gradientAngleSnapDegrees
+                view.editableGradient = (renderedPage.elements.firstOrNull { it.id == selectedElementId } as? PageElement.Shape)?.takeIf { it.gradientDefinition() != null && tool == EditorTool.SELECT }
+                view.onGradientHandleChanged = { updated -> onElement(documentId, page.id, PageCropTransform.unproject(updated, page.crop)) }
                 view.shortcutBindings = settings.shortcutBindings
                 view.shortcutAxisBindings = settings.shortcutAxisBindings
                 view.shortcutButtonBindings = settings.shortcutButtonBindings
@@ -4610,6 +4614,8 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.gradientDefinition = gradientDefinition
                 view.gradientAngleSnapEnabled = settings.gradientAngleSnapEnabled
                 view.gradientAngleSnapDegrees = settings.gradientAngleSnapDegrees
+                view.editableGradient = (renderedPage.elements.firstOrNull { it.id == selectedElementId } as? PageElement.Shape)?.takeIf { it.gradientDefinition() != null && tool == EditorTool.SELECT }
+                view.onGradientHandleChanged = { updated -> onElement(documentId, page.id, PageCropTransform.unproject(updated, page.crop)) }
                 view.shortcutBindings = settings.shortcutBindings
                 view.shortcutAxisBindings = settings.shortcutAxisBindings
                 view.shortcutButtonBindings = settings.shortcutButtonBindings
@@ -4885,12 +4891,46 @@ private fun ObjectElementView(
     var stickyInkEditing by remember(element.id) { mutableStateOf(false) }
     val objectWidth = (canvasWidth * (element.width / page.width)).coerceIn(54.dp, canvasWidth)
     val objectHeight = (canvasHeight * (element.height / page.height)).coerceIn(42.dp, canvasHeight)
-    val gestureModifier = if (editable) Modifier.pointerInput(element.id, canvasWidthPx, canvasHeightPx) {
-        detectDragGestures(
-            onDragStart = { onSelect() },
-            onDragEnd = { onChange(moveElement(element, dragX / canvasWidthPx, dragY / canvasHeightPx)); dragX = 0f; dragY = 0f },
-            onDragCancel = { dragX = 0f; dragY = 0f },
-        ) { change, amount -> change.consume(); dragX += amount.x; dragY += amount.y }
+    val gradientForHandles = (element as? PageElement.Shape)?.takeIf { selected && editable && it.gradientDefinition() != null }
+    val gestureModifier = if (editable) Modifier.pointerInput(element.id, canvasWidthPx, canvasHeightPx, gradientForHandles != null) {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            val passToCanvas = gradientForHandles != null && run {
+                val handles = listOf(
+                    (gradientForHandles.gradientStartX * canvasWidthPx) to (gradientForHandles.gradientStartY * canvasHeightPx),
+                    (gradientForHandles.gradientEndX * canvasWidthPx) to (gradientForHandles.gradientEndY * canvasHeightPx),
+                )
+                val radius = viewConfiguration.touchSlop * 3f
+                handles.any { (hx, hy) ->
+                    val dx = down.position.x - hx; val dy = down.position.y - hy
+                    (dx * dx + dy * dy) <= radius * radius
+                }
+            }
+            if (passToCanvas) {
+                return@awaitEachGesture
+            }
+            onSelect()
+            var dx = 0f
+            var dy = 0f
+            while (true) {
+                val event = awaitPointerEvent()
+                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                if (event.changes.size > 1) {
+                    change.consume()
+                    dragX = 0f; dragY = 0f
+                    break
+                }
+                dx += change.positionChange().x
+                dy += change.positionChange().y
+                change.consume()
+                dragX = dx; dragY = dy
+                if (!change.pressed) break
+            }
+            if (dx != 0f || dy != 0f) {
+                onChange(moveElement(element, dx / canvasWidthPx, dy / canvasHeightPx))
+            }
+            dragX = 0f; dragY = 0f
+        }
     } else Modifier
     Box(
         modifier
@@ -5062,6 +5102,7 @@ private fun ObjectElementView(
         onDismiss = { stickyInkEditing = false },
     )
 }
+
 
 @Composable
 private fun StickyInkEditorDialog(
@@ -8357,7 +8398,7 @@ private fun ImportedBrushTile(
                                 dragX = 0f; dragY = 0f
                             },
                             onDragCancel = { dragX = 0f; dragY = 0f },
-                        ) { change, amount -> change.consume(); dragX += amount.x; dragY += amount.y }
+        ) { change, amount -> change.consume(); dragX += amount.x; dragY += amount.y }
                     },
                     tint = MutedInk,
                 )

@@ -696,6 +696,10 @@ class InkCanvasView(context: Context) : View(context) {
     var gradientDefinition: GradientDefinition = GradientDefinition(stops = listOf(GradientColorStop(0f, 0xFF111111L), GradientColorStop(1f, 0xFFFFFFFFL)))
     var gradientAngleSnapEnabled: Boolean = false
     var gradientAngleSnapDegrees: Float = 45f
+    var editableGradient: PageElement.Shape? = null
+    var onGradientHandleChanged: (PageElement.Shape) -> Unit = {}
+    private var gradientGestureHandle: Int = -1
+    private var gradientGestureStart: PageElement.Shape? = null
     /** Paint-bucket fill: receives the fill mask bitmap (page-local pixels) plus the
      *  mask's bounding box in normalized page coordinates, the fill color and opacity.
      *  The host persists the mask and creates a [PageElement.Fill]. */
@@ -970,6 +974,7 @@ class InkCanvasView(context: Context) : View(context) {
         drawLaserTrail(canvas, SystemClock.uptimeMillis())
         drawFillPreview(canvas)
         drawGradientPreview(canvas)
+        drawGradientHandles(canvas)
         drawBrushSizePreview(canvas)
         drawStylusHoverCursor(canvas)
     }
@@ -1638,6 +1643,7 @@ class InkCanvasView(context: Context) : View(context) {
             specialRulerGestureHandle = null
             specialRulerGestureStart = null
         }
+        if (!viewportGestureActive && handleGradientGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
         if (!viewportGestureActive && handleSpecialRulerGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
         if (!viewportGestureActive && handlePerspectiveGuideGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
         if (!viewportGestureActive && handleCanvasGuideGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
@@ -2397,6 +2403,11 @@ class InkCanvasView(context: Context) : View(context) {
         specialRulerGestureHandle = null
         specialRulerGestureStart = null
         activeSpecialRulerConstraint = null
+        if (gradientGestureHandle >= 0) {
+            gradientGestureStart?.let { editableGradient = it }
+            gradientGestureHandle = -1
+            gradientGestureStart = null
+        }
         shapeStart = null
         shapeEnd = null
         gradientStart = null
@@ -2705,6 +2716,94 @@ class InkCanvasView(context: Context) : View(context) {
         height.toFloat(),
         GUIDE_SNAP_TOLERANCE_DP * resources.displayMetrics.density,
     )
+
+    private fun gradientHandlePoint(element: PageElement.Shape, isStart: Boolean): Pair<Float, Float> {
+        val nx = if (isStart) element.gradientStartX else element.gradientEndX
+        val ny = if (isStart) element.gradientStartY else element.gradientEndY
+        val pageNx = element.x + nx * element.width / pageModelWidth.coerceAtLeast(1f)
+        val pageNy = element.y + ny * element.height / pageModelHeight.coerceAtLeast(1f)
+        return pageNx * width to pageNy * height
+    }
+
+    private fun hitGradientHandle(element: PageElement.Shape, canvasX: Float, canvasY: Float, touchRadiusPx: Float): Int {
+        val (sx, sy) = gradientHandlePoint(element, true)
+        val (ex, ey) = gradientHandlePoint(element, false)
+        return when {
+            hypot((canvasX - sx).toDouble(), (canvasY - sy).toDouble()) <= touchRadiusPx -> 0
+            hypot((canvasX - ex).toDouble(), (canvasY - ey).toDouble()) <= touchRadiusPx -> 1
+            else -> -1
+        }
+    }
+
+    private fun drawGradientHandles(canvas: Canvas) {
+        val element = editableGradient ?: return
+        if (width <= 0 || height <= 0) return
+        val (sx, sy) = gradientHandlePoint(element, true)
+        val (ex, ey) = gradientHandlePoint(element, false)
+        val density = resources.displayMetrics.density
+        val radius = 9f * density
+        paint.style = Paint.Style.STROKE
+        paint.color = Color.rgb(24, 119, 242)
+        paint.alpha = 255
+        paint.strokeWidth = 2f
+        canvas.drawLine(sx, sy, ex, ey, paint)
+        listOf(sx to sy, ex to ey).forEach { (hx, hy) ->
+            paint.style = Paint.Style.FILL
+            paint.color = Color.WHITE
+            canvas.drawCircle(hx, hy, radius, paint)
+            paint.style = Paint.Style.STROKE
+            paint.color = Color.rgb(24, 119, 242)
+            paint.strokeWidth = 3f
+            canvas.drawCircle(hx, hy, radius, paint)
+        }
+    }
+
+    private fun handleGradientGesture(event: MotionEvent, canvasX: Float, canvasY: Float, isStylus: Boolean, elapsedSinceStylus: Long): Boolean {
+        val element = editableGradient ?: return false
+        val existing = gradientGestureHandle
+        if (existing < 0) {
+            if (forceNavigation || event.actionMasked != MotionEvent.ACTION_DOWN || event.pointerCount != 1 ||
+                (!isStylus && elapsedSinceStylus <= StylusInputClassifier.RECENT_STYLUS_WINDOW_MS) ||
+                (!isStylus && event.getTouchMajor(event.actionIndex) >= StylusInputClassifier.PALM_TOUCH_MAJOR_PX)
+            ) return false
+            val touchRadius = PERSPECTIVE_TOUCH_RADIUS_DP * resources.displayMetrics.density
+            val hit = hitGradientHandle(element, canvasX, canvasY, touchRadius)
+            if (hit < 0) return false
+            gradientGestureHandle = hit
+            gradientGestureStart = element
+            parent?.requestDisallowInterceptTouchEvent(true)
+            return true
+        }
+        val start = gradientGestureStart ?: return false
+        when (event.actionMasked) {
+            MotionEvent.ACTION_MOVE -> if (event.pointerCount == 1) {
+                val pageNx = (canvasX / width.toFloat()).coerceIn(0f, 1f)
+                val pageNy = (canvasY / height.toFloat()).coerceIn(0f, 1f)
+                val localX = ((pageNx - start.x) / (start.width / pageModelWidth.coerceAtLeast(1f))).coerceIn(0f, 1f)
+                val localY = ((pageNy - start.y) / (start.height / pageModelHeight.coerceAtLeast(1f))).coerceIn(0f, 1f)
+                editableGradient = if (existing == 0) {
+                    start.copy(gradientStartX = localX, gradientStartY = localY)
+                } else {
+                    start.copy(gradientEndX = localX, gradientEndY = localY)
+                }
+            }
+            MotionEvent.ACTION_UP -> {
+                editableGradient?.let(onGradientHandleChanged)
+                gradientGestureHandle = -1
+                gradientGestureStart = null
+                parent?.requestDisallowInterceptTouchEvent(false)
+                performClick()
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                editableGradient = start
+                gradientGestureHandle = -1
+                gradientGestureStart = null
+                parent?.requestDisallowInterceptTouchEvent(false)
+            }
+        }
+        invalidate()
+        return true
+    }
 
     private fun handleRulerGesture(event: MotionEvent, canvasX: Float, canvasY: Float, isStylus: Boolean, elapsedSinceStylus: Long): Boolean {
         if (isStylus || !rulerEnabled) return false
