@@ -1490,6 +1490,48 @@ private fun EditorScreen(
                         onClick = { exportMenu = false; onSettingsChange(settings.copy(alignmentGuidesEnabled = !settings.alignmentGuidesEnabled)) },
                     )
                     HorizontalDivider()
+                    Text(tr("Perspective guide", "透视辅助线"), modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), color = MutedInk, fontSize = 11.sp)
+                    PerspectiveGuideMode.entries.forEach { mode ->
+                        val label = when (mode) {
+                            PerspectiveGuideMode.NONE -> tr("Off", "关闭")
+                            PerspectiveGuideMode.ONE_POINT -> tr("One-point perspective", "一点透视")
+                            PerspectiveGuideMode.TWO_POINT -> tr("Two-point perspective", "两点透视")
+                            PerspectiveGuideMode.THREE_POINT -> tr("Three-point perspective", "三点透视")
+                        }
+                        DropdownMenuItem(
+                            text = { Text(label) },
+                            leadingIcon = { Icon(Icons.Outlined.ViewInAr, null) },
+                            trailingIcon = { if (settings.perspectiveGuideMode == mode) Icon(Icons.Outlined.Check, null) },
+                            onClick = {
+                                exportMenu = false
+                                val guide = PerspectiveGuideState.defaultFor(mode)
+                                val points = guide.points
+                                onSettingsChange(settings.copy(
+                                    perspectiveGuideMode = mode,
+                                    perspectiveGuideEditing = mode != PerspectiveGuideMode.NONE,
+                                    perspectivePoint1X = points[0].x,
+                                    perspectivePoint1Y = points[0].y,
+                                    perspectivePoint2X = points[1].x,
+                                    perspectivePoint2Y = points[1].y,
+                                    perspectivePoint3X = points[2].x,
+                                    perspectivePoint3Y = points[2].y,
+                                ))
+                            },
+                        )
+                    }
+                    if (settings.perspectiveGuideMode != PerspectiveGuideMode.NONE) {
+                        DropdownMenuItem(
+                            text = { Text(tr("Drawing Assist", "绘图辅助")) },
+                            trailingIcon = { if (settings.perspectiveGuideAssisted) Icon(Icons.Outlined.Check, null) },
+                            onClick = { exportMenu = false; onSettingsChange(settings.copy(perspectiveGuideAssisted = !settings.perspectiveGuideAssisted)) },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(tr("Edit vanishing points", "编辑消失点")) },
+                            trailingIcon = { if (settings.perspectiveGuideEditing) Icon(Icons.Outlined.Check, null) },
+                            onClick = { exportMenu = false; onSettingsChange(settings.copy(perspectiveGuideEditing = !settings.perspectiveGuideEditing)) },
+                        )
+                    }
+                    HorizontalDivider()
                     DropdownMenuItem(text = { Text(tr("Fit page", "适合页面")) }, leadingIcon = { Icon(Icons.Outlined.CenterFocusStrong, null) }, onClick = { exportMenu = false; fitPage() })
                     DropdownMenuItem(text = { Text(tr("Actual size", "实际大小")) }, onClick = { exportMenu = false; actualSize() })
                     DropdownMenuItem(text = { Text(tr("Fit width", "适合宽度")) }, onClick = { exportMenu = false; fitWidth() })
@@ -2317,6 +2359,20 @@ private fun EditorScreen(
                             alignmentGuidesEnabled = guide.alignmentGuidesEnabled,
                             verticalGuideX = guide.verticalGuideX,
                             horizontalGuideY = guide.horizontalGuideY,
+                        ))
+                    },
+                    onPerspectiveGuideChange = { guide ->
+                        val points = guide.normalized().points
+                        onSettingsChange(settings.copy(
+                            perspectiveGuideMode = guide.mode,
+                            perspectiveGuideAssisted = guide.assisted,
+                            perspectiveGuideEditing = guide.editing,
+                            perspectivePoint1X = points[0].x,
+                            perspectivePoint1Y = points[0].y,
+                            perspectivePoint2X = points[1].x,
+                            perspectivePoint2Y = points[1].y,
+                            perspectivePoint3X = points[2].x,
+                            perspectivePoint3Y = points[2].y,
                         ))
                     },
                 )
@@ -4249,7 +4305,7 @@ private fun pageTemplateKind(template: PageTemplate): String = when (template.ba
 }
 
 @Composable
-private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit) {
+private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val backgroundVisible = page.layers.firstOrNull { it.role == LayerRole.BACKGROUND }?.visible != false
     val background = remember(page.id, page.background, page.backgroundRotationQuarterTurns, page.crop, backgroundVisible) { if (backgroundVisible) runCatching { assets.renderBackground(page.background, 1200, page.backgroundRotationQuarterTurns, page.crop) }.getOrNull() else null }
@@ -4276,6 +4332,16 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
     DisposableEffect(layerElementBitmaps) { onDispose { layerElementBitmaps.values.forEach(LayerElementBitmaps::recycle) } }
     val rulerGuide = RulerGuideState(settings.rulerCenterX, settings.rulerCenterY, settings.rulerAngleDegrees, settings.rulerSnapDegrees).normalized()
     val canvasGuide = CanvasGuideState(settings.gridSnapEnabled, settings.gridSpacing, settings.alignmentGuidesEnabled, settings.verticalGuideX, settings.horizontalGuideY).normalized()
+    val perspectiveGuide = PerspectiveGuideState(
+        mode = settings.perspectiveGuideMode,
+        assisted = settings.perspectiveGuideAssisted,
+        editing = settings.perspectiveGuideEditing,
+        points = listOf(
+            PerspectiveGuidePoint(settings.perspectivePoint1X, settings.perspectivePoint1Y),
+            PerspectiveGuidePoint(settings.perspectivePoint2X, settings.perspectivePoint2Y),
+            PerspectiveGuidePoint(settings.perspectivePoint3X, settings.perspectivePoint3Y),
+        ),
+    ).normalized()
     BoxWithConstraints(
         modifier
             .graphicsLayer(
@@ -4353,6 +4419,8 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onRulerGuideChanged = onRulerGuideChange
                 view.canvasGuideState = canvasGuide
                 view.onCanvasGuideChanged = onCanvasGuideChange
+                view.perspectiveGuideState = perspectiveGuide
+                view.onPerspectiveGuideChanged = onPerspectiveGuideChange
                 view.shortcutBindings = settings.shortcutBindings
                 view.shortcutAxisBindings = settings.shortcutAxisBindings
                 view.shortcutButtonBindings = settings.shortcutButtonBindings
@@ -4439,6 +4507,8 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onRulerGuideChanged = onRulerGuideChange
                 view.canvasGuideState = canvasGuide
                 view.onCanvasGuideChanged = onCanvasGuideChange
+                view.perspectiveGuideState = perspectiveGuide
+                view.onPerspectiveGuideChanged = onPerspectiveGuideChange
                 view.shortcutBindings = settings.shortcutBindings
                 view.shortcutAxisBindings = settings.shortcutAxisBindings
                 view.shortcutButtonBindings = settings.shortcutButtonBindings
