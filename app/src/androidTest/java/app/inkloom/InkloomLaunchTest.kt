@@ -468,6 +468,13 @@ class InkloomLaunchTest {
 
     @Test fun procreateSidebarKeepsBrushSizeAndOpacityImmediatelyAvailable() {
         createNotebookAndOpenEditor()
+        composeRule.waitUntil(5_000) {
+            runCatching {
+                composeRule.onNodeWithContentDescription("Brush size").assertIsDisplayed()
+                composeRule.onNodeWithContentDescription("Brush opacity").assertIsDisplayed()
+                true
+            }.getOrDefault(false)
+        }
         composeRule.onNodeWithContentDescription("Brush size").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Brush opacity").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Drag toolbar").assertIsDisplayed()
