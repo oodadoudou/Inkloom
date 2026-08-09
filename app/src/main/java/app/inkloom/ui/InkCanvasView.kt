@@ -97,6 +97,8 @@ import app.inkloom.document.TwoPointerRotationGesture
 import app.inkloom.document.ThreeFingerTapRedoGesture
 import app.inkloom.document.ViewportTransform
 import app.inkloom.document.FloodFill
+import app.inkloom.document.LiquifyMode
+import app.inkloom.document.VectorLiquify
 import app.inkloom.document.WaterEdge
 import app.inkloom.model.EditorTool
 import app.inkloom.model.SymmetryMode
@@ -185,6 +187,10 @@ class InkCanvasView(context: Context) : View(context) {
     private var wetSmudgeRuntime: EngineV2WetSmudgeRuntime? = null
     private var smudgeCurrentColor = 0
     private var smudgeSegments = mutableListOf<Pair<Int, MutableList<StrokePoint>>>()
+    private var liquifyBefore: List<InkStroke>? = null
+    private var liquifyLastX = 0f
+    private var liquifyLastY = 0f
+    private var liquifyChanged = false
     private var movingSelection = false
     private var selectionMoved = false
     private var selectionTransformMode = TRANSFORM_NONE
@@ -585,6 +591,11 @@ class InkCanvasView(context: Context) : View(context) {
         set(value) { field = value.coerceIn(0f, 1f) }
     var selectionMode: SelectionMode = SelectionMode.REPLACE
     var selectionFilter: SelectionFilter = SelectionFilter.ALL
+    var liquifyMode: LiquifyMode = LiquifyMode.PUSH
+    var liquifyStrength: Float = .55f
+        set(value) { field = value.coerceIn(.01f, 1f) }
+    var liquifyHardness: Float = .5f
+        set(value) { field = value.coerceIn(0f, 1f) }
     var pageModelWidth: Float = 1600f
     var pageModelHeight: Float = 2263f
     var onStrokeCommitted: (InkStroke) -> Unit = {}
@@ -760,7 +771,7 @@ class InkCanvasView(context: Context) : View(context) {
         val stylus = toolType == MotionEvent.TOOL_TYPE_STYLUS || toolType == MotionEvent.TOOL_TYPE_ERASER
         if (stylus) dispatchStylusButtonTransitions(updateStylusButtonState(event.buttonState))
         val cursorTool = if (toolType == MotionEvent.TOOL_TYPE_ERASER) EditorTool.ERASER else resolveTool(event, toolType)
-        val drawableTool = cursorTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.SMUDGE)
+        val drawableTool = cursorTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.SMUDGE, EditorTool.LIQUIFY)
         when (event.actionMasked) {
             MotionEvent.ACTION_HOVER_ENTER, MotionEvent.ACTION_HOVER_MOVE -> {
                 if (!stylus || !drawableTool) {
@@ -1383,7 +1394,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (tool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.EYEDROPPER, EditorTool.SELECT, EditorTool.SHAPE, EditorTool.LASER, EditorTool.FILL, EditorTool.SMUDGE)) return false
+        if (tool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.EYEDROPPER, EditorTool.SELECT, EditorTool.SHAPE, EditorTool.LASER, EditorTool.FILL, EditorTool.SMUDGE, EditorTool.LIQUIFY)) return false
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             if (hoverCursorVisible) { hoverCursorVisible = false; invalidate() }
             if (!hasFocus()) requestFocus()
@@ -1397,7 +1408,7 @@ class InkCanvasView(context: Context) : View(context) {
             viewportGestureActive = false
             externalViewportGestureContact = false
             pageContactRejected = false
-            if (isStylus && tool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.SMUDGE)) {
+            if (isStylus && tool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.SMUDGE, EditorTool.LIQUIFY)) {
                 requestUnbufferedDispatch(event)
             }
         }
@@ -1702,6 +1713,12 @@ class InkCanvasView(context: Context) : View(context) {
                     invalidate()
                     return true
                 }
+                if (activeTool == EditorTool.LIQUIFY) {
+                    parent?.requestDisallowInterceptTouchEvent(true)
+                    beginLiquifyGesture(normalizedX, normalizedY)
+                    invalidate()
+                    return true
+                }
                 clearActiveStrokeInput()
                 beginActiveStrokePreview()
                 currentStrokeId = java.util.UUID.randomUUID().toString()
@@ -1723,6 +1740,10 @@ class InkCanvasView(context: Context) : View(context) {
                 else if (activeTool == EditorTool.SMUDGE) {
                     for (i in 0 until event.historySize) historicalCanvasPoint(event, 0, i).let { point -> extendSmudge(point.first / width.coerceAtLeast(1), point.second / height.coerceAtLeast(1)) }
                     extendSmudge(normalizedX, normalizedY)
+                }
+                else if (activeTool == EditorTool.LIQUIFY) {
+                    for (i in 0 until event.historySize) historicalCanvasPoint(event, 0, i).let { point -> extendLiquify(point.first / width.coerceAtLeast(1), point.second / height.coerceAtLeast(1)) }
+                    extendLiquify(normalizedX, normalizedY)
                 }
                 else if (activeTool == EditorTool.EYEDROPPER) {
                     onColorSampled(sampleRenderedColor(inputPoint.first, inputPoint.second))
@@ -1834,6 +1855,7 @@ class InkCanvasView(context: Context) : View(context) {
                     if (activeTool == EditorTool.LASER) laserTrail.cancelActive()
                     if (activeTool == EditorTool.FILL) cancelFillGesture()
                     if (activeTool == EditorTool.SMUDGE) cancelSmudgeGesture()
+                    if (activeTool == EditorTool.LIQUIFY) cancelLiquifyGesture()
                     shapeStart = null; shapeEnd = null; shapeFreeformPoints.clear()
                     if (activeTool == EditorTool.ERASER) cancelEraserGesture()
                     selectionGestureBefore?.let { restoreStrokeSnapshot(it) }
@@ -1843,6 +1865,9 @@ class InkCanvasView(context: Context) : View(context) {
                     parent?.requestDisallowInterceptTouchEvent(false)
                 } else if (activeTool == EditorTool.SMUDGE) {
                     commitSmudgeGesture()
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                } else if (activeTool == EditorTool.LIQUIFY) {
+                    finishLiquifyGesture()
                     parent?.requestDisallowInterceptTouchEvent(false)
                 } else if (activeTool == EditorTool.EYEDROPPER) {
                     onColorSampled(sampleRenderedColor(inputPoint.first, inputPoint.second))
@@ -2027,6 +2052,7 @@ class InkCanvasView(context: Context) : View(context) {
         laserTrail.cancelActive()
         cancelFillGesture()
         cancelSmudgeGesture()
+        cancelLiquifyGesture()
         rulerGestureMode = null
         canvasGuideGestureMode = null
         activeCanvasSnapConstraint = null
@@ -2865,6 +2891,57 @@ class InkCanvasView(context: Context) : View(context) {
         wetSmudgeRuntime?.close()
         wetSmudgeRuntime = null
         smudgeSegments.clear()
+        invalidate()
+    }
+
+    private fun beginLiquifyGesture(x: Float, y: Float) {
+        liquifyBefore = strokes.toList()
+        liquifyLastX = x.coerceIn(0f, 1f)
+        liquifyLastY = y.coerceIn(0f, 1f)
+        liquifyChanged = false
+    }
+
+    private fun extendLiquify(x: Float, y: Float) {
+        val nextX = x.coerceIn(0f, 1f)
+        val nextY = y.coerceIn(0f, 1f)
+        val beforeStep = strokes.toList()
+        val radius = (baseWidth.coerceIn(2f, 800f) / REFERENCE_WIDTH).coerceAtLeast(.002f)
+        val warped = VectorLiquify.apply(
+            strokes = beforeStep,
+            centerX = nextX,
+            centerY = nextY,
+            deltaX = nextX - liquifyLastX,
+            deltaY = nextY - liquifyLastY,
+            radius = radius,
+            strength = liquifyStrength,
+            hardness = liquifyHardness,
+            pageWidth = pageModelWidth,
+            pageHeight = pageModelHeight,
+            mode = liquifyMode,
+        ) { stroke -> stroke.layerId == activeLayerId && stroke.id !in protectedStrokeIds && stroke.layerId !in protectedLayerIds }
+        if (warped != beforeStep) {
+            strokes.clear()
+            strokes.addAll(warped)
+            liquifyChanged = true
+            invalidateStrokeCache(beforeStep, warped)
+        }
+        liquifyLastX = nextX
+        liquifyLastY = nextY
+    }
+
+    private fun finishLiquifyGesture() {
+        val before = liquifyBefore
+        if (before != null && liquifyChanged) commitStrokeEdit(before, strokes)
+        liquifyBefore = null
+        liquifyChanged = false
+        invalidate()
+    }
+
+    private fun cancelLiquifyGesture() {
+        val before = liquifyBefore
+        if (before != null && liquifyChanged) restoreStrokeSnapshot(before)
+        liquifyBefore = null
+        liquifyChanged = false
         invalidate()
     }
 

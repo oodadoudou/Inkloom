@@ -213,6 +213,6 @@ data class ImportedBrush(
     val semanticMappings: List<BrushSemanticMapping> = emptyList(),
 )
 
-enum class EditorTool { PEN, HIGHLIGHTER, ERASER, EYEDROPPER, SELECT, SHAPE, TEXT, NOTE, LINK, IMAGE, AUDIO, LASER, FILL, SMUDGE }
+enum class EditorTool { PEN, HIGHLIGHTER, ERASER, EYEDROPPER, SELECT, SHAPE, TEXT, NOTE, LINK, IMAGE, AUDIO, LASER, FILL, GRADIENT, SMUDGE, LIQUIFY, CORRECT_LINE }
 
 enum class SymmetryMode { NONE, HORIZONTAL, VERTICAL, QUADRANT, RADIAL_4, RADIAL_6, RADIAL_8 }

@@ -1203,7 +1203,7 @@ private fun EditorScreen(
         onUpdateBrush(usedBrush)
         selectedBrushId = usedBrush.id
         activeBrush = usedBrush
-        val chosenTool = if (BrushRoleClassifier.isEraser(usedBrush)) EditorTool.ERASER else EditorTool.PEN
+        val chosenTool = BrushRoleClassifier.editorTool(usedBrush)
         brushSize = savedBrushSize(usedBrush, usedBrush.defaultSize, chosenTool)
         brushOpacity = usedBrush.defaultOpacity
         tool = chosenTool
@@ -1350,6 +1350,11 @@ private fun EditorScreen(
                 DropdownMenu(expanded = exportMenu, onDismissRequest = { exportMenu = false }) {
                     listOf(
                         Triple(EditorTool.EYEDROPPER, Icons.Outlined.Colorize, tr("Eyedropper", "吸管")),
+                        Triple(EditorTool.FILL, Icons.Outlined.FormatColorFill, tr("Fill", "填充")),
+                        Triple(EditorTool.GRADIENT, Icons.Outlined.Gradient, tr("Gradient", "渐变")),
+                        Triple(EditorTool.SMUDGE, Icons.Outlined.BlurOn, tr("Blend", "混色")),
+                        Triple(EditorTool.LIQUIFY, Icons.Outlined.Waves, tr("Liquify", "液化")),
+                        Triple(EditorTool.CORRECT_LINE, Icons.Outlined.AutoFixHigh, tr("Correct line", "线条修正")),
                         Triple(EditorTool.SHAPE, Icons.Outlined.Category, tr("Shape", "形状")),
                         Triple(EditorTool.TEXT, Icons.Outlined.Title, tr("Text", "文字")),
                         Triple(EditorTool.NOTE, Icons.Outlined.StickyNote2, tr("Note", "便笺")),
@@ -1369,6 +1374,8 @@ private fun EditorScreen(
                                 EditorTool.LINK -> { insertLinkTitle = ""; insertLinkUrl = ""; linkInsertOpen = true }
                                 EditorTool.IMAGE -> { imageInsertOpen = true; tool = EditorTool.SELECT; canvasView?.tool = EditorTool.SELECT }
                                 EditorTool.AUDIO -> if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) audioOpen = true else audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                EditorTool.SMUDGE -> systemBrushCatalog().firstOrNull(BrushRoleClassifier::isBlend)?.let(::selectWorkspaceBrush)
+                                EditorTool.LIQUIFY -> systemBrushCatalog().firstOrNull(BrushRoleClassifier::isLiquify)?.let(::selectWorkspaceBrush)
                                 else -> Unit
                             }
                         })
@@ -2304,6 +2311,18 @@ private fun EditorScreen(
                             selectedBrushId = remembered?.id
                             brushOpacity = remembered?.defaultOpacity ?: 1f
                             brushSize = savedBrushSize(remembered, remembered?.defaultSize ?: settings.eraserSize, EditorTool.ERASER)
+                        }
+                        EditorTool.SMUDGE -> {
+                            val remembered = activeBrush?.takeIf(BrushRoleClassifier::isBlend) ?: systemBrushCatalog().first(BrushRoleClassifier::isBlend)
+                            activeBrush = remembered; selectedBrushId = remembered.id
+                            brushOpacity = remembered.defaultOpacity
+                            brushSize = savedBrushSize(remembered, remembered.defaultSize, EditorTool.SMUDGE)
+                        }
+                        EditorTool.LIQUIFY -> {
+                            val remembered = activeBrush?.takeIf(BrushRoleClassifier::isLiquify) ?: systemBrushCatalog().first(BrushRoleClassifier::isLiquify)
+                            activeBrush = remembered; selectedBrushId = remembered.id
+                            brushOpacity = 1f
+                            brushSize = savedBrushSize(remembered, remembered.defaultSize, EditorTool.LIQUIFY)
                         }
                         EditorTool.SHAPE -> shapeInsertOpen = true
                         EditorTool.TEXT -> { insertText = ""; textInsertOpen = true }
@@ -4245,6 +4264,14 @@ internal fun InkCanvasView.applyBrushConfiguration(
     selectionShape = settings.selectionShape
     selectionBrushSize = settings.selectionBrushSize
     selectionThreshold = settings.selectionThreshold
+    liquifyMode = when {
+        activeBrush?.tags?.any { it.equals("twirl", true) } == true -> LiquifyMode.TWIRL_CLOCKWISE
+        activeBrush?.tags?.any { it.equals("pinch", true) } == true -> LiquifyMode.PINCH
+        activeBrush?.tags?.any { it.equals("expand", true) } == true -> LiquifyMode.EXPAND
+        else -> LiquifyMode.PUSH
+    }
+    liquifyStrength = activeBrush?.flow ?: .55f
+    liquifyHardness = activeBrush?.hardness ?: .5f
     selectionMode = settings.selectionMode
     selectionFilter = settings.selectionFilter
     baseWidth = brushSize
@@ -5160,12 +5187,15 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
         HorizontalDivider(Modifier.width(30.dp).padding(vertical = 2.dp), color = OutlineSoft)
     }
     Box {
-        CompactToolbarIconButton(onClick = { onMoreToolsOpen(true) }, description = tr("More tools", "更多工具"), selected = rulerEnabled || gridSnapEnabled || alignmentGuidesEnabled || tool in setOf(EditorTool.EYEDROPPER, EditorTool.FILL, EditorTool.SMUDGE, EditorTool.SHAPE, EditorTool.TEXT, EditorTool.NOTE, EditorTool.LINK, EditorTool.IMAGE, EditorTool.AUDIO, EditorTool.LASER)) { Icon(Icons.Outlined.Apps, null, Modifier.size(20.dp)) }
+        CompactToolbarIconButton(onClick = { onMoreToolsOpen(true) }, description = tr("More tools", "更多工具"), selected = rulerEnabled || gridSnapEnabled || alignmentGuidesEnabled || tool in setOf(EditorTool.EYEDROPPER, EditorTool.FILL, EditorTool.GRADIENT, EditorTool.SMUDGE, EditorTool.LIQUIFY, EditorTool.CORRECT_LINE, EditorTool.SHAPE, EditorTool.TEXT, EditorTool.NOTE, EditorTool.LINK, EditorTool.IMAGE, EditorTool.AUDIO, EditorTool.LASER)) { Icon(Icons.Outlined.Apps, null, Modifier.size(20.dp)) }
         DropdownMenu(expanded = moreToolsOpen, onDismissRequest = { onMoreToolsOpen(false) }) {
             val unsortedTools = listOf(
                 Triple(EditorTool.EYEDROPPER, Icons.Outlined.Colorize, tr("Eyedropper", "吸管")),
                 Triple(EditorTool.FILL, Icons.Outlined.FormatColorFill, tr("Paint bucket", "油漆桶")),
-                Triple(EditorTool.SMUDGE, Icons.Outlined.Gesture, tr("Smudge", "涂抹")),
+                Triple(EditorTool.GRADIENT, Icons.Outlined.Gradient, tr("Gradient", "渐变")),
+                Triple(EditorTool.SMUDGE, Icons.Outlined.BlurOn, tr("Blend", "混色")),
+                Triple(EditorTool.LIQUIFY, Icons.Outlined.Waves, tr("Liquify", "液化")),
+                Triple(EditorTool.CORRECT_LINE, Icons.Outlined.AutoFixHigh, tr("Correct line", "线条修正")),
                 Triple(EditorTool.SHAPE, Icons.Outlined.Category, tr("Shape", "形状")),
                 Triple(EditorTool.TEXT, Icons.Outlined.Title, tr("Text", "文字")),
                 Triple(EditorTool.NOTE, Icons.Outlined.StickyNote2, tr("Note", "便笺")),
@@ -5251,15 +5281,15 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
         CompactToolbarIconButton(onClick = { onControlsOpen(true) }, description = tr("Tool controls", "工具参数")) { Icon(Icons.Outlined.Tune, null, Modifier.size(20.dp)) }
         DropdownMenu(expanded = controlsOpen, onDismissRequest = { onControlsOpen(false) }, modifier = Modifier.widthIn(min = 300.dp, max = 360.dp)) {
             Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("${when (tool) { EditorTool.PEN -> tr("Pen", "钢笔"); EditorTool.HIGHLIGHTER -> tr("Marker", "标记笔"); EditorTool.ERASER -> tr("Eraser", "橡皮"); EditorTool.SELECT -> tr("Selection", "选择"); else -> tool.name.lowercase().replaceFirstChar(Char::uppercase) }} ${tr("controls", "参数")}", fontWeight = FontWeight.SemiBold)
-                if (tool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER)) {
+                Text("${when (tool) { EditorTool.PEN -> tr("Pen", "钢笔"); EditorTool.HIGHLIGHTER -> tr("Marker", "标记笔"); EditorTool.ERASER -> tr("Eraser", "橡皮"); EditorTool.SMUDGE -> tr("Blend", "混色"); EditorTool.LIQUIFY -> tr("Liquify", "液化"); EditorTool.CORRECT_LINE -> tr("Correct line", "线条修正"); EditorTool.GRADIENT -> tr("Gradient", "渐变"); EditorTool.SELECT -> tr("Selection", "选择"); else -> tool.name.lowercase().replaceFirstChar(Char::uppercase) }} ${tr("controls", "参数")}", fontWeight = FontWeight.SemiBold)
+                if (tool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.SMUDGE, EditorTool.LIQUIFY)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(tr("Size", "大小"), Modifier.weight(1f), color = MutedInk)
                         IconButton(onClick = { onSize(brushSize - maxOf(.5f, brushSize * .12f)) }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Remove, tr("Smaller", "减小")) }
                         Text(if (brushSize < 10f) "%.1f".format(brushSize) else brushSize.toInt().toString(), Modifier.width(38.dp), textAlign = TextAlign.Center)
                         IconButton(onClick = { onSize(brushSize + maxOf(.5f, brushSize * .12f)) }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Add, tr("Larger", "增大")) }
                     }
-                    if (tool != EditorTool.ERASER) {
+                    if (tool !in setOf(EditorTool.ERASER, EditorTool.LIQUIFY)) {
                         Text("${tr("Opacity", "不透明度")}  ${(brushOpacity * 100).toInt()}%", color = MutedInk, fontSize = 12.sp)
                         Slider(value = brushOpacity, onValueChange = onOpacity, valueRange = .05f..1f)
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { Text(tr("Color", "颜色"), Modifier.weight(1f), color = MutedInk); BrushColorPicker(brushColor, onColor) }
@@ -6783,10 +6813,21 @@ private fun systemBrushCatalog(): List<ImportedBrush> = listOf(
     ImportedBrush(id = "system-hb-pencil", name = "HB Pencil", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Pencil", defaultSize = 7f, hardness = .62f, stabilization = .04f),
     ImportedBrush(id = "system-studio-pen", name = "Studio Pen", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Pen", defaultSize = 9f, hardness = 1f, stabilization = .18f),
     ImportedBrush(id = "system-monoline", name = "Monoline", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Pen", defaultSize = 18f, hardness = 1f, stabilization = .28f),
-    ImportedBrush(id = "system-marker", name = "Studio Marker", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Brushes", defaultSize = 34f, defaultOpacity = .68f, hardness = .7f),
+    ImportedBrush(id = "system-watercolor", name = "Round Watercolor", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Brush", defaultSize = 42f, defaultOpacity = .62f, hardness = .42f, watercolor = true, colorMix = .58f, paintMix = .18f),
+    ImportedBrush(id = "system-oil-paint", name = "Thick Oil", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Brush", defaultSize = 48f, hardness = .78f, colorMix = .35f, paintMix = .7f, thickness = .72f),
+    ImportedBrush(id = "system-marker", name = "Studio Marker", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Brush", defaultSize = 34f, defaultOpacity = .68f, hardness = .7f),
     ImportedBrush(id = "system-soft-airbrush", name = "Soft Airbrush", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Airbrush", defaultSize = 92f, defaultOpacity = .35f, hardness = .08f, blur = .35f),
+    ImportedBrush(id = "system-spray-airbrush", name = "Droplet Airbrush", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Airbrush", defaultSize = 76f, defaultOpacity = .42f, spray = true, sprayParticleSize = 7f, sprayDensity = 1.8f, spraySpread = 1.15f, sprayParticleRandomRotationDegrees = 180f),
+    ImportedBrush(id = "system-decoration-sparkle", name = "Sparkle Scatter", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Decoration", defaultSize = 54f, spacing = .28f, spray = true, sprayParticleSize = 10f, sprayDensity = 1.4f, spraySpread = .9f, stampCount = 3, randomRotationDegrees = 180f, tags = listOf("decoration", "effect")),
+    ImportedBrush(id = "system-decoration-hatching", name = "Cross Hatching", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Decoration", defaultSize = 18f, spacing = .18f, stampCount = 4, stampCountJitter = .3f, strokeRotationJitterDegrees = 90f, tags = listOf("decoration", "hatching")),
     ImportedBrush(id = "system-hard-eraser", name = "Hard Eraser", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Erasers", defaultSize = 24f, tags = listOf("eraser"), hardness = 1f),
     ImportedBrush(id = "system-soft-eraser", name = "Soft Eraser", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Erasers", defaultSize = 68f, tags = listOf("eraser"), hardness = .12f, blur = .28f),
+    ImportedBrush(id = "system-blend-smear", name = "Finger Smear", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Blend", defaultSize = 56f, colorMix = .82f, paintMix = 0f, tags = listOf("blend", "smear")),
+    ImportedBrush(id = "system-blend-soft", name = "Soft Blend", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Blend", defaultSize = 82f, hardness = .08f, blur = .48f, colorMix = .62f, tags = listOf("blend", "blur")),
+    ImportedBrush(id = "system-liquify-push", name = "Push", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Liquify", defaultSize = 120f, tags = listOf("liquify", "push")),
+    ImportedBrush(id = "system-liquify-twirl", name = "Twirl", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Liquify", defaultSize = 140f, tags = listOf("liquify", "twirl")),
+    ImportedBrush(id = "system-liquify-pinch", name = "Pinch", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Liquify", defaultSize = 150f, tags = listOf("liquify", "pinch")),
+    ImportedBrush(id = "system-liquify-expand", name = "Expand", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Liquify", defaultSize = 150f, tags = listOf("liquify", "expand")),
 )
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -6818,7 +6859,7 @@ private fun ProcreateBrushLibrary(
     onPanelDragCancel: () -> Unit,
 ) {
     val systemBrushes = remember { systemBrushCatalog() }
-    val systemCategories = listOf("Pen", "Pencil", "Brushes", "Erasers", "Airbrush")
+    val systemCategories = listOf("Pen", "Pencil", "Brush", "Erasers", "Airbrush", "Decoration", "Blend", "Liquify")
     val importedCategories = BrushGroupOperations.treePaths(brushes, registeredGroups)
     var collapsedGroupPaths by remember { mutableStateOf(emptySet<String>()) }
     val visibleImportedCategories = importedCategories.filter { path ->
@@ -6860,7 +6901,10 @@ private fun ProcreateBrushLibrary(
     @Composable fun categoryLabel(category: String): String = when (category) {
         "Pen" -> tr("Pen", "钢笔")
         "Pencil" -> tr("Pencil", "铅笔")
-        "Brushes" -> tr("Brushes", "画笔")
+        "Brush" -> tr("Brush", "画笔")
+        "Decoration" -> tr("Decoration", "装饰")
+        "Blend" -> tr("Blend", "混色")
+        "Liquify" -> tr("Liquify", "液化")
         "Airbrush" -> tr("Airbrush", "喷枪")
         "Erasers" -> tr("Erasers", "橡皮")
         else -> BrushGroupOperations.displayName(category).ifBlank { category }
