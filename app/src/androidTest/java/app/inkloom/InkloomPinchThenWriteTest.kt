@@ -147,6 +147,50 @@ class InkloomPinchThenWriteTest {
         assertEquals("Finger must draw immediately after a native pinch", 2, strokeCount())
     }
 
+    @Test fun selectionModeUsesStableViewportPlaneAcrossRepeatedPinchPanThenWrites() {
+        openEditor()
+        composeRule.onNodeWithContentDescription("Selection").performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onRoot().performTouchInput {
+            down(0, center + Offset(-130f, -70f))
+            down(1, center + Offset(130f, -70f))
+            repeat(10) { step ->
+                val spread = 145f + step * 18f
+                val driftX = step * 7f
+                val driftY = step * 5f
+                moveTo(0, center + Offset(-spread + driftX, -70f + driftY), delayMillis = 10)
+                moveTo(1, center + Offset(spread + driftX, -70f + driftY), delayMillis = 10)
+            }
+            up(1)
+            up(0)
+        }
+        composeRule.waitForIdle()
+
+        val view = requireNotNull(findInkCanvasView())
+        assertTrue("Selection pinch scale must stay finite", view.viewportScale.isFinite() && view.viewportScale in 1.5f..8f)
+        assertTrue("Selection pinch pan must stay finite", view.viewportPanX.isFinite() && view.viewportPanY.isFinite())
+        assertTrue("Selection pinch must not fly horizontally", kotlin.math.abs(view.viewportPanX) < 2_500f)
+        assertTrue("Selection pinch must not fly vertically", kotlin.math.abs(view.viewportPanY) < 2_500f)
+
+        composeRule.onNodeWithContentDescription("Brushes").performClick()
+        runCatching { composeRule.onNodeWithContentDescription("Close brushes panel").performClick() }
+        composeRule.waitForIdle()
+        val proxy = requireNotNull(findInkViewportProxy())
+        val x = proxy.width * .55f
+        val y = proxy.height * .52f
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val downTime = android.os.SystemClock.uptimeMillis()
+            listOf(
+                stylusEvent(android.view.MotionEvent.ACTION_DOWN, x, y, android.view.MotionEvent.TOOL_TYPE_STYLUS, downTime, downTime),
+                stylusEvent(android.view.MotionEvent.ACTION_MOVE, x + 70f, y + 24f, android.view.MotionEvent.TOOL_TYPE_STYLUS, downTime, downTime + 12L),
+                stylusEvent(android.view.MotionEvent.ACTION_UP, x + 95f, y + 35f, android.view.MotionEvent.TOOL_TYPE_STYLUS, downTime, downTime + 24L),
+            ).forEach { event -> proxy.onTouchEvent(event); event.recycle() }
+        }
+        composeRule.waitUntil(10_000) { strokeCount() == 1 }
+        assertEquals(1, strokeCount())
+    }
+
     @Test fun zoomedScreenStylusLandsExactlyUnderThePen() {
         openEditor()
         val view = findInkCanvasView()!!

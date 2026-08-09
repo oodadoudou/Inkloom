@@ -1896,11 +1896,6 @@ private fun EditorScreen(
             ) {
                 val toolbarAreaWidth = maxWidth
                 val toolbarAreaHeight = maxHeight
-                if (tool == EditorTool.SELECT) AndroidView(
-                    factory = { InkViewportTouchProxy(it) },
-                    update = { it.target = canvasView },
-                    modifier = Modifier.fillMaxSize(),
-                )
                 PaperCanvas(
                     modifier = Modifier.fillMaxHeight(.88f).aspectRatio((PageCropTransform.visibleWidth(selectedPage) / PageCropTransform.visibleHeight(selectedPage).coerceAtLeast(1f)).coerceIn(.35f, 2.8f)),
                     tool = tool,
@@ -1921,14 +1916,11 @@ private fun EditorScreen(
                     onZoom = { factor, focusX, focusY ->
                         val view = canvasView ?: return@PaperCanvas
                         val current = ViewportState(view.viewportScale, view.viewportPanX, view.viewportPanY, view.viewportRotationDegrees)
-                        val screenFocus = if (tool == EditorTool.SELECT) {
-                            ViewportTransform.pageToView(focusX, focusY, view.width.toFloat(), view.height.toFloat(), current)
-                        } else focusX to focusY
                         val next = ViewportTransform.zoomAroundScreen(
                             current,
                             factor,
-                            screenFocus.first - view.width / 2f,
-                            screenFocus.second - view.height / 2f,
+                            focusX - view.width / 2f,
+                            focusY - view.height / 2f,
                             geometry = currentViewportGeometry(),
                         )
                         applyViewport(next)
@@ -1942,9 +1934,7 @@ private fun EditorScreen(
                     onPan = { dx, dy ->
                         val view = canvasView ?: return@PaperCanvas
                         val current = ViewportState(view.viewportScale, view.viewportPanX, view.viewportPanY, view.viewportRotationDegrees)
-                        val next = if (tool == EditorTool.SELECT) {
-                            ViewportTransform.panBy(current, dx, dy, geometry = currentViewportGeometry())
-                        } else ViewportTransform.panByScreen(current, dx, dy, geometry = currentViewportGeometry())
+                        val next = ViewportTransform.panByScreen(current, dx, dy, geometry = currentViewportGeometry())
                         applyViewport(next)
                         view.apply { viewportPanX = next.panX; viewportPanY = next.panY }
                     },
@@ -2235,7 +2225,11 @@ private fun EditorScreen(
                         ))
                     },
                 )
-                if (tool != EditorTool.SELECT) AndroidView(
+                // One stable, untransformed input plane owns every pen and navigation packet.
+                // A transformed AndroidView reports feedback-dependent coordinates while it is
+                // itself moving under a pinch, which is the source of selection-mode jitter and
+                // runaway pan. The proxy maps drawing contacts into the page exactly once.
+                AndroidView(
                     factory = { InkViewportTouchProxy(it) },
                     update = { it.target = canvasView },
                     modifier = Modifier.fillMaxSize(),
