@@ -6982,11 +6982,17 @@ private fun ProcreateBrushLibrary(
     var brushDragBounds by remember { mutableStateOf(emptyMap<String, Rect>()) }
     var draggingBrush by remember { mutableStateOf<ImportedBrush?>(null) }
     var brushDragPosition by remember { mutableStateOf<Offset?>(null) }
+    var managingBrushes by remember { mutableStateOf(false) }
+    var selectedBrushIds by remember { mutableStateOf(emptySet<String>()) }
+    val currentSelectedBrushIds by rememberUpdatedState(selectedBrushIds)
+    var batchGroupOperation by remember { mutableStateOf<BrushBatchGroupOperation?>(null) }
+    var confirmBatchDelete by remember { mutableStateOf(false) }
     val currentPanelDrag by rememberUpdatedState(onPanelDrag)
     val currentPanelDragStart by rememberUpdatedState(onPanelDragStart)
     val currentPanelDragEnd by rememberUpdatedState(onPanelDragEnd)
     val currentPanelDragCancel by rememberUpdatedState(onPanelDragCancel)
     val dragDescription = tr("Drag brushes panel", "拖动笔刷面板")
+    val brushManagementDescription = tr("Brush management: ${selectedBrushIds.size} selected", "笔刷管理：已选择 ${selectedBrushIds.size} 支")
     val allLabel = tr("All", "全部")
     val groupCopySuffix = tr("copy", "副本")
     @Composable fun categoryLabel(category: String): String = when (category) {
@@ -6998,15 +7004,33 @@ private fun ProcreateBrushLibrary(
         "Erasers" -> tr("Erasers", "橡皮")
         else -> BrushGroupOperations.displayName(category).ifBlank { category }
     }
-    fun moveBrushIntoGroup(brush: ImportedBrush, group: String) {
-        if (brush.format == BrushFormat.SYSTEM) {
-            val copy = brush.copy(id = UUID.randomUUID().toString(), format = BrushFormat.INKLOOM, groupName = BrushGroupOperations.normalize(group), lastUsedAt = 0L)
-            onReplaceBrushes(brushes + copy)
-            onBrushSelected(copy)
-        } else {
-            onReplaceBrushes(BrushGroupOperations.assignMany(brushes, setOf(brush.id), group))
+    fun finishBrushManagement() {
+        managingBrushes = false
+        selectedBrushIds = emptySet()
+        draggingBrush = null
+        brushDragPosition = null
+    }
+    fun applyBrushGroupOperation(ids: Set<String>, group: String, copy: Boolean) {
+        val normalizedGroup = BrushGroupOperations.normalize(group)
+        val source = (systemBrushes + brushes).filter { it.id in ids }
+        val customIds = source.filterNot { it.format == BrushFormat.SYSTEM }.mapTo(linkedSetOf(), ImportedBrush::id)
+        val retained = if (copy) brushes else BrushGroupOperations.assignMany(brushes, customIds, normalizedGroup)
+        val copies = source.filter { copy || it.format == BrushFormat.SYSTEM }.mapIndexed { index, brush ->
+            brush.copy(
+                id = UUID.randomUUID().toString(),
+                name = if (copy) "${brush.name} $groupCopySuffix" else brush.name,
+                format = BrushFormat.INKLOOM,
+                groupName = normalizedGroup,
+                lastUsedAt = 0L,
+                sortOrder = (brushes.maxOfOrNull(ImportedBrush::sortOrder) ?: -1) + index + 1,
+            )
         }
-        selectedCategory = group
+        onReplaceBrushes(retained + copies)
+        selectedCategory = normalizedGroup.ifBlank { ungroupedLabel }
+        finishBrushManagement()
+    }
+    fun moveBrushIntoGroup(brush: ImportedBrush, group: String) {
+        applyBrushGroupOperation(setOf(brush.id), group, copy = false)
     }
     fun Modifier.longPressBrushDrag(brush: ImportedBrush): Modifier = this
         .onGloballyPositioned { coordinates ->
@@ -7016,7 +7040,8 @@ private fun ProcreateBrushLibrary(
         .pointerInput(brush.id, groupDropBounds) {
             detectDragGesturesAfterLongPress(
                 onDragStart = { local ->
-                    onBrushSelected(brush)
+                    managingBrushes = true
+                    selectedBrushIds = selectedBrushIds + brush.id
                     draggingBrush = brush
                     brushDragPosition = brushDragBounds[brush.id]?.topLeft?.plus(local)
                 },
@@ -7027,7 +7052,7 @@ private fun ProcreateBrushLibrary(
                 onDragEnd = {
                     val position = brushDragPosition
                     val target = position?.let { point -> groupDropBounds.entries.firstOrNull { (_, bounds) -> bounds.contains(point) }?.key }
-                    if (target != null) moveBrushIntoGroup(brush, target) else menuBrush = brush
+                    if (target != null) applyBrushGroupOperation(currentSelectedBrushIds + brush.id, target, copy = false)
                     draggingBrush = null
                     brushDragPosition = null
                 },
@@ -7044,6 +7069,11 @@ private fun ProcreateBrushLibrary(
             ungroupedLabel -> brush.format != BrushFormat.SYSTEM && BrushGroupOperations.normalize(brush.groupName).isBlank()
             else -> if (brush.format == BrushFormat.SYSTEM) brush.groupName == selectedCategory else BrushGroupOperations.isWithin(brush.groupName, selectedCategory)
         }
+    }
+    LaunchedEffect(brushes) {
+        val availableIds = (systemBrushes + brushes).mapTo(linkedSetOf(), ImportedBrush::id)
+        selectedBrushIds = selectedBrushIds.intersect(availableIds)
+        if (managingBrushes && selectedBrushIds.isEmpty()) managingBrushes = false
     }
     val panelShape = RoundedCornerShape(14.dp)
     Surface(
@@ -7104,6 +7134,25 @@ private fun ProcreateBrushLibrary(
                 IconButton(onClick = onClose, modifier = Modifier.size(38.dp)) { Icon(Icons.Outlined.Close, tr("Close brushes panel", "关闭笔刷面板"), tint = Ink) }
             }
             HorizontalDivider(color = OutlineSoft)
+            if (managingBrushes) {
+                Row(
+                    Modifier.fillMaxWidth().height(46.dp).background(Color(0xFFF5F5F5)).padding(horizontal = 8.dp)
+                        .semantics { contentDescription = brushManagementDescription },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(onClick = ::finishBrushManagement, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Close, tr("Exit brush management", "退出笔刷管理")) }
+                    Text("${selectedBrushIds.size} ${tr("selected", "已选择")}", Modifier.weight(1f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    TextButton(onClick = { selectedBrushIds = displayed.mapTo(linkedSetOf(), ImportedBrush::id) }) { Text(tr("All", "全选"), fontSize = 11.sp) }
+                    TextButton(onClick = { batchGroupOperation = BrushBatchGroupOperation.MOVE }, enabled = selectedBrushIds.isNotEmpty()) { Text(tr("Move", "移动"), fontSize = 11.sp) }
+                    TextButton(onClick = { batchGroupOperation = BrushBatchGroupOperation.COPY }, enabled = selectedBrushIds.isNotEmpty()) { Text(tr("Copy", "复制"), fontSize = 11.sp) }
+                    IconButton(
+                        onClick = { confirmBatchDelete = true },
+                        enabled = selectedBrushIds.any { id -> brushes.any { it.id == id } },
+                        modifier = Modifier.size(36.dp),
+                    ) { Icon(Icons.Outlined.Delete, tr("Delete selected brushes", "删除所选笔刷"), tint = MaterialTheme.colorScheme.error) }
+                }
+                HorizontalDivider(color = OutlineSoft)
+            }
             Row(Modifier.weight(1f)) {
                 LazyColumn(
                     Modifier.width(154.dp).fillMaxHeight().background(Color.White).border(1.dp, OutlineSoft),
@@ -7184,19 +7233,24 @@ private fun ProcreateBrushLibrary(
                 ) {
                     items(displayed, key = { it.id }) { brush ->
                         val selected = selectedBrushId == brush.id
+                        val batchSelected = brush.id in selectedBrushIds
                         val brushPresetDescription = tr("Brush preset ${brush.name}", "笔刷预设 ${brush.name}")
+                        val interaction = if (managingBrushes) Modifier.clickable {
+                            selectedBrushIds = if (brush.id in currentSelectedBrushIds) currentSelectedBrushIds - brush.id else currentSelectedBrushIds + brush.id
+                        } else Modifier.longPressBrushDrag(brush).combinedClickable(
+                            onClick = { onBrushSelected(brush) },
+                            onDoubleClick = { if (brush.format != BrushFormat.SYSTEM) editBrush = brush },
+                            onLongClick = { managingBrushes = true; selectedBrushIds = currentSelectedBrushIds + brush.id },
+                        )
                         Column(
-                            Modifier.fillMaxWidth().height(112.dp).semantics { contentDescription = brushPresetDescription }.longPressBrushDrag(brush).clip(RoundedCornerShape(6.dp)).background(if (selected) Color(0xFFE1E1E1) else Color.White).border(1.dp, if (selected) Ink else OutlineSoft, RoundedCornerShape(6.dp)).combinedClickable(
-                                onClick = { onBrushSelected(brush) },
-                                onDoubleClick = { if (brush.format != BrushFormat.SYSTEM) editBrush = brush },
-                                onLongClick = { menuBrush = brush },
-                            ).padding(7.dp),
+                            Modifier.fillMaxWidth().height(112.dp).semantics { contentDescription = brushPresetDescription }.then(interaction).clip(RoundedCornerShape(6.dp)).background(if (batchSelected) Color(0xFFDDE8F7) else if (selected) Color(0xFFE1E1E1) else Color.White).border(1.dp, if (batchSelected || selected) Ink else OutlineSoft, RoundedCornerShape(6.dp)).padding(7.dp),
                         ) {
                             Text(brush.name, color = Ink, fontSize = 10.sp, maxLines = 1)
                             Spacer(Modifier.height(4.dp))
                             Surface(Modifier.fillMaxWidth().weight(1f), shape = RoundedCornerShape(4.dp), color = Color(0xFFF3F3F3)) {
                                 BrushTipPreview(brush, Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 3.dp))
                             }
+                            if (batchSelected) Icon(Icons.Outlined.CheckCircle, null, Modifier.align(Alignment.End).size(17.dp), tint = Ink)
                         }
                     }
                 } else LazyColumn(
@@ -7205,13 +7259,17 @@ private fun ProcreateBrushLibrary(
                 ) {
                     items(displayed, key = { it.id }) { brush ->
                         val selected = selectedBrushId == brush.id
+                        val batchSelected = brush.id in selectedBrushIds
                         val brushPresetDescription = tr("Brush preset ${brush.name}", "笔刷预设 ${brush.name}")
+                        val interaction = if (managingBrushes) Modifier.clickable {
+                            selectedBrushIds = if (brush.id in currentSelectedBrushIds) currentSelectedBrushIds - brush.id else currentSelectedBrushIds + brush.id
+                        } else Modifier.longPressBrushDrag(brush).combinedClickable(
+                            onClick = { onBrushSelected(brush) },
+                            onDoubleClick = { if (brush.format != BrushFormat.SYSTEM) editBrush = brush },
+                            onLongClick = { managingBrushes = true; selectedBrushIds = currentSelectedBrushIds + brush.id },
+                        )
                         Row(
-                            Modifier.fillMaxWidth().height(68.dp).semantics { contentDescription = brushPresetDescription }.longPressBrushDrag(brush).background(if (selected) Color(0xFFE1E1E1) else Color.White).combinedClickable(
-                                onClick = { onBrushSelected(brush) },
-                                onDoubleClick = { if (brush.format != BrushFormat.SYSTEM) editBrush = brush },
-                                onLongClick = { menuBrush = brush },
-                            ).padding(horizontal = 10.dp, vertical = 6.dp),
+                            Modifier.fillMaxWidth().height(68.dp).semantics { contentDescription = brushPresetDescription }.then(interaction).background(if (batchSelected) Color(0xFFDDE8F7) else if (selected) Color(0xFFE1E1E1) else Color.White).padding(horizontal = 10.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Surface(Modifier.width(116.dp).fillMaxHeight(), shape = RoundedCornerShape(4.dp), color = Color(0xFFF3F3F3)) {
@@ -7222,13 +7280,37 @@ private fun ProcreateBrushLibrary(
                                 Text(brush.name, color = Ink, fontSize = 12.sp, maxLines = 1)
                                 Text(BrushGroupOperations.displayName(brush.groupName).ifBlank { ungroupedLabel }, color = MutedInk, fontSize = 9.sp, maxLines = 1)
                             }
-                            if (selected) Icon(Icons.Outlined.Check, null, Modifier.size(18.dp), tint = Ink)
+                            if (batchSelected) Icon(Icons.Outlined.CheckCircle, null, Modifier.size(18.dp), tint = Ink)
+                            else if (selected) Icon(Icons.Outlined.Check, null, Modifier.size(18.dp), tint = Ink)
                         }
                     }
                 }
             }
         }
     }
+    batchGroupOperation?.let { operation ->
+        BrushBatchGroupDialog(
+            count = selectedBrushIds.size,
+            groups = importedCategories,
+            operation = operation,
+            onDismiss = { batchGroupOperation = null },
+            onApply = { group ->
+                applyBrushGroupOperation(selectedBrushIds, group, copy = operation == BrushBatchGroupOperation.COPY)
+                batchGroupOperation = null
+            },
+        )
+    }
+    if (confirmBatchDelete) AlertDialog(
+        onDismissRequest = { confirmBatchDelete = false },
+        title = { Text(tr("Delete selected brushes?", "删除所选笔刷？")) },
+        text = { Text(tr("System brushes stay in their built-in sets. Selected imported brushes will be removed; existing strokes remain unchanged.", "系统笔刷会保留在默认分组中；所选导入笔刷将被删除，已有笔画不受影响。")) },
+        confirmButton = { Button(onClick = {
+            onReplaceBrushes(brushes.filterNot { it.id in selectedBrushIds })
+            confirmBatchDelete = false
+            finishBrushManagement()
+        }) { Text(tr("Delete", "删除")) } },
+        dismissButton = { TextButton(onClick = { confirmBatchDelete = false }) { Text(tr("Cancel", "取消")) } },
+    )
     menuBrush?.let { brush ->
         AlertDialog(
             onDismissRequest = { menuBrush = null },

@@ -103,11 +103,31 @@ class BrushBatchManagementTest {
         composeRule.onNodeWithContentDescription("Brush preset Batch A").performTouchInput { longClick() }
         composeRule.onNodeWithText("Move").performClick()
         composeRule.onAllNodesWithText("Target").onLast().performClick()
-        composeRule.onNodeWithText("Move").performClick()
+        composeRule.onNodeWithText("Move selected").performClick()
 
         val store = BrushMetadataStore(composeRule.activity)
         composeRule.waitUntil(5_000) { store.load().firstOrNull { it.id == "batch-a" }?.groupName == "Target" }
         assertEquals("Target", store.load().single { it.id == "batch-a" }.groupName)
+    }
+
+    @Test fun longPressEntersManagementAndMovesMultipleSelectedBrushes() {
+        openBrushes()
+        composeRule.onNodeWithContentDescription("Brush preset Batch A").performTouchInput { longClick() }
+        composeRule.onNodeWithContentDescription("Brush management: 1 selected").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Brush preset Batch B").performClick()
+        composeRule.onNodeWithContentDescription("Brush management: 2 selected").assertIsDisplayed()
+        composeRule.onNodeWithText("Move").performClick()
+        composeRule.onAllNodesWithText("Target").onLast().performClick()
+        composeRule.onNodeWithText("Move selected").performClick()
+
+        val store = BrushMetadataStore(composeRule.activity)
+        composeRule.waitUntil(5_000) {
+            store.load().filter { it.id in setOf("batch-a", "batch-b") }.all { it.groupName == "Target" }
+        }
+        assertEquals(
+            setOf("batch-a", "batch-b"),
+            store.load().filter { it.groupName == "Target" && it.id.startsWith("batch-") }.mapTo(linkedSetOf(), ImportedBrush::id),
+        )
     }
 
     @Test fun longPressGroupRenamesItsWholeSubtree() {
