@@ -28,7 +28,6 @@ import androidx.annotation.VisibleForTesting
 import app.inkloom.engine.v2.traceEngineV2
 import app.inkloom.engine.v2.input.NativeStrokeInputModeler
 import app.inkloom.engine.v2.brush.EngineV2BrushEvaluator
-import app.inkloom.engine.v2.brush.EngineV2WetSmudgeRuntime
 import app.inkloom.engine.v2.render.EngineV2ActiveStrokeSurface
 import app.inkloom.engine.v2.render.EngineV2CommittedTileScene
 import app.inkloom.engine.v2.render.EngineV2StampBatchRenderer
@@ -103,6 +102,7 @@ import app.inkloom.document.ViewportTransform
 import app.inkloom.document.FloodFill
 import app.inkloom.document.LiquifyMode
 import app.inkloom.document.VectorLiquify
+import app.inkloom.document.VectorBlend
 import app.inkloom.document.WaterEdge
 import app.inkloom.model.EditorTool
 import app.inkloom.model.SymmetryMode
@@ -190,9 +190,10 @@ class InkCanvasView(context: Context) : View(context) {
     private var fillPreviewWidth = 0f
     private var fillPreviewHeight = 0f
     private val fillPreviewPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { colorFilter = PorterDuffColorFilter(Color.BLACK, PorterDuff.Mode.SRC_IN) }
-    private var wetSmudgeRuntime: EngineV2WetSmudgeRuntime? = null
-    private var smudgeCurrentColor = 0
-    private var smudgeSegments = mutableListOf<Pair<Int, MutableList<StrokePoint>>>()
+    private var smudgeBefore: List<InkStroke>? = null
+    private var smudgeLastX = 0f
+    private var smudgeLastY = 0f
+    private var smudgeChanged = false
     private var liquifyBefore: List<InkStroke>? = null
     private var liquifyLastX = 0f
     private var liquifyLastY = 0f
@@ -858,7 +859,6 @@ class InkCanvasView(context: Context) : View(context) {
         drawLaserTrail(canvas, SystemClock.uptimeMillis())
         drawFillPreview(canvas)
         drawGradientPreview(canvas)
-        drawSmudgePreview(canvas)
         drawBrushSizePreview(canvas)
         drawStylusHoverCursor(canvas)
     }
@@ -2895,75 +2895,52 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun beginSmudgeGesture(normalizedX: Float, normalizedY: Float) {
-        wetSmudgeRuntime?.close()
-        wetSmudgeRuntime = EngineV2WetSmudgeRuntime(
-            source = renderDocumentPageBitmap(width.coerceAtLeast(1), height.coerceAtLeast(1)),
-            startX = normalizedX,
-            startY = normalizedY,
-            radiusPx = baseWidth.coerceAtLeast(1f) * width.coerceAtLeast(1) / REFERENCE_WIDTH / 2f,
-            pickup = (.35f + brushColorMix.coerceIn(0f, 1f) * .65f),
-            load = brushPaintMix.coerceIn(0f, 1f) * .6f,
-            deposit = (inkOpacity * .65f).coerceIn(.05f, 1f),
-            brushColor = inkColor,
-        )
-        smudgeSegments.clear()
-        smudgeCurrentColor = quantizeSmudgeColor(wetSmudgeRuntime?.color ?: inkColor)
-        smudgeSegments += smudgeCurrentColor to mutableListOf(StrokePoint(normalizedX.coerceIn(0f, 1f), normalizedY.coerceIn(0f, 1f), 1f, SystemClock.uptimeMillis()))
-        invalidate()
+        smudgeBefore = strokes.toList()
+        smudgeLastX = normalizedX.coerceIn(0f, 1f)
+        smudgeLastY = normalizedY.coerceIn(0f, 1f)
+        smudgeChanged = false
     }
 
     private fun extendSmudge(normalizedX: Float, normalizedY: Float) {
         val x = normalizedX.coerceIn(0f, 1f)
         val y = normalizedY.coerceIn(0f, 1f)
-        val color = quantizeSmudgeColor(wetSmudgeRuntime?.move(x, y, inkColor) ?: inkColor)
-        if (color != smudgeCurrentColor && smudgeSegments.lastOrNull()?.second?.isNotEmpty() == true) {
-            val previousPoint = smudgeSegments.last().second.last()
-            smudgeSegments += color to mutableListOf(previousPoint)
-            smudgeCurrentColor = color
+        val beforeStep = strokes.toList()
+        val changed = VectorBlend.apply(
+            strokes = beforeStep,
+            centerX = x,
+            centerY = y,
+            deltaX = x - smudgeLastX,
+            deltaY = y - smudgeLastY,
+            radius = (baseWidth.coerceIn(2f, 800f) / REFERENCE_WIDTH).coerceAtLeast(.002f),
+            strength = (.3f + brushColorMix.coerceIn(0f, 1f) * .7f),
+            hardness = brushHardness,
+            pageWidth = pageModelWidth,
+            pageHeight = pageModelHeight,
+        ) { stroke -> stroke.layerId == activeLayerId && stroke.id !in protectedStrokeIds && stroke.layerId !in protectedLayerIds }
+        if (changed != beforeStep) {
+            strokes.clear()
+            strokes.addAll(changed)
+            smudgeChanged = true
+            invalidateStrokeCache(beforeStep, changed)
         }
-        smudgeSegments.lastOrNull()?.second?.let { points ->
-            if (points.isEmpty() || hypot((points.last().x - x).toDouble(), (points.last().y - y).toDouble()).toFloat() >= .0006f) points += StrokePoint(x, y, 1f, SystemClock.uptimeMillis())
-        }
+        smudgeLastX = x
+        smudgeLastY = y
         invalidate()
     }
 
-    private fun quantizeSmudgeColor(color: Int): Int {
-        fun channel(value: Int): Int = ((value + SMUDGE_COLOR_QUANTIZATION / 2) / SMUDGE_COLOR_QUANTIZATION * SMUDGE_COLOR_QUANTIZATION).coerceIn(0, 255)
-        return Color.argb(
-            channel(Color.alpha(color)),
-            channel(Color.red(color)),
-            channel(Color.green(color)),
-            channel(Color.blue(color)),
-        )
-    }
-
     private fun commitSmudgeGesture() {
-        val before = strokes.toList()
-        val newStrokes = smudgeSegments.mapNotNull { (color, points) ->
-            if (points.size < 2) null
-            else makeStroke(points).copy(
-                id = java.util.UUID.randomUUID().toString(),
-                colorArgb = color.toUInt().toLong(),
-                opacity = (inkOpacity * .55f).coerceIn(.05f, 1f),
-                width = (baseWidth * .8f).coerceAtLeast(1f),
-                grainCompositeMode = grainCompositeMode,
-            )
-        }
-        if (newStrokes.isNotEmpty()) {
-            strokes.addAll(newStrokes)
-            invalidateStrokeCache(emptyList(), newStrokes)
-            commitStrokeEdit(before, strokes)
-        }
-        wetSmudgeRuntime?.close()
-        wetSmudgeRuntime = null
-        smudgeSegments.clear()
+        val before = smudgeBefore
+        if (before != null && smudgeChanged) commitStrokeEdit(before, strokes)
+        smudgeBefore = null
+        smudgeChanged = false
         invalidate()
     }
 
     private fun cancelSmudgeGesture() {
-        wetSmudgeRuntime?.close()
-        wetSmudgeRuntime = null
-        smudgeSegments.clear()
+        val before = smudgeBefore
+        if (before != null && smudgeChanged) restoreStrokeSnapshot(before)
+        smudgeBefore = null
+        smudgeChanged = false
         invalidate()
     }
 
@@ -3068,21 +3045,6 @@ class InkCanvasView(context: Context) : View(context) {
         correctionStrokeId = null
         correctionChanged = false
         invalidate()
-    }
-
-    private fun drawSmudgePreview(canvas: Canvas) {
-        if (smudgeSegments.isEmpty()) return
-        val previewStrokes = smudgeSegments.mapNotNull { (color, points) ->
-            if (points.size < 2) null
-            else makeStroke(points).copy(
-                id = java.util.UUID.randomUUID().toString(),
-                colorArgb = color.toUInt().toLong(),
-                opacity = (inkOpacity * .55f).coerceIn(.05f, 1f),
-                width = (baseWidth * .8f).coerceAtLeast(1f),
-                grainCompositeMode = grainCompositeMode,
-            )
-        }
-        if (previewStrokes.isNotEmpty()) drawLayeredStrokes(canvas, previewStrokes)
     }
 
     private fun normalizeAngleDelta(first: Float, second: Float): Float = ((first - second + 180f).mod(360f)) - 180f
@@ -3561,7 +3523,6 @@ class InkCanvasView(context: Context) : View(context) {
         const val MAX_CACHE_PIXELS = 16_000_000L
         const val FILL_MAX_SAMPLE_DIMENSION = 1_600f
         const val FILL_PREVIEW_THROTTLE_MS = 32L
-        const val SMUDGE_COLOR_QUANTIZATION = 16
         const val MAX_ERASER_SAMPLES_PER_EVENT = 256
         const val CONTINUOUS_PLOT_INTERVAL_MS = 32L
         const val QUICKSHAPE_HOLD_MS = 120L
