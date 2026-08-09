@@ -79,6 +79,7 @@ data class AppSettings(
     val eraserSize: Float = 24f,
     val eraserPreset: EraserPreset = EraserPreset.NORMAL_FREE,
     val selectionShape: SelectionShape = SelectionShape.FREEFORM,
+    val selectionBrushSize: Float = 42f,
     val selectionMode: SelectionMode = SelectionMode.REPLACE,
     val selectionFilter: SelectionFilter = SelectionFilter.ALL,
     val nonDestructiveEraser: Boolean = false,
@@ -105,7 +106,7 @@ enum class StylusButtonAction {
 enum class ToolbarDock { FREE, TOP, BOTTOM, LEFT, RIGHT }
 enum class WorkspacePanelDock { LEFT, FREE, RIGHT, BOTTOM }
 enum class WorkspacePanelMode { EXPANDED, COLLAPSED, ICON_ONLY }
-enum class SelectionShape { FREEFORM, RECTANGLE }
+enum class SelectionShape { FREEFORM, RECTANGLE, ELLIPSE, BRUSH }
 enum class SelectionMode { REPLACE, ADD, SUBTRACT, INTERSECT }
 enum class SelectionFilter { ALL, ACTIVE_LAYER, CURRENT_BRUSH, CURRENT_COLOR }
 
@@ -196,6 +197,7 @@ class AppSettingsStore(context: Context) {
             eraserSize = preferences.getFloat("eraserSize", 24f).coerceIn(.5f, 400f),
             eraserPreset = enumValue(preferences.getString("eraserPreset", null), EraserPreset.NORMAL_FREE),
             selectionShape = enumValue(preferences.getString("selectionShape", null), SelectionShape.FREEFORM),
+            selectionBrushSize = preferences.getFloat("selectionBrushSize", 42f).coerceIn(4f, 300f),
             selectionMode = enumValue(preferences.getString("selectionMode", null), SelectionMode.REPLACE),
             selectionFilter = enumValue(preferences.getString("selectionFilter", null), SelectionFilter.ALL),
             nonDestructiveEraser = preferences.getBoolean("nonDestructiveEraser", false),
@@ -296,6 +298,7 @@ class AppSettingsStore(context: Context) {
             .putFloat("eraserSize", persisted.eraserSize)
             .putString("eraserPreset", persisted.eraserPreset.name)
             .putString("selectionShape", persisted.selectionShape.name)
+            .putFloat("selectionBrushSize", persisted.selectionBrushSize.coerceIn(4f, 300f))
             .putString("selectionMode", persisted.selectionMode.name)
             .putString("selectionFilter", persisted.selectionFilter.name)
             .putBoolean("nonDestructiveEraser", persisted.nonDestructiveEraser)

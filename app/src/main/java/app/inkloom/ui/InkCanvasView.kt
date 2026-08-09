@@ -192,6 +192,8 @@ class InkCanvasView(context: Context) : View(context) {
     private var selectionTransformCenterY = 0f
     private var selectionTransformStartDistance = 0f
     private var selectionTransformStartAngle = 0f
+    private var selectionTransformStartXSpan = 0f
+    private var selectionTransformStartYSpan = 0f
     private val selectionHandlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; color = Color.WHITE }
     private val selectionHandleStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 2f; color = Color.rgb(24, 119, 242) }
     private var lastX = 0f
@@ -571,6 +573,8 @@ class InkCanvasView(context: Context) : View(context) {
     var secondaryButtonTrigger: ShortcutTrigger = ShortcutTrigger.HOLD
     var shapeKind: ShapeKind = ShapeKind.RECTANGLE
     var selectionShape: SelectionShape = SelectionShape.FREEFORM
+    var selectionBrushSize: Float = 42f
+        set(value) { field = value.coerceIn(4f, 300f); invalidate() }
     var selectionMode: SelectionMode = SelectionMode.REPLACE
     var selectionFilter: SelectionFilter = SelectionFilter.ALL
     var pageModelWidth: Float = 1600f
@@ -808,7 +812,7 @@ class InkCanvasView(context: Context) : View(context) {
             lassoPath.reset()
             lassoPath.moveTo(selectionPreview.first().x * width, selectionPreview.first().y * height)
             for (index in 1 until selectionPreview.size) lassoPath.lineTo(selectionPreview[index].x * width, selectionPreview[index].y * height)
-            if (selectionShape == SelectionShape.RECTANGLE) lassoPath.close()
+            if (selectionShape != SelectionShape.FREEFORM) lassoPath.close()
             paint.style = Paint.Style.STROKE; paint.color = Color.rgb(98, 98, 98); paint.alpha = 220; paint.strokeWidth = 2f
             canvas.drawPath(lassoPath, paint)
         }
@@ -1640,6 +1644,8 @@ class InkCanvasView(context: Context) : View(context) {
                             val dy = (normalizedY - selectionTransformCenterY) * pageModelHeight
                             selectionTransformStartDistance = hypot(dx.toDouble(), dy.toDouble()).toFloat().coerceAtLeast(.0001f)
                             selectionTransformStartAngle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
+                            selectionTransformStartXSpan = kotlin.math.abs(dx).coerceAtLeast(.0001f)
+                            selectionTransformStartYSpan = kotlin.math.abs(dy).coerceAtLeast(.0001f)
                             lastX = normalizedX; lastY = normalizedY
                             invalidate(); return true
                         }
@@ -1720,6 +1726,18 @@ class InkCanvasView(context: Context) : View(context) {
                         selectionMoved = true
                         lastX = normalizedX; lastY = normalizedY
                         invalidate()
+                    } else if (selectionTransformMode == TRANSFORM_SCALE_X) {
+                        val dx = kotlin.math.abs((normalizedX - selectionTransformCenterX) * pageModelWidth)
+                        applySelectionTransform(dx / selectionTransformStartXSpan, 1f, 0f)
+                        selectionMoved = true
+                        lastX = normalizedX; lastY = normalizedY
+                        invalidate()
+                    } else if (selectionTransformMode == TRANSFORM_SCALE_Y) {
+                        val dy = kotlin.math.abs((normalizedY - selectionTransformCenterY) * pageModelHeight)
+                        applySelectionTransform(1f, dy / selectionTransformStartYSpan, 0f)
+                        selectionMoved = true
+                        lastX = normalizedX; lastY = normalizedY
+                        invalidate()
                     } else if (selectionTransformMode == TRANSFORM_ROTATE) {
                         val dx = (normalizedX - selectionTransformCenterX) * pageModelWidth
                         val dy = (normalizedY - selectionTransformCenterY) * pageModelHeight
@@ -1764,7 +1782,7 @@ class InkCanvasView(context: Context) : View(context) {
                         lastX = normalizedX; lastY = normalizedY
                         invalidateStrokeCache(movedBefore, strokes.filter { it.id in selectedStrokeIds })
                     } else {
-                        if (selectionShape == SelectionShape.FREEFORM) {
+                        if (selectionShape == SelectionShape.FREEFORM || selectionShape == SelectionShape.BRUSH) {
                             for (i in 0 until event.historySize) historicalCanvasPoint(event, 0, i).let { point -> appendSelectionPoint(point.first / width.coerceAtLeast(1), point.second / height.coerceAtLeast(1)) }
                         }
                         appendSelectionPoint(normalizedX, normalizedY)
@@ -2396,7 +2414,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun appendSelectionPoint(x: Float, y: Float) {
-        if (selectionShape == SelectionShape.FREEFORM) {
+        if (selectionShape == SelectionShape.FREEFORM || selectionShape == SelectionShape.BRUSH) {
             appendLassoPoint(x, y)
             return
         }
@@ -2411,6 +2429,8 @@ class InkCanvasView(context: Context) : View(context) {
     private fun selectionPolygon(): List<StrokePoint> = when (selectionShape) {
         SelectionShape.FREEFORM -> lassoPoints
         SelectionShape.RECTANGLE -> if (lassoPoints.size >= 2) LassoGeometry.rectangle(lassoPoints.first(), lassoPoints.last()) else emptyList()
+        SelectionShape.ELLIPSE -> if (lassoPoints.size >= 2) LassoGeometry.ellipse(lassoPoints.first(), lassoPoints.last()) else emptyList()
+        SelectionShape.BRUSH -> LassoGeometry.brushCorridor(lassoPoints, selectionBrushSize, pageModelWidth, pageModelHeight)
     }
 
     private fun selectWithLasso(polygon: List<StrokePoint>) {
@@ -2813,7 +2833,7 @@ class InkCanvasView(context: Context) : View(context) {
         return if (left.isFinite()) android.graphics.RectF(left, top, right, bottom) else null
     }
 
-    /** Returns TRANSFORM_SCALE / TRANSFORM_ROTATE when the touch lands on a handle, else TRANSFORM_NONE. */
+    /** Returns a corner, edge, or rotation transform when the touch lands on a handle. */
     private fun hitSelectionHandle(normalizedX: Float, normalizedY: Float): Int {
         if (selectedStrokeIds.isEmpty()) return TRANSFORM_NONE
         val bounds = selectionBounds() ?: return TRANSFORM_NONE
@@ -2826,16 +2846,24 @@ class InkCanvasView(context: Context) : View(context) {
         if (boundsWidthPx < 1f && boundsHeightPx < 1f) return TRANSFORM_NONE
         val scaleHandleRadius = if (boundsWidthPx < SELECTION_HANDLE_TOUCH_PX * 2f || boundsHeightPx < SELECTION_HANDLE_TOUCH_PX * 2f) SELECTION_SMALL_HANDLE_TOUCH_PX else SELECTION_HANDLE_TOUCH_PX
         if (corners.any { hypot(((it.first - normalizedX) * width).toDouble(), ((it.second - normalizedY) * height).toDouble()).toFloat() <= scaleHandleRadius }) return TRANSFORM_SCALE
+        val horizontalEdges = listOf(bounds.left to bounds.centerY(), bounds.right to bounds.centerY())
+        if (horizontalEdges.any { hypot(((it.first - normalizedX) * width).toDouble(), ((it.second - normalizedY) * height).toDouble()).toFloat() <= scaleHandleRadius }) return TRANSFORM_SCALE_X
+        val verticalEdges = listOf(bounds.centerX() to bounds.top, bounds.centerX() to bounds.bottom)
+        if (verticalEdges.any { hypot(((it.first - normalizedX) * width).toDouble(), ((it.second - normalizedY) * height).toDouble()).toFloat() <= scaleHandleRadius }) return TRANSFORM_SCALE_Y
         val rotY = (bounds.top - SELECTION_ROTATE_HANDLE_OFFSET_PX / height.coerceAtLeast(1))
         if (hypot(((bounds.centerX() - normalizedX) * width).toDouble(), ((rotY - normalizedY) * height).toDouble()).toFloat() <= SELECTION_HANDLE_TOUCH_PX) return TRANSFORM_ROTATE
         return TRANSFORM_NONE
     }
 
     private fun applySelectionTransform(scale: Float, rotation: Float) {
+        applySelectionTransform(scale, scale, rotation)
+    }
+
+    private fun applySelectionTransform(scaleX: Float, scaleY: Float, rotation: Float) {
         val before = selectionGestureBefore ?: return
         val selectedSet = selectedStrokeIds.toHashSet()
         val movedBefore = strokes.filter { it.id in selectedSet }
-        val transformed = StrokeTransform.transform(before.filter { it.id in selectedSet }, selectionTransformCenterX, selectionTransformCenterY, scale, rotation, 0f, 0f, pageModelWidth, pageModelHeight).associateBy(InkStroke::id)
+        val transformed = StrokeTransform.transformNonUniform(before.filter { it.id in selectedSet }, selectionTransformCenterX, selectionTransformCenterY, scaleX.coerceAtLeast(.01f), scaleY.coerceAtLeast(.01f), rotation, 0f, 0f, pageModelWidth, pageModelHeight).associateBy(InkStroke::id)
         for (i in strokes.indices) {
             val replacement = transformed[strokes[i].id]
             if (replacement != null) strokes[i] = replacement
@@ -2854,7 +2882,8 @@ class InkCanvasView(context: Context) : View(context) {
         val rotY = bounds.top - SELECTION_ROTATE_HANDLE_OFFSET_PX / height.coerceAtLeast(1)
         paint.style = Paint.Style.STROKE; paint.color = Color.rgb(24, 119, 242); paint.alpha = 255; paint.strokeWidth = 2f
         canvas.drawLine(bounds.centerX() * width, bounds.top * height, bounds.centerX() * width, rotY * height, paint)
-        val drawHandles = listOf(bounds.centerX() to rotY) + corners
+        val edgeHandles = listOf(bounds.left to bounds.centerY(), bounds.right to bounds.centerY(), bounds.centerX() to bounds.top, bounds.centerX() to bounds.bottom)
+        val drawHandles = listOf(bounds.centerX() to rotY) + corners + edgeHandles
         drawHandles.forEach { (hx, hy) ->
             val cx = hx * width; val cy = hy * height
             selectionHandlePaint.color = Color.WHITE
@@ -3248,6 +3277,8 @@ class InkCanvasView(context: Context) : View(context) {
         const val TRANSFORM_NONE = 0
         const val TRANSFORM_SCALE = 1
         const val TRANSFORM_ROTATE = 2
+        const val TRANSFORM_SCALE_X = 3
+        const val TRANSFORM_SCALE_Y = 4
         const val SELECTION_HANDLE_TOUCH_PX = 48f
         const val SELECTION_SMALL_HANDLE_TOUCH_PX = 10f
         const val SELECTION_ROTATE_HANDLE_OFFSET_PX = 64f

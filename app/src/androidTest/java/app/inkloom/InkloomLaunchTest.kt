@@ -505,7 +505,7 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription("Close layers panel").assertIsDisplayed()
     }
 
-    @Test fun selectionControlsExposePersistentFreeformAndRectangleModes() {
+    @Test fun selectionControlsExposeLassoRectangleEllipseAndBrushModes() {
         val preferences = composeRule.activity.getSharedPreferences("inkloom_settings", android.content.Context.MODE_PRIVATE)
         val original = preferences.getString("selectionShape", "FREEFORM")
         try {
@@ -514,10 +514,14 @@ class InkloomLaunchTest {
             composeRule.onNodeWithContentDescription("More").performClick()
 
             composeRule.onNodeWithText("Freeform").assertIsDisplayed()
-            composeRule.onNodeWithText("Rectangle").performClick()
+            composeRule.onNodeWithText("Rectangle").assertIsDisplayed()
+            composeRule.onNodeWithText("Ellipse").assertIsDisplayed()
+            composeRule.onNodeWithText("Selection brush").performClick()
             composeRule.waitForIdle()
 
-            assertTrue(preferences.getString("selectionShape", null) == "RECTANGLE")
+            assertTrue(preferences.getString("selectionShape", null) == "BRUSH")
+            composeRule.onNodeWithContentDescription("More").performClick()
+            composeRule.onNodeWithText("Selection brush size · 42").assertIsDisplayed()
         } finally {
             preferences.edit().putString("selectionShape", original).commit()
         }

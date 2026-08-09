@@ -31,6 +31,25 @@ class LassoGeometryTest {
         assertTrue(LassoGeometry.rectangle(StrokePoint(.5f, .5f), StrokePoint(.5001f, .5001f)).isEmpty())
     }
 
+    @Test fun ellipseUsesDraggedBoundsWithoutSelectingItsCorners() {
+        val ellipse = LassoGeometry.ellipse(StrokePoint(.2f, .3f), StrokePoint(.8f, .7f))
+
+        assertTrue(LassoGeometry.contains(ellipse, StrokePoint(.5f, .5f)))
+        assertFalse(LassoGeometry.contains(ellipse, StrokePoint(.21f, .31f)))
+    }
+
+    @Test fun selectionBrushBuildsAStrokeWidthCorridor() {
+        val corridor = LassoGeometry.brushCorridor(
+            listOf(StrokePoint(.2f, .5f), StrokePoint(.8f, .5f)),
+            diameter = 100f,
+            modelWidth = 1_000f,
+            modelHeight = 1_000f,
+        )
+
+        assertTrue(LassoGeometry.contains(corridor, StrokePoint(.5f, .54f)))
+        assertFalse(LassoGeometry.contains(corridor, StrokePoint(.5f, .57f)))
+    }
+
     @Test fun selectsAStrokeWhenAnySampleFallsInside() {
         assertTrue(LassoGeometry.selects(square, InkStroke(points = listOf(StrokePoint(.1f, .1f), StrokePoint(.4f, .4f)))))
         assertFalse(LassoGeometry.selects(square, InkStroke(points = listOf(StrokePoint(.05f, .05f), StrokePoint(.1f, .1f)))))

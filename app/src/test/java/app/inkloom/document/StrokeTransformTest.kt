@@ -34,6 +34,23 @@ class StrokeTransformTest {
         assertEquals(s, StrokeTransform.transform(s, .5f, .5f, 1f, 0f, 0f, 0f))
     }
 
+    @Test fun nonUniformScaleSupportsEdgeHandleResizing() {
+        val out = StrokeTransform.transformNonUniform(
+            listOf(stroke(.75f, .75f, width = 4f)),
+            centerX = .5f,
+            centerY = .5f,
+            scaleX = 2f,
+            scaleY = .5f,
+            rotationDegrees = 0f,
+            translateX = 0f,
+            translateY = 0f,
+        )
+
+        assertEquals(1f, out.single().points.single().x, .001f)
+        assertEquals(.625f, out.single().points.single().y, .001f)
+        assertEquals(5f, out.single().width, .001f)
+    }
+
     @Test fun rotationIsRigidOnPortraitPages() {
         val out = StrokeTransform.transform(
             listOf(stroke(1f, .5f)),

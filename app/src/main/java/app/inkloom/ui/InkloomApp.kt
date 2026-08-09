@@ -1375,11 +1375,20 @@ private fun EditorScreen(
                         HorizontalDivider()
                         SelectionShape.entries.forEach { shape ->
                             DropdownMenuItem(
-                                text = { Text(if (shape == SelectionShape.FREEFORM) tr("Freeform", "自由形") else tr("Rectangle", "矩形")) },
+                                text = { Text(when (shape) { SelectionShape.FREEFORM -> tr("Freeform", "自由形"); SelectionShape.RECTANGLE -> tr("Rectangle", "矩形"); SelectionShape.ELLIPSE -> tr("Ellipse", "椭圆"); SelectionShape.BRUSH -> tr("Selection brush", "选区画笔") }) },
                                 trailingIcon = { if (settings.selectionShape == shape) Icon(Icons.Outlined.Check, null) },
                                 onClick = { exportMenu = false; onSettingsChange(settings.copy(selectionShape = shape)) },
                             )
                         }
+                        if (settings.selectionShape == SelectionShape.BRUSH) DropdownMenuItem(
+                            text = {
+                                Column(Modifier.width(230.dp)) {
+                                    Text(tr("Selection brush size · ${settings.selectionBrushSize.toInt()}", "选区画笔大小 · ${settings.selectionBrushSize.toInt()}"), fontSize = 11.sp)
+                                    Slider(settings.selectionBrushSize, { onSettingsChange(settings.copy(selectionBrushSize = it)) }, valueRange = 4f..300f)
+                                }
+                            },
+                            onClick = {},
+                        )
                     }
                     HorizontalDivider()
                     DropdownMenuItem(text = { Text(tr("Fit page", "适合页面")) }, leadingIcon = { Icon(Icons.Outlined.CenterFocusStrong, null) }, onClick = { exportMenu = false; fitPage() })
@@ -4128,6 +4137,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     primaryButtonTrigger = settings.stylusPrimaryTrigger
     secondaryButtonTrigger = settings.stylusSecondaryTrigger
     selectionShape = settings.selectionShape
+    selectionBrushSize = settings.selectionBrushSize
     selectionMode = settings.selectionMode
     selectionFilter = settings.selectionFilter
     baseWidth = brushSize
@@ -5180,7 +5190,7 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
                 if (tool == EditorTool.SELECT) {
                     Text(tr("Selection", "选择"), color = MutedInk, fontSize = 12.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                        SelectionShape.entries.forEach { shape -> FilterChip(selected = selectionShape == shape, onClick = { onSelectionShape(shape) }, label = { Text(if (shape == SelectionShape.FREEFORM) tr("Freeform", "自由套索") else tr("Rectangle", "矩形"), fontSize = 10.sp) }) }
+                        SelectionShape.entries.forEach { shape -> FilterChip(selected = selectionShape == shape, onClick = { onSelectionShape(shape) }, label = { Text(when (shape) { SelectionShape.FREEFORM -> tr("Freeform", "自由套索"); SelectionShape.RECTANGLE -> tr("Rectangle", "矩形"); SelectionShape.ELLIPSE -> tr("Ellipse", "椭圆"); SelectionShape.BRUSH -> tr("Brush", "画笔") }, fontSize = 10.sp) }) }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                         SelectionMode.entries.forEach { mode -> FilterChip(selected = selectionMode == mode, onClick = { onSelectionMode(mode) }, label = { Text(when (mode) { SelectionMode.REPLACE -> tr("New", "新建"); SelectionMode.ADD -> tr("Add", "添加"); SelectionMode.SUBTRACT -> tr("Subtract", "减去"); SelectionMode.INTERSECT -> tr("Intersect", "交集") }, fontSize = 10.sp) }) }
