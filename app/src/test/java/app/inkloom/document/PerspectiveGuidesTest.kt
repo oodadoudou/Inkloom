@@ -33,7 +33,7 @@ class PerspectiveGuidesTest {
         val constraint = PerspectiveGuides.constraintAt(state, .7f, .8f, .66f, .45f, 1000f, 1200f)!!
         val projected = constraint.apply(.6f, .1f)
 
-        assertEquals(lineXAtY(.7f, .8f, .5f, -.35f, projected.y), projected.x, .002f)
+        assertEquals(lineXAtY(.7f, .8f, .5f, .12f, projected.y), projected.x, .002f)
     }
 
     @Test fun assistanceOffAndTinyMovementDoNotCaptureAStroke() {

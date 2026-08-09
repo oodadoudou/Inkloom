@@ -4,6 +4,7 @@ import android.view.KeyEvent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import app.inkloom.document.PerspectiveGuideMode
 
 class AppSettingsBackupCodecTest {
     @Test fun `round trip preserves input tools workspace shortcuts quick slots and palette`() {
@@ -37,6 +38,15 @@ class AppSettingsBackupCodecTest {
             alignmentGuidesEnabled = true,
             verticalGuideX = .27f,
             horizontalGuideY = .73f,
+            perspectiveGuideMode = PerspectiveGuideMode.THREE_POINT,
+            perspectiveGuideAssisted = false,
+            perspectiveGuideEditing = true,
+            perspectivePoint1X = -.2f,
+            perspectivePoint1Y = .48f,
+            perspectivePoint2X = 1.2f,
+            perspectivePoint2Y = .51f,
+            perspectivePoint3X = .52f,
+            perspectivePoint3Y = .08f,
             stylusPrimaryButton = StylusButtonAction.UNDO,
             stylusSecondaryButton = StylusButtonAction.HAND,
             stylusPrimaryTrigger = ShortcutTrigger.PRESS,

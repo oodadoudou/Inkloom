@@ -6,6 +6,7 @@ import app.inkloom.model.SymmetryMode
 import app.inkloom.document.CorrectLineMode
 import app.inkloom.document.FillSubTool
 import app.inkloom.document.PressureResponseCurve
+import app.inkloom.document.PerspectiveGuideMode
 
 data class AppSettings(
     val language: UiLanguage = UiLanguage.ENGLISH,
@@ -67,6 +68,15 @@ data class AppSettings(
     val alignmentGuidesEnabled: Boolean = false,
     val verticalGuideX: Float = .5f,
     val horizontalGuideY: Float = .5f,
+    val perspectiveGuideMode: PerspectiveGuideMode = PerspectiveGuideMode.NONE,
+    val perspectiveGuideAssisted: Boolean = true,
+    val perspectiveGuideEditing: Boolean = false,
+    val perspectivePoint1X: Float = .5f,
+    val perspectivePoint1Y: Float = .42f,
+    val perspectivePoint2X: Float = .88f,
+    val perspectivePoint2Y: Float = .42f,
+    val perspectivePoint3X: Float = .5f,
+    val perspectivePoint3Y: Float = .12f,
     val stylusPrimaryButton: StylusButtonAction = StylusButtonAction.ERASER,
     val stylusSecondaryButton: StylusButtonAction = StylusButtonAction.LASSO,
     val stylusPrimaryTrigger: ShortcutTrigger = ShortcutTrigger.HOLD,
@@ -196,6 +206,15 @@ class AppSettingsStore(context: Context) {
             alignmentGuidesEnabled = preferences.getBoolean("alignmentGuidesEnabled", false),
             verticalGuideX = preferences.getFloat("verticalGuideX", .5f).takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: .5f,
             horizontalGuideY = preferences.getFloat("horizontalGuideY", .5f).takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: .5f,
+            perspectiveGuideMode = enumValue(preferences.getString("perspectiveGuideMode", null), PerspectiveGuideMode.NONE),
+            perspectiveGuideAssisted = preferences.getBoolean("perspectiveGuideAssisted", true),
+            perspectiveGuideEditing = preferences.getBoolean("perspectiveGuideEditing", false),
+            perspectivePoint1X = preferences.getFloat("perspectivePoint1X", .5f).takeIf(Float::isFinite)?.coerceIn(-4f, 5f) ?: .5f,
+            perspectivePoint1Y = preferences.getFloat("perspectivePoint1Y", .42f).takeIf(Float::isFinite)?.coerceIn(-4f, 5f) ?: .42f,
+            perspectivePoint2X = preferences.getFloat("perspectivePoint2X", .88f).takeIf(Float::isFinite)?.coerceIn(-4f, 5f) ?: .88f,
+            perspectivePoint2Y = preferences.getFloat("perspectivePoint2Y", .42f).takeIf(Float::isFinite)?.coerceIn(-4f, 5f) ?: .42f,
+            perspectivePoint3X = preferences.getFloat("perspectivePoint3X", .5f).takeIf(Float::isFinite)?.coerceIn(-4f, 5f) ?: .5f,
+            perspectivePoint3Y = preferences.getFloat("perspectivePoint3Y", .12f).takeIf(Float::isFinite)?.coerceIn(-4f, 5f) ?: .12f,
             stylusPrimaryButton = enumValue(preferences.getString("stylusPrimaryButton", null), StylusButtonAction.ERASER),
             stylusSecondaryButton = enumValue(preferences.getString("stylusSecondaryButton", null), StylusButtonAction.LASSO),
             stylusPrimaryTrigger = enumValue(preferences.getString("stylusPrimaryTrigger", null), ShortcutTrigger.HOLD),
@@ -307,6 +326,15 @@ class AppSettingsStore(context: Context) {
             .putBoolean("alignmentGuidesEnabled", persisted.alignmentGuidesEnabled)
             .putFloat("verticalGuideX", persisted.verticalGuideX.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: .5f)
             .putFloat("horizontalGuideY", persisted.horizontalGuideY.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: .5f)
+            .putString("perspectiveGuideMode", persisted.perspectiveGuideMode.name)
+            .putBoolean("perspectiveGuideAssisted", persisted.perspectiveGuideAssisted)
+            .putBoolean("perspectiveGuideEditing", persisted.perspectiveGuideEditing)
+            .putFloat("perspectivePoint1X", persisted.perspectivePoint1X.takeIf(Float::isFinite)?.coerceIn(-4f, 5f) ?: .5f)
+            .putFloat("perspectivePoint1Y", persisted.perspectivePoint1Y.takeIf(Float::isFinite)?.coerceIn(-4f, 5f) ?: .42f)
+            .putFloat("perspectivePoint2X", persisted.perspectivePoint2X.takeIf(Float::isFinite)?.coerceIn(-4f, 5f) ?: .88f)
+            .putFloat("perspectivePoint2Y", persisted.perspectivePoint2Y.takeIf(Float::isFinite)?.coerceIn(-4f, 5f) ?: .42f)
+            .putFloat("perspectivePoint3X", persisted.perspectivePoint3X.takeIf(Float::isFinite)?.coerceIn(-4f, 5f) ?: .5f)
+            .putFloat("perspectivePoint3Y", persisted.perspectivePoint3Y.takeIf(Float::isFinite)?.coerceIn(-4f, 5f) ?: .12f)
             .putString("stylusPrimaryButton", persisted.stylusPrimaryButton.name)
             .putString("stylusSecondaryButton", persisted.stylusSecondaryButton.name)
             .putString("stylusPrimaryTrigger", persisted.stylusPrimaryTrigger.name)

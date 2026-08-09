@@ -52,17 +52,17 @@ data class PerspectiveGuideState(
             PerspectiveGuideMode.NONE, PerspectiveGuideMode.ONE_POINT -> listOf(
                 PerspectiveGuidePoint(.5f, .42f),
                 PerspectiveGuidePoint(.86f, .42f),
-                    PerspectiveGuidePoint(.5f, .12f),
+                PerspectiveGuidePoint(.5f, .12f),
             )
             PerspectiveGuideMode.TWO_POINT -> listOf(
                 PerspectiveGuidePoint(.12f, .42f),
                 PerspectiveGuidePoint(.88f, .42f),
-                    PerspectiveGuidePoint(.5f, .12f),
+                PerspectiveGuidePoint(.5f, .12f),
             )
             PerspectiveGuideMode.THREE_POINT -> listOf(
                 PerspectiveGuidePoint(.1f, .48f),
                 PerspectiveGuidePoint(.9f, .48f),
-                    PerspectiveGuidePoint(.5f, .12f),
+                PerspectiveGuidePoint(.5f, .12f),
             )
         }
     }
