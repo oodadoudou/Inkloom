@@ -107,7 +107,7 @@ enum class StylusButtonAction {
 enum class ToolbarDock { FREE, TOP, BOTTOM, LEFT, RIGHT }
 enum class WorkspacePanelDock { LEFT, FREE, RIGHT, BOTTOM }
 enum class WorkspacePanelMode { EXPANDED, COLLAPSED, ICON_ONLY }
-enum class SelectionShape { SMART_BORDER, MAGIC_WAND, FREEFORM, RECTANGLE, ELLIPSE, BRUSH }
+enum class SelectionShape { FREEFORM, RECTANGLE, ELLIPSE, BRUSH, SMART_BORDER, MAGIC_WAND }
 enum class SelectionMode { REPLACE, ADD, SUBTRACT, INTERSECT }
 enum class SelectionFilter { ALL, ACTIVE_LAYER, CURRENT_BRUSH, CURRENT_COLOR }
 

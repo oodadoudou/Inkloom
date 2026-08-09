@@ -85,7 +85,7 @@ class BrushBatchManagementTest {
         composeRule.onNodeWithContentDescription("Brush preset Batch A").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Grid view").performClick()
         composeRule.onNodeWithContentDescription("List view").assertIsDisplayed()
-        composeRule.onNodeWithText("Sketching").performClick()
+        composeRule.onNodeWithText("Pencil").performClick()
         composeRule.onNodeWithContentDescription("Brush preset Technical Pencil").assertIsDisplayed()
     }
 

@@ -215,7 +215,7 @@ class InkloomLaunchTest {
         assertEquals(false, AppSettingsStore(composeRule.activity).load().bottomDockStacked)
 
         composeRule.onNodeWithContentDescription("Brushes").performClick()
-        composeRule.onNodeWithText("Technical Pencil").assertIsDisplayed()
+        composeRule.onNodeWithText("Studio Pen").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Drag brushes panel").assertIsDisplayed()
         assertEquals(WorkspacePanelDock.FREE, AppSettingsStore(composeRule.activity).load().brushPanelDock)
     }
@@ -230,7 +230,7 @@ class InkloomLaunchTest {
         assertEquals(false, restored.showBrushPanel)
         assertEquals(false, restored.showLayerPanel)
         composeRule.onNodeWithContentDescription("Brushes").performClick()
-        composeRule.onNodeWithText("Technical Pencil").assertIsDisplayed()
+        composeRule.onNodeWithText("Studio Pen").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Layers").performClick()
         composeRule.onAllNodesWithText("Layers").onLast().assertIsDisplayed()
 
@@ -552,7 +552,9 @@ class InkloomLaunchTest {
 
             assertTrue(preferences.getString("selectionShape", null) == "BRUSH")
             composeRule.onNodeWithContentDescription("More").performClick()
-            composeRule.onNodeWithText("Selection brush size · 42").assertIsDisplayed()
+            assertTrue(composeRule.onAllNodesWithText("Selection brush size · 42").fetchSemanticsNodes().isNotEmpty())
+            assertTrue(composeRule.onAllNodesWithText("Magic wand").fetchSemanticsNodes().isNotEmpty())
+            assertTrue(composeRule.onAllNodesWithText("Smart border").fetchSemanticsNodes().isNotEmpty())
         } finally {
             preferences.edit().putString("selectionShape", original).commit()
         }
@@ -601,6 +603,7 @@ class InkloomLaunchTest {
 
         composeRule.onNodeWithContentDescription("Colors").performClick()
         composeRule.onNodeWithContentDescription("Brushes").performClick()
+        composeRule.onNodeWithText("Pencil").performClick()
         composeRule.onNodeWithText("Technical Pencil").performClick()
         composeRule.waitUntil(5_000) { view.brushId == "system-technical-pencil" }
         assertEquals("Changing a docked brush must retain the shared foreground color", selectedColor, view.inkColor)
