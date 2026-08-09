@@ -27,7 +27,7 @@ class InkViewportTouchProxy(context: Context) : View(context) {
             field = value
             value?.apply {
                 externalHoverCursor = true
-                onHoverCursorStyleChanged = { postInvalidateOnAnimation() }
+                onHoverCursorStyleChanged = { refreshCursorStyle() }
             }
             clearHoverCursor()
         }
@@ -37,7 +37,8 @@ class InkViewportTouchProxy(context: Context) : View(context) {
     private var hoverVisible = false
     private var hoverX = 0f
     private var hoverY = 0f
-    private var hoverDiameter = 0f
+    private var hoverWidth = 0f
+    private var hoverHeight = 0f
 
     init {
         setBackgroundColor(android.graphics.Color.TRANSPARENT)
@@ -49,7 +50,9 @@ class InkViewportTouchProxy(context: Context) : View(context) {
         if (event.actionMasked == MotionEvent.ACTION_DOWN && event.isStylusEvent()) {
             requestUnbufferedDispatch(event)
         }
-        return forward(event) { canvas, forwarded -> canvas.dispatchTouchEvent(forwarded) }
+        val handled = forward(event) { canvas, forwarded -> canvas.dispatchTouchEvent(forwarded) }
+        updateContactCursor(event)
+        return handled
     }
 
     override fun onHoverEvent(event: MotionEvent): Boolean {
@@ -64,14 +67,15 @@ class InkViewportTouchProxy(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         if (!hoverVisible) return
-        val radius = (hoverDiameter / 2f).coerceAtLeast(1.5f)
+        val radiusX = (hoverWidth / 2f).coerceAtLeast(1.5f)
+        val radiusY = (hoverHeight / 2f).coerceAtLeast(1.5f)
         hoverPaint.strokeWidth = 3.5f
         hoverPaint.color = Color.WHITE
         hoverPaint.alpha = 235
-        canvas.drawCircle(hoverX, hoverY, radius, hoverPaint)
+        canvas.drawOval(hoverX - radiusX, hoverY - radiusY, hoverX + radiusX, hoverY + radiusY, hoverPaint)
         hoverPaint.strokeWidth = 1.5f
         hoverPaint.color = Color.BLACK
-        canvas.drawCircle(hoverX, hoverY, radius, hoverPaint)
+        canvas.drawOval(hoverX - radiusX, hoverY - radiusY, hoverX + radiusX, hoverY + radiusY, hoverPaint)
     }
 
     override fun onGenericMotionEvent(event: MotionEvent): Boolean {
@@ -121,7 +125,24 @@ class InkViewportTouchProxy(context: Context) : View(context) {
         val pointerIndex = event.actionIndex.coerceIn(0, event.pointerCount - 1)
         hoverX = event.getX(pointerIndex)
         hoverY = event.getY(pointerIndex)
-        hoverDiameter = snapshot[3] * canvas.viewportScale.coerceAtLeast(1f)
+        hoverWidth = snapshot[3] * canvas.viewportScale.coerceAtLeast(1f)
+        hoverHeight = snapshot.getOrElse(4) { snapshot[3] } * canvas.viewportScale.coerceAtLeast(1f)
+        hoverVisible = true
+        postInvalidateOnAnimation()
+    }
+
+    private fun updateContactCursor(event: MotionEvent) {
+        if (!event.isStylusEvent()) return
+        if (event.actionMasked == MotionEvent.ACTION_CANCEL) return clearHoverCursor()
+        if (event.actionMasked !in setOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP)) return
+        val canvas = target ?: return clearHoverCursor()
+        val snapshot = canvas.hoverCursorSnapshot()
+        if (snapshot[0] == 0f) return clearHoverCursor()
+        val pointerIndex = event.actionIndex.coerceIn(0, event.pointerCount - 1)
+        hoverX = event.getX(pointerIndex)
+        hoverY = event.getY(pointerIndex)
+        hoverWidth = snapshot[3] * canvas.viewportScale.coerceAtLeast(1f)
+        hoverHeight = snapshot.getOrElse(4) { snapshot[3] } * canvas.viewportScale.coerceAtLeast(1f)
         hoverVisible = true
         postInvalidateOnAnimation()
     }
@@ -132,11 +153,20 @@ class InkViewportTouchProxy(context: Context) : View(context) {
         postInvalidateOnAnimation()
     }
 
+    private fun refreshCursorStyle() {
+        val canvas = target ?: return
+        val snapshot = canvas.hoverCursorSnapshot()
+        hoverWidth = snapshot[3] * canvas.viewportScale.coerceAtLeast(1f)
+        hoverHeight = snapshot.getOrElse(4) { snapshot[3] } * canvas.viewportScale.coerceAtLeast(1f)
+        postInvalidateOnAnimation()
+    }
+
     internal fun hoverCursorSnapshot(): FloatArray = floatArrayOf(
         if (hoverVisible) 1f else 0f,
         hoverX,
         hoverY,
-        hoverDiameter,
+        hoverWidth,
+        hoverHeight,
     )
 
     private fun MotionEvent.isStylusEvent(): Boolean =

@@ -43,6 +43,7 @@ import app.inkloom.document.BrushColorDynamics
 import app.inkloom.document.BrushParameterDynamics
 import app.inkloom.document.BrushColorJitter
 import app.inkloom.document.BrushBlur
+import app.inkloom.document.BrushDynamics
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushStampCount
 import app.inkloom.document.BrushStampRotation
@@ -320,6 +321,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var hoverCursorX = 0f
     private var hoverCursorY = 0f
     private var hoverCursorUsesEraser = false
+    private var hoverCursorPressure = 1f
     internal var externalHoverCursor: Boolean = false
         set(value) { field = value; postInvalidateOnAnimation() }
     internal var onHoverCursorStyleChanged: (() -> Unit)? = null
@@ -798,6 +800,7 @@ class InkCanvasView(context: Context) : View(context) {
                 hoverCursorX = point.first
                 hoverCursorY = point.second
                 hoverCursorUsesEraser = cursorTool == EditorTool.ERASER
+                hoverCursorPressure = 1f
                 hoverCursorVisible = true
                 postInvalidateOnAnimation()
                 return true
@@ -1411,13 +1414,11 @@ class InkCanvasView(context: Context) : View(context) {
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (tool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.EYEDROPPER, EditorTool.SELECT, EditorTool.SHAPE, EditorTool.LASER, EditorTool.FILL, EditorTool.GRADIENT, EditorTool.SMUDGE, EditorTool.LIQUIFY, EditorTool.CORRECT_LINE)) return false
-        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-            if (hoverCursorVisible) { hoverCursorVisible = false; invalidate() }
-            if (!hasFocus()) requestFocus()
-        }
         val pointerIndex = event.actionIndex.coerceIn(0, event.pointerCount - 1)
         val eventToolType = event.getToolType(pointerIndex)
         val isStylus = eventToolType == MotionEvent.TOOL_TYPE_STYLUS || eventToolType == MotionEvent.TOOL_TYPE_ERASER
+        if (event.actionMasked == MotionEvent.ACTION_DOWN && !hasFocus()) requestFocus()
+        updateContactCursor(event, pointerIndex, isStylus)
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             // Every new contact stream is a hard recovery boundary. This also recovers from a
             // device/parent that consumed the previous stream's final UP or CANCEL.
@@ -2048,27 +2049,74 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun drawStylusHoverCursor(canvas: Canvas) {
-        if (externalHoverCursor || !hoverCursorVisible || activeTool != null || brushSizeDragActive) return
-        val configuredSize = if (hoverCursorUsesEraser) eraserWidth else baseWidth
+        if (externalHoverCursor || !hoverCursorVisible || brushSizeDragActive) return
+        val footprint = hoverCursorFootprint()
         val zoom = viewportScale.coerceAtLeast(1f)
-        val radius = (configuredSize.coerceIn(.1f, 800f) * width.coerceAtLeast(1) / REFERENCE_WIDTH / 2f)
-            .coerceAtLeast(1.5f / zoom)
+        val radiusX = (footprint.first / 2f).coerceAtLeast(1.5f / zoom)
+        val radiusY = (footprint.second / 2f).coerceAtLeast(1.5f / zoom)
         hoverCursorPaint.strokeWidth = 3.5f / zoom
         hoverCursorPaint.color = Color.WHITE
         hoverCursorPaint.alpha = 235
-        canvas.drawCircle(hoverCursorX, hoverCursorY, radius, hoverCursorPaint)
+        canvas.drawOval(hoverCursorX - radiusX, hoverCursorY - radiusY, hoverCursorX + radiusX, hoverCursorY + radiusY, hoverCursorPaint)
         hoverCursorPaint.strokeWidth = 1.5f / zoom
         hoverCursorPaint.color = Color.BLACK
         hoverCursorPaint.alpha = 235
-        canvas.drawCircle(hoverCursorX, hoverCursorY, radius, hoverCursorPaint)
+        canvas.drawOval(hoverCursorX - radiusX, hoverCursorY - radiusY, hoverCursorX + radiusX, hoverCursorY + radiusY, hoverCursorPaint)
     }
 
-    internal fun hoverCursorSnapshot(): FloatArray = floatArrayOf(
-        if (hoverCursorVisible) 1f else 0f,
-        hoverCursorX,
-        hoverCursorY,
-        (if (hoverCursorUsesEraser) eraserWidth else baseWidth) * width.coerceAtLeast(1) / REFERENCE_WIDTH,
-    )
+    internal fun hoverCursorSnapshot(): FloatArray {
+        val footprint = hoverCursorFootprint()
+        return floatArrayOf(
+            if (hoverCursorVisible) 1f else 0f,
+            hoverCursorX,
+            hoverCursorY,
+            footprint.first,
+            footprint.second,
+        )
+    }
+
+    /** The cursor follows the raw stylus contact, never the stabilized/modelled tail. This is the
+     * same no-delay contract as professional drawing applications: stabilization may trail, but
+     * the physical pen location must remain truthful. */
+    private fun updateContactCursor(event: MotionEvent, pointerIndex: Int, isStylus: Boolean) {
+        if (!isStylus) return
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP -> {
+                val cursorTool = if (event.getToolType(pointerIndex) == MotionEvent.TOOL_TYPE_ERASER) EditorTool.ERASER else resolveTool(event, event.getToolType(pointerIndex))
+                if (cursorTool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.SMUDGE, EditorTool.LIQUIFY)) return
+                val point = canvasPoint(event, pointerIndex)
+                hoverCursorX = point.first
+                hoverCursorY = point.second
+                hoverCursorUsesEraser = cursorTool == EditorTool.ERASER
+                hoverCursorPressure = event.getPressure(pointerIndex).takeIf { it.isFinite() && it > 0f }?.coerceIn(0f, 1f) ?: 1f
+                hoverCursorVisible = true
+                postInvalidateOnAnimation()
+                onHoverCursorStyleChanged?.invoke()
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                hoverCursorVisible = false
+                postInvalidateOnAnimation()
+                onHoverCursorStyleChanged?.invoke()
+            }
+        }
+    }
+
+    private fun hoverCursorFootprint(): Pair<Float, Float> {
+        val scale = width.coerceAtLeast(1) / REFERENCE_WIDTH
+        if (hoverCursorUsesEraser) {
+            val pressure = if (eraserPressureSize) {
+                PressureCalibration.apply(hoverCursorPressure, pressureMinimumInput, pressureMaximumInput, pressureSensitivity, pressureResponseCurve).coerceIn(.15f, 1f)
+            } else 1f
+            val diameter = eraserWidth.coerceIn(.1f, 800f) * scale * pressure
+            return diameter to diameter
+        }
+        val pressure = BrushDynamics.pressure(sizePressureEnabled, sizePressureMinimum, sizePressureCurve, hoverCursorPressure)
+        val diameter = baseWidth.coerceIn(.1f, 800f) * scale * pressure
+        if (tipAssetPath == null && tipAssetPaths.isEmpty()) return diameter to diameter
+        val thicknessPressure = BrushDynamics.pressure(thicknessPressureEnabled, thicknessPressureMinimum, thicknessPressureCurve, hoverCursorPressure)
+        val shaped = (brushThickness * thicknessPressure).coerceIn(.05f, 2f)
+        return if (brushThicknessVertical) diameter to diameter * shaped else diameter * shaped to diameter
+    }
 
     private fun MotionEvent.centroid(): Pair<Float, Float> {
         var x = 0f
