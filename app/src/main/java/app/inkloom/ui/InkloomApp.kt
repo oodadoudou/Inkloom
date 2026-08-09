@@ -2280,6 +2280,61 @@ private fun EditorScreen(
                     update = { it.target = canvasView },
                     modifier = Modifier.fillMaxSize(),
                 )
+                // Page objects need their own transformed interaction plane above the stable
+                // full-viewport input proxy. Rendering remains in the canvas/layer compositor;
+                // this transparent plane owns only object hit testing, drag and edit gestures.
+                val interactionPage = remember(selectedPage) { PageCropTransform.project(selectedPage) }
+                BoxWithConstraints(
+                    Modifier
+                        .fillMaxHeight(.88f)
+                        .aspectRatio((interactionPage.width / interactionPage.height.coerceAtLeast(1f)).coerceIn(.35f, 2.8f))
+                        .graphicsLayer(
+                            scaleX = zoom,
+                            scaleY = zoom,
+                            translationX = panX,
+                            translationY = panY,
+                            rotationZ = viewRotation,
+                        )
+                        .zIndex(1f),
+                ) {
+                    val interactionDensity = LocalDensity.current
+                    val interactionWidthPx = with(interactionDensity) { maxWidth.toPx() }.coerceAtLeast(1f)
+                    val interactionHeightPx = with(interactionDensity) { maxHeight.toPx() }.coerceAtLeast(1f)
+                    val visibleInteractionLayers = interactionPage.layers.filter { LayerHierarchy.effectiveVisible(interactionPage.layers, it) && it.role != LayerRole.FOLDER }.mapTo(mutableSetOf(), InkLayer::id)
+                    val lockedInteractionLayers = interactionPage.layers.filter { LayerHierarchy.effectiveLocked(interactionPage.layers, it) || it.role == LayerRole.FOLDER }.mapTo(mutableSetOf(), InkLayer::id)
+                    val interactionLayerOrder = interactionPage.layers.mapIndexed { index, layer -> layer.id to index }.toMap()
+                    val interactionLayerOpacities = interactionPage.layers.associate { it.id to it.opacity }
+                    interactionPage.elements
+                        .filter { it.layerId in visibleInteractionLayers }
+                        .sortedBy { interactionLayerOrder[it.layerId] ?: Int.MAX_VALUE }
+                        .forEach { element ->
+                            ObjectElementView(
+                                element = element,
+                                page = interactionPage,
+                                layerOpacity = interactionLayerOpacities[element.layerId] ?: 1f,
+                                selected = selectedElementId == element.id,
+                                editable = tool == EditorTool.SELECT && element.layerId !in lockedInteractionLayers,
+                                canvasWidth = maxWidth,
+                                canvasHeight = maxHeight,
+                                canvasWidthPx = interactionWidthPx,
+                                canvasHeightPx = interactionHeightPx,
+                                onSelect = { selectedElementId = element.id },
+                                onChange = { onElement(document.id, selectedPage.id, PageCropTransform.unproject(it, selectedPage.crop)) },
+                                onDuplicate = { onDuplicateElement(document.id, selectedPage.id, element.id) },
+                                onDelete = { onRemoveElement(document.id, selectedPage.id, element.id); selectedElementId = null },
+                                internalLinkLabel = (element as? PageElement.Link)?.takeIf(InternalLinkTarget::isInternal)?.let { InternalLinkTarget.label(it, documents) },
+                                onOpenInternalLink = onOpenInternalLink,
+                                settings = settings,
+                                activeBrush = activeBrush,
+                                brushSize = brushSize,
+                                brushOpacity = brushOpacity,
+                                brushColor = brushColor,
+                                eraserPreset = settings.eraserPreset,
+                                showContent = false,
+                                modifier = Modifier.align(Alignment.TopStart),
+                            )
+                        }
+                }
                 val currentPageIndex = document.pages.indexOfFirst { it.id == selectedPage.id }.coerceAtLeast(0)
                 Surface(
                     modifier = Modifier.align(Alignment.BottomEnd).padding(14.dp).zIndex(2f),
@@ -4300,33 +4355,6 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                     drawRect(Color(0x33111111), topLeft = topLeft, size = highlightSize)
                     drawRect(Color(0xFF111111), topLeft = topLeft, size = highlightSize, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx()))
                 }
-            }
-            renderedPage.elements.filter { it.layerId in visibleLayerIds }.sortedBy { layerOrder[it.layerId] ?: Int.MAX_VALUE }.forEach { element ->
-                ObjectElementView(
-                    element = element,
-                    page = renderedPage,
-                    layerOpacity = layerOpacities[element.layerId] ?: 1f,
-                    selected = selectedElementId == element.id,
-                    editable = tool == EditorTool.SELECT && element.layerId !in lockedLayerIds,
-                    canvasWidth = paperMaxWidth,
-                    canvasHeight = paperMaxHeight,
-                    canvasWidthPx = canvasWidthPx,
-                    canvasHeightPx = canvasHeightPx,
-                    onSelect = { onSelectElement(element.id) },
-                    onChange = { onElement(documentId, page.id, PageCropTransform.unproject(it, page.crop)) },
-                    onDuplicate = { onDuplicateElement(documentId, page.id, element.id) },
-                    onDelete = { onRemoveElement(documentId, page.id, element.id); onSelectElement(null) },
-                    internalLinkLabel = (element as? PageElement.Link)?.takeIf(InternalLinkTarget::isInternal)?.let { InternalLinkTarget.label(it, documents) },
-                    onOpenInternalLink = onOpenInternalLink,
-                    settings = settings,
-                    activeBrush = activeBrush,
-                    brushSize = brushSize,
-                    brushOpacity = brushOpacity,
-                    brushColor = brushColor,
-                    eraserPreset = eraserPreset,
-                    showContent = false,
-                    modifier = Modifier.align(Alignment.TopStart),
-                )
             }
         }
     }
