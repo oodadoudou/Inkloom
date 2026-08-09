@@ -6138,6 +6138,10 @@ private fun LayerPanel(
     var renameLayer by remember { mutableStateOf<InkLayer?>(null) }
     var renameValue by remember { mutableStateOf("") }
     var blendModeMenu by remember { mutableStateOf(false) }
+    var layerSearch by rememberSaveable { mutableStateOf("") }
+    var selectedLayerIds by remember { mutableStateOf(emptySet<String>()) }
+    val filteredLayers = LayerHierarchy.panelOrder(page.layers).filter { layerSearch.isBlank() || it.name.contains(layerSearch.trim(), ignoreCase = true) }
+    LaunchedEffect(page.layers.map(InkLayer::id)) { selectedLayerIds = selectedLayerIds.intersect(page.layers.mapTo(mutableSetOf(), InkLayer::id)) }
     val dragDescription = tr("Drag layers panel", "拖动图层面板")
     val currentPanelDrag by rememberUpdatedState(onPanelDrag)
     val currentPanelDragStart by rememberUpdatedState(onPanelDragStart)
@@ -6208,8 +6212,16 @@ private fun LayerPanel(
             }
             Spacer(Modifier.height(4.dp))
         }
+        OutlinedTextField(layerSearch, { layerSearch = it }, Modifier.fillMaxWidth().height(40.dp), singleLine = true, textStyle = LocalTextStyle.current.copy(fontSize = 10.sp), placeholder = { Text(tr("Search layers", "搜索图层"), fontSize = 10.sp) }, leadingIcon = { Icon(Icons.Outlined.Search, null, Modifier.size(15.dp)) })
+        if (selectedLayerIds.isNotEmpty()) Row(Modifier.fillMaxWidth().height(34.dp).background(Color.White), verticalAlignment = Alignment.CenterVertically) {
+            Text("${selectedLayerIds.size} ${tr("selected", "项已选")}", Modifier.weight(1f).padding(start = 6.dp), fontSize = 9.sp)
+            IconButton({ selectedLayerIds.forEach(onVisibility) }, Modifier.size(28.dp)) { Icon(Icons.Outlined.Visibility, tr("Toggle selected layer visibility", "切换所选图层可见性"), Modifier.size(14.dp)) }
+            IconButton({ selectedLayerIds.forEach(onLock) }, Modifier.size(28.dp)) { Icon(Icons.Outlined.Lock, tr("Toggle selected layer lock", "切换所选图层锁定"), Modifier.size(14.dp)) }
+            IconButton({ selectedLayerIds.mapNotNull { id -> page.layers.firstOrNull { it.id == id } }.filter { it.role in setOf(LayerRole.CUSTOM, LayerRole.FOLDER) }.forEach { onDelete(it.id) }; selectedLayerIds = emptySet() }, Modifier.size(28.dp)) { Icon(Icons.Outlined.Delete, tr("Delete selected custom layers", "删除所选自定义图层"), Modifier.size(14.dp)) }
+            IconButton({ selectedLayerIds = emptySet() }, Modifier.size(28.dp)) { Icon(Icons.Outlined.Close, tr("Exit layer selection", "退出图层多选"), Modifier.size(14.dp)) }
+        }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(0.dp), modifier = Modifier.border(1.dp, OutlineSoft)) {
-            items(LayerHierarchy.panelOrder(page.layers), key = { it.id }) { layer ->
+            items(filteredLayers, key = { it.id }) { layer ->
                 var menu by remember { mutableStateOf(false) }
                 var folderMenu by remember { mutableStateOf(false) }
                 val effectivelyVisible = LayerHierarchy.effectiveVisible(page.layers, layer)
@@ -6221,9 +6233,15 @@ private fun LayerPanel(
                 val folderTargets = LayerHierarchy.availableFolders(page.layers, layer.id)
                 val folderMenuDescription = "${tr("Move layer to folder", "移动图层到文件夹")} ${layer.name}"
                 Card(
-                    modifier = Modifier.fillMaxWidth().padding(start = (depth * 16).dp).clickable(enabled = editable) { onSelect(layer.id) },
+                    modifier = Modifier.fillMaxWidth().padding(start = (depth * 16).dp).combinedClickable(
+                        onClick = {
+                            if (selectedLayerIds.isNotEmpty()) selectedLayerIds = if (layer.id in selectedLayerIds) selectedLayerIds - layer.id else selectedLayerIds + layer.id
+                            else if (editable) onSelect(layer.id)
+                        },
+                        onLongClick = { selectedLayerIds = if (layer.id in selectedLayerIds) selectedLayerIds - layer.id else selectedLayerIds + layer.id },
+                    ),
                     shape = RoundedCornerShape(0.dp),
-                    colors = CardDefaults.cardColors(containerColor = if (layer.id == activeLayerId) Color(0xFFD6DCE8) else Color(0xFFF4F4F4)),
+                    colors = CardDefaults.cardColors(containerColor = if (layer.id == activeLayerId || layer.id in selectedLayerIds) Color(0xFFD6DCE8) else Color(0xFFF4F4F4)),
                     border = CardDefaults.outlinedCardBorder().copy(width = 1.dp, brush = androidx.compose.ui.graphics.SolidColor(OutlineSoft)),
                 ) {
                     Row(Modifier.height(39.dp).padding(start = 2.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -6344,7 +6362,13 @@ private fun ProcreateLayerPanel(
     var renameLayer by remember { mutableStateOf<InkLayer?>(null) }
     var renameValue by remember { mutableStateOf("") }
     var blendMenu by remember { mutableStateOf(false) }
+    var layerSearch by rememberSaveable { mutableStateOf("") }
+    var selectedLayerIds by remember { mutableStateOf(emptySet<String>()) }
     val activeLayer = page.layers.firstOrNull { it.id == activeLayerId }
+    val filteredLayers = LayerHierarchy.panelOrder(page.layers).filter { layerSearch.isBlank() || it.name.contains(layerSearch.trim(), ignoreCase = true) }
+    LaunchedEffect(page.layers.map(InkLayer::id)) {
+        selectedLayerIds = selectedLayerIds.intersect(page.layers.mapTo(mutableSetOf(), InkLayer::id))
+    }
     val currentPanelDrag by rememberUpdatedState(onPanelDrag)
     val currentPanelDragStart by rememberUpdatedState(onPanelDragStart)
     val currentPanelDragEnd by rememberUpdatedState(onPanelDragEnd)
@@ -6386,6 +6410,25 @@ private fun ProcreateLayerPanel(
                 IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Close, tr("Close layers panel", "关闭图层面板"), tint = Ink) }
             }
             HorizontalDivider(color = OutlineSoft)
+            OutlinedTextField(
+                value = layerSearch,
+                onValueChange = { layerSearch = it },
+                modifier = Modifier.fillMaxWidth().height(44.dp).padding(horizontal = 8.dp, vertical = 3.dp),
+                singleLine = true,
+                textStyle = LocalTextStyle.current.copy(fontSize = 11.sp),
+                placeholder = { Text(tr("Search layers", "搜索图层"), fontSize = 11.sp) },
+                leadingIcon = { Icon(Icons.Outlined.Search, null, Modifier.size(17.dp)) },
+                trailingIcon = { if (layerSearch.isNotEmpty()) IconButton({ layerSearch = "" }) { Icon(Icons.Outlined.Close, null, Modifier.size(16.dp)) } },
+            )
+            if (selectedLayerIds.isNotEmpty()) {
+                Row(Modifier.fillMaxWidth().height(38.dp).background(Color(0xFFF1F1F1)).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("${selectedLayerIds.size} ${tr("selected", "项已选")}", Modifier.weight(1f), fontSize = 10.sp)
+                    IconButton({ selectedLayerIds.forEach(onVisibility) }, Modifier.size(32.dp)) { Icon(Icons.Outlined.Visibility, tr("Toggle selected layer visibility", "切换所选图层可见性"), Modifier.size(17.dp)) }
+                    IconButton({ selectedLayerIds.forEach(onLock) }, Modifier.size(32.dp)) { Icon(Icons.Outlined.Lock, tr("Toggle selected layer lock", "切换所选图层锁定"), Modifier.size(17.dp)) }
+                    IconButton({ selectedLayerIds.mapNotNull { id -> page.layers.firstOrNull { it.id == id } }.filter { it.role in setOf(LayerRole.CUSTOM, LayerRole.FOLDER) }.forEach { onDelete(it.id) }; selectedLayerIds = emptySet() }, Modifier.size(32.dp)) { Icon(Icons.Outlined.Delete, tr("Delete selected custom layers", "删除所选自定义图层"), Modifier.size(17.dp)) }
+                    IconButton({ selectedLayerIds = emptySet() }, Modifier.size(32.dp)) { Icon(Icons.Outlined.Close, tr("Exit layer selection", "退出图层多选"), Modifier.size(17.dp)) }
+                }
+            }
             activeLayer?.takeIf { it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) }?.let { layer ->
                 Row(Modifier.fillMaxWidth().height(40.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(tr("Opacity", "不透明度"), Modifier.width(58.dp), color = MutedInk, fontSize = 10.sp)
@@ -6405,13 +6448,19 @@ private fun ProcreateLayerPanel(
                 HorizontalDivider(color = OutlineSoft)
             }
             LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                items(LayerHierarchy.panelOrder(page.layers), key = { it.id }) { layer ->
+                items(filteredLayers, key = { it.id }) { layer ->
                     var menu by remember { mutableStateOf(false) }
-                    val selected = layer.id == activeLayerId
+                    val selected = layer.id == activeLayerId || layer.id in selectedLayerIds
                     val depth = LayerHierarchy.depth(page.layers, layer)
                     val canSelect = layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) && !LayerHierarchy.effectiveLocked(page.layers, layer)
                     Row(
-                        Modifier.fillMaxWidth().padding(start = (8 + depth * 14).dp, end = 8.dp).height(58.dp).clip(RoundedCornerShape(7.dp)).background(if (selected) Color(0xFFE1E1E1) else Color.White).border(1.dp, if (selected) Ink else OutlineSoft, RoundedCornerShape(7.dp)).clickable(enabled = canSelect) { onSelect(layer.id) }.padding(horizontal = 7.dp),
+                        Modifier.fillMaxWidth().padding(start = (8 + depth * 14).dp, end = 8.dp).height(58.dp).clip(RoundedCornerShape(7.dp)).background(if (selected) Color(0xFFE1E1E1) else Color.White).border(1.dp, if (selected) Ink else OutlineSoft, RoundedCornerShape(7.dp)).combinedClickable(
+                            onClick = {
+                                if (selectedLayerIds.isNotEmpty()) selectedLayerIds = if (layer.id in selectedLayerIds) selectedLayerIds - layer.id else selectedLayerIds + layer.id
+                                else if (canSelect) onSelect(layer.id)
+                            },
+                            onLongClick = { selectedLayerIds = if (layer.id in selectedLayerIds) selectedLayerIds - layer.id else selectedLayerIds + layer.id },
+                        ).padding(horizontal = 7.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         IconButton(onClick = { onVisibility(layer.id) }, modifier = Modifier.size(30.dp)) { Icon(if (layer.visible) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank, tr("Toggle layer visibility", "切换图层可见性"), Modifier.size(18.dp), tint = Ink) }
