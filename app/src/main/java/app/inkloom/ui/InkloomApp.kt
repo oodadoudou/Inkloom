@@ -3909,6 +3909,16 @@ private fun PageRail(
                         pageDragDistance += amount.y / density
                     }
                 }
+                fun Modifier.pageHandleDrag(): Modifier = pointerInput(page.id, managingPages, document.pages.map(InkPage::id)) {
+                    detectDragGestures(
+                        onDragStart = { pageDragDistance = 0f; pageDragging = true },
+                        onDragEnd = ::finishPageDrag,
+                        onDragCancel = { pageDragDistance = 0f; pageDragging = false },
+                    ) { change, amount ->
+                        change.consume()
+                        pageDragDistance += amount.y / density
+                    }
+                }
                 Box(
                     Modifier
                         .size(58.dp, 74.dp)
@@ -3940,21 +3950,15 @@ private fun PageRail(
                         })
                     }.pageReorderDrag().semantics {
                         contentDescription = pageDescription
-                        onClick {
-                            selectPage()
-                            true
-                        }
-                        onLongClick {
-                            managePage()
-                            true
-                        }
+                        onClick { selectPage(); true }
+                        onLongClick { managePage(); true }
                     })
                 }
                 Row(Modifier.width(78.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     Icon(
                         Icons.Outlined.DragIndicator,
                         tr("Drag to reorder page", "拖动调整页面顺序"),
-                        Modifier.size(36.dp).padding(6.dp).pageReorderDrag(),
+                        Modifier.size(36.dp).padding(6.dp).pageHandleDrag(),
                         tint = MutedInk,
                     )
                     Text(page.customNumber ?: (document.pages.indexOf(page) + 1).toString(), color = if (page.id == selectedPageId) Sage else MutedInk, modifier = Modifier.weight(1f).clip(RoundedCornerShape(5.dp)).clickable { onSelect(page.id) }.padding(vertical = 6.dp), maxLines = 1)

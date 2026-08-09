@@ -460,6 +460,24 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("2/2").assertIsDisplayed()
     }
 
+    @Test fun pageDragHandleReordersWithoutOpeningThePageMenu() {
+        createNotebookAndOpenEditor()
+        composeRule.onNodeWithContentDescription("Add page").performClick()
+        composeRule.onNodeWithContentDescription("Use Grid template").performClick()
+        composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasContentDescription("Drag to reorder page")).fetchSemanticsNodes().size == 2 }
+        composeRule.onNodeWithContentDescription("Page 1. Long press to manage.").performClick()
+
+        composeRule.onAllNodes(hasContentDescription("Drag to reorder page")).onFirst().performTouchInput {
+            down(center)
+            moveBy(Offset(0f, 180f))
+            advanceEventTime(50)
+            up()
+        }
+
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithText("2/2").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNodeWithText("2/2").assertIsDisplayed()
+    }
+
     @Test fun editorInsertsAValidatedLinkCard() {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("More").performClick()
