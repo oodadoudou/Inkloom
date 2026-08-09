@@ -96,6 +96,43 @@ object BrushGroupOperations {
     fun removeMany(brushes: List<ImportedBrush>, brushIds: Set<String>): List<ImportedBrush> =
         brushes.filterNot { it.id in brushIds }
 
+    fun duplicateGroup(
+        brushes: List<ImportedBrush>,
+        groupName: String,
+        newGroupName: String,
+        copySuffix: String = "copy",
+        idFactory: () -> String = { UUID.randomUUID().toString() },
+    ): List<ImportedBrush> {
+        val source = normalize(groupName)
+        val target = normalize(newGroupName)
+        if (source.isBlank() || target.isBlank()) return brushes
+        val sourceBrushes = brushes.filter { isWithin(it.groupName, source) }
+        var nextOrder = brushes.filter { isWithin(it.groupName, target) }.maxOfOrNull(ImportedBrush::sortOrder)?.plus(1) ?: 0
+        val copies = sourceBrushes.map { brush ->
+            val suffix = normalize(brush.groupName).drop(source.length).trimStart('/')
+            brush.copy(
+                id = idFactory(),
+                name = "${brush.name} $copySuffix".trim(),
+                groupName = listOf(target, suffix).filter(String::isNotBlank).joinToString("/"),
+                favorite = false,
+                hidden = false,
+                lastUsedAt = 0L,
+                sortOrder = nextOrder++,
+            )
+        }
+        return brushes + copies
+    }
+
+    fun deleteGroup(brushes: List<ImportedBrush>, groupName: String): List<ImportedBrush> {
+        val source = normalize(groupName)
+        return if (source.isBlank()) brushes else brushes.filterNot { isWithin(it.groupName, source) }
+    }
+
+    fun deleteRegisteredGroup(groups: List<String>, groupName: String): List<String> {
+        val source = normalize(groupName)
+        return if (source.isBlank()) groups else groups.map(::normalize).filterNot { isWithin(it, source) }
+    }
+
     fun mergeImports(existing: List<ImportedBrush>, additions: List<ImportedBrush>): List<ImportedBrush> {
         val known = existing.mapTo(mutableSetOf(), ::importIdentity)
         return existing + additions.filter { known.add(importIdentity(it)) }

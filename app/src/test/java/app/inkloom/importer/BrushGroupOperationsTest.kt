@@ -146,6 +146,19 @@ class BrushGroupOperationsTest {
         assertEquals(brushes[1], remaining.single())
     }
 
+    @Test fun duplicateAndDeleteGroupOperateOnTheWholeSubtree() {
+        var nextId = 0
+        val brushes = listOf(brush("A", "Drawing/Ink"), brush("B", "Drawing/Ink/Texture"), brush("C", "Painting"))
+
+        val duplicated = BrushGroupOperations.duplicateGroup(brushes, "Drawing/Ink", "Favorites", "copy") { "copy-${nextId++}" }
+        assertEquals(listOf("Favorites", "Favorites/Texture"), duplicated.takeLast(2).map(ImportedBrush::groupName))
+        assertEquals(listOf("copy-0", "copy-1"), duplicated.takeLast(2).map(ImportedBrush::id))
+
+        val deleted = BrushGroupOperations.deleteGroup(duplicated, "Drawing")
+        assertEquals(listOf("C", "copy-0", "copy-1"), deleted.map(ImportedBrush::id))
+        assertEquals(listOf("Painting", "Other"), BrushGroupOperations.deleteRegisteredGroup(listOf("Drawing/Ink", "Drawing/Pencil", "Painting", "Other"), "Drawing"))
+    }
+
     @Test fun reimportDeduplicationKeepsIntentionalLibraryCopies() {
         val original = brush("A", "Pens").copy(sha256 = "same-hash", tipPreviewPath = "/tip.png")
         val copy = original.copy(id = "A-copy", name = "A copy")
