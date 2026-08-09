@@ -125,6 +125,41 @@ class InkCanvasEraserTest {
         }
     }
 
+    @Test
+    fun maskEraserKeepsRapidInputPacketsInsideOneDisplayFrame() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val page = List(3_000) { index ->
+                val row = index / 60
+                val column = index % 60
+                InkStroke(
+                    id = "perf-$index",
+                    width = 4f,
+                    points = listOf(
+                        StrokePoint(column / 60f, (row + .35f) / 50f),
+                        StrokePoint((column + .9f) / 60f, (row + .65f) / 50f),
+                    ),
+                )
+            }
+            val view = configuredView(page, mutableListOf()).apply {
+                nonDestructiveEraser = true
+                eraserWidth = 72f
+            }
+            view.dispatchStylus(MotionEvent.ACTION_DOWN, 80f, 500f, 10L)
+            val packetTimes = ArrayList<Long>(120)
+            repeat(120) { index ->
+                val started = android.os.SystemClock.elapsedRealtimeNanos()
+                view.dispatchStylus(MotionEvent.ACTION_MOVE, 84f + index * 7f, 500f + (index % 5), 20L + index)
+                packetTimes += android.os.SystemClock.elapsedRealtimeNanos() - started
+            }
+            view.dispatchStylus(MotionEvent.ACTION_UP, 930f, 500f, 200L)
+
+            val sorted = packetTimes.sorted()
+            val p95Ms = sorted[(sorted.size * 95 / 100).coerceAtMost(sorted.lastIndex)] / 1_000_000f
+            assertTrue("Mask eraser input p95 was ${p95Ms}ms", p95Ms < 16.7f)
+        }
+    }
+
     private fun configuredView(stroke: InkStroke, edits: MutableList<CapturedEdit>) = configuredView(listOf(stroke), edits)
 
     private fun configuredView(strokes: List<InkStroke>, edits: MutableList<CapturedEdit>): InkCanvasView {

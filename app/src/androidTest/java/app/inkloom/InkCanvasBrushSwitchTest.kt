@@ -15,6 +15,7 @@ import app.inkloom.settings.EraserPreset
 import app.inkloom.ui.InkCanvasView
 import app.inkloom.ui.applyBrushConfiguration
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -45,6 +46,32 @@ class InkCanvasBrushSwitchTest {
         }
 
         assertEquals(listOf("first", "second", "system-highlighter"), strokes.map(InkStroke::brushId))
+    }
+
+    @Test
+    fun eraserModeCannotPaintWithAStaleNormalBrushDescriptor() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val committed = mutableListOf<InkStroke>()
+        val replacements = mutableListOf<InkStroke>()
+        val original = InkStroke(
+            id = "target",
+            width = 18f,
+            points = listOf(app.inkloom.document.StrokePoint(.1f, .5f), app.inkloom.document.StrokePoint(.9f, .5f)),
+        )
+        val view = InkCanvasView(instrumentation.targetContext).apply {
+            layout(0, 0, 1200, 1200)
+            setDocumentStrokes(listOf(original), "eraser-stale-brush")
+            onStrokeCommitted = committed::add
+            onStrokesReplaced = { _, added, _ -> replacements += added }
+        }
+
+        instrumentation.runOnMainSync {
+            view.applyBrushConfiguration(EditorTool.ERASER, AppSettings(eraserSize = 80f), brush("normal", "Ink pen"), 80f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
+            drawStroke(view, 1L, 600f)
+        }
+
+        assertTrue("Eraser mode must never commit black paint", committed.isEmpty())
+        assertTrue("The existing stroke should receive an eraser mask", replacements.any { it.id == original.id && it.masks.isNotEmpty() })
     }
 
     private fun brush(id: String, name: String) = ImportedBrush(

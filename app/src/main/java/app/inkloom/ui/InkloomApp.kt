@@ -2030,9 +2030,13 @@ private fun EditorScreen(
 
                         fun enterEraser() {
                             rememberDrawingSelection()
+                            val eraser = activeBrush?.takeIf(BrushRoleClassifier::isEraser)
+                                ?: brushes.filter(BrushRoleClassifier::isEraser).maxByOrNull(ImportedBrush::lastUsedAt)
+                            activeBrush = eraser
+                            selectedBrushId = eraser?.id
                             tool = EditorTool.ERASER
-                            brushSize = savedBrushSize(null, settings.eraserSize, EditorTool.ERASER)
-                            brushOpacity = 1f
+                            brushSize = savedBrushSize(eraser, eraser?.defaultSize ?: settings.eraserSize, EditorTool.ERASER)
+                            brushOpacity = eraser?.defaultOpacity ?: 1f
                         }
 
                         fun selectBrushGroup(group: ShortcutBrushGroup, fallbackToSystemPen: Boolean = false) {
@@ -4289,12 +4293,16 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
 internal fun InkCanvasView.applyBrushConfiguration(
     selectedTool: EditorTool,
     settings: AppSettings,
-    activeBrush: ImportedBrush?,
+    selectedBrush: ImportedBrush?,
     brushSize: Float,
     brushOpacity: Float,
     brushColor: Int,
     eraserPreset: EraserPreset,
 ) {
+    // A delayed Compose frame or hardware-button transition must never carry a normal paint
+    // descriptor into eraser mode. Imported erasers remain full brush presets; other brushes are
+    // discarded at this boundary and the selected system eraser preset is used instead.
+    val activeBrush = if (selectedTool == EditorTool.ERASER) selectedBrush?.takeIf(BrushRoleClassifier::isEraser) else selectedBrush
     switchInputConfiguration(selectedTool, activeBrush?.id)
     fingerDrawingEnabled = settings.fingerDrawing
     singleFingerDoubleTapUndo = settings.singleFingerDoubleTapUndo

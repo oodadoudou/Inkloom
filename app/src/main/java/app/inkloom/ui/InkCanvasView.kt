@@ -165,6 +165,12 @@ class InkCanvasView(context: Context) : View(context) {
     private val selectedStrokeIds = linkedSetOf<String>()
     private var selectionGestureBefore: List<InkStroke>? = null
     private var eraserGestureBefore: List<InkStroke>? = null
+    private var pendingEraserInvalidationBefore: List<InkStroke>? = null
+    private var eraserInvalidationScheduled = false
+    private val eraserInvalidationFrame = Runnable {
+        eraserInvalidationScheduled = false
+        flushEraserInvalidation()
+    }
     private var lastEraserX: Float? = null
     private var lastEraserY: Float? = null
     private val eraserStrokeIndices = mutableMapOf<String, Int>()
@@ -3274,6 +3280,9 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun beginEraserGesture() {
+        removeCallbacks(eraserInvalidationFrame)
+        eraserInvalidationScheduled = false
+        pendingEraserInvalidationBefore = null
         eraserGestureBefore = strokes.toList()
         lastEraserX = null
         lastEraserY = null
@@ -3282,17 +3291,17 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun eraseAlong(x: Float, y: Float, pressure: Float) {
-        val before = strokes.toList()
+        val before = captureEraserInvalidationBefore()
         beginEraserMaskBatch()
         eraseAlongUnchecked(x, y, pressure)
-        flushEraserMaskBatch()
+        if (!nonDestructiveEraser) flushEraserMaskBatch()
         invalidateEraserEvent(before)
     }
 
     /** One MotionEvent may carry many historical stylus samples. Process the whole packet before
      * touching the committed tile index so eraser cost is independent of Android's packetization. */
     private fun eraseMotionEvent(event: MotionEvent, pointerIndex: Int) {
-        val before = strokes.toList()
+        val before = captureEraserInvalidationBefore()
         beginEraserMaskBatch()
         for (position in 0 until event.historySize) {
             eraseAlongUnchecked(
@@ -3306,12 +3315,12 @@ class InkCanvasView(context: Context) : View(context) {
             event.getY(pointerIndex) / height.coerceAtLeast(1),
             event.getPressure(pointerIndex),
         )
-        flushEraserMaskBatch()
+        if (!nonDestructiveEraser) flushEraserMaskBatch()
         invalidateEraserEvent(before)
     }
 
     private fun beginEraserMaskBatch() {
-        eraserMaskBatch = if (nonDestructiveEraser) linkedMapOf() else null
+        if (nonDestructiveEraser && eraserMaskBatch == null) eraserMaskBatch = linkedMapOf()
     }
 
     private fun flushEraserMaskBatch() {
@@ -3325,6 +3334,30 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun invalidateEraserEvent(before: List<InkStroke>) {
+        if (nonDestructiveEraser) {
+            if (!eraserInvalidationScheduled) {
+                eraserInvalidationScheduled = true
+                postOnAnimation(eraserInvalidationFrame)
+            }
+            return
+        }
+        val edit = StrokeEdits.difference(before, strokes) ?: return
+        invalidateStrokeCache(edit.before.map { it.stroke }, edit.after.map { it.stroke })
+    }
+
+    /** Mask erasers do not change stroke bounds, so all samples received during one display frame
+     * can share a single tile diff. This removes a full stroke-list comparison from every input
+     * packet while preserving immediate model updates and one-frame visual feedback. */
+    private fun captureEraserInvalidationBefore(): List<InkStroke> {
+        if (!nonDestructiveEraser) return strokes.toList()
+        if (pendingEraserInvalidationBefore == null) pendingEraserInvalidationBefore = strokes.toList()
+        return emptyList()
+    }
+
+    private fun flushEraserInvalidation() {
+        val before = pendingEraserInvalidationBefore ?: return
+        pendingEraserInvalidationBefore = null
+        flushEraserMaskBatch()
         val edit = StrokeEdits.difference(before, strokes) ?: return
         invalidateStrokeCache(edit.before.map { it.stroke }, edit.after.map { it.stroke })
     }
@@ -3396,6 +3429,9 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun finishEraserGesture() {
+        removeCallbacks(eraserInvalidationFrame)
+        eraserInvalidationScheduled = false
+        flushEraserInvalidation()
         eraserGestureBefore?.let { commitStrokeEdit(it, strokes) }
         eraserGestureBefore = null
         lastEraserX = null
@@ -3405,6 +3441,9 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun cancelEraserGesture() {
+        removeCallbacks(eraserInvalidationFrame)
+        eraserInvalidationScheduled = false
+        pendingEraserInvalidationBefore = null
         eraserGestureBefore?.let(::restoreStrokeSnapshot)
         eraserGestureBefore = null
         lastEraserX = null
