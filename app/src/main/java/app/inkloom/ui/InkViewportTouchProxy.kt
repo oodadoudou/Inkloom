@@ -1,6 +1,9 @@
 package app.inkloom.ui
 
 import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import android.view.MotionEvent
 import android.view.PointerIcon
 import android.view.View
@@ -16,12 +19,30 @@ import app.inkloom.document.ViewportState
  */
 class InkViewportTouchProxy(context: Context) : View(context) {
     var target: InkCanvasView? = null
+        set(value) {
+            field?.apply {
+                externalHoverCursor = false
+                onHoverCursorStyleChanged = null
+            }
+            field = value
+            value?.apply {
+                externalHoverCursor = true
+                onHoverCursorStyleChanged = { postInvalidateOnAnimation() }
+            }
+            clearHoverCursor()
+        }
 
     private val coordinateMapper = PointerCoordinateMapper()
+    private val hoverPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+    private var hoverVisible = false
+    private var hoverX = 0f
+    private var hoverY = 0f
+    private var hoverDiameter = 0f
 
     init {
         setBackgroundColor(android.graphics.Color.TRANSPARENT)
         isClickable = true
+        setWillNotDraw(false)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -35,7 +56,22 @@ class InkViewportTouchProxy(context: Context) : View(context) {
         if (event.actionMasked == MotionEvent.ACTION_HOVER_ENTER && event.isStylusEvent()) {
             requestUnbufferedDispatch(event)
         }
-        return forward(event) { canvas, forwarded -> canvas.onHoverEvent(forwarded) }
+        val handled = forward(event) { canvas, forwarded -> canvas.onHoverEvent(forwarded) }
+        updateHoverCursor(event)
+        return handled
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        if (!hoverVisible) return
+        val radius = (hoverDiameter / 2f).coerceAtLeast(1.5f)
+        hoverPaint.strokeWidth = 3.5f
+        hoverPaint.color = Color.WHITE
+        hoverPaint.alpha = 235
+        canvas.drawCircle(hoverX, hoverY, radius, hoverPaint)
+        hoverPaint.strokeWidth = 1.5f
+        hoverPaint.color = Color.BLACK
+        canvas.drawCircle(hoverX, hoverY, radius, hoverPaint)
     }
 
     override fun onGenericMotionEvent(event: MotionEvent): Boolean {
@@ -68,6 +104,40 @@ class InkViewportTouchProxy(context: Context) : View(context) {
         super.performClick()
         return true
     }
+
+    override fun onDetachedFromWindow() {
+        target = null
+        super.onDetachedFromWindow()
+    }
+
+    private fun updateHoverCursor(event: MotionEvent) {
+        if (event.actionMasked == MotionEvent.ACTION_HOVER_EXIT || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+            clearHoverCursor()
+            return
+        }
+        val canvas = target ?: return clearHoverCursor()
+        val snapshot = canvas.hoverCursorSnapshot()
+        if (snapshot[0] == 0f || !event.isStylusEvent()) return clearHoverCursor()
+        val pointerIndex = event.actionIndex.coerceIn(0, event.pointerCount - 1)
+        hoverX = event.getX(pointerIndex)
+        hoverY = event.getY(pointerIndex)
+        hoverDiameter = snapshot[3] * canvas.viewportScale.coerceAtLeast(1f)
+        hoverVisible = true
+        postInvalidateOnAnimation()
+    }
+
+    private fun clearHoverCursor() {
+        if (!hoverVisible) return
+        hoverVisible = false
+        postInvalidateOnAnimation()
+    }
+
+    internal fun hoverCursorSnapshot(): FloatArray = floatArrayOf(
+        if (hoverVisible) 1f else 0f,
+        hoverX,
+        hoverY,
+        hoverDiameter,
+    )
 
     private fun MotionEvent.isStylusEvent(): Boolean =
         (0 until pointerCount).any { index ->

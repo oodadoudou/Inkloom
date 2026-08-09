@@ -303,6 +303,9 @@ class InkCanvasView(context: Context) : View(context) {
     private var hoverCursorX = 0f
     private var hoverCursorY = 0f
     private var hoverCursorUsesEraser = false
+    internal var externalHoverCursor: Boolean = false
+        set(value) { field = value; postInvalidateOnAnimation() }
+    internal var onHoverCursorStyleChanged: (() -> Unit)? = null
     private var configuredInputTool: EditorTool? = null
     private var configuredInputBrushId: String? = null
     private val tipCache = object : LinkedHashMap<String, Bitmap>(32, .75f, true) {
@@ -329,6 +332,7 @@ class InkCanvasView(context: Context) : View(context) {
                 hoverCursorUsesEraser = value == EditorTool.ERASER
                 postInvalidateOnAnimation()
             }
+            onHoverCursorStyleChanged?.invoke()
         }
     var forceNavigation: Boolean = false
     var rotateNavigation: Boolean = false
@@ -346,6 +350,7 @@ class InkCanvasView(context: Context) : View(context) {
         set(value) {
             field = value
             if (hoverCursorVisible && !hoverCursorUsesEraser) postInvalidateOnAnimation()
+            onHoverCursorStyleChanged?.invoke()
         }
     var inkOpacity: Float = 1f
     var brushId: String = "system-pencil"
@@ -538,6 +543,7 @@ class InkCanvasView(context: Context) : View(context) {
         set(value) {
             field = value
             if (hoverCursorVisible && hoverCursorUsesEraser) postInvalidateOnAnimation()
+            onHoverCursorStyleChanged?.invoke()
         }
     var eraserHardness: Float = 1f
     var eraserOpacity: Float = 1f
@@ -1958,7 +1964,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun drawStylusHoverCursor(canvas: Canvas) {
-        if (!hoverCursorVisible || activeTool != null || brushSizeDragActive) return
+        if (externalHoverCursor || !hoverCursorVisible || activeTool != null || brushSizeDragActive) return
         val configuredSize = if (hoverCursorUsesEraser) eraserWidth else baseWidth
         val zoom = viewportScale.coerceAtLeast(1f)
         val radius = (configuredSize.coerceIn(.1f, 800f) * width.coerceAtLeast(1) / REFERENCE_WIDTH / 2f)
