@@ -580,7 +580,6 @@ class InkloomLaunchTest {
         try {
             createNotebookAndOpenEditor()
             composeRule.onNodeWithContentDescription("Selection").performClick()
-            composeRule.onNodeWithContentDescription("Selection").performClick()
             composeRule.onNodeWithContentDescription("Selection subtools").assertIsDisplayed()
 
             composeRule.onNodeWithText("Freehand lasso").assertIsDisplayed()

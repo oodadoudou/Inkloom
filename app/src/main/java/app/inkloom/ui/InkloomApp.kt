@@ -1314,11 +1314,10 @@ private fun EditorScreen(
             ProcreateTopButton(Icons.Outlined.AutoFixHigh, tr("Adjustments", "调整"), onClick = onSettings)
             Box {
                 ProcreateTopButton(Icons.Outlined.Gesture, tr("Selection", "选择"), selected = tool == EditorTool.SELECT, onClick = {
-                    val alreadySelected = tool == EditorTool.SELECT
                     exitCanvasNavigation()
                     tool = EditorTool.SELECT
                     syncCanvasInput()
-                    selectionMenuOpen = alreadySelected
+                    selectionMenuOpen = true
                 })
                 DropdownMenu(
                     expanded = selectionMenuOpen,
@@ -8564,8 +8563,24 @@ private fun PressureCurveEditor(label: String, points: List<BrushCurvePoint>, on
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) { Text(tr("$label · ${shown.size} points", "${localizedBrushLabel(label)} · ${shown.size} 个控制点"), fontSize = 11.sp, color = MutedInk, modifier = Modifier.weight(1f)); TextButton(onClick = { onPoints(listOf(BrushCurvePoint(0f, 0f), BrushCurvePoint(1f, 1f))) }) { Text(tr("Linear", "线性")) }; TextButton(onClick = { onPoints(listOf(BrushCurvePoint(0f, 0f), BrushCurvePoint(.35f, .62f), BrushCurvePoint(1f, 1f))) }) { Text(tr("Soft", "柔和")) }; TextButton(onClick = { onPoints(listOf(BrushCurvePoint(0f, 0f), BrushCurvePoint(.65f, .25f), BrushCurvePoint(1f, 1f))) }) { Text(tr("Firm", "硬朗")) } }
         Canvas(
-            Modifier.fillMaxWidth().height(132.dp).background(Workspace, RoundedCornerShape(8.dp)).padding(12.dp)
+            Modifier.fillMaxWidth().height(180.dp).background(Workspace, RoundedCornerShape(8.dp)).padding(16.dp)
                 .semantics { contentDescription = "$label editable curve" }
+                .pointerInput(shown) {
+                    detectTapGestures { position ->
+                        val index = shown.indices.minByOrNull { candidate ->
+                            val point = shown[candidate]
+                            val dx = position.x - point.x * size.width
+                            val dy = position.y - (1f - point.y) * size.height
+                            dx * dx + dy * dy
+                        } ?: return@detectTapGestures
+                        val previousX = shown.getOrNull(index - 1)?.x?.plus(.001f) ?: 0f
+                        val nextX = shown.getOrNull(index + 1)?.x?.minus(.001f) ?: 1f
+                        val changed = shown.toMutableList()
+                        val x = if (index == 0 || index == shown.lastIndex) shown[index].x else (position.x / size.width).coerceIn(previousX, nextX)
+                        changed[index] = BrushCurvePoint(x, (1f - position.y / size.height).coerceIn(0f, 1f))
+                        currentOnPoints(changed)
+                    }
+                }
                 .pointerInput(shown) {
                     var selected = -1
                     detectDragGestures(
@@ -8597,8 +8612,8 @@ private fun PressureCurveEditor(label: String, points: List<BrushCurvePoint>, on
             shown.zipWithNext().forEach { (start, end) -> drawLine(Sage, Offset(start.x * size.width, (1f - start.y) * size.height), Offset(end.x * size.width, (1f - end.y) * size.height), 3f, cap = StrokeCap.Round) }
             shown.forEach {
                 val center = Offset(it.x * size.width, (1f - it.y) * size.height)
-                drawCircle(Color.White, 10f, center)
-                drawCircle(Sage, 7f, center)
+                drawCircle(Color.White, 16.dp.toPx(), center)
+                drawCircle(Sage, 9.dp.toPx(), center)
             }
         }
         Text(tr("Drag a control point; the larger handles are optimized for pen and touch.", "拖动控制点进行编辑；加大的触控区域适合数位笔和手指。"), color = MutedInk, fontSize = 10.sp)
@@ -9190,8 +9205,21 @@ private fun PressureCurveEditor(values: List<Float>, onChange: (List<Float>) -> 
             TextButton(onClick = { currentOnChange(PressureResponseCurve.FIRM) }) { Text(tr("Firm", "硬朗"), fontSize = 10.sp) }
         }
         Canvas(
-            Modifier.fillMaxWidth().height(170.dp).clip(RoundedCornerShape(8.dp)).background(Workspace)
+            Modifier.fillMaxWidth().height(210.dp).clip(RoundedCornerShape(8.dp)).background(Workspace).padding(16.dp)
                 .semantics { contentDescription = "Editable pressure curve" }
+                .pointerInput(curve) {
+                    detectTapGestures { position ->
+                        if (size.width <= 0 || size.height <= 0) return@detectTapGestures
+                        val index = (1..3).minBy { candidate ->
+                            val dx = position.x - size.width * candidate / 4f
+                            val dy = position.y - size.height * (1f - curve[candidate])
+                            dx * dx + dy * dy
+                        }
+                        val changed = curve.toMutableList()
+                        changed[index] = (1f - position.y / size.height).coerceIn(changed[index - 1], changed[index + 1])
+                        currentOnChange(PressureResponseCurve.normalize(changed))
+                    }
+                }
                 .pointerInput(curve) {
                     var selectedIndex = -1
                     fun update(position: Offset, choosePoint: Boolean = false) {
@@ -9213,7 +9241,7 @@ private fun PressureCurveEditor(values: List<Float>, onChange: (List<Float>) -> 
                         change.consume()
                         update(change.position)
                     }
-                }.padding(10.dp),
+                },
         ) {
             drawLine(OutlineSoft, Offset(0f, size.height), Offset(size.width, size.height), strokeWidth = 1f)
             drawLine(OutlineSoft, Offset(0f, 0f), Offset(0f, size.height), strokeWidth = 1f)
@@ -9231,8 +9259,8 @@ private fun PressureCurveEditor(values: List<Float>, onChange: (List<Float>) -> 
             }
             drawPath(path, Sage, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3f))
             curve.forEachIndexed { index, output ->
-                drawCircle(Color.White, 11f, Offset(index.toFloat() / curve.lastIndex * size.width, size.height - output * size.height))
-                drawCircle(Sage, 8f, Offset(index.toFloat() / curve.lastIndex * size.width, size.height - output * size.height))
+                drawCircle(Color.White, 16.dp.toPx(), Offset(index.toFloat() / curve.lastIndex * size.width, size.height - output * size.height))
+                drawCircle(Sage, 9.dp.toPx(), Offset(index.toFloat() / curve.lastIndex * size.width, size.height - output * size.height))
             }
         }
         Text(tr("Drag the three inner points. The curve applies to every pen and pressure-sensitive eraser.", "拖动中间三个控制点；曲线会应用于所有画笔及支持压感的橡皮。"), color = MutedInk, fontSize = 10.sp)
