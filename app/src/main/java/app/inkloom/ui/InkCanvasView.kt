@@ -76,6 +76,7 @@ import app.inkloom.document.PageElement
 import app.inkloom.document.PdfGotoLink
 import app.inkloom.document.PdfGotoLinkNavigation
 import app.inkloom.document.RenderedColorSampling
+import app.inkloom.document.SelectionContourGeometry
 import app.inkloom.document.RulerGestureMode
 import app.inkloom.document.RulerGuide
 import app.inkloom.document.RulerGuideState
@@ -173,6 +174,11 @@ class InkCanvasView(context: Context) : View(context) {
     private var backgroundBitmap: Bitmap? = null
     private val selectedStrokeIds = linkedSetOf<String>()
     private var selectedMaskRegions: List<List<StrokePoint>> = emptyList()
+    private var lastDeselectedStrokeIds: Set<String> = emptySet()
+    private var lastDeselectedMaskRegions: List<List<StrokePoint>> = emptyList()
+    private var lastDeselectedFeatherPixels = 0f
+    var selectionFeatherPixels: Float = 0f
+        private set
     private var selectionGestureBefore: List<InkStroke>? = null
     private var eraserGestureBefore: List<InkStroke>? = null
     private var pendingEraserInvalidationBefore: List<InkStroke>? = null
@@ -2756,6 +2762,7 @@ class InkCanvasView(context: Context) : View(context) {
             SelectionMode.ADD -> selectedMaskRegions + listOf(polygon.toList())
             SelectionMode.SUBTRACT, SelectionMode.INTERSECT -> emptyList()
         }
+        if (selectionMode == SelectionMode.REPLACE) selectionFeatherPixels = 0f
         if (splitOccurred) {
             strokes.clear()
             strokes += rebuilt
@@ -3670,12 +3677,73 @@ class InkCanvasView(context: Context) : View(context) {
 
     fun clearSelection(): Boolean {
         if (selectedStrokeIds.isEmpty()) return false
+        lastDeselectedStrokeIds = selectedStrokeIds.toSet()
+        lastDeselectedMaskRegions = selectionMaskRegions().map(List<StrokePoint>::toList)
+        lastDeselectedFeatherPixels = selectionFeatherPixels
         selectedStrokeIds.clear()
         selectedMaskRegions = emptyList()
+        selectionFeatherPixels = 0f
         lassoPoints.clear()
         movingSelection = false
         invalidate()
         return true
+    }
+
+    fun reselect(): Boolean {
+        val available = strokes.mapTo(mutableSetOf(), InkStroke::id)
+        val restored = lastDeselectedStrokeIds.intersect(available)
+        if (restored.isEmpty()) return false
+        selectedStrokeIds.clear()
+        selectedStrokeIds += restored
+        selectedMaskRegions = lastDeselectedMaskRegions.map(List<StrokePoint>::toList)
+        selectionFeatherPixels = lastDeselectedFeatherPixels
+        invalidate()
+        return true
+    }
+
+    fun expandSelection(pixels: Float): Boolean = modifySelectionContours(pixels.coerceAtLeast(0f))
+
+    fun shrinkSelection(pixels: Float): Boolean = modifySelectionContours(-pixels.coerceAtLeast(0f))
+
+    fun borderSelection(widthPixels: Float): Boolean {
+        val contours = selectionMaskRegions()
+        if (contours.isEmpty()) return false
+        val half = widthPixels.coerceAtLeast(1f) / 2f
+        val outer = contours.map { SelectionContourGeometry.offset(it, half, pageModelWidth, pageModelHeight) }
+        val inner = contours.map { SelectionContourGeometry.offset(it, -half, pageModelWidth, pageModelHeight) }
+        replaceSelectionContours(outer)
+        val previousMode = selectionMode
+        selectionMode = SelectionMode.SUBTRACT
+        inner.forEach(::selectWithLasso)
+        selectionMode = previousMode
+        selectedMaskRegions = emptyList()
+        invalidate()
+        return selectedStrokeIds.isNotEmpty()
+    }
+
+    fun featherSelection(pixels: Float): Boolean {
+        if (selectedStrokeIds.isEmpty()) return false
+        selectionFeatherPixels = pixels.coerceIn(0f, minOf(pageModelWidth, pageModelHeight) / 2f)
+        invalidate()
+        return true
+    }
+
+    private fun modifySelectionContours(pixels: Float): Boolean {
+        val contours = selectionMaskRegions()
+        if (contours.isEmpty()) return false
+        replaceSelectionContours(contours.map { SelectionContourGeometry.offset(it, pixels, pageModelWidth, pageModelHeight) })
+        return selectedStrokeIds.isNotEmpty()
+    }
+
+    private fun replaceSelectionContours(contours: List<List<StrokePoint>>) {
+        val previousMode = selectionMode
+        contours.forEachIndexed { index, contour ->
+            selectionMode = if (index == 0) SelectionMode.REPLACE else SelectionMode.ADD
+            selectWithLasso(contour)
+        }
+        selectionMode = previousMode
+        selectedMaskRegions = contours.map(List<StrokePoint>::toList)
+        invalidate()
     }
 
     /** Returns normalized selection contours for non-destructive layer-mask commands. Exact lasso,

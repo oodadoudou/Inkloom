@@ -30,6 +30,35 @@ class InkCanvasLassoTest {
         }
     }
 
+    @Test fun selectionCanExpandShrinkFeatherDeselectAndReselect() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val view = configuredView(horizontalStroke("modify-source"), mutableListOf())
+            view.drawSquareLasso()
+            val originalMinX = view.selectionMaskRegions().single().minOf(StrokePoint::x)
+
+            assertTrue(view.expandSelection(80f))
+            val expandedMinX = view.selectionMaskRegions().single().minOf(StrokePoint::x)
+            assertTrue(expandedMinX < originalMinX)
+            assertTrue(view.shrinkSelection(40f))
+            assertTrue(view.selectionMaskRegions().single().minOf(StrokePoint::x) > expandedMinX)
+            assertTrue(view.featherSelection(24f))
+            assertEquals(24f, view.selectionFeatherPixels, .001f)
+            assertTrue(view.clearSelection())
+            assertTrue(view.reselect())
+            assertEquals(24f, view.selectionFeatherPixels, .001f)
+        }
+    }
+
+    @Test fun borderSelectionKeepsOnlyContentCrossingTheSelectionEdge() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val view = configuredView(horizontalStroke("border-source"), mutableListOf())
+            view.drawSquareLasso()
+
+            assertTrue(view.borderSelection(80f))
+            assertTrue(view.selectionMaskRegions().isNotEmpty())
+        }
+    }
+
     @Test fun draggingASelectionMovesItsMasksWithItsPoints() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {

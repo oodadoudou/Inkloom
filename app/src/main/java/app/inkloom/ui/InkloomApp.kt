@@ -1027,6 +1027,7 @@ private fun EditorScreen(
     var activeBrush by remember { mutableStateOf<ImportedBrush?>(null) }
     var brushSize by remember { mutableFloatStateOf(settings.penSize) }
     var brushOpacity by remember { mutableFloatStateOf(settings.penOpacity) }
+    var selectionFeather by remember { mutableFloatStateOf(0f) }
     fun performLayerMaskCommand(layerId: String, command: LayerMaskCommand) {
         onLayerMaskCommand(document.id, selectedPage.id, layerId, command, canvasView?.selectionMaskRegions().orEmpty())
     }
@@ -2475,6 +2476,18 @@ private fun EditorScreen(
                         else -> Unit
                     }
                 }, onColor = { brushColor = it }, symmetryMode = settings.symmetryMode, onSymmetryMode = { onSettingsChange(settings.copy(symmetryMode = it)) }, modifier = Modifier.align(dockAlignment).padding(dockPadding).graphicsLayer(translationX = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.xDp.dp.toPx() } else 0f, translationY = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.yDp.dp.toPx() } else 0f))
+                if (tool == EditorTool.SELECT) SelectionLauncher(
+                    featherPixels = selectionFeather,
+                    onDeselect = { selectedElementId = null; if (canvasView?.clearSelection() == true) selectionFeather = 0f },
+                    onReselect = { selectedElementId = null; if (canvasView?.reselect() == true) selectionFeather = canvasView?.selectionFeatherPixels ?: 0f },
+                    onInvert = { selectedElementId = null; canvasView?.invertSelection() },
+                    onExpand = { canvasView?.expandSelection(it) },
+                    onShrink = { canvasView?.shrinkSelection(it) },
+                    onBorder = { canvasView?.borderSelection(it) },
+                    onFeather = { value -> if (canvasView?.featherSelection(value) == true) selectionFeather = value },
+                    onTransform = { canvasView?.enterFreeTransform() },
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
+                )
                 if (settings.showInputDiagnostics) Surface(Modifier.align(Alignment.BottomCenter).padding(12.dp), shape = RoundedCornerShape(20.dp), color = Color.White, border = CardDefaults.outlinedCardBorder(), shadowElevation = 3.dp) { Text(inputDiagnostic, Modifier.padding(horizontal = 14.dp, vertical = 7.dp), color = Ink, fontSize = 11.sp) }
             }
             if (rightPanelTabs.size > 1) DockedPanelTabStrip(
@@ -9100,6 +9113,59 @@ private fun PressureCurveEditor(values: List<Float>, onChange: (List<Float>) -> 
             }
         }
         Text(tr("Drag the three inner points. The curve applies to every pen and pressure-sensitive eraser.", "拖动中间三个控制点；曲线会应用于所有画笔及支持压感的橡皮。"), color = MutedInk, fontSize = 10.sp)
+    }
+}
+
+@Composable
+private fun SelectionLauncher(
+    featherPixels: Float,
+    onDeselect: () -> Unit,
+    onReselect: () -> Unit,
+    onInvert: () -> Unit,
+    onExpand: (Float) -> Unit,
+    onShrink: (Float) -> Unit,
+    onBorder: (Float) -> Unit,
+    onFeather: (Float) -> Unit,
+    onTransform: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var settingsOpen by remember { mutableStateOf(false) }
+    var amount by rememberSaveable { mutableFloatStateOf(8f) }
+    var dragX by rememberSaveable { mutableFloatStateOf(0f) }
+    var dragY by rememberSaveable { mutableFloatStateOf(0f) }
+    val dragDescription = tr("Drag selection launcher", "拖动选区快捷栏")
+    Surface(
+        modifier = modifier.graphicsLayer(translationX = dragX, translationY = dragY),
+        color = Color.White,
+        shape = RoundedCornerShape(10.dp),
+        border = CardDefaults.outlinedCardBorder(),
+        shadowElevation = 5.dp,
+    ) {
+        Row(Modifier.height(42.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.width(22.dp).fillMaxHeight().semantics { contentDescription = dragDescription }.pointerInput(Unit) {
+                detectDragGestures { change, delta -> change.consume(); dragX += delta.x; dragY += delta.y }
+            }, contentAlignment = Alignment.Center) {
+                Icon(Icons.Outlined.DragIndicator, null, Modifier.size(17.dp), tint = MutedInk)
+            }
+            CompactToolbarIconButton(onDeselect, tr("Deselect", "取消选区")) { Icon(Icons.Outlined.Close, null, Modifier.size(18.dp)) }
+            CompactToolbarIconButton(onReselect, tr("Reselect", "重新选择")) { Icon(Icons.Outlined.RestartAlt, null, Modifier.size(18.dp)) }
+            CompactToolbarIconButton(onInvert, tr("Invert selection", "反选")) { Icon(Icons.Outlined.Flip, null, Modifier.size(18.dp)) }
+            CompactToolbarIconButton({ onExpand(amount) }, tr("Expand selection", "扩大选区")) { Icon(Icons.Outlined.ZoomOutMap, null, Modifier.size(18.dp)) }
+            CompactToolbarIconButton({ onShrink(amount) }, tr("Shrink selection", "缩小选区")) { Icon(Icons.Outlined.ZoomInMap, null, Modifier.size(18.dp)) }
+            CompactToolbarIconButton({ onBorder(amount) }, tr("Border selection", "边界选区")) { Icon(Icons.Outlined.BorderStyle, null, Modifier.size(18.dp)) }
+            CompactToolbarIconButton(onTransform, tr("Free transform", "自由变换")) { Icon(Icons.Outlined.Transform, null, Modifier.size(18.dp)) }
+            Box {
+                CompactToolbarIconButton({ settingsOpen = true }, tr("Selection modification settings", "选区修改设置")) { Icon(Icons.Outlined.Tune, null, Modifier.size(18.dp)) }
+                DropdownMenu(settingsOpen, { settingsOpen = false }, Modifier.width(280.dp)) {
+                    Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+                        Text("${tr("Expand / shrink / border", "扩大／缩小／边界")}  ${amount.toInt()} px", fontSize = 11.sp)
+                        Slider(amount, { amount = it }, valueRange = 1f..128f)
+                        Text("${tr("Feather", "羽化")}  ${featherPixels.toInt()} px", fontSize = 11.sp)
+                        Slider(featherPixels, onFeather, valueRange = 0f..128f)
+                    }
+                }
+            }
+        }
     }
 }
 
