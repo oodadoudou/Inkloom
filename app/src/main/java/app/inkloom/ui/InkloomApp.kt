@@ -1371,7 +1371,6 @@ private fun EditorScreen(
                 canvasView?.tool = EditorTool.PEN
                 if (alreadySelected || !brushesOpen) onToggleBrushes()
             })
-            ProcreateTopButton(Icons.Outlined.BorderColor, tr("Marker", "标记笔"), selected = tool == EditorTool.HIGHLIGHTER, onClick = { exitCanvasNavigation(); tool = EditorTool.HIGHLIGHTER; canvasView?.tool = EditorTool.HIGHLIGHTER; activeBrush = null; selectedBrushId = null; brushSize = settings.highlighterSize; brushOpacity = settings.highlighterOpacity })
             ProcreateTopButton(Icons.Outlined.AutoFixOff, tr("Eraser", "橡皮"), selected = tool == EditorTool.ERASER, onClick = {
                 exitCanvasNavigation()
                 val alreadySelected = tool == EditorTool.ERASER
@@ -1415,7 +1414,6 @@ private fun EditorScreen(
                         Triple(EditorTool.NOTE, Icons.Outlined.StickyNote2, tr("Note", "便笺")),
                         Triple(EditorTool.LINK, Icons.Outlined.Link, tr("Link", "链接")),
                         Triple(EditorTool.IMAGE, Icons.Outlined.Image, tr("Image", "图片")),
-                        Triple(EditorTool.AUDIO, Icons.Outlined.Mic, tr("Audio", "音频")),
                         Triple(EditorTool.LASER, Icons.Outlined.TrackChanges, tr("Laser pointer", "激光笔")),
                     ).forEach { (chosen, icon, label) ->
                         DropdownMenuItem(text = { Text(label) }, leadingIcon = { Icon(icon, null) }, onClick = {
