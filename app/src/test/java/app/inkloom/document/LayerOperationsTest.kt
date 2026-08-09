@@ -9,7 +9,7 @@ import org.junit.Test
 
 class LayerOperationsTest {
     @Test fun duplicateDeepCopiesLayerContentAndPreservesBrushAppearance() {
-        val source = InkLayer(id = "sketch", name = "Sketch", locked = true)
+        val source = InkLayer(id = "sketch", name = "Sketch", locked = true, reference = true, draft = true)
         val stroke = InkStroke(id = "stroke", renderSeed = 912, layerId = source.id, points = listOf(StrokePoint(.2f, .3f)), masks = listOf(StrokeMaskDab(.2f, .3f, .01f, .02f)))
         val stickyStroke = InkStroke(id = "sticky-stroke", renderSeed = 411, points = listOf(StrokePoint(.4f, .5f)))
         val sticky = PageElement.Sticky(id = "sticky", x = .2f, y = .2f, layerId = source.id, text = "Draft", strokes = listOf(stickyStroke))
@@ -23,6 +23,8 @@ class LayerOperationsTest {
         assertEquals("Sketch copy", copiedLayer.name)
         assertEquals(LayerRole.CUSTOM, copiedLayer.role)
         assertTrue(copiedLayer.locked)
+        assertTrue(copiedLayer.reference)
+        assertTrue(copiedLayer.draft)
         val copiedStroke = result.page.strokes.last()
         assertEquals("copy-stroke", copiedStroke.id)
         assertEquals(copiedLayer.id, copiedStroke.layerId)

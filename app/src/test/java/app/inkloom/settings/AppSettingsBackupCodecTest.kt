@@ -51,6 +51,7 @@ class AppSettingsBackupCodecTest {
             penSize = 17f,
             eraserPreset = EraserPreset.SOFT_EDGE,
             selectionMode = SelectionMode.INTERSECT,
+            referenceTarget = ReferenceTarget.REFERENCE_LAYERS,
             correctLineMode = app.inkloom.document.CorrectLineMode.ADJUST_WIDTH,
             correctLineAmount = .72f,
             shortcutBindings = listOf(ShortcutBinding(ShortcutAction.QUICK_SLOT_1, ShortcutChord(KeyEvent.KEYCODE_F12))),

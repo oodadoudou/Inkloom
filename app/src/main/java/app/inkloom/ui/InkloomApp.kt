@@ -111,6 +111,7 @@ import app.inkloom.settings.FloatingToolbarPlacement
 import app.inkloom.settings.SelectionFilter
 import app.inkloom.settings.SelectionMode
 import app.inkloom.settings.SelectionShape
+import app.inkloom.settings.ReferenceTarget
 import app.inkloom.settings.BrushPresetSizeStore
 import app.inkloom.settings.ShortcutAction
 import app.inkloom.settings.ShortcutActivation
@@ -677,6 +678,8 @@ fun InkloomApp(initialIntent: Intent?) {
             onSetLayerBlendMode = viewModel::setLayerBlendMode,
             onToggleLayerAlphaLock = viewModel::toggleLayerAlphaLock,
             onToggleLayerClippedToBelow = viewModel::toggleLayerClippedToBelow,
+            onToggleLayerReference = viewModel::toggleLayerReference,
+            onToggleLayerDraft = viewModel::toggleLayerDraft,
             onMoveLayerToFolder = viewModel::moveLayerToFolder,
             onToggleLayerFolderCollapsed = viewModel::toggleLayerFolderCollapsed,
             onMoveLayer = viewModel::moveLayer,
@@ -977,6 +980,8 @@ private fun EditorScreen(
     onSetLayerBlendMode: (String, String, String, LayerBlendMode) -> Unit,
     onToggleLayerAlphaLock: (String, String, String) -> Unit,
     onToggleLayerClippedToBelow: (String, String, String) -> Unit,
+    onToggleLayerReference: (String, String, String) -> Unit,
+    onToggleLayerDraft: (String, String, String) -> Unit,
     onMoveLayerToFolder: (String, String, String, String?) -> Unit,
     onToggleLayerFolderCollapsed: (String, String, String) -> Unit,
     onMoveLayer: (String, String, String, Int) -> Unit,
@@ -1903,6 +1908,8 @@ private fun EditorScreen(
                 onBlendMode = { layerId, mode -> onSetLayerBlendMode(document.id, selectedPage.id, layerId, mode) },
                 onToggleAlphaLock = { onToggleLayerAlphaLock(document.id, selectedPage.id, it) },
                 onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
+                onToggleReference = { onToggleLayerReference(document.id, selectedPage.id, it) },
+                onToggleDraft = { onToggleLayerDraft(document.id, selectedPage.id, it) },
                 onMoveToFolder = { layerId, folderId -> onMoveLayerToFolder(document.id, selectedPage.id, layerId, folderId) },
                 onToggleFolderCollapsed = { onToggleLayerFolderCollapsed(document.id, selectedPage.id, it) },
                 onMove = { layerId, delta -> onMoveLayer(document.id, selectedPage.id, layerId, delta) },
@@ -2428,7 +2435,7 @@ private fun EditorScreen(
                         EditorTool.AUDIO -> if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) audioOpen = true else audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                         else -> Unit
                     }
-                }, onUndo = { canvasView?.undo() }, onRedo = { canvasView?.redo() }, onScale = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, resizeElement(it, 1.15f)) } } ?: canvasView?.scaleSelection(1.15f) }, onRotate = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, rotateElement(it, 15f)) } } ?: canvasView?.rotateSelection(15f) }, onCopy = { selectedElementId?.let { onDuplicateElement(document.id, selectedPage.id, it) } ?: canvasView?.copySelection() }, onCut = { if (selectedElementId != null) Toast.makeText(context, inkOnlyClipboardMessage, Toast.LENGTH_SHORT).show() else if (canvasView?.cutSelectionToClipboard() != true) Toast.makeText(context, selectBeforeCutMessage, Toast.LENGTH_SHORT).show() }, onClipboardCopy = { if (selectedElementId != null) Toast.makeText(context, inkOnlyClipboardMessage, Toast.LENGTH_SHORT).show() else if (canvasView?.copySelectionToClipboard() != true) Toast.makeText(context, selectBeforeCopyMessage, Toast.LENGTH_SHORT).show() }, onPaste = { selectedElementId = null; if (canvasView?.pasteSelectionFromClipboard() != true) Toast.makeText(context, noInkClipboardMessage, Toast.LENGTH_SHORT).show() }, onDelete = { selectedElementId?.let { onRemoveElement(document.id, selectedPage.id, it); selectedElementId = null } ?: canvasView?.deleteSelection() }, onSelectAll = { selectedElementId = null; tool = EditorTool.SELECT; canvasView?.selectAllEditableStrokes() }, onInvertSelection = { selectedElementId = null; tool = EditorTool.SELECT; canvasView?.invertSelection() }, onDeselect = { selectedElementId = null; canvasView?.clearSelection() }, onFreeTransform = { tool = EditorTool.SELECT; canvasView?.enterFreeTransform() }, selectionShape = settings.selectionShape, selectionMode = settings.selectionMode, selectionFilter = settings.selectionFilter, onSelectionShape = { onSettingsChange(settings.copy(selectionShape = it)) }, onSelectionMode = { onSettingsChange(settings.copy(selectionMode = it)) }, onSelectionFilter = { onSettingsChange(settings.copy(selectionFilter = it)) }, correctLineMode = settings.correctLineMode, correctLineAmount = settings.correctLineAmount, onCorrectLineMode = { onSettingsChange(settings.copy(correctLineMode = it)) }, onCorrectLineAmount = { onSettingsChange(settings.copy(correctLineAmount = it.coerceIn(0f, 1f))) }, eraserPreset = settings.eraserPreset, onEraserPreset = { preset -> onSettingsChange(settings.copy(eraserPreset = preset, nonDestructiveEraser = preset.usesMask)) }, rulerEnabled = settings.rulerEnabled, rulerSnapDegrees = settings.rulerSnapDegrees, onToggleRuler = { onSettingsChange(settings.copy(rulerEnabled = !settings.rulerEnabled)) }, onRulerSnap = { onSettingsChange(settings.copy(rulerSnapDegrees = it)) }, onResetRuler = { onSettingsChange(settings.copy(rulerCenterX = .5f, rulerCenterY = .5f, rulerAngleDegrees = 0f)) }, gridSnapEnabled = settings.gridSnapEnabled, gridSpacing = settings.gridSpacing, alignmentGuidesEnabled = settings.alignmentGuidesEnabled, onToggleGridSnap = { onSettingsChange(settings.copy(gridSnapEnabled = !settings.gridSnapEnabled)) }, onGridSpacing = { onSettingsChange(settings.copy(gridSpacing = it)) }, onToggleAlignmentGuides = { onSettingsChange(settings.copy(alignmentGuidesEnabled = !settings.alignmentGuidesEnabled)) }, onResetAlignmentGuides = { onSettingsChange(settings.copy(verticalGuideX = .5f, horizontalGuideY = .5f)) }, onDrag = { dx, dy ->
+                }, onUndo = { canvasView?.undo() }, onRedo = { canvasView?.redo() }, onScale = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, resizeElement(it, 1.15f)) } } ?: canvasView?.scaleSelection(1.15f) }, onRotate = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, rotateElement(it, 15f)) } } ?: canvasView?.rotateSelection(15f) }, onCopy = { selectedElementId?.let { onDuplicateElement(document.id, selectedPage.id, it) } ?: canvasView?.copySelection() }, onCut = { if (selectedElementId != null) Toast.makeText(context, inkOnlyClipboardMessage, Toast.LENGTH_SHORT).show() else if (canvasView?.cutSelectionToClipboard() != true) Toast.makeText(context, selectBeforeCutMessage, Toast.LENGTH_SHORT).show() }, onClipboardCopy = { if (selectedElementId != null) Toast.makeText(context, inkOnlyClipboardMessage, Toast.LENGTH_SHORT).show() else if (canvasView?.copySelectionToClipboard() != true) Toast.makeText(context, selectBeforeCopyMessage, Toast.LENGTH_SHORT).show() }, onPaste = { selectedElementId = null; if (canvasView?.pasteSelectionFromClipboard() != true) Toast.makeText(context, noInkClipboardMessage, Toast.LENGTH_SHORT).show() }, onDelete = { selectedElementId?.let { onRemoveElement(document.id, selectedPage.id, it); selectedElementId = null } ?: canvasView?.deleteSelection() }, onSelectAll = { selectedElementId = null; tool = EditorTool.SELECT; canvasView?.selectAllEditableStrokes() }, onInvertSelection = { selectedElementId = null; tool = EditorTool.SELECT; canvasView?.invertSelection() }, onDeselect = { selectedElementId = null; canvasView?.clearSelection() }, onFreeTransform = { tool = EditorTool.SELECT; canvasView?.enterFreeTransform() }, selectionShape = settings.selectionShape, selectionMode = settings.selectionMode, selectionFilter = settings.selectionFilter, onSelectionShape = { onSettingsChange(settings.copy(selectionShape = it)) }, onSelectionMode = { onSettingsChange(settings.copy(selectionMode = it)) }, onSelectionFilter = { onSettingsChange(settings.copy(selectionFilter = it)) }, referenceTarget = settings.referenceTarget, onReferenceTarget = { onSettingsChange(settings.copy(referenceTarget = it)) }, correctLineMode = settings.correctLineMode, correctLineAmount = settings.correctLineAmount, onCorrectLineMode = { onSettingsChange(settings.copy(correctLineMode = it)) }, onCorrectLineAmount = { onSettingsChange(settings.copy(correctLineAmount = it.coerceIn(0f, 1f))) }, eraserPreset = settings.eraserPreset, onEraserPreset = { preset -> onSettingsChange(settings.copy(eraserPreset = preset, nonDestructiveEraser = preset.usesMask)) }, rulerEnabled = settings.rulerEnabled, rulerSnapDegrees = settings.rulerSnapDegrees, onToggleRuler = { onSettingsChange(settings.copy(rulerEnabled = !settings.rulerEnabled)) }, onRulerSnap = { onSettingsChange(settings.copy(rulerSnapDegrees = it)) }, onResetRuler = { onSettingsChange(settings.copy(rulerCenterX = .5f, rulerCenterY = .5f, rulerAngleDegrees = 0f)) }, gridSnapEnabled = settings.gridSnapEnabled, gridSpacing = settings.gridSpacing, alignmentGuidesEnabled = settings.alignmentGuidesEnabled, onToggleGridSnap = { onSettingsChange(settings.copy(gridSnapEnabled = !settings.gridSnapEnabled)) }, onGridSpacing = { onSettingsChange(settings.copy(gridSpacing = it)) }, onToggleAlignmentGuides = { onSettingsChange(settings.copy(alignmentGuidesEnabled = !settings.alignmentGuidesEnabled)) }, onResetAlignmentGuides = { onSettingsChange(settings.copy(verticalGuideX = .5f, horizontalGuideY = .5f)) }, onDrag = { dx, dy ->
                     val next = FloatingToolbarPlacement.clamp(toolbarX + dx / editorDensity.density, toolbarY + dy / editorDensity.density, toolbarAreaWidth.value, toolbarAreaHeight.value, dockVertical)
                     toolbarX = next.xDp
                     toolbarY = next.yDp
@@ -2521,6 +2528,8 @@ private fun EditorScreen(
                 onBlendMode = { layerId, mode -> onSetLayerBlendMode(document.id, selectedPage.id, layerId, mode) },
                 onToggleAlphaLock = { onToggleLayerAlphaLock(document.id, selectedPage.id, it) },
                 onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
+                onToggleReference = { onToggleLayerReference(document.id, selectedPage.id, it) },
+                onToggleDraft = { onToggleLayerDraft(document.id, selectedPage.id, it) },
                 onMoveToFolder = { layerId, folderId -> onMoveLayerToFolder(document.id, selectedPage.id, layerId, folderId) },
                 onToggleFolderCollapsed = { onToggleLayerFolderCollapsed(document.id, selectedPage.id, it) },
                 onMove = { layerId, delta -> onMoveLayer(document.id, selectedPage.id, layerId, delta) },
@@ -2593,8 +2602,10 @@ private fun EditorScreen(
                     onLock = { onToggleLayerLock(document.id, selectedPage.id, it) },
                     onOpacity = { layerId, value -> onSetLayerOpacity(document.id, selectedPage.id, layerId, value) },
                 onBlendMode = { layerId, mode -> onSetLayerBlendMode(document.id, selectedPage.id, layerId, mode) },
-                onToggleAlphaLock = { onToggleLayerAlphaLock(document.id, selectedPage.id, it) },
-                onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
+                    onToggleAlphaLock = { onToggleLayerAlphaLock(document.id, selectedPage.id, it) },
+                    onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
+                    onToggleReference = { onToggleLayerReference(document.id, selectedPage.id, it) },
+                    onToggleDraft = { onToggleLayerDraft(document.id, selectedPage.id, it) },
                 onMoveToFolder = { layerId, folderId -> onMoveLayerToFolder(document.id, selectedPage.id, layerId, folderId) },
                     onToggleFolderCollapsed = { onToggleLayerFolderCollapsed(document.id, selectedPage.id, it) },
                     onMove = { layerId, delta -> onMoveLayer(document.id, selectedPage.id, layerId, delta) },
@@ -2719,6 +2730,8 @@ private fun EditorScreen(
                 onBlendMode = { layerId, mode -> onSetLayerBlendMode(document.id, selectedPage.id, layerId, mode) },
                 onToggleAlphaLock = { onToggleLayerAlphaLock(document.id, selectedPage.id, it) },
                 onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
+                onToggleReference = { onToggleLayerReference(document.id, selectedPage.id, it) },
+                onToggleDraft = { onToggleLayerDraft(document.id, selectedPage.id, it) },
                 onMoveToFolder = { layerId, folderId -> onMoveLayerToFolder(document.id, selectedPage.id, layerId, folderId) },
                 onToggleFolderCollapsed = { onToggleLayerFolderCollapsed(document.id, selectedPage.id, it) },
                 onMove = { layerId, delta -> onMoveLayer(document.id, selectedPage.id, layerId, delta) },
@@ -4289,6 +4302,8 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.alphaLockedLayers = page.layers.filter { it.alphaLock }.mapTo(mutableSetOf()) { it.id }
                 view.alphaLockBaseContentIds = page.layers.filter { it.alphaLock }.associate { it.id to it.alphaLockBaseContentIds.toSet() }
                 view.clippedLayers = page.layers.filter { it.clippedToBelow }.mapTo(mutableSetOf()) { it.id }
+                view.referenceLayerIds = page.layers.filter { it.reference }.mapTo(mutableSetOf()) { it.id }
+                view.draftLayerIds = page.layers.filter { it.draft }.mapTo(mutableSetOf()) { it.id }
                 view.layerOrder = page.layers.filter { it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) && LayerHierarchy.effectiveVisible(page.layers, it) }.map(InkLayer::id)
                 view.pagePaperColor = if (renderedPage.background is PageBackground.Paper) (if (backgroundVisible) renderedPage.background.colorArgb.toInt() else AndroidColor.WHITE) else null
                 view.pagePaperPattern = (renderedPage.background as? PageBackground.Paper)?.pattern?.takeIf { backgroundVisible }
@@ -4405,6 +4420,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     liquifyHardness = activeBrush?.hardness ?: .5f
     selectionMode = settings.selectionMode
     selectionFilter = settings.selectionFilter
+    referenceTarget = settings.referenceTarget
     correctLineMode = settings.correctLineMode
     correctLineAmount = settings.correctLineAmount
     baseWidth = brushSize
@@ -5113,7 +5129,7 @@ private fun ProcreateTopButton(
 }
 
 @Composable
-private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, onSelectAll: () -> Unit, onInvertSelection: () -> Unit, onDeselect: () -> Unit, onFreeTransform: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, correctLineMode: CorrectLineMode, correctLineAmount: Float, onCorrectLineMode: (CorrectLineMode) -> Unit, onCorrectLineAmount: (Float) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit, vertical: Boolean, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, symmetryMode: SymmetryMode, onSymmetryMode: (SymmetryMode) -> Unit, modifier: Modifier = Modifier) {
+private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, onSelectAll: () -> Unit, onInvertSelection: () -> Unit, onDeselect: () -> Unit, onFreeTransform: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, referenceTarget: ReferenceTarget, onReferenceTarget: (ReferenceTarget) -> Unit, correctLineMode: CorrectLineMode, correctLineAmount: Float, onCorrectLineMode: (CorrectLineMode) -> Unit, onCorrectLineAmount: (Float) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit, vertical: Boolean, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, symmetryMode: SymmetryMode, onSymmetryMode: (SymmetryMode) -> Unit, modifier: Modifier = Modifier) {
     var moreToolsOpen by remember { mutableStateOf(false) }
     var controlsOpen by remember { mutableStateOf(false) }
     val dragToolbarDescription = tr("Drag toolbar", "拖动工具栏")
@@ -5154,6 +5170,8 @@ private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () 
                 onSelectionShape = onSelectionShape,
                 onSelectionMode = onSelectionMode,
                 onSelectionFilter = onSelectionFilter,
+                referenceTarget = referenceTarget,
+                onReferenceTarget = onReferenceTarget,
                 correctLineMode = correctLineMode,
                 correctLineAmount = correctLineAmount,
                 onCorrectLineMode = onCorrectLineMode,
@@ -5301,7 +5319,7 @@ private fun ProcreateVerticalSlider(
 }
 
 @Composable
-private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, onSelectAll: () -> Unit, onInvertSelection: () -> Unit, onDeselect: () -> Unit, onFreeTransform: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, correctLineMode: CorrectLineMode, correctLineAmount: Float, onCorrectLineMode: (CorrectLineMode) -> Unit, onCorrectLineAmount: (Float) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, dragModifier: Modifier, vertical: Boolean, moreToolsOpen: Boolean, onMoreToolsOpen: (Boolean) -> Unit, controlsOpen: Boolean, onControlsOpen: (Boolean) -> Unit, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, symmetryMode: SymmetryMode, onSymmetryMode: (SymmetryMode) -> Unit) {
+private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, onSelectAll: () -> Unit, onInvertSelection: () -> Unit, onDeselect: () -> Unit, onFreeTransform: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, referenceTarget: ReferenceTarget, onReferenceTarget: (ReferenceTarget) -> Unit, correctLineMode: CorrectLineMode, correctLineAmount: Float, onCorrectLineMode: (CorrectLineMode) -> Unit, onCorrectLineAmount: (Float) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, dragModifier: Modifier, vertical: Boolean, moreToolsOpen: Boolean, onMoreToolsOpen: (Boolean) -> Unit, controlsOpen: Boolean, onControlsOpen: (Boolean) -> Unit, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, symmetryMode: SymmetryMode, onSymmetryMode: (SymmetryMode) -> Unit) {
     val dragToolbarDescription = tr("Drag toolbar", "拖动工具栏")
     var toolLibraryLayout by rememberSaveable { mutableStateOf(ToolLibraryLayout.LIST) }
     var toolLibrarySort by rememberSaveable { mutableStateOf(ToolLibrarySort.DEFAULT) }
@@ -5512,6 +5530,28 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
                         TextButton(onClick = onDeselect) { Text(tr("Deselect", "取消选区"), fontSize = 10.sp) }
                         TextButton(onClick = onFreeTransform) { Text(tr("Transform", "自由变换"), fontSize = 10.sp) }
                     }
+                }
+                if (tool in setOf(EditorTool.SELECT, EditorTool.FILL)) {
+                    Text(tr("Reference", "参照范围"), color = MutedInk, fontSize = 12.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        ReferenceTarget.entries.forEach { target ->
+                            FilterChip(
+                                selected = referenceTarget == target,
+                                onClick = { onReferenceTarget(target) },
+                                label = {
+                                    Text(
+                                        when (target) {
+                                            ReferenceTarget.ALL_VISIBLE -> tr("All visible", "全部可见")
+                                            ReferenceTarget.ACTIVE_LAYER -> tr("Current", "当前图层")
+                                            ReferenceTarget.REFERENCE_LAYERS -> tr("Reference", "参考图层")
+                                        },
+                                        fontSize = 10.sp,
+                                    )
+                                },
+                            )
+                        }
+                    }
+                    Text(tr("Draft layers are excluded. If no reference layer is marked, the current layer is used.", "草稿图层会被排除；若未标记参考图层，则使用当前图层。"), color = MutedInk, fontSize = 9.sp)
                 }
                 if (tool == EditorTool.CORRECT_LINE) {
                     Text(tr("Correct line", "线条修正"), color = MutedInk, fontSize = 12.sp)
@@ -5955,6 +5995,8 @@ private fun LayerPanel(
     onBlendMode: (String, LayerBlendMode) -> Unit,
     onToggleAlphaLock: (String) -> Unit,
     onToggleClippedToBelow: (String) -> Unit,
+    onToggleReference: (String) -> Unit,
+    onToggleDraft: (String) -> Unit,
     onMoveToFolder: (String, String?) -> Unit,
     onToggleFolderCollapsed: (String) -> Unit,
     onMove: (String, Int) -> Unit,
@@ -6006,6 +6048,8 @@ private fun LayerPanel(
             onBlendMode = onBlendMode,
             onToggleAlphaLock = onToggleAlphaLock,
             onToggleClippedToBelow = onToggleClippedToBelow,
+            onToggleReference = onToggleReference,
+            onToggleDraft = onToggleDraft,
             onMove = onMove,
             onDuplicate = onDuplicate,
             onMergeDown = onMergeDown,
@@ -6133,6 +6177,8 @@ private fun LayerPanel(
                             Text(when (layer.role) { LayerRole.BACKGROUND -> tr("Background", "背景"); LayerRole.INK -> tr("Ink", "墨迹"); LayerRole.HIGHLIGHT -> tr("Highlight", "高亮"); LayerRole.OBJECTS -> tr("Objects", "对象"); LayerRole.CUSTOM -> tr("Custom", "自定义"); LayerRole.FOLDER -> tr("Folder", "文件夹") }, fontSize = 8.sp, color = MutedInk)
                         }
                         if (layer.locked) Icon(Icons.Outlined.Lock, tr("Locked", "已锁定"), Modifier.size(14.dp), tint = MutedInk)
+                        if (layer.reference) Icon(Icons.Outlined.Lightbulb, tr("Reference layer", "参考图层"), Modifier.size(14.dp), tint = MutedInk)
+                        if (layer.draft) Icon(Icons.Outlined.EditNote, tr("Draft layer", "草稿图层"), Modifier.size(14.dp), tint = MutedInk)
                         if (folderTargets.isNotEmpty() || layer.parentId != null) Box {
                             Box(
                                 Modifier.size(28.dp).clickable {
@@ -6158,6 +6204,8 @@ private fun LayerPanel(
                                 if (layer.role == LayerRole.FOLDER) DropdownMenuItem(text = { Text(if (layer.collapsed) tr("Expand folder", "展开文件夹") else tr("Collapse folder", "折叠文件夹")) }, onClick = { menu = false; onToggleFolderCollapsed(layer.id) })
                                 if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(if (layer.alphaLock) tr("Unlock alpha", "解锁透明度") else tr("Lock alpha", "锁定透明度")) }, leadingIcon = { Icon(if (layer.alphaLock) Icons.Outlined.LockOpen else Icons.Outlined.Lock, null) }, onClick = { menu = false; onToggleAlphaLock(layer.id) })
                                 if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(if (layer.clippedToBelow) tr("Stop clipping", "取消剪贴") else tr("Clipping mask", "剪贴蒙版")) }, leadingIcon = { Icon(if (layer.clippedToBelow) Icons.Outlined.LinkOff else Icons.Outlined.Link, null) }, onClick = { menu = false; onToggleClippedToBelow(layer.id) })
+                                if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text(if (layer.reference) tr("Unset reference layer", "取消参考图层") else tr("Set as reference layer", "设为参考图层")) }, leadingIcon = { Icon(Icons.Outlined.Lightbulb, null) }, onClick = { menu = false; onToggleReference(layer.id) })
+                                if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(if (layer.draft) tr("Unset draft layer", "取消草稿图层") else tr("Set as draft layer", "设为草稿图层")) }, leadingIcon = { Icon(Icons.Outlined.EditNote, null) }, onClick = { menu = false; onToggleDraft(layer.id) })
                                 DropdownMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { menu = false; renameLayer = layer; renameValue = layer.name })
                                 if (layer.parentId != null) DropdownMenuItem(text = { Text(tr("Move out of folder", "移出文件夹")) }, onClick = { menu = false; onMoveToFolder(layer.id, null) })
                                 folderTargets.forEach { folder -> DropdownMenuItem(text = { Text("${tr("Move into", "移入")} ${folder.name}") }, onClick = { menu = false; onMoveToFolder(layer.id, folder.id) }) }
@@ -6205,6 +6253,8 @@ private fun ProcreateLayerPanel(
     onBlendMode: (String, LayerBlendMode) -> Unit,
     onToggleAlphaLock: (String) -> Unit,
     onToggleClippedToBelow: (String) -> Unit,
+    onToggleReference: (String) -> Unit,
+    onToggleDraft: (String) -> Unit,
     onMove: (String, Int) -> Unit,
     onDuplicate: (String) -> Unit,
     onMergeDown: (String) -> Unit,
@@ -6300,12 +6350,16 @@ private fun ProcreateLayerPanel(
                             Text(if (layer.role == LayerRole.FOLDER) tr("Group", "组") else layer.blendMode.name.first().toString(), fontSize = 9.sp, color = MutedInk)
                         }
                         if (layer.locked) Icon(Icons.Outlined.Lock, tr("Locked", "已锁定"), Modifier.size(15.dp), tint = MutedInk)
+                        if (layer.reference) Icon(Icons.Outlined.Lightbulb, tr("Reference layer", "参考图层"), Modifier.size(15.dp), tint = MutedInk)
+                        if (layer.draft) Icon(Icons.Outlined.EditNote, tr("Draft layer", "草稿图层"), Modifier.size(15.dp), tint = MutedInk)
                         Box {
                             IconButton(onClick = { menu = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.MoreVert, tr("Layer actions", "图层操作"), tint = Ink) }
                             DropdownMenu(menu, { menu = false }) {
                                 DropdownMenuItem(text = { Text(if (layer.locked) tr("Unlock", "解锁") else tr("Lock", "锁定")) }, onClick = { menu = false; onLock(layer.id) })
                                 if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(if (layer.alphaLock) tr("Unlock alpha", "解锁透明度") else tr("Lock alpha", "锁定透明度")) }, onClick = { menu = false; onToggleAlphaLock(layer.id) })
                                 if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(if (layer.clippedToBelow) tr("Stop clipping", "取消剪贴") else tr("Clipping mask", "剪贴蒙版")) }, onClick = { menu = false; onToggleClippedToBelow(layer.id) })
+                                if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text(if (layer.reference) tr("Unset reference layer", "取消参考图层") else tr("Set as reference layer", "设为参考图层")) }, onClick = { menu = false; onToggleReference(layer.id) })
+                                if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(if (layer.draft) tr("Unset draft layer", "取消草稿图层") else tr("Set as draft layer", "设为草稿图层")) }, onClick = { menu = false; onToggleDraft(layer.id) })
                                 DropdownMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { menu = false; renameLayer = layer; renameValue = layer.name })
                                 DropdownMenuItem(text = { Text(tr("Move up", "上移")) }, onClick = { menu = false; onMove(layer.id, 1) })
                                 DropdownMenuItem(text = { Text(tr("Move down", "下移")) }, onClick = { menu = false; onMove(layer.id, -1) })

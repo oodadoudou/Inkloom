@@ -263,6 +263,14 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         page.copy(layers = page.layers.map { if (it.id == layerId && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) it.copy(clippedToBelow = !it.clippedToBelow) else it })
     }
 
+    fun toggleLayerReference(documentId: String, pageId: String, layerId: String) = updatePage(documentId, pageId) { page ->
+        page.copy(layers = page.layers.map { if (it.id == layerId && it.role != LayerRole.BACKGROUND) it.copy(reference = !it.reference) else it })
+    }
+
+    fun toggleLayerDraft(documentId: String, pageId: String, layerId: String) = updatePage(documentId, pageId) { page ->
+        page.copy(layers = page.layers.map { if (it.id == layerId && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) it.copy(draft = !it.draft) else it })
+    }
+
     fun moveLayerToFolder(documentId: String, pageId: String, layerId: String, folderId: String?) = updatePage(documentId, pageId) { page ->
         LayerHierarchy.moveToFolder(page, layerId, folderId)
     }

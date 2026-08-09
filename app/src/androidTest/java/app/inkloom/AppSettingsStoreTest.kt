@@ -24,6 +24,7 @@ import app.inkloom.settings.WorkspacePanelDock
 import app.inkloom.settings.WorkspacePanelMode
 import app.inkloom.settings.WorkspacePanelKind
 import app.inkloom.settings.WorkspaceOrientation
+import app.inkloom.settings.ReferenceTarget
 import app.inkloom.document.CorrectLineMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -59,6 +60,18 @@ class AppSettingsStoreTest {
             assertEquals(.64f, restored.postCorrection)
             assertTrue(restored.postCorrectionAdjustBySpeed)
             assertFalse(restored.postCorrectionAdjustByScale)
+        } finally {
+            preferences.edit().clear().commit()
+        }
+    }
+
+    @Test fun fillAndAutoSelectReferenceTargetSurvivesReload() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
+        preferences.edit().clear().commit()
+        try {
+            AppSettingsStore(context).save(AppSettings(referenceTarget = ReferenceTarget.REFERENCE_LAYERS))
+            assertEquals(ReferenceTarget.REFERENCE_LAYERS, AppSettingsStore(context).load().referenceTarget)
         } finally {
             preferences.edit().clear().commit()
         }

@@ -126,6 +126,8 @@ data class InkLayer(
     /** IDs that formed the alpha mask when locking was enabled. Empty preserves legacy layers. */
     val alphaLockBaseContentIds: List<String> = emptyList(),
     val clippedToBelow: Boolean = false,
+    val reference: Boolean = false,
+    val draft: Boolean = false,
     val parentId: String? = null,
     val collapsed: Boolean = false,
 )

@@ -9,7 +9,10 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.document.PageElement
+import app.inkloom.document.InkStroke
+import app.inkloom.document.StrokePoint
 import app.inkloom.model.EditorTool
+import app.inkloom.settings.ReferenceTarget
 import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -87,5 +90,35 @@ class FillToolTest {
         assertEquals("The preview should cover the touched canvas region", Color.BLACK, output.getPixel(100, 100))
         send(view, 50L, MotionEvent.ACTION_CANCEL, 100f, 100f)
         output.recycle()
+    }
+
+    @Test fun referenceTargetConfinesFillToMarkedLineArtLayer() {
+        var committedWidth = 0f
+        val border = InkStroke(
+            id = "border",
+            layerId = "line-art",
+            width = 14f,
+            colorArgb = 0xFF000000,
+            points = listOf(
+                StrokePoint(.25f, .25f), StrokePoint(.75f, .25f), StrokePoint(.75f, .75f),
+                StrokePoint(.25f, .75f), StrokePoint(.25f, .25f),
+            ),
+        )
+        val view = canvas {
+            tool = EditorTool.FILL
+            fingerDrawingEnabled = true
+            pagePaperColor = Color.WHITE
+            activeLayerId = "color"
+            referenceTarget = ReferenceTarget.REFERENCE_LAYERS
+            referenceLayerIds = setOf("line-art")
+            layerOrder = listOf("color", "line-art")
+            setDocumentStrokes(listOf(border), "reference-fill")
+            onFillCommitted = { _, _, _, width, _, _, _ -> committedWidth = width }
+        }
+
+        send(view, 0L, MotionEvent.ACTION_DOWN, 100f, 100f)
+        send(view, 50L, MotionEvent.ACTION_UP, 100f, 100f)
+
+        assertTrue("Reference line art should keep the fill inside its boundary", committedWidth in 400f..1_200f)
     }
 }

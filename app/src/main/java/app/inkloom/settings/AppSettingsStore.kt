@@ -87,6 +87,7 @@ data class AppSettings(
     val selectionThreshold: Float = .25f,
     val selectionMode: SelectionMode = SelectionMode.REPLACE,
     val selectionFilter: SelectionFilter = SelectionFilter.ALL,
+    val referenceTarget: ReferenceTarget = ReferenceTarget.ALL_VISIBLE,
     val correctLineMode: CorrectLineMode = CorrectLineMode.SMOOTH,
     val correctLineAmount: Float = .55f,
     val nonDestructiveEraser: Boolean = false,
@@ -116,6 +117,7 @@ enum class WorkspacePanelMode { EXPANDED, COLLAPSED, ICON_ONLY }
 enum class SelectionShape { FREEFORM, RECTANGLE, ELLIPSE, BRUSH, SMART_BORDER, MAGIC_WAND }
 enum class SelectionMode { REPLACE, ADD, SUBTRACT, INTERSECT }
 enum class SelectionFilter { ALL, ACTIVE_LAYER, CURRENT_BRUSH, CURRENT_COLOR }
+enum class ReferenceTarget { ALL_VISIBLE, ACTIVE_LAYER, REFERENCE_LAYERS }
 
 class AppSettingsStore(context: Context) {
     private companion object {
@@ -211,6 +213,7 @@ class AppSettingsStore(context: Context) {
             selectionThreshold = preferences.getFloat("selectionThreshold", .25f).coerceIn(0f, 1f),
             selectionMode = enumValue(preferences.getString("selectionMode", null), SelectionMode.REPLACE),
             selectionFilter = enumValue(preferences.getString("selectionFilter", null), SelectionFilter.ALL),
+            referenceTarget = enumValue(preferences.getString("referenceTarget", null), ReferenceTarget.ALL_VISIBLE),
             correctLineMode = enumValue(preferences.getString("correctLineMode", null), CorrectLineMode.SMOOTH),
             correctLineAmount = preferences.getFloat("correctLineAmount", .55f).coerceIn(0f, 1f),
             nonDestructiveEraser = preferences.getBoolean("nonDestructiveEraser", false),
@@ -318,6 +321,7 @@ class AppSettingsStore(context: Context) {
             .putFloat("selectionThreshold", persisted.selectionThreshold.coerceIn(0f, 1f))
             .putString("selectionMode", persisted.selectionMode.name)
             .putString("selectionFilter", persisted.selectionFilter.name)
+            .putString("referenceTarget", persisted.referenceTarget.name)
             .putString("correctLineMode", persisted.correctLineMode.name)
             .putFloat("correctLineAmount", persisted.correctLineAmount.coerceIn(0f, 1f))
             .putBoolean("nonDestructiveEraser", persisted.nonDestructiveEraser)

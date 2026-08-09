@@ -127,6 +127,7 @@ import app.inkloom.settings.ToolboxMotionResolver
 import app.inkloom.settings.SelectionFilter
 import app.inkloom.settings.SelectionMode
 import app.inkloom.settings.SelectionShape
+import app.inkloom.settings.ReferenceTarget
 import kotlin.math.ceil
 import kotlin.math.atan2
 import kotlin.math.hypot
@@ -615,6 +616,9 @@ class InkCanvasView(context: Context) : View(context) {
         set(value) { field = value.coerceIn(0f, 1f) }
     var selectionMode: SelectionMode = SelectionMode.REPLACE
     var selectionFilter: SelectionFilter = SelectionFilter.ALL
+    var referenceTarget: ReferenceTarget = ReferenceTarget.ALL_VISIBLE
+    var referenceLayerIds: Set<String> = emptySet()
+    var draftLayerIds: Set<String> = emptySet()
     var liquifyMode: LiquifyMode = LiquifyMode.PUSH
     var liquifyStrength: Float = .55f
         set(value) { field = value.coerceIn(.01f, 1f) }
@@ -833,7 +837,7 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
-    private fun drawPageContent(canvas: Canvas, includeInteractionOverlays: Boolean = true) {
+    private fun drawPageContent(canvas: Canvas, includeInteractionOverlays: Boolean = true, referencedLayerIds: Set<String>? = null) {
         backgroundBitmap?.let { bitmap -> backgroundDestination.set(0, 0, width, height); canvas.drawBitmap(bitmap, null, backgroundDestination, null) }
             ?: pagePaperColor?.let { color ->
                 paperFillPaint.color = color
@@ -841,7 +845,12 @@ class InkCanvasView(context: Context) : View(context) {
                 pagePaperPattern?.let { drawPaperPattern(canvas, it) }
             }
         if (includeInteractionOverlays) drawSnapGrid(canvas)
-        if (!drawStrokeTiles(canvas)) drawLayeredStrokes(canvas, strokes, includeElements = true)
+        if (referencedLayerIds == null && drawStrokeTiles(canvas)) Unit else drawLayeredStrokes(
+            canvas,
+            if (referencedLayerIds == null) strokes else strokes.filter { it.layerId in referencedLayerIds },
+            includeElements = true,
+            layerFilter = referencedLayerIds,
+        )
         if (!includeInteractionOverlays) return
         var selectionLeft = Float.POSITIVE_INFINITY
         var selectionTop = Float.POSITIVE_INFINITY
@@ -945,9 +954,11 @@ class InkCanvasView(context: Context) : View(context) {
         primaryStampStartIndex: Int = 0,
         dualStampStartIndex: Int = 0,
         includeElements: Boolean = false,
+        layerFilter: Set<String>? = null,
     ) {
         val groupedStrokes = value.groupBy(InkStroke::layerId)
-        val availableLayerIds = groupedStrokes.keys + if (includeElements) layerElementBitmaps.keys else emptySet()
+        val elementLayerIds = if (includeElements) layerElementBitmaps.keys.filter { layerFilter == null || it in layerFilter } else emptyList()
+        val availableLayerIds = groupedStrokes.keys + elementLayerIds
         val orderedLayerIds = (layerOrder.filter { it in availableLayerIds } + availableLayerIds.filterNot { it in layerOrder }).distinct()
         var previousLayerId: String? = null
         orderedLayerIds.forEach { layerId ->
@@ -2950,7 +2961,14 @@ class InkCanvasView(context: Context) : View(context) {
         val bitmap = Bitmap.createBitmap(pageWidth, pageHeight, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.scale(pageWidth / width.coerceAtLeast(1).toFloat(), pageHeight / height.coerceAtLeast(1).toFloat())
-        drawPageContent(canvas, includeInteractionOverlays = false)
+        val availableLayers = layerOrder.ifEmpty { strokes.map(InkStroke::layerId).distinct() }
+        val visibleNonDraft = availableLayers.filterNotTo(linkedSetOf()) { it in draftLayerIds }
+        val referenced = when (referenceTarget) {
+            ReferenceTarget.ALL_VISIBLE -> visibleNonDraft
+            ReferenceTarget.ACTIVE_LAYER -> setOf(activeLayerId).intersect(visibleNonDraft)
+            ReferenceTarget.REFERENCE_LAYERS -> referenceLayerIds.intersect(visibleNonDraft).ifEmpty { setOf(activeLayerId).intersect(visibleNonDraft) }
+        }
+        drawPageContent(canvas, includeInteractionOverlays = false, referencedLayerIds = referenced)
         return bitmap
     }
 
