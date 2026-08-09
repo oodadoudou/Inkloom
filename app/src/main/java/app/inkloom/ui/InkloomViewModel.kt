@@ -7,6 +7,8 @@ import androidx.lifecycle.viewModelScope
 import app.inkloom.document.*
 import app.inkloom.model.ImportedBrush
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -39,6 +41,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     val state = mutableState.asStateFlow()
     private val mutablePageTemplates = MutableStateFlow(pageTemplateStore.load())
     val pageTemplates = mutablePageTemplates.asStateFlow()
+    private var assetGarbageCollectionJob: Job? = null
 
     override fun onCleared() {
         store.awaitRealtimeWrites()
@@ -54,6 +57,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
             ).forEach(store::save)
         }
         refresh(recovered)
+        scheduleAssetGarbageCollection(delayMillis = 0L)
     }
 
     fun createNote(title: String = "Untitled Note", coverStyle: CoverStyle = CoverStyle.BLACK): InkDocument = InkDocument(
@@ -89,7 +93,11 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     fun setDocumentTags(documentId: String, tags: List<String>) = update(documentId) { it.copy(tags = normalizeTags(tags), updatedAt = System.currentTimeMillis()) }
     fun trash(documentId: String) = update(documentId) { it.copy(trashedAt = System.currentTimeMillis(), updatedAt = System.currentTimeMillis()) }
     fun restore(documentId: String) = update(documentId) { it.copy(trashedAt = null, updatedAt = System.currentTimeMillis()) }
-    fun deletePermanently(documentId: String) { store.deletePermanently(documentId); refresh() }
+    fun deletePermanently(documentId: String) {
+        store.deletePermanently(documentId)
+        refresh()
+        scheduleAssetGarbageCollection()
+    }
     fun duplicateDocument(documentId: String) {
         val source = store.get(documentId) ?: return
         val pageIds = source.pages.associate { it.id to java.util.UUID.randomUUID().toString() }
@@ -128,12 +136,15 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         document.copy(pages = pages, updatedAt = System.currentTimeMillis())
     }
 
-    fun deletePage(documentId: String, pageId: String) = update(documentId) { document ->
-        if (document.pages.size == 1) document else {
-            val pages = document.pages.filterNot { it.id == pageId }
-            mutableState.value = mutableState.value.copy(selectedPageId = pages.first().id)
-            document.copy(pages = pages, updatedAt = System.currentTimeMillis())
+    fun deletePage(documentId: String, pageId: String) {
+        update(documentId) { document ->
+            if (document.pages.size == 1) document else {
+                val pages = document.pages.filterNot { it.id == pageId }
+                mutableState.value = mutableState.value.copy(selectedPageId = pages.first().id)
+                document.copy(pages = pages, updatedAt = System.currentTimeMillis())
+            }
         }
+        scheduleAssetGarbageCollection()
     }
 
     fun movePage(documentId: String, pageId: String, delta: Int) = update(documentId) { document ->
@@ -188,6 +199,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
 
     fun deletePageTemplate(templateId: String) {
         mutablePageTemplates.value = pageTemplateStore.delete(templateId)
+        scheduleAssetGarbageCollection()
     }
 
     fun toggleBookmark(documentId: String, pageId: String) = update(documentId) { document -> document.copy(pages = document.pages.map { if (it.id == pageId) it.copy(bookmarked = !it.bookmarked) else it }, updatedAt = System.currentTimeMillis()) }
@@ -351,7 +363,18 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         val element = page.elements.firstOrNull { it.id == elementId } ?: return
         if (page.layers.firstOrNull { it.id == element.layerId }?.locked == true) return
         store.append(JournalEntry.ElementRemoved(documentId, pageId, elementId)); refreshSelection()
+        scheduleAssetGarbageCollection()
     }
+
+    private fun scheduleAssetGarbageCollection(delayMillis: Long = 500L) {
+        assetGarbageCollectionJob?.cancel()
+        assetGarbageCollectionJob = viewModelScope.launch(Dispatchers.IO) {
+            if (delayMillis > 0L) delay(delayMillis)
+            store.awaitRealtimeWrites()
+            assets.garbageCollectUnreferencedAssets(store.list(), mutablePageTemplates.value)
+        }
+    }
+
     fun duplicateElement(documentId: String, pageId: String, elementId: String) {
         val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return
         val source = page.elements.firstOrNull { it.id == elementId } ?: return
