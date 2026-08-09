@@ -264,6 +264,8 @@ class InkCanvasView(context: Context) : View(context) {
     private var activeInputWasStylus = false
     private var pageContactRejected = false
     private var lastStylusSeenAt = Long.MIN_VALUE
+    /** Pointer ids, unlike pointer indices, remain stable while a palm/finger joins the stream. */
+    private var activeStylusPointerId = MotionEvent.INVALID_POINTER_ID
     private var ctrlModifierHeld = false
     private var altModifierHeld = false
     private var lastStylusButtonState = 0
@@ -824,7 +826,8 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     override fun onHoverEvent(event: MotionEvent): Boolean {
-        val pointerIndex = event.actionIndex.coerceIn(0, event.pointerCount - 1)
+        val pointerIndex = event.stylusPointerIndex()
+        if (pointerIndex < 0) return super.onHoverEvent(event)
         val toolType = event.getToolType(pointerIndex)
         val stylus = toolType == MotionEvent.TOOL_TYPE_STYLUS || toolType == MotionEvent.TOOL_TYPE_ERASER
         if (stylus) dispatchStylusButtonTransitions(updateStylusButtonState(event.buttonState))
@@ -1494,9 +1497,13 @@ class InkCanvasView(context: Context) : View(context) {
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (tool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.EYEDROPPER, EditorTool.SELECT, EditorTool.SHAPE, EditorTool.LASER, EditorTool.FILL, EditorTool.GRADIENT, EditorTool.SMUDGE, EditorTool.LIQUIFY, EditorTool.CORRECT_LINE)) return false
-        val pointerIndex = event.actionIndex.coerceIn(0, event.pointerCount - 1)
+        val pointerIndex = event.stylusPointerIndex(activeStylusPointerId).takeIf { it >= 0 }
+            ?: event.actionIndex.coerceIn(0, event.pointerCount - 1)
         val eventToolType = event.getToolType(pointerIndex)
         val isStylus = eventToolType == MotionEvent.TOOL_TYPE_STYLUS || eventToolType == MotionEvent.TOOL_TYPE_ERASER
+        if (isStylus && event.actionMasked in setOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN)) {
+            activeStylusPointerId = event.getPointerId(pointerIndex)
+        }
         if (event.actionMasked == MotionEvent.ACTION_DOWN && !hasFocus()) requestFocus()
         updateContactCursor(event, pointerIndex, isStylus)
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
@@ -2235,10 +2242,17 @@ class InkCanvasView(context: Context) : View(context) {
             val diameter = eraserWidth.coerceIn(.1f, 800f) * scale * pressure
             return diameter to diameter
         }
-        val pressure = BrushDynamics.pressure(sizePressureEnabled, sizePressureMinimum, sizePressureCurve, hoverCursorPressure)
+        val calibratedPressure = PressureCalibration.apply(
+            hoverCursorPressure,
+            pressureMinimumInput,
+            pressureMaximumInput,
+            pressureSensitivity,
+            pressureResponseCurve,
+        )
+        val pressure = BrushDynamics.pressure(sizePressureEnabled, sizePressureMinimum, sizePressureCurve, calibratedPressure)
         val diameter = baseWidth.coerceIn(.1f, 800f) * scale * pressure
         if (tipAssetPath == null && tipAssetPaths.isEmpty()) return diameter to diameter
-        val thicknessPressure = BrushDynamics.pressure(thicknessPressureEnabled, thicknessPressureMinimum, thicknessPressureCurve, hoverCursorPressure)
+        val thicknessPressure = BrushDynamics.pressure(thicknessPressureEnabled, thicknessPressureMinimum, thicknessPressureCurve, calibratedPressure)
         val shaped = (brushThickness * thicknessPressure).coerceIn(.05f, 2f)
         return if (brushThicknessVertical) diameter to diameter * shaped else diameter * shaped to diameter
     }
@@ -2256,6 +2270,16 @@ class InkCanvasView(context: Context) : View(context) {
     private fun MotionEvent.localSpan(): Float {
         if (pointerCount < 2) return 0f
         return hypot(getX(1) - getX(0), getY(1) - getY(0))
+    }
+
+    private fun MotionEvent.stylusPointerIndex(preferredPointerId: Int = MotionEvent.INVALID_POINTER_ID): Int {
+        if (preferredPointerId != MotionEvent.INVALID_POINTER_ID) {
+            val preferred = findPointerIndex(preferredPointerId)
+            if (preferred >= 0 && getToolType(preferred) in setOf(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.TOOL_TYPE_ERASER)) return preferred
+        }
+        val action = actionIndex.coerceIn(0, pointerCount - 1)
+        if (getToolType(action) in setOf(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.TOOL_TYPE_ERASER)) return action
+        return (0 until pointerCount).firstOrNull { getToolType(it) in setOf(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.TOOL_TYPE_ERASER) } ?: -1
     }
 
     private fun canvasPoint(event: MotionEvent, pointerIndex: Int = event.actionIndex.coerceIn(0, event.pointerCount - 1)): Pair<Float, Float> {

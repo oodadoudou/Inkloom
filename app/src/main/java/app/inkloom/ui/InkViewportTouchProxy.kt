@@ -39,6 +39,7 @@ class InkViewportTouchProxy(context: Context) : View(context) {
     private var hoverY = 0f
     private var hoverWidth = 0f
     private var hoverHeight = 0f
+    private var activeStylusPointerId = MotionEvent.INVALID_POINTER_ID
 
     init {
         setBackgroundColor(android.graphics.Color.TRANSPARENT)
@@ -47,6 +48,10 @@ class InkViewportTouchProxy(context: Context) : View(context) {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        val stylusIndex = event.stylusPointerIndex(activeStylusPointerId)
+        if (stylusIndex >= 0 && event.actionMasked in setOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN)) {
+            activeStylusPointerId = event.getPointerId(stylusIndex)
+        }
         if (event.actionMasked == MotionEvent.ACTION_DOWN && event.isStylusEvent()) {
             requestUnbufferedDispatch(event)
         }
@@ -122,7 +127,8 @@ class InkViewportTouchProxy(context: Context) : View(context) {
         val canvas = target ?: return clearHoverCursor()
         val snapshot = canvas.hoverCursorSnapshot()
         if (snapshot[0] == 0f || !event.isStylusEvent()) return clearHoverCursor()
-        val pointerIndex = event.actionIndex.coerceIn(0, event.pointerCount - 1)
+        val pointerIndex = event.stylusPointerIndex(activeStylusPointerId)
+        if (pointerIndex < 0) return clearHoverCursor()
         hoverX = event.getX(pointerIndex)
         hoverY = event.getY(pointerIndex)
         hoverWidth = snapshot[3] * canvas.viewportScale.coerceAtLeast(1f)
@@ -138,7 +144,8 @@ class InkViewportTouchProxy(context: Context) : View(context) {
         val canvas = target ?: return clearHoverCursor()
         val snapshot = canvas.hoverCursorSnapshot()
         if (snapshot[0] == 0f) return clearHoverCursor()
-        val pointerIndex = event.actionIndex.coerceIn(0, event.pointerCount - 1)
+        val pointerIndex = event.stylusPointerIndex(activeStylusPointerId)
+        if (pointerIndex < 0) return clearHoverCursor()
         hoverX = event.getX(pointerIndex)
         hoverY = event.getY(pointerIndex)
         hoverWidth = snapshot[3] * canvas.viewportScale.coerceAtLeast(1f)
@@ -173,4 +180,14 @@ class InkViewportTouchProxy(context: Context) : View(context) {
         (0 until pointerCount).any { index ->
             getToolType(index) == MotionEvent.TOOL_TYPE_STYLUS || getToolType(index) == MotionEvent.TOOL_TYPE_ERASER
         }
+
+    private fun MotionEvent.stylusPointerIndex(preferredPointerId: Int = MotionEvent.INVALID_POINTER_ID): Int {
+        if (preferredPointerId != MotionEvent.INVALID_POINTER_ID) {
+            val preferred = findPointerIndex(preferredPointerId)
+            if (preferred >= 0 && getToolType(preferred) in setOf(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.TOOL_TYPE_ERASER)) return preferred
+        }
+        val action = actionIndex.coerceIn(0, pointerCount - 1)
+        if (getToolType(action) in setOf(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.TOOL_TYPE_ERASER)) return action
+        return (0 until pointerCount).firstOrNull { getToolType(it) in setOf(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.TOOL_TYPE_ERASER) } ?: -1
+    }
 }

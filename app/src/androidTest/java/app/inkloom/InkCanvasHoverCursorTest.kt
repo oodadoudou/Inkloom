@@ -68,6 +68,31 @@ class InkCanvasHoverCursorTest {
         assertEquals(170f, state[3], .75f)
     }
 
+    @Test
+    fun cursorKeepsFollowingStylusWhenPalmIsPointerZeroAndUsesGlobalPressureCurve() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val view = InkCanvasView(instrumentation.targetContext).apply {
+            tool = EditorTool.PEN
+            baseWidth = 200f
+            sizePressureEnabled = true
+            sizePressureMinimum = .25f
+            pressureMinimumInput = .2f
+            pressureMaximumInput = 1f
+            layout(0, 0, 1600, 1200)
+        }
+
+        instrumentation.runOnMainSync {
+            fingerAndStylusMove(fingerX = 30f, fingerY = 40f, stylusX = 980f, stylusY = 760f, stylusPressure = .2f).also {
+                assertTrue(view.onTouchEvent(it)); it.recycle()
+            }
+        }
+
+        val state = view.hoverCursorSnapshot()
+        assertEquals(980f, state[1], .01f)
+        assertEquals(760f, state[2], .01f)
+        assertEquals(50f, state[3], .75f)
+    }
+
     private fun stylusHover(x: Float, y: Float): MotionEvent {
         val properties = arrayOf(MotionEvent.PointerProperties().apply {
             id = 0
@@ -91,6 +116,21 @@ class InkCanvasHoverCursorTest {
         return MotionEvent.obtain(
             downTime, eventTime, action, 1, properties, coordinates,
             0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_STYLUS, 0,
+        )
+    }
+
+    private fun fingerAndStylusMove(fingerX: Float, fingerY: Float, stylusX: Float, stylusY: Float, stylusPressure: Float): MotionEvent {
+        val properties = arrayOf(
+            MotionEvent.PointerProperties().apply { id = 7; toolType = MotionEvent.TOOL_TYPE_FINGER },
+            MotionEvent.PointerProperties().apply { id = 42; toolType = MotionEvent.TOOL_TYPE_STYLUS },
+        )
+        val coordinates = arrayOf(
+            MotionEvent.PointerCoords().apply { x = fingerX; y = fingerY; pressure = 1f },
+            MotionEvent.PointerCoords().apply { x = stylusX; y = stylusY; pressure = stylusPressure },
+        )
+        return MotionEvent.obtain(
+            1L, 2L, MotionEvent.ACTION_MOVE, 2, properties, coordinates,
+            0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN or InputDevice.SOURCE_STYLUS, 0,
         )
     }
 }

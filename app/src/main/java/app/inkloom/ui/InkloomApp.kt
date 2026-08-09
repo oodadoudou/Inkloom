@@ -1209,6 +1209,14 @@ private fun EditorScreen(
         }
     }
     var activeLayerId by remember(selectedPage.id) { mutableStateOf(LayerIds.INK) }
+    fun syncCanvasInput(prepareAssets: Boolean = false) {
+        canvasView?.let { view ->
+            view.activeLayerId = activeLayerId
+            view.applyBrushConfiguration(tool, settings, activeBrush, brushSize, brushOpacity, brushColor, settings.eraserPreset)
+            if (prepareAssets) view.prepareBrushAssetsNow()
+            view.requestFocus()
+        }
+    }
     fun selectWorkspaceBrush(brush: ImportedBrush) {
         exitCanvasNavigation()
         val usedBrush = brush.copy(lastUsedAt = System.currentTimeMillis())
@@ -1224,12 +1232,7 @@ private fun EditorScreen(
         // occur before Compose's AndroidView update block; partial field assignment here used to
         // leave the input configuration in a stale state and made docked brush selection appear
         // to disable writing.
-        canvasView?.let { view ->
-            view.activeLayerId = activeLayerId
-            view.applyBrushConfiguration(chosenTool, settings, usedBrush, brushSize, brushOpacity, brushColor, settings.eraserPreset)
-            view.prepareBrushAssetsNow()
-            view.requestFocus()
-        }
+        syncCanvasInput(prepareAssets = true)
     }
     fun setLayersPanelOpen(open: Boolean, pageId: String? = null) {
         pageId?.let(::selectPageWithViewport)
@@ -1314,7 +1317,7 @@ private fun EditorScreen(
                     val alreadySelected = tool == EditorTool.SELECT
                     exitCanvasNavigation()
                     tool = EditorTool.SELECT
-                    canvasView?.tool = EditorTool.SELECT
+                    syncCanvasInput()
                     selectionMenuOpen = alreadySelected
                 })
                 DropdownMenu(
@@ -1363,7 +1366,13 @@ private fun EditorScreen(
                 exitCanvasNavigation()
                 val alreadySelected = tool == EditorTool.PEN
                 tool = EditorTool.PEN
-                canvasView?.tool = EditorTool.PEN
+                val remembered = activeBrush?.takeUnless(BrushRoleClassifier::isEraser)
+                    ?: brushes.filterNot(BrushRoleClassifier::isEraser).maxByOrNull(ImportedBrush::lastUsedAt)
+                activeBrush = remembered
+                selectedBrushId = remembered?.id
+                brushSize = savedBrushSize(remembered, remembered?.defaultSize ?: settings.penSize, EditorTool.PEN)
+                brushOpacity = remembered?.defaultOpacity ?: settings.penOpacity
+                syncCanvasInput(prepareAssets = remembered != null)
                 if (alreadySelected || !brushesOpen) onToggleBrushes()
             })
             ProcreateTopButton(Icons.Outlined.AutoFixOff, tr("Eraser", "橡皮"), selected = tool == EditorTool.ERASER, onClick = {
@@ -1381,7 +1390,7 @@ private fun EditorScreen(
                 Box(
                     Modifier.size(44.dp).combinedClickable(
                         onClick = { colorPanelOpen = true },
-                        onLongClick = { exitCanvasNavigation(); tool = EditorTool.FILL; canvasView?.tool = EditorTool.FILL },
+                        onLongClick = { exitCanvasNavigation(); tool = EditorTool.FILL; syncCanvasInput() },
                     ).semantics { contentDescription = colorsDescription },
                     contentAlignment = Alignment.Center,
                 ) {
@@ -1459,6 +1468,7 @@ private fun EditorScreen(
                                 EditorTool.LIQUIFY -> systemBrushCatalog().firstOrNull(BrushRoleClassifier::isLiquify)?.let(::selectWorkspaceBrush)
                                 else -> Unit
                             }
+                            syncCanvasInput(prepareAssets = activeBrush != null)
                         })
                     }
                     HorizontalDivider()
@@ -2082,6 +2092,7 @@ private fun EditorScreen(
                             brushSize = previousDrawingSize
                             brushOpacity = previousDrawingOpacity
                             brushColor = previousDrawingColor
+                            syncCanvasInput(prepareAssets = restoredBrush != null)
                         }
 
                         fun enterEraser() {
@@ -2093,6 +2104,7 @@ private fun EditorScreen(
                             tool = EditorTool.ERASER
                             brushSize = savedBrushSize(eraser, eraser?.defaultSize ?: settings.eraserSize, EditorTool.ERASER)
                             brushOpacity = eraser?.defaultOpacity ?: 1f
+                            syncCanvasInput(prepareAssets = eraser != null)
                         }
 
                         fun selectBrushGroup(group: ShortcutBrushGroup, fallbackToSystemPen: Boolean = false) {
@@ -2103,6 +2115,7 @@ private fun EditorScreen(
                                 tool = EditorTool.PEN
                                 brushSize = savedBrushSize(null, settings.penSize, EditorTool.PEN)
                                 brushOpacity = settings.penOpacity
+                                syncCanvasInput()
                             } else {
                                 brushes.filterNot { it.hidden }.maxByOrNull { it.lastUsedAt }?.let(::selectImportedBrush)
                             }
@@ -2128,6 +2141,7 @@ private fun EditorScreen(
                                     brushSize = slot.size
                                     brushOpacity = slot.opacity
                                     brushColor = slot.colorArgb
+                                    syncCanvasInput(prepareAssets = activeBrush != null)
                                 }
                             }
                         }
@@ -2170,8 +2184,9 @@ private fun EditorScreen(
                                 brushSize = savedBrushSize(null, settings.highlighterSize, EditorTool.HIGHLIGHTER)
                                 brushOpacity = settings.highlighterOpacity
                                 activeLayerId = LayerIds.HIGHLIGHT
+                                syncCanvasInput()
                             }
-                            ShortcutAction.SELECT_TOOL -> { exitCanvasNavigation(); if (activation.trigger == ShortcutTrigger.HOLD) rememberDrawingSelection(); tool = EditorTool.SELECT }
+                            ShortcutAction.SELECT_TOOL -> { exitCanvasNavigation(); if (activation.trigger == ShortcutTrigger.HOLD) rememberDrawingSelection(); tool = EditorTool.SELECT; syncCanvasInput() }
                             ShortcutAction.HAND_TOOL -> if (activation.trigger == ShortcutTrigger.HOLD) { rotateToolEnabled = false; rotateToolHeld = false; handToolHeld = true } else { val enable = !handToolEnabled; exitCanvasNavigation(); handToolEnabled = enable }
                             ShortcutAction.ROTATE_VIEW_TOOL -> if (activation.trigger == ShortcutTrigger.HOLD) { handToolEnabled = false; handToolHeld = false; rotateToolHeld = true } else { val enable = !rotateToolEnabled; exitCanvasNavigation(); rotateToolEnabled = enable }
                             ShortcutAction.EYEDROPPER_TOOL -> if (activation.trigger == ShortcutTrigger.HOLD) {
@@ -2442,6 +2457,7 @@ private fun EditorScreen(
                         EditorTool.AUDIO -> if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) audioOpen = true else audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                         else -> Unit
                     }
+                    syncCanvasInput(prepareAssets = activeBrush != null)
                 }, onUndo = { canvasView?.undo() }, onRedo = { canvasView?.redo() }, onScale = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, resizeElement(it, 1.15f)) } } ?: canvasView?.scaleSelection(1.15f) }, onRotate = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, rotateElement(it, 15f)) } } ?: canvasView?.rotateSelection(15f) }, onCopy = { selectedElementId?.let { onDuplicateElement(document.id, selectedPage.id, it) } ?: canvasView?.copySelection() }, onCut = { if (selectedElementId != null) Toast.makeText(context, inkOnlyClipboardMessage, Toast.LENGTH_SHORT).show() else if (canvasView?.cutSelectionToClipboard() != true) Toast.makeText(context, selectBeforeCutMessage, Toast.LENGTH_SHORT).show() }, onClipboardCopy = { if (selectedElementId != null) Toast.makeText(context, inkOnlyClipboardMessage, Toast.LENGTH_SHORT).show() else if (canvasView?.copySelectionToClipboard() != true) Toast.makeText(context, selectBeforeCopyMessage, Toast.LENGTH_SHORT).show() }, onPaste = { selectedElementId = null; if (canvasView?.pasteSelectionFromClipboard() != true) Toast.makeText(context, noInkClipboardMessage, Toast.LENGTH_SHORT).show() }, onDelete = { selectedElementId?.let { onRemoveElement(document.id, selectedPage.id, it); selectedElementId = null } ?: canvasView?.deleteSelection() }, onSelectAll = { selectedElementId = null; tool = EditorTool.SELECT; canvasView?.selectAllEditableStrokes() }, onInvertSelection = { selectedElementId = null; tool = EditorTool.SELECT; canvasView?.invertSelection() }, onDeselect = { selectedElementId = null; canvasView?.clearSelection() }, onFreeTransform = { tool = EditorTool.SELECT; canvasView?.enterFreeTransform() }, selectionShape = settings.selectionShape, selectionMode = settings.selectionMode, selectionFilter = settings.selectionFilter, onSelectionShape = { onSettingsChange(settings.copy(selectionShape = it)) }, onSelectionMode = { onSettingsChange(settings.copy(selectionMode = it)) }, onSelectionFilter = { onSettingsChange(settings.copy(selectionFilter = it)) }, referenceTarget = settings.referenceTarget, onReferenceTarget = { onSettingsChange(settings.copy(referenceTarget = it)) }, correctLineMode = settings.correctLineMode, correctLineAmount = settings.correctLineAmount, onCorrectLineMode = { onSettingsChange(settings.copy(correctLineMode = it)) }, onCorrectLineAmount = { onSettingsChange(settings.copy(correctLineAmount = it.coerceIn(0f, 1f))) }, eraserPreset = settings.eraserPreset, onEraserPreset = { preset -> onSettingsChange(settings.copy(eraserPreset = preset, nonDestructiveEraser = preset.usesMask)) }, rulerEnabled = settings.rulerEnabled, rulerSnapDegrees = settings.rulerSnapDegrees, onToggleRuler = { onSettingsChange(settings.copy(rulerEnabled = !settings.rulerEnabled)) }, onRulerSnap = { onSettingsChange(settings.copy(rulerSnapDegrees = it)) }, onResetRuler = { onSettingsChange(settings.copy(rulerCenterX = .5f, rulerCenterY = .5f, rulerAngleDegrees = 0f)) }, gridSnapEnabled = settings.gridSnapEnabled, gridSpacing = settings.gridSpacing, alignmentGuidesEnabled = settings.alignmentGuidesEnabled, onToggleGridSnap = { onSettingsChange(settings.copy(gridSnapEnabled = !settings.gridSnapEnabled)) }, onGridSpacing = { onSettingsChange(settings.copy(gridSpacing = it)) }, onToggleAlignmentGuides = { onSettingsChange(settings.copy(alignmentGuidesEnabled = !settings.alignmentGuidesEnabled)) }, onResetAlignmentGuides = { onSettingsChange(settings.copy(verticalGuideX = .5f, horizontalGuideY = .5f)) }, onDrag = { dx, dy ->
                     val next = FloatingToolbarPlacement.clamp(toolbarX + dx / editorDensity.density, toolbarY + dy / editorDensity.density, toolbarAreaWidth.value, toolbarAreaHeight.value, dockVertical)
                     toolbarX = next.xDp
@@ -2465,6 +2481,7 @@ private fun EditorScreen(
                         brushSize = savedBrushSize(null, settings.eraserSize, EditorTool.ERASER)
                         brushOpacity = 1f
                     }
+                    syncCanvasInput()
                 }, onBrushPreset = ::selectWorkspaceBrush, onSize = { raw ->
                     changeCurrentBrushSize(raw)
                 }, onOpacity = { raw ->
