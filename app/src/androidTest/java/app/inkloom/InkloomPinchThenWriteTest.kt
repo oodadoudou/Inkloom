@@ -184,6 +184,65 @@ class InkloomPinchThenWriteTest {
         assertEquals("Zoomed stylus Y must inverse-map once", expected.second / view.height, stroke?.points?.first()?.y ?: Float.NaN, .004f)
     }
 
+    @Test fun zoomedEraserHoverAndContactShareTheExactPenCoordinate() {
+        openEditor()
+        val view = findInkCanvasView()!!
+        val proxy = findInkViewportProxy()!!
+
+        composeRule.onRoot().performTouchInput {
+            down(0, center + Offset(-170f, -20f))
+            down(1, center + Offset(170f, -20f))
+            moveTo(0, center + Offset(-340f, 45f), delayMillis = 30)
+            moveTo(1, center + Offset(340f, 45f), delayMillis = 30)
+            up(1)
+            up(0)
+        }
+        composeRule.waitForIdle()
+
+        val viewport = ViewportState(view.viewportScale, view.viewportPanX, view.viewportPanY, view.viewportRotationDegrees)
+        assertTrue("Test setup must zoom the page", viewport.scale > 1.4f)
+        val proxyX = proxy.width / 2f + viewport.panX
+        val proxyY = proxy.height / 2f + viewport.panY
+        val targetScreenX = proxyX - proxy.width / 2f + view.width / 2f
+        val targetScreenY = proxyY - proxy.height / 2f + view.height / 2f
+        val expected = ViewportTransform.viewToPage(targetScreenX, targetScreenY, view.width.toFloat(), view.height.toFloat(), viewport)
+        val expectedNormalizedX = expected.first / view.width
+        val expectedNormalizedY = expected.second / view.height
+        val crossingStroke = app.inkloom.document.InkStroke(
+            id = "eraser-target",
+            width = 18f,
+            points = listOf(
+                app.inkloom.document.StrokePoint(expectedNormalizedX - .03f, expectedNormalizedY),
+                app.inkloom.document.StrokePoint(expectedNormalizedX + .03f, expectedNormalizedY),
+            ),
+        )
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view.setDocumentStrokes(listOf(crossingStroke), "eraser-coordinate-test")
+            view.setProtectedStrokeIds(emptySet())
+            view.setProtectedLayerIds(emptySet())
+            view.localEraser = false
+            view.nonDestructiveEraser = false
+            view.eraserWidth = 80f
+            val hover = stylusEvent(android.view.MotionEvent.ACTION_HOVER_MOVE, proxyX, proxyY, android.view.MotionEvent.TOOL_TYPE_ERASER, 1L, 2L)
+            assertTrue(proxy.onHoverEvent(hover))
+            hover.recycle()
+        }
+        val cursor = view.hoverCursorSnapshot()
+        assertEquals("Eraser cursor X must use the same inverse transform as ink", expected.first, cursor[1], .75f)
+        assertEquals("Eraser cursor Y must use the same inverse transform as ink", expected.second, cursor[2], .75f)
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val downTime = android.os.SystemClock.uptimeMillis()
+            listOf(
+                stylusEvent(android.view.MotionEvent.ACTION_DOWN, proxyX, proxyY - 8f, android.view.MotionEvent.TOOL_TYPE_ERASER, downTime, downTime),
+                stylusEvent(android.view.MotionEvent.ACTION_MOVE, proxyX, proxyY + 8f, android.view.MotionEvent.TOOL_TYPE_ERASER, downTime, downTime + 12L),
+                stylusEvent(android.view.MotionEvent.ACTION_UP, proxyX, proxyY + 8f, android.view.MotionEvent.TOOL_TYPE_ERASER, downTime, downTime + 24L),
+            ).forEach { event -> proxy.onTouchEvent(event); event.recycle() }
+        }
+        assertTrue("Zoomed eraser contact must hit the stroke directly under its cursor", (reflectField(view, "strokes") as? List<*>)?.isEmpty() == true)
+    }
+
     @Test fun strokeRendersAtZoom1() {
         openEditor()
         composeRule.waitUntil(5_000) { strokeCount() == 0 }
@@ -508,6 +567,36 @@ class InkloomPinchThenWriteTest {
         send(android.view.MotionEvent.ACTION_DOWN, startX, startY, 0)
         send(android.view.MotionEvent.ACTION_MOVE, endX, endY, 12)
         send(android.view.MotionEvent.ACTION_UP, endX, endY, 24)
+    }
+
+    private fun stylusEvent(action: Int, x: Float, y: Float, toolType: Int, downTime: Long, eventTime: Long): android.view.MotionEvent =
+        android.view.MotionEvent.obtain(
+            downTime,
+            eventTime,
+            action,
+            1,
+            arrayOf(android.view.MotionEvent.PointerProperties().apply { id = 0; this.toolType = toolType }),
+            arrayOf(android.view.MotionEvent.PointerCoords().apply { this.x = x; this.y = y; pressure = .72f; size = .04f }),
+            0,
+            0,
+            1f,
+            1f,
+            0,
+            0,
+            android.view.InputDevice.SOURCE_STYLUS,
+            0,
+        )
+
+    private fun findInkViewportProxy(): InkViewportTouchProxy? {
+        var found: InkViewportTouchProxy? = null
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            fun walk(view: android.view.View) {
+                if (view is InkViewportTouchProxy && view.isShown && view.target != null) found = view
+                if (view is ViewGroup) for (index in 0 until view.childCount) walk(view.getChildAt(index))
+            }
+            walk(composeRule.activity.window.decorView)
+        }
+        return found
     }
 
     private fun findInkCanvasView(): InkCanvasView? {

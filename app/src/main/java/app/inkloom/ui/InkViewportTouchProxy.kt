@@ -58,7 +58,7 @@ class InkViewportTouchProxy(context: Context) : View(context) {
             val viewport = if (canvas.proxyContactUsesPageCoordinates(forwarded)) {
                 ViewportState(canvas.viewportScale, canvas.viewportPanX, canvas.viewportPanY, canvas.viewportRotationDegrees)
             } else null
-            coordinateMapper.map(forwarded, this, canvas, viewport) && dispatch(canvas, forwarded)
+            coordinateMapper.mapCenteredViewport(forwarded, this, canvas, viewport) && dispatch(canvas, forwarded)
         } finally {
             forwarded.recycle()
         }

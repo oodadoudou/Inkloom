@@ -7,28 +7,33 @@ import app.inkloom.document.ViewportState
 import kotlin.math.cos
 import kotlin.math.sin
 
-/** Maps a complete pointer packet between View-local coordinate systems through their real
- * global matrices. MotionEvent.transform also maps every pointer and historical sample. */
+/** Maps complete pointer packets from the stable editor viewport into page-local coordinates.
+ * MotionEvent.transform also preserves alignment for every pointer and historical sample. */
 internal class PointerCoordinateMapper {
-    private val sourceToGlobal = Matrix()
-    private val targetToGlobal = Matrix()
-    private val globalToTarget = Matrix()
+    private val sourceToTarget = Matrix()
+    private val viewportTransform = Matrix()
     private val viewportToPage = Matrix()
     private val viewportValues = FloatArray(9)
 
-    fun map(
+    /**
+     * Maps a full-editor overlay into the page View through their shared visual centre. Compose
+     * renders the page with a graphics layer, but vendor View matrices are inconsistent about
+     * whether that RenderNode transform is exposed to transformMatrixToGlobal. Building the one
+     * known editor transform here avoids applying zoom/pan twice on some stylus displays.
+     */
+    fun mapCenteredViewport(
         event: MotionEvent,
         source: View,
         target: View,
         viewport: ViewportState? = null,
     ): Boolean {
-        sourceToGlobal.reset()
-        source.transformMatrixToGlobal(sourceToGlobal)
-        targetToGlobal.reset()
-        target.transformMatrixToGlobal(targetToGlobal)
-        if (!targetToGlobal.invert(globalToTarget)) return false
-        event.transform(sourceToGlobal)
-        event.transform(globalToTarget)
+        if (source.width <= 0 || source.height <= 0 || target.width <= 0 || target.height <= 0) return false
+        sourceToTarget.reset()
+        sourceToTarget.setTranslate(
+            (target.width - source.width) / 2f,
+            (target.height - source.height) / 2f,
+        )
+        event.transform(sourceToTarget)
         viewport?.let {
             if (!configureViewportInverse(target.width.toFloat(), target.height.toFloat(), it)) return false
             event.transform(viewportToPage)
@@ -60,7 +65,7 @@ internal class PointerCoordinateMapper {
         viewportValues[6] = 0f
         viewportValues[7] = 0f
         viewportValues[8] = 1f
-        targetToGlobal.setValues(viewportValues)
-        return targetToGlobal.invert(viewportToPage)
+        viewportTransform.setValues(viewportValues)
+        return viewportTransform.invert(viewportToPage)
     }
 }
