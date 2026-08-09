@@ -77,6 +77,11 @@ import app.inkloom.document.PerspectiveGuideMode
 import app.inkloom.document.PerspectiveGuideState
 import app.inkloom.document.PerspectiveGuides
 import app.inkloom.document.PerspectiveSnapConstraint
+import app.inkloom.document.SpecialRulerConstraint
+import app.inkloom.document.SpecialRulerHandle
+import app.inkloom.document.SpecialRulerMode
+import app.inkloom.document.SpecialRulerState
+import app.inkloom.document.SpecialRulers
 import app.inkloom.document.PageElement
 import app.inkloom.document.PdfGotoLink
 import app.inkloom.document.PdfGotoLinkNavigation
@@ -325,6 +330,9 @@ class InkCanvasView(context: Context) : View(context) {
     private var perspectiveGuideGesturePoint: Int? = null
     private var perspectiveGuideGestureStart: PerspectiveGuideState? = null
     private var activePerspectiveSnapConstraint: PerspectiveSnapConstraint? = null
+    private var specialRulerGestureHandle: SpecialRulerHandle? = null
+    private var specialRulerGestureStart: SpecialRulerState? = null
+    private var activeSpecialRulerConstraint: SpecialRulerConstraint? = null
     private val continuousPlotRunnable = object : Runnable {
         override fun run() {
             if (!continuousPlotActive || !brushContinuousPlot || activeTool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) return
@@ -637,6 +645,13 @@ class InkCanvasView(context: Context) : View(context) {
             invalidate()
         }
     var onPerspectiveGuideChanged: (PerspectiveGuideState) -> Unit = {}
+    var specialRulerState: SpecialRulerState = SpecialRulerState()
+        set(value) {
+            field = value.normalized()
+            if (!field.editing || field.mode == SpecialRulerMode.NONE) specialRulerGestureHandle = null
+            invalidate()
+        }
+    var onSpecialRulerChanged: (SpecialRulerState) -> Unit = {}
     var pressureSensitivity: Float = 1f
     var pressureMinimumInput: Float = 0f
     var pressureMaximumInput: Float = 1f
@@ -736,6 +751,10 @@ class InkCanvasView(context: Context) : View(context) {
             perspectiveGuideGesturePoint = null
             perspectiveGuideGestureStart = null
             activePerspectiveSnapConstraint = null
+            specialRulerGestureStart?.let { specialRulerState = it }
+            specialRulerGestureHandle = null
+            specialRulerGestureStart = null
+            activeSpecialRulerConstraint = null
             ctrlModifierHeld = false
             altModifierHeld = false
             releaseHeldStylusButtons()
@@ -941,6 +960,7 @@ class InkCanvasView(context: Context) : View(context) {
         drawSymmetryGuides(canvas)
         drawShapePreview(canvas)
         drawAlignmentGuides(canvas)
+        drawSpecialRulerGuide(canvas)
         drawPerspectiveGuide(canvas)
         drawRulerGuide(canvas)
         drawLaserTrail(canvas, SystemClock.uptimeMillis())
@@ -1610,7 +1630,11 @@ class InkCanvasView(context: Context) : View(context) {
             perspectiveGuideGestureStart?.let { perspectiveGuideState = it }
             perspectiveGuideGesturePoint = null
             perspectiveGuideGestureStart = null
+            specialRulerGestureStart?.let { specialRulerState = it }
+            specialRulerGestureHandle = null
+            specialRulerGestureStart = null
         }
+        if (!viewportGestureActive && handleSpecialRulerGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
         if (!viewportGestureActive && handlePerspectiveGuideGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
         if (!viewportGestureActive && handleCanvasGuideGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
         if (!viewportGestureActive && handleRulerGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
@@ -1888,7 +1912,8 @@ class InkCanvasView(context: Context) : View(context) {
                 // several times per display frame.
                 activeStrokeTemplate = buildStroke(emptyList())
                 activePerspectiveSnapConstraint = null
-                activeCanvasSnapConstraint = if (!rulerEnabled && (!perspectiveGuideState.assisted || perspectiveGuideState.mode == PerspectiveGuideMode.NONE) && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
+                activeSpecialRulerConstraint = null
+                activeCanvasSnapConstraint = if (!rulerEnabled && (!perspectiveGuideState.assisted || perspectiveGuideState.mode == PerspectiveGuideMode.NONE) && (!specialRulerState.assisted || specialRulerState.mode == SpecialRulerMode.NONE) && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
                     CanvasGuides.constraintAt(canvasGuideState, normalizedX, normalizedY, pageModelWidth, pageModelHeight, width.toFloat(), height.toFloat(), GUIDE_SNAP_TOLERANCE_DP * resources.displayMetrics.density)
                 } else null
                 updateContinuousPlotInput(normalizedX, normalizedY, event.getPressure(pointerIndex), event.getAxisValue(MotionEvent.AXIS_TILT, pointerIndex), event.getOrientation(pointerIndex))
@@ -2125,6 +2150,7 @@ class InkCanvasView(context: Context) : View(context) {
                 parent?.requestDisallowInterceptTouchEvent(false)
                 activeCanvasSnapConstraint = null
                 activePerspectiveSnapConstraint = null
+                activeSpecialRulerConstraint = null
                 activeTool = null
                 activeInputWasStylus = false
             }
@@ -2342,12 +2368,21 @@ class InkCanvasView(context: Context) : View(context) {
         cancelSmudgeGesture()
         cancelLiquifyGesture()
         cancelCorrectLineGesture()
+        rulerGestureStart?.let { rulerGuide = it }
         rulerGestureMode = null
+        rulerGestureStart = null
+        canvasGuideGestureStart?.let { canvasGuideState = it }
         canvasGuideGestureMode = null
+        canvasGuideGestureStart = null
         activeCanvasSnapConstraint = null
+        perspectiveGuideGestureStart?.let { perspectiveGuideState = it }
         perspectiveGuideGesturePoint = null
         perspectiveGuideGestureStart = null
         activePerspectiveSnapConstraint = null
+        specialRulerGestureStart?.let { specialRulerState = it }
+        specialRulerGestureHandle = null
+        specialRulerGestureStart = null
+        activeSpecialRulerConstraint = null
         shapeStart = null
         shapeEnd = null
         gradientStart = null
@@ -2497,6 +2532,114 @@ class InkCanvasView(context: Context) : View(context) {
         }
         invalidate()
         return true
+    }
+
+    private fun handleSpecialRulerGesture(event: MotionEvent, canvasX: Float, canvasY: Float, isStylus: Boolean, elapsedSinceStylus: Long): Boolean {
+        val state = specialRulerState
+        if (!state.editing || state.mode == SpecialRulerMode.NONE) return false
+        val existing = specialRulerGestureHandle
+        if (existing == null) {
+            if (forceNavigation || event.actionMasked != MotionEvent.ACTION_DOWN || event.pointerCount != 1 ||
+                (!isStylus && elapsedSinceStylus <= StylusInputClassifier.RECENT_STYLUS_WINDOW_MS) ||
+                (!isStylus && event.getTouchMajor(event.actionIndex) >= StylusInputClassifier.PALM_TOUCH_MAJOR_PX)
+            ) return false
+            val density = resources.displayMetrics.density
+            val hit = SpecialRulers.hitHandle(
+                state,
+                canvasX,
+                canvasY,
+                width.toFloat(),
+                height.toFloat(),
+                PERSPECTIVE_TOUCH_RADIUS_DP * density,
+                SPECIAL_RULER_ROTATION_HANDLE_DP * density,
+            ) ?: return false
+            specialRulerGestureHandle = hit
+            specialRulerGestureStart = state
+            parent?.requestDisallowInterceptTouchEvent(true)
+            return true
+        }
+        when (event.actionMasked) {
+            MotionEvent.ACTION_MOVE -> if (event.pointerCount == 1) {
+                specialRulerState = SpecialRulers.moveHandle(specialRulerState, existing, canvasX, canvasY, width.toFloat(), height.toFloat())
+            }
+            MotionEvent.ACTION_UP -> {
+                onSpecialRulerChanged(specialRulerState)
+                specialRulerGestureHandle = null
+                specialRulerGestureStart = null
+                parent?.requestDisallowInterceptTouchEvent(false)
+                performClick()
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                specialRulerGestureStart?.let { specialRulerState = it }
+                specialRulerGestureHandle = null
+                specialRulerGestureStart = null
+                parent?.requestDisallowInterceptTouchEvent(false)
+            }
+        }
+        invalidate()
+        return true
+    }
+
+    private fun drawSpecialRulerGuide(canvas: Canvas) {
+        val state = specialRulerState.normalized()
+        if (state.mode == SpecialRulerMode.NONE || width <= 0 || height <= 0) return
+        val centerX = state.centerX * width
+        val centerY = state.centerY * height
+        val spacingPx = (state.spacing / pageModelWidth.coerceAtLeast(1f) * width).coerceAtLeast(8f)
+        when (state.mode) {
+            SpecialRulerMode.NONE -> Unit
+            SpecialRulerMode.PARALLEL -> drawParallelGuideFamily(canvas, centerX, centerY, state.angleDegrees, spacingPx)
+            SpecialRulerMode.RADIAL -> {
+                val reach = hypot(width.toDouble(), height.toDouble()).toFloat() * 1.6f
+                repeat(24) { index ->
+                    val radians = Math.toRadians(index * 15.0)
+                    canvas.drawLine(
+                        centerX - cos(radians).toFloat() * reach,
+                        centerY - sin(radians).toFloat() * reach,
+                        centerX + cos(radians).toFloat() * reach,
+                        centerY + sin(radians).toFloat() * reach,
+                        perspectiveGuidePaint,
+                    )
+                }
+            }
+            SpecialRulerMode.CONCENTRIC -> {
+                val reach = hypot(maxOf(centerX, width - centerX).toDouble(), maxOf(centerY, height - centerY).toDouble()).toFloat()
+                var radius = spacingPx
+                while (radius <= reach * 1.2f) {
+                    canvas.drawCircle(centerX, centerY, radius, perspectiveGuidePaint)
+                    radius += spacingPx
+                }
+            }
+            SpecialRulerMode.ISOMETRIC -> {
+                drawParallelGuideFamily(canvas, centerX, centerY, state.angleDegrees + 30f, spacingPx)
+                drawParallelGuideFamily(canvas, centerX, centerY, state.angleDegrees + 90f, spacingPx)
+                drawParallelGuideFamily(canvas, centerX, centerY, state.angleDegrees + 150f, spacingPx)
+            }
+        }
+        if (state.editing) {
+            val density = resources.displayMetrics.density
+            val radius = 8f * density
+            canvas.drawCircle(centerX, centerY, radius, perspectiveHandlePaint)
+            canvas.drawCircle(centerX, centerY, radius, perspectiveGuidePaint)
+            if (state.mode != SpecialRulerMode.RADIAL && state.mode != SpecialRulerMode.CONCENTRIC) {
+                val rotation = SpecialRulers.rotationHandle(state, width.toFloat(), height.toFloat(), SPECIAL_RULER_ROTATION_HANDLE_DP * density)
+                canvas.drawLine(centerX, centerY, rotation.x, rotation.y, perspectiveGuidePaint)
+                canvas.drawCircle(rotation.x, rotation.y, radius, perspectiveHandlePaint)
+                canvas.drawCircle(rotation.x, rotation.y, radius, perspectiveGuidePaint)
+            }
+        }
+    }
+
+    private fun drawParallelGuideFamily(canvas: Canvas, centerX: Float, centerY: Float, angleDegrees: Float, spacingPx: Float) {
+        val reach = hypot(width.toDouble(), height.toDouble()).toFloat() * 1.5f
+        val checkpoint = canvas.save()
+        canvas.rotate(angleDegrees, centerX, centerY)
+        var offset = -reach
+        while (offset <= reach) {
+            canvas.drawLine(centerX - reach, centerY + offset, centerX + reach, centerY + offset, perspectiveGuidePaint)
+            offset += spacingPx
+        }
+        canvas.restoreToCount(checkpoint)
     }
 
     private fun drawPerspectiveGuide(canvas: Canvas) {
@@ -3033,9 +3176,23 @@ class InkCanvasView(context: Context) : View(context) {
                 )
             }
         }
+        if (!rulerEnabled && perspectiveGuideState.mode == PerspectiveGuideMode.NONE && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) && activeSpecialRulerConstraint == null) {
+            currentPoints.firstOrNull()?.let { start ->
+                activeSpecialRulerConstraint = SpecialRulers.constraintAt(
+                    specialRulerState,
+                    start.x,
+                    start.y,
+                    x,
+                    y,
+                    width.toFloat(),
+                    height.toFloat(),
+                    GUIDE_CAPTURE_MOVEMENT_DP * resources.displayMetrics.density,
+                )
+            }
+        }
         val constrained = if (rulerEnabled && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
             RulerGuide.project(rulerGuide, x, y, width.toFloat(), height.toFloat())
-        } else activePerspectiveSnapConstraint?.apply(x, y) ?: activeCanvasSnapConstraint?.apply(x, y)
+        } else activePerspectiveSnapConstraint?.apply(x, y) ?: activeSpecialRulerConstraint?.apply(x, y) ?: activeCanvasSnapConstraint?.apply(x, y)
         strokeInputModeler.putSample(
             index,
             (constrained?.x ?: x).coerceIn(0f, 1f),
@@ -4150,6 +4307,7 @@ class InkCanvasView(context: Context) : View(context) {
         const val GUIDE_SNAP_TOLERANCE_DP = 12f
         const val GUIDE_CAPTURE_MOVEMENT_DP = 3f
         const val PERSPECTIVE_TOUCH_RADIUS_DP = 28f
+        const val SPECIAL_RULER_ROTATION_HANDLE_DP = 72f
         const val DUAL_SEQUENCE_SEED = 0x35A71C9E
         const val MAX_TIP_CACHE_ENTRIES = 64
         const val MAX_COLOR_FILTER_CACHE_ENTRIES = 64
