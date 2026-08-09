@@ -7,6 +7,7 @@ import app.inkloom.document.CorrectLineMode
 import app.inkloom.document.FillSubTool
 import app.inkloom.document.PressureResponseCurve
 import app.inkloom.document.PerspectiveGuideMode
+import app.inkloom.document.SpecialRulerMode
 
 data class AppSettings(
     val language: UiLanguage = UiLanguage.ENGLISH,
@@ -77,6 +78,13 @@ data class AppSettings(
     val perspectivePoint2Y: Float = .42f,
     val perspectivePoint3X: Float = .5f,
     val perspectivePoint3Y: Float = .12f,
+    val specialRulerMode: SpecialRulerMode = SpecialRulerMode.NONE,
+    val specialRulerAssisted: Boolean = true,
+    val specialRulerEditing: Boolean = false,
+    val specialRulerCenterX: Float = .5f,
+    val specialRulerCenterY: Float = .5f,
+    val specialRulerAngleDegrees: Float = 0f,
+    val specialRulerSpacing: Float = 64f,
     val stylusPrimaryButton: StylusButtonAction = StylusButtonAction.ERASER,
     val stylusSecondaryButton: StylusButtonAction = StylusButtonAction.LASSO,
     val stylusPrimaryTrigger: ShortcutTrigger = ShortcutTrigger.HOLD,
@@ -215,6 +223,13 @@ class AppSettingsStore(context: Context) {
             perspectivePoint2Y = preferences.getFloat("perspectivePoint2Y", .42f).takeIf(Float::isFinite)?.coerceIn(-4f, 5f) ?: .42f,
             perspectivePoint3X = preferences.getFloat("perspectivePoint3X", .5f).takeIf(Float::isFinite)?.coerceIn(-4f, 5f) ?: .5f,
             perspectivePoint3Y = preferences.getFloat("perspectivePoint3Y", .12f).takeIf(Float::isFinite)?.coerceIn(-4f, 5f) ?: .12f,
+            specialRulerMode = enumValue(preferences.getString("specialRulerMode", null), SpecialRulerMode.NONE),
+            specialRulerAssisted = preferences.getBoolean("specialRulerAssisted", true),
+            specialRulerEditing = preferences.getBoolean("specialRulerEditing", false),
+            specialRulerCenterX = preferences.getFloat("specialRulerCenterX", .5f).takeIf(Float::isFinite)?.coerceIn(-2f, 3f) ?: .5f,
+            specialRulerCenterY = preferences.getFloat("specialRulerCenterY", .5f).takeIf(Float::isFinite)?.coerceIn(-2f, 3f) ?: .5f,
+            specialRulerAngleDegrees = app.inkloom.document.RulerGuideState.normalizeAngle(preferences.getFloat("specialRulerAngleDegrees", 0f)),
+            specialRulerSpacing = preferences.getFloat("specialRulerSpacing", 64f).takeIf(Float::isFinite)?.coerceIn(16f, 400f) ?: 64f,
             stylusPrimaryButton = enumValue(preferences.getString("stylusPrimaryButton", null), StylusButtonAction.ERASER),
             stylusSecondaryButton = enumValue(preferences.getString("stylusSecondaryButton", null), StylusButtonAction.LASSO),
             stylusPrimaryTrigger = enumValue(preferences.getString("stylusPrimaryTrigger", null), ShortcutTrigger.HOLD),
@@ -335,6 +350,13 @@ class AppSettingsStore(context: Context) {
             .putFloat("perspectivePoint2Y", persisted.perspectivePoint2Y.takeIf(Float::isFinite)?.coerceIn(-4f, 5f) ?: .42f)
             .putFloat("perspectivePoint3X", persisted.perspectivePoint3X.takeIf(Float::isFinite)?.coerceIn(-4f, 5f) ?: .5f)
             .putFloat("perspectivePoint3Y", persisted.perspectivePoint3Y.takeIf(Float::isFinite)?.coerceIn(-4f, 5f) ?: .12f)
+            .putString("specialRulerMode", persisted.specialRulerMode.name)
+            .putBoolean("specialRulerAssisted", persisted.specialRulerAssisted)
+            .putBoolean("specialRulerEditing", persisted.specialRulerEditing)
+            .putFloat("specialRulerCenterX", persisted.specialRulerCenterX.takeIf(Float::isFinite)?.coerceIn(-2f, 3f) ?: .5f)
+            .putFloat("specialRulerCenterY", persisted.specialRulerCenterY.takeIf(Float::isFinite)?.coerceIn(-2f, 3f) ?: .5f)
+            .putFloat("specialRulerAngleDegrees", app.inkloom.document.RulerGuideState.normalizeAngle(persisted.specialRulerAngleDegrees))
+            .putFloat("specialRulerSpacing", persisted.specialRulerSpacing.takeIf(Float::isFinite)?.coerceIn(16f, 400f) ?: 64f)
             .putString("stylusPrimaryButton", persisted.stylusPrimaryButton.name)
             .putString("stylusSecondaryButton", persisted.stylusSecondaryButton.name)
             .putString("stylusPrimaryTrigger", persisted.stylusPrimaryTrigger.name)

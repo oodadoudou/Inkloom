@@ -73,6 +73,8 @@ object AppSettingsBackupCodec {
         put("gridSnapEnabled", gridSnapEnabled); put("gridSpacing", gridSpacing); put("alignmentGuidesEnabled", alignmentGuidesEnabled); put("verticalGuideX", verticalGuideX); put("horizontalGuideY", horizontalGuideY)
         put("perspectiveGuideMode", perspectiveGuideMode.name); put("perspectiveGuideAssisted", perspectiveGuideAssisted); put("perspectiveGuideEditing", perspectiveGuideEditing)
         put("perspectivePoint1X", perspectivePoint1X); put("perspectivePoint1Y", perspectivePoint1Y); put("perspectivePoint2X", perspectivePoint2X); put("perspectivePoint2Y", perspectivePoint2Y); put("perspectivePoint3X", perspectivePoint3X); put("perspectivePoint3Y", perspectivePoint3Y)
+        put("specialRulerMode", specialRulerMode.name); put("specialRulerAssisted", specialRulerAssisted); put("specialRulerEditing", specialRulerEditing)
+        put("specialRulerCenterX", specialRulerCenterX); put("specialRulerCenterY", specialRulerCenterY); put("specialRulerAngleDegrees", specialRulerAngleDegrees); put("specialRulerSpacing", specialRulerSpacing)
         put("stylusPrimaryButton", stylusPrimaryButton.name); put("stylusSecondaryButton", stylusSecondaryButton.name)
         put("stylusPrimaryTrigger", stylusPrimaryTrigger.name); put("stylusSecondaryTrigger", stylusSecondaryTrigger.name)
         put("pressureSensitivity", pressureSensitivity); put("pressureMinimumInput", pressureMinimumInput); put("pressureMaximumInput", pressureMaximumInput)
@@ -120,6 +122,9 @@ object AppSettingsBackupCodec {
             perspectivePoint1X = float("perspectivePoint1X", defaults.perspectivePoint1X).coerceIn(-4f, 5f), perspectivePoint1Y = float("perspectivePoint1Y", defaults.perspectivePoint1Y).coerceIn(-4f, 5f),
             perspectivePoint2X = float("perspectivePoint2X", defaults.perspectivePoint2X).coerceIn(-4f, 5f), perspectivePoint2Y = float("perspectivePoint2Y", defaults.perspectivePoint2Y).coerceIn(-4f, 5f),
             perspectivePoint3X = float("perspectivePoint3X", defaults.perspectivePoint3X).coerceIn(-4f, 5f), perspectivePoint3Y = float("perspectivePoint3Y", defaults.perspectivePoint3Y).coerceIn(-4f, 5f),
+            specialRulerMode = enum("specialRulerMode", defaults.specialRulerMode), specialRulerAssisted = boolean("specialRulerAssisted", defaults.specialRulerAssisted), specialRulerEditing = boolean("specialRulerEditing", defaults.specialRulerEditing),
+            specialRulerCenterX = float("specialRulerCenterX", defaults.specialRulerCenterX).coerceIn(-2f, 3f), specialRulerCenterY = float("specialRulerCenterY", defaults.specialRulerCenterY).coerceIn(-2f, 3f),
+            specialRulerAngleDegrees = app.inkloom.document.RulerGuideState.normalizeAngle(float("specialRulerAngleDegrees", defaults.specialRulerAngleDegrees)), specialRulerSpacing = float("specialRulerSpacing", defaults.specialRulerSpacing).coerceIn(16f, 400f),
             stylusPrimaryButton = enum("stylusPrimaryButton", defaults.stylusPrimaryButton), stylusSecondaryButton = enum("stylusSecondaryButton", defaults.stylusSecondaryButton),
             stylusPrimaryTrigger = enum("stylusPrimaryTrigger", defaults.stylusPrimaryTrigger), stylusSecondaryTrigger = enum("stylusSecondaryTrigger", defaults.stylusSecondaryTrigger),
             pressureSensitivity = float("pressureSensitivity", defaults.pressureSensitivity).coerceIn(.25f, 2.5f), pressureMinimumInput = minimum, pressureMaximumInput = maximum,

@@ -5,6 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import app.inkloom.document.PerspectiveGuideMode
+import app.inkloom.document.SpecialRulerMode
 
 class AppSettingsBackupCodecTest {
     @Test fun `round trip preserves input tools workspace shortcuts quick slots and palette`() {
@@ -47,6 +48,13 @@ class AppSettingsBackupCodecTest {
             perspectivePoint2Y = .51f,
             perspectivePoint3X = .52f,
             perspectivePoint3Y = .08f,
+            specialRulerMode = SpecialRulerMode.ISOMETRIC,
+            specialRulerAssisted = false,
+            specialRulerEditing = true,
+            specialRulerCenterX = .4f,
+            specialRulerCenterY = .6f,
+            specialRulerAngleDegrees = 18f,
+            specialRulerSpacing = 88f,
             stylusPrimaryButton = StylusButtonAction.UNDO,
             stylusSecondaryButton = StylusButtonAction.HAND,
             stylusPrimaryTrigger = ShortcutTrigger.PRESS,
