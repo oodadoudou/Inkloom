@@ -290,7 +290,7 @@ class InkloomLaunchTest {
 
     @Test fun settingsExposeConflictSafeFullLibraryBackup() {
         composeRule.onNodeWithContentDescription("Settings").performClick()
-        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Draw with finger"))).performScrollToIndex(32)
+        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Draw with finger"))).performScrollToIndex(36)
 
         composeRule.onNodeWithText("Export full library backup").assertIsDisplayed()
         composeRule.onNodeWithText("Restore library backup").assertIsDisplayed()
