@@ -4,6 +4,23 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class PageGeometryTest {
+    @Test fun `rotation keeps editable layer mask aligned with its layer`() {
+        val mask = LayerMask(
+            baseVisible = false,
+            regions = listOf(LayerMaskRegion(listOf(
+                StrokePoint(.1f, .2f), StrokePoint(.3f, .2f), StrokePoint(.3f, .4f), StrokePoint(.1f, .4f),
+            ), reveal = true)),
+        )
+        val page = InkPage(layers = defaultInkLayers().map { if (it.id == LayerIds.INK) it.copy(mask = mask) else it })
+
+        val points = requireNotNull(PageGeometry.rotateClockwise(page).layers.first { it.id == LayerIds.INK }.mask).regions.single().points
+
+        assertEquals(.6f, points.minOf(StrokePoint::x), .0001f)
+        assertEquals(.8f, points.maxOf(StrokePoint::x), .0001f)
+        assertEquals(.1f, points.minOf(StrokePoint::y), .0001f)
+        assertEquals(.3f, points.maxOf(StrokePoint::y), .0001f)
+    }
+
     @Test fun clockwiseRotationSwapsPageAndTransformsContent() {
         val stroke = InkStroke(
             points = listOf(StrokePoint(.2f, .3f, orientation = 0f)),

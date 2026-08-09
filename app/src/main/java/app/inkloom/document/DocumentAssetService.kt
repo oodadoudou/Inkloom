@@ -653,6 +653,13 @@ class DocumentAssetService(private val context: Context) {
                 }
             }
             drawLayerWithAlphaLock(layer)
+            if (applyLayerEffects) layer.mask?.let { mask ->
+                val maskCheckpoint = canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    blendMode = android.graphics.BlendMode.DST_IN
+                })
+                LayerMaskRenderer.draw(canvas, mask, width, height)
+                canvas.restoreToCount(maskCheckpoint)
+            }
             if (applyLayerEffects && layer.clippedToBelow) {
                 val lowerLayer = visibleLayers.getOrNull(layerIndex - 1)
                 if (lowerLayer == null) {

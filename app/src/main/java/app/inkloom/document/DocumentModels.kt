@@ -128,9 +128,37 @@ data class InkLayer(
     val clippedToBelow: Boolean = false,
     val reference: Boolean = false,
     val draft: Boolean = false,
+    val mask: LayerMask? = null,
     val parentId: String? = null,
     val collapsed: Boolean = false,
 )
+
+@Serializable
+data class LayerMask(
+    val baseVisible: Boolean = true,
+    val regions: List<LayerMaskRegion> = emptyList(),
+    val enabled: Boolean = true,
+    val linked: Boolean = true,
+)
+
+@Serializable
+data class LayerMaskRegion(
+    val points: List<StrokePoint>,
+    val reveal: Boolean,
+    val opacity: Float = 1f,
+)
+
+@Serializable
+enum class LayerMaskCommand {
+    CREATE_MASK_SELECTION,
+    CREATE_MASK_OUTSIDE_SELECTION,
+    HIDE_SELECTION,
+    REVEAL_SELECTION,
+    TOGGLE_ENABLED,
+    TOGGLE_LINKED,
+    APPLY,
+    DELETE,
+}
 
 fun defaultInkLayers(): List<InkLayer> = listOf(
     InkLayer(LayerIds.BACKGROUND, "Background", LayerRole.BACKGROUND, locked = true),

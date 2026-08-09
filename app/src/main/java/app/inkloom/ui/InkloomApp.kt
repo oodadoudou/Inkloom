@@ -4304,6 +4304,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.clippedLayers = page.layers.filter { it.clippedToBelow }.mapTo(mutableSetOf()) { it.id }
                 view.referenceLayerIds = page.layers.filter { it.reference }.mapTo(mutableSetOf()) { it.id }
                 view.draftLayerIds = page.layers.filter { it.draft }.mapTo(mutableSetOf()) { it.id }
+                view.layerMasks = page.layers.mapNotNull { layer -> layer.mask?.let { layer.id to it } }.toMap()
                 view.layerOrder = page.layers.filter { it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) && LayerHierarchy.effectiveVisible(page.layers, it) }.map(InkLayer::id)
                 view.pagePaperColor = if (renderedPage.background is PageBackground.Paper) (if (backgroundVisible) renderedPage.background.colorArgb.toInt() else AndroidColor.WHITE) else null
                 view.pagePaperPattern = (renderedPage.background as? PageBackground.Paper)?.pattern?.takeIf { backgroundVisible }

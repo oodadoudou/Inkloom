@@ -66,6 +66,8 @@ import app.inkloom.document.GrainDynamics
 import app.inkloom.document.LassoGeometry
 import app.inkloom.document.LassoSelectionPolicy
 import app.inkloom.document.LayerBlendMode
+import app.inkloom.document.LayerMask
+import app.inkloom.document.LayerMaskRenderer
 import app.inkloom.document.toBlendMode
 import app.inkloom.document.LaserTrail
 import app.inkloom.document.PaperPattern
@@ -161,6 +163,11 @@ class InkCanvasView(context: Context) : View(context) {
         activeSurfaceFrameScheduled = false
         val surface = activeStrokeSurface ?: return@Runnable
         if (activeTool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) || currentPoints.isEmpty()) return@Runnable
+        if (usesMaskedActivePreview()) {
+            surface.cancel()
+            postInvalidateOnAnimation()
+            return@Runnable
+        }
         surface.render(symmetryStrokes(currentPoints))
     }
     private var backgroundBitmap: Bitmap? = null
@@ -402,6 +409,7 @@ class InkCanvasView(context: Context) : View(context) {
     var alphaLockBaseContentIds: Map<String, Set<String>> = emptyMap()
         set(value) { if (field != value) { field = value; resetStrokeTiles() } }
     var clippedLayers: Set<String> = emptySet()
+    var layerMasks: Map<String, LayerMask> = emptyMap()
         set(value) { if (field != value) { field = value; resetStrokeTiles() } }
     var layerOrder: List<String> = emptyList()
         set(value) { if (field != value) { field = value; resetStrokeTiles() } }
@@ -851,6 +859,14 @@ class InkCanvasView(context: Context) : View(context) {
             includeElements = true,
             layerFilter = referencedLayerIds,
         )
+        if (
+            includeInteractionOverlays &&
+            usesMaskedActivePreview() &&
+            activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) &&
+            currentPoints.isNotEmpty()
+        ) {
+            drawLayeredStrokes(canvas, symmetryStrokes(currentPoints))
+        }
         if (!includeInteractionOverlays) return
         var selectionLeft = Float.POSITIVE_INFINITY
         var selectionTop = Float.POSITIVE_INFINITY
@@ -911,7 +927,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun drawStrokeTiles(canvas: Canvas): Boolean {
         if (layerBlendModes.values.any { it != LayerBlendMode.NORMAL }) return false
-        if (alphaLockedLayers.isNotEmpty() || clippedLayers.isNotEmpty()) return false
+        if (alphaLockedLayers.isNotEmpty() || clippedLayers.isNotEmpty() || layerMasks.isNotEmpty()) return false
         if (layerElementBitmaps.isNotEmpty()) return false
         return committedScene.draw(canvas, strokes, width, height) { target, candidates ->
             drawLayeredStrokes(target, candidates)
@@ -946,7 +962,7 @@ class InkCanvasView(context: Context) : View(context) {
     private fun canAppendCommittedInkToTiles(): Boolean =
         layerBlendModes.values.all { it == LayerBlendMode.NORMAL } &&
             layerOpacities.values.all { it >= .999f } &&
-            alphaLockedLayers.isEmpty() && clippedLayers.isEmpty() && layerElementBitmaps.isEmpty()
+            alphaLockedLayers.isEmpty() && clippedLayers.isEmpty() && layerMasks.isEmpty() && layerElementBitmaps.isEmpty()
 
     private fun drawLayeredStrokes(
         canvas: Canvas,
@@ -974,6 +990,11 @@ class InkCanvasView(context: Context) : View(context) {
                     this.blendMode = layerBlendMode.toBlendMode()
                 })
                 drawRawLayerContent(canvas, layerId, layerStrokes, includeElements, primaryStampStartIndex, dualStampStartIndex)
+                layerMasks[layerId]?.let { mask ->
+                    val maskCheckpoint = canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.DST_IN })
+                    LayerMaskRenderer.draw(canvas, mask, width, height)
+                    canvas.restoreToCount(maskCheckpoint)
+                }
                 if (clipped && lowerLayerId != null) {
                     val maskCheckpoint = canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.DST_IN })
                     drawRawLayerContent(canvas, lowerLayerId, groupedStrokes[lowerLayerId].orEmpty(), includeElements, primaryStampStartIndex, dualStampStartIndex)
@@ -1981,8 +2002,10 @@ class InkCanvasView(context: Context) : View(context) {
                     strokes.addAll(newStrokes)
                     invalidateStrokeCache(emptyList(), newStrokes)
                     commitStrokeEdit(before, strokes)
-                    activeStrokeSurface?.commit(newStrokes)
-                    activeSurfaceCommitted = activeStrokeSurface != null
+                    val previewSurface = activeStrokeSurface?.takeUnless { usesMaskedActivePreview() }
+                    previewSurface?.commit(newStrokes)
+                    activeStrokeSurface?.takeIf { previewSurface == null }?.cancel()
+                    activeSurfaceCommitted = previewSurface != null
                     clearActiveStrokeInput()
                     finishActiveStrokePreview()
                 } else if (activeTool == EditorTool.SELECT) {
@@ -2821,10 +2844,16 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun requestActiveSurfaceFrame() {
+        if (usesMaskedActivePreview()) {
+            postInvalidateOnAnimation()
+            return
+        }
         if (activeStrokeSurface == null || activeSurfaceFrameScheduled) return
         activeSurfaceFrameScheduled = true
         postOnAnimation(activeSurfaceFrame)
     }
+
+    private fun usesMaskedActivePreview(): Boolean = layerMasks[activeLayerId]?.enabled == true
 
     @VisibleForTesting
     internal fun flushEngineV2ActiveFrame() {
