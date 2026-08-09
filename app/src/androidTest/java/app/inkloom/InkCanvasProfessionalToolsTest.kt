@@ -1,0 +1,86 @@
+package app.inkloom
+
+import android.view.InputDevice
+import android.view.MotionEvent
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import app.inkloom.document.CorrectLineMode
+import app.inkloom.document.InkStroke
+import app.inkloom.document.LayerIds
+import app.inkloom.document.StrokePoint
+import app.inkloom.model.EditorTool
+import app.inkloom.ui.InkCanvasView
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.runner.RunWith
+
+@RunWith(AndroidJUnit4::class)
+class InkCanvasProfessionalToolsTest {
+    @Test fun liquifyCommitsAReversibleExistingStrokeEdit() {
+        var replacement: InkStroke? = null
+        val original = line("liquify", listOf(StrokePoint(.45f, .5f), StrokePoint(.55f, .5f)))
+        val view = canvas(EditorTool.LIQUIFY, original) {
+            baseWidth = 500f
+            onStrokesReplaced = { _, changed, _ -> replacement = changed.firstOrNull() }
+        }
+        send(view, MotionEvent.ACTION_DOWN, 500f, 500f, 0L)
+        send(view, MotionEvent.ACTION_MOVE, 650f, 500f, 10L)
+        send(view, MotionEvent.ACTION_UP, 650f, 500f, 20L)
+
+        assertNotEquals(original.points, requireNotNull(replacement).points)
+    }
+
+    @Test fun correctLineSmoothsAndCommitsTheTargetLine() {
+        var replacement: InkStroke? = null
+        val original = line("rough", listOf(
+            StrokePoint(.2f, .5f), StrokePoint(.35f, .62f), StrokePoint(.5f, .38f), StrokePoint(.65f, .61f), StrokePoint(.8f, .5f),
+        ))
+        val view = canvas(EditorTool.CORRECT_LINE, original) {
+            correctLineMode = CorrectLineMode.SMOOTH
+            onStrokesReplaced = { _, changed, _ -> replacement = changed.firstOrNull() }
+        }
+        send(view, MotionEvent.ACTION_DOWN, 500f, 380f, 0L)
+        send(view, MotionEvent.ACTION_MOVE, 700f, 380f, 10L)
+        send(view, MotionEvent.ACTION_UP, 700f, 380f, 20L)
+
+        assertNotEquals(original.points, requireNotNull(replacement).points)
+    }
+
+    @Test fun invertAndFreeTransformOperateOnEditableSelection() {
+        val view = canvas(EditorTool.SELECT, line("one", listOf(StrokePoint(.3f, .3f), StrokePoint(.4f, .4f))))
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            assertTrue(view.selectAllEditableStrokes())
+            assertFalse(view.invertSelection())
+            assertTrue(view.invertSelection())
+            assertTrue(view.enterFreeTransform())
+            assertTrue(view.clearSelection())
+        }
+    }
+
+    private fun canvas(tool: EditorTool, stroke: InkStroke, block: InkCanvasView.() -> Unit = {}): InkCanvasView {
+        lateinit var view: InkCanvasView
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view = InkCanvasView(ApplicationProvider.getApplicationContext()).apply {
+                layout(0, 0, 1_000, 1_000)
+                this.tool = tool
+                fingerDrawingEnabled = true
+                activeLayerId = LayerIds.INK
+                setDocumentStrokes(listOf(stroke), "professional-tools")
+                block()
+            }
+        }
+        return view
+    }
+
+    private fun line(id: String, points: List<StrokePoint>) = InkStroke(id = id, points = points, width = 18f, colorArgb = 0xFF111111, layerId = LayerIds.INK)
+
+    private fun send(view: InkCanvasView, action: Int, x: Float, y: Float, time: Long) {
+        val properties = MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_STYLUS }
+        val coordinates = MotionEvent.PointerCoords().apply { this.x = x; this.y = y; pressure = .8f }
+        val event = MotionEvent.obtain(0L, time, action, 1, arrayOf(properties), arrayOf(coordinates), 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_STYLUS, 0)
+        try { InstrumentationRegistry.getInstrumentation().runOnMainSync { view.onTouchEvent(event) } } finally { event.recycle() }
+    }
+}
