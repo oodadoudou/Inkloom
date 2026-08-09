@@ -75,7 +75,10 @@ internal class EngineV2CanvasHost(context: Context) : FrameLayout(context), Engi
     override fun cancel() {
         activeStrokes = emptyList()
         synchronized(activeLock) { tailPlanner.reset() }
-        lowLatencyView.cancel()
+        // cancel() is best-effort and may leave an already submitted front-buffer frame visible.
+        // A navigation gesture must remove that frame immediately or it appears as a stationary
+        // ghost while the page underneath pans or zooms.
+        lowLatencyView.clear()
         canvasView.resetEngineV2ActiveRenderState()
     }
 

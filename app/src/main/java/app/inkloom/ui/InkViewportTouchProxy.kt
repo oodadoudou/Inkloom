@@ -25,10 +25,16 @@ class InkViewportTouchProxy(context: Context) : View(context) {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN && event.isStylusEvent()) {
+            requestUnbufferedDispatch(event)
+        }
         return forward(event) { canvas, forwarded -> canvas.dispatchTouchEvent(forwarded) }
     }
 
     override fun onHoverEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_HOVER_ENTER && event.isStylusEvent()) {
+            requestUnbufferedDispatch(event)
+        }
         return forward(event) { canvas, forwarded -> canvas.onHoverEvent(forwarded) }
     }
 
@@ -62,4 +68,9 @@ class InkViewportTouchProxy(context: Context) : View(context) {
         super.performClick()
         return true
     }
+
+    private fun MotionEvent.isStylusEvent(): Boolean =
+        (0 until pointerCount).any { index ->
+            getToolType(index) == MotionEvent.TOOL_TYPE_STYLUS || getToolType(index) == MotionEvent.TOOL_TYPE_ERASER
+        }
 }

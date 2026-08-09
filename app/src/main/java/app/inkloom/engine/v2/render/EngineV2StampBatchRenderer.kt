@@ -35,8 +35,10 @@ internal object EngineV2StampBatchRenderer {
         val safeStart = startIndex.coerceIn(0, sampledPoints.size)
         val dabCount = sampledPoints.size - safeStart
         if (dabCount <= 0) return true
-        val vertices = FloatArray(dabCount * VERTEX_FLOATS_PER_DAB)
-        val textureCoordinates = FloatArray(vertices.size)
+        val floatCount = dabCount * VERTEX_FLOATS_PER_DAB
+        val buffers = (threadBuffers.get() ?: Buffers().also(threadBuffers::set)).also { it.ensureCapacity(floatCount) }
+        val vertices = buffers.vertices
+        val textureCoordinates = buffers.textureCoordinates
         val taper = StrokeTaper.factors(
             sampledPoints,
             width,
@@ -92,7 +94,7 @@ internal object EngineV2StampBatchRenderer {
         paint.alpha = (stroke.flow.coerceIn(0f, 1f) * 255).toInt()
         canvas.drawVertices(
             Canvas.VertexMode.TRIANGLES,
-            vertices.size,
+            floatCount,
             vertices,
             0,
             textureCoordinates,
@@ -148,19 +150,39 @@ internal object EngineV2StampBatchRenderer {
         val right = width / 2f
         val top = -height / 2f
         val bottom = height / 2f
-        val positions = floatArrayOf(
-            x(left, top), y(left, top), x(right, top), y(right, top), x(right, bottom), y(right, bottom),
-            x(left, top), y(left, top), x(right, bottom), y(right, bottom), x(left, bottom), y(left, bottom),
-        )
-        val texture = floatArrayOf(
-            0f, 0f, textureWidth, 0f, textureWidth, textureHeight,
-            0f, 0f, textureWidth, textureHeight, 0f, textureHeight,
-        )
-        positions.copyInto(vertices, offset)
-        texture.copyInto(textureCoordinates, offset)
+        val leftTopX = x(left, top); val leftTopY = y(left, top)
+        val rightTopX = x(right, top); val rightTopY = y(right, top)
+        val rightBottomX = x(right, bottom); val rightBottomY = y(right, bottom)
+        val leftBottomX = x(left, bottom); val leftBottomY = y(left, bottom)
+        vertices[offset] = leftTopX; vertices[offset + 1] = leftTopY
+        vertices[offset + 2] = rightTopX; vertices[offset + 3] = rightTopY
+        vertices[offset + 4] = rightBottomX; vertices[offset + 5] = rightBottomY
+        vertices[offset + 6] = leftTopX; vertices[offset + 7] = leftTopY
+        vertices[offset + 8] = rightBottomX; vertices[offset + 9] = rightBottomY
+        vertices[offset + 10] = leftBottomX; vertices[offset + 11] = leftBottomY
+        textureCoordinates[offset] = 0f; textureCoordinates[offset + 1] = 0f
+        textureCoordinates[offset + 2] = textureWidth; textureCoordinates[offset + 3] = 0f
+        textureCoordinates[offset + 4] = textureWidth; textureCoordinates[offset + 5] = textureHeight
+        textureCoordinates[offset + 6] = 0f; textureCoordinates[offset + 7] = 0f
+        textureCoordinates[offset + 8] = textureWidth; textureCoordinates[offset + 9] = textureHeight
+        textureCoordinates[offset + 10] = 0f; textureCoordinates[offset + 11] = textureHeight
+    }
+
+    private class Buffers {
+        var vertices = FloatArray(0)
+        var textureCoordinates = FloatArray(0)
+
+        fun ensureCapacity(required: Int) {
+            if (vertices.size >= required) return
+            var capacity = vertices.size.coerceAtLeast(192)
+            while (capacity < required) capacity *= 2
+            vertices = FloatArray(capacity)
+            textureCoordinates = FloatArray(capacity)
+        }
     }
 
     private const val VERTEX_FLOATS_PER_DAB = 12
     private const val REFERENCE_WIDTH = 1600f
     private const val ROTATION_SEED = 0x49A2B31DL
+    private val threadBuffers = ThreadLocal.withInitial(::Buffers)
 }

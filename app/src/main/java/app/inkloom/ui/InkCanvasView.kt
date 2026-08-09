@@ -146,6 +146,8 @@ class InkCanvasView(context: Context) : View(context) {
     private var activeSurfaceCommitted = false
     private val activePrimaryStampCounts = mutableMapOf<String, Int>()
     private val activeDualStampCounts = mutableMapOf<String, Int>()
+    private val activePrimarySamples = mutableMapOf<String, Pair<Int, List<StrokePoint>>>()
+    private val activeDualSamples = mutableMapOf<String, Pair<Int, List<StrokePoint>>>()
     private val activeSurfaceFrame = Runnable {
         activeSurfaceFrameScheduled = false
         val surface = activeStrokeSurface ?: return@Runnable
@@ -318,6 +320,14 @@ class InkCanvasView(context: Context) : View(context) {
         set(value) { committedScene.onTileRendered = value }
 
     var tool: EditorTool = EditorTool.PEN
+        set(value) {
+            if (field == value) return
+            field = value
+            if (hoverCursorVisible) {
+                hoverCursorUsesEraser = value == EditorTool.ERASER
+                postInvalidateOnAnimation()
+            }
+        }
     var forceNavigation: Boolean = false
     var rotateNavigation: Boolean = false
     var externalViewportGestures: Boolean = false
@@ -331,6 +341,10 @@ class InkCanvasView(context: Context) : View(context) {
         set(value) { field = ViewportTransform.normalizeDegrees(value.takeIf(Float::isFinite) ?: 0f); invalidate() }
     var inkColor: Int = Color.rgb(17, 17, 17)
     var baseWidth: Float = 5f
+        set(value) {
+            field = value
+            if (hoverCursorVisible && !hoverCursorUsesEraser) postInvalidateOnAnimation()
+        }
     var inkOpacity: Float = 1f
     var brushId: String = "system-pencil"
     var activeLayerId: String = app.inkloom.document.LayerIds.INK
@@ -519,6 +533,10 @@ class InkCanvasView(context: Context) : View(context) {
     var localEraser: Boolean = false
     var nonDestructiveEraser: Boolean = false
     var eraserWidth: Float = 24f
+        set(value) {
+            field = value
+            if (hoverCursorVisible && hoverCursorUsesEraser) postInvalidateOnAnimation()
+        }
     var eraserHardness: Float = 1f
     var eraserOpacity: Float = 1f
     var eraserPressureSize: Boolean = false
@@ -727,12 +745,13 @@ class InkCanvasView(context: Context) : View(context) {
         val pointerIndex = event.actionIndex.coerceIn(0, event.pointerCount - 1)
         val toolType = event.getToolType(pointerIndex)
         val stylus = toolType == MotionEvent.TOOL_TYPE_STYLUS || toolType == MotionEvent.TOOL_TYPE_ERASER
-        val cursorTool = if (toolType == MotionEvent.TOOL_TYPE_ERASER) EditorTool.ERASER else tool
+        if (stylus) dispatchStylusButtonTransitions(updateStylusButtonState(event.buttonState))
+        val cursorTool = if (toolType == MotionEvent.TOOL_TYPE_ERASER) EditorTool.ERASER else resolveTool(event, toolType)
         val drawableTool = cursorTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.SMUDGE)
         when (event.actionMasked) {
             MotionEvent.ACTION_HOVER_ENTER, MotionEvent.ACTION_HOVER_MOVE -> {
                 if (!stylus || !drawableTool) {
-                    if (hoverCursorVisible) { hoverCursorVisible = false; invalidate() }
+                    if (hoverCursorVisible) { hoverCursorVisible = false; postInvalidateOnAnimation() }
                     return stylus
                 }
                 val point = canvasPoint(event, pointerIndex)
@@ -740,11 +759,11 @@ class InkCanvasView(context: Context) : View(context) {
                 hoverCursorY = point.second
                 hoverCursorUsesEraser = cursorTool == EditorTool.ERASER
                 hoverCursorVisible = true
-                invalidate()
+                postInvalidateOnAnimation()
                 return true
             }
             MotionEvent.ACTION_HOVER_EXIT, MotionEvent.ACTION_CANCEL -> {
-                if (hoverCursorVisible) { hoverCursorVisible = false; invalidate() }
+                if (hoverCursorVisible) { hoverCursorVisible = false; postInvalidateOnAnimation() }
                 return stylus
             }
         }
@@ -1145,10 +1164,20 @@ class InkCanvasView(context: Context) : View(context) {
      * committed stroke, rather than visibly changing shape on pen-up.
      */
     private fun primaryStampedPoints(stroke: InkStroke): List<StrokePoint> {
+        if (stroke.id == currentStrokeId && activeTool != null) {
+            activePrimarySamples[stroke.id]?.takeIf { it.first == stroke.points.size }?.let { return it.second }
+            return EngineV2BrushEvaluator.sampleStampPoints(stroke, width.toFloat(), height.toFloat(), dual = false)
+                .also { activePrimarySamples[stroke.id] = stroke.points.size to it }
+        }
         return EngineV2BrushEvaluator.sampleStampPoints(stroke, width.toFloat(), height.toFloat(), dual = false)
     }
 
     private fun dualStampedPoints(stroke: InkStroke): List<StrokePoint> {
+        if (stroke.id == currentStrokeId && activeTool != null) {
+            activeDualSamples[stroke.id]?.takeIf { it.first == stroke.points.size }?.let { return it.second }
+            return EngineV2BrushEvaluator.sampleStampPoints(stroke, width.toFloat(), height.toFloat(), dual = true)
+                .also { activeDualSamples[stroke.id] = stroke.points.size to it }
+        }
         return EngineV2BrushEvaluator.sampleStampPoints(stroke, width.toFloat(), height.toFloat(), dual = true)
     }
 
@@ -1405,6 +1434,7 @@ class InkCanvasView(context: Context) : View(context) {
             event.getToolType(index) == MotionEvent.TOOL_TYPE_STYLUS || event.getToolType(index) == MotionEvent.TOOL_TYPE_ERASER
         }
         if (event.pointerCount >= 2 && !hasStylusPointer && !activeInputWasStylus) {
+            if (!viewportGestureActive) cancelActiveGestureForNavigation()
             viewportGestureActive = true
             // Canvas navigation always outranks one-finger ruler/guide manipulation.
             rulerGestureStart?.let { rulerGuide = it }
@@ -2554,6 +2584,8 @@ class InkCanvasView(context: Context) : View(context) {
         synchronized(renderLock) {
             activePrimaryStampCounts.clear()
             activeDualStampCounts.clear()
+            activePrimarySamples.clear()
+            activeDualSamples.clear()
         }
     }
 

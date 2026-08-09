@@ -38,7 +38,7 @@ class EngineV2ActiveTailPlannerTest {
     }
 
     @Test
-    fun dualBrushKeepsCompleteReplayForCrossTipComposition() {
+    fun dualBrushAppendsDabsWithoutQuadraticReplay() {
         val planner = EngineV2ActiveTailPlanner()
         val dual = stroke(8).copy(
             tipAssetPath = "/tmp/tip.png",
@@ -48,19 +48,20 @@ class EngineV2ActiveTailPlannerTest {
 
         val plan = planner.incremental(listOf(dual))
 
-        assertTrue(plan.clearBeforeDraw)
-        assertFalse(plan.incrementalStampDraw)
+        assertFalse(plan.clearBeforeDraw)
+        assertTrue(plan.incrementalStampDraw)
     }
 
     @Test
-    fun translucentStrokeKeepsWholeStrokeOpacityCap() {
+    fun translucentVectorInkStillAppendsOnlyItsTail() {
         val planner = EngineV2ActiveTailPlanner()
         val translucent = stroke(8).copy(opacity = .35f)
 
         val plan = planner.incremental(listOf(translucent))
 
-        assertTrue(plan.clearBeforeDraw)
+        assertFalse(plan.clearBeforeDraw)
         assertFalse(plan.incrementalStampDraw)
+        assertEquals(translucent.points, plan.strokes.single().points)
     }
 
     private fun stroke(count: Int) = InkStroke(

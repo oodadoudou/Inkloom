@@ -48,6 +48,8 @@ internal class EngineV2ActiveTailPlanner {
         stroke.tipAssetPath != null || stroke.tipAssetPaths.isNotEmpty()
 
     private fun requiresCompleteReplay(stroke: InkStroke): Boolean =
-        stroke.dualBrush || stroke.blendTipsWithDarken || stroke.dualBlendTipsWithDarken ||
-            stroke.taperEndEnabled || stroke.masks.isNotEmpty() || stroke.opacity < .999f
+        // End taper depends on the final stroke length and masks can remove already-presented
+        // pixels. Other imported-brush effects are composited per appended dab, so replaying the
+        // complete stroke for them only adds quadratic work and visible input latency.
+        stroke.taperEndEnabled || stroke.masks.isNotEmpty()
 }
