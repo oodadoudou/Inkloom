@@ -1511,9 +1511,17 @@ class InkCanvasView(context: Context) : View(context) {
         if (isStylus && event.actionMasked in setOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN)) {
             activeStylusPointerId = event.getPointerId(pointerIndex)
         }
-        if (event.actionMasked == MotionEvent.ACTION_DOWN && !hasFocus()) requestFocus()
+        // Some EMR devices report a resting palm first and the pen as POINTER_DOWN. Promote the
+        // pen's own lifecycle so it starts a fresh stroke instead of appending to stale native
+        // input state (the source of sporadic marks near 0,0).
+        val effectiveAction = when {
+            isStylus && event.actionMasked == MotionEvent.ACTION_POINTER_DOWN -> MotionEvent.ACTION_DOWN
+            isStylus && event.actionMasked == MotionEvent.ACTION_POINTER_UP -> MotionEvent.ACTION_UP
+            else -> event.actionMasked
+        }
+        if (effectiveAction == MotionEvent.ACTION_DOWN && !hasFocus()) requestFocus()
         updateContactCursor(event, pointerIndex, isStylus)
-        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+        if (effectiveAction == MotionEvent.ACTION_DOWN) {
             // Every new contact stream is a hard recovery boundary. This also recovers from a
             // device/parent that consumed the previous stream's final UP or CANCEL.
             viewportGestureActive = false
@@ -1525,7 +1533,7 @@ class InkCanvasView(context: Context) : View(context) {
         }
         if (isStylus) singleFingerDoubleTapUndoGesture.cancel()
         if (isStylus) lastStylusSeenAt = event.eventTime
-        onInputDiagnostic(when (eventToolType) { MotionEvent.TOOL_TYPE_STYLUS -> "Stylus"; MotionEvent.TOOL_TYPE_ERASER -> "Eraser"; MotionEvent.TOOL_TYPE_FINGER -> "Finger"; else -> "Other" }, event.pressure, event.getAxisValue(MotionEvent.AXIS_TILT), event.buttonState)
+        onInputDiagnostic(when (eventToolType) { MotionEvent.TOOL_TYPE_STYLUS -> "Stylus"; MotionEvent.TOOL_TYPE_ERASER -> "Eraser"; MotionEvent.TOOL_TYPE_FINGER -> "Finger"; else -> "Other" }, event.getPressure(pointerIndex), event.getAxisValue(MotionEvent.AXIS_TILT, pointerIndex), event.buttonState)
         val buttonTransitions = if (isStylus) updateStylusButtonState(event.buttonState) else emptyList()
         val pressedButtonActions = buttonTransitions.filter { it.phase == ShortcutPhase.PRESS }.map(StylusButtonTransition::action)
         val pressedCommands = pressedButtonActions.filter(StylusButtonAction::isCommand).distinct()
@@ -1723,19 +1731,19 @@ class InkCanvasView(context: Context) : View(context) {
             return true
         }
         if (pageContactRejected) {
-            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) pageContactRejected = false
+            if (effectiveAction == MotionEvent.ACTION_UP || effectiveAction == MotionEvent.ACTION_CANCEL) pageContactRejected = false
             return true
         }
-        if (event.actionMasked == MotionEvent.ACTION_DOWN &&
+        if (effectiveAction == MotionEvent.ACTION_DOWN &&
             (inputPoint.first !in 0f..width.toFloat() || inputPoint.second !in 0f..height.toFloat())
         ) {
             pageContactRejected = true
             return true
         }
-        if (event.actionMasked == MotionEvent.ACTION_DOWN) singleFingerDoubleTapUndoGesture.cancel()
+        if (effectiveAction == MotionEvent.ACTION_DOWN) singleFingerDoubleTapUndoGesture.cancel()
         val normalizedX = (inputPoint.first / width.coerceAtLeast(1)).coerceIn(0f, 1f)
         val normalizedY = (inputPoint.second / height.coerceAtLeast(1)).coerceIn(0f, 1f)
-        when (event.actionMasked) {
+        when (effectiveAction) {
             MotionEvent.ACTION_DOWN -> {
                 parent?.requestDisallowInterceptTouchEvent(true)
                 activeTool = resolveTool(event, eventToolType)
@@ -1753,7 +1761,7 @@ class InkCanvasView(context: Context) : View(context) {
                 }
                 if (activeTool == EditorTool.ERASER) {
                     beginEraserGesture()
-                    eraseAlong(normalizedX, normalizedY, event.pressure)
+                    eraseAlong(normalizedX, normalizedY, event.getPressure(pointerIndex))
                     return true
                 }
                 if (activeTool == EditorTool.EYEDROPPER) {
@@ -1818,7 +1826,7 @@ class InkCanvasView(context: Context) : View(context) {
                     if (fillSubTool == FillSubTool.BUCKET) beginFillGesture(normalizedX, normalizedY, event.x)
                     else {
                         fillGesturePoints.clear()
-                        fillGesturePoints += StrokePoint(normalizedX, normalizedY, event.pressure, event.eventTime)
+                        fillGesturePoints += StrokePoint(normalizedX, normalizedY, event.getPressure(pointerIndex), event.eventTime)
                     }
                     invalidate()
                     return true
@@ -1857,8 +1865,8 @@ class InkCanvasView(context: Context) : View(context) {
                 activeCanvasSnapConstraint = if (!rulerEnabled && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
                     CanvasGuides.constraintAt(canvasGuideState, normalizedX, normalizedY, pageModelWidth, pageModelHeight, width.toFloat(), height.toFloat(), GUIDE_SNAP_TOLERANCE_DP * resources.displayMetrics.density)
                 } else null
-                updateContinuousPlotInput(normalizedX, normalizedY, event.pressure, event.getAxisValue(MotionEvent.AXIS_TILT), event.orientation)
-                addPoint(normalizedX, normalizedY, event.pressure, event.eventTime, event.getAxisValue(MotionEvent.AXIS_TILT), event.orientation)
+                updateContinuousPlotInput(normalizedX, normalizedY, event.getPressure(pointerIndex), event.getAxisValue(MotionEvent.AXIS_TILT, pointerIndex), event.getOrientation(pointerIndex))
+                addPoint(normalizedX, normalizedY, event.getPressure(pointerIndex), event.eventTime, event.getAxisValue(MotionEvent.AXIS_TILT, pointerIndex), event.getOrientation(pointerIndex))
                 if (brushContinuousPlot && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) startContinuousPlot()
             }
             MotionEvent.ACTION_MOVE -> {
@@ -1866,12 +1874,12 @@ class InkCanvasView(context: Context) : View(context) {
                     if (fillSubTool == FillSubTool.BUCKET) adjustFillSensitivity(event.x)
                     else {
                         for (index in 0 until event.historySize) fillGesturePoints += StrokePoint(
-                            event.getHistoricalX(0, index) / width.coerceAtLeast(1),
-                            event.getHistoricalY(0, index) / height.coerceAtLeast(1),
-                            event.getHistoricalPressure(0, index),
+                            event.getHistoricalX(pointerIndex, index) / width.coerceAtLeast(1),
+                            event.getHistoricalY(pointerIndex, index) / height.coerceAtLeast(1),
+                            event.getHistoricalPressure(pointerIndex, index),
                             event.getHistoricalEventTime(index),
                         )
-                        fillGesturePoints += StrokePoint(normalizedX, normalizedY, event.pressure, event.eventTime)
+                        fillGesturePoints += StrokePoint(normalizedX, normalizedY, event.getPressure(pointerIndex), event.eventTime)
                         invalidate()
                     }
                 }
@@ -1880,11 +1888,11 @@ class InkCanvasView(context: Context) : View(context) {
                     invalidate()
                 }
                 else if (activeTool == EditorTool.SMUDGE) {
-                    for (i in 0 until event.historySize) historicalCanvasPoint(event, 0, i).let { point -> extendSmudge(point.first / width.coerceAtLeast(1), point.second / height.coerceAtLeast(1)) }
+                    for (i in 0 until event.historySize) historicalCanvasPoint(event, pointerIndex, i).let { point -> extendSmudge(point.first / width.coerceAtLeast(1), point.second / height.coerceAtLeast(1)) }
                     extendSmudge(normalizedX, normalizedY)
                 }
                 else if (activeTool == EditorTool.LIQUIFY) {
-                    for (i in 0 until event.historySize) historicalCanvasPoint(event, 0, i).let { point -> extendLiquify(point.first / width.coerceAtLeast(1), point.second / height.coerceAtLeast(1)) }
+                    for (i in 0 until event.historySize) historicalCanvasPoint(event, pointerIndex, i).let { point -> extendLiquify(point.first / width.coerceAtLeast(1), point.second / height.coerceAtLeast(1)) }
                     extendLiquify(normalizedX, normalizedY)
                 }
                 else if (activeTool == EditorTool.CORRECT_LINE) {
@@ -1894,7 +1902,7 @@ class InkCanvasView(context: Context) : View(context) {
                     onColorSampled(sampleRenderedColor(inputPoint.first, inputPoint.second))
                 }
                 else if (activeTool == EditorTool.ERASER) {
-                    eraseMotionEvent(event, 0)
+                    eraseMotionEvent(event, pointerIndex)
                 }
                 else if (activeTool == EditorTool.SELECT) {
                     if (selectionTransformMode == TRANSFORM_SCALE) {
@@ -1962,14 +1970,14 @@ class InkCanvasView(context: Context) : View(context) {
                         invalidateStrokeCache(movedBefore, strokes.filter { it.id in selectedStrokeIds })
                     } else {
                         if (selectionShape == SelectionShape.FREEFORM || selectionShape == SelectionShape.BRUSH) {
-                            for (i in 0 until event.historySize) historicalCanvasPoint(event, 0, i).let { point -> appendSelectionPoint(point.first / width.coerceAtLeast(1), point.second / height.coerceAtLeast(1)) }
+                            for (i in 0 until event.historySize) historicalCanvasPoint(event, pointerIndex, i).let { point -> appendSelectionPoint(point.first / width.coerceAtLeast(1), point.second / height.coerceAtLeast(1)) }
                         }
                         appendSelectionPoint(normalizedX, normalizedY)
                     }
                 }
                 else if (activeTool == EditorTool.SHAPE) {
                     if (shapeKind == ShapeKind.FREEFORM) {
-                        for (i in 0 until event.historySize) historicalCanvasPoint(event, 0, i).let { point -> appendShapePoint(point.first / width.coerceAtLeast(1), point.second / height.coerceAtLeast(1)) }
+                        for (i in 0 until event.historySize) historicalCanvasPoint(event, pointerIndex, i).let { point -> appendShapePoint(point.first / width.coerceAtLeast(1), point.second / height.coerceAtLeast(1)) }
                         appendShapePoint(normalizedX, normalizedY)
                         shapeFreeformLastMoveAt = event.eventTime
                     } else {
@@ -1979,7 +1987,7 @@ class InkCanvasView(context: Context) : View(context) {
                     }
                 }
                 else if (activeTool == EditorTool.LASER) {
-                    for (i in 0 until event.historySize) historicalCanvasPoint(event, 0, i).let { point -> laserTrail.append(
+                    for (i in 0 until event.historySize) historicalCanvasPoint(event, pointerIndex, i).let { point -> laserTrail.append(
                         point.first / width.coerceAtLeast(1),
                         point.second / height.coerceAtLeast(1),
                         event.getHistoricalEventTime(i),
@@ -1987,8 +1995,8 @@ class InkCanvasView(context: Context) : View(context) {
                     laserTrail.append(normalizedX, normalizedY, event.eventTime)
                 }
                 else {
-                    updateContinuousPlotInput(normalizedX, normalizedY, event.pressure, event.getAxisValue(MotionEvent.AXIS_TILT), event.orientation)
-                    addMotionEventPoints(event, 0)
+                    updateContinuousPlotInput(normalizedX, normalizedY, event.getPressure(pointerIndex), event.getAxisValue(MotionEvent.AXIS_TILT, pointerIndex), event.getOrientation(pointerIndex))
+                    addMotionEventPoints(event, pointerIndex)
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -2009,7 +2017,7 @@ class InkCanvasView(context: Context) : View(context) {
                     lassoPoints.clear(); movingSelection = false; selectionMoved = false; selectionGestureBefore = null; selectionTransformMode = TRANSFORM_NONE
                 } else if (activeTool == EditorTool.FILL) {
                     if (fillSubTool == FillSubTool.BUCKET) commitFillGesture() else {
-                        fillGesturePoints += StrokePoint(normalizedX, normalizedY, event.pressure, event.eventTime)
+                        fillGesturePoints += StrokePoint(normalizedX, normalizedY, event.getPressure(pointerIndex), event.eventTime)
                         commitManualFillGesture()
                     }
                     parent?.requestDisallowInterceptTouchEvent(false)
@@ -2033,7 +2041,7 @@ class InkCanvasView(context: Context) : View(context) {
                 } else if (activeTool == EditorTool.EYEDROPPER) {
                     onColorSampled(sampleRenderedColor(inputPoint.first, inputPoint.second))
                 } else if (activeTool == EditorTool.ERASER) {
-                    eraseAlong(normalizedX, normalizedY, event.pressure)
+                    eraseAlong(normalizedX, normalizedY, event.getPressure(pointerIndex))
                     finishEraserGesture()
                 } else if (activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) && currentPoints.isNotEmpty()) {
                     val before = strokes.toList()
@@ -2221,7 +2229,7 @@ class InkCanvasView(context: Context) : View(context) {
     private fun updateContactCursor(event: MotionEvent, pointerIndex: Int, isStylus: Boolean) {
         if (!isStylus) return
         when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP -> {
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_MOVE, MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_UP -> {
                 val cursorTool = if (event.getToolType(pointerIndex) == MotionEvent.TOOL_TYPE_ERASER) EditorTool.ERASER else resolveTool(event, event.getToolType(pointerIndex))
                 if (cursorTool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.SMUDGE, EditorTool.LIQUIFY)) return
                 val point = canvasPoint(event, pointerIndex)
@@ -3001,12 +3009,14 @@ class InkCanvasView(context: Context) : View(context) {
     /** The full-screen proxy receives screen-space contacts. Drawing contacts are mapped into the
      * page once, while navigation remains in screen space so pan deltas do not shrink with zoom. */
     internal fun proxyContactUsesPageCoordinates(event: MotionEvent): Boolean {
-        if (event.pointerCount != 1 || forceNavigation || viewportGestureActive) return false
-        val type = event.getToolType(0)
-        val stylus = type == MotionEvent.TOOL_TYPE_STYLUS || type == MotionEvent.TOOL_TYPE_ERASER
-        if (stylus) {
+        if (forceNavigation || viewportGestureActive) return false
+        val stylusIndex = (0 until event.pointerCount).firstOrNull { index ->
+            event.getToolType(index) in setOf(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.TOOL_TYPE_ERASER)
+        }
+        if (stylusIndex != null) {
             return resolveStylusButtonAction(event.buttonState) != StylusButtonAction.HAND
         }
+        if (event.pointerCount != 1) return false
         val elapsedSinceStylus = if (lastStylusSeenAt == Long.MIN_VALUE) Long.MAX_VALUE else event.eventTime - lastStylusSeenAt
         return fingerDrawingEnabled && event.getTouchMajor(0) < StylusInputClassifier.PALM_TOUCH_MAJOR_PX &&
             elapsedSinceStylus !in 0..StylusInputClassifier.RECENT_STYLUS_WINDOW_MS

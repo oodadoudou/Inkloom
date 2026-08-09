@@ -140,7 +140,7 @@ class InkViewportTouchProxy(context: Context) : View(context) {
     private fun updateContactCursor(event: MotionEvent) {
         if (!event.isStylusEvent()) return
         if (event.actionMasked == MotionEvent.ACTION_CANCEL) return clearHoverCursor()
-        if (event.actionMasked !in setOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP)) return
+        if (event.actionMasked !in setOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_MOVE, MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_UP)) return
         val canvas = target ?: return clearHoverCursor()
         val snapshot = canvas.hoverCursorSnapshot()
         if (snapshot[0] == 0f) return clearHoverCursor()
