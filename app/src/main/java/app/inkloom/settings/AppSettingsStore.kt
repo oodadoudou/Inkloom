@@ -8,6 +8,10 @@ import app.inkloom.document.FillSubTool
 import app.inkloom.document.PressureResponseCurve
 import app.inkloom.document.PerspectiveGuideMode
 import app.inkloom.document.SpecialRulerMode
+import app.inkloom.document.GradientColorStop
+import app.inkloom.document.GradientEdgeMode
+import app.inkloom.document.GradientKind
+import app.inkloom.document.GradientStopCodec
 
 data class AppSettings(
     val language: UiLanguage = UiLanguage.ENGLISH,
@@ -16,6 +20,14 @@ data class AppSettings(
     val fillCloseGapPixels: Float = 0f,
     val fillAreaScalingPixels: Float = 0f,
     val fillSubTool: FillSubTool = FillSubTool.BUCKET,
+    val gradientKind: GradientKind = GradientKind.LINEAR,
+    val gradientEdgeMode: GradientEdgeMode = GradientEdgeMode.CLAMP,
+    val gradientReverse: Boolean = false,
+    val gradientDither: Boolean = true,
+    val gradientEllipseRatio: Float = .6f,
+    val gradientAngleSnapEnabled: Boolean = false,
+    val gradientAngleSnapDegrees: Float = 45f,
+    val gradientStops: List<GradientColorStop> = listOf(GradientColorStop(0f, 0xFF111111L), GradientColorStop(1f, 0xFFFFFFFFL)),
     val showPageRail: Boolean = false,
     val showBrushPanel: Boolean = false,
     val showLayerPanel: Boolean = false,
@@ -161,6 +173,14 @@ class AppSettingsStore(context: Context) {
             fillCloseGapPixels = preferences.getFloat("fillCloseGapPixels", 0f).coerceIn(0f, 64f),
             fillAreaScalingPixels = preferences.getFloat("fillAreaScalingPixels", 0f).coerceIn(-64f, 64f),
             fillSubTool = enumValue(preferences.getString("fillSubTool", null), FillSubTool.BUCKET),
+            gradientKind = enumValue(preferences.getString("gradientKind", null), GradientKind.LINEAR),
+            gradientEdgeMode = enumValue(preferences.getString("gradientEdgeMode", null), GradientEdgeMode.CLAMP),
+            gradientReverse = preferences.getBoolean("gradientReverse", false),
+            gradientDither = preferences.getBoolean("gradientDither", true),
+            gradientEllipseRatio = preferences.getFloat("gradientEllipseRatio", .6f).takeIf(Float::isFinite)?.coerceIn(.1f, 1f) ?: .6f,
+            gradientAngleSnapEnabled = preferences.getBoolean("gradientAngleSnapEnabled", false),
+            gradientAngleSnapDegrees = preferences.getFloat("gradientAngleSnapDegrees", 45f).takeIf(Float::isFinite)?.coerceIn(1f, 90f) ?: 45f,
+            gradientStops = GradientStopCodec.decode(preferences.getString("gradientStops", null)),
             showPageRail = preferences.getBoolean("showPageRail", false),
             showBrushPanel = preferences.getBoolean("showBrushPanel", false),
             showLayerPanel = preferences.getBoolean("showLayerPanel", false),
@@ -288,6 +308,14 @@ class AppSettingsStore(context: Context) {
             .putFloat("fillCloseGapPixels", persisted.fillCloseGapPixels.coerceIn(0f, 64f))
             .putFloat("fillAreaScalingPixels", persisted.fillAreaScalingPixels.coerceIn(-64f, 64f))
             .putString("fillSubTool", persisted.fillSubTool.name)
+            .putString("gradientKind", persisted.gradientKind.name)
+            .putString("gradientEdgeMode", persisted.gradientEdgeMode.name)
+            .putBoolean("gradientReverse", persisted.gradientReverse)
+            .putBoolean("gradientDither", persisted.gradientDither)
+            .putFloat("gradientEllipseRatio", persisted.gradientEllipseRatio.takeIf(Float::isFinite)?.coerceIn(.1f, 1f) ?: .6f)
+            .putBoolean("gradientAngleSnapEnabled", persisted.gradientAngleSnapEnabled)
+            .putFloat("gradientAngleSnapDegrees", persisted.gradientAngleSnapDegrees.takeIf(Float::isFinite)?.coerceIn(1f, 90f) ?: 45f)
+            .putString("gradientStops", GradientStopCodec.encode(persisted.gradientStops))
             .putBoolean("showPageRail", persisted.showPageRail)
             .putBoolean("showBrushPanel", persisted.showBrushPanel)
             .putBoolean("showLayerPanel", persisted.showLayerPanel)

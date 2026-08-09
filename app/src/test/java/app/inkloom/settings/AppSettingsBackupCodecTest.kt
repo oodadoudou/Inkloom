@@ -6,12 +6,23 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import app.inkloom.document.PerspectiveGuideMode
 import app.inkloom.document.SpecialRulerMode
+import app.inkloom.document.GradientColorStop
+import app.inkloom.document.GradientEdgeMode
+import app.inkloom.document.GradientKind
 
 class AppSettingsBackupCodecTest {
     @Test fun `round trip preserves input tools workspace shortcuts quick slots and palette`() {
         val settings = AppSettings(
             language = UiLanguage.SIMPLIFIED_CHINESE,
             fingerDrawing = true,
+            gradientKind = GradientKind.ELLIPSE,
+            gradientEdgeMode = GradientEdgeMode.MIRROR,
+            gradientReverse = true,
+            gradientDither = false,
+            gradientEllipseRatio = .42f,
+            gradientAngleSnapEnabled = true,
+            gradientAngleSnapDegrees = 15f,
+            gradientStops = listOf(GradientColorStop(0f, 0xFF102030L), GradientColorStop(.4f, 0xFF405060L), GradientColorStop(1f, 0xFF708090L)),
             showPageRail = false,
             showBrushPanel = true,
             showLayerPanel = true,

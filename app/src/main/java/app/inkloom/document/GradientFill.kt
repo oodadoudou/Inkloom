@@ -81,6 +81,23 @@ object GradientColors {
     private fun lerp(start: Int, end: Int, amount: Float) = (start + (end - start) * amount).toInt().coerceIn(0, 255)
 }
 
+object GradientStopCodec {
+    fun encode(stops: List<GradientColorStop>): String = GradientColors.normalize(stops).joinToString(";") { stop ->
+        "${stop.position},${stop.colorArgb.toString(16)}"
+    }
+
+    fun decode(encoded: String?): List<GradientColorStop> {
+        val parsed = encoded.orEmpty().split(';').mapNotNull { token ->
+            val parts = token.split(',', limit = 2)
+            if (parts.size != 2) return@mapNotNull null
+            val position = parts[0].toFloatOrNull() ?: return@mapNotNull null
+            val color = parts[1].toLongOrNull(16) ?: return@mapNotNull null
+            GradientColorStop(position, color)
+        }
+        return GradientColors.normalize(parsed)
+    }
+}
+
 object GradientShaderFactory {
     private const val DIAMOND_BITMAP_SIZE = 256
     private val diamondCache = object : LruCache<String, Bitmap>(24) {

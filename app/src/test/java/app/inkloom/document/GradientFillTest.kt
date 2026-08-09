@@ -38,4 +38,9 @@ class GradientFillTest {
         assertEquals(0f, normalized.first().position, 0f)
         assertEquals(1f, normalized.last().position, 0f)
     }
+
+    @Test fun stopCodecRoundTripsPositionsAndUnsignedColors() {
+        assertEquals(stops, GradientStopCodec.decode(GradientStopCodec.encode(stops)))
+        assertEquals(2, GradientStopCodec.decode("broken").size)
+    }
 }

@@ -58,6 +58,8 @@ object AppSettingsBackupCodec {
         put("language", language.name); put("fingerDrawing", fingerDrawing)
         put("showPageRail", showPageRail); put("showBrushPanel", showBrushPanel); put("showLayerPanel", showLayerPanel); put("showToolbar", showToolbar)
         put("fillSensitivity", fillSensitivity); put("fillCloseGapPixels", fillCloseGapPixels); put("fillAreaScalingPixels", fillAreaScalingPixels); put("fillSubTool", fillSubTool.name)
+        put("gradientKind", gradientKind.name); put("gradientEdgeMode", gradientEdgeMode.name); put("gradientReverse", gradientReverse); put("gradientDither", gradientDither)
+        put("gradientEllipseRatio", gradientEllipseRatio); put("gradientAngleSnapEnabled", gradientAngleSnapEnabled); put("gradientAngleSnapDegrees", gradientAngleSnapDegrees); put("gradientStops", app.inkloom.document.GradientStopCodec.encode(gradientStops))
         put("pagePanelDock", pagePanelDock.name); put("brushPanelDock", brushPanelDock.name); put("layerPanelDock", layerPanelDock.name)
         put("pagePanelMode", pagePanelMode.name); put("brushPanelMode", brushPanelMode.name); put("layerPanelMode", layerPanelMode.name)
         put("pagePanelLocked", pagePanelLocked); put("brushPanelLocked", brushPanelLocked); put("layerPanelLocked", layerPanelLocked)
@@ -94,6 +96,8 @@ object AppSettingsBackupCodec {
         val maximum = float("pressureMaximumInput", defaults.pressureMaximumInput).coerceIn(minimum + .05f, 1f)
         return defaults.copy(
             fillSensitivity = float("fillSensitivity", defaults.fillSensitivity).coerceIn(0f, 1f), fillCloseGapPixels = float("fillCloseGapPixels", defaults.fillCloseGapPixels).coerceIn(0f, 64f), fillAreaScalingPixels = float("fillAreaScalingPixels", defaults.fillAreaScalingPixels).coerceIn(-64f, 64f), fillSubTool = enum("fillSubTool", defaults.fillSubTool),
+            gradientKind = enum("gradientKind", defaults.gradientKind), gradientEdgeMode = enum("gradientEdgeMode", defaults.gradientEdgeMode), gradientReverse = boolean("gradientReverse", defaults.gradientReverse), gradientDither = boolean("gradientDither", defaults.gradientDither),
+            gradientEllipseRatio = float("gradientEllipseRatio", defaults.gradientEllipseRatio).coerceIn(.1f, 1f), gradientAngleSnapEnabled = boolean("gradientAngleSnapEnabled", defaults.gradientAngleSnapEnabled), gradientAngleSnapDegrees = float("gradientAngleSnapDegrees", defaults.gradientAngleSnapDegrees).coerceIn(1f, 90f), gradientStops = app.inkloom.document.GradientStopCodec.decode(text("gradientStops")),
             language = enum("language", defaults.language), fingerDrawing = boolean("fingerDrawing", defaults.fingerDrawing),
             showPageRail = boolean("showPageRail", defaults.showPageRail), showBrushPanel = boolean("showBrushPanel", defaults.showBrushPanel),
             showLayerPanel = boolean("showLayerPanel", defaults.showLayerPanel), showToolbar = boolean("showToolbar", defaults.showToolbar),
