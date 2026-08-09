@@ -156,7 +156,12 @@ import app.inkloom.settings.text
 import app.inkloom.ui.theme.*
 import app.inkloom.engine.v2.render.EngineV2CanvasHost
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.text.DateFormat
 import java.util.Date
@@ -4373,6 +4378,51 @@ private fun pageTemplateKind(template: PageTemplate): String = when (template.ba
 @Composable
 private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
+    val context = LocalContext.current
+    val gradientCommitScope = rememberCoroutineScope()
+    val gradientCommitMutex = remember(documentId, page.id) { Mutex() }
+    val gradientSaveFailure = tr("The gradient mask could not be saved", "渐变蒙版保存失败")
+    val commitGradient: (Float, Float, Float, Float, GradientDefinition, android.graphics.Bitmap?) -> Unit = commit@{ sx, sy, ex, ey, definition, selectionMask ->
+        if (gradientCommitScope.coroutineContext[Job]?.isActive != true) {
+            selectionMask?.recycle()
+            return@commit
+        }
+        val stops = definition.normalized().stops
+        val capturedPage = renderedPage
+        val capturedCrop = page.crop
+        val capturedLayerId = activeLayerId
+        // A completed gesture is durable work: page navigation may dispose this composition, but
+        // must not leave a reserved mask behind or silently drop the committed gradient.
+        gradientCommitScope.launch(NonCancellable) {
+            var reservedMaskPath: String? = null
+            try {
+                gradientCommitMutex.withLock {
+                    val maskPath = if (selectionMask == null) null else withContext(Dispatchers.IO) {
+                        assets.saveFillMask(selectionMask)
+                    }
+                    reservedMaskPath = maskPath
+                    val gradient = PageElement.Shape(
+                        x = 0f, y = 0f, width = capturedPage.width, height = capturedPage.height,
+                        layerId = capturedLayerId, kind = ShapeKind.RECTANGLE,
+                        colorArgb = stops.first().colorArgb, fillArgb = stops.first().colorArgb, strokeWidth = 0f,
+                        gradientEndArgb = stops.last().colorArgb,
+                        gradientStartX = sx, gradientStartY = sy,
+                        gradientEndX = ex, gradientEndY = ey,
+                        gradientKind = definition.kind, gradientEdgeMode = definition.edgeMode,
+                        gradientReverse = definition.reverse, gradientDither = definition.dither,
+                        gradientEllipseRatio = definition.ellipseRatio, gradientStops = stops,
+                        maskAssetPath = maskPath,
+                    )
+                    onElement(documentId, page.id, PageCropTransform.unproject(gradient, capturedCrop))
+                }
+            } catch (error: Exception) {
+                if (error !is kotlinx.coroutines.CancellationException) Toast.makeText(context, gradientSaveFailure, Toast.LENGTH_SHORT).show()
+            } finally {
+                assets.releaseAssetReservation(reservedMaskPath)
+                selectionMask?.recycle()
+            }
+        }
+    }
     val backgroundVisible = page.layers.firstOrNull { it.role == LayerRole.BACKGROUND }?.visible != false
     val background = remember(page.id, page.background, page.backgroundRotationQuarterTurns, page.crop, backgroundVisible) { if (backgroundVisible) runCatching { assets.renderBackground(page.background, 1200, page.backgroundRotationQuarterTurns, page.crop) }.getOrNull() else null }
     DisposableEffect(background) { onDispose { background?.recycle() } }
@@ -4457,26 +4507,13 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.viewportRotationDegrees = viewportState.rotationDegrees
                 view.onStrokeCommitted = { onStroke(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
                 view.onShapeCommitted = { onElement(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
-                view.onGradientCommitted = { sx, sy, ex, ey, definition ->
-                    val stops = definition.normalized().stops
-                    val gradient = PageElement.Shape(
-                        x = 0f, y = 0f, width = page.width, height = page.height,
-                        layerId = activeLayerId, kind = ShapeKind.RECTANGLE,
-                        colorArgb = stops.first().colorArgb, fillArgb = stops.first().colorArgb, strokeWidth = 0f,
-                        gradientEndArgb = stops.last().colorArgb,
-                        gradientStartX = sx, gradientStartY = sy,
-                        gradientEndX = ex, gradientEndY = ey,
-                        gradientKind = definition.kind, gradientEdgeMode = definition.edgeMode,
-                        gradientReverse = definition.reverse, gradientDither = definition.dither,
-                        gradientEllipseRatio = definition.ellipseRatio, gradientStops = stops,
-                    )
-                    onElement(documentId, page.id, PageCropTransform.unproject(gradient, page.crop))
-                }
+                view.onGradientCommitted = commitGradient
                 view.onFillCommitted = { mask, fx, fy, fw, fh, color, opacity ->
                     val maskPath = assets.saveFillMask(mask)
                     mask.recycle()
                     val fill = PageElement.Fill(x = fx, y = fy, width = fw, height = fh, colorArgb = color, opacity = opacity, layerId = activeLayerId, maskAssetPath = maskPath)
-                    onElement(documentId, page.id, PageCropTransform.unproject(fill, page.crop))
+                    try { onElement(documentId, page.id, PageCropTransform.unproject(fill, page.crop)) }
+                    finally { assets.releaseAssetReservation(maskPath) }
                 }
                 view.onStrokeRemoved = { onRemoveStroke(documentId, page.id, it) }
                 view.onStrokesReplaced = { removed, replacements, indices -> onStrokesReplaced(documentId, page.id, removed, replacements.map { PageCropTransform.unproject(it, page.crop) }, indices) }
@@ -4555,26 +4592,13 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.pageModelHeight = renderedPage.height
                 view.onStrokeCommitted = { onStroke(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
                 view.onShapeCommitted = { onElement(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
-                view.onGradientCommitted = { sx, sy, ex, ey, definition ->
-                    val stops = definition.normalized().stops
-                    val gradient = PageElement.Shape(
-                        x = 0f, y = 0f, width = renderedPage.width, height = renderedPage.height,
-                        layerId = activeLayerId, kind = ShapeKind.RECTANGLE,
-                        colorArgb = stops.first().colorArgb, fillArgb = stops.first().colorArgb, strokeWidth = 0f,
-                        gradientEndArgb = stops.last().colorArgb,
-                        gradientStartX = sx, gradientStartY = sy,
-                        gradientEndX = ex, gradientEndY = ey,
-                        gradientKind = definition.kind, gradientEdgeMode = definition.edgeMode,
-                        gradientReverse = definition.reverse, gradientDither = definition.dither,
-                        gradientEllipseRatio = definition.ellipseRatio, gradientStops = stops,
-                    )
-                    onElement(documentId, page.id, PageCropTransform.unproject(gradient, page.crop))
-                }
+                view.onGradientCommitted = commitGradient
                 view.onFillCommitted = { mask, fx, fy, fw, fh, color, opacity ->
                     val maskPath = assets.saveFillMask(mask)
                     mask.recycle()
                     val fill = PageElement.Fill(x = fx, y = fy, width = fw, height = fh, colorArgb = color, opacity = opacity, layerId = activeLayerId, maskAssetPath = maskPath)
-                    onElement(documentId, page.id, PageCropTransform.unproject(fill, page.crop))
+                    try { onElement(documentId, page.id, PageCropTransform.unproject(fill, page.crop)) }
+                    finally { assets.releaseAssetReservation(maskPath) }
                 }
                 view.onStrokeRemoved = { onRemoveStroke(documentId, page.id, it) }
                 view.onStrokesReplaced = { removed, replacements, indices -> onStrokesReplaced(documentId, page.id, removed, replacements.map { PageCropTransform.unproject(it, page.crop) }, indices) }

@@ -9,14 +9,21 @@ import app.inkloom.document.GradientColorStop
 import app.inkloom.document.GradientEdgeMode
 import app.inkloom.document.GradientKind
 import app.inkloom.document.InkPage
+import app.inkloom.document.InkDocument
 import app.inkloom.document.PageBackground
+import app.inkloom.document.MaskRegion
 import app.inkloom.document.PageElement
+import app.inkloom.document.SelectionMaskRenderer
 import app.inkloom.document.ShapeKind
+import app.inkloom.document.StrokePoint
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.File
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 
 @RunWith(AndroidJUnit4::class)
 class GradientRenderingTest {
@@ -56,6 +63,55 @@ class GradientRenderingTest {
             assertEquals(Color.WHITE, bitmap.getPixel(10, 10))
         } finally {
             bitmap.recycle()
+        }
+    }
+
+    @Test fun shapeMaskClipsGradientToTheSelectionRegion() {
+        val mask = SelectionMaskRenderer.render(
+            listOf(MaskRegion(listOf(StrokePoint(.25f, .25f), StrokePoint(.75f, .25f), StrokePoint(.75f, .75f), StrokePoint(.25f, .75f)))),
+            0f,
+            400f,
+            400f,
+        )
+        requireNotNull(mask)
+        val maskPath = assets.saveFillMask(mask)
+        mask.recycle()
+        val bitmap = render(element = element().copy(maskAssetPath = maskPath))
+        try {
+            assertNotEquals(Color.WHITE, bitmap.getPixel(200, 200))
+            assertEquals(Color.WHITE, bitmap.getPixel(20, 20))
+        } finally {
+            bitmap.recycle()
+            java.io.File(maskPath).delete()
+        }
+    }
+
+    @Test fun maskedGradientSurvivesDocumentBundleRoundTrip() {
+        val mask = requireNotNull(SelectionMaskRenderer.render(
+            listOf(MaskRegion(listOf(StrokePoint(.2f, .2f), StrokePoint(.8f, .2f), StrokePoint(.8f, .8f), StrokePoint(.2f, .8f)))),
+            12f,
+            400f,
+            400f,
+        ))
+        val originalMaskPath = assets.saveFillMask(mask)
+        mask.recycle()
+        val document = InkDocument(title = "Masked gradient", pages = listOf(InkPage(width = 400f, height = 400f, elements = listOf(element().copy(maskAssetPath = originalMaskPath)))))
+        try {
+            val bundle = ByteArrayOutputStream().also { assets.exportBundle(document, it) }.toByteArray()
+            val restored = assets.importBundle(ByteArrayInputStream(bundle))
+            val restoredGradient = restored.pages.single().elements.single() as PageElement.Shape
+            val restoredMaskPath = requireNotNull(restoredGradient.maskAssetPath)
+            assertTrue(File(restoredMaskPath).isFile)
+            val rendered = assets.renderPageBitmap(restored.pages.single(), 400)
+            try {
+                assertNotEquals(Color.WHITE, rendered.getPixel(200, 200))
+                assertEquals(Color.WHITE, rendered.getPixel(20, 20))
+            } finally {
+                rendered.recycle()
+                File(restoredMaskPath).delete()
+            }
+        } finally {
+            File(originalMaskPath).delete()
         }
     }
 

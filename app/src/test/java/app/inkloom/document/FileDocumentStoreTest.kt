@@ -28,6 +28,7 @@ class FileDocumentStoreTest {
                 GradientColorStop(.37f, 0xFF445566L),
                 GradientColorStop(1f, 0xFFABCDEF),
             ),
+            maskAssetPath = "/private/document-assets/gradient-mask.png",
         )
         val document = InkDocument(title = "Gradient", pages = listOf(InkPage(elements = listOf(gradient))))
 
@@ -40,6 +41,7 @@ class FileDocumentStoreTest {
         assertEquals(false, restored.gradientDither)
         assertEquals(.42f, restored.gradientEllipseRatio)
         assertEquals(gradient.gradientStops, restored.gradientStops)
+        assertEquals(gradient.maskAssetPath, restored.maskAssetPath)
     }
 
     @Test fun realtimeJournalIsVisibleImmediatelyAndPersistsInOrder() {

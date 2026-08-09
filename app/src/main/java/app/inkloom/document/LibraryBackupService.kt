@@ -86,6 +86,8 @@ class LibraryBackupService(private val filesRoot: File) {
                     elements = page.elements.map { element -> when (element) {
                         is PageElement.Image -> element.copy(assetPath = register(element.assetPath, DOCUMENT_ASSETS)!!)
                         is PageElement.AudioMarker -> element.copy(assetPath = register(element.assetPath, DOCUMENT_ASSETS)!!)
+                        is PageElement.Fill -> element.copy(maskAssetPath = register(element.maskAssetPath, DOCUMENT_ASSETS)!!)
+                        is PageElement.Shape -> element.copy(maskAssetPath = register(element.maskAssetPath, DOCUMENT_ASSETS))
                         is PageElement.Sticky -> element.copy(strokes = element.strokes.map { it.portable(::register) })
                         else -> element
                     } },
@@ -191,6 +193,8 @@ class LibraryBackupService(private val filesRoot: File) {
                             elements = page.elements.map { element -> when (element) {
                                 is PageElement.Image -> element.copy(assetPath = retained(element.assetPath, DOCUMENT_ASSETS)!!)
                                 is PageElement.AudioMarker -> element.copy(assetPath = retained(element.assetPath, DOCUMENT_ASSETS)!!)
+                                is PageElement.Fill -> element.copy(maskAssetPath = retained(element.maskAssetPath, DOCUMENT_ASSETS)!!)
+                                is PageElement.Shape -> element.copy(maskAssetPath = retained(element.maskAssetPath, DOCUMENT_ASSETS))
                                 is PageElement.Sticky -> element.copy(strokes = element.strokes.map { it.restored(brushIds, ::retained) })
                                 else -> element
                             } },

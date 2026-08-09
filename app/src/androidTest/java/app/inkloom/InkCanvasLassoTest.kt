@@ -1,5 +1,7 @@
 package app.inkloom
 
+import android.graphics.Bitmap
+import android.graphics.Color
 import android.view.InputDevice
 import android.view.MotionEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -49,6 +51,23 @@ class InkCanvasLassoTest {
         }
     }
 
+    @Test fun geometryOnlySelectionCanFeatherDeselectReselectAndDoesNotLeakAcrossPages() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val outside = InkStroke(id = "outside", points = listOf(StrokePoint(.02f, .02f), StrokePoint(.08f, .08f)))
+            val view = configuredView(outside, mutableListOf())
+
+            view.drawSquareLasso()
+
+            assertTrue(view.featherSelection(18f))
+            assertTrue(view.clearSelection())
+            assertTrue(view.reselect())
+            assertEquals(18f, view.selectionFeatherPixels, .001f)
+
+            view.setDocumentStrokes(listOf(outside), "document:other-page")
+            assertTrue(!view.clearSelection())
+        }
+    }
+
     @Test fun borderSelectionKeepsOnlyContentCrossingTheSelectionEdge() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val view = configuredView(horizontalStroke("border-source"), mutableListOf())
@@ -56,6 +75,19 @@ class InkCanvasLassoTest {
 
             assertTrue(view.borderSelection(80f))
             assertTrue(view.selectionMaskRegions().isNotEmpty())
+            var mask: Bitmap? = null
+            view.onGradientCommitted = { _, _, _, _, _, value -> mask = value }
+            view.tool = EditorTool.GRADIENT
+            view.dispatchStylus(MotionEvent.ACTION_DOWN, 100f, 500f, 60L)
+            view.dispatchStylus(MotionEvent.ACTION_MOVE, 900f, 500f, 70L)
+            view.dispatchStylus(MotionEvent.ACTION_UP, 900f, 500f, 80L)
+            val committed = requireNotNull(mask)
+            try {
+                assertTrue(Color.alpha(committed.getPixel(committed.width / 5, committed.height / 2)) >= 128)
+                assertEquals(0, Color.alpha(committed.getPixel(committed.width / 2, committed.height / 2)))
+            } finally {
+                committed.recycle()
+            }
         }
     }
 

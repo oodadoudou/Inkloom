@@ -1,5 +1,9 @@
 package app.inkloom
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import android.view.InputDevice
 import android.view.MotionEvent
 import androidx.test.core.app.ApplicationProvider
@@ -10,6 +14,10 @@ import app.inkloom.ui.InkCanvasView
 import app.inkloom.document.GradientColorStop
 import app.inkloom.document.GradientDefinition
 import app.inkloom.document.GradientKind
+import app.inkloom.document.InkStroke
+import app.inkloom.document.PageElement
+import app.inkloom.document.StrokePoint
+import app.inkloom.settings.SelectionShape
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -28,7 +36,7 @@ class InkCanvasGradientTest {
                 kind = GradientKind.RADIAL,
                 stops = listOf(GradientColorStop(0f, 0xFFFF0000L), GradientColorStop(1f, 0xFF0000FFL)),
             )
-            onGradientCommitted = { sx, sy, ex, ey, definition ->
+            onGradientCommitted = { sx, sy, ex, ey, definition, _ ->
                 result = floatArrayOf(sx, sy, ex, ey)
                 committedDefinition = definition
             }
@@ -55,7 +63,7 @@ class InkCanvasGradientTest {
             tool = EditorTool.GRADIENT
             gradientAngleSnapEnabled = true
             gradientAngleSnapDegrees = 45f
-            onGradientCommitted = { sx, sy, ex, ey, _ -> result = floatArrayOf(sx, sy, ex, ey) }
+            onGradientCommitted = { sx, sy, ex, ey, _, _ -> result = floatArrayOf(sx, sy, ex, ey) }
         }
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             dispatch(view, MotionEvent.ACTION_DOWN, 200f, 300f, 10L)
@@ -67,11 +75,153 @@ class InkCanvasGradientTest {
         assertEquals(gradient[1], gradient[3], .001f)
     }
 
+    @Test fun committedGradientStartHandleRemainsEditable() {
+        var changed: PageElement.Shape? = null
+        val view = InkCanvasView(ApplicationProvider.getApplicationContext()).apply {
+            layout(0, 0, 1_000, 1_000)
+            tool = EditorTool.SELECT
+            pageModelWidth = 1_000f
+            pageModelHeight = 1_000f
+            editableGradient = PageElement.Shape(
+                x = 0f,
+                y = 0f,
+                width = 1_000f,
+                height = 1_000f,
+                fillArgb = 0xFF111111L,
+                gradientEndArgb = 0xFFFFFFFFL,
+                gradientStartX = .2f,
+                gradientStartY = .3f,
+                gradientEndX = .8f,
+                gradientEndY = .7f,
+                strokeWidth = 0f,
+                gradientStops = listOf(GradientColorStop(0f, 0xFF111111L), GradientColorStop(1f, 0xFFFFFFFFL)),
+            )
+            onGradientHandleChanged = { changed = it }
+        }
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            dispatch(view, MotionEvent.ACTION_DOWN, 200f, 300f, 10L)
+            dispatch(view, MotionEvent.ACTION_MOVE, 400f, 150f, 20L)
+            dispatch(view, MotionEvent.ACTION_MOVE, 420f, 120f, 30L)
+            dispatch(view, MotionEvent.ACTION_UP, 420f, 120f, 40L)
+        }
+
+        val after = requireNotNull(changed)
+        assertEquals(.42f, after.gradientStartX, .01f)
+        assertEquals(.12f, after.gradientStartY, .01f)
+        assertEquals(.8f, after.gradientEndX, .01f)
+        assertEquals(.7f, after.gradientEndY, .01f)
+    }
+
+    @Test fun committedGradientIncludesFeatheredGeometryOnlySelectionMask() {
+        var committedMask: Bitmap? = null
+        val view = InkCanvasView(ApplicationProvider.getApplicationContext()).apply {
+            layout(0, 0, 1_000, 1_000)
+            tool = EditorTool.GRADIENT
+            selectionShape = app.inkloom.settings.SelectionShape.RECTANGLE
+            setDocumentStrokes(listOf(InkStroke(id = "ink", points = listOf(StrokePoint(.18f, .18f), StrokePoint(.22f, .22f)), width = 24f)), "gradient-selection")
+            onGradientCommitted = { _, _, _, _, _, mask ->
+                committedMask = mask
+            }
+        }
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view.dispatchStylusSelection(MotionEvent.ACTION_DOWN, 400f, 400f, 10L)
+            view.dispatchStylusSelection(MotionEvent.ACTION_MOVE, 700f, 700f, 20L)
+            view.dispatchStylusSelection(MotionEvent.ACTION_UP, 700f, 700f, 30L)
+            assertTrue(view.featherSelection(24f))
+            dispatch(view, MotionEvent.ACTION_DOWN, 100f, 200f, 40L)
+            dispatch(view, MotionEvent.ACTION_MOVE, 800f, 700f, 50L)
+            dispatch(view, MotionEvent.ACTION_UP, 800f, 700f, 60L)
+        }
+
+        val mask = requireNotNull(committedMask)
+        try {
+            assertTrue(Color.alpha(mask.getPixel(mask.width / 2, mask.height / 2)) > 240)
+            assertEquals(0, Color.alpha(mask.getPixel(mask.width / 10, mask.height / 10)))
+            val featherAlpha = Color.alpha(mask.getPixel((mask.width * .39f).toInt(), mask.height / 2))
+            assertTrue("feather edge must be partially transparent: $featherAlpha", featherAlpha in 1..254)
+        } finally {
+            mask.recycle()
+        }
+    }
+
+    @Test fun magicWandGradientMaskRetainsTheFloodFilledIrregularRegion() {
+        var committedMask: Bitmap? = null
+        val background = Bitmap.createBitmap(1_000, 1_000, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(Color.BLACK)
+            Canvas(this).apply {
+                val white = Paint().apply { color = Color.WHITE }
+                drawRect(100f, 100f, 300f, 800f, white)
+                drawRect(100f, 600f, 800f, 800f, white)
+            }
+        }
+        val view = InkCanvasView(ApplicationProvider.getApplicationContext()).apply {
+            layout(0, 0, 1_000, 1_000)
+            pageModelWidth = 1_000f
+            pageModelHeight = 1_000f
+            setPageBackground(background)
+            setDocumentStrokes(emptyList(), "magic-gradient")
+            selectionShape = SelectionShape.MAGIC_WAND
+            onGradientCommitted = { _, _, _, _, _, mask -> committedMask = mask }
+        }
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view.tool = EditorTool.SELECT
+            dispatch(view, MotionEvent.ACTION_DOWN, 200f, 200f, 10L)
+            dispatch(view, MotionEvent.ACTION_UP, 200f, 200f, 20L)
+            view.tool = EditorTool.GRADIENT
+            dispatch(view, MotionEvent.ACTION_DOWN, 100f, 100f, 30L)
+            dispatch(view, MotionEvent.ACTION_MOVE, 900f, 900f, 40L)
+            dispatch(view, MotionEvent.ACTION_UP, 900f, 900f, 50L)
+        }
+        val mask = requireNotNull(committedMask)
+        try {
+            assertTrue(Color.alpha(mask.getPixel(mask.width / 5, mask.height / 5)) > 200)
+            assertEquals(0, Color.alpha(mask.getPixel(mask.width / 2, mask.height / 2)))
+            assertTrue(Color.alpha(mask.getPixel(mask.width / 2, mask.height * 7 / 10)) > 200)
+        } finally {
+            mask.recycle()
+            background.recycle()
+        }
+    }
+
+    @Test fun liveGradientPreviewIsClippedToTheActiveSelection() {
+        val view = InkCanvasView(ApplicationProvider.getApplicationContext()).apply {
+            layout(0, 0, 1_000, 1_000)
+            pageModelWidth = 1_000f
+            pageModelHeight = 1_000f
+            setDocumentStrokes(emptyList(), "gradient-preview-selection")
+            selectionShape = SelectionShape.RECTANGLE
+        }
+        val rendered = Bitmap.createBitmap(1_000, 1_000, Bitmap.Config.ARGB_8888)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view.tool = EditorTool.SELECT
+            dispatch(view, MotionEvent.ACTION_DOWN, 300f, 300f, 10L)
+            dispatch(view, MotionEvent.ACTION_MOVE, 700f, 700f, 20L)
+            dispatch(view, MotionEvent.ACTION_UP, 700f, 700f, 30L)
+            view.tool = EditorTool.GRADIENT
+            dispatch(view, MotionEvent.ACTION_DOWN, 350f, 500f, 40L)
+            dispatch(view, MotionEvent.ACTION_MOVE, 650f, 500f, 50L)
+            view.draw(Canvas(rendered))
+        }
+        try {
+            assertTrue(Color.alpha(rendered.getPixel(500, 500)) > 0)
+            assertEquals(0, Color.alpha(rendered.getPixel(100, 100)))
+        } finally {
+            rendered.recycle()
+        }
+    }
+
     private fun dispatch(view: InkCanvasView, action: Int, x: Float, y: Float, time: Long) {
         val properties = MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_STYLUS }
         val coordinates = MotionEvent.PointerCoords().apply { this.x = x; this.y = y; pressure = .8f }
         MotionEvent.obtain(0L, time, action, 1, arrayOf(properties), arrayOf(coordinates), 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_STYLUS, 0).also {
             try { view.onTouchEvent(it) } finally { it.recycle() }
         }
+    }
+
+    private fun InkCanvasView.dispatchStylusSelection(action: Int, x: Float, y: Float, time: Long) {
+        val previous = tool
+        tool = EditorTool.SELECT
+        dispatch(this, action, x, y, time)
+        tool = previous
     }
 }

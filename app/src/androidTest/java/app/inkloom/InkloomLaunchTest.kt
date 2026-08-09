@@ -119,6 +119,14 @@ class InkloomLaunchTest {
                     .remove("bottomDockActivePanel")
                     .remove("freeDockActivePanel")
                     .remove("panelTabOrder")
+                    .remove("gradientKind")
+                    .remove("gradientEdgeMode")
+                    .remove("gradientReverse")
+                    .remove("gradientDither")
+                    .remove("gradientEllipseRatio")
+                    .remove("gradientAngleSnapEnabled")
+                    .remove("gradientAngleSnapDegrees")
+                    .remove("gradientStops")
                     .commit()
                 BrushGroupStore(ApplicationProvider.getApplicationContext()).save(
                     listOf("Toolbox/Pens", "Toolbox/Pencils", "Toolbox/Brushes"),
@@ -706,24 +714,17 @@ class InkloomLaunchTest {
         composeRule.waitForIdle()
 
         val view = findInkCanvasView()!!
+        val store = app.inkloom.document.FileDocumentStore(composeRule.activity.filesDir)
+        val activeHistoryKey = requireNotNull(reflectedField(view, "strokeHistoryKey") as? String)
+        val documentId = activeHistoryKey.substringBefore(':')
+        val pageId = activeHistoryKey.substringAfter(':')
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val downTime = SystemClock.uptimeMillis()
             val properties = arrayOf(MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_STYLUS })
             fun event(action: Int, x: Float, y: Float, elapsed: Long): MotionEvent = MotionEvent.obtain(
-                downTime,
-                downTime + elapsed,
-                action,
-                1,
-                properties,
+                downTime, downTime + elapsed, action, 1, properties,
                 arrayOf(MotionEvent.PointerCoords().apply { this.x = x; this.y = y; pressure = .7f; size = .05f }),
-                0,
-                0,
-                1f,
-                1f,
-                0,
-                0,
-                InputDevice.SOURCE_STYLUS,
-                0,
+                0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_STYLUS, 0,
             )
             listOf(
                 event(MotionEvent.ACTION_DOWN, view.width * .2f, view.height * .3f, 0),
@@ -732,18 +733,16 @@ class InkloomLaunchTest {
                 event(MotionEvent.ACTION_UP, view.width * .82f, view.height * .72f, 20),
             ).forEach { motion -> try { view.dispatchTouchEvent(motion) } finally { motion.recycle() } }
         }
-        composeRule.waitForIdle()
+        composeRule.waitUntil(15_000) {
+            store.get(documentId)?.pages?.firstOrNull { it.id == pageId }?.elements?.filterIsInstance<PageElement.Shape>()?.any { it.gradientEndArgb != null } == true
+        }
 
         composeRule.onNodeWithContentDescription("Selection").performClick()
         composeRule.waitForIdle()
-
         composeRule.onNodeWithContentDescription("Ink canvas").performTouchInput { click(center) }
         composeRule.waitForIdle()
 
-        val store = app.inkloom.document.FileDocumentStore(composeRule.activity.filesDir)
-        val documentId = store.list().maxByOrNull { it.createdAt }!!.id
-        val before = store.get(documentId)!!.pages.single().elements.filterIsInstance<PageElement.Shape>().single { it.gradientEndArgb != null }
-
+        val before = store.get(documentId)!!.pages.first { it.id == pageId }.elements.filterIsInstance<PageElement.Shape>().single { it.gradientEndArgb != null }
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             org.junit.Assert.assertEquals(app.inkloom.model.EditorTool.SELECT, view.tool)
             val editable = view.javaClass.getDeclaredField("editableGradient").apply { isAccessible = true }.get(view)
@@ -751,20 +750,9 @@ class InkloomLaunchTest {
             val downTime = SystemClock.uptimeMillis()
             val properties = arrayOf(MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_STYLUS })
             fun event(action: Int, x: Float, y: Float, elapsed: Long): MotionEvent = MotionEvent.obtain(
-                downTime,
-                downTime + elapsed,
-                action,
-                1,
-                properties,
+                downTime, downTime + elapsed, action, 1, properties,
                 arrayOf(MotionEvent.PointerCoords().apply { this.x = x; this.y = y; pressure = .7f; size = .05f }),
-                0,
-                0,
-                1f,
-                1f,
-                0,
-                0,
-                InputDevice.SOURCE_STYLUS,
-                0,
+                0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_STYLUS, 0,
             )
             val startX = view.width * before.gradientStartX
             val startY = view.height * before.gradientStartY
@@ -775,16 +763,13 @@ class InkloomLaunchTest {
                 event(MotionEvent.ACTION_UP, startX + view.width * .22f, startY - view.height * .18f, 24),
             ).forEach { motion -> try { view.dispatchTouchEvent(motion) } finally { motion.recycle() } }
         }
-        composeRule.waitUntil(5_000) {
-            val current = store.get(documentId)!!.pages.single().elements.filterIsInstance<PageElement.Shape>().single { it.id == before.id }
+        composeRule.waitUntil(15_000) {
+            val current = store.get(documentId)!!.pages.first { it.id == pageId }.elements.filterIsInstance<PageElement.Shape>().single { it.id == before.id }
             current.gradientStartX != before.gradientStartX || current.gradientStartY != before.gradientStartY
         }
 
-        val after = store.get(documentId)!!.pages.single().elements.filterIsInstance<PageElement.Shape>().single { it.id == before.id }
-        assertTrue(
-            "Dragging the start handle must change gradientStart (${before.gradientStartX},${before.gradientStartY})->(${after.gradientStartX},${after.gradientStartY})",
-            after.gradientStartX != before.gradientStartX || after.gradientStartY != before.gradientStartY,
-        )
+        val after = store.get(documentId)!!.pages.first { it.id == pageId }.elements.filterIsInstance<PageElement.Shape>().single { it.id == before.id }
+        assertTrue(after.gradientStartX != before.gradientStartX || after.gradientStartY != before.gradientStartY)
         org.junit.Assert.assertEquals("The end handle must stay anchored while dragging start", before.gradientEndX, after.gradientEndX, .001f)
     }
 

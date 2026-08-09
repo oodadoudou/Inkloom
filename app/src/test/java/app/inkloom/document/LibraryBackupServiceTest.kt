@@ -23,6 +23,7 @@ class LibraryBackupServiceTest {
         try {
             val documentAsset = File(sourceRoot, "document-assets/source.pdf").apply { parentFile!!.mkdirs(); writeBytes(byteArrayOf(1, 2, 3)) }
             val coverAsset = File(sourceRoot, "document-assets/cover.png").apply { writeBytes(byteArrayOf(10, 11, 12)) }
+            val gradientMask = File(sourceRoot, "document-assets/gradient-mask.png").apply { writeBytes(byteArrayOf(13, 14, 15)) }
             val tip = File(sourceRoot, "brush-assets/tip.png").apply { parentFile!!.mkdirs(); writeBytes(byteArrayOf(4, 5, 6)) }
             val brushSource = File(sourceRoot, "brush-sources/source.brush").apply { parentFile!!.mkdirs(); writeBytes(byteArrayOf(7, 8, 9)) }
             val brush = ImportedBrush(
@@ -42,10 +43,19 @@ class LibraryBackupServiceTest {
                 text = "nested ink",
                 strokes = listOf(InkStroke(points = listOf(StrokePoint(.1f, .1f)), brushId = brush.id, tipAssetPath = tip.absolutePath)),
             )
+            val maskedGradient = PageElement.Shape(
+                x = 0f,
+                y = 0f,
+                width = 1600f,
+                height = 2263f,
+                fillArgb = 0xFF112233L,
+                gradientEndArgb = 0xFFFFFFFFL,
+                maskAssetPath = gradientMask.absolutePath,
+            )
             val page = InkPage(
                 background = PageBackground.Pdf(documentAsset.absolutePath, 0),
                 strokes = listOf(InkStroke(points = listOf(StrokePoint(.1f, .2f)), brushId = brush.id, tipAssetPaths = listOf(tip.absolutePath), masks = listOf(StrokeMaskDab(.2f, .2f, .04f, .04f, tipAssetPath = tip.absolutePath)))),
-                elements = listOf(sticky),
+                elements = listOf(sticky, maskedGradient),
             )
             val folder = InkFolder(id = "folder-1", name = "School")
             val document = InkDocument(id = "document-1", title = "Lecture", folderId = folder.id, coverStyle = CoverStyle.CUSTOM_IMAGE, coverImagePath = coverAsset.absolutePath, pages = listOf(page))
@@ -72,7 +82,10 @@ class LibraryBackupServiceTest {
             assertEquals(restored.brushes.single().id, restoredPage.strokes.single().brushId)
             assertTrue(File(restoredPage.strokes.single().tipAssetPaths.single()).isFile)
             assertTrue(File(restoredPage.strokes.single().masks.single().tipAssetPath!!).isFile)
-            assertEquals(restored.brushes.single().id, (restoredPage.elements.single() as PageElement.Sticky).strokes.single().brushId)
+            assertEquals(restored.brushes.single().id, restoredPage.elements.filterIsInstance<PageElement.Sticky>().single().strokes.single().brushId)
+            val restoredGradient = restoredPage.elements.filterIsInstance<PageElement.Shape>().single()
+            assertTrue(File(requireNotNull(restoredGradient.maskAssetPath)).isFile)
+            assertTrue(File(restoredGradient.maskAssetPath).readBytes().contentEquals(gradientMask.readBytes()))
             val restoredTemplate = restored.pageTemplates.customTemplates.single()
             assertNotEquals(template.id, restoredTemplate.id)
             assertTrue(File((restoredTemplate.background as PageBackground.Pdf).assetPath).isFile)

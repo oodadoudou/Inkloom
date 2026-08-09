@@ -22,6 +22,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import java.io.File
+import java.io.InputStream
 import java.io.OutputStream
 import java.security.MessageDigest
 import java.util.zip.ZipEntry
@@ -34,6 +35,8 @@ import kotlinx.serialization.json.Json
 class DocumentAssetService(private val context: Context) {
     private val directory = File(context.filesDir, "document-assets").apply { mkdirs() }
     private val brushAssetDirectory = File(context.filesDir, "brush-assets").apply { mkdirs() }
+    private val assetLifecycleLock = Any()
+    private val pendingDocumentAssets = linkedSetOf<String>()
 
     fun importPdf(uri: Uri, title: String, indexText: Boolean = true): InkDocument {
         val asset = copyAsset(uri, "pdf")
@@ -162,22 +165,44 @@ class DocumentAssetService(private val context: Context) {
     fun saveFillMask(mask: Bitmap): String {
         val digest = MessageDigest.getInstance("SHA-256")
         val temporary = File(directory, ".${System.nanoTime()}.tmp")
-        temporary.outputStream().use { out ->
-            mask.compress(Bitmap.CompressFormat.PNG, 0, out)
-            out.flush()
+        try {
+            temporary.outputStream().use { out ->
+                check(mask.compress(Bitmap.CompressFormat.PNG, 0, out)) { "Could not encode fill mask" }
+                out.flush()
+            }
+            temporary.inputStream().use { input ->
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                while (true) { val count = input.read(buffer); if (count < 0) break; digest.update(buffer, 0, count) }
+            }
+            val hash = digest.digest().joinToString("") { "%02x".format(it) }
+            val target = File(directory, "$hash.fill-mask.png")
+            synchronized(assetLifecycleLock) {
+                if (target.exists()) temporary.delete() else check(temporary.renameTo(target)) { "Could not retain fill mask" }
+                pendingDocumentAssets += target.canonicalPath
+            }
+            return target.absolutePath
+        } finally {
+            temporary.delete()
         }
-        temporary.inputStream().use { input ->
-            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-            while (true) { val count = input.read(buffer); if (count < 0) break; digest.update(buffer, 0, count) }
+    }
+
+    fun releaseAssetReservation(path: String?) {
+        if (path.isNullOrBlank()) return
+        synchronized(assetLifecycleLock) {
+            runCatching { File(path).canonicalPath }.getOrNull()?.let(pendingDocumentAssets::remove)
         }
-        val hash = digest.digest().joinToString("") { "%02x".format(it) }
-        val target = File(directory, "$hash.fill-mask.png")
-        if (target.exists()) temporary.delete() else check(temporary.renameTo(target)) { "Could not retain fill mask" }
-        return target.absolutePath
     }
 
     /** Loads a fill mask PNG, or null if it cannot be decoded. */
     fun loadFillMask(maskAssetPath: String): Bitmap? = runCatching { BitmapFactory.decodeFile(maskAssetPath) }.getOrNull()
+
+    /** Removes only private document assets that are no longer referenced by a document or template. */
+    fun garbageCollectUnreferencedAssets(
+        documents: List<InkDocument>,
+        pageTemplates: PageTemplateLibrary = PageTemplateLibrary(),
+    ): Int = synchronized(assetLifecycleLock) {
+        DocumentAssetGarbageCollector.collect(directory, documents, pageTemplates, pendingDocumentAssets.toSet())
+    }
 
     fun importCoverImage(uri: Uri): String {
         val extension = context.contentResolver.getType(uri)?.substringAfterLast('/')?.take(8).orEmpty().ifBlank { "image" }
@@ -290,8 +315,13 @@ class DocumentAssetService(private val context: Context) {
     }
 
     fun exportBundle(document: InkDocument, uri: Uri) {
+        context.contentResolver.openOutputStream(uri)?.use { exportBundle(document, it) }
+            ?: error("Could not open package destination")
+    }
+
+    fun exportBundle(document: InkDocument, output: OutputStream) {
         val serializer = Json { prettyPrint = true; classDiscriminator = "type" }
-        context.contentResolver.openOutputStream(uri)?.use { output -> ZipOutputStream(output).use { zip ->
+        ZipOutputStream(output.buffered()).use { zip ->
             val portable = document.copy(
                 coverImagePath = document.coverImagePath?.let { "assets/${File(it).name}" },
                 pages = document.pages.map { page -> page.copy(
@@ -305,26 +335,32 @@ class DocumentAssetService(private val context: Context) {
                     is PageElement.Image -> element.copy(assetPath = "assets/${File(element.assetPath).name}")
                     is PageElement.AudioMarker -> element.copy(assetPath = "assets/${File(element.assetPath).name}")
                     is PageElement.Fill -> element.copy(maskAssetPath = "assets/${File(element.maskAssetPath).name}")
+                    is PageElement.Shape -> element.copy(maskAssetPath = element.maskAssetPath?.let { "assets/${File(it).name}" })
                     is PageElement.Sticky -> element.copy(strokes = element.strokes.map { it.portableBrushAssets() })
                     else -> element
                 } },
                 ) },
             )
             zip.putNextEntry(ZipEntry("manifest.json")); zip.write(serializer.encodeToString(portable).encodeToByteArray()); zip.closeEntry()
-            val assets = listOfNotNull(document.coverImagePath) + document.pages.mapNotNull { page -> when (val background = page.background) { is PageBackground.Pdf -> background.assetPath; is PageBackground.Image -> background.assetPath; else -> null } } + document.pages.flatMap { it.elements }.mapNotNull { element -> when (element) { is PageElement.Image -> element.assetPath; is PageElement.AudioMarker -> element.assetPath; is PageElement.Fill -> element.maskAssetPath; else -> null } }
+            val assets = listOfNotNull(document.coverImagePath) + document.pages.mapNotNull { page -> when (val background = page.background) { is PageBackground.Pdf -> background.assetPath; is PageBackground.Image -> background.assetPath; else -> null } } + document.pages.flatMap { it.elements }.mapNotNull { element -> when (element) { is PageElement.Image -> element.assetPath; is PageElement.AudioMarker -> element.assetPath; is PageElement.Fill -> element.maskAssetPath; is PageElement.Shape -> element.maskAssetPath; else -> null } }
             writeDistinctFiles(zip, "assets", assets)
             val allStrokes = document.pages.flatMap { page -> page.strokes + page.elements.filterIsInstance<PageElement.Sticky>().flatMap(PageElement.Sticky::strokes) }
             writeDistinctFiles(zip, "brush-assets", allStrokes.flatMap { it.brushAssetPaths() })
             File(context.filesDir, "brush-sources").listFiles()?.filter(File::isFile)?.forEach { file -> zip.putNextEntry(ZipEntry("brush-sources/${file.name}")); file.inputStream().use { it.copyTo(zip) }; zip.closeEntry() }
-        } } ?: error("Could not open package destination")
+        }
     }
 
     fun importBundle(uri: Uri): InkDocument {
+        return context.contentResolver.openInputStream(uri)?.use(::importBundle)
+            ?: error("Selected bundle is unreadable")
+    }
+
+    fun importBundle(input: InputStream): InkDocument {
         val temporaryRoot = File(context.cacheDir, "bundle-import-${UUID.randomUUID()}").apply { mkdirs() }
         try {
             var entries = 0
             var totalBytes = 0L
-            context.contentResolver.openInputStream(uri)?.use { input -> ZipInputStream(input.buffered()).use { zip ->
+            ZipInputStream(input.buffered()).use { zip ->
                 while (true) {
                     val entry = zip.nextEntry ?: break
                     entries += 1
@@ -349,7 +385,7 @@ class DocumentAssetService(private val context: Context) {
                     }
                     zip.closeEntry()
                 }
-            } } ?: error("Selected bundle is unreadable")
+            }
             val manifest = File(temporaryRoot, "manifest.json")
             require(manifest.isFile) { "Bundle has no manifest.json" }
             val serializer = Json { ignoreUnknownKeys = true; classDiscriminator = "type" }
@@ -380,6 +416,7 @@ class DocumentAssetService(private val context: Context) {
                         is PageElement.Image -> element.copy(assetPath = retained(element.assetPath))
                         is PageElement.AudioMarker -> element.copy(assetPath = retained(element.assetPath))
                         is PageElement.Fill -> element.copy(maskAssetPath = retained(element.maskAssetPath))
+                        is PageElement.Shape -> element.copy(maskAssetPath = element.maskAssetPath?.let { retained(it) })
                         is PageElement.Sticky -> element.copy(strokes = element.strokes.map { it.withRetainedBrushAssets(::retained) })
                         else -> element
                     } },
@@ -573,6 +610,19 @@ class DocumentAssetService(private val context: Context) {
                         paint.style = Paint.Style.FILL
                         paint.color = fill.toInt()
                         val gradientDefinition = element.gradientDefinition()
+                        val maskCheckpoint = if (gradientDefinition != null) {
+                            element.maskAssetPath?.let { path ->
+                                loadFillMask(path)?.let { mask ->
+                                    val checkpoint = canvas.saveLayer(left, top, right, bottom, null)
+                                    canvas.drawBitmap(mask, null, android.graphics.RectF(left, top, right, bottom), Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
+                                    mask.recycle()
+                                    canvas.saveLayer(left, top, right, bottom, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                                        blendMode = android.graphics.BlendMode.SRC_IN
+                                    })
+                                    checkpoint
+                                }
+                            }
+                        } else null
                         if (element.kind == ShapeKind.RECTANGLE && gradientDefinition != null) {
                             paint.isDither = gradientDefinition.dither
                             paint.shader = GradientShaderFactory.create(
@@ -586,6 +636,7 @@ class DocumentAssetService(private val context: Context) {
                             paint.shader = null
                             paint.isDither = true
                         } else when (element.kind) { ShapeKind.ELLIPSE -> canvas.drawOval(left, top, right, bottom, paint); ShapeKind.RECTANGLE -> canvas.drawRect(left, top, right, bottom, paint); ShapeKind.TRIANGLE -> canvas.drawPath(triangle, paint); ShapeKind.DIAMOND -> canvas.drawPath(diamond, paint); ShapeKind.FREEFORM -> canvas.drawPath(freeform, paint); else -> Unit }
+                        if (maskCheckpoint != null) canvas.restoreToCount(maskCheckpoint)
                     }
                     paint.style = Paint.Style.STROKE; paint.color = element.colorArgb.toInt(); paint.strokeWidth = element.strokeWidth
                     if (element.strokeWidth > 0f) when (element.kind) {
