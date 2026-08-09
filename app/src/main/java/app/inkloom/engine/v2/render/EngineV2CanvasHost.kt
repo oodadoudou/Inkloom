@@ -24,10 +24,13 @@ internal class EngineV2CanvasHost(context: Context) : FrameLayout(context), Engi
     private val tailPlanner = EngineV2ActiveTailPlanner()
 
     init {
-        clipChildren = false
-        clipToPadding = false
-        lowLatencyView.clipChildren = false
-        lowLatencyView.clipToPadding = false
+        // The front-buffer surface is part of the page, not a window-level overlay. Keeping both
+        // containers clipped is essential when the page is zoomed next to a docked Pages/Layers
+        // panel: otherwise SurfaceControl can present active ink outside the AndroidView bounds.
+        clipChildren = true
+        clipToPadding = true
+        lowLatencyView.clipChildren = true
+        lowLatencyView.clipToPadding = true
         lowLatencyView.setBackgroundColor(Color.TRANSPARENT)
         addView(
             canvasView,
