@@ -9,12 +9,10 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Matrix
-import android.graphics.LinearGradient
 import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.graphics.PorterDuffXfermode
-import android.graphics.Shader
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import app.inkloom.engine.v2.brush.EngineV2BrushEvaluator
@@ -574,14 +572,19 @@ class DocumentAssetService(private val context: Context) {
                     element.fillArgb?.let { fill ->
                         paint.style = Paint.Style.FILL
                         paint.color = fill.toInt()
-                        if (element.kind == ShapeKind.RECTANGLE && element.gradientEndArgb != null) {
-                            paint.shader = LinearGradient(
-                                left + element.gradientStartX * (right - left), top + element.gradientStartY * (bottom - top),
-                                left + element.gradientEndX * (right - left), top + element.gradientEndY * (bottom - top),
-                                fill.toInt(), element.gradientEndArgb.toInt(), Shader.TileMode.CLAMP,
+                        val gradientDefinition = element.gradientDefinition()
+                        if (element.kind == ShapeKind.RECTANGLE && gradientDefinition != null) {
+                            paint.isDither = gradientDefinition.dither
+                            paint.shader = GradientShaderFactory.create(
+                                gradientDefinition,
+                                left + element.gradientStartX * (right - left),
+                                top + element.gradientStartY * (bottom - top),
+                                left + element.gradientEndX * (right - left),
+                                top + element.gradientEndY * (bottom - top),
                             )
                             canvas.drawRect(left, top, right, bottom, paint)
                             paint.shader = null
+                            paint.isDither = true
                         } else when (element.kind) { ShapeKind.ELLIPSE -> canvas.drawOval(left, top, right, bottom, paint); ShapeKind.RECTANGLE -> canvas.drawRect(left, top, right, bottom, paint); ShapeKind.TRIANGLE -> canvas.drawPath(triangle, paint); ShapeKind.DIAMOND -> canvas.drawPath(diamond, paint); ShapeKind.FREEFORM -> canvas.drawPath(freeform, paint); else -> Unit }
                     }
                     paint.style = Paint.Style.STROKE; paint.color = element.colorArgb.toInt(); paint.strokeWidth = element.strokeWidth

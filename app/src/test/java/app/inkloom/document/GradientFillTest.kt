@@ -43,4 +43,11 @@ class GradientFillTest {
         assertEquals(stops, GradientStopCodec.decode(GradientStopCodec.encode(stops)))
         assertEquals(2, GradientStopCodec.decode("broken").size)
     }
+
+    @Test fun angleSnappingUsesScreenAspectAndConfiguredIncrement() {
+        val snapped = GradientGeometry.snapEnd(.2f, .3f, .8f, .52f, 1000f, 500f, true, 15f)
+        val angle = Math.toDegrees(kotlin.math.atan2(((snapped.y - .3f) * 500f).toDouble(), ((snapped.x - .2f) * 1000f).toDouble())).toFloat()
+        assertEquals(15f, angle, .001f)
+        assertEquals(RulerGuidePoint(.8f, .52f), GradientGeometry.snapEnd(.2f, .3f, .8f, .52f, 1000f, 500f, false, 15f))
+    }
 }

@@ -11,12 +11,10 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Matrix
-import android.graphics.LinearGradient
 import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.graphics.PorterDuffXfermode
-import android.graphics.Shader
 import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -64,6 +62,10 @@ import app.inkloom.document.CanvasSnapConstraint
 import app.inkloom.document.GrainBehavior
 import app.inkloom.document.FillSubTool
 import app.inkloom.document.GrainDynamics
+import app.inkloom.document.GradientColorStop
+import app.inkloom.document.GradientDefinition
+import app.inkloom.document.GradientGeometry
+import app.inkloom.document.GradientShaderFactory
 import app.inkloom.document.LassoGeometry
 import app.inkloom.document.LassoSelectionPolicy
 import app.inkloom.document.LayerBlendMode
@@ -690,8 +692,10 @@ class InkCanvasView(context: Context) : View(context) {
     var pageModelHeight: Float = 2263f
     var onStrokeCommitted: (InkStroke) -> Unit = {}
     var onShapeCommitted: (PageElement.Shape) -> Unit = {}
-    var onGradientCommitted: (startX: Float, startY: Float, endX: Float, endY: Float, startColor: Long, endColor: Long) -> Unit = { _, _, _, _, _, _ -> }
-    var gradientEndColor: Int = Color.WHITE
+    var onGradientCommitted: (startX: Float, startY: Float, endX: Float, endY: Float, definition: GradientDefinition) -> Unit = { _, _, _, _, _ -> }
+    var gradientDefinition: GradientDefinition = GradientDefinition(stops = listOf(GradientColorStop(0f, 0xFF111111L), GradientColorStop(1f, 0xFFFFFFFFL)))
+    var gradientAngleSnapEnabled: Boolean = false
+    var gradientAngleSnapDegrees: Float = 45f
     /** Paint-bucket fill: receives the fill mask bitmap (page-local pixels) plus the
      *  mask's bounding box in normalized page coordinates, the fill color and opacity.
      *  The host persists the mask and creates a [PageElement.Fill]. */
@@ -1935,7 +1939,17 @@ class InkCanvasView(context: Context) : View(context) {
                     }
                 }
                 else if (activeTool == EditorTool.GRADIENT) {
-                    gradientEnd = ShapePoint(normalizedX, normalizedY)
+                    val start = gradientStart
+                    gradientEnd = if (start == null) ShapePoint(normalizedX, normalizedY) else GradientGeometry.snapEnd(
+                        start.x,
+                        start.y,
+                        normalizedX,
+                        normalizedY,
+                        width.toFloat(),
+                        height.toFloat(),
+                        gradientAngleSnapEnabled,
+                        gradientAngleSnapDegrees,
+                    ).let { ShapePoint(it.x, it.y) }
                     invalidate()
                 }
                 else if (activeTool == EditorTool.SMUDGE) {
@@ -2076,7 +2090,7 @@ class InkCanvasView(context: Context) : View(context) {
                     val start = gradientStart
                     val end = gradientEnd
                     if (start != null && end != null && hypot((end.x - start.x).toDouble(), (end.y - start.y).toDouble()) > .002) {
-                        onGradientCommitted(start.x, start.y, end.x, end.y, inkColor.toUInt().toLong(), gradientEndColor.toUInt().toLong())
+                        onGradientCommitted(start.x, start.y, end.x, end.y, gradientDefinition.normalized())
                     }
                     gradientStart = null; gradientEnd = null
                     parent?.requestDisallowInterceptTouchEvent(false)
@@ -2966,9 +2980,11 @@ class InkCanvasView(context: Context) : View(context) {
         if (hypot((x1 - x0).toDouble(), (y1 - y0).toDouble()) < 1.0) x1 = x0 + 1f
         paint.style = Paint.Style.FILL
         paint.alpha = (inkOpacity * 210f).toInt().coerceIn(0, 255)
-        paint.shader = LinearGradient(x0, y0, x1, y1, inkColor, gradientEndColor, Shader.TileMode.CLAMP)
+        paint.isDither = gradientDefinition.dither
+        paint.shader = GradientShaderFactory.create(gradientDefinition, x0, y0, x1, y1)
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
         paint.shader = null
+        paint.isDither = true
         paint.alpha = 255
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = 2f

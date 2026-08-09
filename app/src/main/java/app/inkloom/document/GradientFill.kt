@@ -14,6 +14,9 @@ import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.floor
 import kotlin.math.hypot
+import kotlin.math.cos
+import kotlin.math.round
+import kotlin.math.sin
 
 @Serializable
 enum class GradientKind { LINEAR, RADIAL, ELLIPSE, ANGULAR, REFLECTED, DIAMOND }
@@ -98,10 +101,28 @@ object GradientStopCodec {
     }
 }
 
+object GradientGeometry {
+    fun snapEnd(startX: Float, startY: Float, endX: Float, endY: Float, width: Float, height: Float, enabled: Boolean, stepDegrees: Float): RulerGuidePoint {
+        if (!enabled || width <= 0f || height <= 0f) return RulerGuidePoint(endX, endY)
+        val dx = (endX - startX) * width
+        val dy = (endY - startY) * height
+        val distance = hypot(dx.toDouble(), dy.toDouble()).toFloat()
+        if (distance <= .000001f) return RulerGuidePoint(endX, endY)
+        val step = stepDegrees.takeIf(Float::isFinite)?.coerceIn(1f, 90f) ?: 45f
+        val angle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
+        val snapped = round(angle / step) * step
+        val radians = Math.toRadians(snapped.toDouble())
+        return RulerGuidePoint(
+            startX + cos(radians).toFloat() * distance / width,
+            startY + sin(radians).toFloat() * distance / height,
+        )
+    }
+}
+
 object GradientShaderFactory {
     private const val DIAMOND_BITMAP_SIZE = 256
     private val diamondCache = object : LruCache<String, Bitmap>(24) {
-        override fun sizeOf(key: String, value: Bitmap) = value.byteCount / 1024
+        override fun sizeOf(key: String, value: Bitmap) = 1
         override fun entryRemoved(evicted: Boolean, key: String, oldValue: Bitmap, newValue: Bitmap?) {
             if (oldValue !== newValue && !oldValue.isRecycled) oldValue.recycle()
         }

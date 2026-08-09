@@ -53,6 +53,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
@@ -2630,7 +2632,7 @@ private fun EditorScreen(
                         EditorTool.HIGHLIGHTER -> onSettingsChange(settings.copy(highlighterOpacity = value))
                         else -> Unit
                     }
-                }, onColor = { brushColor = it }, symmetryMode = settings.symmetryMode, onSymmetryMode = { onSettingsChange(settings.copy(symmetryMode = it)) }, modifier = Modifier.align(dockAlignment).padding(dockPadding).graphicsLayer(translationX = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.xDp.dp.toPx() } else 0f, translationY = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.yDp.dp.toPx() } else 0f))
+                }, onColor = { brushColor = it }, symmetryMode = settings.symmetryMode, onSymmetryMode = { onSettingsChange(settings.copy(symmetryMode = it)) }, gradientControls = { GradientToolControls(settings, brushColor, { brushColor = it }, onSettingsChange) }, modifier = Modifier.align(dockAlignment).padding(dockPadding).graphicsLayer(translationX = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.xDp.dp.toPx() } else 0f, translationY = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.yDp.dp.toPx() } else 0f))
                 if (tool == EditorTool.SELECT) SelectionLauncher(
                     featherPixels = selectionFeather,
                     onDeselect = { selectedElementId = null; if (canvasView?.clearSelection() == true) selectionFeather = 0f },
@@ -4413,6 +4415,16 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
         angleDegrees = settings.specialRulerAngleDegrees,
         spacing = settings.specialRulerSpacing,
     ).normalized()
+    val gradientDefinition = GradientDefinition(
+        kind = settings.gradientKind,
+        edgeMode = settings.gradientEdgeMode,
+        reverse = settings.gradientReverse,
+        dither = settings.gradientDither,
+        ellipseRatio = settings.gradientEllipseRatio,
+        stops = GradientColors.normalize(settings.gradientStops).mapIndexed { index, stop ->
+            if (index == 0) stop.copy(colorArgb = brushColor.toUInt().toLong()) else stop
+        },
+    ).normalized()
     BoxWithConstraints(
         modifier
             .graphicsLayer(
@@ -4443,14 +4455,18 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.viewportRotationDegrees = viewportState.rotationDegrees
                 view.onStrokeCommitted = { onStroke(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
                 view.onShapeCommitted = { onElement(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
-                view.onGradientCommitted = { sx, sy, ex, ey, startColor, endColor ->
+                view.onGradientCommitted = { sx, sy, ex, ey, definition ->
+                    val stops = definition.normalized().stops
                     val gradient = PageElement.Shape(
                         x = 0f, y = 0f, width = page.width, height = page.height,
                         layerId = activeLayerId, kind = ShapeKind.RECTANGLE,
-                        colorArgb = startColor, fillArgb = startColor, strokeWidth = 0f,
-                        gradientEndArgb = endColor,
+                        colorArgb = stops.first().colorArgb, fillArgb = stops.first().colorArgb, strokeWidth = 0f,
+                        gradientEndArgb = stops.last().colorArgb,
                         gradientStartX = sx, gradientStartY = sy,
                         gradientEndX = ex, gradientEndY = ey,
+                        gradientKind = definition.kind, gradientEdgeMode = definition.edgeMode,
+                        gradientReverse = definition.reverse, gradientDither = definition.dither,
+                        gradientEllipseRatio = definition.ellipseRatio, gradientStops = stops,
                     )
                     onElement(documentId, page.id, PageCropTransform.unproject(gradient, page.crop))
                 }
@@ -4494,6 +4510,9 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onPerspectiveGuideChanged = onPerspectiveGuideChange
                 view.specialRulerState = specialRuler
                 view.onSpecialRulerChanged = onSpecialRulerChange
+                view.gradientDefinition = gradientDefinition
+                view.gradientAngleSnapEnabled = settings.gradientAngleSnapEnabled
+                view.gradientAngleSnapDegrees = settings.gradientAngleSnapDegrees
                 view.shortcutBindings = settings.shortcutBindings
                 view.shortcutAxisBindings = settings.shortcutAxisBindings
                 view.shortcutButtonBindings = settings.shortcutButtonBindings
@@ -4532,14 +4551,18 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.pageModelHeight = renderedPage.height
                 view.onStrokeCommitted = { onStroke(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
                 view.onShapeCommitted = { onElement(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
-                view.onGradientCommitted = { sx, sy, ex, ey, startColor, endColor ->
+                view.onGradientCommitted = { sx, sy, ex, ey, definition ->
+                    val stops = definition.normalized().stops
                     val gradient = PageElement.Shape(
                         x = 0f, y = 0f, width = renderedPage.width, height = renderedPage.height,
                         layerId = activeLayerId, kind = ShapeKind.RECTANGLE,
-                        colorArgb = startColor, fillArgb = startColor, strokeWidth = 0f,
-                        gradientEndArgb = endColor,
+                        colorArgb = stops.first().colorArgb, fillArgb = stops.first().colorArgb, strokeWidth = 0f,
+                        gradientEndArgb = stops.last().colorArgb,
                         gradientStartX = sx, gradientStartY = sy,
                         gradientEndX = ex, gradientEndY = ey,
+                        gradientKind = definition.kind, gradientEdgeMode = definition.edgeMode,
+                        gradientReverse = definition.reverse, gradientDither = definition.dither,
+                        gradientEllipseRatio = definition.ellipseRatio, gradientStops = stops,
                     )
                     onElement(documentId, page.id, PageCropTransform.unproject(gradient, page.crop))
                 }
@@ -4584,6 +4607,9 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onPerspectiveGuideChanged = onPerspectiveGuideChange
                 view.specialRulerState = specialRuler
                 view.onSpecialRulerChanged = onSpecialRulerChange
+                view.gradientDefinition = gradientDefinition
+                view.gradientAngleSnapEnabled = settings.gradientAngleSnapEnabled
+                view.gradientAngleSnapDegrees = settings.gradientAngleSnapDegrees
                 view.shortcutBindings = settings.shortcutBindings
                 view.shortcutAxisBindings = settings.shortcutAxisBindings
                 view.shortcutButtonBindings = settings.shortcutButtonBindings
@@ -4936,14 +4962,21 @@ private fun ObjectElementView(
                     }
                 }
                 element.fillArgb?.let { fill ->
-                    if (element.kind == ShapeKind.RECTANGLE && element.gradientEndArgb != null) {
-                        drawRect(
-                            brush = Brush.linearGradient(
-                                colors = listOf(Color(fill), Color(element.gradientEndArgb)),
-                                start = Offset(element.gradientStartX * size.width, element.gradientStartY * size.height),
-                                end = Offset(element.gradientEndX * size.width, element.gradientEndY * size.height),
-                            ),
-                        )
+                    val gradientDefinition = element.gradientDefinition()
+                    if (element.kind == ShapeKind.RECTANGLE && gradientDefinition != null) {
+                        drawIntoCanvas { composeCanvas ->
+                            val nativePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                                isDither = gradientDefinition.dither
+                                shader = GradientShaderFactory.create(
+                                    gradientDefinition,
+                                    element.gradientStartX * size.width,
+                                    element.gradientStartY * size.height,
+                                    element.gradientEndX * size.width,
+                                    element.gradientEndY * size.height,
+                                )
+                            }
+                            composeCanvas.nativeCanvas.drawRect(0f, 0f, size.width, size.height, nativePaint)
+                        }
                     } else when (element.kind) { ShapeKind.ELLIPSE -> drawOval(Color(fill)); ShapeKind.RECTANGLE -> drawRect(Color(fill)); ShapeKind.TRIANGLE -> drawPath(triangle, Color(fill)); ShapeKind.DIAMOND -> drawPath(diamond, Color(fill)); ShapeKind.FREEFORM -> drawPath(freeform, Color(fill)); else -> Unit }
                 }
                 if (element.strokeWidth > 0f) when (element.kind) {
@@ -5344,6 +5377,101 @@ private fun EraserPresetPicker(selected: EraserPreset, onSelect: (EraserPreset) 
 }
 
 @Composable
+private fun GradientToolControls(settings: AppSettings, brushColor: Int, onBrushColor: (Int) -> Unit, onSettingsChange: (AppSettings) -> Unit) {
+    val stops = GradientColors.normalize(settings.gradientStops).mapIndexed { index, stop ->
+        if (index == 0) stop.copy(colorArgb = brushColor.toUInt().toLong()) else stop
+    }
+    fun updateStops(changed: List<GradientColorStop>) = onSettingsChange(settings.copy(gradientStops = GradientColors.normalize(changed)))
+
+    Text(tr("Shape", "形状"), color = MutedInk, fontSize = 11.sp)
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+        items(GradientKind.entries, key = { it.name }) { kind ->
+            FilterChip(
+                selected = settings.gradientKind == kind,
+                onClick = { onSettingsChange(settings.copy(gradientKind = kind)) },
+                label = { Text(when (kind) {
+                    GradientKind.LINEAR -> tr("Linear", "线性")
+                    GradientKind.RADIAL -> tr("Radial", "圆形")
+                    GradientKind.ELLIPSE -> tr("Ellipse", "椭圆")
+                    GradientKind.ANGULAR -> tr("Angular", "角度")
+                    GradientKind.REFLECTED -> tr("Reflected", "对称")
+                    GradientKind.DIAMOND -> tr("Diamond", "菱形")
+                }, fontSize = 9.sp) },
+            )
+        }
+    }
+    Text(tr("Edge process", "边缘处理"), color = MutedInk, fontSize = 11.sp)
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+        items(GradientEdgeMode.entries, key = { it.name }) { edge ->
+            FilterChip(
+                selected = settings.gradientEdgeMode == edge,
+                onClick = { onSettingsChange(settings.copy(gradientEdgeMode = edge)) },
+                label = { Text(when (edge) {
+                    GradientEdgeMode.CLAMP -> tr("No repeat", "不重复")
+                    GradientEdgeMode.REPEAT -> tr("Repeat", "重复")
+                    GradientEdgeMode.MIRROR -> tr("Reverse repeat", "反向重复")
+                    GradientEdgeMode.TRANSPARENT -> tr("Do not draw", "不绘制")
+                }, fontSize = 9.sp) },
+            )
+        }
+    }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(tr("Reverse", "反转"), Modifier.weight(1f), color = MutedInk, fontSize = 11.sp)
+        Switch(settings.gradientReverse, { onSettingsChange(settings.copy(gradientReverse = it)) })
+        Text(tr("Dither", "抖动"), Modifier.padding(start = 8.dp), color = MutedInk, fontSize = 11.sp)
+        Switch(settings.gradientDither, { onSettingsChange(settings.copy(gradientDither = it)) })
+    }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(tr("Angle snap", "角度吸附"), Modifier.weight(1f), color = MutedInk, fontSize = 11.sp)
+        Switch(settings.gradientAngleSnapEnabled, { onSettingsChange(settings.copy(gradientAngleSnapEnabled = it)) })
+    }
+    if (settings.gradientAngleSnapEnabled) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+        listOf(5f, 15f, 30f, 45f).forEach { step ->
+            FilterChip(selected = settings.gradientAngleSnapDegrees == step, onClick = { onSettingsChange(settings.copy(gradientAngleSnapDegrees = step)) }, label = { Text("${step.toInt()}°", fontSize = 9.sp) })
+        }
+    }
+    if (settings.gradientKind == GradientKind.ELLIPSE) {
+        Text("${tr("Ellipse thickness", "椭圆厚度")} · ${(settings.gradientEllipseRatio * 100).toInt()}%", color = MutedInk, fontSize = 11.sp)
+        Slider(settings.gradientEllipseRatio, { onSettingsChange(settings.copy(gradientEllipseRatio = it)) }, valueRange = .1f..1f)
+    }
+    HorizontalDivider()
+    Text(tr("Color stops", "颜色节点"), color = MutedInk, fontSize = 11.sp)
+    stops.forEachIndexed { index, stop ->
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("${(stop.position * 100).toInt()}%", Modifier.width(34.dp), fontSize = 9.sp, color = MutedInk)
+            Slider(
+                value = stop.position,
+                onValueChange = { position ->
+                    if (index in 1 until stops.lastIndex) updateStops(stops.toMutableList().also { it[index] = stop.copy(position = position) })
+                },
+                enabled = index in 1 until stops.lastIndex,
+                modifier = Modifier.weight(1f),
+            )
+            BrushColorPicker(stop.colorArgb.toInt(), { color ->
+                if (index == 0) onBrushColor(color)
+                updateStops(stops.toMutableList().also { it[index] = stop.copy(colorArgb = color.toUInt().toLong()) })
+            }, square = true)
+            IconButton(
+                onClick = { updateStops(stops.filterIndexed { candidate, _ -> candidate != index }) },
+                enabled = index in 1 until stops.lastIndex,
+                modifier = Modifier.size(28.dp),
+            ) { Icon(Icons.Outlined.Delete, tr("Delete color stop", "删除颜色节点"), Modifier.size(15.dp)) }
+        }
+    }
+    OutlinedButton(
+        onClick = {
+            if (stops.size >= 8) return@OutlinedButton
+            val gap = stops.zipWithNext().maxByOrNull { (left, right) -> right.position - left.position } ?: return@OutlinedButton
+            val position = (gap.first.position + gap.second.position) / 2f
+            val color = GradientColors.sample(stops, position, GradientEdgeMode.CLAMP).toUInt().toLong()
+            updateStops(stops + GradientColorStop(position, color))
+        },
+        enabled = stops.size < 8,
+        modifier = Modifier.fillMaxWidth(),
+    ) { Icon(Icons.Outlined.Add, null, Modifier.size(16.dp)); Spacer(Modifier.width(6.dp)); Text(tr("Add color stop", "添加颜色节点")) }
+}
+
+@Composable
 private fun ProcreateTopButton(
     icon: ImageVector,
     description: String,
@@ -5361,7 +5489,7 @@ private fun ProcreateTopButton(
 }
 
 @Composable
-private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, onSelectAll: () -> Unit, onInvertSelection: () -> Unit, onDeselect: () -> Unit, onFreeTransform: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, referenceTarget: ReferenceTarget, onReferenceTarget: (ReferenceTarget) -> Unit, correctLineMode: CorrectLineMode, correctLineAmount: Float, onCorrectLineMode: (CorrectLineMode) -> Unit, onCorrectLineAmount: (Float) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit, vertical: Boolean, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, symmetryMode: SymmetryMode, onSymmetryMode: (SymmetryMode) -> Unit, modifier: Modifier = Modifier) {
+private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, onSelectAll: () -> Unit, onInvertSelection: () -> Unit, onDeselect: () -> Unit, onFreeTransform: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, referenceTarget: ReferenceTarget, onReferenceTarget: (ReferenceTarget) -> Unit, correctLineMode: CorrectLineMode, correctLineAmount: Float, onCorrectLineMode: (CorrectLineMode) -> Unit, onCorrectLineAmount: (Float) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, onDrag: (Float, Float) -> Unit, onDragEnd: () -> Unit, vertical: Boolean, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, symmetryMode: SymmetryMode, onSymmetryMode: (SymmetryMode) -> Unit, gradientControls: @Composable ColumnScope.() -> Unit, modifier: Modifier = Modifier) {
     var moreToolsOpen by remember { mutableStateOf(false) }
     var controlsOpen by remember { mutableStateOf(false) }
     val dragToolbarDescription = tr("Drag toolbar", "拖动工具栏")
@@ -5443,6 +5571,7 @@ private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () 
                 onColor = onColor,
                 symmetryMode = symmetryMode,
                 onSymmetryMode = onSymmetryMode,
+                gradientControls = gradientControls,
             )
         }
         if (vertical) ProcreateSidebar(
@@ -5453,6 +5582,8 @@ private fun ToolDock(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () 
             onModify = { onTool(EditorTool.EYEDROPPER) },
             onUndo = onUndo,
             onRedo = onRedo,
+            showGradientControls = tool == EditorTool.GRADIENT,
+            gradientControls = gradientControls,
             dragModifier = dragModifier.semantics { contentDescription = dragToolbarDescription },
         ) else Row(verticalAlignment = Alignment.CenterVertically) { content() }
     }
@@ -5467,8 +5598,11 @@ private fun ProcreateSidebar(
     onModify: () -> Unit,
     onUndo: () -> Unit,
     onRedo: () -> Unit,
+    showGradientControls: Boolean,
+    gradientControls: @Composable ColumnScope.() -> Unit,
     dragModifier: Modifier,
 ) {
+    var gradientOpen by remember { mutableStateOf(false) }
     val sizeProgress = kotlin.math.sqrt(((brushSize.coerceIn(.5f, 400f) - .5f) / 399.5f).coerceIn(0f, 1f))
     Column(
         Modifier.width(48.dp).padding(vertical = 10.dp),
@@ -5488,6 +5622,17 @@ private fun ProcreateSidebar(
         )
         IconButton(onClick = onModify, modifier = Modifier.size(32.dp)) {
             Surface(Modifier.size(17.dp), shape = RoundedCornerShape(4.dp), color = Color.Transparent, border = androidx.compose.foundation.BorderStroke(1.5.dp, Ink)) {}
+        }
+        if (showGradientControls) Box {
+            IconButton(onClick = { gradientOpen = true }, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Outlined.Tune, tr("Gradient controls", "渐变参数"), Modifier.size(18.dp))
+            }
+            DropdownMenu(expanded = gradientOpen, onDismissRequest = { gradientOpen = false }, modifier = Modifier.widthIn(min = 300.dp, max = 360.dp)) {
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(tr("Gradient controls", "渐变参数"), fontWeight = FontWeight.SemiBold)
+                    gradientControls()
+                }
+            }
         }
         ProcreateVerticalSlider(
             progress = ((brushOpacity.coerceIn(.05f, 1f) - .05f) / .95f),
@@ -5551,7 +5696,7 @@ private fun ProcreateVerticalSlider(
 }
 
 @Composable
-private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, onSelectAll: () -> Unit, onInvertSelection: () -> Unit, onDeselect: () -> Unit, onFreeTransform: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, referenceTarget: ReferenceTarget, onReferenceTarget: (ReferenceTarget) -> Unit, correctLineMode: CorrectLineMode, correctLineAmount: Float, onCorrectLineMode: (CorrectLineMode) -> Unit, onCorrectLineAmount: (Float) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, dragModifier: Modifier, vertical: Boolean, moreToolsOpen: Boolean, onMoreToolsOpen: (Boolean) -> Unit, controlsOpen: Boolean, onControlsOpen: (Boolean) -> Unit, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, symmetryMode: SymmetryMode, onSymmetryMode: (SymmetryMode) -> Unit) {
+private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo: () -> Unit, onRedo: () -> Unit, onScale: () -> Unit, onRotate: () -> Unit, onCopy: () -> Unit, onCut: () -> Unit, onClipboardCopy: () -> Unit, onPaste: () -> Unit, onDelete: () -> Unit, onSelectAll: () -> Unit, onInvertSelection: () -> Unit, onDeselect: () -> Unit, onFreeTransform: () -> Unit, selectionShape: SelectionShape, selectionMode: SelectionMode, selectionFilter: SelectionFilter, onSelectionShape: (SelectionShape) -> Unit, onSelectionMode: (SelectionMode) -> Unit, onSelectionFilter: (SelectionFilter) -> Unit, referenceTarget: ReferenceTarget, onReferenceTarget: (ReferenceTarget) -> Unit, correctLineMode: CorrectLineMode, correctLineAmount: Float, onCorrectLineMode: (CorrectLineMode) -> Unit, onCorrectLineAmount: (Float) -> Unit, eraserPreset: EraserPreset, onEraserPreset: (EraserPreset) -> Unit, rulerEnabled: Boolean, rulerSnapDegrees: Float, onToggleRuler: () -> Unit, onRulerSnap: (Float) -> Unit, onResetRuler: () -> Unit, gridSnapEnabled: Boolean, gridSpacing: Float, alignmentGuidesEnabled: Boolean, onToggleGridSnap: () -> Unit, onGridSpacing: (Float) -> Unit, onToggleAlignmentGuides: () -> Unit, onResetAlignmentGuides: () -> Unit, dragModifier: Modifier, vertical: Boolean, moreToolsOpen: Boolean, onMoreToolsOpen: (Boolean) -> Unit, controlsOpen: Boolean, onControlsOpen: (Boolean) -> Unit, onToggleOrientation: () -> Unit, onResetPosition: () -> Unit, onDock: (ToolbarDock) -> Unit, brushSize: Float, brushOpacity: Float, brushColor: Int, brushes: List<ImportedBrush>, selectedBrushId: String?, onSystemPreset: (EditorTool) -> Unit, onBrushPreset: (ImportedBrush) -> Unit, onSize: (Float) -> Unit, onOpacity: (Float) -> Unit, onColor: (Int) -> Unit, symmetryMode: SymmetryMode, onSymmetryMode: (SymmetryMode) -> Unit, gradientControls: @Composable ColumnScope.() -> Unit) {
     val dragToolbarDescription = tr("Drag toolbar", "拖动工具栏")
     var toolLibraryLayout by rememberSaveable { mutableStateOf(ToolLibraryLayout.LIST) }
     var toolLibrarySort by rememberSaveable { mutableStateOf(ToolLibrarySort.DEFAULT) }
@@ -5692,6 +5837,7 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
         DropdownMenu(expanded = controlsOpen, onDismissRequest = { onControlsOpen(false) }, modifier = Modifier.widthIn(min = 300.dp, max = 360.dp)) {
             Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("${when (tool) { EditorTool.PEN -> tr("Pen", "钢笔"); EditorTool.HIGHLIGHTER -> tr("Marker", "标记笔"); EditorTool.ERASER -> tr("Eraser", "橡皮"); EditorTool.SMUDGE -> tr("Blend", "混色"); EditorTool.LIQUIFY -> tr("Liquify", "液化"); EditorTool.CORRECT_LINE -> tr("Correct line", "线条修正"); EditorTool.GRADIENT -> tr("Gradient", "渐变"); EditorTool.SELECT -> tr("Selection", "选择"); else -> tool.name.lowercase().replaceFirstChar(Char::uppercase) }} ${tr("controls", "参数")}", fontWeight = FontWeight.SemiBold)
+                if (tool == EditorTool.GRADIENT) gradientControls()
                 if (tool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.SMUDGE, EditorTool.LIQUIFY)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(tr("Size", "大小"), Modifier.weight(1f), color = MutedInk)
