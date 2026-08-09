@@ -561,6 +561,7 @@ class InkCanvasView(context: Context) : View(context) {
     var pressureSensitivity: Float = 1f
     var pressureMinimumInput: Float = 0f
     var pressureMaximumInput: Float = 1f
+    var pressureResponseCurve: List<Float> = app.inkloom.document.PressureResponseCurve.LINEAR
     var stabilization: Float = .12f
     var stabilizationBySpeed: Boolean = false
     var stabilizationBySpeedMode: Int = StrokeStabilization.REDUCE_WHEN_FAST
@@ -2510,7 +2511,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun stageNativeInput(index: Int, x: Float, y: Float, pressure: Float, time: Long, tilt: Float, orientation: Float, force: Boolean) {
-        val adjustedPressure = PressureCalibration.apply(pressure, pressureMinimumInput, pressureMaximumInput, pressureSensitivity)
+        val adjustedPressure = PressureCalibration.apply(pressure, pressureMinimumInput, pressureMaximumInput, pressureSensitivity, pressureResponseCurve)
         val constrained = if (rulerEnabled && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
             RulerGuide.project(rulerGuide, x, y, width.toFloat(), height.toFloat())
         } else activeCanvasSnapConstraint?.apply(x, y)
@@ -3061,7 +3062,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun eraserRadiusPixels(pressure: Float): Float {
-        val pressureFactor = if (eraserPressureSize) PressureCalibration.apply(pressure, pressureMinimumInput, pressureMaximumInput, pressureSensitivity).coerceIn(.15f, 1f) else 1f
+        val pressureFactor = if (eraserPressureSize) PressureCalibration.apply(pressure, pressureMinimumInput, pressureMaximumInput, pressureSensitivity, pressureResponseCurve).coerceIn(.15f, 1f) else 1f
         return (eraserWidth.coerceIn(.5f, 400f) * pressureFactor * width.coerceAtLeast(1) / REFERENCE_WIDTH / 2f).coerceAtLeast(1f)
     }
 

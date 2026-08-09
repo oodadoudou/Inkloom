@@ -3,6 +3,7 @@ package app.inkloom.settings
 import android.content.Context
 import androidx.core.content.edit
 import app.inkloom.model.SymmetryMode
+import app.inkloom.document.PressureResponseCurve
 
 data class AppSettings(
     val language: UiLanguage = UiLanguage.ENGLISH,
@@ -68,6 +69,7 @@ data class AppSettings(
     val pressureSensitivity: Float = 1f,
     val pressureMinimumInput: Float = 0f,
     val pressureMaximumInput: Float = 1f,
+    val pressureResponseCurve: List<Float> = PressureResponseCurve.LINEAR,
     val stabilization: Float = .12f,
     val showInputDiagnostics: Boolean = false,
     val penSize: Float = 5f,
@@ -185,6 +187,7 @@ class AppSettingsStore(context: Context) {
             pressureSensitivity = preferences.getFloat("pressureSensitivity", 1f).coerceIn(.25f, 2.5f),
             pressureMinimumInput = pressureMinimum,
             pressureMaximumInput = pressureMaximum,
+            pressureResponseCurve = PressureResponseCurve.decode(preferences.getString("pressureResponseCurve", null)),
             stabilization = preferences.getFloat("stabilization", .12f).coerceIn(0f, .9f),
             showInputDiagnostics = preferences.getBoolean("showInputDiagnostics", false),
             penSize = preferences.getFloat("penSize", 5f).coerceIn(.5f, 400f),
@@ -285,6 +288,7 @@ class AppSettingsStore(context: Context) {
             .putFloat("pressureSensitivity", persisted.pressureSensitivity)
             .putFloat("pressureMinimumInput", persisted.pressureMinimumInput)
             .putFloat("pressureMaximumInput", persisted.pressureMaximumInput)
+            .putString("pressureResponseCurve", PressureResponseCurve.encode(persisted.pressureResponseCurve))
             .putFloat("stabilization", persisted.stabilization)
             .putBoolean("showInputDiagnostics", persisted.showInputDiagnostics)
             .putFloat("penSize", persisted.penSize)

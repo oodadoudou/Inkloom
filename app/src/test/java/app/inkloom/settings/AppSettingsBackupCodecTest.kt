@@ -44,6 +44,7 @@ class AppSettingsBackupCodecTest {
             pressureSensitivity = 1.7f,
             pressureMinimumInput = .1f,
             pressureMaximumInput = .8f,
+            pressureResponseCurve = app.inkloom.document.PressureResponseCurve.SOFT,
             penSize = 17f,
             eraserPreset = EraserPreset.SOFT_EDGE,
             selectionMode = SelectionMode.INTERSECT,

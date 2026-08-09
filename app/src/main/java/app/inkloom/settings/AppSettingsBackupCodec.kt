@@ -11,6 +11,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import app.inkloom.document.PressureResponseCurve
 
 data class AppPreferencesBackup(val settings: AppSettings, val colorPalette: List<Int>)
 
@@ -74,6 +75,7 @@ object AppSettingsBackupCodec {
         put("stylusPrimaryButton", stylusPrimaryButton.name); put("stylusSecondaryButton", stylusSecondaryButton.name)
         put("stylusPrimaryTrigger", stylusPrimaryTrigger.name); put("stylusSecondaryTrigger", stylusSecondaryTrigger.name)
         put("pressureSensitivity", pressureSensitivity); put("pressureMinimumInput", pressureMinimumInput); put("pressureMaximumInput", pressureMaximumInput)
+        put("pressureResponseCurve", buildJsonArray { PressureResponseCurve.normalize(pressureResponseCurve).forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) } })
         put("stabilization", stabilization); put("showInputDiagnostics", showInputDiagnostics)
         put("penSize", penSize); put("penOpacity", penOpacity); put("highlighterSize", highlighterSize); put("highlighterOpacity", highlighterOpacity)
         put("eraserSize", eraserSize); put("eraserPreset", eraserPreset.name)
@@ -114,6 +116,7 @@ object AppSettingsBackupCodec {
             stylusPrimaryButton = enum("stylusPrimaryButton", defaults.stylusPrimaryButton), stylusSecondaryButton = enum("stylusSecondaryButton", defaults.stylusSecondaryButton),
             stylusPrimaryTrigger = enum("stylusPrimaryTrigger", defaults.stylusPrimaryTrigger), stylusSecondaryTrigger = enum("stylusSecondaryTrigger", defaults.stylusSecondaryTrigger),
             pressureSensitivity = float("pressureSensitivity", defaults.pressureSensitivity).coerceIn(.25f, 2.5f), pressureMinimumInput = minimum, pressureMaximumInput = maximum,
+            pressureResponseCurve = PressureResponseCurve.normalize(floatList("pressureResponseCurve", defaults.pressureResponseCurve)),
             stabilization = float("stabilization", defaults.stabilization).coerceIn(0f, .9f), showInputDiagnostics = boolean("showInputDiagnostics", defaults.showInputDiagnostics),
             penSize = float("penSize", defaults.penSize).coerceIn(.5f, 400f), penOpacity = float("penOpacity", defaults.penOpacity).coerceIn(.05f, 1f),
             highlighterSize = float("highlighterSize", defaults.highlighterSize).coerceIn(.5f, 400f), highlighterOpacity = float("highlighterOpacity", defaults.highlighterOpacity).coerceIn(.05f, 1f),
@@ -128,5 +131,7 @@ object AppSettingsBackupCodec {
     private fun JsonObject.float(key: String, fallback: Float): Float = runCatching { get(key)?.jsonPrimitive?.float }.getOrNull() ?: fallback
     private fun JsonObject.int(key: String, fallback: Int): Int = runCatching { get(key)?.jsonPrimitive?.int }.getOrNull() ?: fallback
     private fun JsonObject.boolean(key: String, fallback: Boolean): Boolean = runCatching { get(key)?.jsonPrimitive?.boolean }.getOrNull() ?: fallback
+    private fun JsonObject.floatList(key: String, fallback: List<Float>): List<Float> =
+        runCatching { get(key)?.jsonArray?.map { it.jsonPrimitive.float } }.getOrNull() ?: fallback
     private inline fun <reified T : Enum<T>> JsonObject.enum(key: String, fallback: T): T = runCatching { enumValueOf<T>(text(key)) }.getOrDefault(fallback)
 }

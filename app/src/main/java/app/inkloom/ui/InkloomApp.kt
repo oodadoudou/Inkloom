@@ -4377,6 +4377,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     pressureSensitivity = settings.pressureSensitivity
     pressureMinimumInput = settings.pressureMinimumInput
     pressureMaximumInput = settings.pressureMaximumInput
+    pressureResponseCurve = settings.pressureResponseCurve
     stabilization = maxOf(settings.stabilization, activeBrush?.stabilization ?: 0f)
     stabilizationBySpeed = activeBrush?.stabilizationBySpeed ?: false
     stabilizationBySpeedMode = activeBrush?.stabilizationBySpeedMode ?: StrokeStabilization.REDUCE_WHEN_FAST
@@ -8144,7 +8145,7 @@ private fun SettingsDialog(
                 item { Slider(settings.pressureMinimumInput, { value -> onChange(settings.copy(pressureMinimumInput = value.coerceAtMost(settings.pressureMaximumInput - .05f))) }, valueRange = 0f..0.95f) }
                 item { Text("${tr("Full pressure point", "满压位置")}  ${(settings.pressureMaximumInput * 100).toInt()}%", color = MutedInk, fontSize = 12.sp) }
                 item { Slider(settings.pressureMaximumInput, { value -> onChange(settings.copy(pressureMaximumInput = value.coerceAtLeast(settings.pressureMinimumInput + .05f))) }, valueRange = 0.05f..1f) }
-                item { PressureCurvePreview(settings.pressureMinimumInput, settings.pressureMaximumInput, settings.pressureSensitivity) }
+                item { PressureCurveEditor(settings.pressureResponseCurve) { onChange(settings.copy(pressureResponseCurve = it)) } }
                 item { Text("${tr("Stroke stabilization", "笔触防抖")}  ${(settings.stabilization * 100).toInt()}%") }
                 item { Slider(settings.stabilization, { onChange(settings.copy(stabilization = it)) }, valueRange = 0f..0.9f) }
                 item { Text(tr("DEFAULT TOOL PRESETS", "默认工具预设"), color = Sage, fontSize = 12.sp) }
@@ -8692,22 +8693,55 @@ private fun shortcutActionDisplayLabel(action: ShortcutAction, settings: AppSett
 }
 
 @Composable
-private fun PressureCurvePreview(minimumInput: Float, maximumInput: Float, sensitivity: Float) {
+private fun PressureCurveEditor(values: List<Float>, onChange: (List<Float>) -> Unit) {
+    val curve = PressureResponseCurve.normalize(values)
+    val currentOnChange by rememberUpdatedState(onChange)
     Column {
-        Text(tr("Calibrated response", "校准响应曲线"), color = MutedInk, fontSize = 11.sp)
-        Canvas(Modifier.fillMaxWidth().height(110.dp).clip(RoundedCornerShape(8.dp)).background(Workspace).padding(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(tr("Pressure response curve", "压感响应曲线"), color = MutedInk, fontSize = 11.sp, modifier = Modifier.weight(1f))
+            TextButton(onClick = { currentOnChange(PressureResponseCurve.SOFT) }) { Text(tr("Soft", "柔和"), fontSize = 10.sp) }
+            TextButton(onClick = { currentOnChange(PressureResponseCurve.LINEAR) }) { Text(tr("Linear", "线性"), fontSize = 10.sp) }
+            TextButton(onClick = { currentOnChange(PressureResponseCurve.FIRM) }) { Text(tr("Firm", "硬朗"), fontSize = 10.sp) }
+        }
+        Canvas(
+            Modifier.fillMaxWidth().height(130.dp).clip(RoundedCornerShape(8.dp)).background(Workspace)
+                .semantics { contentDescription = "Editable pressure curve" }
+                .pointerInput(curve) {
+                    fun update(position: Offset) {
+                        if (size.width <= 0 || size.height <= 0) return
+                        val index = ((position.x / size.width).coerceIn(0f, 1f) * 4f + .5f).toInt().coerceIn(1, 3)
+                        val output = (1f - position.y / size.height).coerceIn(0f, 1f)
+                        val changed = curve.toMutableList()
+                        changed[index] = output.coerceIn(changed[index - 1], changed[index + 1])
+                        currentOnChange(PressureResponseCurve.normalize(changed))
+                    }
+                    detectDragGestures(onDragStart = ::update) { change, _ ->
+                        change.consume()
+                        update(change.position)
+                    }
+                }.padding(10.dp),
+        ) {
             drawLine(OutlineSoft, Offset(0f, size.height), Offset(size.width, size.height), strokeWidth = 1f)
             drawLine(OutlineSoft, Offset(0f, 0f), Offset(0f, size.height), strokeWidth = 1f)
+            for (index in 1..3) {
+                val x = size.width * index / 4f
+                val y = size.height * index / 4f
+                drawLine(OutlineSoft.copy(alpha = .45f), Offset(x, 0f), Offset(x, size.height), strokeWidth = 1f)
+                drawLine(OutlineSoft.copy(alpha = .45f), Offset(0f, y), Offset(size.width, y), strokeWidth = 1f)
+            }
             val path = androidx.compose.ui.graphics.Path()
-            for (index in 0..100) {
-                val input = index / 100f
-                val output = PressureCalibration.apply(input, minimumInput, maximumInput, sensitivity)
-                val x = input * size.width
+            curve.forEachIndexed { index, output ->
+                val x = index.toFloat() / curve.lastIndex * size.width
                 val y = size.height - output * size.height
                 if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
             }
             drawPath(path, Sage, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3f))
+            curve.forEachIndexed { index, output ->
+                drawCircle(Color.White, 7f, Offset(index.toFloat() / curve.lastIndex * size.width, size.height - output * size.height))
+                drawCircle(Sage, 5f, Offset(index.toFloat() / curve.lastIndex * size.width, size.height - output * size.height))
+            }
         }
+        Text(tr("Drag the three inner points. The curve applies to every pen and pressure-sensitive eraser.", "拖动中间三个控制点；曲线会应用于所有画笔及支持压感的橡皮。"), color = MutedInk, fontSize = 10.sp)
     }
 }
 

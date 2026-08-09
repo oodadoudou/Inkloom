@@ -173,6 +173,19 @@ class AppSettingsStoreTest {
         }
     }
 
+    @Test fun pressureResponseCurveSurvivesReload() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
+        preferences.edit().clear().commit()
+        try {
+            val curve = app.inkloom.document.PressureResponseCurve.FIRM
+            AppSettingsStore(context).save(AppSettings(pressureResponseCurve = curve))
+            assertEquals(curve, AppSettingsStore(context).load().pressureResponseCurve)
+        } finally {
+            preferences.edit().clear().commit()
+        }
+    }
+
     @Test fun namedCustomWorkspacesSurviveReload() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
