@@ -24,6 +24,7 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextClearance
@@ -37,6 +38,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsActions
 import app.inkloom.importer.BrushGroupStore
 import app.inkloom.document.PageTemplateStore
+import app.inkloom.document.SpecialRulerMode
 import app.inkloom.settings.AppSettingsStore
 import app.inkloom.settings.ShortcutAction
 import app.inkloom.settings.ShortcutCategory
@@ -164,6 +166,22 @@ class InkloomLaunchTest {
 
         assertTrue(AppSettingsStore(composeRule.activity).load().gridSnapEnabled)
         assertTrue(AppSettingsStore(composeRule.activity).load().alignmentGuidesEnabled)
+    }
+
+    @Test fun specialRulersAreReachableAndPersistFromTheCanvasMenu() {
+        createNotebookAndOpenEditor()
+
+        composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithText("Isometric guide").performScrollTo().performClick()
+        composeRule.waitUntil(5_000) { AppSettingsStore(composeRule.activity).load().specialRulerMode == SpecialRulerMode.ISOMETRIC }
+
+        composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onNodeWithText("Drawing Assist").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Edit ruler").performScrollTo().assertIsDisplayed()
+
+        val settings = AppSettingsStore(composeRule.activity).load()
+        assertEquals(SpecialRulerMode.ISOMETRIC, settings.specialRulerMode)
+        assertEquals(app.inkloom.document.PerspectiveGuideMode.NONE, settings.perspectiveGuideMode)
     }
 
     @Test fun rotationKeepsEditorAndRestoresOrientationSpecificWorkspace() {
