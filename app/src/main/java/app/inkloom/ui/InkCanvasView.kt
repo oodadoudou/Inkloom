@@ -653,6 +653,10 @@ class InkCanvasView(context: Context) : View(context) {
      *  The host persists the mask and creates a [PageElement.Fill]. */
     var onFillCommitted: ((mask: Bitmap, x: Float, y: Float, width: Float, height: Float, colorArgb: Long, opacity: Float) -> Unit)? = null
     var fillSensitivity: Float = .25f
+    var fillCloseGapPixels: Float = 0f
+        set(value) { field = value.coerceIn(0f, 64f) }
+    var fillAreaScalingPixels: Float = 0f
+        set(value) { field = value.coerceIn(-64f, 64f) }
     var symmetryMode: SymmetryMode = SymmetryMode.NONE
     var onStrokeRemoved: (String) -> Unit = {}
     var onStrokesReplaced: (List<String>, List<InkStroke>, List<Int>) -> Unit = { removed, replacements, _ -> removed.forEach(onStrokeRemoved); replacements.forEach(onStrokeCommitted) }
@@ -2987,7 +2991,15 @@ class InkCanvasView(context: Context) : View(context) {
         val tolerance = (fillSensitivityNow * 200f).toInt().coerceIn(0, 255)
         val now = SystemClock.uptimeMillis()
         if (!force && (tolerance == fillPreviewTolerance || now - fillPreviewComputedAt < FILL_PREVIEW_THROTTLE_MS)) return
-        val result = FloodFill.fill(source, fillSeedX, fillSeedY, tolerance)
+        val modelToSample = source.width / pageModelWidth.coerceAtLeast(1f)
+        val result = FloodFill.fill(
+            source,
+            fillSeedX,
+            fillSeedY,
+            tolerance,
+            closeGapPixels = (fillCloseGapPixels * modelToSample).toInt(),
+            areaScalingPixels = (fillAreaScalingPixels * modelToSample).toInt(),
+        )
         fillPreviewMask?.recycle()
         fillPreviewMask = if (result.isEmpty) null else result.mask
         val safeWidth = width.coerceAtLeast(1).toFloat()

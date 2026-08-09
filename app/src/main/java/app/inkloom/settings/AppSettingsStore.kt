@@ -10,6 +10,8 @@ data class AppSettings(
     val language: UiLanguage = UiLanguage.ENGLISH,
     val fingerDrawing: Boolean = false,
     val fillSensitivity: Float = .25f,
+    val fillCloseGapPixels: Float = 0f,
+    val fillAreaScalingPixels: Float = 0f,
     val showPageRail: Boolean = false,
     val showBrushPanel: Boolean = false,
     val showLayerPanel: Boolean = false,
@@ -136,6 +138,8 @@ class AppSettingsStore(context: Context) {
             language = enumValue(preferences.getString("language", null), systemLanguage),
             fingerDrawing = preferences.getBoolean("fingerDrawing", false),
             fillSensitivity = preferences.getFloat("fillSensitivity", .25f),
+            fillCloseGapPixels = preferences.getFloat("fillCloseGapPixels", 0f).coerceIn(0f, 64f),
+            fillAreaScalingPixels = preferences.getFloat("fillAreaScalingPixels", 0f).coerceIn(-64f, 64f),
             showPageRail = preferences.getBoolean("showPageRail", false),
             showBrushPanel = preferences.getBoolean("showBrushPanel", false),
             showLayerPanel = preferences.getBoolean("showLayerPanel", false),
@@ -244,6 +248,8 @@ class AppSettingsStore(context: Context) {
             .putString("language", persisted.language.name)
             .putBoolean("fingerDrawing", persisted.fingerDrawing)
             .putFloat("fillSensitivity", persisted.fillSensitivity)
+            .putFloat("fillCloseGapPixels", persisted.fillCloseGapPixels.coerceIn(0f, 64f))
+            .putFloat("fillAreaScalingPixels", persisted.fillAreaScalingPixels.coerceIn(-64f, 64f))
             .putBoolean("showPageRail", persisted.showPageRail)
             .putBoolean("showBrushPanel", persisted.showBrushPanel)
             .putBoolean("showLayerPanel", persisted.showLayerPanel)

@@ -38,4 +38,30 @@ class FloodFillTest {
         val loose = FloodFill.fill(source, 0, 0, tolerance = 80)
         assertTrue("Higher tolerance should cover more pixels", loose.width >= tight.width)
     }
+
+    @Test fun closeGapTreatsASmallBreakInLineArtAsClosed() {
+        val source = solid(Color.WHITE)
+        for (x in 5..14) { source.setPixel(x, 5, Color.BLACK); source.setPixel(x, 14, Color.BLACK) }
+        for (y in 5..14) { source.setPixel(5, y, Color.BLACK); source.setPixel(14, y, Color.BLACK) }
+        source.setPixel(10, 5, Color.WHITE)
+
+        val open = FloodFill.fill(source, 10, 10, tolerance = 0)
+        val closed = FloodFill.fill(source, 10, 10, tolerance = 0, closeGapPixels = 1)
+
+        assertEquals(20, open.width)
+        assertTrue("Closing the one-pixel break must keep fill inside the box", closed.width < 12)
+    }
+
+    @Test fun areaScalingCanOverfillOrUnderfillTheDetectedRegion() {
+        val source = Bitmap.createBitmap(20, 20, Bitmap.Config.ARGB_8888)
+        for (y in 0 until 20) for (x in 0 until 20) source.setPixel(x, y, if (x in 5..14 && y in 5..14) Color.WHITE else Color.BLACK)
+
+        val normal = FloodFill.fill(source, 10, 10, tolerance = 0)
+        val expanded = FloodFill.fill(source, 10, 10, tolerance = 0, areaScalingPixels = 2)
+        val shrunk = FloodFill.fill(source, 10, 10, tolerance = 0, areaScalingPixels = -2)
+
+        assertEquals(10, normal.width)
+        assertTrue(expanded.width > normal.width)
+        assertTrue(shrunk.width < normal.width)
+    }
 }

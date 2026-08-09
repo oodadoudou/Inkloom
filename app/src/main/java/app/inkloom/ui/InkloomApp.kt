@@ -2488,6 +2488,15 @@ private fun EditorScreen(
                     onTransform = { canvasView?.enterFreeTransform() },
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
                 )
+                if (tool == EditorTool.FILL) FillOptionsLauncher(
+                    sensitivity = settings.fillSensitivity,
+                    closeGapPixels = settings.fillCloseGapPixels,
+                    areaScalingPixels = settings.fillAreaScalingPixels,
+                    onSensitivity = { onSettingsChange(settings.copy(fillSensitivity = it)) },
+                    onCloseGap = { onSettingsChange(settings.copy(fillCloseGapPixels = it)) },
+                    onAreaScaling = { onSettingsChange(settings.copy(fillAreaScalingPixels = it)) },
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
+                )
                 if (settings.showInputDiagnostics) Surface(Modifier.align(Alignment.BottomCenter).padding(12.dp), shape = RoundedCornerShape(20.dp), color = Color.White, border = CardDefaults.outlinedCardBorder(), shadowElevation = 3.dp) { Text(inputDiagnostic, Modifier.padding(horizontal = 14.dp, vertical = 7.dp), color = Ink, fontSize = 11.sp) }
             }
             if (rightPanelTabs.size > 1) DockedPanelTabStrip(
@@ -4282,6 +4291,8 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onRedoGesture = onRedoGesture
                 view.singleFingerDoubleTapUndo = settings.singleFingerDoubleTapUndo
                 view.fillSensitivity = settings.fillSensitivity
+                view.fillCloseGapPixels = settings.fillCloseGapPixels
+                view.fillAreaScalingPixels = settings.fillAreaScalingPixels
                 view.symmetryMode = settings.symmetryMode
                 view.twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo
                 view.threeFingerTapRedo = settings.threeFingerTapRedo
@@ -4364,6 +4375,8 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onRedoGesture = onRedoGesture
                 view.singleFingerDoubleTapUndo = settings.singleFingerDoubleTapUndo
                 view.fillSensitivity = settings.fillSensitivity
+                view.fillCloseGapPixels = settings.fillCloseGapPixels
+                view.fillAreaScalingPixels = settings.fillAreaScalingPixels
                 view.symmetryMode = settings.symmetryMode
                 view.twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo
                 view.threeFingerTapRedo = settings.threeFingerTapRedo
@@ -4444,6 +4457,9 @@ internal fun InkCanvasView.applyBrushConfiguration(
     selectionMode = settings.selectionMode
     selectionFilter = settings.selectionFilter
     referenceTarget = settings.referenceTarget
+    fillSensitivity = settings.fillSensitivity
+    fillCloseGapPixels = settings.fillCloseGapPixels
+    fillAreaScalingPixels = settings.fillAreaScalingPixels
     correctLineMode = settings.correctLineMode
     correctLineAmount = settings.correctLineAmount
     baseWidth = brushSize
@@ -9113,6 +9129,43 @@ private fun PressureCurveEditor(values: List<Float>, onChange: (List<Float>) -> 
             }
         }
         Text(tr("Drag the three inner points. The curve applies to every pen and pressure-sensitive eraser.", "拖动中间三个控制点；曲线会应用于所有画笔及支持压感的橡皮。"), color = MutedInk, fontSize = 10.sp)
+    }
+}
+
+@Composable
+private fun FillOptionsLauncher(
+    sensitivity: Float,
+    closeGapPixels: Float,
+    areaScalingPixels: Float,
+    onSensitivity: (Float) -> Unit,
+    onCloseGap: (Float) -> Unit,
+    onAreaScaling: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Surface(modifier, color = Color.White, shape = RoundedCornerShape(10.dp), border = CardDefaults.outlinedCardBorder(), shadowElevation = 5.dp) {
+        Row(Modifier.height(42.dp).padding(horizontal = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Outlined.FormatColorFill, null, Modifier.size(18.dp))
+            Spacer(Modifier.width(7.dp))
+            Text("${tr("Tolerance", "容差")} ${(sensitivity * 100).toInt()}%", fontSize = 11.sp)
+            Spacer(Modifier.width(8.dp))
+            Text("${tr("Close gap", "闭合缝隙")} ${closeGapPixels.toInt()} px", color = MutedInk, fontSize = 10.sp)
+            Spacer(Modifier.width(8.dp))
+            Text("${tr("Area scaling", "区域缩放")} ${areaScalingPixels.toInt()} px", color = MutedInk, fontSize = 10.sp)
+            Box {
+                CompactToolbarIconButton({ expanded = true }, tr("Advanced fill settings", "高级填充设置")) { Icon(Icons.Outlined.Tune, null, Modifier.size(18.dp)) }
+                DropdownMenu(expanded, { expanded = false }, Modifier.width(300.dp)) {
+                    Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+                        Text("${tr("Tolerance", "容差")} ${(sensitivity * 100).toInt()}%", fontSize = 11.sp)
+                        Slider(sensitivity, onSensitivity, valueRange = 0f..1f)
+                        Text("${tr("Close gap", "闭合缝隙")} ${closeGapPixels.toInt()} px", fontSize = 11.sp)
+                        Slider(closeGapPixels, onCloseGap, valueRange = 0f..64f)
+                        Text("${tr("Area scaling", "区域缩放")} ${areaScalingPixels.toInt()} px", fontSize = 11.sp)
+                        Slider(areaScalingPixels, onAreaScaling, valueRange = -64f..64f)
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -57,6 +57,7 @@ object AppSettingsBackupCodec {
     private fun AppSettings.toJson() = buildJsonObject {
         put("language", language.name); put("fingerDrawing", fingerDrawing)
         put("showPageRail", showPageRail); put("showBrushPanel", showBrushPanel); put("showLayerPanel", showLayerPanel); put("showToolbar", showToolbar)
+        put("fillSensitivity", fillSensitivity); put("fillCloseGapPixels", fillCloseGapPixels); put("fillAreaScalingPixels", fillAreaScalingPixels)
         put("pagePanelDock", pagePanelDock.name); put("brushPanelDock", brushPanelDock.name); put("layerPanelDock", layerPanelDock.name)
         put("pagePanelMode", pagePanelMode.name); put("brushPanelMode", brushPanelMode.name); put("layerPanelMode", layerPanelMode.name)
         put("pagePanelLocked", pagePanelLocked); put("brushPanelLocked", brushPanelLocked); put("layerPanelLocked", layerPanelLocked)
@@ -88,6 +89,7 @@ object AppSettingsBackupCodec {
         val minimum = float("pressureMinimumInput", defaults.pressureMinimumInput).coerceIn(0f, .95f)
         val maximum = float("pressureMaximumInput", defaults.pressureMaximumInput).coerceIn(minimum + .05f, 1f)
         return defaults.copy(
+            fillSensitivity = float("fillSensitivity", defaults.fillSensitivity).coerceIn(0f, 1f), fillCloseGapPixels = float("fillCloseGapPixels", defaults.fillCloseGapPixels).coerceIn(0f, 64f), fillAreaScalingPixels = float("fillAreaScalingPixels", defaults.fillAreaScalingPixels).coerceIn(-64f, 64f),
             language = enum("language", defaults.language), fingerDrawing = boolean("fingerDrawing", defaults.fingerDrawing),
             showPageRail = boolean("showPageRail", defaults.showPageRail), showBrushPanel = boolean("showBrushPanel", defaults.showBrushPanel),
             showLayerPanel = boolean("showLayerPanel", defaults.showLayerPanel), showToolbar = boolean("showToolbar", defaults.showToolbar),
