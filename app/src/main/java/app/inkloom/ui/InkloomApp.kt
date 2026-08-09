@@ -45,6 +45,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
@@ -59,6 +60,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
@@ -68,6 +70,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.focusable
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.text.font.FontStyle
@@ -1205,6 +1208,15 @@ private fun EditorScreen(
     DisposableEffect(audioRecorder) { onDispose { audioRecorder.cancel() } }
     var layersOpen by remember { mutableStateOf(settings.showLayerPanel) }
     LaunchedEffect(settings.showLayerPanel) { layersOpen = settings.showLayerPanel }
+    LaunchedEffect(brushesOpen, settings.brushPanelDock, settings.brushPanelMode, settings.brushPanelLocked) {
+        if (brushesOpen && (settings.brushPanelDock != WorkspacePanelDock.FREE || settings.brushPanelMode != WorkspacePanelMode.EXPANDED || settings.brushPanelLocked)) {
+            onSettingsChange(settings.copy(
+                brushPanelDock = WorkspacePanelDock.FREE,
+                brushPanelMode = WorkspacePanelMode.EXPANDED,
+                brushPanelLocked = false,
+            ))
+        }
+    }
     var activeLayerId by remember(selectedPage.id) { mutableStateOf(LayerIds.INK) }
     fun selectWorkspaceBrush(brush: ImportedBrush) {
         exitCanvasNavigation()
@@ -1485,7 +1497,9 @@ private fun EditorScreen(
         fun visibleTabsAt(dock: WorkspacePanelDock, includePages: Boolean = true) = orderedPanelTabs.filter { panel ->
             when (panel) {
                 WorkspacePanelKind.PAGES -> includePages && settings.showPageRail && settings.pagePanelDock == dock
-                WorkspacePanelKind.BRUSHES -> brushesOpen && settings.brushPanelDock == dock
+                // Brushes are a Procreate-style pop-over. They never consume canvas width or
+                // participate in dock groups, which also keeps the input viewport stable.
+                WorkspacePanelKind.BRUSHES -> false
                 WorkspacePanelKind.LAYERS -> layersOpen && settings.layerPanelDock == dock
             }
         }
@@ -1821,12 +1835,10 @@ private fun EditorScreen(
         }
         val bottomPanelCount = listOf(
             settings.showPageRail && settings.pagePanelDock == WorkspacePanelDock.BOTTOM,
-            brushesOpen && settings.brushPanelDock == WorkspacePanelDock.BOTTOM,
             layersOpen && settings.layerPanelDock == WorkspacePanelDock.BOTTOM,
         ).count { it }
         val bottomHasExpandedPanel =
             (WorkspacePanelKind.PAGES in bottomPanelTabs && showPanel(WorkspacePanelKind.PAGES, WorkspacePanelDock.BOTTOM) && settings.pagePanelMode == WorkspacePanelMode.EXPANDED) ||
-            (WorkspacePanelKind.BRUSHES in bottomPanelTabs && showPanel(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.BOTTOM) && settings.brushPanelMode == WorkspacePanelMode.EXPANDED) ||
             (WorkspacePanelKind.LAYERS in bottomPanelTabs && showPanel(WorkspacePanelKind.LAYERS, WorkspacePanelDock.BOTTOM) && settings.layerPanelMode == WorkspacePanelMode.EXPANDED)
         val bottomPanelContentHeight = if (bottomHasExpandedPanel) (workspaceHeightDp * .38f).coerceIn(180f, 320f).dp else 82.dp
         val bottomPanelHeight = bottomPanelContentHeight + bottomNavigationPadding
@@ -1905,45 +1917,6 @@ private fun EditorScreen(
                 tr("Resize layers sidebar", "调整图层侧栏宽度"),
                 onResize = { resizeDockedPanel(WorkspacePanelKind.LAYERS, WorkspacePanelDock.LEFT, it) },
                 onResizeEnd = { persistDockedPanel(WorkspacePanelKind.LAYERS) },
-            )
-            if (brushesOpen && settings.brushPanelDock == WorkspacePanelDock.LEFT && showPanel(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.LEFT)) BrushPanel(
-                brushes = brushes,
-                registeredGroups = brushGroups,
-                selectedBrushId = selectedBrushId,
-                settings = settings,
-                brushSize = brushSize,
-                brushOpacity = brushOpacity,
-                onBrushSizeChange = { brushSize = it.coerceIn(.5f, 400f) },
-                onBrushOpacityChange = { brushOpacity = it.coerceIn(.05f, 1f) },
-                dock = settings.brushPanelDock,
-                onDock = { changePanelDock(WorkspacePanelKind.BRUSHES, it) },
-                onClose = { if (brushesOpen) onToggleBrushes() },
-                onBrushSelected = ::selectWorkspaceBrush,
-                onImportBrushes = onImportBrushes,
-                onExportBrush = onExportBrush,
-                onUpdateBrush = { updated -> onUpdateBrush(updated); if (activeBrush?.id == updated.id) { activeBrush = updated; brushSize = updated.defaultSize } },
-                onReplaceBrushes = { updated ->
-                    onReplaceBrushes(updated)
-                    activeBrush = activeBrush?.let { current -> updated.firstOrNull { it.id == current.id } }
-                    if (activeBrush == null) selectedBrushId = null
-                },
-                onReplaceGroups = onReplaceBrushGroups,
-                onDeleteBrush = { brushId -> onDeleteBrush(brushId); if (activeBrush?.id == brushId) { activeBrush = null; selectedBrushId = null } },
-                onReorderBrush = onReorderBrush,
-                panelMode = settings.brushPanelMode,
-                panelLocked = settings.brushPanelLocked,
-                onPanelMode = { onSettingsChange(settings.copy(brushPanelMode = it)) },
-                onPanelLocked = { onSettingsChange(settings.copy(brushPanelLocked = it)) },
-                onPanelDragStart = { beginDockedPanelDrag(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.LEFT, brushPanelBounds) },
-                onPanelDrag = ::updateDockedPanelDrag,
-                onPanelDragEnd = { finishDockedPanelDrag(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.LEFT) },
-                onPanelDragCancel = ::clearDockedPanelDrag,
-                modifier = Modifier.width(dockedPanelWidth(WorkspacePanelKind.BRUSHES).dp).fillMaxHeight(),
-            )
-            if (brushesOpen && settings.brushPanelDock == WorkspacePanelDock.LEFT && showPanel(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.LEFT) && settings.brushPanelMode == WorkspacePanelMode.EXPANDED && !settings.brushPanelLocked) DockedSidebarResizeHandle(
-                tr("Resize brushes sidebar", "调整笔刷侧栏宽度"),
-                onResize = { resizeDockedPanel(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.LEFT, it) },
-                onResizeEnd = { persistDockedPanel(WorkspacePanelKind.BRUSHES) },
             )
             BoxWithConstraints(
                 Modifier
@@ -2498,45 +2471,6 @@ private fun EditorScreen(
                 onPanelDragCancel = ::clearDockedPanelDrag,
                 modifier = Modifier.width(dockedPanelWidth(WorkspacePanelKind.LAYERS).dp).fillMaxHeight().background(Color(0xFFF4F4F4)).border(1.dp, OutlineSoft).padding(2.dp),
             )
-            if (brushesOpen && settings.brushPanelDock == WorkspacePanelDock.RIGHT && showPanel(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.RIGHT) && settings.brushPanelMode == WorkspacePanelMode.EXPANDED && !settings.brushPanelLocked) DockedSidebarResizeHandle(
-                tr("Resize brushes sidebar", "调整笔刷侧栏宽度"),
-                onResize = { resizeDockedPanel(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.RIGHT, it) },
-                onResizeEnd = { persistDockedPanel(WorkspacePanelKind.BRUSHES) },
-            )
-            if (brushesOpen && settings.brushPanelDock == WorkspacePanelDock.RIGHT && showPanel(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.RIGHT)) BrushPanel(
-                brushes = brushes,
-                registeredGroups = brushGroups,
-                selectedBrushId = selectedBrushId,
-                settings = settings,
-                brushSize = brushSize,
-                brushOpacity = brushOpacity,
-                onBrushSizeChange = { brushSize = it.coerceIn(.5f, 400f) },
-                onBrushOpacityChange = { brushOpacity = it.coerceIn(.05f, 1f) },
-                dock = settings.brushPanelDock,
-                onDock = { changePanelDock(WorkspacePanelKind.BRUSHES, it) },
-                onClose = { if (brushesOpen) onToggleBrushes() },
-                onBrushSelected = ::selectWorkspaceBrush,
-                onImportBrushes = onImportBrushes,
-                onExportBrush = onExportBrush,
-                onUpdateBrush = { updated -> onUpdateBrush(updated); if (activeBrush?.id == updated.id) { activeBrush = updated; brushSize = updated.defaultSize } },
-                onReplaceBrushes = { updated ->
-                    onReplaceBrushes(updated)
-                    activeBrush = activeBrush?.let { current -> updated.firstOrNull { it.id == current.id } }
-                    if (activeBrush == null) selectedBrushId = null
-                },
-                onReplaceGroups = onReplaceBrushGroups,
-                onDeleteBrush = { brushId -> onDeleteBrush(brushId); if (activeBrush?.id == brushId) { activeBrush = null; selectedBrushId = null } },
-                onReorderBrush = onReorderBrush,
-                panelMode = settings.brushPanelMode,
-                panelLocked = settings.brushPanelLocked,
-                onPanelMode = { onSettingsChange(settings.copy(brushPanelMode = it)) },
-                onPanelLocked = { onSettingsChange(settings.copy(brushPanelLocked = it)) },
-                onPanelDragStart = { beginDockedPanelDrag(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.RIGHT, brushPanelBounds) },
-                onPanelDrag = ::updateDockedPanelDrag,
-                onPanelDragEnd = { finishDockedPanelDrag(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.RIGHT) },
-                onPanelDragCancel = ::clearDockedPanelDrag,
-                modifier = Modifier.width(dockedPanelWidth(WorkspacePanelKind.BRUSHES).dp).fillMaxHeight(),
-            )
         }
         if (bottomPanelCount > 0) {
             HorizontalDivider(color = OutlineSoft)
@@ -2610,40 +2544,6 @@ private fun EditorScreen(
                     onPanelDragEnd = { finishDockedPanelDrag(WorkspacePanelKind.LAYERS, WorkspacePanelDock.BOTTOM) },
                     onPanelDragCancel = ::clearDockedPanelDrag,
                     modifier = Modifier.weight(1f).fillMaxHeight().border(1.dp, OutlineSoft).background(Color(0xFFF7F7F7)).padding(10.dp),
-                )
-                if (brushesOpen && settings.brushPanelDock == WorkspacePanelDock.BOTTOM && showPanel(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.BOTTOM)) BrushPanel(
-                    brushes = brushes,
-                    registeredGroups = brushGroups,
-                    selectedBrushId = selectedBrushId,
-                    settings = settings,
-                    brushSize = brushSize,
-                    brushOpacity = brushOpacity,
-                    onBrushSizeChange = { brushSize = it.coerceIn(.5f, 400f) },
-                    onBrushOpacityChange = { brushOpacity = it.coerceIn(.05f, 1f) },
-                    dock = settings.brushPanelDock,
-                    onDock = { changePanelDock(WorkspacePanelKind.BRUSHES, it) },
-                    onClose = { if (brushesOpen) onToggleBrushes() },
-                    onBrushSelected = ::selectWorkspaceBrush,
-                    onImportBrushes = onImportBrushes,
-                    onExportBrush = onExportBrush,
-                    onUpdateBrush = { updated -> onUpdateBrush(updated); if (activeBrush?.id == updated.id) { activeBrush = updated; brushSize = updated.defaultSize } },
-                    onReplaceBrushes = { updated ->
-                        onReplaceBrushes(updated)
-                        activeBrush = activeBrush?.let { current -> updated.firstOrNull { it.id == current.id } }
-                        if (activeBrush == null) selectedBrushId = null
-                    },
-                    onReplaceGroups = onReplaceBrushGroups,
-                    onDeleteBrush = { brushId -> onDeleteBrush(brushId); if (activeBrush?.id == brushId) { activeBrush = null; selectedBrushId = null } },
-                    onReorderBrush = onReorderBrush,
-                    panelMode = settings.brushPanelMode,
-                    panelLocked = settings.brushPanelLocked,
-                    onPanelMode = { onSettingsChange(settings.copy(brushPanelMode = it)) },
-                    onPanelLocked = { onSettingsChange(settings.copy(brushPanelLocked = it)) },
-                    onPanelDragStart = { beginDockedPanelDrag(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.BOTTOM, brushPanelBounds) },
-                    onPanelDrag = ::updateDockedPanelDrag,
-                    onPanelDragEnd = { finishDockedPanelDrag(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.BOTTOM) },
-                    onPanelDragCancel = ::clearDockedPanelDrag,
-                    modifier = Modifier.weight(1f).fillMaxHeight().border(1.dp, OutlineSoft).background(Color(0xFFF7F7F7)).padding(12.dp),
                 )
             }
         }
@@ -2777,10 +2677,10 @@ private fun EditorScreen(
                 onPanelDragCancel = { cancelPanelDrag(WorkspacePanelKind.LAYERS) { layerPanelBounds = it } },
             )
         }
-        if (brushesOpen && settings.brushPanelDock == WorkspacePanelDock.FREE && showPanel(WorkspacePanelKind.BRUSHES, WorkspacePanelDock.FREE)) FloatingWorkspacePanel(
+        if (brushesOpen) FloatingWorkspacePanel(
             bounds = visibleBrushPanelBounds,
-            mode = settings.brushPanelMode,
-            locked = settings.brushPanelLocked,
+            mode = WorkspacePanelMode.EXPANDED,
+            locked = false,
             zIndex = if (activeFloatingPanel == "brushes") 6f else 5f,
             resizeDescription = tr("Resize brushes panel", "调整笔刷面板大小"),
             onActivate = { activeFloatingPanel = "brushes" },
@@ -2788,9 +2688,9 @@ private fun EditorScreen(
                 activeFloatingPanel = "brushes"
                 brushPanelBounds = resizeFloatingPanel(WorkspacePanelKind.BRUSHES, brushPanelBounds, left / editorDensity.density, top / editorDensity.density, right / editorDensity.density, bottom / editorDensity.density)
             },
-            onResizeEnd = { if (freePanelsStacked) persistFloatingPanels(freePanelTabs) else persistBrushPanel(brushPanelBounds) },
-            tabs = if (freePanelsStacked) freePanelTabs else emptyList(),
-            activeTab = freeActivePanel,
+            onResizeEnd = { persistBrushPanel(brushPanelBounds) },
+            tabs = emptyList(),
+            activeTab = null,
             onTab = ::selectFloatingPanel,
             onMoveTab = ::movePanelTab,
             onSeparateTabs = ::separateFloatingPanels,
@@ -2804,8 +2704,8 @@ private fun EditorScreen(
                 brushOpacity = brushOpacity,
                 onBrushSizeChange = { brushSize = it.coerceIn(.5f, 400f) },
                 onBrushOpacityChange = { brushOpacity = it.coerceIn(.05f, 1f) },
-                dock = settings.brushPanelDock,
-                onDock = { changePanelDock(WorkspacePanelKind.BRUSHES, it) },
+                dock = WorkspacePanelDock.FREE,
+                onDock = {},
                 onClose = { if (brushesOpen) onToggleBrushes() },
                 onBrushSelected = ::selectWorkspaceBrush,
                 onImportBrushes = onImportBrushes,
@@ -2819,22 +2719,21 @@ private fun EditorScreen(
                 onReplaceGroups = onReplaceBrushGroups,
                 onDeleteBrush = { brushId -> onDeleteBrush(brushId); if (activeBrush?.id == brushId) { activeBrush = null; selectedBrushId = null } },
                 onReorderBrush = onReorderBrush,
-                panelMode = settings.brushPanelMode,
-                panelLocked = settings.brushPanelLocked,
-                onPanelMode = { onSettingsChange(settings.copy(brushPanelMode = it)) },
-                onPanelLocked = { onSettingsChange(settings.copy(brushPanelLocked = it)) },
+                panelMode = WorkspacePanelMode.EXPANDED,
+                panelLocked = false,
+                onPanelMode = {},
+                onPanelLocked = {},
                 modifier = Modifier.fillMaxSize().background(Color(0xFFF7F7F7), RoundedCornerShape(3.dp)).padding(6.dp),
-                onPanelDragStart = { activeFloatingPanel = "brushes"; beginPanelDrag(WorkspacePanelKind.BRUSHES, brushPanelBounds) },
+                onPanelDragStart = { activeFloatingPanel = "brushes" },
                 onPanelDrag = { dx, dy ->
                     activeFloatingPanel = "brushes"
                     val deltaXDp = dx / editorDensity.density
                     val deltaYDp = dy / editorDensity.density
                     val next = moveFloatingPanel(WorkspacePanelKind.BRUSHES, brushPanelBounds, deltaXDp, deltaYDp)
                     brushPanelBounds = next
-                    updatePanelDockPreview(WorkspacePanelKind.BRUSHES, next, deltaXDp, deltaYDp)
                 },
-                onPanelDragEnd = { finishPanelDrag(WorkspacePanelKind.BRUSHES, brushPanelBounds, ::persistBrushPanel) },
-                onPanelDragCancel = { cancelPanelDrag(WorkspacePanelKind.BRUSHES) { brushPanelBounds = it } },
+                onPanelDragEnd = { persistBrushPanel(brushPanelBounds) },
+                onPanelDragCancel = {},
             )
         }
         }
@@ -7038,21 +6937,85 @@ private fun ProcreateBrushLibrary(
     val systemBrushes = remember { systemBrushCatalog() }
     val systemCategories = listOf("Sketching", "Inking", "Calligraphy", "Painting", "Airbrushing", "Erasers")
     val importedCategories = BrushGroupOperations.treePaths(brushes, registeredGroups)
+    var collapsedGroupPaths by remember { mutableStateOf(emptySet<String>()) }
+    val visibleImportedCategories = importedCategories.filter { path ->
+        generateSequence(BrushGroupOperations.parent(path), BrushGroupOperations::parent)
+            .none { ancestor -> collapsedGroupPaths.any { it.equals(ancestor, true) } }
+    }
     val ungroupedLabel = tr("Imported", "已导入")
     val newBrushName = tr("New brush", "新笔刷")
     val createdInInkloom = tr("Created in Inkloom", "在 Inkloom 中创建")
-    val allCategories = listOf(tr("All", "全部")) + systemCategories + importedCategories + ungroupedLabel
+    val allCategories = listOf(tr("All", "全部")) + systemCategories + visibleImportedCategories + ungroupedLabel
     var selectedCategory by rememberSaveable { mutableStateOf(systemCategories.first()) }
     var addMenu by remember { mutableStateOf(false) }
     var manageGroups by remember { mutableStateOf(false) }
     var editBrush by remember { mutableStateOf<ImportedBrush?>(null) }
     var menuBrush by remember { mutableStateOf<ImportedBrush?>(null) }
+    var moveBrush by remember { mutableStateOf<ImportedBrush?>(null) }
+    var gridLayout by rememberSaveable { mutableStateOf(false) }
+    var menuGroup by remember { mutableStateOf<String?>(null) }
+    var renameGroup by remember { mutableStateOf<String?>(null) }
+    var renameGroupValue by remember { mutableStateOf("") }
+    var deleteGroup by remember { mutableStateOf<String?>(null) }
+    var groupDropBounds by remember { mutableStateOf(emptyMap<String, Rect>()) }
+    var brushDragBounds by remember { mutableStateOf(emptyMap<String, Rect>()) }
+    var draggingBrush by remember { mutableStateOf<ImportedBrush?>(null) }
+    var brushDragPosition by remember { mutableStateOf<Offset?>(null) }
     val currentPanelDrag by rememberUpdatedState(onPanelDrag)
     val currentPanelDragStart by rememberUpdatedState(onPanelDragStart)
     val currentPanelDragEnd by rememberUpdatedState(onPanelDragEnd)
     val currentPanelDragCancel by rememberUpdatedState(onPanelDragCancel)
     val dragDescription = tr("Drag brushes panel", "拖动笔刷面板")
     val allLabel = tr("All", "全部")
+    val groupCopySuffix = tr("copy", "副本")
+    @Composable fun categoryLabel(category: String): String = when (category) {
+        "Sketching" -> tr("Sketching", "素描")
+        "Inking" -> tr("Inking", "墨线")
+        "Calligraphy" -> tr("Calligraphy", "书法")
+        "Painting" -> tr("Painting", "绘画")
+        "Airbrushing" -> tr("Airbrushing", "喷枪")
+        "Erasers" -> tr("Erasers", "橡皮")
+        else -> BrushGroupOperations.displayName(category).ifBlank { category }
+    }
+    fun moveBrushIntoGroup(brush: ImportedBrush, group: String) {
+        if (brush.format == BrushFormat.SYSTEM) {
+            val copy = brush.copy(id = UUID.randomUUID().toString(), format = BrushFormat.INKLOOM, groupName = BrushGroupOperations.normalize(group), lastUsedAt = 0L)
+            onReplaceBrushes(brushes + copy)
+            onBrushSelected(copy)
+        } else {
+            onReplaceBrushes(BrushGroupOperations.assignMany(brushes, setOf(brush.id), group))
+        }
+        selectedCategory = group
+    }
+    fun Modifier.longPressBrushDrag(brush: ImportedBrush): Modifier = this
+        .onGloballyPositioned { coordinates ->
+            val bounds = coordinates.boundsInWindow()
+            if (brushDragBounds[brush.id] != bounds) brushDragBounds = brushDragBounds + (brush.id to bounds)
+        }
+        .pointerInput(brush.id, groupDropBounds) {
+            detectDragGesturesAfterLongPress(
+                onDragStart = { local ->
+                    onBrushSelected(brush)
+                    draggingBrush = brush
+                    brushDragPosition = brushDragBounds[brush.id]?.topLeft?.plus(local)
+                },
+                onDrag = { change, _ ->
+                    change.consume()
+                    brushDragPosition = brushDragBounds[brush.id]?.topLeft?.plus(change.position)
+                },
+                onDragEnd = {
+                    val position = brushDragPosition
+                    val target = position?.let { point -> groupDropBounds.entries.firstOrNull { (_, bounds) -> bounds.contains(point) }?.key }
+                    if (target != null) moveBrushIntoGroup(brush, target) else menuBrush = brush
+                    draggingBrush = null
+                    brushDragPosition = null
+                },
+                onDragCancel = {
+                    draggingBrush = null
+                    brushDragPosition = null
+                },
+            )
+        }
     LaunchedEffect(allCategories) { if (selectedCategory !in allCategories) selectedCategory = allCategories.first() }
     val displayed = (systemBrushes + brushes.filterNot(ImportedBrush::hidden)).filter { brush ->
         when (selectedCategory) {
@@ -7097,7 +7060,9 @@ private fun ProcreateBrushLibrary(
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 15.sp,
                 )
-                WorkspacePanelDockMenu(dock, onDock, tr("Change brushes panel docking", "更改笔刷面板停靠方式"), Modifier.size(38.dp), panelMode, panelLocked, onPanelMode, onPanelLocked)
+                IconButton(onClick = { gridLayout = !gridLayout }, modifier = Modifier.size(38.dp)) {
+                    Icon(if (gridLayout) Icons.Outlined.ViewList else Icons.Outlined.GridView, if (gridLayout) tr("List view", "列表视图") else tr("Grid view", "网格视图"), tint = Ink)
+                }
                 Box {
                     IconButton(onClick = { addMenu = true }, modifier = Modifier.size(38.dp)) { Icon(Icons.Outlined.Add, tr("Add brush or set", "添加笔刷或笔刷组"), tint = Ink) }
                     DropdownMenu(expanded = addMenu, onDismissRequest = { addMenu = false }) {
@@ -7122,16 +7087,68 @@ private fun ProcreateBrushLibrary(
                 ) {
                     items(allCategories.distinct(), key = { it }) { category ->
                         val selected = category == selectedCategory
-                        Text(
-                            category,
-                            Modifier.fillMaxWidth().height(39.dp).background(if (selected) Color(0xFFE1E1E1) else Color.Transparent).clickable { selectedCategory = category }.padding(horizontal = 14.dp).wrapContentHeight(Alignment.CenterVertically),
-                            color = Ink,
-                            fontSize = 11.sp,
-                            maxLines = 1,
-                        )
+                        val customGroup = category in importedCategories
+                        val hasChildren = importedCategories.any { BrushGroupOperations.parent(it)?.equals(category, true) == true }
+                        Box {
+                            Row(
+                                Modifier.fillMaxWidth().height(39.dp)
+                                    .onGloballyPositioned { coordinates ->
+                                        if (customGroup) {
+                                            val bounds = coordinates.boundsInWindow()
+                                            if (groupDropBounds[category] != bounds) groupDropBounds = groupDropBounds + (category to bounds)
+                                        }
+                                    }
+                                    .background(if (draggingBrush != null && customGroup) Color(0xFFF0F4FA) else if (selected) Color(0xFFE1E1E1) else Color.Transparent).combinedClickable(
+                                    onClick = { selectedCategory = category },
+                                    onLongClick = { if (customGroup) menuGroup = category },
+                                ).padding(start = (10 + BrushGroupOperations.depth(category) * 12).dp, end = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                if (customGroup && hasChildren) IconButton(onClick = {
+                                    collapsedGroupPaths = if (category in collapsedGroupPaths) collapsedGroupPaths - category else collapsedGroupPaths + category
+                                }, modifier = Modifier.size(24.dp)) {
+                                    Icon(
+                                        if (category in collapsedGroupPaths) Icons.Outlined.ChevronRight else Icons.Outlined.ExpandMore,
+                                        if (category in collapsedGroupPaths) tr("Expand group ${categoryLabel(category)}", "展开分组 ${categoryLabel(category)}") else tr("Collapse group ${categoryLabel(category)}", "收起分组 ${categoryLabel(category)}"),
+                                        Modifier.size(16.dp),
+                                        tint = MutedInk,
+                                    )
+                                } else if (customGroup) Spacer(Modifier.width(24.dp))
+                                if (customGroup) Icon(Icons.Outlined.Folder, null, Modifier.size(15.dp), tint = MutedInk)
+                                if (customGroup) Spacer(Modifier.width(6.dp))
+                                Text(categoryLabel(category), color = Ink, fontSize = 11.sp, maxLines = 1, modifier = Modifier.weight(1f))
+                                if (customGroup) Text(brushes.count { BrushGroupOperations.isWithin(it.groupName, category) }.toString(), color = MutedInk, fontSize = 9.sp)
+                            }
+                            DropdownMenu(expanded = menuGroup == category, onDismissRequest = { menuGroup = null }) {
+                                DropdownMenuItem(text = { Text(tr("Rename group", "重命名分组")) }, onClick = {
+                                    menuGroup = null
+                                    renameGroup = category
+                                    renameGroupValue = category
+                                })
+                                DropdownMenuItem(text = { Text(tr("Duplicate group", "复制分组")) }, onClick = {
+                                    menuGroup = null
+                                    val parent = BrushGroupOperations.parent(category)
+                                    val base = "${BrushGroupOperations.displayName(category)} $groupCopySuffix"
+                                    var candidate = listOfNotNull(parent, base).joinToString("/")
+                                    var suffix = 2
+                                    while (importedCategories.any { it.equals(candidate, true) }) {
+                                        candidate = listOfNotNull(parent, "$base $suffix").joinToString("/")
+                                        suffix++
+                                    }
+                                    val updated = BrushGroupOperations.duplicateGroup(brushes, category, candidate, groupCopySuffix)
+                                    onReplaceBrushes(updated)
+                                    onReplaceGroups(BrushGroupOperations.reconcileRegisteredGroups(registeredGroups + candidate, updated))
+                                    selectedCategory = candidate
+                                })
+                                DropdownMenuItem(text = { Text(tr("Delete group", "删除分组"), color = MaterialTheme.colorScheme.error) }, onClick = {
+                                    menuGroup = null
+                                    deleteGroup = category
+                                })
+                            }
+                        }
                     }
                 }
-                LazyVerticalGrid(
+                if (gridLayout) LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     contentPadding = PaddingValues(8.dp),
@@ -7140,20 +7157,45 @@ private fun ProcreateBrushLibrary(
                 ) {
                     items(displayed, key = { it.id }) { brush ->
                         val selected = selectedBrushId == brush.id
-                        Box {
-                            Column(
-                                Modifier.fillMaxWidth().height(112.dp).clip(RoundedCornerShape(6.dp)).background(if (selected) Color(0xFFE1E1E1) else Color.White).border(1.dp, if (selected) Ink else OutlineSoft, RoundedCornerShape(6.dp)).combinedClickable(
-                                    onClick = { onBrushSelected(brush) },
-                                    onDoubleClick = { if (brush.format != BrushFormat.SYSTEM) editBrush = brush },
-                                    onLongClick = { if (brush.format != BrushFormat.SYSTEM) menuBrush = brush },
-                                ).padding(7.dp),
-                            ) {
-                                Text(brush.name, color = Ink, fontSize = 10.sp, maxLines = 1)
-                                Spacer(Modifier.height(4.dp))
-                                Surface(Modifier.fillMaxWidth().weight(1f), shape = RoundedCornerShape(4.dp), color = Color(0xFFF3F3F3)) {
-                                    BrushTipPreview(brush, Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 3.dp))
-                                }
+                        val brushPresetDescription = tr("Brush preset ${brush.name}", "笔刷预设 ${brush.name}")
+                        Column(
+                            Modifier.fillMaxWidth().height(112.dp).semantics { contentDescription = brushPresetDescription }.longPressBrushDrag(brush).clip(RoundedCornerShape(6.dp)).background(if (selected) Color(0xFFE1E1E1) else Color.White).border(1.dp, if (selected) Ink else OutlineSoft, RoundedCornerShape(6.dp)).combinedClickable(
+                                onClick = { onBrushSelected(brush) },
+                                onDoubleClick = { if (brush.format != BrushFormat.SYSTEM) editBrush = brush },
+                                onLongClick = { menuBrush = brush },
+                            ).padding(7.dp),
+                        ) {
+                            Text(brush.name, color = Ink, fontSize = 10.sp, maxLines = 1)
+                            Spacer(Modifier.height(4.dp))
+                            Surface(Modifier.fillMaxWidth().weight(1f), shape = RoundedCornerShape(4.dp), color = Color(0xFFF3F3F3)) {
+                                BrushTipPreview(brush, Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 3.dp))
                             }
+                        }
+                    }
+                } else LazyColumn(
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    contentPadding = PaddingValues(vertical = 6.dp),
+                ) {
+                    items(displayed, key = { it.id }) { brush ->
+                        val selected = selectedBrushId == brush.id
+                        val brushPresetDescription = tr("Brush preset ${brush.name}", "笔刷预设 ${brush.name}")
+                        Row(
+                            Modifier.fillMaxWidth().height(68.dp).semantics { contentDescription = brushPresetDescription }.longPressBrushDrag(brush).background(if (selected) Color(0xFFE1E1E1) else Color.White).combinedClickable(
+                                onClick = { onBrushSelected(brush) },
+                                onDoubleClick = { if (brush.format != BrushFormat.SYSTEM) editBrush = brush },
+                                onLongClick = { menuBrush = brush },
+                            ).padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Surface(Modifier.width(116.dp).fillMaxHeight(), shape = RoundedCornerShape(4.dp), color = Color(0xFFF3F3F3)) {
+                                BrushTipPreview(brush, Modifier.fillMaxSize().padding(horizontal = 7.dp, vertical = 4.dp))
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(brush.name, color = Ink, fontSize = 12.sp, maxLines = 1)
+                                Text(BrushGroupOperations.displayName(brush.groupName).ifBlank { ungroupedLabel }, color = MutedInk, fontSize = 9.sp, maxLines = 1)
+                            }
+                            if (selected) Icon(Icons.Outlined.Check, null, Modifier.size(18.dp), tint = Ink)
                         }
                     }
                 }
@@ -7164,14 +7206,57 @@ private fun ProcreateBrushLibrary(
         AlertDialog(
             onDismissRequest = { menuBrush = null },
             title = { Text(brush.name) },
-            text = { Text(tr("Edit, export or remove this brush.", "编辑、导出或移除此笔刷。")) },
-            confirmButton = { TextButton(onClick = { menuBrush = null; editBrush = brush }) { Text(tr("Edit", "编辑")) } },
+            text = { Text(tr("Edit, move, export or remove this brush.", "编辑、移动、导出或移除此笔刷。")) },
+            confirmButton = { TextButton(onClick = { menuBrush = null; if (brush.format != BrushFormat.SYSTEM) editBrush = brush }) { Text(tr("Edit", "编辑")) } },
             dismissButton = {
                 Row {
+                    TextButton(onClick = { menuBrush = null; moveBrush = brush }) { Text(tr("Move", "移动")) }
                     TextButton(onClick = { menuBrush = null; onExportBrush(brush) }) { Text(tr("Export", "导出")) }
-                    TextButton(onClick = { menuBrush = null; onDeleteBrush(brush.id) }) { Text(tr("Remove", "移除"), color = MaterialTheme.colorScheme.error) }
+                    if (brush.format != BrushFormat.SYSTEM) TextButton(onClick = { menuBrush = null; onDeleteBrush(brush.id) }) { Text(tr("Remove", "移除"), color = MaterialTheme.colorScheme.error) }
                 }
             },
+        )
+    }
+    moveBrush?.let { brush ->
+        BrushMoveToGroupDialog(
+            brush = brush,
+            groups = importedCategories,
+            onDismiss = { moveBrush = null },
+            onMove = { group ->
+                moveBrushIntoGroup(brush, group)
+                moveBrush = null
+            },
+        )
+    }
+    renameGroup?.let { oldName ->
+        AlertDialog(
+            onDismissRequest = { renameGroup = null },
+            title = { Text(tr("Rename brush group", "重命名笔刷分组")) },
+            text = { OutlinedTextField(renameGroupValue, { renameGroupValue = it.take(BrushGroupOperations.MAX_PATH_LENGTH) }, singleLine = true, modifier = Modifier.fillMaxWidth()) },
+            confirmButton = { Button(onClick = {
+                val updated = BrushGroupOperations.rename(brushes, oldName, renameGroupValue)
+                onReplaceBrushes(updated)
+                onReplaceGroups(BrushGroupOperations.reconcileRegisteredGroups(BrushGroupOperations.renameRegisteredGroups(registeredGroups, oldName, renameGroupValue), updated))
+                selectedCategory = BrushGroupOperations.normalize(renameGroupValue).takeIf(String::isNotBlank) ?: allLabel
+                renameGroup = null
+            }, enabled = BrushGroupOperations.normalize(renameGroupValue).isNotBlank()) { Text(tr("Rename", "重命名")) } },
+            dismissButton = { TextButton(onClick = { renameGroup = null }) { Text(tr("Cancel", "取消")) } },
+        )
+    }
+    deleteGroup?.let { group ->
+        val count = brushes.count { BrushGroupOperations.isWithin(it.groupName, group) }
+        AlertDialog(
+            onDismissRequest = { deleteGroup = null },
+            title = { Text(tr("Delete brush group?", "删除笔刷分组？")) },
+            text = { Text(tr("This removes the group and its $count brushes. Existing strokes are unchanged.", "这会移除该分组及其中的 $count 支笔刷。已有笔画不会改变。")) },
+            confirmButton = { Button(onClick = {
+                val updated = BrushGroupOperations.deleteGroup(brushes, group)
+                onReplaceBrushes(updated)
+                onReplaceGroups(BrushGroupOperations.reconcileRegisteredGroups(BrushGroupOperations.deleteRegisteredGroup(registeredGroups, group), updated))
+                selectedCategory = allLabel
+                deleteGroup = null
+            }) { Text(tr("Delete", "删除")) } },
+            dismissButton = { TextButton(onClick = { deleteGroup = null }) { Text(tr("Cancel", "取消")) } },
         )
     }
     editBrush?.let { brush ->
