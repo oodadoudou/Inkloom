@@ -30,4 +30,10 @@ class StrokeCorrectionTest {
         assertTrue(corrected.width > stroke.width)
         assertEquals(10f, stroke.width, .001f)
     }
+
+    @Test fun redrawWidthChangesPressureWithoutChangingBaseWidth() {
+        val corrected = StrokeCorrection.apply(stroke, CorrectLineMode.REDRAW_WIDTH, .2f, 1000f, 1000f)
+        assertEquals(stroke.width, corrected.width)
+        assertTrue(corrected.points.all { it.pressure < 1f })
+    }
 }

@@ -226,6 +226,9 @@ class InkCanvasView(context: Context) : View(context) {
     private var correctionBefore: List<InkStroke>? = null
     private var correctionStrokeId: String? = null
     private var correctionStartX = 0f
+    private var correctionEndX = 0f
+    private var correctionEndY = 0f
+    private var correctionPointIndex = -1
     private var correctionChanged = false
     private var movingSelection = false
     private var selectionMoved = false
@@ -1870,7 +1873,7 @@ class InkCanvasView(context: Context) : View(context) {
                     extendLiquify(normalizedX, normalizedY)
                 }
                 else if (activeTool == EditorTool.CORRECT_LINE) {
-                    updateCorrectLineGesture(normalizedX)
+                    updateCorrectLineGesture(normalizedX, normalizedY)
                 }
                 else if (activeTool == EditorTool.EYEDROPPER) {
                     onColorSampled(sampleRenderedColor(inputPoint.first, inputPoint.second))
@@ -3247,7 +3250,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun beginCorrectLineGesture(x: Float, y: Float) {
-        val index = findStroke(x, y, .05f)
+        val index = if (correctLineMode == CorrectLineMode.CONNECT) findNearestEndpointStroke(x, y, null, .06f) else findStroke(x, y, .05f)
         val target = strokes.getOrNull(index)
         if (target == null || target.id in protectedStrokeIds || target.layerId in protectedLayerIds) {
             correctionBefore = null
@@ -3257,13 +3260,33 @@ class InkCanvasView(context: Context) : View(context) {
         correctionBefore = strokes.toList()
         correctionStrokeId = target.id
         correctionStartX = x
+        correctionEndX = x
+        correctionEndY = y
+        correctionPointIndex = target.points.indices.minByOrNull { pointIndex ->
+            val point = target.points[pointIndex]
+            hypot(((point.x - x) * pageModelWidth).toDouble(), ((point.y - y) * pageModelHeight).toDouble())
+        } ?: -1
         correctionChanged = false
-        updateCorrectLine(correctLineAmount)
+        if (correctLineMode !in setOf(CorrectLineMode.CONNECT, CorrectLineMode.CONTROL_POINTS)) updateCorrectLine(correctLineAmount)
     }
 
-    private fun updateCorrectLineGesture(x: Float) {
+    private fun updateCorrectLineGesture(x: Float, y: Float) {
         if (correctionBefore == null || correctionStrokeId == null) return
-        updateCorrectLine((correctLineAmount + (x - correctionStartX) * 1.5f).coerceIn(0f, 1f))
+        correctionEndX = x
+        correctionEndY = y
+        if (correctLineMode == CorrectLineMode.CONTROL_POINTS) {
+            val id = correctionStrokeId ?: return
+            val strokeIndex = strokes.indexOfFirst { it.id == id }
+            val current = strokes.getOrNull(strokeIndex) ?: return
+            if (correctionPointIndex !in current.points.indices) return
+            val changed = current.copy(points = current.points.mapIndexed { index, point -> if (index == correctionPointIndex) point.copy(x = x.coerceIn(0f, 1f), y = y.coerceIn(0f, 1f)) else point })
+            strokes[strokeIndex] = changed
+            correctionChanged = true
+            invalidateStrokeCache(listOf(current), listOf(changed))
+            invalidate()
+        } else if (correctLineMode != CorrectLineMode.CONNECT) {
+            updateCorrectLine((correctLineAmount + (x - correctionStartX) * 1.5f).coerceIn(0f, 1f))
+        }
     }
 
     private fun updateCorrectLine(amount: Float) {
@@ -3282,12 +3305,62 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun finishCorrectLineGesture() {
         val before = correctionBefore
+        if (before != null && correctLineMode == CorrectLineMode.CONNECT) connectCorrectionStrokes()
         if (before != null && correctionChanged) commitStrokeEdit(before, strokes)
         correctionBefore = null
         correctionStrokeId = null
         correctionChanged = false
+        correctionPointIndex = -1
         invalidate()
     }
+
+    private fun connectCorrectionStrokes() {
+        val sourceId = correctionStrokeId ?: return
+        val source = strokes.firstOrNull { it.id == sourceId } ?: return
+        val targetIndex = findNearestEndpointStroke(correctionEndX, correctionEndY, sourceId, .06f)
+        val target = strokes.getOrNull(targetIndex)?.takeIf { it.id != sourceId && it.layerId == source.layerId && it.id !in protectedStrokeIds } ?: return
+        if (source.points.isEmpty() || target.points.isEmpty()) return
+        val candidates = listOf(
+            Triple(source.points, target.points, pointDistance(source.points.last(), target.points.first())),
+            Triple(source.points, target.points.reversed(), pointDistance(source.points.last(), target.points.last())),
+            Triple(source.points.reversed(), target.points, pointDistance(source.points.first(), target.points.first())),
+            Triple(source.points.reversed(), target.points.reversed(), pointDistance(source.points.first(), target.points.last())),
+        )
+        val best = candidates.minBy { it.third }
+        if (best.third > maxOf(source.width, target.width, 48f) * 2f) return
+        val merged = source.copy(points = best.first + best.second.drop(1))
+        val sourceIndex = strokes.indexOfFirst { it.id == source.id }
+        val removed = listOf(source, target)
+        strokes.removeAll { it.id == source.id || it.id == target.id }
+        strokes.add(sourceIndex.coerceIn(0, strokes.size), merged)
+        correctionChanged = true
+        invalidateStrokeCache(removed, listOf(merged))
+    }
+
+    private fun pointDistance(first: StrokePoint, second: StrokePoint): Float = hypot(
+        ((first.x - second.x) * pageModelWidth).toDouble(),
+        ((first.y - second.y) * pageModelHeight).toDouble(),
+    ).toFloat()
+
+    private fun findNearestEndpointStroke(x: Float, y: Float, excludingId: String?, threshold: Float): Int = strokes.indices
+        .filter { index ->
+            val stroke = strokes[index]
+            stroke.id != excludingId && stroke.id !in protectedStrokeIds && stroke.points.isNotEmpty()
+        }
+        .minByOrNull { index ->
+            val stroke = strokes[index]
+            minOf(
+                hypot((stroke.points.first().x - x).toDouble(), (stroke.points.first().y - y).toDouble()),
+                hypot((stroke.points.last().x - x).toDouble(), (stroke.points.last().y - y).toDouble()),
+            )
+        }
+        ?.takeIf { index ->
+            val stroke = strokes[index]
+            minOf(
+                hypot((stroke.points.first().x - x).toDouble(), (stroke.points.first().y - y).toDouble()),
+                hypot((stroke.points.last().x - x).toDouble(), (stroke.points.last().y - y).toDouble()),
+            ) <= threshold
+        } ?: -1
 
     private fun cancelCorrectLineGesture() {
         val before = correctionBefore
@@ -3295,6 +3368,7 @@ class InkCanvasView(context: Context) : View(context) {
         correctionBefore = null
         correctionStrokeId = null
         correctionChanged = false
+        correctionPointIndex = -1
         invalidate()
     }
 

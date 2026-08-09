@@ -2,7 +2,7 @@ package app.inkloom.document
 
 import kotlin.math.hypot
 
-enum class CorrectLineMode { SMOOTH, SIMPLIFY, ADJUST_WIDTH }
+enum class CorrectLineMode { SMOOTH, SIMPLIFY, ADJUST_WIDTH, REDRAW_WIDTH, CONNECT, CONTROL_POINTS }
 
 /** Non-destructive vector equivalents of CSP's line-correction sub tools. */
 object StrokeCorrection {
@@ -12,6 +12,8 @@ object StrokeCorrection {
             CorrectLineMode.SMOOTH -> stroke.copy(points = smooth(stroke.points, 1 + (strength * 7f).toInt()))
             CorrectLineMode.SIMPLIFY -> stroke.copy(points = simplify(stroke.points, (1f + strength * 200f), pageWidth, pageHeight))
             CorrectLineMode.ADJUST_WIDTH -> stroke.copy(width = (stroke.width * (.35f + strength * 1.65f)).coerceIn(.5f, 800f))
+            CorrectLineMode.REDRAW_WIDTH -> stroke.copy(points = stroke.points.map { point -> point.copy(pressure = (point.pressure * (.35f + strength * 1.65f)).coerceIn(.01f, 1f)) })
+            CorrectLineMode.CONNECT, CorrectLineMode.CONTROL_POINTS -> stroke
         }
     }
 

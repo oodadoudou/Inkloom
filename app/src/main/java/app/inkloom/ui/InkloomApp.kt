@@ -5599,12 +5599,15 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
                 }
                 if (tool == EditorTool.CORRECT_LINE) {
                     Text(tr("Correct line", "线条修正"), color = MutedInk, fontSize = 12.sp)
-                    Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                        CorrectLineMode.entries.forEach { mode ->
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        items(CorrectLineMode.entries, key = { it.name }) { mode ->
                             val correctionDescription = when (mode) {
                                 CorrectLineMode.SMOOTH -> tr("Smooth line correction", "平滑线条修正")
                                 CorrectLineMode.SIMPLIFY -> tr("Simplify line correction", "简化线条修正")
                                 CorrectLineMode.ADJUST_WIDTH -> tr("Adjust line width correction", "调整线宽修正")
+                                CorrectLineMode.REDRAW_WIDTH -> tr("Redraw vector line width", "重绘矢量线宽")
+                                CorrectLineMode.CONNECT -> tr("Connect vector lines", "连接矢量线")
+                                CorrectLineMode.CONTROL_POINTS -> tr("Move vector control points", "移动矢量控制点")
                             }
                             FilterChip(
                                 selected = correctLineMode == mode,
@@ -5616,6 +5619,9 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
                                             CorrectLineMode.SMOOTH -> tr("Smooth", "平滑")
                                             CorrectLineMode.SIMPLIFY -> tr("Simplify", "简化")
                                             CorrectLineMode.ADJUST_WIDTH -> tr("Width", "线宽")
+                                            CorrectLineMode.REDRAW_WIDTH -> tr("Redraw", "重绘线宽")
+                                            CorrectLineMode.CONNECT -> tr("Connect", "连接")
+                                            CorrectLineMode.CONTROL_POINTS -> tr("Points", "控制点")
                                         },
                                         fontSize = 10.sp,
                                     )
@@ -5636,6 +5642,9 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
                             CorrectLineMode.SMOOTH -> tr("Drag across an existing line to reduce shake while preserving its endpoints.", "在已有线条上拖动，减少抖动并保留首尾端点。")
                             CorrectLineMode.SIMPLIFY -> tr("Drag across a vector line to reduce redundant control points.", "在矢量线条上拖动，减少多余控制点。")
                             CorrectLineMode.ADJUST_WIDTH -> tr("Drag across a line to change its entire width by the selected strength.", "在线条上拖动，按所选强度调整整条线宽。")
+                            CorrectLineMode.REDRAW_WIDTH -> tr("Drag horizontally over a vector line to redraw its pressure-based width.", "在矢量线条上横向拖动，重绘基于压力的局部线宽。")
+                            CorrectLineMode.CONNECT -> tr("Drag from one vector line endpoint to another to connect them.", "从一条矢量线端点拖到另一条端点以连接线条。")
+                            CorrectLineMode.CONTROL_POINTS -> tr("Drag the nearest vector control point to reshape the line.", "拖动最近的矢量控制点以调整线条形状。")
                         } + tr(" Undo restores the original vector line.", " 撤销可恢复原始矢量线条。"),
                         color = MutedInk,
                         fontSize = 10.sp,

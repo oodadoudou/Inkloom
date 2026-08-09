@@ -75,6 +75,47 @@ class InkCanvasProfessionalToolsTest {
         assertEquals(original.width * 2f, requireNotNull(widened).width)
     }
 
+    @Test fun controlPointModeMovesTheNearestVectorPoint() {
+        var replacement: InkStroke? = null
+        val original = line("points", listOf(StrokePoint(.2f, .5f), StrokePoint(.5f, .5f), StrokePoint(.8f, .5f)))
+        val view = canvas(EditorTool.CORRECT_LINE, original) {
+            correctLineMode = CorrectLineMode.CONTROL_POINTS
+            onStrokesReplaced = { _, changed, _ -> replacement = changed.firstOrNull() }
+        }
+
+        send(view, MotionEvent.ACTION_DOWN, 500f, 500f, 0L)
+        send(view, MotionEvent.ACTION_MOVE, 600f, 700f, 10L)
+        send(view, MotionEvent.ACTION_UP, 600f, 700f, 20L)
+
+        assertEquals(.6f, requireNotNull(replacement).points[1].x, .001f)
+        assertEquals(.7f, requireNotNull(replacement).points[1].y, .001f)
+    }
+
+    @Test fun connectModeJoinsNearbyVectorEndpointsIntoOneStroke() {
+        var replacements = emptyList<InkStroke>()
+        val first = line("first", listOf(StrokePoint(.2f, .5f), StrokePoint(.48f, .5f)))
+        val second = line("second", listOf(StrokePoint(.52f, .5f), StrokePoint(.8f, .5f)))
+        lateinit var view: InkCanvasView
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view = InkCanvasView(ApplicationProvider.getApplicationContext()).apply {
+                layout(0, 0, 1_000, 1_000)
+                tool = EditorTool.CORRECT_LINE
+                correctLineMode = CorrectLineMode.CONNECT
+                fingerDrawingEnabled = true
+                activeLayerId = LayerIds.INK
+                setDocumentStrokes(listOf(first, second), "connect-lines")
+                onStrokesReplaced = { _, changed, _ -> replacements = changed }
+            }
+        }
+
+        send(view, MotionEvent.ACTION_DOWN, 480f, 500f, 0L)
+        send(view, MotionEvent.ACTION_MOVE, 520f, 500f, 10L)
+        send(view, MotionEvent.ACTION_UP, 520f, 500f, 20L)
+
+        assertEquals(1, replacements.size)
+        assertTrue(replacements.single().points.size >= 3)
+    }
+
     @Test fun invertAndFreeTransformOperateOnEditableSelection() {
         val view = canvas(EditorTool.SELECT, line("one", listOf(StrokePoint(.3f, .3f), StrokePoint(.4f, .4f))))
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
