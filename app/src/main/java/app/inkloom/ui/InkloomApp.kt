@@ -1240,6 +1240,12 @@ private fun EditorScreen(
             view.requestFocus()
         }
     }
+    fun setLayersPanelOpen(open: Boolean, pageId: String? = null) {
+        pageId?.let(::selectPageWithViewport)
+        if (open && brushesOpen) onToggleBrushes()
+        layersOpen = open
+        onSettingsChange(settings.copy(showLayerPanel = open, showBrushPanel = if (open) false else settings.showBrushPanel))
+    }
     var panelsHiddenByShortcut by remember { mutableStateOf(false) }
     var pageRailBeforeShortcut by remember { mutableStateOf(settings.showPageRail) }
     var toolbarBeforeShortcut by remember { mutableStateOf(settings.showToolbar) }
@@ -1379,9 +1385,7 @@ private fun EditorScreen(
                 if (alreadySelected) onToggleBrushes()
             })
             ProcreateTopButton(Icons.Outlined.Layers, tr("Layers", "图层"), selected = layersOpen, onClick = {
-                val open = !layersOpen
-                layersOpen = open
-                onSettingsChange(settings.copy(showLayerPanel = open))
+                setLayersPanelOpen(!layersOpen)
             })
             Box {
                 Box(
@@ -1857,7 +1861,7 @@ private fun EditorScreen(
                 onDock = { changePanelDock(WorkspacePanelKind.PAGES, it) },
                 onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
                 pageTemplates = pageTemplates,
-                onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> selectPageWithViewport(pageId); layersOpen = true; onSettingsChange(settings.copy(showLayerPanel = true)) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
+                onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> setLayersPanelOpen(true, pageId) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
                 onApplyTemplate = onApplyPageTemplate, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
                 onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate,
                 onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
@@ -2247,9 +2251,7 @@ private fun EditorScreen(
                             ShortcutAction.NEXT_PAGE -> document.pages.indexOfFirst { it.id == selectedPage.id }.takeIf { it in 0 until document.pages.lastIndex }?.let { selectPageWithViewport(document.pages[it + 1].id) }
                             ShortcutAction.TOGGLE_BRUSH_PANEL -> onToggleBrushes()
                             ShortcutAction.TOGGLE_LAYER_PANEL -> {
-                                val open = !layersOpen
-                                layersOpen = open
-                                onSettingsChange(settings.copy(showLayerPanel = open))
+                                setLayersPanelOpen(!layersOpen)
                             }
                             ShortcutAction.TOGGLE_PANELS -> if (!panelsHiddenByShortcut) {
                                 pageRailBeforeShortcut = settings.showPageRail
@@ -2437,7 +2439,7 @@ private fun EditorScreen(
                 onDock = { changePanelDock(WorkspacePanelKind.PAGES, it) },
                 onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
                 pageTemplates = pageTemplates,
-                onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> selectPageWithViewport(pageId); layersOpen = true; onSettingsChange(settings.copy(showLayerPanel = true)) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
+                onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> setLayersPanelOpen(true, pageId) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
                 onApplyTemplate = onApplyPageTemplate, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
                 onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate,
                 onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
@@ -2516,7 +2518,7 @@ private fun EditorScreen(
                     onDock = { changePanelDock(WorkspacePanelKind.PAGES, it) },
                     onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
                     pageTemplates = pageTemplates,
-                    onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> selectPageWithViewport(pageId); layersOpen = true; onSettingsChange(settings.copy(showLayerPanel = true)) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
+                    onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> setLayersPanelOpen(true, pageId) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
                     onApplyTemplate = onApplyPageTemplate, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
                     onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate,
                     onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
@@ -2614,7 +2616,7 @@ private fun EditorScreen(
                 onDock = { changePanelDock(WorkspacePanelKind.PAGES, it) },
                 onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
                 pageTemplates = pageTemplates,
-                onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> selectPageWithViewport(pageId); layersOpen = true; onSettingsChange(settings.copy(showLayerPanel = true)) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
+                onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> setLayersPanelOpen(true, pageId) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
                 onApplyTemplate = onApplyPageTemplate, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
                 onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate,
                 onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,

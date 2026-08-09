@@ -17,6 +17,7 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onLast
@@ -533,6 +534,17 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription("Brushes").performClick()
         composeRule.onNodeWithContentDescription("Resize brushes panel").assertIsDisplayed()
         assertEquals("FREE", preferences.getString("brushPanelDock", null))
+    }
+
+    @Test fun openingLayersAutomaticallyDismissesBrushes() {
+        createNotebookAndOpenEditor()
+        composeRule.onNodeWithContentDescription("Brushes").performClick()
+        composeRule.onNodeWithContentDescription("Close brushes panel").assertIsDisplayed()
+
+        composeRule.onNodeWithContentDescription("Layers").performClick()
+
+        assertEquals(0, composeRule.onAllNodesWithContentDescription("Close brushes panel").fetchSemanticsNodes().size)
+        composeRule.onNodeWithContentDescription("Close layers panel").assertIsDisplayed()
     }
 
     @Test fun selectionControlsExposePersistentFreeformAndRectangleModes() {
