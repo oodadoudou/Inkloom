@@ -4090,6 +4090,17 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.viewportRotationDegrees = viewportState.rotationDegrees
                 view.onStrokeCommitted = { onStroke(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
                 view.onShapeCommitted = { onElement(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
+                view.onGradientCommitted = { sx, sy, ex, ey, startColor, endColor ->
+                    val gradient = PageElement.Shape(
+                        x = 0f, y = 0f, width = page.width, height = page.height,
+                        layerId = activeLayerId, kind = ShapeKind.RECTANGLE,
+                        colorArgb = startColor, fillArgb = startColor, strokeWidth = 0f,
+                        gradientEndArgb = endColor,
+                        gradientStartX = sx, gradientStartY = sy,
+                        gradientEndX = ex, gradientEndY = ey,
+                    )
+                    onElement(documentId, page.id, PageCropTransform.unproject(gradient, page.crop))
+                }
                 view.onFillCommitted = { mask, fx, fy, fw, fh, color, opacity ->
                     val maskPath = assets.saveFillMask(mask)
                     mask.recycle()
@@ -4157,6 +4168,17 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.pageModelHeight = renderedPage.height
                 view.onStrokeCommitted = { onStroke(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
                 view.onShapeCommitted = { onElement(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
+                view.onGradientCommitted = { sx, sy, ex, ey, startColor, endColor ->
+                    val gradient = PageElement.Shape(
+                        x = 0f, y = 0f, width = renderedPage.width, height = renderedPage.height,
+                        layerId = activeLayerId, kind = ShapeKind.RECTANGLE,
+                        colorArgb = startColor, fillArgb = startColor, strokeWidth = 0f,
+                        gradientEndArgb = endColor,
+                        gradientStartX = sx, gradientStartY = sy,
+                        gradientEndX = ex, gradientEndY = ey,
+                    )
+                    onElement(documentId, page.id, PageCropTransform.unproject(gradient, page.crop))
+                }
                 view.onFillCommitted = { mask, fx, fy, fw, fh, color, opacity ->
                     val maskPath = assets.saveFillMask(mask)
                     mask.recycle()
@@ -4554,8 +4576,18 @@ private fun ObjectElementView(
                         close()
                     }
                 }
-                element.fillArgb?.let { fill -> when (element.kind) { ShapeKind.ELLIPSE -> drawOval(Color(fill)); ShapeKind.RECTANGLE -> drawRect(Color(fill)); ShapeKind.TRIANGLE -> drawPath(triangle, Color(fill)); ShapeKind.DIAMOND -> drawPath(diamond, Color(fill)); ShapeKind.FREEFORM -> drawPath(freeform, Color(fill)); else -> Unit } }
-                when (element.kind) {
+                element.fillArgb?.let { fill ->
+                    if (element.kind == ShapeKind.RECTANGLE && element.gradientEndArgb != null) {
+                        drawRect(
+                            brush = Brush.linearGradient(
+                                colors = listOf(Color(fill), Color(element.gradientEndArgb)),
+                                start = Offset(element.gradientStartX * size.width, element.gradientStartY * size.height),
+                                end = Offset(element.gradientEndX * size.width, element.gradientEndY * size.height),
+                            ),
+                        )
+                    } else when (element.kind) { ShapeKind.ELLIPSE -> drawOval(Color(fill)); ShapeKind.RECTANGLE -> drawRect(Color(fill)); ShapeKind.TRIANGLE -> drawPath(triangle, Color(fill)); ShapeKind.DIAMOND -> drawPath(diamond, Color(fill)); ShapeKind.FREEFORM -> drawPath(freeform, Color(fill)); else -> Unit }
+                }
+                if (element.strokeWidth > 0f) when (element.kind) {
                     ShapeKind.ELLIPSE -> drawOval(color, style = stroke)
                     ShapeKind.RECTANGLE -> drawRect(color, style = stroke)
                     ShapeKind.TRIANGLE -> drawPath(triangle, color, style = stroke)

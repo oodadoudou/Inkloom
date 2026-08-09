@@ -11,10 +11,12 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Matrix
+import android.graphics.LinearGradient
 import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.graphics.PorterDuffXfermode
+import android.graphics.Shader
 import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -170,6 +172,8 @@ class InkCanvasView(context: Context) : View(context) {
     private var shapeEnd: ShapePoint? = null
     private val shapeFreeformPoints = mutableListOf<ShapePoint>()
     private var shapeFreeformLastMoveAt = 0L
+    private var gradientStart: ShapePoint? = null
+    private var gradientEnd: ShapePoint? = null
     private var fillSourceBitmap: Bitmap? = null
     private var fillSeedX = 0
     private var fillSeedY = 0
@@ -600,6 +604,8 @@ class InkCanvasView(context: Context) : View(context) {
     var pageModelHeight: Float = 2263f
     var onStrokeCommitted: (InkStroke) -> Unit = {}
     var onShapeCommitted: (PageElement.Shape) -> Unit = {}
+    var onGradientCommitted: (startX: Float, startY: Float, endX: Float, endY: Float, startColor: Long, endColor: Long) -> Unit = { _, _, _, _, _, _ -> }
+    var gradientEndColor: Int = Color.WHITE
     /** Paint-bucket fill: receives the fill mask bitmap (page-local pixels) plus the
      *  mask's bounding box in normalized page coordinates, the fill color and opacity.
      *  The host persists the mask and creates a [PageElement.Fill]. */
@@ -842,6 +848,7 @@ class InkCanvasView(context: Context) : View(context) {
         drawRulerGuide(canvas)
         drawLaserTrail(canvas, SystemClock.uptimeMillis())
         drawFillPreview(canvas)
+        drawGradientPreview(canvas)
         drawSmudgePreview(canvas)
         drawBrushSizePreview(canvas)
         drawStylusHoverCursor(canvas)
@@ -1394,7 +1401,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (tool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.EYEDROPPER, EditorTool.SELECT, EditorTool.SHAPE, EditorTool.LASER, EditorTool.FILL, EditorTool.SMUDGE, EditorTool.LIQUIFY)) return false
+        if (tool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.EYEDROPPER, EditorTool.SELECT, EditorTool.SHAPE, EditorTool.LASER, EditorTool.FILL, EditorTool.GRADIENT, EditorTool.SMUDGE, EditorTool.LIQUIFY)) return false
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             if (hoverCursorVisible) { hoverCursorVisible = false; invalidate() }
             if (!hasFocus()) requestFocus()
@@ -1707,6 +1714,13 @@ class InkCanvasView(context: Context) : View(context) {
                     invalidate()
                     return true
                 }
+                if (activeTool == EditorTool.GRADIENT) {
+                    parent?.requestDisallowInterceptTouchEvent(true)
+                    gradientStart = ShapePoint(normalizedX, normalizedY)
+                    gradientEnd = gradientStart
+                    invalidate()
+                    return true
+                }
                 if (activeTool == EditorTool.SMUDGE) {
                     parent?.requestDisallowInterceptTouchEvent(true)
                     beginSmudgeGesture(normalizedX, normalizedY)
@@ -1736,6 +1750,10 @@ class InkCanvasView(context: Context) : View(context) {
             MotionEvent.ACTION_MOVE -> {
                 if (activeTool == EditorTool.FILL) {
                     adjustFillSensitivity(event.x)
+                }
+                else if (activeTool == EditorTool.GRADIENT) {
+                    gradientEnd = ShapePoint(normalizedX, normalizedY)
+                    invalidate()
                 }
                 else if (activeTool == EditorTool.SMUDGE) {
                     for (i in 0 until event.historySize) historicalCanvasPoint(event, 0, i).let { point -> extendSmudge(point.first / width.coerceAtLeast(1), point.second / height.coerceAtLeast(1)) }
@@ -1854,6 +1872,7 @@ class InkCanvasView(context: Context) : View(context) {
                     finishActiveStrokePreview()
                     if (activeTool == EditorTool.LASER) laserTrail.cancelActive()
                     if (activeTool == EditorTool.FILL) cancelFillGesture()
+                    if (activeTool == EditorTool.GRADIENT) { gradientStart = null; gradientEnd = null }
                     if (activeTool == EditorTool.SMUDGE) cancelSmudgeGesture()
                     if (activeTool == EditorTool.LIQUIFY) cancelLiquifyGesture()
                     shapeStart = null; shapeEnd = null; shapeFreeformPoints.clear()
@@ -1862,6 +1881,14 @@ class InkCanvasView(context: Context) : View(context) {
                     lassoPoints.clear(); movingSelection = false; selectionMoved = false; selectionGestureBefore = null; selectionTransformMode = TRANSFORM_NONE
                 } else if (activeTool == EditorTool.FILL) {
                     commitFillGesture()
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                } else if (activeTool == EditorTool.GRADIENT) {
+                    val start = gradientStart
+                    val end = gradientEnd
+                    if (start != null && end != null && hypot((end.x - start.x).toDouble(), (end.y - start.y).toDouble()) > .002) {
+                        onGradientCommitted(start.x, start.y, end.x, end.y, inkColor.toUInt().toLong(), gradientEndColor.toUInt().toLong())
+                    }
+                    gradientStart = null; gradientEnd = null
                     parent?.requestDisallowInterceptTouchEvent(false)
                 } else if (activeTool == EditorTool.SMUDGE) {
                     commitSmudgeGesture()
@@ -2058,6 +2085,8 @@ class InkCanvasView(context: Context) : View(context) {
         activeCanvasSnapConstraint = null
         shapeStart = null
         shapeEnd = null
+        gradientStart = null
+        gradientEnd = null
         shapeFreeformPoints.clear()
         if (activeTool == EditorTool.ERASER) cancelEraserGesture()
         selectionGestureBefore?.let(::restoreStrokeSnapshot)
@@ -2441,6 +2470,28 @@ class InkCanvasView(context: Context) : View(context) {
         }
         canvas.restore()
         paint.alpha = 255
+    }
+
+    private fun drawGradientPreview(canvas: Canvas) {
+        val start = gradientStart ?: return
+        val end = gradientEnd ?: return
+        val x0 = start.x * width
+        val y0 = start.y * height
+        var x1 = end.x * width
+        var y1 = end.y * height
+        if (hypot((x1 - x0).toDouble(), (y1 - y0).toDouble()) < 1.0) x1 = x0 + 1f
+        paint.style = Paint.Style.FILL
+        paint.alpha = (inkOpacity * 210f).toInt().coerceIn(0, 255)
+        paint.shader = LinearGradient(x0, y0, x1, y1, inkColor, gradientEndColor, Shader.TileMode.CLAMP)
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+        paint.shader = null
+        paint.alpha = 255
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 2f
+        paint.color = Color.DKGRAY
+        canvas.drawLine(x0, y0, x1, y1, paint)
+        canvas.drawCircle(x0, y0, 8f, paint)
+        canvas.drawCircle(x1, y1, 8f, paint)
     }
 
     private fun appendShapePoint(x: Float, y: Float) {
