@@ -182,6 +182,40 @@ object ViewportTransform {
         return clamp(next, geometry)
     }
 
+    /** Applies scale and focus translation as one transaction. Clamping between separate zoom and
+     * pan callbacks makes the page jump at the recoverable edge and amplifies noisy touch packets. */
+    fun pinchByScreen(
+        current: ViewportState,
+        factor: Float,
+        previousFocusOffsetX: Float,
+        previousFocusOffsetY: Float,
+        currentFocusOffsetX: Float,
+        currentFocusOffsetY: Float,
+        minimumScale: Float = 1f,
+        maximumScale: Float = MAXIMUM_SCALE,
+        maximumPan: Float = MAXIMUM_PAN,
+        geometry: ViewportGeometry? = null,
+    ): ViewportState {
+        val minimum = minimumScale.takeIf { it.isFinite() && it > 0f } ?: 1f
+        val maximum = maximumScale.takeIf { it.isFinite() && it >= minimum } ?: maxOf(minimum, MAXIMUM_SCALE)
+        val safe = sanitize(current, minimum, maximum)
+        val safeFactor = factor.takeIf { it.isFinite() && it > 0f } ?: 1f
+        val nextScale = (safe.scale * safeFactor).coerceIn(minimum, maximum)
+        val ratio = nextScale / safe.scale.coerceAtLeast(.0001f)
+        val previousX = previousFocusOffsetX.takeIf(Float::isFinite) ?: 0f
+        val previousY = previousFocusOffsetY.takeIf(Float::isFinite) ?: 0f
+        val currentX = currentFocusOffsetX.takeIf(Float::isFinite) ?: previousX
+        val currentY = currentFocusOffsetY.takeIf(Float::isFinite) ?: previousY
+        val maximumOffset = maximumPan.takeIf { it.isFinite() && it >= 0f } ?: MAXIMUM_PAN
+        val next = safe.copy(
+            scale = nextScale,
+            panX = (currentX - (previousX - safe.panX) * ratio).coerceIn(-maximumOffset, maximumOffset),
+            panY = (currentY - (previousY - safe.panY) * ratio).coerceIn(-maximumOffset, maximumOffset),
+        )
+        if (nextScale <= minimum + .0001f && kotlin.math.abs(safe.rotationDegrees) <= .0001f) return next.copy(panX = 0f, panY = 0f)
+        return clamp(next, geometry)
+    }
+
     fun rotateBy(current: ViewportState, deltaDegrees: Float, geometry: ViewportGeometry? = null): ViewportState =
         sanitize(current).let { safe -> clamp(safe.copy(rotationDegrees = normalizeDegrees(safe.rotationDegrees + (deltaDegrees.takeIf(Float::isFinite) ?: 0f))), geometry) }
 

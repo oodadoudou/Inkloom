@@ -47,6 +47,28 @@ class ViewportTransformTest {
         assertEquals(focusY, after.panY + after.scale * pageY, .001f)
     }
 
+    @Test fun atomicPinchKeepsThePagePointUnderMovingFingersWithoutIntermediateJump() {
+        val before = ViewportState(scale = 2f, panX = 40f, panY = -20f)
+        val previousFocusX = 260f
+        val previousFocusY = -120f
+        val currentFocusX = 310f
+        val currentFocusY = -90f
+        val pageX = (previousFocusX - before.panX) / before.scale
+        val pageY = (previousFocusY - before.panY) / before.scale
+
+        val after = ViewportTransform.pinchByScreen(
+            before,
+            factor = 1.5f,
+            previousFocusOffsetX = previousFocusX,
+            previousFocusOffsetY = previousFocusY,
+            currentFocusOffsetX = currentFocusX,
+            currentFocusOffsetY = currentFocusY,
+        )
+
+        assertEquals(currentFocusX, after.panX + after.scale * pageX, .001f)
+        assertEquals(currentFocusY, after.panY + after.scale * pageY, .001f)
+    }
+
     @Test fun screenPointMapsBackToTheSamePagePointAfterZoomPanAndRotation() {
         val viewport = ViewportState(scale = 2.5f, panX = 90f, panY = -35f, rotationDegrees = 30f)
         val localX = 640f

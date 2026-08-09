@@ -670,6 +670,7 @@ class InkCanvasView(context: Context) : View(context) {
     var onStrokesReplaced: (List<String>, List<InkStroke>, List<Int>) -> Unit = { removed, replacements, _ -> removed.forEach(onStrokeRemoved); replacements.forEach(onStrokeCommitted) }
     var onViewportScale: (Float, Float, Float) -> Unit = { _, _, _ -> }
     var onViewportPan: (Float, Float) -> Unit = { _, _ -> }
+    var onViewportPinch: ((Float, Float, Float, Float, Float) -> Unit)? = null
     var onViewportRotate: (Float) -> Unit = {}
     var pdfGotoLinks: List<PdfGotoLink> = emptyList()
     var onPdfGotoLink: (PdfGotoLink) -> Unit = {}
@@ -1647,9 +1648,7 @@ class InkCanvasView(context: Context) : View(context) {
                 MotionEvent.ACTION_MOVE -> if (event.pointerCount >= 2) {
                     val focus = event.centroid()
                     val span = event.localSpan()
-                    if (navigationSpan > .01f && span > .01f) {
-                        onViewportScale((span / navigationSpan).coerceIn(.5f, 2f), navigationX, navigationY)
-                    }
+                    val factor = if (navigationSpan > .01f && span > .01f) (span / navigationSpan).coerceIn(.5f, 2f) else 1f
                     val rotationDelta = if (twoFingerRotationEnabled && event.pointerCount == 2) {
                         twoPointerRotationGesture.update(event.getX(0), event.getY(0), event.getX(1), event.getY(1))
                     } else {
@@ -1659,7 +1658,10 @@ class InkCanvasView(context: Context) : View(context) {
                     rotationDelta?.let(onViewportRotate)
                     if (event.pointerCount == 3) threeFingerTapRedoGesture.move(focus.first, focus.second, transforming = true)
                     else twoFingerTapUndoGesture.move(focus.first, focus.second, scaling = true)
-                    onViewportPan(focus.first - navigationX, focus.second - navigationY)
+                    onViewportPinch?.invoke(factor, navigationX, navigationY, focus.first, focus.second) ?: run {
+                        if (factor != 1f) onViewportScale(factor, navigationX, navigationY)
+                        onViewportPan(focus.first - navigationX, focus.second - navigationY)
+                    }
                     navigationX = focus.first; navigationY = focus.second
                     navigationSpan = span
                     navigationMoved = true
