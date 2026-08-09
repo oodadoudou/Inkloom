@@ -1215,7 +1215,7 @@ private fun EditorScreen(
         canvasView?.let { view ->
             view.activeLayerId = activeLayerId
             view.applyBrushConfiguration(chosenTool, settings, usedBrush, brushSize, brushOpacity, brushColor, settings.eraserPreset)
-            view.prewarmBrushAssets()
+            view.prepareBrushAssetsNow()
             view.requestFocus()
         }
     }

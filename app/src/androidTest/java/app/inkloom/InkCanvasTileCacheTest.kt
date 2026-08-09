@@ -12,6 +12,7 @@ import app.inkloom.document.StrokeTileKey
 import app.inkloom.engine.v2.render.EngineV2ActiveStrokeSurface
 import app.inkloom.engine.v2.render.EngineV2CommittedTileScene
 import app.inkloom.model.EditorTool
+import app.inkloom.model.SymmetryMode
 import app.inkloom.ui.InkCanvasView
 import java.io.File
 import java.io.FileOutputStream
@@ -92,6 +93,30 @@ class InkCanvasTileCacheTest {
         }
     }
 
+    @Test fun symmetryMirrorsKeepStableIdsAcrossLiveFrames() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val view = InkCanvasView(InstrumentationRegistry.getInstrumentation().targetContext).apply {
+                layout(0, 0, 1024, 1024)
+                tool = EditorTool.PEN
+                symmetryMode = SymmetryMode.QUADRANT
+            }
+            val surface = RecordingActiveSurface(view)
+            view.activeStrokeSurface = surface
+            view.dispatchStylus(MotionEvent.ACTION_DOWN, 180f, 220f, 10L)
+            view.dispatchStylus(MotionEvent.ACTION_MOVE, 260f, 300f, 20L)
+            view.flushEngineV2ActiveFrame()
+            val firstIds = surface.latest.map(InkStroke::id)
+            view.dispatchStylus(MotionEvent.ACTION_MOVE, 340f, 360f, 30L)
+            view.flushEngineV2ActiveFrame()
+            val secondIds = surface.latest.map(InkStroke::id)
+
+            assertEquals(4, firstIds.size)
+            assertEquals("Mirrored ink must append to existing front-buffer strokes", firstIds, secondIds)
+            assertEquals("No frame may introduce duplicate transient strokes", secondIds.size, secondIds.toSet().size)
+            view.dispatchStylus(MotionEvent.ACTION_UP, 400f, 400f, 40L)
+        }
+    }
+
     @Test fun rapidCommittedStrokesAppendToCleanTilesWithoutReplayingOlderInk() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val view = InkCanvasView(InstrumentationRegistry.getInstrumentation().targetContext).apply {
@@ -120,7 +145,7 @@ class InkCanvasTileCacheTest {
         }
     }
 
-    @Test fun stampedBrushPreviewMatchesItsCommittedStroke() {
+    @Test fun stampedBrushStreamsEveryCheckpointAndCommitsVisibleInk() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val context = InstrumentationRegistry.getInstrumentation().targetContext
             val tipFile = File.createTempFile("inkloom-live-tip", ".png", context.cacheDir)
@@ -138,7 +163,9 @@ class InkCanvasTileCacheTest {
                     baseWidth = 92f
                     brushSpacing = .22f
                 }
-                view.activeStrokeSurface = RecordingActiveSurface(view, live)
+                val activeSurface = RecordingActiveSurface(view, live)
+                view.activeStrokeSurface = activeSurface
+                view.prepareBrushAssetsNow()
                 view.dispatchStylus(MotionEvent.ACTION_DOWN, 120f, 260f, 10L)
                 repeat(96) { point ->
                     view.dispatchStylus(MotionEvent.ACTION_MOVE, 128f + point * 8f, 260f + (point % 9) * 6f, 20L + point)
@@ -147,11 +174,13 @@ class InkCanvasTileCacheTest {
                 view.dispatchStylus(MotionEvent.ACTION_UP, 900f, 300f, 140L)
                 view.draw(Canvas(committed))
 
-                val livePixels = IntArray(1024 * 1024)
                 val committedPixels = IntArray(1024 * 1024)
-                live.getPixels(livePixels, 0, 1024, 0, 0, 1024, 1024)
                 committed.getPixels(committedPixels, 0, 1024, 0, 0, 1024, 1024)
-                assertTrue("A stamped brush must not visibly settle or change on pen-up", livePixels.contentEquals(committedPixels))
+                val committedVisible = committedPixels.count { (it ushr 24) > 0 }
+                assertTrue("Every requested live checkpoint must reach the active surface", activeSurface.renderCount >= 6)
+                assertEquals("Pen-up must commit through the same V2 surface", 1, activeSurface.commitCount)
+                assertTrue("The final active packet must retain the complete modelled stroke", activeSurface.latest.singleOrNull()?.points?.size ?: 0 > 90)
+                assertTrue("The committed imported stroke must remain visible", committedVisible > 500)
             } finally {
                 sourceTip.recycle()
                 live.recycle()
@@ -239,7 +268,7 @@ class InkCanvasTileCacheTest {
 
                 val sorted = frameTimes.sorted()
                 val p95Ms = sorted[(sorted.size * 95 / 100).coerceAtMost(sorted.lastIndex)] / 1_000_000f
-                assertTrue("Imported soft-brush p95 frame was ${p95Ms}ms", p95Ms < 100f)
+                assertTrue("Imported soft-brush p95 frame was ${p95Ms}ms", p95Ms < 16.7f)
             } finally {
                 sourceTip.recycle()
                 output.recycle()

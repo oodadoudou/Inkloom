@@ -70,4 +70,17 @@ class StrokeStampSamplerTest {
         assertSame(points[1], continuous[1])
         assertSame(points[2], continuous[2])
     }
+
+    @Test fun incrementalUpdatesExactlyMatchOneShotSampling() {
+        val points = List(240) { index ->
+            StrokePoint(index / 260f, .5f + (index % 7) / 500f, pressure = .2f + index / 300f, timeMs = index.toLong())
+        }
+        val spacing: (StrokePoint) -> Float = { point -> 2f + point.pressure * 7f }
+        val expected = StrokeStampSampler.sample(points, 1600f, 1200f, spacingFor = spacing)
+        val incremental = StrokeStampSampler.Incremental(1600f, 1200f)
+        var actual: List<StrokePoint> = emptyList()
+        for (end in 1..points.size) actual = incremental.update(points.subList(0, end), spacing)
+
+        assertEquals(expected, actual)
+    }
 }

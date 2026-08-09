@@ -66,14 +66,29 @@ internal object EngineV2BrushEvaluator {
     }
 
     fun sampleStampPoints(stroke: InkStroke, width: Float, height: Float, dual: Boolean): List<StrokePoint> {
-        val pageWidth = width.coerceAtLeast(1f)
-        val referenceScale = pageWidth / REFERENCE_WIDTH
         return StrokeStampSampler.sample(
             stroke.points,
-            pageWidth,
+            width.coerceAtLeast(1f),
             height.coerceAtLeast(1f),
             includeStationaryPoints = stroke.continuousPlot,
-        ) { point ->
+            spacingFor = spacingFunction(stroke, width, dual),
+        )
+    }
+
+    fun newIncrementalSampler(stroke: InkStroke, width: Float, height: Float, dual: Boolean): StrokeStampSampler.Incremental =
+        StrokeStampSampler.Incremental(width.coerceAtLeast(1f), height.coerceAtLeast(1f), includeStationaryPoints = stroke.continuousPlot)
+
+    fun updateIncrementalSampler(
+        sampler: StrokeStampSampler.Incremental,
+        stroke: InkStroke,
+        width: Float,
+        dual: Boolean,
+    ): List<StrokePoint> = sampler.update(stroke.points, spacingFunction(stroke, width, dual))
+
+    private fun spacingFunction(stroke: InkStroke, width: Float, dual: Boolean): (StrokePoint) -> Float {
+        val pageWidth = width.coerceAtLeast(1f)
+        val referenceScale = pageWidth / REFERENCE_WIDTH
+        return { point ->
             val pressure = point.pressure.coerceIn(0f, 1f)
             val diameter: Float
             val spacingDynamic: Float

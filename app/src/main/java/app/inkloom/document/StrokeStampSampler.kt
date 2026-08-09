@@ -8,33 +8,60 @@ import kotlin.math.atan2
  * Coordinates remain normalized while distance and spacing are measured in output pixels.
  */
 object StrokeStampSampler {
-    fun sample(
-        points: List<StrokePoint>,
-        canvasWidth: Float,
-        canvasHeight: Float,
-        includeStationaryPoints: Boolean = false,
-        spacingFor: (StrokePoint) -> Float,
-    ): List<StrokePoint> {
-        if (points.size <= 1) return points
-        val width = canvasWidth.coerceAtLeast(1f)
-        val height = canvasHeight.coerceAtLeast(1f)
-        // This function runs on every live-stroke frame. Avoid zipWithNext(), which creates a
-        // temporary Pair for every input segment before we have rendered a single stamp.
-        val result = ArrayList<StrokePoint>(points.size.coerceAtLeast(16))
-        result += points.first()
-        var distanceUntilNext = spacingFor(points.first()).coerceAtLeast(MINIMUM_SPACING_PX)
+    /** Mutable live-stroke sampler. Each newly modelled input segment is visited exactly once;
+     * committed/export rendering can continue to use [sample] for a stateless replay. */
+    class Incremental(
+        private val canvasWidth: Float,
+        private val canvasHeight: Float,
+        private val includeStationaryPoints: Boolean = false,
+    ) {
+        private val result = ArrayList<StrokePoint>(64)
+        private var inputCount = 0
+        private var firstPoint: StrokePoint? = null
+        private var distanceUntilNext = 0f
 
-        for (index in 1 until points.size) {
-            val start = points[index - 1]
-            val end = points[index]
+        fun update(points: List<StrokePoint>, spacingFor: (StrokePoint) -> Float): List<StrokePoint> {
+            if (points.isEmpty()) {
+                reset()
+                return result
+            }
+            if (inputCount > points.size || firstPoint != points.first()) reset()
+            if (inputCount == 0) {
+                firstPoint = points.first()
+                result += points.first()
+                distanceUntilNext = spacingFor(points.first()).coerceAtLeast(MINIMUM_SPACING_PX)
+                inputCount = 1
+            }
+            val width = canvasWidth.coerceAtLeast(1f)
+            val height = canvasHeight.coerceAtLeast(1f)
+            for (index in inputCount until points.size) {
+                appendSegment(points[index - 1], points[index], width, height, spacingFor)
+            }
+            inputCount = points.size
+            return result
+        }
+
+        fun reset() {
+            result.clear()
+            inputCount = 0
+            firstPoint = null
+            distanceUntilNext = 0f
+        }
+
+        private fun appendSegment(
+            start: StrokePoint,
+            end: StrokePoint,
+            width: Float,
+            height: Float,
+            spacingFor: (StrokePoint) -> Float,
+        ) {
             val segmentWidth = (end.x - start.x) * width
             val segmentHeight = (end.y - start.y) * height
             val segmentLength = hypot(segmentWidth.toDouble(), segmentHeight.toDouble()).toFloat()
             if (segmentLength <= 0f) {
                 if (includeStationaryPoints) result += end
-                continue
+                return
             }
-
             var consumed = 0f
             while (segmentLength - consumed + EPSILON >= distanceUntilNext) {
                 consumed += distanceUntilNext
@@ -45,7 +72,17 @@ object StrokeStampSampler {
             distanceUntilNext -= segmentLength - consumed
             if (distanceUntilNext < EPSILON) distanceUntilNext = MINIMUM_SPACING_PX
         }
-        return result
+    }
+
+    fun sample(
+        points: List<StrokePoint>,
+        canvasWidth: Float,
+        canvasHeight: Float,
+        includeStationaryPoints: Boolean = false,
+        spacingFor: (StrokePoint) -> Float,
+    ): List<StrokePoint> {
+        if (points.size <= 1) return points
+        return Incremental(canvasWidth, canvasHeight, includeStationaryPoints).update(points, spacingFor).toList()
     }
 
     fun directionDegrees(points: List<StrokePoint>, index: Int, canvasWidth: Float, canvasHeight: Float): Float {

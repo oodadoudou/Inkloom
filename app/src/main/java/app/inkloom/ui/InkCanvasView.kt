@@ -153,8 +153,8 @@ class InkCanvasView(context: Context) : View(context) {
     private var activeSurfaceCommitted = false
     private val activePrimaryStampCounts = mutableMapOf<String, Int>()
     private val activeDualStampCounts = mutableMapOf<String, Int>()
-    private val activePrimarySamples = mutableMapOf<String, Pair<Int, List<StrokePoint>>>()
-    private val activeDualSamples = mutableMapOf<String, Pair<Int, List<StrokePoint>>>()
+    private val activePrimarySamples = mutableMapOf<String, app.inkloom.document.StrokeStampSampler.Incremental>()
+    private val activeDualSamples = mutableMapOf<String, app.inkloom.document.StrokeStampSampler.Incremental>()
     private val activeSurfaceFrame = Runnable {
         activeSurfaceFrameScheduled = false
         val surface = activeStrokeSurface ?: return@Runnable
@@ -1207,22 +1207,27 @@ class InkCanvasView(context: Context) : View(context) {
      * committed stroke, rather than visibly changing shape on pen-up.
      */
     private fun primaryStampedPoints(stroke: InkStroke): List<StrokePoint> {
-        if (stroke.id == currentStrokeId && activeTool != null) {
-            activePrimarySamples[stroke.id]?.takeIf { it.first == stroke.points.size }?.let { return it.second }
-            return EngineV2BrushEvaluator.sampleStampPoints(stroke, width.toFloat(), height.toFloat(), dual = false)
-                .also { activePrimarySamples[stroke.id] = stroke.points.size to it }
+        if (isCurrentActiveStroke(stroke)) {
+            val sampler = activePrimarySamples.getOrPut(stroke.id) {
+                EngineV2BrushEvaluator.newIncrementalSampler(stroke, width.toFloat(), height.toFloat(), dual = false)
+            }
+            return EngineV2BrushEvaluator.updateIncrementalSampler(sampler, stroke, width.toFloat(), dual = false)
         }
         return EngineV2BrushEvaluator.sampleStampPoints(stroke, width.toFloat(), height.toFloat(), dual = false)
     }
 
     private fun dualStampedPoints(stroke: InkStroke): List<StrokePoint> {
-        if (stroke.id == currentStrokeId && activeTool != null) {
-            activeDualSamples[stroke.id]?.takeIf { it.first == stroke.points.size }?.let { return it.second }
-            return EngineV2BrushEvaluator.sampleStampPoints(stroke, width.toFloat(), height.toFloat(), dual = true)
-                .also { activeDualSamples[stroke.id] = stroke.points.size to it }
+        if (isCurrentActiveStroke(stroke)) {
+            val sampler = activeDualSamples.getOrPut(stroke.id) {
+                EngineV2BrushEvaluator.newIncrementalSampler(stroke, width.toFloat(), height.toFloat(), dual = true)
+            }
+            return EngineV2BrushEvaluator.updateIncrementalSampler(sampler, stroke, width.toFloat(), dual = true)
         }
         return EngineV2BrushEvaluator.sampleStampPoints(stroke, width.toFloat(), height.toFloat(), dual = true)
     }
+
+    private fun isCurrentActiveStroke(stroke: InkStroke): Boolean =
+        activeTool != null && (stroke.id == currentStrokeId || stroke.id.startsWith("$currentStrokeId-sym-"))
 
     private fun advanceStampRandoms(
         scatterRandom: java.util.Random,
@@ -1391,6 +1396,21 @@ class InkCanvasView(context: Context) : View(context) {
         prewarmedBrushSignature = signature
         primary.forEach { prewarmTip(it, brushHardness, grainAssetPath, grainDensity, grainScale, grainRotationDegrees, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainCompositeMode = grainCompositeMode, antiAliasMode = brushAntiAliasMode) }
         secondary.forEach { prewarmTip(it, dualHardness, null, 0f, antiAliasMode = dualAntiAliasMode) }
+    }
+
+    /** Selection must hand back a brush that can draw on the very next input packet. Imported tip
+     * images are decoded once at selection time; live rendering never waits on an async prewarm. */
+    fun prepareBrushAssetsNow() {
+        val primary = tipAssetPaths.ifEmpty { listOfNotNull(tipAssetPath) }
+        val secondary = if (brushDual) dualTipAssetPaths.ifEmpty { primary } else emptyList()
+        primary.forEach { path ->
+            val key = tipCacheKey(path, brushHardness, grainAssetPath, grainDensity, grainScale, grainRotationDegrees, grainBrightness, grainContrast, grainReversed, grainEmphasized, 0f, 0f, grainCompositeMode, brushAntiAliasMode)
+            if (tipCache[key] == null) BrushTipTextureDecoder.decode(path, brushHardness, grainAssetPath, grainDensity, grainScale, grainRotationDegrees, grainBrightness, grainContrast, grainReversed, grainEmphasized, 0f, 0f, grainCompositeMode, brushAntiAliasMode)?.let { tipCache[key] = it }
+        }
+        secondary.forEach { path ->
+            val key = tipCacheKey(path, dualHardness, null, 0f, 100f, 0f, 0f, 0f, false, false, 0f, 0f, CspTextureComposite.MULTIPLY, dualAntiAliasMode)
+            if (tipCache[key] == null) BrushTipTextureDecoder.decode(path, dualHardness, null, 0f, antiAliasMode = dualAntiAliasMode)?.let { tipCache[key] = it }
+        }
     }
 
     /** A palette/tool tap can interrupt a contact stream before Android delivers its final UP.
@@ -3217,11 +3237,14 @@ class InkCanvasView(context: Context) : View(context) {
         else -> BrushEngineKind.MESH_INK
     }
 
-    /** The original stroke plus its symmetry-mirrored copies (each with a fresh id). */
+    /** The original stroke plus deterministic mirror ids. Stable ids let the front buffer append
+     * each mirrored tail instead of treating every display frame as unrelated new ink. */
     private fun symmetryStrokes(points: List<StrokePoint>): List<InkStroke> {
         val base = makeStroke(points)
         if (symmetryMode == SymmetryMode.NONE) return listOf(base)
-        return listOf(base) + symmetryMirrors(points).map { makeStroke(it).copy(id = java.util.UUID.randomUUID().toString()) }
+        return listOf(base) + symmetryMirrors(points).mapIndexed { index, mirrored ->
+            makeStroke(mirrored).copy(id = "$currentStrokeId-sym-$index")
+        }
     }
 
     private fun symmetryMirrors(points: List<StrokePoint>): List<List<StrokePoint>> {
