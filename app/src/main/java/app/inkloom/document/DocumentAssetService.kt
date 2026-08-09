@@ -286,6 +286,7 @@ class DocumentAssetService(private val context: Context) {
             includedContentIds = contentIds,
             includeStrokes = false,
             applyLayerEffects = false,
+            includeDraftLayers = true,
         )
         return bitmap
     }
@@ -499,6 +500,7 @@ class DocumentAssetService(private val context: Context) {
         includedContentIds: Set<String>? = null,
         includeStrokes: Boolean = true,
         applyLayerEffects: Boolean = true,
+        includeDraftLayers: Boolean = false,
     ) {
         val page = PageCropTransform.project(sourcePage)
         val backgroundVisible = page.layers.firstOrNull { it.role == LayerRole.BACKGROUND }?.visible != false
@@ -509,7 +511,7 @@ class DocumentAssetService(private val context: Context) {
             if (backgroundVisible) (page.background as? PageBackground.Paper)?.let { drawPaperPattern(canvas, it.pattern, width, height) }
         } else canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
-        val visibleLayers = page.layers.filter { LayerHierarchy.effectiveVisible(page.layers, it) && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) && (includedLayerIds == null || it.id in includedLayerIds) }
+        val visibleLayers = page.layers.filter { LayerHierarchy.effectiveVisible(page.layers, it) && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) && (includeDraftLayers || !it.draft) && (includedLayerIds == null || it.id in includedLayerIds) }
         visibleLayers.forEachIndexed { layerIndex, layer ->
             val layerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 alpha = (layer.opacity.coerceIn(0f, 1f) * 255f).toInt().coerceIn(0, 255)
