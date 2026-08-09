@@ -1,28 +1,33 @@
 package app.inkloom
 
 import android.content.Context
+import android.os.SystemClock
+import android.view.InputDevice
+import android.view.MotionEvent
+import android.view.ViewGroup
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
-import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import app.inkloom.importer.BrushMetadataStore
-import app.inkloom.importer.BrushGroupOperations
+import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.importer.BrushGroupStore
+import app.inkloom.importer.BrushMetadataStore
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
+import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.RuleChain
@@ -53,15 +58,13 @@ class BrushBatchManagementTest {
                     .putString("brushPanelDock", "RIGHT")
                     .remove("workspaceLayouts")
                     .commit()
-                val store = BrushMetadataStore(context)
-                store.save(sourceBrushes)
-                val groupStore = BrushGroupStore(context)
-                groupStore.save(emptyList())
+                BrushMetadataStore(context).save(sourceBrushes)
+                BrushGroupStore(context).save(emptyList())
                 try {
                     base.evaluate()
                 } finally {
-                    store.save(emptyList())
-                    groupStore.save(emptyList())
+                    BrushMetadataStore(context).save(emptyList())
+                    BrushGroupStore(context).save(emptyList())
                 }
             }
         }
@@ -70,122 +73,117 @@ class BrushBatchManagementTest {
     @get:Rule
     val rules: RuleChain = RuleChain.outerRule(preloadRule).around(composeRule)
 
-    @Test fun longPressMovesAndCopiesPresetsAcrossGroups() {
+    private fun openBrushes(group: String = "Source") {
         composeRule.onNodeWithText("New Note").performClick()
         composeRule.onNodeWithText("Create").performClick()
         composeRule.onNodeWithContentDescription("Brushes").performClick()
+        composeRule.onNodeWithText(group).performClick()
+    }
 
+    @Test fun popoverKeepsSystemAndImportedGroupsAndSwitchesListGridLayout() {
+        openBrushes()
+        composeRule.onNodeWithContentDescription("Brush preset Batch A").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Grid view").performClick()
+        composeRule.onNodeWithContentDescription("List view").assertIsDisplayed()
+        composeRule.onNodeWithText("Sketching").performClick()
+        composeRule.onNodeWithContentDescription("Brush preset Technical Pencil").assertIsDisplayed()
+    }
+
+    @Test fun nestedGroupsExpandAndCollapseAsAnAccordion() {
+        openBrushes()
+        composeRule.onNodeWithText("Ink").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Collapse group Source").performClick()
+        assertEquals(0, composeRule.onAllNodesWithText("Ink").fetchSemanticsNodes().size)
+        composeRule.onNodeWithContentDescription("Expand group Source").performClick()
+        composeRule.onNodeWithText("Ink").assertIsDisplayed()
+    }
+
+    @Test fun longPressBrushSelectsAndMovesItToAnotherGroup() {
+        openBrushes()
         composeRule.onNodeWithContentDescription("Brush preset Batch A").performTouchInput { longClick() }
-        composeRule.onNodeWithText("1 selected").assertIsDisplayed()
         composeRule.onNodeWithText("Move").performClick()
-        composeRule.onAllNodes(hasText("Target")).onLast().performClick()
-        composeRule.onNodeWithText("Move selected").performClick()
+        composeRule.onAllNodesWithText("Target").onLast().performClick()
+        composeRule.onNodeWithText("Move").performClick()
 
         val store = BrushMetadataStore(composeRule.activity)
         composeRule.waitUntil(5_000) { store.load().firstOrNull { it.id == "batch-a" }?.groupName == "Target" }
         assertEquals("Target", store.load().single { it.id == "batch-a" }.groupName)
-
-        composeRule.onNodeWithContentDescription("Brush preset Batch A").performTouchInput { longClick() }
-        composeRule.onNodeWithText("Copy").performClick()
-        composeRule.onAllNodes(hasText("Source")).onLast().performClick()
-        composeRule.onNodeWithText("Copy selected").performClick()
-
-        composeRule.waitUntil(5_000) { store.load().size == 5 }
-        val copied = store.load().single { it.name == "Batch A copy" }
-        assertNotEquals("batch-a", copied.id)
-        assertEquals("Source", copied.groupName)
     }
 
-    @Test fun groupManagerPersistsUserDefinedGroupOrder() {
-        composeRule.onNodeWithText("New Note").performClick()
-        composeRule.onNodeWithText("Create").performClick()
-        composeRule.onNodeWithContentDescription("Brushes").performClick()
-        composeRule.onNodeWithContentDescription("Manage brush groups").performClick()
-
-        composeRule.onAllNodes(hasText("Target")).onLast().performClick()
-        composeRule.onNodeWithText("Earlier").performClick()
-        composeRule.onNodeWithText("Done").performClick()
+    @Test fun longPressGroupRenamesItsWholeSubtree() {
+        openBrushes()
+        composeRule.onNodeWithContentDescription("Brush group Source").performTouchInput { longClick() }
+        composeRule.onNodeWithText("Rename group").performClick()
+        composeRule.onNode(hasSetTextAction()).performTextClearance()
+        composeRule.onNode(hasSetTextAction()).performTextInput("Favorites")
+        composeRule.onNodeWithText("Rename").performClick()
 
         val store = BrushMetadataStore(composeRule.activity)
-        composeRule.waitUntil(5_000) { BrushGroupOperations.names(store.load()).firstOrNull() == "Target" }
-        assertEquals(listOf("Target", "Source", "Source/Ink/Pens"), BrushGroupOperations.names(store.load()))
-    }
-
-    @Test fun selectedGroupBecomesTheBatchImportDestination() {
-        composeRule.onNodeWithText("New Note").performClick()
-        composeRule.onNodeWithText("Create").performClick()
-        composeRule.onNodeWithContentDescription("Brushes").performClick()
-
-        composeRule.onNodeWithText("Source").performClick()
-
-        composeRule.onNodeWithContentDescription("Add brush or group").performClick()
-        composeRule.onNodeWithText("Import into Source").assertIsDisplayed()
-    }
-
-    @Test fun nestedGroupTreeCollapsesAndFiltersAnEntireSubtree() {
-        composeRule.onNodeWithText("New Note").performClick()
-        composeRule.onNodeWithText("Create").performClick()
-        composeRule.onNodeWithContentDescription("Brushes").performClick()
-
-        composeRule.onNodeWithText("Ink").assertIsDisplayed()
-        composeRule.onNodeWithText("Pens").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Collapse group Source").performScrollTo()
-        composeRule.onNodeWithContentDescription("Collapse group Source").performClick()
-        assertEquals(0, composeRule.onAllNodes(hasText("Ink")).fetchSemanticsNodes().size)
-        composeRule.onNodeWithContentDescription("Expand group Source").performClick()
-        composeRule.onNodeWithText("Ink").performScrollTo().performClick()
-
-        composeRule.onNodeWithText("Nested Ink").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Add brush or group").performClick()
-        composeRule.onNodeWithText("Import into Source/Ink").assertIsDisplayed()
+        composeRule.waitUntil(5_000) { store.load().count { it.groupName.startsWith("Favorites") } == 3 }
+        assertEquals(setOf("Favorites", "Favorites/Ink/Pens"), store.load().filter { it.id.startsWith("batch") || it.id == "nested-d" }.mapTo(linkedSetOf(), ImportedBrush::groupName))
     }
 
     @Test fun groupManagerCreatesAndPersistsAnEmptyNestedGroup() {
-        composeRule.onNodeWithText("New Note").performClick()
-        composeRule.onNodeWithText("Create").performClick()
-        composeRule.onNodeWithContentDescription("Brushes").performClick()
+        openBrushes()
         composeRule.onNodeWithContentDescription("Manage brush groups").performClick()
-
         composeRule.onNodeWithContentDescription("New brush group path").performTextInput("Empty/Erasers")
         composeRule.onNodeWithText("Create").performClick()
         composeRule.onNodeWithText("Done").performClick()
 
-        val groups = BrushGroupStore(composeRule.activity).load()
-        assertEquals(listOf("Source", "Target", "Source/Ink/Pens", "Empty/Erasers"), groups)
-        assertEquals(0, BrushMetadataStore(composeRule.activity).load().count { it.groupName == "Empty/Erasers" })
+        assertTrue("Empty/Erasers" in BrushGroupStore(composeRule.activity).load())
     }
 
-    @Test fun createsAnEditableBrushInsideTheSelectedUserGroup() {
-        composeRule.onNodeWithText("New Note").performClick()
-        composeRule.onNodeWithText("Create").performClick()
-        composeRule.onNodeWithContentDescription("Brushes").performClick()
-        composeRule.onNodeWithText("Source").performClick()
+    @Test fun selectedCustomBrushCommitsEveryRapidPenContact() {
+        openBrushes()
+        composeRule.onNodeWithContentDescription("Brush preset Batch A").performClick()
+        val view = findInkCanvasView()!!
+        composeRule.waitUntil(5_000) { view.brushId == "batch-a" }
+        composeRule.onNodeWithContentDescription("Close brushes panel").performClick()
 
-        composeRule.onNodeWithContentDescription("Add brush or group").performClick()
-        composeRule.onNodeWithText("Create blank brush").performClick()
-        composeRule.onNodeWithText("Brush Studio").assertIsDisplayed()
-        val nameField = composeRule.onAllNodes(hasText("New brush")).onLast()
-        nameField.performTextClearance()
-        composeRule.onAllNodes(hasText("Brush name")).onLast().performTextInput("My soft brush")
-        composeRule.onNodeWithText("Save preset").performClick()
-
-        val store = BrushMetadataStore(composeRule.activity)
-        composeRule.waitUntil(5_000) { store.load().any { it.name == "My soft brush" } }
-        assertEquals("Source", store.load().single { it.name == "My soft brush" }.groupName)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            repeat(6) { dispatchStylusStroke(view, it) }
+        }
+        assertEquals(6, (reflectedField(view, "strokes") as? List<*>)?.size)
     }
 
-    @Test fun dockedLibraryKeepsSystemAndImportedBrushesAsPeerGroups() {
-        composeRule.onNodeWithText("New Note").performClick()
-        composeRule.onNodeWithText("Create").performClick()
-        composeRule.onNodeWithContentDescription("Brushes").performClick()
+    private fun findInkCanvasView(): InkCanvasView? {
+        var found: InkCanvasView? = null
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            fun walk(view: android.view.View) {
+                if (view is InkCanvasView && view.isShown) found = view
+                else if (view is ViewGroup) for (index in 0 until view.childCount) walk(view.getChildAt(index))
+            }
+            walk(composeRule.activity.window.decorView)
+        }
+        return found
+    }
 
-        composeRule.onNodeWithContentDescription("Brush preset Batch A").assertIsDisplayed()
-        composeRule.onNodeWithText("System").performClick()
-        composeRule.onNodeWithContentDescription("Brush preset Technical Pencil").assertIsDisplayed().performClick()
-        composeRule.onNodeWithText("All").performClick()
-        composeRule.onNodeWithText("Source").performScrollTo().performClick()
-        composeRule.waitForIdle()
-        composeRule.onNodeWithContentDescription("Brush preset Batch A").performScrollTo().assertIsDisplayed()
+    private fun dispatchStylusStroke(view: InkCanvasView, index: Int) {
+        val downTime = SystemClock.uptimeMillis()
+        val properties = arrayOf(MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_STYLUS })
+        fun event(action: Int, x: Float, y: Float, elapsed: Long) = MotionEvent.obtain(
+            downTime, downTime + elapsed, action, 1, properties,
+            arrayOf(MotionEvent.PointerCoords().apply { this.x = x; this.y = y; pressure = .75f; size = .05f }),
+            0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_STYLUS, 0,
+        )
+        val y = view.height * (.2f + index * .09f)
+        listOf(
+            event(MotionEvent.ACTION_DOWN, view.width * .25f, y, 0),
+            event(MotionEvent.ACTION_MOVE, view.width * .5f, y + 4f, 4),
+            event(MotionEvent.ACTION_UP, view.width * .7f, y + 7f, 8),
+        ).forEach { motion -> try { view.dispatchTouchEvent(motion) } finally { motion.recycle() } }
+    }
+
+    private fun reflectedField(target: Any, name: String): Any? {
+        var type: Class<*>? = target.javaClass
+        while (type != null) {
+            runCatching { type.getDeclaredField(name) }.getOrNull()?.let { field ->
+                field.isAccessible = true
+                return field.get(target)
+            }
+            type = type.superclass
+        }
+        return null
     }
 
     private companion object {

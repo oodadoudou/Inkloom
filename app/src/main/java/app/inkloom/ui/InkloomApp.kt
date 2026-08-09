@@ -7083,8 +7083,11 @@ private fun ProcreateBrushLibrary(
                 IconButton(onClick = { gridLayout = !gridLayout }, modifier = Modifier.size(38.dp)) {
                     Icon(if (gridLayout) Icons.Outlined.ViewList else Icons.Outlined.GridView, if (gridLayout) tr("List view", "列表视图") else tr("Grid view", "网格视图"), tint = Ink)
                 }
+                IconButton(onClick = { manageGroups = true }, modifier = Modifier.size(38.dp)) {
+                    Icon(Icons.Outlined.CreateNewFolder, tr("Manage brush groups", "管理笔刷分组"), tint = Ink)
+                }
                 Box {
-                    IconButton(onClick = { addMenu = true }, modifier = Modifier.size(38.dp)) { Icon(Icons.Outlined.Add, tr("Add brush or set", "添加笔刷或笔刷组"), tint = Ink) }
+                    IconButton(onClick = { addMenu = true }, modifier = Modifier.size(38.dp)) { Icon(Icons.Outlined.Add, tr("Add brush or group", "添加笔刷或分组"), tint = Ink) }
                     DropdownMenu(expanded = addMenu, onDismissRequest = { addMenu = false }) {
                         DropdownMenuItem(text = { Text(tr("Create new brush", "新建笔刷")) }, leadingIcon = { Icon(Icons.Outlined.Brush, null) }, onClick = {
                             addMenu = false
@@ -7109,9 +7112,12 @@ private fun ProcreateBrushLibrary(
                         val selected = category == selectedCategory
                         val customGroup = category in importedCategories
                         val hasChildren = importedCategories.any { BrushGroupOperations.parent(it)?.equals(category, true) == true }
+                        val visibleCategoryLabel = categoryLabel(category)
+                        val categoryDescription = if (customGroup) tr("Brush group $visibleCategoryLabel", "笔刷分组 $visibleCategoryLabel") else tr("Brush category $visibleCategoryLabel", "笔刷类别 $visibleCategoryLabel")
                         Box {
                             Row(
                                 Modifier.fillMaxWidth().height(39.dp)
+                                    .semantics { contentDescription = categoryDescription }
                                     .onGloballyPositioned { coordinates ->
                                         if (customGroup) {
                                             val bounds = coordinates.boundsInWindow()
@@ -7129,14 +7135,14 @@ private fun ProcreateBrushLibrary(
                                 }, modifier = Modifier.size(24.dp)) {
                                     Icon(
                                         if (category in collapsedGroupPaths) Icons.Outlined.ChevronRight else Icons.Outlined.ExpandMore,
-                                        if (category in collapsedGroupPaths) tr("Expand group ${categoryLabel(category)}", "展开分组 ${categoryLabel(category)}") else tr("Collapse group ${categoryLabel(category)}", "收起分组 ${categoryLabel(category)}"),
+                                        if (category in collapsedGroupPaths) tr("Expand group $visibleCategoryLabel", "展开分组 $visibleCategoryLabel") else tr("Collapse group $visibleCategoryLabel", "收起分组 $visibleCategoryLabel"),
                                         Modifier.size(16.dp),
                                         tint = MutedInk,
                                     )
                                 } else if (customGroup) Spacer(Modifier.width(24.dp))
                                 if (customGroup) Icon(Icons.Outlined.Folder, null, Modifier.size(15.dp), tint = MutedInk)
                                 if (customGroup) Spacer(Modifier.width(6.dp))
-                                Text(categoryLabel(category), color = Ink, fontSize = 11.sp, maxLines = 1, modifier = Modifier.weight(1f))
+                                Text(visibleCategoryLabel, color = Ink, fontSize = 11.sp, maxLines = 1, modifier = Modifier.weight(1f))
                                 if (customGroup) Text(brushes.count { BrushGroupOperations.isWithin(it.groupName, category) }.toString(), color = MutedInk, fontSize = 9.sp)
                             }
                             DropdownMenu(expanded = menuGroup == category, onDismissRequest = { menuGroup = null }) {
