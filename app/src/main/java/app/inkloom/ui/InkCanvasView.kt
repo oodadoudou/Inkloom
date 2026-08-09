@@ -90,6 +90,7 @@ import app.inkloom.document.StrokeEraser
 import app.inkloom.document.StrokeClipboardCodec
 import app.inkloom.document.CorrectLineMode
 import app.inkloom.document.StrokeCorrection
+import app.inkloom.document.StrokePostCorrection
 import app.inkloom.document.StrokeStampSampler
 import app.inkloom.document.StrokeStabilization
 import app.inkloom.document.StrokeTaper
@@ -598,6 +599,10 @@ class InkCanvasView(context: Context) : View(context) {
     var stabilization: Float = .12f
     var stabilizationBySpeed: Boolean = false
     var stabilizationBySpeedMode: Int = StrokeStabilization.REDUCE_WHEN_FAST
+    var postCorrection: Float = 0f
+        set(value) { field = value.coerceIn(0f, 1f) }
+    var postCorrectionAdjustBySpeed: Boolean = false
+    var postCorrectionAdjustByScale: Boolean = true
     var primaryButtonAction: StylusButtonAction = StylusButtonAction.ERASER
     var secondaryButtonAction: StylusButtonAction = StylusButtonAction.LASSO
     var primaryButtonTrigger: ShortcutTrigger = ShortcutTrigger.HOLD
@@ -1951,7 +1956,17 @@ class InkCanvasView(context: Context) : View(context) {
                     finishEraserGesture()
                 } else if (activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) && currentPoints.isNotEmpty()) {
                     val before = strokes.toList()
-                    val newStrokes = symmetryStrokes(currentPoints).map { it.copy(grainCompositeMode = grainCompositeMode) }
+                    val newStrokes = symmetryStrokes(currentPoints).map { stroke ->
+                        StrokePostCorrection.apply(
+                            stroke.copy(grainCompositeMode = grainCompositeMode),
+                            postCorrection,
+                            postCorrectionAdjustBySpeed,
+                            postCorrectionAdjustByScale,
+                            viewportScale,
+                            pageModelWidth,
+                            pageModelHeight,
+                        )
+                    }
                     strokes.addAll(newStrokes)
                     invalidateStrokeCache(emptyList(), newStrokes)
                     commitStrokeEdit(before, strokes)

@@ -48,6 +48,22 @@ class AppSettingsStoreTest {
         }
     }
 
+    @Test fun postStrokeCorrectionSurvivesReload() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
+        preferences.edit().clear().commit()
+        try {
+            AppSettingsStore(context).save(AppSettings(postCorrection = .64f, postCorrectionAdjustBySpeed = true, postCorrectionAdjustByScale = false))
+
+            val restored = AppSettingsStore(context).load()
+            assertEquals(.64f, restored.postCorrection)
+            assertTrue(restored.postCorrectionAdjustBySpeed)
+            assertFalse(restored.postCorrectionAdjustByScale)
+        } finally {
+            preferences.edit().clear().commit()
+        }
+    }
+
     @Test fun legacyWorkspaceMigratesToTheProcreateStudioOnce() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)

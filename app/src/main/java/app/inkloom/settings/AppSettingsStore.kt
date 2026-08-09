@@ -72,6 +72,9 @@ data class AppSettings(
     val pressureMaximumInput: Float = 1f,
     val pressureResponseCurve: List<Float> = PressureResponseCurve.LINEAR,
     val stabilization: Float = .12f,
+    val postCorrection: Float = 0f,
+    val postCorrectionAdjustBySpeed: Boolean = false,
+    val postCorrectionAdjustByScale: Boolean = true,
     val showInputDiagnostics: Boolean = false,
     val penSize: Float = 5f,
     val penOpacity: Float = 1f,
@@ -193,6 +196,9 @@ class AppSettingsStore(context: Context) {
             pressureMaximumInput = pressureMaximum,
             pressureResponseCurve = PressureResponseCurve.decode(preferences.getString("pressureResponseCurve", null)),
             stabilization = preferences.getFloat("stabilization", .12f).coerceIn(0f, .9f),
+            postCorrection = preferences.getFloat("postCorrection", 0f).coerceIn(0f, 1f),
+            postCorrectionAdjustBySpeed = preferences.getBoolean("postCorrectionAdjustBySpeed", false),
+            postCorrectionAdjustByScale = preferences.getBoolean("postCorrectionAdjustByScale", true),
             showInputDiagnostics = preferences.getBoolean("showInputDiagnostics", false),
             penSize = preferences.getFloat("penSize", 5f).coerceIn(.5f, 400f),
             penOpacity = preferences.getFloat("penOpacity", 1f).coerceIn(.05f, 1f),
@@ -297,6 +303,9 @@ class AppSettingsStore(context: Context) {
             .putFloat("pressureMaximumInput", persisted.pressureMaximumInput)
             .putString("pressureResponseCurve", PressureResponseCurve.encode(persisted.pressureResponseCurve))
             .putFloat("stabilization", persisted.stabilization)
+            .putFloat("postCorrection", persisted.postCorrection.coerceIn(0f, 1f))
+            .putBoolean("postCorrectionAdjustBySpeed", persisted.postCorrectionAdjustBySpeed)
+            .putBoolean("postCorrectionAdjustByScale", persisted.postCorrectionAdjustByScale)
             .putBoolean("showInputDiagnostics", persisted.showInputDiagnostics)
             .putFloat("penSize", persisted.penSize)
             .putFloat("penOpacity", persisted.penOpacity)
