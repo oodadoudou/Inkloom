@@ -5384,8 +5384,8 @@ private fun GradientToolControls(settings: AppSettings, brushColor: Int, onBrush
     fun updateStops(changed: List<GradientColorStop>) = onSettingsChange(settings.copy(gradientStops = GradientColors.normalize(changed)))
 
     Text(tr("Shape", "形状"), color = MutedInk, fontSize = 11.sp)
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-        items(GradientKind.entries, key = { it.name }) { kind ->
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        GradientKind.entries.forEach { kind ->
             FilterChip(
                 selected = settings.gradientKind == kind,
                 onClick = { onSettingsChange(settings.copy(gradientKind = kind)) },
@@ -5401,8 +5401,8 @@ private fun GradientToolControls(settings: AppSettings, brushColor: Int, onBrush
         }
     }
     Text(tr("Edge process", "边缘处理"), color = MutedInk, fontSize = 11.sp)
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-        items(GradientEdgeMode.entries, key = { it.name }) { edge ->
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        GradientEdgeMode.entries.forEach { edge ->
             FilterChip(
                 selected = settings.gradientEdgeMode == edge,
                 onClick = { onSettingsChange(settings.copy(gradientEdgeMode = edge)) },

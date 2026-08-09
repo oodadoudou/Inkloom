@@ -675,6 +675,26 @@ class InkloomLaunchTest {
         assertTrue("Six short strokes must not block the input thread ($elapsedMs ms)", elapsedMs < 1_500L)
     }
 
+    @Test fun gradientToolControlsExposeProfessionalOptionsAndPersist() {
+        createNotebookAndOpenEditor()
+
+        composeRule.onNodeWithContentDescription("More").performClick()
+        composeRule.onAllNodesWithText("Gradient").onLast().performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithContentDescription("Gradient controls").performClick()
+
+        composeRule.onAllNodesWithText("Diamond").onLast().performClick()
+        composeRule.onAllNodesWithText("Repeat").onLast().performClick()
+        composeRule.onAllNodesWithText("Add color stop").onLast().performClick()
+        composeRule.waitForIdle()
+
+        val settings = AppSettingsStore(composeRule.activity).load()
+        assertEquals(app.inkloom.document.GradientKind.DIAMOND, settings.gradientKind)
+        assertEquals(app.inkloom.document.GradientEdgeMode.REPEAT, settings.gradientEdgeMode)
+        assertEquals(3, settings.gradientStops.size)
+    }
+
     @Test fun layerPanelCreatesFoldersMovesLayersAndCollapsesChildren() {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Layers").performClick()
