@@ -463,6 +463,11 @@ class InkloomLaunchTest {
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodes(hasContentDescription("Open layers for this page")).fetchSemanticsNodes().size == 2
         }
+        composeRule.onNodeWithText("2/2").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Previous page").performClick()
+        composeRule.onNodeWithText("1/2").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Next page").performClick()
+        composeRule.onNodeWithText("2/2").assertIsDisplayed()
     }
 
     @Test fun editorInsertsAValidatedLinkCard() {

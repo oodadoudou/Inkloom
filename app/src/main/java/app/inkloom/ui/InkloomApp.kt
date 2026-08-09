@@ -2294,6 +2294,28 @@ private fun EditorScreen(
                     update = { it.target = canvasView },
                     modifier = Modifier.fillMaxSize(),
                 )
+                val currentPageIndex = document.pages.indexOfFirst { it.id == selectedPage.id }.coerceAtLeast(0)
+                Surface(
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(14.dp).zIndex(2f),
+                    shape = RoundedCornerShape(22.dp),
+                    color = Color.White,
+                    border = CardDefaults.outlinedCardBorder(),
+                    shadowElevation = 5.dp,
+                ) {
+                    Row(Modifier.height(38.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = { document.pages.getOrNull(currentPageIndex - 1)?.let { selectPageWithViewport(it.id) } },
+                            enabled = currentPageIndex > 0,
+                            modifier = Modifier.size(38.dp),
+                        ) { Icon(Icons.Outlined.KeyboardArrowUp, tr("Previous page", "上一页"), Modifier.size(20.dp)) }
+                        Text("${currentPageIndex + 1}/${document.pages.size}", fontSize = 10.sp, color = MutedInk)
+                        IconButton(
+                            onClick = { document.pages.getOrNull(currentPageIndex + 1)?.let { selectPageWithViewport(it.id) } },
+                            enabled = currentPageIndex < document.pages.lastIndex,
+                            modifier = Modifier.size(38.dp),
+                        ) { Icon(Icons.Outlined.KeyboardArrowDown, tr("Next page", "下一页"), Modifier.size(20.dp)) }
+                    }
+                }
                 val dockVertical = settings.toolbarDock in setOf(ToolbarDock.LEFT, ToolbarDock.RIGHT) || (settings.toolbarDock == ToolbarDock.FREE && settings.verticalToolbar)
                 val dockAlignment = when (settings.toolbarDock) {
                     ToolbarDock.TOP -> Alignment.TopCenter
