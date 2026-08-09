@@ -680,6 +680,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onToggleLayerClippedToBelow = viewModel::toggleLayerClippedToBelow,
             onToggleLayerReference = viewModel::toggleLayerReference,
             onToggleLayerDraft = viewModel::toggleLayerDraft,
+            onLayerMaskCommand = viewModel::updateLayerMask,
             onMoveLayerToFolder = viewModel::moveLayerToFolder,
             onToggleLayerFolderCollapsed = viewModel::toggleLayerFolderCollapsed,
             onMoveLayer = viewModel::moveLayer,
@@ -982,6 +983,7 @@ private fun EditorScreen(
     onToggleLayerClippedToBelow: (String, String, String) -> Unit,
     onToggleLayerReference: (String, String, String) -> Unit,
     onToggleLayerDraft: (String, String, String) -> Unit,
+    onLayerMaskCommand: (String, String, String, LayerMaskCommand, List<List<StrokePoint>>) -> Unit,
     onMoveLayerToFolder: (String, String, String, String?) -> Unit,
     onToggleLayerFolderCollapsed: (String, String, String) -> Unit,
     onMoveLayer: (String, String, String, Int) -> Unit,
@@ -1025,6 +1027,9 @@ private fun EditorScreen(
     var activeBrush by remember { mutableStateOf<ImportedBrush?>(null) }
     var brushSize by remember { mutableFloatStateOf(settings.penSize) }
     var brushOpacity by remember { mutableFloatStateOf(settings.penOpacity) }
+    fun performLayerMaskCommand(layerId: String, command: LayerMaskCommand) {
+        onLayerMaskCommand(document.id, selectedPage.id, layerId, command, canvasView?.selectionMaskRegions().orEmpty())
+    }
     fun brushSizeKey(brush: ImportedBrush?, selectedTool: EditorTool = tool): String = brush?.id ?: "system:${selectedTool.name.lowercase()}"
     fun savedBrushSize(brush: ImportedBrush?, fallback: Float, selectedTool: EditorTool = tool): Float =
         brushPresetSizeStore.load(brushSizeKey(brush, selectedTool), fallback)
@@ -1910,6 +1915,7 @@ private fun EditorScreen(
                 onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
                 onToggleReference = { onToggleLayerReference(document.id, selectedPage.id, it) },
                 onToggleDraft = { onToggleLayerDraft(document.id, selectedPage.id, it) },
+                onMaskCommand = ::performLayerMaskCommand,
                 onMoveToFolder = { layerId, folderId -> onMoveLayerToFolder(document.id, selectedPage.id, layerId, folderId) },
                 onToggleFolderCollapsed = { onToggleLayerFolderCollapsed(document.id, selectedPage.id, it) },
                 onMove = { layerId, delta -> onMoveLayer(document.id, selectedPage.id, layerId, delta) },
@@ -2530,6 +2536,7 @@ private fun EditorScreen(
                 onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
                 onToggleReference = { onToggleLayerReference(document.id, selectedPage.id, it) },
                 onToggleDraft = { onToggleLayerDraft(document.id, selectedPage.id, it) },
+                onMaskCommand = ::performLayerMaskCommand,
                 onMoveToFolder = { layerId, folderId -> onMoveLayerToFolder(document.id, selectedPage.id, layerId, folderId) },
                 onToggleFolderCollapsed = { onToggleLayerFolderCollapsed(document.id, selectedPage.id, it) },
                 onMove = { layerId, delta -> onMoveLayer(document.id, selectedPage.id, layerId, delta) },
@@ -2606,6 +2613,7 @@ private fun EditorScreen(
                     onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
                     onToggleReference = { onToggleLayerReference(document.id, selectedPage.id, it) },
                     onToggleDraft = { onToggleLayerDraft(document.id, selectedPage.id, it) },
+                    onMaskCommand = ::performLayerMaskCommand,
                 onMoveToFolder = { layerId, folderId -> onMoveLayerToFolder(document.id, selectedPage.id, layerId, folderId) },
                     onToggleFolderCollapsed = { onToggleLayerFolderCollapsed(document.id, selectedPage.id, it) },
                     onMove = { layerId, delta -> onMoveLayer(document.id, selectedPage.id, layerId, delta) },
@@ -2732,6 +2740,7 @@ private fun EditorScreen(
                 onToggleClippedToBelow = { onToggleLayerClippedToBelow(document.id, selectedPage.id, it) },
                 onToggleReference = { onToggleLayerReference(document.id, selectedPage.id, it) },
                 onToggleDraft = { onToggleLayerDraft(document.id, selectedPage.id, it) },
+                onMaskCommand = ::performLayerMaskCommand,
                 onMoveToFolder = { layerId, folderId -> onMoveLayerToFolder(document.id, selectedPage.id, layerId, folderId) },
                 onToggleFolderCollapsed = { onToggleLayerFolderCollapsed(document.id, selectedPage.id, it) },
                 onMove = { layerId, delta -> onMoveLayer(document.id, selectedPage.id, layerId, delta) },
@@ -5978,6 +5987,38 @@ private fun BrushPresetToolButton(
 }
 
 @Composable
+private fun LayerMaskMenuItems(layer: InkLayer, onCommand: (LayerMaskCommand) -> Unit) {
+    if (layer.role in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) return
+    val mask = layer.mask
+    if (mask == null) {
+        DropdownMenuItem(
+            text = { Text(tr("Mask selection", "蒙版选区")) },
+            leadingIcon = { Icon(Icons.Outlined.FilterAlt, null) },
+            onClick = { onCommand(LayerMaskCommand.CREATE_MASK_SELECTION) },
+        )
+        DropdownMenuItem(
+            text = { Text(tr("Mask outside selection", "蒙版选区外")) },
+            leadingIcon = { Icon(Icons.Outlined.FilterAltOff, null) },
+            onClick = { onCommand(LayerMaskCommand.CREATE_MASK_OUTSIDE_SELECTION) },
+        )
+    } else {
+        DropdownMenuItem(text = { Text(tr("Hide current selection", "隐藏当前选区")) }, onClick = { onCommand(LayerMaskCommand.HIDE_SELECTION) })
+        DropdownMenuItem(text = { Text(tr("Reveal current selection", "显示当前选区")) }, onClick = { onCommand(LayerMaskCommand.REVEAL_SELECTION) })
+        DropdownMenuItem(
+            text = { Text(if (mask.enabled) tr("Disable layer mask", "停用图层蒙版") else tr("Enable layer mask", "启用图层蒙版")) },
+            onClick = { onCommand(LayerMaskCommand.TOGGLE_ENABLED) },
+        )
+        DropdownMenuItem(
+            text = { Text(if (mask.linked) tr("Unlink mask from layer", "解除蒙版与图层链接") else tr("Link mask to layer", "链接蒙版与图层")) },
+            leadingIcon = { Icon(if (mask.linked) Icons.Outlined.LinkOff else Icons.Outlined.Link, null) },
+            onClick = { onCommand(LayerMaskCommand.TOGGLE_LINKED) },
+        )
+        DropdownMenuItem(text = { Text(tr("Apply layer mask", "应用图层蒙版")) }, onClick = { onCommand(LayerMaskCommand.APPLY) })
+        DropdownMenuItem(text = { Text(tr("Delete layer mask", "删除图层蒙版")) }, onClick = { onCommand(LayerMaskCommand.DELETE) })
+    }
+}
+
+@Composable
 private fun LayerPanel(
     page: InkPage,
     activeLayerId: String,
@@ -5998,6 +6039,7 @@ private fun LayerPanel(
     onToggleClippedToBelow: (String) -> Unit,
     onToggleReference: (String) -> Unit,
     onToggleDraft: (String) -> Unit,
+    onMaskCommand: (String, LayerMaskCommand) -> Unit,
     onMoveToFolder: (String, String?) -> Unit,
     onToggleFolderCollapsed: (String) -> Unit,
     onMove: (String, Int) -> Unit,
@@ -6051,6 +6093,7 @@ private fun LayerPanel(
             onToggleClippedToBelow = onToggleClippedToBelow,
             onToggleReference = onToggleReference,
             onToggleDraft = onToggleDraft,
+            onMaskCommand = onMaskCommand,
             onMove = onMove,
             onDuplicate = onDuplicate,
             onMergeDown = onMergeDown,
@@ -6180,6 +6223,7 @@ private fun LayerPanel(
                         if (layer.locked) Icon(Icons.Outlined.Lock, tr("Locked", "已锁定"), Modifier.size(14.dp), tint = MutedInk)
                         if (layer.reference) Icon(Icons.Outlined.Lightbulb, tr("Reference layer", "参考图层"), Modifier.size(14.dp), tint = MutedInk)
                         if (layer.draft) Icon(Icons.Outlined.EditNote, tr("Draft layer", "草稿图层"), Modifier.size(14.dp), tint = MutedInk)
+                        layer.mask?.let { mask -> Icon(Icons.Outlined.FilterAlt, tr("Layer mask", "图层蒙版"), Modifier.size(14.dp), tint = if (mask.enabled) Ink else MutedInk) }
                         if (folderTargets.isNotEmpty() || layer.parentId != null) Box {
                             Box(
                                 Modifier.size(28.dp).clickable {
@@ -6207,6 +6251,7 @@ private fun LayerPanel(
                                 if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(if (layer.clippedToBelow) tr("Stop clipping", "取消剪贴") else tr("Clipping mask", "剪贴蒙版")) }, leadingIcon = { Icon(if (layer.clippedToBelow) Icons.Outlined.LinkOff else Icons.Outlined.Link, null) }, onClick = { menu = false; onToggleClippedToBelow(layer.id) })
                                 if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text(if (layer.reference) tr("Unset reference layer", "取消参考图层") else tr("Set as reference layer", "设为参考图层")) }, leadingIcon = { Icon(Icons.Outlined.Lightbulb, null) }, onClick = { menu = false; onToggleReference(layer.id) })
                                 if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(if (layer.draft) tr("Unset draft layer", "取消草稿图层") else tr("Set as draft layer", "设为草稿图层")) }, leadingIcon = { Icon(Icons.Outlined.EditNote, null) }, onClick = { menu = false; onToggleDraft(layer.id) })
+                                LayerMaskMenuItems(layer) { command -> menu = false; onMaskCommand(layer.id, command) }
                                 DropdownMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { menu = false; renameLayer = layer; renameValue = layer.name })
                                 if (layer.parentId != null) DropdownMenuItem(text = { Text(tr("Move out of folder", "移出文件夹")) }, onClick = { menu = false; onMoveToFolder(layer.id, null) })
                                 folderTargets.forEach { folder -> DropdownMenuItem(text = { Text("${tr("Move into", "移入")} ${folder.name}") }, onClick = { menu = false; onMoveToFolder(layer.id, folder.id) }) }
@@ -6256,6 +6301,7 @@ private fun ProcreateLayerPanel(
     onToggleClippedToBelow: (String) -> Unit,
     onToggleReference: (String) -> Unit,
     onToggleDraft: (String) -> Unit,
+    onMaskCommand: (String, LayerMaskCommand) -> Unit,
     onMove: (String, Int) -> Unit,
     onDuplicate: (String) -> Unit,
     onMergeDown: (String) -> Unit,
@@ -6353,6 +6399,7 @@ private fun ProcreateLayerPanel(
                         if (layer.locked) Icon(Icons.Outlined.Lock, tr("Locked", "已锁定"), Modifier.size(15.dp), tint = MutedInk)
                         if (layer.reference) Icon(Icons.Outlined.Lightbulb, tr("Reference layer", "参考图层"), Modifier.size(15.dp), tint = MutedInk)
                         if (layer.draft) Icon(Icons.Outlined.EditNote, tr("Draft layer", "草稿图层"), Modifier.size(15.dp), tint = MutedInk)
+                        layer.mask?.let { mask -> Icon(Icons.Outlined.FilterAlt, tr("Layer mask", "图层蒙版"), Modifier.size(15.dp), tint = if (mask.enabled) Ink else MutedInk) }
                         Box {
                             IconButton(onClick = { menu = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.MoreVert, tr("Layer actions", "图层操作"), tint = Ink) }
                             DropdownMenu(menu, { menu = false }) {
@@ -6361,6 +6408,7 @@ private fun ProcreateLayerPanel(
                                 if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(if (layer.clippedToBelow) tr("Stop clipping", "取消剪贴") else tr("Clipping mask", "剪贴蒙版")) }, onClick = { menu = false; onToggleClippedToBelow(layer.id) })
                                 if (layer.role != LayerRole.BACKGROUND) DropdownMenuItem(text = { Text(if (layer.reference) tr("Unset reference layer", "取消参考图层") else tr("Set as reference layer", "设为参考图层")) }, onClick = { menu = false; onToggleReference(layer.id) })
                                 if (layer.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) DropdownMenuItem(text = { Text(if (layer.draft) tr("Unset draft layer", "取消草稿图层") else tr("Set as draft layer", "设为草稿图层")) }, onClick = { menu = false; onToggleDraft(layer.id) })
+                                LayerMaskMenuItems(layer) { command -> menu = false; onMaskCommand(layer.id, command) }
                                 DropdownMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { menu = false; renameLayer = layer; renameValue = layer.name })
                                 DropdownMenuItem(text = { Text(tr("Move up", "上移")) }, onClick = { menu = false; onMove(layer.id, 1) })
                                 DropdownMenuItem(text = { Text(tr("Move down", "下移")) }, onClick = { menu = false; onMove(layer.id, -1) })

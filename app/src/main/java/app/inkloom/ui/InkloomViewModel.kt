@@ -271,6 +271,16 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         page.copy(layers = page.layers.map { if (it.id == layerId && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) it.copy(draft = !it.draft) else it })
     }
 
+    fun updateLayerMask(
+        documentId: String,
+        pageId: String,
+        layerId: String,
+        command: LayerMaskCommand,
+        selectionRegions: List<List<StrokePoint>>,
+    ) = updatePage(documentId, pageId) { page ->
+        LayerMaskOperations.execute(page, layerId, command, selectionRegions)
+    }
+
     fun moveLayerToFolder(documentId: String, pageId: String, layerId: String, folderId: String?) = updatePage(documentId, pageId) { page ->
         LayerHierarchy.moveToFolder(page, layerId, folderId)
     }

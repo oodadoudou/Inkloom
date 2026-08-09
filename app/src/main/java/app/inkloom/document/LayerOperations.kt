@@ -49,6 +49,7 @@ object LayerOperations {
         return source.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) &&
             target.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) &&
             !source.locked && !target.locked &&
+            source.mask == null && target.mask == null &&
             source.visible == target.visible &&
             source.blendMode == LayerBlendMode.NORMAL &&
             target.blendMode == LayerBlendMode.NORMAL

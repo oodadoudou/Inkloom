@@ -172,6 +172,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
     private var backgroundBitmap: Bitmap? = null
     private val selectedStrokeIds = linkedSetOf<String>()
+    private var selectedMaskRegions: List<List<StrokePoint>> = emptyList()
     private var selectionGestureBefore: List<InkStroke>? = null
     private var eraserGestureBefore: List<InkStroke>? = null
     private var pendingEraserInvalidationBefore: List<InkStroke>? = null
@@ -2674,6 +2675,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun selectAutomaticRegion(normalizedX: Float, normalizedY: Float, smartBorder: Boolean) {
+        selectedMaskRegions = emptyList()
         val sampleWidth = width.coerceIn(1, 512)
         val sampleHeight = (height.coerceAtLeast(1) * (sampleWidth / width.coerceAtLeast(1).toFloat())).toInt().coerceIn(1, 768)
         val page = renderDocumentPageBitmap(sampleWidth, sampleHeight)
@@ -2749,6 +2751,11 @@ class InkCanvasView(context: Context) : View(context) {
         }
         selectedStrokeIds.clear()
         selectedStrokeIds += selected
+        selectedMaskRegions = when (selectionMode) {
+            SelectionMode.REPLACE -> listOf(polygon.toList())
+            SelectionMode.ADD -> selectedMaskRegions + listOf(polygon.toList())
+            SelectionMode.SUBTRACT, SelectionMode.INTERSECT -> emptyList()
+        }
         if (splitOccurred) {
             strokes.clear()
             strokes += rebuilt
@@ -3587,7 +3594,7 @@ class InkCanvasView(context: Context) : View(context) {
             masks = original.masks.map { it.copy(x = (it.x + .03f).coerceIn(0f, 1f), y = (it.y + .03f).coerceIn(0f, 1f)) },
         ) }
         if (copies.isEmpty()) return
-        strokes += copies; selectedStrokeIds.clear(); selectedStrokeIds += copies.map(InkStroke::id); commitStrokeEdit(before, strokes); invalidateStrokeCache(emptyList(), copies)
+        strokes += copies; selectedStrokeIds.clear(); selectedStrokeIds += copies.map(InkStroke::id); selectedMaskRegions = emptyList(); commitStrokeEdit(before, strokes); invalidateStrokeCache(emptyList(), copies)
     }
 
     fun copySelectionToClipboard(): Boolean {
@@ -3631,6 +3638,7 @@ class InkCanvasView(context: Context) : View(context) {
             .toList()
         selectedStrokeIds.clear()
         selectedStrokeIds += selectable
+        selectedMaskRegions = emptyList()
         invalidate()
         return selectable.isNotEmpty()
     }
@@ -3644,6 +3652,7 @@ class InkCanvasView(context: Context) : View(context) {
         val inverted = editable - selectedStrokeIds
         selectedStrokeIds.clear()
         selectedStrokeIds += inverted
+        selectedMaskRegions = emptyList()
         lassoPoints.clear()
         movingSelection = false
         invalidate()
@@ -3662,16 +3671,36 @@ class InkCanvasView(context: Context) : View(context) {
     fun clearSelection(): Boolean {
         if (selectedStrokeIds.isEmpty()) return false
         selectedStrokeIds.clear()
+        selectedMaskRegions = emptyList()
         lassoPoints.clear()
         movingSelection = false
         invalidate()
         return true
     }
 
+    /** Returns normalized selection contours for non-destructive layer-mask commands. Exact lasso,
+     * rectangle, ellipse and brush-selection contours are retained; selections produced by smart
+     * region or whole-document commands use conservative per-stroke bounds. */
+    fun selectionMaskRegions(): List<List<StrokePoint>> {
+        if (selectedStrokeIds.isEmpty()) return emptyList()
+        if (selectedMaskRegions.isNotEmpty()) return selectedMaskRegions
+        return strokes.asSequence().filter { it.id in selectedStrokeIds }.mapNotNull { stroke ->
+            val points = stroke.points
+            if (points.isEmpty()) null else {
+                val halfWidthX = stroke.width / pageModelWidth.coerceAtLeast(1f) / 2f
+                val halfWidthY = stroke.width / pageModelHeight.coerceAtLeast(1f) / 2f
+                LassoGeometry.rectangle(
+                    StrokePoint((points.minOf(StrokePoint::x) - halfWidthX).coerceIn(0f, 1f), (points.minOf(StrokePoint::y) - halfWidthY).coerceIn(0f, 1f)),
+                    StrokePoint((points.maxOf(StrokePoint::x) + halfWidthX).coerceIn(0f, 1f), (points.maxOf(StrokePoint::y) + halfWidthY).coerceIn(0f, 1f)),
+                )
+            }
+        }.toList()
+    }
+
     fun deleteSelection() {
         if (selectedStrokeIds.isEmpty()) return
         val before = strokes.toList()
-        val ids = selectedStrokeIds.toSet(); val removed = strokes.filter { it.id in ids }; strokes.removeAll { it.id in ids }; commitStrokeEdit(before, strokes); selectedStrokeIds.clear(); invalidateStrokeCache(removed, emptyList())
+        val ids = selectedStrokeIds.toSet(); val removed = strokes.filter { it.id in ids }; strokes.removeAll { it.id in ids }; commitStrokeEdit(before, strokes); selectedStrokeIds.clear(); selectedMaskRegions = emptyList(); invalidateStrokeCache(removed, emptyList())
     }
 
     private fun transformSelection(scale: Float, rotationDegrees: Float) {

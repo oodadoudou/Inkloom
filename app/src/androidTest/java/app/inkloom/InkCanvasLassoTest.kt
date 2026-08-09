@@ -16,6 +16,20 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class InkCanvasLassoTest {
+    @Test fun lassoExposesItsExactContourForLayerMaskCommands() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val view = configuredView(horizontalStroke("mask-source"), mutableListOf())
+
+            view.drawSquareLasso()
+
+            val contour = view.selectionMaskRegions().single()
+            assertEquals(.2f, contour.minOf(StrokePoint::x), .001f)
+            assertEquals(.8f, contour.maxOf(StrokePoint::x), .001f)
+            assertEquals(.2f, contour.minOf(StrokePoint::y), .001f)
+            assertEquals(.8f, contour.maxOf(StrokePoint::y), .001f)
+        }
+    }
+
     @Test fun draggingASelectionMovesItsMasksWithItsPoints() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
