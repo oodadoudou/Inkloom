@@ -1298,7 +1298,7 @@ private fun EditorScreen(
             }
             ProcreateTopButton(Icons.Outlined.AutoFixHigh, tr("Adjustments", "调整"), onClick = onSettings)
             ProcreateTopButton(Icons.Outlined.Gesture, tr("Selection", "选择"), selected = tool == EditorTool.SELECT, onClick = { exitCanvasNavigation(); tool = EditorTool.SELECT; canvasView?.tool = EditorTool.SELECT })
-            ProcreateTopButton(Icons.Outlined.OpenWith, tr("Transform", "变换"), selected = handToolEnabled, onClick = { handToolEnabled = !handToolEnabled; rotateToolEnabled = false })
+            ProcreateTopButton(Icons.Outlined.OpenWith, tr("Move canvas", "移动画布"), selected = handToolEnabled, onClick = { handToolEnabled = !handToolEnabled; rotateToolEnabled = false })
             ProcreateTopButton(
                 if (settings.showPageRail) Icons.Outlined.ViewSidebar else Icons.Outlined.TableRows,
                 tr("Toggle pages", "显示或隐藏页面栏"),
@@ -5226,13 +5226,14 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
         CompactToolbarIconButton(onClick = { onMoreToolsOpen(true) }, description = tr("More tools", "更多工具"), selected = rulerEnabled || gridSnapEnabled || alignmentGuidesEnabled || tool in setOf(EditorTool.EYEDROPPER, EditorTool.FILL, EditorTool.GRADIENT, EditorTool.SMUDGE, EditorTool.LIQUIFY, EditorTool.CORRECT_LINE, EditorTool.SHAPE, EditorTool.TEXT, EditorTool.NOTE, EditorTool.LINK, EditorTool.IMAGE, EditorTool.AUDIO, EditorTool.LASER)) { Icon(Icons.Outlined.Apps, null, Modifier.size(20.dp)) }
         DropdownMenu(expanded = moreToolsOpen, onDismissRequest = { onMoreToolsOpen(false) }) {
             val unsortedTools = listOf(
+                Triple(EditorTool.SELECT, Icons.Outlined.TouchApp, tr("Operation", "对象操作")),
                 Triple(EditorTool.EYEDROPPER, Icons.Outlined.Colorize, tr("Eyedropper", "吸管")),
                 Triple(EditorTool.FILL, Icons.Outlined.FormatColorFill, tr("Paint bucket", "油漆桶")),
                 Triple(EditorTool.GRADIENT, Icons.Outlined.Gradient, tr("Gradient", "渐变")),
                 Triple(EditorTool.SMUDGE, Icons.Outlined.BlurOn, tr("Blend", "混色")),
                 Triple(EditorTool.LIQUIFY, Icons.Outlined.Waves, tr("Liquify", "液化")),
                 Triple(EditorTool.CORRECT_LINE, Icons.Outlined.AutoFixHigh, tr("Correct line", "线条修正")),
-                Triple(EditorTool.SHAPE, Icons.Outlined.Category, tr("Shape", "形状")),
+                Triple(EditorTool.SHAPE, Icons.Outlined.Category, tr("Figure", "图形")),
                 Triple(EditorTool.TEXT, Icons.Outlined.Title, tr("Text", "文字")),
                 Triple(EditorTool.NOTE, Icons.Outlined.StickyNote2, tr("Note", "便笺")),
                 Triple(EditorTool.LINK, Icons.Outlined.Link, tr("Link", "链接")),
@@ -5388,6 +5389,14 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
                         TextButton(onClick = onDeselect) { Text(tr("Deselect", "取消选区"), fontSize = 10.sp) }
                         TextButton(onClick = onFreeTransform) { Text(tr("Transform", "自由变换"), fontSize = 10.sp) }
                     }
+                }
+                if (tool == EditorTool.CORRECT_LINE) {
+                    Text(tr("Correct line", "线条修正"), color = MutedInk, fontSize = 12.sp)
+                    Text(
+                        tr("Drag across an existing line. Drag farther right for stronger smoothing; undo restores the original vector line.", "在已有线条上拖动；向右拖得越远，平滑强度越高。可撤销并完整恢复原矢量线条。"),
+                        color = MutedInk,
+                        fontSize = 10.sp,
+                    )
                 }
                 HorizontalDivider()
                 Text(tr("Palette position", "工具栏位置"), color = MutedInk, fontSize = 12.sp)

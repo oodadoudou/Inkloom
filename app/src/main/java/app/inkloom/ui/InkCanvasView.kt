@@ -88,6 +88,8 @@ import app.inkloom.document.StrokeEditHistory
 import app.inkloom.document.StrokeEdits
 import app.inkloom.document.StrokeEraser
 import app.inkloom.document.StrokeClipboardCodec
+import app.inkloom.document.CorrectLineMode
+import app.inkloom.document.StrokeCorrection
 import app.inkloom.document.StrokeStampSampler
 import app.inkloom.document.StrokeStabilization
 import app.inkloom.document.StrokeTaper
@@ -195,6 +197,10 @@ class InkCanvasView(context: Context) : View(context) {
     private var liquifyLastX = 0f
     private var liquifyLastY = 0f
     private var liquifyChanged = false
+    private var correctionBefore: List<InkStroke>? = null
+    private var correctionStrokeId: String? = null
+    private var correctionStartX = 0f
+    private var correctionChanged = false
     private var movingSelection = false
     private var selectionMoved = false
     private var selectionTransformMode = TRANSFORM_NONE
@@ -599,6 +605,9 @@ class InkCanvasView(context: Context) : View(context) {
     var liquifyStrength: Float = .55f
         set(value) { field = value.coerceIn(.01f, 1f) }
     var liquifyHardness: Float = .5f
+        set(value) { field = value.coerceIn(0f, 1f) }
+    var correctLineMode: CorrectLineMode = CorrectLineMode.SMOOTH
+    var correctLineAmount: Float = .55f
         set(value) { field = value.coerceIn(0f, 1f) }
     var pageModelWidth: Float = 1600f
     var pageModelHeight: Float = 2263f
@@ -1401,7 +1410,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (tool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.EYEDROPPER, EditorTool.SELECT, EditorTool.SHAPE, EditorTool.LASER, EditorTool.FILL, EditorTool.GRADIENT, EditorTool.SMUDGE, EditorTool.LIQUIFY)) return false
+        if (tool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.EYEDROPPER, EditorTool.SELECT, EditorTool.SHAPE, EditorTool.LASER, EditorTool.FILL, EditorTool.GRADIENT, EditorTool.SMUDGE, EditorTool.LIQUIFY, EditorTool.CORRECT_LINE)) return false
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
             if (hoverCursorVisible) { hoverCursorVisible = false; invalidate() }
             if (!hasFocus()) requestFocus()
@@ -1733,6 +1742,11 @@ class InkCanvasView(context: Context) : View(context) {
                     invalidate()
                     return true
                 }
+                if (activeTool == EditorTool.CORRECT_LINE) {
+                    parent?.requestDisallowInterceptTouchEvent(true)
+                    beginCorrectLineGesture(normalizedX, normalizedY)
+                    return true
+                }
                 clearActiveStrokeInput()
                 beginActiveStrokePreview()
                 currentStrokeId = java.util.UUID.randomUUID().toString()
@@ -1762,6 +1776,9 @@ class InkCanvasView(context: Context) : View(context) {
                 else if (activeTool == EditorTool.LIQUIFY) {
                     for (i in 0 until event.historySize) historicalCanvasPoint(event, 0, i).let { point -> extendLiquify(point.first / width.coerceAtLeast(1), point.second / height.coerceAtLeast(1)) }
                     extendLiquify(normalizedX, normalizedY)
+                }
+                else if (activeTool == EditorTool.CORRECT_LINE) {
+                    updateCorrectLineGesture(normalizedX)
                 }
                 else if (activeTool == EditorTool.EYEDROPPER) {
                     onColorSampled(sampleRenderedColor(inputPoint.first, inputPoint.second))
@@ -1875,6 +1892,7 @@ class InkCanvasView(context: Context) : View(context) {
                     if (activeTool == EditorTool.GRADIENT) { gradientStart = null; gradientEnd = null }
                     if (activeTool == EditorTool.SMUDGE) cancelSmudgeGesture()
                     if (activeTool == EditorTool.LIQUIFY) cancelLiquifyGesture()
+                    if (activeTool == EditorTool.CORRECT_LINE) cancelCorrectLineGesture()
                     shapeStart = null; shapeEnd = null; shapeFreeformPoints.clear()
                     if (activeTool == EditorTool.ERASER) cancelEraserGesture()
                     selectionGestureBefore?.let { restoreStrokeSnapshot(it) }
@@ -1895,6 +1913,9 @@ class InkCanvasView(context: Context) : View(context) {
                     parent?.requestDisallowInterceptTouchEvent(false)
                 } else if (activeTool == EditorTool.LIQUIFY) {
                     finishLiquifyGesture()
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                } else if (activeTool == EditorTool.CORRECT_LINE) {
+                    finishCorrectLineGesture()
                     parent?.requestDisallowInterceptTouchEvent(false)
                 } else if (activeTool == EditorTool.EYEDROPPER) {
                     onColorSampled(sampleRenderedColor(inputPoint.first, inputPoint.second))
@@ -2080,6 +2101,7 @@ class InkCanvasView(context: Context) : View(context) {
         cancelFillGesture()
         cancelSmudgeGesture()
         cancelLiquifyGesture()
+        cancelCorrectLineGesture()
         rulerGestureMode = null
         canvasGuideGestureMode = null
         activeCanvasSnapConstraint = null
@@ -2993,6 +3015,58 @@ class InkCanvasView(context: Context) : View(context) {
         if (before != null && liquifyChanged) restoreStrokeSnapshot(before)
         liquifyBefore = null
         liquifyChanged = false
+        invalidate()
+    }
+
+    private fun beginCorrectLineGesture(x: Float, y: Float) {
+        val index = findStroke(x, y, .05f)
+        val target = strokes.getOrNull(index)
+        if (target == null || target.id in protectedStrokeIds || target.layerId in protectedLayerIds) {
+            correctionBefore = null
+            correctionStrokeId = null
+            return
+        }
+        correctionBefore = strokes.toList()
+        correctionStrokeId = target.id
+        correctionStartX = x
+        correctionChanged = false
+        updateCorrectLine(correctLineAmount)
+    }
+
+    private fun updateCorrectLineGesture(x: Float) {
+        if (correctionBefore == null || correctionStrokeId == null) return
+        updateCorrectLine((correctLineAmount + (x - correctionStartX) * 1.5f).coerceIn(0f, 1f))
+    }
+
+    private fun updateCorrectLine(amount: Float) {
+        val before = correctionBefore ?: return
+        val id = correctionStrokeId ?: return
+        val original = before.firstOrNull { it.id == id } ?: return
+        val corrected = StrokeCorrection.apply(original, correctLineMode, amount, pageModelWidth, pageModelHeight)
+        val index = strokes.indexOfFirst { it.id == id }
+        if (index < 0) return
+        val previous = strokes[index]
+        strokes[index] = corrected
+        correctionChanged = corrected != original
+        invalidateStrokeCache(listOf(previous), listOf(corrected))
+        invalidate()
+    }
+
+    private fun finishCorrectLineGesture() {
+        val before = correctionBefore
+        if (before != null && correctionChanged) commitStrokeEdit(before, strokes)
+        correctionBefore = null
+        correctionStrokeId = null
+        correctionChanged = false
+        invalidate()
+    }
+
+    private fun cancelCorrectLineGesture() {
+        val before = correctionBefore
+        if (before != null && correctionChanged) restoreStrokeSnapshot(before)
+        correctionBefore = null
+        correctionStrokeId = null
+        correctionChanged = false
         invalidate()
     }
 
