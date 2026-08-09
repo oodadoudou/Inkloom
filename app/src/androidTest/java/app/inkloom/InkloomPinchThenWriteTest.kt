@@ -147,6 +147,43 @@ class InkloomPinchThenWriteTest {
         assertEquals("Finger must draw immediately after a native pinch", 2, strokeCount())
     }
 
+    @Test fun zoomedScreenStylusLandsExactlyUnderThePen() {
+        openEditor()
+        val view = findInkCanvasView()!!
+
+        composeRule.onRoot().performTouchInput {
+            down(0, center + Offset(-150f, -40f))
+            down(1, center + Offset(150f, -40f))
+            moveTo(0, center + Offset(-310f, 35f), delayMillis = 30)
+            moveTo(1, center + Offset(310f, 35f), delayMillis = 30)
+            up(1)
+            up(0)
+        }
+        composeRule.waitForIdle()
+
+        val location = IntArray(2)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.getLocationOnScreen(location) }
+        val viewport = ViewportState(view.viewportScale, view.viewportPanX, view.viewportPanY, view.viewportRotationDegrees)
+        assertTrue("Test setup must zoom the page", viewport.scale > 1.4f)
+        val screenX = location[0] + view.width * .57f
+        val screenY = location[1] + view.height * .46f
+        val expected = ViewportTransform.viewToPage(
+            screenX - location[0],
+            screenY - location[1],
+            view.width.toFloat(),
+            view.height.toFloat(),
+            viewport,
+        )
+
+        sendScreenStylusStroke(screenX, screenY, screenX + 32f, screenY + 14f)
+        composeRule.waitUntil(10_000) { strokeCount() == 1 }
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val stroke = activeDocumentId?.let { FileDocumentStore(context.filesDir).get(it) }
+            ?.pages?.flatMap { it.strokes }?.single()
+        assertEquals("Zoomed stylus X must inverse-map once", expected.first / view.width, stroke?.points?.first()?.x ?: Float.NaN, .004f)
+        assertEquals("Zoomed stylus Y must inverse-map once", expected.second / view.height, stroke?.points?.first()?.y ?: Float.NaN, .004f)
+    }
+
     @Test fun strokeRendersAtZoom1() {
         openEditor()
         composeRule.waitUntil(5_000) { strokeCount() == 0 }
@@ -432,6 +469,45 @@ class InkloomPinchThenWriteTest {
         send(android.view.MotionEvent.ACTION_DOWN, startX, startY, 0)
         send(android.view.MotionEvent.ACTION_MOVE, endX, endY, 20)
         send(android.view.MotionEvent.ACTION_UP, endX, endY, 40)
+    }
+
+    private fun sendScreenStylusStroke(startX: Float, startY: Float, endX: Float, endY: Float) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val downTime = android.os.SystemClock.uptimeMillis()
+        fun send(action: Int, x: Float, y: Float, elapsed: Long) {
+            val event = android.view.MotionEvent.obtain(
+                downTime,
+                downTime + elapsed,
+                action,
+                1,
+                arrayOf(android.view.MotionEvent.PointerProperties().apply {
+                    id = 0
+                    toolType = android.view.MotionEvent.TOOL_TYPE_STYLUS
+                }),
+                arrayOf(android.view.MotionEvent.PointerCoords().apply {
+                    this.x = x
+                    this.y = y
+                    pressure = .72f
+                    size = .04f
+                }),
+                0,
+                0,
+                1f,
+                1f,
+                0,
+                0,
+                android.view.InputDevice.SOURCE_STYLUS,
+                0,
+            )
+            try {
+                instrumentation.sendPointerSync(event)
+            } finally {
+                event.recycle()
+            }
+        }
+        send(android.view.MotionEvent.ACTION_DOWN, startX, startY, 0)
+        send(android.view.MotionEvent.ACTION_MOVE, endX, endY, 12)
+        send(android.view.MotionEvent.ACTION_UP, endX, endY, 24)
     }
 
     private fun findInkCanvasView(): InkCanvasView? {
