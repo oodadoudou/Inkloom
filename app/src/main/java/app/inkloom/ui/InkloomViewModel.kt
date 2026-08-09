@@ -137,6 +137,12 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         if (from < 0 || from == to) document else document.copy(pages = document.pages.toMutableList().apply { add(to, removeAt(from)) }, updatedAt = System.currentTimeMillis())
     }
 
+    fun reorderPages(documentId: String, orderedPageIds: List<String>) = update(documentId) { document ->
+        val byId = document.pages.associateBy { it.id }
+        if (orderedPageIds.size != document.pages.size || orderedPageIds.toSet() != byId.keys) document
+        else document.copy(pages = orderedPageIds.map(byId::getValue), updatedAt = System.currentTimeMillis())
+    }
+
     fun transferPage(sourceDocumentId: String, pageId: String, targetDocumentId: String, copy: Boolean) {
         if (sourceDocumentId == targetDocumentId) return
         val source = store.get(sourceDocumentId) ?: return

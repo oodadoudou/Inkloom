@@ -58,6 +58,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInWindow
@@ -71,6 +73,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.text.font.FontStyle
@@ -648,6 +651,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onDuplicatePage = { documentId, pageId -> viewModel.duplicatePage(documentId, pageId) },
             onDeletePage = { documentId, pageId -> viewModel.deletePage(documentId, pageId) },
             onMovePage = viewModel::movePage,
+            onReorderPages = viewModel::reorderPages,
             onTransferPage = viewModel::transferPage,
             onApplyPageTemplate = viewModel::applyPageTemplate,
             onImportPageTemplates = { pageTemplatePicker.launch(arrayOf("application/pdf", "image/*")) },
@@ -947,6 +951,7 @@ private fun EditorScreen(
     onDuplicatePage: (String, String) -> Unit,
     onDeletePage: (String, String) -> Unit,
     onMovePage: (String, String, Int) -> Unit,
+    onReorderPages: (String, List<String>) -> Unit,
     onTransferPage: (String, String, String, Boolean) -> Unit,
     onApplyPageTemplate: (String, String, String) -> Unit,
     onImportPageTemplates: () -> Unit,
@@ -1786,7 +1791,7 @@ private fun EditorScreen(
                 onDock = { changePanelDock(WorkspacePanelKind.PAGES, it) },
                 onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
                 pageTemplates = pageTemplates,
-                onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> setLayersPanelOpen(true, pageId) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
+                onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> setLayersPanelOpen(true, pageId) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onReorder = onReorderPages, onTransfer = onTransferPage,
                 onApplyTemplate = onApplyPageTemplate, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
                 onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate,
                 onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
@@ -2359,7 +2364,7 @@ private fun EditorScreen(
                 onDock = { changePanelDock(WorkspacePanelKind.PAGES, it) },
                 onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
                 pageTemplates = pageTemplates,
-                onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> setLayersPanelOpen(true, pageId) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
+                onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> setLayersPanelOpen(true, pageId) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onReorder = onReorderPages, onTransfer = onTransferPage,
                 onApplyTemplate = onApplyPageTemplate, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
                 onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate,
                 onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
@@ -2438,7 +2443,7 @@ private fun EditorScreen(
                     onDock = { changePanelDock(WorkspacePanelKind.PAGES, it) },
                     onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
                     pageTemplates = pageTemplates,
-                    onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> setLayersPanelOpen(true, pageId) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
+                    onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> setLayersPanelOpen(true, pageId) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onReorder = onReorderPages, onTransfer = onTransferPage,
                     onApplyTemplate = onApplyPageTemplate, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
                     onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate,
                     onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
@@ -2536,7 +2541,7 @@ private fun EditorScreen(
                 onDock = { changePanelDock(WorkspacePanelKind.PAGES, it) },
                 onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
                 pageTemplates = pageTemplates,
-                onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> setLayersPanelOpen(true, pageId) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onTransfer = onTransferPage,
+                onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> setLayersPanelOpen(true, pageId) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onReorder = onReorderPages, onTransfer = onTransferPage,
                 onApplyTemplate = onApplyPageTemplate, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
                 onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate,
                 onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
@@ -3551,6 +3556,7 @@ private fun FloatingPanelTabStrip(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PageRail(
     document: InkDocument,
@@ -3566,6 +3572,7 @@ private fun PageRail(
     onDuplicate: (String, String) -> Unit,
     onDelete: (String, String) -> Unit,
     onMove: (String, String, Int) -> Unit,
+    onReorder: (String, List<String>) -> Unit,
     onTransfer: (String, String, String, Boolean) -> Unit,
     onApplyTemplate: (String, String, String) -> Unit,
     onImportTemplates: () -> Unit,
@@ -3612,6 +3619,10 @@ private fun PageRail(
     val currentPanelDragEnd by rememberUpdatedState(onPanelDragEnd)
     val currentPanelDragCancel by rememberUpdatedState(onPanelDragCancel)
     var addTemplateOpen by remember(document.id) { mutableStateOf(false) }
+    var managingPages by remember(document.id) { mutableStateOf(false) }
+    var selectedPageIds by remember(document.id) { mutableStateOf(emptySet<String>()) }
+    val currentSelectedPageIds by rememberUpdatedState(selectedPageIds)
+    val pageManagementDescription = tr("Page management: ${selectedPageIds.size} selected", "页面管理：已选择 ${selectedPageIds.size} 页")
     LazyColumn(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -3659,6 +3670,22 @@ private fun PageRail(
                 onDelete = onDeleteTemplate,
             )
         }
+        if (managingPages) stickyHeader(key = "page-management") {
+            Column(Modifier.fillMaxWidth().background(Color(0xFFF3F3F3), RoundedCornerShape(4.dp)).padding(4.dp)) {
+                Row(Modifier.semantics { contentDescription = pageManagementDescription }, verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { managingPages = false; selectedPageIds = emptySet() }, modifier = Modifier.size(26.dp)) { Icon(Icons.Outlined.Close, tr("Exit page management", "退出页面管理"), Modifier.size(16.dp)) }
+                    Text("${selectedPageIds.size} ${tr("selected", "已选择")}", Modifier.weight(1f), fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                    TextButton(onClick = { selectedPageIds = document.pages.mapTo(linkedSetOf(), InkPage::id) }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text(tr("All", "全选"), fontSize = 9.sp) }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    IconButton(onClick = { document.pages.filter { it.id in selectedPageIds }.forEach { onDuplicate(document.id, it.id) }; managingPages = false; selectedPageIds = emptySet() }, enabled = selectedPageIds.isNotEmpty(), modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.ContentCopy, tr("Duplicate selected pages", "复制所选页面"), Modifier.size(16.dp)) }
+                    IconButton(onClick = {
+                        document.pages.filter { it.id in selectedPageIds }.take((document.pages.size - 1).coerceAtLeast(0)).forEach { onDelete(document.id, it.id) }
+                        managingPages = false; selectedPageIds = emptySet()
+                    }, enabled = selectedPageIds.isNotEmpty() && document.pages.size > 1, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.Delete, tr("Delete selected pages", "删除所选页面"), Modifier.size(16.dp), tint = MaterialTheme.colorScheme.error) }
+                }
+            }
+        }
         items(document.pages, key = { it.id }) { page ->
             val pageIndex = document.pages.indexOf(page)
             val hasOutlineChildren = PageOutline.hasChildren(document.pages, pageIndex)
@@ -3676,7 +3703,21 @@ private fun PageRail(
             var customNumber by remember(page.customNumber) { mutableStateOf(page.customNumber.orEmpty()) }
             var tags by remember(page.tags) { mutableStateOf(page.tags.joinToString(", ")) }
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Box(Modifier.size(58.dp, 74.dp).background(Color.White, RoundedCornerShape(5.dp)).border(if (page.id == selectedPageId) 2.dp else 1.dp, if (page.id == selectedPageId) Sage else OutlineSoft, RoundedCornerShape(5.dp)).clickable { onSelect(page.id) }.padding(4.dp)) {
+                val pageBatchSelected = page.id in selectedPageIds
+                val pageDescription = if (pageBatchSelected) {
+                    tr("Page ${pageIndex + 1}. Selected for management.", "第 ${pageIndex + 1} 页，已选择管理")
+                } else {
+                    tr("Page ${pageIndex + 1}. Long press to manage.", "第 ${pageIndex + 1} 页，长按管理")
+                }
+                val selectPage: () -> Unit = {
+                    if (managingPages) selectedPageIds = if (page.id in currentSelectedPageIds) currentSelectedPageIds - page.id else currentSelectedPageIds + page.id
+                    else onSelect(page.id)
+                }
+                val managePage: () -> Unit = {
+                    managingPages = true
+                    selectedPageIds = currentSelectedPageIds + page.id
+                }
+                Box(Modifier.size(58.dp, 74.dp).background(if (pageBatchSelected) Color(0xFFDDE8F7) else Color.White, RoundedCornerShape(5.dp)).border(if (page.id == selectedPageId || pageBatchSelected) 2.dp else 1.dp, if (page.id == selectedPageId || pageBatchSelected) Sage else OutlineSoft, RoundedCornerShape(5.dp)).padding(4.dp)) {
                     if (page.background is PageBackground.Pdf) Text("PDF", fontSize = 9.sp, color = Sage)
                     if (page.bookmarked) Icon(Icons.Default.Bookmark, tr("Bookmarked", "已收藏"), tint = Sage, modifier = Modifier.size(16.dp).align(Alignment.TopEnd))
                     Box(
@@ -3685,6 +3726,26 @@ private fun PageRail(
                     ) {
                         Icon(Icons.Outlined.Layers, tr("Open layers for this page", "打开此页面的图层"), Modifier.size(15.dp))
                     }
+                    Box(Modifier.matchParentSize().pointerInput(page.id, managingPages) {
+                        val layerHotspot = 24.dp.toPx()
+                        detectTapGestures(
+                            onTap = { position ->
+                                if (position.x >= size.width - layerHotspot && position.y >= size.height - layerHotspot) onOpenLayers(page.id)
+                                else selectPage()
+                            },
+                            onLongPress = { managePage() },
+                        )
+                    }.semantics {
+                        contentDescription = pageDescription
+                        onClick {
+                            selectPage()
+                            true
+                        }
+                        onLongClick {
+                            managePage()
+                            true
+                        }
+                    })
                 }
                 var pageDragDistance by remember(page.id) { mutableFloatStateOf(0f) }
                 Row(Modifier.width(78.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -3696,7 +3757,11 @@ private fun PageRail(
                                 onDragStart = { pageDragDistance = 0f },
                                 onDragEnd = {
                                     val delta = (pageDragDistance / 52.dp.toPx()).toInt()
-                                    if (delta != 0) onMove(document.id, page.id, delta)
+                                    if (delta != 0) {
+                                        val selected = if (managingPages && selectedPageIds.isNotEmpty()) selectedPageIds + page.id else setOf(page.id)
+                                        val target = (pageIndex + delta).coerceIn(0, document.pages.lastIndex)
+                                        onReorder(document.id, PageBatchOperations.moveBlock(document.pages.map(InkPage::id), selected, target))
+                                    }
                                     pageDragDistance = 0f
                                 },
                                 onDragCancel = { pageDragDistance = 0f },

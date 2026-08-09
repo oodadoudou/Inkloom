@@ -10,6 +10,7 @@ import android.view.ViewGroup
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.doubleClick
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollAction
@@ -414,6 +415,24 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("1/2").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Next page").performClick()
         composeRule.onNodeWithText("2/2").assertIsDisplayed()
+    }
+
+    @Test fun longPressPagesEntersMultiSelectManagement() {
+        createNotebookAndOpenEditor()
+        composeRule.onNodeWithContentDescription("Add page").performClick()
+        composeRule.onNodeWithContentDescription("Use Grid template").performClick()
+        composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasContentDescription("Open layers for this page")).fetchSemanticsNodes().size == 2 }
+
+        composeRule.onNodeWithContentDescription("Page 1. Long press to manage.").performTouchInput {
+            longClick()
+        }
+        assertEquals(1, composeRule.onAllNodesWithContentDescription("Page 1. Selected for management.").fetchSemanticsNodes().size)
+        composeRule.onNodeWithContentDescription("Page 2. Long press to manage.")
+            .performSemanticsAction(SemanticsActions.OnClick)
+        assertEquals(1, composeRule.onAllNodesWithContentDescription("Page 2. Selected for management.").fetchSemanticsNodes().size)
+        composeRule.onNodeWithContentDescription("Duplicate selected pages").performClick()
+
+        composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasContentDescription("Open layers for this page")).fetchSemanticsNodes().size == 4 }
     }
 
     @Test fun editorInsertsAValidatedLinkCard() {
