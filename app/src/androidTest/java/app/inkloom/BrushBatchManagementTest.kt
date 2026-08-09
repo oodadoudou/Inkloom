@@ -77,7 +77,7 @@ class BrushBatchManagementTest {
         composeRule.onNodeWithText("New Note").performClick()
         composeRule.onNodeWithText("Create").performClick()
         composeRule.onNodeWithContentDescription("Brushes").performClick()
-        composeRule.onNodeWithText(group).performClick()
+        composeRule.onNodeWithContentDescription("Brush group $group").performClick()
     }
 
     @Test fun popoverKeepsSystemAndImportedGroupsAndSwitchesListGridLayout() {
