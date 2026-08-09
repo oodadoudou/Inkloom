@@ -3,6 +3,7 @@ package app.inkloom.settings
 import android.content.Context
 import androidx.core.content.edit
 import app.inkloom.model.SymmetryMode
+import app.inkloom.document.CorrectLineMode
 import app.inkloom.document.PressureResponseCurve
 
 data class AppSettings(
@@ -83,6 +84,8 @@ data class AppSettings(
     val selectionThreshold: Float = .25f,
     val selectionMode: SelectionMode = SelectionMode.REPLACE,
     val selectionFilter: SelectionFilter = SelectionFilter.ALL,
+    val correctLineMode: CorrectLineMode = CorrectLineMode.SMOOTH,
+    val correctLineAmount: Float = .55f,
     val nonDestructiveEraser: Boolean = false,
     val shortcutBindings: List<ShortcutBinding> = CspShortcutResolver.defaultBindings,
     val shortcutAxisBindings: List<AxisShortcutBinding> = emptyList(),
@@ -202,6 +205,8 @@ class AppSettingsStore(context: Context) {
             selectionThreshold = preferences.getFloat("selectionThreshold", .25f).coerceIn(0f, 1f),
             selectionMode = enumValue(preferences.getString("selectionMode", null), SelectionMode.REPLACE),
             selectionFilter = enumValue(preferences.getString("selectionFilter", null), SelectionFilter.ALL),
+            correctLineMode = enumValue(preferences.getString("correctLineMode", null), CorrectLineMode.SMOOTH),
+            correctLineAmount = preferences.getFloat("correctLineAmount", .55f).coerceIn(0f, 1f),
             nonDestructiveEraser = preferences.getBoolean("nonDestructiveEraser", false),
             shortcutBindings = ShortcutBindingCodec.decode(preferences.getString("shortcutBindings", null)),
             shortcutAxisBindings = ToolboxMotionBindingCodec.decodeAxes(preferences.getString("shortcutAxisBindings", null)),
@@ -304,6 +309,8 @@ class AppSettingsStore(context: Context) {
             .putFloat("selectionThreshold", persisted.selectionThreshold.coerceIn(0f, 1f))
             .putString("selectionMode", persisted.selectionMode.name)
             .putString("selectionFilter", persisted.selectionFilter.name)
+            .putString("correctLineMode", persisted.correctLineMode.name)
+            .putFloat("correctLineAmount", persisted.correctLineAmount.coerceIn(0f, 1f))
             .putBoolean("nonDestructiveEraser", persisted.nonDestructiveEraser)
             .putString("shortcutBindings", ShortcutBindingCodec.encode(persisted.shortcutBindings))
             .putString("shortcutAxisBindings", ToolboxMotionBindingCodec.encodeAxes(persisted.shortcutAxisBindings))

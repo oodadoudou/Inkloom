@@ -78,6 +78,7 @@ object AppSettingsBackupCodec {
         put("penSize", penSize); put("penOpacity", penOpacity); put("highlighterSize", highlighterSize); put("highlighterOpacity", highlighterOpacity)
         put("eraserSize", eraserSize); put("eraserPreset", eraserPreset.name)
         put("selectionShape", selectionShape.name); put("selectionBrushSize", selectionBrushSize); put("selectionThreshold", selectionThreshold); put("selectionMode", selectionMode.name); put("selectionFilter", selectionFilter.name)
+        put("correctLineMode", correctLineMode.name); put("correctLineAmount", correctLineAmount)
         put("nonDestructiveEraser", nonDestructiveEraser)
         put("workspaceLayouts", json.parseToJsonElement(WorkspaceLayoutProfilesCodec.encode(workspaceLayouts)))
     }
@@ -120,6 +121,7 @@ object AppSettingsBackupCodec {
             highlighterSize = float("highlighterSize", defaults.highlighterSize).coerceIn(.5f, 400f), highlighterOpacity = float("highlighterOpacity", defaults.highlighterOpacity).coerceIn(.05f, 1f),
             eraserSize = float("eraserSize", defaults.eraserSize).coerceIn(.5f, 400f), eraserPreset = enum("eraserPreset", defaults.eraserPreset),
             selectionShape = enum("selectionShape", defaults.selectionShape), selectionBrushSize = float("selectionBrushSize", defaults.selectionBrushSize).coerceIn(4f, 300f), selectionThreshold = float("selectionThreshold", defaults.selectionThreshold).coerceIn(0f, 1f), selectionMode = enum("selectionMode", defaults.selectionMode), selectionFilter = enum("selectionFilter", defaults.selectionFilter),
+            correctLineMode = enum("correctLineMode", defaults.correctLineMode), correctLineAmount = float("correctLineAmount", defaults.correctLineAmount).coerceIn(0f, 1f),
             nonDestructiveEraser = boolean("nonDestructiveEraser", defaults.nonDestructiveEraser),
             workspaceLayouts = WorkspaceLayoutProfilesCodec.decode(get("workspaceLayouts")?.toString()),
         )

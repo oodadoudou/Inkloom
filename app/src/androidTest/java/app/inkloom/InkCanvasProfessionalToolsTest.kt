@@ -13,6 +13,7 @@ import app.inkloom.model.EditorTool
 import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -47,6 +48,31 @@ class InkCanvasProfessionalToolsTest {
         send(view, MotionEvent.ACTION_UP, 700f, 380f, 20L)
 
         assertNotEquals(original.points, requireNotNull(replacement).points)
+    }
+
+    @Test fun correctLineSimplifiesVectorPointsAndAdjustsWholeStrokeWidth() {
+        val original = line("rough", listOf(
+            StrokePoint(.2f, .5f), StrokePoint(.35f, .51f), StrokePoint(.5f, .49f), StrokePoint(.65f, .51f), StrokePoint(.8f, .5f),
+        ))
+        var simplified: InkStroke? = null
+        val simplifyView = canvas(EditorTool.CORRECT_LINE, original) {
+            correctLineMode = CorrectLineMode.SIMPLIFY
+            correctLineAmount = 1f
+            onStrokesReplaced = { _, changed, _ -> simplified = changed.firstOrNull() }
+        }
+        send(simplifyView, MotionEvent.ACTION_DOWN, 500f, 490f, 0L)
+        send(simplifyView, MotionEvent.ACTION_UP, 500f, 490f, 20L)
+        assertTrue(requireNotNull(simplified).points.size < original.points.size)
+
+        var widened: InkStroke? = null
+        val widthView = canvas(EditorTool.CORRECT_LINE, original) {
+            correctLineMode = CorrectLineMode.ADJUST_WIDTH
+            correctLineAmount = 1f
+            onStrokesReplaced = { _, changed, _ -> widened = changed.firstOrNull() }
+        }
+        send(widthView, MotionEvent.ACTION_DOWN, 500f, 490f, 0L)
+        send(widthView, MotionEvent.ACTION_UP, 500f, 490f, 20L)
+        assertEquals(original.width * 2f, requireNotNull(widened).width)
     }
 
     @Test fun invertAndFreeTransformOperateOnEditableSelection() {

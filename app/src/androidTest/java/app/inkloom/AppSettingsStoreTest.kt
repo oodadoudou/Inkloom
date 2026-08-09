@@ -24,6 +24,7 @@ import app.inkloom.settings.WorkspacePanelDock
 import app.inkloom.settings.WorkspacePanelMode
 import app.inkloom.settings.WorkspacePanelKind
 import app.inkloom.settings.WorkspaceOrientation
+import app.inkloom.document.CorrectLineMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -32,6 +33,21 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class AppSettingsStoreTest {
+    @Test fun correctLineSubtoolSurvivesReload() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
+        preferences.edit().clear().commit()
+        try {
+            AppSettingsStore(context).save(AppSettings(correctLineMode = CorrectLineMode.SIMPLIFY, correctLineAmount = .78f))
+
+            val restored = AppSettingsStore(context).load()
+            assertEquals(CorrectLineMode.SIMPLIFY, restored.correctLineMode)
+            assertEquals(.78f, restored.correctLineAmount)
+        } finally {
+            preferences.edit().clear().commit()
+        }
+    }
+
     @Test fun legacyWorkspaceMigratesToTheProcreateStudioOnce() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)

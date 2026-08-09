@@ -48,6 +48,8 @@ class AppSettingsBackupCodecTest {
             penSize = 17f,
             eraserPreset = EraserPreset.SOFT_EDGE,
             selectionMode = SelectionMode.INTERSECT,
+            correctLineMode = app.inkloom.document.CorrectLineMode.ADJUST_WIDTH,
+            correctLineAmount = .72f,
             shortcutBindings = listOf(ShortcutBinding(ShortcutAction.QUICK_SLOT_1, ShortcutChord(KeyEvent.KEYCODE_F12))),
             shortcutAxisBindings = listOf(AxisShortcutBinding(ToolboxAxis.ROTARY, ToolboxAxisMode.BRUSH_SIZE, sensitivity = 2f, deviceDescriptor = "dial")),
             shortcutButtonBindings = listOf(ButtonShortcutBinding(android.view.MotionEvent.BUTTON_BACK, ShortcutAction.HAND_TOOL, ShortcutTrigger.HOLD, deviceDescriptor = "dial")),
