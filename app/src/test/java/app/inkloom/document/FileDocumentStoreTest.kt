@@ -9,6 +9,31 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 class FileDocumentStoreTest {
+    @Test fun realtimeJournalIsVisibleImmediatelyAndPersistsInOrder() {
+        val root = Files.createTempDirectory("inkloom-realtime-writer").toFile()
+        val store = FileDocumentStore(root)
+        val document = InkDocument(title = "Realtime queue")
+        store.save(document)
+        val pageId = document.pages.single().id
+
+        repeat(24) { index ->
+            store.appendRealtime(
+                JournalEntry.StrokeAdded(
+                    document.id,
+                    pageId,
+                    InkStroke(id = "queued-$index", points = List(128) { point -> StrokePoint(point / 128f, index / 24f) }),
+                ),
+            )
+            assertEquals(index + 1, store.get(document.id)?.pages?.single()?.strokes?.size)
+        }
+
+        store.awaitRealtimeWrites()
+        assertEquals(
+            (0 until 24).map { "queued-$it" },
+            FileDocumentStore(root).get(document.id)?.pages?.single()?.strokes?.map(InkStroke::id),
+        )
+    }
+
     @Test fun liveInkJournalDoesNotRewriteWholeDocumentOnEveryStroke() {
         val root = Files.createTempDirectory("inkloom-live-journal").toFile()
         val store = FileDocumentStore(root)

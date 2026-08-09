@@ -40,6 +40,11 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     private val mutablePageTemplates = MutableStateFlow(pageTemplateStore.load())
     val pageTemplates = mutablePageTemplates.asStateFlow()
 
+    override fun onCleared() {
+        store.awaitRealtimeWrites()
+        super.onCleared()
+    }
+
     init {
         val recovered = store.recover()
         if (store.list().isEmpty()) {
@@ -302,13 +307,13 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     fun addStroke(documentId: String, pageId: String, stroke: InkStroke) {
         val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return
         if (page.layers.none { it.id == stroke.layerId && it.role != LayerRole.FOLDER && LayerHierarchy.effectiveVisible(page.layers, it) && !LayerHierarchy.effectiveLocked(page.layers, it) }) return
-        store.append(JournalEntry.StrokeAdded(documentId, pageId, stroke)); refreshSelection()
+        store.appendRealtime(JournalEntry.StrokeAdded(documentId, pageId, stroke)); refreshSelection()
     }
     fun removeStroke(documentId: String, pageId: String, strokeId: String) {
         val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return
         val stroke = page.strokes.firstOrNull { it.id == strokeId } ?: return
         if (page.layers.firstOrNull { it.id == stroke.layerId }?.locked == true) return
-        store.append(JournalEntry.StrokeRemoved(documentId, pageId, strokeId)); refreshSelection()
+        store.appendRealtime(JournalEntry.StrokeRemoved(documentId, pageId, strokeId)); refreshSelection()
     }
     fun replaceStrokes(documentId: String, pageId: String, removedStrokeIds: List<String>, strokes: List<InkStroke>, replacementIndices: List<Int>) {
         val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return
@@ -316,7 +321,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         if (page.strokes.any { it.id in removedStrokeIds && it.layerId in lockedLayerIds }) return
         if (strokes.any { replacement -> page.layers.none { it.id == replacement.layerId && it.visible && !it.locked } }) return
         if (replacementIndices.size != strokes.size) return
-        store.append(JournalEntry.StrokesReplaced(documentId, pageId, removedStrokeIds.distinct(), strokes, replacementIndices)); refreshSelection()
+        store.appendRealtime(JournalEntry.StrokesReplaced(documentId, pageId, removedStrokeIds.distinct(), strokes, replacementIndices)); refreshSelection()
     }
     fun addElement(documentId: String, pageId: String, element: PageElement) {
         val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return

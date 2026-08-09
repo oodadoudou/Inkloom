@@ -3,6 +3,8 @@ package app.inkloom.document
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 class FileDocumentStore(private val root: File) {
     private val json = Json { prettyPrint = true; ignoreUnknownKeys = true; classDiscriminator = "type" }
@@ -13,6 +15,11 @@ class FileDocumentStore(private val root: File) {
     private var pendingJournalEntries = 0
     private var observedDocumentFiles = emptyMap<String, Pair<Long, Long>>()
     private var observedJournalLength = 0L
+    private val realtimeJournalWriter: ExecutorService by lazy {
+        Executors.newSingleThreadExecutor { operation ->
+            Thread(operation, "Inkloom-journal-writer").apply { isDaemon = true }
+        }
+    }
 
     init {
         documentsDir.mkdirs()
@@ -53,30 +60,61 @@ class FileDocumentStore(private val root: File) {
         return documentFile(id).delete().also { captureObservedFiles() }
     }
 
-    @Synchronized
     fun append(entry: JournalEntry) {
-        journalFile.parentFile?.mkdirs()
-        journalFile.appendText(journalJson.encodeToString<JournalEntry>(entry) + "\n")
-        applyEntry(entry)
-        pendingJournalEntries++
+        awaitRealtimeWrites()
+        synchronized(this) {
+            persistJournalEntry(entry)
+            applyEntry(entry)
+            pendingJournalEntries++
+        }
+    }
+
+    /**
+     * Applies high-frequency ink edits to the in-memory document immediately and serializes them
+     * on one ordered writer thread. Imported brushes carry large immutable parameter snapshots;
+     * encoding those snapshots during ACTION_UP used to block the next stylus contact.
+     */
+    fun appendRealtime(entry: JournalEntry) {
+        synchronized(this) {
+            applyEntry(entry)
+            pendingJournalEntries++
+        }
+        realtimeJournalWriter.execute {
+            synchronized(this) { persistJournalEntry(entry) }
+        }
+    }
+
+    fun recover(): Int {
+        awaitRealtimeWrites()
+        return synchronized(this) {
+            val recovered = pendingJournalEntries
+            if (recovered == 0) return@synchronized 0
+            documents.values.forEach { document -> atomicWrite(documentFile(document.id), json.encodeToString(document)) }
+            compactJournalNow()
+            pendingJournalEntries = 0
+            captureObservedFiles()
+            recovered
+        }
+    }
+
+    fun compactJournal() {
+        awaitRealtimeWrites()
+        synchronized(this) { compactJournalNow() }
+    }
+
+    internal fun awaitRealtimeWrites() {
+        if (!realtimeJournalWriter.isShutdown) realtimeJournalWriter.submit {}.get()
+    }
+
+    private fun compactJournalNow() {
+        atomicWrite(journalFile, "")
+        pendingJournalEntries = 0
         observedJournalLength = journalFile.length()
     }
 
-    @Synchronized
-    fun recover(): Int {
-        val recovered = pendingJournalEntries
-        if (recovered == 0) return 0
-        documents.values.forEach { document -> atomicWrite(documentFile(document.id), json.encodeToString(document)) }
-        compactJournal()
-        pendingJournalEntries = 0
-        captureObservedFiles()
-        return recovered
-    }
-
-    @Synchronized
-    fun compactJournal() {
-        atomicWrite(journalFile, "")
-        pendingJournalEntries = 0
+    private fun persistJournalEntry(entry: JournalEntry) {
+        journalFile.parentFile?.mkdirs()
+        journalFile.appendText(journalJson.encodeToString<JournalEntry>(entry) + "\n")
         observedJournalLength = journalFile.length()
     }
 
