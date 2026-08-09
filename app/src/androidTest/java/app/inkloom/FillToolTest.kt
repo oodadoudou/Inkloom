@@ -9,6 +9,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.document.PageElement
+import app.inkloom.document.FillSubTool
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
 import app.inkloom.model.EditorTool
@@ -21,6 +22,28 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class FillToolTest {
+    @Test fun manualFillSubToolsCommitRasterMasks() {
+        FillSubTool.entries.filterNot { it == FillSubTool.BUCKET }.forEach { subTool ->
+            var committed = false
+            val view = canvas {
+                tool = EditorTool.FILL
+                fillSubTool = subTool
+                fingerDrawingEnabled = true
+                pagePaperColor = Color.WHITE
+                onFillCommitted = { mask, _, _, width, height, _, _ ->
+                    committed = mask.width > 0 && mask.height > 0 && width > 0f && height > 0f
+                    mask.recycle()
+                }
+            }
+            send(view, 0L, MotionEvent.ACTION_DOWN, 40f, 40f)
+            send(view, 20L, MotionEvent.ACTION_MOVE, 160f, 40f)
+            send(view, 40L, MotionEvent.ACTION_MOVE, 160f, 160f)
+            send(view, 60L, MotionEvent.ACTION_MOVE, 40f, 160f)
+            send(view, 80L, MotionEvent.ACTION_UP, 40f, 40f)
+            assertTrue("$subTool must commit a reusable fill mask", committed)
+        }
+    }
+
     private fun canvas(block: InkCanvasView.() -> Unit): InkCanvasView {
         lateinit var result: InkCanvasView
         InstrumentationRegistry.getInstrumentation().runOnMainSync {

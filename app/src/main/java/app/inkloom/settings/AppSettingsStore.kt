@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.core.content.edit
 import app.inkloom.model.SymmetryMode
 import app.inkloom.document.CorrectLineMode
+import app.inkloom.document.FillSubTool
 import app.inkloom.document.PressureResponseCurve
 
 data class AppSettings(
@@ -12,6 +13,7 @@ data class AppSettings(
     val fillSensitivity: Float = .25f,
     val fillCloseGapPixels: Float = 0f,
     val fillAreaScalingPixels: Float = 0f,
+    val fillSubTool: FillSubTool = FillSubTool.BUCKET,
     val showPageRail: Boolean = false,
     val showBrushPanel: Boolean = false,
     val showLayerPanel: Boolean = false,
@@ -140,6 +142,7 @@ class AppSettingsStore(context: Context) {
             fillSensitivity = preferences.getFloat("fillSensitivity", .25f),
             fillCloseGapPixels = preferences.getFloat("fillCloseGapPixels", 0f).coerceIn(0f, 64f),
             fillAreaScalingPixels = preferences.getFloat("fillAreaScalingPixels", 0f).coerceIn(-64f, 64f),
+            fillSubTool = enumValue(preferences.getString("fillSubTool", null), FillSubTool.BUCKET),
             showPageRail = preferences.getBoolean("showPageRail", false),
             showBrushPanel = preferences.getBoolean("showBrushPanel", false),
             showLayerPanel = preferences.getBoolean("showLayerPanel", false),
@@ -250,6 +253,7 @@ class AppSettingsStore(context: Context) {
             .putFloat("fillSensitivity", persisted.fillSensitivity)
             .putFloat("fillCloseGapPixels", persisted.fillCloseGapPixels.coerceIn(0f, 64f))
             .putFloat("fillAreaScalingPixels", persisted.fillAreaScalingPixels.coerceIn(-64f, 64f))
+            .putString("fillSubTool", persisted.fillSubTool.name)
             .putBoolean("showPageRail", persisted.showPageRail)
             .putBoolean("showBrushPanel", persisted.showBrushPanel)
             .putBoolean("showLayerPanel", persisted.showLayerPanel)

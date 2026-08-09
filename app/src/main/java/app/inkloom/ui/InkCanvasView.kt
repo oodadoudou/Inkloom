@@ -62,6 +62,7 @@ import app.inkloom.document.CanvasGuideState
 import app.inkloom.document.CanvasGuides
 import app.inkloom.document.CanvasSnapConstraint
 import app.inkloom.document.GrainBehavior
+import app.inkloom.document.FillSubTool
 import app.inkloom.document.GrainDynamics
 import app.inkloom.document.LassoGeometry
 import app.inkloom.document.LassoSelectionPolicy
@@ -212,6 +213,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var fillPreviewTop = 0f
     private var fillPreviewWidth = 0f
     private var fillPreviewHeight = 0f
+    private val fillGesturePoints = mutableListOf<StrokePoint>()
     private val fillPreviewPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { colorFilter = PorterDuffColorFilter(Color.BLACK, PorterDuff.Mode.SRC_IN) }
     private var smudgeBefore: List<InkStroke>? = null
     private var smudgeLastX = 0f
@@ -653,6 +655,7 @@ class InkCanvasView(context: Context) : View(context) {
      *  The host persists the mask and creates a [PageElement.Fill]. */
     var onFillCommitted: ((mask: Bitmap, x: Float, y: Float, width: Float, height: Float, colorArgb: Long, opacity: Float) -> Unit)? = null
     var fillSensitivity: Float = .25f
+    var fillSubTool: FillSubTool = FillSubTool.BUCKET
     var fillCloseGapPixels: Float = 0f
         set(value) { field = value.coerceIn(0f, 64f) }
     var fillAreaScalingPixels: Float = 0f
@@ -1794,7 +1797,11 @@ class InkCanvasView(context: Context) : View(context) {
                 }
                 if (activeTool == EditorTool.FILL) {
                     parent?.requestDisallowInterceptTouchEvent(true)
-                    beginFillGesture(normalizedX, normalizedY, event.x)
+                    if (fillSubTool == FillSubTool.BUCKET) beginFillGesture(normalizedX, normalizedY, event.x)
+                    else {
+                        fillGesturePoints.clear()
+                        fillGesturePoints += StrokePoint(normalizedX, normalizedY, event.pressure, event.eventTime)
+                    }
                     invalidate()
                     return true
                 }
@@ -1838,7 +1845,17 @@ class InkCanvasView(context: Context) : View(context) {
             }
             MotionEvent.ACTION_MOVE -> {
                 if (activeTool == EditorTool.FILL) {
-                    adjustFillSensitivity(event.x)
+                    if (fillSubTool == FillSubTool.BUCKET) adjustFillSensitivity(event.x)
+                    else {
+                        for (index in 0 until event.historySize) fillGesturePoints += StrokePoint(
+                            event.getHistoricalX(0, index) / width.coerceAtLeast(1),
+                            event.getHistoricalY(0, index) / height.coerceAtLeast(1),
+                            event.getHistoricalPressure(0, index),
+                            event.getHistoricalEventTime(index),
+                        )
+                        fillGesturePoints += StrokePoint(normalizedX, normalizedY, event.pressure, event.eventTime)
+                        invalidate()
+                    }
                 }
                 else if (activeTool == EditorTool.GRADIENT) {
                     gradientEnd = ShapePoint(normalizedX, normalizedY)
@@ -1973,7 +1990,10 @@ class InkCanvasView(context: Context) : View(context) {
                     selectionGestureBefore?.let { restoreStrokeSnapshot(it) }
                     lassoPoints.clear(); movingSelection = false; selectionMoved = false; selectionGestureBefore = null; selectionTransformMode = TRANSFORM_NONE
                 } else if (activeTool == EditorTool.FILL) {
-                    commitFillGesture()
+                    if (fillSubTool == FillSubTool.BUCKET) commitFillGesture() else {
+                        fillGesturePoints += StrokePoint(normalizedX, normalizedY, event.pressure, event.eventTime)
+                        commitManualFillGesture()
+                    }
                     parent?.requestDisallowInterceptTouchEvent(false)
                 } else if (activeTool == EditorTool.GRADIENT) {
                     val start = gradientStart
@@ -2104,7 +2124,23 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun drawFillPreview(canvas: Canvas) {
-        val mask = fillPreviewMask ?: return
+        val mask = fillPreviewMask
+        if (mask == null) {
+            if (fillGesturePoints.size < 2) return
+            lassoPath.reset()
+            lassoPath.moveTo(fillGesturePoints.first().x * width, fillGesturePoints.first().y * height)
+            fillGesturePoints.drop(1).forEach { lassoPath.lineTo(it.x * width, it.y * height) }
+            paint.color = inkColor
+            paint.alpha = (inkOpacity * 150f).toInt().coerceIn(0, 255)
+            paint.style = if (fillSubTool == FillSubTool.LEFTOVER_PEN) Paint.Style.STROKE else Paint.Style.FILL
+            paint.strokeWidth = baseWidth.coerceAtLeast(2f) * width / pageModelWidth.coerceAtLeast(1f)
+            paint.strokeCap = Paint.Cap.ROUND
+            paint.strokeJoin = Paint.Join.ROUND
+            if (fillSubTool != FillSubTool.LEFTOVER_PEN) lassoPath.close()
+            canvas.drawPath(lassoPath, paint)
+            paint.alpha = 255
+            return
+        }
         if (fillPreviewWidth <= 0f || fillPreviewHeight <= 0f) return
         fillPreviewPaint.colorFilter = PorterDuffColorFilter(inkColor, PorterDuff.Mode.SRC_IN)
         fillPreviewPaint.alpha = (inkOpacity * 255f).toInt().coerceIn(0, 255)
@@ -3048,11 +3084,64 @@ class InkCanvasView(context: Context) : View(context) {
         invalidate()
     }
 
+    private fun commitManualFillGesture() {
+        if (fillGesturePoints.size < 2) {
+            fillGesturePoints.clear()
+            invalidate()
+            return
+        }
+        val bitmapWidth = width.coerceAtLeast(1)
+        val bitmapHeight = height.coerceAtLeast(1)
+        val fullMask = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888)
+        val maskCanvas = Canvas(fullMask)
+        val path = Path().apply {
+            moveTo(fillGesturePoints.first().x * bitmapWidth, fillGesturePoints.first().y * bitmapHeight)
+            fillGesturePoints.drop(1).forEach { point -> lineTo(point.x * bitmapWidth, point.y * bitmapHeight) }
+            if (fillSubTool != FillSubTool.LEFTOVER_PEN) close()
+        }
+        val maskPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            style = if (fillSubTool == FillSubTool.LEFTOVER_PEN) Paint.Style.STROKE else Paint.Style.FILL
+            strokeWidth = baseWidth.coerceAtLeast(2f) * bitmapWidth / pageModelWidth.coerceAtLeast(1f)
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+        maskCanvas.drawPath(path, maskPaint)
+        val pixels = IntArray(bitmapWidth * bitmapHeight)
+        fullMask.getPixels(pixels, 0, bitmapWidth, 0, 0, bitmapWidth, bitmapHeight)
+        var minX = bitmapWidth; var minY = bitmapHeight; var maxX = -1; var maxY = -1
+        pixels.forEachIndexed { index, pixel ->
+            if (Color.alpha(pixel) > 0) {
+                val x = index % bitmapWidth
+                val y = index / bitmapWidth
+                if (x < minX) minX = x; if (x > maxX) maxX = x
+                if (y < minY) minY = y; if (y > maxY) maxY = y
+            }
+        }
+        if (maxX >= minX && maxY >= minY) {
+            val cropped = Bitmap.createBitmap(fullMask, minX, minY, maxX - minX + 1, maxY - minY + 1)
+            val callback = onFillCommitted
+            if (callback != null) callback(
+                cropped,
+                minX / bitmapWidth.toFloat(),
+                minY / bitmapHeight.toFloat(),
+                (maxX - minX + 1) / bitmapWidth.toFloat() * pageModelWidth,
+                (maxY - minY + 1) / bitmapHeight.toFloat() * pageModelHeight,
+                inkColor.toUInt().toLong(),
+                inkOpacity,
+            ) else cropped.recycle()
+        }
+        fullMask.recycle()
+        fillGesturePoints.clear()
+        invalidate()
+    }
+
     private fun cancelFillGesture() {
         fillPreviewMask?.recycle()
         fillPreviewMask = null
         fillSourceBitmap?.recycle()
         fillSourceBitmap = null
+        fillGesturePoints.clear()
         invalidate()
     }
 

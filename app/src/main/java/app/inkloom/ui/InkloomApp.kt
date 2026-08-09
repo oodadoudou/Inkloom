@@ -2489,12 +2489,14 @@ private fun EditorScreen(
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
                 )
                 if (tool == EditorTool.FILL) FillOptionsLauncher(
+                    subTool = settings.fillSubTool,
                     sensitivity = settings.fillSensitivity,
                     closeGapPixels = settings.fillCloseGapPixels,
                     areaScalingPixels = settings.fillAreaScalingPixels,
                     onSensitivity = { onSettingsChange(settings.copy(fillSensitivity = it)) },
                     onCloseGap = { onSettingsChange(settings.copy(fillCloseGapPixels = it)) },
                     onAreaScaling = { onSettingsChange(settings.copy(fillAreaScalingPixels = it)) },
+                    onSubTool = { onSettingsChange(settings.copy(fillSubTool = it)) },
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
                 )
                 if (settings.showInputDiagnostics) Surface(Modifier.align(Alignment.BottomCenter).padding(12.dp), shape = RoundedCornerShape(20.dp), color = Color.White, border = CardDefaults.outlinedCardBorder(), shadowElevation = 3.dp) { Text(inputDiagnostic, Modifier.padding(horizontal = 14.dp, vertical = 7.dp), color = Ink, fontSize = 11.sp) }
@@ -4291,6 +4293,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onRedoGesture = onRedoGesture
                 view.singleFingerDoubleTapUndo = settings.singleFingerDoubleTapUndo
                 view.fillSensitivity = settings.fillSensitivity
+                view.fillSubTool = settings.fillSubTool
                 view.fillCloseGapPixels = settings.fillCloseGapPixels
                 view.fillAreaScalingPixels = settings.fillAreaScalingPixels
                 view.symmetryMode = settings.symmetryMode
@@ -4375,6 +4378,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onRedoGesture = onRedoGesture
                 view.singleFingerDoubleTapUndo = settings.singleFingerDoubleTapUndo
                 view.fillSensitivity = settings.fillSensitivity
+                view.fillSubTool = settings.fillSubTool
                 view.fillCloseGapPixels = settings.fillCloseGapPixels
                 view.fillAreaScalingPixels = settings.fillAreaScalingPixels
                 view.symmetryMode = settings.symmetryMode
@@ -4458,6 +4462,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     selectionFilter = settings.selectionFilter
     referenceTarget = settings.referenceTarget
     fillSensitivity = settings.fillSensitivity
+    fillSubTool = settings.fillSubTool
     fillCloseGapPixels = settings.fillCloseGapPixels
     fillAreaScalingPixels = settings.fillAreaScalingPixels
     correctLineMode = settings.correctLineMode
@@ -9183,12 +9188,14 @@ private fun PressureCurveEditor(values: List<Float>, onChange: (List<Float>) -> 
 
 @Composable
 private fun FillOptionsLauncher(
+    subTool: FillSubTool,
     sensitivity: Float,
     closeGapPixels: Float,
     areaScalingPixels: Float,
     onSensitivity: (Float) -> Unit,
     onCloseGap: (Float) -> Unit,
     onAreaScaling: (Float) -> Unit,
+    onSubTool: (FillSubTool) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -9196,7 +9203,7 @@ private fun FillOptionsLauncher(
         Row(Modifier.height(42.dp).padding(horizontal = 7.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.FormatColorFill, null, Modifier.size(18.dp))
             Spacer(Modifier.width(7.dp))
-            Text("${tr("Tolerance", "容差")} ${(sensitivity * 100).toInt()}%", fontSize = 11.sp)
+            Text(when (subTool) { FillSubTool.BUCKET -> tr("Bucket", "油漆桶"); FillSubTool.ENCLOSE_AND_FILL -> tr("Enclose", "包围并填充"); FillSubTool.LASSO_FILL -> tr("Lasso", "套索填充"); FillSubTool.LEFTOVER_PEN -> tr("Leftover pen", "漏涂笔") }, fontSize = 11.sp)
             Spacer(Modifier.width(8.dp))
             Text("${tr("Close gap", "闭合缝隙")} ${closeGapPixels.toInt()} px", color = MutedInk, fontSize = 10.sp)
             Spacer(Modifier.width(8.dp))
@@ -9205,6 +9212,14 @@ private fun FillOptionsLauncher(
                 CompactToolbarIconButton({ expanded = true }, tr("Advanced fill settings", "高级填充设置")) { Icon(Icons.Outlined.Tune, null, Modifier.size(18.dp)) }
                 DropdownMenu(expanded, { expanded = false }, Modifier.width(300.dp)) {
                     Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+                        Text(tr("Fill sub tool", "填充子工具"), fontSize = 11.sp)
+                        FillSubTool.entries.forEach { option ->
+                            Row(Modifier.fillMaxWidth().height(34.dp).clickable { onSubTool(option) }, verticalAlignment = Alignment.CenterVertically) {
+                                RadioButton(subTool == option, { onSubTool(option) })
+                                Text(when (option) { FillSubTool.BUCKET -> tr("Refer and fill", "参照并填充"); FillSubTool.ENCLOSE_AND_FILL -> tr("Enclose and fill", "包围并填充"); FillSubTool.LASSO_FILL -> tr("Lasso fill", "套索填充"); FillSubTool.LEFTOVER_PEN -> tr("Leftover pen", "漏涂笔") }, fontSize = 11.sp)
+                            }
+                        }
+                        HorizontalDivider()
                         Text("${tr("Tolerance", "容差")} ${(sensitivity * 100).toInt()}%", fontSize = 11.sp)
                         Slider(sensitivity, onSensitivity, valueRange = 0f..1f)
                         Text("${tr("Close gap", "闭合缝隙")} ${closeGapPixels.toInt()} px", fontSize = 11.sp)
