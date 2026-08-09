@@ -80,6 +80,7 @@ data class AppSettings(
     val eraserPreset: EraserPreset = EraserPreset.NORMAL_FREE,
     val selectionShape: SelectionShape = SelectionShape.FREEFORM,
     val selectionBrushSize: Float = 42f,
+    val selectionThreshold: Float = .25f,
     val selectionMode: SelectionMode = SelectionMode.REPLACE,
     val selectionFilter: SelectionFilter = SelectionFilter.ALL,
     val nonDestructiveEraser: Boolean = false,
@@ -106,7 +107,7 @@ enum class StylusButtonAction {
 enum class ToolbarDock { FREE, TOP, BOTTOM, LEFT, RIGHT }
 enum class WorkspacePanelDock { LEFT, FREE, RIGHT, BOTTOM }
 enum class WorkspacePanelMode { EXPANDED, COLLAPSED, ICON_ONLY }
-enum class SelectionShape { FREEFORM, RECTANGLE, ELLIPSE, BRUSH }
+enum class SelectionShape { SMART_BORDER, MAGIC_WAND, FREEFORM, RECTANGLE, ELLIPSE, BRUSH }
 enum class SelectionMode { REPLACE, ADD, SUBTRACT, INTERSECT }
 enum class SelectionFilter { ALL, ACTIVE_LAYER, CURRENT_BRUSH, CURRENT_COLOR }
 
@@ -198,6 +199,7 @@ class AppSettingsStore(context: Context) {
             eraserPreset = enumValue(preferences.getString("eraserPreset", null), EraserPreset.NORMAL_FREE),
             selectionShape = enumValue(preferences.getString("selectionShape", null), SelectionShape.FREEFORM),
             selectionBrushSize = preferences.getFloat("selectionBrushSize", 42f).coerceIn(4f, 300f),
+            selectionThreshold = preferences.getFloat("selectionThreshold", .25f).coerceIn(0f, 1f),
             selectionMode = enumValue(preferences.getString("selectionMode", null), SelectionMode.REPLACE),
             selectionFilter = enumValue(preferences.getString("selectionFilter", null), SelectionFilter.ALL),
             nonDestructiveEraser = preferences.getBoolean("nonDestructiveEraser", false),
@@ -299,6 +301,7 @@ class AppSettingsStore(context: Context) {
             .putString("eraserPreset", persisted.eraserPreset.name)
             .putString("selectionShape", persisted.selectionShape.name)
             .putFloat("selectionBrushSize", persisted.selectionBrushSize.coerceIn(4f, 300f))
+            .putFloat("selectionThreshold", persisted.selectionThreshold.coerceIn(0f, 1f))
             .putString("selectionMode", persisted.selectionMode.name)
             .putString("selectionFilter", persisted.selectionFilter.name)
             .putBoolean("nonDestructiveEraser", persisted.nonDestructiveEraser)

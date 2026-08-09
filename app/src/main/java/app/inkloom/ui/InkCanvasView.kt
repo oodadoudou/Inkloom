@@ -581,6 +581,8 @@ class InkCanvasView(context: Context) : View(context) {
     var selectionShape: SelectionShape = SelectionShape.FREEFORM
     var selectionBrushSize: Float = 42f
         set(value) { field = value.coerceIn(4f, 300f); invalidate() }
+    var selectionThreshold: Float = .25f
+        set(value) { field = value.coerceIn(0f, 1f) }
     var selectionMode: SelectionMode = SelectionMode.REPLACE
     var selectionFilter: SelectionFilter = SelectionFilter.ALL
     var pageModelWidth: Float = 1600f
@@ -1636,6 +1638,11 @@ class InkCanvasView(context: Context) : View(context) {
                     return true
                 }
                 if (activeTool == EditorTool.SELECT) {
+                    if (selectionShape == SelectionShape.SMART_BORDER || selectionShape == SelectionShape.MAGIC_WAND) {
+                        lassoPoints.clear(); selectionGestureBefore = null; selectionMoved = false; movingSelection = false
+                        appendSelectionPoint(normalizedX, normalizedY)
+                        invalidate(); return true
+                    }
                     val handleMode = hitSelectionHandle(normalizedX, normalizedY)
                     if (handleMode != TRANSFORM_NONE) {
                         val bounds = selectionBounds()
@@ -1856,8 +1863,12 @@ class InkCanvasView(context: Context) : View(context) {
                     if ((movingSelection || selectionTransformMode != TRANSFORM_NONE) && selectionMoved) {
                         selectionGestureBefore?.let { commitStrokeEdit(it, strokes) }
                     } else if (!movingSelection && selectionTransformMode == TRANSFORM_NONE) {
-                        appendSelectionPoint(normalizedX, normalizedY)
-                        selectWithLasso(selectionPolygon())
+                        if (selectionShape == SelectionShape.SMART_BORDER || selectionShape == SelectionShape.MAGIC_WAND) {
+                            selectAutomaticRegion(normalizedX, normalizedY, selectionShape == SelectionShape.SMART_BORDER)
+                        } else {
+                            appendSelectionPoint(normalizedX, normalizedY)
+                            selectWithLasso(selectionPolygon())
+                        }
                     }
                     lassoPoints.clear(); movingSelection = false; selectionMoved = false; selectionGestureBefore = null; selectionTransformMode = TRANSFORM_NONE
                 } else if (activeTool == EditorTool.SHAPE) {
@@ -2433,10 +2444,55 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun selectionPolygon(): List<StrokePoint> = when (selectionShape) {
+        SelectionShape.SMART_BORDER, SelectionShape.MAGIC_WAND -> emptyList()
         SelectionShape.FREEFORM -> lassoPoints
         SelectionShape.RECTANGLE -> if (lassoPoints.size >= 2) LassoGeometry.rectangle(lassoPoints.first(), lassoPoints.last()) else emptyList()
         SelectionShape.ELLIPSE -> if (lassoPoints.size >= 2) LassoGeometry.ellipse(lassoPoints.first(), lassoPoints.last()) else emptyList()
         SelectionShape.BRUSH -> LassoGeometry.brushCorridor(lassoPoints, selectionBrushSize, pageModelWidth, pageModelHeight)
+    }
+
+    private fun selectAutomaticRegion(normalizedX: Float, normalizedY: Float, smartBorder: Boolean) {
+        val sampleWidth = width.coerceIn(1, 512)
+        val sampleHeight = (height.coerceAtLeast(1) * (sampleWidth / width.coerceAtLeast(1).toFloat())).toInt().coerceIn(1, 768)
+        val page = renderDocumentPageBitmap(sampleWidth, sampleHeight)
+        val tolerance = if (smartBorder) (8f + (1f - selectionThreshold) * 56f).toInt() else (selectionThreshold * 255f).toInt()
+        val region = FloodFill.fill(
+            page,
+            (normalizedX * (sampleWidth - 1)).toInt().coerceIn(0, sampleWidth - 1),
+            (normalizedY * (sampleHeight - 1)).toInt().coerceIn(0, sampleHeight - 1),
+            tolerance,
+        )
+        fun regionContains(x: Int, y: Int, radius: Int): Boolean {
+            for (dy in -radius..radius) for (dx in -radius..radius) {
+                val localX = x + dx - region.left
+                val localY = y + dy - region.top
+                if (localX in 0 until region.mask.width && localY in 0 until region.mask.height && Color.alpha(region.mask.getPixel(localX, localY)) != 0) return true
+            }
+            return false
+        }
+        val hits = strokes.asSequence().filter { stroke ->
+            stroke.id !in protectedStrokeIds && when (selectionFilter) {
+                SelectionFilter.ALL -> true
+                SelectionFilter.ACTIVE_LAYER -> stroke.layerId == activeLayerId
+                SelectionFilter.CURRENT_BRUSH -> stroke.brushId == brushId
+                SelectionFilter.CURRENT_COLOR -> stroke.colorArgb.toInt() == inkColor
+            }
+        }.filter { stroke ->
+            stroke.points.any { point ->
+                val x = (point.x * (sampleWidth - 1)).toInt().coerceIn(0, sampleWidth - 1)
+                val y = (point.y * (sampleHeight - 1)).toInt().coerceIn(0, sampleHeight - 1)
+                regionContains(x, y, if (smartBorder) 3 else 0)
+            }
+        }.mapTo(linkedSetOf(), InkStroke::id)
+        when (selectionMode) {
+            SelectionMode.REPLACE -> { selectedStrokeIds.clear(); selectedStrokeIds.addAll(hits) }
+            SelectionMode.ADD -> selectedStrokeIds.addAll(hits)
+            SelectionMode.SUBTRACT -> selectedStrokeIds.removeAll(hits)
+            SelectionMode.INTERSECT -> selectedStrokeIds.retainAll(hits)
+        }
+        region.mask.recycle()
+        page.recycle()
+        invalidate()
     }
 
     private fun selectWithLasso(polygon: List<StrokePoint>) {

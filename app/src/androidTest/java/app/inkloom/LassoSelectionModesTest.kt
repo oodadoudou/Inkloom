@@ -26,13 +26,33 @@ class LassoSelectionModesTest {
         val store = AppSettingsStore(context)
         val original = store.load()
         try {
-            store.save(original.copy(selectionShape = SelectionShape.RECTANGLE, selectionMode = SelectionMode.SUBTRACT, selectionFilter = SelectionFilter.CURRENT_BRUSH))
+            store.save(original.copy(selectionShape = SelectionShape.RECTANGLE, selectionThreshold = .63f, selectionMode = SelectionMode.SUBTRACT, selectionFilter = SelectionFilter.CURRENT_BRUSH))
             val restored = store.load()
             assertEquals(SelectionShape.RECTANGLE, restored.selectionShape)
+            assertEquals(.63f, restored.selectionThreshold, .001f)
             assertEquals(SelectionMode.SUBTRACT, restored.selectionMode)
             assertEquals(SelectionFilter.CURRENT_BRUSH, restored.selectionFilter)
         } finally {
             store.save(original)
+        }
+    }
+
+    @Test fun magicWandTapSelectsConnectedRenderedInk() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val target = stroke("target", .5f, "ink").copy(width = 18f)
+            val distant = stroke("distant", .75f, "ink").copy(width = 18f)
+            val edits = mutableListOf<CapturedEdit>()
+            val view = configuredView(listOf(target, distant), edits).apply {
+                selectionShape = SelectionShape.MAGIC_WAND
+                selectionThreshold = .2f
+            }
+
+            view.dispatchStylus(MotionEvent.ACTION_DOWN, 500f, 500f, 10L)
+            view.dispatchStylus(MotionEvent.ACTION_UP, 500f, 500f, 20L)
+            view.deleteSelection()
+
+            assertEquals(listOf("target"), edits.single().removedIds)
         }
     }
 

@@ -1396,7 +1396,7 @@ private fun EditorScreen(
                         HorizontalDivider()
                         SelectionShape.entries.forEach { shape ->
                             DropdownMenuItem(
-                                text = { Text(when (shape) { SelectionShape.FREEFORM -> tr("Freeform", "自由形"); SelectionShape.RECTANGLE -> tr("Rectangle", "矩形"); SelectionShape.ELLIPSE -> tr("Ellipse", "椭圆"); SelectionShape.BRUSH -> tr("Selection brush", "选区画笔") }) },
+                                text = { Text(when (shape) { SelectionShape.SMART_BORDER -> tr("Smart border", "智能边框"); SelectionShape.MAGIC_WAND -> tr("Magic wand", "魔棒"); SelectionShape.FREEFORM -> tr("Freeform", "自由形"); SelectionShape.RECTANGLE -> tr("Rectangle", "矩形"); SelectionShape.ELLIPSE -> tr("Ellipse", "椭圆"); SelectionShape.BRUSH -> tr("Selection brush", "选区画笔") }) },
                                 trailingIcon = { if (settings.selectionShape == shape) Icon(Icons.Outlined.Check, null) },
                                 onClick = { exportMenu = false; onSettingsChange(settings.copy(selectionShape = shape)) },
                             )
@@ -1406,6 +1406,15 @@ private fun EditorScreen(
                                 Column(Modifier.width(230.dp)) {
                                     Text(tr("Selection brush size · ${settings.selectionBrushSize.toInt()}", "选区画笔大小 · ${settings.selectionBrushSize.toInt()}"), fontSize = 11.sp)
                                     Slider(settings.selectionBrushSize, { onSettingsChange(settings.copy(selectionBrushSize = it)) }, valueRange = 4f..300f)
+                                }
+                            },
+                            onClick = {},
+                        )
+                        if (settings.selectionShape in setOf(SelectionShape.SMART_BORDER, SelectionShape.MAGIC_WAND)) DropdownMenuItem(
+                            text = {
+                                Column(Modifier.width(230.dp)) {
+                                    Text(tr("Recognition threshold · ${(settings.selectionThreshold * 100).toInt()}%", "识别阈值 · ${(settings.selectionThreshold * 100).toInt()}%"), fontSize = 11.sp)
+                                    Slider(settings.selectionThreshold, { onSettingsChange(settings.copy(selectionThreshold = it)) }, valueRange = 0f..1f)
                                 }
                             },
                             onClick = {},
@@ -4235,6 +4244,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     secondaryButtonTrigger = settings.stylusSecondaryTrigger
     selectionShape = settings.selectionShape
     selectionBrushSize = settings.selectionBrushSize
+    selectionThreshold = settings.selectionThreshold
     selectionMode = settings.selectionMode
     selectionFilter = settings.selectionFilter
     baseWidth = brushSize
@@ -5287,7 +5297,7 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
                 if (tool == EditorTool.SELECT) {
                     Text(tr("Selection", "选择"), color = MutedInk, fontSize = 12.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                        SelectionShape.entries.forEach { shape -> FilterChip(selected = selectionShape == shape, onClick = { onSelectionShape(shape) }, label = { Text(when (shape) { SelectionShape.FREEFORM -> tr("Freeform", "自由套索"); SelectionShape.RECTANGLE -> tr("Rectangle", "矩形"); SelectionShape.ELLIPSE -> tr("Ellipse", "椭圆"); SelectionShape.BRUSH -> tr("Brush", "画笔") }, fontSize = 10.sp) }) }
+                        SelectionShape.entries.forEach { shape -> FilterChip(selected = selectionShape == shape, onClick = { onSelectionShape(shape) }, label = { Text(when (shape) { SelectionShape.SMART_BORDER -> tr("Smart", "智能"); SelectionShape.MAGIC_WAND -> tr("Wand", "魔棒"); SelectionShape.FREEFORM -> tr("Freeform", "自由套索"); SelectionShape.RECTANGLE -> tr("Rectangle", "矩形"); SelectionShape.ELLIPSE -> tr("Ellipse", "椭圆"); SelectionShape.BRUSH -> tr("Brush", "画笔") }, fontSize = 10.sp) }) }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                         SelectionMode.entries.forEach { mode -> FilterChip(selected = selectionMode == mode, onClick = { onSelectionMode(mode) }, label = { Text(when (mode) { SelectionMode.REPLACE -> tr("New", "新建"); SelectionMode.ADD -> tr("Add", "添加"); SelectionMode.SUBTRACT -> tr("Subtract", "减去"); SelectionMode.INTERSECT -> tr("Intersect", "交集") }, fontSize = 10.sp) }) }
