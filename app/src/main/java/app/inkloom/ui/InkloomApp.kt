@@ -1315,10 +1315,11 @@ private fun EditorScreen(
             })
             ProcreateTopButton(Icons.Outlined.AutoFixOff, tr("Eraser", "橡皮"), selected = tool == EditorTool.ERASER, onClick = {
                 exitCanvasNavigation()
-                val alreadySelected = tool == EditorTool.ERASER
-                tool = EditorTool.ERASER
-                canvasView?.tool = EditorTool.ERASER
-                if (alreadySelected) onToggleBrushes()
+                val eraser = activeBrush?.takeIf(BrushRoleClassifier::isEraser)
+                    ?: brushes.filter(BrushRoleClassifier::isEraser).maxByOrNull(ImportedBrush::lastUsedAt)
+                    ?: systemBrushCatalog().first { BrushRoleClassifier.isEraser(it) }
+                selectWorkspaceBrush(eraser)
+                if (!brushesOpen) onToggleBrushes()
             })
             ProcreateTopButton(Icons.Outlined.Layers, tr("Layers", "图层"), selected = layersOpen, onClick = {
                 setLayersPanelOpen(!layersOpen)
@@ -2640,6 +2641,7 @@ private fun EditorScreen(
                 brushes = brushes,
                 registeredGroups = brushGroups,
                 selectedBrushId = selectedBrushId,
+                requestedGroup = activeBrush?.groupName ?: if (tool == EditorTool.ERASER) "Erasers" else null,
                 settings = settings,
                 brushSize = brushSize,
                 brushOpacity = brushOpacity,
@@ -6045,6 +6047,7 @@ private fun BrushPanel(
     brushes: List<ImportedBrush>,
     registeredGroups: List<String>,
     selectedBrushId: String?,
+    requestedGroup: String?,
     settings: AppSettings,
     brushSize: Float,
     brushOpacity: Float,
@@ -6090,6 +6093,7 @@ private fun BrushPanel(
             brushes = brushes,
             registeredGroups = registeredGroups,
             selectedBrushId = selectedBrushId,
+            requestedGroup = requestedGroup,
             settings = settings,
             dock = dock,
             onDock = onDock,
@@ -6729,12 +6733,12 @@ private fun BrushBatchGroupDialog(
 }
 
 private fun systemBrushCatalog(): List<ImportedBrush> = listOf(
-    ImportedBrush(id = "system-technical-pencil", name = "Technical Pencil", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Sketching", defaultSize = 4f, hardness = .82f, stabilization = .08f),
-    ImportedBrush(id = "system-hb-pencil", name = "HB Pencil", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Sketching", defaultSize = 7f, hardness = .62f, stabilization = .04f),
-    ImportedBrush(id = "system-studio-pen", name = "Studio Pen", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Inking", defaultSize = 9f, hardness = 1f, stabilization = .18f),
-    ImportedBrush(id = "system-monoline", name = "Monoline", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Calligraphy", defaultSize = 18f, hardness = 1f, stabilization = .28f),
-    ImportedBrush(id = "system-marker", name = "Studio Marker", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Painting", defaultSize = 34f, defaultOpacity = .68f, hardness = .7f),
-    ImportedBrush(id = "system-soft-airbrush", name = "Soft Airbrush", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Airbrushing", defaultSize = 92f, defaultOpacity = .35f, hardness = .08f, blur = .35f),
+    ImportedBrush(id = "system-technical-pencil", name = "Technical Pencil", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Pencil", defaultSize = 4f, hardness = .82f, stabilization = .08f),
+    ImportedBrush(id = "system-hb-pencil", name = "HB Pencil", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Pencil", defaultSize = 7f, hardness = .62f, stabilization = .04f),
+    ImportedBrush(id = "system-studio-pen", name = "Studio Pen", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Pen", defaultSize = 9f, hardness = 1f, stabilization = .18f),
+    ImportedBrush(id = "system-monoline", name = "Monoline", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Pen", defaultSize = 18f, hardness = 1f, stabilization = .28f),
+    ImportedBrush(id = "system-marker", name = "Studio Marker", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Brushes", defaultSize = 34f, defaultOpacity = .68f, hardness = .7f),
+    ImportedBrush(id = "system-soft-airbrush", name = "Soft Airbrush", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Airbrush", defaultSize = 92f, defaultOpacity = .35f, hardness = .08f, blur = .35f),
     ImportedBrush(id = "system-hard-eraser", name = "Hard Eraser", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Erasers", defaultSize = 24f, tags = listOf("eraser"), hardness = 1f),
     ImportedBrush(id = "system-soft-eraser", name = "Soft Eraser", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Erasers", defaultSize = 68f, tags = listOf("eraser"), hardness = .12f, blur = .28f),
 )
@@ -6745,6 +6749,7 @@ private fun ProcreateBrushLibrary(
     brushes: List<ImportedBrush>,
     registeredGroups: List<String>,
     selectedBrushId: String?,
+    requestedGroup: String?,
     settings: AppSettings,
     dock: WorkspacePanelDock,
     onDock: (WorkspacePanelDock) -> Unit,
@@ -6767,7 +6772,7 @@ private fun ProcreateBrushLibrary(
     onPanelDragCancel: () -> Unit,
 ) {
     val systemBrushes = remember { systemBrushCatalog() }
-    val systemCategories = listOf("Sketching", "Inking", "Calligraphy", "Painting", "Airbrushing", "Erasers")
+    val systemCategories = listOf("Pen", "Pencil", "Brushes", "Erasers", "Airbrush")
     val importedCategories = BrushGroupOperations.treePaths(brushes, registeredGroups)
     var collapsedGroupPaths by remember { mutableStateOf(emptySet<String>()) }
     val visibleImportedCategories = importedCategories.filter { path ->
@@ -6807,11 +6812,10 @@ private fun ProcreateBrushLibrary(
     val allLabel = tr("All", "全部")
     val groupCopySuffix = tr("copy", "副本")
     @Composable fun categoryLabel(category: String): String = when (category) {
-        "Sketching" -> tr("Sketching", "素描")
-        "Inking" -> tr("Inking", "墨线")
-        "Calligraphy" -> tr("Calligraphy", "书法")
-        "Painting" -> tr("Painting", "绘画")
-        "Airbrushing" -> tr("Airbrushing", "喷枪")
+        "Pen" -> tr("Pen", "钢笔")
+        "Pencil" -> tr("Pencil", "铅笔")
+        "Brushes" -> tr("Brushes", "画笔")
+        "Airbrush" -> tr("Airbrush", "喷枪")
         "Erasers" -> tr("Erasers", "橡皮")
         else -> BrushGroupOperations.displayName(category).ifBlank { category }
     }
@@ -6874,10 +6878,13 @@ private fun ProcreateBrushLibrary(
             )
         }
     LaunchedEffect(allCategories) { if (selectedCategory !in allCategories) selectedCategory = allCategories.first() }
+    LaunchedEffect(requestedGroup, selectedBrushId) {
+        requestedGroup?.let { requested -> allCategories.firstOrNull { it.equals(requested, true) }?.let { selectedCategory = it } }
+    }
     val displayed = (systemBrushes + brushes.filterNot(ImportedBrush::hidden)).filter { brush ->
         when (selectedCategory) {
             allLabel -> true
-            ungroupedLabel -> brush.format != BrushFormat.SYSTEM && BrushGroupOperations.normalize(brush.groupName).isBlank()
+            ungroupedLabel -> brush.format != BrushFormat.SYSTEM
             else -> if (brush.format == BrushFormat.SYSTEM) brush.groupName == selectedCategory else BrushGroupOperations.isWithin(brush.groupName, selectedCategory)
         }
     }
@@ -6938,7 +6945,10 @@ private fun ProcreateBrushLibrary(
                             onReplaceBrushes(brushes + created)
                             editBrush = created
                         })
-                        DropdownMenuItem(text = { Text(tr("Import from files", "从文件导入")) }, leadingIcon = { Icon(Icons.Outlined.FileDownload, null) }, onClick = { addMenu = false; onImportBrushes(selectedCategory.takeIf { it in importedCategories }) })
+                        DropdownMenuItem(text = { Text(tr("Import from files", "从文件导入")) }, leadingIcon = { Icon(Icons.Outlined.FileDownload, null) }, onClick = {
+                            addMenu = false
+                            onImportBrushes(selectedCategory.takeIf { it != allLabel && it != ungroupedLabel })
+                        })
                         DropdownMenuItem(text = { Text(tr("Manage brush sets", "管理笔刷组")) }, leadingIcon = { Icon(Icons.Outlined.CreateNewFolder, null) }, onClick = { addMenu = false; manageGroups = true })
                     }
                 }
@@ -6970,6 +6980,7 @@ private fun ProcreateBrushLibrary(
                     contentPadding = PaddingValues(vertical = 7.dp),
                 ) {
                     items(allCategories.distinct(), key = { it }) { category ->
+                        var groupDragDistance by remember(category) { mutableFloatStateOf(0f) }
                         val selected = category == selectedCategory
                         val customGroup = category in importedCategories
                         val hasChildren = importedCategories.any { BrushGroupOperations.parent(it)?.equals(category, true) == true }
@@ -7005,6 +7016,25 @@ private fun ProcreateBrushLibrary(
                                 if (customGroup) Spacer(Modifier.width(6.dp))
                                 Text(visibleCategoryLabel, color = Ink, fontSize = 11.sp, maxLines = 1, modifier = Modifier.weight(1f))
                                 if (customGroup) Text(brushes.count { BrushGroupOperations.isWithin(it.groupName, category) }.toString(), color = MutedInk, fontSize = 9.sp)
+                                if (customGroup) Icon(
+                                    Icons.Outlined.DragIndicator,
+                                    tr("Drag to reorder $visibleCategoryLabel", "拖动调整 $visibleCategoryLabel 顺序"),
+                                    Modifier.size(28.dp).padding(4.dp).pointerInput(category) {
+                                        detectDragGestures(
+                                            onDragStart = { groupDragDistance = 0f },
+                                            onDragEnd = {
+                                                val delta = (groupDragDistance / 39.dp.toPx()).toInt()
+                                                if (delta != 0) {
+                                                    onReplaceBrushes(BrushGroupOperations.moveGroup(brushes, category, delta))
+                                                    onReplaceGroups(BrushGroupOperations.moveRegisteredGroup(registeredGroups, category, delta))
+                                                }
+                                                groupDragDistance = 0f
+                                            },
+                                            onDragCancel = { groupDragDistance = 0f },
+                                        ) { change, amount -> change.consume(); groupDragDistance += amount.y }
+                                    },
+                                    tint = MutedInk,
+                                )
                             }
                             DropdownMenu(expanded = menuGroup == category, onDismissRequest = { menuGroup = null }) {
                                 DropdownMenuItem(text = { Text(tr("Rename group", "重命名分组")) }, onClick = {
