@@ -3714,6 +3714,7 @@ private fun PageRail(
                     selectedPageIds = currentSelectedPageIds + page.id
                 }
                 Box(Modifier.size(58.dp, 74.dp).background(if (pageBatchSelected) Color(0xFFDDE8F7) else Color.White, RoundedCornerShape(5.dp)).border(if (page.id == selectedPageId || pageBatchSelected) 2.dp else 1.dp, if (page.id == selectedPageId || pageBatchSelected) Sage else OutlineSoft, RoundedCornerShape(5.dp)).padding(4.dp)) {
+                    PageInkPreview(page, Modifier.matchParentSize().clip(RoundedCornerShape(2.dp)))
                     if (page.background is PageBackground.Pdf) Text("PDF", fontSize = 9.sp, color = Sage)
                     if (page.bookmarked) Icon(Icons.Default.Bookmark, tr("Bookmarked", "已收藏"), tint = Sage, modifier = Modifier.size(16.dp).align(Alignment.TopEnd))
                     Box(
@@ -3748,11 +3749,11 @@ private fun PageRail(
                     Icon(
                         Icons.Outlined.DragIndicator,
                         tr("Drag to reorder page", "拖动调整页面顺序"),
-                        Modifier.size(22.dp).pointerInput(page.id) {
+                        Modifier.size(36.dp).padding(6.dp).pointerInput(page.id) {
                             detectDragGestures(
                                 onDragStart = { pageDragDistance = 0f },
                                 onDragEnd = {
-                                    val delta = (pageDragDistance / 52.dp.toPx()).toInt()
+                                    val delta = (pageDragDistance / 96.dp.toPx()).toInt()
                                     if (delta != 0) {
                                         val selected = if (managingPages && selectedPageIds.isNotEmpty()) selectedPageIds + page.id else setOf(page.id)
                                         val target = (pageIndex + delta).coerceIn(0, document.pages.lastIndex)
@@ -3844,6 +3845,41 @@ private fun PageRail(
                     }
                 },
                 confirmButton = { TextButton(onClick = { transferOpen = false }) { Text(tr("Cancel", "取消")) } },
+            )
+        }
+    }
+}
+
+@Composable
+private fun PageInkPreview(page: InkPage, modifier: Modifier = Modifier) {
+    val visibleLayerIds = remember(page.layers) {
+        page.layers.filter { LayerHierarchy.effectiveVisible(page.layers, it) && it.role != LayerRole.FOLDER }
+            .mapTo(linkedSetOf(), InkLayer::id)
+    }
+    Canvas(modifier.background(Color.White)) {
+        val guide = Color(0xFFE1E1E1)
+        when ((page.background as? PageBackground.Paper)?.pattern) {
+            PaperPattern.RULED -> { var y = 8f; while (y < size.height) { drawLine(guide, Offset.Zero.copy(y = y), Offset(size.width, y)); y += 8f } }
+            PaperPattern.GRID -> {
+                var x = 8f; while (x < size.width) { drawLine(guide, Offset(x, 0f), Offset(x, size.height)); x += 8f }
+                var y = 8f; while (y < size.height) { drawLine(guide, Offset(0f, y), Offset(size.width, y)); y += 8f }
+            }
+            PaperPattern.DOT -> { var x = 7f; while (x < size.width) { var y = 7f; while (y < size.height) { drawCircle(guide, .7f, Offset(x, y)); y += 8f }; x += 8f } }
+            PaperPattern.CORNELL -> { drawLine(guide, Offset(size.width * .28f, 0f), Offset(size.width * .28f, size.height * .78f)); drawLine(guide, Offset(0f, size.height * .78f), Offset(size.width, size.height * .78f)) }
+            else -> Unit
+        }
+        page.strokes.asSequence().filter { it.layerId in visibleLayerIds && it.points.isNotEmpty() }.forEach { stroke ->
+            val path = Path()
+            stroke.points.forEachIndexed { index, point ->
+                val x = point.x.coerceIn(0f, 1f) * size.width
+                val y = point.y.coerceIn(0f, 1f) * size.height
+                if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            drawPath(
+                path,
+                color = Color(stroke.colorArgb),
+                alpha = stroke.opacity.coerceIn(0f, 1f),
+                style = Stroke(width = (stroke.width / 1600f * size.width).coerceAtLeast(.55f), cap = StrokeCap.Round),
             )
         }
     }
