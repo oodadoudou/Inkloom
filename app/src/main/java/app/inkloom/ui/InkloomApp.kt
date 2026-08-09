@@ -1348,6 +1348,34 @@ private fun EditorScreen(
             Box {
                 ProcreateTopButton(Icons.Outlined.MoreHoriz, tr("More", "更多"), selected = exportMenu, onClick = { exportMenu = true })
                 DropdownMenu(expanded = exportMenu, onDismissRequest = { exportMenu = false }) {
+                    if (tool == EditorTool.SELECT) {
+                        SelectionShape.entries.forEach { shape ->
+                            DropdownMenuItem(
+                                text = { Text(when (shape) { SelectionShape.SMART_BORDER -> tr("Smart border", "智能边框"); SelectionShape.MAGIC_WAND -> tr("Magic wand", "魔棒"); SelectionShape.FREEFORM -> tr("Freeform", "自由形"); SelectionShape.RECTANGLE -> tr("Rectangle", "矩形"); SelectionShape.ELLIPSE -> tr("Ellipse", "椭圆"); SelectionShape.BRUSH -> tr("Selection brush", "选区画笔") }) },
+                                trailingIcon = { if (settings.selectionShape == shape) Icon(Icons.Outlined.Check, null) },
+                                onClick = { exportMenu = false; onSettingsChange(settings.copy(selectionShape = shape)) },
+                            )
+                        }
+                        if (settings.selectionShape == SelectionShape.BRUSH) DropdownMenuItem(
+                            text = {
+                                Column(Modifier.width(230.dp)) {
+                                    Text(tr("Selection brush size · ${settings.selectionBrushSize.toInt()}", "选区画笔大小 · ${settings.selectionBrushSize.toInt()}"), fontSize = 11.sp)
+                                    Slider(settings.selectionBrushSize, { onSettingsChange(settings.copy(selectionBrushSize = it)) }, valueRange = 4f..300f)
+                                }
+                            },
+                            onClick = {},
+                        )
+                        if (settings.selectionShape in setOf(SelectionShape.SMART_BORDER, SelectionShape.MAGIC_WAND)) DropdownMenuItem(
+                            text = {
+                                Column(Modifier.width(230.dp)) {
+                                    Text(tr("Recognition threshold · ${(settings.selectionThreshold * 100).toInt()}%", "识别阈值 · ${(settings.selectionThreshold * 100).toInt()}%"), fontSize = 11.sp)
+                                    Slider(settings.selectionThreshold, { onSettingsChange(settings.copy(selectionThreshold = it)) }, valueRange = 0f..1f)
+                                }
+                            },
+                            onClick = {},
+                        )
+                        HorizontalDivider()
+                    }
                     listOf(
                         Triple(EditorTool.EYEDROPPER, Icons.Outlined.Colorize, tr("Eyedropper", "吸管")),
                         Triple(EditorTool.FILL, Icons.Outlined.FormatColorFill, tr("Fill", "填充")),
@@ -1399,34 +1427,6 @@ private fun EditorScreen(
                         trailingIcon = { if (settings.alignmentGuidesEnabled) Icon(Icons.Outlined.Check, null) },
                         onClick = { exportMenu = false; onSettingsChange(settings.copy(alignmentGuidesEnabled = !settings.alignmentGuidesEnabled)) },
                     )
-                    if (tool == EditorTool.SELECT) {
-                        HorizontalDivider()
-                        SelectionShape.entries.forEach { shape ->
-                            DropdownMenuItem(
-                                text = { Text(when (shape) { SelectionShape.SMART_BORDER -> tr("Smart border", "智能边框"); SelectionShape.MAGIC_WAND -> tr("Magic wand", "魔棒"); SelectionShape.FREEFORM -> tr("Freeform", "自由形"); SelectionShape.RECTANGLE -> tr("Rectangle", "矩形"); SelectionShape.ELLIPSE -> tr("Ellipse", "椭圆"); SelectionShape.BRUSH -> tr("Selection brush", "选区画笔") }) },
-                                trailingIcon = { if (settings.selectionShape == shape) Icon(Icons.Outlined.Check, null) },
-                                onClick = { exportMenu = false; onSettingsChange(settings.copy(selectionShape = shape)) },
-                            )
-                        }
-                        if (settings.selectionShape == SelectionShape.BRUSH) DropdownMenuItem(
-                            text = {
-                                Column(Modifier.width(230.dp)) {
-                                    Text(tr("Selection brush size · ${settings.selectionBrushSize.toInt()}", "选区画笔大小 · ${settings.selectionBrushSize.toInt()}"), fontSize = 11.sp)
-                                    Slider(settings.selectionBrushSize, { onSettingsChange(settings.copy(selectionBrushSize = it)) }, valueRange = 4f..300f)
-                                }
-                            },
-                            onClick = {},
-                        )
-                        if (settings.selectionShape in setOf(SelectionShape.SMART_BORDER, SelectionShape.MAGIC_WAND)) DropdownMenuItem(
-                            text = {
-                                Column(Modifier.width(230.dp)) {
-                                    Text(tr("Recognition threshold · ${(settings.selectionThreshold * 100).toInt()}%", "识别阈值 · ${(settings.selectionThreshold * 100).toInt()}%"), fontSize = 11.sp)
-                                    Slider(settings.selectionThreshold, { onSettingsChange(settings.copy(selectionThreshold = it)) }, valueRange = 0f..1f)
-                                }
-                            },
-                            onClick = {},
-                        )
-                    }
                     HorizontalDivider()
                     DropdownMenuItem(text = { Text(tr("Fit page", "适合页面")) }, leadingIcon = { Icon(Icons.Outlined.CenterFocusStrong, null) }, onClick = { exportMenu = false; fitPage() })
                     DropdownMenuItem(text = { Text(tr("Actual size", "实际大小")) }, onClick = { exportMenu = false; actualSize() })
