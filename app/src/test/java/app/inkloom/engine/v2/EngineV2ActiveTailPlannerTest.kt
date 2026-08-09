@@ -64,6 +64,19 @@ class EngineV2ActiveTailPlannerTest {
         assertEquals(translucent.points, plan.strokes.single().points)
     }
 
+    @Test
+    fun importedBrushWithEndingTaperNeverReplaysItsGrowingHistory() {
+        val planner = EngineV2ActiveTailPlanner()
+        val first = stroke(40).copy(tipAssetPath = "/tmp/sut-tip.png", taperEndEnabled = true)
+        val second = stroke(90).copy(tipAssetPath = "/tmp/sut-tip.png", taperEndEnabled = true)
+
+        planner.incremental(listOf(first))
+        val plan = planner.incremental(listOf(second))
+
+        assertFalse(plan.clearBeforeDraw)
+        assertTrue(plan.incrementalStampDraw)
+    }
+
     private fun stroke(count: Int) = InkStroke(
         id = "active",
         points = List(count) { index -> StrokePoint(index / 20f, .5f, timeMs = index.toLong()) },

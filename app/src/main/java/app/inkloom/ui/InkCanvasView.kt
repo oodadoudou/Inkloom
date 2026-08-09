@@ -170,7 +170,13 @@ class InkCanvasView(context: Context) : View(context) {
             postInvalidateOnAnimation()
             return@Runnable
         }
-        surface.render(symmetryStrokes(currentPoints))
+        // End taper depends on the eventual stroke length. Replaying the complete growing stroke
+        // on every display frame is quadratic and made long SUT/Procreate brushes fall seconds
+        // behind the pen. Preview the body incrementally; the committed stroke applies its exact
+        // terminal taper once, affecting only the final tail.
+        surface.render(symmetryStrokes(currentPoints).map { stroke ->
+            if (stroke.taperEndEnabled) stroke.copy(taperEndEnabled = false) else stroke
+        })
     }
     private var backgroundBitmap: Bitmap? = null
     private val selectedStrokeIds = linkedSetOf<String>()
@@ -3648,7 +3654,9 @@ class InkCanvasView(context: Context) : View(context) {
             eraseAt(targetX, targetY, pressure)
         } else {
             val distancePixels = hypot(((targetX - startX) * width).toDouble(), ((targetY - startY) * height).toDouble()).toFloat()
-            val spacing = (eraserRadiusPixels(pressure) * .45f).coerceAtLeast(1f)
+            // Overlapping dabs at 75% of the radius remain continuous, while the former 45%
+            // spacing generated hundreds of redundant stroke intersections per input packet.
+            val spacing = (eraserRadiusPixels(pressure) * .75f).coerceAtLeast(1.5f)
             val steps = ceil(distancePixels / spacing).toInt().coerceIn(1, MAX_ERASER_SAMPLES_PER_EVENT)
             for (step in 1..steps) {
                 val amount = step / steps.toFloat()
@@ -3993,7 +4001,7 @@ class InkCanvasView(context: Context) : View(context) {
         const val MAX_CACHE_PIXELS = 16_000_000L
         const val FILL_MAX_SAMPLE_DIMENSION = 1_600f
         const val FILL_PREVIEW_THROTTLE_MS = 32L
-        const val MAX_ERASER_SAMPLES_PER_EVENT = 256
+        const val MAX_ERASER_SAMPLES_PER_EVENT = 128
         const val CONTINUOUS_PLOT_INTERVAL_MS = 32L
         const val QUICKSHAPE_HOLD_MS = 120L
         const val TRANSFORM_NONE = 0

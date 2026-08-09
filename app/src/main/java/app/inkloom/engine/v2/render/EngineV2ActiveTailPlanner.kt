@@ -48,8 +48,7 @@ internal class EngineV2ActiveTailPlanner {
         stroke.tipAssetPath != null || stroke.tipAssetPaths.isNotEmpty()
 
     private fun requiresCompleteReplay(stroke: InkStroke): Boolean =
-        // End taper depends on the final stroke length and masks can remove already-presented
-        // pixels. Other imported-brush effects are composited per appended dab, so replaying the
-        // complete stroke for them only adds quadratic work and visible input latency.
-        stroke.taperEndEnabled || stroke.masks.isNotEmpty()
+        // Active previews suppress the length-dependent ending taper; masks are the only effect
+        // that can remove pixels which have already been presented in the front buffer.
+        stroke.masks.isNotEmpty()
 }
