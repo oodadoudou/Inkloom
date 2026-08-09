@@ -170,3 +170,20 @@ object GradientShaderFactory {
         GradientEdgeMode.TRANSPARENT -> if (Build.VERSION.SDK_INT >= 31) Shader.TileMode.DECAL else Shader.TileMode.CLAMP
     }
 }
+
+fun PageElement.Shape.gradientDefinition(): GradientDefinition? {
+    if (gradientEndArgb == null && gradientStops.size < 2) return null
+    val fallbackStart = fillArgb ?: colorArgb
+    val stops = gradientStops.takeIf { it.size >= 2 } ?: listOf(
+        GradientColorStop(0f, fallbackStart),
+        GradientColorStop(1f, gradientEndArgb ?: fallbackStart),
+    )
+    return GradientDefinition(
+        kind = gradientKind,
+        edgeMode = gradientEdgeMode,
+        reverse = gradientReverse,
+        dither = gradientDither,
+        ellipseRatio = gradientEllipseRatio,
+        stops = stops,
+    ).normalized()
+}

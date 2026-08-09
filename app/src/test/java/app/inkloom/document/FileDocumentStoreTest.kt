@@ -9,6 +9,39 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 class FileDocumentStoreTest {
+    @Test fun `professional gradient properties survive document persistence`() {
+        val store = FileDocumentStore(Files.createTempDirectory("inkloom-gradient").toFile())
+        val gradient = PageElement.Shape(
+            x = 0f,
+            y = 0f,
+            width = 1600f,
+            height = 2263f,
+            fillArgb = 0xFF112233L,
+            gradientEndArgb = 0xFFABCDEF,
+            gradientKind = GradientKind.DIAMOND,
+            gradientEdgeMode = GradientEdgeMode.MIRROR,
+            gradientReverse = true,
+            gradientDither = false,
+            gradientEllipseRatio = .42f,
+            gradientStops = listOf(
+                GradientColorStop(0f, 0xFF112233L),
+                GradientColorStop(.37f, 0xFF445566L),
+                GradientColorStop(1f, 0xFFABCDEF),
+            ),
+        )
+        val document = InkDocument(title = "Gradient", pages = listOf(InkPage(elements = listOf(gradient))))
+
+        store.save(document)
+
+        val restored = store.get(document.id)!!.pages.single().elements.single() as PageElement.Shape
+        assertEquals(GradientKind.DIAMOND, restored.gradientKind)
+        assertEquals(GradientEdgeMode.MIRROR, restored.gradientEdgeMode)
+        assertEquals(true, restored.gradientReverse)
+        assertEquals(false, restored.gradientDither)
+        assertEquals(.42f, restored.gradientEllipseRatio)
+        assertEquals(gradient.gradientStops, restored.gradientStops)
+    }
+
     @Test fun realtimeJournalIsVisibleImmediatelyAndPersistsInOrder() {
         val root = Files.createTempDirectory("inkloom-realtime-writer").toFile()
         val store = FileDocumentStore(root)
