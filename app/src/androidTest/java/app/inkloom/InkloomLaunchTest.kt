@@ -440,6 +440,26 @@ class InkloomLaunchTest {
         composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasContentDescription("Open layers for this page")).fetchSemanticsNodes().size == 4 }
     }
 
+    @Test fun longPressDragOnPageThumbnailReordersPages() {
+        createNotebookAndOpenEditor()
+        composeRule.onNodeWithContentDescription("Add page").performClick()
+        composeRule.onNodeWithContentDescription("Use Grid template").performClick()
+        composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasContentDescription("Open layers for this page")).fetchSemanticsNodes().size == 2 }
+        composeRule.onNodeWithContentDescription("Page 1. Long press to manage.").performClick()
+        composeRule.onNodeWithText("1/2").assertIsDisplayed()
+
+        composeRule.onNodeWithContentDescription("Page 1. Long press to manage.").performTouchInput {
+            down(center)
+            advanceEventTime(700)
+            moveBy(Offset(0f, 180f))
+            advanceEventTime(50)
+            up()
+        }
+
+        composeRule.waitUntil(5_000) { composeRule.onAllNodesWithText("2/2").fetchSemanticsNodes().isNotEmpty() }
+        composeRule.onNodeWithText("2/2").assertIsDisplayed()
+    }
+
     @Test fun editorInsertsAValidatedLinkCard() {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("More").performClick()

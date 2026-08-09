@@ -1819,7 +1819,7 @@ private fun EditorScreen(
                 onStacked = { setDockStacked(WorkspacePanelDock.LEFT, it, leftPanelTabs) },
             )
             if (editorWidth >= 700.dp && settings.showPageRail && settings.pagePanelDock == WorkspacePanelDock.LEFT && showPanel(WorkspacePanelKind.PAGES, WorkspacePanelDock.LEFT)) PageRail(
-                document, documents, selectedPage.id, settings.pagePanelDock,
+                document, documents, selectedPage.id, settings.pagePanelDock, assets,
                 onDock = { changePanelDock(WorkspacePanelKind.PAGES, it) },
                 onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
                 pageTemplates = pageTemplates,
@@ -1886,6 +1886,7 @@ private fun EditorScreen(
                 Modifier
                     .weight(1f)
                     .fillMaxHeight()
+                    .clipToBounds()
                     .background(Workspace)
                     .onGloballyPositioned { coordinates ->
                         viewportWidthPx = coordinates.size.width.toFloat()
@@ -2383,7 +2384,7 @@ private fun EditorScreen(
                 onResizeEnd = { persistDockedPanel(WorkspacePanelKind.PAGES) },
             )
             if (editorWidth >= 700.dp && settings.showPageRail && settings.pagePanelDock == WorkspacePanelDock.RIGHT && showPanel(WorkspacePanelKind.PAGES, WorkspacePanelDock.RIGHT)) PageRail(
-                document, documents, selectedPage.id, settings.pagePanelDock,
+                document, documents, selectedPage.id, settings.pagePanelDock, assets,
                 onDock = { changePanelDock(WorkspacePanelKind.PAGES, it) },
                 onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
                 pageTemplates = pageTemplates,
@@ -2462,7 +2463,7 @@ private fun EditorScreen(
                     onStacked = { setDockStacked(WorkspacePanelDock.BOTTOM, it, bottomPanelTabs) },
                 )
                 if (settings.showPageRail && settings.pagePanelDock == WorkspacePanelDock.BOTTOM && showPanel(WorkspacePanelKind.PAGES, WorkspacePanelDock.BOTTOM)) PageRail(
-                    document, documents, selectedPage.id, settings.pagePanelDock,
+                    document, documents, selectedPage.id, settings.pagePanelDock, assets,
                     onDock = { changePanelDock(WorkspacePanelKind.PAGES, it) },
                     onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
                     pageTemplates = pageTemplates,
@@ -2560,7 +2561,7 @@ private fun EditorScreen(
             onSeparateTabs = ::separateFloatingPanels,
         ) {
             PageRail(
-                document, documents, selectedPage.id, settings.pagePanelDock,
+                document, documents, selectedPage.id, settings.pagePanelDock, assets,
                 onDock = { changePanelDock(WorkspacePanelKind.PAGES, it) },
                 onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
                 pageTemplates = pageTemplates,
@@ -3587,6 +3588,7 @@ private fun PageRail(
     documents: List<InkDocument>,
     selectedPageId: String,
     dock: WorkspacePanelDock,
+    assets: DocumentAssetService,
     onDock: (WorkspacePanelDock) -> Unit,
     onClose: () -> Unit,
     pageTemplates: PageTemplateLibrary,
@@ -3726,6 +3728,8 @@ private fun PageRail(
             var title by remember(page.title) { mutableStateOf(page.title) }
             var customNumber by remember(page.customNumber) { mutableStateOf(page.customNumber.orEmpty()) }
             var tags by remember(page.tags) { mutableStateOf(page.tags.joinToString(", ")) }
+            var pageDragDistance by remember(page.id) { mutableFloatStateOf(0f) }
+            var pageDragging by remember(page.id) { mutableStateOf(false) }
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 val pageBatchSelected = page.id in selectedPageIds
                 val pageDescription = if (pageBatchSelected) {
@@ -3741,8 +3745,44 @@ private fun PageRail(
                     managingPages = true
                     selectedPageIds = currentSelectedPageIds + page.id
                 }
-                Box(Modifier.size(58.dp, 74.dp).background(if (pageBatchSelected) Color(0xFFDDE8F7) else Color.White, RoundedCornerShape(5.dp)).border(if (page.id == selectedPageId || pageBatchSelected) 2.dp else 1.dp, if (page.id == selectedPageId || pageBatchSelected) Sage else OutlineSoft, RoundedCornerShape(5.dp)).padding(4.dp)) {
-                    PageInkPreview(page, Modifier.matchParentSize().clip(RoundedCornerShape(2.dp)))
+                fun finishPageDrag() {
+                    val moved = kotlin.math.abs(pageDragDistance) >= 18.dp.value
+                    if (moved) {
+                        val delta = (pageDragDistance / 96.dp.value).toInt().let { if (it == 0) if (pageDragDistance > 0f) 1 else -1 else it }
+                        val selected = if (managingPages && selectedPageIds.isNotEmpty()) selectedPageIds + page.id else setOf(page.id)
+                        val target = (pageIndex + delta).coerceIn(0, document.pages.lastIndex)
+                        onReorder(document.id, PageBatchOperations.moveBlock(document.pages.map(InkPage::id), selected, target))
+                    } else {
+                        managePage()
+                    }
+                    pageDragDistance = 0f
+                    pageDragging = false
+                }
+                fun Modifier.pageReorderDrag(): Modifier = pointerInput(page.id, managingPages, document.pages.map(InkPage::id)) {
+                    detectDragGesturesAfterLongPress(
+                        onDragStart = { pageDragDistance = 0f; pageDragging = true },
+                        onDragEnd = ::finishPageDrag,
+                        onDragCancel = { pageDragDistance = 0f; pageDragging = false },
+                    ) { change, amount ->
+                        change.consume()
+                        pageDragDistance += amount.y / density
+                    }
+                }
+                Box(
+                    Modifier
+                        .size(58.dp, 74.dp)
+                        .zIndex(if (pageDragging) 4f else 0f)
+                        .graphicsLayer {
+                            translationY = pageDragDistance * density
+                            scaleX = if (pageDragging) 1.06f else 1f
+                            scaleY = if (pageDragging) 1.06f else 1f
+                            shadowElevation = if (pageDragging) 12.dp.toPx() else 0f
+                        }
+                        .background(if (pageBatchSelected) Color(0xFFDDE8F7) else Color.White, RoundedCornerShape(5.dp))
+                        .border(if (page.id == selectedPageId || pageBatchSelected) 2.dp else 1.dp, if (page.id == selectedPageId || pageBatchSelected) Sage else OutlineSoft, RoundedCornerShape(5.dp))
+                        .padding(4.dp),
+                ) {
+                    PageInkPreview(page, assets, Modifier.matchParentSize().clip(RoundedCornerShape(2.dp)))
                     if (page.background is PageBackground.Pdf) Text("PDF", fontSize = 9.sp, color = Sage)
                     if (page.bookmarked) Icon(Icons.Default.Bookmark, tr("Bookmarked", "已收藏"), tint = Sage, modifier = Modifier.size(16.dp).align(Alignment.TopEnd))
                     Box(
@@ -3753,14 +3793,11 @@ private fun PageRail(
                     }
                     Box(Modifier.matchParentSize().pointerInput(page.id, managingPages) {
                         val layerHotspot = 24.dp.toPx()
-                        detectTapGestures(
-                            onTap = { position ->
-                                if (position.x >= size.width - layerHotspot && position.y >= size.height - layerHotspot) onOpenLayers(page.id)
-                                else selectPage()
-                            },
-                            onLongPress = { managePage() },
-                        )
-                    }.semantics {
+                        detectTapGestures(onTap = { position ->
+                            if (position.x >= size.width - layerHotspot && position.y >= size.height - layerHotspot) onOpenLayers(page.id)
+                            else selectPage()
+                        })
+                    }.pageReorderDrag().semantics {
                         contentDescription = pageDescription
                         onClick {
                             selectPage()
@@ -3772,26 +3809,11 @@ private fun PageRail(
                         }
                     })
                 }
-                var pageDragDistance by remember(page.id) { mutableFloatStateOf(0f) }
                 Row(Modifier.width(78.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     Icon(
                         Icons.Outlined.DragIndicator,
                         tr("Drag to reorder page", "拖动调整页面顺序"),
-                        Modifier.size(36.dp).padding(6.dp).pointerInput(page.id) {
-                            detectDragGestures(
-                                onDragStart = { pageDragDistance = 0f },
-                                onDragEnd = {
-                                    val delta = (pageDragDistance / 96.dp.toPx()).toInt()
-                                    if (delta != 0) {
-                                        val selected = if (managingPages && selectedPageIds.isNotEmpty()) selectedPageIds + page.id else setOf(page.id)
-                                        val target = (pageIndex + delta).coerceIn(0, document.pages.lastIndex)
-                                        onReorder(document.id, PageBatchOperations.moveBlock(document.pages.map(InkPage::id), selected, target))
-                                    }
-                                    pageDragDistance = 0f
-                                },
-                                onDragCancel = { pageDragDistance = 0f },
-                            ) { change, amount -> change.consume(); pageDragDistance += amount.y }
-                        },
+                        Modifier.size(36.dp).padding(6.dp).pageReorderDrag(),
                         tint = MutedInk,
                     )
                     Text(page.customNumber ?: (document.pages.indexOf(page) + 1).toString(), color = if (page.id == selectedPageId) Sage else MutedInk, modifier = Modifier.weight(1f).clip(RoundedCornerShape(5.dp)).clickable { onSelect(page.id) }.padding(vertical = 6.dp), maxLines = 1)
@@ -3879,7 +3901,19 @@ private fun PageRail(
 }
 
 @Composable
-private fun PageInkPreview(page: InkPage, modifier: Modifier = Modifier) {
+private fun PageInkPreview(page: InkPage, assets: DocumentAssetService, modifier: Modifier = Modifier) {
+    val thumbnail by produceState<android.graphics.Bitmap?>(initialValue = null, page) {
+        value = withContext(Dispatchers.IO) { runCatching { assets.renderPageBitmap(page, 180) }.getOrNull() }
+    }
+    if (thumbnail != null) {
+        Image(
+            bitmap = thumbnail!!.asImageBitmap(),
+            contentDescription = tr("Full page preview", "整页预览"),
+            modifier = modifier.background(Color.White),
+            contentScale = ContentScale.Fit,
+        )
+        return
+    }
     val visibleLayerIds = remember(page.layers) {
         page.layers.filter { LayerHierarchy.effectiveVisible(page.layers, it) && it.role != LayerRole.FOLDER }
             .mapTo(linkedSetOf(), InkLayer::id)
