@@ -3376,6 +3376,30 @@ class InkCanvasView(context: Context) : View(context) {
         return selectable.isNotEmpty()
     }
 
+    /** Selects every editable stroke that is not currently selected. */
+    fun invertSelection(): Boolean {
+        val editable = strokes.asSequence()
+            .filterNot { it.id in protectedStrokeIds || it.layerId in protectedLayerIds }
+            .map(InkStroke::id)
+            .toSet()
+        val inverted = editable - selectedStrokeIds
+        selectedStrokeIds.clear()
+        selectedStrokeIds += inverted
+        lassoPoints.clear()
+        movingSelection = false
+        invalidate()
+        return inverted.isNotEmpty()
+    }
+
+    /** Existing corner, edge and rotation handles are the free-transform mode. */
+    fun enterFreeTransform(): Boolean {
+        if (selectedStrokeIds.isEmpty()) return false
+        tool = EditorTool.SELECT
+        selectionTransformMode = TRANSFORM_NONE
+        invalidate()
+        return true
+    }
+
     fun clearSelection(): Boolean {
         if (selectedStrokeIds.isEmpty()) return false
         selectedStrokeIds.clear()
