@@ -157,7 +157,18 @@ object StrokeEraser {
             tilt = lerp(start.tilt, end.tilt, t),
             orientation = start.orientation + orientationDelta * t,
             velocity = lerp(start.velocity, end.velocity, t),
+            pigmentArgb = interpolateArgb(start.pigmentArgb, end.pigmentArgb, t),
         )
+    }
+
+    private fun interpolateArgb(start: Long?, end: Long?, amount: Float): Long? {
+        if (start == null || end == null) return start ?: end
+        fun channel(shift: Int): Long {
+            val first = start shr shift and 0xFF
+            val second = end shr shift and 0xFF
+            return (first + (second - first) * amount).toLong().coerceIn(0, 255)
+        }
+        return (channel(24) shl 24) or (channel(16) shl 16) or (channel(8) shl 8) or channel(0)
     }
 
     private fun MutableList<StrokePoint>.addDistinct(point: StrokePoint) {

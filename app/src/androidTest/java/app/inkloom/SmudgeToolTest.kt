@@ -39,6 +39,7 @@ class SmudgeToolTest {
     @Test fun draggingBlendMixesExistingPigmentWithoutAddingAStroke() {
         var removed = 0
         var replacements = 0
+        var mixedStrokes = emptyList<InkStroke>()
         val view = canvas {
             tool = EditorTool.SMUDGE
             fingerDrawingEnabled = true
@@ -51,7 +52,7 @@ class SmudgeToolTest {
                 ),
                 "blend-page",
             )
-            onStrokesReplaced = { deleted, changed, _ -> removed = deleted.size; replacements = changed.size }
+            onStrokesReplaced = { deleted, changed, _ -> removed = deleted.size; replacements = changed.size; mixedStrokes = changed }
         }
         send(view, 0L, MotionEvent.ACTION_DOWN, 60f, 100f)
         send(view, 20L, MotionEvent.ACTION_MOVE, 100f, 100f)
@@ -59,6 +60,30 @@ class SmudgeToolTest {
         send(view, 60L, MotionEvent.ACTION_UP, 140f, 100f)
         assertEquals(2, removed)
         assertEquals("Blend edits the two existing strokes; it must not paint a third stroke", 2, replacements)
+        assertTrue("Blend must create local mixed pigment", mixedStrokes.flatMap(InkStroke::points).any { it.pigmentArgb != null })
+    }
+
+    @Test fun blendOnlyModifiesTheActiveLayer() {
+        var changed = emptyList<InkStroke>()
+        val view = canvas {
+            tool = EditorTool.SMUDGE
+            fingerDrawingEnabled = true
+            baseWidth = 400f
+            activeLayerId = "paint"
+            setDocumentStrokes(
+                listOf(
+                    InkStroke(id = "notes", colorArgb = 0xFF000000, width = 30f, layerId = "notes", points = listOf(StrokePoint(.3f, .5f), StrokePoint(.7f, .5f))),
+                    InkStroke(id = "paint", colorArgb = 0xFFFF0000, width = 30f, layerId = "paint", points = listOf(StrokePoint(.3f, .5f), StrokePoint(.7f, .5f))),
+                ),
+                "blend-layers",
+            )
+            onStrokesReplaced = { _, replacements, _ -> changed = replacements }
+        }
+        send(view, 0L, MotionEvent.ACTION_DOWN, 60f, 100f)
+        send(view, 20L, MotionEvent.ACTION_MOVE, 140f, 100f)
+        send(view, 40L, MotionEvent.ACTION_UP, 140f, 100f)
+
+        assertEquals(listOf("paint"), changed.map(InkStroke::id))
     }
 
     @Test fun blendingBlankPaperDoesNotCreatePigment() {

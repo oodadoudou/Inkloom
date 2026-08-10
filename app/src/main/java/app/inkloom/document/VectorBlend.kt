@@ -34,22 +34,41 @@ object VectorBlend {
             stroke.points.maxOfOrNull(::influence)?.takeIf { it > 0f }?.let { stroke to it }
         }
         if (affected.isEmpty()) return strokes
-        val totalWeight = affected.sumOf { it.second.toDouble() }.toFloat().coerceAtLeast(.0001f)
-        fun channel(shift: Int): Int = (affected.sumOf { (stroke, weight) ->
-            (((stroke.colorArgb shr shift) and 0xFF).toInt() * weight).toDouble()
-        } / totalWeight).toInt().coerceIn(0, 255)
-        val mixed = (channel(24).toLong() shl 24) or (channel(16).toLong() shl 16) or (channel(8).toLong() shl 8) or channel(0).toLong()
+        data class Pigment(val point: StrokePoint, val color: Long)
+        val allPigment = affected.flatMap { (stroke, _) -> stroke.points.map { Pigment(it, it.pigmentArgb ?: stroke.colorArgb) } }
+        val sampleStride = (allPigment.size / MAX_PIGMENT_SAMPLES).coerceAtLeast(1)
+        val pigmentSamples = allPigment.filterIndexed { index, _ -> index % sampleStride == 0 }.take(MAX_PIGMENT_SAMPLES)
+        fun mixedPigment(point: StrokePoint, fallback: Long): Long {
+            var totalWeight = 0f
+            val channels = FloatArray(4)
+            pigmentSamples.forEach { sample ->
+                val dx = sample.point.x - point.x
+                val dy = (sample.point.y - point.y) / aspect
+                val distance = hypot(dx.toDouble(), dy.toDouble()).toFloat()
+                if (distance >= safeRadius) return@forEach
+                val weight = (1f - distance / safeRadius).pow(2f)
+                totalWeight += weight
+                channels[0] += (sample.color shr 24 and 0xFF) * weight
+                channels[1] += (sample.color shr 16 and 0xFF) * weight
+                channels[2] += (sample.color shr 8 and 0xFF) * weight
+                channels[3] += (sample.color and 0xFF) * weight
+            }
+            if (totalWeight <= .0001f) return fallback
+            fun channel(index: Int) = (channels[index] / totalWeight).toLong().coerceIn(0, 255)
+            return (channel(0) shl 24) or (channel(1) shl 16) or (channel(2) shl 8) or channel(3)
+        }
         val weights = affected.associate { it.first.id to it.second }
         return strokes.map { stroke ->
             val weight = weights[stroke.id] ?: return@map stroke
-            val colorMix = (weight * .32f).coerceIn(0f, 1f)
             stroke.copy(
-                colorArgb = blendColor(stroke.colorArgb, mixed, colorMix),
                 points = stroke.points.map { point ->
                     val local = influence(point)
+                    val original = point.pigmentArgb ?: stroke.colorArgb
+                    val mixed = mixedPigment(point, original)
                     point.copy(
-                        x = (point.x + deltaX * local * .22f).coerceIn(0f, 1f),
-                        y = (point.y + deltaY * local * .22f).coerceIn(0f, 1f),
+                        x = (point.x + deltaX * local * .34f).coerceIn(0f, 1f),
+                        y = (point.y + deltaY * local * .34f).coerceIn(0f, 1f),
+                        pigmentArgb = blendColor(original, mixed, (local * .82f).coerceIn(0f, 1f)),
                     )
                 },
                 masks = stroke.masks.map { mask ->
@@ -68,4 +87,6 @@ object VectorBlend {
         }
         return (channel(24) shl 24) or (channel(16) shl 16) or (channel(8) shl 8) or channel(0)
     }
+
+    private const val MAX_PIGMENT_SAMPLES = 512
 }

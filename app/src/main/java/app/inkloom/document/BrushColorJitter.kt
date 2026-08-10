@@ -5,8 +5,8 @@ import kotlin.math.min
 
 object BrushColorJitter {
     fun argb(stroke: InkStroke, point: StrokePoint, stampIndex: Int): Int {
-        if (stroke.colorJitterHueDegrees == 0f && stroke.colorJitterSaturation == 0f && stroke.colorJitterValue == 0f) return stroke.colorArgb.toInt()
-        val source = stroke.colorArgb.toInt()
+        val source = (point.pigmentArgb ?: stroke.colorArgb).toInt()
+        if (stroke.colorJitterHueDegrees == 0f && stroke.colorJitterSaturation == 0f && stroke.colorJitterValue == 0f) return source
         val hsv = rgbToHsv(source)
         hsv[0] = wrapHue(hsv[0] + stroke.colorJitterHueDegrees * amount(stroke.colorJitterHueDynamics, point, stroke.renderSeed, stampIndex, HUE_SALT))
         hsv[1] = (hsv[1] + stroke.colorJitterSaturation / 100f * amount(stroke.colorJitterSaturationDynamics, point, stroke.renderSeed, stampIndex, SATURATION_SALT)).coerceIn(0f, 1f)

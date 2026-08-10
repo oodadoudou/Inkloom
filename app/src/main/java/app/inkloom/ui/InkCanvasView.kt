@@ -1283,11 +1283,12 @@ class InkCanvasView(context: Context) : View(context) {
         val scale = width.coerceAtLeast(1) / REFERENCE_WIDTH
         val taper = strokeTaperFactors(stroke, stroke.points)
         if (stroke.points.size == 1) {
-            val point = stroke.points.first(); val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point); val strokeWidth = stroke.width * scale * (taper?.firstOrNull() ?: 1f) * dynamics.size; val alpha = (stroke.flow * dynamics.depositedAlpha * 255).toInt().coerceIn(0, 255); drawLinePoint(canvas, stroke, point, point.x * width, point.y * height, strokeWidth, alpha)
+            val point = stroke.points.first(); paint.color = (point.pigmentArgb ?: stroke.colorArgb).toInt(); val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point); val strokeWidth = stroke.width * scale * (taper?.firstOrNull() ?: 1f) * dynamics.size; val alpha = (stroke.flow * dynamics.depositedAlpha * 255).toInt().coerceIn(0, 255); drawLinePoint(canvas, stroke, point, point.x * width, point.y * height, strokeWidth, alpha)
         } else for (index in 0 until stroke.points.lastIndex) {
             val start = stroke.points[index]
             val end = stroke.points[index + 1]
             val point = midpoint(start, end)
+            paint.color = mixArgb(start.pigmentArgb ?: stroke.colorArgb, end.pigmentArgb ?: stroke.colorArgb, .5f).toInt()
             val taperFactor = taper?.let { (it[index] + it[index + 1]) / 2f } ?: 1f
             val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
             val strokeWidth = stroke.width * scale * taperFactor * dynamics.size
@@ -4550,6 +4551,17 @@ class InkCanvasView(context: Context) : View(context) {
         return selectionMaskForDisplay()?.copy(Bitmap.Config.ARGB_8888, false)
     }
 
+    fun fillSelection(): Boolean {
+        val mask = selectionMaskSnapshot() ?: return false
+        val callback = onFillCommitted
+        if (callback == null) {
+            mask.recycle()
+            return false
+        }
+        callback(mask, 0f, 0f, pageModelWidth, pageModelHeight, inkColor.toUInt().toLong(), inkOpacity)
+        return true
+    }
+
     private fun releaseSelectionState(clearHistory: Boolean) {
         selectedStrokeIds.clear()
         selectedMaskRegions = emptyList()
@@ -4784,7 +4796,21 @@ class InkCanvasView(context: Context) : View(context) {
         tilt = (start.tilt + end.tilt) / 2f,
         orientation = (start.orientation + end.orientation) / 2f,
         velocity = (start.velocity + end.velocity) / 2f,
+        pigmentArgb = when {
+            start.pigmentArgb == null -> end.pigmentArgb
+            end.pigmentArgb == null -> start.pigmentArgb
+            else -> mixArgb(start.pigmentArgb, end.pigmentArgb, .5f)
+        },
     )
+
+    private fun mixArgb(from: Long, to: Long, amount: Float): Long {
+        fun channel(shift: Int): Long {
+            val first = from shr shift and 0xFF
+            val second = to shr shift and 0xFF
+            return (first + (second - first) * amount.coerceIn(0f, 1f)).toLong().coerceIn(0, 255)
+        }
+        return (channel(24) shl 24) or (channel(16) shl 16) or (channel(8) shl 8) or channel(0)
+    }
 
     private fun Float?.orDefault() = this ?: 1f
 }

@@ -102,6 +102,7 @@ internal object EngineV2StampBatchRenderer {
 
     fun eligible(stroke: InkStroke): Boolean =
         !stroke.dualBrush && !stroke.spray && !stroke.watercolor && !stroke.waterEdgeEnabled &&
+            stroke.points.none { it.pigmentArgb != null } &&
             !stroke.blendTipsWithDarken && stroke.blur <= .001f && !GrainDynamics.isDynamic(stroke) &&
             stroke.stampCount == 1 && stroke.stampCountJitter <= .001f &&
             stroke.tipFlipHorizontalMode == 0 && stroke.tipFlipVerticalMode == 0 &&

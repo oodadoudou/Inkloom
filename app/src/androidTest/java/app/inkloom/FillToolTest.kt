@@ -144,4 +144,26 @@ class FillToolTest {
 
         assertTrue("Reference line art should keep the fill inside its boundary", committedWidth in 400f..1_200f)
     }
+
+    @Test fun fillSelectionCommitsTheSelectionMaskInsteadOfFloodingAroundInk() {
+        var committed = false
+        val selectedStroke = InkStroke(
+            id = "selected",
+            width = 80f,
+            points = listOf(StrokePoint(.25f, .5f), StrokePoint(.75f, .5f)),
+        )
+        val view = canvas {
+            setDocumentStrokes(listOf(selectedStroke), "selection-fill")
+            onFillCommitted = { mask, x, y, width, height, _, _ ->
+                committed = mask.width > 1 && mask.height > 1 && x == 0f && y == 0f && width == pageModelWidth && height == pageModelHeight
+                mask.recycle()
+            }
+        }
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            assertTrue(view.selectAllEditableStrokes())
+            assertTrue(view.fillSelection())
+        }
+        assertTrue("Selection launcher fill must commit the exact selection mask", committed)
+    }
 }

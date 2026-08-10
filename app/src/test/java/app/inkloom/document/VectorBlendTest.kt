@@ -18,8 +18,8 @@ class VectorBlendTest {
         val result = VectorBlend.apply(listOf(red, blue), .5f, .5f, .03f, 0f, .2f, 1f, 0f, 1000f, 1000f)
 
         assertEquals(2, result.size)
-        assertNotEquals(red.colorArgb, result[0].colorArgb)
-        assertNotEquals(blue.colorArgb, result[1].colorArgb)
+        assertNotEquals(red.colorArgb, result[0].points.last().pigmentArgb)
+        assertNotEquals(blue.colorArgb, result[1].points.first().pigmentArgb)
         assertTrue(result[0].points.first().x > red.points.first().x)
     }
 

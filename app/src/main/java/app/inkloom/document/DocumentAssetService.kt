@@ -1024,7 +1024,21 @@ class DocumentAssetService(private val context: Context) {
         tilt = (start.tilt + end.tilt) / 2f,
         orientation = (start.orientation + end.orientation) / 2f,
         velocity = (start.velocity + end.velocity) / 2f,
+        pigmentArgb = when {
+            start.pigmentArgb == null -> end.pigmentArgb
+            end.pigmentArgb == null -> start.pigmentArgb
+            else -> blendArgb(start.pigmentArgb, end.pigmentArgb, .5f)
+        },
     )
+
+    private fun blendArgb(from: Long, to: Long, amount: Float): Long {
+        fun channel(shift: Int): Long {
+            val first = from shr shift and 0xFF
+            val second = to shr shift and 0xFF
+            return (first + (second - first) * amount.coerceIn(0f, 1f)).toLong().coerceIn(0, 255)
+        }
+        return (channel(24) shl 24) or (channel(16) shl 16) or (channel(8) shl 8) or channel(0)
+    }
 
     private companion object {
         const val DUAL_SCATTER_SEED = 0x27C4915DL
