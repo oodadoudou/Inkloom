@@ -640,15 +640,16 @@ class InkloomLaunchTest {
     @Test fun layerPanelDuplicatesAndMergesAContentLayer() {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Layers").performClick()
+        composeRule.onNodeWithContentDescription("Add layer").performClick()
         composeRule.onAllNodes(hasContentDescription("Layer actions")).onFirst().performClick()
         composeRule.onNodeWithText("Duplicate layer").performClick()
 
-        composeRule.onNodeWithText("Objects copy").assertIsDisplayed()
+        composeRule.onNodeWithText("Layer 1 copy").assertIsDisplayed()
         composeRule.onAllNodes(hasContentDescription("Layer actions")).onFirst().performClick()
         composeRule.onNodeWithText("Merge down").performClick()
 
-        assertTrue(composeRule.onAllNodes(hasText("Objects copy")).fetchSemanticsNodes().isEmpty())
-        composeRule.onNodeWithText("Objects").assertIsDisplayed()
+        assertTrue(composeRule.onAllNodes(hasText("Layer 1 copy")).fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithText("Layer 1").assertIsDisplayed()
     }
 
     @Test fun procreateTopBarOpensColorsAndThePageLayerStack() {
@@ -656,9 +657,12 @@ class InkloomLaunchTest {
 
         composeRule.onNodeWithContentDescription("Colors").performClick()
         composeRule.onNodeWithText("Color wheel").assertIsDisplayed()
-        composeRule.onNodeWithText("HLS").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Resize color picker").performTouchInput {
+            swipe(center, center + Offset(80f, 70f), durationMillis = 300)
+        }
+        composeRule.onNodeWithText("HSV").assertIsDisplayed()
         composeRule.onNodeWithText("RGB").assertIsDisplayed().performClick()
-        composeRule.onNodeWithText("HLS").performClick()
+        composeRule.onNodeWithText("HSV").performClick()
         composeRule.onNodeWithContentDescription("Colors").performClick()
         composeRule.onNodeWithContentDescription("Open layers for this page").performClick()
         composeRule.onAllNodesWithText("Layers").onLast().assertIsDisplayed()

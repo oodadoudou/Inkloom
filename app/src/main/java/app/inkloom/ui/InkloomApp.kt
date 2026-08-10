@@ -1071,6 +1071,7 @@ private fun EditorScreen(
     var viewMenu by remember { mutableStateOf(false) }
     var workspaceMenu by remember { mutableStateOf(false) }
     var colorPanelOpen by remember { mutableStateOf(false) }
+    var colorPanelWidth by rememberSaveable { mutableFloatStateOf(420f) }
     var zoom by remember(document.id) { mutableFloatStateOf(1f) }
     var panX by remember(document.id) { mutableFloatStateOf(0f) }
     var panY by remember(document.id) { mutableFloatStateOf(0f) }
@@ -1294,6 +1295,8 @@ private fun EditorScreen(
                 fontSize = 12.sp,
                 color = MutedInk,
             )
+            ProcreateTopButton(Icons.Outlined.Undo, tr("Undo", "撤销"), onClick = { canvasView?.undo() })
+            ProcreateTopButton(Icons.Outlined.Redo, tr("Redo", "重做"), onClick = { canvasView?.redo() })
             Box {
                 ProcreateTopButton(Icons.Outlined.Build, tr("Actions", "操作"), selected = workspaceMenu, onClick = { workspaceMenu = true })
                 DropdownMenu(expanded = workspaceMenu, onDismissRequest = { workspaceMenu = false }, modifier = Modifier.widthIn(min = 260.dp, max = 360.dp)) {
@@ -1409,10 +1412,10 @@ private fun EditorScreen(
                 DropdownMenu(
                     expanded = colorPanelOpen,
                     onDismissRequest = { colorPanelOpen = false },
-                    modifier = Modifier.width(380.dp).background(Color.White).padding(8.dp),
+                    modifier = Modifier.width(colorPanelWidth.dp).background(Color.White).padding(8.dp),
                 ) {
                     Text(tr("Colors", "颜色"), Modifier.padding(horizontal = 8.dp, vertical = 4.dp), color = Ink, fontWeight = FontWeight.SemiBold)
-                    CspColorPanel(brushColor, { brushColor = it })
+                    CspColorPanel(brushColor, { brushColor = it }, onResizeWidth = { delta -> colorPanelWidth = (colorPanelWidth + delta).coerceIn(320f, 680f) })
                 }
             }
             Box {
@@ -2649,6 +2652,7 @@ private fun EditorScreen(
                     onShrink = { canvasView?.shrinkSelection(it) },
                     onBorder = { canvasView?.borderSelection(it) },
                     onFeather = { value -> if (canvasView?.featherSelection(value) == true) selectionFeather = value },
+                    onFill = { canvasView?.fillSelection() },
                     onTransform = { canvasView?.enterFreeTransform() },
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
                 )
@@ -4216,7 +4220,7 @@ private fun PageRail(
 @Composable
 private fun PageInkPreview(page: InkPage, assets: DocumentAssetService, modifier: Modifier = Modifier) {
     val thumbnail by produceState<android.graphics.Bitmap?>(initialValue = null, page) {
-        value = withContext(Dispatchers.IO) { runCatching { assets.renderPageBitmap(page, 180) }.getOrNull() }
+        value = withContext(Dispatchers.IO) { runCatching { assets.renderPageBitmap(page, 512) }.getOrNull() }
     }
     if (thumbnail != null) {
         Image(
@@ -6205,13 +6209,16 @@ private fun hslToColor(alpha: Int, hue: Float, saturation: Float, lightness: Flo
 }
 
 @Composable
-private fun CspColorPanel(color: Int, onColor: (Int) -> Unit, initiallyExpanded: Boolean = true) {
+private fun CspColorPanel(color: Int, onColor: (Int) -> Unit, initiallyExpanded: Boolean = true, onResizeWidth: ((Float) -> Unit)? = null) {
     var expanded by rememberSaveable(initiallyExpanded) { mutableStateOf(initiallyExpanded) }
-    var channelMode by rememberSaveable { mutableStateOf("HLS") }
+    var channelMode by rememberSaveable { mutableStateOf("HSV") }
+    var pickerHeight by rememberSaveable { mutableFloatStateOf(148f) }
+    val latestColor by rememberUpdatedState(color)
+    val latestOnColor by rememberUpdatedState(onColor)
     val hsv = remember(color) { FloatArray(3).also { AndroidColor.colorToHSV(color, it) } }
-    val hsl = remember(color) { colorToHsl(color) }
     val hueColor = Color(AndroidColor.HSVToColor(floatArrayOf(hsv[0], 1f, 1f)))
     val saturationValueDescription = tr("Saturation and brightness field", "饱和度和明度区域")
+    val resizeColorPickerDescription = tr("Resize color picker", "调整色环大小")
     fun publish(hue: Float = hsv[0], saturation: Float = hsv[1], value: Float = hsv[2]) {
         onColor(AndroidColor.HSVToColor(AndroidColor.alpha(color), floatArrayOf(hue.coerceIn(0f, 360f), saturation.coerceIn(0f, 1f), value.coerceIn(0f, 1f))))
     }
@@ -6231,23 +6238,35 @@ private fun CspColorPanel(color: Int, onColor: (Int) -> Unit, initiallyExpanded:
                 Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, if (expanded) tr("Collapse color panel", "收起颜色面板") else tr("Expand color panel", "展开颜色面板"), Modifier.size(18.dp))
             }
             if (expanded) {
-                Row(Modifier.fillMaxWidth().padding(horizontal = 7.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                Row(
+                    Modifier.fillMaxWidth().height(pickerHeight.dp).padding(horizontal = 7.dp),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
                     Canvas(
                         Modifier
-                            .size(72.dp)
-                            .pointerInput(color) {
+                            .fillMaxHeight()
+                            .aspectRatio(1f)
+                            .pointerInput(Unit) {
                                 fun update(point: Offset) {
                                     val dx = point.x - size.width / 2f
                                     val dy = point.y - size.height / 2f
+                                    val distance = kotlin.math.hypot(dx, dy)
+                                    val outer = minOf(size.width, size.height) / 2f
+                                    val inner = outer * .66f
+                                    if (distance !in inner..outer * 1.12f) return
                                     var degrees = Math.toDegrees(kotlin.math.atan2(dy.toDouble(), dx.toDouble())).toFloat()
                                     if (degrees < 0f) degrees += 360f
-                                    publish(hue = degrees)
+                                    val current = FloatArray(3).also { AndroidColor.colorToHSV(latestColor, it) }
+                                    latestOnColor(AndroidColor.HSVToColor(AndroidColor.alpha(latestColor), floatArrayOf(degrees, current[1], current[2])))
                                 }
-                                detectDragGestures(onDragStart = ::update) { change, _ -> change.consume(); update(change.position) }
+                                detectDragGestures(
+                                    onDragStart = ::update,
+                                    onDrag = { change, _ -> change.consume(); update(change.position) },
+                                )
                             },
                     ) {
-                        val ring = size.minDimension * .12f
-                        val radius = size.minDimension / 2f - ring
+                        val ring = size.minDimension * .15f
+                        val radius = size.minDimension / 2f - ring / 2f
                         drawCircle(
                             Brush.sweepGradient(listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red)),
                             radius = radius,
@@ -6256,24 +6275,28 @@ private fun CspColorPanel(color: Int, onColor: (Int) -> Unit, initiallyExpanded:
                         val radians = Math.toRadians(hsv[0].toDouble())
                         val markerRadius = radius
                         val marker = Offset(center.x + kotlin.math.cos(radians).toFloat() * markerRadius, center.y + kotlin.math.sin(radians).toFloat() * markerRadius)
-                        drawCircle(Color.White, 5f, marker)
-                        drawCircle(Ink, 5f, marker, style = Stroke(1.5f))
-                        drawCircle(Color(color), radius = radius - ring * .85f)
+                        drawCircle(Color.White, size.minDimension * .045f, marker)
+                        drawCircle(Ink, size.minDimension * .045f, marker, style = Stroke(size.minDimension * .012f))
+                        drawCircle(Color(color), radius = (radius - ring / 1.5f).coerceAtLeast(1f))
                     }
                     Canvas(
                         Modifier
                             .weight(1f)
-                            .height(72.dp)
+                            .fillMaxHeight()
                             .semantics { contentDescription = saturationValueDescription }
-                            .pointerInput(color) {
+                            .pointerInput(Unit) {
                                 fun update(point: Offset) {
                                     val width = size.width.coerceAtLeast(1).toFloat()
                                     val height = size.height.coerceAtLeast(1).toFloat()
                                     val saturation = (point.x / width).coerceIn(0f, 1f)
                                     val value = (1f - point.y / height).coerceIn(0f, 1f)
-                                    publish(saturation = saturation, value = value)
+                                    val current = FloatArray(3).also { AndroidColor.colorToHSV(latestColor, it) }
+                                    latestOnColor(AndroidColor.HSVToColor(AndroidColor.alpha(latestColor), floatArrayOf(current[0], saturation, value)))
                                 }
-                                detectDragGestures(onDragStart = ::update) { change, _ -> change.consume(); update(change.position) }
+                                detectDragGestures(
+                                    onDragStart = ::update,
+                                    onDrag = { change, _ -> change.consume(); update(change.position) },
+                                )
                             },
                     ) {
                         // The rendered field and the inverse pointer mapping intentionally use the
@@ -6290,7 +6313,7 @@ private fun CspColorPanel(color: Int, onColor: (Int) -> Unit, initiallyExpanded:
                 }
                 Spacer(Modifier.height(4.dp))
                 Row(Modifier.fillMaxWidth().padding(horizontal = 7.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    listOf("HLS", "RGB").forEach { mode ->
+                    listOf("HSV", "RGB").forEach { mode ->
                         FilterChip(
                             selected = channelMode == mode,
                             onClick = { channelMode = mode },
@@ -6306,11 +6329,24 @@ private fun CspColorPanel(color: Int, onColor: (Int) -> Unit, initiallyExpanded:
                     CspColorChannel("G", AndroidColor.green(color)) { onColor(AndroidColor.argb(AndroidColor.alpha(color), AndroidColor.red(color), it, AndroidColor.blue(color))) }
                     CspColorChannel("B", AndroidColor.blue(color)) { onColor(AndroidColor.argb(AndroidColor.alpha(color), AndroidColor.red(color), AndroidColor.green(color), it)) }
                 } else {
-                    CspFloatColorChannel("H", hsl.hue, 0f..360f, "${hsl.hue.toInt()}°") { onColor(hslToColor(AndroidColor.alpha(color), it, hsl.saturation, hsl.lightness)) }
-                    CspFloatColorChannel("L", hsl.lightness, 0f..1f, "${(hsl.lightness * 100f).toInt()}%") { onColor(hslToColor(AndroidColor.alpha(color), hsl.hue, hsl.saturation, it)) }
-                    CspFloatColorChannel("S", hsl.saturation, 0f..1f, "${(hsl.saturation * 100f).toInt()}%") { onColor(hslToColor(AndroidColor.alpha(color), hsl.hue, it, hsl.lightness)) }
+                    CspFloatColorChannel("H", hsv[0], 0f..360f, "${hsv[0].toInt()}°") { publish(hue = it) }
+                    CspFloatColorChannel("S", hsv[1], 0f..1f, "${(hsv[1] * 100f).toInt()}%") { publish(saturation = it) }
+                    CspFloatColorChannel("V", hsv[2], 0f..1f, "${(hsv[2] * 100f).toInt()}%") { publish(value = it) }
                 }
-                Spacer(Modifier.height(4.dp))
+                Row(
+                    Modifier.fillMaxWidth().height(26.dp).semantics { contentDescription = resizeColorPickerDescription }
+                        .pointerInput(Unit) {
+                            detectDragGestures { change, amount ->
+                                change.consume()
+                                pickerHeight = (pickerHeight + amount.y / density).coerceIn(112f, 280f)
+                                onResizeWidth?.invoke(amount.x / density)
+                            }
+                        },
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.width(48.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFB7B7B7)))
+                }
             }
         }
     }
@@ -6993,6 +7029,7 @@ private fun BrushPanel(
             onReplaceBrushes = onReplaceBrushes,
             onReplaceGroups = onReplaceGroups,
             onDeleteBrush = onDeleteBrush,
+            onReorderBrush = onReorderBrush,
             modifier = modifier,
             onPanelDragStart = onPanelDragStart,
             onPanelDrag = onPanelDrag,
@@ -7660,6 +7697,7 @@ private fun ProcreateBrushLibrary(
     onReplaceBrushes: (List<ImportedBrush>) -> Unit,
     onReplaceGroups: (List<String>) -> Unit,
     onDeleteBrush: (String) -> Unit,
+    onReorderBrush: (String, Int) -> Unit,
     modifier: Modifier,
     onPanelDragStart: () -> Unit,
     onPanelDrag: (Float, Float) -> Unit,
@@ -7680,6 +7718,8 @@ private fun ProcreateBrushLibrary(
     val createdInInkloom = tr("Created in Inkloom", "在 Inkloom 中创建")
     val allCategories = listOf(tr("All", "全部")) + systemCategories + visibleImportedCategories + ungroupedLabel
     var selectedCategory by rememberSaveable { mutableStateOf(systemCategories.first()) }
+    var pendingCategoryReveal by remember { mutableStateOf<String?>(null) }
+    val categoryListState = rememberLazyListState()
     var addMenu by remember { mutableStateOf(false) }
     var manageGroups by remember { mutableStateOf(false) }
     var editBrush by remember { mutableStateOf<ImportedBrush?>(null) }
@@ -7694,6 +7734,8 @@ private fun ProcreateBrushLibrary(
     var brushDragBounds by remember { mutableStateOf(emptyMap<String, Rect>()) }
     var draggingBrush by remember { mutableStateOf<ImportedBrush?>(null) }
     var brushDragPosition by remember { mutableStateOf<Offset?>(null) }
+    var draggingGroup by remember { mutableStateOf<String?>(null) }
+    var groupDragPosition by remember { mutableStateOf<Offset?>(null) }
     var managingBrushes by remember { mutableStateOf(false) }
     var selectedBrushIds by remember { mutableStateOf(emptySet<String>()) }
     val currentSelectedBrushIds by rememberUpdatedState(selectedBrushIds)
@@ -7766,7 +7808,17 @@ private fun ProcreateBrushLibrary(
                 onDragEnd = {
                     val position = brushDragPosition
                     val target = position?.let { point -> groupDropBounds.entries.firstOrNull { (_, bounds) -> bounds.contains(point) }?.key }
-                    if (target != null) applyBrushGroupOperation(currentSelectedBrushIds + brush.id, target, copy = false)
+                    val targetBrushId = position?.let { point -> brushDragBounds.entries.firstOrNull { (id, bounds) -> id != brush.id && bounds.contains(point) }?.key }
+                    if (target != null) {
+                        applyBrushGroupOperation(currentSelectedBrushIds + brush.id, target, copy = false)
+                    } else if (brush.format != BrushFormat.SYSTEM && targetBrushId != null) {
+                        val peers = brushes.filter { candidate ->
+                            BrushGroupOperations.normalize(candidate.groupName).equals(BrushGroupOperations.normalize(brush.groupName), true)
+                        }.sortedWith(compareBy<ImportedBrush> { it.sortOrder }.thenBy { it.name.lowercase() })
+                        val from = peers.indexOfFirst { it.id == brush.id }
+                        val to = peers.indexOfFirst { it.id == targetBrushId }
+                        if (from >= 0 && to >= 0 && from != to) onReorderBrush(brush.id, to - from)
+                    }
                     draggingBrush = null
                     brushDragPosition = null
                 },
@@ -7776,7 +7828,19 @@ private fun ProcreateBrushLibrary(
                 },
             )
         }
-    LaunchedEffect(allCategories) { if (selectedCategory !in allCategories) selectedCategory = allCategories.first() }
+    LaunchedEffect(allCategories, pendingCategoryReveal) {
+        if (pendingCategoryReveal == null && selectedCategory !in allCategories) selectedCategory = allCategories.first()
+    }
+    LaunchedEffect(importedCategories, pendingCategoryReveal) {
+        val pending = pendingCategoryReveal ?: return@LaunchedEffect
+        val created = importedCategories.firstOrNull { it.equals(pending, true) } ?: return@LaunchedEffect
+        selectedCategory = created
+        collapsedGroupPaths = collapsedGroupPaths - generateSequence(BrushGroupOperations.parent(created), BrushGroupOperations::parent).toSet()
+        pendingCategoryReveal = null
+    }
+    LaunchedEffect(selectedCategory, allCategories) {
+        allCategories.distinct().indexOf(selectedCategory).takeIf { it >= 0 }?.let { categoryListState.animateScrollToItem(it) }
+    }
     LaunchedEffect(requestedGroup, selectedBrushId) {
         requestedGroup?.let { requested -> allCategories.firstOrNull { it.equals(requested, true) }?.let { selectedCategory = it } }
     }
@@ -7876,10 +7940,10 @@ private fun ProcreateBrushLibrary(
             Row(Modifier.weight(1f)) {
                 LazyColumn(
                     Modifier.width(154.dp).fillMaxHeight().background(Color.White).border(1.dp, OutlineSoft),
+                    state = categoryListState,
                     contentPadding = PaddingValues(vertical = 7.dp),
                 ) {
                     items(allCategories.distinct(), key = { it }) { category ->
-                        var groupDragDistance by remember(category) { mutableFloatStateOf(0f) }
                         val selected = category == selectedCategory
                         val systemGroup = category in systemCategories
                         val customGroup = category in importedCategories && !systemGroup
@@ -7887,6 +7951,36 @@ private fun ProcreateBrushLibrary(
                         val hasChildren = importedCategories.any { BrushGroupOperations.parent(it)?.equals(category, true) == true }
                         val visibleCategoryLabel = categoryLabel(category)
                         val categoryDescription = if (customGroup) tr("Brush group $visibleCategoryLabel", "笔刷分组 $visibleCategoryLabel") else tr("Brush category $visibleCategoryLabel", "笔刷类别 $visibleCategoryLabel")
+                        val groupDragModifier = if (!customGroup) Modifier else Modifier.pointerInput(category, groupDropBounds) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = { local ->
+                                    draggingGroup = category
+                                    groupDragPosition = groupDropBounds[category]?.topLeft?.plus(local)
+                                },
+                                onDrag = { change, _ ->
+                                    change.consume()
+                                    groupDragPosition = groupDropBounds[category]?.topLeft?.plus(change.position)
+                                },
+                                onDragEnd = {
+                                    val target = groupDragPosition?.let { point ->
+                                        groupDropBounds.entries.firstOrNull { (path, bounds) -> path != category && bounds.contains(point) }?.key
+                                    }
+                                    val parent = BrushGroupOperations.parent(category)
+                                    val siblings = importedCategories.filter { path ->
+                                        BrushGroupOperations.parent(path)?.equals(parent, true) ?: (parent == null)
+                                    }
+                                    val from = siblings.indexOfFirst { it.equals(category, true) }
+                                    val to = siblings.indexOfFirst { it.equals(target, true) }
+                                    if (from >= 0 && to >= 0 && from != to) {
+                                        onReplaceBrushes(BrushGroupOperations.moveGroup(brushes, category, to - from))
+                                        onReplaceGroups(BrushGroupOperations.moveRegisteredGroup(registeredGroups, category, to - from))
+                                    }
+                                    draggingGroup = null
+                                    groupDragPosition = null
+                                },
+                                onDragCancel = { draggingGroup = null; groupDragPosition = null },
+                            )
+                        }
                         Box {
                             Row(
                                 Modifier.fillMaxWidth().height(39.dp)
@@ -7897,10 +7991,10 @@ private fun ProcreateBrushLibrary(
                                             if (groupDropBounds[category] != bounds) groupDropBounds = groupDropBounds + (category to bounds)
                                         }
                                     }
-                                    .background(if (draggingBrush != null && dropGroup) Color(0xFFF0F4FA) else if (selected) Color(0xFFE1E1E1) else Color.Transparent).combinedClickable(
-                                    onClick = { selectedCategory = category },
-                                    onLongClick = { if (customGroup) menuGroup = category },
-                                ).padding(start = (10 + BrushGroupOperations.depth(category) * 12).dp, end = 8.dp),
+                                    .background(if (draggingGroup == category) Color(0xFFDDE8F7) else if (draggingBrush != null && dropGroup) Color(0xFFF0F4FA) else if (selected) Color(0xFFE1E1E1) else Color.Transparent)
+                                    .clickable { selectedCategory = category }
+                                    .then(groupDragModifier)
+                                    .padding(start = (10 + BrushGroupOperations.depth(category) * 12).dp, end = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 if (hasChildren) IconButton(onClick = {
@@ -7913,29 +8007,13 @@ private fun ProcreateBrushLibrary(
                                         tint = MutedInk,
                                     )
                                 } else if (customGroup) Spacer(Modifier.width(24.dp))
-                                if (customGroup) Icon(Icons.Outlined.Folder, null, Modifier.size(15.dp), tint = MutedInk)
-                                if (customGroup) Spacer(Modifier.width(6.dp))
+                                if (customGroup) Box(Modifier.width(3.dp).height(19.dp).clip(RoundedCornerShape(2.dp)).background(if (selected) Color(0xFF1677D2) else Color(0xFFBDBDBD)))
+                                if (customGroup) Spacer(Modifier.width(7.dp))
                                 Text(visibleCategoryLabel, color = Ink, fontSize = 11.sp, maxLines = 1, modifier = Modifier.weight(1f))
                                 if (customGroup) Text(brushes.count { BrushGroupOperations.isWithin(it.groupName, category) }.toString(), color = MutedInk, fontSize = 9.sp)
-                                if (customGroup) Icon(
-                                    Icons.Outlined.DragIndicator,
-                                    tr("Drag to reorder $visibleCategoryLabel", "拖动调整 $visibleCategoryLabel 顺序"),
-                                    Modifier.size(28.dp).padding(4.dp).pointerInput(category) {
-                                        detectDragGestures(
-                                            onDragStart = { groupDragDistance = 0f },
-                                            onDragEnd = {
-                                                val delta = (groupDragDistance / 39.dp.toPx()).toInt()
-                                                if (delta != 0) {
-                                                    onReplaceBrushes(BrushGroupOperations.moveGroup(brushes, category, delta))
-                                                    onReplaceGroups(BrushGroupOperations.moveRegisteredGroup(registeredGroups, category, delta))
-                                                }
-                                                groupDragDistance = 0f
-                                            },
-                                            onDragCancel = { groupDragDistance = 0f },
-                                        ) { change, amount -> change.consume(); groupDragDistance += amount.y }
-                                    },
-                                    tint = MutedInk,
-                                )
+                                if (customGroup) IconButton(onClick = { menuGroup = category }, modifier = Modifier.size(26.dp)) {
+                                    Icon(Icons.Outlined.MoreVert, tr("Brush group actions $visibleCategoryLabel", "笔刷分组操作 $visibleCategoryLabel"), Modifier.size(17.dp), tint = MutedInk)
+                                }
                             }
                             DropdownMenu(expanded = menuGroup == category, onDismissRequest = { menuGroup = null }) {
                                 DropdownMenuItem(text = { Text(tr("Rename group", "重命名分组")) }, onClick = {
@@ -8137,8 +8215,10 @@ private fun ProcreateBrushLibrary(
         onCreate = { path ->
             val normalized = BrushGroupOperations.normalize(path)
             if (normalized.isNotBlank()) {
-                onReplaceGroups(BrushGroupOperations.reconcileRegisteredGroups(registeredGroups + normalized, brushes))
+                pendingCategoryReveal = normalized
                 selectedCategory = normalized
+                collapsedGroupPaths = collapsedGroupPaths - generateSequence(BrushGroupOperations.parent(normalized), BrushGroupOperations::parent).toSet()
+                onReplaceGroups(BrushGroupOperations.reconcileRegisteredGroups(registeredGroups + normalized, brushes))
             }
         },
     )
@@ -9084,7 +9164,7 @@ private fun SettingsDialog(
                 } }
                 item { Text(tr("INPUT", "输入"), color = Sage, fontSize = 12.sp) }
                 item { SettingSwitch(tr("Draw with finger", "手指书写"), tr("Off by default. Fingers navigate and zoom.", "默认关闭；手指用于移动和缩放。"), settings.fingerDrawing) { onChange(settings.copy(fingerDrawing = it)) } }
-                item { SettingSwitch(tr("Single-finger double tap to undo", "单指双击撤销"), tr("Off by default. Only blank-canvas taps trigger it; drawing, dragging and links are excluded.", "默认关闭；仅空白画布短触生效，书写、拖动和链接均不会触发。"), settings.singleFingerDoubleTapUndo) { onChange(settings.copy(singleFingerDoubleTapUndo = it)) } }
+                item { SettingSwitch(tr("Single-finger double tap to undo", "单指双击撤销"), tr("Enabled by default. Only blank-canvas taps trigger it; drawing, dragging and links are excluded.", "默认开启；仅空白画布短触生效，书写、拖动和链接均不会触发。"), settings.singleFingerDoubleTapUndo) { onChange(settings.copy(singleFingerDoubleTapUndo = it)) } }
                 item { SettingSwitch(tr("Two-finger double tap to undo", "双指双击撤销"), tr("Matches common notebook gestures.", "符合常见笔记应用手势。"), settings.twoFingerDoubleTapUndo) { onChange(settings.copy(twoFingerDoubleTapUndo = it)) } }
                 item { SettingSwitch(tr("Three-finger tap to redo", "三指轻点重做"), tr("Matches common drawing-app gestures.", "符合常见绘画应用手势。"), settings.threeFingerTapRedo) { onChange(settings.copy(threeFingerTapRedo = it)) } }
                 item { SettingSwitch(tr("Two-finger canvas rotation", "双指旋转画布"), tr("Off by default to prevent accidental rotation; R remains available.", "默认关闭以避免误旋转；仍可使用 R 快捷键。"), settings.twoFingerRotation) { onChange(settings.copy(twoFingerRotation = it)) } }
@@ -9762,6 +9842,7 @@ private fun SelectionLauncher(
     onShrink: (Float) -> Unit,
     onBorder: (Float) -> Unit,
     onFeather: (Float) -> Unit,
+    onFill: () -> Unit,
     onTransform: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -9789,6 +9870,7 @@ private fun SelectionLauncher(
             CompactToolbarIconButton({ onExpand(amount) }, tr("Expand selection", "扩大选区")) { Icon(Icons.Outlined.ZoomOutMap, null, Modifier.size(18.dp)) }
             CompactToolbarIconButton({ onShrink(amount) }, tr("Shrink selection", "缩小选区")) { Icon(Icons.Outlined.ZoomInMap, null, Modifier.size(18.dp)) }
             CompactToolbarIconButton({ onBorder(amount) }, tr("Border selection", "边界选区")) { Icon(Icons.Outlined.BorderStyle, null, Modifier.size(18.dp)) }
+            CompactToolbarIconButton(onFill, tr("Fill selection", "填充选区")) { Icon(Icons.Outlined.FormatColorFill, null, Modifier.size(18.dp)) }
             CompactToolbarIconButton(onTransform, tr("Free transform", "自由变换")) { Icon(Icons.Outlined.Transform, null, Modifier.size(18.dp)) }
             Box {
                 CompactToolbarIconButton({ settingsOpen = true }, tr("Selection modification settings", "选区修改设置")) { Icon(Icons.Outlined.Tune, null, Modifier.size(18.dp)) }

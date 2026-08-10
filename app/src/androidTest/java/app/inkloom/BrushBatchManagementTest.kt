@@ -5,6 +5,7 @@ import android.os.SystemClock
 import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.ViewGroup
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -142,7 +143,7 @@ class BrushBatchManagementTest {
 
     @Test fun longPressGroupRenamesItsWholeSubtree() {
         openBrushes()
-        composeRule.onNodeWithContentDescription("Brush group Source").performTouchInput { longClick() }
+        composeRule.onNodeWithContentDescription("Brush group actions Source").performClick()
         composeRule.onNodeWithText("Rename group").performClick()
         composeRule.onNode(hasSetTextAction()).performTextClearance()
         composeRule.onNode(hasSetTextAction()).performTextInput("Favorites")
@@ -151,6 +152,25 @@ class BrushBatchManagementTest {
         val store = BrushMetadataStore(composeRule.activity)
         composeRule.waitUntil(5_000) { store.load().count { it.groupName.startsWith("Favorites") } == 3 }
         assertEquals(setOf("Favorites", "Favorites/Ink/Pens"), store.load().filter { it.id.startsWith("batch") || it.id == "nested-d" }.mapTo(linkedSetOf(), ImportedBrush::groupName))
+    }
+
+    @Test fun longPressDragReordersBrushSetTabs() {
+        openBrushes()
+        val source = composeRule.onNodeWithContentDescription("Brush group Source")
+        val targetBounds = composeRule.onNodeWithContentDescription("Brush group Target").fetchSemanticsNode().boundsInRoot
+        val sourceBounds = source.fetchSemanticsNode().boundsInRoot
+        source.performTouchInput {
+            down(center)
+            advanceEventTime(700)
+            moveBy(Offset(0f, targetBounds.center.y - sourceBounds.center.y), 300)
+            up()
+        }
+
+        val store = BrushMetadataStore(composeRule.activity)
+        composeRule.waitUntil(5_000) {
+            app.inkloom.importer.BrushGroupOperations.treePaths(store.load()).firstOrNull() == "Target"
+        }
+        assertEquals("Target", app.inkloom.importer.BrushGroupOperations.treePaths(store.load()).first())
     }
 
     @Test fun groupManagerCreatesAndPersistsAnEmptyNestedGroup() {
@@ -174,6 +194,10 @@ class BrushBatchManagementTest {
         val store = BrushGroupStore(composeRule.activity)
         composeRule.waitUntil(5_000) { "Pencil/Sketching" in store.load() }
         assertTrue("Pencil/Sketching" in store.load())
+        composeRule.waitUntil(5_000) {
+            runCatching { composeRule.onNodeWithText("Sketching").assertIsDisplayed(); true }.getOrDefault(false)
+        }
+        composeRule.onNodeWithText("Sketching").assertIsDisplayed().performClick()
     }
 
     @Test fun selectedCustomBrushCommitsEveryRapidPenContact() {
