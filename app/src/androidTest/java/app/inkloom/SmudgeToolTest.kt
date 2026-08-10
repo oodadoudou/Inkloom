@@ -11,6 +11,7 @@ import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
 import app.inkloom.document.LayerIds
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -71,5 +72,49 @@ class SmudgeToolTest {
         for (step in 1..16) send(view, step * 10L, MotionEvent.ACTION_MOVE, 20f + step * 10f, 100f)
         send(view, 180L, MotionEvent.ACTION_UP, 180f, 100f)
         assertEquals("A blend tool cannot add pigment to blank paper", 0, committed)
+    }
+
+    @Test fun blendAndLiquifyKeepLargePageInputInsideAFrameBudget() {
+        val page = List(3_000) { index ->
+            val column = index % 60
+            val row = index / 60
+            InkStroke(
+                id = "perf-$index",
+                width = 5f,
+                layerId = LayerIds.INK,
+                points = listOf(
+                    StrokePoint((column + .1f) / 60f, (row + .25f) / 50f),
+                    StrokePoint((column + .9f) / 60f, (row + .75f) / 50f),
+                ),
+            )
+        }
+        listOf(EditorTool.SMUDGE, EditorTool.LIQUIFY).forEach { tool ->
+            val view = canvas {
+                this.tool = tool
+                fingerDrawingEnabled = true
+                baseWidth = 96f
+                activeLayerId = LayerIds.INK
+                setDocumentStrokes(page, "${tool.name.lowercase()}-performance")
+            }
+            val frameTimes = ArrayList<Long>(90)
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                fun dispatch(time: Long, action: Int, x: Float, y: Float) {
+                    event(time, action, x, y).also { input ->
+                        try { view.onTouchEvent(input) } finally { input.recycle() }
+                    }
+                }
+                dispatch(0L, MotionEvent.ACTION_DOWN, 380f, 100f)
+                repeat(90) { index ->
+                    dispatch(10L + index, MotionEvent.ACTION_MOVE, 382f + index * 2.2f, 100f + index % 7)
+                    val started = android.os.SystemClock.elapsedRealtimeNanos()
+                    view.flushRealtimeToolFrame()
+                    frameTimes += android.os.SystemClock.elapsedRealtimeNanos() - started
+                }
+                dispatch(120L, MotionEvent.ACTION_UP, 580f, 104f)
+            }
+            val sorted = frameTimes.sorted()
+            val p95Ms = sorted[(sorted.size * 95 / 100).coerceAtMost(sorted.lastIndex)] / 1_000_000f
+            assertTrue("${tool.name} p95 frame was ${p95Ms}ms", p95Ms < 16.7f)
+        }
     }
 }

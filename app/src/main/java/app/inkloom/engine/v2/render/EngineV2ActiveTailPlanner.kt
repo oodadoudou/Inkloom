@@ -45,7 +45,7 @@ internal class EngineV2ActiveTailPlanner {
     fun reset() = renderedPointCounts.clear()
 
     private fun isStamped(stroke: InkStroke): Boolean =
-        stroke.tipAssetPath != null || stroke.tipAssetPaths.isNotEmpty()
+        stroke.tipAssetPath != null || stroke.tipAssetPaths.isNotEmpty() || ProceduralBrushTip.supports(stroke)
 
     private fun requiresCompleteReplay(stroke: InkStroke): Boolean =
         // Active previews suppress the length-dependent ending taper; masks are the only effect

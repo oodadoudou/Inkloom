@@ -29,6 +29,7 @@ import app.inkloom.engine.v2.brush.EngineV2BrushEvaluator
 import app.inkloom.engine.v2.render.EngineV2ActiveStrokeSurface
 import app.inkloom.engine.v2.render.EngineV2CommittedTileScene
 import app.inkloom.engine.v2.render.EngineV2StampBatchRenderer
+import app.inkloom.engine.v2.render.ProceduralBrushTip
 import java.util.LinkedHashMap
 import java.util.concurrent.Executors
 import app.inkloom.document.InkStroke
@@ -173,6 +174,10 @@ class InkCanvasView(context: Context) : View(context) {
     private val activeDualStampCounts = mutableMapOf<String, Int>()
     private val activePrimarySamples = mutableMapOf<String, app.inkloom.document.StrokeStampSampler.Incremental>()
     private val activeDualSamples = mutableMapOf<String, app.inkloom.document.StrokeStampSampler.Incremental>()
+    private val activePrimaryScatterRandoms = mutableMapOf<String, java.util.Random>()
+    private val activePrimaryRotationRandoms = mutableMapOf<String, java.util.Random>()
+    private val activeDualScatterRandoms = mutableMapOf<String, java.util.Random>()
+    private val activeDualRotationRandoms = mutableMapOf<String, java.util.Random>()
     private val activeSurfaceFrame = Runnable {
         activeSurfaceFrameScheduled = false
         val surface = activeStrokeSurface ?: return@Runnable
@@ -241,10 +246,32 @@ class InkCanvasView(context: Context) : View(context) {
     private var smudgeLastX = 0f
     private var smudgeLastY = 0f
     private var smudgeChanged = false
+    private var pendingSmudgeX = 0f
+    private var pendingSmudgeY = 0f
+    private var hasPendingSmudge = false
+    private var smudgeFrameScheduled = false
+    private val smudgeFrame = Runnable {
+        smudgeFrameScheduled = false
+        if (hasPendingSmudge) {
+            hasPendingSmudge = false
+            extendSmudge(pendingSmudgeX, pendingSmudgeY)
+        }
+    }
     private var liquifyBefore: List<InkStroke>? = null
     private var liquifyLastX = 0f
     private var liquifyLastY = 0f
     private var liquifyChanged = false
+    private var pendingLiquifyX = 0f
+    private var pendingLiquifyY = 0f
+    private var hasPendingLiquify = false
+    private var liquifyFrameScheduled = false
+    private val liquifyFrame = Runnable {
+        liquifyFrameScheduled = false
+        if (hasPendingLiquify) {
+            hasPendingLiquify = false
+            extendLiquify(pendingLiquifyX, pendingLiquifyY)
+        }
+    }
     private var correctionBefore: List<InkStroke>? = null
     private var correctionStrokeId: String? = null
     private var correctionStartX = 0f
@@ -394,6 +421,7 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
     private val pendingTipLoads = mutableSetOf<String>()
+    private val proceduralTipCache = mutableMapOf<String, Bitmap>()
     private var prewarmedBrushSignature: String? = null
     private val protectedStrokeIds = mutableSetOf<String>()
     private val protectedLayerIds = mutableSetOf<String>()
@@ -1038,6 +1066,7 @@ class InkCanvasView(context: Context) : View(context) {
         activeSurfaceFrameScheduled = false
         strokeInputModeler.close()
         tipCache.values.forEach(Bitmap::recycle); tipCache.clear()
+        proceduralTipCache.values.forEach(Bitmap::recycle); proceduralTipCache.clear()
         super.onDetachedFromWindow()
     }
 
@@ -1170,6 +1199,7 @@ class InkCanvasView(context: Context) : View(context) {
         activeStrokeSurface?.cancel()
         activePrimaryStampCounts.clear()
         activeDualStampCounts.clear()
+        clearActiveStampRandoms()
     }
 
     private fun finishActiveStrokePreview() {
@@ -1188,6 +1218,7 @@ class InkCanvasView(context: Context) : View(context) {
         activeStrokeTemplate = null
         activePrimaryStampCounts.clear()
         activeDualStampCounts.clear()
+        clearActiveStampRandoms()
     }
 
     private fun drawStroke(canvas: Canvas, stroke: InkStroke, primaryStampStartIndex: Int = 0, dualStampStartIndex: Int = 0) {
@@ -1237,7 +1268,11 @@ class InkCanvasView(context: Context) : View(context) {
         paint.isFilterBitmap = CspAntiAlias.enabled(stroke.antiAliasMode)
         val tipPaths = stroke.tipAssetPaths.ifEmpty { listOfNotNull(stroke.tipAssetPath) }
         val grainOffset = GrainBehavior.offset(stroke.renderSeed, stroke.grainOffsetJitter)
-        val tips = tipPaths.mapNotNull { loadTip(it, stroke.hardness, stroke.grainAssetPath, stroke.grainDensity, stroke.grainScale, stroke.grainRotationDegrees, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized, grainOffset.x, grainOffset.y, stroke.grainCompositeMode, stroke.antiAliasMode) }
+        val decodedTips = tipPaths.mapNotNull { loadTip(it, stroke.hardness, stroke.grainAssetPath, stroke.grainDensity, stroke.grainScale, stroke.grainRotationDegrees, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized, grainOffset.x, grainOffset.y, stroke.grainCompositeMode, stroke.antiAliasMode) }
+        val tips = decodedTips.ifEmpty {
+            if (!ProceduralBrushTip.supports(stroke)) emptyList()
+            else listOf(proceduralTipCache.getOrPut(stroke.brushId) { requireNotNull(ProceduralBrushTip.create(stroke)) })
+        }
         if (tips.isNotEmpty()) {
             val dualTips = if (stroke.dualBrush) stroke.dualTipAssetPaths.mapNotNull { loadTip(it, stroke.dualHardness, null, 0f, antiAliasMode = stroke.dualAntiAliasMode) }.ifEmpty { tipPaths.mapNotNull { loadTip(it, stroke.dualHardness, null, 0f, antiAliasMode = stroke.dualAntiAliasMode) } } else emptyList()
             drawStampedStroke(canvas, stroke, tips, dualTips, tipPaths, grainOffset.x, grainOffset.y, primaryStampStartIndex, dualStampStartIndex)
@@ -1246,14 +1281,14 @@ class InkCanvasView(context: Context) : View(context) {
         paint.color = stroke.colorArgb.toInt()
         paint.colorFilter = null
         val scale = width.coerceAtLeast(1) / REFERENCE_WIDTH
-        val taper = StrokeTaper.factors(stroke.points, width.toFloat(), height.toFloat(), stroke.taperMode, stroke.taperStartEnabled, stroke.taperStartLength, stroke.taperStartLengthUnit, stroke.taperStartMinimum, stroke.taperEndEnabled, stroke.taperEndLength, stroke.taperEndLengthUnit, stroke.taperEndMinimum)
+        val taper = strokeTaperFactors(stroke, stroke.points)
         if (stroke.points.size == 1) {
-            val point = stroke.points.first(); val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point); val strokeWidth = stroke.width * scale * taper.firstOrNull().orDefault() * dynamics.size; val alpha = (stroke.flow * dynamics.depositedAlpha * 255).toInt().coerceIn(0, 255); drawLinePoint(canvas, stroke, point, point.x * width, point.y * height, strokeWidth, alpha)
+            val point = stroke.points.first(); val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point); val strokeWidth = stroke.width * scale * (taper?.firstOrNull() ?: 1f) * dynamics.size; val alpha = (stroke.flow * dynamics.depositedAlpha * 255).toInt().coerceIn(0, 255); drawLinePoint(canvas, stroke, point, point.x * width, point.y * height, strokeWidth, alpha)
         } else for (index in 0 until stroke.points.lastIndex) {
             val start = stroke.points[index]
             val end = stroke.points[index + 1]
             val point = midpoint(start, end)
-            val taperFactor = (taper[index] + taper[index + 1]) / 2f
+            val taperFactor = taper?.let { (it[index] + it[index + 1]) / 2f } ?: 1f
             val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
             val strokeWidth = stroke.width * scale * taperFactor * dynamics.size
             val alpha = (stroke.flow * dynamics.depositedAlpha * 255).toInt().coerceIn(0, 255)
@@ -1280,8 +1315,6 @@ class InkCanvasView(context: Context) : View(context) {
         paint.isFilterBitmap = CspAntiAlias.enabled(stroke.antiAliasMode)
         paint.blendMode = if (stroke.blendTipsWithDarken) BlendMode.DARKEN else null
         val referenceScale = width.coerceAtLeast(1) / REFERENCE_WIDTH
-        val scatterRandom = java.util.Random(stroke.renderSeed.toLong())
-        val rotationRandom = java.util.Random(stroke.renderSeed.toLong() xor 0x49A2B31DL)
         val sampledPoints = primaryStampedPoints(stroke)
         val safeStart = stampStartIndex.coerceIn(0, sampledPoints.size)
         if (tips.size == 1 && EngineV2StampBatchRenderer.draw(canvas, paint, stroke, tips.single(), sampledPoints, safeStart, width.toFloat(), height.toFloat())) {
@@ -1290,8 +1323,15 @@ class InkCanvasView(context: Context) : View(context) {
             paint.colorFilter = null
             return
         }
-        advanceStampRandoms(scatterRandom, rotationRandom, stroke, sampledPoints, safeStart, dual = false)
-        val taper = StrokeTaper.factors(sampledPoints, width.toFloat(), height.toFloat(), stroke.taperMode, stroke.taperStartEnabled, stroke.taperStartLength, stroke.taperStartLengthUnit, stroke.taperStartMinimum, stroke.taperEndEnabled, stroke.taperEndLength, stroke.taperEndLengthUnit, stroke.taperEndMinimum)
+        val reuseRandomState = isCurrentActiveStroke(stroke) && safeStart > 0
+        val scatterRandom = (if (reuseRandomState) activePrimaryScatterRandoms[stroke.id] else null)
+            ?: java.util.Random(stroke.renderSeed.toLong())
+        val rotationRandom = (if (reuseRandomState) activePrimaryRotationRandoms[stroke.id] else null)
+            ?: java.util.Random(stroke.renderSeed.toLong() xor 0x49A2B31DL)
+        if (!reuseRandomState || stroke.id !in activePrimaryScatterRandoms || stroke.id !in activePrimaryRotationRandoms) {
+            advanceStampRandoms(scatterRandom, rotationRandom, stroke, sampledPoints, safeStart, dual = false)
+        }
+        val taper = strokeTaperFactors(stroke, sampledPoints)
         sampledPoints.forEachIndexed { index, point ->
             if (index < safeStart) return@forEachIndexed
             val stampsAtPoint = BrushStampCount.resolve(stroke.stampCount, stroke.stampCountJitter, stroke.renderSeed, index)
@@ -1305,7 +1345,7 @@ class InkCanvasView(context: Context) : View(context) {
             } else tips[tipIndex]
             val x = point.x * width; val y = point.y * height
             val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
-            val brushDiameter = (stroke.width * referenceScale * taper[index] * dynamics.size).coerceAtLeast(.25f)
+            val brushDiameter = (stroke.width * referenceScale * (taper?.get(index) ?: 1f) * dynamics.size).coerceAtLeast(.25f)
             val diameter = if (stroke.spray) SprayGeometry.particleDiameter(brushDiameter, SprayDynamics.particleSize(stroke, point), stroke.sprayParticleSizeUnit, stroke.sprayParticleSizeSyncBrushSize, width.toFloat()) else brushDiameter
             val offset = if (stroke.spray) SprayGeometry.offset(brushDiameter / 2f * stroke.spraySpread.coerceIn(0f, 4f), scatterRandom.nextFloat(), scatterRandom.nextFloat(), stroke.sprayBias) else app.inkloom.document.SprayOffset(0f, 0f)
             val drawX = x + offset.x
@@ -1352,6 +1392,10 @@ class InkCanvasView(context: Context) : View(context) {
             }
         }
         paint.blendMode = null
+        if (isCurrentActiveStroke(stroke)) {
+            activePrimaryScatterRandoms[stroke.id] = scatterRandom
+            activePrimaryRotationRandoms[stroke.id] = rotationRandom
+        }
         if (stroke.dualBrush && dualTips.isNotEmpty()) {
             paint.isFilterBitmap = CspAntiAlias.enabled(stroke.dualAntiAliasMode)
             drawDualStampedStroke(canvas, stroke, dualTips, dualStampStartIndex)
@@ -1418,12 +1462,17 @@ class InkCanvasView(context: Context) : View(context) {
         val dualLayer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), compositePaint)
         paint.blendMode = if (stroke.dualBlendTipsWithDarken) BlendMode.DARKEN else null
         val referenceScale = width.coerceAtLeast(1) / REFERENCE_WIDTH
-        val scatterRandom = java.util.Random(stroke.renderSeed.toLong() xor DUAL_SCATTER_SEED)
-        val rotationRandom = java.util.Random(stroke.renderSeed.toLong() xor DUAL_ROTATION_SEED)
         val sampledPoints = dualStampedPoints(stroke)
         val safeStart = stampStartIndex.coerceIn(0, sampledPoints.size)
-        advanceStampRandoms(scatterRandom, rotationRandom, stroke, sampledPoints, safeStart, dual = true)
-        val taper = StrokeTaper.factors(sampledPoints, width.toFloat(), height.toFloat(), stroke.taperMode, stroke.taperStartEnabled, stroke.taperStartLength, stroke.taperStartLengthUnit, stroke.taperStartMinimum, stroke.taperEndEnabled, stroke.taperEndLength, stroke.taperEndLengthUnit, stroke.taperEndMinimum)
+        val reuseRandomState = isCurrentActiveStroke(stroke) && safeStart > 0
+        val scatterRandom = (if (reuseRandomState) activeDualScatterRandoms[stroke.id] else null)
+            ?: java.util.Random(stroke.renderSeed.toLong() xor DUAL_SCATTER_SEED)
+        val rotationRandom = (if (reuseRandomState) activeDualRotationRandoms[stroke.id] else null)
+            ?: java.util.Random(stroke.renderSeed.toLong() xor DUAL_ROTATION_SEED)
+        if (!reuseRandomState || stroke.id !in activeDualScatterRandoms || stroke.id !in activeDualRotationRandoms) {
+            advanceStampRandoms(scatterRandom, rotationRandom, stroke, sampledPoints, safeStart, dual = true)
+        }
+        val taper = strokeTaperFactors(stroke, sampledPoints)
         sampledPoints.forEachIndexed { index, point ->
             if (index < safeStart) return@forEachIndexed
             val stampsAtPoint = BrushStampCount.resolve(stroke.dualStampCount, stroke.dualStampCountJitter, stroke.renderSeed, index, dual = true)
@@ -1432,7 +1481,7 @@ class InkCanvasView(context: Context) : View(context) {
             val tipIndex = BrushTipSequence.index(stroke.dualTipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed xor DUAL_SEQUENCE_SEED, stroke.dualRibbon) ?: return@stamp
             val tip = tips[tipIndex]
             val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point, dual = true)
-            val brushDiameter = (stroke.width * referenceScale * stroke.dualSizeScale.coerceIn(.01f, 8f) * taper[index] * dynamics.size).coerceAtLeast(.25f)
+            val brushDiameter = (stroke.width * referenceScale * stroke.dualSizeScale.coerceIn(.01f, 8f) * (taper?.get(index) ?: 1f) * dynamics.size).coerceAtLeast(.25f)
             val diameter = if (stroke.dualSpray) SprayGeometry.particleDiameter(brushDiameter, SprayDynamics.dualParticleSize(stroke, point), stroke.dualSprayParticleSizeUnit, stroke.dualSprayParticleSizeSyncBrushSize, width.toFloat()) else brushDiameter
             val offset = if (stroke.dualSpray) SprayGeometry.offset(brushDiameter / 2f * stroke.dualSpraySpread.coerceIn(0f, 4f), scatterRandom.nextFloat(), scatterRandom.nextFloat(), stroke.dualSprayBias) else app.inkloom.document.SprayOffset(0f, 0f)
             val drawX = point.x * width + offset.x
@@ -1456,8 +1505,19 @@ class InkCanvasView(context: Context) : View(context) {
             }
         }
         paint.blendMode = null
+        if (isCurrentActiveStroke(stroke)) {
+            activeDualScatterRandoms[stroke.id] = scatterRandom
+            activeDualRotationRandoms[stroke.id] = rotationRandom
+        }
         canvas.restoreToCount(dualLayer)
     }
+
+    private fun strokeTaperFactors(stroke: InkStroke, points: List<StrokePoint>): List<Float>? =
+        if (!stroke.taperStartEnabled && !stroke.taperEndEnabled) null else StrokeTaper.factors(
+            points, width.toFloat(), height.toFloat(), stroke.taperMode,
+            stroke.taperStartEnabled, stroke.taperStartLength, stroke.taperStartLengthUnit, stroke.taperStartMinimum,
+            stroke.taperEndEnabled, stroke.taperEndLength, stroke.taperEndLengthUnit, stroke.taperEndMinimum,
+        )
 
     private fun drawLinePoint(canvas: Canvas, stroke: InkStroke, point: StrokePoint, x: Float, y: Float, strokeWidth: Float, alpha: Int) {
         val jitteredColor = BrushColorJitter.argb(stroke, point, point.timeMs.toInt())
@@ -2002,12 +2062,10 @@ class InkCanvasView(context: Context) : View(context) {
                     invalidate()
                 }
                 else if (activeTool == EditorTool.SMUDGE) {
-                    for (i in 0 until event.historySize) historicalCanvasPoint(event, pointerIndex, i).let { point -> extendSmudge(point.first / width.coerceAtLeast(1), point.second / height.coerceAtLeast(1)) }
-                    extendSmudge(normalizedX, normalizedY)
+                    scheduleSmudge(normalizedX, normalizedY)
                 }
                 else if (activeTool == EditorTool.LIQUIFY) {
-                    for (i in 0 until event.historySize) historicalCanvasPoint(event, pointerIndex, i).let { point -> extendLiquify(point.first / width.coerceAtLeast(1), point.second / height.coerceAtLeast(1)) }
-                    extendLiquify(normalizedX, normalizedY)
+                    scheduleLiquify(normalizedX, normalizedY)
                 }
                 else if (activeTool == EditorTool.CORRECT_LINE) {
                     updateCorrectLineGesture(normalizedX, normalizedY)
@@ -2144,9 +2202,13 @@ class InkCanvasView(context: Context) : View(context) {
                     gradientStart = null; gradientEnd = null
                     parent?.requestDisallowInterceptTouchEvent(false)
                 } else if (activeTool == EditorTool.SMUDGE) {
+                    flushSmudgeFrame()
+                    if (normalizedX != smudgeLastX || normalizedY != smudgeLastY) extendSmudge(normalizedX, normalizedY)
                     commitSmudgeGesture()
                     parent?.requestDisallowInterceptTouchEvent(false)
                 } else if (activeTool == EditorTool.LIQUIFY) {
+                    flushLiquifyFrame()
+                    if (normalizedX != liquifyLastX || normalizedY != liquifyLastY) extendLiquify(normalizedX, normalizedY)
                     finishLiquifyGesture()
                     parent?.requestDisallowInterceptTouchEvent(false)
                 } else if (activeTool == EditorTool.CORRECT_LINE) {
@@ -3418,6 +3480,12 @@ class InkCanvasView(context: Context) : View(context) {
         activeSurfaceFrame.run()
     }
 
+    @VisibleForTesting
+    internal fun flushRealtimeToolFrame() {
+        if (smudgeFrameScheduled || hasPendingSmudge) flushSmudgeFrame()
+        if (liquifyFrameScheduled || hasPendingLiquify) flushLiquifyFrame()
+    }
+
     @WorkerThread
     internal fun drawEngineV2ActiveStrokes(
         canvas: Canvas,
@@ -3428,7 +3496,7 @@ class InkCanvasView(context: Context) : View(context) {
             synchronized(renderLock) {
                 if (!incrementalStampDraw) {
                     drawLayeredStrokes(canvas, strokes)
-                    strokes.filter { it.tipAssetPath != null || it.tipAssetPaths.isNotEmpty() }.forEach { stroke ->
+                    strokes.filter(::usesStampedRenderer).forEach { stroke ->
                         activePrimaryStampCounts[stroke.id] = primaryStampedPoints(stroke).size
                         activeDualStampCounts[stroke.id] = if (stroke.dualBrush) dualStampedPoints(stroke).size else 0
                     }
@@ -3453,8 +3521,19 @@ class InkCanvasView(context: Context) : View(context) {
             activeDualStampCounts.clear()
             activePrimarySamples.clear()
             activeDualSamples.clear()
+            clearActiveStampRandoms()
         }
     }
+
+    private fun clearActiveStampRandoms() {
+        activePrimaryScatterRandoms.clear()
+        activePrimaryRotationRandoms.clear()
+        activeDualScatterRandoms.clear()
+        activeDualRotationRandoms.clear()
+    }
+
+    private fun usesStampedRenderer(stroke: InkStroke): Boolean =
+        stroke.tipAssetPath != null || stroke.tipAssetPaths.isNotEmpty() || ProceduralBrushTip.supports(stroke)
 
     private fun clearActiveStrokeInput() {
         currentPoints.clear()
@@ -3650,31 +3729,55 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun beginSmudgeGesture(normalizedX: Float, normalizedY: Float) {
+        removeCallbacks(smudgeFrame)
+        smudgeFrameScheduled = false
+        hasPendingSmudge = false
         smudgeBefore = strokes.toList()
         smudgeLastX = normalizedX.coerceIn(0f, 1f)
         smudgeLastY = normalizedY.coerceIn(0f, 1f)
         smudgeChanged = false
     }
 
+    private fun scheduleSmudge(x: Float, y: Float) {
+        pendingSmudgeX = x
+        pendingSmudgeY = y
+        hasPendingSmudge = true
+        if (!smudgeFrameScheduled) {
+            smudgeFrameScheduled = true
+            postOnAnimation(smudgeFrame)
+        }
+    }
+
+    private fun flushSmudgeFrame() {
+        if (!smudgeFrameScheduled && !hasPendingSmudge) return
+        removeCallbacks(smudgeFrame)
+        smudgeFrame.run()
+    }
+
     private fun extendSmudge(normalizedX: Float, normalizedY: Float) {
         val x = normalizedX.coerceIn(0f, 1f)
         val y = normalizedY.coerceIn(0f, 1f)
-        val beforeStep = strokes.toList()
+        val radius = (baseWidth.coerceIn(2f, 800f) / REFERENCE_WIDTH).coerceAtLeast(.002f)
+        val beforeStep = localToolCandidates(smudgeLastX, smudgeLastY, x, y, radius)
+        if (beforeStep.isEmpty()) {
+            smudgeLastX = x
+            smudgeLastY = y
+            return
+        }
         val changed = VectorBlend.apply(
             strokes = beforeStep,
             centerX = x,
             centerY = y,
             deltaX = x - smudgeLastX,
             deltaY = y - smudgeLastY,
-            radius = (baseWidth.coerceIn(2f, 800f) / REFERENCE_WIDTH).coerceAtLeast(.002f),
+            radius = radius,
             strength = (.3f + brushColorMix.coerceIn(0f, 1f) * .7f),
             hardness = brushHardness,
             pageWidth = pageModelWidth,
             pageHeight = pageModelHeight,
         ) { stroke -> stroke.layerId == activeLayerId && stroke.id !in protectedStrokeIds && stroke.layerId !in protectedLayerIds }
         if (changed != beforeStep) {
-            strokes.clear()
-            strokes.addAll(changed)
+            replaceLocalToolCandidates(changed)
             smudgeChanged = true
             invalidateStrokeCache(beforeStep, changed)
         }
@@ -3684,6 +3787,9 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun commitSmudgeGesture() {
+        removeCallbacks(smudgeFrame)
+        smudgeFrameScheduled = false
+        hasPendingSmudge = false
         val before = smudgeBefore
         if (before != null && smudgeChanged) commitStrokeEdit(before, strokes)
         smudgeBefore = null
@@ -3692,6 +3798,9 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun cancelSmudgeGesture() {
+        removeCallbacks(smudgeFrame)
+        smudgeFrameScheduled = false
+        hasPendingSmudge = false
         val before = smudgeBefore
         if (before != null && smudgeChanged) restoreStrokeSnapshot(before)
         smudgeBefore = null
@@ -3700,17 +3809,41 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun beginLiquifyGesture(x: Float, y: Float) {
+        removeCallbacks(liquifyFrame)
+        liquifyFrameScheduled = false
+        hasPendingLiquify = false
         liquifyBefore = strokes.toList()
         liquifyLastX = x.coerceIn(0f, 1f)
         liquifyLastY = y.coerceIn(0f, 1f)
         liquifyChanged = false
     }
 
+    private fun scheduleLiquify(x: Float, y: Float) {
+        pendingLiquifyX = x
+        pendingLiquifyY = y
+        hasPendingLiquify = true
+        if (!liquifyFrameScheduled) {
+            liquifyFrameScheduled = true
+            postOnAnimation(liquifyFrame)
+        }
+    }
+
+    private fun flushLiquifyFrame() {
+        if (!liquifyFrameScheduled && !hasPendingLiquify) return
+        removeCallbacks(liquifyFrame)
+        liquifyFrame.run()
+    }
+
     private fun extendLiquify(x: Float, y: Float) {
         val nextX = x.coerceIn(0f, 1f)
         val nextY = y.coerceIn(0f, 1f)
-        val beforeStep = strokes.toList()
         val radius = (baseWidth.coerceIn(2f, 800f) / REFERENCE_WIDTH).coerceAtLeast(.002f)
+        val beforeStep = localToolCandidates(liquifyLastX, liquifyLastY, nextX, nextY, radius)
+        if (beforeStep.isEmpty()) {
+            liquifyLastX = nextX
+            liquifyLastY = nextY
+            return
+        }
         val warped = VectorLiquify.apply(
             strokes = beforeStep,
             centerX = nextX,
@@ -3725,8 +3858,7 @@ class InkCanvasView(context: Context) : View(context) {
             mode = liquifyMode,
         ) { stroke -> stroke.layerId == activeLayerId && stroke.id !in protectedStrokeIds && stroke.layerId !in protectedLayerIds }
         if (warped != beforeStep) {
-            strokes.clear()
-            strokes.addAll(warped)
+            replaceLocalToolCandidates(warped)
             liquifyChanged = true
             invalidateStrokeCache(beforeStep, warped)
         }
@@ -3734,7 +3866,33 @@ class InkCanvasView(context: Context) : View(context) {
         liquifyLastY = nextY
     }
 
+    /** Blend and Liquify are local tools. Restricting each input sample to spatial-index hits keeps
+     * latency proportional to the touched region instead of to every stroke and point on a page. */
+    private fun localToolCandidates(startX: Float, startY: Float, endX: Float, endY: Float, radius: Float): List<InkStroke> {
+        committedScene.ensureIndex(strokes, width, height)
+        val aspect = pageModelWidth.coerceAtLeast(1f) / pageModelHeight.coerceAtLeast(1f)
+        val radiusX = radius * width.coerceAtLeast(1)
+        val radiusY = radius * aspect * height.coerceAtLeast(1)
+        val candidateIds = committedScene.candidates(
+            minOf(startX, endX) * width - radiusX,
+            minOf(startY, endY) * height - radiusY,
+            maxOf(startX, endX) * width + radiusX,
+            maxOf(startY, endY) * height + radiusY,
+        )
+        if (candidateIds.isEmpty()) return emptyList()
+        return strokes.filter { it.id in candidateIds }
+    }
+
+    private fun replaceLocalToolCandidates(replacements: List<InkStroke>) {
+        if (replacements.isEmpty()) return
+        val byId = replacements.associateBy(InkStroke::id)
+        for (index in strokes.indices) byId[strokes[index].id]?.let { strokes[index] = it }
+    }
+
     private fun finishLiquifyGesture() {
+        removeCallbacks(liquifyFrame)
+        liquifyFrameScheduled = false
+        hasPendingLiquify = false
         val before = liquifyBefore
         if (before != null && liquifyChanged) commitStrokeEdit(before, strokes)
         liquifyBefore = null
@@ -3743,6 +3901,9 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun cancelLiquifyGesture() {
+        removeCallbacks(liquifyFrame)
+        liquifyFrameScheduled = false
+        hasPendingLiquify = false
         val before = liquifyBefore
         if (before != null && liquifyChanged) restoreStrokeSnapshot(before)
         liquifyBefore = null
@@ -4050,18 +4211,11 @@ class InkCanvasView(context: Context) : View(context) {
         invalidateEraserEvent(before)
     }
 
-    /** One MotionEvent may carry many historical stylus samples. Process the whole packet before
-     * touching the committed tile index so eraser cost is independent of Android's packetization. */
+    /** The latest point plus segment interpolation already covers the full path. Replaying every
+     * historical point makes dense Android input packets erase the same area repeatedly. */
     private fun eraseMotionEvent(event: MotionEvent, pointerIndex: Int) {
         val before = captureEraserInvalidationBefore()
         beginEraserMaskBatch()
-        for (position in 0 until event.historySize) {
-            eraseAlongUnchecked(
-                event.getHistoricalX(pointerIndex, position) / width.coerceAtLeast(1),
-                event.getHistoricalY(pointerIndex, position) / height.coerceAtLeast(1),
-                event.getHistoricalPressure(pointerIndex, position),
-            )
-        }
         eraseAlongUnchecked(
             event.getX(pointerIndex) / width.coerceAtLeast(1),
             event.getY(pointerIndex) / height.coerceAtLeast(1),

@@ -39,27 +39,16 @@ internal object EngineV2StampBatchRenderer {
         val buffers = (threadBuffers.get() ?: Buffers().also(threadBuffers::set)).also { it.ensureCapacity(floatCount) }
         val vertices = buffers.vertices
         val textureCoordinates = buffers.textureCoordinates
-        val taper = StrokeTaper.factors(
-            sampledPoints,
-            width,
-            height,
-            stroke.taperMode,
-            stroke.taperStartEnabled,
-            stroke.taperStartLength,
-            stroke.taperStartLengthUnit,
-            stroke.taperStartMinimum,
-            stroke.taperEndEnabled,
-            stroke.taperEndLength,
-            stroke.taperEndLengthUnit,
-            stroke.taperEndMinimum,
-        )
-        val rotationRandom = java.util.Random(stroke.renderSeed.toLong() xor ROTATION_SEED)
-        repeat(safeStart) { rotationRandom.nextFloat() }
+        val taper = if (stroke.taperStartEnabled || stroke.taperEndEnabled) StrokeTaper.factors(
+            sampledPoints, width, height, stroke.taperMode,
+            stroke.taperStartEnabled, stroke.taperStartLength, stroke.taperStartLengthUnit, stroke.taperStartMinimum,
+            stroke.taperEndEnabled, stroke.taperEndLength, stroke.taperEndLengthUnit, stroke.taperEndMinimum,
+        ) else null
         var offset = 0
         for (index in safeStart until sampledPoints.size) {
             val point = sampledPoints[index]
             val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
-            val diameter = (stroke.width * width.coerceAtLeast(1f) / REFERENCE_WIDTH * taper[index] * dynamics.size).coerceAtLeast(.25f)
+            val diameter = (stroke.width * width.coerceAtLeast(1f) / REFERENCE_WIDTH * (taper?.get(index) ?: 1f) * dynamics.size).coerceAtLeast(.25f)
             val tipScale = BrushTipTransform.scale(
                 tip.width,
                 tip.height,
@@ -73,7 +62,7 @@ internal object EngineV2StampBatchRenderer {
                 dual = false,
                 stylusOrientationRadians = point.orientation,
                 strokeDirectionDegrees = if (followsStroke) StrokeStampSampler.directionDegrees(sampledPoints, index, width, height) else 0f,
-                randomUnit = rotationRandom.nextFloat(),
+                randomUnit = legacyRandomFloatAt(stroke.renderSeed.toLong() xor ROTATION_SEED, index),
             )
             writeQuad(
                 vertices,
@@ -128,6 +117,28 @@ internal object EngineV2StampBatchRenderer {
 
     private fun noColorDynamics(value: BrushColorDynamics): Boolean =
         !value.pressureEnabled && !value.tiltEnabled && !value.velocityEnabled && !value.randomEnabled
+
+    /** Jump directly to java.util.Random's Nth float so incremental drawing stays compatible with
+     * existing strokes without replaying every preceding dab on every display frame. */
+    internal fun legacyRandomFloatAt(seed: Long, sampleIndex: Int): Float {
+        var steps = sampleIndex.toLong().coerceAtLeast(0L) + 1L
+        var multiplier = JAVA_RANDOM_MULTIPLIER
+        var addend = JAVA_RANDOM_ADDEND
+        var accumulatedMultiplier = 1L
+        var accumulatedAddend = 0L
+        while (steps > 0L) {
+            if (steps and 1L != 0L) {
+                accumulatedAddend = (multiplier * accumulatedAddend + addend) and JAVA_RANDOM_MASK
+                accumulatedMultiplier = (multiplier * accumulatedMultiplier) and JAVA_RANDOM_MASK
+            }
+            addend = (addend * (multiplier + 1L)) and JAVA_RANDOM_MASK
+            multiplier = (multiplier * multiplier) and JAVA_RANDOM_MASK
+            steps = steps ushr 1
+        }
+        val initial = (seed xor JAVA_RANDOM_MULTIPLIER) and JAVA_RANDOM_MASK
+        val state = (accumulatedMultiplier * initial + accumulatedAddend) and JAVA_RANDOM_MASK
+        return (state ushr 24).toFloat() / (1 shl 24).toFloat()
+    }
 
     private fun writeQuad(
         vertices: FloatArray,
@@ -184,5 +195,8 @@ internal object EngineV2StampBatchRenderer {
     private const val VERTEX_FLOATS_PER_DAB = 12
     private const val REFERENCE_WIDTH = 1600f
     private const val ROTATION_SEED = 0x49A2B31DL
+    private const val JAVA_RANDOM_MULTIPLIER = 0x5DEECE66DL
+    private const val JAVA_RANDOM_ADDEND = 0xBL
+    private const val JAVA_RANDOM_MASK = (1L shl 48) - 1L
     private val threadBuffers = ThreadLocal.withInitial(::Buffers)
 }
