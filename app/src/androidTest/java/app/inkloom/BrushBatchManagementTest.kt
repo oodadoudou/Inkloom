@@ -10,6 +10,7 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -75,8 +76,17 @@ class BrushBatchManagementTest {
 
     private fun openBrushes(group: String = "Source") {
         composeRule.onNodeWithText("New Note").performClick()
+        composeRule.waitUntil(5_000) {
+            runCatching { composeRule.onAllNodesWithText("Create").fetchSemanticsNodes().isNotEmpty() }.getOrDefault(false)
+        }
         composeRule.onNodeWithText("Create").performClick()
+        composeRule.waitUntil(5_000) {
+            runCatching { composeRule.onAllNodesWithContentDescription("Brushes").fetchSemanticsNodes().isNotEmpty() }.getOrDefault(false)
+        }
         composeRule.onNodeWithContentDescription("Brushes").performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithContentDescription("Brush group $group").fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithContentDescription("Brush group $group").performClick()
     }
 

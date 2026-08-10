@@ -409,6 +409,7 @@ class InkloomLaunchTest {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("More").performClick()
         composeRule.onNodeWithText("Link").performClick()
+        composeRule.onNodeWithText("Notebook page").assertIsDisplayed()
         composeRule.onNodeWithText("Notebook page").performClick()
 
         composeRule.onNodeWithText("Notebook").assertIsDisplayed()
@@ -466,7 +467,7 @@ class InkloomLaunchTest {
         assertEquals(1, composeRule.onAllNodesWithContentDescription("Page 2. Selected for management.").fetchSemanticsNodes().size)
         composeRule.onNodeWithContentDescription("Duplicate selected pages").performClick()
 
-        composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasContentDescription("Open layers for this page")).fetchSemanticsNodes().size == 4 }
+        composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasText("/4", substring = true)).fetchSemanticsNodes().isNotEmpty() }
     }
 
     @Test fun pagePreviewUsesMostOfTheNarrowPagesPanelWidth() {
