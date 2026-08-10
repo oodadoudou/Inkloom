@@ -99,6 +99,21 @@ class AppSettingsStoreTest {
         }
     }
 
+    @Test fun legacyOversizedPagesPopoverDefaultMigratesButCustomWidthIsPreserved() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
+        preferences.edit().clear().putInt("studioWorkspaceVersion", 2).putFloat("pagePanelWidthDp", 300f).commit()
+        try {
+            val store = AppSettingsStore(context)
+            val migrated = store.load()
+            assertEquals(224f, migrated.pagePanelWidthDp)
+            store.save(migrated.copy(pagePanelWidthDp = 268f))
+            assertEquals(268f, store.load().pagePanelWidthDp)
+        } finally {
+            preferences.edit().clear().commit()
+        }
+    }
+
     @Test fun rulerGuideSurvivesReload() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)

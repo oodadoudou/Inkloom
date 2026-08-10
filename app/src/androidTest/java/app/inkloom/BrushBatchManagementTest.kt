@@ -153,6 +153,19 @@ class BrushBatchManagementTest {
         assertTrue("Empty/Erasers" in BrushGroupStore(composeRule.activity).load())
     }
 
+    @Test fun creatingAGroupWhilePencilIsSelectedCreatesItInsidePencil() {
+        openBrushes()
+        composeRule.onNodeWithText("Pencil").performClick()
+        composeRule.onNodeWithContentDescription("Manage brush groups").performClick()
+        composeRule.onNodeWithContentDescription("New brush group path").performTextInput("Sketching")
+        composeRule.onNodeWithText("Create").performClick()
+        composeRule.onNodeWithText("Done").performClick()
+
+        val store = BrushGroupStore(composeRule.activity)
+        composeRule.waitUntil(5_000) { "Pencil/Sketching" in store.load() }
+        assertTrue("Pencil/Sketching" in store.load())
+    }
+
     @Test fun selectedCustomBrushCommitsEveryRapidPenContact() {
         openBrushes()
         composeRule.onNodeWithContentDescription("Brush preset Batch A").performClick()

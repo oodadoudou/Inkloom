@@ -4035,7 +4035,7 @@ private fun PageRail(
             var tags by remember(page.tags) { mutableStateOf(page.tags.joinToString(", ")) }
             var pageDragDistance by remember(page.id) { mutableFloatStateOf(0f) }
             var pageDragging by remember(page.id) { mutableStateOf(false) }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 val pageBatchSelected = page.id in selectedPageIds
                 val pageDescription = if (pageBatchSelected) {
                     tr("Page ${pageIndex + 1}. Selected for management.", "第 ${pageIndex + 1} 页，已选择管理")
@@ -4085,7 +4085,11 @@ private fun PageRail(
                 }
                 Box(
                     Modifier
-                        .size(58.dp, 74.dp)
+                        .fillMaxWidth()
+                        .aspectRatio(
+                            (PageCropTransform.visibleWidth(page) / PageCropTransform.visibleHeight(page).coerceAtLeast(1f))
+                                .coerceIn(.5f, 1.8f),
+                        )
                         .zIndex(if (pageDragging) 4f else 0f)
                         .graphicsLayer {
                             translationY = pageDragDistance * density
@@ -4118,7 +4122,7 @@ private fun PageRail(
                         onLongClick { managePage(); true }
                     })
                 }
-                Row(Modifier.width(78.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     Icon(
                         Icons.Outlined.DragIndicator,
                         tr("Drag to reorder page", "拖动调整页面顺序"),
@@ -7665,6 +7669,7 @@ private fun ProcreateBrushLibrary(
     val systemBrushes = remember { systemBrushCatalog() }
     val systemCategories = listOf("Pen", "Pencil", "Brush", "Erasers", "Airbrush", "Decoration", "Blend", "Liquify")
     val importedCategories = BrushGroupOperations.treePaths(brushes, registeredGroups)
+    val manageableCategories = importedCategories.filterNot { category -> systemCategories.any { it.equals(category, true) } }
     var collapsedGroupPaths by remember { mutableStateOf(emptySet<String>()) }
     val visibleImportedCategories = importedCategories.filter { path ->
         generateSequence(BrushGroupOperations.parent(path), BrushGroupOperations::parent)
@@ -7876,7 +7881,9 @@ private fun ProcreateBrushLibrary(
                     items(allCategories.distinct(), key = { it }) { category ->
                         var groupDragDistance by remember(category) { mutableFloatStateOf(0f) }
                         val selected = category == selectedCategory
-                        val customGroup = category in importedCategories
+                        val systemGroup = category in systemCategories
+                        val customGroup = category in importedCategories && !systemGroup
+                        val dropGroup = systemGroup || customGroup
                         val hasChildren = importedCategories.any { BrushGroupOperations.parent(it)?.equals(category, true) == true }
                         val visibleCategoryLabel = categoryLabel(category)
                         val categoryDescription = if (customGroup) tr("Brush group $visibleCategoryLabel", "笔刷分组 $visibleCategoryLabel") else tr("Brush category $visibleCategoryLabel", "笔刷类别 $visibleCategoryLabel")
@@ -7885,18 +7892,18 @@ private fun ProcreateBrushLibrary(
                                 Modifier.fillMaxWidth().height(39.dp)
                                     .semantics { contentDescription = categoryDescription }
                                     .onGloballyPositioned { coordinates ->
-                                        if (customGroup) {
+                                        if (dropGroup) {
                                             val bounds = coordinates.boundsInWindow()
                                             if (groupDropBounds[category] != bounds) groupDropBounds = groupDropBounds + (category to bounds)
                                         }
                                     }
-                                    .background(if (draggingBrush != null && customGroup) Color(0xFFF0F4FA) else if (selected) Color(0xFFE1E1E1) else Color.Transparent).combinedClickable(
+                                    .background(if (draggingBrush != null && dropGroup) Color(0xFFF0F4FA) else if (selected) Color(0xFFE1E1E1) else Color.Transparent).combinedClickable(
                                     onClick = { selectedCategory = category },
                                     onLongClick = { if (customGroup) menuGroup = category },
                                 ).padding(start = (10 + BrushGroupOperations.depth(category) * 12).dp, end = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                if (customGroup && hasChildren) IconButton(onClick = {
+                                if (hasChildren) IconButton(onClick = {
                                     collapsedGroupPaths = if (category in collapsedGroupPaths) collapsedGroupPaths - category else collapsedGroupPaths + category
                                 }, modifier = Modifier.size(24.dp)) {
                                     Icon(
@@ -8115,7 +8122,8 @@ private fun ProcreateBrushLibrary(
         )
     }
     if (manageGroups) BrushGroupManagerDialog(
-        groups = importedCategories,
+        groups = manageableCategories,
+        initialParent = selectedCategory.takeIf { category -> category in systemCategories || category in importedCategories },
         onDismiss = { manageGroups = false },
         onRename = { oldName, newName ->
             val updated = BrushGroupOperations.rename(brushes, oldName, newName)
@@ -8128,18 +8136,25 @@ private fun ProcreateBrushLibrary(
         },
         onCreate = { path ->
             val normalized = BrushGroupOperations.normalize(path)
-            if (normalized.isNotBlank()) onReplaceGroups(BrushGroupOperations.reconcileRegisteredGroups(registeredGroups + normalized, brushes))
+            if (normalized.isNotBlank()) {
+                onReplaceGroups(BrushGroupOperations.reconcileRegisteredGroups(registeredGroups + normalized, brushes))
+                selectedCategory = normalized
+            }
         },
     )
 }
 
 @Composable
-private fun BrushGroupManagerDialog(groups: List<String>, onDismiss: () -> Unit, onRename: (String, String) -> Unit, onMove: (String, Int) -> Unit, onCreate: (String) -> Unit) {
+private fun BrushGroupManagerDialog(groups: List<String>, onDismiss: () -> Unit, onRename: (String, String) -> Unit, onMove: (String, Int) -> Unit, onCreate: (String) -> Unit, initialParent: String? = null) {
     var selected by remember { mutableStateOf(groups.firstOrNull().orEmpty()) }
     LaunchedEffect(groups) { if (groups.none { it == selected }) selected = groups.firstOrNull().orEmpty() }
     var replacement by remember(selected) { mutableStateOf(selected) }
-    var newGroupPath by remember { mutableStateOf("") }
-    val normalizedNewGroup = BrushGroupOperations.normalize(newGroupPath)
+    var newGroupPath by remember(initialParent) { mutableStateOf("") }
+    val normalizedParent = BrushGroupOperations.normalize(initialParent.orEmpty())
+    val normalizedInputGroup = BrushGroupOperations.normalize(newGroupPath)
+    val normalizedNewGroup = if (normalizedParent.isNotBlank() && '/' !in newGroupPath) {
+        BrushGroupOperations.normalize("$normalizedParent/$normalizedInputGroup")
+    } else normalizedInputGroup
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(tr("Manage groups", "管理分组")) },
@@ -8150,14 +8165,19 @@ private fun BrushGroupManagerDialog(groups: List<String>, onDismiss: () -> Unit,
                         value = newGroupPath,
                         onValueChange = { newGroupPath = it.take(BrushGroupOperations.MAX_PATH_LENGTH) },
                         label = { Text(tr("New group path", "新建分组路径")) },
-                        supportingText = { Text(tr("Use / to create nested groups", "使用 / 创建嵌套分组")) },
+                        supportingText = {
+                            Text(
+                                if (normalizedParent.isBlank()) tr("Use / to create nested groups", "使用 / 创建嵌套分组")
+                                else tr("Creates inside ${BrushGroupOperations.displayName(normalizedParent)}; use / for an absolute path", "将在 ${BrushGroupOperations.displayName(normalizedParent)} 内创建；使用 / 可输入完整路径"),
+                            )
+                        },
                         singleLine = true,
                         modifier = Modifier.weight(1f).semantics { contentDescription = "New brush group path" },
                     )
                     Spacer(Modifier.width(8.dp))
                     Button(
                         onClick = { onCreate(normalizedNewGroup); selected = normalizedNewGroup; newGroupPath = "" },
-                        enabled = normalizedNewGroup.isNotBlank() && groups.none { it.equals(normalizedNewGroup, true) },
+                        enabled = normalizedInputGroup.isNotBlank() && !newGroupPath.trimEnd().endsWith('/') && groups.none { it.equals(normalizedNewGroup, true) },
                     ) { Text(tr("Create", "创建")) }
                 }
                 Spacer(Modifier.height(8.dp))
@@ -8521,7 +8541,69 @@ private fun BrushTipPreview(brush: ImportedBrush, modifier: Modifier = Modifier)
     DisposableEffect(bitmap) { onDispose { bitmap?.takeUnless(android.graphics.Bitmap::isRecycled)?.recycle() } }
     Box(modifier.background(Color.White).border(1.dp, OutlineSoft), contentAlignment = Alignment.Center) {
         if (bitmap != null) androidx.compose.foundation.Image(bitmap.asImageBitmap(), brush.name, Modifier.fillMaxSize().padding(4.dp))
-        else Canvas(Modifier.fillMaxSize().padding(7.dp)) { drawLine(Ink, Offset(2f, size.height * .7f), Offset(size.width - 2f, size.height * .3f), strokeWidth = 7f, cap = StrokeCap.Round) }
+        else Canvas(Modifier.fillMaxSize().padding(7.dp)) {
+            val group = BrushGroupOperations.normalize(brush.groupName).substringBefore('/').lowercase()
+            val identity = brush.id.lowercase()
+            val start = Offset(2f, size.height * .68f)
+            val end = Offset(size.width - 2f, size.height * .32f)
+            val representativeWidth = (size.height * (.09f + brush.defaultSize.coerceIn(1f, 160f) / 160f * .28f)).coerceIn(1.2f, size.height * .38f)
+            when {
+                group == "liquify" -> {
+                    val path = Path().apply {
+                        moveTo(start.x, start.y)
+                        cubicTo(size.width * .28f, size.height * .12f, size.width * .58f, size.height * .88f, end.x, end.y)
+                    }
+                    drawPath(path, Ink, style = Stroke(width = 2.4f, cap = StrokeCap.Round))
+                    drawLine(Ink, end, Offset(end.x - 8f, end.y - 1f), 2.2f, StrokeCap.Round)
+                    drawLine(Ink, end, Offset(end.x - 3f, end.y + 7f), 2.2f, StrokeCap.Round)
+                }
+                identity.contains("sparkle") || group == "decoration" && brush.spray -> {
+                    listOf(.2f to .62f, .46f to .34f, .73f to .58f, .9f to .27f).forEachIndexed { index, (x, y) ->
+                        val center = Offset(size.width * x, size.height * y)
+                        val radius = 3f + index % 2 * 2f
+                        drawLine(Ink, center.copy(x = center.x - radius), center.copy(x = center.x + radius), 1.5f, StrokeCap.Round)
+                        drawLine(Ink, center.copy(y = center.y - radius), center.copy(y = center.y + radius), 1.5f, StrokeCap.Round)
+                    }
+                }
+                identity.contains("hatching") || group == "decoration" -> {
+                    repeat(7) { index ->
+                        val x = size.width * (.08f + index * .135f)
+                        drawLine(Ink, Offset(x - 8f, size.height * .8f), Offset(x + 8f, size.height * .2f), 1.4f, StrokeCap.Round)
+                        drawLine(Ink.copy(alpha = .55f), Offset(x - 6f, size.height * .24f), Offset(x + 9f, size.height * .76f), 1f, StrokeCap.Round)
+                    }
+                }
+                group == "airbrush" || brush.spray -> {
+                    val center = Offset(size.width * .52f, size.height * .5f)
+                    repeat(7) { layer ->
+                        val radius = size.height * (.44f - layer * .052f)
+                        drawCircle(Ink.copy(alpha = .025f + layer * .018f), radius.coerceAtLeast(1f), center)
+                    }
+                    if (brush.spray) repeat(9) { index ->
+                        val x = size.width * (.14f + index * .085f)
+                        val y = size.height * (.32f + (index * 37 % 5) * .095f)
+                        drawCircle(Ink.copy(alpha = .4f), 1.2f + index % 3, Offset(x, y))
+                    }
+                }
+                group == "blend" -> repeat(4) { index ->
+                    drawLine(Ink.copy(alpha = .18f + index * .13f), start.copy(y = start.y + index * 2f), end.copy(y = end.y + index * 2f), representativeWidth * (1f - index * .12f), StrokeCap.Round)
+                }
+                group == "erasers" -> {
+                    drawLine(Color(0xFFB8B8B8), start, end, representativeWidth, StrokeCap.Round)
+                    drawLine(Color.White, start.copy(x = size.width * .48f), end, representativeWidth * .58f, StrokeCap.Round)
+                }
+                brush.watercolor -> repeat(3) { index ->
+                    drawLine(Ink.copy(alpha = .16f + index * .12f), start.copy(y = start.y + index * 1.8f), end.copy(y = end.y + index * 1.8f), representativeWidth * (1.3f - index * .16f), StrokeCap.Round)
+                }
+                identity.contains("hb") -> {
+                    drawLine(Ink.copy(alpha = .7f), start, end, representativeWidth * .72f, StrokeCap.Round)
+                    drawLine(Ink.copy(alpha = .32f), start.copy(y = start.y + 2f), end.copy(y = end.y + 1f), representativeWidth * .35f, StrokeCap.Round)
+                }
+                identity.contains("technical") -> drawLine(Ink.copy(alpha = .78f), start, end, representativeWidth * .42f, StrokeCap.Round)
+                identity.contains("marker") -> drawLine(Ink.copy(alpha = brush.defaultOpacity.coerceIn(.25f, 1f)), start, end, representativeWidth * 1.2f, StrokeCap.Square)
+                identity.contains("oil") -> repeat(3) { index -> drawLine(Ink.copy(alpha = .78f), start.copy(y = start.y + index * 2f), end.copy(y = end.y - index * 1.5f), representativeWidth * .54f, StrokeCap.Round) }
+                else -> drawLine(Ink.copy(alpha = brush.defaultOpacity.coerceIn(.25f, 1f)), start, end, representativeWidth, StrokeCap.Round)
+            }
+        }
     }
 }
 

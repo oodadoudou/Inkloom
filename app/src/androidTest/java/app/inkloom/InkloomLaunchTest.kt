@@ -469,6 +469,15 @@ class InkloomLaunchTest {
         composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasContentDescription("Open layers for this page")).fetchSemanticsNodes().size == 4 }
     }
 
+    @Test fun pagePreviewUsesMostOfTheNarrowPagesPanelWidth() {
+        createNotebookAndOpenEditor()
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodes(hasContentDescription("Full page preview")).fetchSemanticsNodes().isNotEmpty()
+        }
+        val previewWidth = composeRule.onNodeWithContentDescription("Full page preview").fetchSemanticsNode().boundsInRoot.width
+        assertTrue("Page preview should be readable inside the 160dp navigator ($previewWidth px)", previewWidth > 120f * composeRule.activity.resources.displayMetrics.density)
+    }
+
     @Test fun longPressDragOnPageThumbnailReordersPages() {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Add page").performClick()

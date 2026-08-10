@@ -51,7 +51,7 @@ data class AppSettings(
     val panelTabOrder: String = "PAGES,BRUSHES,LAYERS",
     val pagePanelXDp: Float = 18f,
     val pagePanelYDp: Float = 18f,
-    val pagePanelWidthDp: Float = 300f,
+    val pagePanelWidthDp: Float = 224f,
     val pagePanelHeightDp: Float = 620f,
     val brushPanelXDp: Float = 1180f,
     val brushPanelYDp: Float = 18f,
@@ -204,7 +204,11 @@ class AppSettingsStore(context: Context) {
             panelTabOrder = WorkspacePanelTabs.encodeOrder(WorkspacePanelTabs.normalizeOrder(preferences.getString("panelTabOrder", null).orEmpty())),
             pagePanelXDp = preferences.getFloat("pagePanelXDp", 18f).coerceIn(-2400f, 2400f),
             pagePanelYDp = preferences.getFloat("pagePanelYDp", 18f).coerceIn(-2400f, 2400f),
-            pagePanelWidthDp = preferences.getFloat("pagePanelWidthDp", 300f).coerceIn(80f, 1200f),
+            pagePanelWidthDp = preferences.getFloat("pagePanelWidthDp", 224f).let { saved ->
+                // 300dp was the old oversized default. Migrate only that exact untouched value;
+                // deliberately resized panels remain user-controlled.
+                if (saved == 300f) 224f else saved
+            }.coerceIn(80f, 1200f),
             pagePanelHeightDp = preferences.getFloat("pagePanelHeightDp", 620f).coerceIn(120f, 1600f),
             brushPanelXDp = preferences.getFloat("brushPanelXDp", 1180f).coerceIn(-2400f, 2400f),
             brushPanelYDp = preferences.getFloat("brushPanelYDp", 18f).coerceIn(-2400f, 2400f),
