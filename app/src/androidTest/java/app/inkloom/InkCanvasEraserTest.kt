@@ -107,6 +107,28 @@ class InkCanvasEraserTest {
     }
 
     @Test
+    fun eraserOnlyChangesTheActiveLayerEvenWhenLayersOverlap() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val note = horizontalStroke("note", .5f).copy(layerId = "note")
+            val highlight = horizontalStroke("highlight", .5f).copy(layerId = "highlight")
+            listOf(true, false).forEach { usesMask ->
+                val edits = mutableListOf<CapturedEdit>()
+                val view = configuredView(listOf(note, highlight), edits).apply {
+                    activeLayerId = "highlight"
+                    nonDestructiveEraser = usesMask
+                    localEraser = usesMask
+                }
+                view.dispatchStylus(MotionEvent.ACTION_DOWN, 500f, 500f, 10L)
+                view.dispatchStylus(MotionEvent.ACTION_UP, 500f, 500f, 20L)
+
+                assertEquals("note layer must remain untouched", listOf("highlight"), edits.single().removedIds)
+                assertTrue(edits.single().replacements.none { it.layerId == "note" })
+            }
+        }
+    }
+
+    @Test
     fun undoDoesNotModifyALayerThatBecameProtected() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {

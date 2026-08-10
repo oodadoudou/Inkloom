@@ -3620,13 +3620,22 @@ class InkCanvasView(context: Context) : View(context) {
             areaScalingPixels = (fillAreaScalingPixels * modelToSample).toInt(),
         )
         fillPreviewMask?.recycle()
-        fillPreviewMask = if (result.isEmpty) null else result.mask
-        val safeWidth = width.coerceAtLeast(1).toFloat()
-        val safeHeight = height.coerceAtLeast(1).toFloat()
+        val selection = selectionMaskForDisplay()
+        fillPreviewMask = if (result.isEmpty) null else SelectionMaskCompositor.clipRegion(
+            result.mask,
+            result.left,
+            result.top,
+            source.width,
+            source.height,
+            selection,
+        )
+        result.mask.recycle()
+        val safeWidth = source.width.coerceAtLeast(1).toFloat()
+        val safeHeight = source.height.coerceAtLeast(1).toFloat()
         fillPreviewLeft = result.left / safeWidth
         fillPreviewTop = result.top / safeHeight
-        fillPreviewWidth = result.width / safeWidth
-        fillPreviewHeight = result.height / safeHeight
+        fillPreviewWidth = if (fillPreviewMask == null) 0f else result.width / safeWidth
+        fillPreviewHeight = if (fillPreviewMask == null) 0f else result.height / safeHeight
         fillPreviewTolerance = tolerance
         fillPreviewComputedAt = now
     }
@@ -3675,8 +3684,8 @@ class InkCanvasView(context: Context) : View(context) {
         }
         val bitmapWidth = width.coerceAtLeast(1)
         val bitmapHeight = height.coerceAtLeast(1)
-        val fullMask = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888)
-        val maskCanvas = Canvas(fullMask)
+        val drawnMask = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888)
+        val maskCanvas = Canvas(drawnMask)
         val path = Path().apply {
             moveTo(fillGesturePoints.first().x * bitmapWidth, fillGesturePoints.first().y * bitmapHeight)
             fillGesturePoints.drop(1).forEach { point -> lineTo(point.x * bitmapWidth, point.y * bitmapHeight) }
@@ -3690,6 +3699,20 @@ class InkCanvasView(context: Context) : View(context) {
             strokeJoin = Paint.Join.ROUND
         }
         maskCanvas.drawPath(path, maskPaint)
+        val fullMask = SelectionMaskCompositor.clipRegion(
+            drawnMask,
+            0,
+            0,
+            bitmapWidth,
+            bitmapHeight,
+            selectionMaskForDisplay(),
+        )
+        drawnMask.recycle()
+        if (fullMask == null) {
+            fillGesturePoints.clear()
+            invalidate()
+            return
+        }
         val pixels = IntArray(bitmapWidth * bitmapHeight)
         fullMask.getPixels(pixels, 0, bitmapWidth, 0, 0, bitmapWidth, bitmapHeight)
         var minX = bitmapWidth; var minY = bitmapHeight; var maxX = -1; var maxY = -1
@@ -4306,6 +4329,7 @@ class InkCanvasView(context: Context) : View(context) {
         }
         for (index in candidateIndices) {
             val stroke = strokes.getOrNull(index) ?: continue
+            if (stroke.layerId != activeLayerId) continue
             if (stroke.id in protectedStrokeIds) continue
             val strokeRadius = stroke.width.coerceIn(.1f, 800f) * width.coerceAtLeast(1) / REFERENCE_WIDTH / 2f
             val combinedRadius = eraserRadius + strokeRadius

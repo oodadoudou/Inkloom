@@ -131,6 +131,36 @@ object SelectionMaskCompositor {
         return result
     }
 
+    /** Intersects a cropped page-space mask with the current full-page selection. */
+    fun clipRegion(
+        region: Bitmap,
+        regionLeft: Int,
+        regionTop: Int,
+        pageWidth: Int,
+        pageHeight: Int,
+        selection: Bitmap?,
+    ): Bitmap? {
+        if (region.isRecycled || pageWidth <= 0 || pageHeight <= 0) return null
+        if (selection == null || selection.isRecycled) return nonEmptyCopy(region)
+        val result = region.copy(Bitmap.Config.ARGB_8888, true)
+        val paint = whitePaint(filter = true).apply { blendMode = BlendMode.DST_IN }
+        Canvas(result).drawBitmap(
+            selection,
+            null,
+            RectF(
+                -regionLeft.toFloat(),
+                -regionTop.toFloat(),
+                pageWidth - regionLeft.toFloat(),
+                pageHeight - regionTop.toFloat(),
+            ),
+            paint,
+        )
+        paint.blendMode = null
+        if (!isEmpty(result)) return result
+        result.recycle()
+        return null
+    }
+
     fun invert(source: Bitmap?): Bitmap? {
         if (source == null || source.isRecycled) return null
         val pixels = IntArray(source.width * source.height)

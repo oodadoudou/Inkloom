@@ -166,8 +166,6 @@ enum class FillSubTool { BUCKET, ENCLOSE_AND_FILL, LASSO_FILL, LEFTOVER_PEN }
 fun defaultInkLayers(): List<InkLayer> = listOf(
     InkLayer(LayerIds.BACKGROUND, "Background", LayerRole.BACKGROUND, locked = true),
     InkLayer(LayerIds.INK, "Notes", LayerRole.INK),
-    InkLayer(LayerIds.HIGHLIGHT, "Highlights", LayerRole.HIGHLIGHT),
-    InkLayer(LayerIds.OBJECTS, "Objects", LayerRole.OBJECTS),
 )
 
 @Serializable

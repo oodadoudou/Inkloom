@@ -75,6 +75,18 @@ class SelectionMaskCompositorTest {
         }
     }
 
+    @Test fun croppedFillRegionIsClippedByTheFullPageSelection() {
+        val region = Bitmap.createBitmap(60, 60, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.WHITE) }
+        val selection = rectangle(.5f, 0f, 1f, 1f)
+        val clipped = SelectionMaskCompositor.clipRegion(region, 20, 20, 100, 100, selection)
+        try {
+            assertNotSelected(clipped, .1f, .5f)
+            assertSelected(clipped, .9f, .5f)
+        } finally {
+            region.recycle(); selection.recycle(); clipped?.recycle()
+        }
+    }
+
     private fun rectangle(left: Float, top: Float, right: Float, bottom: Float): Bitmap =
         requireNotNull(SelectionMaskCompositor.polygon(
             listOf(StrokePoint(left, top), StrokePoint(right, top), StrokePoint(right, bottom), StrokePoint(left, bottom)),

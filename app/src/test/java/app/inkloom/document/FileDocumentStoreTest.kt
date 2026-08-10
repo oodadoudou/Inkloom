@@ -146,7 +146,7 @@ class FileDocumentStoreTest {
             .replace(Regex("\\n\\s*\\\"layerId\\\"\\s*:\\s*\\\"[^\\\"]+\\\","), "")
 
         val restored = json.decodeFromString<InkDocument>(legacy)
-        assertEquals(listOf(LayerIds.BACKGROUND, LayerIds.INK, LayerIds.HIGHLIGHT, LayerIds.OBJECTS), restored.pages.single().layers.map { it.id })
+        assertEquals(listOf(LayerIds.BACKGROUND, LayerIds.INK), restored.pages.single().layers.map { it.id })
         assertEquals(LayerIds.INK, restored.pages.single().strokes.single().layerId)
     }
 
