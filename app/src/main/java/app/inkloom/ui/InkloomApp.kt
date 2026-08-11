@@ -7653,27 +7653,7 @@ private fun BrushBatchGroupDialog(
     )
 }
 
-private fun systemBrushCatalog(): List<ImportedBrush> = listOf(
-    ImportedBrush(id = "system-technical-pencil", name = "Technical Pencil", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Pencil", defaultSize = 4f, hardness = .82f, stabilization = .08f),
-    ImportedBrush(id = "system-hb-pencil", name = "HB Pencil", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Pencil", defaultSize = 7f, hardness = .62f, stabilization = .04f),
-    ImportedBrush(id = "system-studio-pen", name = "Studio Pen", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Pen", defaultSize = 9f, hardness = 1f, stabilization = .18f),
-    ImportedBrush(id = "system-monoline", name = "Monoline", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Pen", defaultSize = 18f, hardness = 1f, stabilization = .28f),
-    ImportedBrush(id = "system-watercolor", name = "Round Watercolor", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Brush", defaultSize = 42f, defaultOpacity = .62f, hardness = .42f, watercolor = true, colorMix = .58f, paintMix = .18f),
-    ImportedBrush(id = "system-oil-paint", name = "Thick Oil", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Brush", defaultSize = 48f, hardness = .78f, colorMix = .35f, paintMix = .7f, thickness = .72f),
-    ImportedBrush(id = "system-marker", name = "Studio Marker", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Brush", defaultSize = 34f, defaultOpacity = .68f, hardness = .7f),
-    ImportedBrush(id = "system-soft-airbrush", name = "Soft Airbrush", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Airbrush", defaultSize = 92f, defaultOpacity = .35f, hardness = .08f, blur = .35f),
-    ImportedBrush(id = "system-spray-airbrush", name = "Droplet Airbrush", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Airbrush", defaultSize = 76f, defaultOpacity = .42f, spray = true, sprayParticleSize = 7f, sprayDensity = 1.8f, spraySpread = 1.15f, sprayParticleRandomRotationDegrees = 180f),
-    ImportedBrush(id = "system-decoration-sparkle", name = "Sparkle Scatter", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Decoration", defaultSize = 54f, spacing = .28f, spray = true, sprayParticleSize = 10f, sprayDensity = 1.4f, spraySpread = .9f, stampCount = 3, randomRotationDegrees = 180f, tags = listOf("decoration", "effect")),
-    ImportedBrush(id = "system-decoration-hatching", name = "Cross Hatching", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Decoration", defaultSize = 18f, spacing = .18f, stampCount = 4, stampCountJitter = .3f, strokeRotationJitterDegrees = 90f, tags = listOf("decoration", "hatching")),
-    ImportedBrush(id = "system-hard-eraser", name = "Hard Eraser", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Erasers", defaultSize = 24f, tags = listOf("eraser"), hardness = 1f),
-    ImportedBrush(id = "system-soft-eraser", name = "Soft Eraser", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Erasers", defaultSize = 68f, tags = listOf("eraser"), hardness = .12f, blur = .28f),
-    ImportedBrush(id = "system-blend-smear", name = "Finger Smear", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Blend", defaultSize = 56f, colorMix = .82f, paintMix = 0f, tags = listOf("blend", "smear")),
-    ImportedBrush(id = "system-blend-soft", name = "Soft Blend", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Blend", defaultSize = 82f, hardness = .08f, blur = .48f, colorMix = .62f, tags = listOf("blend", "blur")),
-    ImportedBrush(id = "system-liquify-push", name = "Push", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Liquify", defaultSize = 120f, tags = listOf("liquify", "push")),
-    ImportedBrush(id = "system-liquify-twirl", name = "Twirl", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Liquify", defaultSize = 140f, tags = listOf("liquify", "twirl")),
-    ImportedBrush(id = "system-liquify-pinch", name = "Pinch", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Liquify", defaultSize = 150f, tags = listOf("liquify", "pinch")),
-    ImportedBrush(id = "system-liquify-expand", name = "Expand", format = BrushFormat.SYSTEM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = emptyList(), groupName = "Liquify", defaultSize = 150f, tags = listOf("liquify", "expand")),
-)
+private fun systemBrushCatalog(): List<ImportedBrush> = SystemBrushCatalog.brushes
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable

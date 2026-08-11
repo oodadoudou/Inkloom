@@ -13,7 +13,7 @@ internal object ProceduralBrushTip {
     fun supports(stroke: InkStroke): Boolean =
         stroke.tipAssetPath == null && stroke.tipAssetPaths.isEmpty() && (
             stroke.spray || stroke.stampCount > 1 || stroke.engineKind == BrushEngineKind.AIRBRUSH ||
-                stroke.brushId.startsWith("system-decoration-")
+                stroke.brushId.startsWith("system-decoration-") || stroke.brushId in GRAPHITE_BRUSH_IDS
             )
 
     fun create(stroke: InkStroke): Bitmap? {
@@ -25,6 +25,7 @@ internal object ProceduralBrushTip {
             style = Paint.Style.FILL
         }
         when {
+            stroke.brushId in GRAPHITE_BRUSH_IDS -> drawGraphiteTip(bitmap, stroke)
             stroke.brushId.contains("sparkle", true) -> {
                 val center = SIZE / 2f
                 val outer = SIZE * .45f
@@ -52,5 +53,43 @@ internal object ProceduralBrushTip {
         return bitmap
     }
 
+    /** A small deterministic alpha material gives every graphite grade its own tooth without
+     * shipping opaque proprietary brush artwork. Live, tile, thumbnail and export paths all use
+     * this exact bitmap. */
+    private fun drawGraphiteTip(bitmap: Bitmap, stroke: InkStroke) {
+        val grade = when {
+            stroke.brushId.contains("6b") -> .54f
+            stroke.brushId.contains("2b") -> .66f
+            stroke.brushId.contains("hb") -> .76f
+            stroke.brushId.contains("h-pencil") -> .84f
+            else -> .93f
+        }
+        val pixels = IntArray(SIZE * SIZE)
+        val center = (SIZE - 1) / 2f
+        val radius = SIZE * .46f
+        for (y in 0 until SIZE) for (x in 0 until SIZE) {
+            val dx = x - center
+            val dy = y - center
+            val normalized = kotlin.math.sqrt(dx * dx + dy * dy) / radius
+            if (normalized >= 1f) continue
+            val edge = ((1f - normalized) / (1f - stroke.hardness.coerceIn(.05f, .98f))).coerceIn(0f, 1f)
+            val hash = ((x * 73856093) xor (y * 19349663) xor stroke.brushId.hashCode())
+            val noise = (hash ushr 8 and 0xFF) / 255f
+            val tooth = (grade + noise * (1f - grade)).coerceIn(0f, 1f)
+            val dropout = ((hash ushr 17) and 0xFF) / 255f
+            val retained = if (dropout < (1f - grade) * .34f) .18f else 1f
+            val alpha = (255f * edge * tooth * retained).toInt().coerceIn(0, 255)
+            pixels[y * SIZE + x] = Color.argb(alpha, 255, 255, 255)
+        }
+        bitmap.setPixels(pixels, 0, SIZE, 0, 0, SIZE, SIZE)
+    }
+
     private const val SIZE = 64
+    private val GRAPHITE_BRUSH_IDS = setOf(
+        "system-technical-pencil",
+        "system-h-pencil",
+        "system-hb-pencil",
+        "system-2b-pencil",
+        "system-6b-pencil",
+    )
 }

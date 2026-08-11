@@ -573,6 +573,17 @@ class InkloomLaunchTest {
         assertEquals("A brush popover must not resize the canvas", before, after)
     }
 
+    @Test fun factoryBrushGroupsExposeProfessionalPenPencilAndPs19Presets() {
+        createNotebookAndOpenEditor()
+        composeRule.onNodeWithContentDescription("Brushes").performClick()
+
+        composeRule.onNodeWithText("G Pen").assertIsDisplayed()
+        composeRule.onNodeWithText("Pencil").performClick()
+        composeRule.onNodeWithText("6B Pencil").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Brush").performClick()
+        composeRule.onNodeWithText("Classic PS No. 19").performScrollTo().assertIsDisplayed()
+    }
+
     @Test fun brushPanelCanFloatMoveResizeAndReopenInPlace() {
         createNotebookAndOpenEditor()
         val preferences = composeRule.activity.getSharedPreferences("inkloom_settings", android.content.Context.MODE_PRIVATE)
