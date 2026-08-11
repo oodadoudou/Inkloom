@@ -23,6 +23,35 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class SystemBrushPerformanceTest {
+    @Test fun classicPs19HasNoPeriodicJoinBeads() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val points = (0..80).map { index -> StrokePoint(.1f + index * .01f, .5f, pressure = .55f, timeMs = index.toLong()) }
+            val stroke = InkStroke(
+                brushId = "system-ps19",
+                points = points,
+                colorArgb = 0xFF111111,
+                width = 19f,
+                flow = .55f,
+                sizePressureEnabled = false,
+                opacityPressureEnabled = false,
+                flowPressureEnabled = false,
+            )
+            val bitmap = Bitmap.createBitmap(1000, 1000, Bitmap.Config.ARGB_8888)
+            try {
+                val view = InkCanvasView(instrumentation.targetContext).apply {
+                    layout(0, 0, 1000, 1000)
+                    setDocumentStrokes(listOf(stroke), "ps19-continuous")
+                }
+                view.draw(Canvas(bitmap))
+                val alphas = (140..860 step 5).map { x -> Color.alpha(bitmap.getPixel(x, 500)) }
+                assertTrue("Continuous PS19 centerline alpha varied like overlapping round stamps: ${alphas.minOrNull()}..${alphas.maxOrNull()}", (alphas.maxOrNull() ?: 0) - (alphas.minOrNull() ?: 0) <= 2)
+            } finally {
+                bitmap.recycle()
+            }
+        }
+    }
+
     @Test
     fun representativeFactoryBrushesKeepLiveAndCommitWorkInsideAFrame() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()

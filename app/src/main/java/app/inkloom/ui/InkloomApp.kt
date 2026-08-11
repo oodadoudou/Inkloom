@@ -1,12 +1,16 @@
 package app.inkloom.ui
 
 import android.Manifest
+import android.content.ClipData
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.graphics.Color as AndroidColor
+import android.graphics.Canvas as AndroidCanvas
+import android.graphics.Point
 import android.net.Uri
 import android.view.KeyEvent
+import android.view.View
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -59,6 +63,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.onLongClick
@@ -159,6 +164,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -171,6 +177,22 @@ private enum class AppDestination { LIBRARY, EDITOR }
 private enum class BrushBatchGroupOperation { MOVE, COPY }
 private const val UNGROUPED_BRUSH_FILTER = "\u0000ungrouped"
 private val LocalUiLanguage = staticCompositionLocalOf { UiLanguage.ENGLISH }
+
+private class ColorDropDragShadow(private val color: Int) : View.DragShadowBuilder() {
+    private val diameter = 56
+    override fun onProvideShadowMetrics(outShadowSize: Point, outShadowTouchPoint: Point) {
+        outShadowSize.set(diameter, diameter)
+        outShadowTouchPoint.set(diameter / 2, diameter / 2)
+    }
+    override fun onDrawShadow(canvas: AndroidCanvas) {
+        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { this.color = this@ColorDropDragShadow.color }
+        canvas.drawCircle(diameter / 2f, diameter / 2f, diameter * .39f, paint)
+        paint.style = android.graphics.Paint.Style.STROKE
+        paint.strokeWidth = 3f
+        paint.color = AndroidColor.WHITE
+        canvas.drawCircle(diameter / 2f, diameter / 2f, diameter * .39f, paint)
+    }
+}
 
 @Composable
 private fun tr(english: String, simplifiedChinese: String): String = LocalUiLanguage.current.text(english, simplifiedChinese)
@@ -1027,6 +1049,7 @@ private fun EditorScreen(
 ) {
     if (document == null) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }; return }
     val context = LocalContext.current
+    val editorHostView = LocalView.current
     val audioRecorder = remember { AudioNoteRecorder(context) }
     val brushPresetSizeStore = remember { BrushPresetSizeStore(context) }
     val selectedPage = document.pages.firstOrNull { it.id == selectedPageId } ?: document.pages.first()
@@ -1056,6 +1079,30 @@ private fun EditorScreen(
     // Foreground color belongs to the document workspace, not to an individual brush. Keeping it
     // saveable prevents panel re-layouts and activity recreation from silently restoring black.
     var brushColor by rememberSaveable(document.id) { mutableIntStateOf(AndroidColor.rgb(17, 17, 17)) }
+    var backgroundColor by rememberSaveable(document.id) { mutableIntStateOf(AndroidColor.WHITE) }
+    var offeredContinueFillColor by remember { mutableStateOf<Int?>(null) }
+    var continueFilling by remember { mutableStateOf(false) }
+    var continueFillStartedWithTool by remember { mutableStateOf<EditorTool?>(null) }
+    fun changeBrushColor(value: Int) {
+        brushColor = value
+        // Do not wait for an AndroidView recomposition: the next pen sample may arrive in the
+        // same display frame as the picker input.
+        canvasView?.inkColor = value
+    }
+    fun swapDrawingColors() {
+        val foreground = brushColor
+        changeBrushColor(backgroundColor)
+        backgroundColor = foreground
+    }
+    fun stopContinueFilling() {
+        continueFilling = false
+        offeredContinueFillColor = null
+        continueFillStartedWithTool = null
+        canvasView?.setContinueFilling(false)
+    }
+    LaunchedEffect(tool) {
+        if (continueFilling && continueFillStartedWithTool != null && tool != continueFillStartedWithTool) stopContinueFilling()
+    }
     var previousDrawingTool by remember { mutableStateOf(EditorTool.PEN) }
     var previousDrawingBrushId by remember { mutableStateOf<String?>(null) }
     var previousDrawingSize by remember { mutableFloatStateOf(settings.penSize) }
@@ -1373,6 +1420,20 @@ private fun EditorScreen(
                 onClick = { onSettingsChange(settings.copy(showPageRail = !settings.showPageRail)) },
             )
             Spacer(Modifier.weight(1f))
+            offeredContinueFillColor?.let { fillColor ->
+                AssistChip(
+                    onClick = {
+                        if (continueFilling) stopContinueFilling() else {
+                            continueFilling = true
+                            continueFillStartedWithTool = tool
+                            canvasView?.setContinueFilling(true, fillColor)
+                        }
+                    },
+                    label = { Text(if (continueFilling) tr("Done filling", "完成填充") else tr("Continue filling", "继续填充"), fontSize = 10.sp) },
+                    leadingIcon = { Icon(if (continueFilling) Icons.Outlined.Check else Icons.Outlined.FormatColorFill, null, Modifier.size(16.dp)) },
+                    modifier = Modifier.height(32.dp),
+                )
+            }
             ProcreateTopButton(Icons.Outlined.Brush, tr("Brushes", "笔刷"), selected = tool == EditorTool.PEN, onClick = {
                 exitCanvasNavigation()
                 val alreadySelected = tool == EditorTool.PEN
@@ -1399,23 +1460,41 @@ private fun EditorScreen(
             })
             Box {
                 Box(
-                    Modifier.size(44.dp).combinedClickable(
-                        onClick = { colorPanelOpen = true },
-                        onLongClick = { exitCanvasNavigation(); tool = EditorTool.FILL; syncCanvasInput() },
-                    ).semantics { contentDescription = colorsDescription },
+                    Modifier.size(44.dp)
+                        .combinedClickable(
+                            onClick = { colorPanelOpen = true },
+                            onLongClick = {
+                                editorHostView.startDragAndDrop(
+                                    ClipData.newPlainText("Inkloom color", brushColor.toUInt().toString()),
+                                    ColorDropDragShadow(brushColor),
+                                    CanvasColorDrop(brushColor),
+                                    0,
+                                )
+                            },
+                        ).semantics { contentDescription = colorsDescription },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Box(
-                        Modifier.size(30.dp).clip(CircleShape).background(Color(brushColor)).border(2.dp, if (colorPanelOpen) Color(0xFF1688F8) else OutlineSoft, CircleShape),
-                    )
+                    Box(Modifier.size(32.dp)) {
+                        Box(
+                            Modifier.align(Alignment.TopEnd).size(21.dp).clip(CircleShape).background(Color(backgroundColor)).border(1.5.dp, OutlineSoft, CircleShape),
+                        )
+                        Box(
+                            Modifier.align(Alignment.BottomStart).size(23.dp).clip(CircleShape).background(Color(brushColor)).border(2.dp, if (colorPanelOpen) Color(0xFF1688F8) else OutlineSoft, CircleShape),
+                        )
+                    }
                 }
                 DropdownMenu(
                     expanded = colorPanelOpen,
                     onDismissRequest = { colorPanelOpen = false },
                     modifier = Modifier.width(colorPanelWidth.dp).background(Color.White).padding(8.dp),
                 ) {
-                    Text(tr("Colors", "颜色"), Modifier.padding(horizontal = 8.dp, vertical = 4.dp), color = Ink, fontWeight = FontWeight.SemiBold)
-                    CspColorPanel(brushColor, { brushColor = it }, onResizeWidth = { delta -> colorPanelWidth = (colorPanelWidth + delta).coerceIn(320f, 680f) })
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(tr("Colors", "颜色"), Modifier.weight(1f).padding(horizontal = 8.dp, vertical = 4.dp), color = Ink, fontWeight = FontWeight.SemiBold)
+                        IconButton(onClick = ::swapDrawingColors, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Outlined.SwapHoriz, tr("Swap foreground and background colors", "交换前景色和背景色"), Modifier.size(18.dp))
+                        }
+                    }
+                    CspColorPanel(brushColor, ::changeBrushColor, onResizeWidth = { delta -> colorPanelWidth = (colorPanelWidth + delta).coerceIn(320f, 680f) })
                 }
             }
             Box {
@@ -2017,7 +2096,7 @@ private fun EditorScreen(
                 dock = settings.layerPanelDock,
                 onDock = { changePanelDock(WorkspacePanelKind.LAYERS, it) },
                 onClose = { layersOpen = false; onSettingsChange(settings.copy(showLayerPanel = false)) },
-                onColor = { brushColor = it },
+                onColor = ::changeBrushColor,
                 onSelect = { activeLayerId = it },
                 onAdd = { onAddLayer(document.id, selectedPage.id, "Layer") },
                 onAddFolder = { onAddLayerFolder(document.id, selectedPage.id) },
@@ -2142,6 +2221,10 @@ private fun EditorScreen(
                     },
                     onUndoGesture = { canvasView?.undo() },
                     onRedoGesture = { canvasView?.redo() },
+                    onColorDropCommitted = { dropped ->
+                        offeredContinueFillColor = dropped
+                        continueFilling = false
+                    },
                     activeBrush = activeBrush,
                     brushSize = brushSize,
                     brushOpacity = brushOpacity,
@@ -2163,7 +2246,7 @@ private fun EditorScreen(
                     documents = documents,
                     onOpenInternalLink = onOpenInternalLink,
                     onInputDiagnostic = { kind, pressure, tilt, buttons -> inputDiagnostic = "$kind  pressure ${"%.3f".format(pressure)}  tilt ${"%.2f".format(Math.toDegrees(tilt.toDouble()))}°  buttons $buttons" },
-                    onColorSampled = { brushColor = it },
+                    onColorSampled = ::changeBrushColor,
                     onBrushSizeAdjusted = { raw ->
                         changeCurrentBrushSize(raw)
                     },
@@ -2216,7 +2299,7 @@ private fun EditorScreen(
                             selectedBrushId = restoredBrush?.id
                             brushSize = previousDrawingSize
                             brushOpacity = previousDrawingOpacity
-                            brushColor = previousDrawingColor
+                            changeBrushColor(previousDrawingColor)
                             syncCanvasInput(prepareAssets = restoredBrush != null)
                         }
 
@@ -2265,7 +2348,7 @@ private fun EditorScreen(
                                     } else selected?.let(::selectImportedBrush) ?: return
                                     brushSize = slot.size
                                     brushOpacity = slot.opacity
-                                    brushColor = slot.colorArgb
+                                    changeBrushColor(slot.colorArgb)
                                     syncCanvasInput(prepareAssets = activeBrush != null)
                                 }
                             }
@@ -2642,7 +2725,7 @@ private fun EditorScreen(
                         EditorTool.HIGHLIGHTER -> onSettingsChange(settings.copy(highlighterOpacity = value))
                         else -> Unit
                     }
-                }, onColor = { brushColor = it }, symmetryMode = settings.symmetryMode, onSymmetryMode = { onSettingsChange(settings.copy(symmetryMode = it)) }, gradientControls = { GradientToolControls(settings, brushColor, { brushColor = it }, onSettingsChange) }, modifier = Modifier.align(dockAlignment).padding(dockPadding).graphicsLayer(translationX = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.xDp.dp.toPx() } else 0f, translationY = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.yDp.dp.toPx() } else 0f))
+                }, onColor = ::changeBrushColor, symmetryMode = settings.symmetryMode, onSymmetryMode = { onSettingsChange(settings.copy(symmetryMode = it)) }, gradientControls = { GradientToolControls(settings, brushColor, ::changeBrushColor, onSettingsChange) }, modifier = Modifier.align(dockAlignment).padding(dockPadding).graphicsLayer(translationX = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.xDp.dp.toPx() } else 0f, translationY = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.yDp.dp.toPx() } else 0f))
                 if (tool == EditorTool.SELECT) SelectionLauncher(
                     featherPixels = selectionFeather,
                     onDeselect = { selectedElementId = null; if (canvasView?.clearSelection() == true) selectionFeather = 0f },
@@ -2715,7 +2798,7 @@ private fun EditorScreen(
                 dock = settings.layerPanelDock,
                 onDock = { changePanelDock(WorkspacePanelKind.LAYERS, it) },
                 onClose = { layersOpen = false; onSettingsChange(settings.copy(showLayerPanel = false)) },
-                onColor = { brushColor = it },
+                onColor = ::changeBrushColor,
                 onSelect = { activeLayerId = it },
                 onAdd = { onAddLayer(document.id, selectedPage.id, "Layer") },
                 onAddFolder = { onAddLayerFolder(document.id, selectedPage.id) },
@@ -2792,7 +2875,7 @@ private fun EditorScreen(
                     dock = settings.layerPanelDock,
                     onDock = { changePanelDock(WorkspacePanelKind.LAYERS, it) },
                     onClose = { layersOpen = false; onSettingsChange(settings.copy(showLayerPanel = false)) },
-                    onColor = { brushColor = it },
+                    onColor = ::changeBrushColor,
                     onSelect = { activeLayerId = it },
                     onAdd = { onAddLayer(document.id, selectedPage.id, "Layer") },
                     onAddFolder = { onAddLayerFolder(document.id, selectedPage.id) },
@@ -2919,7 +3002,7 @@ private fun EditorScreen(
                 dock = settings.layerPanelDock,
                 onDock = { changePanelDock(WorkspacePanelKind.LAYERS, it) },
                 onClose = { layersOpen = false; onSettingsChange(settings.copy(showLayerPanel = false)) },
-                onColor = { brushColor = it },
+                onColor = ::changeBrushColor,
                 onSelect = { activeLayerId = it },
                 onAdd = { onAddLayer(document.id, selectedPage.id, "Layer") },
                 onAddFolder = { onAddLayerFolder(document.id, selectedPage.id) },
@@ -4384,7 +4467,7 @@ private fun pageTemplateKind(template: PageTemplate): String = when (template.ba
 }
 
 @Composable
-private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit) {
+private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val context = LocalContext.current
     val gradientCommitScope = rememberCoroutineScope()
@@ -4533,6 +4616,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onPdfGotoLink = onPdfGotoLink
                 view.onUndoGesture = onUndoGesture
                 view.onRedoGesture = onRedoGesture
+                view.onColorDropCommitted = onColorDropCommitted
                 view.singleFingerDoubleTapUndo = settings.singleFingerDoubleTapUndo
                 view.fillSensitivity = settings.fillSensitivity
                 view.fillSubTool = settings.fillSubTool
@@ -4619,6 +4703,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onPdfGotoLink = onPdfGotoLink
                 view.onUndoGesture = onUndoGesture
                 view.onRedoGesture = onRedoGesture
+                view.onColorDropCommitted = onColorDropCommitted
                 view.singleFingerDoubleTapUndo = settings.singleFingerDoubleTapUndo
                 view.fillSensitivity = settings.fillSensitivity
                 view.fillSubTool = settings.fillSubTool
@@ -6213,14 +6298,23 @@ private fun CspColorPanel(color: Int, onColor: (Int) -> Unit, initiallyExpanded:
     var expanded by rememberSaveable(initiallyExpanded) { mutableStateOf(initiallyExpanded) }
     var channelMode by rememberSaveable { mutableStateOf("HSV") }
     var pickerHeight by rememberSaveable { mutableFloatStateOf(148f) }
-    val latestColor by rememberUpdatedState(color)
+    var draftColor by remember { mutableIntStateOf(color) }
     val latestOnColor by rememberUpdatedState(onColor)
-    val hsv = remember(color) { FloatArray(3).also { AndroidColor.colorToHSV(color, it) } }
+    LaunchedEffect(color) { if (draftColor != color) draftColor = color }
+    // Raw pointer input can run much faster than Compose/AndroidView recomposition. Keep marker
+    // motion local and publish at most once per display frame so the picker remains responsive.
+    LaunchedEffect(Unit) {
+        snapshotFlow { draftColor }.collect { next ->
+            withFrameNanos { }
+            latestOnColor(next)
+        }
+    }
+    val hsv = remember(draftColor) { FloatArray(3).also { AndroidColor.colorToHSV(draftColor, it) } }
     val hueColor = Color(AndroidColor.HSVToColor(floatArrayOf(hsv[0], 1f, 1f)))
     val saturationValueDescription = tr("Saturation and brightness field", "饱和度和明度区域")
     val resizeColorPickerDescription = tr("Resize color picker", "调整色环大小")
     fun publish(hue: Float = hsv[0], saturation: Float = hsv[1], value: Float = hsv[2]) {
-        onColor(AndroidColor.HSVToColor(AndroidColor.alpha(color), floatArrayOf(hue.coerceIn(0f, 360f), saturation.coerceIn(0f, 1f), value.coerceIn(0f, 1f))))
+        draftColor = AndroidColor.HSVToColor(AndroidColor.alpha(draftColor), floatArrayOf(hue.coerceIn(0f, 360f), saturation.coerceIn(0f, 1f), value.coerceIn(0f, 1f)))
     }
     Surface(
         Modifier.fillMaxWidth(),
@@ -6234,7 +6328,7 @@ private fun CspColorPanel(color: Int, onColor: (Int) -> Unit, initiallyExpanded:
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(tr("Color wheel", "色环"), Modifier.weight(1f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                Box(Modifier.size(18.dp).background(Color(color)).border(1.dp, OutlineSoft))
+                Box(Modifier.size(18.dp).background(Color(draftColor)).border(1.dp, OutlineSoft))
                 Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, if (expanded) tr("Collapse color panel", "收起颜色面板") else tr("Expand color panel", "展开颜色面板"), Modifier.size(18.dp))
             }
             if (expanded) {
@@ -6256,8 +6350,8 @@ private fun CspColorPanel(color: Int, onColor: (Int) -> Unit, initiallyExpanded:
                                     if (distance !in inner..outer * 1.12f) return
                                     var degrees = Math.toDegrees(kotlin.math.atan2(dy.toDouble(), dx.toDouble())).toFloat()
                                     if (degrees < 0f) degrees += 360f
-                                    val current = FloatArray(3).also { AndroidColor.colorToHSV(latestColor, it) }
-                                    latestOnColor(AndroidColor.HSVToColor(AndroidColor.alpha(latestColor), floatArrayOf(degrees, current[1], current[2])))
+                                    val current = FloatArray(3).also { AndroidColor.colorToHSV(draftColor, it) }
+                                    draftColor = AndroidColor.HSVToColor(AndroidColor.alpha(draftColor), floatArrayOf(degrees, current[1], current[2]))
                                 }
                                 detectDragGestures(
                                     onDragStart = ::update,
@@ -6277,7 +6371,7 @@ private fun CspColorPanel(color: Int, onColor: (Int) -> Unit, initiallyExpanded:
                         val marker = Offset(center.x + kotlin.math.cos(radians).toFloat() * markerRadius, center.y + kotlin.math.sin(radians).toFloat() * markerRadius)
                         drawCircle(Color.White, size.minDimension * .045f, marker)
                         drawCircle(Ink, size.minDimension * .045f, marker, style = Stroke(size.minDimension * .012f))
-                        drawCircle(Color(color), radius = (radius - ring / 1.5f).coerceAtLeast(1f))
+                        drawCircle(Color(draftColor), radius = (radius - ring / 1.5f).coerceAtLeast(1f))
                     }
                     Canvas(
                         Modifier
@@ -6290,8 +6384,8 @@ private fun CspColorPanel(color: Int, onColor: (Int) -> Unit, initiallyExpanded:
                                     val height = size.height.coerceAtLeast(1).toFloat()
                                     val saturation = (point.x / width).coerceIn(0f, 1f)
                                     val value = (1f - point.y / height).coerceIn(0f, 1f)
-                                    val current = FloatArray(3).also { AndroidColor.colorToHSV(latestColor, it) }
-                                    latestOnColor(AndroidColor.HSVToColor(AndroidColor.alpha(latestColor), floatArrayOf(current[0], saturation, value)))
+                                    val current = FloatArray(3).also { AndroidColor.colorToHSV(draftColor, it) }
+                                    draftColor = AndroidColor.HSVToColor(AndroidColor.alpha(draftColor), floatArrayOf(current[0], saturation, value))
                                 }
                                 detectDragGestures(
                                     onDragStart = ::update,
@@ -6322,12 +6416,12 @@ private fun CspColorPanel(color: Int, onColor: (Int) -> Unit, initiallyExpanded:
                         )
                     }
                     Spacer(Modifier.weight(1f))
-                    BrushColorPicker(color, onColor, square = true)
+                    BrushColorPicker(draftColor, { draftColor = it }, square = true)
                 }
                 if (channelMode == "RGB") {
-                    CspColorChannel("R", AndroidColor.red(color)) { onColor(AndroidColor.argb(AndroidColor.alpha(color), it, AndroidColor.green(color), AndroidColor.blue(color))) }
-                    CspColorChannel("G", AndroidColor.green(color)) { onColor(AndroidColor.argb(AndroidColor.alpha(color), AndroidColor.red(color), it, AndroidColor.blue(color))) }
-                    CspColorChannel("B", AndroidColor.blue(color)) { onColor(AndroidColor.argb(AndroidColor.alpha(color), AndroidColor.red(color), AndroidColor.green(color), it)) }
+                    CspColorChannel("R", AndroidColor.red(draftColor)) { draftColor = AndroidColor.argb(AndroidColor.alpha(draftColor), it, AndroidColor.green(draftColor), AndroidColor.blue(draftColor)) }
+                    CspColorChannel("G", AndroidColor.green(draftColor)) { draftColor = AndroidColor.argb(AndroidColor.alpha(draftColor), AndroidColor.red(draftColor), it, AndroidColor.blue(draftColor)) }
+                    CspColorChannel("B", AndroidColor.blue(draftColor)) { draftColor = AndroidColor.argb(AndroidColor.alpha(draftColor), AndroidColor.red(draftColor), AndroidColor.green(draftColor), it) }
                 } else {
                     CspFloatColorChannel("H", hsv[0], 0f..360f, "${hsv[0].toInt()}°") { publish(hue = it) }
                     CspFloatColorChannel("S", hsv[1], 0f..1f, "${(hsv[1] * 100f).toInt()}%") { publish(saturation = it) }
@@ -7883,7 +7977,7 @@ private fun ProcreateBrushLibrary(
                     DropdownMenu(expanded = addMenu, onDismissRequest = { addMenu = false }) {
                         DropdownMenuItem(text = { Text(tr("Create new brush", "新建笔刷")) }, leadingIcon = { Icon(Icons.Outlined.Brush, null) }, onClick = {
                             addMenu = false
-                            val group = selectedCategory.takeIf { it in importedCategories }
+                            val group = selectedCategory.takeIf { it in systemCategories || it in importedCategories }
                             val created = ImportedBrush(name = newBrushName, format = BrushFormat.INKLOOM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = listOf(createdInInkloom), groupName = group.orEmpty())
                             onReplaceBrushes(brushes + created)
                             editBrush = created
@@ -7986,14 +8080,16 @@ private fun ProcreateBrushLibrary(
                                         Modifier.size(16.dp),
                                         tint = MutedInk,
                                     )
-                                } else if (customGroup) Spacer(Modifier.width(24.dp))
-                                if (customGroup) Box(Modifier.width(3.dp).height(19.dp).clip(RoundedCornerShape(2.dp)).background(if (selected) Color(0xFF1677D2) else Color(0xFFBDBDBD)))
-                                if (customGroup) Spacer(Modifier.width(7.dp))
+                                } else Spacer(Modifier.width(24.dp))
                                 Text(visibleCategoryLabel, color = Ink, fontSize = 11.sp, maxLines = 1, modifier = Modifier.weight(1f))
-                                if (customGroup) Text(brushes.count { BrushGroupOperations.isWithin(it.groupName, category) }.toString(), color = MutedInk, fontSize = 9.sp)
+                                Text(
+                                    (systemBrushes.count { it.groupName.equals(category, true) } + brushes.count { BrushGroupOperations.isWithin(it.groupName, category) }).toString(),
+                                    color = MutedInk,
+                                    fontSize = 9.sp,
+                                )
                                 if (customGroup) IconButton(onClick = { menuGroup = category }, modifier = Modifier.size(26.dp)) {
                                     Icon(Icons.Outlined.MoreVert, tr("Brush group actions $visibleCategoryLabel", "笔刷分组操作 $visibleCategoryLabel"), Modifier.size(17.dp), tint = MutedInk)
-                                }
+                                } else Spacer(Modifier.width(26.dp))
                             }
                             DropdownMenu(expanded = menuGroup == category, onDismissRequest = { menuGroup = null }) {
                                 DropdownMenuItem(text = { Text(tr("Rename group", "重命名分组")) }, onClick = {
@@ -9145,9 +9241,9 @@ private fun SettingsDialog(
                 item { Text(tr("INPUT", "输入"), color = Sage, fontSize = 12.sp) }
                 item { SettingSwitch(tr("Draw with finger", "手指书写"), tr("Off by default. Fingers navigate and zoom.", "默认关闭；手指用于移动和缩放。"), settings.fingerDrawing) { onChange(settings.copy(fingerDrawing = it)) } }
                 item { SettingSwitch(tr("Single-finger double tap to undo", "单指双击撤销"), tr("Enabled by default. Only blank-canvas taps trigger it; drawing, dragging and links are excluded.", "默认开启；仅空白画布短触生效，书写、拖动和链接均不会触发。"), settings.singleFingerDoubleTapUndo) { onChange(settings.copy(singleFingerDoubleTapUndo = it)) } }
-                item { SettingSwitch(tr("Two-finger double tap to undo", "双指双击撤销"), tr("Matches common notebook gestures.", "符合常见笔记应用手势。"), settings.twoFingerDoubleTapUndo) { onChange(settings.copy(twoFingerDoubleTapUndo = it)) } }
+                item { SettingSwitch(tr("Two-finger tap to undo", "双指轻点撤销"), tr("Matches Procreate and Clip Studio Paint.", "与 Procreate 和 Clip Studio Paint 的手势一致。"), settings.twoFingerDoubleTapUndo) { onChange(settings.copy(twoFingerDoubleTapUndo = it)) } }
                 item { SettingSwitch(tr("Three-finger tap to redo", "三指轻点重做"), tr("Matches common drawing-app gestures.", "符合常见绘画应用手势。"), settings.threeFingerTapRedo) { onChange(settings.copy(threeFingerTapRedo = it)) } }
-                item { SettingSwitch(tr("Two-finger canvas rotation", "双指旋转画布"), tr("Off by default to prevent accidental rotation; R remains available.", "默认关闭以避免误旋转；仍可使用 R 快捷键。"), settings.twoFingerRotation) { onChange(settings.copy(twoFingerRotation = it)) } }
+                item { SettingSwitch(tr("Two-finger canvas rotation", "双指旋转画布"), tr("Pinch, pan, and twist the canvas naturally.", "用双指自然地缩放、平移和旋转画布。"), settings.twoFingerRotation) { onChange(settings.copy(twoFingerRotation = it)) } }
                 item { SettingSwitch(tr("Show input diagnostics", "显示输入诊断"), tr("Displays stylus data plus Toolbox keys, scan codes, rotary axes, pointer buttons, source and device identity.", "显示手写笔数据，以及 Toolbox 的按键、扫描码、旋钮轴、侧键、来源和设备标识。"), settings.showInputDiagnostics) { onChange(settings.copy(showInputDiagnostics = it)) } }
                 item { Text("${tr("Pressure sensitivity", "压感灵敏度")}  ${"%.2f".format(settings.pressureSensitivity)}×") }
                 item { Slider(settings.pressureSensitivity, { onChange(settings.copy(pressureSensitivity = it)) }, valueRange = .25f..2.5f) }
@@ -9838,20 +9934,20 @@ private fun SelectionLauncher(
         border = CardDefaults.outlinedCardBorder(),
         shadowElevation = 5.dp,
     ) {
-        Row(Modifier.height(42.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.height(48.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.width(22.dp).fillMaxHeight().semantics { contentDescription = dragDescription }.pointerInput(Unit) {
                 detectDragGestures { change, delta -> change.consume(); dragX += delta.x; dragY += delta.y }
             }, contentAlignment = Alignment.Center) {
                 Icon(Icons.Outlined.DragIndicator, null, Modifier.size(17.dp), tint = MutedInk)
             }
-            CompactToolbarIconButton(onDeselect, tr("Deselect", "取消选区")) { Icon(Icons.Outlined.Close, null, Modifier.size(18.dp)) }
-            CompactToolbarIconButton(onReselect, tr("Reselect", "重新选择")) { Icon(Icons.Outlined.RestartAlt, null, Modifier.size(18.dp)) }
-            CompactToolbarIconButton(onInvert, tr("Invert selection", "反选")) { Icon(Icons.Outlined.Flip, null, Modifier.size(18.dp)) }
+            TextButton(onClick = onDeselect, contentPadding = PaddingValues(horizontal = 7.dp)) { Icon(Icons.Outlined.Close, null, Modifier.size(16.dp)); Spacer(Modifier.width(3.dp)); Text(tr("Deselect", "取消"), fontSize = 10.sp) }
+            TextButton(onClick = onReselect, contentPadding = PaddingValues(horizontal = 7.dp)) { Icon(Icons.Outlined.RestartAlt, null, Modifier.size(16.dp)); Spacer(Modifier.width(3.dp)); Text(tr("Reselect", "重选"), fontSize = 10.sp) }
+            TextButton(onClick = onInvert, contentPadding = PaddingValues(horizontal = 7.dp)) { Icon(Icons.Outlined.Flip, null, Modifier.size(16.dp)); Spacer(Modifier.width(3.dp)); Text(tr("Invert", "反选"), fontSize = 10.sp) }
             CompactToolbarIconButton({ onExpand(amount) }, tr("Expand selection", "扩大选区")) { Icon(Icons.Outlined.ZoomOutMap, null, Modifier.size(18.dp)) }
             CompactToolbarIconButton({ onShrink(amount) }, tr("Shrink selection", "缩小选区")) { Icon(Icons.Outlined.ZoomInMap, null, Modifier.size(18.dp)) }
             CompactToolbarIconButton({ onBorder(amount) }, tr("Border selection", "边界选区")) { Icon(Icons.Outlined.BorderStyle, null, Modifier.size(18.dp)) }
             CompactToolbarIconButton(onFill, tr("Fill selection", "填充选区")) { Icon(Icons.Outlined.FormatColorFill, null, Modifier.size(18.dp)) }
-            CompactToolbarIconButton(onTransform, tr("Free transform", "自由变换")) { Icon(Icons.Outlined.Transform, null, Modifier.size(18.dp)) }
+            TextButton(onClick = onTransform, contentPadding = PaddingValues(horizontal = 7.dp)) { Icon(Icons.Outlined.Transform, null, Modifier.size(16.dp)); Spacer(Modifier.width(3.dp)); Text(tr("Transform", "变换"), fontSize = 10.sp) }
             Box {
                 CompactToolbarIconButton({ settingsOpen = true }, tr("Selection modification settings", "选区修改设置")) { Icon(Icons.Outlined.Tune, null, Modifier.size(18.dp)) }
                 DropdownMenu(settingsOpen, { settingsOpen = false }, Modifier.width(280.dp)) {

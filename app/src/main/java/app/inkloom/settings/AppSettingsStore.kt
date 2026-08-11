@@ -49,7 +49,7 @@ data class AppSettings(
     val bottomDockActivePanel: WorkspacePanelKind = WorkspacePanelKind.PAGES,
     val freeDockActivePanel: WorkspacePanelKind = WorkspacePanelKind.BRUSHES,
     val panelTabOrder: String = "PAGES,BRUSHES,LAYERS",
-    val pagePanelXDp: Float = 18f,
+    val pagePanelXDp: Float = 88f,
     val pagePanelYDp: Float = 18f,
     val pagePanelWidthDp: Float = 224f,
     val pagePanelHeightDp: Float = 620f,
@@ -69,7 +69,7 @@ data class AppSettings(
     val singleFingerDoubleTapUndo: Boolean = true,
     val twoFingerDoubleTapUndo: Boolean = true,
     val threeFingerTapRedo: Boolean = true,
-    val twoFingerRotation: Boolean = false,
+    val twoFingerRotation: Boolean = true,
     val symmetryMode: SymmetryMode = SymmetryMode.NONE,
     val rulerEnabled: Boolean = false,
     val rulerCenterX: Float = .5f,
@@ -157,6 +157,8 @@ class AppSettingsStore(context: Context) {
     private companion object {
         const val STUDIO_WORKSPACE_VERSION_KEY = "studioWorkspaceVersion"
         const val STUDIO_WORKSPACE_VERSION = 2
+        const val INPUT_GESTURES_VERSION_KEY = "inputGesturesVersion"
+        const val INPUT_GESTURES_VERSION = 1
     }
 
     private val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
@@ -164,6 +166,7 @@ class AppSettingsStore(context: Context) {
     private val orientation = WorkspaceOrientation.from(context.resources.configuration)
 
     fun load(): AppSettings {
+        val migrateCanvasRotation = preferences.getInt(INPUT_GESTURES_VERSION_KEY, 0) < INPUT_GESTURES_VERSION
         val pressureMinimum = preferences.getFloat("pressureMinimumInput", 0f).coerceIn(0f, .95f)
         val pressureMaximum = preferences.getFloat("pressureMaximumInput", 1f).coerceIn(pressureMinimum + .05f, 1f)
         val loaded = AppSettings(
@@ -202,7 +205,10 @@ class AppSettingsStore(context: Context) {
             bottomDockActivePanel = enumValue(preferences.getString("bottomDockActivePanel", null), WorkspacePanelKind.PAGES),
             freeDockActivePanel = enumValue(preferences.getString("freeDockActivePanel", null), WorkspacePanelKind.BRUSHES),
             panelTabOrder = WorkspacePanelTabs.encodeOrder(WorkspacePanelTabs.normalizeOrder(preferences.getString("panelTabOrder", null).orEmpty())),
-            pagePanelXDp = preferences.getFloat("pagePanelXDp", 18f).coerceIn(-2400f, 2400f),
+            pagePanelXDp = preferences.getFloat("pagePanelXDp", 88f).let { saved ->
+                // The former 18dp default covered Procreate-style size/opacity handles.
+                if (saved == 18f) 88f else saved
+            }.coerceIn(-2400f, 2400f),
             pagePanelYDp = preferences.getFloat("pagePanelYDp", 18f).coerceIn(-2400f, 2400f),
             pagePanelWidthDp = preferences.getFloat("pagePanelWidthDp", 224f).let { saved ->
                 // 300dp was the old oversized default. Migrate only that exact untouched value;
@@ -226,7 +232,7 @@ class AppSettingsStore(context: Context) {
             singleFingerDoubleTapUndo = preferences.getBoolean("singleFingerDoubleTapUndo", true),
             twoFingerDoubleTapUndo = preferences.getBoolean("twoFingerDoubleTapUndo", true),
             threeFingerTapRedo = preferences.getBoolean("threeFingerTapRedo", true),
-            twoFingerRotation = preferences.getBoolean("twoFingerRotation", false),
+            twoFingerRotation = if (migrateCanvasRotation) true else preferences.getBoolean("twoFingerRotation", true),
             symmetryMode = enumValue(preferences.getString("symmetryMode", null), SymmetryMode.NONE),
             rulerEnabled = preferences.getBoolean("rulerEnabled", false),
             rulerCenterX = preferences.getFloat("rulerCenterX", .5f).takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: .5f,
@@ -294,6 +300,10 @@ class AppSettingsStore(context: Context) {
             workspaceLayouts = WorkspaceLayoutProfilesCodec.decode(preferences.getString("workspaceLayouts", null)),
         )
         val selected = loaded.withWorkspaceFor(orientation)
+        if (migrateCanvasRotation) preferences.edit {
+            putBoolean("twoFingerRotation", true)
+            putInt(INPUT_GESTURES_VERSION_KEY, INPUT_GESTURES_VERSION)
+        }
         if (preferences.getInt(STUDIO_WORKSPACE_VERSION_KEY, 0) < STUDIO_WORKSPACE_VERSION) {
             return save(BuiltInWorkspaces.unified(selected))
         }

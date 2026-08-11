@@ -26,10 +26,69 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class InkCanvasNavigationTest {
+    @Test fun oneStationaryTwoFingerTapTriggersOneUndo() {
+        val view = canvas().apply {
+            fingerDrawingEnabled = false
+            twoFingerDoubleTapUndo = true
+        }
+        var undoCount = 0
+        view.onUndoGesture = { undoCount++ }
+
+        send(view, 1_000L, MotionEvent.ACTION_DOWN, point(0, 300f, 300f))
+        send(view, 1_020L, MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), point(0, 300f, 300f), point(1, 500f, 300f))
+        // Real digitizers commonly emit a stationary MOVE packet before the fingers lift.
+        send(view, 1_060L, MotionEvent.ACTION_MOVE, point(0, 302f, 301f), point(1, 502f, 301f))
+        send(view, 1_100L, MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), point(0, 302f, 301f), point(1, 502f, 301f))
+        send(view, 1_120L, MotionEvent.ACTION_UP, point(0, 302f, 301f))
+
+        assertEquals(1, undoCount)
+    }
+
+    @Test fun pinchDoesNotTriggerTwoFingerUndo() {
+        val view = canvas().apply { twoFingerDoubleTapUndo = true }
+        var undoCount = 0
+        view.onUndoGesture = { undoCount++ }
+
+        send(view, 1_000L, MotionEvent.ACTION_DOWN, point(0, 300f, 300f))
+        send(view, 1_020L, MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), point(0, 300f, 300f), point(1, 500f, 300f))
+        send(view, 1_060L, MotionEvent.ACTION_MOVE, point(0, 240f, 300f), point(1, 560f, 300f))
+        send(view, 1_100L, MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), point(0, 240f, 300f), point(1, 560f, 300f))
+
+        assertEquals(0, undoCount)
+    }
+
+    @Test fun partiallyObscuredStylusEventsRemainDrawable() {
+        val view = canvas().apply { tool = EditorTool.PEN }
+        var committed = 0
+        view.onStrokeCommitted = { committed++ }
+        obscuredStylusEvent(MotionEvent.ACTION_DOWN, 120f, 160f).also { event ->
+            try { assertTrue(view.onFilterTouchEventForSecurity(event)) } finally { event.recycle() }
+        }
+
+        sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 120f, 160f, flags = MotionEvent.FLAG_WINDOW_IS_PARTIALLY_OBSCURED)
+        sendStylus(view, 20L, MotionEvent.ACTION_MOVE, 200f, 230f, flags = MotionEvent.FLAG_WINDOW_IS_PARTIALLY_OBSCURED)
+        sendStylus(view, 40L, MotionEvent.ACTION_UP, 200f, 230f, flags = MotionEvent.FLAG_WINDOW_IS_PARTIALLY_OBSCURED)
+
+        assertEquals(1, committed)
+    }
+
+    @Test fun floatingWindowFocusLossDoesNotCancelDeliveredStylusStream() {
+        val view = canvas().apply { tool = EditorTool.PEN }
+        var committed = 0
+        view.onStrokeCommitted = { committed++ }
+
+        sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 120f, 160f)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.onWindowFocusChanged(false) }
+        sendStylus(view, 20L, MotionEvent.ACTION_MOVE, 200f, 230f)
+        sendStylus(view, 40L, MotionEvent.ACTION_UP, 200f, 230f)
+
+        assertEquals(1, committed)
+    }
     @Test fun enabledSingleFingerDoubleTapOnBlankCanvasTriggersUndoOnce() {
         val view = canvas().apply {
             fingerDrawingEnabled = false
             singleFingerDoubleTapUndo = true
+            twoFingerDoubleTapUndo = false
         }
         var undoCount = 0
         view.onUndoGesture = { undoCount++ }
@@ -59,6 +118,7 @@ class InkCanvasNavigationTest {
         val view = canvas().apply {
             fingerDrawingEnabled = false
             singleFingerDoubleTapUndo = true
+            twoFingerDoubleTapUndo = false
         }
         var undoCount = 0
         view.onUndoGesture = { undoCount++ }
@@ -478,7 +538,7 @@ class InkCanvasNavigationTest {
         assertEquals(listOf(ShortcutPhase.PRESS, ShortcutPhase.RELEASE), activations.map(ShortcutActivation::phase))
     }
 
-    @Test fun focusLossReleasesHeldStylusToolAndCancelsPartialInk() {
+    @Test fun focusLossKeepsHeldStylusToolUntilTheDeliveredRelease() {
         val view = canvas().apply {
             tool = EditorTool.PEN
             primaryButtonAction = StylusButtonAction.EYEDROPPER
@@ -491,6 +551,8 @@ class InkCanvasNavigationTest {
 
         sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 120f, 160f, MotionEvent.BUTTON_STYLUS_PRIMARY)
         InstrumentationRegistry.getInstrumentation().runOnMainSync { view.onWindowFocusChanged(false) }
+        assertEquals(listOf(ShortcutPhase.PRESS), activations.map(ShortcutActivation::phase))
+        sendStylus(view, 20L, MotionEvent.ACTION_UP, 120f, 160f)
 
         assertEquals(listOf(ShortcutPhase.PRESS, ShortcutPhase.RELEASE), activations.map(ShortcutActivation::phase))
         assertEquals(0, committed)
@@ -704,8 +766,20 @@ class InkCanvasNavigationTest {
         }
     }
 
-    private fun sendStylus(view: InkCanvasView, time: Long, action: Int, x: Float, y: Float, buttonState: Int = 0) {
-        val event = MotionEvent.obtain(
+    private fun sendStylus(view: InkCanvasView, time: Long, action: Int, x: Float, y: Float, buttonState: Int = 0, flags: Int = 0) {
+        val event = stylusEvent(time, action, x, y, buttonState, flags)
+        try {
+            InstrumentationRegistry.getInstrumentation().runOnMainSync { view.onTouchEvent(event) }
+        } finally {
+            event.recycle()
+        }
+    }
+
+    private fun obscuredStylusEvent(action: Int, x: Float, y: Float): MotionEvent =
+        stylusEvent(0L, action, x, y, flags = MotionEvent.FLAG_WINDOW_IS_PARTIALLY_OBSCURED)
+
+    private fun stylusEvent(time: Long, action: Int, x: Float, y: Float, buttonState: Int = 0, flags: Int = 0): MotionEvent =
+        MotionEvent.obtain(
             0L,
             time,
             action,
@@ -719,13 +793,7 @@ class InkCanvasNavigationTest {
             0,
             0,
             InputDevice.SOURCE_STYLUS,
-            0,
+            flags,
         )
-        try {
-            InstrumentationRegistry.getInstrumentation().runOnMainSync { view.onTouchEvent(event) }
-        } finally {
-            event.recycle()
-        }
-    }
 
 }

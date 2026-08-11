@@ -17,6 +17,7 @@ import android.graphics.PorterDuffColorFilter
 import android.graphics.PorterDuffXfermode
 import android.os.SystemClock
 import android.view.KeyEvent
+import android.view.DragEvent
 import android.view.MotionEvent
 import android.view.PointerIcon
 import android.view.View
@@ -159,6 +160,8 @@ data class LayerElementBitmaps(val base: Bitmap?, val additions: Bitmap?) {
     }
 }
 
+data class CanvasColorDrop(val color: Int)
+
 class InkCanvasView(context: Context) : View(context) {
     private val renderLock = Any()
     private val strokeInputModeler = NativeStrokeInputModeler()
@@ -298,6 +301,8 @@ class InkCanvasView(context: Context) : View(context) {
     private var navigationDownX = 0f
     private var navigationDownY = 0f
     private var navigationSpan = 0f
+    private var navigationGestureStartSpan = 0f
+    private var navigationGestureRotation = 0f
     private var navigationMoved = false
     private var navigationTapEligible = false
     /** Once two fingers enter viewport navigation, the gesture remains navigation until the last
@@ -738,6 +743,8 @@ class InkCanvasView(context: Context) : View(context) {
      *  mask's bounding box in normalized page coordinates, the fill color and opacity.
      *  The host persists the mask and creates a [PageElement.Fill]. */
     var onFillCommitted: ((mask: Bitmap, x: Float, y: Float, width: Float, height: Float, colorArgb: Long, opacity: Float) -> Unit)? = null
+    var onColorDropCommitted: (Int) -> Unit = {}
+    private var continueFillingColor: Int? = null
     var fillSensitivity: Float = .25f
     var fillSubTool: FillSubTool = FillSubTool.BUCKET
     var fillCloseGapPixels: Float = 0f
@@ -774,12 +781,41 @@ class InkCanvasView(context: Context) : View(context) {
         setBackgroundColor(Color.TRANSPARENT)
         isFocusable = true
         isFocusableInTouchMode = true
+        filterTouchesWhenObscured = false
+        setOnDragListener { _, drag ->
+            val payload = drag.localState as? CanvasColorDrop ?: return@setOnDragListener false
+            when (drag.action) {
+                DragEvent.ACTION_DRAG_STARTED -> true
+                DragEvent.ACTION_DROP -> {
+                    inkColor = payload.color
+                    beginFillGesture(
+                        drag.x / width.coerceAtLeast(1).toFloat(),
+                        drag.y / height.coerceAtLeast(1).toFloat(),
+                        drag.x,
+                    )
+                    commitFillGesture()
+                    onColorDropCommitted(payload.color)
+                    true
+                }
+                else -> true
+            }
+        }
     }
+
+    fun setContinueFilling(enabled: Boolean, color: Int = inkColor) {
+        continueFillingColor = color.takeIf { enabled }
+        if (!enabled) cancelFillGesture()
+    }
+
+    /** Partially obscured events are still valid canvas input. Android's window manager remains
+     * responsible for blocking unsafe pass-through under a fully covering untrusted overlay. */
+    override fun onFilterTouchEventForSecurity(event: MotionEvent): Boolean = true
 
     override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
         super.onWindowFocusChanged(hasWindowFocus)
         if (!hasWindowFocus) {
-            if (activeTool != null) cancelActiveGestureForNavigation()
+            // Floating palettes and other multi-window applications can take window focus while
+            // Android continues to deliver stylus input. Do not discard that valid stroke stream.
             stopContinuousPlot()
             laserTrail.clear()
             rulerGestureStart?.let { rulerGuide = it }
@@ -799,10 +835,6 @@ class InkCanvasView(context: Context) : View(context) {
             activeSpecialRulerConstraint = null
             ctrlModifierHeld = false
             altModifierHeld = false
-            releaseHeldStylusButtons()
-            lastStylusButtonState = 0
-            stylusCommandConsumesContact = false
-            stylusHandNavigationContact = false
             singleFingerDoubleTapUndoGesture.cancel()
             twoFingerTapUndoGesture.cancel()
             threeFingerTapRedoGesture.cancel()
@@ -1288,6 +1320,10 @@ class InkCanvasView(context: Context) : View(context) {
             drawStampedStroke(canvas, stroke, tips, dualTips, tipPaths, grainOffset.x, grainOffset.y, primaryStampStartIndex, dualStampStartIndex)
             return
         }
+        if (stroke.brushId == "system-ps19" && stroke.points.size > 1) {
+            drawContinuousRoundStroke(canvas, stroke)
+            return
+        }
         paint.color = stroke.colorArgb.toInt()
         paint.colorFilter = null
         val scale = width.coerceAtLeast(1) / REFERENCE_WIDTH
@@ -1596,6 +1632,55 @@ class InkCanvasView(context: Context) : View(context) {
         paint.maskFilter = null
     }
 
+    /** Photoshop's classic hard round brush is a continuous deposit. Drawing every input pair as
+     * an independently alpha-blended round-capped line creates a dark bead at every join. Build a
+     * single pressure-width ribbon instead, so joins are rasterized once and remain seamless. */
+    private fun drawContinuousRoundStroke(canvas: Canvas, stroke: InkStroke) {
+        val points = stroke.points
+        val scale = width.coerceAtLeast(1) / REFERENCE_WIDTH
+        val taper = strokeTaperFactors(stroke, points)
+        val radii = FloatArray(points.size)
+        var alphaSum = 0f
+        points.forEachIndexed { index, point ->
+            val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
+            radii[index] = stroke.width * scale * (taper?.get(index) ?: 1f) * dynamics.size * .5f
+            alphaSum += stroke.flow * dynamics.depositedAlpha
+        }
+        val path = Path()
+        fun edge(index: Int, side: Float): Pair<Float, Float> {
+            val previous = points[(index - 1).coerceAtLeast(0)]
+            val next = points[(index + 1).coerceAtMost(points.lastIndex)]
+            val dx = (next.x - previous.x) * width
+            val dy = (next.y - previous.y) * height
+            val length = hypot(dx.toDouble(), dy.toDouble()).toFloat().coerceAtLeast(.001f)
+            val radius = radii[index]
+            return points[index].x * width - dy / length * radius * side to
+                points[index].y * height + dx / length * radius * side
+        }
+        points.indices.forEach { index ->
+            val edge = edge(index, 1f)
+            if (index == 0) path.moveTo(edge.first, edge.second) else path.lineTo(edge.first, edge.second)
+        }
+        points.indices.reversed().forEach { index ->
+            val edge = edge(index, -1f)
+            path.lineTo(edge.first, edge.second)
+        }
+        path.close()
+        val first = points.first()
+        val last = points.last()
+        path.addCircle(first.x * width, first.y * height, radii.first(), Path.Direction.CW)
+        path.addCircle(last.x * width, last.y * height, radii.last(), Path.Direction.CW)
+        val previousStyle = paint.style
+        paint.style = Paint.Style.FILL
+        paint.color = stroke.colorArgb.toInt()
+        paint.colorFilter = null
+        paint.maskFilter = null
+        paint.alpha = (alphaSum / points.size * 255f).toInt().coerceIn(0, 255)
+        canvas.drawPath(path, paint)
+        paint.style = previousStyle
+        paint.alpha = 255
+    }
+
     private fun drawLineSegment(canvas: Canvas, stroke: InkStroke, point: StrokePoint, startX: Float, startY: Float, endX: Float, endY: Float, strokeWidth: Float, alpha: Int) {
         val jitteredColor = BrushColorJitter.argb(stroke, point, point.timeMs.toInt())
         if (stroke.waterEdgeEnabled && stroke.waterEdgeOpacity > 0f) {
@@ -1739,6 +1824,7 @@ class InkCanvasView(context: Context) : View(context) {
         if (effectiveAction == MotionEvent.ACTION_DOWN) {
             // Every new contact stream is a hard recovery boundary. This also recovers from a
             // device/parent that consumed the previous stream's final UP or CANCEL.
+            if (activeTool != null) cancelActiveGestureForNavigation()
             viewportGestureActive = false
             externalViewportGestureContact = false
             pageContactRejected = false
@@ -1779,6 +1865,20 @@ class InkCanvasView(context: Context) : View(context) {
             return true
         }
         val inputPoint = canvasPoint(event, pointerIndex)
+        continueFillingColor?.takeIf { event.pointerCount == 1 }?.let { fillColor ->
+            inkColor = fillColor
+            when (effectiveAction) {
+                MotionEvent.ACTION_DOWN -> beginFillGesture(
+                    inputPoint.first / width.coerceAtLeast(1).toFloat(),
+                    inputPoint.second / height.coerceAtLeast(1).toFloat(),
+                    event.x,
+                )
+                MotionEvent.ACTION_MOVE -> adjustFillSensitivity(event.x)
+                MotionEvent.ACTION_UP -> commitFillGesture()
+                MotionEvent.ACTION_CANCEL -> cancelFillGesture()
+            }
+            return true
+        }
         if (brushSizeDragActive) {
             when (event.actionMasked) {
                 MotionEvent.ACTION_MOVE -> if (event.pointerCount == 1) updateBrushSizeDrag(inputPoint.first, inputPoint.second) else finishBrushSizeDrag(cancelled = true)
@@ -1835,6 +1935,8 @@ class InkCanvasView(context: Context) : View(context) {
                 MotionEvent.ACTION_DOWN -> {
                     twoPointerRotationGesture.reset()
                     navigationSpan = 0f
+                    navigationGestureStartSpan = 0f
+                    navigationGestureRotation = 0f
                     threeFingerTapRedoGesture.cancel()
                     navigationX = event.x; navigationY = event.y
                     navigationDownX = event.x; navigationDownY = event.y
@@ -1865,6 +1967,8 @@ class InkCanvasView(context: Context) : View(context) {
                     navigationX = focus.first
                     navigationY = focus.second
                     navigationSpan = event.localSpan()
+                    navigationGestureStartSpan = navigationSpan
+                    navigationGestureRotation = 0f
                     if (twoFingerRotationEnabled && event.pointerCount == 2) {
                         twoPointerRotationGesture.begin(event.getX(0), event.getY(0), event.getX(1), event.getY(1))
                     } else twoPointerRotationGesture.reset()
@@ -1879,6 +1983,8 @@ class InkCanvasView(context: Context) : View(context) {
                         navigationDownY = navigationY
                     }
                     navigationSpan = 0f
+                    navigationGestureStartSpan = 0f
+                    navigationGestureRotation = 0f
                     navigationMoved = true
                     navigationTapEligible = false
                     twoPointerRotationGesture.reset()
@@ -1893,9 +1999,16 @@ class InkCanvasView(context: Context) : View(context) {
                         twoPointerRotationGesture.reset()
                         null
                     }
-                    rotationDelta?.let(onViewportRotate)
+                    rotationDelta?.let { delta ->
+                        navigationGestureRotation += kotlin.math.abs(delta)
+                        onViewportRotate(delta)
+                    }
                     if (event.pointerCount == 3) threeFingerTapRedoGesture.move(focus.first, focus.second, transforming = true)
-                    else twoFingerTapUndoGesture.move(focus.first, focus.second, scaling = true)
+                    else twoFingerTapUndoGesture.move(
+                        focus.first,
+                        focus.second,
+                        transforming = kotlin.math.abs(span - navigationGestureStartSpan) > navigationTouchSlop || navigationGestureRotation > 2f,
+                    )
                     onViewportPinch?.invoke(factor, navigationX, navigationY, focus.first, focus.second) ?: run {
                         if (factor != 1f) onViewportScale(factor, navigationX, navigationY)
                         onViewportPan(focus.first - navigationX, focus.second - navigationY)
@@ -4195,7 +4308,7 @@ class InkCanvasView(context: Context) : View(context) {
     private fun drawSelectionHandles(canvas: Canvas) {
         if (selectedStrokeIds.isEmpty()) return
         val bounds = selectionBounds() ?: return
-        val handleRadius = SELECTION_HANDLE_TOUCH_PX / 3f / width.coerceAtLeast(1)
+        val handleRadius = SELECTION_HANDLE_TOUCH_PX / 2.5f / width.coerceAtLeast(1)
         val corners = listOf(
             bounds.left to bounds.top, bounds.right to bounds.top,
             bounds.right to bounds.bottom, bounds.left to bounds.bottom,
@@ -4213,7 +4326,10 @@ class InkCanvasView(context: Context) : View(context) {
             selectionHandlePaint.color = Color.WHITE
             canvas.drawCircle(cx, cy, handleRadius * width, selectionHandlePaint)
             selectionHandleStrokePaint.color = Color.rgb(24, 119, 242)
+            selectionHandleStrokePaint.strokeWidth = 3f
             canvas.drawCircle(cx, cy, handleRadius * width, selectionHandleStrokePaint)
+            selectionHandlePaint.color = Color.rgb(24, 119, 242)
+            canvas.drawCircle(cx, cy, 3.5f, selectionHandlePaint)
         }
     }
 

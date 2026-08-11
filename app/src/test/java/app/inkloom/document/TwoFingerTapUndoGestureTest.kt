@@ -5,21 +5,19 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TwoFingerTapUndoGestureTest {
-    @Test fun `two completed stationary taps trigger undo`() {
+    @Test fun `one completed stationary two finger tap triggers undo`() {
         val gesture = TwoFingerTapUndoGesture(movementSlop = 12f)
         gesture.start(1_000L, 100f, 100f)
-        assertFalse(gesture.finish(1_080L))
-        gesture.start(1_220L, 102f, 101f)
-        assertTrue(gesture.finish(1_300L))
+        assertTrue(gesture.finish(1_080L))
     }
 
     @Test fun `pinch or translation never counts as an undo tap`() {
         val gesture = TwoFingerTapUndoGesture(movementSlop = 12f)
         gesture.start(1_000L, 100f, 100f)
-        gesture.move(101f, 100f, scaling = true)
+        gesture.move(101f, 100f, transforming = true)
         assertFalse(gesture.finish(1_080L))
         gesture.start(1_200L, 100f, 100f)
-        gesture.move(140f, 100f, scaling = false)
+        gesture.move(140f, 100f, transforming = false)
         assertFalse(gesture.finish(1_280L))
     }
 
