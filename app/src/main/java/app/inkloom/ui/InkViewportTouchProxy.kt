@@ -129,8 +129,9 @@ class InkViewportTouchProxy(context: Context) : View(context) {
         if (snapshot[0] == 0f || !event.isStylusEvent()) return clearHoverCursor()
         val pointerIndex = event.stylusPointerIndex(activeStylusPointerId)
         if (pointerIndex < 0) return clearHoverCursor()
-        hoverX = event.getX(pointerIndex)
-        hoverY = event.getY(pointerIndex)
+        val point = cursorPoint(canvas, snapshot) ?: return clearHoverCursor()
+        hoverX = point.first
+        hoverY = point.second
         hoverWidth = snapshot[3] * canvas.viewportScale.coerceAtLeast(1f)
         hoverHeight = snapshot.getOrElse(4) { snapshot[3] } * canvas.viewportScale.coerceAtLeast(1f)
         hoverVisible = true
@@ -146,8 +147,9 @@ class InkViewportTouchProxy(context: Context) : View(context) {
         if (snapshot[0] == 0f) return clearHoverCursor()
         val pointerIndex = event.stylusPointerIndex(activeStylusPointerId)
         if (pointerIndex < 0) return clearHoverCursor()
-        hoverX = event.getX(pointerIndex)
-        hoverY = event.getY(pointerIndex)
+        val point = cursorPoint(canvas, snapshot) ?: return clearHoverCursor()
+        hoverX = point.first
+        hoverY = point.second
         hoverWidth = snapshot[3] * canvas.viewportScale.coerceAtLeast(1f)
         hoverHeight = snapshot.getOrElse(4) { snapshot[3] } * canvas.viewportScale.coerceAtLeast(1f)
         hoverVisible = true
@@ -167,6 +169,15 @@ class InkViewportTouchProxy(context: Context) : View(context) {
         hoverHeight = snapshot.getOrElse(4) { snapshot[3] } * canvas.viewportScale.coerceAtLeast(1f)
         postInvalidateOnAnimation()
     }
+
+    private fun cursorPoint(canvas: InkCanvasView, snapshot: FloatArray): Pair<Float, Float>? =
+        coordinateMapper.mapPagePointToCenteredViewport(
+            snapshot[1],
+            snapshot[2],
+            this,
+            canvas,
+            ViewportState(canvas.viewportScale, canvas.viewportPanX, canvas.viewportPanY, canvas.viewportRotationDegrees),
+        )
 
     internal fun hoverCursorSnapshot(): FloatArray = floatArrayOf(
         if (hoverVisible) 1f else 0f,

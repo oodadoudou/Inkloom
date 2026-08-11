@@ -146,10 +146,14 @@ bool append_sample(
         stabilization_by_speed_mode,
         input_velocity
     );
-    const float modeled_x = session.has_sample
+    const float modeled_x = force
+        ? normalized_x
+        : session.has_sample
         ? session.x * filter + normalized_x * (1.0F - filter)
         : normalized_x;
-    const float modeled_y = session.has_sample
+    const float modeled_y = force
+        ? normalized_y
+        : session.has_sample
         ? session.y * filter + normalized_y * (1.0F - filter)
         : normalized_y;
     if (!force && session.has_sample &&

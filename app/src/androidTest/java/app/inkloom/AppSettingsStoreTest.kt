@@ -34,6 +34,20 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class AppSettingsStoreTest {
+    @Test fun legacyImplicitStabilizationIsRemovedButExplicitValuesRemainEditable() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
+        preferences.edit().clear().putInt("studioWorkspaceVersion", 2).putInt("inputGesturesVersion", 1).putFloat("stabilization", .12f).commit()
+        try {
+            val store = AppSettingsStore(context)
+            assertEquals(0f, store.load().stabilization)
+            store.save(store.load().copy(stabilization = .31f))
+            assertEquals(.31f, store.load().stabilization)
+        } finally {
+            preferences.edit().clear().commit()
+        }
+    }
+
     @Test fun correctLineSubtoolSurvivesReload() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)

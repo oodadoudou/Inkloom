@@ -41,6 +41,24 @@ internal class PointerCoordinateMapper {
         return true
     }
 
+    /** Forward counterpart of [mapCenteredViewport]. Cursor feedback is derived from the exact
+     * page point accepted by the canvas instead of from a second, raw-event coordinate path. */
+    fun mapPagePointToCenteredViewport(
+        pageX: Float,
+        pageY: Float,
+        source: View,
+        target: View,
+        viewport: ViewportState,
+    ): Pair<Float, Float>? {
+        if (source.width <= 0 || source.height <= 0 || target.width <= 0 || target.height <= 0) return null
+        if (!configureViewportInverse(target.width.toFloat(), target.height.toFloat(), viewport)) return null
+        val point = floatArrayOf(pageX, pageY)
+        viewportTransform.mapPoints(point)
+        point[0] -= (target.width - source.width) / 2f
+        point[1] -= (target.height - source.height) / 2f
+        return point[0] to point[1]
+    }
+
     private fun configureViewportInverse(width: Float, height: Float, viewport: ViewportState): Boolean {
         val safeWidth = width.coerceAtLeast(1f)
         val safeHeight = height.coerceAtLeast(1f)

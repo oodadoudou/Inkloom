@@ -105,7 +105,7 @@ data class AppSettings(
     val pressureMinimumInput: Float = 0f,
     val pressureMaximumInput: Float = 1f,
     val pressureResponseCurve: List<Float> = PressureResponseCurve.LINEAR,
-    val stabilization: Float = .12f,
+    val stabilization: Float = 0f,
     val postCorrection: Float = 0f,
     val postCorrectionAdjustBySpeed: Boolean = false,
     val postCorrectionAdjustByScale: Boolean = true,
@@ -158,7 +158,7 @@ class AppSettingsStore(context: Context) {
         const val STUDIO_WORKSPACE_VERSION_KEY = "studioWorkspaceVersion"
         const val STUDIO_WORKSPACE_VERSION = 2
         const val INPUT_GESTURES_VERSION_KEY = "inputGesturesVersion"
-        const val INPUT_GESTURES_VERSION = 1
+        const val INPUT_GESTURES_VERSION = 2
     }
 
     private val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
@@ -167,6 +167,8 @@ class AppSettingsStore(context: Context) {
 
     fun load(): AppSettings {
         val migrateCanvasRotation = preferences.getInt(INPUT_GESTURES_VERSION_KEY, 0) < INPUT_GESTURES_VERSION
+        val savedStabilization = preferences.getFloat("stabilization", .12f).coerceIn(0f, .9f)
+        val migrateLegacyDefaultStabilization = migrateCanvasRotation && savedStabilization == .12f
         val pressureMinimum = preferences.getFloat("pressureMinimumInput", 0f).coerceIn(0f, .95f)
         val pressureMaximum = preferences.getFloat("pressureMaximumInput", 1f).coerceIn(pressureMinimum + .05f, 1f)
         val loaded = AppSettings(
@@ -268,7 +270,7 @@ class AppSettingsStore(context: Context) {
             pressureMinimumInput = pressureMinimum,
             pressureMaximumInput = pressureMaximum,
             pressureResponseCurve = PressureResponseCurve.decode(preferences.getString("pressureResponseCurve", null)),
-            stabilization = preferences.getFloat("stabilization", .12f).coerceIn(0f, .9f),
+            stabilization = if (migrateLegacyDefaultStabilization) 0f else savedStabilization,
             postCorrection = preferences.getFloat("postCorrection", 0f).coerceIn(0f, 1f),
             postCorrectionAdjustBySpeed = preferences.getBoolean("postCorrectionAdjustBySpeed", false),
             postCorrectionAdjustByScale = preferences.getBoolean("postCorrectionAdjustByScale", true),
@@ -302,6 +304,7 @@ class AppSettingsStore(context: Context) {
         val selected = loaded.withWorkspaceFor(orientation)
         if (migrateCanvasRotation) preferences.edit {
             putBoolean("twoFingerRotation", true)
+            putFloat("stabilization", selected.stabilization)
             putInt(INPUT_GESTURES_VERSION_KEY, INPUT_GESTURES_VERSION)
         }
         if (preferences.getInt(STUDIO_WORKSPACE_VERSION_KEY, 0) < STUDIO_WORKSPACE_VERSION) {

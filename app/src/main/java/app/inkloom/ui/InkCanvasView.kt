@@ -2399,6 +2399,18 @@ class InkCanvasView(context: Context) : View(context) {
                     eraseAlong(normalizedX, normalizedY, event.getPressure(pointerIndex))
                     finishEraserGesture()
                 } else if (activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) && currentPoints.isNotEmpty()) {
+                    // ACTION_UP can carry the only sample produced by a very fast final motion.
+                    // Settle the modeled tail onto the physical pen before committing so the
+                    // stored trajectory and its live cursor share the same endpoint.
+                    addPoint(
+                        normalizedX,
+                        normalizedY,
+                        event.getPressure(pointerIndex),
+                        event.eventTime,
+                        event.getAxisValue(MotionEvent.AXIS_TILT, pointerIndex),
+                        event.getOrientation(pointerIndex),
+                        force = true,
+                    )
                     val before = strokes.toList()
                     val newStrokes = symmetryStrokes(currentPoints).map { stroke ->
                         StrokePostCorrection.apply(
@@ -2415,7 +2427,12 @@ class InkCanvasView(context: Context) : View(context) {
                     invalidateStrokeCache(emptyList(), newStrokes)
                     commitStrokeEdit(before, strokes)
                     val previewSurface = activeStrokeSurface?.takeUnless { usesMaskedActivePreview() }
-                    previewSurface?.commit(newStrokes)
+                    previewSurface?.let { surface ->
+                        // The UP packet settles stabilization onto the physical endpoint. Publish
+                        // that exact final packet before committing the low-latency surface.
+                        surface.render(newStrokes)
+                        surface.commit(newStrokes)
+                    }
                     activeStrokeSurface?.takeIf { previewSurface == null }?.cancel()
                     activeSurfaceCommitted = previewSurface != null
                     clearActiveStrokeInput()

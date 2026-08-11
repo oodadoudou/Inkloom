@@ -12,6 +12,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import android.graphics.BitmapFactory
+import android.view.MotionEvent
 import android.view.ViewGroup
 import app.inkloom.document.FileDocumentStore
 import app.inkloom.document.ViewportState
@@ -286,6 +287,70 @@ class InkloomPinchThenWriteTest {
             ).forEach { event -> proxy.onTouchEvent(event); event.recycle() }
         }
         assertTrue("Zoomed eraser contact must hit the stroke directly under its cursor", (reflectField(view, "strokes") as? List<*>)?.isEmpty() == true)
+    }
+
+    @Test fun rotatedViewportCursorAndEveryStrokeSampleShareOneTrajectory() {
+        openEditor()
+        var view = requireNotNull(findInkCanvasView())
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.onViewportRotate(37f) }
+        composeRule.waitUntil(5_000) { kotlin.math.abs((findInkCanvasView()?.viewportRotationDegrees ?: 0f) - 37f) < .5f }
+        view = requireNotNull(findInkCanvasView())
+        val proxy = requireNotNull(findInkViewportProxy())
+        val viewport = ViewportState(view.viewportScale, view.viewportPanX, view.viewportPanY, view.viewportRotationDegrees)
+        val samples = listOf(
+            proxy.width * .46f to proxy.height * .45f,
+            proxy.width * .50f to proxy.height * .49f,
+            proxy.width * .55f to proxy.height * .54f,
+            proxy.width * .60f to proxy.height * .58f,
+        )
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val hover = stylusEvent(MotionEvent.ACTION_HOVER_MOVE, samples[1].first, samples[1].second, MotionEvent.TOOL_TYPE_STYLUS, 1L, 2L)
+            assertTrue(proxy.onHoverEvent(hover))
+            hover.recycle()
+        }
+        val cursor = proxy.hoverCursorSnapshot()
+        assertEquals("Rotated cursor X must stay under the physical pen", samples[1].first, cursor[1], .75f)
+        assertEquals("Rotated cursor Y must stay under the physical pen", samples[1].second, cursor[2], .75f)
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val downTime = android.os.SystemClock.uptimeMillis()
+            stylusEvent(MotionEvent.ACTION_DOWN, samples.first().first, samples.first().second, MotionEvent.TOOL_TYPE_STYLUS, downTime, downTime).also {
+                proxy.onTouchEvent(it); it.recycle()
+            }
+            val properties = arrayOf(MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_STYLUS })
+            fun coordinates(point: Pair<Float, Float>) = arrayOf(MotionEvent.PointerCoords().apply {
+                x = point.first; y = point.second; pressure = .72f; size = .04f
+            })
+            MotionEvent.obtain(
+                downTime, downTime + 8L, MotionEvent.ACTION_MOVE, 1, properties, coordinates(samples[1]),
+                0, 0, 1f, 1f, 0, 0, android.view.InputDevice.SOURCE_STYLUS, 0,
+            ).apply {
+                addBatch(downTime + 16L, coordinates(samples[2]), 0)
+                addBatch(downTime + 24L, coordinates(samples[3]), 0)
+            }.also { proxy.onTouchEvent(it); it.recycle() }
+            stylusEvent(MotionEvent.ACTION_UP, samples.last().first, samples.last().second, MotionEvent.TOOL_TYPE_STYLUS, downTime, downTime + 25L).also {
+                proxy.onTouchEvent(it); it.recycle()
+            }
+        }
+        composeRule.waitUntil(10_000) { strokeCount() == 1 }
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val stroke = activeDocumentId?.let { FileDocumentStore(context.filesDir).get(it) }?.pages?.flatMap { it.strokes }?.single()
+        val points = requireNotNull(stroke).points
+        samples.forEach { screen ->
+            val expected = ViewportTransform.viewToPage(
+                screen.first + (view.width - proxy.width) / 2f,
+                screen.second + (view.height - proxy.height) / 2f,
+                view.width.toFloat(), view.height.toFloat(), viewport,
+            )
+            assertTrue(
+                "Every current/historical sample must remain on the rotated pen trajectory: screen=$screen expected=(${expected.first / view.width},${expected.second / view.height}) actual=${points.map { it.x to it.y }}",
+                points.any { point ->
+                    kotlin.math.abs(point.x - expected.first / view.width) < .004f &&
+                        kotlin.math.abs(point.y - expected.second / view.height) < .004f
+                },
+            )
+        }
     }
 
     @Test fun strokeRendersAtZoom1() {
