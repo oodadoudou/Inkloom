@@ -44,9 +44,11 @@ class SelectionTransformTest {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             view.setDocumentStrokes(listOf(app.inkloom.document.InkStroke(id = "a", points = listOf(app.inkloom.document.StrokePoint(.5f, .5f)), colorArgb = 0xFF111111L, width = 6f, brushId = "pen", layerId = app.inkloom.document.LayerIds.INK)), "test")
         }
-        // Select the stroke (tap on it).
-        send(view, 0L, MotionEvent.ACTION_DOWN, 200f, 200f)
-        send(view, 10L, MotionEvent.ACTION_UP, 200f, 200f)
+        // Selection drawing and content transformation are separate modes, matching Procreate.
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            assertTrue(view.selectAllEditableStrokes())
+            assertTrue(view.enterFreeTransform())
+        }
         // The top-right corner handle sits at (0.5, 0.5) in normalized -> (200,200) screen. Drag it outward to scale up.
         send(view, 20L, MotionEvent.ACTION_DOWN, 200f, 200f)
         send(view, 40L, MotionEvent.ACTION_MOVE, 300f, 300f)

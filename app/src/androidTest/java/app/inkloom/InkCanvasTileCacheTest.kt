@@ -403,6 +403,7 @@ class InkCanvasTileCacheTest {
                 renderedTiles.clear()
 
                 view.drawLasso(.095f, .09f, .115f, .13f)
+                assertTrue(view.enterFreeTransform())
                 view.dispatchStylus(MotionEvent.ACTION_DOWN, 107.5f, 112.5f, 60L)
                 view.dispatchStylus(MotionEvent.ACTION_MOVE, 700f, 700f, 70L)
                 view.dispatchStylus(MotionEvent.ACTION_UP, 700f, 700f, 80L)

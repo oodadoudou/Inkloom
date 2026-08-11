@@ -288,6 +288,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var movingSelection = false
     private var selectionMoved = false
     private var selectionTransformMode = TRANSFORM_NONE
+    private var selectionTransformArmed = false
     private var selectionTransformCenterX = 0f
     private var selectionTransformCenterY = 0f
     private var selectionTransformStartDistance = 0f
@@ -442,6 +443,7 @@ class InkCanvasView(context: Context) : View(context) {
         set(value) {
             if (field == value) return
             field = value
+            if (value != EditorTool.SELECT) selectionTransformArmed = false
             if (hoverCursorVisible) {
                 hoverCursorUsesEraser = value == EditorTool.ERASER
                 invalidateInternalHoverCursor()
@@ -1917,7 +1919,11 @@ class InkCanvasView(context: Context) : View(context) {
         if (!viewportGestureActive && handleCanvasGuideGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
         if (!viewportGestureActive && handleRulerGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
         val buttonForcesNavigation = isStylus && (stylusButtonAction == StylusButtonAction.HAND || stylusHandNavigationContact)
-        val isFingerNavigation = viewportGestureActive || forceNavigation || buttonForcesNavigation || StylusInputClassifier.shouldNavigateOrRejectFinger(isStylus, fingerDrawingEnabled, event.pointerCount, event.getTouchMajor(pointerIndex), elapsedSinceStylus)
+        val selectionDrawContact = !isStylus && event.pointerCount == 1 && tool == EditorTool.SELECT &&
+            event.getTouchMajor(pointerIndex) < StylusInputClassifier.PALM_TOUCH_MAJOR_PX &&
+            elapsedSinceStylus !in 0..StylusInputClassifier.RECENT_STYLUS_WINDOW_MS
+        val isFingerNavigation = viewportGestureActive || forceNavigation || buttonForcesNavigation ||
+            (!selectionDrawContact && StylusInputClassifier.shouldNavigateOrRejectFinger(isStylus, fingerDrawingEnabled, event.pointerCount, event.getTouchMajor(pointerIndex), elapsedSinceStylus))
         if (isFingerNavigation) {
             pageContactRejected = false
             if (activeTool != null) {
@@ -2112,6 +2118,13 @@ class InkCanvasView(context: Context) : View(context) {
                     if (selectionShape == SelectionShape.SMART_BORDER || selectionShape == SelectionShape.MAGIC_WAND) {
                         lassoPoints.clear(); selectionGestureBefore = null; selectionMoved = false; movingSelection = false
                         appendSelectionPoint(normalizedX, normalizedY)
+                        invalidate(); return true
+                    }
+                    if (!selectionTransformArmed) {
+                        lassoPoints.clear(); selectionGestureBefore = null; selectionMoved = false; movingSelection = false
+                        if (selectionMode == SelectionMode.REPLACE) selectedStrokeIds.clear()
+                        appendSelectionPoint(normalizedX, normalizedY)
+                        lastX = normalizedX; lastY = normalizedY
                         invalidate(); return true
                     }
                     val handleMode = hitSelectionHandle(normalizedX, normalizedY)
@@ -3759,7 +3772,8 @@ class InkCanvasView(context: Context) : View(context) {
         }
         if (event.pointerCount != 1) return false
         val elapsedSinceStylus = if (lastStylusSeenAt == Long.MIN_VALUE) Long.MAX_VALUE else event.eventTime - lastStylusSeenAt
-        return fingerDrawingEnabled && event.getTouchMajor(0) < StylusInputClassifier.PALM_TOUCH_MAJOR_PX &&
+        val selectionDrawContact = tool == EditorTool.SELECT
+        return (fingerDrawingEnabled || selectionDrawContact) && event.getTouchMajor(0) < StylusInputClassifier.PALM_TOUCH_MAJOR_PX &&
             elapsedSinceStylus !in 0..StylusInputClassifier.RECENT_STYLUS_WINDOW_MS
     }
 
@@ -4881,6 +4895,7 @@ class InkCanvasView(context: Context) : View(context) {
     fun enterFreeTransform(): Boolean {
         if (!hasSelection()) return false
         tool = EditorTool.SELECT
+        selectionTransformArmed = true
         selectionTransformMode = TRANSFORM_NONE
         invalidate()
         return true
@@ -4898,6 +4913,7 @@ class InkCanvasView(context: Context) : View(context) {
         replaceSelectionAlpha(null, resetFeather = true)
         lassoPoints.clear()
         movingSelection = false
+        selectionTransformArmed = false
         invalidate()
         return true
     }

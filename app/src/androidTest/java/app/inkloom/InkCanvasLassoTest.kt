@@ -102,6 +102,7 @@ class InkCanvasLassoTest {
             val edits = mutableListOf<CapturedEdit>()
             val view = configuredView(original, edits)
             view.drawSquareLasso()
+            assertTrue(view.enterFreeTransform())
 
             view.dispatchStylus(MotionEvent.ACTION_DOWN, 500f, 500f, 60L)
             view.dispatchStylus(MotionEvent.ACTION_MOVE, 600f, 600f, 70L)
