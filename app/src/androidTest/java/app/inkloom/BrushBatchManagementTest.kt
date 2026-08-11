@@ -192,9 +192,11 @@ class BrushBatchManagementTest {
         composeRule.onNodeWithText("Done").performClick()
 
         val store = BrushGroupStore(composeRule.activity)
-        composeRule.waitUntil(5_000) { "Pencil/Sketching" in store.load() }
+        // The full Android 15 matrix can leave Room/file IO briefly contended after the large
+        // real-brush corpus tests. Wait for the durable write rather than assuming an idle device.
+        composeRule.waitUntil(15_000) { "Pencil/Sketching" in store.load() }
         assertTrue("Pencil/Sketching" in store.load())
-        composeRule.waitUntil(5_000) {
+        composeRule.waitUntil(15_000) {
             runCatching { composeRule.onNodeWithText("Sketching").assertIsDisplayed(); true }.getOrDefault(false)
         }
         composeRule.onNodeWithText("Sketching").assertIsDisplayed().performClick()
