@@ -181,7 +181,7 @@ class FileDocumentStoreTest {
         val restored = store.get(document.id)!!.pages.single().elements.single() as PageElement.AudioMarker
         assertEquals("Lecture", restored.title)
         assertEquals(65_000, restored.durationMs)
-        assertEquals(LayerIds.OBJECTS, restored.layerId)
+        assertEquals(LayerIds.INK, restored.layerId)
     }
 
     @Test fun importedSecondaryDynamicsAndPointVelocityRoundTrip() {
