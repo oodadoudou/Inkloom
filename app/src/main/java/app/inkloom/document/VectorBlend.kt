@@ -30,12 +30,16 @@ object VectorBlend {
             if (distance >= safeRadius) return 0f
             return (1f - distance / safeRadius).pow(1f + hardness.coerceIn(0f, 1f) * 4f) * strength.coerceIn(0f, 1f)
         }
-        val affected = strokes.filter(eligible).mapNotNull { stroke ->
-            stroke.points.maxOfOrNull(::influence)?.takeIf { it > 0f }?.let { stroke to it }
-        }
+        val affected = strokes.filter(eligible).filter { stroke -> stroke.points.any { influence(it) > 0f } }
         if (affected.isEmpty()) return strokes
         data class Pigment(val point: StrokePoint, val color: Long)
-        val allPigment = affected.flatMap { (stroke, _) -> stroke.points.map { Pigment(it, it.pigmentArgb ?: stroke.colorArgb) } }
+        // Sample only pigment that is physically under the blend tip. Sampling an entire long
+        // stroke both diluted local colors and turned a local operation into O(page points).
+        val allPigment = affected.flatMap { stroke ->
+            stroke.points.mapNotNull { point ->
+                point.takeIf { influence(it) > 0f }?.let { Pigment(it, it.pigmentArgb ?: stroke.colorArgb) }
+            }
+        }
         val sampleStride = (allPigment.size / MAX_PIGMENT_SAMPLES).coerceAtLeast(1)
         val pigmentSamples = allPigment.filterIndexed { index, _ -> index % sampleStride == 0 }.take(MAX_PIGMENT_SAMPLES)
         fun mixedPigment(point: StrokePoint, fallback: Long): Long {
@@ -57,12 +61,13 @@ object VectorBlend {
             fun channel(index: Int) = (channels[index] / totalWeight).toLong().coerceIn(0, 255)
             return (channel(0) shl 24) or (channel(1) shl 16) or (channel(2) shl 8) or channel(3)
         }
-        val weights = affected.associate { it.first.id to it.second }
+        val affectedIds = affected.mapTo(hashSetOf(), InkStroke::id)
         return strokes.map { stroke ->
-            val weight = weights[stroke.id] ?: return@map stroke
+            if (stroke.id !in affectedIds) return@map stroke
             stroke.copy(
-                points = stroke.points.map { point ->
+                points = stroke.points.map pointMap@ { point ->
                     val local = influence(point)
+                    if (local <= 0f) return@pointMap point
                     val original = point.pigmentArgb ?: stroke.colorArgb
                     val mixed = mixedPigment(point, original)
                     point.copy(
@@ -73,7 +78,10 @@ object VectorBlend {
                 },
                 masks = stroke.masks.map { mask ->
                     val local = influence(StrokePoint(mask.x, mask.y))
-                    mask.copy(x = (mask.x + deltaX * local * .22f).coerceIn(0f, 1f), y = (mask.y + deltaY * local * .22f).coerceIn(0f, 1f))
+                    if (local <= 0f) mask else mask.copy(
+                        x = (mask.x + deltaX * local * .22f).coerceIn(0f, 1f),
+                        y = (mask.y + deltaY * local * .22f).coerceIn(0f, 1f),
+                    )
                 },
             )
         }

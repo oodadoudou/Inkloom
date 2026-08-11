@@ -30,8 +30,9 @@ internal object EngineV2StampBatchRenderer {
         startIndex: Int,
         width: Float,
         height: Float,
+        containsLocalPigment: Boolean = stroke.points.any { it.pigmentArgb != null },
     ): Boolean {
-        if (!eligible(stroke) || sampledPoints.isEmpty()) return false
+        if (!eligible(stroke, containsLocalPigment) || sampledPoints.isEmpty()) return false
         val safeStart = startIndex.coerceIn(0, sampledPoints.size)
         val dabCount = sampledPoints.size - safeStart
         if (dabCount <= 0) return true
@@ -100,9 +101,11 @@ internal object EngineV2StampBatchRenderer {
         return true
     }
 
-    fun eligible(stroke: InkStroke): Boolean =
+    fun eligible(stroke: InkStroke): Boolean = eligible(stroke, stroke.points.any { it.pigmentArgb != null })
+
+    private fun eligible(stroke: InkStroke, containsLocalPigment: Boolean): Boolean =
         !stroke.dualBrush && !stroke.spray && !stroke.watercolor && !stroke.waterEdgeEnabled &&
-            stroke.points.none { it.pigmentArgb != null } &&
+            !containsLocalPigment &&
             !stroke.blendTipsWithDarken && stroke.blur <= .001f && !GrainDynamics.isDynamic(stroke) &&
             stroke.stampCount == 1 && stroke.stampCountJitter <= .001f &&
             stroke.tipFlipHorizontalMode == 0 && stroke.tipFlipVerticalMode == 0 &&

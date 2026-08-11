@@ -246,6 +246,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var smudgeLastX = 0f
     private var smudgeLastY = 0f
     private var smudgeChanged = false
+    private val localToolStrokeIndices = mutableMapOf<String, Int>()
     private var pendingSmudgeX = 0f
     private var pendingSmudgeY = 0f
     private var hasPendingSmudge = false
@@ -436,7 +437,7 @@ class InkCanvasView(context: Context) : View(context) {
             field = value
             if (hoverCursorVisible) {
                 hoverCursorUsesEraser = value == EditorTool.ERASER
-                postInvalidateOnAnimation()
+                invalidateInternalHoverCursor()
             }
             onHoverCursorStyleChanged?.invoke()
         }
@@ -455,7 +456,7 @@ class InkCanvasView(context: Context) : View(context) {
     var baseWidth: Float = 5f
         set(value) {
             field = value
-            if (hoverCursorVisible && !hoverCursorUsesEraser) postInvalidateOnAnimation()
+            if (hoverCursorVisible && !hoverCursorUsesEraser) invalidateInternalHoverCursor()
             onHoverCursorStyleChanged?.invoke()
         }
     var inkOpacity: Float = 1f
@@ -649,7 +650,7 @@ class InkCanvasView(context: Context) : View(context) {
     var eraserWidth: Float = 24f
         set(value) {
             field = value
-            if (hoverCursorVisible && hoverCursorUsesEraser) postInvalidateOnAnimation()
+            if (hoverCursorVisible && hoverCursorUsesEraser) invalidateInternalHoverCursor()
             onHoverCursorStyleChanged?.invoke()
         }
     var eraserHardness: Float = 1f
@@ -940,7 +941,7 @@ class InkCanvasView(context: Context) : View(context) {
         when (event.actionMasked) {
             MotionEvent.ACTION_HOVER_ENTER, MotionEvent.ACTION_HOVER_MOVE -> {
                 if (!stylus || !drawableTool) {
-                    if (hoverCursorVisible) { hoverCursorVisible = false; postInvalidateOnAnimation() }
+                    if (hoverCursorVisible) { hoverCursorVisible = false; invalidateInternalHoverCursor() }
                     return stylus
                 }
                 val point = canvasPoint(event, pointerIndex)
@@ -949,11 +950,11 @@ class InkCanvasView(context: Context) : View(context) {
                 hoverCursorUsesEraser = cursorTool == EditorTool.ERASER
                 hoverCursorPressure = 1f
                 hoverCursorVisible = true
-                postInvalidateOnAnimation()
+                invalidateInternalHoverCursor()
                 return true
             }
             MotionEvent.ACTION_HOVER_EXIT, MotionEvent.ACTION_CANCEL -> {
-                if (hoverCursorVisible) { hoverCursorVisible = false; postInvalidateOnAnimation() }
+                if (hoverCursorVisible) { hoverCursorVisible = false; invalidateInternalHoverCursor() }
                 return stylus
             }
         }
@@ -1130,6 +1131,15 @@ class InkCanvasView(context: Context) : View(context) {
             val clipped = layerId in clippedLayers
             val lowerLayerId = previousLayerId
             if (!clipped || lowerLayerId != null) {
+                val hasEnabledMask = layerMasks[layerId]?.enabled == true
+                if (opacity >= .999f && layerBlendMode == LayerBlendMode.NORMAL && !clipped && !hasEnabledMask) {
+                    // Normal CSP-style paint layers are the dominant live path. Allocating a
+                    // full-canvas saveLayer here made every front-buffer packet pay an offscreen
+                    // composition cost even though direct drawing is pixel-identical.
+                    drawRawLayerContent(canvas, layerId, layerStrokes, includeElements, primaryStampStartIndex, dualStampStartIndex)
+                    previousLayerId = layerId
+                    return@forEach
+                }
                 val checkpoint = canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     alpha = (opacity * 255f).toInt().coerceIn(0, 255)
                     this.blendMode = layerBlendMode.toBlendMode()
@@ -1318,7 +1328,18 @@ class InkCanvasView(context: Context) : View(context) {
         val referenceScale = width.coerceAtLeast(1) / REFERENCE_WIDTH
         val sampledPoints = primaryStampedPoints(stroke)
         val safeStart = stampStartIndex.coerceIn(0, sampledPoints.size)
-        if (tips.size == 1 && EngineV2StampBatchRenderer.draw(canvas, paint, stroke, tips.single(), sampledPoints, safeStart, width.toFloat(), height.toFloat())) {
+        val containsLocalPigment = !isCurrentActiveStroke(stroke) && stroke.points.any { it.pigmentArgb != null }
+        if (tips.size == 1 && EngineV2StampBatchRenderer.draw(
+                canvas,
+                paint,
+                stroke,
+                tips.single(),
+                sampledPoints,
+                safeStart,
+                width.toFloat(),
+                height.toFloat(),
+                containsLocalPigment,
+            )) {
             paint.blendMode = null
             if (compositeLayer >= 0) canvas.restoreToCount(compositeLayer)
             paint.colorFilter = null
@@ -1333,8 +1354,8 @@ class InkCanvasView(context: Context) : View(context) {
             advanceStampRandoms(scatterRandom, rotationRandom, stroke, sampledPoints, safeStart, dual = false)
         }
         val taper = strokeTaperFactors(stroke, sampledPoints)
-        sampledPoints.forEachIndexed { index, point ->
-            if (index < safeStart) return@forEachIndexed
+        for (index in safeStart until sampledPoints.size) {
+            val point = sampledPoints[index]
             val stampsAtPoint = BrushStampCount.resolve(stroke.stampCount, stroke.stampCountJitter, stroke.renderSeed, index)
             repeat(stampsAtPoint) stamp@ { repeatIndex ->
             val sequenceIndex = index * 16 + repeatIndex
@@ -1474,8 +1495,8 @@ class InkCanvasView(context: Context) : View(context) {
             advanceStampRandoms(scatterRandom, rotationRandom, stroke, sampledPoints, safeStart, dual = true)
         }
         val taper = strokeTaperFactors(stroke, sampledPoints)
-        sampledPoints.forEachIndexed { index, point ->
-            if (index < safeStart) return@forEachIndexed
+        for (index in safeStart until sampledPoints.size) {
+            val point = sampledPoints[index]
             val stampsAtPoint = BrushStampCount.resolve(stroke.dualStampCount, stroke.dualStampCountJitter, stroke.renderSeed, index, dual = true)
             repeat(stampsAtPoint) stamp@ { repeatIndex ->
             val sequenceIndex = index * 16 + repeatIndex
@@ -2392,6 +2413,12 @@ class InkCanvasView(context: Context) : View(context) {
         canvas.drawOval(hoverCursorX - radiusX, hoverCursorY - radiusY, hoverCursorX + radiusX, hoverCursorY + radiusY, hoverCursorPaint)
     }
 
+    /** The full-viewport proxy owns the visible cursor in the editor. Do not invalidate the
+     * expensive stable page beneath it for every hover/contact packet. */
+    private fun invalidateInternalHoverCursor() {
+        if (!externalHoverCursor) postInvalidateOnAnimation()
+    }
+
     internal fun hoverCursorSnapshot(): FloatArray {
         val footprint = hoverCursorFootprint()
         return floatArrayOf(
@@ -2418,13 +2445,11 @@ class InkCanvasView(context: Context) : View(context) {
                 hoverCursorUsesEraser = cursorTool == EditorTool.ERASER
                 hoverCursorPressure = event.getPressure(pointerIndex).takeIf { it.isFinite() && it > 0f }?.coerceIn(0f, 1f) ?: 1f
                 hoverCursorVisible = true
-                postInvalidateOnAnimation()
-                onHoverCursorStyleChanged?.invoke()
+                invalidateInternalHoverCursor()
             }
             MotionEvent.ACTION_CANCEL -> {
                 hoverCursorVisible = false
-                postInvalidateOnAnimation()
-                onHoverCursorStyleChanged?.invoke()
+                invalidateInternalHoverCursor()
             }
         }
     }
@@ -3757,6 +3782,7 @@ class InkCanvasView(context: Context) : View(context) {
         smudgeFrameScheduled = false
         hasPendingSmudge = false
         smudgeBefore = strokes.toList()
+        prepareLocalToolStrokeIndex()
         smudgeLastX = normalizedX.coerceIn(0f, 1f)
         smudgeLastY = normalizedY.coerceIn(0f, 1f)
         smudgeChanged = false
@@ -3818,6 +3844,7 @@ class InkCanvasView(context: Context) : View(context) {
         if (before != null && smudgeChanged) commitStrokeEdit(before, strokes)
         smudgeBefore = null
         smudgeChanged = false
+        localToolStrokeIndices.clear()
         invalidate()
     }
 
@@ -3829,6 +3856,7 @@ class InkCanvasView(context: Context) : View(context) {
         if (before != null && smudgeChanged) restoreStrokeSnapshot(before)
         smudgeBefore = null
         smudgeChanged = false
+        localToolStrokeIndices.clear()
         invalidate()
     }
 
@@ -3837,6 +3865,7 @@ class InkCanvasView(context: Context) : View(context) {
         liquifyFrameScheduled = false
         hasPendingLiquify = false
         liquifyBefore = strokes.toList()
+        prepareLocalToolStrokeIndex()
         liquifyLastX = x.coerceIn(0f, 1f)
         liquifyLastY = y.coerceIn(0f, 1f)
         liquifyChanged = false
@@ -3892,6 +3921,11 @@ class InkCanvasView(context: Context) : View(context) {
 
     /** Blend and Liquify are local tools. Restricting each input sample to spatial-index hits keeps
      * latency proportional to the touched region instead of to every stroke and point on a page. */
+    private fun prepareLocalToolStrokeIndex() {
+        localToolStrokeIndices.clear()
+        strokes.forEachIndexed { index, stroke -> localToolStrokeIndices[stroke.id] = index }
+    }
+
     private fun localToolCandidates(startX: Float, startY: Float, endX: Float, endY: Float, radius: Float): List<InkStroke> {
         committedScene.ensureIndex(strokes, width, height)
         val aspect = pageModelWidth.coerceAtLeast(1f) / pageModelHeight.coerceAtLeast(1f)
@@ -3904,13 +3938,17 @@ class InkCanvasView(context: Context) : View(context) {
             maxOf(startY, endY) * height + radiusY,
         )
         if (candidateIds.isEmpty()) return emptyList()
-        return strokes.filter { it.id in candidateIds }
+        return candidateIds
+            .mapNotNull(localToolStrokeIndices::get)
+            .sorted()
+            .map(strokes::get)
     }
 
     private fun replaceLocalToolCandidates(replacements: List<InkStroke>) {
         if (replacements.isEmpty()) return
-        val byId = replacements.associateBy(InkStroke::id)
-        for (index in strokes.indices) byId[strokes[index].id]?.let { strokes[index] = it }
+        replacements.forEach { replacement ->
+            localToolStrokeIndices[replacement.id]?.let { index -> strokes[index] = replacement }
+        }
     }
 
     private fun finishLiquifyGesture() {
@@ -3921,6 +3959,7 @@ class InkCanvasView(context: Context) : View(context) {
         if (before != null && liquifyChanged) commitStrokeEdit(before, strokes)
         liquifyBefore = null
         liquifyChanged = false
+        localToolStrokeIndices.clear()
         invalidate()
     }
 
@@ -3932,6 +3971,7 @@ class InkCanvasView(context: Context) : View(context) {
         if (before != null && liquifyChanged) restoreStrokeSnapshot(before)
         liquifyBefore = null
         liquifyChanged = false
+        localToolStrokeIndices.clear()
         invalidate()
     }
 

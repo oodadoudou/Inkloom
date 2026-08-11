@@ -115,6 +115,7 @@ class SmudgeToolTest {
         }
         listOf(EditorTool.SMUDGE, EditorTool.LIQUIFY).forEach { tool ->
             val view = canvas {
+                layout(0, 0, 1000, 1000)
                 this.tool = tool
                 fingerDrawingEnabled = true
                 baseWidth = 96f
@@ -139,6 +140,7 @@ class SmudgeToolTest {
             }
             val sorted = frameTimes.sorted()
             val p95Ms = sorted[(sorted.size * 95 / 100).coerceAtMost(sorted.lastIndex)] / 1_000_000f
+            android.util.Log.i("InkloomPerf", "${tool.name.lowercase()}_large_page_p95_ms=$p95Ms")
             assertTrue("${tool.name} p95 frame was ${p95Ms}ms", p95Ms < 16.7f)
         }
     }

@@ -32,4 +32,28 @@ class VectorBlendTest {
         val result = VectorBlend.apply(listOf(locked), .5f, .5f, .1f, 0f, .2f, 1f, 0f, 1000f, 1000f) { false }
         assertEquals(locked, result.single())
     }
+
+    @Test fun longStrokeKeepsPointsOutsideTheBrushRadiusUntouched() {
+        val points = List(10_001) { index -> StrokePoint(index / 10_000f, .5f) }
+        val long = InkStroke(id = "long", colorArgb = 0xFFFF0000, width = 20f, points = points)
+
+        val result = VectorBlend.apply(
+            listOf(long),
+            centerX = .5f,
+            centerY = .5f,
+            deltaX = .01f,
+            deltaY = 0f,
+            radius = .01f,
+            strength = 1f,
+            hardness = 0f,
+            pageWidth = 1000f,
+            pageHeight = 1000f,
+        ).single()
+
+        assertEquals("Distant prefix must retain object identity and no pigment allocation", points.first(), result.points.first())
+        assertEquals("Distant suffix must retain object identity and no pigment allocation", points.last(), result.points.last())
+        assertTrue(result.points.subList(4_900, 5_100).any { it.pigmentArgb != null })
+        assertTrue(result.points.take(4_000).all { it.pigmentArgb == null })
+        assertTrue(result.points.takeLast(4_000).all { it.pigmentArgb == null })
+    }
 }

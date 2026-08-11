@@ -256,18 +256,22 @@ class InkCanvasTileCacheTest {
                 view.dispatchStylus(MotionEvent.ACTION_UP, 82f, 180f, 2L)
                 output.eraseColor(android.graphics.Color.TRANSPARENT)
 
-                val frameTimes = ArrayList<Long>(120)
+                val frameTimes = ArrayList<Long>(480)
                 view.dispatchStylus(MotionEvent.ACTION_DOWN, 90f, 420f, 10L)
-                repeat(120) { point ->
-                    view.dispatchStylus(MotionEvent.ACTION_MOVE, 96f + point * 7f, 420f + (point % 11) * 3f, 20L + point)
+                repeat(480) { point ->
+                    val cycle = point / 160
+                    val within = point % 160
+                    val travel = if (cycle % 2 == 0) within else 159 - within
+                    view.dispatchStylus(MotionEvent.ACTION_MOVE, 112f + travel * 5f, 420f + kotlin.math.sin(point * .12f) * 34f, 20L + point)
                     val started = android.os.SystemClock.elapsedRealtimeNanos()
                     view.flushEngineV2ActiveFrame()
                     frameTimes += android.os.SystemClock.elapsedRealtimeNanos() - started
                 }
-                view.dispatchStylus(MotionEvent.ACTION_UP, 940f, 450f, 200L)
+                view.dispatchStylus(MotionEvent.ACTION_UP, 500f, 450f, 540L)
 
                 val sorted = frameTimes.sorted()
                 val p95Ms = sorted[(sorted.size * 95 / 100).coerceAtMost(sorted.lastIndex)] / 1_000_000f
+                android.util.Log.i("InkloomPerf", "imported_soft_brush_480_point_p95_ms=$p95Ms")
                 assertTrue("Imported soft-brush p95 frame was ${p95Ms}ms", p95Ms < 16.7f)
             } finally {
                 sourceTip.recycle()
