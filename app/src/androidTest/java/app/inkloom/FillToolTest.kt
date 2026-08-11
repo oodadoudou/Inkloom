@@ -166,4 +166,70 @@ class FillToolTest {
         }
         assertTrue("Selection launcher fill must commit the exact selection mask", committed)
     }
+
+    @Test fun bucketTapWithActiveSelectionFillsTheWholeSelectionRegardlessOfSeed() {
+        var committedMask: Bitmap? = null
+        var bounds = FloatArray(4)
+        val view = canvas {
+            pageModelWidth = 200f
+            pageModelHeight = 200f
+            fingerDrawingEnabled = true
+            pagePaperColor = Color.WHITE
+            selectionShape = app.inkloom.settings.SelectionShape.RECTANGLE
+            onFillCommitted = { mask, x, y, width, height, _, _ ->
+                committedMask = mask
+                bounds = floatArrayOf(x, y, width, height)
+            }
+        }
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view.tool = EditorTool.SELECT
+            sendDirect(view, 0L, MotionEvent.ACTION_DOWN, 50f, 50f)
+            sendDirect(view, 20L, MotionEvent.ACTION_MOVE, 150f, 150f)
+            sendDirect(view, 40L, MotionEvent.ACTION_UP, 150f, 150f)
+            view.tool = EditorTool.FILL
+            sendDirect(view, 60L, MotionEvent.ACTION_DOWN, 10f, 10f)
+            sendDirect(view, 80L, MotionEvent.ACTION_UP, 10f, 10f)
+        }
+        val mask = requireNotNull(committedMask)
+        try {
+            assertEquals(0f, bounds[0], 0f)
+            assertEquals(0f, bounds[1], 0f)
+            assertEquals(200f, bounds[2], 0f)
+            assertEquals(200f, bounds[3], 0f)
+            assertTrue(Color.alpha(mask.getPixel(mask.width / 2, mask.height / 2)) > 0)
+            assertEquals(0, Color.alpha(mask.getPixel(mask.width / 20, mask.height / 20)))
+        } finally {
+            mask.recycle()
+        }
+    }
+
+    @Test fun committedBucketFillIsRemovedAndRestoredAsOneHistoryAction() {
+        var visibleFills = 0
+        lateinit var view: InkCanvasView
+        view = canvas {
+            tool = EditorTool.FILL
+            fingerDrawingEnabled = true
+            pagePaperColor = Color.WHITE
+            onFillCommitted = { mask, _, _, _, _, _, _ ->
+                mask.recycle()
+                visibleFills++
+                view.recordExternalEdit(undo = { visibleFills-- }, redo = { visibleFills++ })
+            }
+        }
+        send(view, 0L, MotionEvent.ACTION_DOWN, 100f, 100f)
+        send(view, 50L, MotionEvent.ACTION_UP, 100f, 100f)
+        assertEquals(1, visibleFills)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.undo() }
+        assertEquals(0, visibleFills)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.redo() }
+        assertEquals(1, visibleFills)
+    }
+
+    private fun sendDirect(view: InkCanvasView, time: Long, action: Int, x: Float, y: Float) {
+        val props = MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_FINGER }
+        val coords = MotionEvent.PointerCoords().apply { this.x = x; this.y = y; pressure = 1f; size = .1f; touchMajor = 8f }
+        MotionEvent.obtain(0L, time, action, 1, arrayOf(props), arrayOf(coords), 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0).also {
+            try { view.onTouchEvent(it) } finally { it.recycle() }
+        }
+    }
 }

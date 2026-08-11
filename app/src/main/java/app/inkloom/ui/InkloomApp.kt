@@ -4514,6 +4514,28 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
             }
         }
     }
+    fun installFillCommit(view: InkCanvasView) {
+        view.onFillCommitted = { mask, fx, fy, fw, fh, color, opacity ->
+            val maskPath = try { assets.saveFillMask(mask) } finally { mask.recycle() }
+            val projected = PageElement.Fill(
+                x = fx,
+                y = fy,
+                width = fw,
+                height = fh,
+                colorArgb = color,
+                opacity = opacity,
+                layerId = activeLayerId,
+                maskAssetPath = maskPath,
+            )
+            val fill = PageCropTransform.unproject(projected, page.crop)
+            onElement(documentId, page.id, fill)
+            view.recordExternalEdit(
+                undo = { onRemoveElement(documentId, page.id, fill.id) },
+                redo = { onElement(documentId, page.id, fill) },
+                dispose = { assets.releaseAssetReservation(maskPath) },
+            )
+        }
+    }
     val backgroundVisible = page.layers.firstOrNull { it.role == LayerRole.BACKGROUND }?.visible != false
     val background = remember(page.id, page.background, page.backgroundRotationQuarterTurns, page.crop, backgroundVisible) { if (backgroundVisible) runCatching { assets.renderBackground(page.background, 1200, page.backgroundRotationQuarterTurns, page.crop) }.getOrNull() else null }
     DisposableEffect(background) { onDispose { background?.recycle() } }
@@ -4599,13 +4621,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onStrokeCommitted = { onStroke(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
                 view.onShapeCommitted = { onElement(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
                 view.onGradientCommitted = commitGradient
-                view.onFillCommitted = { mask, fx, fy, fw, fh, color, opacity ->
-                    val maskPath = assets.saveFillMask(mask)
-                    mask.recycle()
-                    val fill = PageElement.Fill(x = fx, y = fy, width = fw, height = fh, colorArgb = color, opacity = opacity, layerId = activeLayerId, maskAssetPath = maskPath)
-                    try { onElement(documentId, page.id, PageCropTransform.unproject(fill, page.crop)) }
-                    finally { assets.releaseAssetReservation(maskPath) }
-                }
+                installFillCommit(view)
                 view.onStrokeRemoved = { onRemoveStroke(documentId, page.id, it) }
                 view.onStrokesReplaced = { removed, replacements, indices -> onStrokesReplaced(documentId, page.id, removed, replacements.map { PageCropTransform.unproject(it, page.crop) }, indices) }
                 view.onViewportScale = onZoom
@@ -4685,13 +4701,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onStrokeCommitted = { onStroke(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
                 view.onShapeCommitted = { onElement(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
                 view.onGradientCommitted = commitGradient
-                view.onFillCommitted = { mask, fx, fy, fw, fh, color, opacity ->
-                    val maskPath = assets.saveFillMask(mask)
-                    mask.recycle()
-                    val fill = PageElement.Fill(x = fx, y = fy, width = fw, height = fh, colorArgb = color, opacity = opacity, layerId = activeLayerId, maskAssetPath = maskPath)
-                    try { onElement(documentId, page.id, PageCropTransform.unproject(fill, page.crop)) }
-                    finally { assets.releaseAssetReservation(maskPath) }
-                }
+                installFillCommit(view)
                 view.onStrokeRemoved = { onRemoveStroke(documentId, page.id, it) }
                 view.onStrokesReplaced = { removed, replacements, indices -> onStrokesReplaced(documentId, page.id, removed, replacements.map { PageCropTransform.unproject(it, page.crop) }, indices) }
                 view.applyBrushConfiguration(tool, settings, activeBrush, brushSize, brushOpacity, brushColor, eraserPreset)

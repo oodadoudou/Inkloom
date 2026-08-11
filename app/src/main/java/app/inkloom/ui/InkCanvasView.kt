@@ -102,7 +102,8 @@ import app.inkloom.document.SingleFingerDoubleTapUndoGesture
 import app.inkloom.document.SprayGeometry
 import app.inkloom.document.SprayDynamics
 import app.inkloom.document.StrokeEdit
-import app.inkloom.document.StrokeEditHistory
+import app.inkloom.document.CanvasEdit
+import app.inkloom.document.CanvasEditHistory
 import app.inkloom.document.StrokeEdits
 import app.inkloom.document.StrokeEraser
 import app.inkloom.document.StrokeClipboardCodec
@@ -166,7 +167,7 @@ class InkCanvasView(context: Context) : View(context) {
     private val renderLock = Any()
     private val strokeInputModeler = NativeStrokeInputModeler()
     private val strokes = mutableListOf<InkStroke>()
-    private val editHistory = StrokeEditHistory()
+    private val editHistory = CanvasEditHistory()
     private val currentPoints = mutableListOf<StrokePoint>()
     private var currentStrokeId = java.util.UUID.randomUUID().toString()
     private var activeStrokeTemplate: InkStroke? = null
@@ -231,6 +232,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var gradientStart: ShapePoint? = null
     private var gradientEnd: ShapePoint? = null
     private var fillSourceBitmap: Bitmap? = null
+    private var fillGestureUsesSelection = false
     private var fillSeedX = 0
     private var fillSeedY = 0
     private var fillBaseSensitivity = 0f
@@ -1095,6 +1097,7 @@ class InkCanvasView(context: Context) : View(context) {
         recycleStrokeTiles()
         releaseActiveStrokePreview()
         releaseSelectionState(clearHistory = true)
+        editHistory.clear()
         removeCallbacks(activeSurfaceFrame)
         activeSurfaceFrameScheduled = false
         strokeInputModeler.close()
@@ -3780,6 +3783,16 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun beginFillGesture(normalizedX: Float, normalizedY: Float, rawX: Float) {
+        ensureSelectionAlphaFromSelectedStrokes()
+        fillGestureUsesSelection = !SelectionMaskCompositor.isEmpty(selectionMaskForDisplay())
+        if (fillGestureUsesSelection) {
+            fillBaseSensitivity = fillSensitivity
+            fillSensitivityNow = fillBaseSensitivity
+            fillDragOriginX = rawX
+            fillPreviewTolerance = -1
+            recomputeFillPreview(force = true)
+            return
+        }
         val safeWidth = width.coerceAtLeast(1)
         val safeHeight = height.coerceAtLeast(1)
         val sampleScale = minOf(1f, FILL_MAX_SAMPLE_DIMENSION / maxOf(safeWidth, safeHeight).toFloat())
@@ -3806,6 +3819,17 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun recomputeFillPreview(force: Boolean) {
+        if (fillGestureUsesSelection) {
+            fillPreviewMask?.recycle()
+            fillPreviewMask = selectionMaskForDisplay()?.copy(Bitmap.Config.ARGB_8888, false)
+            fillPreviewLeft = 0f
+            fillPreviewTop = 0f
+            fillPreviewWidth = if (fillPreviewMask == null) 0f else 1f
+            fillPreviewHeight = if (fillPreviewMask == null) 0f else 1f
+            fillPreviewTolerance = (fillSensitivityNow * 200f).toInt().coerceIn(0, 255)
+            fillPreviewComputedAt = SystemClock.uptimeMillis()
+            return
+        }
         val source = fillSourceBitmap ?: return
         val tolerance = (fillSensitivityNow * 200f).toInt().coerceIn(0, 255)
         val now = SystemClock.uptimeMillis()
@@ -3858,22 +3882,28 @@ class InkCanvasView(context: Context) : View(context) {
     private fun commitFillGesture() {
         recomputeFillPreview(force = true)
         val mask = fillPreviewMask
-        if (mask != null && fillPreviewWidth > 0f && fillPreviewHeight > 0f) {
-            val color = inkColor.toUInt().toLong()
-            onFillCommitted?.invoke(
-                mask.copy(Bitmap.Config.ARGB_8888, false),
-                fillPreviewLeft,
-                fillPreviewTop,
-                fillPreviewWidth * pageModelWidth,
-                fillPreviewHeight * pageModelHeight,
-                color,
-                inkOpacity,
-            )
+        try {
+            if (mask != null && fillPreviewWidth > 0f && fillPreviewHeight > 0f) {
+                val committedMask = mask.copy(Bitmap.Config.ARGB_8888, false)
+                val callback = onFillCommitted
+                if (callback != null) callback(
+                    committedMask,
+                    fillPreviewLeft,
+                    fillPreviewTop,
+                    fillPreviewWidth * pageModelWidth,
+                    fillPreviewHeight * pageModelHeight,
+                    inkColor.toUInt().toLong(),
+                    inkOpacity,
+                ) else committedMask.recycle()
+            }
+        } finally {
+            mask?.recycle()
+            fillPreviewMask = null
+            fillSourceBitmap?.recycle()
+            fillSourceBitmap = null
+            fillGestureUsesSelection = false
+            invalidate()
         }
-        fillPreviewMask = null
-        fillSourceBitmap?.recycle()
-        fillSourceBitmap = null
-        invalidate()
     }
 
     private fun commitManualFillGesture() {
@@ -3947,6 +3977,7 @@ class InkCanvasView(context: Context) : View(context) {
         fillPreviewMask = null
         fillSourceBitmap?.recycle()
         fillSourceBitmap = null
+        fillGestureUsesSelection = false
         fillGesturePoints.clear()
         invalidate()
     }
@@ -4611,25 +4642,40 @@ class InkCanvasView(context: Context) : View(context) {
 
     fun undo() {
         val edit = editHistory.takeUndo() ?: return
-        if (editTouchesProtectedLayer(edit)) {
-            editHistory.takeRedo()
-            return
+        when (edit) {
+            is CanvasEdit.Strokes -> {
+                if (editTouchesProtectedLayer(edit.edit)) {
+                    editHistory.restoreUndo(edit)
+                    return
+                }
+                applyStrokeEdit(edit.edit, forward = false)
+            }
+            is CanvasEdit.External -> edit.undo()
         }
-        applyStrokeEdit(edit, forward = false)
     }
 
     fun redo() {
         val edit = editHistory.takeRedo() ?: return
-        if (editTouchesProtectedLayer(edit)) {
-            editHistory.takeUndo()
-            return
+        when (edit) {
+            is CanvasEdit.Strokes -> {
+                if (editTouchesProtectedLayer(edit.edit)) {
+                    editHistory.restoreRedo(edit)
+                    return
+                }
+                applyStrokeEdit(edit.edit, forward = true)
+            }
+            is CanvasEdit.External -> edit.redo()
         }
-        applyStrokeEdit(edit, forward = true)
+    }
+
+    /** Adds a host-owned page mutation to the same chronological stream as ink edits. */
+    fun recordExternalEdit(undo: () -> Unit, redo: () -> Unit, dispose: () -> Unit = {}) {
+        editHistory.record(CanvasEdit.External(undo, redo, dispose))
     }
 
     private fun commitStrokeEdit(before: List<InkStroke>, after: List<InkStroke>) {
         val edit = StrokeEdits.difference(before, after) ?: return
-        editHistory.record(edit)
+        editHistory.record(CanvasEdit.Strokes(edit))
         persistStrokeTransition(edit.before, edit.after)
     }
 

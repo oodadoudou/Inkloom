@@ -64,4 +64,18 @@ class FloodFillTest {
         assertTrue(expanded.width > normal.width)
         assertTrue(shrunk.width < normal.width)
     }
+
+    @Test fun seedInsideAndOutsideAClosedBoundaryFillOppositeConnectedRegions() {
+        val source = solid(Color.WHITE, 30, 30)
+        for (x in 8..21) { source.setPixel(x, 8, Color.BLACK); source.setPixel(x, 21, Color.BLACK) }
+        for (y in 8..21) { source.setPixel(8, y, Color.BLACK); source.setPixel(21, y, Color.BLACK) }
+
+        val inside = FloodFill.fill(source, 14, 14, tolerance = 0)
+        val outside = FloodFill.fill(source, 2, 2, tolerance = 0)
+
+        assertTrue("Inside seed must stay within the outline", inside.left > 8 && inside.right < 21)
+        assertEquals("Outside seed must cover the connected exterior bounds", 30, outside.width)
+        assertEquals(0, Color.alpha(outside.mask.getPixel(14, 14)))
+        assertTrue(Color.alpha(outside.mask.getPixel(2, 2)) > 0)
+    }
 }
