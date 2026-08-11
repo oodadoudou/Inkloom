@@ -3,6 +3,7 @@ package app.inkloom.engine.v2.render
 import android.graphics.Bitmap
 import android.graphics.BitmapShader
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
@@ -40,6 +41,8 @@ internal object EngineV2StampBatchRenderer {
         val buffers = (threadBuffers.get() ?: Buffers().also(threadBuffers::set)).also { it.ensureCapacity(floatCount) }
         val vertices = buffers.vertices
         val textureCoordinates = buffers.textureCoordinates
+        val dynamicAlpha = hasDynamicAlpha(stroke)
+        val clip = canvas.clipBounds
         val taper = if (stroke.taperStartEnabled || stroke.taperEndEnabled) StrokeTaper.factors(
             sampledPoints, width, height, stroke.taperMode,
             stroke.taperStartEnabled, stroke.taperStartLength, stroke.taperStartLengthUnit, stroke.taperStartMinimum,
@@ -48,7 +51,11 @@ internal object EngineV2StampBatchRenderer {
         var offset = 0
         for (index in safeStart until sampledPoints.size) {
             val point = sampledPoints[index]
+            val drawX = point.x * width
+            val drawY = point.y * height
             val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
+            val depositedAlpha = (stroke.flow * dynamics.depositedAlpha).coerceIn(0f, 1f)
+            if (depositedAlpha <= .0001f) continue
             val diameter = (stroke.width * width.coerceAtLeast(1f) / REFERENCE_WIDTH * (taper?.get(index) ?: 1f) * dynamics.size).coerceAtLeast(.25f)
             val tipScale = BrushTipTransform.scale(
                 tip.width,
@@ -65,37 +72,39 @@ internal object EngineV2StampBatchRenderer {
                 strokeDirectionDegrees = if (followsStroke) StrokeStampSampler.directionDegrees(sampledPoints, index, width, height) else 0f,
                 randomUnit = legacyRandomFloatAt(stroke.renderSeed.toLong() xor ROTATION_SEED, index),
             )
+            // Use the transformed tip diagonal so wide and rotated imported tips are never
+            // clipped by the tile optimization.
+            val influenceRadius = .5f * kotlin.math.hypot(
+                tip.width * tipScale.x,
+                tip.height * tipScale.y,
+            )
+            if (drawX + influenceRadius < clip.left || drawX - influenceRadius > clip.right ||
+                drawY + influenceRadius < clip.top || drawY - influenceRadius > clip.bottom
+            ) continue
             writeQuad(
                 vertices,
                 textureCoordinates,
                 offset,
-                point.x * width,
-                point.y * height,
+                drawX,
+                drawY,
                 tip.width * tipScale.x,
                 tip.height * tipScale.y,
                 angle,
                 tip.width.toFloat(),
                 tip.height.toFloat(),
             )
+            if (dynamicAlpha) {
+                val vertexColor = Color.argb((depositedAlpha * 255f).toInt().coerceIn(0, 255), 255, 255, 255)
+                val colorOffset = offset / 2
+                for (vertex in 0 until VERTICES_PER_DAB) buffers.colors[colorOffset + vertex] = vertexColor
+            }
             offset += VERTEX_FLOATS_PER_DAB
         }
+        if (offset == 0) return true
         paint.shader = BitmapShader(tip, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
         paint.colorFilter = PorterDuffColorFilter(stroke.colorArgb.toInt(), PorterDuff.Mode.SRC_IN)
-        paint.alpha = (stroke.flow.coerceIn(0f, 1f) * 255).toInt()
-        canvas.drawVertices(
-            Canvas.VertexMode.TRIANGLES,
-            floatCount,
-            vertices,
-            0,
-            textureCoordinates,
-            0,
-            null,
-            0,
-            null,
-            0,
-            0,
-            paint,
-        )
+        paint.alpha = if (dynamicAlpha) 255 else (stroke.flow.coerceIn(0f, 1f) * 255).toInt()
+        drawVertices(canvas, paint, vertices, textureCoordinates, if (dynamicAlpha) buffers.colors else null, offset)
         paint.shader = null
         paint.colorFilter = null
         return true
@@ -109,12 +118,38 @@ internal object EngineV2StampBatchRenderer {
             !stroke.blendTipsWithDarken && stroke.blur <= .001f && !GrainDynamics.isDynamic(stroke) &&
             stroke.stampCount == 1 && stroke.stampCountJitter <= .001f &&
             stroke.tipFlipHorizontalMode == 0 && stroke.tipFlipVerticalMode == 0 &&
-            !stroke.opacityPressureEnabled && !stroke.flowPressureEnabled &&
-            !secondary(stroke.opacitySecondaryDynamics) && !secondary(stroke.flowSecondaryDynamics) &&
             noColorDynamics(stroke.colorJitterHueDynamics) && noColorDynamics(stroke.colorJitterSaturationDynamics) &&
             noColorDynamics(stroke.colorJitterValueDynamics) && stroke.colorJitterHueDegrees == 0f &&
             stroke.colorJitterSaturation == 0f && stroke.colorJitterValue == 0f &&
             stroke.colorMix <= .001f && stroke.paintMix <= .001f
+
+    private fun hasDynamicAlpha(stroke: InkStroke): Boolean =
+        stroke.opacityPressureEnabled || stroke.flowPressureEnabled ||
+            secondary(stroke.opacitySecondaryDynamics) || secondary(stroke.flowSecondaryDynamics)
+
+    private fun drawVertices(
+        canvas: Canvas,
+        paint: Paint,
+        vertices: FloatArray,
+        textureCoordinates: FloatArray,
+        colors: IntArray?,
+        floatCount: Int,
+    ) {
+        canvas.drawVertices(
+            Canvas.VertexMode.TRIANGLES,
+            floatCount,
+            vertices,
+            0,
+            textureCoordinates,
+            0,
+            colors,
+            0,
+            null,
+            0,
+            0,
+            paint,
+        )
+    }
 
     private fun secondary(value: app.inkloom.document.BrushSecondaryDynamics): Boolean =
         value.tiltEnabled || value.velocityEnabled || value.randomEnabled
@@ -186,6 +221,7 @@ internal object EngineV2StampBatchRenderer {
     private class Buffers {
         var vertices = FloatArray(0)
         var textureCoordinates = FloatArray(0)
+        var colors = IntArray(0)
 
         fun ensureCapacity(required: Int) {
             if (vertices.size >= required) return
@@ -193,10 +229,12 @@ internal object EngineV2StampBatchRenderer {
             while (capacity < required) capacity *= 2
             vertices = FloatArray(capacity)
             textureCoordinates = FloatArray(capacity)
+            colors = IntArray(capacity / 2)
         }
     }
 
     private const val VERTEX_FLOATS_PER_DAB = 12
+    private const val VERTICES_PER_DAB = 6
     private const val REFERENCE_WIDTH = 1600f
     private const val ROTATION_SEED = 0x49A2B31DL
     private const val JAVA_RANDOM_MULTIPLIER = 0x5DEECE66DL

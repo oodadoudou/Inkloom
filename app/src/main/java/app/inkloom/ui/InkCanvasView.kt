@@ -1292,6 +1292,7 @@ class InkCanvasView(context: Context) : View(context) {
         paint.colorFilter = null
         val scale = width.coerceAtLeast(1) / REFERENCE_WIDTH
         val taper = strokeTaperFactors(stroke, stroke.points)
+        val contentClip = canvas.clipBounds
         if (stroke.points.size == 1) {
             val point = stroke.points.first(); paint.color = (point.pigmentArgb ?: stroke.colorArgb).toInt(); val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point); val strokeWidth = stroke.width * scale * (taper?.firstOrNull() ?: 1f) * dynamics.size; val alpha = (stroke.flow * dynamics.depositedAlpha * 255).toInt().coerceIn(0, 255); drawLinePoint(canvas, stroke, point, point.x * width, point.y * height, strokeWidth, alpha)
         } else for (index in 0 until stroke.points.lastIndex) {
@@ -1303,7 +1304,16 @@ class InkCanvasView(context: Context) : View(context) {
             val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
             val strokeWidth = stroke.width * scale * taperFactor * dynamics.size
             val alpha = (stroke.flow * dynamics.depositedAlpha * 255).toInt().coerceIn(0, 255)
-            drawLineSegment(canvas, stroke, point, start.x * width, start.y * height, end.x * width, end.y * height, strokeWidth, alpha)
+            val startX = start.x * width
+            val startY = start.y * height
+            val endX = end.x * width
+            val endY = end.y * height
+            val influenceRadius = strokeWidth + BrushBlur.radiusPixels(stroke.blur, stroke.blurUnit, stroke.blurLinkedToSize, strokeWidth, stroke.width * scale, width.toFloat()) +
+                if (stroke.waterEdgeEnabled) WaterEdge.distancePixels(stroke.waterEdgeRadius, stroke.waterEdgeRadiusUnit, width.toFloat()) else 0f
+            if (maxOf(startX, endX) + influenceRadius < contentClip.left || minOf(startX, endX) - influenceRadius > contentClip.right ||
+                maxOf(startY, endY) + influenceRadius < contentClip.top || minOf(startY, endY) - influenceRadius > contentClip.bottom
+            ) continue
+            drawLineSegment(canvas, stroke, point, startX, startY, endX, endY, strokeWidth, alpha)
         }
     }
 
@@ -1354,9 +1364,31 @@ class InkCanvasView(context: Context) : View(context) {
             advanceStampRandoms(scatterRandom, rotationRandom, stroke, sampledPoints, safeStart, dual = false)
         }
         val taper = strokeTaperFactors(stroke, sampledPoints)
+        val clipBounds = canvas.clipBounds
         for (index in safeStart until sampledPoints.size) {
             val point = sampledPoints[index]
             val stampsAtPoint = BrushStampCount.resolve(stroke.stampCount, stroke.stampCountJitter, stroke.renderSeed, index)
+            val x = point.x * width
+            val y = point.y * height
+            val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
+            val brushDiameter = (stroke.width * referenceScale * (taper?.get(index) ?: 1f) * dynamics.size).coerceAtLeast(.25f)
+            val diameter = if (stroke.spray) SprayGeometry.particleDiameter(brushDiameter, SprayDynamics.particleSize(stroke, point), stroke.sprayParticleSizeUnit, stroke.sprayParticleSizeSyncBrushSize, width.toFloat()) else brushDiameter
+            val scatterRadius = if (stroke.spray) brushDiameter / 2f * stroke.spraySpread.coerceIn(0f, 4f) else 0f
+            val transformedDiameter = diameter * maxOf(1f, stroke.thickness.coerceIn(.05f, 2f) * dynamics.thickness) * 1.5f
+            val influenceRadius = scatterRadius + transformedDiameter +
+                BrushBlur.radiusPixels(stroke.blur * dynamics.blur, stroke.blurUnit, stroke.blurLinkedToSize, diameter, stroke.width * referenceScale, width.toFloat()) +
+                if (stroke.waterEdgeEnabled) WaterEdge.distancePixels(stroke.waterEdgeRadius, stroke.waterEdgeRadiusUnit, width.toFloat()) else 0f
+            if (x + influenceRadius < clipBounds.left || x - influenceRadius > clipBounds.right ||
+                y + influenceRadius < clipBounds.top || y - influenceRadius > clipBounds.bottom
+            ) {
+                repeat(stampsAtPoint) {
+                    if (stroke.spray) { scatterRandom.nextFloat(); scatterRandom.nextFloat() }
+                    rotationRandom.nextFloat()
+                }
+                continue
+            }
+            val followsStroke = BrushStampRotation.followsStroke(stroke, dual = false)
+            val strokeDirection = if (followsStroke) StrokeStampSampler.directionDegrees(sampledPoints, index, width.toFloat(), height.toFloat()) else 0f
             repeat(stampsAtPoint) stamp@ { repeatIndex ->
             val sequenceIndex = index * 16 + repeatIndex
             val tipIndex = BrushTipSequence.index(stroke.tipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed, stroke.ribbon) ?: return@stamp
@@ -1365,10 +1397,6 @@ class InkCanvasView(context: Context) : View(context) {
                     loadTip(path, stroke.hardness, stroke.grainAssetPath, GrainDynamics.density(stroke, point), stroke.grainScale, stroke.grainRotationDegrees, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized, grainOffsetX, grainOffsetY, stroke.grainCompositeMode, stroke.antiAliasMode)
                 } ?: tips[tipIndex]
             } else tips[tipIndex]
-            val x = point.x * width; val y = point.y * height
-            val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
-            val brushDiameter = (stroke.width * referenceScale * (taper?.get(index) ?: 1f) * dynamics.size).coerceAtLeast(.25f)
-            val diameter = if (stroke.spray) SprayGeometry.particleDiameter(brushDiameter, SprayDynamics.particleSize(stroke, point), stroke.sprayParticleSizeUnit, stroke.sprayParticleSizeSyncBrushSize, width.toFloat()) else brushDiameter
             val offset = if (stroke.spray) SprayGeometry.offset(brushDiameter / 2f * stroke.spraySpread.coerceIn(0f, 4f), scatterRandom.nextFloat(), scatterRandom.nextFloat(), stroke.sprayBias) else app.inkloom.document.SprayOffset(0f, 0f)
             val drawX = x + offset.x
             val drawY = y + offset.y
@@ -1377,12 +1405,11 @@ class InkCanvasView(context: Context) : View(context) {
             val flip = BrushTipFlip.signs(stroke.tipFlipHorizontalMode, stroke.tipFlipVerticalMode, stroke.tipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed)
             val scaleX = tipScale.x * flip.x
             val scaleY = tipScale.y * flip.y
-            val followsStroke = BrushStampRotation.followsStroke(stroke, dual = false)
             val angle = BrushStampRotation.degrees(
                 stroke = stroke,
                 dual = false,
                 stylusOrientationRadians = point.orientation,
-                strokeDirectionDegrees = if (followsStroke) StrokeStampSampler.directionDegrees(sampledPoints, index, width.toFloat(), height.toFloat()) else 0f,
+                strokeDirectionDegrees = strokeDirection,
                 randomUnit = rotationRandom.nextFloat(),
             )
             val matrix = primaryStampMatrix.apply {
@@ -1495,27 +1522,44 @@ class InkCanvasView(context: Context) : View(context) {
             advanceStampRandoms(scatterRandom, rotationRandom, stroke, sampledPoints, safeStart, dual = true)
         }
         val taper = strokeTaperFactors(stroke, sampledPoints)
+        val clipBounds = canvas.clipBounds
         for (index in safeStart until sampledPoints.size) {
             val point = sampledPoints[index]
             val stampsAtPoint = BrushStampCount.resolve(stroke.dualStampCount, stroke.dualStampCountJitter, stroke.renderSeed, index, dual = true)
+            val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point, dual = true)
+            val brushDiameter = (stroke.width * referenceScale * stroke.dualSizeScale.coerceIn(.01f, 8f) * (taper?.get(index) ?: 1f) * dynamics.size).coerceAtLeast(.25f)
+            val diameter = if (stroke.dualSpray) SprayGeometry.particleDiameter(brushDiameter, SprayDynamics.dualParticleSize(stroke, point), stroke.dualSprayParticleSizeUnit, stroke.dualSprayParticleSizeSyncBrushSize, width.toFloat()) else brushDiameter
+            val x = point.x * width
+            val y = point.y * height
+            val scatterRadius = if (stroke.dualSpray) brushDiameter / 2f * stroke.dualSpraySpread.coerceIn(0f, 4f) else 0f
+            val transformedDiameter = diameter * maxOf(1f, stroke.dualThickness.coerceIn(.05f, 2f) * dynamics.thickness) * 1.5f
+            val influenceRadius = scatterRadius + transformedDiameter +
+                BrushBlur.radiusPixels(stroke.blur * dynamics.blur, stroke.blurUnit, stroke.blurLinkedToSize, diameter, stroke.width * referenceScale * stroke.dualSizeScale.coerceIn(.01f, 8f), width.toFloat())
+            if (x + influenceRadius < clipBounds.left || x - influenceRadius > clipBounds.right ||
+                y + influenceRadius < clipBounds.top || y - influenceRadius > clipBounds.bottom
+            ) {
+                repeat(stampsAtPoint) {
+                    if (stroke.dualSpray) { scatterRandom.nextFloat(); scatterRandom.nextFloat() }
+                    rotationRandom.nextFloat()
+                }
+                continue
+            }
+            val followsStroke = BrushStampRotation.followsStroke(stroke, dual = true)
+            val strokeDirection = if (followsStroke) StrokeStampSampler.directionDegrees(sampledPoints, index, width.toFloat(), height.toFloat()) else 0f
             repeat(stampsAtPoint) stamp@ { repeatIndex ->
             val sequenceIndex = index * 16 + repeatIndex
             val tipIndex = BrushTipSequence.index(stroke.dualTipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed xor DUAL_SEQUENCE_SEED, stroke.dualRibbon) ?: return@stamp
             val tip = tips[tipIndex]
-            val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point, dual = true)
-            val brushDiameter = (stroke.width * referenceScale * stroke.dualSizeScale.coerceIn(.01f, 8f) * (taper?.get(index) ?: 1f) * dynamics.size).coerceAtLeast(.25f)
-            val diameter = if (stroke.dualSpray) SprayGeometry.particleDiameter(brushDiameter, SprayDynamics.dualParticleSize(stroke, point), stroke.dualSprayParticleSizeUnit, stroke.dualSprayParticleSizeSyncBrushSize, width.toFloat()) else brushDiameter
             val offset = if (stroke.dualSpray) SprayGeometry.offset(brushDiameter / 2f * stroke.dualSpraySpread.coerceIn(0f, 4f), scatterRandom.nextFloat(), scatterRandom.nextFloat(), stroke.dualSprayBias) else app.inkloom.document.SprayOffset(0f, 0f)
-            val drawX = point.x * width + offset.x
-            val drawY = point.y * height + offset.y
+            val drawX = x + offset.x
+            val drawY = y + offset.y
             val tipScale = BrushTipTransform.scale(tip.width, tip.height, diameter, stroke.dualThickness.coerceIn(.05f, 2f) * dynamics.thickness, stroke.dualThicknessVertical)
             val flip = BrushTipFlip.signs(stroke.dualTipFlipHorizontalMode, stroke.dualTipFlipVerticalMode, stroke.dualTipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed, dual = true)
-            val followsStroke = BrushStampRotation.followsStroke(stroke, dual = true)
             val angle = BrushStampRotation.degrees(
                 stroke = stroke,
                 dual = true,
                 stylusOrientationRadians = point.orientation,
-                strokeDirectionDegrees = if (followsStroke) StrokeStampSampler.directionDegrees(sampledPoints, index, width.toFloat(), height.toFloat()) else 0f,
+                strokeDirectionDegrees = strokeDirection,
                 randomUnit = rotationRandom.nextFloat(),
             )
             val matrix = secondaryStampMatrix.apply { reset(); postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(tipScale.x * flip.x, tipScale.y * flip.y); postRotate(angle); postTranslate(drawX, drawY) }
