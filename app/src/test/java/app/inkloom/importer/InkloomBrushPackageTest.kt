@@ -52,6 +52,11 @@ class InkloomBrushPackageTest {
                 spacing = .18f,
                 spacingMode = app.inkloom.document.CspBrushGap.NARROW,
                 stabilization = .4f,
+                streamLine = .33f,
+                streamLinePressure = .21f,
+                procreateStabilization = .42f,
+                motionFiltering = .57f,
+                motionFilteringExpression = .28f,
                 antiAliasMode = CspAntiAlias.WEAK,
                 blur = 9.5f,
                 blurUnit = 2,
@@ -146,6 +151,11 @@ class InkloomBrushPackageTest {
             assertEquals(original.defaultSize, restored.defaultSize, .0001f)
             assertEquals(original.defaultOpacity, restored.defaultOpacity, .0001f)
             assertEquals(original.spacing, restored.spacing, .0001f)
+            assertEquals(original.streamLine, restored.streamLine, .0001f)
+            assertEquals(original.streamLinePressure, restored.streamLinePressure, .0001f)
+            assertEquals(original.procreateStabilization, restored.procreateStabilization, .0001f)
+            assertEquals(original.motionFiltering, restored.motionFiltering, .0001f)
+            assertEquals(original.motionFilteringExpression, restored.motionFilteringExpression, .0001f)
             assertEquals(app.inkloom.document.CspBrushGap.NARROW, restored.spacingMode)
             assertEquals(CspAntiAlias.WEAK, restored.antiAliasMode)
             assertEquals(CspAntiAlias.STRONG, restored.dualAntiAliasMode)

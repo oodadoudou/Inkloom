@@ -62,6 +62,17 @@ data class ImportedBrush(
     val grainOffsetJitter: Boolean = false,
     val grainCompositeMode: Int = CspTextureComposite.MULTIPLY,
     val defaultSize: Float = 8f,
+    /** Procreate StreamLine > Amount. Independent from CSP stabilization. */
+    val streamLine: Float = 0f,
+    /** Procreate StreamLine > Pressure. Smooths pressure onset separately from path input. */
+    val streamLinePressure: Float = 0f,
+    /** Procreate Stabilization > Amount (moving-average path correction). */
+    val procreateStabilization: Float = 0f,
+    /** Procreate Motion Filtering > Amount. */
+    val motionFiltering: Float = 0f,
+    /** Procreate Motion Filtering > Expression. */
+    val motionFilteringExpression: Float = 0f,
+    /** CSP Correction > Stabilization. */
     val stabilization: Float = 0f,
     val stabilizationBySpeed: Boolean = false,
     val stabilizationBySpeedMode: Int = 1,

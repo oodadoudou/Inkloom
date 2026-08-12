@@ -116,11 +116,11 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         val taperStartLength = max(genericTaperStartLength, pencilTaperStartLength)
         val taperEndLength = max(genericTaperEndLength, pencilTaperEndLength)
         val taperSize = max(genericTaperSize, pencilTaperSize)
-        val stabilization = combinedStrength(
-            metadata.float("plotSmoothing"),
-            metadata.float("plotMovingAverageStabilization"),
-            metadata.float("plotFFTSmoothingAmount"),
-        ).coerceIn(0f, .9f)
+        val streamLine = metadata.float("plotSmoothing").coerceIn(0f, 1f)
+        val streamLinePressure = metadata.float("dynamicsPressureSmoothing").coerceIn(0f, 1f)
+        val procreateStabilization = metadata.float("plotMovingAverageStabilization").coerceIn(0f, 1f)
+        val motionFiltering = metadata.float("plotFFTSmoothingAmount").coerceIn(0f, 1f)
+        val motionFilteringExpression = metadata.float("plotFFTSmoothingBias").coerceIn(0f, 1f)
         val dualMapped = dualMetadata?.let { mapSecondary(it) }
         val compatibility = if (watercolor || dualMetadata != null || metadata.int("blendMode") !in 0..1) Compatibility.BASIC else Compatibility.HIGH
         return fallback.copy(
@@ -140,7 +140,11 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             grainReversed = metadata.boolean("textureInverted"),
             grainOffsetJitter = metadata.boolean("textureOffsetJitter"),
             defaultSize = (metadata.float("paintSize", .25f).coerceAtLeast(.01f) * metadata.float("maxSize", .32f).coerceAtLeast(.01f) * 100f).coerceIn(.5f, 400f),
-            stabilization = stabilization,
+            streamLine = streamLine,
+            streamLinePressure = streamLinePressure,
+            procreateStabilization = procreateStabilization,
+            motionFiltering = motionFiltering,
+            motionFilteringExpression = motionFilteringExpression,
             defaultOpacity = (metadata.float("paintOpacity", 1f) * metadata.float("maxOpacity", 1f)).coerceIn(.01f, 1f),
             spacing = (metadata.float("plotSpacing") * 10f).coerceIn(.01f, 2f),
             spacingSecondaryDynamics = spacingDynamics(spacingSpeed, spacingJitter),
@@ -215,7 +219,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
                 if (grain != null) add("Procreate Grain.png extracted with independent movement, scale, zoom, rotation, brightness, contrast, invert and per-stroke offset settings")
                 add("Stroke spacing, smoothing, size/opacity limits, shape angle, roundness, azimuth and direction behavior mapped")
                 if (pencilTaperStartLength > DYNAMIC_EPSILON || pencilTaperEndLength > DYNAMIC_EPSILON) add("Procreate Apple Pencil start/end taper lengths and size floor mapped")
-                if (metadata.float("plotMovingAverageStabilization") > DYNAMIC_EPSILON || metadata.float("plotFFTSmoothingAmount") > DYNAMIC_EPSILON) add("Procreate StreamLine, stabilization and motion filtering combined into Inkloom stabilization")
+                if (streamLine > DYNAMIC_EPSILON || streamLinePressure > DYNAMIC_EPSILON || procreateStabilization > DYNAMIC_EPSILON || motionFiltering > DYNAMIC_EPSILON) add("Procreate StreamLine, pressure smoothing, moving-average stabilization and motion filtering preserved independently")
                 val sources = buildList { if (abs(pressureSize) > DYNAMIC_EPSILON || abs(pressureOpacity) > DYNAMIC_EPSILON) add("pressure"); if (abs(speedSize) > DYNAMIC_EPSILON || abs(speedOpacity) > DYNAMIC_EPSILON) add("speed"); if (abs(tiltSize) > DYNAMIC_EPSILON || abs(tiltOpacity) > DYNAMIC_EPSILON) add("tilt"); if (abs(jitterSize) > DYNAMIC_EPSILON || abs(jitterOpacity) > DYNAMIC_EPSILON) add("random jitter") }
                 if (sources.isNotEmpty()) add("Procreate dynamics mapped: ${sources.joinToString()}")
                 if (randomRotation > DYNAMIC_EPSILON) add("Procreate Shape Scatter mapped to independent per-stamp rotation")
@@ -256,9 +260,6 @@ class ProcreateBrushParser(private val assetDirectory: File) {
 
     private fun pressureMinimum(amount: Float, explicitMinimum: Float): Float =
         max(explicitMinimum.coerceIn(0f, 1f), 1f - abs(amount).coerceIn(0f, 1f))
-
-    private fun combinedStrength(vararg values: Float): Float =
-        1f - values.fold(1f) { remaining, value -> remaining * (1f - value.coerceIn(0f, 1f)) }
 
     private fun pressureCurve(amount: Float, source: List<BrushCurvePoint>): List<BrushCurvePoint> {
         val base = source.ifEmpty { LINEAR_CURVE }
@@ -368,7 +369,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
     )
 
     companion object {
-        const val CURRENT_VERSION = 8
+        const val CURRENT_VERSION = 9
         private const val MAX_ENTRIES = 4_096
         private const val MAX_ENTRY_BYTES = 32L * 1024L * 1024L
         private const val MAX_EXPANDED_BYTES = 384L * 1024L * 1024L

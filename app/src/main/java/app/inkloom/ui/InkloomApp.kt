@@ -4840,6 +4840,11 @@ internal fun InkCanvasView.applyBrushConfiguration(
     pressureMinimumInput = settings.pressureMinimumInput
     pressureMaximumInput = settings.pressureMaximumInput
     pressureResponseCurve = settings.pressureResponseCurve
+    streamLine = activeBrush?.streamLine ?: 0f
+    streamLinePressure = activeBrush?.streamLinePressure ?: 0f
+    procreateStabilization = activeBrush?.procreateStabilization ?: 0f
+    motionFiltering = activeBrush?.motionFiltering ?: 0f
+    motionFilteringExpression = activeBrush?.motionFilteringExpression ?: 0f
     stabilization = maxOf(settings.stabilization, activeBrush?.stabilization ?: 0f)
     stabilizationBySpeed = activeBrush?.stabilizationBySpeed ?: false
     stabilizationBySpeedMode = activeBrush?.stabilizationBySpeedMode ?: StrokeStabilization.REDUCE_WHEN_FAST
@@ -8908,6 +8913,11 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 item { OutlinedTextField(tagText, { tagText = it }, label = { Text(tr("Tags", "标签")) }, supportingText = { Text(tr("Separate tags with commas", "使用逗号分隔标签")) }, modifier = Modifier.fillMaxWidth()) }
                 item { BrushTestArea(draft, settings) }
                 item { BrushSettingSlider(tr("Size", "笔刷尺寸"), draft.defaultSize, .5f..400f) { draft = draft.copy(defaultSize = it) } }
+                item { BrushSettingSlider("StreamLine", draft.streamLine, 0f..1f) { draft = draft.copy(streamLine = it) } }
+                item { BrushSettingSlider(tr("StreamLine pressure", "StreamLine 压力平滑"), draft.streamLinePressure, 0f..1f) { draft = draft.copy(streamLinePressure = it) } }
+                item { BrushSettingSlider(tr("Procreate stabilization", "Procreate 稳定化"), draft.procreateStabilization, 0f..1f) { draft = draft.copy(procreateStabilization = it) } }
+                item { BrushSettingSlider(tr("Motion filtering", "运动过滤"), draft.motionFiltering, 0f..1f) { draft = draft.copy(motionFiltering = it) } }
+                if (draft.motionFiltering > 0f) item { BrushSettingSlider(tr("Motion filtering expression", "运动过滤表现力"), draft.motionFilteringExpression, 0f..1f) { draft = draft.copy(motionFilteringExpression = it) } }
                 item { BrushSettingSlider(tr("Stabilization", "抖动修正"), draft.stabilization, 0f..0.9f) { draft = draft.copy(stabilization = it) } }
                 item { SettingSwitch("Adjust stabilization by speed", "Uses the imported CSP correction behavior when available.", draft.stabilizationBySpeed) { draft = draft.copy(stabilizationBySpeed = it) } }
                 if (draft.stabilizationBySpeed) item { Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { FilterChip(selected = draft.stabilizationBySpeedMode == StrokeStabilization.INCREASE_WHEN_SLOW, onClick = { draft = draft.copy(stabilizationBySpeedMode = StrokeStabilization.INCREASE_WHEN_SLOW) }, label = { Text(tr("More when slow", "慢速时增强")) }); FilterChip(selected = draft.stabilizationBySpeedMode == StrokeStabilization.REDUCE_WHEN_FAST, onClick = { draft = draft.copy(stabilizationBySpeedMode = StrokeStabilization.REDUCE_WHEN_FAST) }, label = { Text(tr("Less when fast", "快速时减弱")) }) } }

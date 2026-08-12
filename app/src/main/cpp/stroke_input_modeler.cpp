@@ -1,6 +1,7 @@
 #include <jni.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -20,6 +21,7 @@ constexpr float kFullTurn = kPi * 2.0F;
 constexpr std::size_t kInputStride = 32;
 constexpr std::size_t kOutputStride = 40;
 constexpr std::uint32_t kInputFlagForce = 1U;
+constexpr std::size_t kStabilizationHistory = 32;
 
 struct StrokeInputSession {
     float x = 0.0F;
@@ -29,7 +31,19 @@ struct StrokeInputSession {
     float tilt = 0.0F;
     float orientation = 0.0F;
     float velocity = 0.0F;
+    float raw_x = 0.0F;
+    float raw_y = 0.0F;
+    std::int64_t raw_time_ms = 0;
+    float motion_x = 0.0F;
+    float motion_y = 0.0F;
+    float motion_velocity_x = 0.0F;
+    float motion_velocity_y = 0.0F;
+    std::array<float, kStabilizationHistory> stabilization_x{};
+    std::array<float, kStabilizationHistory> stabilization_y{};
+    std::size_t stabilization_cursor = 0;
+    std::size_t stabilization_count = 0;
     bool has_sample = false;
+    bool has_raw_sample = false;
 
     void reset() noexcept {
         x = 0.0F;
@@ -39,7 +53,19 @@ struct StrokeInputSession {
         tilt = 0.0F;
         orientation = 0.0F;
         velocity = 0.0F;
+        raw_x = 0.0F;
+        raw_y = 0.0F;
+        raw_time_ms = 0;
+        motion_x = 0.0F;
+        motion_y = 0.0F;
+        motion_velocity_x = 0.0F;
+        motion_velocity_y = 0.0F;
+        stabilization_x.fill(0.0F);
+        stabilization_y.fill(0.0F);
+        stabilization_cursor = 0;
+        stabilization_count = 0;
         has_sample = false;
+        has_raw_sample = false;
     }
 };
 
@@ -84,6 +110,71 @@ float smoothing(
     return std::clamp(value * (1.0F - speed * 0.75F), 0.0F, 0.9F);
 }
 
+void motion_filter(
+    StrokeInputSession& session,
+    float raw_x,
+    float raw_y,
+    float amount,
+    float expression,
+    float& filtered_x,
+    float& filtered_y
+) noexcept {
+    const float strength = clamp01(amount);
+    if (!session.has_raw_sample || strength <= 0.0F) {
+        filtered_x = raw_x;
+        filtered_y = raw_y;
+        session.motion_x = raw_x;
+        session.motion_y = raw_y;
+        return;
+    }
+    const float delta_x = raw_x - session.raw_x;
+    const float delta_y = raw_y - session.raw_y;
+    session.motion_velocity_x = session.motion_velocity_x * 0.70F + delta_x * 0.30F;
+    session.motion_velocity_y = session.motion_velocity_y * 0.70F + delta_y * 0.30F;
+    const float predicted_x = session.motion_x + session.motion_velocity_x;
+    const float predicted_y = session.motion_y + session.motion_velocity_y;
+    // Expression restores raw movement, but its influence diminishes as Amount approaches 100%.
+    const float effective = strength * (1.0F - clamp01(expression) * (1.0F - strength));
+    filtered_x = raw_x * (1.0F - effective) + predicted_x * effective;
+    filtered_y = raw_y * (1.0F - effective) + predicted_y * effective;
+    session.motion_x = filtered_x;
+    session.motion_y = filtered_y;
+}
+
+void moving_average_stabilization(
+    StrokeInputSession& session,
+    float input_x,
+    float input_y,
+    float amount,
+    float velocity,
+    float& output_x,
+    float& output_y
+) noexcept {
+    session.stabilization_x[session.stabilization_cursor] = input_x;
+    session.stabilization_y[session.stabilization_cursor] = input_y;
+    session.stabilization_cursor = (session.stabilization_cursor + 1U) % kStabilizationHistory;
+    session.stabilization_count = std::min(session.stabilization_count + 1U, kStabilizationHistory);
+    const float strength = clamp01(amount);
+    if (strength <= 0.0F || session.stabilization_count <= 1U) {
+        output_x = input_x;
+        output_y = input_y;
+        return;
+    }
+    // Procreate documents that Stabilization uses a moving average and becomes stronger at speed.
+    const float speed_weight = 0.25F + clamp01(velocity) * 0.75F;
+    const std::size_t requested = 1U + static_cast<std::size_t>(std::lround(strength * speed_weight * 23.0F));
+    const std::size_t window = std::clamp<std::size_t>(requested, 1U, session.stabilization_count);
+    float sum_x = 0.0F;
+    float sum_y = 0.0F;
+    for (std::size_t offset = 0; offset < window; ++offset) {
+        const std::size_t index = (session.stabilization_cursor + kStabilizationHistory - 1U - offset) % kStabilizationHistory;
+        sum_x += session.stabilization_x[index];
+        sum_y += session.stabilization_y[index];
+    }
+    output_x = sum_x / static_cast<float>(window);
+    output_y = sum_y / static_cast<float>(window);
+}
+
 template <typename T>
 void write_value(std::byte* output, std::size_t offset, const T& value) noexcept {
     std::memcpy(output + offset, &value, sizeof(T));
@@ -123,20 +214,25 @@ bool append_sample(
     float stabilization,
     bool stabilization_by_speed,
     jint stabilization_by_speed_mode,
+    float stream_line,
+    float stream_line_pressure,
+    float procreate_stabilization,
+    float motion_filtering,
+    float motion_filtering_expression,
     bool force
 ) noexcept {
-    const std::int64_t normalized_time_ms = session.has_sample
-        ? std::max(sample_time_ms, session.time_ms + 1)
+    const std::int64_t normalized_time_ms = session.has_raw_sample
+        ? std::max(sample_time_ms, session.raw_time_ms + 1)
         : std::max<std::int64_t>(sample_time_ms, 0);
     const float normalized_x = clamp01(raw_x);
     const float normalized_y = clamp01(raw_y);
-    const std::int64_t elapsed = session.has_sample
-        ? normalized_time_ms - session.time_ms
+    const std::int64_t elapsed = session.has_raw_sample
+        ? normalized_time_ms - session.raw_time_ms
         : 1;
-    const float input_velocity = session.has_sample
+    const float input_velocity = session.has_raw_sample
         ? normalized_velocity(
-            normalized_x - session.x,
-            normalized_y - session.y,
+            normalized_x - session.raw_x,
+            normalized_y - session.raw_y,
             viewport_width,
             viewport_height,
             elapsed
@@ -148,16 +244,28 @@ bool append_sample(
         stabilization_by_speed_mode,
         input_velocity
     );
+    float motion_x = normalized_x;
+    float motion_y = normalized_y;
+    motion_filter(session, normalized_x, normalized_y, motion_filtering, motion_filtering_expression, motion_x, motion_y);
+    float averaged_x = motion_x;
+    float averaged_y = motion_y;
+    moving_average_stabilization(session, motion_x, motion_y, procreate_stabilization, input_velocity, averaged_x, averaged_y);
+    const float stream_filter = clamp01(stream_line) * 0.90F;
+    const float combined_filter = 1.0F - (1.0F - filter) * (1.0F - stream_filter);
     const float modeled_x = force
         ? normalized_x
         : session.has_sample
-        ? session.x * filter + normalized_x * (1.0F - filter)
-        : normalized_x;
+        ? session.x * combined_filter + averaged_x * (1.0F - combined_filter)
+        : averaged_x;
     const float modeled_y = force
         ? normalized_y
         : session.has_sample
-        ? session.y * filter + normalized_y * (1.0F - filter)
-        : normalized_y;
+        ? session.y * combined_filter + averaged_y * (1.0F - combined_filter)
+        : averaged_y;
+    session.raw_x = normalized_x;
+    session.raw_y = normalized_y;
+    session.raw_time_ms = normalized_time_ms;
+    session.has_raw_sample = true;
     const float modeled_distance_px = std::hypot(
         (modeled_x - session.x) * static_cast<float>(std::max(viewport_width, 1)),
         (modeled_y - session.y) * static_cast<float>(std::max(viewport_height, 1))
@@ -180,11 +288,9 @@ bool append_sample(
         : raw_velocity;
     session.x = clamp01(modeled_x);
     session.y = clamp01(modeled_y);
-    session.pressure = std::clamp(
-        std::isfinite(adjusted_pressure) ? adjusted_pressure : kMinimumPressure,
-        kMinimumPressure,
-        1.0F
-    );
+    const float raw_pressure = std::clamp(std::isfinite(adjusted_pressure) ? adjusted_pressure : kMinimumPressure, kMinimumPressure, 1.0F);
+    const float pressure_filter = clamp01(stream_line_pressure) * 0.90F;
+    session.pressure = force || !session.has_sample ? raw_pressure : session.pressure * pressure_filter + raw_pressure * (1.0F - pressure_filter);
     session.time_ms = normalized_time_ms;
     session.tilt = std::isfinite(sample_tilt) ? sample_tilt : 0.0F;
     session.orientation = unwrap_orientation(sample_orientation, session.orientation, session.has_sample);
@@ -227,6 +333,11 @@ Java_app_inkloom_engine_v2_input_NativeStrokeInputModeler_nativeAppendBatch(
     jfloat stabilization,
     jboolean stabilization_by_speed,
     jint stabilization_by_speed_mode,
+    jfloat stream_line,
+    jfloat stream_line_pressure,
+    jfloat procreate_stabilization,
+    jfloat motion_filtering,
+    jfloat motion_filtering_expression,
     jobject output_buffer
 ) {
     auto* session = from_handle(handle);
@@ -257,6 +368,11 @@ Java_app_inkloom_engine_v2_input_NativeStrokeInputModeler_nativeAppendBatch(
             stabilization,
             stabilization_by_speed == JNI_TRUE,
             stabilization_by_speed_mode,
+            stream_line,
+            stream_line_pressure,
+            procreate_stabilization,
+            motion_filtering,
+            motion_filtering_expression,
             (read_value<std::uint32_t>(input, offset + 12) & kInputFlagForce) != 0U
         );
         if (!accepted) continue;

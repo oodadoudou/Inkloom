@@ -233,6 +233,11 @@ class SutSprayRotationParserTest {
                 sizeBytes = 42,
                 report = emptyList(),
                 spray = true,
+                streamLine = .31f,
+                streamLinePressure = .22f,
+                procreateStabilization = .43f,
+                motionFiltering = .54f,
+                motionFilteringExpression = .27f,
                 sprayParticleRotationDegrees = 33f,
                 sprayParticleFollowStrokeDirection = true,
                 sprayParticleRandomRotationDegrees = 54f,
@@ -294,6 +299,11 @@ class SutSprayRotationParserTest {
             val restored = store.load().single()
 
             assertEquals(33f, restored.sprayParticleRotationDegrees, .0001f)
+            assertEquals(.31f, restored.streamLine, .0001f)
+            assertEquals(.22f, restored.streamLinePressure, .0001f)
+            assertEquals(.43f, restored.procreateStabilization, .0001f)
+            assertEquals(.54f, restored.motionFiltering, .0001f)
+            assertEquals(.27f, restored.motionFilteringExpression, .0001f)
             assertTrue(restored.sprayParticleFollowStrokeDirection)
             assertEquals(54f, restored.sprayParticleRandomRotationDegrees, .0001f)
             assertTrue(restored.colorMixPressureEnabled)

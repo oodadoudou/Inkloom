@@ -127,6 +127,11 @@ class BrushMetadataStore(
                         grainOffsetJitter = item.optBoolean("grainOffsetJitter", false),
                         grainCompositeMode = item.optInt("grainCompositeMode", CspTextureComposite.MULTIPLY).coerceIn(0, 64),
                         defaultSize = item.optDouble("defaultSize", 8.0).toFloat(),
+                        streamLine = item.optDouble("streamLine", 0.0).toFloat().coerceIn(0f, 1f),
+                        streamLinePressure = item.optDouble("streamLinePressure", 0.0).toFloat().coerceIn(0f, 1f),
+                        procreateStabilization = item.optDouble("procreateStabilization", 0.0).toFloat().coerceIn(0f, 1f),
+                        motionFiltering = item.optDouble("motionFiltering", 0.0).toFloat().coerceIn(0f, 1f),
+                        motionFilteringExpression = item.optDouble("motionFilteringExpression", 0.0).toFloat().coerceIn(0f, 1f),
                         stabilization = item.optDouble("stabilization", 0.0).toFloat().coerceIn(0f, .9f),
                         stabilizationBySpeed = item.optBoolean("stabilizationBySpeed", false),
                         stabilizationBySpeedMode = item.optInt("stabilizationBySpeedMode", 1).coerceIn(0, 1),
@@ -318,6 +323,11 @@ class BrushMetadataStore(
                     .put("grainOffsetJitter", brush.grainOffsetJitter)
                     .put("grainCompositeMode", brush.grainCompositeMode)
                     .put("defaultSize", brush.defaultSize)
+                    .put("streamLine", brush.streamLine)
+                    .put("streamLinePressure", brush.streamLinePressure)
+                    .put("procreateStabilization", brush.procreateStabilization)
+                    .put("motionFiltering", brush.motionFiltering)
+                    .put("motionFilteringExpression", brush.motionFilteringExpression)
                     .put("stabilization", brush.stabilization)
                     .put("stabilizationBySpeed", brush.stabilizationBySpeed)
                     .put("stabilizationBySpeedMode", brush.stabilizationBySpeedMode)

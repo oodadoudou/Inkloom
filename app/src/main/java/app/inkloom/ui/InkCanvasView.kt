@@ -752,6 +752,11 @@ class InkCanvasView(context: Context) : View(context) {
     var pressureMinimumInput: Float = 0f
     var pressureMaximumInput: Float = 1f
     var pressureResponseCurve: List<Float> = app.inkloom.document.PressureResponseCurve.LINEAR
+    var streamLine: Float = 0f
+    var streamLinePressure: Float = 0f
+    var procreateStabilization: Float = 0f
+    var motionFiltering: Float = 0f
+    var motionFilteringExpression: Float = 0f
     var stabilization: Float = .12f
     var stabilizationBySpeed: Boolean = false
     var stabilizationBySpeedMode: Int = StrokeStabilization.REDUCE_WHEN_FAST
@@ -3667,7 +3672,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun addModeledPointV2(x: Float, y: Float, pressure: Float, time: Long, tilt: Float, orientation: Float, force: Boolean) {
         stageNativeInput(0, x, y, pressure, time, tilt, orientation, force)
-        if (strokeInputModeler.appendBatch(1, modeledViewportWidth(), modeledViewportHeight(), stabilization, stabilizationBySpeed, stabilizationBySpeedMode) != 1) return
+        if (strokeInputModeler.appendBatch(1, modeledViewportWidth(), modeledViewportHeight(), stabilization, stabilizationBySpeed, stabilizationBySpeedMode, streamLine, streamLinePressure, procreateStabilization, motionFiltering, motionFilteringExpression) != 1) return
         appendNativeOutput(0)
         requestActiveSurfaceFrame()
     }
@@ -3707,6 +3712,11 @@ class InkCanvasView(context: Context) : View(context) {
                     stabilization,
                     stabilizationBySpeed,
                     stabilizationBySpeedMode,
+                    streamLine,
+                    streamLinePressure,
+                    procreateStabilization,
+                    motionFiltering,
+                    motionFilteringExpression,
                 )
                 for (outputIndex in 0 until accepted) appendNativeOutput(outputIndex)
                 sourceIndex += count

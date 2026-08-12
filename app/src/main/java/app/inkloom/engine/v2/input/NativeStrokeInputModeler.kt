@@ -40,10 +40,15 @@ internal class NativeStrokeInputModeler : AutoCloseable {
         stabilization: Float,
         stabilizationBySpeed: Boolean,
         stabilizationBySpeedMode: Int,
+        streamLine: Float = 0f,
+        streamLinePressure: Float = 0f,
+        procreateStabilization: Float = 0f,
+        motionFiltering: Float = 0f,
+        motionFilteringExpression: Float = 0f,
         force: Boolean = false,
     ): Boolean {
         putSample(0, rawX, rawY, adjustedPressure, sampleTimeMs, sampleTilt, sampleOrientation, force)
-        return appendBatch(1, viewportWidthPx, viewportHeightPx, stabilization, stabilizationBySpeed, stabilizationBySpeedMode) == 1
+        return appendBatch(1, viewportWidthPx, viewportHeightPx, stabilization, stabilizationBySpeed, stabilizationBySpeedMode, streamLine, streamLinePressure, procreateStabilization, motionFiltering, motionFilteringExpression) == 1
     }
 
     /** Stages one raw input in the preallocated direct buffer. No object crosses JNI. */
@@ -76,12 +81,19 @@ internal class NativeStrokeInputModeler : AutoCloseable {
         stabilization: Float,
         stabilizationBySpeed: Boolean,
         stabilizationBySpeedMode: Int,
+        streamLine: Float = 0f,
+        streamLinePressure: Float = 0f,
+        procreateStabilization: Float = 0f,
+        motionFiltering: Float = 0f,
+        motionFilteringExpression: Float = 0f,
     ): Int {
         if (sampleCount <= 0) return 0
         require(sampleCount <= MAX_BATCH_SAMPLES)
         return nativeAppendBatch(
             requireHandle(), input, sampleCount, viewportWidthPx, viewportHeightPx,
-            stabilization, stabilizationBySpeed, stabilizationBySpeedMode, output,
+            stabilization, stabilizationBySpeed, stabilizationBySpeedMode,
+            streamLine, streamLinePressure, procreateStabilization, motionFiltering, motionFilteringExpression,
+            output,
         )
     }
 
@@ -109,6 +121,11 @@ internal class NativeStrokeInputModeler : AutoCloseable {
         stabilization: Float,
         stabilizationBySpeed: Boolean,
         stabilizationBySpeedMode: Int,
+        streamLine: Float,
+        streamLinePressure: Float,
+        procreateStabilization: Float,
+        motionFiltering: Float,
+        motionFilteringExpression: Float,
         output: ByteBuffer,
     ): Int
 
