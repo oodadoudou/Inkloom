@@ -271,6 +271,12 @@ class InkCanvasView(context: Context) : View(context) {
     private var pendingLiquifyY = 0f
     private var pendingLiquifyPressure = 1f
     private var liquifyPressure = 1f
+    private var liquifyHoldEligible = false
+    private var liquifyMovedBeyondSlop = false
+    private var liquifyDownX = 0f
+    private var liquifyDownY = 0f
+    @VisibleForTesting
+    internal var liquifyLongPressDelayMs: Long = ViewConfiguration.getLongPressTimeout().toLong()
     private var hasPendingLiquify = false
     private var liquifyFrameScheduled = false
     private val liquifyFrame = Runnable {
@@ -279,6 +285,21 @@ class InkCanvasView(context: Context) : View(context) {
             hasPendingLiquify = false
             extendLiquify(pendingLiquifyX, pendingLiquifyY, pendingLiquifyPressure)
         }
+    }
+    private val liquifyHoldFrame = object : Runnable {
+        override fun run() {
+            if (!liquifyHoldEligible || liquifyMovedBeyondSlop || liquifyBefore == null) return
+            extendLiquify(liquifyLastX, liquifyLastY, liquifyPressure)
+            postOnAnimation(this)
+        }
+    }
+    private val liquifyHoldStart = Runnable {
+        if (liquifyHoldEligible && !liquifyMovedBeyondSlop && liquifyBefore != null) liquifyHoldFrame.run()
+    }
+    @VisibleForTesting
+    internal fun runLiquifyLongPressFrameForTest() {
+        liquifyHoldStart.run()
+        removeCallbacks(liquifyHoldFrame)
     }
     private var correctionBefore: List<InkStroke>? = null
     private var correctionStrokeId: String? = null
@@ -4083,17 +4104,38 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun beginLiquifyGesture(x: Float, y: Float, pressure: Float) {
         removeCallbacks(liquifyFrame)
+        removeCallbacks(liquifyHoldStart)
+        removeCallbacks(liquifyHoldFrame)
         liquifyFrameScheduled = false
         hasPendingLiquify = false
         liquifyBefore = strokes.toList()
         prepareLocalToolStrokeIndex()
         liquifyLastX = x.coerceIn(0f, 1f)
         liquifyLastY = y.coerceIn(0f, 1f)
+        liquifyDownX = liquifyLastX
+        liquifyDownY = liquifyLastY
         liquifyPressure = pressure.coerceIn(0f, 1f)
+        liquifyMovedBeyondSlop = false
+        liquifyHoldEligible = liquifyMode in setOf(
+            LiquifyMode.TWIRL_CLOCKWISE,
+            LiquifyMode.TWIRL_COUNTERCLOCKWISE,
+            LiquifyMode.PINCH,
+            LiquifyMode.EXPAND,
+            LiquifyMode.CRYSTALS,
+            LiquifyMode.RECONSTRUCT,
+        )
+        if (liquifyHoldEligible) postDelayed(liquifyHoldStart, liquifyLongPressDelayMs.coerceAtLeast(0L))
         liquifyChanged = false
     }
 
     private fun scheduleLiquify(x: Float, y: Float, pressure: Float) {
+        val dx = (x - liquifyDownX) * width.coerceAtLeast(1)
+        val dy = (y - liquifyDownY) * height.coerceAtLeast(1)
+        if (!liquifyMovedBeyondSlop && hypot(dx.toDouble(), dy.toDouble()) > navigationTouchSlop) {
+            liquifyMovedBeyondSlop = true
+            removeCallbacks(liquifyHoldStart)
+            removeCallbacks(liquifyHoldFrame)
+        }
         pendingLiquifyX = x
         pendingLiquifyY = y
         pendingLiquifyPressure = pressure.coerceIn(0f, 1f)
@@ -4195,11 +4237,14 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun finishLiquifyGesture() {
         removeCallbacks(liquifyFrame)
+        removeCallbacks(liquifyHoldStart)
+        removeCallbacks(liquifyHoldFrame)
         liquifyFrameScheduled = false
         hasPendingLiquify = false
         val before = liquifyBefore
         if (before != null && liquifyChanged) commitStrokeEdit(before, strokes)
         liquifyBefore = null
+        liquifyHoldEligible = false
         liquifyChanged = false
         localToolStrokeIndices.clear()
         invalidate()
@@ -4207,11 +4252,14 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun cancelLiquifyGesture() {
         removeCallbacks(liquifyFrame)
+        removeCallbacks(liquifyHoldStart)
+        removeCallbacks(liquifyHoldFrame)
         liquifyFrameScheduled = false
         hasPendingLiquify = false
         val before = liquifyBefore
         if (before != null && liquifyChanged) restoreStrokeSnapshot(before)
         liquifyBefore = null
+        liquifyHoldEligible = false
         liquifyChanged = false
         localToolStrokeIndices.clear()
         invalidate()

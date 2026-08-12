@@ -34,6 +34,22 @@ class InkCanvasProfessionalToolsTest {
         assertNotEquals(original.points, requireNotNull(replacement).points)
     }
 
+    @Test fun stationaryLiquifyModesApplyAfterLongPress() {
+        var replacement: InkStroke? = null
+        val original = line("liquify-hold", listOf(StrokePoint(.45f, .5f), StrokePoint(.55f, .5f)))
+        val view = canvas(EditorTool.LIQUIFY, original) {
+            baseWidth = 500f
+            liquifyMode = app.inkloom.document.LiquifyMode.EXPAND
+            onStrokesReplaced = { _, changed, _ -> replacement = changed.firstOrNull() }
+        }
+
+        send(view, MotionEvent.ACTION_DOWN, 500f, 500f, 0L)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.runLiquifyLongPressFrameForTest() }
+        send(view, MotionEvent.ACTION_UP, 500f, 500f, 100L)
+
+        assertNotEquals("Long-press Expand must change geometry without a drag", original.points, requireNotNull(replacement).points)
+    }
+
     @Test fun correctLineSmoothsAndCommitsTheTargetLine() {
         var replacement: InkStroke? = null
         val original = line("rough", listOf(
