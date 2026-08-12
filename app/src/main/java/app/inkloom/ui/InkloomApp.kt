@@ -7806,7 +7806,19 @@ private fun ProcreateBrushLibrary(
     val ungroupedLabel = tr("Imported", "已导入")
     val newBrushName = tr("New brush", "新笔刷")
     val createdInInkloom = tr("Created in Inkloom", "在 Inkloom 中创建")
-    val allCategories = listOf(tr("All", "全部")) + systemCategories + visibleImportedCategories + ungroupedLabel
+    // User groups created inside a factory category are real children of that category, not a
+    // second folder block appended after every system category. Keep each subtree together so a
+    // freshly-created Pencil/Sketching row appears directly below Pencil, matching the brush-set
+    // hierarchy used by Procreate and CSP.
+    val categoriesInsideSystemRoots = systemCategories.flatMap { systemCategory ->
+        listOf(systemCategory) + visibleImportedCategories.filter { importedCategory ->
+            !importedCategory.equals(systemCategory, true) && BrushGroupOperations.isWithin(importedCategory, systemCategory)
+        }
+    }
+    val standaloneImportedCategories = visibleImportedCategories.filter { importedCategory ->
+        systemCategories.none { systemCategory -> BrushGroupOperations.isWithin(importedCategory, systemCategory) }
+    }
+    val allCategories = listOf(tr("All", "全部")) + categoriesInsideSystemRoots + standaloneImportedCategories + ungroupedLabel
     var selectedCategory by rememberSaveable { mutableStateOf(systemCategories.first()) }
     var pendingCategoryReveal by remember { mutableStateOf<String?>(null) }
     val categoryListState = rememberLazyListState()
