@@ -25,7 +25,8 @@ object BrushDynamics {
             factor *= ranged(dynamics.tiltMinimum, tiltInput)
         }
         if (dynamics.velocityEnabled) {
-            factor *= ranged(dynamics.velocityMinimum, curve(dynamics.velocityCurve, point.velocity.coerceIn(0f, 1f)))
+            val velocityInput = (point.velocity * dynamics.velocityScale.coerceIn(0f, 10f)).coerceIn(0f, 1f)
+            factor *= ranged(dynamics.velocityMinimum, curve(dynamics.velocityCurve, velocityInput))
         }
         if (dynamics.randomEnabled) {
             factor *= ranged(dynamics.randomMinimum, deterministicRandom(strokeSeed, point.timeMs, salt))

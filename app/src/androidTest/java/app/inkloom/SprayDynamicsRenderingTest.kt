@@ -46,9 +46,9 @@ class SprayDynamicsRenderingTest {
                 sprayParticleSize = 70f,
                 sprayParticleSizePressureEnabled = true,
                 sprayParticleSizePressureMinimum = .2f,
-                sprayParticleSizeSecondaryDynamics = BrushSecondaryDynamics(velocityEnabled = true, velocityMinimum = .35f),
+                sprayParticleSizeSecondaryDynamics = BrushSecondaryDynamics(velocityEnabled = true, velocityMinimum = .35f, velocityScale = 5f),
                 sprayDensity = 80f,
-                sprayDensitySecondaryDynamics = BrushSecondaryDynamics(velocityEnabled = true, velocityMinimum = .25f),
+                sprayDensitySecondaryDynamics = BrushSecondaryDynamics(velocityEnabled = true, velocityMinimum = .25f, velocityScale = 3f),
                 spraySpread = 1.4f,
                 renderSeed = 931,
             )

@@ -213,6 +213,8 @@ data class BrushSecondaryDynamics(
     val tiltMinimum: Float = 0f,
     val velocityEnabled: Boolean = false,
     val velocityMinimum: Float = 0f,
+    /** CSP's velocity multiplier. A value of 1 preserves the normalized input. */
+    val velocityScale: Float = 1f,
     val velocityCurve: List<BrushCurvePoint> = emptyList(),
     val randomEnabled: Boolean = false,
     val randomMinimum: Float = 0f,
@@ -237,6 +239,8 @@ data class BrushColorDynamics(
     val tiltMinimum: Float = 0f,
     val velocityEnabled: Boolean = false,
     val velocityMinimum: Float = 0f,
+    /** CSP's velocity multiplier. A value of 1 preserves the normalized input. */
+    val velocityScale: Float = 1f,
     val velocityCurve: List<BrushCurvePoint> = emptyList(),
     val randomEnabled: Boolean = false,
     val randomMinimum: Float = -1f,

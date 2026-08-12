@@ -244,7 +244,7 @@ class SutSprayRotationParserTest {
                 paintMix = .7f,
                 paintMixPressureEnabled = true,
                 paintMixPressureMinimum = .3f,
-                paintMixSecondaryDynamics = app.inkloom.document.BrushSecondaryDynamics(velocityEnabled = true, velocityMinimum = .4f),
+                paintMixSecondaryDynamics = app.inkloom.document.BrushSecondaryDynamics(velocityEnabled = true, velocityMinimum = .4f, velocityScale = 5f),
                 sprayParticleSizePressureEnabled = true,
                 sprayParticleSizePressureMinimum = .25f,
                 sprayParticleSizePressureCurve = listOf(app.inkloom.document.BrushCurvePoint(0f, .1f), app.inkloom.document.BrushCurvePoint(1f, 1f)),
@@ -260,7 +260,7 @@ class SutSprayRotationParserTest {
                 colorJitterHueDegrees = 14f,
                 colorJitterSaturation = 9f,
                 colorJitterTarget = 1,
-                colorJitterHueDynamics = app.inkloom.document.BrushColorDynamics(randomEnabled = true, randomMinimum = -1f),
+                colorJitterHueDynamics = app.inkloom.document.BrushColorDynamics(velocityEnabled = true, velocityScale = 3f, randomEnabled = true, randomMinimum = -1f),
                 blur = 7.5f,
                 blurUnit = 2,
                 blurLinkedToSize = true,
@@ -302,6 +302,7 @@ class SutSprayRotationParserTest {
             assertTrue(restored.paintMixPressureEnabled)
             assertEquals(.3f, restored.paintMixPressureMinimum, .0001f)
             assertTrue(restored.paintMixSecondaryDynamics.velocityEnabled)
+            assertEquals(5f, restored.paintMixSecondaryDynamics.velocityScale, .0001f)
             assertTrue(restored.sprayParticleSizePressureEnabled)
             assertEquals(.25f, restored.sprayParticleSizePressureMinimum, .0001f)
             assertEquals(2, restored.sprayParticleSizePressureCurve.size)
@@ -319,6 +320,7 @@ class SutSprayRotationParserTest {
             assertEquals(9f, restored.colorJitterSaturation, .0001f)
             assertEquals(1, restored.colorJitterTarget)
             assertTrue(restored.colorJitterHueDynamics.randomEnabled)
+            assertEquals(3f, restored.colorJitterHueDynamics.velocityScale, .0001f)
             assertEquals(-1f, restored.colorJitterHueDynamics.randomMinimum, .0001f)
             assertEquals(7.5f, restored.blur, .0001f)
             assertEquals(2, restored.blurUnit)

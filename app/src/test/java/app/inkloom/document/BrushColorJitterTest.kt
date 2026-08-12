@@ -48,4 +48,13 @@ class BrushColorJitterTest {
         val stroke = InkStroke(points = listOf(StrokePoint(0f, 0f)), colorArgb = 0xFF102030)
         assertEquals(stroke.colorArgb.toInt(), BrushColorJitter.argb(stroke, stroke.points.single(), 0))
     }
+
+    @Test fun colorDynamicsHonorCspVelocityScale() {
+        val point = StrokePoint(0f, 0f, velocity = .2f)
+        val unscaled = BrushColorDynamics(velocityEnabled = true, velocityScale = 1f)
+        val amplified = BrushColorDynamics(velocityEnabled = true, velocityScale = 5f)
+
+        assertEquals(.2f, BrushColorJitter.amount(unscaled, point, 1, 0, 2), .0001f)
+        assertEquals(1f, BrushColorJitter.amount(amplified, point, 1, 0, 2), .0001f)
+    }
 }

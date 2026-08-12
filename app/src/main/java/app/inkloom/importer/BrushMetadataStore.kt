@@ -60,6 +60,7 @@ class BrushMetadataStore(
                         tiltMinimum = value.optDouble("tiltMinimum", 0.0).toFloat(),
                         velocityEnabled = value.optBoolean("velocityEnabled", false),
                         velocityMinimum = value.optDouble("velocityMinimum", 0.0).toFloat(),
+                        velocityScale = value.optDouble("velocityScale", 1.0).toFloat(),
                         velocityCurve = velocityCurve,
                         randomEnabled = value.optBoolean("randomEnabled", false),
                         randomMinimum = value.optDouble("randomMinimum", 0.0).toFloat(),
@@ -68,7 +69,7 @@ class BrushMetadataStore(
                 fun colorDynamics(key: String): BrushColorDynamics {
                     val value = item.optJSONObject(key) ?: return BrushColorDynamics()
                     fun points(name: String): List<BrushCurvePoint> { val source = value.optJSONArray(name) ?: return emptyList(); return buildList { for (pointIndex in 0 until source.length()) { val pair = source.optJSONArray(pointIndex) ?: continue; if (pair.length() >= 2) add(BrushCurvePoint(pair.optDouble(0).toFloat(), pair.optDouble(1).toFloat())) } } }
-                    return BrushColorDynamics(pressureEnabled = value.optBoolean("pressureEnabled"), pressureMinimum = value.optDouble("pressureMinimum").toFloat(), pressureCurve = points("pressureCurve"), tiltEnabled = value.optBoolean("tiltEnabled"), tiltMinimum = value.optDouble("tiltMinimum").toFloat(), velocityEnabled = value.optBoolean("velocityEnabled"), velocityMinimum = value.optDouble("velocityMinimum").toFloat(), velocityCurve = points("velocityCurve"), randomEnabled = value.optBoolean("randomEnabled"), randomMinimum = value.optDouble("randomMinimum", -1.0).toFloat())
+                    return BrushColorDynamics(pressureEnabled = value.optBoolean("pressureEnabled"), pressureMinimum = value.optDouble("pressureMinimum").toFloat(), pressureCurve = points("pressureCurve"), tiltEnabled = value.optBoolean("tiltEnabled"), tiltMinimum = value.optDouble("tiltMinimum").toFloat(), velocityEnabled = value.optBoolean("velocityEnabled"), velocityMinimum = value.optDouble("velocityMinimum").toFloat(), velocityScale = value.optDouble("velocityScale", 1.0).toFloat(), velocityCurve = points("velocityCurve"), randomEnabled = value.optBoolean("randomEnabled"), randomMinimum = value.optDouble("randomMinimum", -1.0).toFloat())
                 }
                 fun parameterDynamics(key: String): BrushParameterDynamics {
                     val value = item.optJSONObject(key) ?: return BrushParameterDynamics()
@@ -86,6 +87,7 @@ class BrushMetadataStore(
                                 tiltMinimum = nested.optDouble("tiltMinimum", 0.0).toFloat().coerceIn(0f, 1f),
                                 velocityEnabled = nested.optBoolean("velocityEnabled", false),
                                 velocityMinimum = nested.optDouble("velocityMinimum", 0.0).toFloat().coerceIn(0f, 1f),
+                                velocityScale = nested.optDouble("velocityScale", 1.0).toFloat().coerceIn(0f, 10f),
                                 velocityCurve = velocityCurve,
                                 randomEnabled = nested.optBoolean("randomEnabled", false),
                                 randomMinimum = nested.optDouble("randomMinimum", 0.0).toFloat().coerceIn(0f, 1f),
@@ -484,13 +486,14 @@ class BrushMetadataStore(
         .put("tiltMinimum", value.tiltMinimum)
         .put("velocityEnabled", value.velocityEnabled)
         .put("velocityMinimum", value.velocityMinimum)
+        .put("velocityScale", value.velocityScale)
         .put("velocityCurve", curveJson(value.velocityCurve))
         .put("randomEnabled", value.randomEnabled)
         .put("randomMinimum", value.randomMinimum)
     private fun colorDynamicsJson(value: BrushColorDynamics): JSONObject = JSONObject()
         .put("pressureEnabled", value.pressureEnabled).put("pressureMinimum", value.pressureMinimum).put("pressureCurve", curveJson(value.pressureCurve))
         .put("tiltEnabled", value.tiltEnabled).put("tiltMinimum", value.tiltMinimum)
-        .put("velocityEnabled", value.velocityEnabled).put("velocityMinimum", value.velocityMinimum).put("velocityCurve", curveJson(value.velocityCurve))
+        .put("velocityEnabled", value.velocityEnabled).put("velocityMinimum", value.velocityMinimum).put("velocityScale", value.velocityScale).put("velocityCurve", curveJson(value.velocityCurve))
         .put("randomEnabled", value.randomEnabled).put("randomMinimum", value.randomMinimum)
     private fun parameterDynamicsJson(value: BrushParameterDynamics): JSONObject = JSONObject()
         .put("pressureEnabled", value.pressureEnabled)

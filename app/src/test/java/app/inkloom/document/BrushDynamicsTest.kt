@@ -31,6 +31,15 @@ class BrushDynamicsTest {
         assertEquals(.3f, BrushDynamics.secondary(dynamics, point, 1, 2), .0001f)
     }
 
+    @Test fun cspVelocityScaleChangesTheCurveInputBeforeEvaluation() {
+        val point = StrokePoint(0f, 0f, velocity = .2f)
+        val unscaled = BrushSecondaryDynamics(velocityEnabled = true, velocityScale = 1f)
+        val amplified = BrushSecondaryDynamics(velocityEnabled = true, velocityScale = 5f)
+
+        assertEquals(.2f, BrushDynamics.secondary(unscaled, point, 1, 2), .0001f)
+        assertEquals(1f, BrushDynamics.secondary(amplified, point, 1, 2), .0001f)
+    }
+
     @Test fun randomDynamicsAreDeterministicPerStrokePoint() {
         val first = BrushDynamics.deterministicRandom(42, 1200L, 7)
         assertEquals(first, BrushDynamics.deterministicRandom(42, 1200L, 7), 0f)

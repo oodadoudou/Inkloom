@@ -18,7 +18,10 @@ object BrushColorJitter {
         var value = 1f
         if (dynamics.pressureEnabled) value *= ranged(dynamics.pressureMinimum, BrushDynamics.curve(dynamics.pressureCurve, point.pressure))
         if (dynamics.tiltEnabled) value *= ranged(dynamics.tiltMinimum, (point.tilt / HALF_PI).coerceIn(0f, 1f))
-        if (dynamics.velocityEnabled) value *= ranged(dynamics.velocityMinimum, BrushDynamics.curve(dynamics.velocityCurve, point.velocity))
+        if (dynamics.velocityEnabled) {
+            val velocityInput = (point.velocity * dynamics.velocityScale.coerceIn(0f, 10f)).coerceIn(0f, 1f)
+            value *= ranged(dynamics.velocityMinimum, BrushDynamics.curve(dynamics.velocityCurve, velocityInput))
+        }
         if (dynamics.randomEnabled) value *= signedRange(dynamics.randomMinimum, random(strokeSeed, point.timeMs, stampIndex, salt))
         return value.coerceIn(-1.5f, 1.5f)
     }

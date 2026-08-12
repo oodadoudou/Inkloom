@@ -59,7 +59,7 @@ class InkloomBrushPackageTest {
                 blurPressureEnabled = true,
                 blurPressureMinimum = .15f,
                 blurPressureCurve = listOf(BrushCurvePoint(0f, .15f), BrushCurvePoint(1f, 1f)),
-                blurSecondaryDynamics = BrushSecondaryDynamics(velocityEnabled = true, velocityMinimum = .3f),
+                blurSecondaryDynamics = BrushSecondaryDynamics(velocityEnabled = true, velocityMinimum = .3f, velocityScale = 5f),
                 randomRotationDegrees = 45f,
                 strokeRotationJitterDegrees = 180f,
                 spray = true,
@@ -156,6 +156,7 @@ class InkloomBrushPackageTest {
             assertEquals(original.blurPressureMinimum, restored.blurPressureMinimum, .0001f)
             assertEquals(original.blurPressureCurve, restored.blurPressureCurve)
             assertEquals(original.blurSecondaryDynamics, restored.blurSecondaryDynamics)
+            assertEquals(5f, restored.blurSecondaryDynamics.velocityScale, .0001f)
             assertEquals(original.grainScale, restored.grainScale, .0001f)
             assertEquals(original.grainMovement, restored.grainMovement, .0001f)
             assertEquals(original.grainZoom, restored.grainZoom, .0001f)
