@@ -8,11 +8,13 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.document.BrushSecondaryDynamics
+import app.inkloom.document.BrushEngineKind
 import app.inkloom.document.DocumentAssetService
 import app.inkloom.document.InkPage
 import app.inkloom.document.InkStroke
 import app.inkloom.document.PageBackground
 import app.inkloom.document.StrokePoint
+import app.inkloom.engine.v2.brush.EngineV2BrushEvaluator
 import app.inkloom.ui.InkCanvasView
 import java.io.File
 import org.junit.Assert.assertNotEquals
@@ -68,6 +70,56 @@ class SprayDynamicsRenderingTest {
                 exported.recycle()
                 live.recycle()
                 static.recycle()
+            }
+        } finally {
+            tip.delete()
+        }
+    }
+
+    @Test fun procreateSpeedSpacingChangesStampDensityAndMatchesExport() {
+        val tip = File(context.cacheDir, "speed-spacing-tip-${System.nanoTime()}.png")
+        Bitmap.createBitmap(12, 12, Bitmap.Config.ARGB_8888).also { bitmap ->
+            bitmap.eraseColor(Color.BLACK)
+            tip.outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+            bitmap.recycle()
+        }
+        try {
+            val dynamic = InkStroke(
+                points = listOf(
+                    StrokePoint(.15f, .5f, velocity = 0f, timeMs = 10),
+                    StrokePoint(.35f, .5f, velocity = .25f, timeMs = 20),
+                    StrokePoint(.60f, .5f, velocity = .65f, timeMs = 30),
+                    StrokePoint(.85f, .5f, velocity = 1f, timeMs = 40),
+                ),
+                width = 54f,
+                engineKind = BrushEngineKind.STAMP_RASTER,
+                spacing = 2f,
+                spacingSecondaryDynamics = BrushSecondaryDynamics(
+                    velocityEnabled = true,
+                    velocityMinimum = .2f,
+                    velocityCurve = listOf(
+                        app.inkloom.document.BrushCurvePoint(0f, 0f),
+                        app.inkloom.document.BrushCurvePoint(1f, 1f),
+                    ),
+                ),
+                sizePressureEnabled = false,
+                tipAssetPath = tip.absolutePath,
+                tipAssetPaths = listOf(tip.absolutePath),
+                renderSeed = 932,
+            )
+            val exported = renderExport(dynamic)
+            val live = renderLive(dynamic, exported.height)
+            val constant = renderExport(dynamic.copy(spacingSecondaryDynamics = BrushSecondaryDynamics()))
+            val dynamicCount = EngineV2BrushEvaluator.sampleStampPoints(dynamic, 400f, exported.height.toFloat(), dual = false).size
+            val constantCount = EngineV2BrushEvaluator.sampleStampPoints(dynamic.copy(spacingSecondaryDynamics = BrushSecondaryDynamics()), 400f, exported.height.toFloat(), dual = false).size
+            try {
+                assertNotEquals("Speed spacing did not change the sampled stamp count", constantCount, dynamicCount)
+                assertTrue("Live/export speed spacing diverged", maximumRedDifference(exported, live) <= 3)
+                assertNotEquals("Speed spacing did not change stamp placement", pixelSignature(constant), pixelSignature(exported))
+            } finally {
+                exported.recycle()
+                live.recycle()
+                constant.recycle()
             }
         } finally {
             tip.delete()

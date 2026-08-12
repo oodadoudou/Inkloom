@@ -67,6 +67,16 @@ class ProcreateBrushParserTest {
         }
     }
 
+    @Test fun speedSpacingFollowsProcreateDirectionInsteadOfSizeDirection() {
+        val increasing = ProcreateBrushParser(File("unused")).spacingDynamics(.75f, 0f)
+        val decreasing = ProcreateBrushParser(File("unused")).spacingDynamics(-.75f, 0f)
+        val slow = app.inkloom.document.StrokePoint(0f, 0f, velocity = 0f)
+        val fast = app.inkloom.document.StrokePoint(0f, 0f, velocity = 1f)
+
+        assertTrue(app.inkloom.document.BrushDynamics.secondary(increasing, fast, 1, 2) > app.inkloom.document.BrushDynamics.secondary(increasing, slow, 1, 2))
+        assertTrue(app.inkloom.document.BrushDynamics.secondary(decreasing, fast, 1, 2) < app.inkloom.document.BrushDynamics.secondary(decreasing, slow, 1, 2))
+    }
+
     @Test fun unsafeZipPathFailsWithoutExtractingAnything() {
         val root = temporaryDirectory("unsafe")
         try {

@@ -106,6 +106,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         val followsStylus = metadata.boolean("shapeAzimuth")
         val followsStroke = metadata.boolean("oriented")
         val spacingJitter = metadata.float("plotSpacingJitter")
+        val spacingSpeed = metadata.float("plotSpacingSpeed")
         val genericTaperStartLength = metadata.float("taperStartLength").coerceIn(0f, 1f)
         val genericTaperEndLength = metadata.float("taperEndLength").coerceIn(0f, 1f)
         val genericTaperSize = metadata.float("taperSize").coerceIn(0f, 1f)
@@ -142,7 +143,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             stabilization = stabilization,
             defaultOpacity = (metadata.float("paintOpacity", 1f) * metadata.float("maxOpacity", 1f)).coerceIn(.01f, 1f),
             spacing = (metadata.float("plotSpacing") * 10f).coerceIn(.01f, 2f),
-            spacingSecondaryDynamics = secondaryDynamics(0f, 0f, spacingJitter),
+            spacingSecondaryDynamics = spacingDynamics(spacingSpeed, spacingJitter),
             flow = metadata.float("dynamicsGlazedFlow", 1f).coerceIn(0f, 1f),
             hardness = if (metadata.boolean("shapeFilter", true)) .85f else 1f,
             thickness = metadata.float("shapeRoundness", 1f).coerceIn(.05f, 1f),
@@ -221,6 +222,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
                 if (strokeRotationJitter > DYNAMIC_EPSILON) add("Procreate Randomized mapped to one deterministic starting rotation per stroke")
                 if (stampCount > 1 || stampCountJitter > DYNAMIC_EPSILON) add("Procreate Shape Count $stampCount and Count Jitter mapped as repeated stamps at each plot point")
                 if (scatterSpread > DYNAMIC_EPSILON) add("Procreate stroke-path jitter mapped as positional spread")
+                if (abs(spacingSpeed) > DYNAMIC_EPSILON) add("Procreate speed-based spacing preserved")
                 if (metadata.boolean("textureOffsetJitter")) add("Procreate Grain Offset Jitter mapped to a deterministic texture origin for each stroke")
                 if (dualMetadata != null) add(if (dualShape != null) "Procreate Sub01 Dual Brush extracted with independent shape and core dynamics; combine mode ${metadata.int("dualBlendMode")} retained" else "Procreate Sub01 metadata found, but its shape source was missing")
                 if (watercolor) add("Procreate Wet Mix/rendering parameters detected; Inkloom maps load, mix, accumulation and edge behavior to its deterministic wet-brush approximation")
@@ -269,6 +271,16 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         velocityEnabled = abs(speed) > DYNAMIC_EPSILON,
         velocityMinimum = 1f - abs(speed).coerceIn(0f, 1f),
         velocityCurve = if (speed >= 0f) DESCENDING_CURVE else LINEAR_CURVE,
+        randomEnabled = abs(jitter) > DYNAMIC_EPSILON,
+        randomMinimum = 1f - abs(jitter).coerceIn(0f, 1f),
+    )
+
+    /** Procreate's spacing direction is the inverse of size/opacity speed dynamics:
+     * a positive slider value increases spacing as the stroke gets faster. */
+    internal fun spacingDynamics(speed: Float, jitter: Float): BrushSecondaryDynamics = BrushSecondaryDynamics(
+        velocityEnabled = abs(speed) > DYNAMIC_EPSILON,
+        velocityMinimum = 1f - abs(speed).coerceIn(0f, 1f),
+        velocityCurve = if (speed >= 0f) LINEAR_CURVE else DESCENDING_CURVE,
         randomEnabled = abs(jitter) > DYNAMIC_EPSILON,
         randomMinimum = 1f - abs(jitter).coerceIn(0f, 1f),
     )
@@ -356,7 +368,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
     )
 
     companion object {
-        const val CURRENT_VERSION = 7
+        const val CURRENT_VERSION = 8
         private const val MAX_ENTRIES = 4_096
         private const val MAX_ENTRY_BYTES = 32L * 1024L * 1024L
         private const val MAX_EXPANDED_BYTES = 384L * 1024L * 1024L
