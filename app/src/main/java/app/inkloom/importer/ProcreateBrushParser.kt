@@ -4,6 +4,7 @@ import app.inkloom.document.BrushCurvePoint
 import app.inkloom.document.BrushParameterDynamics
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushTaperMode
+import app.inkloom.document.BrushTipFlip
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
 import java.io.ByteArrayOutputStream
@@ -194,6 +195,8 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             followStrokeDirection = followsStroke,
             randomRotationDegrees = randomRotation,
             strokeRotationJitterDegrees = strokeRotationJitter,
+            tipFlipHorizontalMode = procreateFlipMode(metadata.boolean("shapeFlipXJitter")),
+            tipFlipVerticalMode = procreateFlipMode(metadata.boolean("shapeFlipYJitter")),
             stampCount = stampCount,
             stampCountJitter = stampCountJitter,
             watercolor = watercolor,
@@ -221,6 +224,8 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             dualFollowStrokeDirection = dualMapped?.followStroke ?: false,
             dualRandomRotationDegrees = dualMapped?.randomRotation ?: 0f,
             dualStrokeRotationJitterDegrees = dualMapped?.strokeRotationJitter ?: 0f,
+            dualTipFlipHorizontalMode = dualMapped?.flipHorizontalMode ?: BrushTipFlip.OFF,
+            dualTipFlipVerticalMode = dualMapped?.flipVerticalMode ?: BrushTipFlip.OFF,
             dualStampCount = dualMapped?.stampCount ?: 1,
             dualStampCountJitter = dualMapped?.stampCountJitter ?: 0f,
             dualStrokePathJitter = dualMapped?.pathJitter ?: 0f,
@@ -265,6 +270,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
                 if (sources.isNotEmpty()) add("Procreate dynamics mapped: ${sources.joinToString()}")
                 if (randomRotation > DYNAMIC_EPSILON) add("Procreate Shape Scatter mapped to independent per-stamp rotation")
                 if (strokeRotationJitter > DYNAMIC_EPSILON) add("Procreate Randomized mapped to one deterministic starting rotation per stroke")
+                if (metadata.boolean("shapeFlipXJitter") || metadata.boolean("shapeFlipYJitter")) add("Procreate Shape Flip X/Y mapped to deterministic per-stamp mirroring")
                 if (stampCount > 1 || stampCountJitter > DYNAMIC_EPSILON) add("Procreate Shape Count $stampCount and Count Jitter mapped as repeated stamps at each plot point")
                 if (pathJitter > DYNAMIC_EPSILON || pathLongitudinalJitter > DYNAMIC_EPSILON) add("Procreate lateral and longitudinal stroke-path jitter preserved independently")
                 if (abs(spacingSpeed) > DYNAMIC_EPSILON) add("Procreate speed-based spacing preserved")
@@ -293,6 +299,8 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             followStroke = metadata.boolean("oriented"),
             randomRotation = Math.toDegrees(abs(metadata.float("shapeScatter")).toDouble()).toFloat().coerceIn(0f, 180f),
             strokeRotationJitter = if (metadata.boolean("shapeRandomise")) 180f else 0f,
+            flipHorizontalMode = procreateFlipMode(metadata.boolean("shapeFlipXJitter")),
+            flipVerticalMode = procreateFlipMode(metadata.boolean("shapeFlipYJitter")),
             stampCount = (metadata.float("shapeCount", .0625f) * 16f).toInt().coerceIn(1, 16),
             stampCountJitter = metadata.float("shapeCountJitter").coerceIn(0f, 1f),
             pathJitter = pathJitter,
@@ -367,6 +375,8 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             ),
         )
     }
+
+    internal fun procreateFlipMode(enabled: Boolean): Int = if (enabled) BrushTipFlip.RANDOM else BrushTipFlip.OFF
 
     private fun validate(entries: List<ZipEntry>) {
         require(entries.size in 1..MAX_ENTRIES) { "Procreate archive has too many entries" }
@@ -444,6 +454,8 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         val followStroke: Boolean,
         val randomRotation: Float,
         val strokeRotationJitter: Float,
+        val flipHorizontalMode: Int,
+        val flipVerticalMode: Int,
         val stampCount: Int,
         val stampCountJitter: Float,
         val pathJitter: Float,
@@ -454,7 +466,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
     )
 
     companion object {
-        const val CURRENT_VERSION = 16
+        const val CURRENT_VERSION = 17
         private const val MAX_ENTRIES = 4_096
         private const val MAX_ENTRY_BYTES = 32L * 1024L * 1024L
         private const val MAX_EXPANDED_BYTES = 384L * 1024L * 1024L

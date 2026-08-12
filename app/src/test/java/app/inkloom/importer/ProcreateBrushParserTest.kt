@@ -107,6 +107,13 @@ class ProcreateBrushParserTest {
         assertTrue(app.inkloom.document.BrushDynamics.secondary(negative, flat, 1, 2) < app.inkloom.document.BrushDynamics.secondary(negative, upright, 1, 2))
     }
 
+    @Test fun shapeFlipSwitchesMapToPerStampRandomMirroring() {
+        val parser = ProcreateBrushParser(File("unused"))
+
+        assertEquals(app.inkloom.document.BrushTipFlip.OFF, parser.procreateFlipMode(false))
+        assertEquals(app.inkloom.document.BrushTipFlip.RANDOM, parser.procreateFlipMode(true))
+    }
+
     @Test fun unsafeZipPathFailsWithoutExtractingAnything() {
         val root = temporaryDirectory("unsafe")
         try {
