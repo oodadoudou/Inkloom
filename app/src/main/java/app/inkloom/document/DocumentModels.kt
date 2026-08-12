@@ -105,6 +105,11 @@ object LayerIds {
 @Serializable
 enum class LayerRole { BACKGROUND, INK, HIGHLIGHT, OBJECTS, CUSTOM, FOLDER }
 
+/** Vector layers retain editable stroke geometry. Raster layers own a persistent RGBA paint
+ * surface and are the only layer kind on which pixel-sampling tools such as Blend operate. */
+@Serializable
+enum class LayerContentKind { VECTOR, RASTER }
+
 @Serializable
 enum class LayerBlendMode {
     NORMAL, MULTIPLY, SCREEN, ADD,
@@ -118,6 +123,11 @@ data class InkLayer(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
     val role: LayerRole = LayerRole.CUSTOM,
+    val contentKind: LayerContentKind = LayerContentKind.VECTOR,
+    /** Content-addressed, full-page transparent PNG for a raster layer. */
+    val rasterAssetPath: String? = null,
+    /** Non-destructive page rotations applied after the raster asset was last written. */
+    val rasterRotationQuarterTurns: Int = 0,
     val visible: Boolean = true,
     val locked: Boolean = false,
     val opacity: Float = 1f,

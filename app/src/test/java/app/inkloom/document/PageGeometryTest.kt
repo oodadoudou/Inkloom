@@ -95,4 +95,15 @@ class PageGeometryTest {
         assertEquals(.8f, rotated.right, .0001f)
         assertEquals(.4f, rotated.bottom, .0001f)
     }
+
+    @Test fun rotationTracksPersistentRasterSurfaceOrientation() {
+        val raster = InkLayer(name = "Raster", contentKind = LayerContentKind.RASTER, rasterAssetPath = "/tmp/raster.png")
+        val original = InkPage(width = 400f, height = 200f, layers = defaultInkLayers() + raster)
+
+        val once = PageGeometry.rotateClockwise(original)
+        val restored = generateSequence(original, PageGeometry::rotateClockwise).drop(4).first()
+
+        assertEquals(1, once.layers.last().rasterRotationQuarterTurns)
+        assertEquals(0, restored.layers.last().rasterRotationQuarterTurns)
+    }
 }

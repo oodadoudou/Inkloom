@@ -27,6 +27,7 @@ object DocumentAssetGarbageCollector {
                     is PageBackground.Image -> retain(background.assetPath)
                     is PageBackground.Paper -> Unit
                 }
+                page.layers.forEach { layer -> retain(layer.rasterAssetPath) }
                 page.elements.forEach { element -> when (element) {
                     is PageElement.Image -> retain(element.assetPath)
                     is PageElement.AudioMarker -> retain(element.assetPath)

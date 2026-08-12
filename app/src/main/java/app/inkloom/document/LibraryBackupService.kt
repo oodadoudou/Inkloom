@@ -82,6 +82,9 @@ class LibraryBackupService(private val filesRoot: File) {
                         is PageBackground.Pdf -> background.copy(assetPath = register(background.assetPath, DOCUMENT_ASSETS)!!)
                         is PageBackground.Image -> background.copy(assetPath = register(background.assetPath, DOCUMENT_ASSETS)!!)
                     },
+                    layers = page.layers.map { layer -> layer.copy(
+                        rasterAssetPath = register(layer.rasterAssetPath, DOCUMENT_ASSETS),
+                    ) },
                     strokes = page.strokes.map { it.portable(::register) },
                     elements = page.elements.map { element -> when (element) {
                         is PageElement.Image -> element.copy(assetPath = register(element.assetPath, DOCUMENT_ASSETS)!!)
@@ -189,6 +192,9 @@ class LibraryBackupService(private val filesRoot: File) {
                                 is PageBackground.Pdf -> background.copy(assetPath = retained(background.assetPath, DOCUMENT_ASSETS)!!)
                                 is PageBackground.Image -> background.copy(assetPath = retained(background.assetPath, DOCUMENT_ASSETS)!!)
                             },
+                            layers = page.layers.map { layer -> layer.copy(
+                                rasterAssetPath = retained(layer.rasterAssetPath, DOCUMENT_ASSETS),
+                            ) },
                             strokes = page.strokes.map { it.restored(brushIds, ::retained) },
                             elements = page.elements.map { element -> when (element) {
                                 is PageElement.Image -> element.copy(assetPath = retained(element.assetPath, DOCUMENT_ASSETS)!!)

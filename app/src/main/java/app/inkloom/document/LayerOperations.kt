@@ -50,6 +50,9 @@ object LayerOperations {
             target.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) &&
             !source.locked && !target.locked &&
             source.mask == null && target.mask == null &&
+            // A pure document mutation cannot flatten two persistent RGBA surfaces safely. Keep
+            // Merge Down disabled until the asset compositor supplies the replacement bitmap.
+            source.rasterAssetPath == null && target.rasterAssetPath == null &&
             source.visible == target.visible &&
             source.blendMode == LayerBlendMode.NORMAL &&
             target.blendMode == LayerBlendMode.NORMAL

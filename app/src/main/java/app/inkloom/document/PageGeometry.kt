@@ -30,15 +30,20 @@ object PageGeometry {
                 )
             },
             layers = page.layers.map { layer ->
-                layer.copy(mask = layer.mask?.copy(regions = layer.mask.regions.map { region ->
-                    region.copy(points = region.points.map { point ->
-                        point.copy(
-                            x = (1f - point.y).coerceIn(0f, 1f),
-                            y = point.x.coerceIn(0f, 1f),
-                            orientation = point.orientation + (Math.PI / 2).toFloat(),
-                        )
-                    })
-                }))
+                layer.copy(
+                    rasterRotationQuarterTurns = if (layer.contentKind == LayerContentKind.RASTER) {
+                        (layer.rasterRotationQuarterTurns + 1).mod(4)
+                    } else layer.rasterRotationQuarterTurns,
+                    mask = layer.mask?.copy(regions = layer.mask.regions.map { region ->
+                        region.copy(points = region.points.map { point ->
+                            point.copy(
+                                x = (1f - point.y).coerceIn(0f, 1f),
+                                y = point.x.coerceIn(0f, 1f),
+                                orientation = point.orientation + (Math.PI / 2).toFloat(),
+                            )
+                        })
+                    }),
+                )
             },
             elements = page.elements.map { rotateElementClockwise(it, oldWidth, oldHeight) },
             pdfTextBlocks = page.pdfTextBlocks.map { block -> block.copy(bounds = block.bounds.map(::rotateTextBoundsClockwise)) },

@@ -163,12 +163,17 @@ class DocumentAssetService(private val context: Context) {
     }
 
     /** Persists a paint-bucket fill mask PNG and returns its absolute path. */
-    fun saveFillMask(mask: Bitmap): String {
+    fun saveFillMask(mask: Bitmap): String = saveDocumentPng(mask, "fill-mask")
+
+    /** Persists the full-page premultiplied RGBA surface owned by a raster layer. */
+    fun saveRasterLayer(bitmap: Bitmap): String = saveDocumentPng(bitmap, "raster-layer")
+
+    private fun saveDocumentPng(bitmap: Bitmap, kind: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
         val temporary = File(directory, ".${System.nanoTime()}.tmp")
         try {
             temporary.outputStream().use { out ->
-                check(mask.compress(Bitmap.CompressFormat.PNG, 0, out)) { "Could not encode fill mask" }
+                check(bitmap.compress(Bitmap.CompressFormat.PNG, 0, out)) { "Could not encode $kind" }
                 out.flush()
             }
             temporary.inputStream().use { input ->
@@ -176,9 +181,9 @@ class DocumentAssetService(private val context: Context) {
                 while (true) { val count = input.read(buffer); if (count < 0) break; digest.update(buffer, 0, count) }
             }
             val hash = digest.digest().joinToString("") { "%02x".format(it) }
-            val target = File(directory, "$hash.fill-mask.png")
+            val target = File(directory, "$hash.$kind.png")
             synchronized(assetLifecycleLock) {
-                if (target.exists()) temporary.delete() else check(temporary.renameTo(target)) { "Could not retain fill mask" }
+                if (target.exists()) temporary.delete() else check(temporary.renameTo(target)) { "Could not retain $kind" }
                 pendingDocumentAssets += target.canonicalPath
             }
             return target.absolutePath
@@ -309,6 +314,7 @@ class DocumentAssetService(private val context: Context) {
             includedLayerIds = setOf(layerId),
             includedContentIds = contentIds,
             includeStrokes = false,
+            includeRaster = false,
             applyLayerEffects = false,
             includeDraftLayers = true,
         )
@@ -331,6 +337,9 @@ class DocumentAssetService(private val context: Context) {
                     is PageBackground.Image -> background.copy(assetPath = "assets/${File(background.assetPath).name}")
                     is PageBackground.Paper -> background
                 },
+                layers = page.layers.map { layer -> layer.copy(
+                    rasterAssetPath = layer.rasterAssetPath?.let { "assets/${File(it).name}" },
+                ) },
                 strokes = page.strokes.map { it.portableBrushAssets() },
                 elements = page.elements.map { element -> when (element) {
                     is PageElement.Image -> element.copy(assetPath = "assets/${File(element.assetPath).name}")
@@ -343,7 +352,10 @@ class DocumentAssetService(private val context: Context) {
                 ) },
             )
             zip.putNextEntry(ZipEntry("manifest.json")); zip.write(serializer.encodeToString(portable).encodeToByteArray()); zip.closeEntry()
-            val assets = listOfNotNull(document.coverImagePath) + document.pages.mapNotNull { page -> when (val background = page.background) { is PageBackground.Pdf -> background.assetPath; is PageBackground.Image -> background.assetPath; else -> null } } + document.pages.flatMap { it.elements }.mapNotNull { element -> when (element) { is PageElement.Image -> element.assetPath; is PageElement.AudioMarker -> element.assetPath; is PageElement.Fill -> element.maskAssetPath; is PageElement.Shape -> element.maskAssetPath; else -> null } }
+            val assets = listOfNotNull(document.coverImagePath) +
+                document.pages.mapNotNull { page -> when (val background = page.background) { is PageBackground.Pdf -> background.assetPath; is PageBackground.Image -> background.assetPath; else -> null } } +
+                document.pages.flatMap(InkPage::layers).mapNotNull(InkLayer::rasterAssetPath) +
+                document.pages.flatMap { it.elements }.mapNotNull { element -> when (element) { is PageElement.Image -> element.assetPath; is PageElement.AudioMarker -> element.assetPath; is PageElement.Fill -> element.maskAssetPath; is PageElement.Shape -> element.maskAssetPath; else -> null } }
             writeDistinctFiles(zip, "assets", assets)
             val allStrokes = document.pages.flatMap { page -> page.strokes + page.elements.filterIsInstance<PageElement.Sticky>().flatMap(PageElement.Sticky::strokes) }
             writeDistinctFiles(zip, "brush-assets", allStrokes.flatMap { it.brushAssetPaths() })
@@ -412,6 +424,9 @@ class DocumentAssetService(private val context: Context) {
                         is PageBackground.Image -> background.copy(assetPath = retained(background.assetPath))
                         is PageBackground.Paper -> background
                     },
+                    layers = page.layers.map { layer -> layer.copy(
+                        rasterAssetPath = layer.rasterAssetPath?.let { retained(it) },
+                    ) },
                     strokes = page.strokes.map { it.withRetainedBrushAssets(::retained) },
                     elements = page.elements.map { element -> when (element) {
                         is PageElement.Image -> element.copy(assetPath = retained(element.assetPath))
@@ -535,6 +550,7 @@ class DocumentAssetService(private val context: Context) {
         includedLayerIds: Set<String>? = null,
         includedContentIds: Set<String>? = null,
         includeStrokes: Boolean = true,
+        includeRaster: Boolean = true,
         applyLayerEffects: Boolean = true,
         includeDraftLayers: Boolean = false,
     ) {
@@ -688,12 +704,32 @@ class DocumentAssetService(private val context: Context) {
             canvas.restore()
             }
             }
+            fun drawRasterSurface(targetLayer: InkLayer) {
+                if (!includeRaster || targetLayer.contentKind != LayerContentKind.RASTER) return
+                val path = targetLayer.rasterAssetPath?.takeIf(String::isNotBlank) ?: return
+                BitmapFactory.decodeFile(path)?.let { decoded ->
+                    val bitmap = rotateQuarterTurns(decoded, targetLayer.rasterRotationQuarterTurns) ?: return@let
+                    val crop = sourcePage.crop
+                    val source = android.graphics.Rect(
+                        (crop.left.coerceIn(0f, 1f) * bitmap.width).toInt().coerceIn(0, bitmap.width - 1),
+                        (crop.top.coerceIn(0f, 1f) * bitmap.height).toInt().coerceIn(0, bitmap.height - 1),
+                        (crop.right.coerceIn(0f, 1f) * bitmap.width).toInt().coerceIn(1, bitmap.width),
+                        (crop.bottom.coerceIn(0f, 1f) * bitmap.height).toInt().coerceIn(1, bitmap.height),
+                    )
+                    if (source.right > source.left && source.bottom > source.top) {
+                        canvas.drawBitmap(bitmap, source, android.graphics.Rect(0, 0, width, height), Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
+                    }
+                    bitmap.recycle()
+                }
+            }
             fun drawLayerWithAlphaLock(targetLayer: InkLayer) {
                 val capturedIds = targetLayer.alphaLockBaseContentIds.toSet()
                 if (!applyLayerEffects || !targetLayer.alphaLock || capturedIds.isEmpty()) {
+                    drawRasterSurface(targetLayer)
                     drawLayerItems(targetLayer.id)
                     return
                 }
+                drawRasterSurface(targetLayer)
                 drawLayerItems(targetLayer.id, capturedIds)
                 val currentIds = page.strokes.filter { it.layerId == targetLayer.id }.mapTo(mutableSetOf(), InkStroke::id) +
                     page.elements.filter { it.layerId == targetLayer.id }.mapTo(mutableSetOf(), PageElement::id)
@@ -702,6 +738,7 @@ class DocumentAssetService(private val context: Context) {
                     val additionsCheckpoint = canvas.saveLayer(null, null)
                     drawLayerItems(targetLayer.id, addedIds)
                     val maskCheckpoint = canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.DST_IN })
+                    drawRasterSurface(targetLayer)
                     drawLayerItems(targetLayer.id, capturedIds)
                     canvas.restoreToCount(maskCheckpoint)
                     canvas.restoreToCount(additionsCheckpoint)

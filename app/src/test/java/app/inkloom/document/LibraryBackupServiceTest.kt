@@ -24,6 +24,7 @@ class LibraryBackupServiceTest {
             val documentAsset = File(sourceRoot, "document-assets/source.pdf").apply { parentFile!!.mkdirs(); writeBytes(byteArrayOf(1, 2, 3)) }
             val coverAsset = File(sourceRoot, "document-assets/cover.png").apply { writeBytes(byteArrayOf(10, 11, 12)) }
             val gradientMask = File(sourceRoot, "document-assets/gradient-mask.png").apply { writeBytes(byteArrayOf(13, 14, 15)) }
+            val rasterSurface = File(sourceRoot, "document-assets/raster-layer.png").apply { writeBytes(byteArrayOf(16, 17, 18)) }
             val tip = File(sourceRoot, "brush-assets/tip.png").apply { parentFile!!.mkdirs(); writeBytes(byteArrayOf(4, 5, 6)) }
             val brushSource = File(sourceRoot, "brush-sources/source.brush").apply { parentFile!!.mkdirs(); writeBytes(byteArrayOf(7, 8, 9)) }
             val brush = ImportedBrush(
@@ -54,6 +55,7 @@ class LibraryBackupServiceTest {
             )
             val page = InkPage(
                 background = PageBackground.Pdf(documentAsset.absolutePath, 0),
+                layers = defaultInkLayers() + InkLayer(name = "Paint", contentKind = LayerContentKind.RASTER, rasterAssetPath = rasterSurface.absolutePath),
                 strokes = listOf(InkStroke(points = listOf(StrokePoint(.1f, .2f)), brushId = brush.id, tipAssetPaths = listOf(tip.absolutePath), masks = listOf(StrokeMaskDab(.2f, .2f, .04f, .04f, tipAssetPath = tip.absolutePath)))),
                 elements = listOf(sticky, maskedGradient),
             )
@@ -79,6 +81,9 @@ class LibraryBackupServiceTest {
             assertEquals(CoverStyle.CUSTOM_IMAGE, restored.documents.single().coverStyle)
             assertTrue(File(restored.documents.single().coverImagePath!!).isFile)
             assertTrue(File((restoredPage.background as PageBackground.Pdf).assetPath).isFile)
+            val restoredRaster = restoredPage.layers.first { it.contentKind == LayerContentKind.RASTER }
+            assertTrue(File(requireNotNull(restoredRaster.rasterAssetPath)).isFile)
+            assertTrue(File(restoredRaster.rasterAssetPath).readBytes().contentEquals(rasterSurface.readBytes()))
             assertEquals(restored.brushes.single().id, restoredPage.strokes.single().brushId)
             assertTrue(File(restoredPage.strokes.single().tipAssetPaths.single()).isFile)
             assertTrue(File(restoredPage.strokes.single().masks.single().tipAssetPath!!).isFile)
