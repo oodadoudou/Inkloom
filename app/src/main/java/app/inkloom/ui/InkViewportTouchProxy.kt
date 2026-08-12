@@ -10,7 +10,9 @@ import android.widget.FrameLayout
 import androidx.annotation.WorkerThread
 import androidx.graphics.lowlatency.LowLatencyCanvasView
 import app.inkloom.engine.v2.input.PointerCoordinateMapper
+import app.inkloom.document.BrushCursorGeometry
 import app.inkloom.document.ViewportState
+import kotlin.math.atan2
 
 /**
  * Extends [InkCanvasView]'s input surface to the full editor viewport.
@@ -42,6 +44,12 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
     @Volatile private var hoverY = 0f
     @Volatile private var hoverWidth = 0f
     @Volatile private var hoverHeight = 0f
+    @Volatile private var hoverRotationDegrees = 0f
+    private var hoverDynamicRotationDegrees = 0f
+    private var hoverDirectionDegrees = 0f
+    private var hoverLastX = 0f
+    private var hoverLastY = 0f
+    private var hoverHasDirection = false
     private var activeStylusPointerId = MotionEvent.INVALID_POINTER_ID
 
     init {
@@ -96,6 +104,8 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
         if (!hoverVisible) return
         val radiusX = (hoverWidth / 2f).coerceAtLeast(1.5f)
         val radiusY = (hoverHeight / 2f).coerceAtLeast(1.5f)
+        val checkpoint = canvas.save()
+        canvas.rotate(hoverRotationDegrees, hoverX, hoverY)
         hoverPaint.strokeWidth = 3.5f
         hoverPaint.color = Color.WHITE
         hoverPaint.alpha = 235
@@ -103,6 +113,15 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
         hoverPaint.strokeWidth = 1.5f
         hoverPaint.color = Color.BLACK
         canvas.drawOval(hoverX - radiusX, hoverY - radiusY, hoverX + radiusX, hoverY + radiusY, hoverPaint)
+        canvas.restoreToCount(checkpoint)
+        if (minOf(hoverWidth, hoverHeight) < SMALL_CURSOR_MARK_THRESHOLD_PX) {
+            hoverPaint.style = Paint.Style.FILL
+            hoverPaint.color = Color.WHITE
+            canvas.drawCircle(hoverX, hoverY, 3f, hoverPaint)
+            hoverPaint.color = Color.BLACK
+            canvas.drawCircle(hoverX, hoverY, 1.5f, hoverPaint)
+            hoverPaint.style = Paint.Style.STROKE
+        }
     }
 
     override fun onInterceptTouchEvent(event: MotionEvent): Boolean = true
@@ -159,10 +178,13 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
         // point through a second affine path is mathematically redundant and, on vendor graphics
         // stacks that expose a Compose rotation differently for View location APIs, produced a
         // large rotation-dependent cursor offset even though committed ink was correct.
-        hoverX = event.getX(pointerIndex)
-        hoverY = event.getY(pointerIndex)
-        hoverWidth = snapshot[3] * canvas.viewportScale.coerceAtLeast(1f)
-        hoverHeight = snapshot.getOrElse(4) { snapshot[3] } * canvas.viewportScale.coerceAtLeast(1f)
+        updateCursorGeometry(
+            event = event,
+            pointerIndex = pointerIndex,
+            snapshot = snapshot,
+            scale = canvas.viewportScale.coerceAtLeast(1f),
+            resetDirection = event.actionMasked == MotionEvent.ACTION_HOVER_ENTER || !hoverVisible,
+        )
         hoverVisible = true
         cursorSurface.renderFrontBufferedLayer()
     }
@@ -176,10 +198,13 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
         if (snapshot[0] == 0f) return clearHoverCursor()
         val pointerIndex = event.stylusPointerIndex(activeStylusPointerId)
         if (pointerIndex < 0) return clearHoverCursor()
-        hoverX = event.getX(pointerIndex)
-        hoverY = event.getY(pointerIndex)
-        hoverWidth = snapshot[3] * canvas.viewportScale.coerceAtLeast(1f)
-        hoverHeight = snapshot.getOrElse(4) { snapshot[3] } * canvas.viewportScale.coerceAtLeast(1f)
+        updateCursorGeometry(
+            event = event,
+            pointerIndex = pointerIndex,
+            snapshot = snapshot,
+            scale = canvas.viewportScale.coerceAtLeast(1f),
+            resetDirection = event.actionMasked in setOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN) || !hoverVisible,
+        )
         hoverVisible = true
         cursorSurface.renderFrontBufferedLayer()
     }
@@ -187,6 +212,9 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
     private fun clearHoverCursor() {
         if (!hoverVisible) return
         hoverVisible = false
+        hoverHasDirection = false
+        hoverDynamicRotationDegrees = 0f
+        hoverDirectionDegrees = 0f
         cursorSurface.clear()
     }
 
@@ -195,7 +223,43 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
         val snapshot = canvas.hoverCursorSnapshot()
         hoverWidth = snapshot[3] * canvas.viewportScale.coerceAtLeast(1f)
         hoverHeight = snapshot.getOrElse(4) { snapshot[3] } * canvas.viewportScale.coerceAtLeast(1f)
+        hoverRotationDegrees = BrushCursorGeometry.normalizeDegrees(snapshot.getOrElse(5) { 0f }, hoverDynamicRotationDegrees)
         if (hoverVisible) cursorSurface.renderFrontBufferedLayer()
+    }
+
+    private fun updateCursorGeometry(
+        event: MotionEvent,
+        pointerIndex: Int,
+        snapshot: FloatArray,
+        scale: Float,
+        resetDirection: Boolean,
+    ) {
+        val x = event.getX(pointerIndex)
+        val y = event.getY(pointerIndex)
+        if (resetDirection) {
+            hoverHasDirection = false
+        } else {
+            val deltaX = x - hoverLastX
+            val deltaY = y - hoverLastY
+            if (BrushCursorGeometry.hasMeaningfulDirection(deltaX, deltaY)) {
+                hoverDirectionDegrees = Math.toDegrees(atan2(deltaY, deltaX).toDouble()).toFloat()
+                hoverHasDirection = true
+            }
+        }
+        hoverLastX = x
+        hoverLastY = y
+        hoverX = x
+        hoverY = y
+        hoverWidth = snapshot[3] * scale
+        hoverHeight = snapshot.getOrElse(4) { snapshot[3] } * scale
+        val followsStylusOrientation = snapshot.getOrElse(6) { 0f } != 0f
+        val directionStrength = snapshot.getOrElse(7) { 0f }.coerceIn(-1f, 1f)
+        hoverDynamicRotationDegrees = when {
+            followsStylusOrientation -> Math.toDegrees(event.getOrientation(pointerIndex).toDouble()).toFloat()
+            hoverHasDirection -> hoverDirectionDegrees * directionStrength
+            else -> 0f
+        }
+        hoverRotationDegrees = BrushCursorGeometry.normalizeDegrees(snapshot.getOrElse(5) { 0f }, hoverDynamicRotationDegrees)
     }
 
     internal fun hoverCursorSnapshot(): FloatArray = floatArrayOf(
@@ -204,6 +268,7 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
         hoverY,
         hoverWidth,
         hoverHeight,
+        hoverRotationDegrees,
     )
 
     private fun MotionEvent.isStylusEvent(): Boolean =
@@ -219,5 +284,9 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
         val action = actionIndex.coerceIn(0, pointerCount - 1)
         if (getToolType(action) in setOf(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.TOOL_TYPE_ERASER)) return action
         return (0 until pointerCount).firstOrNull { getToolType(it) in setOf(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.TOOL_TYPE_ERASER) } ?: -1
+    }
+
+    private companion object {
+        const val SMALL_CURSOR_MARK_THRESHOLD_PX = 8f
     }
 }

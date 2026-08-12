@@ -41,6 +41,7 @@ import app.inkloom.document.StrokePoint
 import app.inkloom.document.StrokeMaskDab
 import app.inkloom.document.StrokeMaskRenderer
 import app.inkloom.document.BrushCurvePoint
+import app.inkloom.document.BrushCursorGeometry
 import app.inkloom.document.BrushEngineKind
 import app.inkloom.document.BrushColorDynamics
 import app.inkloom.document.ProcreateColorDynamics
@@ -521,6 +522,11 @@ class InkCanvasView(context: Context) : View(context) {
     private var hoverCursorY = 0f
     private var hoverCursorUsesEraser = false
     private var hoverCursorPressure = 1f
+    private var hoverCursorOrientationRadians = 0f
+    private var hoverCursorDirectionDegrees = 0f
+    private var hoverCursorHasDirection = false
+    private var hoverCursorLastX = 0f
+    private var hoverCursorLastY = 0f
     internal var externalHoverCursor: Boolean = false
         set(value) { field = value; postInvalidateOnAnimation() }
     internal var onHoverCursorStyleChanged: (() -> Unit)? = null
@@ -1136,11 +1142,14 @@ class InkCanvasView(context: Context) : View(context) {
                     return stylus
                 }
                 val point = canvasPoint(event, pointerIndex)
-                hoverCursorX = point.first
-                hoverCursorY = point.second
-                hoverCursorUsesEraser = cursorTool == EditorTool.ERASER
-                hoverCursorPressure = 1f
-                hoverCursorVisible = true
+                updateHoverCursorPacket(
+                    x = point.first,
+                    y = point.second,
+                    pressure = 1f,
+                    orientationRadians = event.getOrientation(pointerIndex),
+                    usesEraser = cursorTool == EditorTool.ERASER,
+                    resetDirection = event.actionMasked == MotionEvent.ACTION_HOVER_ENTER || !hoverCursorVisible,
+                )
                 invalidateInternalHoverCursor()
                 return true
             }
@@ -1986,6 +1995,7 @@ class InkCanvasView(context: Context) : View(context) {
                 if (decoded != null && !decoded.isRecycled) {
                     tipCache[key] = decoded
                     requestActiveTipRefresh()
+                    notifyHoverCursorStyleChanged()
                 }
                 postInvalidateOnAnimation()
             }
@@ -2841,6 +2851,8 @@ class InkCanvasView(context: Context) : View(context) {
         val zoom = viewportScale.coerceAtLeast(1f)
         val radiusX = (footprint.first / 2f).coerceAtLeast(1.5f / zoom)
         val radiusY = (footprint.second / 2f).coerceAtLeast(1.5f / zoom)
+        val checkpoint = canvas.save()
+        canvas.rotate(hoverCursorPageRotation(), hoverCursorX, hoverCursorY)
         hoverCursorPaint.strokeWidth = 3.5f / zoom
         hoverCursorPaint.color = Color.WHITE
         hoverCursorPaint.alpha = 235
@@ -2849,6 +2861,8 @@ class InkCanvasView(context: Context) : View(context) {
         hoverCursorPaint.color = Color.BLACK
         hoverCursorPaint.alpha = 235
         canvas.drawOval(hoverCursorX - radiusX, hoverCursorY - radiusY, hoverCursorX + radiusX, hoverCursorY + radiusY, hoverCursorPaint)
+        canvas.restoreToCount(checkpoint)
+        drawSmallCursorOrigin(canvas, footprint.first * zoom, footprint.second * zoom, zoom)
     }
 
     /** The full-viewport proxy owns the visible cursor in the editor. Do not invalidate the
@@ -2865,6 +2879,9 @@ class InkCanvasView(context: Context) : View(context) {
             hoverCursorY,
             footprint.first,
             footprint.second,
+            if (hoverCursorUsesEraser) 0f else BrushCursorGeometry.fixedScreenRotation(brushRotation, viewportRotationDegrees, shapeOrientToScreen),
+            if (!hoverCursorUsesEraser && followStylusOrientation) 1f else 0f,
+            if (!hoverCursorUsesEraser && followStrokeDirection) 1f else if (!hoverCursorUsesEraser) shapeTouchRotation.coerceIn(-1f, 1f) else 0f,
         )
     }
 
@@ -2878,11 +2895,14 @@ class InkCanvasView(context: Context) : View(context) {
                 val cursorTool = if (event.getToolType(pointerIndex) == MotionEvent.TOOL_TYPE_ERASER) EditorTool.ERASER else resolveTool(event, event.getToolType(pointerIndex))
                 if (cursorTool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.SMUDGE, EditorTool.LIQUIFY)) return
                 val point = canvasPoint(event, pointerIndex)
-                hoverCursorX = point.first
-                hoverCursorY = point.second
-                hoverCursorUsesEraser = cursorTool == EditorTool.ERASER
-                hoverCursorPressure = event.getPressure(pointerIndex).takeIf { it.isFinite() && it > 0f }?.coerceIn(0f, 1f) ?: 1f
-                hoverCursorVisible = true
+                updateHoverCursorPacket(
+                    x = point.first,
+                    y = point.second,
+                    pressure = event.getPressure(pointerIndex).takeIf { it.isFinite() && it > 0f }?.coerceIn(0f, 1f) ?: 1f,
+                    orientationRadians = event.getOrientation(pointerIndex),
+                    usesEraser = cursorTool == EditorTool.ERASER,
+                    resetDirection = event.actionMasked in setOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN) || !hoverCursorVisible,
+                )
                 invalidateInternalHoverCursor()
             }
             MotionEvent.ACTION_CANCEL -> {
@@ -2899,7 +2919,15 @@ class InkCanvasView(context: Context) : View(context) {
                 PressureCalibration.apply(hoverCursorPressure, pressureMinimumInput, pressureMaximumInput, pressureSensitivity, pressureResponseCurve).coerceIn(.15f, 1f)
             } else 1f
             val diameter = eraserWidth.coerceIn(.1f, 800f) * scale * pressure
-            return diameter to diameter
+            val tip = activeCursorTip(eraserTipAssetPath)
+            val footprint = BrushCursorGeometry.footprint(
+                diameter = diameter,
+                tipWidth = tip?.width,
+                tipHeight = tip?.height,
+                thickness = if (tip == null) 1f else brushThickness,
+                thicknessVertical = brushThicknessVertical,
+            )
+            return footprint.width to footprint.height
         }
         val calibratedPressure = PressureCalibration.apply(
             hoverCursorPressure,
@@ -2910,10 +2938,85 @@ class InkCanvasView(context: Context) : View(context) {
         )
         val pressure = BrushDynamics.pressure(sizePressureEnabled, sizePressureMinimum, sizePressureCurve, calibratedPressure)
         val diameter = baseWidth.coerceIn(.1f, 800f) * scale * pressure
-        if (tipAssetPath == null && tipAssetPaths.isEmpty()) return diameter to diameter
         val thicknessPressure = BrushDynamics.pressure(thicknessPressureEnabled, thicknessPressureMinimum, thicknessPressureCurve, calibratedPressure)
-        val shaped = (brushThickness * thicknessPressure).coerceIn(.05f, 2f)
-        return if (brushThicknessVertical) diameter to diameter * shaped else diameter * shaped to diameter
+        val tip = activeCursorTip(tipAssetPaths.firstOrNull() ?: tipAssetPath)
+        val footprint = BrushCursorGeometry.footprint(
+            diameter = diameter,
+            tipWidth = tip?.width,
+            tipHeight = tip?.height,
+            thickness = if (tip == null && tipAssetPath == null && tipAssetPaths.isEmpty()) 1f else brushThickness * thicknessPressure,
+            thicknessVertical = brushThicknessVertical,
+        )
+        return footprint.width to footprint.height
+    }
+
+    private fun activeCursorTip(path: String?): Bitmap? {
+        path ?: return null
+        val exactKey = tipCacheKey(
+            path, brushHardness, grainAssetPath, grainDensity, grainScale, grainRotationDegrees,
+            grainBrightness, grainContrast, grainReversed, grainEmphasized, 0f, 0f,
+            grainCompositeMode, grainFilteringMode, brushAntiAliasMode, alphaThresholdEnabled, alphaThreshold,
+        )
+        return tipCache[exactKey] ?: tipCache.entries.firstOrNull { (key, bitmap) ->
+            key.startsWith("$path:") && !bitmap.isRecycled
+        }?.value
+    }
+
+    private fun updateHoverCursorPacket(
+        x: Float,
+        y: Float,
+        pressure: Float,
+        orientationRadians: Float,
+        usesEraser: Boolean,
+        resetDirection: Boolean,
+    ) {
+        if (!resetDirection) {
+            val deltaX = x - hoverCursorLastX
+            val deltaY = y - hoverCursorLastY
+            if (BrushCursorGeometry.hasMeaningfulDirection(deltaX, deltaY)) {
+                hoverCursorDirectionDegrees = Math.toDegrees(atan2(deltaY, deltaX).toDouble()).toFloat()
+                hoverCursorHasDirection = true
+            }
+        } else {
+            hoverCursorHasDirection = false
+            hoverCursorDirectionDegrees = 0f
+        }
+        hoverCursorLastX = x
+        hoverCursorLastY = y
+        hoverCursorX = x
+        hoverCursorY = y
+        hoverCursorUsesEraser = usesEraser
+        hoverCursorPressure = pressure
+        hoverCursorOrientationRadians = orientationRadians.takeIf(Float::isFinite) ?: 0f
+        hoverCursorVisible = true
+    }
+
+    private fun hoverCursorPageRotation(): Float {
+        if (hoverCursorUsesEraser) return 0f
+        val fixed = brushRotation + if (shapeOrientToScreen) -viewportRotationDegrees else 0f
+        val dynamic = when {
+            followStylusOrientation -> Math.toDegrees(hoverCursorOrientationRadians.toDouble()).toFloat()
+            hoverCursorHasDirection && followStrokeDirection -> hoverCursorDirectionDegrees
+            hoverCursorHasDirection -> hoverCursorDirectionDegrees * shapeTouchRotation.coerceIn(-1f, 1f)
+            else -> 0f
+        }
+        return BrushCursorGeometry.normalizeDegrees(fixed, dynamic)
+    }
+
+    private fun drawSmallCursorOrigin(canvas: Canvas, screenWidth: Float, screenHeight: Float, zoom: Float) {
+        if (minOf(screenWidth, screenHeight) >= SMALL_CURSOR_MARK_THRESHOLD_PX) return
+        hoverCursorPaint.style = Paint.Style.FILL
+        hoverCursorPaint.color = Color.WHITE
+        hoverCursorPaint.alpha = 245
+        canvas.drawCircle(hoverCursorX, hoverCursorY, 3f / zoom, hoverCursorPaint)
+        hoverCursorPaint.color = Color.BLACK
+        canvas.drawCircle(hoverCursorX, hoverCursorY, 1.5f / zoom, hoverCursorPaint)
+        hoverCursorPaint.style = Paint.Style.STROKE
+    }
+
+    fun notifyHoverCursorStyleChanged() {
+        if (hoverCursorVisible) invalidateInternalHoverCursor()
+        onHoverCursorStyleChanged?.invoke()
     }
 
     private fun MotionEvent.centroid(): Pair<Float, Float> {
@@ -5729,6 +5832,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     private companion object {
         const val REFERENCE_WIDTH = 1600f
+        private const val SMALL_CURSOR_MARK_THRESHOLD_PX = 8f
         const val MAX_CACHE_PIXELS = 16_000_000L
         const val FILL_MAX_SAMPLE_DIMENSION = 1_600f
         const val FILL_PREVIEW_THROTTLE_MS = 32L

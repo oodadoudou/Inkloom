@@ -5077,6 +5077,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     blurPressureCurve = activeBrush?.blurPressureCurve.orEmpty()
     blurSecondaryDynamics = activeBrush?.blurSecondaryDynamics ?: BrushSecondaryDynamics()
     prewarmBrushAssets()
+    notifyHoverCursorStyleChanged()
 }
 
 @OptIn(ExperimentalFoundationApi::class)

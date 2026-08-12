@@ -1,5 +1,6 @@
 package app.inkloom
 
+import android.graphics.Bitmap
 import android.view.InputDevice
 import android.view.MotionEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -10,6 +11,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.File
+import java.io.FileOutputStream
 
 @RunWith(AndroidJUnit4::class)
 class InkCanvasHoverCursorTest {
@@ -103,6 +106,54 @@ class InkCanvasHoverCursorTest {
         assertEquals(980f, state[1], .01f)
         assertEquals(760f, state[2], .01f)
         assertEquals(50f, state[3], .75f)
+    }
+
+    @Test
+    fun importedAsymmetricTipCursorMatchesTheRenderedFootprint() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val tip = File(instrumentation.targetContext.cacheDir, "cursor-asymmetric-tip.png")
+        Bitmap.createBitmap(40, 100, Bitmap.Config.ARGB_8888).also { bitmap ->
+            bitmap.eraseColor(android.graphics.Color.BLACK)
+            FileOutputStream(tip).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            bitmap.recycle()
+        }
+        val view = InkCanvasView(instrumentation.targetContext).apply {
+            tool = EditorTool.PEN
+            baseWidth = 160f
+            tipAssetPath = tip.absolutePath
+            tipAssetPaths = listOf(tip.absolutePath)
+            brushThickness = 1f
+            layout(0, 0, 1600, 1200)
+            prepareBrushAssetsNow()
+        }
+
+        instrumentation.runOnMainSync {
+            stylusHover(800f, 600f).also { assertTrue(view.onHoverEvent(it)); it.recycle() }
+        }
+
+        val state = view.hoverCursorSnapshot()
+        assertEquals(64f, state[3], .75f)
+        assertEquals(160f, state[4], .75f)
+    }
+
+    @Test
+    fun cursorRotationFollowsCanvasUnlessBrushIsOrientedToScreen() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val view = InkCanvasView(instrumentation.targetContext).apply {
+            tool = EditorTool.PEN
+            brushRotation = 30f
+            viewportRotationDegrees = 37f
+            layout(0, 0, 1600, 1200)
+        }
+
+        instrumentation.runOnMainSync {
+            stylusHover(800f, 600f).also { assertTrue(view.onHoverEvent(it)); it.recycle() }
+        }
+        assertEquals(67f, view.hoverCursorSnapshot()[5], .01f)
+
+        view.shapeOrientToScreen = true
+        view.notifyHoverCursorStyleChanged()
+        assertEquals(30f, view.hoverCursorSnapshot()[5], .01f)
     }
 
     private fun stylusHover(x: Float, y: Float): MotionEvent {

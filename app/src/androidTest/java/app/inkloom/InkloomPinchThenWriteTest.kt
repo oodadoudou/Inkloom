@@ -312,6 +312,7 @@ class InkloomPinchThenWriteTest {
         val cursor = proxy.hoverCursorSnapshot()
         assertEquals("Rotated cursor X must stay under the physical pen", samples[1].first, cursor[1], .75f)
         assertEquals("Rotated cursor Y must stay under the physical pen", samples[1].second, cursor[2], .75f)
+        assertEquals("Brush footprint must rotate with the canvas", 37f, cursor[5], .75f)
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val downTime = android.os.SystemClock.uptimeMillis()
