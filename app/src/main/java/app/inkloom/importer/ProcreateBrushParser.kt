@@ -10,6 +10,7 @@ import app.inkloom.document.ProcreateColorDynamics
 import app.inkloom.document.ProcreateBrushBlend
 import app.inkloom.document.ProcreateFiltering
 import app.inkloom.document.ProcreateRendering
+import app.inkloom.document.ProcreateWetMix
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
 import java.io.ByteArrayOutputStream
@@ -105,11 +106,18 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         val tiltSizeCompression = metadata.float("dynamicsTiltCompression", 0f) > .5f
         val wetEdges = metadata.float("wetEdgesAmount").coerceIn(0f, 1f)
         val burntEdges = metadata.float("burntEdgesAmount").coerceIn(0f, 1f)
-        val wetMix = max(metadata.float("dynamicsMix"), metadata.float("dynamicsPressureMix")).coerceIn(0f, 1f)
-        val paintLoad = metadata.float("dynamicsLoad").coerceIn(0f, 1f)
-        val wetAccumulation = metadata.float("dynamicsWetAccumulation").coerceIn(0f, 1f)
-        val smudgeAccumulation = metadata.float("dynamicsSmudgeAccumulation").coerceIn(0f, 1f)
-        val watercolor = wetMix > .001f || wetEdges > .01f || burntEdges > .01f
+        val procreateWetMix = ProcreateWetMix(
+            dilution = metadata.float("dynamicsMix").coerceIn(0f, 1f),
+            charge = metadata.float("dynamicsLoad").coerceIn(0f, 1f),
+            attack = metadata.float("dynamicsPressureMix").coerceIn(0f, 1f),
+            pull = metadata.float("dynamicsWetAccumulation").coerceIn(0f, 1f),
+            grade = metadata.float("dynamicsSmudgeAccumulation").coerceIn(-1f, 1f),
+            blur = metadata.float("dynamicsBlur").coerceIn(0f, 1f),
+            blurJitter = metadata.float("dynamicsBlurJitter").coerceIn(0f, 1f),
+            wetnessJitter = metadata.float("dynamicsWetnessJitter").coerceIn(0f, 1f),
+            legacyMixSoftening = metadata.float("dynamicsMixSoftening").coerceIn(0f, 1f),
+        )
+        val watercolor = !procreateWetMix.isDisabled() || wetEdges > .01f || burntEdges > .01f
         val pathJitter = abs(metadata.float("plotJitter")).coerceIn(0f, 4f)
         val pathLongitudinalJitter = abs(metadata.float("plotJitterLongitudinal")).coerceIn(0f, 4f)
         val randomRotation = Math.toDegrees(abs(metadata.float("shapeScatter")).toDouble()).toFloat().coerceIn(0f, 180f)
@@ -228,9 +236,10 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             stampCount = stampCount,
             stampCountJitter = stampCountJitter,
             watercolor = watercolor,
-            colorMix = wetMix,
+            colorMix = max(procreateWetMix.dilution, procreateWetMix.attack),
             procreateColorDynamics = colorDynamics,
-            paintMix = max(paintLoad, max(wetAccumulation, smudgeAccumulation)),
+            procreateWetMix = procreateWetMix,
+            paintMix = max(procreateWetMix.charge, max(procreateWetMix.pull, procreateWetMix.grade.coerceAtLeast(0f))),
             spray = false,
             sprayParticleSize = 100f,
             sprayParticleSizeSyncBrushSize = true,
@@ -537,7 +546,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
     )
 
     companion object {
-        const val CURRENT_VERSION = 23
+        const val CURRENT_VERSION = 24
         private const val MAX_ENTRIES = 4_096
         private const val MAX_ENTRY_BYTES = 32L * 1024L * 1024L
         private const val MAX_EXPANDED_BYTES = 384L * 1024L * 1024L

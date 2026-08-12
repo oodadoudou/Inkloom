@@ -141,6 +141,7 @@ class InkCanvasBrushSwitchTest {
             procreateLuminanceBlending = true,
             alphaThresholdEnabled = true,
             alphaThreshold = .48f,
+            procreateWetMix = app.inkloom.document.ProcreateWetMix(dilution = .12f, charge = .23f, attack = .34f, pull = .45f, grade = -.56f, blur = .67f, blurJitter = .78f, wetnessJitter = .89f, legacyMixSoftening = .31f),
         )
 
         instrumentation.runOnMainSync {
@@ -158,6 +159,7 @@ class InkCanvasBrushSwitchTest {
         assertTrue(requireNotNull(committed).procreateLuminanceBlending)
         assertTrue(requireNotNull(committed).alphaThresholdEnabled)
         assertEquals(.48f, requireNotNull(committed).alphaThreshold, .0001f)
+        assertEquals(brush.procreateWetMix, requireNotNull(committed).procreateWetMix)
     }
 
     @Test

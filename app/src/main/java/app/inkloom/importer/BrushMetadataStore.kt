@@ -16,6 +16,7 @@ import app.inkloom.document.BrushTaperMode
 import app.inkloom.document.ProcreateColorDynamics
 import app.inkloom.document.ProcreateFiltering
 import app.inkloom.document.ProcreateRenderingMode
+import app.inkloom.document.ProcreateWetMix
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -105,6 +106,20 @@ class BrushMetadataStore(
                         tiltBrightness = value.optDouble("tiltBrightness", 0.0).toFloat().coerceIn(-1f, 1f),
                         tiltSecondary = value.optDouble("tiltSecondary", 0.0).toFloat().coerceIn(-1f, 1f),
                         tiltStart = value.optDouble("tiltStart", 0.0).toFloat().coerceIn(0f, .99f),
+                    )
+                }
+                fun procreateWetMix(key: String): ProcreateWetMix {
+                    val value = item.optJSONObject(key) ?: return ProcreateWetMix()
+                    return ProcreateWetMix(
+                        dilution = value.optDouble("dilution", 0.0).toFloat().coerceIn(0f, 1f),
+                        charge = value.optDouble("charge", 0.0).toFloat().coerceIn(0f, 1f),
+                        attack = value.optDouble("attack", 0.0).toFloat().coerceIn(0f, 1f),
+                        pull = value.optDouble("pull", 0.0).toFloat().coerceIn(0f, 1f),
+                        grade = value.optDouble("grade", 0.0).toFloat().coerceIn(-1f, 1f),
+                        blur = value.optDouble("blur", 0.0).toFloat().coerceIn(0f, 1f),
+                        blurJitter = value.optDouble("blurJitter", 0.0).toFloat().coerceIn(0f, 1f),
+                        wetnessJitter = value.optDouble("wetnessJitter", 0.0).toFloat().coerceIn(0f, 1f),
+                        legacyMixSoftening = value.optDouble("legacyMixSoftening", 0.0).toFloat().coerceIn(0f, 1f),
                     )
                 }
                 fun parameterDynamics(key: String): BrushParameterDynamics {
@@ -222,6 +237,7 @@ class BrushMetadataStore(
                         colorJitterSaturationDynamics = colorDynamics("colorJitterSaturationDynamics"),
                         colorJitterValueDynamics = colorDynamics("colorJitterValueDynamics"),
                         procreateColorDynamics = procreateColorDynamics("procreateColorDynamics"),
+                        procreateWetMix = procreateWetMix("procreateWetMix"),
                         watercolor = item.optBoolean("watercolor", false),
                         colorMix = item.optDouble("colorMix", 0.0).toFloat(),
                         colorMixPressureEnabled = item.optBoolean("colorMixPressureEnabled", false),
@@ -442,6 +458,7 @@ class BrushMetadataStore(
                     .put("colorJitterSaturationDynamics", colorDynamicsJson(brush.colorJitterSaturationDynamics))
                     .put("colorJitterValueDynamics", colorDynamicsJson(brush.colorJitterValueDynamics))
                     .put("procreateColorDynamics", procreateColorDynamicsJson(brush.procreateColorDynamics))
+                    .put("procreateWetMix", procreateWetMixJson(brush.procreateWetMix))
                     .put("watercolor", brush.watercolor)
                     .put("colorMix", brush.colorMix)
                     .put("colorMixPressureEnabled", brush.colorMixPressureEnabled)
@@ -605,6 +622,10 @@ class BrushMetadataStore(
         .put("pressureBrightness", value.pressureBrightness).put("pressureBrightnessCurve", curveJson(value.pressureBrightnessCurve))
         .put("pressureSecondary", value.pressureSecondary).put("pressureSecondaryCurve", curveJson(value.pressureSecondaryCurve))
         .put("tiltHue", value.tiltHue).put("tiltSaturation", value.tiltSaturation).put("tiltBrightness", value.tiltBrightness).put("tiltSecondary", value.tiltSecondary).put("tiltStart", value.tiltStart)
+    private fun procreateWetMixJson(value: ProcreateWetMix): JSONObject = JSONObject()
+        .put("dilution", value.dilution).put("charge", value.charge).put("attack", value.attack).put("pull", value.pull)
+        .put("grade", value.grade).put("blur", value.blur).put("blurJitter", value.blurJitter).put("wetnessJitter", value.wetnessJitter)
+        .put("legacyMixSoftening", value.legacyMixSoftening)
     private fun parameterDynamicsJson(value: BrushParameterDynamics): JSONObject = JSONObject()
         .put("pressureEnabled", value.pressureEnabled)
         .put("pressureMinimum", value.pressureMinimum)

@@ -133,6 +133,11 @@ class InkloomBrushPackageTest {
                     pressureHueCurve = listOf(BrushCurvePoint(0f, .1f), BrushCurvePoint(1f, .9f)),
                     pressureSecondary = .44f, tiltBrightness = -.55f, tiltStart = .36f,
                 ),
+                procreateWetMix = app.inkloom.document.ProcreateWetMix(
+                    dilution = .12f, charge = .23f, attack = .34f, pull = .45f,
+                    grade = -.56f, blur = .67f, blurJitter = .78f, wetnessJitter = .89f,
+                    legacyMixSoftening = .31f,
+                ),
                 watercolor = true,
                 colorMix = .65f,
                 colorMixPressureEnabled = true,
@@ -246,6 +251,7 @@ class InkloomBrushPackageTest {
             assertEquals(1, restored.colorJitterTarget)
             assertEquals(-1f, restored.colorJitterHueDynamics.randomMinimum, .0001f)
             assertEquals(original.procreateColorDynamics, restored.procreateColorDynamics)
+            assertEquals(original.procreateWetMix, restored.procreateWetMix)
             assertTrue(restored.taperStartEnabled)
             assertEquals(packageFile.absolutePath, restored.sourcePath)
             assertEquals("package-hash", restored.sha256)

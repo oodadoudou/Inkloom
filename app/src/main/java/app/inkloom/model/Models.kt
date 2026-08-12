@@ -7,6 +7,7 @@ import app.inkloom.document.ProcreateColorDynamics
 import app.inkloom.document.ProcreateFiltering
 import app.inkloom.document.ProcreateRenderingMode
 import app.inkloom.document.ProcreateBrushBlend
+import app.inkloom.document.ProcreateWetMix
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushTaperMode
 import app.inkloom.document.CspTextureComposite
@@ -133,6 +134,7 @@ data class ImportedBrush(
     val colorJitterSaturationDynamics: BrushColorDynamics = BrushColorDynamics(),
     val colorJitterValueDynamics: BrushColorDynamics = BrushColorDynamics(),
     val procreateColorDynamics: ProcreateColorDynamics = ProcreateColorDynamics(),
+    val procreateWetMix: ProcreateWetMix = ProcreateWetMix(),
     val watercolor: Boolean = false,
     val colorMix: Float = 0f,
     val colorMixPressureEnabled: Boolean = false,

@@ -4951,6 +4951,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     colorJitterSaturationDynamics = activeBrush?.colorJitterSaturationDynamics ?: BrushColorDynamics()
     colorJitterValueDynamics = activeBrush?.colorJitterValueDynamics ?: BrushColorDynamics()
     procreateColorDynamics = activeBrush?.procreateColorDynamics ?: app.inkloom.document.ProcreateColorDynamics()
+    procreateWetMix = activeBrush?.procreateWetMix ?: ProcreateWetMix()
     brushWatercolor = activeBrush?.watercolor ?: false
     brushColorMix = activeBrush?.colorMix ?: 0f
     colorMixPressureEnabled = activeBrush?.colorMixPressureEnabled ?: false
@@ -9046,6 +9047,17 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 item { BrushSettingSlider(tr("Tip brightness jitter", "笔尖明度抖动"), draft.colorJitterValue, -100f..100f) { draft = draft.copy(colorJitterValue = it) } }
                 if (draft.colorJitterValue != 0f) item { ColorDynamicsEditor(tr("Brightness jitter", "明度抖动"), draft.colorJitterValueDynamics) { draft = draft.copy(colorJitterValueDynamics = it) } }
                 item { ProcreateColorDynamicsEditor(draft.procreateColorDynamics) { draft = draft.copy(procreateColorDynamics = it) } }
+                if (draft.format == BrushFormat.PROCREATE || !draft.procreateWetMix.isDisabled()) {
+                    item { Text(tr("Wet Mix", "湿混合"), style = MaterialTheme.typography.titleSmall) }
+                    item { BrushSettingSlider(tr("Dilution", "稀释"), draft.procreateWetMix.dilution, 0f..1f) { value -> draft = draft.copy(procreateWetMix = draft.procreateWetMix.copy(dilution = value), watercolor = true) } }
+                    item { BrushSettingSlider(tr("Charge", "颜料储量"), draft.procreateWetMix.charge, 0f..1f) { value -> draft = draft.copy(procreateWetMix = draft.procreateWetMix.copy(charge = value), watercolor = true) } }
+                    item { BrushSettingSlider(tr("Attack", "附着量"), draft.procreateWetMix.attack, 0f..1f) { value -> draft = draft.copy(procreateWetMix = draft.procreateWetMix.copy(attack = value), watercolor = true) } }
+                    item { BrushSettingSlider(tr("Pull", "拖色强度"), draft.procreateWetMix.pull, 0f..1f) { value -> draft = draft.copy(procreateWetMix = draft.procreateWetMix.copy(pull = value), watercolor = true) } }
+                    item { BrushSettingSlider(tr("Grade", "纹理等级"), draft.procreateWetMix.grade, -1f..1f) { value -> draft = draft.copy(procreateWetMix = draft.procreateWetMix.copy(grade = value), watercolor = true) } }
+                    item { BrushSettingSlider(tr("Blur", "湿颜料模糊"), draft.procreateWetMix.blur, 0f..1f) { value -> draft = draft.copy(procreateWetMix = draft.procreateWetMix.copy(blur = value), watercolor = true) } }
+                    item { BrushSettingSlider(tr("Blur jitter", "模糊抖动"), draft.procreateWetMix.blurJitter, 0f..1f) { value -> draft = draft.copy(procreateWetMix = draft.procreateWetMix.copy(blurJitter = value), watercolor = true) } }
+                    item { BrushSettingSlider(tr("Wetness jitter", "湿度抖动"), draft.procreateWetMix.wetnessJitter, 0f..1f) { value -> draft = draft.copy(procreateWetMix = draft.procreateWetMix.copy(wetnessJitter = value), watercolor = true) } }
+                }
                 item { SettingSwitch("Watercolor approximation", "Uses translucent layered stamps.", draft.watercolor) { draft = draft.copy(watercolor = it) } }
                 item { BrushSettingSlider("Color mix", draft.colorMix, 0f..1f) { draft = draft.copy(colorMix = it) } }
                 if (draft.watercolor) item { SettingSwitch("Pressure controls color mix", null, draft.colorMixPressureEnabled) { draft = draft.copy(colorMixPressureEnabled = it) } }

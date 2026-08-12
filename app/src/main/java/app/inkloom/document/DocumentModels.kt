@@ -286,6 +286,26 @@ data class ProcreateColorDynamics(
             tiltHue == 0f && tiltSaturation == 0f && tiltBrightness == 0f && tiltSecondary == 0f
 }
 
+/** Procreate Brush Studio > Wet Mix values retained independently from CSP color mixing.
+ * Values use the normalized archive range. Grade retains the archive's signed authored direction;
+ * [legacyMixSoftening] preserves the older scalar without folding it into Grade. */
+@Serializable
+data class ProcreateWetMix(
+    val dilution: Float = 0f,
+    val charge: Float = 0f,
+    val attack: Float = 0f,
+    val pull: Float = 0f,
+    val grade: Float = 0f,
+    val blur: Float = 0f,
+    val blurJitter: Float = 0f,
+    val wetnessJitter: Float = 0f,
+    val legacyMixSoftening: Float = 0f,
+) {
+    fun isDisabled(): Boolean =
+        dilution == 0f && charge == 0f && attack == 0f && pull == 0f && grade == 0f &&
+            blur == 0f && blurJitter == 0f && wetnessJitter == 0f && legacyMixSoftening == 0f
+}
+
 @Serializable
 enum class BrushEngineKind {
     MESH_INK,
@@ -372,6 +392,7 @@ data class InkStroke(
     val colorJitterSaturationDynamics: BrushColorDynamics = BrushColorDynamics(),
     val colorJitterValueDynamics: BrushColorDynamics = BrushColorDynamics(),
     val procreateColorDynamics: ProcreateColorDynamics = ProcreateColorDynamics(),
+    val procreateWetMix: ProcreateWetMix = ProcreateWetMix(),
     val watercolor: Boolean = false,
     val colorMix: Float = 0f,
     val colorMixPressureEnabled: Boolean = false,

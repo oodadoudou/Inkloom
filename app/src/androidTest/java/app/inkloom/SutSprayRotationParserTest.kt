@@ -281,6 +281,7 @@ class SutSprayRotationParserTest {
                 colorJitterTarget = 1,
                 colorJitterHueDynamics = app.inkloom.document.BrushColorDynamics(velocityEnabled = true, velocityScale = 3f, randomEnabled = true, randomMinimum = -1f),
                 procreateColorDynamics = app.inkloom.document.ProcreateColorDynamics(stampHue = .13f, strokeSecondary = .24f, pressureBrightness = -.35f, pressureSecondaryCurve = listOf(app.inkloom.document.BrushCurvePoint(0f, .2f), app.inkloom.document.BrushCurvePoint(1f, .8f)), tiltSecondary = .46f, tiltStart = .27f),
+                procreateWetMix = app.inkloom.document.ProcreateWetMix(dilution = .12f, charge = .23f, attack = .34f, pull = .45f, grade = -.56f, blur = .67f, blurJitter = .78f, wetnessJitter = .89f, legacyMixSoftening = .31f),
                 blur = 7.5f,
                 blurUnit = 2,
                 blurLinkedToSize = true,
@@ -386,6 +387,15 @@ class SutSprayRotationParserTest {
             assertEquals(app.inkloom.document.ProcreateFiltering.IMPROVED, restored.grainFilteringMode)
             assertEquals(app.inkloom.document.ProcreateRenderingMode.HEAVY_GLAZE, restored.procreateRenderingMode)
             assertEquals(app.inkloom.document.ProcreateBrushBlend.HARD_LIGHT, restored.procreateBrushBlendMode)
+            assertEquals(.12f, restored.procreateWetMix.dilution, .0001f)
+            assertEquals(.23f, restored.procreateWetMix.charge, .0001f)
+            assertEquals(.34f, restored.procreateWetMix.attack, .0001f)
+            assertEquals(.45f, restored.procreateWetMix.pull, .0001f)
+            assertEquals(-.56f, restored.procreateWetMix.grade, .0001f)
+            assertEquals(.67f, restored.procreateWetMix.blur, .0001f)
+            assertEquals(.78f, restored.procreateWetMix.blurJitter, .0001f)
+            assertEquals(.89f, restored.procreateWetMix.wetnessJitter, .0001f)
+            assertEquals(.31f, restored.procreateWetMix.legacyMixSoftening, .0001f)
             assertEquals(app.inkloom.document.ProcreateBrushBlend.COLOR_BURN, restored.procreateBurntEdgeBlendMode)
             assertTrue(restored.procreateLuminanceBlending)
             assertTrue(restored.alphaThresholdEnabled)
