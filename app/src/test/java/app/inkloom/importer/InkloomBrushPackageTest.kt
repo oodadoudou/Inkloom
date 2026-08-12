@@ -57,6 +57,11 @@ class InkloomBrushPackageTest {
                 procreateStabilization = .42f,
                 motionFiltering = .57f,
                 motionFilteringExpression = .28f,
+                tiltGradation = .61f,
+                tiltGradationStart = .23f,
+                tiltBleed = .48f,
+                tiltBleedStart = .31f,
+                tiltSizeCompression = true,
                 antiAliasMode = CspAntiAlias.WEAK,
                 blur = 9.5f,
                 blurUnit = 2,
@@ -156,6 +161,11 @@ class InkloomBrushPackageTest {
             assertEquals(original.procreateStabilization, restored.procreateStabilization, .0001f)
             assertEquals(original.motionFiltering, restored.motionFiltering, .0001f)
             assertEquals(original.motionFilteringExpression, restored.motionFilteringExpression, .0001f)
+            assertEquals(original.tiltGradation, restored.tiltGradation, .0001f)
+            assertEquals(original.tiltGradationStart, restored.tiltGradationStart, .0001f)
+            assertEquals(original.tiltBleed, restored.tiltBleed, .0001f)
+            assertEquals(original.tiltBleedStart, restored.tiltBleedStart, .0001f)
+            assertTrue(restored.tiltSizeCompression)
             assertEquals(app.inkloom.document.CspBrushGap.NARROW, restored.spacingMode)
             assertEquals(CspAntiAlias.WEAK, restored.antiAliasMode)
             assertEquals(CspAntiAlias.STRONG, restored.dualAntiAliasMode)

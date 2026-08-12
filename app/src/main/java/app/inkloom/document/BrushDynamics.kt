@@ -21,9 +21,7 @@ object BrushDynamics {
     fun secondary(dynamics: BrushSecondaryDynamics, point: StrokePoint, strokeSeed: Int, salt: Int): Float {
         var factor = 1f
         if (dynamics.tiltEnabled) {
-            val normalizedTilt = (point.tilt / HALF_PI).coerceIn(0f, 1f)
-            val start = dynamics.tiltStart.coerceIn(0f, .99f)
-            val tiltInput = ((normalizedTilt - start) / (1f - start)).coerceIn(0f, 1f)
+            val tiltInput = BrushTilt.response(point, dynamics.tiltStart)
             factor *= ranged(dynamics.tiltMinimum, tiltInput)
         }
         if (dynamics.velocityEnabled) {
@@ -49,5 +47,4 @@ object BrushDynamics {
         return floor + (1f - floor) * input.coerceIn(0f, 1f)
     }
 
-    private const val HALF_PI = (Math.PI / 2.0).toFloat()
 }

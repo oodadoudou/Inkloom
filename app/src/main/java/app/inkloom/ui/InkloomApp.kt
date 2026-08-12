@@ -4917,6 +4917,11 @@ internal fun InkCanvasView.applyBrushConfiguration(
     brushBlur = activeBrush?.blur ?: 0f
     brushBlurUnit = activeBrush?.blurUnit ?: 0
     brushBlurLinkedToSize = activeBrush?.blurLinkedToSize ?: false
+    tiltGradation = activeBrush?.tiltGradation ?: 0f
+    tiltGradationStart = activeBrush?.tiltGradationStart ?: 0f
+    tiltBleed = activeBrush?.tiltBleed ?: 0f
+    tiltBleedStart = activeBrush?.tiltBleedStart ?: 0f
+    tiltSizeCompression = activeBrush?.tiltSizeCompression ?: false
     brushThickness = activeBrush?.thickness ?: 1f
     brushThicknessVertical = activeBrush?.thicknessVertical ?: false
     brushRotation = activeBrush?.rotationDegrees ?: 0f
@@ -8972,6 +8977,11 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 item { BrushSettingSlider("Brush blur", draft.blur, 0f..80f) { draft = draft.copy(blur = it) } }
                 if (draft.blur > 0f) item { Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { FilterChip(selected = draft.blurUnit == 0, onClick = { draft = draft.copy(blurUnit = 0) }, label = { Text(tr("Blur px", "模糊 px")) }); FilterChip(selected = draft.blurUnit == 2, onClick = { draft = draft.copy(blurUnit = 2) }, label = { Text(tr("Blur mm", "模糊 mm")) }) } }
                 item { SettingSwitch("Link blur to brush size", "Scales the imported CSP blur when brush size changes.", draft.blurLinkedToSize) { draft = draft.copy(blurLinkedToSize = it) } }
+                item { BrushSettingSlider(tr("Tilt gradation", "倾斜渐变柔化"), draft.tiltGradation, 0f..1f) { draft = draft.copy(tiltGradation = it) } }
+                if (draft.tiltGradation > 0f) item { BrushSettingSlider(tr("Gradation trigger", "渐变触发角"), draft.tiltGradationStart, 0f..0.99f) { draft = draft.copy(tiltGradationStart = it) } }
+                item { BrushSettingSlider(tr("Tilt bleed", "倾斜渗色"), draft.tiltBleed, 0f..1f) { draft = draft.copy(tiltBleed = it) } }
+                if (draft.tiltBleed > 0f) item { BrushSettingSlider(tr("Bleed trigger", "渗色触发角"), draft.tiltBleedStart, 0f..0.99f) { draft = draft.copy(tiltBleedStart = it) } }
+                item { SettingSwitch(tr("Tilt size compression", "倾斜尺寸压缩"), tr("Keeps the grain from enlarging when tilt increases brush size.", "倾斜增大笔刷时保持纹理尺寸不随之放大。"), draft.tiltSizeCompression) { draft = draft.copy(tiltSizeCompression = it) } }
                 if (draft.grainPreviewPath != null) item { BrushGrainPreview(draft.grainPreviewPath!!, draft.grainDensity) }
                 if (draft.grainPreviewPath != null) item { BrushSettingSlider(tr("Paper texture density", "纸质浓度"), draft.grainDensity, 0f..1f) { draft = draft.copy(grainDensity = it) } }
                 if (draft.grainPreviewPath != null) item { ParameterDynamicsEditor(tr("Paper texture density dynamics", "纸张纹理密度动态"), "Paper texture density", draft.grainDensityDynamics) { draft = draft.copy(grainDensityDynamics = it) } }

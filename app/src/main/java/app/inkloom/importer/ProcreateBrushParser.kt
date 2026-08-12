@@ -91,6 +91,11 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         val tiltOpacity = metadata.float("dynamicsTiltOpacity")
         val tiltSizeStart = metadata.float("sizeTiltAngle", metadata.float("dynamicsTiltAngle")).coerceIn(0f, .99f)
         val tiltOpacityStart = metadata.float("opacityTiltAngle", metadata.float("dynamicsTiltAngle")).coerceIn(0f, .99f)
+        val tiltGradation = metadata.float("dynamicsTiltGradation").coerceIn(0f, 1f)
+        val tiltGradationStart = metadata.float("gradationTiltAngle", metadata.float("dynamicsTiltAngle")).coerceIn(0f, .99f)
+        val tiltBleed = metadata.float("dynamicsTiltBleed").coerceIn(0f, 1f)
+        val tiltBleedStart = metadata.float("bleedTiltAngle", metadata.float("dynamicsTiltAngle")).coerceIn(0f, .99f)
+        val tiltSizeCompression = metadata.float("dynamicsTiltCompression", 0f) > .5f
         val wetEdges = metadata.float("wetEdgesAmount").coerceIn(0f, 1f)
         val burntEdges = metadata.float("burntEdgesAmount").coerceIn(0f, 1f)
         val wetMix = max(metadata.float("dynamicsMix"), metadata.float("dynamicsPressureMix")).coerceIn(0f, 1f)
@@ -147,6 +152,11 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             procreateStabilization = procreateStabilization,
             motionFiltering = motionFiltering,
             motionFilteringExpression = motionFilteringExpression,
+            tiltGradation = tiltGradation,
+            tiltGradationStart = tiltGradationStart,
+            tiltBleed = tiltBleed,
+            tiltBleedStart = tiltBleedStart,
+            tiltSizeCompression = tiltSizeCompression,
             defaultOpacity = (metadata.float("paintOpacity", 1f) * metadata.float("maxOpacity", 1f)).coerceIn(.01f, 1f),
             spacing = (metadata.float("plotSpacing") * 10f).coerceIn(.01f, 2f),
             spacingSecondaryDynamics = spacingDynamics(spacingSpeed, spacingJitter),
@@ -372,7 +382,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
     )
 
     companion object {
-        const val CURRENT_VERSION = 10
+        const val CURRENT_VERSION = 11
         private const val MAX_ENTRIES = 4_096
         private const val MAX_ENTRY_BYTES = 32L * 1024L * 1024L
         private const val MAX_EXPANDED_BYTES = 384L * 1024L * 1024L

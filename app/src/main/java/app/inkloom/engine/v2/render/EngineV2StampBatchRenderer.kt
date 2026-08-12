@@ -115,6 +115,7 @@ internal object EngineV2StampBatchRenderer {
 
     private fun eligible(stroke: InkStroke, containsLocalPigment: Boolean): Boolean =
         !stroke.dualBrush && !stroke.spray && !stroke.watercolor && !stroke.waterEdgeEnabled &&
+            stroke.tiltGradation <= .001f && stroke.tiltBleed <= .001f && !stroke.tiltSizeCompression &&
             !containsLocalPigment &&
             !stroke.blendTipsWithDarken && stroke.blur <= .001f && !GrainDynamics.isDynamic(stroke) &&
             !GrainBehavior.requiresPerDabSampling(stroke.grainMovement, stroke.grainZoom) &&

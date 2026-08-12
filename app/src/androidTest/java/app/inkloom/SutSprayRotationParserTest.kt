@@ -238,6 +238,11 @@ class SutSprayRotationParserTest {
                 procreateStabilization = .43f,
                 motionFiltering = .54f,
                 motionFilteringExpression = .27f,
+                tiltGradation = .62f,
+                tiltGradationStart = .24f,
+                tiltBleed = .47f,
+                tiltBleedStart = .34f,
+                tiltSizeCompression = true,
                 sprayParticleRotationDegrees = 33f,
                 sprayParticleFollowStrokeDirection = true,
                 sprayParticleRandomRotationDegrees = 54f,
@@ -304,6 +309,11 @@ class SutSprayRotationParserTest {
             assertEquals(.43f, restored.procreateStabilization, .0001f)
             assertEquals(.54f, restored.motionFiltering, .0001f)
             assertEquals(.27f, restored.motionFilteringExpression, .0001f)
+            assertEquals(.62f, restored.tiltGradation, .0001f)
+            assertEquals(.24f, restored.tiltGradationStart, .0001f)
+            assertEquals(.47f, restored.tiltBleed, .0001f)
+            assertEquals(.34f, restored.tiltBleedStart, .0001f)
+            assertTrue(restored.tiltSizeCompression)
             assertTrue(restored.sprayParticleFollowStrokeDirection)
             assertEquals(54f, restored.sprayParticleRandomRotationDegrees, .0001f)
             assertTrue(restored.colorMixPressureEnabled)

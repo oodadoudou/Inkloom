@@ -928,10 +928,10 @@ class DocumentAssetService(private val context: Context) {
             val diameter = if (stroke.spray) SprayGeometry.particleDiameter(brushDiameter, SprayDynamics.particleSize(stroke, point), stroke.sprayParticleSizeUnit, stroke.sprayParticleSizeSyncBrushSize, width.toFloat()) else brushDiameter
             val offset = if (stroke.spray) SprayGeometry.offset(brushDiameter / 2f * stroke.spraySpread.coerceIn(0f, 4f), scatterRandom.nextFloat(), scatterRandom.nextFloat(), stroke.sprayBias) else SprayOffset(0f, 0f)
             val drawX = x + offset.x; val drawY = y + offset.y
-            val spatialGrain = stroke.grainAssetPath != null && GrainBehavior.requiresPerDabSampling(stroke.grainMovement, stroke.grainZoom)
+            val spatialGrain = stroke.grainAssetPath != null && (GrainBehavior.requiresPerDabSampling(stroke.grainMovement, stroke.grainZoom) || stroke.tiltSizeCompression)
             val grainSample = if (spatialGrain) GrainBehavior.sample(
-                GrainOffset(grainOffsetX, grainOffsetY), stroke.grainMovement, stroke.grainZoom,
-                stroke.grainScale, drawX, drawY, diameter,
+                GrainOffset(grainOffsetX, grainOffsetY), stroke.grainMovement, if (stroke.tiltSizeCompression) 1f else stroke.grainZoom,
+                stroke.grainScale, drawX, drawY, if (stroke.tiltSizeCompression) stroke.width * width / 1600f else diameter,
             ) else null
             val tip = if (stroke.grainAssetPath != null && (GrainDynamics.isDynamic(stroke) || spatialGrain)) {
                 val densityBucket = (GrainDynamics.density(stroke, point) * 20f).toInt().coerceIn(0, 20)
@@ -962,14 +962,15 @@ class DocumentAssetService(private val context: Context) {
             val matrix = Matrix().apply { postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(scaleX, scaleY); postRotate(angle); postTranslate(drawX, drawY) }
             val mainAlpha = (stroke.flow * dynamics.depositedAlpha).coerceIn(0f, 1f).times(255).toInt()
             val jitteredColor = BrushColorJitter.argb(stroke, point, sequenceIndex)
-            if (stroke.waterEdgeEnabled && stroke.waterEdgeOpacity > 0f) {
-                val edgeRadius = WaterEdge.distancePixels(stroke.waterEdgeRadius, stroke.waterEdgeRadiusUnit, width.toFloat())
+            val tiltBleedAmount = stroke.tiltBleed.coerceIn(0f, 1f) * BrushTilt.response(point, stroke.tiltBleedStart)
+            if ((stroke.waterEdgeEnabled && stroke.waterEdgeOpacity > 0f) || tiltBleedAmount > .001f) {
+                val edgeRadius = WaterEdge.distancePixels(stroke.waterEdgeRadius, stroke.waterEdgeRadiusUnit, width.toFloat()) + diameter * tiltBleedAmount * .18f
                 val edgeTipScale = BrushTipTransform.scale(tip.width, tip.height, diameter + edgeRadius * 2f, thicknessScale, stroke.thicknessVertical)
                 val edgeMatrix = Matrix().apply { postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(edgeTipScale.x * flip.x, edgeTipScale.y * flip.y); postRotate(angle); postTranslate(drawX, drawY) }
                 paint.colorFilter = PorterDuffColorFilter(WaterEdge.darkenArgb(jitteredColor, stroke.waterEdgeDarkness), PorterDuff.Mode.SRC_IN)
-                paint.alpha = (mainAlpha * stroke.waterEdgeOpacity.coerceIn(0f, 1f)).toInt().coerceIn(1, 255)
-                val blur = WaterEdge.distancePixels(stroke.waterEdgeBlur, stroke.waterEdgeBlurUnit, width.toFloat())
-                paint.maskFilter = blur.takeIf { it > .01f }?.let { BlurMaskFilter(it, BlurMaskFilter.Blur.NORMAL) }
+                paint.alpha = (mainAlpha * maxOf(stroke.waterEdgeOpacity.coerceIn(0f, 1f), tiltBleedAmount * .55f)).toInt().coerceIn(1, 255)
+                val blur = WaterEdge.distancePixels(stroke.waterEdgeBlur, stroke.waterEdgeBlurUnit, width.toFloat()) + diameter * tiltBleedAmount * .08f
+                paint.maskFilter = BrushBlur.quantizedRadius(blur).takeIf { it > 0f }?.let { BlurMaskFilter(it, BlurMaskFilter.Blur.NORMAL) }
                 canvas.drawBitmap(tip, edgeMatrix, paint)
                 paint.maskFilter = null
             }
@@ -1037,8 +1038,8 @@ class DocumentAssetService(private val context: Context) {
 
     private fun drawLinePoint(canvas: Canvas, paint: Paint, stroke: InkStroke, point: StrokePoint, x: Float, y: Float, strokeWidth: Float, alpha: Int, pageWidth: Int) {
         val jitteredColor = BrushColorJitter.argb(stroke, point, point.timeMs.toInt())
-        if (stroke.waterEdgeEnabled && stroke.waterEdgeOpacity > 0f) {
-            configureWaterEdge(paint, stroke, strokeWidth, alpha, pageWidth, jitteredColor)
+        if (hasWaterEdge(stroke, point)) {
+            configureWaterEdge(paint, stroke, point, strokeWidth, alpha, pageWidth, jitteredColor)
             canvas.drawPoint(x, y, paint)
         }
         paint.maskFilter = brushBlurMask(stroke, point, strokeWidth, stroke.width * pageWidth / 1600f, pageWidth.toFloat()); paint.color = jitteredColor; paint.strokeWidth = strokeWidth; paint.alpha = alpha
@@ -1048,8 +1049,8 @@ class DocumentAssetService(private val context: Context) {
 
     private fun drawLineSegment(canvas: Canvas, paint: Paint, stroke: InkStroke, point: StrokePoint, startX: Float, startY: Float, endX: Float, endY: Float, strokeWidth: Float, alpha: Int, pageWidth: Int) {
         val jitteredColor = BrushColorJitter.argb(stroke, point, point.timeMs.toInt())
-        if (stroke.waterEdgeEnabled && stroke.waterEdgeOpacity > 0f) {
-            configureWaterEdge(paint, stroke, strokeWidth, alpha, pageWidth, jitteredColor)
+        if (hasWaterEdge(stroke, point)) {
+            configureWaterEdge(paint, stroke, point, strokeWidth, alpha, pageWidth, jitteredColor)
             canvas.drawLine(startX, startY, endX, endY, paint)
         }
         paint.maskFilter = brushBlurMask(stroke, point, strokeWidth, stroke.width * pageWidth / 1600f, pageWidth.toFloat()); paint.color = jitteredColor; paint.strokeWidth = strokeWidth; paint.alpha = alpha
@@ -1058,18 +1059,24 @@ class DocumentAssetService(private val context: Context) {
     }
 
     private fun brushBlurMask(stroke: InkStroke, point: StrokePoint, diameter: Float, baseDiameter: Float, pageWidth: Float): BlurMaskFilter? {
+        val gradation = stroke.tiltGradation.coerceIn(0f, 1f) * BrushTilt.response(point, stroke.tiltGradationStart)
         val radius = BrushBlur.radiusPixels(stroke.blur, stroke.blurUnit, stroke.blurLinkedToSize, diameter, baseDiameter, pageWidth) *
-            EngineV2BrushEvaluator.evaluateDab(stroke, point).blur
-        return radius.takeIf { it > .01f }?.let { BlurMaskFilter(it, BlurMaskFilter.Blur.NORMAL) }
+            EngineV2BrushEvaluator.evaluateDab(stroke, point).blur + diameter * gradation * .22f
+        return BrushBlur.quantizedRadius(radius).takeIf { it > 0f }?.let { BlurMaskFilter(it, BlurMaskFilter.Blur.NORMAL) }
     }
 
-    private fun configureWaterEdge(paint: Paint, stroke: InkStroke, strokeWidth: Float, alpha: Int, pageWidth: Int, color: Int) {
-        val radius = WaterEdge.distancePixels(stroke.waterEdgeRadius, stroke.waterEdgeRadiusUnit, pageWidth.toFloat())
+    private fun hasWaterEdge(stroke: InkStroke, point: StrokePoint): Boolean =
+        (stroke.waterEdgeEnabled && stroke.waterEdgeOpacity > 0f) ||
+            (stroke.tiltBleed > 0f && BrushTilt.response(point, stroke.tiltBleedStart) > .001f)
+
+    private fun configureWaterEdge(paint: Paint, stroke: InkStroke, point: StrokePoint, strokeWidth: Float, alpha: Int, pageWidth: Int, color: Int) {
+        val tiltBleedAmount = stroke.tiltBleed.coerceIn(0f, 1f) * BrushTilt.response(point, stroke.tiltBleedStart)
+        val radius = WaterEdge.distancePixels(stroke.waterEdgeRadius, stroke.waterEdgeRadiusUnit, pageWidth.toFloat()) + strokeWidth * tiltBleedAmount * .18f
         paint.color = WaterEdge.darkenArgb(color, stroke.waterEdgeDarkness)
         paint.strokeWidth = strokeWidth + radius * 2f
-        paint.alpha = (alpha * stroke.waterEdgeOpacity.coerceIn(0f, 1f)).toInt().coerceIn(1, 255)
-        val blur = WaterEdge.distancePixels(stroke.waterEdgeBlur, stroke.waterEdgeBlurUnit, pageWidth.toFloat())
-        paint.maskFilter = blur.takeIf { it > .01f }?.let { BlurMaskFilter(it, BlurMaskFilter.Blur.NORMAL) }
+        paint.alpha = (alpha * maxOf(stroke.waterEdgeOpacity.coerceIn(0f, 1f), tiltBleedAmount * .55f)).toInt().coerceIn(1, 255)
+        val blur = WaterEdge.distancePixels(stroke.waterEdgeBlur, stroke.waterEdgeBlurUnit, pageWidth.toFloat()) + strokeWidth * tiltBleedAmount * .08f
+        paint.maskFilter = BrushBlur.quantizedRadius(blur).takeIf { it > 0f }?.let { BlurMaskFilter(it, BlurMaskFilter.Blur.NORMAL) }
     }
 
     private fun decodeTip(path: String, hardness: Float, grainPath: String?, grainDensity: Float, grainScale: Float = 100f, grainRotation: Float = 0f, grainBrightness: Float = 0f, grainContrast: Float = 0f, grainReversed: Boolean = false, grainEmphasized: Boolean = false, grainOffsetX: Float = 0f, grainOffsetY: Float = 0f, grainCompositeMode: Int = CspTextureComposite.MULTIPLY, antiAliasMode: Int = CspAntiAlias.MEDIUM): Bitmap? =

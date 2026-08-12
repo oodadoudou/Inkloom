@@ -2,6 +2,13 @@ package app.inkloom.document
 
 /** Converts CSP BrushBlur metadata into a bounded render-space blur radius. */
 object BrushBlur {
+    /** Live rendering reuses native BlurMaskFilters in quarter-pixel buckets. Export must use the
+     * same bucket radius or a saved/reopened document develops subtly different soft edges. */
+    fun quantizedRadius(radius: Float, maximum: Float = 256f): Float {
+        if (!radius.isFinite() || radius <= .01f || !maximum.isFinite() || maximum <= 0f) return 0f
+        return (radius.coerceAtMost(maximum) * 4f).toInt().coerceAtLeast(1) / 4f
+    }
+
     fun radiusPixels(
         value: Float,
         unit: Int,

@@ -72,6 +72,14 @@ data class ImportedBrush(
     val motionFiltering: Float = 0f,
     /** Procreate Motion Filtering > Expression. */
     val motionFilteringExpression: Float = 0f,
+    /** Procreate Apple Pencil > Tilt > Gradation. */
+    val tiltGradation: Float = 0f,
+    val tiltGradationStart: Float = 0f,
+    /** Procreate Apple Pencil > Tilt > Bleed. */
+    val tiltBleed: Float = 0f,
+    val tiltBleedStart: Float = 0f,
+    /** Keeps grain wavelength fixed while tilt increases the brush diameter. */
+    val tiltSizeCompression: Boolean = false,
     /** CSP Correction > Stabilization. */
     val stabilization: Float = 0f,
     val stabilizationBySpeed: Boolean = false,

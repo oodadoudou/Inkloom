@@ -134,6 +134,11 @@ class BrushMetadataStore(
                         procreateStabilization = item.optDouble("procreateStabilization", 0.0).toFloat().coerceIn(0f, 1f),
                         motionFiltering = item.optDouble("motionFiltering", 0.0).toFloat().coerceIn(0f, 1f),
                         motionFilteringExpression = item.optDouble("motionFilteringExpression", 0.0).toFloat().coerceIn(0f, 1f),
+                        tiltGradation = item.optDouble("tiltGradation", 0.0).toFloat().coerceIn(0f, 1f),
+                        tiltGradationStart = item.optDouble("tiltGradationStart", 0.0).toFloat().coerceIn(0f, .99f),
+                        tiltBleed = item.optDouble("tiltBleed", 0.0).toFloat().coerceIn(0f, 1f),
+                        tiltBleedStart = item.optDouble("tiltBleedStart", 0.0).toFloat().coerceIn(0f, .99f),
+                        tiltSizeCompression = item.optBoolean("tiltSizeCompression", false),
                         stabilization = item.optDouble("stabilization", 0.0).toFloat().coerceIn(0f, .9f),
                         stabilizationBySpeed = item.optBoolean("stabilizationBySpeed", false),
                         stabilizationBySpeedMode = item.optInt("stabilizationBySpeedMode", 1).coerceIn(0, 1),
@@ -330,6 +335,11 @@ class BrushMetadataStore(
                     .put("procreateStabilization", brush.procreateStabilization)
                     .put("motionFiltering", brush.motionFiltering)
                     .put("motionFilteringExpression", brush.motionFilteringExpression)
+                    .put("tiltGradation", brush.tiltGradation)
+                    .put("tiltGradationStart", brush.tiltGradationStart)
+                    .put("tiltBleed", brush.tiltBleed)
+                    .put("tiltBleedStart", brush.tiltBleedStart)
+                    .put("tiltSizeCompression", brush.tiltSizeCompression)
                     .put("stabilization", brush.stabilization)
                     .put("stabilizationBySpeed", brush.stabilizationBySpeed)
                     .put("stabilizationBySpeedMode", brush.stabilizationBySpeedMode)
