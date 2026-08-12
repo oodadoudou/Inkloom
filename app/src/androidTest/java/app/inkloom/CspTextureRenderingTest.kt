@@ -113,6 +113,64 @@ class CspTextureRenderingTest {
         }
     }
 
+    @Test fun procreateMovingAndTexturizedGrainUseDifferentCoordinateSpacesWithLiveExportParity() {
+        val tip = File(context.cacheDir, "grain-coordinate-tip.png")
+        val grain = File(context.cacheDir, "grain-coordinate-source.png")
+        writePng(tip, IntArray(64) { Color.BLACK })
+        writePng(grain, IntArray(64) { index -> if (index % 8 in 4..5) Color.BLACK else Color.WHITE })
+        try {
+            fun stroke(x: Float, movement: Float) = InkStroke(
+                renderSeed = 17,
+                points = listOf(StrokePoint(x, .5f, pressure = 1f)),
+                colorArgb = 0xFF111111,
+                width = 400f,
+                sizePressureEnabled = false,
+                tipAssetPath = tip.absolutePath,
+                tipAssetPaths = listOf(tip.absolutePath),
+                grainAssetPath = grain.absolutePath,
+                grainDensity = 1f,
+                grainScale = 100f,
+                grainMovement = movement,
+                grainZoom = 1f,
+            )
+            fun renderExport(stroke: InkStroke) = DocumentAssetService(context).renderPageBitmap(
+                InkPage(background = PageBackground.Paper(), strokes = listOf(stroke)), 400,
+            )
+
+            val movingAt100 = renderExport(stroke(.25f, 1f))
+            val movingAt125 = renderExport(stroke(.3125f, 1f))
+            val fixedAt100 = renderExport(stroke(.25f, 0f))
+            val fixedStrokeAt125 = stroke(.3125f, 0f)
+            val fixedAt125 = renderExport(fixedStrokeAt125)
+            val fixedLiveAt125 = renderLive(fixedStrokeAt125)
+            try {
+                assertEquals(
+                    "Moving grain must retain the same tip-local texture as the dab moves",
+                    0,
+                    patchDifference(movingAt100, 100, movingAt100.height / 2, movingAt125, 125, movingAt125.height / 2, 36),
+                )
+                assertEquals(
+                    "Texturized grain begins at the same phase when the page coordinate is one complete wavelength",
+                    0,
+                    patchDifference(movingAt100, 100, movingAt100.height / 2, fixedAt100, 100, fixedAt100.height / 2, 36),
+                )
+                assertTrue(
+                    "Texturized grain must stay fixed behind a moved tip instead of repeating its local phase",
+                    patchDifference(movingAt125, 125, movingAt125.height / 2, fixedAt125, 125, fixedAt125.height / 2, 36) > 100,
+                )
+                assertEquals(
+                    "Live and export renderers must use the same page-space grain phase",
+                    0,
+                    patchDifference(fixedAt125, 125, fixedAt125.height / 2, fixedLiveAt125, 125, fixedLiveAt125.height / 2, 36),
+                )
+            } finally {
+                movingAt100.recycle(); movingAt125.recycle(); fixedAt100.recycle(); fixedAt125.recycle(); fixedLiveAt125.recycle()
+            }
+        } finally {
+            tip.delete(); grain.delete()
+        }
+    }
+
     private fun renderLive(stroke: InkStroke): Bitmap {
         lateinit var rendered: Bitmap
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
@@ -131,5 +189,13 @@ class CspTextureRenderingTest {
             file.outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
             bitmap.recycle()
         }
+    }
+
+    private fun patchDifference(first: Bitmap, firstX: Int, firstY: Int, second: Bitmap, secondX: Int, secondY: Int, radius: Int): Int {
+        var different = 0
+        for (dy in -radius..radius) for (dx in -radius..radius) {
+            if (first.getPixel(firstX + dx, firstY + dy) != second.getPixel(secondX + dx, secondY + dy)) different++
+        }
+        return different
     }
 }

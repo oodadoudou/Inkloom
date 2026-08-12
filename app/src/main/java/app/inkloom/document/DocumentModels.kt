@@ -270,6 +270,8 @@ data class InkStroke(
     val grainDensity: Float = 0f,
     val grainDensityDynamics: BrushParameterDynamics = BrushParameterDynamics(),
     val grainScale: Float = 100f,
+    val grainMovement: Float = 1f,
+    val grainZoom: Float = 1f,
     val grainRotationDegrees: Float = 0f,
     val grainBrightness: Float = 0f,
     val grainContrast: Float = 0f,

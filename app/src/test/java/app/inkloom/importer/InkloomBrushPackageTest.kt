@@ -43,6 +43,8 @@ class InkloomBrushPackageTest {
                 grainDensity = .64f,
                 grainDensityDynamics = BrushParameterDynamics(pressureEnabled = true, pressureMinimum = .45f),
                 grainScale = 215f,
+                grainMovement = .35f,
+                grainZoom = .7f,
                 grainOffsetJitter = true,
                 grainCompositeMode = CspTextureComposite.HEIGHT,
                 defaultSize = 37f,
@@ -155,6 +157,8 @@ class InkloomBrushPackageTest {
             assertEquals(original.blurPressureCurve, restored.blurPressureCurve)
             assertEquals(original.blurSecondaryDynamics, restored.blurSecondaryDynamics)
             assertEquals(original.grainScale, restored.grainScale, .0001f)
+            assertEquals(original.grainMovement, restored.grainMovement, .0001f)
+            assertEquals(original.grainZoom, restored.grainZoom, .0001f)
             assertTrue(restored.grainOffsetJitter)
             assertEquals(CspTextureComposite.HEIGHT, restored.grainCompositeMode)
             assertEquals(180f, restored.strokeRotationJitterDegrees, .0001f)

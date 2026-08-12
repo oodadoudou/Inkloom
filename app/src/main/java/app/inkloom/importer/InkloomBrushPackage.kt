@@ -198,6 +198,8 @@ class InkloomBrushPackage(private val assetDirectory: File) {
         grainDensity = finite(source.grainDensity, 0f).coerceIn(0f, 1f),
         grainDensityDynamics = parameterDynamics(source.grainDensityDynamics),
         grainScale = finite(source.grainScale, 100f).coerceIn(1f, 4000f),
+        grainMovement = finite(source.grainMovement, 1f).coerceIn(0f, 1f),
+        grainZoom = finite(source.grainZoom, 1f).coerceIn(0f, 1f),
         grainRotationDegrees = finite(source.grainRotationDegrees, 0f).coerceIn(-360f, 360f),
         grainBrightness = finite(source.grainBrightness, 0f).coerceIn(-100f, 100f),
         grainContrast = finite(source.grainContrast, 0f).coerceIn(-100f, 100f),

@@ -32,6 +32,7 @@ class ProcreateBrushParserTest {
             writeBrush(source)
 
             val brush = ProcreateBrushParser(File(root, "assets")).enrich(source, "fixture", fallback(source)).single()
+            val sourceMetadata = ProcreateKeyedArchive(Base64.getDecoder().decode(SYNTHETIC_ARCHIVE))
 
             assertEquals("Synthetic Procreate", brush.name)
             assertEquals(BrushFormat.PROCREATE, brush.format)
@@ -57,6 +58,9 @@ class ProcreateBrushParserTest {
             assertTrue(brush.taperEndEnabled)
             assertTrue(File(brush.tipPreviewPath!!).isFile)
             assertTrue(File(brush.grainPreviewPath!!).isFile)
+            assertEquals(sourceMetadata.float("textureScale", 1f) * 100f, brush.grainScale, .0001f)
+            assertEquals(sourceMetadata.float("textureMovement", 1f), brush.grainMovement, .0001f)
+            assertEquals(sourceMetadata.float("textureZoom", 1f), brush.grainZoom, .0001f)
             assertEquals(ProcreateBrushParser.CURRENT_VERSION, brush.parserVersion)
         } finally {
             root.deleteRecursively()

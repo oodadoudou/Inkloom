@@ -122,6 +122,30 @@ class InkCanvasBrushSwitchTest {
         }
     }
 
+    @Test
+    fun grainMovementAndZoomSurviveBrushActivationAndStrokeCommit() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        var committed: InkStroke? = null
+        val view = InkCanvasView(instrumentation.targetContext).apply {
+            layout(0, 0, 1200, 1200)
+            onStrokeCommitted = { committed = it }
+        }
+        val brush = brush("grain-contract", "Grain contract").copy(
+            grainScale = 275f,
+            grainMovement = .2f,
+            grainZoom = .65f,
+        )
+
+        instrumentation.runOnMainSync {
+            view.applyBrushConfiguration(EditorTool.PEN, AppSettings(), brush, 40f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
+            drawStroke(view, 1L, 600f)
+        }
+
+        assertEquals(.2f, requireNotNull(committed).grainMovement, .0001f)
+        assertEquals(.65f, requireNotNull(committed).grainZoom, .0001f)
+        assertEquals(275f, requireNotNull(committed).grainScale, .0001f)
+    }
+
     private fun brush(id: String, name: String) = ImportedBrush(
         id = id,
         name = name,

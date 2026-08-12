@@ -178,6 +178,8 @@ class InkCanvasView(context: Context) : View(context) {
     internal var activeStrokeSurface: EngineV2ActiveStrokeSurface? = null
     private var activeSurfaceFrameScheduled = false
     private var activeSurfaceCommitted = false
+    private var activeTipRefreshScheduled = false
+    private var forceSynchronousTipDecode = false
     private val activePrimaryStampCounts = mutableMapOf<String, Int>()
     private val activeDualStampCounts = mutableMapOf<String, Int>()
     private val activePrimarySamples = mutableMapOf<String, app.inkloom.document.StrokeStampSampler.Incremental>()
@@ -202,6 +204,17 @@ class InkCanvasView(context: Context) : View(context) {
         surface.render(symmetryStrokes(currentPoints).map { stroke ->
             if (stroke.taperEndEnabled) stroke.copy(taperEndEnabled = false) else stroke
         })
+    }
+    private val activeTipRefreshFrame = Runnable {
+        activeTipRefreshScheduled = false
+        val surface = activeStrokeSurface ?: return@Runnable
+        if (activeTool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) || currentPoints.isEmpty()) return@Runnable
+        // A newly decoded page-space grain variant must replace every provisional dab, not only
+        // the next incremental tail. Clearing the front buffer prevents the familiar pen-up shape
+        // change while all decoding still happens away from MotionEvent.
+        surface.cancel()
+        resetEngineV2ActiveRenderState()
+        requestActiveSurfaceFrame()
     }
     private var backgroundBitmap: Bitmap? = null
     private val selectedStrokeIds = linkedSetOf<String>()
@@ -543,6 +556,8 @@ class InkCanvasView(context: Context) : View(context) {
     var grainDensity: Float = 0f
     var grainDensityDynamics: BrushParameterDynamics = BrushParameterDynamics()
     var grainScale: Float = 100f
+    var grainMovement: Float = 1f
+    var grainZoom: Float = 1f
     var grainRotationDegrees: Float = 0f
     var grainBrightness: Float = 0f
     var grainContrast: Float = 0f
@@ -1485,14 +1500,24 @@ class InkCanvasView(context: Context) : View(context) {
             repeat(stampsAtPoint) stamp@ { repeatIndex ->
             val sequenceIndex = index * 16 + repeatIndex
             val tipIndex = BrushTipSequence.index(stroke.tipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed, stroke.ribbon) ?: return@stamp
-            val tip = if (GrainDynamics.isDynamic(stroke) && stroke.grainAssetPath != null) {
-                tipPaths.getOrNull(tipIndex)?.let { path ->
-                    loadTip(path, stroke.hardness, stroke.grainAssetPath, GrainDynamics.density(stroke, point), stroke.grainScale, stroke.grainRotationDegrees, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized, grainOffsetX, grainOffsetY, stroke.grainCompositeMode, stroke.antiAliasMode)
-                } ?: tips[tipIndex]
-            } else tips[tipIndex]
             val offset = if (stroke.spray) SprayGeometry.offset(brushDiameter / 2f * stroke.spraySpread.coerceIn(0f, 4f), scatterRandom.nextFloat(), scatterRandom.nextFloat(), stroke.sprayBias) else app.inkloom.document.SprayOffset(0f, 0f)
             val drawX = x + offset.x
             val drawY = y + offset.y
+            val spatialGrain = stroke.grainAssetPath != null && GrainBehavior.requiresPerDabSampling(stroke.grainMovement, stroke.grainZoom)
+            val grainSample = if (spatialGrain) GrainBehavior.sample(
+                baseOffset = app.inkloom.document.GrainOffset(grainOffsetX, grainOffsetY),
+                movement = stroke.grainMovement,
+                zoom = stroke.grainZoom,
+                scalePercent = stroke.grainScale,
+                centerX = drawX,
+                centerY = drawY,
+                diameter = diameter,
+            ) else null
+            val tip = if (stroke.grainAssetPath != null && (GrainDynamics.isDynamic(stroke) || spatialGrain)) {
+                tipPaths.getOrNull(tipIndex)?.let { path ->
+                    loadTip(path, stroke.hardness, stroke.grainAssetPath, GrainDynamics.density(stroke, point), grainSample?.scalePercent ?: stroke.grainScale, stroke.grainRotationDegrees, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized, grainSample?.offset?.x ?: grainOffsetX, grainSample?.offset?.y ?: grainOffsetY, stroke.grainCompositeMode, stroke.antiAliasMode)
+                } ?: tips[tipIndex]
+            } else tips[tipIndex]
             val thicknessScale = stroke.thickness.coerceIn(.05f, 2f) * dynamics.thickness
             val tipScale = BrushTipTransform.scale(tip.width, tip.height, diameter, thicknessScale, stroke.thicknessVertical)
             val flip = BrushTipFlip.signs(stroke.tipFlipHorizontalMode, stroke.tipFlipVerticalMode, stroke.tipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed)
@@ -1787,9 +1812,10 @@ class InkCanvasView(context: Context) : View(context) {
         // would visibly switch from a fallback line to its real shape on pen-up.
         val isDynamicVariant = grainPath != null && (
             kotlin.math.abs(grainDensity - this.grainDensity) >= .025f ||
+                kotlin.math.abs(grainScale - this.grainScale) >= 2.5f ||
                 kotlin.math.abs(grainOffsetX) > .0001f || kotlin.math.abs(grainOffsetY) > .0001f
             )
-        if (activeTool != null && isDynamicVariant) {
+        if (activeTool != null && isDynamicVariant && !forceSynchronousTipDecode) {
             prewarmTip(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainOffsetX, grainOffsetY, grainCompositeMode, normalizedAntiAlias)
             return null
         }
@@ -1802,15 +1828,25 @@ class InkCanvasView(context: Context) : View(context) {
     private fun prewarmTip(path: String, hardness: Float, grainPath: String?, grainDensity: Float, grainScale: Float = 100f, grainRotation: Float = 0f, grainBrightness: Float = 0f, grainContrast: Float = 0f, grainReversed: Boolean = false, grainEmphasized: Boolean = false, grainOffsetX: Float = 0f, grainOffsetY: Float = 0f, grainCompositeMode: Int = CspTextureComposite.MULTIPLY, antiAliasMode: Int = CspAntiAlias.MEDIUM) {
         val normalizedAntiAlias = CspAntiAlias.normalize(antiAliasMode)
         val key = tipCacheKey(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainOffsetX, grainOffsetY, grainCompositeMode, normalizedAntiAlias)
+        if (pendingTipLoads.size >= MAX_PENDING_TIP_LOADS) return
         if (tipCache.containsKey(key) || !pendingTipLoads.add(key)) return
         TIP_DECODE_EXECUTOR.execute {
             val decoded = BrushTipTextureDecoder.decode(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainOffsetX, grainOffsetY, grainCompositeMode, normalizedAntiAlias)
             post {
                 pendingTipLoads.remove(key)
-                if (decoded != null && !decoded.isRecycled) tipCache[key] = decoded
+                if (decoded != null && !decoded.isRecycled) {
+                    tipCache[key] = decoded
+                    requestActiveTipRefresh()
+                }
                 postInvalidateOnAnimation()
             }
         }
+    }
+
+    private fun requestActiveTipRefresh() {
+        if (activeTipRefreshScheduled || activeStrokeSurface == null || currentPoints.isEmpty()) return
+        activeTipRefreshScheduled = true
+        postOnAnimation(activeTipRefreshFrame)
     }
 
     /** Decodes a newly selected imported tip before the first pen contact. */
@@ -1818,7 +1854,7 @@ class InkCanvasView(context: Context) : View(context) {
         val primary = tipAssetPaths.ifEmpty { listOfNotNull(tipAssetPath) }
         val secondary = if (brushDual) dualTipAssetPaths.ifEmpty { primary } else emptyList()
         if (primary.isEmpty() && secondary.isEmpty()) return
-        val signature = "${primary.joinToString()}|${secondary.joinToString()}|$brushHardness|$dualHardness|$grainAssetPath|$grainDensity|$grainScale|$grainRotationDegrees|$grainBrightness|$grainContrast|$grainReversed|$grainEmphasized|$grainCompositeMode|$brushAntiAliasMode|$dualAntiAliasMode"
+        val signature = "${primary.joinToString()}|${secondary.joinToString()}|$brushHardness|$dualHardness|$grainAssetPath|$grainDensity|$grainScale|$grainMovement|$grainZoom|$grainRotationDegrees|$grainBrightness|$grainContrast|$grainReversed|$grainEmphasized|$grainCompositeMode|$brushAntiAliasMode|$dualAntiAliasMode"
         if (signature == prewarmedBrushSignature) return
         prewarmedBrushSignature = signature
         primary.forEach { prewarmTip(it, brushHardness, grainAssetPath, grainDensity, grainScale, grainRotationDegrees, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainCompositeMode = grainCompositeMode, antiAliasMode = brushAntiAliasMode) }
@@ -2272,7 +2308,7 @@ class InkCanvasView(context: Context) : View(context) {
                 // Freeze the many brush-engine parameters once per contact. Live rendering then
                 // copies only the changing point list instead of rebuilding the full descriptor
                 // several times per display frame.
-                activeStrokeTemplate = buildStroke(emptyList())
+                activeStrokeTemplate = withCurrentGrainBehavior(buildStroke(emptyList()))
                 activePerspectiveSnapConstraint = null
                 activeSpecialRulerConstraint = null
                 activeCanvasSnapConstraint = if (!rulerEnabled && (!perspectiveGuideState.assisted || perspectiveGuideState.mode == PerspectiveGuideMode.NONE) && (!specialRulerState.assisted || specialRulerState.mode == SpecialRulerMode.NONE) && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
@@ -4661,7 +4697,12 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun makeStroke(points: List<StrokePoint>): InkStroke =
-        activeStrokeTemplate?.copy(points = points.toList()) ?: buildStroke(points)
+        activeStrokeTemplate?.copy(points = points.toList()) ?: withCurrentGrainBehavior(buildStroke(points))
+
+    private fun withCurrentGrainBehavior(stroke: InkStroke): InkStroke = stroke.copy(
+        grainMovement = grainMovement,
+        grainZoom = grainZoom,
+    )
 
     private fun buildStroke(points: List<StrokePoint>) = InkStroke(id = currentStrokeId, engineKind = activeBrushEngineKind(), points = points.toList(), colorArgb = inkColor.toUInt().toLong(), width = baseWidth, opacity = inkOpacity, brushId = brushId, layerId = activeLayerId, tipAssetPath = tipAssetPath, tipAssetPaths = tipAssetPaths.ifEmpty { listOfNotNull(tipAssetPath) }, dualTipAssetPaths = dualTipAssetPaths, grainAssetPath = grainAssetPath, grainDensity = grainDensity, grainDensityDynamics = grainDensityDynamics, grainScale = grainScale, grainRotationDegrees = grainRotationDegrees, grainBrightness = grainBrightness, grainContrast = grainContrast, grainReversed = grainReversed, grainEmphasized = grainEmphasized, grainOffsetJitter = grainOffsetJitter, spacing = brushSpacing, spacingMode = brushSpacingMode, flow = brushFlow, hardness = brushHardness, antiAliasMode = brushAntiAliasMode, blur = brushBlur, blurUnit = brushBlurUnit, blurLinkedToSize = brushBlurLinkedToSize, thickness = brushThickness, thicknessVertical = brushThicknessVertical, rotationDegrees = brushRotation, followStylusOrientation = followStylusOrientation, followStrokeDirection = followStrokeDirection, randomRotationDegrees = randomRotationDegrees, strokeRotationJitterDegrees = strokeRotationJitterDegrees, stampCount = stampCount, stampCountJitter = stampCountJitter, continuousPlot = brushContinuousPlot, colorJitterHueDegrees = colorJitterHueDegrees, colorJitterSaturation = colorJitterSaturation, colorJitterValue = colorJitterValue, colorJitterTarget = colorJitterTarget, colorJitterHueDynamics = colorJitterHueDynamics, colorJitterSaturationDynamics = colorJitterSaturationDynamics, colorJitterValueDynamics = colorJitterValueDynamics, watercolor = brushWatercolor, colorMix = brushColorMix, colorMixPressureEnabled = colorMixPressureEnabled, colorMixPressureMinimum = colorMixPressureMinimum, colorMixPressureCurve = colorMixPressureCurve, colorMixSecondaryDynamics = colorMixSecondaryDynamics, paintMix = brushPaintMix, paintMixPressureEnabled = paintMixPressureEnabled, paintMixPressureMinimum = paintMixPressureMinimum, paintMixPressureCurve = paintMixPressureCurve, paintMixSecondaryDynamics = paintMixSecondaryDynamics, spray = brushSpray, sprayParticleSize = sprayParticleSize, sprayParticleSizeUnit = sprayParticleSizeUnit, sprayParticleSizeSyncBrushSize = sprayParticleSizeSyncBrushSize, sprayParticleSizePressureEnabled = sprayParticleSizePressureEnabled, sprayParticleSizePressureMinimum = sprayParticleSizePressureMinimum, sprayParticleSizePressureCurve = sprayParticleSizePressureCurve, sprayParticleSizeSecondaryDynamics = sprayParticleSizeSecondaryDynamics, sprayDensity = sprayDensity, sprayDensityPressureEnabled = sprayDensityPressureEnabled, sprayDensityPressureMinimum = sprayDensityPressureMinimum, sprayDensityPressureCurve = sprayDensityPressureCurve, sprayDensitySecondaryDynamics = sprayDensitySecondaryDynamics, sprayBias = sprayBias, spraySpread = spraySpread, sprayParticleRotationDegrees = sprayParticleRotationDegrees, sprayParticleFollowStylusOrientation = sprayParticleFollowStylusOrientation, sprayParticleFollowStrokeDirection = sprayParticleFollowStrokeDirection, sprayParticleRandomRotationDegrees = sprayParticleRandomRotationDegrees, ribbon = brushRibbon, tipSequenceMode = brushTipSequenceMode, tipFlipHorizontalMode = tipFlipHorizontalMode, tipFlipVerticalMode = tipFlipVerticalMode, blendTipsWithDarken = blendTipsWithDarken, dualBrush = brushDual, dualSizeScale = dualSizeScale, dualSizeDynamics = dualSizeDynamics, dualSpacing = dualSpacing, dualSpacingMode = dualSpacingMode, dualSpacingDynamics = dualSpacingDynamics, dualFlow = dualFlow, dualFlowDynamics = dualFlowDynamics, dualHardness = dualHardness, dualAntiAliasMode = dualAntiAliasMode, dualThickness = dualThickness, dualThicknessDynamics = dualThicknessDynamics, dualThicknessVertical = dualThicknessVertical, dualRotationDegrees = dualRotationDegrees, dualFollowStylusOrientation = dualFollowStylusOrientation, dualFollowStrokeDirection = dualFollowStrokeDirection, dualRandomRotationDegrees = dualRandomRotationDegrees, dualStrokeRotationJitterDegrees = dualStrokeRotationJitterDegrees, dualStampCount = dualStampCount, dualStampCountJitter = dualStampCountJitter, dualRibbon = dualRibbon, dualSpray = dualSpray, dualSprayParticleSize = dualSprayParticleSize, dualSprayParticleSizeUnit = dualSprayParticleSizeUnit, dualSprayParticleSizeSyncBrushSize = dualSprayParticleSizeSyncBrushSize, dualSprayParticleSizeDynamics = dualSprayParticleSizeDynamics, dualSprayDensity = dualSprayDensity, dualSprayDensityDynamics = dualSprayDensityDynamics, dualSprayBias = dualSprayBias, dualSpraySpread = dualSpraySpread, dualSprayParticleRotationDegrees = dualSprayParticleRotationDegrees, dualSprayParticleFollowStylusOrientation = dualSprayParticleFollowStylusOrientation, dualSprayParticleFollowStrokeDirection = dualSprayParticleFollowStrokeDirection, dualSprayParticleRandomRotationDegrees = dualSprayParticleRandomRotationDegrees, dualTipSequenceMode = dualTipSequenceMode, dualTipFlipHorizontalMode = dualTipFlipHorizontalMode, dualTipFlipVerticalMode = dualTipFlipVerticalMode, dualBlendTipsWithDarken = dualBlendTipsWithDarken, dualCompositeMode = dualCompositeMode, dualApplyRgb = dualApplyRgb, taperMode = taperMode, taperStartEnabled = taperStartEnabled, taperStartLength = taperStartLength, taperStartLengthUnit = taperStartLengthUnit, taperStartMinimum = taperStartMinimum, taperEndEnabled = taperEndEnabled, taperEndLength = taperEndLength, taperEndLengthUnit = taperEndLengthUnit, taperEndMinimum = taperEndMinimum, waterEdgeEnabled = waterEdgeEnabled, waterEdgeRadius = waterEdgeRadius, waterEdgeRadiusUnit = waterEdgeRadiusUnit, waterEdgeOpacity = waterEdgeOpacity, waterEdgeDarkness = waterEdgeDarkness, waterEdgeBlur = waterEdgeBlur, waterEdgeBlurUnit = waterEdgeBlurUnit, sizePressureEnabled = sizePressureEnabled, sizePressureMinimum = sizePressureMinimum, sizePressureCurve = sizePressureCurve, sizeSecondaryDynamics = sizeSecondaryDynamics, opacityPressureEnabled = opacityPressureEnabled, opacityPressureMinimum = opacityPressureMinimum, opacityPressureCurve = opacityPressureCurve, opacitySecondaryDynamics = opacitySecondaryDynamics, flowPressureEnabled = flowPressureEnabled, flowPressureMinimum = flowPressureMinimum, flowPressureCurve = flowPressureCurve, flowSecondaryDynamics = flowSecondaryDynamics, spacingPressureEnabled = spacingPressureEnabled, spacingPressureMinimum = spacingPressureMinimum, spacingPressureCurve = spacingPressureCurve, spacingSecondaryDynamics = spacingSecondaryDynamics, thicknessPressureEnabled = thicknessPressureEnabled, thicknessPressureMinimum = thicknessPressureMinimum, thicknessPressureCurve = thicknessPressureCurve, thicknessSecondaryDynamics = thicknessSecondaryDynamics, blurPressureEnabled = blurPressureEnabled, blurPressureMinimum = blurPressureMinimum, blurPressureCurve = blurPressureCurve, blurSecondaryDynamics = blurSecondaryDynamics)
 
@@ -4690,7 +4731,13 @@ class InkCanvasView(context: Context) : View(context) {
         val scaleY = raster.height / height.coerceAtLeast(1).toFloat()
         target.scale(scaleX, scaleY)
         target.translate(-patchLeft / scaleX, -patchTop / scaleY)
-        newStrokes.forEach { stroke -> drawStroke(target, stroke) }
+        val previousSynchronousDecode = forceSynchronousTipDecode
+        forceSynchronousTipDecode = true
+        try {
+            newStrokes.forEach { stroke -> drawStroke(target, stroke) }
+        } finally {
+            forceSynchronousTipDecode = previousSynchronousDecode
+        }
         target.restore()
         selectionMaskForDisplay()?.takeUnless(Bitmap::isRecycled)?.let { selection ->
             val selectionSource = android.graphics.Rect(
@@ -4954,6 +5001,8 @@ class InkCanvasView(context: Context) : View(context) {
                 session.restoreOriginal()
                 val eraserStroke = buildStroke(rasterEraserPoints).copy(
                     engineKind = BrushEngineKind.ERASE_MASK,
+                    grainMovement = grainMovement,
+                    grainZoom = grainZoom,
                     width = eraserWidth,
                     opacity = eraserOpacity,
                     hardness = eraserHardness,
@@ -5429,6 +5478,7 @@ class InkCanvasView(context: Context) : View(context) {
         const val SPECIAL_RULER_ROTATION_HANDLE_DP = 72f
         const val DUAL_SEQUENCE_SEED = 0x35A71C9E
         const val MAX_TIP_CACHE_ENTRIES = 64
+        const val MAX_PENDING_TIP_LOADS = 12
         const val MAX_COLOR_FILTER_CACHE_ENTRIES = 64
         const val MAX_BLUR_MASK_CACHE_ENTRIES = 48
         const val MAX_CACHED_BLUR_RADIUS_PX = 256f

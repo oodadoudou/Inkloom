@@ -115,6 +115,8 @@ class BrushMetadataStore(
                         grainDensity = item.optDouble("grainDensity", 0.0).toFloat(),
                         grainDensityDynamics = parameterDynamics("grainDensityDynamics"),
                         grainScale = item.optDouble("grainScale", 100.0).toFloat().coerceIn(1f, 4000f),
+                        grainMovement = item.optDouble("grainMovement", 1.0).toFloat().coerceIn(0f, 1f),
+                        grainZoom = item.optDouble("grainZoom", 1.0).toFloat().coerceIn(0f, 1f),
                         grainRotationDegrees = item.optDouble("grainRotationDegrees", 0.0).toFloat().coerceIn(-360f, 360f),
                         grainBrightness = item.optDouble("grainBrightness", 0.0).toFloat().coerceIn(-100f, 100f),
                         grainContrast = item.optDouble("grainContrast", 0.0).toFloat().coerceIn(-100f, 100f),
@@ -304,6 +306,8 @@ class BrushMetadataStore(
                     .put("grainDensity", brush.grainDensity)
                     .put("grainDensityDynamics", parameterDynamicsJson(brush.grainDensityDynamics))
                     .put("grainScale", brush.grainScale)
+                    .put("grainMovement", brush.grainMovement)
+                    .put("grainZoom", brush.grainZoom)
                     .put("grainRotationDegrees", brush.grainRotationDegrees)
                     .put("grainBrightness", brush.grainBrightness)
                     .put("grainContrast", brush.grainContrast)

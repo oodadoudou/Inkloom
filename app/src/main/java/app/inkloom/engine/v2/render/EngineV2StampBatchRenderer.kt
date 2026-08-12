@@ -12,6 +12,7 @@ import app.inkloom.document.BrushColorDynamics
 import app.inkloom.document.BrushStampRotation
 import app.inkloom.document.BrushTipTransform
 import app.inkloom.document.GrainDynamics
+import app.inkloom.document.GrainBehavior
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
 import app.inkloom.document.StrokeStampSampler
@@ -116,6 +117,7 @@ internal object EngineV2StampBatchRenderer {
         !stroke.dualBrush && !stroke.spray && !stroke.watercolor && !stroke.waterEdgeEnabled &&
             !containsLocalPigment &&
             !stroke.blendTipsWithDarken && stroke.blur <= .001f && !GrainDynamics.isDynamic(stroke) &&
+            !GrainBehavior.requiresPerDabSampling(stroke.grainMovement, stroke.grainZoom) &&
             stroke.stampCount == 1 && stroke.stampCountJitter <= .001f &&
             stroke.tipFlipHorizontalMode == 0 && stroke.tipFlipVerticalMode == 0 &&
             noColorDynamics(stroke.colorJitterHueDynamics) && noColorDynamics(stroke.colorJitterSaturationDynamics) &&

@@ -907,7 +907,7 @@ class DocumentAssetService(private val context: Context) {
         paint.blendMode = if (stroke.blendTipsWithDarken) BlendMode.DARKEN else null
         val scatterRandom = java.util.Random(stroke.renderSeed.toLong())
         val rotationRandom = java.util.Random(stroke.renderSeed.toLong() xor 0x49A2B31DL)
-        val dynamicGrainTips = mutableMapOf<Pair<Int, Int>, Bitmap>()
+        val dynamicGrainTips = mutableMapOf<String, Bitmap>()
         paint.colorFilter = PorterDuffColorFilter(stroke.colorArgb.toInt(), PorterDuff.Mode.SRC_IN)
         val sampledPoints = EngineV2BrushEvaluator.sampleStampPoints(stroke, width.toFloat(), height.toFloat(), dual = false)
         val taper = StrokeTaper.factors(sampledPoints, width.toFloat(), height.toFloat(), stroke.taperMode, stroke.taperStartEnabled, stroke.taperStartLength, stroke.taperStartLengthUnit, stroke.taperStartMinimum, stroke.taperEndEnabled, stroke.taperEndLength, stroke.taperEndLengthUnit, stroke.taperEndMinimum)
@@ -922,20 +922,29 @@ class DocumentAssetService(private val context: Context) {
             repeat(stampsAtPoint) stamp@ { repeatIndex ->
             val sequenceIndex = index * 16 + repeatIndex
             val tipIndex = BrushTipSequence.index(stroke.tipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed, stroke.ribbon) ?: return@stamp
-            val tip = if (GrainDynamics.isDynamic(stroke) && stroke.grainAssetPath != null) {
-                val densityBucket = (GrainDynamics.density(stroke, point) * 20f).toInt().coerceIn(0, 20)
-                dynamicGrainTips.getOrPut(tipIndex to densityBucket) {
-                    tipPaths.getOrNull(tipIndex)?.let { path ->
-                        decodeTip(path, stroke.hardness, stroke.grainAssetPath, densityBucket / 20f, stroke.grainScale, stroke.grainRotationDegrees, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized, grainOffsetX, grainOffsetY, stroke.grainCompositeMode, stroke.antiAliasMode)
-                    } ?: tips[tipIndex]
-                }
-            } else tips[tipIndex]
             val x = point.x * width; val y = point.y * height
             val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
             val brushDiameter = (stroke.width * width / 1600f * taper[index] * dynamics.size).coerceAtLeast(.25f)
             val diameter = if (stroke.spray) SprayGeometry.particleDiameter(brushDiameter, SprayDynamics.particleSize(stroke, point), stroke.sprayParticleSizeUnit, stroke.sprayParticleSizeSyncBrushSize, width.toFloat()) else brushDiameter
             val offset = if (stroke.spray) SprayGeometry.offset(brushDiameter / 2f * stroke.spraySpread.coerceIn(0f, 4f), scatterRandom.nextFloat(), scatterRandom.nextFloat(), stroke.sprayBias) else SprayOffset(0f, 0f)
             val drawX = x + offset.x; val drawY = y + offset.y
+            val spatialGrain = stroke.grainAssetPath != null && GrainBehavior.requiresPerDabSampling(stroke.grainMovement, stroke.grainZoom)
+            val grainSample = if (spatialGrain) GrainBehavior.sample(
+                GrainOffset(grainOffsetX, grainOffsetY), stroke.grainMovement, stroke.grainZoom,
+                stroke.grainScale, drawX, drawY, diameter,
+            ) else null
+            val tip = if (stroke.grainAssetPath != null && (GrainDynamics.isDynamic(stroke) || spatialGrain)) {
+                val densityBucket = (GrainDynamics.density(stroke, point) * 20f).toInt().coerceIn(0, 20)
+                val sampleScale = grainSample?.scalePercent ?: stroke.grainScale
+                val sampleOffsetX = grainSample?.offset?.x ?: grainOffsetX
+                val sampleOffsetY = grainSample?.offset?.y ?: grainOffsetY
+                val cacheKey = "$tipIndex:$densityBucket:${sampleScale.toInt()}:${sampleOffsetX.toBits()}:${sampleOffsetY.toBits()}"
+                dynamicGrainTips[cacheKey] ?: if (dynamicGrainTips.size < MAX_DYNAMIC_GRAIN_VARIANTS_PER_STROKE) {
+                    tipPaths.getOrNull(tipIndex)?.let { path ->
+                        decodeTip(path, stroke.hardness, stroke.grainAssetPath, densityBucket / 20f, sampleScale, stroke.grainRotationDegrees, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized, sampleOffsetX, sampleOffsetY, stroke.grainCompositeMode, stroke.antiAliasMode)
+                    }?.also { dynamicGrainTips[cacheKey] = it } ?: tips[tipIndex]
+                } else tips[tipIndex]
+            } else tips[tipIndex]
             val thicknessDynamic = dynamics.thickness
             val followsStroke = BrushStampRotation.followsStroke(stroke, dual = false)
             val angle = BrushStampRotation.degrees(
@@ -1120,6 +1129,7 @@ class DocumentAssetService(private val context: Context) {
         const val DUAL_SCATTER_SEED = 0x27C4915DL
         const val DUAL_ROTATION_SEED = 0x61B8D2A3L
         const val DUAL_SEQUENCE_SEED = 0x35A71C9E
+        const val MAX_DYNAMIC_GRAIN_VARIANTS_PER_STROKE = 64
         const val PDF_TEXT_INDEX_VERSION = 1
         const val PDF_LINK_INDEX_VERSION = 1
         const val MAX_PDF_TEXT_CHARACTERS_PER_PAGE = 1_000_000

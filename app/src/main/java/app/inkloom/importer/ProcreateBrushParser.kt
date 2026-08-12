@@ -130,7 +130,9 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             dualTipPreviewPaths = listOfNotNull(dualShape?.absolutePath),
             grainPreviewPath = grain?.absolutePath,
             grainDensity = metadata.float("grainDepth", if (grain != null) 1f else 0f).coerceIn(0f, 1f),
-            grainScale = (metadata.float("textureScale", 1f) * metadata.float("textureZoom", 1f) * 100f).coerceIn(1f, 4000f),
+            grainScale = (metadata.float("textureScale", 1f) * 100f).coerceIn(1f, 4000f),
+            grainMovement = metadata.float("textureMovement", 1f).coerceIn(0f, 1f),
+            grainZoom = metadata.float("textureZoom", 1f).coerceIn(0f, 1f),
             grainRotationDegrees = (metadata.float("textureRotation") * 360f).coerceIn(-360f, 360f),
             grainBrightness = (metadata.float("textureBrightness") * 100f).coerceIn(-100f, 100f),
             grainContrast = (metadata.float("textureContrast") * 100f).coerceIn(-100f, 100f),
@@ -209,7 +211,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             report = buildList {
                 add("Procreate brush $position/$total decoded from NSKeyedArchive version ${metadata.int("version")}")
                 add(if (shape != null) "Procreate Shape.png extracted as the real stamp source" else "Shape source was missing; line fallback retained")
-                if (grain != null) add("Procreate Grain.png extracted with depth, scale, zoom, rotation, brightness, contrast, invert and per-stroke offset settings")
+                if (grain != null) add("Procreate Grain.png extracted with independent movement, scale, zoom, rotation, brightness, contrast, invert and per-stroke offset settings")
                 add("Stroke spacing, smoothing, size/opacity limits, shape angle, roundness, azimuth and direction behavior mapped")
                 if (pencilTaperStartLength > DYNAMIC_EPSILON || pencilTaperEndLength > DYNAMIC_EPSILON) add("Procreate Apple Pencil start/end taper lengths and size floor mapped")
                 if (metadata.float("plotMovingAverageStabilization") > DYNAMIC_EPSILON || metadata.float("plotFFTSmoothingAmount") > DYNAMIC_EPSILON) add("Procreate StreamLine, stabilization and motion filtering combined into Inkloom stabilization")
@@ -354,7 +356,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
     )
 
     companion object {
-        const val CURRENT_VERSION = 6
+        const val CURRENT_VERSION = 7
         private const val MAX_ENTRIES = 4_096
         private const val MAX_ENTRY_BYTES = 32L * 1024L * 1024L
         private const val MAX_EXPANDED_BYTES = 384L * 1024L * 1024L

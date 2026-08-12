@@ -98,6 +98,49 @@ class RasterPaintCommitTest {
         result.recycle(); surface.recycle(); tipFile.delete()
     }
 
+    @Test fun rasterCommitUsesTheExactTexturizedGrainEvenWhenItsVariantWasNotPrewarmed() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val tipFile = File(context.cacheDir, "raster-texturized-tip.png")
+        val grainFile = File(context.cacheDir, "raster-texturized-grain.png")
+        writePng(tipFile, IntArray(64) { Color.BLACK })
+        writePng(grainFile, IntArray(64) { index -> if (index % 8 in 4..5) Color.BLACK else Color.WHITE })
+        fun commit(movement: Float): Bitmap {
+            val surface = Bitmap.createBitmap(600, 600, Bitmap.Config.ARGB_8888)
+            var committed: Bitmap? = null
+            val view = createCanvas {
+                tool = EditorTool.PEN
+                activeLayerId = "paint"
+                baseWidth = 400f
+                sizePressureEnabled = false
+                tipAssetPath = tipFile.absolutePath
+                tipAssetPaths = listOf(tipFile.absolutePath)
+                grainAssetPath = grainFile.absolutePath
+                grainDensity = 1f
+                grainScale = 100f
+                grainMovement = movement
+                grainZoom = 1f
+                setRasterLayerBitmaps(mapOf("paint" to surface))
+                onRasterLayerCommitted = { _, bitmap -> committed = bitmap }
+            }
+            send(view, MotionEvent.ACTION_DOWN, 125f, 200f, 0L)
+            send(view, MotionEvent.ACTION_UP, 125f, 200f, 5L)
+            surface.recycle()
+            return requireNotNull(committed)
+        }
+
+        val moving = commit(1f)
+        val texturized = commit(0f)
+        var differingPixels = 0
+        for (y in 250..350) for (x in 138..238) {
+            if (moving.getPixel(x, y) != texturized.getPixel(x, y)) differingPixels++
+        }
+        assertTrue(
+            "The durable raster must use the page-space phase instead of committing the provisional base tip",
+            differingPixels > 100,
+        )
+        moving.recycle(); texturized.recycle(); tipFile.delete(); grainFile.delete()
+    }
+
     private fun createCanvas(block: InkCanvasView.() -> Unit): InkCanvasView {
         lateinit var result: InkCanvasView
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
@@ -122,5 +165,12 @@ class RasterPaintCommitTest {
             if (Color.alpha(getPixel(x, y)) > 0) return true
         }
         return false
+    }
+
+    private fun writePng(file: File, pixels: IntArray) {
+        Bitmap.createBitmap(pixels, 8, 8, Bitmap.Config.ARGB_8888).also { bitmap ->
+            file.outputStream().use { output -> check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) }
+            bitmap.recycle()
+        }
     }
 }
