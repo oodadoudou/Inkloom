@@ -46,12 +46,14 @@ object BrushSemanticMapper {
         if (brush.blur > 0f) exact("${brush.format.name}.blur", "Compositor.blurRadius")
         if (brush.isEraser) exact("${brush.format.name}.eraser", "EraseMaskEngine.coverageTarget")
         if (hasDynamics(brush)) exact("${brush.format.name}.dynamics", "BrushBehaviorRuntime.compiledChannels")
-        if (brush.watercolor || brush.colorMix > 0f || brush.paintMix > 0f) {
+        if (!brush.procreateWetMix.isDisabled()) {
             approximate(
-                "${brush.format.name}.wetMix",
-                "WetSmudgeEngine.deterministicGlaze",
-                "Fluid transport and pigment reservoir are not represented by the current vector document model.",
+                "PROCREATE.wetMix",
+                "WetPaintEngine.incrementalPigmentTransport",
+                "All authored controls, reservoir depletion and local destination-pigment transport are represented; coefficients are calibrated from official behavior because Procreate's private pigment equation is unavailable.",
             )
+        } else if (brush.watercolor || brush.colorMix > 0f || brush.paintMix > 0f) {
+            approximate("${brush.format.name}.wetMix", "WetSmudgeEngine.deterministicGlaze", "Source controls are preserved; the pixel equation is an Inkloom implementation of the documented behavior.")
         }
         if (brush.format == BrushFormat.UNKNOWN) {
             add(BrushSemanticMapping("UNKNOWN.container", "BrushImportSandbox.retainedSource", SemanticFidelity.UNSUPPORTED, "Source is retained without executable brush semantics."))

@@ -8,6 +8,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.model.EditorTool
+import app.inkloom.engine.v2.render.EngineV2ActiveStrokeSurface
 import app.inkloom.ui.InkCanvasView
 import java.io.File
 import org.junit.Assert.assertEquals
@@ -17,6 +18,37 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class RasterPaintCommitTest {
+    @Test fun wetPullUpdatesRasterBeforePenUpAndCancelRestoresIt() {
+        val surface = Bitmap.createBitmap(600, 600, Bitmap.Config.ARGB_8888)
+        android.graphics.Canvas(surface).drawCircle(150f, 300f, 24f, android.graphics.Paint().apply { color = Color.RED })
+        val original = IntArray(surface.width * surface.height).also { surface.getPixels(it, 0, surface.width, 0, 0, surface.width, surface.height) }
+        val view = createCanvas {
+            tool = EditorTool.PEN
+            activeLayerId = "paint"
+            baseWidth = 120f
+            brushHardness = .6f
+            procreateWetMix = app.inkloom.document.ProcreateWetMix(dilution = .9f, charge = .6f, attack = .7f, pull = 1f, blur = .25f)
+            setRasterLayerBitmaps(mapOf("paint" to surface))
+        }
+        view.activeStrokeSurface = object : EngineV2ActiveStrokeSurface {
+            override fun render(strokes: List<app.inkloom.document.InkStroke>) = Unit
+            override fun commit(strokes: List<app.inkloom.document.InkStroke>) = Unit
+            override fun cancel() = Unit
+        }
+
+        send(view, MotionEvent.ACTION_DOWN, 100f, 200f, 0L)
+        repeat(8) { index ->
+            send(view, MotionEvent.ACTION_MOVE, 115f + index * 15f, 200f, 5L + index)
+            InstrumentationRegistry.getInstrumentation().runOnMainSync { view.flushEngineV2ActiveFrame() }
+        }
+        assertTrue("Pull must move pigment while the contact is still down", Color.alpha(surface.getPixel(255, 300)) > 0)
+
+        send(view, MotionEvent.ACTION_CANCEL, 220f, 200f, 20L)
+        val restored = IntArray(surface.width * surface.height).also { surface.getPixels(it, 0, surface.width, 0, 0, surface.width, surface.height) }
+        assertEquals(original.toList(), restored.toList())
+        surface.recycle()
+    }
+
     @Test fun penPaintsTheActiveRasterSurfaceWithoutAddingAVectorStroke() {
         val surface = Bitmap.createBitmap(600, 600, Bitmap.Config.ARGB_8888)
         var rasterCommits = 0

@@ -157,6 +157,7 @@ object StrokeEraser {
             tilt = lerp(start.tilt, end.tilt, t),
             orientation = start.orientation + orientationDelta * t,
             velocity = lerp(start.velocity, end.velocity, t),
+            pathDistance = lerp(start.pathDistance, end.pathDistance, t),
             pigmentArgb = interpolateArgb(start.pigmentArgb, end.pigmentArgb, t),
         )
     }

@@ -56,7 +56,7 @@ internal object EngineV2BrushEvaluator {
         val blur = pressure(stroke.blurPressureEnabled, stroke.blurPressureMinimum, stroke.blurPressureCurve, pressure) *
             secondary(stroke.blurSecondaryDynamics, point, stroke.renderSeed, SALT_BLUR)
         return DabDynamics(
-            size = size,
+            size = size * app.inkloom.document.WetMixDynamics.sizeMultiplier(stroke, point),
             opacity = opacity,
             flow = flow,
             thickness = thickness,
@@ -98,7 +98,8 @@ internal object EngineV2BrushEvaluator {
                 diameter = (
                     stroke.width * referenceScale * stroke.dualSizeScale.coerceIn(.01f, 8f) *
                         pressure(stroke.dualSizeDynamics.pressureEnabled, stroke.dualSizeDynamics.pressureMinimum, stroke.dualSizeDynamics.pressureCurve, pressure) *
-                        secondary(stroke.dualSizeDynamics.secondary, point, stroke.renderSeed, SALT_DUAL_SIZE)
+                        secondary(stroke.dualSizeDynamics.secondary, point, stroke.renderSeed, SALT_DUAL_SIZE) *
+                        app.inkloom.document.WetMixDynamics.sizeMultiplier(stroke, point)
                     ).coerceAtLeast(1f)
                 spacingDynamic = pressure(stroke.dualSpacingDynamics.pressureEnabled, stroke.dualSpacingDynamics.pressureMinimum, stroke.dualSpacingDynamics.pressureCurve, pressure) *
                     secondary(stroke.dualSpacingDynamics.secondary, point, stroke.renderSeed, SALT_DUAL_SPACING)
@@ -108,7 +109,8 @@ internal object EngineV2BrushEvaluator {
                 diameter = (
                     stroke.width * referenceScale *
                         pressure(stroke.sizePressureEnabled, stroke.sizePressureMinimum, stroke.sizePressureCurve, pressure) *
-                        secondary(stroke.sizeSecondaryDynamics, point, stroke.renderSeed, SALT_SIZE)
+                        secondary(stroke.sizeSecondaryDynamics, point, stroke.renderSeed, SALT_SIZE) *
+                        app.inkloom.document.WetMixDynamics.sizeMultiplier(stroke, point)
                     ).coerceAtLeast(1f)
                 spacingDynamic = pressure(stroke.spacingPressureEnabled, stroke.spacingPressureMinimum, stroke.spacingPressureCurve, pressure) *
                     secondary(stroke.spacingSecondaryDynamics, point, stroke.renderSeed, SALT_SPACING)

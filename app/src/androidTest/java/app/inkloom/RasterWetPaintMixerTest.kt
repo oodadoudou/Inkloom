@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
 import app.inkloom.document.ProcreateRenderingMode
+import app.inkloom.document.ProcreateWetMix
 import app.inkloom.engine.v2.render.RasterWetPaintMixer
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -13,6 +14,23 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class RasterWetPaintMixerTest {
+    @Test fun procreateDilutionControlsHowMuchExistingPigmentParticipates() {
+        fun result(dilution: Float): Int {
+            val base = Bitmap.createBitmap(12, 12, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLUE) }
+            val patch = Bitmap.createBitmap(12, 12, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+            val stroke = InkStroke(
+                procreateWetMix = ProcreateWetMix(dilution = dilution, charge = 1f, attack = 1f),
+                points = listOf(StrokePoint(.5f, .5f, pressure = 1f)),
+            )
+            RasterWetPaintMixer.composite(base, patch, 0, 0, listOf(stroke))
+            return base.getPixel(6, 6).also { patch.recycle(); base.recycle() }
+        }
+        val thick = result(0f)
+        val watery = result(1f)
+        assertTrue(Color.red(thick) > Color.red(watery))
+        assertTrue(Color.blue(watery) > Color.blue(thick))
+    }
+
     @Test fun wetPaintMixesFreshColorWithExistingLayerPigment() {
         val base = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLUE) }
         val patch = Bitmap.createBitmap(32, 32, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }

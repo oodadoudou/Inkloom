@@ -200,6 +200,8 @@ data class StrokePoint(
     val tilt: Float = 0f,
     val orientation: Float = 0f,
     val velocity: Float = 0f,
+    /** Cumulative page-space travel normalized to the 1600 px brush reference width. */
+    val pathDistance: Float = 0f,
     /** Local pigment produced by Blend. Null inherits the stroke's base color. */
     val pigmentArgb: Long? = null,
 )

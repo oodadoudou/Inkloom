@@ -1153,6 +1153,7 @@ class DocumentAssetService(private val context: Context) {
         tilt = (start.tilt + end.tilt) / 2f,
         orientation = (start.orientation + end.orientation) / 2f,
         velocity = (start.velocity + end.velocity) / 2f,
+        pathDistance = (start.pathDistance + end.pathDistance) / 2f,
         pigmentArgb = when {
             start.pigmentArgb == null -> end.pigmentArgb
             end.pigmentArgb == null -> start.pigmentArgb

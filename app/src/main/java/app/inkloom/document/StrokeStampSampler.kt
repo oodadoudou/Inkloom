@@ -103,6 +103,7 @@ object StrokeStampSampler {
         tilt = lerp(start.tilt, end.tilt, amount),
         orientation = interpolateAngle(start.orientation, end.orientation, amount),
         velocity = lerp(start.velocity, end.velocity, amount),
+        pathDistance = lerp(start.pathDistance, end.pathDistance, amount),
         pigmentArgb = interpolateArgb(start.pigmentArgb, end.pigmentArgb, amount),
     )
 

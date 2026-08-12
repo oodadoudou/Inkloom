@@ -9049,6 +9049,7 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 item { ProcreateColorDynamicsEditor(draft.procreateColorDynamics) { draft = draft.copy(procreateColorDynamics = it) } }
                 if (draft.format == BrushFormat.PROCREATE || !draft.procreateWetMix.isDisabled()) {
                     item { Text(tr("Wet Mix", "湿混合"), style = MaterialTheme.typography.titleSmall) }
+                    item { Text(tr("Existing-pigment Pull and Blur require a Raster layer; Vector layers keep editable stroke geometry.", "拖色和湿颜料模糊需要栅格图层；矢量图层会保留可编辑笔画结构。"), color = MutedInk, fontSize = 10.sp) }
                     item { BrushSettingSlider(tr("Dilution", "稀释"), draft.procreateWetMix.dilution, 0f..1f) { value -> draft = draft.copy(procreateWetMix = draft.procreateWetMix.copy(dilution = value), watercolor = true) } }
                     item { BrushSettingSlider(tr("Charge", "颜料储量"), draft.procreateWetMix.charge, 0f..1f) { value -> draft = draft.copy(procreateWetMix = draft.procreateWetMix.copy(charge = value), watercolor = true) } }
                     item { BrushSettingSlider(tr("Attack", "附着量"), draft.procreateWetMix.attack, 0f..1f) { value -> draft = draft.copy(procreateWetMix = draft.procreateWetMix.copy(attack = value), watercolor = true) } }

@@ -16,7 +16,14 @@ object RasterWetPaintMixer {
         val width = right - left; val height = bottom - top
         if (width <= 0 || height <= 0) return false
         val pointValues = strokes.flatMap { stroke -> stroke.points.map { point ->
-            WetMixDynamics.colorMix(stroke, point) to WetMixDynamics.paintMix(stroke, point)
+            if (stroke.procreateWetMix.isDisabled()) {
+                WetMixDynamics.colorMix(stroke, point) to WetMixDynamics.paintMix(stroke, point)
+            } else {
+                val wet = stroke.procreateWetMix
+                val freshPigment = ((1f - WetMixDynamics.effectiveDilution(stroke, point)) *
+                    (.25f + .75f * WetMixDynamics.reservoir(stroke, point)) * (.4f + .6f * wet.attack.coerceIn(0f, 1f))).coerceIn(0f, 1f)
+                freshPigment to 1f
+            }
         } }
         val recursiveStrength = strokes.map { ProcreateRendering.wetMixStrength(it.procreateRenderingMode) }
             .average().takeIf(Double::isFinite)?.toFloat()?.coerceIn(0f, 1.35f) ?: 0f

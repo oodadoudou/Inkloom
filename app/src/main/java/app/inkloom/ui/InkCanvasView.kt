@@ -136,6 +136,7 @@ import app.inkloom.engine.v2.render.RasterBlendSession
 import app.inkloom.engine.v2.render.RasterLiquifySession
 import app.inkloom.engine.v2.render.RasterEraserSession
 import app.inkloom.engine.v2.render.RasterWetPaintMixer
+import app.inkloom.engine.v2.render.RasterWetPaintSession
 import app.inkloom.model.EditorTool
 import app.inkloom.model.SymmetryMode
 import app.inkloom.settings.CspShortcutResolver
@@ -199,6 +200,7 @@ class InkCanvasView(context: Context) : View(context) {
         activeSurfaceFrameScheduled = false
         val surface = activeStrokeSurface ?: return@Runnable
         if (activeTool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) || currentPoints.isEmpty()) return@Runnable
+        advanceWetPaintGesture()
         if (usesViewActivePreview()) {
             surface.cancel()
             postInvalidateOnAnimation()
@@ -281,6 +283,9 @@ class InkCanvasView(context: Context) : View(context) {
     private var smudgeChanged = false
     private var rasterBlendSession: RasterBlendSession? = null
     private var rasterBlendBitmap: Bitmap? = null
+    private var rasterWetPaintSession: RasterWetPaintSession? = null
+    private var rasterWetPaintBitmap: Bitmap? = null
+    private var wetPaintLastPositions: List<Pair<Float, Float>> = emptyList()
     private val localToolStrokeIndices = mutableMapOf<String, Int>()
     private var pendingSmudgeX = 0f
     private var pendingSmudgeY = 0f
@@ -1365,6 +1370,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun releaseActiveStrokePreview() {
+        if (rasterWetPaintSession != null) cancelWetPaintGesture()
         removeCallbacks(activeSurfaceFrame)
         activeSurfaceFrameScheduled = false
         activeSurfaceCommitted = false
@@ -1842,7 +1848,8 @@ class InkCanvasView(context: Context) : View(context) {
     private fun brushBlurMask(stroke: InkStroke, point: StrokePoint, diameter: Float, baseDiameter: Float, pageWidth: Float): BlurMaskFilter? {
         val gradation = stroke.tiltGradation.coerceIn(0f, 1f) * app.inkloom.document.BrushTilt.response(point, stroke.tiltGradationStart)
         val radius = BrushBlur.radiusPixels(stroke.blur, stroke.blurUnit, stroke.blurLinkedToSize, diameter, baseDiameter, pageWidth) *
-            EngineV2BrushEvaluator.evaluateDab(stroke, point).blur + diameter * gradation * .22f
+            EngineV2BrushEvaluator.evaluateDab(stroke, point).blur + diameter * gradation * .22f +
+            diameter * app.inkloom.document.WetMixDynamics.blurAmount(stroke, point) * .18f
         return cachedBlurMask(radius)
     }
 
@@ -2385,6 +2392,7 @@ class InkCanvasView(context: Context) : View(context) {
                 // copies only the changing point list instead of rebuilding the full descriptor
                 // several times per display frame.
                 activeStrokeTemplate = withCurrentBrushBehavior(buildStroke(emptyList()))
+                beginWetPaintGesture(normalizedX, normalizedY)
                 activePerspectiveSnapConstraint = null
                 activeSpecialRulerConstraint = null
                 activeCanvasSnapConstraint = if (!rulerEnabled && (!perspectiveGuideState.assisted || perspectiveGuideState.mode == PerspectiveGuideMode.NONE) && (!specialRulerState.assisted || specialRulerState.mode == SpecialRulerMode.NONE) && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
@@ -2536,6 +2544,7 @@ class InkCanvasView(context: Context) : View(context) {
                 stopContinuousPlot()
                 if (event.actionMasked == MotionEvent.ACTION_UP) performClick()
                 if (event.actionMasked == MotionEvent.ACTION_CANCEL || event.flags and MotionEvent.FLAG_CANCELED != 0) {
+                    cancelWetPaintGesture()
                     clearActiveStrokeInput()
                     finishActiveStrokePreview()
                     if (activeTool == EditorTool.LASER) laserTrail.cancelActive()
@@ -2605,6 +2614,7 @@ class InkCanvasView(context: Context) : View(context) {
                             pageModelHeight,
                         )
                     }
+                    advanceWetPaintGesture()
                     val raster = rasterLayerBitmaps[activeLayerId]?.takeUnless(Bitmap::isRecycled)
                     if (raster != null) {
                         commitRasterPaintStrokes(raster, newStrokes)
@@ -2613,6 +2623,7 @@ class InkCanvasView(context: Context) : View(context) {
                         invalidateStrokeCache(emptyList(), newStrokes)
                         commitStrokeEdit(before, strokes)
                     }
+                    finishWetPaintGesture()
                     val previewSurface = activeStrokeSurface?.takeUnless { usesViewActivePreview() }
                     previewSurface?.let { surface ->
                         // The UP packet settles stabilization onto the physical endpoint. Publish
@@ -2874,6 +2885,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun cancelActiveGestureForNavigation() {
         stopContinuousPlot()
+        cancelWetPaintGesture()
         clearActiveStrokeInput()
         finishActiveStrokePreview()
         laserTrail.cancelActive()
@@ -3851,14 +3863,22 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun appendNativeOutput(index: Int) {
+        val x = strokeInputModeler.x(index)
+        val y = strokeInputModeler.y(index)
+        val previous = currentPoints.lastOrNull()
+        val pathDistance = (previous?.pathDistance ?: 0f) + if (previous == null) 0f else hypot(
+            ((x - previous.x) * pageModelWidth).toDouble(),
+            ((y - previous.y) * pageModelHeight).toDouble(),
+        ).toFloat() / REFERENCE_WIDTH
         currentPoints += StrokePoint(
-            x = strokeInputModeler.x(index),
-            y = strokeInputModeler.y(index),
+            x = x,
+            y = y,
             pressure = strokeInputModeler.pressure(index),
             timeMs = strokeInputModeler.timeMs(index),
             tilt = strokeInputModeler.tilt(index),
             orientation = strokeInputModeler.orientation(index),
             velocity = strokeInputModeler.velocity(index),
+            pathDistance = pathDistance,
         )
     }
 
@@ -4874,6 +4894,71 @@ class InkCanvasView(context: Context) : View(context) {
             Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.DST_IN },
         )
         return RasterStrokePatch(paintSurface, patchLeft, patchTop)
+    }
+
+    private fun beginWetPaintGesture(normalizedX: Float, normalizedY: Float) {
+        cancelWetPaintGesture()
+        val template = activeStrokeTemplate ?: return
+        if (template.procreateWetMix.isDisabled()) return
+        val raster = rasterLayerBitmaps[activeLayerId]?.takeUnless(Bitmap::isRecycled) ?: return
+        rasterWetPaintBitmap = raster
+        rasterWetPaintSession = RasterWetPaintSession(raster, selectionMaskForDisplay())
+        val initial = StrokePoint(normalizedX, normalizedY)
+        wetPaintLastPositions = wetPaintPositions(initial)
+    }
+
+    private fun wetPaintPositions(point: StrokePoint): List<Pair<Float, Float>> = buildList {
+        add(point.x to point.y)
+        symmetryMirrors(listOf(point)).forEach { mirrored -> mirrored.firstOrNull()?.let { add(it.x to it.y) } }
+    }
+
+    private fun advanceWetPaintGesture() {
+        val session = rasterWetPaintSession ?: return
+        val raster = rasterWetPaintBitmap?.takeUnless(Bitmap::isRecycled) ?: return
+        val template = activeStrokeTemplate ?: return
+        val point = currentPoints.lastOrNull() ?: return
+        val currentPositions = wetPaintPositions(point)
+        if (currentPositions.size != wetPaintLastPositions.size) {
+            wetPaintLastPositions = currentPositions
+            return
+        }
+        val dynamics = EngineV2BrushEvaluator.evaluateDab(template, point)
+        val radius = (template.width.coerceIn(.5f, 800f) / REFERENCE_WIDTH * raster.width * dynamics.size * .5f).coerceAtLeast(.5f)
+        val pull = app.inkloom.document.WetMixDynamics.pullStrength(template, point)
+        val blur = app.inkloom.document.WetMixDynamics.blurAmount(template, point)
+        var dirty: android.graphics.Rect? = null
+        currentPositions.indices.forEach { index ->
+            val previous = wetPaintLastPositions[index]
+            val current = currentPositions[index]
+            val changed = session.advance(
+                previous.first * raster.width, previous.second * raster.height,
+                current.first * raster.width, current.second * raster.height,
+                radius, pull, blur, template.hardness,
+            ) ?: return@forEach
+            if (dirty == null) dirty = android.graphics.Rect(changed) else dirty?.union(changed)
+        }
+        wetPaintLastPositions = currentPositions
+        dirty?.let { bounds ->
+            invalidate(
+                (bounds.left * width.toFloat() / raster.width).toInt() - 2,
+                (bounds.top * height.toFloat() / raster.height).toInt() - 2,
+                (bounds.right * width.toFloat() / raster.width).toInt() + 2,
+                (bounds.bottom * height.toFloat() / raster.height).toInt() + 2,
+            )
+        }
+    }
+
+    private fun finishWetPaintGesture() {
+        rasterWetPaintSession?.close()
+        rasterWetPaintSession = null
+        rasterWetPaintBitmap = null
+        wetPaintLastPositions = emptyList()
+    }
+
+    private fun cancelWetPaintGesture() {
+        rasterWetPaintSession?.restoreOriginal()
+        finishWetPaintGesture()
+        invalidate()
     }
 
     private fun commitRasterPaintStrokes(raster: Bitmap, newStrokes: List<InkStroke>) {
