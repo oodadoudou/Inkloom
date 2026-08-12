@@ -125,9 +125,11 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         val strokeRotationJitter = if (metadata.boolean("shapeRandomise")) 180f else 0f
         val stampCount = (metadata.float("shapeCount", .0625f) * 16f).toInt().coerceIn(1, 16)
         val stampCountJitter = metadata.float("shapeCountJitter").coerceIn(0f, 1f)
-        val shapeRotation = Math.toDegrees(metadata.float("shapeAngle").toDouble()).toFloat().coerceIn(-360f, 360f)
+        val shapeBaseRotation = normalizedShapeRotation(metadata.float("shapeRotation"))
+        val shapeTouchRotation = (metadata.float("shapeAngle") / HALF_PI).coerceIn(-1f, 1f)
         val followsStylus = metadata.boolean("shapeAzimuth")
-        val followsStroke = metadata.boolean("oriented")
+        val orientToScreen = metadata.boolean("oriented")
+        val followsStroke = false
         val spacingJitter = metadata.float("plotSpacingJitter")
         val spacingSpeed = metadata.float("plotSpacingSpeed")
         val strokeFalloff = metadata.float("dynamicsFalloff").coerceIn(0f, 1f)
@@ -238,7 +240,9 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             thicknessPressureMinimum = roundnessDynamics.pressureMinimum,
             thicknessPressureCurve = roundnessDynamics.pressureCurve,
             thicknessSecondaryDynamics = roundnessDynamics.secondary,
-            rotationDegrees = shapeRotation,
+            rotationDegrees = shapeBaseRotation,
+            shapeTouchRotation = shapeTouchRotation,
+            shapeOrientToScreen = orientToScreen,
             followStylusOrientation = followsStylus,
             followStrokeDirection = followsStroke,
             randomRotationDegrees = randomRotation,
@@ -258,7 +262,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             sprayDensity = 1f,
             sprayBias = 0f,
             spraySpread = 0f,
-            sprayParticleRotationDegrees = shapeRotation,
+            sprayParticleRotationDegrees = shapeBaseRotation,
             sprayParticleFollowStylusOrientation = followsStylus,
             sprayParticleFollowStrokeDirection = followsStroke,
             sprayParticleRandomRotationDegrees = randomRotation,
@@ -273,6 +277,8 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             dualShapeRoundnessVerticalJitter = dualMapped?.roundnessVerticalJitter ?: 0f,
             dualThicknessDynamics = dualMapped?.thicknessDynamics ?: BrushParameterDynamics(),
             dualRotationDegrees = dualMapped?.rotation ?: 0f,
+            dualShapeTouchRotation = dualMapped?.touchRotation ?: 0f,
+            dualShapeOrientToScreen = dualMapped?.orientToScreen ?: false,
             dualFollowStylusOrientation = dualMapped?.followStylus ?: false,
             dualFollowStrokeDirection = dualMapped?.followStroke ?: false,
             dualRandomRotationDegrees = dualMapped?.randomRotation ?: 0f,
@@ -324,6 +330,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
                 if (sources.isNotEmpty()) add("Procreate dynamics mapped: ${sources.joinToString()}")
                 if (!colorDynamics.isDisabled()) add("Procreate stamp, stroke, pressure, tilt and primary/secondary color dynamics preserved independently")
                 if (randomRotation > DYNAMIC_EPSILON) add("Procreate Shape Scatter mapped to independent per-stamp rotation")
+                if (abs(shapeTouchRotation) > DYNAMIC_EPSILON || abs(shapeBaseRotation) > DYNAMIC_EPSILON || orientToScreen) add("Procreate Shape base rotation, signed Touch Rotation, and Orient to Screen retained independently")
                 if (strokeRotationJitter > DYNAMIC_EPSILON) add("Procreate Randomized mapped to one deterministic starting rotation per stroke")
                 if (metadata.boolean("shapeFlipXJitter") || metadata.boolean("shapeFlipYJitter")) add("Procreate Shape Flip X/Y mapped to deterministic per-stamp mirroring")
                 if (stampCount > 1 || stampCountJitter > DYNAMIC_EPSILON) add("Procreate Shape Count $stampCount and Count Jitter mapped as repeated stamps at each plot point")
@@ -358,9 +365,11 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             roundnessHorizontalJitter = metadata.float("jitterShapeRoundnessX").coerceIn(0f, 1f),
             roundnessVerticalJitter = metadata.float("jitterShapeRoundness").coerceIn(0f, 1f),
             thicknessDynamics = roundnessDynamics(metadata),
-            rotation = Math.toDegrees(metadata.float("shapeAngle").toDouble()).toFloat().coerceIn(-360f, 360f),
+            rotation = normalizedShapeRotation(metadata.float("shapeRotation")),
+            touchRotation = (metadata.float("shapeAngle") / HALF_PI).coerceIn(-1f, 1f),
+            orientToScreen = metadata.boolean("oriented"),
             followStylus = metadata.boolean("shapeAzimuth"),
-            followStroke = metadata.boolean("oriented"),
+            followStroke = false,
             randomRotation = Math.toDegrees(abs(metadata.float("shapeScatter")).toDouble()).toFloat().coerceIn(0f, 180f),
             strokeRotationJitter = if (metadata.boolean("shapeRandomise")) 180f else 0f,
             flipHorizontalMode = procreateFlipMode(metadata.boolean("shapeFlipXJitter")),
@@ -543,6 +552,8 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         val roundnessVerticalJitter: Float,
         val thicknessDynamics: BrushParameterDynamics,
         val rotation: Float,
+        val touchRotation: Float,
+        val orientToScreen: Boolean,
         val followStylus: Boolean,
         val followStroke: Boolean,
         val randomRotation: Float,
@@ -559,7 +570,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
     )
 
     companion object {
-        const val CURRENT_VERSION = 25
+        const val CURRENT_VERSION = 26
         private const val MAX_ENTRIES = 4_096
         private const val MAX_ENTRY_BYTES = 32L * 1024L * 1024L
         private const val MAX_EXPANDED_BYTES = 384L * 1024L * 1024L
@@ -568,9 +579,15 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         private const val MAX_MANIFEST_BYTES = 1L * 1024L * 1024L
         private const val MAX_COMPRESSION_RATIO = 200L
         private const val DYNAMIC_EPSILON = .0005f
+        private const val HALF_PI = (Math.PI / 2.0).toFloat()
         private val UUID_PATTERN = Regex("[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}")
         private val LINEAR_CURVE = listOf(BrushCurvePoint(0f, 0f), BrushCurvePoint(1f, 1f))
         private val DESCENDING_CURVE = listOf(BrushCurvePoint(0f, 1f), BrushCurvePoint(1f, 0f))
+
+        private fun normalizedShapeRotation(turns: Float): Float {
+            val degrees = turns * 360f
+            return ((degrees + 180f) % 360f + 360f) % 360f - 180f
+        }
     }
 }
 

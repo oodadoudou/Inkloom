@@ -4936,6 +4936,8 @@ internal fun InkCanvasView.applyBrushConfiguration(
     shapeRoundnessHorizontalJitter = activeBrush?.shapeRoundnessHorizontalJitter ?: 0f
     shapeRoundnessVerticalJitter = activeBrush?.shapeRoundnessVerticalJitter ?: 0f
     brushRotation = activeBrush?.rotationDegrees ?: 0f
+    shapeTouchRotation = activeBrush?.shapeTouchRotation ?: 0f
+    shapeOrientToScreen = activeBrush?.shapeOrientToScreen ?: false
     followStylusOrientation = activeBrush?.followStylusOrientation ?: false
     followStrokeDirection = activeBrush?.followStrokeDirection ?: false
     randomRotationDegrees = activeBrush?.randomRotationDegrees ?: 0f
@@ -5004,6 +5006,8 @@ internal fun InkCanvasView.applyBrushConfiguration(
     dualThicknessDynamics = activeBrush?.dualThicknessDynamics ?: BrushParameterDynamics()
     dualThicknessVertical = activeBrush?.dualThicknessVertical ?: false
     dualRotationDegrees = activeBrush?.dualRotationDegrees ?: 0f
+    dualShapeTouchRotation = activeBrush?.dualShapeTouchRotation ?: 0f
+    dualShapeOrientToScreen = activeBrush?.dualShapeOrientToScreen ?: false
     dualFollowStylusOrientation = activeBrush?.dualFollowStylusOrientation ?: false
     dualFollowStrokeDirection = activeBrush?.dualFollowStrokeDirection ?: false
     dualRandomRotationDegrees = activeBrush?.dualRandomRotationDegrees ?: 0f
@@ -9052,7 +9056,9 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 item { BrushTipFlipModeEditor(tr("Horizontal tip flip", "笔尖水平翻转"), draft.tipFlipHorizontalMode) { draft = draft.copy(tipFlipHorizontalMode = it) } }
                 item { BrushTipFlipModeEditor(tr("Vertical tip flip", "笔尖垂直翻转"), draft.tipFlipVerticalMode) { draft = draft.copy(tipFlipVerticalMode = it) } }
                 item { SettingSwitch(tr("Blend overlapping tips with Darken", "以变暗方式叠加笔尖"), tr("Matches CSP's per-stroke brush-tip overlap mode.", "匹配 CSP 的单笔画笔尖叠加模式。"), draft.blendTipsWithDarken) { draft = draft.copy(blendTipsWithDarken = it) } }
-                item { BrushSettingSlider("Rotation", draft.rotationDegrees, -180f..180f) { draft = draft.copy(rotationDegrees = it) } }
+                item { BrushSettingSlider(tr("Base shape rotation", "笔尖基础旋转"), draft.rotationDegrees, -180f..180f) { draft = draft.copy(rotationDegrees = it) } }
+                if (draft.format == BrushFormat.PROCREATE || draft.shapeTouchRotation != 0f) item { BrushSettingSlider(tr("Touch rotation: inverse → fixed → follow stroke", "触控旋转：反向 → 固定 → 跟随笔画"), draft.shapeTouchRotation, -1f..1f) { draft = draft.copy(shapeTouchRotation = it) } }
+                if (draft.format == BrushFormat.PROCREATE || draft.shapeOrientToScreen) item { SettingSwitch(tr("Orient to screen", "朝向屏幕"), tr("Keeps the shape upright to the device when the stroke begins on a rotated canvas.", "画布旋转后落笔时，保持笔尖朝向设备屏幕。"), draft.shapeOrientToScreen) { draft = draft.copy(shapeOrientToScreen = it) } }
                 item { SettingSwitch("Follow stylus orientation", "Uses the pen direction reported by Android.", draft.followStylusOrientation) { draft = draft.copy(followStylusOrientation = it) } }
                 item { SettingSwitch("Follow stroke direction", "Rotates the tip along the drawn path.", draft.followStrokeDirection) { draft = draft.copy(followStrokeDirection = it) } }
                 item { BrushSettingSlider("Random rotation", draft.randomRotationDegrees, 0f..180f) { draft = draft.copy(randomRotationDegrees = it) } }
@@ -9138,7 +9144,9 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 if (draft.dualBrush) item { BrushSettingSlider(tr("Secondary vertical roundness jitter", "辅助笔尖垂直真圆率抖动"), draft.dualShapeRoundnessVerticalJitter, 0f..1f) { draft = draft.copy(dualShapeRoundnessVerticalJitter = it) } }
                 if (draft.dualBrush) item { ParameterDynamicsEditor(tr("Secondary thickness dynamics", "辅助笔尖厚度动态"), "Secondary thickness", draft.dualThicknessDynamics) { draft = draft.copy(dualThicknessDynamics = it) } }
                 if (draft.dualBrush) item { SettingSwitch("Secondary vertical thickness", null, draft.dualThicknessVertical) { draft = draft.copy(dualThicknessVertical = it) } }
-                if (draft.dualBrush) item { BrushSettingSlider("Secondary rotation", draft.dualRotationDegrees, -180f..180f) { draft = draft.copy(dualRotationDegrees = it) } }
+                if (draft.dualBrush) item { BrushSettingSlider(tr("Secondary base rotation", "辅助笔尖基础旋转"), draft.dualRotationDegrees, -180f..180f) { draft = draft.copy(dualRotationDegrees = it) } }
+                if (draft.dualBrush && (draft.format == BrushFormat.PROCREATE || draft.dualShapeTouchRotation != 0f)) item { BrushSettingSlider(tr("Secondary touch rotation", "辅助笔尖触控旋转"), draft.dualShapeTouchRotation, -1f..1f) { draft = draft.copy(dualShapeTouchRotation = it) } }
+                if (draft.dualBrush && (draft.format == BrushFormat.PROCREATE || draft.dualShapeOrientToScreen)) item { SettingSwitch(tr("Secondary orient to screen", "辅助笔尖朝向屏幕"), null, draft.dualShapeOrientToScreen) { draft = draft.copy(dualShapeOrientToScreen = it) } }
                 if (draft.dualBrush) item { SettingSwitch("Secondary follows stylus", null, draft.dualFollowStylusOrientation) { draft = draft.copy(dualFollowStylusOrientation = it) } }
                 if (draft.dualBrush) item { SettingSwitch("Secondary follows stroke", null, draft.dualFollowStrokeDirection) { draft = draft.copy(dualFollowStrokeDirection = it) } }
                 if (draft.dualBrush) item { BrushSettingSlider("Secondary random rotation", draft.dualRandomRotationDegrees, 0f..180f) { draft = draft.copy(dualRandomRotationDegrees = it) } }

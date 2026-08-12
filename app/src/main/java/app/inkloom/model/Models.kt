@@ -120,6 +120,9 @@ data class ImportedBrush(
     val shapeRoundnessHorizontalJitter: Float = 0f,
     val shapeRoundnessVerticalJitter: Float = 0f,
     val rotationDegrees: Float = 0f,
+    /** Procreate Shape > Touch Properties > Rotation, -1 inverse to +1 follow stroke. */
+    val shapeTouchRotation: Float = 0f,
+    val shapeOrientToScreen: Boolean = false,
     val followStylusOrientation: Boolean = false,
     val followStrokeDirection: Boolean = false,
     val randomRotationDegrees: Float = 0f,
@@ -188,6 +191,8 @@ data class ImportedBrush(
     val dualThicknessDynamics: BrushParameterDynamics = BrushParameterDynamics(),
     val dualThicknessVertical: Boolean = false,
     val dualRotationDegrees: Float = 0f,
+    val dualShapeTouchRotation: Float = 0f,
+    val dualShapeOrientToScreen: Boolean = false,
     val dualFollowStylusOrientation: Boolean = false,
     val dualFollowStrokeDirection: Boolean = false,
     val dualRandomRotationDegrees: Float = 0f,

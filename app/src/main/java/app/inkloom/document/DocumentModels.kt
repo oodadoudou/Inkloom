@@ -406,6 +406,10 @@ data class InkStroke(
     val shapeRoundnessHorizontalJitter: Float = 0f,
     val shapeRoundnessVerticalJitter: Float = 0f,
     val rotationDegrees: Float = 0f,
+    /** Procreate Shape > Touch Properties > Rotation, -1 inverse to +1 follow stroke. */
+    val shapeTouchRotation: Float = 0f,
+    /** Baked inverse viewport rotation when the source brush is oriented to the device screen. */
+    val shapeScreenRotationDegrees: Float = 0f,
     val followStylusOrientation: Boolean = false,
     val followStrokeDirection: Boolean = false,
     val randomRotationDegrees: Float = 0f,
@@ -475,6 +479,8 @@ data class InkStroke(
     val dualThicknessDynamics: BrushParameterDynamics = BrushParameterDynamics(),
     val dualThicknessVertical: Boolean = false,
     val dualRotationDegrees: Float = 0f,
+    val dualShapeTouchRotation: Float = 0f,
+    val dualShapeScreenRotationDegrees: Float = 0f,
     val dualFollowStylusOrientation: Boolean = false,
     val dualFollowStrokeDirection: Boolean = false,
     val dualRandomRotationDegrees: Float = 0f,

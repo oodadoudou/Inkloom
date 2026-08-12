@@ -26,6 +26,46 @@ class BrushStampRotationTest {
         assertEquals(110f, BrushStampRotation.degrees(20f, false, false, 1f, 90f, 90f, 1f), .0001f)
     }
 
+    @Test fun signedTouchRotationInterpolatesWithLocalStrokeDirection() {
+        val followsHalf = InkStroke(
+            points = listOf(StrokePoint(0f, 0f)),
+            inputKind = StrokeInputKind.TOUCH,
+            rotationDegrees = 15f,
+            shapeTouchRotation = .5f,
+        )
+        val inverse = followsHalf.copy(shapeTouchRotation = -1f)
+
+        assertEquals(55f, BrushStampRotation.degrees(followsHalf, false, 0f, 80f, .5f), .0001f)
+        assertEquals(-65f, BrushStampRotation.degrees(inverse, false, 0f, 80f, .5f), .0001f)
+        assertTrue(BrushStampRotation.followsStroke(followsHalf, false))
+    }
+
+    @Test fun stylusAzimuthOverridesTouchRotationButFingerUsesIt() {
+        val program = InkStroke(
+            points = listOf(StrokePoint(0f, 0f)),
+            rotationDegrees = 10f,
+            shapeTouchRotation = -.75f,
+            followStylusOrientation = true,
+        )
+        val stylus = BrushStampRotation.degrees(program, false, (Math.PI / 2).toFloat(), 40f, .5f)
+        val touch = BrushStampRotation.degrees(program.copy(inputKind = StrokeInputKind.TOUCH), false, (Math.PI / 2).toFloat(), 40f, .5f)
+
+        assertEquals(100f, stylus, .0001f)
+        assertEquals(-20f, touch, .0001f)
+        assertEquals(false, BrushStampRotation.followsStroke(program, false))
+        assertTrue(BrushStampRotation.followsStroke(program.copy(inputKind = StrokeInputKind.TOUCH), false))
+    }
+
+    @Test fun orientToScreenAdjustmentIsBakedIntoTheStroke() {
+        val stroke = InkStroke(
+            points = listOf(StrokePoint(0f, 0f)),
+            rotationDegrees = 25f,
+            shapeScreenRotationDegrees = -70f,
+        )
+
+        assertEquals(-45f, BrushStampRotation.degrees(stroke, false, 0f, 0f, .5f), .0001f)
+    }
+
     @Test fun sprayUsesIndependentParticleRotationInsteadOfNormalTipRotation() {
         val stroke = InkStroke(
             points = listOf(StrokePoint(.5f, .5f)),

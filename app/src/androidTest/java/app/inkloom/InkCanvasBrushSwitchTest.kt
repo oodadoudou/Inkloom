@@ -130,6 +130,7 @@ class InkCanvasBrushSwitchTest {
         var committed: InkStroke? = null
         val view = InkCanvasView(instrumentation.targetContext).apply {
             layout(0, 0, 1200, 1200)
+            viewportRotationDegrees = 37f
             onStrokeCommitted = { committed = it }
         }
         val brush = brush("grain-contract", "Grain contract").copy(
@@ -153,6 +154,10 @@ class InkCanvasBrushSwitchTest {
                 pressureResponse = .5f,
                 pressureLinked = true,
             ),
+            shapeTouchRotation = -.64f,
+            shapeOrientToScreen = true,
+            dualShapeTouchRotation = .43f,
+            dualShapeOrientToScreen = true,
         )
 
         instrumentation.runOnMainSync {
@@ -173,6 +178,10 @@ class InkCanvasBrushSwitchTest {
         assertEquals(brush.procreateWetMix, requireNotNull(committed).procreateWetMix)
         assertEquals(brush.procreateTaper, requireNotNull(committed).procreateTaper)
         assertEquals(StrokeInputKind.STYLUS, requireNotNull(committed).inputKind)
+        assertEquals(-.64f, requireNotNull(committed).shapeTouchRotation, .0001f)
+        assertEquals(.43f, requireNotNull(committed).dualShapeTouchRotation, .0001f)
+        assertEquals(-37f, requireNotNull(committed).shapeScreenRotationDegrees, .0001f)
+        assertEquals(-37f, requireNotNull(committed).dualShapeScreenRotationDegrees, .0001f)
     }
 
     @Test

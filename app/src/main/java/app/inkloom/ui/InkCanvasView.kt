@@ -614,6 +614,8 @@ class InkCanvasView(context: Context) : View(context) {
     var shapeRoundnessHorizontalJitter: Float = 0f
     var shapeRoundnessVerticalJitter: Float = 0f
     var brushRotation: Float = 0f
+    var shapeTouchRotation: Float = 0f
+    var shapeOrientToScreen: Boolean = false
     var followStylusOrientation: Boolean = false
     var followStrokeDirection: Boolean = false
     var randomRotationDegrees: Float = 0f
@@ -682,6 +684,8 @@ class InkCanvasView(context: Context) : View(context) {
     var dualThicknessDynamics: BrushParameterDynamics = BrushParameterDynamics()
     var dualThicknessVertical: Boolean = false
     var dualRotationDegrees: Float = 0f
+    var dualShapeTouchRotation: Float = 0f
+    var dualShapeOrientToScreen: Boolean = false
     var dualFollowStylusOrientation: Boolean = false
     var dualFollowStrokeDirection: Boolean = false
     var dualRandomRotationDegrees: Float = 0f
@@ -4821,6 +4825,10 @@ class InkCanvasView(context: Context) : View(context) {
         procreateColorDynamics = procreateColorDynamics,
         procreateTaper = procreateTaper,
         inputKind = if (activeInputWasStylus) StrokeInputKind.STYLUS else StrokeInputKind.TOUCH,
+        shapeTouchRotation = shapeTouchRotation,
+        dualShapeTouchRotation = dualShapeTouchRotation,
+        shapeScreenRotationDegrees = if (shapeOrientToScreen) -viewportRotationDegrees else 0f,
+        dualShapeScreenRotationDegrees = if (dualShapeOrientToScreen) -viewportRotationDegrees else 0f,
         grainFilteringMode = grainFilteringMode,
         procreateRenderingMode = procreateRenderingMode,
         procreateBrushBlendMode = procreateBrushBlendMode,

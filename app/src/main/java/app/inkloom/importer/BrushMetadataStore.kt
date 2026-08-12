@@ -242,6 +242,8 @@ class BrushMetadataStore(
                         shapeRoundnessHorizontalJitter = item.optDouble("shapeRoundnessHorizontalJitter", 0.0).toFloat().coerceIn(0f, 1f),
                         shapeRoundnessVerticalJitter = item.optDouble("shapeRoundnessVerticalJitter", 0.0).toFloat().coerceIn(0f, 1f),
                         rotationDegrees = item.optDouble("rotationDegrees", 0.0).toFloat(),
+                        shapeTouchRotation = item.optDouble("shapeTouchRotation", 0.0).toFloat().coerceIn(-1f, 1f),
+                        shapeOrientToScreen = item.optBoolean("shapeOrientToScreen", false),
                         followStylusOrientation = item.optBoolean("followStylusOrientation", false),
                         followStrokeDirection = item.optBoolean("followStrokeDirection", false),
                         randomRotationDegrees = item.optDouble("randomRotationDegrees", 0.0).toFloat(),
@@ -310,6 +312,8 @@ class BrushMetadataStore(
                         dualThicknessDynamics = parameterDynamics("dualThicknessDynamics"),
                         dualThicknessVertical = item.optBoolean("dualThicknessVertical", false),
                         dualRotationDegrees = item.optDouble("dualRotationDegrees", 0.0).toFloat(),
+                        dualShapeTouchRotation = item.optDouble("dualShapeTouchRotation", 0.0).toFloat().coerceIn(-1f, 1f),
+                        dualShapeOrientToScreen = item.optBoolean("dualShapeOrientToScreen", false),
                         dualFollowStylusOrientation = item.optBoolean("dualFollowStylusOrientation", false),
                         dualFollowStrokeDirection = item.optBoolean("dualFollowStrokeDirection", false),
                         dualRandomRotationDegrees = item.optDouble("dualRandomRotationDegrees", 0.0).toFloat().coerceIn(0f, 180f),
@@ -464,6 +468,8 @@ class BrushMetadataStore(
                     .put("shapeRoundnessHorizontalJitter", brush.shapeRoundnessHorizontalJitter)
                     .put("shapeRoundnessVerticalJitter", brush.shapeRoundnessVerticalJitter)
                     .put("rotationDegrees", brush.rotationDegrees)
+                    .put("shapeTouchRotation", brush.shapeTouchRotation)
+                    .put("shapeOrientToScreen", brush.shapeOrientToScreen)
                     .put("followStylusOrientation", brush.followStylusOrientation)
                     .put("followStrokeDirection", brush.followStrokeDirection)
                     .put("randomRotationDegrees", brush.randomRotationDegrees)
@@ -532,6 +538,8 @@ class BrushMetadataStore(
                     .put("dualThicknessDynamics", parameterDynamicsJson(brush.dualThicknessDynamics))
                     .put("dualThicknessVertical", brush.dualThicknessVertical)
                     .put("dualRotationDegrees", brush.dualRotationDegrees)
+                    .put("dualShapeTouchRotation", brush.dualShapeTouchRotation)
+                    .put("dualShapeOrientToScreen", brush.dualShapeOrientToScreen)
                     .put("dualFollowStylusOrientation", brush.dualFollowStylusOrientation)
                     .put("dualFollowStrokeDirection", brush.dualFollowStrokeDirection)
                     .put("dualRandomRotationDegrees", brush.dualRandomRotationDegrees)

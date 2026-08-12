@@ -78,8 +78,12 @@ class InkloomBrushPackageTest {
                 dualStrokePathLongitudinalJitter = .31f,
                 shapeRoundnessHorizontalJitter = .37f,
                 shapeRoundnessVerticalJitter = .48f,
+                shapeTouchRotation = -.73f,
+                shapeOrientToScreen = true,
                 dualShapeRoundnessHorizontalJitter = .59f,
                 dualShapeRoundnessVerticalJitter = .68f,
+                dualShapeTouchRotation = .64f,
+                dualShapeOrientToScreen = true,
                 antiAliasMode = CspAntiAlias.WEAK,
                 blur = 9.5f,
                 blurUnit = 2,
@@ -208,8 +212,12 @@ class InkloomBrushPackageTest {
             assertEquals(original.dualStrokePathLongitudinalJitter, restored.dualStrokePathLongitudinalJitter, .0001f)
             assertEquals(original.shapeRoundnessHorizontalJitter, restored.shapeRoundnessHorizontalJitter, .0001f)
             assertEquals(original.shapeRoundnessVerticalJitter, restored.shapeRoundnessVerticalJitter, .0001f)
+            assertEquals(original.shapeTouchRotation, restored.shapeTouchRotation, .0001f)
+            assertTrue(restored.shapeOrientToScreen)
             assertEquals(original.dualShapeRoundnessHorizontalJitter, restored.dualShapeRoundnessHorizontalJitter, .0001f)
             assertEquals(original.dualShapeRoundnessVerticalJitter, restored.dualShapeRoundnessVerticalJitter, .0001f)
+            assertEquals(original.dualShapeTouchRotation, restored.dualShapeTouchRotation, .0001f)
+            assertTrue(restored.dualShapeOrientToScreen)
             assertEquals(app.inkloom.document.CspBrushGap.NARROW, restored.spacingMode)
             assertEquals(CspAntiAlias.WEAK, restored.antiAliasMode)
             assertEquals(CspAntiAlias.STRONG, restored.dualAntiAliasMode)

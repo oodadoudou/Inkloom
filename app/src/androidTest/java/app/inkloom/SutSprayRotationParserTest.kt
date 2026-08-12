@@ -250,8 +250,12 @@ class SutSprayRotationParserTest {
                 dualStrokePathLongitudinalJitter = .32f,
                 shapeRoundnessHorizontalJitter = .38f,
                 shapeRoundnessVerticalJitter = .49f,
+                shapeTouchRotation = -.63f,
+                shapeOrientToScreen = true,
                 dualShapeRoundnessHorizontalJitter = .58f,
                 dualShapeRoundnessVerticalJitter = .69f,
+                dualShapeTouchRotation = .74f,
+                dualShapeOrientToScreen = true,
                 sprayParticleRotationDegrees = 33f,
                 sprayParticleFollowStrokeDirection = true,
                 sprayParticleRandomRotationDegrees = 54f,
@@ -357,6 +361,10 @@ class SutSprayRotationParserTest {
             assertEquals(.32f, restored.dualStrokePathLongitudinalJitter, .0001f)
             assertEquals(.38f, restored.shapeRoundnessHorizontalJitter, .0001f)
             assertEquals(.49f, restored.shapeRoundnessVerticalJitter, .0001f)
+            assertEquals(-.63f, restored.shapeTouchRotation, .0001f)
+            assertTrue(restored.shapeOrientToScreen)
+            assertEquals(.74f, restored.dualShapeTouchRotation, .0001f)
+            assertTrue(restored.dualShapeOrientToScreen)
             assertEquals(.58f, restored.dualShapeRoundnessHorizontalJitter, .0001f)
             assertEquals(.69f, restored.dualShapeRoundnessVerticalJitter, .0001f)
             assertTrue(restored.sprayParticleFollowStrokeDirection)

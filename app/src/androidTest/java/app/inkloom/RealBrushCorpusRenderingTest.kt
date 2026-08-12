@@ -123,6 +123,8 @@ class RealBrushCorpusRenderingTest {
         assertNotNull("${brush.format} ${brush.name} did not commit a stroke", stroke)
         assertEquals(brush.id, stroke!!.brushId)
         assertEquals("${brush.format} Taper changed during activation/commit", brush.procreateTaper, stroke.procreateTaper)
+        assertEquals("${brush.format} Touch Rotation changed during activation/commit", brush.shapeTouchRotation, stroke.shapeTouchRotation, .0001f)
+        assertEquals("${brush.format} Dual Touch Rotation changed during activation/commit", brush.dualShapeTouchRotation, stroke.dualShapeTouchRotation, .0001f)
         assertTrue("${brush.format} stroke lost its points", stroke.points.size >= 2)
 
         view.setDocumentStrokes(listOf(stroke), "real-${brush.id}")

@@ -47,9 +47,11 @@ class ProcreateBrushParserTest {
             assertEquals(.3f, brush.streamLine, .0001f)
             assertEquals(0f, brush.stabilization, .0001f)
             assertEquals(.6f, brush.thickness, .0001f)
-            assertEquals(90f, brush.rotationDegrees, .001f)
+            assertEquals(sourceMetadata.float("shapeRotation") * 360f, brush.rotationDegrees, .001f)
+            assertEquals((sourceMetadata.float("shapeAngle") / (Math.PI / 2.0).toFloat()).coerceIn(-1f, 1f), brush.shapeTouchRotation, .001f)
+            assertEquals(sourceMetadata.boolean("oriented"), brush.shapeOrientToScreen)
             assertTrue(brush.followStylusOrientation)
-            assertTrue(brush.followStrokeDirection)
+            assertFalse(brush.followStrokeDirection)
             assertTrue(brush.sizePressureEnabled)
             assertEquals(.2f, brush.sizePressureMinimum, .0001f)
             assertTrue(brush.sizeSecondaryDynamics.velocityEnabled)
@@ -241,6 +243,8 @@ class ProcreateBrushParserTest {
 
             assertFalse("Expected an authored Taper program in ${source.name}", brush.procreateTaper.isDisabled())
             assertTrue(brush.procreateTaper.pressureStartLength > 0f || brush.procreateTaper.pressureEndLength > 0f)
+            assertTrue("Expected the authorized brush to retain signed Touch Rotation", brush.shapeTouchRotation != 0f)
+            assertEquals("Orient to Screen must not masquerade as Follow Stroke", false, brush.followStrokeDirection)
             assertTrue(brush.report.any { it.contains("Pressure and Touch Taper") })
         } finally {
             root.deleteRecursively()
