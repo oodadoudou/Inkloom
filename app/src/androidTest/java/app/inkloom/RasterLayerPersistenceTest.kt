@@ -10,6 +10,7 @@ import app.inkloom.document.InkLayer
 import app.inkloom.document.InkPage
 import app.inkloom.document.LayerContentKind
 import app.inkloom.document.PageGeometry
+import app.inkloom.document.PageCrop
 import app.inkloom.document.defaultInkLayers
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -82,6 +83,24 @@ class RasterLayerPersistenceTest {
         } finally {
             assets.releaseAssetReservation(firstPath)
             assets.releaseAssetReservation(secondPath)
+        }
+    }
+
+    @Test fun editedVisibleCropIsMergedWithoutDestroyingPixelsOutsideTheCrop() {
+        val source = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+        val path = assets.saveRasterLayer(source)
+        source.recycle()
+        val layer = InkLayer(id = "crop-raster", name = "Paint", contentKind = LayerContentKind.RASTER, rasterAssetPath = path)
+        val page = InkPage(width = 100f, height = 100f, crop = PageCrop(.25f, .25f, .75f, .75f), layers = defaultInkLayers() + layer)
+        val visible = Bitmap.createBitmap(200, 200, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLUE) }
+        val merged = assets.composeVisibleRasterLayer(page, layer.id, visible)
+        try {
+            assertTrue("Outside the active crop is preserved", Color.red(merged.getPixel(20, 20)) > 240)
+            assertTrue("The edited crop is replaced", Color.blue(merged.getPixel(merged.width / 2, merged.height / 2)) > 240)
+        } finally {
+            merged.recycle()
+            visible.recycle()
+            assets.releaseAssetReservation(path)
         }
     }
 }

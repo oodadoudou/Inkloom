@@ -340,6 +340,26 @@ class DocumentAssetService(private val context: Context) {
         return bitmap
     }
 
+    /** Merges an edited visible-crop surface back into a full page-oriented raster asset.
+     * Existing pixels outside the crop are preserved. The returned bitmap uses the page's current
+     * orientation, so callers must reset rasterRotationQuarterTurns when storing it. */
+    fun composeVisibleRasterLayer(page: InkPage, layerId: String, visibleSurface: Bitmap): Bitmap {
+        require(!visibleSurface.isRecycled) { "Visible raster surface has been recycled" }
+        val crop = PageCropTransform.normalized(page.crop)
+        val fullWidth = (visibleSurface.width / (crop.right - crop.left).coerceAtLeast(.01f)).toInt().coerceIn(visibleSurface.width, 4096)
+        val fullPage = renderRasterLayerBitmap(page.copy(crop = PageCrop()), layerId, fullWidth)
+        val destination = android.graphics.Rect(
+            (crop.left * fullPage.width).toInt().coerceIn(0, fullPage.width - 1),
+            (crop.top * fullPage.height).toInt().coerceIn(0, fullPage.height - 1),
+            (crop.right * fullPage.width).toInt().coerceIn(1, fullPage.width),
+            (crop.bottom * fullPage.height).toInt().coerceIn(1, fullPage.height),
+        )
+        if (destination.right > destination.left && destination.bottom > destination.top) {
+            Canvas(fullPage).drawBitmap(visibleSurface, null, destination, Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
+        }
+        return fullPage
+    }
+
     fun exportBundle(document: InkDocument, uri: Uri) {
         context.contentResolver.openOutputStream(uri)?.use { exportBundle(document, it) }
             ?: error("Could not open package destination")

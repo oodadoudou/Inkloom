@@ -707,6 +707,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onToggleLayerLock = viewModel::toggleLayerLock,
             onSetLayerOpacity = viewModel::setLayerOpacity,
             onSetLayerBlendMode = viewModel::setLayerBlendMode,
+            onSetLayerRasterAsset = viewModel::setLayerRasterAsset,
             onToggleLayerAlphaLock = viewModel::toggleLayerAlphaLock,
             onToggleLayerClippedToBelow = viewModel::toggleLayerClippedToBelow,
             onToggleLayerReference = viewModel::toggleLayerReference,
@@ -1010,6 +1011,7 @@ private fun EditorScreen(
     onToggleLayerLock: (String, String, String) -> Unit,
     onSetLayerOpacity: (String, String, String, Float) -> Unit,
     onSetLayerBlendMode: (String, String, String, LayerBlendMode) -> Unit,
+    onSetLayerRasterAsset: (String, String, String, String?, Int) -> Unit,
     onToggleLayerAlphaLock: (String, String, String) -> Unit,
     onToggleLayerClippedToBelow: (String, String, String) -> Unit,
     onToggleLayerReference: (String, String, String) -> Unit,
@@ -2154,6 +2156,7 @@ private fun EditorScreen(
                     onStroke = onStroke,
                     onRemoveStroke = onRemoveStroke,
                     onStrokesReplaced = onStrokesReplaced,
+                    onSetLayerRasterAsset = onSetLayerRasterAsset,
                     onElement = onElement,
                     onRemoveElement = onRemoveElement,
                     onDuplicateElement = onDuplicateElement,
@@ -4467,11 +4470,18 @@ private fun pageTemplateKind(template: PageTemplate): String = when (template.ba
 }
 
 @Composable
-private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit) {
+private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onSetLayerRasterAsset: (String, String, String, String?, Int) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val context = LocalContext.current
     val gradientCommitScope = rememberCoroutineScope()
     val gradientCommitMutex = remember(documentId, page.id) { Mutex() }
+    val rasterCommitMutex = remember(documentId, page.id) { Mutex() }
+    val latestRasterAssets = remember(documentId, page.id) {
+        page.layers.associate { layer -> layer.id to (layer.rasterAssetPath to layer.rasterRotationQuarterTurns) }.toMutableMap()
+    }
+    LaunchedEffect(page.layers.map { layer -> Triple(layer.id, layer.rasterAssetPath, layer.rasterRotationQuarterTurns) }) {
+        page.layers.forEach { layer -> latestRasterAssets[layer.id] = layer.rasterAssetPath to layer.rasterRotationQuarterTurns }
+    }
     val gradientSaveFailure = tr("The gradient mask could not be saved", "渐变蒙版保存失败")
     val commitGradient: (Float, Float, Float, Float, GradientDefinition, android.graphics.Bitmap?) -> Unit = commit@{ sx, sy, ex, ey, definition, selectionMask ->
         if (gradientCommitScope.coroutineContext[Job]?.isActive != true) {
@@ -4534,6 +4544,42 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 redo = { onElement(documentId, page.id, fill) },
                 dispose = { assets.releaseAssetReservation(maskPath) },
             )
+        }
+    }
+    fun installRasterCommit(view: InkCanvasView) {
+        view.onRasterLayerCommitted = commit@{ layerId, visibleSurface ->
+            val capturedPage = page
+            val layer = capturedPage.layers.firstOrNull { it.id == layerId && it.contentKind == LayerContentKind.RASTER }
+            if (layer == null || gradientCommitScope.coroutineContext[Job]?.isActive != true) {
+                visibleSurface.recycle()
+                return@commit
+            }
+            gradientCommitScope.launch(NonCancellable) {
+                var fullSurface: android.graphics.Bitmap? = null
+                var newPath: String? = null
+                try {
+                    rasterCommitMutex.withLock {
+                        val previous = latestRasterAssets[layerId] ?: (layer.rasterAssetPath to layer.rasterRotationQuarterTurns)
+                        fullSurface = withContext(Dispatchers.Default) {
+                            assets.composeVisibleRasterLayer(capturedPage, layerId, visibleSurface)
+                        }
+                        newPath = withContext(Dispatchers.IO) { assets.saveRasterLayer(requireNotNull(fullSurface)) }
+                        val savedPath = requireNotNull(newPath)
+                        latestRasterAssets[layerId] = savedPath to 0
+                        onSetLayerRasterAsset(documentId, capturedPage.id, layerId, savedPath, 0)
+                        if (view.isAttachedToWindow) view.recordExternalEdit(
+                            undo = { onSetLayerRasterAsset(documentId, capturedPage.id, layerId, previous.first, previous.second) },
+                            redo = { onSetLayerRasterAsset(documentId, capturedPage.id, layerId, savedPath, 0) },
+                        )
+                        assets.releaseAssetReservation(savedPath)
+                        newPath = null
+                    }
+                } finally {
+                    newPath?.let(assets::releaseAssetReservation)
+                    fullSurface?.takeUnless(android.graphics.Bitmap::isRecycled)?.recycle()
+                    visibleSurface.takeUnless(android.graphics.Bitmap::isRecycled)?.recycle()
+                }
+            }
         }
     }
     val backgroundVisible = page.layers.firstOrNull { it.role == LayerRole.BACKGROUND }?.visible != false
@@ -4629,6 +4675,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onShapeCommitted = { onElement(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
                 view.onGradientCommitted = commitGradient
                 installFillCommit(view)
+                installRasterCommit(view)
                 view.onStrokeRemoved = { onRemoveStroke(documentId, page.id, it) }
                 view.onStrokesReplaced = { removed, replacements, indices -> onStrokesReplaced(documentId, page.id, removed, replacements.map { PageCropTransform.unproject(it, page.crop) }, indices) }
                 view.onViewportScale = onZoom
@@ -4710,6 +4757,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onShapeCommitted = { onElement(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
                 view.onGradientCommitted = commitGradient
                 installFillCommit(view)
+                installRasterCommit(view)
                 view.onStrokeRemoved = { onRemoveStroke(documentId, page.id, it) }
                 view.onStrokesReplaced = { removed, replacements, indices -> onStrokesReplaced(documentId, page.id, removed, replacements.map { PageCropTransform.unproject(it, page.crop) }, indices) }
                 view.applyBrushConfiguration(tool, settings, activeBrush, brushSize, brushOpacity, brushColor, eraserPreset)

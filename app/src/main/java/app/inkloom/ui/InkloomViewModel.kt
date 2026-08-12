@@ -270,6 +270,19 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         page.copy(layers = page.layers.map { if (it.id == layerId && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) it.copy(blendMode = blendMode) else it })
     }
 
+    fun setLayerRasterAsset(
+        documentId: String,
+        pageId: String,
+        layerId: String,
+        assetPath: String?,
+        rotationQuarterTurns: Int = 0,
+    ) = updatePage(documentId, pageId) { page ->
+        page.copy(layers = page.layers.map { layer ->
+            if (layer.id != layerId || layer.contentKind != LayerContentKind.RASTER) layer
+            else layer.copy(rasterAssetPath = assetPath, rasterRotationQuarterTurns = rotationQuarterTurns.mod(4))
+        })
+    }
+
     fun toggleLayerAlphaLock(documentId: String, pageId: String, layerId: String) = updatePage(documentId, pageId) { page ->
         val existingContentIds = page.strokes.filter { it.layerId == layerId }.map(InkStroke::id) + page.elements.filter { it.layerId == layerId }.map(PageElement::id)
         page.copy(layers = page.layers.map { layer ->

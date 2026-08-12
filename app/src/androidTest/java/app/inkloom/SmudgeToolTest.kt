@@ -1,5 +1,7 @@
 package app.inkloom
 
+import android.graphics.Bitmap
+import android.graphics.Color
 import android.view.InputDevice
 import android.view.MotionEvent
 import androidx.test.core.app.ApplicationProvider
@@ -84,6 +86,36 @@ class SmudgeToolTest {
         send(view, 40L, MotionEvent.ACTION_UP, 140f, 100f)
 
         assertEquals(listOf("paint"), changed.map(InkStroke::id))
+    }
+
+    @Test fun rasterLayerBlendCommitsOnePixelSurfaceAndDoesNotRewriteVectorStrokes() {
+        val surface = Bitmap.createBitmap(200, 200, Bitmap.Config.ARGB_8888)
+        for (y in 70 until 130) for (x in 30 until 80) surface.setPixel(x, y, Color.RED)
+        var rasterCommits = 0
+        var vectorReplacements = 0
+        var committedSurface: Bitmap? = null
+        val view = canvas {
+            tool = EditorTool.SMUDGE
+            fingerDrawingEnabled = true
+            baseWidth = 320f
+            activeLayerId = "raster"
+            setRasterLayerBitmaps(mapOf("raster" to surface))
+            onRasterLayerCommitted = { layerId, bitmap ->
+                assertEquals("raster", layerId)
+                rasterCommits++
+                committedSurface = bitmap
+            }
+            onStrokesReplaced = { _, _, _ -> vectorReplacements++ }
+        }
+        send(view, 0L, MotionEvent.ACTION_DOWN, 60f, 100f)
+        send(view, 20L, MotionEvent.ACTION_MOVE, 105f, 100f)
+        send(view, 40L, MotionEvent.ACTION_UP, 105f, 100f)
+
+        assertEquals("One blend gesture creates one raster transaction", 1, rasterCommits)
+        assertEquals(0, vectorReplacements)
+        assertTrue(Color.alpha(requireNotNull(committedSurface).getPixel(105, 100)) > 0)
+        committedSurface?.recycle()
+        surface.recycle()
     }
 
     @Test fun blendingBlankPaperDoesNotCreatePigment() {

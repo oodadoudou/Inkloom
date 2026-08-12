@@ -125,6 +125,7 @@ import app.inkloom.document.LiquifyMode
 import app.inkloom.document.VectorLiquify
 import app.inkloom.document.VectorBlend
 import app.inkloom.document.WaterEdge
+import app.inkloom.engine.v2.render.RasterBlendSession
 import app.inkloom.model.EditorTool
 import app.inkloom.model.SymmetryMode
 import app.inkloom.settings.CspShortcutResolver
@@ -251,6 +252,8 @@ class InkCanvasView(context: Context) : View(context) {
     private var smudgeLastX = 0f
     private var smudgeLastY = 0f
     private var smudgeChanged = false
+    private var rasterBlendSession: RasterBlendSession? = null
+    private var rasterBlendBitmap: Bitmap? = null
     private val localToolStrokeIndices = mutableMapOf<String, Int>()
     private var pendingSmudgeX = 0f
     private var pendingSmudgeY = 0f
@@ -770,6 +773,8 @@ class InkCanvasView(context: Context) : View(context) {
      *  mask's bounding box in normalized page coordinates, the fill color and opacity.
      *  The host persists the mask and creates a [PageElement.Fill]. */
     var onFillCommitted: ((mask: Bitmap, x: Float, y: Float, width: Float, height: Float, colorArgb: Long, opacity: Float) -> Unit)? = null
+    /** The callback owns the immutable visible-crop snapshot and must recycle it after saving. */
+    var onRasterLayerCommitted: ((layerId: String, visibleSurface: Bitmap) -> Unit)? = null
     var onColorDropCommitted: (Int) -> Unit = {}
     private var continueFillingColor: Int? = null
     var fillSensitivity: Float = .25f
@@ -4049,8 +4054,18 @@ class InkCanvasView(context: Context) : View(context) {
         removeCallbacks(smudgeFrame)
         smudgeFrameScheduled = false
         hasPendingSmudge = false
-        smudgeBefore = strokes.toList()
-        prepareLocalToolStrokeIndex()
+        rasterBlendSession?.close()
+        rasterBlendSession = null
+        rasterBlendBitmap = rasterLayerBitmaps[activeLayerId]?.takeUnless(Bitmap::isRecycled)
+        val raster = rasterBlendBitmap
+        if (raster != null) {
+            rasterBlendSession = RasterBlendSession(raster, selectionMaskForDisplay())
+            smudgeBefore = null
+            localToolStrokeIndices.clear()
+        } else {
+            smudgeBefore = strokes.toList()
+            prepareLocalToolStrokeIndex()
+        }
         smudgeLastX = normalizedX.coerceIn(0f, 1f)
         smudgeLastY = normalizedY.coerceIn(0f, 1f)
         smudgeChanged = false
@@ -4075,6 +4090,32 @@ class InkCanvasView(context: Context) : View(context) {
     private fun extendSmudge(normalizedX: Float, normalizedY: Float) {
         val x = normalizedX.coerceIn(0f, 1f)
         val y = normalizedY.coerceIn(0f, 1f)
+        val raster = rasterBlendBitmap
+        val rasterSession = rasterBlendSession
+        if (raster != null && rasterSession != null) {
+            val radius = (baseWidth.coerceIn(2f, 800f) / REFERENCE_WIDTH * raster.width).coerceAtLeast(1f)
+            val dirty = rasterSession.blend(
+                smudgeLastX * raster.width,
+                smudgeLastY * raster.height,
+                x * raster.width,
+                y * raster.height,
+                radius,
+                (.3f + brushColorMix.coerceIn(0f, 1f) * .7f),
+                brushHardness,
+            )
+            if (dirty != null) {
+                smudgeChanged = true
+                invalidate(
+                    (dirty.left * width.toFloat() / raster.width).toInt() - 2,
+                    (dirty.top * height.toFloat() / raster.height).toInt() - 2,
+                    (dirty.right * width.toFloat() / raster.width).toInt() + 2,
+                    (dirty.bottom * height.toFloat() / raster.height).toInt() + 2,
+                )
+            }
+            smudgeLastX = x
+            smudgeLastY = y
+            return
+        }
         val radius = (baseWidth.coerceIn(2f, 800f) / REFERENCE_WIDTH).coerceAtLeast(.002f)
         val beforeStep = localToolCandidates(smudgeLastX, smudgeLastY, x, y, radius)
         if (beforeStep.isEmpty()) {
@@ -4108,8 +4149,21 @@ class InkCanvasView(context: Context) : View(context) {
         removeCallbacks(smudgeFrame)
         smudgeFrameScheduled = false
         hasPendingSmudge = false
-        val before = smudgeBefore
-        if (before != null && smudgeChanged) commitStrokeEdit(before, strokes)
+        val raster = rasterBlendBitmap
+        val session = rasterBlendSession
+        if (raster != null && session != null) {
+            if (smudgeChanged) {
+                val snapshot = raster.copy(Bitmap.Config.ARGB_8888, false)
+                val callback = onRasterLayerCommitted
+                if (callback == null) snapshot.recycle() else callback(activeLayerId, snapshot)
+            }
+            session.close()
+        } else {
+            val before = smudgeBefore
+            if (before != null && smudgeChanged) commitStrokeEdit(before, strokes)
+        }
+        rasterBlendSession = null
+        rasterBlendBitmap = null
         smudgeBefore = null
         smudgeChanged = false
         localToolStrokeIndices.clear()
@@ -4120,8 +4174,17 @@ class InkCanvasView(context: Context) : View(context) {
         removeCallbacks(smudgeFrame)
         smudgeFrameScheduled = false
         hasPendingSmudge = false
-        val before = smudgeBefore
-        if (before != null && smudgeChanged) restoreStrokeSnapshot(before)
+        val session = rasterBlendSession
+        if (session != null) {
+            if (smudgeChanged) session.restoreOriginal()
+            session.close()
+            invalidate()
+        } else {
+            val before = smudgeBefore
+            if (before != null && smudgeChanged) restoreStrokeSnapshot(before)
+        }
+        rasterBlendSession = null
+        rasterBlendBitmap = null
         smudgeBefore = null
         smudgeChanged = false
         localToolStrokeIndices.clear()
