@@ -6,6 +6,7 @@ import app.inkloom.model.ImportedBrush
 import app.inkloom.document.CspAntiAlias
 import app.inkloom.document.ProcreateFiltering
 import app.inkloom.document.ProcreateRenderingMode
+import app.inkloom.document.ProcreateBrushBlend
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -72,6 +73,9 @@ class ProcreateBrushParserTest {
             assertEquals(CspAntiAlias.MEDIUM, brush.antiAliasMode)
             assertEquals(ProcreateFiltering.CLASSIC, brush.grainFilteringMode)
             assertEquals(ProcreateRenderingMode.INTENSE_GLAZE, brush.procreateRenderingMode)
+            assertEquals(sourceMetadata.int("blendMode"), brush.procreateBrushBlendMode)
+            assertEquals(sourceMetadata.int("burntEdgesBlendMode", ProcreateBrushBlend.MULTIPLY), brush.procreateBurntEdgeBlendMode)
+            assertEquals(sourceMetadata.boolean("blendGammaCorrect"), brush.procreateLuminanceBlending)
             assertFalse(brush.alphaThresholdEnabled)
             assertEquals(0f, brush.alphaThreshold, .0001f)
             assertEquals(ProcreateBrushParser.CURRENT_VERSION, brush.parserVersion)
@@ -199,6 +203,9 @@ class ProcreateBrushParserTest {
             assertTrue(brushes.map(ImportedBrush::grainFilteringMode).distinct().size >= 2)
             assertEquals(3, brushes.map(ImportedBrush::procreateRenderingMode).distinct().size)
             assertTrue(brushes.all { it.alphaThreshold in 0f..1f })
+            assertTrue(brushes.all { it.procreateBrushBlendMode in ProcreateBrushBlend.artisticModes })
+            assertTrue(brushes.all { it.procreateBurntEdgeBlendMode in ProcreateBrushBlend.artisticModes })
+            assertTrue(brushes.any { it.procreateBrushBlendMode == ProcreateBrushBlend.MULTIPLY })
             assertTrue(brushes.any { it.procreateRenderingMode == ProcreateRenderingMode.INTENSE_GLAZE })
             assertTrue(brushes.any { it.procreateRenderingMode == ProcreateRenderingMode.UNIFORM_BLENDING })
             assertTrue(brushes.any { it.procreateRenderingMode == ProcreateRenderingMode.INTENSE_BLENDING })

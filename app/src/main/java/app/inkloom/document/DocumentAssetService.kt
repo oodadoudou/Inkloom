@@ -608,7 +608,20 @@ class DocumentAssetService(private val context: Context) {
                 alpha = (layer.opacity.coerceIn(0f, 1f) * 255f).toInt().coerceIn(0, 255)
                 blendMode = layer.blendMode.toBlendMode()
             }
-            val layerCheckpoint = if (applyLayerEffects) canvas.saveLayer(null, layerPaint) else canvas.save()
+            // A transparent layer would hide a destination-dependent brush mode from the page.
+            // Bypass it only for those brushes on an otherwise direct layer; ordinary brushes keep
+            // the established export surface so their antialiasing remains pixel-identical live.
+            val hasDestinationDependentBrush = page.strokes.any { stroke ->
+                stroke.layerId == layer.id && (
+                    ProcreateBrushBlend.normalize(stroke.procreateBrushBlendMode) != ProcreateBrushBlend.NORMAL ||
+                        (stroke.waterEdgeEnabled || stroke.tiltBleed > .001f) &&
+                        ProcreateBrushBlend.normalize(stroke.procreateBurntEdgeBlendMode) != ProcreateBrushBlend.NORMAL
+                    )
+            }
+            val hasLayerEffect = layer.opacity < .999f || layer.blendMode != LayerBlendMode.NORMAL ||
+                layer.mask?.enabled == true || layer.clippedToBelow
+            val requiresLayerIsolation = applyLayerEffects && (hasLayerEffect || !hasDestinationDependentBrush)
+            val layerCheckpoint = if (requiresLayerIsolation) canvas.saveLayer(null, layerPaint) else canvas.save()
             fun contentAllowed(id: String, contentIds: Set<String>?): Boolean =
                 (includedContentIds == null || id in includedContentIds) && (contentIds == null || id in contentIds)
             fun drawLayerItems(targetLayerId: String, contentIds: Set<String>? = null) {
@@ -849,12 +862,16 @@ class DocumentAssetService(private val context: Context) {
             if (stroke.points.isEmpty()) return@forEach
             paint.isAntiAlias = CspAntiAlias.enabled(stroke.antiAliasMode)
             paint.isFilterBitmap = CspAntiAlias.enabled(stroke.antiAliasMode)
-            val opacityLayer = if (stroke.opacity < .999f) canvas.saveLayer(
+            val brushBlendMode = ProcreateBrushBlend.normalize(stroke.procreateBrushBlendMode)
+            val compositeLayer = if (stroke.opacity < .999f || brushBlendMode != ProcreateBrushBlend.NORMAL) canvas.saveLayer(
                 0f,
                 0f,
                 width.toFloat(),
                 height.toFloat(),
-                Paint(Paint.ANTI_ALIAS_FLAG).apply { alpha = (stroke.opacity.coerceIn(0f, 1f) * 255).toInt() },
+                Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    alpha = (stroke.opacity.coerceIn(0f, 1f) * 255).toInt()
+                    blendMode = ProcreateBrushBlend.resolve(brushBlendMode)
+                },
             ) else -1
             val maskLayer = if (stroke.masks.isNotEmpty()) canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null) else -1
             paint.color = stroke.colorArgb.toInt()
@@ -894,7 +911,7 @@ class DocumentAssetService(private val context: Context) {
                 StrokeMaskRenderer.draw(canvas, paint, stroke.masks, width, height)
                 canvas.restoreToCount(maskLayer)
             }
-            if (opacityLayer >= 0) canvas.restoreToCount(opacityLayer)
+            if (compositeLayer >= 0) canvas.restoreToCount(compositeLayer)
         }
         paint.colorFilter = null
         paint.maskFilter = null
@@ -980,7 +997,9 @@ class DocumentAssetService(private val context: Context) {
                 paint.alpha = (mainAlpha * maxOf(stroke.waterEdgeOpacity.coerceIn(0f, 1f), tiltBleedAmount * .55f)).toInt().coerceIn(1, 255)
                 val blur = WaterEdge.distancePixels(stroke.waterEdgeBlur, stroke.waterEdgeBlurUnit, width.toFloat()) + diameter * tiltBleedAmount * .08f
                 paint.maskFilter = BrushBlur.quantizedRadius(blur).takeIf { it > 0f }?.let { BlurMaskFilter(it, BlurMaskFilter.Blur.NORMAL) }
+                paint.blendMode = ProcreateBrushBlend.resolve(stroke.procreateBurntEdgeBlendMode)
                 canvas.drawBitmap(tip, edgeMatrix, paint)
+                paint.blendMode = if (stroke.blendTipsWithDarken) BlendMode.DARKEN else null
                 paint.maskFilter = null
             }
             paint.colorFilter = PorterDuffColorFilter(jitteredColor, PorterDuff.Mode.SRC_IN)
@@ -1054,7 +1073,9 @@ class DocumentAssetService(private val context: Context) {
         val jitteredColor = BrushColorJitter.argb(stroke, point, point.timeMs.toInt())
         if (hasWaterEdge(stroke, point)) {
             configureWaterEdge(paint, stroke, point, strokeWidth, alpha, pageWidth, jitteredColor)
+            paint.blendMode = ProcreateBrushBlend.resolve(stroke.procreateBurntEdgeBlendMode)
             canvas.drawPoint(x, y, paint)
+            paint.blendMode = null
         }
         paint.maskFilter = brushBlurMask(stroke, point, strokeWidth, stroke.width * pageWidth / 1600f, pageWidth.toFloat()); paint.color = jitteredColor; paint.strokeWidth = strokeWidth; paint.alpha = alpha
         canvas.drawPoint(x, y, paint)
@@ -1065,7 +1086,9 @@ class DocumentAssetService(private val context: Context) {
         val jitteredColor = BrushColorJitter.argb(stroke, point, point.timeMs.toInt())
         if (hasWaterEdge(stroke, point)) {
             configureWaterEdge(paint, stroke, point, strokeWidth, alpha, pageWidth, jitteredColor)
+            paint.blendMode = ProcreateBrushBlend.resolve(stroke.procreateBurntEdgeBlendMode)
             canvas.drawLine(startX, startY, endX, endY, paint)
+            paint.blendMode = null
         }
         paint.maskFilter = brushBlurMask(stroke, point, strokeWidth, stroke.width * pageWidth / 1600f, pageWidth.toFloat()); paint.color = jitteredColor; paint.strokeWidth = strokeWidth; paint.alpha = alpha
         canvas.drawLine(startX, startY, endX, endY, paint)

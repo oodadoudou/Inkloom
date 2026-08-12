@@ -328,6 +328,12 @@ data class InkStroke(
     val grainCompositeMode: Int = CspTextureComposite.MULTIPLY,
     val grainFilteringMode: Int = ProcreateFiltering.NONE,
     val procreateRenderingMode: ProcreateRenderingMode = ProcreateRenderingMode.UNIFORM_GLAZE,
+    /** Procreate Rendering > Blend Mode, retained as the archive's CGBlendMode raw value. */
+    val procreateBrushBlendMode: Int = ProcreateBrushBlend.NORMAL,
+    /** Procreate Rendering > Burnt Edges Mode, independently applied to edge pigment. */
+    val procreateBurntEdgeBlendMode: Int = ProcreateBrushBlend.MULTIPLY,
+    /** Procreate Rendering > Luminance Blending (`blendGammaCorrect` in the archive). */
+    val procreateLuminanceBlending: Boolean = false,
     val alphaThresholdEnabled: Boolean = false,
     val alphaThreshold: Float = 0f,
     val spacing: Float = .12f,

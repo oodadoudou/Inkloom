@@ -6,6 +6,7 @@ import app.inkloom.document.BrushParameterDynamics
 import app.inkloom.document.ProcreateColorDynamics
 import app.inkloom.document.ProcreateFiltering
 import app.inkloom.document.ProcreateRenderingMode
+import app.inkloom.document.ProcreateBrushBlend
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushTaperMode
 import app.inkloom.document.CspTextureComposite
@@ -70,6 +71,9 @@ data class ImportedBrush(
     val grainCompositeMode: Int = CspTextureComposite.MULTIPLY,
     val grainFilteringMode: Int = ProcreateFiltering.NONE,
     val procreateRenderingMode: ProcreateRenderingMode = ProcreateRenderingMode.UNIFORM_GLAZE,
+    val procreateBrushBlendMode: Int = ProcreateBrushBlend.NORMAL,
+    val procreateBurntEdgeBlendMode: Int = ProcreateBrushBlend.MULTIPLY,
+    val procreateLuminanceBlending: Boolean = false,
     val alphaThresholdEnabled: Boolean = false,
     val alphaThreshold: Float = 0f,
     val defaultSize: Float = 8f,

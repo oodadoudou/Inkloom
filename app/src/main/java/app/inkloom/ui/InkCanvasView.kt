@@ -41,6 +41,7 @@ import app.inkloom.document.BrushCurvePoint
 import app.inkloom.document.BrushEngineKind
 import app.inkloom.document.BrushColorDynamics
 import app.inkloom.document.ProcreateColorDynamics
+import app.inkloom.document.ProcreateBrushBlend
 import app.inkloom.document.ProcreateFiltering
 import app.inkloom.document.ProcreateRenderingMode
 import app.inkloom.document.ProcreateRendering
@@ -197,7 +198,7 @@ class InkCanvasView(context: Context) : View(context) {
         activeSurfaceFrameScheduled = false
         val surface = activeStrokeSurface ?: return@Runnable
         if (activeTool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) || currentPoints.isEmpty()) return@Runnable
-        if (usesMaskedActivePreview()) {
+        if (usesViewActivePreview()) {
             surface.cancel()
             postInvalidateOnAnimation()
             return@Runnable
@@ -575,6 +576,9 @@ class InkCanvasView(context: Context) : View(context) {
     var grainCompositeMode: Int = CspTextureComposite.MULTIPLY
     var grainFilteringMode: Int = ProcreateFiltering.NONE
     var procreateRenderingMode: ProcreateRenderingMode = ProcreateRenderingMode.UNIFORM_GLAZE
+    var procreateBrushBlendMode: Int = ProcreateBrushBlend.NORMAL
+    var procreateBurntEdgeBlendMode: Int = ProcreateBrushBlend.MULTIPLY
+    var procreateLuminanceBlending: Boolean = false
     var alphaThresholdEnabled: Boolean = false
     var alphaThreshold: Float = 0f
     var brushSpacing: Float = .12f
@@ -1116,7 +1120,7 @@ class InkCanvasView(context: Context) : View(context) {
         )
         if (
             includeInteractionOverlays &&
-            usesMaskedActivePreview() &&
+            usesViewActivePreview() &&
             activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) &&
             currentPoints.isNotEmpty()
         ) {
@@ -1204,6 +1208,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun drawStrokeTiles(canvas: Canvas): Boolean {
         if (layerBlendModes.values.any { it != LayerBlendMode.NORMAL }) return false
+        if (strokes.any(::usesDestinationDependentBrushBlend)) return false
         if (alphaLockedLayers.isNotEmpty() || clippedLayers.isNotEmpty() || layerMasks.isNotEmpty()) return false
         if (layerElementBitmaps.isNotEmpty() || rasterLayerBitmaps.isNotEmpty()) return false
         return committedScene.draw(canvas, strokes, width, height) { target, candidates ->
@@ -1238,6 +1243,7 @@ class InkCanvasView(context: Context) : View(context) {
      * into clean tiles instead of replaying every earlier stroke before the next pen contact. */
     private fun canAppendCommittedInkToTiles(): Boolean =
         layerBlendModes.values.all { it == LayerBlendMode.NORMAL } &&
+            strokes.none(::usesDestinationDependentBrushBlend) &&
             layerOpacities.values.all { it >= .999f } &&
             alphaLockedLayers.isEmpty() && clippedLayers.isEmpty() && layerMasks.isEmpty() &&
             layerElementBitmaps.isEmpty() && rasterLayerBitmaps.isEmpty()
@@ -1368,14 +1374,16 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun drawStroke(canvas: Canvas, stroke: InkStroke, primaryStampStartIndex: Int = 0, dualStampStartIndex: Int = 0) {
-        val opacityCheckpoint = if (stroke.opacity < .999f) {
+        val brushBlendMode = ProcreateBrushBlend.normalize(stroke.procreateBrushBlendMode)
+        val compositeCheckpoint = if (stroke.opacity < .999f || brushBlendMode != ProcreateBrushBlend.NORMAL) {
             canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 alpha = (stroke.opacity.coerceIn(0f, 1f) * 255).toInt()
+                blendMode = ProcreateBrushBlend.resolve(brushBlendMode)
             })
         } else -1
         if (stroke.masks.isEmpty()) {
             drawStrokeContent(canvas, stroke, primaryStampStartIndex, dualStampStartIndex)
-            if (opacityCheckpoint >= 0) canvas.restoreToCount(opacityCheckpoint)
+            if (compositeCheckpoint >= 0) canvas.restoreToCount(compositeCheckpoint)
             resetAntiAliasPaint()
             return
         }
@@ -1383,7 +1391,7 @@ class InkCanvasView(context: Context) : View(context) {
         drawStrokeContent(canvas, stroke, primaryStampStartIndex, dualStampStartIndex)
         StrokeMaskRenderer.draw(canvas, paint, stroke.masks, width, height)
         canvas.restoreToCount(checkpoint)
-        if (opacityCheckpoint >= 0) canvas.restoreToCount(opacityCheckpoint)
+        if (compositeCheckpoint >= 0) canvas.restoreToCount(compositeCheckpoint)
         resetAntiAliasPaint()
     }
 
@@ -1592,7 +1600,9 @@ class InkCanvasView(context: Context) : View(context) {
                 paint.alpha = (mainAlpha * maxOf(stroke.waterEdgeOpacity.coerceIn(0f, 1f), tiltBleedAmount * .55f)).toInt().coerceIn(1, 255)
                 val blur = WaterEdge.distancePixels(stroke.waterEdgeBlur, stroke.waterEdgeBlurUnit, width.toFloat()) + diameter * tiltBleedAmount * .08f
                 paint.maskFilter = cachedBlurMask(blur)
+                paint.blendMode = ProcreateBrushBlend.resolve(stroke.procreateBurntEdgeBlendMode)
                 canvas.drawBitmap(tip, edgeMatrix, paint)
+                paint.blendMode = if (stroke.blendTipsWithDarken) BlendMode.DARKEN else null
                 paint.maskFilter = null
             }
             paint.colorFilter = srcInColorFilter(jitteredColor)
@@ -1756,7 +1766,9 @@ class InkCanvasView(context: Context) : View(context) {
         val jitteredColor = BrushColorJitter.argb(stroke, point, point.timeMs.toInt())
         if (hasWaterEdge(stroke, point)) {
             configureWaterEdge(stroke, point, strokeWidth, alpha, jitteredColor)
+            paint.blendMode = ProcreateBrushBlend.resolve(stroke.procreateBurntEdgeBlendMode)
             canvas.drawPoint(x, y, paint)
+            paint.blendMode = null
         }
         paint.maskFilter = brushBlurMask(stroke, point, strokeWidth, stroke.width * width.coerceAtLeast(1) / REFERENCE_WIDTH, width.toFloat()); paint.color = jitteredColor; paint.strokeWidth = strokeWidth; paint.alpha = alpha
         canvas.drawPoint(x, y, paint)
@@ -1816,7 +1828,9 @@ class InkCanvasView(context: Context) : View(context) {
         val jitteredColor = BrushColorJitter.argb(stroke, point, point.timeMs.toInt())
         if (hasWaterEdge(stroke, point)) {
             configureWaterEdge(stroke, point, strokeWidth, alpha, jitteredColor)
+            paint.blendMode = ProcreateBrushBlend.resolve(stroke.procreateBurntEdgeBlendMode)
             canvas.drawLine(startX, startY, endX, endY, paint)
+            paint.blendMode = null
         }
         paint.maskFilter = brushBlurMask(stroke, point, strokeWidth, stroke.width * width.coerceAtLeast(1) / REFERENCE_WIDTH, width.toFloat()); paint.color = jitteredColor; paint.strokeWidth = strokeWidth; paint.alpha = alpha
         canvas.drawLine(startX, startY, endX, endY, paint)
@@ -2597,7 +2611,7 @@ class InkCanvasView(context: Context) : View(context) {
                         invalidateStrokeCache(emptyList(), newStrokes)
                         commitStrokeEdit(before, strokes)
                     }
-                    val previewSurface = activeStrokeSurface?.takeUnless { usesMaskedActivePreview() }
+                    val previewSurface = activeStrokeSurface?.takeUnless { usesViewActivePreview() }
                     previewSurface?.let { surface ->
                         // The UP packet settles stabilization onto the physical endpoint. Publish
                         // that exact final packet before committing the low-latency surface.
@@ -3847,7 +3861,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun requestActiveSurfaceFrame() {
-        if (usesMaskedActivePreview()) {
+        if (usesViewActivePreview()) {
             postInvalidateOnAnimation()
             return
         }
@@ -3856,7 +3870,18 @@ class InkCanvasView(context: Context) : View(context) {
         postOnAnimation(activeSurfaceFrame)
     }
 
-    private fun usesMaskedActivePreview(): Boolean = layerMasks[activeLayerId]?.enabled == true
+    /** The low-latency surface is composited source-over by Android. Masks and non-Normal
+     * whole-stroke blend modes must preview in the stable scene so they can see destination pixels. */
+    private fun usesViewActivePreview(): Boolean =
+        layerMasks[activeLayerId]?.enabled == true ||
+            ProcreateBrushBlend.normalize(procreateBrushBlendMode) != ProcreateBrushBlend.NORMAL ||
+            (waterEdgeEnabled || tiltBleed > .001f) &&
+                ProcreateBrushBlend.normalize(procreateBurntEdgeBlendMode) != ProcreateBrushBlend.NORMAL
+
+    private fun usesDestinationDependentBrushBlend(stroke: InkStroke): Boolean =
+        ProcreateBrushBlend.normalize(stroke.procreateBrushBlendMode) != ProcreateBrushBlend.NORMAL ||
+            (stroke.waterEdgeEnabled || stroke.tiltBleed > .001f) &&
+                ProcreateBrushBlend.normalize(stroke.procreateBurntEdgeBlendMode) != ProcreateBrushBlend.NORMAL
 
     @VisibleForTesting
     internal fun flushEngineV2ActiveFrame() {
@@ -4769,6 +4794,9 @@ class InkCanvasView(context: Context) : View(context) {
         procreateColorDynamics = procreateColorDynamics,
         grainFilteringMode = grainFilteringMode,
         procreateRenderingMode = procreateRenderingMode,
+        procreateBrushBlendMode = procreateBrushBlendMode,
+        procreateBurntEdgeBlendMode = procreateBurntEdgeBlendMode,
+        procreateLuminanceBlending = procreateLuminanceBlending,
         alphaThresholdEnabled = alphaThresholdEnabled,
         alphaThreshold = alphaThreshold,
         grainDensityMinimum = grainDensityMinimum,

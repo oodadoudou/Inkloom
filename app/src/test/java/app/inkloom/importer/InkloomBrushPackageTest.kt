@@ -51,6 +51,9 @@ class InkloomBrushPackageTest {
                 grainCompositeMode = CspTextureComposite.HEIGHT,
                 grainFilteringMode = app.inkloom.document.ProcreateFiltering.IMPROVED,
                 procreateRenderingMode = app.inkloom.document.ProcreateRenderingMode.HEAVY_GLAZE,
+                procreateBrushBlendMode = app.inkloom.document.ProcreateBrushBlend.OVERLAY,
+                procreateBurntEdgeBlendMode = app.inkloom.document.ProcreateBrushBlend.COLOR_BURN,
+                procreateLuminanceBlending = true,
                 alphaThresholdEnabled = true,
                 alphaThreshold = .42f,
                 defaultSize = 37f,
@@ -217,6 +220,9 @@ class InkloomBrushPackageTest {
             assertEquals(CspTextureComposite.HEIGHT, restored.grainCompositeMode)
             assertEquals(app.inkloom.document.ProcreateFiltering.IMPROVED, restored.grainFilteringMode)
             assertEquals(app.inkloom.document.ProcreateRenderingMode.HEAVY_GLAZE, restored.procreateRenderingMode)
+            assertEquals(app.inkloom.document.ProcreateBrushBlend.OVERLAY, restored.procreateBrushBlendMode)
+            assertEquals(app.inkloom.document.ProcreateBrushBlend.COLOR_BURN, restored.procreateBurntEdgeBlendMode)
+            assertTrue(restored.procreateLuminanceBlending)
             assertTrue(restored.alphaThresholdEnabled)
             assertEquals(.42f, restored.alphaThreshold, .0001f)
             assertEquals(180f, restored.strokeRotationJitterDegrees, .0001f)

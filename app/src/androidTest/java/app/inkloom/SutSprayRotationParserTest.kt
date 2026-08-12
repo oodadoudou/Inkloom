@@ -292,6 +292,9 @@ class SutSprayRotationParserTest {
                 grainCompositeMode = CspTextureComposite.HEIGHT,
                 grainFilteringMode = app.inkloom.document.ProcreateFiltering.IMPROVED,
                 procreateRenderingMode = app.inkloom.document.ProcreateRenderingMode.HEAVY_GLAZE,
+                procreateBrushBlendMode = app.inkloom.document.ProcreateBrushBlend.HARD_LIGHT,
+                procreateBurntEdgeBlendMode = app.inkloom.document.ProcreateBrushBlend.COLOR_BURN,
+                procreateLuminanceBlending = true,
                 alphaThresholdEnabled = true,
                 alphaThreshold = .37f,
                 grainStrokeRotation = -.73f,
@@ -382,6 +385,9 @@ class SutSprayRotationParserTest {
             assertEquals(CspTextureComposite.HEIGHT, restored.grainCompositeMode)
             assertEquals(app.inkloom.document.ProcreateFiltering.IMPROVED, restored.grainFilteringMode)
             assertEquals(app.inkloom.document.ProcreateRenderingMode.HEAVY_GLAZE, restored.procreateRenderingMode)
+            assertEquals(app.inkloom.document.ProcreateBrushBlend.HARD_LIGHT, restored.procreateBrushBlendMode)
+            assertEquals(app.inkloom.document.ProcreateBrushBlend.COLOR_BURN, restored.procreateBurntEdgeBlendMode)
+            assertTrue(restored.procreateLuminanceBlending)
             assertTrue(restored.alphaThresholdEnabled)
             assertEquals(.37f, restored.alphaThreshold, .0001f)
             assertEquals(-.73f, restored.grainStrokeRotation, .0001f)

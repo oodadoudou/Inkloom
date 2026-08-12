@@ -136,6 +136,9 @@ class InkCanvasBrushSwitchTest {
             grainZoom = .65f,
             grainFilteringMode = app.inkloom.document.ProcreateFiltering.IMPROVED,
             procreateRenderingMode = app.inkloom.document.ProcreateRenderingMode.INTENSE_BLENDING,
+            procreateBrushBlendMode = app.inkloom.document.ProcreateBrushBlend.OVERLAY,
+            procreateBurntEdgeBlendMode = app.inkloom.document.ProcreateBrushBlend.COLOR_BURN,
+            procreateLuminanceBlending = true,
             alphaThresholdEnabled = true,
             alphaThreshold = .48f,
         )
@@ -150,6 +153,9 @@ class InkCanvasBrushSwitchTest {
         assertEquals(275f, requireNotNull(committed).grainScale, .0001f)
         assertEquals(app.inkloom.document.ProcreateFiltering.IMPROVED, requireNotNull(committed).grainFilteringMode)
         assertEquals(app.inkloom.document.ProcreateRenderingMode.INTENSE_BLENDING, requireNotNull(committed).procreateRenderingMode)
+        assertEquals(app.inkloom.document.ProcreateBrushBlend.OVERLAY, requireNotNull(committed).procreateBrushBlendMode)
+        assertEquals(app.inkloom.document.ProcreateBrushBlend.COLOR_BURN, requireNotNull(committed).procreateBurntEdgeBlendMode)
+        assertTrue(requireNotNull(committed).procreateLuminanceBlending)
         assertTrue(requireNotNull(committed).alphaThresholdEnabled)
         assertEquals(.48f, requireNotNull(committed).alphaThreshold, .0001f)
     }

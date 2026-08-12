@@ -172,6 +172,9 @@ class BrushMetadataStore(
                         procreateRenderingMode = runCatching {
                             ProcreateRenderingMode.valueOf(item.optString("procreateRenderingMode", ProcreateRenderingMode.UNIFORM_GLAZE.name))
                         }.getOrDefault(ProcreateRenderingMode.UNIFORM_GLAZE),
+                        procreateBrushBlendMode = item.optInt("procreateBrushBlendMode", app.inkloom.document.ProcreateBrushBlend.NORMAL),
+                        procreateBurntEdgeBlendMode = item.optInt("procreateBurntEdgeBlendMode", app.inkloom.document.ProcreateBrushBlend.MULTIPLY),
+                        procreateLuminanceBlending = item.optBoolean("procreateLuminanceBlending", false),
                         alphaThresholdEnabled = item.optBoolean("alphaThresholdEnabled", false),
                         alphaThreshold = item.optDouble("alphaThreshold", 0.0).toFloat().coerceIn(0f, 1f),
                         defaultSize = item.optDouble("defaultSize", 8.0).toFloat(),
@@ -389,6 +392,9 @@ class BrushMetadataStore(
                     .put("grainCompositeMode", brush.grainCompositeMode)
                     .put("grainFilteringMode", brush.grainFilteringMode)
                     .put("procreateRenderingMode", brush.procreateRenderingMode.name)
+                    .put("procreateBrushBlendMode", brush.procreateBrushBlendMode)
+                    .put("procreateBurntEdgeBlendMode", brush.procreateBurntEdgeBlendMode)
+                    .put("procreateLuminanceBlending", brush.procreateLuminanceBlending)
                     .put("alphaThresholdEnabled", brush.alphaThresholdEnabled)
                     .put("alphaThreshold", brush.alphaThreshold)
                     .put("defaultSize", brush.defaultSize)

@@ -4910,6 +4910,9 @@ internal fun InkCanvasView.applyBrushConfiguration(
     grainCompositeMode = activeBrush?.grainCompositeMode ?: CspTextureComposite.MULTIPLY
     grainFilteringMode = activeBrush?.grainFilteringMode ?: ProcreateFiltering.NONE
     procreateRenderingMode = activeBrush?.procreateRenderingMode ?: ProcreateRenderingMode.UNIFORM_GLAZE
+    procreateBrushBlendMode = activeBrush?.procreateBrushBlendMode ?: ProcreateBrushBlend.NORMAL
+    procreateBurntEdgeBlendMode = activeBrush?.procreateBurntEdgeBlendMode ?: ProcreateBrushBlend.MULTIPLY
+    procreateLuminanceBlending = activeBrush?.procreateLuminanceBlending ?: false
     alphaThresholdEnabled = activeBrush?.alphaThresholdEnabled ?: false
     alphaThreshold = activeBrush?.alphaThreshold ?: 0f
     brushSpacing = activeBrush?.spacing ?: .12f
@@ -9015,6 +9018,9 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 if (draft.grainPreviewPath != null) item { BrushTextureCompositeEditor(draft.grainCompositeMode) { draft = draft.copy(grainCompositeMode = it) } }
                 if (draft.grainPreviewPath != null) item { ProcreateFilteringEditor(tr("Grain filtering", "颗粒过滤"), draft.grainFilteringMode) { draft = draft.copy(grainFilteringMode = it) } }
                 item { ProcreateRenderingModeEditor(draft.procreateRenderingMode) { draft = draft.copy(procreateRenderingMode = it) } }
+                item { ProcreateBrushBlendModeEditor(tr("Brush blend mode", "整笔混合模式"), draft.procreateBrushBlendMode) { draft = draft.copy(procreateBrushBlendMode = it) } }
+                item { ProcreateBrushBlendModeEditor(tr("Burnt edges mode", "焦边混合模式"), draft.procreateBurntEdgeBlendMode) { draft = draft.copy(procreateBurntEdgeBlendMode = it) } }
+                item { SettingSwitch(tr("Luminance blending", "明度混合"), tr("Preserves Procreate's luminance-blending intent for compatible rendering paths.", "为兼容渲染路径保留 Procreate 的明度混合意图。"), draft.procreateLuminanceBlending) { draft = draft.copy(procreateLuminanceBlending = it) } }
                 item { SettingSwitch(tr("Alpha threshold", "透明度阈值"), tr("Converts the final tip coverage to fully opaque or fully transparent pixels.", "将最终笔尖覆盖转换为完全不透明或完全透明像素。"), draft.alphaThresholdEnabled) { draft = draft.copy(alphaThresholdEnabled = it) } }
                 if (draft.alphaThresholdEnabled) item { BrushSettingSlider(tr("Alpha cutoff", "透明度截止值"), draft.alphaThreshold, 0f..1f) { draft = draft.copy(alphaThreshold = it) } }
                 item { BrushSettingSlider("Thickness", draft.thickness, .05f..2f) { draft = draft.copy(thickness = it) } }
@@ -9268,6 +9274,27 @@ private fun ProcreateRenderingModeEditor(value: ProcreateRenderingMode, onValue:
                 FilterChip(selected = value == mode, onClick = { onValue(mode) }, label = { Text(label) })
             }
         }
+    }
+}
+
+@Composable
+private fun ProcreateBrushBlendModeEditor(label: String, value: Int, onValue: (Int) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, color = MutedInk, fontSize = 11.sp)
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(ProcreateBrushBlend.artisticModes.toList(), key = { it }) { mode ->
+                FilterChip(
+                    selected = ProcreateBrushBlend.normalize(value) == mode,
+                    onClick = { onValue(mode) },
+                    label = { Text(ProcreateBrushBlend.label(mode)) },
+                )
+            }
+        }
+        if (value !in ProcreateBrushBlend.artisticModes) Text(
+            tr("Unknown imported value $value is retained and rendered as Normal.", "已保留未知导入值 $value，并安全按正常模式渲染。"),
+            color = MutedInk,
+            fontSize = 10.sp,
+        )
     }
 }
 

@@ -29,6 +29,15 @@ object BrushSemanticMapper {
             "StampRasterEngine.${brush.procreateRenderingMode.name}",
             "Archive flags and public mode are exact; transfer strength is calibrated from documented behavior because Procreate's pixel equation is proprietary.",
         )
+        if (brush.format == BrushFormat.PROCREATE) {
+            exact("PROCREATE.brushBlendMode", "StrokeCompositor.${app.inkloom.document.ProcreateBrushBlend.label(brush.procreateBrushBlendMode)}")
+            exact("PROCREATE.burntEdgeBlendMode", "EdgePigmentCompositor.${app.inkloom.document.ProcreateBrushBlend.label(brush.procreateBurntEdgeBlendMode)}")
+            if (brush.procreateLuminanceBlending) approximate(
+                "PROCREATE.luminanceBlending",
+                "StrokeCompositor.sRgbLuminanceCompatibility",
+                "The archive toggle is preserved; Android Canvas does not expose Procreate's private luminance equation.",
+            )
+        }
         if (brush.alphaThresholdEnabled) exact("${brush.format.name}.alphaThreshold", "StampRasterEngine.binaryCoverageCutoff")
         if (brush.continuousPlot) exact("${brush.format.name}.continuousPlot", "AirbrushEngine.timeSampler")
         if (brush.spray) exact("${brush.format.name}.scatter", "StampRasterEngine.scatterCoat")
