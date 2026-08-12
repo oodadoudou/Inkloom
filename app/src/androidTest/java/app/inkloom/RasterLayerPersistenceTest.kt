@@ -48,6 +48,15 @@ class RasterLayerPersistenceTest {
             } finally {
                 rendered.recycle()
             }
+            val liveSurface = assets.renderRasterLayerBitmap(page, raster.id, 400)
+            try {
+                assertEquals(400, liveSurface.width)
+                assertEquals(200, liveSurface.height)
+                assertTrue(Color.red(liveSurface.getPixel(80, 100)) > 240)
+                assertEquals("Live raster sources stay transparent outside their own pixels", 255, Color.alpha(liveSurface.getPixel(320, 100)))
+            } finally {
+                liveSurface.recycle()
+            }
 
             val rotated = assets.renderPageBitmap(PageGeometry.rotateClockwise(page), 200)
             try {

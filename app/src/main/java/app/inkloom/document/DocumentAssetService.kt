@@ -321,6 +321,25 @@ class DocumentAssetService(private val context: Context) {
         return bitmap
     }
 
+    /** Renders only the persistent raster surface for one layer in the page's visible crop.
+     * Layer opacity, blend mode, clipping, and masks are deliberately applied by the live canvas
+     * so the returned bitmap remains a reusable source surface. */
+    fun renderRasterLayerBitmap(page: InkPage, layerId: String, width: Int): Bitmap {
+        require(width in 1..4096) { "Layer render width must be between 1 and 4096 pixels" }
+        val height = (width * PageCropTransform.visibleHeight(page) / PageCropTransform.visibleWidth(page).coerceAtLeast(1f)).toInt().coerceAtLeast(1)
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        drawPage(
+            Canvas(bitmap), page, width, height,
+            includeBackground = false,
+            includedLayerIds = setOf(layerId),
+            includeStrokes = false,
+            includeRaster = true,
+            applyLayerEffects = false,
+            includeDraftLayers = true,
+        )
+        return bitmap
+    }
+
     fun exportBundle(document: InkDocument, uri: Uri) {
         context.contentResolver.openOutputStream(uri)?.use { exportBundle(document, it) }
             ?: error("Could not open package destination")

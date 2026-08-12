@@ -232,9 +232,17 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         document.copy(pages = PdfGotoLinkNavigation.rotateDestinationCoordinates(rotated, pageId), updatedAt = System.currentTimeMillis())
     }
 
-    fun addLayer(documentId: String, pageId: String, name: String = "Layer") = updatePage(documentId, pageId) { page ->
+    fun addLayer(
+        documentId: String,
+        pageId: String,
+        name: String = "Layer",
+        contentKind: LayerContentKind = LayerContentKind.VECTOR,
+    ) = updatePage(documentId, pageId) { page ->
         val suffix = page.layers.count { it.role == LayerRole.CUSTOM } + 1
-        page.copy(layers = page.layers + InkLayer(name = if (name == "Layer") "Layer $suffix" else name.trim().ifBlank { "Layer $suffix" }))
+        page.copy(layers = page.layers + InkLayer(
+            name = if (name == "Layer") "Layer $suffix" else name.trim().ifBlank { "Layer $suffix" },
+            contentKind = contentKind,
+        ))
     }
 
     fun addLayerFolder(documentId: String, pageId: String) = updatePage(documentId, pageId) { page ->

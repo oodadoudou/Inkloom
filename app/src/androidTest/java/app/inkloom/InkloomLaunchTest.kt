@@ -652,6 +652,7 @@ class InkloomLaunchTest {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Layers").performClick()
         composeRule.onNodeWithContentDescription("Add layer").performClick()
+        composeRule.onNodeWithText("Vector layer").performClick()
         composeRule.onAllNodes(hasContentDescription("Layer actions")).onFirst().performClick()
         composeRule.onNodeWithText("Duplicate layer").performClick()
 
@@ -803,6 +804,7 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription("Layers").performClick()
         composeRule.onNodeWithContentDescription("Add layer folder").performClick()
         composeRule.onNodeWithContentDescription("Add layer").performClick()
+        composeRule.onNodeWithText("Vector layer").performClick()
 
         composeRule.onNodeWithText("Folder 1").assertIsDisplayed()
         composeRule.onNodeWithText("Layer 1").assertIsDisplayed()
@@ -813,6 +815,16 @@ class InkloomLaunchTest {
 
         assertTrue(composeRule.onAllNodes(hasText("Layer 1")).fetchSemanticsNodes().isEmpty())
         composeRule.onNodeWithText("Folder 1").assertIsDisplayed()
+    }
+
+    @Test fun layerPanelCreatesAnExplicitRasterLayer() {
+        createNotebookAndOpenEditor()
+        composeRule.onNodeWithContentDescription("Layers").performClick()
+        composeRule.onNodeWithContentDescription("Add layer").performClick()
+        composeRule.onNodeWithText("Raster layer").performClick()
+
+        composeRule.onNodeWithText("Layer 1").assertIsDisplayed()
+        composeRule.onNodeWithText("Raster layer").assertIsDisplayed()
     }
 
     private fun findInkCanvasView(): InkCanvasView? {

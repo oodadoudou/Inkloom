@@ -984,6 +984,15 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
+    private var rasterLayerBitmaps: Map<String, Bitmap> = emptyMap()
+
+    fun setRasterLayerBitmaps(value: Map<String, Bitmap>) {
+        if (rasterLayerBitmaps != value) {
+            rasterLayerBitmaps = value
+            resetStrokeTiles()
+        }
+    }
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         synchronized(renderLock) { drawPageContent(canvas) }
@@ -1134,7 +1143,7 @@ class InkCanvasView(context: Context) : View(context) {
     private fun drawStrokeTiles(canvas: Canvas): Boolean {
         if (layerBlendModes.values.any { it != LayerBlendMode.NORMAL }) return false
         if (alphaLockedLayers.isNotEmpty() || clippedLayers.isNotEmpty() || layerMasks.isNotEmpty()) return false
-        if (layerElementBitmaps.isNotEmpty()) return false
+        if (layerElementBitmaps.isNotEmpty() || rasterLayerBitmaps.isNotEmpty()) return false
         return committedScene.draw(canvas, strokes, width, height) { target, candidates ->
             drawLayeredStrokes(target, candidates)
         }
@@ -1168,7 +1177,8 @@ class InkCanvasView(context: Context) : View(context) {
     private fun canAppendCommittedInkToTiles(): Boolean =
         layerBlendModes.values.all { it == LayerBlendMode.NORMAL } &&
             layerOpacities.values.all { it >= .999f } &&
-            alphaLockedLayers.isEmpty() && clippedLayers.isEmpty() && layerMasks.isEmpty() && layerElementBitmaps.isEmpty()
+            alphaLockedLayers.isEmpty() && clippedLayers.isEmpty() && layerMasks.isEmpty() &&
+            layerElementBitmaps.isEmpty() && rasterLayerBitmaps.isEmpty()
 
     private fun drawLayeredStrokes(
         canvas: Canvas,
@@ -1180,7 +1190,8 @@ class InkCanvasView(context: Context) : View(context) {
     ) {
         val groupedStrokes = value.groupBy(InkStroke::layerId)
         val elementLayerIds = if (includeElements) layerElementBitmaps.keys.filter { layerFilter == null || it in layerFilter } else emptyList()
-        val availableLayerIds = groupedStrokes.keys + elementLayerIds
+        val rasterLayerIds = rasterLayerBitmaps.keys.filter { layerFilter == null || it in layerFilter }
+        val availableLayerIds = groupedStrokes.keys + elementLayerIds + rasterLayerIds
         val orderedLayerIds = (layerOrder.filter { it in availableLayerIds } + availableLayerIds.filterNot { it in layerOrder }).distinct()
         var previousLayerId: String? = null
         orderedLayerIds.forEach { layerId ->
@@ -1230,9 +1241,11 @@ class InkCanvasView(context: Context) : View(context) {
         dualStampStartIndex: Int,
     ) {
         val elements = if (includeElements) layerElementBitmaps[layerId] else null
+        val raster = rasterLayerBitmaps[layerId]
         val baseIds = alphaLockBaseContentIds[layerId].orEmpty()
         val hasCapturedAlpha = layerId in alphaLockedLayers && baseIds.isNotEmpty()
         if (!hasCapturedAlpha) {
+            drawElementBitmap(canvas, raster)
             layerStrokes.forEach { drawStroke(canvas, it, primaryStampStartIndex, dualStampStartIndex) }
             drawElementBitmap(canvas, elements?.base)
             drawElementBitmap(canvas, elements?.additions)
@@ -1241,6 +1254,7 @@ class InkCanvasView(context: Context) : View(context) {
         val baseStrokes = layerStrokes.filter { it.id in baseIds }
         val addedStrokes = layerStrokes.filterNot { it.id in baseIds }
         fun drawBase() {
+            drawElementBitmap(canvas, raster)
             baseStrokes.forEach { drawStroke(canvas, it, primaryStampStartIndex, dualStampStartIndex) }
             drawElementBitmap(canvas, elements?.base)
         }
