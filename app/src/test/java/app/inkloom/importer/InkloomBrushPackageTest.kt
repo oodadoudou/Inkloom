@@ -41,6 +41,7 @@ class InkloomBrushPackageTest {
                 dualTipPreviewPaths = listOf(dual.absolutePath),
                 grainPreviewPath = grain.absolutePath,
                 grainDensity = .64f,
+                grainDensityMinimum = .18f,
                 grainDensityDynamics = BrushParameterDynamics(pressureEnabled = true, pressureMinimum = .45f),
                 grainScale = 215f,
                 grainMovement = .35f,
@@ -190,6 +191,7 @@ class InkloomBrushPackageTest {
             assertEquals(5f, restored.blurSecondaryDynamics.velocityScale, .0001f)
             assertEquals(.32f, restored.blurSecondaryDynamics.tiltStart, .0001f)
             assertEquals(original.grainScale, restored.grainScale, .0001f)
+            assertEquals(original.grainDensityMinimum, restored.grainDensityMinimum, .0001f)
             assertEquals(original.grainMovement, restored.grainMovement, .0001f)
             assertEquals(original.grainZoom, restored.grainZoom, .0001f)
             assertEquals(original.grainStrokeRotation, restored.grainStrokeRotation, .0001f)

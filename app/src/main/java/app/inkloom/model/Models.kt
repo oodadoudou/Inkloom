@@ -48,6 +48,8 @@ data class ImportedBrush(
     val dualTipPreviewPaths: List<String> = emptyList(),
     val grainPreviewPath: String? = null,
     val grainDensity: Float = 0f,
+    /** Absolute Procreate Grain > Depth Minimum, applied after all depth dynamics. */
+    val grainDensityMinimum: Float = 0f,
     val grainDensityDynamics: BrushParameterDynamics = BrushParameterDynamics(),
     val grainScale: Float = 100f,
     /** Procreate Grain > Movement. 0 drags with the tip; 1 rolls like Texturized grain. */

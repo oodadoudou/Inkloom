@@ -554,6 +554,7 @@ class InkCanvasView(context: Context) : View(context) {
     var dualTipAssetPaths: List<String> = emptyList()
     var grainAssetPath: String? = null
     var grainDensity: Float = 0f
+    var grainDensityMinimum: Float = 0f
     var grainDensityDynamics: BrushParameterDynamics = BrushParameterDynamics()
     var grainScale: Float = 100f
     var grainMovement: Float = 0f
@@ -4742,6 +4743,7 @@ class InkCanvasView(context: Context) : View(context) {
         activeStrokeTemplate?.copy(points = points.toList()) ?: withCurrentGrainBehavior(buildStroke(points))
 
     private fun withCurrentGrainBehavior(stroke: InkStroke): InkStroke = stroke.copy(
+        grainDensityMinimum = grainDensityMinimum,
         grainMovement = grainMovement,
         grainZoom = grainZoom,
         grainStrokeRotation = grainStrokeRotation,

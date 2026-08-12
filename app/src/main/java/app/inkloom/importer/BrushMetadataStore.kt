@@ -117,6 +117,7 @@ class BrushMetadataStore(
                         dualTipPreviewPaths = dualTipPaths,
                         grainPreviewPath = item.optString("grainPreviewPath").takeIf { it.isNotBlank() },
                         grainDensity = item.optDouble("grainDensity", 0.0).toFloat(),
+                        grainDensityMinimum = item.optDouble("grainDensityMinimum", 0.0).toFloat().coerceIn(0f, 1f),
                         grainDensityDynamics = parameterDynamics("grainDensityDynamics"),
                         grainScale = item.optDouble("grainScale", 100.0).toFloat().coerceIn(1f, 4000f),
                         grainMovement = item.optDouble("grainMovement", 0.0).toFloat().coerceIn(0f, 1f),
@@ -324,6 +325,7 @@ class BrushMetadataStore(
                     .put("dualTipPreviewPaths", JSONArray(brush.dualTipPreviewPaths))
                     .put("grainPreviewPath", brush.grainPreviewPath)
                     .put("grainDensity", brush.grainDensity)
+                    .put("grainDensityMinimum", brush.grainDensityMinimum)
                     .put("grainDensityDynamics", parameterDynamicsJson(brush.grainDensityDynamics))
                     .put("grainScale", brush.grainScale)
                     .put("grainMovement", brush.grainMovement)

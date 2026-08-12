@@ -28,4 +28,19 @@ class GrainDynamicsTest {
         assertEquals(.8f, GrainDynamics.density(stroke, StrokePoint(0f, 0f, pressure = 1f, velocity = 1f)), .001f)
         assertFalse(GrainDynamics.isDynamic(stroke.copy(grainDensityDynamics = BrushParameterDynamics())))
     }
+
+    @Test fun absoluteDepthMinimumSurvivesCombinedDynamics() {
+        val stroke = InkStroke(
+            points = emptyList(),
+            grainDensity = .8f,
+            grainDensityMinimum = .3f,
+            grainDensityDynamics = BrushParameterDynamics(
+                pressureEnabled = true,
+                secondary = BrushSecondaryDynamics(randomEnabled = true, randomMinimum = 0f),
+            ),
+        )
+
+        assertEquals(.3f, GrainDynamics.density(stroke, StrokePoint(0f, 0f, pressure = 0f)), .001f)
+        assertEquals(.8f, GrainDynamics.density(stroke.copy(grainDensityMinimum = 2f), StrokePoint(0f, 0f, pressure = 0f)), .001f)
+    }
 }

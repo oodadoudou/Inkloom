@@ -1,6 +1,7 @@
 package app.inkloom.importer
 
 import app.inkloom.document.BrushCurvePoint
+import app.inkloom.document.BrushParameterDynamics
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushTaperMode
 import app.inkloom.model.Compatibility
@@ -115,6 +116,19 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         val spacingJitter = metadata.float("plotSpacingJitter")
         val spacingSpeed = metadata.float("plotSpacingSpeed")
         val strokeFalloff = metadata.float("dynamicsFalloff").coerceIn(0f, 1f)
+        val grainDepth = metadata.float("grainDepth", if (grain != null) 1f else 0f).coerceIn(0f, 1f)
+        val grainDepthMinimum = metadata.float("grainDepthMinimum").coerceIn(0f, grainDepth)
+        val grainDepthJitter = metadata.float("grainDepthJitter").coerceIn(0f, 1f)
+        val grainDepthTilt = metadata.boolean("textureDepthTilt")
+        val grainDepthDynamics = BrushParameterDynamics(
+            pressureEnabled = grainDepthMinimum > .0001f,
+            secondary = BrushSecondaryDynamics(
+                tiltEnabled = grainDepthTilt,
+                tiltStart = metadata.float("textureDepthTiltAngle").coerceIn(0f, .99f),
+                randomEnabled = grainDepthJitter > .0001f,
+                randomMinimum = (1f - grainDepthJitter).coerceIn(0f, 1f),
+            ),
+        )
         val genericTaperStartLength = metadata.float("taperStartLength").coerceIn(0f, 1f)
         val genericTaperEndLength = metadata.float("taperEndLength").coerceIn(0f, 1f)
         val genericTaperSize = metadata.float("taperSize").coerceIn(0f, 1f)
@@ -138,7 +152,9 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             tipPreviewPaths = listOfNotNull(shape?.absolutePath),
             dualTipPreviewPaths = listOfNotNull(dualShape?.absolutePath),
             grainPreviewPath = grain?.absolutePath,
-            grainDensity = metadata.float("grainDepth", if (grain != null) 1f else 0f).coerceIn(0f, 1f),
+            grainDensity = grainDepth,
+            grainDensityMinimum = grainDepthMinimum,
+            grainDensityDynamics = grainDepthDynamics,
             grainScale = (metadata.float("textureScale", 1f) * 100f).coerceIn(1f, 4000f),
             grainMovement = metadata.float("textureMovement", 1f).coerceIn(0f, 1f),
             grainZoom = metadata.float("textureZoom", 1f).coerceIn(0f, 1f),
@@ -235,7 +251,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             report = buildList {
                 add("Procreate brush $position/$total decoded from NSKeyedArchive version ${metadata.int("version")}")
                 add(if (shape != null) "Procreate Shape.png extracted as the real stamp source" else "Shape source was missing; line fallback retained")
-                if (grain != null) add("Procreate Grain.png extracted with independent movement, scale, zoom, rotation, brightness, contrast, invert and per-stroke offset settings")
+                if (grain != null) add("Procreate Grain.png extracted with independent movement, scale, zoom, rotation, depth dynamics, brightness, contrast, invert and per-stroke offset settings")
                 add("Stroke spacing, smoothing, size/opacity limits, shape angle, roundness, azimuth and direction behavior mapped")
                 if (pencilTaperStartLength > DYNAMIC_EPSILON || pencilTaperEndLength > DYNAMIC_EPSILON) add("Procreate Apple Pencil start/end taper lengths and size floor mapped")
                 if (streamLine > DYNAMIC_EPSILON || streamLinePressure > DYNAMIC_EPSILON || procreateStabilization > DYNAMIC_EPSILON || motionFiltering > DYNAMIC_EPSILON) add("Procreate StreamLine, pressure smoothing, moving-average stabilization and motion filtering preserved independently")
@@ -394,7 +410,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
     )
 
     companion object {
-        const val CURRENT_VERSION = 14
+        const val CURRENT_VERSION = 15
         private const val MAX_ENTRIES = 4_096
         private const val MAX_ENTRY_BYTES = 32L * 1024L * 1024L
         private const val MAX_EXPANDED_BYTES = 384L * 1024L * 1024L

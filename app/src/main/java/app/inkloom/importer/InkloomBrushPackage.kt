@@ -196,6 +196,7 @@ class InkloomBrushPackage(private val assetDirectory: File) {
         groupName = BrushGroupOperations.normalize(source.groupName),
         tags = source.tags.map(String::trim).filter(String::isNotBlank).distinct().take(24),
         grainDensity = finite(source.grainDensity, 0f).coerceIn(0f, 1f),
+        grainDensityMinimum = finite(source.grainDensityMinimum, 0f).coerceIn(0f, finite(source.grainDensity, 0f).coerceIn(0f, 1f)),
         grainDensityDynamics = parameterDynamics(source.grainDensityDynamics),
         grainScale = finite(source.grainScale, 100f).coerceIn(1f, 4000f),
         grainMovement = finite(source.grainMovement, 0f).coerceIn(0f, 1f),

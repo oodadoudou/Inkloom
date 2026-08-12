@@ -4898,6 +4898,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     dualTipAssetPaths = activeBrush?.dualTipPreviewPaths.orEmpty()
     grainAssetPath = activeBrush?.grainPreviewPath
     grainDensity = activeBrush?.grainDensity ?: 0f
+    grainDensityMinimum = activeBrush?.grainDensityMinimum ?: 0f
     grainDensityDynamics = activeBrush?.grainDensityDynamics ?: BrushParameterDynamics()
     grainScale = activeBrush?.grainScale ?: 100f
     grainMovement = activeBrush?.grainMovement ?: 0f
@@ -8993,6 +8994,7 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 item { SettingSwitch(tr("Tilt size compression", "倾斜尺寸压缩"), tr("Keeps the grain from enlarging when tilt increases brush size.", "倾斜增大笔刷时保持纹理尺寸不随之放大。"), draft.tiltSizeCompression) { draft = draft.copy(tiltSizeCompression = it) } }
                 if (draft.grainPreviewPath != null) item { BrushGrainPreview(draft.grainPreviewPath!!, draft.grainDensity) }
                 if (draft.grainPreviewPath != null) item { BrushSettingSlider(tr("Paper texture density", "纸质浓度"), draft.grainDensity, 0f..1f) { draft = draft.copy(grainDensity = it) } }
+                if (draft.grainPreviewPath != null) item { BrushSettingSlider(tr("Minimum grain depth", "最低纹理深度"), draft.grainDensityMinimum.coerceAtMost(draft.grainDensity), 0f..draft.grainDensity.coerceAtLeast(.01f)) { draft = draft.copy(grainDensityMinimum = it) } }
                 if (draft.grainPreviewPath != null) item { ParameterDynamicsEditor(tr("Paper texture density dynamics", "纸张纹理密度动态"), "Paper texture density", draft.grainDensityDynamics) { draft = draft.copy(grainDensityDynamics = it) } }
                 if (draft.grainPreviewPath != null) item { BrushSettingSlider("Paper texture scale", draft.grainScale, 1f..400f) { draft = draft.copy(grainScale = it) } }
                 if (draft.grainPreviewPath != null) item { BrushSettingSlider("Grain movement: drag → roller", draft.grainMovement, 0f..1f) { draft = draft.copy(grainMovement = it) } }

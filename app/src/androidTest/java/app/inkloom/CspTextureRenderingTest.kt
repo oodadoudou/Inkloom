@@ -113,6 +113,41 @@ class CspTextureRenderingTest {
         }
     }
 
+    @Test fun procreateDepthMinimumBoundsPressureAndMatchesLiveCanvas() {
+        val tip = File(context.cacheDir, "depth-minimum-tip.png")
+        val grain = File(context.cacheDir, "depth-minimum-grain.png")
+        writePng(tip, IntArray(64) { Color.BLACK })
+        writePng(grain, IntArray(64) { Color.WHITE })
+        try {
+            val base = InkStroke(
+                points = listOf(StrokePoint(.5f, .5f, pressure = 0f)),
+                colorArgb = 0xFF111111,
+                width = 240f,
+                sizePressureEnabled = false,
+                tipAssetPath = tip.absolutePath,
+                tipAssetPaths = listOf(tip.absolutePath),
+                grainAssetPath = grain.absolutePath,
+                grainDensity = 1f,
+                grainDensityDynamics = BrushParameterDynamics(pressureEnabled = true),
+            )
+            val boundedStroke = base.copy(grainDensityMinimum = .4f)
+            val unbounded = DocumentAssetService(context).renderPageBitmap(InkPage(background = PageBackground.Paper(), strokes = listOf(base)), 400)
+            val bounded = DocumentAssetService(context).renderPageBitmap(InkPage(background = PageBackground.Paper(), strokes = listOf(boundedStroke)), 400)
+            val live = renderLive(boundedStroke)
+            try {
+                val x = 200
+                val exportY = bounded.height / 2
+                val liveY = live.height / 2
+                assertTrue("Depth Minimum must retain more grain contrast at zero pressure", Color.red(bounded.getPixel(x, exportY)) > Color.red(unbounded.getPixel(x, unbounded.height / 2)) + 30)
+                assertTrue("Live/export depth minimum diverged", kotlin.math.abs(Color.red(bounded.getPixel(x, exportY)) - Color.red(live.getPixel(x, liveY))) <= 12)
+            } finally {
+                unbounded.recycle(); bounded.recycle(); live.recycle()
+            }
+        } finally {
+            tip.delete(); grain.delete()
+        }
+    }
+
     @Test fun procreateMovingAndTexturizedGrainUseDifferentCoordinateSpacesWithLiveExportParity() {
         val tip = File(context.cacheDir, "grain-coordinate-tip.png")
         val grain = File(context.cacheDir, "grain-coordinate-source.png")
