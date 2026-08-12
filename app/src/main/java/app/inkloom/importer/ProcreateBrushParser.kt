@@ -5,7 +5,9 @@ import app.inkloom.document.BrushParameterDynamics
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushTaperMode
 import app.inkloom.document.BrushTipFlip
+import app.inkloom.document.CspAntiAlias
 import app.inkloom.document.ProcreateColorDynamics
+import app.inkloom.document.ProcreateFiltering
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
 import java.io.ByteArrayOutputStream
@@ -133,6 +135,8 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         )
         val roundnessDynamics = roundnessDynamics(metadata)
         val colorDynamics = procreateColorDynamics(metadata)
+        val shapeFiltering = ProcreateFiltering.fromArchive(metadata.boolean("shapeFilter", true), metadata.int("shapeFilterMode"))
+        val grainFiltering = ProcreateFiltering.fromArchive(metadata.boolean("textureFilter", true), metadata.int("textureFilterMode"))
         val genericTaperStartLength = metadata.float("taperStartLength").coerceIn(0f, 1f)
         val genericTaperEndLength = metadata.float("taperEndLength").coerceIn(0f, 1f)
         val genericTaperSize = metadata.float("taperSize").coerceIn(0f, 1f)
@@ -168,6 +172,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             grainContrast = (metadata.float("textureContrast") * 100f).coerceIn(-100f, 100f),
             grainReversed = metadata.boolean("textureInverted"),
             grainOffsetJitter = metadata.boolean("textureOffsetJitter"),
+            grainFilteringMode = grainFiltering,
             defaultSize = (metadata.float("paintSize", .25f).coerceAtLeast(.01f) * metadata.float("maxSize", .32f).coerceAtLeast(.01f) * 100f).coerceIn(.5f, 400f),
             streamLine = streamLine,
             streamLinePressure = streamLinePressure,
@@ -186,7 +191,8 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             strokePathLongitudinalJitter = pathLongitudinalJitter,
             spacingSecondaryDynamics = spacingDynamics(spacingSpeed, spacingJitter),
             flow = metadata.float("dynamicsGlazedFlow", 1f).coerceIn(0f, 1f),
-            hardness = if (metadata.boolean("shapeFilter", true)) .85f else 1f,
+            hardness = 1f,
+            antiAliasMode = ProcreateFiltering.shapeAntiAlias(shapeFiltering),
             thickness = metadata.float("shapeRoundness", 1f).coerceIn(.05f, 1f),
             shapeRoundnessHorizontalJitter = metadata.float("jitterShapeRoundnessX").coerceIn(0f, 1f),
             shapeRoundnessVerticalJitter = metadata.float("jitterShapeRoundness").coerceIn(0f, 1f),
@@ -222,6 +228,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             dualSpacing = dualMapped?.spacing ?: .12f,
             dualFlow = dualMapped?.flow ?: 1f,
             dualHardness = dualMapped?.hardness ?: 1f,
+            dualAntiAliasMode = dualMapped?.antiAliasMode ?: CspAntiAlias.MEDIUM,
             dualThickness = dualMapped?.thickness ?: 1f,
             dualShapeRoundnessHorizontalJitter = dualMapped?.roundnessHorizontalJitter ?: 0f,
             dualShapeRoundnessVerticalJitter = dualMapped?.roundnessVerticalJitter ?: 0f,
@@ -283,6 +290,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
                 if (pathJitter > DYNAMIC_EPSILON || pathLongitudinalJitter > DYNAMIC_EPSILON) add("Procreate lateral and longitudinal stroke-path jitter preserved independently")
                 if (abs(spacingSpeed) > DYNAMIC_EPSILON) add("Procreate speed-based spacing preserved")
                 if (metadata.boolean("textureOffsetJitter")) add("Procreate Grain Offset Jitter mapped to a deterministic texture origin for each stroke")
+                add("Procreate Shape and Grain filtering preserved independently (${shapeFiltering}, ${grainFiltering})")
                 if (dualMetadata != null) add(if (dualShape != null) "Procreate Sub01 Dual Brush extracted with independent shape and core dynamics; combine mode ${metadata.int("dualBlendMode")} retained" else "Procreate Sub01 metadata found, but its shape source was missing")
                 if (watercolor) add("Procreate Wet Mix/rendering parameters detected; Inkloom maps load, mix, accumulation and edge behavior to its deterministic wet-brush approximation")
                 if (metadata.int("blendMode") !in 0..1) add("Procreate blend mode ${metadata.int("blendMode")} is retained in the source but rendered source-over until independently verified")
@@ -299,7 +307,8 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             sizeScale = (metadata.float("maxSize", .32f) / .32f).coerceIn(.01f, 8f),
             spacing = (metadata.float("plotSpacing") * 10f).coerceIn(.01f, 2f),
             flow = metadata.float("dynamicsGlazedFlow", 1f).coerceIn(0f, 1f),
-            hardness = if (metadata.boolean("shapeFilter", true)) .85f else 1f,
+            hardness = 1f,
+            antiAliasMode = ProcreateFiltering.shapeAntiAlias(ProcreateFiltering.fromArchive(metadata.boolean("shapeFilter", true), metadata.int("shapeFilterMode"))),
             thickness = metadata.float("shapeRoundness", 1f).coerceIn(.05f, 1f),
             roundnessHorizontalJitter = metadata.float("jitterShapeRoundnessX").coerceIn(0f, 1f),
             roundnessVerticalJitter = metadata.float("jitterShapeRoundness").coerceIn(0f, 1f),
@@ -483,6 +492,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         val spacing: Float,
         val flow: Float,
         val hardness: Float,
+        val antiAliasMode: Int,
         val thickness: Float,
         val roundnessHorizontalJitter: Float,
         val roundnessVerticalJitter: Float,
@@ -504,7 +514,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
     )
 
     companion object {
-        const val CURRENT_VERSION = 19
+        const val CURRENT_VERSION = 20
         private const val MAX_ENTRIES = 4_096
         private const val MAX_ENTRY_BYTES = 32L * 1024L * 1024L
         private const val MAX_EXPANDED_BYTES = 384L * 1024L * 1024L

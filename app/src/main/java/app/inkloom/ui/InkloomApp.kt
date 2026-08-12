@@ -4908,6 +4908,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     grainEmphasized = activeBrush?.grainEmphasized ?: false
     grainOffsetJitter = activeBrush?.grainOffsetJitter ?: false
     grainCompositeMode = activeBrush?.grainCompositeMode ?: CspTextureComposite.MULTIPLY
+    grainFilteringMode = activeBrush?.grainFilteringMode ?: ProcreateFiltering.NONE
     brushSpacing = activeBrush?.spacing ?: .12f
     strokeFalloff = activeBrush?.strokeFalloff ?: 0f
     strokePathJitter = activeBrush?.strokePathJitter ?: 0f
@@ -9009,6 +9010,7 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 if (draft.grainPreviewPath != null) item { SettingSwitch("Emphasize paper texture", null, draft.grainEmphasized) { draft = draft.copy(grainEmphasized = it) } }
                 if (draft.grainPreviewPath != null) item { SettingSwitch("Jitter grain origin per stroke", "Keeps each stroke deterministic while avoiding an identical repeated grain start.", draft.grainOffsetJitter) { draft = draft.copy(grainOffsetJitter = it) } }
                 if (draft.grainPreviewPath != null) item { BrushTextureCompositeEditor(draft.grainCompositeMode) { draft = draft.copy(grainCompositeMode = it) } }
+                if (draft.grainPreviewPath != null) item { ProcreateFilteringEditor(tr("Grain filtering", "颗粒过滤"), draft.grainFilteringMode) { draft = draft.copy(grainFilteringMode = it) } }
                 item { BrushSettingSlider("Thickness", draft.thickness, .05f..2f) { draft = draft.copy(thickness = it) } }
                 item { SettingSwitch("Vertical thickness", "Applies thickness along the imported tip's vertical axis.", draft.thicknessVertical) { draft = draft.copy(thicknessVertical = it) } }
                 item { BrushSettingSlider(tr("Horizontal roundness jitter", "水平真圆率抖动"), draft.shapeRoundnessHorizontalJitter, 0f..1f) { draft = draft.copy(shapeRoundnessHorizontalJitter = it) } }
@@ -9223,6 +9225,23 @@ private fun BrushTextureCompositeEditor(value: Int, onValue: (Int) -> Unit) {
             color = MutedInk,
             fontSize = 10.sp,
         )
+    }
+}
+
+@Composable
+private fun ProcreateFilteringEditor(label: String, value: Int, onValue: (Int) -> Unit) {
+    val modes = listOf(
+        ProcreateFiltering.NONE to tr("No filtering", "无过滤"),
+        ProcreateFiltering.CLASSIC to tr("Classic", "经典"),
+        ProcreateFiltering.IMPROVED to tr("Improved", "改进"),
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, color = MutedInk, fontSize = 11.sp)
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(modes, key = { it.first }) { (mode, text) ->
+                FilterChip(selected = ProcreateFiltering.normalize(value) == mode, onClick = { onValue(mode) }, label = { Text(text) })
+            }
+        }
     }
 }
 

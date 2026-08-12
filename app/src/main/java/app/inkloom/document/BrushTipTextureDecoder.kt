@@ -31,6 +31,7 @@ object BrushTipTextureDecoder {
         grainOffsetX: Float = 0f,
         grainOffsetY: Float = 0f,
         grainCompositeMode: Int = CspTextureComposite.MULTIPLY,
+        grainFilteringMode: Int = ProcreateFiltering.NONE,
         antiAliasMode: Int = CspAntiAlias.MEDIUM,
     ): Bitmap? = runCatching {
         val source = decodeSampled(tipPath, MAX_RENDER_TEXTURE_DIMENSION) ?: return null
@@ -61,23 +62,19 @@ object BrushTipTextureDecoder {
                 val grainMask = if (grain != null && grainPixels != null) {
                     val x = index % source.width
                     val y = index / source.width
-                    val coordinate = TextureSampling.coordinate(
+                    val effectiveLuminance = TextureSampling.sampleEffectiveLuminance(
+                        grainPixels,
+                        grain.width,
+                        grain.height,
                         x,
                         y,
                         source.width,
                         source.height,
-                        grain.width,
-                        grain.height,
                         grainScale,
                         grainRotation,
                         grainOffsetX,
                         grainOffsetY,
-                    )
-                    val sample = grainPixels[coordinate.y * grain.width + coordinate.x]
-                    val grainLuminance = (Color.red(sample) * .299f + Color.green(sample) * .587f + Color.blue(sample) * .114f) / 255f
-                    val effectiveLuminance = TextureSampling.effectiveLuminance(
-                        grainLuminance,
-                        Color.alpha(sample) / 255f,
+                        grainFilteringMode,
                     )
                     TextureSampling.mask(
                         effectiveLuminance,

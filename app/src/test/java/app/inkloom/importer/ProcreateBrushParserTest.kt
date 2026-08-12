@@ -3,6 +3,8 @@ package app.inkloom.importer
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
+import app.inkloom.document.CspAntiAlias
+import app.inkloom.document.ProcreateFiltering
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -66,6 +68,8 @@ class ProcreateBrushParserTest {
             assertEquals(sourceMetadata.float("dynamicsJitterStrokeHue"), brush.procreateColorDynamics.strokeHue, .0001f)
             assertEquals(sourceMetadata.float("dynamicsPressureSecondaryColor"), brush.procreateColorDynamics.pressureSecondary, .0001f)
             assertEquals(sourceMetadata.float("dynamicsTiltSecondaryColor"), brush.procreateColorDynamics.tiltSecondary, .0001f)
+            assertEquals(CspAntiAlias.MEDIUM, brush.antiAliasMode)
+            assertEquals(ProcreateFiltering.CLASSIC, brush.grainFilteringMode)
             assertEquals(ProcreateBrushParser.CURRENT_VERSION, brush.parserVersion)
         } finally {
             root.deleteRecursively()
@@ -171,6 +175,8 @@ class ProcreateBrushParserTest {
             assertTrue(brushes.any { it.grainDensityDynamics.secondary.randomEnabled })
             assertTrue(brushes.none { it.spray && (it.strokePathJitter > 0f || it.strokePathLongitudinalJitter > 0f) })
             assertEquals(23, brushes.count { it.grainOffsetJitter })
+            assertTrue(brushes.all { it.grainFilteringMode in ProcreateFiltering.NONE..ProcreateFiltering.IMPROVED })
+            assertTrue(brushes.map(ImportedBrush::grainFilteringMode).distinct().size >= 2)
             assertTrue(brushes.any { brush -> brush.report.any { it.contains("stroke-path jitter") } })
         } finally {
             root.deleteRecursively()

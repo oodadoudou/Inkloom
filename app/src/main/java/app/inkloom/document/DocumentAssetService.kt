@@ -860,7 +860,7 @@ class DocumentAssetService(private val context: Context) {
             paint.color = stroke.colorArgb.toInt()
             val tipPaths = stroke.tipAssetPaths.ifEmpty { listOfNotNull(stroke.tipAssetPath) }
             val grainOffset = GrainBehavior.offset(stroke.renderSeed, stroke.grainOffsetJitter)
-            val decodedTips = tipPaths.mapNotNull { decodeTip(it, stroke.hardness, stroke.grainAssetPath, stroke.grainDensity, stroke.grainScale, stroke.grainRotationDegrees, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized, grainOffset.x, grainOffset.y, stroke.grainCompositeMode, stroke.antiAliasMode) }
+            val decodedTips = tipPaths.mapNotNull { decodeTip(it, stroke.hardness, stroke.grainAssetPath, stroke.grainDensity, stroke.grainScale, stroke.grainRotationDegrees, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized, grainOffset.x, grainOffset.y, stroke.grainCompositeMode, stroke.grainFilteringMode, stroke.antiAliasMode) }
             val tips = decodedTips.ifEmpty { listOfNotNull(ProceduralBrushTip.create(stroke)) }
             if (tips.isNotEmpty()) {
                 val decodedDualTips = if (stroke.dualBrush) stroke.dualTipAssetPaths.mapNotNull { decodeTip(it, stroke.dualHardness, null, 0f, antiAliasMode = stroke.dualAntiAliasMode) } else emptyList()
@@ -950,7 +950,7 @@ class DocumentAssetService(private val context: Context) {
                 val cacheKey = "$tipIndex:$densityBucket:${sampleScale.toInt()}:${grainRotation.toInt()}:${sampleOffsetX.toBits()}:${sampleOffsetY.toBits()}"
                 dynamicGrainTips[cacheKey] ?: if (dynamicGrainTips.size < MAX_DYNAMIC_GRAIN_VARIANTS_PER_STROKE) {
                     tipPaths.getOrNull(tipIndex)?.let { path ->
-                        decodeTip(path, stroke.hardness, stroke.grainAssetPath, densityBucket / 20f, sampleScale, grainRotation, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized, sampleOffsetX, sampleOffsetY, stroke.grainCompositeMode, stroke.antiAliasMode)
+                        decodeTip(path, stroke.hardness, stroke.grainAssetPath, densityBucket / 20f, sampleScale, grainRotation, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized, sampleOffsetX, sampleOffsetY, stroke.grainCompositeMode, stroke.grainFilteringMode, stroke.antiAliasMode)
                     }?.also { dynamicGrainTips[cacheKey] = it } ?: tips[tipIndex]
                 } else tips[tipIndex]
             } else tips[tipIndex]
@@ -1093,8 +1093,8 @@ class DocumentAssetService(private val context: Context) {
         paint.maskFilter = BrushBlur.quantizedRadius(blur).takeIf { it > 0f }?.let { BlurMaskFilter(it, BlurMaskFilter.Blur.NORMAL) }
     }
 
-    private fun decodeTip(path: String, hardness: Float, grainPath: String?, grainDensity: Float, grainScale: Float = 100f, grainRotation: Float = 0f, grainBrightness: Float = 0f, grainContrast: Float = 0f, grainReversed: Boolean = false, grainEmphasized: Boolean = false, grainOffsetX: Float = 0f, grainOffsetY: Float = 0f, grainCompositeMode: Int = CspTextureComposite.MULTIPLY, antiAliasMode: Int = CspAntiAlias.MEDIUM): Bitmap? =
-        BrushTipTextureDecoder.decode(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainOffsetX, grainOffsetY, grainCompositeMode, antiAliasMode)
+    private fun decodeTip(path: String, hardness: Float, grainPath: String?, grainDensity: Float, grainScale: Float = 100f, grainRotation: Float = 0f, grainBrightness: Float = 0f, grainContrast: Float = 0f, grainReversed: Boolean = false, grainEmphasized: Boolean = false, grainOffsetX: Float = 0f, grainOffsetY: Float = 0f, grainCompositeMode: Int = CspTextureComposite.MULTIPLY, grainFilteringMode: Int = ProcreateFiltering.NONE, antiAliasMode: Int = CspAntiAlias.MEDIUM): Bitmap? =
+        BrushTipTextureDecoder.decode(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainOffsetX, grainOffsetY, grainCompositeMode, grainFilteringMode, antiAliasMode)
 
     private fun rotateQuarterTurns(source: Bitmap?, quarterTurns: Int): Bitmap? {
         source ?: return null

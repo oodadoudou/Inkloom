@@ -4,6 +4,7 @@ import app.inkloom.document.BrushCurvePoint
 import app.inkloom.document.BrushColorDynamics
 import app.inkloom.document.BrushParameterDynamics
 import app.inkloom.document.ProcreateColorDynamics
+import app.inkloom.document.ProcreateFiltering
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushTaperMode
 import app.inkloom.document.CspTextureComposite
@@ -66,6 +67,7 @@ data class ImportedBrush(
     val grainEmphasized: Boolean = false,
     val grainOffsetJitter: Boolean = false,
     val grainCompositeMode: Int = CspTextureComposite.MULTIPLY,
+    val grainFilteringMode: Int = ProcreateFiltering.NONE,
     val defaultSize: Float = 8f,
     /** Procreate StreamLine > Amount. Independent from CSP stabilization. */
     val streamLine: Float = 0f,

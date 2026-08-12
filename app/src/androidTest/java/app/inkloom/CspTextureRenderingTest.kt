@@ -13,6 +13,7 @@ import app.inkloom.document.DocumentAssetService
 import app.inkloom.document.InkPage
 import app.inkloom.document.InkStroke
 import app.inkloom.document.PageBackground
+import app.inkloom.document.ProcreateFiltering
 import app.inkloom.document.StrokePoint
 import app.inkloom.ui.InkCanvasView
 import java.io.File
@@ -206,15 +207,60 @@ class CspTextureRenderingTest {
         }
     }
 
-    private fun renderLive(stroke: InkStroke): Bitmap {
+    @Test fun procreateGrainFilteringModesRemainDistinctAndImprovedMatchesLiveExport() {
+        val tip = File(context.cacheDir, "grain-filter-tip.png")
+        val grain = File(context.cacheDir, "grain-filter-source.png")
+        writePng(tip, IntArray(64) { Color.BLACK })
+        writePng(grain, IntArray(64) { index ->
+            val x = index % 8; val y = index / 8
+            if ((x + y * 3) % 5 < 2) Color.BLACK else Color.WHITE
+        })
+        try {
+            val base = InkStroke(
+                points = listOf(StrokePoint(.5f, .5f)),
+                colorArgb = 0xFF202020,
+                width = 320f,
+                sizePressureEnabled = false,
+                tipAssetPath = tip.absolutePath,
+                tipAssetPaths = listOf(tip.absolutePath),
+                grainAssetPath = grain.absolutePath,
+                grainDensity = 1f,
+                grainScale = 73f,
+                grainRotationDegrees = 19f,
+            )
+            fun export(mode: Int) = DocumentAssetService(context).renderPageBitmap(
+                InkPage(background = PageBackground.Paper(), strokes = listOf(base.copy(grainFilteringMode = mode))), 400,
+            )
+            val nearest = export(ProcreateFiltering.NONE)
+            val classic = export(ProcreateFiltering.CLASSIC)
+            val improvedStroke = base.copy(grainFilteringMode = ProcreateFiltering.IMPROVED)
+            val improved = export(ProcreateFiltering.IMPROVED)
+            val live = renderLive(improvedStroke, improved.height)
+            try {
+                assertTrue(pixelSignature(nearest) != pixelSignature(classic))
+                assertTrue(pixelSignature(classic) != pixelSignature(improved))
+                assertEquals(improved.width, live.width)
+                assertTrue(
+                    "Improved filtering must use the same grain pixels in live and export; differing patch pixels=${patchDifference(improved, improved.width / 2, improved.height / 2, live, live.width / 2, live.height / 2, 120)}",
+                    patchDifference(improved, improved.width / 2, improved.height / 2, live, live.width / 2, live.height / 2, 120) <= 4,
+                )
+            } finally {
+                nearest.recycle(); classic.recycle(); improved.recycle(); live.recycle()
+            }
+        } finally {
+            tip.delete(); grain.delete()
+        }
+    }
+
+    private fun renderLive(stroke: InkStroke, outputHeight: Int = 566): Bitmap {
         lateinit var rendered: Bitmap
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val view = InkCanvasView(context).apply {
                 pagePaperColor = Color.WHITE
                 setDocumentStrokes(listOf(stroke), "csp-height-live")
-                layout(0, 0, 400, 566)
+                layout(0, 0, 400, outputHeight)
             }
-            rendered = Bitmap.createBitmap(400, 566, Bitmap.Config.ARGB_8888).also { view.draw(Canvas(it)) }
+            rendered = Bitmap.createBitmap(400, outputHeight, Bitmap.Config.ARGB_8888).also { view.draw(Canvas(it)) }
         }
         return rendered
     }
@@ -232,5 +278,11 @@ class CspTextureRenderingTest {
             if (first.getPixel(firstX + dx, firstY + dy) != second.getPixel(secondX + dx, secondY + dy)) different++
         }
         return different
+    }
+
+    private fun pixelSignature(bitmap: Bitmap): Int {
+        val pixels = IntArray(bitmap.width * bitmap.height)
+        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        return pixels.contentHashCode()
     }
 }

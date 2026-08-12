@@ -6,6 +6,7 @@ import app.inkloom.document.BrushParameterDynamics
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushTaperMode
 import app.inkloom.document.ProcreateColorDynamics
+import app.inkloom.document.ProcreateFiltering
 import app.inkloom.document.CspAntiAlias
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
@@ -207,6 +208,7 @@ class InkloomBrushPackage(private val assetDirectory: File) {
         grainBrightness = finite(source.grainBrightness, 0f).coerceIn(-100f, 100f),
         grainContrast = finite(source.grainContrast, 0f).coerceIn(-100f, 100f),
         grainCompositeMode = source.grainCompositeMode.coerceIn(0, 64),
+        grainFilteringMode = ProcreateFiltering.normalize(source.grainFilteringMode),
         defaultSize = finite(source.defaultSize, 8f).coerceIn(.5f, 400f),
         streamLine = finite(source.streamLine, 0f).coerceIn(0f, 1f),
         streamLinePressure = finite(source.streamLinePressure, 0f).coerceIn(0f, 1f),

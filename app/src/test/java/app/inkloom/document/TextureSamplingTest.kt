@@ -34,4 +34,26 @@ class TextureSamplingTest {
     @Test fun brightnessAndContrastAreBounded() {
         assertEquals(0f, TextureSampling.mask(1f, 100f, 100f, false, true), .001f)
     }
+
+    @Test fun ProcreateFilteringKeepsNearestClassicAndImprovedSamplingDistinctAndBounded() {
+        val pixels = intArrayOf(
+            0xFF000000.toInt(), 0xFFFFFFFF.toInt(), 0xFFFFFFFF.toInt(), 0xFF000000.toInt(),
+            0xFFFFFFFF.toInt(), 0xFF000000.toInt(), 0xFFFFFFFF.toInt(), 0xFFFFFFFF.toInt(),
+            0xFF000000.toInt(), 0xFFFFFFFF.toInt(), 0xFF000000.toInt(), 0xFFFFFFFF.toInt(),
+            0xFFFFFFFF.toInt(), 0xFFFFFFFF.toInt(), 0xFF000000.toInt(), 0xFF000000.toInt(),
+        )
+        fun sample(mode: Int) = TextureSampling.sampleEffectiveLuminance(
+            pixels, 4, 4, 0, 1, 7, 5, 83f, 17f, filteringMode = mode,
+        )
+
+        val nearest = sample(ProcreateFiltering.NONE)
+        val classic = sample(ProcreateFiltering.CLASSIC)
+        val improved = sample(ProcreateFiltering.IMPROVED)
+
+        assertTrue(nearest == 0f || nearest == 1f)
+        assertTrue(classic in 0f..1f)
+        assertTrue(improved in 0f..1f)
+        assertTrue(kotlin.math.abs(nearest - classic) > .01f)
+        assertTrue(kotlin.math.abs(classic - improved) > .0001f)
+    }
 }

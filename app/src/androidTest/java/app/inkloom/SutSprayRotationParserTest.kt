@@ -290,6 +290,7 @@ class SutSprayRotationParserTest {
                 blurSecondaryDynamics = app.inkloom.document.BrushSecondaryDynamics(tiltEnabled = true, tiltMinimum = .4f, tiltStart = .36f, tiltCurve = listOf(app.inkloom.document.BrushCurvePoint(0f, 1f), app.inkloom.document.BrushCurvePoint(1f, 0f))),
                 antiAliasMode = CspAntiAlias.NONE,
                 grainCompositeMode = CspTextureComposite.HEIGHT,
+                grainFilteringMode = app.inkloom.document.ProcreateFiltering.IMPROVED,
                 grainStrokeRotation = -.73f,
                 grainDensityMinimum = .23f,
                 grainDensityDynamics = app.inkloom.document.BrushParameterDynamics(pressureEnabled = true, pressureMinimum = .57f),
@@ -376,6 +377,7 @@ class SutSprayRotationParserTest {
             assertEquals(CspAntiAlias.NONE, restored.antiAliasMode)
             assertEquals(.4f, restored.blurSecondaryDynamics.tiltMinimum, .0001f)
             assertEquals(CspTextureComposite.HEIGHT, restored.grainCompositeMode)
+            assertEquals(app.inkloom.document.ProcreateFiltering.IMPROVED, restored.grainFilteringMode)
             assertEquals(-.73f, restored.grainStrokeRotation, .0001f)
             assertEquals(.23f, restored.grainDensityMinimum, .0001f)
             assertTrue(restored.grainDensityDynamics.pressureEnabled)

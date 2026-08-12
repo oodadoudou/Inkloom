@@ -49,6 +49,7 @@ class InkloomBrushPackageTest {
                 grainStrokeRotation = .75f,
                 grainOffsetJitter = true,
                 grainCompositeMode = CspTextureComposite.HEIGHT,
+                grainFilteringMode = app.inkloom.document.ProcreateFiltering.IMPROVED,
                 defaultSize = 37f,
                 defaultOpacity = .72f,
                 spacing = .18f,
@@ -211,6 +212,7 @@ class InkloomBrushPackageTest {
             assertEquals(original.grainStrokeRotation, restored.grainStrokeRotation, .0001f)
             assertTrue(restored.grainOffsetJitter)
             assertEquals(CspTextureComposite.HEIGHT, restored.grainCompositeMode)
+            assertEquals(app.inkloom.document.ProcreateFiltering.IMPROVED, restored.grainFilteringMode)
             assertEquals(180f, restored.strokeRotationJitterDegrees, .0001f)
             assertEquals(original.sizePressureCurve, restored.sizePressureCurve)
             assertEquals(original.sizeSecondaryDynamics, restored.sizeSecondaryDynamics)

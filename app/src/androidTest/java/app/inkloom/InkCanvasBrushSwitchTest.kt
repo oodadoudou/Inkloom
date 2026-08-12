@@ -134,6 +134,7 @@ class InkCanvasBrushSwitchTest {
             grainScale = 275f,
             grainMovement = .2f,
             grainZoom = .65f,
+            grainFilteringMode = app.inkloom.document.ProcreateFiltering.IMPROVED,
         )
 
         instrumentation.runOnMainSync {
@@ -144,6 +145,7 @@ class InkCanvasBrushSwitchTest {
         assertEquals(.2f, requireNotNull(committed).grainMovement, .0001f)
         assertEquals(.65f, requireNotNull(committed).grainZoom, .0001f)
         assertEquals(275f, requireNotNull(committed).grainScale, .0001f)
+        assertEquals(app.inkloom.document.ProcreateFiltering.IMPROVED, requireNotNull(committed).grainFilteringMode)
     }
 
     @Test
