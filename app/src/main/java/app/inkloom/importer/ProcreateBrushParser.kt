@@ -114,6 +114,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         val followsStroke = metadata.boolean("oriented")
         val spacingJitter = metadata.float("plotSpacingJitter")
         val spacingSpeed = metadata.float("plotSpacingSpeed")
+        val strokeFalloff = metadata.float("dynamicsFalloff").coerceIn(0f, 1f)
         val genericTaperStartLength = metadata.float("taperStartLength").coerceIn(0f, 1f)
         val genericTaperEndLength = metadata.float("taperEndLength").coerceIn(0f, 1f)
         val genericTaperSize = metadata.float("taperSize").coerceIn(0f, 1f)
@@ -159,6 +160,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             tiltSizeCompression = tiltSizeCompression,
             defaultOpacity = (metadata.float("paintOpacity", 1f) * metadata.float("maxOpacity", 1f)).coerceIn(.01f, 1f),
             spacing = (metadata.float("plotSpacing") * 10f).coerceIn(.01f, 2f),
+            strokeFalloff = strokeFalloff,
             spacingSecondaryDynamics = spacingDynamics(spacingSpeed, spacingJitter),
             flow = metadata.float("dynamicsGlazedFlow", 1f).coerceIn(0f, 1f),
             hardness = if (metadata.boolean("shapeFilter", true)) .85f else 1f,
@@ -382,7 +384,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
     )
 
     companion object {
-        const val CURRENT_VERSION = 11
+        const val CURRENT_VERSION = 12
         private const val MAX_ENTRIES = 4_096
         private const val MAX_ENTRY_BYTES = 32L * 1024L * 1024L
         private const val MAX_EXPANDED_BYTES = 384L * 1024L * 1024L

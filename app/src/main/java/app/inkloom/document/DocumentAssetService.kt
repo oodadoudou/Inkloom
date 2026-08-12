@@ -873,18 +873,20 @@ class DocumentAssetService(private val context: Context) {
             }
             else {
                 val taper = StrokeTaper.factors(stroke.points, width.toFloat(), height.toFloat(), stroke.taperMode, stroke.taperStartEnabled, stroke.taperStartLength, stroke.taperStartLengthUnit, stroke.taperStartMinimum, stroke.taperEndEnabled, stroke.taperEndLength, stroke.taperEndLengthUnit, stroke.taperEndMinimum)
+                val falloff = StrokeFalloff.factors(stroke.points, width.toFloat(), height.toFloat(), stroke.width * width / 1600f, stroke.strokeFalloff)
                 if (stroke.points.size == 1) {
                     val point = stroke.points.first()
                     val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
                     val strokeWidth = stroke.width * width / 1600f * (taper.firstOrNull() ?: 1f) * dynamics.size
-                    val alpha = (stroke.flow * dynamics.depositedAlpha * 255).toInt().coerceIn(0, 255)
+                    val alpha = (stroke.flow * dynamics.depositedAlpha * (falloff?.firstOrNull() ?: 1f) * 255).toInt().coerceIn(0, 255)
                     drawLinePoint(canvas, paint, stroke, point, point.x * width, point.y * height, strokeWidth, alpha, width)
                 } else stroke.points.zipWithNext().forEachIndexed { pointIndex, (start, end) ->
                     val point = midpoint(start, end)
                     val taperFactor = (taper[pointIndex] + taper[pointIndex + 1]) / 2f
                     val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
                     val strokeWidth = stroke.width * width / 1600f * taperFactor * dynamics.size
-                    val alpha = (stroke.flow * dynamics.depositedAlpha * 255).toInt().coerceIn(0, 255)
+                    val falloffFactor = falloff?.let { (it[pointIndex] + it[pointIndex + 1]) / 2f } ?: 1f
+                    val alpha = (stroke.flow * dynamics.depositedAlpha * falloffFactor * 255).toInt().coerceIn(0, 255)
                     drawLineSegment(canvas, paint, stroke, point, start.x * width, start.y * height, end.x * width, end.y * height, strokeWidth, alpha, width)
                 }
             }
@@ -910,6 +912,7 @@ class DocumentAssetService(private val context: Context) {
         val dynamicGrainTips = mutableMapOf<String, Bitmap>()
         paint.colorFilter = PorterDuffColorFilter(stroke.colorArgb.toInt(), PorterDuff.Mode.SRC_IN)
         val sampledPoints = EngineV2BrushEvaluator.sampleStampPoints(stroke, width.toFloat(), height.toFloat(), dual = false)
+        val falloff = StrokeFalloff.factors(sampledPoints, width.toFloat(), height.toFloat(), stroke.width * width / 1600f, stroke.strokeFalloff)
         val taper = StrokeTaper.factors(sampledPoints, width.toFloat(), height.toFloat(), stroke.taperMode, stroke.taperStartEnabled, stroke.taperStartLength, stroke.taperStartLengthUnit, stroke.taperStartMinimum, stroke.taperEndEnabled, stroke.taperEndLength, stroke.taperEndLengthUnit, stroke.taperEndMinimum)
         if (tips.size == 1 && EngineV2StampBatchRenderer.draw(canvas, paint, stroke, tips.single(), sampledPoints, 0, width.toFloat(), height.toFloat())) {
             paint.blendMode = null
@@ -960,7 +963,7 @@ class DocumentAssetService(private val context: Context) {
             val scaleX = tipScale.x * flip.x
             val scaleY = tipScale.y * flip.y
             val matrix = Matrix().apply { postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(scaleX, scaleY); postRotate(angle); postTranslate(drawX, drawY) }
-            val mainAlpha = (stroke.flow * dynamics.depositedAlpha).coerceIn(0f, 1f).times(255).toInt()
+            val mainAlpha = (stroke.flow * dynamics.depositedAlpha * (falloff?.get(index) ?: 1f)).coerceIn(0f, 1f).times(255).toInt()
             val jitteredColor = BrushColorJitter.argb(stroke, point, sequenceIndex)
             val tiltBleedAmount = stroke.tiltBleed.coerceIn(0f, 1f) * BrushTilt.response(point, stroke.tiltBleedStart)
             if ((stroke.waterEdgeEnabled && stroke.waterEdgeOpacity > 0f) || tiltBleedAmount > .001f) {
@@ -1001,6 +1004,7 @@ class DocumentAssetService(private val context: Context) {
         val rotationRandom = java.util.Random(stroke.renderSeed.toLong() xor DUAL_ROTATION_SEED)
         val sampledPoints = EngineV2BrushEvaluator.sampleStampPoints(stroke, width.toFloat(), height.toFloat(), dual = true)
         val taper = StrokeTaper.factors(sampledPoints, width.toFloat(), height.toFloat(), stroke.taperMode, stroke.taperStartEnabled, stroke.taperStartLength, stroke.taperStartLengthUnit, stroke.taperStartMinimum, stroke.taperEndEnabled, stroke.taperEndLength, stroke.taperEndLengthUnit, stroke.taperEndMinimum)
+        val falloff = StrokeFalloff.factors(sampledPoints, width.toFloat(), height.toFloat(), stroke.width * width / 1600f, stroke.strokeFalloff)
         sampledPoints.forEachIndexed { index, point ->
             val stampsAtPoint = BrushStampCount.resolve(stroke.dualStampCount, stroke.dualStampCountJitter, stroke.renderSeed, index, dual = true)
             repeat(stampsAtPoint) stamp@ { repeatIndex ->
@@ -1026,7 +1030,7 @@ class DocumentAssetService(private val context: Context) {
             )
             val matrix = Matrix().apply { postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(tipScale.x * flip.x, tipScale.y * flip.y); postRotate(angle); postTranslate(drawX, drawY) }
             paint.colorFilter = PorterDuffColorFilter(BrushColorJitter.argb(stroke, point, sequenceIndex), PorterDuff.Mode.SRC_IN)
-            paint.alpha = (stroke.dualFlow.coerceIn(0f, 1f) * dynamics.depositedAlpha).coerceIn(0f, 1f).times(255).toInt()
+            paint.alpha = (stroke.dualFlow.coerceIn(0f, 1f) * dynamics.depositedAlpha * (falloff?.get(index) ?: 1f)).coerceIn(0f, 1f).times(255).toInt()
             paint.maskFilter = brushBlurMask(stroke, point, diameter, stroke.width * width / 1600f * stroke.dualSizeScale.coerceIn(.01f, 8f), width.toFloat())
             canvas.drawBitmap(tip, matrix, paint)
             paint.maskFilter = null

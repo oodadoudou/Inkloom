@@ -85,6 +85,8 @@ data class ImportedBrush(
     val stabilizationBySpeed: Boolean = false,
     val stabilizationBySpeedMode: Int = 1,
     val spacing: Float = .12f,
+    /** Procreate Stroke Path > Fall Off. Zero disables distance-based opacity decay. */
+    val strokeFalloff: Float = 0f,
     val spacingMode: Int = CspBrushGap.FIXED,
     val flow: Float = 1f,
     val hardness: Float = 1f,

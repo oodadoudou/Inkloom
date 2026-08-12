@@ -17,6 +17,7 @@ import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
 import app.inkloom.document.StrokeStampSampler
 import app.inkloom.document.StrokeTaper
+import app.inkloom.document.StrokeFalloff
 import app.inkloom.engine.v2.brush.EngineV2BrushEvaluator
 import kotlin.math.cos
 import kotlin.math.sin
@@ -42,7 +43,8 @@ internal object EngineV2StampBatchRenderer {
         val buffers = (threadBuffers.get() ?: Buffers().also(threadBuffers::set)).also { it.ensureCapacity(floatCount) }
         val vertices = buffers.vertices
         val textureCoordinates = buffers.textureCoordinates
-        val dynamicAlpha = hasDynamicAlpha(stroke)
+        val falloff = StrokeFalloff.factors(sampledPoints, width, height, stroke.width * width / REFERENCE_WIDTH, stroke.strokeFalloff)
+        val dynamicAlpha = hasDynamicAlpha(stroke) || falloff != null
         val clip = canvas.clipBounds
         val taper = if (stroke.taperStartEnabled || stroke.taperEndEnabled) StrokeTaper.factors(
             sampledPoints, width, height, stroke.taperMode,
@@ -55,7 +57,7 @@ internal object EngineV2StampBatchRenderer {
             val drawX = point.x * width
             val drawY = point.y * height
             val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
-            val depositedAlpha = (stroke.flow * dynamics.depositedAlpha).coerceIn(0f, 1f)
+            val depositedAlpha = (stroke.flow * dynamics.depositedAlpha * (falloff?.get(index) ?: 1f)).coerceIn(0f, 1f)
             if (depositedAlpha <= .0001f) continue
             val diameter = (stroke.width * width.coerceAtLeast(1f) / REFERENCE_WIDTH * (taper?.get(index) ?: 1f) * dynamics.size).coerceAtLeast(.25f)
             val tipScale = BrushTipTransform.scale(

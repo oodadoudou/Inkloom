@@ -143,6 +143,7 @@ class BrushMetadataStore(
                         stabilizationBySpeed = item.optBoolean("stabilizationBySpeed", false),
                         stabilizationBySpeedMode = item.optInt("stabilizationBySpeedMode", 1).coerceIn(0, 1),
                         spacing = item.optDouble("spacing", .12).toFloat(),
+                        strokeFalloff = item.optDouble("strokeFalloff", 0.0).toFloat().coerceIn(0f, 1f),
                         spacingMode = app.inkloom.document.CspBrushGap.normalize(item.optInt("spacingMode", app.inkloom.document.CspBrushGap.FIXED)),
                         flow = item.optDouble("flow", 1.0).toFloat(),
                         hardness = item.optDouble("hardness", 1.0).toFloat(),
@@ -344,6 +345,7 @@ class BrushMetadataStore(
                     .put("stabilizationBySpeed", brush.stabilizationBySpeed)
                     .put("stabilizationBySpeedMode", brush.stabilizationBySpeedMode)
                     .put("spacing", brush.spacing)
+                    .put("strokeFalloff", brush.strokeFalloff)
                     .put("spacingMode", brush.spacingMode)
                     .put("flow", brush.flow)
                     .put("hardness", brush.hardness)

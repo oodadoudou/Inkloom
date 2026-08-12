@@ -62,6 +62,7 @@ class InkloomBrushPackageTest {
                 tiltBleed = .48f,
                 tiltBleedStart = .31f,
                 tiltSizeCompression = true,
+                strokeFalloff = .63f,
                 antiAliasMode = CspAntiAlias.WEAK,
                 blur = 9.5f,
                 blurUnit = 2,
@@ -166,6 +167,7 @@ class InkloomBrushPackageTest {
             assertEquals(original.tiltBleed, restored.tiltBleed, .0001f)
             assertEquals(original.tiltBleedStart, restored.tiltBleedStart, .0001f)
             assertTrue(restored.tiltSizeCompression)
+            assertEquals(original.strokeFalloff, restored.strokeFalloff, .0001f)
             assertEquals(app.inkloom.document.CspBrushGap.NARROW, restored.spacingMode)
             assertEquals(CspAntiAlias.WEAK, restored.antiAliasMode)
             assertEquals(CspAntiAlias.STRONG, restored.dualAntiAliasMode)

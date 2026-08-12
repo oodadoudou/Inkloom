@@ -217,6 +217,7 @@ class InkloomBrushPackage(private val assetDirectory: File) {
         stabilization = finite(source.stabilization, 0f).coerceIn(0f, .9f),
         stabilizationBySpeedMode = source.stabilizationBySpeedMode.coerceIn(0, 1),
         spacing = finite(source.spacing, .12f).coerceIn(.01f, 2f),
+        strokeFalloff = finite(source.strokeFalloff, 0f).coerceIn(0f, 1f),
         spacingMode = app.inkloom.document.CspBrushGap.normalize(source.spacingMode),
         flow = finite(source.flow, 1f).coerceIn(0f, 1f),
         hardness = finite(source.hardness, 1f).coerceIn(0f, 1f),

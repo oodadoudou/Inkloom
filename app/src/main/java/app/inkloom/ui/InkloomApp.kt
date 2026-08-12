@@ -4910,6 +4910,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     grainOffsetJitter = activeBrush?.grainOffsetJitter ?: false
     grainCompositeMode = activeBrush?.grainCompositeMode ?: CspTextureComposite.MULTIPLY
     brushSpacing = activeBrush?.spacing ?: .12f
+    strokeFalloff = activeBrush?.strokeFalloff ?: 0f
     brushSpacingMode = activeBrush?.spacingMode ?: CspBrushGap.FIXED
     brushFlow = activeBrush?.flow ?: 1f
     brushHardness = activeBrush?.hardness ?: 1f
@@ -8964,6 +8965,7 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 if (draft.taperEndEnabled) item { BrushSettingSlider("End minimum size", draft.taperEndMinimum, 0f..1f) { draft = draft.copy(taperEndMinimum = it) } }
                 item { BrushGapModeEditor(tr("Brush-tip gap", "笔尖间隔"), draft.spacingMode) { draft = draft.copy(spacingMode = it) } }
                 if (draft.spacingMode == CspBrushGap.FIXED) item { BrushSettingSlider("Spacing", draft.spacing, .01f..2f) { draft = draft.copy(spacing = it) } }
+                item { BrushSettingSlider(tr("Stroke fall off", "笔画渐隐"), draft.strokeFalloff, 0f..1f) { draft = draft.copy(strokeFalloff = it) } }
                 item { BrushSettingSlider(tr("Flow", "墨水浓度"), draft.flow, 0f..1f) { draft = draft.copy(flow = it) } }
                 item { BrushSettingSlider(tr("Hardness", "硬度"), draft.hardness, 0f..1f) { draft = draft.copy(hardness = it) } }
                 item {
