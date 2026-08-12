@@ -122,6 +122,7 @@ class BrushMetadataStore(
                         grainMovement = item.optDouble("grainMovement", 0.0).toFloat().coerceIn(0f, 1f),
                         grainZoom = item.optDouble("grainZoom", 0.0).toFloat().coerceIn(0f, 1f),
                         grainRotationDegrees = item.optDouble("grainRotationDegrees", 0.0).toFloat().coerceIn(-360f, 360f),
+                        grainStrokeRotation = item.optDouble("grainStrokeRotation", 0.0).toFloat().coerceIn(-1f, 1f),
                         grainBrightness = item.optDouble("grainBrightness", 0.0).toFloat().coerceIn(-100f, 100f),
                         grainContrast = item.optDouble("grainContrast", 0.0).toFloat().coerceIn(-100f, 100f),
                         grainReversed = item.optBoolean("grainReversed", false),
@@ -328,6 +329,7 @@ class BrushMetadataStore(
                     .put("grainMovement", brush.grainMovement)
                     .put("grainZoom", brush.grainZoom)
                     .put("grainRotationDegrees", brush.grainRotationDegrees)
+                    .put("grainStrokeRotation", brush.grainStrokeRotation)
                     .put("grainBrightness", brush.grainBrightness)
                     .put("grainContrast", brush.grainContrast)
                     .put("grainReversed", brush.grainReversed)

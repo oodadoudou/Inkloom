@@ -936,20 +936,21 @@ class DocumentAssetService(private val context: Context) {
             val pathOffset = StrokePathJitter.offset(stroke.renderSeed, sequenceIndex, strokeDirection, diameter, stroke.strokePathJitter, stroke.strokePathLongitudinalJitter)
             val drawX = x + offset.x + StrokePathJitter.unpackX(pathOffset)
             val drawY = y + offset.y + StrokePathJitter.unpackY(pathOffset)
-            val spatialGrain = stroke.grainAssetPath != null && (GrainBehavior.requiresPerDabSampling(stroke.grainMovement, stroke.grainZoom) || stroke.tiltSizeCompression)
+            val spatialGrain = stroke.grainAssetPath != null && (GrainBehavior.requiresPerDabSampling(stroke.grainMovement, stroke.grainZoom) || GrainBehavior.requiresPerDabRotation(stroke.grainStrokeRotation) || stroke.tiltSizeCompression)
             val grainSample = if (spatialGrain) GrainBehavior.sample(
                 GrainOffset(grainOffsetX, grainOffsetY), stroke.grainMovement, if (stroke.tiltSizeCompression) 1f else stroke.grainZoom,
                 stroke.grainScale, drawX, drawY, if (stroke.tiltSizeCompression) stroke.width * width / 1600f else diameter,
             ) else null
+            val grainRotation = GrainBehavior.rotationDegrees(stroke.grainRotationDegrees, stroke.grainStrokeRotation, strokeDirection)
             val tip = if (stroke.grainAssetPath != null && (GrainDynamics.isDynamic(stroke) || spatialGrain)) {
                 val densityBucket = (GrainDynamics.density(stroke, point) * 20f).toInt().coerceIn(0, 20)
                 val sampleScale = grainSample?.scalePercent ?: stroke.grainScale
                 val sampleOffsetX = grainSample?.offset?.x ?: grainOffsetX
                 val sampleOffsetY = grainSample?.offset?.y ?: grainOffsetY
-                val cacheKey = "$tipIndex:$densityBucket:${sampleScale.toInt()}:${sampleOffsetX.toBits()}:${sampleOffsetY.toBits()}"
+                val cacheKey = "$tipIndex:$densityBucket:${sampleScale.toInt()}:${grainRotation.toInt()}:${sampleOffsetX.toBits()}:${sampleOffsetY.toBits()}"
                 dynamicGrainTips[cacheKey] ?: if (dynamicGrainTips.size < MAX_DYNAMIC_GRAIN_VARIANTS_PER_STROKE) {
                     tipPaths.getOrNull(tipIndex)?.let { path ->
-                        decodeTip(path, stroke.hardness, stroke.grainAssetPath, densityBucket / 20f, sampleScale, stroke.grainRotationDegrees, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized, sampleOffsetX, sampleOffsetY, stroke.grainCompositeMode, stroke.antiAliasMode)
+                        decodeTip(path, stroke.hardness, stroke.grainAssetPath, densityBucket / 20f, sampleScale, grainRotation, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized, sampleOffsetX, sampleOffsetY, stroke.grainCompositeMode, stroke.antiAliasMode)
                     }?.also { dynamicGrainTips[cacheKey] = it } ?: tips[tipIndex]
                 } else tips[tipIndex]
             } else tips[tipIndex]

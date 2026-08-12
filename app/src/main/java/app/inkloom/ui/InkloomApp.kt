@@ -4903,6 +4903,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     grainMovement = activeBrush?.grainMovement ?: 0f
     grainZoom = activeBrush?.grainZoom ?: 0f
     grainRotationDegrees = activeBrush?.grainRotationDegrees ?: 0f
+    grainStrokeRotation = activeBrush?.grainStrokeRotation ?: 0f
     grainBrightness = activeBrush?.grainBrightness ?: 0f
     grainContrast = activeBrush?.grainContrast ?: 0f
     grainReversed = activeBrush?.grainReversed ?: false
@@ -8997,6 +8998,7 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 if (draft.grainPreviewPath != null) item { BrushSettingSlider("Grain movement: drag → roller", draft.grainMovement, 0f..1f) { draft = draft.copy(grainMovement = it) } }
                 if (draft.grainPreviewPath != null) item { BrushSettingSlider("Grain zoom: Follow Size → Cropped", draft.grainZoom, 0f..1f) { draft = draft.copy(grainZoom = it) } }
                 if (draft.grainPreviewPath != null) item { BrushSettingSlider("Paper texture rotation", draft.grainRotationDegrees, -180f..180f) { draft = draft.copy(grainRotationDegrees = it) } }
+                if (draft.grainPreviewPath != null) item { BrushSettingSlider(tr("Grain rotation: inverse → fixed → follow stroke", "纹理旋转：反向 → 固定 → 跟随笔画"), draft.grainStrokeRotation, -1f..1f) { draft = draft.copy(grainStrokeRotation = it) } }
                 if (draft.grainPreviewPath != null) item { BrushSettingSlider("Paper texture brightness", draft.grainBrightness, -100f..100f) { draft = draft.copy(grainBrightness = it) } }
                 if (draft.grainPreviewPath != null) item { BrushSettingSlider("Paper texture contrast", draft.grainContrast, -100f..100f) { draft = draft.copy(grainContrast = it) } }
                 if (draft.grainPreviewPath != null) item { SettingSwitch("Invert paper texture", null, draft.grainReversed) { draft = draft.copy(grainReversed = it) } }

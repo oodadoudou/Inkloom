@@ -6,6 +6,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GrainDynamicsTest {
+    @Test fun movingGrainRotationCanFollowOrInvertStrokeDirection() {
+        assertEquals(90f, GrainBehavior.rotationDegrees(0f, 1f, 87f), .0001f)
+        assertEquals(-90f, GrainBehavior.rotationDegrees(0f, -1f, 87f), .0001f)
+        assertEquals(30f, GrainBehavior.rotationDegrees(31f, 0f, 140f), .0001f)
+    }
+
     @Test fun pressureAndVelocityControlTextureDensityIndependently() {
         val stroke = InkStroke(
             points = emptyList(),

@@ -127,6 +127,7 @@ internal object EngineV2StampBatchRenderer {
             !containsLocalPigment &&
             !stroke.blendTipsWithDarken && stroke.blur <= .001f && !GrainDynamics.isDynamic(stroke) &&
             !GrainBehavior.requiresPerDabSampling(stroke.grainMovement, stroke.grainZoom) &&
+            !GrainBehavior.requiresPerDabRotation(stroke.grainStrokeRotation) &&
             stroke.stampCount == 1 && stroke.stampCountJitter <= .001f &&
             stroke.tipFlipHorizontalMode == 0 && stroke.tipFlipVerticalMode == 0 &&
             noColorDynamics(stroke.colorJitterHueDynamics) && noColorDynamics(stroke.colorJitterSaturationDynamics) &&

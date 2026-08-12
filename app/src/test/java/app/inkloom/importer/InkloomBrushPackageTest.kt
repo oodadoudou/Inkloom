@@ -45,6 +45,7 @@ class InkloomBrushPackageTest {
                 grainScale = 215f,
                 grainMovement = .35f,
                 grainZoom = .7f,
+                grainStrokeRotation = .75f,
                 grainOffsetJitter = true,
                 grainCompositeMode = CspTextureComposite.HEIGHT,
                 defaultSize = 37f,
@@ -191,6 +192,7 @@ class InkloomBrushPackageTest {
             assertEquals(original.grainScale, restored.grainScale, .0001f)
             assertEquals(original.grainMovement, restored.grainMovement, .0001f)
             assertEquals(original.grainZoom, restored.grainZoom, .0001f)
+            assertEquals(original.grainStrokeRotation, restored.grainStrokeRotation, .0001f)
             assertTrue(restored.grainOffsetJitter)
             assertEquals(CspTextureComposite.HEIGHT, restored.grainCompositeMode)
             assertEquals(180f, restored.strokeRotationJitterDegrees, .0001f)

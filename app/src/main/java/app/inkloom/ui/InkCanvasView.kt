@@ -559,6 +559,7 @@ class InkCanvasView(context: Context) : View(context) {
     var grainMovement: Float = 0f
     var grainZoom: Float = 0f
     var grainRotationDegrees: Float = 0f
+    var grainStrokeRotation: Float = 0f
     var grainBrightness: Float = 0f
     var grainContrast: Float = 0f
     var grainReversed: Boolean = false
@@ -1524,7 +1525,7 @@ class InkCanvasView(context: Context) : View(context) {
             val pathOffset = app.inkloom.document.StrokePathJitter.offset(stroke.renderSeed, sequenceIndex, strokeDirection, diameter, stroke.strokePathJitter, stroke.strokePathLongitudinalJitter)
             val drawX = x + offset.x + app.inkloom.document.StrokePathJitter.unpackX(pathOffset)
             val drawY = y + offset.y + app.inkloom.document.StrokePathJitter.unpackY(pathOffset)
-            val spatialGrain = stroke.grainAssetPath != null && (GrainBehavior.requiresPerDabSampling(stroke.grainMovement, stroke.grainZoom) || stroke.tiltSizeCompression)
+            val spatialGrain = stroke.grainAssetPath != null && (GrainBehavior.requiresPerDabSampling(stroke.grainMovement, stroke.grainZoom) || GrainBehavior.requiresPerDabRotation(stroke.grainStrokeRotation) || stroke.tiltSizeCompression)
             val grainSample = if (spatialGrain) GrainBehavior.sample(
                 baseOffset = app.inkloom.document.GrainOffset(grainOffsetX, grainOffsetY),
                 movement = stroke.grainMovement,
@@ -1534,9 +1535,10 @@ class InkCanvasView(context: Context) : View(context) {
                 centerY = drawY,
                 diameter = if (stroke.tiltSizeCompression) stroke.width * referenceScale else diameter,
             ) else null
+            val grainRotation = GrainBehavior.rotationDegrees(stroke.grainRotationDegrees, stroke.grainStrokeRotation, strokeDirection)
             val tip = if (stroke.grainAssetPath != null && (GrainDynamics.isDynamic(stroke) || spatialGrain)) {
                 tipPaths.getOrNull(tipIndex)?.let { path ->
-                    loadTip(path, stroke.hardness, stroke.grainAssetPath, GrainDynamics.density(stroke, point), grainSample?.scalePercent ?: stroke.grainScale, stroke.grainRotationDegrees, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized, grainSample?.offset?.x ?: grainOffsetX, grainSample?.offset?.y ?: grainOffsetY, stroke.grainCompositeMode, stroke.antiAliasMode)
+                    loadTip(path, stroke.hardness, stroke.grainAssetPath, GrainDynamics.density(stroke, point), grainSample?.scalePercent ?: stroke.grainScale, grainRotation, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized, grainSample?.offset?.x ?: grainOffsetX, grainSample?.offset?.y ?: grainOffsetY, stroke.grainCompositeMode, stroke.antiAliasMode)
                 } ?: tips[tipIndex]
             } else tips[tipIndex]
             val thicknessScale = stroke.thickness.coerceIn(.05f, 2f) * dynamics.thickness
@@ -1847,6 +1849,7 @@ class InkCanvasView(context: Context) : View(context) {
         val isDynamicVariant = grainPath != null && (
             kotlin.math.abs(grainDensity - this.grainDensity) >= .025f ||
                 kotlin.math.abs(grainScale - this.grainScale) >= 2.5f ||
+                kotlin.math.abs(grainRotation - this.grainRotationDegrees) >= 7.5f ||
                 kotlin.math.abs(grainOffsetX) > .0001f || kotlin.math.abs(grainOffsetY) > .0001f
             )
         if (activeTool != null && isDynamicVariant && !forceSynchronousTipDecode) {
@@ -1888,7 +1891,7 @@ class InkCanvasView(context: Context) : View(context) {
         val primary = tipAssetPaths.ifEmpty { listOfNotNull(tipAssetPath) }
         val secondary = if (brushDual) dualTipAssetPaths.ifEmpty { primary } else emptyList()
         if (primary.isEmpty() && secondary.isEmpty()) return
-        val signature = "${primary.joinToString()}|${secondary.joinToString()}|$brushHardness|$dualHardness|$grainAssetPath|$grainDensity|$grainScale|$grainMovement|$grainZoom|$grainRotationDegrees|$grainBrightness|$grainContrast|$grainReversed|$grainEmphasized|$grainCompositeMode|$brushAntiAliasMode|$dualAntiAliasMode"
+        val signature = "${primary.joinToString()}|${secondary.joinToString()}|$brushHardness|$dualHardness|$grainAssetPath|$grainDensity|$grainScale|$grainMovement|$grainZoom|$grainRotationDegrees|$grainStrokeRotation|$grainBrightness|$grainContrast|$grainReversed|$grainEmphasized|$grainCompositeMode|$brushAntiAliasMode|$dualAntiAliasMode"
         if (signature == prewarmedBrushSignature) return
         prewarmedBrushSignature = signature
         primary.forEach { prewarmTip(it, brushHardness, grainAssetPath, grainDensity, grainScale, grainRotationDegrees, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainCompositeMode = grainCompositeMode, antiAliasMode = brushAntiAliasMode) }
@@ -4741,6 +4744,7 @@ class InkCanvasView(context: Context) : View(context) {
     private fun withCurrentGrainBehavior(stroke: InkStroke): InkStroke = stroke.copy(
         grainMovement = grainMovement,
         grainZoom = grainZoom,
+        grainStrokeRotation = grainStrokeRotation,
         tiltGradation = tiltGradation,
         tiltGradationStart = tiltGradationStart,
         tiltBleed = tiltBleed,

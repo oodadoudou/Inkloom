@@ -51,6 +51,16 @@ object GrainBehavior {
     fun requiresPerDabSampling(movement: Float, zoom: Float): Boolean =
         movement > EPSILON || zoom > EPSILON
 
+    fun requiresPerDabRotation(strokeRotation: Float): Boolean = kotlin.math.abs(strokeRotation) > EPSILON
+
+    /** Procreate Moving Grain Rotation: inverse ← fixed → follow stroke. */
+    fun rotationDegrees(baseDegrees: Float, strokeRotation: Float, strokeDirectionDegrees: Float): Float {
+        val base = baseDegrees.takeIf(Float::isFinite)?.coerceIn(-360f, 360f) ?: 0f
+        val follow = strokeRotation.takeIf(Float::isFinite)?.coerceIn(-1f, 1f) ?: 0f
+        val direction = strokeDirectionDegrees.takeIf(Float::isFinite) ?: 0f
+        return kotlin.math.round((base + direction * follow) / ROTATION_BUCKET_DEGREES) * ROTATION_BUCKET_DEGREES
+    }
+
     private fun quantizePhase(value: Float): Float {
         val wrapped = value - floor(value)
         return floor(wrapped * RENDER_PHASES) / RENDER_PHASES
@@ -65,4 +75,5 @@ object GrainBehavior {
     private const val SCALE_BUCKET_PERCENT = 5f
     private const val REFERENCE_GRAIN_DIAMETER_PX = 100f
     private const val EPSILON = .0001f
+    private const val ROTATION_BUCKET_DEGREES = 15f
 }

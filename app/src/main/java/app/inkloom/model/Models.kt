@@ -55,6 +55,8 @@ data class ImportedBrush(
     /** Procreate Grain > Zoom. 0 follows brush size; 1 is Cropped at a fixed texture size. */
     val grainZoom: Float = 0f,
     val grainRotationDegrees: Float = 0f,
+    /** Procreate Moving Grain rotation: -1 inverse, 0 fixed, +1 follows stroke. */
+    val grainStrokeRotation: Float = 0f,
     val grainBrightness: Float = 0f,
     val grainContrast: Float = 0f,
     val grainReversed: Boolean = false,

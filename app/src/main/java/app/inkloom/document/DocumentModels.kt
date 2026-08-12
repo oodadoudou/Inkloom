@@ -281,6 +281,7 @@ data class InkStroke(
     val grainMovement: Float = 0f,
     val grainZoom: Float = 0f,
     val grainRotationDegrees: Float = 0f,
+    val grainStrokeRotation: Float = 0f,
     val grainBrightness: Float = 0f,
     val grainContrast: Float = 0f,
     val grainReversed: Boolean = false,

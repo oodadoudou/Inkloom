@@ -201,6 +201,7 @@ class InkloomBrushPackage(private val assetDirectory: File) {
         grainMovement = finite(source.grainMovement, 0f).coerceIn(0f, 1f),
         grainZoom = finite(source.grainZoom, 0f).coerceIn(0f, 1f),
         grainRotationDegrees = finite(source.grainRotationDegrees, 0f).coerceIn(-360f, 360f),
+        grainStrokeRotation = finite(source.grainStrokeRotation, 0f).coerceIn(-1f, 1f),
         grainBrightness = finite(source.grainBrightness, 0f).coerceIn(-100f, 100f),
         grainContrast = finite(source.grainContrast, 0f).coerceIn(-100f, 100f),
         grainCompositeMode = source.grainCompositeMode.coerceIn(0, 64),

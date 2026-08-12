@@ -142,7 +142,8 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             grainScale = (metadata.float("textureScale", 1f) * 100f).coerceIn(1f, 4000f),
             grainMovement = metadata.float("textureMovement", 1f).coerceIn(0f, 1f),
             grainZoom = metadata.float("textureZoom", 1f).coerceIn(0f, 1f),
-            grainRotationDegrees = (metadata.float("textureRotation") * 360f).coerceIn(-360f, 360f),
+            grainRotationDegrees = 0f,
+            grainStrokeRotation = metadata.float("textureRotation").coerceIn(-1f, 1f),
             grainBrightness = (metadata.float("textureBrightness") * 100f).coerceIn(-100f, 100f),
             grainContrast = (metadata.float("textureContrast") * 100f).coerceIn(-100f, 100f),
             grainReversed = metadata.boolean("textureInverted"),
@@ -393,7 +394,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
     )
 
     companion object {
-        const val CURRENT_VERSION = 13
+        const val CURRENT_VERSION = 14
         private const val MAX_ENTRIES = 4_096
         private const val MAX_ENTRY_BYTES = 32L * 1024L * 1024L
         private const val MAX_EXPANDED_BYTES = 384L * 1024L * 1024L
