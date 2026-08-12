@@ -128,6 +128,7 @@ import app.inkloom.document.WaterEdge
 import app.inkloom.engine.v2.render.RasterBlendSession
 import app.inkloom.engine.v2.render.RasterLiquifySession
 import app.inkloom.engine.v2.render.RasterEraserSession
+import app.inkloom.engine.v2.render.RasterWetPaintMixer
 import app.inkloom.model.EditorTool
 import app.inkloom.model.SymmetryMode
 import app.inkloom.settings.CspShortcutResolver
@@ -4705,7 +4706,9 @@ class InkCanvasView(context: Context) : View(context) {
             android.graphics.Rect(0, 0, patchWidth, patchHeight),
             Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.DST_IN },
         )
-        Canvas(raster).drawBitmap(paintSurface, patchLeft.toFloat(), patchTop.toFloat(), Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.SRC_OVER })
+        if (newStrokes.any { stroke -> stroke.watercolor || stroke.colorMix > .001f || stroke.paintMix > .001f }) {
+            RasterWetPaintMixer.composite(raster, paintSurface, patchLeft, patchTop, newStrokes)
+        } else Canvas(raster).drawBitmap(paintSurface, patchLeft.toFloat(), patchTop.toFloat(), Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.SRC_OVER })
         paintSurface.recycle()
         invalidate()
         val snapshot = raster.copy(Bitmap.Config.ARGB_8888, false)

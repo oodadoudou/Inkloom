@@ -1,0 +1,47 @@
+package app.inkloom
+
+import android.graphics.Bitmap
+import android.graphics.Color
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import app.inkloom.document.InkStroke
+import app.inkloom.document.StrokePoint
+import app.inkloom.engine.v2.render.RasterWetPaintMixer
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.runner.RunWith
+
+@RunWith(AndroidJUnit4::class)
+class RasterWetPaintMixerTest {
+    @Test fun wetPaintMixesFreshColorWithExistingLayerPigment() {
+        val base = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLUE) }
+        val patch = Bitmap.createBitmap(32, 32, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+        val wet = InkStroke(
+            watercolor = true,
+            colorMix = .5f,
+            paintMix = .8f,
+            points = listOf(StrokePoint(.25f, .25f, pressure = 1f), StrokePoint(.75f, .75f, pressure = 1f)),
+        )
+        assertTrue(RasterWetPaintMixer.composite(base, patch, 16, 16, listOf(wet)))
+        val mixed = base.getPixel(32, 32)
+        assertTrue("Mixed pigment retains red from the brush", Color.red(mixed) > 40)
+        assertTrue("Mixed pigment retains blue from the layer", Color.blue(mixed) > 40)
+        assertTrue("Wet paint must not collapse to normal pure-red source-over", Color.blue(mixed) > Color.green(mixed))
+        patch.recycle(); base.recycle()
+    }
+
+    @Test fun amountOfPaintControlsFreshPigmentRatioAndDensityControlsAlphaDeposit() {
+        fun result(amount: Float, density: Float): Int {
+            val base = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.argb(100, 0, 0, 255)) }
+            val patch = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+            val stroke = InkStroke(watercolor = true, colorMix = amount, paintMix = density, points = listOf(StrokePoint(.5f, .5f)))
+            RasterWetPaintMixer.composite(base, patch, 0, 0, listOf(stroke))
+            return base.getPixel(4, 4).also { patch.recycle(); base.recycle() }
+        }
+        val lowPaint = result(.15f, .8f)
+        val highPaint = result(.9f, .8f)
+        assertTrue(Color.red(highPaint) > Color.red(lowPaint))
+        val lowDensity = result(.8f, .1f)
+        val highDensity = result(.8f, 1f)
+        assertTrue(Color.alpha(highDensity) > Color.alpha(lowDensity))
+    }
+}
