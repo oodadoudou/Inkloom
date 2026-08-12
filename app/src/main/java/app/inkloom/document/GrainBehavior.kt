@@ -14,14 +14,14 @@ object GrainBehavior {
     }
 
     /**
-     * Procreate's Moving grain travels with the brush shape, while Texturized grain remains fixed
-     * behind the stroke. A Movement value between those endpoints partially rolls the grain.
+     * Procreate's low Movement drags/smears grain with the brush shape, while high Movement rolls
+     * it like Texturized grain fixed behind the stroke. Values between those endpoints partially
+     * roll the grain.
      * Four phase buckets per axis cap one preset at 16 decoded variants, avoiding decode/GC stalls
      * on MotionEvent while retaining a stable page-space texture under overlapping dabs.
      *
-     * Zoom interpolates between a fixed 100 px reference grain and grain that follows the current
-     * dab diameter. This is intentionally independent of authored Scale; multiplying the two at
-     * import time loses Procreate's Cropped/Follow Size behavior.
+     * Zoom runs from Follow Size at zero to Cropped/fixed at one. This is intentionally independent
+     * of authored Scale; multiplying the two at import time loses that behavior.
      */
     fun sample(
         baseOffset: GrainOffset,
@@ -33,12 +33,12 @@ object GrainBehavior {
         diameter: Float,
     ): GrainSample {
         val safeDiameter = diameter.takeIf(Float::isFinite)?.coerceAtLeast(.25f) ?: 1f
-        val follow = zoom.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: 1f
+        val cropped = zoom.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: 0f
         val scale = scalePercent.takeIf(Float::isFinite)?.coerceIn(1f, 4000f) ?: 100f
-        val effectiveScale = (scale * (REFERENCE_GRAIN_DIAMETER_PX / safeDiameter).pow(1f - follow))
+        val effectiveScale = (scale * (REFERENCE_GRAIN_DIAMETER_PX / safeDiameter).pow(cropped))
             .coerceIn(1f, 4000f)
         val wavelength = (safeDiameter * effectiveScale / 100f).coerceAtLeast(1f)
-        val stationaryAmount = 1f - (movement.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: 1f)
+        val stationaryAmount = movement.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: 0f
         return GrainSample(
             offset = GrainOffset(
                 quantizePhase(baseOffset.x + centerX / wavelength * stationaryAmount),
@@ -49,7 +49,7 @@ object GrainBehavior {
     }
 
     fun requiresPerDabSampling(movement: Float, zoom: Float): Boolean =
-        movement < 1f - EPSILON || zoom < 1f - EPSILON
+        movement > EPSILON || zoom > EPSILON
 
     private fun quantizePhase(value: Float): Float {
         val wrapped = value - floor(value)

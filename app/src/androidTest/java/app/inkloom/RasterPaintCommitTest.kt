@@ -118,7 +118,7 @@ class RasterPaintCommitTest {
                 grainDensity = 1f
                 grainScale = 100f
                 grainMovement = movement
-                grainZoom = 1f
+                grainZoom = 0f
                 setRasterLayerBitmaps(mapOf("paint" to surface))
                 onRasterLayerCommitted = { _, bitmap -> committed = bitmap }
             }
@@ -128,8 +128,8 @@ class RasterPaintCommitTest {
             return requireNotNull(committed)
         }
 
-        val moving = commit(1f)
-        val texturized = commit(0f)
+        val moving = commit(0f)
+        val texturized = commit(1f)
         var differingPixels = 0
         for (y in 250..350) for (x in 138..238) {
             if (moving.getPixel(x, y) != texturized.getPixel(x, y)) differingPixels++

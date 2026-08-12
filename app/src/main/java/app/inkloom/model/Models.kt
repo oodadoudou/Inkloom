@@ -50,10 +50,10 @@ data class ImportedBrush(
     val grainDensity: Float = 0f,
     val grainDensityDynamics: BrushParameterDynamics = BrushParameterDynamics(),
     val grainScale: Float = 100f,
-    /** Procreate Grain > Movement. 0 keeps the grain fixed to the canvas; 1 moves it with the tip. */
-    val grainMovement: Float = 1f,
-    /** Procreate Grain > Zoom. 0 keeps grain size fixed; 1 follows the brush diameter. */
-    val grainZoom: Float = 1f,
+    /** Procreate Grain > Movement. 0 drags with the tip; 1 rolls like Texturized grain. */
+    val grainMovement: Float = 0f,
+    /** Procreate Grain > Zoom. 0 follows brush size; 1 is Cropped at a fixed texture size. */
+    val grainZoom: Float = 0f,
     val grainRotationDegrees: Float = 0f,
     val grainBrightness: Float = 0f,
     val grainContrast: Float = 0f,

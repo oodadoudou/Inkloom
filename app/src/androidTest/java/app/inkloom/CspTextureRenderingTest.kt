@@ -131,16 +131,16 @@ class CspTextureRenderingTest {
                 grainDensity = 1f,
                 grainScale = 100f,
                 grainMovement = movement,
-                grainZoom = 1f,
+                grainZoom = 0f,
             )
             fun renderExport(stroke: InkStroke) = DocumentAssetService(context).renderPageBitmap(
                 InkPage(background = PageBackground.Paper(), strokes = listOf(stroke)), 400,
             )
 
-            val movingAt100 = renderExport(stroke(.25f, 1f))
-            val movingAt125 = renderExport(stroke(.3125f, 1f))
-            val fixedAt100 = renderExport(stroke(.25f, 0f))
-            val fixedStrokeAt125 = stroke(.3125f, 0f)
+            val movingAt100 = renderExport(stroke(.25f, 0f))
+            val movingAt125 = renderExport(stroke(.3125f, 0f))
+            val fixedAt100 = renderExport(stroke(.25f, 1f))
+            val fixedStrokeAt125 = stroke(.3125f, 1f)
             val fixedAt125 = renderExport(fixedStrokeAt125)
             val fixedLiveAt125 = renderLive(fixedStrokeAt125)
             try {

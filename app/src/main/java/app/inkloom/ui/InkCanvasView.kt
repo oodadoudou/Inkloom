@@ -556,8 +556,8 @@ class InkCanvasView(context: Context) : View(context) {
     var grainDensity: Float = 0f
     var grainDensityDynamics: BrushParameterDynamics = BrushParameterDynamics()
     var grainScale: Float = 100f
-    var grainMovement: Float = 1f
-    var grainZoom: Float = 1f
+    var grainMovement: Float = 0f
+    var grainZoom: Float = 0f
     var grainRotationDegrees: Float = 0f
     var grainBrightness: Float = 0f
     var grainContrast: Float = 0f

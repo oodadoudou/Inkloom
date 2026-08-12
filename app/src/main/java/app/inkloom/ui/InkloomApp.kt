@@ -4895,8 +4895,8 @@ internal fun InkCanvasView.applyBrushConfiguration(
     grainDensity = activeBrush?.grainDensity ?: 0f
     grainDensityDynamics = activeBrush?.grainDensityDynamics ?: BrushParameterDynamics()
     grainScale = activeBrush?.grainScale ?: 100f
-    grainMovement = activeBrush?.grainMovement ?: 1f
-    grainZoom = activeBrush?.grainZoom ?: 1f
+    grainMovement = activeBrush?.grainMovement ?: 0f
+    grainZoom = activeBrush?.grainZoom ?: 0f
     grainRotationDegrees = activeBrush?.grainRotationDegrees ?: 0f
     grainBrightness = activeBrush?.grainBrightness ?: 0f
     grainContrast = activeBrush?.grainContrast ?: 0f
@@ -8966,8 +8966,8 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 if (draft.grainPreviewPath != null) item { BrushSettingSlider(tr("Paper texture density", "纸质浓度"), draft.grainDensity, 0f..1f) { draft = draft.copy(grainDensity = it) } }
                 if (draft.grainPreviewPath != null) item { ParameterDynamicsEditor(tr("Paper texture density dynamics", "纸张纹理密度动态"), "Paper texture density", draft.grainDensityDynamics) { draft = draft.copy(grainDensityDynamics = it) } }
                 if (draft.grainPreviewPath != null) item { BrushSettingSlider("Paper texture scale", draft.grainScale, 1f..400f) { draft = draft.copy(grainScale = it) } }
-                if (draft.grainPreviewPath != null) item { BrushSettingSlider("Grain movement", draft.grainMovement, 0f..1f) { draft = draft.copy(grainMovement = it) } }
-                if (draft.grainPreviewPath != null) item { BrushSettingSlider("Grain zoom / follow size", draft.grainZoom, 0f..1f) { draft = draft.copy(grainZoom = it) } }
+                if (draft.grainPreviewPath != null) item { BrushSettingSlider("Grain movement: drag → roller", draft.grainMovement, 0f..1f) { draft = draft.copy(grainMovement = it) } }
+                if (draft.grainPreviewPath != null) item { BrushSettingSlider("Grain zoom: Follow Size → Cropped", draft.grainZoom, 0f..1f) { draft = draft.copy(grainZoom = it) } }
                 if (draft.grainPreviewPath != null) item { BrushSettingSlider("Paper texture rotation", draft.grainRotationDegrees, -180f..180f) { draft = draft.copy(grainRotationDegrees = it) } }
                 if (draft.grainPreviewPath != null) item { BrushSettingSlider("Paper texture brightness", draft.grainBrightness, -100f..100f) { draft = draft.copy(grainBrightness = it) } }
                 if (draft.grainPreviewPath != null) item { BrushSettingSlider("Paper texture contrast", draft.grainContrast, -100f..100f) { draft = draft.copy(grainContrast = it) } }
