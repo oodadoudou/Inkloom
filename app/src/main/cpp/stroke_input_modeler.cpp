@@ -9,7 +9,9 @@
 namespace {
 
 constexpr float kMinimumPressure = 0.05F;
-constexpr float kMinimumDistance = 0.0008F;
+// Preserve the device trajectory at every zoom. A normalized threshold grows to many physical
+// pixels when the canvas is magnified and visibly cuts corners. Only collapse sub-pixel duplicates.
+constexpr float kMinimumDistancePx = 0.25F;
 constexpr float kVelocityFullScalePxPerMs = 2.0F;
 constexpr float kVelocitySmoothing = 0.65F;
 constexpr jint kIncreaseWhenSlow = 0;
@@ -156,8 +158,11 @@ bool append_sample(
         : session.has_sample
         ? session.y * filter + normalized_y * (1.0F - filter)
         : normalized_y;
-    if (!force && session.has_sample &&
-        std::hypot(modeled_x - session.x, modeled_y - session.y) <= kMinimumDistance) {
+    const float modeled_distance_px = std::hypot(
+        (modeled_x - session.x) * static_cast<float>(std::max(viewport_width, 1)),
+        (modeled_y - session.y) * static_cast<float>(std::max(viewport_height, 1))
+    );
+    if (!force && session.has_sample && modeled_distance_px <= kMinimumDistancePx) {
         return false;
     }
 

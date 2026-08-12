@@ -129,9 +129,13 @@ class InkViewportTouchProxy(context: Context) : View(context) {
         if (snapshot[0] == 0f || !event.isStylusEvent()) return clearHoverCursor()
         val pointerIndex = event.stylusPointerIndex(activeStylusPointerId)
         if (pointerIndex < 0) return clearHoverCursor()
-        val point = cursorPoint(canvas, snapshot) ?: return clearHoverCursor()
-        hoverX = point.first
-        hoverY = point.second
+        // The visible cursor is feedback for the physical pen, not for the modeled/stabilized
+        // stroke. Keep its centre on the raw proxy-local packet. Round-tripping the accepted page
+        // point through a second affine path is mathematically redundant and, on vendor graphics
+        // stacks that expose a Compose rotation differently for View location APIs, produced a
+        // large rotation-dependent cursor offset even though committed ink was correct.
+        hoverX = event.getX(pointerIndex)
+        hoverY = event.getY(pointerIndex)
         hoverWidth = snapshot[3] * canvas.viewportScale.coerceAtLeast(1f)
         hoverHeight = snapshot.getOrElse(4) { snapshot[3] } * canvas.viewportScale.coerceAtLeast(1f)
         hoverVisible = true
@@ -147,9 +151,8 @@ class InkViewportTouchProxy(context: Context) : View(context) {
         if (snapshot[0] == 0f) return clearHoverCursor()
         val pointerIndex = event.stylusPointerIndex(activeStylusPointerId)
         if (pointerIndex < 0) return clearHoverCursor()
-        val point = cursorPoint(canvas, snapshot) ?: return clearHoverCursor()
-        hoverX = point.first
-        hoverY = point.second
+        hoverX = event.getX(pointerIndex)
+        hoverY = event.getY(pointerIndex)
         hoverWidth = snapshot[3] * canvas.viewportScale.coerceAtLeast(1f)
         hoverHeight = snapshot.getOrElse(4) { snapshot[3] } * canvas.viewportScale.coerceAtLeast(1f)
         hoverVisible = true
@@ -169,15 +172,6 @@ class InkViewportTouchProxy(context: Context) : View(context) {
         hoverHeight = snapshot.getOrElse(4) { snapshot[3] } * canvas.viewportScale.coerceAtLeast(1f)
         postInvalidateOnAnimation()
     }
-
-    private fun cursorPoint(canvas: InkCanvasView, snapshot: FloatArray): Pair<Float, Float>? =
-        coordinateMapper.mapPagePointToCenteredViewport(
-            snapshot[1],
-            snapshot[2],
-            this,
-            canvas,
-            ViewportState(canvas.viewportScale, canvas.viewportPanX, canvas.viewportPanY, canvas.viewportRotationDegrees),
-        )
 
     internal fun hoverCursorSnapshot(): FloatArray = floatArrayOf(
         if (hoverVisible) 1f else 0f,

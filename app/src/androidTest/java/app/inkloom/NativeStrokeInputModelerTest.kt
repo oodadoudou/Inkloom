@@ -70,4 +70,17 @@ class NativeStrokeInputModelerTest {
             assertTrue("Modeled timestamps must be monotonic", modeler.timeMs(1) > modeler.timeMs(0))
         }
     }
+
+    @Test
+    fun magnifiedCanvasKeepsSubPagePixelSamplesThatAreDistinctOnScreen() {
+        NativeStrokeInputModeler().use { modeler ->
+            assertTrue(modeler.append(.25f, .75f, .7f, 10L, 0f, 0f, 9_600, 12_800, 0f, false, StrokeStabilization.REDUCE_WHEN_FAST))
+            assertTrue(
+                "A sample several physical pixels away at 8x zoom must not be discarded by a normalized threshold",
+                modeler.append(.2501f, .7501f, .7f, 11L, 0f, 0f, 9_600, 12_800, 0f, false, StrokeStabilization.REDUCE_WHEN_FAST),
+            )
+            assertEquals(.2501f, modeler.x, .00001f)
+            assertEquals(.7501f, modeler.y, .00001f)
+        }
+    }
 }

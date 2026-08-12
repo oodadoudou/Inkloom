@@ -3595,7 +3595,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun addModeledPointV2(x: Float, y: Float, pressure: Float, time: Long, tilt: Float, orientation: Float, force: Boolean) {
         stageNativeInput(0, x, y, pressure, time, tilt, orientation, force)
-        if (strokeInputModeler.appendBatch(1, width, height, stabilization, stabilizationBySpeed, stabilizationBySpeedMode) != 1) return
+        if (strokeInputModeler.appendBatch(1, modeledViewportWidth(), modeledViewportHeight(), stabilization, stabilizationBySpeed, stabilizationBySpeedMode) != 1) return
         appendNativeOutput(0)
         requestActiveSurfaceFrame()
     }
@@ -3630,8 +3630,8 @@ class InkCanvasView(context: Context) : View(context) {
                 }
                 val accepted = strokeInputModeler.appendBatch(
                     count,
-                    width,
-                    height,
+                    modeledViewportWidth(),
+                    modeledViewportHeight(),
                     stabilization,
                     stabilizationBySpeed,
                     stabilizationBySpeedMode,
@@ -3642,6 +3642,15 @@ class InkCanvasView(context: Context) : View(context) {
         }
         requestActiveSurfaceFrame()
     }
+
+    /** Sampling density and velocity are physical-screen properties. At 8x zoom, using the fitted
+     * page dimensions would discard points roughly eight times farther apart on screen and turn a
+     * smooth pen path into visible chords. */
+    private fun modeledViewportWidth(): Int =
+        (width.coerceAtLeast(1) * viewportScale.coerceIn(1f, ViewportTransform.MAXIMUM_SCALE)).toInt().coerceAtLeast(1)
+
+    private fun modeledViewportHeight(): Int =
+        (height.coerceAtLeast(1) * viewportScale.coerceIn(1f, ViewportTransform.MAXIMUM_SCALE)).toInt().coerceAtLeast(1)
 
     private fun stageNativeInput(index: Int, x: Float, y: Float, pressure: Float, time: Long, tilt: Float, orientation: Float, force: Boolean) {
         val adjustedPressure = PressureCalibration.apply(pressure, pressureMinimumInput, pressureMaximumInput, pressureSensitivity, pressureResponseCurve)
