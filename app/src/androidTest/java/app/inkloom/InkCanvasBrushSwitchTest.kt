@@ -19,6 +19,7 @@ import app.inkloom.settings.EraserPreset
 import app.inkloom.ui.InkCanvasView
 import app.inkloom.ui.applyBrushConfiguration
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -138,6 +139,7 @@ class InkCanvasBrushSwitchTest {
             grainMovement = .2f,
             grainZoom = .65f,
             grainCompositeMode = app.inkloom.document.CspTextureComposite.HEIGHT,
+            grainApplyPerPlot = false,
             grainFilteringMode = app.inkloom.document.ProcreateFiltering.IMPROVED,
             procreateRenderingMode = app.inkloom.document.ProcreateRenderingMode.INTENSE_BLENDING,
             procreateBrushBlendMode = app.inkloom.document.ProcreateBrushBlend.OVERLAY,
@@ -170,6 +172,7 @@ class InkCanvasBrushSwitchTest {
         assertEquals(.65f, requireNotNull(committed).grainZoom, .0001f)
         assertEquals(275f, requireNotNull(committed).grainScale, .0001f)
         assertEquals(app.inkloom.document.CspTextureComposite.HEIGHT, requireNotNull(committed).grainCompositeMode)
+        assertFalse(requireNotNull(committed).grainApplyPerPlot)
         assertEquals(app.inkloom.document.ProcreateFiltering.IMPROVED, requireNotNull(committed).grainFilteringMode)
         assertEquals(app.inkloom.document.ProcreateRenderingMode.INTENSE_BLENDING, requireNotNull(committed).procreateRenderingMode)
         assertEquals(app.inkloom.document.ProcreateBrushBlend.OVERLAY, requireNotNull(committed).procreateBrushBlendMode)

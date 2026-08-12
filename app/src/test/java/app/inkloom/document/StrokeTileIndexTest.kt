@@ -106,6 +106,28 @@ class StrokeTileIndexTest {
         assertTrue(index.tilesFor(blurred).size > index.tilesFor(crisp).size)
     }
 
+    @Test fun pixelBoundsAndTileBoundsUseTheSameConservativeFootprint() {
+        val index = StrokeTileIndex(tileSizePx = 128)
+        val stroke = InkStroke(
+            id = "textured",
+            points = listOf(StrokePoint(.31f, .42f), StrokePoint(.79f, .63f)),
+            width = 96f,
+            blur = 24f,
+            spray = true,
+            spraySpread = 1.8f,
+        )
+        index.rebuild(listOf(stroke), 1024, 768)
+
+        val bounds = requireNotNull(index.pixelBoundsFor(stroke))
+        val expected = buildSet {
+            for (row in bounds.top / 128..(bounds.bottom - 1) / 128) {
+                for (column in bounds.left / 128..(bounds.right - 1) / 128) add(StrokeTileKey(column, row))
+            }
+        }
+
+        assertEquals(expected, index.tilesFor(stroke))
+    }
+
     private fun stroke(id: String, x: Float, y: Float) = InkStroke(
         id = id,
         width = 2f,

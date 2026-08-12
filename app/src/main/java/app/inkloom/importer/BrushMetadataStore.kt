@@ -203,6 +203,7 @@ class BrushMetadataStore(
                         grainEmphasized = item.optBoolean("grainEmphasized", false),
                         grainOffsetJitter = item.optBoolean("grainOffsetJitter", false),
                         grainCompositeMode = item.optInt("grainCompositeMode", CspTextureComposite.MULTIPLY).coerceIn(0, 64),
+                        grainApplyPerPlot = item.optBoolean("grainApplyPerPlot", true),
                         grainFilteringMode = ProcreateFiltering.normalize(item.optInt("grainFilteringMode", ProcreateFiltering.NONE)),
                         procreateRenderingMode = runCatching {
                             ProcreateRenderingMode.valueOf(item.optString("procreateRenderingMode", ProcreateRenderingMode.UNIFORM_GLAZE.name))
@@ -431,6 +432,7 @@ class BrushMetadataStore(
                     .put("grainEmphasized", brush.grainEmphasized)
                     .put("grainOffsetJitter", brush.grainOffsetJitter)
                     .put("grainCompositeMode", brush.grainCompositeMode)
+                    .put("grainApplyPerPlot", brush.grainApplyPerPlot)
                     .put("grainFilteringMode", brush.grainFilteringMode)
                     .put("procreateRenderingMode", brush.procreateRenderingMode.name)
                     .put("procreateBrushBlendMode", brush.procreateBrushBlendMode)

@@ -71,6 +71,8 @@ data class ImportedBrush(
     val grainEmphasized: Boolean = false,
     val grainOffsetJitter: Boolean = false,
     val grainCompositeMode: Int = CspTextureComposite.MULTIPLY,
+    /** CSP Texture > Apply by each plot. False textures the combined stroke once. */
+    val grainApplyPerPlot: Boolean = true,
     val grainFilteringMode: Int = ProcreateFiltering.NONE,
     val procreateRenderingMode: ProcreateRenderingMode = ProcreateRenderingMode.UNIFORM_GLAZE,
     val procreateBrushBlendMode: Int = ProcreateBrushBlend.NORMAL,

@@ -7,6 +7,7 @@ import android.graphics.Rect
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokeTileIndex
 import app.inkloom.document.StrokeTileKey
+import app.inkloom.document.StrokeTileRect
 
 /**
  * Engine V2's stable, disposable raster scene. Canonical strokes remain the source of truth;
@@ -104,6 +105,11 @@ internal class EngineV2CommittedTileScene(
 
     fun ensureIndex(strokes: List<InkStroke>, width: Int, height: Int) {
         if (index.widthPx != width || index.heightPx != height) index.rebuild(strokes, width, height)
+    }
+
+    fun pixelBoundsFor(stroke: InkStroke, width: Int, height: Int): StrokeTileRect? {
+        if (index.widthPx != width || index.heightPx != height) index.rebuild(emptyList(), width, height)
+        return index.pixelBoundsFor(stroke)
     }
 
     internal data class DebugSnapshot(

@@ -875,6 +875,16 @@ class DocumentAssetService(private val context: Context) {
             ) else -1
             val maskLayer = if (stroke.masks.isNotEmpty()) canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null) else -1
             paint.color = stroke.colorArgb.toInt()
+            if (stroke.grainAssetPath != null && stroke.grainDensity > 0f && !stroke.grainApplyPerPlot &&
+                drawWholeStrokeTexture(canvas, stroke, width, height)
+            ) {
+                if (maskLayer >= 0) {
+                    StrokeMaskRenderer.draw(canvas, paint, stroke.masks, width, height)
+                    canvas.restoreToCount(maskLayer)
+                }
+                if (compositeLayer >= 0) canvas.restoreToCount(compositeLayer)
+                return@forEach
+            }
             val tipPaths = stroke.tipAssetPaths.ifEmpty { listOfNotNull(stroke.tipAssetPath) }
             val grainOffset = GrainBehavior.offset(stroke.renderSeed, stroke.grainOffsetJitter)
             val decodedTips = tipPaths.mapNotNull { decodeTip(it, stroke.hardness, stroke.grainAssetPath, stroke.grainDensity, stroke.grainScale, stroke.grainRotationDegrees, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized, grainOffset.x, grainOffset.y, stroke.grainCompositeMode, stroke.grainFilteringMode, stroke.antiAliasMode, stroke.alphaThresholdEnabled, stroke.alphaThreshold) }
@@ -1119,6 +1129,57 @@ class DocumentAssetService(private val context: Context) {
 
     private fun decodeTip(path: String, hardness: Float, grainPath: String?, grainDensity: Float, grainScale: Float = 100f, grainRotation: Float = 0f, grainBrightness: Float = 0f, grainContrast: Float = 0f, grainReversed: Boolean = false, grainEmphasized: Boolean = false, grainOffsetX: Float = 0f, grainOffsetY: Float = 0f, grainCompositeMode: Int = CspTextureComposite.MULTIPLY, grainFilteringMode: Int = ProcreateFiltering.NONE, antiAliasMode: Int = CspAntiAlias.MEDIUM, alphaThresholdEnabled: Boolean = false, alphaThreshold: Float = 0f): Bitmap? =
         BrushTipTextureDecoder.decode(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainOffsetX, grainOffsetY, grainCompositeMode, grainFilteringMode, antiAliasMode, alphaThresholdEnabled, alphaThreshold)
+
+    private fun drawWholeStrokeTexture(canvas: Canvas, stroke: InkStroke, width: Int, height: Int): Boolean {
+        val grainPath = stroke.grainAssetPath ?: return false
+        val material = CspTextureMaterial.decode(grainPath) ?: return false
+        val boundsIndex = StrokeTileIndex().apply { rebuild(emptyList(), width, height) }
+        val strokeBounds = boundsIndex.pixelBoundsFor(stroke) ?: return false
+        val clip = canvas.clipBounds
+        val left = maxOf(strokeBounds.left, clip.left, 0)
+        val top = maxOf(strokeBounds.top, clip.top, 0)
+        val right = minOf(strokeBounds.right, clip.right, width)
+        val bottom = minOf(strokeBounds.bottom, clip.bottom, height)
+        if (right <= left || bottom <= top) return true
+        val contentWidth = right - left
+        val contentHeight = bottom - top
+        val scratch = runCatching { Bitmap.createBitmap(contentWidth, contentHeight, Bitmap.Config.ARGB_8888) }.getOrNull() ?: return false
+        try {
+            val scratchCanvas = Canvas(scratch)
+            scratchCanvas.translate(-left.toFloat(), -top.toFloat())
+            drawStrokes(
+                scratchCanvas,
+                listOf(
+                    stroke.copy(
+                        masks = emptyList(),
+                        opacity = 1f,
+                        grainAssetPath = null,
+                        grainDensity = 0f,
+                        grainApplyPerPlot = true,
+                        procreateBrushBlendMode = ProcreateBrushBlend.NORMAL,
+                        alphaThresholdEnabled = false,
+                    ),
+                ),
+                width,
+                height,
+                Paint(Paint.ANTI_ALIAS_FLAG),
+            )
+            val grainOffset = GrainBehavior.offset(stroke.renderSeed, stroke.grainOffsetJitter)
+            CspStrokeTextureCompositor.applyInPlace(
+                scratch, contentWidth, contentHeight, left, top, width, height, material,
+                stroke.grainDensity, stroke.grainScale, stroke.grainRotationDegrees,
+                grainOffset.x, grainOffset.y, stroke.grainFilteringMode,
+                stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed,
+                stroke.grainEmphasized, stroke.grainCompositeMode,
+                stroke.alphaThresholdEnabled, stroke.alphaThreshold,
+                CspStrokeTextureCompositor.Workspace(),
+            )
+            canvas.drawBitmap(scratch, left.toFloat(), top.toFloat(), null)
+            return true
+        } finally {
+            scratch.recycle()
+        }
+    }
 
     private fun rotateQuarterTurns(source: Bitmap?, quarterTurns: Int): Bitmap? {
         source ?: return null

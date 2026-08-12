@@ -58,9 +58,9 @@ class SutSprayRotationParserTest {
                 )
             }
             parsed.forEach { brush ->
-                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 29, brush.parserVersion)
+                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 30, brush.parserVersion)
                 assertFalse(brush.report.any { it.startsWith("SUT parameter parsing failed") })
-                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v29-")) }
+                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v30-")) }
             }
             assertTrue("Expected multiple CSP AntiAlias modes in the supplied corpus", parsed.map(ImportedBrush::antiAliasMode).distinct().size >= 3)
             assertTrue(parsed.all { it.antiAliasMode in CspAntiAlias.NONE..CspAntiAlias.STRONG })
@@ -77,6 +77,7 @@ class SutSprayRotationParserTest {
             assertFalse(paintingBrush?.dualApplyRgb ?: true)
             assertEquals(2, paintingBrush?.dualTipFlipHorizontalMode)
             assertEquals(CspTextureComposite.HEIGHT, paintingBrush?.grainCompositeMode)
+            assertTrue("The supplied painting brush enables CSP TextureForPlot", paintingBrush?.grainApplyPerPlot == true)
             assertTrue(paintingBrush?.report?.any { it.contains("Screen composite mode") } == true)
             assertTrue(paintingBrush?.report?.any { it.contains("secondary brush-tip flip modes mapped") } == true)
             assertTrue("Main size pressure is enabled in the supplied dual brush", paintingBrush?.sizePressureEnabled == true)
@@ -183,7 +184,7 @@ class SutSprayRotationParserTest {
             assertEquals(.55f, brush.dualSprayDensityDynamics.secondary.velocityMinimum, .001f)
             assertTrue(brush.grainDensityDynamics.secondary.tiltEnabled)
             assertEquals(.65f, brush.grainDensityDynamics.secondary.tiltMinimum, .001f)
-            assertEquals(29, brush.parserVersion)
+            assertEquals(30, brush.parserVersion)
         } finally {
             root.deleteRecursively()
         }
@@ -214,7 +215,7 @@ class SutSprayRotationParserTest {
             assertTrue(brush.watercolor)
             assertEquals(.72f, brush.colorMix, .001f)
             assertEquals(.43f, brush.paintMix, .001f)
-            assertEquals(29, brush.parserVersion)
+            assertEquals(30, brush.parserVersion)
             assertTrue(brush.report.any { it.contains("legacy BrushWaterColor") })
         } finally {
             root.deleteRecursively()
@@ -311,6 +312,7 @@ class SutSprayRotationParserTest {
                 blurSecondaryDynamics = app.inkloom.document.BrushSecondaryDynamics(tiltEnabled = true, tiltMinimum = .4f, tiltStart = .36f, tiltCurve = listOf(app.inkloom.document.BrushCurvePoint(0f, 1f), app.inkloom.document.BrushCurvePoint(1f, 0f))),
                 antiAliasMode = CspAntiAlias.NONE,
                 grainCompositeMode = CspTextureComposite.HEIGHT,
+                grainApplyPerPlot = false,
                 grainFilteringMode = app.inkloom.document.ProcreateFiltering.IMPROVED,
                 procreateRenderingMode = app.inkloom.document.ProcreateRenderingMode.HEAVY_GLAZE,
                 procreateBrushBlendMode = app.inkloom.document.ProcreateBrushBlend.HARD_LIGHT,
@@ -408,6 +410,7 @@ class SutSprayRotationParserTest {
             assertEquals(CspAntiAlias.NONE, restored.antiAliasMode)
             assertEquals(.4f, restored.blurSecondaryDynamics.tiltMinimum, .0001f)
             assertEquals(CspTextureComposite.HEIGHT, restored.grainCompositeMode)
+            assertFalse(restored.grainApplyPerPlot)
             assertEquals(app.inkloom.document.ProcreateFiltering.IMPROVED, restored.grainFilteringMode)
             assertEquals(app.inkloom.document.ProcreateRenderingMode.HEAVY_GLAZE, restored.procreateRenderingMode)
             assertEquals(app.inkloom.document.ProcreateBrushBlend.HARD_LIGHT, restored.procreateBrushBlendMode)

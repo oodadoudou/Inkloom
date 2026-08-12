@@ -17,6 +17,7 @@ import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.graphics.PorterDuffXfermode
+import android.graphics.Rect
 import android.graphics.Shader
 import android.os.SystemClock
 import android.view.KeyEvent
@@ -70,6 +71,8 @@ import app.inkloom.document.CspDualBrushBlendMode
 import app.inkloom.document.CspAntiAlias
 import app.inkloom.document.CspBrushGap
 import app.inkloom.document.CspTextureComposite
+import app.inkloom.document.CspStrokeTextureCompositor
+import app.inkloom.document.CspTextureMaterial
 import app.inkloom.document.CanvasGuideGestureMode
 import app.inkloom.document.CanvasGuideState
 import app.inkloom.document.CanvasGuides
@@ -540,6 +543,19 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
     private val pendingTipLoads = mutableSetOf<String>()
+    private val grainMaterialCache = object : LinkedHashMap<String, CspTextureMaterial>(8, .75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, CspTextureMaterial>): Boolean = size > MAX_GRAIN_MATERIAL_CACHE_ENTRIES
+    }
+    private var wholeStrokeTextureBitmap: Bitmap? = null
+    private val wholeStrokeTextureWorkspace = CspStrokeTextureCompositor.Workspace()
+    private var activeWholeTextureCoverageBitmap: Bitmap? = null
+    private var activeWholeTextureStrokeId: String? = null
+    private var activeWholeTextureProgram: InkStroke? = null
+    private var activeWholeTexturePointCount: Int = 0
+    private var activeWholeTexturePageWidth: Int = 0
+    private var activeWholeTexturePageHeight: Int = 0
+    private var engineV2IncrementalActiveDraw: Boolean = false
+    private val wholeStrokeReplacementPaint = Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC) }
     private val proceduralTipCache = mutableMapOf<String, Bitmap>()
     private var prewarmedBrushSignature: String? = null
     private val protectedStrokeIds = mutableSetOf<String>()
@@ -629,6 +645,7 @@ class InkCanvasView(context: Context) : View(context) {
     var grainEmphasized: Boolean = false
     var grainOffsetJitter: Boolean = false
     var grainCompositeMode: Int = CspTextureComposite.MULTIPLY
+    var grainApplyPerPlot: Boolean = true
     var grainFilteringMode: Int = ProcreateFiltering.NONE
     var procreateRenderingMode: ProcreateRenderingMode = ProcreateRenderingMode.UNIFORM_GLAZE
     var procreateBrushBlendMode: Int = ProcreateBrushBlend.NORMAL
@@ -1286,6 +1303,9 @@ class InkCanvasView(context: Context) : View(context) {
         activeSurfaceFrameScheduled = false
         strokeInputModeler.close()
         tipCache.values.forEach(Bitmap::recycle); tipCache.clear()
+        grainMaterialCache.clear()
+        wholeStrokeTextureBitmap?.recycle(); wholeStrokeTextureBitmap = null
+        activeWholeTextureCoverageBitmap?.recycle(); activeWholeTextureCoverageBitmap = null
         proceduralTipCache.values.forEach(Bitmap::recycle); proceduralTipCache.clear()
         super.onDetachedFromWindow()
     }
@@ -1503,6 +1523,9 @@ class InkCanvasView(context: Context) : View(context) {
         dualStampStartIndex: Int = 0,
     ) {
         if (stroke.points.isEmpty()) return
+        if (stroke.grainAssetPath != null && stroke.grainDensity > 0f && !stroke.grainApplyPerPlot &&
+            drawWholeStrokeTexture(canvas, stroke, primaryStampStartIndex, dualStampStartIndex)
+        ) return
         paint.isAntiAlias = CspAntiAlias.enabled(stroke.antiAliasMode)
         paint.isFilterBitmap = CspAntiAlias.enabled(stroke.antiAliasMode)
         val tipPaths = stroke.tipAssetPaths.ifEmpty { listOfNotNull(stroke.tipAssetPath) }
@@ -1554,6 +1577,210 @@ class InkCanvasView(context: Context) : View(context) {
             ) continue
             drawLineSegment(canvas, stroke, point, startX, startY, endX, endY, strokeWidth, alpha)
         }
+    }
+
+    /** CSP Texture with Apply by each plot disabled is a post-process over the union of all stamp
+     * coverage. Rendering a textured tip repeatedly would make overlap regions progressively
+     * darker, which is precisely the behavior the switch disables. */
+    private fun drawWholeStrokeTexture(
+        canvas: Canvas,
+        stroke: InkStroke,
+        primaryStampStartIndex: Int,
+        dualStampStartIndex: Int,
+    ): Boolean {
+        if (engineV2IncrementalActiveDraw && canIncrementallyReplaceWholeStrokeTexture(stroke)) {
+            return drawIncrementalWholeStrokeTexture(canvas, stroke, primaryStampStartIndex, dualStampStartIndex)
+        }
+        val grainPath = stroke.grainAssetPath ?: return false
+        val material = grainMaterialCache[grainPath] ?: CspTextureMaterial.decode(grainPath)?.also {
+            grainMaterialCache[grainPath] = it
+        } ?: return false
+        val strokeBounds = committedScene.pixelBoundsFor(stroke, width, height) ?: return false
+        val clip = canvas.clipBounds
+        val left = maxOf(strokeBounds.left, clip.left, 0)
+        val top = maxOf(strokeBounds.top, clip.top, 0)
+        val right = minOf(strokeBounds.right, clip.right, width)
+        val bottom = minOf(strokeBounds.bottom, clip.bottom, height)
+        if (right <= left || bottom <= top) return true
+        val contentWidth = right - left
+        val contentHeight = bottom - top
+        val existing = wholeStrokeTextureBitmap
+        val scratch = if (existing == null || existing.isRecycled || existing.width < contentWidth || existing.height < contentHeight) {
+            existing?.recycle()
+            runCatching {
+                Bitmap.createBitmap(
+                    maxOf(contentWidth, existing?.width ?: 0),
+                    maxOf(contentHeight, existing?.height ?: 0),
+                    Bitmap.Config.ARGB_8888,
+                )
+            }.getOrNull()?.also { wholeStrokeTextureBitmap = it }
+        } else existing
+        scratch ?: return false
+        val scratchCanvas = Canvas(scratch)
+        val checkpoint = scratchCanvas.save()
+        scratchCanvas.clipRect(0, 0, contentWidth, contentHeight)
+        scratchCanvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+        scratchCanvas.translate(-left.toFloat(), -top.toFloat())
+        drawStrokeContent(
+            scratchCanvas,
+            stroke.copy(
+                grainAssetPath = null,
+                grainDensity = 0f,
+                grainApplyPerPlot = true,
+                alphaThresholdEnabled = false,
+            ),
+            primaryStampStartIndex,
+            dualStampStartIndex,
+        )
+        scratchCanvas.restoreToCount(checkpoint)
+        val grainOffset = GrainBehavior.offset(stroke.renderSeed, stroke.grainOffsetJitter)
+        CspStrokeTextureCompositor.applyInPlace(
+            strokeBitmap = scratch,
+            contentWidth = contentWidth,
+            contentHeight = contentHeight,
+            originX = left,
+            originY = top,
+            pageWidth = width,
+            pageHeight = height,
+            material = material,
+            density = stroke.grainDensity,
+            scalePercent = stroke.grainScale,
+            rotationDegrees = stroke.grainRotationDegrees,
+            offsetX = grainOffset.x,
+            offsetY = grainOffset.y,
+            filteringMode = stroke.grainFilteringMode,
+            brightness = stroke.grainBrightness,
+            contrast = stroke.grainContrast,
+            reversed = stroke.grainReversed,
+            emphasized = stroke.grainEmphasized,
+            compositeMode = stroke.grainCompositeMode,
+            alphaThresholdEnabled = stroke.alphaThresholdEnabled,
+            alphaThreshold = stroke.alphaThreshold,
+            workspace = wholeStrokeTextureWorkspace,
+        )
+        canvas.drawBitmap(scratch, Rect(0, 0, contentWidth, contentHeight), Rect(left, top, right, bottom), null)
+        return true
+    }
+
+    /** Maintains the untextured union for the active stroke and replaces only pixels touched by
+     * newly plotted tips. This keeps CSP's per-stroke semantics without quadratically replaying the
+     * entire history on every input packet. The front buffer persists between callbacks, so SRC is
+     * intentional: a threshold/Outline result is allowed to become less opaque after union update. */
+    private fun drawIncrementalWholeStrokeTexture(
+        canvas: Canvas,
+        stroke: InkStroke,
+        primaryStampStartIndex: Int,
+        dualStampStartIndex: Int,
+    ): Boolean {
+        val grainPath = stroke.grainAssetPath ?: return false
+        val material = grainMaterialCache[grainPath] ?: CspTextureMaterial.decode(grainPath)?.also {
+            grainMaterialCache[grainPath] = it
+        } ?: return false
+        val program = stroke.copy(points = emptyList(), masks = emptyList())
+        val existingCoverage = activeWholeTextureCoverageBitmap
+        val coverage = if (existingCoverage == null || existingCoverage.isRecycled || existingCoverage.width < width || existingCoverage.height < height) {
+            existingCoverage?.recycle()
+            runCatching {
+                Bitmap.createBitmap(
+                    maxOf(width, existingCoverage?.width ?: 0),
+                    maxOf(height, existingCoverage?.height ?: 0),
+                    Bitmap.Config.ARGB_8888,
+                )
+            }.getOrNull()?.also { activeWholeTextureCoverageBitmap = it }
+        } else existingCoverage
+        coverage ?: return false
+        val reset = activeWholeTextureStrokeId != stroke.id ||
+            activeWholeTextureProgram != program ||
+            activeWholeTexturePageWidth != width || activeWholeTexturePageHeight != height ||
+            primaryStampStartIndex <= 0 || activeWholeTexturePointCount > stroke.points.size
+        val coverageCanvas = Canvas(coverage)
+        if (reset) {
+            val clearCheckpoint = coverageCanvas.save()
+            coverageCanvas.clipRect(0, 0, width, height)
+            coverageCanvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+            coverageCanvas.restoreToCount(clearCheckpoint)
+        }
+        val firstDirtyPoint = if (reset) 0 else (activeWholeTexturePointCount - 1).coerceIn(0, stroke.points.lastIndex)
+        val dirtyStroke = if (firstDirtyPoint == 0) stroke else stroke.copy(points = stroke.points.subList(firstDirtyPoint, stroke.points.size))
+        val dirty = committedScene.pixelBoundsFor(dirtyStroke, width, height) ?: return false
+        val coverageCheckpoint = coverageCanvas.save()
+        coverageCanvas.clipRect(dirty.left, dirty.top, dirty.right, dirty.bottom)
+        drawStrokeContent(
+            coverageCanvas,
+            stroke.copy(
+                grainAssetPath = null,
+                grainDensity = 0f,
+                grainApplyPerPlot = true,
+                alphaThresholdEnabled = false,
+            ),
+            if (reset) 0 else primaryStampStartIndex,
+            if (reset) 0 else dualStampStartIndex,
+        )
+        coverageCanvas.restoreToCount(coverageCheckpoint)
+        activeWholeTextureStrokeId = stroke.id
+        activeWholeTextureProgram = program
+        activeWholeTexturePointCount = stroke.points.size
+        activeWholeTexturePageWidth = width
+        activeWholeTexturePageHeight = height
+
+        val contentWidth = dirty.width
+        val contentHeight = dirty.height
+        val existingScratch = wholeStrokeTextureBitmap
+        val scratch = if (existingScratch == null || existingScratch.isRecycled || existingScratch.width < contentWidth || existingScratch.height < contentHeight) {
+            existingScratch?.recycle()
+            runCatching {
+                Bitmap.createBitmap(
+                    maxOf(contentWidth, existingScratch?.width ?: 0),
+                    maxOf(contentHeight, existingScratch?.height ?: 0),
+                    Bitmap.Config.ARGB_8888,
+                )
+            }.getOrNull()?.also { wholeStrokeTextureBitmap = it }
+        } else existingScratch
+        scratch ?: return false
+        val scratchCanvas = Canvas(scratch)
+        val scratchCheckpoint = scratchCanvas.save()
+        scratchCanvas.clipRect(0, 0, contentWidth, contentHeight)
+        scratchCanvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+        scratchCanvas.drawBitmap(
+            coverage,
+            Rect(dirty.left, dirty.top, dirty.right, dirty.bottom),
+            Rect(0, 0, contentWidth, contentHeight),
+            null,
+        )
+        scratchCanvas.restoreToCount(scratchCheckpoint)
+        val grainOffset = GrainBehavior.offset(stroke.renderSeed, stroke.grainOffsetJitter)
+        CspStrokeTextureCompositor.applyInPlace(
+            scratch, contentWidth, contentHeight, dirty.left, dirty.top, width, height, material,
+            stroke.grainDensity, stroke.grainScale, stroke.grainRotationDegrees,
+            grainOffset.x, grainOffset.y, stroke.grainFilteringMode,
+            stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed,
+            stroke.grainEmphasized, stroke.grainCompositeMode,
+            stroke.alphaThresholdEnabled, stroke.alphaThreshold,
+            wholeStrokeTextureWorkspace,
+        )
+        canvas.drawBitmap(
+            scratch,
+            Rect(0, 0, contentWidth, contentHeight),
+            Rect(dirty.left, dirty.top, dirty.right, dirty.bottom),
+            wholeStrokeReplacementPaint,
+        )
+        return true
+    }
+
+    private fun canIncrementallyReplaceWholeStrokeTexture(stroke: InkStroke): Boolean {
+        val layerId = stroke.layerId
+        return stroke.masks.isEmpty() && stroke.opacity >= .999f &&
+            ProcreateBrushBlend.normalize(stroke.procreateBrushBlendMode) == ProcreateBrushBlend.NORMAL &&
+            (layerOpacities[layerId] ?: 1f) >= .999f &&
+            (layerBlendModes[layerId] ?: LayerBlendMode.NORMAL) == LayerBlendMode.NORMAL &&
+            layerId !in clippedLayers && layerId !in alphaLockedLayers && layerMasks[layerId]?.enabled != true &&
+            layerElementBitmaps.isEmpty() && rasterLayerBitmaps.isEmpty()
+    }
+
+    internal fun requiresCompleteActiveReplay(strokes: List<InkStroke>): Boolean = synchronized(renderLock) {
+        val wholeTextureStrokes = strokes.filter { !it.grainApplyPerPlot && it.grainAssetPath != null && it.grainDensity > 0f }
+        wholeTextureStrokes.isNotEmpty() &&
+            (strokes.size != 1 || wholeTextureStrokes.size != 1 || !canIncrementallyReplaceWholeStrokeTexture(wholeTextureStrokes.single()))
     }
 
     private fun drawStampedStroke(
@@ -4095,22 +4322,27 @@ class InkCanvasView(context: Context) : View(context) {
     ) {
         traceEngineV2("Inkloom.V2.ActiveStrokeDraw") {
             synchronized(renderLock) {
-                if (!incrementalStampDraw) {
-                    drawLayeredStrokes(canvas, strokes)
-                    strokes.filter(::usesStampedRenderer).forEach { stroke ->
-                        activePrimaryStampCounts[stroke.id] = primaryStampedPoints(stroke).size
-                        activeDualStampCounts[stroke.id] = if (stroke.dualBrush) dualStampedPoints(stroke).size else 0
+                engineV2IncrementalActiveDraw = incrementalStampDraw
+                try {
+                    if (!incrementalStampDraw) {
+                        drawLayeredStrokes(canvas, strokes)
+                        strokes.filter(::usesStampedRenderer).forEach { stroke ->
+                            activePrimaryStampCounts[stroke.id] = primaryStampedPoints(stroke).size
+                            activeDualStampCounts[stroke.id] = if (stroke.dualBrush) dualStampedPoints(stroke).size else 0
+                        }
+                    } else {
+                        strokes.forEach { stroke ->
+                            val primaryCount = primaryStampedPoints(stroke).size
+                            val dualCount = if (stroke.dualBrush) dualStampedPoints(stroke).size else 0
+                            val primaryStart = activePrimaryStampCounts[stroke.id] ?: 0
+                            val dualStart = activeDualStampCounts[stroke.id] ?: 0
+                            drawLayeredStrokes(canvas, listOf(stroke), primaryStart, dualStart)
+                            activePrimaryStampCounts[stroke.id] = primaryCount
+                            activeDualStampCounts[stroke.id] = dualCount
+                        }
                     }
-                } else {
-                    strokes.forEach { stroke ->
-                        val primaryCount = primaryStampedPoints(stroke).size
-                        val dualCount = if (stroke.dualBrush) dualStampedPoints(stroke).size else 0
-                        val primaryStart = activePrimaryStampCounts[stroke.id] ?: 0
-                        val dualStart = activeDualStampCounts[stroke.id] ?: 0
-                        drawLayeredStrokes(canvas, listOf(stroke), primaryStart, dualStart)
-                        activePrimaryStampCounts[stroke.id] = primaryCount
-                        activeDualStampCounts[stroke.id] = dualCount
-                    }
+                } finally {
+                    engineV2IncrementalActiveDraw = false
                 }
             }
         }
@@ -4123,6 +4355,11 @@ class InkCanvasView(context: Context) : View(context) {
             activePrimarySamples.clear()
             activeDualSamples.clear()
             clearActiveStampRandoms()
+            activeWholeTextureStrokeId = null
+            activeWholeTextureProgram = null
+            activeWholeTexturePointCount = 0
+            activeWholeTexturePageWidth = 0
+            activeWholeTexturePageHeight = 0
         }
     }
 
@@ -5005,6 +5242,7 @@ class InkCanvasView(context: Context) : View(context) {
         grainZoom = grainZoom,
         grainStrokeRotation = grainStrokeRotation,
         grainCompositeMode = grainCompositeMode,
+        grainApplyPerPlot = grainApplyPerPlot,
         tiltGradation = tiltGradation,
         tiltGradationStart = tiltGradationStart,
         tiltBleed = tiltBleed,
@@ -5833,6 +6071,7 @@ class InkCanvasView(context: Context) : View(context) {
     private companion object {
         const val REFERENCE_WIDTH = 1600f
         private const val SMALL_CURSOR_MARK_THRESHOLD_PX = 8f
+        private const val MAX_GRAIN_MATERIAL_CACHE_ENTRIES = 8
         const val MAX_CACHE_PIXELS = 16_000_000L
         const val FILL_MAX_SAMPLE_DIMENSION = 1_600f
         const val FILL_PREVIEW_THROTTLE_MS = 32L

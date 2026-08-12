@@ -77,6 +77,33 @@ class EngineV2ActiveTailPlannerTest {
         assertTrue(plan.incrementalStampDraw)
     }
 
+    @Test
+    fun opaqueWholeStrokeTextureUsesItsRetainedUnionSurface() {
+        val planner = EngineV2ActiveTailPlanner()
+        val first = stroke(8).copy(grainAssetPath = "/tmp/grain.png", grainDensity = .7f, grainApplyPerPlot = false)
+        val second = first.copy(points = stroke(16).points)
+
+        planner.incremental(listOf(first))
+        val plan = planner.incremental(listOf(second))
+
+        assertFalse(plan.clearBeforeDraw)
+        assertTrue(plan.incrementalStampDraw)
+        assertEquals(second.points, plan.strokes.single().points)
+    }
+
+    @Test
+    fun translucentWholeStrokeTextureClearsBecauseSourceReplacementIsNotAssociative() {
+        val planner = EngineV2ActiveTailPlanner()
+        val first = stroke(8).copy(grainAssetPath = "/tmp/grain.png", grainDensity = .7f, grainApplyPerPlot = false, opacity = .5f)
+        val second = first.copy(points = stroke(16).points)
+
+        planner.incremental(listOf(first))
+        val plan = planner.incremental(listOf(second))
+
+        assertTrue(plan.clearBeforeDraw)
+        assertFalse(plan.incrementalStampDraw)
+    }
+
     private fun stroke(count: Int) = InkStroke(
         id = "active",
         points = List(count) { index -> StrokePoint(index / 20f, .5f, timeMs = index.toLong()) },

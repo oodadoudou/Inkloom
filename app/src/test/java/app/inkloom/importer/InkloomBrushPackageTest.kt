@@ -49,6 +49,7 @@ class InkloomBrushPackageTest {
                 grainStrokeRotation = .75f,
                 grainOffsetJitter = true,
                 grainCompositeMode = CspTextureComposite.HEIGHT,
+                grainApplyPerPlot = false,
                 grainFilteringMode = app.inkloom.document.ProcreateFiltering.IMPROVED,
                 procreateRenderingMode = app.inkloom.document.ProcreateRenderingMode.HEAVY_GLAZE,
                 procreateBrushBlendMode = app.inkloom.document.ProcreateBrushBlend.OVERLAY,
@@ -238,6 +239,7 @@ class InkloomBrushPackageTest {
             assertEquals(original.grainStrokeRotation, restored.grainStrokeRotation, .0001f)
             assertTrue(restored.grainOffsetJitter)
             assertEquals(CspTextureComposite.HEIGHT, restored.grainCompositeMode)
+            assertFalse(restored.grainApplyPerPlot)
             assertEquals(app.inkloom.document.ProcreateFiltering.IMPROVED, restored.grainFilteringMode)
             assertEquals(app.inkloom.document.ProcreateRenderingMode.HEAVY_GLAZE, restored.procreateRenderingMode)
             assertEquals(app.inkloom.document.ProcreateBrushBlend.OVERLAY, restored.procreateBrushBlendMode)

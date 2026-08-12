@@ -103,7 +103,11 @@ internal class EngineV2CanvasHost(context: Context) : FrameLayout(context), Engi
     private fun drawIncremental(canvas: Canvas) {
         val snapshot = activeStrokes
         if (snapshot.isEmpty()) return
-        val plan = synchronized(activeLock) { tailPlanner.incremental(snapshot) }
+        val forceComplete = canvasView.requiresCompleteActiveReplay(snapshot)
+        val plan = synchronized(activeLock) {
+            if (forceComplete) tailPlanner.complete(snapshot)
+            else tailPlanner.incremental(snapshot)
+        }
         if (plan.clearBeforeDraw) canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
         if (plan.strokes.isNotEmpty()) {
             canvasView.drawEngineV2ActiveStrokes(canvas, plan.strokes, plan.incrementalStampDraw)

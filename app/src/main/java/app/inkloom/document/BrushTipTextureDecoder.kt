@@ -46,22 +46,27 @@ object BrushTipTextureDecoder {
                     bitmap.getPixels(it, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
                 }
             }
+            val grainSampler = grain?.let { bitmap ->
+                TextureSampling.prepare(
+                    source.width,
+                    source.height,
+                    bitmap.width,
+                    bitmap.height,
+                    grainScale,
+                    grainRotation,
+                    grainOffsetX,
+                    grainOffsetY,
+                )
+            }
             val pixels = IntArray(source.width * source.height)
             source.getPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
             val outlineMasks = if (grain != null && grainPixels != null && grainCompositeMode == CspTextureComposite.OUTLINE) {
                 FloatArray(pixels.size) { index ->
                     grainMask(
                         grainPixels = grainPixels,
-                        grainWidth = grain.width,
-                        grainHeight = grain.height,
+                        sampler = requireNotNull(grainSampler),
                         x = index % source.width,
                         y = index / source.width,
-                        sourceWidth = source.width,
-                        sourceHeight = source.height,
-                        grainScale = grainScale,
-                        grainRotation = grainRotation,
-                        grainOffsetX = grainOffsetX,
-                        grainOffsetY = grainOffsetY,
                         grainFilteringMode = grainFilteringMode,
                         grainBrightness = grainBrightness,
                         grainContrast = grainContrast,
@@ -88,7 +93,7 @@ object BrushTipTextureDecoder {
                 val grainMask = if (outlineMasks != null) {
                     outlineMasks[index]
                 } else if (grain != null && grainPixels != null) {
-                    grainMask(grainPixels, grain.width, grain.height, x, y, source.width, source.height, grainScale, grainRotation, grainOffsetX, grainOffsetY, grainFilteringMode, grainBrightness, grainContrast, grainReversed, grainEmphasized)
+                    grainMask(grainPixels, requireNotNull(grainSampler), x, y, grainFilteringMode, grainBrightness, grainContrast, grainReversed, grainEmphasized)
                 } else {
                     1f
                 }
@@ -144,36 +149,16 @@ object BrushTipTextureDecoder {
 
     private fun grainMask(
         grainPixels: IntArray,
-        grainWidth: Int,
-        grainHeight: Int,
+        sampler: TextureSampling.PreparedSampler,
         x: Int,
         y: Int,
-        sourceWidth: Int,
-        sourceHeight: Int,
-        grainScale: Float,
-        grainRotation: Float,
-        grainOffsetX: Float,
-        grainOffsetY: Float,
         grainFilteringMode: Int,
         grainBrightness: Float,
         grainContrast: Float,
         grainReversed: Boolean,
         grainEmphasized: Boolean,
     ): Float = TextureSampling.mask(
-        TextureSampling.sampleEffectiveLuminance(
-            grainPixels,
-            grainWidth,
-            grainHeight,
-            x,
-            y,
-            sourceWidth,
-            sourceHeight,
-            grainScale,
-            grainRotation,
-            grainOffsetX,
-            grainOffsetY,
-            grainFilteringMode,
-        ),
+        sampler.sampleEffectiveLuminance(grainPixels, x, y, grainFilteringMode),
         grainBrightness,
         grainContrast,
         grainReversed,

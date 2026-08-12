@@ -7,6 +7,75 @@ import kotlin.math.sin
 data class TextureCoordinate(val x: Int, val y: Int)
 
 object TextureSampling {
+    /** Immutable affine sampler for hot raster loops. Rotation, scale and page normalization are
+     * reduced to six coefficients once instead of evaluating trigonometry for every pixel. */
+    class PreparedSampler internal constructor(
+        private val textureWidth: Int,
+        private val textureHeight: Int,
+        private val xFromX: Float,
+        private val xFromY: Float,
+        private val xOrigin: Float,
+        private val yFromX: Float,
+        private val yFromY: Float,
+        private val yOrigin: Float,
+    ) {
+        fun sampleEffectiveLuminance(pixels: IntArray, x: Int, y: Int, filteringMode: Int): Float {
+            if (pixels.isEmpty() || textureWidth <= 0 || textureHeight <= 0 ||
+                pixels.size.toLong() < textureWidth.toLong() * textureHeight
+            ) return 1f
+            val sampleX = xFromX * x + xFromY * y + xOrigin
+            val sampleY = yFromX * x + yFromY * y + yOrigin
+            return when (ProcreateFiltering.normalize(filteringMode)) {
+                ProcreateFiltering.NONE -> sample(pixels, textureWidth, textureHeight, floor(sampleX.toDouble()).toInt(), floor(sampleY.toDouble()).toInt())
+                ProcreateFiltering.CLASSIC -> bilinear(pixels, textureWidth, textureHeight, sampleX, sampleY)
+                else -> bicubic(pixels, textureWidth, textureHeight, sampleX, sampleY)
+            }.coerceIn(0f, 1f)
+        }
+    }
+
+    fun prepare(
+        sourceWidth: Int,
+        sourceHeight: Int,
+        textureWidth: Int,
+        textureHeight: Int,
+        scalePercent: Float,
+        rotationDegrees: Float,
+        offsetX: Float = 0f,
+        offsetY: Float = 0f,
+    ): PreparedSampler {
+        val safeSourceWidth = sourceWidth.coerceAtLeast(1)
+        val safeSourceHeight = sourceHeight.coerceAtLeast(1)
+        val safeTextureWidth = textureWidth.coerceAtLeast(1)
+        val safeTextureHeight = textureHeight.coerceAtLeast(1)
+        val scale = (scalePercent / 100f).takeIf(Float::isFinite)?.coerceIn(.01f, 40f) ?: 1f
+        val radians = Math.toRadians((-(rotationDegrees.takeIf(Float::isFinite) ?: 0f)).toDouble())
+        val cosine = cos(radians).toFloat()
+        val sine = sin(radians).toFloat()
+        val textureScaleX = safeTextureWidth.toFloat() / safeSourceWidth
+        val textureScaleY = safeTextureHeight.toFloat() / safeSourceHeight
+        val centerX = safeSourceWidth / 2f
+        val centerY = safeSourceHeight / 2f
+        val translatedX = .5f - centerX
+        val translatedY = .5f - centerY
+        val inverseScale = 1f / scale
+        val xFromX = cosine * inverseScale * textureScaleX
+        val xFromY = -sine * inverseScale * textureScaleX
+        val yFromX = sine * inverseScale * textureScaleY
+        val yFromY = cosine * inverseScale * textureScaleY
+        val safeOffsetX = offsetX.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: 0f
+        val safeOffsetY = offsetY.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: 0f
+        return PreparedSampler(
+            safeTextureWidth,
+            safeTextureHeight,
+            xFromX,
+            xFromY,
+            (cosine * translatedX - sine * translatedY) * inverseScale * textureScaleX + safeTextureWidth / 2f + safeOffsetX * safeTextureWidth,
+            yFromX,
+            yFromY,
+            (sine * translatedX + cosine * translatedY) * inverseScale * textureScaleY + safeTextureHeight / 2f + safeOffsetY * safeTextureHeight,
+        )
+    }
+
     /**
      * Converts an RGBA texture pixel into the effective luminance expected by [mask].
      * CSP material thumbnails frequently carry their density in alpha over black RGB;
@@ -51,15 +120,8 @@ object TextureSampling {
         offsetY: Float = 0f,
         filteringMode: Int = ProcreateFiltering.NONE,
     ): Float {
-        if (pixels.isEmpty() || textureWidth <= 0 || textureHeight <= 0 || pixels.size.toLong() < textureWidth.toLong() * textureHeight) return 1f
-        val packed = rawCoordinate(x, y, sourceWidth, sourceHeight, textureWidth, textureHeight, scalePercent, rotationDegrees, offsetX, offsetY)
-        val sampleX = Float.fromBits((packed ushr 32).toInt())
-        val sampleY = Float.fromBits(packed.toInt())
-        return when (ProcreateFiltering.normalize(filteringMode)) {
-            ProcreateFiltering.NONE -> sample(pixels, textureWidth, textureHeight, floor(sampleX.toDouble()).toInt(), floor(sampleY.toDouble()).toInt())
-            ProcreateFiltering.CLASSIC -> bilinear(pixels, textureWidth, textureHeight, sampleX, sampleY)
-            else -> bicubic(pixels, textureWidth, textureHeight, sampleX, sampleY)
-        }.coerceIn(0f, 1f)
+        return prepare(sourceWidth, sourceHeight, textureWidth, textureHeight, scalePercent, rotationDegrees, offsetX, offsetY)
+            .sampleEffectiveLuminance(pixels, x, y, filteringMode)
     }
 
     private fun rawCoordinate(

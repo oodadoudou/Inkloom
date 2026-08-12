@@ -97,12 +97,11 @@ class StrokeTileIndex(val tileSizePx: Int = DEFAULT_TILE_SIZE_PX) {
     }
 
     fun tilesFor(stroke: InkStroke): Set<StrokeTileKey> {
-        if (stroke.points.isEmpty() || widthPx <= 0 || heightPx <= 0) return emptySet()
-        val expansion = influenceRadiusPixels(stroke) + ANTIALIAS_MARGIN_PX
-        val left = (stroke.points.minOf(StrokePoint::x) * widthPx - expansion).coerceIn(0f, widthPx.toFloat())
-        val top = (stroke.points.minOf(StrokePoint::y) * heightPx - expansion).coerceIn(0f, heightPx.toFloat())
-        val right = (stroke.points.maxOf(StrokePoint::x) * widthPx + expansion).coerceIn(0f, widthPx.toFloat())
-        val bottom = (stroke.points.maxOf(StrokePoint::y) * heightPx + expansion).coerceIn(0f, heightPx.toFloat())
+        val pixelBounds = pixelBoundsFor(stroke) ?: return emptySet()
+        val left = pixelBounds.left.toFloat()
+        val top = pixelBounds.top.toFloat()
+        val right = pixelBounds.right.toFloat()
+        val bottom = pixelBounds.bottom.toFloat()
         val firstColumn = floor(left / tileSizePx).toInt().coerceIn(0, (columnCount - 1).coerceAtLeast(0))
         val lastColumn = floor((right - .001f).coerceAtLeast(left) / tileSizePx).toInt().coerceIn(firstColumn, (columnCount - 1).coerceAtLeast(firstColumn))
         val firstRow = floor(top / tileSizePx).toInt().coerceIn(0, (rowCount - 1).coerceAtLeast(0))
@@ -110,6 +109,18 @@ class StrokeTileIndex(val tileSizePx: Int = DEFAULT_TILE_SIZE_PX) {
         return buildSet {
             for (row in firstRow..lastRow) for (column in firstColumn..lastColumn) add(StrokeTileKey(column, row))
         }
+    }
+
+    /** Exact conservative pixel rectangle shared by tile invalidation and cropped whole-stroke
+     * effects such as CSP Texture with Apply by each plot disabled. */
+    fun pixelBoundsFor(stroke: InkStroke): StrokeTileRect? {
+        if (stroke.points.isEmpty() || widthPx <= 0 || heightPx <= 0) return null
+        val expansion = influenceRadiusPixels(stroke) + ANTIALIAS_MARGIN_PX
+        val left = floor(stroke.points.minOf(StrokePoint::x) * widthPx - expansion).toInt().coerceIn(0, widthPx - 1)
+        val top = floor(stroke.points.minOf(StrokePoint::y) * heightPx - expansion).toInt().coerceIn(0, heightPx - 1)
+        val right = ceil(stroke.points.maxOf(StrokePoint::x) * widthPx + expansion).toInt().coerceIn(left + 1, widthPx)
+        val bottom = ceil(stroke.points.maxOf(StrokePoint::y) * heightPx + expansion).toInt().coerceIn(top + 1, heightPx)
+        return StrokeTileRect(left, top, right, bottom)
     }
 
     private fun add(stroke: InkStroke) {

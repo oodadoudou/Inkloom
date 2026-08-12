@@ -375,6 +375,7 @@ data class InkStroke(
     val grainEmphasized: Boolean = false,
     val grainOffsetJitter: Boolean = false,
     val grainCompositeMode: Int = CspTextureComposite.MULTIPLY,
+    val grainApplyPerPlot: Boolean = true,
     val grainFilteringMode: Int = ProcreateFiltering.NONE,
     val procreateRenderingMode: ProcreateRenderingMode = ProcreateRenderingMode.UNIFORM_GLAZE,
     /** Procreate Rendering > Blend Mode, retained as the archive's CGBlendMode raw value. */

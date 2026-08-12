@@ -4908,6 +4908,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     grainEmphasized = activeBrush?.grainEmphasized ?: false
     grainOffsetJitter = activeBrush?.grainOffsetJitter ?: false
     grainCompositeMode = activeBrush?.grainCompositeMode ?: CspTextureComposite.MULTIPLY
+    grainApplyPerPlot = activeBrush?.grainApplyPerPlot ?: true
     grainFilteringMode = activeBrush?.grainFilteringMode ?: ProcreateFiltering.NONE
     procreateRenderingMode = activeBrush?.procreateRenderingMode ?: ProcreateRenderingMode.UNIFORM_GLAZE
     procreateBrushBlendMode = activeBrush?.procreateBrushBlendMode ?: ProcreateBrushBlend.NORMAL
@@ -9042,6 +9043,7 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 if (draft.grainPreviewPath != null) item { SettingSwitch("Emphasize paper texture", null, draft.grainEmphasized) { draft = draft.copy(grainEmphasized = it) } }
                 if (draft.grainPreviewPath != null) item { SettingSwitch("Jitter grain origin per stroke", "Keeps each stroke deterministic while avoiding an identical repeated grain start.", draft.grainOffsetJitter) { draft = draft.copy(grainOffsetJitter = it) } }
                 if (draft.grainPreviewPath != null) item { BrushTextureCompositeEditor(draft.grainCompositeMode) { draft = draft.copy(grainCompositeMode = it) } }
+                if (draft.grainPreviewPath != null) item { SettingSwitch(tr("Apply texture by each plot", "纹理应用于每个笔尖"), tr("On repeats texture on every stamp; off applies one continuous texture after the stroke is combined.", "开启时每个笔尖独立叠加纹理；关闭时先合并整笔，再应用一次连续纹理。"), draft.grainApplyPerPlot) { draft = draft.copy(grainApplyPerPlot = it) } }
                 if (draft.grainPreviewPath != null) item { ProcreateFilteringEditor(tr("Grain filtering", "颗粒过滤"), draft.grainFilteringMode) { draft = draft.copy(grainFilteringMode = it) } }
                 item { ProcreateRenderingModeEditor(draft.procreateRenderingMode) { draft = draft.copy(procreateRenderingMode = it) } }
                 item { ProcreateBrushBlendModeEditor(tr("Brush blend mode", "整笔混合模式"), draft.procreateBrushBlendMode) { draft = draft.copy(procreateBrushBlendMode = it) } }

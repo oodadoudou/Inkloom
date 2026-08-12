@@ -124,6 +124,7 @@ class RealBrushCorpusRenderingTest {
         assertEquals(brush.id, stroke!!.brushId)
         assertEquals("${brush.format} Taper changed during activation/commit", brush.procreateTaper, stroke.procreateTaper)
         assertEquals("${brush.format} texture mode changed during activation/commit", brush.grainCompositeMode, stroke.grainCompositeMode)
+        assertEquals("${brush.format} TextureForPlot changed during activation/commit", brush.grainApplyPerPlot, stroke.grainApplyPerPlot)
         assertEquals("${brush.format} Touch Rotation changed during activation/commit", brush.shapeTouchRotation, stroke.shapeTouchRotation, .0001f)
         assertEquals("${brush.format} Dual Touch Rotation changed during activation/commit", brush.dualShapeTouchRotation, stroke.dualShapeTouchRotation, .0001f)
         assertTrue("${brush.format} stroke lost its points", stroke.points.size >= 2)

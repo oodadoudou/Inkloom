@@ -45,10 +45,15 @@ internal class EngineV2ActiveTailPlanner {
     fun reset() = renderedPointCounts.clear()
 
     private fun isStamped(stroke: InkStroke): Boolean =
-        stroke.tipAssetPath != null || stroke.tipAssetPaths.isNotEmpty() || ProceduralBrushTip.supports(stroke)
+        stroke.tipAssetPath != null || stroke.tipAssetPaths.isNotEmpty() || ProceduralBrushTip.supports(stroke) ||
+            (!stroke.grainApplyPerPlot && stroke.grainAssetPath != null && stroke.grainDensity > 0f)
 
     private fun requiresCompleteReplay(stroke: InkStroke): Boolean =
         // Active previews suppress the length-dependent ending taper; masks are the only effect
-        // that can remove pixels which have already been presented in the front buffer.
-        stroke.masks.isNotEmpty()
+        // that can remove pixels which have already been presented in the front buffer. Whole-
+        // stroke texture has its own retained union-alpha surface for the ordinary opaque path;
+        // non-associative stroke composition still needs a complete replay.
+        stroke.masks.isNotEmpty() ||
+            (!stroke.grainApplyPerPlot && stroke.grainAssetPath != null && stroke.grainDensity > 0f &&
+                (stroke.opacity < .999f || app.inkloom.document.ProcreateBrushBlend.normalize(stroke.procreateBrushBlendMode) != app.inkloom.document.ProcreateBrushBlend.NORMAL))
 }

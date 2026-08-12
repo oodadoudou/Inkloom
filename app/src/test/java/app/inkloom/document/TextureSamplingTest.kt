@@ -26,6 +26,27 @@ class TextureSamplingTest {
         assertEquals((base.y + 4) % 8, shifted.y)
     }
 
+    @Test fun preparedAffineSamplerMatchesTheReferenceCoordinateTransform() {
+        val width = 7
+        val height = 5
+        val pixels = IntArray(width * height) { index ->
+            val value = (index * 7).coerceAtMost(255)
+            0xFF000000.toInt() or (value shl 16) or (value shl 8) or value
+        }
+        val prepared = TextureSampling.prepare(317, 229, width, height, 143f, -37f, .23f, .61f)
+        for (y in listOf(-19, 0, 41, 228, 401)) for (x in listOf(-31, 0, 72, 316, 509)) {
+            val coordinate = TextureSampling.coordinate(x, y, 317, 229, width, height, 143f, -37f, .23f, .61f)
+            val pixel = pixels[coordinate.y * width + coordinate.x]
+            val luminance = (pixel and 0xff) / 255f
+            assertEquals(
+                "Prepared texture transform diverged at ($x,$y)",
+                TextureSampling.effectiveLuminance(luminance, 1f),
+                prepared.sampleEffectiveLuminance(pixels, x, y, ProcreateFiltering.NONE),
+                .0001f,
+            )
+        }
+    }
+
     @Test fun reverseFlipsTheTextureMask() {
         assertEquals(.8f, TextureSampling.mask(.2f, 0f, 0f, false, false), .001f)
         assertEquals(.2f, TextureSampling.mask(.2f, 0f, 0f, true, false), .001f)
