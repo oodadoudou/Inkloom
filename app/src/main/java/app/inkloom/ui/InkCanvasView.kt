@@ -228,6 +228,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var rasterEraserSession: RasterEraserSession? = null
     private var rasterEraserBitmap: Bitmap? = null
     private var rasterEraserChanged = false
+    private val rasterEraserPoints = mutableListOf<StrokePoint>()
     private val eraserStrokeIndices = mutableMapOf<String, Int>()
     private var eraserMaskBatch: MutableMap<String, MutableList<StrokeMaskDab>>? = null
     private var strokeHistoryKey: String? = null
@@ -4664,10 +4665,12 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun buildStroke(points: List<StrokePoint>) = InkStroke(id = currentStrokeId, engineKind = activeBrushEngineKind(), points = points.toList(), colorArgb = inkColor.toUInt().toLong(), width = baseWidth, opacity = inkOpacity, brushId = brushId, layerId = activeLayerId, tipAssetPath = tipAssetPath, tipAssetPaths = tipAssetPaths.ifEmpty { listOfNotNull(tipAssetPath) }, dualTipAssetPaths = dualTipAssetPaths, grainAssetPath = grainAssetPath, grainDensity = grainDensity, grainDensityDynamics = grainDensityDynamics, grainScale = grainScale, grainRotationDegrees = grainRotationDegrees, grainBrightness = grainBrightness, grainContrast = grainContrast, grainReversed = grainReversed, grainEmphasized = grainEmphasized, grainOffsetJitter = grainOffsetJitter, spacing = brushSpacing, spacingMode = brushSpacingMode, flow = brushFlow, hardness = brushHardness, antiAliasMode = brushAntiAliasMode, blur = brushBlur, blurUnit = brushBlurUnit, blurLinkedToSize = brushBlurLinkedToSize, thickness = brushThickness, thicknessVertical = brushThicknessVertical, rotationDegrees = brushRotation, followStylusOrientation = followStylusOrientation, followStrokeDirection = followStrokeDirection, randomRotationDegrees = randomRotationDegrees, strokeRotationJitterDegrees = strokeRotationJitterDegrees, stampCount = stampCount, stampCountJitter = stampCountJitter, continuousPlot = brushContinuousPlot, colorJitterHueDegrees = colorJitterHueDegrees, colorJitterSaturation = colorJitterSaturation, colorJitterValue = colorJitterValue, colorJitterTarget = colorJitterTarget, colorJitterHueDynamics = colorJitterHueDynamics, colorJitterSaturationDynamics = colorJitterSaturationDynamics, colorJitterValueDynamics = colorJitterValueDynamics, watercolor = brushWatercolor, colorMix = brushColorMix, colorMixPressureEnabled = colorMixPressureEnabled, colorMixPressureMinimum = colorMixPressureMinimum, colorMixPressureCurve = colorMixPressureCurve, colorMixSecondaryDynamics = colorMixSecondaryDynamics, paintMix = brushPaintMix, paintMixPressureEnabled = paintMixPressureEnabled, paintMixPressureMinimum = paintMixPressureMinimum, paintMixPressureCurve = paintMixPressureCurve, paintMixSecondaryDynamics = paintMixSecondaryDynamics, spray = brushSpray, sprayParticleSize = sprayParticleSize, sprayParticleSizeUnit = sprayParticleSizeUnit, sprayParticleSizeSyncBrushSize = sprayParticleSizeSyncBrushSize, sprayParticleSizePressureEnabled = sprayParticleSizePressureEnabled, sprayParticleSizePressureMinimum = sprayParticleSizePressureMinimum, sprayParticleSizePressureCurve = sprayParticleSizePressureCurve, sprayParticleSizeSecondaryDynamics = sprayParticleSizeSecondaryDynamics, sprayDensity = sprayDensity, sprayDensityPressureEnabled = sprayDensityPressureEnabled, sprayDensityPressureMinimum = sprayDensityPressureMinimum, sprayDensityPressureCurve = sprayDensityPressureCurve, sprayDensitySecondaryDynamics = sprayDensitySecondaryDynamics, sprayBias = sprayBias, spraySpread = spraySpread, sprayParticleRotationDegrees = sprayParticleRotationDegrees, sprayParticleFollowStylusOrientation = sprayParticleFollowStylusOrientation, sprayParticleFollowStrokeDirection = sprayParticleFollowStrokeDirection, sprayParticleRandomRotationDegrees = sprayParticleRandomRotationDegrees, ribbon = brushRibbon, tipSequenceMode = brushTipSequenceMode, tipFlipHorizontalMode = tipFlipHorizontalMode, tipFlipVerticalMode = tipFlipVerticalMode, blendTipsWithDarken = blendTipsWithDarken, dualBrush = brushDual, dualSizeScale = dualSizeScale, dualSizeDynamics = dualSizeDynamics, dualSpacing = dualSpacing, dualSpacingMode = dualSpacingMode, dualSpacingDynamics = dualSpacingDynamics, dualFlow = dualFlow, dualFlowDynamics = dualFlowDynamics, dualHardness = dualHardness, dualAntiAliasMode = dualAntiAliasMode, dualThickness = dualThickness, dualThicknessDynamics = dualThicknessDynamics, dualThicknessVertical = dualThicknessVertical, dualRotationDegrees = dualRotationDegrees, dualFollowStylusOrientation = dualFollowStylusOrientation, dualFollowStrokeDirection = dualFollowStrokeDirection, dualRandomRotationDegrees = dualRandomRotationDegrees, dualStrokeRotationJitterDegrees = dualStrokeRotationJitterDegrees, dualStampCount = dualStampCount, dualStampCountJitter = dualStampCountJitter, dualRibbon = dualRibbon, dualSpray = dualSpray, dualSprayParticleSize = dualSprayParticleSize, dualSprayParticleSizeUnit = dualSprayParticleSizeUnit, dualSprayParticleSizeSyncBrushSize = dualSprayParticleSizeSyncBrushSize, dualSprayParticleSizeDynamics = dualSprayParticleSizeDynamics, dualSprayDensity = dualSprayDensity, dualSprayDensityDynamics = dualSprayDensityDynamics, dualSprayBias = dualSprayBias, dualSpraySpread = dualSpraySpread, dualSprayParticleRotationDegrees = dualSprayParticleRotationDegrees, dualSprayParticleFollowStylusOrientation = dualSprayParticleFollowStylusOrientation, dualSprayParticleFollowStrokeDirection = dualSprayParticleFollowStrokeDirection, dualSprayParticleRandomRotationDegrees = dualSprayParticleRandomRotationDegrees, dualTipSequenceMode = dualTipSequenceMode, dualTipFlipHorizontalMode = dualTipFlipHorizontalMode, dualTipFlipVerticalMode = dualTipFlipVerticalMode, dualBlendTipsWithDarken = dualBlendTipsWithDarken, dualCompositeMode = dualCompositeMode, dualApplyRgb = dualApplyRgb, taperMode = taperMode, taperStartEnabled = taperStartEnabled, taperStartLength = taperStartLength, taperStartLengthUnit = taperStartLengthUnit, taperStartMinimum = taperStartMinimum, taperEndEnabled = taperEndEnabled, taperEndLength = taperEndLength, taperEndLengthUnit = taperEndLengthUnit, taperEndMinimum = taperEndMinimum, waterEdgeEnabled = waterEdgeEnabled, waterEdgeRadius = waterEdgeRadius, waterEdgeRadiusUnit = waterEdgeRadiusUnit, waterEdgeOpacity = waterEdgeOpacity, waterEdgeDarkness = waterEdgeDarkness, waterEdgeBlur = waterEdgeBlur, waterEdgeBlurUnit = waterEdgeBlurUnit, sizePressureEnabled = sizePressureEnabled, sizePressureMinimum = sizePressureMinimum, sizePressureCurve = sizePressureCurve, sizeSecondaryDynamics = sizeSecondaryDynamics, opacityPressureEnabled = opacityPressureEnabled, opacityPressureMinimum = opacityPressureMinimum, opacityPressureCurve = opacityPressureCurve, opacitySecondaryDynamics = opacitySecondaryDynamics, flowPressureEnabled = flowPressureEnabled, flowPressureMinimum = flowPressureMinimum, flowPressureCurve = flowPressureCurve, flowSecondaryDynamics = flowSecondaryDynamics, spacingPressureEnabled = spacingPressureEnabled, spacingPressureMinimum = spacingPressureMinimum, spacingPressureCurve = spacingPressureCurve, spacingSecondaryDynamics = spacingSecondaryDynamics, thicknessPressureEnabled = thicknessPressureEnabled, thicknessPressureMinimum = thicknessPressureMinimum, thicknessPressureCurve = thicknessPressureCurve, thicknessSecondaryDynamics = thicknessSecondaryDynamics, blurPressureEnabled = blurPressureEnabled, blurPressureMinimum = blurPressureMinimum, blurPressureCurve = blurPressureCurve, blurSecondaryDynamics = blurSecondaryDynamics)
 
-    private fun commitRasterPaintStrokes(raster: Bitmap, newStrokes: List<InkStroke>) {
-        if (newStrokes.isEmpty() || raster.isRecycled) return
+    private data class RasterStrokePatch(val bitmap: Bitmap, val left: Int, val top: Int)
+
+    private fun renderRasterStrokePatch(raster: Bitmap, newStrokes: List<InkStroke>): RasterStrokePatch? {
+        if (newStrokes.isEmpty() || raster.isRecycled) return null
         val allPoints = newStrokes.flatMap(InkStroke::points)
-        if (allPoints.isEmpty()) return
+        if (allPoints.isEmpty()) return null
         val maximumWidth = newStrokes.maxOf { stroke ->
             val spread = if (stroke.spray) 1f + stroke.spraySpread.coerceAtLeast(0f) else 1f
             val blur = 1f + stroke.blur.coerceAtLeast(0f) / 50f
@@ -4706,10 +4709,15 @@ class InkCanvasView(context: Context) : View(context) {
             android.graphics.Rect(0, 0, patchWidth, patchHeight),
             Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.DST_IN },
         )
+        return RasterStrokePatch(paintSurface, patchLeft, patchTop)
+    }
+
+    private fun commitRasterPaintStrokes(raster: Bitmap, newStrokes: List<InkStroke>) {
+        val patch = renderRasterStrokePatch(raster, newStrokes) ?: return
         if (newStrokes.any { stroke -> stroke.watercolor || stroke.colorMix > .001f || stroke.paintMix > .001f }) {
-            RasterWetPaintMixer.composite(raster, paintSurface, patchLeft, patchTop, newStrokes)
-        } else Canvas(raster).drawBitmap(paintSurface, patchLeft.toFloat(), patchTop.toFloat(), Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.SRC_OVER })
-        paintSurface.recycle()
+            RasterWetPaintMixer.composite(raster, patch.bitmap, patch.left, patch.top, newStrokes)
+        } else Canvas(raster).drawBitmap(patch.bitmap, patch.left.toFloat(), patch.top.toFloat(), Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.SRC_OVER })
+        patch.bitmap.recycle()
         invalidate()
         val snapshot = raster.copy(Bitmap.Config.ARGB_8888, false)
         val callback = onRasterLayerCommitted
@@ -4772,6 +4780,7 @@ class InkCanvasView(context: Context) : View(context) {
             eraserGestureBefore = null
         } else eraserGestureBefore = strokes.toList()
         rasterEraserChanged = false
+        rasterEraserPoints.clear()
         lastEraserX = null
         lastEraserY = null
         eraserStrokeIndices.clear()
@@ -4783,6 +4792,8 @@ class InkCanvasView(context: Context) : View(context) {
         val session = rasterEraserSession
         if (raster != null && session != null) {
             val targetX = x.coerceIn(0f, 1f); val targetY = y.coerceIn(0f, 1f)
+            val point = StrokePoint(targetX, targetY, pressure.coerceIn(0f, 1f), android.os.SystemClock.uptimeMillis())
+            if (rasterEraserPoints.lastOrNull()?.let { last -> last.x == point.x && last.y == point.y } != true) rasterEraserPoints += point
             val startX = lastEraserX ?: targetX; val startY = lastEraserY ?: targetY
             val radius = eraserRadiusPixels(pressure) * raster.width / width.coerceAtLeast(1).toFloat()
             if (session.eraseSegment(startX * raster.width, startY * raster.height, targetX * raster.width, targetY * raster.height, radius, eraserOpacity, eraserHardness) != null) {
@@ -4937,6 +4948,27 @@ class InkCanvasView(context: Context) : View(context) {
         val session = rasterEraserSession
         if (raster != null && session != null) {
             if (rasterEraserChanged) {
+                // The capsule session provides immediate feedback. Rebuild the final mask with the
+                // same V2 descriptor used by imported paint brushes so custom eraser tips, spacing,
+                // pressure, texture, rotation, spray, and dual-brush semantics remain exact.
+                session.restoreOriginal()
+                val eraserStroke = buildStroke(rasterEraserPoints).copy(
+                    engineKind = BrushEngineKind.ERASE_MASK,
+                    width = eraserWidth,
+                    opacity = eraserOpacity,
+                    hardness = eraserHardness,
+                    tipAssetPath = eraserTipAssetPath ?: tipAssetPath,
+                    tipAssetPaths = listOfNotNull(eraserTipAssetPath ?: tipAssetPath).ifEmpty { tipAssetPaths },
+                    watercolor = false,
+                    colorMix = 0f,
+                    paintMix = 0f,
+                )
+                renderRasterStrokePatch(raster, listOf(eraserStroke))?.let { patch ->
+                    Canvas(raster).drawBitmap(patch.bitmap, patch.left.toFloat(), patch.top.toFloat(), Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        blendMode = android.graphics.BlendMode.DST_OUT
+                    })
+                    patch.bitmap.recycle()
+                }
                 val snapshot = raster.copy(Bitmap.Config.ARGB_8888, false)
                 val callback = onRasterLayerCommitted
                 if (callback == null) snapshot.recycle() else callback(activeLayerId, snapshot)
@@ -4944,6 +4976,7 @@ class InkCanvasView(context: Context) : View(context) {
             session.close()
         } else eraserGestureBefore?.let { commitStrokeEdit(it, strokes) }
         rasterEraserSession = null; rasterEraserBitmap = null; rasterEraserChanged = false
+        rasterEraserPoints.clear()
         eraserGestureBefore = null
         lastEraserX = null
         lastEraserY = null
@@ -4964,6 +4997,7 @@ class InkCanvasView(context: Context) : View(context) {
             invalidate()
         } ?: eraserGestureBefore?.let(::restoreStrokeSnapshot)
         rasterEraserSession = null; rasterEraserBitmap = null; rasterEraserChanged = false
+        rasterEraserPoints.clear()
         eraserGestureBefore = null
         lastEraserX = null
         lastEraserY = null

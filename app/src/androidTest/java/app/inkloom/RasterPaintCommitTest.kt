@@ -9,6 +9,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.model.EditorTool
 import app.inkloom.ui.InkCanvasView
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -58,6 +59,43 @@ class RasterPaintCommitTest {
         android.util.Log.i("InkloomPerf", "raster_standard_pen_commit_ms=$elapsedMs")
         assertTrue("Raster pen-up commit was ${elapsedMs}ms", elapsedMs < 16.7f)
         surface.recycle()
+    }
+
+    @Test fun importedEraserCommitsItsAuthoredTipInsteadOfTheLiveRoundProxy() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val tipFile = File(context.cacheDir, "raster-imported-eraser-tall-tip.png")
+        val pixels = IntArray(8 * 32) { index ->
+            val x = index % 8
+            if (x in 2..5) Color.BLACK else Color.WHITE
+        }
+        Bitmap.createBitmap(pixels, 8, 32, Bitmap.Config.ARGB_8888).also { tip ->
+            tipFile.outputStream().use { output -> check(tip.compress(Bitmap.CompressFormat.PNG, 100, output)) }
+            tip.recycle()
+        }
+        val surface = Bitmap.createBitmap(600, 600, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLACK) }
+        var committed: Bitmap? = null
+        val view = createCanvas {
+            tool = EditorTool.ERASER
+            activeLayerId = "paint"
+            eraserWidth = 240f
+            eraserHardness = 1f
+            eraserOpacity = 1f
+            eraserPressureSize = false
+            eraserTipAssetPath = tipFile.absolutePath
+            setRasterLayerBitmaps(mapOf("paint" to surface))
+            onRasterLayerCommitted = { _, bitmap -> committed = bitmap }
+        }
+
+        send(view, MotionEvent.ACTION_DOWN, 200f, 200f, 0L)
+        send(view, MotionEvent.ACTION_UP, 200f, 200f, 5L)
+
+        val result = requireNotNull(committed)
+        assertTrue("The authored black tip core must erase the raster", Color.alpha(result.getPixel(300, 300)) < 16)
+        assertTrue(
+            "Pixels inside the round preview proxy but outside the narrow authored tip must be restored",
+            Color.alpha(result.getPixel(340, 300)) > 240,
+        )
+        result.recycle(); surface.recycle(); tipFile.delete()
     }
 
     private fun createCanvas(block: InkCanvasView.() -> Unit): InkCanvasView {
