@@ -163,6 +163,8 @@ class BrushMetadataStore(
                         blurLinkedToSize = item.optBoolean("blurLinkedToSize", false),
                         thickness = item.optDouble("thickness", 1.0).toFloat(),
                         thicknessVertical = item.optBoolean("thicknessVertical", false),
+                        shapeRoundnessHorizontalJitter = item.optDouble("shapeRoundnessHorizontalJitter", 0.0).toFloat().coerceIn(0f, 1f),
+                        shapeRoundnessVerticalJitter = item.optDouble("shapeRoundnessVerticalJitter", 0.0).toFloat().coerceIn(0f, 1f),
                         rotationDegrees = item.optDouble("rotationDegrees", 0.0).toFloat(),
                         followStylusOrientation = item.optBoolean("followStylusOrientation", false),
                         followStrokeDirection = item.optBoolean("followStrokeDirection", false),
@@ -224,6 +226,8 @@ class BrushMetadataStore(
                         dualHardness = item.optDouble("dualHardness", 1.0).toFloat().coerceIn(0f, 1f),
                         dualAntiAliasMode = item.optInt("dualAntiAliasMode", CspAntiAlias.MEDIUM).coerceIn(CspAntiAlias.NONE, CspAntiAlias.STRONG),
                         dualThickness = item.optDouble("dualThickness", 1.0).toFloat().coerceIn(.05f, 2f),
+                        dualShapeRoundnessHorizontalJitter = item.optDouble("dualShapeRoundnessHorizontalJitter", 0.0).toFloat().coerceIn(0f, 1f),
+                        dualShapeRoundnessVerticalJitter = item.optDouble("dualShapeRoundnessVerticalJitter", 0.0).toFloat().coerceIn(0f, 1f),
                         dualThicknessDynamics = parameterDynamics("dualThicknessDynamics"),
                         dualThicknessVertical = item.optBoolean("dualThicknessVertical", false),
                         dualRotationDegrees = item.optDouble("dualRotationDegrees", 0.0).toFloat(),
@@ -371,6 +375,8 @@ class BrushMetadataStore(
                     .put("blurLinkedToSize", brush.blurLinkedToSize)
                     .put("thickness", brush.thickness)
                     .put("thicknessVertical", brush.thicknessVertical)
+                    .put("shapeRoundnessHorizontalJitter", brush.shapeRoundnessHorizontalJitter)
+                    .put("shapeRoundnessVerticalJitter", brush.shapeRoundnessVerticalJitter)
                     .put("rotationDegrees", brush.rotationDegrees)
                     .put("followStylusOrientation", brush.followStylusOrientation)
                     .put("followStrokeDirection", brush.followStrokeDirection)
@@ -432,6 +438,8 @@ class BrushMetadataStore(
                     .put("dualHardness", brush.dualHardness)
                     .put("dualAntiAliasMode", brush.dualAntiAliasMode)
                     .put("dualThickness", brush.dualThickness)
+                    .put("dualShapeRoundnessHorizontalJitter", brush.dualShapeRoundnessHorizontalJitter)
+                    .put("dualShapeRoundnessVerticalJitter", brush.dualShapeRoundnessVerticalJitter)
                     .put("dualThicknessDynamics", parameterDynamicsJson(brush.dualThicknessDynamics))
                     .put("dualThicknessVertical", brush.dualThicknessVertical)
                     .put("dualRotationDegrees", brush.dualRotationDegrees)

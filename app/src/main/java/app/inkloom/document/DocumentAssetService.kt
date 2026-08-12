@@ -963,7 +963,8 @@ class DocumentAssetService(private val context: Context) {
                 randomUnit = rotationRandom.nextFloat(),
             )
             val thicknessScale = stroke.thickness.coerceIn(.05f, 2f) * thicknessDynamic
-            val tipScale = BrushTipTransform.scale(tip.width, tip.height, diameter, thicknessScale, stroke.thicknessVertical)
+            val roundness = ShapeRoundnessJitter.factors(stroke.renderSeed, sequenceIndex, stroke.shapeRoundnessHorizontalJitter, stroke.shapeRoundnessVerticalJitter)
+            val tipScale = BrushTipTransform.scale(tip.width, tip.height, diameter, thicknessScale, stroke.thicknessVertical, roundness.horizontal, roundness.vertical)
             val flip = BrushTipFlip.signs(stroke.tipFlipHorizontalMode, stroke.tipFlipVerticalMode, stroke.tipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed)
             val scaleX = tipScale.x * flip.x
             val scaleY = tipScale.y * flip.y
@@ -973,7 +974,7 @@ class DocumentAssetService(private val context: Context) {
             val tiltBleedAmount = stroke.tiltBleed.coerceIn(0f, 1f) * BrushTilt.response(point, stroke.tiltBleedStart)
             if ((stroke.waterEdgeEnabled && stroke.waterEdgeOpacity > 0f) || tiltBleedAmount > .001f) {
                 val edgeRadius = WaterEdge.distancePixels(stroke.waterEdgeRadius, stroke.waterEdgeRadiusUnit, width.toFloat()) + diameter * tiltBleedAmount * .18f
-                val edgeTipScale = BrushTipTransform.scale(tip.width, tip.height, diameter + edgeRadius * 2f, thicknessScale, stroke.thicknessVertical)
+                val edgeTipScale = BrushTipTransform.scale(tip.width, tip.height, diameter + edgeRadius * 2f, thicknessScale, stroke.thicknessVertical, roundness.horizontal, roundness.vertical)
                 val edgeMatrix = Matrix().apply { postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(edgeTipScale.x * flip.x, edgeTipScale.y * flip.y); postRotate(angle); postTranslate(drawX, drawY) }
                 paint.colorFilter = PorterDuffColorFilter(WaterEdge.darkenArgb(jitteredColor, stroke.waterEdgeDarkness), PorterDuff.Mode.SRC_IN)
                 paint.alpha = (mainAlpha * maxOf(stroke.waterEdgeOpacity.coerceIn(0f, 1f), tiltBleedAmount * .55f)).toInt().coerceIn(1, 255)
@@ -1027,7 +1028,8 @@ class DocumentAssetService(private val context: Context) {
             val drawX = point.x * width + offset.x + StrokePathJitter.unpackX(pathOffset)
             val drawY = point.y * height + offset.y + StrokePathJitter.unpackY(pathOffset)
             val thicknessDynamic = dynamics.thickness
-            val tipScale = BrushTipTransform.scale(tip.width, tip.height, diameter, stroke.dualThickness.coerceIn(.05f, 2f) * thicknessDynamic, stroke.dualThicknessVertical)
+            val roundness = ShapeRoundnessJitter.factors(stroke.renderSeed, sequenceIndex, stroke.dualShapeRoundnessHorizontalJitter, stroke.dualShapeRoundnessVerticalJitter, dual = true)
+            val tipScale = BrushTipTransform.scale(tip.width, tip.height, diameter, stroke.dualThickness.coerceIn(.05f, 2f) * thicknessDynamic, stroke.dualThicknessVertical, roundness.horizontal, roundness.vertical)
             val flip = BrushTipFlip.signs(stroke.dualTipFlipHorizontalMode, stroke.dualTipFlipVerticalMode, stroke.dualTipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed, dual = true)
             val angle = BrushStampRotation.degrees(
                 stroke = stroke,

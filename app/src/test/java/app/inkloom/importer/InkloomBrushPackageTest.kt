@@ -69,6 +69,10 @@ class InkloomBrushPackageTest {
                 strokePathLongitudinalJitter = .27f,
                 dualStrokePathJitter = .19f,
                 dualStrokePathLongitudinalJitter = .31f,
+                shapeRoundnessHorizontalJitter = .37f,
+                shapeRoundnessVerticalJitter = .48f,
+                dualShapeRoundnessHorizontalJitter = .59f,
+                dualShapeRoundnessVerticalJitter = .68f,
                 antiAliasMode = CspAntiAlias.WEAK,
                 blur = 9.5f,
                 blurUnit = 2,
@@ -178,6 +182,10 @@ class InkloomBrushPackageTest {
             assertEquals(original.strokePathLongitudinalJitter, restored.strokePathLongitudinalJitter, .0001f)
             assertEquals(original.dualStrokePathJitter, restored.dualStrokePathJitter, .0001f)
             assertEquals(original.dualStrokePathLongitudinalJitter, restored.dualStrokePathLongitudinalJitter, .0001f)
+            assertEquals(original.shapeRoundnessHorizontalJitter, restored.shapeRoundnessHorizontalJitter, .0001f)
+            assertEquals(original.shapeRoundnessVerticalJitter, restored.shapeRoundnessVerticalJitter, .0001f)
+            assertEquals(original.dualShapeRoundnessHorizontalJitter, restored.dualShapeRoundnessHorizontalJitter, .0001f)
+            assertEquals(original.dualShapeRoundnessVerticalJitter, restored.dualShapeRoundnessVerticalJitter, .0001f)
             assertEquals(app.inkloom.document.CspBrushGap.NARROW, restored.spacingMode)
             assertEquals(CspAntiAlias.WEAK, restored.antiAliasMode)
             assertEquals(CspAntiAlias.STRONG, restored.dualAntiAliasMode)

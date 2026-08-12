@@ -186,6 +186,8 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             flow = metadata.float("dynamicsGlazedFlow", 1f).coerceIn(0f, 1f),
             hardness = if (metadata.boolean("shapeFilter", true)) .85f else 1f,
             thickness = metadata.float("shapeRoundness", 1f).coerceIn(.05f, 1f),
+            shapeRoundnessHorizontalJitter = metadata.float("jitterShapeRoundnessX").coerceIn(0f, 1f),
+            shapeRoundnessVerticalJitter = metadata.float("jitterShapeRoundness").coerceIn(0f, 1f),
             thicknessPressureEnabled = roundnessDynamics.pressureEnabled,
             thicknessPressureMinimum = roundnessDynamics.pressureMinimum,
             thicknessPressureCurve = roundnessDynamics.pressureCurve,
@@ -218,6 +220,8 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             dualFlow = dualMapped?.flow ?: 1f,
             dualHardness = dualMapped?.hardness ?: 1f,
             dualThickness = dualMapped?.thickness ?: 1f,
+            dualShapeRoundnessHorizontalJitter = dualMapped?.roundnessHorizontalJitter ?: 0f,
+            dualShapeRoundnessVerticalJitter = dualMapped?.roundnessVerticalJitter ?: 0f,
             dualThicknessDynamics = dualMapped?.thicknessDynamics ?: BrushParameterDynamics(),
             dualRotationDegrees = dualMapped?.rotation ?: 0f,
             dualFollowStylusOrientation = dualMapped?.followStylus ?: false,
@@ -293,6 +297,8 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             flow = metadata.float("dynamicsGlazedFlow", 1f).coerceIn(0f, 1f),
             hardness = if (metadata.boolean("shapeFilter", true)) .85f else 1f,
             thickness = metadata.float("shapeRoundness", 1f).coerceIn(.05f, 1f),
+            roundnessHorizontalJitter = metadata.float("jitterShapeRoundnessX").coerceIn(0f, 1f),
+            roundnessVerticalJitter = metadata.float("jitterShapeRoundness").coerceIn(0f, 1f),
             thicknessDynamics = roundnessDynamics(metadata),
             rotation = Math.toDegrees(metadata.float("shapeAngle").toDouble()).toFloat().coerceIn(-360f, 360f),
             followStylus = metadata.boolean("shapeAzimuth"),
@@ -448,6 +454,8 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         val flow: Float,
         val hardness: Float,
         val thickness: Float,
+        val roundnessHorizontalJitter: Float,
+        val roundnessVerticalJitter: Float,
         val thicknessDynamics: BrushParameterDynamics,
         val rotation: Float,
         val followStylus: Boolean,
@@ -466,7 +474,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
     )
 
     companion object {
-        const val CURRENT_VERSION = 17
+        const val CURRENT_VERSION = 18
         private const val MAX_ENTRIES = 4_096
         private const val MAX_ENTRY_BYTES = 32L * 1024L * 1024L
         private const val MAX_EXPANDED_BYTES = 384L * 1024L * 1024L

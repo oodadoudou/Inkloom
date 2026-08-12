@@ -4929,6 +4929,8 @@ internal fun InkCanvasView.applyBrushConfiguration(
     tiltSizeCompression = activeBrush?.tiltSizeCompression ?: false
     brushThickness = activeBrush?.thickness ?: 1f
     brushThicknessVertical = activeBrush?.thicknessVertical ?: false
+    shapeRoundnessHorizontalJitter = activeBrush?.shapeRoundnessHorizontalJitter ?: 0f
+    shapeRoundnessVerticalJitter = activeBrush?.shapeRoundnessVerticalJitter ?: 0f
     brushRotation = activeBrush?.rotationDegrees ?: 0f
     followStylusOrientation = activeBrush?.followStylusOrientation ?: false
     followStrokeDirection = activeBrush?.followStrokeDirection ?: false
@@ -4990,6 +4992,8 @@ internal fun InkCanvasView.applyBrushConfiguration(
     dualHardness = activeBrush?.dualHardness ?: 1f
     dualAntiAliasMode = activeBrush?.dualAntiAliasMode ?: CspAntiAlias.MEDIUM
     dualThickness = activeBrush?.dualThickness ?: 1f
+    dualShapeRoundnessHorizontalJitter = activeBrush?.dualShapeRoundnessHorizontalJitter ?: 0f
+    dualShapeRoundnessVerticalJitter = activeBrush?.dualShapeRoundnessVerticalJitter ?: 0f
     dualThicknessDynamics = activeBrush?.dualThicknessDynamics ?: BrushParameterDynamics()
     dualThicknessVertical = activeBrush?.dualThicknessVertical ?: false
     dualRotationDegrees = activeBrush?.dualRotationDegrees ?: 0f
@@ -9009,6 +9013,8 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 if (draft.grainPreviewPath != null) item { BrushTextureCompositeEditor(draft.grainCompositeMode) { draft = draft.copy(grainCompositeMode = it) } }
                 item { BrushSettingSlider("Thickness", draft.thickness, .05f..2f) { draft = draft.copy(thickness = it) } }
                 item { SettingSwitch("Vertical thickness", "Applies thickness along the imported tip's vertical axis.", draft.thicknessVertical) { draft = draft.copy(thicknessVertical = it) } }
+                item { BrushSettingSlider(tr("Horizontal roundness jitter", "水平真圆率抖动"), draft.shapeRoundnessHorizontalJitter, 0f..1f) { draft = draft.copy(shapeRoundnessHorizontalJitter = it) } }
+                item { BrushSettingSlider(tr("Vertical roundness jitter", "垂直真圆率抖动"), draft.shapeRoundnessVerticalJitter, 0f..1f) { draft = draft.copy(shapeRoundnessVerticalJitter = it) } }
                 item { SettingSwitch("Ribbon stroke", "Preserves the tip aspect ratio and continuously follows the stroke direction.", draft.ribbon) { draft = draft.copy(ribbon = it) } }
                 item { BrushTipFlipModeEditor(tr("Horizontal tip flip", "笔尖水平翻转"), draft.tipFlipHorizontalMode) { draft = draft.copy(tipFlipHorizontalMode = it) } }
                 item { BrushTipFlipModeEditor(tr("Vertical tip flip", "笔尖垂直翻转"), draft.tipFlipVerticalMode) { draft = draft.copy(tipFlipVerticalMode = it) } }
@@ -9082,6 +9088,8 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                     }
                 }
                 if (draft.dualBrush) item { BrushSettingSlider("Secondary thickness", draft.dualThickness, .05f..2f) { draft = draft.copy(dualThickness = it) } }
+                if (draft.dualBrush) item { BrushSettingSlider(tr("Secondary horizontal roundness jitter", "辅助笔尖水平真圆率抖动"), draft.dualShapeRoundnessHorizontalJitter, 0f..1f) { draft = draft.copy(dualShapeRoundnessHorizontalJitter = it) } }
+                if (draft.dualBrush) item { BrushSettingSlider(tr("Secondary vertical roundness jitter", "辅助笔尖垂直真圆率抖动"), draft.dualShapeRoundnessVerticalJitter, 0f..1f) { draft = draft.copy(dualShapeRoundnessVerticalJitter = it) } }
                 if (draft.dualBrush) item { ParameterDynamicsEditor(tr("Secondary thickness dynamics", "辅助笔尖厚度动态"), "Secondary thickness", draft.dualThicknessDynamics) { draft = draft.copy(dualThicknessDynamics = it) } }
                 if (draft.dualBrush) item { SettingSwitch("Secondary vertical thickness", null, draft.dualThicknessVertical) { draft = draft.copy(dualThicknessVertical = it) } }
                 if (draft.dualBrush) item { BrushSettingSlider("Secondary rotation", draft.dualRotationDegrees, -180f..180f) { draft = draft.copy(dualRotationDegrees = it) } }

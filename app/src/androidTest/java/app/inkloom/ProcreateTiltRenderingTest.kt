@@ -158,6 +158,45 @@ class ProcreateTiltRenderingTest {
         }
     }
 
+    @Test fun horizontalAndVerticalRoundnessJitterVaryPerStampAndMatchExport() {
+        val tip = File(context.cacheDir, "procreate-roundness-jitter-${System.nanoTime()}.png")
+        Bitmap.createBitmap(48, 48, Bitmap.Config.ARGB_8888).also { bitmap ->
+            Canvas(bitmap).drawCircle(24f, 24f, 23f, android.graphics.Paint().apply { color = Color.BLACK; isAntiAlias = true })
+            tip.outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+            bitmap.recycle()
+        }
+        try {
+            val base = InkStroke(
+                points = listOf(
+                    StrokePoint(.18f, .5f, timeMs = 1),
+                    StrokePoint(.82f, .5f, timeMs = 2),
+                ),
+                width = 120f,
+                tipAssetPath = tip.absolutePath,
+                tipAssetPaths = listOf(tip.absolutePath),
+                spacing = .3f,
+                sizePressureEnabled = false,
+                renderSeed = 739,
+            )
+            val unchanged = renderExport(base)
+            val jitteredStroke = base.copy(
+                shapeRoundnessHorizontalJitter = .8f,
+                shapeRoundnessVerticalJitter = .6f,
+            )
+            val jittered = renderExport(jitteredStroke)
+            val live = renderLive(jitteredStroke, jittered.height)
+            try {
+                assertNotEquals("Roundness jitter did not change rendered pixels", signature(unchanged), signature(jittered))
+                val maximumDifference = maximumRedDifference(jittered, live)
+                assertTrue("Live/export roundness jitter diverged: max red delta=$maximumDifference", maximumDifference <= 3)
+            } finally {
+                unchanged.recycle(); jittered.recycle(); live.recycle()
+            }
+        } finally {
+            tip.delete()
+        }
+    }
+
     private fun renderExport(stroke: InkStroke): Bitmap = DocumentAssetService(context).renderPageBitmap(
         InkPage(background = PageBackground.Paper(), strokes = listOf(stroke)),
         400,

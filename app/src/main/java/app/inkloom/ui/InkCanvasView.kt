@@ -52,6 +52,7 @@ import app.inkloom.document.BrushTipSequence
 import app.inkloom.document.BrushTipFlip
 import app.inkloom.document.BrushTipTextureDecoder
 import app.inkloom.document.BrushTipTransform
+import app.inkloom.document.ShapeRoundnessJitter
 import app.inkloom.document.BrushTaperMode
 import app.inkloom.document.CspDualBrushBlendMode
 import app.inkloom.document.CspAntiAlias
@@ -585,6 +586,8 @@ class InkCanvasView(context: Context) : View(context) {
     var tiltSizeCompression: Boolean = false
     var brushThickness: Float = 1f
     var brushThicknessVertical: Boolean = false
+    var shapeRoundnessHorizontalJitter: Float = 0f
+    var shapeRoundnessVerticalJitter: Float = 0f
     var brushRotation: Float = 0f
     var followStylusOrientation: Boolean = false
     var followStrokeDirection: Boolean = false
@@ -646,6 +649,8 @@ class InkCanvasView(context: Context) : View(context) {
     var dualHardness: Float = 1f
     var dualAntiAliasMode: Int = CspAntiAlias.MEDIUM
     var dualThickness: Float = 1f
+    var dualShapeRoundnessHorizontalJitter: Float = 0f
+    var dualShapeRoundnessVerticalJitter: Float = 0f
     var dualThicknessDynamics: BrushParameterDynamics = BrushParameterDynamics()
     var dualThicknessVertical: Boolean = false
     var dualRotationDegrees: Float = 0f
@@ -1543,7 +1548,8 @@ class InkCanvasView(context: Context) : View(context) {
                 } ?: tips[tipIndex]
             } else tips[tipIndex]
             val thicknessScale = stroke.thickness.coerceIn(.05f, 2f) * dynamics.thickness
-            val tipScale = BrushTipTransform.scale(tip.width, tip.height, diameter, thicknessScale, stroke.thicknessVertical)
+            val roundness = ShapeRoundnessJitter.factors(stroke.renderSeed, sequenceIndex, stroke.shapeRoundnessHorizontalJitter, stroke.shapeRoundnessVerticalJitter)
+            val tipScale = BrushTipTransform.scale(tip.width, tip.height, diameter, thicknessScale, stroke.thicknessVertical, roundness.horizontal, roundness.vertical)
             val flip = BrushTipFlip.signs(stroke.tipFlipHorizontalMode, stroke.tipFlipVerticalMode, stroke.tipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed)
             val scaleX = tipScale.x * flip.x
             val scaleY = tipScale.y * flip.y
@@ -1567,7 +1573,7 @@ class InkCanvasView(context: Context) : View(context) {
             val tiltBleedAmount = stroke.tiltBleed.coerceIn(0f, 1f) * app.inkloom.document.BrushTilt.response(point, stroke.tiltBleedStart)
             if ((stroke.waterEdgeEnabled && stroke.waterEdgeOpacity > 0f) || tiltBleedAmount > .001f) {
                 val edgeRadius = WaterEdge.distancePixels(stroke.waterEdgeRadius, stroke.waterEdgeRadiusUnit, width.toFloat()) + diameter * tiltBleedAmount * .18f
-                val edgeTipScale = BrushTipTransform.scale(tip.width, tip.height, diameter + edgeRadius * 2f, thicknessScale, stroke.thicknessVertical)
+                val edgeTipScale = BrushTipTransform.scale(tip.width, tip.height, diameter + edgeRadius * 2f, thicknessScale, stroke.thicknessVertical, roundness.horizontal, roundness.vertical)
                 val edgeMatrix = edgeStampMatrix.apply { reset(); postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(edgeTipScale.x * flip.x, edgeTipScale.y * flip.y); postRotate(angle); postTranslate(drawX, drawY) }
                 paint.colorFilter = srcInColorFilter(WaterEdge.darkenArgb(jitteredColor, stroke.waterEdgeDarkness))
                 paint.alpha = (mainAlpha * maxOf(stroke.waterEdgeOpacity.coerceIn(0f, 1f), tiltBleedAmount * .55f)).toInt().coerceIn(1, 255)
@@ -1700,7 +1706,8 @@ class InkCanvasView(context: Context) : View(context) {
             val pathOffset = app.inkloom.document.StrokePathJitter.offset(stroke.renderSeed, sequenceIndex, strokeDirection, diameter, stroke.dualStrokePathJitter, stroke.dualStrokePathLongitudinalJitter, dual = true)
             val drawX = x + offset.x + app.inkloom.document.StrokePathJitter.unpackX(pathOffset)
             val drawY = y + offset.y + app.inkloom.document.StrokePathJitter.unpackY(pathOffset)
-            val tipScale = BrushTipTransform.scale(tip.width, tip.height, diameter, stroke.dualThickness.coerceIn(.05f, 2f) * dynamics.thickness, stroke.dualThicknessVertical)
+            val roundness = ShapeRoundnessJitter.factors(stroke.renderSeed, sequenceIndex, stroke.dualShapeRoundnessHorizontalJitter, stroke.dualShapeRoundnessVerticalJitter, dual = true)
+            val tipScale = BrushTipTransform.scale(tip.width, tip.height, diameter, stroke.dualThickness.coerceIn(.05f, 2f) * dynamics.thickness, stroke.dualThicknessVertical, roundness.horizontal, roundness.vertical)
             val flip = BrushTipFlip.signs(stroke.dualTipFlipHorizontalMode, stroke.dualTipFlipVerticalMode, stroke.dualTipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed, dual = true)
             val angle = BrushStampRotation.degrees(
                 stroke = stroke,
@@ -4744,6 +4751,10 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun withCurrentGrainBehavior(stroke: InkStroke): InkStroke = stroke.copy(
         grainDensityMinimum = grainDensityMinimum,
+        shapeRoundnessHorizontalJitter = shapeRoundnessHorizontalJitter,
+        shapeRoundnessVerticalJitter = shapeRoundnessVerticalJitter,
+        dualShapeRoundnessHorizontalJitter = dualShapeRoundnessHorizontalJitter,
+        dualShapeRoundnessVerticalJitter = dualShapeRoundnessVerticalJitter,
         grainMovement = grainMovement,
         grainZoom = grainZoom,
         grainStrokeRotation = grainStrokeRotation,

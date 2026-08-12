@@ -14,6 +14,7 @@ import app.inkloom.document.BrushTipTransform
 import app.inkloom.document.GrainDynamics
 import app.inkloom.document.GrainBehavior
 import app.inkloom.document.InkStroke
+import app.inkloom.document.ShapeRoundnessJitter
 import app.inkloom.document.StrokePoint
 import app.inkloom.document.StrokeStampSampler
 import app.inkloom.document.StrokeTaper
@@ -61,12 +62,15 @@ internal object EngineV2StampBatchRenderer {
             val depositedAlpha = (stroke.flow * dynamics.depositedAlpha * (falloff?.get(index) ?: 1f)).coerceIn(0f, 1f)
             if (depositedAlpha <= .0001f) continue
             val diameter = (stroke.width * width.coerceAtLeast(1f) / REFERENCE_WIDTH * (taper?.get(index) ?: 1f) * dynamics.size).coerceAtLeast(.25f)
+            val roundness = ShapeRoundnessJitter.factors(stroke.renderSeed, index, stroke.shapeRoundnessHorizontalJitter, stroke.shapeRoundnessVerticalJitter)
             val tipScale = BrushTipTransform.scale(
                 tip.width,
                 tip.height,
                 diameter,
                 stroke.thickness.coerceIn(.05f, 2f) * dynamics.thickness,
                 stroke.thicknessVertical,
+                roundness.horizontal,
+                roundness.vertical,
             )
             val followsStroke = BrushStampRotation.followsStroke(stroke, dual = false)
             val hasPathJitter = stroke.strokePathJitter > .0001f || stroke.strokePathLongitudinalJitter > .0001f
