@@ -40,6 +40,7 @@ import app.inkloom.document.StrokeMaskRenderer
 import app.inkloom.document.BrushCurvePoint
 import app.inkloom.document.BrushEngineKind
 import app.inkloom.document.BrushColorDynamics
+import app.inkloom.document.ProcreateColorDynamics
 import app.inkloom.document.BrushParameterDynamics
 import app.inkloom.document.BrushColorJitter
 import app.inkloom.document.BrushBlur
@@ -512,6 +513,7 @@ class InkCanvasView(context: Context) : View(context) {
     var viewportRotationDegrees: Float = 0f
         set(value) { field = ViewportTransform.normalizeDegrees(value.takeIf(Float::isFinite) ?: 0f); invalidate() }
     var inkColor: Int = Color.rgb(17, 17, 17)
+    var secondaryInkColor: Int = Color.WHITE
     var baseWidth: Float = 5f
         set(value) {
             field = value
@@ -603,6 +605,7 @@ class InkCanvasView(context: Context) : View(context) {
     var colorJitterHueDynamics: BrushColorDynamics = BrushColorDynamics()
     var colorJitterSaturationDynamics: BrushColorDynamics = BrushColorDynamics()
     var colorJitterValueDynamics: BrushColorDynamics = BrushColorDynamics()
+    var procreateColorDynamics: ProcreateColorDynamics = ProcreateColorDynamics()
     var brushWatercolor: Boolean = false
     var brushColorMix: Float = 0f
     var colorMixPressureEnabled: Boolean = false
@@ -2353,7 +2356,7 @@ class InkCanvasView(context: Context) : View(context) {
                 // Freeze the many brush-engine parameters once per contact. Live rendering then
                 // copies only the changing point list instead of rebuilding the full descriptor
                 // several times per display frame.
-                activeStrokeTemplate = withCurrentGrainBehavior(buildStroke(emptyList()))
+                activeStrokeTemplate = withCurrentBrushBehavior(buildStroke(emptyList()))
                 activePerspectiveSnapConstraint = null
                 activeSpecialRulerConstraint = null
                 activeCanvasSnapConstraint = if (!rulerEnabled && (!perspectiveGuideState.assisted || perspectiveGuideState.mode == PerspectiveGuideMode.NONE) && (!specialRulerState.assisted || specialRulerState.mode == SpecialRulerMode.NONE) && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
@@ -4747,9 +4750,11 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun makeStroke(points: List<StrokePoint>): InkStroke =
-        activeStrokeTemplate?.copy(points = points.toList()) ?: withCurrentGrainBehavior(buildStroke(points))
+        activeStrokeTemplate?.copy(points = points.toList()) ?: withCurrentBrushBehavior(buildStroke(points))
 
-    private fun withCurrentGrainBehavior(stroke: InkStroke): InkStroke = stroke.copy(
+    private fun withCurrentBrushBehavior(stroke: InkStroke): InkStroke = stroke.copy(
+        secondaryColorArgb = secondaryInkColor.toUInt().toLong(),
+        procreateColorDynamics = procreateColorDynamics,
         grainDensityMinimum = grainDensityMinimum,
         shapeRoundnessHorizontalJitter = shapeRoundnessHorizontalJitter,
         shapeRoundnessVerticalJitter = shapeRoundnessVerticalJitter,

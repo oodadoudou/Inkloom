@@ -66,4 +66,31 @@ class BrushColorJitterTest {
         assertEquals(.1f, BrushColorJitter.amount(dynamics, below, 1, 0, 2), .0001f)
         assertEquals(1f, BrushColorJitter.amount(dynamics, flat, 1, 0, 2), .0001f)
     }
+
+    @Test fun ProcreateStrokeJitterIsConstantWhileStampJitterVaries() {
+        val point = StrokePoint(.5f, .5f, timeMs = 3)
+        val strokeJitter = InkStroke(
+            points = listOf(point), renderSeed = 917, colorArgb = 0xFF336699,
+            procreateColorDynamics = ProcreateColorDynamics(strokeHue = 1f, strokeSaturation = 1f),
+        )
+        val stampJitter = strokeJitter.copy(procreateColorDynamics = ProcreateColorDynamics(stampHue = 1f, stampSaturation = 1f))
+
+        assertEquals(BrushColorJitter.argb(strokeJitter, point, 1), BrushColorJitter.argb(strokeJitter, point, 19))
+        assertNotEquals(BrushColorJitter.argb(stampJitter, point, 1), BrushColorJitter.argb(stampJitter, point, 19))
+    }
+
+    @Test fun ProcreatePressureAndTiltTransitionTowardSecondaryColorAndPreserveAlpha() {
+        val uprightLight = StrokePoint(.5f, .5f, pressure = 0f, tilt = 0f)
+        val flatHeavy = StrokePoint(.5f, .5f, pressure = 1f, tilt = (Math.PI / 2).toFloat())
+        val pressureStroke = InkStroke(
+            points = listOf(uprightLight, flatHeavy), colorArgb = 0x7FFF0000, secondaryColorArgb = 0xFF0000FF,
+            procreateColorDynamics = ProcreateColorDynamics(pressureSecondary = 1f),
+        )
+        val tiltStroke = pressureStroke.copy(procreateColorDynamics = ProcreateColorDynamics(tiltSecondary = 1f, tiltStart = .5f))
+
+        assertEquals(0x7FFF0000, BrushColorJitter.argb(pressureStroke, uprightLight, 0))
+        assertEquals(0x7F0000FF, BrushColorJitter.argb(pressureStroke, flatHeavy, 1))
+        assertEquals(0x7FFF0000, BrushColorJitter.argb(tiltStroke, uprightLight, 0))
+        assertEquals(0x7F0000FF, BrushColorJitter.argb(tiltStroke, flatHeavy, 1))
+    }
 }

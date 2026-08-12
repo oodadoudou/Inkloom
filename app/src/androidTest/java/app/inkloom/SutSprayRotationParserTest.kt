@@ -280,6 +280,7 @@ class SutSprayRotationParserTest {
                 colorJitterSaturation = 9f,
                 colorJitterTarget = 1,
                 colorJitterHueDynamics = app.inkloom.document.BrushColorDynamics(velocityEnabled = true, velocityScale = 3f, randomEnabled = true, randomMinimum = -1f),
+                procreateColorDynamics = app.inkloom.document.ProcreateColorDynamics(stampHue = .13f, strokeSecondary = .24f, pressureBrightness = -.35f, pressureSecondaryCurve = listOf(app.inkloom.document.BrushCurvePoint(0f, .2f), app.inkloom.document.BrushCurvePoint(1f, .8f)), tiltSecondary = .46f, tiltStart = .27f),
                 blur = 7.5f,
                 blurUnit = 2,
                 blurLinkedToSize = true,
@@ -362,6 +363,7 @@ class SutSprayRotationParserTest {
             assertTrue(restored.colorJitterHueDynamics.randomEnabled)
             assertEquals(3f, restored.colorJitterHueDynamics.velocityScale, .0001f)
             assertEquals(-1f, restored.colorJitterHueDynamics.randomMinimum, .0001f)
+            assertEquals(original.procreateColorDynamics, restored.procreateColorDynamics)
             assertEquals(7.5f, restored.blur, .0001f)
             assertEquals(2, restored.blurUnit)
             assertTrue(restored.blurLinkedToSize)

@@ -12,6 +12,7 @@ import app.inkloom.document.DocumentAssetService
 import app.inkloom.document.InkPage
 import app.inkloom.document.InkStroke
 import app.inkloom.document.PageBackground
+import app.inkloom.document.ProcreateColorDynamics
 import app.inkloom.document.StrokePoint
 import app.inkloom.ui.InkCanvasView
 import java.io.File
@@ -49,6 +50,41 @@ class ColorJitterRenderingTest {
             val exported = renderExport(jittered)
             val live = renderLive(jittered, exported.height)
             val plain = renderExport(base)
+            try {
+                assertEquals(pixelSignature(exported), pixelSignature(live))
+                assertNotEquals(pixelSignature(plain), pixelSignature(exported))
+            } finally { exported.recycle(); live.recycle(); plain.recycle() }
+        } finally { tip.delete() }
+    }
+
+    @Test fun ProcreateStampStrokePressureTiltAndSecondaryColorMatchLiveCanvasAndExport() {
+        val tip = File(context.cacheDir, "procreate-color-dynamics-tip.png")
+        writePng(tip, IntArray(64) { Color.WHITE }.also { pixels -> for (y in 1..6) for (x in 1..6) pixels[y * 8 + x] = Color.BLACK })
+        try {
+            val stroke = InkStroke(
+                renderSeed = 9231,
+                points = listOf(
+                    StrokePoint(.2f, .5f, pressure = .15f, tilt = .1f, timeMs = 10),
+                    StrokePoint(.5f, .5f, pressure = .55f, tilt = .6f, timeMs = 20),
+                    StrokePoint(.8f, .5f, pressure = 1f, tilt = 1.2f, timeMs = 30),
+                ),
+                colorArgb = 0xFFCC3322,
+                secondaryColorArgb = 0xFF2255DD,
+                width = 120f,
+                spacing = .22f,
+                sizePressureEnabled = false,
+                tipAssetPath = tip.absolutePath,
+                tipAssetPaths = listOf(tip.absolutePath),
+                procreateColorDynamics = ProcreateColorDynamics(
+                    stampHue = .45f, stampSaturation = .3f, stampLightness = .2f, stampDarkness = .15f, stampSecondary = .25f,
+                    strokeHue = .2f, strokeSaturation = .15f, strokeSecondary = .2f,
+                    pressureHue = .15f, pressureSaturation = .4f, pressureBrightness = .2f, pressureSecondary = .5f,
+                    tiltHue = -.1f, tiltSaturation = .2f, tiltBrightness = -.15f, tiltSecondary = .35f, tiltStart = .2f,
+                ),
+            )
+            val exported = renderExport(stroke)
+            val live = renderLive(stroke, exported.height)
+            val plain = renderExport(stroke.copy(procreateColorDynamics = ProcreateColorDynamics()))
             try {
                 assertEquals(pixelSignature(exported), pixelSignature(live))
                 assertNotEquals(pixelSignature(plain), pixelSignature(exported))

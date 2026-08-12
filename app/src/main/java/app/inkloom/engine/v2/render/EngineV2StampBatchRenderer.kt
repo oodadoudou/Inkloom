@@ -137,6 +137,7 @@ internal object EngineV2StampBatchRenderer {
             noColorDynamics(stroke.colorJitterHueDynamics) && noColorDynamics(stroke.colorJitterSaturationDynamics) &&
             noColorDynamics(stroke.colorJitterValueDynamics) && stroke.colorJitterHueDegrees == 0f &&
             stroke.colorJitterSaturation == 0f && stroke.colorJitterValue == 0f &&
+            stroke.procreateColorDynamics.isDisabled() &&
             stroke.colorMix <= .001f && stroke.paintMix <= .001f
 
     private fun hasDynamicAlpha(stroke: InkStroke): Boolean =

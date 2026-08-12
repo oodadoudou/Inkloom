@@ -5,6 +5,7 @@ import app.inkloom.document.BrushColorDynamics
 import app.inkloom.document.BrushParameterDynamics
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushTaperMode
+import app.inkloom.document.ProcreateColorDynamics
 import app.inkloom.document.CspAntiAlias
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
@@ -240,6 +241,7 @@ class InkloomBrushPackage(private val assetDirectory: File) {
         colorJitterHueDynamics = colorDynamics(source.colorJitterHueDynamics),
         colorJitterSaturationDynamics = colorDynamics(source.colorJitterSaturationDynamics),
         colorJitterValueDynamics = colorDynamics(source.colorJitterValueDynamics),
+        procreateColorDynamics = procreateColorDynamics(source.procreateColorDynamics),
         colorMix = finite(source.colorMix, 0f).coerceIn(0f, 1f),
         colorMixPressureMinimum = finite(source.colorMixPressureMinimum, 0f).coerceIn(0f, 1f),
         colorMixPressureCurve = curve(source.colorMixPressureCurve),
@@ -355,6 +357,13 @@ class InkloomBrushPackage(private val assetDirectory: File) {
         pressureMinimum = finite(value.pressureMinimum, 0f).coerceIn(0f, 1f), pressureCurve = curve(value.pressureCurve),
         tiltMinimum = finite(value.tiltMinimum, 0f).coerceIn(0f, 1f), tiltStart = finite(value.tiltStart, 0f).coerceIn(0f, .99f), velocityMinimum = finite(value.velocityMinimum, 0f).coerceIn(0f, 1f), velocityScale = finite(value.velocityScale, 1f).coerceIn(0f, 10f), velocityCurve = curve(value.velocityCurve),
         randomMinimum = finite(value.randomMinimum, -1f).coerceIn(-1f, 1f),
+    )
+
+    private fun procreateColorDynamics(value: ProcreateColorDynamics): ProcreateColorDynamics = value.copy(
+        stampHue = finite(value.stampHue, 0f).coerceIn(0f, 1f), stampSaturation = finite(value.stampSaturation, 0f).coerceIn(0f, 1f), stampLightness = finite(value.stampLightness, 0f).coerceIn(0f, 1f), stampDarkness = finite(value.stampDarkness, 0f).coerceIn(0f, 1f), stampSecondary = finite(value.stampSecondary, 0f).coerceIn(0f, 1f),
+        strokeHue = finite(value.strokeHue, 0f).coerceIn(0f, 1f), strokeSaturation = finite(value.strokeSaturation, 0f).coerceIn(0f, 1f), strokeLightness = finite(value.strokeLightness, 0f).coerceIn(0f, 1f), strokeDarkness = finite(value.strokeDarkness, 0f).coerceIn(0f, 1f), strokeSecondary = finite(value.strokeSecondary, 0f).coerceIn(0f, 1f),
+        pressureHue = finite(value.pressureHue, 0f).coerceIn(-1f, 1f), pressureHueCurve = curve(value.pressureHueCurve), pressureSaturation = finite(value.pressureSaturation, 0f).coerceIn(-1f, 1f), pressureSaturationCurve = curve(value.pressureSaturationCurve), pressureBrightness = finite(value.pressureBrightness, 0f).coerceIn(-1f, 1f), pressureBrightnessCurve = curve(value.pressureBrightnessCurve), pressureSecondary = finite(value.pressureSecondary, 0f).coerceIn(-1f, 1f), pressureSecondaryCurve = curve(value.pressureSecondaryCurve),
+        tiltHue = finite(value.tiltHue, 0f).coerceIn(-1f, 1f), tiltSaturation = finite(value.tiltSaturation, 0f).coerceIn(-1f, 1f), tiltBrightness = finite(value.tiltBrightness, 0f).coerceIn(-1f, 1f), tiltSecondary = finite(value.tiltSecondary, 0f).coerceIn(-1f, 1f), tiltStart = finite(value.tiltStart, 0f).coerceIn(0f, .99f),
     )
 
     private fun taperLength(mode: BrushTaperMode, value: Float, fallback: Float): Float =

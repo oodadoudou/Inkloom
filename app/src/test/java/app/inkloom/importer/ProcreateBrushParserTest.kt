@@ -62,6 +62,10 @@ class ProcreateBrushParserTest {
             assertEquals(sourceMetadata.float("textureScale", 1f) * 100f, brush.grainScale, .0001f)
             assertEquals(sourceMetadata.float("textureMovement", 1f), brush.grainMovement, .0001f)
             assertEquals(sourceMetadata.float("textureZoom", 1f), brush.grainZoom, .0001f)
+            assertEquals(sourceMetadata.float("dynamicsJitterHue"), brush.procreateColorDynamics.stampHue, .0001f)
+            assertEquals(sourceMetadata.float("dynamicsJitterStrokeHue"), brush.procreateColorDynamics.strokeHue, .0001f)
+            assertEquals(sourceMetadata.float("dynamicsPressureSecondaryColor"), brush.procreateColorDynamics.pressureSecondary, .0001f)
+            assertEquals(sourceMetadata.float("dynamicsTiltSecondaryColor"), brush.procreateColorDynamics.tiltSecondary, .0001f)
             assertEquals(ProcreateBrushParser.CURRENT_VERSION, brush.parserVersion)
         } finally {
             root.deleteRecursively()

@@ -1091,10 +1091,14 @@ private fun EditorScreen(
         // same display frame as the picker input.
         canvasView?.inkColor = value
     }
+    fun changeBackgroundColor(value: Int) {
+        backgroundColor = value
+        canvasView?.secondaryInkColor = value
+    }
     fun swapDrawingColors() {
         val foreground = brushColor
         changeBrushColor(backgroundColor)
-        backgroundColor = foreground
+        changeBackgroundColor(foreground)
     }
     fun stopContinueFilling() {
         continueFilling = false
@@ -1120,6 +1124,7 @@ private fun EditorScreen(
     var viewMenu by remember { mutableStateOf(false) }
     var workspaceMenu by remember { mutableStateOf(false) }
     var colorPanelOpen by remember { mutableStateOf(false) }
+    var editSecondaryColor by remember { mutableStateOf(false) }
     var colorPanelWidth by rememberSaveable { mutableFloatStateOf(420f) }
     var zoom by remember(document.id) { mutableFloatStateOf(1f) }
     var panX by remember(document.id) { mutableFloatStateOf(0f) }
@@ -1271,7 +1276,7 @@ private fun EditorScreen(
     fun syncCanvasInput(prepareAssets: Boolean = false) {
         canvasView?.let { view ->
             view.activeLayerId = activeLayerId
-            view.applyBrushConfiguration(tool, settings, activeBrush, brushSize, brushOpacity, brushColor, settings.eraserPreset)
+            view.applyBrushConfiguration(tool, settings, activeBrush, brushSize, brushOpacity, brushColor, settings.eraserPreset, backgroundColor)
             if (prepareAssets) view.prepareBrushAssetsNow()
             view.requestFocus()
         }
@@ -1461,27 +1466,16 @@ private fun EditorScreen(
                 setLayersPanelOpen(!layersOpen)
             })
             Box {
-                Box(
-                    Modifier.size(44.dp)
-                        .combinedClickable(
-                            onClick = { colorPanelOpen = true },
-                            onLongClick = {
-                                editorHostView.startDragAndDrop(
-                                    ClipData.newPlainText("Inkloom color", brushColor.toUInt().toString()),
-                                    ColorDropDragShadow(brushColor),
-                                    CanvasColorDrop(brushColor),
-                                    0,
-                                )
-                            },
-                        ).semantics { contentDescription = colorsDescription },
-                    contentAlignment = Alignment.Center,
-                ) {
+                Box(Modifier.size(44.dp).semantics { contentDescription = colorsDescription }, contentAlignment = Alignment.Center) {
                     Box(Modifier.size(32.dp)) {
                         Box(
-                            Modifier.align(Alignment.TopEnd).size(21.dp).clip(CircleShape).background(Color(backgroundColor)).border(1.5.dp, OutlineSoft, CircleShape),
+                            Modifier.align(Alignment.TopEnd).size(21.dp).clip(CircleShape).background(Color(backgroundColor)).border(1.5.dp, if (colorPanelOpen && editSecondaryColor) Color(0xFF1688F8) else OutlineSoft, CircleShape).clickable { editSecondaryColor = true; colorPanelOpen = true },
                         )
                         Box(
-                            Modifier.align(Alignment.BottomStart).size(23.dp).clip(CircleShape).background(Color(brushColor)).border(2.dp, if (colorPanelOpen) Color(0xFF1688F8) else OutlineSoft, CircleShape),
+                            Modifier.align(Alignment.BottomStart).size(23.dp).clip(CircleShape).background(Color(brushColor)).border(2.dp, if (colorPanelOpen && !editSecondaryColor) Color(0xFF1688F8) else OutlineSoft, CircleShape).combinedClickable(
+                                onClick = { editSecondaryColor = false; colorPanelOpen = true },
+                                onLongClick = { editorHostView.startDragAndDrop(ClipData.newPlainText("Inkloom color", brushColor.toUInt().toString()), ColorDropDragShadow(brushColor), CanvasColorDrop(brushColor), 0) },
+                            ),
                         )
                     }
                 }
@@ -1491,12 +1485,12 @@ private fun EditorScreen(
                     modifier = Modifier.width(colorPanelWidth.dp).background(Color.White).padding(8.dp),
                 ) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(tr("Colors", "颜色"), Modifier.weight(1f).padding(horizontal = 8.dp, vertical = 4.dp), color = Ink, fontWeight = FontWeight.SemiBold)
+                        Text(if (editSecondaryColor) tr("Secondary color", "副色") else tr("Primary color", "主色"), Modifier.weight(1f).padding(horizontal = 8.dp, vertical = 4.dp), color = Ink, fontWeight = FontWeight.SemiBold)
                         IconButton(onClick = ::swapDrawingColors, modifier = Modifier.size(32.dp)) {
                             Icon(Icons.Outlined.SwapHoriz, tr("Swap foreground and background colors", "交换前景色和背景色"), Modifier.size(18.dp))
                         }
                     }
-                    CspColorPanel(brushColor, ::changeBrushColor, onResizeWidth = { delta -> colorPanelWidth = (colorPanelWidth + delta).coerceIn(320f, 680f) })
+                    CspColorPanel(if (editSecondaryColor) backgroundColor else brushColor, if (editSecondaryColor) ::changeBackgroundColor else ::changeBrushColor, onResizeWidth = { delta -> colorPanelWidth = (colorPanelWidth + delta).coerceIn(320f, 680f) })
                 }
             }
             Box {
@@ -2232,6 +2226,7 @@ private fun EditorScreen(
                     brushSize = brushSize,
                     brushOpacity = brushOpacity,
                     brushColor = brushColor,
+                    secondaryBrushColor = backgroundColor,
                     shapeKind = insertShape,
                     activeLayerId = activeLayerId,
                     eraserPreset = settings.eraserPreset,
@@ -4470,7 +4465,7 @@ private fun pageTemplateKind(template: PageTemplate): String = when (template.ba
 }
 
 @Composable
-private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onSetLayerRasterAsset: (String, String, String, String?, Int) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit) {
+private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onSetLayerRasterAsset: (String, String, String, String?, Int) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val context = LocalContext.current
     val gradientCommitScope = rememberCoroutineScope()
@@ -4760,7 +4755,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 installRasterCommit(view)
                 view.onStrokeRemoved = { onRemoveStroke(documentId, page.id, it) }
                 view.onStrokesReplaced = { removed, replacements, indices -> onStrokesReplaced(documentId, page.id, removed, replacements.map { PageCropTransform.unproject(it, page.crop) }, indices) }
-                view.applyBrushConfiguration(tool, settings, activeBrush, brushSize, brushOpacity, brushColor, eraserPreset)
+                view.applyBrushConfiguration(tool, settings, activeBrush, brushSize, brushOpacity, brushColor, eraserPreset, secondaryBrushColor)
                 view.onViewportScale = onZoom
                 view.onViewportPinch = onPinch
                 view.onViewportPan = onPan
@@ -4826,6 +4821,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     brushOpacity: Float,
     brushColor: Int,
     eraserPreset: EraserPreset,
+    secondaryBrushColor: Int = AndroidColor.WHITE,
 ) {
     // A delayed Compose frame or hardware-button transition must never carry a normal paint
     // descriptor into eraser mode. Imported erasers remain full brush presets; other brushes are
@@ -4892,6 +4888,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     eraserTipAssetPath = importedEraser?.tipPreviewPath
     inkOpacity = brushOpacity
     inkColor = brushColor
+    secondaryInkColor = secondaryBrushColor
     brushId = activeBrush?.id ?: if (selectedTool == EditorTool.HIGHLIGHTER) "system-highlighter" else "system-pen"
     tipAssetPath = activeBrush?.tipPreviewPath
     tipAssetPaths = activeBrush?.tipPreviewPaths.orEmpty()
@@ -4946,6 +4943,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     colorJitterHueDynamics = activeBrush?.colorJitterHueDynamics ?: BrushColorDynamics()
     colorJitterSaturationDynamics = activeBrush?.colorJitterSaturationDynamics ?: BrushColorDynamics()
     colorJitterValueDynamics = activeBrush?.colorJitterValueDynamics ?: BrushColorDynamics()
+    procreateColorDynamics = activeBrush?.procreateColorDynamics ?: app.inkloom.document.ProcreateColorDynamics()
     brushWatercolor = activeBrush?.watercolor ?: false
     brushColorMix = activeBrush?.colorMix ?: 0f
     colorMixPressureEnabled = activeBrush?.colorMixPressureEnabled ?: false
@@ -9033,6 +9031,7 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 if (draft.colorJitterSaturation != 0f) item { ColorDynamicsEditor(tr("Saturation jitter", "饱和度抖动"), draft.colorJitterSaturationDynamics) { draft = draft.copy(colorJitterSaturationDynamics = it) } }
                 item { BrushSettingSlider(tr("Tip brightness jitter", "笔尖明度抖动"), draft.colorJitterValue, -100f..100f) { draft = draft.copy(colorJitterValue = it) } }
                 if (draft.colorJitterValue != 0f) item { ColorDynamicsEditor(tr("Brightness jitter", "明度抖动"), draft.colorJitterValueDynamics) { draft = draft.copy(colorJitterValueDynamics = it) } }
+                item { ProcreateColorDynamicsEditor(draft.procreateColorDynamics) { draft = draft.copy(procreateColorDynamics = it) } }
                 item { SettingSwitch("Watercolor approximation", "Uses translucent layered stamps.", draft.watercolor) { draft = draft.copy(watercolor = it) } }
                 item { BrushSettingSlider("Color mix", draft.colorMix, 0f..1f) { draft = draft.copy(colorMix = it) } }
                 if (draft.watercolor) item { SettingSwitch("Pressure controls color mix", null, draft.colorMixPressureEnabled) { draft = draft.copy(colorMixPressureEnabled = it) } }
@@ -9306,6 +9305,52 @@ private fun ColorDynamicsEditor(label: String, value: BrushColorDynamics, onValu
             if (value.velocityEnabled) PressureCurveEditor(tr("Velocity response", "速度响应"), value.velocityCurve) { onValue(value.copy(velocityCurve = it)) }
             SettingSwitch(tr("Random per tip", "逐笔尖随机"), tr("Uses a stable seed so canvas and export match.", "使用稳定随机种子，确保画布与导出一致。"), value.randomEnabled) { onValue(value.copy(randomEnabled = it)) }
             if (value.randomEnabled) BrushSettingSlider(tr("Signed random minimum", "随机有符号下限"), value.randomMinimum, -1f..1f) { onValue(value.copy(randomMinimum = it)) }
+        }
+    }
+}
+
+@Composable
+private fun ProcreateColorDynamicsEditor(value: ProcreateColorDynamics, onValue: (ProcreateColorDynamics) -> Unit) {
+    var expanded by remember { mutableStateOf(!value.isDisabled()) }
+    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp).border(1.dp, OutlineSoft, RoundedCornerShape(10.dp)).padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Row(Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(tr("Procreate color dynamics", "Procreate 颜色动态"), color = Sage, fontSize = 11.sp)
+                Text(if (value.isDisabled()) tr("Disabled", "关闭") else tr("Stamp · Stroke · Pressure · Tilt", "印章 · 笔画 · 压力 · 倾斜"), color = MutedInk, fontSize = 10.sp)
+            }
+            Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null)
+        }
+        if (expanded) {
+            Text(tr("STAMP COLOR JITTER", "逐印章颜色抖动"), color = Sage, fontSize = 10.sp)
+            BrushSettingSlider(tr("Hue", "色相"), value.stampHue, 0f..1f) { onValue(value.copy(stampHue = it)) }
+            BrushSettingSlider(tr("Saturation", "饱和度"), value.stampSaturation, 0f..1f) { onValue(value.copy(stampSaturation = it)) }
+            BrushSettingSlider(tr("Lightness", "变亮"), value.stampLightness, 0f..1f) { onValue(value.copy(stampLightness = it)) }
+            BrushSettingSlider(tr("Darkness", "变暗"), value.stampDarkness, 0f..1f) { onValue(value.copy(stampDarkness = it)) }
+            BrushSettingSlider(tr("Secondary color", "副色"), value.stampSecondary, 0f..1f) { onValue(value.copy(stampSecondary = it)) }
+            HorizontalDivider()
+            Text(tr("STROKE COLOR JITTER", "逐笔画颜色抖动"), color = Sage, fontSize = 10.sp)
+            BrushSettingSlider(tr("Hue", "色相"), value.strokeHue, 0f..1f) { onValue(value.copy(strokeHue = it)) }
+            BrushSettingSlider(tr("Saturation", "饱和度"), value.strokeSaturation, 0f..1f) { onValue(value.copy(strokeSaturation = it)) }
+            BrushSettingSlider(tr("Lightness", "变亮"), value.strokeLightness, 0f..1f) { onValue(value.copy(strokeLightness = it)) }
+            BrushSettingSlider(tr("Darkness", "变暗"), value.strokeDarkness, 0f..1f) { onValue(value.copy(strokeDarkness = it)) }
+            BrushSettingSlider(tr("Secondary color", "副色"), value.strokeSecondary, 0f..1f) { onValue(value.copy(strokeSecondary = it)) }
+            HorizontalDivider()
+            Text(tr("COLOR PRESSURE", "压力颜色"), color = Sage, fontSize = 10.sp)
+            BrushSettingSlider(tr("Hue", "色相"), value.pressureHue, -1f..1f) { onValue(value.copy(pressureHue = it)) }
+            if (value.pressureHue != 0f) PressureCurveEditor(tr("Hue pressure", "色相压力"), value.pressureHueCurve) { onValue(value.copy(pressureHueCurve = it)) }
+            BrushSettingSlider(tr("Saturation", "饱和度"), value.pressureSaturation, -1f..1f) { onValue(value.copy(pressureSaturation = it)) }
+            if (value.pressureSaturation != 0f) PressureCurveEditor(tr("Saturation pressure", "饱和度压力"), value.pressureSaturationCurve) { onValue(value.copy(pressureSaturationCurve = it)) }
+            BrushSettingSlider(tr("Brightness", "明度"), value.pressureBrightness, -1f..1f) { onValue(value.copy(pressureBrightness = it)) }
+            if (value.pressureBrightness != 0f) PressureCurveEditor(tr("Brightness pressure", "明度压力"), value.pressureBrightnessCurve) { onValue(value.copy(pressureBrightnessCurve = it)) }
+            BrushSettingSlider(tr("Secondary color", "副色"), value.pressureSecondary, -1f..1f) { onValue(value.copy(pressureSecondary = it)) }
+            if (value.pressureSecondary != 0f) PressureCurveEditor(tr("Secondary color pressure", "副色压力"), value.pressureSecondaryCurve) { onValue(value.copy(pressureSecondaryCurve = it)) }
+            HorizontalDivider()
+            Text(tr("COLOR TILT", "倾斜颜色"), color = Sage, fontSize = 10.sp)
+            BrushSettingSlider(tr("Hue", "色相"), value.tiltHue, -1f..1f) { onValue(value.copy(tiltHue = it)) }
+            BrushSettingSlider(tr("Saturation", "饱和度"), value.tiltSaturation, -1f..1f) { onValue(value.copy(tiltSaturation = it)) }
+            BrushSettingSlider(tr("Brightness", "明度"), value.tiltBrightness, -1f..1f) { onValue(value.copy(tiltBrightness = it)) }
+            BrushSettingSlider(tr("Secondary color", "副色"), value.tiltSecondary, -1f..1f) { onValue(value.copy(tiltSecondary = it)) }
+            BrushSettingSlider(tr("Tilt trigger angle", "倾斜触发角"), value.tiltStart, 0f..0.99f) { onValue(value.copy(tiltStart = it)) }
         }
     }
 }

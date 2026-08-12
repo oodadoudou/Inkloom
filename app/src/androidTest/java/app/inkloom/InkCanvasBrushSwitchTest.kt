@@ -146,6 +146,27 @@ class InkCanvasBrushSwitchTest {
         assertEquals(275f, requireNotNull(committed).grainScale, .0001f)
     }
 
+    @Test
+    fun primarySecondaryColorsAndProcreateDynamicsSurviveActivationAndCommit() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        var committed: InkStroke? = null
+        val dynamics = app.inkloom.document.ProcreateColorDynamics(stampSecondary = .4f, pressureHue = .2f, tiltSecondary = .3f)
+        val view = InkCanvasView(instrumentation.targetContext).apply {
+            layout(0, 0, 1200, 1200)
+            onStrokeCommitted = { committed = it }
+        }
+        val brush = brush("color-contract", "Color contract").copy(procreateColorDynamics = dynamics)
+
+        instrumentation.runOnMainSync {
+            view.applyBrushConfiguration(EditorTool.PEN, AppSettings(), brush, 40f, 1f, Color.RED, EraserPreset.NORMAL_FREE, Color.BLUE)
+            drawStroke(view, 1L, 600f)
+        }
+
+        assertEquals(Color.RED.toUInt().toLong(), requireNotNull(committed).colorArgb)
+        assertEquals(Color.BLUE.toUInt().toLong(), requireNotNull(committed).secondaryColorArgb)
+        assertEquals(dynamics, requireNotNull(committed).procreateColorDynamics)
+    }
+
     private fun brush(id: String, name: String) = ImportedBrush(
         id = id,
         name = name,

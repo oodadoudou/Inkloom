@@ -252,6 +252,40 @@ data class BrushColorDynamics(
     val randomMinimum: Float = -1f,
 )
 
+/** Procreate keeps stamp, stroke, pressure, and tilt color programs independent. */
+@Serializable
+data class ProcreateColorDynamics(
+    val stampHue: Float = 0f,
+    val stampSaturation: Float = 0f,
+    val stampLightness: Float = 0f,
+    val stampDarkness: Float = 0f,
+    val stampSecondary: Float = 0f,
+    val strokeHue: Float = 0f,
+    val strokeSaturation: Float = 0f,
+    val strokeLightness: Float = 0f,
+    val strokeDarkness: Float = 0f,
+    val strokeSecondary: Float = 0f,
+    val pressureHue: Float = 0f,
+    val pressureHueCurve: List<BrushCurvePoint> = emptyList(),
+    val pressureSaturation: Float = 0f,
+    val pressureSaturationCurve: List<BrushCurvePoint> = emptyList(),
+    val pressureBrightness: Float = 0f,
+    val pressureBrightnessCurve: List<BrushCurvePoint> = emptyList(),
+    val pressureSecondary: Float = 0f,
+    val pressureSecondaryCurve: List<BrushCurvePoint> = emptyList(),
+    val tiltHue: Float = 0f,
+    val tiltSaturation: Float = 0f,
+    val tiltBrightness: Float = 0f,
+    val tiltSecondary: Float = 0f,
+    val tiltStart: Float = 0f,
+) {
+    fun isDisabled(): Boolean =
+        stampHue == 0f && stampSaturation == 0f && stampLightness == 0f && stampDarkness == 0f && stampSecondary == 0f &&
+            strokeHue == 0f && strokeSaturation == 0f && strokeLightness == 0f && strokeDarkness == 0f && strokeSecondary == 0f &&
+            pressureHue == 0f && pressureSaturation == 0f && pressureBrightness == 0f && pressureSecondary == 0f &&
+            tiltHue == 0f && tiltSaturation == 0f && tiltBrightness == 0f && tiltSecondary == 0f
+}
+
 @Serializable
 enum class BrushEngineKind {
     MESH_INK,
@@ -269,6 +303,7 @@ data class InkStroke(
     val masks: List<StrokeMaskDab> = emptyList(),
     val points: List<StrokePoint>,
     val colorArgb: Long = 0xFF111111,
+    val secondaryColorArgb: Long = 0xFFFFFFFF,
     val width: Float = 5f,
     val opacity: Float = 1f,
     val brushId: String = "system-pencil",
@@ -326,6 +361,7 @@ data class InkStroke(
     val colorJitterHueDynamics: BrushColorDynamics = BrushColorDynamics(),
     val colorJitterSaturationDynamics: BrushColorDynamics = BrushColorDynamics(),
     val colorJitterValueDynamics: BrushColorDynamics = BrushColorDynamics(),
+    val procreateColorDynamics: ProcreateColorDynamics = ProcreateColorDynamics(),
     val watercolor: Boolean = false,
     val colorMix: Float = 0f,
     val colorMixPressureEnabled: Boolean = false,

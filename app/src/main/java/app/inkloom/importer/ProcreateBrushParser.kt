@@ -5,6 +5,7 @@ import app.inkloom.document.BrushParameterDynamics
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushTaperMode
 import app.inkloom.document.BrushTipFlip
+import app.inkloom.document.ProcreateColorDynamics
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
 import java.io.ByteArrayOutputStream
@@ -131,6 +132,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             ),
         )
         val roundnessDynamics = roundnessDynamics(metadata)
+        val colorDynamics = procreateColorDynamics(metadata)
         val genericTaperStartLength = metadata.float("taperStartLength").coerceIn(0f, 1f)
         val genericTaperEndLength = metadata.float("taperEndLength").coerceIn(0f, 1f)
         val genericTaperSize = metadata.float("taperSize").coerceIn(0f, 1f)
@@ -203,6 +205,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             stampCountJitter = stampCountJitter,
             watercolor = watercolor,
             colorMix = wetMix,
+            procreateColorDynamics = colorDynamics,
             paintMix = max(paintLoad, max(wetAccumulation, smudgeAccumulation)),
             spray = false,
             sprayParticleSize = 100f,
@@ -272,6 +275,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
                 if (streamLine > DYNAMIC_EPSILON || streamLinePressure > DYNAMIC_EPSILON || procreateStabilization > DYNAMIC_EPSILON || motionFiltering > DYNAMIC_EPSILON) add("Procreate StreamLine, pressure smoothing, moving-average stabilization and motion filtering preserved independently")
                 val sources = buildList { if (abs(pressureSize) > DYNAMIC_EPSILON || abs(pressureOpacity) > DYNAMIC_EPSILON) add("pressure"); if (abs(speedSize) > DYNAMIC_EPSILON || abs(speedOpacity) > DYNAMIC_EPSILON) add("speed"); if (abs(tiltSize) > DYNAMIC_EPSILON || abs(tiltOpacity) > DYNAMIC_EPSILON) add("tilt"); if (abs(jitterSize) > DYNAMIC_EPSILON || abs(jitterOpacity) > DYNAMIC_EPSILON) add("random jitter") }
                 if (sources.isNotEmpty()) add("Procreate dynamics mapped: ${sources.joinToString()}")
+                if (!colorDynamics.isDisabled()) add("Procreate stamp, stroke, pressure, tilt and primary/secondary color dynamics preserved independently")
                 if (randomRotation > DYNAMIC_EPSILON) add("Procreate Shape Scatter mapped to independent per-stamp rotation")
                 if (strokeRotationJitter > DYNAMIC_EPSILON) add("Procreate Randomized mapped to one deterministic starting rotation per stroke")
                 if (metadata.boolean("shapeFlipXJitter") || metadata.boolean("shapeFlipYJitter")) add("Procreate Shape Flip X/Y mapped to deterministic per-stamp mirroring")
@@ -335,6 +339,32 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         velocityCurve = if (speed >= 0f) DESCENDING_CURVE else LINEAR_CURVE,
         randomEnabled = abs(jitter) > DYNAMIC_EPSILON,
         randomMinimum = 1f - abs(jitter).coerceIn(0f, 1f),
+    )
+
+    internal fun procreateColorDynamics(metadata: ProcreateKeyedArchive): ProcreateColorDynamics = ProcreateColorDynamics(
+        stampHue = metadata.float("dynamicsJitterHue").coerceIn(0f, 1f),
+        stampSaturation = metadata.float("dynamicsJitterSaturation").coerceIn(0f, 1f),
+        stampLightness = metadata.float("dynamicsJitterLightness").coerceIn(0f, 1f),
+        stampDarkness = metadata.float("dynamicsJitterDarkness").coerceIn(0f, 1f),
+        stampSecondary = metadata.float("jitterSecondary").coerceIn(0f, 1f),
+        strokeHue = metadata.float("dynamicsJitterStrokeHue").coerceIn(0f, 1f),
+        strokeSaturation = metadata.float("dynamicsJitterStrokeSaturation").coerceIn(0f, 1f),
+        strokeLightness = metadata.float("dynamicsJitterStrokeLightness").coerceIn(0f, 1f),
+        strokeDarkness = metadata.float("dynamicsJitterStrokeDarkness").coerceIn(0f, 1f),
+        strokeSecondary = metadata.float("jitterStrokeSecondary").coerceIn(0f, 1f),
+        pressureHue = metadata.float("dynamicsPressureHue").coerceIn(-1f, 1f),
+        pressureHueCurve = metadata.curve("dynamicsPressureHueCurve"),
+        pressureSaturation = metadata.float("dynamicsPressureSaturation").coerceIn(-1f, 1f),
+        pressureSaturationCurve = metadata.curve("dynamicsPressureSaturationCurve"),
+        pressureBrightness = metadata.float("dynamicsPressureBrightness").coerceIn(-1f, 1f),
+        pressureBrightnessCurve = metadata.curve("dynamicsPressureBrightnessCurve"),
+        pressureSecondary = metadata.float("dynamicsPressureSecondaryColor").coerceIn(-1f, 1f),
+        pressureSecondaryCurve = metadata.curve("dynamicsPressureSecondaryColorCurve"),
+        tiltHue = metadata.float("dynamicsTiltHue").coerceIn(-1f, 1f),
+        tiltSaturation = metadata.float("dynamicsTiltSaturation").coerceIn(-1f, 1f),
+        tiltBrightness = metadata.float("dynamicsTiltBrightness").coerceIn(-1f, 1f),
+        tiltSecondary = metadata.float("dynamicsTiltSecondaryColor").coerceIn(-1f, 1f),
+        tiltStart = metadata.float("dynamicsTiltAngle").coerceIn(0f, .99f),
     )
 
     /** Procreate's spacing direction is the inverse of size/opacity speed dynamics:
@@ -474,7 +504,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
     )
 
     companion object {
-        const val CURRENT_VERSION = 18
+        const val CURRENT_VERSION = 19
         private const val MAX_ENTRIES = 4_096
         private const val MAX_ENTRY_BYTES = 32L * 1024L * 1024L
         private const val MAX_EXPANDED_BYTES = 384L * 1024L * 1024L

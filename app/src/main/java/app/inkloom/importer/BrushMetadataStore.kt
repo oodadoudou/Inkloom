@@ -13,6 +13,7 @@ import app.inkloom.document.BrushColorDynamics
 import app.inkloom.document.BrushParameterDynamics
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushTaperMode
+import app.inkloom.document.ProcreateColorDynamics
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -74,6 +75,35 @@ class BrushMetadataStore(
                     val value = item.optJSONObject(key) ?: return BrushColorDynamics()
                     fun points(name: String): List<BrushCurvePoint> { val source = value.optJSONArray(name) ?: return emptyList(); return buildList { for (pointIndex in 0 until source.length()) { val pair = source.optJSONArray(pointIndex) ?: continue; if (pair.length() >= 2) add(BrushCurvePoint(pair.optDouble(0).toFloat(), pair.optDouble(1).toFloat())) } } }
                     return BrushColorDynamics(pressureEnabled = value.optBoolean("pressureEnabled"), pressureMinimum = value.optDouble("pressureMinimum").toFloat(), pressureCurve = points("pressureCurve"), tiltEnabled = value.optBoolean("tiltEnabled"), tiltMinimum = value.optDouble("tiltMinimum").toFloat(), tiltStart = value.optDouble("tiltStart", 0.0).toFloat(), velocityEnabled = value.optBoolean("velocityEnabled"), velocityMinimum = value.optDouble("velocityMinimum").toFloat(), velocityScale = value.optDouble("velocityScale", 1.0).toFloat(), velocityCurve = points("velocityCurve"), randomEnabled = value.optBoolean("randomEnabled"), randomMinimum = value.optDouble("randomMinimum", -1.0).toFloat())
+                }
+                fun procreateColorDynamics(key: String): ProcreateColorDynamics {
+                    val value = item.optJSONObject(key) ?: return ProcreateColorDynamics()
+                    fun points(name: String): List<BrushCurvePoint> { val source = value.optJSONArray(name) ?: return emptyList(); return buildList { for (pointIndex in 0 until source.length()) { val pair = source.optJSONArray(pointIndex) ?: continue; if (pair.length() >= 2) add(BrushCurvePoint(pair.optDouble(0).toFloat(), pair.optDouble(1).toFloat())) } } }
+                    return ProcreateColorDynamics(
+                        stampHue = value.optDouble("stampHue", 0.0).toFloat().coerceIn(0f, 1f),
+                        stampSaturation = value.optDouble("stampSaturation", 0.0).toFloat().coerceIn(0f, 1f),
+                        stampLightness = value.optDouble("stampLightness", 0.0).toFloat().coerceIn(0f, 1f),
+                        stampDarkness = value.optDouble("stampDarkness", 0.0).toFloat().coerceIn(0f, 1f),
+                        stampSecondary = value.optDouble("stampSecondary", 0.0).toFloat().coerceIn(0f, 1f),
+                        strokeHue = value.optDouble("strokeHue", 0.0).toFloat().coerceIn(0f, 1f),
+                        strokeSaturation = value.optDouble("strokeSaturation", 0.0).toFloat().coerceIn(0f, 1f),
+                        strokeLightness = value.optDouble("strokeLightness", 0.0).toFloat().coerceIn(0f, 1f),
+                        strokeDarkness = value.optDouble("strokeDarkness", 0.0).toFloat().coerceIn(0f, 1f),
+                        strokeSecondary = value.optDouble("strokeSecondary", 0.0).toFloat().coerceIn(0f, 1f),
+                        pressureHue = value.optDouble("pressureHue", 0.0).toFloat().coerceIn(-1f, 1f),
+                        pressureHueCurve = points("pressureHueCurve"),
+                        pressureSaturation = value.optDouble("pressureSaturation", 0.0).toFloat().coerceIn(-1f, 1f),
+                        pressureSaturationCurve = points("pressureSaturationCurve"),
+                        pressureBrightness = value.optDouble("pressureBrightness", 0.0).toFloat().coerceIn(-1f, 1f),
+                        pressureBrightnessCurve = points("pressureBrightnessCurve"),
+                        pressureSecondary = value.optDouble("pressureSecondary", 0.0).toFloat().coerceIn(-1f, 1f),
+                        pressureSecondaryCurve = points("pressureSecondaryCurve"),
+                        tiltHue = value.optDouble("tiltHue", 0.0).toFloat().coerceIn(-1f, 1f),
+                        tiltSaturation = value.optDouble("tiltSaturation", 0.0).toFloat().coerceIn(-1f, 1f),
+                        tiltBrightness = value.optDouble("tiltBrightness", 0.0).toFloat().coerceIn(-1f, 1f),
+                        tiltSecondary = value.optDouble("tiltSecondary", 0.0).toFloat().coerceIn(-1f, 1f),
+                        tiltStart = value.optDouble("tiltStart", 0.0).toFloat().coerceIn(0f, .99f),
+                    )
                 }
                 fun parameterDynamics(key: String): BrushParameterDynamics {
                     val value = item.optJSONObject(key) ?: return BrushParameterDynamics()
@@ -180,6 +210,7 @@ class BrushMetadataStore(
                         colorJitterHueDynamics = colorDynamics("colorJitterHueDynamics"),
                         colorJitterSaturationDynamics = colorDynamics("colorJitterSaturationDynamics"),
                         colorJitterValueDynamics = colorDynamics("colorJitterValueDynamics"),
+                        procreateColorDynamics = procreateColorDynamics("procreateColorDynamics"),
                         watercolor = item.optBoolean("watercolor", false),
                         colorMix = item.optDouble("colorMix", 0.0).toFloat(),
                         colorMixPressureEnabled = item.optBoolean("colorMixPressureEnabled", false),
@@ -392,6 +423,7 @@ class BrushMetadataStore(
                     .put("colorJitterHueDynamics", colorDynamicsJson(brush.colorJitterHueDynamics))
                     .put("colorJitterSaturationDynamics", colorDynamicsJson(brush.colorJitterSaturationDynamics))
                     .put("colorJitterValueDynamics", colorDynamicsJson(brush.colorJitterValueDynamics))
+                    .put("procreateColorDynamics", procreateColorDynamicsJson(brush.procreateColorDynamics))
                     .put("watercolor", brush.watercolor)
                     .put("colorMix", brush.colorMix)
                     .put("colorMixPressureEnabled", brush.colorMixPressureEnabled)
@@ -547,6 +579,14 @@ class BrushMetadataStore(
         .put("tiltEnabled", value.tiltEnabled).put("tiltMinimum", value.tiltMinimum).put("tiltStart", value.tiltStart)
         .put("velocityEnabled", value.velocityEnabled).put("velocityMinimum", value.velocityMinimum).put("velocityScale", value.velocityScale).put("velocityCurve", curveJson(value.velocityCurve))
         .put("randomEnabled", value.randomEnabled).put("randomMinimum", value.randomMinimum)
+    private fun procreateColorDynamicsJson(value: ProcreateColorDynamics): JSONObject = JSONObject()
+        .put("stampHue", value.stampHue).put("stampSaturation", value.stampSaturation).put("stampLightness", value.stampLightness).put("stampDarkness", value.stampDarkness).put("stampSecondary", value.stampSecondary)
+        .put("strokeHue", value.strokeHue).put("strokeSaturation", value.strokeSaturation).put("strokeLightness", value.strokeLightness).put("strokeDarkness", value.strokeDarkness).put("strokeSecondary", value.strokeSecondary)
+        .put("pressureHue", value.pressureHue).put("pressureHueCurve", curveJson(value.pressureHueCurve))
+        .put("pressureSaturation", value.pressureSaturation).put("pressureSaturationCurve", curveJson(value.pressureSaturationCurve))
+        .put("pressureBrightness", value.pressureBrightness).put("pressureBrightnessCurve", curveJson(value.pressureBrightnessCurve))
+        .put("pressureSecondary", value.pressureSecondary).put("pressureSecondaryCurve", curveJson(value.pressureSecondaryCurve))
+        .put("tiltHue", value.tiltHue).put("tiltSaturation", value.tiltSaturation).put("tiltBrightness", value.tiltBrightness).put("tiltSecondary", value.tiltSecondary).put("tiltStart", value.tiltStart)
     private fun parameterDynamicsJson(value: BrushParameterDynamics): JSONObject = JSONObject()
         .put("pressureEnabled", value.pressureEnabled)
         .put("pressureMinimum", value.pressureMinimum)

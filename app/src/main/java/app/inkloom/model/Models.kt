@@ -3,6 +3,7 @@ package app.inkloom.model
 import app.inkloom.document.BrushCurvePoint
 import app.inkloom.document.BrushColorDynamics
 import app.inkloom.document.BrushParameterDynamics
+import app.inkloom.document.ProcreateColorDynamics
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushTaperMode
 import app.inkloom.document.CspTextureComposite
@@ -121,6 +122,7 @@ data class ImportedBrush(
     val colorJitterHueDynamics: BrushColorDynamics = BrushColorDynamics(),
     val colorJitterSaturationDynamics: BrushColorDynamics = BrushColorDynamics(),
     val colorJitterValueDynamics: BrushColorDynamics = BrushColorDynamics(),
+    val procreateColorDynamics: ProcreateColorDynamics = ProcreateColorDynamics(),
     val watercolor: Boolean = false,
     val colorMix: Float = 0f,
     val colorMixPressureEnabled: Boolean = false,
