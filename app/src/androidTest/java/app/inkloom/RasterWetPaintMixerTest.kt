@@ -5,6 +5,7 @@ import android.graphics.Color
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
+import app.inkloom.document.ProcreateRenderingMode
 import app.inkloom.engine.v2.render.RasterWetPaintMixer
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -43,5 +44,27 @@ class RasterWetPaintMixerTest {
         val lowDensity = result(.8f, .1f)
         val highDensity = result(.8f, 1f)
         assertTrue(Color.alpha(highDensity) > Color.alpha(lowDensity))
+    }
+
+    @Test fun recursiveRenderingModesIncreaseExistingPigmentInteraction() {
+        fun result(mode: ProcreateRenderingMode): Int {
+            val base = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLUE) }
+            val patch = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+            val stroke = InkStroke(
+                watercolor = true,
+                colorMix = .55f,
+                paintMix = .8f,
+                procreateRenderingMode = mode,
+                points = listOf(StrokePoint(.5f, .5f)),
+            )
+            RasterWetPaintMixer.composite(base, patch, 0, 0, listOf(stroke))
+            return base.getPixel(4, 4).also { patch.recycle(); base.recycle() }
+        }
+        val heavy = result(ProcreateRenderingMode.HEAVY_GLAZE)
+        val uniform = result(ProcreateRenderingMode.UNIFORM_BLENDING)
+        val intense = result(ProcreateRenderingMode.INTENSE_BLENDING)
+
+        assertTrue(Color.blue(heavy) < Color.blue(uniform))
+        assertTrue(Color.blue(uniform) < Color.blue(intense))
     }
 }

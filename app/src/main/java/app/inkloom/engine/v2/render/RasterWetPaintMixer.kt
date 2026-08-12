@@ -3,6 +3,7 @@ package app.inkloom.engine.v2.render
 import android.graphics.Bitmap
 import android.graphics.Color
 import app.inkloom.document.InkStroke
+import app.inkloom.document.ProcreateRendering
 import app.inkloom.document.WetMixDynamics
 
 /** Pixel-level wet paint compositing. Existing layer pigment participates in the deposited color;
@@ -17,6 +18,8 @@ object RasterWetPaintMixer {
         val pointValues = strokes.flatMap { stroke -> stroke.points.map { point ->
             WetMixDynamics.colorMix(stroke, point) to WetMixDynamics.paintMix(stroke, point)
         } }
+        val recursiveStrength = strokes.map { ProcreateRendering.wetMixStrength(it.procreateRenderingMode) }
+            .average().takeIf(Double::isFinite)?.toFloat()?.coerceIn(0f, 1.35f) ?: 0f
         val amountOfPaint = pointValues.map(Pair<Float, Float>::first).average().takeIf(Double::isFinite)?.toFloat()?.coerceIn(0f, 1f) ?: 1f
         val densityOfPaint = pointValues.map(Pair<Float, Float>::second).average().takeIf(Double::isFinite)?.toFloat()?.coerceIn(0f, 1f) ?: 1f
         val basePixels = IntArray(width * height)
@@ -30,13 +33,13 @@ object RasterWetPaintMixer {
             if (patchAlpha == 0) continue
             val under = basePixels[index]
             val underAlpha = under ushr 24
-            val freshRatio = if (underAlpha == 0) 1f else amountOfPaint
+            val freshRatio = if (underAlpha == 0) 1f else (amountOfPaint / (1f + recursiveStrength * (1f - amountOfPaint))).coerceIn(0f, 1f)
             val paintRed = (paint ushr 16) and 0xFF; val paintGreen = (paint ushr 8) and 0xFF; val paintBlue = paint and 0xFF
             val underRed = (under ushr 16) and 0xFF; val underGreen = (under ushr 8) and 0xFF; val underBlue = under and 0xFF
             val mixedRed = (underRed + (paintRed - underRed) * freshRatio + .5f).toInt().coerceIn(0, 255)
             val mixedGreen = (underGreen + (paintGreen - underGreen) * freshRatio + .5f).toInt().coerceIn(0, 255)
             val mixedBlue = (underBlue + (paintBlue - underBlue) * freshRatio + .5f).toInt().coerceIn(0, 255)
-            val sourceAlpha = patchAlpha / 255f * (.2f + .8f * densityOfPaint)
+            val sourceAlpha = (patchAlpha / 255f * (.2f + .8f * densityOfPaint) * (1f + recursiveStrength * .12f)).coerceIn(0f, 1f)
             val destinationAlpha = underAlpha / 255f
             val outputAlpha = sourceAlpha + destinationAlpha * (1f - sourceAlpha)
             if (outputAlpha <= .0001f) continue

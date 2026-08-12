@@ -878,7 +878,7 @@ class DocumentAssetService(private val context: Context) {
                     val point = stroke.points.first()
                     val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
                     val strokeWidth = stroke.width * width / 1600f * (taper.firstOrNull() ?: 1f) * dynamics.size
-                    val alpha = (stroke.flow * dynamics.depositedAlpha * (falloff?.firstOrNull() ?: 1f) * 255).toInt().coerceIn(0, 255)
+                    val alpha = (ProcreateRendering.depositedAlpha(stroke.procreateRenderingMode, stroke.flow * dynamics.depositedAlpha * (falloff?.firstOrNull() ?: 1f)) * 255).toInt().coerceIn(0, 255)
                     drawLinePoint(canvas, paint, stroke, point, point.x * width, point.y * height, strokeWidth, alpha, width)
                 } else stroke.points.zipWithNext().forEachIndexed { pointIndex, (start, end) ->
                     val point = midpoint(start, end)
@@ -886,7 +886,7 @@ class DocumentAssetService(private val context: Context) {
                     val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
                     val strokeWidth = stroke.width * width / 1600f * taperFactor * dynamics.size
                     val falloffFactor = falloff?.let { (it[pointIndex] + it[pointIndex + 1]) / 2f } ?: 1f
-                    val alpha = (stroke.flow * dynamics.depositedAlpha * falloffFactor * 255).toInt().coerceIn(0, 255)
+                    val alpha = (ProcreateRendering.depositedAlpha(stroke.procreateRenderingMode, stroke.flow * dynamics.depositedAlpha * falloffFactor) * 255).toInt().coerceIn(0, 255)
                     drawLineSegment(canvas, paint, stroke, point, start.x * width, start.y * height, end.x * width, end.y * height, strokeWidth, alpha, width)
                 }
             }
@@ -969,7 +969,7 @@ class DocumentAssetService(private val context: Context) {
             val scaleX = tipScale.x * flip.x
             val scaleY = tipScale.y * flip.y
             val matrix = Matrix().apply { postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(scaleX, scaleY); postRotate(angle); postTranslate(drawX, drawY) }
-            val mainAlpha = (stroke.flow * dynamics.depositedAlpha * (falloff?.get(index) ?: 1f)).coerceIn(0f, 1f).times(255).toInt()
+            val mainAlpha = (ProcreateRendering.depositedAlpha(stroke.procreateRenderingMode, stroke.flow * dynamics.depositedAlpha * (falloff?.get(index) ?: 1f)) * 255f).toInt()
             val jitteredColor = BrushColorJitter.argb(stroke, point, sequenceIndex)
             val tiltBleedAmount = stroke.tiltBleed.coerceIn(0f, 1f) * BrushTilt.response(point, stroke.tiltBleedStart)
             if ((stroke.waterEdgeEnabled && stroke.waterEdgeOpacity > 0f) || tiltBleedAmount > .001f) {

@@ -15,6 +15,7 @@ import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushTaperMode
 import app.inkloom.document.ProcreateColorDynamics
 import app.inkloom.document.ProcreateFiltering
+import app.inkloom.document.ProcreateRenderingMode
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -168,6 +169,9 @@ class BrushMetadataStore(
                         grainOffsetJitter = item.optBoolean("grainOffsetJitter", false),
                         grainCompositeMode = item.optInt("grainCompositeMode", CspTextureComposite.MULTIPLY).coerceIn(0, 64),
                         grainFilteringMode = ProcreateFiltering.normalize(item.optInt("grainFilteringMode", ProcreateFiltering.NONE)),
+                        procreateRenderingMode = runCatching {
+                            ProcreateRenderingMode.valueOf(item.optString("procreateRenderingMode", ProcreateRenderingMode.UNIFORM_GLAZE.name))
+                        }.getOrDefault(ProcreateRenderingMode.UNIFORM_GLAZE),
                         defaultSize = item.optDouble("defaultSize", 8.0).toFloat(),
                         streamLine = item.optDouble("streamLine", 0.0).toFloat().coerceIn(0f, 1f),
                         streamLinePressure = item.optDouble("streamLinePressure", 0.0).toFloat().coerceIn(0f, 1f),
@@ -382,6 +386,7 @@ class BrushMetadataStore(
                     .put("grainOffsetJitter", brush.grainOffsetJitter)
                     .put("grainCompositeMode", brush.grainCompositeMode)
                     .put("grainFilteringMode", brush.grainFilteringMode)
+                    .put("procreateRenderingMode", brush.procreateRenderingMode.name)
                     .put("defaultSize", brush.defaultSize)
                     .put("streamLine", brush.streamLine)
                     .put("streamLinePressure", brush.streamLinePressure)

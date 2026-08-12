@@ -209,6 +209,7 @@ class InkloomBrushPackage(private val assetDirectory: File) {
         grainContrast = finite(source.grainContrast, 0f).coerceIn(-100f, 100f),
         grainCompositeMode = source.grainCompositeMode.coerceIn(0, 64),
         grainFilteringMode = ProcreateFiltering.normalize(source.grainFilteringMode),
+        procreateRenderingMode = source.procreateRenderingMode,
         defaultSize = finite(source.defaultSize, 8f).coerceIn(.5f, 400f),
         streamLine = finite(source.streamLine, 0f).coerceIn(0f, 1f),
         streamLinePressure = finite(source.streamLinePressure, 0f).coerceIn(0f, 1f),

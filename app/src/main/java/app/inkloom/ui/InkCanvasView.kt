@@ -42,6 +42,8 @@ import app.inkloom.document.BrushEngineKind
 import app.inkloom.document.BrushColorDynamics
 import app.inkloom.document.ProcreateColorDynamics
 import app.inkloom.document.ProcreateFiltering
+import app.inkloom.document.ProcreateRenderingMode
+import app.inkloom.document.ProcreateRendering
 import app.inkloom.document.BrushParameterDynamics
 import app.inkloom.document.BrushColorJitter
 import app.inkloom.document.BrushBlur
@@ -572,6 +574,7 @@ class InkCanvasView(context: Context) : View(context) {
     var grainOffsetJitter: Boolean = false
     var grainCompositeMode: Int = CspTextureComposite.MULTIPLY
     var grainFilteringMode: Int = ProcreateFiltering.NONE
+    var procreateRenderingMode: ProcreateRenderingMode = ProcreateRenderingMode.UNIFORM_GLAZE
     var brushSpacing: Float = .12f
     var strokeFalloff: Float = 0f
     var strokePathJitter: Float = 0f
@@ -1430,7 +1433,7 @@ class InkCanvasView(context: Context) : View(context) {
         val falloff = app.inkloom.document.StrokeFalloff.factors(stroke.points, width.toFloat(), height.toFloat(), stroke.width * scale, stroke.strokeFalloff)
         val contentClip = canvas.clipBounds
         if (stroke.points.size == 1) {
-            val point = stroke.points.first(); paint.color = (point.pigmentArgb ?: stroke.colorArgb).toInt(); val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point); val strokeWidth = stroke.width * scale * (taper?.firstOrNull() ?: 1f) * dynamics.size; val alpha = (stroke.flow * dynamics.depositedAlpha * (falloff?.firstOrNull() ?: 1f) * 255).toInt().coerceIn(0, 255); drawLinePoint(canvas, stroke, point, point.x * width, point.y * height, strokeWidth, alpha)
+            val point = stroke.points.first(); paint.color = (point.pigmentArgb ?: stroke.colorArgb).toInt(); val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point); val strokeWidth = stroke.width * scale * (taper?.firstOrNull() ?: 1f) * dynamics.size; val alpha = (ProcreateRendering.depositedAlpha(stroke.procreateRenderingMode, stroke.flow * dynamics.depositedAlpha * (falloff?.firstOrNull() ?: 1f)) * 255).toInt().coerceIn(0, 255); drawLinePoint(canvas, stroke, point, point.x * width, point.y * height, strokeWidth, alpha)
         } else for (index in 0 until stroke.points.lastIndex) {
             val start = stroke.points[index]
             val end = stroke.points[index + 1]
@@ -1440,7 +1443,7 @@ class InkCanvasView(context: Context) : View(context) {
             val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
             val strokeWidth = stroke.width * scale * taperFactor * dynamics.size
             val falloffFactor = falloff?.let { (it[index] + it[index + 1]) / 2f } ?: 1f
-            val alpha = (stroke.flow * dynamics.depositedAlpha * falloffFactor * 255).toInt().coerceIn(0, 255)
+            val alpha = (ProcreateRendering.depositedAlpha(stroke.procreateRenderingMode, stroke.flow * dynamics.depositedAlpha * falloffFactor) * 255).toInt().coerceIn(0, 255)
             val startX = start.x * width
             val startY = start.y * height
             val endX = end.x * width
@@ -1574,7 +1577,7 @@ class InkCanvasView(context: Context) : View(context) {
             }
             val jitteredColor = BrushColorJitter.argb(stroke, point, sequenceIndex)
             paint.colorFilter = srcInColorFilter(jitteredColor)
-            val mainAlpha = (stroke.flow * dynamics.depositedAlpha * (falloff?.get(index) ?: 1f)).coerceIn(0f, 1f).times(255).toInt()
+            val mainAlpha = (ProcreateRendering.depositedAlpha(stroke.procreateRenderingMode, stroke.flow * dynamics.depositedAlpha * (falloff?.get(index) ?: 1f)) * 255f).toInt()
             val tiltBleedAmount = stroke.tiltBleed.coerceIn(0f, 1f) * app.inkloom.document.BrushTilt.response(point, stroke.tiltBleedStart)
             if ((stroke.waterEdgeEnabled && stroke.waterEdgeOpacity > 0f) || tiltBleedAmount > .001f) {
                 val edgeRadius = WaterEdge.distancePixels(stroke.waterEdgeRadius, stroke.waterEdgeRadiusUnit, width.toFloat()) + diameter * tiltBleedAmount * .18f
@@ -4760,6 +4763,7 @@ class InkCanvasView(context: Context) : View(context) {
         secondaryColorArgb = secondaryInkColor.toUInt().toLong(),
         procreateColorDynamics = procreateColorDynamics,
         grainFilteringMode = grainFilteringMode,
+        procreateRenderingMode = procreateRenderingMode,
         grainDensityMinimum = grainDensityMinimum,
         shapeRoundnessHorizontalJitter = shapeRoundnessHorizontalJitter,
         shapeRoundnessVerticalJitter = shapeRoundnessVerticalJitter,

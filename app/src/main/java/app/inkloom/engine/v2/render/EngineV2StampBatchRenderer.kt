@@ -14,6 +14,7 @@ import app.inkloom.document.BrushTipTransform
 import app.inkloom.document.GrainDynamics
 import app.inkloom.document.GrainBehavior
 import app.inkloom.document.InkStroke
+import app.inkloom.document.ProcreateRendering
 import app.inkloom.document.ShapeRoundnessJitter
 import app.inkloom.document.StrokePoint
 import app.inkloom.document.StrokeStampSampler
@@ -59,7 +60,10 @@ internal object EngineV2StampBatchRenderer {
             val baseX = point.x * width
             val baseY = point.y * height
             val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
-            val depositedAlpha = (stroke.flow * dynamics.depositedAlpha * (falloff?.get(index) ?: 1f)).coerceIn(0f, 1f)
+            val depositedAlpha = ProcreateRendering.depositedAlpha(
+                stroke.procreateRenderingMode,
+                stroke.flow * dynamics.depositedAlpha * (falloff?.get(index) ?: 1f),
+            )
             if (depositedAlpha <= .0001f) continue
             val diameter = (stroke.width * width.coerceAtLeast(1f) / REFERENCE_WIDTH * (taper?.get(index) ?: 1f) * dynamics.size).coerceAtLeast(.25f)
             val roundness = ShapeRoundnessJitter.factors(stroke.renderSeed, index, stroke.shapeRoundnessHorizontalJitter, stroke.shapeRoundnessVerticalJitter)
