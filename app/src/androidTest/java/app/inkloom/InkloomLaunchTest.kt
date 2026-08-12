@@ -652,7 +652,9 @@ class InkloomLaunchTest {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Layers").performClick()
         composeRule.onNodeWithContentDescription("Add layer").performClick()
-        composeRule.onNodeWithText("Vector layer").performClick()
+        // The existing Notes row also exposes its content kind as "Vector layer". The add-layer
+        // menu is the last semantics node while its popup is open.
+        composeRule.onAllNodesWithText("Vector layer").onLast().performClick()
         composeRule.onAllNodes(hasContentDescription("Layer actions")).onFirst().performClick()
         composeRule.onNodeWithText("Duplicate layer").performClick()
 
@@ -804,7 +806,7 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription("Layers").performClick()
         composeRule.onNodeWithContentDescription("Add layer folder").performClick()
         composeRule.onNodeWithContentDescription("Add layer").performClick()
-        composeRule.onNodeWithText("Vector layer").performClick()
+        composeRule.onAllNodesWithText("Vector layer").onLast().performClick()
 
         composeRule.onNodeWithText("Folder 1").assertIsDisplayed()
         composeRule.onNodeWithText("Layer 1").assertIsDisplayed()
