@@ -83,7 +83,7 @@ class SutSprayRotationParserTest {
             assertFalse("The supplied secondary size effector is disabled and must not inherit main pressure", paintingBrush?.dualSizeDynamics?.pressureEnabled ?: true)
             assertFalse("The supplied secondary flow effector is disabled and must not inherit main pressure", paintingBrush?.dualFlowDynamics?.pressureEnabled ?: true)
             assertTrue(paintingBrush?.report?.any { it.contains("main-tip dynamics are not inherited") } == true)
-            assertTrue(paintingBrush?.report?.any { it.contains("Height texture composition mapped with documented edge-only behavior") } == true)
+            assertTrue(paintingBrush?.report?.any { it.contains("Height Texture Mode mapped") } == true)
             assertEquals(7f, paintingBrush?.colorJitterHueDegrees ?: -1f, .001f)
             assertEquals(6f, paintingBrush?.colorJitterSaturation ?: -1f, .001f)
             assertEquals(0f, paintingBrush?.colorJitterValue ?: -1f, .001f)

@@ -213,6 +213,35 @@ class BrushTipTextureDecoderTest {
         }
     }
 
+    @Test
+    fun cspOutlineTextureUsesTheTextureContourInsteadOfItsFlatRegions() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val root = File(context.cacheDir, "brush-outline-texture-${System.nanoTime()}").apply { mkdirs() }
+        try {
+            val tipFile = File(root, "tip.png")
+            writePng(tipFile, IntArray(64) { Color.rgb(127, 127, 127) }, 8, 8)
+            val grainFile = File(root, "grain.png")
+            writePng(grainFile, IntArray(64) { index -> if (index % 8 < 4) Color.WHITE else Color.BLACK }, 8, 8)
+
+            val outline = BrushTipTextureDecoder.decode(
+                tipPath = tipFile.absolutePath,
+                hardness = 1f,
+                grainPath = grainFile.absolutePath,
+                grainDensity = 1f,
+                grainCompositeMode = CspTextureComposite.OUTLINE,
+            )!!
+
+            assertEquals("Flat texture region must not become an outline", 0, Color.alpha(outline.getPixel(1, 3)))
+            org.junit.Assert.assertTrue(
+                "Texture transition must remain visible at the brush's soft density",
+                kotlin.math.abs(Color.alpha(outline.getPixel(3, 3)) - 128) <= 2,
+            )
+            outline.recycle()
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     private fun writePng(file: File, pixels: IntArray, width: Int = 2, height: Int = 1) {
         val bitmap = Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
         file.outputStream().use { output ->

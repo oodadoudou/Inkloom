@@ -48,6 +48,28 @@ object BrushTipTextureDecoder {
             }
             val pixels = IntArray(source.width * source.height)
             source.getPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
+            val outlineMasks = if (grain != null && grainPixels != null && grainCompositeMode == CspTextureComposite.OUTLINE) {
+                FloatArray(pixels.size) { index ->
+                    grainMask(
+                        grainPixels = grainPixels,
+                        grainWidth = grain.width,
+                        grainHeight = grain.height,
+                        x = index % source.width,
+                        y = index / source.width,
+                        sourceWidth = source.width,
+                        sourceHeight = source.height,
+                        grainScale = grainScale,
+                        grainRotation = grainRotation,
+                        grainOffsetX = grainOffsetX,
+                        grainOffsetY = grainOffsetY,
+                        grainFilteringMode = grainFilteringMode,
+                        grainBrightness = grainBrightness,
+                        grainContrast = grainContrast,
+                        grainReversed = grainReversed,
+                        grainEmphasized = grainEmphasized,
+                    )
+                }
+            } else null
             val darkBackground = hasDarkBackground(pixels, source.width, source.height)
             pixels.indices.forEach { index ->
                 val pixel = pixels[index]
@@ -61,34 +83,23 @@ object BrushTipTextureDecoder {
                 // material tips, so applying another gamma curve here destroys
                 // the authored edge and texture values.
                 val shaped = CspAntiAlias.shapeCoverage(base, antiAliasMode)
-                val grainMask = if (grain != null && grainPixels != null) {
-                    val x = index % source.width
-                    val y = index / source.width
-                    val effectiveLuminance = TextureSampling.sampleEffectiveLuminance(
-                        grainPixels,
-                        grain.width,
-                        grain.height,
-                        x,
-                        y,
-                        source.width,
-                        source.height,
-                        grainScale,
-                        grainRotation,
-                        grainOffsetX,
-                        grainOffsetY,
-                        grainFilteringMode,
-                    )
-                    TextureSampling.mask(
-                        effectiveLuminance,
-                        grainBrightness,
-                        grainContrast,
-                        grainReversed,
-                        grainEmphasized,
-                    )
+                val x = index % source.width
+                val y = index / source.width
+                val grainMask = if (outlineMasks != null) {
+                    outlineMasks[index]
+                } else if (grain != null && grainPixels != null) {
+                    grainMask(grainPixels, grain.width, grain.height, x, y, source.width, source.height, grainScale, grainRotation, grainOffsetX, grainOffsetY, grainFilteringMode, grainBrightness, grainContrast, grainReversed, grainEmphasized)
                 } else {
                     1f
                 }
-                val composedDensity = CspTextureComposite.density(shaped, grainMask, grainDensity, grainCompositeMode)
+                val textureEdge = outlineMasks?.let { masks ->
+                    val left = masks[y * source.width + (x - 1).floorMod(source.width)]
+                    val right = masks[y * source.width + (x + 1).floorMod(source.width)]
+                    val top = masks[(y - 1).floorMod(source.height) * source.width + x]
+                    val bottom = masks[(y + 1).floorMod(source.height) * source.width + x]
+                    (kotlin.math.abs(right - left) + kotlin.math.abs(bottom - top)).coerceIn(0f, 1f)
+                } ?: 0f
+                val composedDensity = CspTextureComposite.density(shaped, grainMask, grainDensity, grainCompositeMode, textureEdge)
                 val sourceAlpha = ((composedDensity * 255).toInt() * Color.alpha(pixel) / 255).coerceIn(0, 255)
                 val alpha = if (alphaThresholdEnabled) {
                     if (sourceAlpha > alphaThreshold.coerceIn(0f, 1f) * 255f) 255 else 0
@@ -130,6 +141,46 @@ object BrushTipTextureDecoder {
         if (scaled !== decoded) decoded.recycle()
         return scaled
     }
+
+    private fun grainMask(
+        grainPixels: IntArray,
+        grainWidth: Int,
+        grainHeight: Int,
+        x: Int,
+        y: Int,
+        sourceWidth: Int,
+        sourceHeight: Int,
+        grainScale: Float,
+        grainRotation: Float,
+        grainOffsetX: Float,
+        grainOffsetY: Float,
+        grainFilteringMode: Int,
+        grainBrightness: Float,
+        grainContrast: Float,
+        grainReversed: Boolean,
+        grainEmphasized: Boolean,
+    ): Float = TextureSampling.mask(
+        TextureSampling.sampleEffectiveLuminance(
+            grainPixels,
+            grainWidth,
+            grainHeight,
+            x,
+            y,
+            sourceWidth,
+            sourceHeight,
+            grainScale,
+            grainRotation,
+            grainOffsetX,
+            grainOffsetY,
+            grainFilteringMode,
+        ),
+        grainBrightness,
+        grainContrast,
+        grainReversed,
+        grainEmphasized,
+    )
+
+    private fun Int.floorMod(divisor: Int): Int = ((this % divisor) + divisor) % divisor
 
     private fun hasDarkBackground(pixels: IntArray, width: Int, height: Int): Boolean {
         val sampleWidth = (width / 16).coerceIn(1, 64)

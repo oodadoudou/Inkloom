@@ -1,14 +1,18 @@
 package app.inkloom.document
 
 import kotlin.math.min
+import kotlin.math.sqrt
 
 /**
  * CSP Texture > Texture mode values observed in SUT Variant.TextureCompositeMode.
  *
- * Compare and Height are the two non-default modes present in Inkloom's current
- * real-device corpus. Height follows CSP's documented edge-only behavior. Compare
- * uses a conservative density comparison without claiming exact raster parity.
- * Unknown modes keep the legacy multiplication until independently verified.
+ * CSP publishes the nine mode names and the qualitative edge behavior of Outline
+ * and Height, but not its private raster equations. Inkloom applies the corresponding
+ * standard scalar blend equation to normalized paint density; Normal uses the
+ * neutral-midpoint soft-light transfer so a 50% texture does not change authored
+ * density. Outline receives local texture-edge strength from the shared decoder.
+ * Unknown source values retain historical Multiply behavior instead of silently
+ * being relabeled as one of the documented modes.
  */
 object CspTextureComposite {
     const val NORMAL = 1
@@ -34,28 +38,66 @@ object CspTextureComposite {
         else -> "Unknown $mode"
     }
 
-    fun isVerified(mode: Int): Boolean = mode == HEIGHT
+    fun isDocumented(mode: Int): Boolean = mode in NORMAL..HEIGHT
 
     /** Combines authored tip density with the normalized CSP texture density. */
-    fun density(baseDensity: Float, textureDensity: Float, strength: Float, mode: Int): Float {
+    fun density(
+        baseDensity: Float,
+        textureDensity: Float,
+        strength: Float,
+        mode: Int,
+        textureEdge: Float = 0f,
+    ): Float {
         val base = baseDensity.coerceIn(0f, 1f)
         val texture = textureDensity.coerceIn(0f, 1f)
         val amount = strength.coerceIn(0f, 1f)
         if (amount <= 0f || base <= 0f) return base
         val target = when (mode) {
-            // Compare selects the lower density without multiplying two partially
-            // transparent values, preserving more of an authored soft tip edge.
+            NORMAL -> normal(base, texture)
+            MULTIPLY -> base * texture
+            SUBTRACT -> (base - texture).coerceAtLeast(0f)
+            // The normalized scalar counterpart of Compare keeps the lower density.
             COMPARE -> min(base, texture)
-            // CSP documents Height as applying texture only at the stroke edge.
-            // 4b(1-b) is zero at the transparent/solid plateaus and peaks on the
-            // antialiased edge, so the opaque center remains authored-tip solid.
-            HEIGHT -> {
-                val edgeWeight = (4f * base * (1f - base)).coerceIn(0f, 1f)
-                base * (1f - edgeWeight + edgeWeight * texture)
-            }
-            // Historical Inkloom behavior: texture modulates the entire tip.
+            OUTLINE -> edgeOnly(base, textureEdge.coerceIn(0f, 1f))
+            OVERLAY -> overlay(base, texture)
+            COLOR_DODGE -> colorDodge(base, texture)
+            HARD_MIX -> if (vividLight(base, texture) < .5f) 0f else 1f
+            HEIGHT -> edgeOnly(base, texture)
             else -> base * texture
         }
         return (base + (target - base) * amount).coerceIn(0f, 1f)
     }
+
+    /** Normal is intentionally less destructive than Multiply: transparent/opaque
+     * plateaus stay fixed and a balanced grain preserves authored mid-density. */
+    private fun normal(base: Float, texture: Float): Float = if (texture <= .5f) {
+        base - (1f - 2f * texture) * base * (1f - base)
+    } else {
+        val lifted = if (base <= .25f) ((16f * base - 12f) * base + 4f) * base else sqrt(base)
+        base + (2f * texture - 1f) * (lifted - base)
+    }
+
+    private fun edgeOnly(base: Float, texture: Float): Float {
+        // Zero at the transparent and opaque plateaus, one at a 50% soft edge.
+        val edgeWeight = (4f * base * (1f - base)).coerceIn(0f, 1f)
+        return base * (1f - edgeWeight + edgeWeight * texture)
+    }
+
+    private fun overlay(base: Float, texture: Float): Float =
+        if (base <= .5f) 2f * base * texture else 1f - 2f * (1f - base) * (1f - texture)
+
+    private fun colorDodge(base: Float, texture: Float): Float = when {
+        base <= 0f -> 0f
+        texture >= 1f -> 1f
+        else -> (base / (1f - texture)).coerceAtMost(1f)
+    }
+
+    private fun colorBurn(base: Float, texture: Float): Float = when {
+        base >= 1f -> 1f
+        texture <= 0f -> 0f
+        else -> (1f - (1f - base) / texture).coerceAtLeast(0f)
+    }
+
+    private fun vividLight(base: Float, texture: Float): Float =
+        if (texture < .5f) colorBurn(base, texture * 2f) else colorDodge(base, (texture - .5f) * 2f)
 }
