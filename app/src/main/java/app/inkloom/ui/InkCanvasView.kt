@@ -1942,9 +1942,11 @@ class InkCanvasView(context: Context) : View(context) {
         if (!viewportGestureActive && handleCanvasGuideGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
         if (!viewportGestureActive && handleRulerGesture(event, inputPoint.first, inputPoint.second, isStylus, elapsedSinceStylus)) return true
         val buttonForcesNavigation = isStylus && (stylusButtonAction == StylusButtonAction.HAND || stylusHandNavigationContact)
+        // An explicitly selected lasso owns a single non-palm pointer even immediately after pen
+        // hover/contact. The recent-stylus rejection window is valuable for paint palm rejection,
+        // but applying it to Selection turns the first lasso drag into an unexpected canvas pan.
         val selectionDrawContact = !isStylus && event.pointerCount == 1 && tool == EditorTool.SELECT &&
-            event.getTouchMajor(pointerIndex) < StylusInputClassifier.PALM_TOUCH_MAJOR_PX &&
-            elapsedSinceStylus !in 0..StylusInputClassifier.RECENT_STYLUS_WINDOW_MS
+            event.getTouchMajor(pointerIndex) < StylusInputClassifier.PALM_TOUCH_MAJOR_PX
         val isFingerNavigation = viewportGestureActive || forceNavigation || buttonForcesNavigation ||
             (!selectionDrawContact && StylusInputClassifier.shouldNavigateOrRejectFinger(isStylus, fingerDrawingEnabled, event.pointerCount, event.getTouchMajor(pointerIndex), elapsedSinceStylus))
         if (isFingerNavigation) {
@@ -3805,8 +3807,9 @@ class InkCanvasView(context: Context) : View(context) {
         if (event.pointerCount != 1) return false
         val elapsedSinceStylus = if (lastStylusSeenAt == Long.MIN_VALUE) Long.MAX_VALUE else event.eventTime - lastStylusSeenAt
         val selectionDrawContact = tool == EditorTool.SELECT
-        return (fingerDrawingEnabled || selectionDrawContact) && event.getTouchMajor(0) < StylusInputClassifier.PALM_TOUCH_MAJOR_PX &&
-            elapsedSinceStylus !in 0..StylusInputClassifier.RECENT_STYLUS_WINDOW_MS
+        return (fingerDrawingEnabled || selectionDrawContact) &&
+            event.getTouchMajor(0) < StylusInputClassifier.PALM_TOUCH_MAJOR_PX &&
+            (selectionDrawContact || elapsedSinceStylus !in 0..StylusInputClassifier.RECENT_STYLUS_WINDOW_MS)
     }
 
     private fun updateContinuousPlotInput(x: Float, y: Float, pressure: Float, tilt: Float, orientation: Float) {
@@ -4979,6 +4982,22 @@ class InkCanvasView(context: Context) : View(context) {
         selectionTransformMode = TRANSFORM_NONE
         invalidate()
         return true
+    }
+
+    /** Explicitly returns Selection to boundary-input mode. Selecting a lasso/shape in a drawing
+     * app is a mode command, even when the same shape is tapped twice; it must disarm a previous
+     * Free Transform session so the next drag draws a new selection instead of moving content. */
+    fun beginSelectionInput(shape: SelectionShape) {
+        if (activeTool != null) cancelActiveGestureForNavigation()
+        tool = EditorTool.SELECT
+        selectionShape = shape
+        selectionTransformArmed = false
+        selectionTransformMode = TRANSFORM_NONE
+        movingSelection = false
+        selectionMoved = false
+        selectionGestureBefore = null
+        lassoPoints.clear()
+        invalidate()
     }
 
     fun clearSelection(): Boolean {

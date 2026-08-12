@@ -50,14 +50,51 @@ class FreeLassoInteractionTest {
         }
     }
 
+    @Test fun lassoStillOwnsFingerImmediatelyAfterStylusContact() {
+        var panDistance = 0f
+        var selectionMask: Bitmap? = null
+        val view = InkCanvasView(ApplicationProvider.getApplicationContext()).apply {
+            layout(0, 0, 400, 400)
+            pageModelWidth = 400f
+            pageModelHeight = 400f
+            tool = EditorTool.SELECT
+            selectionShape = SelectionShape.FREEFORM
+            fingerDrawingEnabled = false
+            onViewportPan = { dx, dy -> panDistance += kotlin.math.abs(dx) + kotlin.math.abs(dy) }
+            onFillCommitted = { mask, _, _, _, _, _, _ -> selectionMask = mask }
+        }
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            stylus(view, MotionEvent.ACTION_DOWN, 40f, 40f, 1_000L)
+            stylus(view, MotionEvent.ACTION_UP, 40f, 40f, 1_010L)
+            finger(view, MotionEvent.ACTION_DOWN, 100f, 100f, 1_020L)
+            finger(view, MotionEvent.ACTION_MOVE, 300f, 100f, 1_030L)
+            finger(view, MotionEvent.ACTION_MOVE, 300f, 300f, 1_040L)
+            finger(view, MotionEvent.ACTION_MOVE, 100f, 300f, 1_050L)
+            finger(view, MotionEvent.ACTION_UP, 100f, 100f, 1_060L)
+            assertTrue(view.fillSelection())
+        }
+
+        assertEquals(0f, panDistance, 0f)
+        requireNotNull(selectionMask).recycle()
+    }
+
     private fun finger(view: InkCanvasView, action: Int, x: Float, y: Float, eventTime: Long) {
-        val properties = arrayOf(MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_FINGER })
+        pointer(view, action, x, y, eventTime, MotionEvent.TOOL_TYPE_FINGER, InputDevice.SOURCE_TOUCHSCREEN)
+    }
+
+    private fun stylus(view: InkCanvasView, action: Int, x: Float, y: Float, eventTime: Long) {
+        pointer(view, action, x, y, eventTime, MotionEvent.TOOL_TYPE_STYLUS, InputDevice.SOURCE_STYLUS)
+    }
+
+    private fun pointer(view: InkCanvasView, action: Int, x: Float, y: Float, eventTime: Long, toolType: Int, source: Int) {
+        val properties = arrayOf(MotionEvent.PointerProperties().apply { id = 0; this.toolType = toolType })
         val coordinates = arrayOf(MotionEvent.PointerCoords().apply {
             this.x = x; this.y = y; pressure = 1f; size = .05f; touchMajor = 8f
         })
         MotionEvent.obtain(
             0L, eventTime, action, 1, properties, coordinates,
-            0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0,
+            0, 0, 1f, 1f, 0, 0, source, 0,
         ).also {
             try { view.onTouchEvent(it) } finally { it.recycle() }
         }
