@@ -75,10 +75,16 @@ internal object SystemBrushCatalog {
         systemBrush(id = "system-soft-eraser", name = "Soft Eraser", group = "Erasers", size = 68f, hardness = .12f, blur = .28f, isEraser = true, tags = listOf("eraser", "soft")),
         systemBrush(id = "system-blend-smear", name = "Finger Smear", group = "Blend", size = 56f, colorMix = .82f, paintMix = 0f, tags = listOf("blend", "smear")),
         systemBrush(id = "system-blend-soft", name = "Soft Blend", group = "Blend", size = 82f, hardness = .08f, blur = .48f, colorMix = .62f, tags = listOf("blend", "blur")),
-        systemBrush(id = "system-liquify-push", name = "Push", group = "Liquify", size = 120f, tags = listOf("liquify", "push")),
-        systemBrush(id = "system-liquify-twirl", name = "Twirl", group = "Liquify", size = 140f, tags = listOf("liquify", "twirl")),
-        systemBrush(id = "system-liquify-pinch", name = "Pinch", group = "Liquify", size = 150f, tags = listOf("liquify", "pinch")),
-        systemBrush(id = "system-liquify-expand", name = "Expand", group = "Liquify", size = 150f, tags = listOf("liquify", "expand")),
+        systemBrush(id = "system-liquify-push", name = "Push", group = "Liquify", size = 120f, flow = .72f, hardness = .55f, tags = listOf("liquify", "push")),
+        systemBrush(id = "system-liquify-push-left", name = "Push Left", group = "Liquify", size = 120f, flow = .72f, hardness = .55f, tags = listOf("liquify", "push-left")),
+        systemBrush(id = "system-liquify-push-right", name = "Push Right", group = "Liquify", size = 120f, flow = .72f, hardness = .55f, tags = listOf("liquify", "push-right")),
+        systemBrush(id = "system-liquify-twirl-right", name = "Twirl Right", group = "Liquify", size = 140f, flow = .68f, hardness = .45f, tags = listOf("liquify", "twirl-right")),
+        systemBrush(id = "system-liquify-twirl-left", name = "Twirl Left", group = "Liquify", size = 140f, flow = .68f, hardness = .45f, tags = listOf("liquify", "twirl-left")),
+        systemBrush(id = "system-liquify-pinch", name = "Pinch", group = "Liquify", size = 150f, flow = .62f, hardness = .42f, tags = listOf("liquify", "pinch")),
+        systemBrush(id = "system-liquify-expand", name = "Expand", group = "Liquify", size = 150f, flow = .62f, hardness = .42f, tags = listOf("liquify", "expand")),
+        systemBrush(id = "system-liquify-crystals", name = "Crystals", group = "Liquify", size = 135f, flow = .58f, hardness = .72f, tags = listOf("liquify", "crystals")),
+        systemBrush(id = "system-liquify-edge", name = "Edge", group = "Liquify", size = 130f, flow = .65f, hardness = .58f, tags = listOf("liquify", "edge")),
+        systemBrush(id = "system-liquify-reconstruct", name = "Reconstruct", group = "Liquify", size = 140f, flow = .7f, hardness = .5f, tags = listOf("liquify", "reconstruct")),
     )
 
     fun byId(id: String): ImportedBrush? = brushes.firstOrNull { it.id == id }

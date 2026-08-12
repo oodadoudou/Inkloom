@@ -25,4 +25,14 @@ class SystemBrushCatalogTest {
         assertNotEquals(SystemBrushCatalog.byId("system-g-pen"), SystemBrushCatalog.byId("system-painting-pen"))
         assertTrue(SystemBrushCatalog.brushes.all { it.format == BrushFormat.SYSTEM && it.compatibility == Compatibility.COMPLETE })
     }
+
+    @Test
+    fun liquifyCatalogExposesCspAndProcreateModesAsPeerPresets() {
+        val names = SystemBrushCatalog.brushes.filter { it.groupName == "Liquify" }.map(ImportedBrush::name)
+
+        assertTrue(names.containsAll(listOf(
+            "Push", "Push Left", "Push Right", "Twirl Left", "Twirl Right",
+            "Pinch", "Expand", "Crystals", "Edge", "Reconstruct",
+        )))
+    }
 }

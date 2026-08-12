@@ -4798,9 +4798,15 @@ internal fun InkCanvasView.applyBrushConfiguration(
     selectionBrushSize = settings.selectionBrushSize
     selectionThreshold = settings.selectionThreshold
     liquifyMode = when {
-        activeBrush?.tags?.any { it.equals("twirl", true) } == true -> LiquifyMode.TWIRL_CLOCKWISE
+        activeBrush?.tags?.any { it.equals("push-left", true) } == true -> LiquifyMode.PUSH_LEFT
+        activeBrush?.tags?.any { it.equals("push-right", true) } == true -> LiquifyMode.PUSH_RIGHT
+        activeBrush?.tags?.any { it.equals("twirl-left", true) } == true -> LiquifyMode.TWIRL_COUNTERCLOCKWISE
+        activeBrush?.tags?.any { it.equals("twirl-right", true) || it.equals("twirl", true) } == true -> LiquifyMode.TWIRL_CLOCKWISE
         activeBrush?.tags?.any { it.equals("pinch", true) } == true -> LiquifyMode.PINCH
         activeBrush?.tags?.any { it.equals("expand", true) } == true -> LiquifyMode.EXPAND
+        activeBrush?.tags?.any { it.equals("crystals", true) } == true -> LiquifyMode.CRYSTALS
+        activeBrush?.tags?.any { it.equals("edge", true) } == true -> LiquifyMode.EDGE
+        activeBrush?.tags?.any { it.equals("reconstruct", true) } == true -> LiquifyMode.RECONSTRUCT
         else -> LiquifyMode.PUSH
     }
     liquifyStrength = activeBrush?.flow ?: .55f

@@ -269,13 +269,15 @@ class InkCanvasView(context: Context) : View(context) {
     private var liquifyChanged = false
     private var pendingLiquifyX = 0f
     private var pendingLiquifyY = 0f
+    private var pendingLiquifyPressure = 1f
+    private var liquifyPressure = 1f
     private var hasPendingLiquify = false
     private var liquifyFrameScheduled = false
     private val liquifyFrame = Runnable {
         liquifyFrameScheduled = false
         if (hasPendingLiquify) {
             hasPendingLiquify = false
-            extendLiquify(pendingLiquifyX, pendingLiquifyY)
+            extendLiquify(pendingLiquifyX, pendingLiquifyY, pendingLiquifyPressure)
         }
     }
     private var correctionBefore: List<InkStroke>? = null
@@ -2203,7 +2205,7 @@ class InkCanvasView(context: Context) : View(context) {
                 }
                 if (activeTool == EditorTool.LIQUIFY) {
                     parent?.requestDisallowInterceptTouchEvent(true)
-                    beginLiquifyGesture(normalizedX, normalizedY)
+                    beginLiquifyGesture(normalizedX, normalizedY, event.getPressure(pointerIndex))
                     invalidate()
                     return true
                 }
@@ -2260,7 +2262,7 @@ class InkCanvasView(context: Context) : View(context) {
                     scheduleSmudge(normalizedX, normalizedY)
                 }
                 else if (activeTool == EditorTool.LIQUIFY) {
-                    scheduleLiquify(normalizedX, normalizedY)
+                    scheduleLiquify(normalizedX, normalizedY, event.getPressure(pointerIndex))
                 }
                 else if (activeTool == EditorTool.CORRECT_LINE) {
                     updateCorrectLineGesture(normalizedX, normalizedY)
@@ -2403,7 +2405,7 @@ class InkCanvasView(context: Context) : View(context) {
                     parent?.requestDisallowInterceptTouchEvent(false)
                 } else if (activeTool == EditorTool.LIQUIFY) {
                     flushLiquifyFrame()
-                    if (normalizedX != liquifyLastX || normalizedY != liquifyLastY) extendLiquify(normalizedX, normalizedY)
+                    if (normalizedX != liquifyLastX || normalizedY != liquifyLastY) extendLiquify(normalizedX, normalizedY, event.getPressure(pointerIndex))
                     finishLiquifyGesture()
                     parent?.requestDisallowInterceptTouchEvent(false)
                 } else if (activeTool == EditorTool.CORRECT_LINE) {
@@ -4079,7 +4081,7 @@ class InkCanvasView(context: Context) : View(context) {
         invalidate()
     }
 
-    private fun beginLiquifyGesture(x: Float, y: Float) {
+    private fun beginLiquifyGesture(x: Float, y: Float, pressure: Float) {
         removeCallbacks(liquifyFrame)
         liquifyFrameScheduled = false
         hasPendingLiquify = false
@@ -4087,12 +4089,14 @@ class InkCanvasView(context: Context) : View(context) {
         prepareLocalToolStrokeIndex()
         liquifyLastX = x.coerceIn(0f, 1f)
         liquifyLastY = y.coerceIn(0f, 1f)
+        liquifyPressure = pressure.coerceIn(0f, 1f)
         liquifyChanged = false
     }
 
-    private fun scheduleLiquify(x: Float, y: Float) {
+    private fun scheduleLiquify(x: Float, y: Float, pressure: Float) {
         pendingLiquifyX = x
         pendingLiquifyY = y
+        pendingLiquifyPressure = pressure.coerceIn(0f, 1f)
         hasPendingLiquify = true
         if (!liquifyFrameScheduled) {
             liquifyFrameScheduled = true
@@ -4106,7 +4110,7 @@ class InkCanvasView(context: Context) : View(context) {
         liquifyFrame.run()
     }
 
-    private fun extendLiquify(x: Float, y: Float) {
+    private fun extendLiquify(x: Float, y: Float, pressure: Float = liquifyPressure) {
         val nextX = x.coerceIn(0f, 1f)
         val nextY = y.coerceIn(0f, 1f)
         val radius = (baseWidth.coerceIn(2f, 800f) / REFERENCE_WIDTH).coerceAtLeast(.002f)
@@ -4116,19 +4120,37 @@ class InkCanvasView(context: Context) : View(context) {
             liquifyLastY = nextY
             return
         }
-        val warped = VectorLiquify.apply(
-            strokes = beforeStep,
-            centerX = nextX,
-            centerY = nextY,
-            deltaX = nextX - liquifyLastX,
-            deltaY = nextY - liquifyLastY,
-            radius = radius,
-            strength = liquifyStrength,
-            hardness = liquifyHardness,
-            pageWidth = pageModelWidth,
-            pageHeight = pageModelHeight,
-            mode = liquifyMode,
-        ) { stroke -> stroke.layerId == activeLayerId && stroke.id !in protectedStrokeIds && stroke.layerId !in protectedLayerIds }
+        val effectiveStrength = liquifyStrength * pressure.coerceIn(0f, 1f)
+        val eligible: (InkStroke) -> Boolean = { stroke -> stroke.layerId == activeLayerId && stroke.id !in protectedStrokeIds && stroke.layerId !in protectedLayerIds }
+        val warped = if (liquifyMode == LiquifyMode.RECONSTRUCT) {
+            VectorLiquify.reconstruct(
+                current = beforeStep,
+                original = liquifyBefore.orEmpty(),
+                centerX = nextX,
+                centerY = nextY,
+                radius = radius,
+                strength = effectiveStrength,
+                hardness = liquifyHardness,
+                pageWidth = pageModelWidth,
+                pageHeight = pageModelHeight,
+                eligible = eligible,
+            )
+        } else {
+            VectorLiquify.apply(
+                strokes = beforeStep,
+                centerX = nextX,
+                centerY = nextY,
+                deltaX = nextX - liquifyLastX,
+                deltaY = nextY - liquifyLastY,
+                radius = radius,
+                strength = effectiveStrength,
+                hardness = liquifyHardness,
+                pageWidth = pageModelWidth,
+                pageHeight = pageModelHeight,
+                mode = liquifyMode,
+                eligible = eligible,
+            )
+        }
         if (warped != beforeStep) {
             replaceLocalToolCandidates(warped)
             liquifyChanged = true
@@ -4136,6 +4158,7 @@ class InkCanvasView(context: Context) : View(context) {
         }
         liquifyLastX = nextX
         liquifyLastY = nextY
+        liquifyPressure = pressure.coerceIn(0f, 1f)
     }
 
     /** Blend and Liquify are local tools. Restricting each input sample to spatial-index hits keeps

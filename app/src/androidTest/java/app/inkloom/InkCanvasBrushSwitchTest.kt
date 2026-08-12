@@ -6,10 +6,12 @@ import android.view.MotionEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.document.InkStroke
+import app.inkloom.document.LiquifyMode
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.EditorTool
 import app.inkloom.model.ImportedBrush
+import app.inkloom.model.SystemBrushCatalog
 import app.inkloom.settings.AppSettings
 import app.inkloom.settings.EraserPreset
 import app.inkloom.ui.InkCanvasView
@@ -93,6 +95,31 @@ class InkCanvasBrushSwitchTest {
 
         assertEquals(1, committed.size)
         assertTrue(committed.single().points.all { it.x > .5f && it.y > .45f })
+    }
+
+    @Test
+    fun everyFactoryLiquifyPresetMapsToItsExplicitMode() {
+        val expected = mapOf(
+            "system-liquify-push" to LiquifyMode.PUSH,
+            "system-liquify-push-left" to LiquifyMode.PUSH_LEFT,
+            "system-liquify-push-right" to LiquifyMode.PUSH_RIGHT,
+            "system-liquify-twirl-left" to LiquifyMode.TWIRL_COUNTERCLOCKWISE,
+            "system-liquify-twirl-right" to LiquifyMode.TWIRL_CLOCKWISE,
+            "system-liquify-pinch" to LiquifyMode.PINCH,
+            "system-liquify-expand" to LiquifyMode.EXPAND,
+            "system-liquify-crystals" to LiquifyMode.CRYSTALS,
+            "system-liquify-edge" to LiquifyMode.EDGE,
+            "system-liquify-reconstruct" to LiquifyMode.RECONSTRUCT,
+        )
+        val view = InkCanvasView(InstrumentationRegistry.getInstrumentation().targetContext)
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            expected.forEach { (id, mode) ->
+                val brush = requireNotNull(SystemBrushCatalog.byId(id))
+                view.applyBrushConfiguration(EditorTool.LIQUIFY, AppSettings(), brush, brush.defaultSize, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
+                assertEquals(id, mode, view.liquifyMode)
+            }
+        }
     }
 
     private fun brush(id: String, name: String) = ImportedBrush(
