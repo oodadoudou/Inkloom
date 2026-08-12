@@ -4844,6 +4844,7 @@ class InkCanvasView(context: Context) : View(context) {
         grainMovement = grainMovement,
         grainZoom = grainZoom,
         grainStrokeRotation = grainStrokeRotation,
+        grainCompositeMode = grainCompositeMode,
         tiltGradation = tiltGradation,
         tiltGradationStart = tiltGradationStart,
         tiltBleed = tiltBleed,
