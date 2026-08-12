@@ -144,6 +144,8 @@ class BrushMetadataStore(
                         stabilizationBySpeedMode = item.optInt("stabilizationBySpeedMode", 1).coerceIn(0, 1),
                         spacing = item.optDouble("spacing", .12).toFloat(),
                         strokeFalloff = item.optDouble("strokeFalloff", 0.0).toFloat().coerceIn(0f, 1f),
+                        strokePathJitter = item.optDouble("strokePathJitter", 0.0).toFloat().coerceIn(0f, 4f),
+                        strokePathLongitudinalJitter = item.optDouble("strokePathLongitudinalJitter", 0.0).toFloat().coerceIn(0f, 4f),
                         spacingMode = app.inkloom.document.CspBrushGap.normalize(item.optInt("spacingMode", app.inkloom.document.CspBrushGap.FIXED)),
                         flow = item.optDouble("flow", 1.0).toFloat(),
                         hardness = item.optDouble("hardness", 1.0).toFloat(),
@@ -223,6 +225,8 @@ class BrushMetadataStore(
                         dualStrokeRotationJitterDegrees = item.optDouble("dualStrokeRotationJitterDegrees", 0.0).toFloat().coerceIn(0f, 180f),
                         dualStampCount = item.optInt("dualStampCount", 1).coerceIn(1, 16),
                         dualStampCountJitter = item.optDouble("dualStampCountJitter", 0.0).toFloat().coerceIn(0f, 1f),
+                        dualStrokePathJitter = item.optDouble("dualStrokePathJitter", 0.0).toFloat().coerceIn(0f, 4f),
+                        dualStrokePathLongitudinalJitter = item.optDouble("dualStrokePathLongitudinalJitter", 0.0).toFloat().coerceIn(0f, 4f),
                         dualRibbon = item.optBoolean("dualRibbon", false),
                         dualSpray = item.optBoolean("dualSpray", false),
                         dualSprayParticleSize = item.optDouble("dualSprayParticleSize", 100.0).toFloat().coerceIn(.01f, 4000f),
@@ -346,6 +350,8 @@ class BrushMetadataStore(
                     .put("stabilizationBySpeedMode", brush.stabilizationBySpeedMode)
                     .put("spacing", brush.spacing)
                     .put("strokeFalloff", brush.strokeFalloff)
+                    .put("strokePathJitter", brush.strokePathJitter)
+                    .put("strokePathLongitudinalJitter", brush.strokePathLongitudinalJitter)
                     .put("spacingMode", brush.spacingMode)
                     .put("flow", brush.flow)
                     .put("hardness", brush.hardness)
@@ -425,6 +431,8 @@ class BrushMetadataStore(
                     .put("dualStrokeRotationJitterDegrees", brush.dualStrokeRotationJitterDegrees)
                     .put("dualStampCount", brush.dualStampCount)
                     .put("dualStampCountJitter", brush.dualStampCountJitter)
+                    .put("dualStrokePathJitter", brush.dualStrokePathJitter)
+                    .put("dualStrokePathLongitudinalJitter", brush.dualStrokePathLongitudinalJitter)
                     .put("dualRibbon", brush.dualRibbon)
                     .put("dualSpray", brush.dualSpray)
                     .put("dualSprayParticleSize", brush.dualSprayParticleSize)

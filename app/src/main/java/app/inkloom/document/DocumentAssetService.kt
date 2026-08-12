@@ -930,7 +930,12 @@ class DocumentAssetService(private val context: Context) {
             val brushDiameter = (stroke.width * width / 1600f * taper[index] * dynamics.size).coerceAtLeast(.25f)
             val diameter = if (stroke.spray) SprayGeometry.particleDiameter(brushDiameter, SprayDynamics.particleSize(stroke, point), stroke.sprayParticleSizeUnit, stroke.sprayParticleSizeSyncBrushSize, width.toFloat()) else brushDiameter
             val offset = if (stroke.spray) SprayGeometry.offset(brushDiameter / 2f * stroke.spraySpread.coerceIn(0f, 4f), scatterRandom.nextFloat(), scatterRandom.nextFloat(), stroke.sprayBias) else SprayOffset(0f, 0f)
-            val drawX = x + offset.x; val drawY = y + offset.y
+            val followsStroke = BrushStampRotation.followsStroke(stroke, dual = false)
+            val hasPathJitter = stroke.strokePathJitter > .0001f || stroke.strokePathLongitudinalJitter > .0001f
+            val strokeDirection = if (followsStroke || hasPathJitter) StrokeStampSampler.directionDegrees(sampledPoints, index, width.toFloat(), height.toFloat()) else 0f
+            val pathOffset = StrokePathJitter.offset(stroke.renderSeed, sequenceIndex, strokeDirection, diameter, stroke.strokePathJitter, stroke.strokePathLongitudinalJitter)
+            val drawX = x + offset.x + StrokePathJitter.unpackX(pathOffset)
+            val drawY = y + offset.y + StrokePathJitter.unpackY(pathOffset)
             val spatialGrain = stroke.grainAssetPath != null && (GrainBehavior.requiresPerDabSampling(stroke.grainMovement, stroke.grainZoom) || stroke.tiltSizeCompression)
             val grainSample = if (spatialGrain) GrainBehavior.sample(
                 GrainOffset(grainOffsetX, grainOffsetY), stroke.grainMovement, if (stroke.tiltSizeCompression) 1f else stroke.grainZoom,
@@ -949,12 +954,11 @@ class DocumentAssetService(private val context: Context) {
                 } else tips[tipIndex]
             } else tips[tipIndex]
             val thicknessDynamic = dynamics.thickness
-            val followsStroke = BrushStampRotation.followsStroke(stroke, dual = false)
             val angle = BrushStampRotation.degrees(
                 stroke = stroke,
                 dual = false,
                 stylusOrientationRadians = point.orientation,
-                strokeDirectionDegrees = if (followsStroke) StrokeStampSampler.directionDegrees(sampledPoints, index, width.toFloat(), height.toFloat()) else 0f,
+                strokeDirectionDegrees = if (followsStroke) strokeDirection else 0f,
                 randomUnit = rotationRandom.nextFloat(),
             )
             val thicknessScale = stroke.thickness.coerceIn(.05f, 2f) * thicknessDynamic
@@ -1015,17 +1019,20 @@ class DocumentAssetService(private val context: Context) {
             val brushDiameter = (stroke.width * width / 1600f * stroke.dualSizeScale.coerceIn(.01f, 8f) * taper[index] * dynamics.size).coerceAtLeast(.25f)
             val diameter = if (stroke.dualSpray) SprayGeometry.particleDiameter(brushDiameter, SprayDynamics.dualParticleSize(stroke, point), stroke.dualSprayParticleSizeUnit, stroke.dualSprayParticleSizeSyncBrushSize, width.toFloat()) else brushDiameter
             val offset = if (stroke.dualSpray) SprayGeometry.offset(brushDiameter / 2f * stroke.dualSpraySpread.coerceIn(0f, 4f), scatterRandom.nextFloat(), scatterRandom.nextFloat(), stroke.dualSprayBias) else SprayOffset(0f, 0f)
-            val drawX = point.x * width + offset.x
-            val drawY = point.y * height + offset.y
+            val followsStroke = BrushStampRotation.followsStroke(stroke, dual = true)
+            val hasPathJitter = stroke.dualStrokePathJitter > .0001f || stroke.dualStrokePathLongitudinalJitter > .0001f
+            val strokeDirection = if (followsStroke || hasPathJitter) StrokeStampSampler.directionDegrees(sampledPoints, index, width.toFloat(), height.toFloat()) else 0f
+            val pathOffset = StrokePathJitter.offset(stroke.renderSeed, sequenceIndex, strokeDirection, diameter, stroke.dualStrokePathJitter, stroke.dualStrokePathLongitudinalJitter, dual = true)
+            val drawX = point.x * width + offset.x + StrokePathJitter.unpackX(pathOffset)
+            val drawY = point.y * height + offset.y + StrokePathJitter.unpackY(pathOffset)
             val thicknessDynamic = dynamics.thickness
             val tipScale = BrushTipTransform.scale(tip.width, tip.height, diameter, stroke.dualThickness.coerceIn(.05f, 2f) * thicknessDynamic, stroke.dualThicknessVertical)
             val flip = BrushTipFlip.signs(stroke.dualTipFlipHorizontalMode, stroke.dualTipFlipVerticalMode, stroke.dualTipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed, dual = true)
-            val followsStroke = BrushStampRotation.followsStroke(stroke, dual = true)
             val angle = BrushStampRotation.degrees(
                 stroke = stroke,
                 dual = true,
                 stylusOrientationRadians = point.orientation,
-                strokeDirectionDegrees = if (followsStroke) StrokeStampSampler.directionDegrees(sampledPoints, index, width.toFloat(), height.toFloat()) else 0f,
+                strokeDirectionDegrees = if (followsStroke) strokeDirection else 0f,
                 randomUnit = rotationRandom.nextFloat(),
             )
             val matrix = Matrix().apply { postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(tipScale.x * flip.x, tipScale.y * flip.y); postRotate(angle); postTranslate(drawX, drawY) }

@@ -117,7 +117,8 @@ class ProcreateBrushParserTest {
             assertTrue(brushes.any { it.taperStartEnabled })
             assertTrue(brushes.any { it.taperEndEnabled })
             assertTrue(brushes.any { brush -> brush.report.any { it.contains("Apple Pencil start/end taper") } })
-            assertTrue(brushes.any { it.spraySpread > 0f })
+            assertTrue(brushes.any { it.strokePathJitter > 0f })
+            assertTrue(brushes.any { it.strokePathLongitudinalJitter > 0f })
             assertTrue(brushes.any { it.randomRotationDegrees > 0f })
             assertTrue(brushes.any { it.strokeRotationJitterDegrees > 0f })
             assertTrue(brushes.any { it.stampCount > 1 })
@@ -125,7 +126,7 @@ class ProcreateBrushParserTest {
             assertTrue(brushes.any { it.tiltGradation > 0f })
             assertTrue(brushes.any { it.tiltSizeCompression })
             assertTrue(brushes.any { it.strokeFalloff > 0f })
-            assertTrue(brushes.any { it.spray && it.randomRotationDegrees > 0f && it.sprayParticleRandomRotationDegrees == it.randomRotationDegrees })
+            assertTrue(brushes.none { it.spray && (it.strokePathJitter > 0f || it.strokePathLongitudinalJitter > 0f) })
             assertEquals(23, brushes.count { it.grainOffsetJitter })
             assertTrue(brushes.any { brush -> brush.report.any { it.contains("stroke-path jitter") } })
         } finally {

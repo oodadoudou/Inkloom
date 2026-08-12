@@ -63,6 +63,10 @@ class InkloomBrushPackageTest {
                 tiltBleedStart = .31f,
                 tiltSizeCompression = true,
                 strokeFalloff = .63f,
+                strokePathJitter = .43f,
+                strokePathLongitudinalJitter = .27f,
+                dualStrokePathJitter = .19f,
+                dualStrokePathLongitudinalJitter = .31f,
                 antiAliasMode = CspAntiAlias.WEAK,
                 blur = 9.5f,
                 blurUnit = 2,
@@ -168,6 +172,10 @@ class InkloomBrushPackageTest {
             assertEquals(original.tiltBleedStart, restored.tiltBleedStart, .0001f)
             assertTrue(restored.tiltSizeCompression)
             assertEquals(original.strokeFalloff, restored.strokeFalloff, .0001f)
+            assertEquals(original.strokePathJitter, restored.strokePathJitter, .0001f)
+            assertEquals(original.strokePathLongitudinalJitter, restored.strokePathLongitudinalJitter, .0001f)
+            assertEquals(original.dualStrokePathJitter, restored.dualStrokePathJitter, .0001f)
+            assertEquals(original.dualStrokePathLongitudinalJitter, restored.dualStrokePathLongitudinalJitter, .0001f)
             assertEquals(app.inkloom.document.CspBrushGap.NARROW, restored.spacingMode)
             assertEquals(CspAntiAlias.WEAK, restored.antiAliasMode)
             assertEquals(CspAntiAlias.STRONG, restored.dualAntiAliasMode)

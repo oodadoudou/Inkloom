@@ -103,8 +103,8 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         val wetAccumulation = metadata.float("dynamicsWetAccumulation").coerceIn(0f, 1f)
         val smudgeAccumulation = metadata.float("dynamicsSmudgeAccumulation").coerceIn(0f, 1f)
         val watercolor = wetMix > .001f || wetEdges > .01f || burntEdges > .01f
-        val plotJitter = max(abs(metadata.float("plotJitter")), abs(metadata.float("plotJitterLongitudinal"))).coerceIn(0f, 4f)
-        val scatterSpread = plotJitter
+        val pathJitter = abs(metadata.float("plotJitter")).coerceIn(0f, 4f)
+        val pathLongitudinalJitter = abs(metadata.float("plotJitterLongitudinal")).coerceIn(0f, 4f)
         val randomRotation = Math.toDegrees(abs(metadata.float("shapeScatter")).toDouble()).toFloat().coerceIn(0f, 180f)
         val strokeRotationJitter = if (metadata.boolean("shapeRandomise")) 180f else 0f
         val stampCount = (metadata.float("shapeCount", .0625f) * 16f).toInt().coerceIn(1, 16)
@@ -161,6 +161,8 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             defaultOpacity = (metadata.float("paintOpacity", 1f) * metadata.float("maxOpacity", 1f)).coerceIn(.01f, 1f),
             spacing = (metadata.float("plotSpacing") * 10f).coerceIn(.01f, 2f),
             strokeFalloff = strokeFalloff,
+            strokePathJitter = pathJitter,
+            strokePathLongitudinalJitter = pathLongitudinalJitter,
             spacingSecondaryDynamics = spacingDynamics(spacingSpeed, spacingJitter),
             flow = metadata.float("dynamicsGlazedFlow", 1f).coerceIn(0f, 1f),
             hardness = if (metadata.boolean("shapeFilter", true)) .85f else 1f,
@@ -175,12 +177,12 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             watercolor = watercolor,
             colorMix = wetMix,
             paintMix = max(paintLoad, max(wetAccumulation, smudgeAccumulation)),
-            spray = scatterSpread > .01f,
+            spray = false,
             sprayParticleSize = 100f,
             sprayParticleSizeSyncBrushSize = true,
             sprayDensity = 1f,
             sprayBias = 0f,
-            spraySpread = scatterSpread,
+            spraySpread = 0f,
             sprayParticleRotationDegrees = shapeRotation,
             sprayParticleFollowStylusOrientation = followsStylus,
             sprayParticleFollowStrokeDirection = followsStroke,
@@ -198,6 +200,8 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             dualStrokeRotationJitterDegrees = dualMapped?.strokeRotationJitter ?: 0f,
             dualStampCount = dualMapped?.stampCount ?: 1,
             dualStampCountJitter = dualMapped?.stampCountJitter ?: 0f,
+            dualStrokePathJitter = dualMapped?.pathJitter ?: 0f,
+            dualStrokePathLongitudinalJitter = dualMapped?.pathLongitudinalJitter ?: 0f,
             dualSpray = dualMapped?.spray ?: false,
             dualSprayDensity = dualMapped?.density ?: 1f,
             dualSpraySpread = dualMapped?.spread ?: 1f,
@@ -239,7 +243,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
                 if (randomRotation > DYNAMIC_EPSILON) add("Procreate Shape Scatter mapped to independent per-stamp rotation")
                 if (strokeRotationJitter > DYNAMIC_EPSILON) add("Procreate Randomized mapped to one deterministic starting rotation per stroke")
                 if (stampCount > 1 || stampCountJitter > DYNAMIC_EPSILON) add("Procreate Shape Count $stampCount and Count Jitter mapped as repeated stamps at each plot point")
-                if (scatterSpread > DYNAMIC_EPSILON) add("Procreate stroke-path jitter mapped as positional spread")
+                if (pathJitter > DYNAMIC_EPSILON || pathLongitudinalJitter > DYNAMIC_EPSILON) add("Procreate lateral and longitudinal stroke-path jitter preserved independently")
                 if (abs(spacingSpeed) > DYNAMIC_EPSILON) add("Procreate speed-based spacing preserved")
                 if (metadata.boolean("textureOffsetJitter")) add("Procreate Grain Offset Jitter mapped to a deterministic texture origin for each stroke")
                 if (dualMetadata != null) add(if (dualShape != null) "Procreate Sub01 Dual Brush extracted with independent shape and core dynamics; combine mode ${metadata.int("dualBlendMode")} retained" else "Procreate Sub01 metadata found, but its shape source was missing")
@@ -252,7 +256,8 @@ class ProcreateBrushParser(private val assetDirectory: File) {
     }
 
     private fun mapSecondary(metadata: ProcreateKeyedArchive): SecondaryBrush {
-        val spread = max(abs(metadata.float("plotJitter")), abs(metadata.float("plotJitterLongitudinal"))).coerceIn(0f, 4f)
+        val pathJitter = abs(metadata.float("plotJitter")).coerceIn(0f, 4f)
+        val pathLongitudinalJitter = abs(metadata.float("plotJitterLongitudinal")).coerceIn(0f, 4f)
         return SecondaryBrush(
             sizeScale = (metadata.float("maxSize", .32f) / .32f).coerceIn(.01f, 8f),
             spacing = (metadata.float("plotSpacing") * 10f).coerceIn(.01f, 2f),
@@ -266,8 +271,10 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             strokeRotationJitter = if (metadata.boolean("shapeRandomise")) 180f else 0f,
             stampCount = (metadata.float("shapeCount", .0625f) * 16f).toInt().coerceIn(1, 16),
             stampCountJitter = metadata.float("shapeCountJitter").coerceIn(0f, 1f),
-            spray = spread > DYNAMIC_EPSILON,
-            spread = spread,
+            pathJitter = pathJitter,
+            pathLongitudinalJitter = pathLongitudinalJitter,
+            spray = false,
+            spread = 0f,
             density = 1f,
         )
     }
@@ -378,13 +385,15 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         val strokeRotationJitter: Float,
         val stampCount: Int,
         val stampCountJitter: Float,
+        val pathJitter: Float,
+        val pathLongitudinalJitter: Float,
         val spray: Boolean,
         val spread: Float,
         val density: Float,
     )
 
     companion object {
-        const val CURRENT_VERSION = 12
+        const val CURRENT_VERSION = 13
         private const val MAX_ENTRIES = 4_096
         private const val MAX_ENTRY_BYTES = 32L * 1024L * 1024L
         private const val MAX_EXPANDED_BYTES = 384L * 1024L * 1024L

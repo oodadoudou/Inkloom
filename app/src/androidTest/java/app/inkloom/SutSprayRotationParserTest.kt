@@ -244,6 +244,10 @@ class SutSprayRotationParserTest {
                 tiltBleedStart = .34f,
                 tiltSizeCompression = true,
                 strokeFalloff = .64f,
+                strokePathJitter = .44f,
+                strokePathLongitudinalJitter = .28f,
+                dualStrokePathJitter = .2f,
+                dualStrokePathLongitudinalJitter = .32f,
                 sprayParticleRotationDegrees = 33f,
                 sprayParticleFollowStrokeDirection = true,
                 sprayParticleRandomRotationDegrees = 54f,
@@ -316,6 +320,10 @@ class SutSprayRotationParserTest {
             assertEquals(.34f, restored.tiltBleedStart, .0001f)
             assertTrue(restored.tiltSizeCompression)
             assertEquals(.64f, restored.strokeFalloff, .0001f)
+            assertEquals(.44f, restored.strokePathJitter, .0001f)
+            assertEquals(.28f, restored.strokePathLongitudinalJitter, .0001f)
+            assertEquals(.2f, restored.dualStrokePathJitter, .0001f)
+            assertEquals(.32f, restored.dualStrokePathLongitudinalJitter, .0001f)
             assertTrue(restored.sprayParticleFollowStrokeDirection)
             assertEquals(54f, restored.sprayParticleRandomRotationDegrees, .0001f)
             assertTrue(restored.colorMixPressureEnabled)

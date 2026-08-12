@@ -18,6 +18,7 @@ import app.inkloom.document.StrokePoint
 import app.inkloom.document.StrokeStampSampler
 import app.inkloom.document.StrokeTaper
 import app.inkloom.document.StrokeFalloff
+import app.inkloom.document.StrokePathJitter
 import app.inkloom.engine.v2.brush.EngineV2BrushEvaluator
 import kotlin.math.cos
 import kotlin.math.sin
@@ -54,8 +55,8 @@ internal object EngineV2StampBatchRenderer {
         var offset = 0
         for (index in safeStart until sampledPoints.size) {
             val point = sampledPoints[index]
-            val drawX = point.x * width
-            val drawY = point.y * height
+            val baseX = point.x * width
+            val baseY = point.y * height
             val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
             val depositedAlpha = (stroke.flow * dynamics.depositedAlpha * (falloff?.get(index) ?: 1f)).coerceIn(0f, 1f)
             if (depositedAlpha <= .0001f) continue
@@ -68,11 +69,16 @@ internal object EngineV2StampBatchRenderer {
                 stroke.thicknessVertical,
             )
             val followsStroke = BrushStampRotation.followsStroke(stroke, dual = false)
+            val hasPathJitter = stroke.strokePathJitter > .0001f || stroke.strokePathLongitudinalJitter > .0001f
+            val strokeDirection = if (followsStroke || hasPathJitter) StrokeStampSampler.directionDegrees(sampledPoints, index, width, height) else 0f
+            val pathOffset = StrokePathJitter.offset(stroke.renderSeed, index, strokeDirection, diameter, stroke.strokePathJitter, stroke.strokePathLongitudinalJitter)
+            val drawX = baseX + StrokePathJitter.unpackX(pathOffset)
+            val drawY = baseY + StrokePathJitter.unpackY(pathOffset)
             val angle = BrushStampRotation.degrees(
                 stroke,
                 dual = false,
                 stylusOrientationRadians = point.orientation,
-                strokeDirectionDegrees = if (followsStroke) StrokeStampSampler.directionDegrees(sampledPoints, index, width, height) else 0f,
+                strokeDirectionDegrees = if (followsStroke) strokeDirection else 0f,
                 randomUnit = legacyRandomFloatAt(stroke.renderSeed.toLong() xor ROTATION_SEED, index),
             )
             // Use the transformed tip diagonal so wide and rotated imported tips are never

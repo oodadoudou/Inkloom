@@ -87,6 +87,10 @@ data class ImportedBrush(
     val spacing: Float = .12f,
     /** Procreate Stroke Path > Fall Off. Zero disables distance-based opacity decay. */
     val strokeFalloff: Float = 0f,
+    /** Procreate Stroke Path jitter perpendicular to the path. */
+    val strokePathJitter: Float = 0f,
+    /** Procreate's independent along-path jitter. */
+    val strokePathLongitudinalJitter: Float = 0f,
     val spacingMode: Int = CspBrushGap.FIXED,
     val flow: Float = 1f,
     val hardness: Float = 1f,
@@ -166,6 +170,8 @@ data class ImportedBrush(
     val dualStrokeRotationJitterDegrees: Float = 0f,
     val dualStampCount: Int = 1,
     val dualStampCountJitter: Float = 0f,
+    val dualStrokePathJitter: Float = 0f,
+    val dualStrokePathLongitudinalJitter: Float = 0f,
     val dualRibbon: Boolean = false,
     val dualSpray: Boolean = false,
     val dualSprayParticleSize: Float = 100f,

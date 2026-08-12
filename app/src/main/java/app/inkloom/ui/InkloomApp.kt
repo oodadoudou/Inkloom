@@ -4911,6 +4911,8 @@ internal fun InkCanvasView.applyBrushConfiguration(
     grainCompositeMode = activeBrush?.grainCompositeMode ?: CspTextureComposite.MULTIPLY
     brushSpacing = activeBrush?.spacing ?: .12f
     strokeFalloff = activeBrush?.strokeFalloff ?: 0f
+    strokePathJitter = activeBrush?.strokePathJitter ?: 0f
+    strokePathLongitudinalJitter = activeBrush?.strokePathLongitudinalJitter ?: 0f
     brushSpacingMode = activeBrush?.spacingMode ?: CspBrushGap.FIXED
     brushFlow = activeBrush?.flow ?: 1f
     brushHardness = activeBrush?.hardness ?: 1f
@@ -4995,6 +4997,8 @@ internal fun InkCanvasView.applyBrushConfiguration(
     dualStrokeRotationJitterDegrees = activeBrush?.dualStrokeRotationJitterDegrees ?: 0f
     dualStampCount = activeBrush?.dualStampCount ?: 1
     dualStampCountJitter = activeBrush?.dualStampCountJitter ?: 0f
+    dualStrokePathJitter = activeBrush?.dualStrokePathJitter ?: 0f
+    dualStrokePathLongitudinalJitter = activeBrush?.dualStrokePathLongitudinalJitter ?: 0f
     dualRibbon = activeBrush?.dualRibbon ?: false
     dualSpray = activeBrush?.dualSpray ?: false
     dualSprayParticleSize = activeBrush?.dualSprayParticleSize ?: 100f
@@ -8966,6 +8970,8 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 item { BrushGapModeEditor(tr("Brush-tip gap", "笔尖间隔"), draft.spacingMode) { draft = draft.copy(spacingMode = it) } }
                 if (draft.spacingMode == CspBrushGap.FIXED) item { BrushSettingSlider("Spacing", draft.spacing, .01f..2f) { draft = draft.copy(spacing = it) } }
                 item { BrushSettingSlider(tr("Stroke fall off", "笔画渐隐"), draft.strokeFalloff, 0f..1f) { draft = draft.copy(strokeFalloff = it) } }
+                item { BrushSettingSlider(tr("Path jitter", "路径横向抖动"), draft.strokePathJitter, 0f..4f) { draft = draft.copy(strokePathJitter = it) } }
+                item { BrushSettingSlider(tr("Along-path jitter", "路径纵向抖动"), draft.strokePathLongitudinalJitter, 0f..4f) { draft = draft.copy(strokePathLongitudinalJitter = it) } }
                 item { BrushSettingSlider(tr("Flow", "墨水浓度"), draft.flow, 0f..1f) { draft = draft.copy(flow = it) } }
                 item { BrushSettingSlider(tr("Hardness", "硬度"), draft.hardness, 0f..1f) { draft = draft.copy(hardness = it) } }
                 item {
@@ -9081,6 +9087,8 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 if (draft.dualBrush) item { BrushSettingSlider("Secondary random start rotation", draft.dualStrokeRotationJitterDegrees, 0f..180f) { draft = draft.copy(dualStrokeRotationJitterDegrees = it) } }
                 if (draft.dualBrush) item { BrushSettingSlider("Secondary stamp count", draft.dualStampCount.toFloat(), 1f..16f) { draft = draft.copy(dualStampCount = it.toInt().coerceIn(1, 16)) } }
                 if (draft.dualBrush) item { BrushSettingSlider("Secondary count jitter", draft.dualStampCountJitter, 0f..1f) { draft = draft.copy(dualStampCountJitter = it) } }
+                if (draft.dualBrush) item { BrushSettingSlider(tr("Secondary path jitter", "辅助路径横向抖动"), draft.dualStrokePathJitter, 0f..4f) { draft = draft.copy(dualStrokePathJitter = it) } }
+                if (draft.dualBrush) item { BrushSettingSlider(tr("Secondary along-path jitter", "辅助路径纵向抖动"), draft.dualStrokePathLongitudinalJitter, 0f..4f) { draft = draft.copy(dualStrokePathLongitudinalJitter = it) } }
                 if (draft.dualBrush) item { SettingSwitch("Secondary Ribbon", null, draft.dualRibbon) { draft = draft.copy(dualRibbon = it) } }
                 if (draft.dualBrush) item { BrushTipFlipModeEditor(tr("Secondary horizontal flip", "辅助笔尖水平翻转"), draft.dualTipFlipHorizontalMode) { draft = draft.copy(dualTipFlipHorizontalMode = it) } }
                 if (draft.dualBrush) item { BrushTipFlipModeEditor(tr("Secondary vertical flip", "辅助笔尖垂直翻转"), draft.dualTipFlipVerticalMode) { draft = draft.copy(dualTipFlipVerticalMode = it) } }
