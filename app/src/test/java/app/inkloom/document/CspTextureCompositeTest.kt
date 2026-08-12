@@ -48,7 +48,21 @@ class CspTextureCompositeTest {
     }
 
     @Test fun `all nine documented texture modes are recognized`() {
-        (CspTextureComposite.NORMAL..CspTextureComposite.HEIGHT).forEach { assertTrue(CspTextureComposite.isDocumented(it)) }
+        assertEquals(
+            listOf(
+                CspTextureComposite.NORMAL,
+                CspTextureComposite.MULTIPLY,
+                CspTextureComposite.SUBTRACT,
+                CspTextureComposite.COMPARE,
+                CspTextureComposite.OUTLINE,
+                CspTextureComposite.OVERLAY,
+                CspTextureComposite.COLOR_DODGE,
+                CspTextureComposite.HARD_MIX,
+                CspTextureComposite.HEIGHT,
+            ),
+            CspTextureComposite.documentedModes,
+        )
+        CspTextureComposite.documentedModes.forEach { assertTrue(CspTextureComposite.isDocumented(it)) }
         assertTrue(!CspTextureComposite.isDocumented(0))
         assertTrue(!CspTextureComposite.isDocumented(10))
     }

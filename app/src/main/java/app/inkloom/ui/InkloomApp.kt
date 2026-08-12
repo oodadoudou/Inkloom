@@ -9261,19 +9261,25 @@ private fun BrushTipFlipModeEditor(label: String, value: Int, onValue: (Int) -> 
 
 @Composable
 private fun BrushTextureCompositeEditor(value: Int, onValue: (Int) -> Unit) {
-    val modes = listOf(
-        CspTextureComposite.MULTIPLY to tr("Multiply / legacy", "正片叠底 / 兼容"),
-        CspTextureComposite.COMPARE to tr("Compare (approx.)", "比较（近似）"),
+    val labels = mapOf(
+        CspTextureComposite.NORMAL to tr("Normal", "正常"),
+        CspTextureComposite.MULTIPLY to tr("Multiply", "正片叠底"),
+        CspTextureComposite.SUBTRACT to tr("Subtract", "减去"),
+        CspTextureComposite.COMPARE to tr("Compare", "比较"),
+        CspTextureComposite.OUTLINE to tr("Outline", "轮廓"),
+        CspTextureComposite.OVERLAY to tr("Overlay", "叠加"),
+        CspTextureComposite.COLOR_DODGE to tr("Color dodge", "颜色减淡"),
+        CspTextureComposite.HARD_MIX to tr("Hard mix", "实色混合"),
         CspTextureComposite.HEIGHT to tr("Height", "高度"),
     )
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(tr("Paper texture mode", "纸张纹理模式"), color = MutedInk, fontSize = 11.sp)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(modes, key = { it.first }) { (mode, label) ->
-                FilterChip(selected = value == mode, onClick = { onValue(mode) }, label = { Text(label) })
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            CspTextureComposite.documentedModes.forEach { mode ->
+                FilterChip(selected = value == mode, onClick = { onValue(mode) }, label = { Text(labels.getValue(mode)) })
             }
         }
-        if (value !in modes.map { it.first }) Text(
+        if (!CspTextureComposite.isDocumented(value)) Text(
             tr("Imported mode $value is retained; edit only after comparing the preview.", "已保留导入模式 $value；请在对比预览后再修改。"),
             color = MutedInk,
             fontSize = 10.sp,

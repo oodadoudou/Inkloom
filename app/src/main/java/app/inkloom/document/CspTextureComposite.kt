@@ -25,6 +25,19 @@ object CspTextureComposite {
     const val HARD_MIX = 8
     const val HEIGHT = 9
 
+    /** CSP Settings Glossary > Texture lists these modes in this exact order. */
+    val documentedModes: List<Int> = listOf(
+        NORMAL,
+        MULTIPLY,
+        SUBTRACT,
+        COMPARE,
+        OUTLINE,
+        OVERLAY,
+        COLOR_DODGE,
+        HARD_MIX,
+        HEIGHT,
+    )
+
     fun displayName(mode: Int): String = when (mode) {
         NORMAL -> "Normal"
         MULTIPLY -> "Multiply"
@@ -38,7 +51,7 @@ object CspTextureComposite {
         else -> "Unknown $mode"
     }
 
-    fun isDocumented(mode: Int): Boolean = mode in NORMAL..HEIGHT
+    fun isDocumented(mode: Int): Boolean = mode in documentedModes
 
     /** Combines authored tip density with the normalized CSP texture density. */
     fun density(
