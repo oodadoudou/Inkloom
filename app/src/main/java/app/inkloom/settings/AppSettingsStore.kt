@@ -158,7 +158,7 @@ class AppSettingsStore(context: Context) {
         const val STUDIO_WORKSPACE_VERSION_KEY = "studioWorkspaceVersion"
         const val STUDIO_WORKSPACE_VERSION = 2
         const val INPUT_GESTURES_VERSION_KEY = "inputGesturesVersion"
-        const val INPUT_GESTURES_VERSION = 2
+        const val INPUT_GESTURES_VERSION = 3
     }
 
     private val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
@@ -166,9 +166,13 @@ class AppSettingsStore(context: Context) {
     private val orientation = WorkspaceOrientation.from(context.resources.configuration)
 
     fun load(): AppSettings {
-        val migrateCanvasRotation = preferences.getInt(INPUT_GESTURES_VERSION_KEY, 0) < INPUT_GESTURES_VERSION
+        val savedInputVersion = preferences.getInt(INPUT_GESTURES_VERSION_KEY, 0)
+        val migrateCanvasRotation = savedInputVersion < 2
+        // Engine V2 originally shipped a hidden 12% global smoother and later changed the numeric
+        // meaning of smoothing when Procreate's independent filters were added. Reset those global
+        // values once; per-brush CSP/Procreate settings remain explicit and untouched.
+        val migrateLegacyCorrection = savedInputVersion < INPUT_GESTURES_VERSION
         val savedStabilization = preferences.getFloat("stabilization", .12f).coerceIn(0f, .9f)
-        val migrateLegacyDefaultStabilization = migrateCanvasRotation && savedStabilization == .12f
         val pressureMinimum = preferences.getFloat("pressureMinimumInput", 0f).coerceIn(0f, .95f)
         val pressureMaximum = preferences.getFloat("pressureMaximumInput", 1f).coerceIn(pressureMinimum + .05f, 1f)
         val loaded = AppSettings(
@@ -270,8 +274,8 @@ class AppSettingsStore(context: Context) {
             pressureMinimumInput = pressureMinimum,
             pressureMaximumInput = pressureMaximum,
             pressureResponseCurve = PressureResponseCurve.decode(preferences.getString("pressureResponseCurve", null)),
-            stabilization = if (migrateLegacyDefaultStabilization) 0f else savedStabilization,
-            postCorrection = preferences.getFloat("postCorrection", 0f).coerceIn(0f, 1f),
+            stabilization = if (migrateLegacyCorrection) 0f else savedStabilization,
+            postCorrection = if (migrateLegacyCorrection) 0f else preferences.getFloat("postCorrection", 0f).coerceIn(0f, 1f),
             postCorrectionAdjustBySpeed = preferences.getBoolean("postCorrectionAdjustBySpeed", false),
             postCorrectionAdjustByScale = preferences.getBoolean("postCorrectionAdjustByScale", true),
             showInputDiagnostics = preferences.getBoolean("showInputDiagnostics", false),
@@ -302,9 +306,10 @@ class AppSettingsStore(context: Context) {
             workspaceLayouts = WorkspaceLayoutProfilesCodec.decode(preferences.getString("workspaceLayouts", null)),
         )
         val selected = loaded.withWorkspaceFor(orientation)
-        if (migrateCanvasRotation) preferences.edit {
-            putBoolean("twoFingerRotation", true)
+        if (migrateLegacyCorrection) preferences.edit {
+            if (migrateCanvasRotation) putBoolean("twoFingerRotation", true)
             putFloat("stabilization", selected.stabilization)
+            putFloat("postCorrection", selected.postCorrection)
             putInt(INPUT_GESTURES_VERSION_KEY, INPUT_GESTURES_VERSION)
         }
         if (preferences.getInt(STUDIO_WORKSPACE_VERSION_KEY, 0) < STUDIO_WORKSPACE_VERSION) {
@@ -320,6 +325,7 @@ class AppSettingsStore(context: Context) {
         val persisted = value.recordWorkspaceFor(orientation)
         preferences.edit()
             .putString("language", persisted.language.name)
+            .putInt(INPUT_GESTURES_VERSION_KEY, INPUT_GESTURES_VERSION)
             .putBoolean("fingerDrawing", persisted.fingerDrawing)
             .putFloat("fillSensitivity", persisted.fillSensitivity)
             .putFloat("fillCloseGapPixels", persisted.fillCloseGapPixels.coerceIn(0f, 64f))

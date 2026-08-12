@@ -27,6 +27,16 @@ class SystemBrushCatalogTest {
     }
 
     @Test
+    fun factoryBrushesNeverSilentlyCorrectTheAuthoredTrajectory() {
+        SystemBrushCatalog.brushes.forEach { brush ->
+            assertEquals("${brush.name} stabilization", 0f, brush.stabilization, .00001f)
+            assertEquals("${brush.name} StreamLine", 0f, brush.streamLine, .00001f)
+            assertEquals("${brush.name} moving-average stabilization", 0f, brush.procreateStabilization, .00001f)
+            assertEquals("${brush.name} motion filtering", 0f, brush.motionFiltering, .00001f)
+        }
+    }
+
+    @Test
     fun liquifyCatalogExposesCspAndProcreateModesAsPeerPresets() {
         val names = SystemBrushCatalog.brushes.filter { it.groupName == "Liquify" }.map(ImportedBrush::name)
 

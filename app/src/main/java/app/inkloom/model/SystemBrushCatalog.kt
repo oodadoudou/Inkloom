@@ -14,8 +14,6 @@ internal object SystemBrushCatalog {
             size = 6f,
             hardness = 1f,
             spacing = .045f,
-            stabilization = .1f,
-            stabilizationBySpeed = true,
             sizePressureMinimum = .06f,
             tags = listOf("pen", "inking", "g-pen"),
         ),
@@ -27,23 +25,21 @@ internal object SystemBrushCatalog {
             hardness = .96f,
             spacing = .05f,
             flow = .92f,
-            stabilization = .08f,
-            stabilizationBySpeed = true,
             sizePressureMinimum = .12f,
             opacityPressureEnabled = true,
             opacityPressureMinimum = .55f,
             tags = listOf("pen", "painting"),
         ),
-        systemBrush(id = "system-studio-pen", name = "Studio Pen", group = "Pen", size = 9f, hardness = 1f, spacing = .055f, stabilization = .18f, sizePressureMinimum = .12f, tags = listOf("pen", "inking")),
-        systemBrush(id = "system-monoline", name = "Monoline", group = "Pen", size = 18f, hardness = 1f, spacing = .05f, stabilization = .28f, sizePressureEnabled = false, tags = listOf("pen", "monoline")),
+        systemBrush(id = "system-studio-pen", name = "Studio Pen", group = "Pen", size = 9f, hardness = 1f, spacing = .055f, sizePressureMinimum = .12f, tags = listOf("pen", "inking")),
+        systemBrush(id = "system-monoline", name = "Monoline", group = "Pen", size = 18f, hardness = 1f, spacing = .05f, sizePressureEnabled = false, tags = listOf("pen", "monoline")),
 
         // Deterministic procedural graphite tips make these visibly different, not just renamed
         // copies of one round line renderer.
-        systemBrush(id = "system-technical-pencil", name = "Technical Pencil", group = "Pencil", size = 4.5f, hardness = .9f, spacing = 1f, flow = .82f, stabilization = .06f, sizePressureMinimum = .42f, opacityPressureEnabled = true, opacityPressureMinimum = .35f, tags = listOf("pencil", "mechanical", "hard")),
-        systemBrush(id = "system-h-pencil", name = "H Pencil", group = "Pencil", size = 5f, hardness = .8f, spacing = .5f, flow = .74f, stabilization = .04f, sizePressureMinimum = .35f, opacityPressureEnabled = true, opacityPressureMinimum = .25f, tags = listOf("pencil", "graphite", "hard")),
-        systemBrush(id = "system-hb-pencil", name = "HB Pencil", group = "Pencil", size = 7f, hardness = .64f, spacing = .26f, flow = .68f, stabilization = .035f, sizePressureMinimum = .3f, opacityPressureEnabled = true, opacityPressureMinimum = .2f, tags = listOf("pencil", "graphite", "hb")),
-        systemBrush(id = "system-2b-pencil", name = "2B Pencil", group = "Pencil", size = 9f, hardness = .48f, spacing = .2f, flow = .63f, stabilization = .03f, sizePressureMinimum = .25f, opacityPressureEnabled = true, opacityPressureMinimum = .16f, thickness = .92f, tags = listOf("pencil", "graphite", "2b")),
-        systemBrush(id = "system-6b-pencil", name = "6B Pencil", group = "Pencil", size = 13f, hardness = .3f, spacing = .18f, flow = .56f, stabilization = .02f, sizePressureMinimum = .2f, opacityPressureEnabled = true, opacityPressureMinimum = .1f, thickness = .84f, tags = listOf("pencil", "graphite", "6b", "soft")),
+        systemBrush(id = "system-technical-pencil", name = "Technical Pencil", group = "Pencil", size = 4.5f, hardness = .9f, spacing = 1f, flow = .82f, sizePressureMinimum = .42f, opacityPressureEnabled = true, opacityPressureMinimum = .35f, tags = listOf("pencil", "mechanical", "hard")),
+        systemBrush(id = "system-h-pencil", name = "H Pencil", group = "Pencil", size = 5f, hardness = .8f, spacing = .5f, flow = .74f, sizePressureMinimum = .35f, opacityPressureEnabled = true, opacityPressureMinimum = .25f, tags = listOf("pencil", "graphite", "hard")),
+        systemBrush(id = "system-hb-pencil", name = "HB Pencil", group = "Pencil", size = 7f, hardness = .64f, spacing = .26f, flow = .68f, sizePressureMinimum = .3f, opacityPressureEnabled = true, opacityPressureMinimum = .2f, tags = listOf("pencil", "graphite", "hb")),
+        systemBrush(id = "system-2b-pencil", name = "2B Pencil", group = "Pencil", size = 9f, hardness = .48f, spacing = .2f, flow = .63f, sizePressureMinimum = .25f, opacityPressureEnabled = true, opacityPressureMinimum = .16f, thickness = .92f, tags = listOf("pencil", "graphite", "2b")),
+        systemBrush(id = "system-6b-pencil", name = "6B Pencil", group = "Pencil", size = 13f, hardness = .3f, spacing = .18f, flow = .56f, sizePressureMinimum = .2f, opacityPressureEnabled = true, opacityPressureMinimum = .1f, thickness = .84f, tags = listOf("pencil", "graphite", "6b", "soft")),
 
         // Photoshop's legacy No. 19 is the 19 px round “Airbrush Pen Opacity Flow” preset.
         systemBrush(
@@ -54,7 +50,6 @@ internal object SystemBrushCatalog {
             hardness = 1f,
             spacing = .01f,
             flow = 1f,
-            stabilization = .03f,
             sizePressureMinimum = .02f,
             opacityPressureEnabled = true,
             opacityPressureMinimum = .08f,

@@ -6,7 +6,9 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.view.MotionEvent
 import android.view.PointerIcon
-import android.view.View
+import android.widget.FrameLayout
+import androidx.annotation.WorkerThread
+import androidx.graphics.lowlatency.LowLatencyCanvasView
 import app.inkloom.engine.v2.input.PointerCoordinateMapper
 import app.inkloom.document.ViewportState
 
@@ -17,7 +19,7 @@ import app.inkloom.document.ViewportState
  * those bounds. Android hit testing does not follow the page transform into its visible overflow,
  * so this proxy maps the complete event through the actual source and destination View matrices.
  */
-class InkViewportTouchProxy(context: Context) : View(context) {
+class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
     var target: InkCanvasView? = null
         set(value) {
             field?.apply {
@@ -33,18 +35,34 @@ class InkViewportTouchProxy(context: Context) : View(context) {
         }
 
     private val coordinateMapper = PointerCoordinateMapper()
+    private val cursorSurface = LowLatencyCanvasView(context)
     private val hoverPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
-    private var hoverVisible = false
-    private var hoverX = 0f
-    private var hoverY = 0f
-    private var hoverWidth = 0f
-    private var hoverHeight = 0f
+    @Volatile private var hoverVisible = false
+    @Volatile private var hoverX = 0f
+    @Volatile private var hoverY = 0f
+    @Volatile private var hoverWidth = 0f
+    @Volatile private var hoverHeight = 0f
     private var activeStylusPointerId = MotionEvent.INVALID_POINTER_ID
 
     init {
         setBackgroundColor(android.graphics.Color.TRANSPARENT)
         isClickable = true
-        setWillNotDraw(false)
+        clipChildren = true
+        clipToPadding = true
+        cursorSurface.apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            isClickable = false
+            isFocusable = false
+            pointerIcon = PointerIcon.getSystemIcon(context, PointerIcon.TYPE_NULL)
+            setRenderCallback(object : LowLatencyCanvasView.Callback {
+                @WorkerThread
+                override fun onRedrawRequested(canvas: Canvas, width: Int, height: Int) = drawCursor(canvas)
+
+                @WorkerThread
+                override fun onDrawFrontBufferedLayer(canvas: Canvas, width: Int, height: Int) = drawCursor(canvas)
+            })
+        }
+        addView(cursorSurface, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -69,8 +87,12 @@ class InkViewportTouchProxy(context: Context) : View(context) {
         return handled
     }
 
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
+    /** Cursor feedback uses the same Android front-buffer path as active ink. A regular View
+     * invalidation waits for the next UI frame while active ink can present immediately, creating
+     * a visible moving offset even when both coordinates are mathematically identical. */
+    @WorkerThread
+    private fun drawCursor(canvas: Canvas) {
+        canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
         if (!hoverVisible) return
         val radiusX = (hoverWidth / 2f).coerceAtLeast(1.5f)
         val radiusY = (hoverHeight / 2f).coerceAtLeast(1.5f)
@@ -82,6 +104,9 @@ class InkViewportTouchProxy(context: Context) : View(context) {
         hoverPaint.color = Color.BLACK
         canvas.drawOval(hoverX - radiusX, hoverY - radiusY, hoverX + radiusX, hoverY + radiusY, hoverPaint)
     }
+
+    override fun onInterceptTouchEvent(event: MotionEvent): Boolean = true
+    override fun onInterceptHoverEvent(event: MotionEvent): Boolean = true
 
     override fun onGenericMotionEvent(event: MotionEvent): Boolean {
         return forward(event) { canvas, forwarded -> canvas.dispatchGenericMotionEvent(forwarded) }
@@ -139,7 +164,7 @@ class InkViewportTouchProxy(context: Context) : View(context) {
         hoverWidth = snapshot[3] * canvas.viewportScale.coerceAtLeast(1f)
         hoverHeight = snapshot.getOrElse(4) { snapshot[3] } * canvas.viewportScale.coerceAtLeast(1f)
         hoverVisible = true
-        postInvalidateOnAnimation()
+        cursorSurface.renderFrontBufferedLayer()
     }
 
     private fun updateContactCursor(event: MotionEvent) {
@@ -156,13 +181,13 @@ class InkViewportTouchProxy(context: Context) : View(context) {
         hoverWidth = snapshot[3] * canvas.viewportScale.coerceAtLeast(1f)
         hoverHeight = snapshot.getOrElse(4) { snapshot[3] } * canvas.viewportScale.coerceAtLeast(1f)
         hoverVisible = true
-        postInvalidateOnAnimation()
+        cursorSurface.renderFrontBufferedLayer()
     }
 
     private fun clearHoverCursor() {
         if (!hoverVisible) return
         hoverVisible = false
-        postInvalidateOnAnimation()
+        cursorSurface.clear()
     }
 
     private fun refreshCursorStyle() {
@@ -170,7 +195,7 @@ class InkViewportTouchProxy(context: Context) : View(context) {
         val snapshot = canvas.hoverCursorSnapshot()
         hoverWidth = snapshot[3] * canvas.viewportScale.coerceAtLeast(1f)
         hoverHeight = snapshot.getOrElse(4) { snapshot[3] } * canvas.viewportScale.coerceAtLeast(1f)
-        postInvalidateOnAnimation()
+        if (hoverVisible) cursorSurface.renderFrontBufferedLayer()
     }
 
     internal fun hoverCursorSnapshot(): FloatArray = floatArrayOf(

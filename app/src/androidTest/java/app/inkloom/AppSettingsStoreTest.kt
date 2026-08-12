@@ -34,15 +34,23 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class AppSettingsStoreTest {
-    @Test fun legacyImplicitStabilizationIsRemovedButExplicitValuesRemainEditable() {
+    @Test fun legacyGlobalCorrectionIsResetOnceButExplicitValuesRemainEditable() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
-        preferences.edit().clear().putInt("studioWorkspaceVersion", 2).putInt("inputGesturesVersion", 1).putFloat("stabilization", .12f).commit()
+        preferences.edit().clear()
+            .putInt("studioWorkspaceVersion", 2)
+            .putInt("inputGesturesVersion", 2)
+            .putFloat("stabilization", .64f)
+            .putFloat("postCorrection", .72f)
+            .commit()
         try {
             val store = AppSettingsStore(context)
-            assertEquals(0f, store.load().stabilization)
-            store.save(store.load().copy(stabilization = .31f))
+            val migrated = store.load()
+            assertEquals(0f, migrated.stabilization)
+            assertEquals(0f, migrated.postCorrection)
+            store.save(migrated.copy(stabilization = .31f, postCorrection = .42f))
             assertEquals(.31f, store.load().stabilization)
+            assertEquals(.42f, store.load().postCorrection)
         } finally {
             preferences.edit().clear().commit()
         }

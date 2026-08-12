@@ -57,6 +57,51 @@ class NativeStrokeInputModelerTest {
     }
 
     @Test
+    fun allZeroCorrectionPreservesEveryAuthoredTurnAndPenUpEndpoint() {
+        val authored = listOf(
+            .12f to .22f,
+            .23f to .41f,
+            .31f to .28f,
+            .47f to .63f,
+            .58f to .35f,
+            .76f to .71f,
+        )
+        NativeStrokeInputModeler().use { modeler ->
+            authored.forEachIndexed { index, point ->
+                modeler.putSample(
+                    index = index,
+                    rawX = point.first,
+                    rawY = point.second,
+                    adjustedPressure = .7f,
+                    sampleTimeMs = 10L + index * 4L,
+                    sampleTilt = 0f,
+                    sampleOrientation = 0f,
+                    force = index == authored.lastIndex,
+                )
+            }
+
+            assertEquals(
+                authored.size,
+                modeler.appendBatch(
+                    authored.size,
+                    1600,
+                    1200,
+                    stabilization = 0f,
+                    stabilizationBySpeed = false,
+                    stabilizationBySpeedMode = StrokeStabilization.REDUCE_WHEN_FAST,
+                    streamLine = 0f,
+                    procreateStabilization = 0f,
+                    motionFiltering = 0f,
+                ),
+            )
+            authored.forEachIndexed { index, point ->
+                assertEquals("X sample $index", point.first, modeler.x(index), .00001f)
+                assertEquals("Y sample $index", point.second, modeler.y(index), .00001f)
+            }
+        }
+    }
+
+    @Test
     fun orientationAndTimeRemainContinuousAcrossDeviceWrapAndOutOfOrderInput() {
         NativeStrokeInputModeler().use { modeler ->
             modeler.putSample(0, .1f, .1f, .5f, 20L, 0f, 3.13f)

@@ -806,7 +806,9 @@ class InkCanvasView(context: Context) : View(context) {
     var procreateStabilization: Float = 0f
     var motionFiltering: Float = 0f
     var motionFilteringExpression: Float = 0f
-    var stabilization: Float = .12f
+    // Correction is opt-in. A fresh host must preserve the physical stylus trajectory even before
+    // Compose has delivered the selected brush/settings configuration.
+    var stabilization: Float = 0f
     var stabilizationBySpeed: Boolean = false
     var stabilizationBySpeedMode: Int = StrokeStabilization.REDUCE_WHEN_FAST
     var postCorrection: Float = 0f
