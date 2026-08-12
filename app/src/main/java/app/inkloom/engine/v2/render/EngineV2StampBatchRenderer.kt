@@ -47,13 +47,11 @@ internal object EngineV2StampBatchRenderer {
         val vertices = buffers.vertices
         val textureCoordinates = buffers.textureCoordinates
         val falloff = StrokeFalloff.factors(sampledPoints, width, height, stroke.width * width / REFERENCE_WIDTH, stroke.strokeFalloff)
-        val dynamicAlpha = hasDynamicAlpha(stroke) || falloff != null
         val clip = canvas.clipBounds
-        val taper = if (stroke.taperStartEnabled || stroke.taperEndEnabled) StrokeTaper.factors(
-            sampledPoints, width, height, stroke.taperMode,
-            stroke.taperStartEnabled, stroke.taperStartLength, stroke.taperStartLengthUnit, stroke.taperStartMinimum,
-            stroke.taperEndEnabled, stroke.taperEndLength, stroke.taperEndLengthUnit, stroke.taperEndMinimum,
-        ) else null
+        val taper = if (stroke.taperStartEnabled || stroke.taperEndEnabled || !stroke.procreateTaper.isDisabled()) {
+            StrokeTaper.evaluate(stroke, sampledPoints, width, height)
+        } else null
+        val dynamicAlpha = hasDynamicAlpha(stroke) || falloff != null || taper?.opacity != null
         var offset = 0
         for (index in safeStart until sampledPoints.size) {
             val point = sampledPoints[index]
@@ -62,10 +60,10 @@ internal object EngineV2StampBatchRenderer {
             val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
             val depositedAlpha = ProcreateRendering.depositedAlpha(
                 stroke.procreateRenderingMode,
-                stroke.flow * dynamics.depositedAlpha * (falloff?.get(index) ?: 1f),
+                stroke.flow * dynamics.depositedAlpha * (falloff?.get(index) ?: 1f) * (taper?.opacity?.get(index) ?: 1f),
             )
             if (depositedAlpha <= .0001f) continue
-            val diameter = (stroke.width * width.coerceAtLeast(1f) / REFERENCE_WIDTH * (taper?.get(index) ?: 1f) * dynamics.size).coerceAtLeast(.25f)
+            val diameter = (stroke.width * width.coerceAtLeast(1f) / REFERENCE_WIDTH * (taper?.size?.get(index) ?: 1f) * dynamics.size).coerceAtLeast(.25f)
             val roundness = ShapeRoundnessJitter.factors(stroke.renderSeed, index, stroke.shapeRoundnessHorizontalJitter, stroke.shapeRoundnessVerticalJitter)
             val tipScale = BrushTipTransform.scale(
                 tip.width,

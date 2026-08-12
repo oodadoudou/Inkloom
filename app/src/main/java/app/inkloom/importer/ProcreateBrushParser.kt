@@ -11,6 +11,7 @@ import app.inkloom.document.ProcreateBrushBlend
 import app.inkloom.document.ProcreateFiltering
 import app.inkloom.document.ProcreateRendering
 import app.inkloom.document.ProcreateWetMix
+import app.inkloom.document.ProcreateTaper
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
 import java.io.ByteArrayOutputStream
@@ -157,15 +158,26 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         val luminanceBlending = metadata.boolean("blendGammaCorrect")
         val alphaThresholdEnabled = metadata.boolean("alphaThreshold")
         val alphaThreshold = metadata.float("alphaThresholdAmount").coerceIn(0f, 1f)
-        val genericTaperStartLength = metadata.float("taperStartLength").coerceIn(0f, 1f)
-        val genericTaperEndLength = metadata.float("taperEndLength").coerceIn(0f, 1f)
-        val genericTaperSize = metadata.float("taperSize").coerceIn(0f, 1f)
-        val pencilTaperStartLength = metadata.float("pencilTaperStartLength").coerceIn(0f, 1f)
-        val pencilTaperEndLength = metadata.float("pencilTaperEndLength").coerceIn(0f, 1f)
-        val pencilTaperSize = metadata.float("pencilTaperSize").coerceIn(0f, 1f)
-        val taperStartLength = max(genericTaperStartLength, pencilTaperStartLength)
-        val taperEndLength = max(genericTaperEndLength, pencilTaperEndLength)
-        val taperSize = max(genericTaperSize, pencilTaperSize)
+        val procreateTaper = ProcreateTaper(
+            pressureStartLength = metadata.float("pencilTaperStartLength").coerceIn(0f, 1f),
+            pressureEndLength = metadata.float("pencilTaperEndLength").coerceIn(0f, 1f),
+            pressureSize = metadata.float("pencilTaperSize").coerceIn(0f, 1f),
+            pressureOpacity = metadata.float("pencilTaperOpacity").coerceIn(0f, 1f),
+            pressureTip = metadata.float("pencilTaperShape").coerceIn(0f, 1f),
+            touchStartLength = metadata.float("taperStartLength").coerceIn(0f, 1f),
+            touchEndLength = metadata.float("taperEndLength").coerceIn(0f, 1f),
+            touchSize = metadata.float("taperSize").coerceIn(0f, 1f),
+            touchOpacity = metadata.float("taperOpacity").coerceIn(0f, 1f),
+            touchTip = metadata.float("taperShape").coerceIn(0f, 1f),
+            pressureResponse = metadata.float("taperPressure").coerceIn(0f, 1f),
+            pressureLinked = metadata.boolean("pencilTaperSizeLinked"),
+            touchLinked = metadata.boolean("taperSizeLinked"),
+            classic = metadata.int("taperVersion", 1) <= 0,
+        )
+        val projectedPressure = procreateTaper.pressureSize > DYNAMIC_EPSILON || procreateTaper.pressureOpacity > DYNAMIC_EPSILON
+        val taperStartLength = if (projectedPressure) procreateTaper.pressureStartLength else procreateTaper.touchStartLength
+        val taperEndLength = if (projectedPressure) procreateTaper.pressureEndLength else procreateTaper.touchEndLength
+        val taperSize = if (projectedPressure) procreateTaper.pressureSize else procreateTaper.touchSize
         val streamLine = metadata.float("plotSmoothing").coerceIn(0f, 1f)
         val streamLinePressure = metadata.float("dynamicsPressureSmoothing").coerceIn(0f, 1f)
         val procreateStabilization = metadata.float("plotMovingAverageStabilization").coerceIn(0f, 1f)
@@ -280,6 +292,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             dualSprayParticleRandomRotationDegrees = dualMapped?.randomRotation ?: 0f,
             dualCompositeMode = metadata.int("dualBlendMode"),
             taperMode = BrushTaperMode.PERCENTAGE,
+            procreateTaper = procreateTaper,
             taperStartEnabled = taperStartLength > .0001f && taperSize > .0001f,
             taperStartLength = taperStartLength.coerceAtLeast(.001f),
             taperStartMinimum = (1f - taperSize).coerceIn(0f, 1f),
@@ -305,7 +318,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
                 add(if (shape != null) "Procreate Shape.png extracted as the real stamp source" else "Shape source was missing; line fallback retained")
                 if (grain != null) add("Procreate Grain.png extracted with independent movement, scale, zoom, rotation, depth dynamics, brightness, contrast, invert and per-stroke offset settings")
                 add("Stroke spacing, smoothing, size/opacity limits, shape angle, roundness, azimuth and direction behavior mapped")
-                if (pencilTaperStartLength > DYNAMIC_EPSILON || pencilTaperEndLength > DYNAMIC_EPSILON) add("Procreate Apple Pencil start/end taper lengths and size floor mapped")
+                if (!procreateTaper.isDisabled()) add("Procreate Pressure and Touch Taper retained independently with size, opacity, tip, pressure, link, and classic controls")
                 if (streamLine > DYNAMIC_EPSILON || streamLinePressure > DYNAMIC_EPSILON || procreateStabilization > DYNAMIC_EPSILON || motionFiltering > DYNAMIC_EPSILON) add("Procreate StreamLine, pressure smoothing, moving-average stabilization and motion filtering preserved independently")
                 val sources = buildList { if (abs(pressureSize) > DYNAMIC_EPSILON || abs(pressureOpacity) > DYNAMIC_EPSILON) add("pressure"); if (abs(speedSize) > DYNAMIC_EPSILON || abs(speedOpacity) > DYNAMIC_EPSILON) add("speed"); if (abs(tiltSize) > DYNAMIC_EPSILON || abs(tiltOpacity) > DYNAMIC_EPSILON) add("tilt"); if (abs(jitterSize) > DYNAMIC_EPSILON || abs(jitterOpacity) > DYNAMIC_EPSILON) add("random jitter") }
                 if (sources.isNotEmpty()) add("Procreate dynamics mapped: ${sources.joinToString()}")
@@ -546,7 +559,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
     )
 
     companion object {
-        const val CURRENT_VERSION = 24
+        const val CURRENT_VERSION = 25
         private const val MAX_ENTRIES = 4_096
         private const val MAX_ENTRY_BYTES = 32L * 1024L * 1024L
         private const val MAX_EXPANDED_BYTES = 384L * 1024L * 1024L

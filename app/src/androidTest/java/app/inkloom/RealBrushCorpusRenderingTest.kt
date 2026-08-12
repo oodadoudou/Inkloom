@@ -63,7 +63,6 @@ class RealBrushCorpusRenderingTest {
             val representatives = listOf(BrushFormat.PROCREATE, BrushFormat.SUT, BrushFormat.ABR).map { format ->
                 parsed.firstOrNull { it.format == format }.also { assertNotNull("No $format brush parsed from the real corpus", it) }!!
             }
-
             representatives.forEach { brush -> assertBrushCommitsAndRenders(brush) }
             assertSutBrushKeepsRealTimePreview(representatives.first { it.format == BrushFormat.SUT })
             assertEquals(setOf(BrushFormat.PROCREATE, BrushFormat.SUT, BrushFormat.ABR), representatives.mapTo(linkedSetOf(), ImportedBrush::format))
@@ -123,6 +122,7 @@ class RealBrushCorpusRenderingTest {
         val stroke = committed
         assertNotNull("${brush.format} ${brush.name} did not commit a stroke", stroke)
         assertEquals(brush.id, stroke!!.brushId)
+        assertEquals("${brush.format} Taper changed during activation/commit", brush.procreateTaper, stroke.procreateTaper)
         assertTrue("${brush.format} stroke lost its points", stroke.points.size >= 2)
 
         view.setDocumentStrokes(listOf(stroke), "real-${brush.id}")

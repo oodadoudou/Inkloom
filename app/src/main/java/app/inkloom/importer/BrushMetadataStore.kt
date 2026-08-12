@@ -17,6 +17,7 @@ import app.inkloom.document.ProcreateColorDynamics
 import app.inkloom.document.ProcreateFiltering
 import app.inkloom.document.ProcreateRenderingMode
 import app.inkloom.document.ProcreateWetMix
+import app.inkloom.document.ProcreateTaper
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -120,6 +121,25 @@ class BrushMetadataStore(
                         blurJitter = value.optDouble("blurJitter", 0.0).toFloat().coerceIn(0f, 1f),
                         wetnessJitter = value.optDouble("wetnessJitter", 0.0).toFloat().coerceIn(0f, 1f),
                         legacyMixSoftening = value.optDouble("legacyMixSoftening", 0.0).toFloat().coerceIn(0f, 1f),
+                    )
+                }
+                fun procreateTaper(key: String): ProcreateTaper {
+                    val value = item.optJSONObject(key) ?: return ProcreateTaper()
+                    return ProcreateTaper(
+                        pressureStartLength = value.optDouble("pressureStartLength", 0.0).toFloat().coerceIn(0f, 1f),
+                        pressureEndLength = value.optDouble("pressureEndLength", 0.0).toFloat().coerceIn(0f, 1f),
+                        pressureSize = value.optDouble("pressureSize", 0.0).toFloat().coerceIn(0f, 1f),
+                        pressureOpacity = value.optDouble("pressureOpacity", 0.0).toFloat().coerceIn(0f, 1f),
+                        pressureTip = value.optDouble("pressureTip", 0.0).toFloat().coerceIn(0f, 1f),
+                        touchStartLength = value.optDouble("touchStartLength", 0.0).toFloat().coerceIn(0f, 1f),
+                        touchEndLength = value.optDouble("touchEndLength", 0.0).toFloat().coerceIn(0f, 1f),
+                        touchSize = value.optDouble("touchSize", 0.0).toFloat().coerceIn(0f, 1f),
+                        touchOpacity = value.optDouble("touchOpacity", 0.0).toFloat().coerceIn(0f, 1f),
+                        touchTip = value.optDouble("touchTip", 0.0).toFloat().coerceIn(0f, 1f),
+                        pressureResponse = value.optDouble("pressureResponse", 0.0).toFloat().coerceIn(0f, 1f),
+                        pressureLinked = value.optBoolean("pressureLinked", false),
+                        touchLinked = value.optBoolean("touchLinked", false),
+                        classic = value.optBoolean("classic", false),
                     )
                 }
                 fun parameterDynamics(key: String): BrushParameterDynamics {
@@ -238,6 +258,7 @@ class BrushMetadataStore(
                         colorJitterValueDynamics = colorDynamics("colorJitterValueDynamics"),
                         procreateColorDynamics = procreateColorDynamics("procreateColorDynamics"),
                         procreateWetMix = procreateWetMix("procreateWetMix"),
+                        procreateTaper = procreateTaper("procreateTaper"),
                         watercolor = item.optBoolean("watercolor", false),
                         colorMix = item.optDouble("colorMix", 0.0).toFloat(),
                         colorMixPressureEnabled = item.optBoolean("colorMixPressureEnabled", false),
@@ -459,6 +480,7 @@ class BrushMetadataStore(
                     .put("colorJitterValueDynamics", colorDynamicsJson(brush.colorJitterValueDynamics))
                     .put("procreateColorDynamics", procreateColorDynamicsJson(brush.procreateColorDynamics))
                     .put("procreateWetMix", procreateWetMixJson(brush.procreateWetMix))
+                    .put("procreateTaper", procreateTaperJson(brush.procreateTaper))
                     .put("watercolor", brush.watercolor)
                     .put("colorMix", brush.colorMix)
                     .put("colorMixPressureEnabled", brush.colorMixPressureEnabled)
@@ -626,6 +648,13 @@ class BrushMetadataStore(
         .put("dilution", value.dilution).put("charge", value.charge).put("attack", value.attack).put("pull", value.pull)
         .put("grade", value.grade).put("blur", value.blur).put("blurJitter", value.blurJitter).put("wetnessJitter", value.wetnessJitter)
         .put("legacyMixSoftening", value.legacyMixSoftening)
+    private fun procreateTaperJson(value: ProcreateTaper): JSONObject = JSONObject()
+        .put("pressureStartLength", value.pressureStartLength).put("pressureEndLength", value.pressureEndLength)
+        .put("pressureSize", value.pressureSize).put("pressureOpacity", value.pressureOpacity).put("pressureTip", value.pressureTip)
+        .put("touchStartLength", value.touchStartLength).put("touchEndLength", value.touchEndLength)
+        .put("touchSize", value.touchSize).put("touchOpacity", value.touchOpacity).put("touchTip", value.touchTip)
+        .put("pressureResponse", value.pressureResponse).put("pressureLinked", value.pressureLinked)
+        .put("touchLinked", value.touchLinked).put("classic", value.classic)
     private fun parameterDynamicsJson(value: BrushParameterDynamics): JSONObject = JSONObject()
         .put("pressureEnabled", value.pressureEnabled)
         .put("pressureMinimum", value.pressureMinimum)

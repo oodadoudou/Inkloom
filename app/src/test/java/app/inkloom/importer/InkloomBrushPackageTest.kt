@@ -138,6 +138,13 @@ class InkloomBrushPackageTest {
                     grade = -.56f, blur = .67f, blurJitter = .78f, wetnessJitter = .89f,
                     legacyMixSoftening = .31f,
                 ),
+                procreateTaper = app.inkloom.document.ProcreateTaper(
+                    pressureStartLength = .11f, pressureEndLength = .22f, pressureSize = .33f,
+                    pressureOpacity = .44f, pressureTip = .55f, touchStartLength = .66f,
+                    touchEndLength = .77f, touchSize = .88f, touchOpacity = .99f,
+                    touchTip = .21f, pressureResponse = .32f, pressureLinked = true,
+                    touchLinked = true, classic = true,
+                ),
                 watercolor = true,
                 colorMix = .65f,
                 colorMixPressureEnabled = true,
@@ -252,6 +259,7 @@ class InkloomBrushPackageTest {
             assertEquals(-1f, restored.colorJitterHueDynamics.randomMinimum, .0001f)
             assertEquals(original.procreateColorDynamics, restored.procreateColorDynamics)
             assertEquals(original.procreateWetMix, restored.procreateWetMix)
+            assertEquals(original.procreateTaper, restored.procreateTaper)
             assertTrue(restored.taperStartEnabled)
             assertEquals(packageFile.absolutePath, restored.sourcePath)
             assertEquals("package-hash", restored.sha256)

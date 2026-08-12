@@ -46,6 +46,8 @@ import app.inkloom.document.ProcreateFiltering
 import app.inkloom.document.ProcreateRenderingMode
 import app.inkloom.document.ProcreateRendering
 import app.inkloom.document.ProcreateWetMix
+import app.inkloom.document.ProcreateTaper
+import app.inkloom.document.StrokeInputKind
 import app.inkloom.document.BrushParameterDynamics
 import app.inkloom.document.BrushColorJitter
 import app.inkloom.document.BrushBlur
@@ -211,7 +213,11 @@ class InkCanvasView(context: Context) : View(context) {
         // behind the pen. Preview the body incrementally; the committed stroke applies its exact
         // terminal taper once, affecting only the final tail.
         surface.render(symmetryStrokes(currentPoints).map { stroke ->
-            if (stroke.taperEndEnabled) stroke.copy(taperEndEnabled = false) else stroke
+            val hasProcreateEnd = stroke.procreateTaper.pressureEndLength > .0001f || stroke.procreateTaper.touchEndLength > .0001f
+            if (stroke.taperEndEnabled || hasProcreateEnd) stroke.copy(
+                taperEndEnabled = false,
+                procreateTaper = stroke.procreateTaper.copy(pressureEndLength = 0f, touchEndLength = 0f),
+            ) else stroke
         })
     }
     private val activeTipRefreshFrame = Runnable {
@@ -624,6 +630,7 @@ class InkCanvasView(context: Context) : View(context) {
     var colorJitterValueDynamics: BrushColorDynamics = BrushColorDynamics()
     var procreateColorDynamics: ProcreateColorDynamics = ProcreateColorDynamics()
     var procreateWetMix: ProcreateWetMix = ProcreateWetMix()
+    var procreateTaper: ProcreateTaper = ProcreateTaper()
     var brushWatercolor: Boolean = false
     var brushColorMix: Float = 0f
     var colorMixPressureEnabled: Boolean = false
@@ -1454,17 +1461,18 @@ class InkCanvasView(context: Context) : View(context) {
         val falloff = app.inkloom.document.StrokeFalloff.factors(stroke.points, width.toFloat(), height.toFloat(), stroke.width * scale, stroke.strokeFalloff)
         val contentClip = canvas.clipBounds
         if (stroke.points.size == 1) {
-            val point = stroke.points.first(); paint.color = (point.pigmentArgb ?: stroke.colorArgb).toInt(); val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point); val strokeWidth = stroke.width * scale * (taper?.firstOrNull() ?: 1f) * dynamics.size; val alpha = (ProcreateRendering.depositedAlpha(stroke.procreateRenderingMode, stroke.flow * dynamics.depositedAlpha * (falloff?.firstOrNull() ?: 1f)) * 255).toInt().coerceIn(0, 255); drawLinePoint(canvas, stroke, point, point.x * width, point.y * height, strokeWidth, alpha)
+            val point = stroke.points.first(); paint.color = (point.pigmentArgb ?: stroke.colorArgb).toInt(); val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point); val strokeWidth = stroke.width * scale * (taper?.size?.firstOrNull() ?: 1f) * dynamics.size; val alpha = (ProcreateRendering.depositedAlpha(stroke.procreateRenderingMode, stroke.flow * dynamics.depositedAlpha * (falloff?.firstOrNull() ?: 1f) * (taper?.opacity?.firstOrNull() ?: 1f)) * 255).toInt().coerceIn(0, 255); drawLinePoint(canvas, stroke, point, point.x * width, point.y * height, strokeWidth, alpha)
         } else for (index in 0 until stroke.points.lastIndex) {
             val start = stroke.points[index]
             val end = stroke.points[index + 1]
             val point = midpoint(start, end)
             paint.color = mixArgb(start.pigmentArgb ?: stroke.colorArgb, end.pigmentArgb ?: stroke.colorArgb, .5f).toInt()
-            val taperFactor = taper?.let { (it[index] + it[index + 1]) / 2f } ?: 1f
+            val taperFactor = taper?.size?.let { (it[index] + it[index + 1]) / 2f } ?: 1f
+            val taperOpacity = taper?.opacity?.let { (it[index] + it[index + 1]) / 2f } ?: 1f
             val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
             val strokeWidth = stroke.width * scale * taperFactor * dynamics.size
             val falloffFactor = falloff?.let { (it[index] + it[index + 1]) / 2f } ?: 1f
-            val alpha = (ProcreateRendering.depositedAlpha(stroke.procreateRenderingMode, stroke.flow * dynamics.depositedAlpha * falloffFactor) * 255).toInt().coerceIn(0, 255)
+            val alpha = (ProcreateRendering.depositedAlpha(stroke.procreateRenderingMode, stroke.flow * dynamics.depositedAlpha * falloffFactor * taperOpacity) * 255).toInt().coerceIn(0, 255)
             val startX = start.x * width
             val startY = start.y * height
             val endX = end.x * width
@@ -1533,7 +1541,7 @@ class InkCanvasView(context: Context) : View(context) {
             val x = point.x * width
             val y = point.y * height
             val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
-            val brushDiameter = (stroke.width * referenceScale * (taper?.get(index) ?: 1f) * dynamics.size).coerceAtLeast(.25f)
+            val brushDiameter = (stroke.width * referenceScale * (taper?.size?.get(index) ?: 1f) * dynamics.size).coerceAtLeast(.25f)
             val diameter = if (stroke.spray) SprayGeometry.particleDiameter(brushDiameter, SprayDynamics.particleSize(stroke, point), stroke.sprayParticleSizeUnit, stroke.sprayParticleSizeSyncBrushSize, width.toFloat()) else brushDiameter
             val scatterRadius = if (stroke.spray) brushDiameter / 2f * stroke.spraySpread.coerceIn(0f, 4f) else 0f
             val transformedDiameter = diameter * maxOf(1f, stroke.thickness.coerceIn(.05f, 2f) * dynamics.thickness) * 1.5f
@@ -1598,7 +1606,7 @@ class InkCanvasView(context: Context) : View(context) {
             }
             val jitteredColor = BrushColorJitter.argb(stroke, point, sequenceIndex)
             paint.colorFilter = srcInColorFilter(jitteredColor)
-            val mainAlpha = (ProcreateRendering.depositedAlpha(stroke.procreateRenderingMode, stroke.flow * dynamics.depositedAlpha * (falloff?.get(index) ?: 1f)) * 255f).toInt()
+            val mainAlpha = (ProcreateRendering.depositedAlpha(stroke.procreateRenderingMode, stroke.flow * dynamics.depositedAlpha * (falloff?.get(index) ?: 1f) * (taper?.opacity?.get(index) ?: 1f)) * 255f).toInt()
             val tiltBleedAmount = stroke.tiltBleed.coerceIn(0f, 1f) * app.inkloom.document.BrushTilt.response(point, stroke.tiltBleedStart)
             if ((stroke.waterEdgeEnabled && stroke.waterEdgeOpacity > 0f) || tiltBleedAmount > .001f) {
                 val edgeRadius = WaterEdge.distancePixels(stroke.waterEdgeRadius, stroke.waterEdgeRadiusUnit, width.toFloat()) + diameter * tiltBleedAmount * .18f
@@ -1708,7 +1716,7 @@ class InkCanvasView(context: Context) : View(context) {
             val point = sampledPoints[index]
             val stampsAtPoint = BrushStampCount.resolve(stroke.dualStampCount, stroke.dualStampCountJitter, stroke.renderSeed, index, dual = true)
             val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point, dual = true)
-            val brushDiameter = (stroke.width * referenceScale * stroke.dualSizeScale.coerceIn(.01f, 8f) * (taper?.get(index) ?: 1f) * dynamics.size).coerceAtLeast(.25f)
+            val brushDiameter = (stroke.width * referenceScale * stroke.dualSizeScale.coerceIn(.01f, 8f) * (taper?.size?.get(index) ?: 1f) * dynamics.size).coerceAtLeast(.25f)
             val diameter = if (stroke.dualSpray) SprayGeometry.particleDiameter(brushDiameter, SprayDynamics.dualParticleSize(stroke, point), stroke.dualSprayParticleSizeUnit, stroke.dualSprayParticleSizeSyncBrushSize, width.toFloat()) else brushDiameter
             val x = point.x * width
             val y = point.y * height
@@ -1749,7 +1757,7 @@ class InkCanvasView(context: Context) : View(context) {
             )
             val matrix = secondaryStampMatrix.apply { reset(); postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(tipScale.x * flip.x, tipScale.y * flip.y); postRotate(angle); postTranslate(drawX, drawY) }
             paint.colorFilter = srcInColorFilter(BrushColorJitter.argb(stroke, point, sequenceIndex))
-            paint.alpha = (stroke.dualFlow.coerceIn(0f, 1f) * dynamics.depositedAlpha * (falloff?.get(index) ?: 1f)).coerceIn(0f, 1f).times(255).toInt()
+            paint.alpha = (stroke.dualFlow.coerceIn(0f, 1f) * dynamics.depositedAlpha * (falloff?.get(index) ?: 1f) * (taper?.opacity?.get(index) ?: 1f)).coerceIn(0f, 1f).times(255).toInt()
             paint.maskFilter = brushBlurMask(stroke, point, diameter, stroke.width * referenceScale * stroke.dualSizeScale.coerceIn(.01f, 8f), width.toFloat())
             canvas.drawBitmap(tip, matrix, paint)
             paint.maskFilter = null
@@ -1763,12 +1771,9 @@ class InkCanvasView(context: Context) : View(context) {
         canvas.restoreToCount(dualLayer)
     }
 
-    private fun strokeTaperFactors(stroke: InkStroke, points: List<StrokePoint>): List<Float>? =
-        if (!stroke.taperStartEnabled && !stroke.taperEndEnabled) null else StrokeTaper.factors(
-            points, width.toFloat(), height.toFloat(), stroke.taperMode,
-            stroke.taperStartEnabled, stroke.taperStartLength, stroke.taperStartLengthUnit, stroke.taperStartMinimum,
-            stroke.taperEndEnabled, stroke.taperEndLength, stroke.taperEndLengthUnit, stroke.taperEndMinimum,
-        )
+    private fun strokeTaperFactors(stroke: InkStroke, points: List<StrokePoint>): StrokeTaper.DabFactors? =
+        if (!stroke.taperStartEnabled && !stroke.taperEndEnabled && stroke.procreateTaper.isDisabled()) null
+        else StrokeTaper.evaluate(stroke, points, width.toFloat(), height.toFloat())
 
     private fun drawLinePoint(canvas: Canvas, stroke: InkStroke, point: StrokePoint, x: Float, y: Float, strokeWidth: Float, alpha: Int) {
         val jitteredColor = BrushColorJitter.argb(stroke, point, point.timeMs.toInt())
@@ -1794,8 +1799,8 @@ class InkCanvasView(context: Context) : View(context) {
         var alphaSum = 0f
         points.forEachIndexed { index, point ->
             val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
-            radii[index] = stroke.width * scale * (taper?.get(index) ?: 1f) * dynamics.size * .5f
-            alphaSum += stroke.flow * dynamics.depositedAlpha
+            radii[index] = stroke.width * scale * (taper?.size?.get(index) ?: 1f) * dynamics.size * .5f
+            alphaSum += stroke.flow * dynamics.depositedAlpha * (taper?.opacity?.get(index) ?: 1f)
         }
         val path = Path()
         fun edge(index: Int, side: Float): Pair<Float, Float> {
@@ -4814,6 +4819,8 @@ class InkCanvasView(context: Context) : View(context) {
     private fun withCurrentBrushBehavior(stroke: InkStroke): InkStroke = stroke.copy(
         secondaryColorArgb = secondaryInkColor.toUInt().toLong(),
         procreateColorDynamics = procreateColorDynamics,
+        procreateTaper = procreateTaper,
+        inputKind = if (activeInputWasStylus) StrokeInputKind.STYLUS else StrokeInputKind.TOUCH,
         grainFilteringMode = grainFilteringMode,
         procreateRenderingMode = procreateRenderingMode,
         procreateBrushBlendMode = procreateBrushBlendMode,
@@ -5201,7 +5208,7 @@ class InkCanvasView(context: Context) : View(context) {
                 // same V2 descriptor used by imported paint brushes so custom eraser tips, spacing,
                 // pressure, texture, rotation, spray, and dual-brush semantics remain exact.
                 session.restoreOriginal()
-                val eraserStroke = buildStroke(rasterEraserPoints).copy(
+                val eraserStroke = withCurrentBrushBehavior(buildStroke(rasterEraserPoints)).copy(
                     engineKind = BrushEngineKind.ERASE_MASK,
                     grainMovement = grainMovement,
                     grainZoom = grainZoom,

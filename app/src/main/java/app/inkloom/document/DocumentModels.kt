@@ -308,6 +308,33 @@ data class ProcreateWetMix(
             blur == 0f && blurJitter == 0f && wetnessJitter == 0f && legacyMixSoftening == 0f
 }
 
+/** Procreate Brush Studio > Taper. Pressure and Touch are separate authored programs; collapsing
+ * them loses finger drawing, opacity taper, tip shape, and the shared pressure response. */
+@Serializable
+data class ProcreateTaper(
+    val pressureStartLength: Float = 0f,
+    val pressureEndLength: Float = 0f,
+    val pressureSize: Float = 0f,
+    val pressureOpacity: Float = 0f,
+    val pressureTip: Float = 0f,
+    val touchStartLength: Float = 0f,
+    val touchEndLength: Float = 0f,
+    val touchSize: Float = 0f,
+    val touchOpacity: Float = 0f,
+    val touchTip: Float = 0f,
+    val pressureResponse: Float = 0f,
+    val pressureLinked: Boolean = false,
+    val touchLinked: Boolean = false,
+    val classic: Boolean = false,
+) {
+    fun isDisabled(): Boolean =
+        (pressureStartLength == 0f && pressureEndLength == 0f || pressureSize == 0f && pressureOpacity == 0f) &&
+            (touchStartLength == 0f && touchEndLength == 0f || touchSize == 0f && touchOpacity == 0f)
+}
+
+@Serializable
+enum class StrokeInputKind { STYLUS, TOUCH }
+
 @Serializable
 enum class BrushEngineKind {
     MESH_INK,
@@ -395,6 +422,8 @@ data class InkStroke(
     val colorJitterValueDynamics: BrushColorDynamics = BrushColorDynamics(),
     val procreateColorDynamics: ProcreateColorDynamics = ProcreateColorDynamics(),
     val procreateWetMix: ProcreateWetMix = ProcreateWetMix(),
+    val procreateTaper: ProcreateTaper = ProcreateTaper(),
+    val inputKind: StrokeInputKind = StrokeInputKind.STYLUS,
     val watercolor: Boolean = false,
     val colorMix: Float = 0f,
     val colorMixPressureEnabled: Boolean = false,

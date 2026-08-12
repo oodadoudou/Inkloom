@@ -7,6 +7,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.document.InkStroke
 import app.inkloom.document.LiquifyMode
+import app.inkloom.document.ProcreateTaper
+import app.inkloom.document.StrokeInputKind
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.EditorTool
@@ -142,6 +144,15 @@ class InkCanvasBrushSwitchTest {
             alphaThresholdEnabled = true,
             alphaThreshold = .48f,
             procreateWetMix = app.inkloom.document.ProcreateWetMix(dilution = .12f, charge = .23f, attack = .34f, pull = .45f, grade = -.56f, blur = .67f, blurJitter = .78f, wetnessJitter = .89f, legacyMixSoftening = .31f),
+            procreateTaper = ProcreateTaper(
+                pressureStartLength = .2f,
+                pressureEndLength = .3f,
+                pressureSize = .7f,
+                pressureOpacity = .4f,
+                pressureTip = .6f,
+                pressureResponse = .5f,
+                pressureLinked = true,
+            ),
         )
 
         instrumentation.runOnMainSync {
@@ -160,6 +171,47 @@ class InkCanvasBrushSwitchTest {
         assertTrue(requireNotNull(committed).alphaThresholdEnabled)
         assertEquals(.48f, requireNotNull(committed).alphaThreshold, .0001f)
         assertEquals(brush.procreateWetMix, requireNotNull(committed).procreateWetMix)
+        assertEquals(brush.procreateTaper, requireNotNull(committed).procreateTaper)
+        assertEquals(StrokeInputKind.STYLUS, requireNotNull(committed).inputKind)
+    }
+
+    @Test
+    fun pressureAndTouchTaperProgramsFollowTheActualInputTool() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val committed = mutableListOf<InkStroke>()
+        val taper = ProcreateTaper(
+            pressureStartLength = .2f,
+            pressureSize = .7f,
+            touchStartLength = .4f,
+            touchOpacity = .8f,
+        )
+        val view = InkCanvasView(instrumentation.targetContext).apply {
+            layout(0, 0, 1200, 1200)
+            fingerDrawingEnabled = true
+            onStrokeCommitted = committed::add
+        }
+
+        instrumentation.runOnMainSync {
+            view.applyBrushConfiguration(
+                EditorTool.PEN,
+                AppSettings(fingerDrawing = true),
+                brush("input-taper", "Input taper").copy(procreateTaper = taper),
+                40f,
+                1f,
+                Color.BLACK,
+                EraserPreset.NORMAL_FREE,
+            )
+            drawStroke(view, 1L, 400f)
+            // The production palm-rejection contract intentionally ignores finger contacts for
+            // 700 ms after stylus input. This later gesture verifies Touch Taper after that window.
+            view.onTouchEvent(fingerEvent(MotionEvent.ACTION_DOWN, 250f, 800f, 1_000L))
+            view.onTouchEvent(fingerEvent(MotionEvent.ACTION_MOVE, 600f, 800f, 1_004L))
+            view.onTouchEvent(fingerEvent(MotionEvent.ACTION_UP, 950f, 800f, 1_008L))
+        }
+
+        assertEquals(2, committed.size)
+        assertEquals(listOf(StrokeInputKind.STYLUS, StrokeInputKind.TOUCH), committed.map(InkStroke::inputKind))
+        assertEquals(listOf(taper, taper), committed.map(InkStroke::procreateTaper))
     }
 
     @Test

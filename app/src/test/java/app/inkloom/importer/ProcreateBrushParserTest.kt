@@ -61,6 +61,12 @@ class ProcreateBrushParserTest {
             assertTrue(brush.waterEdgeEnabled)
             assertTrue(brush.taperStartEnabled)
             assertTrue(brush.taperEndEnabled)
+            assertEquals(sourceMetadata.float("taperStartLength"), brush.procreateTaper.touchStartLength, .0001f)
+            assertEquals(sourceMetadata.float("taperEndLength"), brush.procreateTaper.touchEndLength, .0001f)
+            assertEquals(sourceMetadata.float("taperSize"), brush.procreateTaper.touchSize, .0001f)
+            assertEquals(sourceMetadata.float("taperOpacity"), brush.procreateTaper.touchOpacity, .0001f)
+            assertEquals(sourceMetadata.float("taperShape"), brush.procreateTaper.touchTip, .0001f)
+            assertEquals(sourceMetadata.float("taperPressure"), brush.procreateTaper.pressureResponse, .0001f)
             assertTrue(File(brush.tipPreviewPath!!).isFile)
             assertTrue(File(brush.grainPreviewPath!!).isFile)
             assertEquals(sourceMetadata.float("textureScale", 1f) * 100f, brush.grainScale, .0001f)
@@ -193,7 +199,7 @@ class ProcreateBrushParserTest {
             assertTrue(brushes.any { it.watercolor })
             assertTrue(brushes.any { it.taperStartEnabled })
             assertTrue(brushes.any { it.taperEndEnabled })
-            assertTrue(brushes.any { brush -> brush.report.any { it.contains("Apple Pencil start/end taper") } })
+            assertTrue(brushes.any { brush -> brush.report.any { it.contains("Pressure and Touch Taper") } })
             assertTrue(brushes.any { it.strokePathJitter > 0f })
             assertTrue(brushes.any { it.strokePathLongitudinalJitter > 0f })
             assertTrue(brushes.any { it.randomRotationDegrees > 0f })
@@ -219,6 +225,23 @@ class ProcreateBrushParserTest {
             assertTrue(brushes.any { it.procreateRenderingMode == ProcreateRenderingMode.UNIFORM_BLENDING })
             assertTrue(brushes.any { it.procreateRenderingMode == ProcreateRenderingMode.INTENSE_BLENDING })
             assertTrue(brushes.any { brush -> brush.report.any { it.contains("stroke-path jitter") } })
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun parsesAuthorizedRealBrushTaperWhenConfigured() {
+        val sampleRoot = System.getProperty("procreate.samples.dir")?.let(::File)
+        assumeTrue(sampleRoot != null && sampleRoot.isDirectory)
+        val source = sampleRoot!!.walkTopDown().firstOrNull { it.isFile && it.extension.equals("brush", true) }
+        assumeTrue(source != null)
+        val root = temporaryDirectory("real-taper")
+        try {
+            val brush = ProcreateBrushParser(File(root, "assets")).enrich(source!!, "real-taper", fallback(source)).single()
+
+            assertFalse("Expected an authored Taper program in ${source.name}", brush.procreateTaper.isDisabled())
+            assertTrue(brush.procreateTaper.pressureStartLength > 0f || brush.procreateTaper.pressureEndLength > 0f)
+            assertTrue(brush.report.any { it.contains("Pressure and Touch Taper") })
         } finally {
             root.deleteRecursively()
         }
