@@ -1,5 +1,8 @@
 package app.inkloom
 
+import android.graphics.Bitmap
+import android.graphics.Color
+
 import android.view.InputDevice
 import android.view.MotionEvent
 import androidx.test.core.app.ApplicationProvider
@@ -32,6 +35,31 @@ class InkCanvasProfessionalToolsTest {
         send(view, MotionEvent.ACTION_UP, 650f, 500f, 20L)
 
         assertNotEquals(original.points, requireNotNull(replacement).points)
+    }
+
+    @Test fun rasterLiquifyCommitsOneSurfaceWithoutReplacingVectorStrokes() {
+        val surface = Bitmap.createBitmap(200, 200, Bitmap.Config.ARGB_8888).apply {
+            for (y in 65 until 135) for (x in 35 until 90) setPixel(x, y, Color.RED)
+        }
+        val beforePixels = IntArray(surface.width * surface.height).also { surface.getPixels(it, 0, surface.width, 0, 0, surface.width, surface.height) }
+        var rasterCommits = 0
+        var vectorReplacements = 0
+        var committed: Bitmap? = null
+        val view = canvas(EditorTool.LIQUIFY, line("untouched-vector", listOf(StrokePoint(.05f, .05f), StrokePoint(.1f, .05f)))) {
+            activeLayerId = "raster"
+            baseWidth = 360f
+            setRasterLayerBitmaps(mapOf("raster" to surface))
+            onRasterLayerCommitted = { _, bitmap -> rasterCommits++; committed = bitmap }
+            onStrokesReplaced = { _, _, _ -> vectorReplacements++ }
+        }
+        send(view, MotionEvent.ACTION_DOWN, 275f, 500f, 0L)
+        send(view, MotionEvent.ACTION_MOVE, 625f, 500f, 20L)
+        send(view, MotionEvent.ACTION_UP, 625f, 500f, 40L)
+        assertEquals(1, rasterCommits)
+        assertEquals(0, vectorReplacements)
+        val afterPixels = IntArray(surface.width * surface.height).also { requireNotNull(committed).getPixels(it, 0, surface.width, 0, 0, surface.width, surface.height) }
+        assertFalse("Raster Liquify must deform the committed surface", beforePixels.contentEquals(afterPixels))
+        committed?.recycle(); surface.recycle()
     }
 
     @Test fun stationaryLiquifyModesApplyAfterLongPress() {

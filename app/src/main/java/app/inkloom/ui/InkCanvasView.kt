@@ -126,6 +126,7 @@ import app.inkloom.document.VectorLiquify
 import app.inkloom.document.VectorBlend
 import app.inkloom.document.WaterEdge
 import app.inkloom.engine.v2.render.RasterBlendSession
+import app.inkloom.engine.v2.render.RasterLiquifySession
 import app.inkloom.model.EditorTool
 import app.inkloom.model.SymmetryMode
 import app.inkloom.settings.CspShortcutResolver
@@ -267,6 +268,8 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
     private var liquifyBefore: List<InkStroke>? = null
+    private var rasterLiquifySession: RasterLiquifySession? = null
+    private var rasterLiquifyBitmap: Bitmap? = null
     private var liquifyLastX = 0f
     private var liquifyLastY = 0f
     private var liquifyChanged = false
@@ -291,19 +294,20 @@ class InkCanvasView(context: Context) : View(context) {
     }
     private val liquifyHoldFrame = object : Runnable {
         override fun run() {
-            if (!liquifyHoldEligible || liquifyMovedBeyondSlop || liquifyBefore == null) return
+            if (!liquifyHoldEligible || liquifyMovedBeyondSlop || !liquifyGestureActive()) return
             extendLiquify(liquifyLastX, liquifyLastY, liquifyPressure)
             postOnAnimation(this)
         }
     }
     private val liquifyHoldStart = Runnable {
-        if (liquifyHoldEligible && !liquifyMovedBeyondSlop && liquifyBefore != null) liquifyHoldFrame.run()
+        if (liquifyHoldEligible && !liquifyMovedBeyondSlop && liquifyGestureActive()) liquifyHoldFrame.run()
     }
     @VisibleForTesting
     internal fun runLiquifyLongPressFrameForTest() {
         liquifyHoldStart.run()
         removeCallbacks(liquifyHoldFrame)
     }
+    private fun liquifyGestureActive(): Boolean = liquifyBefore != null || rasterLiquifySession != null
     private var correctionBefore: List<InkStroke>? = null
     private var correctionStrokeId: String? = null
     private var correctionStartX = 0f
@@ -4197,8 +4201,18 @@ class InkCanvasView(context: Context) : View(context) {
         removeCallbacks(liquifyHoldFrame)
         liquifyFrameScheduled = false
         hasPendingLiquify = false
-        liquifyBefore = strokes.toList()
-        prepareLocalToolStrokeIndex()
+        rasterLiquifySession?.close()
+        rasterLiquifySession = null
+        rasterLiquifyBitmap = rasterLayerBitmaps[activeLayerId]?.takeUnless(Bitmap::isRecycled)
+        val raster = rasterLiquifyBitmap
+        if (raster != null) {
+            rasterLiquifySession = RasterLiquifySession(raster, selectionMaskForDisplay())
+            liquifyBefore = null
+            localToolStrokeIndices.clear()
+        } else {
+            liquifyBefore = strokes.toList()
+            prepareLocalToolStrokeIndex()
+        }
         liquifyLastX = x.coerceIn(0f, 1f)
         liquifyLastY = y.coerceIn(0f, 1f)
         liquifyDownX = liquifyLastX
@@ -4244,6 +4258,29 @@ class InkCanvasView(context: Context) : View(context) {
     private fun extendLiquify(x: Float, y: Float, pressure: Float = liquifyPressure) {
         val nextX = x.coerceIn(0f, 1f)
         val nextY = y.coerceIn(0f, 1f)
+        val raster = rasterLiquifyBitmap
+        val rasterSession = rasterLiquifySession
+        if (raster != null && rasterSession != null) {
+            val radius = (baseWidth.coerceIn(2f, 800f) / REFERENCE_WIDTH * raster.width).coerceAtLeast(1f)
+            val dirty = rasterSession.deform(
+                liquifyLastX * raster.width,
+                liquifyLastY * raster.height,
+                nextX * raster.width,
+                nextY * raster.height,
+                radius,
+                liquifyStrength * pressure.coerceIn(0f, 1f),
+                liquifyHardness,
+                liquifyMode,
+            )
+            if (dirty != null) {
+                liquifyChanged = true
+                postInvalidateOnAnimation()
+            }
+            liquifyLastX = nextX
+            liquifyLastY = nextY
+            liquifyPressure = pressure.coerceIn(0f, 1f)
+            return
+        }
         val radius = (baseWidth.coerceIn(2f, 800f) / REFERENCE_WIDTH).coerceAtLeast(.002f)
         val beforeStep = localToolCandidates(liquifyLastX, liquifyLastY, nextX, nextY, radius)
         if (beforeStep.isEmpty()) {
@@ -4330,8 +4367,21 @@ class InkCanvasView(context: Context) : View(context) {
         removeCallbacks(liquifyHoldFrame)
         liquifyFrameScheduled = false
         hasPendingLiquify = false
-        val before = liquifyBefore
-        if (before != null && liquifyChanged) commitStrokeEdit(before, strokes)
+        val raster = rasterLiquifyBitmap
+        val session = rasterLiquifySession
+        if (raster != null && session != null) {
+            if (liquifyChanged) {
+                val snapshot = raster.copy(Bitmap.Config.ARGB_8888, false)
+                val callback = onRasterLayerCommitted
+                if (callback == null) snapshot.recycle() else callback(activeLayerId, snapshot)
+            }
+            session.close()
+        } else {
+            val before = liquifyBefore
+            if (before != null && liquifyChanged) commitStrokeEdit(before, strokes)
+        }
+        rasterLiquifySession = null
+        rasterLiquifyBitmap = null
         liquifyBefore = null
         liquifyHoldEligible = false
         liquifyChanged = false
@@ -4345,8 +4395,17 @@ class InkCanvasView(context: Context) : View(context) {
         removeCallbacks(liquifyHoldFrame)
         liquifyFrameScheduled = false
         hasPendingLiquify = false
-        val before = liquifyBefore
-        if (before != null && liquifyChanged) restoreStrokeSnapshot(before)
+        val session = rasterLiquifySession
+        if (session != null) {
+            if (liquifyChanged) session.restoreOriginal()
+            session.close()
+            invalidate()
+        } else {
+            val before = liquifyBefore
+            if (before != null && liquifyChanged) restoreStrokeSnapshot(before)
+        }
+        rasterLiquifySession = null
+        rasterLiquifyBitmap = null
         liquifyBefore = null
         liquifyHoldEligible = false
         liquifyChanged = false
