@@ -32,6 +32,15 @@ class StrokeClipboardCodecTest {
             dualThicknessDynamics = BrushParameterDynamics(
                 secondary = BrushSecondaryDynamics(randomEnabled = true, randomMinimum = .55f),
             ),
+            colorJitterPerTipEnabled = false,
+            colorJitterTarget = CspColorChangeTarget.SUB,
+            colorJitterSubColorMix = .38f,
+            colorJitterSubColorMixDynamics = BrushParameterDynamics(pressureEnabled = true, pressureMinimum = .2f),
+            colorJitterPerStrokeEnabled = true,
+            colorJitterStrokeHueDegrees = 70f,
+            colorJitterStrokeSaturation = 40f,
+            colorJitterStrokeValue = 20f,
+            colorJitterStrokeSubColorMix = .6f,
             watercolor = true,
         )
 

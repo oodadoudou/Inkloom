@@ -229,7 +229,7 @@ class InkCanvasBrushSwitchTest {
     }
 
     @Test
-    fun primarySecondaryColorsAndProcreateDynamicsSurviveActivationAndCommit() {
+    fun primarySecondaryColorsAndColorProgramsSurviveActivationAndCommit() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         var committed: InkStroke? = null
         val dynamics = app.inkloom.document.ProcreateColorDynamics(stampSecondary = .4f, pressureHue = .2f, tiltSecondary = .3f)
@@ -237,7 +237,18 @@ class InkCanvasBrushSwitchTest {
             layout(0, 0, 1200, 1200)
             onStrokeCommitted = { committed = it }
         }
-        val brush = brush("color-contract", "Color contract").copy(procreateColorDynamics = dynamics)
+        val brush = brush("color-contract", "Color contract").copy(
+            procreateColorDynamics = dynamics,
+            colorJitterPerTipEnabled = false,
+            colorJitterTarget = app.inkloom.document.CspColorChangeTarget.SUB,
+            colorJitterSubColorMix = .35f,
+            colorJitterSubColorMixDynamics = app.inkloom.document.BrushParameterDynamics(pressureEnabled = true, pressureMinimum = .2f),
+            colorJitterPerStrokeEnabled = true,
+            colorJitterStrokeHueDegrees = 45f,
+            colorJitterStrokeSaturation = 25f,
+            colorJitterStrokeValue = 15f,
+            colorJitterStrokeSubColorMix = .4f,
+        )
 
         instrumentation.runOnMainSync {
             view.applyBrushConfiguration(EditorTool.PEN, AppSettings(), brush, 40f, 1f, Color.RED, EraserPreset.NORMAL_FREE, Color.BLUE)
@@ -247,6 +258,13 @@ class InkCanvasBrushSwitchTest {
         assertEquals(Color.RED.toUInt().toLong(), requireNotNull(committed).colorArgb)
         assertEquals(Color.BLUE.toUInt().toLong(), requireNotNull(committed).secondaryColorArgb)
         assertEquals(dynamics, requireNotNull(committed).procreateColorDynamics)
+        assertEquals(false, requireNotNull(committed).colorJitterPerTipEnabled)
+        assertEquals(app.inkloom.document.CspColorChangeTarget.SUB, requireNotNull(committed).colorJitterTarget)
+        assertEquals(.35f, requireNotNull(committed).colorJitterSubColorMix, .0001f)
+        assertTrue(requireNotNull(committed).colorJitterSubColorMixDynamics.pressureEnabled)
+        assertTrue(requireNotNull(committed).colorJitterPerStrokeEnabled)
+        assertEquals(45f, requireNotNull(committed).colorJitterStrokeHueDegrees, .0001f)
+        assertEquals(.4f, requireNotNull(committed).colorJitterStrokeSubColorMix, .0001f)
     }
 
     private fun brush(id: String, name: String) = ImportedBrush(

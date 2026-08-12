@@ -7,16 +7,52 @@ object BrushColorJitter {
     fun argb(stroke: InkStroke, point: StrokePoint, stampIndex: Int): Int {
         val source = (point.pigmentArgb ?: stroke.colorArgb).toInt()
         val procreate = stroke.procreateColorDynamics
-        if (stroke.colorJitterHueDegrees == 0f && stroke.colorJitterSaturation == 0f && stroke.colorJitterValue == 0f && procreate.isDisabled()) return source
-        var color = source
-        if (stroke.colorJitterHueDegrees != 0f || stroke.colorJitterSaturation != 0f || stroke.colorJitterValue != 0f) {
-            val hsv = rgbToHsv(color)
-            hsv[0] = wrapHue(hsv[0] + stroke.colorJitterHueDegrees * amount(stroke.colorJitterHueDynamics, point, stroke.renderSeed, stampIndex, HUE_SALT))
-            hsv[1] = (hsv[1] + stroke.colorJitterSaturation / 100f * amount(stroke.colorJitterSaturationDynamics, point, stroke.renderSeed, stampIndex, SATURATION_SALT)).coerceIn(0f, 1f)
-            hsv[2] = (hsv[2] + stroke.colorJitterValue / 100f * amount(stroke.colorJitterValueDynamics, point, stroke.renderSeed, stampIndex, VALUE_SALT)).coerceIn(0f, 1f)
-            color = hsvToArgb(source ushr 24 and 0xff, hsv[0], hsv[1], hsv[2])
+        if (!hasCspProgram(stroke) && procreate.isDisabled()) return source
+
+        var main = source
+        var sub = stroke.secondaryColorArgb.toInt()
+        if (stroke.colorJitterPerStrokeEnabled) {
+            val hue = signedRandom(stroke.renderSeed, 0, STROKE_HUE_SALT) * kotlin.math.abs(stroke.colorJitterStrokeHueDegrees)
+            val saturation = signedRandom(stroke.renderSeed, 0, STROKE_SATURATION_SALT) * kotlin.math.abs(stroke.colorJitterStrokeSaturation) / 100f
+            val value = signedRandom(stroke.renderSeed, 0, STROKE_VALUE_SALT) * kotlin.math.abs(stroke.colorJitterStrokeValue) / 100f
+            if (CspColorChangeTarget.changesMain(stroke.colorJitterTarget)) main = adjustHsv(main, hue, saturation, value)
+            if (CspColorChangeTarget.changesSub(stroke.colorJitterTarget)) sub = adjustHsv(sub, hue, saturation, value)
         }
-        return procreateArgb(color, stroke.secondaryColorArgb.toInt(), procreate, point, stroke.renderSeed, stampIndex)
+
+        if (stroke.colorJitterPerTipEnabled) {
+            val hue = stroke.colorJitterHueDegrees * amount(stroke.colorJitterHueDynamics, point, stroke.renderSeed, stampIndex, HUE_SALT)
+            val saturation = stroke.colorJitterSaturation / 100f * amount(stroke.colorJitterSaturationDynamics, point, stroke.renderSeed, stampIndex, SATURATION_SALT)
+            val value = stroke.colorJitterValue / 100f * amount(stroke.colorJitterValueDynamics, point, stroke.renderSeed, stampIndex, VALUE_SALT)
+            if (CspColorChangeTarget.changesMain(stroke.colorJitterTarget)) main = adjustHsv(main, hue, saturation, value)
+            if (CspColorChangeTarget.changesSub(stroke.colorJitterTarget)) sub = adjustHsv(sub, hue, saturation, value)
+        }
+
+        val strokeSubMix = if (stroke.colorJitterPerStrokeEnabled) {
+            stroke.colorJitterStrokeSubColorMix.coerceIn(0f, 1f) * unitRandom(stroke.renderSeed, 0, STROKE_SUB_COLOR_SALT)
+        } else 0f
+        val tipSubMix = if (stroke.colorJitterPerTipEnabled) {
+            stroke.colorJitterSubColorMix.coerceIn(0f, 1f) * parameterAmount(stroke.colorJitterSubColorMixDynamics, point, stroke.renderSeed, stampIndex, SUB_COLOR_SALT)
+        } else 0f
+        val cspColor = mixArgb(main, sub, 1f - (1f - strokeSubMix) * (1f - tipSubMix))
+        return procreateArgb(cspColor, sub, procreate, point, stroke.renderSeed, stampIndex)
+    }
+
+    fun hasCspProgram(stroke: InkStroke): Boolean =
+        stroke.colorJitterPerTipEnabled && (
+            stroke.colorJitterHueDegrees != 0f || stroke.colorJitterSaturation != 0f ||
+                stroke.colorJitterValue != 0f || stroke.colorJitterSubColorMix != 0f
+            ) || stroke.colorJitterPerStrokeEnabled && (
+            stroke.colorJitterStrokeHueDegrees != 0f || stroke.colorJitterStrokeSaturation != 0f ||
+                stroke.colorJitterStrokeValue != 0f || stroke.colorJitterStrokeSubColorMix != 0f
+            )
+
+    private fun adjustHsv(source: Int, hue: Float, saturation: Float, value: Float): Int {
+        if (hue == 0f && saturation == 0f && value == 0f) return source
+        val hsv = rgbToHsv(source)
+        hsv[0] = wrapHue(hsv[0] + hue)
+        hsv[1] = (hsv[1] + saturation).coerceIn(0f, 1f)
+        hsv[2] = (hsv[2] + value).coerceIn(0f, 1f)
+        return hsvToArgb(source ushr 24 and 0xff, hsv[0], hsv[1], hsv[2])
     }
 
     private fun procreateArgb(source: Int, secondary: Int, dynamics: ProcreateColorDynamics, point: StrokePoint, seed: Int, stampIndex: Int): Int {
@@ -86,6 +122,15 @@ object BrushColorJitter {
         return value.coerceIn(-1.5f, 1.5f)
     }
 
+    private fun parameterAmount(dynamics: BrushParameterDynamics, point: StrokePoint, strokeSeed: Int, stampIndex: Int, salt: Int): Float {
+        var value = if (dynamics.pressureEnabled) ranged(dynamics.pressureMinimum, BrushDynamics.curve(dynamics.pressureCurve, point.pressure)) else 1f
+        val secondary = dynamics.secondary
+        if (secondary.tiltEnabled) value *= ranged(secondary.tiltMinimum, BrushDynamics.curve(secondary.tiltCurve, BrushTilt.response(point, secondary.tiltStart)))
+        if (secondary.velocityEnabled) value *= ranged(secondary.velocityMinimum, BrushDynamics.curve(secondary.velocityCurve, (point.velocity * secondary.velocityScale.coerceIn(0f, 10f)).coerceIn(0f, 1f)))
+        if (secondary.randomEnabled) value *= ranged(secondary.randomMinimum, random(strokeSeed, point.timeMs, stampIndex, salt))
+        return value.coerceIn(0f, 1.5f)
+    }
+
     private fun random(strokeSeed: Int, timeMs: Long, stampIndex: Int, salt: Int): Float =
         BrushDynamics.deterministicRandom(strokeSeed xor (stampIndex * 0x45D9F3B), timeMs, salt)
 
@@ -136,6 +181,11 @@ object BrushColorJitter {
     private const val HUE_SALT = 0x435348
     private const val SATURATION_SALT = 0x435353
     private const val VALUE_SALT = 0x435356
+    private const val SUB_COLOR_SALT = 0x435342
+    private const val STROKE_HUE_SALT = 0x435448
+    private const val STROKE_SATURATION_SALT = 0x435453
+    private const val STROKE_VALUE_SALT = 0x435456
+    private const val STROKE_SUB_COLOR_SALT = 0x435442
     private const val STAMP_SALT = 0x50435310
     private const val STROKE_SALT = 0x50435320
     private val HSV_BUFFER = ThreadLocal.withInitial { FloatArray(3) }

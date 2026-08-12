@@ -8,7 +8,6 @@ import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.graphics.Shader
-import app.inkloom.document.BrushColorDynamics
 import app.inkloom.document.BrushStampRotation
 import app.inkloom.document.BrushTipTransform
 import app.inkloom.document.GrainDynamics
@@ -136,9 +135,7 @@ internal object EngineV2StampBatchRenderer {
             !GrainBehavior.requiresPerDabRotation(stroke.grainStrokeRotation) &&
             stroke.stampCount == 1 && stroke.stampCountJitter <= .001f &&
             stroke.tipFlipHorizontalMode == 0 && stroke.tipFlipVerticalMode == 0 &&
-            noColorDynamics(stroke.colorJitterHueDynamics) && noColorDynamics(stroke.colorJitterSaturationDynamics) &&
-            noColorDynamics(stroke.colorJitterValueDynamics) && stroke.colorJitterHueDegrees == 0f &&
-            stroke.colorJitterSaturation == 0f && stroke.colorJitterValue == 0f &&
+            !app.inkloom.document.BrushColorJitter.hasCspProgram(stroke) &&
             stroke.procreateColorDynamics.isDisabled() &&
             stroke.colorMix <= .001f && stroke.paintMix <= .001f
 
@@ -172,9 +169,6 @@ internal object EngineV2StampBatchRenderer {
 
     private fun secondary(value: app.inkloom.document.BrushSecondaryDynamics): Boolean =
         value.tiltEnabled || value.velocityEnabled || value.randomEnabled
-
-    private fun noColorDynamics(value: BrushColorDynamics): Boolean =
-        !value.pressureEnabled && !value.tiltEnabled && !value.velocityEnabled && !value.randomEnabled
 
     /** Jump directly to java.util.Random's Nth float so incremental drawing stays compatible with
      * existing strokes without replaying every preceding dab on every display frame. */

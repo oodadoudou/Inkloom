@@ -49,6 +49,76 @@ class BrushColorJitterTest {
         assertEquals(stroke.colorArgb.toInt(), BrushColorJitter.argb(stroke, stroke.points.single(), 0))
     }
 
+    @Test fun cspDisabledFlagIgnoresStaleStoredTipValues() {
+        val point = StrokePoint(.2f, .3f, pressure = 1f, timeMs = 9)
+        val stroke = InkStroke(
+            points = listOf(point),
+            colorArgb = 0xFF336699,
+            colorJitterPerTipEnabled = false,
+            colorJitterHueDegrees = 90f,
+            colorJitterSaturation = 70f,
+            colorJitterValue = 40f,
+            colorJitterSubColorMix = 1f,
+            colorJitterHueDynamics = BrushColorDynamics(randomEnabled = true),
+        )
+
+        assertEquals(stroke.colorArgb.toInt(), BrushColorJitter.argb(stroke, point, 7))
+        assertTrue(!BrushColorJitter.hasCspProgram(stroke))
+    }
+
+    @Test fun cspRandomizePerStrokeIsFixedAcrossEveryStampAndChangesWithStrokeSeed() {
+        val early = StrokePoint(.2f, .3f, timeMs = 1)
+        val late = StrokePoint(.8f, .7f, timeMs = 999)
+        val stroke = InkStroke(
+            points = listOf(early, late),
+            renderSeed = 311,
+            colorArgb = 0xFF884422,
+            colorJitterPerTipEnabled = false,
+            colorJitterPerStrokeEnabled = true,
+            colorJitterStrokeHueDegrees = 160f,
+            colorJitterStrokeSaturation = 80f,
+            colorJitterStrokeValue = 60f,
+        )
+
+        assertEquals(BrushColorJitter.argb(stroke, early, 0), BrushColorJitter.argb(stroke, late, 93))
+        assertNotEquals(BrushColorJitter.argb(stroke, early, 0), BrushColorJitter.argb(stroke.copy(renderSeed = 312), early, 0))
+    }
+
+    @Test fun cspChangeTargetSeparatesMainAndSubColorPrograms() {
+        val point = StrokePoint(.5f, .5f)
+        val base = InkStroke(
+            points = listOf(point),
+            colorArgb = 0xFFFF0000,
+            secondaryColorArgb = 0xFF0000FF,
+            colorJitterPerTipEnabled = true,
+            colorJitterHueDegrees = 120f,
+            colorJitterSubColorMix = .5f,
+        )
+        val main = BrushColorJitter.argb(base.copy(colorJitterTarget = CspColorChangeTarget.MAIN), point, 0)
+        val sub = BrushColorJitter.argb(base.copy(colorJitterTarget = CspColorChangeTarget.SUB), point, 0)
+        val both = BrushColorJitter.argb(base.copy(colorJitterTarget = CspColorChangeTarget.MAIN_AND_SUB), point, 0)
+
+        assertNotEquals(main, sub)
+        assertNotEquals(main, both)
+        assertNotEquals(sub, both)
+        assertEquals(CspColorChangeTarget.MAIN_AND_SUB, CspColorChangeTarget.normalize(0))
+    }
+
+    @Test fun cspSubColorBlendHonorsPressureDynamics() {
+        val light = StrokePoint(.5f, .5f, pressure = 0f)
+        val heavy = StrokePoint(.5f, .5f, pressure = 1f)
+        val stroke = InkStroke(
+            points = listOf(light, heavy),
+            colorArgb = 0xFFFF0000,
+            secondaryColorArgb = 0xFF0000FF,
+            colorJitterSubColorMix = 1f,
+            colorJitterSubColorMixDynamics = BrushParameterDynamics(pressureEnabled = true),
+        )
+
+        assertEquals(0xFFFF0000.toInt(), BrushColorJitter.argb(stroke, light, 0))
+        assertEquals(0xFF0000FF.toInt(), BrushColorJitter.argb(stroke, heavy, 1))
+    }
+
     @Test fun colorDynamicsHonorCspVelocityScale() {
         val point = StrokePoint(0f, 0f, velocity = .2f)
         val unscaled = BrushColorDynamics(velocityEnabled = true, velocityScale = 1f)

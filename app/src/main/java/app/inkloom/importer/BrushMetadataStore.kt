@@ -256,9 +256,17 @@ class BrushMetadataStore(
                         colorJitterSaturation = item.optDouble("colorJitterSaturation", 0.0).toFloat().coerceIn(-100f, 100f),
                         colorJitterValue = item.optDouble("colorJitterValue", 0.0).toFloat().coerceIn(-100f, 100f),
                         colorJitterTarget = item.optInt("colorJitterTarget", 0).coerceIn(0, 3),
+                        colorJitterPerTipEnabled = if (item.has("colorJitterPerTipEnabled")) item.optBoolean("colorJitterPerTipEnabled") else true,
                         colorJitterHueDynamics = colorDynamics("colorJitterHueDynamics"),
                         colorJitterSaturationDynamics = colorDynamics("colorJitterSaturationDynamics"),
                         colorJitterValueDynamics = colorDynamics("colorJitterValueDynamics"),
+                        colorJitterSubColorMix = item.optDouble("colorJitterSubColorMix", 0.0).toFloat().coerceIn(0f, 1f),
+                        colorJitterSubColorMixDynamics = parameterDynamics("colorJitterSubColorMixDynamics"),
+                        colorJitterPerStrokeEnabled = item.optBoolean("colorJitterPerStrokeEnabled", false),
+                        colorJitterStrokeHueDegrees = item.optDouble("colorJitterStrokeHueDegrees", 0.0).toFloat().coerceIn(-180f, 180f),
+                        colorJitterStrokeSaturation = item.optDouble("colorJitterStrokeSaturation", 0.0).toFloat().coerceIn(-100f, 100f),
+                        colorJitterStrokeValue = item.optDouble("colorJitterStrokeValue", 0.0).toFloat().coerceIn(-100f, 100f),
+                        colorJitterStrokeSubColorMix = item.optDouble("colorJitterStrokeSubColorMix", 0.0).toFloat().coerceIn(0f, 1f),
                         procreateColorDynamics = procreateColorDynamics("procreateColorDynamics"),
                         procreateWetMix = procreateWetMix("procreateWetMix"),
                         procreateTaper = procreateTaper("procreateTaper"),
@@ -483,9 +491,17 @@ class BrushMetadataStore(
                     .put("colorJitterSaturation", brush.colorJitterSaturation)
                     .put("colorJitterValue", brush.colorJitterValue)
                     .put("colorJitterTarget", brush.colorJitterTarget)
+                    .put("colorJitterPerTipEnabled", brush.colorJitterPerTipEnabled)
                     .put("colorJitterHueDynamics", colorDynamicsJson(brush.colorJitterHueDynamics))
                     .put("colorJitterSaturationDynamics", colorDynamicsJson(brush.colorJitterSaturationDynamics))
                     .put("colorJitterValueDynamics", colorDynamicsJson(brush.colorJitterValueDynamics))
+                    .put("colorJitterSubColorMix", brush.colorJitterSubColorMix)
+                    .put("colorJitterSubColorMixDynamics", parameterDynamicsJson(brush.colorJitterSubColorMixDynamics))
+                    .put("colorJitterPerStrokeEnabled", brush.colorJitterPerStrokeEnabled)
+                    .put("colorJitterStrokeHueDegrees", brush.colorJitterStrokeHueDegrees)
+                    .put("colorJitterStrokeSaturation", brush.colorJitterStrokeSaturation)
+                    .put("colorJitterStrokeValue", brush.colorJitterStrokeValue)
+                    .put("colorJitterStrokeSubColorMix", brush.colorJitterStrokeSubColorMix)
                     .put("procreateColorDynamics", procreateColorDynamicsJson(brush.procreateColorDynamics))
                     .put("procreateWetMix", procreateWetMixJson(brush.procreateWetMix))
                     .put("procreateTaper", procreateTaperJson(brush.procreateTaper))

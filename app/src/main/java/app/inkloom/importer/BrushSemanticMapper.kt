@@ -65,7 +65,9 @@ object BrushSemanticMapper {
             brush.spacingPressureEnabled || brush.thicknessPressureEnabled || brush.blurPressureEnabled ||
             dynamic(brush.grainDensityDynamics) || dynamic(brush.dualSizeDynamics) ||
             dynamic(brush.dualSpacingDynamics) || dynamic(brush.dualFlowDynamics) ||
-            dynamic(brush.dualThicknessDynamics) || secondary(brush.sizeSecondaryDynamics) ||
+            dynamic(brush.dualThicknessDynamics) || dynamic(brush.colorJitterSubColorMixDynamics) ||
+            colorDynamic(brush.colorJitterHueDynamics) || colorDynamic(brush.colorJitterSaturationDynamics) ||
+            colorDynamic(brush.colorJitterValueDynamics) || secondary(brush.sizeSecondaryDynamics) ||
             secondary(brush.opacitySecondaryDynamics) || secondary(brush.flowSecondaryDynamics)
 
     private fun dynamic(value: BrushParameterDynamics): Boolean =
@@ -73,4 +75,7 @@ object BrushSemanticMapper {
 
     private fun secondary(value: BrushSecondaryDynamics): Boolean =
         value.tiltEnabled || value.velocityEnabled || value.randomEnabled
+
+    private fun colorDynamic(value: app.inkloom.document.BrushColorDynamics): Boolean =
+        value.pressureEnabled || value.tiltEnabled || value.velocityEnabled || value.randomEnabled
 }

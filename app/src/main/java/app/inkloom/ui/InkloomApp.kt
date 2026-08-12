@@ -4950,9 +4950,17 @@ internal fun InkCanvasView.applyBrushConfiguration(
     colorJitterSaturation = activeBrush?.colorJitterSaturation ?: 0f
     colorJitterValue = activeBrush?.colorJitterValue ?: 0f
     colorJitterTarget = activeBrush?.colorJitterTarget ?: 0
+    colorJitterPerTipEnabled = activeBrush?.colorJitterPerTipEnabled ?: true
     colorJitterHueDynamics = activeBrush?.colorJitterHueDynamics ?: BrushColorDynamics()
     colorJitterSaturationDynamics = activeBrush?.colorJitterSaturationDynamics ?: BrushColorDynamics()
     colorJitterValueDynamics = activeBrush?.colorJitterValueDynamics ?: BrushColorDynamics()
+    colorJitterSubColorMix = activeBrush?.colorJitterSubColorMix ?: 0f
+    colorJitterSubColorMixDynamics = activeBrush?.colorJitterSubColorMixDynamics ?: BrushParameterDynamics()
+    colorJitterPerStrokeEnabled = activeBrush?.colorJitterPerStrokeEnabled ?: false
+    colorJitterStrokeHueDegrees = activeBrush?.colorJitterStrokeHueDegrees ?: 0f
+    colorJitterStrokeSaturation = activeBrush?.colorJitterStrokeSaturation ?: 0f
+    colorJitterStrokeValue = activeBrush?.colorJitterStrokeValue ?: 0f
+    colorJitterStrokeSubColorMix = activeBrush?.colorJitterStrokeSubColorMix ?: 0f
     procreateColorDynamics = activeBrush?.procreateColorDynamics ?: app.inkloom.document.ProcreateColorDynamics()
     procreateWetMix = activeBrush?.procreateWetMix ?: ProcreateWetMix()
     procreateTaper = activeBrush?.procreateTaper ?: ProcreateTaper()
@@ -9069,12 +9077,25 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 item { BrushSettingSlider("Stamp count", draft.stampCount.toFloat(), 1f..16f) { draft = draft.copy(stampCount = it.toInt().coerceIn(1, 16)) } }
                 item { BrushSettingSlider("Stamp count jitter", draft.stampCountJitter, 0f..1f) { draft = draft.copy(stampCountJitter = it) } }
                 item { SettingSwitch(tr("Continuous spraying", "连续喷涂"), tr("Holding the stylus in one place keeps depositing the brush tip, matching CSP slow-stroke density behavior.", "笔尖停留时继续叠加笔刷印章，匹配 CSP 慢速笔画的浓淡行为。"), draft.continuousPlot) { draft = draft.copy(continuousPlot = it) } }
-                item { BrushSettingSlider(tr("Tip hue jitter", "笔尖色相抖动"), draft.colorJitterHueDegrees, -180f..180f) { draft = draft.copy(colorJitterHueDegrees = it) } }
-                if (draft.colorJitterHueDegrees != 0f) item { ColorDynamicsEditor(tr("Hue jitter", "色相抖动"), draft.colorJitterHueDynamics) { draft = draft.copy(colorJitterHueDynamics = it) } }
-                item { BrushSettingSlider(tr("Tip saturation jitter", "笔尖饱和度抖动"), draft.colorJitterSaturation, -100f..100f) { draft = draft.copy(colorJitterSaturation = it) } }
-                if (draft.colorJitterSaturation != 0f) item { ColorDynamicsEditor(tr("Saturation jitter", "饱和度抖动"), draft.colorJitterSaturationDynamics) { draft = draft.copy(colorJitterSaturationDynamics = it) } }
-                item { BrushSettingSlider(tr("Tip brightness jitter", "笔尖明度抖动"), draft.colorJitterValue, -100f..100f) { draft = draft.copy(colorJitterValue = it) } }
-                if (draft.colorJitterValue != 0f) item { ColorDynamicsEditor(tr("Brightness jitter", "明度抖动"), draft.colorJitterValueDynamics) { draft = draft.copy(colorJitterValueDynamics = it) } }
+                item { SettingSwitch(tr("Change brush tip color", "更改笔尖颜色"), tr("Applies CSP hue, saturation, brightness and sub-color dynamics to each plotted tip.", "对每个笔尖应用 CSP 的色相、饱和度、明度和副色动态。"), draft.colorJitterPerTipEnabled) { draft = draft.copy(colorJitterPerTipEnabled = it) } }
+                if (draft.colorJitterPerTipEnabled) {
+                    item { BrushSettingSlider(tr("Hue", "色相"), draft.colorJitterHueDegrees, -180f..180f) { draft = draft.copy(colorJitterHueDegrees = it) } }
+                    if (draft.colorJitterHueDegrees != 0f) item { ColorDynamicsEditor(tr("Hue dynamics", "色相动态"), draft.colorJitterHueDynamics) { draft = draft.copy(colorJitterHueDynamics = it) } }
+                    item { BrushSettingSlider(tr("Saturation", "饱和度"), draft.colorJitterSaturation, -100f..100f) { draft = draft.copy(colorJitterSaturation = it) } }
+                    if (draft.colorJitterSaturation != 0f) item { ColorDynamicsEditor(tr("Saturation dynamics", "饱和度动态"), draft.colorJitterSaturationDynamics) { draft = draft.copy(colorJitterSaturationDynamics = it) } }
+                    item { BrushSettingSlider(tr("Brightness", "明度"), draft.colorJitterValue, -100f..100f) { draft = draft.copy(colorJitterValue = it) } }
+                    if (draft.colorJitterValue != 0f) item { ColorDynamicsEditor(tr("Brightness dynamics", "明度动态"), draft.colorJitterValueDynamics) { draft = draft.copy(colorJitterValueDynamics = it) } }
+                    item { BrushSettingSlider(tr("Blend with sub color", "与副色混合"), draft.colorJitterSubColorMix, 0f..1f) { draft = draft.copy(colorJitterSubColorMix = it) } }
+                    if (draft.colorJitterSubColorMix > 0f) item { ParameterDynamicsEditor(tr("Sub-color blend dynamics", "副色混合动态"), tr("Blend with sub color", "与副色混合"), draft.colorJitterSubColorMixDynamics) { draft = draft.copy(colorJitterSubColorMixDynamics = it) } }
+                }
+                item { SettingSwitch(tr("Randomize per stroke", "按笔画随机变化"), tr("Chooses one deterministic color variation when the stylus goes down and holds it for the whole stroke.", "落笔时选择一次确定性的颜色变化，并在整笔中保持不变。"), draft.colorJitterPerStrokeEnabled) { draft = draft.copy(colorJitterPerStrokeEnabled = it) } }
+                if (draft.colorJitterPerStrokeEnabled) {
+                    item { BrushSettingSlider(tr("Stroke hue range", "笔画色相范围"), draft.colorJitterStrokeHueDegrees, 0f..180f) { draft = draft.copy(colorJitterStrokeHueDegrees = it) } }
+                    item { BrushSettingSlider(tr("Stroke saturation range", "笔画饱和度范围"), draft.colorJitterStrokeSaturation, 0f..100f) { draft = draft.copy(colorJitterStrokeSaturation = it) } }
+                    item { BrushSettingSlider(tr("Stroke brightness range", "笔画明度范围"), draft.colorJitterStrokeValue, 0f..100f) { draft = draft.copy(colorJitterStrokeValue = it) } }
+                    item { BrushSettingSlider(tr("Stroke sub-color range", "笔画副色混合范围"), draft.colorJitterStrokeSubColorMix, 0f..1f) { draft = draft.copy(colorJitterStrokeSubColorMix = it) } }
+                }
+                if (draft.colorJitterPerTipEnabled || draft.colorJitterPerStrokeEnabled) item { BrushColorChangeTargetEditor(draft.colorJitterTarget) { draft = draft.copy(colorJitterTarget = it) } }
                 item { ProcreateColorDynamicsEditor(draft.procreateColorDynamics) { draft = draft.copy(procreateColorDynamics = it) } }
                 if (draft.format == BrushFormat.PROCREATE || !draft.procreateWetMix.isDisabled()) {
                     item { Text(tr("Wet Mix", "湿混合"), style = MaterialTheme.typography.titleSmall) }
@@ -9364,6 +9385,24 @@ private fun BrushGapModeEditor(label: String, value: Int, onValue: (Int) -> Unit
             }
         }
         if (value != CspBrushGap.FIXED) Text(tr("Automatic gap ignores the saved Fixed percentage.", "自动间隔不会使用已保存的固定百分比。"), color = MutedInk, fontSize = 10.sp)
+    }
+}
+
+@Composable
+private fun BrushColorChangeTargetEditor(value: Int, onValue: (Int) -> Unit) {
+    val normalized = CspColorChangeTarget.normalize(value)
+    val targets = listOf(
+        CspColorChangeTarget.MAIN_AND_SUB to tr("Main and sub color", "主色和副色"),
+        CspColorChangeTarget.MAIN to tr("Main color", "主色"),
+        CspColorChangeTarget.SUB to tr("Sub color", "副色"),
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(tr("Change target", "更改目标"), color = MutedInk, fontSize = 11.sp)
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(targets, key = { it.first }) { (target, label) ->
+                FilterChip(selected = normalized == target, onClick = { onValue(target) }, label = { Text(label) })
+            }
+        }
     }
 }
 

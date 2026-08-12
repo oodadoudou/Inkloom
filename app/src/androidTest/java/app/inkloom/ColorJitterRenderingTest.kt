@@ -8,6 +8,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.document.BrushColorDynamics
+import app.inkloom.document.BrushParameterDynamics
 import app.inkloom.document.DocumentAssetService
 import app.inkloom.document.InkPage
 import app.inkloom.document.InkStroke
@@ -33,6 +34,7 @@ class ColorJitterRenderingTest {
                 renderSeed = 9127,
                 points = listOf(StrokePoint(.25f, .5f, timeMs = 10), StrokePoint(.5f, .5f, timeMs = 20), StrokePoint(.75f, .5f, timeMs = 30)),
                 colorArgb = 0xFF336699,
+                secondaryColorArgb = 0xFFCC5522,
                 width = 140f,
                 spacing = .3f,
                 sizePressureEnabled = false,
@@ -46,6 +48,13 @@ class ColorJitterRenderingTest {
                 colorJitterHueDynamics = BrushColorDynamics(randomEnabled = true, randomMinimum = -1f),
                 colorJitterSaturationDynamics = BrushColorDynamics(randomEnabled = true, randomMinimum = -1f),
                 colorJitterValueDynamics = BrushColorDynamics(randomEnabled = true, randomMinimum = -1f),
+                colorJitterSubColorMix = .35f,
+                colorJitterSubColorMixDynamics = BrushParameterDynamics(pressureEnabled = true, pressureMinimum = .2f),
+                colorJitterPerStrokeEnabled = true,
+                colorJitterStrokeHueDegrees = 50f,
+                colorJitterStrokeSaturation = 30f,
+                colorJitterStrokeValue = 20f,
+                colorJitterStrokeSubColorMix = .25f,
             )
             val exported = renderExport(jittered)
             val live = renderLive(jittered, exported.height)

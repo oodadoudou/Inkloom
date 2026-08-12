@@ -132,7 +132,15 @@ class InkloomBrushPackageTest {
                 colorJitterSaturation = 8f,
                 colorJitterValue = -5f,
                 colorJitterTarget = 1,
+                colorJitterPerTipEnabled = false,
                 colorJitterHueDynamics = app.inkloom.document.BrushColorDynamics(randomEnabled = true, randomMinimum = -1f),
+                colorJitterSubColorMix = .46f,
+                colorJitterSubColorMixDynamics = BrushParameterDynamics(pressureEnabled = true, pressureMinimum = .24f),
+                colorJitterPerStrokeEnabled = true,
+                colorJitterStrokeHueDegrees = 71f,
+                colorJitterStrokeSaturation = 32f,
+                colorJitterStrokeValue = 19f,
+                colorJitterStrokeSubColorMix = .57f,
                 procreateColorDynamics = app.inkloom.document.ProcreateColorDynamics(
                     stampHue = .11f, strokeSecondary = .22f, pressureHue = -.33f,
                     pressureHueCurve = listOf(BrushCurvePoint(0f, .1f), BrushCurvePoint(1f, .9f)),
@@ -266,7 +274,16 @@ class InkloomBrushPackageTest {
             assertEquals(8f, restored.colorJitterSaturation, .0001f)
             assertEquals(-5f, restored.colorJitterValue, .0001f)
             assertEquals(1, restored.colorJitterTarget)
+            assertFalse(restored.colorJitterPerTipEnabled)
             assertEquals(-1f, restored.colorJitterHueDynamics.randomMinimum, .0001f)
+            assertEquals(.46f, restored.colorJitterSubColorMix, .0001f)
+            assertTrue(restored.colorJitterSubColorMixDynamics.pressureEnabled)
+            assertEquals(.24f, restored.colorJitterSubColorMixDynamics.pressureMinimum, .0001f)
+            assertTrue(restored.colorJitterPerStrokeEnabled)
+            assertEquals(71f, restored.colorJitterStrokeHueDegrees, .0001f)
+            assertEquals(32f, restored.colorJitterStrokeSaturation, .0001f)
+            assertEquals(19f, restored.colorJitterStrokeValue, .0001f)
+            assertEquals(.57f, restored.colorJitterStrokeSubColorMix, .0001f)
             assertEquals(original.procreateColorDynamics, restored.procreateColorDynamics)
             assertEquals(original.procreateWetMix, restored.procreateWetMix)
             assertEquals(original.procreateTaper, restored.procreateTaper)

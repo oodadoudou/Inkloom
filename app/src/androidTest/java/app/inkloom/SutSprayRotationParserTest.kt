@@ -58,9 +58,9 @@ class SutSprayRotationParserTest {
                 )
             }
             parsed.forEach { brush ->
-                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 30, brush.parserVersion)
+                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 31, brush.parserVersion)
                 assertFalse(brush.report.any { it.startsWith("SUT parameter parsing failed") })
-                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v30-")) }
+                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v31-")) }
             }
             assertTrue("Expected multiple CSP AntiAlias modes in the supplied corpus", parsed.map(ImportedBrush::antiAliasMode).distinct().size >= 3)
             assertTrue(parsed.all { it.antiAliasMode in CspAntiAlias.NONE..CspAntiAlias.STRONG })
@@ -90,11 +90,13 @@ class SutSprayRotationParserTest {
             assertEquals(0f, paintingBrush?.colorJitterValue ?: -1f, .001f)
             assertTrue(paintingBrush?.colorJitterHueDynamics?.randomEnabled == true)
             assertEquals(-1f, paintingBrush?.colorJitterHueDynamics?.randomMinimum ?: 0f, .001f)
-            assertTrue(paintingBrush?.report?.any { it.contains("per-tip color jitter mapped") } == true)
+            assertFalse("CSP stores stale 7/6 values while Change brush tip color is disabled", paintingBrush?.colorJitterPerTipEnabled ?: true)
+            assertTrue(paintingBrush?.report?.any { it.contains("stale stored color values") } == true)
             assertTrue("Expected a supplied Compare-texture sample", parsed.any { it.grainCompositeMode == CspTextureComposite.COMPARE })
             assertTrue("Compare must not be reported as exact", parsed.any { brush -> brush.report.any { it.contains("Compare texture mode retained with conservative density comparison") } })
             val silkPen = parsed.firstOrNull { it.name.contains("丝丝笔") }
             assertTrue("Expected the supplied Darken-overlap pen", silkPen?.blendTipsWithDarken == true)
+            assertTrue("Expected the supplied pen to enable Change brush tip color", silkPen?.colorJitterPerTipEnabled == true)
             assertTrue(silkPen?.report?.any { it.contains("isolated Darken composition") } == true)
             val continuousBrushes = parsed.filter(ImportedBrush::continuousPlot)
             assertTrue("Expected supplied CSP Continuous spraying brushes", continuousBrushes.size >= 2)
@@ -184,7 +186,7 @@ class SutSprayRotationParserTest {
             assertEquals(.55f, brush.dualSprayDensityDynamics.secondary.velocityMinimum, .001f)
             assertTrue(brush.grainDensityDynamics.secondary.tiltEnabled)
             assertEquals(.65f, brush.grainDensityDynamics.secondary.tiltMinimum, .001f)
-            assertEquals(30, brush.parserVersion)
+            assertEquals(31, brush.parserVersion)
         } finally {
             root.deleteRecursively()
         }
@@ -215,7 +217,7 @@ class SutSprayRotationParserTest {
             assertTrue(brush.watercolor)
             assertEquals(.72f, brush.colorMix, .001f)
             assertEquals(.43f, brush.paintMix, .001f)
-            assertEquals(30, brush.parserVersion)
+            assertEquals(31, brush.parserVersion)
             assertTrue(brush.report.any { it.contains("legacy BrushWaterColor") })
         } finally {
             root.deleteRecursively()
@@ -284,7 +286,15 @@ class SutSprayRotationParserTest {
                 colorJitterHueDegrees = 14f,
                 colorJitterSaturation = 9f,
                 colorJitterTarget = 1,
+                colorJitterPerTipEnabled = false,
                 colorJitterHueDynamics = app.inkloom.document.BrushColorDynamics(velocityEnabled = true, velocityScale = 3f, randomEnabled = true, randomMinimum = -1f),
+                colorJitterSubColorMix = .42f,
+                colorJitterSubColorMixDynamics = app.inkloom.document.BrushParameterDynamics(pressureEnabled = true, pressureMinimum = .19f),
+                colorJitterPerStrokeEnabled = true,
+                colorJitterStrokeHueDegrees = 61f,
+                colorJitterStrokeSaturation = 37f,
+                colorJitterStrokeValue = 23f,
+                colorJitterStrokeSubColorMix = .58f,
                 procreateColorDynamics = app.inkloom.document.ProcreateColorDynamics(stampHue = .13f, strokeSecondary = .24f, pressureBrightness = -.35f, pressureSecondaryCurve = listOf(app.inkloom.document.BrushCurvePoint(0f, .2f), app.inkloom.document.BrushCurvePoint(1f, .8f)), tiltSecondary = .46f, tiltStart = .27f),
                 procreateWetMix = app.inkloom.document.ProcreateWetMix(dilution = .12f, charge = .23f, attack = .34f, pull = .45f, grade = -.56f, blur = .67f, blurJitter = .78f, wetnessJitter = .89f, legacyMixSoftening = .31f),
                 procreateTaper = app.inkloom.document.ProcreateTaper(
@@ -394,9 +404,18 @@ class SutSprayRotationParserTest {
             assertEquals(14f, restored.colorJitterHueDegrees, .0001f)
             assertEquals(9f, restored.colorJitterSaturation, .0001f)
             assertEquals(1, restored.colorJitterTarget)
+            assertFalse(restored.colorJitterPerTipEnabled)
             assertTrue(restored.colorJitterHueDynamics.randomEnabled)
             assertEquals(3f, restored.colorJitterHueDynamics.velocityScale, .0001f)
             assertEquals(-1f, restored.colorJitterHueDynamics.randomMinimum, .0001f)
+            assertEquals(.42f, restored.colorJitterSubColorMix, .0001f)
+            assertTrue(restored.colorJitterSubColorMixDynamics.pressureEnabled)
+            assertEquals(.19f, restored.colorJitterSubColorMixDynamics.pressureMinimum, .0001f)
+            assertTrue(restored.colorJitterPerStrokeEnabled)
+            assertEquals(61f, restored.colorJitterStrokeHueDegrees, .0001f)
+            assertEquals(37f, restored.colorJitterStrokeSaturation, .0001f)
+            assertEquals(23f, restored.colorJitterStrokeValue, .0001f)
+            assertEquals(.58f, restored.colorJitterStrokeSubColorMix, .0001f)
             assertEquals(original.procreateColorDynamics, restored.procreateColorDynamics)
             assertEquals(7.5f, restored.blur, .0001f)
             assertEquals(2, restored.blurUnit)
