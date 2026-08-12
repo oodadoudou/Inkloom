@@ -292,6 +292,8 @@ class SutSprayRotationParserTest {
                 grainCompositeMode = CspTextureComposite.HEIGHT,
                 grainFilteringMode = app.inkloom.document.ProcreateFiltering.IMPROVED,
                 procreateRenderingMode = app.inkloom.document.ProcreateRenderingMode.HEAVY_GLAZE,
+                alphaThresholdEnabled = true,
+                alphaThreshold = .37f,
                 grainStrokeRotation = -.73f,
                 grainDensityMinimum = .23f,
                 grainDensityDynamics = app.inkloom.document.BrushParameterDynamics(pressureEnabled = true, pressureMinimum = .57f),
@@ -380,6 +382,8 @@ class SutSprayRotationParserTest {
             assertEquals(CspTextureComposite.HEIGHT, restored.grainCompositeMode)
             assertEquals(app.inkloom.document.ProcreateFiltering.IMPROVED, restored.grainFilteringMode)
             assertEquals(app.inkloom.document.ProcreateRenderingMode.HEAVY_GLAZE, restored.procreateRenderingMode)
+            assertTrue(restored.alphaThresholdEnabled)
+            assertEquals(.37f, restored.alphaThreshold, .0001f)
             assertEquals(-.73f, restored.grainStrokeRotation, .0001f)
             assertEquals(.23f, restored.grainDensityMinimum, .0001f)
             assertTrue(restored.grainDensityDynamics.pressureEnabled)

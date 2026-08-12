@@ -33,6 +33,8 @@ object BrushTipTextureDecoder {
         grainCompositeMode: Int = CspTextureComposite.MULTIPLY,
         grainFilteringMode: Int = ProcreateFiltering.NONE,
         antiAliasMode: Int = CspAntiAlias.MEDIUM,
+        alphaThresholdEnabled: Boolean = false,
+        alphaThreshold: Float = 0f,
     ): Bitmap? = runCatching {
         val source = decodeSampled(tipPath, MAX_RENDER_TEXTURE_DIMENSION) ?: return null
         val grain = grainPath?.takeIf { grainDensity > 0f }?.let {
@@ -87,7 +89,10 @@ object BrushTipTextureDecoder {
                     1f
                 }
                 val composedDensity = CspTextureComposite.density(shaped, grainMask, grainDensity, grainCompositeMode)
-                val alpha = ((composedDensity * 255).toInt() * Color.alpha(pixel) / 255).coerceIn(0, 255)
+                val sourceAlpha = ((composedDensity * 255).toInt() * Color.alpha(pixel) / 255).coerceIn(0, 255)
+                val alpha = if (alphaThresholdEnabled) {
+                    if (sourceAlpha > alphaThreshold.coerceIn(0f, 1f) * 255f) 255 else 0
+                } else sourceAlpha
                 pixels[index] = Color.argb(alpha, 255, 255, 255)
             }
             Bitmap.createBitmap(pixels, source.width, source.height, Bitmap.Config.ARGB_8888)

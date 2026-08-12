@@ -328,6 +328,8 @@ data class InkStroke(
     val grainCompositeMode: Int = CspTextureComposite.MULTIPLY,
     val grainFilteringMode: Int = ProcreateFiltering.NONE,
     val procreateRenderingMode: ProcreateRenderingMode = ProcreateRenderingMode.UNIFORM_GLAZE,
+    val alphaThresholdEnabled: Boolean = false,
+    val alphaThreshold: Float = 0f,
     val spacing: Float = .12f,
     val strokeFalloff: Float = 0f,
     val strokePathJitter: Float = 0f,

@@ -860,11 +860,11 @@ class DocumentAssetService(private val context: Context) {
             paint.color = stroke.colorArgb.toInt()
             val tipPaths = stroke.tipAssetPaths.ifEmpty { listOfNotNull(stroke.tipAssetPath) }
             val grainOffset = GrainBehavior.offset(stroke.renderSeed, stroke.grainOffsetJitter)
-            val decodedTips = tipPaths.mapNotNull { decodeTip(it, stroke.hardness, stroke.grainAssetPath, stroke.grainDensity, stroke.grainScale, stroke.grainRotationDegrees, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized, grainOffset.x, grainOffset.y, stroke.grainCompositeMode, stroke.grainFilteringMode, stroke.antiAliasMode) }
+            val decodedTips = tipPaths.mapNotNull { decodeTip(it, stroke.hardness, stroke.grainAssetPath, stroke.grainDensity, stroke.grainScale, stroke.grainRotationDegrees, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized, grainOffset.x, grainOffset.y, stroke.grainCompositeMode, stroke.grainFilteringMode, stroke.antiAliasMode, stroke.alphaThresholdEnabled, stroke.alphaThreshold) }
             val tips = decodedTips.ifEmpty { listOfNotNull(ProceduralBrushTip.create(stroke)) }
             if (tips.isNotEmpty()) {
-                val decodedDualTips = if (stroke.dualBrush) stroke.dualTipAssetPaths.mapNotNull { decodeTip(it, stroke.dualHardness, null, 0f, antiAliasMode = stroke.dualAntiAliasMode) } else emptyList()
-                val fallbackDualTips = if (stroke.dualBrush && decodedDualTips.isEmpty()) tipPaths.mapNotNull { decodeTip(it, stroke.dualHardness, null, 0f, antiAliasMode = stroke.dualAntiAliasMode) } else emptyList()
+                val decodedDualTips = if (stroke.dualBrush) stroke.dualTipAssetPaths.mapNotNull { decodeTip(it, stroke.dualHardness, null, 0f, antiAliasMode = stroke.dualAntiAliasMode, alphaThresholdEnabled = stroke.alphaThresholdEnabled, alphaThreshold = stroke.alphaThreshold) } else emptyList()
+                val fallbackDualTips = if (stroke.dualBrush && decodedDualTips.isEmpty()) tipPaths.mapNotNull { decodeTip(it, stroke.dualHardness, null, 0f, antiAliasMode = stroke.dualAntiAliasMode, alphaThresholdEnabled = stroke.alphaThresholdEnabled, alphaThreshold = stroke.alphaThreshold) } else emptyList()
                 val dualTips = decodedDualTips.ifEmpty { fallbackDualTips }
                 drawStampStroke(canvas, stroke, tips, dualTips, tipPaths, grainOffset.x, grainOffset.y, width, height, paint)
                 decodedDualTips.forEach(Bitmap::recycle)
@@ -950,7 +950,7 @@ class DocumentAssetService(private val context: Context) {
                 val cacheKey = "$tipIndex:$densityBucket:${sampleScale.toInt()}:${grainRotation.toInt()}:${sampleOffsetX.toBits()}:${sampleOffsetY.toBits()}"
                 dynamicGrainTips[cacheKey] ?: if (dynamicGrainTips.size < MAX_DYNAMIC_GRAIN_VARIANTS_PER_STROKE) {
                     tipPaths.getOrNull(tipIndex)?.let { path ->
-                        decodeTip(path, stroke.hardness, stroke.grainAssetPath, densityBucket / 20f, sampleScale, grainRotation, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized, sampleOffsetX, sampleOffsetY, stroke.grainCompositeMode, stroke.grainFilteringMode, stroke.antiAliasMode)
+                        decodeTip(path, stroke.hardness, stroke.grainAssetPath, densityBucket / 20f, sampleScale, grainRotation, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized, sampleOffsetX, sampleOffsetY, stroke.grainCompositeMode, stroke.grainFilteringMode, stroke.antiAliasMode, stroke.alphaThresholdEnabled, stroke.alphaThreshold)
                     }?.also { dynamicGrainTips[cacheKey] = it } ?: tips[tipIndex]
                 } else tips[tipIndex]
             } else tips[tipIndex]
@@ -1093,8 +1093,8 @@ class DocumentAssetService(private val context: Context) {
         paint.maskFilter = BrushBlur.quantizedRadius(blur).takeIf { it > 0f }?.let { BlurMaskFilter(it, BlurMaskFilter.Blur.NORMAL) }
     }
 
-    private fun decodeTip(path: String, hardness: Float, grainPath: String?, grainDensity: Float, grainScale: Float = 100f, grainRotation: Float = 0f, grainBrightness: Float = 0f, grainContrast: Float = 0f, grainReversed: Boolean = false, grainEmphasized: Boolean = false, grainOffsetX: Float = 0f, grainOffsetY: Float = 0f, grainCompositeMode: Int = CspTextureComposite.MULTIPLY, grainFilteringMode: Int = ProcreateFiltering.NONE, antiAliasMode: Int = CspAntiAlias.MEDIUM): Bitmap? =
-        BrushTipTextureDecoder.decode(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainOffsetX, grainOffsetY, grainCompositeMode, grainFilteringMode, antiAliasMode)
+    private fun decodeTip(path: String, hardness: Float, grainPath: String?, grainDensity: Float, grainScale: Float = 100f, grainRotation: Float = 0f, grainBrightness: Float = 0f, grainContrast: Float = 0f, grainReversed: Boolean = false, grainEmphasized: Boolean = false, grainOffsetX: Float = 0f, grainOffsetY: Float = 0f, grainCompositeMode: Int = CspTextureComposite.MULTIPLY, grainFilteringMode: Int = ProcreateFiltering.NONE, antiAliasMode: Int = CspAntiAlias.MEDIUM, alphaThresholdEnabled: Boolean = false, alphaThreshold: Float = 0f): Bitmap? =
+        BrushTipTextureDecoder.decode(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainOffsetX, grainOffsetY, grainCompositeMode, grainFilteringMode, antiAliasMode, alphaThresholdEnabled, alphaThreshold)
 
     private fun rotateQuarterTurns(source: Bitmap?, quarterTurns: Int): Bitmap? {
         source ?: return null

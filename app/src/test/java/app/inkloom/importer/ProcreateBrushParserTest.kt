@@ -72,7 +72,25 @@ class ProcreateBrushParserTest {
             assertEquals(CspAntiAlias.MEDIUM, brush.antiAliasMode)
             assertEquals(ProcreateFiltering.CLASSIC, brush.grainFilteringMode)
             assertEquals(ProcreateRenderingMode.INTENSE_GLAZE, brush.procreateRenderingMode)
+            assertFalse(brush.alphaThresholdEnabled)
+            assertEquals(0f, brush.alphaThreshold, .0001f)
             assertEquals(ProcreateBrushParser.CURRENT_VERSION, brush.parserVersion)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun alphaThresholdSwitchAndCutoffAreReadFromTheArchive() {
+        val root = temporaryDirectory("alpha-threshold")
+        try {
+            val source = File(root, "threshold.brush")
+            writeBrush(source, THRESHOLD_ARCHIVE)
+
+            val brush = ProcreateBrushParser(File(root, "assets")).enrich(source, "threshold-fixture", fallback(source)).single()
+
+            assertTrue(brush.alphaThresholdEnabled)
+            assertEquals(.42f, brush.alphaThreshold, .0001f)
+            assertTrue(brush.report.any { it.contains("Alpha Threshold") })
         } finally {
             root.deleteRecursively()
         }
@@ -180,6 +198,7 @@ class ProcreateBrushParserTest {
             assertTrue(brushes.all { it.grainFilteringMode in ProcreateFiltering.NONE..ProcreateFiltering.IMPROVED })
             assertTrue(brushes.map(ImportedBrush::grainFilteringMode).distinct().size >= 2)
             assertEquals(3, brushes.map(ImportedBrush::procreateRenderingMode).distinct().size)
+            assertTrue(brushes.all { it.alphaThreshold in 0f..1f })
             assertTrue(brushes.any { it.procreateRenderingMode == ProcreateRenderingMode.INTENSE_GLAZE })
             assertTrue(brushes.any { it.procreateRenderingMode == ProcreateRenderingMode.UNIFORM_BLENDING })
             assertTrue(brushes.any { it.procreateRenderingMode == ProcreateRenderingMode.INTENSE_BLENDING })
@@ -197,9 +216,9 @@ class ProcreateBrushParserTest {
         report = emptyList(),
     )
 
-    private fun writeBrush(target: File) {
+    private fun writeBrush(target: File, archive: String = SYNTHETIC_ARCHIVE) {
         ZipOutputStream(target.outputStream()).use { zip ->
-            zip.putNextEntry(ZipEntry("Brush.archive")); zip.write(Base64.getDecoder().decode(SYNTHETIC_ARCHIVE)); zip.closeEntry()
+            zip.putNextEntry(ZipEntry("Brush.archive")); zip.write(Base64.getDecoder().decode(archive)); zip.closeEntry()
             zip.putNextEntry(ZipEntry("Shape.png")); zip.write(SYNTHETIC_PNG); zip.closeEntry()
             zip.putNextEntry(ZipEntry("Grain.png")); zip.write(SYNTHETIC_PNG); zip.closeEntry()
         }
@@ -210,6 +229,7 @@ class ProcreateBrushParserTest {
 
     private companion object {
         val SYNTHETIC_PNG = Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+X7o9WQAAAABJRU5ErkJggg==")
+        const val THRESHOLD_ARCHIVE = "YnBsaXN0MDDUAQIDBAUGBwpYJHZlcnNpb25ZJGFyY2hpdmVyVCR0b3BYJG9iamVjdHMSAAGGoF8QD05TS2V5ZWRBcmNoaXZlctEICVRyb290gAGiCwxVJG51bGzUDQ4PEBESExRUbmFtZVd2ZXJzaW9uXmFscGhhVGhyZXNob2xkXxAUYWxwaGFUaHJlc2hvbGRBbW91bnRfEBFUaHJlc2hvbGQgZml4dHVyZRAECSM/2uFHrhR64QgRGiQpMjdJTFFTVlxlanKBmKyurwAAAAAAAAEBAAAAAAAAABUAAAAAAAAAAAAAAAAAAAC4"
         val SYNTHETIC_ARCHIVE =
             "YnBsaXN0MDDUAQIDBAUGBwpYJHZlcnNpb25ZJGFyY2hpdmVyVCR0b3BYJG9iamVjdHMSAAGGoF8QD05TS2V5ZWRBcmNoaXZlctEI" +
             "CVRyb290gAGtCwxOT1JVWFlaXF5hYlUkbnVsbN8QKg0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4" +

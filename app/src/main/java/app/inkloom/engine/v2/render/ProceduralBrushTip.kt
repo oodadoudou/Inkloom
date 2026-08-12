@@ -50,6 +50,15 @@ internal object ProceduralBrushTip {
             }
             else -> canvas.drawCircle(SIZE / 2f, SIZE / 2f, SIZE * .42f, paint)
         }
+        if (stroke.alphaThresholdEnabled) {
+            val pixels = IntArray(SIZE * SIZE)
+            bitmap.getPixels(pixels, 0, SIZE, 0, 0, SIZE, SIZE)
+            val cutoff = stroke.alphaThreshold.coerceIn(0f, 1f) * 255f
+            for (index in pixels.indices) {
+                pixels[index] = if (Color.alpha(pixels[index]) > cutoff) Color.WHITE else Color.TRANSPARENT
+            }
+            bitmap.setPixels(pixels, 0, SIZE, 0, 0, SIZE, SIZE)
+        }
         return bitmap
     }
 

@@ -4910,6 +4910,8 @@ internal fun InkCanvasView.applyBrushConfiguration(
     grainCompositeMode = activeBrush?.grainCompositeMode ?: CspTextureComposite.MULTIPLY
     grainFilteringMode = activeBrush?.grainFilteringMode ?: ProcreateFiltering.NONE
     procreateRenderingMode = activeBrush?.procreateRenderingMode ?: ProcreateRenderingMode.UNIFORM_GLAZE
+    alphaThresholdEnabled = activeBrush?.alphaThresholdEnabled ?: false
+    alphaThreshold = activeBrush?.alphaThreshold ?: 0f
     brushSpacing = activeBrush?.spacing ?: .12f
     strokeFalloff = activeBrush?.strokeFalloff ?: 0f
     strokePathJitter = activeBrush?.strokePathJitter ?: 0f
@@ -9013,6 +9015,8 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 if (draft.grainPreviewPath != null) item { BrushTextureCompositeEditor(draft.grainCompositeMode) { draft = draft.copy(grainCompositeMode = it) } }
                 if (draft.grainPreviewPath != null) item { ProcreateFilteringEditor(tr("Grain filtering", "颗粒过滤"), draft.grainFilteringMode) { draft = draft.copy(grainFilteringMode = it) } }
                 item { ProcreateRenderingModeEditor(draft.procreateRenderingMode) { draft = draft.copy(procreateRenderingMode = it) } }
+                item { SettingSwitch(tr("Alpha threshold", "透明度阈值"), tr("Converts the final tip coverage to fully opaque or fully transparent pixels.", "将最终笔尖覆盖转换为完全不透明或完全透明像素。"), draft.alphaThresholdEnabled) { draft = draft.copy(alphaThresholdEnabled = it) } }
+                if (draft.alphaThresholdEnabled) item { BrushSettingSlider(tr("Alpha cutoff", "透明度截止值"), draft.alphaThreshold, 0f..1f) { draft = draft.copy(alphaThreshold = it) } }
                 item { BrushSettingSlider("Thickness", draft.thickness, .05f..2f) { draft = draft.copy(thickness = it) } }
                 item { SettingSwitch("Vertical thickness", "Applies thickness along the imported tip's vertical axis.", draft.thicknessVertical) { draft = draft.copy(thicknessVertical = it) } }
                 item { BrushSettingSlider(tr("Horizontal roundness jitter", "水平真圆率抖动"), draft.shapeRoundnessHorizontalJitter, 0f..1f) { draft = draft.copy(shapeRoundnessHorizontalJitter = it) } }

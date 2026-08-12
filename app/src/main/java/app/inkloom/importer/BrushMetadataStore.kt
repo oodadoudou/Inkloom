@@ -172,6 +172,8 @@ class BrushMetadataStore(
                         procreateRenderingMode = runCatching {
                             ProcreateRenderingMode.valueOf(item.optString("procreateRenderingMode", ProcreateRenderingMode.UNIFORM_GLAZE.name))
                         }.getOrDefault(ProcreateRenderingMode.UNIFORM_GLAZE),
+                        alphaThresholdEnabled = item.optBoolean("alphaThresholdEnabled", false),
+                        alphaThreshold = item.optDouble("alphaThreshold", 0.0).toFloat().coerceIn(0f, 1f),
                         defaultSize = item.optDouble("defaultSize", 8.0).toFloat(),
                         streamLine = item.optDouble("streamLine", 0.0).toFloat().coerceIn(0f, 1f),
                         streamLinePressure = item.optDouble("streamLinePressure", 0.0).toFloat().coerceIn(0f, 1f),
@@ -387,6 +389,8 @@ class BrushMetadataStore(
                     .put("grainCompositeMode", brush.grainCompositeMode)
                     .put("grainFilteringMode", brush.grainFilteringMode)
                     .put("procreateRenderingMode", brush.procreateRenderingMode.name)
+                    .put("alphaThresholdEnabled", brush.alphaThresholdEnabled)
+                    .put("alphaThreshold", brush.alphaThreshold)
                     .put("defaultSize", brush.defaultSize)
                     .put("streamLine", brush.streamLine)
                     .put("streamLinePressure", brush.streamLinePressure)

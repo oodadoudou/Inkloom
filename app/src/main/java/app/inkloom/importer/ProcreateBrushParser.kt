@@ -143,6 +143,8 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             modulatedTransfer = metadata.boolean("renderingModulatedTransfer"),
             recursiveMixing = metadata.boolean("renderingRecursiveMixing"),
         )
+        val alphaThresholdEnabled = metadata.boolean("alphaThreshold")
+        val alphaThreshold = metadata.float("alphaThresholdAmount").coerceIn(0f, 1f)
         val genericTaperStartLength = metadata.float("taperStartLength").coerceIn(0f, 1f)
         val genericTaperEndLength = metadata.float("taperEndLength").coerceIn(0f, 1f)
         val genericTaperSize = metadata.float("taperSize").coerceIn(0f, 1f)
@@ -180,6 +182,8 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             grainOffsetJitter = metadata.boolean("textureOffsetJitter"),
             grainFilteringMode = grainFiltering,
             procreateRenderingMode = renderingMode,
+            alphaThresholdEnabled = alphaThresholdEnabled,
+            alphaThreshold = alphaThreshold,
             defaultSize = (metadata.float("paintSize", .25f).coerceAtLeast(.01f) * metadata.float("maxSize", .32f).coerceAtLeast(.01f) * 100f).coerceIn(.5f, 400f),
             streamLine = streamLine,
             streamLinePressure = streamLinePressure,
@@ -299,6 +303,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
                 if (metadata.boolean("textureOffsetJitter")) add("Procreate Grain Offset Jitter mapped to a deterministic texture origin for each stroke")
                 add("Procreate Shape and Grain filtering preserved independently (${shapeFiltering}, ${grainFiltering})")
                 add("Procreate Rendering Mode preserved as $renderingMode from its max-transfer, modulated-transfer and recursive-mixing program")
+                if (alphaThresholdEnabled) add("Procreate Alpha Threshold preserved at ${(alphaThreshold * 100f).toInt()}% as a binary stamp-coverage cutoff")
                 if (dualMetadata != null) add(if (dualShape != null) "Procreate Sub01 Dual Brush extracted with independent shape and core dynamics; combine mode ${metadata.int("dualBlendMode")} retained" else "Procreate Sub01 metadata found, but its shape source was missing")
                 if (watercolor) add("Procreate Wet Mix/rendering parameters detected; Inkloom maps load, mix, accumulation and edge behavior to its deterministic wet-brush approximation")
                 if (metadata.int("blendMode") !in 0..1) add("Procreate blend mode ${metadata.int("blendMode")} is retained in the source but rendered source-over until independently verified")
@@ -522,7 +527,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
     )
 
     companion object {
-        const val CURRENT_VERSION = 21
+        const val CURRENT_VERSION = 22
         private const val MAX_ENTRIES = 4_096
         private const val MAX_ENTRY_BYTES = 32L * 1024L * 1024L
         private const val MAX_EXPANDED_BYTES = 384L * 1024L * 1024L

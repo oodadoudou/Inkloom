@@ -70,6 +70,8 @@ data class ImportedBrush(
     val grainCompositeMode: Int = CspTextureComposite.MULTIPLY,
     val grainFilteringMode: Int = ProcreateFiltering.NONE,
     val procreateRenderingMode: ProcreateRenderingMode = ProcreateRenderingMode.UNIFORM_GLAZE,
+    val alphaThresholdEnabled: Boolean = false,
+    val alphaThreshold: Float = 0f,
     val defaultSize: Float = 8f,
     /** Procreate StreamLine > Amount. Independent from CSP stabilization. */
     val streamLine: Float = 0f,
