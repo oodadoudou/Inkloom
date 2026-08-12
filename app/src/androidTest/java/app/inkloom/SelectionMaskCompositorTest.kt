@@ -87,6 +87,22 @@ class SelectionMaskCompositorTest {
         }
     }
 
+    @Test fun boundaryMaskIsAClosedTwoSidedRingWithTransparentInterior() {
+        val selection = rectangle(.2f, .2f, .8f, .8f)
+        val boundary = SelectionMaskCompositor.boundaryMask(selection)
+        try {
+            assertSelected(boundary, .2f, .5f)
+            assertSelected(boundary, .8f, .5f)
+            assertSelected(boundary, .5f, .2f)
+            assertSelected(boundary, .5f, .8f)
+            assertNotSelected(boundary, .5f, .5f)
+            assertNotSelected(boundary, .05f, .05f)
+        } finally {
+            selection.recycle()
+            boundary?.recycle()
+        }
+    }
+
     private fun rectangle(left: Float, top: Float, right: Float, bottom: Float): Bitmap =
         requireNotNull(SelectionMaskCompositor.polygon(
             listOf(StrokePoint(left, top), StrokePoint(right, top), StrokePoint(right, bottom), StrokePoint(left, bottom)),

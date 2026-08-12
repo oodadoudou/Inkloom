@@ -216,24 +216,43 @@ object SelectionMaskCompositor {
         }
     }
 
-    fun boundaryPoints(source: Bitmap?, maximumPoints: Int = 12_000): FloatArray {
-        if (source == null || source.isRecycled || maximumPoints <= 0) return FloatArray(0)
+    /** Builds a cached two-sided alpha ring for CSP-style marching-ants feedback. The ring is
+     * derived from the authoritative mask once per geometry change, never once per animation
+     * frame. */
+    fun boundaryMask(source: Bitmap?): Bitmap? {
+        if (source == null || source.isRecycled) return null
         val width = source.width
         val height = source.height
         val pixels = IntArray(width * height)
         source.getPixels(pixels, 0, width, 0, 0, width, height)
-        val step = ceil(sqrt(width.toDouble() * height / maximumPoints)).toInt().coerceAtLeast(1)
-        val points = ArrayList<Float>(maximumPoints * 2)
         fun selected(x: Int, y: Int): Boolean = x in 0 until width && y in 0 until height && Color.alpha(pixels[y * width + x]) >= 128
-        for (y in 0 until height step step) for (x in 0 until width step step) {
-            if (!selected(x, y)) continue
-            if (!selected(x - 1, y) || !selected(x + 1, y) || !selected(x, y - 1) || !selected(x, y + 1)) {
-                points += (x + .5f) / width
-                points += (y + .5f) / height
-                if (points.size >= maximumPoints * 2) return points.toFloatArray()
+        val edge = BitSet(width * height)
+        for (y in 0 until height) for (x in 0 until width) {
+            val inside = selected(x, y)
+            if (
+                selected(x - 1, y) != inside || selected(x + 1, y) != inside ||
+                selected(x, y - 1) != inside || selected(x, y + 1) != inside
+            ) {
+                edge.set(y * width + x)
             }
         }
-        return points.toFloatArray()
+        if (edge.isEmpty) return null
+        val output = IntArray(width * height)
+        // One-pixel dilation gives a stable 2–3 screen-pixel outline after typical page fitting.
+        var index = edge.nextSetBit(0)
+        while (index >= 0) {
+            val x = index % width
+            val y = index / width
+            for (dy in -1..1) for (dx in -1..1) {
+                val targetX = x + dx
+                val targetY = y + dy
+                if (targetX in 0 until width && targetY in 0 until height) output[targetY * width + targetX] = Color.WHITE
+            }
+            index = edge.nextSetBit(index + 1)
+        }
+        return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also {
+            it.setPixels(output, 0, width, 0, 0, width, height)
+        }
     }
 
     fun isEmpty(source: Bitmap?): Boolean {

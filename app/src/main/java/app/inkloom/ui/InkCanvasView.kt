@@ -5,16 +5,19 @@ import android.content.ClipData
 import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.graphics.Bitmap
+import android.graphics.BitmapShader
 import android.graphics.BlendMode
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Matrix
 import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.graphics.PorterDuffXfermode
+import android.graphics.Shader
 import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.DragEvent
@@ -236,7 +239,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var selectedMaskRegions: List<List<StrokePoint>> = emptyList()
     private var selectionAlphaBitmap: Bitmap? = null
     private var selectionDisplayBitmap: Bitmap? = null
-    private var selectionBoundaryPoints = FloatArray(0)
+    private var selectionBoundaryBitmap: Bitmap? = null
     private var lastDeselectedStrokeIds: Set<String> = emptySet()
     private var lastDeselectedMaskRegions: List<List<StrokePoint>> = emptyList()
     private var lastDeselectedAlphaBitmap: Bitmap? = null
@@ -364,6 +367,40 @@ class InkCanvasView(context: Context) : View(context) {
     private var selectionTransformStartYSpan = 0f
     private val selectionHandlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; color = Color.WHITE }
     private val selectionHandleStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 2f; color = Color.rgb(24, 119, 242) }
+    private val selectionAntPattern = Bitmap.createBitmap(
+        16,
+        16,
+        Bitmap.Config.ARGB_8888,
+    ).apply {
+        val pixels = IntArray(width * height) { index ->
+            val x = index % width
+            val y = index / width
+            if (((x + y) / 4) % 2 == 0) Color.WHITE else Color.TRANSPARENT
+        }
+        setPixels(pixels, 0, width, 0, 0, width, height)
+    }
+    private val selectionAntShader = BitmapShader(selectionAntPattern, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
+    private val selectionAntMatrix = Matrix()
+    private val selectionBoundaryRect = android.graphics.RectF()
+    private val selectionBlackFilter = PorterDuffColorFilter(Color.BLACK, PorterDuff.Mode.SRC_IN)
+    private val selectionBoundaryPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+        style = Paint.Style.FILL
+        colorFilter = selectionBlackFilter
+    }
+    private val selectionMaskPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+        style = Paint.Style.FILL
+    }
+    private val selectionAntPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        shader = selectionAntShader
+        blendMode = BlendMode.SRC_IN
+    }
+    private val liveSelectionOutlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
+    private val liveSelectionOriginPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private var lastX = 0f
     private var lastY = 0f
     private var navigationX = 0f
@@ -1165,26 +1202,26 @@ class InkCanvasView(context: Context) : View(context) {
             lassoPath.reset()
             lassoPath.moveTo(selectionPreview.first().x * width, selectionPreview.first().y * height)
             for (index in 1 until selectionPreview.size) lassoPath.lineTo(selectionPreview[index].x * width, selectionPreview[index].y * height)
-            if (selectionShape != SelectionShape.FREEFORM) lassoPath.close()
-            paint.style = Paint.Style.STROKE; paint.color = Color.rgb(98, 98, 98); paint.alpha = 220; paint.strokeWidth = 2f
-            canvas.drawPath(lassoPath, paint)
+            if (selectionShape != SelectionShape.FREEFORM || selectionPreview.size >= 3) lassoPath.close()
+            liveSelectionOutlinePaint.pathEffect = null
+            liveSelectionOutlinePaint.color = Color.BLACK
+            liveSelectionOutlinePaint.alpha = 255
+            liveSelectionOutlinePaint.strokeWidth = 5f
+            canvas.drawPath(lassoPath, liveSelectionOutlinePaint)
+            liveSelectionOutlinePaint.color = Color.WHITE
+            liveSelectionOutlinePaint.strokeWidth = 2.5f
+            liveSelectionOutlinePaint.pathEffect = DashPathEffect(floatArrayOf(9f, 7f), selectionAntPhase())
+            canvas.drawPath(lassoPath, liveSelectionOutlinePaint)
+            liveSelectionOutlinePaint.pathEffect = null
+            val originX = selectionPreview.first().x * width
+            val originY = selectionPreview.first().y * height
+            liveSelectionOriginPaint.color = Color.BLACK
+            canvas.drawCircle(originX, originY, 8f, liveSelectionOriginPaint)
+            liveSelectionOriginPaint.color = Color.WHITE
+            canvas.drawCircle(originX, originY, 4f, liveSelectionOriginPaint)
+            postInvalidateDelayed(SELECTION_ANTS_FRAME_MS)
         }
-        if (selectionBoundaryPoints.isNotEmpty()) {
-            val displayPoints = FloatArray(selectionBoundaryPoints.size)
-            var index = 0
-            while (index < selectionBoundaryPoints.size) {
-                displayPoints[index] = selectionBoundaryPoints[index] * width
-                displayPoints[index + 1] = selectionBoundaryPoints[index + 1] * height
-                index += 2
-            }
-            paint.style = Paint.Style.STROKE
-            paint.color = Color.rgb(24, 119, 242)
-            paint.alpha = 210
-            paint.strokeWidth = 2f
-            paint.strokeCap = Paint.Cap.ROUND
-            canvas.drawPoints(displayPoints, paint)
-            paint.strokeCap = Paint.Cap.BUTT
-        }
+        drawCommittedSelectionBoundary(canvas)
         drawSelectionHandles(canvas)
         drawSymmetryGuides(canvas)
         drawShapePreview(canvas)
@@ -1198,6 +1235,24 @@ class InkCanvasView(context: Context) : View(context) {
         drawGradientHandles(canvas)
         drawBrushSizePreview(canvas)
         drawStylusHoverCursor(canvas)
+    }
+
+    private fun selectionAntPhase(): Float =
+        ((SystemClock.uptimeMillis() / SELECTION_ANTS_FRAME_MS) % selectionAntPattern.width).toFloat()
+
+    private fun drawCommittedSelectionBoundary(canvas: Canvas) {
+        val boundary = selectionBoundaryBitmap?.takeUnless(Bitmap::isRecycled) ?: return
+        selectionBoundaryRect.set(0f, 0f, width.toFloat(), height.toFloat())
+        canvas.drawBitmap(boundary, null, selectionBoundaryRect, selectionBoundaryPaint)
+
+        val checkpoint = canvas.saveLayer(selectionBoundaryRect, null)
+        canvas.drawBitmap(boundary, null, selectionBoundaryRect, selectionMaskPaint)
+        selectionAntMatrix.reset()
+        selectionAntMatrix.setTranslate(selectionAntPhase(), 0f)
+        selectionAntShader.setLocalMatrix(selectionAntMatrix)
+        canvas.drawRect(selectionBoundaryRect, selectionAntPaint)
+        canvas.restoreToCount(checkpoint)
+        postInvalidateDelayed(SELECTION_ANTS_FRAME_MS)
     }
 
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
@@ -5440,7 +5495,8 @@ class InkCanvasView(context: Context) : View(context) {
         selectionDisplayBitmap = if (selectionFeatherPixels > 0f) {
             SelectionMaskCompositor.feather(selectionAlphaBitmap, selectionFeatherPixels, pageModelWidth)
         } else null
-        selectionBoundaryPoints = SelectionMaskCompositor.boundaryPoints(selectionAlphaBitmap)
+        selectionBoundaryBitmap?.recycle()
+        selectionBoundaryBitmap = SelectionMaskCompositor.boundaryMask(selectionAlphaBitmap)
         invalidate()
     }
 
@@ -5468,7 +5524,7 @@ class InkCanvasView(context: Context) : View(context) {
         selectedMaskRegions = emptyList()
         selectionAlphaBitmap?.recycle(); selectionAlphaBitmap = null
         selectionDisplayBitmap?.recycle(); selectionDisplayBitmap = null
-        selectionBoundaryPoints = FloatArray(0)
+        selectionBoundaryBitmap?.recycle(); selectionBoundaryBitmap = null
         selectionFeatherPixels = 0f
         if (clearHistory) {
             lastDeselectedStrokeIds = emptySet()
@@ -5687,6 +5743,7 @@ class InkCanvasView(context: Context) : View(context) {
         const val SELECTION_HANDLE_TOUCH_PX = 48f
         const val SELECTION_SMALL_HANDLE_TOUCH_PX = 10f
         const val SELECTION_ROTATE_HANDLE_OFFSET_PX = 64f
+        const val SELECTION_ANTS_FRAME_MS = 80L
         const val DUAL_SCATTER_SEED = 0x27C4915DL
         const val DUAL_ROTATION_SEED = 0x61B8D2A3L
         const val VIEW_ROTATION_DEGREES_PER_PIXEL = .25f

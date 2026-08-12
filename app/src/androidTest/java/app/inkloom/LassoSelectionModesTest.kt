@@ -2,6 +2,7 @@ package app.inkloom
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Color
 import android.view.InputDevice
 import android.view.MotionEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -100,6 +101,54 @@ class LassoSelectionModesTest {
         }
     }
 
+    @Test fun freeLassoLivePreviewClosesToItsVisibleOrigin() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val view = configuredView(emptyList(), mutableListOf()).apply { selectionShape = SelectionShape.FREEFORM }
+            view.dispatchStylus(MotionEvent.ACTION_DOWN, 200f, 200f, 10L)
+            view.dispatchStylus(MotionEvent.ACTION_MOVE, 800f, 200f, 20L)
+            view.dispatchStylus(MotionEvent.ACTION_MOVE, 800f, 800f, 30L)
+            val bitmap = Bitmap.createBitmap(1_000, 1_000, Bitmap.Config.ARGB_8888)
+            try {
+                view.draw(Canvas(bitmap))
+
+                assertTrue("Free lasso did not preview its closing edge", pixelsNear(bitmap, 500, 500, 6).any(::opaque))
+                assertTrue("Free lasso origin was not marked", pixelsNear(bitmap, 200, 200, 9).count(::opaque) > 80)
+            } finally {
+                bitmap.recycle()
+                view.dispatchStylus(MotionEvent.ACTION_CANCEL, 800f, 800f, 40L)
+            }
+        }
+    }
+
+    @Test fun committedLassoRendersPersistentHighContrastBoundaryOnEverySide() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val view = configuredView(emptyList(), mutableListOf()).apply { selectionShape = SelectionShape.FREEFORM }
+            view.lasso(.2f, .2f, .8f, .8f)
+            val bitmap = Bitmap.createBitmap(1_000, 1_000, Bitmap.Config.ARGB_8888)
+            try {
+                view.draw(Canvas(bitmap))
+
+                val boundaryPixels = buildList {
+                    for (position in 190..810) {
+                        addAll(pixelsNear(bitmap, position, 200, 3))
+                        addAll(pixelsNear(bitmap, position, 800, 3))
+                        addAll(pixelsNear(bitmap, 200, position, 3))
+                        addAll(pixelsNear(bitmap, 800, position, 3))
+                    }
+                }.filter(::opaque)
+                assertTrue("Committed selection boundary was too sparse", boundaryPixels.size > 8_000)
+                assertTrue("Committed selection boundary had no black contrast pixels", boundaryPixels.any { Color.red(it) < 24 })
+                assertTrue("Committed selection boundary had no white marching-ant pixels", boundaryPixels.any { Color.red(it) > 230 })
+                assertEquals("Selection interior must remain unobscured", 0, Color.alpha(bitmap.getPixel(500, 500)))
+            } finally {
+                bitmap.recycle()
+                view.clearSelection()
+            }
+        }
+    }
+
     @Test fun replaceAddSubtractAndIntersectComposePredictably() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
@@ -172,6 +221,14 @@ class LassoSelectionModesTest {
         val coordinates = MotionEvent.PointerCoords().apply { this.x = x; this.y = y; pressure = .8f; size = .01f; touchMajor = 1f }
         MotionEvent.obtain(10L, time, action, 1, arrayOf(properties), arrayOf(coordinates), 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_STYLUS, 0).also { event -> try { onTouchEvent(event) } finally { event.recycle() } }
     }
+
+    private fun pixelsNear(bitmap: Bitmap, centerX: Int, centerY: Int, radius: Int): List<Int> = buildList {
+        for (y in centerY - radius..centerY + radius) for (x in centerX - radius..centerX + radius) {
+            if (x in 0 until bitmap.width && y in 0 until bitmap.height) add(bitmap.getPixel(x, y))
+        }
+    }
+
+    private fun opaque(color: Int): Boolean = Color.alpha(color) != 0
 
     private data class CapturedEdit(val removedIds: List<String>, val replacements: List<InkStroke>, val indices: List<Int>)
 }
