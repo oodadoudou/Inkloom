@@ -40,6 +40,17 @@ class BrushDynamicsTest {
         assertEquals(1f, BrushDynamics.secondary(amplified, point, 1, 2), .0001f)
     }
 
+    @Test fun tiltDoesNotRespondUntilTheImportedTriggerAngle() {
+        val dynamics = BrushSecondaryDynamics(tiltEnabled = true, tiltMinimum = .2f, tiltStart = .5f)
+        val below = StrokePoint(0f, 0f, tilt = (Math.PI * .2).toFloat())
+        val halfway = StrokePoint(0f, 0f, tilt = (Math.PI * .375).toFloat())
+        val flat = StrokePoint(0f, 0f, tilt = (Math.PI / 2).toFloat())
+
+        assertEquals(.2f, BrushDynamics.secondary(dynamics, below, 1, 2), .0001f)
+        assertEquals(.6f, BrushDynamics.secondary(dynamics, halfway, 1, 2), .0001f)
+        assertEquals(1f, BrushDynamics.secondary(dynamics, flat, 1, 2), .0001f)
+    }
+
     @Test fun randomDynamicsAreDeterministicPerStrokePoint() {
         val first = BrushDynamics.deterministicRandom(42, 1200L, 7)
         assertEquals(first, BrushDynamics.deterministicRandom(42, 1200L, 7), 0f)

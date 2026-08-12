@@ -211,6 +211,8 @@ data class BrushCurvePoint(val x: Float, val y: Float)
 data class BrushSecondaryDynamics(
     val tiltEnabled: Boolean = false,
     val tiltMinimum: Float = 0f,
+    /** Normalized stylus tilt at which this parameter begins responding. */
+    val tiltStart: Float = 0f,
     val velocityEnabled: Boolean = false,
     val velocityMinimum: Float = 0f,
     /** CSP's velocity multiplier. A value of 1 preserves the normalized input. */
@@ -237,6 +239,8 @@ data class BrushColorDynamics(
     val pressureCurve: List<BrushCurvePoint> = emptyList(),
     val tiltEnabled: Boolean = false,
     val tiltMinimum: Float = 0f,
+    /** Normalized stylus tilt at which this parameter begins responding. */
+    val tiltStart: Float = 0f,
     val velocityEnabled: Boolean = false,
     val velocityMinimum: Float = 0f,
     /** CSP's velocity multiplier. A value of 1 preserves the normalized input. */

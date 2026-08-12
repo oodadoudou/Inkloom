@@ -57,4 +57,13 @@ class BrushColorJitterTest {
         assertEquals(.2f, BrushColorJitter.amount(unscaled, point, 1, 0, 2), .0001f)
         assertEquals(1f, BrushColorJitter.amount(amplified, point, 1, 0, 2), .0001f)
     }
+
+    @Test fun colorTiltDynamicsHonorTheirTriggerAngle() {
+        val dynamics = BrushColorDynamics(tiltEnabled = true, tiltMinimum = .1f, tiltStart = .5f)
+        val below = StrokePoint(0f, 0f, tilt = (Math.PI * .2).toFloat())
+        val flat = StrokePoint(0f, 0f, tilt = (Math.PI / 2).toFloat())
+
+        assertEquals(.1f, BrushColorJitter.amount(dynamics, below, 1, 0, 2), .0001f)
+        assertEquals(1f, BrushColorJitter.amount(dynamics, flat, 1, 0, 2), .0001f)
+    }
 }

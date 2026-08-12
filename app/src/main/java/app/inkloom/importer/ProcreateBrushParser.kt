@@ -89,6 +89,8 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         val jitterOpacity = metadata.float("dynamicsJitterOpacity")
         val tiltSize = metadata.float("dynamicsTiltSize")
         val tiltOpacity = metadata.float("dynamicsTiltOpacity")
+        val tiltSizeStart = metadata.float("sizeTiltAngle", metadata.float("dynamicsTiltAngle")).coerceIn(0f, .99f)
+        val tiltOpacityStart = metadata.float("opacityTiltAngle", metadata.float("dynamicsTiltAngle")).coerceIn(0f, .99f)
         val wetEdges = metadata.float("wetEdgesAmount").coerceIn(0f, 1f)
         val burntEdges = metadata.float("burntEdgesAmount").coerceIn(0f, 1f)
         val wetMix = max(metadata.float("dynamicsMix"), metadata.float("dynamicsPressureMix")).coerceIn(0f, 1f)
@@ -207,11 +209,11 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             sizePressureEnabled = abs(pressureSize) > DYNAMIC_EPSILON,
             sizePressureMinimum = pressureMinimum(pressureSize, metadata.float("minSize")),
             sizePressureCurve = pressureCurve(pressureSize, metadata.curve("dynamicsPressureSizeCurve")),
-            sizeSecondaryDynamics = secondaryDynamics(tiltSize, speedSize, jitterSize),
+            sizeSecondaryDynamics = secondaryDynamics(tiltSize, speedSize, jitterSize, tiltSizeStart),
             opacityPressureEnabled = abs(pressureOpacity) > DYNAMIC_EPSILON,
             opacityPressureMinimum = pressureMinimum(pressureOpacity, metadata.float("minOpacity")),
             opacityPressureCurve = pressureCurve(pressureOpacity, metadata.curve("dynamicsPressureOpacityCurve")),
-            opacitySecondaryDynamics = secondaryDynamics(tiltOpacity, speedOpacity, jitterOpacity),
+            opacitySecondaryDynamics = secondaryDynamics(tiltOpacity, speedOpacity, jitterOpacity, tiltOpacityStart),
             parserVersion = CURRENT_VERSION,
             report = buildList {
                 add("Procreate brush $position/$total decoded from NSKeyedArchive version ${metadata.int("version")}")
@@ -266,9 +268,10 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         return if (amount >= 0f) base else base.map { point -> point.copy(y = 1f - point.y) }
     }
 
-    private fun secondaryDynamics(tilt: Float, speed: Float, jitter: Float): BrushSecondaryDynamics = BrushSecondaryDynamics(
+    private fun secondaryDynamics(tilt: Float, speed: Float, jitter: Float, tiltStart: Float = 0f): BrushSecondaryDynamics = BrushSecondaryDynamics(
         tiltEnabled = abs(tilt) > DYNAMIC_EPSILON,
         tiltMinimum = 1f - abs(tilt).coerceIn(0f, 1f),
+        tiltStart = tiltStart.coerceIn(0f, .99f),
         velocityEnabled = abs(speed) > DYNAMIC_EPSILON,
         velocityMinimum = 1f - abs(speed).coerceIn(0f, 1f),
         velocityCurve = if (speed >= 0f) DESCENDING_CURVE else LINEAR_CURVE,
@@ -369,7 +372,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
     )
 
     companion object {
-        const val CURRENT_VERSION = 9
+        const val CURRENT_VERSION = 10
         private const val MAX_ENTRIES = 4_096
         private const val MAX_ENTRY_BYTES = 32L * 1024L * 1024L
         private const val MAX_EXPANDED_BYTES = 384L * 1024L * 1024L

@@ -9230,6 +9230,7 @@ private fun SecondaryDynamicsEditor(label: String, value: BrushSecondaryDynamics
         if (expanded) {
             SettingSwitch("Tilt", null, value.tiltEnabled) { onValue(value.copy(tiltEnabled = it)) }
             if (value.tiltEnabled) BrushSettingSlider("Tilt minimum", value.tiltMinimum, 0f..1f) { onValue(value.copy(tiltMinimum = it)) }
+            if (value.tiltEnabled) BrushSettingSlider(tr("Tilt trigger angle", "倾斜触发角"), value.tiltStart, 0f..0.99f) { onValue(value.copy(tiltStart = it)) }
             SettingSwitch("Velocity", null, value.velocityEnabled) { onValue(value.copy(velocityEnabled = it)) }
             if (value.velocityEnabled) BrushSettingSlider("Velocity minimum", value.velocityMinimum, 0f..1f) { onValue(value.copy(velocityMinimum = it)) }
             if (value.velocityEnabled) PressureCurveEditor("Velocity response", value.velocityCurve) { onValue(value.copy(velocityCurve = it)) }
@@ -9267,6 +9268,7 @@ private fun ColorDynamicsEditor(label: String, value: BrushColorDynamics, onValu
             if (value.pressureEnabled) PressureCurveEditor(tr("Pressure response", "压力响应"), value.pressureCurve) { onValue(value.copy(pressureCurve = it)) }
             SettingSwitch(tr("Tilt", "倾斜"), null, value.tiltEnabled) { onValue(value.copy(tiltEnabled = it)) }
             if (value.tiltEnabled) BrushSettingSlider(tr("Tilt minimum", "倾斜下限"), value.tiltMinimum, 0f..1f) { onValue(value.copy(tiltMinimum = it)) }
+            if (value.tiltEnabled) BrushSettingSlider(tr("Tilt trigger angle", "倾斜触发角"), value.tiltStart, 0f..0.99f) { onValue(value.copy(tiltStart = it)) }
             SettingSwitch(tr("Velocity", "速度"), null, value.velocityEnabled) { onValue(value.copy(velocityEnabled = it)) }
             if (value.velocityEnabled) BrushSettingSlider(tr("Velocity minimum", "速度下限"), value.velocityMinimum, 0f..1f) { onValue(value.copy(velocityMinimum = it)) }
             if (value.velocityEnabled) PressureCurveEditor(tr("Velocity response", "速度响应"), value.velocityCurve) { onValue(value.copy(velocityCurve = it)) }
