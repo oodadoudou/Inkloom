@@ -22,7 +22,7 @@ object BrushDynamics {
         var factor = 1f
         if (dynamics.tiltEnabled) {
             val tiltInput = BrushTilt.response(point, dynamics.tiltStart)
-            factor *= ranged(dynamics.tiltMinimum, tiltInput)
+            factor *= ranged(dynamics.tiltMinimum, curve(dynamics.tiltCurve, tiltInput))
         }
         if (dynamics.velocityEnabled) {
             val velocityInput = (point.velocity * dynamics.velocityScale.coerceIn(0f, 10f)).coerceIn(0f, 1f)

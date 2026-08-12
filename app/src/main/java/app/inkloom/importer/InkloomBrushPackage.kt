@@ -334,6 +334,7 @@ class InkloomBrushPackage(private val assetDirectory: File) {
     private fun secondary(value: BrushSecondaryDynamics): BrushSecondaryDynamics = value.copy(
         tiltMinimum = finite(value.tiltMinimum, 0f).coerceIn(0f, 1f),
         tiltStart = finite(value.tiltStart, 0f).coerceIn(0f, .99f),
+        tiltCurve = curve(value.tiltCurve),
         velocityMinimum = finite(value.velocityMinimum, 0f).coerceIn(0f, 1f),
         velocityScale = finite(value.velocityScale, 1f).coerceIn(0f, 10f),
         velocityCurve = curve(value.velocityCurve),

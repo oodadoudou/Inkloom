@@ -51,6 +51,19 @@ class BrushDynamicsTest {
         assertEquals(1f, BrushDynamics.secondary(dynamics, flat, 1, 2), .0001f)
     }
 
+    @Test fun tiltCurveCanReverseTheResponseForShapeRoundness() {
+        val dynamics = BrushSecondaryDynamics(
+            tiltEnabled = true,
+            tiltMinimum = .25f,
+            tiltCurve = listOf(BrushCurvePoint(0f, 1f), BrushCurvePoint(1f, 0f)),
+        )
+        val upright = StrokePoint(0f, 0f, tilt = 0f)
+        val flat = StrokePoint(0f, 0f, tilt = (Math.PI / 2).toFloat())
+
+        assertEquals(1f, BrushDynamics.secondary(dynamics, upright, 1, 2), .0001f)
+        assertEquals(.25f, BrushDynamics.secondary(dynamics, flat, 1, 2), .0001f)
+    }
+
     @Test fun randomDynamicsAreDeterministicPerStrokePoint() {
         val first = BrushDynamics.deterministicRandom(42, 1200L, 7)
         assertEquals(first, BrushDynamics.deterministicRandom(42, 1200L, 7), 0f)

@@ -129,6 +129,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
                 randomMinimum = (1f - grainDepthJitter).coerceIn(0f, 1f),
             ),
         )
+        val roundnessDynamics = roundnessDynamics(metadata)
         val genericTaperStartLength = metadata.float("taperStartLength").coerceIn(0f, 1f)
         val genericTaperEndLength = metadata.float("taperEndLength").coerceIn(0f, 1f)
         val genericTaperSize = metadata.float("taperSize").coerceIn(0f, 1f)
@@ -184,6 +185,10 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             flow = metadata.float("dynamicsGlazedFlow", 1f).coerceIn(0f, 1f),
             hardness = if (metadata.boolean("shapeFilter", true)) .85f else 1f,
             thickness = metadata.float("shapeRoundness", 1f).coerceIn(.05f, 1f),
+            thicknessPressureEnabled = roundnessDynamics.pressureEnabled,
+            thicknessPressureMinimum = roundnessDynamics.pressureMinimum,
+            thicknessPressureCurve = roundnessDynamics.pressureCurve,
+            thicknessSecondaryDynamics = roundnessDynamics.secondary,
             rotationDegrees = shapeRotation,
             followStylusOrientation = followsStylus,
             followStrokeDirection = followsStroke,
@@ -210,6 +215,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             dualFlow = dualMapped?.flow ?: 1f,
             dualHardness = dualMapped?.hardness ?: 1f,
             dualThickness = dualMapped?.thickness ?: 1f,
+            dualThicknessDynamics = dualMapped?.thicknessDynamics ?: BrushParameterDynamics(),
             dualRotationDegrees = dualMapped?.rotation ?: 0f,
             dualFollowStylusOrientation = dualMapped?.followStylus ?: false,
             dualFollowStrokeDirection = dualMapped?.followStroke ?: false,
@@ -281,6 +287,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             flow = metadata.float("dynamicsGlazedFlow", 1f).coerceIn(0f, 1f),
             hardness = if (metadata.boolean("shapeFilter", true)) .85f else 1f,
             thickness = metadata.float("shapeRoundness", 1f).coerceIn(.05f, 1f),
+            thicknessDynamics = roundnessDynamics(metadata),
             rotation = Math.toDegrees(metadata.float("shapeAngle").toDouble()).toFloat().coerceIn(-360f, 360f),
             followStylus = metadata.boolean("shapeAzimuth"),
             followStroke = metadata.boolean("oriented"),
@@ -304,10 +311,11 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         return if (amount >= 0f) base else base.map { point -> point.copy(y = 1f - point.y) }
     }
 
-    private fun secondaryDynamics(tilt: Float, speed: Float, jitter: Float, tiltStart: Float = 0f): BrushSecondaryDynamics = BrushSecondaryDynamics(
+    internal fun secondaryDynamics(tilt: Float, speed: Float, jitter: Float, tiltStart: Float = 0f): BrushSecondaryDynamics = BrushSecondaryDynamics(
         tiltEnabled = abs(tilt) > DYNAMIC_EPSILON,
         tiltMinimum = 1f - abs(tilt).coerceIn(0f, 1f),
         tiltStart = tiltStart.coerceIn(0f, .99f),
+        tiltCurve = if (tilt >= 0f) LINEAR_CURVE else DESCENDING_CURVE,
         velocityEnabled = abs(speed) > DYNAMIC_EPSILON,
         velocityMinimum = 1f - abs(speed).coerceIn(0f, 1f),
         velocityCurve = if (speed >= 0f) DESCENDING_CURVE else LINEAR_CURVE,
@@ -324,6 +332,41 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         randomEnabled = abs(jitter) > DYNAMIC_EPSILON,
         randomMinimum = 1f - abs(jitter).coerceIn(0f, 1f),
     )
+
+    private fun roundnessDynamics(metadata: ProcreateKeyedArchive): BrushParameterDynamics = roundnessDynamics(
+        pressureAmount = metadata.float("dynamicsPressureShapeRoundness", 1f),
+        pressureMinimum = metadata.float("dynamicsPressureShapeRoundnessMinimum", 1f),
+        pressureCurve = metadata.curve("dynamicsPressureShapeRoundnessCurve"),
+        tiltAmount = metadata.float("dynamicsTiltShapeRoundness", 1f),
+        tiltMinimum = metadata.float("dynamicsTiltShapeRoundnessMinimum", 1f),
+        tiltStart = metadata.float("shapeRoundnessTiltAngle", metadata.float("dynamicsTiltAngle")),
+    )
+
+    internal fun roundnessDynamics(
+        pressureAmount: Float,
+        pressureMinimum: Float,
+        pressureCurve: List<BrushCurvePoint>,
+        tiltAmount: Float,
+        tiltMinimum: Float,
+        tiltStart: Float,
+    ): BrushParameterDynamics {
+        val pressureFloor = minOf(pressureAmount, pressureMinimum).coerceIn(0f, 1f)
+        val tiltFloor = minOf(tiltAmount, tiltMinimum).coerceIn(0f, 1f)
+        val pressureEnabled = pressureFloor < 1f - DYNAMIC_EPSILON
+        val tiltEnabled = tiltFloor < 1f - DYNAMIC_EPSILON
+        val authoredPressureCurve = pressureCurve.ifEmpty { LINEAR_CURVE }
+        return BrushParameterDynamics(
+            pressureEnabled = pressureEnabled,
+            pressureMinimum = pressureFloor,
+            pressureCurve = if (pressureEnabled) authoredPressureCurve.map { point -> point.copy(y = 1f - point.y) } else emptyList(),
+            secondary = BrushSecondaryDynamics(
+                tiltEnabled = tiltEnabled,
+                tiltMinimum = tiltFloor,
+                tiltStart = tiltStart.coerceIn(0f, .99f),
+                tiltCurve = if (tiltEnabled) DESCENDING_CURVE else emptyList(),
+            ),
+        )
+    }
 
     private fun validate(entries: List<ZipEntry>) {
         require(entries.size in 1..MAX_ENTRIES) { "Procreate archive has too many entries" }
@@ -395,6 +438,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         val flow: Float,
         val hardness: Float,
         val thickness: Float,
+        val thicknessDynamics: BrushParameterDynamics,
         val rotation: Float,
         val followStylus: Boolean,
         val followStroke: Boolean,
@@ -410,7 +454,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
     )
 
     companion object {
-        const val CURRENT_VERSION = 15
+        const val CURRENT_VERSION = 16
         private const val MAX_ENTRIES = 4_096
         private const val MAX_ENTRY_BYTES = 32L * 1024L * 1024L
         private const val MAX_EXPANDED_BYTES = 384L * 1024L * 1024L

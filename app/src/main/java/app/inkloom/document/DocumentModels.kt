@@ -213,6 +213,8 @@ data class BrushSecondaryDynamics(
     val tiltMinimum: Float = 0f,
     /** Normalized stylus tilt at which this parameter begins responding. */
     val tiltStart: Float = 0f,
+    /** Optional response curve; empty retains the legacy increasing response. */
+    val tiltCurve: List<BrushCurvePoint> = emptyList(),
     val velocityEnabled: Boolean = false,
     val velocityMinimum: Float = 0f,
     /** CSP's velocity multiplier. A value of 1 preserves the normalized input. */

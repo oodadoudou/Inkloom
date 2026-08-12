@@ -78,6 +78,35 @@ class ProcreateBrushParserTest {
         assertTrue(app.inkloom.document.BrushDynamics.secondary(decreasing, fast, 1, 2) < app.inkloom.document.BrushDynamics.secondary(decreasing, slow, 1, 2))
     }
 
+    @Test fun pressureAndTiltRoundnessSquashTowardTheirAuthoredMinimums() {
+        val dynamics = ProcreateBrushParser(File("unused")).roundnessDynamics(
+            pressureAmount = 1f,
+            pressureMinimum = .3f,
+            pressureCurve = emptyList(),
+            tiltAmount = 1f,
+            tiltMinimum = .4f,
+            tiltStart = .2f,
+        )
+
+        assertTrue(dynamics.pressureEnabled)
+        assertEquals(1f, app.inkloom.document.BrushDynamics.pressure(true, dynamics.pressureMinimum, dynamics.pressureCurve, 0f), .0001f)
+        assertEquals(.3f, app.inkloom.document.BrushDynamics.pressure(true, dynamics.pressureMinimum, dynamics.pressureCurve, 1f), .0001f)
+        assertTrue(dynamics.secondary.tiltEnabled)
+        assertEquals(1f, app.inkloom.document.BrushDynamics.secondary(dynamics.secondary, app.inkloom.document.StrokePoint(0f, 0f, tilt = 0f), 1, 2), .0001f)
+        assertEquals(.4f, app.inkloom.document.BrushDynamics.secondary(dynamics.secondary, app.inkloom.document.StrokePoint(0f, 0f, tilt = (Math.PI / 2).toFloat()), 1, 2), .0001f)
+    }
+
+    @Test fun signedTiltDynamicsPreserveTheirResponseDirection() {
+        val parser = ProcreateBrushParser(File("unused"))
+        val positive = parser.secondaryDynamics(.75f, 0f, 0f)
+        val negative = parser.secondaryDynamics(-.75f, 0f, 0f)
+        val upright = app.inkloom.document.StrokePoint(0f, 0f, tilt = 0f)
+        val flat = app.inkloom.document.StrokePoint(0f, 0f, tilt = (Math.PI / 2).toFloat())
+
+        assertTrue(app.inkloom.document.BrushDynamics.secondary(positive, flat, 1, 2) > app.inkloom.document.BrushDynamics.secondary(positive, upright, 1, 2))
+        assertTrue(app.inkloom.document.BrushDynamics.secondary(negative, flat, 1, 2) < app.inkloom.document.BrushDynamics.secondary(negative, upright, 1, 2))
+    }
+
     @Test fun unsafeZipPathFailsWithoutExtractingAnything() {
         val root = temporaryDirectory("unsafe")
         try {

@@ -8,6 +8,8 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.document.DocumentAssetService
+import app.inkloom.document.BrushCurvePoint
+import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.InkPage
 import app.inkloom.document.InkStroke
 import app.inkloom.document.PageBackground
@@ -115,6 +117,47 @@ class ProcreateTiltRenderingTest {
         }
     }
 
+    @Test fun pressureAndTiltRoundnessSquashTipWithLiveExportParity() {
+        val tip = File(context.cacheDir, "procreate-roundness-${System.nanoTime()}.png")
+        Bitmap.createBitmap(48, 48, Bitmap.Config.ARGB_8888).also { bitmap ->
+            Canvas(bitmap).drawCircle(24f, 24f, 23f, android.graphics.Paint().apply { color = Color.BLACK; isAntiAlias = true })
+            tip.outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+            bitmap.recycle()
+        }
+        try {
+            fun stroke(pressure: Float, tilt: Float) = InkStroke(
+                points = listOf(StrokePoint(.5f, .5f, pressure = pressure, tilt = tilt, timeMs = 1)),
+                width = 180f,
+                tipAssetPath = tip.absolutePath,
+                tipAssetPaths = listOf(tip.absolutePath),
+                thickness = 1f,
+                thicknessPressureEnabled = true,
+                thicknessPressureMinimum = .3f,
+                thicknessPressureCurve = listOf(BrushCurvePoint(0f, 1f), BrushCurvePoint(1f, 0f)),
+                thicknessSecondaryDynamics = BrushSecondaryDynamics(
+                    tiltEnabled = true,
+                    tiltMinimum = .5f,
+                    tiltCurve = listOf(BrushCurvePoint(0f, 1f), BrushCurvePoint(1f, 0f)),
+                ),
+                sizePressureEnabled = false,
+                renderSeed = 733,
+            )
+            val round = renderExport(stroke(0f, 0f))
+            val squashedStroke = stroke(1f, (Math.PI / 2).toFloat())
+            val squashed = renderExport(squashedStroke)
+            val live = renderLive(squashedStroke, squashed.height)
+            try {
+                assertTrue("Pressure/Tilt Roundness did not squash the tip", darkWidth(squashed) < darkWidth(round) / 2)
+                val maximumDifference = maximumRedDifference(squashed, live)
+                assertTrue("Live/export roundness diverged: max red delta=$maximumDifference", maximumDifference <= 3)
+            } finally {
+                round.recycle(); squashed.recycle(); live.recycle()
+            }
+        } finally {
+            tip.delete()
+        }
+    }
+
     private fun renderExport(stroke: InkStroke): Bitmap = DocumentAssetService(context).renderPageBitmap(
         InkPage(background = PageBackground.Paper(), strokes = listOf(stroke)),
         400,
@@ -135,5 +178,15 @@ class ProcreateTiltRenderingTest {
         var maximum = 0
         for (y in 0 until first.height) for (x in 0 until first.width) maximum = maxOf(maximum, kotlin.math.abs(Color.red(first.getPixel(x, y)) - Color.red(second.getPixel(x, y))))
         return maximum
+    }
+
+    private fun darkWidth(bitmap: Bitmap): Int {
+        var minimum = bitmap.width
+        var maximum = -1
+        for (y in 0 until bitmap.height) for (x in 0 until bitmap.width) if (Color.red(bitmap.getPixel(x, y)) < 128) {
+            minimum = minOf(minimum, x)
+            maximum = maxOf(maximum, x)
+        }
+        return if (maximum < minimum) 0 else maximum - minimum + 1
     }
 }

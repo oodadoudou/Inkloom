@@ -53,12 +53,15 @@ class BrushMetadataStore(
                 }
                 fun secondary(key: String): BrushSecondaryDynamics {
                     val value = item.optJSONObject(key) ?: return BrushSecondaryDynamics()
+                    val tiltPoints = value.optJSONArray("tiltCurve")
+                    val tiltCurve = buildList { if (tiltPoints != null) for (pointIndex in 0 until tiltPoints.length()) { val pair = tiltPoints.optJSONArray(pointIndex) ?: continue; if (pair.length() >= 2) add(BrushCurvePoint(pair.optDouble(0).toFloat(), pair.optDouble(1).toFloat())) } }
                     val velocityPoints = value.optJSONArray("velocityCurve")
                     val velocityCurve = buildList { if (velocityPoints != null) for (pointIndex in 0 until velocityPoints.length()) { val pair = velocityPoints.optJSONArray(pointIndex) ?: continue; if (pair.length() >= 2) add(BrushCurvePoint(pair.optDouble(0).toFloat(), pair.optDouble(1).toFloat())) } }
                     return BrushSecondaryDynamics(
                         tiltEnabled = value.optBoolean("tiltEnabled", false),
                         tiltMinimum = value.optDouble("tiltMinimum", 0.0).toFloat(),
                         tiltStart = value.optDouble("tiltStart", 0.0).toFloat(),
+                        tiltCurve = tiltCurve,
                         velocityEnabled = value.optBoolean("velocityEnabled", false),
                         velocityMinimum = value.optDouble("velocityMinimum", 0.0).toFloat(),
                         velocityScale = value.optDouble("velocityScale", 1.0).toFloat(),
@@ -81,12 +84,15 @@ class BrushMetadataStore(
                         pressureMinimum = value.optDouble("pressureMinimum", 0.0).toFloat().coerceIn(0f, 1f),
                         pressureCurve = pressureCurve,
                         secondary = value.optJSONObject("secondary")?.let { nested ->
+                            val tiltPoints = nested.optJSONArray("tiltCurve")
+                            val tiltCurve = buildList { if (tiltPoints != null) for (pointIndex in 0 until tiltPoints.length()) { val pair = tiltPoints.optJSONArray(pointIndex) ?: continue; if (pair.length() >= 2) add(BrushCurvePoint(pair.optDouble(0).toFloat(), pair.optDouble(1).toFloat())) } }
                             val velocityPoints = nested.optJSONArray("velocityCurve")
                             val velocityCurve = buildList { if (velocityPoints != null) for (pointIndex in 0 until velocityPoints.length()) { val pair = velocityPoints.optJSONArray(pointIndex) ?: continue; if (pair.length() >= 2) add(BrushCurvePoint(pair.optDouble(0).toFloat(), pair.optDouble(1).toFloat())) } }
                             BrushSecondaryDynamics(
                                 tiltEnabled = nested.optBoolean("tiltEnabled", false),
                                 tiltMinimum = nested.optDouble("tiltMinimum", 0.0).toFloat().coerceIn(0f, 1f),
                                 tiltStart = nested.optDouble("tiltStart", 0.0).toFloat().coerceIn(0f, .99f),
+                                tiltCurve = tiltCurve,
                                 velocityEnabled = nested.optBoolean("velocityEnabled", false),
                                 velocityMinimum = nested.optDouble("velocityMinimum", 0.0).toFloat().coerceIn(0f, 1f),
                                 velocityScale = nested.optDouble("velocityScale", 1.0).toFloat().coerceIn(0f, 10f),
@@ -521,6 +527,7 @@ class BrushMetadataStore(
         .put("tiltEnabled", value.tiltEnabled)
         .put("tiltMinimum", value.tiltMinimum)
         .put("tiltStart", value.tiltStart)
+        .put("tiltCurve", curveJson(value.tiltCurve))
         .put("velocityEnabled", value.velocityEnabled)
         .put("velocityMinimum", value.velocityMinimum)
         .put("velocityScale", value.velocityScale)
