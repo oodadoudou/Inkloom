@@ -31,7 +31,8 @@ class BrushSemanticMapperTest {
         assertTrue("StampRasterEngine.grainTexture" in targets)
         assertTrue("AirbrushEngine.timeSampler" in targets)
         assertTrue("StampRasterEngine.secondaryCoat" in targets)
-        assertTrue(mapped.semanticMappings.all { it.fidelity == SemanticFidelity.EXACT })
+        assertEquals(SemanticFidelity.APPROXIMATE, mapped.semanticMappings.single { it.sourceSemantic == "PROCREATE.renderingMode" }.fidelity)
+        assertTrue(mapped.semanticMappings.filterNot { it.sourceSemantic == "PROCREATE.renderingMode" }.all { it.fidelity == SemanticFidelity.EXACT })
     }
 
     @Test fun wetMixIsExplicitlyReportedAsApproximate() {
