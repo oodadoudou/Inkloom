@@ -91,8 +91,8 @@ class CspStrokeTextureCompositorTest {
             stampCount = 2,
         )
         fun render(applyPerPlot: Boolean): Bitmap = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888).also {
-            view.resetEngineV2ActiveRenderState()
-            view.drawEngineV2ActiveStrokes(Canvas(it), listOf(base.copy(grainApplyPerPlot = applyPerPlot)))
+            view.resetActiveRenderState()
+            view.drawActiveStrokes(Canvas(it), listOf(base.copy(grainApplyPerPlot = applyPerPlot)))
         }
 
         val perPlot = render(true)
@@ -142,11 +142,11 @@ class CspStrokeTextureCompositorTest {
         val complete = Bitmap.createBitmap(480, 360, Bitmap.Config.ARGB_8888)
         val incremental = Bitmap.createBitmap(480, 360, Bitmap.Config.ARGB_8888)
         try {
-            view.resetEngineV2ActiveRenderState()
-            view.drawEngineV2ActiveStrokes(Canvas(complete), listOf(stroke))
-            view.resetEngineV2ActiveRenderState()
+            view.resetActiveRenderState()
+            view.drawActiveStrokes(Canvas(complete), listOf(stroke))
+            view.resetActiveRenderState()
             for (count in 2..points.size) {
-                view.drawEngineV2ActiveStrokes(
+                view.drawActiveStrokes(
                     Canvas(incremental),
                     listOf(stroke.copy(points = points.take(count))),
                     incrementalStampDraw = true,
@@ -190,12 +190,12 @@ class CspStrokeTextureCompositorTest {
                     flow = .9f,
                 )
                 // Decode the authored materials and grow reusable workspaces before measurement.
-                view.resetEngineV2ActiveRenderState()
-                view.drawEngineV2ActiveStrokes(Canvas(target), listOf(base.copy(points = points.take(40))), incrementalStampDraw = true)
+                view.resetActiveRenderState()
+                view.drawActiveStrokes(Canvas(target), listOf(base.copy(points = points.take(40))), incrementalStampDraw = true)
                 val frameTimes = ArrayList<Long>(120)
                 for (count in 41..160) {
                     val started = SystemClock.elapsedRealtimeNanos()
-                    view.drawEngineV2ActiveStrokes(Canvas(target), listOf(base.copy(points = points.take(count))), incrementalStampDraw = true)
+                    view.drawActiveStrokes(Canvas(target), listOf(base.copy(points = points.take(count))), incrementalStampDraw = true)
                     frameTimes += SystemClock.elapsedRealtimeNanos() - started
                 }
                 val sorted = frameTimes.sorted()

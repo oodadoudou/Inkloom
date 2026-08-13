@@ -1,17 +1,17 @@
-package app.inkloom.engine.v2
+package app.inkloom.engine.v3
 
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
-import app.inkloom.engine.v2.render.EngineV2ActiveTailPlanner
+import app.inkloom.engine.v3.render.ActiveStrokeTailPlanner
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class EngineV2ActiveTailPlannerTest {
+class ActiveStrokeTailPlannerTest {
     @Test
     fun vectorInkAppendsOnlyTheNewSegment() {
-        val planner = EngineV2ActiveTailPlanner()
+        val planner = ActiveStrokeTailPlanner()
         val first = stroke(4)
         val second = stroke(9)
 
@@ -27,7 +27,7 @@ class EngineV2ActiveTailPlannerTest {
 
     @Test
     fun ordinaryImportedStampBrushUsesIncrementalDabDrawingWithoutClearing() {
-        val planner = EngineV2ActiveTailPlanner()
+        val planner = ActiveStrokeTailPlanner()
         val stamped = stroke(8).copy(tipAssetPath = "/tmp/tip.png", tipAssetPaths = listOf("/tmp/tip.png"))
 
         val plan = planner.incremental(listOf(stamped))
@@ -39,7 +39,7 @@ class EngineV2ActiveTailPlannerTest {
 
     @Test
     fun dualBrushAppendsDabsWithoutQuadraticReplay() {
-        val planner = EngineV2ActiveTailPlanner()
+        val planner = ActiveStrokeTailPlanner()
         val dual = stroke(8).copy(
             tipAssetPath = "/tmp/tip.png",
             tipAssetPaths = listOf("/tmp/tip.png"),
@@ -54,7 +54,7 @@ class EngineV2ActiveTailPlannerTest {
 
     @Test
     fun translucentVectorInkStillAppendsOnlyItsTail() {
-        val planner = EngineV2ActiveTailPlanner()
+        val planner = ActiveStrokeTailPlanner()
         val translucent = stroke(8).copy(opacity = .35f)
 
         val plan = planner.incremental(listOf(translucent))
@@ -66,7 +66,7 @@ class EngineV2ActiveTailPlannerTest {
 
     @Test
     fun importedBrushWithEndingTaperNeverReplaysItsGrowingHistory() {
-        val planner = EngineV2ActiveTailPlanner()
+        val planner = ActiveStrokeTailPlanner()
         val first = stroke(40).copy(tipAssetPath = "/tmp/sut-tip.png", taperEndEnabled = true)
         val second = stroke(90).copy(tipAssetPath = "/tmp/sut-tip.png", taperEndEnabled = true)
 
@@ -79,7 +79,7 @@ class EngineV2ActiveTailPlannerTest {
 
     @Test
     fun opaqueWholeStrokeTextureUsesItsRetainedUnionSurface() {
-        val planner = EngineV2ActiveTailPlanner()
+        val planner = ActiveStrokeTailPlanner()
         val first = stroke(8).copy(grainAssetPath = "/tmp/grain.png", grainDensity = .7f, grainApplyPerPlot = false)
         val second = first.copy(points = stroke(16).points)
 
@@ -93,7 +93,7 @@ class EngineV2ActiveTailPlannerTest {
 
     @Test
     fun translucentWholeStrokeTextureClearsBecauseSourceReplacementIsNotAssociative() {
-        val planner = EngineV2ActiveTailPlanner()
+        val planner = ActiveStrokeTailPlanner()
         val first = stroke(8).copy(grainAssetPath = "/tmp/grain.png", grainDensity = .7f, grainApplyPerPlot = false, opacity = .5f)
         val second = first.copy(points = stroke(16).points)
 

@@ -1,8 +1,8 @@
-package app.inkloom.engine.v2.render
+package app.inkloom.engine.v3.render
 
 import app.inkloom.document.InkStroke
 
-internal interface EngineV2ActiveStrokeSurface {
+internal interface ActiveStrokeCompositor {
     fun render(strokes: List<InkStroke>)
     fun commit(strokes: List<InkStroke>)
     fun cancel()

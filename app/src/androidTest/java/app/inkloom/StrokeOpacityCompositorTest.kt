@@ -24,7 +24,7 @@ class StrokeOpacityCompositorTest {
                 val repeated = List(18) { index ->
                     StrokePoint(if (index % 2 == 0) .2f else .8f, .5f, pressure = 1f, timeMs = index.toLong())
                 }
-                view.drawEngineV2ActiveStrokes(
+                view.drawActiveStrokes(
                     Canvas(output),
                     listOf(
                         InkStroke(

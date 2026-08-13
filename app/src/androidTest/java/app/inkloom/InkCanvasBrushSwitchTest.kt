@@ -9,7 +9,7 @@ import app.inkloom.document.InkStroke
 import app.inkloom.document.LiquifyMode
 import app.inkloom.document.ProcreateTaper
 import app.inkloom.document.StrokeInputKind
-import app.inkloom.engine.v2.render.EngineV2ActiveStrokeSurface
+import app.inkloom.engine.v3.render.ActiveStrokeCompositor
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.EditorTool
@@ -135,7 +135,7 @@ class InkCanvasBrushSwitchTest {
             view.applyBrushConfiguration(EditorTool.PEN, AppSettings(), noCorrection, 12f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
             view.onTouchEvent(stylusEvent(MotionEvent.ACTION_DOWN, 143.25f, 211.5f, 1L))
             view.onTouchEvent(stylusEvent(MotionEvent.ACTION_MOVE, 391.75f, 517.25f, 5L))
-            view.flushEngineV2ActiveFrame()
+            view.flushActiveStrokeFrame()
             view.onTouchEvent(stylusEvent(MotionEvent.ACTION_UP, 927.5f, 836.75f, 9L))
         }
 
@@ -474,7 +474,7 @@ class InkCanvasBrushSwitchTest {
         report = emptyList(),
     )
 
-    private class RecordingActiveSurface : EngineV2ActiveStrokeSurface {
+    private class RecordingActiveSurface : ActiveStrokeCompositor {
         val rendered = mutableListOf<List<InkStroke>>()
         val committed = mutableListOf<List<InkStroke>>()
         override fun render(strokes: List<InkStroke>) { rendered += strokes.map { it.copy(points = it.points.toList()) } }

@@ -159,7 +159,7 @@ import app.inkloom.settings.WorkspacePanelPlacement
 import app.inkloom.settings.WorkspaceOrientation
 import app.inkloom.settings.text
 import app.inkloom.ui.theme.*
-import app.inkloom.engine.v2.render.EngineV2CanvasHost
+import app.inkloom.engine.v3.render.CanvasHost
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -4656,7 +4656,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
         val paperMaxWidth = maxWidth
         val paperMaxHeight = maxHeight
         AndroidView(
-            factory = { context -> EngineV2CanvasHost(context).also { host ->
+            factory = { context -> CanvasHost(context).also { host ->
                 val view = host.canvasView
                 view.tool = tool
                 view.forceNavigation = forceNavigation
@@ -5426,7 +5426,7 @@ private fun StickyInkEditorDialog(
                 ) {
                     Text(draft.text, Modifier.padding(14.dp), color = Color(0xFF333333), maxLines = 10)
                     AndroidView(
-                        factory = { context -> EngineV2CanvasHost(context).also { canvasView = it.canvasView } },
+                        factory = { context -> CanvasHost(context).also { canvasView = it.canvasView } },
                         update = { host ->
                             val view = host.canvasView
                             canvasView = view
@@ -9312,7 +9312,7 @@ private fun BrushTestArea(brush: ImportedBrush, settings: AppSettings) {
             IconButton(onClick = { strokes = emptyList(); canvasView?.setDocumentStrokes(emptyList(), "brush-test:${brush.id}:clear") }, enabled = strokes.isNotEmpty(), modifier = Modifier.size(34.dp)) { Icon(Icons.Outlined.DeleteSweep, tr("Clear test area", "清空试笔区"), Modifier.size(18.dp)) }
         }
         AndroidView(
-            factory = { context -> EngineV2CanvasHost(context).also { host ->
+            factory = { context -> CanvasHost(context).also { host ->
                 val view = host.canvasView
                 canvasView = view
                 view.activeLayerId = LayerIds.INK

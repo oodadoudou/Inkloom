@@ -9,8 +9,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
-import app.inkloom.engine.v2.render.EngineV2ActiveStrokeSurface
-import app.inkloom.engine.v2.render.EngineV2ActiveTailPlanner
+import app.inkloom.engine.v3.render.ActiveStrokeCompositor
+import app.inkloom.engine.v3.render.ActiveStrokeTailPlanner
 import app.inkloom.model.EditorTool
 import app.inkloom.model.SystemBrushCatalog
 import app.inkloom.settings.AppSettings
@@ -127,7 +127,7 @@ class SystemBrushPerformanceTest {
                 startTime + 10L + index,
             )
             val started = android.os.SystemClock.elapsedRealtimeNanos()
-            view.flushEngineV2ActiveFrame()
+            view.flushActiveStrokeFrame()
             frameTimes += android.os.SystemClock.elapsedRealtimeNanos() - started
         }
         val commitStarted = android.os.SystemClock.elapsedRealtimeNanos()
@@ -140,14 +140,14 @@ class SystemBrushPerformanceTest {
     private class IncrementalBenchmarkSurface(
         private val view: InkCanvasView,
         private val bitmap: Bitmap,
-    ) : EngineV2ActiveStrokeSurface {
-        private val planner = EngineV2ActiveTailPlanner()
+    ) : ActiveStrokeCompositor {
+        private val planner = ActiveStrokeTailPlanner()
 
         override fun render(strokes: List<InkStroke>) {
             val plan = planner.incremental(strokes)
             if (plan.clearBeforeDraw) bitmap.eraseColor(Color.TRANSPARENT)
             if (plan.strokes.isNotEmpty()) {
-                view.drawEngineV2ActiveStrokes(Canvas(bitmap), plan.strokes, plan.incrementalStampDraw)
+                view.drawActiveStrokes(Canvas(bitmap), plan.strokes, plan.incrementalStampDraw)
             }
         }
 
@@ -156,7 +156,7 @@ class SystemBrushPerformanceTest {
         override fun cancel() {
             bitmap.eraseColor(Color.TRANSPARENT)
             planner.reset()
-            view.resetEngineV2ActiveRenderState()
+            view.resetActiveRenderState()
         }
     }
 

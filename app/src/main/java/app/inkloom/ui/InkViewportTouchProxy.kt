@@ -12,8 +12,8 @@ import android.widget.FrameLayout
 import androidx.annotation.WorkerThread
 import androidx.graphics.lowlatency.LowLatencyCanvasView
 import app.inkloom.document.InkStroke
-import app.inkloom.engine.v2.render.EngineV2ActiveStrokeSurface
-import app.inkloom.engine.v2.render.EngineV2ActiveTailPlanner
+import app.inkloom.engine.v3.render.ActiveStrokeCompositor
+import app.inkloom.engine.v3.render.ActiveStrokeTailPlanner
 import app.inkloom.document.BrushCursorGeometry
 import app.inkloom.engine.v3.geometry.ViewportFrame
 import app.inkloom.engine.v3.input.PointerPacketMapper
@@ -26,7 +26,7 @@ import kotlin.math.atan2
  * those bounds. Android hit testing does not follow the page transform into its visible overflow,
  * so this proxy maps the complete event through the actual source and destination View matrices.
  */
-class InkViewportTouchProxy(context: Context) : FrameLayout(context), EngineV2ActiveStrokeSurface {
+class InkViewportTouchProxy(context: Context) : FrameLayout(context), ActiveStrokeCompositor {
     var target: InkCanvasView? = null
         set(value) {
             if (field === value) return
@@ -56,7 +56,7 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context), EngineV2Ac
     @Volatile private var activeTransform: ViewportFrame? = null
     @Volatile private var activeDrawingFrame: ViewportFrame? = null
     private val activeLock = Any()
-    private val activeTailPlanner = EngineV2ActiveTailPlanner()
+    private val activeTailPlanner = ActiveStrokeTailPlanner()
     private val activeRenderMatrix = Matrix()
     private val hoverPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     @Volatile private var hoverVisible = false
@@ -124,7 +124,7 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context), EngineV2Ac
             activeStrokes = emptyList()
             synchronized(activeLock) { activeTailPlanner.reset() }
             activeInkSurface.clear()
-            canvas.resetEngineV2ActiveRenderState()
+            canvas.resetActiveRenderState()
         }
     }
 
@@ -133,7 +133,7 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context), EngineV2Ac
         activeTransform = null
         synchronized(activeLock) { activeTailPlanner.reset() }
         activeInkSurface.clear()
-        target?.resetEngineV2ActiveRenderState()
+        target?.resetActiveRenderState()
     }
 
     @WorkerThread
@@ -142,7 +142,7 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context), EngineV2Ac
         val view = target ?: return
         val strokes = activeStrokes
         val transform = activeTransform ?: return
-        view.resetEngineV2ActiveRenderState()
+        view.resetActiveRenderState()
         if (strokes.isNotEmpty()) drawActiveInk(canvas, view, transform, strokes, incrementalStampDraw = false)
         synchronized(activeLock) { activeTailPlanner.complete(strokes) }
     }
@@ -172,7 +172,7 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context), EngineV2Ac
         val checkpoint = canvas.save()
         canvas.concat(transform.pageToViewportMatrix(activeRenderMatrix))
         canvas.clipRect(0f, 0f, view.width.toFloat(), view.height.toFloat())
-        view.drawEngineV2ActiveStrokes(canvas, strokes, incrementalStampDraw)
+        view.drawActiveStrokes(canvas, strokes, incrementalStampDraw)
         canvas.restoreToCount(checkpoint)
     }
 

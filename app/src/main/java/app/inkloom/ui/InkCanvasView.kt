@@ -31,7 +31,7 @@ import androidx.annotation.VisibleForTesting
 import app.inkloom.engine.v2.traceEngineV2
 import app.inkloom.engine.v3.input.NativeStrokeSession
 import app.inkloom.engine.v2.brush.EngineV2BrushEvaluator
-import app.inkloom.engine.v2.render.EngineV2ActiveStrokeSurface
+import app.inkloom.engine.v3.render.ActiveStrokeCompositor
 import app.inkloom.engine.v2.render.EngineV2CommittedTileScene
 import app.inkloom.engine.v2.render.EngineV2StampBatchRenderer
 import app.inkloom.engine.v2.render.ProceduralBrushTip
@@ -217,7 +217,7 @@ class InkCanvasView(context: Context) : View(context) {
     private val currentPoints = mutableListOf<StrokePoint>()
     private var currentStrokeId = java.util.UUID.randomUUID().toString()
     private var activeStrokeTemplate: InkStroke? = null
-    internal var activeStrokeSurface: EngineV2ActiveStrokeSurface? = null
+    internal var activeStrokeSurface: ActiveStrokeCompositor? = null
     private var activeSurfaceFrameScheduled = false
     private var activeSurfaceCommitted = false
     private var activeTipRefreshScheduled = false
@@ -261,7 +261,7 @@ class InkCanvasView(context: Context) : View(context) {
         // the next incremental tail. Clearing the front buffer prevents the familiar pen-up shape
         // change while all decoding still happens away from MotionEvent.
         surface.cancel()
-        resetEngineV2ActiveRenderState()
+        resetActiveRenderState()
         requestActiveSurfaceFrame()
     }
     private var backgroundBitmap: Bitmap? = null
@@ -4672,7 +4672,7 @@ class InkCanvasView(context: Context) : View(context) {
                 ProcreateBrushBlend.normalize(stroke.procreateBurntEdgeBlendMode) != ProcreateBrushBlend.NORMAL
 
     @VisibleForTesting
-    internal fun flushEngineV2ActiveFrame() {
+    internal fun flushActiveStrokeFrame() {
         if (!activeSurfaceFrameScheduled) return
         removeCallbacks(activeSurfaceFrame)
         activeSurfaceFrame.run()
@@ -4685,7 +4685,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     @WorkerThread
-    internal fun drawEngineV2ActiveStrokes(
+    internal fun drawActiveStrokes(
         canvas: Canvas,
         strokes: List<InkStroke>,
         incrementalStampDraw: Boolean = false,
@@ -4718,7 +4718,7 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
-    internal fun resetEngineV2ActiveRenderState() {
+    internal fun resetActiveRenderState() {
         synchronized(renderLock) {
             activePrimaryStampCounts.clear()
             activeDualStampCounts.clear()

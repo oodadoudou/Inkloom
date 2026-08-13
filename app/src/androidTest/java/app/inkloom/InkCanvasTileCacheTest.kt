@@ -9,7 +9,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
 import app.inkloom.document.StrokeTileKey
-import app.inkloom.engine.v2.render.EngineV2ActiveStrokeSurface
+import app.inkloom.engine.v3.render.ActiveStrokeCompositor
 import app.inkloom.engine.v2.render.EngineV2CommittedTileScene
 import app.inkloom.model.EditorTool
 import app.inkloom.model.SymmetryMode
@@ -62,7 +62,7 @@ class InkCanvasTileCacheTest {
             repeat(250) { point ->
                 view.dispatchStylus(MotionEvent.ACTION_MOVE, 100f + point * 3f, 200f + (point % 7), 20L + point)
             }
-            view.flushEngineV2ActiveFrame()
+            view.flushActiveStrokeFrame()
 
             assertEquals("All MOVE events before one display frame must coalesce", 1, surface.renderCount)
             assertTrue("The V2 packet must contain the modeled stroke", surface.latest.sumOf { it.points.size } > 100)
@@ -84,7 +84,7 @@ class InkCanvasTileCacheTest {
                 repeat(80) { point ->
                     view.dispatchStylus(MotionEvent.ACTION_MOVE, 100f + point * 8f, y, 1_020L + stroke * 1_000L + point)
                 }
-                view.flushEngineV2ActiveFrame()
+                view.flushActiveStrokeFrame()
                 view.dispatchStylus(MotionEvent.ACTION_UP, 760f, y, 1_900L + stroke * 1_000L)
             }
 
@@ -104,10 +104,10 @@ class InkCanvasTileCacheTest {
             view.activeStrokeSurface = surface
             view.dispatchStylus(MotionEvent.ACTION_DOWN, 180f, 220f, 10L)
             view.dispatchStylus(MotionEvent.ACTION_MOVE, 260f, 300f, 20L)
-            view.flushEngineV2ActiveFrame()
+            view.flushActiveStrokeFrame()
             val firstIds = surface.latest.map(InkStroke::id)
             view.dispatchStylus(MotionEvent.ACTION_MOVE, 340f, 360f, 30L)
-            view.flushEngineV2ActiveFrame()
+            view.flushActiveStrokeFrame()
             val secondIds = surface.latest.map(InkStroke::id)
 
             assertEquals(4, firstIds.size)
@@ -169,7 +169,7 @@ class InkCanvasTileCacheTest {
                 view.dispatchStylus(MotionEvent.ACTION_DOWN, 120f, 260f, 10L)
                 repeat(96) { point ->
                     view.dispatchStylus(MotionEvent.ACTION_MOVE, 128f + point * 8f, 260f + (point % 9) * 6f, 20L + point)
-                    if (point % 16 == 15) view.flushEngineV2ActiveFrame()
+                    if (point % 16 == 15) view.flushActiveStrokeFrame()
                 }
                 view.dispatchStylus(MotionEvent.ACTION_UP, 900f, 300f, 140L)
                 view.draw(Canvas(committed))
@@ -205,7 +205,7 @@ class InkCanvasTileCacheTest {
                 view.dispatchStylus(MotionEvent.ACTION_DOWN, 120f, 520f, 10L)
                 repeat(96) { point ->
                     view.dispatchStylus(MotionEvent.ACTION_MOVE, 128f + point * 8f, 520f + (point % 9) * 3f, 20L + point)
-                    if (point % 16 == 15) view.flushEngineV2ActiveFrame()
+                    if (point % 16 == 15) view.flushActiveStrokeFrame()
                 }
                 view.dispatchStylus(MotionEvent.ACTION_UP, 900f, 550f, 140L)
                 view.draw(Canvas(committed))
@@ -252,7 +252,7 @@ class InkCanvasTileCacheTest {
                 view.activeStrokeSurface = RecordingActiveSurface(view, output)
                 // Warm the decoded brush asset before measuring the same path used after selection.
                 view.dispatchStylus(MotionEvent.ACTION_DOWN, 80f, 180f, 1L)
-                view.flushEngineV2ActiveFrame()
+                view.flushActiveStrokeFrame()
                 view.dispatchStylus(MotionEvent.ACTION_UP, 82f, 180f, 2L)
                 output.eraseColor(android.graphics.Color.TRANSPARENT)
 
@@ -264,7 +264,7 @@ class InkCanvasTileCacheTest {
                     val travel = if (cycle % 2 == 0) within else 159 - within
                     view.dispatchStylus(MotionEvent.ACTION_MOVE, 112f + travel * 5f, 420f + kotlin.math.sin(point * .12f) * 34f, 20L + point)
                     val started = android.os.SystemClock.elapsedRealtimeNanos()
-                    view.flushEngineV2ActiveFrame()
+                    view.flushActiveStrokeFrame()
                     frameTimes += android.os.SystemClock.elapsedRealtimeNanos() - started
                 }
                 view.dispatchStylus(MotionEvent.ACTION_UP, 500f, 450f, 540L)
@@ -284,7 +284,7 @@ class InkCanvasTileCacheTest {
     private class RecordingActiveSurface(
         private val view: InkCanvasView,
         private val bitmap: Bitmap? = null,
-    ) : EngineV2ActiveStrokeSurface {
+    ) : ActiveStrokeCompositor {
         var renderCount = 0
         var commitCount = 0
         var cancelCount = 0
@@ -295,7 +295,7 @@ class InkCanvasTileCacheTest {
             latest = strokes
             bitmap?.let {
                 it.eraseColor(android.graphics.Color.TRANSPARENT)
-                view.drawEngineV2ActiveStrokes(Canvas(it), strokes)
+                view.drawActiveStrokes(Canvas(it), strokes)
             }
         }
 

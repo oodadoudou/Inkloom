@@ -8,7 +8,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.model.EditorTool
-import app.inkloom.engine.v2.render.EngineV2ActiveStrokeSurface
+import app.inkloom.engine.v3.render.ActiveStrokeCompositor
 import app.inkloom.ui.InkCanvasView
 import java.io.File
 import org.junit.Assert.assertEquals
@@ -30,7 +30,7 @@ class RasterPaintCommitTest {
             procreateWetMix = app.inkloom.document.ProcreateWetMix(dilution = .9f, charge = .6f, attack = .7f, pull = 1f, blur = .25f)
             setRasterLayerBitmaps(mapOf("paint" to surface))
         }
-        view.activeStrokeSurface = object : EngineV2ActiveStrokeSurface {
+        view.activeStrokeSurface = object : ActiveStrokeCompositor {
             override fun render(strokes: List<app.inkloom.document.InkStroke>) = Unit
             override fun commit(strokes: List<app.inkloom.document.InkStroke>) = Unit
             override fun cancel() = Unit
@@ -39,7 +39,7 @@ class RasterPaintCommitTest {
         send(view, MotionEvent.ACTION_DOWN, 100f, 200f, 0L)
         repeat(8) { index ->
             send(view, MotionEvent.ACTION_MOVE, 115f + index * 15f, 200f, 5L + index)
-            InstrumentationRegistry.getInstrumentation().runOnMainSync { view.flushEngineV2ActiveFrame() }
+            InstrumentationRegistry.getInstrumentation().runOnMainSync { view.flushActiveStrokeFrame() }
         }
         assertTrue("Pull must move pigment while the contact is still down", Color.alpha(surface.getPixel(255, 300)) > 0)
 
