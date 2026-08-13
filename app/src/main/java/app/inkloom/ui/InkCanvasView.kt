@@ -152,7 +152,7 @@ import app.inkloom.document.VectorBlend
 import app.inkloom.document.WaterEdge
 import app.inkloom.engine.v2.render.RasterBlendSession
 import app.inkloom.engine.v2.render.RasterLiquifySession
-import app.inkloom.engine.v2.render.RasterEraserSession
+import app.inkloom.engine.v3.tools.RasterEraserSession
 import app.inkloom.engine.v2.render.RasterWetPaintMixer
 import app.inkloom.engine.v2.render.RasterWetPaintSession
 import app.inkloom.model.EditorTool
