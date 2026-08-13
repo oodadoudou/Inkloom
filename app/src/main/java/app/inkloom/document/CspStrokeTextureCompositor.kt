@@ -30,10 +30,6 @@ data class CspTextureMaterial(
 
 /** Applies CSP Texture once to an already-combined stroke surface in one bounded V3 native pass. */
 object CspStrokeTextureCompositor {
-    /** Retained for source compatibility while callers migrate; native workspaces are thread-local. */
-    class Workspace
-
-    @Suppress("UNUSED_PARAMETER")
     fun applyInPlace(
         strokeBitmap: Bitmap,
         contentWidth: Int,
@@ -56,7 +52,6 @@ object CspStrokeTextureCompositor {
         compositeMode: Int,
         alphaThresholdEnabled: Boolean,
         alphaThreshold: Float,
-        workspace: Workspace,
     ) {
         if (strokeBitmap.isRecycled || contentWidth <= 0 || contentHeight <= 0 || density <= 0f) return
         require(contentWidth <= strokeBitmap.width && contentHeight <= strokeBitmap.height)

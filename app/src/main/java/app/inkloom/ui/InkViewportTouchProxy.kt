@@ -12,11 +12,11 @@ import android.widget.FrameLayout
 import androidx.annotation.WorkerThread
 import androidx.graphics.lowlatency.LowLatencyCanvasView
 import app.inkloom.document.InkStroke
-import app.inkloom.engine.v3.render.ActiveStrokeCompositor
-import app.inkloom.engine.v3.render.ActiveStrokeTailPlanner
+import app.inkloom.engine.v3.api.ActiveStrokeCompositor
+import app.inkloom.engine.v3.api.ActiveStrokeTailPlanner
 import app.inkloom.document.BrushCursorGeometry
-import app.inkloom.engine.v3.geometry.ViewportFrame
-import app.inkloom.engine.v3.input.PointerPacketMapper
+import app.inkloom.engine.v3.api.ViewportFrame
+import app.inkloom.engine.v3.api.PointerPacketMapper
 import kotlin.math.atan2
 
 /**

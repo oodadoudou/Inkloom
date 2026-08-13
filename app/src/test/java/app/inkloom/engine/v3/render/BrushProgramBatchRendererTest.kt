@@ -16,7 +16,7 @@ class BrushProgramBatchRendererTest {
                     reference.nextFloat()
                     nextIndex++
                 }
-                assertEquals(reference.nextFloat(), BrushProgramBatchRenderer.legacyRandomFloatAt(seed, index), 0f)
+                assertEquals(reference.nextFloat(), BrushProgramBatchRenderer.persistedRandomFloatAt(seed, index), 0f)
                 nextIndex++
             }
         }

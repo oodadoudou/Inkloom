@@ -28,17 +28,7 @@ import android.view.View
 import android.view.ViewConfiguration
 import androidx.annotation.WorkerThread
 import androidx.annotation.VisibleForTesting
-import app.inkloom.engine.v3.diagnostics.traceEngineV3
-import app.inkloom.engine.v3.input.NativeStrokeSession
-import app.inkloom.engine.v3.brush.BrushProgram
-import app.inkloom.engine.v3.brush.BrushProgramRuntime
-import app.inkloom.engine.v3.brush.BrushResourceCache
-import app.inkloom.engine.v3.brush.BrushTipRequest
-import app.inkloom.engine.v3.render.ActiveStrokeCompositor
-import app.inkloom.engine.v3.scene.SparseAlphaMask
-import app.inkloom.engine.v3.scene.SparseTileScene
-import app.inkloom.engine.v3.render.BrushProgramBatchRenderer
-import app.inkloom.engine.v3.brush.ProceduralBrushTip
+import app.inkloom.engine.v3.api.*
 import java.util.LinkedHashMap
 import java.util.concurrent.Executors
 import app.inkloom.document.InkStroke
@@ -127,8 +117,6 @@ import app.inkloom.document.SprayGeometry
 import app.inkloom.document.SprayDynamics
 import app.inkloom.document.StrokeEdit
 import app.inkloom.document.StrokeTileIndex
-import app.inkloom.engine.v3.scene.EngineTransaction
-import app.inkloom.engine.v3.scene.EngineTransactionJournal
 import app.inkloom.document.StrokeEdits
 import app.inkloom.document.StrokeEraser
 import app.inkloom.document.StrokeClipboardCodec
@@ -150,12 +138,6 @@ import app.inkloom.document.LiquifyMode
 import app.inkloom.document.VectorLiquify
 import app.inkloom.document.VectorBlend
 import app.inkloom.document.WaterEdge
-import app.inkloom.engine.v3.tools.RasterBlendSession
-import app.inkloom.engine.v3.tools.RasterLiquifySession
-import app.inkloom.engine.v3.tools.RasterEraserSession
-import app.inkloom.engine.v3.tools.RasterWetPaintMixer
-import app.inkloom.engine.v3.tools.RasterWetPaintSession
-import app.inkloom.engine.v3.tools.NativeRasterOps
 import app.inkloom.model.EditorTool
 import app.inkloom.model.SymmetryMode
 import app.inkloom.settings.CspShortcutResolver
@@ -577,7 +559,6 @@ class InkCanvasView(context: Context) : View(context) {
     private var configuredBrushProgram: BrushProgram? = null
     private var brushResources = BrushResourceCache()
     private var wholeStrokeTextureBitmap: Bitmap? = null
-    private val wholeStrokeTextureWorkspace = CspStrokeTextureCompositor.Workspace()
     private var activeWholeTextureCoverageBitmap: Bitmap? = null
     private var activeWholeTextureStrokeId: String? = null
     private var activeWholeTextureProgram: InkStroke? = null
@@ -1773,7 +1754,6 @@ class InkCanvasView(context: Context) : View(context) {
             compositeMode = stroke.grainCompositeMode,
             alphaThresholdEnabled = stroke.alphaThresholdEnabled,
             alphaThreshold = stroke.alphaThreshold,
-            workspace = wholeStrokeTextureWorkspace,
         )
         canvas.drawBitmap(scratch, Rect(0, 0, contentWidth, contentHeight), Rect(left, top, right, bottom), null)
         return true
@@ -1871,7 +1851,6 @@ class InkCanvasView(context: Context) : View(context) {
             stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed,
             stroke.grainEmphasized, stroke.grainCompositeMode,
             stroke.alphaThresholdEnabled, stroke.alphaThreshold,
-            wholeStrokeTextureWorkspace,
         )
         canvas.drawBitmap(
             scratch,
@@ -2254,7 +2233,6 @@ class InkCanvasView(context: Context) : View(context) {
             stroke.dualGrainBrightness, stroke.dualGrainContrast, stroke.dualGrainReversed,
             stroke.dualGrainEmphasized, stroke.dualGrainCompositeMode,
             stroke.alphaThresholdEnabled, stroke.alphaThreshold,
-            CspStrokeTextureCompositor.Workspace(),
         )
     }
 
@@ -4723,7 +4701,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     @VisibleForTesting
-    internal fun committedTileSnapshot(): SparseTileScene.DebugSnapshot =
+    internal fun committedTileSnapshot(): SparseTileDebugSnapshot =
         committedScene.debugSnapshot()
 
     /** The full-screen proxy receives screen-space contacts. Drawing contacts are mapped into the
@@ -6099,39 +6077,39 @@ class InkCanvasView(context: Context) : View(context) {
     fun undo() {
         val edit = editHistory.takeUndo() ?: return
         when (edit) {
-            is EngineTransaction.Strokes -> {
+            is EngineStrokeTransaction -> {
                 if (editTouchesProtectedLayer(edit.edit)) {
                     editHistory.restoreUndo(edit)
                     return
                 }
                 applyStrokeEdit(edit.edit, forward = false)
             }
-            is EngineTransaction.External -> edit.undo()
+            is EngineExternalTransaction -> edit.undo()
         }
     }
 
     fun redo() {
         val edit = editHistory.takeRedo() ?: return
         when (edit) {
-            is EngineTransaction.Strokes -> {
+            is EngineStrokeTransaction -> {
                 if (editTouchesProtectedLayer(edit.edit)) {
                     editHistory.restoreRedo(edit)
                     return
                 }
                 applyStrokeEdit(edit.edit, forward = true)
             }
-            is EngineTransaction.External -> edit.redo()
+            is EngineExternalTransaction -> edit.redo()
         }
     }
 
     /** Adds a host-owned page mutation to the same chronological stream as ink edits. */
     fun recordExternalEdit(undo: () -> Unit, redo: () -> Unit, dispose: () -> Unit = {}) {
-        editHistory.record(EngineTransaction.External(undo, redo, dispose))
+        editHistory.record(EngineExternalTransaction(undo, redo, dispose))
     }
 
     private fun commitStrokeEdit(before: List<InkStroke>, after: List<InkStroke>) {
         val edit = StrokeEdits.difference(before, after) ?: return
-        editHistory.record(EngineTransaction.Strokes(edit))
+        editHistory.record(EngineStrokeTransaction(edit))
         persistStrokeTransition(edit.before, edit.after)
     }
 

@@ -39,7 +39,7 @@ class CspStrokeTextureCompositorTest {
                     CspTextureMaterial(1, 1, intArrayOf(Color.rgb(64, 64, 64))),
                     strength, 100f, 0f, 0f, 0f, 0,
                     0f, 0f, false, false, mode,
-                    false, 0f, CspStrokeTextureCompositor.Workspace(),
+                    false, 0f,
                 )
                 val expectedAlpha = (CspTextureComposite.density(
                     sourceAlpha / 255f,
@@ -69,7 +69,7 @@ class CspStrokeTextureCompositorTest {
                 CspTextureMaterial(1, 1, intArrayOf(Color.BLACK)),
                 1f, 100f, 0f, 0f, 0f, 0,
                 0f, 0f, false, false, CspTextureComposite.MULTIPLY,
-                true, .5f, CspStrokeTextureCompositor.Workspace(),
+                true, .5f,
             )
             assertEquals(255, Color.alpha(bitmap.getPixel(0, 0)))
             assertEquals(0, Color.alpha(bitmap.getPixel(1, 0)))
@@ -86,7 +86,7 @@ class CspStrokeTextureCompositorTest {
             bitmap, 8, 2, 0, 0, 8, 2, material,
             1f, 100f, 0f, 0f, 0f, 0,
             0f, 0f, false, false, CspTextureComposite.MULTIPLY,
-            false, 0f, CspStrokeTextureCompositor.Workspace(),
+            false, 0f,
         )
 
         assertEquals(Color.RED, bitmap.getPixel(0, 0) or -0x1000000)
@@ -109,7 +109,7 @@ class CspStrokeTextureCompositorTest {
                 bitmap, width, 8, originX, 3, 32, 16, material,
                 .82f, 137f, 23f, .17f, .31f, 1,
                 8f, 19f, true, true, CspTextureComposite.OVERLAY,
-                false, 0f, CspStrokeTextureCompositor.Workspace(),
+                false, 0f,
             )
         }
         val whole = Bitmap.createBitmap(20, 8, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }

@@ -159,7 +159,6 @@ import app.inkloom.settings.WorkspacePanelPlacement
 import app.inkloom.settings.WorkspaceOrientation
 import app.inkloom.settings.text
 import app.inkloom.ui.theme.*
-import app.inkloom.engine.v3.render.CanvasHost
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable

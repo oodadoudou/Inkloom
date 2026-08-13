@@ -1,4 +1,4 @@
-package app.inkloom.engine.v3.render
+package app.inkloom.ui
 
 import android.content.Context
 import android.graphics.Canvas
@@ -8,13 +8,11 @@ import android.widget.FrameLayout
 import androidx.annotation.WorkerThread
 import androidx.graphics.lowlatency.LowLatencyCanvasView
 import app.inkloom.document.InkStroke
-import app.inkloom.ui.InkCanvasView
+import app.inkloom.engine.v3.api.ActiveStrokeCompositor
+import app.inkloom.engine.v3.api.ActiveStrokeTailPlanner
 
-/**
- * Stable page-local host used by non-editor canvas previews. The main editor uses the full-window
- * [app.inkloom.ui.InkViewportTouchProxy], while both hosts share the same V3 active-stroke
- * compositor contract and render-thread tail planner.
- */
+/** Android host for the V3 compositor. This adapter belongs to UI so the engine never depends on
+ * [InkCanvasView], Compose, panels or another application-owned view type. */
 internal class CanvasHost(context: Context) : FrameLayout(context), ActiveStrokeCompositor {
     val canvasView = InkCanvasView(context)
     private val lowLatencyView = LowLatencyCanvasView(context)

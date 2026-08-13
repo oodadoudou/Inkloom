@@ -9,8 +9,8 @@ import app.inkloom.engine.v3.tools.NativeRasterOps
 
 /**
  * Authoritative sparse alpha plane for selections and layer masks. Only tiles containing non-zero
- * alpha are retained. Full bitmaps are explicit snapshots for legacy CPU operations/export and
- * are never the source of truth.
+ * alpha are retained. Full bitmaps are explicit boundary snapshots for platform Canvas/export
+ * consumers and are never the source of truth.
  */
 internal class SparseAlphaMask private constructor(
     val width: Int,

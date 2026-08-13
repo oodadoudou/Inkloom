@@ -1179,7 +1179,6 @@ class DocumentAssetService(private val context: Context) {
             stroke.dualGrainBrightness, stroke.dualGrainContrast, stroke.dualGrainReversed,
             stroke.dualGrainEmphasized, stroke.dualGrainCompositeMode,
             stroke.alphaThresholdEnabled, stroke.alphaThreshold,
-            CspStrokeTextureCompositor.Workspace(),
         )
     }
 
@@ -1275,7 +1274,6 @@ class DocumentAssetService(private val context: Context) {
                 stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed,
                 stroke.grainEmphasized, stroke.grainCompositeMode,
                 stroke.alphaThresholdEnabled, stroke.alphaThreshold,
-                CspStrokeTextureCompositor.Workspace(),
             )
             canvas.drawBitmap(scratch, left.toFloat(), top.toFloat(), null)
             return true

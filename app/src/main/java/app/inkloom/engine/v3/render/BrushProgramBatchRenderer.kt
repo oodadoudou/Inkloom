@@ -85,7 +85,7 @@ internal object BrushProgramBatchRenderer {
                 dual = false,
                 stylusOrientationRadians = point.orientation,
                 strokeDirectionDegrees = if (followsStroke) strokeDirection else 0f,
-                randomUnit = legacyRandomFloatAt(stroke.renderSeed.toLong() xor ROTATION_SEED, index),
+                randomUnit = persistedRandomFloatAt(stroke.renderSeed.toLong() xor ROTATION_SEED, index),
             )
             // Use the transformed tip diagonal so wide and rotated imported tips are never
             // clipped by the tile optimization.
@@ -171,9 +171,9 @@ internal object BrushProgramBatchRenderer {
     private fun secondary(value: app.inkloom.document.BrushSecondaryDynamics): Boolean =
         value.tiltEnabled || value.velocityEnabled || value.randomEnabled
 
-    /** Jump directly to java.util.Random's Nth float so incremental drawing stays compatible with
-     * existing strokes without replaying every preceding dab on every display frame. */
-    internal fun legacyRandomFloatAt(seed: Long, sampleIndex: Int): Float {
+    /** Jump directly to java.util.Random's Nth float. The sequence is part of the current
+     * persisted-stroke contract, avoiding replay of every preceding dab on each display frame. */
+    internal fun persistedRandomFloatAt(seed: Long, sampleIndex: Int): Float {
         var steps = sampleIndex.toLong().coerceAtLeast(0L) + 1L
         var multiplier = JAVA_RANDOM_MULTIPLIER
         var addend = JAVA_RANDOM_ADDEND
