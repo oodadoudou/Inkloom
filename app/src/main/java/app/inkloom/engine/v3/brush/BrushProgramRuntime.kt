@@ -159,12 +159,12 @@ internal class BrushProgram private constructor(
 }
 
 /**
- * Bounded compiler/cache facade. An authored stroke id has immutable brush parameters; only its
- * point list grows during contact. That contract lets every frame reuse one compiled program
- * without hashing the large point list or allocating a descriptor on the input/render hot path.
+ * Bounded compiler/cache facade. Brush parameters are immutable during one contact; only its point
+ * list grows. The point-free fingerprint also lets consecutive strokes and cursor preview reuse
+ * one program without hashing trajectory history on the input/render hot path.
  */
 internal object BrushProgramRuntime {
-    private data class ProgramKey(val strokeId: String, val fingerprint: Int)
+    private data class ProgramKey(val fingerprint: Long)
     private data class LastProgram(val source: InkStroke, val key: ProgramKey, val program: BrushProgram)
 
     private val cache = object : LinkedHashMap<ProgramKey, BrushProgram>(128, .75f, true) {
@@ -174,7 +174,7 @@ internal object BrushProgramRuntime {
 
     fun compile(stroke: InkStroke): BrushProgram {
         threadLastProgram.get()?.takeIf { it.source === stroke }?.let { return it.program }
-        val key = ProgramKey(stroke.id, programFingerprint(stroke))
+        val key = ProgramKey(programFingerprint(stroke))
         threadLastProgram.get()?.takeIf { it.key == key }?.let {
             threadLastProgram.set(LastProgram(stroke, key, it.program))
             return it.program
@@ -208,9 +208,11 @@ internal object BrushProgramRuntime {
 
     /** Deliberately excludes points, color, layer and render seed: none changes the compiled
      * scalar graph, and hashing a growing point list would put O(n) work back into every frame. */
-    private fun programFingerprint(stroke: InkStroke): Int {
-        var result = 1
-        fun add(value: Any?) { result = 31 * result + (value?.hashCode() ?: 0) }
+    private fun programFingerprint(stroke: InkStroke): Long {
+        var result = -3750763034362895579L
+        fun add(value: Any?) {
+            result = (result xor (value?.hashCode()?.toLong() ?: 0L)) * 1099511628211L
+        }
         add(stroke.sizePressureEnabled); add(stroke.sizePressureMinimum); add(stroke.sizePressureCurve); add(stroke.sizeSecondaryDynamics)
         add(stroke.opacityPressureEnabled); add(stroke.opacityPressureMinimum); add(stroke.opacityPressureCurve); add(stroke.opacitySecondaryDynamics)
         add(stroke.flowPressureEnabled); add(stroke.flowPressureMinimum); add(stroke.flowPressureCurve); add(stroke.flowSecondaryDynamics)

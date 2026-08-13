@@ -30,6 +30,7 @@ import androidx.annotation.WorkerThread
 import androidx.annotation.VisibleForTesting
 import app.inkloom.engine.v2.traceEngineV2
 import app.inkloom.engine.v3.input.NativeStrokeSession
+import app.inkloom.engine.v3.brush.BrushProgram
 import app.inkloom.engine.v3.brush.BrushProgramRuntime
 import app.inkloom.engine.v3.render.ActiveStrokeCompositor
 import app.inkloom.engine.v3.scene.SparseAlphaMask
@@ -585,6 +586,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var hoverCursorY = 0f
     private var hoverCursorUsesEraser = false
     private var hoverCursorPressure = 1f
+    private var hoverCursorTilt = 0f
     private var hoverCursorOrientationRadians = 0f
     private var hoverCursorDirectionDegrees = 0f
     private var hoverCursorHasDirection = false
@@ -595,6 +597,8 @@ class InkCanvasView(context: Context) : View(context) {
     internal var onHoverCursorStyleChanged: (() -> Unit)? = null
     private var configuredInputTool: EditorTool? = null
     private var configuredInputBrushId: String? = null
+    private var configuredBrushTemplate: InkStroke? = null
+    private var configuredBrushProgram: BrushProgram? = null
     private val tipCache = object : LinkedHashMap<String, Bitmap>(32, .75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Bitmap>): Boolean {
             val remove = size > MAX_TIP_CACHE_ENTRIES
@@ -1266,6 +1270,7 @@ class InkCanvasView(context: Context) : View(context) {
                     x = point.first,
                     y = point.second,
                     pressure = 1f,
+                    tilt = event.getAxisValue(MotionEvent.AXIS_TILT, pointerIndex),
                     orientationRadians = event.getOrientation(pointerIndex),
                     usesEraser = cursorTool == EditorTool.ERASER,
                     resetDirection = event.actionMasked == MotionEvent.ACTION_HOVER_ENTER || !hoverCursorVisible,
@@ -2625,6 +2630,14 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
+    /** Freezes the format-neutral cursor/dynamics program when a preset is selected. The next
+     * physical contact therefore performs neither compilation nor format-specific work. */
+    fun prepareConfiguredBrushProgram() {
+        val template = withCurrentBrushBehavior(buildStroke(emptyList()))
+        configuredBrushTemplate = template
+        configuredBrushProgram = BrushProgramRuntime.compile(template)
+    }
+
     /** A palette/tool tap can interrupt a contact stream before Android delivers its final UP.
      * Treat each tool or preset change as a hard input boundary so that stale navigation,
      * eraser, stylus-button, or drawing state cannot consume every later contact. */
@@ -3504,6 +3517,7 @@ class InkCanvasView(context: Context) : View(context) {
                     x = point.first,
                     y = point.second,
                     pressure = event.getPressure(pointerIndex).takeIf { it.isFinite() && it > 0f }?.coerceIn(0f, 1f) ?: 1f,
+                    tilt = event.getAxisValue(MotionEvent.AXIS_TILT, pointerIndex),
                     orientationRadians = event.getOrientation(pointerIndex),
                     usesEraser = cursorTool == EditorTool.ERASER,
                     resetDirection = event.actionMasked in setOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN) || !hoverCursorVisible,
@@ -3519,21 +3533,6 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun hoverCursorFootprint(): Pair<Float, Float> {
         val scale = width.coerceAtLeast(1) / REFERENCE_WIDTH
-        if (hoverCursorUsesEraser) {
-            val pressure = if (eraserPressureSize) {
-                PressureCalibration.apply(hoverCursorPressure, pressureMinimumInput, pressureMaximumInput, pressureSensitivity, pressureResponseCurve).coerceIn(.15f, 1f)
-            } else 1f
-            val diameter = documentEraserSize().coerceIn(.01f, 800f) * scale * pressure
-            val tip = activeCursorTip(eraserTipAssetPath)
-            val footprint = BrushCursorGeometry.footprint(
-                diameter = diameter,
-                tipWidth = tip?.width,
-                tipHeight = tip?.height,
-                thickness = if (tip == null) 1f else brushThickness,
-                thicknessVertical = brushThicknessVertical,
-            )
-            return footprint.width to footprint.height
-        }
         val calibratedPressure = PressureCalibration.apply(
             hoverCursorPressure,
             pressureMinimumInput,
@@ -3541,9 +3540,36 @@ class InkCanvasView(context: Context) : View(context) {
             pressureSensitivity,
             pressureResponseCurve,
         )
-        val pressure = BrushDynamics.pressure(sizePressureEnabled, sizePressureMinimum, sizePressureCurve, calibratedPressure)
+        val cursorPoint = StrokePoint(
+            x = 0f,
+            y = 0f,
+            pressure = calibratedPressure,
+            tilt = hoverCursorTilt,
+            orientation = hoverCursorOrientationRadians,
+        )
+        val configuredDynamics = configuredBrushTemplate?.let { template ->
+            configuredBrushProgram?.evaluateDab(template, cursorPoint, dual = false)
+        }
+        if (hoverCursorUsesEraser) {
+            val pressure = if (configuredInputTool == EditorTool.ERASER && configuredDynamics != null) {
+                configuredDynamics.size
+            } else if (eraserPressureSize) calibratedPressure.coerceIn(.15f, 1f) else 1f
+            val diameter = documentEraserSize().coerceIn(.01f, 800f) * scale * pressure
+            val tip = activeCursorTip(eraserTipAssetPath)
+            val footprint = BrushCursorGeometry.footprint(
+                diameter = diameter,
+                tipWidth = tip?.width,
+                tipHeight = tip?.height,
+                thickness = if (tip == null) 1f else brushThickness * (configuredDynamics?.thickness ?: 1f),
+                thicknessVertical = brushThicknessVertical,
+            )
+            return footprint.width to footprint.height
+        }
+        val pressure = configuredDynamics?.size
+            ?: BrushDynamics.pressure(sizePressureEnabled, sizePressureMinimum, sizePressureCurve, calibratedPressure)
         val diameter = documentBrushSize().coerceIn(.01f, 800f) * scale * pressure
-        val thicknessPressure = BrushDynamics.pressure(thicknessPressureEnabled, thicknessPressureMinimum, thicknessPressureCurve, calibratedPressure)
+        val thicknessPressure = configuredDynamics?.thickness
+            ?: BrushDynamics.pressure(thicknessPressureEnabled, thicknessPressureMinimum, thicknessPressureCurve, calibratedPressure)
         val tip = activeCursorTip(tipAssetPaths.firstOrNull() ?: tipAssetPath)
         val footprint = BrushCursorGeometry.footprint(
             diameter = diameter,
@@ -3571,6 +3597,7 @@ class InkCanvasView(context: Context) : View(context) {
         x: Float,
         y: Float,
         pressure: Float,
+        tilt: Float,
         orientationRadians: Float,
         usesEraser: Boolean,
         resetDirection: Boolean,
@@ -3592,6 +3619,7 @@ class InkCanvasView(context: Context) : View(context) {
         hoverCursorY = y
         hoverCursorUsesEraser = usesEraser
         hoverCursorPressure = pressure
+        hoverCursorTilt = tilt.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: 0f
         hoverCursorOrientationRadians = orientationRadians.takeIf(Float::isFinite) ?: 0f
         hoverCursorVisible = true
     }

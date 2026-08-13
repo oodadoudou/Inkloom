@@ -6,6 +6,7 @@ import android.view.MotionEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.document.InkStroke
+import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.LiquifyMode
 import app.inkloom.document.ProcreateTaper
 import app.inkloom.document.StrokeInputKind
@@ -27,6 +28,33 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class InkCanvasBrushSwitchTest {
+    @Test
+    fun cursorPreviewUsesTheSelectedBrushPressureAndTiltProgram() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val view = InkCanvasView(instrumentation.targetContext).apply { layout(0, 0, 1600, 1200) }
+        val dynamic = brush("dynamic-cursor", "Dynamic cursor").copy(
+            sizePressureEnabled = true,
+            sizePressureMinimum = .2f,
+            sizeSecondaryDynamics = BrushSecondaryDynamics(
+                tiltEnabled = true,
+                tiltMinimum = .5f,
+            ),
+        )
+        val fixed = brush("fixed-cursor", "Fixed cursor").copy(sizePressureEnabled = false)
+
+        instrumentation.runOnMainSync {
+            view.applyBrushConfiguration(EditorTool.PEN, AppSettings(), dynamic, 100f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
+            view.onTouchEvent(stylusEventWithDynamics(MotionEvent.ACTION_DOWN, 400f, 400f, 1L, pressure = .75f, tilt = 0f))
+            assertEquals("Pressure (0.8) and upright tilt minimum (0.5) must both affect the cursor", 40f, view.hoverCursorSnapshot()[3], .75f)
+            view.onTouchEvent(stylusEventWithDynamics(MotionEvent.ACTION_UP, 400f, 400f, 2L, pressure = .75f, tilt = 0f))
+
+            view.applyBrushConfiguration(EditorTool.PEN, AppSettings(), fixed, 100f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
+            view.onTouchEvent(stylusEventWithDynamics(MotionEvent.ACTION_DOWN, 600f, 400f, 3L, pressure = .75f, tilt = 0f))
+            assertEquals("Switching presets must replace the precompiled cursor program", 100f, view.hoverCursorSnapshot()[3], .75f)
+            view.onTouchEvent(stylusEventWithDynamics(MotionEvent.ACTION_UP, 600f, 400f, 4L, pressure = .75f, tilt = 0f))
+        }
+    }
+
     @Test
     fun cspScreenSizedBrushKeepsPhysicalCursorAndCommitsInverseZoomDiameter() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -492,6 +520,40 @@ class InkCanvasBrushSwitchTest {
         val properties = arrayOf(MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_STYLUS })
         val coordinates = arrayOf(MotionEvent.PointerCoords().apply { this.x = x; this.y = y; pressure = .75f; size = .05f })
         return MotionEvent.obtain(1L, time, action, 1, properties, coordinates, 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_STYLUS, 0)
+    }
+
+    private fun stylusEventWithDynamics(
+        action: Int,
+        x: Float,
+        y: Float,
+        time: Long,
+        pressure: Float,
+        tilt: Float,
+    ): MotionEvent {
+        val properties = arrayOf(MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_STYLUS })
+        val coordinates = arrayOf(MotionEvent.PointerCoords().apply {
+            this.x = x
+            this.y = y
+            this.pressure = pressure
+            this.setAxisValue(MotionEvent.AXIS_TILT, tilt)
+            size = .05f
+        })
+        return MotionEvent.obtain(
+            1L,
+            time,
+            action,
+            1,
+            properties,
+            coordinates,
+            0,
+            0,
+            1f,
+            1f,
+            0,
+            0,
+            InputDevice.SOURCE_STYLUS,
+            0,
+        )
     }
 
     private fun fingerEvent(action: Int, x: Float, y: Float, time: Long): MotionEvent {
