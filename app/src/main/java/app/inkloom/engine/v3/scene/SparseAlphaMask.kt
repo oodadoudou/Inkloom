@@ -2,10 +2,10 @@ package app.inkloom.engine.v3.scene
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import app.inkloom.document.StrokeTileKey
+import app.inkloom.engine.v3.tools.NativeRasterOps
 
 /**
  * Authoritative sparse alpha plane for selections and layer masks. Only tiles containing non-zero
@@ -69,30 +69,19 @@ internal class SparseAlphaMask private constructor(
             if (source == null || source.isRecycled || source.width <= 0 || source.height <= 0) return null
             require(tileSize > 0)
             val retained = linkedMapOf<StrokeTileKey, Bitmap>()
-            val row = IntArray(tileSize)
-            var top = 0
-            while (top < source.height) {
-                var left = 0
+            val coordinates = NativeRasterOps.nonEmptyAlphaTiles(source, tileSize)
+            check(coordinates.size % 2 == 0) { "Native alpha tile scan returned malformed coordinates" }
+            var index = 0
+            while (index < coordinates.size) {
+                val column = coordinates[index]
+                val row = coordinates[index + 1]
+                val left = column * tileSize
+                val top = row * tileSize
+                val tileWidth = minOf(tileSize, source.width - left)
                 val tileHeight = minOf(tileSize, source.height - top)
-                while (left < source.width) {
-                    val tileWidth = minOf(tileSize, source.width - left)
-                    var nonEmpty = false
-                    for (y in 0 until tileHeight) {
-                        source.getPixels(row, 0, tileWidth, left, top + y, tileWidth, 1)
-                        var x = 0
-                        while (x < tileWidth && Color.alpha(row[x]) == 0) x++
-                        if (x < tileWidth) {
-                            nonEmpty = true
-                            break
-                        }
-                    }
-                    if (nonEmpty) {
-                        retained[StrokeTileKey(left / tileSize, top / tileSize)] =
-                            Bitmap.createBitmap(source, left, top, tileWidth, tileHeight)
-                    }
-                    left += tileSize
-                }
-                top += tileSize
+                retained[StrokeTileKey(column, row)] =
+                    Bitmap.createBitmap(source, left, top, tileWidth, tileHeight)
+                index += 2
             }
             return SparseAlphaMask(source.width, source.height, tileSize, retained).takeUnless(SparseAlphaMask::isEmpty)
         }

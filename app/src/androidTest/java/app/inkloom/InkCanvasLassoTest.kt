@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.view.InputDevice
 import android.view.MotionEvent
+import android.os.SystemClock
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.document.InkStroke
@@ -19,6 +20,35 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class InkCanvasLassoTest {
+    @Test fun emptySparseAlphaPlaneDoesNotRetainTiles() {
+        val bitmap = Bitmap.createBitmap(1_024, 768, Bitmap.Config.ARGB_8888)
+        try {
+            assertTrue(SparseAlphaMask.fromBitmap(bitmap) == null)
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    @Test fun sparseAlphaTileDiscoveryStaysWithinSelectionFrameBudget() {
+        val bitmap = Bitmap.createBitmap(2_048, 2_048, Bitmap.Config.ARGB_8888)
+        try {
+            android.graphics.Canvas(bitmap).drawCircle(1_024f, 1_024f, 16f, android.graphics.Paint().apply { color = Color.WHITE })
+            repeat(2) { SparseAlphaMask.fromBitmap(bitmap)?.close() }
+            val elapsed = ArrayList<Long>(8)
+            repeat(8) {
+                val started = SystemClock.elapsedRealtimeNanos()
+                SparseAlphaMask.fromBitmap(bitmap)?.close()
+                elapsed += SystemClock.elapsedRealtimeNanos() - started
+            }
+            val sorted = elapsed.sorted()
+            val p95Ms = sorted[(sorted.size * 95 / 100).coerceAtMost(sorted.lastIndex)] / 1_000_000f
+            android.util.Log.i("InkloomPerf", "sparse_alpha_tile_scan_p95_ms=$p95Ms")
+            assertTrue("Sparse alpha tile scan P95 was ${p95Ms}ms", p95Ms < 33.3f)
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
     @Test fun sparseAlphaPlaneRetainsOnlyNonEmptySelectionTiles() {
         val bitmap = Bitmap.createBitmap(2_048, 2_048, Bitmap.Config.ARGB_8888)
         try {

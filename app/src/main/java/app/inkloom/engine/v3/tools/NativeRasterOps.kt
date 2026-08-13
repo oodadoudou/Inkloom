@@ -39,6 +39,9 @@ internal object NativeRasterOps {
 
     fun isAlphaEmpty(source: Bitmap): Boolean = nativeIsAlphaEmpty(source)
 
+    fun nonEmptyAlphaTiles(source: Bitmap, tileSize: Int): IntArray =
+        nativeNonEmptyAlphaTiles(source, tileSize)
+
     fun invertAlpha(source: Bitmap, destination: Bitmap): Boolean = nativeInvertAlpha(source, destination)
 
     fun boundaryAlpha(source: Bitmap, destination: Bitmap): Boolean = nativeBoundaryAlpha(source, destination)
@@ -157,6 +160,7 @@ internal object NativeRasterOps {
 
     private external fun nativeAlphaBounds(source: Bitmap): IntArray
     private external fun nativeIsAlphaEmpty(source: Bitmap): Boolean
+    private external fun nativeNonEmptyAlphaTiles(source: Bitmap, tileSize: Int): IntArray
     private external fun nativeInvertAlpha(source: Bitmap, destination: Bitmap): Boolean
     private external fun nativeBoundaryAlpha(source: Bitmap, destination: Bitmap): Boolean
     private external fun nativeMorphAlpha(source: Bitmap, destination: Bitmap, radius: Int, dilate: Boolean): Boolean

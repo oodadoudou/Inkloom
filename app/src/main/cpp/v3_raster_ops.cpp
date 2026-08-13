@@ -519,6 +519,46 @@ Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeIsAlphaEmpty(
     return JNI_TRUE;
 }
 
+extern "C" JNIEXPORT jintArray JNICALL
+Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeNonEmptyAlphaTiles(
+    JNIEnv* env, jobject, jobject source_bitmap, jint tile_size_value) {
+    LockedBitmap source(env, source_bitmap);
+    const int tile_size = static_cast<int>(tile_size_value);
+    if (source.pixels == nullptr || tile_size <= 0) return env->NewIntArray(0);
+    const int width = static_cast<int>(source.info.width);
+    const int height = static_cast<int>(source.info.height);
+    const int column_count = (width + tile_size - 1) / tile_size;
+    const int row_count = (height + tile_size - 1) / tile_size;
+    const std::int64_t tile_count_value = static_cast<std::int64_t>(column_count) * row_count;
+    if (tile_count_value <= 0 || tile_count_value > std::numeric_limits<jsize>::max() / 2) {
+        return env->NewIntArray(0);
+    }
+    const std::size_t tile_count = static_cast<std::size_t>(tile_count_value);
+    std::vector<std::uint8_t> occupied(tile_count, 0);
+    for (int y = 0; y < height; ++y) {
+        const auto* row = source.pixels + static_cast<std::size_t>(y) * source.info.stride;
+        const int tile_row = y / tile_size;
+        for (int x = 0; x < width; ++x) {
+            if (row[x * 4 + 3] == 0) continue;
+            occupied[static_cast<std::size_t>(tile_row) * column_count + x / tile_size] = 1;
+        }
+    }
+    std::vector<jint> coordinates;
+    coordinates.reserve(tile_count * 2);
+    for (int row = 0; row < row_count; ++row) {
+        for (int column = 0; column < column_count; ++column) {
+            if (!occupied[static_cast<std::size_t>(row) * column_count + column]) continue;
+            coordinates.push_back(column);
+            coordinates.push_back(row);
+        }
+    }
+    jintArray result = env->NewIntArray(static_cast<jsize>(coordinates.size()));
+    if (result != nullptr && !coordinates.empty()) {
+        env->SetIntArrayRegion(result, 0, static_cast<jsize>(coordinates.size()), coordinates.data());
+    }
+    return result;
+}
+
 extern "C" JNIEXPORT jboolean JNICALL
 Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeInvertAlpha(
     JNIEnv* env, jobject, jobject source_bitmap, jobject destination_bitmap) {
