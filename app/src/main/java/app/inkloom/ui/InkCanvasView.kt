@@ -150,7 +150,7 @@ import app.inkloom.document.LiquifyMode
 import app.inkloom.document.VectorLiquify
 import app.inkloom.document.VectorBlend
 import app.inkloom.document.WaterEdge
-import app.inkloom.engine.v2.render.RasterBlendSession
+import app.inkloom.engine.v3.tools.RasterBlendSession
 import app.inkloom.engine.v2.render.RasterLiquifySession
 import app.inkloom.engine.v3.tools.RasterEraserSession
 import app.inkloom.engine.v2.render.RasterWetPaintMixer

@@ -3,7 +3,7 @@ package app.inkloom
 import android.graphics.Bitmap
 import android.graphics.Color
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import app.inkloom.engine.v2.render.RasterBlendSession
+import app.inkloom.engine.v3.tools.RasterBlendSession
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
