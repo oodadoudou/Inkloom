@@ -302,27 +302,27 @@ bool append_sample(
 }  // namespace
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_app_inkloom_engine_v2_input_NativeStrokeInputModeler_nativeCreate(JNIEnv*, jobject) {
+Java_app_inkloom_engine_v3_input_NativeStrokeSession_nativeCreate(JNIEnv*, jobject) {
     auto* session = new (std::nothrow) StrokeInputSession();
     return static_cast<jlong>(reinterpret_cast<std::uintptr_t>(session));
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_app_inkloom_engine_v2_input_NativeStrokeInputModeler_nativeDestroy(
+Java_app_inkloom_engine_v3_input_NativeStrokeSession_nativeDestroy(
     JNIEnv*, jobject, jlong handle
 ) {
     delete from_handle(handle);
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_app_inkloom_engine_v2_input_NativeStrokeInputModeler_nativeReset(
+Java_app_inkloom_engine_v3_input_NativeStrokeSession_nativeReset(
     JNIEnv*, jobject, jlong handle
 ) {
     if (auto* session = from_handle(handle); session != nullptr) session->reset();
 }
 
 extern "C" JNIEXPORT jint JNICALL
-Java_app_inkloom_engine_v2_input_NativeStrokeInputModeler_nativeAppendBatch(
+Java_app_inkloom_engine_v3_input_NativeStrokeSession_nativeAppendBatch(
     JNIEnv* env,
     jobject,
     jlong handle,

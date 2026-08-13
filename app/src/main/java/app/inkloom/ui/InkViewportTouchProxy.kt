@@ -12,12 +12,11 @@ import android.widget.FrameLayout
 import androidx.annotation.WorkerThread
 import androidx.graphics.lowlatency.LowLatencyCanvasView
 import app.inkloom.document.InkStroke
-import app.inkloom.engine.v2.input.PointerCoordinateMapper
-import app.inkloom.engine.v2.input.CanonicalViewportTransform
 import app.inkloom.engine.v2.render.EngineV2ActiveStrokeSurface
 import app.inkloom.engine.v2.render.EngineV2ActiveTailPlanner
 import app.inkloom.document.BrushCursorGeometry
-import app.inkloom.document.ViewportState
+import app.inkloom.engine.v3.geometry.ViewportFrame
+import app.inkloom.engine.v3.input.PointerPacketMapper
 import kotlin.math.atan2
 
 /**
@@ -45,15 +44,17 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context), EngineV2Ac
                 // different transform/frame than the RenderNode-backed committed page.
                 activeStrokeSurface = this@InkViewportTouchProxy
             }
+            activeDrawingFrame = null
             cancel()
             clearHoverCursor()
         }
 
-    private val coordinateMapper = PointerCoordinateMapper()
+    private val coordinateMapper = PointerPacketMapper()
     private val activeInkSurface = LowLatencyCanvasView(context)
     private val cursorSurface = LowLatencyCanvasView(context)
     @Volatile private var activeStrokes: List<InkStroke> = emptyList()
-    @Volatile private var activeTransform: CanonicalViewportTransform? = null
+    @Volatile private var activeTransform: ViewportFrame? = null
+    @Volatile private var activeDrawingFrame: ViewportFrame? = null
     private val activeLock = Any()
     private val activeTailPlanner = EngineV2ActiveTailPlanner()
     private val activeRenderMatrix = Matrix()
@@ -108,14 +109,14 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context), EngineV2Ac
 
     override fun render(strokes: List<InkStroke>) {
         val canvas = target ?: return
-        activeTransform = currentTransform(canvas)
+        activeTransform = activeDrawingFrame ?: currentFrame(canvas)
         activeStrokes = strokes
         activeInkSurface.renderFrontBufferedLayer()
     }
 
     override fun commit(strokes: List<InkStroke>) {
         val canvas = target ?: return
-        activeTransform = currentTransform(canvas)
+        activeTransform = activeDrawingFrame ?: currentFrame(canvas)
         activeStrokes = strokes
         activeInkSurface.renderFrontBufferedLayer()
         activeInkSurface.commit()
@@ -164,7 +165,7 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context), EngineV2Ac
     private fun drawActiveInk(
         canvas: Canvas,
         view: InkCanvasView,
-        transform: CanonicalViewportTransform,
+        transform: ViewportFrame,
         strokes: List<InkStroke>,
         incrementalStampDraw: Boolean,
     ) {
@@ -175,11 +176,8 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context), EngineV2Ac
         canvas.restoreToCount(checkpoint)
     }
 
-    private fun currentTransform(canvas: InkCanvasView): CanonicalViewportTransform? =
-        CanonicalViewportTransform.create(
-            width.toFloat(), height.toFloat(), canvas.width.toFloat(), canvas.height.toFloat(),
-            ViewportState(canvas.viewportScale, canvas.viewportPanX, canvas.viewportPanY, canvas.viewportRotationDegrees),
-        )
+    private fun currentFrame(canvas: InkCanvasView): ViewportFrame? =
+        coordinateMapper.snapshot(this, canvas, canvas.viewportState())
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         val stylusIndex = event.stylusPointerIndex(activeStylusPointerId)
@@ -189,7 +187,7 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context), EngineV2Ac
         if (event.actionMasked == MotionEvent.ACTION_DOWN && event.isStylusEvent()) {
             requestUnbufferedDispatch(event)
         }
-        val handled = forward(event) { canvas, forwarded -> canvas.dispatchTouchEvent(forwarded) }
+        val handled = forward(event, retainDrawingFrame = true) { canvas, forwarded -> canvas.dispatchTouchEvent(forwarded) }
         updateContactCursor(event)
         return handled
     }
@@ -248,16 +246,30 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context), EngineV2Ac
         }
     }
 
-    private inline fun forward(event: MotionEvent, dispatch: (InkCanvasView, MotionEvent) -> Boolean): Boolean {
+    private inline fun forward(
+        event: MotionEvent,
+        retainDrawingFrame: Boolean = false,
+        dispatch: (InkCanvasView, MotionEvent) -> Boolean,
+    ): Boolean {
         val canvas = target?.takeIf { it.isAttachedToWindow && it.width > 0 && it.height > 0 } ?: return false
-        val forwarded = MotionEvent.obtain(event)
+        val terminal = event.actionMasked in setOf(MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL)
+        if (retainDrawingFrame && event.actionMasked == MotionEvent.ACTION_DOWN) activeDrawingFrame = null
+        if (retainDrawingFrame && event.pointerCount > 1) activeDrawingFrame = null
+        val usesPageCoordinates = canvas.proxyContactUsesPageCoordinates(event)
+        val frozenFrame = activeDrawingFrame?.takeIf { retainDrawingFrame && event.pointerCount == 1 }
+        val packet = when {
+            frozenFrame != null -> coordinateMapper.map(event, frozenFrame)
+            usesPageCoordinates -> coordinateMapper.map(event, this, canvas, canvas.viewportState())
+            else -> coordinateMapper.map(event, this, canvas)
+        } ?: return false
+        if (retainDrawingFrame && event.actionMasked == MotionEvent.ACTION_DOWN && usesPageCoordinates) {
+            activeDrawingFrame = packet.frame
+        }
         return try {
-            val viewport = if (canvas.proxyContactUsesPageCoordinates(forwarded)) {
-                ViewportState(canvas.viewportScale, canvas.viewportPanX, canvas.viewportPanY, canvas.viewportRotationDegrees)
-            } else null
-            coordinateMapper.mapCenteredViewport(forwarded, this, canvas, viewport) && dispatch(canvas, forwarded)
+            dispatch(canvas, packet.event)
         } finally {
-            forwarded.recycle()
+            packet.close()
+            if (retainDrawingFrame && terminal) activeDrawingFrame = null
         }
     }
 

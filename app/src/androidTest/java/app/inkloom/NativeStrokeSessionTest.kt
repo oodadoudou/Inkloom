@@ -2,7 +2,7 @@ package app.inkloom
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.document.StrokeStabilization
-import app.inkloom.engine.v2.input.NativeStrokeInputModeler
+import app.inkloom.engine.v3.input.NativeStrokeSession
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -10,10 +10,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
-class NativeStrokeInputModelerTest {
+class NativeStrokeSessionTest {
     @Test
     fun nativeSessionModelsFiltersAndResetsWithoutASecondImplementation() {
-        NativeStrokeInputModeler().use { modeler ->
+        NativeStrokeSession().use { modeler ->
             assertTrue(modeler.append(.25f, .75f, 0f, 10L, .2f, .3f, 1200, 1600, 0f, false, StrokeStabilization.REDUCE_WHEN_FAST))
             assertEquals(.25f, modeler.x, .00001f)
             assertEquals(.75f, modeler.y, .00001f)
@@ -31,7 +31,7 @@ class NativeStrokeInputModelerTest {
 
     @Test
     fun historicalSamplesCrossJniAsOneOrderedBatch() {
-        NativeStrokeInputModeler().use { modeler ->
+        NativeStrokeSession().use { modeler ->
             modeler.putSample(0, .1f, .2f, .3f, 10L, .1f, .2f)
             modeler.putSample(1, .2f, .3f, .5f, 12L, .2f, .3f)
             modeler.putSample(2, .4f, .5f, .8f, 14L, .3f, .4f)
@@ -66,7 +66,7 @@ class NativeStrokeInputModelerTest {
             .58f to .35f,
             .76f to .71f,
         )
-        NativeStrokeInputModeler().use { modeler ->
+        NativeStrokeSession().use { modeler ->
             authored.forEachIndexed { index, point ->
                 modeler.putSample(
                     index = index,
@@ -103,7 +103,7 @@ class NativeStrokeInputModelerTest {
 
     @Test
     fun orientationAndTimeRemainContinuousAcrossDeviceWrapAndOutOfOrderInput() {
-        NativeStrokeInputModeler().use { modeler ->
+        NativeStrokeSession().use { modeler ->
             modeler.putSample(0, .1f, .1f, .5f, 20L, 0f, 3.13f)
             modeler.putSample(1, .3f, .3f, .5f, 19L, 0f, -3.13f)
 
@@ -118,7 +118,7 @@ class NativeStrokeInputModelerTest {
 
     @Test
     fun magnifiedCanvasKeepsSubPagePixelSamplesThatAreDistinctOnScreen() {
-        NativeStrokeInputModeler().use { modeler ->
+        NativeStrokeSession().use { modeler ->
             assertTrue(modeler.append(.25f, .75f, .7f, 10L, 0f, 0f, 9_600, 12_800, 0f, false, StrokeStabilization.REDUCE_WHEN_FAST))
             assertTrue(
                 "A sample several physical pixels away at 8x zoom must not be discarded by a normalized threshold",
@@ -133,7 +133,7 @@ class NativeStrokeInputModelerTest {
     fun procreateStreamlineStabilizationAndMotionFilteringRemainIndependent() {
         fun path(streamLine: Float = 0f, movingAverage: Float = 0f, motion: Float = 0f, expression: Float = 0f): List<Pair<Float, Float>> {
             val result = mutableListOf<Pair<Float, Float>>()
-            NativeStrokeInputModeler().use { modeler ->
+            NativeStrokeSession().use { modeler ->
                 repeat(12) { index ->
                     val x = .1f + index * .06f
                     val y = .5f + if (index % 2 == 0) .025f else -.025f
@@ -175,7 +175,7 @@ class NativeStrokeInputModelerTest {
 
     @Test
     fun procreateStreamlinePressureSmoothsPressureWithoutChangingPathSetting() {
-        NativeStrokeInputModeler().use { modeler ->
+        NativeStrokeSession().use { modeler ->
             assertTrue(modeler.append(.1f, .5f, .1f, 10L, 0f, 0f, 1200, 1600, 0f, false, StrokeStabilization.REDUCE_WHEN_FAST, streamLinePressure = .8f))
             assertTrue(modeler.append(.3f, .5f, 1f, 11L, 0f, 0f, 1200, 1600, 0f, false, StrokeStabilization.REDUCE_WHEN_FAST, streamLinePressure = .8f))
             assertTrue(modeler.pressure in .1f..<1f)

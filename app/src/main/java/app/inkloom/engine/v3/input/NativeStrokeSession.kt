@@ -1,11 +1,11 @@
-package app.inkloom.engine.v2.input
+package app.inkloom.engine.v3.input
 
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-/** JNI owner for the single Engine V2 input session. The direct result buffer is allocated once. */
-internal class NativeStrokeInputModeler : AutoCloseable {
-    private var handle: Long = nativeCreate().also { check(it != 0L) { "Unable to create Engine V2 input session" } }
+/** JNI owner for one Engine V3 paper-trace session. Both direct buffers are allocated once. */
+internal class NativeStrokeSession : AutoCloseable {
+    private var handle: Long = nativeCreate().also { check(it != 0L) { "Unable to create Engine V3 input session" } }
     private val input = ByteBuffer.allocateDirect(MAX_BATCH_SAMPLES * INPUT_STRIDE_BYTES).order(ByteOrder.nativeOrder())
     private val output = ByteBuffer.allocateDirect(MAX_BATCH_SAMPLES * OUTPUT_STRIDE_BYTES).order(ByteOrder.nativeOrder())
 
@@ -150,7 +150,7 @@ internal class NativeStrokeInputModeler : AutoCloseable {
         const val OFFSET_VELOCITY = 32
 
         init {
-            System.loadLibrary("inkloom_engine_v2")
+            System.loadLibrary("inkloom_engine_v3")
         }
 
         fun outputOffset(index: Int, fieldOffset: Int): Int {

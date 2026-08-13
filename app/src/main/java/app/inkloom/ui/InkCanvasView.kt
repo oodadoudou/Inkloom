@@ -29,7 +29,7 @@ import android.view.ViewConfiguration
 import androidx.annotation.WorkerThread
 import androidx.annotation.VisibleForTesting
 import app.inkloom.engine.v2.traceEngineV2
-import app.inkloom.engine.v2.input.NativeStrokeInputModeler
+import app.inkloom.engine.v3.input.NativeStrokeSession
 import app.inkloom.engine.v2.brush.EngineV2BrushEvaluator
 import app.inkloom.engine.v2.render.EngineV2ActiveStrokeSurface
 import app.inkloom.engine.v2.render.EngineV2CommittedTileScene
@@ -39,6 +39,7 @@ import java.util.LinkedHashMap
 import java.util.concurrent.Executors
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
+import app.inkloom.document.ViewportState
 import app.inkloom.document.StrokeMaskDab
 import app.inkloom.document.StrokeMaskRenderer
 import app.inkloom.document.BrushCurvePoint
@@ -210,7 +211,7 @@ private class ActiveCspDualBrushSurface(val width: Int, val height: Int, val app
 
 class InkCanvasView(context: Context) : View(context) {
     private val renderLock = Any()
-    private val strokeInputModeler = NativeStrokeInputModeler()
+    private val strokeInputModeler = NativeStrokeSession()
     private val strokes = mutableListOf<InkStroke>()
     private val editHistory = CanvasEditHistory()
     private val currentPoints = mutableListOf<StrokePoint>()
@@ -4770,6 +4771,13 @@ class InkCanvasView(context: Context) : View(context) {
             event.getTouchMajor(0) < StylusInputClassifier.PALM_TOUCH_MAJOR_PX &&
             (selectionDrawContact || elapsedSinceStylus !in 0..StylusInputClassifier.RECENT_STYLUS_WINDOW_MS)
     }
+
+    internal fun viewportState(): ViewportState = ViewportState(
+        viewportScale,
+        viewportPanX,
+        viewportPanY,
+        viewportRotationDegrees,
+    )
 
     private fun updateContinuousPlotInput(x: Float, y: Float, pressure: Float, tilt: Float, orientation: Float) {
         continuousPlotX = x.coerceIn(0f, 1f)
