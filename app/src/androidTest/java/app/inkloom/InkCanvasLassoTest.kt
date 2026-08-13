@@ -11,6 +11,7 @@ import app.inkloom.document.StrokeMaskDab
 import app.inkloom.document.StrokePoint
 import app.inkloom.model.EditorTool
 import app.inkloom.ui.InkCanvasView
+import app.inkloom.engine.v3.scene.SparseAlphaMask
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -18,6 +19,29 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class InkCanvasLassoTest {
+    @Test fun sparseAlphaPlaneRetainsOnlyNonEmptySelectionTiles() {
+        val bitmap = Bitmap.createBitmap(2_048, 2_048, Bitmap.Config.ARGB_8888)
+        try {
+            android.graphics.Canvas(bitmap).drawRect(1_020f, 1_020f, 1_040f, 1_040f, android.graphics.Paint().apply { color = Color.WHITE })
+            val mask = requireNotNull(SparseAlphaMask.fromBitmap(bitmap))
+            try {
+                assertEquals(4, mask.tileCount)
+                assertTrue(mask.retainedPixels < bitmap.width.toLong() * bitmap.height / 8L)
+                val restored = mask.snapshot()
+                try {
+                    assertEquals(Color.WHITE, restored.getPixel(1_030, 1_030))
+                    assertEquals(Color.TRANSPARENT, restored.getPixel(100, 100))
+                } finally {
+                    restored.recycle()
+                }
+            } finally {
+                mask.close()
+            }
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
     @Test fun lassoExposesItsExactContourForLayerMaskCommands() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val view = configuredView(horizontalStroke("mask-source"), mutableListOf())

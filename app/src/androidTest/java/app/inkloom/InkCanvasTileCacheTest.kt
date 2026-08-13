@@ -64,6 +64,56 @@ class InkCanvasTileCacheTest {
         }
     }
 
+    @Test fun fiftyLayer8192SceneKeepsGpuDisplayListsSparseAndBounded() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val scene = SparseTileScene(4_000_000)
+            val strokes = List(50) { index ->
+                val column = index % 5
+                val row = index / 5
+                val x = .02f + column * .012f
+                val y = .02f + row * .009f
+                InkStroke(
+                    id = "layer-stroke-$index",
+                    layerId = "layer-$index",
+                    width = 10f,
+                    points = listOf(StrokePoint(x, y), StrokePoint(x + .006f, y + .004f)),
+                )
+            }
+            val output = RenderNode("Inkloom.V3.FiftyLayerSparseSceneTest").apply { setPosition(0, 0, 8192, 8192) }
+            val recording = output.beginRecording()
+            try {
+                assertTrue(recording.isHardwareAccelerated)
+                assertTrue(scene.draw(recording, strokes, 8192, 8192) { canvas, candidates ->
+                    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                        color = android.graphics.Color.BLACK
+                        strokeWidth = 10f
+                    }
+                    candidates.forEach { stroke ->
+                        canvas.drawLine(
+                            stroke.points.first().x * 8192f,
+                            stroke.points.first().y * 8192f,
+                            stroke.points.last().x * 8192f,
+                            stroke.points.last().y * 8192f,
+                            paint,
+                        )
+                    }
+                })
+            } finally {
+                output.endRecording()
+            }
+            val snapshot = scene.debugSnapshot()
+            assertEquals(50, snapshot.hardwareStrokeCount)
+            assertTrue("50 sparse layers allocated ${snapshot.hardwareTileCount} tiles", snapshot.hardwareTileCount in 1..12)
+            assertEquals("Production GPU rendering must not retain software tiles", 0, snapshot.tiles.size)
+            assertTrue(
+                "Sparse 50-layer display lists retained ${snapshot.approximateGpuDisplayListBytes} bytes",
+                snapshot.approximateGpuDisplayListBytes in 1 until 16L * 1024L * 1024L,
+            )
+            scene.close()
+            output.discardDisplayList()
+        }
+    }
+
     @Test fun softStrokeTilesRenderWithAnExpandedTransientGutter() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val scene = SparseTileScene(4_000_000)
