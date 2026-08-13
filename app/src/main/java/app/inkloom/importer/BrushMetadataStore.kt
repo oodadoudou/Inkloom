@@ -230,6 +230,12 @@ class BrushMetadataStore(
                         stabilization = item.optDouble("stabilization", 0.0).toFloat().coerceIn(0f, .9f),
                         stabilizationBySpeed = item.optBoolean("stabilizationBySpeed", false),
                         stabilizationBySpeedMode = item.optInt("stabilizationBySpeedMode", 1).coerceIn(0, 1),
+                        postCorrectionEnabled = item.optBoolean("postCorrectionEnabled", false),
+                        postCorrection = item.optDouble("postCorrection", 0.0).toFloat().coerceIn(0f, 1f),
+                        postCorrectionAdjustBySpeed = item.optBoolean("postCorrectionAdjustBySpeed", false),
+                        postCorrectionAdjustByScale = item.optBoolean("postCorrectionAdjustByScale", true),
+                        postCorrectionBezier = item.optBoolean("postCorrectionBezier", false),
+                        correctionSharpAngles = item.optBoolean("correctionSharpAngles", false),
                         spacing = item.optDouble("spacing", .12).toFloat(),
                         strokeFalloff = item.optDouble("strokeFalloff", 0.0).toFloat().coerceIn(0f, 1f),
                         strokePathJitter = item.optDouble("strokePathJitter", 0.0).toFloat().coerceIn(0f, 4f),
@@ -473,6 +479,12 @@ class BrushMetadataStore(
                     .put("stabilization", brush.stabilization)
                     .put("stabilizationBySpeed", brush.stabilizationBySpeed)
                     .put("stabilizationBySpeedMode", brush.stabilizationBySpeedMode)
+                    .put("postCorrectionEnabled", brush.postCorrectionEnabled)
+                    .put("postCorrection", brush.postCorrection)
+                    .put("postCorrectionAdjustBySpeed", brush.postCorrectionAdjustBySpeed)
+                    .put("postCorrectionAdjustByScale", brush.postCorrectionAdjustByScale)
+                    .put("postCorrectionBezier", brush.postCorrectionBezier)
+                    .put("correctionSharpAngles", brush.correctionSharpAngles)
                     .put("spacing", brush.spacing)
                     .put("strokeFalloff", brush.strokeFalloff)
                     .put("strokePathJitter", brush.strokePathJitter)

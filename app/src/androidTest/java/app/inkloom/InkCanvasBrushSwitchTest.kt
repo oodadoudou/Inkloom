@@ -27,6 +27,71 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class InkCanvasBrushSwitchTest {
     @Test
+    fun cspPostCorrectionProgramActivatesPerBrushWithoutGlobalLeakage() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val view = InkCanvasView(instrumentation.targetContext)
+        val settings = AppSettings(postCorrection = .81f, postCorrectionAdjustBySpeed = false, postCorrectionAdjustByScale = true)
+        val disabled = brush("disabled-correction", "Disabled correction").copy(postCorrectionEnabled = false, postCorrection = .62f)
+        val enabled = brush("enabled-correction", "Enabled correction").copy(
+            postCorrectionEnabled = true,
+            postCorrection = .37f,
+            postCorrectionAdjustBySpeed = true,
+            postCorrectionAdjustByScale = false,
+            postCorrectionBezier = true,
+            correctionSharpAngles = true,
+        )
+
+        instrumentation.runOnMainSync {
+            view.applyBrushConfiguration(EditorTool.PEN, settings, disabled, 12f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
+            assertEquals("A disabled imported SUT must not inherit the app-wide correction", 0f, view.postCorrection, .0001f)
+
+            view.applyBrushConfiguration(EditorTool.PEN, settings, enabled, 12f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
+            assertEquals(.37f, view.postCorrection, .0001f)
+            assertTrue(view.postCorrectionAdjustBySpeed)
+            assertFalse(view.postCorrectionAdjustByScale)
+            assertTrue(view.postCorrectionBezier)
+            assertTrue(view.correctionSharpAngles)
+
+            val system = requireNotNull(SystemBrushCatalog.byId("system-g-pen"))
+            view.applyBrushConfiguration(EditorTool.PEN, settings, system, 12f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
+            assertEquals("System brushes retain the user's global fallback", .81f, view.postCorrection, .0001f)
+        }
+    }
+
+    @Test
+    fun stylusGestureCommitsTheAuthoredBezierPostCorrectionAtPenUp() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        var committed: InkStroke? = null
+        val view = InkCanvasView(instrumentation.targetContext).apply {
+            layout(0, 0, 1200, 1200)
+            onStrokeCommitted = { committed = it }
+        }
+        val brush = brush("csp-bezier-correction", "CSP Bezier correction").copy(
+            postCorrectionEnabled = true,
+            postCorrection = .8f,
+            postCorrectionBezier = true,
+            correctionSharpAngles = true,
+        )
+
+        instrumentation.runOnMainSync {
+            view.applyBrushConfiguration(EditorTool.PEN, AppSettings(), brush, 12f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_DOWN, 180f, 600f, 1L))
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_MOVE, 360f, 600f, 4L))
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_MOVE, 600f, 600f, 7L))
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_MOVE, 600f, 840f, 10L))
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_UP, 600f, 1_020f, 13L))
+        }
+
+        val stroke = requireNotNull(committed)
+        assertEquals(180f / 1200f, stroke.points.first().x, .0001f)
+        assertEquals(600f / 1200f, stroke.points.first().y, .0001f)
+        assertEquals(600f / 1200f, stroke.points.last().x, .0001f)
+        assertEquals(1_020f / 1200f, stroke.points.last().y, .0001f)
+        assertTrue("Bezier correction should materialize intermediate curve samples", stroke.points.size >= 6)
+        assertTrue("Sharp-angle correction must retain the authored corner", stroke.points.any { kotlin.math.abs(it.x - .5f) < .02f && kotlin.math.abs(it.y - .5f) < .02f })
+    }
+
+    @Test
     fun everyBrushAndToolSwitchStartsAUsableInputStream() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val strokes = mutableListOf<InkStroke>()

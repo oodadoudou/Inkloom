@@ -4844,9 +4844,12 @@ internal fun InkCanvasView.applyBrushConfiguration(
     stabilization = maxOf(settings.stabilization, activeBrush?.stabilization ?: 0f)
     stabilizationBySpeed = activeBrush?.stabilizationBySpeed ?: false
     stabilizationBySpeedMode = activeBrush?.stabilizationBySpeedMode ?: StrokeStabilization.REDUCE_WHEN_FAST
-    postCorrection = settings.postCorrection
-    postCorrectionAdjustBySpeed = settings.postCorrectionAdjustBySpeed
-    postCorrectionAdjustByScale = settings.postCorrectionAdjustByScale
+    val authoredCorrection = activeBrush?.takeUnless { it.format == BrushFormat.SYSTEM }
+    postCorrection = authoredCorrection?.postCorrection?.takeIf { authoredCorrection.postCorrectionEnabled } ?: settings.postCorrection.takeIf { authoredCorrection == null } ?: 0f
+    postCorrectionAdjustBySpeed = authoredCorrection?.postCorrectionAdjustBySpeed ?: settings.postCorrectionAdjustBySpeed
+    postCorrectionAdjustByScale = authoredCorrection?.postCorrectionAdjustByScale ?: settings.postCorrectionAdjustByScale
+    postCorrectionBezier = authoredCorrection?.postCorrectionBezier == true
+    correctionSharpAngles = authoredCorrection?.correctionSharpAngles == true
     primaryButtonAction = settings.stylusPrimaryButton
     secondaryButtonAction = settings.stylusSecondaryButton
     primaryButtonTrigger = settings.stylusPrimaryTrigger
@@ -8966,6 +8969,12 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 item { BrushSettingSlider(tr("Stabilization", "抖动修正"), draft.stabilization, 0f..0.9f) { draft = draft.copy(stabilization = it) } }
                 item { SettingSwitch("Adjust stabilization by speed", "Uses the imported CSP correction behavior when available.", draft.stabilizationBySpeed) { draft = draft.copy(stabilizationBySpeed = it) } }
                 if (draft.stabilizationBySpeed) item { Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { FilterChip(selected = draft.stabilizationBySpeedMode == StrokeStabilization.INCREASE_WHEN_SLOW, onClick = { draft = draft.copy(stabilizationBySpeedMode = StrokeStabilization.INCREASE_WHEN_SLOW) }, label = { Text(tr("More when slow", "慢速时增强")) }); FilterChip(selected = draft.stabilizationBySpeedMode == StrokeStabilization.REDUCE_WHEN_FAST, onClick = { draft = draft.copy(stabilizationBySpeedMode = StrokeStabilization.REDUCE_WHEN_FAST) }, label = { Text(tr("Less when fast", "快速时减弱")) }) } }
+                item { SettingSwitch(tr("Post correction", "落笔后修正"), tr("Smooths the completed stroke after realtime stabilization.", "在实时防抖之后修正已经完成的笔画。"), draft.postCorrectionEnabled) { draft = draft.copy(postCorrectionEnabled = it) } }
+                if (draft.postCorrectionEnabled) item { BrushSettingSlider(tr("Post-correction strength", "落笔后修正强度"), draft.postCorrection, 0f..1f) { draft = draft.copy(postCorrection = it) } }
+                if (draft.postCorrectionEnabled) item { SettingSwitch(tr("Adjust by speed", "按速度调整"), null, draft.postCorrectionAdjustBySpeed) { draft = draft.copy(postCorrectionAdjustBySpeed = it) } }
+                if (draft.postCorrectionEnabled) item { SettingSwitch(tr("Adjust by canvas scale", "按画布缩放调整"), null, draft.postCorrectionAdjustByScale) { draft = draft.copy(postCorrectionAdjustByScale = it) } }
+                if (draft.postCorrectionEnabled) item { SettingSwitch(tr("Quadratic Bezier", "二次贝塞尔曲线"), tr("Off uses the spline correction profile.", "关闭时使用样条曲线修正。"), draft.postCorrectionBezier) { draft = draft.copy(postCorrectionBezier = it) } }
+                item { SettingSwitch(tr("Sharp angles", "尖锐角"), tr("Preserves pointed corners instead of rounding them during correction.", "修正时保留尖角，避免被平滑成圆角。"), draft.correctionSharpAngles) { draft = draft.copy(correctionSharpAngles = it) } }
                 item { BrushSettingSlider(tr("Default opacity", "默认不透明度"), draft.defaultOpacity, .01f..1f) { draft = draft.copy(defaultOpacity = it) } }
                 item { SettingSwitch("Use as eraser", "Selects the eraser tool and uses this tip shape to remove ink.", draft.isEraser) { draft = draft.copy(isEraser = it) } }
                 item { SettingSwitch("Pressure controls size", "Uses the imported CSP curve when available.", draft.sizePressureEnabled) { draft = draft.copy(sizePressureEnabled = it) } }

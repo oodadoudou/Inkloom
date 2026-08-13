@@ -106,6 +106,16 @@ data class ImportedBrush(
     val stabilization: Float = 0f,
     val stabilizationBySpeed: Boolean = false,
     val stabilizationBySpeedMode: Int = 1,
+    /** CSP Correction > Post correction. Keep the enable bit separate because SUT files retain
+     * stale non-zero amounts while the feature is switched off. */
+    val postCorrectionEnabled: Boolean = false,
+    val postCorrection: Float = 0f,
+    val postCorrectionAdjustBySpeed: Boolean = false,
+    val postCorrectionAdjustByScale: Boolean = true,
+    /** True selects CSP's quadratic-Bezier post-correction profile; false uses its spline profile. */
+    val postCorrectionBezier: Boolean = false,
+    /** CSP Correction > Sharp angles. */
+    val correctionSharpAngles: Boolean = false,
     val spacing: Float = .12f,
     /** Procreate Stroke Path > Fall Off. Zero disables distance-based opacity decay. */
     val strokeFalloff: Float = 0f,

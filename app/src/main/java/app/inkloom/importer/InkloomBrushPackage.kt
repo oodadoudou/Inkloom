@@ -231,6 +231,7 @@ class InkloomBrushPackage(private val assetDirectory: File) {
         tiltBleedStart = finite(source.tiltBleedStart, 0f).coerceIn(0f, .99f),
         stabilization = finite(source.stabilization, 0f).coerceIn(0f, .9f),
         stabilizationBySpeedMode = source.stabilizationBySpeedMode.coerceIn(0, 1),
+        postCorrection = finite(source.postCorrection, 0f).coerceIn(0f, 1f),
         spacing = finite(source.spacing, .12f).coerceIn(.01f, 2f),
         strokeFalloff = finite(source.strokeFalloff, 0f).coerceIn(0f, 1f),
         strokePathJitter = finite(source.strokePathJitter, 0f).coerceIn(0f, 4f),

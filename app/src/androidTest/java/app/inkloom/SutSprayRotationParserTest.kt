@@ -58,9 +58,9 @@ class SutSprayRotationParserTest {
                 )
             }
             parsed.forEach { brush ->
-                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 32, brush.parserVersion)
+                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 33, brush.parserVersion)
                 assertFalse(brush.report.any { it.startsWith("SUT parameter parsing failed") })
-                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v32-")) }
+                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v33-")) }
             }
             assertTrue("Expected a real CSP Blend preset", parsed.any { it.cspColorMixMode == app.inkloom.document.CspColorMixMode.BLEND && it.watercolor })
             assertTrue("Expected a real CSP Running-color preset", parsed.any { it.cspColorMixMode == app.inkloom.document.CspColorMixMode.RUNNING_COLOR && it.watercolor })
@@ -71,6 +71,13 @@ class SutSprayRotationParserTest {
             assertTrue("Expected the supplied Running-color blur preset", parsed.any { it.colorMixBlur > 0f })
             assertTrue("Expected the supplied Automatic Running-color blur preset", parsed.any { it.colorMixBlurAutomatic })
             assertTrue("Expected the supplied millimetre Running-color blur preset", parsed.any { it.colorMixBlurUnit == 2 })
+            val postCorrected = parsed.filter(ImportedBrush::postCorrectionEnabled)
+            assertTrue("Expected real CSP Post-correction programs in the supplied corpus", postCorrected.size >= 3)
+            assertTrue("Expected a real quadratic-Bezier Post-correction program", postCorrected.any(ImportedBrush::postCorrectionBezier))
+            assertTrue("Expected real canvas-scale-off Post correction", postCorrected.any { !it.postCorrectionAdjustByScale })
+            assertTrue("Expected real CSP Sharp angles", parsed.any(ImportedBrush::correctionSharpAngles))
+            assertTrue(postCorrected.all { brush -> brush.report.any { it.contains("CSP Post correction") } })
+            assertTrue("Disabled real SUT values must be reported as stale, not applied", parsed.any { !it.postCorrectionEnabled && it.postCorrection > 0f && it.report.any { line -> line.contains("stale stored amount") } })
             assertTrue("Expected embedded CSP material previews", parsed.any { it.tipPreviewPaths.isNotEmpty() })
             val paintingBrush = parsed.firstOrNull { it.name.contains("Painting brush", ignoreCase = true) }
             assertTrue("Expected the supplied CSP Dual Brush sample", paintingBrush?.dualBrush == true)
@@ -188,7 +195,7 @@ class SutSprayRotationParserTest {
             assertEquals(.55f, brush.dualSprayDensityDynamics.secondary.velocityMinimum, .001f)
             assertTrue(brush.grainDensityDynamics.secondary.tiltEnabled)
             assertEquals(.65f, brush.grainDensityDynamics.secondary.tiltMinimum, .001f)
-            assertEquals(32, brush.parserVersion)
+            assertEquals(33, brush.parserVersion)
         } finally {
             root.deleteRecursively()
         }
@@ -219,7 +226,7 @@ class SutSprayRotationParserTest {
             assertTrue(brush.watercolor)
             assertEquals(.72f, brush.colorMix, .001f)
             assertEquals(.43f, brush.paintMix, .001f)
-            assertEquals(32, brush.parserVersion)
+            assertEquals(33, brush.parserVersion)
             assertTrue(brush.report.any { it.contains("legacy BrushWaterColor") })
         } finally {
             root.deleteRecursively()
@@ -333,6 +340,12 @@ class SutSprayRotationParserTest {
                 continuousPlot = true,
                 spacingMode = app.inkloom.document.CspBrushGap.NARROW,
                 dualSpacingMode = app.inkloom.document.CspBrushGap.WIDE,
+                postCorrectionEnabled = true,
+                postCorrection = .39f,
+                postCorrectionAdjustBySpeed = true,
+                postCorrectionAdjustByScale = false,
+                postCorrectionBezier = true,
+                correctionSharpAngles = true,
                 colorJitterHueDegrees = 14f,
                 colorJitterSaturation = 9f,
                 colorJitterTarget = 1,
@@ -416,6 +429,12 @@ class SutSprayRotationParserTest {
             assertEquals(.47f, restored.tiltBleed, .0001f)
             assertEquals(.34f, restored.tiltBleedStart, .0001f)
             assertTrue(restored.tiltSizeCompression)
+            assertTrue(restored.postCorrectionEnabled)
+            assertEquals(.39f, restored.postCorrection, .0001f)
+            assertTrue(restored.postCorrectionAdjustBySpeed)
+            assertFalse(restored.postCorrectionAdjustByScale)
+            assertTrue(restored.postCorrectionBezier)
+            assertTrue(restored.correctionSharpAngles)
             assertEquals(.64f, restored.strokeFalloff, .0001f)
             assertEquals(.44f, restored.strokePathJitter, .0001f)
             assertEquals(.28f, restored.strokePathLongitudinalJitter, .0001f)

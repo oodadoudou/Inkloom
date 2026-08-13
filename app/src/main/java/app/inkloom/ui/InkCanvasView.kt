@@ -896,6 +896,8 @@ class InkCanvasView(context: Context) : View(context) {
         set(value) { field = value.coerceIn(0f, 1f) }
     var postCorrectionAdjustBySpeed: Boolean = false
     var postCorrectionAdjustByScale: Boolean = true
+    var postCorrectionBezier: Boolean = false
+    var correctionSharpAngles: Boolean = false
     var primaryButtonAction: StylusButtonAction = StylusButtonAction.ERASER
     var secondaryButtonAction: StylusButtonAction = StylusButtonAction.LASSO
     var primaryButtonTrigger: ShortcutTrigger = ShortcutTrigger.HOLD
@@ -2939,6 +2941,8 @@ class InkCanvasView(context: Context) : View(context) {
                             viewportScale,
                             pageModelWidth,
                             pageModelHeight,
+                            postCorrectionBezier,
+                            correctionSharpAngles,
                         )
                     }
                     val raster = rasterLayerBitmaps[activeLayerId]?.takeUnless(Bitmap::isRecycled)

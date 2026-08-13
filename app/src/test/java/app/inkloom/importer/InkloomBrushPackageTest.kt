@@ -62,6 +62,12 @@ class InkloomBrushPackageTest {
                 spacing = .18f,
                 spacingMode = app.inkloom.document.CspBrushGap.NARROW,
                 stabilization = .4f,
+                postCorrectionEnabled = true,
+                postCorrection = .37f,
+                postCorrectionAdjustBySpeed = true,
+                postCorrectionAdjustByScale = false,
+                postCorrectionBezier = true,
+                correctionSharpAngles = true,
                 streamLine = .33f,
                 streamLinePressure = .21f,
                 procreateStabilization = .42f,
@@ -263,6 +269,12 @@ class InkloomBrushPackageTest {
             assertTrue(restored.procreateLuminanceBlending)
             assertTrue(restored.alphaThresholdEnabled)
             assertEquals(.42f, restored.alphaThreshold, .0001f)
+            assertTrue(restored.postCorrectionEnabled)
+            assertEquals(.37f, restored.postCorrection, .0001f)
+            assertTrue(restored.postCorrectionAdjustBySpeed)
+            assertFalse(restored.postCorrectionAdjustByScale)
+            assertTrue(restored.postCorrectionBezier)
+            assertTrue(restored.correctionSharpAngles)
             assertEquals(180f, restored.strokeRotationJitterDegrees, .0001f)
             assertEquals(original.sizePressureCurve, restored.sizePressureCurve)
             assertEquals(original.sizeSecondaryDynamics, restored.sizeSecondaryDynamics)

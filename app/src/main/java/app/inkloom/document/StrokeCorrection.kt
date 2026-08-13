@@ -19,37 +19,53 @@ object StrokeCorrection {
 
     private fun smooth(input: List<StrokePoint>, iterations: Int): List<StrokePoint> {
         if (input.size < 3) return input
-        var points = input
+        val size = input.size
+        var x = FloatArray(size) { input[it].x }
+        var y = FloatArray(size) { input[it].y }
+        var pressure = FloatArray(size) { input[it].pressure }
+        var nextX = x.copyOf()
+        var nextY = y.copyOf()
+        var nextPressure = pressure.copyOf()
         repeat(iterations) {
-            points = points.mapIndexed { index, point ->
-                if (index == 0 || index == points.lastIndex) point else {
-                    val previous = points[index - 1]
-                    val next = points[index + 1]
-                    point.copy(
-                        x = previous.x * .25f + point.x * .5f + next.x * .25f,
-                        y = previous.y * .25f + point.y * .5f + next.y * .25f,
-                        pressure = previous.pressure * .2f + point.pressure * .6f + next.pressure * .2f,
-                    )
-                }
+            for (index in 1 until size - 1) {
+                nextX[index] = x[index - 1] * .25f + x[index] * .5f + x[index + 1] * .25f
+                nextY[index] = y[index - 1] * .25f + y[index] * .5f + y[index + 1] * .25f
+                nextPressure[index] = pressure[index - 1] * .2f + pressure[index] * .6f + pressure[index + 1] * .2f
             }
+            x = nextX.also { nextX = x }
+            y = nextY.also { nextY = y }
+            pressure = nextPressure.also { nextPressure = pressure }
         }
-        return points
+        return input.mapIndexed { index, point -> point.copy(x = x[index], y = y[index], pressure = pressure[index]) }
     }
 
     private fun simplify(input: List<StrokePoint>, tolerancePx: Float, pageWidth: Float, pageHeight: Float): List<StrokePoint> {
         if (input.size < 3) return input
-        val first = input.first()
-        val last = input.last()
-        var furthestIndex = -1
-        var furthestDistance = 0f
-        for (index in 1 until input.lastIndex) {
-            val distance = segmentDistance(input[index], first, last, pageWidth, pageHeight)
-            if (distance > furthestDistance) { furthestDistance = distance; furthestIndex = index }
+        val keep = BooleanArray(input.size)
+        keep[0] = true
+        keep[input.lastIndex] = true
+        val stack = IntArray(input.size * 2)
+        var stackSize = 0
+        stack[stackSize++] = 0
+        stack[stackSize++] = input.lastIndex
+        while (stackSize > 0) {
+            val end = stack[--stackSize]
+            val start = stack[--stackSize]
+            var furthestIndex = -1
+            var furthestDistance = 0f
+            for (index in start + 1 until end) {
+                val distance = segmentDistance(input[index], input[start], input[end], pageWidth, pageHeight)
+                if (distance > furthestDistance) { furthestDistance = distance; furthestIndex = index }
+            }
+            if (furthestIndex >= 0 && furthestDistance > tolerancePx) {
+                keep[furthestIndex] = true
+                stack[stackSize++] = start
+                stack[stackSize++] = furthestIndex
+                stack[stackSize++] = furthestIndex
+                stack[stackSize++] = end
+            }
         }
-        if (furthestDistance <= tolerancePx || furthestIndex < 0) return listOf(first, last)
-        val left = simplify(input.subList(0, furthestIndex + 1), tolerancePx, pageWidth, pageHeight)
-        val right = simplify(input.subList(furthestIndex, input.size), tolerancePx, pageWidth, pageHeight)
-        return left.dropLast(1) + right
+        return buildList { input.forEachIndexed { index, point -> if (keep[index]) add(point) } }
     }
 
     private fun segmentDistance(point: StrokePoint, start: StrokePoint, end: StrokePoint, pageWidth: Float, pageHeight: Float): Float {
