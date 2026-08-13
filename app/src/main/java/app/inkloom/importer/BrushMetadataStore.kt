@@ -217,6 +217,7 @@ class BrushMetadataStore(
                         alphaThresholdEnabled = item.optBoolean("alphaThresholdEnabled", false),
                         alphaThreshold = item.optDouble("alphaThreshold", 0.0).toFloat().coerceIn(0f, 1f),
                         defaultSize = item.optDouble("defaultSize", 8.0).toFloat(),
+                        sizeSyncViewScale = item.optBoolean("sizeSyncViewScale", false),
                         streamLine = item.optDouble("streamLine", 0.0).toFloat().coerceIn(0f, 1f),
                         streamLinePressure = item.optDouble("streamLinePressure", 0.0).toFloat().coerceIn(0f, 1f),
                         procreateStabilization = item.optDouble("procreateStabilization", 0.0).toFloat().coerceIn(0f, 1f),
@@ -466,6 +467,7 @@ class BrushMetadataStore(
                     .put("alphaThresholdEnabled", brush.alphaThresholdEnabled)
                     .put("alphaThreshold", brush.alphaThreshold)
                     .put("defaultSize", brush.defaultSize)
+                    .put("sizeSyncViewScale", brush.sizeSyncViewScale)
                     .put("streamLine", brush.streamLine)
                     .put("streamLinePressure", brush.streamLinePressure)
                     .put("procreateStabilization", brush.procreateStabilization)

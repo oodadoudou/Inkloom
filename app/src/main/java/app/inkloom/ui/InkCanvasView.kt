@@ -77,6 +77,7 @@ import app.inkloom.document.CspColorMixMode
 import app.inkloom.document.CspPigmentMixingMode
 import app.inkloom.document.CspBrightnessCorrection
 import app.inkloom.document.CspPigmentMixer
+import app.inkloom.document.CspScreenBrushSize
 import app.inkloom.document.CanvasGuideGestureMode
 import app.inkloom.document.CanvasGuideState
 import app.inkloom.document.CanvasGuides
@@ -600,6 +601,14 @@ class InkCanvasView(context: Context) : View(context) {
             if (hoverCursorVisible && !hoverCursorUsesEraser) invalidateInternalHoverCursor()
             onHoverCursorStyleChanged?.invoke()
         }
+    var brushSizeSyncViewScale: Boolean = false
+        set(value) {
+            field = value
+            if (hoverCursorVisible) invalidateInternalHoverCursor()
+            onHoverCursorStyleChanged?.invoke()
+        }
+    private var gestureBrushSize: Float = 5f
+    private var gestureEraserSize: Float = 24f
     var inkOpacity: Float = 1f
     var brushId: String = "system-pencil"
     var activeLayerId: String = app.inkloom.document.LayerIds.INK
@@ -2593,6 +2602,10 @@ class InkCanvasView(context: Context) : View(context) {
                 parent?.requestDisallowInterceptTouchEvent(true)
                 activeTool = resolveTool(event, eventToolType)
                 activeInputWasStylus = isStylus
+                // Freeze CSP's screen-size conversion at contact start. A viewport update cannot
+                // change an in-progress stroke/tool footprint halfway through the gesture.
+                gestureBrushSize = documentBrushSize()
+                gestureEraserSize = documentEraserSize()
                 val motionCtrlPressed = event.metaState and KeyEvent.META_CTRL_ON != 0
                 val motionAltPressed = event.metaState and KeyEvent.META_ALT_ON != 0
                 if ((motionCtrlPressed || ctrlModifierHeld) && (motionAltPressed || altModifierHeld) && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER)) {
@@ -2717,7 +2730,7 @@ class InkCanvasView(context: Context) : View(context) {
                 // Freeze the many brush-engine parameters once per contact. Live rendering then
                 // copies only the changing point list instead of rebuilding the full descriptor
                 // several times per display frame.
-                activeStrokeTemplate = withCurrentBrushBehavior(buildStroke(emptyList()))
+                activeStrokeTemplate = withCurrentBrushBehavior(buildStroke(emptyList())).copy(width = gestureBrushSize)
                 beginWetPaintGesture(normalizedX, normalizedY)
                 activePerspectiveSnapConstraint = null
                 activeSpecialRulerConstraint = null
@@ -2984,12 +2997,12 @@ class InkCanvasView(context: Context) : View(context) {
                         // QuickShape: when the freehand gesture ends with a brief hold,
                         // snap the rough path to a perfect line/rectangle/ellipse.
                         val held = shapeFreeformLastMoveAt > 0L && event.eventTime - shapeFreeformLastMoveAt >= QUICKSHAPE_HOLD_MS
-                        val recognized = if (held) ShapeGeometry.quickShape(shapeFreeformPoints, pageModelWidth, pageModelHeight, inkColor.toUInt().toLong(), baseWidth) else null
-                        recognized ?: ShapeGeometry.createFreeform(shapeFreeformPoints, pageModelWidth, pageModelHeight, inkColor.toUInt().toLong(), baseWidth)
+                        val recognized = if (held) ShapeGeometry.quickShape(shapeFreeformPoints, pageModelWidth, pageModelHeight, inkColor.toUInt().toLong(), gestureBrushSize) else null
+                        recognized ?: ShapeGeometry.createFreeform(shapeFreeformPoints, pageModelWidth, pageModelHeight, inkColor.toUInt().toLong(), gestureBrushSize)
                     } else {
                         val start = shapeStart
                         val end = shapeEnd
-                        if (start != null && end != null) ShapeGeometry.create(shapeKind, start, end, pageModelWidth, pageModelHeight, inkColor.toUInt().toLong(), baseWidth) else null
+                        if (start != null && end != null) ShapeGeometry.create(shapeKind, start, end, pageModelWidth, pageModelHeight, inkColor.toUInt().toLong(), gestureBrushSize) else null
                     }
                     shape?.let(onShapeCommitted)
                     shapeStart = null; shapeEnd = null; shapeFreeformPoints.clear(); shapeFreeformLastMoveAt = 0L
@@ -3062,7 +3075,7 @@ class InkCanvasView(context: Context) : View(context) {
             paint.color = inkColor
             paint.alpha = (inkOpacity * 150f).toInt().coerceIn(0, 255)
             paint.style = if (fillSubTool == FillSubTool.LEFTOVER_PEN) Paint.Style.STROKE else Paint.Style.FILL
-            paint.strokeWidth = baseWidth.coerceAtLeast(2f) * width / pageModelWidth.coerceAtLeast(1f)
+            paint.strokeWidth = gestureBrushSize.coerceAtLeast(.1f) * width / pageModelWidth.coerceAtLeast(1f)
             paint.strokeCap = Paint.Cap.ROUND
             paint.strokeJoin = Paint.Join.ROUND
             if (fillSubTool != FillSubTool.LEFTOVER_PEN) lassoPath.close()
@@ -3082,9 +3095,16 @@ class InkCanvasView(context: Context) : View(context) {
         canvas.drawBitmap(mask, null, backgroundDestination, fillPreviewPaint)
     }
 
+    private fun documentBrushSize(authoredSize: Float = baseWidth): Float =
+        CspScreenBrushSize.documentSize(authoredSize, viewportScale, brushSizeSyncViewScale)
+
+    private fun documentEraserSize(authoredSize: Float = eraserWidth): Float =
+        CspScreenBrushSize.documentSize(authoredSize, viewportScale, brushSizeSyncViewScale)
+
     private fun drawBrushSizePreview(canvas: Canvas) {
         if (!brushSizeDragActive) return
-        val radius = (brushSizeDragCurrentSize * width.coerceAtLeast(1) / REFERENCE_WIDTH / 2f).coerceAtLeast(3f)
+        val documentSize = if (activeTool == EditorTool.ERASER) documentEraserSize(brushSizeDragCurrentSize) else documentBrushSize(brushSizeDragCurrentSize)
+        val radius = (documentSize * width.coerceAtLeast(1) / REFERENCE_WIDTH / 2f).coerceAtLeast(3f / viewportScale.coerceAtLeast(1f))
         brushSizePreviewPaint.strokeWidth = 4f
         brushSizePreviewPaint.color = Color.WHITE
         canvas.drawCircle(brushSizeDragPreviewX, brushSizeDragPreviewY, radius, brushSizePreviewPaint)
@@ -3172,7 +3192,7 @@ class InkCanvasView(context: Context) : View(context) {
             val pressure = if (eraserPressureSize) {
                 PressureCalibration.apply(hoverCursorPressure, pressureMinimumInput, pressureMaximumInput, pressureSensitivity, pressureResponseCurve).coerceIn(.15f, 1f)
             } else 1f
-            val diameter = eraserWidth.coerceIn(.1f, 800f) * scale * pressure
+            val diameter = documentEraserSize().coerceIn(.01f, 800f) * scale * pressure
             val tip = activeCursorTip(eraserTipAssetPath)
             val footprint = BrushCursorGeometry.footprint(
                 diameter = diameter,
@@ -3191,7 +3211,7 @@ class InkCanvasView(context: Context) : View(context) {
             pressureResponseCurve,
         )
         val pressure = BrushDynamics.pressure(sizePressureEnabled, sizePressureMinimum, sizePressureCurve, calibratedPressure)
-        val diameter = baseWidth.coerceIn(.1f, 800f) * scale * pressure
+        val diameter = documentBrushSize().coerceIn(.01f, 800f) * scale * pressure
         val thicknessPressure = BrushDynamics.pressure(thicknessPressureEnabled, thicknessPressureMinimum, thicknessPressureCurve, calibratedPressure)
         val tip = activeCursorTip(tipAssetPaths.firstOrNull() ?: tipAssetPath)
         val footprint = BrushCursorGeometry.footprint(
@@ -3961,14 +3981,14 @@ class InkCanvasView(context: Context) : View(context) {
             paint.strokeJoin = Paint.Join.ROUND
             paint.color = inkColor
             paint.alpha = 190
-            paint.strokeWidth = baseWidth.coerceAtLeast(2f)
+            paint.strokeWidth = gestureBrushSize.coerceAtLeast(.1f)
             canvas.drawPath(lassoPath, paint)
             paint.alpha = 255
             return
         }
         val start = shapeStart ?: return
         val end = shapeEnd ?: return
-        val shape = ShapeGeometry.create(shapeKind, start, end, width.toFloat(), height.toFloat(), inkColor.toUInt().toLong(), baseWidth) ?: return
+        val shape = ShapeGeometry.create(shapeKind, start, end, width.toFloat(), height.toFloat(), inkColor.toUInt().toLong(), gestureBrushSize) ?: return
         val left = shape.x * width
         val top = shape.y * height
         val right = left + shape.width / width.coerceAtLeast(1) * width
@@ -3976,7 +3996,7 @@ class InkCanvasView(context: Context) : View(context) {
         paint.style = Paint.Style.STROKE
         paint.color = inkColor
         paint.alpha = 190
-        paint.strokeWidth = baseWidth.coerceAtLeast(2f)
+        paint.strokeWidth = gestureBrushSize.coerceAtLeast(.1f)
         canvas.save()
         canvas.rotate(shape.rotationDegrees, (left + right) / 2f, (top + bottom) / 2f)
         when (shape.kind) {
@@ -4588,7 +4608,7 @@ class InkCanvasView(context: Context) : View(context) {
         val maskPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
             style = if (fillSubTool == FillSubTool.LEFTOVER_PEN) Paint.Style.STROKE else Paint.Style.FILL
-            strokeWidth = baseWidth.coerceAtLeast(2f) * bitmapWidth / pageModelWidth.coerceAtLeast(1f)
+            strokeWidth = gestureBrushSize.coerceAtLeast(.1f) * bitmapWidth / pageModelWidth.coerceAtLeast(1f)
             strokeCap = Paint.Cap.ROUND
             strokeJoin = Paint.Join.ROUND
         }
@@ -4689,7 +4709,7 @@ class InkCanvasView(context: Context) : View(context) {
         val raster = rasterBlendBitmap
         val rasterSession = rasterBlendSession
         if (raster != null && rasterSession != null) {
-            val radius = (baseWidth.coerceIn(2f, 800f) / REFERENCE_WIDTH * raster.width).coerceAtLeast(1f)
+            val radius = (gestureBrushSize.coerceIn(.01f, 800f) / REFERENCE_WIDTH * raster.width).coerceAtLeast(.125f)
             val dirty = rasterSession.blend(
                 smudgeLastX * raster.width,
                 smudgeLastY * raster.height,
@@ -4712,7 +4732,7 @@ class InkCanvasView(context: Context) : View(context) {
             smudgeLastY = y
             return
         }
-        val radius = (baseWidth.coerceIn(2f, 800f) / REFERENCE_WIDTH).coerceAtLeast(.002f)
+        val radius = (gestureBrushSize.coerceIn(.01f, 800f) / REFERENCE_WIDTH).coerceAtLeast(.0001f)
         val beforeStep = localToolCandidates(smudgeLastX, smudgeLastY, x, y, radius)
         if (beforeStep.isEmpty()) {
             smudgeLastX = x
@@ -4853,7 +4873,7 @@ class InkCanvasView(context: Context) : View(context) {
         val raster = rasterLiquifyBitmap
         val rasterSession = rasterLiquifySession
         if (raster != null && rasterSession != null) {
-            val radius = (baseWidth.coerceIn(2f, 800f) / REFERENCE_WIDTH * raster.width).coerceAtLeast(1f)
+            val radius = (gestureBrushSize.coerceIn(.01f, 800f) / REFERENCE_WIDTH * raster.width).coerceAtLeast(.125f)
             val dirty = rasterSession.deform(
                 liquifyLastX * raster.width,
                 liquifyLastY * raster.height,
@@ -4873,7 +4893,7 @@ class InkCanvasView(context: Context) : View(context) {
             liquifyPressure = pressure.coerceIn(0f, 1f)
             return
         }
-        val radius = (baseWidth.coerceIn(2f, 800f) / REFERENCE_WIDTH).coerceAtLeast(.002f)
+        val radius = (gestureBrushSize.coerceIn(.01f, 800f) / REFERENCE_WIDTH).coerceAtLeast(.0001f)
         val beforeStep = localToolCandidates(liquifyLastX, liquifyLastY, nextX, nextY, radius)
         if (beforeStep.isEmpty()) {
             liquifyLastX = nextX
@@ -5242,7 +5262,8 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun makeStroke(points: List<StrokePoint>): InkStroke =
-        activeStrokeTemplate?.copy(points = points.toList()) ?: withCurrentBrushBehavior(buildStroke(points))
+        activeStrokeTemplate?.copy(points = points.toList())
+            ?: withCurrentBrushBehavior(buildStroke(points)).copy(width = gestureBrushSize)
 
     private fun withCurrentBrushBehavior(stroke: InkStroke): InkStroke = stroke.copy(
         secondaryColorArgb = secondaryInkColor.toUInt().toLong(),
@@ -5690,7 +5711,8 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun eraserRadiusPixels(pressure: Float): Float {
         val pressureFactor = if (eraserPressureSize) PressureCalibration.apply(pressure, pressureMinimumInput, pressureMaximumInput, pressureSensitivity, pressureResponseCurve).coerceIn(.15f, 1f) else 1f
-        return (eraserWidth.coerceIn(.5f, 400f) * pressureFactor * width.coerceAtLeast(1) / REFERENCE_WIDTH / 2f).coerceAtLeast(1f)
+        return (gestureEraserSize.coerceIn(.01f, 400f) * pressureFactor * width.coerceAtLeast(1) / REFERENCE_WIDTH / 2f)
+            .coerceAtLeast(1f / viewportScale.coerceAtLeast(1f))
     }
 
     private fun finishEraserGesture() {
@@ -5709,7 +5731,7 @@ class InkCanvasView(context: Context) : View(context) {
                     engineKind = BrushEngineKind.ERASE_MASK,
                     grainMovement = grainMovement,
                     grainZoom = grainZoom,
-                    width = eraserWidth,
+                    width = gestureEraserSize,
                     opacity = eraserOpacity,
                     hardness = eraserHardness,
                     tipAssetPath = eraserTipAssetPath ?: tipAssetPath,

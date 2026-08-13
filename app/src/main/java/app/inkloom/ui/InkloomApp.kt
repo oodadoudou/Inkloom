@@ -4881,6 +4881,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     correctLineMode = settings.correctLineMode
     correctLineAmount = settings.correctLineAmount
     baseWidth = brushSize
+    brushSizeSyncViewScale = activeBrush?.sizeSyncViewScale ?: false
     val importedEraser = activeBrush?.takeIf { selectedTool == EditorTool.ERASER && BrushRoleClassifier.isEraser(it) }
     eraserWidth = if (importedEraser != null) brushSize else settings.eraserSize
     this.localEraser = if (importedEraser != null) false else eraserPreset.splitsStroke
@@ -8961,6 +8962,7 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 item { OutlinedTextField(tagText, { tagText = it }, label = { Text(tr("Tags", "标签")) }, supportingText = { Text(tr("Separate tags with commas", "使用逗号分隔标签")) }, modifier = Modifier.fillMaxWidth()) }
                 item { BrushTestArea(draft, settings) }
                 item { BrushSettingSlider(tr("Size", "笔刷尺寸"), draft.defaultSize, .5f..400f) { draft = draft.copy(defaultSize = it) } }
+                item { SettingSwitch(tr("Specify by size on screen", "按屏幕尺寸指定"), tr("Keeps the physical brush footprint equal to its 100% view size while the canvas is zoomed.", "画布缩放时，让笔刷在屏幕上的实际覆盖范围保持为 100% 视图时的大小。"), draft.sizeSyncViewScale) { draft = draft.copy(sizeSyncViewScale = it) } }
                 item { BrushSettingSlider("StreamLine", draft.streamLine, 0f..1f) { draft = draft.copy(streamLine = it) } }
                 item { BrushSettingSlider(tr("StreamLine pressure", "StreamLine 压力平滑"), draft.streamLinePressure, 0f..1f) { draft = draft.copy(streamLinePressure = it) } }
                 item { BrushSettingSlider(tr("Procreate stabilization", "Procreate 稳定化"), draft.procreateStabilization, 0f..1f) { draft = draft.copy(procreateStabilization = it) } }

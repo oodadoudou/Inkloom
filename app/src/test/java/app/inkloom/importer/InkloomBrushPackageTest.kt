@@ -58,6 +58,7 @@ class InkloomBrushPackageTest {
                 alphaThresholdEnabled = true,
                 alphaThreshold = .42f,
                 defaultSize = 37f,
+                sizeSyncViewScale = true,
                 defaultOpacity = .72f,
                 spacing = .18f,
                 spacingMode = app.inkloom.document.CspBrushGap.NARROW,
@@ -216,6 +217,7 @@ class InkloomBrushPackageTest {
             assertEquals(Compatibility.COMPLETE, restored.compatibility)
             assertEquals(original.name, restored.name)
             assertEquals(original.defaultSize, restored.defaultSize, .0001f)
+            assertTrue(restored.sizeSyncViewScale)
             assertEquals(original.defaultOpacity, restored.defaultOpacity, .0001f)
             assertEquals(original.spacing, restored.spacing, .0001f)
             assertEquals(original.streamLine, restored.streamLine, .0001f)

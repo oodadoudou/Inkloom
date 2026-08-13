@@ -27,6 +27,49 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class InkCanvasBrushSwitchTest {
     @Test
+    fun cspScreenSizedBrushKeepsPhysicalCursorAndCommitsInverseZoomDiameter() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val committed = mutableListOf<InkStroke>()
+        val view = InkCanvasView(instrumentation.targetContext).apply {
+            layout(0, 0, 1600, 1200)
+            viewportScale = 4f
+            onStrokeCommitted = committed::add
+        }
+        val synchronized = brush("csp-screen-size", "Screen size").copy(sizeSyncViewScale = true, sizePressureEnabled = false)
+        val documentSized = brush("csp-document-size", "Document size").copy(sizePressureEnabled = false)
+        val synchronizedEraser = brush("csp-screen-eraser", "Screen eraser").copy(sizeSyncViewScale = true, sizePressureEnabled = false, isEraser = true)
+
+        instrumentation.runOnMainSync {
+            view.applyBrushConfiguration(EditorTool.PEN, AppSettings(), synchronized, 40f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_DOWN, 250f, 400f, 1L))
+            val synchronizedCursor = view.hoverCursorSnapshot()
+            assertEquals("Local cursor must be inverse-scaled before the 4x viewport transform", 10f, synchronizedCursor[3], .001f)
+            assertEquals(40f, synchronizedCursor[3] * view.viewportScale, .001f)
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_MOVE, 600f, 400f, 5L))
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_UP, 950f, 400f, 9L))
+
+            view.applyBrushConfiguration(EditorTool.PEN, AppSettings(), documentSized, 40f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_DOWN, 250f, 700f, 20L))
+            val ordinaryCursor = view.hoverCursorSnapshot()
+            assertEquals(40f, ordinaryCursor[3], .001f)
+            assertEquals(160f, ordinaryCursor[3] * view.viewportScale, .001f)
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_MOVE, 600f, 700f, 24L))
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_UP, 950f, 700f, 28L))
+
+            view.applyBrushConfiguration(EditorTool.ERASER, AppSettings(), synchronizedEraser, 40f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_DOWN, 800f, 900f, 40L))
+            val eraserCursor = view.hoverCursorSnapshot()
+            assertEquals(10f, eraserCursor[3], .001f)
+            assertEquals(40f, eraserCursor[3] * view.viewportScale, .001f)
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_UP, 800f, 900f, 44L))
+        }
+
+        assertEquals(2, committed.size)
+        assertEquals(10f, committed[0].width, .001f)
+        assertEquals(40f, committed[1].width, .001f)
+    }
+
+    @Test
     fun cspPostCorrectionProgramActivatesPerBrushWithoutGlobalLeakage() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val view = InkCanvasView(instrumentation.targetContext)

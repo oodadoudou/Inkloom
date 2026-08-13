@@ -58,9 +58,9 @@ class SutSprayRotationParserTest {
                 )
             }
             parsed.forEach { brush ->
-                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 33, brush.parserVersion)
+                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 34, brush.parserVersion)
                 assertFalse(brush.report.any { it.startsWith("SUT parameter parsing failed") })
-                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v33-")) }
+                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v34-")) }
             }
             assertTrue("Expected a real CSP Blend preset", parsed.any { it.cspColorMixMode == app.inkloom.document.CspColorMixMode.BLEND && it.watercolor })
             assertTrue("Expected a real CSP Running-color preset", parsed.any { it.cspColorMixMode == app.inkloom.document.CspColorMixMode.RUNNING_COLOR && it.watercolor })
@@ -76,6 +76,8 @@ class SutSprayRotationParserTest {
             assertTrue("Expected a real quadratic-Bezier Post-correction program", postCorrected.any(ImportedBrush::postCorrectionBezier))
             assertTrue("Expected real canvas-scale-off Post correction", postCorrected.any { !it.postCorrectionAdjustByScale })
             assertTrue("Expected real CSP Sharp angles", parsed.any(ImportedBrush::correctionSharpAngles))
+            assertTrue("Expected a real CSP Specify-by-size-on-screen brush", parsed.any(ImportedBrush::sizeSyncViewScale))
+            assertTrue(parsed.filter(ImportedBrush::sizeSyncViewScale).all { brush -> brush.report.any { it.contains("Specify by size on screen enabled") } })
             assertTrue(postCorrected.all { brush -> brush.report.any { it.contains("CSP Post correction") } })
             assertTrue("Disabled real SUT values must be reported as stale, not applied", parsed.any { !it.postCorrectionEnabled && it.postCorrection > 0f && it.report.any { line -> line.contains("stale stored amount") } })
             assertTrue("Expected embedded CSP material previews", parsed.any { it.tipPreviewPaths.isNotEmpty() })
@@ -195,7 +197,7 @@ class SutSprayRotationParserTest {
             assertEquals(.55f, brush.dualSprayDensityDynamics.secondary.velocityMinimum, .001f)
             assertTrue(brush.grainDensityDynamics.secondary.tiltEnabled)
             assertEquals(.65f, brush.grainDensityDynamics.secondary.tiltMinimum, .001f)
-            assertEquals(33, brush.parserVersion)
+            assertEquals(34, brush.parserVersion)
         } finally {
             root.deleteRecursively()
         }
@@ -226,7 +228,7 @@ class SutSprayRotationParserTest {
             assertTrue(brush.watercolor)
             assertEquals(.72f, brush.colorMix, .001f)
             assertEquals(.43f, brush.paintMix, .001f)
-            assertEquals(33, brush.parserVersion)
+            assertEquals(34, brush.parserVersion)
             assertTrue(brush.report.any { it.contains("legacy BrushWaterColor") })
         } finally {
             root.deleteRecursively()
@@ -284,6 +286,7 @@ class SutSprayRotationParserTest {
                 compatibility = Compatibility.HIGH,
                 sizeBytes = 42,
                 report = emptyList(),
+                sizeSyncViewScale = true,
                 spray = true,
                 streamLine = .31f,
                 streamLinePressure = .22f,
@@ -418,6 +421,7 @@ class SutSprayRotationParserTest {
             store.save(listOf(original))
             val restored = store.load().single()
 
+            assertTrue(restored.sizeSyncViewScale)
             assertEquals(33f, restored.sprayParticleRotationDegrees, .0001f)
             assertEquals(.31f, restored.streamLine, .0001f)
             assertEquals(.22f, restored.streamLinePressure, .0001f)

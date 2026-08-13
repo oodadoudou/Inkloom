@@ -84,6 +84,8 @@ data class ImportedBrush(
     val alphaThresholdEnabled: Boolean = false,
     val alphaThreshold: Float = 0f,
     val defaultSize: Float = 8f,
+    /** CSP Brush size > Specify by size on screen (`BrushSizeSyncViewScale`). */
+    val sizeSyncViewScale: Boolean = false,
     /** Procreate StreamLine > Amount. Independent from CSP stabilization. */
     val streamLine: Float = 0f,
     /** Procreate StreamLine > Pressure. Smooths pressure onset separately from path input. */
