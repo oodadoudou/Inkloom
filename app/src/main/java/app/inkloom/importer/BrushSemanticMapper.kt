@@ -7,7 +7,7 @@ import app.inkloom.model.BrushSemanticMapping
 import app.inkloom.model.ImportedBrush
 import app.inkloom.model.SemanticFidelity
 
-/** Produces the structured conversion report consumed by Engine V2 and brush-detail UI. */
+/** Produces the structured conversion report consumed by Engine V3 and brush-detail UI. */
 object BrushSemanticMapper {
     fun apply(brush: ImportedBrush): ImportedBrush = brush.copy(semanticMappings = describe(brush))
 

@@ -140,7 +140,7 @@ class InkCanvasTileCacheTest {
         }
     }
 
-    @Test fun longLiveStrokeCoalescesIntoOneV2SurfaceSubmissionPerFrame() {
+    @Test fun longLiveStrokeCoalescesIntoOneV3SurfaceSubmissionPerFrame() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val context = InstrumentationRegistry.getInstrumentation().targetContext
             val view = InkCanvasView(context).apply {
@@ -156,12 +156,12 @@ class InkCanvasTileCacheTest {
             view.flushActiveStrokeFrame()
 
             assertEquals("All MOVE events before one display frame must coalesce", 1, surface.renderCount)
-            assertTrue("The V2 packet must contain the modeled stroke", surface.latest.sumOf { it.points.size } > 100)
+            assertTrue("The V3 packet must contain the modeled stroke", surface.latest.sumOf { it.points.size } > 100)
             view.dispatchStylus(MotionEvent.ACTION_UP, 850f, 200f, 300L)
         }
     }
 
-    @Test fun consecutiveLongStrokesUseOnlyTheV2SurfaceLifecycle() {
+    @Test fun consecutiveLongStrokesUseOnlyTheV3SurfaceLifecycle() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val view = InkCanvasView(InstrumentationRegistry.getInstrumentation().targetContext).apply {
                 layout(0, 0, 1024, 1024)
@@ -272,7 +272,7 @@ class InkCanvasTileCacheTest {
                 committed.getPixels(committedPixels, 0, 1024, 0, 0, 1024, 1024)
                 val committedVisible = committedPixels.count { (it ushr 24) > 0 }
                 assertTrue("Every requested live checkpoint must reach the active surface", activeSurface.renderCount >= 6)
-                assertEquals("Pen-up must commit through the same V2 surface", 1, activeSurface.commitCount)
+                assertEquals("Pen-up must commit through the same V3 surface", 1, activeSurface.commitCount)
                 assertTrue("The final active packet must retain the complete modelled stroke", activeSurface.latest.singleOrNull()?.points?.size ?: 0 > 90)
                 assertTrue("The committed imported stroke must remain visible", committedVisible > 500)
             } finally {

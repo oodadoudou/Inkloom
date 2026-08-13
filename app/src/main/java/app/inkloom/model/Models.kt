@@ -54,7 +54,7 @@ data class ImportedBrushGrain(
     val filteringMode: Int = ProcreateFiltering.NONE,
 )
 
-/** A durable, user-auditable source-semantic to Engine V2 runtime mapping. */
+/** A durable, user-auditable source-semantic to Engine V3 runtime mapping. */
 @Serializable
 data class BrushSemanticMapping(
     val sourceSemantic: String,

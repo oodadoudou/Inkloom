@@ -168,7 +168,7 @@ class AppSettingsStore(context: Context) {
     fun load(): AppSettings {
         val savedInputVersion = preferences.getInt(INPUT_GESTURES_VERSION_KEY, 0)
         val migrateCanvasRotation = savedInputVersion < 2
-        // Engine V2 originally shipped a hidden 12% global smoother and later changed the numeric
+        // An earlier engine release shipped a hidden 12% global smoother and later changed the numeric
         // meaning of smoothing when Procreate's independent filters were added. Reset those global
         // values once; per-brush CSP/Procreate settings remain explicit and untouched.
         val migrateLegacyCorrection = savedInputVersion < INPUT_GESTURES_VERSION

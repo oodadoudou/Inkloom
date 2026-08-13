@@ -9,7 +9,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BrushSemanticMapperTest {
-    @Test fun importedTextureBrushGetsExecutableV2Mappings() {
+    @Test fun importedTextureBrushGetsExecutableV3Mappings() {
         val brush = ImportedBrush(
             name = "Mapped",
             format = BrushFormat.PROCREATE,

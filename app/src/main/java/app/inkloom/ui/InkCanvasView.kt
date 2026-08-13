@@ -28,7 +28,7 @@ import android.view.View
 import android.view.ViewConfiguration
 import androidx.annotation.WorkerThread
 import androidx.annotation.VisibleForTesting
-import app.inkloom.engine.v2.traceEngineV2
+import app.inkloom.engine.v3.diagnostics.traceEngineV3
 import app.inkloom.engine.v3.input.NativeStrokeSession
 import app.inkloom.engine.v3.brush.BrushProgram
 import app.inkloom.engine.v3.brush.BrushProgramRuntime
@@ -583,7 +583,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var activeWholeTexturePointCount: Int = 0
     private var activeWholeTexturePageWidth: Int = 0
     private var activeWholeTexturePageHeight: Int = 0
-    private var engineV2IncrementalActiveDraw: Boolean = false
+    private var incrementalActiveDraw: Boolean = false
     private val wholeStrokeReplacementPaint = Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC) }
     private var prewarmedBrushSignature: String? = null
     private val protectedStrokeIds = mutableSetOf<String>()
@@ -1706,7 +1706,7 @@ class InkCanvasView(context: Context) : View(context) {
         primaryStampStartIndex: Int,
         dualStampStartIndex: Int,
     ): Boolean {
-        if (engineV2IncrementalActiveDraw && canIncrementallyReplaceWholeStrokeTexture(stroke)) {
+        if (incrementalActiveDraw && canIncrementallyReplaceWholeStrokeTexture(stroke)) {
             return drawIncrementalWholeStrokeTexture(canvas, stroke, primaryStampStartIndex, dualStampStartIndex)
         }
         val grainPath = stroke.grainAssetPath ?: return false
@@ -2131,7 +2131,7 @@ class InkCanvasView(context: Context) : View(context) {
         primaryStartIndex: Int,
         secondaryStartIndex: Int,
     ) {
-        if (isCurrentActiveStroke(stroke) && engineV2IncrementalActiveDraw &&
+        if (isCurrentActiveStroke(stroke) && incrementalActiveDraw &&
             (stroke.dualGrainAssetPath == null || stroke.dualGrainDensity <= 0f || stroke.dualGrainApplyPerPlot)
         ) {
             drawActiveCspDualBrushStroke(
@@ -2225,7 +2225,7 @@ class InkCanvasView(context: Context) : View(context) {
         )
         val checkpoint = canvas.save()
         canvas.clipRect(dirty)
-        if (engineV2IncrementalActiveDraw) canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+        if (incrementalActiveDraw) canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
         canvas.drawBitmap(surface.output, dirty, dirty, dualCompositeOutputPaint)
         canvas.restoreToCount(checkpoint)
         paint.blendMode = null
@@ -4485,12 +4485,12 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun addPoint(x: Float, y: Float, pressure: Float, time: Long, tilt: Float, orientation: Float, force: Boolean = false) {
-        traceEngineV2("Inkloom.V2.InputModel") {
-            addModeledPointV2(x, y, pressure, time, tilt, orientation, force)
+        traceEngineV3("Inkloom.V3.InputModel") {
+            addModeledPoint(x, y, pressure, time, tilt, orientation, force)
         }
     }
 
-    private fun addModeledPointV2(x: Float, y: Float, pressure: Float, time: Long, tilt: Float, orientation: Float, force: Boolean) {
+    private fun addModeledPoint(x: Float, y: Float, pressure: Float, time: Long, tilt: Float, orientation: Float, force: Boolean) {
         stageNativeInput(0, x, y, pressure, time, tilt, orientation, force)
         if (strokeInputModeler.appendBatch(1, modeledViewportWidth(), modeledViewportHeight(), stabilization, stabilizationBySpeed, stabilizationBySpeedMode, streamLine, streamLinePressure, procreateStabilization, motionFiltering, motionFilteringExpression) != 1) return
         appendNativeOutput(0)
@@ -4500,7 +4500,7 @@ class InkCanvasView(context: Context) : View(context) {
     /** Copies every historical and current sample into one direct-buffer batch. The event-to-model
      * boundary now incurs one JNI call instead of one call per sample. */
     private fun addMotionEventPoints(event: MotionEvent, pointerIndex: Int) {
-        traceEngineV2("Inkloom.V2.InputModelBatch") {
+        traceEngineV3("Inkloom.V3.InputModelBatch") {
             val total = event.historySize + 1
             var sourceIndex = 0
             while (sourceIndex < total) {
@@ -4661,9 +4661,9 @@ class InkCanvasView(context: Context) : View(context) {
         strokes: List<InkStroke>,
         incrementalStampDraw: Boolean = false,
     ) {
-        traceEngineV2("Inkloom.V2.ActiveStrokeDraw") {
+        traceEngineV3("Inkloom.V3.ActiveStrokeDraw") {
             synchronized(renderLock) {
-                engineV2IncrementalActiveDraw = incrementalStampDraw
+                incrementalActiveDraw = incrementalStampDraw
                 try {
                     if (!incrementalStampDraw) {
                         drawLayeredStrokes(canvas, strokes)
@@ -4683,7 +4683,7 @@ class InkCanvasView(context: Context) : View(context) {
                         }
                     }
                 } finally {
-                    engineV2IncrementalActiveDraw = false
+                    incrementalActiveDraw = false
                 }
             }
         }
@@ -6044,7 +6044,7 @@ class InkCanvasView(context: Context) : View(context) {
         if (raster != null && session != null) {
             if (rasterEraserChanged) {
                 // The capsule session provides immediate feedback. Rebuild the final mask with the
-                // same V2 descriptor used by imported paint brushes so custom eraser tips, spacing,
+                // same V3 descriptor used by imported paint brushes so custom eraser tips, spacing,
                 // pressure, texture, rotation, spray, and dual-brush semantics remain exact.
                 session.restoreOriginal()
                 val eraserStroke = withCurrentBrushBehavior(buildStroke(rasterEraserPoints)).copy(
