@@ -32,6 +32,8 @@ import app.inkloom.engine.v2.traceEngineV2
 import app.inkloom.engine.v3.input.NativeStrokeSession
 import app.inkloom.engine.v3.brush.BrushProgram
 import app.inkloom.engine.v3.brush.BrushProgramRuntime
+import app.inkloom.engine.v3.brush.BrushResourceCache
+import app.inkloom.engine.v3.brush.BrushTipRequest
 import app.inkloom.engine.v3.render.ActiveStrokeCompositor
 import app.inkloom.engine.v3.scene.SparseAlphaMask
 import app.inkloom.engine.v3.scene.SparseTileScene
@@ -66,7 +68,6 @@ import app.inkloom.document.BrushStampRotation
 import app.inkloom.document.BrushSizeDrag
 import app.inkloom.document.BrushTipSequence
 import app.inkloom.document.BrushTipFlip
-import app.inkloom.document.BrushTipTextureDecoder
 import app.inkloom.document.BrushTipTransform
 import app.inkloom.document.ShapeRoundnessJitter
 import app.inkloom.document.BrushTaperMode
@@ -75,7 +76,6 @@ import app.inkloom.document.CspAntiAlias
 import app.inkloom.document.CspBrushGap
 import app.inkloom.document.CspTextureComposite
 import app.inkloom.document.CspStrokeTextureCompositor
-import app.inkloom.document.CspTextureMaterial
 import app.inkloom.document.CspColorMixMode
 import app.inkloom.document.CspPigmentMixingMode
 import app.inkloom.document.CspBrightnessCorrection
@@ -599,17 +599,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var configuredInputBrushId: String? = null
     private var configuredBrushTemplate: InkStroke? = null
     private var configuredBrushProgram: BrushProgram? = null
-    private val tipCache = object : LinkedHashMap<String, Bitmap>(32, .75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Bitmap>): Boolean {
-            val remove = size > MAX_TIP_CACHE_ENTRIES
-            if (remove) eldest.value.recycle()
-            return remove
-        }
-    }
-    private val pendingTipLoads = mutableSetOf<String>()
-    private val grainMaterialCache = object : LinkedHashMap<String, CspTextureMaterial>(8, .75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, CspTextureMaterial>): Boolean = size > MAX_GRAIN_MATERIAL_CACHE_ENTRIES
-    }
+    private var brushResources = BrushResourceCache()
     private var wholeStrokeTextureBitmap: Bitmap? = null
     private val wholeStrokeTextureWorkspace = CspStrokeTextureCompositor.Workspace()
     private var activeWholeTextureCoverageBitmap: Bitmap? = null
@@ -620,7 +610,6 @@ class InkCanvasView(context: Context) : View(context) {
     private var activeWholeTexturePageHeight: Int = 0
     private var engineV2IncrementalActiveDraw: Boolean = false
     private val wholeStrokeReplacementPaint = Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC) }
-    private val proceduralTipCache = mutableMapOf<String, Bitmap>()
     private var prewarmedBrushSignature: String? = null
     private val protectedStrokeIds = mutableSetOf<String>()
     private val protectedLayerIds = mutableSetOf<String>()
@@ -1464,11 +1453,10 @@ class InkCanvasView(context: Context) : View(context) {
         removeCallbacks(activeSurfaceFrame)
         activeSurfaceFrameScheduled = false
         strokeInputModeler.close()
-        tipCache.values.forEach(Bitmap::recycle); tipCache.clear()
-        grainMaterialCache.clear()
+        brushResources.close()
+        brushResources = BrushResourceCache()
         wholeStrokeTextureBitmap?.recycle(); wholeStrokeTextureBitmap = null
         activeWholeTextureCoverageBitmap?.recycle(); activeWholeTextureCoverageBitmap = null
-        proceduralTipCache.values.forEach(Bitmap::recycle); proceduralTipCache.clear()
         super.onDetachedFromWindow()
     }
 
@@ -1703,7 +1691,7 @@ class InkCanvasView(context: Context) : View(context) {
             if (!ProceduralBrushTip.supports(stroke)) emptyList()
             else {
                 val proceduralKey = "${stroke.brushId}:${stroke.alphaThresholdEnabled}:${(stroke.alphaThreshold.coerceIn(0f, 1f) * 255f).toInt()}"
-                listOf(proceduralTipCache.getOrPut(proceduralKey) { requireNotNull(ProceduralBrushTip.create(stroke)) })
+                listOfNotNull(brushResources.proceduralTip(proceduralKey) { ProceduralBrushTip.create(stroke) })
             }
         }
         if (tips.isNotEmpty()) {
@@ -1761,9 +1749,7 @@ class InkCanvasView(context: Context) : View(context) {
             return drawIncrementalWholeStrokeTexture(canvas, stroke, primaryStampStartIndex, dualStampStartIndex)
         }
         val grainPath = stroke.grainAssetPath ?: return false
-        val material = grainMaterialCache[grainPath] ?: CspTextureMaterial.decode(grainPath)?.also {
-            grainMaterialCache[grainPath] = it
-        } ?: return false
+        val material = brushResources.grainMaterial(grainPath) ?: return false
         val strokeBounds = committedScene.pixelBoundsFor(stroke, width, height) ?: return false
         val clip = canvas.clipBounds
         val left = maxOf(strokeBounds.left, clip.left, 0)
@@ -1842,9 +1828,7 @@ class InkCanvasView(context: Context) : View(context) {
         dualStampStartIndex: Int,
     ): Boolean {
         val grainPath = stroke.grainAssetPath ?: return false
-        val material = grainMaterialCache[grainPath] ?: CspTextureMaterial.decode(grainPath)?.also {
-            grainMaterialCache[grainPath] = it
-        } ?: return false
+        val material = brushResources.grainMaterial(grainPath) ?: return false
         val program = stroke.copy(points = emptyList(), masks = emptyList())
         val existingCoverage = activeWholeTextureCoverageBitmap
         val coverage = if (existingCoverage == null || existingCoverage.isRecycled || existingCoverage.width < width || existingCoverage.height < height) {
@@ -2299,7 +2283,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun applyDualWholeStrokeTexture(target: Bitmap, pageLeft: Int, pageTop: Int, stroke: InkStroke) {
         if (stroke.dualGrainApplyPerPlot || stroke.dualGrainDensity <= 0f) return
-        val material = stroke.dualGrainAssetPath?.let(CspTextureMaterial::decode) ?: return
+        val material = stroke.dualGrainAssetPath?.let(brushResources::grainMaterial) ?: return
         val grainOffset = GrainBehavior.offset(stroke.renderSeed xor DUAL_GRAIN_SEED, stroke.dualGrainOffsetJitter)
         CspStrokeTextureCompositor.applyInPlace(
             target, target.width, target.height, pageLeft, pageTop, width, height, material,
@@ -2550,11 +2534,9 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun loadTip(path: String, hardness: Float, grainPath: String?, grainDensity: Float, grainScale: Float = 100f, grainRotation: Float = 0f, grainBrightness: Float = 0f, grainContrast: Float = 0f, grainReversed: Boolean = false, grainEmphasized: Boolean = false, grainOffsetX: Float = 0f, grainOffsetY: Float = 0f, grainCompositeMode: Int = CspTextureComposite.MULTIPLY, grainFilteringMode: Int = ProcreateFiltering.NONE, antiAliasMode: Int = CspAntiAlias.MEDIUM, alphaThresholdEnabled: Boolean = false, alphaThreshold: Float = 0f, preserveRgb: Boolean = false): Bitmap? {
-        val normalizedAntiAlias = CspAntiAlias.normalize(antiAliasMode)
-        val normalizedGrainFiltering = ProcreateFiltering.normalize(grainFilteringMode)
-        val key = tipCacheKey(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainOffsetX, grainOffsetY, grainCompositeMode, normalizedGrainFiltering, normalizedAntiAlias, alphaThresholdEnabled, alphaThreshold, preserveRgb)
-        tipCache[key]?.let { return it }
-        if (key in pendingTipLoads) return null
+        val request = tipRequest(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainOffsetX, grainOffsetY, grainCompositeMode, grainFilteringMode, antiAliasMode, alphaThresholdEnabled, alphaThreshold, preserveRgb)
+        brushResources.tip(request)?.let { return it }
+        if (brushResources.isLoading(request)) return null
         // Dynamic grain can request many density buckets while a stroke is moving. Disk/bitmap
         // decoding those variants on this path blocks MotionEvent delivery, so schedule them and
         // let the caller use the already decoded base tip for this frame. A missing base tip may
@@ -2567,27 +2549,23 @@ class InkCanvasView(context: Context) : View(context) {
                 kotlin.math.abs(grainOffsetX) > .0001f || kotlin.math.abs(grainOffsetY) > .0001f
             )
         if (activeTool != null && isDynamicVariant && !forceSynchronousTipDecode) {
-            prewarmTip(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainOffsetX, grainOffsetY, grainCompositeMode, normalizedGrainFiltering, normalizedAntiAlias, alphaThresholdEnabled, alphaThreshold, preserveRgb)
+            prewarmTip(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainOffsetX, grainOffsetY, grainCompositeMode, grainFilteringMode, antiAliasMode, alphaThresholdEnabled, alphaThreshold, preserveRgb)
             return null
         }
-        return BrushTipTextureDecoder.decode(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainOffsetX, grainOffsetY, grainCompositeMode, normalizedGrainFiltering, normalizedAntiAlias, alphaThresholdEnabled, alphaThreshold, preserveRgb)?.also { tipCache[key] = it }
+        return brushResources.decodeNow(request)
     }
 
-    private fun tipCacheKey(path: String, hardness: Float, grainPath: String?, grainDensity: Float, grainScale: Float, grainRotation: Float, grainBrightness: Float, grainContrast: Float, grainReversed: Boolean, grainEmphasized: Boolean, grainOffsetX: Float, grainOffsetY: Float, grainCompositeMode: Int, grainFilteringMode: Int, antiAliasMode: Int, alphaThresholdEnabled: Boolean, alphaThreshold: Float, preserveRgb: Boolean = false): String =
-        "$path:${(hardness.coerceIn(0f, 1f) * 20).toInt()}:$grainPath:${(grainDensity.coerceIn(0f, 1f) * 20).toInt()}:${grainScale.toInt()}:${grainRotation.toInt()}:${grainBrightness.toInt()}:${grainContrast.toInt()}:$grainReversed:$grainEmphasized:${grainOffsetX.toBits()}:${grainOffsetY.toBits()}:$grainCompositeMode:${ProcreateFiltering.normalize(grainFilteringMode)}:${CspAntiAlias.normalize(antiAliasMode)}:$alphaThresholdEnabled:${(alphaThreshold.coerceIn(0f, 1f) * 255f).toInt()}:$preserveRgb"
+    private fun tipRequest(path: String, hardness: Float, grainPath: String?, grainDensity: Float, grainScale: Float, grainRotation: Float, grainBrightness: Float, grainContrast: Float, grainReversed: Boolean, grainEmphasized: Boolean, grainOffsetX: Float, grainOffsetY: Float, grainCompositeMode: Int, grainFilteringMode: Int, antiAliasMode: Int, alphaThresholdEnabled: Boolean, alphaThreshold: Float, preserveRgb: Boolean = false): BrushTipRequest =
+        BrushTipRequest(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainOffsetX, grainOffsetY, grainCompositeMode, grainFilteringMode, antiAliasMode, alphaThresholdEnabled, alphaThreshold, preserveRgb)
 
     private fun prewarmTip(path: String, hardness: Float, grainPath: String?, grainDensity: Float, grainScale: Float = 100f, grainRotation: Float = 0f, grainBrightness: Float = 0f, grainContrast: Float = 0f, grainReversed: Boolean = false, grainEmphasized: Boolean = false, grainOffsetX: Float = 0f, grainOffsetY: Float = 0f, grainCompositeMode: Int = CspTextureComposite.MULTIPLY, grainFilteringMode: Int = ProcreateFiltering.NONE, antiAliasMode: Int = CspAntiAlias.MEDIUM, alphaThresholdEnabled: Boolean = false, alphaThreshold: Float = 0f, preserveRgb: Boolean = false) {
-        val normalizedAntiAlias = CspAntiAlias.normalize(antiAliasMode)
-        val normalizedGrainFiltering = ProcreateFiltering.normalize(grainFilteringMode)
-        val key = tipCacheKey(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainOffsetX, grainOffsetY, grainCompositeMode, normalizedGrainFiltering, normalizedAntiAlias, alphaThresholdEnabled, alphaThreshold, preserveRgb)
-        if (pendingTipLoads.size >= MAX_PENDING_TIP_LOADS) return
-        if (tipCache.containsKey(key) || !pendingTipLoads.add(key)) return
+        val request = tipRequest(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainOffsetX, grainOffsetY, grainCompositeMode, grainFilteringMode, antiAliasMode, alphaThresholdEnabled, alphaThreshold, preserveRgb)
+        val resources = brushResources
+        if (!resources.beginLoad(request)) return
         TIP_DECODE_EXECUTOR.execute {
-            val decoded = BrushTipTextureDecoder.decode(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainOffsetX, grainOffsetY, grainCompositeMode, normalizedGrainFiltering, normalizedAntiAlias, alphaThresholdEnabled, alphaThreshold, preserveRgb)
+            val decoded = request.decode()
             post {
-                pendingTipLoads.remove(key)
-                if (decoded != null && !decoded.isRecycled) {
-                    tipCache[key] = decoded
+                if (resources.completeLoad(request, decoded)) {
                     requestActiveTipRefresh()
                     notifyHoverCursorStyleChanged()
                 }
@@ -2620,13 +2598,13 @@ class InkCanvasView(context: Context) : View(context) {
         val primary = tipAssetPaths.ifEmpty { listOfNotNull(tipAssetPath) }
         val secondary = if (brushDual) dualTipAssetPaths.ifEmpty { primary } else emptyList()
         primary.forEach { path ->
-            val key = tipCacheKey(path, brushHardness, grainAssetPath, grainDensity, grainScale, grainRotationDegrees, grainBrightness, grainContrast, grainReversed, grainEmphasized, 0f, 0f, grainCompositeMode, grainFilteringMode, brushAntiAliasMode, alphaThresholdEnabled, alphaThreshold)
-            if (tipCache[key] == null) BrushTipTextureDecoder.decode(path, brushHardness, grainAssetPath, grainDensity, grainScale, grainRotationDegrees, grainBrightness, grainContrast, grainReversed, grainEmphasized, 0f, 0f, grainCompositeMode, grainFilteringMode, brushAntiAliasMode, alphaThresholdEnabled, alphaThreshold)?.let { tipCache[key] = it }
+            val request = tipRequest(path, brushHardness, grainAssetPath, grainDensity, grainScale, grainRotationDegrees, grainBrightness, grainContrast, grainReversed, grainEmphasized, 0f, 0f, grainCompositeMode, grainFilteringMode, brushAntiAliasMode, alphaThresholdEnabled, alphaThreshold)
+            brushResources.decodeNow(request)
         }
         secondary.forEach { path ->
             val grain = dualGrainAssetPath.takeIf { dualGrainApplyPerPlot }
-            val key = tipCacheKey(path, dualHardness, grain, dualGrainDensity, dualGrainScale, dualGrainRotationDegrees, dualGrainBrightness, dualGrainContrast, dualGrainReversed, dualGrainEmphasized, 0f, 0f, dualGrainCompositeMode, dualGrainFilteringMode, dualAntiAliasMode, alphaThresholdEnabled, alphaThreshold, dualApplyRgb)
-            if (tipCache[key] == null) BrushTipTextureDecoder.decode(path, dualHardness, grain, dualGrainDensity, dualGrainScale, dualGrainRotationDegrees, dualGrainBrightness, dualGrainContrast, dualGrainReversed, dualGrainEmphasized, 0f, 0f, dualGrainCompositeMode, dualGrainFilteringMode, dualAntiAliasMode, alphaThresholdEnabled, alphaThreshold, dualApplyRgb)?.let { tipCache[key] = it }
+            val request = tipRequest(path, dualHardness, grain, dualGrainDensity, dualGrainScale, dualGrainRotationDegrees, dualGrainBrightness, dualGrainContrast, dualGrainReversed, dualGrainEmphasized, 0f, 0f, dualGrainCompositeMode, dualGrainFilteringMode, dualAntiAliasMode, alphaThresholdEnabled, alphaThreshold, dualApplyRgb)
+            brushResources.decodeNow(request)
         }
     }
 
@@ -3583,14 +3561,12 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun activeCursorTip(path: String?): Bitmap? {
         path ?: return null
-        val exactKey = tipCacheKey(
+        val exactRequest = tipRequest(
             path, brushHardness, grainAssetPath, grainDensity, grainScale, grainRotationDegrees,
             grainBrightness, grainContrast, grainReversed, grainEmphasized, 0f, 0f,
             grainCompositeMode, grainFilteringMode, brushAntiAliasMode, alphaThresholdEnabled, alphaThreshold,
         )
-        return tipCache[exactKey] ?: tipCache.entries.firstOrNull { (key, bitmap) ->
-            key.startsWith("$path:") && !bitmap.isRecycled
-        }?.value
+        return brushResources.tip(exactRequest) ?: brushResources.tipForPath(path)
     }
 
     private fun updateHoverCursorPacket(
@@ -6576,7 +6552,6 @@ class InkCanvasView(context: Context) : View(context) {
     private companion object {
         const val REFERENCE_WIDTH = 1600f
         private const val SMALL_CURSOR_MARK_THRESHOLD_PX = 8f
-        private const val MAX_GRAIN_MATERIAL_CACHE_ENTRIES = 8
         const val MAX_CACHE_PIXELS = 16_000_000L
         const val FILL_MAX_SAMPLE_DIMENSION = 1_600f
         const val FILL_PREVIEW_THROTTLE_MS = 32L
@@ -6603,8 +6578,6 @@ class InkCanvasView(context: Context) : View(context) {
         const val SPECIAL_RULER_ROTATION_HANDLE_DP = 72f
         const val DUAL_SEQUENCE_SEED = 0x35A71C9E
         const val DUAL_GRAIN_SEED = 0x4D2A61C7
-        const val MAX_TIP_CACHE_ENTRIES = 64
-        const val MAX_PENDING_TIP_LOADS = 12
         const val MAX_COLOR_FILTER_CACHE_ENTRIES = 64
         const val MAX_BLUR_MASK_CACHE_ENTRIES = 48
         const val MAX_CACHED_BLUR_RADIUS_PX = 256f
