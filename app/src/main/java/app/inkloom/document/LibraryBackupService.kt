@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+
 package app.inkloom.document
 
 import app.inkloom.model.ImportedBrush
@@ -11,6 +13,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -106,6 +109,7 @@ class LibraryBackupService(private val filesRoot: File) {
             })
         })
         val manifest = LibraryBackupManifest(
+            engineVersion = ENGINE_VERSION,
             exportedAt = System.currentTimeMillis(),
             documents = portableDocuments,
             folders = folders,
@@ -140,6 +144,7 @@ class LibraryBackupService(private val filesRoot: File) {
             require(manifestFile.isFile && manifestFile.length() <= MAX_MANIFEST_BYTES) { "Backup has no valid manifest" }
             val manifest = json.decodeFromString<LibraryBackupManifest>(manifestFile.readText())
             require(manifest.formatVersion in 1..FORMAT_VERSION) { "Backup version ${manifest.formatVersion} is not supported" }
+            require(manifest.engineVersion in 1..ENGINE_VERSION) { "Backup engine version ${manifest.engineVersion} is not supported" }
             require(manifest.documents.size <= MAX_DOCUMENTS && manifest.folders.size <= MAX_FOLDERS && manifest.brushes.size <= MAX_BRUSHES && manifest.brushGroups.size <= MAX_BRUSH_GROUPS && manifest.pageTemplates.customTemplates.size <= MAX_PAGE_TEMPLATES) { "Backup manifest exceeds library limits" }
 
             fun retained(relativePath: String?, folder: String): String? {
@@ -322,7 +327,8 @@ class LibraryBackupService(private val filesRoot: File) {
 
     @Serializable
     private data class LibraryBackupManifest(
-        val formatVersion: Int = FORMAT_VERSION,
+        @EncodeDefault(EncodeDefault.Mode.ALWAYS) val formatVersion: Int = FORMAT_VERSION,
+        val engineVersion: Int = 1,
         val exportedAt: Long,
         val documents: List<InkDocument>,
         val folders: List<InkFolder>,
@@ -333,7 +339,8 @@ class LibraryBackupService(private val filesRoot: File) {
     )
 
     private companion object {
-        const val FORMAT_VERSION = 3
+        const val FORMAT_VERSION = 4
+        const val ENGINE_VERSION = 3
         const val MANIFEST = "manifest.json"
         const val PREFERENCES = "preferences.json"
         const val DOCUMENT_ASSETS = "document-assets"

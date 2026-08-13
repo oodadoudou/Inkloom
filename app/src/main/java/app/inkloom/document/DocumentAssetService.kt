@@ -18,6 +18,7 @@ import android.graphics.pdf.PdfDocument
 import app.inkloom.engine.v3.brush.BrushProgramRuntime
 import app.inkloom.engine.v3.render.BrushProgramBatchRenderer
 import app.inkloom.engine.v3.brush.ProceduralBrushTip
+import app.inkloom.engine.v3.storage.DocumentCheckpointCodec
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Build
@@ -30,8 +31,6 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import java.util.UUID
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 
 class DocumentAssetService(private val context: Context) {
     private val directory = File(context.filesDir, "document-assets").apply { mkdirs() }
@@ -366,7 +365,6 @@ class DocumentAssetService(private val context: Context) {
     }
 
     fun exportBundle(document: InkDocument, output: OutputStream) {
-        val serializer = Json { prettyPrint = true; classDiscriminator = "type" }
         ZipOutputStream(output.buffered()).use { zip ->
             val portable = document.copy(
                 coverImagePath = document.coverImagePath?.let { "assets/${File(it).name}" },
@@ -390,7 +388,7 @@ class DocumentAssetService(private val context: Context) {
                 } },
                 ) },
             )
-            zip.putNextEntry(ZipEntry("manifest.json")); zip.write(serializer.encodeToString(portable).encodeToByteArray()); zip.closeEntry()
+            zip.putNextEntry(ZipEntry("manifest.json")); zip.write(DocumentCheckpointCodec.encode(portable).encodeToByteArray()); zip.closeEntry()
             val assets = listOfNotNull(document.coverImagePath) +
                 document.pages.mapNotNull { page -> when (val background = page.background) { is PageBackground.Pdf -> background.assetPath; is PageBackground.Image -> background.assetPath; else -> null } } +
                 document.pages.flatMap(InkPage::layers).mapNotNull(InkLayer::rasterAssetPath) +
@@ -440,8 +438,7 @@ class DocumentAssetService(private val context: Context) {
             }
             val manifest = File(temporaryRoot, "manifest.json")
             require(manifest.isFile) { "Bundle has no manifest.json" }
-            val serializer = Json { ignoreUnknownKeys = true; classDiscriminator = "type" }
-            val decoded = serializer.decodeFromString<InkDocument>(manifest.readText())
+            val decoded = DocumentCheckpointCodec.decode(manifest.readText())
             fun retained(relative: String, brush: Boolean = false): String {
                 val normalized = relative.replace('\\', '/')
                 val expectedPrefix = if (brush) "brush-assets/" else "assets/"

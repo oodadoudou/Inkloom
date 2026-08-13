@@ -65,6 +65,13 @@ class LibraryBackupServiceTest {
             val templates = PageTemplateLibrary(listOf(template), setOf(template.id), mapOf(document.id to template.id))
             val preferences = "{\"format\":\"test-preferences\"}".toByteArray()
             val bytes = ByteArrayOutputStream().also { LibraryBackupService(sourceRoot).export(listOf(document), listOf(folder), listOf(brush), it, listOf("Drawing/Ink", "Empty/Erasers"), preferences, templates) }.toByteArray()
+            val manifestText = java.util.zip.ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
+                generateSequence { zip.nextEntry }
+                    .first { it.name == "manifest.json" }
+                zip.readBytes().decodeToString()
+            }
+            assertTrue(manifestText.contains("\"formatVersion\": 4"))
+            assertTrue(manifestText.contains("\"engineVersion\": 3"))
 
             val restored = LibraryBackupService(restoreRoot).restore(ByteArrayInputStream(bytes))
 
