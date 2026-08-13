@@ -1,8 +1,8 @@
 package app.inkloom.document
 
 import android.graphics.Bitmap
-import android.graphics.Color
 import android.graphics.Rect
+import app.inkloom.engine.v3.tools.NativeRasterOps
 import kotlin.math.max
 import kotlin.math.min
 
@@ -14,18 +14,6 @@ import kotlin.math.min
  */
 object CspDualBrushCompositor {
     private const val EPSILON = 1f / 65_535f
-
-    private class Scratch {
-        var primary = IntArray(0)
-        var secondary = IntArray(0)
-
-        fun ensure(size: Int) {
-            if (primary.size < size) primary = IntArray(size)
-            if (secondary.size < size) secondary = IntArray(size)
-        }
-    }
-
-    private val scratch = ThreadLocal.withInitial(::Scratch)
 
     /** CSP's density-only equations used when Apply RGB value is disabled. */
     fun density(modeCode: Int, primary: Float, secondary: Float): Float {
@@ -107,56 +95,8 @@ object CspDualBrushCompositor {
             region.bottom.coerceIn(0, primary.height),
         )
         if (clipped.isEmpty) return
-        val count = clipped.width() * clipped.height()
-        val buffers = checkNotNull(scratch.get()).also { it.ensure(count) }
-        primary.getPixels(buffers.primary, 0, clipped.width(), clipped.left, clipped.top, clipped.width(), clipped.height())
-        secondary.getPixels(buffers.secondary, 0, clipped.width(), clipped.left, clipped.top, clipped.width(), clipped.height())
-        for (index in 0 until count) {
-            buffers.primary[index] = if (applyRgb) {
-                compositeRgb(buffers.primary[index], buffers.secondary[index], modeCode)
-            } else {
-                compositeDensity(buffers.primary[index], buffers.secondary[index], modeCode)
-            }
+        check(NativeRasterOps.compositeDualBrush(primary, secondary, output, clipped, modeCode, applyRgb)) {
+            "Native dual-brush compositor rejected compatible RGBA surfaces"
         }
-        output.setPixels(buffers.primary, 0, clipped.width(), clipped.left, clipped.top, clipped.width(), clipped.height())
-    }
-
-    private fun compositeDensity(primary: Int, secondary: Int, modeCode: Int): Int {
-        val primaryAlpha = Color.alpha(primary) / 255f
-        val secondaryAlpha = Color.alpha(secondary) / 255f
-        val outputAlpha = density(modeCode, primaryAlpha, secondaryAlpha)
-        if (outputAlpha <= EPSILON) return Color.TRANSPARENT
-        val color = if (primaryAlpha > EPSILON) primary else secondary
-        return Color.argb(
-            (outputAlpha * 255f + .5f).toInt().coerceIn(0, 255),
-            Color.red(color),
-            Color.green(color),
-            Color.blue(color),
-        )
-    }
-
-    private fun compositeRgb(primary: Int, secondary: Int, modeCode: Int): Int {
-        val baseAlpha = Color.alpha(primary) / 255f
-        val sourceAlpha = Color.alpha(secondary) / 255f
-        val outputAlpha = sourceAlpha + baseAlpha * (1f - sourceAlpha)
-        if (outputAlpha <= EPSILON) return Color.TRANSPARENT
-
-        fun channel(extract: (Int) -> Int): Int {
-            val base = extract(primary) / 255f
-            val source = extract(secondary) / 255f
-            val blended = blendChannel(modeCode, base, source)
-            val premultiplied =
-                (1f - sourceAlpha) * base * baseAlpha +
-                    (1f - baseAlpha) * source * sourceAlpha +
-                    baseAlpha * sourceAlpha * blended
-            return (premultiplied / outputAlpha * 255f + .5f).toInt().coerceIn(0, 255)
-        }
-
-        return Color.argb(
-            (outputAlpha * 255f + .5f).toInt().coerceIn(0, 255),
-            channel(Color::red),
-            channel(Color::green),
-            channel(Color::blue),
-        )
     }
 }
