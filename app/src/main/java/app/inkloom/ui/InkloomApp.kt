@@ -4848,8 +4848,12 @@ internal fun InkCanvasView.applyBrushConfiguration(
     postCorrection = authoredCorrection?.postCorrection?.takeIf { authoredCorrection.postCorrectionEnabled } ?: settings.postCorrection.takeIf { authoredCorrection == null } ?: 0f
     postCorrectionAdjustBySpeed = authoredCorrection?.postCorrectionAdjustBySpeed ?: settings.postCorrectionAdjustBySpeed
     postCorrectionAdjustByScale = authoredCorrection?.postCorrectionAdjustByScale ?: settings.postCorrectionAdjustByScale
-    postCorrectionBezier = authoredCorrection?.postCorrectionBezier == true
-    correctionSharpAngles = authoredCorrection?.correctionSharpAngles == true
+    // CSP's Sharp angles and Bezier options belong to the Post correction program. A SUT may
+    // retain stale values while its BrushUseRevision switch is off; applying those values alone
+    // reshapes the line at pen-up even though the user explicitly disabled correction.
+    val postCorrectionProgramEnabled = authoredCorrection?.postCorrectionEnabled ?: (settings.postCorrection > 0f)
+    postCorrectionBezier = postCorrectionProgramEnabled && authoredCorrection?.postCorrectionBezier == true
+    correctionSharpAngles = postCorrectionProgramEnabled && authoredCorrection?.correctionSharpAngles == true
     primaryButtonAction = settings.stylusPrimaryButton
     secondaryButtonAction = settings.stylusSecondaryButton
     primaryButtonTrigger = settings.stylusPrimaryTrigger

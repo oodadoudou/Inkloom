@@ -7,13 +7,78 @@ import app.inkloom.document.ViewportState
 import kotlin.math.cos
 import kotlin.math.sin
 
+/**
+ * One affine truth shared by viewport input and active-stroke rendering.
+ *
+ * Page coordinates are the untransformed pixel coordinates used by [app.inkloom.ui.InkCanvasView].
+ * Viewport coordinates are physical pixels in the stable editor input/render plane. Keeping the
+ * forward and inverse coefficients together prevents cursor, input and front-buffer code from
+ * independently reconstructing a nearly-identical transform.
+ */
+internal class CanonicalViewportTransform private constructor(
+    val pageToViewportValues: FloatArray,
+    val viewportToPageValues: FloatArray,
+) {
+    fun pageToViewportMatrix(destination: Matrix = Matrix()): Matrix =
+        destination.apply { setValues(pageToViewportValues) }
+
+    fun viewportToPageMatrix(destination: Matrix = Matrix()): Matrix =
+        destination.apply { setValues(viewportToPageValues) }
+
+    fun pageToViewport(x: Float, y: Float): Pair<Float, Float> {
+        val point = floatArrayOf(x, y)
+        pageToViewportMatrix().mapPoints(point)
+        return point[0] to point[1]
+    }
+
+    fun viewportToPage(x: Float, y: Float): Pair<Float, Float> {
+        val point = floatArrayOf(x, y)
+        viewportToPageMatrix().mapPoints(point)
+        return point[0] to point[1]
+    }
+
+    companion object {
+        fun create(
+            viewportWidth: Float,
+            viewportHeight: Float,
+            pageWidth: Float,
+            pageHeight: Float,
+            viewport: ViewportState,
+        ): CanonicalViewportTransform? {
+            if (!viewportWidth.isFinite() || !viewportHeight.isFinite() || !pageWidth.isFinite() || !pageHeight.isFinite()) return null
+            if (viewportWidth <= 0f || viewportHeight <= 0f || pageWidth <= 0f || pageHeight <= 0f) return null
+            val scale = viewport.scale.takeIf { it.isFinite() && it > 0f } ?: 1f
+            val rotation = Math.toRadians((viewport.rotationDegrees.takeIf(Float::isFinite) ?: 0f).toDouble())
+            val cosine = cos(rotation).toFloat()
+            val sine = sin(rotation).toFloat()
+            val a = scale * cosine
+            val b = -scale * sine
+            val d = scale * sine
+            val e = scale * cosine
+            val pageCenterX = pageWidth / 2f
+            val pageCenterY = pageHeight / 2f
+            val viewportCenterX = viewportWidth / 2f
+            val viewportCenterY = viewportHeight / 2f
+            val panX = viewport.panX.takeIf(Float::isFinite) ?: 0f
+            val panY = viewport.panY.takeIf(Float::isFinite) ?: 0f
+            val forward = floatArrayOf(
+                a, b, viewportCenterX + panX - a * pageCenterX - b * pageCenterY,
+                d, e, viewportCenterY + panY - d * pageCenterX - e * pageCenterY,
+                0f, 0f, 1f,
+            )
+            val inverseMatrix = Matrix()
+            if (!Matrix().apply { setValues(forward) }.invert(inverseMatrix)) return null
+            val inverse = FloatArray(9)
+            inverseMatrix.getValues(inverse)
+            return CanonicalViewportTransform(forward, inverse)
+        }
+    }
+}
+
 /** Maps complete pointer packets from the stable editor viewport into page-local coordinates.
  * MotionEvent.transform also preserves alignment for every pointer and historical sample. */
 internal class PointerCoordinateMapper {
-    private val sourceToTarget = Matrix()
-    private val viewportTransform = Matrix()
     private val viewportToPage = Matrix()
-    private val viewportValues = FloatArray(9)
 
     /**
      * Maps a full-editor overlay into the page View through their shared visual centre. Compose
@@ -28,16 +93,12 @@ internal class PointerCoordinateMapper {
         viewport: ViewportState? = null,
     ): Boolean {
         if (source.width <= 0 || source.height <= 0 || target.width <= 0 || target.height <= 0) return false
-        sourceToTarget.reset()
-        sourceToTarget.setTranslate(
-            (target.width - source.width) / 2f,
-            (target.height - source.height) / 2f,
-        )
-        event.transform(sourceToTarget)
-        viewport?.let {
-            if (!configureViewportInverse(target.width.toFloat(), target.height.toFloat(), it)) return false
-            event.transform(viewportToPage)
-        }
+        val transform = CanonicalViewportTransform.create(
+            source.width.toFloat(), source.height.toFloat(),
+            target.width.toFloat(), target.height.toFloat(),
+            viewport ?: ViewportState(1f, 0f, 0f, 0f),
+        ) ?: return false
+        event.transform(transform.viewportToPageMatrix(viewportToPage))
         return true
     }
 
@@ -51,39 +112,10 @@ internal class PointerCoordinateMapper {
         viewport: ViewportState,
     ): Pair<Float, Float>? {
         if (source.width <= 0 || source.height <= 0 || target.width <= 0 || target.height <= 0) return null
-        if (!configureViewportInverse(target.width.toFloat(), target.height.toFloat(), viewport)) return null
-        val point = floatArrayOf(pageX, pageY)
-        viewportTransform.mapPoints(point)
-        point[0] -= (target.width - source.width) / 2f
-        point[1] -= (target.height - source.height) / 2f
-        return point[0] to point[1]
-    }
-
-    private fun configureViewportInverse(width: Float, height: Float, viewport: ViewportState): Boolean {
-        val safeWidth = width.coerceAtLeast(1f)
-        val safeHeight = height.coerceAtLeast(1f)
-        val centerX = safeWidth / 2f
-        val centerY = safeHeight / 2f
-        val scale = viewport.scale.takeIf { it.isFinite() && it > 0f } ?: 1f
-        val rotation = Math.toRadians((viewport.rotationDegrees.takeIf(Float::isFinite) ?: 0f).toDouble())
-        val cosine = cos(rotation).toFloat()
-        val sine = sin(rotation).toFloat()
-        val a = scale * cosine
-        val b = -scale * sine
-        val d = scale * sine
-        val e = scale * cosine
-        val panX = viewport.panX.takeIf(Float::isFinite) ?: 0f
-        val panY = viewport.panY.takeIf(Float::isFinite) ?: 0f
-        viewportValues[0] = a
-        viewportValues[1] = b
-        viewportValues[2] = centerX + panX - a * centerX - b * centerY
-        viewportValues[3] = d
-        viewportValues[4] = e
-        viewportValues[5] = centerY + panY - d * centerX - e * centerY
-        viewportValues[6] = 0f
-        viewportValues[7] = 0f
-        viewportValues[8] = 1f
-        viewportTransform.setValues(viewportValues)
-        return viewportTransform.invert(viewportToPage)
+        return CanonicalViewportTransform.create(
+            source.width.toFloat(), source.height.toFloat(),
+            target.width.toFloat(), target.height.toFloat(),
+            viewport,
+        )?.pageToViewport(pageX, pageY)
     }
 }

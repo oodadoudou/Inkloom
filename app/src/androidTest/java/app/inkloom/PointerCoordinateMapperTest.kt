@@ -7,6 +7,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.document.ViewportState
 import app.inkloom.document.ViewportTransform
+import app.inkloom.engine.v2.input.CanonicalViewportTransform
 import app.inkloom.engine.v2.input.PointerCoordinateMapper
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -15,6 +16,30 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class PointerCoordinateMapperTest {
+    @Test fun canonicalAffineRoundTripsEverySupportedZoomPanRotationCombination() {
+        val viewportWidth = 1_824f
+        val viewportHeight = 1_104f
+        val pageWidth = 742f
+        val pageHeight = 1_050f
+        val points = listOf(0f to 0f, pageWidth to 0f, pageWidth / 2f to pageHeight / 2f, 13.25f to 987.75f, pageWidth to pageHeight)
+        val scales = listOf(1f, 2f, 4f, 8f, 16f)
+        val rotations = listOf(0f, 37f, 90f, -135f)
+        val pans = listOf(0f to 0f, 231.5f to -178.25f, -640f to 412f)
+
+        scales.forEach { scale -> rotations.forEach { rotation -> pans.forEach { pan ->
+            val transform = requireNotNull(CanonicalViewportTransform.create(
+                viewportWidth, viewportHeight, pageWidth, pageHeight,
+                ViewportState(scale, pan.first, pan.second, rotation),
+            ))
+            points.forEach { page ->
+                val viewport = transform.pageToViewport(page.first, page.second)
+                val roundTrip = transform.viewportToPage(viewport.first, viewport.second)
+                assertEquals("x at scale=$scale rotation=$rotation pan=$pan", page.first, roundTrip.first, .002f)
+                assertEquals("y at scale=$scale rotation=$rotation pan=$pan", page.second, roundTrip.second, .002f)
+            }
+        } } }
+    }
+
     @Test fun rotationMapsCurrentHistoryAndCursorThroughTheSameAffinePair() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val source = View(context).apply { layout(0, 0, 1_200, 900) }

@@ -3,13 +3,19 @@ package app.inkloom.ui
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Matrix
 import android.graphics.Paint
+import android.graphics.PorterDuff
 import android.view.MotionEvent
 import android.view.PointerIcon
 import android.widget.FrameLayout
 import androidx.annotation.WorkerThread
 import androidx.graphics.lowlatency.LowLatencyCanvasView
+import app.inkloom.document.InkStroke
 import app.inkloom.engine.v2.input.PointerCoordinateMapper
+import app.inkloom.engine.v2.input.CanonicalViewportTransform
+import app.inkloom.engine.v2.render.EngineV2ActiveStrokeSurface
+import app.inkloom.engine.v2.render.EngineV2ActiveTailPlanner
 import app.inkloom.document.BrushCursorGeometry
 import app.inkloom.document.ViewportState
 import kotlin.math.atan2
@@ -21,23 +27,36 @@ import kotlin.math.atan2
  * those bounds. Android hit testing does not follow the page transform into its visible overflow,
  * so this proxy maps the complete event through the actual source and destination View matrices.
  */
-class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
+class InkViewportTouchProxy(context: Context) : FrameLayout(context), EngineV2ActiveStrokeSurface {
     var target: InkCanvasView? = null
         set(value) {
+            if (field === value) return
             field?.apply {
                 externalHoverCursor = false
                 onHoverCursorStyleChanged = null
+                if (activeStrokeSurface === this@InkViewportTouchProxy) activeStrokeSurface = null
             }
             field = value
             value?.apply {
                 externalHoverCursor = true
                 onHoverCursorStyleChanged = { refreshCursorStyle() }
+                // Active ink and the physical cursor must share the same stable viewport Surface.
+                // A page-local Surface nested under Compose graphicsLayer can be presented with a
+                // different transform/frame than the RenderNode-backed committed page.
+                activeStrokeSurface = this@InkViewportTouchProxy
             }
+            cancel()
             clearHoverCursor()
         }
 
     private val coordinateMapper = PointerCoordinateMapper()
+    private val activeInkSurface = LowLatencyCanvasView(context)
     private val cursorSurface = LowLatencyCanvasView(context)
+    @Volatile private var activeStrokes: List<InkStroke> = emptyList()
+    @Volatile private var activeTransform: CanonicalViewportTransform? = null
+    private val activeLock = Any()
+    private val activeTailPlanner = EngineV2ActiveTailPlanner()
+    private val activeRenderMatrix = Matrix()
     private val hoverPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     @Volatile private var hoverVisible = false
     @Volatile private var hoverX = 0f
@@ -57,6 +76,19 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
         isClickable = true
         clipChildren = true
         clipToPadding = true
+        activeInkSurface.apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            isClickable = false
+            isFocusable = false
+            pointerIcon = PointerIcon.getSystemIcon(context, PointerIcon.TYPE_NULL)
+            setRenderCallback(object : LowLatencyCanvasView.Callback {
+                @WorkerThread
+                override fun onRedrawRequested(canvas: Canvas, width: Int, height: Int) = drawCompleteActiveInk(canvas)
+
+                @WorkerThread
+                override fun onDrawFrontBufferedLayer(canvas: Canvas, width: Int, height: Int) = drawIncrementalActiveInk(canvas)
+            })
+        }
         cursorSurface.apply {
             setBackgroundColor(Color.TRANSPARENT)
             isClickable = false
@@ -70,8 +102,84 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
                 override fun onDrawFrontBufferedLayer(canvas: Canvas, width: Int, height: Int) = drawCursor(canvas)
             })
         }
+        addView(activeInkSurface, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(cursorSurface, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     }
+
+    override fun render(strokes: List<InkStroke>) {
+        val canvas = target ?: return
+        activeTransform = currentTransform(canvas)
+        activeStrokes = strokes
+        activeInkSurface.renderFrontBufferedLayer()
+    }
+
+    override fun commit(strokes: List<InkStroke>) {
+        val canvas = target ?: return
+        activeTransform = currentTransform(canvas)
+        activeStrokes = strokes
+        activeInkSurface.renderFrontBufferedLayer()
+        activeInkSurface.commit()
+        postOnAnimation {
+            activeStrokes = emptyList()
+            synchronized(activeLock) { activeTailPlanner.reset() }
+            activeInkSurface.clear()
+            canvas.resetEngineV2ActiveRenderState()
+        }
+    }
+
+    override fun cancel() {
+        activeStrokes = emptyList()
+        activeTransform = null
+        synchronized(activeLock) { activeTailPlanner.reset() }
+        activeInkSurface.clear()
+        target?.resetEngineV2ActiveRenderState()
+    }
+
+    @WorkerThread
+    private fun drawCompleteActiveInk(canvas: Canvas) {
+        canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+        val view = target ?: return
+        val strokes = activeStrokes
+        val transform = activeTransform ?: return
+        view.resetEngineV2ActiveRenderState()
+        if (strokes.isNotEmpty()) drawActiveInk(canvas, view, transform, strokes, incrementalStampDraw = false)
+        synchronized(activeLock) { activeTailPlanner.complete(strokes) }
+    }
+
+    @WorkerThread
+    private fun drawIncrementalActiveInk(canvas: Canvas) {
+        val view = target ?: return
+        val strokes = activeStrokes
+        val transform = activeTransform ?: return
+        if (strokes.isEmpty()) return
+        val forceComplete = view.requiresCompleteActiveReplay(strokes)
+        val plan = synchronized(activeLock) {
+            if (forceComplete) activeTailPlanner.complete(strokes) else activeTailPlanner.incremental(strokes)
+        }
+        if (plan.clearBeforeDraw) canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+        if (plan.strokes.isNotEmpty()) drawActiveInk(canvas, view, transform, plan.strokes, plan.incrementalStampDraw)
+    }
+
+    @WorkerThread
+    private fun drawActiveInk(
+        canvas: Canvas,
+        view: InkCanvasView,
+        transform: CanonicalViewportTransform,
+        strokes: List<InkStroke>,
+        incrementalStampDraw: Boolean,
+    ) {
+        val checkpoint = canvas.save()
+        canvas.concat(transform.pageToViewportMatrix(activeRenderMatrix))
+        canvas.clipRect(0f, 0f, view.width.toFloat(), view.height.toFloat())
+        view.drawEngineV2ActiveStrokes(canvas, strokes, incrementalStampDraw)
+        canvas.restoreToCount(checkpoint)
+    }
+
+    private fun currentTransform(canvas: InkCanvasView): CanonicalViewportTransform? =
+        CanonicalViewportTransform.create(
+            width.toFloat(), height.toFloat(), canvas.width.toFloat(), canvas.height.toFloat(),
+            ViewportState(canvas.viewportScale, canvas.viewportPanX, canvas.viewportPanY, canvas.viewportRotationDegrees),
+        )
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         val stylusIndex = event.stylusPointerIndex(activeStylusPointerId)
@@ -159,6 +267,7 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
     }
 
     override fun onDetachedFromWindow() {
+        cancel()
         target = null
         super.onDetachedFromWindow()
     }
