@@ -155,6 +155,7 @@ import app.inkloom.engine.v3.tools.RasterLiquifySession
 import app.inkloom.engine.v3.tools.RasterEraserSession
 import app.inkloom.engine.v3.tools.RasterWetPaintMixer
 import app.inkloom.engine.v3.tools.RasterWetPaintSession
+import app.inkloom.engine.v3.tools.NativeRasterOps
 import app.inkloom.model.EditorTool
 import app.inkloom.model.SymmetryMode
 import app.inkloom.settings.CspShortcutResolver
@@ -4930,26 +4931,15 @@ class InkCanvasView(context: Context) : View(context) {
             invalidate()
             return
         }
-        val pixels = IntArray(bitmapWidth * bitmapHeight)
-        fullMask.getPixels(pixels, 0, bitmapWidth, 0, 0, bitmapWidth, bitmapHeight)
-        var minX = bitmapWidth; var minY = bitmapHeight; var maxX = -1; var maxY = -1
-        pixels.forEachIndexed { index, pixel ->
-            if (Color.alpha(pixel) > 0) {
-                val x = index % bitmapWidth
-                val y = index / bitmapWidth
-                if (x < minX) minX = x; if (x > maxX) maxX = x
-                if (y < minY) minY = y; if (y > maxY) maxY = y
-            }
-        }
-        if (maxX >= minX && maxY >= minY) {
-            val cropped = Bitmap.createBitmap(fullMask, minX, minY, maxX - minX + 1, maxY - minY + 1)
+        NativeRasterOps.alphaBounds(fullMask)?.let { bounds ->
+            val cropped = Bitmap.createBitmap(fullMask, bounds.left, bounds.top, bounds.width(), bounds.height())
             val callback = onFillCommitted
             if (callback != null) callback(
                 cropped,
-                minX / bitmapWidth.toFloat(),
-                minY / bitmapHeight.toFloat(),
-                (maxX - minX + 1) / bitmapWidth.toFloat() * pageModelWidth,
-                (maxY - minY + 1) / bitmapHeight.toFloat() * pageModelHeight,
+                bounds.left / bitmapWidth.toFloat(),
+                bounds.top / bitmapHeight.toFloat(),
+                bounds.width() / bitmapWidth.toFloat() * pageModelWidth,
+                bounds.height() / bitmapHeight.toFloat() * pageModelHeight,
                 inkColor.toUInt().toLong(),
                 inkOpacity,
             ) else cropped.recycle()

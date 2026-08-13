@@ -86,6 +86,107 @@ std::uint8_t byte_from_unit(float value) {
     return static_cast<std::uint8_t>(std::lround(clamp01(value) * 255.0f));
 }
 
+bool compatible_rgba(const LockedBitmap& first, const LockedBitmap& second) {
+    return first.pixels != nullptr && second.pixels != nullptr &&
+        first.info.width == second.info.width && first.info.height == second.info.height;
+}
+
+void clear_bitmap(LockedBitmap& bitmap) {
+    for (std::uint32_t y = 0; y < bitmap.info.height; ++y) {
+        std::fill_n(bitmap.pixels + static_cast<std::size_t>(y) * bitmap.info.stride,
+                    static_cast<std::size_t>(bitmap.info.width) * 4, 0);
+    }
+}
+
+std::array<int, 4> alpha_bounds(const LockedBitmap& bitmap) {
+    int min_x = static_cast<int>(bitmap.info.width);
+    int min_y = static_cast<int>(bitmap.info.height);
+    int max_x = -1;
+    int max_y = -1;
+    for (int y = 0; y < static_cast<int>(bitmap.info.height); ++y) {
+        const auto* row = bitmap.pixels + static_cast<std::size_t>(y) * bitmap.info.stride;
+        for (int x = 0; x < static_cast<int>(bitmap.info.width); ++x) {
+            if (row[x * 4 + 3] == 0) continue;
+            min_x = std::min(min_x, x);
+            min_y = std::min(min_y, y);
+            max_x = std::max(max_x, x);
+            max_y = std::max(max_y, y);
+        }
+    }
+    return max_x < min_x || max_y < min_y ? std::array<int, 4>{-1, -1, -1, -1} :
+        std::array<int, 4>{min_x, min_y, max_x + 1, max_y + 1};
+}
+
+jintArray bounds_array(JNIEnv* env, const std::array<int, 4>& bounds) {
+    jintArray result = env->NewIntArray(4);
+    if (result != nullptr) env->SetIntArrayRegion(result, 0, 4, bounds.data());
+    return result;
+}
+
+void distance_transform(const std::vector<std::uint8_t>& target, int width, int height,
+                        std::vector<int>& distance) {
+    const int infinity = width + height + 1;
+    const std::size_t count = static_cast<std::size_t>(width) * height;
+    distance.resize(count);
+    for (std::size_t index = 0; index < count; ++index) distance[index] = target[index] ? 0 : infinity;
+    for (int y = 0; y < height; ++y) for (int x = 0; x < width; ++x) {
+        const int index = y * width + x;
+        if (x > 0) distance[index] = std::min(distance[index], distance[index - 1] + 1);
+        if (y > 0) distance[index] = std::min(distance[index], distance[index - width] + 1);
+    }
+    for (int y = height - 1; y >= 0; --y) for (int x = width - 1; x >= 0; --x) {
+        const int index = y * width + x;
+        if (x + 1 < width) distance[index] = std::min(distance[index], distance[index + 1] + 1);
+        if (y + 1 < height) distance[index] = std::min(distance[index], distance[index + width] + 1);
+    }
+}
+
+bool morph_mask(const std::vector<std::uint8_t>& source, int width, int height, int radius,
+                bool dilate, std::vector<std::uint8_t>& output, std::vector<int>& distance) {
+    const std::size_t count = static_cast<std::size_t>(width) * height;
+    output.assign(count, 0);
+    if (radius <= 0) {
+        output = source;
+        return std::any_of(output.begin(), output.end(), [](std::uint8_t value) { return value != 0; });
+    }
+    if (dilate) {
+        distance_transform(source, width, height, distance);
+        for (std::size_t index = 0; index < count; ++index) output[index] = distance[index] <= radius;
+    } else {
+        std::vector<std::uint8_t> outside(count);
+        for (std::size_t index = 0; index < count; ++index) outside[index] = source[index] == 0;
+        distance_transform(outside, width, height, distance);
+        for (int y = 0; y < height; ++y) for (int x = 0; x < width; ++x) {
+            const int index = y * width + x;
+            const int edge_distance = std::min({x + 1, y + 1, width - x, height - y});
+            output[index] = source[index] && distance[index] > radius && edge_distance > radius;
+        }
+    }
+    return std::any_of(output.begin(), output.end(), [](std::uint8_t value) { return value != 0; });
+}
+
+void write_white_mask(LockedBitmap& destination, const std::vector<std::uint8_t>& mask) {
+    const int width = static_cast<int>(destination.info.width);
+    const int height = static_cast<int>(destination.info.height);
+    for (int y = 0; y < height; ++y) {
+        auto* row = destination.pixels + static_cast<std::size_t>(y) * destination.info.stride;
+        for (int x = 0; x < width; ++x) {
+            const std::uint8_t value = mask[static_cast<std::size_t>(y) * width + x] ? 255 : 0;
+            row[x * 4] = value;
+            row[x * 4 + 1] = value;
+            row[x * 4 + 2] = value;
+            row[x * 4 + 3] = value;
+        }
+    }
+}
+
+std::uint8_t unpremultiplied_channel(const std::uint8_t* pixel, int channel) {
+    const int alpha = pixel[3];
+    if (alpha == 0) return 0;
+    if (alpha == 255) return pixel[channel];
+    return static_cast<std::uint8_t>(std::clamp((pixel[channel] * 255 + alpha / 2) / alpha, 0, 255));
+}
+
 }  // namespace
 
 extern "C" JNIEXPORT jboolean JNICALL
@@ -238,4 +339,195 @@ Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeBlur(
         }
     }
     return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jintArray JNICALL
+Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeAlphaBounds(
+    JNIEnv* env, jobject, jobject source_bitmap) {
+    LockedBitmap source(env, source_bitmap);
+    if (source.pixels == nullptr) return bounds_array(env, {-1, -1, -1, -1});
+    return bounds_array(env, alpha_bounds(source));
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeIsAlphaEmpty(
+    JNIEnv* env, jobject, jobject source_bitmap) {
+    LockedBitmap source(env, source_bitmap);
+    if (source.pixels == nullptr) return JNI_TRUE;
+    for (std::uint32_t y = 0; y < source.info.height; ++y) {
+        const auto* row = source.pixels + static_cast<std::size_t>(y) * source.info.stride;
+        for (std::uint32_t x = 0; x < source.info.width; ++x) if (row[x * 4 + 3] != 0) return JNI_FALSE;
+    }
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeInvertAlpha(
+    JNIEnv* env, jobject, jobject source_bitmap, jobject destination_bitmap) {
+    LockedBitmap source(env, source_bitmap);
+    LockedBitmap destination(env, destination_bitmap);
+    if (!compatible_rgba(source, destination)) return JNI_FALSE;
+    bool non_empty = false;
+    for (std::uint32_t y = 0; y < source.info.height; ++y) {
+        const auto* input = source.pixels + static_cast<std::size_t>(y) * source.info.stride;
+        auto* output = destination.pixels + static_cast<std::size_t>(y) * destination.info.stride;
+        for (std::uint32_t x = 0; x < source.info.width; ++x) {
+            const std::uint8_t alpha = 255 - input[x * 4 + 3];
+            non_empty = non_empty || alpha != 0;
+            output[x * 4] = alpha;
+            output[x * 4 + 1] = alpha;
+            output[x * 4 + 2] = alpha;
+            output[x * 4 + 3] = alpha;
+        }
+    }
+    return non_empty ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeBoundaryAlpha(
+    JNIEnv* env, jobject, jobject source_bitmap, jobject destination_bitmap) {
+    LockedBitmap source(env, source_bitmap);
+    LockedBitmap destination(env, destination_bitmap);
+    if (!compatible_rgba(source, destination)) return JNI_FALSE;
+    clear_bitmap(destination);
+    const int width = static_cast<int>(source.info.width);
+    const int height = static_cast<int>(source.info.height);
+    auto selected = [&](int x, int y) {
+        return x >= 0 && x < width && y >= 0 && y < height &&
+            source.pixels[static_cast<std::size_t>(y) * source.info.stride + x * 4 + 3] >= 128;
+    };
+    bool non_empty = false;
+    for (int y = 0; y < height; ++y) for (int x = 0; x < width; ++x) {
+        const bool inside = selected(x, y);
+        if (selected(x - 1, y) == inside && selected(x + 1, y) == inside &&
+            selected(x, y - 1) == inside && selected(x, y + 1) == inside) continue;
+        for (int dy = -1; dy <= 1; ++dy) for (int dx = -1; dx <= 1; ++dx) {
+            const int target_x = x + dx;
+            const int target_y = y + dy;
+            if (target_x < 0 || target_x >= width || target_y < 0 || target_y >= height) continue;
+            auto* pixel = destination.pixels + static_cast<std::size_t>(target_y) * destination.info.stride + target_x * 4;
+            std::fill_n(pixel, 4, 255);
+            non_empty = true;
+        }
+    }
+    return non_empty ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeMorphAlpha(
+    JNIEnv* env, jobject, jobject source_bitmap, jobject destination_bitmap, jint radius_value, jboolean dilate) {
+    LockedBitmap source(env, source_bitmap);
+    LockedBitmap destination(env, destination_bitmap);
+    if (!compatible_rgba(source, destination)) return JNI_FALSE;
+    const int width = static_cast<int>(source.info.width);
+    const int height = static_cast<int>(source.info.height);
+    const std::size_t count = static_cast<std::size_t>(width) * height;
+    std::vector<std::uint8_t> input(count);
+    for (int y = 0; y < height; ++y) {
+        const auto* row = source.pixels + static_cast<std::size_t>(y) * source.info.stride;
+        for (int x = 0; x < width; ++x) input[static_cast<std::size_t>(y) * width + x] = row[x * 4 + 3] >= 128;
+    }
+    std::vector<std::uint8_t> output;
+    std::vector<int> distance;
+    const bool non_empty = morph_mask(input, width, height, std::max(0, static_cast<int>(radius_value)),
+                                      dilate == JNI_TRUE, output, distance);
+    write_white_mask(destination, output);
+    return non_empty ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jintArray JNICALL
+Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeFloodFill(
+    JNIEnv* env,
+    jobject,
+    jobject source_bitmap,
+    jobject destination_bitmap,
+    jint start_x,
+    jint start_y,
+    jint tolerance_value,
+    jint close_gap_value,
+    jint area_scaling_value) {
+    LockedBitmap source(env, source_bitmap);
+    LockedBitmap destination(env, destination_bitmap);
+    const std::array<int, 4> empty_bounds{-1, -1, -1, -1};
+    if (!compatible_rgba(source, destination)) return bounds_array(env, empty_bounds);
+    clear_bitmap(destination);
+    const int width = static_cast<int>(source.info.width);
+    const int height = static_cast<int>(source.info.height);
+    if (start_x < 0 || start_x >= width || start_y < 0 || start_y >= height) return bounds_array(env, empty_bounds);
+    const std::size_t count = static_cast<std::size_t>(width) * height;
+    const auto* seed = source.pixels + static_cast<std::size_t>(start_y) * source.info.stride + start_x * 4;
+    const std::array<int, 4> seed_channels{
+        unpremultiplied_channel(seed, 0), unpremultiplied_channel(seed, 1),
+        unpremultiplied_channel(seed, 2), seed[3],
+    };
+    const int tolerance = std::clamp(static_cast<int>(tolerance_value), 0, 255);
+    thread_local std::vector<std::uint8_t> fillable;
+    thread_local std::vector<std::uint8_t> covered;
+    thread_local std::vector<std::uint8_t> queued;
+    thread_local std::vector<std::uint8_t> scratch_mask;
+    thread_local std::vector<int> distance;
+    thread_local std::vector<int> stack;
+    fillable.assign(count, 0);
+    for (int y = 0; y < height; ++y) {
+        const auto* row = source.pixels + static_cast<std::size_t>(y) * source.info.stride;
+        for (int x = 0; x < width; ++x) {
+            const auto* pixel = row + x * 4;
+            fillable[static_cast<std::size_t>(y) * width + x] =
+                std::abs(static_cast<int>(unpremultiplied_channel(pixel, 0)) - seed_channels[0]) <= tolerance &&
+                std::abs(static_cast<int>(unpremultiplied_channel(pixel, 1)) - seed_channels[1]) <= tolerance &&
+                std::abs(static_cast<int>(unpremultiplied_channel(pixel, 2)) - seed_channels[2]) <= tolerance &&
+                std::abs(static_cast<int>(pixel[3]) - seed_channels[3]) <= tolerance;
+        }
+    }
+    const int close_gap = std::clamp(static_cast<int>(close_gap_value), 0, 64);
+    if (close_gap > 0) {
+        scratch_mask.resize(count);
+        for (std::size_t index = 0; index < count; ++index) scratch_mask[index] = fillable[index] == 0;
+        distance_transform(scratch_mask, width, height, distance);
+        for (std::size_t index = 0; index < count; ++index) fillable[index] = distance[index] > close_gap;
+    }
+
+    covered.assign(count, 0);
+    queued.assign(count, 0);
+    stack.clear();
+    if (stack.capacity() < std::min<std::size_t>(count, 4096)) stack.reserve(std::min<std::size_t>(count, 4096));
+    auto push = [&](int x, int y) {
+        const int index = y * width + x;
+        if (covered[index] || queued[index]) return;
+        stack.push_back(index);
+        queued[index] = 1;
+    };
+    push(start_x, start_y);
+    while (!stack.empty()) {
+        const int index = stack.back();
+        stack.pop_back();
+        if (covered[index]) continue;
+        const int y = index / width;
+        int x = index % width;
+        while (x >= 0 && !covered[y * width + x] && fillable[y * width + x]) --x;
+        ++x;
+        bool span_up = false;
+        bool span_down = false;
+        while (x < width && !covered[y * width + x] && fillable[y * width + x]) {
+            covered[y * width + x] = 1;
+            if (y > 0) {
+                const bool candidate = !covered[(y - 1) * width + x] && fillable[(y - 1) * width + x];
+                if (!span_up && candidate) { push(x, y - 1); span_up = true; }
+                else if (span_up && !candidate) span_up = false;
+            }
+            if (y + 1 < height) {
+                const bool candidate = !covered[(y + 1) * width + x] && fillable[(y + 1) * width + x];
+                if (!span_down && candidate) { push(x, y + 1); span_down = true; }
+                else if (span_down && !candidate) span_down = false;
+            }
+            ++x;
+        }
+    }
+    const int scaling = std::clamp(static_cast<int>(area_scaling_value), -64, 64);
+    if (scaling != 0) {
+        morph_mask(covered, width, height, std::abs(scaling), scaling > 0, scratch_mask, distance);
+        covered.swap(scratch_mask);
+    }
+    write_white_mask(destination, covered);
+    return bounds_array(env, alpha_bounds(destination));
 }

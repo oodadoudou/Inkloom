@@ -9,8 +9,8 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.RectF
+import app.inkloom.engine.v3.tools.NativeRasterOps
 import app.inkloom.settings.SelectionMode
-import java.util.BitSet
 import kotlin.math.ceil
 import kotlin.math.sqrt
 
@@ -163,18 +163,10 @@ object SelectionMaskCompositor {
 
     fun invert(source: Bitmap?): Bitmap? {
         if (source == null || source.isRecycled) return null
-        val pixels = IntArray(source.width * source.height)
-        source.getPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
-        var hasSelection = false
-        pixels.indices.forEach { index ->
-            val alpha = 255 - Color.alpha(pixels[index])
-            if (alpha != 0) hasSelection = true
-            pixels[index] = Color.argb(alpha, 255, 255, 255)
-        }
-        if (!hasSelection) return null
-        return Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888).also {
-            it.setPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
-        }
+        val result = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
+        if (NativeRasterOps.invertAlpha(source, result)) return result
+        result.recycle()
+        return null
     }
 
     fun feather(source: Bitmap?, radiusPagePixels: Float, pageWidth: Float): Bitmap? {
@@ -221,70 +213,22 @@ object SelectionMaskCompositor {
      * frame. */
     fun boundaryMask(source: Bitmap?): Bitmap? {
         if (source == null || source.isRecycled) return null
-        val width = source.width
-        val height = source.height
-        val pixels = IntArray(width * height)
-        source.getPixels(pixels, 0, width, 0, 0, width, height)
-        fun selected(x: Int, y: Int): Boolean = x in 0 until width && y in 0 until height && Color.alpha(pixels[y * width + x]) >= 128
-        val edge = BitSet(width * height)
-        for (y in 0 until height) for (x in 0 until width) {
-            val inside = selected(x, y)
-            if (
-                selected(x - 1, y) != inside || selected(x + 1, y) != inside ||
-                selected(x, y - 1) != inside || selected(x, y + 1) != inside
-            ) {
-                edge.set(y * width + x)
-            }
-        }
-        if (edge.isEmpty) return null
-        val output = IntArray(width * height)
-        // One-pixel dilation gives a stable 2–3 screen-pixel outline after typical page fitting.
-        var index = edge.nextSetBit(0)
-        while (index >= 0) {
-            val x = index % width
-            val y = index / width
-            for (dy in -1..1) for (dx in -1..1) {
-                val targetX = x + dx
-                val targetY = y + dy
-                if (targetX in 0 until width && targetY in 0 until height) output[targetY * width + targetX] = Color.WHITE
-            }
-            index = edge.nextSetBit(index + 1)
-        }
-        return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also {
-            it.setPixels(output, 0, width, 0, 0, width, height)
-        }
+        val result = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
+        if (NativeRasterOps.boundaryAlpha(source, result)) return result
+        result.recycle()
+        return null
     }
 
     fun isEmpty(source: Bitmap?): Boolean {
         if (source == null || source.isRecycled) return true
-        val row = IntArray(source.width)
-        for (y in 0 until source.height) {
-            source.getPixels(row, 0, source.width, 0, y, source.width, 1)
-            if (row.any { Color.alpha(it) != 0 }) return false
-        }
-        return true
+        return NativeRasterOps.isAlphaEmpty(source)
     }
 
     private fun binaryMorph(source: Bitmap, radius: Int, dilate: Boolean): Bitmap? {
-        val width = source.width
-        val height = source.height
-        val pixels = IntArray(width * height)
-        source.getPixels(pixels, 0, width, 0, 0, width, height)
-        val selected = BitSet(width * height)
-        pixels.forEachIndexed { index, color -> if (Color.alpha(color) >= 128) selected.set(index) }
-        val target = if (dilate) selected else BitSet(width * height).apply { set(0, width * height); andNot(selected) }
-        val distance = distanceTo(target, width, height)
-        val output = IntArray(width * height)
-        for (y in 0 until height) for (x in 0 until width) {
-            val index = y * width + x
-            val inside = if (dilate) distance[index] <= radius else {
-                val edgeDistance = minOf(x + 1, y + 1, width - x, height - y)
-                selected[index] && distance[index] > radius && edgeDistance > radius
-            }
-            if (inside) output[index] = Color.WHITE
-        }
-        if (output.none { Color.alpha(it) != 0 }) return null
-        return Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { it.setPixels(output, 0, width, 0, 0, width, height) }
+        val result = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
+        if (NativeRasterOps.morphAlpha(source, result, radius, dilate)) return result
+        result.recycle()
+        return null
     }
 
     private fun nonEmptyCopy(source: Bitmap): Bitmap? {
@@ -305,22 +249,6 @@ object SelectionMaskCompositor {
             if ((width + expansion) * (height + expansion) <= MAX_PIXELS.toLong()) low = candidate else high = candidate - 1
         }
         return low.toFloat()
-    }
-
-    private fun distanceTo(target: BitSet, width: Int, height: Int): IntArray {
-        val infinity = width + height + 1
-        val result = IntArray(width * height) { if (target[it]) 0 else infinity }
-        for (y in 0 until height) for (x in 0 until width) {
-            val index = y * width + x
-            if (x > 0) result[index] = minOf(result[index], result[index - 1] + 1)
-            if (y > 0) result[index] = minOf(result[index], result[index - width] + 1)
-        }
-        for (y in height - 1 downTo 0) for (x in width - 1 downTo 0) {
-            val index = y * width + x
-            if (x + 1 < width) result[index] = minOf(result[index], result[index + 1] + 1)
-            if (y + 1 < height) result[index] = minOf(result[index], result[index + width] + 1)
-        }
-        return result
     }
 
     private fun whitePaint(filter: Boolean = false) = Paint(Paint.ANTI_ALIAS_FLAG or if (filter) Paint.FILTER_BITMAP_FLAG else 0).apply {

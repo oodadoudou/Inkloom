@@ -75,6 +75,18 @@ class SelectionMaskCompositorTest {
         }
     }
 
+    @Test fun invertingAPartialMaskSelectsTheExactComplement() {
+        val selection = rectangle(.2f, .2f, .8f, .8f)
+        val inverse = SelectionMaskCompositor.invert(selection)
+        try {
+            assertSelected(inverse, .05f, .05f)
+            assertNotSelected(inverse, .5f, .5f)
+        } finally {
+            selection.recycle()
+            inverse?.recycle()
+        }
+    }
+
     @Test fun croppedFillRegionIsClippedByTheFullPageSelection() {
         val region = Bitmap.createBitmap(60, 60, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.WHITE) }
         val selection = rectangle(.5f, 0f, 1f, 1f)

@@ -78,4 +78,37 @@ class FloodFillTest {
         assertEquals(0, Color.alpha(outside.mask.getPixel(14, 14)))
         assertTrue(Color.alpha(outside.mask.getPixel(2, 2)) > 0)
     }
+
+    @Test fun toleranceComparesUnpremultipliedChannelsForTranslucentArtwork() {
+        val source = Bitmap.createBitmap(3, 1, Bitmap.Config.ARGB_8888).apply {
+            setPixel(0, 0, Color.argb(128, 200, 100, 50))
+            setPixel(1, 0, Color.argb(128, 210, 105, 55))
+            setPixel(2, 0, Color.argb(128, 230, 100, 50))
+        }
+        val result = FloodFill.fill(source, 0, 0, tolerance = 10)
+        try {
+            assertEquals(2, result.width)
+            assertTrue(Color.alpha(result.mask.getPixel(1, 0)) > 0)
+        } finally {
+            result.mask.recycle()
+            source.recycle()
+        }
+    }
+
+    @Test fun repeatedViewportFillThresholdUpdatesStayInteractive() {
+        val source = solid(Color.WHITE, 800, 600)
+        for (y in 80 until 520) source.setPixel(400, y, Color.BLACK)
+        repeat(2) { FloodFill.fill(source, 100, 300, tolerance = it * 4).mask.recycle() }
+        val elapsed = ArrayList<Long>(12)
+        repeat(12) { iteration ->
+            val started = android.os.SystemClock.elapsedRealtimeNanos()
+            FloodFill.fill(source, 100, 300, tolerance = iteration * 2).mask.recycle()
+            elapsed += android.os.SystemClock.elapsedRealtimeNanos() - started
+        }
+        val sorted = elapsed.sorted()
+        val p95Ms = sorted[(sorted.size * 95 / 100).coerceAtMost(sorted.lastIndex)] / 1_000_000f
+        android.util.Log.i("InkloomPerf", "native_flood_fill_p95_ms=$p95Ms")
+        assertTrue("Native fill threshold P95 was ${p95Ms}ms", p95Ms < 33.3f)
+        source.recycle()
+    }
 }
