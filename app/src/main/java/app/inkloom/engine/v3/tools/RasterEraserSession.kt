@@ -36,7 +36,7 @@ class RasterEraserSession(
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
-    private val selectionPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+    private val selectionPaint = Paint().apply {
         xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
     }
     private val erasePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
@@ -103,7 +103,7 @@ class RasterEraserSession(
         if (current != null && !current.isRecycled && current.width >= width && current.height >= height) return coverageCanvas
         current?.recycle()
         val next = runCatching {
-            Bitmap.createBitmap(maxOf(width, current?.width ?: 0), maxOf(height, current?.height ?: 0), Bitmap.Config.ALPHA_8)
+            Bitmap.createBitmap(maxOf(width, current?.width ?: 0), maxOf(height, current?.height ?: 0), Bitmap.Config.ARGB_8888)
         }.getOrNull() ?: return null
         coverageBitmap = next
         return Canvas(next).also { coverageCanvas = it }
