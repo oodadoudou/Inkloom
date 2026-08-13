@@ -142,7 +142,7 @@ class LassoSelectionModesTest {
                 assertTrue("Committed selection boundary had no black contrast pixels", boundaryPixels.any { Color.red(it) < 24 })
                 assertTrue("Committed selection boundary had no white marching-ant pixels", boundaryPixels.any { Color.red(it) > 230 })
                 assertEquals("Selection interior must remain unobscured", 0, Color.alpha(bitmap.getPixel(500, 500)))
-                assertTrue("Selection exterior did not receive a visible protection overlay", Color.alpha(bitmap.getPixel(100, 100)) >= 20)
+                assertEquals("CSP-style selection feedback must not shade the exterior", 0, Color.alpha(bitmap.getPixel(100, 100)))
             } finally {
                 bitmap.recycle()
                 view.clearSelection()
@@ -164,7 +164,7 @@ class LassoSelectionModesTest {
                     view.draw(Canvas(bitmap))
                     val boundary = pixelsNear(bitmap, 200, 500, if (scale < 1f) 12 else 3).filter(::opaque)
                     assertTrue("Selection boundary disappeared at viewport scale $scale", boundary.size > 16)
-                    assertTrue("Selection exterior disappeared at viewport scale $scale", Color.alpha(bitmap.getPixel(100, 100)) >= 20)
+                    assertEquals("Selection exterior was shaded at viewport scale $scale", 0, Color.alpha(bitmap.getPixel(100, 100)))
                     assertEquals("Selection interior was obscured at viewport scale $scale", 0, Color.alpha(bitmap.getPixel(500, 500)))
                 } finally {
                     bitmap.recycle()

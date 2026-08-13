@@ -277,6 +277,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var lastDeselectedMaskRegions: List<List<StrokePoint>> = emptyList()
     private var lastDeselectedAlphaBitmap: Bitmap? = null
     private var lastDeselectedFeatherPixels = 0f
+    private var lastReportedSelectionActive: Boolean? = null
     var selectionFeatherPixels: Float = 0f
         private set
     private var selectionGestureBefore: List<InkStroke>? = null
@@ -400,7 +401,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var selectionTransformStartXSpan = 0f
     private var selectionTransformStartYSpan = 0f
     private val selectionHandlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; color = Color.WHITE }
-    private val selectionHandleStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 2f; color = Color.rgb(24, 119, 242) }
+    private val selectionHandleStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 2f; color = Color.rgb(17, 17, 17) }
     private val selectionAntPattern = Bitmap.createBitmap(
         16,
         16,
@@ -428,32 +429,6 @@ class InkCanvasView(context: Context) : View(context) {
         style = Paint.Style.FILL
         shader = selectionAntShader
         blendMode = BlendMode.SRC_IN
-    }
-    private val selectionExteriorPattern = Bitmap.createBitmap(
-        24,
-        24,
-        Bitmap.Config.ARGB_8888,
-    ).apply {
-        val pixels = IntArray(width * height) { index ->
-            val x = index % width
-            val y = index / width
-            if ((x + y) % 12 in 0..2) Color.argb(34, 17, 17, 17) else Color.TRANSPARENT
-        }
-        setPixels(pixels, 0, width, 0, 0, width, height)
-    }
-    private val selectionExteriorShader = BitmapShader(selectionExteriorPattern, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
-    private val selectionExteriorMatrix = Matrix()
-    private val selectionExteriorBasePaint = Paint().apply {
-        style = Paint.Style.FILL
-        color = Color.argb(24, 17, 17, 17)
-    }
-    private val selectionExteriorPatternPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL
-        shader = selectionExteriorShader
-    }
-    private val selectionExteriorCutoutPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
-        style = Paint.Style.FILL
-        blendMode = BlendMode.DST_OUT
     }
     private val liveSelectionOutlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -1013,6 +988,12 @@ class InkCanvasView(context: Context) : View(context) {
     /** The callback owns the immutable visible-crop snapshot and must recycle it after saving. */
     var onRasterLayerCommitted: ((layerId: String, visibleSurface: Bitmap) -> Unit)? = null
     var onColorDropCommitted: (Int) -> Unit = {}
+    var onSelectionActiveChanged: (Boolean) -> Unit = {}
+        set(value) {
+            field = value
+            lastReportedSelectionActive = null
+            notifySelectionActiveChanged()
+        }
     private var continueFillingColor: Int? = null
     var fillSensitivity: Float = .25f
     var fillSubTool: FillSubTool = FillSubTool.BUCKET
@@ -1331,12 +1312,12 @@ class InkCanvasView(context: Context) : View(context) {
             liveSelectionOutlinePaint.pathEffect = null
             liveSelectionOutlinePaint.color = Color.BLACK
             liveSelectionOutlinePaint.alpha = 255
-            liveSelectionOutlinePaint.strokeWidth = 5f / overlayScale
+            liveSelectionOutlinePaint.strokeWidth = 4f / overlayScale
             canvas.drawPath(lassoPath, liveSelectionOutlinePaint)
             liveSelectionOutlinePaint.color = Color.WHITE
-            liveSelectionOutlinePaint.strokeWidth = 2.5f / overlayScale
+            liveSelectionOutlinePaint.strokeWidth = 2f / overlayScale
             liveSelectionOutlinePaint.pathEffect = DashPathEffect(
-                floatArrayOf(9f / overlayScale, 7f / overlayScale),
+                floatArrayOf(6f / overlayScale, 4f / overlayScale),
                 selectionAntPhase() / overlayScale,
             )
             canvas.drawPath(lassoPath, liveSelectionOutlinePaint)
@@ -1349,7 +1330,6 @@ class InkCanvasView(context: Context) : View(context) {
             canvas.drawCircle(originX, originY, 4.5f / overlayScale, liveSelectionOriginPaint)
             postInvalidateDelayed(SELECTION_ANTS_FRAME_MS)
         }
-        drawCommittedSelectionExterior(canvas)
         drawCommittedSelectionBoundary(canvas)
         drawSelectionHandles(canvas)
         drawSymmetryGuides(canvas)
@@ -1368,25 +1348,6 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun selectionAntPhase(): Float =
         ((SystemClock.uptimeMillis() / SELECTION_ANTS_FRAME_MS) % selectionAntPattern.width).toFloat()
-
-    /** Keeps the selected region optically untouched while making the protected exterior obvious,
-     * matching the committed-selection contract used by mainstream tablet drawing apps. The mask
-     * is already cached; this adds no per-frame bitmap allocation or contour tracing. */
-    private fun drawCommittedSelectionExterior(canvas: Canvas) {
-        if (tool != EditorTool.SELECT) return
-        val mask = selectionMaskForDisplay()?.takeUnless(Bitmap::isRecycled) ?: return
-        selectionBoundaryRect.set(0f, 0f, width.toFloat(), height.toFloat())
-        val checkpoint = canvas.saveLayer(selectionBoundaryRect, null)
-        canvas.drawRect(selectionBoundaryRect, selectionExteriorBasePaint)
-        val overlayScale = viewportScale.coerceAtLeast(.1f)
-        selectionExteriorMatrix.reset()
-        selectionExteriorMatrix.setScale(1f / overlayScale, 1f / overlayScale)
-        selectionExteriorMatrix.postTranslate(selectionAntPhase() / overlayScale, 0f)
-        selectionExteriorShader.setLocalMatrix(selectionExteriorMatrix)
-        canvas.drawRect(selectionBoundaryRect, selectionExteriorPatternPaint)
-        canvas.drawBitmap(mask, null, selectionBoundaryRect, selectionExteriorCutoutPaint)
-        canvas.restoreToCount(checkpoint)
-    }
 
     private fun drawCommittedSelectionBoundary(canvas: Canvas) {
         val boundary = selectionBoundaryBitmap?.takeUnless(Bitmap::isRecycled) ?: return
@@ -1419,12 +1380,12 @@ class InkCanvasView(context: Context) : View(context) {
             liveSelectionOutlinePaint.pathEffect = null
             liveSelectionOutlinePaint.color = Color.BLACK
             liveSelectionOutlinePaint.alpha = 255
-            liveSelectionOutlinePaint.strokeWidth = 5f / overlayScale
+            liveSelectionOutlinePaint.strokeWidth = 4f / overlayScale
             canvas.drawPath(lassoPath, liveSelectionOutlinePaint)
             liveSelectionOutlinePaint.color = Color.WHITE
-            liveSelectionOutlinePaint.strokeWidth = 2.5f / overlayScale
+            liveSelectionOutlinePaint.strokeWidth = 2f / overlayScale
             liveSelectionOutlinePaint.pathEffect = DashPathEffect(
-                floatArrayOf(9f / overlayScale, 7f / overlayScale),
+                floatArrayOf(6f / overlayScale, 4f / overlayScale),
                 selectionAntPhase() / overlayScale,
             )
             canvas.drawPath(lassoPath, liveSelectionOutlinePaint)
@@ -2956,7 +2917,6 @@ class InkCanvasView(context: Context) : View(context) {
                     }
                     if (!selectionTransformArmed) {
                         lassoPoints.clear(); selectionGestureBefore = null; selectionMoved = false; movingSelection = false
-                        if (selectionMode == SelectionMode.REPLACE) selectedStrokeIds.clear()
                         appendSelectionPoint(normalizedX, normalizedY)
                         lastX = normalizedX; lastY = normalizedY
                         invalidate(); return true
@@ -2992,7 +2952,6 @@ class InkCanvasView(context: Context) : View(context) {
                         selectionGestureBefore = strokes.toList()
                         movingSelection = true
                     } else {
-                        if (selectionMode == SelectionMode.REPLACE) selectedStrokeIds.clear()
                         movingSelection = false
                         appendSelectionPoint(normalizedX, normalizedY)
                     }
@@ -5543,7 +5502,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun drawSelectionHandles(canvas: Canvas) {
-        if (selectedStrokeIds.isEmpty()) return
+        if (!selectionTransformArmed || selectedStrokeIds.isEmpty()) return
         val bounds = selectionBounds() ?: return
         val handleRadius = SELECTION_HANDLE_TOUCH_PX / 2.5f / width.coerceAtLeast(1)
         val corners = listOf(
@@ -5551,7 +5510,7 @@ class InkCanvasView(context: Context) : View(context) {
             bounds.right to bounds.bottom, bounds.left to bounds.bottom,
         )
         val rotY = bounds.top - SELECTION_ROTATE_HANDLE_OFFSET_PX / height.coerceAtLeast(1)
-        paint.style = Paint.Style.STROKE; paint.color = Color.rgb(24, 119, 242); paint.alpha = 255; paint.strokeWidth = 2f
+        paint.style = Paint.Style.STROKE; paint.color = Color.rgb(17, 17, 17); paint.alpha = 255; paint.strokeWidth = 2f
         canvas.drawLine(bounds.centerX() * width, bounds.top * height, bounds.centerX() * width, rotY * height, paint)
         val edgeHandles = buildList {
             if (bounds.width() * width >= SELECTION_HANDLE_TOUCH_PX * 2f) addAll(listOf(bounds.left to bounds.centerY(), bounds.right to bounds.centerY()))
@@ -5562,10 +5521,10 @@ class InkCanvasView(context: Context) : View(context) {
             val cx = hx * width; val cy = hy * height
             selectionHandlePaint.color = Color.WHITE
             canvas.drawCircle(cx, cy, handleRadius * width, selectionHandlePaint)
-            selectionHandleStrokePaint.color = Color.rgb(24, 119, 242)
+            selectionHandleStrokePaint.color = Color.rgb(17, 17, 17)
             selectionHandleStrokePaint.strokeWidth = 3f
             canvas.drawCircle(cx, cy, handleRadius * width, selectionHandleStrokePaint)
-            selectionHandlePaint.color = Color.rgb(24, 119, 242)
+            selectionHandlePaint.color = Color.rgb(17, 17, 17)
             canvas.drawCircle(cx, cy, 3.5f, selectionHandlePaint)
         }
     }
@@ -6281,6 +6240,15 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun hasSelection(): Boolean = selectedStrokeIds.isNotEmpty() || selectionAlphaMask?.isEmpty == false
 
+    fun hasActiveSelection(): Boolean = hasSelection()
+
+    private fun notifySelectionActiveChanged() {
+        val active = hasSelection()
+        if (lastReportedSelectionActive == active) return
+        lastReportedSelectionActive = active
+        onSelectionActiveChanged(active)
+    }
+
     private fun ensureSelectionAlphaFromSelectedStrokes() {
         if (selectionAlphaMask != null || selectedStrokeIds.isEmpty()) return
         syncSelectionAlphaFromSelectedStrokes(resetFeather = false)
@@ -6318,6 +6286,7 @@ class InkCanvasView(context: Context) : View(context) {
         } else null
         selectionBoundaryBitmap?.recycle()
         selectionBoundaryBitmap = SelectionMaskCompositor.boundaryMask(selectionAlphaMaterializedBitmap)
+        notifySelectionActiveChanged()
         invalidate()
     }
 
@@ -6354,6 +6323,7 @@ class InkCanvasView(context: Context) : View(context) {
             lastDeselectedAlphaBitmap?.recycle(); lastDeselectedAlphaBitmap = null
             lastDeselectedFeatherPixels = 0f
         }
+        notifySelectionActiveChanged()
         invalidate()
     }
 

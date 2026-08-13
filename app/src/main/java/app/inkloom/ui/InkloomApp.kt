@@ -1062,6 +1062,7 @@ private fun EditorScreen(
     var brushSize by remember { mutableFloatStateOf(settings.penSize) }
     var brushOpacity by remember { mutableFloatStateOf(settings.penOpacity) }
     var selectionFeather by remember { mutableFloatStateOf(0f) }
+    var selectionActive by remember(document.id, selectedPage.id) { mutableStateOf(false) }
     fun performLayerMaskCommand(layerId: String, command: LayerMaskCommand) {
         onLayerMaskCommand(document.id, selectedPage.id, layerId, command, canvasView?.selectionMaskRegions().orEmpty())
     }
@@ -1388,35 +1389,22 @@ private fun EditorScreen(
                 DropdownMenu(
                     expanded = selectionMenuOpen,
                     onDismissRequest = { selectionMenuOpen = false },
-                    modifier = Modifier.widthIn(min = 280.dp, max = 340.dp).semantics { contentDescription = "Selection subtools" },
+                    modifier = Modifier.width(304.dp).semantics { contentDescription = "CSP selection subtools" },
                 ) {
-                    Text(tr("Selection method", "选区方式"), Modifier.padding(horizontal = 14.dp, vertical = 8.dp), color = Ink, fontWeight = FontWeight.SemiBold)
-                    SelectionShape.entries.forEach { shape ->
-                        DropdownMenuItem(
-                            text = { Text(when (shape) { SelectionShape.SMART_BORDER -> tr("Smart border", "智能边框"); SelectionShape.MAGIC_WAND -> tr("Magic wand", "魔棒"); SelectionShape.FREEFORM -> tr("Freehand lasso", "自由套索"); SelectionShape.RECTANGLE -> tr("Rectangle", "矩形"); SelectionShape.ELLIPSE -> tr("Ellipse", "椭圆"); SelectionShape.BRUSH -> tr("Selection brush", "选区画笔") }) },
-                            trailingIcon = { if (settings.selectionShape == shape) Icon(Icons.Outlined.Check, null) },
-                            onClick = { onSettingsChange(settings.copy(selectionShape = shape)); selectionMenuOpen = false },
-                        )
-                    }
-                    HorizontalDivider()
-                    Text(tr("Selection mode", "选区模式"), Modifier.padding(horizontal = 14.dp, vertical = 6.dp), color = MutedInk, fontSize = 11.sp)
-                    Row(Modifier.padding(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        SelectionMode.entries.forEach { mode ->
-                            FilterChip(
-                                selected = settings.selectionMode == mode,
-                                onClick = { onSettingsChange(settings.copy(selectionMode = mode)) },
-                                label = { Text(when (mode) { SelectionMode.REPLACE -> tr("New", "新建"); SelectionMode.ADD -> tr("Add", "添加"); SelectionMode.SUBTRACT -> tr("Subtract", "减去"); SelectionMode.INTERSECT -> tr("Intersect", "交集") }, fontSize = 9.sp) },
-                            )
-                        }
-                    }
-                    if (settings.selectionShape == SelectionShape.BRUSH) {
-                        Text(tr("Brush size · ${settings.selectionBrushSize.toInt()}", "画笔大小 · ${settings.selectionBrushSize.toInt()}"), Modifier.padding(horizontal = 14.dp, vertical = 4.dp), color = MutedInk, fontSize = 11.sp)
-                        Slider(settings.selectionBrushSize, { onSettingsChange(settings.copy(selectionBrushSize = it)) }, Modifier.padding(horizontal = 14.dp), valueRange = 4f..300f)
-                    }
-                    if (settings.selectionShape in setOf(SelectionShape.SMART_BORDER, SelectionShape.MAGIC_WAND)) {
-                        Text(tr("Recognition threshold · ${(settings.selectionThreshold * 100).toInt()}%", "识别阈值 · ${(settings.selectionThreshold * 100).toInt()}%"), Modifier.padding(horizontal = 14.dp, vertical = 4.dp), color = MutedInk, fontSize = 11.sp)
-                        Slider(settings.selectionThreshold, { onSettingsChange(settings.copy(selectionThreshold = it)) }, Modifier.padding(horizontal = 14.dp), valueRange = 0f..1f)
-                    }
+                    CspSelectionSubtoolPalette(
+                        settings = settings,
+                        onShape = { shape ->
+                            canvasView?.beginSelectionInput(shape)
+                            onSettingsChange(settings.copy(selectionShape = shape))
+                            selectionMenuOpen = false
+                        },
+                        onMode = {
+                            onSettingsChange(settings.copy(selectionMode = it))
+                            selectionMenuOpen = false
+                        },
+                        onBrushSize = { onSettingsChange(settings.copy(selectionBrushSize = it)) },
+                        onThreshold = { onSettingsChange(settings.copy(selectionThreshold = it)) },
+                    )
                 }
             }
             ProcreateTopButton(Icons.Outlined.OpenWith, tr("Move canvas", "移动画布"), selected = handToolEnabled, onClick = { handToolEnabled = !handToolEnabled; rotateToolEnabled = false })
@@ -2530,6 +2518,7 @@ private fun EditorScreen(
                             specialRulerSpacing = ruler.spacing,
                         ))
                     },
+                    onSelectionActiveChanged = { selectionActive = it },
                 )
                 // One stable, untransformed input plane owns every pen and navigation packet.
                 // A transformed AndroidView reports feedback-dependent coordinates while it is
@@ -2724,11 +2713,13 @@ private fun EditorScreen(
                         else -> Unit
                     }
                 }, onColor = ::changeBrushColor, symmetryMode = settings.symmetryMode, onSymmetryMode = { onSettingsChange(settings.copy(symmetryMode = it)) }, gradientControls = { GradientToolControls(settings, brushColor, ::changeBrushColor, onSettingsChange) }, modifier = Modifier.align(dockAlignment).padding(dockPadding).graphicsLayer(translationX = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.xDp.dp.toPx() } else 0f, translationY = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.yDp.dp.toPx() } else 0f))
-                if (tool == EditorTool.SELECT) SelectionLauncher(
+                if (tool == EditorTool.SELECT && selectionActive) SelectionLauncher(
                     featherPixels = selectionFeather,
                     onDeselect = { selectedElementId = null; if (canvasView?.clearSelection() == true) selectionFeather = 0f },
-                    onReselect = { selectedElementId = null; if (canvasView?.reselect() == true) selectionFeather = canvasView?.selectionFeatherPixels ?: 0f },
                     onInvert = { selectedElementId = null; canvasView?.invertSelection() },
+                    onCut = { canvasView?.cutSelectionToClipboard() },
+                    onCopy = { canvasView?.copySelectionToClipboard() },
+                    onDelete = { canvasView?.deleteSelection() },
                     onExpand = { canvasView?.expandSelection(it) },
                     onShrink = { canvasView?.shrinkSelection(it) },
                     onBorder = { canvasView?.borderSelection(it) },
@@ -4465,7 +4456,7 @@ private fun pageTemplateKind(template: PageTemplate): String = when (template.ba
 }
 
 @Composable
-private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onSetLayerRasterAsset: (String, String, String, String?, Int) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit) {
+private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onSetLayerRasterAsset: (String, String, String, String?, Int) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val context = LocalContext.current
     val gradientCommitScope = rememberCoroutineScope()
@@ -4682,6 +4673,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onUndoGesture = onUndoGesture
                 view.onRedoGesture = onRedoGesture
                 view.onColorDropCommitted = onColorDropCommitted
+                view.onSelectionActiveChanged = onSelectionActiveChanged
                 view.singleFingerDoubleTapUndo = settings.singleFingerDoubleTapUndo
                 view.fillSensitivity = settings.fillSensitivity
                 view.fillSubTool = settings.fillSubTool
@@ -4765,6 +4757,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onUndoGesture = onUndoGesture
                 view.onRedoGesture = onRedoGesture
                 view.onColorDropCommitted = onColorDropCommitted
+                view.onSelectionActiveChanged = onSelectionActiveChanged
                 view.singleFingerDoubleTapUndo = settings.singleFingerDoubleTapUndo
                 view.fillSensitivity = settings.fillSensitivity
                 view.fillSubTool = settings.fillSubTool
@@ -10375,11 +10368,155 @@ private fun FillOptionsLauncher(
 }
 
 @Composable
+private fun CspSelectionSubtoolPalette(
+    settings: AppSettings,
+    onShape: (SelectionShape) -> Unit,
+    onMode: (SelectionMode) -> Unit,
+    onBrushSize: (Float) -> Unit,
+    onThreshold: (Float) -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().background(Color.White)) {
+        Row(
+            Modifier.fillMaxWidth().height(30.dp).background(Color(0xFFF1F1F1)).padding(horizontal = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Outlined.Gesture, null, Modifier.size(15.dp), tint = Ink)
+            Spacer(Modifier.width(6.dp))
+            Text(tr("Selection area", "选区"), color = Ink, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+        }
+        SelectionShape.entries.forEach { shape ->
+            val selected = settings.selectionShape == shape
+            val label = when (shape) {
+                SelectionShape.FREEFORM -> tr("Freehand lasso", "自由套索")
+                SelectionShape.RECTANGLE -> tr("Rectangle selection", "矩形选区")
+                SelectionShape.ELLIPSE -> tr("Ellipse selection", "椭圆选区")
+                SelectionShape.BRUSH -> tr("Selection brush", "选区画笔")
+                SelectionShape.SMART_BORDER -> tr("Smart border", "智能边框")
+                SelectionShape.MAGIC_WAND -> tr("Magic wand", "魔棒")
+            }
+            val icon = when (shape) {
+                SelectionShape.FREEFORM -> Icons.Outlined.Gesture
+                SelectionShape.RECTANGLE -> Icons.Outlined.CropSquare
+                SelectionShape.ELLIPSE -> Icons.Outlined.Circle
+                SelectionShape.BRUSH -> Icons.Outlined.Brush
+                SelectionShape.SMART_BORDER -> Icons.Outlined.AutoFixHigh
+                SelectionShape.MAGIC_WAND -> Icons.Outlined.Flare
+            }
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .height(32.dp)
+                    .background(if (selected) Color(0xFFE5E5E5) else Color.White)
+                    .clickable { onShape(shape) }
+                    .semantics { contentDescription = label },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.width(3.dp).fillMaxHeight().background(if (selected) Ink else Color.Transparent))
+                Spacer(Modifier.width(8.dp))
+                Icon(icon, null, Modifier.size(16.dp), tint = if (selected) Ink else MutedInk)
+                Spacer(Modifier.width(8.dp))
+                Text(label, color = Ink, fontSize = 10.sp)
+            }
+        }
+        HorizontalDivider(color = OutlineSoft)
+        Text(
+            tr("Selection mode", "选择模式"),
+            Modifier.padding(start = 9.dp, top = 7.dp, bottom = 4.dp),
+            color = MutedInk,
+            fontSize = 9.sp,
+        )
+        Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            SelectionMode.entries.forEach { mode ->
+                val label = when (mode) {
+                    SelectionMode.REPLACE -> tr("New", "新建")
+                    SelectionMode.ADD -> tr("Add", "添加")
+                    SelectionMode.SUBTRACT -> tr("Subtract", "减去")
+                    SelectionMode.INTERSECT -> tr("Intersect", "交集")
+                }
+                val icon = when (mode) {
+                    SelectionMode.REPLACE -> Icons.Outlined.CropFree
+                    SelectionMode.ADD -> Icons.Outlined.AddBox
+                    SelectionMode.SUBTRACT -> Icons.Outlined.IndeterminateCheckBox
+                    SelectionMode.INTERSECT -> Icons.Outlined.GridOn
+                }
+                CspSelectionModeButton(
+                    icon = icon,
+                    label = label,
+                    selected = settings.selectionMode == mode,
+                    modifier = Modifier.weight(1f),
+                ) { onMode(mode) }
+            }
+        }
+        when (settings.selectionShape) {
+            SelectionShape.BRUSH -> CspSelectionParameter(
+                tr("Brush size", "画笔大小"),
+                settings.selectionBrushSize,
+                "${settings.selectionBrushSize.toInt()} px",
+                4f..300f,
+                onBrushSize,
+            )
+            SelectionShape.SMART_BORDER, SelectionShape.MAGIC_WAND -> CspSelectionParameter(
+                tr("Recognition threshold", "识别阈值"),
+                settings.selectionThreshold,
+                "${(settings.selectionThreshold * 100).toInt()}%",
+                0f..1f,
+                onThreshold,
+            )
+            else -> Spacer(Modifier.height(6.dp))
+        }
+    }
+}
+
+@Composable
+private fun CspSelectionModeButton(
+    icon: ImageVector,
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    TextButton(
+        onClick = onClick,
+        modifier = modifier.height(42.dp).semantics { contentDescription = "$label selection mode" },
+        shape = RoundedCornerShape(2.dp),
+        contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
+        colors = ButtonDefaults.textButtonColors(
+            containerColor = if (selected) Color(0xFFE2E2E2) else Color.Transparent,
+            contentColor = Ink,
+        ),
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(icon, null, Modifier.size(16.dp))
+            Text(label, fontSize = 8.sp, maxLines = 1)
+        }
+    }
+}
+
+@Composable
+private fun CspSelectionParameter(
+    label: String,
+    value: Float,
+    formattedValue: String,
+    range: ClosedFloatingPointRange<Float>,
+    onValue: (Float) -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 9.dp, vertical = 5.dp)) {
+        Row(Modifier.fillMaxWidth()) {
+            Text(label, Modifier.weight(1f), color = Ink, fontSize = 9.sp)
+            Text(formattedValue, color = MutedInk, fontSize = 9.sp)
+        }
+        Slider(value, onValue, Modifier.height(22.dp), valueRange = range)
+    }
+}
+
+@Composable
 private fun SelectionLauncher(
     featherPixels: Float,
     onDeselect: () -> Unit,
-    onReselect: () -> Unit,
     onInvert: () -> Unit,
+    onCut: () -> Unit,
+    onCopy: () -> Unit,
+    onDelete: () -> Unit,
     onExpand: (Float) -> Unit,
     onShrink: (Float) -> Unit,
     onBorder: (Float) -> Unit,
@@ -10394,38 +10531,73 @@ private fun SelectionLauncher(
     var dragY by rememberSaveable { mutableFloatStateOf(0f) }
     val dragDescription = tr("Drag selection launcher", "拖动选区快捷栏")
     Surface(
-        modifier = modifier.graphicsLayer(translationX = dragX, translationY = dragY),
+        modifier = modifier
+            .graphicsLayer(translationX = dragX, translationY = dragY)
+            .semantics { contentDescription = "Active selection launcher" },
         color = Color.White,
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(3.dp),
         border = CardDefaults.outlinedCardBorder(),
-        shadowElevation = 5.dp,
+        shadowElevation = 3.dp,
     ) {
-        Row(Modifier.height(48.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(22.dp).fillMaxHeight().semantics { contentDescription = dragDescription }.pointerInput(Unit) {
+        Row(Modifier.height(34.dp).padding(horizontal = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.width(18.dp).fillMaxHeight().semantics { contentDescription = dragDescription }.pointerInput(Unit) {
                 detectDragGestures { change, delta -> change.consume(); dragX += delta.x; dragY += delta.y }
             }, contentAlignment = Alignment.Center) {
-                Icon(Icons.Outlined.DragIndicator, null, Modifier.size(17.dp), tint = MutedInk)
+                Icon(Icons.Outlined.DragIndicator, null, Modifier.size(14.dp), tint = MutedInk)
             }
-            TextButton(onClick = onDeselect, contentPadding = PaddingValues(horizontal = 7.dp)) { Icon(Icons.Outlined.Close, null, Modifier.size(16.dp)); Spacer(Modifier.width(3.dp)); Text(tr("Deselect", "取消"), fontSize = 10.sp) }
-            TextButton(onClick = onReselect, contentPadding = PaddingValues(horizontal = 7.dp)) { Icon(Icons.Outlined.RestartAlt, null, Modifier.size(16.dp)); Spacer(Modifier.width(3.dp)); Text(tr("Reselect", "重选"), fontSize = 10.sp) }
-            TextButton(onClick = onInvert, contentPadding = PaddingValues(horizontal = 7.dp)) { Icon(Icons.Outlined.Flip, null, Modifier.size(16.dp)); Spacer(Modifier.width(3.dp)); Text(tr("Invert", "反选"), fontSize = 10.sp) }
-            CompactToolbarIconButton({ onExpand(amount) }, tr("Expand selection", "扩大选区")) { Icon(Icons.Outlined.ZoomOutMap, null, Modifier.size(18.dp)) }
-            CompactToolbarIconButton({ onShrink(amount) }, tr("Shrink selection", "缩小选区")) { Icon(Icons.Outlined.ZoomInMap, null, Modifier.size(18.dp)) }
-            CompactToolbarIconButton({ onBorder(amount) }, tr("Border selection", "边界选区")) { Icon(Icons.Outlined.BorderStyle, null, Modifier.size(18.dp)) }
-            CompactToolbarIconButton(onFill, tr("Fill selection", "填充选区")) { Icon(Icons.Outlined.FormatColorFill, null, Modifier.size(18.dp)) }
-            TextButton(onClick = onTransform, contentPadding = PaddingValues(horizontal = 7.dp)) { Icon(Icons.Outlined.Transform, null, Modifier.size(16.dp)); Spacer(Modifier.width(3.dp)); Text(tr("Transform", "变换"), fontSize = 10.sp) }
+            VerticalDivider(Modifier.height(22.dp), color = OutlineSoft)
+            SelectionLauncherButton(Icons.Outlined.Close, tr("Deselect", "取消选区"), onDeselect)
+            SelectionLauncherButton(Icons.Outlined.Flip, tr("Invert selection", "反选"), onInvert)
+            SelectionLauncherButton(Icons.Outlined.FormatColorFill, tr("Fill selection", "填充选区"), onFill)
+            VerticalDivider(Modifier.height(22.dp), color = OutlineSoft)
+            SelectionLauncherButton(Icons.Outlined.ContentCut, tr("Cut selection", "剪切选区"), onCut)
+            SelectionLauncherButton(Icons.Outlined.ContentCopy, tr("Copy selection", "复制选区"), onCopy)
+            SelectionLauncherButton(Icons.Outlined.DeleteOutline, tr("Delete selection", "删除选区"), onDelete)
+            VerticalDivider(Modifier.height(22.dp), color = OutlineSoft)
+            SelectionLauncherButton(Icons.Outlined.Transform, tr("Free transform", "自由变换"), onTransform)
             Box {
-                CompactToolbarIconButton({ settingsOpen = true }, tr("Selection modification settings", "选区修改设置")) { Icon(Icons.Outlined.Tune, null, Modifier.size(18.dp)) }
-                DropdownMenu(settingsOpen, { settingsOpen = false }, Modifier.width(280.dp)) {
-                    Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
-                        Text("${tr("Expand / shrink / border", "扩大／缩小／边界")}  ${amount.toInt()} px", fontSize = 11.sp)
+                SelectionLauncherButton(Icons.Outlined.Tune, tr("Selection settings", "选区设置")) { settingsOpen = true }
+                DropdownMenu(settingsOpen, { settingsOpen = false }, Modifier.width(264.dp)) {
+                    Column(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(tr("Selection modification", "选区修改"), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        HorizontalDivider()
+                        Text("${tr("Amount", "调整量")}  ${amount.toInt()} px", color = MutedInk, fontSize = 10.sp)
                         Slider(amount, { amount = it }, valueRange = 1f..128f)
-                        Text("${tr("Feather", "羽化")}  ${featherPixels.toInt()} px", fontSize = 11.sp)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                            SelectionSettingsAction(Icons.Outlined.ZoomOutMap, tr("Expand", "扩大"), Modifier.weight(1f)) { onExpand(amount) }
+                            SelectionSettingsAction(Icons.Outlined.ZoomInMap, tr("Shrink", "缩小"), Modifier.weight(1f)) { onShrink(amount) }
+                            SelectionSettingsAction(Icons.Outlined.BorderStyle, tr("Border", "边界"), Modifier.weight(1f)) { onBorder(amount) }
+                        }
+                        HorizontalDivider()
+                        Text("${tr("Feather", "羽化")}  ${featherPixels.toInt()} px", color = MutedInk, fontSize = 10.sp)
                         Slider(featherPixels, onFeather, valueRange = 0f..128f)
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SelectionLauncherButton(icon: ImageVector, description: String, onClick: () -> Unit) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier.size(32.dp).semantics { contentDescription = description },
+    ) { Icon(icon, null, Modifier.size(17.dp), tint = Ink) }
+}
+
+@Composable
+private fun SelectionSettingsAction(icon: ImageVector, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    TextButton(
+        onClick = onClick,
+        modifier = modifier.height(30.dp),
+        shape = RoundedCornerShape(2.dp),
+        contentPadding = PaddingValues(horizontal = 3.dp),
+        colors = ButtonDefaults.textButtonColors(contentColor = Ink),
+    ) {
+        Icon(icon, null, Modifier.size(14.dp))
+        Spacer(Modifier.width(3.dp))
+        Text(label, fontSize = 9.sp, maxLines = 1)
     }
 }
 

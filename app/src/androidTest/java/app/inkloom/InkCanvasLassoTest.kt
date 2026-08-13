@@ -92,6 +92,46 @@ class InkCanvasLassoTest {
         }
     }
 
+    @Test fun selectionActiveCallbackTracksCommittedDeselectReselectAndPageChanges() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val view = configuredView(horizontalStroke("state-source"), mutableListOf())
+            val states = mutableListOf<Boolean>()
+            view.onSelectionActiveChanged = { states += it }
+
+            assertEquals(listOf(false), states)
+            view.drawSquareLasso()
+            assertTrue(view.hasActiveSelection())
+            assertEquals(true, states.last())
+            assertTrue(view.clearSelection())
+            assertEquals(false, states.last())
+            assertTrue(view.reselect())
+            assertEquals(true, states.last())
+            view.setDocumentStrokes(listOf(horizontalStroke("next-page")), "document:next-page")
+            assertEquals(false, states.last())
+        }
+    }
+
+    @Test fun cancellingAReplacementLassoPreservesTheCommittedSelection() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val view = configuredView(horizontalStroke("cancel-source"), mutableListOf())
+            view.drawSquareLasso()
+            view.dispatchStylus(MotionEvent.ACTION_DOWN, 20f, 20f, 60L)
+            view.dispatchStylus(MotionEvent.ACTION_MOVE, 100f, 20f, 70L)
+            view.dispatchStylus(MotionEvent.ACTION_CANCEL, 100f, 100f, 80L)
+
+            var selection: Bitmap? = null
+            view.onFillCommitted = { mask, _, _, _, _, _, _ -> selection = mask }
+            assertTrue(view.fillSelection())
+            val mask = requireNotNull(selection)
+            try {
+                assertTrue(Color.alpha(mask.getPixel(mask.width / 2, mask.height / 2)) > 0)
+                assertEquals(0, Color.alpha(mask.getPixel(mask.width / 20, mask.height / 20)))
+            } finally {
+                mask.recycle()
+            }
+        }
+    }
+
     @Test fun borderSelectionKeepsOnlyContentCrossingTheSelectionEdge() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val view = configuredView(horizontalStroke("border-source"), mutableListOf())

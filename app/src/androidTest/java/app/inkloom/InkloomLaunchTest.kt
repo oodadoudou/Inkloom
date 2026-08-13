@@ -630,22 +630,65 @@ class InkloomLaunchTest {
         try {
             createNotebookAndOpenEditor()
             composeRule.onNodeWithContentDescription("Selection").performClick()
-            composeRule.onNodeWithContentDescription("Selection subtools").assertIsDisplayed()
+            composeRule.onNodeWithContentDescription("CSP selection subtools").assertIsDisplayed()
 
             composeRule.onNodeWithText("Freehand lasso").assertIsDisplayed()
-            composeRule.onNodeWithText("Rectangle").assertIsDisplayed()
-            composeRule.onNodeWithText("Ellipse").assertIsDisplayed()
+            composeRule.onNodeWithText("Rectangle selection").assertIsDisplayed()
+            composeRule.onNodeWithText("Ellipse selection").assertIsDisplayed()
             composeRule.onNodeWithText("Selection brush").performClick()
             composeRule.waitForIdle()
 
             assertTrue(preferences.getString("selectionShape", null) == "BRUSH")
             composeRule.onNodeWithContentDescription("Selection").performClick()
-            assertTrue(composeRule.onAllNodesWithText("Brush size · 42").fetchSemanticsNodes().isNotEmpty())
+            composeRule.onNodeWithContentDescription("CSP selection subtools").assertIsDisplayed()
+            assertTrue(composeRule.onAllNodesWithText("Brush size").fetchSemanticsNodes().isNotEmpty())
+            assertTrue(composeRule.onAllNodesWithText("42 px").fetchSemanticsNodes().isNotEmpty())
             assertTrue(composeRule.onAllNodesWithText("Magic wand").fetchSemanticsNodes().isNotEmpty())
             assertTrue(composeRule.onAllNodesWithText("Smart border").fetchSemanticsNodes().isNotEmpty())
         } finally {
             preferences.edit().putString("selectionShape", original).commit()
         }
+    }
+
+    @Test fun activeSelectionLauncherAppearsOnlyAfterARealSelectionAndDeselectRemovesIt() {
+        createNotebookAndOpenEditor()
+        assertTrue(composeRule.onAllNodesWithContentDescription("Active selection launcher").fetchSemanticsNodes().isEmpty())
+        composeRule.onNodeWithContentDescription("Selection").performClick()
+        composeRule.onNodeWithText("Freehand lasso").performClick()
+        composeRule.waitForIdle()
+
+        val view = requireNotNull(findInkCanvasView())
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val downTime = SystemClock.uptimeMillis()
+            val properties = arrayOf(MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_STYLUS })
+            fun event(action: Int, x: Float, y: Float, elapsed: Long): MotionEvent = MotionEvent.obtain(
+                downTime,
+                downTime + elapsed,
+                action,
+                1,
+                properties,
+                arrayOf(MotionEvent.PointerCoords().apply { this.x = x; this.y = y; pressure = .7f; size = .04f }),
+                0,
+                0,
+                1f,
+                1f,
+                0,
+                0,
+                InputDevice.SOURCE_STYLUS,
+                0,
+            )
+            listOf(
+                event(MotionEvent.ACTION_DOWN, view.width * .25f, view.height * .25f, 0),
+                event(MotionEvent.ACTION_MOVE, view.width * .75f, view.height * .25f, 8),
+                event(MotionEvent.ACTION_MOVE, view.width * .75f, view.height * .75f, 16),
+                event(MotionEvent.ACTION_MOVE, view.width * .25f, view.height * .75f, 24),
+                event(MotionEvent.ACTION_UP, view.width * .25f, view.height * .25f, 32),
+            ).forEach { motion -> try { view.dispatchTouchEvent(motion) } finally { motion.recycle() } }
+        }
+
+        composeRule.onNodeWithContentDescription("Active selection launcher").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Deselect").performClick()
+        assertTrue(composeRule.onAllNodesWithContentDescription("Active selection launcher").fetchSemanticsNodes().isEmpty())
     }
 
     @Test fun layerPanelDuplicatesAndMergesAContentLayer() {
