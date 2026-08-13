@@ -16,6 +16,39 @@ import java.io.File
 @RunWith(AndroidJUnit4::class)
 class BrushTipTextureDecoderTest {
     @Test
+    fun cspDualRgbDecodePreservesTransparentMaterialColorWithoutChangingDefaultMask() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val root = File(context.cacheDir, "brush-tip-rgb-${System.nanoTime()}").apply { mkdirs() }
+        try {
+            val tipFile = File(root, "colored-tip.png")
+            val pixels = IntArray(64) { Color.TRANSPARENT }.also { values ->
+                for (y in 2..5) for (x in 2..5) values[y * 8 + x] = Color.rgb(220, 35, 70)
+            }
+            writePng(tipFile, pixels, 8, 8)
+
+            val alphaMask = requireNotNull(BrushTipTextureDecoder.decode(tipFile.absolutePath, 1f, null, 0f))
+            val rgbMaterial = requireNotNull(BrushTipTextureDecoder.decode(tipFile.absolutePath, 1f, null, 0f, preserveRgb = true))
+            try {
+                val maskPixel = alphaMask.getPixel(3, 3)
+                val rgbPixel = rgbMaterial.getPixel(3, 3)
+                assertEquals(255, Color.red(maskPixel))
+                assertEquals(255, Color.green(maskPixel))
+                assertEquals(255, Color.blue(maskPixel))
+                assertEquals(220, Color.red(rgbPixel))
+                assertEquals(35, Color.green(rgbPixel))
+                assertEquals(70, Color.blue(rgbPixel))
+                assertEquals(255, Color.alpha(rgbPixel))
+                assertEquals(0, Color.alpha(rgbMaterial.getPixel(0, 0)))
+            } finally {
+                alphaMask.recycle()
+                rgbMaterial.recycle()
+            }
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun cspAntiAliasModesProduceFourDeterministicMaterialEdgeLevels() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val root = File(context.cacheDir, "brush-tip-aa-${System.nanoTime()}").apply { mkdirs() }

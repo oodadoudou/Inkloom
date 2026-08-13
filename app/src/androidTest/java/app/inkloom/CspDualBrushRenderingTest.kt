@@ -27,6 +27,51 @@ import org.junit.runner.RunWith
 class CspDualBrushRenderingTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
 
+    @Test fun applyRgbSwitchesBetweenDrawingColorAndSecondaryMaterialColorOnCanvasAndExport() {
+        val tip = File(context.cacheDir, "dual-rgb-material.png")
+        Bitmap.createBitmap(32, 32, Bitmap.Config.ARGB_8888).also { bitmap ->
+            bitmap.eraseColor(Color.TRANSPARENT)
+            Canvas(bitmap).drawRect(4f, 4f, 28f, 28f, Paint().apply { color = Color.rgb(225, 35, 60) })
+            tip.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            bitmap.recycle()
+        }
+        try {
+            val base = InkStroke(
+                points = listOf(StrokePoint(.5f, .5f)),
+                colorArgb = 0xFF2050E0,
+                width = 280f,
+                flow = 0f,
+                sizePressureEnabled = false,
+                tipAssetPath = tip.absolutePath,
+                tipAssetPaths = listOf(tip.absolutePath),
+                dualBrush = true,
+                dualTipAssetPaths = listOf(tip.absolutePath),
+                dualFlow = 1f,
+                dualCompositeMode = 1,
+            )
+            val service = DocumentAssetService(context)
+            val alphaOnly = service.renderPageBitmap(InkPage(background = PageBackground.Paper(), strokes = listOf(base)), 400)
+            val sourceRgb = service.renderPageBitmap(InkPage(background = PageBackground.Paper(), strokes = listOf(base.copy(dualApplyRgb = true))), 400)
+            val liveAlphaOnly = renderLiveCanvas(base)
+            val liveSourceRgb = renderLiveCanvas(base.copy(dualApplyRgb = true))
+            try {
+                val alphaPixel = alphaOnly.getPixel(200, alphaOnly.height / 2)
+                val rgbPixel = sourceRgb.getPixel(200, sourceRgb.height / 2)
+                assertTrue("Alpha-only Dual Brush must use the selected blue drawing color", Color.blue(alphaPixel) > Color.red(alphaPixel))
+                assertTrue("Apply RGB must retain the red secondary material", Color.red(rgbPixel) > Color.blue(rgbPixel))
+                assertEquals(alphaPixel, liveAlphaOnly.getPixel(200, liveAlphaOnly.height / 2))
+                assertEquals(rgbPixel, liveSourceRgb.getPixel(200, liveSourceRgb.height / 2))
+            } finally {
+                alphaOnly.recycle()
+                sourceRgb.recycle()
+                liveAlphaOnly.recycle()
+                liveSourceRgb.recycle()
+            }
+        } finally {
+            tip.delete()
+        }
+    }
+
     @Test fun screenModeIsAppliedInsideTheDualStrokeBeforePageComposition() {
         val tip = File(context.cacheDir, "dual-screen-tip.png")
         Bitmap.createBitmap(32, 32, Bitmap.Config.ARGB_8888).also { bitmap ->

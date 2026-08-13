@@ -35,6 +35,7 @@ object BrushTipTextureDecoder {
         antiAliasMode: Int = CspAntiAlias.MEDIUM,
         alphaThresholdEnabled: Boolean = false,
         alphaThreshold: Float = 0f,
+        preserveRgb: Boolean = false,
     ): Bitmap? = runCatching {
         val source = decodeSampled(tipPath, MAX_RENDER_TEXTURE_DIMENSION) ?: return null
         val grain = grainPath?.takeIf { grainDensity > 0f }?.let {
@@ -60,6 +61,7 @@ object BrushTipTextureDecoder {
             }
             val pixels = IntArray(source.width * source.height)
             source.getPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
+            val sourceHasTransparency = preserveRgb && pixels.any { Color.alpha(it) < 250 }
             val outlineMasks = if (grain != null && grainPixels != null && grainCompositeMode == CspTextureComposite.OUTLINE) {
                 FloatArray(pixels.size) { index ->
                     grainMask(
@@ -82,7 +84,13 @@ object BrushTipTextureDecoder {
                 // CSP/ABR commonly store black paint on white. Procreate also
                 // permits the inverse convention, so infer it from the quiet
                 // corners and normalize both sources to a white alpha mask.
-                val base = if (darkBackground) luminance / 255f else (255 - luminance) / 255f
+                val base = if (sourceHasTransparency) {
+                    Color.alpha(pixel) / 255f
+                } else if (darkBackground) {
+                    luminance / 255f
+                } else {
+                    (255 - luminance) / 255f
+                }
                 // Imported bitmap tips already contain their final grayscale
                 // density. CSP's Hardness control applies to circular tips, not
                 // material tips, so applying another gamma curve here destroys
@@ -105,11 +113,19 @@ object BrushTipTextureDecoder {
                     (kotlin.math.abs(right - left) + kotlin.math.abs(bottom - top)).coerceIn(0f, 1f)
                 } ?: 0f
                 val composedDensity = CspTextureComposite.density(shaped, grainMask, grainDensity, grainCompositeMode, textureEdge)
-                val sourceAlpha = ((composedDensity * 255).toInt() * Color.alpha(pixel) / 255).coerceIn(0, 255)
+                val sourceAlpha = if (sourceHasTransparency) {
+                    (composedDensity * 255).toInt().coerceIn(0, 255)
+                } else {
+                    ((composedDensity * 255).toInt() * Color.alpha(pixel) / 255).coerceIn(0, 255)
+                }
                 val alpha = if (alphaThresholdEnabled) {
                     if (sourceAlpha > alphaThreshold.coerceIn(0f, 1f) * 255f) 255 else 0
                 } else sourceAlpha
-                pixels[index] = Color.argb(alpha, 255, 255, 255)
+                pixels[index] = if (preserveRgb) {
+                    Color.argb(alpha, Color.red(pixel), Color.green(pixel), Color.blue(pixel))
+                } else {
+                    Color.argb(alpha, 255, 255, 255)
+                }
             }
             Bitmap.createBitmap(pixels, source.width, source.height, Bitmap.Config.ARGB_8888)
         } finally {
