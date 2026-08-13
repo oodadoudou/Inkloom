@@ -405,10 +405,40 @@ class InkCanvasView(context: Context) : View(context) {
         shader = selectionAntShader
         blendMode = BlendMode.SRC_IN
     }
+    private val selectionExteriorPattern = Bitmap.createBitmap(
+        24,
+        24,
+        Bitmap.Config.ARGB_8888,
+    ).apply {
+        val pixels = IntArray(width * height) { index ->
+            val x = index % width
+            val y = index / width
+            if ((x + y) % 12 in 0..2) Color.argb(34, 17, 17, 17) else Color.TRANSPARENT
+        }
+        setPixels(pixels, 0, width, 0, 0, width, height)
+    }
+    private val selectionExteriorShader = BitmapShader(selectionExteriorPattern, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
+    private val selectionExteriorMatrix = Matrix()
+    private val selectionExteriorBasePaint = Paint().apply {
+        style = Paint.Style.FILL
+        color = Color.argb(24, 17, 17, 17)
+    }
+    private val selectionExteriorPatternPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        shader = selectionExteriorShader
+    }
+    private val selectionExteriorCutoutPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+        style = Paint.Style.FILL
+        blendMode = BlendMode.DST_OUT
+    }
     private val liveSelectionOutlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
+    }
+    private val liveSelectionFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = Color.argb(28, 24, 119, 242)
     }
     private val liveSelectionOriginPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private var lastX = 0f
@@ -1257,28 +1287,34 @@ class InkCanvasView(context: Context) : View(context) {
         }
         val selectionPreview = selectionPolygon()
         if (selectionPreview.size >= 2) {
+            val overlayScale = viewportScale.coerceAtLeast(.1f)
             lassoPath.reset()
             lassoPath.moveTo(selectionPreview.first().x * width, selectionPreview.first().y * height)
             for (index in 1 until selectionPreview.size) lassoPath.lineTo(selectionPreview[index].x * width, selectionPreview[index].y * height)
             if (selectionShape != SelectionShape.FREEFORM || selectionPreview.size >= 3) lassoPath.close()
+            if (selectionPreview.size >= 3) canvas.drawPath(lassoPath, liveSelectionFillPaint)
             liveSelectionOutlinePaint.pathEffect = null
             liveSelectionOutlinePaint.color = Color.BLACK
             liveSelectionOutlinePaint.alpha = 255
-            liveSelectionOutlinePaint.strokeWidth = 5f
+            liveSelectionOutlinePaint.strokeWidth = 5f / overlayScale
             canvas.drawPath(lassoPath, liveSelectionOutlinePaint)
             liveSelectionOutlinePaint.color = Color.WHITE
-            liveSelectionOutlinePaint.strokeWidth = 2.5f
-            liveSelectionOutlinePaint.pathEffect = DashPathEffect(floatArrayOf(9f, 7f), selectionAntPhase())
+            liveSelectionOutlinePaint.strokeWidth = 2.5f / overlayScale
+            liveSelectionOutlinePaint.pathEffect = DashPathEffect(
+                floatArrayOf(9f / overlayScale, 7f / overlayScale),
+                selectionAntPhase() / overlayScale,
+            )
             canvas.drawPath(lassoPath, liveSelectionOutlinePaint)
             liveSelectionOutlinePaint.pathEffect = null
             val originX = selectionPreview.first().x * width
             val originY = selectionPreview.first().y * height
             liveSelectionOriginPaint.color = Color.BLACK
-            canvas.drawCircle(originX, originY, 8f, liveSelectionOriginPaint)
+            canvas.drawCircle(originX, originY, 9f / overlayScale, liveSelectionOriginPaint)
             liveSelectionOriginPaint.color = Color.WHITE
-            canvas.drawCircle(originX, originY, 4f, liveSelectionOriginPaint)
+            canvas.drawCircle(originX, originY, 4.5f / overlayScale, liveSelectionOriginPaint)
             postInvalidateDelayed(SELECTION_ANTS_FRAME_MS)
         }
+        drawCommittedSelectionExterior(canvas)
         drawCommittedSelectionBoundary(canvas)
         drawSelectionHandles(canvas)
         drawSymmetryGuides(canvas)
@@ -1298,6 +1334,25 @@ class InkCanvasView(context: Context) : View(context) {
     private fun selectionAntPhase(): Float =
         ((SystemClock.uptimeMillis() / SELECTION_ANTS_FRAME_MS) % selectionAntPattern.width).toFloat()
 
+    /** Keeps the selected region optically untouched while making the protected exterior obvious,
+     * matching the committed-selection contract used by mainstream tablet drawing apps. The mask
+     * is already cached; this adds no per-frame bitmap allocation or contour tracing. */
+    private fun drawCommittedSelectionExterior(canvas: Canvas) {
+        if (tool != EditorTool.SELECT) return
+        val mask = selectionMaskForDisplay()?.takeUnless(Bitmap::isRecycled) ?: return
+        selectionBoundaryRect.set(0f, 0f, width.toFloat(), height.toFloat())
+        val checkpoint = canvas.saveLayer(selectionBoundaryRect, null)
+        canvas.drawRect(selectionBoundaryRect, selectionExteriorBasePaint)
+        val overlayScale = viewportScale.coerceAtLeast(.1f)
+        selectionExteriorMatrix.reset()
+        selectionExteriorMatrix.setScale(1f / overlayScale, 1f / overlayScale)
+        selectionExteriorMatrix.postTranslate(selectionAntPhase() / overlayScale, 0f)
+        selectionExteriorShader.setLocalMatrix(selectionExteriorMatrix)
+        canvas.drawRect(selectionBoundaryRect, selectionExteriorPatternPaint)
+        canvas.drawBitmap(mask, null, selectionBoundaryRect, selectionExteriorCutoutPaint)
+        canvas.restoreToCount(checkpoint)
+    }
+
     private fun drawCommittedSelectionBoundary(canvas: Canvas) {
         val boundary = selectionBoundaryBitmap?.takeUnless(Bitmap::isRecycled) ?: return
         selectionBoundaryRect.set(0f, 0f, width.toFloat(), height.toFloat())
@@ -1310,7 +1365,36 @@ class InkCanvasView(context: Context) : View(context) {
         selectionAntShader.setLocalMatrix(selectionAntMatrix)
         canvas.drawRect(selectionBoundaryRect, selectionAntPaint)
         canvas.restoreToCount(checkpoint)
+        drawExactLassoContours(canvas)
         postInvalidateDelayed(SELECTION_ANTS_FRAME_MS)
+    }
+
+    /** Exact lasso paths get a second screen-space contour. The bitmap boundary remains the source
+     * of truth for feathered/automatic selections, while this path prevents a hand-drawn lasso from
+     * becoming sub-pixel thin after zooming out or changing the canvas rotation. */
+    private fun drawExactLassoContours(canvas: Canvas) {
+        if (selectedMaskRegions.isEmpty()) return
+        val overlayScale = viewportScale.coerceAtLeast(.1f)
+        selectedMaskRegions.forEach { contour ->
+            if (contour.size < 3) return@forEach
+            lassoPath.reset()
+            lassoPath.moveTo(contour.first().x * width, contour.first().y * height)
+            contour.drop(1).forEach { point -> lassoPath.lineTo(point.x * width, point.y * height) }
+            lassoPath.close()
+            liveSelectionOutlinePaint.pathEffect = null
+            liveSelectionOutlinePaint.color = Color.BLACK
+            liveSelectionOutlinePaint.alpha = 255
+            liveSelectionOutlinePaint.strokeWidth = 5f / overlayScale
+            canvas.drawPath(lassoPath, liveSelectionOutlinePaint)
+            liveSelectionOutlinePaint.color = Color.WHITE
+            liveSelectionOutlinePaint.strokeWidth = 2.5f / overlayScale
+            liveSelectionOutlinePaint.pathEffect = DashPathEffect(
+                floatArrayOf(9f / overlayScale, 7f / overlayScale),
+                selectionAntPhase() / overlayScale,
+            )
+            canvas.drawPath(lassoPath, liveSelectionOutlinePaint)
+            liveSelectionOutlinePaint.pathEffect = null
+        }
     }
 
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {

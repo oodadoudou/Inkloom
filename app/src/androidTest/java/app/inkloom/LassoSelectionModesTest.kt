@@ -93,7 +93,7 @@ class LassoSelectionModesTest {
 
                 val topBorderPixels = (190..810).count { x -> bitmap.getPixel(x, 250) ushr 24 != 0 }
                 assertTrue("Rectangle preview top edge was not rendered", topBorderPixels > 500)
-                assertEquals(0, bitmap.getPixel(500, 500) ushr 24)
+                assertTrue("Rectangle preview did not show the region being selected", Color.alpha(bitmap.getPixel(500, 500)) in 16..64)
             } finally {
                 bitmap.recycle()
                 view.dispatchStylus(MotionEvent.ACTION_CANCEL, 800f, 750f, 30L)
@@ -142,9 +142,34 @@ class LassoSelectionModesTest {
                 assertTrue("Committed selection boundary had no black contrast pixels", boundaryPixels.any { Color.red(it) < 24 })
                 assertTrue("Committed selection boundary had no white marching-ant pixels", boundaryPixels.any { Color.red(it) > 230 })
                 assertEquals("Selection interior must remain unobscured", 0, Color.alpha(bitmap.getPixel(500, 500)))
+                assertTrue("Selection exterior did not receive a visible protection overlay", Color.alpha(bitmap.getPixel(100, 100)) >= 20)
             } finally {
                 bitmap.recycle()
                 view.clearSelection()
+            }
+        }
+    }
+
+    @Test fun committedLassoFeedbackStaysVisibleAtExtremeViewportScales() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            listOf(.25f, 12f).forEach { scale ->
+                val view = configuredView(emptyList(), mutableListOf()).apply {
+                    selectionShape = SelectionShape.FREEFORM
+                    viewportScale = scale
+                }
+                view.lasso(.2f, .2f, .8f, .8f)
+                val bitmap = Bitmap.createBitmap(1_000, 1_000, Bitmap.Config.ARGB_8888)
+                try {
+                    view.draw(Canvas(bitmap))
+                    val boundary = pixelsNear(bitmap, 200, 500, if (scale < 1f) 12 else 3).filter(::opaque)
+                    assertTrue("Selection boundary disappeared at viewport scale $scale", boundary.size > 16)
+                    assertTrue("Selection exterior disappeared at viewport scale $scale", Color.alpha(bitmap.getPixel(100, 100)) >= 20)
+                    assertEquals("Selection interior was obscured at viewport scale $scale", 0, Color.alpha(bitmap.getPixel(500, 500)))
+                } finally {
+                    bitmap.recycle()
+                    view.clearSelection()
+                }
             }
         }
     }
