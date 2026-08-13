@@ -5,6 +5,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 namespace {
@@ -32,6 +33,8 @@ struct LockedBitmap {
 };
 
 float clamp01(float value) { return std::clamp(value, 0.0f, 1.0f); }
+
+float finite_or(float value, float fallback) { return std::isfinite(value) ? value : fallback; }
 
 std::array<float, 3> srgb_to_linear(const std::array<float, 3>& value) {
     std::array<float, 3> output{};
@@ -213,6 +216,133 @@ float dual_density(int mode, float base, float blend) {
 float dual_blend_channel(int mode, float base, float blend) {
     if (mode == 0 || mode == 1) return blend;
     return dual_density(mode, base, blend);
+}
+
+int floor_mod(int value, int divisor) {
+    const int remainder = value % divisor;
+    return remainder < 0 ? remainder + divisor : remainder;
+}
+
+float effective_texture_luminance(const jint* pixels, int width, int height, int x, int y) {
+    const std::uint32_t pixel = static_cast<std::uint32_t>(pixels[floor_mod(y, height) * width + floor_mod(x, width)]);
+    const float alpha = ((pixel >> 24) & 0xff) / 255.0f;
+    const float luminance = (((pixel >> 16) & 0xff) * 0.299f + ((pixel >> 8) & 0xff) * 0.587f +
+                             (pixel & 0xff) * 0.114f) / 255.0f;
+    return 1.0f - (1.0f - luminance) * alpha;
+}
+
+float lerp_value(float start, float end, float amount) { return start + (end - start) * amount; }
+
+float cubic_value(float a, float b, float c, float d, float t) {
+    const float t2 = t * t;
+    const float t3 = t2 * t;
+    return 0.5f * ((2.0f * b) + (-a + c) * t +
+        (2.0f * a - 5.0f * b + 4.0f * c - d) * t2 +
+        (-a + 3.0f * b - 3.0f * c + d) * t3);
+}
+
+struct TextureSampler {
+    const jint* pixels;
+    int width;
+    int height;
+    float x_from_x;
+    float x_from_y;
+    float x_origin;
+    float y_from_x;
+    float y_from_y;
+    float y_origin;
+    int filtering;
+
+    float sample(float x, float y) const {
+        const float sample_x = x_from_x * x + x_from_y * y + x_origin;
+        const float sample_y = y_from_x * x + y_from_y * y + y_origin;
+        const int x0 = static_cast<int>(std::floor(sample_x));
+        const int y0 = static_cast<int>(std::floor(sample_y));
+        if (filtering <= 0) return effective_texture_luminance(pixels, width, height, x0, y0);
+        const float tx = sample_x - std::floor(sample_x);
+        const float ty = sample_y - std::floor(sample_y);
+        if (filtering == 1) {
+            const float top = lerp_value(
+                effective_texture_luminance(pixels, width, height, x0, y0),
+                effective_texture_luminance(pixels, width, height, x0 + 1, y0), tx);
+            const float bottom = lerp_value(
+                effective_texture_luminance(pixels, width, height, x0, y0 + 1),
+                effective_texture_luminance(pixels, width, height, x0 + 1, y0 + 1), tx);
+            return clamp01(lerp_value(top, bottom, ty));
+        }
+        std::array<float, 4> rows{};
+        for (int row = -1; row <= 2; ++row) {
+            rows[row + 1] = cubic_value(
+                effective_texture_luminance(pixels, width, height, x0 - 1, y0 + row),
+                effective_texture_luminance(pixels, width, height, x0, y0 + row),
+                effective_texture_luminance(pixels, width, height, x0 + 1, y0 + row),
+                effective_texture_luminance(pixels, width, height, x0 + 2, y0 + row), tx);
+        }
+        return clamp01(cubic_value(rows[0], rows[1], rows[2], rows[3], ty));
+    }
+};
+
+float texture_mask_value(float luminance, float brightness, float contrast,
+                         bool reversed, bool emphasized) {
+    const float safe_brightness = std::clamp(finite_or(brightness, 0.0f), -100.0f, 100.0f);
+    const float safe_contrast = std::clamp(finite_or(contrast, 0.0f), -100.0f, 100.0f);
+    const float brightened = clamp01(luminance + safe_brightness / 100.0f);
+    const float contrasted = clamp01((brightened - 0.5f) *
+        (1.0f + safe_contrast / 100.0f) + 0.5f);
+    const float base = reversed ? contrasted : 1.0f - contrasted;
+    return emphasized ? clamp01((base - 0.5f) * 1.5f + 0.5f) : base;
+}
+
+float texture_color_dodge(float base, float texture) {
+    if (base <= 0.0f) return 0.0f;
+    if (texture >= 1.0f) return 1.0f;
+    return std::min(1.0f, base / (1.0f - texture));
+}
+
+float texture_color_burn(float base, float texture) {
+    if (base >= 1.0f) return 1.0f;
+    if (texture <= 0.0f) return 0.0f;
+    return std::max(0.0f, 1.0f - (1.0f - base) / texture);
+}
+
+float texture_density(float base_value, float texture_value, float strength_value,
+                      int mode, float texture_edge) {
+    const float base = clamp01(base_value);
+    const float texture = clamp01(texture_value);
+    const float amount = clamp01(strength_value);
+    if (amount <= 0.0f || base <= 0.0f) return base;
+    float target;
+    switch (mode) {
+        case 1: {
+            if (texture <= 0.5f) target = base - (1.0f - 2.0f * texture) * base * (1.0f - base);
+            else {
+                const float lifted = base <= 0.25f ? ((16.0f * base - 12.0f) * base + 4.0f) * base : std::sqrt(base);
+                target = base + (2.0f * texture - 1.0f) * (lifted - base);
+            }
+            break;
+        }
+        case 2: target = base * texture; break;
+        case 3: target = std::max(0.0f, base - texture); break;
+        case 4: target = std::min(base, texture); break;
+        case 5:
+        case 9: {
+            const float edge_weight = clamp01(4.0f * base * (1.0f - base));
+            const float edge = mode == 5 ? clamp01(texture_edge) : texture;
+            target = base * (1.0f - edge_weight + edge_weight * edge);
+            break;
+        }
+        case 6: target = base <= 0.5f ? 2.0f * base * texture :
+            1.0f - 2.0f * (1.0f - base) * (1.0f - texture); break;
+        case 7: target = texture_color_dodge(base, texture); break;
+        case 8: {
+            const float vivid = texture < 0.5f ? texture_color_burn(base, texture * 2.0f) :
+                texture_color_dodge(base, (texture - 0.5f) * 2.0f);
+            target = vivid < 0.5f ? 0.0f : 1.0f;
+            break;
+        }
+        default: target = base * texture; break;
+    }
+    return clamp01(base + (target - base) * amount);
 }
 
 }  // namespace
@@ -478,7 +608,6 @@ Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeFloodFill(
     LockedBitmap destination(env, destination_bitmap);
     const std::array<int, 4> empty_bounds{-1, -1, -1, -1};
     if (!compatible_rgba(source, destination)) return bounds_array(env, empty_bounds);
-    clear_bitmap(destination);
     const int width = static_cast<int>(source.info.width);
     const int height = static_cast<int>(source.info.height);
     if (start_x < 0 || start_x >= width || start_y < 0 || start_y >= height) return bounds_array(env, empty_bounds);
@@ -491,7 +620,6 @@ Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeFloodFill(
     const int tolerance = std::clamp(static_cast<int>(tolerance_value), 0, 255);
     thread_local std::vector<std::uint8_t> fillable;
     thread_local std::vector<std::uint8_t> covered;
-    thread_local std::vector<std::uint8_t> queued;
     thread_local std::vector<std::uint8_t> scratch_mask;
     thread_local std::vector<int> distance;
     thread_local std::vector<int> stack;
@@ -500,10 +628,14 @@ Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeFloodFill(
         const auto* row = source.pixels + static_cast<std::size_t>(y) * source.info.stride;
         for (int x = 0; x < width; ++x) {
             const auto* pixel = row + x * 4;
+            const bool both_opaque = pixel[3] == 255 && seed_channels[3] == 255;
+            const int red = both_opaque ? pixel[0] : unpremultiplied_channel(pixel, 0);
+            const int green = both_opaque ? pixel[1] : unpremultiplied_channel(pixel, 1);
+            const int blue = both_opaque ? pixel[2] : unpremultiplied_channel(pixel, 2);
             fillable[static_cast<std::size_t>(y) * width + x] =
-                std::abs(static_cast<int>(unpremultiplied_channel(pixel, 0)) - seed_channels[0]) <= tolerance &&
-                std::abs(static_cast<int>(unpremultiplied_channel(pixel, 1)) - seed_channels[1]) <= tolerance &&
-                std::abs(static_cast<int>(unpremultiplied_channel(pixel, 2)) - seed_channels[2]) <= tolerance &&
+                std::abs(red - seed_channels[0]) <= tolerance &&
+                std::abs(green - seed_channels[1]) <= tolerance &&
+                std::abs(blue - seed_channels[2]) <= tolerance &&
                 std::abs(static_cast<int>(pixel[3]) - seed_channels[3]) <= tolerance;
         }
     }
@@ -516,14 +648,13 @@ Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeFloodFill(
     }
 
     covered.assign(count, 0);
-    queued.assign(count, 0);
     stack.clear();
     if (stack.capacity() < std::min<std::size_t>(count, 4096)) stack.reserve(std::min<std::size_t>(count, 4096));
     auto push = [&](int x, int y) {
         const int index = y * width + x;
-        if (covered[index] || queued[index]) return;
+        if (covered[index] || fillable[index] != 1) return;
         stack.push_back(index);
-        queued[index] = 1;
+        fillable[index] = 2;
     };
     push(start_x, start_y);
     while (!stack.empty()) {
@@ -532,19 +663,19 @@ Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeFloodFill(
         if (covered[index]) continue;
         const int y = index / width;
         int x = index % width;
-        while (x >= 0 && !covered[y * width + x] && fillable[y * width + x]) --x;
+        while (x >= 0 && !covered[y * width + x] && fillable[y * width + x] != 0) --x;
         ++x;
         bool span_up = false;
         bool span_down = false;
-        while (x < width && !covered[y * width + x] && fillable[y * width + x]) {
+        while (x < width && !covered[y * width + x] && fillable[y * width + x] != 0) {
             covered[y * width + x] = 1;
             if (y > 0) {
-                const bool candidate = !covered[(y - 1) * width + x] && fillable[(y - 1) * width + x];
+                const bool candidate = !covered[(y - 1) * width + x] && fillable[(y - 1) * width + x] == 1;
                 if (!span_up && candidate) { push(x, y - 1); span_up = true; }
                 else if (span_up && !candidate) span_up = false;
             }
             if (y + 1 < height) {
-                const bool candidate = !covered[(y + 1) * width + x] && fillable[(y + 1) * width + x];
+                const bool candidate = !covered[(y + 1) * width + x] && fillable[(y + 1) * width + x] == 1;
                 if (!span_down && candidate) { push(x, y + 1); span_down = true; }
                 else if (span_down && !candidate) span_down = false;
             }
@@ -556,8 +687,26 @@ Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeFloodFill(
         morph_mask(covered, width, height, std::abs(scaling), scaling > 0, scratch_mask, distance);
         covered.swap(scratch_mask);
     }
-    write_white_mask(destination, covered);
-    return bounds_array(env, alpha_bounds(destination));
+    int min_x = width;
+    int min_y = height;
+    int max_x = -1;
+    int max_y = -1;
+    for (int y = 0; y < height; ++y) {
+        auto* row = destination.pixels + static_cast<std::size_t>(y) * destination.info.stride;
+        for (int x = 0; x < width; ++x) {
+            const std::uint8_t value = covered[static_cast<std::size_t>(y) * width + x] ? 255 : 0;
+            row[x * 4] = value;
+            row[x * 4 + 1] = value;
+            row[x * 4 + 2] = value;
+            row[x * 4 + 3] = value;
+            if (value == 0) continue;
+            min_x = std::min(min_x, x);
+            min_y = std::min(min_y, y);
+            max_x = std::max(max_x, x);
+            max_y = std::max(max_y, y);
+        }
+    }
+    return bounds_array(env, max_x < min_x ? empty_bounds : std::array<int, 4>{min_x, min_y, max_x + 1, max_y + 1});
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
@@ -623,5 +772,126 @@ Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeCompositeDualBrush(
             }
         }
     }
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeApplyCspStrokeTexture(
+    JNIEnv* env,
+    jobject,
+    jobject stroke_bitmap,
+    jint content_width_value,
+    jint content_height_value,
+    jint origin_x,
+    jint origin_y,
+    jint page_width_value,
+    jint page_height_value,
+    jintArray texture_pixels_array,
+    jint texture_width_value,
+    jint texture_height_value,
+    jfloat density_value,
+    jfloat scale_percent_value,
+    jfloat rotation_degrees_value,
+    jfloat offset_x_value,
+    jfloat offset_y_value,
+    jint filtering_mode,
+    jfloat brightness,
+    jfloat contrast,
+    jboolean reversed,
+    jboolean emphasized,
+    jint composite_mode,
+    jboolean alpha_threshold_enabled,
+    jfloat alpha_threshold_value) {
+    LockedBitmap stroke(env, stroke_bitmap);
+    if (stroke.pixels == nullptr || texture_pixels_array == nullptr) return JNI_FALSE;
+    const int content_width = std::min(static_cast<int>(content_width_value), static_cast<int>(stroke.info.width));
+    const int content_height = std::min(static_cast<int>(content_height_value), static_cast<int>(stroke.info.height));
+    const int texture_width = static_cast<int>(texture_width_value);
+    const int texture_height = static_cast<int>(texture_height_value);
+    const int page_width = std::max(1, static_cast<int>(page_width_value));
+    const int page_height = std::max(1, static_cast<int>(page_height_value));
+    const std::int64_t required_texture_pixels = static_cast<std::int64_t>(texture_width) * texture_height;
+    if (content_width <= 0 || content_height <= 0 || texture_width <= 0 || texture_height <= 0 ||
+        required_texture_pixels > std::numeric_limits<jsize>::max() ||
+        static_cast<std::int64_t>(env->GetArrayLength(texture_pixels_array)) < required_texture_pixels) {
+        return JNI_FALSE;
+    }
+    auto* texture_pixels = static_cast<jint*>(env->GetPrimitiveArrayCritical(texture_pixels_array, nullptr));
+    if (texture_pixels == nullptr) return JNI_FALSE;
+
+    const float scale = std::clamp(finite_or(scale_percent_value / 100.0f, 1.0f), 0.01f, 40.0f);
+    const float rotation = finite_or(rotation_degrees_value, 0.0f);
+    const float offset_x = std::clamp(finite_or(offset_x_value, 0.0f), 0.0f, 1.0f);
+    const float offset_y = std::clamp(finite_or(offset_y_value, 0.0f), 0.0f, 1.0f);
+    const float radians = -rotation * static_cast<float>(3.14159265358979323846 / 180.0);
+    const float cosine = std::cos(radians);
+    const float sine = std::sin(radians);
+    const float inverse_scale = 1.0f / scale;
+    const float texture_scale_x = texture_width / static_cast<float>(page_width);
+    const float texture_scale_y = texture_height / static_cast<float>(page_height);
+    const float translated_x = 0.5f - page_width / 2.0f;
+    const float translated_y = 0.5f - page_height / 2.0f;
+    TextureSampler sampler{
+        texture_pixels,
+        texture_width,
+        texture_height,
+        cosine * inverse_scale * texture_scale_x,
+        -sine * inverse_scale * texture_scale_x,
+        (cosine * translated_x - sine * translated_y) * inverse_scale * texture_scale_x +
+            texture_width / 2.0f + offset_x * texture_width,
+        sine * inverse_scale * texture_scale_y,
+        cosine * inverse_scale * texture_scale_y,
+        (sine * translated_x + cosine * translated_y) * inverse_scale * texture_scale_y +
+            texture_height / 2.0f + offset_y * texture_height,
+        std::clamp(static_cast<int>(filtering_mode), 0, 2),
+    };
+    const bool outline = composite_mode == 5;
+    const std::size_t count = static_cast<std::size_t>(content_width) * content_height;
+    thread_local std::vector<float> texture_masks;
+    if (outline) {
+        texture_masks.resize(count);
+        for (int local_y = 0; local_y < content_height; ++local_y) for (int local_x = 0; local_x < content_width; ++local_x) {
+            texture_masks[static_cast<std::size_t>(local_y) * content_width + local_x] = texture_mask_value(
+                sampler.sample(origin_x + local_x, origin_y + local_y), brightness, contrast,
+                reversed == JNI_TRUE, emphasized == JNI_TRUE);
+        }
+    }
+    const float cutoff = clamp01(finite_or(alpha_threshold_value, 0.0f)) * 255.0f;
+    const float density = clamp01(finite_or(density_value, 0.0f));
+    for (int local_y = 0; local_y < content_height; ++local_y) {
+        auto* row = stroke.pixels + static_cast<std::size_t>(local_y) * stroke.info.stride;
+        for (int local_x = 0; local_x < content_width; ++local_x) {
+            auto* pixel = row + local_x * 4;
+            const int source_alpha_byte = pixel[3];
+            if (source_alpha_byte == 0) continue;
+            const int page_x = origin_x + local_x;
+            const int page_y = origin_y + local_y;
+            const std::size_t index = static_cast<std::size_t>(local_y) * content_width + local_x;
+            const float texture = outline ? texture_masks[index] : texture_mask_value(
+                sampler.sample(page_x, page_y), brightness, contrast,
+                reversed == JNI_TRUE, emphasized == JNI_TRUE);
+            float texture_edge = 0.0f;
+            if (outline) {
+                const float left = local_x > 0 ? texture_masks[index - 1] : texture_mask_value(
+                    sampler.sample(page_x - 1, page_y), brightness, contrast, reversed == JNI_TRUE, emphasized == JNI_TRUE);
+                const float right = local_x + 1 < content_width ? texture_masks[index + 1] : texture_mask_value(
+                    sampler.sample(page_x + 1, page_y), brightness, contrast, reversed == JNI_TRUE, emphasized == JNI_TRUE);
+                const float top = local_y > 0 ? texture_masks[index - content_width] : texture_mask_value(
+                    sampler.sample(page_x, page_y - 1), brightness, contrast, reversed == JNI_TRUE, emphasized == JNI_TRUE);
+                const float bottom = local_y + 1 < content_height ? texture_masks[index + content_width] : texture_mask_value(
+                    sampler.sample(page_x, page_y + 1), brightness, contrast, reversed == JNI_TRUE, emphasized == JNI_TRUE);
+                texture_edge = clamp01(std::abs(right - left) + std::abs(bottom - top));
+            }
+            const float composed = texture_density(source_alpha_byte / 255.0f, texture, density, composite_mode, texture_edge);
+            const int raw_alpha = std::clamp(static_cast<int>(composed * 255.0f), 0, 255);
+            const int output_alpha = alpha_threshold_enabled == JNI_TRUE ? (raw_alpha > cutoff ? 255 : 0) : raw_alpha;
+            for (int channel = 0; channel < 3; ++channel) {
+                const float color = unpremultiplied_channel(pixel, channel) / 255.0f;
+                pixel[channel] = byte_from_unit(color * (output_alpha / 255.0f));
+            }
+            pixel[3] = static_cast<std::uint8_t>(output_alpha);
+        }
+    }
+    env->ReleasePrimitiveArrayCritical(texture_pixels_array, texture_pixels, JNI_ABORT);
     return JNI_TRUE;
 }

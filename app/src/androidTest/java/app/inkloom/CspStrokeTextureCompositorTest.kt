@@ -25,6 +25,59 @@ import java.io.FileOutputStream
 
 @RunWith(AndroidJUnit4::class)
 class CspStrokeTextureCompositorTest {
+    @Test fun nativeWholeStrokeTextureMatchesEveryDocumentedScalarMode() {
+        val sourceAlpha = 153
+        val sourceColor = Color.argb(sourceAlpha, 80, 120, 200)
+        val textureLuminance = 64 / 255f
+        val textureMask = 1f - textureLuminance
+        val strength = .73f
+        for (mode in CspTextureComposite.documentedModes) {
+            val bitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888).apply { eraseColor(sourceColor) }
+            try {
+                CspStrokeTextureCompositor.applyInPlace(
+                    bitmap, 1, 1, 0, 0, 1, 1,
+                    CspTextureMaterial(1, 1, intArrayOf(Color.rgb(64, 64, 64))),
+                    strength, 100f, 0f, 0f, 0f, 0,
+                    0f, 0f, false, false, mode,
+                    false, 0f, CspStrokeTextureCompositor.Workspace(),
+                )
+                val expectedAlpha = (CspTextureComposite.density(
+                    sourceAlpha / 255f,
+                    textureMask,
+                    strength,
+                    mode,
+                    textureEdge = 0f,
+                ) * 255f).toInt()
+                assertTrue(
+                    "Native ${CspTextureComposite.displayName(mode)} alpha differed: expected=$expectedAlpha actual=${Color.alpha(bitmap.getPixel(0, 0))}",
+                    kotlin.math.abs(expectedAlpha - Color.alpha(bitmap.getPixel(0, 0))) <= 1,
+                )
+            } finally {
+                bitmap.recycle()
+            }
+        }
+    }
+
+    @Test fun nativeWholeStrokeTextureAppliesAlphaThresholdAsOneOperation() {
+        val bitmap = Bitmap.createBitmap(2, 1, Bitmap.Config.ARGB_8888).apply {
+            setPixel(0, 0, Color.argb(190, 20, 80, 140))
+            setPixel(1, 0, Color.argb(80, 20, 80, 140))
+        }
+        try {
+            CspStrokeTextureCompositor.applyInPlace(
+                bitmap, 2, 1, 0, 0, 2, 1,
+                CspTextureMaterial(1, 1, intArrayOf(Color.BLACK)),
+                1f, 100f, 0f, 0f, 0f, 0,
+                0f, 0f, false, false, CspTextureComposite.MULTIPLY,
+                true, .5f, CspStrokeTextureCompositor.Workspace(),
+            )
+            assertEquals(255, Color.alpha(bitmap.getPixel(0, 0)))
+            assertEquals(0, Color.alpha(bitmap.getPixel(1, 0)))
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
     @Test fun wholeStrokeTextureUsesPageCoordinatesAndPreservesRgb() {
         val bitmap = Bitmap.createBitmap(8, 2, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
         val material = CspTextureMaterial(2, 1, intArrayOf(Color.BLACK, Color.WHITE))
