@@ -153,8 +153,8 @@ import app.inkloom.document.WaterEdge
 import app.inkloom.engine.v3.tools.RasterBlendSession
 import app.inkloom.engine.v3.tools.RasterLiquifySession
 import app.inkloom.engine.v3.tools.RasterEraserSession
-import app.inkloom.engine.v2.render.RasterWetPaintMixer
-import app.inkloom.engine.v2.render.RasterWetPaintSession
+import app.inkloom.engine.v3.tools.RasterWetPaintMixer
+import app.inkloom.engine.v3.tools.RasterWetPaintSession
 import app.inkloom.model.EditorTool
 import app.inkloom.model.SymmetryMode
 import app.inkloom.settings.CspShortcutResolver

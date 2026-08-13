@@ -4,7 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import app.inkloom.engine.v2.render.RasterWetPaintSession
+import app.inkloom.engine.v3.tools.RasterWetPaintSession
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -72,7 +72,8 @@ class RasterWetPaintSessionTest {
         RasterWetPaintSession(bitmap).use { session ->
             assertNotNull(session.advance(48f, 48f, 49f, 48f, 28f, pull = 0f, blur = .4f, hardness = .2f, absoluteBlurRadiusPixels = 12f))
         }
-        assertTrue(Color.alpha(bitmap.getPixel(58, 48)) > 0)
+        val spread = bitmap.getPixel(58, 48)
+        assertTrue("Expected fixed blur to reach x=58 but color was ${Integer.toHexString(spread)}", Color.alpha(spread) > 0)
         bitmap.recycle()
     }
 

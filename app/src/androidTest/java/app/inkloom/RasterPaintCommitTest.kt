@@ -41,7 +41,11 @@ class RasterPaintCommitTest {
             send(view, MotionEvent.ACTION_MOVE, 115f + index * 15f, 200f, 5L + index)
             InstrumentationRegistry.getInstrumentation().runOnMainSync { view.flushActiveStrokeFrame() }
         }
-        assertTrue("Pull must move pigment while the contact is still down", Color.alpha(surface.getPixel(255, 300)) > 0)
+        val alphaXs = (0 until surface.width).filter { x -> Color.alpha(surface.getPixel(x, 300)) > 0 }
+        assertTrue(
+            "Pull must move pigment while the contact is still down; row alpha range=${alphaXs.firstOrNull()}..${alphaXs.lastOrNull()}",
+            Color.alpha(surface.getPixel(255, 300)) > 0,
+        )
 
         send(view, MotionEvent.ACTION_CANCEL, 220f, 200f, 20L)
         val restored = IntArray(surface.width * surface.height).also { surface.getPixels(it, 0, surface.width, 0, 0, surface.width, surface.height) }
