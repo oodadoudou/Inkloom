@@ -9,6 +9,72 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 class FileDocumentStoreTest {
+    @Test fun `checkpoints use the versioned v3 envelope and reload`() {
+        val root = Files.createTempDirectory("inkloom-v3-checkpoint").toFile()
+        val store = FileDocumentStore(root)
+        val document = InkDocument(title = "V3 checkpoint")
+
+        store.save(document)
+
+        val checkpoint = root.resolve("documents/${document.id}.json").readText()
+        assertTrue(checkpoint.contains("\"format\": \"inkloom-document\""))
+        assertTrue(checkpoint.contains("\"engineVersion\": 3"))
+        assertTrue(checkpoint.contains("\"checksum\""))
+        assertEquals(document, FileDocumentStore(root).get(document.id))
+    }
+
+    @Test fun `legacy bare document checkpoint migrates without data loss`() {
+        val root = Files.createTempDirectory("inkloom-legacy-checkpoint").toFile()
+        val document = InkDocument(title = "Legacy checkpoint")
+        val json = Json { prettyPrint = true; classDiscriminator = "type"; ignoreUnknownKeys = true }
+        root.resolve("documents").mkdirs()
+        root.resolve("documents/${document.id}.json").writeText(json.encodeToString(document))
+
+        val restored = FileDocumentStore(root).get(document.id)
+
+        assertEquals(document, restored)
+    }
+
+    @Test fun `truncated journal tail preserves every verified prior operation`() {
+        val root = Files.createTempDirectory("inkloom-truncated-journal").toFile()
+        val store = FileDocumentStore(root)
+        val document = InkDocument(title = "Truncated recovery")
+        store.save(document)
+        repeat(2) { index ->
+            store.append(JournalEntry.StrokeAdded(document.id, document.pages.single().id, InkStroke(id = "safe-$index", points = emptyList())))
+        }
+        root.resolve("journal.jsonl").appendText("{\"format\":\"inkloom-v3-journal\",\"payload\":")
+
+        val restored = FileDocumentStore(root).get(document.id)!!
+
+        assertEquals(listOf("safe-0", "safe-1"), restored.pages.single().strokes.map(InkStroke::id))
+    }
+
+    @Test fun `journal checksum failure stops replay before later dependent operations`() {
+        val root = Files.createTempDirectory("inkloom-corrupt-journal").toFile()
+        val store = FileDocumentStore(root)
+        val document = InkDocument(title = "Verified recovery")
+        store.save(document)
+        repeat(3) { index ->
+            store.append(JournalEntry.StrokeAdded(document.id, document.pages.single().id, InkStroke(id = "ordered-$index", points = emptyList())))
+        }
+        val journal = root.resolve("journal.jsonl")
+        val lines = journal.readLines().toMutableList()
+        val checksumMarker = "\"checksum\":\""
+        val checksumStart = lines[1].indexOf(checksumMarker) + checksumMarker.length
+        assertTrue(checksumStart >= checksumMarker.length)
+        lines[1] = lines[1].replaceRange(
+            checksumStart,
+            checksumStart + 1,
+            if (lines[1][checksumStart] == '0') "1" else "0",
+        )
+        journal.writeText(lines.joinToString("\n", postfix = "\n"))
+
+        val restored = FileDocumentStore(root).get(document.id)!!
+
+        assertEquals(listOf("ordered-0"), restored.pages.single().strokes.map(InkStroke::id))
+    }
+
     @Test fun `professional gradient properties survive document persistence`() {
         val store = FileDocumentStore(Files.createTempDirectory("inkloom-gradient").toFile())
         val gradient = PageElement.Shape(

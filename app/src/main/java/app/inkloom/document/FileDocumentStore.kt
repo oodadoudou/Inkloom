@@ -1,20 +1,20 @@
 package app.inkloom.document
 
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
+import app.inkloom.engine.v3.storage.DocumentCheckpointCodec
+import app.inkloom.engine.v3.storage.RecoveryJournalCodec
 import java.io.File
+import java.io.FileOutputStream
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 class FileDocumentStore(private val root: File) {
-    private val json = Json { prettyPrint = true; ignoreUnknownKeys = true; classDiscriminator = "type" }
-    private val journalJson = Json { ignoreUnknownKeys = true; classDiscriminator = "type" }
     private val documentsDir = File(root, "documents")
     private val journalFile = File(root, "journal.jsonl")
     private val documents = linkedMapOf<String, InkDocument>()
     private var pendingJournalEntries = 0
     private var observedDocumentFiles = emptyMap<String, Pair<Long, Long>>()
     private var observedJournalLength = 0L
+    private var nextJournalSequence = 1L
     private val realtimeJournalWriter: ExecutorService by lazy {
         Executors.newSingleThreadExecutor { operation ->
             Thread(operation, "Inkloom-journal-writer").apply { isDaemon = true }
@@ -24,7 +24,7 @@ class FileDocumentStore(private val root: File) {
     init {
         documentsDir.mkdirs()
         documentsDir.listFiles { file -> file.extension == "json" }
-            ?.mapNotNull { runCatching { json.decodeFromString<InkDocument>(it.readText()) }.getOrNull() }
+            ?.mapNotNull { runCatching { DocumentCheckpointCodec.decode(it.readText()) }.getOrNull() }
             ?.forEach { documents[it.id] = it }
         // The journal is the durable source of truth between checkpoints. Replaying it into the
         // in-memory index makes startup and secondary readers see the latest ink without forcing
@@ -49,7 +49,7 @@ class FileDocumentStore(private val root: File) {
 
     @Synchronized
     fun save(document: InkDocument) {
-        atomicWrite(documentFile(document.id), json.encodeToString(document))
+        atomicWrite(documentFile(document.id), DocumentCheckpointCodec.encode(document))
         documents[document.id] = document
         captureObservedFiles()
     }
@@ -89,7 +89,7 @@ class FileDocumentStore(private val root: File) {
         return synchronized(this) {
             val recovered = pendingJournalEntries
             if (recovered == 0) return@synchronized 0
-            documents.values.forEach { document -> atomicWrite(documentFile(document.id), json.encodeToString(document)) }
+            documents.values.forEach { document -> atomicWrite(documentFile(document.id), DocumentCheckpointCodec.encode(document)) }
             compactJournalNow()
             pendingJournalEntries = 0
             captureObservedFiles()
@@ -109,17 +109,37 @@ class FileDocumentStore(private val root: File) {
     private fun compactJournalNow() {
         atomicWrite(journalFile, "")
         pendingJournalEntries = 0
+        nextJournalSequence = 1L
         observedJournalLength = journalFile.length()
     }
 
     private fun persistJournalEntry(entry: JournalEntry) {
         journalFile.parentFile?.mkdirs()
-        journalFile.appendText(journalJson.encodeToString<JournalEntry>(entry) + "\n")
+        val bytes = (RecoveryJournalCodec.encode(nextJournalSequence++, entry) + "\n").encodeToByteArray()
+        FileOutputStream(journalFile, true).use { output ->
+            output.write(bytes)
+            output.fd.sync()
+        }
         observedJournalLength = journalFile.length()
     }
 
-    private fun readJournal(): List<JournalEntry> = if (!journalFile.isFile) emptyList() else
-        journalFile.readLines().mapNotNull { runCatching { journalJson.decodeFromString<JournalEntry>(it) }.getOrNull() }
+    private fun readJournal(): List<JournalEntry> {
+        if (!journalFile.isFile) return emptyList()
+        val entries = arrayListOf<JournalEntry>()
+        var lastSequence = 0L
+        for (line in journalFile.readLines()) {
+            if (line.isBlank()) continue
+            val decoded = runCatching { RecoveryJournalCodec.decode(line) }.getOrNull() ?: break
+            val sequence = decoded.sequence
+            if (sequence != null) {
+                if (sequence <= lastSequence) break
+                lastSequence = sequence
+            }
+            entries += decoded.entry
+        }
+        nextJournalSequence = lastSequence + 1L
+        return entries
+    }
 
     /** File stats are cheap enough for UI refreshes; JSON is reloaded only when a second store
      * instance (tests, import/export, or recovery tooling) actually changed durable state. */
@@ -129,7 +149,7 @@ class FileDocumentStore(private val root: File) {
         if (currentDocuments == observedDocumentFiles && currentJournalLength == observedJournalLength) return
         documents.clear()
         documentsDir.listFiles { file -> file.extension == "json" }
-            ?.mapNotNull { runCatching { json.decodeFromString<InkDocument>(it.readText()) }.getOrNull() }
+            ?.mapNotNull { runCatching { DocumentCheckpointCodec.decode(it.readText()) }.getOrNull() }
             ?.forEach { documents[it.id] = it }
         val recovered = readJournal()
         recovered.forEach(::applyEntry)
@@ -179,7 +199,10 @@ class FileDocumentStore(private val root: File) {
     private fun atomicWrite(target: File, content: String) {
         target.parentFile?.mkdirs()
         val temporary = File(target.parentFile, ".${target.name}.tmp")
-        temporary.writeText(content)
+        FileOutputStream(temporary).use { output ->
+            output.write(content.encodeToByteArray())
+            output.fd.sync()
+        }
         if (!temporary.renameTo(target)) {
             target.writeText(content)
             temporary.delete()

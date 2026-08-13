@@ -1,5 +1,8 @@
+@file:OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+
 package app.inkloom.document
 
+import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import java.util.UUID
@@ -12,8 +15,8 @@ data class InkDocument(
     val coverArgb: Long = 0xFF202020,
     val coverStyle: CoverStyle = CoverStyle.BLACK,
     val coverImagePath: String? = null,
-    val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis(),
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS) val createdAt: Long = System.currentTimeMillis(),
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS) val updatedAt: Long = System.currentTimeMillis(),
     val favorite: Boolean = false,
     val tags: List<String> = emptyList(),
     val archivedAt: Long? = null,
@@ -92,7 +95,7 @@ data class RecognizedTextBlock(
     val source: RecognizedTextSource,
     val sourceIds: List<String> = emptyList(),
     val languageTag: String = "",
-    val updatedAt: Long = System.currentTimeMillis(),
+    @EncodeDefault(EncodeDefault.Mode.ALWAYS) val updatedAt: Long = System.currentTimeMillis(),
 )
 
 object LayerIds {
@@ -641,7 +644,7 @@ sealed interface PageElement {
     data class Fill(override val id: String = UUID.randomUUID().toString(), override val x: Float, override val y: Float, override val width: Float, override val height: Float, override val rotationDegrees: Float = 0f, override val opacity: Float = 1f, override val layerId: String = LayerIds.INK, val colorArgb: Long = 0xFF111111, val maskAssetPath: String) : PageElement
 
     @Serializable @SerialName("audio_marker")
-    data class AudioMarker(override val id: String = UUID.randomUUID().toString(), override val x: Float, override val y: Float, override val width: Float = 520f, override val height: Float = 150f, override val rotationDegrees: Float = 0f, override val opacity: Float = 1f, override val layerId: String = LayerIds.INK, val assetPath: String, val title: String = "Audio note", val durationMs: Long, val createdAt: Long = System.currentTimeMillis()) : PageElement
+    data class AudioMarker(override val id: String = UUID.randomUUID().toString(), override val x: Float, override val y: Float, override val width: Float = 520f, override val height: Float = 150f, override val rotationDegrees: Float = 0f, override val opacity: Float = 1f, override val layerId: String = LayerIds.INK, val assetPath: String, val title: String = "Audio note", val durationMs: Long, @EncodeDefault(EncodeDefault.Mode.ALWAYS) val createdAt: Long = System.currentTimeMillis()) : PageElement
 
     @Serializable @SerialName("link")
     data class Link(
@@ -708,9 +711,9 @@ sealed interface JournalEntry {
     val timestamp: Long
 
     @Serializable @SerialName("stroke_added")
-    data class StrokeAdded(override val documentId: String, override val pageId: String, val stroke: InkStroke, override val timestamp: Long = System.currentTimeMillis()) : JournalEntry
+    data class StrokeAdded(override val documentId: String, override val pageId: String, val stroke: InkStroke, @EncodeDefault(EncodeDefault.Mode.ALWAYS) override val timestamp: Long = System.currentTimeMillis()) : JournalEntry
     @Serializable @SerialName("stroke_removed")
-    data class StrokeRemoved(override val documentId: String, override val pageId: String, val strokeId: String, override val timestamp: Long = System.currentTimeMillis()) : JournalEntry
+    data class StrokeRemoved(override val documentId: String, override val pageId: String, val strokeId: String, @EncodeDefault(EncodeDefault.Mode.ALWAYS) override val timestamp: Long = System.currentTimeMillis()) : JournalEntry
     @Serializable @SerialName("strokes_replaced")
     data class StrokesReplaced(
         override val documentId: String,
@@ -718,10 +721,10 @@ sealed interface JournalEntry {
         val removedStrokeIds: List<String>,
         val strokes: List<InkStroke>,
         val replacementIndices: List<Int> = emptyList(),
-        override val timestamp: Long = System.currentTimeMillis(),
+        @EncodeDefault(EncodeDefault.Mode.ALWAYS) override val timestamp: Long = System.currentTimeMillis(),
     ) : JournalEntry
     @Serializable @SerialName("element_upserted")
-    data class ElementUpserted(override val documentId: String, override val pageId: String, val element: PageElement, override val timestamp: Long = System.currentTimeMillis()) : JournalEntry
+    data class ElementUpserted(override val documentId: String, override val pageId: String, val element: PageElement, @EncodeDefault(EncodeDefault.Mode.ALWAYS) override val timestamp: Long = System.currentTimeMillis()) : JournalEntry
     @Serializable @SerialName("element_removed")
-    data class ElementRemoved(override val documentId: String, override val pageId: String, val elementId: String, override val timestamp: Long = System.currentTimeMillis()) : JournalEntry
+    data class ElementRemoved(override val documentId: String, override val pageId: String, val elementId: String, @EncodeDefault(EncodeDefault.Mode.ALWAYS) override val timestamp: Long = System.currentTimeMillis()) : JournalEntry
 }
