@@ -267,6 +267,48 @@ class InkCanvasBrushSwitchTest {
         assertEquals(.4f, requireNotNull(committed).colorJitterStrokeSubColorMix, .0001f)
     }
 
+    @Test
+    fun cspColorMixProgramSurvivesActivationAndStrokeCommit() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        var committed: InkStroke? = null
+        val blurDynamics = app.inkloom.document.BrushParameterDynamics(pressureEnabled = true, pressureMinimum = .27f)
+        val brush = brush("csp-running-color", "Running color").copy(
+            watercolor = true,
+            cspColorMixMode = app.inkloom.document.CspColorMixMode.RUNNING_COLOR,
+            colorMix = .42f,
+            paintMix = .63f,
+            colorStretch = .71f,
+            cspPigmentMixingMode = app.inkloom.document.CspPigmentMixingMode.PERCEPTUAL,
+            cspBrightnessCorrection = 5,
+            colorMixBlur = 18f,
+            colorMixBlurUnit = 2,
+            colorMixBlurAutomatic = false,
+            colorMixBlurDynamics = blurDynamics,
+        )
+        val view = InkCanvasView(instrumentation.targetContext).apply {
+            layout(0, 0, 1200, 1200)
+            onStrokeCommitted = { committed = it }
+        }
+
+        instrumentation.runOnMainSync {
+            view.applyBrushConfiguration(EditorTool.PEN, AppSettings(), brush, 40f, 1f, Color.RED, EraserPreset.NORMAL_FREE)
+            drawStroke(view, 1L, 600f)
+        }
+
+        val stroke = requireNotNull(committed)
+        assertTrue(stroke.watercolor)
+        assertEquals(brush.cspColorMixMode, stroke.cspColorMixMode)
+        assertEquals(.42f, stroke.colorMix, .0001f)
+        assertEquals(.63f, stroke.paintMix, .0001f)
+        assertEquals(.71f, stroke.colorStretch, .0001f)
+        assertEquals(brush.cspPigmentMixingMode, stroke.cspPigmentMixingMode)
+        assertEquals(5, stroke.cspBrightnessCorrection)
+        assertEquals(18f, stroke.colorMixBlur, .0001f)
+        assertEquals(2, stroke.colorMixBlurUnit)
+        assertFalse(stroke.colorMixBlurAutomatic)
+        assertEquals(blurDynamics, stroke.colorMixBlurDynamics)
+    }
+
     private fun brush(id: String, name: String) = ImportedBrush(
         id = id,
         name = name,

@@ -9,14 +9,19 @@ class WetMixDynamicsTest {
         assertEquals(1f, WetMixDynamics.alphaMultiplier(false, 1f, 0f), .0001f)
     }
 
-    @Test fun paintDensityAndAmountOfPaintStrengthenDrawingColor() {
+    @Test fun densityControlsAlphaWhileAmountOnlyControlsPigmentColor() {
         val unloaded = WetMixDynamics.alphaMultiplier(true, 0f, 0f)
         val loaded = WetMixDynamics.alphaMultiplier(true, 0f, 1f)
         val mixed = WetMixDynamics.alphaMultiplier(true, 1f, 1f)
 
         assertTrue(loaded > unloaded)
-        assertTrue(mixed > loaded)
-        assertEquals(.9f, mixed, .0001f)
+        assertEquals(loaded, mixed, .0001f)
+        assertEquals(1f, mixed, .0001f)
+    }
+
+    @Test fun smearDoesNotExposeDensityOfPaint() {
+        val stroke = InkStroke(points = emptyList(), watercolor = true, cspColorMixMode = CspColorMixMode.SMEAR, paintMix = 0f)
+        assertEquals(1f, WetMixDynamics.alphaMultiplier(stroke, StrokePoint(0f, 0f)), .0001f)
     }
 
     @Test fun importedPressureDynamicsScaleColorAndPaintMixPerPoint() {

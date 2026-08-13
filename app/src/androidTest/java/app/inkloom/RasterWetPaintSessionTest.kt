@@ -55,6 +55,27 @@ class RasterWetPaintSessionTest {
         bitmap.recycle()
     }
 
+    @Test fun pickupWellSamplesExistingPigmentBeforePenUp() {
+        val bitmap = Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888)
+        Canvas(bitmap).drawCircle(48f, 48f, 18f, Paint().apply { color = Color.rgb(32, 160, 224) })
+        RasterWetPaintSession(bitmap).use { session ->
+            val sampled = session.samplePigment(48f, 48f, 12f)
+            assertTrue(Color.alpha(sampled) > 0)
+            assertTrue(Color.blue(sampled) > Color.red(sampled))
+        }
+        bitmap.recycle()
+    }
+
+    @Test fun fixedRunningColorBlurUsesAbsolutePixelRadius() {
+        val bitmap = Bitmap.createBitmap(128, 96, Bitmap.Config.ARGB_8888)
+        Canvas(bitmap).drawRect(42f, 35f, 48f, 61f, Paint().apply { color = Color.BLUE })
+        RasterWetPaintSession(bitmap).use { session ->
+            assertNotNull(session.advance(48f, 48f, 49f, 48f, 28f, pull = 0f, blur = .4f, hardness = .2f, absoluteBlurRadiusPixels = 12f))
+        }
+        assertTrue(Color.alpha(bitmap.getPixel(58, 48)) > 0)
+        bitmap.recycle()
+    }
+
     @Test fun blurSoftensPigmentWithoutInjectingTheBrushColor() {
         val bitmap = Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888)
         Canvas(bitmap).drawRect(30f, 30f, 48f, 66f, Paint().apply { color = Color.BLUE })
@@ -98,5 +119,19 @@ class RasterWetPaintSessionTest {
         assertEquals(outsideBefore, bitmap.getPixel(65, 48))
         bitmap.recycle()
         selection.recycle()
+    }
+
+    @Test fun alphaLockKeepsTheExactDestinationAlphaBoundaryDuringTransport() {
+        val bitmap = Bitmap.createBitmap(128, 96, Bitmap.Config.ARGB_8888)
+        Canvas(bitmap).drawCircle(40f, 48f, 16f, Paint().apply { color = Color.argb(120, 255, 0, 0) })
+        val beforeAlpha = IntArray(bitmap.width * bitmap.height) { index -> Color.alpha(bitmap.getPixel(index % bitmap.width, index / bitmap.width)) }
+
+        RasterWetPaintSession(bitmap, preserveDestinationAlpha = true).use { session ->
+            session.advance(40f, 48f, 74f, 48f, 24f, pull = 1f, blur = .5f, hardness = .4f)
+        }
+
+        val afterAlpha = IntArray(bitmap.width * bitmap.height) { index -> Color.alpha(bitmap.getPixel(index % bitmap.width, index / bitmap.width)) }
+        assertEquals(beforeAlpha.toList(), afterAlpha.toList())
+        bitmap.recycle()
     }
 }

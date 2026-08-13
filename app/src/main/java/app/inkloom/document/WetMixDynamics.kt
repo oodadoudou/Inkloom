@@ -13,12 +13,13 @@ object WetMixDynamics {
      */
     fun alphaMultiplier(watercolor: Boolean, colorMix: Float, paintMix: Float): Float {
         if (!watercolor) return 1f
-        val pigmentDensity = .35f + .55f * paintMix.coerceIn(0f, 1f)
-        val drawingColorRatio = .65f + .35f * colorMix.coerceIn(0f, 1f)
-        return (pigmentDensity * drawingColorRatio).coerceIn(.2f, .9f)
+        return (.08f + .92f * paintMix.coerceIn(0f, 1f)).coerceIn(.08f, 1f)
     }
 
     fun alphaMultiplier(stroke: InkStroke, point: StrokePoint): Float {
+        if (stroke.watercolor && stroke.procreateWetMix.isDisabled() && CspColorMixMode.normalize(stroke.cspColorMixMode) == CspColorMixMode.SMEAR) {
+            return 1f
+        }
         if (stroke.procreateWetMix.isDisabled()) return alphaMultiplier(
             watercolor = stroke.watercolor,
             colorMix = colorMix(stroke, point),

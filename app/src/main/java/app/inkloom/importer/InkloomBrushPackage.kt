@@ -8,6 +8,9 @@ import app.inkloom.document.BrushTaperMode
 import app.inkloom.document.ProcreateColorDynamics
 import app.inkloom.document.ProcreateFiltering
 import app.inkloom.document.CspAntiAlias
+import app.inkloom.document.CspBrightnessCorrection
+import app.inkloom.document.CspColorMixMode
+import app.inkloom.document.CspPigmentMixingMode
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
@@ -285,6 +288,7 @@ class InkloomBrushPackage(private val assetDirectory: File) {
             pressureResponse = finite(source.procreateTaper.pressureResponse, 0f).coerceIn(0f, 1f),
         ),
         colorMix = finite(source.colorMix, 0f).coerceIn(0f, 1f),
+        cspColorMixMode = CspColorMixMode.normalize(source.cspColorMixMode),
         colorMixPressureMinimum = finite(source.colorMixPressureMinimum, 0f).coerceIn(0f, 1f),
         colorMixPressureCurve = curve(source.colorMixPressureCurve),
         colorMixSecondaryDynamics = secondary(source.colorMixSecondaryDynamics),
@@ -292,6 +296,16 @@ class InkloomBrushPackage(private val assetDirectory: File) {
         paintMixPressureMinimum = finite(source.paintMixPressureMinimum, 0f).coerceIn(0f, 1f),
         paintMixPressureCurve = curve(source.paintMixPressureCurve),
         paintMixSecondaryDynamics = secondary(source.paintMixSecondaryDynamics),
+        colorStretch = finite(source.colorStretch, 0f).coerceIn(0f, 1f),
+        cspPigmentMixingMode = CspPigmentMixingMode.normalize(source.cspPigmentMixingMode),
+        cspBrightnessCorrection = CspBrightnessCorrection.normalize(source.cspBrightnessCorrection),
+        colorMixBlur = finite(source.colorMixBlur, 0f).coerceIn(0f, 400f),
+        colorMixBlurUnit = source.colorMixBlurUnit.coerceIn(0, 2),
+        colorMixBlurDynamics = source.colorMixBlurDynamics.copy(
+            pressureMinimum = finite(source.colorMixBlurDynamics.pressureMinimum, 0f).coerceIn(0f, 1f),
+            pressureCurve = curve(source.colorMixBlurDynamics.pressureCurve),
+            secondary = secondary(source.colorMixBlurDynamics.secondary),
+        ),
         sprayParticleSize = finite(source.sprayParticleSize, 100f).coerceIn(.01f, 4000f),
         sprayParticleSizePressureMinimum = finite(source.sprayParticleSizePressureMinimum, 0f).coerceIn(0f, 1f),
         sprayParticleSizePressureCurve = curve(source.sprayParticleSizePressureCurve),

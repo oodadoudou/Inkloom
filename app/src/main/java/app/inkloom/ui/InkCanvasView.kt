@@ -73,6 +73,10 @@ import app.inkloom.document.CspBrushGap
 import app.inkloom.document.CspTextureComposite
 import app.inkloom.document.CspStrokeTextureCompositor
 import app.inkloom.document.CspTextureMaterial
+import app.inkloom.document.CspColorMixMode
+import app.inkloom.document.CspPigmentMixingMode
+import app.inkloom.document.CspBrightnessCorrection
+import app.inkloom.document.CspPigmentMixer
 import app.inkloom.document.CanvasGuideGestureMode
 import app.inkloom.document.CanvasGuideState
 import app.inkloom.document.CanvasGuides
@@ -299,6 +303,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var rasterWetPaintSession: RasterWetPaintSession? = null
     private var rasterWetPaintBitmap: Bitmap? = null
     private var wetPaintLastPositions: List<Pair<Float, Float>> = emptyList()
+    private var wetPaintPickupColors: MutableList<Int?> = mutableListOf()
     private val localToolStrokeIndices = mutableMapOf<String, Int>()
     private var pendingSmudgeX = 0f
     private var pendingSmudgeY = 0f
@@ -702,6 +707,7 @@ class InkCanvasView(context: Context) : View(context) {
     var procreateWetMix: ProcreateWetMix = ProcreateWetMix()
     var procreateTaper: ProcreateTaper = ProcreateTaper()
     var brushWatercolor: Boolean = false
+    var cspColorMixMode: Int = CspColorMixMode.BLEND
     var brushColorMix: Float = 0f
     var colorMixPressureEnabled: Boolean = false
     var colorMixPressureMinimum: Float = 0f
@@ -712,6 +718,13 @@ class InkCanvasView(context: Context) : View(context) {
     var paintMixPressureMinimum: Float = 0f
     var paintMixPressureCurve: List<BrushCurvePoint> = emptyList()
     var paintMixSecondaryDynamics: BrushSecondaryDynamics = BrushSecondaryDynamics()
+    var colorStretch: Float = 0f
+    var cspPigmentMixingMode: Int = CspPigmentMixingMode.STANDARD
+    var cspBrightnessCorrection: Int = CspBrightnessCorrection.NEUTRAL
+    var colorMixBlur: Float = 0f
+    var colorMixBlurUnit: Int = 0
+    var colorMixBlurAutomatic: Boolean = true
+    var colorMixBlurDynamics: BrushParameterDynamics = BrushParameterDynamics()
     var brushSpray: Boolean = false
     var sprayParticleSize: Float = 100f
     var sprayParticleSizeUnit: Int = 0
@@ -1813,7 +1826,7 @@ class InkCanvasView(context: Context) : View(context) {
         val sampledPoints = primaryStampedPoints(stroke)
         val falloff = app.inkloom.document.StrokeFalloff.factors(sampledPoints, width.toFloat(), height.toFloat(), stroke.width * referenceScale, stroke.strokeFalloff)
         val safeStart = stampStartIndex.coerceIn(0, sampledPoints.size)
-        val containsLocalPigment = !isCurrentActiveStroke(stroke) && stroke.points.any { it.pigmentArgb != null }
+        val containsLocalPigment = stroke.points.any { it.pigmentArgb != null }
         if (tips.size == 1 && EngineV2StampBatchRenderer.draw(
                 canvas,
                 paint,
@@ -2913,6 +2926,9 @@ class InkCanvasView(context: Context) : View(context) {
                         event.getOrientation(pointerIndex),
                         force = true,
                     )
+                    // Publish the final pickup-well color before freezing the committed points.
+                    // Otherwise the live preview is correct but the last dab replays as fresh paint.
+                    advanceWetPaintGesture()
                     val before = strokes.toList()
                     val newStrokes = symmetryStrokes(currentPoints).map { stroke ->
                         StrokePostCorrection.apply(
@@ -2925,7 +2941,6 @@ class InkCanvasView(context: Context) : View(context) {
                             pageModelHeight,
                         )
                     }
-                    advanceWetPaintGesture()
                     val raster = rasterLayerBitmaps[activeLayerId]?.takeUnless(Bitmap::isRecycled)
                     if (raster != null) {
                         commitRasterPaintStrokes(raster, newStrokes)
@@ -5263,7 +5278,7 @@ class InkCanvasView(context: Context) : View(context) {
         dualStrokePathLongitudinalJitter = dualStrokePathLongitudinalJitter,
     )
 
-    private fun buildStroke(points: List<StrokePoint>) = InkStroke(id = currentStrokeId, engineKind = activeBrushEngineKind(), points = points.toList(), colorArgb = inkColor.toUInt().toLong(), width = baseWidth, opacity = inkOpacity, brushId = brushId, layerId = activeLayerId, tipAssetPath = tipAssetPath, tipAssetPaths = tipAssetPaths.ifEmpty { listOfNotNull(tipAssetPath) }, dualTipAssetPaths = dualTipAssetPaths, grainAssetPath = grainAssetPath, grainDensity = grainDensity, grainDensityDynamics = grainDensityDynamics, grainScale = grainScale, grainRotationDegrees = grainRotationDegrees, grainBrightness = grainBrightness, grainContrast = grainContrast, grainReversed = grainReversed, grainEmphasized = grainEmphasized, grainOffsetJitter = grainOffsetJitter, spacing = brushSpacing, spacingMode = brushSpacingMode, flow = brushFlow, hardness = brushHardness, antiAliasMode = brushAntiAliasMode, blur = brushBlur, blurUnit = brushBlurUnit, blurLinkedToSize = brushBlurLinkedToSize, thickness = brushThickness, thicknessVertical = brushThicknessVertical, rotationDegrees = brushRotation, followStylusOrientation = followStylusOrientation, followStrokeDirection = followStrokeDirection, randomRotationDegrees = randomRotationDegrees, strokeRotationJitterDegrees = strokeRotationJitterDegrees, stampCount = stampCount, stampCountJitter = stampCountJitter, continuousPlot = brushContinuousPlot, colorJitterHueDegrees = colorJitterHueDegrees, colorJitterSaturation = colorJitterSaturation, colorJitterValue = colorJitterValue, colorJitterTarget = colorJitterTarget, colorJitterPerTipEnabled = colorJitterPerTipEnabled, colorJitterHueDynamics = colorJitterHueDynamics, colorJitterSaturationDynamics = colorJitterSaturationDynamics, colorJitterValueDynamics = colorJitterValueDynamics, colorJitterSubColorMix = colorJitterSubColorMix, colorJitterSubColorMixDynamics = colorJitterSubColorMixDynamics, colorJitterPerStrokeEnabled = colorJitterPerStrokeEnabled, colorJitterStrokeHueDegrees = colorJitterStrokeHueDegrees, colorJitterStrokeSaturation = colorJitterStrokeSaturation, colorJitterStrokeValue = colorJitterStrokeValue, colorJitterStrokeSubColorMix = colorJitterStrokeSubColorMix, procreateColorDynamics = procreateColorDynamics, procreateWetMix = procreateWetMix, watercolor = brushWatercolor, colorMix = brushColorMix, colorMixPressureEnabled = colorMixPressureEnabled, colorMixPressureMinimum = colorMixPressureMinimum, colorMixPressureCurve = colorMixPressureCurve, colorMixSecondaryDynamics = colorMixSecondaryDynamics, paintMix = brushPaintMix, paintMixPressureEnabled = paintMixPressureEnabled, paintMixPressureMinimum = paintMixPressureMinimum, paintMixPressureCurve = paintMixPressureCurve, paintMixSecondaryDynamics = paintMixSecondaryDynamics, spray = brushSpray, sprayParticleSize = sprayParticleSize, sprayParticleSizeUnit = sprayParticleSizeUnit, sprayParticleSizeSyncBrushSize = sprayParticleSizeSyncBrushSize, sprayParticleSizePressureEnabled = sprayParticleSizePressureEnabled, sprayParticleSizePressureMinimum = sprayParticleSizePressureMinimum, sprayParticleSizePressureCurve = sprayParticleSizePressureCurve, sprayParticleSizeSecondaryDynamics = sprayParticleSizeSecondaryDynamics, sprayDensity = sprayDensity, sprayDensityPressureEnabled = sprayDensityPressureEnabled, sprayDensityPressureMinimum = sprayDensityPressureMinimum, sprayDensityPressureCurve = sprayDensityPressureCurve, sprayDensitySecondaryDynamics = sprayDensitySecondaryDynamics, sprayBias = sprayBias, spraySpread = spraySpread, sprayParticleRotationDegrees = sprayParticleRotationDegrees, sprayParticleFollowStylusOrientation = sprayParticleFollowStylusOrientation, sprayParticleFollowStrokeDirection = sprayParticleFollowStrokeDirection, sprayParticleRandomRotationDegrees = sprayParticleRandomRotationDegrees, ribbon = brushRibbon, tipSequenceMode = brushTipSequenceMode, tipFlipHorizontalMode = tipFlipHorizontalMode, tipFlipVerticalMode = tipFlipVerticalMode, blendTipsWithDarken = blendTipsWithDarken, dualBrush = brushDual, dualSizeScale = dualSizeScale, dualSizeDynamics = dualSizeDynamics, dualSpacing = dualSpacing, dualSpacingMode = dualSpacingMode, dualSpacingDynamics = dualSpacingDynamics, dualFlow = dualFlow, dualFlowDynamics = dualFlowDynamics, dualHardness = dualHardness, dualAntiAliasMode = dualAntiAliasMode, dualThickness = dualThickness, dualThicknessDynamics = dualThicknessDynamics, dualThicknessVertical = dualThicknessVertical, dualRotationDegrees = dualRotationDegrees, dualFollowStylusOrientation = dualFollowStylusOrientation, dualFollowStrokeDirection = dualFollowStrokeDirection, dualRandomRotationDegrees = dualRandomRotationDegrees, dualStrokeRotationJitterDegrees = dualStrokeRotationJitterDegrees, dualStampCount = dualStampCount, dualStampCountJitter = dualStampCountJitter, dualRibbon = dualRibbon, dualSpray = dualSpray, dualSprayParticleSize = dualSprayParticleSize, dualSprayParticleSizeUnit = dualSprayParticleSizeUnit, dualSprayParticleSizeSyncBrushSize = dualSprayParticleSizeSyncBrushSize, dualSprayParticleSizeDynamics = dualSprayParticleSizeDynamics, dualSprayDensity = dualSprayDensity, dualSprayDensityDynamics = dualSprayDensityDynamics, dualSprayBias = dualSprayBias, dualSpraySpread = dualSpraySpread, dualSprayParticleRotationDegrees = dualSprayParticleRotationDegrees, dualSprayParticleFollowStylusOrientation = dualSprayParticleFollowStylusOrientation, dualSprayParticleFollowStrokeDirection = dualSprayParticleFollowStrokeDirection, dualSprayParticleRandomRotationDegrees = dualSprayParticleRandomRotationDegrees, dualTipSequenceMode = dualTipSequenceMode, dualTipFlipHorizontalMode = dualTipFlipHorizontalMode, dualTipFlipVerticalMode = dualTipFlipVerticalMode, dualBlendTipsWithDarken = dualBlendTipsWithDarken, dualCompositeMode = dualCompositeMode, dualApplyRgb = dualApplyRgb, taperMode = taperMode, taperStartEnabled = taperStartEnabled, taperStartLength = taperStartLength, taperStartLengthUnit = taperStartLengthUnit, taperStartMinimum = taperStartMinimum, taperEndEnabled = taperEndEnabled, taperEndLength = taperEndLength, taperEndLengthUnit = taperEndLengthUnit, taperEndMinimum = taperEndMinimum, waterEdgeEnabled = waterEdgeEnabled, waterEdgeRadius = waterEdgeRadius, waterEdgeRadiusUnit = waterEdgeRadiusUnit, waterEdgeOpacity = waterEdgeOpacity, waterEdgeDarkness = waterEdgeDarkness, waterEdgeBlur = waterEdgeBlur, waterEdgeBlurUnit = waterEdgeBlurUnit, sizePressureEnabled = sizePressureEnabled, sizePressureMinimum = sizePressureMinimum, sizePressureCurve = sizePressureCurve, sizeSecondaryDynamics = sizeSecondaryDynamics, opacityPressureEnabled = opacityPressureEnabled, opacityPressureMinimum = opacityPressureMinimum, opacityPressureCurve = opacityPressureCurve, opacitySecondaryDynamics = opacitySecondaryDynamics, flowPressureEnabled = flowPressureEnabled, flowPressureMinimum = flowPressureMinimum, flowPressureCurve = flowPressureCurve, flowSecondaryDynamics = flowSecondaryDynamics, spacingPressureEnabled = spacingPressureEnabled, spacingPressureMinimum = spacingPressureMinimum, spacingPressureCurve = spacingPressureCurve, spacingSecondaryDynamics = spacingSecondaryDynamics, thicknessPressureEnabled = thicknessPressureEnabled, thicknessPressureMinimum = thicknessPressureMinimum, thicknessPressureCurve = thicknessPressureCurve, thicknessSecondaryDynamics = thicknessSecondaryDynamics, blurPressureEnabled = blurPressureEnabled, blurPressureMinimum = blurPressureMinimum, blurPressureCurve = blurPressureCurve, blurSecondaryDynamics = blurSecondaryDynamics)
+    private fun buildStroke(points: List<StrokePoint>) = InkStroke(id = currentStrokeId, engineKind = activeBrushEngineKind(), points = points.toList(), colorArgb = inkColor.toUInt().toLong(), width = baseWidth, opacity = inkOpacity, brushId = brushId, layerId = activeLayerId, tipAssetPath = tipAssetPath, tipAssetPaths = tipAssetPaths.ifEmpty { listOfNotNull(tipAssetPath) }, dualTipAssetPaths = dualTipAssetPaths, grainAssetPath = grainAssetPath, grainDensity = grainDensity, grainDensityDynamics = grainDensityDynamics, grainScale = grainScale, grainRotationDegrees = grainRotationDegrees, grainBrightness = grainBrightness, grainContrast = grainContrast, grainReversed = grainReversed, grainEmphasized = grainEmphasized, grainOffsetJitter = grainOffsetJitter, spacing = brushSpacing, spacingMode = brushSpacingMode, flow = brushFlow, hardness = brushHardness, antiAliasMode = brushAntiAliasMode, blur = brushBlur, blurUnit = brushBlurUnit, blurLinkedToSize = brushBlurLinkedToSize, thickness = brushThickness, thicknessVertical = brushThicknessVertical, rotationDegrees = brushRotation, followStylusOrientation = followStylusOrientation, followStrokeDirection = followStrokeDirection, randomRotationDegrees = randomRotationDegrees, strokeRotationJitterDegrees = strokeRotationJitterDegrees, stampCount = stampCount, stampCountJitter = stampCountJitter, continuousPlot = brushContinuousPlot, colorJitterHueDegrees = colorJitterHueDegrees, colorJitterSaturation = colorJitterSaturation, colorJitterValue = colorJitterValue, colorJitterTarget = colorJitterTarget, colorJitterPerTipEnabled = colorJitterPerTipEnabled, colorJitterHueDynamics = colorJitterHueDynamics, colorJitterSaturationDynamics = colorJitterSaturationDynamics, colorJitterValueDynamics = colorJitterValueDynamics, colorJitterSubColorMix = colorJitterSubColorMix, colorJitterSubColorMixDynamics = colorJitterSubColorMixDynamics, colorJitterPerStrokeEnabled = colorJitterPerStrokeEnabled, colorJitterStrokeHueDegrees = colorJitterStrokeHueDegrees, colorJitterStrokeSaturation = colorJitterStrokeSaturation, colorJitterStrokeValue = colorJitterStrokeValue, colorJitterStrokeSubColorMix = colorJitterStrokeSubColorMix, procreateColorDynamics = procreateColorDynamics, procreateWetMix = procreateWetMix, watercolor = brushWatercolor, cspColorMixMode = cspColorMixMode, colorMix = brushColorMix, colorMixPressureEnabled = colorMixPressureEnabled, colorMixPressureMinimum = colorMixPressureMinimum, colorMixPressureCurve = colorMixPressureCurve, colorMixSecondaryDynamics = colorMixSecondaryDynamics, paintMix = brushPaintMix, paintMixPressureEnabled = paintMixPressureEnabled, paintMixPressureMinimum = paintMixPressureMinimum, paintMixPressureCurve = paintMixPressureCurve, paintMixSecondaryDynamics = paintMixSecondaryDynamics, colorStretch = colorStretch, cspPigmentMixingMode = cspPigmentMixingMode, cspBrightnessCorrection = cspBrightnessCorrection, colorMixBlur = colorMixBlur, colorMixBlurUnit = colorMixBlurUnit, colorMixBlurAutomatic = colorMixBlurAutomatic, colorMixBlurDynamics = colorMixBlurDynamics, spray = brushSpray, sprayParticleSize = sprayParticleSize, sprayParticleSizeUnit = sprayParticleSizeUnit, sprayParticleSizeSyncBrushSize = sprayParticleSizeSyncBrushSize, sprayParticleSizePressureEnabled = sprayParticleSizePressureEnabled, sprayParticleSizePressureMinimum = sprayParticleSizePressureMinimum, sprayParticleSizePressureCurve = sprayParticleSizePressureCurve, sprayParticleSizeSecondaryDynamics = sprayParticleSizeSecondaryDynamics, sprayDensity = sprayDensity, sprayDensityPressureEnabled = sprayDensityPressureEnabled, sprayDensityPressureMinimum = sprayDensityPressureMinimum, sprayDensityPressureCurve = sprayDensityPressureCurve, sprayDensitySecondaryDynamics = sprayDensitySecondaryDynamics, sprayBias = sprayBias, spraySpread = spraySpread, sprayParticleRotationDegrees = sprayParticleRotationDegrees, sprayParticleFollowStylusOrientation = sprayParticleFollowStylusOrientation, sprayParticleFollowStrokeDirection = sprayParticleFollowStrokeDirection, sprayParticleRandomRotationDegrees = sprayParticleRandomRotationDegrees, ribbon = brushRibbon, tipSequenceMode = brushTipSequenceMode, tipFlipHorizontalMode = tipFlipHorizontalMode, tipFlipVerticalMode = tipFlipVerticalMode, blendTipsWithDarken = blendTipsWithDarken, dualBrush = brushDual, dualSizeScale = dualSizeScale, dualSizeDynamics = dualSizeDynamics, dualSpacing = dualSpacing, dualSpacingMode = dualSpacingMode, dualSpacingDynamics = dualSpacingDynamics, dualFlow = dualFlow, dualFlowDynamics = dualFlowDynamics, dualHardness = dualHardness, dualAntiAliasMode = dualAntiAliasMode, dualThickness = dualThickness, dualThicknessDynamics = dualThicknessDynamics, dualThicknessVertical = dualThicknessVertical, dualRotationDegrees = dualRotationDegrees, dualFollowStylusOrientation = dualFollowStylusOrientation, dualFollowStrokeDirection = dualFollowStrokeDirection, dualRandomRotationDegrees = dualRandomRotationDegrees, dualStrokeRotationJitterDegrees = dualStrokeRotationJitterDegrees, dualStampCount = dualStampCount, dualStampCountJitter = dualStampCountJitter, dualRibbon = dualRibbon, dualSpray = dualSpray, dualSprayParticleSize = dualSprayParticleSize, dualSprayParticleSizeUnit = dualSprayParticleSizeUnit, dualSprayParticleSizeSyncBrushSize = dualSprayParticleSizeSyncBrushSize, dualSprayParticleSizeDynamics = dualSprayParticleSizeDynamics, dualSprayDensity = dualSprayDensity, dualSprayDensityDynamics = dualSprayDensityDynamics, dualSprayBias = dualSprayBias, dualSpraySpread = dualSpraySpread, dualSprayParticleRotationDegrees = dualSprayParticleRotationDegrees, dualSprayParticleFollowStylusOrientation = dualSprayParticleFollowStylusOrientation, dualSprayParticleFollowStrokeDirection = dualSprayParticleFollowStrokeDirection, dualSprayParticleRandomRotationDegrees = dualSprayParticleRandomRotationDegrees, dualTipSequenceMode = dualTipSequenceMode, dualTipFlipHorizontalMode = dualTipFlipHorizontalMode, dualTipFlipVerticalMode = dualTipFlipVerticalMode, dualBlendTipsWithDarken = dualBlendTipsWithDarken, dualCompositeMode = dualCompositeMode, dualApplyRgb = dualApplyRgb, taperMode = taperMode, taperStartEnabled = taperStartEnabled, taperStartLength = taperStartLength, taperStartLengthUnit = taperStartLengthUnit, taperStartMinimum = taperStartMinimum, taperEndEnabled = taperEndEnabled, taperEndLength = taperEndLength, taperEndLengthUnit = taperEndLengthUnit, taperEndMinimum = taperEndMinimum, waterEdgeEnabled = waterEdgeEnabled, waterEdgeRadius = waterEdgeRadius, waterEdgeRadiusUnit = waterEdgeRadiusUnit, waterEdgeOpacity = waterEdgeOpacity, waterEdgeDarkness = waterEdgeDarkness, waterEdgeBlur = waterEdgeBlur, waterEdgeBlurUnit = waterEdgeBlurUnit, sizePressureEnabled = sizePressureEnabled, sizePressureMinimum = sizePressureMinimum, sizePressureCurve = sizePressureCurve, sizeSecondaryDynamics = sizeSecondaryDynamics, opacityPressureEnabled = opacityPressureEnabled, opacityPressureMinimum = opacityPressureMinimum, opacityPressureCurve = opacityPressureCurve, opacitySecondaryDynamics = opacitySecondaryDynamics, flowPressureEnabled = flowPressureEnabled, flowPressureMinimum = flowPressureMinimum, flowPressureCurve = flowPressureCurve, flowSecondaryDynamics = flowSecondaryDynamics, spacingPressureEnabled = spacingPressureEnabled, spacingPressureMinimum = spacingPressureMinimum, spacingPressureCurve = spacingPressureCurve, spacingSecondaryDynamics = spacingSecondaryDynamics, thicknessPressureEnabled = thicknessPressureEnabled, thicknessPressureMinimum = thicknessPressureMinimum, thicknessPressureCurve = thicknessPressureCurve, thicknessSecondaryDynamics = thicknessSecondaryDynamics, blurPressureEnabled = blurPressureEnabled, blurPressureMinimum = blurPressureMinimum, blurPressureCurve = blurPressureCurve, blurSecondaryDynamics = blurSecondaryDynamics)
 
     private data class RasterStrokePatch(val bitmap: Bitmap, val left: Int, val top: Int)
 
@@ -5321,12 +5336,17 @@ class InkCanvasView(context: Context) : View(context) {
     private fun beginWetPaintGesture(normalizedX: Float, normalizedY: Float) {
         cancelWetPaintGesture()
         val template = activeStrokeTemplate ?: return
-        if (template.procreateWetMix.isDisabled()) return
+        if (template.procreateWetMix.isDisabled() && !template.watercolor) return
         val raster = rasterLayerBitmaps[activeLayerId]?.takeUnless(Bitmap::isRecycled) ?: return
         rasterWetPaintBitmap = raster
-        rasterWetPaintSession = RasterWetPaintSession(raster, selectionMaskForDisplay())
+        rasterWetPaintSession = RasterWetPaintSession(
+            raster,
+            selectionMaskForDisplay(),
+            preserveDestinationAlpha = activeLayerId in alphaLockedLayers,
+        )
         val initial = StrokePoint(normalizedX, normalizedY)
         wetPaintLastPositions = wetPaintPositions(initial)
+        wetPaintPickupColors = MutableList(wetPaintLastPositions.size) { null }
     }
 
     private fun wetPaintPositions(point: StrokePoint): List<Pair<Float, Float>> = buildList {
@@ -5342,20 +5362,77 @@ class InkCanvasView(context: Context) : View(context) {
         val currentPositions = wetPaintPositions(point)
         if (currentPositions.size != wetPaintLastPositions.size) {
             wetPaintLastPositions = currentPositions
+            wetPaintPickupColors = MutableList(currentPositions.size) { null }
             return
         }
         val dynamics = EngineV2BrushEvaluator.evaluateDab(template, point)
         val radius = (template.width.coerceIn(.5f, 800f) / REFERENCE_WIDTH * raster.width * dynamics.size * .5f).coerceAtLeast(.5f)
-        val pull = app.inkloom.document.WetMixDynamics.pullStrength(template, point)
-        val blur = app.inkloom.document.WetMixDynamics.blurAmount(template, point)
+        val cspMixing = template.watercolor && template.procreateWetMix.isDisabled()
+        val amountOfPaint = if (cspMixing) app.inkloom.document.WetMixDynamics.colorMix(template, point) else 1f
+        val cspPull = when (CspColorMixMode.normalize(template.cspColorMixMode)) {
+            CspColorMixMode.RUNNING_COLOR -> template.colorStretch * (.55f + .45f * (1f - amountOfPaint))
+            CspColorMixMode.SMEAR -> template.colorStretch * (1f - amountOfPaint * .3f)
+            else -> template.colorStretch * (1f - amountOfPaint) * .8f
+        }.coerceIn(0f, 1f)
+        val pull = if (cspMixing) cspPull else app.inkloom.document.WetMixDynamics.pullStrength(template, point)
+        val runningColor = cspMixing && CspColorMixMode.normalize(template.cspColorMixMode) == CspColorMixMode.RUNNING_COLOR
+        val blurDynamics = if (runningColor) {
+            BrushDynamics.pressure(
+                template.colorMixBlurDynamics.pressureEnabled,
+                template.colorMixBlurDynamics.pressureMinimum,
+                template.colorMixBlurDynamics.pressureCurve,
+                point.pressure,
+            ) * BrushDynamics.secondary(template.colorMixBlurDynamics.secondary, point, template.renderSeed, 223)
+        } else 0f
+        val fixedBlurRadius = if (runningColor && !template.colorMixBlurAutomatic) BrushBlur.radiusPixels(
+            template.colorMixBlur * blurDynamics,
+            template.colorMixBlurUnit,
+            linkedToSize = false,
+            currentDiameter = radius * 2f,
+            baseDiameter = template.width / REFERENCE_WIDTH * raster.width,
+            pageWidth = raster.width.toFloat(),
+        ) else -1f
+        val blur = when {
+            !runningColor -> if (cspMixing) 0f else app.inkloom.document.WetMixDynamics.blurAmount(template, point)
+            template.colorMixBlurAutomatic -> (template.colorMixBlur / 100f * blurDynamics).coerceIn(0f, 1f)
+            else -> (fixedBlurRadius / radius.coerceAtLeast(1f)).coerceIn(0f, 1f)
+        }
         var dirty: android.graphics.Rect? = null
         currentPositions.indices.forEach { index ->
             val previous = wetPaintLastPositions[index]
             val current = currentPositions[index]
+            if (cspMixing) {
+                val sampled = session.samplePigment(current.first * raster.width, current.second * raster.height, radius)
+                val priorPickup = wetPaintPickupColors.getOrNull(index)
+                val pickup = when {
+                    sampled ushr 24 == 0 -> priorPickup ?: sampled
+                    priorPickup == null || priorPickup ushr 24 == 0 -> sampled
+                    else -> CspPigmentMixer.mixArgb(
+                        sampled,
+                        priorPickup,
+                        template.colorStretch.coerceIn(0f, 1f),
+                        template.cspPigmentMixingMode,
+                        template.cspBrightnessCorrection,
+                    )
+                }
+                if (index < wetPaintPickupColors.size) wetPaintPickupColors[index] = pickup
+                if (index == 0 && currentPoints.isNotEmpty()) {
+                    val fresh = template.colorArgb.toInt()
+                    val pigment = if (pickup ushr 24 == 0) fresh else CspPigmentMixer.mixArgb(
+                        pickup,
+                        fresh,
+                        amountOfPaint,
+                        template.cspPigmentMixingMode,
+                        template.cspBrightnessCorrection,
+                    )
+                    val last = currentPoints.lastIndex
+                    currentPoints[last] = currentPoints[last].copy(pigmentArgb = pigment.toUInt().toLong())
+                }
+            }
             val changed = session.advance(
                 previous.first * raster.width, previous.second * raster.height,
                 current.first * raster.width, current.second * raster.height,
-                radius, pull, blur, template.hardness,
+                radius, pull, blur, template.hardness, fixedBlurRadius,
             ) ?: return@forEach
             if (dirty == null) dirty = android.graphics.Rect(changed) else dirty?.union(changed)
         }
@@ -5375,6 +5452,7 @@ class InkCanvasView(context: Context) : View(context) {
         rasterWetPaintSession = null
         rasterWetPaintBitmap = null
         wetPaintLastPositions = emptyList()
+        wetPaintPickupColors.clear()
     }
 
     private fun cancelWetPaintGesture() {

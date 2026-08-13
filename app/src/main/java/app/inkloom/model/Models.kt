@@ -14,6 +14,9 @@ import app.inkloom.document.BrushTaperMode
 import app.inkloom.document.CspTextureComposite
 import app.inkloom.document.CspAntiAlias
 import app.inkloom.document.CspBrushGap
+import app.inkloom.document.CspColorMixMode
+import app.inkloom.document.CspPigmentMixingMode
+import app.inkloom.document.CspBrightnessCorrection
 import java.util.UUID
 import kotlinx.serialization.Serializable
 
@@ -151,6 +154,7 @@ data class ImportedBrush(
     val procreateWetMix: ProcreateWetMix = ProcreateWetMix(),
     val procreateTaper: ProcreateTaper = ProcreateTaper(),
     val watercolor: Boolean = false,
+    val cspColorMixMode: Int = CspColorMixMode.BLEND,
     val colorMix: Float = 0f,
     val colorMixPressureEnabled: Boolean = false,
     val colorMixPressureMinimum: Float = 0f,
@@ -161,6 +165,13 @@ data class ImportedBrush(
     val paintMixPressureMinimum: Float = 0f,
     val paintMixPressureCurve: List<BrushCurvePoint> = emptyList(),
     val paintMixSecondaryDynamics: BrushSecondaryDynamics = BrushSecondaryDynamics(),
+    val colorStretch: Float = 0f,
+    val cspPigmentMixingMode: Int = CspPigmentMixingMode.STANDARD,
+    val cspBrightnessCorrection: Int = CspBrightnessCorrection.NEUTRAL,
+    val colorMixBlur: Float = 0f,
+    val colorMixBlurUnit: Int = 0,
+    val colorMixBlurAutomatic: Boolean = true,
+    val colorMixBlurDynamics: BrushParameterDynamics = BrushParameterDynamics(),
     val spray: Boolean = false,
     val sprayParticleSize: Float = 100f,
     val sprayParticleSizeUnit: Int = 0,

@@ -16,6 +16,7 @@ import kotlin.math.sqrt
 class RasterWetPaintSession(
     private val bitmap: Bitmap,
     selectionMask: Bitmap? = null,
+    private val preserveDestinationAlpha: Boolean = false,
 ) : AutoCloseable {
     private val selectionSurface = selectionMask?.takeUnless(Bitmap::isRecycled)?.let { mask ->
         if (mask.width == bitmap.width && mask.height == bitmap.height) mask
@@ -28,6 +29,37 @@ class RasterWetPaintSession(
     private var selectionPixels = IntArray(0)
     private var closed = false
 
+    /** Samples the local pickup well without allocating or copying the full layer. */
+    fun samplePigment(centerX: Float, centerY: Float, radiusPixels: Float): Int {
+        if (closed || bitmap.isRecycled) return Color.TRANSPARENT
+        val radius = radiusPixels.coerceAtLeast(1f)
+        var alpha = 0f
+        var red = 0f
+        var green = 0f
+        var blue = 0f
+        var weightSum = 0f
+        for (offsetY in PICKUP_OFFSETS) for (offsetX in PICKUP_OFFSETS) {
+            val x = (centerX + radius * offsetX).toInt().coerceIn(0, bitmap.width - 1)
+            val y = (centerY + radius * offsetY).toInt().coerceIn(0, bitmap.height - 1)
+            val weight = if (offsetX == 0f && offsetY == 0f) 2f else 1f
+            val color = bitmap.getPixel(x, y)
+            val sampleAlpha = Color.alpha(color) / 255f
+            alpha += sampleAlpha * weight
+            red += Color.red(color) * sampleAlpha * weight
+            green += Color.green(color) * sampleAlpha * weight
+            blue += Color.blue(color) * sampleAlpha * weight
+            weightSum += weight
+        }
+        alpha /= weightSum
+        if (alpha <= .0001f) return Color.TRANSPARENT
+        return Color.argb(
+            (alpha * 255f + .5f).toInt().coerceIn(0, 255),
+            (red / (alpha * weightSum) + .5f).toInt().coerceIn(0, 255),
+            (green / (alpha * weightSum) + .5f).toInt().coerceIn(0, 255),
+            (blue / (alpha * weightSum) + .5f).toInt().coerceIn(0, 255),
+        )
+    }
+
     fun advance(
         previousX: Float,
         previousY: Float,
@@ -37,6 +69,7 @@ class RasterWetPaintSession(
         pull: Float,
         blur: Float,
         hardness: Float,
+        absoluteBlurRadiusPixels: Float = -1f,
     ): Rect? {
         if (closed || bitmap.isRecycled || radiusPixels <= .25f) return null
         val dx = currentX - previousX
@@ -49,7 +82,7 @@ class RasterWetPaintSession(
             val t = step / steps.toFloat()
             val centerX = previousX + dx * t
             val centerY = previousY + dy * t
-            val changed = applyDab(centerX, centerY, dx, dy, radius, pull, blur, hardness) ?: continue
+            val changed = applyDab(centerX, centerY, dx, dy, radius, pull, blur, hardness, absoluteBlurRadiusPixels) ?: continue
             if (dirty == null) dirty = Rect(changed) else dirty.union(changed)
         }
         return dirty
@@ -64,6 +97,7 @@ class RasterWetPaintSession(
         pullValue: Float,
         blurValue: Float,
         hardnessValue: Float,
+        absoluteBlurRadiusPixels: Float,
     ): Rect? {
         val pull = pullValue.coerceIn(0f, 1f)
         val blur = blurValue.coerceIn(0f, 1f)
@@ -72,7 +106,9 @@ class RasterWetPaintSession(
         val directionX = segmentX / length
         val directionY = segmentY / length
         val dragDistance = radius * pull * .8f
-        val blurRadius = radius * blur * .35f
+        val blurRadius = if (absoluteBlurRadiusPixels >= 0f) {
+            absoluteBlurRadiusPixels.coerceIn(0f, radius * 2f)
+        } else radius * blur * .35f
         val destination = Rect(
             floor(centerX - radius).toInt().coerceIn(0, bitmap.width),
             floor(centerY - radius).toInt().coerceIn(0, bitmap.height),
@@ -115,8 +151,12 @@ class RasterWetPaintSession(
             val sampleY = y + .5f - directionY * dragDistance
             val sampled = if (blurRadius <= .01f) bilinear(sourcePixels, source, sampleX, sampleY) else averageFive(sourcePixels, source, sampleX, sampleY, blurRadius)
             val current = outputPixels[outputIndex]
+            if (preserveDestinationAlpha && Color.alpha(current) == 0) continue
             val mixed = premultipliedMix(current, sampled, amount)
-            if (mixed != current) { outputPixels[outputIndex] = mixed; changed = true }
+            val constrained = if (preserveDestinationAlpha) {
+                mixed and 0x00FFFFFF or (current and -0x1000000)
+            } else mixed
+            if (constrained != current) { outputPixels[outputIndex] = constrained; changed = true }
         }
         if (!changed) return null
         bitmap.setPixels(outputPixels, 0, destination.width(), destination.left, destination.top, destination.width(), destination.height())
@@ -223,6 +263,7 @@ class RasterWetPaintSession(
     )
 
     private companion object {
+        val PICKUP_OFFSETS = floatArrayOf(0f, -.28f, .28f)
         const val MAX_DABS_PER_FRAME = 32
         const val CANCEL_TILE_SIZE = 128
     }

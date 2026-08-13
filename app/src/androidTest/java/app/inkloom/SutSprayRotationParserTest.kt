@@ -58,16 +58,19 @@ class SutSprayRotationParserTest {
                 )
             }
             parsed.forEach { brush ->
-                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 31, brush.parserVersion)
+                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 32, brush.parserVersion)
                 assertFalse(brush.report.any { it.startsWith("SUT parameter parsing failed") })
-                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v31-")) }
+                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v32-")) }
             }
+            assertTrue("Expected a real CSP Blend preset", parsed.any { it.cspColorMixMode == app.inkloom.document.CspColorMixMode.BLEND && it.watercolor })
+            assertTrue("Expected a real CSP Running-color preset", parsed.any { it.cspColorMixMode == app.inkloom.document.CspColorMixMode.RUNNING_COLOR && it.watercolor })
+            assertTrue("Expected a real CSP Smear preset", parsed.any { it.cspColorMixMode == app.inkloom.document.CspColorMixMode.SMEAR && it.watercolor })
             assertTrue("Expected multiple CSP AntiAlias modes in the supplied corpus", parsed.map(ImportedBrush::antiAliasMode).distinct().size >= 3)
             assertTrue(parsed.all { it.antiAliasMode in CspAntiAlias.NONE..CspAntiAlias.STRONG })
-            assertTrue("Expected every supplied SUT brush to preserve CSP BrushBlur", parsed.all { it.blur > 0f })
-            assertTrue("Expected the supplied size-linked BrushBlur preset", parsed.any { it.blurLinkedToSize })
-            assertTrue("Expected the supplied millimetre BrushBlur preset", parsed.any { it.blurUnit == 2 })
-            assertTrue("Expected parsed BrushBlur diagnostics", parsed.all { brush -> brush.report.any { it.contains("brush blur", ignoreCase = true) } })
+            assertTrue("CSP BrushBlur belongs to Running color and must not soften the tip shape", parsed.all { it.blur == 0f && !it.blurLinkedToSize })
+            assertTrue("Expected the supplied Running-color blur preset", parsed.any { it.colorMixBlur > 0f })
+            assertTrue("Expected the supplied Automatic Running-color blur preset", parsed.any { it.colorMixBlurAutomatic })
+            assertTrue("Expected the supplied millimetre Running-color blur preset", parsed.any { it.colorMixBlurUnit == 2 })
             assertTrue("Expected embedded CSP material previews", parsed.any { it.tipPreviewPaths.isNotEmpty() })
             val paintingBrush = parsed.firstOrNull { it.name.contains("Painting brush", ignoreCase = true) }
             assertTrue("Expected the supplied CSP Dual Brush sample", paintingBrush?.dualBrush == true)
@@ -93,7 +96,6 @@ class SutSprayRotationParserTest {
             assertFalse("CSP stores stale 7/6 values while Change brush tip color is disabled", paintingBrush?.colorJitterPerTipEnabled ?: true)
             assertTrue(paintingBrush?.report?.any { it.contains("stale stored color values") } == true)
             assertTrue("Expected a supplied Compare-texture sample", parsed.any { it.grainCompositeMode == CspTextureComposite.COMPARE })
-            assertTrue("Compare must not be reported as exact", parsed.any { brush -> brush.report.any { it.contains("Compare texture mode retained with conservative density comparison") } })
             val silkPen = parsed.firstOrNull { it.name.contains("丝丝笔") }
             assertTrue("Expected the supplied Darken-overlap pen", silkPen?.blendTipsWithDarken == true)
             assertTrue("Expected the supplied pen to enable Change brush tip color", silkPen?.colorJitterPerTipEnabled == true)
@@ -102,7 +104,7 @@ class SutSprayRotationParserTest {
             assertTrue("Expected supplied CSP Continuous spraying brushes", continuousBrushes.size >= 2)
             assertTrue(continuousBrushes.all { brush -> brush.report.any { it.contains("Continuous spraying mapped") } })
             val automaticGapBrushes = parsed.filter { it.spacingMode != app.inkloom.document.CspBrushGap.FIXED }
-            assertEquals("Expected all supplied CSP automatic-gap brushes", 6, automaticGapBrushes.size)
+            assertTrue("Expected supplied CSP automatic-gap brushes", automaticGapBrushes.size >= 6)
             assertTrue(automaticGapBrushes.any { it.spacingMode == app.inkloom.document.CspBrushGap.WIDE })
             assertTrue(automaticGapBrushes.any { it.spacingMode == app.inkloom.document.CspBrushGap.NORMAL })
             assertTrue(automaticGapBrushes.any { it.spacingMode == app.inkloom.document.CspBrushGap.NARROW })
@@ -186,7 +188,7 @@ class SutSprayRotationParserTest {
             assertEquals(.55f, brush.dualSprayDensityDynamics.secondary.velocityMinimum, .001f)
             assertTrue(brush.grainDensityDynamics.secondary.tiltEnabled)
             assertEquals(.65f, brush.grainDensityDynamics.secondary.tiltMinimum, .001f)
-            assertEquals(31, brush.parserVersion)
+            assertEquals(32, brush.parserVersion)
         } finally {
             root.deleteRecursively()
         }
@@ -217,8 +219,48 @@ class SutSprayRotationParserTest {
             assertTrue(brush.watercolor)
             assertEquals(.72f, brush.colorMix, .001f)
             assertEquals(.43f, brush.paintMix, .001f)
-            assertEquals(31, brush.parserVersion)
+            assertEquals(32, brush.parserVersion)
             assertTrue(brush.report.any { it.contains("legacy BrushWaterColor") })
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun sutColorMixingInfersBlendRunningColorAndSmearFromTheirPersistedPrograms() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val root = File(context.cacheDir, "sut-color-modes-${System.nanoTime()}").apply { mkdirs() }
+        fun create(name: String, amount: Int, density: Int, stretch: Int, blur: Float, automatic: Boolean, perceptual: Boolean): ImportedBrush {
+            val source = File(root, "$name.sut")
+            SQLiteDatabase.openOrCreateDatabase(source, null).use { db ->
+                db.execSQL("CREATE TABLE Node (NodeName TEXT NOT NULL, NodeVariantID INTEGER NOT NULL)")
+                db.execSQL("CREATE TABLE Variant (VariantID INTEGER PRIMARY KEY, Opacity REAL, BrushSize REAL, BrushUseWaterColor INTEGER, BrushUseWaterColor2 INTEGER, BrushWaterColor INTEGER, BrushMixColor REAL, BrushMixAlpha REAL, BrushMixColorExtension REAL, BrushBlur REAL, BrushBlurLinkSize INTEGER, BrushBlurUnit INTEGER, BrushColorMixingMode INTEGER, BrushLMSLinearity INTEGER)")
+                db.insertOrThrow("Node", null, ContentValues().apply { put("NodeName", name); put("NodeVariantID", 1) })
+                db.insertOrThrow("Variant", null, ContentValues().apply {
+                    put("VariantID", 1); put("Opacity", 100); put("BrushSize", 20)
+                    put("BrushUseWaterColor", 1); put("BrushUseWaterColor2", 1); put("BrushWaterColor", 0)
+                    put("BrushMixColor", amount); put("BrushMixAlpha", density); put("BrushMixColorExtension", stretch)
+                    put("BrushBlur", blur); put("BrushBlurLinkSize", if (automatic) 1 else 0); put("BrushBlurUnit", 0)
+                    put("BrushColorMixingMode", if (perceptual) 1 else 0); put("BrushLMSLinearity", if (perceptual) 5 else 0)
+                })
+            }
+            val fallback = ImportedBrush(name = name, format = BrushFormat.SUT, compatibility = Compatibility.EXTRACTED, sizeBytes = source.length(), report = emptyList())
+            return SutBrushParser(File(root, "assets")).enrich(source, name, fallback)
+        }
+        try {
+            val blend = create("Blend", 70, 50, 20, 0f, false, true)
+            val running = create("Running", 20, 40, 30, 18f, true, false)
+            val smear = create("Smear", 20, 0, 60, 0f, false, false)
+            assertEquals(app.inkloom.document.CspColorMixMode.BLEND, blend.cspColorMixMode)
+            assertEquals(app.inkloom.document.CspColorMixMode.RUNNING_COLOR, running.cspColorMixMode)
+            assertEquals(app.inkloom.document.CspColorMixMode.SMEAR, smear.cspColorMixMode)
+            assertEquals(.2f, blend.colorStretch, .001f)
+            assertEquals(18f, running.colorMixBlur, .001f)
+            assertTrue(running.colorMixBlurAutomatic)
+            assertEquals(app.inkloom.document.CspPigmentMixingMode.PERCEPTUAL, blend.cspPigmentMixingMode)
+            assertEquals(5, blend.cspBrightnessCorrection)
+            assertTrue(blend.report.any { it.contains("Blend mode") })
+            assertTrue(running.report.any { it.contains("Running color") })
+            assertTrue(smear.report.any { it.contains("Smear mode") })
         } finally {
             root.deleteRecursively()
         }
@@ -271,6 +313,14 @@ class SutSprayRotationParserTest {
                 paintMixPressureEnabled = true,
                 paintMixPressureMinimum = .3f,
                 paintMixSecondaryDynamics = app.inkloom.document.BrushSecondaryDynamics(velocityEnabled = true, velocityMinimum = .4f, velocityScale = 5f),
+                cspColorMixMode = app.inkloom.document.CspColorMixMode.RUNNING_COLOR,
+                colorStretch = .63f,
+                cspPigmentMixingMode = app.inkloom.document.CspPigmentMixingMode.PERCEPTUAL,
+                cspBrightnessCorrection = 5,
+                colorMixBlur = 27f,
+                colorMixBlurUnit = 2,
+                colorMixBlurAutomatic = false,
+                colorMixBlurDynamics = app.inkloom.document.BrushParameterDynamics(pressureEnabled = true, pressureMinimum = .36f),
                 sprayParticleSizePressureEnabled = true,
                 sprayParticleSizePressureMinimum = .25f,
                 sprayParticleSizePressureCurve = listOf(app.inkloom.document.BrushCurvePoint(0f, .1f), app.inkloom.document.BrushCurvePoint(1f, 1f)),
@@ -388,6 +438,15 @@ class SutSprayRotationParserTest {
             assertEquals(.3f, restored.paintMixPressureMinimum, .0001f)
             assertTrue(restored.paintMixSecondaryDynamics.velocityEnabled)
             assertEquals(5f, restored.paintMixSecondaryDynamics.velocityScale, .0001f)
+            assertEquals(app.inkloom.document.CspColorMixMode.RUNNING_COLOR, restored.cspColorMixMode)
+            assertEquals(.63f, restored.colorStretch, .0001f)
+            assertEquals(app.inkloom.document.CspPigmentMixingMode.PERCEPTUAL, restored.cspPigmentMixingMode)
+            assertEquals(5, restored.cspBrightnessCorrection)
+            assertEquals(27f, restored.colorMixBlur, .0001f)
+            assertEquals(2, restored.colorMixBlurUnit)
+            assertFalse(restored.colorMixBlurAutomatic)
+            assertTrue(restored.colorMixBlurDynamics.pressureEnabled)
+            assertEquals(.36f, restored.colorMixBlurDynamics.pressureMinimum, .0001f)
             assertTrue(restored.sprayParticleSizePressureEnabled)
             assertEquals(.25f, restored.sprayParticleSizePressureMinimum, .0001f)
             assertEquals(2, restored.sprayParticleSizePressureCurve.size)

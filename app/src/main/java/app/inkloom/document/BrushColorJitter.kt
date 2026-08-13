@@ -33,7 +33,13 @@ object BrushColorJitter {
         val tipSubMix = if (stroke.colorJitterPerTipEnabled) {
             stroke.colorJitterSubColorMix.coerceIn(0f, 1f) * parameterAmount(stroke.colorJitterSubColorMixDynamics, point, stroke.renderSeed, stampIndex, SUB_COLOR_SALT)
         } else 0f
-        val cspColor = mixArgb(main, sub, 1f - (1f - strokeSubMix) * (1f - tipSubMix))
+        val cspColor = CspPigmentMixer.mixArgb(
+            main,
+            sub,
+            1f - (1f - strokeSubMix) * (1f - tipSubMix),
+            stroke.cspPigmentMixingMode,
+            stroke.cspBrightnessCorrection,
+        )
         return procreateArgb(cspColor, sub, procreate, point, stroke.renderSeed, stampIndex)
     }
 

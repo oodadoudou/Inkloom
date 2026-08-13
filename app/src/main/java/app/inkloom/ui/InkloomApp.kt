@@ -4965,6 +4965,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     procreateWetMix = activeBrush?.procreateWetMix ?: ProcreateWetMix()
     procreateTaper = activeBrush?.procreateTaper ?: ProcreateTaper()
     brushWatercolor = activeBrush?.watercolor ?: false
+    cspColorMixMode = activeBrush?.cspColorMixMode ?: CspColorMixMode.BLEND
     brushColorMix = activeBrush?.colorMix ?: 0f
     colorMixPressureEnabled = activeBrush?.colorMixPressureEnabled ?: false
     colorMixPressureMinimum = activeBrush?.colorMixPressureMinimum ?: 0f
@@ -4975,6 +4976,13 @@ internal fun InkCanvasView.applyBrushConfiguration(
     paintMixPressureMinimum = activeBrush?.paintMixPressureMinimum ?: 0f
     paintMixPressureCurve = activeBrush?.paintMixPressureCurve.orEmpty()
     paintMixSecondaryDynamics = activeBrush?.paintMixSecondaryDynamics ?: BrushSecondaryDynamics()
+    colorStretch = activeBrush?.colorStretch ?: 0f
+    cspPigmentMixingMode = activeBrush?.cspPigmentMixingMode ?: CspPigmentMixingMode.STANDARD
+    cspBrightnessCorrection = activeBrush?.cspBrightnessCorrection ?: CspBrightnessCorrection.NEUTRAL
+    colorMixBlur = activeBrush?.colorMixBlur ?: 0f
+    colorMixBlurUnit = activeBrush?.colorMixBlurUnit ?: 0
+    colorMixBlurAutomatic = activeBrush?.colorMixBlurAutomatic ?: true
+    colorMixBlurDynamics = activeBrush?.colorMixBlurDynamics ?: BrushParameterDynamics()
     brushSpray = activeBrush?.spray ?: false
     sprayParticleSize = activeBrush?.sprayParticleSize ?: 100f
     sprayParticleSizeUnit = activeBrush?.sprayParticleSizeUnit ?: 0
@@ -9109,17 +9117,42 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                     item { BrushSettingSlider(tr("Blur jitter", "模糊抖动"), draft.procreateWetMix.blurJitter, 0f..1f) { value -> draft = draft.copy(procreateWetMix = draft.procreateWetMix.copy(blurJitter = value), watercolor = true) } }
                     item { BrushSettingSlider(tr("Wetness jitter", "湿度抖动"), draft.procreateWetMix.wetnessJitter, 0f..1f) { value -> draft = draft.copy(procreateWetMix = draft.procreateWetMix.copy(wetnessJitter = value), watercolor = true) } }
                 }
-                item { SettingSwitch("Watercolor approximation", "Uses translucent layered stamps.", draft.watercolor) { draft = draft.copy(watercolor = it) } }
-                item { BrushSettingSlider("Color mix", draft.colorMix, 0f..1f) { draft = draft.copy(colorMix = it) } }
-                if (draft.watercolor) item { SettingSwitch("Pressure controls color mix", null, draft.colorMixPressureEnabled) { draft = draft.copy(colorMixPressureEnabled = it) } }
-                if (draft.watercolor && draft.colorMixPressureEnabled) item { BrushSettingSlider("Minimum color mix", draft.colorMixPressureMinimum, 0f..1f) { draft = draft.copy(colorMixPressureMinimum = it) } }
-                if (draft.watercolor && draft.colorMixPressureEnabled) item { PressureCurveEditor("Color mix pressure", draft.colorMixPressureCurve) { draft = draft.copy(colorMixPressureCurve = it) } }
-                if (draft.watercolor) item { SecondaryDynamicsEditor("Color mix", draft.colorMixSecondaryDynamics) { draft = draft.copy(colorMixSecondaryDynamics = it) } }
-                item { BrushSettingSlider("Paint mix", draft.paintMix, 0f..1f) { draft = draft.copy(paintMix = it) } }
-                if (draft.watercolor) item { SettingSwitch("Pressure controls paint load", null, draft.paintMixPressureEnabled) { draft = draft.copy(paintMixPressureEnabled = it) } }
-                if (draft.watercolor && draft.paintMixPressureEnabled) item { BrushSettingSlider("Minimum paint load", draft.paintMixPressureMinimum, 0f..1f) { draft = draft.copy(paintMixPressureMinimum = it) } }
-                if (draft.watercolor && draft.paintMixPressureEnabled) item { PressureCurveEditor("Paint load pressure", draft.paintMixPressureCurve) { draft = draft.copy(paintMixPressureCurve = it) } }
-                if (draft.watercolor) item { SecondaryDynamicsEditor("Paint load", draft.paintMixSecondaryDynamics) { draft = draft.copy(paintMixSecondaryDynamics = it) } }
+                if (draft.format != BrushFormat.PROCREATE || draft.procreateWetMix.isDisabled()) {
+                    item { Text(tr("CSP Ink · Color mixing", "CSP 墨水 · 颜色混合"), style = MaterialTheme.typography.titleSmall) }
+                    item { Text(tr("Existing pigment is sampled and transported in real time on Raster layers. Vector layers keep editable geometry without pixel mixing.", "在栅格图层上实时采样并运输已有颜料；矢量图层保留可编辑几何，不执行像素混色。"), color = MutedInk, fontSize = 10.sp) }
+                    item { SettingSwitch(tr("Color mixing", "颜色混合"), tr("Matches CSP Blend, Running color and Smear behavior.", "匹配 CSP 的混合、渗色和涂抹行为。"), draft.watercolor) { draft = draft.copy(watercolor = it) } }
+                    if (draft.watercolor) item {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf(
+                                CspColorMixMode.BLEND to tr("Blend", "混合"),
+                                CspColorMixMode.RUNNING_COLOR to tr("Running color", "渗色"),
+                                CspColorMixMode.SMEAR to tr("Smear", "涂抹"),
+                            ).forEach { (mode, label) -> FilterChip(selected = draft.cspColorMixMode == mode, onClick = { draft = draft.copy(cspColorMixMode = mode) }, label = { Text(label) }) }
+                        }
+                    }
+                    if (draft.watercolor) item { BrushSettingSlider(tr("Amount of paint", "颜料量"), draft.colorMix, 0f..1f) { draft = draft.copy(colorMix = it) } }
+                    if (draft.watercolor) item { SettingSwitch(tr("Pressure controls amount", "压力控制颜料量"), null, draft.colorMixPressureEnabled) { draft = draft.copy(colorMixPressureEnabled = it) } }
+                    if (draft.watercolor && draft.colorMixPressureEnabled) item { BrushSettingSlider(tr("Minimum amount", "最小颜料量"), draft.colorMixPressureMinimum, 0f..1f) { draft = draft.copy(colorMixPressureMinimum = it) } }
+                    if (draft.watercolor && draft.colorMixPressureEnabled) item { PressureCurveEditor(tr("Amount pressure", "颜料量压力"), draft.colorMixPressureCurve) { draft = draft.copy(colorMixPressureCurve = it) } }
+                    if (draft.watercolor) item { SecondaryDynamicsEditor(tr("Amount of paint", "颜料量"), draft.colorMixSecondaryDynamics) { draft = draft.copy(colorMixSecondaryDynamics = it) } }
+                    if (draft.watercolor && draft.cspColorMixMode != CspColorMixMode.SMEAR) item { BrushSettingSlider(tr("Density of paint", "颜料浓度"), draft.paintMix, 0f..1f) { draft = draft.copy(paintMix = it) } }
+                    if (draft.watercolor && draft.cspColorMixMode != CspColorMixMode.SMEAR) item { SettingSwitch(tr("Pressure controls density", "压力控制颜料浓度"), null, draft.paintMixPressureEnabled) { draft = draft.copy(paintMixPressureEnabled = it) } }
+                    if (draft.watercolor && draft.cspColorMixMode != CspColorMixMode.SMEAR && draft.paintMixPressureEnabled) item { BrushSettingSlider(tr("Minimum density", "最小颜料浓度"), draft.paintMixPressureMinimum, 0f..1f) { draft = draft.copy(paintMixPressureMinimum = it) } }
+                    if (draft.watercolor && draft.cspColorMixMode != CspColorMixMode.SMEAR && draft.paintMixPressureEnabled) item { PressureCurveEditor(tr("Density pressure", "颜料浓度压力"), draft.paintMixPressureCurve) { draft = draft.copy(paintMixPressureCurve = it) } }
+                    if (draft.watercolor && draft.cspColorMixMode != CspColorMixMode.SMEAR) item { SecondaryDynamicsEditor(tr("Density of paint", "颜料浓度"), draft.paintMixSecondaryDynamics) { draft = draft.copy(paintMixSecondaryDynamics = it) } }
+                    if (draft.watercolor) item { BrushSettingSlider(tr("Color stretch", "色彩延伸"), draft.colorStretch, 0f..1f) { draft = draft.copy(colorStretch = it) } }
+                    if (draft.watercolor) item {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            FilterChip(selected = draft.cspPigmentMixingMode == CspPigmentMixingMode.STANDARD, onClick = { draft = draft.copy(cspPigmentMixingMode = CspPigmentMixingMode.STANDARD) }, label = { Text(tr("Standard", "标准")) })
+                            FilterChip(selected = draft.cspPigmentMixingMode == CspPigmentMixingMode.PERCEPTUAL, onClick = { draft = draft.copy(cspPigmentMixingMode = CspPigmentMixingMode.PERCEPTUAL) }, label = { Text(tr("Perceptual", "感知")) })
+                        }
+                    }
+                    if (draft.watercolor && draft.cspPigmentMixingMode == CspPigmentMixingMode.PERCEPTUAL) item { BrushSettingSlider(tr("Brightness correction", "明度修正"), draft.cspBrightnessCorrection.toFloat(), 1f..5f) { draft = draft.copy(cspBrightnessCorrection = it.toInt().coerceIn(1, 5)) } }
+                    if (draft.watercolor && draft.cspColorMixMode == CspColorMixMode.RUNNING_COLOR) item { SettingSwitch(tr("Automatic blur intensity", "自动模糊强度"), tr("Scales blur with the current brush size.", "模糊随当前笔刷大小缩放。"), draft.colorMixBlurAutomatic) { draft = draft.copy(colorMixBlurAutomatic = it) } }
+                    if (draft.watercolor && draft.cspColorMixMode == CspColorMixMode.RUNNING_COLOR) item { BrushSettingSlider(tr("Blur intensity", "模糊强度"), draft.colorMixBlur, 0f..400f) { draft = draft.copy(colorMixBlur = it) } }
+                    if (draft.watercolor && draft.cspColorMixMode == CspColorMixMode.RUNNING_COLOR && !draft.colorMixBlurAutomatic) item { Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { FilterChip(selected = draft.colorMixBlurUnit == 0, onClick = { draft = draft.copy(colorMixBlurUnit = 0) }, label = { Text("px") }); FilterChip(selected = draft.colorMixBlurUnit == 2, onClick = { draft = draft.copy(colorMixBlurUnit = 2) }, label = { Text("mm") }) } }
+                    if (draft.watercolor && draft.cspColorMixMode == CspColorMixMode.RUNNING_COLOR) item { ParameterDynamicsEditor(tr("Blur intensity dynamics", "模糊强度动态"), tr("Blur intensity", "模糊强度"), draft.colorMixBlurDynamics) { draft = draft.copy(colorMixBlurDynamics = it) } }
+                }
                 item { SettingSwitch("Watercolor edge", "Adds the CSP-style translucent edge pass before the main stamp.", draft.waterEdgeEnabled) { draft = draft.copy(waterEdgeEnabled = it) } }
                 if (draft.waterEdgeEnabled) item { BrushSettingSlider("Edge radius", draft.waterEdgeRadius, 0f..80f) { draft = draft.copy(waterEdgeRadius = it) } }
                 if (draft.waterEdgeEnabled) item { Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { FilterChip(selected = draft.waterEdgeRadiusUnit == 0, onClick = { draft = draft.copy(waterEdgeRadiusUnit = 0) }, label = { Text("px") }); FilterChip(selected = draft.waterEdgeRadiusUnit == 2, onClick = { draft = draft.copy(waterEdgeRadiusUnit = 2) }, label = { Text("mm") }) } }

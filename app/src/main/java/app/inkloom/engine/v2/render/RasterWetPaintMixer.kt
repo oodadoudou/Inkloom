@@ -3,6 +3,7 @@ package app.inkloom.engine.v2.render
 import android.graphics.Bitmap
 import android.graphics.Color
 import app.inkloom.document.InkStroke
+import app.inkloom.document.CspPigmentMixer
 import app.inkloom.document.ProcreateRendering
 import app.inkloom.document.WetMixDynamics
 
@@ -15,20 +16,24 @@ object RasterWetPaintMixer {
         val bottom = (top + paintPatch.height).coerceAtMost(base.height)
         val width = right - left; val height = bottom - top
         if (width <= 0 || height <= 0) return false
-        val pointValues = strokes.flatMap { stroke -> stroke.points.map { point ->
-            if (stroke.procreateWetMix.isDisabled()) {
-                WetMixDynamics.colorMix(stroke, point) to WetMixDynamics.paintMix(stroke, point)
+        var amountTotal = 0.0
+        var pointCount = 0
+        strokes.forEach { stroke -> stroke.points.forEach { point ->
+            amountTotal += if (stroke.procreateWetMix.isDisabled()) {
+                WetMixDynamics.colorMix(stroke, point).toDouble()
             } else {
                 val wet = stroke.procreateWetMix
                 val freshPigment = ((1f - WetMixDynamics.effectiveDilution(stroke, point)) *
                     (.25f + .75f * WetMixDynamics.reservoir(stroke, point)) * (.4f + .6f * wet.attack.coerceIn(0f, 1f))).coerceIn(0f, 1f)
-                freshPigment to 1f
+                freshPigment.toDouble()
             }
+            pointCount += 1
         } }
         val recursiveStrength = strokes.map { ProcreateRendering.wetMixStrength(it.procreateRenderingMode) }
             .average().takeIf(Double::isFinite)?.toFloat()?.coerceIn(0f, 1.35f) ?: 0f
-        val amountOfPaint = pointValues.map(Pair<Float, Float>::first).average().takeIf(Double::isFinite)?.toFloat()?.coerceIn(0f, 1f) ?: 1f
-        val densityOfPaint = pointValues.map(Pair<Float, Float>::second).average().takeIf(Double::isFinite)?.toFloat()?.coerceIn(0f, 1f) ?: 1f
+        val amountOfPaint = (amountTotal / pointCount.coerceAtLeast(1)).takeIf(Double::isFinite)?.toFloat()?.coerceIn(0f, 1f) ?: 1f
+        val representative = strokes.first()
+        val hasLocalPigment = strokes.any { stroke -> stroke.points.any { it.pigmentArgb != null } }
         val basePixels = IntArray(width * height)
         val paintPixels = IntArray(width * height)
         base.getPixels(basePixels, 0, width, left, top, width, height)
@@ -41,12 +46,18 @@ object RasterWetPaintMixer {
             val under = basePixels[index]
             val underAlpha = under ushr 24
             val freshRatio = if (underAlpha == 0) 1f else (amountOfPaint / (1f + recursiveStrength * (1f - amountOfPaint))).coerceIn(0f, 1f)
-            val paintRed = (paint ushr 16) and 0xFF; val paintGreen = (paint ushr 8) and 0xFF; val paintBlue = paint and 0xFF
             val underRed = (under ushr 16) and 0xFF; val underGreen = (under ushr 8) and 0xFF; val underBlue = under and 0xFF
-            val mixedRed = (underRed + (paintRed - underRed) * freshRatio + .5f).toInt().coerceIn(0, 255)
-            val mixedGreen = (underGreen + (paintGreen - underGreen) * freshRatio + .5f).toInt().coerceIn(0, 255)
-            val mixedBlue = (underBlue + (paintBlue - underBlue) * freshRatio + .5f).toInt().coerceIn(0, 255)
-            val sourceAlpha = (patchAlpha / 255f * (.2f + .8f * densityOfPaint) * (1f + recursiveStrength * .12f)).coerceIn(0f, 1f)
+            val mixed = if (hasLocalPigment || underAlpha == 0) paint else CspPigmentMixer.mixArgb(
+                under,
+                paint,
+                freshRatio,
+                representative.cspPigmentMixingMode,
+                representative.cspBrightnessCorrection,
+            )
+            val mixedRed = (mixed ushr 16) and 0xFF; val mixedGreen = (mixed ushr 8) and 0xFF; val mixedBlue = mixed and 0xFF
+            // Density is already evaluated per point by EngineV2BrushEvaluator. Applying it again
+            // here made low-density CSP brushes quadratically faint and diverged from replay.
+            val sourceAlpha = (patchAlpha / 255f * (1f + recursiveStrength * .12f)).coerceIn(0f, 1f)
             val destinationAlpha = underAlpha / 255f
             val outputAlpha = sourceAlpha + destinationAlpha * (1f - sourceAlpha)
             if (outputAlpha <= .0001f) continue

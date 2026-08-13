@@ -3,6 +3,9 @@ package app.inkloom.importer
 import android.content.Context
 import app.inkloom.document.CspTextureComposite
 import app.inkloom.document.CspAntiAlias
+import app.inkloom.document.CspBrightnessCorrection
+import app.inkloom.document.CspColorMixMode
+import app.inkloom.document.CspPigmentMixingMode
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
@@ -271,6 +274,7 @@ class BrushMetadataStore(
                         procreateWetMix = procreateWetMix("procreateWetMix"),
                         procreateTaper = procreateTaper("procreateTaper"),
                         watercolor = item.optBoolean("watercolor", false),
+                        cspColorMixMode = CspColorMixMode.normalize(item.optInt("cspColorMixMode", CspColorMixMode.BLEND)),
                         colorMix = item.optDouble("colorMix", 0.0).toFloat(),
                         colorMixPressureEnabled = item.optBoolean("colorMixPressureEnabled", false),
                         colorMixPressureMinimum = item.optDouble("colorMixPressureMinimum", 0.0).toFloat().coerceIn(0f, 1f),
@@ -281,6 +285,13 @@ class BrushMetadataStore(
                         paintMixPressureMinimum = item.optDouble("paintMixPressureMinimum", 0.0).toFloat().coerceIn(0f, 1f),
                         paintMixPressureCurve = curve("paintMixPressureCurve"),
                         paintMixSecondaryDynamics = secondary("paintMixSecondaryDynamics"),
+                        colorStretch = item.optDouble("colorStretch", 0.0).toFloat().coerceIn(0f, 1f),
+                        cspPigmentMixingMode = CspPigmentMixingMode.normalize(item.optInt("cspPigmentMixingMode", CspPigmentMixingMode.STANDARD)),
+                        cspBrightnessCorrection = CspBrightnessCorrection.normalize(item.optInt("cspBrightnessCorrection", CspBrightnessCorrection.NEUTRAL)),
+                        colorMixBlur = item.optDouble("colorMixBlur", 0.0).toFloat().coerceIn(0f, 400f),
+                        colorMixBlurUnit = item.optInt("colorMixBlurUnit", 0).coerceIn(0, 2),
+                        colorMixBlurAutomatic = item.optBoolean("colorMixBlurAutomatic", true),
+                        colorMixBlurDynamics = parameterDynamics("colorMixBlurDynamics"),
                         spray = item.optBoolean("spray", false),
                         sprayParticleSize = item.optDouble("sprayParticleSize", 100.0).toFloat().coerceIn(.01f, 4000f),
                         sprayParticleSizeUnit = item.optInt("sprayParticleSizeUnit", 0),
@@ -506,6 +517,7 @@ class BrushMetadataStore(
                     .put("procreateWetMix", procreateWetMixJson(brush.procreateWetMix))
                     .put("procreateTaper", procreateTaperJson(brush.procreateTaper))
                     .put("watercolor", brush.watercolor)
+                    .put("cspColorMixMode", brush.cspColorMixMode)
                     .put("colorMix", brush.colorMix)
                     .put("colorMixPressureEnabled", brush.colorMixPressureEnabled)
                     .put("colorMixPressureMinimum", brush.colorMixPressureMinimum)
@@ -516,6 +528,13 @@ class BrushMetadataStore(
                     .put("paintMixPressureMinimum", brush.paintMixPressureMinimum)
                     .put("paintMixPressureCurve", curveJson(brush.paintMixPressureCurve))
                     .put("paintMixSecondaryDynamics", secondaryJson(brush.paintMixSecondaryDynamics))
+                    .put("colorStretch", brush.colorStretch)
+                    .put("cspPigmentMixingMode", brush.cspPigmentMixingMode)
+                    .put("cspBrightnessCorrection", brush.cspBrightnessCorrection)
+                    .put("colorMixBlur", brush.colorMixBlur)
+                    .put("colorMixBlurUnit", brush.colorMixBlurUnit)
+                    .put("colorMixBlurAutomatic", brush.colorMixBlurAutomatic)
+                    .put("colorMixBlurDynamics", parameterDynamicsJson(brush.colorMixBlurDynamics))
                     .put("spray", brush.spray)
                     .put("sprayParticleSize", brush.sprayParticleSize)
                     .put("sprayParticleSizeUnit", brush.sprayParticleSizeUnit)

@@ -167,6 +167,14 @@ class InkloomBrushPackageTest {
                 paintMixPressureEnabled = true,
                 paintMixPressureMinimum = .3f,
                 paintMixSecondaryDynamics = BrushSecondaryDynamics(velocityEnabled = true, velocityMinimum = .4f),
+                cspColorMixMode = app.inkloom.document.CspColorMixMode.RUNNING_COLOR,
+                colorStretch = .68f,
+                cspPigmentMixingMode = app.inkloom.document.CspPigmentMixingMode.PERCEPTUAL,
+                cspBrightnessCorrection = 4,
+                colorMixBlur = 24f,
+                colorMixBlurUnit = 2,
+                colorMixBlurAutomatic = false,
+                colorMixBlurDynamics = BrushParameterDynamics(pressureEnabled = true, pressureMinimum = .29f),
                 waterEdgeEnabled = true,
                 waterEdgeOpacity = .35f,
                 sizePressureCurve = listOf(BrushCurvePoint(0f, .1f), BrushCurvePoint(1f, .95f)),
@@ -270,6 +278,15 @@ class InkloomBrushPackageTest {
             assertEquals(2, restored.dualTipFlipVerticalMode)
             assertTrue(restored.dualBlendTipsWithDarken)
             assertTrue(restored.watercolor)
+            assertEquals(app.inkloom.document.CspColorMixMode.RUNNING_COLOR, restored.cspColorMixMode)
+            assertEquals(.68f, restored.colorStretch, .0001f)
+            assertEquals(app.inkloom.document.CspPigmentMixingMode.PERCEPTUAL, restored.cspPigmentMixingMode)
+            assertEquals(4, restored.cspBrightnessCorrection)
+            assertEquals(24f, restored.colorMixBlur, .0001f)
+            assertEquals(2, restored.colorMixBlurUnit)
+            assertFalse(restored.colorMixBlurAutomatic)
+            assertTrue(restored.colorMixBlurDynamics.pressureEnabled)
+            assertEquals(.29f, restored.colorMixBlurDynamics.pressureMinimum, .0001f)
             assertEquals(17f, restored.colorJitterHueDegrees, .0001f)
             assertEquals(8f, restored.colorJitterSaturation, .0001f)
             assertEquals(-5f, restored.colorJitterValue, .0001f)

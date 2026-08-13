@@ -7,6 +7,8 @@ import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
 import app.inkloom.document.ProcreateRenderingMode
 import app.inkloom.document.ProcreateWetMix
+import app.inkloom.document.CspColorMixMode
+import app.inkloom.document.WetMixDynamics
 import app.inkloom.engine.v2.render.RasterWetPaintMixer
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -51,7 +53,8 @@ class RasterWetPaintMixerTest {
     @Test fun amountOfPaintControlsFreshPigmentRatioAndDensityControlsAlphaDeposit() {
         fun result(amount: Float, density: Float): Int {
             val base = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.argb(100, 0, 0, 255)) }
-            val patch = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+            val depositedAlpha = (WetMixDynamics.alphaMultiplier(true, amount, density) * 255f).toInt()
+            val patch = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.argb(depositedAlpha, 255, 0, 0)) }
             val stroke = InkStroke(watercolor = true, colorMix = amount, paintMix = density, points = listOf(StrokePoint(.5f, .5f)))
             RasterWetPaintMixer.composite(base, patch, 0, 0, listOf(stroke))
             return base.getPixel(4, 4).also { patch.recycle(); base.recycle() }
@@ -62,6 +65,24 @@ class RasterWetPaintMixerTest {
         val lowDensity = result(.8f, .1f)
         val highDensity = result(.8f, 1f)
         assertTrue(Color.alpha(highDensity) > Color.alpha(lowDensity))
+    }
+
+    @Test fun smearIgnoresDensityAndDepositsTheRealtimePickupColor() {
+        fun result(density: Float): Int {
+            val base = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLUE) }
+            val patch = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.GREEN) }
+            val stroke = InkStroke(
+                watercolor = true,
+                cspColorMixMode = CspColorMixMode.SMEAR,
+                colorMix = .2f,
+                paintMix = density,
+                points = listOf(StrokePoint(.5f, .5f, pigmentArgb = Color.GREEN.toUInt().toLong())),
+            )
+            RasterWetPaintMixer.composite(base, patch, 0, 0, listOf(stroke))
+            return base.getPixel(4, 4).also { patch.recycle(); base.recycle() }
+        }
+        assertTrue(result(0f) == result(1f))
+        assertTrue(Color.green(result(0f)) > Color.blue(result(0f)))
     }
 
     @Test fun recursiveRenderingModesIncreaseExistingPigmentInteraction() {
