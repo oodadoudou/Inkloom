@@ -1,9 +1,9 @@
-package app.inkloom.engine.v2.render
+package app.inkloom.engine.v3.render
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-class EngineV2StampBatchRendererTest {
+class BrushProgramBatchRendererTest {
     @Test
     fun randomAccessMatchesJavaRandomAcrossLongStroke() {
         val seeds = listOf(0L, 1L, -1L, 0x49A2B31DL, Int.MAX_VALUE.toLong())
@@ -16,7 +16,7 @@ class EngineV2StampBatchRendererTest {
                     reference.nextFloat()
                     nextIndex++
                 }
-                assertEquals(reference.nextFloat(), EngineV2StampBatchRenderer.legacyRandomFloatAt(seed, index), 0f)
+                assertEquals(reference.nextFloat(), BrushProgramBatchRenderer.legacyRandomFloatAt(seed, index), 0f)
                 nextIndex++
             }
         }

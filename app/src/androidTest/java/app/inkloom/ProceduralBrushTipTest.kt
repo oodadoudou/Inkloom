@@ -4,7 +4,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.document.BrushEngineKind
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
-import app.inkloom.engine.v2.render.ProceduralBrushTip
+import app.inkloom.engine.v3.brush.ProceduralBrushTip
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

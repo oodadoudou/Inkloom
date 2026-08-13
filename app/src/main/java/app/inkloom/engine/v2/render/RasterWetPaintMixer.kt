@@ -55,7 +55,7 @@ object RasterWetPaintMixer {
                 representative.cspBrightnessCorrection,
             )
             val mixedRed = (mixed ushr 16) and 0xFF; val mixedGreen = (mixed ushr 8) and 0xFF; val mixedBlue = mixed and 0xFF
-            // Density is already evaluated per point by EngineV2BrushEvaluator. Applying it again
+            // Density is already evaluated per point by BrushProgramRuntime. Applying it again
             // here made low-density CSP brushes quadratically faint and diverged from replay.
             val sourceAlpha = (patchAlpha / 255f * (1f + recursiveStrength * .12f)).coerceIn(0f, 1f)
             val destinationAlpha = underAlpha / 255f

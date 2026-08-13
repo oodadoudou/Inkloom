@@ -14,7 +14,7 @@ import app.inkloom.document.InkPage
 import app.inkloom.document.InkStroke
 import app.inkloom.document.PageBackground
 import app.inkloom.document.StrokePoint
-import app.inkloom.engine.v2.brush.EngineV2BrushEvaluator
+import app.inkloom.engine.v3.brush.BrushProgramRuntime
 import app.inkloom.ui.InkCanvasView
 import java.io.File
 import org.junit.Assert.assertNotEquals
@@ -110,8 +110,8 @@ class SprayDynamicsRenderingTest {
             val exported = renderExport(dynamic)
             val live = renderLive(dynamic, exported.height)
             val constant = renderExport(dynamic.copy(spacingSecondaryDynamics = BrushSecondaryDynamics()))
-            val dynamicCount = EngineV2BrushEvaluator.sampleStampPoints(dynamic, 400f, exported.height.toFloat(), dual = false).size
-            val constantCount = EngineV2BrushEvaluator.sampleStampPoints(dynamic.copy(spacingSecondaryDynamics = BrushSecondaryDynamics()), 400f, exported.height.toFloat(), dual = false).size
+            val dynamicCount = BrushProgramRuntime.sampleStampPoints(dynamic, 400f, exported.height.toFloat(), dual = false).size
+            val constantCount = BrushProgramRuntime.sampleStampPoints(dynamic.copy(spacingSecondaryDynamics = BrushSecondaryDynamics()), 400f, exported.height.toFloat(), dual = false).size
             try {
                 assertNotEquals("Speed spacing did not change the sampled stamp count", constantCount, dynamicCount)
                 assertTrue("Live/export speed spacing diverged", maximumRedDifference(exported, live) <= 3)

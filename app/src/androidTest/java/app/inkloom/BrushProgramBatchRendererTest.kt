@@ -7,14 +7,14 @@ import android.graphics.Paint
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
-import app.inkloom.engine.v2.render.EngineV2StampBatchRenderer
-import app.inkloom.engine.v2.render.ProceduralBrushTip
+import app.inkloom.engine.v3.render.BrushProgramBatchRenderer
+import app.inkloom.engine.v3.brush.ProceduralBrushTip
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
-class EngineV2StampBatchRendererTest {
+class BrushProgramBatchRendererTest {
     @Test
     fun batchedGraphitePreservesPerDabPressureOpacity() {
         val tip = requireNotNull(
@@ -44,7 +44,7 @@ class EngineV2StampBatchRendererTest {
             )
 
             assertTrue(
-                EngineV2StampBatchRenderer.draw(
+                BrushProgramBatchRenderer.draw(
                     Canvas(output),
                     Paint(Paint.ANTI_ALIAS_FLAG),
                     stroke,

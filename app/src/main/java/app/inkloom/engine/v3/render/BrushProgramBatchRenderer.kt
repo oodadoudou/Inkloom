@@ -1,4 +1,4 @@
-package app.inkloom.engine.v2.render
+package app.inkloom.engine.v3.render
 
 import android.graphics.Bitmap
 import android.graphics.BitmapShader
@@ -20,12 +20,12 @@ import app.inkloom.document.StrokeStampSampler
 import app.inkloom.document.StrokeTaper
 import app.inkloom.document.StrokeFalloff
 import app.inkloom.document.StrokePathJitter
-import app.inkloom.engine.v2.brush.EngineV2BrushEvaluator
+import app.inkloom.engine.v3.brush.BrushProgramRuntime
 import kotlin.math.cos
 import kotlin.math.sin
 
 /** One Canvas submission for all ordinary single-tip dabs in a frame. */
-internal object EngineV2StampBatchRenderer {
+internal object BrushProgramBatchRenderer {
     fun draw(
         canvas: Canvas,
         paint: Paint,
@@ -51,12 +51,13 @@ internal object EngineV2StampBatchRenderer {
             StrokeTaper.evaluate(stroke, sampledPoints, width, height)
         } else null
         val dynamicAlpha = hasDynamicAlpha(stroke) || falloff != null || taper?.opacity != null
+        val program = BrushProgramRuntime.compile(stroke)
         var offset = 0
         for (index in safeStart until sampledPoints.size) {
             val point = sampledPoints[index]
             val baseX = point.x * width
             val baseY = point.y * height
-            val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
+            val dynamics = program.evaluateDab(stroke, point, dual = false)
             val depositedAlpha = ProcreateRendering.depositedAlpha(
                 stroke.procreateRenderingMode,
                 stroke.flow * dynamics.depositedAlpha * (falloff?.get(index) ?: 1f) * (taper?.opacity?.get(index) ?: 1f),

@@ -15,9 +15,9 @@ import android.graphics.PorterDuffColorFilter
 import android.graphics.PorterDuffXfermode
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
-import app.inkloom.engine.v2.brush.EngineV2BrushEvaluator
-import app.inkloom.engine.v2.render.EngineV2StampBatchRenderer
-import app.inkloom.engine.v2.render.ProceduralBrushTip
+import app.inkloom.engine.v3.brush.BrushProgramRuntime
+import app.inkloom.engine.v3.render.BrushProgramBatchRenderer
+import app.inkloom.engine.v3.brush.ProceduralBrushTip
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Build
@@ -907,7 +907,7 @@ class DocumentAssetService(private val context: Context) {
                 val falloff = StrokeFalloff.factors(stroke.points, width.toFloat(), height.toFloat(), stroke.width * width / 1600f, stroke.strokeFalloff)
                 if (stroke.points.size == 1) {
                     val point = stroke.points.first()
-                    val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
+                    val dynamics = BrushProgramRuntime.evaluateDab(stroke, point)
                     val strokeWidth = stroke.width * width / 1600f * (taper.size.firstOrNull() ?: 1f) * dynamics.size
                     val alpha = (ProcreateRendering.depositedAlpha(stroke.procreateRenderingMode, stroke.flow * dynamics.depositedAlpha * (falloff?.firstOrNull() ?: 1f) * (taper.opacity?.firstOrNull() ?: 1f)) * 255).toInt().coerceIn(0, 255)
                     drawLinePoint(canvas, paint, stroke, point, point.x * width, point.y * height, strokeWidth, alpha, width)
@@ -915,7 +915,7 @@ class DocumentAssetService(private val context: Context) {
                     val point = midpoint(start, end)
                     val taperFactor = (taper.size[pointIndex] + taper.size[pointIndex + 1]) / 2f
                     val taperOpacity = taper.opacity?.let { (it[pointIndex] + it[pointIndex + 1]) / 2f } ?: 1f
-                    val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
+                    val dynamics = BrushProgramRuntime.evaluateDab(stroke, point)
                     val strokeWidth = stroke.width * width / 1600f * taperFactor * dynamics.size
                     val falloffFactor = falloff?.let { (it[pointIndex] + it[pointIndex + 1]) / 2f } ?: 1f
                     val alpha = (ProcreateRendering.depositedAlpha(stroke.procreateRenderingMode, stroke.flow * dynamics.depositedAlpha * falloffFactor * taperOpacity) * 255).toInt().coerceIn(0, 255)
@@ -947,10 +947,10 @@ class DocumentAssetService(private val context: Context) {
         val rotationRandom = java.util.Random(stroke.renderSeed.toLong() xor 0x49A2B31DL)
         val dynamicGrainTips = mutableMapOf<String, Bitmap>()
         paint.colorFilter = PorterDuffColorFilter(stroke.colorArgb.toInt(), PorterDuff.Mode.SRC_IN)
-        val sampledPoints = EngineV2BrushEvaluator.sampleStampPoints(stroke, width.toFloat(), height.toFloat(), dual = false)
+        val sampledPoints = BrushProgramRuntime.sampleStampPoints(stroke, width.toFloat(), height.toFloat(), dual = false)
         val falloff = StrokeFalloff.factors(sampledPoints, width.toFloat(), height.toFloat(), stroke.width * width / 1600f, stroke.strokeFalloff)
         val taper = StrokeTaper.evaluate(stroke, sampledPoints, width.toFloat(), height.toFloat())
-        if (tips.size == 1 && EngineV2StampBatchRenderer.draw(canvas, paint, stroke, tips.single(), sampledPoints, 0, width.toFloat(), height.toFloat())) {
+        if (tips.size == 1 && BrushProgramBatchRenderer.draw(canvas, paint, stroke, tips.single(), sampledPoints, 0, width.toFloat(), height.toFloat())) {
             paint.blendMode = null
             if (compositeLayer >= 0) canvas.restoreToCount(compositeLayer)
             paint.colorFilter = null
@@ -962,7 +962,7 @@ class DocumentAssetService(private val context: Context) {
             val sequenceIndex = index * 16 + repeatIndex
             val tipIndex = BrushTipSequence.index(stroke.tipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed, stroke.ribbon) ?: return@stamp
             val x = point.x * width; val y = point.y * height
-            val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
+            val dynamics = BrushProgramRuntime.evaluateDab(stroke, point)
             val brushDiameter = (stroke.width * width / 1600f * taper.size[index] * dynamics.size).coerceAtLeast(.25f)
             val diameter = if (stroke.spray) SprayGeometry.particleDiameter(brushDiameter, SprayDynamics.particleSize(stroke, point), stroke.sprayParticleSizeUnit, stroke.sprayParticleSizeSyncBrushSize, width.toFloat()) else brushDiameter
             val offset = if (stroke.spray) SprayGeometry.offset(brushDiameter / 2f * stroke.spraySpread.coerceIn(0f, 4f), scatterRandom.nextFloat(), scatterRandom.nextFloat(), stroke.sprayBias) else SprayOffset(0f, 0f)
@@ -1098,7 +1098,7 @@ class DocumentAssetService(private val context: Context) {
         paint.blendMode = if (stroke.dualBlendTipsWithDarken) BlendMode.DARKEN else null
         val scatterRandom = java.util.Random(stroke.renderSeed.toLong() xor DUAL_SCATTER_SEED)
         val rotationRandom = java.util.Random(stroke.renderSeed.toLong() xor DUAL_ROTATION_SEED)
-        val sampledPoints = EngineV2BrushEvaluator.sampleStampPoints(stroke, width.toFloat(), height.toFloat(), dual = true)
+        val sampledPoints = BrushProgramRuntime.sampleStampPoints(stroke, width.toFloat(), height.toFloat(), dual = true)
         val taper = StrokeTaper.evaluate(stroke, sampledPoints, width.toFloat(), height.toFloat())
         val falloff = StrokeFalloff.factors(sampledPoints, width.toFloat(), height.toFloat(), stroke.width * width / 1600f, stroke.strokeFalloff)
         val dualTipPaths = stroke.dualTipAssetPaths.ifEmpty { stroke.tipAssetPaths.ifEmpty { listOfNotNull(stroke.tipAssetPath) } }
@@ -1110,7 +1110,7 @@ class DocumentAssetService(private val context: Context) {
             val sequenceIndex = index * 16 + repeatIndex
             val tipIndex = BrushTipSequence.index(stroke.dualTipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed xor DUAL_SEQUENCE_SEED, stroke.dualRibbon) ?: return@stamp
             val baseTip = tips[tipIndex]
-            val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point, dual = true)
+            val dynamics = BrushProgramRuntime.evaluateDab(stroke, point, dual = true)
             val brushDiameter = (stroke.width * width / 1600f * stroke.dualSizeScale.coerceIn(.01f, 8f) * taper.size[index] * dynamics.size).coerceAtLeast(.25f)
             val diameter = if (stroke.dualSpray) SprayGeometry.particleDiameter(brushDiameter, SprayDynamics.dualParticleSize(stroke, point), stroke.dualSprayParticleSizeUnit, stroke.dualSprayParticleSizeSyncBrushSize, width.toFloat()) else brushDiameter
             val offset = if (stroke.dualSpray) SprayGeometry.offset(brushDiameter / 2f * stroke.dualSpraySpread.coerceIn(0f, 4f), scatterRandom.nextFloat(), scatterRandom.nextFloat(), stroke.dualSprayBias) else SprayOffset(0f, 0f)
@@ -1215,7 +1215,7 @@ class DocumentAssetService(private val context: Context) {
     private fun brushBlurMask(stroke: InkStroke, point: StrokePoint, diameter: Float, baseDiameter: Float, pageWidth: Float): BlurMaskFilter? {
         val gradation = stroke.tiltGradation.coerceIn(0f, 1f) * BrushTilt.response(point, stroke.tiltGradationStart)
         val radius = BrushBlur.radiusPixels(stroke.blur, stroke.blurUnit, stroke.blurLinkedToSize, diameter, baseDiameter, pageWidth) *
-            EngineV2BrushEvaluator.evaluateDab(stroke, point).blur + diameter * gradation * .22f
+            BrushProgramRuntime.evaluateDab(stroke, point).blur + diameter * gradation * .22f
         return BrushBlur.quantizedRadius(radius).takeIf { it > 0f }?.let { BlurMaskFilter(it, BlurMaskFilter.Blur.NORMAL) }
     }
 

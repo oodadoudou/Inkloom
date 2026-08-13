@@ -30,12 +30,12 @@ import androidx.annotation.WorkerThread
 import androidx.annotation.VisibleForTesting
 import app.inkloom.engine.v2.traceEngineV2
 import app.inkloom.engine.v3.input.NativeStrokeSession
-import app.inkloom.engine.v2.brush.EngineV2BrushEvaluator
+import app.inkloom.engine.v3.brush.BrushProgramRuntime
 import app.inkloom.engine.v3.render.ActiveStrokeCompositor
 import app.inkloom.engine.v3.scene.SparseAlphaMask
 import app.inkloom.engine.v3.scene.SparseTileScene
-import app.inkloom.engine.v2.render.EngineV2StampBatchRenderer
-import app.inkloom.engine.v2.render.ProceduralBrushTip
+import app.inkloom.engine.v3.render.BrushProgramBatchRenderer
+import app.inkloom.engine.v3.brush.ProceduralBrushTip
 import java.util.LinkedHashMap
 import java.util.concurrent.Executors
 import app.inkloom.document.InkStroke
@@ -1718,7 +1718,7 @@ class InkCanvasView(context: Context) : View(context) {
         val falloff = app.inkloom.document.StrokeFalloff.factors(stroke.points, width.toFloat(), height.toFloat(), stroke.width * scale, stroke.strokeFalloff)
         val contentClip = canvas.clipBounds
         if (stroke.points.size == 1) {
-            val point = stroke.points.first(); paint.color = (point.pigmentArgb ?: stroke.colorArgb).toInt(); val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point); val strokeWidth = stroke.width * scale * (taper?.size?.firstOrNull() ?: 1f) * dynamics.size; val alpha = (ProcreateRendering.depositedAlpha(stroke.procreateRenderingMode, stroke.flow * dynamics.depositedAlpha * (falloff?.firstOrNull() ?: 1f) * (taper?.opacity?.firstOrNull() ?: 1f)) * 255).toInt().coerceIn(0, 255); drawLinePoint(canvas, stroke, point, point.x * width, point.y * height, strokeWidth, alpha)
+            val point = stroke.points.first(); paint.color = (point.pigmentArgb ?: stroke.colorArgb).toInt(); val dynamics = BrushProgramRuntime.evaluateDab(stroke, point); val strokeWidth = stroke.width * scale * (taper?.size?.firstOrNull() ?: 1f) * dynamics.size; val alpha = (ProcreateRendering.depositedAlpha(stroke.procreateRenderingMode, stroke.flow * dynamics.depositedAlpha * (falloff?.firstOrNull() ?: 1f) * (taper?.opacity?.firstOrNull() ?: 1f)) * 255).toInt().coerceIn(0, 255); drawLinePoint(canvas, stroke, point, point.x * width, point.y * height, strokeWidth, alpha)
         } else for (index in 0 until stroke.points.lastIndex) {
             val start = stroke.points[index]
             val end = stroke.points[index + 1]
@@ -1726,7 +1726,7 @@ class InkCanvasView(context: Context) : View(context) {
             paint.color = mixArgb(start.pigmentArgb ?: stroke.colorArgb, end.pigmentArgb ?: stroke.colorArgb, .5f).toInt()
             val taperFactor = taper?.size?.let { (it[index] + it[index + 1]) / 2f } ?: 1f
             val taperOpacity = taper?.opacity?.let { (it[index] + it[index + 1]) / 2f } ?: 1f
-            val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
+            val dynamics = BrushProgramRuntime.evaluateDab(stroke, point)
             val strokeWidth = stroke.width * scale * taperFactor * dynamics.size
             val falloffFactor = falloff?.let { (it[index] + it[index + 1]) / 2f } ?: 1f
             val alpha = (ProcreateRendering.depositedAlpha(stroke.procreateRenderingMode, stroke.flow * dynamics.depositedAlpha * falloffFactor * taperOpacity) * 255).toInt().coerceIn(0, 255)
@@ -1990,7 +1990,7 @@ class InkCanvasView(context: Context) : View(context) {
         val falloff = app.inkloom.document.StrokeFalloff.factors(sampledPoints, width.toFloat(), height.toFloat(), stroke.width * referenceScale, stroke.strokeFalloff)
         val safeStart = stampStartIndex.coerceIn(0, sampledPoints.size)
         val containsLocalPigment = stroke.points.any { it.pigmentArgb != null }
-        if (tips.size == 1 && EngineV2StampBatchRenderer.draw(
+        if (tips.size == 1 && BrushProgramBatchRenderer.draw(
                 canvas,
                 paint,
                 stroke,
@@ -2021,7 +2021,7 @@ class InkCanvasView(context: Context) : View(context) {
             val stampsAtPoint = BrushStampCount.resolve(stroke.stampCount, stroke.stampCountJitter, stroke.renderSeed, index)
             val x = point.x * width
             val y = point.y * height
-            val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
+            val dynamics = BrushProgramRuntime.evaluateDab(stroke, point)
             val brushDiameter = (stroke.width * referenceScale * (taper?.size?.get(index) ?: 1f) * dynamics.size).coerceAtLeast(.25f)
             val diameter = if (stroke.spray) SprayGeometry.particleDiameter(brushDiameter, SprayDynamics.particleSize(stroke, point), stroke.sprayParticleSizeUnit, stroke.sprayParticleSizeSyncBrushSize, width.toFloat()) else brushDiameter
             val scatterRadius = if (stroke.spray) brushDiameter / 2f * stroke.spraySpread.coerceIn(0f, 4f) else 0f
@@ -2126,21 +2126,21 @@ class InkCanvasView(context: Context) : View(context) {
     private fun primaryStampedPoints(stroke: InkStroke): List<StrokePoint> {
         if (isCurrentActiveStroke(stroke)) {
             val sampler = activePrimarySamples.getOrPut(stroke.id) {
-                EngineV2BrushEvaluator.newIncrementalSampler(stroke, width.toFloat(), height.toFloat(), dual = false)
+                BrushProgramRuntime.newIncrementalSampler(stroke, width.toFloat(), height.toFloat(), dual = false)
             }
-            return EngineV2BrushEvaluator.updateIncrementalSampler(sampler, stroke, width.toFloat(), dual = false)
+            return BrushProgramRuntime.updateIncrementalSampler(sampler, stroke, width.toFloat(), dual = false)
         }
-        return EngineV2BrushEvaluator.sampleStampPoints(stroke, width.toFloat(), height.toFloat(), dual = false)
+        return BrushProgramRuntime.sampleStampPoints(stroke, width.toFloat(), height.toFloat(), dual = false)
     }
 
     private fun dualStampedPoints(stroke: InkStroke): List<StrokePoint> {
         if (isCurrentActiveStroke(stroke)) {
             val sampler = activeDualSamples.getOrPut(stroke.id) {
-                EngineV2BrushEvaluator.newIncrementalSampler(stroke, width.toFloat(), height.toFloat(), dual = true)
+                BrushProgramRuntime.newIncrementalSampler(stroke, width.toFloat(), height.toFloat(), dual = true)
             }
-            return EngineV2BrushEvaluator.updateIncrementalSampler(sampler, stroke, width.toFloat(), dual = true)
+            return BrushProgramRuntime.updateIncrementalSampler(sampler, stroke, width.toFloat(), dual = true)
         }
-        return EngineV2BrushEvaluator.sampleStampPoints(stroke, width.toFloat(), height.toFloat(), dual = true)
+        return BrushProgramRuntime.sampleStampPoints(stroke, width.toFloat(), height.toFloat(), dual = true)
     }
 
     private fun isCurrentActiveStroke(stroke: InkStroke): Boolean =
@@ -2352,7 +2352,7 @@ class InkCanvasView(context: Context) : View(context) {
         for (index in safeStart until sampledPoints.size) {
             val point = sampledPoints[index]
             val stampsAtPoint = BrushStampCount.resolve(stroke.dualStampCount, stroke.dualStampCountJitter, stroke.renderSeed, index, dual = true)
-            val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point, dual = true)
+            val dynamics = BrushProgramRuntime.evaluateDab(stroke, point, dual = true)
             val brushDiameter = (stroke.width * referenceScale * stroke.dualSizeScale.coerceIn(.01f, 8f) * (taper?.size?.get(index) ?: 1f) * dynamics.size).coerceAtLeast(.25f)
             val diameter = if (stroke.dualSpray) SprayGeometry.particleDiameter(brushDiameter, SprayDynamics.dualParticleSize(stroke, point), stroke.dualSprayParticleSizeUnit, stroke.dualSprayParticleSizeSyncBrushSize, width.toFloat()) else brushDiameter
             val x = point.x * width
@@ -2457,7 +2457,7 @@ class InkCanvasView(context: Context) : View(context) {
         val radii = FloatArray(points.size)
         var alphaSum = 0f
         points.forEachIndexed { index, point ->
-            val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point)
+            val dynamics = BrushProgramRuntime.evaluateDab(stroke, point)
             radii[index] = stroke.width * scale * (taper?.size?.get(index) ?: 1f) * dynamics.size * .5f
             alphaSum += stroke.flow * dynamics.depositedAlpha * (taper?.opacity?.get(index) ?: 1f)
         }
@@ -2512,7 +2512,7 @@ class InkCanvasView(context: Context) : View(context) {
     private fun brushBlurMask(stroke: InkStroke, point: StrokePoint, diameter: Float, baseDiameter: Float, pageWidth: Float): BlurMaskFilter? {
         val gradation = stroke.tiltGradation.coerceIn(0f, 1f) * app.inkloom.document.BrushTilt.response(point, stroke.tiltGradationStart)
         val radius = BrushBlur.radiusPixels(stroke.blur, stroke.blurUnit, stroke.blurLinkedToSize, diameter, baseDiameter, pageWidth) *
-            EngineV2BrushEvaluator.evaluateDab(stroke, point).blur + diameter * gradation * .22f +
+            BrushProgramRuntime.evaluateDab(stroke, point).blur + diameter * gradation * .22f +
             diameter * app.inkloom.document.WetMixDynamics.blurAmount(stroke, point) * .18f
         return cachedBlurMask(radius)
     }
@@ -5747,7 +5747,7 @@ class InkCanvasView(context: Context) : View(context) {
             wetPaintPickupColors = MutableList(currentPositions.size) { null }
             return
         }
-        val dynamics = EngineV2BrushEvaluator.evaluateDab(template, point)
+        val dynamics = BrushProgramRuntime.evaluateDab(template, point)
         val radius = (template.width.coerceIn(.5f, 800f) / REFERENCE_WIDTH * raster.width * dynamics.size * .5f).coerceAtLeast(.5f)
         val cspMixing = template.watercolor && template.procreateWetMix.isDisabled()
         val amountOfPaint = if (cspMixing) app.inkloom.document.WetMixDynamics.colorMix(template, point) else 1f

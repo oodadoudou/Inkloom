@@ -1,7 +1,7 @@
 package app.inkloom.engine.v3.render
 
 import app.inkloom.document.InkStroke
-import app.inkloom.engine.v2.render.ProceduralBrushTip
+import app.inkloom.engine.v3.brush.ProceduralBrushTip
 
 /** Stateful front-buffer planner. Its state is owned by the render callback thread. */
 internal class ActiveStrokeTailPlanner {
