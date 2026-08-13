@@ -24,6 +24,7 @@ object BrushSemanticMapper {
             exact("${brush.format.name}.shape", "StampRasterEngine.tipTexture")
         }
         if (brush.grainPreviewPath != null) exact("${brush.format.name}.grain", "StampRasterEngine.grainTexture")
+        if (brush.dualGrainPreviewPath != null) exact("${brush.format.name}.dualGrain", "DualBrush.secondaryGrainTexture")
         if (brush.format == BrushFormat.PROCREATE) approximate(
             "PROCREATE.renderingMode",
             "StampRasterEngine.${brush.procreateRenderingMode.name}",

@@ -39,6 +39,7 @@ class InkloomBrushPackage(private val assetDirectory: File) {
             brush.tipPreviewPath?.let(::add)
             addAll(brush.tipPreviewPaths)
             addAll(brush.dualTipPreviewPaths)
+            brush.dualGrainPreviewPath?.let(::add)
             brush.grainPreviewPath?.let(::add)
         }.filter(String::isNotBlank)
         var expandedBytes = 0L
@@ -61,6 +62,7 @@ class InkloomBrushPackage(private val assetDirectory: File) {
                 tipPreviewPath = portablePath(brush.tipPreviewPath),
                 tipPreviewPaths = brush.tipPreviewPaths.mapNotNull(::portablePath),
                 dualTipPreviewPaths = brush.dualTipPreviewPaths.mapNotNull(::portablePath),
+                dualGrain = brush.dualGrain.copy(previewPath = portablePath(brush.dualGrainPreviewPath)),
                 grainPreviewPath = portablePath(brush.grainPreviewPath),
                 favorite = false,
                 hidden = false,
@@ -95,6 +97,7 @@ class InkloomBrushPackage(private val assetDirectory: File) {
                 manifest.brush.tipPreviewPath?.let(::add)
                 addAll(manifest.brush.tipPreviewPaths)
                 addAll(manifest.brush.dualTipPreviewPaths)
+                manifest.brush.dualGrainPreviewPath?.let(::add)
                 manifest.brush.grainPreviewPath?.let(::add)
             }
             referenced.forEach { path -> require(path.startsWith("assets/") && path.count { it == '/' } == 1 && byName[path] != null) { "Inkloom brush references an invalid asset" } }
@@ -115,6 +118,7 @@ class InkloomBrushPackage(private val assetDirectory: File) {
                     tipPreviewPath = local(manifest.brush.tipPreviewPath),
                     tipPreviewPaths = manifest.brush.tipPreviewPaths.mapNotNull(::local),
                     dualTipPreviewPaths = manifest.brush.dualTipPreviewPaths.mapNotNull(::local),
+                    dualGrain = manifest.brush.dualGrain.copy(previewPath = local(manifest.brush.dualGrainPreviewPath)),
                     grainPreviewPath = local(manifest.brush.grainPreviewPath),
                     favorite = false,
                     hidden = false,
@@ -201,6 +205,20 @@ class InkloomBrushPackage(private val assetDirectory: File) {
         groupName = BrushGroupOperations.normalize(source.groupName),
         tags = source.tags.map(String::trim).filter(String::isNotBlank).distinct().take(24),
         grainDensity = finite(source.grainDensity, 0f).coerceIn(0f, 1f),
+        dualGrain = source.dualGrain.copy(
+            density = finite(source.dualGrainDensity, 0f).coerceIn(0f, 1f),
+            densityMinimum = finite(source.dualGrainDensityMinimum, 0f).coerceIn(0f, finite(source.dualGrainDensity, 0f).coerceIn(0f, 1f)),
+            densityDynamics = parameterDynamics(source.dualGrainDensityDynamics),
+            scale = finite(source.dualGrainScale, 100f).coerceIn(1f, 4000f),
+            movement = finite(source.dualGrainMovement, 0f).coerceIn(0f, 1f),
+            zoom = finite(source.dualGrainZoom, 0f).coerceIn(0f, 1f),
+            rotationDegrees = finite(source.dualGrainRotationDegrees, 0f).coerceIn(-360f, 360f),
+            strokeRotation = finite(source.dualGrainStrokeRotation, 0f).coerceIn(-1f, 1f),
+            brightness = finite(source.dualGrainBrightness, 0f).coerceIn(-100f, 100f),
+            contrast = finite(source.dualGrainContrast, 0f).coerceIn(-100f, 100f),
+            compositeMode = source.dualGrainCompositeMode.coerceIn(0, 64),
+            filteringMode = ProcreateFiltering.normalize(source.dualGrainFilteringMode),
+        ),
         grainDensityMinimum = finite(source.grainDensityMinimum, 0f).coerceIn(0f, finite(source.grainDensity, 0f).coerceIn(0f, 1f)),
         grainDensityDynamics = parameterDynamics(source.grainDensityDynamics),
         grainScale = finite(source.grainScale, 100f).coerceIn(1f, 4000f),

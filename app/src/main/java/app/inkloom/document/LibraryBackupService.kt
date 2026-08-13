@@ -71,6 +71,7 @@ class LibraryBackupService(private val filesRoot: File) {
                 tipPreviewPath = register(brush.tipPreviewPath, BRUSH_ASSETS),
                 tipPreviewPaths = brush.tipPreviewPaths.mapNotNull { register(it, BRUSH_ASSETS) },
                 dualTipPreviewPaths = brush.dualTipPreviewPaths.mapNotNull { register(it, BRUSH_ASSETS) },
+                dualGrain = brush.dualGrain.copy(previewPath = register(brush.dualGrainPreviewPath, BRUSH_ASSETS)),
                 grainPreviewPath = register(brush.grainPreviewPath, BRUSH_ASSETS),
             )
         }
@@ -173,6 +174,7 @@ class LibraryBackupService(private val filesRoot: File) {
                     tipPreviewPath = retained(brush.tipPreviewPath, BRUSH_ASSETS),
                     tipPreviewPaths = brush.tipPreviewPaths.mapNotNull { retained(it, BRUSH_ASSETS) },
                     dualTipPreviewPaths = brush.dualTipPreviewPaths.mapNotNull { retained(it, BRUSH_ASSETS) },
+                    dualGrain = brush.dualGrain.copy(previewPath = retained(brush.dualGrainPreviewPath, BRUSH_ASSETS)),
                     grainPreviewPath = retained(brush.grainPreviewPath, BRUSH_ASSETS),
                 )
             }
@@ -291,6 +293,7 @@ class LibraryBackupService(private val filesRoot: File) {
         tipAssetPath = register(tipAssetPath, BRUSH_ASSETS),
         tipAssetPaths = tipAssetPaths.mapNotNull { register(it, BRUSH_ASSETS) },
         dualTipAssetPaths = dualTipAssetPaths.mapNotNull { register(it, BRUSH_ASSETS) },
+        dualGrainAssetPath = register(dualGrainAssetPath, BRUSH_ASSETS),
         grainAssetPath = register(grainAssetPath, BRUSH_ASSETS),
     )
 
@@ -300,6 +303,7 @@ class LibraryBackupService(private val filesRoot: File) {
         tipAssetPath = retained(tipAssetPath, BRUSH_ASSETS),
         tipAssetPaths = tipAssetPaths.mapNotNull { retained(it, BRUSH_ASSETS) },
         dualTipAssetPaths = dualTipAssetPaths.mapNotNull { retained(it, BRUSH_ASSETS) },
+        dualGrainAssetPath = retained(dualGrainAssetPath, BRUSH_ASSETS),
         grainAssetPath = retained(grainAssetPath, BRUSH_ASSETS),
     )
 

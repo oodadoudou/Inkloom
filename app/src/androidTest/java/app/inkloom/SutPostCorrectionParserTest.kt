@@ -45,7 +45,7 @@ class SutPostCorrectionParserTest {
             assertFalse(disabled.postCorrectionEnabled)
             assertEquals("The disabled SUT amount must remain editable", .62f, disabled.postCorrection, .0001f)
             assertTrue(disabled.report.any { it.contains("disabled") && it.contains("stale stored amount 62") })
-            assertEquals(34, disabled.parserVersion)
+            assertEquals(35, disabled.parserVersion)
         } finally {
             root.deleteRecursively()
         }

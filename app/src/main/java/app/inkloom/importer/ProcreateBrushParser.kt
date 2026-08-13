@@ -14,6 +14,7 @@ import app.inkloom.document.ProcreateWetMix
 import app.inkloom.document.ProcreateTaper
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
+import app.inkloom.model.ImportedBrushGrain
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.UUID
@@ -42,6 +43,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
                 val dualPrefix = path(prefix, "Sub01")
                 val dualArchive = byName[path(dualPrefix, "Brush.archive")]?.let { ProcreateKeyedArchive(readBounded(archive, it, MAX_METADATA_BYTES)) }
                 val dualShape = byName[path(dualPrefix, "Shape.png")]?.let { extract(archive, it, File(outputDirectory, "brush-${index + 1}-dual-shape.png")) }
+                val dualGrain = byName[path(dualPrefix, "Grain.png")]?.let { extract(archive, it, File(outputDirectory, "brush-${index + 1}-dual-grain.png")) }
                 mapBrush(
                     fallback = fallback.copy(id = if (index == 0) fallback.id else UUID.randomUUID().toString()),
                     metadata = metadata,
@@ -49,6 +51,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
                     grain = grain,
                     dualMetadata = dualArchive,
                     dualShape = dualShape,
+                    dualGrain = dualGrain,
                     position = index + 1,
                     total = brushPrefixes.size,
                 )
@@ -87,6 +90,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         grain: File?,
         dualMetadata: ProcreateKeyedArchive?,
         dualShape: File?,
+        dualGrain: File?,
         position: Int,
         total: Int,
     ): ImportedBrush {
@@ -186,6 +190,18 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         val motionFiltering = metadata.float("plotFFTSmoothingAmount").coerceIn(0f, 1f)
         val motionFilteringExpression = metadata.float("plotFFTSmoothingBias").coerceIn(0f, 1f)
         val dualMapped = dualMetadata?.let { mapSecondary(it) }
+        val dualGrainDepth = dualMetadata?.float("grainDepth", if (dualGrain != null) 1f else 0f)?.coerceIn(0f, 1f) ?: 0f
+        val dualGrainDepthMinimum = dualMetadata?.float("grainDepthMinimum")?.coerceIn(0f, dualGrainDepth) ?: 0f
+        val dualGrainDepthJitter = dualMetadata?.float("grainDepthJitter")?.coerceIn(0f, 1f) ?: 0f
+        val dualGrainDepthDynamics = BrushParameterDynamics(
+            pressureEnabled = dualGrainDepthMinimum > .0001f,
+            secondary = BrushSecondaryDynamics(
+                tiltEnabled = dualMetadata?.boolean("textureDepthTilt") == true,
+                tiltStart = dualMetadata?.float("textureDepthTiltAngle")?.coerceIn(0f, .99f) ?: 0f,
+                randomEnabled = dualGrainDepthJitter > .0001f,
+                randomMinimum = (1f - dualGrainDepthJitter).coerceIn(0f, 1f),
+            ),
+        )
         val compatibility = if (watercolor || dualMetadata != null || metadata.int("blendMode") !in 0..1) Compatibility.BASIC else Compatibility.HIGH
         return fallback.copy(
             name = metadata.string("name").orEmpty().trim().ifBlank { fallback.name },
@@ -193,6 +209,21 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             tipPreviewPath = shape?.absolutePath,
             tipPreviewPaths = listOfNotNull(shape?.absolutePath),
             dualTipPreviewPaths = listOfNotNull(dualShape?.absolutePath),
+            dualGrain = ImportedBrushGrain(
+                previewPath = dualGrain?.absolutePath,
+                density = dualGrainDepth,
+                densityMinimum = dualGrainDepthMinimum,
+                densityDynamics = dualGrainDepthDynamics,
+                scale = ((dualMetadata?.float("textureScale", 1f) ?: 1f) * 100f).coerceIn(1f, 4000f),
+                movement = dualMetadata?.float("textureMovement", 1f)?.coerceIn(0f, 1f) ?: 0f,
+                zoom = dualMetadata?.float("textureZoom", 1f)?.coerceIn(0f, 1f) ?: 0f,
+                strokeRotation = dualMetadata?.float("textureRotation")?.coerceIn(-1f, 1f) ?: 0f,
+                brightness = ((dualMetadata?.float("textureBrightness") ?: 0f) * 100f).coerceIn(-100f, 100f),
+                contrast = ((dualMetadata?.float("textureContrast") ?: 0f) * 100f).coerceIn(-100f, 100f),
+                reversed = dualMetadata?.boolean("textureInverted") == true,
+                offsetJitter = dualMetadata?.boolean("textureOffsetJitter") == true,
+                filteringMode = dualMetadata?.let { ProcreateFiltering.fromArchive(it.boolean("textureFilter", true), it.int("textureFilterMode")) } ?: ProcreateFiltering.NONE,
+            ),
             grainPreviewPath = grain?.absolutePath,
             grainDensity = grainDepth,
             grainDensityMinimum = grainDepthMinimum,
@@ -343,6 +374,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
                 if (luminanceBlending) add("Procreate Luminance Blending retained from blendGammaCorrect")
                 if (alphaThresholdEnabled) add("Procreate Alpha Threshold preserved at ${(alphaThreshold * 100f).toInt()}% as a binary stamp-coverage cutoff")
                 if (dualMetadata != null) add(if (dualShape != null) "Procreate Sub01 Dual Brush extracted with independent shape and core dynamics; combine mode ${metadata.int("dualBlendMode")} retained" else "Procreate Sub01 metadata found, but its shape source was missing")
+                if (dualGrain != null) add("Procreate Sub01 Grain.png extracted with its own movement, scale, zoom, rotation, depth dynamics, offset, inversion and filtering")
                 if (watercolor) add("Procreate Wet Mix/rendering parameters detected; Inkloom maps load, mix, accumulation and edge behavior to its deterministic wet-brush approximation")
                 if (brushBlendMode !in ProcreateBrushBlend.artisticModes) add("Unknown Procreate brush blend value $brushBlendMode retained and safely rendered as Normal")
                 if (burntEdgeBlendMode !in ProcreateBrushBlend.artisticModes) add("Unknown Procreate Burnt Edges blend value $burntEdgeBlendMode retained and safely rendered as Normal")
@@ -570,7 +602,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
     )
 
     companion object {
-        const val CURRENT_VERSION = 26
+        const val CURRENT_VERSION = 27
         private const val MAX_ENTRIES = 4_096
         private const val MAX_ENTRY_BYTES = 32L * 1024L * 1024L
         private const val MAX_EXPANDED_BYTES = 384L * 1024L * 1024L

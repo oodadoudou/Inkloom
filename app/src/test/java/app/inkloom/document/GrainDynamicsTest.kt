@@ -43,4 +43,22 @@ class GrainDynamicsTest {
         assertEquals(.3f, GrainDynamics.density(stroke, StrokePoint(0f, 0f, pressure = 0f)), .001f)
         assertEquals(.8f, GrainDynamics.density(stroke.copy(grainDensityMinimum = 2f), StrokePoint(0f, 0f, pressure = 0f)), .001f)
     }
+
+    @Test fun secondaryBrushTextureUsesItsOwnDensityAndDynamics() {
+        val stroke = InkStroke(
+            points = emptyList(),
+            grainDensity = .95f,
+            dualGrainDensity = .6f,
+            dualGrainDensityMinimum = .2f,
+            dualGrainDensityDynamics = BrushParameterDynamics(
+                pressureEnabled = true,
+                pressureMinimum = 0f,
+            ),
+        )
+
+        assertTrue(GrainDynamics.isDualDynamic(stroke))
+        assertEquals(.2f, GrainDynamics.dualDensity(stroke, StrokePoint(0f, 0f, pressure = 0f)), .001f)
+        assertEquals(.6f, GrainDynamics.dualDensity(stroke, StrokePoint(0f, 0f, pressure = 1f)), .001f)
+        assertFalse(GrainDynamics.isDualDynamic(stroke.copy(dualGrainDensityDynamics = BrushParameterDynamics())))
+    }
 }

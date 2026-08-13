@@ -556,6 +556,7 @@ class DocumentAssetService(private val context: Context) {
         tipAssetPath = tipAssetPath?.let { "brush-assets/${File(it).name}" },
         tipAssetPaths = tipAssetPaths.map { "brush-assets/${File(it).name}" },
         dualTipAssetPaths = dualTipAssetPaths.map { "brush-assets/${File(it).name}" },
+        dualGrainAssetPath = dualGrainAssetPath?.let { "brush-assets/${File(it).name}" },
         grainAssetPath = grainAssetPath?.let { "brush-assets/${File(it).name}" },
     )
 
@@ -564,11 +565,12 @@ class DocumentAssetService(private val context: Context) {
         tipAssetPath = tipAssetPath?.let { retained(it, true) },
         tipAssetPaths = tipAssetPaths.map { retained(it, true) },
         dualTipAssetPaths = dualTipAssetPaths.map { retained(it, true) },
+        dualGrainAssetPath = dualGrainAssetPath?.let { retained(it, true) },
         grainAssetPath = grainAssetPath?.let { retained(it, true) },
     )
 
     private fun InkStroke.brushAssetPaths(): List<String> =
-        tipAssetPaths + dualTipAssetPaths + masks.mapNotNull(StrokeMaskDab::tipAssetPath) + listOfNotNull(tipAssetPath, grainAssetPath)
+        tipAssetPaths + dualTipAssetPaths + masks.mapNotNull(StrokeMaskDab::tipAssetPath) + listOfNotNull(tipAssetPath, grainAssetPath, dualGrainAssetPath)
 
     private fun retainFile(source: File, targetDirectory: File): File {
         val digest = MessageDigest.getInstance("SHA-256")
@@ -890,8 +892,10 @@ class DocumentAssetService(private val context: Context) {
             val decodedTips = tipPaths.mapNotNull { decodeTip(it, stroke.hardness, stroke.grainAssetPath, stroke.grainDensity, stroke.grainScale, stroke.grainRotationDegrees, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized, grainOffset.x, grainOffset.y, stroke.grainCompositeMode, stroke.grainFilteringMode, stroke.antiAliasMode, stroke.alphaThresholdEnabled, stroke.alphaThreshold) }
             val tips = decodedTips.ifEmpty { listOfNotNull(ProceduralBrushTip.create(stroke)) }
             if (tips.isNotEmpty()) {
-                val decodedDualTips = if (stroke.dualBrush) stroke.dualTipAssetPaths.mapNotNull { decodeTip(it, stroke.dualHardness, null, 0f, antiAliasMode = stroke.dualAntiAliasMode, alphaThresholdEnabled = stroke.alphaThresholdEnabled, alphaThreshold = stroke.alphaThreshold, preserveRgb = stroke.dualApplyRgb) } else emptyList()
-                val fallbackDualTips = if (stroke.dualBrush && decodedDualTips.isEmpty()) tipPaths.mapNotNull { decodeTip(it, stroke.dualHardness, null, 0f, antiAliasMode = stroke.dualAntiAliasMode, alphaThresholdEnabled = stroke.alphaThresholdEnabled, alphaThreshold = stroke.alphaThreshold, preserveRgb = stroke.dualApplyRgb) } else emptyList()
+                val dualGrainOffset = GrainBehavior.offset(stroke.renderSeed xor DUAL_GRAIN_SEED, stroke.dualGrainOffsetJitter)
+                val dualGrainPath = stroke.dualGrainAssetPath.takeIf { stroke.dualGrainApplyPerPlot }
+                val decodedDualTips = if (stroke.dualBrush) stroke.dualTipAssetPaths.mapNotNull { decodeTip(it, stroke.dualHardness, dualGrainPath, stroke.dualGrainDensity, stroke.dualGrainScale, stroke.dualGrainRotationDegrees, stroke.dualGrainBrightness, stroke.dualGrainContrast, stroke.dualGrainReversed, stroke.dualGrainEmphasized, dualGrainOffset.x, dualGrainOffset.y, stroke.dualGrainCompositeMode, stroke.dualGrainFilteringMode, stroke.dualAntiAliasMode, stroke.alphaThresholdEnabled, stroke.alphaThreshold, stroke.dualApplyRgb) } else emptyList()
+                val fallbackDualTips = if (stroke.dualBrush && decodedDualTips.isEmpty()) tipPaths.mapNotNull { decodeTip(it, stroke.dualHardness, dualGrainPath, stroke.dualGrainDensity, stroke.dualGrainScale, stroke.dualGrainRotationDegrees, stroke.dualGrainBrightness, stroke.dualGrainContrast, stroke.dualGrainReversed, stroke.dualGrainEmphasized, dualGrainOffset.x, dualGrainOffset.y, stroke.dualGrainCompositeMode, stroke.dualGrainFilteringMode, stroke.dualAntiAliasMode, stroke.alphaThresholdEnabled, stroke.alphaThreshold, stroke.dualApplyRgb) } else emptyList()
                 val dualTips = decodedDualTips.ifEmpty { fallbackDualTips }
                 drawStampStroke(canvas, stroke, tips, dualTips, tipPaths, grainOffset.x, grainOffset.y, width, height, paint)
                 decodedDualTips.forEach(Bitmap::recycle)
@@ -1069,6 +1073,7 @@ class DocumentAssetService(private val context: Context) {
             paint.isFilterBitmap = CspAntiAlias.enabled(stroke.dualAntiAliasMode)
             val secondaryCanvas = Canvas(secondary).apply { translate(-bounds.left.toFloat(), -bounds.top.toFloat()) }
             drawDualStampStream(secondaryCanvas, stroke, secondaryTips, width, height, paint)
+            applyDualWholeStrokeTexture(secondary, bounds.left, bounds.top, stroke, width, height)
             CspDualBrushCompositor.compositeRegion(
                 primary,
                 secondary,
@@ -1096,12 +1101,15 @@ class DocumentAssetService(private val context: Context) {
         val sampledPoints = EngineV2BrushEvaluator.sampleStampPoints(stroke, width.toFloat(), height.toFloat(), dual = true)
         val taper = StrokeTaper.evaluate(stroke, sampledPoints, width.toFloat(), height.toFloat())
         val falloff = StrokeFalloff.factors(sampledPoints, width.toFloat(), height.toFloat(), stroke.width * width / 1600f, stroke.strokeFalloff)
+        val dualTipPaths = stroke.dualTipAssetPaths.ifEmpty { stroke.tipAssetPaths.ifEmpty { listOfNotNull(stroke.tipAssetPath) } }
+        val dualGrainOffset = GrainBehavior.offset(stroke.renderSeed xor DUAL_GRAIN_SEED, stroke.dualGrainOffsetJitter)
+        val dynamicGrainTips = mutableMapOf<String, Bitmap>()
         sampledPoints.forEachIndexed { index, point ->
             val stampsAtPoint = BrushStampCount.resolve(stroke.dualStampCount, stroke.dualStampCountJitter, stroke.renderSeed, index, dual = true)
             repeat(stampsAtPoint) stamp@ { repeatIndex ->
             val sequenceIndex = index * 16 + repeatIndex
             val tipIndex = BrushTipSequence.index(stroke.dualTipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed xor DUAL_SEQUENCE_SEED, stroke.dualRibbon) ?: return@stamp
-            val tip = tips[tipIndex]
+            val baseTip = tips[tipIndex]
             val dynamics = EngineV2BrushEvaluator.evaluateDab(stroke, point, dual = true)
             val brushDiameter = (stroke.width * width / 1600f * stroke.dualSizeScale.coerceIn(.01f, 8f) * taper.size[index] * dynamics.size).coerceAtLeast(.25f)
             val diameter = if (stroke.dualSpray) SprayGeometry.particleDiameter(brushDiameter, SprayDynamics.dualParticleSize(stroke, point), stroke.dualSprayParticleSizeUnit, stroke.dualSprayParticleSizeSyncBrushSize, width.toFloat()) else brushDiameter
@@ -1112,6 +1120,34 @@ class DocumentAssetService(private val context: Context) {
             val pathOffset = StrokePathJitter.offset(stroke.renderSeed, sequenceIndex, strokeDirection, diameter, stroke.dualStrokePathJitter, stroke.dualStrokePathLongitudinalJitter, dual = true)
             val drawX = point.x * width + offset.x + StrokePathJitter.unpackX(pathOffset)
             val drawY = point.y * height + offset.y + StrokePathJitter.unpackY(pathOffset)
+            val spatialGrain = stroke.dualGrainAssetPath != null &&
+                (GrainBehavior.requiresPerDabSampling(stroke.dualGrainMovement, stroke.dualGrainZoom) ||
+                    GrainBehavior.requiresPerDabRotation(stroke.dualGrainStrokeRotation))
+            val grainSample = if (spatialGrain) GrainBehavior.sample(
+                dualGrainOffset, stroke.dualGrainMovement, stroke.dualGrainZoom, stroke.dualGrainScale,
+                drawX, drawY, diameter,
+            ) else null
+            val grainRotation = GrainBehavior.rotationDegrees(stroke.dualGrainRotationDegrees, stroke.dualGrainStrokeRotation, strokeDirection)
+            val tip = if (stroke.dualGrainApplyPerPlot && stroke.dualGrainAssetPath != null &&
+                (GrainDynamics.isDualDynamic(stroke) || spatialGrain)
+            ) {
+                val density = GrainDynamics.dualDensity(stroke, point)
+                val sampleScale = grainSample?.scalePercent ?: stroke.dualGrainScale
+                val sampleOffsetX = grainSample?.offset?.x ?: dualGrainOffset.x
+                val sampleOffsetY = grainSample?.offset?.y ?: dualGrainOffset.y
+                val cacheKey = "$tipIndex:${(density * 20f).toInt()}:${sampleScale.toInt()}:${grainRotation.toInt()}:${sampleOffsetX.toBits()}:${sampleOffsetY.toBits()}"
+                dynamicGrainTips[cacheKey] ?: if (dynamicGrainTips.size < MAX_DYNAMIC_GRAIN_VARIANTS_PER_STROKE) {
+                    dualTipPaths.getOrNull(tipIndex)?.let { path ->
+                        decodeTip(
+                            path, stroke.dualHardness, stroke.dualGrainAssetPath, density, sampleScale,
+                            grainRotation, stroke.dualGrainBrightness, stroke.dualGrainContrast,
+                            stroke.dualGrainReversed, stroke.dualGrainEmphasized, sampleOffsetX, sampleOffsetY,
+                            stroke.dualGrainCompositeMode, stroke.dualGrainFilteringMode, stroke.dualAntiAliasMode,
+                            stroke.alphaThresholdEnabled, stroke.alphaThreshold, stroke.dualApplyRgb,
+                        )
+                    }?.also { dynamicGrainTips[cacheKey] = it } ?: baseTip
+                } else baseTip
+            } else baseTip
             val thicknessDynamic = dynamics.thickness
             val roundness = ShapeRoundnessJitter.factors(stroke.renderSeed, sequenceIndex, stroke.dualShapeRoundnessHorizontalJitter, stroke.dualShapeRoundnessVerticalJitter, dual = true)
             val tipScale = BrushTipTransform.scale(tip.width, tip.height, diameter, stroke.dualThickness.coerceIn(.05f, 2f) * thicknessDynamic, stroke.dualThicknessVertical, roundness.horizontal, roundness.vertical)
@@ -1131,7 +1167,23 @@ class DocumentAssetService(private val context: Context) {
             paint.maskFilter = null
             }
         }
+        dynamicGrainTips.values.distinct().filter { dynamic -> tips.none { it === dynamic } }.forEach(Bitmap::recycle)
         paint.blendMode = null
+    }
+
+    private fun applyDualWholeStrokeTexture(target: Bitmap, pageLeft: Int, pageTop: Int, stroke: InkStroke, pageWidth: Int, pageHeight: Int) {
+        if (stroke.dualGrainApplyPerPlot || stroke.dualGrainDensity <= 0f) return
+        val material = stroke.dualGrainAssetPath?.let(CspTextureMaterial::decode) ?: return
+        val grainOffset = GrainBehavior.offset(stroke.renderSeed xor DUAL_GRAIN_SEED, stroke.dualGrainOffsetJitter)
+        CspStrokeTextureCompositor.applyInPlace(
+            target, target.width, target.height, pageLeft, pageTop, pageWidth, pageHeight, material,
+            stroke.dualGrainDensity, stroke.dualGrainScale, stroke.dualGrainRotationDegrees,
+            grainOffset.x, grainOffset.y, stroke.dualGrainFilteringMode,
+            stroke.dualGrainBrightness, stroke.dualGrainContrast, stroke.dualGrainReversed,
+            stroke.dualGrainEmphasized, stroke.dualGrainCompositeMode,
+            stroke.alphaThresholdEnabled, stroke.alphaThreshold,
+            CspStrokeTextureCompositor.Workspace(),
+        )
     }
 
     private fun drawLinePoint(canvas: Canvas, paint: Paint, stroke: InkStroke, point: StrokePoint, x: Float, y: Float, strokeWidth: Float, alpha: Int, pageWidth: Int) {
@@ -1290,6 +1342,7 @@ class DocumentAssetService(private val context: Context) {
         const val DUAL_SCATTER_SEED = 0x27C4915DL
         const val DUAL_ROTATION_SEED = 0x61B8D2A3L
         const val DUAL_SEQUENCE_SEED = 0x35A71C9E
+        const val DUAL_GRAIN_SEED = 0x4D2A61C7
         const val MAX_DYNAMIC_GRAIN_VARIANTS_PER_STROKE = 64
         const val PDF_TEXT_INDEX_VERSION = 1
         const val PDF_LINK_INDEX_VERSION = 1

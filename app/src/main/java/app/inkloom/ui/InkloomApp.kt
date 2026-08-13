@@ -4897,6 +4897,23 @@ internal fun InkCanvasView.applyBrushConfiguration(
     tipAssetPath = activeBrush?.tipPreviewPath
     tipAssetPaths = activeBrush?.tipPreviewPaths.orEmpty()
     dualTipAssetPaths = activeBrush?.dualTipPreviewPaths.orEmpty()
+    dualGrainAssetPath = activeBrush?.dualGrainPreviewPath
+    dualGrainDensity = activeBrush?.dualGrainDensity ?: 0f
+    dualGrainDensityMinimum = activeBrush?.dualGrainDensityMinimum ?: 0f
+    dualGrainDensityDynamics = activeBrush?.dualGrainDensityDynamics ?: BrushParameterDynamics()
+    dualGrainScale = activeBrush?.dualGrainScale ?: 100f
+    dualGrainMovement = activeBrush?.dualGrainMovement ?: 0f
+    dualGrainZoom = activeBrush?.dualGrainZoom ?: 0f
+    dualGrainRotationDegrees = activeBrush?.dualGrainRotationDegrees ?: 0f
+    dualGrainStrokeRotation = activeBrush?.dualGrainStrokeRotation ?: 0f
+    dualGrainBrightness = activeBrush?.dualGrainBrightness ?: 0f
+    dualGrainContrast = activeBrush?.dualGrainContrast ?: 0f
+    dualGrainReversed = activeBrush?.dualGrainReversed ?: false
+    dualGrainEmphasized = activeBrush?.dualGrainEmphasized ?: false
+    dualGrainOffsetJitter = activeBrush?.dualGrainOffsetJitter ?: false
+    dualGrainCompositeMode = activeBrush?.dualGrainCompositeMode ?: CspTextureComposite.MULTIPLY
+    dualGrainApplyPerPlot = activeBrush?.dualGrainApplyPerPlot ?: true
+    dualGrainFilteringMode = activeBrush?.dualGrainFilteringMode ?: ProcreateFiltering.NONE
     grainAssetPath = activeBrush?.grainPreviewPath
     grainDensity = activeBrush?.grainDensity ?: 0f
     grainDensityMinimum = activeBrush?.grainDensityMinimum ?: 0f
@@ -9191,6 +9208,23 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                 if (draft.spray) item { BrushSettingSlider("Particle random rotation", draft.sprayParticleRandomRotationDegrees, 0f..180f) { draft = draft.copy(sprayParticleRandomRotationDegrees = it) } }
                 item { SettingSwitch("Dual brush", "Uses the imported secondary tip as an independent stamp stream.", draft.dualBrush) { draft = draft.copy(dualBrush = it) } }
                 if (draft.dualBrush && draft.dualTipPreviewPaths.isNotEmpty()) item { BrushTipPreview(tr("Secondary tip · ${draft.dualTipPreviewPaths.size} material${if (draft.dualTipPreviewPaths.size == 1) "" else "s"}", "辅助笔尖 · ${draft.dualTipPreviewPaths.size} 个素材"), draft.dualTipPreviewPaths.first()) }
+                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { BrushGrainPreview(draft.dualGrainPreviewPath!!, draft.dualGrainDensity) }
+                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { BrushSettingSlider(tr("Secondary texture density", "辅助纹理浓度"), draft.dualGrainDensity, 0f..1f) { draft = draft.copy(dualGrain = draft.dualGrain.copy(density = it)) } }
+                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { BrushSettingSlider(tr("Secondary minimum grain depth", "辅助纹理最低深度"), draft.dualGrainDensityMinimum.coerceAtMost(draft.dualGrainDensity), 0f..draft.dualGrainDensity.coerceAtLeast(.01f)) { draft = draft.copy(dualGrain = draft.dualGrain.copy(densityMinimum = it)) } }
+                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { ParameterDynamicsEditor(tr("Secondary texture density dynamics", "辅助纹理浓度动态"), tr("Secondary texture density", "辅助纹理浓度"), draft.dualGrainDensityDynamics) { draft = draft.copy(dualGrain = draft.dualGrain.copy(densityDynamics = it)) } }
+                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { BrushSettingSlider(tr("Secondary texture scale", "辅助纹理比例"), draft.dualGrainScale, 1f..400f) { draft = draft.copy(dualGrain = draft.dualGrain.copy(scale = it)) } }
+                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { BrushSettingSlider(tr("Secondary grain movement", "辅助纹理移动"), draft.dualGrainMovement, 0f..1f) { draft = draft.copy(dualGrain = draft.dualGrain.copy(movement = it)) } }
+                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { BrushSettingSlider(tr("Secondary grain zoom", "辅助纹理缩放"), draft.dualGrainZoom, 0f..1f) { draft = draft.copy(dualGrain = draft.dualGrain.copy(zoom = it)) } }
+                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { BrushSettingSlider(tr("Secondary texture rotation", "辅助纹理旋转"), draft.dualGrainRotationDegrees, -180f..180f) { draft = draft.copy(dualGrain = draft.dualGrain.copy(rotationDegrees = it)) } }
+                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { BrushSettingSlider(tr("Secondary grain follows stroke", "辅助纹理跟随笔画"), draft.dualGrainStrokeRotation, -1f..1f) { draft = draft.copy(dualGrain = draft.dualGrain.copy(strokeRotation = it)) } }
+                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { BrushSettingSlider(tr("Secondary texture brightness", "辅助纹理亮度"), draft.dualGrainBrightness, -100f..100f) { draft = draft.copy(dualGrain = draft.dualGrain.copy(brightness = it)) } }
+                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { BrushSettingSlider(tr("Secondary texture contrast", "辅助纹理对比度"), draft.dualGrainContrast, -100f..100f) { draft = draft.copy(dualGrain = draft.dualGrain.copy(contrast = it)) } }
+                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { SettingSwitch(tr("Invert secondary texture", "反相辅助纹理"), null, draft.dualGrainReversed) { draft = draft.copy(dualGrain = draft.dualGrain.copy(reversed = it)) } }
+                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { SettingSwitch(tr("Emphasize secondary texture", "强调辅助纹理"), null, draft.dualGrainEmphasized) { draft = draft.copy(dualGrain = draft.dualGrain.copy(emphasized = it)) } }
+                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { SettingSwitch(tr("Jitter secondary grain origin", "随机辅助纹理原点"), null, draft.dualGrainOffsetJitter) { draft = draft.copy(dualGrain = draft.dualGrain.copy(offsetJitter = it)) } }
+                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { BrushTextureCompositeEditor(draft.dualGrainCompositeMode) { draft = draft.copy(dualGrain = draft.dualGrain.copy(compositeMode = it)) } }
+                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { SettingSwitch(tr("Apply secondary texture by each plot", "辅助纹理应用于每个笔尖"), null, draft.dualGrainApplyPerPlot) { draft = draft.copy(dualGrain = draft.dualGrain.copy(applyPerPlot = it)) } }
+                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { ProcreateFilteringEditor(tr("Secondary grain filtering", "辅助纹理过滤"), draft.dualGrainFilteringMode) { draft = draft.copy(dualGrain = draft.dualGrain.copy(filteringMode = it)) } }
                 if (draft.dualBrush) item { BrushSettingSlider("Secondary size", draft.dualSizeScale, .01f..4f) { draft = draft.copy(dualSizeScale = it) } }
                 if (draft.dualBrush) item { ParameterDynamicsEditor(tr("Secondary size dynamics", "辅助笔尖大小动态"), "Secondary size", draft.dualSizeDynamics) { draft = draft.copy(dualSizeDynamics = it) } }
                 if (draft.dualBrush) item { BrushGapModeEditor(tr("Secondary brush-tip gap", "副笔尖间隔"), draft.dualSpacingMode) { draft = draft.copy(dualSpacingMode = it) } }

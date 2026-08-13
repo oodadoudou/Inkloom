@@ -9,6 +9,7 @@ import app.inkloom.document.CspPigmentMixingMode
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
+import app.inkloom.model.ImportedBrushGrain
 import app.inkloom.model.BrushSemanticMapping
 import app.inkloom.model.SemanticFidelity
 import app.inkloom.document.BrushCurvePoint
@@ -191,6 +192,25 @@ class BrushMetadataStore(
                         tipPreviewPath = legacyTipPath,
                         tipPreviewPaths = tipPaths,
                         dualTipPreviewPaths = dualTipPaths,
+                        dualGrain = ImportedBrushGrain(
+                            previewPath = item.optString("dualGrainPreviewPath").takeIf { it.isNotBlank() },
+                            density = item.optDouble("dualGrainDensity", 0.0).toFloat().coerceIn(0f, 1f),
+                            densityMinimum = item.optDouble("dualGrainDensityMinimum", 0.0).toFloat().coerceIn(0f, 1f),
+                            densityDynamics = parameterDynamics("dualGrainDensityDynamics"),
+                            scale = item.optDouble("dualGrainScale", 100.0).toFloat().coerceIn(1f, 4000f),
+                            movement = item.optDouble("dualGrainMovement", 0.0).toFloat().coerceIn(0f, 1f),
+                            zoom = item.optDouble("dualGrainZoom", 0.0).toFloat().coerceIn(0f, 1f),
+                            rotationDegrees = item.optDouble("dualGrainRotationDegrees", 0.0).toFloat().coerceIn(-360f, 360f),
+                            strokeRotation = item.optDouble("dualGrainStrokeRotation", 0.0).toFloat().coerceIn(-1f, 1f),
+                            brightness = item.optDouble("dualGrainBrightness", 0.0).toFloat().coerceIn(-100f, 100f),
+                            contrast = item.optDouble("dualGrainContrast", 0.0).toFloat().coerceIn(-100f, 100f),
+                            reversed = item.optBoolean("dualGrainReversed", false),
+                            emphasized = item.optBoolean("dualGrainEmphasized", false),
+                            offsetJitter = item.optBoolean("dualGrainOffsetJitter", false),
+                            compositeMode = item.optInt("dualGrainCompositeMode", CspTextureComposite.MULTIPLY).coerceIn(0, 64),
+                            applyPerPlot = item.optBoolean("dualGrainApplyPerPlot", true),
+                            filteringMode = ProcreateFiltering.normalize(item.optInt("dualGrainFilteringMode", ProcreateFiltering.NONE)),
+                        ),
                         grainPreviewPath = item.optString("grainPreviewPath").takeIf { it.isNotBlank() },
                         grainDensity = item.optDouble("grainDensity", 0.0).toFloat(),
                         grainDensityMinimum = item.optDouble("grainDensityMinimum", 0.0).toFloat().coerceIn(0f, 1f),
@@ -443,6 +463,23 @@ class BrushMetadataStore(
                     .put("tipPreviewPath", brush.tipPreviewPath)
                     .put("tipPreviewPaths", JSONArray(brush.tipPreviewPaths))
                     .put("dualTipPreviewPaths", JSONArray(brush.dualTipPreviewPaths))
+                    .put("dualGrainPreviewPath", brush.dualGrainPreviewPath)
+                    .put("dualGrainDensity", brush.dualGrainDensity)
+                    .put("dualGrainDensityMinimum", brush.dualGrainDensityMinimum)
+                    .put("dualGrainDensityDynamics", parameterDynamicsJson(brush.dualGrainDensityDynamics))
+                    .put("dualGrainScale", brush.dualGrainScale)
+                    .put("dualGrainMovement", brush.dualGrainMovement)
+                    .put("dualGrainZoom", brush.dualGrainZoom)
+                    .put("dualGrainRotationDegrees", brush.dualGrainRotationDegrees)
+                    .put("dualGrainStrokeRotation", brush.dualGrainStrokeRotation)
+                    .put("dualGrainBrightness", brush.dualGrainBrightness)
+                    .put("dualGrainContrast", brush.dualGrainContrast)
+                    .put("dualGrainReversed", brush.dualGrainReversed)
+                    .put("dualGrainEmphasized", brush.dualGrainEmphasized)
+                    .put("dualGrainOffsetJitter", brush.dualGrainOffsetJitter)
+                    .put("dualGrainCompositeMode", brush.dualGrainCompositeMode)
+                    .put("dualGrainApplyPerPlot", brush.dualGrainApplyPerPlot)
+                    .put("dualGrainFilteringMode", brush.dualGrainFilteringMode)
                     .put("grainPreviewPath", brush.grainPreviewPath)
                     .put("grainDensity", brush.grainDensity)
                     .put("grainDensityMinimum", brush.grainDensityMinimum)

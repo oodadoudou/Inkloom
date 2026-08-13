@@ -248,6 +248,74 @@ class CspDualBrushRenderingTest {
         }
     }
 
+    @Test fun secondaryTextureChangesOnlyTheSecondaryStreamAndMatchesLiveExport() {
+        val tip = File(context.cacheDir, "dual-texture-tip.png")
+        val grain = File(context.cacheDir, "dual-texture-grain.png")
+        Bitmap.createBitmap(32, 32, Bitmap.Config.ARGB_8888).also { bitmap ->
+            bitmap.eraseColor(Color.BLACK)
+            tip.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            bitmap.recycle()
+        }
+        Bitmap.createBitmap(32, 32, Bitmap.Config.ARGB_8888).also { bitmap ->
+            val canvas = Canvas(bitmap)
+            canvas.drawColor(Color.WHITE)
+            canvas.drawRect(0f, 0f, 16f, 32f, Paint().apply { color = Color.BLACK })
+            grain.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            bitmap.recycle()
+        }
+        try {
+            val base = InkStroke(
+                points = listOf(StrokePoint(.5f, .5f)),
+                colorArgb = 0xFF202020,
+                width = 180f,
+                flow = 0f,
+                sizePressureEnabled = false,
+                tipAssetPath = tip.absolutePath,
+                tipAssetPaths = listOf(tip.absolutePath),
+                dualBrush = true,
+                dualTipAssetPaths = listOf(tip.absolutePath),
+                dualFlow = 1f,
+                dualCompositeMode = 1,
+                dualGrainAssetPath = grain.absolutePath,
+                dualGrainDensity = 1f,
+                dualGrainScale = 100f,
+            )
+            val service = DocumentAssetService(context)
+            for (perPlot in listOf(true, false)) {
+                val stroke = base.copy(dualGrainApplyPerPlot = perPlot)
+                val exported = service.renderPageBitmap(InkPage(background = PageBackground.Paper(), strokes = listOf(stroke)), 400)
+                val untextured = service.renderPageBitmap(InkPage(background = PageBackground.Paper(), strokes = listOf(stroke.copy(dualGrainAssetPath = null))), 400)
+                val live = renderLiveCanvas(stroke)
+                try {
+                    var texturedPixels = 0
+                    var exportedInk = 0L
+                    var liveInk = 0L
+                    var samples = 0
+                    for (y in 220 until 345 step 8) for (x in 110 until 290 step 8) {
+                        val exportedRed = Color.red(exported.getPixel(x, y))
+                        val liveRed = Color.red(live.getPixel(x, y))
+                        exportedInk += 255 - exportedRed
+                        liveInk += 255 - liveRed
+                        samples++
+                        if (exported.getPixel(x, y) != untextured.getPixel(x, y)) texturedPixels++
+                    }
+                    assertTrue("Secondary texture must modulate secondary coverage", texturedPixels > 3)
+                    assertTrue(
+                        "Live and export must retain equivalent secondary texture coverage",
+                        kotlin.math.abs(exportedInk - liveInk) <= samples * 18L,
+                    )
+                } finally {
+                    exported.recycle()
+                    untextured.recycle()
+                    live.recycle()
+                }
+            }
+        } finally {
+            tip.delete()
+            grain.delete()
+        }
+    }
+
     @Test fun fixedHorizontalFlipMirrorsAnAsymmetricImportedTip() {
         val tip = File(context.cacheDir, "asymmetric-flip-tip.png")
         Bitmap.createBitmap(64, 32, Bitmap.Config.ARGB_8888).also { bitmap ->

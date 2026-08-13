@@ -33,6 +33,27 @@ enum class Compatibility(val label: String) {
 @Serializable
 enum class SemanticFidelity { EXACT, APPROXIMATE, UNSUPPORTED }
 
+@Serializable
+data class ImportedBrushGrain(
+    val previewPath: String? = null,
+    val density: Float = 0f,
+    val densityMinimum: Float = 0f,
+    val densityDynamics: BrushParameterDynamics = BrushParameterDynamics(),
+    val scale: Float = 100f,
+    val movement: Float = 0f,
+    val zoom: Float = 0f,
+    val rotationDegrees: Float = 0f,
+    val strokeRotation: Float = 0f,
+    val brightness: Float = 0f,
+    val contrast: Float = 0f,
+    val reversed: Boolean = false,
+    val emphasized: Boolean = false,
+    val offsetJitter: Boolean = false,
+    val compositeMode: Int = CspTextureComposite.MULTIPLY,
+    val applyPerPlot: Boolean = true,
+    val filteringMode: Int = ProcreateFiltering.NONE,
+)
+
 /** A durable, user-auditable source-semantic to Engine V2 runtime mapping. */
 @Serializable
 data class BrushSemanticMapping(
@@ -55,6 +76,7 @@ data class ImportedBrush(
     val tipPreviewPath: String? = null,
     val tipPreviewPaths: List<String> = emptyList(),
     val dualTipPreviewPaths: List<String> = emptyList(),
+    val dualGrain: ImportedBrushGrain = ImportedBrushGrain(),
     val grainPreviewPath: String? = null,
     val grainDensity: Float = 0f,
     /** Absolute Procreate Grain > Depth Minimum, applied after all depth dynamics. */
@@ -304,7 +326,25 @@ data class ImportedBrush(
     val blurSecondaryDynamics: BrushSecondaryDynamics = BrushSecondaryDynamics(),
     val parserVersion: Int = 0,
     val semanticMappings: List<BrushSemanticMapping> = emptyList(),
-)
+) {
+    val dualGrainPreviewPath get() = dualGrain.previewPath
+    val dualGrainDensity get() = dualGrain.density
+    val dualGrainDensityMinimum get() = dualGrain.densityMinimum
+    val dualGrainDensityDynamics get() = dualGrain.densityDynamics
+    val dualGrainScale get() = dualGrain.scale
+    val dualGrainMovement get() = dualGrain.movement
+    val dualGrainZoom get() = dualGrain.zoom
+    val dualGrainRotationDegrees get() = dualGrain.rotationDegrees
+    val dualGrainStrokeRotation get() = dualGrain.strokeRotation
+    val dualGrainBrightness get() = dualGrain.brightness
+    val dualGrainContrast get() = dualGrain.contrast
+    val dualGrainReversed get() = dualGrain.reversed
+    val dualGrainEmphasized get() = dualGrain.emphasized
+    val dualGrainOffsetJitter get() = dualGrain.offsetJitter
+    val dualGrainCompositeMode get() = dualGrain.compositeMode
+    val dualGrainApplyPerPlot get() = dualGrain.applyPerPlot
+    val dualGrainFilteringMode get() = dualGrain.filteringMode
+}
 
 enum class EditorTool { PEN, HIGHLIGHTER, ERASER, EYEDROPPER, SELECT, SHAPE, TEXT, NOTE, LINK, IMAGE, AUDIO, LASER, FILL, GRADIENT, SMUDGE, LIQUIFY, CORRECT_LINE }
 

@@ -9,6 +9,7 @@ import app.inkloom.document.CspAntiAlias
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
+import app.inkloom.model.ImportedBrushGrain
 import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
@@ -25,6 +26,7 @@ class InkloomBrushPackageTest {
             val shape = File(root, "shape.png").apply { writeBytes(byteArrayOf(1, 2, 3, 4)) }
             val dual = File(root, "dual.png").apply { writeBytes(byteArrayOf(5, 6, 7)) }
             val grain = File(root, "grain.png").apply { writeBytes(byteArrayOf(8, 9)) }
+            val dualGrain = File(root, "dual-grain.png").apply { writeBytes(byteArrayOf(10, 11, 12)) }
             val source = File(root, "commercial-source.brushset").apply { writeText("must not be embedded") }
             val original = ImportedBrush(
                 id = "original-id",
@@ -39,6 +41,20 @@ class InkloomBrushPackageTest {
                 tipPreviewPath = shape.absolutePath,
                 tipPreviewPaths = listOf(shape.absolutePath),
                 dualTipPreviewPaths = listOf(dual.absolutePath),
+                dualGrain = ImportedBrushGrain(
+                    previewPath = dualGrain.absolutePath,
+                    density = .71f,
+                    densityMinimum = .16f,
+                    densityDynamics = BrushParameterDynamics(pressureEnabled = true, pressureMinimum = .31f),
+                    scale = 143f,
+                    movement = .48f,
+                    zoom = .62f,
+                    strokeRotation = -.4f,
+                    offsetJitter = true,
+                    compositeMode = CspTextureComposite.HEIGHT,
+                    applyPerPlot = false,
+                    filteringMode = app.inkloom.document.ProcreateFiltering.CLASSIC,
+                ),
                 grainPreviewPath = grain.absolutePath,
                 grainDensity = .64f,
                 grainDensityMinimum = .18f,
@@ -196,7 +212,7 @@ class InkloomBrushPackageTest {
 
             ZipFile(packageFile).use { zip ->
                 val names = zip.entries().asSequence().map(ZipEntry::getName).toList()
-                assertEquals(listOf("manifest.json", "assets/001.png", "assets/002.png", "assets/003.png"), names)
+                assertEquals(listOf("manifest.json", "assets/001.png", "assets/002.png", "assets/003.png", "assets/004.png"), names)
                 assertFalse(names.any { it.contains(source.name) })
             }
 
@@ -326,6 +342,7 @@ class InkloomBrushPackageTest {
             assertEquals(0L, restored.lastUsedAt)
             assertEquals(shape.readBytes().toList(), File(restored.tipPreviewPath!!).readBytes().toList())
             assertEquals(dual.readBytes().toList(), File(restored.dualTipPreviewPaths.single()).readBytes().toList())
+            assertEquals(dualGrain.readBytes().toList(), File(restored.dualGrainPreviewPath!!).readBytes().toList())
             assertEquals(grain.readBytes().toList(), File(restored.grainPreviewPath!!).readBytes().toList())
             assertEquals(
                 original,
@@ -340,6 +357,7 @@ class InkloomBrushPackageTest {
                     tipPreviewPath = original.tipPreviewPath,
                     tipPreviewPaths = original.tipPreviewPaths,
                     dualTipPreviewPaths = original.dualTipPreviewPaths,
+                    dualGrain = original.dualGrain,
                     grainPreviewPath = original.grainPreviewPath,
                     favorite = original.favorite,
                     hidden = original.hidden,

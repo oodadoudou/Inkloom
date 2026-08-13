@@ -101,6 +101,27 @@ class ProcreateBrushParserTest {
         }
     }
 
+    @Test fun dualBrushRetainsIndependentSecondaryGrainAssetAndSettings() {
+        val root = temporaryDirectory("dual-grain")
+        try {
+            val source = File(root, "dual.brush")
+            writeBrush(source, includeDual = true)
+
+            val brush = ProcreateBrushParser(File(root, "assets")).enrich(source, "dual-grain-fixture", fallback(source)).single()
+            val metadata = ProcreateKeyedArchive(Base64.getDecoder().decode(SYNTHETIC_ARCHIVE))
+
+            assertTrue(brush.dualBrush)
+            assertTrue(File(brush.dualGrainPreviewPath!!).isFile)
+            assertEquals(metadata.float("grainDepth"), brush.dualGrainDensity, .0001f)
+            assertEquals(metadata.float("textureScale", 1f) * 100f, brush.dualGrainScale, .0001f)
+            assertEquals(metadata.float("textureMovement", 1f), brush.dualGrainMovement, .0001f)
+            assertEquals(metadata.float("textureZoom", 1f), brush.dualGrainZoom, .0001f)
+            assertEquals(ProcreateFiltering.CLASSIC, brush.dualGrainFilteringMode)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun alphaThresholdSwitchAndCutoffAreReadFromTheArchive() {
         val root = temporaryDirectory("alpha-threshold")
         try {
@@ -196,6 +217,7 @@ class ProcreateBrushParserTest {
             assertTrue(brushes.all { it.tipPreviewPath?.let(::File)?.isFile == true })
             assertTrue(brushes.all { it.grainPreviewPath?.let(::File)?.isFile == true })
             assertTrue(brushes.any { it.dualBrush && it.dualTipPreviewPaths.isNotEmpty() })
+            assertTrue(brushes.any { it.dualBrush && it.dualGrainPreviewPath?.let(::File)?.isFile == true })
             assertTrue(brushes.any { it.sizePressureEnabled })
             assertTrue(brushes.any { it.opacityPressureEnabled })
             assertTrue(brushes.any { it.watercolor })
@@ -259,11 +281,16 @@ class ProcreateBrushParserTest {
         report = emptyList(),
     )
 
-    private fun writeBrush(target: File, archive: String = SYNTHETIC_ARCHIVE) {
+    private fun writeBrush(target: File, archive: String = SYNTHETIC_ARCHIVE, includeDual: Boolean = false) {
         ZipOutputStream(target.outputStream()).use { zip ->
             zip.putNextEntry(ZipEntry("Brush.archive")); zip.write(Base64.getDecoder().decode(archive)); zip.closeEntry()
             zip.putNextEntry(ZipEntry("Shape.png")); zip.write(SYNTHETIC_PNG); zip.closeEntry()
             zip.putNextEntry(ZipEntry("Grain.png")); zip.write(SYNTHETIC_PNG); zip.closeEntry()
+            if (includeDual) {
+                zip.putNextEntry(ZipEntry("Sub01/Brush.archive")); zip.write(Base64.getDecoder().decode(archive)); zip.closeEntry()
+                zip.putNextEntry(ZipEntry("Sub01/Shape.png")); zip.write(SYNTHETIC_PNG); zip.closeEntry()
+                zip.putNextEntry(ZipEntry("Sub01/Grain.png")); zip.write(SYNTHETIC_PNG); zip.closeEntry()
+            }
         }
     }
 

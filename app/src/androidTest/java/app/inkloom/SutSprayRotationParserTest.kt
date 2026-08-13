@@ -58,9 +58,9 @@ class SutSprayRotationParserTest {
                 )
             }
             parsed.forEach { brush ->
-                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 34, brush.parserVersion)
+                assertEquals("Failed to parse ${brush.name}: ${brush.report.joinToString()}", 35, brush.parserVersion)
                 assertFalse(brush.report.any { it.startsWith("SUT parameter parsing failed") })
-                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v34-")) }
+                brush.tipPreviewPaths.forEach { path -> assertTrue(path.contains("-sut-v35-")) }
             }
             assertTrue("Expected a real CSP Blend preset", parsed.any { it.cspColorMixMode == app.inkloom.document.CspColorMixMode.BLEND && it.watercolor })
             assertTrue("Expected a real CSP Running-color preset", parsed.any { it.cspColorMixMode == app.inkloom.document.CspColorMixMode.RUNNING_COLOR && it.watercolor })
@@ -87,6 +87,13 @@ class SutSprayRotationParserTest {
             assertEquals(CspAntiAlias.MEDIUM, paintingBrush?.antiAliasMode)
             assertEquals(CspAntiAlias.MEDIUM, paintingBrush?.dualAntiAliasMode)
             assertFalse(paintingBrush?.dualApplyRgb ?: true)
+            assertEquals(.5f, paintingBrush?.dualGrainDensity ?: -1f, .001f)
+            assertEquals(100f, paintingBrush?.dualGrainScale ?: -1f, .001f)
+            assertFalse(paintingBrush?.dualGrainApplyPerPlot ?: true)
+            assertFalse(paintingBrush?.dualGrainDensityDynamics?.pressureEnabled ?: true)
+            assertFalse(paintingBrush?.dualGrainDensityDynamics?.secondary?.tiltEnabled ?: true)
+            assertEquals(1f, paintingBrush?.dualGrainDensityDynamics?.secondary?.tiltMinimum ?: -1f, .001f)
+            assertEquals(5f, paintingBrush?.dualGrainDensityDynamics?.secondary?.velocityScale ?: -1f, .001f)
             assertEquals(2, paintingBrush?.dualTipFlipHorizontalMode)
             assertEquals(CspTextureComposite.HEIGHT, paintingBrush?.grainCompositeMode)
             assertTrue("The supplied painting brush enables CSP TextureForPlot", paintingBrush?.grainApplyPerPlot == true)
@@ -197,7 +204,7 @@ class SutSprayRotationParserTest {
             assertEquals(.55f, brush.dualSprayDensityDynamics.secondary.velocityMinimum, .001f)
             assertTrue(brush.grainDensityDynamics.secondary.tiltEnabled)
             assertEquals(.65f, brush.grainDensityDynamics.secondary.tiltMinimum, .001f)
-            assertEquals(34, brush.parserVersion)
+            assertEquals(35, brush.parserVersion)
         } finally {
             root.deleteRecursively()
         }
@@ -228,7 +235,7 @@ class SutSprayRotationParserTest {
             assertTrue(brush.watercolor)
             assertEquals(.72f, brush.colorMix, .001f)
             assertEquals(.43f, brush.paintMix, .001f)
-            assertEquals(34, brush.parserVersion)
+            assertEquals(35, brush.parserVersion)
             assertTrue(brush.report.any { it.contains("legacy BrushWaterColor") })
         } finally {
             root.deleteRecursively()

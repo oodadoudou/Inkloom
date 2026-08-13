@@ -695,6 +695,23 @@ class InkCanvasView(context: Context) : View(context) {
     var tipAssetPath: String? = null
     var tipAssetPaths: List<String> = emptyList()
     var dualTipAssetPaths: List<String> = emptyList()
+    var dualGrainAssetPath: String? = null
+    var dualGrainDensity: Float = 0f
+    var dualGrainDensityMinimum: Float = 0f
+    var dualGrainDensityDynamics: BrushParameterDynamics = BrushParameterDynamics()
+    var dualGrainScale: Float = 100f
+    var dualGrainMovement: Float = 0f
+    var dualGrainZoom: Float = 0f
+    var dualGrainRotationDegrees: Float = 0f
+    var dualGrainStrokeRotation: Float = 0f
+    var dualGrainBrightness: Float = 0f
+    var dualGrainContrast: Float = 0f
+    var dualGrainReversed: Boolean = false
+    var dualGrainEmphasized: Boolean = false
+    var dualGrainOffsetJitter: Boolean = false
+    var dualGrainCompositeMode: Int = CspTextureComposite.MULTIPLY
+    var dualGrainApplyPerPlot: Boolean = true
+    var dualGrainFilteringMode: Int = ProcreateFiltering.NONE
     var grainAssetPath: String? = null
     var grainDensity: Float = 0f
     var grainDensityMinimum: Float = 0f
@@ -1676,7 +1693,8 @@ class InkCanvasView(context: Context) : View(context) {
             }
         }
         if (tips.isNotEmpty()) {
-            val dualTips = if (stroke.dualBrush) stroke.dualTipAssetPaths.mapNotNull { loadTip(it, stroke.dualHardness, null, 0f, antiAliasMode = stroke.dualAntiAliasMode, alphaThresholdEnabled = stroke.alphaThresholdEnabled, alphaThreshold = stroke.alphaThreshold, preserveRgb = stroke.dualApplyRgb) }.ifEmpty { tipPaths.mapNotNull { loadTip(it, stroke.dualHardness, null, 0f, antiAliasMode = stroke.dualAntiAliasMode, alphaThresholdEnabled = stroke.alphaThresholdEnabled, alphaThreshold = stroke.alphaThreshold, preserveRgb = stroke.dualApplyRgb) } } else emptyList()
+            val dualGrainOffset = GrainBehavior.offset(stroke.renderSeed xor DUAL_GRAIN_SEED, stroke.dualGrainOffsetJitter)
+            val dualTips = if (stroke.dualBrush) stroke.dualTipAssetPaths.mapNotNull { loadTip(it, stroke.dualHardness, stroke.dualGrainAssetPath.takeIf { _ -> stroke.dualGrainApplyPerPlot }, stroke.dualGrainDensity, stroke.dualGrainScale, stroke.dualGrainRotationDegrees, stroke.dualGrainBrightness, stroke.dualGrainContrast, stroke.dualGrainReversed, stroke.dualGrainEmphasized, dualGrainOffset.x, dualGrainOffset.y, stroke.dualGrainCompositeMode, stroke.dualGrainFilteringMode, stroke.dualAntiAliasMode, stroke.alphaThresholdEnabled, stroke.alphaThreshold, stroke.dualApplyRgb) }.ifEmpty { tipPaths.mapNotNull { loadTip(it, stroke.dualHardness, stroke.dualGrainAssetPath.takeIf { _ -> stroke.dualGrainApplyPerPlot }, stroke.dualGrainDensity, stroke.dualGrainScale, stroke.dualGrainRotationDegrees, stroke.dualGrainBrightness, stroke.dualGrainContrast, stroke.dualGrainReversed, stroke.dualGrainEmphasized, dualGrainOffset.x, dualGrainOffset.y, stroke.dualGrainCompositeMode, stroke.dualGrainFilteringMode, stroke.dualAntiAliasMode, stroke.alphaThresholdEnabled, stroke.alphaThreshold, stroke.dualApplyRgb) } } else emptyList()
             drawStampedStroke(canvas, stroke, tips, dualTips, tipPaths, grainOffset.x, grainOffset.y, primaryStampStartIndex, dualStampStartIndex)
             return
         }
@@ -2154,7 +2172,9 @@ class InkCanvasView(context: Context) : View(context) {
         primaryStartIndex: Int,
         secondaryStartIndex: Int,
     ) {
-        if (isCurrentActiveStroke(stroke) && engineV2IncrementalActiveDraw) {
+        if (isCurrentActiveStroke(stroke) && engineV2IncrementalActiveDraw &&
+            (stroke.dualGrainAssetPath == null || stroke.dualGrainDensity <= 0f || stroke.dualGrainApplyPerPlot)
+        ) {
             drawActiveCspDualBrushStroke(
                 canvas,
                 stroke,
@@ -2190,6 +2210,7 @@ class InkCanvasView(context: Context) : View(context) {
             Canvas(secondary).apply { translate(-bounds.left.toFloat(), -bounds.top.toFloat()) }.also { secondaryCanvas ->
                 drawDualStampStream(secondaryCanvas, stroke, secondaryTips, secondaryStartIndex)
             }
+            applyDualWholeStrokeTexture(secondary, bounds.left, bounds.top, stroke)
             val localBounds = Rect(0, 0, output.width, output.height)
             CspDualBrushCompositor.compositeRegion(primary, secondary, output, localBounds, stroke.dualCompositeMode, stroke.dualApplyRgb)
             canvas.drawBitmap(output, bounds.left.toFloat(), bounds.top.toFloat(), dualCompositeOutputPaint)
@@ -2262,6 +2283,21 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
+    private fun applyDualWholeStrokeTexture(target: Bitmap, pageLeft: Int, pageTop: Int, stroke: InkStroke) {
+        if (stroke.dualGrainApplyPerPlot || stroke.dualGrainDensity <= 0f) return
+        val material = stroke.dualGrainAssetPath?.let(CspTextureMaterial::decode) ?: return
+        val grainOffset = GrainBehavior.offset(stroke.renderSeed xor DUAL_GRAIN_SEED, stroke.dualGrainOffsetJitter)
+        CspStrokeTextureCompositor.applyInPlace(
+            target, target.width, target.height, pageLeft, pageTop, width, height, material,
+            stroke.dualGrainDensity, stroke.dualGrainScale, stroke.dualGrainRotationDegrees,
+            grainOffset.x, grainOffset.y, stroke.dualGrainFilteringMode,
+            stroke.dualGrainBrightness, stroke.dualGrainContrast, stroke.dualGrainReversed,
+            stroke.dualGrainEmphasized, stroke.dualGrainCompositeMode,
+            stroke.alphaThresholdEnabled, stroke.alphaThreshold,
+            CspStrokeTextureCompositor.Workspace(),
+        )
+    }
+
     private fun activeDualBrushDirtyBounds(stroke: InkStroke, primaryStartIndex: Int, secondaryStartIndex: Int): Rect? {
         val primaryPoints = primaryStampedPoints(stroke)
         val secondaryPoints = dualStampedPoints(stroke)
@@ -2301,6 +2337,8 @@ class InkCanvasView(context: Context) : View(context) {
             advanceStampRandoms(scatterRandom, rotationRandom, stroke, sampledPoints, safeStart, dual = true)
         }
         val taper = strokeTaperFactors(stroke, sampledPoints)
+        val dualTipPaths = stroke.dualTipAssetPaths.ifEmpty { stroke.tipAssetPaths.ifEmpty { listOfNotNull(stroke.tipAssetPath) } }
+        val dualGrainOffset = GrainBehavior.offset(stroke.renderSeed xor DUAL_GRAIN_SEED, stroke.dualGrainOffsetJitter)
         val clipBounds = canvas.clipBounds
         for (index in safeStart until sampledPoints.size) {
             val point = sampledPoints[index]
@@ -2330,11 +2368,34 @@ class InkCanvasView(context: Context) : View(context) {
             repeat(stampsAtPoint) stamp@ { repeatIndex ->
             val sequenceIndex = index * 16 + repeatIndex
             val tipIndex = BrushTipSequence.index(stroke.dualTipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed xor DUAL_SEQUENCE_SEED, stroke.dualRibbon) ?: return@stamp
-            val tip = tips[tipIndex]
+            val baseTip = tips[tipIndex]
             val offset = if (stroke.dualSpray) SprayGeometry.offset(brushDiameter / 2f * stroke.dualSpraySpread.coerceIn(0f, 4f), scatterRandom.nextFloat(), scatterRandom.nextFloat(), stroke.dualSprayBias) else app.inkloom.document.SprayOffset(0f, 0f)
             val pathOffset = app.inkloom.document.StrokePathJitter.offset(stroke.renderSeed, sequenceIndex, strokeDirection, diameter, stroke.dualStrokePathJitter, stroke.dualStrokePathLongitudinalJitter, dual = true)
             val drawX = x + offset.x + app.inkloom.document.StrokePathJitter.unpackX(pathOffset)
             val drawY = y + offset.y + app.inkloom.document.StrokePathJitter.unpackY(pathOffset)
+            val spatialGrain = stroke.dualGrainAssetPath != null &&
+                (GrainBehavior.requiresPerDabSampling(stroke.dualGrainMovement, stroke.dualGrainZoom) ||
+                    GrainBehavior.requiresPerDabRotation(stroke.dualGrainStrokeRotation))
+            val grainSample = if (spatialGrain) GrainBehavior.sample(
+                dualGrainOffset, stroke.dualGrainMovement, stroke.dualGrainZoom, stroke.dualGrainScale,
+                drawX, drawY, diameter,
+            ) else null
+            val grainRotation = GrainBehavior.rotationDegrees(stroke.dualGrainRotationDegrees, stroke.dualGrainStrokeRotation, strokeDirection)
+            val tip = if (stroke.dualGrainApplyPerPlot && stroke.dualGrainAssetPath != null &&
+                (GrainDynamics.isDualDynamic(stroke) || spatialGrain)
+            ) {
+                dualTipPaths.getOrNull(tipIndex)?.let { path ->
+                    loadTip(
+                        path, stroke.dualHardness, stroke.dualGrainAssetPath, GrainDynamics.dualDensity(stroke, point),
+                        grainSample?.scalePercent ?: stroke.dualGrainScale, grainRotation,
+                        stroke.dualGrainBrightness, stroke.dualGrainContrast, stroke.dualGrainReversed,
+                        stroke.dualGrainEmphasized, grainSample?.offset?.x ?: dualGrainOffset.x,
+                        grainSample?.offset?.y ?: dualGrainOffset.y, stroke.dualGrainCompositeMode,
+                        stroke.dualGrainFilteringMode, stroke.dualAntiAliasMode,
+                        stroke.alphaThresholdEnabled, stroke.alphaThreshold, stroke.dualApplyRgb,
+                    )
+                } ?: baseTip
+            } else baseTip
             val roundness = ShapeRoundnessJitter.factors(stroke.renderSeed, sequenceIndex, stroke.dualShapeRoundnessHorizontalJitter, stroke.dualShapeRoundnessVerticalJitter, dual = true)
             val tipScale = BrushTipTransform.scale(tip.width, tip.height, diameter, stroke.dualThickness.coerceIn(.05f, 2f) * dynamics.thickness, stroke.dualThicknessVertical, roundness.horizontal, roundness.vertical)
             val flip = BrushTipFlip.signs(stroke.dualTipFlipHorizontalMode, stroke.dualTipFlipVerticalMode, stroke.dualTipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed, dual = true)
@@ -2532,11 +2593,11 @@ class InkCanvasView(context: Context) : View(context) {
         val primary = tipAssetPaths.ifEmpty { listOfNotNull(tipAssetPath) }
         val secondary = if (brushDual) dualTipAssetPaths.ifEmpty { primary } else emptyList()
         if (primary.isEmpty() && secondary.isEmpty()) return
-        val signature = "${primary.joinToString()}|${secondary.joinToString()}|$brushHardness|$dualHardness|$grainAssetPath|$grainDensity|$grainScale|$grainMovement|$grainZoom|$grainRotationDegrees|$grainStrokeRotation|$grainBrightness|$grainContrast|$grainReversed|$grainEmphasized|$grainCompositeMode|$grainFilteringMode|$brushAntiAliasMode|$dualAntiAliasMode|$dualApplyRgb|$alphaThresholdEnabled|$alphaThreshold"
+        val signature = "${primary.joinToString()}|${secondary.joinToString()}|$brushHardness|$dualHardness|$grainAssetPath|$grainDensity|$grainScale|$grainMovement|$grainZoom|$grainRotationDegrees|$grainStrokeRotation|$grainBrightness|$grainContrast|$grainReversed|$grainEmphasized|$grainCompositeMode|$grainFilteringMode|$dualGrainAssetPath|$dualGrainDensity|$dualGrainScale|$dualGrainMovement|$dualGrainZoom|$dualGrainRotationDegrees|$dualGrainStrokeRotation|$dualGrainBrightness|$dualGrainContrast|$dualGrainReversed|$dualGrainEmphasized|$dualGrainCompositeMode|$dualGrainFilteringMode|$brushAntiAliasMode|$dualAntiAliasMode|$dualApplyRgb|$alphaThresholdEnabled|$alphaThreshold"
         if (signature == prewarmedBrushSignature) return
         prewarmedBrushSignature = signature
         primary.forEach { prewarmTip(it, brushHardness, grainAssetPath, grainDensity, grainScale, grainRotationDegrees, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainCompositeMode = grainCompositeMode, grainFilteringMode = grainFilteringMode, antiAliasMode = brushAntiAliasMode, alphaThresholdEnabled = alphaThresholdEnabled, alphaThreshold = alphaThreshold) }
-        secondary.forEach { prewarmTip(it, dualHardness, null, 0f, antiAliasMode = dualAntiAliasMode, alphaThresholdEnabled = alphaThresholdEnabled, alphaThreshold = alphaThreshold, preserveRgb = dualApplyRgb) }
+        secondary.forEach { prewarmTip(it, dualHardness, dualGrainAssetPath.takeIf { dualGrainApplyPerPlot }, dualGrainDensity, dualGrainScale, dualGrainRotationDegrees, dualGrainBrightness, dualGrainContrast, dualGrainReversed, dualGrainEmphasized, grainCompositeMode = dualGrainCompositeMode, grainFilteringMode = dualGrainFilteringMode, antiAliasMode = dualAntiAliasMode, alphaThresholdEnabled = alphaThresholdEnabled, alphaThreshold = alphaThreshold, preserveRgb = dualApplyRgb) }
     }
 
     /** Selection must hand back a brush that can draw on the very next input packet. Imported tip
@@ -2549,8 +2610,9 @@ class InkCanvasView(context: Context) : View(context) {
             if (tipCache[key] == null) BrushTipTextureDecoder.decode(path, brushHardness, grainAssetPath, grainDensity, grainScale, grainRotationDegrees, grainBrightness, grainContrast, grainReversed, grainEmphasized, 0f, 0f, grainCompositeMode, grainFilteringMode, brushAntiAliasMode, alphaThresholdEnabled, alphaThreshold)?.let { tipCache[key] = it }
         }
         secondary.forEach { path ->
-            val key = tipCacheKey(path, dualHardness, null, 0f, 100f, 0f, 0f, 0f, false, false, 0f, 0f, CspTextureComposite.MULTIPLY, ProcreateFiltering.NONE, dualAntiAliasMode, alphaThresholdEnabled, alphaThreshold, dualApplyRgb)
-            if (tipCache[key] == null) BrushTipTextureDecoder.decode(path, dualHardness, null, 0f, antiAliasMode = dualAntiAliasMode, alphaThresholdEnabled = alphaThresholdEnabled, alphaThreshold = alphaThreshold, preserveRgb = dualApplyRgb)?.let { tipCache[key] = it }
+            val grain = dualGrainAssetPath.takeIf { dualGrainApplyPerPlot }
+            val key = tipCacheKey(path, dualHardness, grain, dualGrainDensity, dualGrainScale, dualGrainRotationDegrees, dualGrainBrightness, dualGrainContrast, dualGrainReversed, dualGrainEmphasized, 0f, 0f, dualGrainCompositeMode, dualGrainFilteringMode, dualAntiAliasMode, alphaThresholdEnabled, alphaThreshold, dualApplyRgb)
+            if (tipCache[key] == null) BrushTipTextureDecoder.decode(path, dualHardness, grain, dualGrainDensity, dualGrainScale, dualGrainRotationDegrees, dualGrainBrightness, dualGrainContrast, dualGrainReversed, dualGrainEmphasized, 0f, 0f, dualGrainCompositeMode, dualGrainFilteringMode, dualAntiAliasMode, alphaThresholdEnabled, alphaThreshold, dualApplyRgb)?.let { tipCache[key] = it }
         }
     }
 
@@ -5537,6 +5599,23 @@ class InkCanvasView(context: Context) : View(context) {
         shapeScreenRotationDegrees = if (shapeOrientToScreen) -viewportRotationDegrees else 0f,
         dualShapeScreenRotationDegrees = if (dualShapeOrientToScreen) -viewportRotationDegrees else 0f,
         grainFilteringMode = grainFilteringMode,
+        dualGrainAssetPath = dualGrainAssetPath,
+        dualGrainDensity = dualGrainDensity,
+        dualGrainDensityMinimum = dualGrainDensityMinimum,
+        dualGrainDensityDynamics = dualGrainDensityDynamics,
+        dualGrainScale = dualGrainScale,
+        dualGrainMovement = dualGrainMovement,
+        dualGrainZoom = dualGrainZoom,
+        dualGrainRotationDegrees = dualGrainRotationDegrees,
+        dualGrainStrokeRotation = dualGrainStrokeRotation,
+        dualGrainBrightness = dualGrainBrightness,
+        dualGrainContrast = dualGrainContrast,
+        dualGrainReversed = dualGrainReversed,
+        dualGrainEmphasized = dualGrainEmphasized,
+        dualGrainOffsetJitter = dualGrainOffsetJitter,
+        dualGrainCompositeMode = dualGrainCompositeMode,
+        dualGrainApplyPerPlot = dualGrainApplyPerPlot,
+        dualGrainFilteringMode = dualGrainFilteringMode,
         procreateRenderingMode = procreateRenderingMode,
         procreateBrushBlendMode = procreateBrushBlendMode,
         procreateBurntEdgeBlendMode = procreateBurntEdgeBlendMode,
@@ -6471,6 +6550,7 @@ class InkCanvasView(context: Context) : View(context) {
         const val PERSPECTIVE_TOUCH_RADIUS_DP = 28f
         const val SPECIAL_RULER_ROTATION_HANDLE_DP = 72f
         const val DUAL_SEQUENCE_SEED = 0x35A71C9E
+        const val DUAL_GRAIN_SEED = 0x4D2A61C7
         const val MAX_TIP_CACHE_ENTRIES = 64
         const val MAX_PENDING_TIP_LOADS = 12
         const val MAX_COLOR_FILTER_CACHE_ENTRIES = 64

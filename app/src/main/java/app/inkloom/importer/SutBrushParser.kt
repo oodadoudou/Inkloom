@@ -4,6 +4,7 @@ import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
+import app.inkloom.model.ImportedBrushGrain
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushParameterDynamics
 import app.inkloom.document.BrushColorDynamics
@@ -25,7 +26,12 @@ class SutBrushParser(private val assetDirectory: File) {
         database.use { db ->
             val columns = db.rawQuery("PRAGMA table_info(Variant)", null).use { cursor -> buildSet { while (cursor.moveToNext()) add(cursor.getString(cursor.getColumnIndexOrThrow("name"))) } }
             val desired = listOf("Opacity", "BrushSize", "BrushSizeUnit", "FlickerReduction", "FlickerReductionBySpeed", "FlickerReductionBySpeedType", "BrushUseRevision", "BrushRevision", "BrushRevisionBySpeed", "BrushRevisionByViewScale", "BrushRevisionBezier", "BrushSharpenCorner", "BrushFlow", "BrushHardness", "BrushBlurLinkSize", "BrushBlur", "BrushBlurUnit", "BrushBlurEffector", "BrushInterval", "BrushAutoIntervalType", "BrushContinuousPlot", "BrushThickness", "BrushVerticalThicknes", "BrushRotation", "BrushRotationEffector", "BrushRotationRandomScale", "BrushPatternOrderType", "BrushPatternReverseHorizontal", "BrushPatternReverseVertical", "BrushBlendPatternByDarken", "BrushRibbon", "BrushChangeColorTarget", "BrushChangePatternColor", "BrushHueChange", "BrushSaturationChange", "BrushValueChange", "BrushSubColor", "BrushChangeStrokeColor", "BrushStrokeHueChange", "BrushStrokeSaturationChange", "BrushStrokeValueChange", "BrushStrokeSubColor", "TextureDensity", "TextureCompositeMode", "TextureForPlot", "TextureReverseDensity", "TextureStressDensity", "TextureScale2", "TextureRotate", "TextureBrightness", "TextureContrast", "BrushUseWaterColor", "BrushUseWaterColor2", "BrushWaterColor", "BrushColorMixingMode", "BrushLMSLinearity", "BrushMixColor", "BrushMixAlpha", "BrushMixColorExtension", "BrushUseSpray", "BrushSpraySize", "BrushSpraySizeUnit", "BrushSpraySizeSyncBrushSize", "BrushSprayDensity", "BrushSprayBias", "BrushRotationInSpray", "BrushRotationEffectorInSpray", "BrushRotationRandomInSpray", "UseDualBrush", "DualBrushCompositeMode", "ChangeRGBByDual", "SyncDualBrushSize", "DualSize", "DualFlow", "DualHardness", "DualInterval", "DualAutoIntervalType", "DualThickness", "DualVerticalThicknes", "DualRotation", "DualRotationEffector", "DualRotationRandomScale", "DualPatternReverseHorizontal", "DualPatternReverseVertical", "DualBlendPatternByDarken", "DualRibbon", "DualUseSpray", "DualSpraySize", "DualSpraySizeUnit", "DualSpraySizeSyncBrushSize", "DualSprayDensity", "DualSprayBias", "DualRotationInSpray", "DualRotationEffectorInSpray", "DualRotationRandomInSpray", "DualPatternOrderType", "BrushInOutType", "BrushUseIn", "BrushInLength", "BrushInLengthUnit", "BrushInRatio", "BrushUseOut", "BrushOutLength", "BrushOutLengthUnit", "BrushOutRatio", "BrushUseWaterEdge", "BrushWaterEdgeRadius", "BrushWaterEdgeRadiusUnit", "BrushWaterEdgeAlphaPower", "BrushWaterEdgeValuePower", "BrushWaterEdgeBlur", "BrushWaterEdgeBlurUnit").filter(columns::contains)
-            val numericDesired = (desired + listOf("BrushSizeSyncViewScale", "AntiAlias", "DualAntiAlias").filter(columns::contains)).filterNot { it == "BrushBlurEffector" }
+            val dualTextureDesired = listOf(
+                "DualTextureCompositeMode", "DualTextureReverseDensity", "DualTextureStressDensity",
+                "DualTextureScale", "DualTextureRotate", "DualTextureBrightness", "DualTextureContrast",
+                "DualTextureForPlot", "DualTextureDensity",
+            ).filter(columns::contains)
+            val numericDesired = (desired + dualTextureDesired + listOf("BrushSizeSyncViewScale", "AntiAlias", "DualAntiAlias").filter(columns::contains)).filterNot { it == "BrushBlurEffector" }
             val values = db.rawQuery("SELECT n.NodeName, ${numericDesired.joinToString { "v.$it" }} FROM Node n JOIN Variant v ON v.VariantID=n.NodeVariantID LIMIT 1", null).use { cursor ->
                 check(cursor.moveToFirst()) { "SUT has no active brush variant" }
                 numericDesired.associateWith { name -> cursor.number(name) } + ("NodeName" to cursor.getString(cursor.getColumnIndexOrThrow("NodeName")))
@@ -41,6 +47,7 @@ class SutBrushParser(private val assetDirectory: File) {
             val sprayParticleSizeEffector = db.effector("BrushSpraySizeEffector", columns)
             val sprayDensityEffector = db.effector("BrushSprayDensityEffector", columns)
             val textureDensityEffector = db.effector("TextureDensityEffector", columns)
+            val dualTextureDensityEffector = db.effector("DualTextureDensityEffector", columns)
             val hueEffector = db.effector("BrushHueChangeEffector", columns)
             val saturationEffector = db.effector("BrushSaturationChangeEffector", columns)
             val valueEffector = db.effector("BrushValueChangeEffector", columns)
@@ -55,6 +62,7 @@ class SutBrushParser(private val assetDirectory: File) {
             val dualTips = extractMaterialPreviews(db, "DualPatternImageArray", hash, "dual-tip")
             val tip = tips.firstOrNull()
             val grain = extractMaterialPreviews(db, "TextureImage", hash, "grain").firstOrNull()
+            val dualGrain = extractMaterialPreviews(db, "DualTextureImage", hash, "dual-grain").firstOrNull()
             val colorMixAmount = (values.float("BrushMixColor") / 100f).coerceIn(0f, 1f)
             val paintDensity = (values.float("BrushMixAlpha") / 100f).coerceIn(0f, 1f)
             val stretch = (values.float("BrushMixColorExtension") / 100f).coerceIn(0f, 1f)
@@ -89,6 +97,19 @@ class SutBrushParser(private val assetDirectory: File) {
                 tipPreviewPath = tip?.absolutePath,
                 tipPreviewPaths = tips.map(File::getAbsolutePath),
                 dualTipPreviewPaths = dualTips.map(File::getAbsolutePath),
+                dualGrain = ImportedBrushGrain(
+                    previewPath = dualGrain?.absolutePath,
+                    density = (values.float("DualTextureDensity") / 100f).coerceIn(0f, 1f),
+                    densityDynamics = dualTextureDensityEffector.parameterDynamics(),
+                    scale = values.float("DualTextureScale", 100f).coerceIn(1f, 4000f),
+                    rotationDegrees = values.float("DualTextureRotate").coerceIn(-360f, 360f),
+                    brightness = values.float("DualTextureBrightness").coerceIn(-100f, 100f),
+                    contrast = values.float("DualTextureContrast").coerceIn(-100f, 100f),
+                    reversed = values.float("DualTextureReverseDensity") > 0f,
+                    emphasized = values.float("DualTextureStressDensity") > 0f,
+                    compositeMode = values.float("DualTextureCompositeMode", CspTextureComposite.MULTIPLY.toFloat()).toInt().coerceIn(0, 64),
+                    applyPerPlot = values.float("DualTextureForPlot", 1f) > 0f,
+                ),
                 grainPreviewPath = grain?.absolutePath,
                 grainDensity = (values.float("TextureDensity") / 100f).coerceIn(0f, 1f),
                 grainDensityDynamics = textureDensityEffector.parameterDynamics(),
@@ -271,6 +292,7 @@ class SutBrushParser(private val assetDirectory: File) {
                     if (grain != null && CspTextureComposite.isDocumented(textureMode)) add("CSP ${CspTextureComposite.displayName(textureMode)} Texture Mode mapped from real-corpus mode $textureMode using its documented blend and edge behavior")
                     else if (grain != null && textureMode > 0) add("CSP texture mode $textureMode retained with legacy density modulation until its raster equation is verified")
                     if (grain != null) add(if (values.float("TextureForPlot", 1f) > 0f) "CSP Apply by each plot enabled: texture repeats and accumulates independently on every plotted brush tip" else "CSP Apply by each plot disabled: texture is composited once across the combined stroke")
+                    if (dualGrain != null) add("CSP 2-Texture material mapped independently at ${values.float("DualTextureDensity").toInt()}% density, ${values.float("DualTextureScale", 100f)}% scale and ${values.float("DualTextureRotate")}° rotation; primary texture settings were not inherited")
                     add("Size${if (values.float("BrushSizeUnit").toInt() == SutUnitConverter.MILLIMETERS) " converted from mm to the 1600 px reference page" else ""}, opacity, flow, hardness, spacing, thickness and rotation mapped")
                     if (values.float("BrushSizeSyncViewScale") > 0f) add("CSP Specify by size on screen enabled: the authored diameter is divided by the pen-down canvas scale so its physical footprint stays equal to 100% view")
                     if (values.float("BrushAutoIntervalType") > 0f) add("CSP ${CspBrushGap.displayName(values.float("BrushAutoIntervalType").toInt())} automatic brush-tip gap mapped; stale Fixed interval ${values.float("BrushInterval")}% is not used while this mode is active")
@@ -404,7 +426,7 @@ class SutBrushParser(private val assetDirectory: File) {
     private fun SutEffector.sourceSummary(): String = buildList { if (tiltEnabled) add("tilt"); if (velocityEnabled) add("velocity"); if (randomEnabled) add("random") }.joinToString("+")
     private fun SutEffector.parameterSourceSummary(): String = buildList { if (pressureEnabled) add("pressure"); sourceSummary().takeIf(String::isNotBlank)?.let(::add) }.joinToString("+")
     companion object {
-        const val CURRENT_VERSION = 34
+        const val CURRENT_VERSION = 35
         private const val MAX_MATERIAL_ARCHIVE_BYTES = 64 * 1024 * 1024
     }
 }
