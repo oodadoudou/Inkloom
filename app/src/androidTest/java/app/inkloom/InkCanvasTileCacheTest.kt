@@ -2,6 +2,7 @@ package app.inkloom
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.RenderNode
 import android.view.InputDevice
 import android.view.MotionEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -10,7 +11,7 @@ import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
 import app.inkloom.document.StrokeTileKey
 import app.inkloom.engine.v3.render.ActiveStrokeCompositor
-import app.inkloom.engine.v2.render.EngineV2CommittedTileScene
+import app.inkloom.engine.v3.scene.SparseTileScene
 import app.inkloom.model.EditorTool
 import app.inkloom.model.SymmetryMode
 import app.inkloom.ui.InkCanvasView
@@ -23,9 +24,49 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class InkCanvasTileCacheTest {
+    @Test fun sparse8192SceneRetainsOnlyOccupiedGpuTiles() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val scene = SparseTileScene(4_000_000)
+            val strokes = listOf(
+                InkStroke(id = "top-left", width = 12f, points = listOf(StrokePoint(.02f, .02f), StrokePoint(.04f, .04f))),
+                InkStroke(id = "bottom-right", width = 12f, points = listOf(StrokePoint(.96f, .96f), StrokePoint(.98f, .98f))),
+            )
+            val output = RenderNode("Inkloom.V3.SparseTileTest").apply { setPosition(0, 0, 8192, 8192) }
+            val recording = output.beginRecording()
+            try {
+                assertTrue(recording.isHardwareAccelerated)
+                assertTrue(scene.draw(recording, strokes, 8192, 8192) { canvas, candidates ->
+                    candidates.forEach { stroke ->
+                        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                            color = android.graphics.Color.BLACK
+                            strokeWidth = stroke.width
+                        }
+                        val points = stroke.points
+                        if (points.size >= 2) canvas.drawLine(
+                            points.first().x * 8192f,
+                            points.first().y * 8192f,
+                            points.last().x * 8192f,
+                            points.last().y * 8192f,
+                            paint,
+                        )
+                    }
+                })
+            } finally {
+                output.endRecording()
+            }
+            val snapshot = scene.debugSnapshot()
+            assertTrue("Sparse scene allocated ${snapshot.hardwareTileCount} tiles", snapshot.hardwareTileCount in 2..8)
+            assertEquals(2, snapshot.hardwareStrokeCount)
+            assertEquals(0, snapshot.tiles.size)
+            assertTrue(snapshot.approximateGpuDisplayListBytes > 0L)
+            scene.close()
+            output.discardDisplayList()
+        }
+    }
+
     @Test fun softStrokeTilesRenderWithAnExpandedTransientGutter() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            val scene = EngineV2CommittedTileScene(4_000_000)
+            val scene = SparseTileScene(4_000_000)
             val output = Bitmap.createBitmap(1024, 1024, Bitmap.Config.ARGB_8888)
             val clips = mutableListOf<android.graphics.Rect>()
             val stroke = InkStroke(
@@ -117,7 +158,7 @@ class InkCanvasTileCacheTest {
         }
     }
 
-    @Test fun rapidCommittedStrokesAppendToCleanTilesWithoutReplayingOlderInk() {
+    @Test fun rapidCommittedStrokesNeverReplayHistoricalInkWhenAllocatingSparseTiles() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val view = InkCanvasView(InstrumentationRegistry.getInstrumentation().targetContext).apply {
                 layout(0, 0, 1024, 1024)
@@ -138,7 +179,10 @@ class InkCanvasTileCacheTest {
                     view.draw(Canvas(bitmap))
                 }
 
-                assertTrue("Rapid additions must not trigger a full historical tile replay: $fullTileRenders", fullTileRenders.isEmpty())
+                assertTrue(
+                    "A newly occupied sparse tile may render its first stroke, but must not replay growing history: $fullTileRenders",
+                    fullTileRenders.all { it <= 1 },
+                )
             } finally {
                 bitmap.recycle()
             }

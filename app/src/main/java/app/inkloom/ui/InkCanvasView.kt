@@ -32,7 +32,7 @@ import app.inkloom.engine.v2.traceEngineV2
 import app.inkloom.engine.v3.input.NativeStrokeSession
 import app.inkloom.engine.v2.brush.EngineV2BrushEvaluator
 import app.inkloom.engine.v3.render.ActiveStrokeCompositor
-import app.inkloom.engine.v2.render.EngineV2CommittedTileScene
+import app.inkloom.engine.v3.scene.SparseTileScene
 import app.inkloom.engine.v2.render.EngineV2StampBatchRenderer
 import app.inkloom.engine.v2.render.ProceduralBrushTip
 import java.util.LinkedHashMap
@@ -125,8 +125,8 @@ import app.inkloom.document.SprayGeometry
 import app.inkloom.document.SprayDynamics
 import app.inkloom.document.StrokeEdit
 import app.inkloom.document.StrokeTileIndex
-import app.inkloom.document.CanvasEdit
-import app.inkloom.document.CanvasEditHistory
+import app.inkloom.engine.v3.scene.EngineTransaction
+import app.inkloom.engine.v3.scene.EngineTransactionJournal
 import app.inkloom.document.StrokeEdits
 import app.inkloom.document.StrokeEraser
 import app.inkloom.document.StrokeClipboardCodec
@@ -213,7 +213,7 @@ class InkCanvasView(context: Context) : View(context) {
     private val renderLock = Any()
     private val strokeInputModeler = NativeStrokeSession()
     private val strokes = mutableListOf<InkStroke>()
-    private val editHistory = CanvasEditHistory()
+    private val editHistory = EngineTransactionJournal()
     private val currentPoints = mutableListOf<StrokePoint>()
     private var currentStrokeId = java.util.UUID.randomUUID().toString()
     private var activeStrokeTemplate: InkStroke? = null
@@ -618,7 +618,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var prewarmedBrushSignature: String? = null
     private val protectedStrokeIds = mutableSetOf<String>()
     private val protectedLayerIds = mutableSetOf<String>()
-    private val committedScene = EngineV2CommittedTileScene(MAX_CACHE_PIXELS)
+    private val committedScene = SparseTileScene(MAX_CACHE_PIXELS)
     internal var onTileRendered: ((StrokeTileKey, Int) -> Unit)?
         get() = committedScene.onTileRendered
         set(value) { committedScene.onTileRendered = value }
@@ -1470,7 +1470,13 @@ class InkCanvasView(context: Context) : View(context) {
         if (strokes.any(::usesDestinationDependentBrushBlend)) return false
         if (alphaLockedLayers.isNotEmpty() || clippedLayers.isNotEmpty() || layerMasks.isNotEmpty()) return false
         if (layerElementBitmaps.isNotEmpty() || rasterLayerBitmaps.isNotEmpty()) return false
-        return committedScene.draw(canvas, strokes, width, height) { target, candidates ->
+        return committedScene.draw(
+            canvas,
+            strokes,
+            width,
+            height,
+            independentStrokes = canAppendCommittedInkToTiles(),
+        ) { target, candidates ->
             drawLayeredStrokes(target, candidates)
         }
     }
@@ -4751,7 +4757,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     @VisibleForTesting
-    internal fun engineV2CommittedTileSnapshot(): EngineV2CommittedTileScene.DebugSnapshot =
+    internal fun committedTileSnapshot(): SparseTileScene.DebugSnapshot =
         committedScene.debugSnapshot()
 
     /** The full-screen proxy receives screen-space contacts. Drawing contacts are mapped into the
@@ -6138,39 +6144,39 @@ class InkCanvasView(context: Context) : View(context) {
     fun undo() {
         val edit = editHistory.takeUndo() ?: return
         when (edit) {
-            is CanvasEdit.Strokes -> {
+            is EngineTransaction.Strokes -> {
                 if (editTouchesProtectedLayer(edit.edit)) {
                     editHistory.restoreUndo(edit)
                     return
                 }
                 applyStrokeEdit(edit.edit, forward = false)
             }
-            is CanvasEdit.External -> edit.undo()
+            is EngineTransaction.External -> edit.undo()
         }
     }
 
     fun redo() {
         val edit = editHistory.takeRedo() ?: return
         when (edit) {
-            is CanvasEdit.Strokes -> {
+            is EngineTransaction.Strokes -> {
                 if (editTouchesProtectedLayer(edit.edit)) {
                     editHistory.restoreRedo(edit)
                     return
                 }
                 applyStrokeEdit(edit.edit, forward = true)
             }
-            is CanvasEdit.External -> edit.redo()
+            is EngineTransaction.External -> edit.redo()
         }
     }
 
     /** Adds a host-owned page mutation to the same chronological stream as ink edits. */
     fun recordExternalEdit(undo: () -> Unit, redo: () -> Unit, dispose: () -> Unit = {}) {
-        editHistory.record(CanvasEdit.External(undo, redo, dispose))
+        editHistory.record(EngineTransaction.External(undo, redo, dispose))
     }
 
     private fun commitStrokeEdit(before: List<InkStroke>, after: List<InkStroke>) {
         val edit = StrokeEdits.difference(before, after) ?: return
-        editHistory.record(CanvasEdit.Strokes(edit))
+        editHistory.record(EngineTransaction.Strokes(edit))
         persistStrokeTransition(edit.before, edit.after)
     }
 

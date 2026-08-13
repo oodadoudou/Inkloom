@@ -474,7 +474,7 @@ class InkloomPinchThenWriteTest {
             val firstX = firstPoint?.let { reflectField(it, "x") as? Float }
             val firstY = firstPoint?.let { reflectField(it, "y") as? Float }
             System.err.println("RENDER stroke width=$strokeWidth points=$strokePoints first=($firstX,$firstY)")
-            val committedScene = view.engineV2CommittedTileSnapshot()
+            val committedScene = view.committedTileSnapshot()
             tilesAtDraw = committedScene.tileCount
             dirtyAtDraw = committedScene.dirtyTileCount
             var tileDark = 0

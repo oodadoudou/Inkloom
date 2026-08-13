@@ -85,6 +85,9 @@ class StrokeTileIndex(val tileSizePx: Int = DEFAULT_TILE_SIZE_PX) {
         repeat(rowCount) { row -> repeat(columnCount) { column -> add(StrokeTileKey(column, row)) } }
     }
 
+    /** Allocated scene tiles only. Empty document regions never consume retained GPU/CPU memory. */
+    fun occupiedTiles(): Set<StrokeTileKey> = tileStrokeIds.keys.toSet()
+
     fun rect(key: StrokeTileKey): StrokeTileRect {
         val left = key.column * tileSizePx
         val top = key.row * tileSizePx

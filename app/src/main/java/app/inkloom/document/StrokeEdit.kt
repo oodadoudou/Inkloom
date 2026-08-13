@@ -34,23 +34,3 @@ object StrokeEdits {
         }
     }
 }
-
-class StrokeEditHistory(private val capacity: Int = 100) {
-    private val undo = ArrayDeque<StrokeEdit>()
-    private val redo = ArrayDeque<StrokeEdit>()
-
-    fun record(edit: StrokeEdit) {
-        undo.addLast(edit)
-        while (undo.size > capacity.coerceAtLeast(1)) undo.removeFirst()
-        redo.clear()
-    }
-
-    fun takeUndo(): StrokeEdit? = undo.removeLastOrNull()?.also(redo::addLast)
-
-    fun takeRedo(): StrokeEdit? = redo.removeLastOrNull()?.also(undo::addLast)
-
-    fun clear() {
-        undo.clear()
-        redo.clear()
-    }
-}

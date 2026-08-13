@@ -2,9 +2,11 @@ package app.inkloom.document
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import app.inkloom.engine.v3.scene.EngineTransaction
+import app.inkloom.engine.v3.scene.EngineTransactionJournal
 import org.junit.Test
 
-class StrokeEditHistoryTest {
+class StrokeEditTest {
     private val back = InkStroke(id = "back", points = listOf(StrokePoint(.1f, .1f)))
     private val middle = InkStroke(id = "middle", points = listOf(StrokePoint(.2f, .2f)))
     private val front = InkStroke(id = "front", points = listOf(StrokePoint(.3f, .3f)))
@@ -33,23 +35,23 @@ class StrokeEditHistoryTest {
 
     @Test
     fun historyMovesEditsBetweenUndoAndRedoAndClearsRedoOnNewInput() {
-        val history = StrokeEditHistory()
+        val history = EngineTransactionJournal()
         val first = StrokeEdits.difference(emptyList(), listOf(back))!!
         val second = StrokeEdits.difference(listOf(back), listOf(back, middle))!!
-        history.record(first)
-        history.record(second)
+        history.record(EngineTransaction.Strokes(first))
+        history.record(EngineTransaction.Strokes(second))
 
-        assertEquals(second, history.takeUndo())
-        assertEquals(second, history.takeRedo())
+        assertEquals(second, (history.takeUndo() as EngineTransaction.Strokes).edit)
+        assertEquals(second, (history.takeRedo() as EngineTransaction.Strokes).edit)
         history.takeUndo()
-        history.record(StrokeEdits.difference(listOf(back), listOf(back, front))!!)
+        history.record(EngineTransaction.Strokes(StrokeEdits.difference(listOf(back), listOf(back, front))!!))
         assertNull(history.takeRedo())
     }
 
     @Test
     fun emptyDifferenceDoesNotCreateHistory() {
         assertNull(StrokeEdits.difference(listOf(back), listOf(back)))
-        val history = StrokeEditHistory()
+        val history = EngineTransactionJournal()
         assertNull(history.takeUndo())
     }
 }
