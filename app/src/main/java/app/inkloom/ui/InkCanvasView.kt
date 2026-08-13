@@ -67,7 +67,7 @@ import app.inkloom.document.BrushTipTextureDecoder
 import app.inkloom.document.BrushTipTransform
 import app.inkloom.document.ShapeRoundnessJitter
 import app.inkloom.document.BrushTaperMode
-import app.inkloom.document.CspDualBrushBlendMode
+import app.inkloom.document.CspDualBrushCompositor
 import app.inkloom.document.CspAntiAlias
 import app.inkloom.document.CspBrushGap
 import app.inkloom.document.CspTextureComposite
@@ -123,6 +123,7 @@ import app.inkloom.document.SingleFingerDoubleTapUndoGesture
 import app.inkloom.document.SprayGeometry
 import app.inkloom.document.SprayDynamics
 import app.inkloom.document.StrokeEdit
+import app.inkloom.document.StrokeTileIndex
 import app.inkloom.document.CanvasEdit
 import app.inkloom.document.CanvasEditHistory
 import app.inkloom.document.StrokeEdits
@@ -189,6 +190,24 @@ data class LayerElementBitmaps(val base: Bitmap?, val additions: Bitmap?) {
 
 data class CanvasColorDrop(val color: Int)
 
+private class ActiveCspDualBrushSurface(val width: Int, val height: Int, val applyRgb: Boolean) {
+    val primary: Bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    val secondary: Bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    val output: Bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+
+    fun clear() {
+        primary.eraseColor(Color.TRANSPARENT)
+        secondary.eraseColor(Color.TRANSPARENT)
+        output.eraseColor(Color.TRANSPARENT)
+    }
+
+    fun recycle() {
+        primary.recycle()
+        secondary.recycle()
+        output.recycle()
+    }
+}
+
 class InkCanvasView(context: Context) : View(context) {
     private val renderLock = Any()
     private val strokeInputModeler = NativeStrokeInputModeler()
@@ -210,6 +229,7 @@ class InkCanvasView(context: Context) : View(context) {
     private val activePrimaryRotationRandoms = mutableMapOf<String, java.util.Random>()
     private val activeDualScatterRandoms = mutableMapOf<String, java.util.Random>()
     private val activeDualRotationRandoms = mutableMapOf<String, java.util.Random>()
+    private val activeCspDualBrushSurfaces = mutableMapOf<String, ActiveCspDualBrushSurface>()
     private val activeSurfaceFrame = Runnable {
         activeSurfaceFrameScheduled = false
         val surface = activeStrokeSurface ?: return@Runnable
@@ -545,6 +565,7 @@ class InkCanvasView(context: Context) : View(context) {
     // the input/render hot path out of ART's allocator and prevents GC pauses under the pen.
     private val primaryStampMatrix = Matrix()
     private val secondaryStampMatrix = Matrix()
+    private val dualCompositeOutputPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val edgeStampMatrix = Matrix()
     private val srcInColorFilters = object : LinkedHashMap<Int, PorterDuffColorFilter>(32, .75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, PorterDuffColorFilter>): Boolean = size > MAX_COLOR_FILTER_CACHE_ENTRIES
@@ -1895,8 +1916,14 @@ class InkCanvasView(context: Context) : View(context) {
 
     internal fun requiresCompleteActiveReplay(strokes: List<InkStroke>): Boolean = synchronized(renderLock) {
         val wholeTextureStrokes = strokes.filter { !it.grainApplyPerPlot && it.grainAssetPath != null && it.grainDensity > 0f }
+        val dualStrokes = strokes.filter(InkStroke::dualBrush)
         wholeTextureStrokes.isNotEmpty() &&
-            (strokes.size != 1 || wholeTextureStrokes.size != 1 || !canIncrementallyReplaceWholeStrokeTexture(wholeTextureStrokes.single()))
+            (strokes.size != 1 || wholeTextureStrokes.size != 1 || !canIncrementallyReplaceWholeStrokeTexture(wholeTextureStrokes.single())) ||
+            dualStrokes.isNotEmpty() && (
+                strokes.size != 1 ||
+                    dualStrokes.single().opacity < .999f ||
+                    ProcreateBrushBlend.normalize(dualStrokes.single().procreateBrushBlendMode) != ProcreateBrushBlend.NORMAL
+                )
     }
 
     private fun drawStampedStroke(
@@ -1910,6 +1937,20 @@ class InkCanvasView(context: Context) : View(context) {
         stampStartIndex: Int = 0,
         dualStampStartIndex: Int = 0,
     ) {
+        if (stroke.dualBrush && dualTips.isNotEmpty()) {
+            drawCspDualBrushStroke(
+                canvas,
+                stroke,
+                tips,
+                dualTips,
+                tipPaths,
+                grainOffsetX,
+                grainOffsetY,
+                stampStartIndex,
+                dualStampStartIndex,
+            )
+            return
+        }
         // A CSP Dual Brush combines its two stamp streams first, then deposits
         // that single result. Isolating the stroke prevents the secondary mode
         // from accidentally blending with older strokes or the page itself.
@@ -2046,10 +2087,6 @@ class InkCanvasView(context: Context) : View(context) {
             activePrimaryScatterRandoms[stroke.id] = scatterRandom
             activePrimaryRotationRandoms[stroke.id] = rotationRandom
         }
-        if (stroke.dualBrush && dualTips.isNotEmpty()) {
-            paint.isFilterBitmap = CspAntiAlias.enabled(stroke.dualAntiAliasMode)
-            drawDualStampedStroke(canvas, stroke, dualTips, dualStampStartIndex)
-        }
         if (compositeLayer >= 0) canvas.restoreToCount(compositeLayer)
         paint.colorFilter = null
     }
@@ -2106,10 +2143,150 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
-    /** Draws the secondary stream into the isolated per-stroke composition layer. */
-    private fun drawDualStampedStroke(canvas: Canvas, stroke: InkStroke, tips: List<Bitmap>, stampStartIndex: Int = 0) {
-        val compositePaint = Paint().apply { blendMode = CspDualBrushBlendMode.resolve(stroke.dualCompositeMode) }
-        val dualLayer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), compositePaint)
+    private fun drawCspDualBrushStroke(
+        canvas: Canvas,
+        stroke: InkStroke,
+        primaryTips: List<Bitmap>,
+        secondaryTips: List<Bitmap>,
+        tipPaths: List<String>,
+        grainOffsetX: Float,
+        grainOffsetY: Float,
+        primaryStartIndex: Int,
+        secondaryStartIndex: Int,
+    ) {
+        if (isCurrentActiveStroke(stroke) && engineV2IncrementalActiveDraw) {
+            drawActiveCspDualBrushStroke(
+                canvas,
+                stroke,
+                primaryTips,
+                secondaryTips,
+                tipPaths,
+                grainOffsetX,
+                grainOffsetY,
+                primaryStartIndex,
+                secondaryStartIndex,
+            )
+            return
+        }
+        val bounds = dualBrushBounds(stroke) ?: return
+        val primary = Bitmap.createBitmap(bounds.width(), bounds.height(), Bitmap.Config.ARGB_8888)
+        val secondary = Bitmap.createBitmap(bounds.width(), bounds.height(), Bitmap.Config.ARGB_8888)
+        val output = Bitmap.createBitmap(bounds.width(), bounds.height(), Bitmap.Config.ARGB_8888)
+        try {
+            Canvas(primary).apply { translate(-bounds.left.toFloat(), -bounds.top.toFloat()) }.also { primaryCanvas ->
+                drawStampedStroke(
+                    primaryCanvas,
+                    stroke.copy(dualBrush = false),
+                    primaryTips,
+                    emptyList(),
+                    tipPaths,
+                    grainOffsetX,
+                    grainOffsetY,
+                    primaryStartIndex,
+                    0,
+                )
+            }
+            paint.isFilterBitmap = CspAntiAlias.enabled(stroke.dualAntiAliasMode)
+            Canvas(secondary).apply { translate(-bounds.left.toFloat(), -bounds.top.toFloat()) }.also { secondaryCanvas ->
+                drawDualStampStream(secondaryCanvas, stroke, secondaryTips, secondaryStartIndex)
+            }
+            val localBounds = Rect(0, 0, output.width, output.height)
+            CspDualBrushCompositor.compositeRegion(primary, secondary, output, localBounds, stroke.dualCompositeMode, stroke.dualApplyRgb)
+            canvas.drawBitmap(output, bounds.left.toFloat(), bounds.top.toFloat(), dualCompositeOutputPaint)
+        } finally {
+            primary.recycle()
+            secondary.recycle()
+            output.recycle()
+            paint.blendMode = null
+            paint.colorFilter = null
+            paint.maskFilter = null
+        }
+    }
+
+    /**
+     * The front buffer keeps the two source streams independently. New dabs update only their
+     * conservative dirty rectangle, so non-associative CSP modes remain exact without replaying a
+     * growing imported stroke on every display frame.
+     */
+    private fun drawActiveCspDualBrushStroke(
+        canvas: Canvas,
+        stroke: InkStroke,
+        primaryTips: List<Bitmap>,
+        secondaryTips: List<Bitmap>,
+        tipPaths: List<String>,
+        grainOffsetX: Float,
+        grainOffsetY: Float,
+        primaryStartIndex: Int,
+        secondaryStartIndex: Int,
+    ) {
+        val surface = activeCspDualBrushSurface(stroke)
+        if (primaryStartIndex == 0 && secondaryStartIndex == 0) surface.clear()
+        val dirty = activeDualBrushDirtyBounds(stroke, primaryStartIndex, secondaryStartIndex) ?: return
+        drawStampedStroke(
+            Canvas(surface.primary),
+            stroke.copy(dualBrush = false),
+            primaryTips,
+            emptyList(),
+            tipPaths,
+            grainOffsetX,
+            grainOffsetY,
+            primaryStartIndex,
+            0,
+        )
+        paint.isFilterBitmap = CspAntiAlias.enabled(stroke.dualAntiAliasMode)
+        drawDualStampStream(Canvas(surface.secondary), stroke, secondaryTips, secondaryStartIndex)
+        CspDualBrushCompositor.compositeRegion(
+            surface.primary,
+            surface.secondary,
+            surface.output,
+            dirty,
+            stroke.dualCompositeMode,
+            stroke.dualApplyRgb,
+        )
+        val checkpoint = canvas.save()
+        canvas.clipRect(dirty)
+        if (engineV2IncrementalActiveDraw) canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+        canvas.drawBitmap(surface.output, dirty, dirty, dualCompositeOutputPaint)
+        canvas.restoreToCount(checkpoint)
+        paint.blendMode = null
+        paint.colorFilter = null
+        paint.maskFilter = null
+    }
+
+    private fun activeCspDualBrushSurface(stroke: InkStroke): ActiveCspDualBrushSurface {
+        val existing = activeCspDualBrushSurfaces[stroke.id]
+        if (existing != null && existing.width == width && existing.height == height && existing.applyRgb == stroke.dualApplyRgb) return existing
+        existing?.recycle()
+        return ActiveCspDualBrushSurface(width.coerceAtLeast(1), height.coerceAtLeast(1), stroke.dualApplyRgb).also {
+            activeCspDualBrushSurfaces[stroke.id] = it
+        }
+    }
+
+    private fun activeDualBrushDirtyBounds(stroke: InkStroke, primaryStartIndex: Int, secondaryStartIndex: Int): Rect? {
+        val primaryPoints = primaryStampedPoints(stroke)
+        val secondaryPoints = dualStampedPoints(stroke)
+        val affected = buildList {
+            addAll(primaryPoints.subList(primaryStartIndex.coerceIn(0, primaryPoints.size), primaryPoints.size))
+            addAll(secondaryPoints.subList(secondaryStartIndex.coerceIn(0, secondaryPoints.size), secondaryPoints.size))
+        }
+        if (affected.isEmpty()) return null
+        val boundsIndex = StrokeTileIndex().apply { rebuild(emptyList(), width, height) }
+        val expansion = boundsIndex.influenceRadiusPixels(stroke) + 4f
+        val left = kotlin.math.floor(affected.minOf(StrokePoint::x) * width - expansion).toInt().coerceIn(0, width)
+        val top = kotlin.math.floor(affected.minOf(StrokePoint::y) * height - expansion).toInt().coerceIn(0, height)
+        val right = ceil(affected.maxOf(StrokePoint::x) * width + expansion).toInt().coerceIn(left, width)
+        val bottom = ceil(affected.maxOf(StrokePoint::y) * height + expansion).toInt().coerceIn(top, height)
+        return Rect(left, top, right, bottom).takeUnless(Rect::isEmpty)
+    }
+
+    private fun dualBrushBounds(stroke: InkStroke): Rect? {
+        val index = StrokeTileIndex().apply { rebuild(listOf(stroke), width, height) }
+        val bounds = index.pixelBoundsFor(stroke) ?: return null
+        return Rect(bounds.left, bounds.top, bounds.right, bounds.bottom)
+    }
+
+    /** Draws only the secondary stream. CSP composition happens after both retained streams exist. */
+    private fun drawDualStampStream(canvas: Canvas, stroke: InkStroke, tips: List<Bitmap>, stampStartIndex: Int = 0) {
         paint.blendMode = if (stroke.dualBlendTipsWithDarken) BlendMode.DARKEN else null
         val referenceScale = width.coerceAtLeast(1) / REFERENCE_WIDTH
         val sampledPoints = dualStampedPoints(stroke)
@@ -2181,7 +2358,6 @@ class InkCanvasView(context: Context) : View(context) {
             activeDualScatterRandoms[stroke.id] = scatterRandom
             activeDualRotationRandoms[stroke.id] = rotationRandom
         }
-        canvas.restoreToCount(dualLayer)
     }
 
     private fun strokeTaperFactors(stroke: InkStroke, points: List<StrokePoint>): StrokeTaper.DabFactors? =
@@ -4486,6 +4662,8 @@ class InkCanvasView(context: Context) : View(context) {
             activePrimarySamples.clear()
             activeDualSamples.clear()
             clearActiveStampRandoms()
+            activeCspDualBrushSurfaces.values.forEach(ActiveCspDualBrushSurface::recycle)
+            activeCspDualBrushSurfaces.clear()
             activeWholeTextureStrokeId = null
             activeWholeTextureProgram = null
             activeWholeTexturePointCount = 0

@@ -8,7 +8,6 @@ import android.graphics.Paint
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import app.inkloom.document.CspDualBrushBlendMode
 import app.inkloom.document.BrushTipFlip
 import app.inkloom.document.BrushParameterDynamics
 import app.inkloom.document.DocumentAssetService
@@ -72,7 +71,7 @@ class CspDualBrushRenderingTest {
         }
     }
 
-    @Test fun screenModeIsAppliedInsideTheDualStrokeBeforePageComposition() {
+    @Test fun densityOnlyScreenChangesCoverageWithoutLighteningTheDrawingColor() {
         val tip = File(context.cacheDir, "dual-screen-tip.png")
         Bitmap.createBitmap(32, 32, Bitmap.Config.ARGB_8888).also { bitmap ->
             bitmap.eraseColor(Color.BLACK)
@@ -99,7 +98,7 @@ class CspDualBrushRenderingTest {
             try {
                 val normalPixel = normal.getPixel(200, normal.height / 2)
                 val screenPixel = screen.getPixel(200, screen.height / 2)
-                assertTrue("Screen must lighten the overlap of the two brush streams", Color.red(screenPixel) > Color.red(normalPixel))
+                assertEquals("Density-only Screen and Normal share union coverage for opaque coincident streams", normalPixel, screenPixel)
                 assertEquals(Color.red(screenPixel), Color.green(screenPixel))
                 assertEquals(Color.green(screenPixel), Color.blue(screenPixel))
             } finally {
@@ -111,9 +110,48 @@ class CspDualBrushRenderingTest {
         }
     }
 
-    @Test fun unsupportedCspModesUseExplicitNormalFallback() {
-        assertEquals(android.graphics.BlendMode.SRC_OVER, CspDualBrushBlendMode.resolve(4))
-        assertEquals(android.graphics.BlendMode.SRC_OVER, CspDualBrushBlendMode.resolve(13))
+    @Test fun allThirteenCspModesMatchBetweenLiveCanvasAndExportWithAndWithoutRgb() {
+        val tip = File(context.cacheDir, "dual-all-modes-tip.png")
+        Bitmap.createBitmap(32, 32, Bitmap.Config.ARGB_8888).also { bitmap ->
+            bitmap.eraseColor(Color.TRANSPARENT)
+            Canvas(bitmap).drawCircle(16f, 16f, 13f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(166, 210, 45, 70) })
+            tip.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            bitmap.recycle()
+        }
+        try {
+            val base = InkStroke(
+                points = listOf(StrokePoint(.5f, .5f, pressure = .65f)),
+                colorArgb = 0xFF3060D0,
+                width = 260f,
+                flow = .62f,
+                sizePressureEnabled = false,
+                tipAssetPath = tip.absolutePath,
+                tipAssetPaths = listOf(tip.absolutePath),
+                dualBrush = true,
+                dualTipAssetPaths = listOf(tip.absolutePath),
+                dualSizeScale = .72f,
+                dualFlow = .54f,
+            )
+            val service = DocumentAssetService(context)
+            for (applyRgb in listOf(false, true)) {
+                for (mode in 1..13) {
+                    val stroke = base.copy(dualCompositeMode = mode, dualApplyRgb = applyRgb)
+                    val exported = service.renderPageBitmap(InkPage(background = PageBackground.Paper(), strokes = listOf(stroke)), 400)
+                    val live = renderLiveCanvas(stroke)
+                    try {
+                        val points = listOf(200 to live.height / 2, 216 to live.height / 2, 230 to live.height / 2)
+                        points.forEach { (x, y) ->
+                            assertEquals("mode=$mode applyRgb=$applyRgb x=$x", exported.getPixel(x, y), live.getPixel(x, y))
+                        }
+                    } finally {
+                        exported.recycle()
+                        live.recycle()
+                    }
+                }
+            }
+        } finally {
+            tip.delete()
+        }
     }
 
     @Test fun secondarySizeUsesItsOwnPressureEffectorOnCanvasAndExport() {

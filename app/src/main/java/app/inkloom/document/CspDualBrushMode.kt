@@ -4,20 +4,20 @@ package app.inkloom.document
  * Numeric order stored by CSP's `DualBrushCompositeMode` column. The order is
  * the one exposed by CSP's documented Dual Brush mode selector.
  */
-enum class CspDualBrushMode(val code: Int, val displayName: String, val nativeBlendSupported: Boolean) {
-    NORMAL(1, "Normal", true),
-    MULTIPLY(2, "Multiply", true),
-    ADD_GLOW(3, "Add (Glow)", true),
-    SUBTRACT(4, "Subtract", false),
-    DARKEN(5, "Darken", true),
-    LIGHTEN(6, "Lighten", true),
-    SCREEN(7, "Screen", true),
-    OVERLAY(8, "Overlay", true),
-    COLOR_DODGE(9, "Color Dodge", true),
-    COLOR_BURN(10, "Color Burn", true),
-    LINEAR_BURN(11, "Linear Burn", false),
-    HARD_MIX(12, "Hard Mix", false),
-    HEIGHT_LINEAR(13, "Height (Linear)", false),
+enum class CspDualBrushMode(val code: Int, val displayName: String) {
+    NORMAL(1, "Normal"),
+    MULTIPLY(2, "Multiply"),
+    ADD_GLOW(3, "Add (Glow)"),
+    SUBTRACT(4, "Subtract"),
+    DARKEN(5, "Darken"),
+    LIGHTEN(6, "Lighten"),
+    SCREEN(7, "Screen"),
+    OVERLAY(8, "Overlay"),
+    COLOR_DODGE(9, "Color Dodge"),
+    COLOR_BURN(10, "Color Burn"),
+    LINEAR_BURN(11, "Linear Burn"),
+    HARD_MIX(12, "Hard Mix"),
+    HEIGHT_LINEAR(13, "Height (Linear)"),
     ;
 
     companion object {

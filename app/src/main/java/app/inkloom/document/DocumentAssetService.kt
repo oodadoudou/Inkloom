@@ -931,7 +931,11 @@ class DocumentAssetService(private val context: Context) {
     }
 
     private fun drawStampStroke(canvas: Canvas, stroke: InkStroke, tips: List<Bitmap>, dualTips: List<Bitmap>, tipPaths: List<String>, grainOffsetX: Float, grainOffsetY: Float, width: Int, height: Int, paint: Paint) {
-        val isolateStroke = stroke.blendTipsWithDarken || stroke.dualBrush && dualTips.isNotEmpty()
+        if (stroke.dualBrush && dualTips.isNotEmpty()) {
+            drawCspDualBrushStroke(canvas, stroke, tips, dualTips, tipPaths, grainOffsetX, grainOffsetY, width, height, paint)
+            return
+        }
+        val isolateStroke = stroke.blendTipsWithDarken
         val compositeLayer = if (isolateStroke) canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null) else -1
         paint.isFilterBitmap = CspAntiAlias.enabled(stroke.antiAliasMode)
         paint.blendMode = if (stroke.blendTipsWithDarken) BlendMode.DARKEN else null
@@ -1022,19 +1026,70 @@ class DocumentAssetService(private val context: Context) {
         }
         dynamicGrainTips.values.distinct().filter { dynamic -> tips.none { it === dynamic } }.forEach(Bitmap::recycle)
         paint.blendMode = null
-        if (stroke.dualBrush && dualTips.isNotEmpty()) {
-            paint.isFilterBitmap = CspAntiAlias.enabled(stroke.dualAntiAliasMode)
-            drawDualStampStroke(canvas, stroke, dualTips, width, height, paint)
-        }
         if (compositeLayer >= 0) canvas.restoreToCount(compositeLayer)
         paint.colorFilter = null
     }
 
-    /** Export counterpart of InkCanvasView's secondary stamp pass. Keep both algorithms
-     * deterministic and equivalent so the page bitmap/PDF matches the live canvas. */
-    private fun drawDualStampStroke(canvas: Canvas, stroke: InkStroke, tips: List<Bitmap>, width: Int, height: Int, paint: Paint) {
-        val compositePaint = Paint().apply { blendMode = CspDualBrushBlendMode.resolve(stroke.dualCompositeMode) }
-        val dualLayer = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), compositePaint)
+    /**
+     * Export counterpart of InkCanvasView's retained Dual Brush surfaces. Both complete stamp
+     * streams are composed before the result reaches the page, so density-only modes never blend
+     * against the paper or earlier strokes and exported pages match the interactive canvas.
+     */
+    private fun drawCspDualBrushStroke(
+        canvas: Canvas,
+        stroke: InkStroke,
+        primaryTips: List<Bitmap>,
+        secondaryTips: List<Bitmap>,
+        tipPaths: List<String>,
+        grainOffsetX: Float,
+        grainOffsetY: Float,
+        width: Int,
+        height: Int,
+        paint: Paint,
+    ) {
+        val index = StrokeTileIndex().apply { rebuild(listOf(stroke), width, height) }
+        val bounds = index.pixelBoundsFor(stroke) ?: return
+        val primary = Bitmap.createBitmap(bounds.width, bounds.height, Bitmap.Config.ARGB_8888)
+        val secondary = Bitmap.createBitmap(bounds.width, bounds.height, Bitmap.Config.ARGB_8888)
+        val output = Bitmap.createBitmap(bounds.width, bounds.height, Bitmap.Config.ARGB_8888)
+        try {
+            val primaryCanvas = Canvas(primary).apply { translate(-bounds.left.toFloat(), -bounds.top.toFloat()) }
+            drawStampStroke(
+                primaryCanvas,
+                stroke.copy(dualBrush = false),
+                primaryTips,
+                emptyList(),
+                tipPaths,
+                grainOffsetX,
+                grainOffsetY,
+                width,
+                height,
+                paint,
+            )
+            paint.isFilterBitmap = CspAntiAlias.enabled(stroke.dualAntiAliasMode)
+            val secondaryCanvas = Canvas(secondary).apply { translate(-bounds.left.toFloat(), -bounds.top.toFloat()) }
+            drawDualStampStream(secondaryCanvas, stroke, secondaryTips, width, height, paint)
+            CspDualBrushCompositor.compositeRegion(
+                primary,
+                secondary,
+                output,
+                android.graphics.Rect(0, 0, output.width, output.height),
+                stroke.dualCompositeMode,
+                stroke.dualApplyRgb,
+            )
+            canvas.drawBitmap(output, bounds.left.toFloat(), bounds.top.toFloat(), Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
+        } finally {
+            primary.recycle()
+            secondary.recycle()
+            output.recycle()
+            paint.blendMode = null
+            paint.colorFilter = null
+            paint.maskFilter = null
+        }
+    }
+
+    /** Draws only the secondary stream; composition happens after both stream surfaces exist. */
+    private fun drawDualStampStream(canvas: Canvas, stroke: InkStroke, tips: List<Bitmap>, width: Int, height: Int, paint: Paint) {
         paint.blendMode = if (stroke.dualBlendTipsWithDarken) BlendMode.DARKEN else null
         val scatterRandom = java.util.Random(stroke.renderSeed.toLong() xor DUAL_SCATTER_SEED)
         val rotationRandom = java.util.Random(stroke.renderSeed.toLong() xor DUAL_ROTATION_SEED)
@@ -1077,7 +1132,6 @@ class DocumentAssetService(private val context: Context) {
             }
         }
         paint.blendMode = null
-        canvas.restoreToCount(dualLayer)
     }
 
     private fun drawLinePoint(canvas: Canvas, paint: Paint, stroke: InkStroke, point: StrokePoint, x: Float, y: Float, strokeWidth: Float, alpha: Int, pageWidth: Int) {

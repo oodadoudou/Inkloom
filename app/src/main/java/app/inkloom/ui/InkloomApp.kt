@@ -9243,8 +9243,8 @@ private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDis
                     val mode = CspDualBrushMode.fromCode(draft.dualCompositeMode)
                     Text(
                         tr(
-                            "CSP composite: ${mode?.displayName ?: "Unknown ${draft.dualCompositeMode}"}${if (mode?.nativeBlendSupported == true) " · rendered in an isolated stroke layer" else " · retained with Normal fallback"}${if (draft.dualApplyRgb) " · secondary source RGB applied" else " · alpha shape uses the drawing color"}",
-                            "CSP 合成：${mode?.displayName ?: "未知 ${draft.dualCompositeMode}"}${if (mode?.nativeBlendSupported == true) " · 在独立笔画层中渲染" else " · 已保留并使用普通模式回退"}${if (draft.dualApplyRgb) " · 应用辅助笔尖原始 RGB" else " · 透明度形状使用当前绘画色"}",
+                            "CSP composite: ${mode?.displayName ?: "Unknown ${draft.dualCompositeMode}"} · exact two-stream compositor${if (draft.dualApplyRgb) " · secondary source RGB applied" else " · density only; drawing color retained"}",
+                            "CSP 合成：${mode?.displayName ?: "未知 ${draft.dualCompositeMode}"} · 精确双笔画流合成${if (draft.dualApplyRgb) " · 应用辅助笔尖原始 RGB" else " · 仅合成浓度并保留绘画色"}",
                         ),
                         color = MutedInk,
                         fontSize = 10.sp,
