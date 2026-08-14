@@ -22,6 +22,7 @@ import app.inkloom.engine.v3.storage.DocumentCheckpointCodec
 import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v3.storage.PixelTileArchiveStore
 import app.inkloom.engine.v3.surface.PixelTileSurface
+import app.inkloom.engine.v3.surface.PixelRect
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Build
@@ -405,6 +406,58 @@ class DocumentAssetService(private val context: Context) {
         return bitmap
     }
 
+    private fun renderRasterTileReference(
+        reference: RasterTileSurfaceRef,
+        rotationQuarterTurns: Int,
+        crop: PageCrop,
+        targetWidth: Int,
+        targetHeight: Int,
+    ): Bitmap {
+        val snapshot = loadRasterTileSurface(reference).snapshot()
+        val turns = rotationQuarterTurns.mod(4)
+        val rotatedWidth = if (turns % 2 == 0) snapshot.logicalWidth else snapshot.logicalHeight
+        val rotatedHeight = if (turns % 2 == 0) snapshot.logicalHeight else snapshot.logicalWidth
+        val normalizedCrop = PageCropTransform.normalized(crop)
+        val rotatedRect = PixelRect(
+            (normalizedCrop.left * rotatedWidth).toInt().coerceIn(0, rotatedWidth - 1),
+            (normalizedCrop.top * rotatedHeight).toInt().coerceIn(0, rotatedHeight - 1),
+            (normalizedCrop.right * rotatedWidth).toInt().coerceIn(1, rotatedWidth),
+            (normalizedCrop.bottom * rotatedHeight).toInt().coerceIn(1, rotatedHeight),
+        )
+        require(!rotatedRect.isEmpty) { "Raster crop is empty" }
+        val sourceRect = when (turns) {
+            0 -> rotatedRect
+            1 -> PixelRect(
+                rotatedRect.top,
+                snapshot.logicalHeight - rotatedRect.right,
+                rotatedRect.bottom,
+                snapshot.logicalHeight - rotatedRect.left,
+            )
+            2 -> PixelRect(
+                snapshot.logicalWidth - rotatedRect.right,
+                snapshot.logicalHeight - rotatedRect.bottom,
+                snapshot.logicalWidth - rotatedRect.left,
+                snapshot.logicalHeight - rotatedRect.top,
+            )
+            else -> PixelRect(
+                snapshot.logicalWidth - rotatedRect.bottom,
+                rotatedRect.left,
+                snapshot.logicalWidth - rotatedRect.top,
+                rotatedRect.right,
+            )
+        }
+        val sourceWidth = if (turns % 2 == 0) targetWidth else targetHeight
+        val sourceHeight = if (turns % 2 == 0) targetHeight else targetWidth
+        val materialized = PixelTileBitmapAdapter.render(
+            snapshot,
+            source = sourceRect,
+            targetWidth = sourceWidth,
+            targetHeight = sourceHeight,
+        )
+        if (turns == 0) return materialized
+        return requireNotNull(rotateQuarterTurns(materialized, turns))
+    }
+
     /** Merges an edited visible-crop surface back into a full page-oriented raster asset.
      * Existing pixels outside the crop are preserved. The returned bitmap uses the page's current
      * orientation, so callers must reset rasterRotationQuarterTurns when storing it. */
@@ -423,6 +476,55 @@ class DocumentAssetService(private val context: Context) {
             Canvas(fullPage).drawBitmap(visibleSurface, null, destination, Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
         }
         return fullPage
+    }
+
+    /**
+     * Replaces the edited visible crop in the authoritative sparse surface. Existing pixels outside
+     * the crop and the layer's non-destructive page rotation are preserved.
+     */
+    fun composeVisibleRasterTileSurface(
+        page: InkPage,
+        layerId: String,
+        visibleSurface: Bitmap,
+    ): PixelTileSurface {
+        require(!visibleSurface.isRecycled) { "Visible raster surface has been recycled" }
+        val layer = page.layers.firstOrNull { it.id == layerId && it.contentKind == LayerContentKind.RASTER }
+            ?: error("Raster layer does not exist")
+        val turns = layer.rasterRotationQuarterTurns.mod(4)
+        val crop = PageCropTransform.normalized(page.crop)
+        val surface = when {
+            layer.rasterTileSurface != null -> loadRasterTileSurface(layer.rasterTileSurface)
+            !layer.rasterAssetPath.isNullOrBlank() -> {
+                val legacy = requireNotNull(BitmapFactory.decodeFile(layer.rasterAssetPath)) {
+                    "Legacy raster layer could not be decoded"
+                }
+                try {
+                    PixelTileBitmapAdapter.import(legacy)
+                } finally {
+                    legacy.recycle()
+                }
+            }
+            else -> {
+                val rotatedWidth = (visibleSurface.width / (crop.right - crop.left).coerceAtLeast(.01f))
+                    .toInt().coerceIn(visibleSurface.width, 4096)
+                val rotatedHeight = (visibleSurface.height / (crop.bottom - crop.top).coerceAtLeast(.01f))
+                    .toInt().coerceIn(visibleSurface.height, 4096)
+                PixelTileSurface(
+                    logicalWidth = if (turns % 2 == 0) rotatedWidth else rotatedHeight,
+                    logicalHeight = if (turns % 2 == 0) rotatedHeight else rotatedWidth,
+                )
+            }
+        }
+        val rotatedWidth = if (turns % 2 == 0) surface.logicalWidth else surface.logicalHeight
+        val rotatedHeight = if (turns % 2 == 0) surface.logicalHeight else surface.logicalWidth
+        val destination = PixelRect(
+            (crop.left * rotatedWidth).toInt().coerceIn(0, rotatedWidth - 1),
+            (crop.top * rotatedHeight).toInt().coerceIn(0, rotatedHeight - 1),
+            (crop.right * rotatedWidth).toInt().coerceIn(1, rotatedWidth),
+            (crop.bottom * rotatedHeight).toInt().coerceIn(1, rotatedHeight),
+        )
+        PixelTileBitmapAdapter.replaceRotatedRegion(surface, destination, turns, visibleSurface)
+        return surface
     }
 
     fun exportBundle(document: InkDocument, uri: Uri) {
@@ -875,6 +977,18 @@ class DocumentAssetService(private val context: Context) {
             }
             fun drawRasterSurface(targetLayer: InkLayer) {
                 if (!includeRaster || targetLayer.contentKind != LayerContentKind.RASTER) return
+                targetLayer.rasterTileSurface?.let { reference ->
+                    val bitmap = renderRasterTileReference(
+                        reference,
+                        targetLayer.rasterRotationQuarterTurns,
+                        sourcePage.crop,
+                        width,
+                        height,
+                    )
+                    canvas.drawBitmap(bitmap, 0f, 0f, Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
+                    bitmap.recycle()
+                    return
+                }
                 val path = targetLayer.rasterAssetPath?.takeIf(String::isNotBlank) ?: return
                 BitmapFactory.decodeFile(path)?.let { decoded ->
                     val bitmap = rotateQuarterTurns(decoded, targetLayer.rasterRotationQuarterTurns) ?: return@let

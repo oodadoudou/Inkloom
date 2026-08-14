@@ -143,4 +143,42 @@ class RasterLayerPersistenceTest {
             assets.releaseAssetReservation(path)
         }
     }
+
+    @Test fun sparseRasterRendersRotatesAndReplacesOnlyTheVisibleCrop() {
+        val source = Bitmap.createBitmap(100, 60, Bitmap.Config.ARGB_8888)
+        for (y in 0 until source.height) for (x in 0 until source.width) {
+            source.setPixel(x, y, if (x < 50) Color.RED else Color.BLUE)
+        }
+        val reference = assets.importRasterTileSurface(source)
+        source.recycle()
+        val layer = InkLayer(
+            id = "sparse-render",
+            name = "Sparse Render",
+            contentKind = LayerContentKind.RASTER,
+            rasterTileSurface = reference,
+        )
+        val page = InkPage(width = 100f, height = 60f, layers = defaultInkLayers() + layer)
+        val rendered = assets.renderPageBitmap(page, 500)
+        val rotated = assets.renderPageBitmap(PageGeometry.rotateClockwise(page), 300)
+        try {
+            assertTrue(Color.red(rendered.getPixel(80, 150)) > 240)
+            assertTrue(Color.blue(rendered.getPixel(420, 150)) > 240)
+            assertTrue(Color.red(rotated.getPixel(150, 80)) > 240)
+            assertTrue(Color.blue(rotated.getPixel(150, 420)) > 240)
+        } finally {
+            rendered.recycle()
+            rotated.recycle()
+        }
+
+        val croppedPage = page.copy(crop = PageCrop(.25f, .25f, .75f, .75f))
+        val replacement = Bitmap.createBitmap(200, 120, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(Color.GREEN)
+        }
+        val editedSurface = assets.composeVisibleRasterTileSurface(croppedPage, layer.id, replacement)
+        replacement.recycle()
+        assertTrue(Color.red(editedSurface.pixelAt(10, 10)) > 240)
+        assertTrue(Color.green(editedSurface.pixelAt(40, 30)) > 240)
+        assertTrue(Color.blue(editedSurface.pixelAt(90, 50)) > 240)
+        assets.releaseRasterTileReservation(reference)
+    }
 }

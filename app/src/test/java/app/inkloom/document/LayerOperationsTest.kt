@@ -84,6 +84,10 @@ class LayerOperationsTest {
         assertFalse(LayerOperations.canMergeDown(InkPage(), LayerIds.INK))
         assertNull(LayerOperations.mergeDown(page.copy(layers = page.layers.map { if (it.id == upper.id) it.copy(locked = true) else it }), upper.id))
         assertFalse(LayerOperations.canMergeDown(page.copy(layers = page.layers.map { if (it.id == upper.id) it.copy(contentKind = LayerContentKind.RASTER, rasterAssetPath = "/tmp/raster.png") else it }), upper.id))
+        assertFalse(LayerOperations.canMergeDown(page.copy(layers = page.layers.map { if (it.id == upper.id) it.copy(
+            contentKind = LayerContentKind.RASTER,
+            rasterTileSurface = RasterTileSurfaceRef("/tmp/surface.json", "surface", 100, 100, 128, 1),
+        ) else it }), upper.id))
     }
 
     @Test fun mergeDownBakesBothLayerOpacitiesIntoTheirContent() {

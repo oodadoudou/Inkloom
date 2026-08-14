@@ -279,7 +279,28 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     ) = updatePage(documentId, pageId) { page ->
         page.copy(layers = page.layers.map { layer ->
             if (layer.id != layerId || layer.contentKind != LayerContentKind.RASTER) layer
-            else layer.copy(rasterAssetPath = assetPath, rasterRotationQuarterTurns = rotationQuarterTurns.mod(4))
+            else layer.copy(
+                rasterTileSurface = null,
+                rasterAssetPath = assetPath,
+                rasterRotationQuarterTurns = rotationQuarterTurns.mod(4),
+            )
+        })
+    }
+
+    fun setLayerRasterTileSurface(
+        documentId: String,
+        pageId: String,
+        layerId: String,
+        reference: RasterTileSurfaceRef?,
+        rotationQuarterTurns: Int = 0,
+    ) = updatePage(documentId, pageId) { page ->
+        page.copy(layers = page.layers.map { layer ->
+            if (layer.id != layerId || layer.contentKind != LayerContentKind.RASTER) layer
+            else layer.copy(
+                rasterTileSurface = reference,
+                rasterAssetPath = null,
+                rasterRotationQuarterTurns = rotationQuarterTurns.mod(4),
+            )
         })
     }
 

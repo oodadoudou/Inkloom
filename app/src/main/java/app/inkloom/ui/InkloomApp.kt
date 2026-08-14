@@ -707,6 +707,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onSetLayerOpacity = viewModel::setLayerOpacity,
             onSetLayerBlendMode = viewModel::setLayerBlendMode,
             onSetLayerRasterAsset = viewModel::setLayerRasterAsset,
+            onSetLayerRasterTileSurface = viewModel::setLayerRasterTileSurface,
             onToggleLayerAlphaLock = viewModel::toggleLayerAlphaLock,
             onToggleLayerClippedToBelow = viewModel::toggleLayerClippedToBelow,
             onToggleLayerReference = viewModel::toggleLayerReference,
@@ -1011,6 +1012,7 @@ private fun EditorScreen(
     onSetLayerOpacity: (String, String, String, Float) -> Unit,
     onSetLayerBlendMode: (String, String, String, LayerBlendMode) -> Unit,
     onSetLayerRasterAsset: (String, String, String, String?, Int) -> Unit,
+    onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int) -> Unit,
     onToggleLayerAlphaLock: (String, String, String) -> Unit,
     onToggleLayerClippedToBelow: (String, String, String) -> Unit,
     onToggleLayerReference: (String, String, String) -> Unit,
@@ -2138,6 +2140,7 @@ private fun EditorScreen(
                     onRemoveStroke = onRemoveStroke,
                     onStrokesReplaced = onStrokesReplaced,
                     onSetLayerRasterAsset = onSetLayerRasterAsset,
+                    onSetLayerRasterTileSurface = onSetLayerRasterTileSurface,
                     onElement = onElement,
                     onRemoveElement = onRemoveElement,
                     onDuplicateElement = onDuplicateElement,
@@ -4455,17 +4458,25 @@ private fun pageTemplateKind(template: PageTemplate): String = when (template.ba
 }
 
 @Composable
-private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onSetLayerRasterAsset: (String, String, String, String?, Int) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
+private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onSetLayerRasterAsset: (String, String, String, String?, Int) -> Unit, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val context = LocalContext.current
     val gradientCommitScope = rememberCoroutineScope()
     val gradientCommitMutex = remember(documentId, page.id) { Mutex() }
     val rasterCommitMutex = remember(documentId, page.id) { Mutex() }
     val latestRasterAssets = remember(documentId, page.id) {
-        page.layers.associate { layer -> layer.id to (layer.rasterAssetPath to layer.rasterRotationQuarterTurns) }.toMutableMap()
+        page.layers.associate { layer ->
+            layer.id to Triple(layer.rasterTileSurface, layer.rasterAssetPath, layer.rasterRotationQuarterTurns)
+        }.toMutableMap()
     }
-    LaunchedEffect(page.layers.map { layer -> Triple(layer.id, layer.rasterAssetPath, layer.rasterRotationQuarterTurns) }) {
-        page.layers.forEach { layer -> latestRasterAssets[layer.id] = layer.rasterAssetPath to layer.rasterRotationQuarterTurns }
+    LaunchedEffect(page.layers) {
+        page.layers.forEach { layer ->
+            latestRasterAssets[layer.id] = Triple(
+                layer.rasterTileSurface,
+                layer.rasterAssetPath,
+                layer.rasterRotationQuarterTurns,
+            )
+        }
     }
     val gradientSaveFailure = tr("The gradient mask could not be saved", "渐变蒙版保存失败")
     val commitGradient: (Float, Float, Float, Float, GradientDefinition, android.graphics.Bitmap?) -> Unit = commit@{ sx, sy, ex, ey, definition, selectionMask ->
@@ -4540,28 +4551,62 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 return@commit
             }
             gradientCommitScope.launch(NonCancellable) {
-                var fullSurface: android.graphics.Bitmap? = null
-                var newPath: String? = null
+                var newReference: RasterTileSurfaceRef? = null
                 try {
                     rasterCommitMutex.withLock {
-                        val previous = latestRasterAssets[layerId] ?: (layer.rasterAssetPath to layer.rasterRotationQuarterTurns)
-                        fullSurface = withContext(Dispatchers.Default) {
-                            assets.composeVisibleRasterLayer(capturedPage, layerId, visibleSurface)
-                        }
-                        newPath = withContext(Dispatchers.IO) { assets.saveRasterLayer(requireNotNull(fullSurface)) }
-                        val savedPath = requireNotNull(newPath)
-                        latestRasterAssets[layerId] = savedPath to 0
-                        onSetLayerRasterAsset(documentId, capturedPage.id, layerId, savedPath, 0)
-                        if (view.isAttachedToWindow) view.recordExternalEdit(
-                            undo = { onSetLayerRasterAsset(documentId, capturedPage.id, layerId, previous.first, previous.second) },
-                            redo = { onSetLayerRasterAsset(documentId, capturedPage.id, layerId, savedPath, 0) },
+                        val previous = latestRasterAssets[layerId] ?: Triple(
+                            layer.rasterTileSurface,
+                            layer.rasterAssetPath,
+                            layer.rasterRotationQuarterTurns,
                         )
-                        assets.releaseAssetReservation(savedPath)
-                        newPath = null
+                        val effectivePage = capturedPage.copy(layers = capturedPage.layers.map { candidate ->
+                            if (candidate.id != layerId) candidate else candidate.copy(
+                                rasterTileSurface = previous.first,
+                                rasterAssetPath = previous.second,
+                                rasterRotationQuarterTurns = previous.third,
+                            )
+                        })
+                        val surface = withContext(Dispatchers.Default) {
+                            assets.composeVisibleRasterTileSurface(effectivePage, layerId, visibleSurface)
+                        }
+                        newReference = withContext(Dispatchers.IO) { assets.saveRasterTileSurface(surface) }
+                        val savedReference = requireNotNull(newReference)
+                        latestRasterAssets[layerId] = Triple(savedReference, null, previous.third)
+                        onSetLayerRasterTileSurface(documentId, capturedPage.id, layerId, savedReference, previous.third)
+                        if (view.isAttachedToWindow) {
+                            fun applyRevision(revision: Triple<RasterTileSurfaceRef?, String?, Int>) {
+                                val tileReference = revision.first
+                                if (tileReference != null) {
+                                    onSetLayerRasterTileSurface(
+                                        documentId,
+                                        capturedPage.id,
+                                        layerId,
+                                        tileReference,
+                                        revision.third,
+                                    )
+                                } else {
+                                    onSetLayerRasterAsset(
+                                        documentId,
+                                        capturedPage.id,
+                                        layerId,
+                                        revision.second,
+                                        revision.third,
+                                    )
+                                }
+                                latestRasterAssets[layerId] = revision
+                            }
+                            view.recordExternalEdit(
+                                undo = { applyRevision(previous) },
+                                redo = { applyRevision(Triple(savedReference, null, previous.third)) },
+                                dispose = { assets.releaseRasterTileReservation(savedReference) },
+                            )
+                        } else {
+                            assets.releaseRasterTileReservation(savedReference)
+                        }
+                        newReference = null
                     }
                 } finally {
-                    newPath?.let(assets::releaseAssetReservation)
-                    fullSurface?.takeUnless(android.graphics.Bitmap::isRecycled)?.recycle()
+                    assets.releaseRasterTileReservation(newReference)
                     visibleSurface.takeUnless(android.graphics.Bitmap::isRecycled)?.recycle()
                 }
             }
