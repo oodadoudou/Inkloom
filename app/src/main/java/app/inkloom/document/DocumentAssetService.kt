@@ -432,6 +432,11 @@ class DocumentAssetService(private val context: Context) {
 
     fun exportBundle(document: InkDocument, output: OutputStream) {
         ZipOutputStream(output.buffered()).use { zip ->
+            fun portableRaster(reference: RasterTileSurfaceRef?): RasterTileSurfaceRef? = reference?.let {
+                val files = referencedRasterTileFiles(it)
+                val manifest = files.first()
+                it.copy(manifestAssetPath = "pixel-tiles/manifests/${manifest.name}")
+            }
             val portable = document.copy(
                 coverImagePath = document.coverImagePath?.let { "assets/${File(it).name}" },
                 pages = document.pages.map { page -> page.copy(
@@ -441,6 +446,7 @@ class DocumentAssetService(private val context: Context) {
                     is PageBackground.Paper -> background
                 },
                 layers = page.layers.map { layer -> layer.copy(
+                    rasterTileSurface = portableRaster(layer.rasterTileSurface),
                     rasterAssetPath = layer.rasterAssetPath?.let { "assets/${File(it).name}" },
                 ) },
                 strokes = page.strokes.map { it.portableBrushAssets() },
@@ -460,6 +466,10 @@ class DocumentAssetService(private val context: Context) {
                 document.pages.flatMap(InkPage::layers).mapNotNull(InkLayer::rasterAssetPath) +
                 document.pages.flatMap { it.elements }.mapNotNull { element -> when (element) { is PageElement.Image -> element.assetPath; is PageElement.AudioMarker -> element.assetPath; is PageElement.Fill -> element.maskAssetPath; is PageElement.Shape -> element.maskAssetPath; else -> null } }
             writeDistinctFiles(zip, "assets", assets)
+            writeRasterTileFiles(
+                zip,
+                document.pages.flatMap(InkPage::layers).mapNotNull(InkLayer::rasterTileSurface),
+            )
             val allStrokes = document.pages.flatMap { page -> page.strokes + page.elements.filterIsInstance<PageElement.Sticky>().flatMap(PageElement.Sticky::strokes) }
             writeDistinctFiles(zip, "brush-assets", allStrokes.flatMap { it.brushAssetPaths() })
             File(context.filesDir, "brush-sources").listFiles()?.filter(File::isFile)?.forEach { file -> zip.putNextEntry(ZipEntry("brush-sources/${file.name}")); file.inputStream().use { it.copyTo(zip) }; zip.closeEntry() }
@@ -483,7 +493,7 @@ class DocumentAssetService(private val context: Context) {
                     require(entries <= 10_000) { "Bundle contains too many entries" }
                     val normalized = entry.name.replace('\\', '/')
                     require(normalized.isNotBlank() && !normalized.startsWith('/') && normalized.split('/').none { it == ".." }) { "Bundle contains an unsafe path" }
-                    require(normalized == "manifest.json" || normalized.startsWith("assets/") || normalized.startsWith("brush-assets/") || normalized.startsWith("brush-sources/")) { "Bundle contains an unsupported entry" }
+                    require(normalized == "manifest.json" || normalized.startsWith("assets/") || normalized.startsWith("brush-assets/") || normalized.startsWith("brush-sources/") || normalized.startsWith("pixel-tiles/")) { "Bundle contains an unsupported entry" }
                     if (!entry.isDirectory) {
                         val target = File(temporaryRoot, normalized)
                         require(target.canonicalPath.startsWith(temporaryRoot.canonicalPath + File.separator)) { "Bundle path escapes its container" }
@@ -513,6 +523,31 @@ class DocumentAssetService(private val context: Context) {
                 require(source.canonicalPath.startsWith(temporaryRoot.canonicalPath + File.separator) && source.isFile) { "Bundle is missing $normalized" }
                 return retainFile(source, if (brush) brushAssetDirectory else directory).absolutePath
             }
+            fun retainedRaster(reference: RasterTileSurfaceRef?): RasterTileSurfaceRef? {
+                if (reference == null) return null
+                val relative = reference.manifestAssetPath.replace('\\', '/')
+                require(relative.startsWith("pixel-tiles/manifests/") &&
+                    relative.split('/').none { it == ".." }
+                ) { "Manifest contains an unsafe raster tile path" }
+                val sourceManifest = File(temporaryRoot, relative)
+                require(sourceManifest.canonicalPath.startsWith(temporaryRoot.canonicalPath + File.separator) &&
+                    sourceManifest.isFile
+                ) { "Bundle is missing $relative" }
+                val importedManifest = synchronized(assetLifecycleLock) {
+                    pixelTileStore.import(sourceManifest.readText()) { hash ->
+                        File(temporaryRoot, "pixel-tiles/blobs/$hash.tile")
+                            .takeIf(File::isFile)?.readBytes()
+                    }.also { pendingRasterTileManifests += it.canonicalPath }
+                }
+                val metadata = pixelTileStore.inspect(importedManifest)
+                require(metadata.surfaceId == reference.surfaceId &&
+                    metadata.logicalWidth == reference.logicalWidth &&
+                    metadata.logicalHeight == reference.logicalHeight &&
+                    metadata.tileSize == reference.tileSize &&
+                    metadata.revision == reference.revision
+                ) { "Bundle raster tile reference does not match its verified manifest" }
+                return reference.copy(manifestAssetPath = importedManifest.absolutePath)
+            }
             return decoded.copy(
                 id = UUID.randomUUID().toString(),
                 coverImagePath = decoded.coverImagePath?.let(::retained),
@@ -527,6 +562,7 @@ class DocumentAssetService(private val context: Context) {
                         is PageBackground.Paper -> background
                     },
                     layers = page.layers.map { layer -> layer.copy(
+                        rasterTileSurface = retainedRaster(layer.rasterTileSurface),
                         rasterAssetPath = layer.rasterAssetPath?.let { retained(it) },
                     ) },
                     strokes = page.strokes.map { it.withRetainedBrushAssets(::retained) },
@@ -549,6 +585,22 @@ class DocumentAssetService(private val context: Context) {
         paths.distinct().map(::File).filter(File::isFile).distinctBy { it.name }.forEach { file ->
             zip.putNextEntry(ZipEntry("$folder/${file.name}")); file.inputStream().use { it.copyTo(zip) }; zip.closeEntry()
         }
+    }
+
+    private fun writeRasterTileFiles(zip: ZipOutputStream, references: List<RasterTileSurfaceRef>) {
+        references.flatMap(::referencedRasterTileFiles)
+            .distinctBy { it.canonicalPath }
+            .sortedBy { it.name }
+            .forEach { file ->
+                val kind = when (file.parentFile?.name) {
+                    "manifests" -> "manifests"
+                    "blobs" -> "blobs"
+                    else -> error("Raster tile asset escaped its store")
+                }
+                zip.putNextEntry(ZipEntry("pixel-tiles/$kind/${file.name}"))
+                file.inputStream().use { it.copyTo(zip) }
+                zip.closeEntry()
+            }
     }
 
     private fun extractPdfText(page: PdfRenderer.Page): List<PdfTextBlock>? {

@@ -111,6 +111,13 @@ class RasterLayerPersistenceTest {
         assertEquals(Color.MAGENTA, reopened.pixelAt(17, 19))
         assertTrue(File(retained.manifestAssetPath).isFile)
         assertTrue(File(orphan.manifestAssetPath).isFile)
+        val bundle = ByteArrayOutputStream().also { assets.exportBundle(document, it) }.toByteArray()
+        val restored = assets.importBundle(ByteArrayInputStream(bundle))
+        val restoredReference = requireNotNull(
+            restored.pages.single().layers.first { it.contentKind == LayerContentKind.RASTER }.rasterTileSurface,
+        )
+        assertEquals(Color.MAGENTA, assets.loadRasterTileSurface(restoredReference).pixelAt(17, 19))
+        assets.releaseRasterTileReservation(restoredReference)
         assertTrue(assets.garbageCollectUnreferencedAssets(listOf(document)) >= 2)
         assertTrue(File(retained.manifestAssetPath).isFile)
         assertTrue(!File(orphan.manifestAssetPath).exists())

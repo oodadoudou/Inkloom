@@ -4,6 +4,7 @@ package app.inkloom.document
 
 import app.inkloom.model.ImportedBrush
 import app.inkloom.importer.BrushGroupOperations
+import app.inkloom.engine.v3.storage.PixelTileArchiveStore
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
@@ -34,6 +35,7 @@ data class LibraryRestoreResult(
  * into a dedicated restored folder while immutable assets are content-addressed.
  */
 class LibraryBackupService(private val filesRoot: File) {
+    private val pixelTileStore = PixelTileArchiveStore(File(filesRoot, "$DOCUMENT_ASSETS/pixel-tiles"))
     private val json = Json {
         prettyPrint = true
         ignoreUnknownKeys = true
@@ -68,6 +70,30 @@ class LibraryBackupService(private val filesRoot: File) {
             return entry
         }
 
+        fun registerRaster(reference: RasterTileSurfaceRef?): RasterTileSurfaceRef? {
+            if (reference == null) return null
+            val files = pixelTileStore.referencedFiles(File(reference.manifestAssetPath))
+            files.forEach { source ->
+                require(source.length() <= MAX_SINGLE_ASSET_BYTES) { "Backup tile asset is too large: ${source.name}" }
+                val kind = when (source.parentFile?.name) {
+                    "manifests" -> "manifests"
+                    "blobs" -> "blobs"
+                    else -> error("Raster tile asset escaped its store")
+                }
+                assets.putIfAbsent("$DOCUMENT_ASSETS/pixel-tiles/$kind/${source.name}", source)
+            }
+            val metadata = pixelTileStore.inspect(files.first())
+            require(metadata.surfaceId == reference.surfaceId &&
+                metadata.logicalWidth == reference.logicalWidth &&
+                metadata.logicalHeight == reference.logicalHeight &&
+                metadata.tileSize == reference.tileSize &&
+                metadata.revision == reference.revision
+            ) { "Backup raster tile reference does not match its manifest" }
+            return reference.copy(
+                manifestAssetPath = "$DOCUMENT_ASSETS/pixel-tiles/manifests/${files.first().name}",
+            )
+        }
+
         val portableBrushes = brushes.map { brush ->
             brush.copy(
                 sourcePath = register(brush.sourcePath, BRUSH_SOURCES),
@@ -87,6 +113,7 @@ class LibraryBackupService(private val filesRoot: File) {
                         is PageBackground.Image -> background.copy(assetPath = register(background.assetPath, DOCUMENT_ASSETS)!!)
                     },
                     layers = page.layers.map { layer -> layer.copy(
+                        rasterTileSurface = registerRaster(layer.rasterTileSurface),
                         rasterAssetPath = register(layer.rasterAssetPath, DOCUMENT_ASSETS),
                     ) },
                     strokes = page.strokes.map { it.portable(::register) },
@@ -161,6 +188,30 @@ class LibraryBackupService(private val filesRoot: File) {
                 return target.absolutePath
             }
 
+            fun retainedRaster(reference: RasterTileSurfaceRef?): RasterTileSurfaceRef? {
+                if (reference == null) return null
+                val relative = safeArchivePath(reference.manifestAssetPath)
+                require(relative.startsWith("$DOCUMENT_ASSETS/pixel-tiles/manifests/")) {
+                    "Backup raster manifest is in the wrong category"
+                }
+                val sourceManifest = File(staging, relative)
+                require(sourceManifest.canonicalPath.startsWith(staging.canonicalPath + File.separator) &&
+                    sourceManifest.isFile
+                ) { "Backup is missing $relative" }
+                val importedManifest = pixelTileStore.import(sourceManifest.readText()) { hash ->
+                    File(staging, "$DOCUMENT_ASSETS/pixel-tiles/blobs/$hash.tile")
+                        .takeIf(File::isFile)?.readBytes()
+                }
+                val metadata = pixelTileStore.inspect(importedManifest)
+                require(metadata.surfaceId == reference.surfaceId &&
+                    metadata.logicalWidth == reference.logicalWidth &&
+                    metadata.logicalHeight == reference.logicalHeight &&
+                    metadata.tileSize == reference.tileSize &&
+                    metadata.revision == reference.revision
+                ) { "Backup raster tile reference does not match its verified manifest" }
+                return reference.copy(manifestAssetPath = importedManifest.absolutePath)
+            }
+
             val now = System.currentTimeMillis()
             val rootFolder = InkFolder(name = "Restored backup")
             val folderIds = manifest.folders.associate { it.id to UUID.randomUUID().toString() }
@@ -200,6 +251,7 @@ class LibraryBackupService(private val filesRoot: File) {
                                 is PageBackground.Image -> background.copy(assetPath = retained(background.assetPath, DOCUMENT_ASSETS)!!)
                             },
                             layers = page.layers.map { layer -> layer.copy(
+                                rasterTileSurface = retainedRaster(layer.rasterTileSurface),
                                 rasterAssetPath = retained(layer.rasterAssetPath, DOCUMENT_ASSETS),
                             ) },
                             strokes = page.strokes.map { it.restored(brushIds, ::retained) },
@@ -340,7 +392,7 @@ class LibraryBackupService(private val filesRoot: File) {
 
     private companion object {
         const val FORMAT_VERSION = 4
-        const val ENGINE_VERSION = 3
+        const val ENGINE_VERSION = 4
         const val MANIFEST = "manifest.json"
         const val PREFERENCES = "preferences.json"
         const val DOCUMENT_ASSETS = "document-assets"

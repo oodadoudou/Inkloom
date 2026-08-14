@@ -1,5 +1,7 @@
 package app.inkloom.document
 
+import app.inkloom.engine.v3.storage.PixelTileArchiveStore
+import app.inkloom.engine.v3.surface.PixelTileSurface
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
@@ -25,6 +27,23 @@ class LibraryBackupServiceTest {
             val coverAsset = File(sourceRoot, "document-assets/cover.png").apply { writeBytes(byteArrayOf(10, 11, 12)) }
             val gradientMask = File(sourceRoot, "document-assets/gradient-mask.png").apply { writeBytes(byteArrayOf(13, 14, 15)) }
             val rasterSurface = File(sourceRoot, "document-assets/raster-layer.png").apply { writeBytes(byteArrayOf(16, 17, 18)) }
+            val tileStore = PixelTileArchiveStore(File(sourceRoot, "document-assets/pixel-tiles"))
+            val sparseSurface = PixelTileSurface(4096, 4096, surfaceId = "backup-surface").also { surface ->
+                surface.beginWrite("backup fixture").run {
+                    setPixel(301, 207, 0xff556677.toInt())
+                    commit().close()
+                }
+            }
+            val sparseManifest = tileStore.save(sparseSurface.snapshot())
+            val sparseMetadata = tileStore.inspect(sparseManifest)
+            val sparseReference = RasterTileSurfaceRef(
+                manifestAssetPath = sparseManifest.absolutePath,
+                surfaceId = sparseMetadata.surfaceId,
+                logicalWidth = sparseMetadata.logicalWidth,
+                logicalHeight = sparseMetadata.logicalHeight,
+                tileSize = sparseMetadata.tileSize,
+                revision = sparseMetadata.revision,
+            )
             val tip = File(sourceRoot, "brush-assets/tip.png").apply { parentFile!!.mkdirs(); writeBytes(byteArrayOf(4, 5, 6)) }
             val brushSource = File(sourceRoot, "brush-sources/source.brush").apply { parentFile!!.mkdirs(); writeBytes(byteArrayOf(7, 8, 9)) }
             val brush = ImportedBrush(
@@ -55,7 +74,9 @@ class LibraryBackupServiceTest {
             )
             val page = InkPage(
                 background = PageBackground.Pdf(documentAsset.absolutePath, 0),
-                layers = defaultInkLayers() + InkLayer(name = "Paint", contentKind = LayerContentKind.RASTER, rasterAssetPath = rasterSurface.absolutePath),
+                layers = defaultInkLayers() +
+                    InkLayer(name = "Paint", contentKind = LayerContentKind.RASTER, rasterAssetPath = rasterSurface.absolutePath) +
+                    InkLayer(name = "Sparse Paint", contentKind = LayerContentKind.RASTER, rasterTileSurface = sparseReference),
                 strokes = listOf(InkStroke(points = listOf(StrokePoint(.1f, .2f)), brushId = brush.id, tipAssetPaths = listOf(tip.absolutePath), masks = listOf(StrokeMaskDab(.2f, .2f, .04f, .04f, tipAssetPath = tip.absolutePath)))),
                 elements = listOf(sticky, maskedGradient),
             )
@@ -71,7 +92,7 @@ class LibraryBackupServiceTest {
                 zip.readBytes().decodeToString()
             }
             assertTrue(manifestText.contains("\"formatVersion\": 4"))
-            assertTrue(manifestText.contains("\"engineVersion\": 3"))
+            assertTrue(manifestText.contains("\"engineVersion\": 4"))
 
             val restored = LibraryBackupService(restoreRoot).restore(ByteArrayInputStream(bytes))
 
@@ -91,6 +112,12 @@ class LibraryBackupServiceTest {
             val restoredRaster = restoredPage.layers.first { it.contentKind == LayerContentKind.RASTER }
             assertTrue(File(requireNotNull(restoredRaster.rasterAssetPath)).isFile)
             assertTrue(File(restoredRaster.rasterAssetPath).readBytes().contentEquals(rasterSurface.readBytes()))
+            val restoredSparse = requireNotNull(restoredPage.layers.first { it.name == "Sparse Paint" }.rasterTileSurface)
+            val restoredTileStore = PixelTileArchiveStore(File(restoreRoot, "document-assets/pixel-tiles"))
+            assertEquals(
+                0xff556677.toInt(),
+                restoredTileStore.load(File(restoredSparse.manifestAssetPath)).pixelAt(301, 207),
+            )
             assertEquals(restored.brushes.single().id, restoredPage.strokes.single().brushId)
             assertTrue(File(restoredPage.strokes.single().tipAssetPaths.single()).isFile)
             assertTrue(File(restoredPage.strokes.single().masks.single().tipAssetPath!!).isFile)

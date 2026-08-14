@@ -59,6 +59,12 @@ internal class PixelTileArchiveStore(root: File) {
         }
     }
 
+    /** Verifies a portable archive closure and republishes it under this store's ownership. */
+    fun import(manifestText: String, resolveBlob: (sha256: String) -> ByteArray?): File = synchronized(monitor) {
+        val surface = PixelTileArchiveCodec.decode(manifestText, resolveBlob)
+        save(surface.snapshot())
+    }
+
     /** Verifies a manifest envelope and returns its document-facing identity. */
     fun inspect(manifestFile: File): PixelTileArchiveCodec.Metadata = synchronized(monitor) {
         val safeManifest = requireInside(manifestDirectory, manifestFile)

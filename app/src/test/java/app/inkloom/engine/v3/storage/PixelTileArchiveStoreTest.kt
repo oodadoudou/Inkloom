@@ -101,6 +101,22 @@ class PixelTileArchiveStoreTest {
         assertEquals(1, File(root, "blobs").listFiles().orEmpty().size)
     }
 
+    @Test fun portableClosureImportVerifiesAndRepublishesManifestAndBlobs() {
+        val sourceRoot = temporary.newFolder("source-store")
+        val sourceStore = PixelTileArchiveStore(sourceRoot)
+        val sourceManifest = sourceStore.save(fixture("imported", 0xff102938.toInt()).snapshot())
+        val blobs = File(sourceRoot, "blobs").listFiles().orEmpty().associate { blob ->
+            blob.name.removeSuffix(".tile") to blob.readBytes()
+        }
+        val destinationStore = PixelTileArchiveStore(temporary.newFolder("destination-store"))
+
+        val importedManifest = destinationStore.import(sourceManifest.readText(), blobs::get)
+
+        assertEquals(0xff102938.toInt(), destinationStore.load(importedManifest).pixelAt(3, 4))
+        assertEquals("imported", destinationStore.inspect(importedManifest).surfaceId)
+        assertEquals(2, destinationStore.referencedFiles(importedManifest).size)
+    }
+
     private fun fixture(id: String, color: Int): PixelTileSurface =
         PixelTileSurface(8192, 8192, surfaceId = id).also { surface ->
             surface.beginWrite("fixture").run {
