@@ -11,6 +11,18 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class RasterBlendSessionTest {
+    @Test fun penDownDoesNotCopyThePageAndFirstBlendBacksUpOnlyDirtyTiles() {
+        val bitmap = Bitmap.createBitmap(4096, 4096, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(Color.rgb(80, 100, 120))
+        }
+        RasterBlendSession(bitmap).use { session ->
+            assertEquals(0L, session.retainedBackupByteSize)
+            session.blend(200f, 200f, 230f, 210f, 24f, .8f, .7f)
+            assertTrue(session.retainedBackupByteSize in 1..(4L * 128 * 128 * 4))
+        }
+        bitmap.recycle()
+    }
+
     @Test fun smudgePullsExistingPremultipliedPigmentWithoutAddingBrushColor() {
         val bitmap = Bitmap.createBitmap(96, 48, Bitmap.Config.ARGB_8888)
         for (y in 12 until 36) for (x in 10 until 34) bitmap.setPixel(x, y, Color.argb(180, 240, 20, 30))

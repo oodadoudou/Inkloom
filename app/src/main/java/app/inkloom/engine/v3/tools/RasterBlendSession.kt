@@ -21,7 +21,7 @@ class RasterBlendSession(
     private val bitmap: Bitmap,
     selectionMask: Bitmap? = null,
 ) : AutoCloseable {
-    private val original = bitmap.copy(Bitmap.Config.ARGB_8888, false)
+    private val originalTiles = BitmapTileMemento(bitmap)
     private val selectionSurface = selectionMask?.takeUnless(Bitmap::isRecycled)?.let { mask ->
         if (mask.width == bitmap.width && mask.height == bitmap.height) mask.copy(Bitmap.Config.ARGB_8888, false)
         else Bitmap.createScaledBitmap(mask, bitmap.width, bitmap.height, true)
@@ -42,6 +42,8 @@ class RasterBlendSession(
     }
     private val localRect = Rect()
     private var closed = false
+
+    val retainedBackupByteSize: Long get() = originalTiles.retainedByteSize
 
     fun blend(
         previousX: Float,
@@ -88,14 +90,14 @@ class RasterBlendSession(
 
         depositPaint.alpha = (strength.coerceIn(0f, 1f) * 255f + .5f).toInt().coerceIn(0, 255)
         if (depositPaint.alpha == 0) return null
+        originalTiles.capture(destination)
         targetCanvas.drawBitmap(requireNotNull(sampleBitmap), localRect, destination, depositPaint)
         return destination
     }
 
     fun restoreOriginal() {
-        if (closed || bitmap.isRecycled || original.isRecycled) return
-        bitmap.eraseColor(Color.TRANSPARENT)
-        targetCanvas.drawBitmap(original, 0f, 0f, null)
+        if (closed || bitmap.isRecycled) return
+        originalTiles.restore(targetCanvas)
     }
 
     private fun ensureSurfaces(width: Int, height: Int): Pair<Canvas, Canvas>? {
@@ -133,7 +135,7 @@ class RasterBlendSession(
     override fun close() {
         if (closed) return
         closed = true
-        original.recycle()
+        originalTiles.close()
         selectionSurface?.recycle()
         sampleBitmap?.recycle()
         coverageBitmap?.recycle()
