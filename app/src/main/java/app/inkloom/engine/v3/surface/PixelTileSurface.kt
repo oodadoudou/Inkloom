@@ -330,6 +330,40 @@ class PixelTileSurface(
         private val generationIds = AtomicLong(0L)
 
         private fun isTransparent(pixel: Int): Boolean = pixel ushr 24 == 0
+
+        /** Restores immutable published tiles from a verified persistence boundary. */
+        internal fun restore(
+            logicalWidth: Int,
+            logicalHeight: Int,
+            tileSize: Int,
+            surfaceId: String,
+            revision: Long,
+            tiles: Map<PixelTileKey, IntArray>,
+            copyTiles: Boolean = true,
+        ): PixelTileSurface {
+            require(revision >= 0L) { "revision must not be negative" }
+            val surface = PixelTileSurface(logicalWidth, logicalHeight, tileSize, surfaceId)
+            synchronized(surface.monitor) {
+                tiles.forEach { (key, pixels) ->
+                    require(pixels.size == tileSize * tileSize) { "Tile $key has invalid pixel capacity" }
+                    val tileLeft = key.column * tileSize
+                    val tileTop = key.row * tileSize
+                    require(tileLeft in 0 until logicalWidth && tileTop in 0 until logicalHeight) {
+                        "Tile $key is outside the logical surface"
+                    }
+                    val nonTransparent = pixels.count { !isTransparent(it) }
+                    if (nonTransparent > 0) {
+                        surface.generations[key] = PixelTileGeneration(
+                            id = generationIds.incrementAndGet(),
+                            pixels = if (copyTiles) pixels.copyOf() else pixels,
+                            nonTransparentPixelCount = nonTransparent,
+                        )
+                    }
+                }
+                surface.revisionValue = revision
+            }
+            return surface
+        }
     }
 }
 
