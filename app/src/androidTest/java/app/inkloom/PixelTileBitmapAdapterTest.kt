@@ -39,4 +39,34 @@ class PixelTileBitmapAdapterTest {
             rendered.recycle()
         }
     }
+
+    @Test fun replacingRotatedRegionWritesAndClearsTheCorrectDocumentPixels() {
+        val surface = app.inkloom.engine.v3.surface.PixelTileSurface(80, 40)
+        surface.beginWrite("existing pixel").run {
+            setPixel(0, 39, Color.RED)
+            commit().close()
+        }
+        val replacement = Bitmap.createBitmap(20, 40, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(Color.BLUE)
+            setPixel(0, 0, Color.TRANSPARENT)
+        }
+
+        PixelTileBitmapAdapter.replaceRotatedRegion(
+            surface,
+            rotatedRegion = PixelRect(0, 0, 40, 20),
+            rotationQuarterTurns = 1,
+            bitmap = replacement,
+        )
+        val rendered = PixelTileBitmapAdapter.render(surface.snapshot())
+
+        try {
+            assertEquals(Color.BLUE, rendered.getPixel(1, 39))
+            assertEquals(Color.BLUE, rendered.getPixel(19, 0))
+            assertTrue(Color.alpha(rendered.getPixel(0, 39)) == 0)
+            assertTrue(Color.alpha(rendered.getPixel(79, 39)) == 0)
+        } finally {
+            replacement.recycle()
+            rendered.recycle()
+        }
+    }
 }

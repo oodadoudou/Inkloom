@@ -9,6 +9,22 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PixelTileSurfaceTest {
+    @Test fun snapshotCopiesSparseRectangleAcrossTilesWithTransparentGaps() {
+        val surface = PixelTileSurface(300, 200, tileSize = 64)
+        surface.beginWrite("copy fixture").run {
+            setPixel(63, 65, 0xff112233.toInt())
+            setPixel(130, 100, 0xff445566.toInt())
+            commit().close()
+        }
+
+        val source = PixelRect(60, 60, 140, 110)
+        val pixels = surface.snapshot().copyPremultipliedPixels(source)
+
+        assertEquals(0xff112233.toInt(), pixels[(65 - source.top) * source.width + 63 - source.left])
+        assertEquals(0xff445566.toInt(), pixels[(100 - source.top) * source.width + 130 - source.left])
+        assertEquals(0, pixels[0])
+    }
+
     @Test fun anEightKLogicalSurfaceStartsSparseWithoutAllocatingPagePixels() {
         val surface = PixelTileSurface(8192, 8192)
 

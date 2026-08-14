@@ -147,6 +147,35 @@ class PixelTileSurfaceSnapshot internal constructor(
     }
 
     fun copyTilePixels(key: PixelTileKey): IntArray? = tiles[key]?.pixels?.copyOf()
+
+    /** Copies a logical rectangle without allocating or looking up a tile for every output pixel. */
+    fun copyPremultipliedPixels(source: PixelRect): IntArray {
+        val clipped = source.intersect(PixelRect(0, 0, logicalWidth, logicalHeight))
+        require(clipped == source && !source.isEmpty) { "Source rectangle must be inside the surface" }
+        val output = IntArray(Math.multiplyExact(source.width, source.height))
+        tiles.forEach { (key, tile) ->
+            val tileLeft = key.column * tileSize
+            val tileTop = key.row * tileSize
+            val overlap = PixelRect(
+                tileLeft,
+                tileTop,
+                minOf(tileLeft + tileSize, logicalWidth),
+                minOf(tileTop + tileSize, logicalHeight),
+            ).intersect(source)
+            if (overlap.isEmpty) return@forEach
+            for (y in overlap.top until overlap.bottom) {
+                val sourceOffset = (y - tileTop) * tileSize + overlap.left - tileLeft
+                val destinationOffset = (y - source.top) * source.width + overlap.left - source.left
+                tile.pixels.copyInto(
+                    output,
+                    destinationOffset,
+                    sourceOffset,
+                    sourceOffset + overlap.width,
+                )
+            }
+        }
+        return output
+    }
 }
 
 /**

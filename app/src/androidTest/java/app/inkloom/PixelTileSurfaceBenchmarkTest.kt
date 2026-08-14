@@ -5,6 +5,7 @@ import android.os.Debug
 import android.os.SystemClock
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v3.surface.PixelRect
 import app.inkloom.engine.v3.surface.PixelTileKey
 import app.inkloom.engine.v3.surface.PixelTileSurface
@@ -24,6 +25,41 @@ import kotlin.math.floor
  */
 @RunWith(AndroidJUnit4::class)
 class PixelTileSurfaceBenchmarkTest {
+    @Test fun productionBitmapBridgeCostIsRecordedUntilToolsWriteDirtyTilesDirectly() {
+        val bitmap = Bitmap.createBitmap(1200, 1800, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(0xff304050.toInt())
+        }
+        val surface = PixelTileSurface(1200, 1800)
+        val start = SystemClock.elapsedRealtimeNanos()
+
+        PixelTileBitmapAdapter.replaceRotatedRegion(
+            surface,
+            PixelRect(0, 0, 1200, 1800),
+            rotationQuarterTurns = 0,
+            bitmap = bitmap,
+        )
+
+        val elapsedMs = (SystemClock.elapsedRealtimeNanos() - start) / 1_000_000f
+        Log.i(
+            TAG,
+            "kind=production_bitmap_bridge width=1200 height=1800 elapsed_ms=$elapsedMs " +
+                "resident_tiles=${surface.tileCount} retained_bytes=${surface.retainedByteSize}",
+        )
+        val renderStart = SystemClock.elapsedRealtimeNanos()
+        val rendered = PixelTileBitmapAdapter.render(surface.snapshot())
+        val renderMs = (SystemClock.elapsedRealtimeNanos() - renderStart) / 1_000_000f
+        Log.i(
+            TAG,
+            "kind=production_tile_materialize width=1200 height=1800 elapsed_ms=$renderMs " +
+                "resident_tiles=${surface.tileCount}",
+        )
+        assertEquals(150, surface.tileCount)
+        assertEquals(0xff304050.toInt(), surface.pixelAt(600, 900))
+        assertEquals(0xff304050.toInt(), rendered.getPixel(600, 900))
+        rendered.recycle()
+        bitmap.recycle()
+    }
+
     @Test fun currentRasterSessionPenDownCostIsRecordedSeparatelyFromItsLocalKernel() {
         val maxHeapBytes = Runtime.getRuntime().maxMemory()
         Log.i(TAG, "kind=environment max_heap_bytes=$maxHeapBytes native_heap_bytes=${Debug.getNativeHeapAllocatedSize()}")
@@ -185,4 +221,3 @@ class PixelTileSurfaceBenchmarkTest {
         const val TAG = "InkloomEngineBaseline"
     }
 }
-
