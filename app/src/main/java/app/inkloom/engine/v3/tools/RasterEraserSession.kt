@@ -22,7 +22,7 @@ class RasterEraserSession(
     private val bitmap: Bitmap,
     selectionMask: Bitmap? = null,
 ) : AutoCloseable {
-    private val original = bitmap.copy(Bitmap.Config.ARGB_8888, false)
+    private val originalTiles = BitmapTileMemento(bitmap)
     private val selectionSurface = selectionMask?.takeUnless(Bitmap::isRecycled)?.let { mask ->
         if (mask.width == bitmap.width && mask.height == bitmap.height) mask.copy(Bitmap.Config.ARGB_8888, false)
         else Bitmap.createScaledBitmap(mask, bitmap.width, bitmap.height, true)
@@ -48,6 +48,8 @@ class RasterEraserSession(
     private val sourceRect = Rect()
     private var closed = false
 
+    val retainedBackupByteSize: Long get() = originalTiles.retainedByteSize
+
     fun eraseSegment(
         startX: Float,
         startY: Float,
@@ -66,6 +68,7 @@ class RasterEraserSession(
             ceil(maxOf(startY, endY) + radius + 2f).toInt().coerceIn(0, bitmap.height),
         )
         if (bounds.isEmpty) return null
+        originalTiles.capture(bounds)
         val canvas = ensureCoverage(bounds.width(), bounds.height()) ?: return null
         canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
 
@@ -93,9 +96,8 @@ class RasterEraserSession(
     }
 
     fun restoreOriginal() {
-        if (closed || bitmap.isRecycled || original.isRecycled) return
-        bitmap.eraseColor(Color.TRANSPARENT)
-        targetCanvas.drawBitmap(original, 0f, 0f, null)
+        if (closed || bitmap.isRecycled) return
+        originalTiles.restore(targetCanvas)
     }
 
     private fun ensureCoverage(width: Int, height: Int): Canvas? {
@@ -119,7 +121,7 @@ class RasterEraserSession(
     override fun close() {
         if (closed) return
         closed = true
-        original.recycle()
+        originalTiles.close()
         selectionSurface?.recycle()
         coverageBitmap?.recycle()
         coverageBitmap = null

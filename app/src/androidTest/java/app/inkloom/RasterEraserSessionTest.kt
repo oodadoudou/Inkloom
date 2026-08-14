@@ -17,6 +17,34 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class RasterEraserSessionTest {
+    @Test fun backupIsEmptyAtPenDownAndBoundedToFirstWrittenTiles() {
+        val bitmap = Bitmap.createBitmap(4096, 4096, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(Color.BLACK)
+        }
+        val session = RasterEraserSession(bitmap)
+
+        assertEquals(0L, session.retainedBackupByteSize)
+        session.eraseSegment(200f, 200f, 240f, 240f, 20f, 1f, 1f)
+
+        assertTrue(session.retainedBackupByteSize in 1..(4L * 128 * 128 * 4))
+        session.close()
+        bitmap.recycle()
+    }
+
+    @Test fun sparseBackupRestoresOpaqueAndTransparentPixelsExactly() {
+        val bitmap = Bitmap.createBitmap(300, 200, Bitmap.Config.ARGB_8888).apply {
+            setPixel(120, 100, Color.RED)
+        }
+        RasterEraserSession(bitmap).use { session ->
+            session.eraseSegment(100f, 100f, 140f, 100f, 30f, 1f, 1f)
+            assertEquals(0, Color.alpha(bitmap.getPixel(120, 100)))
+            session.restoreOriginal()
+            assertEquals(Color.RED, bitmap.getPixel(120, 100))
+            assertEquals(0, Color.alpha(bitmap.getPixel(100, 80)))
+        }
+        bitmap.recycle()
+    }
+
     @Test fun softEraserPreservesPartialAlphaAndSelectionIsolation() {
         val bitmap = Bitmap.createBitmap(160, 100, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
         val selection = Bitmap.createBitmap(160, 100, Bitmap.Config.ARGB_8888)
