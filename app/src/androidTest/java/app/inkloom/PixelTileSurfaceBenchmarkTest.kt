@@ -1,0 +1,188 @@
+package app.inkloom
+
+import android.graphics.Bitmap
+import android.os.Debug
+import android.os.SystemClock
+import android.util.Log
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import app.inkloom.engine.v3.surface.PixelRect
+import app.inkloom.engine.v3.surface.PixelTileKey
+import app.inkloom.engine.v3.surface.PixelTileSurface
+import app.inkloom.engine.v3.tools.RasterBlendSession
+import app.inkloom.engine.v3.tools.RasterEraserSession
+import app.inkloom.engine.v3.tools.RasterLiquifySession
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.runner.RunWith
+import kotlin.math.ceil
+import kotlin.math.floor
+
+/**
+ * A deterministic migration baseline. Timings are diagnostic rather than pass/fail gates; the
+ * structural assertions prevent the replacement tile path from silently becoming page-sized.
+ */
+@RunWith(AndroidJUnit4::class)
+class PixelTileSurfaceBenchmarkTest {
+    @Test fun currentRasterSessionPenDownCostIsRecordedSeparatelyFromItsLocalKernel() {
+        val maxHeapBytes = Runtime.getRuntime().maxMemory()
+        Log.i(TAG, "kind=environment max_heap_bytes=$maxHeapBytes native_heap_bytes=${Debug.getNativeHeapAllocatedSize()}")
+        val dimensions = buildList {
+            add(2048)
+            add(4096)
+            // An 8K bitmap plus its mandatory session copy needs at least 512 MiB before temporary
+            // surfaces. Record it as unsupported instead of destabilising constrained CI devices.
+            if (maxHeapBytes >= 900L * 1024 * 1024) add(8192)
+            else Log.i(TAG, "kind=legacy_session canvas=8192 status=skipped reason=heap_budget")
+        }
+        dimensions.forEach { dimension ->
+            measureLegacySession("blend", dimension) { RasterBlendSession(it) }
+            measureLegacySession("eraser", dimension) { RasterEraserSession(it) }
+            measureLegacySession("liquify", dimension) { RasterLiquifySession(it) }
+        }
+    }
+
+    @Test fun sparseBrushMatrixMeasuresTileSizeCanvasAndDiameterWithoutPageAllocations() {
+        val canvases = intArrayOf(2048, 4096, 8192)
+        val diameters = intArrayOf(10, 100, 500, 1000)
+        PixelTileSurface.SUPPORTED_TILE_SIZES.sorted().forEach { tileSize ->
+            canvases.forEach { canvasSize ->
+                diameters.forEach { diameter ->
+                    val surface = PixelTileSurface(canvasSize, canvasSize, tileSize)
+                    val start = SystemClock.elapsedRealtimeNanos()
+                    val transaction = surface.beginWrite("benchmark brush $diameter")
+                    paintCircle(
+                        transaction = transaction,
+                        surface = surface,
+                        centerX = canvasSize / 2,
+                        centerY = canvasSize / 2,
+                        diameter = diameter,
+                    )
+                    val record = transaction.commit()
+                    val elapsedMs = (SystemClock.elapsedRealtimeNanos() - start) / 1_000_000f
+                    Log.i(
+                        TAG,
+                        "kind=sparse_brush canvas=$canvasSize diameter=$diameter tile=$tileSize " +
+                            "elapsed_ms=$elapsedMs changed_tiles=${record.changedTileCount} " +
+                            "surface_bytes=${surface.retainedByteSize} undo_bytes=${record.retainedByteSize}",
+                    )
+                    assertTrue(record.changedTileCount > 0)
+                    assertTrue(surface.retainedByteSize < canvasSize.toLong() * canvasSize * Int.SIZE_BYTES)
+                    record.close()
+                }
+            }
+        }
+    }
+
+    @Test fun sparseLayerAndUndoMatricesRecordMemoryScaling() {
+        intArrayOf(1, 10, 30, 50, 100).forEach { layerCount ->
+            val start = SystemClock.elapsedRealtimeNanos()
+            val layers = List(layerCount) { index ->
+                PixelTileSurface(8192, 8192).also { surface ->
+                    surface.beginWrite("layer seed").run {
+                        setPixel((index * 37) % 8192, (index * 53) % 8192, 0xff000000.toInt() or index)
+                        commit().close()
+                    }
+                }
+            }
+            val elapsedMs = (SystemClock.elapsedRealtimeNanos() - start) / 1_000_000f
+            val bytes = layers.sumOf(PixelTileSurface::retainedByteSize)
+            Log.i(TAG, "kind=sparse_layers canvas=8192 layers=$layerCount elapsed_ms=$elapsedMs retained_bytes=$bytes")
+            assertEquals(layerCount.toLong() * 128 * 128 * Int.SIZE_BYTES, bytes)
+        }
+
+        intArrayOf(100, 500, 1000).forEach { transactionCount ->
+            val surface = PixelTileSurface(8192, 8192, tileSize = 64)
+            val records = ArrayList<app.inkloom.engine.v3.surface.PixelTileTransactionRecord>(transactionCount)
+            val writeStart = SystemClock.elapsedRealtimeNanos()
+            repeat(transactionCount) { index ->
+                records += surface.beginWrite("undo benchmark $index").run {
+                    setPixel(index % 64, index / 64, 0xff000000.toInt() or index)
+                    commit()
+                }
+            }
+            val writeMs = (SystemClock.elapsedRealtimeNanos() - writeStart) / 1_000_000f
+            val undoStart = SystemClock.elapsedRealtimeNanos()
+            records.asReversed().forEach { surface.apply(it, PixelTileSurface.HistoryDirection.UNDO) }
+            val undoMs = (SystemClock.elapsedRealtimeNanos() - undoStart) / 1_000_000f
+            val redoStart = SystemClock.elapsedRealtimeNanos()
+            records.forEach { surface.apply(it, PixelTileSurface.HistoryDirection.REDO) }
+            val redoMs = (SystemClock.elapsedRealtimeNanos() - redoStart) / 1_000_000f
+            Log.i(
+                TAG,
+                "kind=tile_undo canvas=8192 transactions=$transactionCount write_ms=$writeMs " +
+                    "undo_ms=$undoMs redo_ms=$redoMs retained_record_bytes=${records.sumOf { it.retainedByteSize }}",
+            )
+            assertEquals(0xff000000.toInt() or (transactionCount - 1), surface.pixelAt((transactionCount - 1) % 64, (transactionCount - 1) / 64))
+            records.forEach(AutoCloseable::close)
+        }
+    }
+
+    private fun measureLegacySession(
+        name: String,
+        dimension: Int,
+        create: (Bitmap) -> AutoCloseable,
+    ) {
+        val bitmap = Bitmap.createBitmap(dimension, dimension, Bitmap.Config.ARGB_8888)
+        val beforeNative = Debug.getNativeHeapAllocatedSize()
+        val start = SystemClock.elapsedRealtimeNanos()
+        val session = create(bitmap)
+        val elapsedMs = (SystemClock.elapsedRealtimeNanos() - start) / 1_000_000f
+        val nativeDelta = Debug.getNativeHeapAllocatedSize() - beforeNative
+        Log.i(
+            TAG,
+            "kind=legacy_session tool=$name canvas=$dimension pen_down_ms=$elapsedMs " +
+                "minimum_rgba_bytes=${dimension.toLong() * dimension * Int.SIZE_BYTES * 2} native_delta_bytes=$nativeDelta",
+        )
+        session.close()
+        bitmap.recycle()
+    }
+
+    private fun paintCircle(
+        transaction: app.inkloom.engine.v3.surface.PixelTileWriteTransaction,
+        surface: PixelTileSurface,
+        centerX: Int,
+        centerY: Int,
+        diameter: Int,
+    ) {
+        val radius = diameter / 2f
+        val left = floor(centerX - radius).toInt().coerceAtLeast(0)
+        val top = floor(centerY - radius).toInt().coerceAtLeast(0)
+        val right = ceil(centerX + radius).toInt().coerceAtMost(surface.logicalWidth)
+        val bottom = ceil(centerY + radius).toInt().coerceAtMost(surface.logicalHeight)
+        val firstColumn = left / surface.tileSize
+        val lastColumn = (right - 1) / surface.tileSize
+        val firstRow = top / surface.tileSize
+        val lastRow = (bottom - 1) / surface.tileSize
+        val radiusSquared = radius * radius
+        for (row in firstRow..lastRow) for (column in firstColumn..lastColumn) {
+            val tileLeft = column * surface.tileSize
+            val tileTop = row * surface.tileSize
+            val localLeft = (left - tileLeft).coerceAtLeast(0)
+            val localTop = (top - tileTop).coerceAtLeast(0)
+            val localRight = (right - tileLeft).coerceAtMost(surface.tileSize)
+            val localBottom = (bottom - tileTop).coerceAtMost(surface.tileSize)
+            transaction.editTile(
+                PixelTileKey(column, row),
+                PixelRect(localLeft, localTop, localRight, localBottom),
+            ) { pixels, stride ->
+                for (localY in localTop until localBottom) {
+                    val documentY = tileTop + localY
+                    for (localX in localLeft until localRight) {
+                        val documentX = tileLeft + localX
+                        val dx = documentX + .5f - centerX
+                        val dy = documentY + .5f - centerY
+                        if (dx * dx + dy * dy <= radiusSquared) {
+                            pixels[localY * stride + localX] = 0xff203040.toInt()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private companion object {
+        const val TAG = "InkloomEngineBaseline"
+    }
+}
+
