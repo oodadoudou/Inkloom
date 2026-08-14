@@ -19,6 +19,9 @@ import app.inkloom.engine.v3.brush.BrushProgramRuntime
 import app.inkloom.engine.v3.render.BrushProgramBatchRenderer
 import app.inkloom.engine.v3.brush.ProceduralBrushTip
 import app.inkloom.engine.v3.storage.DocumentCheckpointCodec
+import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
+import app.inkloom.engine.v3.storage.PixelTileArchiveStore
+import app.inkloom.engine.v3.surface.PixelTileSurface
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Build
@@ -34,9 +37,12 @@ import java.util.UUID
 
 class DocumentAssetService(private val context: Context) {
     private val directory = File(context.filesDir, "document-assets").apply { mkdirs() }
+    private val pixelTileDirectory = File(directory, "pixel-tiles")
+    private val pixelTileStore = PixelTileArchiveStore(pixelTileDirectory)
     private val brushAssetDirectory = File(context.filesDir, "brush-assets").apply { mkdirs() }
     private val assetLifecycleLock = Any()
     private val pendingDocumentAssets = linkedSetOf<String>()
+    private val pendingRasterTileManifests = linkedSetOf<String>()
 
     fun importPdf(uri: Uri, title: String, indexText: Boolean = true): InkDocument {
         val asset = copyAsset(uri, "pdf")
@@ -165,7 +171,47 @@ class DocumentAssetService(private val context: Context) {
     fun saveFillMask(mask: Bitmap): String = saveDocumentPng(mask, "fill-mask")
 
     /** Persists the full-page premultiplied RGBA surface owned by a raster layer. */
+    @Deprecated("Legacy PNG persistence is read-only after a raster tile surface is attached")
     fun saveRasterLayer(bitmap: Bitmap): String = saveDocumentPng(bitmap, "raster-layer")
+
+    /** Atomically publishes an immutable sparse surface generation and reserves it until committed. */
+    fun saveRasterTileSurface(surface: PixelTileSurface): RasterTileSurfaceRef = synchronized(assetLifecycleLock) {
+        val manifest = pixelTileStore.save(surface.snapshot())
+        val metadata = pixelTileStore.inspect(manifest)
+        pendingRasterTileManifests += manifest.canonicalPath
+        RasterTileSurfaceRef(
+            manifestAssetPath = manifest.absolutePath,
+            surfaceId = metadata.surfaceId,
+            logicalWidth = metadata.logicalWidth,
+            logicalHeight = metadata.logicalHeight,
+            tileSize = metadata.tileSize,
+            revision = metadata.revision,
+        )
+    }
+
+    /** One-way adapter for legacy full-page PNG/Bitmap raster layers. */
+    fun importRasterTileSurface(bitmap: Bitmap): RasterTileSurfaceRef {
+        val surface = PixelTileBitmapAdapter.import(bitmap)
+        return saveRasterTileSurface(surface)
+    }
+
+    /** Reopens and validates the exact immutable surface generation referenced by a document. */
+    fun loadRasterTileSurface(reference: RasterTileSurfaceRef): PixelTileSurface {
+        val manifest = File(reference.manifestAssetPath)
+        val metadata = pixelTileStore.inspect(manifest)
+        require(metadata.surfaceId == reference.surfaceId &&
+            metadata.logicalWidth == reference.logicalWidth &&
+            metadata.logicalHeight == reference.logicalHeight &&
+            metadata.tileSize == reference.tileSize &&
+            metadata.revision == reference.revision
+        ) { "Raster tile manifest does not match its document reference" }
+        return pixelTileStore.load(manifest)
+    }
+
+    internal fun referencedRasterTileFiles(reference: RasterTileSurfaceRef): List<File> {
+        loadRasterTileSurface(reference)
+        return pixelTileStore.referencedFiles(File(reference.manifestAssetPath))
+    }
 
     private fun saveDocumentPng(bitmap: Bitmap, kind: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
@@ -198,6 +244,14 @@ class DocumentAssetService(private val context: Context) {
         }
     }
 
+    fun releaseRasterTileReservation(reference: RasterTileSurfaceRef?) {
+        if (reference == null) return
+        synchronized(assetLifecycleLock) {
+            runCatching { File(reference.manifestAssetPath).canonicalPath }.getOrNull()
+                ?.let(pendingRasterTileManifests::remove)
+        }
+    }
+
     /** Loads a fill mask PNG, or null if it cannot be decoded. */
     fun loadFillMask(maskAssetPath: String): Bitmap? = runCatching { BitmapFactory.decodeFile(maskAssetPath) }.getOrNull()
 
@@ -206,7 +260,19 @@ class DocumentAssetService(private val context: Context) {
         documents: List<InkDocument>,
         pageTemplates: PageTemplateLibrary = PageTemplateLibrary(),
     ): Int = synchronized(assetLifecycleLock) {
-        DocumentAssetGarbageCollector.collect(directory, documents, pageTemplates, pendingDocumentAssets.toSet())
+        val legacyRemoved = DocumentAssetGarbageCollector.collect(
+            directory,
+            documents,
+            pageTemplates,
+            pendingDocumentAssets.toSet(),
+        )
+        val retainedManifests = documents.flatMap { document ->
+            document.pages.flatMap { page ->
+                page.layers.mapNotNull { layer -> layer.rasterTileSurface?.manifestAssetPath }
+            }
+        }.map(::File) + pendingRasterTileManifests.map(::File)
+        val tileResult = pixelTileStore.garbageCollect(retainedManifests)
+        legacyRemoved + tileResult.manifestsDeleted + tileResult.blobsDeleted
     }
 
     fun importCoverImage(uri: Uri): String {

@@ -86,6 +86,39 @@ class RasterLayerPersistenceTest {
         }
     }
 
+    @Test fun sparseRasterSurfaceIsVerifiedReopenedAndGarbageCollectedByManifestReachability() {
+        val firstBitmap = Bitmap.createBitmap(300, 200, Bitmap.Config.ARGB_8888).apply {
+            setPixel(17, 19, Color.MAGENTA)
+        }
+        val secondBitmap = Bitmap.createBitmap(300, 200, Bitmap.Config.ARGB_8888).apply {
+            setPixel(21, 23, Color.CYAN)
+        }
+        val retained = assets.importRasterTileSurface(firstBitmap)
+        val orphan = assets.importRasterTileSurface(secondBitmap)
+        firstBitmap.recycle()
+        secondBitmap.recycle()
+        assets.releaseRasterTileReservation(retained)
+        assets.releaseRasterTileReservation(orphan)
+
+        val layer = InkLayer(
+            name = "Sparse pixels",
+            contentKind = LayerContentKind.RASTER,
+            rasterTileSurface = retained,
+        )
+        val document = InkDocument(title = "Sparse", pages = listOf(InkPage(layers = defaultInkLayers() + layer)))
+        val reopened = assets.loadRasterTileSurface(retained)
+
+        assertEquals(Color.MAGENTA, reopened.pixelAt(17, 19))
+        assertTrue(File(retained.manifestAssetPath).isFile)
+        assertTrue(File(orphan.manifestAssetPath).isFile)
+        assertTrue(assets.garbageCollectUnreferencedAssets(listOf(document)) >= 2)
+        assertTrue(File(retained.manifestAssetPath).isFile)
+        assertTrue(!File(orphan.manifestAssetPath).exists())
+
+        assertTrue(assets.garbageCollectUnreferencedAssets(emptyList()) >= 2)
+        assertTrue(!File(retained.manifestAssetPath).exists())
+    }
+
     @Test fun editedVisibleCropIsMergedWithoutDestroyingPixelsOutsideTheCrop() {
         val source = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
         val path = assets.saveRasterLayer(source)
