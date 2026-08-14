@@ -66,6 +66,13 @@ internal object PixelTileArchiveCodec {
         val blobs: Map<String, ByteArray>,
     )
 
+    data class Metadata(
+        val surfaceId: String,
+        val revision: Long,
+        val tileCount: Int,
+        val blobHashes: Set<String>,
+    )
+
     fun encode(snapshot: PixelTileSurfaceSnapshot): Encoded {
         val blobs = linkedMapOf<String, ByteArray>()
         val tileEntries = snapshot.tileInfo
@@ -104,26 +111,7 @@ internal object PixelTileArchiveCodec {
     }
 
     fun decode(manifestText: String, resolveBlob: (sha256: String) -> ByteArray?): PixelTileSurface {
-        val envelope = json.decodeFromString<Envelope>(manifestText)
-        require(envelope.format == FORMAT) { "Unsupported tile manifest format ${envelope.format}" }
-        require(envelope.schemaVersion in 1..SCHEMA_VERSION) {
-            "Unsupported tile manifest schema ${envelope.schemaVersion}"
-        }
-        require(envelope.checksum == crc32(envelope.payload.encodeToByteArray())) {
-            "Tile manifest checksum mismatch"
-        }
-        val manifest = json.decodeFromString<Manifest>(envelope.payload)
-        require(manifest.logicalWidth in 1..MAX_LOGICAL_DIMENSION &&
-            manifest.logicalHeight in 1..MAX_LOGICAL_DIMENSION
-        ) { "Invalid logical surface bounds" }
-        require(manifest.tileSize in PixelTileSurface.SUPPORTED_TILE_SIZES) { "Unsupported tile size" }
-        require(manifest.pixelFormat == PIXEL_FORMAT) { "Unsupported pixel format ${manifest.pixelFormat}" }
-        require(manifest.revision >= 0L) { "Invalid surface revision" }
-        val maximumAddressableTiles =
-            ((manifest.logicalWidth + manifest.tileSize - 1L) / manifest.tileSize) *
-                ((manifest.logicalHeight + manifest.tileSize - 1L) / manifest.tileSize)
-        require(manifest.tiles.size.toLong() <= maximumAddressableTiles) { "Manifest has too many tile entries" }
-        require(manifest.tiles.size <= MAX_RESIDENT_TILE_COUNT) { "Manifest exceeds the resident tile safety bound" }
+        val manifest = verifiedManifest(manifestText)
         val expectedBytes = Math.multiplyExact(Math.multiplyExact(manifest.tileSize, manifest.tileSize), Int.SIZE_BYTES)
         val restored = linkedMapOf<PixelTileKey, IntArray>()
         manifest.tiles.forEach { entry ->
@@ -152,6 +140,55 @@ internal object PixelTileArchiveCodec {
             tiles = restored,
             copyTiles = false,
         )
+    }
+
+    fun inspect(manifestText: String): Metadata = verifiedManifest(manifestText).let { manifest ->
+        Metadata(
+            surfaceId = manifest.surfaceId,
+            revision = manifest.revision,
+            tileCount = manifest.tiles.size,
+            blobHashes = manifest.tiles.mapTo(linkedSetOf(), TileEntry::blobSha256),
+        )
+    }
+
+    private fun verifiedManifest(manifestText: String): Manifest {
+        val envelope = json.decodeFromString<Envelope>(manifestText)
+        require(envelope.format == FORMAT) { "Unsupported tile manifest format ${envelope.format}" }
+        require(envelope.schemaVersion in 1..SCHEMA_VERSION) {
+            "Unsupported tile manifest schema ${envelope.schemaVersion}"
+        }
+        require(envelope.checksum == crc32(envelope.payload.encodeToByteArray())) {
+            "Tile manifest checksum mismatch"
+        }
+        val manifest = json.decodeFromString<Manifest>(envelope.payload)
+        require(manifest.logicalWidth in 1..MAX_LOGICAL_DIMENSION &&
+            manifest.logicalHeight in 1..MAX_LOGICAL_DIMENSION
+        ) { "Invalid logical surface bounds" }
+        require(manifest.tileSize in PixelTileSurface.SUPPORTED_TILE_SIZES) { "Unsupported tile size" }
+        require(manifest.pixelFormat == PIXEL_FORMAT) { "Unsupported pixel format ${manifest.pixelFormat}" }
+        require(manifest.revision >= 0L) { "Invalid surface revision" }
+        val maximumAddressableTiles =
+            ((manifest.logicalWidth + manifest.tileSize - 1L) / manifest.tileSize) *
+                ((manifest.logicalHeight + manifest.tileSize - 1L) / manifest.tileSize)
+        require(manifest.tiles.size.toLong() <= maximumAddressableTiles) { "Manifest has too many tile entries" }
+        require(manifest.tiles.size <= MAX_RESIDENT_TILE_COUNT) { "Manifest exceeds the resident tile safety bound" }
+        val seenKeys = hashSetOf<PixelTileKey>()
+        manifest.tiles.forEach { entry ->
+            val key = PixelTileKey(entry.column, entry.row)
+            require(seenKeys.add(key)) { "Duplicate tile key $key" }
+            require(entry.column >= 0 && entry.row >= 0 &&
+                entry.column * manifest.tileSize.toLong() < manifest.logicalWidth &&
+                entry.row * manifest.tileSize.toLong() < manifest.logicalHeight
+            ) { "Tile $key is outside the logical surface" }
+            require(entry.codec == CODEC) { "Unsupported tile codec ${entry.codec}" }
+            require(entry.uncompressedBytes == manifest.tileSize * manifest.tileSize * Int.SIZE_BYTES) {
+                "Unexpected tile byte capacity"
+            }
+            require(entry.compressedBytes > 0) { "Invalid compressed tile size" }
+            require(entry.blobSha256.matches(Regex("[0-9a-f]{64}"))) { "Invalid tile blob hash" }
+            require(entry.rawCrc32.matches(Regex("[0-9a-f]{8}"))) { "Invalid tile CRC" }
+        }
+        return manifest
     }
 
     private fun encodeLittleEndian(pixels: IntArray): ByteArray {
