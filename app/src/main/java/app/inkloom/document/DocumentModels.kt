@@ -121,13 +121,35 @@ enum class LayerBlendMode {
     HUE, SATURATION, COLOR, LUMINOSITY;
 }
 
+/**
+ * Durable reference to one immutable sparse pixel-surface generation.
+ *
+ * The manifest is authoritative. The duplicated geometry and revision let document loading reject
+ * a mismatched or stale manifest before it is attached to a page. Tile blobs are traced through the
+ * verified manifest rather than being copied into the document model.
+ */
+@Serializable
+data class RasterTileSurfaceRef(
+    val manifestAssetPath: String,
+    val surfaceId: String,
+    val logicalWidth: Int,
+    val logicalHeight: Int,
+    val tileSize: Int,
+    val revision: Long,
+)
+
 @Serializable
 data class InkLayer(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
     val role: LayerRole = LayerRole.CUSTOM,
     val contentKind: LayerContentKind = LayerContentKind.VECTOR,
-    /** Content-addressed, full-page transparent PNG for a raster layer. */
+    /**
+     * Authoritative sparse pixel surface for newly migrated raster layers. When present, readers
+     * must ignore [rasterAssetPath]; that legacy PNG is retained only for one-way migration.
+     */
+    val rasterTileSurface: RasterTileSurfaceRef? = null,
+    /** Legacy content-addressed full-page PNG. Never written after [rasterTileSurface] is attached. */
     val rasterAssetPath: String? = null,
     /** Non-destructive page rotations applied after the raster asset was last written. */
     val rasterRotationQuarterTurns: Int = 0,

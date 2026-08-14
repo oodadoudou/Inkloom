@@ -39,6 +39,23 @@ class PixelTileArchiveStoreTest {
         assertEquals(1, File(root, "blobs").listFiles().orEmpty().size)
     }
 
+    @Test fun inspectAndReferencedFilesExposeVerifiedPortableSurfaceClosure() {
+        val store = PixelTileArchiveStore(temporary.newFolder("store"))
+        val manifest = store.save(fixture("portable", 0xff445566.toInt()).snapshot())
+
+        val metadata = store.inspect(manifest)
+        val closure = store.referencedFiles(manifest)
+
+        assertEquals("portable", metadata.surfaceId)
+        assertEquals(8192, metadata.logicalWidth)
+        assertEquals(8192, metadata.logicalHeight)
+        assertEquals(PixelTileSurface.DEFAULT_TILE_SIZE, metadata.tileSize)
+        assertEquals(1, metadata.tileCount)
+        assertEquals(2, closure.size)
+        assertEquals(manifest.canonicalPath, closure.first().canonicalPath)
+        assertTrue(closure.last().name.endsWith(".tile"))
+    }
+
     @Test fun garbageCollectionTracesRetainedManifestBlobsBeforeDeletingOrphans() {
         val root = temporary.newFolder("store")
         val store = PixelTileArchiveStore(root)

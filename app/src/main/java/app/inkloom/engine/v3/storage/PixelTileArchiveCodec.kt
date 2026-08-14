@@ -68,6 +68,9 @@ internal object PixelTileArchiveCodec {
 
     data class Metadata(
         val surfaceId: String,
+        val logicalWidth: Int,
+        val logicalHeight: Int,
+        val tileSize: Int,
         val revision: Long,
         val tileCount: Int,
         val blobHashes: Set<String>,
@@ -145,6 +148,9 @@ internal object PixelTileArchiveCodec {
     fun inspect(manifestText: String): Metadata = verifiedManifest(manifestText).let { manifest ->
         Metadata(
             surfaceId = manifest.surfaceId,
+            logicalWidth = manifest.logicalWidth,
+            logicalHeight = manifest.logicalHeight,
+            tileSize = manifest.tileSize,
             revision = manifest.revision,
             tileCount = manifest.tiles.size,
             blobHashes = manifest.tiles.mapTo(linkedSetOf(), TileEntry::blobSha256),

@@ -59,6 +59,29 @@ internal class PixelTileArchiveStore(root: File) {
         }
     }
 
+    /** Verifies a manifest envelope and returns its document-facing identity. */
+    fun inspect(manifestFile: File): PixelTileArchiveCodec.Metadata = synchronized(monitor) {
+        val safeManifest = requireInside(manifestDirectory, manifestFile)
+        require(safeManifest.isFile) { "Tile manifest does not exist" }
+        PixelTileArchiveCodec.inspect(safeManifest.readText())
+    }
+
+    /**
+     * Resolves every immutable file needed to reopen a surface. This is the single tracing boundary
+     * used by bundle export, library backup, and asset garbage collection.
+     */
+    fun referencedFiles(manifestFile: File): List<File> = synchronized(monitor) {
+        val safeManifest = requireInside(manifestDirectory, manifestFile)
+        require(safeManifest.isFile) { "Tile manifest does not exist" }
+        val metadata = PixelTileArchiveCodec.inspect(safeManifest.readText())
+        listOf(safeManifest) + metadata.blobHashes.sorted().map { hash ->
+            File(blobDirectory, "$hash.tile").also { blob ->
+                require(blob.isFile) { "Retained tile blob $hash does not exist" }
+                require(sha256(blob.readBytes()) == hash) { "Retained tile blob $hash failed integrity verification" }
+            }
+        }
+    }
+
     /**
      * Removes unreferenced manifests and blobs. Callers must supply every manifest still reachable
      * from documents, checkpoints, backups, and retained undo before invoking this method.
