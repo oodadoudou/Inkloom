@@ -15,6 +15,18 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class RasterLiquifySessionTest {
+    @Test fun penDownDoesNotCopyThePageAndFirstDeformBacksUpOnlyDirtyTiles() {
+        val bitmap = Bitmap.createBitmap(4096, 4096, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(Color.rgb(80, 100, 120))
+        }
+        RasterLiquifySession(bitmap).use { session ->
+            assertEquals(0L, session.retainedBackupByteSize)
+            session.deform(200f, 200f, 230f, 210f, 24f, .8f, .7f, LiquifyMode.PUSH)
+            assertTrue(session.retainedBackupByteSize in 1..(4L * 128 * 128 * 4))
+        }
+        bitmap.recycle()
+    }
+
     private fun fixture(): Bitmap = Bitmap.createBitmap(240, 180, Bitmap.Config.ARGB_8888).also { bitmap ->
         for (y in 55 until 125) for (x in 55 until 120) bitmap.setPixel(x, y, Color.argb(220, 240, 70, 20))
         for (y in 78 until 102) for (x in 120 until 165) bitmap.setPixel(x, y, Color.BLUE)

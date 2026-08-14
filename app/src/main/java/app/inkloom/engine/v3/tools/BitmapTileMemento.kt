@@ -51,6 +51,33 @@ internal class BitmapTileMemento(
         }
     }
 
+    /** Overlays the gesture-start pixels for [documentRegion] into a region-local scratch canvas. */
+    fun drawOriginalRegion(canvas: Canvas, documentRegion: Rect) {
+        if (documentRegion.isEmpty) return
+        saved.values.forEach { tile ->
+            val overlap = Rect(
+                maxOf(tile.left, documentRegion.left),
+                maxOf(tile.top, documentRegion.top),
+                minOf(tile.left + tile.bitmap.width, documentRegion.right),
+                minOf(tile.top + tile.bitmap.height, documentRegion.bottom),
+            )
+            if (overlap.isEmpty) return@forEach
+            val sourceRect = Rect(
+                overlap.left - tile.left,
+                overlap.top - tile.top,
+                overlap.right - tile.left,
+                overlap.bottom - tile.top,
+            )
+            val destinationRect = Rect(
+                overlap.left - documentRegion.left,
+                overlap.top - documentRegion.top,
+                overlap.right - documentRegion.left,
+                overlap.bottom - documentRegion.top,
+            )
+            canvas.drawBitmap(tile.bitmap, sourceRect, destinationRect, restorePaint)
+        }
+    }
+
     override fun close() {
         saved.values.forEach { tile -> tile.bitmap.recycle() }
         saved.clear()

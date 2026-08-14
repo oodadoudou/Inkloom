@@ -25,7 +25,7 @@ class RasterLiquifySession(
     private val bitmap: Bitmap,
     selectionMask: Bitmap? = null,
 ) : AutoCloseable {
-    private val original = bitmap.copy(Bitmap.Config.ARGB_8888, false)
+    private val originalTiles = BitmapTileMemento(bitmap)
     private val selectionSurface = selectionMask?.takeUnless(Bitmap::isRecycled)?.let { mask ->
         if (mask.width == bitmap.width && mask.height == bitmap.height) mask.copy(Bitmap.Config.ARGB_8888, false)
         else Bitmap.createScaledBitmap(mask, bitmap.width, bitmap.height, true)
@@ -52,6 +52,8 @@ class RasterLiquifySession(
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, BlurMaskFilter>): Boolean = size > 24
     }
     private var closed = false
+
+    val retainedBackupByteSize: Long get() = originalTiles.retainedByteSize
 
     fun deform(
         previousX: Float,
@@ -91,8 +93,11 @@ class RasterLiquifySession(
         source.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
         output.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
         coverage.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
-        val sourceLayer = if (mode == LiquifyMode.RECONSTRUCT) original else bitmap
-        source.drawBitmap(sourceLayer, -destination.left.toFloat(), -destination.top.toFloat(), bitmapPaint)
+        originalTiles.capture(destination)
+        source.drawBitmap(bitmap, -destination.left.toFloat(), -destination.top.toFloat(), bitmapPaint)
+        if (mode == LiquifyMode.RECONSTRUCT) {
+            originalTiles.drawOriginalRegion(source, destination)
+        }
 
         val meshWidth = ((destination.width() / MESH_CELL_PIXELS) + 1).coerceIn(MIN_MESH_SEGMENTS, MAX_MESH_SEGMENTS)
         val meshHeight = ((destination.height() / MESH_CELL_PIXELS) + 1).coerceIn(MIN_MESH_SEGMENTS, MAX_MESH_SEGMENTS)
@@ -131,9 +136,8 @@ class RasterLiquifySession(
     }
 
     fun restoreOriginal() {
-        if (closed || bitmap.isRecycled || original.isRecycled) return
-        bitmap.eraseColor(Color.TRANSPARENT)
-        targetCanvas.drawBitmap(original, 0f, 0f, null)
+        if (closed || bitmap.isRecycled) return
+        originalTiles.restore(targetCanvas)
     }
 
     private fun populateVertices(
@@ -246,7 +250,7 @@ class RasterLiquifySession(
     override fun close() {
         if (closed) return
         closed = true
-        original.recycle()
+        originalTiles.close()
         selectionSurface?.recycle()
         sourceBitmap?.recycle()
         outputBitmap?.recycle()
