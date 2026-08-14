@@ -72,6 +72,36 @@ class CspDualBrushCompositorNativeTest {
         primary.recycle(); secondary.recycle(); output.recycle()
     }
 
+    @Test fun overlayFastPathsPreserveTransparentInputsAndBlendOpaqueInputs() {
+        val primary = Bitmap.createBitmap(3, 1, Bitmap.Config.ARGB_8888).apply {
+            setPixel(0, 0, Color.TRANSPARENT)
+            setPixel(1, 0, Color.argb(170, 30, 90, 210))
+            setPixel(2, 0, Color.rgb(40, 100, 220))
+        }
+        val secondary = Bitmap.createBitmap(3, 1, Bitmap.Config.ARGB_8888).apply {
+            setPixel(0, 0, Color.argb(120, 220, 60, 20))
+            setPixel(1, 0, Color.TRANSPARENT)
+            setPixel(2, 0, Color.rgb(230, 60, 20))
+        }
+        val output = Bitmap.createBitmap(3, 1, Bitmap.Config.ARGB_8888)
+        try {
+            CspDualBrushCompositor.compositeRegion(primary, secondary, output, Rect(0, 0, 3, 1), 8, true)
+            assertNear("transparent base", secondary.getPixel(0, 0), output.getPixel(0, 0), 0)
+            assertNear("transparent source", primary.getPixel(1, 0), output.getPixel(1, 0), 0)
+            assertNear("opaque alpha", 255, Color.alpha(output.getPixel(2, 0)), 0)
+            listOf(Color::red, Color::green, Color::blue).forEach { extract ->
+                val expected = CspDualBrushCompositor.blendChannel(
+                    8,
+                    extract(primary.getPixel(2, 0)) / 255f,
+                    extract(secondary.getPixel(2, 0)) / 255f,
+                )
+                assertNear("opaque overlay", (expected * 255f + .5f).toInt(), extract(output.getPixel(2, 0)), 1)
+            }
+        } finally {
+            primary.recycle(); secondary.recycle(); output.recycle()
+        }
+    }
+
     private fun assertNear(label: String, expected: Int, actual: Int, tolerance: Int) {
         assertTrue("$label expected=$expected actual=$actual", abs(expected - actual) <= tolerance)
     }

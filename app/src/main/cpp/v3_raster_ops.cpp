@@ -190,6 +190,34 @@ std::uint8_t unpremultiplied_channel(const std::uint8_t* pixel, int channel) {
     return static_cast<std::uint8_t>(std::clamp((pixel[channel] * 255 + alpha / 2) / alpha, 0, 255));
 }
 
+std::uint8_t overlay_channel_byte(std::uint8_t base, std::uint8_t blend) {
+    if (base <= 127) {
+        return static_cast<std::uint8_t>((2u * base * blend + 127u) / 255u);
+    }
+    return static_cast<std::uint8_t>(255u -
+        (2u * (255u - base) * (255u - blend) + 127u) / 255u);
+}
+
+std::uint8_t source_over_alpha_byte(std::uint8_t base_alpha, std::uint8_t source_alpha) {
+    const std::uint32_t numerator = static_cast<std::uint32_t>(source_alpha) * 255u +
+        static_cast<std::uint32_t>(base_alpha) * (255u - source_alpha);
+    return static_cast<std::uint8_t>((numerator + 127u) / 255u);
+}
+
+std::uint8_t composite_overlay_channel_byte(
+    std::uint8_t base,
+    std::uint8_t base_alpha,
+    std::uint8_t source,
+    std::uint8_t source_alpha) {
+    const std::uint8_t blended = overlay_channel_byte(base, source);
+    const std::uint32_t numerator =
+        static_cast<std::uint32_t>(255u - source_alpha) * base * base_alpha +
+        static_cast<std::uint32_t>(255u - base_alpha) * source * source_alpha +
+        static_cast<std::uint32_t>(base_alpha) * source_alpha * blended;
+    constexpr std::uint32_t denominator = 255u * 255u;
+    return static_cast<std::uint8_t>((numerator + denominator / 2u) / denominator);
+}
+
 float dual_density(int mode, float base, float blend) {
     constexpr float epsilon = 1.0f / 65535.0f;
     switch (mode == 0 ? 1 : mode) {
@@ -773,7 +801,68 @@ Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeCompositeDualBrush(
     const int right = std::clamp(static_cast<int>(right_value), 0, width);
     const int bottom = std::clamp(static_cast<int>(bottom_value), 0, height);
     if (right <= left || bottom <= top) return JNI_FALSE;
-    constexpr float epsilon = 1.0f / 65535.0f;
+    if (apply_rgb == JNI_FALSE) {
+        constexpr float epsilon = 1.0f / 65535.0f;
+        for (int y = top; y < bottom; ++y) {
+            const auto* primary_row = primary.pixels + static_cast<std::size_t>(y) * primary.info.stride;
+            const auto* secondary_row = secondary.pixels + static_cast<std::size_t>(y) * secondary.info.stride;
+            auto* output_row = output.pixels + static_cast<std::size_t>(y) * output.info.stride;
+            for (int x = left; x < right; ++x) {
+                const auto* base_pixel = primary_row + x * 4;
+                const auto* source_pixel = secondary_row + x * 4;
+                auto* target_pixel = output_row + x * 4;
+                const float base_alpha = base_pixel[3] / 255.0f;
+                const float source_alpha = source_pixel[3] / 255.0f;
+                const float output_alpha = clamp01(dual_density(mode_code, base_alpha, source_alpha));
+                const auto* color_pixel = base_alpha > epsilon ? base_pixel : source_pixel;
+                for (int channel = 0; channel < 3; ++channel) {
+                    const float color = unpremultiplied_channel(color_pixel, channel) / 255.0f;
+                    target_pixel[channel] = byte_from_unit(color * output_alpha);
+                }
+                target_pixel[3] = byte_from_unit(output_alpha);
+            }
+        }
+        return JNI_TRUE;
+    }
+
+    if (mode_code == 8) {
+        for (int y = top; y < bottom; ++y) {
+            const auto* primary_row = primary.pixels + static_cast<std::size_t>(y) * primary.info.stride;
+            const auto* secondary_row = secondary.pixels + static_cast<std::size_t>(y) * secondary.info.stride;
+            auto* output_row = output.pixels + static_cast<std::size_t>(y) * output.info.stride;
+            for (int x = left; x < right; ++x) {
+                const auto* base_pixel = primary_row + x * 4;
+                const auto* source_pixel = secondary_row + x * 4;
+                auto* target_pixel = output_row + x * 4;
+                const std::uint8_t base_alpha = base_pixel[3];
+                const std::uint8_t source_alpha = source_pixel[3];
+                if (source_alpha == 0) {
+                    std::copy_n(base_pixel, 4, target_pixel);
+                    continue;
+                }
+                if (base_alpha == 0) {
+                    std::copy_n(source_pixel, 4, target_pixel);
+                    continue;
+                }
+                if (base_alpha == 255 && source_alpha == 255) {
+                    target_pixel[0] = overlay_channel_byte(base_pixel[0], source_pixel[0]);
+                    target_pixel[1] = overlay_channel_byte(base_pixel[1], source_pixel[1]);
+                    target_pixel[2] = overlay_channel_byte(base_pixel[2], source_pixel[2]);
+                    target_pixel[3] = 255;
+                    continue;
+                }
+                for (int channel = 0; channel < 3; ++channel) {
+                    const std::uint8_t base = unpremultiplied_channel(base_pixel, channel);
+                    const std::uint8_t source = unpremultiplied_channel(source_pixel, channel);
+                    target_pixel[channel] = composite_overlay_channel_byte(
+                        base, base_alpha, source, source_alpha);
+                }
+                target_pixel[3] = source_over_alpha_byte(base_alpha, source_alpha);
+            }
+        }
+        return JNI_TRUE;
+    }
+
     for (int y = top; y < bottom; ++y) {
         const auto* primary_row = primary.pixels + static_cast<std::size_t>(y) * primary.info.stride;
         const auto* secondary_row = secondary.pixels + static_cast<std::size_t>(y) * secondary.info.stride;
@@ -784,32 +873,18 @@ Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeCompositeDualBrush(
             auto* target_pixel = output_row + x * 4;
             const float base_alpha = base_pixel[3] / 255.0f;
             const float source_alpha = source_pixel[3] / 255.0f;
-            std::array<std::uint8_t, 4> composed{};
-            if (apply_rgb == JNI_FALSE) {
-                const float output_alpha = clamp01(dual_density(mode_code, base_alpha, source_alpha));
-                const auto* color_pixel = base_alpha > epsilon ? base_pixel : source_pixel;
-                for (int channel = 0; channel < 3; ++channel) {
-                    const float color = unpremultiplied_channel(color_pixel, channel) / 255.0f;
-                    composed[channel] = byte_from_unit(color * output_alpha);
-                }
-                composed[3] = byte_from_unit(output_alpha);
-            } else {
-                const float output_alpha = source_alpha + base_alpha * (1.0f - source_alpha);
-                for (int channel = 0; channel < 3; ++channel) {
-                    const float base = unpremultiplied_channel(base_pixel, channel) / 255.0f;
-                    const float source = unpremultiplied_channel(source_pixel, channel) / 255.0f;
-                    const float blended = clamp01(dual_blend_channel(mode_code, base, source));
-                    const float premultiplied =
-                        (1.0f - source_alpha) * base * base_alpha +
-                        (1.0f - base_alpha) * source * source_alpha +
-                        base_alpha * source_alpha * blended;
-                    composed[channel] = byte_from_unit(premultiplied);
-                }
-                composed[3] = byte_from_unit(output_alpha);
+            const float output_alpha = source_alpha + base_alpha * (1.0f - source_alpha);
+            for (int channel = 0; channel < 3; ++channel) {
+                const float base = unpremultiplied_channel(base_pixel, channel) / 255.0f;
+                const float source = unpremultiplied_channel(source_pixel, channel) / 255.0f;
+                const float blended = clamp01(dual_blend_channel(mode_code, base, source));
+                const float premultiplied =
+                    (1.0f - source_alpha) * base * base_alpha +
+                    (1.0f - base_alpha) * source * source_alpha +
+                    base_alpha * source_alpha * blended;
+                target_pixel[channel] = byte_from_unit(premultiplied);
             }
-            for (int channel = 0; channel < 4; ++channel) {
-                target_pixel[channel] = composed[channel];
-            }
+            target_pixel[3] = byte_from_unit(output_alpha);
         }
     }
     return JNI_TRUE;
