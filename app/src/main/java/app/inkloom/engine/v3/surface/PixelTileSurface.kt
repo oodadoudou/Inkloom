@@ -217,15 +217,7 @@ class PixelTileSurface(
         synchronized(monitor) {
             check(activeTransactionId == null) { "Cannot apply history while a write is active" }
             val deltas = record.deltas()
-            deltas.forEach { delta ->
-                val expected = when (direction) {
-                    HistoryDirection.UNDO -> delta.after
-                    HistoryDirection.REDO -> delta.before
-                }
-                check(generations[delta.key]?.id == expected?.id) {
-                    "Tile ${delta.key} changed since transaction ${record.transactionId}"
-                }
-            }
+            requireCurrentGenerations(record, deltas, direction)
             deltas.forEach { delta ->
                 val generation = when (direction) {
                     HistoryDirection.UNDO -> delta.before
@@ -235,6 +227,18 @@ class PixelTileSurface(
                 else generations[delta.key] = generation
             }
             if (deltas.isNotEmpty()) revisionValue++
+        }
+    }
+
+    internal fun requireRecordCurrent(
+        record: PixelTileTransactionRecord,
+        direction: HistoryDirection,
+    ) {
+        record.requireOpen()
+        require(record.surfaceId == surfaceId) { "Transaction belongs to another surface" }
+        synchronized(monitor) {
+            check(activeTransactionId == null) { "Cannot inspect history while a write is active" }
+            requireCurrentGenerations(record, record.deltas(), direction)
         }
     }
 
@@ -298,6 +302,22 @@ class PixelTileSurface(
 
     private fun requireActive(transaction: PixelTileWriteTransaction) {
         check(activeTransactionId == transaction.id) { "Write transaction is no longer active" }
+    }
+
+    private fun requireCurrentGenerations(
+        record: PixelTileTransactionRecord,
+        deltas: List<PixelTileDelta>,
+        direction: HistoryDirection,
+    ) {
+        deltas.forEach { delta ->
+            val expected = when (direction) {
+                HistoryDirection.UNDO -> delta.after
+                HistoryDirection.REDO -> delta.before
+            }
+            check(generations[delta.key]?.id == expected?.id) {
+                "Tile ${delta.key} changed since transaction ${record.transactionId}"
+            }
+        }
     }
 
     enum class HistoryDirection { UNDO, REDO }
