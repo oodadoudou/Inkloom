@@ -4644,13 +4644,12 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
         }.toMap()
     }
     DisposableEffect(layerElementBitmaps) { onDispose { layerElementBitmaps.values.forEach(LayerElementBitmaps::recycle) } }
-    val rasterLayerBitmaps = remember(page.layers, page.crop, page.backgroundRotationQuarterTurns) {
+    val rasterLayerSurfaces = remember(page.layers, page.crop, page.backgroundRotationQuarterTurns) {
         page.layers.mapNotNull { layer ->
             if (layer.contentKind != LayerContentKind.RASTER || !LayerHierarchy.effectiveVisible(page.layers, layer)) return@mapNotNull null
-            layer.id to assets.renderRasterLayerBitmap(page, layer.id, 1200)
+            layer.id to assets.renderRasterLayerSurface(page, layer.id, 1200)
         }.toMap()
     }
-    DisposableEffect(rasterLayerBitmaps) { onDispose { rasterLayerBitmaps.values.forEach { bitmap -> if (!bitmap.isRecycled) bitmap.recycle() } } }
     val rulerGuide = RulerGuideState(settings.rulerCenterX, settings.rulerCenterY, settings.rulerAngleDegrees, settings.rulerSnapDegrees).normalized()
     val canvasGuide = CanvasGuideState(settings.gridSnapEnabled, settings.gridSpacing, settings.alignmentGuidesEnabled, settings.verticalGuideX, settings.horizontalGuideY).normalized()
     val perspectiveGuide = PerspectiveGuideState(
@@ -4777,8 +4776,9 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.setProtectedLayerIds(lockedLayerIds)
                 view.setPageBackground(background)
                 view.setLayerElementBitmaps(layerElementBitmaps)
-                view.setRasterLayerBitmaps(rasterLayerBitmaps)
+                view.setRasterLayerSurfaces(rasterLayerSurfaces)
                 view.activeLayerId = activeLayerId
+                view.prepareRasterLayerForEditing(activeLayerId)
                 view.layerOpacities = layerOpacities
                 view.layerBlendModes = layerBlendModes
                 view.alphaLockedLayers = page.layers.filter { it.alphaLock }.mapTo(mutableSetOf()) { it.id }

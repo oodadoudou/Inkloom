@@ -406,6 +406,20 @@ class DocumentAssetService(private val context: Context) {
         return bitmap
     }
 
+    /**
+     * Builds the visible, presentation-oriented sparse projection consumed by the live canvas.
+     * The temporary bitmap is an Android decode/resample boundary only and is released before this
+     * method returns; callers retain no page-sized bitmap mirror.
+     */
+    fun renderRasterLayerSurface(page: InkPage, layerId: String, width: Int): PixelTileSurface {
+        val projection = renderRasterLayerBitmap(page, layerId, width)
+        return try {
+            PixelTileBitmapAdapter.import(projection)
+        } finally {
+            projection.recycle()
+        }
+    }
+
     private fun renderRasterTileReference(
         reference: RasterTileSurfaceRef,
         rotationQuarterTurns: Int,

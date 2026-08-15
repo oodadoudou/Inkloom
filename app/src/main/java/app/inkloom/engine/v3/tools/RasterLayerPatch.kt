@@ -4,6 +4,9 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Rect
+import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
+import app.inkloom.engine.v3.surface.PixelRect
+import app.inkloom.engine.v3.surface.PixelTileSurfaceSnapshot
 
 /**
  * Immutable ownership-transfer object for one edited rectangle of a visible raster layer.
@@ -56,6 +59,24 @@ class RasterLayerPatch private constructor(
                 top = clipped.top,
                 sourceWidth = source.width,
                 sourceHeight = source.height,
+            )
+        }
+
+        /** Captures a dirty region directly from authoritative tiles without a full bitmap mirror. */
+        fun capture(layerId: String, source: PixelTileSurfaceSnapshot, dirtyBounds: Rect): RasterLayerPatch? {
+            val clipped = Rect(dirtyBounds)
+            if (!clipped.intersect(0, 0, source.logicalWidth, source.logicalHeight) || clipped.isEmpty) return null
+            val captured = PixelTileBitmapAdapter.render(
+                source,
+                PixelRect(clipped.left, clipped.top, clipped.right, clipped.bottom),
+            )
+            return RasterLayerPatch(
+                layerId = layerId,
+                bitmap = captured,
+                left = clipped.left,
+                top = clipped.top,
+                sourceWidth = source.logicalWidth,
+                sourceHeight = source.logicalHeight,
             )
         }
     }

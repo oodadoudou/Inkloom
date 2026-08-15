@@ -10,6 +10,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.model.EditorTool
 import app.inkloom.engine.v3.render.ActiveStrokeCompositor
 import app.inkloom.engine.v3.tools.RasterLayerPatch
+import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
 import app.inkloom.ui.InkCanvasView
 import java.io.File
 import org.junit.Assert.assertEquals
@@ -19,6 +20,29 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class RasterPaintCommitTest {
+    @Test fun productionTileSurfacePaintsWithoutAnExternalBitmapMirror() {
+        val seed = Bitmap.createBitmap(600, 600, Bitmap.Config.ARGB_8888)
+        val tileSurface = PixelTileBitmapAdapter.import(seed)
+        seed.recycle()
+        var committed: RasterLayerPatch? = null
+        val view = createCanvas {
+            tool = EditorTool.PEN
+            activeLayerId = "paint"
+            baseWidth = 42f
+            inkColor = Color.MAGENTA
+            setRasterLayerSurfaces(mapOf("paint" to tileSurface))
+            onRasterLayerCommitted = { patch -> committed = patch }
+        }
+
+        send(view, MotionEvent.ACTION_DOWN, 80f, 200f, 0L)
+        repeat(20) { index -> send(view, MotionEvent.ACTION_MOVE, 85f + index * 12f, 200f, 5L + index) }
+        send(view, MotionEvent.ACTION_UP, 330f, 200f, 30L)
+
+        assertTrue(requireNotNull(committed).hasAlphaInSourceRegion(80, 270, 260, 340))
+        assertTrue("The authoritative surface must receive the same committed pigment", Color.alpha(tileSurface.pixelAt(180, 300)) > 0)
+        committed?.close()
+    }
+
     @Test fun wetPullUpdatesRasterBeforePenUpAndCancelRestoresIt() {
         val surface = Bitmap.createBitmap(600, 600, Bitmap.Config.ARGB_8888)
         android.graphics.Canvas(surface).drawCircle(150f, 300f, 24f, android.graphics.Paint().apply { color = Color.RED })
