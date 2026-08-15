@@ -32,7 +32,7 @@ internal typealias RasterTileLiquifySession = app.inkloom.engine.v3.tools.Raster
 internal typealias RasterLayerPatch = app.inkloom.engine.v3.tools.RasterLayerPatch
 internal typealias RasterTileEditSession = app.inkloom.engine.v3.tools.RasterTileEditSession
 internal typealias RasterWetPaintMixer = app.inkloom.engine.v3.tools.RasterWetPaintMixer
-internal typealias RasterWetPaintSession = app.inkloom.engine.v3.tools.RasterWetPaintSession
+internal typealias RasterTilePaintSession = app.inkloom.engine.v3.tools.RasterTilePaintSession
 
 internal fun importPixelTileSurface(bitmap: android.graphics.Bitmap): PixelTileSurface =
     app.inkloom.engine.v3.android.PixelTileBitmapAdapter.import(bitmap)

@@ -311,7 +311,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var smudgeDirtyBounds: Rect? = null
     private var rasterTileBlendSession: RasterTileBlendSession? = null
     private var rasterBlendBitmap: Bitmap? = null
-    private var rasterWetPaintSession: RasterWetPaintSession? = null
+    private var rasterPaintSession: RasterTilePaintSession? = null
     private var rasterWetPaintBitmap: Bitmap? = null
     private var wetPaintDirtyBounds: Rect? = null
     private var wetPaintLastPositions: List<Pair<Float, Float>> = emptyList()
@@ -1607,7 +1607,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun releaseActiveStrokePreview() {
-        if (rasterWetPaintSession != null) cancelWetPaintGesture()
+        if (rasterPaintSession != null) cancelWetPaintGesture()
         removeCallbacks(activeSurfaceFrame)
         activeSurfaceFrameScheduled = false
         activeSurfaceCommitted = false
@@ -5696,15 +5696,16 @@ class InkCanvasView(context: Context) : View(context) {
     private fun beginWetPaintGesture(normalizedX: Float, normalizedY: Float) {
         cancelWetPaintGesture()
         val template = activeStrokeTemplate ?: return
-        if (template.procreateWetMix.isDisabled() && !template.watercolor) return
         val raster = rasterLayerBitmaps[activeLayerId]?.takeUnless(Bitmap::isRecycled) ?: return
         rasterWetPaintBitmap = raster
-        rasterWetPaintSession = RasterWetPaintSession(
+        rasterPaintSession = RasterTilePaintSession(
+            rasterTileSurfaceFor(activeLayerId, raster),
             raster,
             selectionMaskForDisplay(),
             preserveDestinationAlpha = activeLayerId in alphaLockedLayers,
         )
         wetPaintDirtyBounds = null
+        if (template.procreateWetMix.isDisabled() && !template.watercolor) return
         val initial = StrokePoint(normalizedX, normalizedY)
         wetPaintLastPositions = wetPaintPositions(initial)
         wetPaintPickupColors = MutableList(wetPaintLastPositions.size) { null }
@@ -5716,9 +5717,10 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun advanceWetPaintGesture() {
-        val session = rasterWetPaintSession ?: return
+        val session = rasterPaintSession ?: return
         val raster = rasterWetPaintBitmap?.takeUnless(Bitmap::isRecycled) ?: return
         val template = activeStrokeTemplate ?: return
+        if (template.procreateWetMix.isDisabled() && !template.watercolor) return
         val point = currentPoints.lastOrNull() ?: return
         val currentPositions = wetPaintPositions(point)
         if (currentPositions.size != wetPaintLastPositions.size) {
@@ -5790,7 +5792,7 @@ class InkCanvasView(context: Context) : View(context) {
                     currentPoints[last] = currentPoints[last].copy(pigmentArgb = pigment.toUInt().toLong())
                 }
             }
-            val changed = session.advance(
+            val changed = session.advanceWetTransport(
                 previous.first * raster.width, previous.second * raster.height,
                 current.first * raster.width, current.second * raster.height,
                 radius, pull, blur, template.hardness, fixedBlurRadius,
@@ -5810,8 +5812,8 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun finishWetPaintGesture() {
-        rasterWetPaintSession?.close()
-        rasterWetPaintSession = null
+        rasterPaintSession?.close()
+        rasterPaintSession = null
         rasterWetPaintBitmap = null
         wetPaintDirtyBounds = null
         wetPaintLastPositions = emptyList()
@@ -5819,23 +5821,42 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun cancelWetPaintGesture() {
-        rasterWetPaintSession?.restoreOriginal()
+        rasterPaintSession?.restoreOriginal()
         finishWetPaintGesture()
         invalidate()
     }
 
     private fun commitRasterPaintStrokes(raster: Bitmap, newStrokes: List<InkStroke>) {
         val patch = renderRasterStrokePatch(raster, newStrokes) ?: return
-        val dirtyBounds = mergeDirtyBounds(
-            wetPaintDirtyBounds,
-            Rect(patch.left, patch.top, patch.left + patch.bitmap.width, patch.top + patch.bitmap.height),
+        val session = rasterPaintSession ?: RasterTilePaintSession(
+            rasterTileSurfaceFor(activeLayerId, raster),
+            raster,
+            selectionMaskForDisplay(),
+            preserveDestinationAlpha = activeLayerId in alphaLockedLayers,
         )
-        if (newStrokes.any { stroke -> stroke.watercolor || !stroke.procreateWetMix.isDisabled() || stroke.colorMix > .001f || stroke.paintMix > .001f }) {
-            RasterWetPaintMixer.composite(raster, patch.bitmap, patch.left, patch.top, newStrokes)
-        } else Canvas(raster).drawBitmap(patch.bitmap, patch.left.toFloat(), patch.top.toFloat(), Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.SRC_OVER })
-        patch.bitmap.recycle()
+        try {
+            val painted = session.compositePaintPatch(
+                patch.bitmap,
+                patch.left,
+                patch.top,
+                newStrokes,
+                wetComposite = newStrokes.any { stroke ->
+                    stroke.watercolor || !stroke.procreateWetMix.isDisabled() || stroke.colorMix > .001f || stroke.paintMix > .001f
+                },
+            )
+            val dirtyBounds = painted?.let { mergeDirtyBounds(wetPaintDirtyBounds, it) } ?: wetPaintDirtyBounds
+            if (dirtyBounds != null) {
+                session.commit().close()
+                commitRasterLayerPatch(raster, dirtyBounds, workingSurfaceAlreadyUpdated = true)
+            } else {
+                session.restoreOriginal()
+            }
+        } finally {
+            patch.bitmap.recycle()
+            session.close()
+            if (rasterPaintSession === session) rasterPaintSession = null
+        }
         invalidate()
-        commitRasterLayerPatch(raster, dirtyBounds)
     }
 
     private fun activeBrushEngineKind(): BrushEngineKind = when {
