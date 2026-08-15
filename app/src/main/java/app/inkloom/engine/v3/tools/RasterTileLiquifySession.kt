@@ -12,6 +12,7 @@ import app.inkloom.document.LiquifyMode
 import app.inkloom.engine.v3.surface.PixelRect
 import app.inkloom.engine.v3.surface.PixelTileSurface
 import app.inkloom.engine.v3.surface.PixelTileTransactionRecord
+import app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot
 import kotlin.math.atan2
 import kotlin.math.ceil
 import kotlin.math.cos
@@ -21,13 +22,24 @@ import kotlin.math.pow
 import kotlin.math.sin
 
 /** Bounded Skia mesh warp backed by one atomic sparse-tile gesture transaction. */
-class RasterTileLiquifySession(
+class RasterTileLiquifySession private constructor(
     surface: PixelTileSurface,
     displayBitmap: Bitmap,
-    selectionMask: Bitmap? = null,
+    private val selection: RasterSelectionMask,
 ) : AutoCloseable {
+    constructor(surface: PixelTileSurface, displayBitmap: Bitmap, selectionMask: Bitmap? = null) : this(
+        surface,
+        displayBitmap,
+        RasterSelectionMask(selectionMask, surface.logicalWidth, surface.logicalHeight),
+    )
+
+    internal constructor(surface: PixelTileSurface, displayBitmap: Bitmap, selectionMask: MaskTileSurfaceSnapshot?) : this(
+        surface,
+        displayBitmap,
+        RasterSelectionMask(selectionMask, surface.logicalWidth, surface.logicalHeight),
+    )
+
     private val edits = RasterTileEditSession(surface, displayBitmap, "raster liquify")
-    private val selection = RasterSelectionMask(selectionMask, surface.logicalWidth, surface.logicalHeight)
     private var warpBitmap: Bitmap? = null
     private var warpCanvas: Canvas? = null
     private var coverageBitmap: Bitmap? = null

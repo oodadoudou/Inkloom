@@ -281,6 +281,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var selectionAlphaMask: SparseAlphaMask? = null
     private var selectionDisplayBitmap: Bitmap? = null
     private var selectionBoundaryBitmap: Bitmap? = null
+    private var featheredSelectionAlphaMask: SparseAlphaMask? = null
     private var lastDeselectedStrokeIds: Set<String> = emptySet()
     private var lastDeselectedMaskRegions: List<List<StrokePoint>> = emptyList()
     private var lastDeselectedAlphaMask: SparseAlphaMask? = null
@@ -5202,7 +5203,7 @@ class InkCanvasView(context: Context) : View(context) {
         val raster = rasterBlendBitmap
         val surface = rasterTileSurfaceFor(activeLayerId)
         if (raster != null && surface != null) {
-            rasterTileBlendSession = RasterTileBlendSession(surface, raster, selectionMaskForDisplay())
+            rasterTileBlendSession = RasterTileBlendSession(surface, raster, selectionMaskForRasterTools())
             smudgeBefore = null
             localToolStrokeIndices.clear()
         } else {
@@ -5349,7 +5350,7 @@ class InkCanvasView(context: Context) : View(context) {
         val raster = rasterLiquifyBitmap
         val surface = rasterTileSurfaceFor(activeLayerId)
         if (raster != null && surface != null) {
-            rasterTileLiquifySession = RasterTileLiquifySession(surface, raster, selectionMaskForDisplay())
+            rasterTileLiquifySession = RasterTileLiquifySession(surface, raster, selectionMaskForRasterTools())
             liquifyBefore = null
             localToolStrokeIndices.clear()
         } else {
@@ -5981,16 +5982,11 @@ class InkCanvasView(context: Context) : View(context) {
                     forceSynchronousTipDecode = previousSynchronousDecode
                 }
                 target.restoreToCount(checkpoint)
-                selectionMaskForDisplay()?.takeUnless(Bitmap::isRecycled)?.let { selection ->
-                    val source = Rect(
-                        (patchLeft.toLong() * selection.width / raster.width).toInt(),
-                        (patchTop.toLong() * selection.height / raster.height).toInt(),
-                        (patchRight.toLong() * selection.width / raster.width).toInt().coerceAtLeast(1),
-                        (patchBottom.toLong() * selection.height / raster.height).toInt().coerceAtLeast(1),
+                selectionMaskForRasterTools()?.let { selection ->
+                    RasterSelectionMask(selection, raster.width, raster.height).apply(
+                        patch,
+                        Rect(patchLeft, patchTop, patchRight, patchBottom),
                     )
-                    target.drawBitmap(selection, source, Rect(0, 0, patchWidth, patchHeight), Paint().apply {
-                        blendMode = BlendMode.DST_IN
-                    })
                 }
                 val changed = session.compositePaintPatch(
                     patch, patchLeft, patchTop, increments.map(RasterStampIncrement::stroke), wetComposite = false,
@@ -6081,16 +6077,11 @@ class InkCanvasView(context: Context) : View(context) {
             forceSynchronousTipDecode = previousSynchronousDecode
         }
         target.restore()
-        selectionMaskForDisplay()?.takeUnless(Bitmap::isRecycled)?.let { selection ->
-            val selectionSource = android.graphics.Rect(
-                (patchLeft.toLong() * selection.width / raster.width).toInt(),
-                (patchTop.toLong() * selection.height / raster.height).toInt(),
-                (patchRight.toLong() * selection.width / raster.width).toInt().coerceAtLeast(1),
-                (patchBottom.toLong() * selection.height / raster.height).toInt().coerceAtLeast(1),
+        selectionMaskForRasterTools()?.let { selection ->
+            RasterSelectionMask(selection, raster.width, raster.height).apply(
+                paintSurface,
+                Rect(patchLeft, patchTop, patchRight, patchBottom),
             )
-            target.drawBitmap(selection, selectionSource, android.graphics.Rect(0, 0, patchWidth, patchHeight), Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                blendMode = android.graphics.BlendMode.DST_IN
-            })
         }
         if (activeLayerId in alphaLockedLayers) target.drawBitmap(
             raster,
@@ -6112,7 +6103,7 @@ class InkCanvasView(context: Context) : View(context) {
         rasterPaintSession = RasterTilePaintSession(
             surface,
             raster,
-            selectionMaskForDisplay(),
+            selectionMaskForRasterTools(),
             preserveDestinationAlpha = activeLayerId in alphaLockedLayers,
             mirrorWrites = !rasterIncrementalPaintEnabled,
         )
@@ -6270,7 +6261,7 @@ class InkCanvasView(context: Context) : View(context) {
         val session = rasterPaintSession ?: RasterTilePaintSession(
             surface,
             raster,
-            selectionMaskForDisplay(),
+            selectionMaskForRasterTools(),
             preserveDestinationAlpha = activeLayerId in alphaLockedLayers,
         )
         try {
@@ -6351,7 +6342,7 @@ class InkCanvasView(context: Context) : View(context) {
         val raster = rasterEraserBitmap
         val surface = rasterTileSurfaceFor(activeLayerId)
         if (raster != null && surface != null) {
-            rasterTileEraserSession = RasterTileEraserSession(surface, raster, selectionMaskForDisplay())
+            rasterTileEraserSession = RasterTileEraserSession(surface, raster, selectionMaskForRasterTools())
             eraserGestureBefore = null
         } else eraserGestureBefore = strokes.toList()
         rasterEraserChanged = false
@@ -6800,6 +6791,8 @@ class InkCanvasView(context: Context) : View(context) {
     private fun rebuildSelectionDerivedState() {
         selectionDisplayBitmap?.recycle()
         selectionBoundaryBitmap?.recycle()
+        featheredSelectionAlphaMask?.close()
+        featheredSelectionAlphaMask = null
         val base = selectionAlphaMask?.snapshot()
         if (base == null) {
             selectionDisplayBitmap = null
@@ -6808,6 +6801,7 @@ class InkCanvasView(context: Context) : View(context) {
             selectionDisplayBitmap = SelectionMaskCompositor.feather(base, selectionFeatherPixels, pageModelWidth)
             selectionBoundaryBitmap = SelectionMaskCompositor.boundaryMask(base)
             base.recycle()
+            featheredSelectionAlphaMask = SparseAlphaMask.fromBitmap(selectionDisplayBitmap)
         } else {
             selectionDisplayBitmap = base
             selectionBoundaryBitmap = SelectionMaskCompositor.boundaryMask(base)
@@ -6818,6 +6812,12 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun selectionMaskForDisplay(): Bitmap? =
         selectionDisplayBitmap?.takeUnless(Bitmap::isRecycled)
+
+    /** Authoritative selection sampled by raster tools without an entire-page Bitmap bridge. */
+    private fun selectionMaskForRasterTools(): MaskTileSurfaceSnapshot? {
+        ensureSelectionAlphaFromSelectedStrokes()
+        return (featheredSelectionAlphaMask ?: selectionAlphaMask)?.surface?.snapshot()
+    }
 
     private fun selectionMaskSnapshot(): Bitmap? {
         ensureSelectionAlphaFromSelectedStrokes()
@@ -6842,6 +6842,7 @@ class InkCanvasView(context: Context) : View(context) {
         selectionAlphaMask?.close(); selectionAlphaMask = null
         selectionDisplayBitmap?.recycle(); selectionDisplayBitmap = null
         selectionBoundaryBitmap?.recycle(); selectionBoundaryBitmap = null
+        featheredSelectionAlphaMask?.close(); featheredSelectionAlphaMask = null
         selectionFeatherPixels = 0f
         if (clearHistory) {
             lastDeselectedStrokeIds = emptySet()

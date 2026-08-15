@@ -15,9 +15,8 @@ import kotlin.math.floor
 internal class RasterEraserKernel(
     private val surfaceWidth: Int,
     private val surfaceHeight: Int,
-    selectionMask: Bitmap? = null,
+    private val selection: RasterSelectionMask,
 ) : AutoCloseable {
-    private val selection = RasterSelectionMask(selectionMask, surfaceWidth, surfaceHeight)
     private var coverageBitmap: Bitmap? = null
     private var coverageCanvas: Canvas? = null
     private val coveragePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {

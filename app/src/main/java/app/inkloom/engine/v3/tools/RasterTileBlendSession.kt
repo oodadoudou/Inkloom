@@ -11,17 +11,29 @@ import android.graphics.Rect
 import app.inkloom.engine.v3.surface.PixelRect
 import app.inkloom.engine.v3.surface.PixelTileSurface
 import app.inkloom.engine.v3.surface.PixelTileTransactionRecord
+import app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot
 import kotlin.math.ceil
 import kotlin.math.floor
 
 /** Pigment transport directly over one sparse tile transaction. */
-class RasterTileBlendSession(
+class RasterTileBlendSession private constructor(
     surface: PixelTileSurface,
     displayBitmap: Bitmap,
-    selectionMask: Bitmap? = null,
+    private val selection: RasterSelectionMask,
 ) : AutoCloseable {
+    constructor(surface: PixelTileSurface, displayBitmap: Bitmap, selectionMask: Bitmap? = null) : this(
+        surface,
+        displayBitmap,
+        RasterSelectionMask(selectionMask, surface.logicalWidth, surface.logicalHeight),
+    )
+
+    internal constructor(surface: PixelTileSurface, displayBitmap: Bitmap, selectionMask: MaskTileSurfaceSnapshot?) : this(
+        surface,
+        displayBitmap,
+        RasterSelectionMask(selectionMask, surface.logicalWidth, surface.logicalHeight),
+    )
+
     private val edits = RasterTileEditSession(surface, displayBitmap, "raster blend")
-    private val selection = RasterSelectionMask(selectionMask, surface.logicalWidth, surface.logicalHeight)
     private var transportBitmap: Bitmap? = null
     private var transportCanvas: Canvas? = null
     private var coverageBitmap: Bitmap? = null

@@ -6,15 +6,28 @@ import android.graphics.Rect
 import app.inkloom.engine.v3.surface.PixelRect
 import app.inkloom.engine.v3.surface.PixelTileSurface
 import app.inkloom.engine.v3.surface.PixelTileTransactionRecord
+import app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot
 
 /** Eraser gesture whose authoritative writes and undo delta live in [PixelTileSurface]. */
-class RasterTileEraserSession(
+class RasterTileEraserSession private constructor(
     surface: PixelTileSurface,
     displayBitmap: Bitmap,
-    selectionMask: Bitmap? = null,
+    selection: RasterSelectionMask,
 ) : AutoCloseable {
+    constructor(surface: PixelTileSurface, displayBitmap: Bitmap, selectionMask: Bitmap? = null) : this(
+        surface,
+        displayBitmap,
+        RasterSelectionMask(selectionMask, surface.logicalWidth, surface.logicalHeight),
+    )
+
+    internal constructor(surface: PixelTileSurface, displayBitmap: Bitmap, selectionMask: MaskTileSurfaceSnapshot?) : this(
+        surface,
+        displayBitmap,
+        RasterSelectionMask(selectionMask, surface.logicalWidth, surface.logicalHeight),
+    )
+
     private val edits = RasterTileEditSession(surface, displayBitmap, "raster eraser")
-    private val kernel = RasterEraserKernel(surface.logicalWidth, surface.logicalHeight, selectionMask)
+    private val kernel = RasterEraserKernel(surface.logicalWidth, surface.logicalHeight, selection)
     private var completed = false
 
     val dirtyBounds: PixelRect? get() = edits.dirtyBounds

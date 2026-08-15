@@ -12,6 +12,7 @@ import app.inkloom.document.InkStroke
 import app.inkloom.engine.v3.surface.PixelRect
 import app.inkloom.engine.v3.surface.PixelTileSurface
 import app.inkloom.engine.v3.surface.PixelTileTransactionRecord
+import app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.max
@@ -24,13 +25,41 @@ import kotlin.math.min
  * the final deterministic brush program write through the same tile transaction, so cancel is
  * byte-exact and commit publishes a single undoable generation without a full-layer bridge.
  */
-class RasterTilePaintSession(
+class RasterTilePaintSession private constructor(
     surface: PixelTileSurface,
     private val displayBitmap: Bitmap,
-    selectionMask: Bitmap? = null,
     private val preserveDestinationAlpha: Boolean = false,
     mirrorWrites: Boolean = true,
+    private val selection: RasterSelectionMask,
 ) : AutoCloseable {
+    constructor(
+        surface: PixelTileSurface,
+        displayBitmap: Bitmap,
+        selectionMask: Bitmap? = null,
+        preserveDestinationAlpha: Boolean = false,
+        mirrorWrites: Boolean = true,
+    ) : this(
+        surface,
+        displayBitmap,
+        preserveDestinationAlpha,
+        mirrorWrites,
+        RasterSelectionMask(selectionMask, surface.logicalWidth, surface.logicalHeight),
+    )
+
+    internal constructor(
+        surface: PixelTileSurface,
+        displayBitmap: Bitmap,
+        selectionMask: MaskTileSurfaceSnapshot?,
+        preserveDestinationAlpha: Boolean = false,
+        mirrorWrites: Boolean = true,
+    ) : this(
+        surface,
+        displayBitmap,
+        preserveDestinationAlpha,
+        mirrorWrites,
+        RasterSelectionMask(selectionMask, surface.logicalWidth, surface.logicalHeight),
+    )
+
     private val edits = RasterTileEditSession(
         surface,
         displayBitmap,
@@ -38,7 +67,6 @@ class RasterTilePaintSession(
         mirrorWrites = mirrorWrites,
         publishDirtyOnCommit = !mirrorWrites,
     )
-    private val selection = RasterSelectionMask(selectionMask, surface.logicalWidth, surface.logicalHeight)
     private var sourceBitmap: Bitmap? = null
     private var sourceCanvas: Canvas? = null
     private var sampleBitmap: Bitmap? = null
