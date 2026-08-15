@@ -253,7 +253,6 @@ class InkCanvasView(context: Context) : View(context) {
     private val selectedStrokeIds = linkedSetOf<String>()
     private var selectedMaskRegions: List<List<StrokePoint>> = emptyList()
     private var selectionAlphaMask: SparseAlphaMask? = null
-    private var selectionAlphaMaterializedBitmap: Bitmap? = null
     private var selectionDisplayBitmap: Bitmap? = null
     private var selectionBoundaryBitmap: Bitmap? = null
     private var lastDeselectedStrokeIds: Set<String> = emptySet()
@@ -6310,38 +6309,45 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun composeSelectionAlpha(region: Bitmap?, mode: SelectionMode) {
-        val combined = SelectionMaskCompositor.compose(selectionAlphaMaterializedBitmap, region, mode)
+        val base = selectionAlphaMask?.snapshot()
+        val combined = try {
+            SelectionMaskCompositor.compose(base, region, mode)
+        } finally {
+            base?.recycle()
+        }
         replaceSelectionAlpha(combined, resetFeather = mode == SelectionMode.REPLACE)
     }
 
     /** Takes ownership of [replacement]. */
     private fun replaceSelectionAlpha(replacement: Bitmap?, resetFeather: Boolean) {
         selectionAlphaMask?.close()
-        selectionAlphaMask = null
-        if (selectionAlphaMaterializedBitmap !== replacement) selectionAlphaMaterializedBitmap?.recycle()
-        selectionAlphaMaterializedBitmap = replacement?.takeUnless(Bitmap::isRecycled)
-        selectionAlphaMask = SparseAlphaMask.fromBitmap(selectionAlphaMaterializedBitmap)
-        if (selectionAlphaMask == null) {
-            selectionAlphaMaterializedBitmap?.recycle()
-            selectionAlphaMaterializedBitmap = null
-        }
+        selectionAlphaMask = SparseAlphaMask.fromBitmap(replacement)
+        replacement?.takeUnless(Bitmap::isRecycled)?.recycle()
         if (resetFeather) selectionFeatherPixels = 0f
         rebuildSelectionDerivedState()
     }
 
     private fun rebuildSelectionDerivedState() {
         selectionDisplayBitmap?.recycle()
-        selectionDisplayBitmap = if (selectionFeatherPixels > 0f) {
-            SelectionMaskCompositor.feather(selectionAlphaMaterializedBitmap, selectionFeatherPixels, pageModelWidth)
-        } else null
         selectionBoundaryBitmap?.recycle()
-        selectionBoundaryBitmap = SelectionMaskCompositor.boundaryMask(selectionAlphaMaterializedBitmap)
+        val base = selectionAlphaMask?.snapshot()
+        if (base == null) {
+            selectionDisplayBitmap = null
+            selectionBoundaryBitmap = null
+        } else if (selectionFeatherPixels > 0f) {
+            selectionDisplayBitmap = SelectionMaskCompositor.feather(base, selectionFeatherPixels, pageModelWidth)
+            selectionBoundaryBitmap = SelectionMaskCompositor.boundaryMask(base)
+            base.recycle()
+        } else {
+            selectionDisplayBitmap = base
+            selectionBoundaryBitmap = SelectionMaskCompositor.boundaryMask(base)
+        }
         notifySelectionActiveChanged()
         invalidate()
     }
 
     private fun selectionMaskForDisplay(): Bitmap? =
-        selectionDisplayBitmap?.takeUnless(Bitmap::isRecycled) ?: selectionAlphaMaterializedBitmap?.takeUnless(Bitmap::isRecycled)
+        selectionDisplayBitmap?.takeUnless(Bitmap::isRecycled)
 
     private fun selectionMaskSnapshot(): Bitmap? {
         ensureSelectionAlphaFromSelectedStrokes()
@@ -6363,7 +6369,6 @@ class InkCanvasView(context: Context) : View(context) {
         selectedStrokeIds.clear()
         selectedMaskRegions = emptyList()
         selectionAlphaMask?.close(); selectionAlphaMask = null
-        selectionAlphaMaterializedBitmap?.recycle(); selectionAlphaMaterializedBitmap = null
         selectionDisplayBitmap?.recycle(); selectionDisplayBitmap = null
         selectionBoundaryBitmap?.recycle(); selectionBoundaryBitmap = null
         selectionFeatherPixels = 0f
@@ -6399,7 +6404,8 @@ class InkCanvasView(context: Context) : View(context) {
         val inverted = editable - selectedStrokeIds
         ensureSelectionAlphaFromSelectedStrokes()
         val invertedAlpha = if (selectionAlphaMask != null) {
-            SelectionMaskCompositor.invert(selectionAlphaMaterializedBitmap)
+            val base = selectionAlphaMask?.snapshot()
+            try { SelectionMaskCompositor.invert(base) } finally { base?.recycle() }
         } else {
             SelectionMaskCompositor.full(pageModelWidth, pageModelHeight)
         }
@@ -6444,7 +6450,7 @@ class InkCanvasView(context: Context) : View(context) {
         lastDeselectedStrokeIds = selectedStrokeIds.toSet()
         lastDeselectedMaskRegions = selectionMaskRegions().map(List<StrokePoint>::toList)
         lastDeselectedAlphaBitmap?.recycle()
-        lastDeselectedAlphaBitmap = selectionAlphaMaterializedBitmap?.copy(Bitmap.Config.ARGB_8888, true)
+        lastDeselectedAlphaBitmap = selectionAlphaMask?.snapshot()
         lastDeselectedFeatherPixels = selectionFeatherPixels
         selectedStrokeIds.clear()
         selectedMaskRegions = emptyList()
@@ -6475,7 +6481,8 @@ class InkCanvasView(context: Context) : View(context) {
 
     fun borderSelection(widthPixels: Float): Boolean {
         ensureSelectionAlphaFromSelectedStrokes()
-        val ring = SelectionMaskCompositor.border(selectionAlphaMaterializedBitmap, widthPixels, pageModelWidth) ?: return false
+        val base = selectionAlphaMask?.snapshot()
+        val ring = try { SelectionMaskCompositor.border(base, widthPixels, pageModelWidth) } finally { base?.recycle() } ?: return false
         val contours = selectionMaskRegions()
         if (contours.isEmpty()) {
             replaceSelectionAlpha(ring, resetFeather = false)
@@ -6506,7 +6513,8 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun modifySelectionContours(pixels: Float): Boolean {
         ensureSelectionAlphaFromSelectedStrokes()
-        val changed = SelectionMaskCompositor.morph(selectionAlphaMaterializedBitmap, pixels, pageModelWidth) ?: return false
+        val base = selectionAlphaMask?.snapshot()
+        val changed = try { SelectionMaskCompositor.morph(base, pixels, pageModelWidth) } finally { base?.recycle() } ?: return false
         replaceSelectionAlpha(changed, resetFeather = false)
         val contours = selectionMaskRegions()
         if (contours.isNotEmpty()) selectedMaskRegions = contours.map { SelectionContourGeometry.offset(it, pixels, pageModelWidth, pageModelHeight) }
