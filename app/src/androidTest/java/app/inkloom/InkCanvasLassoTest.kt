@@ -13,6 +13,7 @@ import app.inkloom.document.StrokePoint
 import app.inkloom.model.EditorTool
 import app.inkloom.ui.InkCanvasView
 import app.inkloom.engine.v3.scene.SparseAlphaMask
+import app.inkloom.engine.v3.scene.AlphaMaskOperation
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -20,6 +21,72 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class InkCanvasLassoTest {
+    @Test fun sparseBooleanSelectionCompositionTouchesOnlyParticipatingTiles() {
+        val baseBitmap = Bitmap.createBitmap(1_024, 768, Bitmap.Config.ARGB_8888)
+        val region = Bitmap.createBitmap(1_024, 768, Bitmap.Config.ARGB_8888)
+        android.graphics.Canvas(baseBitmap).drawRect(40f, 40f, 100f, 100f, android.graphics.Paint().apply { color = Color.WHITE })
+        android.graphics.Canvas(region).drawRect(820f, 560f, 900f, 640f, android.graphics.Paint().apply { color = Color.WHITE })
+        val base = requireNotNull(SparseAlphaMask.fromBitmap(baseBitmap))
+        val added = requireNotNull(base.composed(region, AlphaMaskOperation.ADD))
+        try {
+            assertEquals(2, added.tileCount)
+            val snapshot = added.snapshot()
+            try {
+                assertEquals(Color.WHITE, snapshot.getPixel(60, 60))
+                assertEquals(Color.WHITE, snapshot.getPixel(850, 600))
+                assertEquals(Color.TRANSPARENT, snapshot.getPixel(500, 300))
+            } finally { snapshot.recycle() }
+            val subtracted = requireNotNull(added.composed(region, AlphaMaskOperation.SUBTRACT))
+            try {
+                assertEquals("Subtract discards the tile that became transparent", 1, subtracted.tileCount)
+                val intersected = subtracted.composed(region, AlphaMaskOperation.INTERSECT)
+                assertTrue("Disjoint sparse intersection is empty", intersected == null)
+            } finally { subtracted.close() }
+        } finally {
+            base.close(); added.close(); baseBitmap.recycle(); region.recycle()
+        }
+    }
+
+    @Test fun sparseInvertBuildsTheLogicalComplementWithoutAFullBitmapIntermediate() {
+        val source = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
+        android.graphics.Canvas(source).drawRect(0f, 0f, 256f, 256f, android.graphics.Paint().apply { color = Color.WHITE })
+        val mask = requireNotNull(SparseAlphaMask.fromBitmap(source))
+        val inverted = mask.inverted()
+        try {
+            assertEquals("The fully selected source tile becomes implicit transparency", 3, inverted.tileCount)
+            val snapshot = inverted.snapshot()
+            try {
+                assertEquals(Color.TRANSPARENT, snapshot.getPixel(100, 100))
+                assertEquals(Color.WHITE, snapshot.getPixel(400, 400))
+            } finally { snapshot.recycle() }
+        } finally {
+            source.recycle(); mask.close(); inverted.close()
+        }
+    }
+
+    @Test fun sparseMorphUsesSelectionBoundsAndHaloInsteadOfTheWholePage() {
+        val source = Bitmap.createBitmap(2_048, 2_048, Bitmap.Config.ARGB_8888)
+        android.graphics.Canvas(source).drawRect(980f, 980f, 1_068f, 1_068f, android.graphics.Paint().apply { color = Color.WHITE })
+        val mask = requireNotNull(SparseAlphaMask.fromBitmap(source))
+        val expanded = requireNotNull(mask.morphed(24, dilate = true))
+        val shrunk = requireNotNull(expanded.morphed(24, dilate = false))
+        try {
+            assertTrue("A local morph must not retain the 8x8 page tile grid", expanded.tileCount <= 4)
+            assertTrue("A local morph must retain bounded pixel storage", expanded.retainedPixels < source.width.toLong() * source.height / 8L)
+            val expandedSnapshot = expanded.snapshot()
+            val shrunkSnapshot = shrunk.snapshot()
+            try {
+                assertEquals(Color.WHITE, expandedSnapshot.getPixel(965, 1_024))
+                assertEquals(Color.TRANSPARENT, shrunkSnapshot.getPixel(965, 1_024))
+                assertEquals(Color.WHITE, shrunkSnapshot.getPixel(1_024, 1_024))
+            } finally {
+                expandedSnapshot.recycle(); shrunkSnapshot.recycle()
+            }
+        } finally {
+            source.recycle(); mask.close(); expanded.close(); shrunk.close()
+        }
+    }
+
     @Test fun emptySparseAlphaPlaneDoesNotRetainTiles() {
         val bitmap = Bitmap.createBitmap(1_024, 768, Bitmap.Config.ARGB_8888)
         try {

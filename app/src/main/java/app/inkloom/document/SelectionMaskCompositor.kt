@@ -161,14 +161,6 @@ object SelectionMaskCompositor {
         return null
     }
 
-    fun invert(source: Bitmap?): Bitmap? {
-        if (source == null || source.isRecycled) return null
-        val result = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
-        if (NativeRasterOps.invertAlpha(source, result)) return result
-        result.recycle()
-        return null
-    }
-
     fun feather(source: Bitmap?, radiusPagePixels: Float, pageWidth: Float): Bitmap? {
         if (source == null || source.isRecycled) return null
         val requestedRadius = radiusPagePixels.coerceAtLeast(0f) * source.width / pageWidth.coerceAtLeast(1f)
@@ -187,12 +179,6 @@ object SelectionMaskCompositor {
         } finally {
             alpha.recycle()
         }
-    }
-
-    fun morph(source: Bitmap?, pixels: Float, pageWidth: Float): Bitmap? {
-        if (source == null || source.isRecycled || pixels == 0f) return source?.copy(Bitmap.Config.ARGB_8888, true)
-        val radius = ceil(kotlin.math.abs(pixels) * source.width / pageWidth.coerceAtLeast(1f)).toInt().coerceAtLeast(1)
-        return binaryMorph(source, radius, dilate = pixels > 0f)
     }
 
     fun border(source: Bitmap?, widthPixels: Float, pageWidth: Float): Bitmap? {
