@@ -7,6 +7,7 @@ import android.graphics.RectF
 import android.graphics.RenderNode
 import app.inkloom.engine.v3.surface.PixelRect
 import app.inkloom.engine.v3.surface.PixelTileKey
+import app.inkloom.engine.v3.surface.PixelTileFormat
 import app.inkloom.engine.v3.surface.PixelTileSurfaceSnapshot
 import java.util.LinkedHashMap
 import kotlin.math.ceil
@@ -29,6 +30,7 @@ internal class PixelTileCanvasRenderer(
 
     private data class CacheKey(
         val surfaceId: String,
+        val pixelFormat: PixelTileFormat,
         val tileKey: PixelTileKey,
         val generation: Long,
     )
@@ -134,7 +136,7 @@ internal class PixelTileCanvasRenderer(
         generation: Long,
         bounds: PixelRect,
     ): CachedTile {
-        val cacheKey = CacheKey(snapshot.surfaceId, key, generation)
+        val cacheKey = CacheKey(snapshot.surfaceId, snapshot.pixelFormat, key, generation)
         cache[cacheKey]?.takeUnless { it.bitmap.isRecycled }?.let { return it }
         removeObsoleteGeneration(snapshot.surfaceId, key, generation)
         val bitmap = PixelTileBitmapAdapter.render(snapshot, bounds)

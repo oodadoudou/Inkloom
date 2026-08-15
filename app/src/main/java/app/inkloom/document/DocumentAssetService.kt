@@ -187,6 +187,7 @@ class DocumentAssetService(private val context: Context) {
             logicalHeight = metadata.logicalHeight,
             tileSize = metadata.tileSize,
             revision = metadata.revision,
+            pixelFormat = metadata.pixelFormat.manifestId,
         )
     }
 
@@ -204,7 +205,8 @@ class DocumentAssetService(private val context: Context) {
             metadata.logicalWidth == reference.logicalWidth &&
             metadata.logicalHeight == reference.logicalHeight &&
             metadata.tileSize == reference.tileSize &&
-            metadata.revision == reference.revision
+            metadata.revision == reference.revision &&
+            metadata.pixelFormat.manifestId == reference.pixelFormat
         ) { "Raster tile manifest does not match its document reference" }
         return pixelTileStore.load(manifest)
     }

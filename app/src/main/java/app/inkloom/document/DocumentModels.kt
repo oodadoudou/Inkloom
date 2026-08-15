@@ -136,6 +136,8 @@ data class RasterTileSurfaceRef(
     val logicalHeight: Int,
     val tileSize: Int,
     val revision: Long,
+    /** Stable engine manifest identifier; defaults keep documents written before schema v2 readable. */
+    val pixelFormat: String = "argb8888-premultiplied-srgb",
 )
 
 @Serializable

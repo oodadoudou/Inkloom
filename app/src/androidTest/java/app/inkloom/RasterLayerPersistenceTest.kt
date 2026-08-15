@@ -12,6 +12,9 @@ import app.inkloom.document.LayerContentKind
 import app.inkloom.document.PageGeometry
 import app.inkloom.document.PageCrop
 import app.inkloom.document.defaultInkLayers
+import app.inkloom.engine.v3.surface.LinearRgba
+import app.inkloom.engine.v3.surface.PixelTileFormat
+import app.inkloom.engine.v3.surface.PixelTileSurface
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -24,6 +27,44 @@ import org.junit.runner.RunWith
 class RasterLayerPersistenceTest {
     private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
     private val assets = DocumentAssetService(context)
+
+    @Test fun linearF16RasterReferenceSurvivesDocumentBundleWithoutLosingItsFormat() {
+        val surface = PixelTileSurface(
+            logicalWidth = 128,
+            logicalHeight = 128,
+            tileSize = 64,
+            surfaceId = "bundle-hdr",
+            pixelFormat = PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16,
+        ).also {
+            it.beginWrite("HDR bundle fixture").run {
+                setLinearPixel(7, 9, LinearRgba(3f, .25f, -.1f, .5f))
+                commit().close()
+            }
+        }
+        val reference = assets.saveRasterTileSurface(surface)
+        assets.releaseRasterTileReservation(reference)
+        val document = InkDocument(
+            title = "HDR",
+            pages = listOf(InkPage(layers = defaultInkLayers() + InkLayer(
+                name = "HDR paint",
+                contentKind = LayerContentKind.RASTER,
+                rasterTileSurface = reference,
+            ))),
+        )
+
+        val bundle = ByteArrayOutputStream().also { assets.exportBundle(document, it) }.toByteArray()
+        val restoredDocument = assets.importBundle(ByteArrayInputStream(bundle))
+        val restoredReference = requireNotNull(
+            restoredDocument.pages.single().layers.last().rasterTileSurface,
+        )
+        val restored = assets.loadRasterTileSurface(restoredReference)
+
+        assertEquals(PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16.manifestId, reference.pixelFormat)
+        assertEquals(reference.pixelFormat, restoredReference.pixelFormat)
+        assertEquals(PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16, restored.pixelFormat)
+        assertEquals(1.5f, restored.linearPixelAt(7, 9).red, .002f)
+        assets.releaseRasterTileReservation(restoredReference)
+    }
 
     @Test fun rasterSurfaceIsContentAddressedRenderedRotatedAndBundled() {
         val source = Bitmap.createBitmap(40, 20, Bitmap.Config.ARGB_8888)

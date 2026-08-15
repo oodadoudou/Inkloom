@@ -1,17 +1,25 @@
 package app.inkloom.engine.v3.android
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.ColorSpace
+import android.graphics.Paint
+import android.graphics.Rect
 import app.inkloom.engine.v3.surface.PixelRect
 import app.inkloom.engine.v3.surface.PixelTileKey
+import app.inkloom.engine.v3.surface.PixelTileFormat
 import app.inkloom.engine.v3.surface.PixelTileSurface
 import app.inkloom.engine.v3.surface.PixelTileSurfaceSnapshot
 import app.inkloom.engine.v3.surface.PixelTileWriteTransaction
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import kotlin.math.floor
 
 /** Android interop at the edge of the platform-independent sparse pixel engine. */
 internal object PixelTileBitmapAdapter {
     fun import(bitmap: Bitmap, tileSize: Int = PixelTileSurface.DEFAULT_TILE_SIZE): PixelTileSurface {
         require(!bitmap.isRecycled) { "Bitmap has been recycled" }
+        if (bitmap.config == Bitmap.Config.RGBA_F16) return importF16(bitmap, tileSize)
         val surface = PixelTileSurface(bitmap.width, bitmap.height, tileSize)
         surface.beginWrite("legacy raster import").use { write ->
             val source = IntArray(tileSize * tileSize)
@@ -53,6 +61,28 @@ internal object PixelTileBitmapAdapter {
         val clipped = source.intersect(PixelRect(0, 0, snapshot.logicalWidth, snapshot.logicalHeight))
         require(!clipped.isEmpty) { "Source rectangle does not intersect the surface" }
         require(targetWidth > 0 && targetHeight > 0) { "Target dimensions must be positive" }
+        return when (snapshot.pixelFormat) {
+            PixelTileFormat.PREMULTIPLIED_SRGB_8888 -> renderRgba8(
+                snapshot,
+                clipped,
+                targetWidth,
+                targetHeight,
+            )
+            PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16 -> renderF16(
+                snapshot,
+                clipped,
+                targetWidth,
+                targetHeight,
+            )
+        }
+    }
+
+    private fun renderRgba8(
+        snapshot: PixelTileSurfaceSnapshot,
+        clipped: PixelRect,
+        targetWidth: Int,
+        targetHeight: Int,
+    ): Bitmap {
         val output = if (clipped.width == targetWidth && clipped.height == targetHeight) {
             snapshot.copyPremultipliedPixels(clipped)
         } else {
@@ -77,6 +107,116 @@ internal object PixelTileBitmapAdapter {
         }
         return Bitmap.createBitmap(output, targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
     }
+
+    private fun renderF16(
+        snapshot: PixelTileSurfaceSnapshot,
+        clipped: PixelRect,
+        targetWidth: Int,
+        targetHeight: Int,
+    ): Bitmap {
+        val output = if (clipped.width == targetWidth && clipped.height == targetHeight) {
+            snapshot.copyPremultipliedF16(clipped)
+        } else {
+            LongArray(Math.multiplyExact(targetWidth, targetHeight)).also { scaled ->
+                val scaleX = clipped.width.toFloat() / targetWidth
+                val scaleY = clipped.height.toFloat() / targetHeight
+                for (targetY in 0 until targetHeight) {
+                    val sourceY = (clipped.top + floor((targetY + .5f) * scaleY).toInt())
+                        .coerceIn(clipped.top, clipped.bottom - 1)
+                    for (targetX in 0 until targetWidth) {
+                        val sourceX = (clipped.left + floor((targetX + .5f) * scaleX).toInt())
+                            .coerceIn(clipped.left, clipped.right - 1)
+                        val color = snapshot.linearPixelAt(sourceX, sourceY)
+                        scaled[targetY * targetWidth + targetX] =
+                            app.inkloom.engine.v3.surface.PackedRgbaF16.packPremultiplied(
+                                color.red,
+                                color.green,
+                                color.blue,
+                                color.alpha,
+                            )
+                    }
+                }
+            }
+        }
+        return createLinearF16Bitmap(targetWidth, targetHeight).also { bitmap ->
+            bitmap.copyPixelsFromBuffer(f16Buffer(output))
+        }
+    }
+
+    private fun importF16(bitmap: Bitmap, tileSize: Int): PixelTileSurface {
+        val surface = PixelTileSurface(
+            logicalWidth = bitmap.width,
+            logicalHeight = bitmap.height,
+            tileSize = tileSize,
+            pixelFormat = PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16,
+        )
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        surface.beginWrite("linear F16 raster import").use { write ->
+            val columns = (bitmap.width + tileSize - 1) / tileSize
+            val rows = (bitmap.height + tileSize - 1) / tileSize
+            for (row in 0 until rows) for (column in 0 until columns) {
+                val left = column * tileSize
+                val top = row * tileSize
+                val width = minOf(tileSize, bitmap.width - left)
+                val height = minOf(tileSize, bitmap.height - top)
+                val converted = createLinearF16Bitmap(width, height)
+                val packed = try {
+                    Canvas(converted).drawBitmap(
+                        bitmap,
+                        Rect(left, top, left + width, top + height),
+                        Rect(0, 0, width, height),
+                        paint,
+                    )
+                    val raw = ByteBuffer.allocateDirect(width * height * Long.SIZE_BYTES)
+                        .order(ByteOrder.nativeOrder())
+                    converted.copyPixelsToBuffer(raw)
+                    raw.rewind()
+                    LongArray(width * height) { readPackedF16(raw) }
+                } finally {
+                    converted.recycle()
+                }
+                if (packed.any { (it ushr 48 and 0xffffL) != 0L }) {
+                    write.editTileF16(
+                        PixelTileKey(column, row),
+                        PixelRect(0, 0, width, height),
+                    ) { tile, stride ->
+                        for (y in 0 until height) {
+                            packed.copyInto(tile, y * stride, y * width, (y + 1) * width)
+                        }
+                    }
+                }
+            }
+            write.commit().close()
+        }
+        return surface
+    }
+
+    private fun createLinearF16Bitmap(width: Int, height: Int): Bitmap = Bitmap.createBitmap(
+        width,
+        height,
+        Bitmap.Config.RGBA_F16,
+        true,
+        ColorSpace.get(ColorSpace.Named.LINEAR_EXTENDED_SRGB),
+    )
+
+    private fun f16Buffer(pixels: LongArray): ByteBuffer =
+        ByteBuffer.allocateDirect(Math.multiplyExact(pixels.size, Long.SIZE_BYTES))
+            .order(ByteOrder.nativeOrder())
+            .also { buffer ->
+                pixels.forEach { pixel ->
+                    buffer.putShort((pixel and 0xffffL).toShort())
+                    buffer.putShort((pixel ushr 16 and 0xffffL).toShort())
+                    buffer.putShort((pixel ushr 32 and 0xffffL).toShort())
+                    buffer.putShort((pixel ushr 48 and 0xffffL).toShort())
+                }
+                buffer.rewind()
+            }
+
+    private fun readPackedF16(buffer: ByteBuffer): Long =
+        (buffer.short.toLong() and 0xffffL) or
+            ((buffer.short.toLong() and 0xffffL) shl 16) or
+            ((buffer.short.toLong() and 0xffffL) shl 32) or
+            ((buffer.short.toLong() and 0xffffL) shl 48)
 
     /** Materializes current unpublished gesture pixels from a write transaction. */
     fun render(transaction: PixelTileWriteTransaction, source: PixelRect): Bitmap {
