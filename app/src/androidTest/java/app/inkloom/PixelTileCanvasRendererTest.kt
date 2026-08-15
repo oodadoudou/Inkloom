@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.RectF
+import android.graphics.RenderNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.engine.v3.android.PixelTileCanvasRenderer
 import app.inkloom.engine.v3.surface.PixelRect
@@ -16,6 +17,85 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class PixelTileCanvasRendererTest {
+    @Test fun fiftyLayer8192ProjectionReusesGpuTilesWithinFrameBudget() {
+        val surfaces = List(50) { index ->
+            PixelTileSurface(8192, 8192, tileSize = 128).also { surface ->
+                val key = PixelTileKey(index % 10, index / 10)
+                surface.beginWrite("sparse layer $index").use { write ->
+                    write.editTile(key, PixelRect(0, 0, 128, 128)) { pixels, _ ->
+                        pixels.fill(premultiplied(Color.argb(180, index * 37 % 255, index * 71 % 255, index * 19 % 255)))
+                    }
+                    write.commit().close()
+                }
+            }
+        }
+        val snapshots = surfaces.map(PixelTileSurface::snapshot)
+        val renderer = PixelTileCanvasRenderer(maximumCacheBytes = 8L * 1024L * 1024L)
+        val output = RenderNode("Inkloom.V3.FiftyLayerPixelProjection").apply { setPosition(0, 0, 8192, 8192) }
+        fun record(): Float {
+            val started = android.os.SystemClock.elapsedRealtimeNanos()
+            val canvas = output.beginRecording(8192, 8192)
+            try {
+                snapshots.forEach { snapshot -> renderer.draw(canvas, snapshot, RectF(0f, 0f, 8192f, 8192f)) }
+            } finally {
+                output.endRecording()
+            }
+            return (android.os.SystemClock.elapsedRealtimeNanos() - started) / 1_000_000f
+        }
+
+        record() // cold bitmap upload/display-list recording is intentionally outside steady-state.
+        val frameTimes = List(30) { record() }.sorted()
+        val p95 = frameTimes[(frameTimes.size * .95f).toInt().coerceAtMost(frameTimes.lastIndex)]
+        android.util.Log.i("InkloomPerf", "pixel_tile_gpu_50_layer_8k_p95_ms=$p95")
+        assertEquals(50, renderer.retainedHardwareTileCount)
+        assertEquals(50, renderer.hardwareNodeBuildCount)
+        assertTrue(renderer.retainedByteSize < 4L * 1024L * 1024L)
+        assertTrue(renderer.approximateGpuDisplayListBytes in 1 until 16L * 1024L * 1024L)
+        assertTrue("50-layer 8K GPU projection p95 was ${p95}ms", p95 < 16.7f)
+
+        renderer.close(); output.discardDisplayList()
+    }
+
+    @Test fun hardwareProjectionRetainsOneRenderNodePerImmutableTileGeneration() {
+        val surface = PixelTileSurface(256, 128, tileSize = 128)
+        surface.beginWrite("initial GPU tiles").use { write ->
+            write.editTile(PixelTileKey(0, 0), PixelRect(0, 0, 128, 128)) { pixels, _ -> pixels.fill(premultiplied(Color.RED)) }
+            write.editTile(PixelTileKey(1, 0), PixelRect(0, 0, 128, 128)) { pixels, _ -> pixels.fill(premultiplied(Color.BLUE)) }
+            write.commit().close()
+        }
+        val renderer = PixelTileCanvasRenderer(maximumCacheBytes = 4L * 128 * 128 * 4)
+        val output = RenderNode("Inkloom.V3.PixelTileProjectionTest").apply { setPosition(0, 0, 512, 256) }
+        fun record() {
+            val canvas = output.beginRecording(512, 256)
+            try {
+                assertTrue(canvas.isHardwareAccelerated)
+                renderer.draw(canvas, surface.snapshot(), RectF(0f, 0f, 512f, 256f))
+            } finally {
+                output.endRecording()
+            }
+        }
+
+        record()
+        assertEquals(2, renderer.retainedHardwareTileCount)
+        assertEquals(2, renderer.hardwareNodeBuildCount)
+        assertTrue(renderer.approximateGpuDisplayListBytes > 0L)
+        record()
+        assertEquals("Pan/zoom redraw must reuse immutable tile display lists", 2, renderer.hardwareNodeBuildCount)
+
+        surface.beginWrite("replace one GPU tile").use { write ->
+            write.editTile(PixelTileKey(0, 0), PixelRect(0, 0, 128, 128)) { pixels, _ -> pixels.fill(premultiplied(Color.GREEN)) }
+            write.commit().close()
+        }
+        record()
+        assertEquals("Only the changed tile generation may be re-recorded", 3, renderer.hardwareNodeBuildCount)
+        assertEquals(2, renderer.retainedHardwareTileCount)
+
+        renderer.releaseSurface(surface.surfaceId)
+        assertEquals(0, renderer.retainedHardwareTileCount)
+        assertEquals(0L, renderer.approximateGpuDisplayListBytes)
+        renderer.close(); output.discardDisplayList()
+    }
+
     @Test fun drawsSparseTilesIntoScaledDestinationWithoutMaterializingThePage() {
         val surface = PixelTileSurface(1024, 768, tileSize = 128)
         surface.beginWrite("two sparse regions").use { write ->
