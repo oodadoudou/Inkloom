@@ -154,8 +154,8 @@ class RasterWetPaintSessionTest {
     @Test fun selectionMaskPreventsWetTransportOutsideTheSelection() {
         val bitmap = Bitmap.createBitmap(128, 96, Bitmap.Config.ARGB_8888)
         Canvas(bitmap).drawCircle(40f, 48f, 16f, Paint().apply { color = Color.RED })
-        val selection = Bitmap.createBitmap(128, 96, Bitmap.Config.ARGB_8888)
-        Canvas(selection).drawRect(0f, 0f, 55f, 96f, Paint().apply { color = Color.WHITE })
+        val selection = Bitmap.createBitmap(32, 24, Bitmap.Config.ARGB_8888)
+        Canvas(selection).drawRect(0f, 0f, 13.75f, 24f, Paint().apply { color = Color.WHITE })
         val outsideBefore = bitmap.getPixel(65, 48)
 
         paintSession(bitmap, selection).use { session ->
@@ -164,6 +164,7 @@ class RasterWetPaintSessionTest {
         }
 
         assertEquals(outsideBefore, bitmap.getPixel(65, 48))
+        assertTrue("The immutable selection remains owned by the canvas", !selection.isRecycled)
         bitmap.recycle()
         selection.recycle()
     }

@@ -17,10 +17,7 @@ internal class RasterEraserKernel(
     private val surfaceHeight: Int,
     selectionMask: Bitmap? = null,
 ) : AutoCloseable {
-    private val selectionSurface = selectionMask?.takeUnless(Bitmap::isRecycled)?.let { mask ->
-        if (mask.width == surfaceWidth && mask.height == surfaceHeight) mask.copy(Bitmap.Config.ARGB_8888, false)
-        else Bitmap.createScaledBitmap(mask, surfaceWidth, surfaceHeight, true)
-    }
+    private val selection = RasterSelectionMask(selectionMask, surfaceWidth, surfaceHeight)
     private var coverageBitmap: Bitmap? = null
     private var coverageCanvas: Canvas? = null
     private val coveragePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -28,9 +25,6 @@ internal class RasterEraserKernel(
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
-    }
-    private val selectionPaint = Paint().apply {
-        xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
     }
     private val erasePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
         xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT)
@@ -80,9 +74,7 @@ internal class RasterEraserKernel(
         )
         coveragePaint.maskFilter = null
         localRect.set(0, 0, globalBounds.width(), globalBounds.height())
-        selectionSurface?.let { selection ->
-            canvas.drawBitmap(selection, globalBounds, localRect, selectionPaint)
-        }
+        selection.apply(requireNotNull(coverageBitmap), globalBounds)
         erasePaint.alpha = (opacity.coerceIn(0f, 1f) * 255f + .5f).toInt().coerceIn(0, 255)
         if (erasePaint.alpha == 0) return false
         target.drawBitmap(requireNotNull(coverageBitmap), localRect, destination, erasePaint)
@@ -106,7 +98,6 @@ internal class RasterEraserKernel(
     }
 
     override fun close() {
-        selectionSurface?.recycle()
         coverageBitmap?.recycle()
         coverageBitmap = null
         coverageCanvas = null

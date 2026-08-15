@@ -70,8 +70,8 @@ class RasterEraserSessionTest {
 
     @Test fun softEraserPreservesPartialAlphaAndSelectionIsolation() {
         val bitmap = Bitmap.createBitmap(160, 100, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
-        val selection = Bitmap.createBitmap(160, 100, Bitmap.Config.ARGB_8888)
-        for (y in 0 until 50) for (x in 0 until 160) selection.setPixel(x, y, Color.WHITE)
+        val selection = Bitmap.createBitmap(40, 20, Bitmap.Config.ARGB_8888)
+        for (y in 0 until 10) for (x in 0 until 40) selection.setPixel(x, y, Color.WHITE)
         val surface = PixelTileBitmapAdapter.import(bitmap)
         RasterTileEraserSession(surface, bitmap, selection).use { session ->
             session.eraseSegment(30f, 50f, 130f, 50f, 24f, .65f, .35f)

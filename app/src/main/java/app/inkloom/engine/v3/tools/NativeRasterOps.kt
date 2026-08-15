@@ -49,6 +49,26 @@ internal object NativeRasterOps {
     fun morphAlpha(source: Bitmap, destination: Bitmap, radius: Int, dilate: Boolean): Boolean =
         nativeMorphAlpha(source, destination, radius, dilate)
 
+    fun applySelectionAlpha(
+        target: Bitmap,
+        selection: Bitmap,
+        globalLeft: Int,
+        globalTop: Int,
+        contentWidth: Int,
+        contentHeight: Int,
+        surfaceWidth: Int,
+        surfaceHeight: Int,
+    ): Boolean = nativeApplySelectionAlpha(
+        target,
+        selection,
+        globalLeft,
+        globalTop,
+        contentWidth,
+        contentHeight,
+        surfaceWidth,
+        surfaceHeight,
+    )
+
     fun floodFill(
         source: Bitmap,
         destination: Bitmap,
@@ -164,6 +184,16 @@ internal object NativeRasterOps {
     private external fun nativeInvertAlpha(source: Bitmap, destination: Bitmap): Boolean
     private external fun nativeBoundaryAlpha(source: Bitmap, destination: Bitmap): Boolean
     private external fun nativeMorphAlpha(source: Bitmap, destination: Bitmap, radius: Int, dilate: Boolean): Boolean
+    private external fun nativeApplySelectionAlpha(
+        target: Bitmap,
+        selection: Bitmap,
+        globalLeft: Int,
+        globalTop: Int,
+        contentWidth: Int,
+        contentHeight: Int,
+        surfaceWidth: Int,
+        surfaceHeight: Int,
+    ): Boolean
     private external fun nativeFloodFill(
         source: Bitmap,
         destination: Bitmap,

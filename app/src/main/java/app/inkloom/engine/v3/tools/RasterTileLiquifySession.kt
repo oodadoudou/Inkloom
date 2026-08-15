@@ -27,10 +27,7 @@ class RasterTileLiquifySession(
     selectionMask: Bitmap? = null,
 ) : AutoCloseable {
     private val edits = RasterTileEditSession(surface, displayBitmap, "raster liquify")
-    private val selectionSurface = selectionMask?.takeUnless(Bitmap::isRecycled)?.let { mask ->
-        if (mask.width == surface.logicalWidth && mask.height == surface.logicalHeight) mask.copy(Bitmap.Config.ARGB_8888, false)
-        else Bitmap.createScaledBitmap(mask, surface.logicalWidth, surface.logicalHeight, true)
-    }
+    private val selection = RasterSelectionMask(selectionMask, surface.logicalWidth, surface.logicalHeight)
     private var warpBitmap: Bitmap? = null
     private var warpCanvas: Canvas? = null
     private var coverageBitmap: Bitmap? = null
@@ -116,14 +113,10 @@ class RasterTileLiquifySession(
             coveragePaint.maskFilter = null
             coveragePaint.alpha = 255
             localRect.set(0, 0, destination.width, destination.height)
-            selectionSurface?.let { selection ->
-                surfaces.coverage.drawBitmap(
-                    selection,
-                    Rect(destination.left, destination.top, destination.right, destination.bottom),
-                    localRect,
-                    maskPaint,
-                )
-            }
+            selection.apply(
+                requireNotNull(coverageBitmap),
+                Rect(destination.left, destination.top, destination.right, destination.bottom),
+            )
             surfaces.warp.drawBitmap(requireNotNull(coverageBitmap), localRect, localRect, maskPaint)
             Canvas(current).apply {
                 drawBitmap(requireNotNull(coverageBitmap), localRect, localRect, clearPaint)
@@ -248,7 +241,6 @@ class RasterTileLiquifySession(
     override fun close() {
         if (!completed) restoreOriginal()
         edits.close()
-        selectionSurface?.recycle()
         warpBitmap?.recycle()
         coverageBitmap?.recycle()
         vertices = FloatArray(0)

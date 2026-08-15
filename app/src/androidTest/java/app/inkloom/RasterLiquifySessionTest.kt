@@ -112,8 +112,8 @@ class RasterLiquifySessionTest {
     @Test fun selectionAlphaClipsEveryLiquifyCompositeToTheActiveRegion() {
         val bitmap = fixture()
         val originalBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, false)
-        val selection = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
-        Canvas(selection).drawRect(0f, 0f, bitmap.width.toFloat(), 90f, Paint().apply { color = Color.WHITE })
+        val selection = Bitmap.createBitmap(48, 36, Bitmap.Config.ARGB_8888)
+        Canvas(selection).drawRect(0f, 0f, 48f, 18f, Paint().apply { color = Color.WHITE })
         val upperBefore = checksumRows(bitmap, 0, 90)
         val lowerBefore = checksumRows(bitmap, 90, bitmap.height)
 

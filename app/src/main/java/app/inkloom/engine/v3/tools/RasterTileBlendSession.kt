@@ -21,10 +21,7 @@ class RasterTileBlendSession(
     selectionMask: Bitmap? = null,
 ) : AutoCloseable {
     private val edits = RasterTileEditSession(surface, displayBitmap, "raster blend")
-    private val selectionSurface = selectionMask?.takeUnless(Bitmap::isRecycled)?.let { mask ->
-        if (mask.width == surface.logicalWidth && mask.height == surface.logicalHeight) mask.copy(Bitmap.Config.ARGB_8888, false)
-        else Bitmap.createScaledBitmap(mask, surface.logicalWidth, surface.logicalHeight, true)
-    }
+    private val selection = RasterSelectionMask(selectionMask, surface.logicalWidth, surface.logicalHeight)
     private var transportBitmap: Bitmap? = null
     private var transportCanvas: Canvas? = null
     private var coverageBitmap: Bitmap? = null
@@ -94,9 +91,10 @@ class RasterTileBlendSession(
             coveragePaint.maskFilter = null
             localRect.set(0, 0, destination.width, destination.height)
             transport.drawBitmap(requireNotNull(coverageBitmap), localRect, localRect, maskPaint)
-            selectionSurface?.let { selection ->
-                transport.drawBitmap(selection, Rect(destination.left, destination.top, destination.right, destination.bottom), localRect, maskPaint)
-            }
+            selection.apply(
+                requireNotNull(transportBitmap),
+                Rect(destination.left, destination.top, destination.right, destination.bottom),
+            )
             depositPaint.alpha = (strength.coerceIn(0f, 1f) * 255f + .5f).toInt().coerceIn(0, 255)
             if (depositPaint.alpha > 0) Canvas(output).drawBitmap(requireNotNull(transportBitmap), localRect, localRect, depositPaint)
         } ?: return null
@@ -141,7 +139,6 @@ class RasterTileBlendSession(
     override fun close() {
         if (!completed) restoreOriginal()
         edits.close()
-        selectionSurface?.recycle()
         transportBitmap?.recycle()
         coverageBitmap?.recycle()
         blurFilters.clear()

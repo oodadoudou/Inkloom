@@ -661,6 +661,59 @@ Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeMorphAlpha(
     return non_empty ? JNI_TRUE : JNI_FALSE;
 }
 
+extern "C" JNIEXPORT jboolean JNICALL
+Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeApplySelectionAlpha(
+    JNIEnv* env,
+    jobject,
+    jobject target_bitmap,
+    jobject selection_bitmap,
+    jint global_left_value,
+    jint global_top_value,
+    jint content_width_value,
+    jint content_height_value,
+    jint surface_width_value,
+    jint surface_height_value) {
+    LockedBitmap target(env, target_bitmap);
+    LockedBitmap selection(env, selection_bitmap);
+    if (target.pixels == nullptr || selection.pixels == nullptr) return JNI_FALSE;
+    const int surface_width = static_cast<int>(surface_width_value);
+    const int surface_height = static_cast<int>(surface_height_value);
+    if (surface_width <= 0 || surface_height <= 0 || selection.info.width == 0 || selection.info.height == 0) {
+        return JNI_FALSE;
+    }
+    const int content_width = std::clamp(static_cast<int>(content_width_value), 0, static_cast<int>(target.info.width));
+    const int content_height = std::clamp(static_cast<int>(content_height_value), 0, static_cast<int>(target.info.height));
+    const int global_left = static_cast<int>(global_left_value);
+    const int global_top = static_cast<int>(global_top_value);
+    for (int local_y = 0; local_y < content_height; ++local_y) {
+        auto* target_row = target.pixels + static_cast<std::size_t>(local_y) * target.info.stride;
+        const int global_y = global_top + local_y;
+        const std::uint8_t* selection_row = nullptr;
+        if (global_y >= 0 && global_y < surface_height) {
+            const int selection_y = std::min(
+                static_cast<int>(selection.info.height) - 1,
+                static_cast<int>(static_cast<std::int64_t>(global_y) * selection.info.height / surface_height));
+            selection_row = selection.pixels + static_cast<std::size_t>(selection_y) * selection.info.stride;
+        }
+        for (int local_x = 0; local_x < content_width; ++local_x) {
+            auto* target_pixel = target_row + local_x * 4;
+            const int global_x = global_left + local_x;
+            std::uint8_t selection_alpha = 0;
+            if (selection_row != nullptr && global_x >= 0 && global_x < surface_width) {
+                const int selection_x = std::min(
+                    static_cast<int>(selection.info.width) - 1,
+                    static_cast<int>(static_cast<std::int64_t>(global_x) * selection.info.width / surface_width));
+                selection_alpha = selection_row[selection_x * 4 + 3];
+            }
+            for (int channel = 0; channel < 4; ++channel) {
+                target_pixel[channel] = static_cast<std::uint8_t>(
+                    (static_cast<std::uint32_t>(target_pixel[channel]) * selection_alpha + 127u) / 255u);
+            }
+        }
+    }
+    return JNI_TRUE;
+}
+
 extern "C" JNIEXPORT jintArray JNICALL
 Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeFloodFill(
     JNIEnv* env,

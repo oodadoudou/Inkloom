@@ -31,13 +31,7 @@ class RasterTilePaintSession(
     private val preserveDestinationAlpha: Boolean = false,
 ) : AutoCloseable {
     private val edits = RasterTileEditSession(surface, displayBitmap, "raster paint")
-    private val selectionSurface = selectionMask?.takeUnless(Bitmap::isRecycled)?.let { mask ->
-        if (mask.width == surface.logicalWidth && mask.height == surface.logicalHeight) {
-            mask.copy(Bitmap.Config.ARGB_8888, false)
-        } else {
-            Bitmap.createScaledBitmap(mask, surface.logicalWidth, surface.logicalHeight, true)
-        }
-    }
+    private val selection = RasterSelectionMask(selectionMask, surface.logicalWidth, surface.logicalHeight)
     private var sourceBitmap: Bitmap? = null
     private var sourceCanvas: Canvas? = null
     private var sampleBitmap: Bitmap? = null
@@ -173,14 +167,10 @@ class RasterTilePaintSession(
             )
             coveragePaint.maskFilter = null
             surfaces.sample.drawBitmap(requireNotNull(coverageBitmap), localRect, localRect, maskPaint)
-            selectionSurface?.let { selection ->
-                surfaces.sample.drawBitmap(
-                    selection,
-                    Rect(destination.left, destination.top, destination.right, destination.bottom),
-                    localRect,
-                    maskPaint,
-                )
-            }
+            selection.apply(
+                requireNotNull(sampleBitmap),
+                Rect(destination.left, destination.top, destination.right, destination.bottom),
+            )
             depositPaint.alpha = (max(safePull * .82f, safeBlur * .55f) * 255f + .5f).toInt().coerceIn(0, 255)
             if (depositPaint.alpha > 0) {
                 depositPaint.xfermode = PorterDuffXfermode(
@@ -273,7 +263,6 @@ class RasterTilePaintSession(
     override fun close() {
         if (!completed) restoreOriginal()
         edits.close()
-        selectionSurface?.recycle()
         sourceBitmap?.recycle()
         sampleBitmap?.recycle()
         coverageBitmap?.recycle()

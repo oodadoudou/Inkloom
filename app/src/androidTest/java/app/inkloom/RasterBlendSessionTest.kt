@@ -66,8 +66,8 @@ class RasterBlendSessionTest {
         val bitmap = Bitmap.createBitmap(80, 40, Bitmap.Config.ARGB_8888)
         for (y in 8 until 32) for (x in 8 until 30) bitmap.setPixel(x, y, Color.GREEN)
         val original = bitmap.copy(Bitmap.Config.ARGB_8888, false)
-        val selection = Bitmap.createBitmap(80, 40, Bitmap.Config.ARGB_8888)
-        for (y in 0 until 20) for (x in 0 until 80) selection.setPixel(x, y, Color.WHITE)
+        val selection = Bitmap.createBitmap(20, 10, Bitmap.Config.ARGB_8888)
+        for (y in 0 until 5) for (x in 0 until 20) selection.setPixel(x, y, Color.WHITE)
         val surface = PixelTileBitmapAdapter.import(bitmap)
         RasterTileBlendSession(surface, bitmap, selection).use { session ->
             session.blend(24f, 20f, 46f, 20f, 18f, 1f, 1f)
