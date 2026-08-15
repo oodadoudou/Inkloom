@@ -104,6 +104,16 @@ class RasterPaintCommitTest {
 
         assertTrue(requireNotNull(committed).hasAlphaInSourceRegion(80, 270, 260, 340))
         assertTrue("The authoritative surface must receive the same committed pigment", Color.alpha(tileSurface.pixelAt(180, 300)) > 0)
+        val legacyDrawsBeforeStableFrame = view.legacyLayerCompositionDrawCount
+        val stableFrame = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
+        view.draw(Canvas(stableFrame))
+        assertTrue("The post-stylus frame must use the production V3 projection", view.v3RasterProjectionDrawCount > 0)
+        assertEquals(
+            "Stable raster display must not re-enter mixed-scene compatibility composition",
+            legacyDrawsBeforeStableFrame,
+            view.legacyLayerCompositionDrawCount,
+        )
+        stableFrame.recycle()
         committed?.close()
     }
 

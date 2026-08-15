@@ -13,6 +13,7 @@ import android.graphics.Path
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.graphics.PorterDuffXfermode
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import app.inkloom.engine.v3.brush.BrushProgramRuntime
@@ -20,6 +21,9 @@ import app.inkloom.engine.v3.render.BrushProgramBatchRenderer
 import app.inkloom.engine.v3.brush.ProceduralBrushTip
 import app.inkloom.engine.v3.storage.DocumentCheckpointCodec
 import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
+import app.inkloom.engine.v3.android.PixelTileCanvasRenderer
+import app.inkloom.engine.v3.composite.PixelLayerProjectionCache
+import app.inkloom.engine.v3.composite.PixelLayerProjectionInput
 import app.inkloom.engine.v3.storage.PixelTileArchiveStore
 import app.inkloom.engine.v3.surface.PixelTileSurface
 import app.inkloom.engine.v3.surface.PixelRect
@@ -44,6 +48,8 @@ class DocumentAssetService(private val context: Context) {
     private val assetLifecycleLock = Any()
     private val pendingDocumentAssets = linkedSetOf<String>()
     private val pendingRasterTileManifests = linkedSetOf<String>()
+    @androidx.annotation.VisibleForTesting
+    internal var v3RasterProjectionExportCount: Int = 0
 
     fun importPdf(uri: Uri, title: String, indexText: Boolean = true): InkDocument {
         val asset = copyAsset(uri, "pdf")
@@ -870,6 +876,19 @@ class DocumentAssetService(private val context: Context) {
         } else canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
         val visibleLayers = page.layers.filter { LayerHierarchy.effectiveVisible(page.layers, it) && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) && (includeDraftLayers || !it.draft) && (includedLayerIds == null || it.id in includedLayerIds) }
+        if (drawV3RasterProjectionIfCompatible(
+                canvas = canvas,
+                sourcePage = sourcePage,
+                projectedPage = page,
+                visibleLayers = visibleLayers,
+                width = width,
+                height = height,
+                includedLayerIds = includedLayerIds,
+                includedContentIds = includedContentIds,
+                includeStrokes = includeStrokes,
+                includeRaster = includeRaster,
+                applyLayerEffects = applyLayerEffects,
+            )) return
         visibleLayers.forEachIndexed { layerIndex, layer ->
             val layerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 alpha = (layer.opacity.coerceIn(0f, 1f) * 255f).toInt().coerceIn(0, 255)
@@ -1095,6 +1114,67 @@ class DocumentAssetService(private val context: Context) {
             }
             canvas.restoreToCount(layerCheckpoint)
         }
+    }
+
+    /**
+     * Export counterpart of the live V3 raster projection. The mixed vector/element path and
+     * enabled document masks remain explicitly isolated in [drawPage] until those producers own
+     * V3 pixel surfaces. Legacy PNG layers may enter through [renderRasterLayerSurface], which is
+     * the documented one-way decode adapter; composition itself never falls back to saveLayer.
+     */
+    private fun drawV3RasterProjectionIfCompatible(
+        canvas: Canvas,
+        sourcePage: InkPage,
+        projectedPage: InkPage,
+        visibleLayers: List<InkLayer>,
+        width: Int,
+        height: Int,
+        includedLayerIds: Set<String>?,
+        includedContentIds: Set<String>?,
+        includeStrokes: Boolean,
+        includeRaster: Boolean,
+        applyLayerEffects: Boolean,
+    ): Boolean {
+        if (!includeRaster || !includeStrokes || !applyLayerEffects) return false
+        if (includedLayerIds != null || includedContentIds != null) return false
+        if (projectedPage.strokes.any { stroke -> visibleLayers.any { it.id == stroke.layerId } }) return false
+        if (projectedPage.elements.any { element -> visibleLayers.any { it.id == element.layerId } }) return false
+        val rasterLayers = visibleLayers.filter { layer ->
+            layer.contentKind == LayerContentKind.RASTER &&
+                (layer.rasterTileSurface != null || !layer.rasterAssetPath.isNullOrBlank())
+        }
+        if (rasterLayers.isEmpty()) return false
+        if (rasterLayers.any { it.mask?.enabled == true }) return false
+
+        val surfaces = rasterLayers.map { layer ->
+            layer to renderRasterLayerSurface(sourcePage, layer.id, width)
+        }
+        val first = surfaces.first().second
+        if (surfaces.any { (_, surface) ->
+                surface.logicalWidth != first.logicalWidth || surface.logicalHeight != first.logicalHeight ||
+                    surface.tileSize != first.tileSize || surface.pixelFormat != first.pixelFormat
+            }) return false
+        val projection = PixelLayerProjectionCache(
+            logicalWidth = first.logicalWidth,
+            logicalHeight = first.logicalHeight,
+            tileSize = first.tileSize,
+            pixelFormat = first.pixelFormat,
+            surfaceId = "export-raster-projection-${sourcePage.id}-$width",
+        )
+        val update = projection.update(surfaces.map { (layer, surface) ->
+            PixelLayerProjectionInput(
+                layerId = layer.id,
+                pixels = surface.snapshot(),
+                opacity = layer.opacity,
+                blendMode = layer.blendMode.toPixelBlendMode(),
+                clipToBaseBelow = layer.clippedToBelow,
+            )
+        })
+        PixelTileCanvasRenderer().use { renderer ->
+            renderer.draw(canvas, update.snapshot, RectF(0f, 0f, width.toFloat(), height.toFloat()))
+        }
+        v3RasterProjectionExportCount++
+        return true
     }
 
     private fun drawPaperPattern(canvas: Canvas, pattern: PaperPattern, width: Int, height: Int) {

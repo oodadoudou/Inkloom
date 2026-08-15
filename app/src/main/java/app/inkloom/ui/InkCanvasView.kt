@@ -32,7 +32,10 @@ import androidx.annotation.VisibleForTesting
 import app.inkloom.engine.v3.api.*
 import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v3.android.PixelTileCanvasRenderer
+import app.inkloom.engine.v3.composite.PixelLayerProjectionCache
+import app.inkloom.engine.v3.composite.PixelLayerProjectionInput
 import app.inkloom.engine.v3.scene.AlphaMaskOperation
+import app.inkloom.engine.v3.surface.PixelTileFormat
 import java.util.LinkedHashMap
 import java.util.concurrent.Executors
 import app.inkloom.document.InkStroke
@@ -93,6 +96,7 @@ import app.inkloom.document.LayerBlendMode
 import app.inkloom.document.LayerMask
 import app.inkloom.document.LayerMaskRenderer
 import app.inkloom.document.toBlendMode
+import app.inkloom.document.toPixelBlendMode
 import app.inkloom.document.LaserTrail
 import app.inkloom.document.PaperPattern
 import app.inkloom.document.PressureCalibration
@@ -661,6 +665,7 @@ class InkCanvasView(context: Context) : View(context) {
     var alphaLockBaseContentIds: Map<String, Set<String>> = emptyMap()
         set(value) { if (field != value) { field = value; resetStrokeTiles() } }
     var clippedLayers: Set<String> = emptySet()
+        set(value) { if (field != value) { field = value; resetStrokeTiles() } }
     var layerMasks: Map<String, LayerMask> = emptyMap()
         set(value) { if (field != value) { field = value; resetStrokeTiles() } }
     var layerOrder: List<String> = emptyList()
@@ -1232,6 +1237,11 @@ class InkCanvasView(context: Context) : View(context) {
     private val rasterLayerTileSurfaces = mutableMapOf<String, PixelTileSurface>()
     private val ownedRasterEditBitmaps = mutableMapOf<String, Bitmap>()
     private val rasterTileRenderer = PixelTileCanvasRenderer()
+    private var rasterLayerProjectionCache: PixelLayerProjectionCache? = null
+    private var rasterLayerProjectionGeometry: RasterProjectionGeometry? = null
+    @VisibleForTesting internal var v3RasterProjectionDrawCount: Int = 0
+    @VisibleForTesting internal var legacyLayerCompositionDrawCount: Int = 0
+    @VisibleForTesting internal var lastRasterProjectionRecomposedTileCount: Int = 0
 
     fun setRasterLayerSurfaces(value: Map<String, PixelTileSurface>) {
         val changedLayerIds = (rasterLayerTileSurfaces.keys + value.keys).filterTo(mutableSetOf()) { layerId ->
@@ -1247,6 +1257,7 @@ class InkCanvasView(context: Context) : View(context) {
         rasterLayerBitmaps = emptyMap()
         rasterLayerTileSurfaces.clear()
         rasterLayerTileSurfaces.putAll(value)
+        if (value.isEmpty()) releaseRasterLayerProjection()
         resetStrokeTiles()
     }
 
@@ -1264,6 +1275,7 @@ class InkCanvasView(context: Context) : View(context) {
                 }
             }
             rasterLayerBitmaps = value
+            releaseRasterLayerProjection()
             resetStrokeTiles()
         }
     }
@@ -1498,6 +1510,7 @@ class InkCanvasView(context: Context) : View(context) {
         activeWholeTextureCoverageBitmap?.recycle(); activeWholeTextureCoverageBitmap = null
         ownedRasterEditBitmaps.values.forEach { bitmap -> if (!bitmap.isRecycled) bitmap.recycle() }
         ownedRasterEditBitmaps.clear()
+        releaseRasterLayerProjection()
         rasterTileRenderer.close()
         super.onDetachedFromWindow()
     }
@@ -1558,6 +1571,31 @@ class InkCanvasView(context: Context) : View(context) {
         includeElements: Boolean = false,
         layerFilter: Set<String>? = null,
     ) {
+        if (drawV3RasterLayerProjection(canvas, value, includeElements, layerFilter)) return
+        legacyLayerCompositionDrawCount++
+        drawLegacyMixedLayerComposition(
+            canvas,
+            value,
+            primaryStampStartIndex,
+            dualStampStartIndex,
+            includeElements,
+            layerFilter,
+        )
+    }
+
+    /**
+     * Compatibility boundary for scenes that still require Android Canvas layer replay: vector
+     * strokes/elements, the legacy Bitmap test adapter, and document masks that have not yet been
+     * rasterized into a V3 alpha surface. Pure raster documents never enter this path.
+     */
+    private fun drawLegacyMixedLayerComposition(
+        canvas: Canvas,
+        value: List<InkStroke>,
+        primaryStampStartIndex: Int,
+        dualStampStartIndex: Int,
+        includeElements: Boolean,
+        layerFilter: Set<String>?,
+    ) {
         val groupedStrokes = value.groupBy(InkStroke::layerId)
         val elementLayerIds = if (includeElements) layerElementBitmaps.keys.filter { layerFilter == null || it in layerFilter } else emptyList()
         val rasterLayerIds = rasterLayerTileSurfaces.keys.filter { layerFilter == null || it in layerFilter }
@@ -1604,6 +1642,77 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
+    /** Production V3 path for paint documents whose visible content is entirely sparse raster
+     * layers. Layer opacity, blend modes, and clipping are resolved once per dirty tile; HWUI then
+     * draws the immutable projection without allocating a full-canvas saveLayer. */
+    private fun drawV3RasterLayerProjection(
+        canvas: Canvas,
+        value: List<InkStroke>,
+        includeElements: Boolean,
+        layerFilter: Set<String>?,
+    ): Boolean {
+        if (!includeElements || layerFilter != null || value.isNotEmpty()) return false
+        if (layerElementBitmaps.isNotEmpty() || rasterLayerBitmaps.isNotEmpty()) return false
+        if (rasterLayerTileSurfaces.isEmpty()) return false
+        if (layerMasks.any { (layerId, mask) -> layerId in rasterLayerTileSurfaces && mask.enabled }) return false
+
+        val orderedIds = (
+            layerOrder.filter(rasterLayerTileSurfaces::containsKey) +
+                rasterLayerTileSurfaces.keys.filterNot(layerOrder::contains)
+            ).distinct()
+        if (orderedIds.isEmpty()) return false
+        val firstSurface = rasterLayerTileSurfaces.getValue(orderedIds.first())
+        val geometry = RasterProjectionGeometry(
+            firstSurface.logicalWidth,
+            firstSurface.logicalHeight,
+            firstSurface.tileSize,
+            firstSurface.pixelFormat,
+        )
+        if (orderedIds.any { layerId ->
+                val surface = rasterLayerTileSurfaces.getValue(layerId)
+                surface.logicalWidth != geometry.width || surface.logicalHeight != geometry.height ||
+                    surface.tileSize != geometry.tileSize || surface.pixelFormat != geometry.pixelFormat
+            }) return false
+
+        var cache = rasterLayerProjectionCache
+        if (cache == null || rasterLayerProjectionGeometry != geometry) {
+            releaseRasterLayerProjection()
+            cache = PixelLayerProjectionCache(
+                logicalWidth = geometry.width,
+                logicalHeight = geometry.height,
+                tileSize = geometry.tileSize,
+                pixelFormat = geometry.pixelFormat,
+                surfaceId = "live-raster-projection-${System.identityHashCode(this)}",
+            )
+            rasterLayerProjectionCache = cache
+            rasterLayerProjectionGeometry = geometry
+        }
+        val update = cache.update(orderedIds.map { layerId ->
+            PixelLayerProjectionInput(
+                layerId = layerId,
+                pixels = rasterLayerTileSurfaces.getValue(layerId).snapshot(),
+                opacity = layerOpacities[layerId] ?: 1f,
+                blendMode = (layerBlendModes[layerId] ?: LayerBlendMode.NORMAL).toPixelBlendMode(),
+                clipToBaseBelow = layerId in clippedLayers,
+            )
+        })
+        lastRasterProjectionRecomposedTileCount = update.recomposedTileCount
+        v3RasterProjectionDrawCount++
+        rasterTileRenderer.draw(
+            canvas,
+            update.snapshot,
+            RectF(0f, 0f, width.toFloat(), height.toFloat()),
+        )
+        return true
+    }
+
+    private fun releaseRasterLayerProjection() {
+        rasterLayerProjectionCache?.snapshot?.surfaceId?.let(rasterTileRenderer::releaseSurface)
+        rasterLayerProjectionCache = null
+        rasterLayerProjectionGeometry = null
+        lastRasterProjectionRecomposedTileCount = 0
+    }
+
     private fun drawRawLayerContent(
         canvas: Canvas,
         layerId: String,
@@ -1613,7 +1722,9 @@ class InkCanvasView(context: Context) : View(context) {
         dualStampStartIndex: Int,
     ) {
         val elements = if (includeElements) layerElementBitmaps[layerId] else null
-        val raster = rasterLayerBitmaps[layerId] ?: ownedRasterEditBitmaps[layerId]
+        // The mutable full-page bitmap is an editing/sampling workspace only. Production display
+        // truth is the sparse surface, so a committed generation cannot diverge from what is shown.
+        val raster = rasterLayerBitmaps[layerId]
         val rasterSurface = rasterLayerTileSurfaces[layerId]
         val baseIds = alphaLockBaseContentIds[layerId].orEmpty()
         val hasCapturedAlpha = layerId in alphaLockedLayers && baseIds.isNotEmpty()
@@ -1658,6 +1769,13 @@ class InkCanvasView(context: Context) : View(context) {
         surface ?: return
         rasterTileRenderer.draw(canvas, surface.snapshot(), RectF(0f, 0f, width.toFloat(), height.toFloat()))
     }
+
+    private data class RasterProjectionGeometry(
+        val width: Int,
+        val height: Int,
+        val tileSize: Int,
+        val pixelFormat: PixelTileFormat,
+    )
 
     private fun beginActiveStrokePreview() {
         removeCallbacks(activeSurfaceFrame)
