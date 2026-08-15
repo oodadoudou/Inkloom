@@ -16,6 +16,9 @@ import app.inkloom.document.PageElement
 import app.inkloom.document.SelectionMaskRenderer
 import app.inkloom.document.ShapeKind
 import app.inkloom.document.StrokePoint
+import app.inkloom.engine.v3.surface.MaskComposeMode
+import app.inkloom.engine.v3.surface.MaskTileSurface
+import app.inkloom.engine.v3.surface.PixelRect
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -83,6 +86,25 @@ class GradientRenderingTest {
         } finally {
             bitmap.recycle()
             java.io.File(maskPath).delete()
+        }
+    }
+
+    @Test fun sparseV3ShapeMaskPersistsAndClipsWithoutAFullSelectionBitmap() {
+        val mask = MaskTileSurface(400, 400, tileSize = 128)
+        mask.beginWrite("selection rectangle").run {
+            composeAlpha(PixelRect(100, 100, 300, 300), ByteArray(200 * 200) { 255.toByte() }, mode = MaskComposeMode.REPLACE)
+            commit().close()
+        }
+        val maskPath = assets.saveFillMask(mask.snapshot())
+        val restored = requireNotNull(assets.loadSparseFillMask(maskPath))
+        assertEquals(9, restored.tileCount)
+        val bitmap = render(element = element().copy(maskAssetPath = maskPath))
+        try {
+            assertNotEquals(Color.WHITE, bitmap.getPixel(200, 200))
+            assertEquals(Color.WHITE, bitmap.getPixel(20, 20))
+        } finally {
+            bitmap.recycle()
+            File(maskPath).delete()
         }
     }
 

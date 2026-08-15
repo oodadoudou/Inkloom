@@ -1006,7 +1006,7 @@ class InkCanvasView(context: Context) : View(context) {
     var pageModelHeight: Float = 2263f
     var onStrokeCommitted: (InkStroke) -> Unit = {}
     var onShapeCommitted: (PageElement.Shape) -> Unit = {}
-    var onGradientCommitted: (startX: Float, startY: Float, endX: Float, endY: Float, definition: GradientDefinition, selectionMask: Bitmap?) -> Unit = { _, _, _, _, _, mask -> mask?.recycle() }
+    var onGradientCommitted: (startX: Float, startY: Float, endX: Float, endY: Float, definition: GradientDefinition, selectionMask: MaskTileSurfaceSnapshot?) -> Unit = { _, _, _, _, _, _ -> }
     var gradientDefinition: GradientDefinition = GradientDefinition(stops = listOf(GradientColorStop(0f, 0xFF111111L), GradientColorStop(1f, 0xFFFFFFFFL)))
     var gradientAngleSnapEnabled: Boolean = false
     var gradientAngleSnapDegrees: Float = 45f
@@ -1018,6 +1018,7 @@ class InkCanvasView(context: Context) : View(context) {
      *  mask's bounding box in normalized page coordinates, the fill color and opacity.
      *  The host persists the mask and creates a [PageElement.Fill]. */
     var onFillCommitted: ((mask: Bitmap, x: Float, y: Float, width: Float, height: Float, colorArgb: Long, opacity: Float) -> Unit)? = null
+    var onSparseFillCommitted: ((mask: MaskTileSurfaceSnapshot, colorArgb: Long, opacity: Float) -> Unit)? = null
     /** The callback owns the immutable dirty patch and must close it after saving. */
     var onRasterLayerCommitted: ((RasterLayerPatch) -> Unit)? = null
 
@@ -3410,7 +3411,7 @@ class InkCanvasView(context: Context) : View(context) {
                     val start = gradientStart
                     val end = gradientEnd
                     if (start != null && end != null && hypot((end.x - start.x).toDouble(), (end.y - start.y).toDouble()) > .002) {
-                        onGradientCommitted(start.x, start.y, end.x, end.y, gradientDefinition.normalized(), selectionMaskSnapshot())
+                        onGradientCommitted(start.x, start.y, end.x, end.y, gradientDefinition.normalized(), selectionMaskForRasterTools())
                     }
                     gradientStart = null; gradientEnd = null
                     parent?.requestDisallowInterceptTouchEvent(false)
@@ -3577,6 +3578,13 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun drawFillPreview(canvas: Canvas) {
+        if (fillGestureUsesSelection) {
+            val mask = selectionDisplayMask ?: return
+            fillPreviewPaint.colorFilter = PorterDuffColorFilter(inkColor, PorterDuff.Mode.SRC_IN)
+            fillPreviewPaint.alpha = (inkOpacity * 255f).toInt().coerceIn(0, 255)
+            mask.draw(canvas, RectF(0f, 0f, width.toFloat(), height.toFloat()), fillPreviewPaint)
+            return
+        }
         val mask = fillPreviewMask
         if (mask == null) {
             if (fillGesturePoints.size < 2) return
@@ -5043,11 +5051,11 @@ class InkCanvasView(context: Context) : View(context) {
     private fun recomputeFillPreview(force: Boolean) {
         if (fillGestureUsesSelection) {
             fillPreviewMask?.recycle()
-            fillPreviewMask = selectionDisplayMask?.snapshot()
+            fillPreviewMask = null
             fillPreviewLeft = 0f
             fillPreviewTop = 0f
-            fillPreviewWidth = if (fillPreviewMask == null) 0f else 1f
-            fillPreviewHeight = if (fillPreviewMask == null) 0f else 1f
+            fillPreviewWidth = if (selectionDisplayMask == null) 0f else 1f
+            fillPreviewHeight = if (selectionDisplayMask == null) 0f else 1f
             fillPreviewTolerance = (fillSensitivityNow * 200f).toInt().coerceIn(0, 255)
             fillPreviewComputedAt = SystemClock.uptimeMillis()
             return
@@ -5102,6 +5110,17 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun commitFillGesture() {
         recomputeFillPreview(force = true)
+        if (fillGestureUsesSelection) {
+            val snapshot = selectionMaskForRasterTools()
+            if (snapshot != null) onSparseFillCommitted?.invoke(snapshot, inkColor.toUInt().toLong(), inkOpacity)
+            fillPreviewMask?.recycle()
+            fillPreviewMask = null
+            fillSourceBitmap?.recycle()
+            fillSourceBitmap = null
+            fillGestureUsesSelection = false
+            invalidate()
+            return
+        }
         val mask = fillPreviewMask
         try {
             if (mask != null && fillPreviewWidth > 0f && fillPreviewHeight > 0f) {
@@ -5135,11 +5154,22 @@ class InkCanvasView(context: Context) : View(context) {
         }
         val bitmapWidth = width.coerceAtLeast(1)
         val bitmapHeight = height.coerceAtLeast(1)
-        val drawnMask = Bitmap.createBitmap(bitmapWidth, bitmapHeight, Bitmap.Config.ARGB_8888)
+        val strokePadding = if (fillSubTool == FillSubTool.LEFTOVER_PEN) {
+            gestureBrushSize.coerceAtLeast(.1f) * bitmapWidth / pageModelWidth.coerceAtLeast(1f) / 2f + 2f
+        } else 2f
+        val left = kotlin.math.floor(fillGesturePoints.minOf(StrokePoint::x) * bitmapWidth - strokePadding)
+            .toInt().coerceIn(0, bitmapWidth - 1)
+        val top = kotlin.math.floor(fillGesturePoints.minOf(StrokePoint::y) * bitmapHeight - strokePadding)
+            .toInt().coerceIn(0, bitmapHeight - 1)
+        val right = kotlin.math.ceil(fillGesturePoints.maxOf(StrokePoint::x) * bitmapWidth + strokePadding)
+            .toInt().coerceIn(left + 1, bitmapWidth)
+        val bottom = kotlin.math.ceil(fillGesturePoints.maxOf(StrokePoint::y) * bitmapHeight + strokePadding)
+            .toInt().coerceIn(top + 1, bitmapHeight)
+        val drawnMask = Bitmap.createBitmap(right - left, bottom - top, Bitmap.Config.ARGB_8888)
         val maskCanvas = Canvas(drawnMask)
         val path = Path().apply {
-            moveTo(fillGesturePoints.first().x * bitmapWidth, fillGesturePoints.first().y * bitmapHeight)
-            fillGesturePoints.drop(1).forEach { point -> lineTo(point.x * bitmapWidth, point.y * bitmapHeight) }
+            moveTo(fillGesturePoints.first().x * bitmapWidth - left, fillGesturePoints.first().y * bitmapHeight - top)
+            fillGesturePoints.drop(1).forEach { point -> lineTo(point.x * bitmapWidth - left, point.y * bitmapHeight - top) }
             if (fillSubTool != FillSubTool.LEFTOVER_PEN) close()
         }
         val maskPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -5150,32 +5180,29 @@ class InkCanvasView(context: Context) : View(context) {
             strokeJoin = Paint.Join.ROUND
         }
         maskCanvas.drawPath(path, maskPaint)
-        val selection = selectionDisplayMask?.snapshot()
-        val fullMask = try {
-            SelectionMaskCompositor.clipRegion(drawnMask, 0, 0, bitmapWidth, bitmapHeight, selection)
-        } finally {
-            selection?.recycle()
+        selectionMaskForRasterTools()?.let { selection ->
+            RasterSelectionMask(selection, bitmapWidth, bitmapHeight).apply(drawnMask, Rect(left, top, right, bottom))
         }
-        drawnMask.recycle()
-        if (fullMask == null) {
+        if (NativeRasterOps.alphaBounds(drawnMask) == null) {
+            drawnMask.recycle()
             fillGesturePoints.clear()
             invalidate()
             return
         }
-        NativeRasterOps.alphaBounds(fullMask)?.let { bounds ->
-            val cropped = Bitmap.createBitmap(fullMask, bounds.left, bounds.top, bounds.width(), bounds.height())
+        NativeRasterOps.alphaBounds(drawnMask)?.let { bounds ->
+            val cropped = Bitmap.createBitmap(drawnMask, bounds.left, bounds.top, bounds.width(), bounds.height())
             val callback = onFillCommitted
             if (callback != null) callback(
                 cropped,
-                bounds.left / bitmapWidth.toFloat(),
-                bounds.top / bitmapHeight.toFloat(),
+                (left + bounds.left) / bitmapWidth.toFloat(),
+                (top + bounds.top) / bitmapHeight.toFloat(),
                 bounds.width() / bitmapWidth.toFloat() * pageModelWidth,
                 bounds.height() / bitmapHeight.toFloat() * pageModelHeight,
                 inkColor.toUInt().toLong(),
                 inkOpacity,
             ) else cropped.recycle()
         }
-        fullMask.recycle()
+        drawnMask.recycle()
         fillGesturePoints.clear()
         invalidate()
     }
@@ -6803,19 +6830,10 @@ class InkCanvasView(context: Context) : View(context) {
         return selectionDisplayMask?.surface?.snapshot()
     }
 
-    private fun selectionMaskSnapshot(): Bitmap? {
-        ensureSelectionAlphaFromSelectedStrokes()
-        return selectionDisplayMask?.snapshot()
-    }
-
     fun fillSelection(): Boolean {
-        val mask = selectionMaskSnapshot() ?: return false
-        val callback = onFillCommitted
-        if (callback == null) {
-            mask.recycle()
-            return false
-        }
-        callback(mask, 0f, 0f, pageModelWidth, pageModelHeight, inkColor.toUInt().toLong(), inkOpacity)
+        val mask = selectionMaskForRasterTools() ?: return false
+        val callback = onSparseFillCommitted ?: return false
+        callback(mask, inkColor.toUInt().toLong(), inkOpacity)
         return true
     }
 

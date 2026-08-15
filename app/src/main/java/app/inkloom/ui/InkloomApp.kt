@@ -4519,9 +4519,8 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
         }
     }
     val gradientSaveFailure = tr("The gradient mask could not be saved", "渐变蒙版保存失败")
-    val commitGradient: (Float, Float, Float, Float, GradientDefinition, android.graphics.Bitmap?) -> Unit = commit@{ sx, sy, ex, ey, definition, selectionMask ->
+    val commitGradient: (Float, Float, Float, Float, GradientDefinition, app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot?) -> Unit = commit@{ sx, sy, ex, ey, definition, selectionMask ->
         if (gradientCommitScope.coroutineContext[Job]?.isActive != true) {
-            selectionMask?.recycle()
             return@commit
         }
         val stops = definition.normalized().stops
@@ -4556,7 +4555,6 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 if (error !is kotlinx.coroutines.CancellationException) Toast.makeText(context, gradientSaveFailure, Toast.LENGTH_SHORT).show()
             } finally {
                 assets.releaseAssetReservation(reservedMaskPath)
-                selectionMask?.recycle()
             }
         }
     }
@@ -4568,6 +4566,26 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 y = fy,
                 width = fw,
                 height = fh,
+                colorArgb = color,
+                opacity = opacity,
+                layerId = activeLayerId,
+                maskAssetPath = maskPath,
+            )
+            val fill = PageCropTransform.unproject(projected, page.crop)
+            onElement(documentId, page.id, fill)
+            view.recordExternalEdit(
+                undo = { onRemoveElement(documentId, page.id, fill.id) },
+                redo = { onElement(documentId, page.id, fill) },
+                dispose = { assets.releaseAssetReservation(maskPath) },
+            )
+        }
+        view.onSparseFillCommitted = { mask, color, opacity ->
+            val maskPath = assets.saveFillMask(mask)
+            val projected = PageElement.Fill(
+                x = 0f,
+                y = 0f,
+                width = page.width,
+                height = page.height,
                 colorArgb = color,
                 opacity = opacity,
                 layerId = activeLayerId,
@@ -5239,6 +5257,7 @@ private fun ObjectElementView(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val elementAssets = remember(context) { DocumentAssetService(context) }
     val language = LocalUiLanguage.current
     var dragX by remember(element.id) { mutableFloatStateOf(0f) }
     var dragY by remember(element.id) { mutableFloatStateOf(0f) }
@@ -5360,6 +5379,7 @@ private fun ObjectElementView(
                     val gradientDefinition = element.gradientDefinition()
                     if (element.kind == ShapeKind.RECTANGLE && gradientDefinition != null) {
                         drawIntoCanvas { composeCanvas ->
+                            val nativeCanvas = composeCanvas.nativeCanvas
                             val nativePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
                                 isDither = gradientDefinition.dither
                                 shader = GradientShaderFactory.create(
@@ -5370,7 +5390,24 @@ private fun ObjectElementView(
                                     element.gradientEndY * size.height,
                                 )
                             }
-                            composeCanvas.nativeCanvas.drawRect(0f, 0f, size.width, size.height, nativePaint)
+                            val maskPath = element.maskAssetPath
+                            if (maskPath == null) {
+                                nativeCanvas.drawRect(0f, 0f, size.width, size.height, nativePaint)
+                            } else {
+                                val checkpoint = nativeCanvas.saveLayer(0f, 0f, size.width, size.height, null)
+                                val maskDrawn = elementAssets.drawFillMask(
+                                    nativeCanvas,
+                                    maskPath,
+                                    android.graphics.RectF(0f, 0f, size.width, size.height),
+                                    android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG),
+                                )
+                                if (maskDrawn) {
+                                    nativePaint.blendMode = android.graphics.BlendMode.SRC_IN
+                                    nativeCanvas.drawRect(0f, 0f, size.width, size.height, nativePaint)
+                                    nativePaint.blendMode = null
+                                }
+                                nativeCanvas.restoreToCount(checkpoint)
+                            }
                         }
                     } else when (element.kind) { ShapeKind.ELLIPSE -> drawOval(Color(fill)); ShapeKind.RECTANGLE -> drawRect(Color(fill)); ShapeKind.TRIANGLE -> drawPath(triangle, Color(fill)); ShapeKind.DIAMOND -> drawPath(diamond, Color(fill)); ShapeKind.FREEFORM -> drawPath(freeform, Color(fill)); else -> Unit }
                 }
@@ -5397,15 +5434,21 @@ private fun ObjectElementView(
                 else Box(Modifier.fillMaxSize().background(Workspace), contentAlignment = Alignment.Center) { Text(tr("Image unavailable", "图片不可用"), color = MutedInk, fontSize = 11.sp) }
             }
             is PageElement.Fill -> {
-                val mask = remember(element.maskAssetPath) { runCatching { android.graphics.BitmapFactory.decodeFile(element.maskAssetPath) }.getOrNull() }
-                DisposableEffect(mask) { onDispose { mask?.recycle() } }
-                if (mask != null) androidx.compose.foundation.Image(
-                    bitmap = mask.asImageBitmap(),
-                    contentDescription = tr("Filled region", "填充区域"),
-                    modifier = Modifier.fillMaxSize(),
-                    colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Color(element.colorArgb), blendMode = androidx.compose.ui.graphics.BlendMode.SrcIn),
-                    contentScale = ContentScale.Fit,
-                )
+                Canvas(Modifier.fillMaxSize()) {
+                    drawIntoCanvas { composeCanvas ->
+                        elementAssets.drawFillMask(
+                            composeCanvas.nativeCanvas,
+                            element.maskAssetPath,
+                            android.graphics.RectF(0f, 0f, size.width, size.height),
+                            android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG).apply {
+                                colorFilter = android.graphics.PorterDuffColorFilter(
+                                    element.colorArgb.toInt(),
+                                    android.graphics.PorterDuff.Mode.SRC_IN,
+                                )
+                            },
+                        )
+                    }
+                }
             }
             is PageElement.AudioMarker -> AudioMarkerCard(element)
             is PageElement.Link -> Card(Modifier.fillMaxSize(), colors = CardDefaults.cardColors(containerColor = Color(0xFFE7E7E7))) {

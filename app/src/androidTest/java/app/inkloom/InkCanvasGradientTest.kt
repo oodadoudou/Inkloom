@@ -113,7 +113,7 @@ class InkCanvasGradientTest {
     }
 
     @Test fun committedGradientIncludesFeatheredGeometryOnlySelectionMask() {
-        var committedMask: Bitmap? = null
+        var committedMask: app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot? = null
         val view = InkCanvasView(ApplicationProvider.getApplicationContext()).apply {
             layout(0, 0, 1_000, 1_000)
             tool = EditorTool.GRADIENT
@@ -134,18 +134,14 @@ class InkCanvasGradientTest {
         }
 
         val mask = requireNotNull(committedMask)
-        try {
-            assertTrue(Color.alpha(mask.getPixel(mask.width / 2, mask.height / 2)) > 240)
-            assertEquals(0, Color.alpha(mask.getPixel(mask.width / 10, mask.height / 10)))
-            val featherAlpha = Color.alpha(mask.getPixel((mask.width * .39f).toInt(), mask.height / 2))
-            assertTrue("feather edge must be partially transparent: $featherAlpha", featherAlpha in 1..254)
-        } finally {
-            mask.recycle()
-        }
+        assertTrue(mask.alphaAt(mask.logicalWidth / 2, mask.logicalHeight / 2) > 240)
+        assertEquals(0, mask.alphaAt(mask.logicalWidth / 10, mask.logicalHeight / 10))
+        val featherAlpha = mask.alphaAt((mask.logicalWidth * .39f).toInt(), mask.logicalHeight / 2)
+        assertTrue("feather edge must be partially transparent: $featherAlpha", featherAlpha in 1..254)
     }
 
     @Test fun magicWandGradientMaskRetainsTheFloodFilledIrregularRegion() {
-        var committedMask: Bitmap? = null
+        var committedMask: app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot? = null
         val background = Bitmap.createBitmap(1_000, 1_000, Bitmap.Config.ARGB_8888).apply {
             eraseColor(Color.BLACK)
             Canvas(this).apply {
@@ -173,14 +169,10 @@ class InkCanvasGradientTest {
             dispatch(view, MotionEvent.ACTION_UP, 900f, 900f, 50L)
         }
         val mask = requireNotNull(committedMask)
-        try {
-            assertTrue(Color.alpha(mask.getPixel(mask.width / 5, mask.height / 5)) > 200)
-            assertEquals(0, Color.alpha(mask.getPixel(mask.width / 2, mask.height / 2)))
-            assertTrue(Color.alpha(mask.getPixel(mask.width / 2, mask.height * 7 / 10)) > 200)
-        } finally {
-            mask.recycle()
-            background.recycle()
-        }
+        assertTrue(mask.alphaAt(mask.logicalWidth / 5, mask.logicalHeight / 5) > 200)
+        assertEquals(0, mask.alphaAt(mask.logicalWidth / 2, mask.logicalHeight / 2))
+        assertTrue(mask.alphaAt(mask.logicalWidth / 2, mask.logicalHeight * 7 / 10) > 200)
+        background.recycle()
     }
 
     @Test fun liveGradientPreviewIsClippedToTheActiveSelection() {

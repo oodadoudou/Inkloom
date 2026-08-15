@@ -25,6 +25,10 @@ import app.inkloom.engine.v3.android.PixelTileCanvasRenderer
 import app.inkloom.engine.v3.composite.PixelLayerProjectionCache
 import app.inkloom.engine.v3.composite.PixelLayerProjectionInput
 import app.inkloom.engine.v3.storage.PixelTileArchiveStore
+import app.inkloom.engine.v3.storage.MaskTileArchiveCodec
+import app.inkloom.engine.v3.surface.MaskTileSurface
+import app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot
+import app.inkloom.engine.v3.scene.SparseAlphaMask
 import app.inkloom.engine.v3.surface.PixelTileSurface
 import app.inkloom.engine.v3.surface.PixelRect
 import android.graphics.pdf.PdfRenderer
@@ -177,6 +181,10 @@ class DocumentAssetService(private val context: Context) {
     /** Persists a paint-bucket fill mask PNG and returns its absolute path. */
     fun saveFillMask(mask: Bitmap): String = saveDocumentPng(mask, "fill-mask")
 
+    /** Persists a selection-derived mask without materializing a page-sized Bitmap. */
+    fun saveFillMask(mask: MaskTileSurfaceSnapshot): String =
+        saveDocumentBytes(MaskTileArchiveCodec.encode(mask), "fill-mask.v3")
+
     /** Persists the full-page premultiplied RGBA surface owned by a raster layer. */
     @Deprecated("Legacy PNG persistence is read-only after a raster tile surface is attached")
     fun saveRasterLayer(bitmap: Bitmap): String = saveDocumentPng(bitmap, "raster-layer")
@@ -246,6 +254,23 @@ class DocumentAssetService(private val context: Context) {
         }
     }
 
+    private fun saveDocumentBytes(bytes: ByteArray, kind: String): String {
+        require(bytes.isNotEmpty()) { "Could not encode $kind" }
+        val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+        val target = File(directory, "$hash.$kind")
+        val temporary = File(directory, ".${System.nanoTime()}.tmp")
+        try {
+            if (!target.exists()) {
+                temporary.outputStream().use { output -> output.write(bytes); output.flush() }
+                check(temporary.renameTo(target)) { "Could not retain $kind" }
+            }
+            synchronized(assetLifecycleLock) { pendingDocumentAssets += target.canonicalPath }
+            return target.absolutePath
+        } finally {
+            temporary.delete()
+        }
+    }
+
     fun releaseAssetReservation(path: String?) {
         if (path.isNullOrBlank()) return
         synchronized(assetLifecycleLock) {
@@ -263,6 +288,27 @@ class DocumentAssetService(private val context: Context) {
 
     /** Loads a fill mask PNG, or null if it cannot be decoded. */
     fun loadFillMask(maskAssetPath: String): Bitmap? = runCatching { BitmapFactory.decodeFile(maskAssetPath) }.getOrNull()
+
+    fun loadSparseFillMask(maskAssetPath: String): MaskTileSurface? = runCatching {
+        val bytes = File(maskAssetPath).readBytes()
+        if (MaskTileArchiveCodec.isSparseMask(bytes)) MaskTileArchiveCodec.decode(bytes) else null
+    }.getOrNull()
+
+    /** Draws either a V3 sparse mask or a read-only legacy PNG without changing document truth. */
+    fun drawFillMask(canvas: Canvas, maskAssetPath: String, destination: RectF, paint: Paint): Boolean {
+        loadSparseFillMask(maskAssetPath)?.let { surface ->
+            val mask = SparseAlphaMask.fromSurface(surface) ?: return false
+            mask.draw(canvas, destination, paint)
+            return true
+        }
+        val bitmap = loadFillMask(maskAssetPath) ?: return false
+        return try {
+            canvas.drawBitmap(bitmap, null, destination, paint)
+            true
+        } finally {
+            bitmap.recycle()
+        }
+    }
 
     /** Removes only private document assets that are no longer referenced by a document or template. */
     fun garbageCollectUnreferencedAssets(
@@ -967,14 +1013,20 @@ class DocumentAssetService(private val context: Context) {
                         val gradientDefinition = element.gradientDefinition()
                         val maskCheckpoint = if (gradientDefinition != null) {
                             element.maskAssetPath?.let { path ->
-                                loadFillMask(path)?.let { mask ->
-                                    val checkpoint = canvas.saveLayer(left, top, right, bottom, null)
-                                    canvas.drawBitmap(mask, null, android.graphics.RectF(left, top, right, bottom), Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
-                                    mask.recycle()
+                                val checkpoint = canvas.saveLayer(left, top, right, bottom, null)
+                                if (drawFillMask(
+                                    canvas,
+                                    path,
+                                    android.graphics.RectF(left, top, right, bottom),
+                                    Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG),
+                                )) {
                                     canvas.saveLayer(left, top, right, bottom, Paint(Paint.ANTI_ALIAS_FLAG).apply {
                                         blendMode = android.graphics.BlendMode.SRC_IN
                                     })
                                     checkpoint
+                                } else {
+                                    canvas.restoreToCount(checkpoint)
+                                    null
                                 }
                             }
                         } else null
@@ -1017,13 +1069,12 @@ class DocumentAssetService(private val context: Context) {
                     }
                     canvas.drawBitmap(bitmap, null, destination, paint); canvas.restore(); bitmap.recycle()
                 }
-                is PageElement.Fill -> loadFillMask(element.maskAssetPath)?.let { mask ->
+                is PageElement.Fill -> {
                     val destination = android.graphics.RectF(left, top, right, bottom)
                     val colorPaint = Paint(Paint.ANTI_ALIAS_FLAG)
                     colorPaint.colorFilter = PorterDuffColorFilter(element.colorArgb.toInt(), PorterDuff.Mode.SRC_IN)
                     colorPaint.alpha = (element.opacity.coerceIn(0f, 1f) * 255).toInt()
-                    canvas.drawBitmap(mask, null, destination, colorPaint)
-                    mask.recycle()
+                    drawFillMask(canvas, element.maskAssetPath, destination, colorPaint)
                 }
                 is PageElement.AudioMarker -> { paint.style = Paint.Style.FILL; paint.color = 0xFFE7E7E7.toInt(); canvas.drawRoundRect(left, top, right, bottom, 18f, 18f, paint); paint.color = 0xFF111111.toInt(); paint.textSize = 28f; canvas.drawText("Audio · ${formatDuration(element.durationMs)}", left + 20, top + 42, paint); paint.textSize = 22f; canvas.drawText(element.title, left + 20, top + 76, paint) }
                 is PageElement.Link -> {

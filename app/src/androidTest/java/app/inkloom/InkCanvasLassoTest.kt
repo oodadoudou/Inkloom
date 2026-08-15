@@ -235,16 +235,12 @@ class InkCanvasLassoTest {
             view.dispatchStylus(MotionEvent.ACTION_MOVE, 100f, 20f, 70L)
             view.dispatchStylus(MotionEvent.ACTION_CANCEL, 100f, 100f, 80L)
 
-            var selection: Bitmap? = null
-            view.onFillCommitted = { mask, _, _, _, _, _, _ -> selection = mask }
+            var selection: app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot? = null
+            view.onSparseFillCommitted = { mask, _, _ -> selection = mask }
             assertTrue(view.fillSelection())
             val mask = requireNotNull(selection)
-            try {
-                assertTrue(Color.alpha(mask.getPixel(mask.width / 2, mask.height / 2)) > 0)
-                assertEquals(0, Color.alpha(mask.getPixel(mask.width / 20, mask.height / 20)))
-            } finally {
-                mask.recycle()
-            }
+            assertTrue(mask.alphaAt(mask.logicalWidth / 2, mask.logicalHeight / 2) > 0)
+            assertEquals(0, mask.alphaAt(mask.logicalWidth / 20, mask.logicalHeight / 20))
         }
     }
 
@@ -255,19 +251,15 @@ class InkCanvasLassoTest {
 
             assertTrue(view.borderSelection(80f))
             assertTrue(view.selectionMaskRegions().isNotEmpty())
-            var mask: Bitmap? = null
+            var mask: app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot? = null
             view.onGradientCommitted = { _, _, _, _, _, value -> mask = value }
             view.tool = EditorTool.GRADIENT
             view.dispatchStylus(MotionEvent.ACTION_DOWN, 100f, 500f, 60L)
             view.dispatchStylus(MotionEvent.ACTION_MOVE, 900f, 500f, 70L)
             view.dispatchStylus(MotionEvent.ACTION_UP, 900f, 500f, 80L)
             val committed = requireNotNull(mask)
-            try {
-                assertTrue(Color.alpha(committed.getPixel(committed.width / 5, committed.height / 2)) >= 128)
-                assertEquals(0, Color.alpha(committed.getPixel(committed.width / 2, committed.height / 2)))
-            } finally {
-                committed.recycle()
-            }
+            assertTrue(committed.alphaAt(committed.logicalWidth / 5, committed.logicalHeight / 2) >= 128)
+            assertEquals(0, committed.alphaAt(committed.logicalWidth / 2, committed.logicalHeight / 2))
         }
     }
 
