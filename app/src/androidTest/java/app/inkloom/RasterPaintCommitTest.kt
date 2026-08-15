@@ -9,6 +9,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.model.EditorTool
 import app.inkloom.engine.v3.render.ActiveStrokeCompositor
+import app.inkloom.engine.v3.tools.RasterLayerPatch
 import app.inkloom.ui.InkCanvasView
 import java.io.File
 import org.junit.Assert.assertEquals
@@ -57,14 +58,14 @@ class RasterPaintCommitTest {
         val surface = Bitmap.createBitmap(600, 600, Bitmap.Config.ARGB_8888)
         var rasterCommits = 0
         var vectorCommits = 0
-        var committed: Bitmap? = null
+        var committed: RasterLayerPatch? = null
         val view = createCanvas {
             tool = EditorTool.PEN
             activeLayerId = "paint"
             baseWidth = 42f
             inkColor = Color.MAGENTA
             setRasterLayerBitmaps(mapOf("paint" to surface))
-            onRasterLayerCommitted = { _, bitmap -> rasterCommits++; committed = bitmap }
+            onRasterLayerCommitted = { patch -> rasterCommits++; committed = patch }
             onStrokeCommitted = { vectorCommits++ }
         }
         send(view, MotionEvent.ACTION_DOWN, 80f, 200f, 0L)
@@ -73,8 +74,9 @@ class RasterPaintCommitTest {
 
         assertEquals("One raster paint gesture is one durable surface commit", 1, rasterCommits)
         assertEquals("Raster paint must not leak a vector stroke into the document", 0, vectorCommits)
-        assertTrue(requireNotNull(committed).hasAlphaInRegion(80, 270, 260, 340))
-        committed?.recycle(); surface.recycle()
+        assertTrue(requireNotNull(committed).hasAlphaInSourceRegion(80, 270, 260, 340))
+        assertTrue("Pen-up must transfer a local patch, not the complete raster", requireNotNull(committed).bitmap.byteCount < surface.byteCount)
+        committed?.close(); surface.recycle()
     }
 
     @Test fun rasterPaintCommitStaysWithinOneFrameForAStandardPenStroke() {
@@ -85,7 +87,7 @@ class RasterPaintCommitTest {
             activeLayerId = "paint"
             baseWidth = 28f
             setRasterLayerBitmaps(mapOf("paint" to surface))
-            onRasterLayerCommitted = { _, bitmap -> bitmap.recycle() }
+            onRasterLayerCommitted = { patch -> patch.close() }
         }
         send(view, MotionEvent.ACTION_DOWN, 120f, 300f, 0L)
         repeat(72) { index -> send(view, MotionEvent.ACTION_MOVE, 125f + index * 7f, 300f + index % 5, 5L + index) }
@@ -109,7 +111,7 @@ class RasterPaintCommitTest {
             tip.recycle()
         }
         val surface = Bitmap.createBitmap(600, 600, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLACK) }
-        var committed: Bitmap? = null
+        var committed: RasterLayerPatch? = null
         val view = createCanvas {
             tool = EditorTool.ERASER
             activeLayerId = "paint"
@@ -119,19 +121,19 @@ class RasterPaintCommitTest {
             eraserPressureSize = false
             eraserTipAssetPath = tipFile.absolutePath
             setRasterLayerBitmaps(mapOf("paint" to surface))
-            onRasterLayerCommitted = { _, bitmap -> committed = bitmap }
+            onRasterLayerCommitted = { patch -> committed = patch }
         }
 
         send(view, MotionEvent.ACTION_DOWN, 200f, 200f, 0L)
         send(view, MotionEvent.ACTION_UP, 200f, 200f, 5L)
 
         val result = requireNotNull(committed)
-        assertTrue("The authored black tip core must erase the raster", Color.alpha(result.getPixel(300, 300)) < 16)
+        assertTrue("The authored black tip core must erase the raster", Color.alpha(result.colorAtSource(300, 300)) < 16)
         assertTrue(
             "Pixels inside the round preview proxy but outside the narrow authored tip must be restored",
-            Color.alpha(result.getPixel(340, 300)) > 240,
+            Color.alpha(result.colorAtSource(340, 300)) > 240,
         )
-        result.recycle(); surface.recycle(); tipFile.delete()
+        result.close(); surface.recycle(); tipFile.delete()
     }
 
     @Test fun rasterCommitUsesTheExactTexturizedGrainEvenWhenItsVariantWasNotPrewarmed() {
@@ -140,9 +142,9 @@ class RasterPaintCommitTest {
         val grainFile = File(context.cacheDir, "raster-texturized-grain.png")
         writePng(tipFile, IntArray(64) { Color.BLACK })
         writePng(grainFile, IntArray(64) { index -> if (index % 8 in 4..5) Color.BLACK else Color.WHITE })
-        fun commit(movement: Float): Bitmap {
+        fun commit(movement: Float): RasterLayerPatch {
             val surface = Bitmap.createBitmap(600, 600, Bitmap.Config.ARGB_8888)
-            var committed: Bitmap? = null
+            var committed: RasterLayerPatch? = null
             val view = createCanvas {
                 tool = EditorTool.PEN
                 activeLayerId = "paint"
@@ -156,7 +158,7 @@ class RasterPaintCommitTest {
                 grainMovement = movement
                 grainZoom = 0f
                 setRasterLayerBitmaps(mapOf("paint" to surface))
-                onRasterLayerCommitted = { _, bitmap -> committed = bitmap }
+                onRasterLayerCommitted = { patch -> committed = patch }
             }
             send(view, MotionEvent.ACTION_DOWN, 125f, 200f, 0L)
             send(view, MotionEvent.ACTION_UP, 125f, 200f, 5L)
@@ -168,13 +170,13 @@ class RasterPaintCommitTest {
         val texturized = commit(1f)
         var differingPixels = 0
         for (y in 250..350) for (x in 138..238) {
-            if (moving.getPixel(x, y) != texturized.getPixel(x, y)) differingPixels++
+            if (moving.colorAtSource(x, y) != texturized.colorAtSource(x, y)) differingPixels++
         }
         assertTrue(
             "The durable raster must use the page-space phase instead of committing the provisional base tip",
             differingPixels > 100,
         )
-        moving.recycle(); texturized.recycle(); tipFile.delete(); grainFile.delete()
+        moving.close(); texturized.close(); tipFile.delete(); grainFile.delete()
     }
 
     private fun createCanvas(block: InkCanvasView.() -> Unit): InkCanvasView {
@@ -196,12 +198,17 @@ class RasterPaintCommitTest {
         try { InstrumentationRegistry.getInstrumentation().runOnMainSync { view.onTouchEvent(event) } } finally { event.recycle() }
     }
 
-    private fun Bitmap.hasAlphaInRegion(left: Int, top: Int, right: Int, bottom: Int): Boolean {
-        for (y in top.coerceAtLeast(0) until bottom.coerceAtMost(height)) for (x in left.coerceAtLeast(0) until right.coerceAtMost(width)) {
-            if (Color.alpha(getPixel(x, y)) > 0) return true
+    private fun RasterLayerPatch.hasAlphaInSourceRegion(left: Int, top: Int, right: Int, bottom: Int): Boolean {
+        for (y in top.coerceAtLeast(this.top) until bottom.coerceAtMost(this.bottom)) {
+            for (x in left.coerceAtLeast(this.left) until right.coerceAtMost(this.right)) {
+                if (Color.alpha(colorAtSource(x, y)) > 0) return true
+            }
         }
         return false
     }
+
+    private fun RasterLayerPatch.colorAtSource(x: Int, y: Int): Int =
+        if (x in left until right && y in top until bottom) bitmap.getPixel(x - left, y - top) else Color.TRANSPARENT
 
     private fun writePng(file: File, pixels: IntArray) {
         Bitmap.createBitmap(pixels, 8, 8, Bitmap.Config.ARGB_8888).also { bitmap ->

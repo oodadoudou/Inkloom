@@ -276,6 +276,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var rasterEraserSession: RasterEraserSession? = null
     private var rasterEraserBitmap: Bitmap? = null
     private var rasterEraserChanged = false
+    private var rasterEraserDirtyBounds: Rect? = null
     private val rasterEraserPoints = mutableListOf<StrokePoint>()
     private val eraserStrokeIndices = mutableMapOf<String, Int>()
     private var eraserMaskBatch: MutableMap<String, MutableList<StrokeMaskDab>>? = null
@@ -307,10 +308,12 @@ class InkCanvasView(context: Context) : View(context) {
     private var smudgeLastX = 0f
     private var smudgeLastY = 0f
     private var smudgeChanged = false
+    private var smudgeDirtyBounds: Rect? = null
     private var rasterBlendSession: RasterBlendSession? = null
     private var rasterBlendBitmap: Bitmap? = null
     private var rasterWetPaintSession: RasterWetPaintSession? = null
     private var rasterWetPaintBitmap: Bitmap? = null
+    private var wetPaintDirtyBounds: Rect? = null
     private var wetPaintLastPositions: List<Pair<Float, Float>> = emptyList()
     private var wetPaintPickupColors: MutableList<Int?> = mutableListOf()
     private val localToolStrokeIndices = mutableMapOf<String, Int>()
@@ -331,6 +334,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var liquifyLastX = 0f
     private var liquifyLastY = 0f
     private var liquifyChanged = false
+    private var liquifyDirtyBounds: Rect? = null
     private var pendingLiquifyX = 0f
     private var pendingLiquifyY = 0f
     private var pendingLiquifyPressure = 1f
@@ -967,8 +971,18 @@ class InkCanvasView(context: Context) : View(context) {
      *  mask's bounding box in normalized page coordinates, the fill color and opacity.
      *  The host persists the mask and creates a [PageElement.Fill]. */
     var onFillCommitted: ((mask: Bitmap, x: Float, y: Float, width: Float, height: Float, colorArgb: Long, opacity: Float) -> Unit)? = null
-    /** The callback owns the immutable visible-crop snapshot and must recycle it after saving. */
-    var onRasterLayerCommitted: ((layerId: String, visibleSurface: Bitmap) -> Unit)? = null
+    /** The callback owns the immutable dirty patch and must close it after saving. */
+    var onRasterLayerCommitted: ((RasterLayerPatch) -> Unit)? = null
+
+    private fun mergeDirtyBounds(current: Rect?, changed: Rect): Rect =
+        current?.apply { union(changed) } ?: Rect(changed)
+
+    private fun commitRasterLayerPatch(raster: Bitmap, dirtyBounds: Rect?) {
+        val dirty = dirtyBounds ?: return
+        val patch = RasterLayerPatch.capture(activeLayerId, raster, dirty) ?: return
+        val callback = onRasterLayerCommitted
+        if (callback == null) patch.close() else callback(patch)
+    }
     var onColorDropCommitted: (Int) -> Unit = {}
     var onSelectionActiveChanged: (Boolean) -> Unit = {}
         set(value) {
@@ -4956,6 +4970,7 @@ class InkCanvasView(context: Context) : View(context) {
         smudgeLastX = normalizedX.coerceIn(0f, 1f)
         smudgeLastY = normalizedY.coerceIn(0f, 1f)
         smudgeChanged = false
+        smudgeDirtyBounds = null
     }
 
     private fun scheduleSmudge(x: Float, y: Float) {
@@ -4992,6 +5007,7 @@ class InkCanvasView(context: Context) : View(context) {
             )
             if (dirty != null) {
                 smudgeChanged = true
+                smudgeDirtyBounds = mergeDirtyBounds(smudgeDirtyBounds, dirty)
                 invalidate(
                     (dirty.left * width.toFloat() / raster.width).toInt() - 2,
                     (dirty.top * height.toFloat() / raster.height).toInt() - 2,
@@ -5039,11 +5055,7 @@ class InkCanvasView(context: Context) : View(context) {
         val raster = rasterBlendBitmap
         val session = rasterBlendSession
         if (raster != null && session != null) {
-            if (smudgeChanged) {
-                val snapshot = raster.copy(Bitmap.Config.ARGB_8888, false)
-                val callback = onRasterLayerCommitted
-                if (callback == null) snapshot.recycle() else callback(activeLayerId, snapshot)
-            }
+            if (smudgeChanged) commitRasterLayerPatch(raster, smudgeDirtyBounds)
             session.close()
         } else {
             val before = smudgeBefore
@@ -5053,6 +5065,7 @@ class InkCanvasView(context: Context) : View(context) {
         rasterBlendBitmap = null
         smudgeBefore = null
         smudgeChanged = false
+        smudgeDirtyBounds = null
         localToolStrokeIndices.clear()
         invalidate()
     }
@@ -5074,6 +5087,7 @@ class InkCanvasView(context: Context) : View(context) {
         rasterBlendBitmap = null
         smudgeBefore = null
         smudgeChanged = false
+        smudgeDirtyBounds = null
         localToolStrokeIndices.clear()
         invalidate()
     }
@@ -5112,6 +5126,7 @@ class InkCanvasView(context: Context) : View(context) {
         )
         if (liquifyHoldEligible) postDelayed(liquifyHoldStart, liquifyLongPressDelayMs.coerceAtLeast(0L))
         liquifyChanged = false
+        liquifyDirtyBounds = null
     }
 
     private fun scheduleLiquify(x: Float, y: Float, pressure: Float) {
@@ -5157,6 +5172,7 @@ class InkCanvasView(context: Context) : View(context) {
             )
             if (dirty != null) {
                 liquifyChanged = true
+                liquifyDirtyBounds = mergeDirtyBounds(liquifyDirtyBounds, dirty)
                 postInvalidateOnAnimation()
             }
             liquifyLastX = nextX
@@ -5253,11 +5269,7 @@ class InkCanvasView(context: Context) : View(context) {
         val raster = rasterLiquifyBitmap
         val session = rasterLiquifySession
         if (raster != null && session != null) {
-            if (liquifyChanged) {
-                val snapshot = raster.copy(Bitmap.Config.ARGB_8888, false)
-                val callback = onRasterLayerCommitted
-                if (callback == null) snapshot.recycle() else callback(activeLayerId, snapshot)
-            }
+            if (liquifyChanged) commitRasterLayerPatch(raster, liquifyDirtyBounds)
             session.close()
         } else {
             val before = liquifyBefore
@@ -5268,6 +5280,7 @@ class InkCanvasView(context: Context) : View(context) {
         liquifyBefore = null
         liquifyHoldEligible = false
         liquifyChanged = false
+        liquifyDirtyBounds = null
         localToolStrokeIndices.clear()
         invalidate()
     }
@@ -5292,6 +5305,7 @@ class InkCanvasView(context: Context) : View(context) {
         liquifyBefore = null
         liquifyHoldEligible = false
         liquifyChanged = false
+        liquifyDirtyBounds = null
         localToolStrokeIndices.clear()
         invalidate()
     }
@@ -5657,6 +5671,7 @@ class InkCanvasView(context: Context) : View(context) {
             selectionMaskForDisplay(),
             preserveDestinationAlpha = activeLayerId in alphaLockedLayers,
         )
+        wetPaintDirtyBounds = null
         val initial = StrokePoint(normalizedX, normalizedY)
         wetPaintLastPositions = wetPaintPositions(initial)
         wetPaintPickupColors = MutableList(wetPaintLastPositions.size) { null }
@@ -5751,6 +5766,7 @@ class InkCanvasView(context: Context) : View(context) {
         }
         wetPaintLastPositions = currentPositions
         dirty?.let { bounds ->
+            wetPaintDirtyBounds = mergeDirtyBounds(wetPaintDirtyBounds, bounds)
             invalidate(
                 (bounds.left * width.toFloat() / raster.width).toInt() - 2,
                 (bounds.top * height.toFloat() / raster.height).toInt() - 2,
@@ -5764,6 +5780,7 @@ class InkCanvasView(context: Context) : View(context) {
         rasterWetPaintSession?.close()
         rasterWetPaintSession = null
         rasterWetPaintBitmap = null
+        wetPaintDirtyBounds = null
         wetPaintLastPositions = emptyList()
         wetPaintPickupColors.clear()
     }
@@ -5776,14 +5793,16 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun commitRasterPaintStrokes(raster: Bitmap, newStrokes: List<InkStroke>) {
         val patch = renderRasterStrokePatch(raster, newStrokes) ?: return
+        val dirtyBounds = mergeDirtyBounds(
+            wetPaintDirtyBounds,
+            Rect(patch.left, patch.top, patch.left + patch.bitmap.width, patch.top + patch.bitmap.height),
+        )
         if (newStrokes.any { stroke -> stroke.watercolor || !stroke.procreateWetMix.isDisabled() || stroke.colorMix > .001f || stroke.paintMix > .001f }) {
             RasterWetPaintMixer.composite(raster, patch.bitmap, patch.left, patch.top, newStrokes)
         } else Canvas(raster).drawBitmap(patch.bitmap, patch.left.toFloat(), patch.top.toFloat(), Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.SRC_OVER })
         patch.bitmap.recycle()
         invalidate()
-        val snapshot = raster.copy(Bitmap.Config.ARGB_8888, false)
-        val callback = onRasterLayerCommitted
-        if (callback == null) snapshot.recycle() else callback(activeLayerId, snapshot)
+        commitRasterLayerPatch(raster, dirtyBounds)
     }
 
     private fun activeBrushEngineKind(): BrushEngineKind = when {
@@ -5842,6 +5861,7 @@ class InkCanvasView(context: Context) : View(context) {
             eraserGestureBefore = null
         } else eraserGestureBefore = strokes.toList()
         rasterEraserChanged = false
+        rasterEraserDirtyBounds = null
         rasterEraserPoints.clear()
         lastEraserX = null
         lastEraserY = null
@@ -5858,8 +5878,10 @@ class InkCanvasView(context: Context) : View(context) {
             if (rasterEraserPoints.lastOrNull()?.let { last -> last.x == point.x && last.y == point.y } != true) rasterEraserPoints += point
             val startX = lastEraserX ?: targetX; val startY = lastEraserY ?: targetY
             val radius = eraserRadiusPixels(pressure) * raster.width / width.coerceAtLeast(1).toFloat()
-            if (session.eraseSegment(startX * raster.width, startY * raster.height, targetX * raster.width, targetY * raster.height, radius, eraserOpacity, eraserHardness) != null) {
+            val dirty = session.eraseSegment(startX * raster.width, startY * raster.height, targetX * raster.width, targetY * raster.height, radius, eraserOpacity, eraserHardness)
+            if (dirty != null) {
                 rasterEraserChanged = true
+                rasterEraserDirtyBounds = mergeDirtyBounds(rasterEraserDirtyBounds, dirty)
                 postInvalidateOnAnimation()
             }
             lastEraserX = targetX; lastEraserY = targetY
@@ -6015,6 +6037,7 @@ class InkCanvasView(context: Context) : View(context) {
                 // same V3 descriptor used by imported paint brushes so custom eraser tips, spacing,
                 // pressure, texture, rotation, spray, and dual-brush semantics remain exact.
                 session.restoreOriginal()
+                rasterEraserDirtyBounds = null
                 val eraserStroke = withCurrentBrushBehavior(buildStroke(rasterEraserPoints)).copy(
                     engineKind = BrushEngineKind.ERASE_MASK,
                     grainMovement = grainMovement,
@@ -6029,18 +6052,22 @@ class InkCanvasView(context: Context) : View(context) {
                     paintMix = 0f,
                 )
                 renderRasterStrokePatch(raster, listOf(eraserStroke))?.let { patch ->
+                    rasterEraserDirtyBounds = Rect(
+                        patch.left,
+                        patch.top,
+                        patch.left + patch.bitmap.width,
+                        patch.top + patch.bitmap.height,
+                    )
                     Canvas(raster).drawBitmap(patch.bitmap, patch.left.toFloat(), patch.top.toFloat(), Paint(Paint.ANTI_ALIAS_FLAG).apply {
                         blendMode = android.graphics.BlendMode.DST_OUT
                     })
                     patch.bitmap.recycle()
                 }
-                val snapshot = raster.copy(Bitmap.Config.ARGB_8888, false)
-                val callback = onRasterLayerCommitted
-                if (callback == null) snapshot.recycle() else callback(activeLayerId, snapshot)
+                commitRasterLayerPatch(raster, rasterEraserDirtyBounds)
             }
             session.close()
         } else eraserGestureBefore?.let { commitStrokeEdit(it, strokes) }
-        rasterEraserSession = null; rasterEraserBitmap = null; rasterEraserChanged = false
+        rasterEraserSession = null; rasterEraserBitmap = null; rasterEraserChanged = false; rasterEraserDirtyBounds = null
         rasterEraserPoints.clear()
         eraserGestureBefore = null
         lastEraserX = null
@@ -6061,7 +6088,7 @@ class InkCanvasView(context: Context) : View(context) {
             session.close()
             invalidate()
         } ?: eraserGestureBefore?.let(::restoreStrokeSnapshot)
-        rasterEraserSession = null; rasterEraserBitmap = null; rasterEraserChanged = false
+        rasterEraserSession = null; rasterEraserBitmap = null; rasterEraserChanged = false; rasterEraserDirtyBounds = null
         rasterEraserPoints.clear()
         eraserGestureBefore = null
         lastEraserX = null

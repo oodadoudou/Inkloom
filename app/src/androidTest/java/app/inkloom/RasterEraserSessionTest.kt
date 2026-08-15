@@ -60,22 +60,21 @@ class RasterEraserSessionTest {
     @Test fun rasterEraserGestureCommitsOneSurfaceAndKeepsOtherLayersOut() {
         val surface = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLACK) }
         var commits = 0
-        var committed: Bitmap? = null
         lateinit var view: InkCanvasView
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             view = InkCanvasView(ApplicationProvider.getApplicationContext()).apply {
                 layout(0, 0, 400, 400); fingerDrawingEnabled = true; tool = EditorTool.ERASER
                 activeLayerId = "pixels"; eraserWidth = 180f; eraserHardness = 1f; eraserOpacity = 1f
                 setRasterLayerBitmaps(mapOf("pixels" to surface))
-                onRasterLayerCommitted = { layer, bitmap -> assertEquals("pixels", layer); commits++; committed = bitmap }
+                onRasterLayerCommitted = { patch -> assertEquals("pixels", patch.layerId); commits++; patch.close() }
             }
         }
         send(view, MotionEvent.ACTION_DOWN, 80f, 200f, 0L)
         send(view, MotionEvent.ACTION_MOVE, 320f, 200f, 20L)
         send(view, MotionEvent.ACTION_UP, 320f, 200f, 40L)
         assertEquals(1, commits)
-        assertEquals(0, Color.alpha(requireNotNull(committed).getPixel(200, 200)))
-        committed?.recycle(); surface.recycle()
+        assertEquals(0, Color.alpha(surface.getPixel(200, 200)))
+        surface.recycle()
     }
 
     @Test fun rasterEraserSegmentMeetsRealtimeBudget() {

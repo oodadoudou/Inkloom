@@ -486,8 +486,34 @@ class DocumentAssetService(private val context: Context) {
         page: InkPage,
         layerId: String,
         visibleSurface: Bitmap,
+    ): PixelTileSurface = composeVisibleRasterTilePatch(
+        page = page,
+        layerId = layerId,
+        patch = visibleSurface,
+        patchLeft = 0,
+        patchTop = 0,
+        visibleSourceWidth = visibleSurface.width,
+        visibleSourceHeight = visibleSurface.height,
+    )
+
+    /**
+     * Replaces one dirty rectangle of the visible crop in the authoritative sparse surface.
+     * Patch coordinates are relative to the complete visible-crop source, not to the full page.
+     */
+    fun composeVisibleRasterTilePatch(
+        page: InkPage,
+        layerId: String,
+        patch: Bitmap,
+        patchLeft: Int,
+        patchTop: Int,
+        visibleSourceWidth: Int,
+        visibleSourceHeight: Int,
     ): PixelTileSurface {
-        require(!visibleSurface.isRecycled) { "Visible raster surface has been recycled" }
+        require(!patch.isRecycled) { "Raster patch has been recycled" }
+        require(visibleSourceWidth > 0 && visibleSourceHeight > 0) { "Visible source dimensions must be positive" }
+        require(patchLeft >= 0 && patchTop >= 0 &&
+            patchLeft + patch.width <= visibleSourceWidth && patchTop + patch.height <= visibleSourceHeight
+        ) { "Raster patch must fit inside the visible source" }
         val layer = page.layers.firstOrNull { it.id == layerId && it.contentKind == LayerContentKind.RASTER }
             ?: error("Raster layer does not exist")
         val turns = layer.rasterRotationQuarterTurns.mod(4)
@@ -505,10 +531,10 @@ class DocumentAssetService(private val context: Context) {
                 }
             }
             else -> {
-                val rotatedWidth = (visibleSurface.width / (crop.right - crop.left).coerceAtLeast(.01f))
-                    .toInt().coerceIn(visibleSurface.width, 4096)
-                val rotatedHeight = (visibleSurface.height / (crop.bottom - crop.top).coerceAtLeast(.01f))
-                    .toInt().coerceIn(visibleSurface.height, 4096)
+                val rotatedWidth = (visibleSourceWidth / (crop.right - crop.left).coerceAtLeast(.01f))
+                    .toInt().coerceIn(visibleSourceWidth, 4096)
+                val rotatedHeight = (visibleSourceHeight / (crop.bottom - crop.top).coerceAtLeast(.01f))
+                    .toInt().coerceIn(visibleSourceHeight, 4096)
                 PixelTileSurface(
                     logicalWidth = if (turns % 2 == 0) rotatedWidth else rotatedHeight,
                     logicalHeight = if (turns % 2 == 0) rotatedHeight else rotatedWidth,
@@ -517,13 +543,19 @@ class DocumentAssetService(private val context: Context) {
         }
         val rotatedWidth = if (turns % 2 == 0) surface.logicalWidth else surface.logicalHeight
         val rotatedHeight = if (turns % 2 == 0) surface.logicalHeight else surface.logicalWidth
+        val cropWidth = crop.right - crop.left
+        val cropHeight = crop.bottom - crop.top
+        val normalizedLeft = crop.left + patchLeft.toFloat() / visibleSourceWidth * cropWidth
+        val normalizedTop = crop.top + patchTop.toFloat() / visibleSourceHeight * cropHeight
+        val normalizedRight = crop.left + (patchLeft + patch.width).toFloat() / visibleSourceWidth * cropWidth
+        val normalizedBottom = crop.top + (patchTop + patch.height).toFloat() / visibleSourceHeight * cropHeight
         val destination = PixelRect(
-            (crop.left * rotatedWidth).toInt().coerceIn(0, rotatedWidth - 1),
-            (crop.top * rotatedHeight).toInt().coerceIn(0, rotatedHeight - 1),
-            (crop.right * rotatedWidth).toInt().coerceIn(1, rotatedWidth),
-            (crop.bottom * rotatedHeight).toInt().coerceIn(1, rotatedHeight),
+            kotlin.math.floor(normalizedLeft * rotatedWidth).toInt().coerceIn(0, rotatedWidth - 1),
+            kotlin.math.floor(normalizedTop * rotatedHeight).toInt().coerceIn(0, rotatedHeight - 1),
+            kotlin.math.ceil(normalizedRight * rotatedWidth).toInt().coerceIn(1, rotatedWidth),
+            kotlin.math.ceil(normalizedBottom * rotatedHeight).toInt().coerceIn(1, rotatedHeight),
         )
-        PixelTileBitmapAdapter.replaceRotatedRegion(surface, destination, turns, visibleSurface)
+        PixelTileBitmapAdapter.replaceRotatedRegion(surface, destination, turns, patch)
         return surface
     }
 

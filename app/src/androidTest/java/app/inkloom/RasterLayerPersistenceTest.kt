@@ -181,4 +181,68 @@ class RasterLayerPersistenceTest {
         assertTrue(Color.blue(editedSurface.pixelAt(90, 50)) > 240)
         assets.releaseRasterTileReservation(reference)
     }
+
+    @Test fun dirtyPatchUpdatesOnlyItsMappedAreaInsideTheVisibleCrop() {
+        val source = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+        val reference = assets.importRasterTileSurface(source)
+        source.recycle()
+        val layer = InkLayer(
+            id = "patch-raster",
+            name = "Patch raster",
+            contentKind = LayerContentKind.RASTER,
+            rasterTileSurface = reference,
+        )
+        val page = InkPage(
+            width = 100f,
+            height = 100f,
+            crop = PageCrop(.25f, .25f, .75f, .75f),
+            layers = defaultInkLayers() + layer,
+        )
+        val patch = Bitmap.createBitmap(40, 40, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.GREEN) }
+        val edited = assets.composeVisibleRasterTilePatch(
+            page = page,
+            layerId = layer.id,
+            patch = patch,
+            patchLeft = 80,
+            patchTop = 80,
+            visibleSourceWidth = 200,
+            visibleSourceHeight = 200,
+        )
+        patch.recycle()
+
+        assertEquals("Pixels outside the crop remain untouched", Color.RED, edited.pixelAt(10, 10))
+        assertEquals("Pixels inside the crop but outside the patch remain untouched", Color.RED, edited.pixelAt(30, 30))
+        assertEquals("The dirty patch maps through the visible crop", Color.GREEN, edited.pixelAt(50, 50))
+        assertEquals("The patch must not clear adjacent pixels", Color.RED, edited.pixelAt(60, 60))
+        assets.releaseRasterTileReservation(reference)
+    }
+
+    @Test fun dirtyPatchCoordinatesFollowTheLayersNonDestructiveRotation() {
+        val source = Bitmap.createBitmap(80, 40, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+        val reference = assets.importRasterTileSurface(source)
+        source.recycle()
+        val layer = InkLayer(
+            id = "rotated-patch-raster",
+            name = "Rotated patch raster",
+            contentKind = LayerContentKind.RASTER,
+            rasterTileSurface = reference,
+            rasterRotationQuarterTurns = 1,
+        )
+        val page = InkPage(width = 80f, height = 40f, layers = defaultInkLayers() + layer)
+        val patch = Bitmap.createBitmap(10, 10, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.GREEN) }
+        val edited = assets.composeVisibleRasterTilePatch(
+            page = page,
+            layerId = layer.id,
+            patch = patch,
+            patchLeft = 10,
+            patchTop = 20,
+            visibleSourceWidth = 40,
+            visibleSourceHeight = 80,
+        )
+        patch.recycle()
+
+        assertEquals("The rotated presentation patch maps back into document orientation", Color.GREEN, edited.pixelAt(25, 25))
+        assertEquals("Adjacent document pixels are retained", Color.RED, edited.pixelAt(15, 25))
+        assets.releaseRasterTileReservation(reference)
+    }
 }

@@ -4543,11 +4543,12 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
         }
     }
     fun installRasterCommit(view: InkCanvasView) {
-        view.onRasterLayerCommitted = commit@{ layerId, visibleSurface ->
+        view.onRasterLayerCommitted = commit@{ patch ->
+            val layerId = patch.layerId
             val capturedPage = page
             val layer = capturedPage.layers.firstOrNull { it.id == layerId && it.contentKind == LayerContentKind.RASTER }
             if (layer == null || gradientCommitScope.coroutineContext[Job]?.isActive != true) {
-                visibleSurface.recycle()
+                patch.close()
                 return@commit
             }
             gradientCommitScope.launch(NonCancellable) {
@@ -4567,7 +4568,15 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                             )
                         })
                         val surface = withContext(Dispatchers.Default) {
-                            assets.composeVisibleRasterTileSurface(effectivePage, layerId, visibleSurface)
+                            assets.composeVisibleRasterTilePatch(
+                                page = effectivePage,
+                                layerId = layerId,
+                                patch = patch.bitmap,
+                                patchLeft = patch.left,
+                                patchTop = patch.top,
+                                visibleSourceWidth = patch.sourceWidth,
+                                visibleSourceHeight = patch.sourceHeight,
+                            )
                         }
                         newReference = withContext(Dispatchers.IO) { assets.saveRasterTileSurface(surface) }
                         val savedReference = requireNotNull(newReference)
@@ -4607,7 +4616,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                     }
                 } finally {
                     assets.releaseRasterTileReservation(newReference)
-                    visibleSurface.takeUnless(android.graphics.Bitmap::isRecycled)?.recycle()
+                    patch.close()
                 }
             }
         }

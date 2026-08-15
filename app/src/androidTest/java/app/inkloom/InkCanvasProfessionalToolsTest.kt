@@ -44,12 +44,11 @@ class InkCanvasProfessionalToolsTest {
         val beforePixels = IntArray(surface.width * surface.height).also { surface.getPixels(it, 0, surface.width, 0, 0, surface.width, surface.height) }
         var rasterCommits = 0
         var vectorReplacements = 0
-        var committed: Bitmap? = null
         val view = canvas(EditorTool.LIQUIFY, line("untouched-vector", listOf(StrokePoint(.05f, .05f), StrokePoint(.1f, .05f)))) {
             activeLayerId = "raster"
             baseWidth = 360f
             setRasterLayerBitmaps(mapOf("raster" to surface))
-            onRasterLayerCommitted = { _, bitmap -> rasterCommits++; committed = bitmap }
+            onRasterLayerCommitted = { patch -> rasterCommits++; patch.close() }
             onStrokesReplaced = { _, _, _ -> vectorReplacements++ }
         }
         send(view, MotionEvent.ACTION_DOWN, 275f, 500f, 0L)
@@ -57,9 +56,9 @@ class InkCanvasProfessionalToolsTest {
         send(view, MotionEvent.ACTION_UP, 625f, 500f, 40L)
         assertEquals(1, rasterCommits)
         assertEquals(0, vectorReplacements)
-        val afterPixels = IntArray(surface.width * surface.height).also { requireNotNull(committed).getPixels(it, 0, surface.width, 0, 0, surface.width, surface.height) }
+        val afterPixels = IntArray(surface.width * surface.height).also { surface.getPixels(it, 0, surface.width, 0, 0, surface.width, surface.height) }
         assertFalse("Raster Liquify must deform the committed surface", beforePixels.contentEquals(afterPixels))
-        committed?.recycle(); surface.recycle()
+        surface.recycle()
     }
 
     @Test fun stationaryLiquifyModesApplyAfterLongPress() {

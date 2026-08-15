@@ -27,6 +27,7 @@ internal typealias NativeRasterOps = app.inkloom.engine.v3.tools.NativeRasterOps
 internal typealias RasterBlendSession = app.inkloom.engine.v3.tools.RasterBlendSession
 internal typealias RasterEraserSession = app.inkloom.engine.v3.tools.RasterEraserSession
 internal typealias RasterLiquifySession = app.inkloom.engine.v3.tools.RasterLiquifySession
+internal typealias RasterLayerPatch = app.inkloom.engine.v3.tools.RasterLayerPatch
 internal typealias RasterWetPaintMixer = app.inkloom.engine.v3.tools.RasterWetPaintMixer
 internal typealias RasterWetPaintSession = app.inkloom.engine.v3.tools.RasterWetPaintSession
 
