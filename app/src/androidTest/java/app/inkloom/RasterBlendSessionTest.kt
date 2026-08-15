@@ -4,6 +4,9 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.engine.v3.tools.RasterBlendSession
+import app.inkloom.engine.v3.tools.RasterTileBlendSession
+import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
+import app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -11,6 +14,26 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class RasterBlendSessionTest {
+    @Test fun tileBlendSamplesEarlierGesturePixelsAndCommitsOneUndoDelta() {
+        val display = Bitmap.createBitmap(128, 64, Bitmap.Config.ARGB_8888)
+        for (y in 16 until 48) for (x in 10 until 42) display.setPixel(x, y, Color.argb(200, 240, 20, 30))
+        val surface = PixelTileBitmapAdapter.import(display)
+        val session = RasterTileBlendSession(surface, display)
+
+        session.blend(34f, 32f, 66f, 32f, 24f, 1f, .8f)
+        val preview = display.getPixel(66, 32)
+        assertTrue(Color.alpha(preview) > 100)
+        assertEquals("Published tiles remain unchanged before the gesture commits", Color.TRANSPARENT, surface.pixelAt(66, 32))
+
+        val record = session.commit()
+        assertTrue(Color.alpha(surface.pixelAt(66, 32)) > 100)
+        surface.apply(record, HistoryDirection.UNDO)
+        assertEquals(Color.TRANSPARENT, surface.pixelAt(66, 32))
+        record.close()
+        session.close()
+        display.recycle()
+    }
+
     @Test fun penDownDoesNotCopyThePageAndFirstBlendBacksUpOnlyDirtyTiles() {
         val bitmap = Bitmap.createBitmap(4096, 4096, Bitmap.Config.ARGB_8888).apply {
             eraseColor(Color.rgb(80, 100, 120))

@@ -12,6 +12,10 @@ import app.inkloom.engine.v3.surface.PixelTileSurface
 import app.inkloom.engine.v3.tools.RasterBlendSession
 import app.inkloom.engine.v3.tools.RasterEraserSession
 import app.inkloom.engine.v3.tools.RasterLiquifySession
+import app.inkloom.engine.v3.tools.RasterTileBlendSession
+import app.inkloom.engine.v3.tools.RasterTileEraserSession
+import app.inkloom.engine.v3.tools.RasterTileLiquifySession
+import app.inkloom.document.LiquifyMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -25,6 +29,69 @@ import kotlin.math.floor
  */
 @RunWith(AndroidJUnit4::class)
 class PixelTileSurfaceBenchmarkTest {
+    @Test fun directTileToolFramesStayLocalAndInsideTheRealtimeBudget() {
+        fun fixture(): Pair<Bitmap, PixelTileSurface> {
+            val bitmap = Bitmap.createBitmap(1200, 900, Bitmap.Config.ARGB_8888).apply { eraseColor(0xff7080a0.toInt()) }
+            return bitmap to PixelTileBitmapAdapter.import(bitmap)
+        }
+        fun report(name: String, times: List<Long>, touchedTiles: Int, workingBytes: Long) {
+            val sorted = times.drop(8).sorted()
+            val p95Ms = sorted[(sorted.size * 95 / 100).coerceAtMost(sorted.lastIndex)] / 1_000_000f
+            Log.i(TAG, "kind=direct_tile_tool tool=$name p95_ms=$p95Ms touched_tiles=$touchedTiles working_bytes=$workingBytes")
+            assertTrue("Direct tile $name p95 was ${p95Ms}ms", p95Ms < 16.7f)
+            assertTrue("Direct tile $name unexpectedly touched the whole surface", touchedTiles < 80)
+        }
+
+        fixture().let { (bitmap, surface) ->
+            val times = ArrayList<Long>(72)
+            RasterTileEraserSession(surface, bitmap).use { session ->
+                var x = 220f
+                repeat(72) { index ->
+                    val next = x + 3f
+                    val started = SystemClock.elapsedRealtimeNanos()
+                    session.eraseSegment(x, 440f, next, 440f + index % 5, 72f, .7f, .55f)
+                    times += SystemClock.elapsedRealtimeNanos() - started
+                    x = next
+                }
+                report("eraser", times, session.touchedTileCount, session.workingByteSize)
+                session.commit().close()
+            }
+            bitmap.recycle()
+        }
+        fixture().let { (bitmap, surface) ->
+            val times = ArrayList<Long>(72)
+            RasterTileBlendSession(surface, bitmap).use { session ->
+                var x = 220f
+                repeat(72) { index ->
+                    val next = x + 3f
+                    val started = SystemClock.elapsedRealtimeNanos()
+                    session.blend(x, 440f, next, 440f + index % 5, 72f, .7f, .55f)
+                    times += SystemClock.elapsedRealtimeNanos() - started
+                    x = next
+                }
+                report("blend", times, session.touchedTileCount, session.workingByteSize)
+                session.commit().close()
+            }
+            bitmap.recycle()
+        }
+        fixture().let { (bitmap, surface) ->
+            val times = ArrayList<Long>(72)
+            RasterTileLiquifySession(surface, bitmap).use { session ->
+                var x = 220f
+                repeat(72) { index ->
+                    val next = x + 3f
+                    val started = SystemClock.elapsedRealtimeNanos()
+                    session.deform(x, 440f, next, 440f + index % 5, 72f, .7f, .55f, LiquifyMode.PUSH)
+                    times += SystemClock.elapsedRealtimeNanos() - started
+                    x = next
+                }
+                report("liquify", times, session.touchedTileCount, session.workingByteSize)
+                session.commit().close()
+            }
+            bitmap.recycle()
+        }
+    }
+
     @Test fun productionBitmapBridgeCostIsRecordedUntilToolsWriteDirtyTilesDirectly() {
         val bitmap = Bitmap.createBitmap(1200, 1800, Bitmap.Config.ARGB_8888).apply {
             eraseColor(0xff304050.toInt())

@@ -5,6 +5,7 @@ import app.inkloom.engine.v3.surface.PixelRect
 import app.inkloom.engine.v3.surface.PixelTileKey
 import app.inkloom.engine.v3.surface.PixelTileSurface
 import app.inkloom.engine.v3.surface.PixelTileSurfaceSnapshot
+import app.inkloom.engine.v3.surface.PixelTileWriteTransaction
 import kotlin.math.floor
 
 /** Android interop at the edge of the platform-independent sparse pixel engine. */
@@ -75,6 +76,39 @@ internal object PixelTileBitmapAdapter {
             outputIndex++
         }
         return Bitmap.createBitmap(output, targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
+    }
+
+    /** Materializes current unpublished gesture pixels from a write transaction. */
+    fun render(transaction: PixelTileWriteTransaction, source: PixelRect): Bitmap {
+        val output = transaction.copyPremultipliedPixels(source)
+        var index = 0
+        while (index < output.size) {
+            output[index] = unpremultiply(output[index])
+            index++
+        }
+        return Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888).also { bitmap ->
+            bitmap.setPixels(output, 0, source.width, 0, 0, source.width, source.height)
+        }
+    }
+
+    /** Writes an Android bitmap into an active tile transaction without per-pixel JNI calls. */
+    fun replaceRegion(
+        transaction: PixelTileWriteTransaction,
+        destination: PixelRect,
+        bitmap: Bitmap,
+    ) {
+        require(!bitmap.isRecycled) { "Bitmap has been recycled" }
+        require(bitmap.width == destination.width && bitmap.height == destination.height) {
+            "Bitmap dimensions must match the destination"
+        }
+        val pixels = IntArray(Math.multiplyExact(bitmap.width, bitmap.height))
+        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        var index = 0
+        while (index < pixels.size) {
+            pixels[index] = premultiply(pixels[index])
+            index++
+        }
+        transaction.replacePremultipliedPixels(destination, pixels)
     }
 
     /**

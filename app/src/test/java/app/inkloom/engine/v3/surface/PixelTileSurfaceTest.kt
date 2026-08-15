@@ -9,6 +9,33 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PixelTileSurfaceTest {
+    @Test fun bulkRegionReadAndReplaceObserveUnpublishedGesturePixelsAcrossTiles() {
+        val surface = PixelTileSurface(300, 200, tileSize = 64)
+        surface.beginWrite("seed").run {
+            setPixel(60, 70, 0xff010203.toInt())
+            setPixel(140, 90, 0xff040506.toInt())
+            commit().close()
+        }
+        val destination = PixelRect(50, 60, 150, 100)
+        val replacement = IntArray(destination.width * destination.height) { index ->
+            if (index % 11 == 0) 0xffaabbcc.toInt() else 0
+        }
+        val transaction = surface.beginWrite("bulk gesture")
+        transaction.replacePremultipliedPixels(destination, replacement)
+
+        assertEquals("Published generations remain atomic", 0xff010203.toInt(), surface.pixelAt(60, 70))
+        assertTrue(replacement.contentEquals(transaction.copyPremultipliedPixels(destination)))
+        assertEquals(6, transaction.touchedTileCount)
+
+        val record = transaction.commit()
+        assertEquals(6, record.changedTileCount)
+        assertEquals(replacement[(70 - destination.top) * destination.width + 60 - destination.left], surface.pixelAt(60, 70))
+        surface.apply(record, HistoryDirection.UNDO)
+        assertEquals(0xff010203.toInt(), surface.pixelAt(60, 70))
+        assertEquals(0xff040506.toInt(), surface.pixelAt(140, 90))
+        record.close()
+    }
+
     @Test fun snapshotCopiesSparseRectangleAcrossTilesWithTransparentGaps() {
         val surface = PixelTileSurface(300, 200, tileSize = 64)
         surface.beginWrite("copy fixture").run {

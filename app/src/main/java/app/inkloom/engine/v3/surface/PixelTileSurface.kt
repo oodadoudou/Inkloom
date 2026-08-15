@@ -436,6 +436,87 @@ class PixelTileWriteTransaction internal constructor(
     }
 
     /**
+     * Copies the transaction's current pixels for [source] without publishing partial edits.
+     * Working tile generations win over the immutable surface snapshot, allowing a tool to sample
+     * pigment deposited earlier in the same gesture.
+     */
+    fun copyPremultipliedPixels(source: PixelRect): IntArray {
+        requireActive()
+        val logicalBounds = PixelRect(0, 0, surface.logicalWidth, surface.logicalHeight)
+        require(source == source.intersect(logicalBounds) && !source.isEmpty) {
+            "Source rectangle must be inside the surface"
+        }
+        val output = IntArray(Math.multiplyExact(source.width, source.height))
+        val firstColumn = source.left / surface.tileSize
+        val lastColumn = (source.right - 1) / surface.tileSize
+        val firstRow = source.top / surface.tileSize
+        val lastRow = (source.bottom - 1) / surface.tileSize
+        for (row in firstRow..lastRow) for (column in firstColumn..lastColumn) {
+            val key = PixelTileKey(column, row)
+            val pixels = workingTiles[key]?.pixels ?: surface.publishedTile(key)?.pixels ?: continue
+            val tileLeft = column * surface.tileSize
+            val tileTop = row * surface.tileSize
+            val overlap = PixelRect(
+                tileLeft,
+                tileTop,
+                minOf(tileLeft + surface.tileSize, surface.logicalWidth),
+                minOf(tileTop + surface.tileSize, surface.logicalHeight),
+            ).intersect(source)
+            for (y in overlap.top until overlap.bottom) {
+                val tileOffset = (y - tileTop) * surface.tileSize + overlap.left - tileLeft
+                val outputOffset = (y - source.top) * source.width + overlap.left - source.left
+                pixels.copyInto(output, outputOffset, tileOffset, tileOffset + overlap.width)
+            }
+        }
+        return output
+    }
+
+    /** Replaces [destination] from a premultiplied row-major buffer using tile-row copies. */
+    fun replacePremultipliedPixels(
+        destination: PixelRect,
+        pixels: IntArray,
+        rowStride: Int = destination.width,
+    ) {
+        requireActive()
+        val logicalBounds = PixelRect(0, 0, surface.logicalWidth, surface.logicalHeight)
+        require(destination == destination.intersect(logicalBounds) && !destination.isEmpty) {
+            "Destination rectangle must be inside the surface"
+        }
+        require(rowStride >= destination.width) { "Row stride is smaller than the destination width" }
+        require(pixels.size >= (destination.height - 1) * rowStride + destination.width) {
+            "Source buffer is too small for the destination"
+        }
+        val firstColumn = destination.left / surface.tileSize
+        val lastColumn = (destination.right - 1) / surface.tileSize
+        val firstRow = destination.top / surface.tileSize
+        val lastRow = (destination.bottom - 1) / surface.tileSize
+        for (row in firstRow..lastRow) for (column in firstColumn..lastColumn) {
+            val key = PixelTileKey(column, row)
+            val tileLeft = column * surface.tileSize
+            val tileTop = row * surface.tileSize
+            val overlap = PixelRect(
+                tileLeft,
+                tileTop,
+                minOf(tileLeft + surface.tileSize, surface.logicalWidth),
+                minOf(tileTop + surface.tileSize, surface.logicalHeight),
+            ).intersect(destination)
+            val dirtyLocal = PixelRect(
+                overlap.left - tileLeft,
+                overlap.top - tileTop,
+                overlap.right - tileLeft,
+                overlap.bottom - tileTop,
+            )
+            editTile(key, dirtyLocal) { tilePixels, tileStride ->
+                for (y in overlap.top until overlap.bottom) {
+                    val sourceOffset = (y - destination.top) * rowStride + overlap.left - destination.left
+                    val tileOffset = (y - tileTop) * tileStride + overlap.left - tileLeft
+                    pixels.copyInto(tilePixels, tileOffset, sourceOffset, sourceOffset + overlap.width)
+                }
+            }
+        }
+    }
+
+    /**
      * Mutates a tile-local rectangle. The array is valid only during [block] and must not be
      * retained. Edge tiles still use a full fixed-size allocation; writes outside logical bounds
      * are rejected by the clipped rectangle.

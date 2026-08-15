@@ -8,6 +8,9 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.engine.v3.tools.RasterEraserSession
+import app.inkloom.engine.v3.tools.RasterTileEraserSession
+import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
+import app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection
 import app.inkloom.model.EditorTool
 import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertEquals
@@ -17,6 +20,25 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class RasterEraserSessionTest {
+    @Test fun tileEraserPublishesOneUndoableSparseTransaction() {
+        val display = Bitmap.createBitmap(1024, 1024, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLACK) }
+        val surface = PixelTileBitmapAdapter.import(display)
+        val session = RasterTileEraserSession(surface, display)
+        session.eraseSegment(420f, 500f, 600f, 500f, 48f, 1f, 1f)
+
+        assertEquals("The display mirror is real-time", 0, Color.alpha(display.getPixel(500, 500)))
+        assertEquals("The authoritative surface publishes atomically", 255, Color.alpha(surface.pixelAt(500, 500)))
+        assertTrue("A local eraser cannot touch the whole 8x8 tile grid", session.touchedTileCount < 64)
+
+        val record = session.commit()
+        assertEquals(0, Color.alpha(surface.pixelAt(500, 500)))
+        surface.apply(record, HistoryDirection.UNDO)
+        assertEquals(255, Color.alpha(surface.pixelAt(500, 500)))
+        record.close()
+        session.close()
+        display.recycle()
+    }
+
     @Test fun backupIsEmptyAtPenDownAndBoundedToFirstWrittenTiles() {
         val bitmap = Bitmap.createBitmap(4096, 4096, Bitmap.Config.ARGB_8888).apply {
             eraseColor(Color.BLACK)

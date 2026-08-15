@@ -274,6 +274,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var lastEraserX: Float? = null
     private var lastEraserY: Float? = null
     private var rasterEraserSession: RasterEraserSession? = null
+    private var rasterTileEraserSession: RasterTileEraserSession? = null
     private var rasterEraserBitmap: Bitmap? = null
     private var rasterEraserChanged = false
     private var rasterEraserDirtyBounds: Rect? = null
@@ -310,6 +311,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var smudgeChanged = false
     private var smudgeDirtyBounds: Rect? = null
     private var rasterBlendSession: RasterBlendSession? = null
+    private var rasterTileBlendSession: RasterTileBlendSession? = null
     private var rasterBlendBitmap: Bitmap? = null
     private var rasterWetPaintSession: RasterWetPaintSession? = null
     private var rasterWetPaintBitmap: Bitmap? = null
@@ -330,6 +332,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
     private var liquifyBefore: List<InkStroke>? = null
     private var rasterLiquifySession: RasterLiquifySession? = null
+    private var rasterTileLiquifySession: RasterTileLiquifySession? = null
     private var rasterLiquifyBitmap: Bitmap? = null
     private var liquifyLastX = 0f
     private var liquifyLastY = 0f
@@ -977,9 +980,22 @@ class InkCanvasView(context: Context) : View(context) {
     private fun mergeDirtyBounds(current: Rect?, changed: Rect): Rect =
         current?.apply { union(changed) } ?: Rect(changed)
 
-    private fun commitRasterLayerPatch(raster: Bitmap, dirtyBounds: Rect?) {
+    private fun commitRasterLayerPatch(
+        raster: Bitmap,
+        dirtyBounds: Rect?,
+        workingSurfaceAlreadyUpdated: Boolean = false,
+    ) {
         val dirty = dirtyBounds ?: return
         val patch = RasterLayerPatch.capture(activeLayerId, raster, dirty) ?: return
+        if (!workingSurfaceAlreadyUpdated) {
+            rasterLayerTileSurfaces[activeLayerId]?.let { surface ->
+                replacePixelTileSurfaceRegion(
+                    surface,
+                    app.inkloom.engine.v3.surface.PixelRect(patch.left, patch.top, patch.right, patch.bottom),
+                    patch.bitmap,
+                ).close()
+            }
+        }
         val callback = onRasterLayerCommitted
         if (callback == null) patch.close() else callback(patch)
     }
@@ -1204,9 +1220,17 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private var rasterLayerBitmaps: Map<String, Bitmap> = emptyMap()
+    private val rasterLayerTileSurfaces = mutableMapOf<String, PixelTileSurface>()
 
     fun setRasterLayerBitmaps(value: Map<String, Bitmap>) {
         if (rasterLayerBitmaps != value) {
+            val previous = rasterLayerBitmaps
+            rasterLayerTileSurfaces.keys.retainAll(value.keys)
+            value.forEach { (layerId, bitmap) ->
+                if (previous[layerId] !== bitmap || rasterLayerTileSurfaces[layerId] == null) {
+                    rasterLayerTileSurfaces[layerId] = importPixelTileSurface(bitmap)
+                }
+            }
             rasterLayerBitmaps = value
             resetStrokeTiles()
         }
@@ -4957,10 +4981,17 @@ class InkCanvasView(context: Context) : View(context) {
         hasPendingSmudge = false
         rasterBlendSession?.close()
         rasterBlendSession = null
+        rasterTileBlendSession?.close()
+        rasterTileBlendSession = null
         rasterBlendBitmap = rasterLayerBitmaps[activeLayerId]?.takeUnless(Bitmap::isRecycled)
         val raster = rasterBlendBitmap
         if (raster != null) {
-            rasterBlendSession = RasterBlendSession(raster, selectionMaskForDisplay())
+            val tileSurface = rasterLayerTileSurfaces[activeLayerId]
+            if (tileSurface != null && tileSurface.logicalWidth == raster.width && tileSurface.logicalHeight == raster.height) {
+                rasterTileBlendSession = RasterTileBlendSession(tileSurface, raster, selectionMaskForDisplay())
+            } else {
+                rasterBlendSession = RasterBlendSession(raster, selectionMaskForDisplay())
+            }
             smudgeBefore = null
             localToolStrokeIndices.clear()
         } else {
@@ -4993,7 +5024,33 @@ class InkCanvasView(context: Context) : View(context) {
         val x = normalizedX.coerceIn(0f, 1f)
         val y = normalizedY.coerceIn(0f, 1f)
         val raster = rasterBlendBitmap
+        val tileSession = rasterTileBlendSession
         val rasterSession = rasterBlendSession
+        if (raster != null && tileSession != null) {
+            val radius = (gestureBrushSize.coerceIn(.01f, 800f) / REFERENCE_WIDTH * raster.width).coerceAtLeast(.125f)
+            val dirty = tileSession.blend(
+                smudgeLastX * raster.width,
+                smudgeLastY * raster.height,
+                x * raster.width,
+                y * raster.height,
+                radius,
+                (.3f + brushColorMix.coerceIn(0f, 1f) * .7f),
+                brushHardness,
+            )
+            if (dirty != null) {
+                smudgeChanged = true
+                smudgeDirtyBounds = mergeDirtyBounds(smudgeDirtyBounds, dirty)
+                invalidate(
+                    (dirty.left * width.toFloat() / raster.width).toInt() - 2,
+                    (dirty.top * height.toFloat() / raster.height).toInt() - 2,
+                    (dirty.right * width.toFloat() / raster.width).toInt() + 2,
+                    (dirty.bottom * height.toFloat() / raster.height).toInt() + 2,
+                )
+            }
+            smudgeLastX = x
+            smudgeLastY = y
+            return
+        }
         if (raster != null && rasterSession != null) {
             val radius = (gestureBrushSize.coerceIn(.01f, 800f) / REFERENCE_WIDTH * raster.width).coerceAtLeast(.125f)
             val dirty = rasterSession.blend(
@@ -5053,8 +5110,15 @@ class InkCanvasView(context: Context) : View(context) {
         smudgeFrameScheduled = false
         hasPendingSmudge = false
         val raster = rasterBlendBitmap
+        val tileSession = rasterTileBlendSession
         val session = rasterBlendSession
-        if (raster != null && session != null) {
+        if (raster != null && tileSession != null) {
+            if (smudgeChanged) {
+                tileSession.commit().close()
+                commitRasterLayerPatch(raster, smudgeDirtyBounds, workingSurfaceAlreadyUpdated = true)
+            } else tileSession.restoreOriginal()
+            tileSession.close()
+        } else if (raster != null && session != null) {
             if (smudgeChanged) commitRasterLayerPatch(raster, smudgeDirtyBounds)
             session.close()
         } else {
@@ -5062,6 +5126,7 @@ class InkCanvasView(context: Context) : View(context) {
             if (before != null && smudgeChanged) commitStrokeEdit(before, strokes)
         }
         rasterBlendSession = null
+        rasterTileBlendSession = null
         rasterBlendBitmap = null
         smudgeBefore = null
         smudgeChanged = false
@@ -5075,7 +5140,12 @@ class InkCanvasView(context: Context) : View(context) {
         smudgeFrameScheduled = false
         hasPendingSmudge = false
         val session = rasterBlendSession
-        if (session != null) {
+        val tileSession = rasterTileBlendSession
+        if (tileSession != null) {
+            if (smudgeChanged) tileSession.restoreOriginal()
+            tileSession.close()
+            invalidate()
+        } else if (session != null) {
             if (smudgeChanged) session.restoreOriginal()
             session.close()
             invalidate()
@@ -5084,6 +5154,7 @@ class InkCanvasView(context: Context) : View(context) {
             if (before != null && smudgeChanged) restoreStrokeSnapshot(before)
         }
         rasterBlendSession = null
+        rasterTileBlendSession = null
         rasterBlendBitmap = null
         smudgeBefore = null
         smudgeChanged = false
@@ -5100,10 +5171,17 @@ class InkCanvasView(context: Context) : View(context) {
         hasPendingLiquify = false
         rasterLiquifySession?.close()
         rasterLiquifySession = null
+        rasterTileLiquifySession?.close()
+        rasterTileLiquifySession = null
         rasterLiquifyBitmap = rasterLayerBitmaps[activeLayerId]?.takeUnless(Bitmap::isRecycled)
         val raster = rasterLiquifyBitmap
         if (raster != null) {
-            rasterLiquifySession = RasterLiquifySession(raster, selectionMaskForDisplay())
+            val tileSurface = rasterLayerTileSurfaces[activeLayerId]
+            if (tileSurface != null && tileSurface.logicalWidth == raster.width && tileSurface.logicalHeight == raster.height) {
+                rasterTileLiquifySession = RasterTileLiquifySession(tileSurface, raster, selectionMaskForDisplay())
+            } else {
+                rasterLiquifySession = RasterLiquifySession(raster, selectionMaskForDisplay())
+            }
             liquifyBefore = null
             localToolStrokeIndices.clear()
         } else {
@@ -5157,7 +5235,30 @@ class InkCanvasView(context: Context) : View(context) {
         val nextX = x.coerceIn(0f, 1f)
         val nextY = y.coerceIn(0f, 1f)
         val raster = rasterLiquifyBitmap
+        val tileSession = rasterTileLiquifySession
         val rasterSession = rasterLiquifySession
+        if (raster != null && tileSession != null) {
+            val radius = (gestureBrushSize.coerceIn(.01f, 800f) / REFERENCE_WIDTH * raster.width).coerceAtLeast(.125f)
+            val dirty = tileSession.deform(
+                liquifyLastX * raster.width,
+                liquifyLastY * raster.height,
+                nextX * raster.width,
+                nextY * raster.height,
+                radius,
+                liquifyStrength * pressure.coerceIn(0f, 1f),
+                liquifyHardness,
+                liquifyMode,
+            )
+            if (dirty != null) {
+                liquifyChanged = true
+                liquifyDirtyBounds = mergeDirtyBounds(liquifyDirtyBounds, dirty)
+                postInvalidateOnAnimation()
+            }
+            liquifyLastX = nextX
+            liquifyLastY = nextY
+            liquifyPressure = pressure.coerceIn(0f, 1f)
+            return
+        }
         if (raster != null && rasterSession != null) {
             val radius = (gestureBrushSize.coerceIn(.01f, 800f) / REFERENCE_WIDTH * raster.width).coerceAtLeast(.125f)
             val dirty = rasterSession.deform(
@@ -5267,8 +5368,15 @@ class InkCanvasView(context: Context) : View(context) {
         liquifyFrameScheduled = false
         hasPendingLiquify = false
         val raster = rasterLiquifyBitmap
+        val tileSession = rasterTileLiquifySession
         val session = rasterLiquifySession
-        if (raster != null && session != null) {
+        if (raster != null && tileSession != null) {
+            if (liquifyChanged) {
+                tileSession.commit().close()
+                commitRasterLayerPatch(raster, liquifyDirtyBounds, workingSurfaceAlreadyUpdated = true)
+            } else tileSession.restoreOriginal()
+            tileSession.close()
+        } else if (raster != null && session != null) {
             if (liquifyChanged) commitRasterLayerPatch(raster, liquifyDirtyBounds)
             session.close()
         } else {
@@ -5276,6 +5384,7 @@ class InkCanvasView(context: Context) : View(context) {
             if (before != null && liquifyChanged) commitStrokeEdit(before, strokes)
         }
         rasterLiquifySession = null
+        rasterTileLiquifySession = null
         rasterLiquifyBitmap = null
         liquifyBefore = null
         liquifyHoldEligible = false
@@ -5292,7 +5401,12 @@ class InkCanvasView(context: Context) : View(context) {
         liquifyFrameScheduled = false
         hasPendingLiquify = false
         val session = rasterLiquifySession
-        if (session != null) {
+        val tileSession = rasterTileLiquifySession
+        if (tileSession != null) {
+            if (liquifyChanged) tileSession.restoreOriginal()
+            tileSession.close()
+            invalidate()
+        } else if (session != null) {
             if (liquifyChanged) session.restoreOriginal()
             session.close()
             invalidate()
@@ -5301,6 +5415,7 @@ class InkCanvasView(context: Context) : View(context) {
             if (before != null && liquifyChanged) restoreStrokeSnapshot(before)
         }
         rasterLiquifySession = null
+        rasterTileLiquifySession = null
         rasterLiquifyBitmap = null
         liquifyBefore = null
         liquifyHoldEligible = false
@@ -5854,10 +5969,17 @@ class InkCanvasView(context: Context) : View(context) {
         pendingEraserInvalidationBefore = null
         rasterEraserSession?.close()
         rasterEraserSession = null
+        rasterTileEraserSession?.close()
+        rasterTileEraserSession = null
         rasterEraserBitmap = rasterLayerBitmaps[activeLayerId]?.takeUnless(Bitmap::isRecycled)
         val raster = rasterEraserBitmap
         if (raster != null) {
-            rasterEraserSession = RasterEraserSession(raster, selectionMaskForDisplay())
+            val tileSurface = rasterLayerTileSurfaces[activeLayerId]
+            if (tileSurface != null && tileSurface.logicalWidth == raster.width && tileSurface.logicalHeight == raster.height) {
+                rasterTileEraserSession = RasterTileEraserSession(tileSurface, raster, selectionMaskForDisplay())
+            } else {
+                rasterEraserSession = RasterEraserSession(raster, selectionMaskForDisplay())
+            }
             eraserGestureBefore = null
         } else eraserGestureBefore = strokes.toList()
         rasterEraserChanged = false
@@ -5871,7 +5993,23 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun eraseAlong(x: Float, y: Float, pressure: Float) {
         val raster = rasterEraserBitmap
+        val tileSession = rasterTileEraserSession
         val session = rasterEraserSession
+        if (raster != null && tileSession != null) {
+            val targetX = x.coerceIn(0f, 1f); val targetY = y.coerceIn(0f, 1f)
+            val point = StrokePoint(targetX, targetY, pressure.coerceIn(0f, 1f), android.os.SystemClock.uptimeMillis())
+            if (rasterEraserPoints.lastOrNull()?.let { last -> last.x == point.x && last.y == point.y } != true) rasterEraserPoints += point
+            val startX = lastEraserX ?: targetX; val startY = lastEraserY ?: targetY
+            val radius = eraserRadiusPixels(pressure) * raster.width / width.coerceAtLeast(1).toFloat()
+            val dirty = tileSession.eraseSegment(startX * raster.width, startY * raster.height, targetX * raster.width, targetY * raster.height, radius, eraserOpacity, eraserHardness)
+            if (dirty != null) {
+                rasterEraserChanged = true
+                rasterEraserDirtyBounds = mergeDirtyBounds(rasterEraserDirtyBounds, dirty)
+                postInvalidateOnAnimation()
+            }
+            lastEraserX = targetX; lastEraserY = targetY
+            return
+        }
         if (raster != null && session != null) {
             val targetX = x.coerceIn(0f, 1f); val targetY = y.coerceIn(0f, 1f)
             val point = StrokePoint(targetX, targetY, pressure.coerceIn(0f, 1f), android.os.SystemClock.uptimeMillis())
@@ -5897,7 +6035,7 @@ class InkCanvasView(context: Context) : View(context) {
     /** The latest point plus segment interpolation already covers the full path. Replaying every
      * historical point makes dense Android input packets erase the same area repeatedly. */
     private fun eraseMotionEvent(event: MotionEvent, pointerIndex: Int) {
-        if (rasterEraserSession != null) {
+        if (rasterEraserSession != null || rasterTileEraserSession != null) {
             eraseAlong(event.getX(pointerIndex) / width.coerceAtLeast(1), event.getY(pointerIndex) / height.coerceAtLeast(1), event.getPressure(pointerIndex))
             return
         }
@@ -6030,8 +6168,55 @@ class InkCanvasView(context: Context) : View(context) {
         eraserInvalidationScheduled = false
         flushEraserInvalidation()
         val raster = rasterEraserBitmap
+        val tileSession = rasterTileEraserSession
         val session = rasterEraserSession
-        if (raster != null && session != null) {
+        if (raster != null && tileSession != null) {
+            if (rasterEraserChanged) {
+                // Discard the low-cost round preview, then authoritatively replay the imported or
+                // configured eraser descriptor into one sparse-tile transaction.
+                tileSession.restoreOriginal()
+                rasterEraserDirtyBounds = null
+                val eraserStroke = withCurrentBrushBehavior(buildStroke(rasterEraserPoints)).copy(
+                    engineKind = BrushEngineKind.ERASE_MASK,
+                    grainMovement = grainMovement,
+                    grainZoom = grainZoom,
+                    width = gestureEraserSize,
+                    opacity = eraserOpacity,
+                    hardness = eraserHardness,
+                    tipAssetPath = eraserTipAssetPath ?: tipAssetPath,
+                    tipAssetPaths = listOfNotNull(eraserTipAssetPath ?: tipAssetPath).ifEmpty { tipAssetPaths },
+                    watercolor = false,
+                    colorMix = 0f,
+                    paintMix = 0f,
+                )
+                val surface = rasterLayerTileSurfaces[activeLayerId]
+                val strokePatch = renderRasterStrokePatch(raster, listOf(eraserStroke))
+                if (surface != null && strokePatch != null) {
+                    val bounds = Rect(
+                        strokePatch.left,
+                        strokePatch.top,
+                        strokePatch.left + strokePatch.bitmap.width,
+                        strokePatch.top + strokePatch.bitmap.height,
+                    )
+                    RasterTileEditSession(surface, raster, "authored raster eraser").use { exact ->
+                        exact.edit(app.inkloom.engine.v3.surface.PixelRect(bounds.left, bounds.top, bounds.right, bounds.bottom)) { destination ->
+                            Canvas(destination).drawBitmap(strokePatch.bitmap, 0f, 0f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                                blendMode = android.graphics.BlendMode.DST_OUT
+                            })
+                        }
+                        exact.commit().close()
+                    }
+                    rasterEraserDirtyBounds = bounds
+                    strokePatch.bitmap.recycle()
+                    commitRasterLayerPatch(raster, bounds, workingSurfaceAlreadyUpdated = true)
+                } else {
+                    strokePatch?.bitmap?.recycle()
+                }
+            } else {
+                tileSession.restoreOriginal()
+            }
+            tileSession.close()
+        } else if (raster != null && session != null) {
             if (rasterEraserChanged) {
                 // The capsule session provides immediate feedback. Rebuild the final mask with the
                 // same V3 descriptor used by imported paint brushes so custom eraser tips, spacing,
@@ -6067,7 +6252,7 @@ class InkCanvasView(context: Context) : View(context) {
             }
             session.close()
         } else eraserGestureBefore?.let { commitStrokeEdit(it, strokes) }
-        rasterEraserSession = null; rasterEraserBitmap = null; rasterEraserChanged = false; rasterEraserDirtyBounds = null
+        rasterEraserSession = null; rasterTileEraserSession = null; rasterEraserBitmap = null; rasterEraserChanged = false; rasterEraserDirtyBounds = null
         rasterEraserPoints.clear()
         eraserGestureBefore = null
         lastEraserX = null
@@ -6083,12 +6268,16 @@ class InkCanvasView(context: Context) : View(context) {
         removeCallbacks(eraserInvalidationFrame)
         eraserInvalidationScheduled = false
         pendingEraserInvalidationBefore = null
-        rasterEraserSession?.let { session ->
+        rasterTileEraserSession?.let { session ->
+            if (rasterEraserChanged) session.restoreOriginal()
+            session.close()
+            invalidate()
+        } ?: rasterEraserSession?.let { session ->
             if (rasterEraserChanged) session.restoreOriginal()
             session.close()
             invalidate()
         } ?: eraserGestureBefore?.let(::restoreStrokeSnapshot)
-        rasterEraserSession = null; rasterEraserBitmap = null; rasterEraserChanged = false; rasterEraserDirtyBounds = null
+        rasterEraserSession = null; rasterTileEraserSession = null; rasterEraserBitmap = null; rasterEraserChanged = false; rasterEraserDirtyBounds = null
         rasterEraserPoints.clear()
         eraserGestureBefore = null
         lastEraserX = null

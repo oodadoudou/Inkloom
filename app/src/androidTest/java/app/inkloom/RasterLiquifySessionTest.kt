@@ -7,6 +7,9 @@ import android.graphics.Paint
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.document.LiquifyMode
 import app.inkloom.engine.v3.tools.RasterLiquifySession
+import app.inkloom.engine.v3.tools.RasterTileLiquifySession
+import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
+import app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -15,6 +18,30 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class RasterLiquifySessionTest {
+    @Test fun tileLiquifyCommitsAndUndoesOneAtomicDeformation() {
+        val display = fixture()
+        val original = checksum(display)
+        val surface = PixelTileBitmapAdapter.import(display)
+        val session = RasterTileLiquifySession(surface, display)
+        assertTrue(session.deform(75f, 90f, 135f, 90f, 68f, 1f, .3f, LiquifyMode.PUSH) != null)
+        assertNotEquals(original, checksum(display))
+        val unpublished = PixelTileBitmapAdapter.render(surface.snapshot())
+        assertEquals("Published tiles stay at gesture-start until commit", original, checksum(unpublished))
+        unpublished.recycle()
+
+        val record = session.commit()
+        val committed = PixelTileBitmapAdapter.render(surface.snapshot())
+        assertNotEquals(original, checksum(committed))
+        committed.recycle()
+        surface.apply(record, HistoryDirection.UNDO)
+        val undone = PixelTileBitmapAdapter.render(surface.snapshot())
+        assertEquals(original, checksum(undone))
+        undone.recycle()
+        record.close()
+        session.close()
+        display.recycle()
+    }
+
     @Test fun penDownDoesNotCopyThePageAndFirstDeformBacksUpOnlyDirtyTiles() {
         val bitmap = Bitmap.createBitmap(4096, 4096, Bitmap.Config.ARGB_8888).apply {
             eraseColor(Color.rgb(80, 100, 120))

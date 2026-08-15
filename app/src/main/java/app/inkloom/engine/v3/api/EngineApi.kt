@@ -22,14 +22,32 @@ internal typealias EngineTransactionJournal = app.inkloom.engine.v3.scene.Engine
 internal typealias SparseAlphaMask = app.inkloom.engine.v3.scene.SparseAlphaMask
 internal typealias SparseTileScene = app.inkloom.engine.v3.scene.SparseTileScene
 internal typealias SparseTileDebugSnapshot = app.inkloom.engine.v3.scene.SparseTileScene.DebugSnapshot
+internal typealias PixelTileSurface = app.inkloom.engine.v3.surface.PixelTileSurface
+internal typealias PixelTileTransactionRecord = app.inkloom.engine.v3.surface.PixelTileTransactionRecord
 
 internal typealias NativeRasterOps = app.inkloom.engine.v3.tools.NativeRasterOps
 internal typealias RasterBlendSession = app.inkloom.engine.v3.tools.RasterBlendSession
+internal typealias RasterTileBlendSession = app.inkloom.engine.v3.tools.RasterTileBlendSession
 internal typealias RasterEraserSession = app.inkloom.engine.v3.tools.RasterEraserSession
+internal typealias RasterTileEraserSession = app.inkloom.engine.v3.tools.RasterTileEraserSession
 internal typealias RasterLiquifySession = app.inkloom.engine.v3.tools.RasterLiquifySession
+internal typealias RasterTileLiquifySession = app.inkloom.engine.v3.tools.RasterTileLiquifySession
 internal typealias RasterLayerPatch = app.inkloom.engine.v3.tools.RasterLayerPatch
+internal typealias RasterTileEditSession = app.inkloom.engine.v3.tools.RasterTileEditSession
 internal typealias RasterWetPaintMixer = app.inkloom.engine.v3.tools.RasterWetPaintMixer
 internal typealias RasterWetPaintSession = app.inkloom.engine.v3.tools.RasterWetPaintSession
+
+internal fun importPixelTileSurface(bitmap: android.graphics.Bitmap): PixelTileSurface =
+    app.inkloom.engine.v3.android.PixelTileBitmapAdapter.import(bitmap)
+
+internal fun replacePixelTileSurfaceRegion(
+    surface: PixelTileSurface,
+    destination: app.inkloom.engine.v3.surface.PixelRect,
+    bitmap: android.graphics.Bitmap,
+): PixelTileTransactionRecord = surface.beginWrite("synchronize raster display mirror").run {
+    app.inkloom.engine.v3.android.PixelTileBitmapAdapter.replaceRegion(this, destination, bitmap)
+    commit()
+}
 
 internal inline fun <T> traceEngineV3(section: String, block: () -> T): T =
     app.inkloom.engine.v3.diagnostics.traceEngineV3(section, block)
