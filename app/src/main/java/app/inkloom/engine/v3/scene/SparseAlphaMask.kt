@@ -11,6 +11,8 @@ import app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot
 import app.inkloom.engine.v3.surface.PixelRect
 import app.inkloom.engine.v3.surface.PixelTileKey
 import app.inkloom.engine.v3.tools.NativeRasterOps
+import app.inkloom.document.SelectionMaskCompositor
+import kotlin.math.ceil
 
 /**
  * Android compatibility facade over the V3 one-byte [MaskTileSurface].
@@ -121,6 +123,47 @@ internal class SparseAlphaMask private constructor(
                     composeAlpha(region, bitmapAlpha(output), mode = MaskComposeMode.ADD)
                 } finally {
                     input.recycle()
+                    output.recycle()
+                }
+            }
+            commit().close()
+        }
+        return result.takeUnless(MaskTileSurface::isEmpty)?.let(::SparseAlphaMask)
+    }
+
+    /** Feathering is evaluated once over merged sparse islands, preventing per-region seams. */
+    fun feathered(radius: Float): SparseAlphaMask? = filtered(
+        halo = ceil(radius.coerceAtLeast(0f) * 4f).toInt().coerceAtLeast(1),
+        label = "feather selection",
+    ) { input -> SelectionMaskCompositor.feather(input, radius, input.width.toFloat()) }
+
+    /** Two-sided marching-ants alpha generated with a one-pixel source halo. */
+    fun boundary(): SparseAlphaMask? = filtered(halo = 1, label = "selection boundary") { input ->
+        Bitmap.createBitmap(input.width, input.height, Bitmap.Config.ARGB_8888).let { output ->
+            if (NativeRasterOps.boundaryAlpha(input, output)) output else run { output.recycle(); null }
+        }
+    }
+
+    private fun filtered(
+        halo: Int,
+        label: String,
+        operation: (Bitmap) -> Bitmap?,
+    ): SparseAlphaMask? {
+        val source = surface.snapshot()
+        if (source.isEmpty) return null
+        val logical = PixelRect(0, 0, width, height)
+        val regions = mergeTouchingRects(source.tileInfo.map { info ->
+            val tile = tileRect(info.key)
+            PixelRect(tile.left - halo, tile.top - halo, tile.right + halo, tile.bottom + halo).intersect(logical)
+        })
+        val result = MaskTileSurface(width, height, surface.tileSize)
+        result.beginWrite(label).run {
+            regions.forEach { region ->
+                val input = bitmapFrom(source, region)
+                val output = try { operation(input) } finally { input.recycle() }
+                if (output != null) try {
+                    composeAlpha(region, bitmapAlpha(output), mode = MaskComposeMode.ADD)
+                } finally {
                     output.recycle()
                 }
             }

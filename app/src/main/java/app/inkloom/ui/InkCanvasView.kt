@@ -279,9 +279,8 @@ class InkCanvasView(context: Context) : View(context) {
     private var selectedMaskRegions: List<List<StrokePoint>> = emptyList()
     private var documentSelectionState: DocumentSelectionState? = null
     private var selectionAlphaMask: SparseAlphaMask? = null
-    private var selectionDisplayBitmap: Bitmap? = null
-    private var selectionBoundaryBitmap: Bitmap? = null
-    private var featheredSelectionAlphaMask: SparseAlphaMask? = null
+    private var selectionDisplayMask: SparseAlphaMask? = null
+    private var selectionBoundaryMask: SparseAlphaMask? = null
     private var lastDeselectedStrokeIds: Set<String> = emptySet()
     private var lastDeselectedMaskRegions: List<List<StrokePoint>> = emptyList()
     private var lastDeselectedAlphaMask: SparseAlphaMask? = null
@@ -1470,23 +1469,23 @@ class InkCanvasView(context: Context) : View(context) {
         ((SystemClock.uptimeMillis() / SELECTION_ANTS_FRAME_MS) % selectionAntPattern.width).toFloat()
 
     private fun drawCommittedSelectionBoundary(canvas: Canvas) {
-        val boundary = selectionBoundaryBitmap?.takeUnless(Bitmap::isRecycled) ?: return
+        val boundary = selectionBoundaryMask ?: return
         selectionBoundaryRect.set(0f, 0f, width.toFloat(), height.toFloat())
         if (tool == EditorTool.SELECT) {
-            selectionMaskForDisplay()?.takeUnless(Bitmap::isRecycled)?.let { selected ->
+            selectionDisplayMask?.let { selected ->
                 val protectedCheckpoint = canvas.saveLayer(selectionBoundaryRect, null)
                 selectionProtectedMatrix.reset()
                 selectionProtectedMatrix.setTranslate(selectionAntPhase() * .5f, selectionAntPhase() * .5f)
                 selectionProtectedShader.setLocalMatrix(selectionProtectedMatrix)
                 canvas.drawRect(selectionBoundaryRect, selectionProtectedPaint)
-                canvas.drawBitmap(selected, null, selectionBoundaryRect, selectionCutoutPaint)
+                selected.draw(canvas, selectionBoundaryRect, selectionCutoutPaint)
                 canvas.restoreToCount(protectedCheckpoint)
             }
         }
-        canvas.drawBitmap(boundary, null, selectionBoundaryRect, selectionBoundaryPaint)
+        boundary.draw(canvas, selectionBoundaryRect, selectionBoundaryPaint)
 
         val checkpoint = canvas.saveLayer(selectionBoundaryRect, null)
-        canvas.drawBitmap(boundary, null, selectionBoundaryRect, selectionMaskPaint)
+        boundary.draw(canvas, selectionBoundaryRect, selectionMaskPaint)
         selectionAntMatrix.reset()
         selectionAntMatrix.setTranslate(selectionAntPhase(), 0f)
         selectionAntShader.setLocalMatrix(selectionAntMatrix)
@@ -4551,17 +4550,20 @@ class InkCanvasView(context: Context) : View(context) {
         var y1 = end.y * height
         if (hypot((x1 - x0).toDouble(), (y1 - y0).toDouble()) < 1.0) x1 = x0 + 1f
         paint.style = Paint.Style.FILL
+        val selectionMask = selectionDisplayMask
+        val previewCheckpoint = if (selectionMask != null) canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null) else -1
+        if (selectionMask != null) {
+            paint.alpha = 255
+            paint.color = Color.WHITE
+            selectionMask.draw(canvas, android.graphics.RectF(0f, 0f, width.toFloat(), height.toFloat()), paint)
+            paint.blendMode = BlendMode.SRC_IN
+        }
         paint.alpha = (inkOpacity * 210f).toInt().coerceIn(0, 255)
         paint.isDither = gradientDefinition.dither
         paint.shader = GradientShaderFactory.create(gradientDefinition, x0, y0, x1, y1)
-        val selectionMask = selectionMaskForDisplay()
-        val previewCheckpoint = if (selectionMask != null) canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null) else -1
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
         paint.shader = null
         if (selectionMask != null) {
-            paint.alpha = 255
-            paint.blendMode = BlendMode.DST_IN
-            canvas.drawBitmap(selectionMask, null, android.graphics.RectF(0f, 0f, width.toFloat(), height.toFloat()), paint)
             paint.blendMode = null
             canvas.restoreToCount(previewCheckpoint)
         }
@@ -5006,7 +5008,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun beginFillGesture(normalizedX: Float, normalizedY: Float, rawX: Float) {
         ensureSelectionAlphaFromSelectedStrokes()
-        fillGestureUsesSelection = !SelectionMaskCompositor.isEmpty(selectionMaskForDisplay())
+        fillGestureUsesSelection = hasSelection()
         if (fillGestureUsesSelection) {
             fillBaseSensitivity = fillSensitivity
             fillSensitivityNow = fillBaseSensitivity
@@ -5043,7 +5045,7 @@ class InkCanvasView(context: Context) : View(context) {
     private fun recomputeFillPreview(force: Boolean) {
         if (fillGestureUsesSelection) {
             fillPreviewMask?.recycle()
-            fillPreviewMask = selectionMaskForDisplay()?.copy(Bitmap.Config.ARGB_8888, false)
+            fillPreviewMask = selectionDisplayMask?.snapshot()
             fillPreviewLeft = 0f
             fillPreviewTop = 0f
             fillPreviewWidth = if (fillPreviewMask == null) 0f else 1f
@@ -5066,14 +5068,13 @@ class InkCanvasView(context: Context) : View(context) {
             areaScalingPixels = (fillAreaScalingPixels * modelToSample).toInt(),
         )
         fillPreviewMask?.recycle()
-        val selection = selectionMaskForDisplay()
         fillPreviewMask = if (result.isEmpty) null else SelectionMaskCompositor.clipRegion(
             result.mask,
             result.left,
             result.top,
             source.width,
             source.height,
-            selection,
+            null,
         )
         result.mask.recycle()
         val safeWidth = source.width.coerceAtLeast(1).toFloat()
@@ -5151,14 +5152,12 @@ class InkCanvasView(context: Context) : View(context) {
             strokeJoin = Paint.Join.ROUND
         }
         maskCanvas.drawPath(path, maskPaint)
-        val fullMask = SelectionMaskCompositor.clipRegion(
-            drawnMask,
-            0,
-            0,
-            bitmapWidth,
-            bitmapHeight,
-            selectionMaskForDisplay(),
-        )
+        val selection = selectionDisplayMask?.snapshot()
+        val fullMask = try {
+            SelectionMaskCompositor.clipRegion(drawnMask, 0, 0, bitmapWidth, bitmapHeight, selection)
+        } finally {
+            selection?.recycle()
+        }
         drawnMask.recycle()
         if (fullMask == null) {
             fillGesturePoints.clear()
@@ -6789,39 +6788,33 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun rebuildSelectionDerivedState() {
-        selectionDisplayBitmap?.recycle()
-        selectionBoundaryBitmap?.recycle()
-        featheredSelectionAlphaMask?.close()
-        featheredSelectionAlphaMask = null
-        val base = selectionAlphaMask?.snapshot()
+        selectionDisplayMask?.takeUnless { it === selectionAlphaMask }?.close()
+        selectionBoundaryMask?.close()
+        val base = selectionAlphaMask
         if (base == null) {
-            selectionDisplayBitmap = null
-            selectionBoundaryBitmap = null
+            selectionDisplayMask = null
+            selectionBoundaryMask = null
         } else if (selectionFeatherPixels > 0f) {
-            selectionDisplayBitmap = SelectionMaskCompositor.feather(base, selectionFeatherPixels, pageModelWidth)
-            selectionBoundaryBitmap = SelectionMaskCompositor.boundaryMask(base)
-            base.recycle()
-            featheredSelectionAlphaMask = SparseAlphaMask.fromBitmap(selectionDisplayBitmap)
+            val radius = selectionFeatherPixels * base.width / pageModelWidth.coerceAtLeast(1f)
+            selectionDisplayMask = base.feathered(radius)
+            selectionBoundaryMask = base.boundary()
         } else {
-            selectionDisplayBitmap = base
-            selectionBoundaryBitmap = SelectionMaskCompositor.boundaryMask(base)
+            selectionDisplayMask = base
+            selectionBoundaryMask = base.boundary()
         }
         notifySelectionActiveChanged()
         invalidate()
     }
 
-    private fun selectionMaskForDisplay(): Bitmap? =
-        selectionDisplayBitmap?.takeUnless(Bitmap::isRecycled)
-
     /** Authoritative selection sampled by raster tools without an entire-page Bitmap bridge. */
     private fun selectionMaskForRasterTools(): MaskTileSurfaceSnapshot? {
         ensureSelectionAlphaFromSelectedStrokes()
-        return (featheredSelectionAlphaMask ?: selectionAlphaMask)?.surface?.snapshot()
+        return selectionDisplayMask?.surface?.snapshot()
     }
 
     private fun selectionMaskSnapshot(): Bitmap? {
         ensureSelectionAlphaFromSelectedStrokes()
-        return selectionMaskForDisplay()?.copy(Bitmap.Config.ARGB_8888, false)
+        return selectionDisplayMask?.snapshot()
     }
 
     fun fillSelection(): Boolean {
@@ -6840,9 +6833,8 @@ class InkCanvasView(context: Context) : View(context) {
         selectedMaskRegions = emptyList()
         documentSelectionState?.replaceFrom(null)
         selectionAlphaMask?.close(); selectionAlphaMask = null
-        selectionDisplayBitmap?.recycle(); selectionDisplayBitmap = null
-        selectionBoundaryBitmap?.recycle(); selectionBoundaryBitmap = null
-        featheredSelectionAlphaMask?.close(); featheredSelectionAlphaMask = null
+        selectionDisplayMask?.takeUnless { it === selectionAlphaMask }?.close(); selectionDisplayMask = null
+        selectionBoundaryMask?.close(); selectionBoundaryMask = null
         selectionFeatherPixels = 0f
         if (clearHistory) {
             lastDeselectedStrokeIds = emptySet()
