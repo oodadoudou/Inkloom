@@ -8,6 +8,7 @@ import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.RectF
 
+/** Read-only compatibility renderer for documents created before sparse V3 layer masks. */
 object LayerMaskRenderer {
     /** Projects only regions intersecting the current dirty/visible clip into the mask layer. */
     fun draw(canvas: Canvas, mask: LayerMask, width: Int, height: Int) {
