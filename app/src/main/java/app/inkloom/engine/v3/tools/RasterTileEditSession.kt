@@ -22,10 +22,12 @@ class RasterTileEditSession(
     private val surface: PixelTileSurface,
     private val displayBitmap: Bitmap,
     label: String,
+    private val mirrorWrites: Boolean = true,
+    private val publishDirtyOnCommit: Boolean = !mirrorWrites,
 ) : AutoCloseable {
     private val original: app.inkloom.engine.v3.surface.PixelTileSurfaceSnapshot
     private val transaction: app.inkloom.engine.v3.surface.PixelTileWriteTransaction
-    private val displayCanvas: Canvas
+    private val displayCanvas: Canvas?
     private val sourcePaint = Paint().apply {
         xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC)
     }
@@ -39,7 +41,7 @@ class RasterTileEditSession(
         }
         original = surface.snapshot()
         transaction = surface.beginWrite(label)
-        displayCanvas = Canvas(displayBitmap)
+        displayCanvas = if (mirrorWrites || publishDirtyOnCommit) Canvas(displayBitmap) else null
     }
 
     val dirtyBounds: PixelRect? get() = dirty
@@ -55,11 +57,8 @@ class RasterTileEditSession(
         try {
             operation(scratch)
             PixelTileBitmapAdapter.replaceRegion(transaction, clipped, scratch)
-            displayCanvas.drawBitmap(
-                scratch,
-                null,
-                Rect(clipped.left, clipped.top, clipped.right, clipped.bottom),
-                sourcePaint,
+            if (mirrorWrites) displayCanvas?.drawBitmap(
+                scratch, null, Rect(clipped.left, clipped.top, clipped.right, clipped.bottom), sourcePaint,
             )
         } finally {
             scratch.recycle()
@@ -87,9 +86,8 @@ class RasterTileEditSession(
         try {
             operation(sample, clippedSample, output)
             PixelTileBitmapAdapter.replaceRegion(transaction, clippedDestination, output)
-            displayCanvas.drawBitmap(
-                output,
-                null,
+            if (mirrorWrites) displayCanvas?.drawBitmap(
+                output, null,
                 Rect(clippedDestination.left, clippedDestination.top, clippedDestination.right, clippedDestination.bottom),
                 sourcePaint,
             )
@@ -117,9 +115,8 @@ class RasterTileEditSession(
         try {
             operation(sample, clippedSample, output)
             PixelTileBitmapAdapter.replaceRegion(transaction, clippedDestination, output)
-            displayCanvas.drawBitmap(
-                output,
-                null,
+            if (mirrorWrites) displayCanvas?.drawBitmap(
+                output, null,
                 Rect(clippedDestination.left, clippedDestination.top, clippedDestination.right, clippedDestination.bottom),
                 sourcePaint,
             )
@@ -134,16 +131,29 @@ class RasterTileEditSession(
     fun commit(): PixelTileTransactionRecord {
         requireActive()
         state = State.COMMITTED
-        return transaction.commit()
+        val record = transaction.commit()
+        if (publishDirtyOnCommit) dirty?.takeUnless(PixelRect::isEmpty)?.let { changed ->
+            val published = PixelTileBitmapAdapter.render(surface.snapshot(), changed)
+            try {
+                displayCanvas?.drawBitmap(
+                    published, null,
+                    Rect(changed.left, changed.top, changed.right, changed.bottom),
+                    sourcePaint,
+                )
+            } finally {
+                published.recycle()
+            }
+        }
+        return record
     }
 
     fun cancel() {
         requireActive()
         transaction.cancel()
-        dirty?.takeUnless(PixelRect::isEmpty)?.let { changed ->
+        if (mirrorWrites) dirty?.takeUnless(PixelRect::isEmpty)?.let { changed ->
             val restored = PixelTileBitmapAdapter.render(original, changed)
             try {
-                displayCanvas.drawBitmap(
+                displayCanvas?.drawBitmap(
                     restored,
                     null,
                     Rect(changed.left, changed.top, changed.right, changed.bottom),

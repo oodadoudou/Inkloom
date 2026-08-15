@@ -29,8 +29,15 @@ class RasterTilePaintSession(
     private val displayBitmap: Bitmap,
     selectionMask: Bitmap? = null,
     private val preserveDestinationAlpha: Boolean = false,
+    mirrorWrites: Boolean = true,
 ) : AutoCloseable {
-    private val edits = RasterTileEditSession(surface, displayBitmap, "raster paint")
+    private val edits = RasterTileEditSession(
+        surface,
+        displayBitmap,
+        "raster paint",
+        mirrorWrites = mirrorWrites,
+        publishDirtyOnCommit = !mirrorWrites,
+    )
     private val selection = RasterSelectionMask(selectionMask, surface.logicalWidth, surface.logicalHeight)
     private var sourceBitmap: Bitmap? = null
     private var sourceCanvas: Canvas? = null

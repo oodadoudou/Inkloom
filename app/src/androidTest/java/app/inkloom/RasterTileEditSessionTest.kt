@@ -70,4 +70,24 @@ class RasterTileEditSessionTest {
         assertEquals(Color.GREEN, surface.pixelAt(50, 50))
         display.recycle()
     }
+
+    @Test fun deferredMirrorPublishesOnlyAfterTheAtomicTileCommit() {
+        val display = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+        val surface = PixelTileBitmapAdapter.import(display)
+        val session = RasterTileEditSession(
+            surface,
+            display,
+            "front-buffered paint",
+            mirrorWrites = false,
+            publishDirtyOnCommit = true,
+        )
+        session.edit(PixelRect(110, 120, 190, 210)) { scratch -> Canvas(scratch).drawColor(Color.BLUE) }
+
+        assertEquals("The stable display must not double-composite live front-buffer ink", Color.RED, display.getPixel(150, 160))
+        assertEquals("The published surface remains atomic until commit", Color.RED, surface.pixelAt(150, 160))
+        val record = session.commit()
+        assertEquals(Color.BLUE, surface.pixelAt(150, 160))
+        assertEquals("Commit publishes just the dirty projection into the stable display", Color.BLUE, display.getPixel(150, 160))
+        record.close(); session.close(); display.recycle()
+    }
 }
