@@ -3,11 +3,14 @@ package app.inkloom
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ColorSpace
 import android.graphics.RectF
 import android.graphics.RenderNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.engine.v3.android.PixelTileCanvasRenderer
 import app.inkloom.engine.v3.surface.PixelRect
+import app.inkloom.engine.v3.surface.LinearRgba
+import app.inkloom.engine.v3.surface.PixelTileFormat
 import app.inkloom.engine.v3.surface.PixelTileKey
 import app.inkloom.engine.v3.surface.PixelTileSurface
 import org.junit.Assert.assertEquals
@@ -17,6 +20,33 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class PixelTileCanvasRendererTest {
+    @Test fun f16SparseTileProjectionRetainsLinearExtendedColorAndEightByteCacheAccounting() {
+        val surface = PixelTileSurface(
+            logicalWidth = 128,
+            logicalHeight = 128,
+            tileSize = 64,
+            pixelFormat = PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16,
+        )
+        surface.beginWrite("linear projection").run {
+            setLinearPixel(32, 32, LinearRgba(2f, .25f, .5f, 1f))
+            commit().close()
+        }
+        val output = Bitmap.createBitmap(
+            128,
+            128,
+            Bitmap.Config.RGBA_F16,
+            true,
+            ColorSpace.get(ColorSpace.Named.LINEAR_EXTENDED_SRGB),
+        )
+        PixelTileCanvasRenderer(maximumCacheBytes = 64L * 64 * 8).use { renderer ->
+            renderer.draw(Canvas(output), surface.snapshot(), RectF(0f, 0f, 128f, 128f))
+            assertEquals(2f, output.getColor(32, 32).red(), .01f)
+            assertEquals(64L * 64 * 8, renderer.retainedByteSize)
+            assertEquals(1, renderer.retainedTileCount)
+        }
+        output.recycle()
+    }
+
     @Test fun fiftyLayer8192ProjectionReusesGpuTilesWithinFrameBudget() {
         val surfaces = List(50) { index ->
             PixelTileSurface(8192, 8192, tileSize = 128).also { surface ->
