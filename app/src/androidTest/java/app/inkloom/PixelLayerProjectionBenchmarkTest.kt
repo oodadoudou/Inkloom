@@ -149,6 +149,17 @@ class PixelLayerProjectionBenchmarkTest {
             val output = Bitmap.createBitmap(1024, 1024, Bitmap.Config.ARGB_8888)
             try {
                 view.draw(Canvas(output))
+                // Compile/JNI/cache warm-up is excluded from the steady-state interaction gate.
+                // Cold-start rendering has its own launch tests and should not make this percentile
+                // depend on emulator JIT scheduling.
+                repeat(5) { iteration ->
+                    layers.last().beginWrite("production projection warmup").run {
+                        setPixel(20 * 64 + iteration, 20 * 64 + iteration, 0x80401020.toInt() + iteration)
+                        commit().close()
+                    }
+                    view.draw(Canvas(output))
+                    assertEquals(1, view.lastRasterProjectionRecomposedTileCount)
+                }
                 val changedTimes = List(20) { iteration ->
                     layers.last().beginWrite("production dirty tile").run {
                         setPixel(20 * 64 + iteration, 20 * 64 + iteration, 0x80600020.toInt() + iteration)

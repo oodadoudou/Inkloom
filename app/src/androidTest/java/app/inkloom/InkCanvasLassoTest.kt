@@ -49,12 +49,10 @@ class InkCanvasLassoTest {
         val added = requireNotNull(base.composed(region, AlphaMaskOperation.ADD))
         try {
             assertEquals(2, added.tileCount)
-            val snapshot = added.snapshot()
-            try {
-                assertEquals(Color.WHITE, snapshot.getPixel(60, 60))
-                assertEquals(Color.WHITE, snapshot.getPixel(850, 600))
-                assertEquals(Color.TRANSPARENT, snapshot.getPixel(500, 300))
-            } finally { snapshot.recycle() }
+            val snapshot = added.surface.snapshot()
+            assertEquals(255, snapshot.alphaAt(60, 60))
+            assertEquals(255, snapshot.alphaAt(850, 600))
+            assertEquals(0, snapshot.alphaAt(500, 300))
             val subtracted = requireNotNull(added.composed(region, AlphaMaskOperation.SUBTRACT))
             try {
                 assertEquals("Subtract discards the tile that became transparent", 1, subtracted.tileCount)
@@ -73,11 +71,9 @@ class InkCanvasLassoTest {
         val inverted = mask.inverted()
         try {
             assertEquals("The source island remains one explicit hole over an implicit selected default", 1, inverted.tileCount)
-            val snapshot = inverted.snapshot()
-            try {
-                assertEquals(Color.TRANSPARENT, snapshot.getPixel(100, 100))
-                assertEquals(Color.WHITE, snapshot.getPixel(400, 400))
-            } finally { snapshot.recycle() }
+            val snapshot = inverted.surface.snapshot()
+            assertEquals(0, snapshot.alphaAt(100, 100))
+            assertEquals(255, snapshot.alphaAt(400, 400))
         } finally {
             source.recycle(); mask.close(); inverted.close()
         }
@@ -92,15 +88,11 @@ class InkCanvasLassoTest {
         try {
             assertTrue("A local morph must not retain the 8x8 page tile grid", expanded.tileCount <= 4)
             assertTrue("A local morph must retain bounded pixel storage", expanded.retainedPixels < source.width.toLong() * source.height / 8L)
-            val expandedSnapshot = expanded.snapshot()
-            val shrunkSnapshot = shrunk.snapshot()
-            try {
-                assertEquals(Color.WHITE, expandedSnapshot.getPixel(965, 1_024))
-                assertEquals(Color.TRANSPARENT, shrunkSnapshot.getPixel(965, 1_024))
-                assertEquals(Color.WHITE, shrunkSnapshot.getPixel(1_024, 1_024))
-            } finally {
-                expandedSnapshot.recycle(); shrunkSnapshot.recycle()
-            }
+            val expandedSnapshot = expanded.surface.snapshot()
+            val shrunkSnapshot = shrunk.surface.snapshot()
+            assertEquals(255, expandedSnapshot.alphaAt(965, 1_024))
+            assertEquals(0, shrunkSnapshot.alphaAt(965, 1_024))
+            assertEquals(255, shrunkSnapshot.alphaAt(1_024, 1_024))
         } finally {
             source.recycle(); mask.close(); expanded.close(); shrunk.close()
         }

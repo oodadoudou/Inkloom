@@ -154,9 +154,9 @@ class FillToolTest {
         )
         val view = canvas {
             setDocumentStrokes(listOf(selectedStroke), "selection-fill")
-            onFillCommitted = { mask, x, y, width, height, _, _ ->
-                committed = mask.width > 1 && mask.height > 1 && x == 0f && y == 0f && width == pageModelWidth && height == pageModelHeight
-                mask.recycle()
+            onSparseFillCommitted = { mask, _, _ ->
+                committed = mask.logicalWidth > 1 && mask.logicalHeight > 1 &&
+                    mask.alphaAt(mask.logicalWidth / 2, mask.logicalHeight / 2) > 0
             }
         }
 
@@ -168,17 +168,15 @@ class FillToolTest {
     }
 
     @Test fun bucketTapWithActiveSelectionFillsTheWholeSelectionRegardlessOfSeed() {
-        var committedMask: Bitmap? = null
-        var bounds = FloatArray(4)
+        var committedMask: app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot? = null
         val view = canvas {
             pageModelWidth = 200f
             pageModelHeight = 200f
             fingerDrawingEnabled = true
             pagePaperColor = Color.WHITE
             selectionShape = app.inkloom.settings.SelectionShape.RECTANGLE
-            onFillCommitted = { mask, x, y, width, height, _, _ ->
+            onSparseFillCommitted = { mask, _, _ ->
                 committedMask = mask
-                bounds = floatArrayOf(x, y, width, height)
             }
         }
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
@@ -191,16 +189,10 @@ class FillToolTest {
             sendDirect(view, 80L, MotionEvent.ACTION_UP, 10f, 10f)
         }
         val mask = requireNotNull(committedMask)
-        try {
-            assertEquals(0f, bounds[0], 0f)
-            assertEquals(0f, bounds[1], 0f)
-            assertEquals(200f, bounds[2], 0f)
-            assertEquals(200f, bounds[3], 0f)
-            assertTrue(Color.alpha(mask.getPixel(mask.width / 2, mask.height / 2)) > 0)
-            assertEquals(0, Color.alpha(mask.getPixel(mask.width / 20, mask.height / 20)))
-        } finally {
-            mask.recycle()
-        }
+        assertEquals(200, mask.logicalWidth)
+        assertEquals(200, mask.logicalHeight)
+        assertTrue(mask.alphaAt(mask.logicalWidth / 2, mask.logicalHeight / 2) > 0)
+        assertEquals(0, mask.alphaAt(mask.logicalWidth / 20, mask.logicalHeight / 20))
     }
 
     @Test fun committedBucketFillIsRemovedAndRestoredAsOneHistoryAction() {

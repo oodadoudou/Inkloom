@@ -141,7 +141,9 @@ class PixelLayerProjectionCacheTest {
         )
         cache.update(inputs())
 
-        mask.beginWrite("hide left point").run { setAlpha(4, 4, 0); commit().close() }
+        // Nearest-neighbour sampling maps destination pixel centre (10.5, 10.5) to (5, 5)
+        // on this half-resolution mask.
+        mask.beginWrite("hide left point").run { setAlpha(5, 5, 0); commit().close() }
         val update = cache.update(inputs())
 
         assertEquals(1, update.recomposedTileCount)

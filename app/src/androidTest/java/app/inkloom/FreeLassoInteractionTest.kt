@@ -1,7 +1,5 @@
 package app.inkloom
 
-import android.graphics.Bitmap
-import android.graphics.Color
 import android.view.InputDevice
 import android.view.MotionEvent
 import androidx.test.core.app.ApplicationProvider
@@ -19,7 +17,7 @@ import org.junit.runner.RunWith
 class FreeLassoInteractionTest {
     @Test fun oneFingerDrawsFreeLassoInsteadOfMovingCanvasWhenFingerInkIsDisabled() {
         var panDistance = 0f
-        var selectionMask: Bitmap? = null
+        var selectionMask: app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot? = null
         val view = InkCanvasView(ApplicationProvider.getApplicationContext()).apply {
             layout(0, 0, 400, 400)
             pageModelWidth = 400f
@@ -28,7 +26,7 @@ class FreeLassoInteractionTest {
             selectionShape = SelectionShape.FREEFORM
             fingerDrawingEnabled = false
             onViewportPan = { dx, dy -> panDistance += kotlin.math.abs(dx) + kotlin.math.abs(dy) }
-            onFillCommitted = { mask, _, _, _, _, _, _ -> selectionMask = mask }
+            onSparseFillCommitted = { mask, _, _ -> selectionMask = mask }
         }
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
@@ -42,17 +40,13 @@ class FreeLassoInteractionTest {
 
         assertEquals("Free lasso must own the one-finger contact", 0f, panDistance, 0f)
         val mask = requireNotNull(selectionMask)
-        try {
-            assertTrue(Color.alpha(mask.getPixel(mask.width / 2, mask.height / 2)) > 0)
-            assertEquals(0, Color.alpha(mask.getPixel(mask.width / 20, mask.height / 20)))
-        } finally {
-            mask.recycle()
-        }
+        assertTrue(mask.alphaAt(mask.logicalWidth / 2, mask.logicalHeight / 2) > 0)
+        assertEquals(0, mask.alphaAt(mask.logicalWidth / 20, mask.logicalHeight / 20))
     }
 
     @Test fun lassoStillOwnsFingerImmediatelyAfterStylusContact() {
         var panDistance = 0f
-        var selectionMask: Bitmap? = null
+        var selectionMask: app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot? = null
         val view = InkCanvasView(ApplicationProvider.getApplicationContext()).apply {
             layout(0, 0, 400, 400)
             pageModelWidth = 400f
@@ -61,7 +55,7 @@ class FreeLassoInteractionTest {
             selectionShape = SelectionShape.FREEFORM
             fingerDrawingEnabled = false
             onViewportPan = { dx, dy -> panDistance += kotlin.math.abs(dx) + kotlin.math.abs(dy) }
-            onFillCommitted = { mask, _, _, _, _, _, _ -> selectionMask = mask }
+            onSparseFillCommitted = { mask, _, _ -> selectionMask = mask }
         }
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
@@ -76,7 +70,7 @@ class FreeLassoInteractionTest {
         }
 
         assertEquals(0f, panDistance, 0f)
-        requireNotNull(selectionMask).recycle()
+        requireNotNull(selectionMask)
     }
 
     private fun finger(view: InkCanvasView, action: Int, x: Float, y: Float, eventTime: Long) {
