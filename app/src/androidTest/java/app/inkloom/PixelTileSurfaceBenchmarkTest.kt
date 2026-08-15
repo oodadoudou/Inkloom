@@ -1,7 +1,6 @@
 package app.inkloom
 
 import android.graphics.Bitmap
-import android.os.Debug
 import android.os.SystemClock
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -9,9 +8,6 @@ import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v3.surface.PixelRect
 import app.inkloom.engine.v3.surface.PixelTileKey
 import app.inkloom.engine.v3.surface.PixelTileSurface
-import app.inkloom.engine.v3.tools.RasterBlendSession
-import app.inkloom.engine.v3.tools.RasterEraserSession
-import app.inkloom.engine.v3.tools.RasterLiquifySession
 import app.inkloom.engine.v3.tools.RasterTileBlendSession
 import app.inkloom.engine.v3.tools.RasterTileEraserSession
 import app.inkloom.engine.v3.tools.RasterTileLiquifySession
@@ -127,24 +123,6 @@ class PixelTileSurfaceBenchmarkTest {
         bitmap.recycle()
     }
 
-    @Test fun currentRasterSessionPenDownCostIsRecordedSeparatelyFromItsLocalKernel() {
-        val maxHeapBytes = Runtime.getRuntime().maxMemory()
-        Log.i(TAG, "kind=environment max_heap_bytes=$maxHeapBytes native_heap_bytes=${Debug.getNativeHeapAllocatedSize()}")
-        val dimensions = buildList {
-            add(2048)
-            add(4096)
-            // An 8K bitmap plus its mandatory session copy needs at least 512 MiB before temporary
-            // surfaces. Record it as unsupported instead of destabilising constrained CI devices.
-            if (maxHeapBytes >= 900L * 1024 * 1024) add(8192)
-            else Log.i(TAG, "kind=legacy_session canvas=8192 status=skipped reason=heap_budget")
-        }
-        dimensions.forEach { dimension ->
-            measureLegacySession("blend", dimension) { RasterBlendSession(it) }
-            measureLegacySession("eraser", dimension) { RasterEraserSession(it) }
-            measureLegacySession("liquify", dimension) { RasterLiquifySession(it) }
-        }
-    }
-
     @Test fun sparseBrushMatrixMeasuresTileSizeCanvasAndDiameterWithoutPageAllocations() {
         val canvases = intArrayOf(2048, 4096, 8192)
         val diameters = intArrayOf(10, 100, 500, 1000)
@@ -219,26 +197,6 @@ class PixelTileSurfaceBenchmarkTest {
             assertEquals(0xff000000.toInt() or (transactionCount - 1), surface.pixelAt((transactionCount - 1) % 64, (transactionCount - 1) / 64))
             records.forEach(AutoCloseable::close)
         }
-    }
-
-    private fun measureLegacySession(
-        name: String,
-        dimension: Int,
-        create: (Bitmap) -> AutoCloseable,
-    ) {
-        val bitmap = Bitmap.createBitmap(dimension, dimension, Bitmap.Config.ARGB_8888)
-        val beforeNative = Debug.getNativeHeapAllocatedSize()
-        val start = SystemClock.elapsedRealtimeNanos()
-        val session = create(bitmap)
-        val elapsedMs = (SystemClock.elapsedRealtimeNanos() - start) / 1_000_000f
-        val nativeDelta = Debug.getNativeHeapAllocatedSize() - beforeNative
-        Log.i(
-            TAG,
-            "kind=legacy_session tool=$name canvas=$dimension pen_down_ms=$elapsedMs " +
-                "minimum_rgba_bytes=${dimension.toLong() * dimension * Int.SIZE_BYTES * 2} native_delta_bytes=$nativeDelta",
-        )
-        session.close()
-        bitmap.recycle()
     }
 
     private fun paintCircle(

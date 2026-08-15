@@ -26,11 +26,8 @@ internal typealias PixelTileSurface = app.inkloom.engine.v3.surface.PixelTileSur
 internal typealias PixelTileTransactionRecord = app.inkloom.engine.v3.surface.PixelTileTransactionRecord
 
 internal typealias NativeRasterOps = app.inkloom.engine.v3.tools.NativeRasterOps
-internal typealias RasterBlendSession = app.inkloom.engine.v3.tools.RasterBlendSession
 internal typealias RasterTileBlendSession = app.inkloom.engine.v3.tools.RasterTileBlendSession
-internal typealias RasterEraserSession = app.inkloom.engine.v3.tools.RasterEraserSession
 internal typealias RasterTileEraserSession = app.inkloom.engine.v3.tools.RasterTileEraserSession
-internal typealias RasterLiquifySession = app.inkloom.engine.v3.tools.RasterLiquifySession
 internal typealias RasterTileLiquifySession = app.inkloom.engine.v3.tools.RasterTileLiquifySession
 internal typealias RasterLayerPatch = app.inkloom.engine.v3.tools.RasterLayerPatch
 internal typealias RasterTileEditSession = app.inkloom.engine.v3.tools.RasterTileEditSession

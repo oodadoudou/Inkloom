@@ -6,7 +6,6 @@ import android.graphics.Color
 import android.graphics.Paint
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.document.LiquifyMode
-import app.inkloom.engine.v3.tools.RasterLiquifySession
 import app.inkloom.engine.v3.tools.RasterTileLiquifySession
 import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection
@@ -46,10 +45,11 @@ class RasterLiquifySessionTest {
         val bitmap = Bitmap.createBitmap(4096, 4096, Bitmap.Config.ARGB_8888).apply {
             eraseColor(Color.rgb(80, 100, 120))
         }
-        RasterLiquifySession(bitmap).use { session ->
-            assertEquals(0L, session.retainedBackupByteSize)
+        val surface = PixelTileBitmapAdapter.import(bitmap)
+        RasterTileLiquifySession(surface, bitmap).use { session ->
+            assertEquals(0L, session.workingByteSize)
             session.deform(200f, 200f, 230f, 210f, 24f, .8f, .7f, LiquifyMode.PUSH)
-            assertTrue(session.retainedBackupByteSize in 1..(4L * 128 * 128 * 4))
+            assertTrue(session.workingByteSize in 1..(4L * 128 * 128 * 4))
         }
         bitmap.recycle()
     }
@@ -79,10 +79,12 @@ class RasterLiquifySessionTest {
             fun result(): Long {
                 val bitmap = fixture()
                 val before = checksum(bitmap)
-                RasterLiquifySession(bitmap).use { session ->
+                val surface = PixelTileBitmapAdapter.import(bitmap)
+                RasterTileLiquifySession(surface, bitmap).use { session ->
                     val previousX = if (mode in setOf(LiquifyMode.TWIRL_CLOCKWISE, LiquifyMode.TWIRL_COUNTERCLOCKWISE, LiquifyMode.PINCH, LiquifyMode.EXPAND, LiquifyMode.CRYSTALS)) 120f else 82f
                     val dirty = session.deform(previousX, 90f, 130f, 90f, 64f, .8f, .45f, mode)
                     assertTrue("$mode must report a dirty local region", dirty != null)
+                    session.commit().close()
                 }
                 val after = checksum(bitmap)
                 assertNotEquals("$mode must alter raster pixels", before, after)
@@ -96,7 +98,8 @@ class RasterLiquifySessionTest {
     @Test fun reconstructRestoresTouchedPixelsTowardTheGestureStartSnapshot() {
         val bitmap = fixture()
         val original = checksum(bitmap)
-        RasterLiquifySession(bitmap).use { session ->
+        val surface = PixelTileBitmapAdapter.import(bitmap)
+        RasterTileLiquifySession(surface, bitmap).use { session ->
             session.deform(75f, 90f, 135f, 90f, 68f, 1f, .3f, LiquifyMode.PUSH)
             val deformed = checksum(bitmap)
             assertNotEquals(original, deformed)
@@ -114,8 +117,10 @@ class RasterLiquifySessionTest {
         val upperBefore = checksumRows(bitmap, 0, 90)
         val lowerBefore = checksumRows(bitmap, 90, bitmap.height)
 
-        RasterLiquifySession(bitmap, selection).use { session ->
+        val surface = PixelTileBitmapAdapter.import(bitmap)
+        RasterTileLiquifySession(surface, bitmap, selection).use { session ->
             assertTrue(session.deform(82f, 90f, 130f, 90f, 64f, .8f, .45f, LiquifyMode.PUSH) != null)
+            session.commit().close()
         }
 
         assertNotEquals("Selected pixels must deform", upperBefore, checksumRows(bitmap, 0, 90))
@@ -132,7 +137,8 @@ class RasterLiquifySessionTest {
     @Test fun rasterLiquifyLocalFrameMeetsRealtimeBudget() {
         val bitmap = Bitmap.createBitmap(1200, 900, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.rgb(110, 130, 170)) }
         val times = ArrayList<Long>(96)
-        RasterLiquifySession(bitmap).use { session ->
+        val surface = PixelTileBitmapAdapter.import(bitmap)
+        RasterTileLiquifySession(surface, bitmap).use { session ->
             var previousX = 250f
             repeat(96) { index ->
                 val nextX = previousX + 3f

@@ -7,7 +7,6 @@ import android.view.MotionEvent
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import app.inkloom.engine.v3.tools.RasterEraserSession
 import app.inkloom.engine.v3.tools.RasterTileEraserSession
 import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection
@@ -43,12 +42,13 @@ class RasterEraserSessionTest {
         val bitmap = Bitmap.createBitmap(4096, 4096, Bitmap.Config.ARGB_8888).apply {
             eraseColor(Color.BLACK)
         }
-        val session = RasterEraserSession(bitmap)
+        val surface = PixelTileBitmapAdapter.import(bitmap)
+        val session = RasterTileEraserSession(surface, bitmap)
 
-        assertEquals(0L, session.retainedBackupByteSize)
+        assertEquals(0L, session.workingByteSize)
         session.eraseSegment(200f, 200f, 240f, 240f, 20f, 1f, 1f)
 
-        assertTrue(session.retainedBackupByteSize in 1..(4L * 128 * 128 * 4))
+        assertTrue(session.workingByteSize in 1..(4L * 128 * 128 * 4))
         session.close()
         bitmap.recycle()
     }
@@ -57,7 +57,8 @@ class RasterEraserSessionTest {
         val bitmap = Bitmap.createBitmap(300, 200, Bitmap.Config.ARGB_8888).apply {
             setPixel(120, 100, Color.RED)
         }
-        RasterEraserSession(bitmap).use { session ->
+        val surface = PixelTileBitmapAdapter.import(bitmap)
+        RasterTileEraserSession(surface, bitmap).use { session ->
             session.eraseSegment(100f, 100f, 140f, 100f, 30f, 1f, 1f)
             assertEquals(0, Color.alpha(bitmap.getPixel(120, 100)))
             session.restoreOriginal()
@@ -71,8 +72,10 @@ class RasterEraserSessionTest {
         val bitmap = Bitmap.createBitmap(160, 100, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
         val selection = Bitmap.createBitmap(160, 100, Bitmap.Config.ARGB_8888)
         for (y in 0 until 50) for (x in 0 until 160) selection.setPixel(x, y, Color.WHITE)
-        RasterEraserSession(bitmap, selection).use { session ->
+        val surface = PixelTileBitmapAdapter.import(bitmap)
+        RasterTileEraserSession(surface, bitmap, selection).use { session ->
             session.eraseSegment(30f, 50f, 130f, 50f, 24f, .65f, .35f)
+            session.commit().close()
         }
         assertTrue("Soft eraser creates partial alpha", Color.alpha(bitmap.getPixel(80, 38)) in 1..254)
         assertEquals("Selection excludes the lower half", 255, Color.alpha(bitmap.getPixel(80, 62)))
@@ -102,7 +105,8 @@ class RasterEraserSessionTest {
     @Test fun rasterEraserSegmentMeetsRealtimeBudget() {
         val bitmap = Bitmap.createBitmap(1200, 900, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLACK) }
         val times = ArrayList<Long>(96)
-        RasterEraserSession(bitmap).use { session ->
+        val surface = PixelTileBitmapAdapter.import(bitmap)
+        RasterTileEraserSession(surface, bitmap).use { session ->
             var x = 180f
             repeat(96) { index ->
                 val next = x + 4f

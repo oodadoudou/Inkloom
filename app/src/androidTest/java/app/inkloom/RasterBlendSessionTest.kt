@@ -3,7 +3,6 @@ package app.inkloom
 import android.graphics.Bitmap
 import android.graphics.Color
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import app.inkloom.engine.v3.tools.RasterBlendSession
 import app.inkloom.engine.v3.tools.RasterTileBlendSession
 import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection
@@ -38,10 +37,11 @@ class RasterBlendSessionTest {
         val bitmap = Bitmap.createBitmap(4096, 4096, Bitmap.Config.ARGB_8888).apply {
             eraseColor(Color.rgb(80, 100, 120))
         }
-        RasterBlendSession(bitmap).use { session ->
-            assertEquals(0L, session.retainedBackupByteSize)
+        val surface = PixelTileBitmapAdapter.import(bitmap)
+        RasterTileBlendSession(surface, bitmap).use { session ->
+            assertEquals(0L, session.workingByteSize)
             session.blend(200f, 200f, 230f, 210f, 24f, .8f, .7f)
-            assertTrue(session.retainedBackupByteSize in 1..(4L * 128 * 128 * 4))
+            assertTrue(session.workingByteSize in 1..(4L * 128 * 128 * 4))
         }
         bitmap.recycle()
     }
@@ -49,9 +49,11 @@ class RasterBlendSessionTest {
     @Test fun smudgePullsExistingPremultipliedPigmentWithoutAddingBrushColor() {
         val bitmap = Bitmap.createBitmap(96, 48, Bitmap.Config.ARGB_8888)
         for (y in 12 until 36) for (x in 10 until 34) bitmap.setPixel(x, y, Color.argb(180, 240, 20, 30))
-        RasterBlendSession(bitmap).use { session ->
+        val surface = PixelTileBitmapAdapter.import(bitmap)
+        RasterTileBlendSession(surface, bitmap).use { session ->
             val dirty = session.blend(26f, 24f, 48f, 24f, 18f, 1f, .75f)
             assertTrue(dirty != null)
+            session.commit().close()
         }
         val pulled = bitmap.getPixel(48, 24)
         assertTrue("Pigment is pulled into the destination", Color.alpha(pulled) > 100)
@@ -66,7 +68,8 @@ class RasterBlendSessionTest {
         val original = bitmap.copy(Bitmap.Config.ARGB_8888, false)
         val selection = Bitmap.createBitmap(80, 40, Bitmap.Config.ARGB_8888)
         for (y in 0 until 20) for (x in 0 until 80) selection.setPixel(x, y, Color.WHITE)
-        RasterBlendSession(bitmap, selection).use { session ->
+        val surface = PixelTileBitmapAdapter.import(bitmap)
+        RasterTileBlendSession(surface, bitmap, selection).use { session ->
             session.blend(24f, 20f, 46f, 20f, 18f, 1f, 1f)
             assertTrue(Color.alpha(bitmap.getPixel(46, 14)) > 0)
             assertEquals("Pixels outside the selection stay untouched", Color.TRANSPARENT, bitmap.getPixel(46, 28))
@@ -81,7 +84,8 @@ class RasterBlendSessionTest {
     @Test fun localRasterBlendStaysInsideAFrameBudget() {
         val bitmap = Bitmap.createBitmap(1200, 900, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.rgb(90, 120, 180)) }
         val frameTimes = ArrayList<Long>(96)
-        RasterBlendSession(bitmap).use { session ->
+        val surface = PixelTileBitmapAdapter.import(bitmap)
+        RasterTileBlendSession(surface, bitmap).use { session ->
             var previousX = 180f
             repeat(96) { index ->
                 val nextX = previousX + 3f
