@@ -11,6 +11,7 @@ import app.inkloom.engine.v3.composite.PixelLayerProjectionInput
 import app.inkloom.engine.v3.surface.PixelRect
 import app.inkloom.engine.v3.surface.PixelTileKey
 import app.inkloom.engine.v3.surface.PixelTileSurface
+import app.inkloom.engine.v3.surface.MaskTileSurface
 import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -19,6 +20,59 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class PixelLayerProjectionBenchmarkTest {
+    @Test fun fiftyLayerMasksAndClippingInvalidateOnlyOneEightKTileWithinInteractiveBudget() {
+        val layers = MutableList(50) { index ->
+            PixelTileSurface(8192, 8192, tileSize = 64, surfaceId = "masked-benchmark-$index").also { surface ->
+                surface.beginWrite("two masked benchmark tiles").run {
+                    listOf(PixelTileKey(20, 20), PixelTileKey(21, 20)).forEach { key ->
+                        editTile(key, PixelRect(0, 0, 64, 64)) { pixels, _ ->
+                            pixels.fill(0x70000000 or ((index * 37 and 0x8f) shl 16) or
+                                ((index * 53 and 0x8f) shl 8) or (index * 71 and 0x8f))
+                        }
+                    }
+                    commit().close()
+                }
+            }
+        }
+        val masks = MutableList(50) { index ->
+            MaskTileSurface(8192, 8192, tileSize = 64, surfaceId = "mask-benchmark-$index", initialDefaultAlpha = 255)
+        }
+        val cache = PixelLayerProjectionCache(8192, 8192, tileSize = 64)
+        fun inputs() = layers.mapIndexed { index, surface ->
+            PixelLayerProjectionInput(
+                layerId = "masked-layer-$index",
+                pixels = surface.snapshot(),
+                blendMode = if (index % 4 == 0) PixelBlendMode.MULTIPLY else PixelBlendMode.NORMAL,
+                mask = masks[index].snapshot(),
+                // Five paint layers per clipping base exercises long clipping stacks without
+                // changing the production rule that every clipped sibling samples one base.
+                clipToBaseBelow = index % 5 != 0,
+            )
+        }
+        cache.update(inputs())
+
+        val untouchedGeneration = cache.snapshot.tileInfo.single { it.key == PixelTileKey(21, 20) }.generation
+        val changedTimes = List(20) { iteration ->
+            masks[25].beginWrite("local mask benchmark edit").run {
+                setAlpha(20 * 64 + iteration, 20 * 64 + iteration, iteration * 11 and 0xff)
+                commit().close()
+            }
+            val started = android.os.SystemClock.elapsedRealtimeNanos()
+            val update = cache.update(inputs())
+            assertEquals(1, update.recomposedTileCount)
+            assertEquals(
+                untouchedGeneration,
+                update.snapshot.tileInfo.single { it.key == PixelTileKey(21, 20) }.generation,
+            )
+            (android.os.SystemClock.elapsedRealtimeNanos() - started) / 1_000_000f
+        }.sorted()
+        val p95 = changedTimes[p95Index(changedTimes.size)]
+        android.util.Log.i("InkloomPerf", "pixel_projection_50_layer_mask_clipping_8k_changed_tile_p95_ms=$p95")
+
+        assertEquals(2, cache.snapshot.tileCount)
+        assertTrue("Masked/clipped 50-layer projection p95 was ${p95}ms", p95 < 33.4f)
+    }
+
     @Test fun fiftyLayerEightKProjectionRecomposesOnlyChangedTileWithinFrameBudget() {
         val layers = MutableList(50) { index ->
             PixelTileSurface(8192, 8192, tileSize = 64, surfaceId = "benchmark-$index").also { surface ->

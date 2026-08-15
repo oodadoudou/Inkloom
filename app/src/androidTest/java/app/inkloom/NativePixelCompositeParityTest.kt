@@ -10,6 +10,7 @@ import app.inkloom.engine.v3.composite.PremultipliedRgba
 import app.inkloom.engine.v3.surface.LinearRgba
 import app.inkloom.engine.v3.surface.PixelTileFormat
 import app.inkloom.engine.v3.surface.PixelTileSurface
+import app.inkloom.engine.v3.surface.MaskTileSurface
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -89,6 +90,46 @@ class NativePixelCompositeParityTest {
             assertEquals("$mode blue", expected.blue, actual.blue, .004f)
             assertEquals("$mode alpha", expected.alpha, actual.alpha, .002f)
         }
+    }
+
+    @Test fun nativeMaskedClippingBatchMatchesReferenceCoverageSemantics() {
+        val basePixel = 0x80604020.toInt()
+        val clippedPixel = 0x70402010
+        val base = rgba8Surface(basePixel)
+        val clipped = rgba8Surface(clippedPixel)
+        val topMask = MaskTileSurface(64, 64, tileSize = 64).also {
+            it.beginWrite("half top mask").run { setAlpha(3, 4, 128); commit().close() }
+        }
+        val update = PixelLayerProjectionCache(64, 64, tileSize = 64).update(listOf(
+            PixelLayerProjectionInput("base", base.snapshot(), opacity = .73f),
+            PixelLayerProjectionInput(
+                "clipped",
+                clipped.snapshot(),
+                opacity = .61f,
+                blendMode = PixelBlendMode.MULTIPLY,
+                mask = topMask.snapshot(),
+                clipToBaseBelow = true,
+            ),
+        ))
+        val baseResult = PixelBlendMath.composite(
+            unpackRgba8(basePixel),
+            PremultipliedRgba(0f, 0f, 0f, 0f),
+            PixelBlendMode.NORMAL,
+            .73f,
+        )
+        val clippingCoverage = .61f * (128f / 255f) * (128f / 255f) * .73f
+        val expected = PixelBlendMath.composite(
+            unpackRgba8(clippedPixel),
+            baseResult,
+            PixelBlendMode.MULTIPLY,
+            clippingCoverage,
+        )
+        val actual = unpackRgba8(update.snapshot.pixelAt(3, 4))
+
+        assertEquals(expected.red, actual.red, 2.1f / 255f)
+        assertEquals(expected.green, actual.green, 2.1f / 255f)
+        assertEquals(expected.blue, actual.blue, 2.1f / 255f)
+        assertEquals(expected.alpha, actual.alpha, 2.1f / 255f)
     }
 
     private fun rgba8Surface(pixel: Int): PixelTileSurface = PixelTileSurface(64, 64, tileSize = 64).also {

@@ -371,6 +371,86 @@ void composite_flat_rgba8_layers(
     }
 }
 
+template<typename Element, typename Unpack, typename Pack>
+void composite_flat_layers_with_coverage(
+    const Element* sources,
+    const jbyte* coverages,
+    int source_layer_stride,
+    int layer_count,
+    Element* destination,
+    int stride,
+    int left,
+    int top,
+    int right,
+    int bottom,
+    const jint* modes,
+    const jfloat* opacities,
+    Unpack unpack,
+    Pack pack) {
+    for (int layer = 0; layer < layer_count; ++layer) {
+        const auto* source = sources + static_cast<std::size_t>(layer) * source_layer_stride;
+        const auto* coverage = coverages + static_cast<std::size_t>(layer) * source_layer_stride;
+        const int mode = modes[layer];
+        const float opacity = opacities[layer];
+        for (int y = top; y < bottom; ++y) {
+            int index = y * stride + left;
+            for (int x = left; x < right; ++x, ++index) {
+                const auto source_color = unpack(static_cast<std::make_unsigned_t<Element>>(source[index]));
+                const float pixel_opacity = opacity *
+                    (static_cast<float>(static_cast<std::uint8_t>(coverage[index])) / 255.0f);
+                if (source_color.alpha <= 0.0f || pixel_opacity <= 0.0f) continue;
+                const auto destination_color =
+                    unpack(static_cast<std::make_unsigned_t<Element>>(destination[index]));
+                destination[index] = static_cast<Element>(
+                    pack(composite(source_color, destination_color, mode, pixel_opacity)));
+            }
+        }
+    }
+}
+
+void composite_flat_rgba8_layers_with_coverage(
+    const jint* sources,
+    const jbyte* coverages,
+    int source_layer_stride,
+    int layer_count,
+    jint* destination,
+    int stride,
+    int left,
+    int top,
+    int right,
+    int bottom,
+    const jint* modes,
+    const jfloat* opacities) {
+    for (int layer = 0; layer < layer_count; ++layer) {
+        const auto* source = sources + static_cast<std::size_t>(layer) * source_layer_stride;
+        const auto* coverage = coverages + static_cast<std::size_t>(layer) * source_layer_stride;
+        const int mode = modes[layer];
+        const float opacity = opacities[layer];
+        for (int y = top; y < bottom; ++y) {
+            int index = y * stride + left;
+            for (int x = left; x < right; ++x, ++index) {
+                const std::uint32_t source_pixel = static_cast<std::uint32_t>(source[index]);
+                const float pixel_opacity = opacity *
+                    (static_cast<float>(static_cast<std::uint8_t>(coverage[index])) / 255.0f);
+                if ((source_pixel >> 24) == 0 || pixel_opacity <= 0.0f) continue;
+                if (mode == 0 || mode == 2) {
+                    destination[index] = static_cast<jint>(composite_rgba8_fast(
+                        source_pixel,
+                        static_cast<std::uint32_t>(destination[index]),
+                        mode,
+                        pixel_opacity));
+                } else {
+                    destination[index] = static_cast<jint>(pack_rgba8(composite(
+                        unpack_rgba8(source_pixel),
+                        unpack_rgba8(static_cast<std::uint32_t>(destination[index])),
+                        mode,
+                        pixel_opacity)));
+                }
+            }
+        }
+    }
+}
+
 }  // namespace
 
 extern "C" JNIEXPORT jboolean JNICALL
@@ -494,6 +574,101 @@ Java_app_inkloom_engine_v3_composite_NativeCompositeOps_nativeCompositeF16Layers
         stride, left, top, right, bottom, mode_values.data(), opacity_values.data(),
         unpack_f16, pack_f16);
     env->ReleaseLongArrayElements(destination, destination_values, 0);
+    env->ReleaseLongArrayElements(sources, source_values, JNI_ABORT);
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_app_inkloom_engine_v3_composite_NativeCompositeOps_nativeCompositeRgba8LayersWithCoverage(
+    JNIEnv* env,
+    jobject,
+    jintArray sources,
+    jbyteArray coverage,
+    jint source_layer_stride,
+    jint layer_count,
+    jintArray destination,
+    jint stride,
+    jint left,
+    jint top,
+    jint right,
+    jint bottom,
+    jintArray modes,
+    jfloatArray opacities) {
+    if (sources == nullptr || coverage == nullptr || destination == nullptr || modes == nullptr || opacities == nullptr ||
+        source_layer_stride <= 0 || layer_count <= 0 || stride <= 0 || left < 0 || top < 0 ||
+        right <= left || bottom <= top || right > stride || env->GetArrayLength(modes) != layer_count ||
+        env->GetArrayLength(opacities) != layer_count ||
+        static_cast<std::int64_t>(source_layer_stride) * layer_count > env->GetArrayLength(sources) ||
+        static_cast<std::int64_t>(source_layer_stride) * layer_count > env->GetArrayLength(coverage) ||
+        static_cast<std::int64_t>(bottom) * stride > env->GetArrayLength(destination)) return JNI_FALSE;
+    std::vector<jint> mode_values(static_cast<std::size_t>(layer_count));
+    std::vector<jfloat> opacity_values(static_cast<std::size_t>(layer_count));
+    env->GetIntArrayRegion(modes, 0, layer_count, mode_values.data());
+    env->GetFloatArrayRegion(opacities, 0, layer_count, opacity_values.data());
+    if (env->ExceptionCheck() ||
+        std::any_of(mode_values.begin(), mode_values.end(), [](jint mode) { return mode < 0 || mode > 13; })) return JNI_FALSE;
+    auto* source_values = env->GetIntArrayElements(sources, nullptr);
+    auto* coverage_values = env->GetByteArrayElements(coverage, nullptr);
+    auto* destination_values = env->GetIntArrayElements(destination, nullptr);
+    if (source_values == nullptr || coverage_values == nullptr || destination_values == nullptr) {
+        if (destination_values != nullptr) env->ReleaseIntArrayElements(destination, destination_values, 0);
+        if (coverage_values != nullptr) env->ReleaseByteArrayElements(coverage, coverage_values, JNI_ABORT);
+        if (source_values != nullptr) env->ReleaseIntArrayElements(sources, source_values, JNI_ABORT);
+        return JNI_FALSE;
+    }
+    composite_flat_rgba8_layers_with_coverage(
+        source_values, coverage_values, source_layer_stride, layer_count, destination_values,
+        stride, left, top, right, bottom, mode_values.data(), opacity_values.data());
+    env->ReleaseIntArrayElements(destination, destination_values, 0);
+    env->ReleaseByteArrayElements(coverage, coverage_values, JNI_ABORT);
+    env->ReleaseIntArrayElements(sources, source_values, JNI_ABORT);
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_app_inkloom_engine_v3_composite_NativeCompositeOps_nativeCompositeF16LayersWithCoverage(
+    JNIEnv* env,
+    jobject,
+    jlongArray sources,
+    jbyteArray coverage,
+    jint source_layer_stride,
+    jint layer_count,
+    jlongArray destination,
+    jint stride,
+    jint left,
+    jint top,
+    jint right,
+    jint bottom,
+    jintArray modes,
+    jfloatArray opacities) {
+    if (sources == nullptr || coverage == nullptr || destination == nullptr || modes == nullptr || opacities == nullptr ||
+        source_layer_stride <= 0 || layer_count <= 0 || stride <= 0 || left < 0 || top < 0 ||
+        right <= left || bottom <= top || right > stride || env->GetArrayLength(modes) != layer_count ||
+        env->GetArrayLength(opacities) != layer_count ||
+        static_cast<std::int64_t>(source_layer_stride) * layer_count > env->GetArrayLength(sources) ||
+        static_cast<std::int64_t>(source_layer_stride) * layer_count > env->GetArrayLength(coverage) ||
+        static_cast<std::int64_t>(bottom) * stride > env->GetArrayLength(destination)) return JNI_FALSE;
+    std::vector<jint> mode_values(static_cast<std::size_t>(layer_count));
+    std::vector<jfloat> opacity_values(static_cast<std::size_t>(layer_count));
+    env->GetIntArrayRegion(modes, 0, layer_count, mode_values.data());
+    env->GetFloatArrayRegion(opacities, 0, layer_count, opacity_values.data());
+    if (env->ExceptionCheck() ||
+        std::any_of(mode_values.begin(), mode_values.end(), [](jint mode) { return mode < 0 || mode > 13; })) return JNI_FALSE;
+    auto* source_values = env->GetLongArrayElements(sources, nullptr);
+    auto* coverage_values = env->GetByteArrayElements(coverage, nullptr);
+    auto* destination_values = env->GetLongArrayElements(destination, nullptr);
+    if (source_values == nullptr || coverage_values == nullptr || destination_values == nullptr) {
+        if (destination_values != nullptr) env->ReleaseLongArrayElements(destination, destination_values, 0);
+        if (coverage_values != nullptr) env->ReleaseByteArrayElements(coverage, coverage_values, JNI_ABORT);
+        if (source_values != nullptr) env->ReleaseLongArrayElements(sources, source_values, JNI_ABORT);
+        return JNI_FALSE;
+    }
+    composite_flat_layers_with_coverage(
+        source_values, coverage_values, source_layer_stride, layer_count, destination_values,
+        stride, left, top, right, bottom, mode_values.data(), opacity_values.data(),
+        unpack_f16, pack_f16);
+    env->ReleaseLongArrayElements(destination, destination_values, 0);
+    env->ReleaseByteArrayElements(coverage, coverage_values, JNI_ABORT);
     env->ReleaseLongArrayElements(sources, source_values, JNI_ABORT);
     return JNI_TRUE;
 }

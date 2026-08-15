@@ -101,6 +101,42 @@ internal object NativeCompositeOps {
         opacities,
     )
 
+    fun compositeRgba8LayersWithCoverage(
+        sources: IntArray,
+        coverage: ByteArray,
+        sourceLayerStride: Int,
+        layerCount: Int,
+        destination: IntArray,
+        stride: Int,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
+        modes: IntArray,
+        opacities: FloatArray,
+    ): Boolean = available && nativeCompositeRgba8LayersWithCoverage(
+        sources, coverage, sourceLayerStride, layerCount, destination, stride,
+        left, top, right, bottom, modes, opacities,
+    )
+
+    fun compositeF16LayersWithCoverage(
+        sources: LongArray,
+        coverage: ByteArray,
+        sourceLayerStride: Int,
+        layerCount: Int,
+        destination: LongArray,
+        stride: Int,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
+        modes: IntArray,
+        opacities: FloatArray,
+    ): Boolean = available && nativeCompositeF16LayersWithCoverage(
+        sources, coverage, sourceLayerStride, layerCount, destination, stride,
+        left, top, right, bottom, modes, opacities,
+    )
+
     private external fun nativeCompositeRgba8(
         source: IntArray,
         destination: IntArray,
@@ -141,6 +177,36 @@ internal object NativeCompositeOps {
 
     private external fun nativeCompositeF16Layers(
         sources: LongArray,
+        sourceLayerStride: Int,
+        layerCount: Int,
+        destination: LongArray,
+        stride: Int,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
+        modes: IntArray,
+        opacities: FloatArray,
+    ): Boolean
+
+    private external fun nativeCompositeRgba8LayersWithCoverage(
+        sources: IntArray,
+        coverage: ByteArray,
+        sourceLayerStride: Int,
+        layerCount: Int,
+        destination: IntArray,
+        stride: Int,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
+        modes: IntArray,
+        opacities: FloatArray,
+    ): Boolean
+
+    private external fun nativeCompositeF16LayersWithCoverage(
+        sources: LongArray,
+        coverage: ByteArray,
         sourceLayerStride: Int,
         layerCount: Int,
         destination: LongArray,

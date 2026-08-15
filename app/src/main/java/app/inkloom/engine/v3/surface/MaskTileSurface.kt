@@ -64,7 +64,31 @@ class MaskTileSurfaceSnapshot internal constructor(
     fun copyAlpha(source: PixelRect): ByteArray {
         requireInside(source, logicalWidth, logicalHeight)
         val output = ByteArray(Math.multiplyExact(source.width, source.height)) { defaultAlpha.toByte() }
-        if (source.isEmpty) return output
+        copyAlpha(source, output, destinationOffset = 0, destinationRowStride = source.width)
+        return output
+    }
+
+    /** Copies a bounded ROI into caller-owned scratch storage to keep frame loops allocation-free. */
+    fun copyAlpha(
+        source: PixelRect,
+        output: ByteArray,
+        destinationOffset: Int,
+        destinationRowStride: Int,
+    ) {
+        requireInside(source, logicalWidth, logicalHeight)
+        require(destinationOffset >= 0)
+        require(destinationRowStride >= source.width)
+        val required = if (source.isEmpty) destinationOffset else
+            destinationOffset + (source.height - 1) * destinationRowStride + source.width
+        require(required <= output.size) { "Destination alpha buffer is too small" }
+        for (y in 0 until source.height) {
+            output.fill(
+                defaultAlpha.toByte(),
+                destinationOffset + y * destinationRowStride,
+                destinationOffset + y * destinationRowStride + source.width,
+            )
+        }
+        if (source.isEmpty) return
         val firstColumn = source.left / tileSize
         val lastColumn = (source.right - 1) / tileSize
         val firstRow = source.top / tileSize
@@ -76,11 +100,10 @@ class MaskTileSurfaceSnapshot internal constructor(
             val overlap = logicalTileRect(column, row, tileSize, logicalWidth, logicalHeight).intersect(source)
             for (y in overlap.top until overlap.bottom) {
                 val sourceOffset = (y - tileTop) * tileSize + overlap.left - tileLeft
-                val destinationOffset = (y - source.top) * source.width + overlap.left - source.left
-                alpha.copyInto(output, destinationOffset, sourceOffset, sourceOffset + overlap.width)
+                val rowOffset = destinationOffset + (y - source.top) * destinationRowStride + overlap.left - source.left
+                alpha.copyInto(output, rowOffset, sourceOffset, sourceOffset + overlap.width)
             }
         }
-        return output
     }
 }
 
