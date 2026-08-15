@@ -44,11 +44,16 @@ object PackedRgbaF16 {
     }
 
     fun premultiplied(value: Long): LinearRgba = LinearRgba(
-        HalfFloat.unpack((value and 0xffffL).toUShort()),
-        HalfFloat.unpack((value ushr 16 and 0xffffL).toUShort()),
-        HalfFloat.unpack((value ushr 32 and 0xffffL).toUShort()),
-        HalfFloat.unpack((value ushr 48 and 0xffffL).toUShort()),
+        premultipliedRed(value),
+        premultipliedGreen(value),
+        premultipliedBlue(value),
+        alpha(value),
     )
+
+    fun premultipliedRed(value: Long): Float = HalfFloat.unpack((value and 0xffffL).toUShort())
+    fun premultipliedGreen(value: Long): Float = HalfFloat.unpack((value ushr 16 and 0xffffL).toUShort())
+    fun premultipliedBlue(value: Long): Float = HalfFloat.unpack((value ushr 32 and 0xffffL).toUShort())
+    fun alpha(value: Long): Float = HalfFloat.unpack((value ushr 48 and 0xffffL).toUShort())
 
     fun straight(value: Long): LinearRgba {
         val premultiplied = premultiplied(value)
@@ -88,7 +93,7 @@ object PackedRgbaF16 {
             premultipliedByte(color.blue)
     }
 
-    fun isTransparent(value: Long): Boolean = HalfFloat.unpack((value ushr 48 and 0xffffL).toUShort()) <= 0f
+    fun isTransparent(value: Long): Boolean = alpha(value) <= 0f
 
     private fun finite(value: Float): Float = if (value.isFinite()) value.coerceIn(-65504f, 65504f) else 0f
 

@@ -165,6 +165,20 @@ class PixelTileSurfaceSnapshot internal constructor(
         return (tiles[key]?.pixels as? RgbaF16TileBuffer)?.values?.copyOf()
     }
 
+    /** Internal zero-copy read. The array is immutable and must not be retained or modified. */
+    internal fun <T> readRgba8Tile(key: PixelTileKey, block: (IntArray) -> T): T? {
+        require(pixelFormat == PixelTileFormat.PREMULTIPLIED_SRGB_8888) { "Surface stores $pixelFormat" }
+        val pixels = (tiles[key]?.pixels as? Argb8888TileBuffer)?.values ?: return null
+        return block(pixels)
+    }
+
+    /** Internal zero-copy read. The array is immutable and must not be retained or modified. */
+    internal fun <T> readF16Tile(key: PixelTileKey, block: (LongArray) -> T): T? {
+        require(pixelFormat == PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16) { "Surface stores $pixelFormat" }
+        val pixels = (tiles[key]?.pixels as? RgbaF16TileBuffer)?.values ?: return null
+        return block(pixels)
+    }
+
     /** Copies a logical rectangle without allocating or looking up a tile for every output pixel. */
     fun copyPremultipliedPixels(source: PixelRect): IntArray {
         require(pixelFormat == PixelTileFormat.PREMULTIPLIED_SRGB_8888) { "ARGB copy requires an RGBA8 surface" }

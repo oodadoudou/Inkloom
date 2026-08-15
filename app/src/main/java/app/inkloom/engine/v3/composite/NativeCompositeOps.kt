@@ -1,0 +1,155 @@
+package app.inkloom.engine.v3.composite
+
+/** Android acceleration for bounded separable blend modes. JVM tests use the Kotlin reference. */
+internal object NativeCompositeOps {
+    private val available = runCatching { System.loadLibrary("inkloom_engine_v3") }.isSuccess
+    val isAvailable: Boolean get() = available
+
+    fun compositeRgba8(
+        source: IntArray,
+        destination: IntArray,
+        stride: Int,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
+        mode: PixelBlendMode,
+        opacity: Float,
+    ): Boolean = available && nativeCompositeRgba8(
+        source,
+        destination,
+        stride,
+        left,
+        top,
+        right,
+        bottom,
+        mode.ordinal,
+        opacity,
+    )
+
+    fun compositeF16(
+        source: LongArray,
+        destination: LongArray,
+        stride: Int,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
+        mode: PixelBlendMode,
+        opacity: Float,
+    ): Boolean = available && nativeCompositeF16(
+        source,
+        destination,
+        stride,
+        left,
+        top,
+        right,
+        bottom,
+        mode.ordinal,
+        opacity,
+    )
+
+    fun compositeRgba8Layers(
+        sources: IntArray,
+        sourceLayerStride: Int,
+        layerCount: Int,
+        destination: IntArray,
+        stride: Int,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
+        modes: IntArray,
+        opacities: FloatArray,
+    ): Boolean = available && nativeCompositeRgba8Layers(
+        sources,
+        sourceLayerStride,
+        layerCount,
+        destination,
+        stride,
+        left,
+        top,
+        right,
+        bottom,
+        modes,
+        opacities,
+    )
+
+    fun compositeF16Layers(
+        sources: LongArray,
+        sourceLayerStride: Int,
+        layerCount: Int,
+        destination: LongArray,
+        stride: Int,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
+        modes: IntArray,
+        opacities: FloatArray,
+    ): Boolean = available && nativeCompositeF16Layers(
+        sources,
+        sourceLayerStride,
+        layerCount,
+        destination,
+        stride,
+        left,
+        top,
+        right,
+        bottom,
+        modes,
+        opacities,
+    )
+
+    private external fun nativeCompositeRgba8(
+        source: IntArray,
+        destination: IntArray,
+        stride: Int,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
+        mode: Int,
+        opacity: Float,
+    ): Boolean
+
+    private external fun nativeCompositeF16(
+        source: LongArray,
+        destination: LongArray,
+        stride: Int,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
+        mode: Int,
+        opacity: Float,
+    ): Boolean
+
+    private external fun nativeCompositeRgba8Layers(
+        sources: IntArray,
+        sourceLayerStride: Int,
+        layerCount: Int,
+        destination: IntArray,
+        stride: Int,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
+        modes: IntArray,
+        opacities: FloatArray,
+    ): Boolean
+
+    private external fun nativeCompositeF16Layers(
+        sources: LongArray,
+        sourceLayerStride: Int,
+        layerCount: Int,
+        destination: LongArray,
+        stride: Int,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
+        modes: IntArray,
+        opacities: FloatArray,
+    ): Boolean
+}

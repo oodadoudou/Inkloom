@@ -3,6 +3,7 @@ project(inkloom_engine_v3 LANGUAGES CXX)
 
 add_library(inkloom_engine_v3 SHARED
     v3_input_session.cpp
+    v3_composite.cpp
     v3_raster_ops.cpp
 )
 
