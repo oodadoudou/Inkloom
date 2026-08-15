@@ -308,9 +308,9 @@ class PixelLayerProjectionCache(
                 val y = bounds.top + localY
                 repeat(bounds.width) { localX ->
                     val x = bounds.left + localX
-                    val maskX = (((x + .5f) * mask.logicalWidth / projection.logicalWidth) - .5f)
+                    val maskX = ((x + .5f) * mask.logicalWidth / projection.logicalWidth)
                         .toInt().coerceIn(0, mask.logicalWidth - 1)
-                    val maskY = (((y + .5f) * mask.logicalHeight / projection.logicalHeight) - .5f)
+                    val maskY = ((y + .5f) * mask.logicalHeight / projection.logicalHeight)
                         .toInt().coerceIn(0, mask.logicalHeight - 1)
                     maskCoverageScratch[index++] = mask.alphaAt(maskX, maskY).toByte()
                 }
@@ -512,9 +512,9 @@ class PixelLayerProjectionCache(
             projectionWidth: Int,
             projectionHeight: Int,
         ): Float {
-            val maskX = (((x + .5f) * snapshot.logicalWidth / projectionWidth) - .5f)
+            val maskX = ((x + .5f) * snapshot.logicalWidth / projectionWidth)
                 .toInt().coerceIn(0, snapshot.logicalWidth - 1)
-            val maskY = (((y + .5f) * snapshot.logicalHeight / projectionHeight) - .5f)
+            val maskY = ((y + .5f) * snapshot.logicalHeight / projectionHeight)
                 .toInt().coerceIn(0, snapshot.logicalHeight - 1)
             return snapshot.alphaAt(maskX, maskY) / 255f
         }

@@ -7,6 +7,7 @@ import android.graphics.Paint
 import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection
 import app.inkloom.engine.v3.tools.RasterTilePaintSession
+import app.inkloom.engine.v3.scene.SparseAlphaMask
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
 import org.junit.Assert.assertEquals
@@ -20,10 +21,10 @@ class RasterWetPaintSessionTest {
         selection: Bitmap? = null,
         preserveDestinationAlpha: Boolean = false,
     ) = RasterTilePaintSession(
-        PixelTileBitmapAdapter.import(bitmap),
-        bitmap,
-        selection,
-        preserveDestinationAlpha,
+        surface = PixelTileBitmapAdapter.import(bitmap),
+        displayBitmap = bitmap,
+        selectionMask = selection?.let(SparseAlphaMask::fromBitmap)?.surface?.snapshot(),
+        preserveDestinationAlpha = preserveDestinationAlpha,
     )
 
     @Test fun wetTransportAndFinalBrushPatchPublishAsOneUndoableTransaction() {

@@ -70,16 +70,24 @@ class RasterEraserSessionTest {
 
     @Test fun softEraserPreservesPartialAlphaAndSelectionIsolation() {
         val bitmap = Bitmap.createBitmap(160, 100, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
-        val selection = Bitmap.createBitmap(40, 20, Bitmap.Config.ARGB_8888)
-        for (y in 0 until 10) for (x in 0 until 40) selection.setPixel(x, y, Color.WHITE)
+        val selection = app.inkloom.engine.v3.surface.MaskTileSurface(40, 20, tileSize = 64).also { mask ->
+            mask.beginWrite("upper selection").run {
+                composeAlpha(
+                    app.inkloom.engine.v3.surface.PixelRect(0, 0, 40, 10),
+                    ByteArray(40 * 10) { 255.toByte() },
+                    mode = app.inkloom.engine.v3.surface.MaskComposeMode.REPLACE,
+                )
+                commit().close()
+            }
+        }
         val surface = PixelTileBitmapAdapter.import(bitmap)
-        RasterTileEraserSession(surface, bitmap, selection).use { session ->
+        RasterTileEraserSession(surface, bitmap, selection.snapshot()).use { session ->
             session.eraseSegment(30f, 50f, 130f, 50f, 24f, .65f, .35f)
             session.commit().close()
         }
         assertTrue("Soft eraser creates partial alpha", Color.alpha(bitmap.getPixel(80, 38)) in 1..254)
         assertEquals("Selection excludes the lower half", 255, Color.alpha(bitmap.getPixel(80, 62)))
-        selection.recycle(); bitmap.recycle()
+        bitmap.recycle()
     }
 
     @Test fun rasterEraserGestureCommitsOneSurfaceAndKeepsOtherLayersOut() {

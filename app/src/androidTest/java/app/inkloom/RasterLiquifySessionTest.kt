@@ -112,13 +112,21 @@ class RasterLiquifySessionTest {
     @Test fun selectionAlphaClipsEveryLiquifyCompositeToTheActiveRegion() {
         val bitmap = fixture()
         val originalBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, false)
-        val selection = Bitmap.createBitmap(48, 36, Bitmap.Config.ARGB_8888)
-        Canvas(selection).drawRect(0f, 0f, 48f, 18f, Paint().apply { color = Color.WHITE })
+        val selection = app.inkloom.engine.v3.surface.MaskTileSurface(48, 36, tileSize = 64).also { mask ->
+            mask.beginWrite("upper selection").run {
+                composeAlpha(
+                    app.inkloom.engine.v3.surface.PixelRect(0, 0, 48, 18),
+                    ByteArray(48 * 18) { 255.toByte() },
+                    mode = app.inkloom.engine.v3.surface.MaskComposeMode.REPLACE,
+                )
+                commit().close()
+            }
+        }
         val upperBefore = checksumRows(bitmap, 0, 90)
         val lowerBefore = checksumRows(bitmap, 90, bitmap.height)
 
         val surface = PixelTileBitmapAdapter.import(bitmap)
-        RasterTileLiquifySession(surface, bitmap, selection).use { session ->
+        RasterTileLiquifySession(surface, bitmap, selection.snapshot()).use { session ->
             assertTrue(session.deform(82f, 90f, 130f, 90f, 64f, .8f, .45f, LiquifyMode.PUSH) != null)
             session.commit().close()
         }
@@ -130,7 +138,6 @@ class RasterLiquifySessionTest {
         assertEquals("Pixels outside the selection must remain byte-identical", null, firstChangedOutside)
         assertEquals(lowerBefore, checksumRows(bitmap, 90, bitmap.height))
         originalBitmap.recycle()
-        selection.recycle()
         bitmap.recycle()
     }
 

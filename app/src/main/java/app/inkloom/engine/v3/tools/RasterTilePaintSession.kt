@@ -35,7 +35,6 @@ class RasterTilePaintSession private constructor(
     constructor(
         surface: PixelTileSurface,
         displayBitmap: Bitmap,
-        selectionMask: Bitmap? = null,
         preserveDestinationAlpha: Boolean = false,
         mirrorWrites: Boolean = true,
     ) : this(
@@ -43,7 +42,7 @@ class RasterTilePaintSession private constructor(
         displayBitmap,
         preserveDestinationAlpha,
         mirrorWrites,
-        RasterSelectionMask(selectionMask, surface.logicalWidth, surface.logicalHeight),
+        RasterSelectionMask(null, surface.logicalWidth, surface.logicalHeight),
     )
 
     internal constructor(

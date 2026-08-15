@@ -21,10 +21,10 @@ class RasterTileBlendSession private constructor(
     displayBitmap: Bitmap,
     private val selection: RasterSelectionMask,
 ) : AutoCloseable {
-    constructor(surface: PixelTileSurface, displayBitmap: Bitmap, selectionMask: Bitmap? = null) : this(
+    constructor(surface: PixelTileSurface, displayBitmap: Bitmap) : this(
         surface,
         displayBitmap,
-        RasterSelectionMask(selectionMask, surface.logicalWidth, surface.logicalHeight),
+        RasterSelectionMask(null, surface.logicalWidth, surface.logicalHeight),
     )
 
     internal constructor(surface: PixelTileSurface, displayBitmap: Bitmap, selectionMask: MaskTileSurfaceSnapshot?) : this(

@@ -101,8 +101,8 @@ class LayerMaskRuntime(
         val source = surface.snapshot()
         val alpha = ByteArray(width * height)
         for (y in 0 until height) for (x in 0 until width) {
-            val sourceX = (((x + .5f) * source.logicalWidth / width) - .5f).toInt().coerceIn(0, source.logicalWidth - 1)
-            val sourceY = (((y + .5f) * source.logicalHeight / height) - .5f).toInt().coerceIn(0, source.logicalHeight - 1)
+            val sourceX = ((x + .5f) * source.logicalWidth / width).toInt().coerceIn(0, source.logicalWidth - 1)
+            val sourceY = ((y + .5f) * source.logicalHeight / height).toInt().coerceIn(0, source.logicalHeight - 1)
             alpha[y * width + x] = source.alphaAt(sourceX, sourceY).toByte()
         }
         return LayerMaskThumbnail(width, height, alpha)
