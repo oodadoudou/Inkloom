@@ -220,6 +220,23 @@ class InkCanvasView(context: Context) : View(context) {
     private val activeDualScatterRandoms = mutableMapOf<String, java.util.Random>()
     private val activeDualRotationRandoms = mutableMapOf<String, java.util.Random>()
     private val activeCspDualBrushSurfaces = mutableMapOf<String, ActiveCspDualBrushSurface>()
+    /**
+     * Authoritative raster sampling cannot share the low-latency surface's replay state. Android
+     * may request a complete front-buffer redraw at any time; resetting that visual cache must not
+     * make already-transactional dabs deposit for a second time.
+     */
+    private val rasterPrimaryStampCounts = mutableMapOf<String, Int>()
+    private val rasterRawPointCounts = mutableMapOf<String, Int>()
+    private val rasterPrimarySamples = mutableMapOf<String, app.inkloom.document.StrokeStampSampler.Incremental>()
+    private val rasterPrimaryScatterRandoms = mutableMapOf<String, java.util.Random>()
+    private val rasterPrimaryRotationRandoms = mutableMapOf<String, java.util.Random>()
+    private var rasterIncrementalPatchBitmap: Bitmap? = null
+    private var rasterIncrementalRendering = false
+    private var rasterIncrementalPaintEnabled = false
+    @VisibleForTesting internal var rasterIncrementalPatchCount: Int = 0
+        private set
+    @VisibleForTesting internal var rasterFullReplayCount: Int = 0
+        private set
     private val activeSurfaceFrame = Runnable {
         activeSurfaceFrameScheduled = false
         val surface = activeStrokeSurface ?: return@Runnable
@@ -317,6 +334,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var rasterPaintSession: RasterTilePaintSession? = null
     private var rasterWetPaintBitmap: Bitmap? = null
     private var wetPaintDirtyBounds: Rect? = null
+    private val rasterFrontPatchPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private var wetPaintLastPositions: List<Pair<Float, Float>> = emptyList()
     private var wetPaintPickupColors: MutableList<Int?> = mutableListOf()
     private val localToolStrokeIndices = mutableMapOf<String, Int>()
@@ -2031,11 +2049,13 @@ class InkCanvasView(context: Context) : View(context) {
             return
         }
         val reuseRandomState = isCurrentActiveStroke(stroke) && safeStart > 0
-        val scatterRandom = (if (reuseRandomState) activePrimaryScatterRandoms[stroke.id] else null)
+        val scatterStates = if (rasterIncrementalRendering) rasterPrimaryScatterRandoms else activePrimaryScatterRandoms
+        val rotationStates = if (rasterIncrementalRendering) rasterPrimaryRotationRandoms else activePrimaryRotationRandoms
+        val scatterRandom = (if (reuseRandomState) scatterStates[stroke.id] else null)
             ?: java.util.Random(stroke.renderSeed.toLong())
-        val rotationRandom = (if (reuseRandomState) activePrimaryRotationRandoms[stroke.id] else null)
+        val rotationRandom = (if (reuseRandomState) rotationStates[stroke.id] else null)
             ?: java.util.Random(stroke.renderSeed.toLong() xor 0x49A2B31DL)
-        if (!reuseRandomState || stroke.id !in activePrimaryScatterRandoms || stroke.id !in activePrimaryRotationRandoms) {
+        if (!reuseRandomState || stroke.id !in scatterStates || stroke.id !in rotationStates) {
             advanceStampRandoms(scatterRandom, rotationRandom, stroke, sampledPoints, safeStart, dual = false)
         }
         val taper = strokeTaperFactors(stroke, sampledPoints)
@@ -2135,8 +2155,8 @@ class InkCanvasView(context: Context) : View(context) {
         }
         paint.blendMode = null
         if (isCurrentActiveStroke(stroke)) {
-            activePrimaryScatterRandoms[stroke.id] = scatterRandom
-            activePrimaryRotationRandoms[stroke.id] = rotationRandom
+            scatterStates[stroke.id] = scatterRandom
+            rotationStates[stroke.id] = rotationRandom
         }
         if (compositeLayer >= 0) canvas.restoreToCount(compositeLayer)
         paint.colorFilter = null
@@ -2149,7 +2169,8 @@ class InkCanvasView(context: Context) : View(context) {
      */
     private fun primaryStampedPoints(stroke: InkStroke): List<StrokePoint> {
         if (isCurrentActiveStroke(stroke)) {
-            val sampler = activePrimarySamples.getOrPut(stroke.id) {
+            val samplers = if (rasterIncrementalRendering) rasterPrimarySamples else activePrimarySamples
+            val sampler = samplers.getOrPut(stroke.id) {
                 BrushProgramRuntime.newIncrementalSampler(stroke, width.toFloat(), height.toFloat(), dual = false)
             }
             return BrushProgramRuntime.updateIncrementalSampler(sampler, stroke, width.toFloat(), dual = false)
@@ -3313,23 +3334,30 @@ class InkCanvasView(context: Context) : View(context) {
                         )
                     }
                     val raster = rasterEditBitmapFor(activeLayerId)
-                    if (raster != null) {
-                        commitRasterPaintStrokes(raster, newStrokes)
+                    val incrementalRasterCommit = if (raster != null) {
+                        commitIncrementalRasterStampGesture(newStrokes).also { committedIncrementally ->
+                            if (!committedIncrementally) commitRasterPaintStrokes(raster, newStrokes)
+                        }
                     } else {
                         strokes.addAll(newStrokes)
                         invalidateStrokeCache(emptyList(), newStrokes)
                         commitStrokeEdit(before, strokes)
+                        false
                     }
                     finishWetPaintGesture()
                     val previewSurface = activeStrokeSurface?.takeUnless { usesViewActivePreview() }
-                    previewSurface?.let { surface ->
+                    if (incrementalRasterCommit) {
+                        // The stable tile projection now contains the exact front-buffer dabs.
+                        // Committing the transient surface as well would alpha-compose them twice.
+                        previewSurface?.cancel()
+                    } else previewSurface?.let { surface ->
                         // The UP packet settles stabilization onto the physical endpoint. Publish
                         // that exact final packet before committing the low-latency surface.
                         surface.render(newStrokes)
                         surface.commit(newStrokes)
                     }
                     activeStrokeSurface?.takeIf { previewSurface == null }?.cancel()
-                    activeSurfaceCommitted = previewSurface != null
+                    activeSurfaceCommitted = previewSurface != null && !incrementalRasterCommit
                     clearActiveStrokeInput()
                     finishActiveStrokePreview()
                 } else if (activeTool == EditorTool.SELECT) {
@@ -4733,9 +4761,13 @@ class InkCanvasView(context: Context) : View(context) {
         canvas: Canvas,
         strokes: List<InkStroke>,
         incrementalStampDraw: Boolean = false,
+        completeRedraw: Boolean = false,
     ) {
         traceEngineV3("Inkloom.V3.ActiveStrokeDraw") {
             synchronized(renderLock) {
+                if (rasterIncrementalPaintEnabled && !completeRedraw &&
+                    renderIncrementalRasterPaintPatch(canvas, strokes, finalCompleteInput = false)
+                ) return@synchronized
                 incrementalActiveDraw = incrementalStampDraw
                 try {
                     if (!incrementalStampDraw) {
@@ -5697,6 +5729,198 @@ class InkCanvasView(context: Context) : View(context) {
 
     private data class RasterStrokePatch(val bitmap: Bitmap, val left: Int, val top: Int)
 
+    private data class RasterStampIncrement(
+        val stroke: InkStroke,
+        val startIndex: Int,
+        val changedPoints: List<StrokePoint>,
+        val stamped: Boolean,
+        val resultingRawPointCount: Int = 0,
+    )
+
+    /**
+     * The safe associative subset is deposited once per sampled dab. More complex whole-stroke,
+     * wet, dual-tip and destination-dependent programs keep the exact pen-up fallback until their
+     * own retained transaction compositor exists.
+     */
+    private fun supportsIncrementalRasterStampPaint(stroke: InkStroke): Boolean {
+        val layerId = stroke.layerId
+        val incrementalGeometry = usesStampedRenderer(stroke) || stroke.brushId != "system-ps19"
+        return incrementalGeometry && !stroke.dualBrush &&
+            stroke.masks.isEmpty() && stroke.opacity >= .999f &&
+            ProcreateBrushBlend.normalize(stroke.procreateBrushBlendMode) == ProcreateBrushBlend.NORMAL &&
+            !stroke.blendTipsWithDarken &&
+            (stroke.grainAssetPath == null || stroke.grainDensity <= 0f || stroke.grainApplyPerPlot) &&
+            stroke.strokeFalloff <= .0001f && !stroke.taperStartEnabled && !stroke.taperEndEnabled &&
+            stroke.procreateTaper.isDisabled() &&
+            stroke.procreateWetMix.isDisabled() && !stroke.watercolor &&
+            stroke.colorMix <= .0001f && stroke.paintMix <= .0001f &&
+            !stroke.waterEdgeEnabled && stroke.tiltBleed <= .0001f &&
+            postCorrection <= .0001f &&
+            (layerOpacities[layerId] ?: 1f) >= .999f &&
+            (layerBlendModes[layerId] ?: LayerBlendMode.NORMAL) == LayerBlendMode.NORMAL &&
+            layerId !in alphaLockedLayers && layerId !in clippedLayers &&
+            layerMasks[layerId]?.enabled != true
+    }
+
+    /**
+     * Renders only newly sampled stamps into one bounded patch. That exact patch is presented on
+     * the low-latency surface and appended to the still-private tile transaction; no stable bitmap
+     * is touched until the atomic gesture commit.
+     */
+    private fun renderIncrementalRasterPaintPatch(
+        frontCanvas: Canvas?,
+        strokes: List<InkStroke>,
+        finalCompleteInput: Boolean,
+    ): Boolean {
+        if (!rasterIncrementalPaintEnabled || strokes.isEmpty() || strokes.any { !supportsIncrementalRasterStampPaint(it) }) return false
+        val raster = rasterWetPaintBitmap?.takeUnless(Bitmap::isRecycled) ?: return false
+        val session = rasterPaintSession ?: return false
+        val increments = mutableListOf<RasterStampIncrement>()
+        rasterIncrementalRendering = true
+        try {
+            strokes.forEach { stroke ->
+                if (usesStampedRenderer(stroke)) {
+                    val sampled = primaryStampedPoints(stroke)
+                    val start = (rasterPrimaryStampCounts[stroke.id] ?: 0).coerceIn(0, sampled.size)
+                    if (start < sampled.size) increments += RasterStampIncrement(
+                        stroke, start, sampled.subList(start, sampled.size), stamped = true,
+                    )
+                } else {
+                    val previousCount = rasterRawPointCounts[stroke.id] ?: 0
+                    val fullCount = if (finalCompleteInput) stroke.points.size else {
+                        if (previousCount == 0) stroke.points.size else previousCount + (stroke.points.size - 1).coerceAtLeast(0)
+                    }
+                    val tail = when {
+                        finalCompleteInput && stroke.points.size == 1 && previousCount <= 1 -> stroke.points
+                        finalCompleteInput && stroke.points.size > previousCount -> stroke.points.subList((previousCount - 1).coerceAtLeast(0), stroke.points.size)
+                        !finalCompleteInput && stroke.points.size >= 2 -> stroke.points
+                        else -> emptyList()
+                    }
+                    if (tail.isNotEmpty()) increments += RasterStampIncrement(
+                        stroke.copy(points = tail), 0, tail, stamped = false, resultingRawPointCount = fullCount,
+                    ) else if (!finalCompleteInput && previousCount == 0 && stroke.points.size == 1) {
+                        // Show the contact dot through the ordinary front-buffer renderer, but do
+                        // not make it durable until UP proves this was a tap instead of a segment.
+                        rasterRawPointCounts[stroke.id] = 1
+                    }
+                }
+            }
+            if (increments.isEmpty()) return finalCompleteInput
+            val changedPoints = increments.flatMap(RasterStampIncrement::changedPoints)
+            val maximumWidth = increments.maxOf { increment ->
+                val stroke = increment.stroke
+                val base = stroke.width.coerceAtLeast(1f) / REFERENCE_WIDTH * raster.width
+                val particle = if (stroke.spray && !stroke.sprayParticleSizeSyncBrushSize) {
+                    when (stroke.sprayParticleSizeUnit) {
+                        1 -> stroke.sprayParticleSize / REFERENCE_WIDTH * raster.width
+                        else -> base * stroke.sprayParticleSize.coerceAtLeast(1f) / 100f
+                    }
+                } else base
+                val spread = if (stroke.spray) base * stroke.spraySpread.coerceIn(0f, 4f) else 0f
+                val pathJitter = app.inkloom.document.StrokePathJitter.maximumRadius(
+                    maxOf(base, particle), stroke.strokePathJitter, stroke.strokePathLongitudinalJitter,
+                )
+                val blur = base * stroke.blur.coerceAtLeast(0f) / 25f
+                maxOf(base, particle) * maxOf(1f, stroke.thickness.coerceIn(.05f, 2f)) * 1.5f + spread + pathJitter + blur
+            }
+            val padding = (maximumWidth * 1.5f + 12f).coerceAtLeast(12f)
+            val patchLeft = kotlin.math.floor(changedPoints.minOf(StrokePoint::x) * raster.width - padding).toInt().coerceIn(0, raster.width - 1)
+            val patchTop = kotlin.math.floor(changedPoints.minOf(StrokePoint::y) * raster.height - padding).toInt().coerceIn(0, raster.height - 1)
+            val patchRight = kotlin.math.ceil(changedPoints.maxOf(StrokePoint::x) * raster.width + padding).toInt().coerceIn(patchLeft + 1, raster.width)
+            val patchBottom = kotlin.math.ceil(changedPoints.maxOf(StrokePoint::y) * raster.height + padding).toInt().coerceIn(patchTop + 1, raster.height)
+            val patchWidth = patchRight - patchLeft
+            val patchHeight = patchBottom - patchTop
+            val patch = obtainRasterIncrementalPatchBitmap(patchWidth, patchHeight)
+            run {
+                val target = Canvas(patch)
+                val patchClip = target.save()
+                target.clipRect(0, 0, patchWidth, patchHeight)
+                target.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+                val scaleX = raster.width / width.coerceAtLeast(1).toFloat()
+                val scaleY = raster.height / height.coerceAtLeast(1).toFloat()
+                val checkpoint = target.save()
+                target.scale(scaleX, scaleY)
+                target.translate(-patchLeft / scaleX, -patchTop / scaleY)
+                val previousSynchronousDecode = forceSynchronousTipDecode
+                val previousIncrementalDraw = incrementalActiveDraw
+                forceSynchronousTipDecode = true
+                incrementalActiveDraw = true
+                try {
+                    increments.forEach { increment -> drawStroke(target, increment.stroke, increment.startIndex, 0) }
+                } finally {
+                    incrementalActiveDraw = previousIncrementalDraw
+                    forceSynchronousTipDecode = previousSynchronousDecode
+                }
+                target.restoreToCount(checkpoint)
+                selectionMaskForDisplay()?.takeUnless(Bitmap::isRecycled)?.let { selection ->
+                    val source = Rect(
+                        (patchLeft.toLong() * selection.width / raster.width).toInt(),
+                        (patchTop.toLong() * selection.height / raster.height).toInt(),
+                        (patchRight.toLong() * selection.width / raster.width).toInt().coerceAtLeast(1),
+                        (patchBottom.toLong() * selection.height / raster.height).toInt().coerceAtLeast(1),
+                    )
+                    target.drawBitmap(selection, source, Rect(0, 0, patchWidth, patchHeight), Paint().apply {
+                        blendMode = BlendMode.DST_IN
+                    })
+                }
+                val changed = session.compositePaintPatch(
+                    patch, patchLeft, patchTop, increments.map(RasterStampIncrement::stroke), wetComposite = false,
+                    contentWidth = patchWidth, contentHeight = patchHeight,
+                )
+                if (changed != null) wetPaintDirtyBounds = mergeDirtyBounds(wetPaintDirtyBounds, changed)
+                frontCanvas?.drawBitmap(
+                    patch,
+                    Rect(0, 0, patchWidth, patchHeight),
+                    RectF(
+                        patchLeft * width.toFloat() / raster.width,
+                        patchTop * height.toFloat() / raster.height,
+                        patchRight * width.toFloat() / raster.width,
+                        patchBottom * height.toFloat() / raster.height,
+                    ),
+                    rasterFrontPatchPaint,
+                )
+                target.restoreToCount(patchClip)
+                increments.forEach { increment ->
+                    if (increment.stamped) {
+                        rasterPrimaryStampCounts[increment.stroke.id] = increment.startIndex + increment.changedPoints.size
+                    } else {
+                        rasterRawPointCounts[increment.stroke.id] = increment.resultingRawPointCount
+                    }
+                }
+                rasterIncrementalPatchCount++
+            }
+            return true
+        } finally {
+            rasterIncrementalRendering = false
+        }
+    }
+
+    private fun clearRasterIncrementalPaintState() {
+        rasterIncrementalPaintEnabled = false
+        rasterIncrementalRendering = false
+        rasterPrimaryStampCounts.clear()
+        rasterRawPointCounts.clear()
+        rasterPrimarySamples.clear()
+        rasterPrimaryScatterRandoms.clear()
+        rasterPrimaryRotationRandoms.clear()
+        rasterIncrementalPatchBitmap?.recycle()
+        rasterIncrementalPatchBitmap = null
+    }
+
+    private fun obtainRasterIncrementalPatchBitmap(requiredWidth: Int, requiredHeight: Int): Bitmap {
+        val existing = rasterIncrementalPatchBitmap
+        if (existing != null && !existing.isRecycled && existing.width >= requiredWidth && existing.height >= requiredHeight) return existing
+        existing?.takeUnless(Bitmap::isRecycled)?.recycle()
+        fun bucket(value: Int): Int {
+            var result = 64
+            while (result < value && result < 4096) result *= 2
+            return maxOf(value, result)
+        }
+        return Bitmap.createBitmap(bucket(requiredWidth), bucket(requiredHeight), Bitmap.Config.ARGB_8888).also {
+            rasterIncrementalPatchBitmap = it
+        }
+    }
+
     private fun renderRasterStrokePatch(raster: Bitmap, newStrokes: List<InkStroke>): RasterStrokePatch? {
         if (newStrokes.isEmpty() || raster.isRecycled) return null
         val allPoints = newStrokes.flatMap(InkStroke::points)
@@ -5753,12 +5977,15 @@ class InkCanvasView(context: Context) : View(context) {
         val template = activeStrokeTemplate ?: return
         val raster = rasterEditBitmapFor(activeLayerId) ?: return
         val surface = rasterTileSurfaceFor(activeLayerId) ?: return
+        clearRasterIncrementalPaintState()
+        rasterIncrementalPaintEnabled = supportsIncrementalRasterStampPaint(template)
         rasterWetPaintBitmap = raster
         rasterPaintSession = RasterTilePaintSession(
             surface,
             raster,
             selectionMaskForDisplay(),
             preserveDestinationAlpha = activeLayerId in alphaLockedLayers,
+            mirrorWrites = !rasterIncrementalPaintEnabled,
         )
         wetPaintDirtyBounds = null
         if (template.procreateWetMix.isDisabled() && !template.watercolor) return
@@ -5874,6 +6101,31 @@ class InkCanvasView(context: Context) : View(context) {
         wetPaintDirtyBounds = null
         wetPaintLastPositions = emptyList()
         wetPaintPickupColors.clear()
+        clearRasterIncrementalPaintState()
+    }
+
+    private fun commitIncrementalRasterStampGesture(newStrokes: List<InkStroke>): Boolean {
+        if (!rasterIncrementalPaintEnabled) return false
+        val surface = rasterTileSurfaceFor(activeLayerId) ?: return false
+        val session = rasterPaintSession ?: return false
+        val rendered = synchronized(renderLock) {
+            renderIncrementalRasterPaintPatch(null, newStrokes, finalCompleteInput = true)
+        }
+        if (!rendered) return false
+        try {
+            val dirty = wetPaintDirtyBounds
+            if (dirty != null) {
+                session.commit().close()
+                commitRasterLayerPatch(surface, dirty)
+            } else {
+                session.restoreOriginal()
+            }
+        } finally {
+            session.close()
+            if (rasterPaintSession === session) rasterPaintSession = null
+        }
+        invalidate()
+        return true
     }
 
     private fun cancelWetPaintGesture() {
@@ -5883,6 +6135,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun commitRasterPaintStrokes(raster: Bitmap, newStrokes: List<InkStroke>) {
+        rasterFullReplayCount++
         val patch = renderRasterStrokePatch(raster, newStrokes) ?: return
         val surface = rasterTileSurfaceFor(activeLayerId) ?: run { patch.bitmap.recycle(); return }
         val session = rasterPaintSession ?: RasterTilePaintSession(

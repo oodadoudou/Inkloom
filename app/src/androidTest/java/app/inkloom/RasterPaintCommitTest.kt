@@ -1,6 +1,7 @@
 package app.inkloom
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
 import android.view.InputDevice
 import android.view.MotionEvent
@@ -20,6 +21,69 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class RasterPaintCommitTest {
+    @Test fun importedStampDepositsIncrementallyWithoutPenUpReplay() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val tipFile = File(context.cacheDir, "incremental-raster-stamp-tip.png")
+        writePng(tipFile, IntArray(64) { Color.BLACK })
+        val display = Bitmap.createBitmap(600, 600, Bitmap.Config.ARGB_8888)
+        val front = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
+        val completeReplay = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
+        var committed: RasterLayerPatch? = null
+        var latestStrokes: List<app.inkloom.document.InkStroke> = emptyList()
+        val frameTimesMs = mutableListOf<Float>()
+        lateinit var view: InkCanvasView
+        view = createCanvas {
+            tool = EditorTool.PEN
+            activeLayerId = "paint"
+            baseWidth = 64f
+            sizePressureEnabled = false
+            tipAssetPath = tipFile.absolutePath
+            tipAssetPaths = listOf(tipFile.absolutePath)
+            setRasterLayerBitmaps(mapOf("paint" to display))
+            onRasterLayerCommitted = { patch -> committed = patch }
+        }
+        view.activeStrokeSurface = object : ActiveStrokeCompositor {
+            override fun render(strokes: List<app.inkloom.document.InkStroke>) {
+                latestStrokes = strokes
+                val started = android.os.SystemClock.elapsedRealtimeNanos()
+                view.drawActiveStrokes(Canvas(front), strokes, incrementalStampDraw = true)
+                frameTimesMs += (android.os.SystemClock.elapsedRealtimeNanos() - started) / 1_000_000f
+            }
+            override fun commit(strokes: List<app.inkloom.document.InkStroke>) = Unit
+            override fun cancel() = Unit
+        }
+
+        send(view, MotionEvent.ACTION_DOWN, 80f, 200f, 0L)
+        repeat(32) { index ->
+            send(view, MotionEvent.ACTION_MOVE, 95f + index * 7f, 200f, 5L + index)
+            InstrumentationRegistry.getInstrumentation().runOnMainSync { view.flushActiveStrokeFrame() }
+            if (index == 15) {
+                val transactionPackets = view.rasterIncrementalPatchCount
+                view.resetActiveRenderState()
+                view.drawActiveStrokes(Canvas(completeReplay), latestStrokes, completeRedraw = true)
+                assertEquals(
+                    "A system front-buffer replay must never redeposit authoritative dabs",
+                    transactionPackets,
+                    view.rasterIncrementalPatchCount,
+                )
+            }
+        }
+
+        assertTrue("The low-latency patch must be visible before pen-up", Color.alpha(front.getPixel(150, 200)) > 0)
+        assertTrue("A complete Android surface replay must remain visually complete", Color.alpha(completeReplay.getPixel(120, 200)) > 0)
+        assertEquals("The stable display must not double-compose live dabs", 0, Color.alpha(display.getPixel(225, 300)))
+        val p95 = frameTimesMs.sorted()[(frameTimesMs.size * .95f).toInt().coerceIn(0, frameTimesMs.lastIndex)]
+        android.util.Log.i("InkloomPerf", "raster_imported_direct_deposit_p95_ms=$p95")
+        assertTrue("Imported direct-deposit frame p95 was ${p95}ms", p95 < 16.7f)
+        send(view, MotionEvent.ACTION_UP, 330f, 200f, 45L)
+
+        assertTrue("Multiple packets should have entered the open raster transaction", view.rasterIncrementalPatchCount >= 2)
+        assertEquals("Eligible imported stamps must not replay the complete path on pen-up", 0, view.rasterFullReplayCount)
+        assertTrue(Color.alpha(display.getPixel(225, 300)) > 0)
+        requireNotNull(committed).close()
+        front.recycle(); completeReplay.recycle(); display.recycle(); tipFile.delete()
+    }
+
     @Test fun productionTileSurfacePaintsWithoutAnExternalBitmapMirror() {
         val seed = Bitmap.createBitmap(600, 600, Bitmap.Config.ARGB_8888)
         val tileSurface = PixelTileBitmapAdapter.import(seed)
@@ -119,6 +183,7 @@ class RasterPaintCommitTest {
         send(view, MotionEvent.ACTION_UP, 635f, 302f, 90L)
         val elapsedMs = (android.os.SystemClock.elapsedRealtimeNanos() - started) / 1_000_000f
         android.util.Log.i("InkloomPerf", "raster_standard_pen_commit_ms=$elapsedMs")
+        assertEquals("The standard pen belongs to the direct tile-deposit path", 0, view.rasterFullReplayCount)
         assertTrue("Raster pen-up commit was ${elapsedMs}ms", elapsedMs < 16.7f)
         surface.recycle()
     }

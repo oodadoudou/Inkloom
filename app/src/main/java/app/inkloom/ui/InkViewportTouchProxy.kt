@@ -143,7 +143,7 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context), ActiveStro
         val strokes = activeStrokes
         val transform = activeTransform ?: return
         view.resetActiveRenderState()
-        if (strokes.isNotEmpty()) drawActiveInk(canvas, view, transform, strokes, incrementalStampDraw = false)
+        if (strokes.isNotEmpty()) drawActiveInk(canvas, view, transform, strokes, incrementalStampDraw = false, completeRedraw = true)
         synchronized(activeLock) { activeTailPlanner.complete(strokes) }
     }
 
@@ -168,11 +168,12 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context), ActiveStro
         transform: ViewportFrame,
         strokes: List<InkStroke>,
         incrementalStampDraw: Boolean,
+        completeRedraw: Boolean = false,
     ) {
         val checkpoint = canvas.save()
         canvas.concat(transform.pageToViewportMatrix(activeRenderMatrix))
         canvas.clipRect(0f, 0f, view.width.toFloat(), view.height.toFloat())
-        view.drawActiveStrokes(canvas, strokes, incrementalStampDraw)
+        view.drawActiveStrokes(canvas, strokes, incrementalStampDraw, completeRedraw)
         canvas.restoreToCount(checkpoint)
     }
 

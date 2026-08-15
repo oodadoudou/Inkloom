@@ -68,7 +68,7 @@ internal class CanvasHost(context: Context) : FrameLayout(context), ActiveStroke
         canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
         canvasView.resetActiveRenderState()
         val snapshot = activeStrokes
-        if (snapshot.isNotEmpty()) canvasView.drawActiveStrokes(canvas, snapshot)
+        if (snapshot.isNotEmpty()) canvasView.drawActiveStrokes(canvas, snapshot, completeRedraw = true)
         synchronized(activeLock) { tailPlanner.complete(snapshot) }
     }
 

@@ -197,18 +197,27 @@ class RasterTilePaintSession(
         top: Int,
         strokes: List<InkStroke>,
         wetComposite: Boolean,
+        contentWidth: Int = paintPatch.width,
+        contentHeight: Int = paintPatch.height,
     ): Rect? {
         check(!completed) { "Raster tile paint session is complete" }
         if (paintPatch.isRecycled || strokes.isEmpty()) return null
-        require(left >= 0 && top >= 0 && left + paintPatch.width <= logicalWidth && top + paintPatch.height <= logicalHeight) {
+        require(contentWidth in 1..paintPatch.width && contentHeight in 1..paintPatch.height) {
+            "Paint patch content must be inside its backing bitmap"
+        }
+        require(left >= 0 && top >= 0 && left + contentWidth <= logicalWidth && top + contentHeight <= logicalHeight) {
             "Paint patch must be inside the raster surface"
         }
-        val bounds = PixelRect(left, top, left + paintPatch.width, top + paintPatch.height)
+        val bounds = PixelRect(left, top, left + contentWidth, top + contentHeight)
         val changed = edits.edit(bounds) { output ->
             if (wetComposite) {
+                require(contentWidth == paintPatch.width && contentHeight == paintPatch.height) {
+                    "Wet paint patches must use their complete backing bitmap"
+                }
                 RasterWetPaintMixer.composite(output, paintPatch, 0, 0, strokes)
             } else {
-                Canvas(output).drawBitmap(paintPatch, 0f, 0f, compositePaint)
+                localRect.set(0, 0, contentWidth, contentHeight)
+                Canvas(output).drawBitmap(paintPatch, localRect, localRect, compositePaint)
             }
         } ?: return null
         return Rect(changed.left, changed.top, changed.right, changed.bottom)
