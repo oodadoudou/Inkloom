@@ -72,7 +72,7 @@ class InkCanvasLassoTest {
         val mask = requireNotNull(SparseAlphaMask.fromBitmap(source))
         val inverted = mask.inverted()
         try {
-            assertEquals("The fully selected source tile becomes implicit transparency", 3, inverted.tileCount)
+            assertEquals("The source island remains one explicit hole over an implicit selected default", 1, inverted.tileCount)
             val snapshot = inverted.snapshot()
             try {
                 assertEquals(Color.TRANSPARENT, snapshot.getPixel(100, 100))

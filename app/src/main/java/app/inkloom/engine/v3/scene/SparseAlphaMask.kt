@@ -9,6 +9,7 @@ import android.graphics.RectF
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
 import app.inkloom.engine.v3.surface.MaskComposeMode
+import app.inkloom.engine.v3.surface.MaskTileInfo
 import app.inkloom.engine.v3.surface.MaskTileSurface
 import app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot
 import app.inkloom.engine.v3.surface.PixelRect
@@ -41,8 +42,17 @@ internal class SparseAlphaMask private constructor(
         val snapshot = surface.snapshot()
         val scaleX = destination.width() / width.coerceAtLeast(1)
         val scaleY = destination.height() / height.coerceAtLeast(1)
-        snapshot.tileInfo.forEach { info ->
-            val bounds = tileRect(info.key)
+        val keys = if (snapshot.defaultAlpha == 0) {
+            snapshot.tileInfo.map(MaskTileInfo::key)
+        } else {
+            val columns = (width + surface.tileSize - 1) / surface.tileSize
+            val rows = (height + surface.tileSize - 1) / surface.tileSize
+            buildList(columns * rows) {
+                for (row in 0 until rows) for (column in 0 until columns) add(PixelTileKey(column, row))
+            }
+        }
+        keys.forEach { key ->
+            val bounds = tileRect(key)
             val tile = bitmapFrom(snapshot, bounds)
             try {
                 canvas.drawBitmap(
@@ -89,24 +99,8 @@ internal class SparseAlphaMask private constructor(
     }
 
     fun inverted(): SparseAlphaMask {
-        val source = surface.snapshot()
-        val result = MaskTileSurface(width, height, surface.tileSize)
-        val columns = (width + surface.tileSize - 1) / surface.tileSize
-        val rows = (height + surface.tileSize - 1) / surface.tileSize
-        result.beginWrite("invert selection").run {
-            for (row in 0 until rows) for (column in 0 until columns) {
-                val key = PixelTileKey(column, row)
-                val bounds = tileRect(key)
-                val sourceAlpha = source.copyTileAlpha(key)
-                editTile(key, PixelRect(0, 0, bounds.width, bounds.height)) { output, stride ->
-                    for (y in 0 until bounds.height) for (x in 0 until bounds.width) {
-                        val index = y * stride + x
-                        output[index] = (255 - (sourceAlpha?.get(index)?.toInt()?.and(0xff) ?: 0)).toByte()
-                    }
-                }
-            }
-            commit().close()
-        }
+        val result = copySurface(surface.snapshot())
+        result.beginWrite("invert selection").run { invert(); commit().close() }
         return SparseAlphaMask(result)
     }
 
@@ -116,18 +110,19 @@ internal class SparseAlphaMask private constructor(
         val source = surface.snapshot()
         if (source.isEmpty) return null
         val logical = PixelRect(0, 0, width, height)
+        if (source.defaultAlpha != 0 && source.tileInfo.isEmpty()) return copy()
         val regions = mergeTouchingRects(source.tileInfo.map { info ->
             val tile = tileRect(info.key)
             PixelRect(tile.left - radius, tile.top - radius, tile.right + radius, tile.bottom + radius).intersect(logical)
         })
-        val result = MaskTileSurface(width, height, surface.tileSize)
+        val result = MaskTileSurface(width, height, surface.tileSize, initialDefaultAlpha = source.defaultAlpha)
         result.beginWrite(if (dilate) "expand selection" else "shrink selection").run {
             regions.forEach { region ->
                 val input = bitmapFrom(source, region)
                 val output = Bitmap.createBitmap(region.width, region.height, Bitmap.Config.ARGB_8888)
                 try {
                     NativeRasterOps.morphAlpha(input, output, radius, dilate)
-                    composeAlpha(region, bitmapAlpha(output), mode = MaskComposeMode.ADD)
+                    composeAlpha(region, bitmapAlpha(output), mode = MaskComposeMode.REPLACE)
                 } finally {
                     input.recycle()
                     output.recycle()
@@ -159,20 +154,39 @@ internal class SparseAlphaMask private constructor(
         val source = surface.snapshot()
         if (source.isEmpty) return null
         val logical = PixelRect(0, 0, width, height)
+        if (source.defaultAlpha != 0 && source.tileInfo.isEmpty()) {
+            return if (label == "selection boundary") pageBoundaryMask() else copy()
+        }
         val regions = mergeTouchingRects(source.tileInfo.map { info ->
             val tile = tileRect(info.key)
             PixelRect(tile.left - halo, tile.top - halo, tile.right + halo, tile.bottom + halo).intersect(logical)
         })
-        val result = MaskTileSurface(width, height, surface.tileSize)
+        val result = MaskTileSurface(width, height, surface.tileSize, initialDefaultAlpha = if (label == "selection boundary") 0 else source.defaultAlpha)
         result.beginWrite(label).run {
             regions.forEach { region ->
                 val input = bitmapFrom(source, region)
                 val output = try { operation(input) } finally { input.recycle() }
                 if (output != null) try {
-                    composeAlpha(region, bitmapAlpha(output), mode = MaskComposeMode.ADD)
+                    composeAlpha(region, bitmapAlpha(output), mode = if (label == "selection boundary") MaskComposeMode.ADD else MaskComposeMode.REPLACE)
                 } finally {
                     output.recycle()
                 }
+            }
+            commit().close()
+        }
+        return result.takeUnless(MaskTileSurface::isEmpty)?.let(::SparseAlphaMask)
+    }
+
+    private fun pageBoundaryMask(): SparseAlphaMask? {
+        val result = MaskTileSurface(width, height, surface.tileSize)
+        result.beginWrite("selection page boundary").run {
+            for (x in 0 until width) {
+                setAlpha(x, 0, 255)
+                if (height > 1) setAlpha(x, height - 1, 255)
+            }
+            for (y in 1 until height - 1) {
+                setAlpha(0, y, 255)
+                if (width > 1) setAlpha(width - 1, y, 255)
             }
             commit().close()
         }
@@ -283,21 +297,9 @@ internal class SparseAlphaMask private constructor(
 
         fun full(pageWidth: Float, pageHeight: Float): SparseAlphaMask? {
             val size = SelectionMaskCompositor.maskSize(pageWidth, pageHeight) ?: return null
-            val surface = MaskTileSurface(size.width, size.height, DEFAULT_TILE_SIZE)
-            val columns = (size.width + surface.tileSize - 1) / surface.tileSize
-            val rows = (size.height + surface.tileSize - 1) / surface.tileSize
-            surface.beginWrite("select all").run {
-                for (row in 0 until rows) for (column in 0 until columns) {
-                    val key = PixelTileKey(column, row)
-                    val tileWidth = minOf(surface.tileSize, size.width - column * surface.tileSize)
-                    val tileHeight = minOf(surface.tileSize, size.height - row * surface.tileSize)
-                    editTile(key, PixelRect(0, 0, tileWidth, tileHeight)) { alpha, stride ->
-                        for (y in 0 until tileHeight) alpha.fill(255.toByte(), y * stride, y * stride + tileWidth)
-                    }
-                }
-                commit().close()
-            }
-            return SparseAlphaMask(surface)
+            return SparseAlphaMask(
+                MaskTileSurface(size.width, size.height, DEFAULT_TILE_SIZE, initialDefaultAlpha = 255),
+            )
         }
 
         fun fromBitmap(source: Bitmap?, tileSize: Int = DEFAULT_TILE_SIZE): SparseAlphaMask? {
@@ -346,9 +348,14 @@ internal class SparseAlphaMask private constructor(
         private fun pathPointY(point: StrokePoint, height: Int, top: Int) = point.y * height - top
 
         private fun copySurface(source: MaskTileSurfaceSnapshot): MaskTileSurface =
-            MaskTileSurface(source.logicalWidth, source.logicalHeight, source.tileSize).also { copy ->
-                if (!source.isEmpty) copy.beginWrite("copy selection").run {
-                    composeSurface(source, MaskComposeMode.ADD)
+            MaskTileSurface(
+                source.logicalWidth,
+                source.logicalHeight,
+                source.tileSize,
+                initialDefaultAlpha = source.defaultAlpha,
+            ).also { copy ->
+                if (source.tileCount > 0) copy.beginWrite("copy selection").run {
+                    composeSurface(source, MaskComposeMode.REPLACE)
                     commit().close()
                 }
             }

@@ -32,16 +32,17 @@ internal data class MaskTileDelta(
     val tileCapacity: Int,
 )
 
-/** Immutable document-coordinate selection alpha. Missing tiles are fully unselected. */
+/** Immutable document-coordinate alpha. Missing tiles resolve to [defaultAlpha]. */
 class MaskTileSurfaceSnapshot internal constructor(
     val surfaceId: String,
     val logicalWidth: Int,
     val logicalHeight: Int,
     val tileSize: Int,
     val revision: Long,
+    val defaultAlpha: Int,
     private val tiles: Map<PixelTileKey, MaskTileGeneration>,
 ) {
-    val isEmpty: Boolean get() = tiles.isEmpty()
+    val isEmpty: Boolean get() = defaultAlpha == 0 && tiles.isEmpty()
     val tileCount: Int get() = tiles.size
     val retainedByteSize: Long get() = tiles.size.toLong() * tileSize * tileSize
     val tileInfo: List<MaskTileInfo> get() = tiles.map { (key, tile) ->
@@ -51,7 +52,7 @@ class MaskTileSurfaceSnapshot internal constructor(
     fun alphaAt(x: Int, y: Int): Int {
         if (x !in 0 until logicalWidth || y !in 0 until logicalHeight) return 0
         val key = PixelTileKey(x / tileSize, y / tileSize)
-        return tiles[key]?.alpha?.get((y % tileSize) * tileSize + x % tileSize)?.toInt()?.and(0xff) ?: 0
+        return tiles[key]?.alpha?.get((y % tileSize) * tileSize + x % tileSize)?.toInt()?.and(0xff) ?: defaultAlpha
     }
 
     fun copyTileAlpha(key: PixelTileKey): ByteArray? = tiles[key]?.alpha?.copyOf()
@@ -62,7 +63,7 @@ class MaskTileSurfaceSnapshot internal constructor(
 
     fun copyAlpha(source: PixelRect): ByteArray {
         requireInside(source, logicalWidth, logicalHeight)
-        val output = ByteArray(Math.multiplyExact(source.width, source.height))
+        val output = ByteArray(Math.multiplyExact(source.width, source.height)) { defaultAlpha.toByte() }
         if (source.isEmpty) return output
         val firstColumn = source.left / tileSize
         val lastColumn = (source.right - 1) / tileSize
@@ -95,30 +96,42 @@ class MaskTileSurface(
     val logicalHeight: Int,
     val tileSize: Int = DEFAULT_TILE_SIZE,
     val surfaceId: String = UUID.randomUUID().toString(),
+    initialDefaultAlpha: Int = 0,
 ) {
     init {
         require(logicalWidth > 0) { "logicalWidth must be positive" }
         require(logicalHeight > 0) { "logicalHeight must be positive" }
         require(tileSize in SUPPORTED_TILE_SIZES) { "Unsupported mask tile size: $tileSize" }
+        require(initialDefaultAlpha in 0..255) { "initialDefaultAlpha must be 0..255" }
     }
 
     private val monitor = Any()
     private val generations = linkedMapOf<PixelTileKey, MaskTileGeneration>()
     private var activeTransactionId: Long? = null
     private var revisionValue = 0L
+    private var defaultAlphaValue = initialDefaultAlpha
 
     val revision: Long get() = synchronized(monitor) { revisionValue }
     val tileCount: Int get() = synchronized(monitor) { generations.size }
     val retainedByteSize: Long get() = synchronized(monitor) { generations.size.toLong() * tileSize * tileSize }
-    val isEmpty: Boolean get() = tileCount == 0
+    val defaultAlpha: Int get() = synchronized(monitor) { defaultAlphaValue }
+    val isEmpty: Boolean get() = synchronized(monitor) { defaultAlphaValue == 0 && generations.isEmpty() }
 
     fun alphaAt(x: Int, y: Int): Int = synchronized(monitor) {
         if (x !in 0 until logicalWidth || y !in 0 until logicalHeight) return@synchronized 0
-        generations[keyFor(x, y)]?.alpha?.get(localIndex(x, y))?.toInt()?.and(0xff) ?: 0
+        generations[keyFor(x, y)]?.alpha?.get(localIndex(x, y))?.toInt()?.and(0xff) ?: defaultAlphaValue
     }
 
     fun snapshot(): MaskTileSurfaceSnapshot = synchronized(monitor) {
-        MaskTileSurfaceSnapshot(surfaceId, logicalWidth, logicalHeight, tileSize, revisionValue, generations.toMap())
+        MaskTileSurfaceSnapshot(
+            surfaceId,
+            logicalWidth,
+            logicalHeight,
+            tileSize,
+            revisionValue,
+            defaultAlphaValue,
+            generations.toMap(),
+        )
     }
 
     fun beginWrite(label: String): MaskTileWriteTransaction {
@@ -137,6 +150,8 @@ class MaskTileSurface(
         synchronized(monitor) {
             check(activeTransactionId == null) { "Cannot apply mask history while a write is active" }
             val deltas = record.deltas()
+            val expectedDefault = if (direction == HistoryDirection.UNDO) record.afterDefaultAlpha else record.beforeDefaultAlpha
+            check(defaultAlphaValue == expectedDefault) { "Mask default alpha changed after this transaction" }
             deltas.forEach { delta ->
                 val expected = if (direction == HistoryDirection.UNDO) delta.after else delta.before
                 check(generations[delta.key]?.id == expected?.id) { "Mask tile ${delta.key} changed after this transaction" }
@@ -145,21 +160,26 @@ class MaskTileSurface(
                 val generation = if (direction == HistoryDirection.UNDO) delta.before else delta.after
                 if (generation == null) generations.remove(delta.key) else generations[delta.key] = generation
             }
-            if (deltas.isNotEmpty()) revisionValue++
+            defaultAlphaValue = if (direction == HistoryDirection.UNDO) record.beforeDefaultAlpha else record.afterDefaultAlpha
+            if (deltas.isNotEmpty() || record.beforeDefaultAlpha != record.afterDefaultAlpha) revisionValue++
         }
     }
 
     internal fun publishedTile(key: PixelTileKey): MaskTileGeneration? = synchronized(monitor) { generations[key] }
     internal fun publishedKeys(): Set<PixelTileKey> = synchronized(monitor) { generations.keys.toSet() }
+    internal fun publishedDefaultAlpha(): Int = synchronized(monitor) { defaultAlphaValue }
 
     internal fun commit(transaction: MaskTileWriteTransaction): MaskTileTransactionRecord = synchronized(monitor) {
         requireActive(transaction)
+        val afterDefaultAlpha = transaction.workingDefaultAlpha
         val deltas = transaction.workingTiles.mapNotNull { (key, working) ->
             val before = working.before
-            if (before != null && before.alpha.contentEquals(working.alpha)) return@mapNotNull null
+            val equalsBefore = before != null && before.alpha.contentEquals(working.alpha)
+            val equalsAfterDefault = working.alpha.all { it.toInt().and(0xff) == afterDefaultAlpha }
+            if (equalsBefore && !equalsAfterDefault) return@mapNotNull null
             val nonZero = working.alpha.count { it.toInt() != 0 }
-            if (before == null && nonZero == 0) return@mapNotNull null
-            val after = if (nonZero == 0) null else MaskTileGeneration(
+            if (before == null && equalsAfterDefault) return@mapNotNull null
+            val after = if (equalsAfterDefault) null else MaskTileGeneration(
                 generationIds.incrementAndGet(),
                 working.alpha,
                 nonZero,
@@ -169,10 +189,19 @@ class MaskTileSurface(
         deltas.forEach { delta ->
             if (delta.after == null) generations.remove(delta.key) else generations[delta.key] = delta.after
         }
+        val beforeDefaultAlpha = defaultAlphaValue
+        defaultAlphaValue = afterDefaultAlpha
         activeTransactionId = null
         transaction.markCommitted()
-        if (deltas.isNotEmpty()) revisionValue++
-        MaskTileTransactionRecord(surfaceId, transaction.id, transaction.label, deltas)
+        if (deltas.isNotEmpty() || beforeDefaultAlpha != afterDefaultAlpha) revisionValue++
+        MaskTileTransactionRecord(
+            surfaceId,
+            transaction.id,
+            transaction.label,
+            beforeDefaultAlpha,
+            afterDefaultAlpha,
+            deltas,
+        )
     }
 
     internal fun cancel(transaction: MaskTileWriteTransaction) = synchronized(monitor) {
@@ -209,6 +238,8 @@ class MaskTileTransactionRecord internal constructor(
     val surfaceId: String,
     val transactionId: Long,
     val label: String,
+    val beforeDefaultAlpha: Int,
+    val afterDefaultAlpha: Int,
     deltas: List<MaskTileDelta>,
 ) : AutoCloseable {
     private var retainedDeltas = deltas
@@ -242,6 +273,8 @@ class MaskTileWriteTransaction internal constructor(
     internal val label: String,
 ) : AutoCloseable {
     internal val workingTiles = linkedMapOf<PixelTileKey, WorkingMaskTile>()
+    internal var workingDefaultAlpha: Int = surface.publishedDefaultAlpha()
+        private set
     private var state = State.ACTIVE
 
     val touchedTileCount: Int get() = workingTiles.size
@@ -252,7 +285,7 @@ class MaskTileWriteTransaction internal constructor(
         requireActive()
         return (workingTiles[surface.keyFor(x, y)]?.alpha?.get(surface.localIndex(x, y))
             ?: surface.publishedTile(surface.keyFor(x, y))?.alpha?.get(surface.localIndex(x, y))
-            ?: 0).toInt().and(0xff)
+            ?: workingDefaultAlpha.toByte()).toInt().and(0xff)
     }
 
     fun setAlpha(x: Int, y: Int, alpha: Int) {
@@ -264,13 +297,31 @@ class MaskTileWriteTransaction internal constructor(
         markDirty(tile, PixelRect(x % surface.tileSize, y % surface.tileSize, x % surface.tileSize + 1, y % surface.tileSize + 1))
     }
 
-    fun clear() {
+    fun clear() = fill(0)
+
+    /** Replaces the entire logical mask in O(number of explicit tiles), not O(canvas pixels). */
+    fun fill(alpha: Int) {
+        require(alpha in 0..255) { "alpha must be 0..255" }
         requireActive()
-        surface.publishedKeys().forEach { key ->
+        (surface.publishedKeys() + workingTiles.keys).forEach { key ->
             val tile = writableTile(key)
-            tile.alpha.fill(0)
+            tile.alpha.fill(alpha.toByte())
             markDirty(tile, surface.fullTileRect())
         }
+        workingDefaultAlpha = alpha
+    }
+
+    /** Inverts the implicit default and only the explicit deviation tiles. */
+    fun invert() {
+        requireActive()
+        (surface.publishedKeys() + workingTiles.keys).forEach { key ->
+            val tile = writableTile(key)
+            for (index in tile.alpha.indices) {
+                tile.alpha[index] = (255 - tile.alpha[index].toInt().and(0xff)).toByte()
+            }
+            markDirty(tile, surface.fullTileRect())
+        }
+        workingDefaultAlpha = 255 - workingDefaultAlpha
     }
 
     fun replaceAlpha(destination: PixelRect, alpha: ByteArray, rowStride: Int = destination.width) {
@@ -319,31 +370,35 @@ class MaskTileWriteTransaction internal constructor(
         require(source.logicalWidth == surface.logicalWidth && source.logicalHeight == surface.logicalHeight) {
             "Mask surface geometry must match"
         }
-        if (mode == MaskComposeMode.REPLACE) clear()
-        val keys = when (mode) {
-            MaskComposeMode.REPLACE, MaskComposeMode.ADD, MaskComposeMode.SUBTRACT ->
-                source.tileInfo.mapTo(linkedSetOf(), MaskTileInfo::key)
-            MaskComposeMode.INTERSECT -> surface.publishedKeys() + workingTiles.keys
+        val destinationDefault = workingDefaultAlpha
+        val resultDefault = compose(destinationDefault, source.defaultAlpha, mode)
+        val keys = linkedSetOf<PixelTileKey>().apply {
+            addAll(surface.publishedKeys())
+            addAll(workingTiles.keys)
+            addAll(source.tileInfo.map(MaskTileInfo::key))
         }
         keys.forEach { key ->
             val sourceAlpha = source.copyTileAlpha(key)
-            if (sourceAlpha == null && mode != MaskComposeMode.INTERSECT) return@forEach
-            editTile(key) { target, _ ->
-                for (index in target.indices) {
-                    target[index] = compose(
-                        target[index].toInt().and(0xff),
-                        sourceAlpha?.get(index)?.toInt()?.and(0xff) ?: 0,
-                        if (mode == MaskComposeMode.REPLACE) MaskComposeMode.ADD else mode,
-                    ).toByte()
-                }
+            val targetBefore = workingTiles[key]?.alpha?.copyOf()
+                ?: surface.publishedTile(key)?.alpha?.copyOf()
+                ?: ByteArray(surface.tileSize * surface.tileSize) { destinationDefault.toByte() }
+            val tile = writableTile(key)
+            for (index in tile.alpha.indices) {
+                tile.alpha[index] = compose(
+                    targetBefore[index].toInt().and(0xff),
+                    sourceAlpha?.get(index)?.toInt()?.and(0xff) ?: source.defaultAlpha,
+                    mode,
+                ).toByte()
             }
+            markDirty(tile, surface.fullTileRect())
         }
+        workingDefaultAlpha = resultDefault
     }
 
     fun copyAlpha(source: PixelRect): ByteArray {
         requireActive()
         requireInside(source, surface.logicalWidth, surface.logicalHeight)
-        val output = ByteArray(Math.multiplyExact(source.width, source.height))
+        val output = ByteArray(Math.multiplyExact(source.width, source.height)) { workingDefaultAlpha.toByte() }
         if (source.isEmpty) return output
         val firstColumn = source.left / surface.tileSize
         val lastColumn = (source.right - 1) / surface.tileSize
@@ -384,7 +439,10 @@ class MaskTileWriteTransaction internal constructor(
 
     private fun writableTile(key: PixelTileKey): WorkingMaskTile = workingTiles.getOrPut(key) {
         val before = surface.publishedTile(key)
-        WorkingMaskTile(before, before?.alpha?.copyOf() ?: ByteArray(surface.tileSize * surface.tileSize))
+        WorkingMaskTile(
+            before,
+            before?.alpha?.copyOf() ?: ByteArray(surface.tileSize * surface.tileSize) { workingDefaultAlpha.toByte() },
+        )
     }
 
     private fun markDirty(tile: WorkingMaskTile, rect: PixelRect) {

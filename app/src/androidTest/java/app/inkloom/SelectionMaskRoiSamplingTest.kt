@@ -55,4 +55,31 @@ class SelectionMaskRoiSamplingTest {
             target.recycle()
         }
     }
+
+    @Test fun eightKImplicitSelectAllAndSparseInvertStayAllocationBoundedAndSampleCorrectly() {
+        val selection = MaskTileSurface(8192, 8192, tileSize = 128)
+        selection.beginWrite("select all").run { fill(255); commit().close() }
+        assertEquals(0, selection.tileCount)
+        assertEquals(0L, selection.retainedByteSize)
+
+        selection.beginWrite("one hole").run {
+            setAlpha(4097, 4097, 0)
+            commit().close()
+        }
+        selection.beginWrite("invert").run { invert(); commit().close() }
+
+        assertEquals(0, selection.defaultAlpha)
+        assertEquals(1, selection.tileCount)
+        assertEquals(255, selection.alphaAt(4097, 4097))
+        assertEquals(0, selection.alphaAt(7000, 7000))
+
+        val target = Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+        try {
+            assertTrue(RasterSelectionMask(selection.snapshot(), 8192, 8192).apply(target, Rect(4096, 4096, 4224, 4224)))
+            assertEquals(Color.RED, target.getPixel(1, 1))
+            assertEquals(Color.TRANSPARENT, target.getPixel(100, 100))
+        } finally {
+            target.recycle()
+        }
+    }
 }

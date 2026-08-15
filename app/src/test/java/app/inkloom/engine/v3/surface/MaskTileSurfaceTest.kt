@@ -105,4 +105,73 @@ class MaskTileSurfaceTest {
         assertEquals(255, surface.alphaAt(10, 10))
         assertEquals(255, surface.alphaAt(400, 400))
     }
+
+    @Test fun selectAllAndInvertUseImplicitDefaultWithoutAllocatingEightKTilePlane() {
+        val surface = MaskTileSurface(8192, 8192, tileSize = 128)
+        val selectAll = surface.beginWrite("select all").run { fill(255); commit() }
+
+        assertEquals(255, surface.defaultAlpha)
+        assertEquals(255, surface.alphaAt(0, 0))
+        assertEquals(255, surface.alphaAt(8191, 8191))
+        assertEquals(0, surface.tileCount)
+        assertEquals(0L, surface.retainedByteSize)
+        assertEquals(0, selectAll.changedTileCount)
+
+        val invert = surface.beginWrite("invert").run { invert(); commit() }
+        assertTrue(surface.isEmpty)
+        assertEquals(0, surface.defaultAlpha)
+        assertEquals(0, surface.tileCount)
+        assertEquals(0, invert.changedTileCount)
+
+        surface.apply(invert, HistoryDirection.UNDO)
+        assertEquals(255, surface.defaultAlpha)
+        assertEquals(255, surface.alphaAt(4096, 4096))
+        surface.apply(selectAll, HistoryDirection.UNDO)
+        assertTrue(surface.isEmpty)
+    }
+
+    @Test fun sparseInvertKeepsOnlySparseDeviationsAndRoundTripsHistory() {
+        val surface = MaskTileSurface(8192, 8192, tileSize = 128)
+        surface.beginWrite("sparse island").run {
+            setAlpha(42, 51, 200)
+            commit().close()
+        }
+        val record = surface.beginWrite("invert sparse").run { invert(); commit() }
+
+        assertEquals(255, surface.defaultAlpha)
+        assertEquals(55, surface.alphaAt(42, 51))
+        assertEquals(255, surface.alphaAt(7000, 7000))
+        assertEquals(1, surface.tileCount)
+        assertEquals(128L * 128, surface.retainedByteSize)
+
+        surface.apply(record, HistoryDirection.UNDO)
+        assertEquals(0, surface.defaultAlpha)
+        assertEquals(200, surface.alphaAt(42, 51))
+        assertEquals(0, surface.alphaAt(7000, 7000))
+    }
+
+    @Test fun booleanCompositionCombinesImplicitDefaultsAndExplicitDeviations() {
+        val destination = MaskTileSurface(256, 256, tileSize = 64, initialDefaultAlpha = 255)
+        destination.beginWrite("destination hole").run {
+            setAlpha(10, 10, 0)
+            commit().close()
+        }
+        val source = MaskTileSurface(256, 256, tileSize = 64)
+        source.beginWrite("source island").run {
+            setAlpha(10, 10, 255)
+            setAlpha(100, 100, 128)
+            commit().close()
+        }
+
+        destination.beginWrite("intersect").run {
+            composeSurface(source.snapshot(), MaskComposeMode.INTERSECT)
+            commit().close()
+        }
+
+        assertEquals(0, destination.defaultAlpha)
+        assertEquals(0, destination.alphaAt(10, 10))
+        assertEquals(128, destination.alphaAt(100, 100))
+        assertEquals(0, destination.alphaAt(200, 200))
+        assertEquals(1, destination.tileCount)
+    }
 }
