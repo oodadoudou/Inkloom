@@ -1544,6 +1544,8 @@ class InkCanvasView(context: Context) : View(context) {
         val rasterLayerIds = rasterLayerTileSurfaces.keys.filter { layerFilter == null || it in layerFilter }
         val availableLayerIds = groupedStrokes.keys + elementLayerIds + rasterLayerIds
         val orderedLayerIds = (layerOrder.filter { it in availableLayerIds } + availableLayerIds.filterNot { it in layerOrder }).distinct()
+        val compositionBounds = RectF(canvas.clipBounds)
+        if (compositionBounds.isEmpty) return
         var previousLayerId: String? = null
         orderedLayerIds.forEach { layerId ->
             val layerStrokes = groupedStrokes[layerId].orEmpty()
@@ -1562,18 +1564,18 @@ class InkCanvasView(context: Context) : View(context) {
                     previousLayerId = layerId
                     return@forEach
                 }
-                val checkpoint = canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                val checkpoint = canvas.saveLayer(compositionBounds, Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     alpha = (opacity * 255f).toInt().coerceIn(0, 255)
                     this.blendMode = layerBlendMode.toBlendMode()
                 })
                 drawRawLayerContent(canvas, layerId, layerStrokes, includeElements, primaryStampStartIndex, dualStampStartIndex)
                 layerMasks[layerId]?.let { mask ->
-                    val maskCheckpoint = canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.DST_IN })
+                    val maskCheckpoint = canvas.saveLayer(compositionBounds, Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.DST_IN })
                     LayerMaskRenderer.draw(canvas, mask, width, height)
                     canvas.restoreToCount(maskCheckpoint)
                 }
                 if (clipped && lowerLayerId != null) {
-                    val maskCheckpoint = canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.DST_IN })
+                    val maskCheckpoint = canvas.saveLayer(compositionBounds, Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.DST_IN })
                     drawRawLayerContent(canvas, lowerLayerId, groupedStrokes[lowerLayerId].orEmpty(), includeElements, primaryStampStartIndex, dualStampStartIndex)
                     canvas.restoreToCount(maskCheckpoint)
                 }
@@ -1612,10 +1614,11 @@ class InkCanvasView(context: Context) : View(context) {
         }
         drawBase()
         if (addedStrokes.isNotEmpty() || elements?.additions != null) {
-            val additionsCheckpoint = canvas.saveLayer(null, null)
+            val compositionBounds = RectF(canvas.clipBounds)
+            val additionsCheckpoint = canvas.saveLayer(compositionBounds, null)
             addedStrokes.forEach { drawStroke(canvas, it, primaryStampStartIndex, dualStampStartIndex) }
             drawElementBitmap(canvas, elements?.additions)
-            val maskCheckpoint = canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.DST_IN })
+            val maskCheckpoint = canvas.saveLayer(compositionBounds, Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.DST_IN })
             drawBase()
             canvas.restoreToCount(maskCheckpoint)
             canvas.restoreToCount(additionsCheckpoint)
