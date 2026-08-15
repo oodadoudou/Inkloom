@@ -313,6 +313,33 @@ class MaskTileWriteTransaction internal constructor(
         }
     }
 
+    /** Composes another sparse mask without expanding either logical surface into a page buffer. */
+    fun composeSurface(source: MaskTileSurfaceSnapshot, mode: MaskComposeMode) {
+        requireActive()
+        require(source.logicalWidth == surface.logicalWidth && source.logicalHeight == surface.logicalHeight) {
+            "Mask surface geometry must match"
+        }
+        if (mode == MaskComposeMode.REPLACE) clear()
+        val keys = when (mode) {
+            MaskComposeMode.REPLACE, MaskComposeMode.ADD, MaskComposeMode.SUBTRACT ->
+                source.tileInfo.mapTo(linkedSetOf(), MaskTileInfo::key)
+            MaskComposeMode.INTERSECT -> surface.publishedKeys() + workingTiles.keys
+        }
+        keys.forEach { key ->
+            val sourceAlpha = source.copyTileAlpha(key)
+            if (sourceAlpha == null && mode != MaskComposeMode.INTERSECT) return@forEach
+            editTile(key) { target, _ ->
+                for (index in target.indices) {
+                    target[index] = compose(
+                        target[index].toInt().and(0xff),
+                        sourceAlpha?.get(index)?.toInt()?.and(0xff) ?: 0,
+                        if (mode == MaskComposeMode.REPLACE) MaskComposeMode.ADD else mode,
+                    ).toByte()
+                }
+            }
+        }
+    }
+
     fun copyAlpha(source: PixelRect): ByteArray {
         requireActive()
         requireInside(source, surface.logicalWidth, surface.logicalHeight)

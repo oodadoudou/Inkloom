@@ -2,6 +2,7 @@ package app.inkloom.engine.v3.scene
 
 import app.inkloom.engine.v3.surface.MaskTileSurface
 import app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot
+import app.inkloom.engine.v3.surface.MaskComposeMode
 
 data class DocumentPageKey(val documentId: String, val pageId: String) {
     init {
@@ -39,12 +40,16 @@ class DocumentSelectionState internal constructor(
     fun surface(): MaskTileSurface = synchronized(monitor) { surfaceValue }
     fun snapshot(): MaskTileSurfaceSnapshot = synchronized(monitor) { surfaceValue.snapshot() }
 
-    /** Only the document runtime may replace the authoritative surface generation. */
-    internal fun replace(surface: MaskTileSurface) = synchronized(monitor) {
-        require(surface.logicalWidth == surfaceValue.logicalWidth && surface.logicalHeight == surfaceValue.logicalHeight) {
+    /** Replaces alpha through the stable document-owned surface rather than swapping UI storage. */
+    internal fun replaceFrom(source: MaskTileSurfaceSnapshot?) = synchronized(monitor) {
+        if (source != null) require(source.logicalWidth == surfaceValue.logicalWidth && source.logicalHeight == surfaceValue.logicalHeight) {
             "Replacement selection geometry does not match ${surfaceValue.logicalWidth}x${surfaceValue.logicalHeight}"
         }
-        surfaceValue = surface
+        surfaceValue.beginWrite("replace document selection").run {
+            clear()
+            if (source != null && !source.isEmpty) composeSurface(source, MaskComposeMode.ADD)
+            commit().close()
+        }
     }
 
     internal fun clear() = synchronized(monitor) {

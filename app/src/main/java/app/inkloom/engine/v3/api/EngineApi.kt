@@ -20,6 +20,7 @@ internal typealias EngineStrokeTransaction = app.inkloom.engine.v3.scene.EngineT
 internal typealias EngineExternalTransaction = app.inkloom.engine.v3.scene.EngineTransaction.External
 internal typealias EngineTransactionJournal = app.inkloom.engine.v3.scene.EngineTransactionJournal
 internal typealias SparseAlphaMask = app.inkloom.engine.v3.scene.SparseAlphaMask
+internal typealias DocumentSelectionState = app.inkloom.engine.v3.scene.DocumentSelectionState
 internal typealias SparseTileScene = app.inkloom.engine.v3.scene.SparseTileScene
 internal typealias SparseTileDebugSnapshot = app.inkloom.engine.v3.scene.SparseTileScene.DebugSnapshot
 internal typealias PixelTileSurface = app.inkloom.engine.v3.surface.PixelTileSurface

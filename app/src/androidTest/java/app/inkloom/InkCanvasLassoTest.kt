@@ -14,6 +14,8 @@ import app.inkloom.model.EditorTool
 import app.inkloom.ui.InkCanvasView
 import app.inkloom.engine.v3.scene.SparseAlphaMask
 import app.inkloom.engine.v3.scene.AlphaMaskOperation
+import app.inkloom.engine.v3.scene.DocumentSelectionRuntime
+import app.inkloom.document.SelectionMaskCompositor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -21,6 +23,23 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class InkCanvasLassoTest {
+    @Test fun productionViewPublishesAndClearsSelectionThroughDocumentRuntime() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val view = configuredView(horizontalStroke("runtime-source"), mutableListOf())
+            val size = requireNotNull(SelectionMaskCompositor.maskSize(view.pageModelWidth, view.pageModelHeight))
+            val runtime = DocumentSelectionRuntime()
+            val state = runtime.stateFor("document", "page", size.width, size.height)
+            view.bindDocumentSelectionState(state)
+
+            view.drawSquareLasso()
+
+            assertTrue(!state.isEmpty)
+            assertTrue(state.snapshot().tileCount > 0)
+            assertTrue(view.clearSelection())
+            assertTrue(state.isEmpty)
+        }
+    }
+
     @Test fun sparseBooleanSelectionCompositionTouchesOnlyParticipatingTiles() {
         val baseBitmap = Bitmap.createBitmap(1_024, 768, Bitmap.Config.ARGB_8888)
         val region = Bitmap.createBitmap(1_024, 768, Bitmap.Config.ARGB_8888)

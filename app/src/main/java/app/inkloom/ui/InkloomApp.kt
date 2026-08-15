@@ -107,6 +107,7 @@ import app.inkloom.importer.BrushSemanticMapper
 import app.inkloom.importer.BrushVersion
 import app.inkloom.importer.BrushVersionHistoryStore
 import app.inkloom.model.*
+import app.inkloom.engine.v3.scene.DocumentSelectionRuntime
 import app.inkloom.settings.AppSettings
 import app.inkloom.settings.AppSettingsBackupCodec
 import app.inkloom.settings.AppSettingsStore
@@ -731,6 +732,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onExportPage = { imageExportPicker.launch("${viewModel.currentDocument()?.title ?: "Inkloom"}-page.png") },
             onExportBundle = { bundleExportPicker.launch("${viewModel.currentDocument()?.title ?: "Inkloom"}.inkloom.zip") },
             assets = viewModel.assets,
+            selectionRuntime = viewModel.selectionRuntime,
             settings = settings,
             pdfIndexing = libraryState.selectedDocumentId in libraryState.pdfIndexingDocumentIds,
             onIndexPdfText = viewModel::indexPdfText,
@@ -1036,6 +1038,7 @@ private fun EditorScreen(
     onExportPage: () -> Unit,
     onExportBundle: () -> Unit,
     assets: DocumentAssetService,
+    selectionRuntime: DocumentSelectionRuntime,
     settings: AppSettings,
     pdfIndexing: Boolean,
     onIndexPdfText: (String) -> Unit,
@@ -2175,6 +2178,7 @@ private fun EditorScreen(
                     selectedElementId = selectedElementId,
                     onSelectElement = { selectedElementId = it },
                     assets = assets,
+                    selectionRuntime = selectionRuntime,
                     settings = settings,
                     viewportState = ViewportState(zoom, panX, panY, viewRotation),
                     onZoom = { factor, focusX, focusY ->
@@ -4488,8 +4492,14 @@ private fun pageTemplateKind(template: PageTemplate): String = when (template.ba
 }
 
 @Composable
-private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onSetLayerRasterAsset: (String, String, String, String?, Int) -> Unit, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
+private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onSetLayerRasterAsset: (String, String, String, String?, Int) -> Unit, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
+    val selectionMaskSize = remember(renderedPage.width, renderedPage.height) {
+        requireNotNull(SelectionMaskCompositor.maskSize(renderedPage.width, renderedPage.height))
+    }
+    val documentSelectionState = remember(documentId, page.id, selectionMaskSize) {
+        selectionRuntime.stateFor(documentId, page.id, selectionMaskSize.width, selectionMaskSize.height)
+    }
     val context = LocalContext.current
     val gradientCommitScope = rememberCoroutineScope()
     val gradientCommitMutex = remember(documentId, page.id) { Mutex() }
@@ -4731,6 +4741,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
         AndroidView(
             factory = { context -> CanvasHost(context).also { host ->
                 val view = host.canvasView
+                view.bindDocumentSelectionState(documentSelectionState)
                 view.tool = tool
                 view.forceNavigation = forceNavigation
                 view.rotateNavigation = rotateNavigation
@@ -4793,6 +4804,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
             } },
             update = { host ->
                 val view = host.canvasView
+                view.bindDocumentSelectionState(documentSelectionState)
                 view.tool = tool
                 view.forceNavigation = forceNavigation
                 view.rotateNavigation = rotateNavigation

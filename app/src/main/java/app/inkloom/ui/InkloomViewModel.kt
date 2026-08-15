@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.inkloom.document.*
 import app.inkloom.model.ImportedBrush
+import app.inkloom.engine.v3.scene.DocumentSelectionRuntime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -36,6 +37,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     private val backupService = LibraryBackupService(application.filesDir)
     private val pageTemplateStore = PageTemplateStore(application.filesDir)
     val assets = DocumentAssetService(application)
+    val selectionRuntime = DocumentSelectionRuntime()
     private val textRecognition = OnDeviceTextRecognitionService(application)
     private val mutableState = MutableStateFlow(LibraryUiState())
     val state = mutableState.asStateFlow()
@@ -45,6 +47,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
 
     override fun onCleared() {
         store.awaitRealtimeWrites()
+        selectionRuntime.clear()
         super.onCleared()
     }
 
@@ -94,6 +97,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     fun trash(documentId: String) = update(documentId) { it.copy(trashedAt = System.currentTimeMillis(), updatedAt = System.currentTimeMillis()) }
     fun restore(documentId: String) = update(documentId) { it.copy(trashedAt = null, updatedAt = System.currentTimeMillis()) }
     fun deletePermanently(documentId: String) {
+        selectionRuntime.releaseDocument(documentId)
         store.deletePermanently(documentId)
         refresh()
         scheduleAssetGarbageCollection()
@@ -137,6 +141,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun deletePage(documentId: String, pageId: String) {
+        val willDelete = store.get(documentId)?.pages?.size?.let { it > 1 } == true
         update(documentId) { document ->
             if (document.pages.size == 1) document else {
                 val pages = document.pages.filterNot { it.id == pageId }
@@ -144,6 +149,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
                 document.copy(pages = pages, updatedAt = System.currentTimeMillis())
             }
         }
+        if (willDelete) selectionRuntime.releasePage(documentId, pageId)
         scheduleAssetGarbageCollection()
     }
 

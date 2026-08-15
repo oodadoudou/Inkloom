@@ -277,6 +277,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var backgroundBitmap: Bitmap? = null
     private val selectedStrokeIds = linkedSetOf<String>()
     private var selectedMaskRegions: List<List<StrokePoint>> = emptyList()
+    private var documentSelectionState: DocumentSelectionState? = null
     private var selectionAlphaMask: SparseAlphaMask? = null
     private var selectionDisplayBitmap: Bitmap? = null
     private var selectionBoundaryBitmap: Bitmap? = null
@@ -1224,6 +1225,14 @@ class InkCanvasView(context: Context) : View(context) {
             }
             invalidateStrokeCache()
         }
+    }
+
+    /** Binds selection alpha to the document runtime before any page content is installed. */
+    internal fun bindDocumentSelectionState(state: DocumentSelectionState) {
+        if (documentSelectionState === state) return
+        documentSelectionState = state
+        selectionAlphaMask = SparseAlphaMask.fromSurface(state.surface())
+        rebuildSelectionDerivedState()
     }
 
     fun setProtectedStrokeIds(value: Set<String>) {
@@ -6773,8 +6782,17 @@ class InkCanvasView(context: Context) : View(context) {
 
     /** Takes ownership of [replacement]. */
     private fun replaceSelectionAlphaMask(replacement: SparseAlphaMask?, resetFeather: Boolean) {
-        selectionAlphaMask?.close()
-        selectionAlphaMask = replacement
+        val documentState = documentSelectionState
+        if (documentState == null) {
+            selectionAlphaMask?.close()
+            selectionAlphaMask = replacement
+        } else {
+            if (replacement?.surface !== documentState.surface()) {
+                documentState.replaceFrom(replacement?.surface?.snapshot())
+            }
+            replacement?.close()
+            selectionAlphaMask = SparseAlphaMask.fromSurface(documentState.surface())
+        }
         if (resetFeather) selectionFeatherPixels = 0f
         rebuildSelectionDerivedState()
     }
@@ -6820,6 +6838,7 @@ class InkCanvasView(context: Context) : View(context) {
     private fun releaseSelectionState(clearHistory: Boolean) {
         selectedStrokeIds.clear()
         selectedMaskRegions = emptyList()
+        documentSelectionState?.replaceFrom(null)
         selectionAlphaMask?.close(); selectionAlphaMask = null
         selectionDisplayBitmap?.recycle(); selectionDisplayBitmap = null
         selectionBoundaryBitmap?.recycle(); selectionBoundaryBitmap = null
