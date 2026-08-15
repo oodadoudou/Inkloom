@@ -4,11 +4,62 @@ import app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PixelTileSurfaceTest {
+    @Test fun linearF16TransactionsPreserveExtendedValuesAndUndoExactTileBits() {
+        val surface = PixelTileSurface(
+            logicalWidth = 256,
+            logicalHeight = 128,
+            tileSize = 64,
+            pixelFormat = PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16,
+        )
+        val beforeCommit = surface.snapshot()
+        val transaction = surface.beginWrite("HDR paint")
+        transaction.setLinearPixel(70, 20, LinearRgba(2.5f, -.25f, .5f, .75f))
+
+        assertEquals(0, beforeCommit.tileCount)
+        assertEquals(64L * 64 * 8, transaction.workingByteSize)
+        assertEquals(0, surface.tileCount)
+        assertEquals(2.5f * .75f, transaction.linearPixelAt(70, 20).red, .002f)
+
+        val record = transaction.commit()
+        val committedBits = requireNotNull(surface.snapshot().copyTileF16(PixelTileKey(1, 0)))
+        assertEquals(64L * 64 * 8, surface.retainedByteSize)
+        assertEquals(64L * 64 * 8, record.retainedByteSize)
+        assertEquals(2.5f * .75f, surface.linearPixelAt(70, 20).red, .002f)
+        assertEquals(-.25f * .75f, surface.linearPixelAt(70, 20).green, .002f)
+
+        surface.apply(record, HistoryDirection.UNDO)
+        assertEquals(0, surface.tileCount)
+        surface.apply(record, HistoryDirection.REDO)
+        assertArrayEquals(committedBits, surface.snapshot().copyTileF16(PixelTileKey(1, 0)))
+        record.close()
+    }
+
+    @Test fun formatSpecificBulkAccessRejectsTheWrongPixelEncoding() {
+        val rgba8 = PixelTileSurface(64, 64, tileSize = 64)
+        val f16 = PixelTileSurface(
+            64,
+            64,
+            tileSize = 64,
+            pixelFormat = PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16,
+        )
+
+        assertThrows(IllegalArgumentException::class.java) {
+            rgba8.snapshot().copyPremultipliedF16(PixelRect(0, 0, 1, 1))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            f16.snapshot().copyPremultipliedPixels(PixelRect(0, 0, 1, 1))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            f16.beginWrite("wrong editor").use { it.editTile(PixelTileKey(0, 0)) { _, _ -> } }
+        }
+    }
+
     @Test fun bulkRegionReadAndReplaceObserveUnpublishedGesturePixelsAcrossTiles() {
         val surface = PixelTileSurface(300, 200, tileSize = 64)
         surface.beginWrite("seed").run {

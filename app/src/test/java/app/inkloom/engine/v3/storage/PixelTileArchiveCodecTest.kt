@@ -1,13 +1,47 @@
 package app.inkloom.engine.v3.storage
 
 import app.inkloom.engine.v3.surface.PixelTileKey
+import app.inkloom.engine.v3.surface.PixelTileFormat
+import app.inkloom.engine.v3.surface.PixelRect
 import app.inkloom.engine.v3.surface.PixelTileSurface
+import app.inkloom.engine.v3.surface.PackedRgbaF16
+import app.inkloom.engine.v3.surface.LinearRgba
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PixelTileArchiveCodecTest {
+    @Test fun linearF16ArchiveRoundTripsExtendedAndNegativeChannelsBitExactly() {
+        val source = PixelTileSurface(
+            logicalWidth = 256,
+            logicalHeight = 128,
+            tileSize = 64,
+            surfaceId = "linear-hdr",
+            pixelFormat = PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16,
+        )
+        source.beginWrite("HDR fixture").run {
+            editTileF16(PixelTileKey(2, 1), PixelRect(0, 0, 2, 1)) { pixels, _ ->
+                pixels[0] = PackedRgbaF16.packStraight(LinearRgba(4f, -.25f, .125f, .5f))
+                pixels[1] = PackedRgbaF16.packPremultiplied(.25f, .5f, 1.5f, 1f)
+            }
+            commit().close()
+        }
+        val expected = source.snapshot().copyTileF16(PixelTileKey(2, 1))
+
+        val encoded = PixelTileArchiveCodec.encode(source.snapshot())
+        val metadata = PixelTileArchiveCodec.inspect(encoded.manifest)
+        val restored = PixelTileArchiveCodec.decode(encoded.manifest, encoded.blobs::get)
+
+        assertEquals(PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16, metadata.pixelFormat)
+        assertEquals(PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16, restored.pixelFormat)
+        assertEquals(64L * 64 * 8, restored.retainedByteSize)
+        assertArrayEquals(expected, restored.snapshot().copyTileF16(PixelTileKey(2, 1)))
+        assertEquals(2f, restored.linearPixelAt(128, 64).red, .002f)
+        assertEquals(-.125f, restored.linearPixelAt(128, 64).green, .002f)
+    }
+
     @Test fun sparseEightKSurfaceRoundTripsWithoutMaterializingPagePixels() {
         val source = PixelTileSurface(8192, 8192, tileSize = 128, surfaceId = "surface")
         source.beginWrite("fixture").run {

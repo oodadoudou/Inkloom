@@ -72,7 +72,7 @@ class PixelTileTransactionRecord internal constructor(
     val changedTileCount: Int = deltas.size
     val changedPixelCapacity: Long = deltas.sumOf { it.pixelCapacity.toLong() }
     val retainedByteSize: Long = deltas.sumOf { delta ->
-        delta.pixelCapacity.toLong() * Int.SIZE_BYTES *
+        delta.pixelCapacity.toLong() * delta.bytesPerPixel *
             ((if (delta.before == null) 0 else 1) + (if (delta.after == null) 0 else 1))
     }
     val deltaInfo: List<PixelTileDeltaInfo> = deltas.map(PixelTileDelta::info)
@@ -101,7 +101,7 @@ class PixelTileTransactionRecord internal constructor(
 
 internal data class PixelTileGeneration(
     val id: Long,
-    val pixels: IntArray,
+    val pixels: PixelTileBuffer,
     val nonTransparentPixelCount: Int,
 )
 
@@ -111,6 +111,7 @@ internal data class PixelTileDelta(
     val before: PixelTileGeneration?,
     val after: PixelTileGeneration?,
     val pixelCapacity: Int,
+    val bytesPerPixel: Int,
 ) {
     fun info(): PixelTileDeltaInfo = PixelTileDeltaInfo(
         key = key,
@@ -130,11 +131,12 @@ class PixelTileSurfaceSnapshot internal constructor(
     val logicalWidth: Int,
     val logicalHeight: Int,
     val tileSize: Int,
+    val pixelFormat: PixelTileFormat,
     val revision: Long,
     private val tiles: Map<PixelTileKey, PixelTileGeneration>,
 ) {
     val tileCount: Int get() = tiles.size
-    val retainedByteSize: Long get() = tiles.size.toLong() * tileSize * tileSize * Int.SIZE_BYTES
+    val retainedByteSize: Long get() = tiles.size.toLong() * tileSize * tileSize * pixelFormat.bytesPerPixel
     val tileInfo: List<PixelTileInfo> get() = tiles.map { (key, tile) ->
         PixelTileInfo(key, tile.id, tile.nonTransparentPixelCount)
     }
@@ -143,13 +145,29 @@ class PixelTileSurfaceSnapshot internal constructor(
         if (x !in 0 until logicalWidth || y !in 0 until logicalHeight) return 0
         val key = PixelTileKey(x / tileSize, y / tileSize)
         val tile = tiles[key] ?: return 0
-        return tile.pixels[(y % tileSize) * tileSize + (x % tileSize)]
+        return tile.pixels.premultipliedArgbAt((y % tileSize) * tileSize + (x % tileSize))
     }
 
-    fun copyTilePixels(key: PixelTileKey): IntArray? = tiles[key]?.pixels?.copyOf()
+    fun linearPixelAt(x: Int, y: Int): LinearRgba {
+        if (x !in 0 until logicalWidth || y !in 0 until logicalHeight) return LinearRgba(0f, 0f, 0f, 0f)
+        val key = PixelTileKey(x / tileSize, y / tileSize)
+        val tile = tiles[key] ?: return LinearRgba(0f, 0f, 0f, 0f)
+        return tile.pixels.premultipliedLinearAt((y % tileSize) * tileSize + (x % tileSize))
+    }
+
+    fun copyTilePixels(key: PixelTileKey): IntArray? {
+        require(pixelFormat == PixelTileFormat.PREMULTIPLIED_SRGB_8888) { "Surface stores $pixelFormat" }
+        return (tiles[key]?.pixels as? Argb8888TileBuffer)?.values?.copyOf()
+    }
+
+    fun copyTileF16(key: PixelTileKey): LongArray? {
+        require(pixelFormat == PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16) { "Surface stores $pixelFormat" }
+        return (tiles[key]?.pixels as? RgbaF16TileBuffer)?.values?.copyOf()
+    }
 
     /** Copies a logical rectangle without allocating or looking up a tile for every output pixel. */
     fun copyPremultipliedPixels(source: PixelRect): IntArray {
+        require(pixelFormat == PixelTileFormat.PREMULTIPLIED_SRGB_8888) { "ARGB copy requires an RGBA8 surface" }
         val clipped = source.intersect(PixelRect(0, 0, logicalWidth, logicalHeight))
         require(clipped == source && !source.isEmpty) { "Source rectangle must be inside the surface" }
         val output = IntArray(Math.multiplyExact(source.width, source.height))
@@ -166,7 +184,36 @@ class PixelTileSurfaceSnapshot internal constructor(
             for (y in overlap.top until overlap.bottom) {
                 val sourceOffset = (y - tileTop) * tileSize + overlap.left - tileLeft
                 val destinationOffset = (y - source.top) * source.width + overlap.left - source.left
-                tile.pixels.copyInto(
+                (tile.pixels as Argb8888TileBuffer).values.copyInto(
+                    output,
+                    destinationOffset,
+                    sourceOffset,
+                    sourceOffset + overlap.width,
+                )
+            }
+        }
+        return output
+    }
+
+    fun copyPremultipliedF16(source: PixelRect): LongArray {
+        require(pixelFormat == PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16) { "F16 copy requires a linear F16 surface" }
+        val clipped = source.intersect(PixelRect(0, 0, logicalWidth, logicalHeight))
+        require(clipped == source && !source.isEmpty) { "Source rectangle must be inside the surface" }
+        val output = LongArray(Math.multiplyExact(source.width, source.height))
+        tiles.forEach { (key, tile) ->
+            val tileLeft = key.column * tileSize
+            val tileTop = key.row * tileSize
+            val overlap = PixelRect(
+                tileLeft,
+                tileTop,
+                minOf(tileLeft + tileSize, logicalWidth),
+                minOf(tileTop + tileSize, logicalHeight),
+            ).intersect(source)
+            if (overlap.isEmpty) return@forEach
+            for (y in overlap.top until overlap.bottom) {
+                val sourceOffset = (y - tileTop) * tileSize + overlap.left - tileLeft
+                val destinationOffset = (y - source.top) * source.width + overlap.left - source.left
+                (tile.pixels as RgbaF16TileBuffer).values.copyInto(
                     output,
                     destinationOffset,
                     sourceOffset,
@@ -191,6 +238,7 @@ class PixelTileSurface(
     val logicalHeight: Int,
     val tileSize: Int = DEFAULT_TILE_SIZE,
     val surfaceId: String = UUID.randomUUID().toString(),
+    val pixelFormat: PixelTileFormat = PixelTileFormat.PREMULTIPLIED_SRGB_8888,
 ) {
     init {
         require(logicalWidth > 0) { "logicalWidth must be positive" }
@@ -209,13 +257,20 @@ class PixelTileSurface(
     val tileCount: Int get() = synchronized(monitor) { generations.size }
     val retainedByteSize: Long
         get() = synchronized(monitor) {
-            generations.size.toLong() * tileSize * tileSize * Int.SIZE_BYTES
+            generations.size.toLong() * tileSize * tileSize * pixelFormat.bytesPerPixel
         }
 
     fun pixelAt(x: Int, y: Int): Int = synchronized(monitor) {
         if (x !in 0 until logicalWidth || y !in 0 until logicalHeight) return@synchronized 0
         val key = PixelTileKey(x / tileSize, y / tileSize)
-        generations[key]?.pixels?.get((y % tileSize) * tileSize + (x % tileSize)) ?: 0
+        generations[key]?.pixels?.premultipliedArgbAt((y % tileSize) * tileSize + (x % tileSize)) ?: 0
+    }
+
+    fun linearPixelAt(x: Int, y: Int): LinearRgba = synchronized(monitor) {
+        if (x !in 0 until logicalWidth || y !in 0 until logicalHeight) return@synchronized LinearRgba(0f, 0f, 0f, 0f)
+        val key = PixelTileKey(x / tileSize, y / tileSize)
+        generations[key]?.pixels?.premultipliedLinearAt((y % tileSize) * tileSize + (x % tileSize))
+            ?: LinearRgba(0f, 0f, 0f, 0f)
     }
 
     fun snapshot(): PixelTileSurfaceSnapshot = synchronized(monitor) {
@@ -224,6 +279,7 @@ class PixelTileSurface(
             logicalWidth = logicalWidth,
             logicalHeight = logicalHeight,
             tileSize = tileSize,
+            pixelFormat = pixelFormat,
             revision = revisionValue,
             tiles = generations.toMap(),
         )
@@ -281,9 +337,9 @@ class PixelTileSurface(
             val deltas = transaction.workingTiles.mapNotNull { (key, working) ->
                 val before = working.before
                 if (before != null && before.pixels.contentEquals(working.pixels)) return@mapNotNull null
-                if (before == null && working.pixels.all(::isTransparent)) return@mapNotNull null
 
-                val nonTransparent = working.pixels.count { !isTransparent(it) }
+                val nonTransparent = working.pixels.nonTransparentPixelCount()
+                if (before == null && nonTransparent == 0) return@mapNotNull null
                 val after = if (nonTransparent == 0) null else PixelTileGeneration(
                     id = generationIds.incrementAndGet(),
                     pixels = working.pixels,
@@ -295,6 +351,7 @@ class PixelTileSurface(
                     before = before,
                     after = after,
                     pixelCapacity = tileSize * tileSize,
+                    bytesPerPixel = pixelFormat.bytesPerPixel,
                 )
             }
             deltas.forEach { delta ->
@@ -358,8 +415,6 @@ class PixelTileSurface(
         private val transactionIds = AtomicLong(0L)
         private val generationIds = AtomicLong(0L)
 
-        private fun isTransparent(pixel: Int): Boolean = pixel ushr 24 == 0
-
         /** Restores immutable published tiles from a verified persistence boundary. */
         internal fun restore(
             logicalWidth: Int,
@@ -380,11 +435,52 @@ class PixelTileSurface(
                     require(tileLeft in 0 until logicalWidth && tileTop in 0 until logicalHeight) {
                         "Tile $key is outside the logical surface"
                     }
-                    val nonTransparent = pixels.count { !isTransparent(it) }
+                    val buffer = Argb8888TileBuffer(if (copyTiles) pixels.copyOf() else pixels)
+                    val nonTransparent = buffer.nonTransparentPixelCount()
                     if (nonTransparent > 0) {
                         surface.generations[key] = PixelTileGeneration(
                             id = generationIds.incrementAndGet(),
-                            pixels = if (copyTiles) pixels.copyOf() else pixels,
+                            pixels = buffer,
+                            nonTransparentPixelCount = nonTransparent,
+                        )
+                    }
+                }
+                surface.revisionValue = revision
+            }
+            return surface
+        }
+
+        internal fun restoreF16(
+            logicalWidth: Int,
+            logicalHeight: Int,
+            tileSize: Int,
+            surfaceId: String,
+            revision: Long,
+            tiles: Map<PixelTileKey, LongArray>,
+            copyTiles: Boolean = true,
+        ): PixelTileSurface {
+            require(revision >= 0L) { "revision must not be negative" }
+            val surface = PixelTileSurface(
+                logicalWidth,
+                logicalHeight,
+                tileSize,
+                surfaceId,
+                PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16,
+            )
+            synchronized(surface.monitor) {
+                tiles.forEach { (key, pixels) ->
+                    require(pixels.size == tileSize * tileSize) { "Tile $key has invalid pixel capacity" }
+                    val tileLeft = key.column * tileSize
+                    val tileTop = key.row * tileSize
+                    require(tileLeft in 0 until logicalWidth && tileTop in 0 until logicalHeight) {
+                        "Tile $key is outside the logical surface"
+                    }
+                    val buffer = RgbaF16TileBuffer(if (copyTiles) pixels.copyOf() else pixels)
+                    val nonTransparent = buffer.nonTransparentPixelCount()
+                    if (nonTransparent > 0) {
+                        surface.generations[key] = PixelTileGeneration(
+                            id = generationIds.incrementAndGet(),
+                            pixels = buffer,
                             nonTransparentPixelCount = nonTransparent,
                         )
                     }
@@ -398,7 +494,7 @@ class PixelTileSurface(
 
 internal data class WorkingPixelTile(
     val before: PixelTileGeneration?,
-    val pixels: IntArray,
+    val pixels: PixelTileBuffer,
     var dirtyRect: PixelRect? = null,
 )
 
@@ -413,15 +509,24 @@ class PixelTileWriteTransaction internal constructor(
 
     val touchedTileCount: Int get() = workingTiles.size
     val workingByteSize: Long
-        get() = workingTiles.size.toLong() * surface.tileSize * surface.tileSize * Int.SIZE_BYTES
+        get() = workingTiles.size.toLong() * surface.tileSize * surface.tileSize * surface.pixelFormat.bytesPerPixel
 
     fun pixelAt(x: Int, y: Int): Int {
         surface.requireLogicalCoordinate(x, y)
         requireActive()
         val key = surface.keyFor(x, y)
-        return workingTiles[key]?.pixels?.get(surface.localIndex(x, y))
-            ?: surface.publishedTile(key)?.pixels?.get(surface.localIndex(x, y))
+        return workingTiles[key]?.pixels?.premultipliedArgbAt(surface.localIndex(x, y))
+            ?: surface.publishedTile(key)?.pixels?.premultipliedArgbAt(surface.localIndex(x, y))
             ?: 0
+    }
+
+    fun linearPixelAt(x: Int, y: Int): LinearRgba {
+        surface.requireLogicalCoordinate(x, y)
+        requireActive()
+        val key = surface.keyFor(x, y)
+        return workingTiles[key]?.pixels?.premultipliedLinearAt(surface.localIndex(x, y))
+            ?: surface.publishedTile(key)?.pixels?.premultipliedLinearAt(surface.localIndex(x, y))
+            ?: LinearRgba(0f, 0f, 0f, 0f)
     }
 
     fun setPixel(x: Int, y: Int, premultipliedArgb: Int) {
@@ -429,7 +534,25 @@ class PixelTileWriteTransaction internal constructor(
         requireActive()
         val key = surface.keyFor(x, y)
         val tile = writableTile(key)
-        tile.pixels[surface.localIndex(x, y)] = premultipliedArgb
+        val index = surface.localIndex(x, y)
+        when (val pixels = tile.pixels) {
+            is Argb8888TileBuffer -> pixels.values[index] = premultipliedArgb
+            is RgbaF16TileBuffer -> pixels.values[index] = PackedRgbaF16.fromPremultipliedArgb8888(premultipliedArgb)
+        }
+        val localX = x % surface.tileSize
+        val localY = y % surface.tileSize
+        markDirty(tile, PixelRect(localX, localY, localX + 1, localY + 1))
+    }
+
+    fun setLinearPixel(x: Int, y: Int, straightLinearColor: LinearRgba) {
+        require(surface.pixelFormat == PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16) {
+            "Linear pixel writes require an F16 surface"
+        }
+        surface.requireLogicalCoordinate(x, y)
+        requireActive()
+        val tile = writableTile(surface.keyFor(x, y))
+        (tile.pixels as RgbaF16TileBuffer).values[surface.localIndex(x, y)] =
+            PackedRgbaF16.packStraight(straightLinearColor)
         val localX = x % surface.tileSize
         val localY = y % surface.tileSize
         markDirty(tile, PixelRect(localX, localY, localX + 1, localY + 1))
@@ -442,6 +565,7 @@ class PixelTileWriteTransaction internal constructor(
      */
     fun copyPremultipliedPixels(source: PixelRect): IntArray {
         requireActive()
+        require(surface.pixelFormat == PixelTileFormat.PREMULTIPLIED_SRGB_8888) { "ARGB copy requires an RGBA8 surface" }
         val logicalBounds = PixelRect(0, 0, surface.logicalWidth, surface.logicalHeight)
         require(source == source.intersect(logicalBounds) && !source.isEmpty) {
             "Source rectangle must be inside the surface"
@@ -453,7 +577,7 @@ class PixelTileWriteTransaction internal constructor(
         val lastRow = (source.bottom - 1) / surface.tileSize
         for (row in firstRow..lastRow) for (column in firstColumn..lastColumn) {
             val key = PixelTileKey(column, row)
-            val pixels = workingTiles[key]?.pixels ?: surface.publishedTile(key)?.pixels ?: continue
+            val pixels = (workingTiles[key]?.pixels ?: surface.publishedTile(key)?.pixels ?: continue) as Argb8888TileBuffer
             val tileLeft = column * surface.tileSize
             val tileTop = row * surface.tileSize
             val overlap = PixelRect(
@@ -465,7 +589,7 @@ class PixelTileWriteTransaction internal constructor(
             for (y in overlap.top until overlap.bottom) {
                 val tileOffset = (y - tileTop) * surface.tileSize + overlap.left - tileLeft
                 val outputOffset = (y - source.top) * source.width + overlap.left - source.left
-                pixels.copyInto(output, outputOffset, tileOffset, tileOffset + overlap.width)
+                pixels.values.copyInto(output, outputOffset, tileOffset, tileOffset + overlap.width)
             }
         }
         return output
@@ -478,6 +602,7 @@ class PixelTileWriteTransaction internal constructor(
         rowStride: Int = destination.width,
     ) {
         requireActive()
+        require(surface.pixelFormat == PixelTileFormat.PREMULTIPLIED_SRGB_8888) { "ARGB replacement requires an RGBA8 surface" }
         val logicalBounds = PixelRect(0, 0, surface.logicalWidth, surface.logicalHeight)
         require(destination == destination.intersect(logicalBounds) && !destination.isEmpty) {
             "Destination rectangle must be inside the surface"
@@ -527,6 +652,31 @@ class PixelTileWriteTransaction internal constructor(
         block: (pixels: IntArray, rowStride: Int) -> Unit,
     ) {
         requireActive()
+        require(surface.pixelFormat == PixelTileFormat.PREMULTIPLIED_SRGB_8888) { "Int tile editing requires an RGBA8 surface" }
+        editTileBuffer(key, dirtyLocalRect) { buffer ->
+            block((buffer as Argb8888TileBuffer).values, surface.tileSize)
+        }
+    }
+
+    fun editTileF16(
+        key: PixelTileKey,
+        dirtyLocalRect: PixelRect = surface.fullTileRect(),
+        block: (pixels: LongArray, rowStride: Int) -> Unit,
+    ) {
+        requireActive()
+        require(surface.pixelFormat == PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16) {
+            "F16 tile editing requires a linear F16 surface"
+        }
+        editTileBuffer(key, dirtyLocalRect) { buffer ->
+            block((buffer as RgbaF16TileBuffer).values, surface.tileSize)
+        }
+    }
+
+    private fun editTileBuffer(
+        key: PixelTileKey,
+        dirtyLocalRect: PixelRect,
+        block: (PixelTileBuffer) -> Unit,
+    ) {
         val logicalTileRect = PixelRect(
             left = key.column * surface.tileSize,
             top = key.row * surface.tileSize,
@@ -543,7 +693,7 @@ class PixelTileWriteTransaction internal constructor(
         val clippedDirty = dirtyLocalRect.intersect(validLocalRect)
         require(!clippedDirty.isEmpty) { "Dirty rectangle does not intersect tile $key" }
         val tile = writableTile(key)
-        block(tile.pixels, surface.tileSize)
+        block(tile.pixels)
         markDirty(tile, clippedDirty)
     }
 
@@ -575,7 +725,7 @@ class PixelTileWriteTransaction internal constructor(
         val before = surface.publishedTile(key)
         WorkingPixelTile(
             before = before,
-            pixels = before?.pixels?.copyOf() ?: IntArray(surface.tileSize * surface.tileSize),
+            pixels = before?.pixels?.copyBuffer() ?: emptyPixelTileBuffer(surface.pixelFormat, surface.tileSize * surface.tileSize),
         )
     }
 

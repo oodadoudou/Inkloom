@@ -1,6 +1,7 @@
 package app.inkloom.engine.v3.storage
 
 import app.inkloom.engine.v3.surface.PixelTileKey
+import app.inkloom.engine.v3.surface.PixelTileFormat
 import app.inkloom.engine.v3.surface.PixelTileSurface
 import app.inkloom.engine.v3.surface.PixelTileSurfaceSnapshot
 import kotlinx.serialization.Serializable
@@ -23,9 +24,9 @@ import java.util.zip.Inflater
  */
 internal object PixelTileArchiveCodec {
     private const val FORMAT = "inkloom-pixel-tiles"
-    private const val SCHEMA_VERSION = 1
-    private const val PIXEL_FORMAT = "argb8888-premultiplied-srgb"
-    private const val CODEC = "zlib-int32-le"
+    private const val SCHEMA_VERSION = 2
+    private const val RGBA8_CODEC = "zlib-int32-le"
+    private const val F16_CODEC = "zlib-rgba-half4-le"
     private const val MAX_LOGICAL_DIMENSION = 65_536
     private const val MAX_RESIDENT_TILE_COUNT = 16_384
     private val json = Json { ignoreUnknownKeys = true }
@@ -71,18 +72,24 @@ internal object PixelTileArchiveCodec {
         val logicalWidth: Int,
         val logicalHeight: Int,
         val tileSize: Int,
+        val pixelFormat: PixelTileFormat,
         val revision: Long,
         val tileCount: Int,
         val blobHashes: Set<String>,
     )
 
     fun encode(snapshot: PixelTileSurfaceSnapshot): Encoded {
+        val codec = codecFor(snapshot.pixelFormat)
         val blobs = linkedMapOf<String, ByteArray>()
         val tileEntries = snapshot.tileInfo
             .sortedWith(compareBy<app.inkloom.engine.v3.surface.PixelTileInfo> { it.key.row }.thenBy { it.key.column })
             .map { info ->
-                val pixels = requireNotNull(snapshot.copyTilePixels(info.key))
-                val raw = encodeLittleEndian(pixels)
+                val raw = when (snapshot.pixelFormat) {
+                    PixelTileFormat.PREMULTIPLIED_SRGB_8888 ->
+                        encodeLittleEndian(requireNotNull(snapshot.copyTilePixels(info.key)))
+                    PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16 ->
+                        encodeLittleEndian(requireNotNull(snapshot.copyTileF16(info.key)))
+                }
                 val compressed = deflate(raw)
                 val hash = sha256(compressed)
                 blobs.putIfAbsent(hash, compressed)
@@ -90,7 +97,7 @@ internal object PixelTileArchiveCodec {
                     column = info.key.column,
                     row = info.key.row,
                     blobSha256 = hash,
-                    codec = CODEC,
+                    codec = codec,
                     uncompressedBytes = raw.size,
                     compressedBytes = compressed.size,
                     rawCrc32 = crc32(raw),
@@ -102,7 +109,7 @@ internal object PixelTileArchiveCodec {
                 logicalWidth = snapshot.logicalWidth,
                 logicalHeight = snapshot.logicalHeight,
                 tileSize = snapshot.tileSize,
-                pixelFormat = PIXEL_FORMAT,
+                pixelFormat = snapshot.pixelFormat.manifestId,
                 revision = snapshot.revision,
                 tiles = tileEntries,
             ),
@@ -115,14 +122,20 @@ internal object PixelTileArchiveCodec {
 
     fun decode(manifestText: String, resolveBlob: (sha256: String) -> ByteArray?): PixelTileSurface {
         val manifest = verifiedManifest(manifestText)
-        val expectedBytes = Math.multiplyExact(Math.multiplyExact(manifest.tileSize, manifest.tileSize), Int.SIZE_BYTES)
-        val restored = linkedMapOf<PixelTileKey, IntArray>()
+        val pixelFormat = PixelTileFormat.fromManifestId(manifest.pixelFormat)
+        val codec = codecFor(pixelFormat)
+        val expectedBytes = Math.multiplyExact(
+            Math.multiplyExact(manifest.tileSize, manifest.tileSize),
+            pixelFormat.bytesPerPixel,
+        )
+        val restoredRgba8 = linkedMapOf<PixelTileKey, IntArray>()
+        val restoredF16 = linkedMapOf<PixelTileKey, LongArray>()
         manifest.tiles.forEach { entry ->
-            require(entry.codec == CODEC) { "Unsupported tile codec ${entry.codec}" }
+            require(entry.codec == codec) { "Unsupported tile codec ${entry.codec}" }
             require(entry.uncompressedBytes == expectedBytes) { "Unexpected tile byte capacity" }
             require(entry.compressedBytes > 0) { "Invalid compressed tile size" }
             val key = PixelTileKey(entry.column, entry.row)
-            require(key !in restored) { "Duplicate tile key $key" }
+            require(key !in restoredRgba8 && key !in restoredF16) { "Duplicate tile key $key" }
             require(entry.column >= 0 && entry.row >= 0 &&
                 entry.column * manifest.tileSize.toLong() < manifest.logicalWidth &&
                 entry.row * manifest.tileSize.toLong() < manifest.logicalHeight
@@ -132,17 +145,31 @@ internal object PixelTileArchiveCodec {
             require(sha256(blob) == entry.blobSha256) { "Tile blob SHA-256 mismatch" }
             val raw = inflateExact(blob, expectedBytes)
             require(crc32(raw) == entry.rawCrc32) { "Tile raw CRC mismatch" }
-            restored[key] = decodeLittleEndian(raw)
+            when (pixelFormat) {
+                PixelTileFormat.PREMULTIPLIED_SRGB_8888 -> restoredRgba8[key] = decodeIntLittleEndian(raw)
+                PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16 -> restoredF16[key] = decodeLongLittleEndian(raw)
+            }
         }
-        return PixelTileSurface.restore(
-            logicalWidth = manifest.logicalWidth,
-            logicalHeight = manifest.logicalHeight,
-            tileSize = manifest.tileSize,
-            surfaceId = manifest.surfaceId,
-            revision = manifest.revision,
-            tiles = restored,
-            copyTiles = false,
-        )
+        return when (pixelFormat) {
+            PixelTileFormat.PREMULTIPLIED_SRGB_8888 -> PixelTileSurface.restore(
+                logicalWidth = manifest.logicalWidth,
+                logicalHeight = manifest.logicalHeight,
+                tileSize = manifest.tileSize,
+                surfaceId = manifest.surfaceId,
+                revision = manifest.revision,
+                tiles = restoredRgba8,
+                copyTiles = false,
+            )
+            PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16 -> PixelTileSurface.restoreF16(
+                logicalWidth = manifest.logicalWidth,
+                logicalHeight = manifest.logicalHeight,
+                tileSize = manifest.tileSize,
+                surfaceId = manifest.surfaceId,
+                revision = manifest.revision,
+                tiles = restoredF16,
+                copyTiles = false,
+            )
+        }
     }
 
     fun inspect(manifestText: String): Metadata = verifiedManifest(manifestText).let { manifest ->
@@ -151,6 +178,7 @@ internal object PixelTileArchiveCodec {
             logicalWidth = manifest.logicalWidth,
             logicalHeight = manifest.logicalHeight,
             tileSize = manifest.tileSize,
+            pixelFormat = PixelTileFormat.fromManifestId(manifest.pixelFormat),
             revision = manifest.revision,
             tileCount = manifest.tiles.size,
             blobHashes = manifest.tiles.mapTo(linkedSetOf(), TileEntry::blobSha256),
@@ -171,7 +199,8 @@ internal object PixelTileArchiveCodec {
             manifest.logicalHeight in 1..MAX_LOGICAL_DIMENSION
         ) { "Invalid logical surface bounds" }
         require(manifest.tileSize in PixelTileSurface.SUPPORTED_TILE_SIZES) { "Unsupported tile size" }
-        require(manifest.pixelFormat == PIXEL_FORMAT) { "Unsupported pixel format ${manifest.pixelFormat}" }
+        val pixelFormat = PixelTileFormat.fromManifestId(manifest.pixelFormat)
+        val codec = codecFor(pixelFormat)
         require(manifest.revision >= 0L) { "Invalid surface revision" }
         val maximumAddressableTiles =
             ((manifest.logicalWidth + manifest.tileSize - 1L) / manifest.tileSize) *
@@ -186,8 +215,8 @@ internal object PixelTileArchiveCodec {
                 entry.column * manifest.tileSize.toLong() < manifest.logicalWidth &&
                 entry.row * manifest.tileSize.toLong() < manifest.logicalHeight
             ) { "Tile $key is outside the logical surface" }
-            require(entry.codec == CODEC) { "Unsupported tile codec ${entry.codec}" }
-            require(entry.uncompressedBytes == manifest.tileSize * manifest.tileSize * Int.SIZE_BYTES) {
+            require(entry.codec == codec) { "Unsupported tile codec ${entry.codec}" }
+            require(entry.uncompressedBytes == manifest.tileSize * manifest.tileSize * pixelFormat.bytesPerPixel) {
                 "Unexpected tile byte capacity"
             }
             require(entry.compressedBytes > 0) { "Invalid compressed tile size" }
@@ -209,7 +238,18 @@ internal object PixelTileArchiveCodec {
         return output
     }
 
-    private fun decodeLittleEndian(bytes: ByteArray): IntArray {
+    private fun encodeLittleEndian(pixels: LongArray): ByteArray {
+        val output = ByteArray(Math.multiplyExact(pixels.size, Long.SIZE_BYTES))
+        var offset = 0
+        pixels.forEach { pixel ->
+            repeat(Long.SIZE_BYTES) { byteIndex ->
+                output[offset++] = (pixel ushr (byteIndex * 8)).toByte()
+            }
+        }
+        return output
+    }
+
+    private fun decodeIntLittleEndian(bytes: ByteArray): IntArray {
         require(bytes.size % Int.SIZE_BYTES == 0)
         return IntArray(bytes.size / Int.SIZE_BYTES) { index ->
             val offset = index * Int.SIZE_BYTES
@@ -218,6 +258,23 @@ internal object PixelTileArchiveCodec {
                 ((bytes[offset + 2].toInt() and 0xff) shl 16) or
                 ((bytes[offset + 3].toInt() and 0xff) shl 24)
         }
+    }
+
+    private fun decodeLongLittleEndian(bytes: ByteArray): LongArray {
+        require(bytes.size % Long.SIZE_BYTES == 0)
+        return LongArray(bytes.size / Long.SIZE_BYTES) { index ->
+            val offset = index * Long.SIZE_BYTES
+            var value = 0L
+            repeat(Long.SIZE_BYTES) { byteIndex ->
+                value = value or ((bytes[offset + byteIndex].toLong() and 0xffL) shl (byteIndex * 8))
+            }
+            value
+        }
+    }
+
+    private fun codecFor(pixelFormat: PixelTileFormat): String = when (pixelFormat) {
+        PixelTileFormat.PREMULTIPLIED_SRGB_8888 -> RGBA8_CODEC
+        PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16 -> F16_CODEC
     }
 
     private fun deflate(raw: ByteArray): ByteArray {
