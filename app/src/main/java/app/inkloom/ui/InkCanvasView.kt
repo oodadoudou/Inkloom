@@ -442,6 +442,26 @@ class InkCanvasView(context: Context) : View(context) {
         shader = selectionAntShader
         blendMode = BlendMode.SRC_IN
     }
+    private val selectionProtectedPattern = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888).apply {
+        val patternPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(44, 32, 32, 32)
+            strokeWidth = 2f
+        }
+        Canvas(this).apply {
+            drawLine(-8f, 16f, 8f, 0f, patternPaint)
+            drawLine(0f, 24f, 24f, 0f, patternPaint)
+            drawLine(8f, 24f, 24f, 8f, patternPaint)
+        }
+    }
+    private val selectionProtectedShader = BitmapShader(selectionProtectedPattern, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
+    private val selectionProtectedMatrix = Matrix()
+    private val selectionProtectedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        shader = selectionProtectedShader
+    }
+    private val selectionCutoutPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
+        blendMode = BlendMode.DST_OUT
+    }
     private val liveSelectionOutlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
@@ -1442,6 +1462,17 @@ class InkCanvasView(context: Context) : View(context) {
     private fun drawCommittedSelectionBoundary(canvas: Canvas) {
         val boundary = selectionBoundaryBitmap?.takeUnless(Bitmap::isRecycled) ?: return
         selectionBoundaryRect.set(0f, 0f, width.toFloat(), height.toFloat())
+        if (tool == EditorTool.SELECT) {
+            selectionMaskForDisplay()?.takeUnless(Bitmap::isRecycled)?.let { selected ->
+                val protectedCheckpoint = canvas.saveLayer(selectionBoundaryRect, null)
+                selectionProtectedMatrix.reset()
+                selectionProtectedMatrix.setTranslate(selectionAntPhase() * .5f, selectionAntPhase() * .5f)
+                selectionProtectedShader.setLocalMatrix(selectionProtectedMatrix)
+                canvas.drawRect(selectionBoundaryRect, selectionProtectedPaint)
+                canvas.drawBitmap(selected, null, selectionBoundaryRect, selectionCutoutPaint)
+                canvas.restoreToCount(protectedCheckpoint)
+            }
+        }
         canvas.drawBitmap(boundary, null, selectionBoundaryRect, selectionBoundaryPaint)
 
         val checkpoint = canvas.saveLayer(selectionBoundaryRect, null)
@@ -1451,36 +1482,7 @@ class InkCanvasView(context: Context) : View(context) {
         selectionAntShader.setLocalMatrix(selectionAntMatrix)
         canvas.drawRect(selectionBoundaryRect, selectionAntPaint)
         canvas.restoreToCount(checkpoint)
-        drawExactLassoContours(canvas)
         postInvalidateDelayed(SELECTION_ANTS_FRAME_MS)
-    }
-
-    /** Exact lasso paths get a second screen-space contour. The bitmap boundary remains the source
-     * of truth for feathered/automatic selections, while this path prevents a hand-drawn lasso from
-     * becoming sub-pixel thin after zooming out or changing the canvas rotation. */
-    private fun drawExactLassoContours(canvas: Canvas) {
-        if (selectedMaskRegions.isEmpty()) return
-        val overlayScale = viewportScale.coerceAtLeast(.1f)
-        selectedMaskRegions.forEach { contour ->
-            if (contour.size < 3) return@forEach
-            lassoPath.reset()
-            lassoPath.moveTo(contour.first().x * width, contour.first().y * height)
-            contour.drop(1).forEach { point -> lassoPath.lineTo(point.x * width, point.y * height) }
-            lassoPath.close()
-            liveSelectionOutlinePaint.pathEffect = null
-            liveSelectionOutlinePaint.color = Color.BLACK
-            liveSelectionOutlinePaint.alpha = 255
-            liveSelectionOutlinePaint.strokeWidth = 4f / overlayScale
-            canvas.drawPath(lassoPath, liveSelectionOutlinePaint)
-            liveSelectionOutlinePaint.color = Color.WHITE
-            liveSelectionOutlinePaint.strokeWidth = 2f / overlayScale
-            liveSelectionOutlinePaint.pathEffect = DashPathEffect(
-                floatArrayOf(6f / overlayScale, 4f / overlayScale),
-                selectionAntPhase() / overlayScale,
-            )
-            canvas.drawPath(lassoPath, liveSelectionOutlinePaint)
-            liveSelectionOutlinePaint.pathEffect = null
-        }
     }
 
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
@@ -6890,6 +6892,19 @@ class InkCanvasView(context: Context) : View(context) {
         selectionMoved = false
         selectionGestureBefore = null
         lassoPoints.clear()
+        invalidate()
+    }
+
+    /** Cancels only the transient Selection interaction. A committed alpha/stroke selection is
+     * preserved so the host can leave the Selection tool without losing the user's work. */
+    fun cancelSelectionInput() {
+        if (activeTool != null) cancelActiveGestureForNavigation()
+        lassoPoints.clear()
+        movingSelection = false
+        selectionMoved = false
+        selectionGestureBefore = null
+        selectionTransformArmed = false
+        selectionTransformMode = TRANSFORM_NONE
         invalidate()
     }
 

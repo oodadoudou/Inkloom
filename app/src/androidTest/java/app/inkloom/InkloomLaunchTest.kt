@@ -645,6 +645,8 @@ class InkloomLaunchTest {
             assertTrue(composeRule.onAllNodesWithText("42 px").fetchSemanticsNodes().isNotEmpty())
             assertTrue(composeRule.onAllNodesWithText("Magic wand").fetchSemanticsNodes().isNotEmpty())
             assertTrue(composeRule.onAllNodesWithText("Smart border").fetchSemanticsNodes().isNotEmpty())
+            composeRule.onNodeWithContentDescription("Finish selection tool").performClick()
+            composeRule.waitUntil(5_000) { findInkCanvasView()?.tool == app.inkloom.model.EditorTool.PEN }
         } finally {
             preferences.edit().putString("selectionShape", original).commit()
         }
@@ -689,6 +691,9 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription("Active selection launcher").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Deselect").performClick()
         assertTrue(composeRule.onAllNodesWithContentDescription("Active selection launcher").fetchSemanticsNodes().isEmpty())
+        composeRule.waitUntil(5_000) {
+            findInkCanvasView()?.let { it.tool == app.inkloom.model.EditorTool.PEN && !it.hasActiveSelection() } == true
+        }
     }
 
     @Test fun layerPanelDuplicatesAndMergesAContentLayer() {

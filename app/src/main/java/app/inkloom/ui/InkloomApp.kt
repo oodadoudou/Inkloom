@@ -1283,6 +1283,31 @@ private fun EditorScreen(
             view.requestFocus()
         }
     }
+    fun rememberSelectionReturnTarget() {
+        if (tool == EditorTool.SELECT) return
+        previousDrawingTool = tool
+        previousDrawingBrushId = activeBrush?.id
+        previousDrawingSize = brushSize
+        previousDrawingOpacity = brushOpacity
+        previousDrawingColor = brushColor
+    }
+    fun finishSelectionTool(deselect: Boolean) {
+        selectionMenuOpen = false
+        canvasView?.cancelSelectionInput()
+        if (deselect) {
+            selectedElementId = null
+            if (canvasView?.clearSelection() == true) selectionFeather = 0f
+        }
+        val restoredTool = previousDrawingTool.takeUnless { it == EditorTool.SELECT } ?: EditorTool.PEN
+        val restoredBrush = previousDrawingBrushId?.let { id -> brushes.firstOrNull { it.id == id && !it.hidden } }
+        tool = restoredTool
+        activeBrush = restoredBrush
+        selectedBrushId = restoredBrush?.id
+        brushSize = previousDrawingSize
+        brushOpacity = previousDrawingOpacity
+        changeBrushColor(previousDrawingColor)
+        syncCanvasInput(prepareAssets = restoredBrush != null)
+    }
     fun selectWorkspaceBrush(brush: ImportedBrush) {
         exitCanvasNavigation()
         val usedBrush = brush.copy(lastUsedAt = System.currentTimeMillis())
@@ -1383,6 +1408,7 @@ private fun EditorScreen(
             Box {
                 ProcreateTopButton(Icons.Outlined.Gesture, tr("Selection", "选择"), selected = tool == EditorTool.SELECT, onClick = {
                     exitCanvasNavigation()
+                    rememberSelectionReturnTarget()
                     tool = EditorTool.SELECT
                     syncCanvasInput()
                     selectionMenuOpen = true
@@ -1405,6 +1431,8 @@ private fun EditorScreen(
                         },
                         onBrushSize = { onSettingsChange(settings.copy(selectionBrushSize = it)) },
                         onThreshold = { onSettingsChange(settings.copy(selectionThreshold = it)) },
+                        onDone = { finishSelectionTool(deselect = false) },
+                        onDeselect = { finishSelectionTool(deselect = true) },
                     )
                 }
             }
@@ -2382,7 +2410,7 @@ private fun EditorScreen(
                                 activeLayerId = LayerIds.HIGHLIGHT
                                 syncCanvasInput()
                             }
-                            ShortcutAction.SELECT_TOOL -> { exitCanvasNavigation(); if (activation.trigger == ShortcutTrigger.HOLD) rememberDrawingSelection(); tool = EditorTool.SELECT; syncCanvasInput() }
+                            ShortcutAction.SELECT_TOOL -> { exitCanvasNavigation(); if (tool != EditorTool.SELECT) rememberDrawingSelection(); tool = EditorTool.SELECT; syncCanvasInput() }
                             ShortcutAction.HAND_TOOL -> if (activation.trigger == ShortcutTrigger.HOLD) { rotateToolEnabled = false; rotateToolHeld = false; handToolHeld = true } else { val enable = !handToolEnabled; exitCanvasNavigation(); handToolEnabled = enable }
                             ShortcutAction.ROTATE_VIEW_TOOL -> if (activation.trigger == ShortcutTrigger.HOLD) { handToolEnabled = false; handToolHeld = false; rotateToolHeld = true } else { val enable = !rotateToolEnabled; exitCanvasNavigation(); rotateToolEnabled = enable }
                             ShortcutAction.EYEDROPPER_TOOL -> if (activation.trigger == ShortcutTrigger.HOLD) {
@@ -2419,7 +2447,7 @@ private fun EditorScreen(
                             ShortcutAction.PASTE_SELECTION -> { selectedElementId = null; if (canvasView?.pasteSelectionFromClipboard() != true) Toast.makeText(context, noInkClipboardMessage, Toast.LENGTH_SHORT).show() }
                             ShortcutAction.DELETE_SELECTION -> selectedElementId?.let { onRemoveElement(document.id, selectedPage.id, it); selectedElementId = null } ?: canvasView?.deleteSelection()
                             ShortcutAction.SELECT_ALL -> { selectedElementId = null; tool = EditorTool.SELECT; canvasView?.selectAllEditableStrokes() }
-                            ShortcutAction.DESELECT -> { selectedElementId = null; canvasView?.clearSelection() }
+                            ShortcutAction.DESELECT -> finishSelectionTool(deselect = true)
                             ShortcutAction.UNDO -> canvasView?.undo()
                             ShortcutAction.REDO -> canvasView?.redo()
                             ShortcutAction.NEW_LAYER -> onAddLayer(document.id, selectedPage.id, "Layer", LayerContentKind.RASTER)
@@ -2633,6 +2661,7 @@ private fun EditorScreen(
                 }
                 if (settings.showToolbar) ToolDock(tool = tool, onTool = { chosen ->
                     exitCanvasNavigation()
+                    if (chosen == EditorTool.SELECT) rememberSelectionReturnTarget()
                     if (chosen == EditorTool.EYEDROPPER && tool != EditorTool.EYEDROPPER) {
                         previousDrawingTool = tool
                         previousDrawingBrushId = activeBrush?.id
@@ -2680,7 +2709,7 @@ private fun EditorScreen(
                         else -> Unit
                     }
                     syncCanvasInput(prepareAssets = activeBrush != null)
-                }, onUndo = { canvasView?.undo() }, onRedo = { canvasView?.redo() }, onScale = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, resizeElement(it, 1.15f)) } } ?: canvasView?.scaleSelection(1.15f) }, onRotate = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, rotateElement(it, 15f)) } } ?: canvasView?.rotateSelection(15f) }, onCopy = { selectedElementId?.let { onDuplicateElement(document.id, selectedPage.id, it) } ?: canvasView?.copySelection() }, onCut = { if (selectedElementId != null) Toast.makeText(context, inkOnlyClipboardMessage, Toast.LENGTH_SHORT).show() else if (canvasView?.cutSelectionToClipboard() != true) Toast.makeText(context, selectBeforeCutMessage, Toast.LENGTH_SHORT).show() }, onClipboardCopy = { if (selectedElementId != null) Toast.makeText(context, inkOnlyClipboardMessage, Toast.LENGTH_SHORT).show() else if (canvasView?.copySelectionToClipboard() != true) Toast.makeText(context, selectBeforeCopyMessage, Toast.LENGTH_SHORT).show() }, onPaste = { selectedElementId = null; if (canvasView?.pasteSelectionFromClipboard() != true) Toast.makeText(context, noInkClipboardMessage, Toast.LENGTH_SHORT).show() }, onDelete = { selectedElementId?.let { onRemoveElement(document.id, selectedPage.id, it); selectedElementId = null } ?: canvasView?.deleteSelection() }, onSelectAll = { selectedElementId = null; tool = EditorTool.SELECT; canvasView?.selectAllEditableStrokes() }, onInvertSelection = { selectedElementId = null; tool = EditorTool.SELECT; canvasView?.invertSelection() }, onDeselect = { selectedElementId = null; canvasView?.clearSelection() }, onFreeTransform = { tool = EditorTool.SELECT; canvasView?.enterFreeTransform() }, selectionShape = settings.selectionShape, selectionMode = settings.selectionMode, selectionFilter = settings.selectionFilter, onSelectionShape = { shape -> canvasView?.beginSelectionInput(shape); onSettingsChange(settings.copy(selectionShape = shape)) }, onSelectionMode = { onSettingsChange(settings.copy(selectionMode = it)) }, onSelectionFilter = { onSettingsChange(settings.copy(selectionFilter = it)) }, referenceTarget = settings.referenceTarget, onReferenceTarget = { onSettingsChange(settings.copy(referenceTarget = it)) }, correctLineMode = settings.correctLineMode, correctLineAmount = settings.correctLineAmount, onCorrectLineMode = { onSettingsChange(settings.copy(correctLineMode = it)) }, onCorrectLineAmount = { onSettingsChange(settings.copy(correctLineAmount = it.coerceIn(0f, 1f))) }, eraserPreset = settings.eraserPreset, onEraserPreset = { preset -> onSettingsChange(settings.copy(eraserPreset = preset, nonDestructiveEraser = preset.usesMask)) }, rulerEnabled = settings.rulerEnabled, rulerSnapDegrees = settings.rulerSnapDegrees, onToggleRuler = { onSettingsChange(settings.copy(rulerEnabled = !settings.rulerEnabled)) }, onRulerSnap = { onSettingsChange(settings.copy(rulerSnapDegrees = it)) }, onResetRuler = { onSettingsChange(settings.copy(rulerCenterX = .5f, rulerCenterY = .5f, rulerAngleDegrees = 0f)) }, gridSnapEnabled = settings.gridSnapEnabled, gridSpacing = settings.gridSpacing, alignmentGuidesEnabled = settings.alignmentGuidesEnabled, onToggleGridSnap = { onSettingsChange(settings.copy(gridSnapEnabled = !settings.gridSnapEnabled)) }, onGridSpacing = { onSettingsChange(settings.copy(gridSpacing = it)) }, onToggleAlignmentGuides = { onSettingsChange(settings.copy(alignmentGuidesEnabled = !settings.alignmentGuidesEnabled)) }, onResetAlignmentGuides = { onSettingsChange(settings.copy(verticalGuideX = .5f, horizontalGuideY = .5f)) }, onDrag = { dx, dy ->
+                }, onUndo = { canvasView?.undo() }, onRedo = { canvasView?.redo() }, onScale = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, resizeElement(it, 1.15f)) } } ?: canvasView?.scaleSelection(1.15f) }, onRotate = { selectedElementId?.let { id -> selectedPage.elements.firstOrNull { it.id == id }?.let { onElement(document.id, selectedPage.id, rotateElement(it, 15f)) } } ?: canvasView?.rotateSelection(15f) }, onCopy = { selectedElementId?.let { onDuplicateElement(document.id, selectedPage.id, it) } ?: canvasView?.copySelection() }, onCut = { if (selectedElementId != null) Toast.makeText(context, inkOnlyClipboardMessage, Toast.LENGTH_SHORT).show() else if (canvasView?.cutSelectionToClipboard() != true) Toast.makeText(context, selectBeforeCutMessage, Toast.LENGTH_SHORT).show() }, onClipboardCopy = { if (selectedElementId != null) Toast.makeText(context, inkOnlyClipboardMessage, Toast.LENGTH_SHORT).show() else if (canvasView?.copySelectionToClipboard() != true) Toast.makeText(context, selectBeforeCopyMessage, Toast.LENGTH_SHORT).show() }, onPaste = { selectedElementId = null; if (canvasView?.pasteSelectionFromClipboard() != true) Toast.makeText(context, noInkClipboardMessage, Toast.LENGTH_SHORT).show() }, onDelete = { selectedElementId?.let { onRemoveElement(document.id, selectedPage.id, it); selectedElementId = null } ?: canvasView?.deleteSelection() }, onSelectAll = { selectedElementId = null; tool = EditorTool.SELECT; canvasView?.selectAllEditableStrokes() }, onInvertSelection = { selectedElementId = null; tool = EditorTool.SELECT; canvasView?.invertSelection() }, onDeselect = { finishSelectionTool(deselect = true) }, onFreeTransform = { tool = EditorTool.SELECT; canvasView?.enterFreeTransform() }, selectionShape = settings.selectionShape, selectionMode = settings.selectionMode, selectionFilter = settings.selectionFilter, onSelectionShape = { shape -> canvasView?.beginSelectionInput(shape); onSettingsChange(settings.copy(selectionShape = shape)) }, onSelectionMode = { onSettingsChange(settings.copy(selectionMode = it)) }, onSelectionFilter = { onSettingsChange(settings.copy(selectionFilter = it)) }, referenceTarget = settings.referenceTarget, onReferenceTarget = { onSettingsChange(settings.copy(referenceTarget = it)) }, correctLineMode = settings.correctLineMode, correctLineAmount = settings.correctLineAmount, onCorrectLineMode = { onSettingsChange(settings.copy(correctLineMode = it)) }, onCorrectLineAmount = { onSettingsChange(settings.copy(correctLineAmount = it.coerceIn(0f, 1f))) }, eraserPreset = settings.eraserPreset, onEraserPreset = { preset -> onSettingsChange(settings.copy(eraserPreset = preset, nonDestructiveEraser = preset.usesMask)) }, rulerEnabled = settings.rulerEnabled, rulerSnapDegrees = settings.rulerSnapDegrees, onToggleRuler = { onSettingsChange(settings.copy(rulerEnabled = !settings.rulerEnabled)) }, onRulerSnap = { onSettingsChange(settings.copy(rulerSnapDegrees = it)) }, onResetRuler = { onSettingsChange(settings.copy(rulerCenterX = .5f, rulerCenterY = .5f, rulerAngleDegrees = 0f)) }, gridSnapEnabled = settings.gridSnapEnabled, gridSpacing = settings.gridSpacing, alignmentGuidesEnabled = settings.alignmentGuidesEnabled, onToggleGridSnap = { onSettingsChange(settings.copy(gridSnapEnabled = !settings.gridSnapEnabled)) }, onGridSpacing = { onSettingsChange(settings.copy(gridSpacing = it)) }, onToggleAlignmentGuides = { onSettingsChange(settings.copy(alignmentGuidesEnabled = !settings.alignmentGuidesEnabled)) }, onResetAlignmentGuides = { onSettingsChange(settings.copy(verticalGuideX = .5f, horizontalGuideY = .5f)) }, onDrag = { dx, dy ->
                     val next = FloatingToolbarPlacement.clamp(toolbarX + dx / editorDensity.density, toolbarY + dy / editorDensity.density, toolbarAreaWidth.value, toolbarAreaHeight.value, dockVertical)
                     toolbarX = next.xDp
                     toolbarY = next.yDp
@@ -2717,7 +2746,8 @@ private fun EditorScreen(
                 }, onColor = ::changeBrushColor, symmetryMode = settings.symmetryMode, onSymmetryMode = { onSettingsChange(settings.copy(symmetryMode = it)) }, gradientControls = { GradientToolControls(settings, brushColor, ::changeBrushColor, onSettingsChange) }, modifier = Modifier.align(dockAlignment).padding(dockPadding).graphicsLayer(translationX = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.xDp.dp.toPx() } else 0f, translationY = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.yDp.dp.toPx() } else 0f))
                 if (tool == EditorTool.SELECT && selectionActive) SelectionLauncher(
                     featherPixels = selectionFeather,
-                    onDeselect = { selectedElementId = null; if (canvasView?.clearSelection() == true) selectionFeather = 0f },
+                    onDone = { finishSelectionTool(deselect = false) },
+                    onDeselect = { finishSelectionTool(deselect = true) },
                     onInvert = { selectedElementId = null; canvasView?.invertSelection() },
                     onCut = { canvasView?.cutSelectionToClipboard() },
                     onCopy = { canvasView?.copySelectionToClipboard() },
@@ -10427,6 +10457,8 @@ private fun CspSelectionSubtoolPalette(
     onMode: (SelectionMode) -> Unit,
     onBrushSize: (Float) -> Unit,
     onThreshold: (Float) -> Unit,
+    onDone: () -> Unit,
+    onDeselect: () -> Unit,
 ) {
     Column(Modifier.fillMaxWidth().background(Color.White)) {
         Row(
@@ -10435,7 +10467,11 @@ private fun CspSelectionSubtoolPalette(
         ) {
             Icon(Icons.Outlined.Gesture, null, Modifier.size(15.dp), tint = Ink)
             Spacer(Modifier.width(6.dp))
-            Text(tr("Selection area", "选区"), color = Ink, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            Text(tr("Selection area", "选区"), Modifier.weight(1f), color = Ink, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            IconButton(
+                onClick = onDone,
+                modifier = Modifier.size(28.dp).semantics { contentDescription = "Close selection palette and return to drawing" },
+            ) { Icon(Icons.Outlined.Check, null, Modifier.size(16.dp), tint = Ink) }
         }
         SelectionShape.entries.forEach { shape ->
             val selected = settings.selectionShape == shape
@@ -10517,6 +10553,27 @@ private fun CspSelectionSubtoolPalette(
             )
             else -> Spacer(Modifier.height(6.dp))
         }
+        HorizontalDivider(color = OutlineSoft)
+        Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            TextButton(
+                onClick = onDone,
+                modifier = Modifier.weight(1f).height(32.dp).semantics { contentDescription = "Finish selection tool" },
+                shape = RoundedCornerShape(2.dp),
+            ) {
+                Icon(Icons.Outlined.Check, null, Modifier.size(15.dp))
+                Spacer(Modifier.width(4.dp))
+                Text(tr("Done", "完成"), fontSize = 10.sp)
+            }
+            TextButton(
+                onClick = onDeselect,
+                modifier = Modifier.weight(1f).height(32.dp).semantics { contentDescription = "Deselect and exit" },
+                shape = RoundedCornerShape(2.dp),
+            ) {
+                Icon(Icons.Outlined.Close, null, Modifier.size(15.dp))
+                Spacer(Modifier.width(4.dp))
+                Text(tr("Deselect", "取消选区"), fontSize = 10.sp)
+            }
+        }
     }
 }
 
@@ -10565,6 +10622,7 @@ private fun CspSelectionParameter(
 @Composable
 private fun SelectionLauncher(
     featherPixels: Float,
+    onDone: () -> Unit,
     onDeselect: () -> Unit,
     onInvert: () -> Unit,
     onCut: () -> Unit,
@@ -10599,6 +10657,7 @@ private fun SelectionLauncher(
                 Icon(Icons.Outlined.DragIndicator, null, Modifier.size(14.dp), tint = MutedInk)
             }
             VerticalDivider(Modifier.height(22.dp), color = OutlineSoft)
+            SelectionLauncherButton(Icons.Outlined.Check, tr("Done", "完成"), onDone)
             SelectionLauncherButton(Icons.Outlined.Close, tr("Deselect", "取消选区"), onDeselect)
             SelectionLauncherButton(Icons.Outlined.Flip, tr("Invert selection", "反选"), onInvert)
             SelectionLauncherButton(Icons.Outlined.FormatColorFill, tr("Fill selection", "填充选区"), onFill)

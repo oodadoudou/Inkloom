@@ -3,6 +3,7 @@ package app.inkloom
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.os.SystemClock
 import android.view.InputDevice
 import android.view.MotionEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -142,7 +143,10 @@ class LassoSelectionModesTest {
                 assertTrue("Committed selection boundary had no black contrast pixels", boundaryPixels.any { Color.red(it) < 24 })
                 assertTrue("Committed selection boundary had no white marching-ant pixels", boundaryPixels.any { Color.red(it) > 230 })
                 assertEquals("Selection interior must remain unobscured", 0, Color.alpha(bitmap.getPixel(500, 500)))
-                assertEquals("CSP-style selection feedback must not shade the exterior", 0, Color.alpha(bitmap.getPixel(100, 100)))
+                assertTrue(
+                    "Selection mode must distinguish the protected exterior",
+                    pixelsNear(bitmap, 100, 100, 16).any { Color.alpha(it) in 16..80 },
+                )
             } finally {
                 bitmap.recycle()
                 view.clearSelection()
@@ -164,12 +168,42 @@ class LassoSelectionModesTest {
                     view.draw(Canvas(bitmap))
                     val boundary = pixelsNear(bitmap, 200, 500, if (scale < 1f) 12 else 3).filter(::opaque)
                     assertTrue("Selection boundary disappeared at viewport scale $scale", boundary.size > 16)
-                    assertEquals("Selection exterior was shaded at viewport scale $scale", 0, Color.alpha(bitmap.getPixel(100, 100)))
+                    assertTrue(
+                        "Protected exterior disappeared at viewport scale $scale",
+                        pixelsNear(bitmap, 100, 100, 16).any { Color.alpha(it) in 16..80 },
+                    )
                     assertEquals("Selection interior was obscured at viewport scale $scale", 0, Color.alpha(bitmap.getPixel(500, 500)))
                 } finally {
                     bitmap.recycle()
                     view.clearSelection()
                 }
+            }
+        }
+    }
+
+    @Test fun committedSelectionOverlayStaysWithinInteractiveFrameBudget() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val view = configuredView(emptyList(), mutableListOf()).apply { selectionShape = SelectionShape.FREEFORM }
+            view.lasso(.2f, .2f, .8f, .8f)
+            val bitmap = Bitmap.createBitmap(1_000, 1_000, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            try {
+                repeat(2) { bitmap.eraseColor(Color.TRANSPARENT); view.draw(canvas) }
+                val elapsed = ArrayList<Long>(10)
+                repeat(10) {
+                    bitmap.eraseColor(Color.TRANSPARENT)
+                    val started = SystemClock.elapsedRealtimeNanos()
+                    view.draw(canvas)
+                    elapsed += SystemClock.elapsedRealtimeNanos() - started
+                }
+                val sorted = elapsed.sorted()
+                val p95Ms = sorted[(sorted.size * 95 / 100).coerceAtMost(sorted.lastIndex)] / 1_000_000f
+                android.util.Log.i("InkloomPerf", "selection_overlay_1000px_p95_ms=$p95Ms")
+                assertTrue("Selection overlay P95 was ${p95Ms}ms", p95Ms < 33.3f)
+            } finally {
+                bitmap.recycle()
+                view.clearSelection()
             }
         }
     }
@@ -194,6 +228,30 @@ class LassoSelectionModesTest {
 
             assertEquals(1, edits.size)
             assertEquals(listOf("second"), edits.single().removedIds)
+        }
+    }
+
+    @Test fun cancellingSelectionInputPreservesCommittedSelectionAndDisarmsTransientMode() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync {
+            val view = configuredView(emptyList(), mutableListOf()).apply { selectionShape = SelectionShape.FREEFORM }
+            view.lasso(.2f, .2f, .8f, .8f)
+            view.dispatchStylus(MotionEvent.ACTION_DOWN, 50f, 50f, 70L)
+            view.dispatchStylus(MotionEvent.ACTION_MOVE, 150f, 50f, 80L)
+
+            view.cancelSelectionInput()
+
+            assertTrue("Cancelling transient lasso must retain the committed alpha selection", view.hasActiveSelection())
+            view.tool = EditorTool.PEN
+            val bitmap = Bitmap.createBitmap(1_000, 1_000, Bitmap.Config.ARGB_8888)
+            try {
+                view.draw(Canvas(bitmap))
+                assertEquals("Cancelled transient lasso must not remain visible", 0, Color.alpha(bitmap.getPixel(100, 50)))
+                assertEquals("Committed selection interior must remain clear", 0, Color.alpha(bitmap.getPixel(500, 500)))
+            } finally {
+                bitmap.recycle()
+                view.clearSelection()
+            }
         }
     }
 
