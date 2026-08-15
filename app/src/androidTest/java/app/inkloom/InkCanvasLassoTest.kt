@@ -143,13 +143,9 @@ class InkCanvasLassoTest {
             try {
                 assertEquals(4, mask.tileCount)
                 assertTrue(mask.retainedPixels < bitmap.width.toLong() * bitmap.height / 8L)
-                val restored = mask.snapshot()
-                try {
-                    assertEquals(Color.WHITE, restored.getPixel(1_030, 1_030))
-                    assertEquals(Color.TRANSPARENT, restored.getPixel(100, 100))
-                } finally {
-                    restored.recycle()
-                }
+                val restored = mask.surface.snapshot()
+                assertEquals(255, restored.alphaAt(1_030, 1_030))
+                assertEquals(0, restored.alphaAt(100, 100))
             } finally {
                 mask.close()
             }

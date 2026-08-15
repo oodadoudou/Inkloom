@@ -35,9 +35,6 @@ internal class SparseAlphaMask private constructor(
         tileRect(info.key).let { it.width.toLong() * it.height }
     }
 
-    /** Explicit full-page compatibility boundary. Do not use for tool dirty-ROI sampling. */
-    fun snapshot(): Bitmap = bitmapFrom(surface.snapshot(), PixelRect(0, 0, width, height))
-
     fun draw(canvas: Canvas, destination: RectF, paint: Paint? = null) {
         val snapshot = surface.snapshot()
         val scaleX = destination.width() / width.coerceAtLeast(1)
