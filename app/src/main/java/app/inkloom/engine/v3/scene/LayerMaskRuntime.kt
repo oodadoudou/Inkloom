@@ -18,14 +18,23 @@ data class LayerMaskThumbnail(val width: Int, val height: Int, val alpha: ByteAr
 class LayerMaskRuntime(
     private val surface: MaskTileSurface,
     enabled: Boolean = true,
+    private val maxHistoryByteSize: Long = DEFAULT_HISTORY_BYTE_BUDGET,
+    private val maxUndoDepth: Int = DEFAULT_UNDO_DEPTH,
 ) : AutoCloseable {
+    init {
+        require(maxHistoryByteSize > 0L)
+        require(maxUndoDepth > 0)
+    }
+
     private val undo = ArrayDeque<MaskTileTransactionRecord>()
     private val redo = ArrayDeque<MaskTileTransactionRecord>()
+    private var undoBytes = 0L
+    private var redoBytes = 0L
     var enabled: Boolean = enabled
         private set
 
     val snapshot: MaskTileSurfaceSnapshot get() = surface.snapshot()
-    val historyByteSize: Long get() = (undo + redo).sumOf(MaskTileTransactionRecord::retainedByteSize)
+    val historyByteSize: Long get() = undoBytes + redoBytes
 
     fun setEnabled(value: Boolean) { enabled = value }
 
@@ -68,15 +77,19 @@ class LayerMaskRuntime(
 
     fun undo(): LayerMaskEdit? {
         val record = undo.removeLastOrNull() ?: return null
+        undoBytes -= record.retainedByteSize
         surface.apply(record, MaskTileSurface.HistoryDirection.UNDO)
         redo.addLast(record)
+        redoBytes += record.retainedByteSize
         return LayerMaskEdit(surface.snapshot(), fullDirty(record), historyByteSize)
     }
 
     fun redo(): LayerMaskEdit? {
         val record = redo.removeLastOrNull() ?: return null
+        redoBytes -= record.retainedByteSize
         surface.apply(record, MaskTileSurface.HistoryDirection.REDO)
         undo.addLast(record)
+        undoBytes += record.retainedByteSize
         return LayerMaskEdit(surface.snapshot(), fullDirty(record), historyByteSize)
     }
 
@@ -99,6 +112,8 @@ class LayerMaskRuntime(
         (undo + redo).forEach(MaskTileTransactionRecord::close)
         undo.clear()
         redo.clear()
+        undoBytes = 0L
+        redoBytes = 0L
     }
 
     private inline fun edit(
@@ -114,9 +129,10 @@ class LayerMaskRuntime(
                 record.close()
                 null
             } else {
-                redo.forEach(MaskTileTransactionRecord::close)
-                redo.clear()
+                clearRedo()
                 undo.addLast(record)
+                undoBytes += record.retainedByteSize
+                trimUndoHistory()
                 LayerMaskEdit(surface.snapshot(), fullDirty(record), historyByteSize)
             }
         } catch (failure: Throwable) {
@@ -150,5 +166,24 @@ class LayerMaskRuntime(
                 minOf(surface.logicalHeight, info.key.row * surface.tileSize + info.dirtyLocalRect.bottom),
             )
         }.reduceOrNull(PixelRect::union) ?: PixelRect(0, 0, 0, 0)
+    }
+
+    private fun clearRedo() {
+        redo.forEach(MaskTileTransactionRecord::close)
+        redo.clear()
+        redoBytes = 0L
+    }
+
+    private fun trimUndoHistory() {
+        while (undo.size > maxUndoDepth || undoBytes > maxHistoryByteSize) {
+            val evicted = undo.removeFirstOrNull() ?: break
+            undoBytes -= evicted.retainedByteSize
+            evicted.close()
+        }
+    }
+
+    companion object {
+        const val DEFAULT_HISTORY_BYTE_BUDGET = 32L * 1024 * 1024
+        const val DEFAULT_UNDO_DEPTH = 128
     }
 }

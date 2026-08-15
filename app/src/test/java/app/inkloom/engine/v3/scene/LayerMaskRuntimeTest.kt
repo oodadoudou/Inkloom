@@ -53,4 +53,26 @@ class LayerMaskRuntimeTest {
         assertEquals(0, restored.alphaAt(10, 10))
         assertEquals(255, restored.alphaAt(400, 400))
     }
+
+    @Test fun longMaskEditSessionStaysInsideConfiguredUndoMemoryBudget() {
+        val budget = 256L * 1024
+        val runtime = LayerMaskRuntime(
+            MaskTileSurface(8192, 8192, tileSize = 128),
+            maxHistoryByteSize = budget,
+            maxUndoDepth = 1_000,
+        )
+
+        repeat(1_000) { index ->
+            val coordinate = index % 128
+            runtime.paint(
+                PixelRect(coordinate, coordinate, coordinate + 1, coordinate + 1),
+                byteArrayOf((index % 255 + 1).toByte()),
+            )
+            assertTrue("mask undo retained ${runtime.historyByteSize} bytes", runtime.historyByteSize <= budget)
+        }
+
+        assertTrue(runtime.historyByteSize > 0L)
+        runtime.close()
+        assertEquals(0L, runtime.historyByteSize)
+    }
 }
