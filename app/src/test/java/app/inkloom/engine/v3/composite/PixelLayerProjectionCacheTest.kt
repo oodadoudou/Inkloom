@@ -2,6 +2,7 @@ package app.inkloom.engine.v3.composite
 
 import app.inkloom.engine.v3.surface.PixelTileKey
 import app.inkloom.engine.v3.surface.PixelTileSurface
+import app.inkloom.engine.v3.surface.MaskTileSurface
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -82,7 +83,9 @@ class PixelLayerProjectionCacheTest {
     @Test fun masksAndClippingBaseAlphaAreAppliedWithoutMutatingEitherLayer() {
         val base = layerSurface(0x80808080.toInt(), 10, 10)
         val clipped = layerSurface(0xffff0000.toInt(), 10, 10)
-        val mask = layerSurface(0x80808080.toInt(), 10, 10)
+        val mask = MaskTileSurface(256, 128, tileSize = 64).also { surface ->
+            surface.beginWrite("half mask").run { setAlpha(10, 10, 128); commit().close() }
+        }
         val cache = PixelLayerProjectionCache(256, 128, tileSize = 64)
 
         val update = cache.update(listOf(
@@ -125,6 +128,26 @@ class PixelLayerProjectionCacheTest {
         assertEquals(1, hiddenUpdate.recomposedTileCount)
         assertEquals(0, hiddenUpdate.snapshot.pixelAt(10, 10))
         assertEquals(0xff0000ff.toInt(), hiddenUpdate.snapshot.pixelAt(130, 10))
+    }
+
+    @Test fun changingOneMaskTileInvalidatesOnlyOverlappingProjectionTiles() {
+        val left = layerSurface(0xffff0000.toInt(), 10, 10)
+        val right = layerSurface(0xff0000ff.toInt(), 130, 10)
+        val mask = MaskTileSurface(128, 64, tileSize = 64, initialDefaultAlpha = 255)
+        val cache = PixelLayerProjectionCache(256, 128, tileSize = 64)
+        fun inputs() = listOf(
+            PixelLayerProjectionInput("left", left.snapshot(), mask = mask.snapshot()),
+            PixelLayerProjectionInput("right", right.snapshot(), mask = mask.snapshot()),
+        )
+        cache.update(inputs())
+
+        mask.beginWrite("hide left point").run { setAlpha(4, 4, 0); commit().close() }
+        val update = cache.update(inputs())
+
+        assertEquals(1, update.recomposedTileCount)
+        assertEquals(1, update.reusedTileCount)
+        assertEquals(0, update.snapshot.pixelAt(10, 10))
+        assertEquals(0xff0000ff.toInt(), update.snapshot.pixelAt(130, 10))
     }
 
     private fun layerSurface(color: Int, x: Int, y: Int): PixelTileSurface =

@@ -34,6 +34,11 @@ object LayerMaskOperations {
             )
             LayerMaskCommand.TOGGLE_ENABLED -> layer.mask?.copy(enabled = !layer.mask.enabled)
             LayerMaskCommand.TOGGLE_LINKED -> layer.mask?.copy(linked = !layer.mask.linked)
+            LayerMaskCommand.INVERT -> layer.mask?.copy(
+                baseVisible = !layer.mask.baseVisible,
+                regions = layer.mask.regions.map { it.copy(reveal = !it.reveal) },
+            )
+            LayerMaskCommand.LOAD_AS_SELECTION -> return page
             LayerMaskCommand.DELETE -> error("handled above")
             LayerMaskCommand.APPLY -> return applyMask(page, layerId, layer.mask, nextId)
         } ?: return page

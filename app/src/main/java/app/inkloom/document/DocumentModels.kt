@@ -141,6 +141,18 @@ data class RasterTileSurfaceRef(
 )
 
 @Serializable
+data class MaskTileSurfaceRef(
+    val assetPath: String,
+    val surfaceId: String,
+    val logicalWidth: Int,
+    val logicalHeight: Int,
+    val tileSize: Int,
+    val revision: Long,
+    val defaultAlpha: Int,
+    val tileCount: Int,
+)
+
+@Serializable
 data class InkLayer(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
@@ -176,6 +188,8 @@ data class LayerMask(
     val regions: List<LayerMaskRegion> = emptyList(),
     val enabled: Boolean = true,
     val linked: Boolean = true,
+    /** Authoritative V3 alpha. [regions] is a read-only legacy import fallback. */
+    val surface: MaskTileSurfaceRef? = null,
 )
 
 @Serializable
@@ -193,6 +207,8 @@ enum class LayerMaskCommand {
     REVEAL_SELECTION,
     TOGGLE_ENABLED,
     TOGGLE_LINKED,
+    INVERT,
+    LOAD_AS_SELECTION,
     APPLY,
     DELETE,
 }

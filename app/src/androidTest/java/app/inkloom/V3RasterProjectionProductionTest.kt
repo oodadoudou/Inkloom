@@ -18,6 +18,8 @@ import app.inkloom.document.defaultInkLayers
 import app.inkloom.engine.v3.surface.PixelRect
 import app.inkloom.engine.v3.surface.PixelTileKey
 import app.inkloom.engine.v3.surface.PixelTileSurface
+import app.inkloom.engine.v3.surface.MaskTileSurface
+import app.inkloom.engine.v3.surface.MaskComposeMode
 import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -123,7 +125,7 @@ class V3RasterProjectionProductionTest {
         }
     }
 
-    @Test fun mixedVectorAndMaskScenesAreExplicitlyIsolatedToCompatibilityPath() {
+    @Test fun mixedVectorAndLegacyMaskScenesAreExplicitlyIsolatedWhileSparseMasksUseV3() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val surface = solidSurface("raster", Color.YELLOW)
             val vector = InkStroke(
@@ -146,6 +148,20 @@ class V3RasterProjectionProductionTest {
                 layerOrder = listOf("raster")
                 layerMasks = mapOf("raster" to LayerMask(enabled = true))
             }
+            val sparseMask = MaskTileSurface(64, 64, tileSize = 64).also { mask ->
+                mask.beginWrite("left half").run {
+                    composeAlpha(PixelRect(0, 0, 32, 64), ByteArray(32 * 64) { 255.toByte() }, mode = MaskComposeMode.REPLACE)
+                    commit().close()
+                }
+            }
+            val sparseMasked = InkCanvasView(InstrumentationRegistry.getInstrumentation().targetContext).apply {
+                layout(0, 0, 256, 256)
+                setDocumentStrokes(emptyList(), "v3-sparse-mask")
+                setRasterLayerSurfaces(mapOf("raster" to surface))
+                layerOrder = listOf("raster")
+                layerMasks = mapOf("raster" to LayerMask(enabled = true))
+                layerMaskSurfaces = mapOf("raster" to sparseMask.snapshot())
+            }
             val output = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888)
             try {
                 mixed.draw(Canvas(output))
@@ -154,6 +170,12 @@ class V3RasterProjectionProductionTest {
                 masked.draw(Canvas(output))
                 assertEquals(0, masked.v3RasterProjectionDrawCount)
                 assertEquals(1, masked.legacyLayerCompositionDrawCount)
+                output.eraseColor(Color.TRANSPARENT)
+                sparseMasked.draw(Canvas(output))
+                assertEquals(1, sparseMasked.v3RasterProjectionDrawCount)
+                assertEquals(0, sparseMasked.legacyLayerCompositionDrawCount)
+                assertEquals(Color.YELLOW, output.getPixel(64, 128))
+                assertEquals(Color.TRANSPARENT, output.getPixel(192, 128))
             } finally {
                 output.recycle()
             }

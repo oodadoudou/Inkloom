@@ -5,6 +5,7 @@ import app.inkloom.engine.v3.surface.PixelTileFormat
 import app.inkloom.engine.v3.surface.PixelTileKey
 import app.inkloom.engine.v3.surface.PixelTileSurface
 import app.inkloom.engine.v3.surface.PixelTileSurfaceSnapshot
+import app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot
 import java.util.UUID
 
 data class PixelLayerProjectionInput(
@@ -13,7 +14,7 @@ data class PixelLayerProjectionInput(
     val visible: Boolean = true,
     val opacity: Float = 1f,
     val blendMode: PixelBlendMode = PixelBlendMode.NORMAL,
-    val mask: PixelTileSurfaceSnapshot? = null,
+    val mask: MaskTileSurfaceSnapshot? = null,
     val clipToBaseBelow: Boolean = false,
 )
 
@@ -252,10 +253,10 @@ class PixelLayerProjectionCache(
                 input.clipToBaseBelow && (base == null || !base.visible) -> ZERO_COVERAGE
                 input.mask == null && base == null -> null
                 else -> CompositeCoverage { x, y ->
-                    val maskAlpha = input.mask?.let { alphaAt(it, x, y) } ?: 1f
+                    val maskAlpha = input.mask?.let { alphaAt(it, x, y, projection.logicalWidth, projection.logicalHeight) } ?: 1f
                     val baseAlpha = base?.let {
                         val baseOpacity = if (it.opacity.isFinite()) it.opacity.coerceIn(0f, 1f) else 0f
-                        val baseMask = it.mask?.let { mask -> alphaAt(mask, x, y) } ?: 1f
+                        val baseMask = it.mask?.let { mask -> alphaAt(mask, x, y, projection.logicalWidth, projection.logicalHeight) } ?: 1f
                         alphaAt(it.pixels, x, y) * baseMask * baseOpacity
                     } ?: 1f
                     maskAlpha * baseAlpha
@@ -265,10 +266,11 @@ class PixelLayerProjectionCache(
                 input = input,
                 opacity = if (input.visible) opacity else 0f,
                 sourceGenerations = input.pixels.tileInfo.associate { it.key to it.generation },
-                maskGenerations = input.mask?.tileInfo?.associate { it.key to it.generation }.orEmpty(),
+                maskDependencies = maskDependencies(input.mask, input.pixels.tileInfo.mapTo(linkedSetOf()) { it.key }),
                 clippingBase = base,
                 clippingBaseGenerations = base?.pixels?.tileInfo?.associate { it.key to it.generation }.orEmpty(),
-                clippingBaseMaskGenerations = base?.mask?.tileInfo?.associate { it.key to it.generation }.orEmpty(),
+                clippingBaseMaskDependencies = if (base == null) emptyMap() else
+                    maskDependencies(base.mask, input.pixels.tileInfo.mapTo(linkedSetOf()) { it.key }),
                 coverage = coverage,
             )
         }
@@ -292,10 +294,36 @@ class PixelLayerProjectionCache(
             pixels.pixelFormat == projection.pixelFormat
         ) { "Layer ${input.layerId} is incompatible with the projection surface" }
         input.mask?.let { mask ->
-            require(mask.logicalWidth == projection.logicalWidth &&
-                mask.logicalHeight == projection.logicalHeight &&
-                mask.tileSize == projection.tileSize
-            ) { "Layer ${input.layerId} mask geometry is incompatible with the projection surface" }
+            require(mask.logicalWidth > 0 && mask.logicalHeight > 0) {
+                "Layer ${input.layerId} mask geometry is invalid"
+            }
+        }
+    }
+
+    private fun maskDependencies(
+        mask: MaskTileSurfaceSnapshot?,
+        sourceKeys: Set<PixelTileKey>,
+    ): Map<PixelTileKey, Long> {
+        if (mask == null) return emptyMap()
+        val generations = mask.tileInfo.associate { it.key to it.generation }
+        return sourceKeys.associateWith { sourceKey ->
+            val bounds = tileBounds(sourceKey)
+            val left = (bounds.left.toLong() * mask.logicalWidth / projection.logicalWidth).toInt()
+            val top = (bounds.top.toLong() * mask.logicalHeight / projection.logicalHeight).toInt()
+            val right = ((bounds.right.toLong() * mask.logicalWidth + projection.logicalWidth - 1) / projection.logicalWidth)
+                .toInt().coerceAtMost(mask.logicalWidth)
+            val bottom = ((bounds.bottom.toLong() * mask.logicalHeight + projection.logicalHeight - 1) / projection.logicalHeight)
+                .toInt().coerceAtMost(mask.logicalHeight)
+            var fingerprint = 31L + mask.defaultAlpha
+            if (right > left && bottom > top) {
+                for (row in top / mask.tileSize..(bottom - 1) / mask.tileSize) {
+                    for (column in left / mask.tileSize..(right - 1) / mask.tileSize) {
+                        val generation = generations[PixelTileKey(column, row)] ?: 0L
+                        fingerprint = fingerprint * 1_000_003L + generation
+                    }
+                }
+            }
+            fingerprint
         }
     }
 
@@ -314,10 +342,10 @@ class PixelLayerProjectionCache(
         val input: PixelLayerProjectionInput,
         val opacity: Float,
         val sourceGenerations: Map<PixelTileKey, Long>,
-        val maskGenerations: Map<PixelTileKey, Long>,
+        val maskDependencies: Map<PixelTileKey, Long>,
         val clippingBase: PixelLayerProjectionInput?,
         val clippingBaseGenerations: Map<PixelTileKey, Long>,
-        val clippingBaseMaskGenerations: Map<PixelTileKey, Long>,
+        val clippingBaseMaskDependencies: Map<PixelTileKey, Long>,
         val coverage: CompositeCoverage?,
     ) {
         fun contributes(key: PixelTileKey): Boolean = opacity > 0f && sourceGenerations[key] != null
@@ -335,7 +363,8 @@ class PixelLayerProjectionCache(
                 opacityBits = opacity.toRawBits(),
                 blendMode = input.blendMode,
                 maskSurfaceId = input.mask?.surfaceId,
-                maskGeneration = maskGenerations[key],
+                maskGeneration = maskDependencies[key],
+                maskDefaultAlpha = input.mask?.defaultAlpha,
                 clipToBaseBelow = input.clipToBaseBelow,
                 baseLayerId = clippingBase?.layerId,
                 baseSurfaceId = clippingBase?.pixels?.surfaceId,
@@ -343,7 +372,8 @@ class PixelLayerProjectionCache(
                 baseVisible = clippingBase?.visible,
                 baseOpacityBits = clippingBase?.opacity?.toRawBits(),
                 baseMaskSurfaceId = clippingBase?.mask?.surfaceId,
-                baseMaskGeneration = clippingBaseMaskGenerations[key],
+                baseMaskGeneration = clippingBaseMaskDependencies[key],
+                baseMaskDefaultAlpha = clippingBase?.mask?.defaultAlpha,
             )
         }
     }
@@ -359,6 +389,7 @@ class PixelLayerProjectionCache(
         val blendMode: PixelBlendMode,
         val maskSurfaceId: String?,
         val maskGeneration: Long?,
+        val maskDefaultAlpha: Int?,
         val clipToBaseBelow: Boolean,
         val baseLayerId: String?,
         val baseSurfaceId: String?,
@@ -367,6 +398,7 @@ class PixelLayerProjectionCache(
         val baseOpacityBits: Int?,
         val baseMaskSurfaceId: String?,
         val baseMaskGeneration: Long?,
+        val baseMaskDefaultAlpha: Int?,
     )
 
     companion object {
@@ -377,5 +409,19 @@ class PixelLayerProjectionCache(
                 PixelTileFormat.PREMULTIPLIED_SRGB_8888 -> (snapshot.pixelAt(x, y) ushr 24 and 0xff) / 255f
                 PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16 -> snapshot.linearPixelAt(x, y).alpha
             }.coerceIn(0f, 1f)
+
+        private fun alphaAt(
+            snapshot: MaskTileSurfaceSnapshot,
+            x: Int,
+            y: Int,
+            projectionWidth: Int,
+            projectionHeight: Int,
+        ): Float {
+            val maskX = (((x + .5f) * snapshot.logicalWidth / projectionWidth) - .5f)
+                .toInt().coerceIn(0, snapshot.logicalWidth - 1)
+            val maskY = (((y + .5f) * snapshot.logicalHeight / projectionHeight) - .5f)
+                .toInt().coerceIn(0, snapshot.logicalHeight - 1)
+            return snapshot.alphaAt(maskX, maskY) / 255f
+        }
     }
 }

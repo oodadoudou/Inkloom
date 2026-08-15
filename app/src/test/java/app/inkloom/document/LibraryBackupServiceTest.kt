@@ -27,6 +27,17 @@ class LibraryBackupServiceTest {
             val coverAsset = File(sourceRoot, "document-assets/cover.png").apply { writeBytes(byteArrayOf(10, 11, 12)) }
             val gradientMask = File(sourceRoot, "document-assets/gradient-mask.png").apply { writeBytes(byteArrayOf(13, 14, 15)) }
             val rasterSurface = File(sourceRoot, "document-assets/raster-layer.png").apply { writeBytes(byteArrayOf(16, 17, 18)) }
+            val layerMaskAsset = File(sourceRoot, "document-assets/layer-mask.v3").apply { writeBytes(byteArrayOf(19, 20, 21)) }
+            val layerMaskReference = MaskTileSurfaceRef(
+                assetPath = layerMaskAsset.absolutePath,
+                surfaceId = "backup-mask",
+                logicalWidth = 512,
+                logicalHeight = 512,
+                tileSize = 128,
+                revision = 1,
+                defaultAlpha = 255,
+                tileCount = 1,
+            )
             val tileStore = PixelTileArchiveStore(File(sourceRoot, "document-assets/pixel-tiles"))
             val sparseSurface = PixelTileSurface(4096, 4096, surfaceId = "backup-surface").also { surface ->
                 surface.beginWrite("backup fixture").run {
@@ -76,7 +87,7 @@ class LibraryBackupServiceTest {
                 background = PageBackground.Pdf(documentAsset.absolutePath, 0),
                 layers = defaultInkLayers() +
                     InkLayer(name = "Paint", contentKind = LayerContentKind.RASTER, rasterAssetPath = rasterSurface.absolutePath) +
-                    InkLayer(name = "Sparse Paint", contentKind = LayerContentKind.RASTER, rasterTileSurface = sparseReference),
+                    InkLayer(name = "Sparse Paint", contentKind = LayerContentKind.RASTER, rasterTileSurface = sparseReference, mask = LayerMask(surface = layerMaskReference)),
                 strokes = listOf(InkStroke(points = listOf(StrokePoint(.1f, .2f)), brushId = brush.id, tipAssetPaths = listOf(tip.absolutePath), masks = listOf(StrokeMaskDab(.2f, .2f, .04f, .04f, tipAssetPath = tip.absolutePath)))),
                 elements = listOf(sticky, maskedGradient),
             )
@@ -113,6 +124,8 @@ class LibraryBackupServiceTest {
             assertTrue(File(requireNotNull(restoredRaster.rasterAssetPath)).isFile)
             assertTrue(File(restoredRaster.rasterAssetPath).readBytes().contentEquals(rasterSurface.readBytes()))
             val restoredSparse = requireNotNull(restoredPage.layers.first { it.name == "Sparse Paint" }.rasterTileSurface)
+            val restoredLayerMask = requireNotNull(restoredPage.layers.first { it.name == "Sparse Paint" }.mask?.surface)
+            assertTrue(File(restoredLayerMask.assetPath).readBytes().contentEquals(layerMaskAsset.readBytes()))
             val restoredTileStore = PixelTileArchiveStore(File(restoreRoot, "document-assets/pixel-tiles"))
             assertEquals(
                 0xff556677.toInt(),

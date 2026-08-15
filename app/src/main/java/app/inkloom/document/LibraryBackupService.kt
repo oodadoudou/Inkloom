@@ -115,6 +115,9 @@ class LibraryBackupService(private val filesRoot: File) {
                     layers = page.layers.map { layer -> layer.copy(
                         rasterTileSurface = registerRaster(layer.rasterTileSurface),
                         rasterAssetPath = register(layer.rasterAssetPath, DOCUMENT_ASSETS),
+                        mask = layer.mask?.copy(surface = layer.mask.surface?.let { reference ->
+                            reference.copy(assetPath = register(reference.assetPath, DOCUMENT_ASSETS)!!)
+                        }),
                     ) },
                     strokes = page.strokes.map { it.portable(::register) },
                     elements = page.elements.map { element -> when (element) {
@@ -253,6 +256,9 @@ class LibraryBackupService(private val filesRoot: File) {
                             layers = page.layers.map { layer -> layer.copy(
                                 rasterTileSurface = retainedRaster(layer.rasterTileSurface),
                                 rasterAssetPath = retained(layer.rasterAssetPath, DOCUMENT_ASSETS),
+                                mask = layer.mask?.copy(surface = layer.mask.surface?.let { reference ->
+                                    reference.copy(assetPath = retained(reference.assetPath, DOCUMENT_ASSETS)!!)
+                                }),
                             ) },
                             strokes = page.strokes.map { it.restored(brushIds, ::retained) },
                             elements = page.elements.map { element -> when (element) {

@@ -1019,7 +1019,7 @@ private fun EditorScreen(
     onToggleLayerClippedToBelow: (String, String, String) -> Unit,
     onToggleLayerReference: (String, String, String) -> Unit,
     onToggleLayerDraft: (String, String, String) -> Unit,
-    onLayerMaskCommand: (String, String, String, LayerMaskCommand, List<List<StrokePoint>>) -> Unit,
+    onLayerMaskCommand: (String, String, String, LayerMaskCommand, app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot?) -> Unit,
     onMoveLayerToFolder: (String, String, String, String?) -> Unit,
     onToggleLayerFolderCollapsed: (String, String, String) -> Unit,
     onMoveLayer: (String, String, String, Int) -> Unit,
@@ -1068,7 +1068,13 @@ private fun EditorScreen(
     var selectionFeather by remember { mutableFloatStateOf(0f) }
     var selectionActive by remember(document.id, selectedPage.id) { mutableStateOf(false) }
     fun performLayerMaskCommand(layerId: String, command: LayerMaskCommand) {
-        onLayerMaskCommand(document.id, selectedPage.id, layerId, command, canvasView?.selectionMaskRegions().orEmpty())
+        if (command == LayerMaskCommand.LOAD_AS_SELECTION) {
+            val reference = selectedPage.layers.firstOrNull { it.id == layerId }?.mask?.surface ?: return
+            val snapshot = runCatching { DocumentAssetService(context).loadMaskTileSurface(reference).snapshot() }.getOrNull() ?: return
+            canvasView?.replaceSelectionFromMask(snapshot)
+            return
+        }
+        onLayerMaskCommand(document.id, selectedPage.id, layerId, command, canvasView?.selectionMaskSurfaceSnapshot())
     }
     fun brushSizeKey(brush: ImportedBrush?, selectedTool: EditorTool = tool): String = brush?.id ?: "system:${selectedTool.name.lowercase()}"
     fun savedBrushSize(brush: ImportedBrush?, fallback: Float, selectedTool: EditorTool = tool): Float =
@@ -4500,6 +4506,13 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
     val documentSelectionState = remember(documentId, page.id, selectionMaskSize) {
         selectionRuntime.stateFor(documentId, page.id, selectionMaskSize.width, selectionMaskSize.height)
     }
+    val layerMaskSurfaces = remember(page.layers.map { it.id to it.mask?.surface }) {
+        page.layers.mapNotNull { layer ->
+            layer.mask?.surface?.let { reference ->
+                runCatching { assets.loadMaskTileSurface(reference).snapshot() }.getOrNull()?.let { layer.id to it }
+            }
+        }.toMap()
+    }
     val context = LocalContext.current
     val gradientCommitScope = rememberCoroutineScope()
     val gradientCommitMutex = remember(documentId, page.id) { Mutex() }
@@ -4847,6 +4860,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.referenceLayerIds = page.layers.filter { it.reference }.mapTo(mutableSetOf()) { it.id }
                 view.draftLayerIds = page.layers.filter { it.draft }.mapTo(mutableSetOf()) { it.id }
                 view.layerMasks = page.layers.mapNotNull { layer -> layer.mask?.let { layer.id to it } }.toMap()
+                view.layerMaskSurfaces = layerMaskSurfaces
                 view.layerOrder = page.layers.filter { it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) && LayerHierarchy.effectiveVisible(page.layers, it) }.map(InkLayer::id)
                 view.pagePaperColor = if (renderedPage.background is PageBackground.Paper) (if (backgroundVisible) renderedPage.background.colorArgb.toInt() else AndroidColor.WHITE) else null
                 view.pagePaperPattern = (renderedPage.background as? PageBackground.Paper)?.pattern?.takeIf { backgroundVisible }
@@ -6870,8 +6884,43 @@ private fun LayerMaskMenuItems(layer: InkLayer, onCommand: (LayerMaskCommand) ->
             leadingIcon = { Icon(if (mask.linked) Icons.Outlined.LinkOff else Icons.Outlined.Link, null) },
             onClick = { onCommand(LayerMaskCommand.TOGGLE_LINKED) },
         )
-        DropdownMenuItem(text = { Text(tr("Apply layer mask", "应用图层蒙版")) }, onClick = { onCommand(LayerMaskCommand.APPLY) })
+        DropdownMenuItem(text = { Text(tr("Invert layer mask", "反相图层蒙版")) }, onClick = { onCommand(LayerMaskCommand.INVERT) })
+        if (mask.surface != null) DropdownMenuItem(
+            text = { Text(tr("Load mask as selection", "从蒙版载入选区")) },
+            onClick = { onCommand(LayerMaskCommand.LOAD_AS_SELECTION) },
+        )
         DropdownMenuItem(text = { Text(tr("Delete layer mask", "删除图层蒙版")) }, onClick = { onCommand(LayerMaskCommand.DELETE) })
+    }
+}
+
+@Composable
+private fun LayerMaskThumbnailView(mask: LayerMask, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val snapshot = remember(mask.surface) {
+        mask.surface?.let { reference ->
+            runCatching { DocumentAssetService(context).loadMaskTileSurface(reference).snapshot() }.getOrNull()
+        }
+    }
+    if (snapshot == null) {
+        Icon(Icons.Outlined.FilterAlt, tr("Layer mask", "图层蒙版"), modifier, tint = if (mask.enabled) Ink else MutedInk)
+        return
+    }
+    Canvas(
+        modifier
+            .clip(RoundedCornerShape(2.dp))
+            .background(Color(0xFFE1E1E1))
+            .border(1.dp, OutlineSoft, RoundedCornerShape(2.dp)),
+    ) {
+        drawIntoCanvas { composeCanvas ->
+            app.inkloom.engine.v3.android.MaskTileCanvasRenderer.draw(
+                snapshot,
+                composeCanvas.nativeCanvas,
+                android.graphics.RectF(0f, 0f, size.width, size.height),
+                android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG).apply {
+                    alpha = if (mask.enabled) 255 else 96
+                },
+            )
+        }
     }
 }
 
@@ -7130,7 +7179,7 @@ private fun LayerPanel(
                         if (layer.locked) Icon(Icons.Outlined.Lock, tr("Locked", "已锁定"), Modifier.size(14.dp), tint = MutedInk)
                         if (layer.reference) Icon(Icons.Outlined.Lightbulb, tr("Reference layer", "参考图层"), Modifier.size(14.dp), tint = MutedInk)
                         if (layer.draft) Icon(Icons.Outlined.EditNote, tr("Draft layer", "草稿图层"), Modifier.size(14.dp), tint = MutedInk)
-                        layer.mask?.let { mask -> Icon(Icons.Outlined.FilterAlt, tr("Layer mask", "图层蒙版"), Modifier.size(14.dp), tint = if (mask.enabled) Ink else MutedInk) }
+                        layer.mask?.let { mask -> LayerMaskThumbnailView(mask, Modifier.size(18.dp)) }
                         if (folderTargets.isNotEmpty() || layer.parentId != null) Box {
                             Box(
                                 Modifier.size(28.dp).clickable {
@@ -7350,7 +7399,7 @@ private fun ProcreateLayerPanel(
                         if (layer.locked) Icon(Icons.Outlined.Lock, tr("Locked", "已锁定"), Modifier.size(15.dp), tint = MutedInk)
                         if (layer.reference) Icon(Icons.Outlined.Lightbulb, tr("Reference layer", "参考图层"), Modifier.size(15.dp), tint = MutedInk)
                         if (layer.draft) Icon(Icons.Outlined.EditNote, tr("Draft layer", "草稿图层"), Modifier.size(15.dp), tint = MutedInk)
-                        layer.mask?.let { mask -> Icon(Icons.Outlined.FilterAlt, tr("Layer mask", "图层蒙版"), Modifier.size(15.dp), tint = if (mask.enabled) Ink else MutedInk) }
+                        layer.mask?.let { mask -> LayerMaskThumbnailView(mask, Modifier.size(24.dp)) }
                         Box {
                             IconButton(onClick = { menu = true }, modifier = Modifier.size(32.dp)) { Icon(Icons.Default.MoreVert, tr("Layer actions", "图层操作"), tint = Ink) }
                             DropdownMenu(menu, { menu = false }) {

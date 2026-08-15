@@ -32,6 +32,7 @@ import androidx.annotation.VisibleForTesting
 import app.inkloom.engine.v3.api.*
 import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v3.android.PixelTileCanvasRenderer
+import app.inkloom.engine.v3.android.MaskTileCanvasRenderer
 import app.inkloom.engine.v3.composite.PixelLayerProjectionCache
 import app.inkloom.engine.v3.composite.PixelLayerProjectionInput
 import app.inkloom.engine.v3.scene.AlphaMaskOperation
@@ -688,6 +689,8 @@ class InkCanvasView(context: Context) : View(context) {
     var clippedLayers: Set<String> = emptySet()
         set(value) { if (field != value) { field = value; resetStrokeTiles() } }
     var layerMasks: Map<String, LayerMask> = emptyMap()
+        set(value) { if (field != value) { field = value; resetStrokeTiles() } }
+    var layerMaskSurfaces: Map<String, MaskTileSurfaceSnapshot> = emptyMap()
         set(value) { if (field != value) { field = value; resetStrokeTiles() } }
     var layerOrder: List<String> = emptyList()
         set(value) { if (field != value) { field = value; resetStrokeTiles() } }
@@ -1640,7 +1643,10 @@ class InkCanvasView(context: Context) : View(context) {
                 drawRawLayerContent(canvas, layerId, layerStrokes, includeElements, primaryStampStartIndex, dualStampStartIndex)
                 layerMasks[layerId]?.let { mask ->
                     val maskCheckpoint = canvas.saveLayer(compositionBounds, Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.DST_IN })
-                    LayerMaskRenderer.draw(canvas, mask, width, height)
+                    val sparse = layerMaskSurfaces[layerId]
+                    if (mask.enabled && sparse != null) {
+                        MaskTileCanvasRenderer.draw(sparse, canvas, RectF(0f, 0f, width.toFloat(), height.toFloat()))
+                    } else LayerMaskRenderer.draw(canvas, mask, width, height)
                     canvas.restoreToCount(maskCheckpoint)
                 }
                 if (clipped && lowerLayerId != null) {
@@ -1666,7 +1672,9 @@ class InkCanvasView(context: Context) : View(context) {
         if (!includeElements || layerFilter != null || value.isNotEmpty()) return false
         if (layerElementBitmaps.isNotEmpty() || rasterLayerBitmaps.isNotEmpty()) return false
         if (rasterLayerTileSurfaces.isEmpty()) return false
-        if (layerMasks.any { (layerId, mask) -> layerId in rasterLayerTileSurfaces && mask.enabled }) return false
+        if (layerMasks.any { (layerId, mask) ->
+                layerId in rasterLayerTileSurfaces && mask.enabled && layerMaskSurfaces[layerId] == null
+            }) return false
 
         val orderedIds = (
             layerOrder.filter(rasterLayerTileSurfaces::containsKey) +
@@ -1705,6 +1713,7 @@ class InkCanvasView(context: Context) : View(context) {
                 pixels = rasterLayerTileSurfaces.getValue(layerId).snapshot(),
                 opacity = layerOpacities[layerId] ?: 1f,
                 blendMode = (layerBlendModes[layerId] ?: LayerBlendMode.NORMAL).toPixelBlendMode(),
+                mask = layerMasks[layerId]?.takeIf(LayerMask::enabled)?.let { layerMaskSurfaces[layerId] },
                 clipToBaseBelow = layerId in clippedLayers,
             )
         })
@@ -6828,6 +6837,22 @@ class InkCanvasView(context: Context) : View(context) {
     private fun selectionMaskForRasterTools(): MaskTileSurfaceSnapshot? {
         ensureSelectionAlphaFromSelectedStrokes()
         return selectionDisplayMask?.surface?.snapshot()
+    }
+
+    fun selectionMaskSurfaceSnapshot(): MaskTileSurfaceSnapshot? = selectionMaskForRasterTools()
+
+    fun replaceSelectionFromMask(snapshot: MaskTileSurfaceSnapshot?): Boolean {
+        val documentState = documentSelectionState ?: return false
+        if (snapshot != null && (snapshot.logicalWidth != documentState.logicalWidth || snapshot.logicalHeight != documentState.logicalHeight)) {
+            return false
+        }
+        selectedStrokeIds.clear()
+        selectedMaskRegions = emptyList()
+        documentState.replaceFrom(snapshot)
+        selectionAlphaMask = SparseAlphaMask.fromSurface(documentState.surface())
+        selectionFeatherPixels = 0f
+        rebuildSelectionDerivedState()
+        return snapshot?.isEmpty == false
     }
 
     fun fillSelection(): Boolean {

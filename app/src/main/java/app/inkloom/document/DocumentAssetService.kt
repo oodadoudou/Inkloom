@@ -185,6 +185,33 @@ class DocumentAssetService(private val context: Context) {
     fun saveFillMask(mask: MaskTileSurfaceSnapshot): String =
         saveDocumentBytes(MaskTileArchiveCodec.encode(mask), "fill-mask.v3")
 
+    fun saveMaskTileSurface(mask: MaskTileSurfaceSnapshot): MaskTileSurfaceRef {
+        val path = saveDocumentBytes(MaskTileArchiveCodec.encode(mask), "layer-mask.v3")
+        return MaskTileSurfaceRef(
+            assetPath = path,
+            surfaceId = mask.surfaceId,
+            logicalWidth = mask.logicalWidth,
+            logicalHeight = mask.logicalHeight,
+            tileSize = mask.tileSize,
+            revision = mask.revision,
+            defaultAlpha = mask.defaultAlpha,
+            tileCount = mask.tileCount,
+        )
+    }
+
+    fun loadMaskTileSurface(reference: MaskTileSurfaceRef): MaskTileSurface {
+        val surface = requireNotNull(loadSparseFillMask(reference.assetPath)) { "Layer mask asset is unavailable" }
+        val snapshot = surface.snapshot()
+        require(snapshot.surfaceId == reference.surfaceId &&
+            snapshot.logicalWidth == reference.logicalWidth &&
+            snapshot.logicalHeight == reference.logicalHeight &&
+            snapshot.tileSize == reference.tileSize &&
+            snapshot.defaultAlpha == reference.defaultAlpha &&
+            snapshot.tileCount == reference.tileCount
+        ) { "Layer mask asset does not match its document reference" }
+        return surface
+    }
+
     /** Persists the full-page premultiplied RGBA surface owned by a raster layer. */
     @Deprecated("Legacy PNG persistence is read-only after a raster tile surface is attached")
     fun saveRasterLayer(bitmap: Bitmap): String = saveDocumentPng(bitmap, "raster-layer")
@@ -650,6 +677,9 @@ class DocumentAssetService(private val context: Context) {
                 layers = page.layers.map { layer -> layer.copy(
                     rasterTileSurface = portableRaster(layer.rasterTileSurface),
                     rasterAssetPath = layer.rasterAssetPath?.let { "assets/${File(it).name}" },
+                    mask = layer.mask?.copy(surface = layer.mask.surface?.let { reference ->
+                        reference.copy(assetPath = "assets/${File(reference.assetPath).name}")
+                    }),
                 ) },
                 strokes = page.strokes.map { it.portableBrushAssets() },
                 elements = page.elements.map { element -> when (element) {
@@ -666,6 +696,7 @@ class DocumentAssetService(private val context: Context) {
             val assets = listOfNotNull(document.coverImagePath) +
                 document.pages.mapNotNull { page -> when (val background = page.background) { is PageBackground.Pdf -> background.assetPath; is PageBackground.Image -> background.assetPath; else -> null } } +
                 document.pages.flatMap(InkPage::layers).mapNotNull(InkLayer::rasterAssetPath) +
+                document.pages.flatMap(InkPage::layers).mapNotNull { it.mask?.surface?.assetPath } +
                 document.pages.flatMap { it.elements }.mapNotNull { element -> when (element) { is PageElement.Image -> element.assetPath; is PageElement.AudioMarker -> element.assetPath; is PageElement.Fill -> element.maskAssetPath; is PageElement.Shape -> element.maskAssetPath; else -> null } }
             writeDistinctFiles(zip, "assets", assets)
             writeRasterTileFiles(
@@ -766,6 +797,9 @@ class DocumentAssetService(private val context: Context) {
                     layers = page.layers.map { layer -> layer.copy(
                         rasterTileSurface = retainedRaster(layer.rasterTileSurface),
                         rasterAssetPath = layer.rasterAssetPath?.let { retained(it) },
+                        mask = layer.mask?.copy(surface = layer.mask.surface?.let { reference ->
+                            reference.copy(assetPath = retained(reference.assetPath))
+                        }),
                     ) },
                     strokes = page.strokes.map { it.withRetainedBrushAssets(::retained) },
                     elements = page.elements.map { element -> when (element) {
@@ -1150,7 +1184,14 @@ class DocumentAssetService(private val context: Context) {
                 val maskCheckpoint = canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     blendMode = android.graphics.BlendMode.DST_IN
                 })
-                LayerMaskRenderer.draw(canvas, mask, width, height)
+                val sparse = mask.surface?.let { runCatching { loadMaskTileSurface(it).snapshot() }.getOrNull() }
+                if (mask.enabled && sparse != null) {
+                    app.inkloom.engine.v3.android.MaskTileCanvasRenderer.draw(
+                        sparse,
+                        canvas,
+                        RectF(0f, 0f, width.toFloat(), height.toFloat()),
+                    )
+                } else LayerMaskRenderer.draw(canvas, mask, width, height)
                 canvas.restoreToCount(maskCheckpoint)
             }
             if (applyLayerEffects && layer.clippedToBelow) {
@@ -1195,7 +1236,7 @@ class DocumentAssetService(private val context: Context) {
                 (layer.rasterTileSurface != null || !layer.rasterAssetPath.isNullOrBlank())
         }
         if (rasterLayers.isEmpty()) return false
-        if (rasterLayers.any { it.mask?.enabled == true }) return false
+        if (rasterLayers.any { it.mask?.enabled == true && it.mask.surface == null }) return false
 
         val surfaces = rasterLayers.map { layer ->
             layer to renderRasterLayerSurface(sourcePage, layer.id, width)
@@ -1218,6 +1259,7 @@ class DocumentAssetService(private val context: Context) {
                 pixels = surface.snapshot(),
                 opacity = layer.opacity,
                 blendMode = layer.blendMode.toPixelBlendMode(),
+                mask = layer.mask?.takeIf(LayerMask::enabled)?.surface?.let { loadMaskTileSurface(it).snapshot() },
                 clipToBaseBelow = layer.clippedToBelow,
             )
         })
