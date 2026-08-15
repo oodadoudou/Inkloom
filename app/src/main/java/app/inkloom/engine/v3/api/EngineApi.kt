@@ -37,14 +37,5 @@ internal typealias RasterTilePaintSession = app.inkloom.engine.v3.tools.RasterTi
 internal fun importPixelTileSurface(bitmap: android.graphics.Bitmap): PixelTileSurface =
     app.inkloom.engine.v3.android.PixelTileBitmapAdapter.import(bitmap)
 
-internal fun replacePixelTileSurfaceRegion(
-    surface: PixelTileSurface,
-    destination: app.inkloom.engine.v3.surface.PixelRect,
-    bitmap: android.graphics.Bitmap,
-): PixelTileTransactionRecord = surface.beginWrite("synchronize raster display mirror").run {
-    app.inkloom.engine.v3.android.PixelTileBitmapAdapter.replaceRegion(this, destination, bitmap)
-    commit()
-}
-
 internal inline fun <T> traceEngineV3(section: String, block: () -> T): T =
     app.inkloom.engine.v3.diagnostics.traceEngineV3(section, block)

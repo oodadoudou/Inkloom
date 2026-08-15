@@ -980,19 +980,9 @@ class InkCanvasView(context: Context) : View(context) {
     private fun commitRasterLayerPatch(
         raster: Bitmap,
         dirtyBounds: Rect?,
-        workingSurfaceAlreadyUpdated: Boolean = false,
     ) {
         val dirty = dirtyBounds ?: return
         val patch = RasterLayerPatch.capture(activeLayerId, raster, dirty) ?: return
-        if (!workingSurfaceAlreadyUpdated) {
-            rasterLayerTileSurfaces[activeLayerId]?.let { surface ->
-                replacePixelTileSurfaceRegion(
-                    surface,
-                    app.inkloom.engine.v3.surface.PixelRect(patch.left, patch.top, patch.right, patch.bottom),
-                    patch.bitmap,
-                ).close()
-            }
-        }
         val callback = onRasterLayerCommitted
         if (callback == null) patch.close() else callback(patch)
     }
@@ -5084,7 +5074,7 @@ class InkCanvasView(context: Context) : View(context) {
         if (raster != null && tileSession != null) {
             if (smudgeChanged) {
                 tileSession.commit().close()
-                commitRasterLayerPatch(raster, smudgeDirtyBounds, workingSurfaceAlreadyUpdated = true)
+                commitRasterLayerPatch(raster, smudgeDirtyBounds)
             } else tileSession.restoreOriginal()
             tileSession.close()
         } else {
@@ -5301,7 +5291,7 @@ class InkCanvasView(context: Context) : View(context) {
         if (raster != null && tileSession != null) {
             if (liquifyChanged) {
                 tileSession.commit().close()
-                commitRasterLayerPatch(raster, liquifyDirtyBounds, workingSurfaceAlreadyUpdated = true)
+                commitRasterLayerPatch(raster, liquifyDirtyBounds)
             } else tileSession.restoreOriginal()
             tileSession.close()
         } else {
@@ -5847,7 +5837,7 @@ class InkCanvasView(context: Context) : View(context) {
             val dirtyBounds = painted?.let { mergeDirtyBounds(wetPaintDirtyBounds, it) } ?: wetPaintDirtyBounds
             if (dirtyBounds != null) {
                 session.commit().close()
-                commitRasterLayerPatch(raster, dirtyBounds, workingSurfaceAlreadyUpdated = true)
+                commitRasterLayerPatch(raster, dirtyBounds)
             } else {
                 session.restoreOriginal()
             }
@@ -6123,7 +6113,7 @@ class InkCanvasView(context: Context) : View(context) {
                     }
                     rasterEraserDirtyBounds = bounds
                     strokePatch.bitmap.recycle()
-                    commitRasterLayerPatch(raster, bounds, workingSurfaceAlreadyUpdated = true)
+                    commitRasterLayerPatch(raster, bounds)
                 } else {
                     strokePatch?.bitmap?.recycle()
                 }
