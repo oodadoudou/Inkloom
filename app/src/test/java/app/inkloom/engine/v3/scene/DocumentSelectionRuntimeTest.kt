@@ -53,4 +53,23 @@ class DocumentSelectionRuntimeTest {
         assertEquals(0, runtime.pageStateCount())
         assertEquals(0L, runtime.retainedByteSize())
     }
+
+    @Test fun deselectedAlphaHistoryRemainsDocumentOwnedAndRestoresExactly() {
+        val state = DocumentSelectionRuntime(tileSize = 64).stateFor("document", "page", 8192, 8192)
+        state.surface().beginWrite("selected island").run {
+            setAlpha(4_000, 4_000, 127)
+            commit().close()
+        }
+
+        state.captureForReselect()
+        state.clear()
+        assertTrue(state.isEmpty)
+        assertTrue(state.restoreReselect())
+        assertEquals(127, state.snapshot().alphaAt(4_000, 4_000))
+        assertEquals(64L * 64, state.retainedByteSize)
+
+        state.discardReselect()
+        state.clear()
+        assertTrue(!state.restoreReselect())
+    }
 }

@@ -24,6 +24,7 @@ class DocumentSelectionState internal constructor(
     tileSize: Int,
 ) {
     private val monitor = Any()
+    private var reselectSnapshot: MaskTileSurfaceSnapshot? = null
     private var surfaceValue = MaskTileSurface(
         logicalWidth = logicalWidth,
         logicalHeight = logicalHeight,
@@ -40,8 +41,25 @@ class DocumentSelectionState internal constructor(
     fun surface(): MaskTileSurface = synchronized(monitor) { surfaceValue }
     fun snapshot(): MaskTileSurfaceSnapshot = synchronized(monitor) { surfaceValue.snapshot() }
 
+    /** Selection history is document state too; the View must not retain deselected alpha. */
+    internal fun captureForReselect() = synchronized(monitor) {
+        reselectSnapshot = surfaceValue.snapshot().takeUnless(MaskTileSurfaceSnapshot::isEmpty)
+    }
+
+    internal fun restoreReselect(): Boolean = synchronized(monitor) {
+        val saved = reselectSnapshot ?: return@synchronized false
+        replaceFromLocked(saved)
+        true
+    }
+
+    internal fun discardReselect() = synchronized(monitor) { reselectSnapshot = null }
+
     /** Replaces alpha through the stable document-owned surface rather than swapping UI storage. */
     internal fun replaceFrom(source: MaskTileSurfaceSnapshot?) = synchronized(monitor) {
+        replaceFromLocked(source)
+    }
+
+    private fun replaceFromLocked(source: MaskTileSurfaceSnapshot?) {
         if (source != null) require(source.logicalWidth == surfaceValue.logicalWidth && source.logicalHeight == surfaceValue.logicalHeight) {
             "Replacement selection geometry does not match ${surfaceValue.logicalWidth}x${surfaceValue.logicalHeight}"
         }
