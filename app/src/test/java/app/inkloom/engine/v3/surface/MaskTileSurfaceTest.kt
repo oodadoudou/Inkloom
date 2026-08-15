@@ -1,0 +1,108 @@
+package app.inkloom.engine.v3.surface
+
+import app.inkloom.engine.v3.surface.MaskTileSurface.HistoryDirection
+import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class MaskTileSurfaceTest {
+    @Test fun eightKSelectionStartsWithoutAFullPageAllocation() {
+        val surface = MaskTileSurface(8192, 8192)
+
+        assertEquals(0, surface.tileCount)
+        assertEquals(0L, surface.retainedByteSize)
+        assertTrue(surface.snapshot().isEmpty)
+    }
+
+    @Test fun onePixelAllocatesOneOneByteTileAndPublishesAtomically() {
+        val surface = MaskTileSurface(8192, 8192, tileSize = 128)
+        val transaction = surface.beginWrite("lasso")
+        transaction.setAlpha(4096, 4096, 220)
+
+        assertEquals(0, surface.alphaAt(4096, 4096))
+        assertEquals(128L * 128, transaction.workingByteSize)
+
+        val record = transaction.commit()
+        assertEquals(220, surface.alphaAt(4096, 4096))
+        assertEquals(1, surface.tileCount)
+        assertEquals(128L * 128, surface.retainedByteSize)
+        assertEquals(128L * 128, record.retainedByteSize)
+    }
+
+    @Test fun boundedBooleanOperationsPreserveFractionalAlpha() {
+        val surface = MaskTileSurface(256, 256, tileSize = 64)
+        val bounds = PixelRect(50, 50, 150, 100)
+        val half = ByteArray(bounds.width * bounds.height) { 128.toByte() }
+        surface.beginWrite("replace").run {
+            composeAlpha(bounds, half, mode = MaskComposeMode.REPLACE)
+            commit().close()
+        }
+        surface.beginWrite("add").run {
+            composeAlpha(bounds, half, mode = MaskComposeMode.ADD)
+            commit().close()
+        }
+        assertEquals(192, surface.alphaAt(75, 75))
+
+        surface.beginWrite("intersect").run {
+            composeAlpha(bounds, half, mode = MaskComposeMode.INTERSECT)
+            commit().close()
+        }
+        assertEquals(96, surface.alphaAt(75, 75))
+
+        surface.beginWrite("subtract").run {
+            composeAlpha(bounds, half, mode = MaskComposeMode.SUBTRACT)
+            commit().close()
+        }
+        assertEquals(48, surface.alphaAt(75, 75))
+        assertEquals(0, surface.alphaAt(20, 20))
+    }
+
+    @Test fun regionCopiesCrossTilesWithoutMaterializingThePage() {
+        val surface = MaskTileSurface(512, 512, tileSize = 64)
+        surface.beginWrite("two islands").run {
+            setAlpha(63, 63, 255)
+            setAlpha(130, 100, 77)
+            commit().close()
+        }
+        val bounds = PixelRect(60, 60, 140, 110)
+        val copy = surface.snapshot().copyAlpha(bounds)
+
+        assertEquals(255, copy[(63 - bounds.top) * bounds.width + 63 - bounds.left].toInt().and(0xff))
+        assertEquals(77, copy[(100 - bounds.top) * bounds.width + 130 - bounds.left].toInt().and(0xff))
+        assertEquals(0, copy[0].toInt().and(0xff))
+        assertEquals(bounds.width * bounds.height, copy.size)
+    }
+
+    @Test fun commitUndoRedoSwapImmutableMaskGenerations() {
+        val surface = MaskTileSurface(256, 128, tileSize = 64)
+        val record = surface.beginWrite("selection replace").run {
+            setAlpha(10, 10, 255)
+            setAlpha(70, 10, 128)
+            commit()
+        }
+        val committed = surface.snapshot().copyAlpha(PixelRect(0, 0, 128, 32))
+
+        surface.apply(record, HistoryDirection.UNDO)
+        assertTrue(surface.isEmpty)
+        surface.apply(record, HistoryDirection.REDO)
+        assertArrayEquals(committed, surface.snapshot().copyAlpha(PixelRect(0, 0, 128, 32)))
+        record.close()
+    }
+
+    @Test fun clearRemovesEveryPublishedTileInOneTransaction() {
+        val surface = MaskTileSurface(512, 512, tileSize = 64)
+        surface.beginWrite("fixture").run {
+            setAlpha(10, 10, 255)
+            setAlpha(400, 400, 255)
+            commit().close()
+        }
+        val clear = surface.beginWrite("deselect").run { clear(); commit() }
+
+        assertTrue(surface.isEmpty)
+        assertEquals(2, clear.changedTileCount)
+        surface.apply(clear, HistoryDirection.UNDO)
+        assertEquals(255, surface.alphaAt(10, 10))
+        assertEquals(255, surface.alphaAt(400, 400))
+    }
+}
