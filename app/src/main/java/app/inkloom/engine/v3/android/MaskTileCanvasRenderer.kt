@@ -8,10 +8,33 @@ import android.graphics.RectF
 import app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot
 import app.inkloom.engine.v3.surface.PixelRect
 import app.inkloom.engine.v3.surface.PixelTileKey
+import java.util.LinkedHashMap
 
-/** Android presentation adapter that materializes at most one mask tile at a time. */
+/** Android presentation adapter with a bounded generation cache for animated selection overlays. */
 internal object MaskTileCanvasRenderer {
+    private data class CacheKey(
+        val surfaceId: String,
+        val generation: Long,
+        val key: PixelTileKey,
+        val defaultAlpha: Int,
+    )
+
+    private const val MAX_CACHED_TILES = 96
+    private val cache = object : LinkedHashMap<CacheKey, Bitmap>(MAX_CACHED_TILES, .75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<CacheKey, Bitmap>?): Boolean {
+            val remove = size > MAX_CACHED_TILES
+            if (remove) eldest?.value?.takeUnless(Bitmap::isRecycled)?.recycle()
+            return remove
+        }
+    }
+
     fun draw(snapshot: MaskTileSurfaceSnapshot, canvas: Canvas, destination: RectF, paint: Paint? = null) {
+        if (snapshot.defaultAlpha == 255 && snapshot.tileCount == 0) {
+            val requestedAlpha = paint?.alpha ?: 255
+            val solid = Paint(paint ?: Paint()).apply { color = Color.WHITE; alpha = requestedAlpha }
+            canvas.drawRect(destination, solid)
+            return
+        }
         val columns = (snapshot.logicalWidth + snapshot.tileSize - 1) / snapshot.tileSize
         val rows = (snapshot.logicalHeight + snapshot.tileSize - 1) / snapshot.tileSize
         val keys = if (snapshot.defaultAlpha == 0) snapshot.tileInfo.map { it.key } else buildList(columns * rows) {
@@ -19,6 +42,7 @@ internal object MaskTileCanvasRenderer {
         }
         val scaleX = destination.width() / snapshot.logicalWidth
         val scaleY = destination.height() / snapshot.logicalHeight
+        val generations = snapshot.tileInfo.associate { it.key to it.generation }
         keys.forEach { key ->
             val left = key.column * snapshot.tileSize
             val top = key.row * snapshot.tileSize
@@ -28,27 +52,29 @@ internal object MaskTileCanvasRenderer {
                 minOf(left + snapshot.tileSize, snapshot.logicalWidth),
                 minOf(top + snapshot.tileSize, snapshot.logicalHeight),
             )
-            val alpha = snapshot.copyAlpha(bounds)
-            val pixels = IntArray(alpha.size) { index ->
-                (alpha[index].toInt().and(0xff) shl 24) or (Color.WHITE and 0x00ffffff)
-            }
-            val tile = Bitmap.createBitmap(bounds.width, bounds.height, Bitmap.Config.ARGB_8888)
-            try {
-                tile.setPixels(pixels, 0, bounds.width, 0, 0, bounds.width, bounds.height)
-                canvas.drawBitmap(
-                    tile,
-                    null,
-                    RectF(
-                        destination.left + bounds.left * scaleX,
-                        destination.top + bounds.top * scaleY,
-                        destination.left + bounds.right * scaleX,
-                        destination.top + bounds.bottom * scaleY,
-                    ),
-                    paint,
-                )
-            } finally {
-                tile.recycle()
-            }
+            val cacheKey = CacheKey(snapshot.surfaceId, generations[key] ?: -1L, key, snapshot.defaultAlpha)
+            val tile = synchronized(cache) { cache[cacheKey] ?: createTile(snapshot, bounds).also { cache[cacheKey] = it } }
+            canvas.drawBitmap(
+                tile,
+                null,
+                RectF(
+                    destination.left + bounds.left * scaleX,
+                    destination.top + bounds.top * scaleY,
+                    destination.left + bounds.right * scaleX,
+                    destination.top + bounds.bottom * scaleY,
+                ),
+                paint,
+            )
+        }
+    }
+
+    private fun createTile(snapshot: MaskTileSurfaceSnapshot, bounds: PixelRect): Bitmap {
+        val alpha = snapshot.copyAlpha(bounds)
+        val pixels = IntArray(alpha.size) { index ->
+            (alpha[index].toInt().and(0xff) shl 24) or (Color.WHITE and 0x00ffffff)
+        }
+        return Bitmap.createBitmap(bounds.width, bounds.height, Bitmap.Config.ARGB_8888).also { bitmap ->
+            bitmap.setPixels(pixels, 0, bounds.width, 0, 0, bounds.width, bounds.height)
         }
     }
 }

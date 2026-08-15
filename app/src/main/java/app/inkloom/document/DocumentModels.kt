@@ -188,7 +188,8 @@ data class LayerMask(
     val regions: List<LayerMaskRegion> = emptyList(),
     val enabled: Boolean = true,
     val linked: Boolean = true,
-    /** Authoritative V3 alpha. [regions] is a read-only legacy import fallback. */
+    /** Authoritative V3 alpha. [regions] is a read-only legacy import/render fallback and no
+     * production command writes it. */
     val surface: MaskTileSurfaceRef? = null,
 )
 
@@ -201,6 +202,10 @@ data class LayerMaskRegion(
 
 @Serializable
 enum class LayerMaskCommand {
+    EDIT,
+    REPLACE_SURFACE,
+    FILL_WHITE,
+    FILL_BLACK,
     CREATE_MASK_SELECTION,
     CREATE_MASK_OUTSIDE_SELECTION,
     HIDE_SELECTION,

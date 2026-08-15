@@ -343,6 +343,17 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     ) = updatePage(documentId, pageId) { page ->
         val layer = page.layers.firstOrNull { it.id == layerId } ?: return@updatePage page
         if (layer.role in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) return@updatePage page
+        if (command in setOf(LayerMaskCommand.EDIT, LayerMaskCommand.FILL_WHITE, LayerMaskCommand.FILL_BLACK)) return@updatePage page
+        if (command == LayerMaskCommand.REPLACE_SURFACE) {
+            val snapshot = selection ?: return@updatePage page
+            val reference = assets.saveMaskTileSurface(snapshot)
+            val updated = (layer.mask ?: LayerMask()).copy(
+                baseVisible = reference.defaultAlpha > 0,
+                regions = emptyList(),
+                surface = reference,
+            )
+            return@updatePage page.copy(layers = page.layers.map { if (it.id == layerId) it.copy(mask = updated) else it })
+        }
         if (command == LayerMaskCommand.LOAD_AS_SELECTION) return@updatePage page
         if (command == LayerMaskCommand.DELETE) {
             return@updatePage page.copy(layers = page.layers.map { if (it.id == layerId) it.copy(mask = null) else it })
@@ -381,6 +392,10 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
                 LayerMaskCommand.REVEAL_SELECTION -> runtime.revealSelection(selection ?: return@updatePage page)
                 LayerMaskCommand.INVERT -> runtime.invert()
                 LayerMaskCommand.DELETE,
+                LayerMaskCommand.EDIT,
+                LayerMaskCommand.REPLACE_SURFACE,
+                LayerMaskCommand.FILL_WHITE,
+                LayerMaskCommand.FILL_BLACK,
                 LayerMaskCommand.TOGGLE_ENABLED,
                 LayerMaskCommand.TOGGLE_LINKED,
                 LayerMaskCommand.LOAD_AS_SELECTION,

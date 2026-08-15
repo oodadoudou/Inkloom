@@ -15,6 +15,20 @@ class MaskTileSurfaceTest {
         assertTrue(surface.snapshot().isEmpty)
     }
 
+    @Test fun nonZeroBoundsUsesSparseTilesAndImplicitDefaultWithoutPageMaterialization() {
+        val sparse = MaskTileSurface(8192, 8192, tileSize = 128)
+        sparse.beginWrite("two exact islands").run {
+            setAlpha(130, 257, 255)
+            setAlpha(4099, 6001, 128)
+            commit().close()
+        }
+        assertEquals(PixelRect(130, 257, 4100, 6002), sparse.snapshot().nonZeroBounds())
+
+        val implicit = MaskTileSurface(8192, 8192, tileSize = 128, initialDefaultAlpha = 255)
+        assertEquals(PixelRect(0, 0, 8192, 8192), implicit.snapshot().nonZeroBounds())
+        assertEquals(0, implicit.tileCount)
+    }
+
     @Test fun onePixelAllocatesOneOneByteTileAndPublishesAtomically() {
         val surface = MaskTileSurface(8192, 8192, tileSize = 128)
         val transaction = surface.beginWrite("lasso")
@@ -72,6 +86,22 @@ class MaskTileSurfaceTest {
         assertEquals(77, copy[(100 - bounds.top) * bounds.width + 130 - bounds.left].toInt().and(0xff))
         assertEquals(0, copy[0].toInt().and(0xff))
         assertEquals(bounds.width * bounds.height, copy.size)
+    }
+
+    @Test fun transactionPreviewIsVisibleBeforeAtomicPublishAndDoesNotMutateTruth() {
+        val surface = MaskTileSurface(256, 256, tileSize = 64)
+        val transaction = surface.beginWrite("live layer mask stroke")
+        transaction.composeAlpha(
+            PixelRect(20, 20, 40, 40),
+            ByteArray(20 * 20) { 180.toByte() },
+            mode = MaskComposeMode.ADD,
+        )
+
+        val preview = transaction.previewSnapshot()
+        assertEquals(180, preview.alphaAt(30, 30))
+        assertEquals(0, surface.alphaAt(30, 30))
+        transaction.commit().close()
+        assertEquals(180, surface.alphaAt(30, 30))
     }
 
     @Test fun commitUndoRedoSwapImmutableMaskGenerations() {

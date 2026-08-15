@@ -57,6 +57,38 @@ class MaskTileSurfaceSnapshot internal constructor(
 
     fun copyTileAlpha(key: PixelTileKey): ByteArray? = tiles[key]?.alpha?.copyOf()
 
+    /**
+     * Exact non-zero bounds without materializing the logical page. An implicit non-zero default
+     * necessarily covers the page edge even when explicit tiles punch holes into the interior.
+     */
+    fun nonZeroBounds(): PixelRect? {
+        if (defaultAlpha > 0) return PixelRect(0, 0, logicalWidth, logicalHeight)
+        var left = logicalWidth
+        var top = logicalHeight
+        var right = 0
+        var bottom = 0
+        var found = false
+        tiles.forEach { (key, generation) ->
+            if (generation.nonZeroAlphaCount == 0) return@forEach
+            val tileLeft = key.column * tileSize
+            val tileTop = key.row * tileSize
+            val tileRight = minOf(tileLeft + tileSize, logicalWidth)
+            val tileBottom = minOf(tileTop + tileSize, logicalHeight)
+            for (y in tileTop until tileBottom) {
+                val rowOffset = (y - tileTop) * tileSize
+                for (x in tileLeft until tileRight) {
+                    if (generation.alpha[rowOffset + x - tileLeft].toInt().and(0xff) == 0) continue
+                    left = minOf(left, x)
+                    top = minOf(top, y)
+                    right = maxOf(right, x + 1)
+                    bottom = maxOf(bottom, y + 1)
+                    found = true
+                }
+            }
+        }
+        return if (found) PixelRect(left, top, right, bottom) else null
+    }
+
     /** Zero-copy internal read. The alpha array must not be retained or modified. */
     internal fun <T> readTile(key: PixelTileKey, block: (ByteArray) -> T): T? =
         tiles[key]?.alpha?.let(block)
@@ -192,6 +224,28 @@ class MaskTileSurface(
     internal fun publishedKeys(): Set<PixelTileKey> = synchronized(monitor) { generations.keys.toSet() }
     internal fun publishedDefaultAlpha(): Int = synchronized(monitor) { defaultAlphaValue }
 
+    internal fun preview(transaction: MaskTileWriteTransaction): MaskTileSurfaceSnapshot = synchronized(monitor) {
+        requireActive(transaction)
+        val previewTiles = generations.toMutableMap()
+        transaction.workingTiles.forEach { (key, working) ->
+            val equalsDefault = working.alpha.all { it.toInt().and(0xff) == transaction.workingDefaultAlpha }
+            if (equalsDefault) previewTiles.remove(key) else previewTiles[key] = MaskTileGeneration(
+                id = working.before?.id ?: 0L,
+                alpha = working.alpha.copyOf(),
+                nonZeroAlphaCount = working.alpha.count { it.toInt() != 0 },
+            )
+        }
+        MaskTileSurfaceSnapshot(
+            surfaceId,
+            logicalWidth,
+            logicalHeight,
+            tileSize,
+            revisionValue,
+            transaction.workingDefaultAlpha,
+            previewTiles,
+        )
+    }
+
     internal fun commit(transaction: MaskTileWriteTransaction): MaskTileTransactionRecord = synchronized(monitor) {
         requireActive(transaction)
         val afterDefaultAlpha = transaction.workingDefaultAlpha
@@ -302,6 +356,9 @@ class MaskTileWriteTransaction internal constructor(
 
     val touchedTileCount: Int get() = workingTiles.size
     val workingByteSize: Long get() = workingTiles.size.toLong() * surface.tileSize * surface.tileSize
+
+    /** Immutable transaction preview for renderers; document truth remains unpublished. */
+    fun previewSnapshot(): MaskTileSurfaceSnapshot { requireActive(); return surface.preview(this) }
 
     fun alphaAt(x: Int, y: Int): Int {
         surface.requireCoordinate(x, y)

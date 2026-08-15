@@ -1068,6 +1068,14 @@ private fun EditorScreen(
     var selectionFeather by remember { mutableFloatStateOf(0f) }
     var selectionActive by remember(document.id, selectedPage.id) { mutableStateOf(false) }
     fun performLayerMaskCommand(layerId: String, command: LayerMaskCommand) {
+        if (command == LayerMaskCommand.EDIT) {
+            canvasView?.toggleLayerMaskEditing(layerId)
+            return
+        }
+        if (command == LayerMaskCommand.FILL_WHITE || command == LayerMaskCommand.FILL_BLACK) {
+            canvasView?.fillLayerMask(layerId, if (command == LayerMaskCommand.FILL_WHITE) 255 else 0)
+            return
+        }
         if (command == LayerMaskCommand.LOAD_AS_SELECTION) {
             val reference = selectedPage.layers.firstOrNull { it.id == layerId }?.mask?.surface ?: return
             val snapshot = runCatching { DocumentAssetService(context).loadMaskTileSurface(reference).snapshot() }.getOrNull() ?: return
@@ -2170,7 +2178,12 @@ private fun EditorScreen(
                 PaperCanvas(
                     modifier = Modifier.fillMaxHeight(.88f).aspectRatio((PageCropTransform.visibleWidth(selectedPage) / PageCropTransform.visibleHeight(selectedPage).coerceAtLeast(1f)).coerceIn(.35f, 2.8f)),
                     tool = tool,
-                    onView = { canvasView = it },
+                    onView = { view ->
+                        canvasView = view
+                        view.onLayerMaskSurfaceCommitted = { layerId, snapshot ->
+                            onLayerMaskCommand(document.id, selectedPage.id, layerId, LayerMaskCommand.REPLACE_SURFACE, snapshot)
+                        }
+                    },
                     page = selectedPage,
                     documentId = document.id,
                     onStroke = onStroke,
@@ -6873,6 +6886,13 @@ private fun LayerMaskMenuItems(layer: InkLayer, onCommand: (LayerMaskCommand) ->
             onClick = { onCommand(LayerMaskCommand.CREATE_MASK_OUTSIDE_SELECTION) },
         )
     } else {
+        DropdownMenuItem(
+            text = { Text(tr("Edit layer mask", "编辑图层蒙版")) },
+            leadingIcon = { Icon(Icons.Outlined.Brush, null) },
+            onClick = { onCommand(LayerMaskCommand.EDIT) },
+        )
+        DropdownMenuItem(text = { Text(tr("Reveal all", "全部显示")) }, onClick = { onCommand(LayerMaskCommand.FILL_WHITE) })
+        DropdownMenuItem(text = { Text(tr("Hide all", "全部隐藏")) }, onClick = { onCommand(LayerMaskCommand.FILL_BLACK) })
         DropdownMenuItem(text = { Text(tr("Hide current selection", "隐藏当前选区")) }, onClick = { onCommand(LayerMaskCommand.HIDE_SELECTION) })
         DropdownMenuItem(text = { Text(tr("Reveal current selection", "显示当前选区")) }, onClick = { onCommand(LayerMaskCommand.REVEAL_SELECTION) })
         DropdownMenuItem(

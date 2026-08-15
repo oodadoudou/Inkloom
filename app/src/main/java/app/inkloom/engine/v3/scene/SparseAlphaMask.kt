@@ -9,11 +9,11 @@ import android.graphics.RectF
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
 import app.inkloom.engine.v3.surface.MaskComposeMode
-import app.inkloom.engine.v3.surface.MaskTileInfo
 import app.inkloom.engine.v3.surface.MaskTileSurface
 import app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot
 import app.inkloom.engine.v3.surface.PixelRect
 import app.inkloom.engine.v3.surface.PixelTileKey
+import app.inkloom.engine.v3.android.MaskTileCanvasRenderer
 import app.inkloom.engine.v3.tools.NativeRasterOps
 import app.inkloom.document.SelectionMaskCompositor
 import kotlin.math.ceil
@@ -36,37 +36,7 @@ internal class SparseAlphaMask private constructor(
     }
 
     fun draw(canvas: Canvas, destination: RectF, paint: Paint? = null) {
-        val snapshot = surface.snapshot()
-        val scaleX = destination.width() / width.coerceAtLeast(1)
-        val scaleY = destination.height() / height.coerceAtLeast(1)
-        val keys = if (snapshot.defaultAlpha == 0) {
-            snapshot.tileInfo.map(MaskTileInfo::key)
-        } else {
-            val columns = (width + surface.tileSize - 1) / surface.tileSize
-            val rows = (height + surface.tileSize - 1) / surface.tileSize
-            buildList(columns * rows) {
-                for (row in 0 until rows) for (column in 0 until columns) add(PixelTileKey(column, row))
-            }
-        }
-        keys.forEach { key ->
-            val bounds = tileRect(key)
-            val tile = bitmapFrom(snapshot, bounds)
-            try {
-                canvas.drawBitmap(
-                    tile,
-                    null,
-                    RectF(
-                        destination.left + bounds.left * scaleX,
-                        destination.top + bounds.top * scaleY,
-                        destination.left + bounds.right * scaleX,
-                        destination.top + bounds.bottom * scaleY,
-                    ),
-                    paint,
-                )
-            } finally {
-                tile.recycle()
-            }
-        }
+        MaskTileCanvasRenderer.draw(surface.snapshot(), canvas, destination, paint)
     }
 
     fun copy(): SparseAlphaMask = SparseAlphaMask(copySurface(surface.snapshot()))
@@ -329,6 +299,9 @@ internal class SparseAlphaMask private constructor(
 
         fun fromSurface(surface: MaskTileSurface): SparseAlphaMask? =
             surface.takeUnless(MaskTileSurface::isEmpty)?.let(::SparseAlphaMask)
+
+        fun fromSnapshot(snapshot: MaskTileSurfaceSnapshot): SparseAlphaMask? =
+            snapshot.takeUnless(MaskTileSurfaceSnapshot::isEmpty)?.let { SparseAlphaMask(copySurface(it)) }
 
         private fun fromBitmapRegion(source: Bitmap, left: Int, top: Int, width: Int, height: Int): SparseAlphaMask? {
             val alpha = bitmapAlpha(source)

@@ -36,6 +36,11 @@ import app.inkloom.engine.v3.android.MaskTileCanvasRenderer
 import app.inkloom.engine.v3.composite.PixelLayerProjectionCache
 import app.inkloom.engine.v3.composite.PixelLayerProjectionInput
 import app.inkloom.engine.v3.scene.AlphaMaskOperation
+import app.inkloom.engine.v3.surface.MaskComposeMode
+import app.inkloom.engine.v3.surface.MaskTileSurface
+import app.inkloom.engine.v3.surface.MaskTileTransactionRecord
+import app.inkloom.engine.v3.surface.MaskTileWriteTransaction
+import app.inkloom.engine.v3.surface.PixelRect
 import app.inkloom.engine.v3.surface.PixelTileFormat
 import java.util.LinkedHashMap
 import java.util.concurrent.Executors
@@ -414,6 +419,10 @@ class InkCanvasView(context: Context) : View(context) {
     private var selectionTransformStartAngle = 0f
     private var selectionTransformStartXSpan = 0f
     private var selectionTransformStartYSpan = 0f
+    private var selectionTransformTranslateX = 0f
+    private var selectionTransformTranslateY = 0f
+    private var rasterSelectionTransformSession: RasterSelectionTransformSession? = null
+    private var rasterSelectionTransformOriginalMask: MaskTileSurfaceSnapshot? = null
     private val selectionHandlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; color = Color.WHITE }
     private val selectionHandleStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 2f; color = Color.rgb(17, 17, 17) }
     private val selectionAntPattern = Bitmap.createBitmap(
@@ -692,6 +701,10 @@ class InkCanvasView(context: Context) : View(context) {
         set(value) { if (field != value) { field = value; resetStrokeTiles() } }
     var layerMaskSurfaces: Map<String, MaskTileSurfaceSnapshot> = emptyMap()
         set(value) { if (field != value) { field = value; resetStrokeTiles() } }
+    private var editingLayerMaskId: String? = null
+    private var editingLayerMaskSurface: MaskTileSurface? = null
+    private var layerMaskGesture: MaskTileWriteTransaction? = null
+    private var layerMaskGestureErasing = false
     var layerOrder: List<String> = emptyList()
         set(value) { if (field != value) { field = value; resetStrokeTiles() } }
     private var layerElementBitmaps: Map<String, LayerElementBitmaps> = emptyMap()
@@ -1024,6 +1037,7 @@ class InkCanvasView(context: Context) : View(context) {
     var onSparseFillCommitted: ((mask: MaskTileSurfaceSnapshot, colorArgb: Long, opacity: Float) -> Unit)? = null
     /** The callback owns the immutable dirty patch and must close it after saving. */
     var onRasterLayerCommitted: ((RasterLayerPatch) -> Unit)? = null
+    var onLayerMaskSurfaceCommitted: (layerId: String, mask: MaskTileSurfaceSnapshot) -> Unit = { _, _ -> }
 
     private fun mergeDirtyBounds(current: Rect?, changed: Rect): Rect =
         current?.apply { union(changed) } ?: Rect(changed)
@@ -1339,6 +1353,136 @@ class InkCanvasView(context: Context) : View(context) {
     fun prepareRasterLayerForEditing(layerId: String) {
         ownedRasterEditBitmaps.keys.filter { it != layerId }.toList().forEach(::releaseOwnedRasterEditBitmap)
         rasterEditBitmapFor(layerId)
+    }
+
+    /** Toggles direct grayscale mask editing. The layer pixels remain untouched. */
+    fun toggleLayerMaskEditing(layerId: String): Boolean {
+        require(layerId.isNotBlank())
+        cancelLayerMaskGesture()
+        if (editingLayerMaskId == layerId) {
+            editingLayerMaskId = null
+            editingLayerMaskSurface = null
+            return false
+        }
+        val source = layerMaskSurfaces[layerId] ?: return false
+        val editable = MaskTileSurface(
+            source.logicalWidth,
+            source.logicalHeight,
+            source.tileSize,
+            surfaceId = "layer-mask-edit:$layerId",
+            initialDefaultAlpha = source.defaultAlpha,
+        )
+        if (source.tileCount > 0) editable.beginWrite("open layer mask editor").run {
+            composeSurface(source, MaskComposeMode.REPLACE)
+            commit().close()
+        }
+        editingLayerMaskId = layerId
+        editingLayerMaskSurface = editable
+        activeLayerId = layerId
+        invalidate()
+        return true
+    }
+
+    fun isEditingLayerMask(layerId: String): Boolean = editingLayerMaskId == layerId
+
+    fun fillLayerMask(layerId: String, alpha: Int): Boolean {
+        require(alpha in 0..255)
+        if (editingLayerMaskId != layerId && !toggleLayerMaskEditing(layerId)) return false
+        val surface = editingLayerMaskSurface ?: return false
+        val record = surface.beginWrite(if (alpha == 0) "hide all layer mask" else "reveal all layer mask").run {
+            fill(alpha)
+            commit()
+        }
+        return recordLayerMaskEdit(layerId, surface, record)
+    }
+
+    private fun beginLayerMaskGesture(tool: EditorTool): Boolean {
+        val surface = editingLayerMaskSurface ?: return false
+        if (tool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER)) return false
+        cancelLayerMaskGesture()
+        layerMaskGesture = surface.beginWrite(if (tool == EditorTool.ERASER) "erase layer mask gesture" else "paint layer mask gesture")
+        layerMaskGestureErasing = tool == EditorTool.ERASER
+        return true
+    }
+
+    private fun extendLayerMaskGesture(normalizedX: Float, normalizedY: Float, pressure: Float) {
+        val transaction = layerMaskGesture ?: return
+        val surface = editingLayerMaskSurface ?: return
+        val modelSize = if (layerMaskGestureErasing) gestureEraserSize else gestureBrushSize
+        val scale = ((surface.logicalWidth / pageModelWidth.coerceAtLeast(1f)) +
+            (surface.logicalHeight / pageModelHeight.coerceAtLeast(1f))) * .5f
+        val radius = (modelSize * scale * .5f).coerceAtLeast(1f)
+        val centerX = normalizedX * surface.logicalWidth
+        val centerY = normalizedY * surface.logicalHeight
+        val bounds = PixelRect(
+            kotlin.math.floor(centerX - radius - 1f).toInt().coerceAtLeast(0),
+            kotlin.math.floor(centerY - radius - 1f).toInt().coerceAtLeast(0),
+            kotlin.math.ceil(centerX + radius + 1f).toInt().coerceAtMost(surface.logicalWidth),
+            kotlin.math.ceil(centerY + radius + 1f).toInt().coerceAtMost(surface.logicalHeight),
+        )
+        if (bounds.isEmpty) return
+        val alpha = ByteArray(bounds.width * bounds.height)
+        val strength = (pressure.coerceIn(.05f, 1f) * 255f).toInt()
+        for (y in bounds.top until bounds.bottom) for (x in bounds.left until bounds.right) {
+            val distance = hypot((x + .5f - centerX).toDouble(), (y + .5f - centerY).toDouble()).toFloat()
+            if (distance <= radius) alpha[(y - bounds.top) * bounds.width + x - bounds.left] = strength.toByte()
+        }
+        transaction.composeAlpha(
+            bounds,
+            alpha,
+            mode = if (layerMaskGestureErasing) MaskComposeMode.SUBTRACT else MaskComposeMode.ADD,
+        )
+        editingLayerMaskId?.let { layerId ->
+            layerMaskSurfaces = layerMaskSurfaces + (layerId to transaction.previewSnapshot())
+        }
+        invalidate()
+    }
+
+    private fun finishLayerMaskGesture() {
+        val transaction = layerMaskGesture ?: return
+        val surface = editingLayerMaskSurface ?: return cancelLayerMaskGesture()
+        val layerId = editingLayerMaskId ?: return cancelLayerMaskGesture()
+        layerMaskGesture = null
+        val record = transaction.commit()
+        if (record.changedTileCount == 0 && record.beforeDefaultAlpha == record.afterDefaultAlpha) {
+            record.close()
+            layerMaskSurfaces = layerMaskSurfaces + (layerId to surface.snapshot())
+            return
+        }
+        recordLayerMaskEdit(layerId, surface, record)
+    }
+
+    private fun recordLayerMaskEdit(
+        layerId: String,
+        surface: MaskTileSurface,
+        record: MaskTileTransactionRecord,
+    ): Boolean {
+        if (record.changedTileCount == 0 && record.beforeDefaultAlpha == record.afterDefaultAlpha) {
+            record.close()
+            return false
+        }
+        fun publish() {
+            val snapshot = surface.snapshot()
+            layerMaskSurfaces = layerMaskSurfaces + (layerId to snapshot)
+            onLayerMaskSurfaceCommitted(layerId, snapshot)
+            invalidate()
+        }
+        publish()
+        recordExternalEdit(
+            undo = { surface.apply(record, MaskTileSurface.HistoryDirection.UNDO); publish() },
+            redo = { surface.apply(record, MaskTileSurface.HistoryDirection.REDO); publish() },
+            dispose = record::close,
+        )
+        return true
+    }
+
+    private fun cancelLayerMaskGesture() {
+        val transaction = layerMaskGesture ?: return
+        layerMaskGesture = null
+        transaction.cancel()
+        val surface = editingLayerMaskSurface ?: return
+        editingLayerMaskId?.let { layerId -> layerMaskSurfaces = layerMaskSurfaces + (layerId to surface.snapshot()) }
+        invalidate()
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -3124,6 +3268,10 @@ class InkCanvasView(context: Context) : View(context) {
                 // change an in-progress stroke/tool footprint halfway through the gesture.
                 gestureBrushSize = documentBrushSize()
                 gestureEraserSize = documentEraserSize()
+                if (beginLayerMaskGesture(activeTool ?: tool)) {
+                    extendLayerMaskGesture(normalizedX, normalizedY, event.getPressure(pointerIndex))
+                    return true
+                }
                 val motionCtrlPressed = event.metaState and KeyEvent.META_CTRL_ON != 0
                 val motionAltPressed = event.metaState and KeyEvent.META_ALT_ON != 0
                 if ((motionCtrlPressed || ctrlModifierHeld) && (motionAltPressed || altModifierHeld) && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER)) {
@@ -3172,20 +3320,32 @@ class InkCanvasView(context: Context) : View(context) {
                             selectionTransformStartAngle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
                             selectionTransformStartXSpan = kotlin.math.abs(dx).coerceAtLeast(.0001f)
                             selectionTransformStartYSpan = kotlin.math.abs(dy).coerceAtLeast(.0001f)
+                            selectionTransformTranslateX = 0f
+                            selectionTransformTranslateY = 0f
+                            beginRasterSelectionTransform()
                             lastX = normalizedX; lastY = normalizedY
                             invalidate(); return true
                         }
                     }
                     val hit = strokes.getOrNull(findStroke(normalizedX, normalizedY, .035f))
                     lassoPoints.clear(); selectionGestureBefore = null; selectionMoved = false
-                    if (hit != null) {
-                        if (hit.id !in selectedStrokeIds) {
-                            selectedStrokeIds.clear(); selectedStrokeIds += hit.id
-                            selectedMaskRegions = emptyList()
-                            syncSelectionAlphaFromSelectedStrokes(resetFeather = true)
+                    val hitRasterSelection = selectionMaskForRasterTools()?.let { mask ->
+                        mask.alphaAt(
+                            (normalizedX * mask.logicalWidth).toInt().coerceIn(0, mask.logicalWidth - 1),
+                            (normalizedY * mask.logicalHeight).toInt().coerceIn(0, mask.logicalHeight - 1),
+                        ) > 0
+                    } == true
+                    if (hit != null || hitRasterSelection) {
+                        if (hit != null && hit.id !in selectedStrokeIds) {
+                                selectedStrokeIds.clear(); selectedStrokeIds += hit.id
+                                selectedMaskRegions = emptyList()
+                                syncSelectionAlphaFromSelectedStrokes(resetFeather = true)
                         }
                         selectionGestureBefore = strokes.toList()
                         movingSelection = true
+                        selectionTransformTranslateX = 0f
+                        selectionTransformTranslateY = 0f
+                        beginRasterSelectionTransform()
                     } else {
                         movingSelection = false
                         appendSelectionPoint(normalizedX, normalizedY)
@@ -3258,6 +3418,18 @@ class InkCanvasView(context: Context) : View(context) {
                 if (brushContinuousPlot && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) startContinuousPlot()
             }
             MotionEvent.ACTION_MOVE -> {
+                if (layerMaskGesture != null) {
+                    for (i in 0 until event.historySize) {
+                        val point = historicalCanvasPoint(event, pointerIndex, i)
+                        extendLayerMaskGesture(
+                            point.first / width.coerceAtLeast(1),
+                            point.second / height.coerceAtLeast(1),
+                            event.getHistoricalPressure(pointerIndex, i),
+                        )
+                    }
+                    extendLayerMaskGesture(normalizedX, normalizedY, event.getPressure(pointerIndex))
+                    return true
+                }
                 if (activeTool == EditorTool.FILL) {
                     if (fillSubTool == FillSubTool.BUCKET) adjustFillSensitivity(event.x)
                     else {
@@ -3332,6 +3504,8 @@ class InkCanvasView(context: Context) : View(context) {
                     } else if (movingSelection) {
                         val dx = normalizedX - lastX; val dy = normalizedY - lastY
                         if (hypot(dx.toDouble(), dy.toDouble()) > .0001) selectionMoved = true
+                        selectionTransformTranslateX += dx * pageModelWidth
+                        selectionTransformTranslateY += dy * pageModelHeight
                         val movedBefore = strokes.filter { it.id in selectedStrokeIds }
                         selectedStrokeIds.forEach { id ->
                             val index = strokes.indexOfFirst { it.id == id }
@@ -3364,6 +3538,13 @@ class InkCanvasView(context: Context) : View(context) {
                         }
                         lastX = normalizedX; lastY = normalizedY
                         invalidateStrokeCache(movedBefore, strokes.filter { it.id in selectedStrokeIds })
+                        updateRasterSelectionTransform(
+                            scaleX = 1f,
+                            scaleY = 1f,
+                            rotation = 0f,
+                            translateX = selectionTransformTranslateX,
+                            translateY = selectionTransformTranslateY,
+                        )
                     } else {
                         if (selectionShape == SelectionShape.FREEFORM || selectionShape == SelectionShape.BRUSH) {
                             for (i in 0 until event.historySize) historicalCanvasPoint(event, pointerIndex, i).let { point -> appendSelectionPoint(point.first / width.coerceAtLeast(1), point.second / height.coerceAtLeast(1)) }
@@ -3396,6 +3577,17 @@ class InkCanvasView(context: Context) : View(context) {
                 }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (layerMaskGesture != null) {
+                    if (event.actionMasked == MotionEvent.ACTION_CANCEL || event.flags and MotionEvent.FLAG_CANCELED != 0) {
+                        cancelLayerMaskGesture()
+                    } else {
+                        extendLayerMaskGesture(normalizedX, normalizedY, event.getPressure(pointerIndex))
+                        finishLayerMaskGesture()
+                    }
+                    activeTool = null
+                    parent?.requestDisallowInterceptTouchEvent(false)
+                    return true
+                }
                 stopContinuousPlot()
                 if (event.actionMasked == MotionEvent.ACTION_UP) performClick()
                 if (event.actionMasked == MotionEvent.ACTION_CANCEL || event.flags and MotionEvent.FLAG_CANCELED != 0) {
@@ -3411,6 +3603,7 @@ class InkCanvasView(context: Context) : View(context) {
                     shapeStart = null; shapeEnd = null; shapeFreeformPoints.clear()
                     if (activeTool == EditorTool.ERASER) cancelEraserGesture()
                     selectionGestureBefore?.let { restoreStrokeSnapshot(it) }
+                    cancelRasterSelectionTransform()
                     lassoPoints.clear(); movingSelection = false; selectionMoved = false; selectionGestureBefore = null; selectionTransformMode = TRANSFORM_NONE
                 } else if (activeTool == EditorTool.FILL) {
                     if (fillSubTool == FillSubTool.BUCKET) commitFillGesture() else {
@@ -3504,7 +3697,7 @@ class InkCanvasView(context: Context) : View(context) {
                 } else if (activeTool == EditorTool.SELECT) {
                     if ((movingSelection || selectionTransformMode != TRANSFORM_NONE) && selectionMoved) {
                         selectionGestureBefore?.let { commitStrokeEdit(it, strokes) }
-                        syncSelectionAlphaFromSelectedStrokes(resetFeather = false)
+                        if (!finishRasterSelectionTransform()) syncSelectionAlphaFromSelectedStrokes(resetFeather = false)
                     } else if (!movingSelection && selectionTransformMode == TRANSFORM_NONE) {
                         if (selectionShape == SelectionShape.SMART_BORDER || selectionShape == SelectionShape.MAGIC_WAND) {
                             selectAutomaticRegion(normalizedX, normalizedY, selectionShape == SelectionShape.SMART_BORDER)
@@ -3906,6 +4099,7 @@ class InkCanvasView(context: Context) : View(context) {
         shapeFreeformPoints.clear()
         if (activeTool == EditorTool.ERASER) cancelEraserGesture()
         selectionGestureBefore?.let(::restoreStrokeSnapshot)
+        cancelRasterSelectionTransform()
         lassoPoints.clear()
         movingSelection = false
         selectionMoved = false
@@ -5727,12 +5921,18 @@ class InkCanvasView(context: Context) : View(context) {
             left = minOf(left, point.x); top = minOf(top, point.y)
             right = maxOf(right, point.x); bottom = maxOf(bottom, point.y)
         } }
+        selectionMaskForRasterTools()?.nonZeroBounds()?.let { maskBounds ->
+            left = minOf(left, maskBounds.left / pageModelWidth.coerceAtLeast(1f))
+            top = minOf(top, maskBounds.top / pageModelHeight.coerceAtLeast(1f))
+            right = maxOf(right, maskBounds.right / pageModelWidth.coerceAtLeast(1f))
+            bottom = maxOf(bottom, maskBounds.bottom / pageModelHeight.coerceAtLeast(1f))
+        }
         return if (left.isFinite()) android.graphics.RectF(left, top, right, bottom) else null
     }
 
     /** Returns a corner, edge, or rotation transform when the touch lands on a handle. */
     private fun hitSelectionHandle(normalizedX: Float, normalizedY: Float): Int {
-        if (selectedStrokeIds.isEmpty()) return TRANSFORM_NONE
+        if (!hasSelection()) return TRANSFORM_NONE
         val bounds = selectionBounds() ?: return TRANSFORM_NONE
         val corners = listOf(
             bounds.left to bounds.top, bounds.right to bounds.top,
@@ -5766,10 +5966,73 @@ class InkCanvasView(context: Context) : View(context) {
             if (replacement != null) strokes[i] = replacement
         }
         invalidateStrokeCache(movedBefore, strokes.filter { it.id in selectedSet })
+        updateRasterSelectionTransform(scaleX, scaleY, rotation, 0f, 0f)
+    }
+
+    private fun beginRasterSelectionTransform(): Boolean {
+        cancelRasterSelectionTransform()
+        val surface = rasterTileSurfaceFor(activeLayerId) ?: return false
+        val bitmap = rasterEditBitmapFor(activeLayerId) ?: return false
+        val selection = selectionMaskForRasterTools()?.takeUnless(MaskTileSurfaceSnapshot::isEmpty) ?: return false
+        return runCatching {
+            rasterSelectionTransformOriginalMask = selection
+            rasterSelectionTransformSession = RasterSelectionTransformSession(surface, bitmap, selection)
+            true
+        }.getOrElse {
+            rasterSelectionTransformOriginalMask = null
+            false
+        }
+    }
+
+    private fun updateRasterSelectionTransform(
+        scaleX: Float,
+        scaleY: Float,
+        rotation: Float,
+        translateX: Float,
+        translateY: Float,
+    ) {
+        val session = rasterSelectionTransformSession ?: return
+        val result = session.update(
+            SelectionAffineTransform(
+                centerX = selectionTransformCenterX * pageModelWidth,
+                centerY = selectionTransformCenterY * pageModelHeight,
+                scaleX = scaleX.coerceAtLeast(.01f),
+                scaleY = scaleY.coerceAtLeast(.01f),
+                rotationDegrees = rotation,
+                translateX = translateX,
+                translateY = translateY,
+            ),
+        )
+        documentSelectionState?.replaceFrom(result.selection)
+            ?: replaceSelectionAlphaMask(SparseAlphaMask.fromSnapshot(result.selection), resetFeather = false)
+        rebuildSelectionDerivedState()
+    }
+
+    private fun finishRasterSelectionTransform(): Boolean {
+        val session = rasterSelectionTransformSession ?: return false
+        rasterSelectionTransformSession = null
+        rasterSelectionTransformOriginalMask = null
+        val result = session.commit() ?: return false
+        rasterTileSurfaceFor(activeLayerId)?.let { surface ->
+            commitRasterLayerPatch(surface, Rect(result.dirtyBounds.left, result.dirtyBounds.top, result.dirtyBounds.right, result.dirtyBounds.bottom))
+        }
+        return true
+    }
+
+    private fun cancelRasterSelectionTransform() {
+        val session = rasterSelectionTransformSession ?: return
+        rasterSelectionTransformSession = null
+        session.cancel()
+        rasterSelectionTransformOriginalMask?.let { original ->
+            documentSelectionState?.replaceFrom(original)
+                ?: replaceSelectionAlphaMask(SparseAlphaMask.fromSnapshot(original), resetFeather = false)
+        }
+        rasterSelectionTransformOriginalMask = null
+        rebuildSelectionDerivedState()
     }
 
     private fun drawSelectionHandles(canvas: Canvas) {
-        if (!selectionTransformArmed || selectedStrokeIds.isEmpty()) return
+        if (!selectionTransformArmed || !hasSelection()) return
         val bounds = selectionBounds() ?: return
         val handleRadius = SELECTION_HANDLE_TOUCH_PX / 2.5f / width.coerceAtLeast(1)
         val corners = listOf(
