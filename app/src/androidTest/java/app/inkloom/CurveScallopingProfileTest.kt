@@ -32,9 +32,9 @@ class CurveScallopingProfileTest {
     private val viewportWidth = 900
     private val viewportHeight = 900
 
-    private fun defaultPen(width: Float, points: List<StrokePoint>) = InkStroke(
-        id = "system-pen",
-        brushId = "system-pen",
+    private fun pen(brushId: String, width: Float, points: List<StrokePoint>) = InkStroke(
+        id = brushId,
+        brushId = brushId,
         points = points,
         width = width,
         spacing = .12f,
@@ -69,8 +69,8 @@ class CurveScallopingProfileTest {
 
     @Test
     fun straightLineIsTheCleanScallopingBaseline() {
-        val small = scalloping(defaultPen(5f, straight()))
-        val medium = scalloping(defaultPen(24f, straight()))
+        val small = scalloping(pen("system-g-pen", 5f, straight()))
+        val medium = scalloping(pen("system-g-pen", 24f, straight()))
         println("SCALLOP straight small=$small")
         println("SCALLOP straight medium=$medium")
         assertTrue("Straight small pen must be clean (pump=${small.pumpAmplitude})", small.pumpAmplitude < .4f)
@@ -79,10 +79,10 @@ class CurveScallopingProfileTest {
 
     @Test
     fun curvesScallopMoreThanStraightLines() {
-        val straightStats = scalloping(defaultPen(5f, straight()))
-        val circleStats = scalloping(defaultPen(5f, circle()))
-        val sStats = scalloping(defaultPen(5f, sCurve()))
-        val turnStats = scalloping(defaultPen(5f, tightTurn()))
+        val straightStats = scalloping(pen("system-g-pen", 5f, straight()))
+        val circleStats = scalloping(pen("system-g-pen", 5f, circle()))
+        val sStats = scalloping(pen("system-g-pen", 5f, sCurve()))
+        val turnStats = scalloping(pen("system-g-pen", 5f, tightTurn()))
         println("SCALLOP straight=$straightStats")
         println("SCALLOP circle=$circleStats")
         println("SCALLOP scurve=$sStats")
@@ -99,8 +99,8 @@ class CurveScallopingProfileTest {
 
     @Test
     fun mediumWidthCurvesScallop() {
-        val mediumCircle = scalloping(defaultPen(24f, circle()))
-        val mediumTurn = scalloping(defaultPen(24f, tightTurn()))
+        val mediumCircle = scalloping(pen("system-g-pen", 24f, circle()))
+        val mediumTurn = scalloping(pen("system-g-pen", 24f, tightTurn()))
         println("SCALLOP medium-circle=$mediumCircle")
         println("SCALLOP medium-turn=$mediumTurn")
         assertTrue("Medium circle must scallop (pump=${mediumCircle.pumpAmplitude})", mediumCircle.pumpAmplitude > .15f)
@@ -108,9 +108,20 @@ class CurveScallopingProfileTest {
 
     @Test
     fun pressureRampKeepsPerpendicularProfileStable() {
-        val stats = scalloping(defaultPen(5f, pressureRamp()))
+        val stats = scalloping(pen("system-g-pen", 5f, pressureRamp()))
         println("SCALLOP pressure-ramp=$stats")
         assertTrue("Pressure ramp must have no geometric gaps", stats.gapSamples == 0)
+    }
+
+    @Test
+    fun migratedDefaultInkIsCleanerThanSegmentPens() {
+        val segment = scalloping(pen("system-g-pen", 5f, tightTurn()))
+        val ribbon = scalloping(pen("system-pen", 5f, tightTurn()))
+        println("SCALLOP migrated segment=$segment ribbon=$ribbon")
+        assertTrue(
+            "The migrated default Ink (system-pen) must scallop far less than segment pens (segment=${segment.pumpAmplitude}, ribbon=${ribbon.pumpAmplitude})",
+            ribbon.pumpAmplitude < segment.pumpAmplitude * .6f,
+        )
     }
 
     private data class ScallopStats(val widthMean: Double, val widthCv: Float, val pumpAmplitude: Float, val crossings: Int, val gapSamples: Int) {

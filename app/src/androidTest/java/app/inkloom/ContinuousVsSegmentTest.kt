@@ -57,11 +57,11 @@ class ContinuousVsSegmentTest {
     @Test
     fun continuousRibbonScallopsFarLessThanSegmentsOnCurves() {
         val width = 5f
-        val segment = scalloping(stroke("system-pen", width, sCurve()))
-        val ribbon = scalloping(stroke("system-ps19", width, sCurve()))
+        val segment = scalloping(stroke("system-g-pen", width, sCurve()))
+        val ribbon = scalloping(stroke("system-pen", width, sCurve()))
         println("COMPARE scurve segment=$segment ribbon=$ribbon")
         assertTrue(
-            "Continuous ribbon must scallop far less than segments (segment=${segment.pumpAmplitude}, ribbon=${ribbon.pumpAmplitude})",
+            "Continuous ribbon must scallop far less than segment pens (segment=${segment.pumpAmplitude}, ribbon=${ribbon.pumpAmplitude})",
             ribbon.pumpAmplitude < segment.pumpAmplitude * .6f,
         )
     }
@@ -69,8 +69,8 @@ class ContinuousVsSegmentTest {
     @Test
     fun continuousRibbonRemovesSegmentGapsOnTightTurns() {
         val width = 5f
-        val segment = scalloping(stroke("system-pen", width, tightTurn()))
-        val ribbon = scalloping(stroke("system-ps19", width, tightTurn()))
+        val segment = scalloping(stroke("system-g-pen", width, tightTurn()))
+        val ribbon = scalloping(stroke("system-pen", width, tightTurn()))
         println("COMPARE turn segment=$segment ribbon=$ribbon")
         assertTrue(
             "Segment path must show scalloping on tight turns (pump=${segment.pumpAmplitude})",
@@ -86,8 +86,8 @@ class ContinuousVsSegmentTest {
     fun continuousRibbonIsNotSlowerThanSegments() {
         val width = 24f
         val points = sCurve()
-        val segmentMs = renderCost(stroke("system-pen", width, points), 60)
-        val ribbonMs = renderCost(stroke("system-ps19", width, points), 60)
+        val segmentMs = renderCost(stroke("system-g-pen", width, points), 60)
+        val ribbonMs = renderCost(stroke("system-pen", width, points), 60)
         println("COMPARE perf segment=${"%.1f".format(segmentMs)}ms/60 ribbon=${"%.1f".format(ribbonMs)}ms/60")
         assertTrue(
             "Continuous ribbon must not be meaningfully slower (segment=${segmentMs}ms, ribbon=${ribbonMs}ms)",

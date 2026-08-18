@@ -2134,7 +2134,7 @@ class InkCanvasView(context: Context) : View(context) {
             drawStampedStroke(canvas, stroke, tips, dualTips, tipPaths, grainOffset.x, grainOffset.y, primaryStampStartIndex, dualStampStartIndex)
             return
         }
-        if (stroke.brushId == "system-ps19" && stroke.points.size > 1 && stroke.strokeFalloff <= .0001f) {
+        if (usesContinuousRibbon(stroke)) {
             drawContinuousRoundStroke(canvas, stroke)
             return
         }
@@ -2924,6 +2924,26 @@ class InkCanvasView(context: Context) : View(context) {
         canvas.drawPath(path, paint)
         paint.style = previousStyle
         paint.alpha = 255
+    }
+
+    /** Default Ink (and the classic PS No. 19) render as ONE uniform-deposit filled ribbon rather
+     * than independent BUTT-capped segment compositing, which scalloped at every join on curves
+     * (see CurveScallopingProfileTest / ContinuousVsSegmentTest). The ribbon cannot reproduce
+     * per-segment color jitter, blur, water edge, opacity/flow dynamics or opacity taper, so
+     * strokes carrying those features keep the per-segment path. */
+    private fun usesContinuousRibbon(stroke: InkStroke): Boolean {
+        if (stroke.brushId != "system-ps19" && stroke.brushId != "system-pen") return false
+        if (stroke.points.size <= 1 || stroke.strokeFalloff > .0001f) return false
+        if (stroke.opacityPressureEnabled || stroke.flowPressureEnabled) return false
+        if (stroke.opacity < .999f || stroke.flow < .999f) return false
+        if (stroke.blur > .0001f || stroke.waterEdgeEnabled || stroke.tiltBleed > .0001f) return false
+        if (stroke.colorJitterHueDegrees != 0f || stroke.colorJitterSaturation != 0f || stroke.colorJitterValue != 0f) return false
+        if (stroke.colorJitterPerStrokeEnabled ||
+            stroke.colorJitterStrokeHueDegrees != 0f || stroke.colorJitterStrokeSaturation != 0f || stroke.colorJitterStrokeValue != 0f
+        ) return false
+        if (!stroke.procreateColorDynamics.isDisabled()) return false
+        if (stroke.taperStartEnabled || stroke.taperEndEnabled || !stroke.procreateTaper.isDisabled()) return false
+        return true
     }
 
     private fun drawLineSegment(canvas: Canvas, stroke: InkStroke, point: StrokePoint, startX: Float, startY: Float, endX: Float, endY: Float, strokeWidth: Float, alpha: Int) {
