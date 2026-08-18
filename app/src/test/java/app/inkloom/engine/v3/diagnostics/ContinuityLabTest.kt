@@ -113,4 +113,22 @@ class ContinuityLabTest {
             report.gapRatioMax < 1f,
         )
     }
+
+    @Test
+    fun pressureRampKeepsUniformGapRatioForStampedActualRadiusSpacing() {
+        // For the STAMPED path, spacing is diameter * factor (BrushProgram.spacingFunction uses
+        // the pressure-aware size.evaluate), so dab gap must track the ACTUAL rendered radius and
+        // gap/diameter stays uniform across pressure -- never 'low pressure sparse, high dense'.
+        val stroke = hbPencil(pressureRampLine())
+        val deposits = ContinuityLab.deposits(stroke, viewportWidth, viewportHeight)
+        val ratios = deposits.filter { it.gapToNextPx >= 0f }.map { it.gapRatio }
+        assertTrue("Pressure ramp must produce several stamped deposits", ratios.size > 20)
+        val mean = ratios.average()
+        val cv = ratios.map { (it - mean) * (it - mean) }.average().toFloat().let { kotlin.math.sqrt(it) } / mean
+        assertTrue(
+            "Stamped actual-radius spacing must keep gap/diameter uniform across pressure (cv=$cv)",
+            cv < .25f,
+        )
+        assertTrue("Stamped deposits must overlap (mean gapRatio=$mean)", mean < 1f)
+    }
 }

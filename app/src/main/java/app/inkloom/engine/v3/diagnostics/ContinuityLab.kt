@@ -65,10 +65,7 @@ internal object ContinuityLab {
 
     fun analyze(stroke: InkStroke, viewportWidth: Float, viewportHeight: Float): Report {
         val model = emissionModel(stroke)
-        val deposits = when (model) {
-            EmissionModel.STAMPED -> stampedDeposits(stroke, viewportWidth, viewportHeight)
-            EmissionModel.POLYLINE -> polylineDeposits(stroke, viewportWidth, viewportHeight)
-        }
+        val deposits = deposits(stroke, viewportWidth, viewportHeight, model)
         if (deposits.isEmpty()) {
             return Report(model, 0, 0f, 0f, 0f, 0f, 0f, false, listOf(Failure.NONE))
         }
@@ -90,6 +87,16 @@ internal object ContinuityLab {
         }
         return Report(model, deposits.size, radiusMean, radiusCv, gapRatioMean, gapRatioMax, geometricGapRatio, constantInput, failures)
     }
+
+    /** The per-deposit geometry (dab/segment centers, radius, gap-to-next), for the lab and audits. */
+    fun deposits(stroke: InkStroke, viewportWidth: Float, viewportHeight: Float): List<DepositMetrics> =
+        deposits(stroke, viewportWidth, viewportHeight, emissionModel(stroke))
+
+    private fun deposits(stroke: InkStroke, viewportWidth: Float, viewportHeight: Float, model: EmissionModel): List<DepositMetrics> =
+        when (model) {
+            EmissionModel.STAMPED -> stampedDeposits(stroke, viewportWidth, viewportHeight)
+            EmissionModel.POLYLINE -> polylineDeposits(stroke, viewportWidth, viewportHeight)
+        }
 
     private fun stampedDeposits(stroke: InkStroke, viewportWidth: Float, viewportHeight: Float): List<DepositMetrics> {
         val dabs = BrushProgramRuntime.sampleStampPoints(stroke, viewportWidth, viewportHeight, dual = false)
