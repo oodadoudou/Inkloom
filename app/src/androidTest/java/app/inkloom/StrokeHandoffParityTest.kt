@@ -126,8 +126,14 @@ class StrokeHandoffParityTest {
     }
 
     @Test
-    fun postCorrectionAtPenUpChangesTheCommittedGeometry() {
+    fun postCorrectionAtPenUpIsBoundedAndNonDestructive() {
         val raw = zigzagStroke()
+        val productionBound = StrokePostCorrection.screenBoundMaxDisplacement(
+            StrokePostCorrection.POST_CORRECTION_MAX_SCREEN_PX,
+            pageWidth = 1200f,
+            viewWidthPx = width,
+            viewportScale = 1f,
+        )
         val corrected = StrokePostCorrection.apply(
             raw,
             amount = .9f,
@@ -138,19 +144,26 @@ class StrokeHandoffParityTest {
             pageHeight = 900f,
             quadraticBezier = false,
             preserveSharpAngles = false,
+            maxDisplacementPx = productionBound,
+        )
+        assertTrue(
+            "Post-correction with the production bound must not collapse the stroke (raw=${raw.points.size}, corrected=${corrected.points.size})",
+            corrected.points.size >= 4,
+        )
+        val report = StrokePostCorrection.audit(
+            raw, amount = .9f, pageWidth = 1200f, pageHeight = 900f, maxDisplacementPx = productionBound,
+        )
+        assertTrue(
+            "Post-correction with the production bound must keep displacement bounded (max=${report.maxDisplacementPx}px, bound=${productionBound}px)",
+            report.maxDisplacementPx <= productionBound + .75f,
         )
         val (previewRaster, committedRaster) = onMain {
             val view = newView()
             renderCommitted(view, raw) to renderCommitted(view, corrected)
         }
         try {
-            assertTrue("Preview raster must contain ink (raw=${raw.points.size} pts)", alphaInkCount(previewRaster) > 0)
-            assertTrue("Corrected raster must contain ink (corrected=${corrected.points.size} pts)", alphaInkCount(committedRaster) > 0)
-            assertNotEquals(
-                "Post-correction at pen-up changes the committed raster, so the preview and the final differ",
-                signature(previewRaster),
-                signature(committedRaster),
-            )
+            assertTrue("Preview raster must contain ink", alphaInkCount(previewRaster) > 0)
+            assertTrue("Corrected raster must contain ink", alphaInkCount(committedRaster) > 0)
         } finally {
             previewRaster.recycle()
             committedRaster.recycle()

@@ -2,14 +2,35 @@ package app.inkloom.document
 
 import kotlin.math.abs
 import kotlin.math.hypot
+import kotlin.math.max
 import kotlin.math.roundToLong
 import kotlin.math.sqrt
 
 /**
  * Applies CSP-style correction after pen-up. Live input stabilization stays independent so a
  * non-zero value never adds latency while the stylus is moving.
+ *
+ * Default painting must never perform a visibly destructive geometry rewrite at pen-up. The
+ * production pen-up path passes a [maxDisplacementPx] bound (see [POST_CORRECTION_MAX_SCREEN_PX]
+ * and [screenBoundMaxDisplacement]) that:
+ *  - clamps every corrected point toward the raw path so no point moves more than the bound,
+ *  - caps the SIMPLIFY tolerance so Douglas-Peucker cannot collapse a stroke to its endpoints
+ *    (the previously observed 37-point zigzag -> 2-point regression),
+ *  - applies the bound to the final (possibly Bezier-sampled) path as well.
+ *
+ * The pure function keeps the unbounded behavior when no bound is supplied so geometry tools and
+ * existing callers are unaffected; the default painting pipeline always supplies the bound.
  */
 object StrokePostCorrection {
+    /** The visible jump allowed at pen-up for the default pipeline, in screen pixels. */
+    const val POST_CORRECTION_MAX_SCREEN_PX = 2.5f
+
+    /** Page-space displacement bound that keeps the visible jump at [maxScreenPx] regardless of zoom. */
+    fun screenBoundMaxDisplacement(maxScreenPx: Float, pageWidth: Float, viewWidthPx: Int, viewportScale: Float): Float {
+        val screenPxPerPagePx = viewWidthPx.coerceAtLeast(1).toFloat() * viewportScale.coerceAtLeast(1f) / pageWidth.coerceAtLeast(1f)
+        return maxScreenPx / screenPxPerPagePx
+    }
+
     fun apply(
         stroke: InkStroke,
         amount: Float,
@@ -20,6 +41,7 @@ object StrokePostCorrection {
         pageHeight: Float,
         quadraticBezier: Boolean = false,
         preserveSharpAngles: Boolean = false,
+        maxDisplacementPx: Float = Float.POSITIVE_INFINITY,
     ): InkStroke {
         if (stroke.points.size < 3) return stroke
         val sharpened = if (preserveSharpAngles) sharpenCorners(stroke.points, stroke.width, pageWidth, pageHeight) else stroke.points
@@ -34,19 +56,74 @@ object StrokePostCorrection {
         if (effective < .01f) return if (sharpened === stroke.points) stroke else stroke.copy(points = sharpened)
 
         val corrected = if (preserveSharpAngles) {
-            correctBetweenCorners(stroke.copy(points = sharpened), effective, pageWidth, pageHeight, quadraticBezier)
-        } else correctSegment(stroke.copy(points = sharpened), effective, pageWidth, pageHeight)
-        return if (!preserveSharpAngles && quadraticBezier && corrected.points.size >= 3) corrected.copy(points = quadraticSpline(corrected.points)) else corrected
+            correctBetweenCorners(stroke.copy(points = sharpened), effective, pageWidth, pageHeight, quadraticBezier, maxDisplacementPx)
+        } else correctSegment(stroke.copy(points = sharpened), effective, pageWidth, pageHeight, maxDisplacementPx)
+        val result = if (!preserveSharpAngles && quadraticBezier && corrected.points.size >= 3) {
+            corrected.copy(points = quadraticSpline(corrected.points))
+        } else corrected
+        return result.copy(points = clampToRawPath(result.points, stroke.points, maxDisplacementPx, pageWidth, pageHeight))
     }
 
-    private fun correctBetweenCorners(stroke: InkStroke, amount: Float, pageWidth: Float, pageHeight: Float, quadraticBezier: Boolean): InkStroke {
+    /** Quantified audit of one correction invocation, for regression and tooling. */
+    data class CorrectionReport(
+        val inputPoints: Int,
+        val outputPoints: Int,
+        val maxDisplacementPx: Float,
+        val meanDisplacementPx: Float,
+        val inputLengthPx: Float,
+        val outputLengthPx: Float,
+        val boundingBoxDeltaPx: Float,
+    ) {
+        val destructive: Boolean get() = outputPoints < 3 && inputPoints >= 3
+    }
+
+    fun audit(
+        stroke: InkStroke,
+        amount: Float,
+        adjustBySpeed: Boolean = false,
+        adjustByScale: Boolean = false,
+        viewportScale: Float = 1f,
+        pageWidth: Float,
+        pageHeight: Float,
+        quadraticBezier: Boolean = false,
+        preserveSharpAngles: Boolean = false,
+        maxDisplacementPx: Float = Float.POSITIVE_INFINITY,
+    ): CorrectionReport {
+        val output = apply(
+            stroke, amount, adjustBySpeed, adjustByScale, viewportScale, pageWidth, pageHeight,
+            quadraticBezier, preserveSharpAngles, maxDisplacementPx,
+        ).points
+        val input = stroke.points
+        val displacements = output.map { nearestOnPolyline(it, input, pageWidth, pageHeight).distancePx }
+        return CorrectionReport(
+            inputPoints = input.size,
+            outputPoints = output.size,
+            maxDisplacementPx = displacements.maxOrNull() ?: 0f,
+            meanDisplacementPx = displacements.takeIf { it.isNotEmpty() }?.average()?.toFloat() ?: 0f,
+            inputLengthPx = pathLengthPx(input, pageWidth, pageHeight),
+            outputLengthPx = pathLengthPx(output, pageWidth, pageHeight),
+            boundingBoxDeltaPx = max(
+                abs(boundsWidthPx(output, pageWidth) - boundsWidthPx(input, pageWidth)),
+                abs(boundsHeightPx(output, pageHeight) - boundsHeightPx(input, pageHeight)),
+            ),
+        )
+    }
+
+    private fun correctBetweenCorners(
+        stroke: InkStroke,
+        amount: Float,
+        pageWidth: Float,
+        pageHeight: Float,
+        quadraticBezier: Boolean,
+        maxDisplacementPx: Float,
+    ): InkStroke {
         val corners = cornerIndices(stroke.points, pageWidth, pageHeight)
-        if (corners.isEmpty()) return correctSegment(stroke, amount, pageWidth, pageHeight)
+        if (corners.isEmpty()) return correctSegment(stroke, amount, pageWidth, pageHeight, maxDisplacementPx)
         val boundaries = buildList { add(0); addAll(corners); add(stroke.points.lastIndex) }.distinct().sorted()
         val output = ArrayList<StrokePoint>(stroke.points.size)
         boundaries.zipWithNext().forEach { (start, end) ->
             val segment = stroke.copy(points = stroke.points.subList(start, end + 1))
-            val correctedSegment = correctSegment(segment, amount, pageWidth, pageHeight).points
+            val correctedSegment = correctSegment(segment, amount, pageWidth, pageHeight, maxDisplacementPx).points
             val corrected = if (quadraticBezier && correctedSegment.size >= 3) quadraticSpline(correctedSegment) else correctedSegment
             if (output.isNotEmpty() && corrected.isNotEmpty()) output.removeAt(output.lastIndex)
             output.addAll(corrected)
@@ -54,12 +131,110 @@ object StrokePostCorrection {
         return stroke.copy(points = output.ifEmpty { stroke.points })
     }
 
-    private fun correctSegment(stroke: InkStroke, amount: Float, pageWidth: Float, pageHeight: Float): InkStroke {
+    private fun correctSegment(
+        stroke: InkStroke,
+        amount: Float,
+        pageWidth: Float,
+        pageHeight: Float,
+        maxDisplacementPx: Float,
+    ): InkStroke {
+        val raw = stroke.points
         val smoothed = StrokeCorrection.apply(stroke, CorrectLineMode.SMOOTH, amount, pageWidth, pageHeight)
-        return if (amount < .55f || smoothed.points.size < 4) smoothed else {
-            StrokeCorrection.apply(smoothed, CorrectLineMode.SIMPLIFY, (amount - .55f) / .45f * .35f, pageWidth, pageHeight)
+        val bounded = clampToRawPath(smoothed.points, raw, maxDisplacementPx, pageWidth, pageHeight)
+        if (amount < .55f || bounded.size < 4) return stroke.copy(points = bounded)
+        val requestedStrength = (amount - .55f) / .45f * .35f
+        val simplified = StrokeCorrection.apply(
+            stroke.copy(points = bounded),
+            CorrectLineMode.SIMPLIFY,
+            cappedSimplifyStrength(requestedStrength, maxDisplacementPx),
+            pageWidth,
+            pageHeight,
+        )
+        return stroke.copy(points = clampToRawPath(simplified.points, raw, maxDisplacementPx, pageWidth, pageHeight))
+    }
+
+    /** Caps Douglas-Peucker tolerance (1 + strength*200 px) at the displacement bound. */
+    private fun cappedSimplifyStrength(requested: Float, maxDisplacementPx: Float): Float {
+        if (maxDisplacementPx.isInfinite() || maxDisplacementPx <= 0f) return requested
+        val maxStrength = ((maxDisplacementPx - 1f) / 200f).coerceAtLeast(0f)
+        return requested.coerceAtMost(maxStrength)
+    }
+
+    /** Pulls every point back toward the raw polyline so none moves further than [maxDisplacementPx]. */
+    private fun clampToRawPath(
+        points: List<StrokePoint>,
+        raw: List<StrokePoint>,
+        maxDisplacementPx: Float,
+        pageWidth: Float,
+        pageHeight: Float,
+    ): List<StrokePoint> {
+        if (maxDisplacementPx.isInfinite() || maxDisplacementPx <= 0f) return points
+        if (raw.isEmpty()) return points
+        return points.map { point ->
+            val nearest = nearestOnPolyline(point, raw, pageWidth, pageHeight)
+            if (nearest.distancePx <= maxDisplacementPx) point
+            else {
+                val length = nearest.distancePx
+                if (length <= .0001f) point
+                else point.copy(
+                    x = (nearest.x + (point.x * pageWidth - nearest.x) / length * maxDisplacementPx) / pageWidth,
+                    y = (nearest.y + (point.y * pageHeight - nearest.y) / length * maxDisplacementPx) / pageHeight,
+                )
+            }
         }
     }
+
+    private data class NearestPoint(val x: Float, val y: Float, val distancePx: Float)
+
+    private fun nearestOnPolyline(point: StrokePoint, polyline: List<StrokePoint>, pageWidth: Float, pageHeight: Float): NearestPoint {
+        val px = point.x * pageWidth
+        val py = point.y * pageHeight
+        if (polyline.size == 1) {
+            val sx = polyline[0].x * pageWidth
+            val sy = polyline[0].y * pageHeight
+            return NearestPoint(sx, sy, hypot((px - sx).toDouble(), (py - sy).toDouble()).toFloat())
+        }
+        var bestX = px
+        var bestY = py
+        var bestDistance = Float.MAX_VALUE
+        for (index in 1 until polyline.size) {
+            val sx = polyline[index - 1].x * pageWidth
+            val sy = polyline[index - 1].y * pageHeight
+            val ex = polyline[index].x * pageWidth
+            val ey = polyline[index].y * pageHeight
+            val segX = ex - sx
+            val segY = ey - sy
+            val lengthSquared = segX * segX + segY * segY
+            val t = if (lengthSquared <= .0001f) 0f else (((px - sx) * segX + (py - sy) * segY) / lengthSquared).coerceIn(0f, 1f)
+            val nx = sx + segX * t
+            val ny = sy + segY * t
+            val distance = hypot((px - nx).toDouble(), (py - ny).toDouble()).toFloat()
+            if (distance < bestDistance) {
+                bestDistance = distance
+                bestX = nx
+                bestY = ny
+            }
+        }
+        return NearestPoint(bestX, bestY, bestDistance)
+    }
+
+    private fun pathLengthPx(points: List<StrokePoint>, pageWidth: Float, pageHeight: Float): Float {
+        if (points.size < 2) return 0f
+        var length = 0f
+        for (index in 1 until points.size) {
+            length += hypot(
+                ((points[index].x - points[index - 1].x) * pageWidth).toDouble(),
+                ((points[index].y - points[index - 1].y) * pageHeight).toDouble(),
+            ).toFloat()
+        }
+        return length
+    }
+
+    private fun boundsWidthPx(points: List<StrokePoint>, pageWidth: Float): Float =
+        (points.maxOf(StrokePoint::x) - points.minOf(StrokePoint::x)) * pageWidth
+
+    private fun boundsHeightPx(points: List<StrokePoint>, pageHeight: Float): Float =
+        (points.maxOf(StrokePoint::y) - points.minOf(StrokePoint::y)) * pageHeight
 
     /** Restores a rounded corner to the intersection of its incoming/outgoing tangents. CSP does
      * not publish its private threshold; this bounded geometric version reproduces the documented

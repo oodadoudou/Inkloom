@@ -3758,6 +3758,12 @@ class InkCanvasView(context: Context) : View(context) {
                             pageModelHeight,
                             postCorrectionBezier,
                             correctionSharpAngles,
+                            maxDisplacementPx = StrokePostCorrection.screenBoundMaxDisplacement(
+                                StrokePostCorrection.POST_CORRECTION_MAX_SCREEN_PX,
+                                pageModelWidth,
+                                width,
+                                viewportScale,
+                            ),
                         )
                     }
                     val raster = rasterEditBitmapFor(activeLayerId)
