@@ -110,6 +110,7 @@ data class AppSettings(
     val postCorrectionAdjustBySpeed: Boolean = false,
     val postCorrectionAdjustByScale: Boolean = true,
     val showInputDiagnostics: Boolean = false,
+    val showStrokeTraceOverlay: Boolean = false,
     val penSize: Float = 5f,
     val penOpacity: Float = 1f,
     val highlighterSize: Float = 28f,
@@ -279,6 +280,7 @@ class AppSettingsStore(context: Context) {
             postCorrectionAdjustBySpeed = preferences.getBoolean("postCorrectionAdjustBySpeed", false),
             postCorrectionAdjustByScale = preferences.getBoolean("postCorrectionAdjustByScale", true),
             showInputDiagnostics = preferences.getBoolean("showInputDiagnostics", false),
+            showStrokeTraceOverlay = preferences.getBoolean("showStrokeTraceOverlay", false),
             penSize = preferences.getFloat("penSize", 5f).coerceIn(.5f, 400f),
             penOpacity = preferences.getFloat("penOpacity", 1f).coerceIn(.05f, 1f),
             highlighterSize = preferences.getFloat("highlighterSize", 28f).coerceIn(.5f, 400f),
@@ -421,6 +423,7 @@ class AppSettingsStore(context: Context) {
             .putBoolean("postCorrectionAdjustBySpeed", persisted.postCorrectionAdjustBySpeed)
             .putBoolean("postCorrectionAdjustByScale", persisted.postCorrectionAdjustByScale)
             .putBoolean("showInputDiagnostics", persisted.showInputDiagnostics)
+            .putBoolean("showStrokeTraceOverlay", persisted.showStrokeTraceOverlay)
             .putFloat("penSize", persisted.penSize)
             .putFloat("penOpacity", persisted.penOpacity)
             .putFloat("highlighterSize", persisted.highlighterSize)

@@ -29,6 +29,7 @@ import android.view.View
 import android.view.ViewConfiguration
 import androidx.annotation.WorkerThread
 import androidx.annotation.VisibleForTesting
+import app.inkloom.BuildConfig
 import app.inkloom.engine.v3.api.*
 import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v3.android.PixelTileCanvasRenderer
@@ -217,6 +218,29 @@ class InkCanvasView(context: Context) : View(context) {
     private var currentStrokeId = java.util.UUID.randomUUID().toString()
     private var activeStrokeTemplate: InkStroke? = null
     internal var activeStrokeSurface: ActiveStrokeCompositor? = null
+
+    /** Debug-only stroke handoff overlay and [StrokeTrace] gate. No-op in release builds. */
+    var showStrokeTraceOverlay: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            StrokeTrace.enabled = BuildConfig.DEBUG && value
+            if (!value) {
+                StrokeTrace.reset()
+                pendingProjectionStrokeId = null
+            }
+            postInvalidateOnAnimation()
+        }
+    private var pendingProjectionStrokeId: String? = null
+    private var lastCommittedFrameDrawn = false
+    private val strokeTraceOverlayPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = 26f
+        color = Color.WHITE
+        isFakeBoldText = true
+    }
+    private val strokeTraceOverlayBackground = Paint().apply {
+        color = Color.argb(190, 20, 20, 20)
+    }
     private var activeSurfaceFrameScheduled = false
     private var activeSurfaceCommitted = false
     private var activeTipRefreshScheduled = false
@@ -632,8 +656,9 @@ class InkCanvasView(context: Context) : View(context) {
     private val protectedLayerIds = mutableSetOf<String>()
     private val committedScene = SparseTileScene(MAX_CACHE_PIXELS)
     internal var onTileRendered: ((StrokeTileKey, Int) -> Unit)?
-        get() = committedScene.onTileRendered
-        set(value) { committedScene.onTileRendered = value }
+        get() = hostedTileRendered
+        set(value) { hostedTileRendered = value }
+    private var hostedTileRendered: ((StrokeTileKey, Int) -> Unit)? = null
 
     var tool: EditorTool = EditorTool.PEN
         set(value) {
@@ -1114,6 +1139,20 @@ class InkCanvasView(context: Context) : View(context) {
                 else -> true
             }
         }
+        committedScene.onTileRendered = { key, count ->
+            if (StrokeTrace.enabled) {
+                pendingProjectionStrokeId?.let { id ->
+                    pendingProjectionStrokeId = null
+                    StrokeTrace.markOnce(
+                        id,
+                        StrokeTrace.STAGE_PROJECTION_GENERATED,
+                        tileCount = committedScene.dirtyTileCount,
+                        generation = committedScene.generation,
+                    )
+                }
+            }
+            hostedTileRendered?.invoke(key, count)
+        }
     }
 
     fun setContinueFilling(enabled: Boolean, color: Int = inkColor) {
@@ -1488,6 +1527,22 @@ class InkCanvasView(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         synchronized(renderLock) { drawPageContent(canvas) }
+        if (showStrokeTraceOverlay && BuildConfig.DEBUG) drawStrokeTraceOverlay(canvas)
+    }
+
+    private fun drawStrokeTraceOverlay(canvas: Canvas) {
+        val fb = activeStrokeSurface?.hasActiveInk == true
+        val v3 = lastCommittedFrameDrawn
+        val tx = committedScene.dirtyTileCount
+        val gen = committedScene.generation
+        val sid = currentStrokeId.take(8)
+        val line = "FB=${if (fb) "1" else "0"}  V3=${if (v3) "1" else "0"}  TX=$tx  GEN=$gen  SID=$sid"
+        val baseline = 38f
+        val widthPx = strokeTraceOverlayPaint.measureText(line) + 24f
+        strokeTraceOverlayBackground.setShadowLayer(6f, 0f, 0f, Color.BLACK)
+        canvas.drawRoundRect(8f, 8f, 8f + widthPx, baseline + 10f, 10f, 10f, strokeTraceOverlayBackground)
+        strokeTraceOverlayBackground.clearShadowLayer()
+        canvas.drawText(line, 20f, baseline, strokeTraceOverlayPaint)
     }
 
     override fun onHoverEvent(event: MotionEvent): Boolean {
@@ -1681,7 +1736,7 @@ class InkCanvasView(context: Context) : View(context) {
         if (strokes.any(::usesDestinationDependentBrushBlend)) return false
         if (alphaLockedLayers.isNotEmpty() || clippedLayers.isNotEmpty() || layerMasks.isNotEmpty()) return false
         if (layerElementBitmaps.isNotEmpty() || rasterLayerTileSurfaces.isNotEmpty()) return false
-        return committedScene.draw(
+        val drew = committedScene.draw(
             canvas,
             strokes,
             width,
@@ -1690,6 +1745,18 @@ class InkCanvasView(context: Context) : View(context) {
         ) { target, candidates ->
             drawLayeredStrokes(target, candidates)
         }
+        if (drew) {
+            lastCommittedFrameDrawn = true
+            if (StrokeTrace.enabled) {
+                StrokeTrace.mark(
+                    currentStrokeId,
+                    StrokeTrace.STAGE_RENDERER_DRAW,
+                    tileCount = committedScene.dirtyTileCount,
+                    generation = committedScene.generation,
+                )
+            }
+        }
+        return drew
     }
 
     private fun resetStrokeTiles() {
@@ -1702,6 +1769,25 @@ class InkCanvasView(context: Context) : View(context) {
     private fun invalidateStrokeCache() = resetStrokeTiles()
 
     private fun invalidateStrokeCache(before: Collection<InkStroke>, after: Collection<InkStroke>) {
+        if (StrokeTrace.enabled) {
+            StrokeTrace.primaryStrokeId(after.toList())?.let { id ->
+                var bounds: RectF? = null
+                after.forEach { stroke ->
+                    committedScene.pixelBoundsFor(stroke, width, height)?.let { rect ->
+                        if (bounds == null) bounds = RectF(rect.left.toFloat(), rect.top.toFloat(), rect.right.toFloat(), rect.bottom.toFloat())
+                        else bounds!!.union(rect.left.toFloat(), rect.top.toFloat(), rect.right.toFloat(), rect.bottom.toFloat())
+                    }
+                }
+                pendingProjectionStrokeId = id
+                StrokeTrace.mark(
+                    id,
+                    StrokeTrace.STAGE_PROJECTION_INVALIDATED,
+                    rect = bounds?.let { "${it.left.toInt()},${it.top.toInt()},${it.right.toInt()},${it.bottom.toInt()}" },
+                    tileCount = committedScene.dirtyTileCount,
+                    generation = committedScene.generation,
+                )
+            }
+        }
         committedScene.invalidate(
             before,
             after,
@@ -2456,6 +2542,7 @@ class InkCanvasView(context: Context) : View(context) {
         if (isCurrentActiveStroke(stroke)) {
             val samplers = if (rasterIncrementalRendering) rasterPrimarySamples else activePrimarySamples
             val sampler = samplers.getOrPut(stroke.id) {
+                StrokeTrace.markOnce(StrokeTrace.traceBaseId(stroke.id), StrokeTrace.STAGE_FIRST_DAB)
                 BrushProgramRuntime.newIncrementalSampler(stroke, width.toFloat(), height.toFloat(), dual = false)
             }
             return BrushProgramRuntime.updateIncrementalSampler(sampler, stroke, width.toFloat(), dual = false)
@@ -2466,6 +2553,7 @@ class InkCanvasView(context: Context) : View(context) {
     private fun dualStampedPoints(stroke: InkStroke): List<StrokePoint> {
         if (isCurrentActiveStroke(stroke)) {
             val sampler = activeDualSamples.getOrPut(stroke.id) {
+                StrokeTrace.markOnce(StrokeTrace.traceBaseId(stroke.id), StrokeTrace.STAGE_FIRST_DAB)
                 BrushProgramRuntime.newIncrementalSampler(stroke, width.toFloat(), height.toFloat(), dual = true)
             }
             return BrushProgramRuntime.updateIncrementalSampler(sampler, stroke, width.toFloat(), dual = true)
@@ -3403,10 +3491,12 @@ class InkCanvasView(context: Context) : View(context) {
                 clearActiveStrokeInput()
                 beginActiveStrokePreview()
                 currentStrokeId = java.util.UUID.randomUUID().toString()
+                StrokeTrace.begin(currentStrokeId)
                 // Freeze the many brush-engine parameters once per contact. Live rendering then
                 // copies only the changing point list instead of rebuilding the full descriptor
                 // several times per display frame.
                 activeStrokeTemplate = withCurrentBrushBehavior(buildStroke(emptyList())).copy(width = gestureBrushSize)
+                StrokeTrace.mark(currentStrokeId, StrokeTrace.STAGE_RUNTIME_CREATED)
                 beginWetPaintGesture(normalizedX, normalizedY)
                 activePerspectiveSnapConstraint = null
                 activeSpecialRulerConstraint = null
@@ -3572,6 +3662,7 @@ class InkCanvasView(context: Context) : View(context) {
                     laserTrail.append(normalizedX, normalizedY, event.eventTime)
                 }
                 else {
+                    if (activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) StrokeTrace.mark(currentStrokeId, StrokeTrace.STAGE_LAST_MOVE)
                     updateContinuousPlotInput(normalizedX, normalizedY, event.getPressure(pointerIndex), event.getAxisValue(MotionEvent.AXIS_TILT, pointerIndex), event.getOrientation(pointerIndex))
                     addMotionEventPoints(event, pointerIndex)
                 }
@@ -3591,6 +3682,7 @@ class InkCanvasView(context: Context) : View(context) {
                 stopContinuousPlot()
                 if (event.actionMasked == MotionEvent.ACTION_UP) performClick()
                 if (event.actionMasked == MotionEvent.ACTION_CANCEL || event.flags and MotionEvent.FLAG_CANCELED != 0) {
+                    StrokeTrace.abandon(currentStrokeId)
                     cancelWetPaintGesture()
                     clearActiveStrokeInput()
                     finishActiveStrokePreview()
@@ -3638,6 +3730,7 @@ class InkCanvasView(context: Context) : View(context) {
                     eraseAlong(normalizedX, normalizedY, event.getPressure(pointerIndex))
                     finishEraserGesture()
                 } else if (activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) && currentPoints.isNotEmpty()) {
+                    StrokeTrace.mark(currentStrokeId, StrokeTrace.STAGE_ACTION_UP)
                     // ACTION_UP can carry the only sample produced by a very fast final motion.
                     // Settle the modeled tail onto the physical pen before committing so the
                     // stored trajectory and its live cursor share the same endpoint.
@@ -3678,19 +3771,24 @@ class InkCanvasView(context: Context) : View(context) {
                         commitStrokeEdit(before, strokes)
                         false
                     }
+                    StrokeTrace.mark(currentStrokeId, StrokeTrace.STAGE_TRANSACTION_COMMIT)
                     finishWetPaintGesture()
                     val previewSurface = activeStrokeSurface?.takeUnless { usesViewActivePreview() }
                     if (incrementalRasterCommit) {
                         // The stable tile projection now contains the exact front-buffer dabs.
                         // Committing the transient surface as well would alpha-compose them twice.
                         previewSurface?.cancel()
+                        StrokeTrace.mark(currentStrokeId, StrokeTrace.STAGE_TRANSIENT_HIDDEN)
                     } else previewSurface?.let { surface ->
                         // The UP packet settles stabilization onto the physical endpoint. Publish
                         // that exact final packet before committing the low-latency surface.
                         surface.render(newStrokes)
                         surface.commit(newStrokes)
                     }
-                    activeStrokeSurface?.takeIf { previewSurface == null }?.cancel()
+                    activeStrokeSurface?.takeIf { previewSurface == null }?.let { surface ->
+                        surface.cancel()
+                        StrokeTrace.mark(currentStrokeId, StrokeTrace.STAGE_TRANSIENT_HIDDEN)
+                    }
                     activeSurfaceCommitted = previewSurface != null && !incrementalRasterCommit
                     clearActiveStrokeInput()
                     finishActiveStrokePreview()
@@ -5047,6 +5145,7 @@ class InkCanvasView(context: Context) : View(context) {
         val x = strokeInputModeler.x(index)
         val y = strokeInputModeler.y(index)
         val previous = currentPoints.lastOrNull()
+        if (previous == null) StrokeTrace.markOnce(currentStrokeId, StrokeTrace.STAGE_FIRST_SAMPLE)
         val pathDistance = (previous?.pathDistance ?: 0f) + if (previous == null) 0f else hypot(
             ((x - previous.x) * pageModelWidth).toDouble(),
             ((y - previous.y) * pageModelHeight).toDouble(),
@@ -5107,6 +5206,9 @@ class InkCanvasView(context: Context) : View(context) {
         completeRedraw: Boolean = false,
     ) {
         traceEngineV3("Inkloom.V3.ActiveStrokeDraw") {
+            StrokeTrace.primaryStrokeId(strokes)?.let { id ->
+                StrokeTrace.mark(id, StrokeTrace.STAGE_FRONT_BUFFER_DRAW)
+            }
             synchronized(renderLock) {
                 if (rasterIncrementalPaintEnabled && !completeRedraw &&
                     renderIncrementalRasterPaintPatch(canvas, strokes, finalCompleteInput = false)

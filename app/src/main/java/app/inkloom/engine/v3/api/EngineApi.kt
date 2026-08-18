@@ -15,6 +15,7 @@ internal typealias ProceduralBrushTip = app.inkloom.engine.v3.brush.ProceduralBr
 internal typealias ActiveStrokeCompositor = app.inkloom.engine.v3.render.ActiveStrokeCompositor
 internal typealias ActiveStrokeTailPlanner = app.inkloom.engine.v3.render.ActiveStrokeTailPlanner
 internal typealias BrushProgramBatchRenderer = app.inkloom.engine.v3.render.BrushProgramBatchRenderer
+internal typealias StrokeTrace = app.inkloom.engine.v3.diagnostics.StrokeTrace
 
 internal typealias EngineStrokeTransaction = app.inkloom.engine.v3.scene.EngineTransaction.Strokes
 internal typealias EngineExternalTransaction = app.inkloom.engine.v3.scene.EngineTransaction.External

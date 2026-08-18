@@ -10,6 +10,7 @@ import androidx.graphics.lowlatency.LowLatencyCanvasView
 import app.inkloom.document.InkStroke
 import app.inkloom.engine.v3.api.ActiveStrokeCompositor
 import app.inkloom.engine.v3.api.ActiveStrokeTailPlanner
+import app.inkloom.engine.v3.api.StrokeTrace
 
 /** Android host for the V3 compositor. This adapter belongs to UI so the engine never depends on
  * [InkCanvasView], Compose, panels or another application-owned view type. */
@@ -39,6 +40,9 @@ internal class CanvasHost(context: Context) : FrameLayout(context), ActiveStroke
         })
     }
 
+    override val hasActiveInk: Boolean
+        get() = activeStrokes.isNotEmpty()
+
     override fun render(strokes: List<InkStroke>) {
         activeStrokes = strokes
         lowLatencyView.renderFrontBufferedLayer()
@@ -48,10 +52,12 @@ internal class CanvasHost(context: Context) : FrameLayout(context), ActiveStroke
         activeStrokes = strokes
         lowLatencyView.renderFrontBufferedLayer()
         lowLatencyView.commit()
+        StrokeTrace.primaryStrokeId(strokes)?.let { id -> StrokeTrace.mark(id, StrokeTrace.STAGE_FRONT_BUFFER_COMMIT) }
         postOnAnimation {
             activeStrokes = emptyList()
             synchronized(activeLock) { tailPlanner.reset() }
             lowLatencyView.clear()
+            StrokeTrace.primaryStrokeId(strokes)?.let { id -> StrokeTrace.mark(id, StrokeTrace.STAGE_TRANSIENT_HIDDEN) }
             canvasView.resetActiveRenderState()
         }
     }

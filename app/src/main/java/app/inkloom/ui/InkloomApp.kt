@@ -4821,6 +4821,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.threeFingerTapRedo = settings.threeFingerTapRedo
                 view.twoFingerRotationEnabled = settings.twoFingerRotation
                 view.onInputDiagnostic = onInputDiagnostic
+                view.showStrokeTraceOverlay = settings.showStrokeTraceOverlay
                 view.onColorSampled = onColorSampled
                 view.onBrushSizeAdjusted = onBrushSizeAdjusted
                 view.onKeyInputDiagnostic = onKeyInputDiagnostic
@@ -4908,6 +4909,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.threeFingerTapRedo = settings.threeFingerTapRedo
                 view.twoFingerRotationEnabled = settings.twoFingerRotation
                 view.onInputDiagnostic = onInputDiagnostic
+                view.showStrokeTraceOverlay = settings.showStrokeTraceOverlay
                 view.onColorSampled = onColorSampled
                 view.onBrushSizeAdjusted = onBrushSizeAdjusted
                 view.onKeyInputDiagnostic = onKeyInputDiagnostic
@@ -9911,6 +9913,9 @@ private fun SettingsDialog(
                 item { SettingSwitch(tr("Three-finger tap to redo", "三指轻点重做"), tr("Matches common drawing-app gestures.", "符合常见绘画应用手势。"), settings.threeFingerTapRedo) { onChange(settings.copy(threeFingerTapRedo = it)) } }
                 item { SettingSwitch(tr("Two-finger canvas rotation", "双指旋转画布"), tr("Pinch, pan, and twist the canvas naturally.", "用双指自然地缩放、平移和旋转画布。"), settings.twoFingerRotation) { onChange(settings.copy(twoFingerRotation = it)) } }
                 item { SettingSwitch(tr("Show input diagnostics", "显示输入诊断"), tr("Displays stylus data plus Toolbox keys, scan codes, rotary axes, pointer buttons, source and device identity.", "显示手写笔数据，以及 Toolbox 的按键、扫描码、旋钮轴、侧键、来源和设备标识。"), settings.showInputDiagnostics) { onChange(settings.copy(showInputDiagnostics = it)) } }
+                if (app.inkloom.BuildConfig.DEBUG) {
+                    item { SettingSwitch(tr("Show stroke handoff overlay", "显示落笔链路叠加层"), tr("Debug only: shows whether the front buffer (FB) or the committed V3 projection (V3) owns the current frame, active tile transactions (TX), projection generation (GEN) and the active stroke id (SID).", "仅调试版：显示当前帧由前缓冲(FB)还是已提交的 V3 投影(V3)负责、进行中的瓦片事务(TX)、投影代数(GEN)与当前笔画 ID(SID)。"), settings.showStrokeTraceOverlay) { onChange(settings.copy(showStrokeTraceOverlay = it)) } }
+                }
                 item { Text("${tr("Pressure sensitivity", "压感灵敏度")}  ${"%.2f".format(settings.pressureSensitivity)}×") }
                 item { Slider(settings.pressureSensitivity, { onChange(settings.copy(pressureSensitivity = it)) }, valueRange = .25f..2.5f) }
                 item { Text("${tr("Pressure onset", "起始压力")}  ${(settings.pressureMinimumInput * 100).toInt()}%", color = MutedInk, fontSize = 12.sp) }

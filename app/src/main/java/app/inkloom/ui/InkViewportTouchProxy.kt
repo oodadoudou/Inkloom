@@ -14,6 +14,7 @@ import androidx.graphics.lowlatency.LowLatencyCanvasView
 import app.inkloom.document.InkStroke
 import app.inkloom.engine.v3.api.ActiveStrokeCompositor
 import app.inkloom.engine.v3.api.ActiveStrokeTailPlanner
+import app.inkloom.engine.v3.api.StrokeTrace
 import app.inkloom.document.BrushCursorGeometry
 import app.inkloom.engine.v3.api.ViewportFrame
 import app.inkloom.engine.v3.api.PointerPacketMapper
@@ -107,6 +108,9 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context), ActiveStro
         addView(cursorSurface, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     }
 
+    override val hasActiveInk: Boolean
+        get() = activeStrokes.isNotEmpty()
+
     override fun render(strokes: List<InkStroke>) {
         val canvas = target ?: return
         activeTransform = activeDrawingFrame ?: currentFrame(canvas)
@@ -120,10 +124,12 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context), ActiveStro
         activeStrokes = strokes
         activeInkSurface.renderFrontBufferedLayer()
         activeInkSurface.commit()
+        traceFrontBufferCommit(strokes)
         postOnAnimation {
             activeStrokes = emptyList()
             synchronized(activeLock) { activeTailPlanner.reset() }
             activeInkSurface.clear()
+            traceTransientHidden(strokes)
             canvas.resetActiveRenderState()
         }
     }
@@ -338,6 +344,14 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context), ActiveStro
         hoverDynamicRotationDegrees = 0f
         hoverDirectionDegrees = 0f
         cursorSurface.clear()
+    }
+
+    private fun traceFrontBufferCommit(strokes: List<InkStroke>) {
+        StrokeTrace.primaryStrokeId(strokes)?.let { id -> StrokeTrace.mark(id, StrokeTrace.STAGE_FRONT_BUFFER_COMMIT) }
+    }
+
+    private fun traceTransientHidden(strokes: List<InkStroke>) {
+        StrokeTrace.primaryStrokeId(strokes)?.let { id -> StrokeTrace.mark(id, StrokeTrace.STAGE_TRANSIENT_HIDDEN) }
     }
 
     private fun refreshCursorStyle() {
