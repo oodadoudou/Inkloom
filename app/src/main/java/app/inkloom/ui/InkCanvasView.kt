@@ -804,6 +804,13 @@ class InkCanvasView(context: Context) : View(context) {
     var tiltBleed: Float = 0f
     var tiltBleedStart: Float = 0f
     var tiltSizeCompression: Boolean = false
+    var graphiteTiltWidth: Float = 0f
+    var graphiteTiltWidthStart: Float = 0f
+    var graphiteTiltGrain: Float = 0f
+    var graphiteTiltGrainStart: Float = 0f
+    var proceduralPaperGrainEnabled: Boolean = false
+    var proceduralPaperGrainScale: Float = 100f
+    var proceduralPaperGrainDensity: Float = .5f
     var brushThickness: Float = 1f
     var brushThicknessVertical: Boolean = false
     var shapeRoundnessHorizontalJitter: Float = 0f
@@ -2469,7 +2476,9 @@ class InkCanvasView(context: Context) : View(context) {
             }
             val followsStroke = BrushStampRotation.followsStroke(stroke, dual = false)
             val hasPathJitter = stroke.strokePathJitter > .0001f || stroke.strokePathLongitudinalJitter > .0001f
-            val strokeDirection = if (followsStroke || hasPathJitter) StrokeStampSampler.directionDegrees(sampledPoints, index, width.toFloat(), height.toFloat()) else 0f
+            val graphiteTiltWidth = app.inkloom.document.GraphiteFootprint.tiltWidthFactor(stroke, point)
+            val needsStrokeDirection = followsStroke || hasPathJitter || graphiteTiltWidth > 1.0001f
+            val strokeDirection = if (needsStrokeDirection) StrokeStampSampler.directionDegrees(sampledPoints, index, width.toFloat(), height.toFloat()) else 0f
             repeat(stampsAtPoint) stamp@ { repeatIndex ->
             val sequenceIndex = index * 16 + repeatIndex
             val tipIndex = BrushTipSequence.index(stroke.tipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed, stroke.ribbon) ?: return@stamp
@@ -2498,8 +2507,8 @@ class InkCanvasView(context: Context) : View(context) {
             val tipScale = BrushTipTransform.scale(tip.width, tip.height, diameter, thicknessScale, stroke.thicknessVertical, roundness.horizontal, roundness.vertical)
             val flip = BrushTipFlip.signs(stroke.tipFlipHorizontalMode, stroke.tipFlipVerticalMode, stroke.tipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed)
             val scaleX = tipScale.x * flip.x
-            val scaleY = tipScale.y * flip.y
-            val angle = BrushStampRotation.degrees(
+            val scaleY = tipScale.y * flip.y * graphiteTiltWidth
+            val angle = if (graphiteTiltWidth > 1.0001f) strokeDirection else BrushStampRotation.degrees(
                 stroke = stroke,
                 dual = false,
                 stylusOrientationRadians = point.orientation,
@@ -2515,7 +2524,13 @@ class InkCanvasView(context: Context) : View(context) {
             }
             val jitteredColor = BrushColorJitter.argb(stroke, point, sequenceIndex)
             paint.colorFilter = srcInColorFilter(jitteredColor)
-            val mainAlpha = (ProcreateRendering.depositedAlpha(stroke.procreateRenderingMode, stroke.flow * dynamics.depositedAlpha * (falloff?.get(index) ?: 1f) * (taper?.opacity?.get(index) ?: 1f)) * 255f).toInt()
+            // PENCIL_RENDERER_V4: procedural paper grain anchored in document coordinates modulates
+            // each dab's deposition by the grain value at the dab's document position. It is a
+            // separate concept from the brush-tip tooth (which stays in the tip bitmap). Consecutive
+            // fixed-spacing dabs land on decorrelated paper grain, so the authored dab spacing no
+            // longer reads as the dominant visible periodicity.
+            val grainAlpha = app.inkloom.document.GraphiteFootprint.paperGrainAlpha(stroke, drawX, drawY) * app.inkloom.document.GraphiteFootprint.tiltGrainDensity(stroke, point)
+            val mainAlpha = (ProcreateRendering.depositedAlpha(stroke.procreateRenderingMode, stroke.flow * dynamics.depositedAlpha * grainAlpha * (falloff?.get(index) ?: 1f) * (taper?.opacity?.get(index) ?: 1f)) * 255f).toInt()
             val tiltBleedAmount = stroke.tiltBleed.coerceIn(0f, 1f) * app.inkloom.document.BrushTilt.response(point, stroke.tiltBleedStart)
             if ((stroke.waterEdgeEnabled && stroke.waterEdgeOpacity > 0f) || tiltBleedAmount > .001f) {
                 val edgeRadius = WaterEdge.distancePixels(stroke.waterEdgeRadius, stroke.waterEdgeRadiusUnit, width.toFloat()) + diameter * tiltBleedAmount * .18f
@@ -6295,6 +6310,13 @@ class InkCanvasView(context: Context) : View(context) {
         tiltBleed = tiltBleed,
         tiltBleedStart = tiltBleedStart,
         tiltSizeCompression = tiltSizeCompression,
+        graphiteTiltWidth = graphiteTiltWidth,
+        graphiteTiltWidthStart = graphiteTiltWidthStart,
+        graphiteTiltGrain = graphiteTiltGrain,
+        graphiteTiltGrainStart = graphiteTiltGrainStart,
+        proceduralPaperGrainEnabled = proceduralPaperGrainEnabled,
+        proceduralPaperGrainScale = proceduralPaperGrainScale,
+        proceduralPaperGrainDensity = proceduralPaperGrainDensity,
         strokeFalloff = strokeFalloff,
         strokePathJitter = strokePathJitter,
         strokePathLongitudinalJitter = strokePathLongitudinalJitter,

@@ -484,6 +484,22 @@ data class InkStroke(
     val tiltBleed: Float = 0f,
     val tiltBleedStart: Float = 0f,
     val tiltSizeCompression: Boolean = false,
+    /** PENCIL_RENDERER_V4: tilt widens the stamped graphite footprint along the axis
+     * perpendicular to the stroke (a width/aspect semantic, not a scalar size hack). Zero disables;
+     * a value of 1 widens the perpendicular axis up to roughly 2x at full tilt. Gated on an
+     * established tilt sensor so an unknown first sample stays neutral. */
+    val graphiteTiltWidth: Float = 0f,
+    val graphiteTiltWidthStart: Float = 0f,
+    /** PENCIL_RENDERER_V4: tilt boosts the procedural paper-grain density (more tooth when the
+     * pencil is laid flat). Zero disables. Gated on an established tilt sensor. */
+    val graphiteTiltGrain: Float = 0f,
+    val graphiteTiltGrainStart: Float = 0f,
+    /** PENCIL_RENDERER_V4: procedural paper grain anchored in document coordinates, kept separate
+     * from the brush-tip texture. The graphite tooth travels with the stamp; the paper grain is
+     * fixed to the page, so overlapping dabs at the same document position share the same grain. */
+    val proceduralPaperGrainEnabled: Boolean = false,
+    val proceduralPaperGrainScale: Float = 100f,
+    val proceduralPaperGrainDensity: Float = .5f,
     val thickness: Float = 1f,
     val thicknessVertical: Boolean = false,
     val shapeRoundnessHorizontalJitter: Float = 0f,

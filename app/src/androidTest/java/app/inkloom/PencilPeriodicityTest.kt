@@ -69,6 +69,53 @@ class PencilPeriodicityTest {
         }
     }
 
+    /** PENCIL_RENDERER_V4: the authored dab spacing must no longer be the dominant visible
+     * periodicity. The procedural paper grain is anchored in document coordinates and baked into
+     * the stamp alpha, so consecutive fixed-spacing dabs land on different paper grain and the
+     * spacing-frequency autocorrelation drops well below the plain-tip control (and below the
+     * graphite-texture-only pencil). */
+    @Test
+    fun v4ProceduralPaperGrainBreaksFixedSpacingDominance() {
+        withCircularTip { tip ->
+            val plain = hbPencil().copy(
+                brushId = "system-pencil-plain-control",
+                tipAssetPath = tip.absolutePath,
+                tipAssetPaths = listOf(tip.absolutePath),
+                hardness = 1f,
+                proceduralPaperGrainEnabled = false,
+                graphiteTiltGrain = 0f,
+            )
+            val pencil = hbPencil()
+            val v4 = hbPencil().copy(
+                proceduralPaperGrainEnabled = true,
+                proceduralPaperGrainScale = 6f,
+                proceduralPaperGrainDensity = .7f,
+                graphiteTiltGrain = 1.1f,
+                graphiteTiltGrainStart = .1f,
+            )
+            val plainCorr = spacingFrequencyCorrelation(plain)
+            val pencilCorr = spacingFrequencyCorrelation(pencil)
+            val v4Corr = spacingFrequencyCorrelation(v4)
+            println("PENCIL_V4 plain=${"%.3f".format(plainCorr)} pencil=${"%.3f".format(pencilCorr)} v4Grain=${"%.3f".format(v4Corr)}")
+            assertTrue(
+                "The plain control must still show strong spacing repetition (corr=${"%.3f".format(plainCorr)})",
+                plainCorr > .25f,
+            )
+            assertTrue(
+                "V4 procedural grain must drop the spacing-frequency correlation below the plain control (plain=${"%.3f".format(plainCorr)}, v4=${"%.3f".format(v4Corr)})",
+                v4Corr < plainCorr - .1f,
+            )
+            assertTrue(
+                "V4 procedural grain must drop spacing correlation below the texture-only pencil (pencil=${"%.3f".format(pencilCorr)}, v4=${"%.3f".format(v4Corr)})",
+                v4Corr < pencilCorr - .05f,
+            )
+            assertTrue(
+                "Authored dab spacing must no longer be the dominant visible periodicity (v4=${"%.3f".format(v4Corr)})",
+                v4Corr < .72f,
+            )
+        }
+    }
+
     /** Autocorrelation coefficient at the authored dab-spacing lag (in profile columns = 1 px). */
     private fun spacingFrequencyCorrelation(stroke: InkStroke): Double {
         val profile = profileFor(stroke)

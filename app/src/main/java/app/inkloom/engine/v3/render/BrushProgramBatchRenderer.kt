@@ -12,6 +12,7 @@ import app.inkloom.document.BrushStampRotation
 import app.inkloom.document.BrushTipTransform
 import app.inkloom.document.GrainDynamics
 import app.inkloom.document.GrainBehavior
+import app.inkloom.document.GraphiteFootprint
 import app.inkloom.document.InkStroke
 import app.inkloom.document.ProcreateRendering
 import app.inkloom.document.ShapeRoundnessJitter
@@ -50,7 +51,8 @@ internal object BrushProgramBatchRenderer {
         val taper = if (stroke.taperStartEnabled || stroke.taperEndEnabled || !stroke.procreateTaper.isDisabled()) {
             StrokeTaper.evaluate(stroke, sampledPoints, width, height)
         } else null
-        val dynamicAlpha = hasDynamicAlpha(stroke) || falloff != null || taper?.opacity != null
+        val dynamicAlpha = hasDynamicAlpha(stroke) || falloff != null || taper?.opacity != null ||
+            stroke.proceduralPaperGrainEnabled || stroke.graphiteTiltWidth > .0001f || stroke.graphiteTiltGrain > .0001f
         val program = BrushProgramRuntime.compile(stroke)
         var offset = 0
         for (index in safeStart until sampledPoints.size) {
@@ -58,9 +60,10 @@ internal object BrushProgramBatchRenderer {
             val baseX = point.x * width
             val baseY = point.y * height
             val dynamics = program.evaluateDab(stroke, point, dual = false)
+            val graphiteGrain = GraphiteFootprint.paperGrainAlpha(stroke, baseX, baseY) * GraphiteFootprint.tiltGrainDensity(stroke, point)
             val depositedAlpha = ProcreateRendering.depositedAlpha(
                 stroke.procreateRenderingMode,
-                stroke.flow * dynamics.depositedAlpha * (falloff?.get(index) ?: 1f) * (taper?.opacity?.get(index) ?: 1f),
+                stroke.flow * dynamics.depositedAlpha * graphiteGrain * (falloff?.get(index) ?: 1f) * (taper?.opacity?.get(index) ?: 1f),
             )
             if (depositedAlpha <= .0001f) continue
             val diameter = (stroke.width * width.coerceAtLeast(1f) / REFERENCE_WIDTH * (taper?.size?.get(index) ?: 1f) * dynamics.size).coerceAtLeast(.25f)
@@ -76,11 +79,13 @@ internal object BrushProgramBatchRenderer {
             )
             val followsStroke = BrushStampRotation.followsStroke(stroke, dual = false)
             val hasPathJitter = stroke.strokePathJitter > .0001f || stroke.strokePathLongitudinalJitter > .0001f
-            val strokeDirection = if (followsStroke || hasPathJitter) StrokeStampSampler.directionDegrees(sampledPoints, index, width, height) else 0f
+            val graphiteTiltWidth = GraphiteFootprint.tiltWidthFactor(stroke, point)
+            val needsStrokeDirection = followsStroke || hasPathJitter || graphiteTiltWidth > 1.0001f
+            val strokeDirection = if (needsStrokeDirection) StrokeStampSampler.directionDegrees(sampledPoints, index, width, height) else 0f
             val pathOffset = StrokePathJitter.offset(stroke.renderSeed, index, strokeDirection, diameter, stroke.strokePathJitter, stroke.strokePathLongitudinalJitter)
             val drawX = baseX + StrokePathJitter.unpackX(pathOffset)
             val drawY = baseY + StrokePathJitter.unpackY(pathOffset)
-            val angle = BrushStampRotation.degrees(
+            val angle = if (graphiteTiltWidth > 1.0001f) strokeDirection else BrushStampRotation.degrees(
                 stroke,
                 dual = false,
                 stylusOrientationRadians = point.orientation,
@@ -103,7 +108,7 @@ internal object BrushProgramBatchRenderer {
                 drawX,
                 drawY,
                 tip.width * tipScale.x,
-                tip.height * tipScale.y,
+                tip.height * tipScale.y * graphiteTiltWidth,
                 angle,
                 tip.width.toFloat(),
                 tip.height.toFloat(),

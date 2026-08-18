@@ -54,6 +54,18 @@ data class ImportedBrushGrain(
     val filteringMode: Int = ProcreateFiltering.NONE,
 )
 
+/** PENCIL_RENDERER_V4 graphite runtime semantics, separate from the brush-tip texture. */
+@Serializable
+data class ImportedBrushGraphite(
+    val tiltWidth: Float = 0f,
+    val tiltWidthStart: Float = 0f,
+    val tiltGrain: Float = 0f,
+    val tiltGrainStart: Float = 0f,
+    val paperGrainEnabled: Boolean = false,
+    val paperGrainScale: Float = 100f,
+    val paperGrainDensity: Float = .5f,
+)
+
 /** A durable, user-auditable source-semantic to Engine V3 runtime mapping. */
 @Serializable
 data class BrushSemanticMapping(
@@ -126,6 +138,10 @@ data class ImportedBrush(
     val tiltBleedStart: Float = 0f,
     /** Keeps grain wavelength fixed while tilt increases the brush diameter. */
     val tiltSizeCompression: Boolean = false,
+    /** PENCIL_RENDERER_V4 graphite runtime semantics (tilt->width, tilt->grain, procedural paper
+     * grain). Kept as a nested struct so the ImportedBrush constructor stays under the JVM
+     * 255-argument method-signature limit. */
+    val graphite: ImportedBrushGraphite = ImportedBrushGraphite(),
     /** CSP Correction > Stabilization. */
     val stabilization: Float = 0f,
     val stabilizationBySpeed: Boolean = false,
@@ -344,6 +360,13 @@ data class ImportedBrush(
     val dualGrainCompositeMode get() = dualGrain.compositeMode
     val dualGrainApplyPerPlot get() = dualGrain.applyPerPlot
     val dualGrainFilteringMode get() = dualGrain.filteringMode
+    val graphiteTiltWidth get() = graphite.tiltWidth
+    val graphiteTiltWidthStart get() = graphite.tiltWidthStart
+    val graphiteTiltGrain get() = graphite.tiltGrain
+    val graphiteTiltGrainStart get() = graphite.tiltGrainStart
+    val proceduralPaperGrainEnabled get() = graphite.paperGrainEnabled
+    val proceduralPaperGrainScale get() = graphite.paperGrainScale
+    val proceduralPaperGrainDensity get() = graphite.paperGrainDensity
 }
 
 enum class EditorTool { PEN, HIGHLIGHTER, ERASER, EYEDROPPER, SELECT, SHAPE, TEXT, NOTE, LINK, IMAGE, AUDIO, LASER, FILL, GRADIENT, SMUDGE, LIQUIFY, CORRECT_LINE }

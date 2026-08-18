@@ -1418,7 +1418,9 @@ class DocumentAssetService(private val context: Context) {
             val offset = if (stroke.spray) SprayGeometry.offset(brushDiameter / 2f * stroke.spraySpread.coerceIn(0f, 4f), scatterRandom.nextFloat(), scatterRandom.nextFloat(), stroke.sprayBias) else SprayOffset(0f, 0f)
             val followsStroke = BrushStampRotation.followsStroke(stroke, dual = false)
             val hasPathJitter = stroke.strokePathJitter > .0001f || stroke.strokePathLongitudinalJitter > .0001f
-            val strokeDirection = if (followsStroke || hasPathJitter) StrokeStampSampler.directionDegrees(sampledPoints, index, width.toFloat(), height.toFloat()) else 0f
+            val graphiteTiltWidth = app.inkloom.document.GraphiteFootprint.tiltWidthFactor(stroke, point)
+            val needsStrokeDirection = followsStroke || hasPathJitter || graphiteTiltWidth > 1.0001f
+            val strokeDirection = if (needsStrokeDirection) StrokeStampSampler.directionDegrees(sampledPoints, index, width.toFloat(), height.toFloat()) else 0f
             val pathOffset = StrokePathJitter.offset(stroke.renderSeed, sequenceIndex, strokeDirection, diameter, stroke.strokePathJitter, stroke.strokePathLongitudinalJitter)
             val drawX = x + offset.x + StrokePathJitter.unpackX(pathOffset)
             val drawY = y + offset.y + StrokePathJitter.unpackY(pathOffset)
@@ -1441,7 +1443,7 @@ class DocumentAssetService(private val context: Context) {
                 } else tips[tipIndex]
             } else tips[tipIndex]
             val thicknessDynamic = dynamics.thickness
-            val angle = BrushStampRotation.degrees(
+            val angle = if (graphiteTiltWidth > 1.0001f) strokeDirection else BrushStampRotation.degrees(
                 stroke = stroke,
                 dual = false,
                 stylusOrientationRadians = point.orientation,
@@ -1453,9 +1455,10 @@ class DocumentAssetService(private val context: Context) {
             val tipScale = BrushTipTransform.scale(tip.width, tip.height, diameter, thicknessScale, stroke.thicknessVertical, roundness.horizontal, roundness.vertical)
             val flip = BrushTipFlip.signs(stroke.tipFlipHorizontalMode, stroke.tipFlipVerticalMode, stroke.tipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed)
             val scaleX = tipScale.x * flip.x
-            val scaleY = tipScale.y * flip.y
+            val scaleY = tipScale.y * flip.y * graphiteTiltWidth
             val matrix = Matrix().apply { postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(scaleX, scaleY); postRotate(angle); postTranslate(drawX, drawY) }
-            val mainAlpha = (ProcreateRendering.depositedAlpha(stroke.procreateRenderingMode, stroke.flow * dynamics.depositedAlpha * (falloff?.get(index) ?: 1f) * (taper.opacity?.get(index) ?: 1f)) * 255f).toInt()
+            val grainAlpha = app.inkloom.document.GraphiteFootprint.paperGrainAlpha(stroke, drawX, drawY) * app.inkloom.document.GraphiteFootprint.tiltGrainDensity(stroke, point)
+            val mainAlpha = (ProcreateRendering.depositedAlpha(stroke.procreateRenderingMode, stroke.flow * dynamics.depositedAlpha * grainAlpha * (falloff?.get(index) ?: 1f) * (taper.opacity?.get(index) ?: 1f)) * 255f).toInt()
             val jitteredColor = BrushColorJitter.argb(stroke, point, sequenceIndex)
             val tiltBleedAmount = stroke.tiltBleed.coerceIn(0f, 1f) * BrushTilt.response(point, stroke.tiltBleedStart)
             if ((stroke.waterEdgeEnabled && stroke.waterEdgeOpacity > 0f) || tiltBleedAmount > .001f) {

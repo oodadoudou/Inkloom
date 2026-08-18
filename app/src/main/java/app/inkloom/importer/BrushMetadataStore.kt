@@ -10,6 +10,7 @@ import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
 import app.inkloom.model.ImportedBrushGrain
+import app.inkloom.model.ImportedBrushGraphite
 import app.inkloom.model.BrushSemanticMapping
 import app.inkloom.model.SemanticFidelity
 import app.inkloom.document.BrushCurvePoint
@@ -405,6 +406,15 @@ class BrushMetadataStore(
                         waterEdgeDarkness = item.optDouble("waterEdgeDarkness", 0.0).toFloat().coerceIn(0f, 1f),
                         waterEdgeBlur = item.optDouble("waterEdgeBlur", 0.0).toFloat().coerceIn(0f, 400f),
                         waterEdgeBlurUnit = item.optInt("waterEdgeBlurUnit", 0),
+                        graphite = ImportedBrushGraphite(
+                            tiltWidth = item.optDouble("graphiteTiltWidth", 0.0).toFloat().coerceIn(0f, 3f),
+                            tiltWidthStart = item.optDouble("graphiteTiltWidthStart", 0.0).toFloat().coerceIn(0f, .99f),
+                            tiltGrain = item.optDouble("graphiteTiltGrain", 0.0).toFloat().coerceIn(0f, 2f),
+                            tiltGrainStart = item.optDouble("graphiteTiltGrainStart", 0.0).toFloat().coerceIn(0f, .99f),
+                            paperGrainEnabled = item.optBoolean("proceduralPaperGrainEnabled", false),
+                            paperGrainScale = item.optDouble("proceduralPaperGrainScale", 100.0).toFloat().coerceIn(1f, 4000f),
+                            paperGrainDensity = item.optDouble("proceduralPaperGrainDensity", .5).toFloat().coerceIn(0f, 1f),
+                        ),
                         favorite = item.optBoolean("favorite", false),
                         hidden = item.optBoolean("hidden", false),
                         isEraser = item.optBoolean("isEraser", false),
@@ -515,6 +525,13 @@ class BrushMetadataStore(
                     .put("tiltBleed", brush.tiltBleed)
                     .put("tiltBleedStart", brush.tiltBleedStart)
                     .put("tiltSizeCompression", brush.tiltSizeCompression)
+                    .put("graphiteTiltWidth", brush.graphiteTiltWidth)
+                    .put("graphiteTiltWidthStart", brush.graphiteTiltWidthStart)
+                    .put("graphiteTiltGrain", brush.graphiteTiltGrain)
+                    .put("graphiteTiltGrainStart", brush.graphiteTiltGrainStart)
+                    .put("proceduralPaperGrainEnabled", brush.proceduralPaperGrainEnabled)
+                    .put("proceduralPaperGrainScale", brush.proceduralPaperGrainScale)
+                    .put("proceduralPaperGrainDensity", brush.proceduralPaperGrainDensity)
                     .put("stabilization", brush.stabilization)
                     .put("stabilizationBySpeed", brush.stabilizationBySpeed)
                     .put("stabilizationBySpeedMode", brush.stabilizationBySpeedMode)

@@ -5092,6 +5092,13 @@ internal fun InkCanvasView.applyBrushConfiguration(
     tiltBleed = activeBrush?.tiltBleed ?: 0f
     tiltBleedStart = activeBrush?.tiltBleedStart ?: 0f
     tiltSizeCompression = activeBrush?.tiltSizeCompression ?: false
+    graphiteTiltWidth = activeBrush?.graphiteTiltWidth ?: 0f
+    graphiteTiltWidthStart = activeBrush?.graphiteTiltWidthStart ?: 0f
+    graphiteTiltGrain = activeBrush?.graphiteTiltGrain ?: 0f
+    graphiteTiltGrainStart = activeBrush?.graphiteTiltGrainStart ?: 0f
+    proceduralPaperGrainEnabled = activeBrush?.proceduralPaperGrainEnabled ?: false
+    proceduralPaperGrainScale = activeBrush?.proceduralPaperGrainScale ?: 100f
+    proceduralPaperGrainDensity = activeBrush?.proceduralPaperGrainDensity ?: .5f
     brushThickness = activeBrush?.thickness ?: 1f
     brushThicknessVertical = activeBrush?.thicknessVertical ?: false
     shapeRoundnessHorizontalJitter = activeBrush?.shapeRoundnessHorizontalJitter ?: 0f
