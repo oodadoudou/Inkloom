@@ -6,6 +6,28 @@ import kotlin.math.pow
 object StrokeTaper {
     data class DabFactors(val size: List<Float>, val opacity: List<Float>?)
 
+    /** Full-replay budget for live end taper. Below this total path length a tapered stroke is
+     * replayed with its terminal taper on every display frame so the preview equals the commit;
+     * longer tapered strokes defer to the Procreate-style contract (taper appears at pen-up). */
+    const val FULL_TAPER_LIVE_REPLAY_MAX_PX = 1200f
+
+    fun endTaperEnabled(stroke: InkStroke): Boolean =
+        stroke.taperEndEnabled ||
+            stroke.procreateTaper.pressureEndLength > .0001f ||
+            stroke.procreateTaper.touchEndLength > .0001f
+
+    fun pathLengthPx(points: List<StrokePoint>, pageWidth: Float, pageHeight: Float): Float {
+        if (points.size < 2) return 0f
+        var length = 0f
+        for (index in 1 until points.size) {
+            length += hypot(
+                ((points[index].x - points[index - 1].x) * pageWidth.coerceAtLeast(1f)).toDouble(),
+                ((points[index].y - points[index - 1].y) * pageHeight.coerceAtLeast(1f)).toDouble(),
+            ).toFloat()
+        }
+        return length
+    }
+
     fun evaluate(stroke: InkStroke, points: List<StrokePoint>, pageWidth: Float, pageHeight: Float): DabFactors {
         val procreate = procreateFactors(stroke, points, pageWidth, pageHeight)
         return if (procreate != null) DabFactors(procreate.first, procreate.second) else DabFactors(

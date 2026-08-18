@@ -7,6 +7,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.document.InkStroke
 import app.inkloom.document.ProcreateBrushBlend
+import app.inkloom.document.ProcreateTaper
 import app.inkloom.engine.v3.render.ActiveStrokeCompositor
 import app.inkloom.model.EditorTool
 import app.inkloom.settings.AppSettings
@@ -117,6 +118,54 @@ class FrontBufferLifecycleTest {
             view.flushActiveStrokeFrame()
             assertEquals("A new stroke after a cancel must restart from the contact dab", 1, surface.rendered.last().first().points.size)
             assertTrue("The new stroke must render after the previous cancel", surface.rendered.size > rendersAfterCancel)
+        }
+    }
+
+    @Test
+    fun shortTaperedStrokePreviewsItsTerminalTaperSoPreviewEqualsCommit() {
+        val view = newView()
+        val surface = RecordingActiveSurface()
+        view.activeStrokeSurface = surface
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view.applyBrushConfiguration(EditorTool.PEN, AppSettings(), null, 20f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
+            view.procreateTaper = ProcreateTaper(pressureEndLength = .3f, pressureSize = .5f, pressureOpacity = .5f)
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_DOWN, 250f, 400f, 1L))
+            view.flushActiveStrokeFrame()
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_MOVE, 500f, 400f, 5L))
+            view.flushActiveStrokeFrame()
+            val live = surface.rendered.last().first()
+            assertTrue(
+                "A short tapered stroke must preview its terminal taper (end=${live.procreateTaper.pressureEndLength})",
+                live.procreateTaper.pressureEndLength > .0001f,
+            )
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_UP, 900f, 400f, 9L))
+            assertEquals(
+                "The committed stroke must share the preview's terminal taper (single source)",
+                surface.rendered.last().first().procreateTaper.pressureEndLength,
+                surface.committed.last().first().procreateTaper.pressureEndLength,
+                .0001f,
+            )
+        }
+    }
+
+    @Test
+    fun longTaperedStrokeDefersTerminalTaperToPenUp() {
+        val view = newView()
+        val surface = RecordingActiveSurface()
+        view.activeStrokeSurface = surface
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view.applyBrushConfiguration(EditorTool.PEN, AppSettings(), null, 20f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
+            view.procreateTaper = ProcreateTaper(pressureEndLength = .3f, pressureSize = .5f, pressureOpacity = .5f)
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_DOWN, 100f, 400f, 1L))
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_MOVE, 1550f, 400f, 5L))
+            view.flushActiveStrokeFrame()
+            val live = surface.rendered.last().first()
+            assertEquals(
+                "Long tapered strokes defer terminal taper to pen-up (Procreate-style contract)",
+                0f,
+                live.procreateTaper.pressureEndLength,
+                .0001f,
+            )
         }
     }
 

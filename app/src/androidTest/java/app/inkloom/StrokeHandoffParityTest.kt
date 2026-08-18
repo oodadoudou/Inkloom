@@ -27,9 +27,10 @@ import org.junit.runner.RunWith
  * Proves:
  * 1. The two presentation systems rasterize an identical stroke to identical pixels (the
  *    precondition for a gap-free, visually identical handoff).
- * 2. The only by-design visual divergence (end-taper suppression) stays confined to the tail.
- * 3. Post-correction applied only at pen-up changes the committed geometry, which is a real
- *    device-independent source of the "shape changed at pen-up" symptom.
+ * 2. The taper contract: within the live full-replay budget the preview carries the terminal
+ *    taper (single source, preview == commit); the deferred state below is what the live path
+ *    only produces for strokes longer than the budget (Procreate-style deferred taper).
+ * 3. Pen-up post-correction is bounded and non-destructive (see StrokePostCorrectionAuditTest).
  */
 @RunWith(AndroidJUnit4::class)
 class StrokeHandoffParityTest {

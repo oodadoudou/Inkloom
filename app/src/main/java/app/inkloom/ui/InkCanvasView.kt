@@ -283,9 +283,16 @@ class InkCanvasView(context: Context) : View(context) {
         }
         // End taper depends on the eventual stroke length. Replaying the complete growing stroke
         // on every display frame is quadratic and made long SUT/Procreate brushes fall seconds
-        // behind the pen. Preview the body incrementally; the committed stroke applies its exact
-        // terminal taper once, affecting only the final tail.
-        surface.render(symmetryStrokes(currentPoints).map { stroke ->
+        // behind the pen. Within the full-replay budget a tapered stroke is replayed with its
+        // terminal taper so the preview equals the commit (single source, no pen-up shape change).
+        // Longer tapered strokes preview the body incrementally and apply their exact terminal
+        // taper once at commit (Procreate-style deferred contract).
+        val strokes = symmetryStrokes(currentPoints)
+        val canReplayTaperLive = strokes.firstOrNull()?.let { first ->
+            StrokeTaper.endTaperEnabled(first) &&
+                StrokeTaper.pathLengthPx(first.points, pageModelWidth, pageModelHeight) <= StrokeTaper.FULL_TAPER_LIVE_REPLAY_MAX_PX
+        } == true
+        surface.render(if (canReplayTaperLive) strokes else strokes.map { stroke ->
             val hasProcreateEnd = stroke.procreateTaper.pressureEndLength > .0001f || stroke.procreateTaper.touchEndLength > .0001f
             if (stroke.taperEndEnabled || hasProcreateEnd) stroke.copy(
                 taperEndEnabled = false,
@@ -2355,9 +2362,14 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     internal fun requiresCompleteActiveReplay(strokes: List<InkStroke>): Boolean = synchronized(renderLock) {
+        val liveTaperReplay = strokes.any { stroke ->
+            StrokeTaper.endTaperEnabled(stroke) &&
+                StrokeTaper.pathLengthPx(stroke.points, pageModelWidth, pageModelHeight) <= StrokeTaper.FULL_TAPER_LIVE_REPLAY_MAX_PX
+        }
         val wholeTextureStrokes = strokes.filter { !it.grainApplyPerPlot && it.grainAssetPath != null && it.grainDensity > 0f }
         val dualStrokes = strokes.filter(InkStroke::dualBrush)
-        wholeTextureStrokes.isNotEmpty() &&
+        liveTaperReplay ||
+            wholeTextureStrokes.isNotEmpty() &&
             (strokes.size != 1 || wholeTextureStrokes.size != 1 || !canIncrementallyReplaceWholeStrokeTexture(wholeTextureStrokes.single())) ||
             dualStrokes.isNotEmpty() && (
                 strokes.size != 1 ||
