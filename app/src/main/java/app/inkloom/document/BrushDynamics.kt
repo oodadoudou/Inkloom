@@ -20,11 +20,14 @@ object BrushDynamics {
 
     fun secondary(dynamics: BrushSecondaryDynamics, point: StrokePoint, strokeSeed: Int, salt: Int): Float {
         var factor = 1f
-        if (dynamics.tiltEnabled) {
+        // A not-yet-established sensor must stay neutral (factor 1), never a numeric zero fed
+        // through a response curve as an extreme value. The first modeled sample of a stroke is
+        // not established (no history), so velocity/tilt dynamics cannot pop its first dab.
+        if (dynamics.tiltEnabled && point.hasSensor(BrushSensorFlags.TILT)) {
             val tiltInput = BrushTilt.response(point, dynamics.tiltStart)
             factor *= ranged(dynamics.tiltMinimum, curve(dynamics.tiltCurve, tiltInput))
         }
-        if (dynamics.velocityEnabled) {
+        if (dynamics.velocityEnabled && point.hasSensor(BrushSensorFlags.VELOCITY)) {
             val velocityInput = (point.velocity * dynamics.velocityScale.coerceIn(0f, 10f)).coerceIn(0f, 1f)
             factor *= ranged(dynamics.velocityMinimum, curve(dynamics.velocityCurve, velocityInput))
         }

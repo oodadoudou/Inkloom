@@ -54,6 +54,7 @@ import app.inkloom.document.BrushCurvePoint
 import app.inkloom.document.BrushCursorGeometry
 import app.inkloom.document.BrushEngineKind
 import app.inkloom.document.BrushColorDynamics
+import app.inkloom.document.BrushSensorFlags
 import app.inkloom.document.ProcreateColorDynamics
 import app.inkloom.document.ProcreateBrushBlend
 import app.inkloom.document.ProcreateFiltering
@@ -5181,6 +5182,10 @@ class InkCanvasView(context: Context) : View(context) {
             orientation = strokeInputModeler.orientation(index),
             velocity = strokeInputModeler.velocity(index),
             pathDistance = pathDistance,
+            // The first modeled sample has no history: velocity is 0 by construction and
+            // tilt/orientation are often device defaults. Marking it not-established lets brush
+            // dynamics treat the sensors as neutral instead of feeding zero through a curve.
+            sensorFlags = if (previous == null) 0 else BrushSensorFlags.ALL,
         )
     }
 

@@ -239,6 +239,17 @@ sealed interface PageBackground {
 @Serializable
 enum class PaperPattern { PLAIN, GRID, DOT, RULED, CORNELL }
 
+/** Bitmask describing which brush-input sensors are currently established for a sample. The first
+ * modeled sample of a stroke has no history: velocity is 0 by construction and tilt/direction are
+ * often device defaults, so they are NOT_YET_ESTABLISHED and brush dynamics treat them as neutral
+ * instead of passing a numeric zero through a response curve as an extreme value. */
+object BrushSensorFlags {
+    const val VELOCITY = 1
+    const val TILT = 2
+    const val ORIENTATION = 4
+    const val ALL = VELOCITY or TILT or ORIENTATION
+}
+
 @Serializable
 data class StrokePoint(
     val x: Float,
@@ -252,7 +263,13 @@ data class StrokePoint(
     val pathDistance: Float = 0f,
     /** Local pigment produced by Blend. Null inherits the stroke's base color. */
     val pigmentArgb: Long? = null,
-)
+    /** Established brush-input sensors; see [BrushSensorFlags]. Defaults to all-established so
+     * imported/replayed points behave as real samples; the live input modeler clears the flags on
+     * the first sample only. */
+    val sensorFlags: Int = BrushSensorFlags.ALL,
+) {
+    fun hasSensor(flag: Int): Boolean = sensorFlags and flag != 0
+}
 
 @Serializable
 data class BrushCurvePoint(val x: Float, val y: Float)

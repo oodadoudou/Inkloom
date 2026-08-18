@@ -117,10 +117,10 @@ object BrushColorJitter {
     fun amount(dynamics: BrushColorDynamics, point: StrokePoint, strokeSeed: Int, stampIndex: Int, salt: Int): Float {
         var value = 1f
         if (dynamics.pressureEnabled) value *= ranged(dynamics.pressureMinimum, BrushDynamics.curve(dynamics.pressureCurve, point.pressure))
-        if (dynamics.tiltEnabled) {
+        if (dynamics.tiltEnabled && point.hasSensor(BrushSensorFlags.TILT)) {
             value *= ranged(dynamics.tiltMinimum, BrushTilt.response(point, dynamics.tiltStart))
         }
-        if (dynamics.velocityEnabled) {
+        if (dynamics.velocityEnabled && point.hasSensor(BrushSensorFlags.VELOCITY)) {
             val velocityInput = (point.velocity * dynamics.velocityScale.coerceIn(0f, 10f)).coerceIn(0f, 1f)
             value *= ranged(dynamics.velocityMinimum, BrushDynamics.curve(dynamics.velocityCurve, velocityInput))
         }
@@ -131,8 +131,8 @@ object BrushColorJitter {
     private fun parameterAmount(dynamics: BrushParameterDynamics, point: StrokePoint, strokeSeed: Int, stampIndex: Int, salt: Int): Float {
         var value = if (dynamics.pressureEnabled) ranged(dynamics.pressureMinimum, BrushDynamics.curve(dynamics.pressureCurve, point.pressure)) else 1f
         val secondary = dynamics.secondary
-        if (secondary.tiltEnabled) value *= ranged(secondary.tiltMinimum, BrushDynamics.curve(secondary.tiltCurve, BrushTilt.response(point, secondary.tiltStart)))
-        if (secondary.velocityEnabled) value *= ranged(secondary.velocityMinimum, BrushDynamics.curve(secondary.velocityCurve, (point.velocity * secondary.velocityScale.coerceIn(0f, 10f)).coerceIn(0f, 1f)))
+        if (secondary.tiltEnabled && point.hasSensor(BrushSensorFlags.TILT)) value *= ranged(secondary.tiltMinimum, BrushDynamics.curve(secondary.tiltCurve, BrushTilt.response(point, secondary.tiltStart)))
+        if (secondary.velocityEnabled && point.hasSensor(BrushSensorFlags.VELOCITY)) value *= ranged(secondary.velocityMinimum, BrushDynamics.curve(secondary.velocityCurve, (point.velocity * secondary.velocityScale.coerceIn(0f, 10f)).coerceIn(0f, 1f)))
         if (secondary.randomEnabled) value *= ranged(secondary.randomMinimum, random(strokeSeed, point.timeMs, stampIndex, salt))
         return value.coerceIn(0f, 1.5f)
     }

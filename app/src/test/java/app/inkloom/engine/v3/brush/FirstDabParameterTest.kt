@@ -2,6 +2,7 @@ package app.inkloom.engine.v3.brush
 
 import app.inkloom.document.BrushCurvePoint
 import app.inkloom.document.BrushSecondaryDynamics
+import app.inkloom.document.BrushSensorFlags
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
 import org.junit.After
@@ -141,9 +142,10 @@ class FirstDabParameterTest {
     }
 
     @Test
-    fun zeroVelocityOnTheFirstSampleIsAnExtremeWhenVelocityDynamicsAreEnabled() {
+    fun zeroVelocityOnTheFirstSampleIsNeutralWhenVelocityDynamicsAreEnabled() {
         val points = line { index -> if (index == 0) 0f else .35f }.mapIndexed { index, point ->
-            point.copy(velocity = if (index == 0) 0f else .5f)
+            if (index == 0) point.copy(sensorFlags = 0)
+            else point.copy(velocity = .5f, sensorFlags = BrushSensorFlags.ALL)
         }
         val stroke = InkStroke(
             id = "velocity-zero",
@@ -161,19 +163,20 @@ class FirstDabParameterTest {
         val sampled = dabs(stroke)
         val first = BrushProgramRuntime.evaluateDab(stroke, sampled.first())
         assertEquals(
-            "velocity == 0 maps through curve(0) to the velocity minimum factor",
-            .4f,
+            "The first sample's velocity is not yet established and must stay neutral (factor 1), never the curve minimum",
+            1f,
             first.size,
             1e-3f,
         )
-        val steady = BrushProgramRuntime.evaluateDab(stroke, sampled.last())
-        assertTrue("First sample velocity 0 must not be silently treated as steady-state", first.size < steady.size)
+        val later = BrushProgramRuntime.evaluateDab(stroke, sampled.last())
+        assertTrue("Established samples must still apply velocity dynamics", later.size < 1f)
     }
 
     @Test
-    fun zeroTiltOnTheFirstSampleHitsTheTiltMinimumWhenTiltDynamicsAreEnabled() {
+    fun zeroTiltOnTheFirstSampleIsNeutralWhenTiltDynamicsAreEnabled() {
         val points = line { index -> if (index == 0) 0f else .5f }.mapIndexed { index, point ->
-            point.copy(tilt = if (index == 0) 0f else .8f)
+            if (index == 0) point.copy(sensorFlags = 0)
+            else point.copy(tilt = .8f, sensorFlags = BrushSensorFlags.ALL)
         }
         val stroke = InkStroke(
             id = "tilt-zero",
@@ -190,13 +193,13 @@ class FirstDabParameterTest {
         val sampled = dabs(stroke)
         val first = BrushProgramRuntime.evaluateDab(stroke, sampled.first())
         assertEquals(
-            "tilt == 0 with tiltStart > 0 maps to the tilt minimum factor",
-            .5f,
+            "The first sample's tilt is not yet established and must not modulate the first dab",
+            1f,
             first.size,
             1e-3f,
         )
         val later = BrushProgramRuntime.evaluateDab(stroke, sampled.last())
-        assertTrue("A zero-tilt contact must not be identical to a tilted steady-state dab", first.size < later.size)
+        assertTrue("Established samples must still apply tilt dynamics", later.size < 1f)
     }
 
     private fun dabs(stroke: InkStroke): List<StrokePoint> =

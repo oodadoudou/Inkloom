@@ -2,7 +2,40 @@ package app.inkloom.document
 
 import kotlin.math.pow
 
+/**
+ * How the very first DOWN pressure is treated. Zero-pressure contacts are common on some styli and
+ * were previously stacked with the velocity/tilt first-sample extremes. The final default is
+ * device-calibrated; the live pipeline currently uses [InitialPressurePolicy.USE_REPORTED], and
+ * this policy surface keeps every option explicit and testable without re-tuning the pipeline.
+ */
+enum class InitialPressurePolicy {
+    /** Pass the raw DOWN pressure through normal calibration unchanged (current default). */
+    USE_REPORTED,
+
+    /** Hold the DOWN sample at the first non-zero pressure reported later in the stroke. */
+    WAIT_FOR_FIRST_NONZERO,
+
+    /** Bootstrap the DOWN sample from the first MOVE pressure. */
+    BOOTSTRAP_FROM_FIRST_VALID_MOVE,
+
+    /** Floor zero-pressure contacts at the calibrated contact minimum. */
+    CALIBRATED_CONTACT_MINIMUM,
+}
+
 object PressureCalibration {
+    /** Calibrated floor for zero-pressure contacts under [InitialPressurePolicy.CALIBRATED_CONTACT_MINIMUM]. */
+    const val CALIBRATED_CONTACT_MINIMUM_PRESSURE = .08f
+
+    /** Resolves the effective DOWN pressure for a policy. [establishedPressure] is the first valid
+     * non-zero pressure seen on the stroke (from the first MOVE when bootstrapping). */
+    fun resolveInitialPressure(rawDownPressure: Float, policy: InitialPressurePolicy, establishedPressure: Float): Float = when (policy) {
+        InitialPressurePolicy.USE_REPORTED -> rawDownPressure
+        InitialPressurePolicy.WAIT_FOR_FIRST_NONZERO -> if (rawDownPressure > 0f) rawDownPressure else establishedPressure
+        InitialPressurePolicy.BOOTSTRAP_FROM_FIRST_VALID_MOVE -> establishedPressure
+        InitialPressurePolicy.CALIBRATED_CONTACT_MINIMUM ->
+            if (rawDownPressure > 0f) rawDownPressure else establishedPressure.coerceAtLeast(CALIBRATED_CONTACT_MINIMUM_PRESSURE)
+    }
+
     fun apply(
         raw: Float,
         minimumInput: Float,
