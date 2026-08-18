@@ -118,4 +118,93 @@ class StrokeTraceTest {
         assertEquals("abc", StrokeTrace.traceBaseId("abc-sym-0"))
         assertEquals("abc", StrokeTrace.traceBaseId("abc-sym-7"))
     }
+
+    @Test
+    fun cleanSessionProducesNoWarnings() {
+        val session = StrokeTrace.begin("clean")!!
+        session.mark(StrokeTrace.STAGE_FIRST_SAMPLE)
+        session.mark(StrokeTrace.STAGE_FRONT_BUFFER_DRAW)
+        session.mark(StrokeTrace.STAGE_ACTION_UP)
+        session.markTransaction(previewPoints = 12, committedPoints = 12)
+        session.mark(StrokeTrace.STAGE_PROJECTION_GENERATED)
+        session.mark(StrokeTrace.STAGE_FRONT_BUFFER_COMMIT)
+        session.mark(StrokeTrace.STAGE_TRANSIENT_HIDDEN)
+        assertTrue(session.collectWarnings().isEmpty())
+    }
+
+    @Test
+    fun gapDownToFirstTransientExceedingTwoFramesIsFlagged() {
+        val session = StrokeTrace.begin("gap")!!
+        Thread.sleep(35)
+        session.mark(StrokeTrace.STAGE_FRONT_BUFFER_DRAW)
+        val warnings = session.collectWarnings()
+        assertTrue("Expected a DOWN->first transient gap warning, got $warnings", warnings.any { it.startsWith("GAP DOWN->first transient") })
+    }
+
+    @Test
+    fun generationStallWhenProjectionInvalidatedButNeverGeneratedIsFlagged() {
+        val session = StrokeTrace.begin("stall")!!
+        session.mark(StrokeTrace.STAGE_ACTION_UP)
+        session.mark(StrokeTrace.STAGE_PROJECTION_INVALIDATED)
+        session.markTransaction(previewPoints = 5, committedPoints = 5)
+        session.mark(StrokeTrace.STAGE_FRONT_BUFFER_COMMIT)
+        session.mark(StrokeTrace.STAGE_TRANSIENT_HIDDEN)
+        assertTrue(session.collectWarnings().any { it.startsWith("GENERATION_STALL") })
+    }
+
+    @Test
+    fun handoffBeforeProjectionIsFlagged() {
+        val session = StrokeTrace.begin("handoff")!!
+        session.mark(StrokeTrace.STAGE_ACTION_UP)
+        session.mark(StrokeTrace.STAGE_FRONT_BUFFER_COMMIT)
+        session.markTransaction(previewPoints = 5, committedPoints = 5)
+        session.mark(StrokeTrace.STAGE_TRANSIENT_HIDDEN)
+        assertTrue(session.collectWarnings().any { it.startsWith("HANDOFF_BEFORE_PROJECTION") })
+    }
+
+    @Test
+    fun previewFinalGeometryDifferenceIsFlagged() {
+        val session = StrokeTrace.begin("geom")!!
+        session.mark(StrokeTrace.STAGE_FRONT_BUFFER_DRAW)
+        session.mark(StrokeTrace.STAGE_ACTION_UP)
+        session.markTransaction(previewPoints = 10, committedPoints = 7)
+        session.mark(StrokeTrace.STAGE_FRONT_BUFFER_COMMIT)
+        session.mark(StrokeTrace.STAGE_TRANSIENT_HIDDEN)
+        assertTrue(session.collectWarnings().any { it.startsWith("PREVIEW_FINAL_GEOMETRY_DIFF") })
+    }
+
+    @Test
+    fun missingTransientFrameOnCommitIsReportedAsInfo() {
+        val session = StrokeTrace.begin("no-transient")!!
+        session.mark(StrokeTrace.STAGE_ACTION_UP)
+        session.markTransaction(previewPoints = 5, committedPoints = 5)
+        session.mark(StrokeTrace.STAGE_TRANSIENT_HIDDEN)
+        assertTrue(session.collectWarnings().any { it.startsWith("INFO NO_TRANSIENT_FRAME") })
+    }
+
+    @Test
+    fun firstDabGeneratedAfterFirstFrontBufferDrawIsFlagged() {
+        val session = StrokeTrace.begin("dab-late")!!
+        session.mark(StrokeTrace.STAGE_FRONT_BUFFER_DRAW)
+        Thread.sleep(1)
+        session.mark(StrokeTrace.STAGE_FIRST_DAB)
+        session.mark(StrokeTrace.STAGE_ACTION_UP)
+        session.markTransaction(previewPoints = 5, committedPoints = 5)
+        session.mark(StrokeTrace.STAGE_TRANSIENT_HIDDEN)
+        assertTrue(session.collectWarnings().any { it.startsWith("FIRST_DAB_LATE") })
+    }
+
+    @Test
+    fun warningHistogramAccumulatesAcrossSessions() {
+        StrokeTrace.reset()
+        repeat(3) { i ->
+            val session = StrokeTrace.begin("warn-$i")!!
+            session.mark(StrokeTrace.STAGE_ACTION_UP)
+            session.mark(StrokeTrace.STAGE_FRONT_BUFFER_COMMIT)
+            session.markTransaction(previewPoints = 4, committedPoints = 4)
+            session.mark(StrokeTrace.STAGE_TRANSIENT_HIDDEN)
+            session.complete()
+        }
+        assertEquals(3, StrokeTrace.warningCountFor("HANDOFF_BEFORE_PROJECTION"))
+    }
 }

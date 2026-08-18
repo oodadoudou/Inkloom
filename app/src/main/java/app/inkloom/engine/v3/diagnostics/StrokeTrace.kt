@@ -32,11 +32,15 @@ internal object StrokeTrace {
     private const val MAX_SESSIONS = 128
     private const val SUMMARY_EVERY = 25
 
+    /** Presentation-gap threshold: two 60Hz frames (33.3 ms). */
+    private const val GAP_WARNING_MICROS = 33_334L
+
     @Volatile
     var enabled: Boolean = false
 
     private val sessions = ConcurrentHashMap<String, Session>()
     private val aggregate = ConcurrentHashMap<String, MutableList<Long>>()
+    private val warningCounts = ConcurrentHashMap<String, Int>()
     private var completedCount = 0
 
     data class Mark(
@@ -54,6 +58,8 @@ internal object StrokeTrace {
         @Volatile internal var committed = false
         @Volatile internal var transientHidden = false
         @Volatile internal var completed = false
+        private var previewPointCount: Int? = null
+        private var committedPointCount: Int? = null
 
         @Synchronized
         fun mark(stage: String, rect: String? = null, tileCount: Int? = null, generation: Long? = null) {
@@ -77,6 +83,14 @@ internal object StrokeTrace {
             mark(stage, rect, tileCount, generation)
         }
 
+        /** Records the point counts of the transient preview and the committed stroke at commit. */
+        @Synchronized
+        fun markTransaction(previewPoints: Int, committedPoints: Int) {
+            previewPointCount = previewPoints
+            committedPointCount = committedPoints
+            mark(STAGE_TRANSACTION_COMMIT)
+        }
+
         @Synchronized
         internal fun complete() {
             if (completed) return
@@ -92,6 +106,49 @@ internal object StrokeTrace {
 
         @Synchronized
         fun timeline(): List<Mark> = marks.toList()
+
+        @Synchronized
+        fun hasStage(stage: String): Boolean = stage in stages
+
+        @Synchronized
+        internal fun collectWarnings(): List<String> {
+            val result = mutableListOf<String>()
+            val down = first(STAGE_ACTION_DOWN)
+            val firstTransient = first(STAGE_FRONT_BUFFER_DRAW)
+            if (down != null && firstTransient != null) {
+                val micros = (firstTransient.nanoTime - down.nanoTime) / 1000L
+                if (micros > GAP_WARNING_MICROS) result += "GAP DOWN->first transient=$micros us (>${GAP_WARNING_MICROS} us)"
+            }
+            val up = first(STAGE_ACTION_UP)
+            val stable = first(STAGE_STABLE_FRAME)
+            if (up != null && stable != null) {
+                val micros = (stable.nanoTime - up.nanoTime) / 1000L
+                if (micros > GAP_WARNING_MICROS) result += "GAP UP->stable=$micros us (>${GAP_WARNING_MICROS} us)"
+            }
+            if (hasStage(STAGE_PROJECTION_INVALIDATED) && !hasStage(STAGE_PROJECTION_GENERATED)) {
+                result += "GENERATION_STALL projection invalidated but never generated"
+            }
+            val commit = first(STAGE_FRONT_BUFFER_COMMIT)
+            if (commit != null) {
+                val projection = first(STAGE_PROJECTION_GENERATED)
+                if (projection == null || projection.nanoTime > commit.nanoTime) {
+                    result += "HANDOFF_BEFORE_PROJECTION front buffer committed before the V3 projection was generated"
+                }
+            }
+            if (hasStage(STAGE_ACTION_UP) && !hasStage(STAGE_FRONT_BUFFER_DRAW)) {
+                result += "INFO NO_TRANSIENT_FRAME no front-buffer frame before commit (view-preview path)"
+            }
+            val firstDab = first(STAGE_FIRST_DAB)
+            if (firstDab != null && firstTransient != null && firstDab.nanoTime > firstTransient.nanoTime) {
+                result += "FIRST_DAB_LATE first dab generated after the first front-buffer draw"
+            }
+            val preview = previewPointCount
+            val committedCount = committedPointCount
+            if (preview != null && committedCount != null && preview != committedCount) {
+                result += "PREVIEW_FINAL_GEOMETRY_DIFF preview points=$preview committed points=$committedCount"
+            }
+            return result
+        }
     }
 
     /** The traceable id of a stroke batch, excluding mirror/symmetry copies. */
@@ -120,6 +177,12 @@ internal object StrokeTrace {
         sessions[strokeId]?.markOnce(stage, rect, tileCount, generation)
     }
 
+    /** Records the point counts of the transient preview and the committed stroke at commit. */
+    fun markTransaction(strokeId: String, previewPoints: Int, committedPoints: Int) {
+        if (!enabled) return
+        sessions[strokeId]?.markTransaction(previewPoints, committedPoints)
+    }
+
     /** Ends a stroke that was cancelled before commit so its partial timeline never aggregates. */
     fun abandon(strokeId: String) {
         if (!enabled) return
@@ -130,6 +193,7 @@ internal object StrokeTrace {
         sessions.clear()
         aggregate.values.forEach(MutableList<Long>::clear)
         aggregate.clear()
+        warningCounts.clear()
         completedCount = 0
     }
 
@@ -137,10 +201,16 @@ internal object StrokeTrace {
         sessions.remove(session.strokeId)
         val timeline = session.timeline()
         val origin = timeline.firstOrNull()?.nanoTime ?: System.nanoTime()
+        val warnings = session.collectWarnings()
+        warnings.forEach { warning ->
+            val type = warning.substringBefore(' ')
+            warningCounts.merge(type, 1, Int::plus)
+        }
         Log.d(
             TAG,
             "stroke=${session.strokeId} " +
-                timeline.joinToString(" ") { "${it.stage}@${(it.nanoTime - origin) / 1000L}us" },
+                timeline.joinToString(" ") { "${it.stage}@${(it.nanoTime - origin) / 1000L}us" } +
+                (if (warnings.isEmpty()) "" else " WARNINGS=[${warnings.joinToString("; ")}]"),
         )
         derivedMetrics.forEach { metric ->
             val from = if (metric.fromFirst) session.first(metric.fromStage) else session.last(metric.fromStage)
@@ -156,6 +226,9 @@ internal object StrokeTrace {
     /** Accumulated microsecond samples for one derived metric, for diagnostics and tests. */
     internal fun samplesFor(label: String): List<Long> = aggregate[label].orEmpty()
 
+    /** Counts of each detected presentation warning type, for diagnostics and tests. */
+    internal fun warningCountFor(type: String): Int = warningCounts[type] ?: 0
+
     fun logSummary() {
         if (!enabled) return
         val builder = StringBuilder()
@@ -169,6 +242,11 @@ internal object StrokeTrace {
                     .append(" max=").append(values.last()).append("us")
                     .append('\n')
             }
+        }
+        if (warningCounts.isNotEmpty()) {
+            builder.append("  warnings=")
+                .append(warningCounts.entries.sortedByDescending { it.value }.joinToString(", ") { "${it.key}:${it.value}" })
+                .append('\n')
         }
         if (builder.isNotEmpty()) Log.d(TAG, "StrokeTrace summary (sessions=$completedCount)\n$builder")
     }

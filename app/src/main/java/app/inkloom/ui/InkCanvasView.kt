@@ -3771,7 +3771,11 @@ class InkCanvasView(context: Context) : View(context) {
                         commitStrokeEdit(before, strokes)
                         false
                     }
-                    StrokeTrace.mark(currentStrokeId, StrokeTrace.STAGE_TRANSACTION_COMMIT)
+                    StrokeTrace.markTransaction(
+                        currentStrokeId,
+                        currentPoints.size,
+                        newStrokes.firstOrNull()?.points?.size ?: currentPoints.size,
+                    )
                     finishWetPaintGesture()
                     val previewSurface = activeStrokeSurface?.takeUnless { usesViewActivePreview() }
                     if (incrementalRasterCommit) {
