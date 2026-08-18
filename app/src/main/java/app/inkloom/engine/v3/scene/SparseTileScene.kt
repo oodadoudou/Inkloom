@@ -26,11 +26,18 @@ internal class SparseTileScene(
     private val dirtySoftwareTiles = linkedSetOf<StrokeTileKey>()
     private val dirtyHardwareTiles = linkedSetOf<StrokeTileKey>()
     private var hardwareIndependentStrokes: Boolean? = null
+    private var generationCounter = 0L
 
     var onTileRendered: ((StrokeTileKey, Int) -> Unit)? = null
 
     val widthPx: Int get() = index.widthPx
     val heightPx: Int get() = index.heightPx
+
+    /** Monotonic projection generation: incremented every time a tile is re-rendered or the scene is rebuilt. */
+    val generation: Long get() = generationCounter
+
+    /** Tiles whose retained contents are stale and will be re-rendered on the next draw. */
+    val dirtyTileCount: Int get() = dirtySoftwareTiles.size + dirtyHardwareTiles.size
 
     fun draw(
         canvas: Canvas,
@@ -81,6 +88,7 @@ internal class SparseTileScene(
                 dirtyHardwareTiles += key
             }
             if (key in dirtyHardwareTiles || !node.hasDisplayList()) {
+                generationCounter++
                 val candidates = candidatesFor(key, strokes)
                 val recording = node.beginRecording(rect.width, rect.height)
                 try {
@@ -134,6 +142,7 @@ internal class SparseTileScene(
             val rect = index.rect(key)
             val tile = softwareTiles.getValue(key)
             if (dirtySoftwareTiles.remove(key)) {
+                generationCounter++
                 val candidates = candidatesFor(key, strokes)
                 renderTileWithGutter(tile, rect, candidates, render)
                 onTileRendered?.invoke(key, candidates.size)
@@ -146,6 +155,7 @@ internal class SparseTileScene(
     fun reset(strokes: List<InkStroke>, width: Int, height: Int) {
         recycleTiles()
         index.rebuild(strokes, width, height)
+        generationCounter++
         dirtySoftwareTiles += index.occupiedTiles()
         dirtyHardwareTiles += index.occupiedTiles()
     }
@@ -180,6 +190,7 @@ internal class SparseTileScene(
             val rect = index.rect(key)
             val tileCanvas = Canvas(softwareTiles.getValue(key))
             tileCanvas.translate(-rect.left.toFloat(), -rect.top.toFloat())
+            generationCounter++
             render(tileCanvas, after.filter { key in index.tilesFor(it) })
             dirtySoftwareTiles.remove(key)
         }
