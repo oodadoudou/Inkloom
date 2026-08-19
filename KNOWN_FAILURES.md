@@ -12,6 +12,7 @@ Status legend:
 - `FLAKY` — passes when run in isolation, intermittently fails under full-suite load.
 - `QUARANTINED` — intentionally not fixed yet; tracked separately. A real regression that
   appears later must be raised as a new failure, not merged into these rows.
+- `FIXED` — resolved; row kept as history.
 
 ---
 
@@ -19,28 +20,22 @@ Status legend:
 
 - **File:** `app/src/androidTest/java/app/inkloom/SystemBrushPerformanceTest.kt`
 - **First confirmed at:** commit `4035ffe` (feat(v3): PENCIL_RENDERER_V4 graphite runtime semantics). Confirmed reproducible on the clean baseline at `4035ffe~` and at `4035ffe` (unrelated to the V4 changes).
-- **Status:** DETERMINISTIC — reproduces on every run.
-- **Failure signature:**
+- **Status:** FIXED — closed at commit `(9d38858)` (see resolution below); passes in isolation and in a full-class run.
+- **Failure signature (historical):**
   `java.lang.AssertionError: Continuous PS19 centerline alpha varied like overlapping round stamps: 203..227`
   (assertion `(maxAlpha - minAlpha) <= 2` on the `system-ps19` centerline alpha along
   `x in 140..860 step 5`; observed range width = 24).
-- **Category:** Brush Continuity. The `system-ps19` preset (Photoshop legacy No. 19,
-  spacing `.01`, intended continuous round stroke) still shows periodic join beading along
-  the centerline instead of a uniform continuous ribbon.
-- **Classification:** real renderer gap, not flaky. The default Ink `system-pen`
-  continuous-ribbon goldens pass (`ReferencePresetGoldenTest`), so this is specific to the
-  PS19 preset path (round hard tip stamped at spacing `.01` with `flow=.55`, no pressure
-  dynamics). The beading amplitude (24/255) is far above the `<=2` continuity budget.
-- **Expected fix milestone:** BRUSH_PRESET_V4_FOUNDATION, item "Require V3 → V4 raster
-  golden parity before migrating additional brushes". PS19 is a non-reference legacy brush;
-  during its V4 migration, the continuous-ribbon emitter must be verified to eliminate this
-  beading. Until then it is quarantined and tracked here.
-- **How to reproduce:**
-  ```bash
-  ./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=app.inkloom.SystemBrushPerformanceTest#classicPs19HasNoPeriodicJoinBeads
-  ```
-- **Quarantine note:** do NOT attribute unrelated renderer regressions to this row. If the
-  failure signature changes (e.g. becomes a crash, or the alpha range moves), raise a new issue.
+- **Category:** Brush Continuity.
+- **Root cause:** `usesContinuousRibbon` rejected `system-ps19` when `flow < .999f`. The
+  classic PS19 test stroke uses `flow = .55`, so it fell back to stamped round dabs, which
+  bead at every join. The ribbon emitter already carries flow into the single filled ribbon
+  via `alphaSum`, so the sub-100% flow gate was over-strict for PS19.
+- **Resolution:** `usesContinuousRibbon` now keeps the full-flow gate only for `system-pen`;
+  `system-ps19` renders as one seamless ribbon regardless of flow (as long as it has no
+  pressure-opacity/flow dynamics, which the ribbon cannot express per-dab).
+- **Verification:** `classicPs19HasNoPeriodicJoinBeads` passes in isolation and in the full
+  `SystemBrushPerformanceTest` class run. Reference Ink (`system-pen`, flow=1) goldens
+  unchanged.
 
 ---
 

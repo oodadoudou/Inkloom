@@ -2950,7 +2950,10 @@ class InkCanvasView(context: Context) : View(context) {
         if (stroke.brushId != "system-ps19" && stroke.brushId != "system-pen") return false
         if (stroke.points.size <= 1 || stroke.strokeFalloff > .0001f) return false
         if (stroke.opacityPressureEnabled || stroke.flowPressureEnabled) return false
-        if (stroke.opacity < .999f || stroke.flow < .999f) return false
+        // The ribbon emitter carries flow/opacity into the single filled ribbon (alphaSum), so a
+        // partial-flow classic round brush (PS19) still renders seamlessly. The full-flow gates
+        // below are kept for system-pen only, where a sub-100% deposit would be a visual surprise.
+        if (stroke.brushId == "system-pen" && (stroke.opacity < .999f || stroke.flow < .999f)) return false
         if (stroke.blur > .0001f || stroke.waterEdgeEnabled || stroke.tiltBleed > .0001f) return false
         if (stroke.colorJitterHueDegrees != 0f || stroke.colorJitterSaturation != 0f || stroke.colorJitterValue != 0f) return false
         if (stroke.colorJitterPerStrokeEnabled ||
