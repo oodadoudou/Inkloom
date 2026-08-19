@@ -31,19 +31,19 @@ class BrushPresetV4FoundationTest {
 
     @Test
     fun pencilCapabilitiesAreGated() {
-        val caps = BrushCapabilities.of(BrushEngineFamily.STAMPED_PENCIL)
+        val caps = BrushCapabilities.of(BrushFamily.PENCIL)
         assertTrue(BrushCapability.PAPER_GRAIN in caps)
         assertTrue(BrushCapability.TILT_WIDTH in caps)
         assertTrue(BrushCapability.TILT_GRAIN in caps)
         assertTrue(BrushCapability.STAMP_SPACING in caps)
         assertFalse(BrushCapability.CONTINUOUS_RIBBON in caps)
         // A pencil preset must not carry an ink-only continuous-ribbon block.
-        assertNull(referencePencil().stroke?.let { if (BrushCapabilities.supports(BrushEngineFamily.STAMPED_PENCIL, BrushCapability.TAPER)) it else null })
+        assertNull(referencePencil().stroke?.let { if (BrushCapabilities.supports(BrushFamily.PENCIL, BrushCapability.TAPER)) it else null })
     }
 
     @Test
     fun inkCapabilitiesAreGated() {
-        val caps = BrushCapabilities.of(BrushEngineFamily.CONTINUOUS_INK)
+        val caps = BrushCapabilities.of(BrushFamily.INK)
         assertTrue(BrushCapability.CONTINUOUS_RIBBON in caps)
         assertTrue(BrushCapability.TAPER in caps)
         assertFalse(BrushCapability.PAPER_GRAIN in caps)
@@ -77,7 +77,7 @@ class BrushPresetV4FoundationTest {
     fun v3PencilMigratesWithPreservedRenderingSemantics() {
         val v3 = v3Pencil()
         val v4 = PresetMigrator.toV4(v3)
-        assertEquals(BrushEngineFamily.STAMPED_PENCIL, v4.identity.engineFamily)
+        assertEquals(BrushFamily.PENCIL, v4.identity.family)
         assertEquals(v3.defaultSize, v4.tip.size, 1e-4f)
         assertEquals(v3.flow, v4.deposition.flow, 1e-4f)
         assertEquals(v3.spacing, v4.spacing!!.value, 1e-4f)
@@ -91,7 +91,7 @@ class BrushPresetV4FoundationTest {
     fun v3InkMigratesWithoutSpacingOrGrainBlocks() {
         val v3 = v3Ink()
         val v4 = PresetMigrator.toV4(v3)
-        assertEquals(BrushEngineFamily.CONTINUOUS_INK, v4.identity.engineFamily)
+        assertEquals(BrushFamily.INK, v4.identity.family)
         assertNull(v4.spacing)
         assertNull(v4.paperGrain)
         assertNull(v4.tipTexture)
@@ -102,16 +102,21 @@ class BrushPresetV4FoundationTest {
     @Test
     fun compiledProgramIsImmutableSnapshot() {
         val compiled = CompiledBrushProgram.compile(referencePencil())
-        val strokeA = compiled.toInkStroke("system-hb-pencil", 0xFF000000, listOf(StrokePoint(.5f, .5f)))
-        val strokeB = compiled.toInkStroke("system-hb-pencil", 0xFF000000, listOf(StrokePoint(.5f, .5f)))
-        assertEquals("Same snapshot must produce identical strokes", strokeA, strokeB)
+        val strokeA = compiled.toInkStroke(0xFF000000, listOf(StrokePoint(.5f, .5f)))
+        val strokeB = compiled.toInkStroke(0xFF000000, listOf(StrokePoint(.5f, .5f)))
+        // Document identity differs (each stroke gets its own id), but every render-relevant field
+        // — including the seed — must be identical so the raster is byte-for-byte reproducible.
+        assertNotEquals("Each stroke gets its own document id", strokeA.id, strokeB.id)
+        assertEquals("Same snapshot must produce identical render identity", strokeA.copy(id = ""), strokeB.copy(id = ""))
         assertEquals("Compiled tip size must match preset", referencePencil().tip.size, strokeA.width, 1e-4f)
         assertEquals("Compiled deposition flow must match preset", referencePencil().deposition.flow, strokeA.flow, 1e-4f)
         assertEquals("Compiled tilt->width must map to graphiteTiltWidth", referencePencil().dynamics.tilt.widthMaximum, strokeA.graphiteTiltWidth, 1e-4f)
         assertEquals("Compiled paper grain must map to procedural grain", referencePencil().paperGrain!!.density, strokeA.proceduralPaperGrainDensity, 1e-4f)
-        // A procedural-tip pencil without an imported asset renders through MESH_INK engine kind,
-        // exactly like the legacy activeBrushEngineKind() path (stamped behavior is brushId-driven).
-        assertEquals("Procedural pencil must match legacy MESH_INK engine kind", app.inkloom.document.BrushEngineKind.MESH_INK, strokeA.engineKind)
+        assertEquals("renderBrushId must come from the preset identity", "system-hb-pencil", strokeA.brushId)
+        assertEquals("renderSeed must come from the preset, not the stroke id", referencePencil().renderSeed, strokeA.renderSeed)
+        assertNotEquals("Stroke id must be independent of renderSeed", strokeA.id.hashCode(), strokeA.renderSeed)
+        assertEquals("Procedural pencil must resolve to the PROCEDURAL_STAMP backend", RenderBackend.PROCEDURAL_STAMP, compiled.backend)
+        assertEquals("Procedural backend must map to legacy MESH_INK engine kind", app.inkloom.document.BrushEngineKind.MESH_INK, strokeA.engineKind)
     }
 
     @Test
@@ -119,14 +124,30 @@ class BrushPresetV4FoundationTest {
         val withAsset = referencePencil().copy(
             tipTexture = TipTextureSettings(procedural = false, assetPath = "assets/00.png", toothStrength = .64f),
         )
-        val stroke = CompiledBrushProgram.compile(withAsset).toInkStroke("system-hb-pencil", 0xFF000000, listOf(StrokePoint(.5f, .5f)))
+        val compiled = CompiledBrushProgram.compile(withAsset)
+        val stroke = compiled.toInkStroke(0xFF000000, listOf(StrokePoint(.5f, .5f)))
+        assertEquals("An imported tip must resolve to the ASSET_STAMP backend", RenderBackend.ASSET_STAMP, compiled.backend)
         assertEquals("An imported tip must compile to STAMP_RASTER", app.inkloom.document.BrushEngineKind.STAMP_RASTER, stroke.engineKind)
+    }
+
+    @Test
+    fun familyAndBackendStaySeparateConcepts() {
+        // Semantic family must not be inferred from the legacy engine kind.
+        val procedural = CompiledBrushProgram.compile(referencePencil())
+        assertEquals(BrushFamily.PENCIL, procedural.preset.identity.family)
+        assertEquals(RenderBackend.PROCEDURAL_STAMP, procedural.backend)
+        assertEquals(app.inkloom.document.BrushEngineKind.MESH_INK, procedural.toInkStroke(0xFF000000, listOf(StrokePoint(.5f, .5f))).engineKind)
+        // Ink family -> CONTINUOUS_RIBBON backend.
+        val ink = CompiledBrushProgram.compile(referenceInk())
+        assertEquals(BrushFamily.INK, ink.preset.identity.family)
+        assertEquals(RenderBackend.CONTINUOUS_RIBBON, ink.backend)
+        assertEquals(app.inkloom.document.BrushEngineKind.MESH_INK, ink.toInkStroke(0xFF000000, listOf(StrokePoint(.5f, .5f))).engineKind)
     }
 
     @Test
     fun compiledInkIsContinuousRibbon() {
         val compiled = CompiledBrushProgram.compile(referenceInk())
-        val stroke = compiled.toInkStroke("system-pen", 0xFF000000, listOf(StrokePoint(.5f, .5f)))
+        val stroke = compiled.toInkStroke(0xFF000000, listOf(StrokePoint(.5f, .5f)))
         assertTrue("Reference ink must render as continuous ribbon", stroke.ribbon)
         assertTrue(stroke.continuousPlot)
         assertFalse("Ink must not carry procedural paper grain", stroke.proceduralPaperGrainEnabled)
@@ -137,7 +158,7 @@ class BrushPresetV4FoundationTest {
     @Test
     fun v4PencilCompileMatchesReferenceInkStrokeParameters() {
         val compiled = CompiledBrushProgram.compile(referencePencil())
-        val v4Stroke = compiled.toInkStroke("system-hb-pencil", 0xFF000000, listOf(StrokePoint(.5f, .5f)))
+        val v4Stroke = compiled.toInkStroke(0xFF000000, listOf(StrokePoint(.5f, .5f)))
         val golden = goldenReferencePencilStroke()
         assertEquals(golden.width, v4Stroke.width, 1e-4f)
         assertEquals(golden.spacing, v4Stroke.spacing, 1e-4f)
@@ -151,7 +172,7 @@ class BrushPresetV4FoundationTest {
     @Test
     fun v4InkCompileMatchesReferenceInkStrokeParameters() {
         val compiled = CompiledBrushProgram.compile(referenceInk())
-        val v4Stroke = compiled.toInkStroke("system-pen", 0xFF000000, listOf(StrokePoint(.5f, .5f)))
+        val v4Stroke = compiled.toInkStroke(0xFF000000, listOf(StrokePoint(.5f, .5f)))
         val golden = goldenReferenceInkStroke()
         assertEquals(golden.width, v4Stroke.width, 1e-4f)
         assertEquals(golden.spacing, v4Stroke.spacing, 1e-4f)
@@ -205,6 +226,43 @@ class BrushPresetV4FoundationTest {
         assertTrue(factory.isFactory)
     }
 
+    @Test
+    fun duplicateAndSaveAsPreserveRenderIdentityAndSeed() {
+        val factory = OwnedBrushPreset(referencePencil(), PresetOwnership.Factory("system-hb-pencil"))
+        val duplicate = PresetOwnershipOperations.duplicate(factory)
+        val savedAs = PresetOwnershipOperations.saveAs(factory, "HB Pencil - Custom")
+        // identity.id changes, but renderBrushId and renderSeed must survive exactly.
+        assertNotEquals(factory.id, duplicate.id)
+        assertEquals(factory.preset.identity.renderBrushId, duplicate.preset.identity.renderBrushId)
+        assertEquals(factory.preset.renderSeed, duplicate.preset.renderSeed)
+        assertEquals(factory.preset.identity.renderBrushId, savedAs.preset.identity.renderBrushId)
+        assertEquals(factory.preset.renderSeed, savedAs.preset.renderSeed)
+        // The renderBrushId is the engine-recognized brush id, never the user copy's id.
+        assertEquals("system-hb-pencil", duplicate.preset.identity.renderBrushId)
+        assertTrue(!duplicate.preset.identity.id.startsWith("system-hb-pencil"))
+    }
+
+    @Test
+    fun withEditsPinsRenderIdentityAndSeed() {
+        val factory = OwnedBrushPreset(referencePencil(), PresetOwnership.Factory("system-hb-pencil"))
+        val user = PresetOwnershipOperations.duplicate(factory)
+        val edited = PresetOwnershipOperations.withEdits(user, user.preset.copy(tip = user.preset.tip.copy(size = 30f)))
+        assertEquals(30f, edited.preset.tip.size, 1e-4f)
+        assertEquals("Editing must not change renderBrushId", user.preset.identity.renderBrushId, edited.preset.identity.renderBrushId)
+        assertEquals("Editing must not change renderSeed", user.preset.renderSeed, edited.preset.renderSeed)
+    }
+
+    @Test
+    fun randomizeRenderSeedChangesOnlyTheSeed() {
+        val factory = OwnedBrushPreset(referencePencil(), PresetOwnership.Factory("system-hb-pencil"))
+        val user = PresetOwnershipOperations.duplicate(factory)
+        val randomized = PresetOwnershipOperations.randomizeRenderSeed(user, 12345)
+        assertEquals(12345, randomized.preset.renderSeed)
+        assertEquals("Randomize must not change renderBrushId", user.preset.identity.renderBrushId, randomized.preset.identity.renderBrushId)
+        assertEquals("Randomize must not change the preset id", user.id, randomized.id)
+        assertNotEquals("Seed must differ from the source", user.preset.renderSeed, randomized.preset.renderSeed)
+    }
+
     // ---- Serialization round-trip ----
 
     @Test
@@ -231,7 +289,8 @@ class BrushPresetV4FoundationTest {
     // ---- Fixtures (mirror the reference goldens' InkStroke) ----
 
     private fun referenceInk(): BrushPresetV4 = BrushPresetV4(
-        identity = PresetIdentity("system-pen", "Reference Ink", 1, BrushEngineFamily.CONTINUOUS_INK),
+        identity = PresetIdentity("system-pen", "Reference Ink", 1, BrushFamily.INK, "system-pen"),
+        renderSeed = "system-pen".hashCode(),
         tip = TipSettings(size = 5f, aspect = 1f, rotationDegrees = 0f, hardness = 1f),
         deposition = DepositionSettings(opacity = 1f, flow = 1f, buildup = 0f),
         spacing = null,
@@ -255,7 +314,8 @@ class BrushPresetV4FoundationTest {
     )
 
     private fun referencePencil(): BrushPresetV4 = BrushPresetV4(
-        identity = PresetIdentity("system-hb-pencil", "Reference Pencil", 1, BrushEngineFamily.STAMPED_PENCIL),
+        identity = PresetIdentity("system-hb-pencil", "Reference Pencil", 1, BrushFamily.PENCIL, "system-hb-pencil"),
+        renderSeed = "system-hb-pencil".hashCode(),
         tip = TipSettings(size = 24f, aspect = 1f, rotationDegrees = 0f, hardness = .64f),
         deposition = DepositionSettings(opacity = 1f, flow = .68f, buildup = 0f),
         spacing = SpacingSettings(mode = SpacingMode.RELATIVE, value = .26f),

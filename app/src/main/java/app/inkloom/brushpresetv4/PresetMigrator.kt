@@ -9,30 +9,35 @@ import app.inkloom.model.ImportedBrush
  * capability-gated structure without inventing new behavior. Rendering identity is preserved
  * because [BrushCompiler] reconstructs the same runtime parameters the legacy path produced.
  *
+ * Render identity is kept exactly: V3 treated the preset id as the render brush id and derived
+ * the stochastic seed from it (`InkStroke.renderSeed = id.hashCode()`); the migration pins that
+ * as [PresetIdentity.renderBrushId] and [BrushPresetV4.renderSeed] so a migrated brush rasterizes
+ * identically to the legacy path.
+ *
  * FOUNDATION scope: the migrator covers the fields the two reference families actually use
- * (CONTINUOUS_INK reference and STAMPED_PENCIL reference). Fields meaningful only for families
- * not yet migrated are gated by family capability so they never render as inactive slots.
+ * (INK reference and PENCIL reference). Fields meaningful only for families not yet migrated are
+ * gated by family capability so they never render as inactive slots.
  */
 object PresetMigrator {
 
     fun toV4(v3: ImportedBrush): BrushPresetV4 {
-        val family = engineFamily(v3)
-        val spacing = if (family == BrushEngineFamily.STAMPED_PENCIL || family == BrushEngineFamily.AIRBRUSH) {
+        val family = brushFamily(v3)
+        val spacing = if (family == BrushFamily.PENCIL || family == BrushFamily.AIRBRUSH) {
             SpacingSettings(mode = SpacingMode.RELATIVE, value = v3.spacing)
         } else {
-            // CONTINUOUS_INK reference uses a ribbon, not user-visible stamp spacing.
+            // INK reference uses a ribbon, not user-visible stamp spacing.
             null
         }
         val tiltWidth = v3.graphiteTiltWidth
         val tiltGrain = v3.graphiteTiltGrain
-        val paperGrain = if (family == BrushEngineFamily.STAMPED_PENCIL) {
+        val paperGrain = if (family == BrushFamily.PENCIL) {
             PaperGrainSettings(
                 scale = v3.proceduralPaperGrainScale,
                 density = v3.proceduralPaperGrainDensity,
                 strength = 1f,
             )
         } else null
-        val tipTexture = if (family == BrushEngineFamily.STAMPED_PENCIL) {
+        val tipTexture = if (family == BrushFamily.PENCIL) {
             TipTextureSettings(procedural = true, assetPath = null, toothStrength = v3.hardness)
         } else null
         return BrushPresetV4(
@@ -41,8 +46,10 @@ object PresetMigrator {
                 id = v3.id,
                 name = v3.name,
                 version = v3.parserVersion,
-                engineFamily = family,
+                family = family,
+                renderBrushId = v3.id,
             ),
+            renderSeed = v3.id.hashCode(),
             tip = TipSettings(
                 size = v3.defaultSize,
                 aspect = v3.thickness,
@@ -89,11 +96,11 @@ object PresetMigrator {
         )
     }
 
-    private fun engineFamily(v3: ImportedBrush): BrushEngineFamily = when {
-        v3.spray -> BrushEngineFamily.AIRBRUSH
-        v3.id.startsWith("system-decoration-") -> BrushEngineFamily.DECORATION
-        isGraphiteFamily(v3) -> BrushEngineFamily.STAMPED_PENCIL
-        else -> BrushEngineFamily.CONTINUOUS_INK
+    private fun brushFamily(v3: ImportedBrush): BrushFamily = when {
+        v3.spray -> BrushFamily.AIRBRUSH
+        v3.id.startsWith("system-decoration-") -> BrushFamily.DECORATION
+        isGraphiteFamily(v3) -> BrushFamily.PENCIL
+        else -> BrushFamily.INK
     }
 
     private fun isGraphiteFamily(v3: ImportedBrush): Boolean =

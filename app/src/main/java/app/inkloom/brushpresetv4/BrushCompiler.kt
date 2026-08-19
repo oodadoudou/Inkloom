@@ -4,6 +4,7 @@ import app.inkloom.document.BrushCurvePoint
 import app.inkloom.document.BrushEngineKind
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
+import java.util.UUID
 
 /**
  * Immutable, stroke-scoped compile of a [BrushPresetV4]. A stroke is drawn from exactly one
@@ -11,11 +12,13 @@ import app.inkloom.document.StrokePoint
  *
  * The compiled program carries the user-facing semantics resolved to renderer-ready values:
  * tip reference, deposition constants, spacing policy, resolved dynamics curves, grain sampler
- * config, and stroke shaping. It does not expose renderer implementation objects.
+ * config, stroke shaping, and the resolved execution [backend]. It does not expose renderer
+ * implementation objects.
  */
 class CompiledBrushProgram private constructor(
     val preset: BrushPresetV4,
     val capabilities: Set<BrushCapability>,
+    val backend: RenderBackend,
     val tip: CompiledTip,
     val deposition: CompiledDeposition,
     val spacingPolicy: CompiledSpacing?,
@@ -26,6 +29,12 @@ class CompiledBrushProgram private constructor(
 ) {
     /** The preset a stroke was compiled from (identity only; not editable mid-stroke). */
     val identity: PresetIdentity get() = preset.identity
+
+    /** Renderer-recognized brush id (rendering identity, decoupled from the preset id). */
+    val renderBrushId: String get() = preset.identity.renderBrushId
+
+    /** Deterministic stochastic seed for this preset's texture/scatter behavior. */
+    val renderSeed: Int get() = preset.renderSeed
 
     data class CompiledTip(
         val size: Float,
@@ -87,25 +96,27 @@ class CompiledBrushProgram private constructor(
      * on [InkStroke] (the verified input of the goldens); the compiled preset only feeds it a
      * frozen parameter set so no mid-stroke editor mutation can leak in.
      *
-     * The default [id] equals [brushId] so the render seed (derived from the stroke id) matches the
-     * legacy V3 reference strokes — this keeps V3 -> V4 raster parity exact. Pass an explicit id
-     * only when a distinct document stroke identity is required.
+     * The render identity comes from the preset ([renderBrushId]), the stochastic seed from
+     * [renderSeed] — never from the stroke [id], which is just document identity (defaults to a
+     * fresh UUID for each stroke, exactly like the legacy document path). This keeps Duplicate /
+     * Save As byte-identical to the source preset.
      */
     fun toInkStroke(
-        brushId: String,
         colorArgb: Long,
         points: List<StrokePoint>,
-        id: String = brushId,
-    ): InkStroke = buildInkStroke(brushId, colorArgb, points, id)
+        id: String = UUID.randomUUID().toString(),
+    ): InkStroke = buildInkStroke(colorArgb, points, id)
 
-    private fun buildInkStroke(brushId: String, colorArgb: Long, points: List<StrokePoint>, id: String): InkStroke {
-        // Continuous ribbon is a CONTINUOUS_INK-family behavior; the renderer gates ribbon on the
+    private fun buildInkStroke(colorArgb: Long, points: List<StrokePoint>, id: String): InkStroke {
+        // Continuous ribbon is a CONTINUOUS-family behavior; the renderer gates ribbon on the
         // brush id (system-pen / system-ps19), so the snapshot just records the family intent.
-        val continuous = preset.identity.engineFamily == BrushEngineFamily.CONTINUOUS_INK
+        val continuous = preset.identity.family == BrushFamily.INK
+        val engineKind = legacyEngineKind(backend)
         return InkStroke(
             id = id,
-            brushId = brushId,
-            engineKind = engineKindFor(brushId),
+            renderSeed = renderSeed,
+            brushId = renderBrushId,
+            engineKind = engineKind,
             points = points,
             colorArgb = colorArgb,
             width = tip.size,
@@ -138,26 +149,29 @@ class CompiledBrushProgram private constructor(
         )
     }
 
-    private fun engineKindFor(brushId: String): BrushEngineKind {
-        // Match the legacy activeBrushEngineKind() so V3 -> V4 parity is exact: a procedural-tip
-        // pencil without an imported asset or spray renders through the same engine kind the legacy
-        // path produced (the stamped behavior is driven by brushId, not by engineKind).
-        val hasImportedTip = tip.tipTexture?.assetPath != null
-        return when (preset.identity.engineFamily) {
-            BrushEngineFamily.CONTINUOUS_INK -> BrushEngineKind.MESH_INK
-            BrushEngineFamily.STAMPED_PENCIL -> if (hasImportedTip) BrushEngineKind.STAMP_RASTER else BrushEngineKind.MESH_INK
-            BrushEngineFamily.DECORATION -> BrushEngineKind.STAMP_RASTER
-            BrushEngineFamily.AIRBRUSH -> BrushEngineKind.AIRBRUSH
-            BrushEngineFamily.WET_PAINT -> BrushEngineKind.WET_SMUDGE
-        }
-    }
-
     companion object {
+        /**
+         * Maps a V4 [RenderBackend] to the legacy renderer [BrushEngineKind]. This is the single
+         * place the legacy runtime kind is derived, so the semantic family and the execution
+         * backend stay separate concepts. A procedural-tip pencil keeps the legacy MESH_INK kind
+         * (its stamped behavior is driven by renderBrushId, exactly as the V3 path did), while an
+         * imported-tip pencil/stamp uses STAMP_RASTER.
+         */
+        fun legacyEngineKind(backend: RenderBackend): BrushEngineKind = when (backend) {
+            RenderBackend.CONTINUOUS_RIBBON, RenderBackend.PROCEDURAL_STAMP -> BrushEngineKind.MESH_INK
+            RenderBackend.ASSET_STAMP -> BrushEngineKind.STAMP_RASTER
+            RenderBackend.AIRBRUSH -> BrushEngineKind.AIRBRUSH
+            RenderBackend.WET_PAINT -> BrushEngineKind.WET_SMUDGE
+        }
+
         fun compile(preset: BrushPresetV4): CompiledBrushProgram {
-            val capabilities = BrushCapabilities.of(preset.identity.engineFamily)
+            val family = preset.identity.family
+            val capabilities = BrushCapabilities.of(family)
+            val hasImportedTip = preset.tipTexture?.assetPath != null
             return CompiledBrushProgram(
                 preset = preset,
                 capabilities = capabilities,
+                backend = BrushCapabilities.backend(family, hasImportedTip),
                 tip = CompiledTip(
                     size = preset.tip.size,
                     aspect = preset.tip.aspect,

@@ -37,6 +37,10 @@ data class OwnedBrushPreset(
 /**
  * Ownership operations. The operations are pure (return new values) so the caller controls when to
  * persist. Factory values are never mutated by these operations.
+ *
+ * Render identity and seed semantics: `renderBrushId` and `renderSeed` are part of the preset and
+ * survive Duplicate / Save As unchanged, so a copy with identical settings rasterizes
+ * byte-identically to its source. Only an explicit [randomizeRenderSeed] replaces the seed.
  */
 object PresetOwnershipOperations {
 
@@ -69,11 +73,25 @@ object PresetOwnershipOperations {
     }
 
     /** Applies edits to an owned preset. A Factory preset cannot be edited in place; it must be
-     * duplicated first (the editor always calls [duplicate] before showing edit controls). */
+     * duplicated first (the editor always calls [duplicate] before showing edit controls).
+     *
+     * Rendering identity ([PresetIdentity.renderBrushId]) and the stochastic seed ([renderSeed])
+     * are pinned to the owned value, so editor edits (size/flow/pressure...) can never change the
+     * brush's render identity or its deterministic texture behavior. */
     fun withEdits(owned: OwnedBrushPreset, edits: BrushPresetV4): OwnedBrushPreset {
         require(!owned.isFactory) { "Factory presets are immutable; duplicate first." }
-        val updated = edits.copy(identity = edits.identity.copy(id = owned.id))
+        val updated = edits.copy(
+            identity = edits.identity.copy(id = owned.id, renderBrushId = owned.preset.identity.renderBrushId),
+            renderSeed = owned.preset.renderSeed,
+        )
         return OwnedBrushPreset(updated, owned.ownership)
+    }
+
+    /** Replaces the deterministic seed (explicit "randomize texture variation"). The render brush
+     * id is untouched; only the stochastic behavior changes. */
+    fun randomizeRenderSeed(owned: OwnedBrushPreset, newSeed: Int): OwnedBrushPreset {
+        require(!owned.isFactory) { "Factory presets are immutable; duplicate first." }
+        return OwnedBrushPreset(owned.preset.copy(renderSeed = newSeed), owned.ownership)
     }
 
     /** Restores a user copy to its factory default, or returns null if there is no factory default. */

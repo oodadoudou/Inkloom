@@ -20,6 +20,13 @@ import kotlinx.serialization.Serializable
 data class BrushPresetV4(
     val schemaVersion: Int = 4,
     val identity: PresetIdentity,
+    /**
+     * Deterministic seed for the brush's stochastic behavior (tip rotation, scatter, texture
+     * variation). Independent of [PresetIdentity.id]: Duplicate / Save As keep this exact seed so
+     * identical settings produce identical raster output; only an explicit "randomize texture"
+     * operation replaces it.
+     */
+    val renderSeed: Int,
     val tip: TipSettings,
     val deposition: DepositionSettings,
     /** Present for stamped families that expose spacing. */
@@ -40,7 +47,14 @@ data class PresetIdentity(
     val id: String,
     val name: String,
     val version: Int = 1,
-    val engineFamily: BrushEngineFamily,
+    val family: BrushFamily,
+    /**
+     * The brush id the render engine recognizes (e.g. "system-hb-pencil", "system-pen"). Kept
+     * separate from [id] so a duplicated / renamed user preset still renders through the same
+     * procedural tip and ribbon path it was created from, without identity changes leaking into
+     * rendering.
+     */
+    val renderBrushId: String,
 )
 
 @Serializable

@@ -82,7 +82,11 @@ internal object ProceduralBrushTip {
             val normalized = kotlin.math.sqrt(dx * dx + dy * dy) / radius
             if (normalized >= 1f) continue
             val edge = ((1f - normalized) / (1f - stroke.hardness.coerceIn(.05f, .98f))).coerceIn(0f, 1f)
-            val hash = ((x * 73856093) xor (y * 19349663) xor stroke.brushId.hashCode())
+            // The tooth noise is driven by the stroke's render seed, not the brush id: the same
+            // brush duplicated keeps its exact texture (same seed), while an explicit seed
+            // randomization produces a new deterministic tooth pattern. Legacy strokes set
+            // renderSeed = id.hashCode() so their texture is unchanged.
+            val hash = ((x * 73856093) xor (y * 19349663) xor stroke.renderSeed)
             val noise = (hash ushr 8 and 0xFF) / 255f
             val tooth = (grade + noise * (1f - grade)).coerceIn(0f, 1f)
             val dropout = ((hash ushr 17) and 0xFF) / 255f
