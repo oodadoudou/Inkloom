@@ -119,6 +119,50 @@ object BrushOptionDescriptors {
             get = { it.dynamics.pressure.depositionMinimum },
             set = { p, v -> p.copy(dynamics = p.dynamics.copy(pressure = p.dynamics.pressure.copy(depositionMinimum = v))) },
         ),
+        // Pressure -> Flow
+        BrushOptionDescriptor(
+            id = "pressureFlowEnabled", label = "Pressure → Flow", group = BrushOptionGroup.PRESSURE,
+            valueRange = 0f..1f, defaultValue = 0f, capability = BrushCapability.PRESSURE_DEPOSITION,
+            get = { if (it.dynamics.pressure.flowEnabled) 1f else 0f },
+            set = { p, v ->
+                val on = v >= .5f
+                p.copy(dynamics = p.dynamics.copy(pressure = p.dynamics.pressure.copy(flowEnabled = on)))
+            },
+        ),
+        BrushOptionDescriptor(
+            id = "pressureFlowMinimum", label = "Flow Minimum", group = BrushOptionGroup.PRESSURE,
+            valueRange = 0f..1f, defaultValue = 0f, capability = BrushCapability.PRESSURE_DEPOSITION,
+            get = { it.dynamics.pressure.flowMinimum },
+            set = { p, v -> p.copy(dynamics = p.dynamics.copy(pressure = p.dynamics.pressure.copy(flowMinimum = v))) },
+        ),
+        // Curve shape selectors (Linear / Soft / Hard / Custom) for each pressure channel.
+        BrushOptionDescriptor(
+            id = "pressureSizeCurveShape", label = "Size Curve", group = BrushOptionGroup.PRESSURE,
+            valueRange = 0f..3f, defaultValue = 0f, capability = BrushCapability.PRESSURE_WIDTH,
+            get = { EditorCurves.shapeOf(it.dynamics.pressure.widthCurve).ordinal.toFloat() },
+            set = { p, v ->
+                val shape = PressureCurveShape.entries[v.toInt().coerceIn(0, 3)]
+                p.copy(dynamics = p.dynamics.copy(pressure = p.dynamics.pressure.copy(widthCurve = EditorCurves.controlPoints(shape))))
+            },
+        ),
+        BrushOptionDescriptor(
+            id = "pressureOpacityCurveShape", label = "Opacity Curve", group = BrushOptionGroup.PRESSURE,
+            valueRange = 0f..3f, defaultValue = 0f, capability = BrushCapability.PRESSURE_DEPOSITION,
+            get = { EditorCurves.shapeOf(it.dynamics.pressure.depositionCurve).ordinal.toFloat() },
+            set = { p, v ->
+                val shape = PressureCurveShape.entries[v.toInt().coerceIn(0, 3)]
+                p.copy(dynamics = p.dynamics.copy(pressure = p.dynamics.pressure.copy(depositionCurve = EditorCurves.controlPoints(shape))))
+            },
+        ),
+        BrushOptionDescriptor(
+            id = "pressureFlowCurveShape", label = "Flow Curve", group = BrushOptionGroup.PRESSURE,
+            valueRange = 0f..3f, defaultValue = 0f, capability = BrushCapability.PRESSURE_DEPOSITION,
+            get = { EditorCurves.shapeOf(it.dynamics.pressure.flowCurve).ordinal.toFloat() },
+            set = { p, v ->
+                val shape = PressureCurveShape.entries[v.toInt().coerceIn(0, 3)]
+                p.copy(dynamics = p.dynamics.copy(pressure = p.dynamics.pressure.copy(flowCurve = EditorCurves.controlPoints(shape))))
+            },
+        ),
     )
 
     private val TILT = listOf(

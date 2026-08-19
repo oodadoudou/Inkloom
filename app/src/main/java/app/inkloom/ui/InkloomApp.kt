@@ -98,6 +98,10 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.core.content.FileProvider
 import app.inkloom.document.*
+import app.inkloom.brushpresetv4.OwnedBrushPreset
+import app.inkloom.brushpresetv4.PresetMigrator
+import app.inkloom.brushpresetv4.PresetOwnership
+import app.inkloom.brushpresetv4.PresetReverseMigrator
 import app.inkloom.importer.BrushImportRepository
 import app.inkloom.importer.BrushGroupOperations
 import app.inkloom.importer.BrushGroupStore
@@ -7970,23 +7974,76 @@ private fun BrushPanel(
         )
     }
     editBrush?.let { brush ->
-        BrushEditorDialog(
-            brush,
-            settings,
-            onDismiss = { creatingBrushId = null; editBrush = null },
-            onSave = { updated ->
-                val mapped = BrushSemanticMapper.apply(updated)
-                if (creatingBrushId == brush.id) {
-                    onReplaceBrushes(brushes + mapped)
-                } else if (mapped != brush) {
-                    historyStore.record(brush)
-                    historyRevision++
-                    onUpdateBrush(mapped)
-                }
-                creatingBrushId = null
-                editBrush = null
-            },
-        )
+        val owned = remember(brush.id) {
+            if (brush.format == BrushFormat.SYSTEM) {
+                OwnedBrushPreset(
+                    preset = PresetMigrator.toV4(brush),
+                    ownership = PresetOwnership.Factory(brush.id),
+                )
+            } else {
+                OwnedBrushPreset(
+                    preset = PresetMigrator.toV4(brush),
+                    ownership = PresetOwnership.User(userId = brush.id, derivedFromFactoryId = null),
+                )
+            }
+        }
+        val v4Editing = remember(brush.id) { mutableStateOf(true) }
+        if (v4Editing.value) {
+            BrushEditorV1Dialog(
+                source = owned,
+                settings = settings,
+                onDismiss = { creatingBrushId = null; editBrush = null },
+                onSaveAs = { v4 ->
+                    val updated = BrushSemanticMapper.apply(PresetReverseMigrator.toV3(v4))
+                    if (creatingBrushId == brush.id) {
+                        onReplaceBrushes(brushes + updated)
+                    } else {
+                        historyStore.record(brush)
+                        historyRevision++
+                        onReplaceBrushes(brushes + updated)
+                    }
+                    creatingBrushId = null
+                    editBrush = null
+                },
+                onSaveInPlace = { v4 ->
+                    val updated = BrushSemanticMapper.apply(PresetReverseMigrator.toV3(v4, BrushFormat.INKLOOM))
+                        .copy(id = brush.id, name = v4.identity.name)
+                    if (creatingBrushId == brush.id) {
+                        onReplaceBrushes(brushes + updated)
+                    } else if (updated != brush) {
+                        historyStore.record(brush)
+                        historyRevision++
+                        onUpdateBrush(updated)
+                    }
+                    creatingBrushId = null
+                    editBrush = null
+                },
+                onResetToFactory = {},
+                onDelete = {
+                    onDeleteBrush(brush.id)
+                    creatingBrushId = null
+                    editBrush = null
+                },
+            )
+        } else {
+            BrushEditorDialog(
+                brush,
+                settings,
+                onDismiss = { creatingBrushId = null; editBrush = null },
+                onSave = { updated ->
+                    val mapped = BrushSemanticMapper.apply(updated)
+                    if (creatingBrushId == brush.id) {
+                        onReplaceBrushes(brushes + mapped)
+                    } else if (mapped != brush) {
+                        historyStore.record(brush)
+                        historyRevision++
+                        onUpdateBrush(mapped)
+                    }
+                    creatingBrushId = null
+                    editBrush = null
+                },
+            )
+        }
     }
     historyBrush?.let { selected ->
         val current = brushes.firstOrNull { it.id == selected.id } ?: selected
@@ -8681,12 +8738,37 @@ private fun ProcreateBrushLibrary(
         )
     }
     editBrush?.let { brush ->
-        BrushEditorDialog(
-            brush = brush,
+        val owned = remember(brush.id) {
+            if (brush.format == BrushFormat.SYSTEM) {
+                OwnedBrushPreset(
+                    preset = PresetMigrator.toV4(brush),
+                    ownership = PresetOwnership.Factory(brush.id),
+                )
+            } else {
+                OwnedBrushPreset(
+                    preset = PresetMigrator.toV4(brush),
+                    ownership = PresetOwnership.User(userId = brush.id, derivedFromFactoryId = null),
+                )
+            }
+        }
+        BrushEditorV1Dialog(
+            source = owned,
             settings = settings,
             onDismiss = { editBrush = null },
-            onSave = { updated ->
+            onSaveAs = { v4 ->
+                val updated = BrushSemanticMapper.apply(PresetReverseMigrator.toV3(v4))
                 if (brushes.any { it.id == updated.id }) onUpdateBrush(updated) else onReplaceBrushes(brushes + updated)
+                editBrush = null
+            },
+            onSaveInPlace = { v4 ->
+                val updated = BrushSemanticMapper.apply(PresetReverseMigrator.toV3(v4, BrushFormat.INKLOOM))
+                    .copy(id = brush.id, name = v4.identity.name)
+                if (brushes.any { it.id == updated.id }) onUpdateBrush(updated) else onReplaceBrushes(brushes + updated)
+                editBrush = null
+            },
+            onResetToFactory = {},
+            onDelete = {
+                onDeleteBrush(brush.id)
                 editBrush = null
             },
         )

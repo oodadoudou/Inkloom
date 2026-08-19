@@ -47,6 +47,9 @@ object PresetReverseMigrator {
             opacityPressureEnabled = v4.dynamics.pressure.depositionEnabled,
             opacityPressureMinimum = v4.dynamics.pressure.depositionMinimum,
             opacityPressureCurve = v4.dynamics.pressure.depositionCurve,
+            flowPressureEnabled = v4.dynamics.pressure.flowEnabled,
+            flowPressureMinimum = v4.dynamics.pressure.flowMinimum,
+            flowPressureCurve = v4.dynamics.pressure.flowCurve,
             graphite = ImportedBrushGraphite(
                 tiltWidth = if (v4.dynamics.tilt.widthEnabled) v4.dynamics.tilt.widthMaximum else 0f,
                 tiltWidthStart = v4.dynamics.tilt.widthStart,

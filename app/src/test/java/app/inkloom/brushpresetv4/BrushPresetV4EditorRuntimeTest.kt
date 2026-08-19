@@ -170,6 +170,40 @@ class BrushPresetV4EditorRuntimeTest {
         assertEquals(1f, EditorCurves.pressureFactor(.3f, points, 1f), 1e-3f)
     }
 
+    @Test
+    fun flowPressureChannelCompilesToInkStroke() {
+        val preset = referencePencil().copy(
+            dynamics = referencePencil().dynamics.copy(
+                pressure = referencePencil().dynamics.pressure.copy(
+                    flowEnabled = true,
+                    flowMinimum = .2f,
+                    flowCurve = EditorCurves.controlPoints(PressureCurveShape.SOFT),
+                ),
+            ),
+        )
+        val stroke = CompiledBrushProgram.compile(preset).toInkStroke(0xFF000000, emptyList())
+        assertTrue("Flow pressure enabled must compile to flowPressureEnabled", stroke.flowPressureEnabled)
+        assertEquals(.2f, stroke.flowPressureMinimum, 1e-4f)
+        assertEquals(EditorCurves.controlPoints(PressureCurveShape.SOFT), stroke.flowPressureCurve)
+        // Reverse migration must carry the flow channel too.
+        val v3 = PresetReverseMigrator.toV3(preset)
+        assertTrue(v3.flowPressureEnabled)
+        assertEquals(.2f, v3.flowPressureMinimum, 1e-4f)
+    }
+
+    @Test
+    fun curveShapeDescriptorsRoundTrip() {
+        val sizeCurve = BrushOptionDescriptors.option("pressureSizeCurveShape")
+        val preset = referencePencil()
+        assertEquals(PressureCurveShape.LINEAR, EditorCurves.shapeOf(preset.dynamics.pressure.widthCurve))
+        // Switch to Soft via the descriptor.
+        val soft = sizeCurve.set(preset, PressureCurveShape.SOFT.ordinal.toFloat())
+        assertEquals(PressureCurveShape.SOFT, EditorCurves.shapeOf(soft.dynamics.pressure.widthCurve))
+        // Switch to Hard.
+        val hard = sizeCurve.set(preset, PressureCurveShape.HARD.ordinal.toFloat())
+        assertEquals(PressureCurveShape.HARD, EditorCurves.shapeOf(hard.dynamics.pressure.widthCurve))
+    }
+
     // ---- V4 -> V3 reverse migration ----
 
     @Test

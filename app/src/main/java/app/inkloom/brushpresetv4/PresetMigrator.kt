@@ -67,9 +67,12 @@ object PresetMigrator {
                     widthEnabled = v3.sizePressureEnabled,
                     widthMinimum = v3.sizePressureMinimum,
                     widthCurve = v3.sizePressureCurve,
-                    depositionEnabled = v3.opacityPressureEnabled || v3.flowPressureEnabled,
+                    depositionEnabled = v3.opacityPressureEnabled,
                     depositionMinimum = v3.opacityPressureMinimum,
                     depositionCurve = v3.opacityPressureCurve,
+                    flowEnabled = v3.flowPressureEnabled,
+                    flowMinimum = v3.flowPressureMinimum,
+                    flowCurve = v3.flowPressureCurve,
                 ),
                 tilt = TiltMappings(
                     widthEnabled = tiltWidth > .0001f,

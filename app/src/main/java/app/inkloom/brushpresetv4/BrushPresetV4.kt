@@ -96,7 +96,7 @@ data class DynamicsSettings(
     val direction: DirectionMappings? = null,
 )
 
-/** Pressure -> width and pressure -> deposition are distinct channels. */
+/** Pressure -> width, pressure -> deposition (opacity) and pressure -> flow are distinct channels. */
 @Serializable
 data class PressureMappings(
     val widthEnabled: Boolean = true,
@@ -105,6 +105,9 @@ data class PressureMappings(
     val depositionEnabled: Boolean = false,
     val depositionMinimum: Float = 0f,
     val depositionCurve: List<BrushCurvePoint> = emptyList(),
+    val flowEnabled: Boolean = false,
+    val flowMinimum: Float = 0f,
+    val flowCurve: List<BrushCurvePoint> = emptyList(),
 )
 
 @Serializable

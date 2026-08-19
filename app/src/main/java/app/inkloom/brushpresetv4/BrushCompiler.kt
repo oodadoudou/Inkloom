@@ -61,6 +61,9 @@ class CompiledBrushProgram private constructor(
         val depositionEnabled: Boolean,
         val depositionMinimum: Float,
         val depositionCurve: List<BrushCurvePoint>,
+        val flowEnabled: Boolean,
+        val flowMinimum: Float,
+        val flowCurve: List<BrushCurvePoint>,
     )
 
     data class CompiledTilt(
@@ -133,6 +136,9 @@ class CompiledBrushProgram private constructor(
             opacityPressureEnabled = pressure.depositionEnabled,
             opacityPressureMinimum = pressure.depositionMinimum,
             opacityPressureCurve = pressure.depositionCurve,
+            flowPressureEnabled = pressure.flowEnabled,
+            flowPressureMinimum = pressure.flowMinimum,
+            flowPressureCurve = pressure.flowCurve,
             graphiteTiltWidth = if (tilt.widthEnabled) tilt.widthMaximum else 0f,
             graphiteTiltWidthStart = tilt.widthStart,
             graphiteTiltGrain = if (tilt.grainEnabled) tilt.grainMaximum else 0f,
@@ -190,6 +196,9 @@ class CompiledBrushProgram private constructor(
                     depositionEnabled = preset.dynamics.pressure.depositionEnabled,
                     depositionMinimum = preset.dynamics.pressure.depositionMinimum,
                     depositionCurve = preset.dynamics.pressure.depositionCurve.toList(),
+                    flowEnabled = preset.dynamics.pressure.flowEnabled,
+                    flowMinimum = preset.dynamics.pressure.flowMinimum,
+                    flowCurve = preset.dynamics.pressure.flowCurve.toList(),
                 ),
                 tilt = CompiledTilt(
                     widthEnabled = preset.dynamics.tilt.widthEnabled,
