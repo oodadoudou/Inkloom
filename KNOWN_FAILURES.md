@@ -71,6 +71,22 @@ Status legend:
 
 ---
 
+## KF-003: `repeatedViewportFillThresholdUpdatesStayInteractive` / `committedSelectionOverlayStaysWithinInteractiveFrameBudget` — suite-load frame-budget flakes
+
+- **File:** `app/src/androidTest/java/app/inkloom/FloodFillTest.kt` and `app/src/androidTest/java/app/inkloom/LassoSelectionModesTest.kt`
+- **First confirmed at:** commit `f4bc3e9` (baseline, no brushpresetv4 changes; both tests pass when run in isolation and passed in the full-suite run at `4035ffe`).
+- **Status:** FLAKY — intermittent under full-suite load only; each passes when run in isolation.
+- **Failure signature:**
+  - `repeatedViewportFillThresholdUpdatesStayInteractive` — interactive frame-budget assertion in the flood-fill threshold test.
+  - `committedSelectionOverlayStaysWithinInteractiveFrameBudget` — interactive frame-budget assertion in the lasso selection overlay test.
+- **Category:** Interactive frame budget under emulator suite load (flood fill / selection tooling).
+- **Classification:** same family as KF-002 — timing-sensitive flakes on the emulator under suite load. Neither test exercises brush rendering or the brushpresetv4 schema/compiler; no brush-renderer code path is implicated.
+- **Expected fix milestone:** none assigned to a feature milestone; CI/emulator robustness concern, quarantined with KF-002. If either becomes deterministic (fails in isolation) raise it as a real regression.
+- **How to reproduce (intermittent):** run the full instrumented suite (`./gradlew connectedDebugAndroidTest`).
+- **Quarantine note:** do NOT treat transient frame-budget overages in these two tests as brush-renderer regressions. Brush renderer perf is covered by `representativeFactoryBrushesKeepLiveAndCommitWorkInsideAFrame` (16.7ms budget).
+
+---
+
 ## Conventions
 
 - New failures: never silently merge into these rows. Create a new KF entry + GitHub issue.
