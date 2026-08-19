@@ -177,7 +177,7 @@ private fun BrushOptionRow(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                 PressureCurveShape.entries.forEach { shape ->
                     TextButton(
-                        onClick = { onValue(option.set(value, shape.ordinal.toFloat())) },
+                        onClick = { onValue(option.apply(value, shape.ordinal.toFloat())) },
                         modifier = Modifier.height(28.dp),
                     ) {
                         Text(shape.label, fontSize = 10.sp, color = if (shape.ordinal == shapeIndex) Color(0xFF9AC8A0) else Color.Gray)
@@ -198,7 +198,7 @@ private fun BrushOptionRow(
         }
         Slider(
             value = current.coerceIn(option.valueRange.start, option.valueRange.endInclusive),
-            onValueChange = { v -> onValue(option.set(value, v)) },
+            onValueChange = { v -> onValue(option.apply(value, v)) },
             valueRange = option.valueRange,
         )
     }

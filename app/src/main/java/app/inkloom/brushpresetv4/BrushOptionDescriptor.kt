@@ -24,6 +24,13 @@ data class BrushOptionDescriptor(
     /** Whether this option is meaningful for a family (common options always are). */
     fun isAvailableFor(family: BrushFamily): Boolean =
         capability == null || BrushCapabilities.supports(family, capability)
+
+    /**
+     * Applies [set] only when the option is meaningful for the preset's family; otherwise the
+     * value is a no-op so an unsupported (hidden) option can never mutate the preset.
+     */
+    fun apply(preset: BrushPresetV4, value: Float): BrushPresetV4 =
+        if (isAvailableFor(preset.identity.family)) set(preset, value) else preset
 }
 
 enum class BrushOptionGroup { BASIC, TIP, SPACING, PRESSURE, TILT, PAPER, STROKE }
