@@ -229,10 +229,12 @@ class InkCanvasView(context: Context) : View(context) {
             if (!value) {
                 StrokeTrace.reset()
                 pendingProjectionStrokeId = null
+                pendingStableFrameStrokeId = null
             }
             postInvalidateOnAnimation()
         }
     private var pendingProjectionStrokeId: String? = null
+    private var pendingStableFrameStrokeId: String? = null
     private var lastCommittedFrameDrawn = false
     private val strokeTraceOverlayPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textSize = 26f
@@ -1544,6 +1546,22 @@ class InkCanvasView(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         synchronized(renderLock) { drawPageContent(canvas) }
+        pendingStableFrameStrokeId?.let { strokeId ->
+            pendingStableFrameStrokeId = null
+            lastCommittedFrameDrawn = true
+            StrokeTrace.markOnce(
+                strokeId,
+                StrokeTrace.STAGE_RENDERER_DRAW,
+                tileCount = committedScene.dirtyTileCount,
+                generation = committedScene.generation,
+            )
+            StrokeTrace.markOnce(
+                strokeId,
+                StrokeTrace.STAGE_STABLE_FRAME,
+                tileCount = committedScene.dirtyTileCount,
+                generation = committedScene.generation,
+            )
+        }
         if (showStrokeTraceOverlay && BuildConfig.DEBUG) drawStrokeTraceOverlay(canvas)
     }
 
@@ -1761,17 +1779,6 @@ class InkCanvasView(context: Context) : View(context) {
             independentStrokes = canAppendCommittedInkToTiles(),
         ) { target, candidates ->
             drawLayeredStrokes(target, candidates)
-        }
-        if (drew) {
-            lastCommittedFrameDrawn = true
-            if (StrokeTrace.enabled) {
-                StrokeTrace.mark(
-                    currentStrokeId,
-                    StrokeTrace.STAGE_RENDERER_DRAW,
-                    tileCount = committedScene.dirtyTileCount,
-                    generation = committedScene.generation,
-                )
-            }
         }
         return drew
     }
@@ -3835,6 +3842,11 @@ class InkCanvasView(context: Context) : View(context) {
                         currentPoints.size,
                         newStrokes.firstOrNull()?.points?.size ?: currentPoints.size,
                     )
+                    if (StrokeTrace.enabled) {
+                        pendingStableFrameStrokeId = currentStrokeId
+                        lastCommittedFrameDrawn = false
+                        postInvalidateOnAnimation()
+                    }
                     finishWetPaintGesture()
                     val previewSurface = activeStrokeSurface?.takeUnless { usesViewActivePreview() }
                     if (incrementalRasterCommit) {

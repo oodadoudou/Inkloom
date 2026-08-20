@@ -70,11 +70,7 @@ internal object StrokeTrace {
                 STAGE_TRANSACTION_COMMIT -> committed = true
                 STAGE_TRANSIENT_HIDDEN -> transientHidden = true
             }
-            if (committed && transientHidden && STAGE_STABLE_FRAME !in stages) {
-                marks += Mark(STAGE_STABLE_FRAME, System.nanoTime(), Thread.currentThread().name)
-                stages += STAGE_STABLE_FRAME
-            }
-            if (committed && transientHidden) complete()
+            if (committed && transientHidden && STAGE_STABLE_FRAME in stages) complete()
         }
 
         @Synchronized

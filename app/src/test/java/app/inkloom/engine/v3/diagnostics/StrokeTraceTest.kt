@@ -42,6 +42,8 @@ class StrokeTraceTest {
         session.mark(StrokeTrace.STAGE_TRANSACTION_COMMIT)
         session.mark(StrokeTrace.STAGE_FRONT_BUFFER_COMMIT)
         session.mark(StrokeTrace.STAGE_TRANSIENT_HIDDEN)
+        assertTrue(!session.completed)
+        session.mark(StrokeTrace.STAGE_STABLE_FRAME)
         assertEquals(
             listOf(
                 StrokeTrace.STAGE_ACTION_DOWN,
@@ -78,6 +80,21 @@ class StrokeTraceTest {
     }
 
     @Test
+    fun logicalCommitAndHideDoNotFabricateAStableFrame() {
+        val session = StrokeTrace.begin("no-real-frame")!!
+        session.mark(StrokeTrace.STAGE_ACTION_UP)
+        session.mark(StrokeTrace.STAGE_TRANSACTION_COMMIT)
+        session.mark(StrokeTrace.STAGE_TRANSIENT_HIDDEN)
+
+        assertTrue(!session.completed)
+        assertNull(session.first(StrokeTrace.STAGE_STABLE_FRAME))
+
+        session.mark(StrokeTrace.STAGE_RENDERER_DRAW)
+        session.mark(StrokeTrace.STAGE_STABLE_FRAME)
+        assertTrue(session.completed)
+    }
+
+    @Test
     fun derivedMetricsAggregateAcrossSessions() {
         repeat(3) { i ->
             val session = StrokeTrace.begin("agg-$i")!!
@@ -86,6 +103,7 @@ class StrokeTraceTest {
             session.mark(StrokeTrace.STAGE_ACTION_UP)
             session.mark(StrokeTrace.STAGE_TRANSACTION_COMMIT)
             session.mark(StrokeTrace.STAGE_TRANSIENT_HIDDEN)
+            session.mark(StrokeTrace.STAGE_STABLE_FRAME)
         }
         val samples = StrokeTrace.samplesFor("DOWN→first transient")
         assertEquals(3, samples.size)
@@ -129,6 +147,7 @@ class StrokeTraceTest {
         session.mark(StrokeTrace.STAGE_PROJECTION_GENERATED)
         session.mark(StrokeTrace.STAGE_FRONT_BUFFER_COMMIT)
         session.mark(StrokeTrace.STAGE_TRANSIENT_HIDDEN)
+        session.mark(StrokeTrace.STAGE_STABLE_FRAME)
         assertTrue(session.collectWarnings().isEmpty())
     }
 
