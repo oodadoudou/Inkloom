@@ -213,7 +213,10 @@ class BrushPresetV4FoundationTest {
         assertEquals("HB Pencil - Custom", savedAs.preset.identity.name)
         assertFalse(savedAs.isFactory)
         val reset = PresetOwnershipOperations.resetToFactory(savedAs, referencePencil())
-        assertTrue("Reset to factory must restore the factory default", reset!!.isFactory)
+        assertFalse("Reset must keep the editable user copy", reset!!.isFactory)
+        assertEquals(savedAs.id, reset.id)
+        assertEquals(referencePencil().tip, reset.preset.tip)
+        assertEquals("system-hb-pencil", reset.preset.identity.renderBrushId)
     }
 
     @Test
