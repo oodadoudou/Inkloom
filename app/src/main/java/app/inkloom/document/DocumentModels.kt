@@ -500,6 +500,7 @@ data class InkStroke(
     val proceduralPaperGrainEnabled: Boolean = false,
     val proceduralPaperGrainScale: Float = 100f,
     val proceduralPaperGrainDensity: Float = .5f,
+    val proceduralPaperGrainStrength: Float = 1f,
     val thickness: Float = 1f,
     val thicknessVertical: Boolean = false,
     val shapeRoundnessHorizontalJitter: Float = 0f,

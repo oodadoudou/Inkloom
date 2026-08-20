@@ -708,6 +708,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var gestureEraserSize: Float = 24f
     var inkOpacity: Float = 1f
     var brushId: String = "system-pencil"
+    var brushRenderSeed: Int = brushId.hashCode()
     var activeLayerId: String = app.inkloom.document.LayerIds.INK
     var layerOpacities: Map<String, Float> = emptyMap()
         set(value) {
@@ -811,6 +812,7 @@ class InkCanvasView(context: Context) : View(context) {
     var proceduralPaperGrainEnabled: Boolean = false
     var proceduralPaperGrainScale: Float = 100f
     var proceduralPaperGrainDensity: Float = .5f
+    var proceduralPaperGrainStrength: Float = 1f
     var brushThickness: Float = 1f
     var brushThicknessVertical: Boolean = false
     var shapeRoundnessHorizontalJitter: Float = 0f
@@ -6266,6 +6268,7 @@ class InkCanvasView(context: Context) : View(context) {
             ?: withCurrentBrushBehavior(buildStroke(points)).copy(width = gestureBrushSize)
 
     private fun withCurrentBrushBehavior(stroke: InkStroke): InkStroke = stroke.copy(
+        renderSeed = brushRenderSeed,
         secondaryColorArgb = secondaryInkColor.toUInt().toLong(),
         procreateColorDynamics = procreateColorDynamics,
         procreateTaper = procreateTaper,
@@ -6320,6 +6323,7 @@ class InkCanvasView(context: Context) : View(context) {
         proceduralPaperGrainEnabled = proceduralPaperGrainEnabled,
         proceduralPaperGrainScale = proceduralPaperGrainScale,
         proceduralPaperGrainDensity = proceduralPaperGrainDensity,
+        proceduralPaperGrainStrength = proceduralPaperGrainStrength,
         strokeFalloff = strokeFalloff,
         strokePathJitter = strokePathJitter,
         strokePathLongitudinalJitter = strokePathLongitudinalJitter,

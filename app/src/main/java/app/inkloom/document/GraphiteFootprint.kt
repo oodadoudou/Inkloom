@@ -36,7 +36,8 @@ object GraphiteFootprint {
     /** Multiplier applied to the deposited graphite alpha from the paper grain (1 = no grain). */
     fun paperGrainAlpha(stroke: InkStroke, documentX: Float, documentY: Float): Float {
         if (!stroke.proceduralPaperGrainEnabled) return 1f
-        val density = stroke.proceduralPaperGrainDensity.coerceIn(0f, 1f)
+        val density = stroke.proceduralPaperGrainDensity.coerceIn(0f, 1f) *
+            stroke.proceduralPaperGrainStrength.coerceIn(0f, 1f)
         if (density <= .0001f) return 1f
         val scale = stroke.proceduralPaperGrainScale.coerceIn(1f, 4000f)
         val value = ProceduralPaperGrain.value(documentX, documentY, scale, PAPER_GRAIN_SALT)

@@ -64,6 +64,8 @@ data class ImportedBrushGraphite(
     val paperGrainEnabled: Boolean = false,
     val paperGrainScale: Float = 100f,
     val paperGrainDensity: Float = .5f,
+    /** Independent amplitude of the document-space paper tooth. */
+    val paperGrainStrength: Float = 1f,
 )
 
 /** A durable, user-auditable source-semantic to Engine V3 runtime mapping. */
@@ -342,6 +344,14 @@ data class ImportedBrush(
     val blurSecondaryDynamics: BrushSecondaryDynamics = BrushSecondaryDynamics(),
     val parserVersion: Int = 0,
     val semanticMappings: List<BrushSemanticMapping> = emptyList(),
+    /** User/library identity is [id]; renderer routing identity is kept separate for duplicated presets. */
+    val renderBrushId: String? = null,
+    /** Stable preset-scoped seed used by stochastic brush programs. */
+    val renderSeed: Int? = null,
+    /** Factory lineage for Reset; null for imported/from-scratch brushes. */
+    val derivedFromFactoryId: String? = null,
+    /** Canonical V4 payload. Legacy fields remain as the production compatibility projection. */
+    val v4PresetJson: String? = null,
 ) {
     val dualGrainPreviewPath get() = dualGrain.previewPath
     val dualGrainDensity get() = dualGrain.density
@@ -367,6 +377,7 @@ data class ImportedBrush(
     val proceduralPaperGrainEnabled get() = graphite.paperGrainEnabled
     val proceduralPaperGrainScale get() = graphite.paperGrainScale
     val proceduralPaperGrainDensity get() = graphite.paperGrainDensity
+    val proceduralPaperGrainStrength get() = graphite.paperGrainStrength
 }
 
 enum class EditorTool { PEN, HIGHLIGHTER, ERASER, EYEDROPPER, SELECT, SHAPE, TEXT, NOTE, LINK, IMAGE, AUDIO, LASER, FILL, GRADIENT, SMUDGE, LIQUIFY, CORRECT_LINE }

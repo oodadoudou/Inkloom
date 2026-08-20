@@ -94,13 +94,21 @@ object PresetOwnershipOperations {
         return OwnedBrushPreset(owned.preset.copy(renderSeed = newSeed), owned.ownership)
     }
 
-    /** Restores a user copy to its factory default, or returns null if there is no factory default. */
+    /** Restores a user copy's settings from its factory while retaining the user's identity. */
     fun resetToFactory(owned: OwnedBrushPreset, factoryDefault: BrushPresetV4?): OwnedBrushPreset? {
         if (owned.isFactory) return owned
         val factory = factoryDefault ?: return null
         val factoryId = (owned.ownership as PresetOwnership.User).derivedFromFactoryId
         return if (factoryId != null && factory.identity.id == factoryId) {
-            OwnedBrushPreset(factory, PresetOwnership.Factory(factoryId))
+            OwnedBrushPreset(
+                preset = factory.copy(
+                    identity = factory.identity.copy(
+                        id = owned.id,
+                        name = owned.preset.identity.name,
+                    ),
+                ),
+                ownership = owned.ownership,
+            )
         } else {
             null
         }

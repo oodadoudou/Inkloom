@@ -58,6 +58,23 @@ class BrushPresetV4EditorRuntimeTest {
     }
 
     @Test
+    fun resetToFactoryKeepsUserIdentityAndRestoresFactorySettings() {
+        val factory = OwnedBrushPreset(referencePencil(), PresetOwnership.Factory("system-hb-pencil"))
+        val user = PresetOwnershipOperations.duplicate(factory)
+        val edited = PresetOwnershipOperations.withEdits(
+            user,
+            user.preset.copy(tip = user.preset.tip.copy(size = 80f)),
+        )
+        val reset = PresetOwnershipOperations.resetToFactory(edited, factory.preset)!!
+
+        assertFalse(reset.isFactory)
+        assertEquals(user.id, reset.id)
+        assertEquals(user.preset.identity.name, reset.preset.identity.name)
+        assertEquals(factory.preset.tip.size, reset.preset.tip.size, 1e-4f)
+        assertEquals("system-hb-pencil", reset.preset.identity.renderBrushId)
+    }
+
+    @Test
     fun userCommitAsNewPreservesSeedAndRenderBrushId() {
         val factory = OwnedBrushPreset(referencePencil(), PresetOwnership.Factory("system-hb-pencil"))
         val user = PresetOwnershipOperations.duplicate(factory)
@@ -67,6 +84,50 @@ class BrushPresetV4EditorRuntimeTest {
         assertEquals("HB - Dark", asNew.preset.identity.name)
         assertEquals("renderBrushId must survive Save As", "system-hb-pencil", asNew.preset.identity.renderBrushId)
         assertEquals("seed must survive Save As", user.preset.renderSeed, asNew.preset.renderSeed)
+        val projected = PresetReverseMigrator.toV3(asNew.preset, BrushFormat.INKLOOM)
+        assertEquals("V3 compatibility projection must retain the new user identity", asNew.id, projected.id)
+        assertEquals("Renderer routing identity stays independent", "system-hb-pencil", projected.renderBrushId)
+        assertEquals(user.preset.renderSeed, projected.renderSeed)
+    }
+
+    @Test
+    fun reverseMigrationMergesOntoImportedBrushWithoutLosingAdvancedSemantics() {
+        val base = ImportedBrush(
+            id = "sut-user",
+            name = "Imported SUT",
+            format = BrushFormat.SUT,
+            compatibility = app.inkloom.model.Compatibility.HIGH,
+            sizeBytes = 1234L,
+            report = listOf("source report"),
+            sourcePath = "/brushes/source.sut",
+            sha256 = "abc",
+            tipPreviewPath = "tip-a.png",
+            tipPreviewPaths = listOf("tip-a.png", "tip-b.png"),
+            dualTipPreviewPaths = listOf("dual.png"),
+            dualBrush = true,
+            watercolor = true,
+            colorMix = .73f,
+            ribbon = false,
+            continuousPlot = false,
+            groupName = "Pencil/Imported",
+            tags = listOf("custom", "sut"),
+        )
+        val edited = PresetMigrator.toV4(base).copy(tip = PresetMigrator.toV4(base).tip.copy(size = 31f))
+        val projected = PresetReverseMigrator.toV3(edited, BrushFormat.INKLOOM, base)
+
+        assertEquals(31f, projected.defaultSize, 1e-4f)
+        assertEquals(base.sourcePath, projected.sourcePath)
+        assertEquals(base.sha256, projected.sha256)
+        assertEquals(base.tipPreviewPath, projected.tipPreviewPath)
+        assertEquals(base.tipPreviewPaths, projected.tipPreviewPaths)
+        assertEquals(base.dualTipPreviewPaths, projected.dualTipPreviewPaths)
+        assertTrue(projected.dualBrush)
+        assertTrue(projected.watercolor)
+        assertEquals(.73f, projected.colorMix, 1e-4f)
+        assertEquals(base.ribbon, projected.ribbon)
+        assertEquals(base.continuousPlot, projected.continuousPlot)
+        assertEquals(base.groupName, projected.groupName)
+        assertEquals(base.tags, projected.tags)
     }
 
     @Test
@@ -240,6 +301,7 @@ class BrushPresetV4EditorRuntimeTest {
         assertEquals(v4.dynamics.pressure.widthEnabled, v4again.dynamics.pressure.widthEnabled)
         assertEquals(v4.dynamics.tilt.widthEnabled, v4again.dynamics.tilt.widthEnabled)
         assertEquals(v4.dynamics.tilt.grainEnabled, v4again.dynamics.tilt.grainEnabled)
+        assertEquals(v4.paperGrain!!.strength, v4again.paperGrain!!.strength, 1e-4f)
     }
 
     @Test

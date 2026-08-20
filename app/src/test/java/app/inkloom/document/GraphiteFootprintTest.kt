@@ -85,6 +85,13 @@ class GraphiteFootprintTest {
         assertTrue("Dense grain must still modulate alpha (range=$range)", range > .05f)
     }
 
+    @Test fun paperGrainStrengthControlsTheVisibleAmplitude() {
+        val disabled = stroke().copy(proceduralPaperGrainStrength = 0f)
+        val enabled = stroke().copy(proceduralPaperGrainStrength = 1f)
+        assertEquals(1f, GraphiteFootprint.paperGrainAlpha(disabled, 123f, 456f), 1e-6f)
+        assertTrue(GraphiteFootprint.paperGrainAlpha(enabled, 123f, 456f) < 1f)
+    }
+
     @Test fun disabledPaperGrainReturnsNeutralAlpha() {
         val plain = stroke().copy(proceduralPaperGrainEnabled = false)
         assertEquals(1f, GraphiteFootprint.paperGrainAlpha(plain, 1f, 1f), 1e-6f)

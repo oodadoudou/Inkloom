@@ -146,6 +146,7 @@ class CompiledBrushProgram private constructor(
             proceduralPaperGrainEnabled = grainSampler != null,
             proceduralPaperGrainScale = grainSampler?.scale ?: 100f,
             proceduralPaperGrainDensity = grainSampler?.density ?: 0f,
+            proceduralPaperGrainStrength = grainSampler?.strength ?: 1f,
             ribbon = continuous,
             continuousPlot = continuous,
             taperStartEnabled = strokeShaping.taperStartEnabled,

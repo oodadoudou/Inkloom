@@ -16,8 +16,10 @@ import app.inkloom.brushpresetv4.EngineOptions
 import app.inkloom.brushpresetv4.OwnedBrushPreset
 import app.inkloom.brushpresetv4.PaperGrainSettings
 import app.inkloom.brushpresetv4.PresetIdentity
+import app.inkloom.brushpresetv4.PresetMigrator
 import app.inkloom.brushpresetv4.PresetOwnership
 import app.inkloom.brushpresetv4.PresetOwnershipOperations
+import app.inkloom.brushpresetv4.PresetReverseMigrator
 import app.inkloom.brushpresetv4.PressureMappings
 import app.inkloom.brushpresetv4.SpacingMode
 import app.inkloom.brushpresetv4.SpacingSettings
@@ -25,8 +27,9 @@ import app.inkloom.brushpresetv4.StrokeSettings
 import app.inkloom.brushpresetv4.TiltMappings
 import app.inkloom.brushpresetv4.TipSettings
 import app.inkloom.brushpresetv4.TipTextureSettings
-import app.inkloom.brushpresetv4.UserPresetStore
 import app.inkloom.document.StrokePoint
+import app.inkloom.importer.BrushMetadataStore
+import app.inkloom.model.BrushFormat
 import app.inkloom.ui.InkCanvasView
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -36,7 +39,7 @@ import org.junit.runner.RunWith
 
 /**
  * BRUSH_EDITOR_V1 persistence + full-chain regression:
- * - user preset saved to UserPresetStore, re-loaded (simulated restart), still compiles to the
+ * - user preset saved through the production BrushMetadataStore, re-loaded (simulated restart), still compiles to the
  *   same raster as before the save;
  * - WorkingCopy -> serialize -> deserialize -> compile -> raster is byte-identical.
  */
@@ -54,11 +57,13 @@ class BrushPresetV4EditorPersistenceTest {
         )
         val before = raster(CompiledBrushProgram.compile(editedPreset).toInkStroke(0xFF111111L, points()))
 
-        val store = UserPresetStore(context)
-        store.save(listOf(OwnedBrushPreset(editedPreset, edited.ownership)))
+        val preferenceName = "v4-production-persistence-${System.nanoTime()}"
+        val store = BrushMetadataStore(context, preferenceName, "brushes")
+        val projected = PresetReverseMigrator.toV3(editedPreset, BrushFormat.INKLOOM)
+        store.save(listOf(projected))
         val loaded = store.load()
         assertEquals(1, loaded.size)
-        val loadedPreset = loaded.first().preset
+        val loadedPreset = PresetMigrator.toV4(loaded.first())
         assertEquals("renderSeed must survive persistence", editedPreset.renderSeed, loadedPreset.renderSeed)
         assertEquals("renderBrushId must survive persistence", "system-hb-pencil", loadedPreset.identity.renderBrushId)
         assertEquals("User id must survive persistence", edited.id, loaded.first().id)
@@ -69,6 +74,7 @@ class BrushPresetV4EditorPersistenceTest {
         } finally {
             before.recycle()
             after.recycle()
+            context.getSharedPreferences(preferenceName, Context.MODE_PRIVATE).edit().clear().commit()
         }
     }
 

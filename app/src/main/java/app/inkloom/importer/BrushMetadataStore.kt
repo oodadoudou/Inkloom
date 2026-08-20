@@ -414,6 +414,7 @@ class BrushMetadataStore(
                             paperGrainEnabled = item.optBoolean("proceduralPaperGrainEnabled", false),
                             paperGrainScale = item.optDouble("proceduralPaperGrainScale", 100.0).toFloat().coerceIn(1f, 4000f),
                             paperGrainDensity = item.optDouble("proceduralPaperGrainDensity", .5).toFloat().coerceIn(0f, 1f),
+                            paperGrainStrength = item.optDouble("proceduralPaperGrainStrength", 1.0).toFloat().coerceIn(0f, 1f),
                         ),
                         favorite = item.optBoolean("favorite", false),
                         hidden = item.optBoolean("hidden", false),
@@ -449,6 +450,10 @@ class BrushMetadataStore(
                         blurSecondaryDynamics = secondary("blurSecondaryDynamics"),
                         parserVersion = item.optInt("parserVersion", 0),
                         semanticMappings = semanticMappings,
+                        renderBrushId = item.optString("renderBrushId").takeIf(String::isNotBlank),
+                        renderSeed = item.opt("renderSeed")?.takeUnless { it == JSONObject.NULL }?.let { item.optInt("renderSeed") },
+                        derivedFromFactoryId = item.optString("derivedFromFactoryId").takeIf(String::isNotBlank),
+                        v4PresetJson = item.optString("v4PresetJson").takeIf(String::isNotBlank),
                     ),
                 )
             }
@@ -532,6 +537,7 @@ class BrushMetadataStore(
                     .put("proceduralPaperGrainEnabled", brush.proceduralPaperGrainEnabled)
                     .put("proceduralPaperGrainScale", brush.proceduralPaperGrainScale)
                     .put("proceduralPaperGrainDensity", brush.proceduralPaperGrainDensity)
+                    .put("proceduralPaperGrainStrength", brush.proceduralPaperGrainStrength)
                     .put("stabilization", brush.stabilization)
                     .put("stabilizationBySpeed", brush.stabilizationBySpeed)
                     .put("stabilizationBySpeedMode", brush.stabilizationBySpeedMode)
@@ -722,6 +728,10 @@ class BrushMetadataStore(
                     .put("blurPressureCurve", curveJson(brush.blurPressureCurve))
                     .put("blurSecondaryDynamics", secondaryJson(brush.blurSecondaryDynamics))
                     .put("parserVersion", brush.parserVersion)
+                    .put("renderBrushId", brush.renderBrushId)
+                    .put("renderSeed", brush.renderSeed)
+                    .put("derivedFromFactoryId", brush.derivedFromFactoryId)
+                    .put("v4PresetJson", brush.v4PresetJson)
                     .put("semanticMappings", semanticMappingsJson(brush.semanticMappings)),
             )
         }

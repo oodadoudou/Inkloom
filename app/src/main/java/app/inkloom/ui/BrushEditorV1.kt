@@ -76,7 +76,7 @@ fun BrushEditorV1Dialog(
     onDismiss: () -> Unit,
     onSaveAs: (BrushPresetV4) -> Unit,
     onSaveInPlace: (BrushPresetV4) -> Unit,
-    onResetToFactory: () -> Unit,
+    onResetToFactory: (() -> Unit)?,
     onDelete: () -> Unit,
 ) {
     var session by remember(source.id) {
@@ -129,7 +129,9 @@ fun BrushEditorV1Dialog(
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (!source.isFactory) {
                     TextButton(onClick = onDelete) { Text(brTr(lang, "Delete", "删除"), color = MaterialTheme.colorScheme.error) }
-                    TextButton(onClick = onResetToFactory) { Text(brTr(lang, "Reset", "重置")) }
+                    onResetToFactory?.let { reset ->
+                        TextButton(onClick = reset) { Text(brTr(lang, "Reset", "重置")) }
+                    }
                 }
                 TextButton(onClick = onDismiss) { Text(brTr(lang, "Cancel", "取消")) }
                 TextButton(onClick = {

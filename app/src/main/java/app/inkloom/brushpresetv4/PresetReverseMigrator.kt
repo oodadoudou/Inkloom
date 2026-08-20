@@ -14,33 +14,40 @@ import app.inkloom.model.ImportedBrushGraphite
  * migrator must project the V4 semantics onto the ImportedBrush fields that buildStroke reads, with
  * the same values [CompiledBrushProgram] would produce.
  *
- * It maps only the fields the V4 common contract + the reference families express; everything else
- * stays at the ImportedBrush default. The render brush id ([PresetIdentity.renderBrushId]) becomes
- * the ImportedBrush id so the procedural-tip / ribbon renderer gates still recognize it.
+ * It maps the fields the V4 common contract expresses and merges them onto [base], preserving
+ * imported SUT/ABR/Procreate semantics outside the current V4 scope. Library identity remains
+ * [PresetIdentity.id]; renderer routing identity is stored independently.
  */
 object PresetReverseMigrator {
 
-    fun toV3(v4: BrushPresetV4, format: BrushFormat = BrushFormat.SYSTEM): ImportedBrush {
+    fun toV3(
+        v4: BrushPresetV4,
+        format: BrushFormat = BrushFormat.SYSTEM,
+        base: ImportedBrush? = null,
+    ): ImportedBrush {
         val identity = v4.identity
         val family = identity.family
-        val hasImportedTip = v4.tipTexture?.assetPath != null
-        val backend = BrushCapabilities.backend(family, hasImportedTip)
         val continuous = family == BrushFamily.INK
-        return ImportedBrush(
-            id = identity.renderBrushId,
+        val source = base ?: ImportedBrush(
             name = identity.name,
             format = format,
             compatibility = Compatibility.COMPLETE,
             sizeBytes = 0L,
             report = emptyList(),
+        )
+        return source.copy(
+            id = identity.id,
+            name = identity.name,
+            format = format,
+            compatibility = source.compatibility,
             defaultSize = v4.tip.size,
             defaultOpacity = v4.deposition.opacity,
             flow = v4.deposition.flow,
             hardness = v4.tip.hardness,
             thickness = v4.tip.aspect,
             rotationDegrees = v4.tip.rotationDegrees,
-            spacing = v4.spacing?.value ?: .12f,
-            spacingMode = app.inkloom.document.CspBrushGap.FIXED,
+            spacing = v4.spacing?.value ?: source.spacing,
+            spacingMode = if (v4.spacing != null) app.inkloom.document.CspBrushGap.FIXED else source.spacingMode,
             sizePressureEnabled = v4.dynamics.pressure.widthEnabled,
             sizePressureMinimum = v4.dynamics.pressure.widthMinimum,
             sizePressureCurve = v4.dynamics.pressure.widthCurve,
@@ -50,7 +57,7 @@ object PresetReverseMigrator {
             flowPressureEnabled = v4.dynamics.pressure.flowEnabled,
             flowPressureMinimum = v4.dynamics.pressure.flowMinimum,
             flowPressureCurve = v4.dynamics.pressure.flowCurve,
-            graphite = ImportedBrushGraphite(
+            graphite = if (family == BrushFamily.PENCIL) source.graphite.copy(
                 tiltWidth = if (v4.dynamics.tilt.widthEnabled) v4.dynamics.tilt.widthMaximum else 0f,
                 tiltWidthStart = v4.dynamics.tilt.widthStart,
                 tiltGrain = if (v4.dynamics.tilt.grainEnabled) v4.dynamics.tilt.grainMaximum else 0f,
@@ -58,10 +65,11 @@ object PresetReverseMigrator {
                 paperGrainEnabled = v4.paperGrain != null,
                 paperGrainScale = v4.paperGrain?.scale ?: 100f,
                 paperGrainDensity = v4.paperGrain?.density ?: 0f,
-            ),
-            ribbon = continuous,
-            continuousPlot = continuous,
-            tipPreviewPath = v4.tipTexture?.assetPath,
+                paperGrainStrength = v4.paperGrain?.strength ?: 1f,
+            ) else source.graphite,
+            ribbon = if (base == null) continuous else source.ribbon,
+            continuousPlot = if (base == null) continuous else source.continuousPlot,
+            tipPreviewPath = v4.tipTexture?.assetPath ?: source.tipPreviewPath,
             stabilization = v4.stroke?.smoothing ?: 0f,
             postCorrectionEnabled = (v4.stroke?.postCorrection ?: 0f) > .0001f,
             postCorrection = v4.stroke?.postCorrection ?: 0f,
@@ -69,6 +77,11 @@ object PresetReverseMigrator {
             taperStartLength = v4.stroke?.taperStartLength ?: .2f,
             taperEndEnabled = v4.stroke?.taperEndEnabled ?: false,
             taperEndLength = v4.stroke?.taperEndLength ?: .2f,
+            renderBrushId = identity.renderBrushId,
+            renderSeed = v4.renderSeed,
+            derivedFromFactoryId = source.derivedFromFactoryId
+                ?: identity.renderBrushId.takeIf { it != identity.id && it.startsWith("system-") },
+            v4PresetJson = BrushPresetV4Codec.encode(v4),
         )
     }
 }

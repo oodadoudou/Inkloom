@@ -21,6 +21,16 @@ import app.inkloom.model.ImportedBrush
 object PresetMigrator {
 
     fun toV4(v3: ImportedBrush): BrushPresetV4 {
+        BrushPresetV4Codec.decodeOrNull(v3.v4PresetJson)?.let { persisted ->
+            return persisted.copy(
+                identity = persisted.identity.copy(
+                    id = v3.id,
+                    name = v3.name,
+                    renderBrushId = v3.renderBrushId ?: persisted.identity.renderBrushId,
+                ),
+                renderSeed = v3.renderSeed ?: persisted.renderSeed,
+            )
+        }
         val family = brushFamily(v3)
         val spacing = if (family == BrushFamily.PENCIL || family == BrushFamily.AIRBRUSH) {
             SpacingSettings(mode = SpacingMode.RELATIVE, value = v3.spacing)
@@ -34,7 +44,7 @@ object PresetMigrator {
             PaperGrainSettings(
                 scale = v3.proceduralPaperGrainScale,
                 density = v3.proceduralPaperGrainDensity,
-                strength = 1f,
+                strength = v3.proceduralPaperGrainStrength,
             )
         } else null
         val tipTexture = if (family == BrushFamily.PENCIL) {
@@ -47,9 +57,9 @@ object PresetMigrator {
                 name = v3.name,
                 version = v3.parserVersion,
                 family = family,
-                renderBrushId = v3.id,
+                renderBrushId = v3.renderBrushId ?: v3.id,
             ),
-            renderSeed = v3.id.hashCode(),
+            renderSeed = v3.renderSeed ?: (v3.renderBrushId ?: v3.id).hashCode(),
             tip = TipSettings(
                 size = v3.defaultSize,
                 aspect = v3.thickness,

@@ -101,6 +101,7 @@ import app.inkloom.document.*
 import app.inkloom.brushpresetv4.OwnedBrushPreset
 import app.inkloom.brushpresetv4.PresetMigrator
 import app.inkloom.brushpresetv4.PresetOwnership
+import app.inkloom.brushpresetv4.PresetOwnershipOperations
 import app.inkloom.brushpresetv4.PresetReverseMigrator
 import app.inkloom.importer.BrushImportRepository
 import app.inkloom.importer.BrushGroupOperations
@@ -5036,7 +5037,9 @@ internal fun InkCanvasView.applyBrushConfiguration(
     inkOpacity = brushOpacity
     inkColor = brushColor
     secondaryInkColor = secondaryBrushColor
-    brushId = activeBrush?.id ?: if (selectedTool == EditorTool.HIGHLIGHTER) "system-highlighter" else "system-pen"
+    brushId = activeBrush?.renderBrushId ?: activeBrush?.id
+        ?: if (selectedTool == EditorTool.HIGHLIGHTER) "system-highlighter" else "system-pen"
+    brushRenderSeed = activeBrush?.renderSeed ?: brushId.hashCode()
     tipAssetPath = activeBrush?.tipPreviewPath
     tipAssetPaths = activeBrush?.tipPreviewPaths.orEmpty()
     dualTipAssetPaths = activeBrush?.dualTipPreviewPaths.orEmpty()
@@ -5103,6 +5106,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     proceduralPaperGrainEnabled = activeBrush?.proceduralPaperGrainEnabled ?: false
     proceduralPaperGrainScale = activeBrush?.proceduralPaperGrainScale ?: 100f
     proceduralPaperGrainDensity = activeBrush?.proceduralPaperGrainDensity ?: .5f
+    proceduralPaperGrainStrength = activeBrush?.proceduralPaperGrainStrength ?: 1f
     brushThickness = activeBrush?.thickness ?: 1f
     brushThicknessVertical = activeBrush?.thicknessVertical ?: false
     shapeRoundnessHorizontalJitter = activeBrush?.shapeRoundnessHorizontalJitter ?: 0f
@@ -7981,9 +7985,11 @@ private fun BrushPanel(
                     ownership = PresetOwnership.Factory(brush.id),
                 )
             } else {
+                val derivedFactoryId = brush.derivedFromFactoryId
+                    ?: brush.renderBrushId?.takeIf { renderId -> systemBrushes.any { it.id == renderId } }
                 OwnedBrushPreset(
                     preset = PresetMigrator.toV4(brush),
-                    ownership = PresetOwnership.User(userId = brush.id, derivedFromFactoryId = null),
+                    ownership = PresetOwnership.User(userId = brush.id, derivedFromFactoryId = derivedFactoryId),
                 )
             }
         }
@@ -7994,7 +8000,7 @@ private fun BrushPanel(
                 settings = settings,
                 onDismiss = { creatingBrushId = null; editBrush = null },
                 onSaveAs = { v4 ->
-                    val updated = BrushSemanticMapper.apply(PresetReverseMigrator.toV3(v4))
+                    val updated = BrushSemanticMapper.apply(PresetReverseMigrator.toV3(v4, BrushFormat.INKLOOM, base = brush))
                     if (creatingBrushId == brush.id) {
                         onReplaceBrushes(brushes + updated)
                     } else {
@@ -8006,8 +8012,7 @@ private fun BrushPanel(
                     editBrush = null
                 },
                 onSaveInPlace = { v4 ->
-                    val updated = BrushSemanticMapper.apply(PresetReverseMigrator.toV3(v4, BrushFormat.INKLOOM))
-                        .copy(id = brush.id, name = v4.identity.name)
+                    val updated = BrushSemanticMapper.apply(PresetReverseMigrator.toV3(v4, BrushFormat.INKLOOM, base = brush))
                     if (creatingBrushId == brush.id) {
                         onReplaceBrushes(brushes + updated)
                     } else if (updated != brush) {
@@ -8018,7 +8023,23 @@ private fun BrushPanel(
                     creatingBrushId = null
                     editBrush = null
                 },
-                onResetToFactory = {},
+                onResetToFactory = (owned.ownership as? PresetOwnership.User)?.derivedFromFactoryId
+                    ?.let { factoryId -> systemBrushes.firstOrNull { it.id == factoryId } }
+                    ?.let(PresetMigrator::toV4)
+                    ?.let { factoryPreset ->
+                        {
+                            PresetOwnershipOperations.resetToFactory(owned, factoryPreset)?.let { reset ->
+                                historyStore.record(brush)
+                                historyRevision++
+                                onUpdateBrush(
+                                    BrushSemanticMapper.apply(
+                                        PresetReverseMigrator.toV3(reset.preset, BrushFormat.INKLOOM, base = brush),
+                                    ),
+                                )
+                                editBrush = null
+                            }
+                        }
+                    },
                 onDelete = {
                     onDeleteBrush(brush.id)
                     creatingBrushId = null
@@ -8745,9 +8766,11 @@ private fun ProcreateBrushLibrary(
                     ownership = PresetOwnership.Factory(brush.id),
                 )
             } else {
+                val derivedFactoryId = brush.derivedFromFactoryId
+                    ?: brush.renderBrushId?.takeIf { renderId -> systemBrushes.any { it.id == renderId } }
                 OwnedBrushPreset(
                     preset = PresetMigrator.toV4(brush),
-                    ownership = PresetOwnership.User(userId = brush.id, derivedFromFactoryId = null),
+                    ownership = PresetOwnership.User(userId = brush.id, derivedFromFactoryId = derivedFactoryId),
                 )
             }
         }
@@ -8756,17 +8779,30 @@ private fun ProcreateBrushLibrary(
             settings = settings,
             onDismiss = { editBrush = null },
             onSaveAs = { v4 ->
-                val updated = BrushSemanticMapper.apply(PresetReverseMigrator.toV3(v4))
+                val updated = BrushSemanticMapper.apply(PresetReverseMigrator.toV3(v4, BrushFormat.INKLOOM, base = brush))
                 if (brushes.any { it.id == updated.id }) onUpdateBrush(updated) else onReplaceBrushes(brushes + updated)
                 editBrush = null
             },
             onSaveInPlace = { v4 ->
-                val updated = BrushSemanticMapper.apply(PresetReverseMigrator.toV3(v4, BrushFormat.INKLOOM))
-                    .copy(id = brush.id, name = v4.identity.name)
+                val updated = BrushSemanticMapper.apply(PresetReverseMigrator.toV3(v4, BrushFormat.INKLOOM, base = brush))
                 if (brushes.any { it.id == updated.id }) onUpdateBrush(updated) else onReplaceBrushes(brushes + updated)
                 editBrush = null
             },
-            onResetToFactory = {},
+            onResetToFactory = (owned.ownership as? PresetOwnership.User)?.derivedFromFactoryId
+                ?.let { factoryId -> systemBrushes.firstOrNull { it.id == factoryId } }
+                ?.let(PresetMigrator::toV4)
+                ?.let { factoryPreset ->
+                    {
+                        PresetOwnershipOperations.resetToFactory(owned, factoryPreset)?.let { reset ->
+                            onUpdateBrush(
+                                BrushSemanticMapper.apply(
+                                    PresetReverseMigrator.toV3(reset.preset, BrushFormat.INKLOOM, base = brush),
+                                ),
+                            )
+                            editBrush = null
+                        }
+                    }
+                },
             onDelete = {
                 onDeleteBrush(brush.id)
                 editBrush = null

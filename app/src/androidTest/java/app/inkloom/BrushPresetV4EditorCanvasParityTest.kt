@@ -57,8 +57,9 @@ class BrushPresetV4EditorCanvasParityTest {
         )
 
         // The renderer inputs the canvas will build a stroke from must match the compiled stroke
-        // exactly — render identity, seed-free geometry, and graphite/paper semantics.
+        // exactly — render identity, stable seed, geometry, and graphite/paper semantics.
         assertEquals(compiledStroke.brushId, view.brushId)
+        assertEquals(compiledStroke.renderSeed, view.brushRenderSeed)
         assertEquals(compiledStroke.width, v3.defaultSize, 1e-3f)
         assertEquals(compiledStroke.flow, view.brushFlow, 1e-3f)
         assertEquals(compiledStroke.hardness, view.brushHardness, 1e-3f)
@@ -73,6 +74,7 @@ class BrushPresetV4EditorCanvasParityTest {
         assertEquals(compiledStroke.proceduralPaperGrainEnabled, view.proceduralPaperGrainEnabled)
         assertEquals(compiledStroke.proceduralPaperGrainDensity, view.proceduralPaperGrainDensity, 1e-3f)
         assertEquals(compiledStroke.proceduralPaperGrainScale, view.proceduralPaperGrainScale, 1e-3f)
+        assertEquals(compiledStroke.proceduralPaperGrainStrength, view.proceduralPaperGrainStrength, 1e-3f)
     }
 
     @Test
@@ -93,6 +95,7 @@ class BrushPresetV4EditorCanvasParityTest {
         )
         assertEquals("system-pen", view.brushId)
         assertEquals(compiledStroke.brushId, view.brushId)
+        assertEquals(compiledStroke.renderSeed, view.brushRenderSeed)
         assertEquals(compiledStroke.width, v3.defaultSize, 1e-3f)
         assertEquals(compiledStroke.sizePressureEnabled, view.sizePressureEnabled)
         assertEquals(compiledStroke.sizePressureMinimum, view.sizePressureMinimum, 1e-3f)
