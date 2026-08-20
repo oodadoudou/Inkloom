@@ -223,7 +223,9 @@ enum class FillSubTool { BUCKET, ENCLOSE_AND_FILL, LASSO_FILL, LEFTOVER_PEN }
 
 fun defaultInkLayers(): List<InkLayer> = listOf(
     InkLayer(LayerIds.BACKGROUND, "Background", LayerRole.BACKGROUND, locked = true),
-    InkLayer(LayerIds.INK, "Notes", LayerRole.INK),
+    // New documents enter the authoritative V3 tile path from the first contact. Existing
+    // documents that explicitly deserialize VECTOR remain an isolated compatibility boundary.
+    InkLayer(LayerIds.INK, "Notes", LayerRole.INK, contentKind = LayerContentKind.RASTER),
 )
 
 @Serializable

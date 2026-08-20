@@ -15,9 +15,11 @@ import app.inkloom.document.InkStroke
 import app.inkloom.engine.v3.api.ActiveStrokeCompositor
 import app.inkloom.engine.v3.api.ActiveStrokeTailPlanner
 import app.inkloom.engine.v3.api.StrokeTrace
+import app.inkloom.engine.v3.api.PaintingTruthDiagnostics
 import app.inkloom.document.BrushCursorGeometry
 import app.inkloom.engine.v3.api.ViewportFrame
 import app.inkloom.engine.v3.api.PointerPacketMapper
+import app.inkloom.engine.v3.render.StrokeRenderPacket
 import kotlin.math.atan2
 
 /**
@@ -53,9 +55,11 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context), ActiveStro
     private val coordinateMapper = PointerPacketMapper()
     private val activeInkSurface = LowLatencyCanvasView(context)
     private val cursorSurface = LowLatencyCanvasView(context)
-    @Volatile private var activeStrokes: List<InkStroke> = emptyList()
+    @Volatile private var activePacket: StrokeRenderPacket? = null
+    @Volatile private var lastRenderedPacket: StrokeRenderPacket? = null
     @Volatile private var activeTransform: ViewportFrame? = null
     @Volatile private var activeDrawingFrame: ViewportFrame? = null
+    @Volatile private var pendingCommittedSequence: Long? = null
     private val activeLock = Any()
     private val activeTailPlanner = ActiveStrokeTailPlanner()
     private val activeRenderMatrix = Matrix()
@@ -109,34 +113,46 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context), ActiveStro
     }
 
     override val hasActiveInk: Boolean
-        get() = activeStrokes.isNotEmpty()
+        get() = activePacket?.strokes?.isNotEmpty() == true
 
-    override fun render(strokes: List<InkStroke>) {
+    override fun render(packet: StrokeRenderPacket) {
         val canvas = target ?: return
-        activeTransform = activeDrawingFrame ?: currentFrame(canvas)
-        activeStrokes = strokes
+        activeTransform = resolvePacketFrame(packet, canvas)
+        activePacket = packet
+        lastRenderedPacket = packet
         activeInkSurface.renderFrontBufferedLayer()
     }
 
-    override fun commit(strokes: List<InkStroke>) {
+    override fun commit(packet: StrokeRenderPacket) {
         val canvas = target ?: return
-        activeTransform = activeDrawingFrame ?: currentFrame(canvas)
-        activeStrokes = strokes
+        PaintingTruthDiagnostics.compareHandoff(lastRenderedPacket, packet)
+        activeTransform = resolvePacketFrame(packet, canvas)
+        activePacket = packet
+        pendingCommittedSequence = packet.sequence
         activeInkSurface.renderFrontBufferedLayer()
         activeInkSurface.commit()
-        traceFrontBufferCommit(strokes)
-        postOnAnimation {
-            activeStrokes = emptyList()
+        traceFrontBufferCommit(packet)
+    }
+
+    override fun onDocumentFramePresented(packetSequence: Long) {
+        if (pendingCommittedSequence != packetSequence) return
+        val packet = activePacket?.takeIf { it.sequence == packetSequence } ?: return
+        pendingCommittedSequence = null
+        post {
+            if (activePacket?.sequence != packetSequence) return@post
+            activePacket = null
             synchronized(activeLock) { activeTailPlanner.reset() }
             activeInkSurface.clear()
-            traceTransientHidden(strokes)
-            canvas.resetActiveRenderState()
+            traceTransientHidden(packet)
+            target?.resetActiveRenderState()
         }
     }
 
     override fun cancel() {
-        activeStrokes = emptyList()
+        activePacket = null
+        lastRenderedPacket = null
         activeTransform = null
+        pendingCommittedSequence = null
         synchronized(activeLock) { activeTailPlanner.reset() }
         activeInkSurface.clear()
         target?.resetActiveRenderState()
@@ -146,7 +162,7 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context), ActiveStro
     private fun drawCompleteActiveInk(canvas: Canvas) {
         canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
         val view = target ?: return
-        val strokes = activeStrokes
+        val strokes = activePacket?.strokes.orEmpty()
         val transform = activeTransform ?: return
         view.resetActiveRenderState()
         if (strokes.isNotEmpty()) drawActiveInk(canvas, view, transform, strokes, incrementalStampDraw = false, completeRedraw = true)
@@ -156,7 +172,7 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context), ActiveStro
     @WorkerThread
     private fun drawIncrementalActiveInk(canvas: Canvas) {
         val view = target ?: return
-        val strokes = activeStrokes
+        val strokes = activePacket?.strokes.orEmpty()
         val transform = activeTransform ?: return
         if (strokes.isEmpty()) return
         val forceComplete = view.requiresCompleteActiveReplay(strokes)
@@ -185,6 +201,15 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context), ActiveStro
 
     private fun currentFrame(canvas: InkCanvasView): ViewportFrame? =
         coordinateMapper.snapshot(this, canvas, canvas.viewportState())
+
+    private fun resolvePacketFrame(packet: StrokeRenderPacket, canvas: InkCanvasView): ViewportFrame? {
+        val frozen = activeDrawingFrame
+        if (packet.transformFrameId != null && frozen?.id == packet.transformFrameId) return frozen
+        if (packet.transformFrameId != null && frozen != null && frozen.id != packet.transformFrameId) {
+            PaintingTruthDiagnostics.recordTransformMismatch()
+        }
+        return frozen ?: currentFrame(canvas)
+    }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         val stylusIndex = event.stylusPointerIndex(activeStylusPointerId)
@@ -273,10 +298,14 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context), ActiveStro
             activeDrawingFrame = packet.frame
         }
         return try {
+            if (retainDrawingFrame && usesPageCoordinates) canvas.setActiveViewportFrame(packet.frame.id)
             dispatch(canvas, packet.event)
         } finally {
             packet.close()
-            if (retainDrawingFrame && terminal) activeDrawingFrame = null
+            if (retainDrawingFrame && terminal) {
+                canvas.setActiveViewportFrame(null)
+                activeDrawingFrame = null
+            }
         }
     }
 
@@ -346,12 +375,12 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context), ActiveStro
         cursorSurface.clear()
     }
 
-    private fun traceFrontBufferCommit(strokes: List<InkStroke>) {
-        StrokeTrace.primaryStrokeId(strokes)?.let { id -> StrokeTrace.mark(id, StrokeTrace.STAGE_FRONT_BUFFER_COMMIT) }
+    private fun traceFrontBufferCommit(packet: StrokeRenderPacket) {
+        packet.primaryStrokeId?.let { id -> StrokeTrace.mark(id, StrokeTrace.STAGE_FRONT_BUFFER_COMMIT) }
     }
 
-    private fun traceTransientHidden(strokes: List<InkStroke>) {
-        StrokeTrace.primaryStrokeId(strokes)?.let { id -> StrokeTrace.mark(id, StrokeTrace.STAGE_TRANSIENT_HIDDEN) }
+    private fun traceTransientHidden(packet: StrokeRenderPacket) {
+        packet.primaryStrokeId?.let { id -> StrokeTrace.mark(id, StrokeTrace.STAGE_TRANSIENT_HIDDEN) }
     }
 
     private fun refreshCursorStyle() {

@@ -112,7 +112,7 @@ class RasterLayerPersistenceTest {
                 assets.exportBundle(InkDocument(title = "Raster", pages = listOf(page)), output)
             }.toByteArray()
             val restored = assets.importBundle(ByteArrayInputStream(bundle))
-            val restoredPath = restored.pages.single().layers.first { it.contentKind == LayerContentKind.RASTER }.rasterAssetPath
+            val restoredPath = restored.pages.single().layers.first { it.name == "Paint" }.rasterAssetPath
             assertTrue(File(requireNotNull(restoredPath)).isFile)
             val restoredBitmap = assets.renderPageBitmap(restored.pages.single(), 400)
             try {
@@ -155,7 +155,7 @@ class RasterLayerPersistenceTest {
         val bundle = ByteArrayOutputStream().also { assets.exportBundle(document, it) }.toByteArray()
         val restored = assets.importBundle(ByteArrayInputStream(bundle))
         val restoredReference = requireNotNull(
-            restored.pages.single().layers.first { it.contentKind == LayerContentKind.RASTER }.rasterTileSurface,
+            restored.pages.single().layers.first { it.name == "Sparse pixels" }.rasterTileSurface,
         )
         assertEquals(Color.MAGENTA, assets.loadRasterTileSurface(restoredReference).pixelAt(17, 19))
         assets.releaseRasterTileReservation(restoredReference)

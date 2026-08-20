@@ -13,6 +13,7 @@ import app.inkloom.document.BrushTipTransform
 import app.inkloom.document.GrainDynamics
 import app.inkloom.document.GrainBehavior
 import app.inkloom.document.GraphiteFootprint
+import app.inkloom.engine.v3.brush.MaterialCoordinateContext
 import app.inkloom.document.InkStroke
 import app.inkloom.document.ProcreateRendering
 import app.inkloom.document.ShapeRoundnessJitter
@@ -60,7 +61,10 @@ internal object BrushProgramBatchRenderer {
             val baseX = point.x * width
             val baseY = point.y * height
             val dynamics = program.evaluateDab(stroke, point, dual = false)
-            val graphiteGrain = GraphiteFootprint.paperGrainAlpha(stroke, baseX, baseY) * GraphiteFootprint.tiltGrainDensity(stroke, point)
+            val graphiteGrain = GraphiteFootprint.paperGrainAlpha(
+                stroke,
+                MaterialCoordinateContext.document(baseX, baseY),
+            ) * GraphiteFootprint.tiltGrainDensity(stroke, point)
             val depositedAlpha = ProcreateRendering.depositedAlpha(
                 stroke.procreateRenderingMode,
                 stroke.flow * dynamics.depositedAlpha * graphiteGrain * (falloff?.get(index) ?: 1f) * (taper?.opacity?.get(index) ?: 1f),

@@ -319,15 +319,14 @@ class InkloomLaunchTest {
 
     @Test fun settingsExposeConflictSafeFullLibraryBackup() {
         composeRule.onNodeWithContentDescription("Settings").performClick()
-        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Draw with finger"))).performScrollToIndex(36)
-
+        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Draw with finger"))).performScrollToIndex(46)
         composeRule.onNodeWithText("Export full library backup").assertIsDisplayed()
-        composeRule.onNodeWithText("Restore library backup").assertIsDisplayed()
+        composeRule.onNodeWithText("Restore library backup").performScrollTo().assertIsDisplayed()
     }
 
     @Test fun shortcutEditorExposesPortableToolboxProfiles() {
         composeRule.onNodeWithContentDescription("Settings").performClick()
-        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Draw with finger"))).performScrollToIndex(29)
+        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Draw with finger"))).performScrollToIndex(37)
         composeRule.onNodeWithText("Customize shortcuts").performClick()
         composeRule.onNodeWithText("Search actions or keys").assertIsDisplayed()
         composeRule.onNodeWithText("Brush groups").assertIsDisplayed()
@@ -340,10 +339,9 @@ class InkloomLaunchTest {
 
     @Test fun shortcutEditorMapsCspRolesToRealBrushGroups() {
         composeRule.onNodeWithContentDescription("Settings").performClick()
-        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Draw with finger"))).performScrollToIndex(29)
+        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Draw with finger"))).performScrollToIndex(37)
         composeRule.onNodeWithText("Customize shortcuts").performClick()
         composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true))).performScrollToIndex(14)
-
         composeRule.onNodeWithText("BRUSH GROUP TARGETS").assertIsDisplayed()
         composeRule.onAllNodesWithText("Automatic")[0].performClick()
         composeRule.onNodeWithText("Toolbox/Pens").performClick()
@@ -353,7 +351,7 @@ class InkloomLaunchTest {
 
     @Test fun shortcutEditorConfiguresAnArbitraryGroupQuickSlot() {
         composeRule.onNodeWithContentDescription("Settings").performClick()
-        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Draw with finger"))).performScrollToIndex(29)
+        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Draw with finger"))).performScrollToIndex(37)
         composeRule.onNodeWithText("Customize shortcuts").performClick()
         composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true))).performScrollToIndex(14)
         composeRule.onNodeWithText("Configure 8 quick slots").performClick()
@@ -370,7 +368,7 @@ class InkloomLaunchTest {
 
     @Test fun shortcutEditorConfiguresRotaryBrushSizeControl() {
         composeRule.onNodeWithContentDescription("Settings").performClick()
-        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Draw with finger"))).performScrollToIndex(29)
+        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Draw with finger"))).performScrollToIndex(37)
         composeRule.onNodeWithText("Customize shortcuts").performClick()
         composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Tap Change", substring = true))).performScrollToIndex(5)
         composeRule.onNodeWithContentDescription("Rotary / touch ring quick slot value").performClick()
@@ -752,13 +750,16 @@ class InkloomLaunchTest {
         assertEquals("Changing a docked brush must retain the shared foreground color", selectedColor, view.inkColor)
 
         var elapsedMs = Long.MAX_VALUE
+        val transactionPacketsBefore = view.rasterIncrementalPatchCount
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val started = SystemClock.elapsedRealtime()
             repeat(6) { index -> dispatchStylusStroke(view, index) }
             elapsedMs = SystemClock.elapsedRealtime() - started
         }
-        val strokes = reflectedField(view, "strokes") as? List<*>
-        assertEquals("Every rapid contact must commit immediately", 6, strokes?.size)
+        assertTrue(
+            "Every rapid contact must commit immediately to V3 tiles",
+            view.rasterIncrementalPatchCount - transactionPacketsBefore >= 6,
+        )
         assertTrue("Six short strokes must not block the input thread ($elapsedMs ms)", elapsedMs < 1_500L)
     }
 
@@ -871,10 +872,10 @@ class InkloomLaunchTest {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Layers").performClick()
         composeRule.onNodeWithContentDescription("Add layer").performClick()
-        composeRule.onNodeWithText("Raster layer").performClick()
+        composeRule.onAllNodesWithText("Raster layer").onLast().performClick()
 
         composeRule.onNodeWithText("Layer 1").assertIsDisplayed()
-        composeRule.onNodeWithText("Raster layer").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Raster layer").onLast().assertIsDisplayed()
     }
 
     private fun findInkCanvasView(): InkCanvasView? {

@@ -1,6 +1,8 @@
 package app.inkloom
 
 import android.graphics.Color
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.view.InputDevice
 import android.view.MotionEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -60,6 +62,50 @@ class FrontBufferLifecycleTest {
             assertEquals("UP must commit exactly once", 1, surface.committed.size)
             assertEquals("Committed stroke must equal the final rendered packet", surface.rendered.last().first(), surface.committed.last().first())
             assertTrue("No trailing cancel after a committed stroke", surface.events.lastOrNull { it == "cancel" }?.let { surface.events.lastIndexOf(it) < surface.events.indexOfLast { e -> e == "commit" } } ?: true)
+        }
+    }
+
+    @Test
+    fun transientInkIsReleasedOnlyAfterTheMatchingDocumentFrameIsDrawn() {
+        val view = newView()
+        val surface = RecordingActiveSurface()
+        view.activeStrokeSurface = surface
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view.applyBrushConfiguration(EditorTool.PEN, AppSettings(), null, 20f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_DOWN, 250f, 400f, 1L))
+            view.flushActiveStrokeFrame()
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_UP, 500f, 400f, 9L))
+
+            assertEquals("ACTION_UP commits a packet", 1, surface.committed.size)
+            assertTrue("Transient ink must remain before the stable document frame", "presented" !in surface.events)
+            val bitmap = Bitmap.createBitmap(1600, 1200, Bitmap.Config.ARGB_8888)
+            try {
+                view.draw(Canvas(bitmap))
+            } finally {
+                bitmap.recycle()
+            }
+            assertEquals("The matching stable frame opens the release barrier", "presented", surface.events.last())
+            assertTrue(surface.presentedSequence > 0L)
+        }
+    }
+
+    @Test
+    fun materialDecodeCompletionCannotCancelOrReplayAnActiveContact() {
+        val view = newView()
+        val surface = RecordingActiveSurface()
+        view.activeStrokeSurface = surface
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view.applyBrushConfiguration(EditorTool.PEN, AppSettings(), null, 20f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_DOWN, 250f, 400f, 1L))
+            view.flushActiveStrokeFrame()
+            val cancelCount = surface.events.count { it == "cancel" }
+            val renderCount = surface.rendered.size
+
+            view.simulateActiveMaterialDecodeCompletion()
+
+            assertEquals("A completed decode must not clear active ink", cancelCount, surface.events.count { it == "cancel" })
+            assertEquals("A completed decode must not replace the growing packet", renderCount, surface.rendered.size)
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_CANCEL, 250f, 400f, 2L))
         }
     }
 
@@ -149,7 +195,7 @@ class FrontBufferLifecycleTest {
     }
 
     @Test
-    fun longTaperedStrokeDefersTerminalTaperToPenUp() {
+    fun longTaperedStrokeKeepsOneTerminalTaperContractBeforePenUp() {
         val view = newView()
         val surface = RecordingActiveSurface()
         view.activeStrokeSurface = surface
@@ -160,11 +206,9 @@ class FrontBufferLifecycleTest {
             view.onTouchEvent(stylusEvent(MotionEvent.ACTION_MOVE, 1550f, 400f, 5L))
             view.flushActiveStrokeFrame()
             val live = surface.rendered.last().first()
-            assertEquals(
-                "Long tapered strokes defer terminal taper to pen-up (Procreate-style contract)",
-                0f,
-                live.procreateTaper.pressureEndLength,
-                .0001f,
+            assertTrue(
+                "A long live stroke must carry the same taper semantics as its durable packet",
+                live.procreateTaper.pressureEndLength > .0001f,
             )
         }
     }
@@ -185,13 +229,18 @@ class FrontBufferLifecycleTest {
         val events = mutableListOf<String>()
         val rendered = mutableListOf<List<InkStroke>>()
         val committed = mutableListOf<List<InkStroke>>()
-        override fun render(strokes: List<InkStroke>) {
+        var presentedSequence = -1L
+        override fun render(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) {
             events += "render"
-            rendered += strokes.map { it.copy(points = it.points.toList()) }
+            rendered += packet.strokes.map { it.copy(points = it.points.toList()) }
         }
-        override fun commit(strokes: List<InkStroke>) {
+        override fun commit(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) {
             events += "commit"
-            committed += strokes.map { it.copy(points = it.points.toList()) }
+            committed += packet.strokes.map { it.copy(points = it.points.toList()) }
+        }
+        override fun onDocumentFramePresented(packetSequence: Long) {
+            events += "presented"
+            presentedSequence = packetSequence
         }
         override fun cancel() {
             events += "cancel"

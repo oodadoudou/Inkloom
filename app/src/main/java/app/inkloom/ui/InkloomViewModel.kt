@@ -245,7 +245,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         documentId: String,
         pageId: String,
         name: String = "Layer",
-        contentKind: LayerContentKind = LayerContentKind.VECTOR,
+        contentKind: LayerContentKind = LayerContentKind.RASTER,
     ) = updatePage(documentId, pageId) { page ->
         val suffix = page.layers.count { it.role == LayerRole.CUSTOM } + 1
         page.copy(layers = page.layers + InkLayer(
@@ -490,7 +490,13 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         assetGarbageCollectionJob = viewModelScope.launch(Dispatchers.IO) {
             if (delayMillis > 0L) delay(delayMillis)
             store.awaitRealtimeWrites()
-            assets.garbageCollectUnreferencedAssets(store.list(), mutablePageTemplates.value)
+            // GC consumes a document snapshot. A newer realtime tile commit may replace and
+            // release one of that snapshot's immutable manifests before tracing begins. Treat
+            // that as a stale collection attempt and retry on the next scheduled pass; asset GC
+            // must never take down the editor process.
+            runCatching {
+                assets.garbageCollectUnreferencedAssets(store.list(), mutablePageTemplates.value)
+            }
         }
     }
 

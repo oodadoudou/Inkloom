@@ -111,6 +111,7 @@ data class AppSettings(
     val postCorrectionAdjustByScale: Boolean = true,
     val showInputDiagnostics: Boolean = false,
     val showStrokeTraceOverlay: Boolean = false,
+    val paintingPipelineMode: PaintingPipelineMode = PaintingPipelineMode.CURRENT_LOW_LATENCY,
     val penSize: Float = 5f,
     val penOpacity: Float = 1f,
     val highlighterSize: Float = 28f,
@@ -133,6 +134,14 @@ data class AppSettings(
     val toolboxQuickSlots: List<ToolboxQuickSlot> = ToolboxQuickSlots.normalize(emptyList()),
     val workspaceLayouts: WorkspaceLayoutProfiles = WorkspaceLayoutProfiles(),
 )
+
+enum class PaintingPipelineMode {
+    CURRENT_LOW_LATENCY,
+    FRONT_BUFFER_DISABLED,
+    FRONT_BUFFER_MIRROR_ONLY,
+    MATERIAL_DISABLED,
+    IDENTITY_VIEW_TRANSFORM,
+}
 
 enum class StylusButtonAction {
     ERASER,
@@ -281,6 +290,7 @@ class AppSettingsStore(context: Context) {
             postCorrectionAdjustByScale = preferences.getBoolean("postCorrectionAdjustByScale", true),
             showInputDiagnostics = preferences.getBoolean("showInputDiagnostics", false),
             showStrokeTraceOverlay = preferences.getBoolean("showStrokeTraceOverlay", false),
+            paintingPipelineMode = enumValue(preferences.getString("paintingPipelineMode", null), PaintingPipelineMode.CURRENT_LOW_LATENCY),
             penSize = preferences.getFloat("penSize", 5f).coerceIn(.5f, 400f),
             penOpacity = preferences.getFloat("penOpacity", 1f).coerceIn(.05f, 1f),
             highlighterSize = preferences.getFloat("highlighterSize", 28f).coerceIn(.5f, 400f),
@@ -424,6 +434,7 @@ class AppSettingsStore(context: Context) {
             .putBoolean("postCorrectionAdjustByScale", persisted.postCorrectionAdjustByScale)
             .putBoolean("showInputDiagnostics", persisted.showInputDiagnostics)
             .putBoolean("showStrokeTraceOverlay", persisted.showStrokeTraceOverlay)
+            .putString("paintingPipelineMode", persisted.paintingPipelineMode.name)
             .putFloat("penSize", persisted.penSize)
             .putFloat("penOpacity", persisted.penOpacity)
             .putFloat("highlighterSize", persisted.highlighterSize)

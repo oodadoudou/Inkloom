@@ -120,7 +120,7 @@ class LibraryBackupServiceTest {
             assertEquals(CoverStyle.CUSTOM_IMAGE, restored.documents.single().coverStyle)
             assertTrue(File(restored.documents.single().coverImagePath!!).isFile)
             assertTrue(File((restoredPage.background as PageBackground.Pdf).assetPath).isFile)
-            val restoredRaster = restoredPage.layers.first { it.contentKind == LayerContentKind.RASTER }
+            val restoredRaster = restoredPage.layers.first { it.name == "Paint" }
             assertTrue(File(requireNotNull(restoredRaster.rasterAssetPath)).isFile)
             assertTrue(File(restoredRaster.rasterAssetPath).readBytes().contentEquals(rasterSurface.readBytes()))
             val restoredSparse = requireNotNull(restoredPage.layers.first { it.name == "Sparse Paint" }.rasterTileSurface)

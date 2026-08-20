@@ -7,10 +7,11 @@ import android.graphics.PorterDuff
 import android.widget.FrameLayout
 import androidx.annotation.WorkerThread
 import androidx.graphics.lowlatency.LowLatencyCanvasView
-import app.inkloom.document.InkStroke
 import app.inkloom.engine.v3.api.ActiveStrokeCompositor
 import app.inkloom.engine.v3.api.ActiveStrokeTailPlanner
 import app.inkloom.engine.v3.api.StrokeTrace
+import app.inkloom.engine.v3.api.PaintingTruthDiagnostics
+import app.inkloom.engine.v3.render.StrokeRenderPacket
 
 /** Android host for the V3 compositor. This adapter belongs to UI so the engine never depends on
  * [InkCanvasView], Compose, panels or another application-owned view type. */
@@ -18,7 +19,9 @@ internal class CanvasHost(context: Context) : FrameLayout(context), ActiveStroke
     val canvasView = InkCanvasView(context)
     private val lowLatencyView = LowLatencyCanvasView(context)
 
-    @Volatile private var activeStrokes: List<InkStroke> = emptyList()
+    @Volatile private var activePacket: StrokeRenderPacket? = null
+    @Volatile private var lastRenderedPacket: StrokeRenderPacket? = null
+    @Volatile private var pendingCommittedSequence: Long? = null
     private val activeLock = Any()
     private val tailPlanner = ActiveStrokeTailPlanner()
 
@@ -41,29 +44,43 @@ internal class CanvasHost(context: Context) : FrameLayout(context), ActiveStroke
     }
 
     override val hasActiveInk: Boolean
-        get() = activeStrokes.isNotEmpty()
+        get() = activePacket?.strokes?.isNotEmpty() == true
 
-    override fun render(strokes: List<InkStroke>) {
-        activeStrokes = strokes
+    override fun render(packet: StrokeRenderPacket) {
+        activePacket = packet
+        lastRenderedPacket = packet
         lowLatencyView.renderFrontBufferedLayer()
     }
 
-    override fun commit(strokes: List<InkStroke>) {
-        activeStrokes = strokes
+    override fun commit(packet: StrokeRenderPacket) {
+        PaintingTruthDiagnostics.compareHandoff(lastRenderedPacket, packet)
+        activePacket = packet
+        pendingCommittedSequence = packet.sequence
         lowLatencyView.renderFrontBufferedLayer()
         lowLatencyView.commit()
-        StrokeTrace.primaryStrokeId(strokes)?.let { id -> StrokeTrace.mark(id, StrokeTrace.STAGE_FRONT_BUFFER_COMMIT) }
-        postOnAnimation {
-            activeStrokes = emptyList()
+        packet.primaryStrokeId?.let { id -> StrokeTrace.mark(id, StrokeTrace.STAGE_FRONT_BUFFER_COMMIT) }
+    }
+
+    override fun onDocumentFramePresented(packetSequence: Long) {
+        if (pendingCommittedSequence != packetSequence) return
+        val packet = activePacket?.takeIf { it.sequence == packetSequence } ?: return
+        pendingCommittedSequence = null
+        // The stable View has completed drawPageContent for this packet. Clear after that draw,
+        // never merely because ACTION_UP occurred.
+        post {
+            if (activePacket?.sequence != packetSequence) return@post
+            activePacket = null
             synchronized(activeLock) { tailPlanner.reset() }
             lowLatencyView.clear()
-            StrokeTrace.primaryStrokeId(strokes)?.let { id -> StrokeTrace.mark(id, StrokeTrace.STAGE_TRANSIENT_HIDDEN) }
+            packet.primaryStrokeId?.let { id -> StrokeTrace.mark(id, StrokeTrace.STAGE_TRANSIENT_HIDDEN) }
             canvasView.resetActiveRenderState()
         }
     }
 
     override fun cancel() {
-        activeStrokes = emptyList()
+        activePacket = null
+        lastRenderedPacket = null
+        pendingCommittedSequence = null
         synchronized(activeLock) { tailPlanner.reset() }
         lowLatencyView.clear()
         canvasView.resetActiveRenderState()
@@ -73,14 +90,14 @@ internal class CanvasHost(context: Context) : FrameLayout(context), ActiveStroke
     private fun drawComplete(canvas: Canvas) {
         canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
         canvasView.resetActiveRenderState()
-        val snapshot = activeStrokes
+        val snapshot = activePacket?.strokes.orEmpty()
         if (snapshot.isNotEmpty()) canvasView.drawActiveStrokes(canvas, snapshot, completeRedraw = true)
         synchronized(activeLock) { tailPlanner.complete(snapshot) }
     }
 
     @WorkerThread
     private fun drawIncremental(canvas: Canvas) {
-        val snapshot = activeStrokes
+        val snapshot = activePacket?.strokes.orEmpty()
         if (snapshot.isEmpty()) return
         val forceComplete = canvasView.requiresCompleteActiveReplay(snapshot)
         val plan = synchronized(activeLock) {
@@ -92,7 +109,9 @@ internal class CanvasHost(context: Context) : FrameLayout(context), ActiveStroke
 
     override fun onDetachedFromWindow() {
         canvasView.activeStrokeSurface = null
-        activeStrokes = emptyList()
+        activePacket = null
+        lastRenderedPacket = null
+        pendingCommittedSequence = null
         synchronized(activeLock) { tailPlanner.reset() }
         canvasView.resetActiveRenderState()
         super.onDetachedFromWindow()

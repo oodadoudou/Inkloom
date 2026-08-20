@@ -384,18 +384,18 @@ class InkCanvasTileCacheTest {
         var cancelCount = 0
         var latest: List<InkStroke> = emptyList()
 
-        override fun render(strokes: List<InkStroke>) {
+        override fun render(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) {
             renderCount++
-            latest = strokes
+            latest = packet.strokes
             bitmap?.let {
                 it.eraseColor(android.graphics.Color.TRANSPARENT)
-                view.drawActiveStrokes(Canvas(it), strokes)
+                view.drawActiveStrokes(Canvas(it), packet.strokes)
             }
         }
 
-        override fun commit(strokes: List<InkStroke>) {
+        override fun commit(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) {
             commitCount++
-            latest = strokes
+            latest = packet.strokes
         }
 
         override fun cancel() {

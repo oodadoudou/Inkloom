@@ -5,6 +5,7 @@ package app.inkloom.engine.v3.api
 internal typealias NativeStrokeSession = app.inkloom.engine.v3.input.NativeStrokeSession
 internal typealias PointerPacketMapper = app.inkloom.engine.v3.input.PointerPacketMapper
 internal typealias ViewportFrame = app.inkloom.engine.v3.geometry.ViewportFrame
+internal typealias ViewportFrameId = app.inkloom.engine.v3.geometry.ViewportFrameId
 
 internal typealias BrushProgram = app.inkloom.engine.v3.brush.BrushProgram
 internal typealias BrushProgramRuntime = app.inkloom.engine.v3.brush.BrushProgramRuntime
@@ -13,9 +14,11 @@ internal typealias BrushTipRequest = app.inkloom.engine.v3.brush.BrushTipRequest
 internal typealias ProceduralBrushTip = app.inkloom.engine.v3.brush.ProceduralBrushTip
 
 internal typealias ActiveStrokeCompositor = app.inkloom.engine.v3.render.ActiveStrokeCompositor
+internal typealias StrokeRenderPacket = app.inkloom.engine.v3.render.StrokeRenderPacket
 internal typealias ActiveStrokeTailPlanner = app.inkloom.engine.v3.render.ActiveStrokeTailPlanner
 internal typealias BrushProgramBatchRenderer = app.inkloom.engine.v3.render.BrushProgramBatchRenderer
 internal typealias StrokeTrace = app.inkloom.engine.v3.diagnostics.StrokeTrace
+internal typealias PaintingTruthDiagnostics = app.inkloom.engine.v3.diagnostics.PaintingTruthDiagnostics
 
 internal typealias EngineStrokeTransaction = app.inkloom.engine.v3.scene.EngineTransaction.Strokes
 internal typealias EngineExternalTransaction = app.inkloom.engine.v3.scene.EngineTransaction.External

@@ -505,8 +505,8 @@ class InkCanvasBrushSwitchTest {
     private class RecordingActiveSurface : ActiveStrokeCompositor {
         val rendered = mutableListOf<List<InkStroke>>()
         val committed = mutableListOf<List<InkStroke>>()
-        override fun render(strokes: List<InkStroke>) { rendered += strokes.map { it.copy(points = it.points.toList()) } }
-        override fun commit(strokes: List<InkStroke>) { committed += strokes.map { it.copy(points = it.points.toList()) } }
+        override fun render(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) { rendered += packet.strokes.map { it.copy(points = it.points.toList()) } }
+        override fun commit(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) { committed += packet.strokes.map { it.copy(points = it.points.toList()) } }
         override fun cancel() = Unit
     }
 

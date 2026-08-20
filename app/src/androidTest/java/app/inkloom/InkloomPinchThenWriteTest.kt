@@ -111,9 +111,18 @@ class InkloomPinchThenWriteTest {
         return doc?.pages?.sumOf { it.strokes.size } ?: 0
     }
 
+    private fun rasterTruthToken(): String? {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val document = activeDocumentId?.let { FileDocumentStore(context.filesDir).get(it) } ?: return null
+        return document.pages.asSequence().flatMap { it.layers.asSequence() }
+            .mapNotNull { it.rasterTileSurface }
+            .joinToString("|") { "${it.manifestAssetPath}:${it.revision}" }
+            .takeIf(String::isNotEmpty)
+    }
+
     @Test fun canWriteAfterNativeTwoFingerPinch() {
         openEditor()
-        composeRule.waitUntil(5_000) { strokeCount() == 0 }
+        val initialTruth = rasterTruthToken()
 
         // Baseline: a single finger must be able to draw.
         composeRule.onRoot().performTouchInput {
@@ -121,8 +130,8 @@ class InkloomPinchThenWriteTest {
             moveTo(0, center + Offset(80f, 80f), delayMillis = 20)
             up(0)
         }
-        composeRule.waitUntil(10_000) { strokeCount() == 1 }
-        assertEquals("A single finger must draw before any pinch", 1, strokeCount())
+        composeRule.waitUntil(10_000) { rasterTruthToken() != initialTruth }
+        val firstTruth = requireNotNull(rasterTruthToken())
 
         // Two-finger pinch on the paper (zooms the viewport past ~2x).
         composeRule.onRoot().performTouchInput {
@@ -136,7 +145,7 @@ class InkloomPinchThenWriteTest {
             up(0)
         }
         composeRule.waitForIdle()
-        assertEquals("A pinch must never leave ink", 1, strokeCount())
+        assertEquals("A pinch must never change document pixels", firstTruth, rasterTruthToken())
 
         // A single finger must be able to draw again right after the pinch.
         composeRule.onRoot().performTouchInput {
@@ -144,8 +153,8 @@ class InkloomPinchThenWriteTest {
             moveTo(0, center + Offset(100f, -60f), delayMillis = 20)
             up(0)
         }
-        composeRule.waitUntil(10_000) { strokeCount() == 2 }
-        assertEquals("Finger must draw immediately after a native pinch", 2, strokeCount())
+        composeRule.waitUntil(10_000) { rasterTruthToken() != firstTruth }
+        assertTrue("Finger must draw immediately after a native pinch", rasterTruthToken() != firstTruth)
     }
 
     @Test fun selectionModeUsesStableViewportPlaneAcrossRepeatedPinchPanThenWrites() {
@@ -189,8 +198,8 @@ class InkloomPinchThenWriteTest {
                 stylusEvent(android.view.MotionEvent.ACTION_UP, x + 95f, y + 35f, android.view.MotionEvent.TOOL_TYPE_STYLUS, downTime, downTime + 24L),
             ).forEach { event -> proxy.onTouchEvent(event); event.recycle() }
         }
-        composeRule.waitUntil(10_000) { strokeCount() == 1 }
-        assertEquals(1, strokeCount())
+        composeRule.waitUntil(10_000) { findInkCanvasView()?.lastCommittedStrokePacket != null }
+        assertTrue(requireNotNull(findInkCanvasView()).lastCommittedStrokePacket?.strokes?.isNotEmpty() == true)
     }
 
     @Test fun zoomedScreenStylusLandsExactlyUnderThePen() {
@@ -222,10 +231,8 @@ class InkloomPinchThenWriteTest {
         )
 
         sendScreenStylusStroke(screenX, screenY, screenX + 32f, screenY + 14f)
-        composeRule.waitUntil(10_000) { strokeCount() == 1 }
-        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
-        val stroke = activeDocumentId?.let { FileDocumentStore(context.filesDir).get(it) }
-            ?.pages?.flatMap { it.strokes }?.single()
+        composeRule.waitUntil(10_000) { findInkCanvasView()?.lastCommittedStrokePacket != null }
+        val stroke = findInkCanvasView()?.lastCommittedStrokePacket?.strokes?.single()
         assertEquals("Zoomed stylus X must inverse-map once", expected.first / view.width, stroke?.points?.first()?.x ?: Float.NaN, .004f)
         assertEquals("Zoomed stylus Y must inverse-map once", expected.second / view.height, stroke?.points?.first()?.y ?: Float.NaN, .004f)
     }
@@ -264,6 +271,7 @@ class InkloomPinchThenWriteTest {
         )
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view.setRasterLayerSurfaces(emptyMap())
             view.setDocumentStrokes(listOf(crossingStroke), "eraser-coordinate-test")
             view.setProtectedStrokeIds(emptySet())
             view.setProtectedLayerIds(emptySet())
@@ -334,9 +342,8 @@ class InkloomPinchThenWriteTest {
                 proxy.onTouchEvent(it); it.recycle()
             }
         }
-        composeRule.waitUntil(10_000) { strokeCount() == 1 }
-        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
-        val stroke = activeDocumentId?.let { FileDocumentStore(context.filesDir).get(it) }?.pages?.flatMap { it.strokes }?.single()
+        composeRule.waitUntil(10_000) { findInkCanvasView()?.lastCommittedStrokePacket != null }
+        val stroke = findInkCanvasView()?.lastCommittedStrokePacket?.strokes?.single()
         val points = requireNotNull(stroke).points
         samples.forEach { screen ->
             val expected = ViewportTransform.viewToPage(
@@ -356,14 +363,14 @@ class InkloomPinchThenWriteTest {
 
     @Test fun strokeRendersAtZoom1() {
         openEditor()
-        composeRule.waitUntil(5_000) { strokeCount() == 0 }
+        composeRule.waitUntil(5_000) { findInkCanvasView()?.lastCommittedStrokePacket == null }
 
         composeRule.onRoot().performTouchInput {
             down(0, center + Offset(0f, 250f))
             moveTo(0, center + Offset(0f, 320f), delayMillis = 30)
             up(0)
         }
-        composeRule.waitUntil(10_000) { strokeCount() == 1 }
+        composeRule.waitUntil(10_000) { findInkCanvasView()?.lastCommittedStrokePacket != null }
         composeRule.waitForIdle()
         android.os.SystemClock.sleep(500)
 
@@ -413,6 +420,7 @@ class InkloomPinchThenWriteTest {
         // The native pinch/write test covers proxy routing. Here a local stylus stream creates a
         // deterministic stroke whose transformed rendering is then checked outside layout bounds.
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view.setRasterLayerSurfaces(emptyMap())
             view.onStrokesReplaced = { _, replacements, _ -> setupStrokes = replacements }
             val downTime = android.os.SystemClock.uptimeMillis()
             fun dispatch(action: Int, y: Float, elapsed: Long) {
@@ -614,11 +622,12 @@ class InkloomPinchThenWriteTest {
             view.height.toFloat(),
             ViewportState(scale, panX, panY),
         )
+        val packetSequenceBeforeOverflow = view.lastCommittedStrokePacket?.sequence ?: -1L
         sendScreenFingerStroke(overflowX, overflowY, overflowX + 28f, overflowY + 12f)
-        composeRule.waitUntil(10_000) { strokeCount() == 1 }
-        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
-        val overflowStroke = activeDocumentId?.let { FileDocumentStore(context.filesDir).get(it) }
-            ?.pages?.flatMap { it.strokes }?.last()
+        composeRule.waitUntil(10_000) {
+            (findInkCanvasView()?.lastCommittedStrokePacket?.sequence ?: -1L) > packetSequenceBeforeOverflow
+        }
+        val overflowStroke = findInkCanvasView()?.lastCommittedStrokePacket?.strokes?.firstOrNull()
         assertEquals("Overflow writing must inverse-map to the physical contact X", expectedPagePoint.first / view.width, overflowStroke?.points?.first()?.x ?: Float.NaN, .004f)
         assertEquals("Overflow writing must inverse-map to the physical contact Y", expectedPagePoint.second / view.height, overflowStroke?.points?.first()?.y ?: Float.NaN, .004f)
     }

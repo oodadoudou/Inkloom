@@ -80,10 +80,10 @@ class RealBrushCorpusRenderingTest {
             prepareBrushAssetsNow()
         }
         view.activeStrokeSurface = object : ActiveStrokeCompositor {
-            override fun render(strokes: List<app.inkloom.document.InkStroke>) {
-                view.drawActiveStrokes(Canvas(bitmap), strokes, incrementalStampDraw = true)
+            override fun render(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) {
+                view.drawActiveStrokes(Canvas(bitmap), packet.strokes, incrementalStampDraw = true)
             }
-            override fun commit(strokes: List<app.inkloom.document.InkStroke>) = Unit
+            override fun commit(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) = Unit
             override fun cancel() { bitmap.eraseColor(Color.TRANSPARENT) }
         }
         try {

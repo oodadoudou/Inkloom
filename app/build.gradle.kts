@@ -15,9 +15,10 @@ android {
         applicationId = "app.inkloom"
         minSdk = 29
         targetSdk = 35
-        versionCode = 155
-        versionName = "0.155.0"
+        versionCode = 156
+        versionName = "0.156.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("boolean", "PAINTING_DIAGNOSTICS", "false")
         vectorDrawables.useSupportLibrary = true
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
@@ -26,6 +27,25 @@ android {
             cmake {
                 cppFlags += listOf("-std=c++20", "-Wall", "-Wextra", "-Werror")
             }
+        }
+    }
+
+    buildTypes {
+        getByName("debug") {
+            buildConfigField("boolean", "PAINTING_DIAGNOSTICS", "true")
+        }
+        getByName("release") {
+            buildConfigField("boolean", "PAINTING_DIAGNOSTICS", "false")
+        }
+        create("profile") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".profile"
+            versionNameSuffix = "-profile"
+            signingConfig = signingConfigs.getByName("debug")
+            isDebuggable = false
+            isMinifyEnabled = false
+            matchingFallbacks += listOf("release", "debug")
+            buildConfigField("boolean", "PAINTING_DIAGNOSTICS", "true")
         }
     }
 

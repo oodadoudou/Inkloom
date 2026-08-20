@@ -208,11 +208,15 @@ class BrushBatchManagementTest {
         val view = findInkCanvasView()!!
         composeRule.waitUntil(5_000) { view.brushId == "batch-a" }
         composeRule.onNodeWithContentDescription("Close brushes panel").performClick()
+        val transactionPacketsBefore = view.rasterIncrementalPatchCount
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             repeat(6) { dispatchStylusStroke(view, it) }
         }
-        assertEquals(6, (reflectedField(view, "strokes") as? List<*>)?.size)
+        assertTrue(
+            "Every rapid pen contact should deposit at least one V3 tile packet",
+            view.rasterIncrementalPatchCount - transactionPacketsBefore >= 6,
+        )
     }
 
     private fun findInkCanvasView(): InkCanvasView? {

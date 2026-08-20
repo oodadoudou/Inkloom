@@ -143,15 +143,15 @@ class SystemBrushPerformanceTest {
     ) : ActiveStrokeCompositor {
         private val planner = ActiveStrokeTailPlanner()
 
-        override fun render(strokes: List<InkStroke>) {
-            val plan = planner.incremental(strokes)
+        override fun render(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) {
+            val plan = planner.incremental(packet.strokes)
             if (plan.clearBeforeDraw) bitmap.eraseColor(Color.TRANSPARENT)
             if (plan.strokes.isNotEmpty()) {
                 view.drawActiveStrokes(Canvas(bitmap), plan.strokes, plan.incrementalStampDraw)
             }
         }
 
-        override fun commit(strokes: List<InkStroke>) = render(strokes)
+        override fun commit(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) = render(packet)
 
         override fun cancel() {
             bitmap.eraseColor(Color.TRANSPARENT)

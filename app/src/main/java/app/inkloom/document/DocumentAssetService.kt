@@ -1457,7 +1457,10 @@ class DocumentAssetService(private val context: Context) {
             val scaleX = tipScale.x * flip.x
             val scaleY = tipScale.y * flip.y * graphiteTiltWidth
             val matrix = Matrix().apply { postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(scaleX, scaleY); postRotate(angle); postTranslate(drawX, drawY) }
-            val grainAlpha = app.inkloom.document.GraphiteFootprint.paperGrainAlpha(stroke, drawX, drawY) * app.inkloom.document.GraphiteFootprint.tiltGrainDensity(stroke, point)
+            val grainAlpha = app.inkloom.document.GraphiteFootprint.paperGrainAlpha(
+                stroke,
+                app.inkloom.engine.v3.brush.MaterialCoordinateContext.document(drawX, drawY),
+            ) * app.inkloom.document.GraphiteFootprint.tiltGrainDensity(stroke, point)
             val mainAlpha = (ProcreateRendering.depositedAlpha(stroke.procreateRenderingMode, stroke.flow * dynamics.depositedAlpha * grainAlpha * (falloff?.get(index) ?: 1f) * (taper.opacity?.get(index) ?: 1f)) * 255f).toInt()
             val jitteredColor = BrushColorJitter.argb(stroke, point, sequenceIndex)
             val tiltBleedAmount = stroke.tiltBleed.coerceIn(0f, 1f) * BrushTilt.response(point, stroke.tiltBleedStart)

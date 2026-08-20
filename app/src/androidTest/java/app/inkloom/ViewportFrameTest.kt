@@ -7,6 +7,9 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.document.ViewportState
 import app.inkloom.document.ViewportTransform
+import app.inkloom.document.GraphiteFootprint
+import app.inkloom.document.InkStroke
+import app.inkloom.engine.v3.brush.MaterialCoordinateContext
 import app.inkloom.engine.v3.geometry.PagePoint
 import app.inkloom.engine.v3.geometry.ViewportFrame
 import app.inkloom.engine.v3.geometry.ViewportFrameId
@@ -24,8 +27,8 @@ class ViewportFrameTest {
         val pageWidth = 742f
         val pageHeight = 1_050f
         val points = listOf(0f to 0f, pageWidth to 0f, pageWidth / 2f to pageHeight / 2f, 13.25f to 987.75f, pageWidth to pageHeight)
-        val scales = listOf(1f, 2f, 4f, 8f, 16f)
-        val rotations = listOf(0f, 37f, 90f, -135f)
+        val scales = listOf(.25f, 1f, 2f, 4f, 8f, 16f)
+        val rotations = listOf(0f, 30f, 37f, 90f, 180f, -135f)
         val pans = listOf(0f to 0f, 231.5f to -178.25f, -640f to 412f)
 
         scales.forEach { scale -> rotations.forEach { rotation -> pans.forEach { pan ->
@@ -89,6 +92,40 @@ class ViewportFrameTest {
             assertEquals(page.y, packet.event.y, .01f)
         }
         event.recycle()
+    }
+
+    @Test fun documentAnchoredPaperMaterialIsInvariantAcrossViewportFrames() {
+        val stroke = InkStroke(
+            id = "paper-grain-parity",
+            points = emptyList(),
+            renderSeed = 913,
+            proceduralPaperGrainEnabled = true,
+            proceduralPaperGrainScale = 37f,
+            proceduralPaperGrainDensity = .72f,
+            proceduralPaperGrainStrength = .84f,
+        )
+        val pagePoint = PagePoint(523.25f, 317.75f)
+        val expected = GraphiteFootprint.paperGrainAlpha(
+            stroke,
+            MaterialCoordinateContext.document(pagePoint.x, pagePoint.y),
+        )
+        var generation = 0L
+        listOf(.25f, 1f, 4f, 8f).forEach { scale ->
+            listOf(0f, 30f, 90f, 180f).forEach { rotation ->
+                listOf(0f to 0f, 231.5f to -178.25f).forEach { pan ->
+                    val frame = requireNotNull(ViewportFrame.create(
+                        ViewportFrameId(++generation), 1_824f, 1_104f, 742f, 1_050f,
+                        ViewportState(scale, pan.first, pan.second, rotation),
+                    ))
+                    val roundTrip = frame.viewportToPage(frame.pageToViewport(pagePoint))
+                    val actual = GraphiteFootprint.paperGrainAlpha(
+                        stroke,
+                        MaterialCoordinateContext.document(roundTrip.x, roundTrip.y),
+                    )
+                    assertEquals("material at scale=$scale rotation=$rotation pan=$pan", expected, actual, 1e-5f)
+                }
+            }
+        }
     }
 
     private fun movePacket(samples: List<Pair<Float, Float>>): MotionEvent {

@@ -1,5 +1,6 @@
 package app.inkloom.document
 
+import app.inkloom.engine.v3.brush.MaterialCoordinateContext
 import kotlin.math.floor
 
 /**
@@ -46,6 +47,11 @@ object GraphiteFootprint {
         val floor = 1f - density
         return (floor + density * value).coerceIn(0f, 1f)
     }
+
+    internal fun paperGrainAlpha(
+        stroke: InkStroke,
+        coordinates: MaterialCoordinateContext.Document,
+    ): Float = paperGrainAlpha(stroke, coordinates.point.x, coordinates.point.y)
 
     /** The paper grain is a page property, not a stroke property: overlapping dabs at the same
      * document position must share one paper surface regardless of which stroke drew them, so the

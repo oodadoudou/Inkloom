@@ -43,13 +43,13 @@ class RasterPaintCommitTest {
             onRasterLayerCommitted = { patch -> committed = patch }
         }
         view.activeStrokeSurface = object : ActiveStrokeCompositor {
-            override fun render(strokes: List<app.inkloom.document.InkStroke>) {
-                latestStrokes = strokes
+            override fun render(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) {
+                latestStrokes = packet.strokes
                 val started = android.os.SystemClock.elapsedRealtimeNanos()
-                view.drawActiveStrokes(Canvas(front), strokes, incrementalStampDraw = true)
+                view.drawActiveStrokes(Canvas(front), packet.strokes, incrementalStampDraw = true)
                 frameTimesMs += (android.os.SystemClock.elapsedRealtimeNanos() - started) / 1_000_000f
             }
-            override fun commit(strokes: List<app.inkloom.document.InkStroke>) = Unit
+            override fun commit(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) = Unit
             override fun cancel() = Unit
         }
 
@@ -130,8 +130,8 @@ class RasterPaintCommitTest {
             setRasterLayerBitmaps(mapOf("paint" to surface))
         }
         view.activeStrokeSurface = object : ActiveStrokeCompositor {
-            override fun render(strokes: List<app.inkloom.document.InkStroke>) = Unit
-            override fun commit(strokes: List<app.inkloom.document.InkStroke>) = Unit
+            override fun render(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) = Unit
+            override fun commit(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) = Unit
             override fun cancel() = Unit
         }
 
