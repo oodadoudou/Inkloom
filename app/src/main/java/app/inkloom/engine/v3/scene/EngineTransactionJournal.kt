@@ -23,32 +23,43 @@ class EngineTransactionJournal(private val capacity: Int = 100) {
     private val undo = ArrayDeque<EngineTransaction>()
     private val redo = ArrayDeque<EngineTransaction>()
 
+    @Synchronized
     fun record(edit: EngineTransaction) {
+        val released = mutableListOf<EngineTransaction>()
         undo.addLast(edit)
-        while (undo.size > capacity.coerceAtLeast(1)) release(undo.removeFirst())
-        redo.forEach(::release)
+        while (undo.size > capacity.coerceAtLeast(1)) released += undo.removeFirst()
+        released += redo
         redo.clear()
+        released.forEach(::release)
     }
 
+    @Synchronized
     fun takeUndo(): EngineTransaction? = undo.removeLastOrNull()?.also(redo::addLast)
 
+    @Synchronized
     fun restoreUndo(edit: EngineTransaction) {
         if (redo.lastOrNull() === edit) redo.removeLast()
         undo.addLast(edit)
     }
 
+    @Synchronized
     fun takeRedo(): EngineTransaction? = redo.removeLastOrNull()?.also(undo::addLast)
 
+    @Synchronized
     fun restoreRedo(edit: EngineTransaction) {
         if (undo.lastOrNull() === edit) undo.removeLast()
         redo.addLast(edit)
     }
 
+    @Synchronized
     fun clear() {
-        undo.forEach(::release)
-        redo.forEach(::release)
+        // Clear ownership before invoking disposal callbacks. A callback may synchronously close
+        // a raster checkpoint or re-enter editor teardown; iterating the live deque used to throw
+        // ConcurrentModificationException and crash Activity destruction.
+        val released = undo.toList() + redo.toList()
         undo.clear()
         redo.clear()
+        released.forEach(::release)
     }
 
     private fun release(edit: EngineTransaction) {

@@ -51,4 +51,18 @@ class EngineTransactionJournalTest {
         history.clear()
         assertEquals(1_000, releases)
     }
+
+    @Test fun clearOwnsASnapshotBeforeAReentrantDisposeCallbackRuns() {
+        val history = EngineTransactionJournal()
+        var releases = 0
+        history.record(EngineTransaction.External({}, {}, dispose = {
+            releases++
+            history.record(EngineTransaction.External({}, {}, dispose = { releases++ }))
+        }))
+
+        history.clear()
+        assertEquals(1, releases)
+        history.clear()
+        assertEquals(2, releases)
+    }
 }
