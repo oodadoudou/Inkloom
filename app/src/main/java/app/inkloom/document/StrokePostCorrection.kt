@@ -1,6 +1,7 @@
 package app.inkloom.document
 
 import kotlin.math.abs
+import kotlin.math.floor
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.roundToLong
@@ -170,8 +171,11 @@ object StrokePostCorrection {
     ): List<StrokePoint> {
         if (maxDisplacementPx.isInfinite() || maxDisplacementPx <= 0f) return points
         if (raw.isEmpty()) return points
-        return points.map { point ->
-            val nearest = nearestOnPolyline(point, raw, pageWidth, pageHeight)
+        val proximity = PolylineProximityIndex(raw, pageWidth, pageHeight, maxDisplacementPx)
+        return points.mapIndexed { index, point ->
+            val rawProgress = if (points.size <= 1) 0f else index.toFloat() / points.lastIndex
+            val anchorSegment = (rawProgress * (raw.size - 2).coerceAtLeast(0)).toInt()
+            val nearest = proximity.nearestWithinOrFallback(point, anchorSegment)
             if (nearest.distancePx <= maxDisplacementPx) point
             else {
                 val length = nearest.distancePx
@@ -185,6 +189,87 @@ object StrokePostCorrection {
     }
 
     private data class NearestPoint(val x: Float, val y: Float, val distancePx: Float)
+
+    /**
+     * Exact-within-the-bound proximity lookup for the production clamp. Raw input is ordered, so
+     * the progress-matched segment resolves almost every point in O(1). A uniform grid handles
+     * correction/simplification drift; very long segments are kept in a small overflow list rather
+     * than exploding across thousands of cells. If nothing lies within the bound, the closest
+     * checked segment is sufficient: pulling toward it still guarantees the displacement contract.
+     */
+    private class PolylineProximityIndex(
+        raw: List<StrokePoint>,
+        private val pageWidth: Float,
+        private val pageHeight: Float,
+        private val radius: Float,
+    ) {
+        private data class Segment(val sx: Float, val sy: Float, val ex: Float, val ey: Float)
+
+        private val segments = ArrayList<Segment>((raw.size - 1).coerceAtLeast(0))
+        private val buckets = HashMap<Long, MutableList<Int>>()
+        private val overflow = mutableListOf<Int>()
+        private val cellSize = max(8f, radius * 2f).coerceAtMost(128f)
+
+        init {
+            for (index in 1 until raw.size) {
+                val start = raw[index - 1]
+                val end = raw[index]
+                val segment = Segment(start.x * pageWidth, start.y * pageHeight, end.x * pageWidth, end.y * pageHeight)
+                val segmentIndex = segments.size
+                segments += segment
+                val minX = floor((minOf(segment.sx, segment.ex) - radius) / cellSize).toInt()
+                val maxX = floor((maxOf(segment.sx, segment.ex) + radius) / cellSize).toInt()
+                val minY = floor((minOf(segment.sy, segment.ey) - radius) / cellSize).toInt()
+                val maxY = floor((maxOf(segment.sy, segment.ey) + radius) / cellSize).toInt()
+                val cells = (maxX.toLong() - minX + 1L) * (maxY.toLong() - minY + 1L)
+                if (cells > MAX_CELLS_PER_SEGMENT) {
+                    overflow += segmentIndex
+                } else {
+                    for (cellY in minY..maxY) for (cellX in minX..maxX) {
+                        buckets.getOrPut(key(cellX, cellY)) { mutableListOf() } += segmentIndex
+                    }
+                }
+            }
+        }
+
+        fun nearestWithinOrFallback(point: StrokePoint, anchorSegment: Int): NearestPoint {
+            val px = point.x * pageWidth
+            val py = point.y * pageHeight
+            var best = nearestOnSegment(px, py, segments[anchorSegment.coerceIn(0, segments.lastIndex)])
+            if (best.distancePx <= radius) return best
+
+            val cellX = floor(px / cellSize).toInt()
+            val cellY = floor(py / cellSize).toInt()
+            buckets[key(cellX, cellY)].orEmpty().forEach { segmentIndex ->
+                val candidate = nearestOnSegment(px, py, segments[segmentIndex])
+                if (candidate.distancePx <= radius) return candidate
+                if (candidate.distancePx < best.distancePx) best = candidate
+            }
+            overflow.forEach { segmentIndex ->
+                val candidate = nearestOnSegment(px, py, segments[segmentIndex])
+                if (candidate.distancePx <= radius) return candidate
+                if (candidate.distancePx < best.distancePx) best = candidate
+            }
+            return best
+        }
+
+        private fun nearestOnSegment(px: Float, py: Float, segment: Segment): NearestPoint {
+            val segmentX = segment.ex - segment.sx
+            val segmentY = segment.ey - segment.sy
+            val lengthSquared = segmentX * segmentX + segmentY * segmentY
+            val t = if (lengthSquared <= .0001f) 0f else
+                (((px - segment.sx) * segmentX + (py - segment.sy) * segmentY) / lengthSquared).coerceIn(0f, 1f)
+            val nx = segment.sx + segmentX * t
+            val ny = segment.sy + segmentY * t
+            return NearestPoint(nx, ny, hypot((px - nx).toDouble(), (py - ny).toDouble()).toFloat())
+        }
+
+        private fun key(x: Int, y: Int): Long = (x.toLong() shl 32) xor (y.toLong() and 0xffffffffL)
+
+        private companion object {
+            const val MAX_CELLS_PER_SEGMENT = 2_048L
+        }
+    }
 
     private fun nearestOnPolyline(point: StrokePoint, polyline: List<StrokePoint>, pageWidth: Float, pageHeight: Float): NearestPoint {
         val px = point.x * pageWidth

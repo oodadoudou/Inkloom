@@ -81,7 +81,11 @@ class StrokePostCorrectionTest {
         })
         lateinit var corrected: InkStroke
         val elapsedMs = kotlin.system.measureTimeMillis {
-            corrected = StrokePostCorrection.apply(longStroke, .9f, true, true, 2f, 1600f, 2263f, quadraticBezier = true)
+            corrected = StrokePostCorrection.apply(
+                longStroke, .9f, true, true, 2f, 1600f, 2263f,
+                quadraticBezier = true,
+                maxDisplacementPx = 2.5f,
+            )
         }
         assertEquals(longStroke.points.first(), corrected.points.first())
         assertEquals(longStroke.points.last(), corrected.points.last())
