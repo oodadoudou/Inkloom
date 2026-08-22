@@ -4539,6 +4539,9 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
     val gradientCommitScope = rememberCoroutineScope()
     val gradientCommitMutex = remember(documentId, page.id) { Mutex() }
     val rasterCommitMutex = remember(documentId, page.id) { Mutex() }
+    val rasterSurfaceRuntime = remember(documentId, page.id) {
+        RasterLayerSurfaceRuntime(renderWidth = 1200, loader = assets::renderRasterLayerSurface)
+    }
     val latestRasterAssets = remember(documentId, page.id) {
         page.layers.associate { layer ->
             layer.id to Triple(layer.rasterTileSurface, layer.rasterAssetPath, layer.rasterRotationQuarterTurns)
@@ -4674,6 +4677,11 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                         newReference = withContext(Dispatchers.IO) { assets.saveRasterTileSurface(surface) }
                         val savedReference = requireNotNull(newReference)
                         latestRasterAssets[layerId] = Triple(savedReference, null, previous.third)
+                        // The live surface can already contain later gestures. Associate this
+                        // checkpoint with it before publishing the document reference so the
+                        // resulting Compose update cannot replace newer pixels with older disk
+                        // projection data.
+                        rasterSurfaceRuntime.acceptPublished(capturedPage, layerId, savedReference, previous.third)
                         onSetLayerRasterTileSurface(documentId, capturedPage.id, layerId, savedReference, previous.third)
                         if (view.isAttachedToWindow) {
                             fun applyRevision(revision: Triple<RasterTileSurfaceRef?, String?, Int>) {
@@ -4737,12 +4745,10 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
         }.toMap()
     }
     DisposableEffect(layerElementBitmaps) { onDispose { layerElementBitmaps.values.forEach(LayerElementBitmaps::recycle) } }
-    val rasterLayerSurfaces = remember(page.layers, page.crop, page.backgroundRotationQuarterTurns) {
-        page.layers.mapNotNull { layer ->
-            if (layer.contentKind != LayerContentKind.RASTER || !LayerHierarchy.effectiveVisible(page.layers, layer)) return@mapNotNull null
-            layer.id to assets.renderRasterLayerSurface(page, layer.id, 1200)
-        }.toMap()
-    }
+    // This page-scoped runtime, rather than a disk-derived Compose value, owns editable pixels.
+    // Brush imports, preset switches and asynchronous checkpoint publication are UI changes and
+    // must never reconstruct or replace the live painting surface.
+    val rasterLayerSurfaces = rasterSurfaceRuntime.reconcile(page)
     val rulerGuide = RulerGuideState(settings.rulerCenterX, settings.rulerCenterY, settings.rulerAngleDegrees, settings.rulerSnapDegrees).normalized()
     val canvasGuide = CanvasGuideState(settings.gridSnapEnabled, settings.gridSpacing, settings.alignmentGuidesEnabled, settings.verticalGuideX, settings.horizontalGuideY).normalized()
     val perspectiveGuide = PerspectiveGuideState(
