@@ -284,6 +284,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var rasterIncrementalPatchBitmap: Bitmap? = null
     private var rasterIncrementalRendering = false
     private var rasterIncrementalPaintEnabled = false
+    private var rasterPaintGestureStrokeId: String? = null
     @VisibleForTesting internal var rasterIncrementalPatchCount: Int = 0
         private set
     @VisibleForTesting internal var rasterFullReplayCount: Int = 0
@@ -6471,6 +6472,11 @@ class InkCanvasView(context: Context) : View(context) {
         finalCompleteInput: Boolean,
     ): Boolean {
         if (!rasterIncrementalPaintEnabled || strokes.isEmpty() || strokes.any { !supportsIncrementalRasterStampPaint(it) }) return false
+        val gestureStrokeId = rasterPaintGestureStrokeId ?: return false
+        if (strokes.any { stroke ->
+                stroke.id != gestureStrokeId && !stroke.id.startsWith("$gestureStrokeId-sym-")
+            }
+        ) return false
         val raster = rasterWetPaintBitmap?.takeUnless(Bitmap::isRecycled) ?: return false
         val session = rasterPaintSession ?: return false
         val increments = mutableListOf<RasterStampIncrement>()
@@ -6660,13 +6666,14 @@ class InkCanvasView(context: Context) : View(context) {
         return RasterStrokePatch(paintSurface, patchLeft, patchTop)
     }
 
-    private fun beginWetPaintGesture(normalizedX: Float, normalizedY: Float) {
-        cancelWetPaintGesture()
-        val template = activeStrokeTemplate ?: return
-        val raster = rasterEditBitmapFor(activeLayerId) ?: return
-        val surface = rasterTileSurfaceFor(activeLayerId) ?: return
+    private fun beginWetPaintGesture(normalizedX: Float, normalizedY: Float) = synchronized(renderLock) {
+        cancelWetPaintGestureLocked()
+        val template = activeStrokeTemplate ?: return@synchronized
+        val raster = rasterEditBitmapFor(activeLayerId) ?: return@synchronized
+        val surface = rasterTileSurfaceFor(activeLayerId) ?: return@synchronized
         clearRasterIncrementalPaintState()
         rasterIncrementalPaintEnabled = supportsIncrementalRasterStampPaint(template)
+        rasterPaintGestureStrokeId = template.id
         rasterWetPaintBitmap = raster
         rasterPaintSession = RasterTilePaintSession(
             surface,
@@ -6676,7 +6683,7 @@ class InkCanvasView(context: Context) : View(context) {
             mirrorWrites = !rasterIncrementalPaintEnabled,
         )
         wetPaintDirtyBounds = null
-        if (template.procreateWetMix.isDisabled() && !template.watercolor) return
+        if (template.procreateWetMix.isDisabled() && !template.watercolor) return@synchronized
         val initial = StrokePoint(normalizedX, normalizedY)
         wetPaintLastPositions = wetPaintPositions(initial)
         wetPaintPickupColors = MutableList(wetPaintLastPositions.size) { null }
@@ -6782,9 +6789,14 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
-    private fun finishWetPaintGesture() {
+    private fun finishWetPaintGesture() = synchronized(renderLock) {
+        finishWetPaintGestureLocked()
+    }
+
+    private fun finishWetPaintGestureLocked() {
         rasterPaintSession?.close()
         rasterPaintSession = null
+        rasterPaintGestureStrokeId = null
         rasterWetPaintBitmap = null
         wetPaintDirtyBounds = null
         wetPaintLastPositions = emptyList()
@@ -6792,14 +6804,17 @@ class InkCanvasView(context: Context) : View(context) {
         clearRasterIncrementalPaintState()
     }
 
-    private fun commitIncrementalRasterStampGesture(newStrokes: List<InkStroke>): Boolean {
-        if (!rasterIncrementalPaintEnabled) return false
-        val surface = rasterTileSurfaceFor(activeLayerId) ?: return false
-        val session = rasterPaintSession ?: return false
-        val rendered = synchronized(renderLock) {
-            renderIncrementalRasterPaintPatch(null, newStrokes, finalCompleteInput = true)
-        }
-        if (!rendered) return false
+    private fun commitIncrementalRasterStampGesture(newStrokes: List<InkStroke>): Boolean = synchronized(renderLock) {
+        if (!rasterIncrementalPaintEnabled) return@synchronized false
+        val gestureStrokeId = rasterPaintGestureStrokeId ?: return@synchronized false
+        if (newStrokes.any { stroke ->
+                stroke.id != gestureStrokeId && !stroke.id.startsWith("$gestureStrokeId-sym-")
+            }
+        ) return@synchronized false
+        val surface = rasterTileSurfaceFor(activeLayerId) ?: return@synchronized false
+        val session = rasterPaintSession ?: return@synchronized false
+        val rendered = renderIncrementalRasterPaintPatch(null, newStrokes, finalCompleteInput = true)
+        if (!rendered) return@synchronized false
         try {
             val dirty = wetPaintDirtyBounds
             if (dirty != null) {
@@ -6811,14 +6826,19 @@ class InkCanvasView(context: Context) : View(context) {
         } finally {
             session.close()
             if (rasterPaintSession === session) rasterPaintSession = null
+            if (rasterPaintGestureStrokeId == gestureStrokeId) rasterPaintGestureStrokeId = null
         }
         invalidate()
-        return true
+        true
     }
 
-    private fun cancelWetPaintGesture() {
+    private fun cancelWetPaintGesture() = synchronized(renderLock) {
+        cancelWetPaintGestureLocked()
+    }
+
+    private fun cancelWetPaintGestureLocked() {
         rasterPaintSession?.restoreOriginal()
-        finishWetPaintGesture()
+        finishWetPaintGestureLocked()
         invalidate()
     }
 
