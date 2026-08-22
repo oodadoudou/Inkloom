@@ -187,17 +187,22 @@ class LassoSelectionModesTest {
             val bitmap = Bitmap.createBitmap(1_000, 1_000, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bitmap)
             try {
-                repeat(2) { bitmap.eraseColor(Color.TRANSPARENT); view.draw(canvas) }
-                val elapsed = ArrayList<Long>(10)
-                repeat(10) {
+                repeat(4) { bitmap.eraseColor(Color.TRANSPARENT); view.draw(canvas) }
+                val elapsed = ArrayList<Long>(40)
+                repeat(40) {
                     bitmap.eraseColor(Color.TRANSPARENT)
                     val started = SystemClock.elapsedRealtimeNanos()
                     view.draw(canvas)
                     elapsed += SystemClock.elapsedRealtimeNanos() - started
                 }
                 val sorted = elapsed.sorted()
-                val p95Ms = sorted[(sorted.size * 95 / 100).coerceAtMost(sorted.lastIndex)] / 1_000_000f
-                android.util.Log.i("InkloomPerf", "selection_overlay_1000px_p95_ms=$p95Ms")
+                val nearestRankP95 = ((sorted.size * 95 + 99) / 100 - 1).coerceIn(0, sorted.lastIndex)
+                val p95Ms = sorted[nearestRankP95] / 1_000_000f
+                val worstMs = sorted.last() / 1_000_000f
+                android.util.Log.i(
+                    "InkloomPerf",
+                    "selection_overlay_1000px_p95_ms=$p95Ms worst_ms=$worstMs samples=${sorted.size}",
+                )
                 assertTrue("Selection overlay P95 was ${p95Ms}ms", p95Ms < 33.3f)
             } finally {
                 bitmap.recycle()
