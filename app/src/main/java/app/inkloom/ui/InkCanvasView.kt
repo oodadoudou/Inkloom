@@ -7201,8 +7201,16 @@ class InkCanvasView(context: Context) : View(context) {
                         strokePatch.top + strokePatch.bitmap.height,
                     )
                     RasterTileEditSession(surface, raster, "authored raster eraser").use { exact ->
-                        exact.edit(app.inkloom.engine.v3.surface.PixelRect(bounds.left, bounds.top, bounds.right, bounds.bottom)) { destination ->
-                            Canvas(destination).drawBitmap(strokePatch.bitmap, 0f, 0f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                        exact.editIndependent(
+                            app.inkloom.engine.v3.surface.PixelRect(bounds.left, bounds.top, bounds.right, bounds.bottom),
+                        ) { destination, unit ->
+                            val source = Rect(
+                                unit.left - bounds.left,
+                                unit.top - bounds.top,
+                                unit.right - bounds.left,
+                                unit.bottom - bounds.top,
+                            )
+                            Canvas(destination).drawBitmap(strokePatch.bitmap, source, Rect(0, 0, destination.width, destination.height), Paint(Paint.ANTI_ALIAS_FLAG).apply {
                                 blendMode = android.graphics.BlendMode.DST_OUT
                             })
                         }

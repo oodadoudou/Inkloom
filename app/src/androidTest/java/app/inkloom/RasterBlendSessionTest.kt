@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.engine.v3.tools.RasterTileBlendSession
+import app.inkloom.engine.v3.tools.RasterAbyssPolicy
 import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection
 import org.junit.Assert.assertEquals
@@ -20,6 +21,7 @@ class RasterBlendSessionTest {
         val session = RasterTileBlendSession(surface, display)
 
         session.blend(34f, 32f, 66f, 32f, 24f, 1f, .8f)
+        assertEquals(RasterAbyssPolicy.TRANSPARENT, session.lastRoiPlan?.abyssPolicy)
         val preview = display.getPixel(66, 32)
         assertTrue(Color.alpha(preview) > 100)
         assertEquals("Published tiles remain unchanged before the gesture commits", Color.TRANSPARENT, surface.pixelAt(66, 32))

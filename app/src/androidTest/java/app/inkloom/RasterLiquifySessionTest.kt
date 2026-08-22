@@ -7,6 +7,7 @@ import android.graphics.Paint
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.document.LiquifyMode
 import app.inkloom.engine.v3.tools.RasterTileLiquifySession
+import app.inkloom.engine.v3.tools.RasterAbyssPolicy
 import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection
 import org.junit.Assert.assertEquals
@@ -23,6 +24,7 @@ class RasterLiquifySessionTest {
         val surface = PixelTileBitmapAdapter.import(display)
         val session = RasterTileLiquifySession(surface, display)
         assertTrue(session.deform(75f, 90f, 135f, 90f, 68f, 1f, .3f, LiquifyMode.PUSH) != null)
+        assertEquals(RasterAbyssPolicy.CLAMP_TO_EDGE, session.lastRoiPlan?.abyssPolicy)
         assertNotEquals(original, checksum(display))
         val unpublished = PixelTileBitmapAdapter.render(surface.snapshot())
         assertEquals("Published tiles stay at gesture-start until commit", original, checksum(unpublished))

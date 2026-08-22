@@ -8,7 +8,12 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v3.surface.PixelRect
 import app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection
+import app.inkloom.engine.v3.tools.RasterAbyssPolicy
+import app.inkloom.engine.v3.tools.RasterDependency
+import app.inkloom.engine.v3.tools.RasterExecutionMode
+import app.inkloom.engine.v3.tools.RasterRoiPlan
 import app.inkloom.engine.v3.tools.RasterTileEditSession
+import java.util.Collections
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -16,6 +21,81 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class RasterTileEditSessionTest {
+    @Test fun transparentAbyssKeepsTheRequestedReadCoordinateSystem() {
+        val display = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+        val surface = PixelTileBitmapAdapter.import(display)
+        val plan = RasterRoiPlan.create(
+            PixelRect(0, 0, 1, 1),
+            surface.logicalWidth,
+            surface.logicalHeight,
+            surface.tileSize,
+            readCore = PixelRect(-2, -1, 2, 2),
+            abyssPolicy = RasterAbyssPolicy.TRANSPARENT,
+        )
+
+        RasterTileEditSession(surface, display, "transparent abyss").use { session ->
+            session.editWithRoi(plan) { sample, global, _ ->
+                assertEquals(PixelRect(-2, -1, 2, 2), global)
+                assertEquals(4, sample.width)
+                assertEquals(3, sample.height)
+                assertEquals(Color.TRANSPARENT, sample.getPixel(0, 0))
+                assertEquals(Color.RED, sample.getPixel(2, 1))
+                assertEquals(Color.RED, sample.getPixel(3, 2))
+            }
+        }
+        display.recycle()
+    }
+
+    @Test fun clampAbyssRepeatsEdgesWhilePreservingTheOverlappingAxis() {
+        val display = Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888)
+        for (y in 0 until 4) for (x in 0 until 4) display.setPixel(x, y, Color.rgb(x * 40, y * 50, 10))
+        val surface = PixelTileBitmapAdapter.import(display)
+        val plan = RasterRoiPlan.create(
+            PixelRect(0, 0, 1, 1),
+            surface.logicalWidth,
+            surface.logicalHeight,
+            surface.tileSize,
+            readCore = PixelRect(1, 5, 3, 7),
+            abyssPolicy = RasterAbyssPolicy.CLAMP_TO_EDGE,
+        )
+
+        RasterTileEditSession(surface, display, "clamped abyss").use { session ->
+            session.editWithRoi(plan) { sample, global, _ ->
+                assertEquals(PixelRect(1, 5, 3, 7), global)
+                assertEquals(display.getPixel(1, 3), sample.getPixel(0, 0))
+                assertEquals(display.getPixel(2, 3), sample.getPixel(1, 0))
+                assertEquals(display.getPixel(1, 3), sample.getPixel(0, 1))
+                assertEquals(display.getPixel(2, 3), sample.getPixel(1, 1))
+            }
+        }
+        display.recycle()
+    }
+
+    @Test fun independentKernelUsesTheBoundedWorkerPoolAndKeepsOneUndoRecord() {
+        val display = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
+        val surface = PixelTileBitmapAdapter.import(display)
+        val callbackThreads = Collections.synchronizedSet(mutableSetOf<String>())
+        val session = RasterTileEditSession(surface, display, "independent kernel")
+
+        session.editIndependent(PixelRect(0, 0, 512, 512)) { bitmap, _ ->
+            callbackThreads += Thread.currentThread().name
+            bitmap.eraseColor(Color.BLUE)
+        }
+        assertEquals(RasterDependency.INDEPENDENT, session.lastRoiPlan?.dependency)
+        assertEquals(RasterExecutionMode.PARALLEL, session.lastRoiPlan?.executionMode)
+        assertTrue(callbackThreads.isNotEmpty())
+        assertTrue(callbackThreads.all { it == "Inkloom-RasterROI" })
+        assertEquals(Color.BLUE, display.getPixel(300, 300))
+
+        val record = session.commit()
+        assertEquals(16, record.changedTileCount)
+        surface.apply(record, HistoryDirection.UNDO)
+        assertEquals(Color.RED, surface.pixelAt(300, 300))
+        record.close()
+        session.close()
+        display.recycle()
+    }
+
     @Test fun noOpScratchRoundTripDoesNotDriftPremultipliedPixels() {
         val display = Bitmap.createBitmap(192, 192, Bitmap.Config.ARGB_8888)
         for (y in 0 until display.height) for (x in 0 until display.width) {

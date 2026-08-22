@@ -62,6 +62,7 @@ class RasterTileLiquifySession private constructor(
     }
     private val width = surface.logicalWidth
     private val height = surface.logicalHeight
+    private val tileSize = surface.tileSize
     private var completed = false
 
     val dirtyBounds: PixelRect? get() = edits.dirtyBounds
@@ -70,6 +71,7 @@ class RasterTileLiquifySession private constructor(
     internal val displacementTileCount: Int get() = displacement.tileCount
     internal val displacementByteSize: Long get() = displacement.retainedByteSize
     internal val processedStampCount: Int get() = displacement.processedStampCount
+    internal val lastRoiPlan: RasterRoiPlan? get() = edits.lastRoiPlan
 
     fun deform(
         previousX: Float,
@@ -138,7 +140,15 @@ class RasterTileLiquifySession private constructor(
                 drawBitmap(requireNotNull(warpBitmap), localRect, localRect, compositePaint)
             }
         }
-        val changed = edits.editWithOriginalSample(destination, destination, operation) ?: return null
+        val roi = RasterRoiPlan.create(
+            destination,
+            width,
+            height,
+            tileSize = tileSize,
+            readCore = destination,
+            abyssPolicy = RasterAbyssPolicy.CLAMP_TO_EDGE,
+        )
+        val changed = edits.editWithRoi(roi, RasterSampleGeneration.ORIGINAL, operation) ?: return null
         return Rect(changed.left, changed.top, changed.right, changed.bottom)
     }
 

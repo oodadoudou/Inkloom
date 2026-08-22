@@ -94,11 +94,13 @@ class RasterTilePaintSession private constructor(
     private val pickupDestination = Rect(0, 0, 1, 1)
     private val logicalWidth = surface.logicalWidth
     private val logicalHeight = surface.logicalHeight
+    private val tileSize = surface.tileSize
     private var completed = false
 
     val dirtyBounds: PixelRect? get() = edits.dirtyBounds
     val touchedTileCount: Int get() = edits.touchedTileCount
     val workingByteSize: Long get() = edits.workingByteSize
+    internal val lastRoiPlan: RasterRoiPlan? get() = edits.lastRoiPlan
 
     /** Bounded native downsample from the up-to-date display mirror. */
     fun samplePigment(centerX: Float, centerY: Float, radiusPixels: Float): Int {
@@ -154,15 +156,23 @@ class RasterTilePaintSession private constructor(
             ceil(max(previousY, currentY) + pad).toInt().coerceIn(0, logicalHeight),
         )
         if (destination.isEmpty) return null
-        val sourceBounds = PixelRect(
-            floor(destination.left - dragX - 1f).toInt().coerceIn(0, logicalWidth),
-            floor(destination.top - dragY - 1f).toInt().coerceIn(0, logicalHeight),
-            ceil(destination.right - dragX + 1f).toInt().coerceIn(0, logicalWidth),
-            ceil(destination.bottom - dragY + 1f).toInt().coerceIn(0, logicalHeight),
+        val sourceCore = PixelRect(
+            floor(destination.left - dragX).toInt(),
+            floor(destination.top - dragY).toInt(),
+            ceil(destination.right - dragX).toInt(),
+            ceil(destination.bottom - dragY).toInt(),
         )
-        if (sourceBounds.isEmpty) return null
-        val changed = edits.editWithSample(destination, sourceBounds) { transactionSample, sampleGlobal, output ->
-            val surfaces = ensureSurfaces(destination.width, destination.height) ?: return@editWithSample
+        val roi = RasterRoiPlan.create(
+            destination,
+            logicalWidth,
+            logicalHeight,
+            tileSize = tileSize,
+            readCore = sourceCore,
+            halo = RasterHalo.uniform(1),
+            abyssPolicy = RasterAbyssPolicy.TRANSPARENT,
+        )
+        val changed = edits.editWithRoi(roi) roiEdit@{ transactionSample, sampleGlobal, output ->
+            val surfaces = ensureSurfaces(destination.width, destination.height) ?: return@roiEdit
             surfaces.source.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
             surfaces.sample.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
             surfaces.coverage.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)

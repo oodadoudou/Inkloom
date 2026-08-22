@@ -7,6 +7,7 @@ import android.graphics.Paint
 import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection
 import app.inkloom.engine.v3.tools.RasterTilePaintSession
+import app.inkloom.engine.v3.tools.RasterAbyssPolicy
 import app.inkloom.engine.v3.scene.SparseAlphaMask
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
@@ -33,6 +34,7 @@ class RasterWetPaintSessionTest {
         val surface = PixelTileBitmapAdapter.import(bitmap)
         val session = RasterTilePaintSession(surface, bitmap)
         session.advanceWetTransport(38f, 48f, 70f, 48f, 20f, pull = 1f, blur = .2f, hardness = .75f)
+        assertEquals(RasterAbyssPolicy.TRANSPARENT, session.lastRoiPlan?.abyssPolicy)
         val patch = Bitmap.createBitmap(24, 24, Bitmap.Config.ARGB_8888).apply {
             Canvas(this).drawCircle(12f, 12f, 8f, Paint().apply { color = Color.BLUE })
         }

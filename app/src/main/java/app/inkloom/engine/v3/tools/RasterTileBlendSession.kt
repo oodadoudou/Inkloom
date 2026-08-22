@@ -67,6 +67,7 @@ class RasterTileBlendSession private constructor(
     private val localRect = Rect()
     private val width = surface.logicalWidth
     private val height = surface.logicalHeight
+    private val tileSize = surface.tileSize
     private var completed = false
 
     val dirtyBounds: PixelRect? get() = edits.dirtyBounds
@@ -74,6 +75,7 @@ class RasterTileBlendSession private constructor(
     val workingByteSize: Long get() = edits.workingByteSize
     internal val pigmentBucketCount: Int get() = reservoir.bucketCount
     internal val pigmentReservoirByteSize: Long get() = reservoir.retainedByteSize
+    internal val lastRoiPlan: RasterRoiPlan? get() = edits.lastRoiPlan
 
     fun blend(
         previousX: Float,
@@ -98,15 +100,23 @@ class RasterTileBlendSession private constructor(
         val deltaY = currentY - previousY
         pickupDistance += hypot(deltaX, deltaY)
         val shouldPickup = !reservoir.isInitialized || pickupDistance >= (radius * PICKUP_SPACING_FACTOR).coerceAtLeast(2f)
-        val sourceBounds = PixelRect(
-            floor(destination.left - deltaX - 1f).toInt().coerceIn(0, width),
-            floor(destination.top - deltaY - 1f).toInt().coerceIn(0, height),
-            ceil(destination.right - deltaX + 1f).toInt().coerceIn(0, width),
-            ceil(destination.bottom - deltaY + 1f).toInt().coerceIn(0, height),
+        val sourceCore = PixelRect(
+            floor(destination.left - deltaX).toInt(),
+            floor(destination.top - deltaY).toInt(),
+            ceil(destination.right - deltaX).toInt(),
+            ceil(destination.bottom - deltaY).toInt(),
         )
-        if (sourceBounds.isEmpty) return null
-        val changed = edits.editWithSample(destination, sourceBounds) { sample, sampleGlobal, output ->
-            val canvases = ensureSurfaces(destination.width, destination.height) ?: return@editWithSample
+        val roi = RasterRoiPlan.create(
+            destination,
+            width,
+            height,
+            tileSize = tileSize,
+            readCore = sourceCore,
+            halo = RasterHalo.uniform(1),
+            abyssPolicy = RasterAbyssPolicy.TRANSPARENT,
+        )
+        val changed = edits.editWithRoi(roi) roiEdit@{ sample, sampleGlobal, output ->
+            val canvases = ensureSurfaces(destination.width, destination.height) ?: return@roiEdit
             val transport = canvases.first
             val coverage = canvases.second
             transport.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
