@@ -9,6 +9,10 @@ import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokeTileIndex
 import app.inkloom.document.StrokeTileKey
 import app.inkloom.document.StrokeTileRect
+import app.inkloom.engine.v3.android.PixelMemoryPressure
+import app.inkloom.engine.v3.android.PixelMemoryPressureCoordinator
+import app.inkloom.engine.v3.android.PixelMemoryTrimResult
+import app.inkloom.engine.v3.android.PixelMemoryTrimmable
 
 /**
  * Sparse retained scene for committed vector ink. Hardware canvases draw independently recorded
@@ -18,7 +22,7 @@ import app.inkloom.document.StrokeTileRect
  */
 internal class SparseTileScene(
     private val maximumCachePixels: Long,
-) : AutoCloseable {
+) : AutoCloseable, PixelMemoryTrimmable {
     private val index = StrokeTileIndex()
     private val softwareTiles = mutableMapOf<StrokeTileKey, Bitmap>()
     private val hardwareTiles = mutableMapOf<StrokeTileKey, RenderNode>()
@@ -27,6 +31,9 @@ internal class SparseTileScene(
     private val dirtyHardwareTiles = linkedSetOf<StrokeTileKey>()
     private var hardwareIndependentStrokes: Boolean? = null
     private var generationCounter = 0L
+    private val memoryRegistration = PixelMemoryPressureCoordinator.register(this)
+
+    override val memoryTrimPriority: Int get() = 10
 
     var onTileRendered: ((StrokeTileKey, Int) -> Unit)? = null
 
@@ -315,7 +322,34 @@ internal class SparseTileScene(
         dirtyHardwareTiles.clear()
     }
 
+    override fun trimPixelMemory(pressure: PixelMemoryPressure): PixelMemoryTrimResult {
+        val beforeCpu = softwareTiles.values.sumOf { it.allocationByteCount.toLong() }
+        val beforeGpu =
+            hardwareTiles.values.sumOf(RenderNode::computeApproximateMemoryUsage) +
+                hardwareStrokeNodes.values.sumOf(RenderNode::computeApproximateMemoryUsage)
+        val occupied = index.occupiedTiles()
+        hardwareTiles.values.forEach(RenderNode::discardDisplayList)
+        hardwareTiles.clear()
+        hardwareStrokeNodes.values.forEach(RenderNode::discardDisplayList)
+        hardwareStrokeNodes.clear()
+        hardwareIndependentStrokes = null
+        dirtyHardwareTiles.clear()
+        dirtyHardwareTiles += occupied
+        if (pressure != PixelMemoryPressure.UI_HIDDEN) {
+            softwareTiles.values.forEach(Bitmap::recycle)
+            softwareTiles.clear()
+            dirtySoftwareTiles.clear()
+            dirtySoftwareTiles += occupied
+        }
+        val afterCpu = softwareTiles.values.sumOf { it.allocationByteCount.toLong() }
+        return PixelMemoryTrimResult(
+            releasedCpuBytes = (beforeCpu - afterCpu).coerceAtLeast(0L),
+            releasedGpuBytes = beforeGpu.coerceAtLeast(0L),
+        )
+    }
+
     override fun close() {
+        memoryRegistration.close()
         recycleTiles()
         index.rebuild(emptyList(), 0, 0)
     }

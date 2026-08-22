@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import app.inkloom.engine.v3.android.PixelMemoryPressure
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
@@ -15,6 +16,25 @@ import java.io.FileOutputStream
 
 @RunWith(AndroidJUnit4::class)
 class BrushResourceCacheTest {
+    @Test
+    fun memoryPressureReleasesDecodedResourcesAndCacheRemainsReusable() {
+        val file = tipFile("pressure-tip.png")
+        val cache = BrushResourceCache()
+        val request = BrushTipRequest(file.absolutePath, .5f, null, 0f)
+        val first = requireNotNull(cache.decodeNow(request))
+        val procedural = requireNotNull(cache.proceduralTip("pressure-round") {
+            Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888)
+        })
+
+        val result = cache.trimPixelMemory(PixelMemoryPressure.MODERATE)
+        assertTrue(first.isRecycled)
+        assertTrue(procedural.isRecycled)
+        assertTrue(result.releasedCpuBytes > 0L)
+        assertEquals(0, cache.countsForTests()[0])
+        assertTrue(cache.decodeNow(request) != null)
+        cache.close()
+    }
+
     @Test
     fun equivalentQuantizedRequestsReuseOneDecodedTip() {
         val file = tipFile("equivalent-tip.png")

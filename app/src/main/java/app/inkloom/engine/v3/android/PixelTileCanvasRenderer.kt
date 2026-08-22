@@ -23,7 +23,7 @@ import kotlin.math.floor
  */
 internal class PixelTileCanvasRenderer(
     private val maximumCacheBytes: Long = DEFAULT_CACHE_BYTES,
-) : AutoCloseable {
+) : AutoCloseable, PixelMemoryTrimmable {
     init {
         require(maximumCacheBytes > 0L) { "maximumCacheBytes must be positive" }
     }
@@ -50,6 +50,9 @@ internal class PixelTileCanvasRenderer(
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private var retainedBytes = 0L
     private var builtHardwareNodes = 0
+    private val memoryRegistration = PixelMemoryPressureCoordinator.register(this)
+
+    override val memoryTrimPriority: Int get() = 10
 
     val retainedByteSize: Long get() = retainedBytes
     val retainedTileCount: Int get() = cache.size
@@ -58,6 +61,7 @@ internal class PixelTileCanvasRenderer(
         get() = cache.values.sumOf { it.hardwareNode?.computeApproximateMemoryUsage() ?: 0L }
     internal val hardwareNodeBuildCount: Int get() = builtHardwareNodes
 
+    @Synchronized
     fun draw(
         canvas: Canvas,
         snapshot: PixelTileSurfaceSnapshot,
@@ -112,6 +116,7 @@ internal class PixelTileCanvasRenderer(
     }
 
     /** Removes cached generations for a surface that is no longer displayed. */
+    @Synchronized
     fun releaseSurface(surfaceId: String) {
         val iterator = cache.entries.iterator()
         while (iterator.hasNext()) {
@@ -124,10 +129,28 @@ internal class PixelTileCanvasRenderer(
         }
     }
 
+    @Synchronized
     override fun close() {
-        cache.values.forEach(CachedTile::close)
-        cache.clear()
-        retainedBytes = 0L
+        memoryRegistration.close()
+        clearCache()
+    }
+
+    @Synchronized
+    override fun trimPixelMemory(pressure: PixelMemoryPressure): PixelMemoryTrimResult {
+        val beforeCpu = retainedBytes
+        val beforeGpu = approximateGpuDisplayListBytes
+        when (pressure) {
+            PixelMemoryPressure.UI_HIDDEN -> discardHardwareDisplayLists()
+            PixelMemoryPressure.MODERATE -> {
+                discardHardwareDisplayLists()
+                trimToBytes((maximumCacheBytes / 4L).coerceAtLeast(1L))
+            }
+            PixelMemoryPressure.CRITICAL -> clearCache()
+        }
+        return PixelMemoryTrimResult(
+            releasedCpuBytes = (beforeCpu - retainedBytes).coerceAtLeast(0L),
+            releasedGpuBytes = (beforeGpu - approximateGpuDisplayListBytes).coerceAtLeast(0L),
+        )
     }
 
     private fun tileFor(
@@ -143,7 +166,7 @@ internal class PixelTileCanvasRenderer(
         val cached = CachedTile(bitmap)
         cache[cacheKey] = cached
         retainedBytes += bitmap.allocationByteCount.toLong()
-        trimToBudget()
+        trimToBytes(maximumCacheBytes)
         return cached
     }
 
@@ -191,14 +214,27 @@ internal class PixelTileCanvasRenderer(
         }
     }
 
-    private fun trimToBudget() {
+    private fun trimToBytes(targetBytes: Long) {
         val iterator = cache.entries.iterator()
-        while (retainedBytes > maximumCacheBytes && cache.size > 1 && iterator.hasNext()) {
+        while (retainedBytes > targetBytes && cache.isNotEmpty() && iterator.hasNext()) {
             val entry = iterator.next()
             retainedBytes -= entry.value.bitmap.allocationByteCount.toLong()
             entry.value.close()
             iterator.remove()
         }
+    }
+
+    private fun discardHardwareDisplayLists() {
+        cache.values.forEach { cached ->
+            cached.hardwareNode?.discardDisplayList()
+            cached.hardwareNode = null
+        }
+    }
+
+    private fun clearCache() {
+        cache.values.forEach(CachedTile::close)
+        cache.clear()
+        retainedBytes = 0L
     }
 
     private fun tileBounds(snapshot: PixelTileSurfaceSnapshot, key: PixelTileKey): PixelRect {

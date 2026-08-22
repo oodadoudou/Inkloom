@@ -8,6 +8,7 @@ import android.graphics.RectF
 import android.graphics.RenderNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.engine.v3.android.PixelTileCanvasRenderer
+import app.inkloom.engine.v3.android.PixelMemoryPressure
 import app.inkloom.engine.v3.surface.PixelRect
 import app.inkloom.engine.v3.surface.LinearRgba
 import app.inkloom.engine.v3.surface.PixelTileFormat
@@ -20,6 +21,42 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class PixelTileCanvasRendererTest {
+    @Test fun memoryPressureDropsOnlyRebuildableProjectionCaches() {
+        val surface = PixelTileSurface(256, 128, tileSize = 128)
+        surface.beginWrite("pressure fixture").run {
+            setPixel(16, 16, Color.RED)
+            setPixel(144, 16, Color.BLUE)
+            commit().close()
+        }
+        val renderer = PixelTileCanvasRenderer(maximumCacheBytes = 4L * 128 * 128 * 4)
+        val output = RenderNode("Inkloom.V3.PressureTest").apply { setPosition(0, 0, 256, 128) }
+        fun record() {
+            val canvas = output.beginRecording()
+            try { renderer.draw(canvas, surface.snapshot(), RectF(0f, 0f, 256f, 128f)) }
+            finally { output.endRecording() }
+        }
+
+        record()
+        assertEquals(2, renderer.retainedTileCount)
+        assertEquals(2, renderer.retainedHardwareTileCount)
+        val hidden = renderer.trimPixelMemory(PixelMemoryPressure.UI_HIDDEN)
+        assertEquals(2, renderer.retainedTileCount)
+        assertEquals(0, renderer.retainedHardwareTileCount)
+        assertTrue(hidden.releasedGpuBytes > 0L)
+        assertEquals(Color.RED, surface.pixelAt(16, 16))
+
+        record()
+        renderer.trimPixelMemory(PixelMemoryPressure.MODERATE)
+        assertTrue(renderer.retainedTileCount <= 1)
+        renderer.trimPixelMemory(PixelMemoryPressure.CRITICAL)
+        assertEquals(0, renderer.retainedTileCount)
+        record()
+        assertEquals("A trimmed renderer must reconstruct from authoritative tiles", 2, renderer.retainedTileCount)
+
+        renderer.close()
+        output.discardDisplayList()
+    }
+
     @Test fun f16SparseTileProjectionRetainsLinearExtendedColorAndEightByteCacheAccounting() {
         val surface = PixelTileSurface(
             logicalWidth = 128,

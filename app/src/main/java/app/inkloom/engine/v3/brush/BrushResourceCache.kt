@@ -6,6 +6,10 @@ import app.inkloom.document.CspAntiAlias
 import app.inkloom.document.CspTextureComposite
 import app.inkloom.document.CspTextureMaterial
 import app.inkloom.document.ProcreateFiltering
+import app.inkloom.engine.v3.android.PixelMemoryPressure
+import app.inkloom.engine.v3.android.PixelMemoryPressureCoordinator
+import app.inkloom.engine.v3.android.PixelMemoryTrimResult
+import app.inkloom.engine.v3.android.PixelMemoryTrimmable
 import java.util.LinkedHashMap
 
 /** Immutable description of one decoded render tip. Format importers are deliberately absent:
@@ -105,7 +109,7 @@ internal class BrushResourceCache(
     private val maxTipEntries: Int = DEFAULT_MAX_TIP_ENTRIES,
     private val maxPendingLoads: Int = DEFAULT_MAX_PENDING_LOADS,
     private val maxGrainMaterials: Int = DEFAULT_MAX_GRAIN_MATERIALS,
-) : AutoCloseable {
+) : AutoCloseable, PixelMemoryTrimmable {
     private val tips = object : LinkedHashMap<BrushTipKey, Bitmap>(32, .75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<BrushTipKey, Bitmap>): Boolean {
             val remove = size > maxTipEntries
@@ -120,6 +124,9 @@ internal class BrushResourceCache(
     }
     private val proceduralTips = mutableMapOf<String, Bitmap>()
     private var closed = false
+    private val memoryRegistration = PixelMemoryPressureCoordinator.register(this)
+
+    override val memoryTrimPriority: Int get() = 100
 
     @Synchronized
     fun tip(request: BrushTipRequest): Bitmap? = tips[request.key]?.takeUnless(Bitmap::isRecycled)
@@ -180,9 +187,23 @@ internal class BrushResourceCache(
     internal fun countsForTests(): IntArray = intArrayOf(tips.size, pending.size, grainMaterials.size, proceduralTips.size)
 
     @Synchronized
+    override fun trimPixelMemory(pressure: PixelMemoryPressure): PixelMemoryTrimResult {
+        if (closed) return PixelMemoryTrimResult()
+        val before = tips.values.sumOf { it.allocationByteCount.toLong() } +
+            proceduralTips.values.sumOf { it.allocationByteCount.toLong() }
+        tips.values.forEach { if (!it.isRecycled) it.recycle() }
+        tips.clear()
+        grainMaterials.clear()
+        proceduralTips.values.forEach { if (!it.isRecycled) it.recycle() }
+        proceduralTips.clear()
+        return PixelMemoryTrimResult(releasedCpuBytes = before)
+    }
+
+    @Synchronized
     override fun close() {
         if (closed) return
         closed = true
+        memoryRegistration.close()
         tips.values.forEach { if (!it.isRecycled) it.recycle() }
         tips.clear()
         pending.clear()

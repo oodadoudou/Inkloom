@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.core.view.WindowCompat
 import app.inkloom.ui.InkloomApp
 import app.inkloom.ui.theme.InkloomTheme
+import app.inkloom.engine.v3.android.PixelMemoryPressureCoordinator
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -21,5 +22,10 @@ class MainActivity : ComponentActivity() {
                 InkloomApp(initialIntent = intent)
             }
         }
+    }
+
+    override fun onTrimMemory(level: Int) {
+        PixelMemoryPressureCoordinator.onTrimMemory(level)
+        super.onTrimMemory(level)
     }
 }

@@ -11,7 +11,7 @@ import app.inkloom.engine.v3.surface.PixelTileKey
 import java.util.LinkedHashMap
 
 /** Android presentation adapter with a bounded generation cache for animated selection overlays. */
-internal object MaskTileCanvasRenderer {
+internal object MaskTileCanvasRenderer : PixelMemoryTrimmable {
     private data class CacheKey(
         val surfaceId: String,
         val generation: Long,
@@ -26,6 +26,18 @@ internal object MaskTileCanvasRenderer {
             if (remove) eldest?.value?.takeUnless(Bitmap::isRecycled)?.recycle()
             return remove
         }
+    }
+    @Suppress("unused")
+    private val memoryRegistration = PixelMemoryPressureCoordinator.register(this)
+    override val memoryTrimPriority: Int get() = 10
+    internal val retainedTileCount: Int get() = synchronized(cache) { cache.size }
+
+    override fun trimPixelMemory(pressure: PixelMemoryPressure): PixelMemoryTrimResult = synchronized(cache) {
+        val before = cache.values.sumOf { it.allocationByteCount.toLong() }
+        // Mask projections are cheap to reconstruct and are not authoritative selection state.
+        cache.values.forEach { bitmap -> if (!bitmap.isRecycled) bitmap.recycle() }
+        cache.clear()
+        PixelMemoryTrimResult(releasedCpuBytes = before)
     }
 
     fun draw(snapshot: MaskTileSurfaceSnapshot, canvas: Canvas, destination: RectF, paint: Paint? = null) {

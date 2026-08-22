@@ -12,6 +12,7 @@ import app.inkloom.document.StrokePoint
 import app.inkloom.document.StrokeTileKey
 import app.inkloom.engine.v3.render.ActiveStrokeCompositor
 import app.inkloom.engine.v3.scene.SparseTileScene
+import app.inkloom.engine.v3.android.PixelMemoryPressure
 import app.inkloom.model.EditorTool
 import app.inkloom.model.SymmetryMode
 import app.inkloom.ui.InkCanvasView
@@ -59,6 +60,26 @@ class InkCanvasTileCacheTest {
             assertEquals(2, snapshot.hardwareStrokeCount)
             assertEquals(0, snapshot.tiles.size)
             assertTrue(snapshot.approximateGpuDisplayListBytes > 0L)
+            scene.trimPixelMemory(PixelMemoryPressure.CRITICAL)
+            assertEquals(0, scene.debugSnapshot().hardwareTileCount)
+            assertEquals(0, scene.debugSnapshot().hardwareStrokeCount)
+            val rebuilt = output.beginRecording()
+            try {
+                assertTrue(scene.draw(rebuilt, strokes, 8192, 8192) { canvas, candidates ->
+                    candidates.forEach { stroke ->
+                        canvas.drawLine(
+                            stroke.points.first().x * 8192f,
+                            stroke.points.first().y * 8192f,
+                            stroke.points.last().x * 8192f,
+                            stroke.points.last().y * 8192f,
+                            android.graphics.Paint().apply { color = android.graphics.Color.BLACK; strokeWidth = stroke.width },
+                        )
+                    }
+                })
+            } finally {
+                output.endRecording()
+            }
+            assertTrue(scene.debugSnapshot().hardwareTileCount > 0)
             scene.close()
             output.discardDisplayList()
         }
