@@ -61,7 +61,11 @@ object BrushTipTextureDecoder {
             }
             val pixels = IntArray(source.width * source.height)
             source.getPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
-            val sourceHasTransparency = preserveRgb && pixels.any { Color.alpha(it) < 250 }
+            // Shape PNG alpha is authored coverage. It remains coverage whether the RGB payload is
+            // black (CSP/ABR-style), white (common Procreate shapes), or preserved for a dual-tip
+            // RGB operation. Gating this on preserveRgb made transparent white shapes decode to an
+            // empty mask and could turn transparent thumbnail margins into rectangular dabs.
+            val sourceHasTransparency = hasAuthoredAlphaCoverage(pixels)
             val outlineMasks = if (grain != null && grainPixels != null && grainCompositeMode == CspTextureComposite.OUTLINE) {
                 FloatArray(pixels.size) { index ->
                     grainMask(
@@ -182,6 +186,19 @@ object BrushTipTextureDecoder {
     )
 
     private fun Int.floorMod(divisor: Int): Int = ((this % divisor) + divisor) % divisor
+
+    private fun hasAuthoredAlphaCoverage(pixels: IntArray): Boolean {
+        if (pixels.isEmpty()) return false
+        var transparent = 0
+        var translucent = 0
+        val minimumEvidence = (pixels.size / 2_048).coerceIn(1, 16)
+        for (pixel in pixels) {
+            val alpha = Color.alpha(pixel)
+            if (alpha <= 8 && ++transparent >= minimumEvidence) return true
+            if (alpha < 247 && ++translucent >= minimumEvidence * 2) return true
+        }
+        return false
+    }
 
     private fun hasDarkBackground(pixels: IntArray, width: Int, height: Int): Boolean {
         val sampleWidth = (width / 16).coerceIn(1, 64)

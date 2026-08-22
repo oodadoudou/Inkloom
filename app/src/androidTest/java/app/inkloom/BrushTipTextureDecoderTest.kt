@@ -16,6 +16,32 @@ import java.io.File
 @RunWith(AndroidJUnit4::class)
 class BrushTipTextureDecoderTest {
     @Test
+    fun transparentWhiteAndBlackShapesUseTheSameAuthoredAlphaCoverage() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val root = File(context.cacheDir, "brush-tip-alpha-${System.nanoTime()}").apply { mkdirs() }
+        try {
+            val blackFile = File(root, "black.png")
+            val whiteFile = File(root, "white.png")
+            val alphas = IntArray(64) { index -> if (index % 8 in 2..5 && index / 8 in 2..5) 160 else 0 }
+            writePng(blackFile, IntArray(64) { index -> Color.argb(alphas[index], 0, 0, 0) }, 8, 8)
+            writePng(whiteFile, IntArray(64) { index -> Color.argb(alphas[index], 255, 255, 255) }, 8, 8)
+
+            val black = requireNotNull(BrushTipTextureDecoder.decode(blackFile.absolutePath, 1f, null, 0f))
+            val white = requireNotNull(BrushTipTextureDecoder.decode(whiteFile.absolutePath, 1f, null, 0f))
+            try {
+                assertEquals(Color.alpha(black.getPixel(3, 3)), Color.alpha(white.getPixel(3, 3)))
+                assertEquals(160, Color.alpha(white.getPixel(3, 3)))
+                assertEquals("Transparent margins must never become rectangular stamps", 0, Color.alpha(white.getPixel(0, 0)))
+            } finally {
+                black.recycle()
+                white.recycle()
+            }
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
     fun cspDualRgbDecodePreservesTransparentMaterialColorWithoutChangingDefaultMask() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val root = File(context.cacheDir, "brush-tip-rgb-${System.nanoTime()}").apply { mkdirs() }
