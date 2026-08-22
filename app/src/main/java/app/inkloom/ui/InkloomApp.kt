@@ -2776,6 +2776,19 @@ private fun EditorScreen(
                         else -> Unit
                     }
                 }, onColor = ::changeBrushColor, symmetryMode = settings.symmetryMode, onSymmetryMode = { onSettingsChange(settings.copy(symmetryMode = it)) }, gradientControls = { GradientToolControls(settings, brushColor, ::changeBrushColor, onSettingsChange) }, modifier = Modifier.align(dockAlignment).padding(dockPadding).graphicsLayer(translationX = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.xDp.dp.toPx() } else 0f, translationY = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.yDp.dp.toPx() } else 0f))
+                if (tool == EditorTool.SELECT) SelectionInputBar(
+                    shape = settings.selectionShape,
+                    mode = settings.selectionMode,
+                    hasSelection = selectionActive,
+                    onShape = { shape ->
+                        canvasView?.beginSelectionInput(shape)
+                        onSettingsChange(settings.copy(selectionShape = shape))
+                    },
+                    onMode = { mode -> onSettingsChange(settings.copy(selectionMode = mode)) },
+                    onDone = { finishSelectionTool(deselect = false) },
+                    onDeselect = { finishSelectionTool(deselect = true) },
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp),
+                )
                 if (tool == EditorTool.SELECT && selectionActive) SelectionLauncher(
                     featherPixels = selectionFeather,
                     onDone = { finishSelectionTool(deselect = false) },
@@ -2790,7 +2803,7 @@ private fun EditorScreen(
                     onFeather = { value -> if (canvasView?.featherSelection(value) == true) selectionFeather = value },
                     onFill = { canvasView?.fillSelection() },
                     onTransform = { canvasView?.enterFreeTransform() },
-                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 52.dp),
                 )
                 if (tool == EditorTool.FILL) FillOptionsLauncher(
                     subTool = settings.fillSubTool,
@@ -10908,6 +10921,80 @@ private fun CspSelectionParameter(
             Text(formattedValue, color = MutedInk, fontSize = 9.sp)
         }
         Slider(value, onValue, Modifier.height(22.dp), valueRange = range)
+    }
+}
+
+@Composable
+private fun SelectionInputBar(
+    shape: SelectionShape,
+    mode: SelectionMode,
+    hasSelection: Boolean,
+    onShape: (SelectionShape) -> Unit,
+    onMode: (SelectionMode) -> Unit,
+    onDone: () -> Unit,
+    onDeselect: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.semantics { contentDescription = "Selection input toolbar" },
+        color = Color.White,
+        shape = RoundedCornerShape(3.dp),
+        border = CardDefaults.outlinedCardBorder(),
+        shadowElevation = 3.dp,
+    ) {
+        Row(
+            Modifier.height(38.dp).widthIn(max = 720.dp).horizontalScroll(rememberScrollState()).padding(horizontal = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SelectionShape.entries.forEach { option ->
+                val icon = when (option) {
+                    SelectionShape.FREEFORM -> Icons.Outlined.Gesture
+                    SelectionShape.RECTANGLE -> Icons.Outlined.CropSquare
+                    SelectionShape.ELLIPSE -> Icons.Outlined.Circle
+                    SelectionShape.BRUSH -> Icons.Outlined.Brush
+                    SelectionShape.SMART_BORDER -> Icons.Outlined.AutoFixHigh
+                    SelectionShape.MAGIC_WAND -> Icons.Outlined.Flare
+                }
+                val label = when (option) {
+                    SelectionShape.FREEFORM -> tr("Freehand", "自由套索")
+                    SelectionShape.RECTANGLE -> tr("Rectangle", "矩形")
+                    SelectionShape.ELLIPSE -> tr("Ellipse", "椭圆")
+                    SelectionShape.BRUSH -> tr("Brush", "选区画笔")
+                    SelectionShape.SMART_BORDER -> tr("Smart border", "智能边框")
+                    SelectionShape.MAGIC_WAND -> tr("Magic wand", "魔棒")
+                }
+                IconButton(
+                    onClick = { onShape(option) },
+                    modifier = Modifier.size(34.dp).background(if (shape == option) Color(0xFFE5E5E5) else Color.Transparent)
+                        .semantics { contentDescription = "$label selection tool" },
+                ) { Icon(icon, null, Modifier.size(17.dp), tint = Ink) }
+            }
+            VerticalDivider(Modifier.height(24.dp), color = OutlineSoft)
+            SelectionMode.entries.forEach { option ->
+                val icon = when (option) {
+                    SelectionMode.REPLACE -> Icons.Outlined.CropFree
+                    SelectionMode.ADD -> Icons.Outlined.AddBox
+                    SelectionMode.SUBTRACT -> Icons.Outlined.IndeterminateCheckBox
+                    SelectionMode.INTERSECT -> Icons.Outlined.GridOn
+                }
+                val label = when (option) {
+                    SelectionMode.REPLACE -> tr("New", "新建")
+                    SelectionMode.ADD -> tr("Add", "添加")
+                    SelectionMode.SUBTRACT -> tr("Subtract", "减去")
+                    SelectionMode.INTERSECT -> tr("Intersect", "交集")
+                }
+                IconButton(
+                    onClick = { onMode(option) },
+                    modifier = Modifier.size(34.dp).background(if (mode == option) Color(0xFFE5E5E5) else Color.Transparent)
+                        .semantics { contentDescription = "$label selection mode" },
+                ) { Icon(icon, null, Modifier.size(17.dp), tint = Ink) }
+            }
+            VerticalDivider(Modifier.height(24.dp), color = OutlineSoft)
+            SelectionLauncherButton(Icons.Outlined.Check, tr("Exit selection tool", "退出选区工具"), onDone)
+            SelectionLauncherButton(Icons.Outlined.Close, tr("Deselect and exit", "取消选区并退出")) {
+                if (hasSelection) onDeselect() else onDone()
+            }
+        }
     }
 }
 

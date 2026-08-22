@@ -162,6 +162,7 @@ class InkloomPinchThenWriteTest {
         composeRule.onNodeWithContentDescription("Selection").performClick()
         composeRule.onNodeWithText("Freehand lasso").performClick()
         composeRule.waitForIdle()
+        composeRule.onNodeWithContentDescription("Selection input toolbar").assertIsDisplayed()
 
         composeRule.onRoot().performTouchInput {
             down(0, center + Offset(-130f, -70f))
@@ -184,22 +185,43 @@ class InkloomPinchThenWriteTest {
         assertTrue("Selection pinch must not fly horizontally", kotlin.math.abs(view.viewportPanX) < 2_500f)
         assertTrue("Selection pinch must not fly vertically", kotlin.math.abs(view.viewportPanY) < 2_500f)
 
-        composeRule.onNodeWithContentDescription("Brushes").performClick()
-        runCatching { composeRule.onNodeWithContentDescription("Close brushes panel").performClick() }
-        composeRule.waitForIdle()
         val proxy = requireNotNull(findInkViewportProxy())
-        val x = proxy.width * .55f
-        val y = proxy.height * .52f
+        val frame = requireNotNull(app.inkloom.engine.v3.api.ViewportFrame.create(
+            app.inkloom.engine.v3.api.ViewportFrameId(1L),
+            proxy.width.toFloat(),
+            proxy.height.toFloat(),
+            view.width.toFloat(),
+            view.height.toFloat(),
+            app.inkloom.document.ViewportState(view.viewportScale, view.viewportPanX, view.viewportPanY, view.viewportRotationDegrees),
+        ))
+        fun viewportPoint(x: Float, y: Float) = frame.pageToViewport(
+            app.inkloom.engine.v3.geometry.PagePoint(view.width * x, view.height * y),
+        )
+        val topLeft = viewportPoint(.38f, .38f)
+        val topRight = viewportPoint(.62f, .38f)
+        val bottomRight = viewportPoint(.62f, .62f)
+        val bottomLeft = viewportPoint(.38f, .62f)
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val downTime = android.os.SystemClock.uptimeMillis()
             listOf(
-                stylusEvent(android.view.MotionEvent.ACTION_DOWN, x, y, android.view.MotionEvent.TOOL_TYPE_STYLUS, downTime, downTime),
-                stylusEvent(android.view.MotionEvent.ACTION_MOVE, x + 70f, y + 24f, android.view.MotionEvent.TOOL_TYPE_STYLUS, downTime, downTime + 12L),
-                stylusEvent(android.view.MotionEvent.ACTION_UP, x + 95f, y + 35f, android.view.MotionEvent.TOOL_TYPE_STYLUS, downTime, downTime + 24L),
+                stylusEvent(android.view.MotionEvent.ACTION_DOWN, topLeft.x, topLeft.y, android.view.MotionEvent.TOOL_TYPE_STYLUS, downTime, downTime),
+                stylusEvent(android.view.MotionEvent.ACTION_MOVE, topRight.x, topRight.y, android.view.MotionEvent.TOOL_TYPE_STYLUS, downTime, downTime + 12L),
+                stylusEvent(android.view.MotionEvent.ACTION_MOVE, bottomRight.x, bottomRight.y, android.view.MotionEvent.TOOL_TYPE_STYLUS, downTime, downTime + 24L),
+                stylusEvent(android.view.MotionEvent.ACTION_MOVE, bottomLeft.x, bottomLeft.y, android.view.MotionEvent.TOOL_TYPE_STYLUS, downTime, downTime + 36L),
+                stylusEvent(android.view.MotionEvent.ACTION_UP, topLeft.x, topLeft.y, android.view.MotionEvent.TOOL_TYPE_STYLUS, downTime, downTime + 48L),
             ).forEach { event -> proxy.onTouchEvent(event); event.recycle() }
         }
-        composeRule.waitUntil(10_000) { findInkCanvasView()?.lastCommittedStrokePacket != null }
-        assertTrue(requireNotNull(findInkCanvasView()).lastCommittedStrokePacket?.strokes?.isNotEmpty() == true)
+        composeRule.waitForIdle()
+        val selectedView = requireNotNull(findInkCanvasView())
+        assertTrue(
+            "The real viewport proxy path must commit selection alpha; tool=${selectedView.tool}, " +
+                "shape=${reflectField(selectedView, "selectionShape")}, activeTool=${reflectField(selectedView, "activeTool")}, " +
+                "mask=${selectedView.selectionMaskSurfaceSnapshot()?.tileCount}",
+            selectedView.hasActiveSelection(),
+        )
+        composeRule.onNodeWithContentDescription("Deselect and exit").performClick()
+        composeRule.waitForIdle()
+        assertTrue("Deselect must clear alpha and restore the previous drawing tool", !selectedView.hasActiveSelection() && selectedView.tool != app.inkloom.model.EditorTool.SELECT)
     }
 
     @Test fun zoomedScreenStylusLandsExactlyUnderThePen() {
