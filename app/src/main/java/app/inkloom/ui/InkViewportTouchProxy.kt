@@ -130,7 +130,8 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context), ActiveStro
         activePacket = packet
         pendingCommittedSequence = packet.sequence
         activeInkSurface.renderFrontBufferedLayer()
-        activeInkSurface.commit()
+        // The packet is already committed to the target's V3 document surface. Keeping this as a
+        // transient overlay avoids a second persistent HWUI copy and the one-frame dark flash.
         traceFrontBufferCommit(packet)
     }
 
@@ -138,14 +139,11 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context), ActiveStro
         if (pendingCommittedSequence != packetSequence) return
         val packet = activePacket?.takeIf { it.sequence == packetSequence } ?: return
         pendingCommittedSequence = null
-        post {
-            if (activePacket?.sequence != packetSequence) return@post
-            activePacket = null
-            synchronized(activeLock) { activeTailPlanner.reset() }
-            activeInkSurface.clear()
-            traceTransientHidden(packet)
-            target?.resetActiveRenderState()
-        }
+        activePacket = null
+        synchronized(activeLock) { activeTailPlanner.reset() }
+        activeInkSurface.clear()
+        traceTransientHidden(packet)
+        target?.resetActiveRenderState()
     }
 
     override fun cancel() {
