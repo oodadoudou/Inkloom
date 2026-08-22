@@ -98,16 +98,18 @@ class FloodFillTest {
     @Test fun repeatedViewportFillThresholdUpdatesStayInteractive() {
         val source = solid(Color.WHITE, 800, 600)
         for (y in 80 until 520) source.setPixel(400, y, Color.BLACK)
-        repeat(2) { FloodFill.fill(source, 100, 300, tolerance = it * 4).mask.recycle() }
-        val elapsed = ArrayList<Long>(12)
-        repeat(12) { iteration ->
+        repeat(4) { FloodFill.fill(source, 100, 300, tolerance = it * 4).mask.recycle() }
+        val elapsed = ArrayList<Long>(40)
+        repeat(40) { iteration ->
             val started = android.os.SystemClock.elapsedRealtimeNanos()
             FloodFill.fill(source, 100, 300, tolerance = iteration * 2).mask.recycle()
             elapsed += android.os.SystemClock.elapsedRealtimeNanos() - started
         }
         val sorted = elapsed.sorted()
-        val p95Ms = sorted[(sorted.size * 95 / 100).coerceAtMost(sorted.lastIndex)] / 1_000_000f
-        android.util.Log.i("InkloomPerf", "native_flood_fill_p95_ms=$p95Ms")
+        // Estimate the 95th percentile from enough samples to avoid accidentally measuring the
+        // single worst emulator scheduling pause as "P95" (12 samples made index 11 the maximum).
+        val p95Ms = sorted[(sorted.lastIndex * 95 / 100).coerceAtMost(sorted.lastIndex)] / 1_000_000f
+        android.util.Log.i("InkloomPerf", "native_flood_fill_p95_ms=$p95Ms worst_ms=${sorted.last() / 1_000_000f}")
         assertTrue("Native fill threshold P95 was ${p95Ms}ms", p95Ms < 33.3f)
         source.recycle()
     }
