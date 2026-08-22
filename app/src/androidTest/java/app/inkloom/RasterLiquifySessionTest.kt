@@ -50,6 +50,8 @@ class RasterLiquifySessionTest {
             assertEquals(0L, session.workingByteSize)
             session.deform(200f, 200f, 230f, 210f, 24f, .8f, .7f, LiquifyMode.PUSH)
             assertTrue(session.workingByteSize in 1..(4L * 128 * 128 * 4))
+            assertTrue(session.displacementTileCount in 1..4)
+            assertTrue(session.displacementByteSize <= 4L * 64 * 64 * 2 * Float.SIZE_BYTES)
         }
         bitmap.recycle()
     }
@@ -105,6 +107,19 @@ class RasterLiquifySessionTest {
             assertNotEquals(original, deformed)
             repeat(8) { session.deform(130f, 90f, 130f, 90f, 80f, 1f, .2f, LiquifyMode.RECONSTRUCT) }
             assertNotEquals("Reconstruct is local and need not reset pixels outside its brush", deformed, checksum(bitmap))
+        }
+        bitmap.recycle()
+    }
+
+    @Test fun longInputSegmentIsDistanceSampledOnceAndLaterInputOnlyAppendsItsTail() {
+        val bitmap = fixture()
+        val surface = PixelTileBitmapAdapter.import(bitmap)
+        RasterTileLiquifySession(surface, bitmap).use { session ->
+            session.deform(60f, 90f, 150f, 90f, 42f, .8f, .4f, LiquifyMode.PUSH)
+            val prefixCount = session.processedStampCount
+            assertTrue(prefixCount > 1)
+            session.deform(150f, 90f, 154f, 90f, 42f, .8f, .4f, LiquifyMode.PUSH)
+            assertEquals(prefixCount + 1, session.processedStampCount)
         }
         bitmap.recycle()
     }
