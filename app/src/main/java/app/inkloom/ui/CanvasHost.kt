@@ -57,7 +57,10 @@ internal class CanvasHost(context: Context) : FrameLayout(context), ActiveStroke
         activePacket = packet
         pendingCommittedSequence = packet.sequence
         lowLatencyView.renderFrontBufferedLayer()
-        lowLatencyView.commit()
+        // LowLatencyCanvasView.commit() copies its front buffer into this child View's persistent
+        // HWUI scene. InkCanvasView has already committed the exact same packet into the V3 tile
+        // surface, so doing both draws the landing stroke twice for one frame (the visible flash).
+        // Keep only the transient overlay until the underlying document frame proves it drew.
         packet.primaryStrokeId?.let { id -> StrokeTrace.mark(id, StrokeTrace.STAGE_FRONT_BUFFER_COMMIT) }
     }
 
@@ -65,16 +68,14 @@ internal class CanvasHost(context: Context) : FrameLayout(context), ActiveStroke
         if (pendingCommittedSequence != packetSequence) return
         val packet = activePacket?.takeIf { it.sequence == packetSequence } ?: return
         pendingCommittedSequence = null
-        // The stable View has completed drawPageContent for this packet. Clear after that draw,
-        // never merely because ACTION_UP occurred.
-        post {
-            if (activePacket?.sequence != packetSequence) return@post
-            activePacket = null
-            synchronized(activeLock) { tailPlanner.reset() }
-            lowLatencyView.clear()
-            packet.primaryStrokeId?.let { id -> StrokeTrace.mark(id, StrokeTrace.STAGE_TRANSIENT_HIDDEN) }
-            canvasView.resetActiveRenderState()
-        }
+        // The stable child has completed drawPageContent for this packet. clear() hides the
+        // SurfaceView synchronously; doing it before the overlay child draws in the same hierarchy
+        // frame gives a one-copy handoff with neither a blank frame nor a doubled stroke.
+        activePacket = null
+        synchronized(activeLock) { tailPlanner.reset() }
+        lowLatencyView.clear()
+        packet.primaryStrokeId?.let { id -> StrokeTrace.mark(id, StrokeTrace.STAGE_TRANSIENT_HIDDEN) }
+        canvasView.resetActiveRenderState()
     }
 
     override fun cancel() {
