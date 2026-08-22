@@ -43,6 +43,8 @@ import app.inkloom.engine.v3.surface.MaskTileTransactionRecord
 import app.inkloom.engine.v3.surface.MaskTileWriteTransaction
 import app.inkloom.engine.v3.surface.PixelRect
 import app.inkloom.engine.v3.surface.PixelTileFormat
+import app.inkloom.engine.v3.surface.RasterSelectionClipboard
+import app.inkloom.engine.v3.surface.RasterSelectionContent
 import java.util.LinkedHashMap
 import java.util.concurrent.Executors
 import app.inkloom.document.InkStroke
@@ -99,7 +101,6 @@ import app.inkloom.document.GradientDefinition
 import app.inkloom.document.GradientGeometry
 import app.inkloom.document.GradientShaderFactory
 import app.inkloom.document.LassoGeometry
-import app.inkloom.document.LassoSelectionPolicy
 import app.inkloom.document.SelectionMaskCompositor
 import app.inkloom.document.LayerBlendMode
 import app.inkloom.document.LayerMask
@@ -318,6 +319,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var lastReportedSelectionActive: Boolean? = null
     var selectionFeatherPixels: Float = 0f
         private set
+    private var selectionFeatherBase: MaskTileSurfaceSnapshot? = null
     private var selectionGestureBefore: List<InkStroke>? = null
     private var eraserGestureBefore: List<InkStroke>? = null
     private var pendingEraserInvalidationBefore: List<InkStroke>? = null
@@ -1079,11 +1081,32 @@ class InkCanvasView(context: Context) : View(context) {
     private fun commitRasterLayerPatch(
         surface: PixelTileSurface,
         dirtyBounds: Rect?,
+        layerId: String = activeLayerId,
     ) {
         val dirty = dirtyBounds ?: return
-        val patch = RasterLayerPatch.capture(activeLayerId, surface.snapshot(), dirty) ?: return
+        val patch = RasterLayerPatch.capture(layerId, surface.snapshot(), dirty) ?: return
         val callback = onRasterLayerCommitted
         if (callback == null) patch.close() else callback(patch)
+    }
+
+    private fun publishRasterSelectionEdit(layerId: String, surface: PixelTileSurface, bounds: PixelRect) {
+        val bitmap = rasterEditBitmapFor(layerId)
+        if (bitmap != null && !bitmap.isRecycled) {
+            val rendered = PixelTileBitmapAdapter.render(surface.snapshot(), bounds)
+            try {
+                Canvas(bitmap).drawBitmap(rendered, bounds.left.toFloat(), bounds.top.toFloat(), Paint().apply {
+                    blendMode = BlendMode.SRC
+                })
+            } finally {
+                rendered.recycle()
+            }
+        }
+        commitRasterLayerPatch(surface, Rect(bounds.left, bounds.top, bounds.right, bounds.bottom), layerId)
+        val displayLeft = (bounds.left * width.toFloat() / surface.logicalWidth).toInt() - 2
+        val displayTop = (bounds.top * height.toFloat() / surface.logicalHeight).toInt() - 2
+        val displayRight = (bounds.right * width.toFloat() / surface.logicalWidth).toInt() + 2
+        val displayBottom = (bounds.bottom * height.toFloat() / surface.logicalHeight).toInt() + 2
+        invalidate(displayLeft, displayTop, displayRight, displayBottom)
     }
     var onColorDropCommitted: (Int) -> Unit = {}
     var onSelectionActiveChanged: (Boolean) -> Unit = {}
@@ -1279,7 +1302,7 @@ class InkCanvasView(context: Context) : View(context) {
             editHistory.clear()
             selectionGestureBefore = null
             eraserGestureBefore = null
-            releaseSelectionState(clearHistory = true)
+            resetSelectionViewBinding(clearReselect = true, unbindDocument = false)
         }
         if (strokes != value) {
             editHistory.clear()
@@ -1747,7 +1770,7 @@ class InkCanvasView(context: Context) : View(context) {
         laserTrail.clear()
         recycleStrokeTiles()
         releaseActiveStrokePreview()
-        releaseSelectionState(clearHistory = true)
+        resetSelectionViewBinding(clearReselect = true, unbindDocument = true)
         editHistory.clear()
         removeCallbacks(activeSurfaceFrame)
         activeSurfaceFrameScheduled = false
@@ -5024,6 +5047,10 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun selectAutomaticRegion(normalizedX: Float, normalizedY: Float, smartBorder: Boolean) {
+        val selectionState = documentSelectionState
+        val beforeAlpha = selectionState?.snapshot()
+        val beforeIds = selectedStrokeIds.toSet()
+        val beforeRegions = selectedMaskRegions.map(List<StrokePoint>::toList)
         val sampleWidth = width.coerceIn(1, 512)
         val sampleHeight = (height.coerceAtLeast(1) * (sampleWidth / width.coerceAtLeast(1).toFloat())).toInt().coerceIn(1, 768)
         val page = renderDocumentPageBitmap(sampleWidth, sampleHeight)
@@ -5075,56 +5102,67 @@ class InkCanvasView(context: Context) : View(context) {
         if (selectionMode == SelectionMode.REPLACE) selectedMaskRegions = emptyList()
         region.mask.recycle()
         page.recycle()
+        recordSelectionHistory(selectionState, beforeAlpha, beforeIds, beforeRegions)
         invalidate()
     }
 
     private fun selectWithLasso(polygon: List<StrokePoint>) {
         if (polygon.size < 3) return
+        val selectionState = documentSelectionState
+        val beforeAlpha = selectionState?.snapshot()
+        val beforeIds = selectedStrokeIds.toSet()
+        val beforeRegions = selectedMaskRegions.map(List<StrokePoint>::toList)
         val exactMask = SparseAlphaMask.polygon(polygon, pageModelWidth, pageModelHeight)
         composeSelectionAlpha(exactMask, selectionMode)
-        val before = strokes.toList()
-        val rebuilt = mutableListOf<InkStroke>()
-        val selected = linkedSetOf<String>()
-        var splitOccurred = false
-        before.forEach { stroke ->
-            val previouslySelected = stroke.id in selectedStrokeIds
-            val matchesFilter = when (selectionFilter) {
+        // A selection is a mask, not a document edit. Never split/rewrite artwork while merely
+        // selecting it; vector consumers use these ids while raster consumers use the same alpha.
+        val hits = strokes.asSequence().filter { stroke ->
+            stroke.id !in protectedStrokeIds && stroke.layerId !in protectedLayerIds && when (selectionFilter) {
                 SelectionFilter.ALL -> true
                 SelectionFilter.ACTIVE_LAYER -> stroke.layerId == activeLayerId
                 SelectionFilter.CURRENT_BRUSH -> stroke.brushId == brushId
                 SelectionFilter.CURRENT_COLOR -> stroke.colorArgb.toInt() == inkColor
             }
-            val shouldPartition = stroke.id !in protectedStrokeIds && matchesFilter &&
-                (selectionMode == SelectionMode.REPLACE || selectionMode == SelectionMode.ADD || previouslySelected)
-            if (!shouldPartition) {
-                rebuilt += stroke
-                val keepSelected = LassoSelectionPolicy.selectedWithoutEligibleIntersection(selectionMode, previouslySelected)
-                if (keepSelected) selected += stroke.id
-            } else {
-                val partition = LassoGeometry.partition(polygon, stroke)
-                splitOccurred = splitOccurred || partition.changed
-                partition.pieces.forEach { piece ->
-                    rebuilt += piece.stroke
-                    val keepSelected = LassoSelectionPolicy.selected(selectionMode, previouslySelected, piece.selected)
-                    if (keepSelected) selected += piece.stroke.id
-                }
-            }
+        }.filter { stroke -> LassoGeometry.partition(polygon, stroke).pieces.any { it.selected } }
+            .mapTo(linkedSetOf(), InkStroke::id)
+        when (selectionMode) {
+            SelectionMode.REPLACE -> { selectedStrokeIds.clear(); selectedStrokeIds.addAll(hits) }
+            SelectionMode.ADD -> selectedStrokeIds.addAll(hits)
+            SelectionMode.SUBTRACT -> selectedStrokeIds.removeAll(hits)
+            SelectionMode.INTERSECT -> selectedStrokeIds.retainAll(hits)
         }
-        selectedStrokeIds.clear()
-        selectedStrokeIds += selected
         selectedMaskRegions = when (selectionMode) {
             SelectionMode.REPLACE -> listOf(polygon.toList())
             SelectionMode.ADD -> selectedMaskRegions + listOf(polygon.toList())
             SelectionMode.SUBTRACT, SelectionMode.INTERSECT -> emptyList()
         }
         if (selectionMode == SelectionMode.REPLACE) selectionFeatherPixels = 0f
-        if (splitOccurred) {
-            strokes.clear()
-            strokes += rebuilt
-            commitStrokeEdit(before, strokes)
-            val edit = StrokeEdits.difference(before, strokes)
-            invalidateStrokeCache(edit?.before.orEmpty().map { it.stroke }, edit?.after.orEmpty().map { it.stroke })
+        recordSelectionHistory(selectionState, beforeAlpha, beforeIds, beforeRegions)
+        invalidate()
+    }
+
+    private fun recordSelectionHistory(
+        state: DocumentSelectionState?,
+        beforeAlpha: MaskTileSurfaceSnapshot?,
+        beforeIds: Set<String>,
+        beforeRegions: List<List<StrokePoint>>,
+    ) {
+        state ?: return
+        beforeAlpha ?: return
+        val afterAlpha = state.snapshot()
+        val afterIds = selectedStrokeIds.toSet()
+        val afterRegions = selectedMaskRegions.map(List<StrokePoint>::toList)
+        fun restore(alpha: MaskTileSurfaceSnapshot, ids: Set<String>, regions: List<List<StrokePoint>>) {
+            state.replaceFrom(alpha)
+            selectedStrokeIds.clear()
+            selectedStrokeIds.addAll(ids.intersect(strokes.mapTo(mutableSetOf(), InkStroke::id)))
+            selectedMaskRegions = regions.map(List<StrokePoint>::toList)
+            rebuildSelectionDerivedState()
         }
+        recordExternalEdit(
+            undo = { restore(beforeAlpha, beforeIds, beforeRegions) },
+            redo = { restore(afterAlpha, afterIds, afterRegions) },
+        )
     }
 
     private fun addPoint(x: Float, y: Float, pressure: Float, time: Long, tilt: Float, orientation: Float, force: Boolean = false) {
@@ -6254,10 +6292,35 @@ class InkCanvasView(context: Context) : View(context) {
     private fun finishRasterSelectionTransform(): Boolean {
         val session = rasterSelectionTransformSession ?: return false
         rasterSelectionTransformSession = null
+        val originalSelection = rasterSelectionTransformOriginalMask
         rasterSelectionTransformOriginalMask = null
         val result = session.commit() ?: return false
+        val record = result.transactionRecord ?: return false
         rasterTileSurfaceFor(activeLayerId)?.let { surface ->
-            commitRasterLayerPatch(surface, Rect(result.dirtyBounds.left, result.dirtyBounds.top, result.dirtyBounds.right, result.dirtyBounds.bottom))
+            val layerId = activeLayerId
+            publishRasterSelectionEdit(layerId, surface, result.dirtyBounds)
+            recordExternalEdit(
+                undo = {
+                    surface.apply(record, app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection.UNDO)
+                    originalSelection?.let { original ->
+                        documentSelectionState?.replaceFrom(original)
+                            ?: replaceSelectionAlphaMask(SparseAlphaMask.fromSnapshot(original), resetFeather = false)
+                    }
+                    rebuildSelectionDerivedState()
+                    publishRasterSelectionEdit(layerId, surface, result.dirtyBounds)
+                },
+                redo = {
+                    surface.apply(record, app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection.REDO)
+                    documentSelectionState?.replaceFrom(result.selection)
+                        ?: replaceSelectionAlphaMask(SparseAlphaMask.fromSnapshot(result.selection), resetFeather = false)
+                    rebuildSelectionDerivedState()
+                    publishRasterSelectionEdit(layerId, surface, result.dirtyBounds)
+                },
+                dispose = record::close,
+            )
+        } ?: run {
+            record.close()
+            return false
         }
         return true
     }
@@ -7282,7 +7345,15 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     fun copySelectionToClipboard(): Boolean {
-        val selected = strokes.filter { it.id in selectedStrokeIds }
+        val selection = selectionMaskForRasterTools()
+        val rasterSurface = rasterTileSurfaceFor(activeLayerId)
+        if (selection != null && rasterSurface != null) {
+            RasterSelectionContent.copy(rasterSurface.snapshot(), selection)?.let { copied ->
+                rasterSelectionClipboard = copied
+                return true
+            }
+        }
+        val selected = selectedVectorFragments()
         val encoded = StrokeClipboardCodec.encode(selected) ?: return false
         val clip = ClipData(
             ClipDescription("Inkloom strokes", arrayOf(StrokeClipboardCodec.MIME_TYPE)),
@@ -7293,6 +7364,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     fun cutSelectionToClipboard(): Boolean {
+        if (activeLayerId in protectedLayerIds) return false
         if (!copySelectionToClipboard()) return false
         deleteSelection()
         return true
@@ -7300,6 +7372,34 @@ class InkCanvasView(context: Context) : View(context) {
 
     fun pasteSelectionFromClipboard(): Boolean {
         if (activeLayerId in protectedLayerIds) return false
+        val rasterSurface = rasterTileSurfaceFor(activeLayerId)
+        val rasterClipboard = rasterSelectionClipboard
+        if (rasterSurface != null && rasterClipboard != null && rasterClipboard.pixelFormat == rasterSurface.pixelFormat) {
+            val offsetX = (pageModelWidth * .03f).toInt()
+            val offsetY = (pageModelHeight * .03f).toInt()
+            val left = (rasterClipboard.sourceLeft + offsetX).coerceIn(-rasterClipboard.width + 1, rasterSurface.logicalWidth - 1)
+            val top = (rasterClipboard.sourceTop + offsetY).coerceIn(-rasterClipboard.height + 1, rasterSurface.logicalHeight - 1)
+            val edit = RasterSelectionContent.paste(rasterSurface, rasterClipboard, left, top) ?: return false
+            val layerId = activeLayerId
+            publishRasterSelectionEdit(layerId, rasterSurface, edit.dirtyBounds)
+            recordExternalEdit(
+                undo = { rasterSurface.apply(edit.record, app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection.UNDO); publishRasterSelectionEdit(layerId, rasterSurface, edit.dirtyBounds) },
+                redo = { rasterSurface.apply(edit.record, app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection.REDO); publishRasterSelectionEdit(layerId, rasterSurface, edit.dirtyBounds) },
+                dispose = edit.record::close,
+            )
+            val pastedSelection = RasterSelectionContent.selectionAt(
+                rasterClipboard,
+                documentSelectionState?.logicalWidth ?: selectionMaskForRasterTools()?.logicalWidth ?: rasterSurface.logicalWidth,
+                documentSelectionState?.logicalHeight ?: selectionMaskForRasterTools()?.logicalHeight ?: rasterSurface.logicalHeight,
+                documentSelectionState?.surface()?.tileSize ?: MaskTileSurface.DEFAULT_TILE_SIZE,
+                left,
+                top,
+                rasterSurface.logicalWidth,
+                rasterSurface.logicalHeight,
+            )
+            replaceSelectionFromMask(pastedSelection)
+            return true
+        }
         val clipboard = context.getSystemService(ClipboardManager::class.java)
         val clip = clipboard.primaryClip ?: return false
         if (clip.itemCount < 1 || !clip.description.hasMimeType(StrokeClipboardCodec.MIME_TYPE)) return false
@@ -7344,16 +7444,22 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun composeSelectionAlpha(region: SparseAlphaMask?, mode: SelectionMode) {
+        selectionFeatherBase = null
         val operation = when (mode) {
             SelectionMode.REPLACE -> AlphaMaskOperation.REPLACE
             SelectionMode.ADD -> AlphaMaskOperation.ADD
             SelectionMode.SUBTRACT -> AlphaMaskOperation.SUBTRACT
             SelectionMode.INTERSECT -> AlphaMaskOperation.INTERSECT
         }
-        val combined = currentSelectionAlphaMask()?.composed(region, operation) ?: when (operation) {
+        val base = currentSelectionAlphaMask()
+        val combined = base?.composed(region, operation) ?: when (operation) {
             AlphaMaskOperation.REPLACE, AlphaMaskOperation.ADD -> region
-            AlphaMaskOperation.SUBTRACT, AlphaMaskOperation.INTERSECT -> null
+            AlphaMaskOperation.SUBTRACT -> SparseAlphaMask.full(pageModelWidth, pageModelHeight)?.let { full ->
+                try { full.composed(region, AlphaMaskOperation.SUBTRACT) } finally { full.close() }
+            }
+            AlphaMaskOperation.INTERSECT -> null
         }
+        if (region != null && combined !== region) region.close()
         replaceSelectionAlphaMask(combined, resetFeather = mode == SelectionMode.REPLACE)
     }
 
@@ -7370,6 +7476,7 @@ class InkCanvasView(context: Context) : View(context) {
             replacement?.close()
         }
         if (resetFeather) selectionFeatherPixels = 0f
+        if (resetFeather) selectionFeatherBase = null
         rebuildSelectionDerivedState()
     }
 
@@ -7402,6 +7509,7 @@ class InkCanvasView(context: Context) : View(context) {
         selectedMaskRegions = emptyList()
         documentState.replaceFrom(snapshot)
         selectionFeatherPixels = 0f
+        selectionFeatherBase = null
         rebuildSelectionDerivedState()
         return snapshot?.isEmpty == false
     }
@@ -7413,25 +7521,39 @@ class InkCanvasView(context: Context) : View(context) {
         return true
     }
 
-    private fun releaseSelectionState(clearHistory: Boolean) {
+    /**
+     * Clears only View-owned selection affordances. Document selection alpha belongs to
+     * [DocumentSelectionRuntime] and must survive page switches, recomposition and View detach.
+     */
+    private fun resetSelectionViewBinding(clearReselect: Boolean, unbindDocument: Boolean) {
         selectedStrokeIds.clear()
         selectedMaskRegions = emptyList()
-        documentSelectionState?.replaceFrom(null)
         isolatedTestSelectionAlphaMask?.close(); isolatedTestSelectionAlphaMask = null
         selectionBoundaryMask?.close(); selectionBoundaryMask = null
         selectionFeatherPixels = 0f
-        if (clearHistory) {
+        lassoPoints.clear()
+        movingSelection = false
+        selectionMoved = false
+        selectionTransformArmed = false
+        selectionTransformMode = TRANSFORM_NONE
+        if (clearReselect) {
             lastDeselectedStrokeIds = emptySet()
             lastDeselectedMaskRegions = emptyList()
-            documentSelectionState?.discardReselect()
             isolatedTestLastDeselectedAlphaMask?.close(); isolatedTestLastDeselectedAlphaMask = null
             lastDeselectedFeatherPixels = 0f
         }
-        notifySelectionActiveChanged()
-        invalidate()
+        if (unbindDocument) documentSelectionState = null else rebuildSelectionDerivedState()
+        if (unbindDocument) {
+            notifySelectionActiveChanged()
+            invalidate()
+        }
     }
 
     fun selectAllEditableStrokes(): Boolean {
+        val selectionState = documentSelectionState
+        val beforeAlpha = selectionState?.snapshot()
+        val beforeIds = selectedStrokeIds.toSet()
+        val beforeRegions = selectedMaskRegions.map(List<StrokePoint>::toList)
         val selectable = strokes.asSequence()
             .filterNot { it.id in protectedStrokeIds || it.layerId in protectedLayerIds }
             .map(InkStroke::id)
@@ -7440,12 +7562,17 @@ class InkCanvasView(context: Context) : View(context) {
         selectedStrokeIds += selectable
         selectedMaskRegions = emptyList()
         replaceSelectionAlphaMask(SparseAlphaMask.full(pageModelWidth, pageModelHeight), resetFeather = true)
+        recordSelectionHistory(selectionState, beforeAlpha, beforeIds, beforeRegions)
         invalidate()
         return hasSelection()
     }
 
     /** Selects every editable stroke that is not currently selected. */
     fun invertSelection(): Boolean {
+        val selectionState = documentSelectionState
+        val beforeAlpha = selectionState?.snapshot()
+        val beforeIds = selectedStrokeIds.toSet()
+        val beforeRegions = selectedMaskRegions.map(List<StrokePoint>::toList)
         val editable = strokes.asSequence()
             .filterNot { it.id in protectedStrokeIds || it.layerId in protectedLayerIds }
             .map(InkStroke::id)
@@ -7461,6 +7588,8 @@ class InkCanvasView(context: Context) : View(context) {
         replaceSelectionAlphaMask(invertedAlpha, resetFeather = false)
         lassoPoints.clear()
         movingSelection = false
+        selectionFeatherBase = null
+        recordSelectionHistory(selectionState, beforeAlpha, beforeIds, beforeRegions)
         invalidate()
         return hasSelection()
     }
@@ -7543,27 +7672,23 @@ class InkCanvasView(context: Context) : View(context) {
     fun shrinkSelection(pixels: Float): Boolean = modifySelectionContours(-pixels.coerceAtLeast(0f))
 
     fun borderSelection(widthPixels: Float): Boolean {
+        val selectionState = documentSelectionState
+        val beforeAlpha = selectionState?.snapshot()
+        val beforeIds = selectedStrokeIds.toSet()
+        val beforeRegions = selectedMaskRegions.map(List<StrokePoint>::toList)
         ensureSelectionAlphaFromSelectedStrokes()
         val base = currentSelectionAlphaMask() ?: return false
         val radius = ceil(widthPixels.coerceAtLeast(1f) / 2f * base.width / pageModelWidth.coerceAtLeast(1f)).toInt().coerceAtLeast(1)
         val outerMask = base.morphed(radius, dilate = true) ?: return false
         val innerMask = base.morphed(radius, dilate = false)
-        val ring = outerMask.composed(innerMask, AlphaMaskOperation.SUBTRACT) ?: return false
-        val contours = selectionMaskRegions()
-        if (contours.isEmpty()) {
-            replaceSelectionAlphaMask(ring, resetFeather = false)
-            return true
-        }
-        val half = widthPixels.coerceAtLeast(1f) / 2f
-        val outer = contours.map { SelectionContourGeometry.offset(it, half, pageModelWidth, pageModelHeight) }
-        val inner = contours.map { SelectionContourGeometry.offset(it, -half, pageModelWidth, pageModelHeight) }
-        replaceSelectionContours(outer)
-        val previousMode = selectionMode
-        selectionMode = SelectionMode.SUBTRACT
-        inner.forEach(::selectWithLasso)
-        selectionMode = previousMode
+        val ring = try { outerMask.composed(innerMask, AlphaMaskOperation.SUBTRACT) } finally {
+            outerMask.close()
+            innerMask?.close()
+        } ?: return false
         selectedMaskRegions = emptyList()
+        selectionFeatherBase = null
         replaceSelectionAlphaMask(ring, resetFeather = false)
+        recordSelectionHistory(selectionState, beforeAlpha, beforeIds, beforeRegions)
         invalidate()
         return hasSelection()
     }
@@ -7572,37 +7697,36 @@ class InkCanvasView(context: Context) : View(context) {
         if (!hasSelection()) return false
         ensureSelectionAlphaFromSelectedStrokes()
         val requested = pixels.coerceIn(0f, minOf(pageModelWidth, pageModelHeight) / 2f)
-        val base = currentSelectionAlphaMask() ?: return false
-        if (requested > 0f) {
-            val radius = requested * base.width / pageModelWidth.coerceAtLeast(1f)
-            replaceSelectionAlphaMask(base.feathered(radius), resetFeather = false)
-        }
+        val stateSnapshot = selectionFeatherBase ?: selectionMaskForRasterTools()?.also { selectionFeatherBase = it } ?: return false
+        val base = SparseAlphaMask.fromSnapshot(stateSnapshot) ?: return false
+        val replacement = try {
+            if (requested > 0f) {
+                val radius = requested * base.width / pageModelWidth.coerceAtLeast(1f)
+                base.feathered(radius)
+            } else base.copy()
+        } finally { base.close() }
+        replaceSelectionAlphaMask(replacement, resetFeather = false)
         selectionFeatherPixels = requested
         invalidate()
         return true
     }
 
     private fun modifySelectionContours(pixels: Float): Boolean {
+        val selectionState = documentSelectionState
+        val beforeAlpha = selectionState?.snapshot()
+        val beforeIds = selectedStrokeIds.toSet()
+        val beforeRegions = selectedMaskRegions.map(List<StrokePoint>::toList)
         ensureSelectionAlphaFromSelectedStrokes()
         val base = currentSelectionAlphaMask() ?: return false
         val radius = ceil(kotlin.math.abs(pixels) * base.width / pageModelWidth.coerceAtLeast(1f)).toInt().coerceAtLeast(1)
         val changed = base.morphed(radius, dilate = pixels > 0f) ?: return false
+        selectionFeatherBase = null
         replaceSelectionAlphaMask(changed, resetFeather = false)
         val contours = selectionMaskRegions()
         if (contours.isNotEmpty()) selectedMaskRegions = contours.map { SelectionContourGeometry.offset(it, pixels, pageModelWidth, pageModelHeight) }
+        recordSelectionHistory(selectionState, beforeAlpha, beforeIds, beforeRegions)
         invalidate()
         return hasSelection()
-    }
-
-    private fun replaceSelectionContours(contours: List<List<StrokePoint>>) {
-        val previousMode = selectionMode
-        contours.forEachIndexed { index, contour ->
-            selectionMode = if (index == 0) SelectionMode.REPLACE else SelectionMode.ADD
-            selectWithLasso(contour)
-        }
-        selectionMode = previousMode
-        selectedMaskRegions = contours.map(List<StrokePoint>::toList)
-        invalidate()
     }
 
     /** Returns normalized selection contours for non-destructive layer-mask commands. Exact lasso,
@@ -7628,9 +7752,58 @@ class InkCanvasView(context: Context) : View(context) {
 
     fun deleteSelection() {
         if (!hasSelection()) return
+        if (activeLayerId in protectedLayerIds) return
+        val selection = selectionMaskForRasterTools()
+        val rasterSurface = rasterTileSurfaceFor(activeLayerId)
+        if (selection != null && rasterSurface != null) {
+            RasterSelectionContent.clear(rasterSurface, selection)?.let { edit ->
+                val layerId = activeLayerId
+                publishRasterSelectionEdit(layerId, rasterSurface, edit.dirtyBounds)
+                recordExternalEdit(
+                    undo = { rasterSurface.apply(edit.record, app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection.UNDO); publishRasterSelectionEdit(layerId, rasterSurface, edit.dirtyBounds) },
+                    redo = { rasterSurface.apply(edit.record, app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection.REDO); publishRasterSelectionEdit(layerId, rasterSurface, edit.dirtyBounds) },
+                    dispose = edit.record::close,
+                )
+                return
+            }
+        }
         val before = strokes.toList()
-        val ids = selectedStrokeIds.toSet(); val removed = strokes.filter { it.id in ids }; strokes.removeAll { it.id in ids }; commitStrokeEdit(before, strokes); selectedStrokeIds.clear(); selectedMaskRegions = emptyList(); replaceSelectionAlphaMask(null, resetFeather = true); invalidateStrokeCache(removed, emptyList())
+        val ids = selectedStrokeIds.toSet()
+        val removed = strokes.filter { it.id in ids }
+        if (removed.isNotEmpty()) {
+            val retainedPieces = removed.flatMap { stroke ->
+                if (selectedMaskRegions.size == 1) {
+                    LassoGeometry.partition(selectedMaskRegions.single(), stroke).pieces.filterNot { it.selected }.map { it.stroke }
+                } else emptyList()
+            }
+            val rebuilt = strokes.toMutableList()
+            removed.sortedByDescending { rebuilt.indexOf(it) }.forEach { stroke ->
+                val index = rebuilt.indexOf(stroke)
+                if (index >= 0) {
+                    rebuilt.removeAt(index)
+                    val pieces = if (selectedMaskRegions.size == 1) {
+                        LassoGeometry.partition(selectedMaskRegions.single(), stroke).pieces.filterNot { it.selected }.map { it.stroke }
+                    } else emptyList()
+                    rebuilt.addAll(index, pieces)
+                }
+            }
+            strokes.clear()
+            strokes.addAll(rebuilt)
+            commitStrokeEdit(before, strokes)
+            selectedStrokeIds.removeAll(removed.mapTo(mutableSetOf(), InkStroke::id))
+            invalidateStrokeCache(removed, retainedPieces)
+        }
+        invalidate()
     }
+
+    private fun selectedVectorFragments(): List<InkStroke> = strokes.asSequence()
+        .filter { it.id in selectedStrokeIds }
+        .flatMap { stroke ->
+            if (selectedMaskRegions.size == 1) {
+                LassoGeometry.partition(selectedMaskRegions.single(), stroke).pieces.asSequence().filter { it.selected }.map { it.stroke }
+            } else sequenceOf(stroke)
+        }
+        .toList()
 
     private fun transformSelection(scale: Float, rotationDegrees: Float) {
         val before = strokes.toList()
@@ -7650,6 +7823,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private companion object {
+        @Volatile var rasterSelectionClipboard: RasterSelectionClipboard? = null
         const val REFERENCE_WIDTH = 1600f
         private const val SMALL_CURSOR_MARK_THRESHOLD_PX = 8f
         const val MAX_CACHE_PIXELS = 16_000_000L

@@ -38,6 +38,7 @@ data class SelectionAffineTransform(
 data class RasterSelectionTransformResult(
     val selection: MaskTileSurfaceSnapshot,
     val dirtyBounds: PixelRect,
+    val transactionRecord: PixelTileTransactionRecord? = null,
 )
 
 /**
@@ -128,11 +129,11 @@ class RasterSelectionTransformSession(
     fun commit(): RasterSelectionTransformResult? {
         check(!closed) { "Transform session is closed" }
         val dirty = previewDirty ?: return null
-        previewRecord?.close()
+        val record = previewRecord ?: return null
         previewRecord = null
         previewKeys = emptySet()
         closed = true
-        return RasterSelectionTransformResult(previewSelection, dirty)
+        return RasterSelectionTransformResult(previewSelection, dirty, record)
     }
 
     fun cancel() {

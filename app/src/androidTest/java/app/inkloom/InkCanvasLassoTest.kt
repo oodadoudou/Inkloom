@@ -16,6 +16,8 @@ import app.inkloom.engine.v3.scene.SparseAlphaMask
 import app.inkloom.engine.v3.scene.AlphaMaskOperation
 import app.inkloom.engine.v3.scene.DocumentSelectionRuntime
 import app.inkloom.document.SelectionMaskCompositor
+import app.inkloom.document.LayerIds
+import app.inkloom.engine.v3.surface.PixelTileSurface
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -310,7 +312,7 @@ class InkCanvasLassoTest {
         }
     }
 
-    @Test fun partialLassoSplitsAndDeletesOnlyTheEnclosedSegment() {
+    @Test fun partialLassoDoesNotMutateArtworkUntilDeleteThenRemovesOnlyEnclosedSegment() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
             val original = horizontalStroke("original")
@@ -319,29 +321,78 @@ class InkCanvasLassoTest {
 
             view.drawSquareLasso()
 
-            assertEquals(1, edits.size)
-            assertEquals(listOf("original"), edits[0].removedIds)
-            assertEquals(3, edits[0].replacements.size)
-            assertEquals(listOf(0, 1, 2), edits[0].indices)
-            val enclosed = edits[0].replacements[1]
-            assertEquals(.2f, enclosed.points.first().x, .001f)
-            assertEquals(.8f, enclosed.points.last().x, .001f)
+            assertTrue("Creating a selection must not rewrite document content", edits.isEmpty())
 
             view.deleteSelection()
 
+            assertEquals(1, edits.size)
+            assertEquals(listOf("original"), edits[0].removedIds)
+            assertEquals(2, edits[0].replacements.size)
+            assertEquals(.1f, edits[0].replacements.first().points.first().x, .001f)
+            assertEquals(.2f, edits[0].replacements.first().points.last().x, .001f)
+            assertEquals(.8f, edits[0].replacements.last().points.first().x, .001f)
+            assertEquals(.9f, edits[0].replacements.last().points.last().x, .001f)
+
+            view.undo()
             assertEquals(2, edits.size)
-            assertEquals(listOf(enclosed.id), edits[1].removedIds)
-            assertTrue(edits[1].replacements.isEmpty())
+            assertEquals(edits[0].replacements.map(InkStroke::id), edits[1].removedIds)
+            assertEquals(listOf(original), edits[1].replacements)
+        }
+    }
+
+    @Test fun pageSwitchAndViewRebindDoNotDestroyDocumentSelection() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val runtime = DocumentSelectionRuntime()
+            val view = configuredView(horizontalStroke("page-a-stroke"), mutableListOf())
+            val size = requireNotNull(SelectionMaskCompositor.maskSize(view.pageModelWidth, view.pageModelHeight))
+            val pageA = runtime.stateFor("document", "page-a", size.width, size.height)
+            val pageB = runtime.stateFor("document", "page-b", size.width, size.height)
+
+            view.bindDocumentSelectionState(pageA)
+            view.setDocumentStrokes(listOf(horizontalStroke("page-a-stroke")), "document:page-a")
+            view.drawSquareLasso()
+            assertTrue(!pageA.isEmpty)
+
+            view.bindDocumentSelectionState(pageB)
+            view.setDocumentStrokes(listOf(horizontalStroke("page-b-stroke")), "document:page-b")
+            assertTrue(pageB.isEmpty)
+            assertTrue("Switching pages must not clear page A's document selection", !pageA.isEmpty)
+
+            view.bindDocumentSelectionState(pageA)
+            view.setDocumentStrokes(listOf(horizontalStroke("page-a-stroke")), "document:page-a")
+            assertTrue(view.hasActiveSelection())
+        }
+    }
+
+    @Test fun productionRasterSelectionDeleteAndUndoConsumeDocumentAlpha() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val view = configuredView(horizontalStroke("vector-companion"), mutableListOf())
+            view.setDocumentStrokes(emptyList(), "document:raster-page")
+            val size = requireNotNull(SelectionMaskCompositor.maskSize(view.pageModelWidth, view.pageModelHeight))
+            val runtime = DocumentSelectionRuntime()
+            view.bindDocumentSelectionState(runtime.stateFor("document", "raster-page", size.width, size.height))
+            val surface = PixelTileSurface(size.width, size.height)
+            view.setRasterLayerSurfaces(mapOf(LayerIds.INK to surface))
+            view.activeLayerId = LayerIds.INK
+            view.onRasterLayerCommitted = { it.close() }
+            view.drawSquareLasso()
+            assertTrue(view.hasActiveSelection())
+            val selectedMask = requireNotNull(view.selectionMaskSurfaceSnapshot())
+            val bounds = requireNotNull(selectedMask.nonZeroBounds())
+            val centerX = bounds.left + bounds.width / 2
+            val centerY = bounds.top + bounds.height / 2
+            assertTrue("Selection bounds must contain their center", selectedMask.alphaAt(centerX, centerY) > 0)
+            surface.beginWrite("raster selection fixture").run {
+                setPixel(centerX, centerY, 0xff2255aa.toInt())
+                commit().close()
+            }
+
+            view.deleteSelection()
+            assertEquals(0, surface.pixelAt(centerX, centerY))
+            assertTrue("Delete keeps selection active for repeated operations", view.hasActiveSelection())
 
             view.undo()
-            assertEquals(3, edits.size)
-            assertEquals(listOf(enclosed), edits[2].replacements)
-            assertEquals(listOf(1), edits[2].indices)
-
-            view.undo()
-            assertEquals(4, edits.size)
-            assertEquals(edits[0].replacements.map(InkStroke::id), edits[3].removedIds)
-            assertEquals(listOf(original), edits[3].replacements)
+            assertEquals(0xff2255aa.toInt(), surface.pixelAt(centerX, centerY))
         }
     }
 

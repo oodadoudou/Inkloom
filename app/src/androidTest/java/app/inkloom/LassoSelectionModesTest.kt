@@ -58,7 +58,7 @@ class LassoSelectionModesTest {
         }
     }
 
-    @Test fun rectangleGestureSplitsAndSelectsOnlyTheDraggedRegion() {
+    @Test fun rectangleGestureDefersContentSplittingUntilDelete() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
             val crossing = InkStroke(
@@ -70,15 +70,13 @@ class LassoSelectionModesTest {
 
             view.rectangle(.4f, .3f, .6f, .7f)
 
-            assertEquals(1, edits.size)
-            assertEquals(listOf("crossing"), edits.single().removedIds)
-            assertEquals(3, edits.single().replacements.size)
-            val selected = edits.single().replacements[1]
-            assertEquals(.4f, selected.points.first().x, .001f)
-            assertEquals(.6f, selected.points.last().x, .001f)
+            assertTrue("Creating a rectangle selection must not rewrite the stroke", edits.isEmpty())
 
             view.deleteSelection()
-            assertEquals(listOf(selected.id), edits.last().removedIds)
+            assertEquals(listOf("crossing"), edits.single().removedIds)
+            assertEquals(2, edits.single().replacements.size)
+            assertEquals(.4f, edits.single().replacements.first().points.last().x, .001f)
+            assertEquals(.6f, edits.single().replacements.last().points.first().x, .001f)
         }
     }
 
