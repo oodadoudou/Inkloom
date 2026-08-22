@@ -217,8 +217,14 @@ class DocumentAssetService(private val context: Context) {
     fun saveRasterLayer(bitmap: Bitmap): String = saveDocumentPng(bitmap, "raster-layer")
 
     /** Atomically publishes an immutable sparse surface generation and reserves it until committed. */
-    fun saveRasterTileSurface(surface: PixelTileSurface): RasterTileSurfaceRef = synchronized(assetLifecycleLock) {
-        val manifest = pixelTileStore.save(surface.snapshot())
+    fun saveRasterTileSurface(
+        surface: PixelTileSurface,
+        previousReference: RasterTileSurfaceRef? = null,
+    ): RasterTileSurfaceRef = synchronized(assetLifecycleLock) {
+        val manifest = pixelTileStore.save(
+            surface.snapshot(),
+            previousReference?.manifestAssetPath?.let(::File),
+        )
         val metadata = pixelTileStore.inspect(manifest)
         pendingRasterTileManifests += manifest.canonicalPath
         RasterTileSurfaceRef(

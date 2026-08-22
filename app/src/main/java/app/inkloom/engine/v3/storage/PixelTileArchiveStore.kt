@@ -15,6 +15,8 @@ internal class PixelTileArchiveStore(root: File) {
     private val manifestDirectory = File(rootDirectory, "manifests")
     private val blobDirectory = File(rootDirectory, "blobs")
     private val monitor = Any()
+    internal var lastSaveMetrics: SaveMetrics? = null
+        private set
 
     init {
         require(rootDirectory.mkdirs() || rootDirectory.isDirectory) { "Could not create pixel tile store" }
@@ -23,8 +25,13 @@ internal class PixelTileArchiveStore(root: File) {
     }
 
     /** Blobs are durable before the manifest is atomically published. */
-    fun save(snapshot: PixelTileSurfaceSnapshot): File = synchronized(monitor) {
-        val encoded = PixelTileArchiveCodec.encode(snapshot)
+    fun save(snapshot: PixelTileSurfaceSnapshot, previousManifest: File? = null): File = synchronized(monitor) {
+        val encoded = previousManifest?.let { previous ->
+            val safePrevious = requireInside(manifestDirectory, previous)
+            require(safePrevious.isFile) { "Incremental tile manifest does not exist" }
+            PixelTileArchiveCodec.encodeIncremental(snapshot, safePrevious.readText())
+        } ?: PixelTileArchiveCodec.encode(snapshot)
+        var writtenBlobCount = 0
         encoded.blobs.forEach { (hash, bytes) ->
             require(hash == sha256(bytes)) { "Codec returned a mismatched tile hash" }
             val target = File(blobDirectory, "$hash.tile")
@@ -34,6 +41,14 @@ internal class PixelTileArchiveStore(root: File) {
                 }
             } else {
                 atomicWrite(target, bytes)
+                writtenBlobCount++
+            }
+        }
+
+        val finalMetadata = PixelTileArchiveCodec.inspect(encoded.manifest)
+        finalMetadata.blobHashes.forEach { hash ->
+            require(File(blobDirectory, "$hash.tile").isFile) {
+                "Incremental manifest references missing tile blob $hash"
             }
         }
 
@@ -47,6 +62,11 @@ internal class PixelTileArchiveStore(root: File) {
         } else {
             atomicWrite(manifestFile, manifestBytes)
         }
+        lastSaveMetrics = SaveMetrics(
+            encodedTileCount = encoded.encodedTileCount,
+            reusedTileCount = encoded.reusedTileCount,
+            writtenBlobCount = writtenBlobCount,
+        )
         manifestFile
     }
 
@@ -119,6 +139,11 @@ internal class PixelTileArchiveStore(root: File) {
     }
 
     data class GarbageCollectionResult(val manifestsDeleted: Int, val blobsDeleted: Int)
+    data class SaveMetrics(
+        val encodedTileCount: Int,
+        val reusedTileCount: Int,
+        val writtenBlobCount: Int,
+    )
 
     private fun atomicWrite(target: File, bytes: ByteArray) {
         require(target.parentFile?.canonicalFile in setOf(manifestDirectory, blobDirectory)) {

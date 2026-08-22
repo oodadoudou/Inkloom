@@ -4687,7 +4687,9 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                                 visibleSourceHeight = patch.sourceHeight,
                             )
                         }
-                        newReference = withContext(Dispatchers.IO) { assets.saveRasterTileSurface(surface) }
+                        newReference = withContext(Dispatchers.IO) {
+                            assets.saveRasterTileSurface(surface, previous.first)
+                        }
                         val savedReference = requireNotNull(newReference)
                         latestRasterAssets[layerId] = Triple(savedReference, null, previous.third)
                         // The live surface can already contain later gestures. Associate this

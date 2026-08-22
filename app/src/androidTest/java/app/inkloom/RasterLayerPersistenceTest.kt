@@ -28,6 +28,35 @@ class RasterLayerPersistenceTest {
     private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
     private val assets = DocumentAssetService(context)
 
+    @Test fun incrementalDirtyTileWritebackStaysInsideTheBackgroundIoGate() {
+        val surface = PixelTileSurface(2048, 2048, tileSize = 128, surfaceId = "writeback-gate")
+        surface.beginWrite("seed 64 sparse tiles").run {
+            repeat(64) { index ->
+                setPixel((index % 8) * 128 + 4, (index / 8) * 128 + 4, Color.rgb(index * 3, index * 5, index * 7))
+            }
+            commit().close()
+        }
+        var reference = assets.saveRasterTileSurface(surface)
+        val elapsed = ArrayList<Long>(24)
+        repeat(24) { index ->
+            surface.beginWrite("dirty tile $index").run {
+                setPixel(8 + index, 8, Color.rgb(20 + index, 80, 160))
+                commit().close()
+            }
+            val started = android.os.SystemClock.elapsedRealtimeNanos()
+            val next = assets.saveRasterTileSurface(surface, reference)
+            elapsed += android.os.SystemClock.elapsedRealtimeNanos() - started
+            assets.releaseRasterTileReservation(reference)
+            reference = next
+        }
+        val sorted = elapsed.drop(4).sorted()
+        val p95Ms = sorted[(sorted.size * 95 / 100).coerceAtMost(sorted.lastIndex)] / 1_000_000f
+        android.util.Log.i("InkloomPerf", "incremental_tile_writeback_p95_ms=$p95Ms")
+        assertTrue("Incremental dirty-tile writeback p95 was ${p95Ms}ms", p95Ms < 100f)
+        assertEquals(Color.rgb(43, 80, 160), assets.loadRasterTileSurface(reference).pixelAt(31, 8))
+        assets.releaseRasterTileReservation(reference)
+    }
+
     @Test fun linearF16RasterReferenceSurvivesDocumentBundleWithoutLosingItsFormat() {
         val surface = PixelTileSurface(
             logicalWidth = 128,

@@ -24,11 +24,12 @@ import java.util.zip.Inflater
  */
 internal object PixelTileArchiveCodec {
     private const val FORMAT = "inkloom-pixel-tiles"
-    private const val SCHEMA_VERSION = 2
+    private const val SCHEMA_VERSION = 3
     private const val RGBA8_CODEC = "zlib-int32-le"
     private const val F16_CODEC = "zlib-rgba-half4-le"
     private const val MAX_LOGICAL_DIMENSION = 65_536
     private const val MAX_RESIDENT_TILE_COUNT = 16_384
+    private const val MAX_PERSISTED_GENERATION = Long.MAX_VALUE / 2L
     private val json = Json { ignoreUnknownKeys = true }
 
     @Serializable
@@ -54,6 +55,7 @@ internal object PixelTileArchiveCodec {
     private data class TileEntry(
         val column: Int,
         val row: Int,
+        val generation: Long = -1L,
         val blobSha256: String,
         val codec: String,
         val uncompressedBytes: Int,
@@ -65,6 +67,8 @@ internal object PixelTileArchiveCodec {
         val manifest: String,
         /** Unique content-addressed blobs. Identical tile pixels share one entry. */
         val blobs: Map<String, ByteArray>,
+        val encodedTileCount: Int,
+        val reusedTileCount: Int,
     )
 
     data class Metadata(
@@ -78,12 +82,34 @@ internal object PixelTileArchiveCodec {
         val blobHashes: Set<String>,
     )
 
-    fun encode(snapshot: PixelTileSurfaceSnapshot): Encoded {
+    fun encode(snapshot: PixelTileSurfaceSnapshot): Encoded = encode(snapshot, previous = null)
+
+    /** Reuses immutable tile entries whose persisted generation still matches [snapshot]. */
+    fun encodeIncremental(snapshot: PixelTileSurfaceSnapshot, previousManifest: String): Encoded {
+        val previous = verifiedManifest(previousManifest)
+        require(previous.surfaceId == snapshot.surfaceId &&
+            previous.logicalWidth == snapshot.logicalWidth &&
+            previous.logicalHeight == snapshot.logicalHeight &&
+            previous.tileSize == snapshot.tileSize &&
+            previous.pixelFormat == snapshot.pixelFormat.manifestId
+        ) { "Incremental base belongs to another pixel surface" }
+        require(previous.revision <= snapshot.revision) { "Incremental base is newer than the snapshot" }
+        return encode(snapshot, previous)
+    }
+
+    private fun encode(snapshot: PixelTileSurfaceSnapshot, previous: Manifest?): Encoded {
         val codec = codecFor(snapshot.pixelFormat)
         val blobs = linkedMapOf<String, ByteArray>()
+        val previousEntries = previous?.tiles.orEmpty().associateBy { PixelTileKey(it.column, it.row) }
+        var encodedTileCount = 0
+        var reusedTileCount = 0
         val tileEntries = snapshot.tileInfo
             .sortedWith(compareBy<app.inkloom.engine.v3.surface.PixelTileInfo> { it.key.row }.thenBy { it.key.column })
             .map { info ->
+                previousEntries[info.key]?.takeIf { entry -> entry.generation == info.generation }?.let { entry ->
+                    reusedTileCount++
+                    return@map entry
+                }
                 val raw = when (snapshot.pixelFormat) {
                     PixelTileFormat.PREMULTIPLIED_SRGB_8888 ->
                         encodeLittleEndian(requireNotNull(snapshot.copyTilePixels(info.key)))
@@ -93,9 +119,11 @@ internal object PixelTileArchiveCodec {
                 val compressed = deflate(raw)
                 val hash = sha256(compressed)
                 blobs.putIfAbsent(hash, compressed)
+                encodedTileCount++
                 TileEntry(
                     column = info.key.column,
                     row = info.key.row,
+                    generation = info.generation,
                     blobSha256 = hash,
                     codec = codec,
                     uncompressedBytes = raw.size,
@@ -117,6 +145,8 @@ internal object PixelTileArchiveCodec {
         return Encoded(
             manifest = json.encodeToString(Envelope(FORMAT, SCHEMA_VERSION, crc32(payload.encodeToByteArray()), payload)),
             blobs = blobs,
+            encodedTileCount = encodedTileCount,
+            reusedTileCount = reusedTileCount,
         )
     }
 
@@ -130,12 +160,14 @@ internal object PixelTileArchiveCodec {
         )
         val restoredRgba8 = linkedMapOf<PixelTileKey, IntArray>()
         val restoredF16 = linkedMapOf<PixelTileKey, LongArray>()
+        val restoredGenerations = linkedMapOf<PixelTileKey, Long>()
         manifest.tiles.forEach { entry ->
             require(entry.codec == codec) { "Unsupported tile codec ${entry.codec}" }
             require(entry.uncompressedBytes == expectedBytes) { "Unexpected tile byte capacity" }
             require(entry.compressedBytes > 0) { "Invalid compressed tile size" }
             val key = PixelTileKey(entry.column, entry.row)
             require(key !in restoredRgba8 && key !in restoredF16) { "Duplicate tile key $key" }
+            if (entry.generation >= 0L) restoredGenerations[key] = entry.generation
             require(entry.column >= 0 && entry.row >= 0 &&
                 entry.column * manifest.tileSize.toLong() < manifest.logicalWidth &&
                 entry.row * manifest.tileSize.toLong() < manifest.logicalHeight
@@ -158,6 +190,7 @@ internal object PixelTileArchiveCodec {
                 surfaceId = manifest.surfaceId,
                 revision = manifest.revision,
                 tiles = restoredRgba8,
+                tileGenerations = restoredGenerations,
                 copyTiles = false,
             )
             PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16 -> PixelTileSurface.restoreF16(
@@ -167,6 +200,7 @@ internal object PixelTileArchiveCodec {
                 surfaceId = manifest.surfaceId,
                 revision = manifest.revision,
                 tiles = restoredF16,
+                tileGenerations = restoredGenerations,
                 copyTiles = false,
             )
         }
@@ -216,6 +250,7 @@ internal object PixelTileArchiveCodec {
                 entry.row * manifest.tileSize.toLong() < manifest.logicalHeight
             ) { "Tile $key is outside the logical surface" }
             require(entry.codec == codec) { "Unsupported tile codec ${entry.codec}" }
+            require(entry.generation in -1L..MAX_PERSISTED_GENERATION) { "Invalid tile generation" }
             require(entry.uncompressedBytes == manifest.tileSize * manifest.tileSize * pixelFormat.bytesPerPixel) {
                 "Unexpected tile byte capacity"
             }

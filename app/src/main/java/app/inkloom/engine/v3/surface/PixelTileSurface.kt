@@ -428,6 +428,7 @@ class PixelTileSurface(
 
         private val transactionIds = AtomicLong(0L)
         private val generationIds = AtomicLong(0L)
+        private const val MAX_RESTORED_GENERATION = Long.MAX_VALUE / 2L
 
         /** Restores immutable published tiles from a verified persistence boundary. */
         internal fun restore(
@@ -437,6 +438,7 @@ class PixelTileSurface(
             surfaceId: String,
             revision: Long,
             tiles: Map<PixelTileKey, IntArray>,
+            tileGenerations: Map<PixelTileKey, Long> = emptyMap(),
             copyTiles: Boolean = true,
         ): PixelTileSurface {
             require(revision >= 0L) { "revision must not be negative" }
@@ -452,8 +454,12 @@ class PixelTileSurface(
                     val buffer = Argb8888TileBuffer(if (copyTiles) pixels.copyOf() else pixels)
                     val nonTransparent = buffer.nonTransparentPixelCount()
                     if (nonTransparent > 0) {
+                        val restoredGeneration = tileGenerations[key]?.also { id ->
+                            require(id in 0L..MAX_RESTORED_GENERATION) { "Tile $key has an invalid generation" }
+                            generationIds.updateAndGet { current -> maxOf(current, id) }
+                        } ?: generationIds.incrementAndGet()
                         surface.generations[key] = PixelTileGeneration(
-                            id = generationIds.incrementAndGet(),
+                            id = restoredGeneration,
                             pixels = buffer,
                             nonTransparentPixelCount = nonTransparent,
                         )
@@ -471,6 +477,7 @@ class PixelTileSurface(
             surfaceId: String,
             revision: Long,
             tiles: Map<PixelTileKey, LongArray>,
+            tileGenerations: Map<PixelTileKey, Long> = emptyMap(),
             copyTiles: Boolean = true,
         ): PixelTileSurface {
             require(revision >= 0L) { "revision must not be negative" }
@@ -492,8 +499,12 @@ class PixelTileSurface(
                     val buffer = RgbaF16TileBuffer(if (copyTiles) pixels.copyOf() else pixels)
                     val nonTransparent = buffer.nonTransparentPixelCount()
                     if (nonTransparent > 0) {
+                        val restoredGeneration = tileGenerations[key]?.also { id ->
+                            require(id in 0L..MAX_RESTORED_GENERATION) { "Tile $key has an invalid generation" }
+                            generationIds.updateAndGet { current -> maxOf(current, id) }
+                        } ?: generationIds.incrementAndGet()
                         surface.generations[key] = PixelTileGeneration(
-                            id = generationIds.incrementAndGet(),
+                            id = restoredGeneration,
                             pixels = buffer,
                             nonTransparentPixelCount = nonTransparent,
                         )

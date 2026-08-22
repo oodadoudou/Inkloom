@@ -39,6 +39,39 @@ class PixelTileArchiveStoreTest {
         assertEquals(1, File(root, "blobs").listFiles().orEmpty().size)
     }
 
+    @Test fun incrementalSaveEncodesOnlyChangedGenerationsAndPreservesRemovedTiles() {
+        val root = temporary.newFolder("incremental-store")
+        val store = PixelTileArchiveStore(root)
+        val source = PixelTileSurface(256, 128, tileSize = 128, surfaceId = "incremental")
+        source.beginWrite("two tiles").run {
+            setPixel(8, 8, 0xffff0000.toInt())
+            setPixel(140, 8, 0xff0000ff.toInt())
+            commit().close()
+        }
+        val first = store.save(source.snapshot())
+        assertEquals(PixelTileArchiveStore.SaveMetrics(2, 0, 2), store.lastSaveMetrics)
+
+        source.beginWrite("change left only").run {
+            setPixel(8, 8, 0xff00ff00.toInt())
+            commit().close()
+        }
+        val second = store.save(source.snapshot(), first)
+        assertEquals(1, store.lastSaveMetrics?.encodedTileCount)
+        assertEquals(1, store.lastSaveMetrics?.reusedTileCount)
+        assertEquals(0xff00ff00.toInt(), store.load(second).pixelAt(8, 8))
+        assertEquals(0xff0000ff.toInt(), store.load(second).pixelAt(140, 8))
+
+        source.beginWrite("remove right").run {
+            setPixel(140, 8, 0)
+            commit().close()
+        }
+        val third = store.save(source.snapshot(), second)
+        assertEquals(0, store.lastSaveMetrics?.encodedTileCount)
+        assertEquals(1, store.lastSaveMetrics?.reusedTileCount)
+        assertEquals(1, store.inspect(third).tileCount)
+        assertEquals(0, store.load(third).pixelAt(140, 8))
+    }
+
     @Test fun inspectAndReferencedFilesExposeVerifiedPortableSurfaceClosure() {
         val store = PixelTileArchiveStore(temporary.newFolder("store"))
         val manifest = store.save(fixture("portable", 0xff445566.toInt()).snapshot())

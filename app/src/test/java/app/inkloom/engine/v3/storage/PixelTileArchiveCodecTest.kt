@@ -141,6 +141,20 @@ class PixelTileArchiveCodecTest {
         assertEquals(0xff010203.toInt(), restored.pixelAt(0, 0))
     }
 
+    @Test fun archiveRoundTripPreservesImmutableTileGenerationIdentity() {
+        val source = PixelTileSurface(256, 128, tileSize = 128, surfaceId = "generations")
+        source.beginWrite("two generations").run {
+            setPixel(2, 2, 0xff010203.toInt())
+            setPixel(130, 2, 0xff040506.toInt())
+            commit().close()
+        }
+        val before = source.snapshot().tileInfo.associate { it.key to it.generation }
+        val encoded = PixelTileArchiveCodec.encode(source.snapshot())
+        val restored = PixelTileArchiveCodec.decode(encoded.manifest, encoded.blobs::get)
+
+        assertEquals(before, restored.snapshot().tileInfo.associate { it.key to it.generation })
+    }
+
     private fun fixtureArchive(): PixelTileArchiveCodec.Encoded {
         val source = PixelTileSurface(128, 128, tileSize = 128, surfaceId = "surface")
         source.beginWrite("fixture").run {
