@@ -14,23 +14,36 @@ import app.inkloom.engine.v3.surface.PixelTileTransactionRecord
 import app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot
 import kotlin.math.ceil
 import kotlin.math.floor
+import kotlin.math.hypot
 
 /** Pigment transport directly over one sparse tile transaction. */
 class RasterTileBlendSession private constructor(
     surface: PixelTileSurface,
     displayBitmap: Bitmap,
     private val selection: RasterSelectionMask,
+    private val preserveDestinationAlpha: Boolean,
 ) : AutoCloseable {
-    constructor(surface: PixelTileSurface, displayBitmap: Bitmap) : this(
+    constructor(
+        surface: PixelTileSurface,
+        displayBitmap: Bitmap,
+        preserveDestinationAlpha: Boolean = false,
+    ) : this(
         surface,
         displayBitmap,
         RasterSelectionMask(null, surface.logicalWidth, surface.logicalHeight),
+        preserveDestinationAlpha,
     )
 
-    internal constructor(surface: PixelTileSurface, displayBitmap: Bitmap, selectionMask: MaskTileSurfaceSnapshot?) : this(
+    internal constructor(
+        surface: PixelTileSurface,
+        displayBitmap: Bitmap,
+        selectionMask: MaskTileSurfaceSnapshot?,
+        preserveDestinationAlpha: Boolean = false,
+    ) : this(
         surface,
         displayBitmap,
         RasterSelectionMask(selectionMask, surface.logicalWidth, surface.logicalHeight),
+        preserveDestinationAlpha,
     )
 
     private val edits = RasterTileEditSession(surface, displayBitmap, "raster blend")
@@ -38,10 +51,16 @@ class RasterTileBlendSession private constructor(
     private var transportCanvas: Canvas? = null
     private var coverageBitmap: Bitmap? = null
     private var coverageCanvas: Canvas? = null
+    private val reservoir = PigmentBucketReservoir()
+    private val reservoirPixels = IntArray(reservoir.bucketCount)
+    private val reservoirBitmap = Bitmap.createBitmap(reservoir.columns, reservoir.rows, Bitmap.Config.ARGB_8888)
+    private var pickupPixels = IntArray(0)
+    private var pickupDistance = Float.POSITIVE_INFINITY
     private val sourcePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val coveragePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
     private val maskPaint = Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN) }
     private val depositPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    private val reservoirPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val blurFilters = object : LinkedHashMap<Int, BlurMaskFilter>(16, .75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, BlurMaskFilter>): Boolean = size > 24
     }
@@ -53,6 +72,8 @@ class RasterTileBlendSession private constructor(
     val dirtyBounds: PixelRect? get() = edits.dirtyBounds
     val touchedTileCount: Int get() = edits.touchedTileCount
     val workingByteSize: Long get() = edits.workingByteSize
+    internal val pigmentBucketCount: Int get() = reservoir.bucketCount
+    internal val pigmentReservoirByteSize: Long get() = reservoir.retainedByteSize
 
     fun blend(
         previousX: Float,
@@ -75,6 +96,8 @@ class RasterTileBlendSession private constructor(
         if (destination.isEmpty) return null
         val deltaX = currentX - previousX
         val deltaY = currentY - previousY
+        pickupDistance += hypot(deltaX, deltaY)
+        val shouldPickup = !reservoir.isInitialized || pickupDistance >= (radius * PICKUP_SPACING_FACTOR).coerceAtLeast(2f)
         val sourceBounds = PixelRect(
             floor(destination.left - deltaX - 1f).toInt().coerceIn(0, width),
             floor(destination.top - deltaY - 1f).toInt().coerceIn(0, height),
@@ -88,12 +111,44 @@ class RasterTileBlendSession private constructor(
             val coverage = canvases.second
             transport.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
             coverage.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+            // Selection constrains both pickup and deposition. Pigment outside an active selection
+            // must not leak into it through the persistent reservoir.
+            selection.apply(
+                sample,
+                Rect(sampleGlobal.left, sampleGlobal.top, sampleGlobal.right, sampleGlobal.bottom),
+            )
+            if (shouldPickup) {
+                pickupReservoir(sample, sampleGlobal, previousX, previousY, radius, strength)
+                pickupDistance = 0f
+            }
             transport.drawBitmap(
                 sample,
                 sampleGlobal.left - destination.left + deltaX,
                 sampleGlobal.top - destination.top + deltaY,
                 sourcePaint,
             )
+            if (reservoir.hasPigment) {
+                reservoir.copyArgb(reservoirPixels)
+                reservoirBitmap.setPixels(
+                    reservoirPixels,
+                    0,
+                    reservoir.columns,
+                    0,
+                    0,
+                    reservoir.columns,
+                    reservoir.rows,
+                )
+                val reservoirDestination = Rect(
+                    floor(currentX - radius - destination.left).toInt(),
+                    floor(currentY - radius - destination.top).toInt(),
+                    ceil(currentX + radius - destination.left).toInt(),
+                    ceil(currentY + radius - destination.top).toInt(),
+                )
+                reservoirPaint.alpha = (strength.coerceIn(0f, 1f) * RESERVOIR_DEPOSIT_ALPHA * 255f + .5f)
+                    .toInt().coerceIn(0, 255)
+                transport.drawBitmap(reservoirBitmap, null, reservoirDestination, reservoirPaint)
+                reservoirPaint.alpha = 255
+            }
             val localCenterX = currentX - destination.left
             val localCenterY = currentY - destination.top
             val hardRadius = radius * hardness.coerceIn(0f, 1f)
@@ -108,9 +163,47 @@ class RasterTileBlendSession private constructor(
                 Rect(destination.left, destination.top, destination.right, destination.bottom),
             )
             depositPaint.alpha = (strength.coerceIn(0f, 1f) * 255f + .5f).toInt().coerceIn(0, 255)
-            if (depositPaint.alpha > 0) Canvas(output).drawBitmap(requireNotNull(transportBitmap), localRect, localRect, depositPaint)
+            if (depositPaint.alpha > 0) {
+                depositPaint.xfermode = PorterDuffXfermode(
+                    if (preserveDestinationAlpha) PorterDuff.Mode.SRC_ATOP else PorterDuff.Mode.SRC_OVER,
+                )
+                Canvas(output).drawBitmap(requireNotNull(transportBitmap), localRect, localRect, depositPaint)
+                depositPaint.xfermode = null
+            }
         } ?: return null
         return Rect(changed.left, changed.top, changed.right, changed.bottom)
+    }
+
+    private fun pickupReservoir(
+        sample: Bitmap,
+        sampleGlobal: PixelRect,
+        centerX: Float,
+        centerY: Float,
+        radius: Float,
+        strength: Float,
+    ) {
+        val pickupRadius = (radius * PICKUP_RADIUS_FACTOR).coerceAtLeast(1f)
+        val left = floor(centerX - pickupRadius).toInt().coerceIn(sampleGlobal.left, sampleGlobal.right - 1)
+        val top = floor(centerY - pickupRadius).toInt().coerceIn(sampleGlobal.top, sampleGlobal.bottom - 1)
+        val right = ceil(centerX + pickupRadius).toInt().coerceIn(left + 1, sampleGlobal.right)
+        val bottom = ceil(centerY + pickupRadius).toInt().coerceIn(top + 1, sampleGlobal.bottom)
+        val pickupWidth = right - left
+        val pickupHeight = bottom - top
+        val required = pickupWidth * pickupHeight
+        if (pickupPixels.size < required) pickupPixels = IntArray(required)
+        sample.getPixels(
+            pickupPixels,
+            0,
+            pickupWidth,
+            left - sampleGlobal.left,
+            top - sampleGlobal.top,
+            pickupWidth,
+            pickupHeight,
+        )
+        // Strong smudge carries pigment farther; low strength refreshes from the canvas sooner.
+        val pickupRate = (PICKUP_RATE_MAX - strength.coerceIn(0f, 1f) * PICKUP_RATE_RANGE)
+            .coerceIn(PICKUP_RATE_MIN, PICKUP_RATE_MAX)
+        reservoir.pickup(pickupPixels, pickupWidth, pickupHeight, pickupRate)
     }
 
     fun commit(): PixelTileTransactionRecord {
@@ -153,6 +246,17 @@ class RasterTileBlendSession private constructor(
         edits.close()
         transportBitmap?.recycle()
         coverageBitmap?.recycle()
+        reservoirBitmap.recycle()
+        pickupPixels = IntArray(0)
         blurFilters.clear()
+    }
+
+    private companion object {
+        const val PICKUP_SPACING_FACTOR = .14f
+        const val PICKUP_RADIUS_FACTOR = .72f
+        const val PICKUP_RATE_MIN = .18f
+        const val PICKUP_RATE_MAX = .42f
+        const val PICKUP_RATE_RANGE = .24f
+        const val RESERVOIR_DEPOSIT_ALPHA = .72f
     }
 }

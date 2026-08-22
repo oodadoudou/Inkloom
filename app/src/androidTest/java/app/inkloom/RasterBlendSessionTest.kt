@@ -42,6 +42,8 @@ class RasterBlendSessionTest {
             assertEquals(0L, session.workingByteSize)
             session.blend(200f, 200f, 230f, 210f, 24f, .8f, .7f)
             assertTrue(session.workingByteSize in 1..(4L * 128 * 128 * 4))
+            assertEquals(64, session.pigmentBucketCount)
+            assertEquals(64L * 4 * Float.SIZE_BYTES, session.pigmentReservoirByteSize)
         }
         bitmap.recycle()
     }
@@ -59,6 +61,38 @@ class RasterBlendSessionTest {
         assertTrue("Pigment is pulled into the destination", Color.alpha(pulled) > 100)
         assertTrue("The sampled red pigment is preserved", Color.red(pulled) > 200)
         assertTrue("No active brush color is injected", Color.blue(pulled) < 80)
+        bitmap.recycle()
+    }
+
+    @Test fun spatialBucketsCarryRedAndBlueWithoutCollapsingThemIntoOneAverageColor() {
+        val bitmap = Bitmap.createBitmap(128, 80, Bitmap.Config.ARGB_8888)
+        for (y in 12 until 40) for (x in 12 until 42) bitmap.setPixel(x, y, Color.RED)
+        for (y in 40 until 68) for (x in 12 until 42) bitmap.setPixel(x, y, Color.BLUE)
+        val surface = PixelTileBitmapAdapter.import(bitmap)
+        RasterTileBlendSession(surface, bitmap).use { session ->
+            session.blend(30f, 40f, 78f, 40f, 28f, 1f, .8f)
+            session.commit().close()
+        }
+        val upper = bitmap.getPixel(78, 28)
+        val lower = bitmap.getPixel(78, 52)
+        assertTrue("Upper carried bucket must remain red: ${Integer.toHexString(upper)}", Color.red(upper) > Color.blue(upper))
+        assertTrue("Lower carried bucket must remain blue: ${Integer.toHexString(lower)}", Color.blue(lower) > Color.red(lower))
+        bitmap.recycle()
+    }
+
+    @Test fun carriedPigmentPersistsAcrossTransparentTravelButNeverUsesBrushColor() {
+        val bitmap = Bitmap.createBitmap(160, 64, Bitmap.Config.ARGB_8888)
+        for (y in 18 until 46) for (x in 10 until 38) bitmap.setPixel(x, y, Color.GREEN)
+        val surface = PixelTileBitmapAdapter.import(bitmap)
+        RasterTileBlendSession(surface, bitmap).use { session ->
+            session.blend(26f, 32f, 62f, 32f, 22f, 1f, .7f)
+            session.blend(62f, 32f, 98f, 32f, 22f, 1f, .7f)
+            session.commit().close()
+        }
+        val carried = bitmap.getPixel(96, 32)
+        assertTrue(Color.alpha(carried) > 0)
+        assertTrue(Color.green(carried) > Color.red(carried))
+        assertTrue(Color.green(carried) > Color.blue(carried))
         bitmap.recycle()
     }
 
@@ -85,6 +119,24 @@ class RasterBlendSessionTest {
             assertEquals(original.getPixel(46, 14), bitmap.getPixel(46, 14))
         }
         original.recycle()
+        bitmap.recycle()
+    }
+
+    @Test fun alphaLockPreservesTheExactDestinationAlphaBoundaryDuringBlend() {
+        val bitmap = Bitmap.createBitmap(128, 80, Bitmap.Config.ARGB_8888)
+        for (y in 22 until 58) for (x in 12 until 42) bitmap.setPixel(x, y, Color.argb(120, 220, 30, 40))
+        val beforeAlpha = IntArray(bitmap.width * bitmap.height) { index ->
+            Color.alpha(bitmap.getPixel(index % bitmap.width, index / bitmap.width))
+        }
+        val surface = PixelTileBitmapAdapter.import(bitmap)
+        RasterTileBlendSession(surface, bitmap, preserveDestinationAlpha = true).use { session ->
+            session.blend(30f, 40f, 78f, 40f, 28f, 1f, .6f)
+            session.commit().close()
+        }
+        val afterAlpha = IntArray(bitmap.width * bitmap.height) { index ->
+            Color.alpha(bitmap.getPixel(index % bitmap.width, index / bitmap.width))
+        }
+        assertEquals(beforeAlpha.toList(), afterAlpha.toList())
         bitmap.recycle()
     }
 

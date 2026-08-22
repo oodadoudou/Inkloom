@@ -5713,7 +5713,12 @@ class InkCanvasView(context: Context) : View(context) {
         val raster = rasterBlendBitmap
         val surface = rasterTileSurfaceFor(activeLayerId)
         if (raster != null && surface != null) {
-            rasterTileBlendSession = RasterTileBlendSession(surface, raster, selectionMaskForRasterTools())
+            rasterTileBlendSession = RasterTileBlendSession(
+                surface,
+                raster,
+                selectionMaskForRasterTools(),
+                preserveDestinationAlpha = activeLayerId in alphaLockedLayers,
+            )
             smudgeBefore = null
             localToolStrokeIndices.clear()
         } else {
