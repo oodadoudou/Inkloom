@@ -16,13 +16,16 @@ import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.hypot
 import kotlin.math.sin
+import kotlin.math.pow
 
 data class StampBrushDefinition(
+    val kind: PaintOpKind = PaintOpKind.DECORATION,
     val diameterPixels: Float,
     val colorArgb: Int,
     val opacity: Float = 1f,
     val flow: Float = 1f,
     val spacingRatio: Float = .12f,
+    val spacingReferencePixels: Float = diameterPixels,
     val tips: List<BrushTipMask>,
     val sizePressure: PressureResponse = PressureResponse.CONSTANT,
     val opacityPressure: PressureResponse = PressureResponse.CONSTANT,
@@ -32,6 +35,10 @@ data class StampBrushDefinition(
     val followStrokeDirection: Boolean = false,
     val followStylusOrientation: Boolean = false,
     val renderSeed: Int = 0,
+    val particlesPerPlot: Int = 1,
+    val scatterRadiusPixels: Float = 0f,
+    val scatterBias: Float = 0f,
+    val randomRotationRadians: Float = 0f,
     val blend: DryBlend = DryBlend.SOURCE_OVER,
 ) {
     init {
@@ -39,9 +46,15 @@ data class StampBrushDefinition(
         require(opacity.isFinite() && opacity in 0f..1f)
         require(flow.isFinite() && flow in 0f..1f)
         require(spacingRatio.isFinite() && spacingRatio in .005f..4f)
+        require(spacingReferencePixels.isFinite() && spacingReferencePixels in .1f..4096f)
         require(tips.isNotEmpty())
         require(roundness.isFinite() && roundness in .01f..1f)
         require(rotationRadians.isFinite())
+        require(particlesPerPlot in 1..32)
+        require(scatterRadiusPixels.isFinite() && scatterRadiusPixels >= 0f)
+        require(scatterBias.isFinite() && scatterBias in -1f..1f)
+        require(randomRotationRadians.isFinite() && randomRotationRadians >= 0f)
+        require(kind in setOf(PaintOpKind.PENCIL, PaintOpKind.ERASER, PaintOpKind.AIRBRUSH, PaintOpKind.DECORATION))
     }
 }
 
@@ -55,7 +68,7 @@ class StampPaintOp(
     private val selection: MaskTileSurfaceSnapshot? = null,
 ) : PaintOp {
     override val capabilities = PaintOpCapabilities(
-        kind = if (definition.blend == DryBlend.DESTINATION_OUT) PaintOpKind.ERASER else PaintOpKind.DECORATION,
+        kind = if (definition.blend == DryBlend.DESTINATION_OUT) PaintOpKind.ERASER else definition.kind,
         destinationSampling = definition.blend == DryBlend.DESTINATION_OUT,
         evolvesAfterInput = false,
         maximumHaloPixels = 1,
@@ -115,7 +128,7 @@ class StampPaintOp(
             batch.samples.forEach { sample ->
                 val previous = lastSample
                 if (previous == null) {
-                    dabs += resolveDab(sample, directionRadians = definition.rotationRadians)
+                    resolveDabs(sample, directionRadians = definition.rotationRadians, dabs)
                     distanceToNextDab = spacingFor(sample)
                 } else if (!sameSample(previous, sample)) {
                     emitSegment(previous, sample, dabs)
@@ -140,13 +153,19 @@ class StampPaintOp(
                 travelled += remaining
                 val t = (travelled / length).coerceIn(0f, 1f)
                 val sample = interpolate(start, end, t)
-                output += resolveDab(sample, direction)
+                resolveDabs(sample, direction, output)
                 remaining = spacingFor(sample)
             }
             distanceToNextDab = (remaining - (length - travelled)).coerceAtLeast(.05f)
         }
 
-        private fun resolveDab(sample: StrokeSample, directionRadians: Float): ResolvedDab {
+        private fun resolveDabs(sample: StrokeSample, directionRadians: Float, output: MutableList<ResolvedDab>) {
+            repeat(definition.particlesPerPlot) { particle ->
+                output += resolveDab(sample, directionRadians, particle)
+            }
+        }
+
+        private fun resolveDab(sample: StrokeSample, directionRadians: Float, particle: Int): ResolvedDab {
             val size = definition.diameterPixels * definition.sizePressure.evaluate(sample.pressure)
             val tipIndex = deterministicTipIndex(dabSequence, definition.renderSeed, definition.tips.size)
             val tip = definition.tips[tipIndex]
@@ -154,14 +173,24 @@ class StampPaintOp(
             val radiusX = (if (aspect >= 1f) size * .5f else size * aspect * .5f).coerceAtLeast(.05f)
             val radiusY = (if (aspect <= 1f) size * .5f else size / aspect * .5f)
                 .times(definition.roundness).coerceAtLeast(.05f)
-            val angle = definition.rotationRadians + when {
+            val scatterAngle = randomUnit(dabSequence, particle * 2, definition.renderSeed) * (Math.PI * 2.0).toFloat()
+            val scatterUnit = randomUnit(dabSequence, particle * 2 + 1, definition.renderSeed)
+            val scatterExponent = if (definition.scatterBias >= 0f) {
+                .5f + definition.scatterBias * 3.5f
+            } else {
+                .5f / (1f + -definition.scatterBias * 3f)
+            }
+            val scatterDistance = scatterUnit.pow(scatterExponent) * definition.scatterRadiusPixels
+            val randomRotation = (randomUnit(dabSequence, particle * 2 + 2, definition.renderSeed) * 2f - 1f) *
+                definition.randomRotationRadians
+            val angle = definition.rotationRadians + randomRotation + when {
                 definition.followStylusOrientation -> sample.orientationRadians
                 definition.followStrokeDirection -> directionRadians
                 else -> 0f
             }
             return ResolvedDab(
-                centerX = sample.point.x,
-                centerY = sample.point.y,
+                centerX = sample.point.x + cos(scatterAngle) * scatterDistance,
+                centerY = sample.point.y + sin(scatterAngle) * scatterDistance,
                 radiusX = radiusX,
                 radiusY = radiusY,
                 angleRadians = angle,
@@ -174,7 +203,7 @@ class StampPaintOp(
         }
 
         private fun spacingFor(sample: StrokeSample): Float =
-            (definition.diameterPixels * definition.sizePressure.evaluate(sample.pressure) * definition.spacingRatio)
+            (definition.spacingReferencePixels * definition.sizePressure.evaluate(sample.pressure) * definition.spacingRatio)
                 .coerceAtLeast(.25f)
 
         private fun rasterize(dabs: List<ResolvedDab>): PixelRect? {
@@ -295,6 +324,14 @@ class StampPaintOp(
             return ((value and Long.MAX_VALUE) % count).toInt()
         }
 
+        private fun randomUnit(sequence: Long, channel: Int, seed: Int): Float {
+            var value = sequence xor seed.toLong().shl(32) xor (channel.toLong() * -7046029254386353131L)
+            value = (value xor (value ushr 30)) * -4658895280553007687L
+            value = (value xor (value ushr 27)) * -7723592293110705685L
+            value = value xor (value ushr 31)
+            return ((value ushr 40) and 0xffffff).toFloat() / 0xffffff
+        }
+
         private fun interpolate(start: StrokeSample, end: StrokeSample, t: Float): StrokeSample = StrokeSample(
             inputSequence = end.inputSequence,
             point = app.inkloom.engine.v5.coordinates.DocumentPoint(
@@ -334,4 +371,3 @@ class StampPaintOp(
         }
     }
 }
-

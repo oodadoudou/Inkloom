@@ -71,9 +71,36 @@ class StampPaintOpTest {
         published.record.close()
     }
 
-    private fun draw(moveBatches: List<List<StrokeSample>>): IntArray {
+    @Test
+    fun airbrushParticlesAreDeterministicAndBatchInvariant() {
+        val airbrush = definition().copy(
+            kind = PaintOpKind.AIRBRUSH,
+            diameterPixels = 5f,
+            spacingReferencePixels = 30f,
+            particlesPerPlot = 5,
+            scatterRadiusPixels = 18f,
+            scatterBias = .35f,
+            randomRotationRadians = Math.PI.toFloat(),
+        )
+        val points = listOf(sample(1, 42f, 28f), sample(2, 76f, 35f), sample(3, 122f, 24f))
+
+        val once = draw(listOf(points), airbrush)
+        val split = draw(points.map(::listOf), airbrush)
+
+        assertArrayEquals(once, split)
+        assertTrue("Scatter must deposit away from the path centre", once.indices.any { index ->
+            val x = index % 144
+            val y = index / 144
+            once[index] != 0 && kotlin.math.abs(y - 30) > 7 && x in 10..133
+        })
+    }
+
+    private fun draw(
+        moveBatches: List<List<StrokeSample>>,
+        brush: StampBrushDefinition = definition(),
+    ): IntArray {
         val surface = PixelTileSurface(144, 64)
-        val session = StampPaintOp(surface, definition()).begin(PaintOpContext(1, 0, "stamp")) as StampPaintOp.Session
+        val session = StampPaintOp(surface, brush).begin(PaintOpContext(1, 0, "stamp")) as StampPaintOp.Session
         session.apply(batch(1, 0, false, sample(0, 12f, 30f)))
         moveBatches.forEachIndexed { index, samples -> session.apply(batch(1, index + 1L, false, *samples.toTypedArray())) }
         session.finish(PaintBatch.empty(1, moveBatches.size + 1L, terminal = true))
@@ -106,4 +133,3 @@ class StampPaintOpTest {
         terminal,
     )
 }
-

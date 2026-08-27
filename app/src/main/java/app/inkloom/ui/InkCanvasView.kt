@@ -48,11 +48,13 @@ import app.inkloom.engine.v5.surface.RasterSelectionContent
 import app.inkloom.engine.v5.input.InputTool
 import app.inkloom.engine.v5.material.BrushTipMaskCache
 import app.inkloom.engine.v5.material.BrushTipMaskRequest
+import app.inkloom.engine.v5.material.BrushTipMask
 import app.inkloom.engine.v5.material.PressureResponse
 import app.inkloom.engine.v5.raster.DryBlend
 import app.inkloom.engine.v5.raster.DryInkDefinition
 import app.inkloom.engine.v5.raster.DryInkPaintOp
 import app.inkloom.engine.v5.raster.PaintResult
+import app.inkloom.engine.v5.raster.PaintOpKind
 import app.inkloom.engine.v5.raster.StampBrushDefinition
 import app.inkloom.engine.v5.raster.StampPaintOp
 import app.inkloom.engine.v5.runtime.RawDocumentSample
@@ -6711,6 +6713,60 @@ class InkCanvasView(context: Context) : View(context) {
                 DryInkPaintOp(surface, definition, selection),
                 diameterPixels * .5f + 2f,
                 "eraser:round",
+            )
+        }
+
+        val isAirbrush = brushId.contains("airbrush", ignoreCase = true)
+        if (isAirbrush && !brushDual && !brushWatercolor && procreateWetMix.isDisabled() &&
+            brushColorMix <= .001f && brushPaintMix <= .001f && !taperStartEnabled && !taperEndEnabled
+        ) {
+            fun pressure(enabled: Boolean, minimum: Float, curve: List<BrushCurvePoint>) = PressureResponse(
+                enabled,
+                minimum,
+                curve.map { it.x to it.y },
+            )
+            val particleDiameter = if (brushSpray) {
+                SprayGeometry.particleDiameter(
+                    diameterPixels,
+                    sprayParticleSize,
+                    sprayParticleSizeUnit,
+                    sprayParticleSizeSyncBrushSize,
+                    surface.logicalWidth.toFloat(),
+                )
+            } else diameterPixels
+            val particleSizePressure = if (brushSpray) {
+                pressure(
+                    sprayParticleSizePressureEnabled,
+                    sprayParticleSizePressureMinimum,
+                    sprayParticleSizePressureCurve,
+                )
+            } else pressure(sizePressureEnabled, sizePressureMinimum, sizePressureCurve)
+            val scatterRadius = if (brushSpray) diameterPixels * .5f * spraySpread.coerceIn(0f, 4f) else 0f
+            val definition = StampBrushDefinition(
+                kind = PaintOpKind.AIRBRUSH,
+                diameterPixels = particleDiameter.coerceIn(.1f, 4096f),
+                spacingReferencePixels = diameterPixels,
+                colorArgb = inkColor,
+                opacity = inkOpacity.coerceIn(0f, 1f),
+                flow = brushFlow.coerceIn(0f, 1f),
+                spacingRatio = CspBrushGap.ratio(brushSpacingMode, brushSpacing),
+                tips = listOf(BrushTipMask.solidCircle(96, brushHardness.coerceIn(0f, 1f))),
+                sizePressure = particleSizePressure,
+                opacityPressure = pressure(opacityPressureEnabled, opacityPressureMinimum, opacityPressureCurve),
+                flowPressure = pressure(flowPressureEnabled, flowPressureMinimum, flowPressureCurve),
+                rotationRadians = Math.toRadians(sprayParticleRotationDegrees.toDouble()).toFloat(),
+                followStrokeDirection = sprayParticleFollowStrokeDirection,
+                followStylusOrientation = sprayParticleFollowStylusOrientation,
+                renderSeed = brushRenderSeed,
+                particlesPerPlot = if (brushSpray) SprayGeometry.particlesPerPlot(sprayDensity) else 1,
+                scatterRadiusPixels = scatterRadius,
+                scatterBias = (sprayBias / 100f).coerceIn(-1f, 1f),
+                randomRotationRadians = Math.toRadians(sprayParticleRandomRotationDegrees.toDouble()).toFloat(),
+            )
+            return V5PaintConfiguration(
+                StampPaintOp(surface, definition, selection),
+                scatterRadius + particleDiameter * .5f + 2f,
+                "airbrush:$brushId",
             )
         }
 

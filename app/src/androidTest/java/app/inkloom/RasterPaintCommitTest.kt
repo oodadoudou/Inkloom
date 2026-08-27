@@ -9,12 +9,16 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.model.EditorTool
+import app.inkloom.model.SystemBrushCatalog
 import app.inkloom.engine.v3.render.ActiveStrokeCompositor
 import app.inkloom.engine.v5.tools.RasterLayerPatch
 import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v5.surface.PixelRect
 import app.inkloom.engine.v5.surface.PixelTileSurface
+import app.inkloom.settings.AppSettings
+import app.inkloom.settings.EraserPreset
 import app.inkloom.ui.InkCanvasView
+import app.inkloom.ui.applyBrushConfiguration
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -23,6 +27,54 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class RasterPaintCommitTest {
+    @Test fun factoryAirbrushesUseTheV5ParticlePathBeforePenUp() {
+        listOf("system-soft-airbrush", "system-spray-airbrush").forEachIndexed { brushIndex, brushId ->
+            val brush = requireNotNull(SystemBrushCatalog.byId(brushId))
+            val surface = PixelTileSurface(600, 600)
+            val display = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
+            var committed: RasterLayerPatch? = null
+            val frameTimesMs = mutableListOf<Float>()
+            val view = createCanvas {
+                activeLayerId = "paint"
+                setRasterLayerSurfaces(mapOf("paint" to surface))
+                onRasterLayerCommitted = { patch -> committed = patch }
+                applyBrushConfiguration(
+                    EditorTool.PEN,
+                    AppSettings(),
+                    brush,
+                    brush.defaultSize,
+                    brush.defaultOpacity,
+                    Color.BLACK,
+                    EraserPreset.NORMAL_FREE,
+                )
+            }
+            val gestureCountBefore = view.v5DryGestureCount
+            val start = brushIndex * 1_000L
+            sendStylus(view, MotionEvent.ACTION_DOWN, 70f, 150f, start)
+            repeat(24) { index ->
+                val frameStarted = android.os.SystemClock.elapsedRealtimeNanos()
+                sendStylus(view, MotionEvent.ACTION_MOVE, 78f + index * 9f, 150f, start + index + 1L)
+                InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                    display.eraseColor(Color.TRANSPARENT)
+                    view.draw(Canvas(display))
+                }
+                frameTimesMs += (android.os.SystemClock.elapsedRealtimeNanos() - frameStarted) / 1_000_000f
+            }
+
+            assertEquals("$brushId must be owned by one V5 gesture", gestureCountBefore + 1, view.v5DryGestureCount)
+            assertTrue("$brushId must present deposited pixels before pen-up", display.hasVisibleAlpha())
+            assertEquals("$brushId must not publish document pixels before pen-up", 0, surface.tileCount)
+            val p95 = frameTimesMs.sorted()[(frameTimesMs.size * 95 / 100).coerceAtMost(frameTimesMs.lastIndex)]
+            android.util.Log.i("InkloomPerf", "v5_airbrush=$brushId live_p95_ms=$p95")
+            assertTrue("$brushId live p95 was ${p95}ms", p95 < 16.7f)
+
+            sendStylus(view, MotionEvent.ACTION_UP, 300f, 150f, start + 30L)
+            assertTrue("$brushId must publish sparse tiles on pen-up", surface.tileCount > 0)
+            requireNotNull(committed).close()
+            display.recycle()
+        }
+    }
+
     @Test fun eightKProductionPenDownRemainsSparseWithoutAFullPageMirror() {
         val surface = PixelTileSurface(8192, 8192)
         var committed: RasterLayerPatch? = null
@@ -463,6 +515,19 @@ class RasterPaintCommitTest {
         val coordinates = MotionEvent.PointerCoords().apply { this.x = x; this.y = y; pressure = .8f; size = .1f }
         val event = MotionEvent.obtain(0L, time, action, 1, arrayOf(properties), arrayOf(coordinates), 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
         try { InstrumentationRegistry.getInstrumentation().runOnMainSync { view.onTouchEvent(event) } } finally { event.recycle() }
+    }
+
+    private fun sendStylus(view: InkCanvasView, action: Int, x: Float, y: Float, time: Long) {
+        val properties = MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_STYLUS }
+        val coordinates = MotionEvent.PointerCoords().apply { this.x = x; this.y = y; pressure = .8f; size = .01f }
+        val event = MotionEvent.obtain(0L, time, action, 1, arrayOf(properties), arrayOf(coordinates), 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_STYLUS, 0)
+        try { InstrumentationRegistry.getInstrumentation().runOnMainSync { view.onTouchEvent(event) } } finally { event.recycle() }
+    }
+
+    private fun Bitmap.hasVisibleAlpha(): Boolean {
+        val pixels = IntArray(width * height)
+        getPixels(pixels, 0, width, 0, 0, width, height)
+        return pixels.any { Color.alpha(it) > 0 }
     }
 
     private fun RasterLayerPatch.hasAlphaInSourceRegion(left: Int, top: Int, right: Int, bottom: Int): Boolean {
