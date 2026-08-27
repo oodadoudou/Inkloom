@@ -1549,6 +1549,9 @@ class InkCanvasView(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         synchronized(renderLock) { drawPageContent(canvas) }
+        rasterTileSurfaceFor(activeLayerId)?.let { surface ->
+            v5StrokeController.onDocumentGenerationPresented(activeLayerId, surface.revision)
+        }
         pendingStableFrameStrokeId?.let { strokeId ->
             pendingStableFrameStrokeId = null
             lastCommittedFrameDrawn = true

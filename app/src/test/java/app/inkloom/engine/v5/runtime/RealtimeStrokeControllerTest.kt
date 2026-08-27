@@ -32,6 +32,10 @@ class RealtimeStrokeControllerTest {
         val published = requireNotNull(controller.finish(sample(100f, 30f, 4)))
         assertEquals(previewPixel, published.snapshot.pixelAt(50, 20))
         assertFalse(controller.isActive)
+        assertEquals(published.snapshot.revision, controller.awaitingPresentationGeneration())
+        assertEquals(previewPixel, controller.previewSnapshot("ink")?.pixelAt(50, 20))
+        assertTrue(controller.onDocumentGenerationPresented("ink", published.snapshot.revision))
+        assertEquals(null, controller.previewSnapshot("ink"))
         assertNotNull(published.dirtyBounds)
         published.record.close()
     }

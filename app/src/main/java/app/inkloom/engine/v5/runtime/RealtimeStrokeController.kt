@@ -24,6 +24,7 @@ class RealtimeStrokeController {
     private var nextTransactionId = 1L
     private var nextInputSequence = 0L
     private var active: Active? = null
+    private var landed: Landed? = null
     private var lastPublishedSamples: List<RawDocumentSample> = emptyList()
 
     val isActive: Boolean get() = active != null
@@ -39,6 +40,7 @@ class RealtimeStrokeController {
         sample: RawDocumentSample,
     ): PaintResult {
         check(active == null) { "A V5 paint gesture is already active" }
+        landed = null
         val transactionId = nextTransactionId++
         val stroke = DirectStrokeSession(transactionId, maximumRadius)
         val paint = paintOp.begin(
@@ -62,7 +64,10 @@ class RealtimeStrokeController {
             sample?.let(gesture.samples::add)
             val finalBatch = gesture.stroke.finish(sample?.let { input(it, InputPhase.UP) })
             gesture.paint.finish(finalBatch)
-            gesture.paint.publish().also { lastPublishedSamples = gesture.samples.toList() }
+            gesture.paint.publish().also { published ->
+                lastPublishedSamples = gesture.samples.toList()
+                landed = Landed(gesture.layerId, published.snapshot.revision, published.snapshot)
+            }
         } finally {
             active = null
         }
@@ -78,6 +83,17 @@ class RealtimeStrokeController {
 
     fun previewSnapshot(layerId: String): PixelTileSurfaceSnapshot? =
         active?.takeIf { it.layerId == layerId }?.paint?.previewSnapshot()
+            ?: landed?.takeIf { it.layerId == layerId }?.snapshot
+
+    /** Releases the landed owner only after the stable View has submitted that generation. */
+    fun onDocumentGenerationPresented(layerId: String, generation: Long): Boolean {
+        val value = landed ?: return false
+        if (value.layerId != layerId || generation < value.generation) return false
+        landed = null
+        return true
+    }
+
+    fun awaitingPresentationGeneration(): Long? = landed?.generation
 
     private fun input(sample: RawDocumentSample, phase: InputPhase): InputSample = InputSample(
         sequence = nextInputSequence++,
@@ -97,6 +113,12 @@ class RealtimeStrokeController {
         val stroke: DirectStrokeSession,
         val paint: PublishablePaintOpSession,
         val samples: MutableList<RawDocumentSample>,
+    )
+
+    private data class Landed(
+        val layerId: String,
+        val generation: Long,
+        val snapshot: PixelTileSurfaceSnapshot,
     )
 }
 

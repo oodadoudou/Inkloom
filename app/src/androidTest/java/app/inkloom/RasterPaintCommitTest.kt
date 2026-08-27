@@ -90,12 +90,28 @@ class RasterPaintCommitTest {
         }
 
         assertTrue("The exact V5 active delta must be visible before pen-up", Color.alpha(display.getPixel(150, 200)) > 0)
+        val activePixels = IntArray(display.width * display.height).also {
+            display.getPixels(it, 0, display.width, 0, 0, display.width, display.height)
+        }
         assertEquals("V5 stamped paint must never call the legacy front-buffer renderer", 0, legacyFrontBufferCalls)
         assertEquals("Private dabs must not publish before pen-up", 0, Color.alpha(surface.pixelAt(225, 300)))
         val p95 = frameTimesMs.sorted()[(frameTimesMs.size * .95f).toInt().coerceIn(0, frameTimesMs.lastIndex)]
         android.util.Log.i("InkloomPerf", "raster_imported_direct_deposit_p95_ms=$p95")
         assertTrue("Imported direct-deposit frame p95 was ${p95}ms", p95 < 16.7f)
-        send(view, MotionEvent.ACTION_UP, 330f, 200f, 45L)
+        send(view, MotionEvent.ACTION_UP, 312f, 200f, 45L)
+
+        display.eraseColor(Color.TRANSPARENT)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.draw(Canvas(display)) }
+        val landedPixels = IntArray(display.width * display.height).also {
+            display.getPixels(it, 0, display.width, 0, 0, display.width, display.height)
+        }
+        display.eraseColor(Color.TRANSPARENT)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.draw(Canvas(display)) }
+        val stablePixels = IntArray(display.width * display.height).also {
+            display.getPixels(it, 0, display.width, 0, 0, display.width, display.height)
+        }
+        assertTrue("The active and landed generations must be pixel-identical", activePixels.contentEquals(landedPixels))
+        assertTrue("Releasing the generation barrier must not flash or replace pixels", landedPixels.contentEquals(stablePixels))
 
         assertEquals("V5 must not enter the legacy incremental stamp transaction", 0, view.rasterIncrementalPatchCount)
         assertEquals("V5 must not replay the complete path on pen-up", 0, view.rasterFullReplayCount)
