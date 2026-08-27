@@ -5,23 +5,22 @@ import app.inkloom.engine.v5.input.InputPhase
 import app.inkloom.engine.v5.input.InputSample
 import app.inkloom.engine.v5.input.InputSampleBatch
 import app.inkloom.engine.v5.input.InputTool
-import app.inkloom.engine.v5.raster.DryInkDefinition
-import app.inkloom.engine.v5.raster.DryInkPaintOp
+import app.inkloom.engine.v5.raster.PaintOp
 import app.inkloom.engine.v5.raster.PaintOpContext
 import app.inkloom.engine.v5.raster.PaintResult
+import app.inkloom.engine.v5.raster.PublishablePaintOpSession
 import app.inkloom.engine.v5.raster.PublishedPaintDelta
 import app.inkloom.engine.v5.stroke.DirectStrokeSession
-import app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot
 import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot
 
 /**
- * Production coordinator for one V5 dry stroke.
+ * Production coordinator for one V5 realtime paint stroke.
  *
  * Input is already frozen in document pixels. Every sample is consumed once, preview is the same
  * sparse transaction that will be published, and finish never reconstructs the stroke.
  */
-class RealtimeDryStrokeController {
+class RealtimeStrokeController {
     private var nextTransactionId = 1L
     private var nextInputSequence = 0L
     private var active: Active? = null
@@ -34,16 +33,17 @@ class RealtimeDryStrokeController {
     fun begin(
         layerId: String,
         surface: PixelTileSurface,
-        definition: DryInkDefinition,
-        selection: MaskTileSurfaceSnapshot?,
+        paintOp: PaintOp,
+        maximumRadius: Float,
+        brushRuntimeId: String,
         sample: RawDocumentSample,
     ): PaintResult {
         check(active == null) { "A V5 paint gesture is already active" }
         val transactionId = nextTransactionId++
-        val stroke = DirectStrokeSession(transactionId, definition.diameterPixels * .5f + 2f)
-        val paint = DryInkPaintOp(surface, definition, selection).begin(
-            PaintOpContext(transactionId, surface.revision, layerId),
-        ) as DryInkPaintOp.Session
+        val stroke = DirectStrokeSession(transactionId, maximumRadius)
+        val paint = paintOp.begin(
+            PaintOpContext(transactionId, surface.revision, brushRuntimeId),
+        ) as? PublishablePaintOpSession ?: error("Production PaintOp must publish its active delta")
         active = Active(layerId, surface, stroke, paint, mutableListOf(sample))
         return paint.apply(stroke.begin(input(sample, InputPhase.DOWN)))
     }
@@ -95,7 +95,7 @@ class RealtimeDryStrokeController {
         val layerId: String,
         val surface: PixelTileSurface,
         val stroke: DirectStrokeSession,
-        val paint: DryInkPaintOp.Session,
+        val paint: PublishablePaintOpSession,
         val samples: MutableList<RawDocumentSample>,
     )
 }

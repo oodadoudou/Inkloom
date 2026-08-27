@@ -1,6 +1,7 @@
 package app.inkloom.engine.v5.raster
 
 import app.inkloom.engine.v5.coordinates.DocumentRect
+import app.inkloom.engine.v5.material.PressureResponse
 import app.inkloom.engine.v5.stroke.PaintBatch
 import app.inkloom.engine.v5.stroke.StrokeSample
 import app.inkloom.engine.v5.surface.ActiveDeltaSurface
@@ -27,6 +28,9 @@ data class DryInkDefinition(
     val blend: DryBlend = DryBlend.SOURCE_OVER,
     val pencilGrain: Float = 0f,
     val grainSeed: Int = 0,
+    val sizePressure: PressureResponse? = null,
+    val opacityPressure: PressureResponse? = null,
+    val flowPressure: PressureResponse? = null,
 ) {
     init {
         require(diameterPixels.isFinite() && diameterPixels in .1f..4096f)
@@ -77,7 +81,7 @@ class DryInkPaintOp(
     inner class Session internal constructor(
         private val context: PaintOpContext,
         private val delta: ActiveDeltaSurface,
-    ) : PaintOpSession, AutoCloseable {
+    ) : PublishablePaintOpSession, AutoCloseable {
         private var lastSample: StrokeSample? = null
         private var lastOrdinal = -1L
         private var dirtyBounds: PixelRect? = null
@@ -91,12 +95,12 @@ class DryInkPaintOp(
 
         override fun finish(batch: PaintBatch): PaintResult = applyInternal(batch, finishing = true)
 
-        fun previewSnapshot(): PixelTileSurfaceSnapshot {
+        override fun previewSnapshot(): PixelTileSurfaceSnapshot {
             requireActiveOrFinished()
             return delta.previewSnapshot()
         }
 
-        fun publish(): PublishedPaintDelta {
+        override fun publish(): PublishedPaintDelta {
             check(state == State.FINISHED) { "PaintOp must finish before publication" }
             state = State.PUBLISHED
             val record = delta.publish()
@@ -201,8 +205,8 @@ class DryInkPaintOp(
         }
 
         private fun radius(pressure: Float): Float {
-            val scale = definition.minimumPressureScale +
-                (1f - definition.minimumPressureScale) * pressure.coerceIn(0f, 1f)
+            val scale = definition.sizePressure?.evaluate(pressure) ?: (definition.minimumPressureScale +
+                (1f - definition.minimumPressureScale) * pressure.coerceIn(0f, 1f))
             return definition.diameterPixels * scale * .5f
         }
 
@@ -240,10 +244,10 @@ class DryInkPaintOp(
         }
 
         private fun sourceOver(destination: Int, coverage: Float, pressure: Float): Int {
-            val pressureOpacity = definition.opacityPressureMinimum +
-                (1f - definition.opacityPressureMinimum) * pressure.coerceIn(0f, 1f)
-            val pressureFlow = definition.flowPressureMinimum +
-                (1f - definition.flowPressureMinimum) * pressure.coerceIn(0f, 1f)
+            val pressureOpacity = definition.opacityPressure?.evaluate(pressure) ?: (definition.opacityPressureMinimum +
+                (1f - definition.opacityPressureMinimum) * pressure.coerceIn(0f, 1f))
+            val pressureFlow = definition.flowPressure?.evaluate(pressure) ?: (definition.flowPressureMinimum +
+                (1f - definition.flowPressureMinimum) * pressure.coerceIn(0f, 1f))
             val sourceAlpha = (((definition.colorArgb ushr 24) and 0xff) * definition.opacity * pressureOpacity * pressureFlow * coverage)
                 .toInt().coerceIn(0, 255)
             if (sourceAlpha == 0) return destination

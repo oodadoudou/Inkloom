@@ -1,6 +1,7 @@
 package app.inkloom.engine.v5.raster
 
 import app.inkloom.engine.v5.surface.PixelRect
+import app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot
 import app.inkloom.engine.v5.stroke.PaintBatch
 
 enum class PaintOpKind { DRY_INK, PENCIL, ERASER, AIRBRUSH, DECORATION, WET, SMUDGE, LIQUIFY }
@@ -49,4 +50,13 @@ interface PaintOpSession {
     fun apply(batch: PaintBatch): PaintResult
     fun finish(batch: PaintBatch): PaintResult
     fun cancel()
+}
+
+/**
+ * A gesture-local paint session whose preview is the exact sparse transaction that publication
+ * commits. Implementations must not construct a second render product in [publish].
+ */
+interface PublishablePaintOpSession : PaintOpSession {
+    fun previewSnapshot(): PixelTileSurfaceSnapshot
+    fun publish(): PublishedPaintDelta
 }

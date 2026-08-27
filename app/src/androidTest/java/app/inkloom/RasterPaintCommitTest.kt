@@ -55,10 +55,9 @@ class RasterPaintCommitTest {
         val tipFile = File(context.cacheDir, "incremental-raster-stamp-tip.png")
         writePng(tipFile, IntArray(64) { Color.BLACK })
         val surface = PixelTileSurface(600, 600)
-        val front = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
-        val completeReplay = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
+        val display = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
         var committed: RasterLayerPatch? = null
-        var latestStrokes: List<app.inkloom.document.InkStroke> = emptyList()
+        var legacyFrontBufferCalls = 0
         val frameTimesMs = mutableListOf<Float>()
         lateinit var view: InkCanvasView
         view = createCanvas {
@@ -73,10 +72,7 @@ class RasterPaintCommitTest {
         }
         view.activeStrokeSurface = object : ActiveStrokeCompositor {
             override fun render(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) {
-                latestStrokes = packet.strokes
-                val started = android.os.SystemClock.elapsedRealtimeNanos()
-                view.drawActiveStrokes(Canvas(front), packet.strokes, incrementalStampDraw = true)
-                frameTimesMs += (android.os.SystemClock.elapsedRealtimeNanos() - started) / 1_000_000f
+                legacyFrontBufferCalls++
             }
             override fun commit(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) = Unit
             override fun cancel() = Unit
@@ -84,33 +80,28 @@ class RasterPaintCommitTest {
 
         send(view, MotionEvent.ACTION_DOWN, 80f, 200f, 0L)
         repeat(32) { index ->
+            val started = android.os.SystemClock.elapsedRealtimeNanos()
             send(view, MotionEvent.ACTION_MOVE, 95f + index * 7f, 200f, 5L + index)
-            InstrumentationRegistry.getInstrumentation().runOnMainSync { view.flushActiveStrokeFrame() }
-            if (index == 15) {
-                val transactionPackets = view.rasterIncrementalPatchCount
-                view.resetActiveRenderState()
-                view.drawActiveStrokes(Canvas(completeReplay), latestStrokes, completeRedraw = true)
-                assertEquals(
-                    "A system front-buffer replay must never redeposit authoritative dabs",
-                    transactionPackets,
-                    view.rasterIncrementalPatchCount,
-                )
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                display.eraseColor(Color.TRANSPARENT)
+                view.draw(Canvas(display))
             }
+            frameTimesMs += (android.os.SystemClock.elapsedRealtimeNanos() - started) / 1_000_000f
         }
 
-        assertTrue("The low-latency patch must be visible before pen-up", Color.alpha(front.getPixel(150, 200)) > 0)
-        assertTrue("A complete Android surface replay must remain visually complete", Color.alpha(completeReplay.getPixel(120, 200)) > 0)
+        assertTrue("The exact V5 active delta must be visible before pen-up", Color.alpha(display.getPixel(150, 200)) > 0)
+        assertEquals("V5 stamped paint must never call the legacy front-buffer renderer", 0, legacyFrontBufferCalls)
         assertEquals("Private dabs must not publish before pen-up", 0, Color.alpha(surface.pixelAt(225, 300)))
         val p95 = frameTimesMs.sorted()[(frameTimesMs.size * .95f).toInt().coerceIn(0, frameTimesMs.lastIndex)]
         android.util.Log.i("InkloomPerf", "raster_imported_direct_deposit_p95_ms=$p95")
         assertTrue("Imported direct-deposit frame p95 was ${p95}ms", p95 < 16.7f)
         send(view, MotionEvent.ACTION_UP, 330f, 200f, 45L)
 
-        assertTrue("Multiple packets should have entered the open raster transaction", view.rasterIncrementalPatchCount >= 2)
-        assertEquals("Eligible imported stamps must not replay the complete path on pen-up", 0, view.rasterFullReplayCount)
+        assertEquals("V5 must not enter the legacy incremental stamp transaction", 0, view.rasterIncrementalPatchCount)
+        assertEquals("V5 must not replay the complete path on pen-up", 0, view.rasterFullReplayCount)
         assertTrue(Color.alpha(surface.pixelAt(225, 300)) > 0)
         requireNotNull(committed).close()
-        front.recycle(); completeReplay.recycle(); tipFile.delete()
+        display.recycle(); tipFile.delete()
     }
 
     @Test fun ordinaryRasterPaintHasOneLivePresentationOwnerAndLeavesStablePixelsFixed() {
