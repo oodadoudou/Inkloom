@@ -209,13 +209,15 @@ class BrushBatchManagementTest {
         composeRule.waitUntil(5_000) { view.brushId == "batch-a" }
         composeRule.onNodeWithContentDescription("Close brushes panel").performClick()
         val transactionPacketsBefore = view.rasterIncrementalPatchCount
+        val v5GesturesBefore = view.v5DryGestureCount
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             repeat(6) { dispatchStylusStroke(view, it) }
         }
         assertTrue(
-            "Every rapid pen contact should deposit at least one V3 tile packet",
-            view.rasterIncrementalPatchCount - transactionPacketsBefore >= 6,
+            "Every rapid pen contact must enter exactly one realtime paint transaction",
+            (view.v5DryGestureCount - v5GesturesBefore) +
+                (view.rasterIncrementalPatchCount - transactionPacketsBefore) >= 6,
         )
     }
 

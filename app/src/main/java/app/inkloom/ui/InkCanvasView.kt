@@ -378,6 +378,13 @@ class InkCanvasView(context: Context) : View(context) {
         private set
     @VisibleForTesting internal var v5DryPublishedGeneration: Long = -1L
         private set
+    @VisibleForTesting
+    internal fun v5LastCommittedNormalizedPoints(): List<Pair<Float, Float>> {
+        val surface = rasterTileSurfaceFor(activeLayerId) ?: return emptyList()
+        return v5DryStrokeController.lastPublishedSamples().map { sample ->
+            sample.x / surface.logicalWidth to sample.y / surface.logicalHeight
+        }
+    }
     private var wetPaintDirtyBounds: Rect? = null
     private val rasterFrontPatchPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private var wetPaintLastPositions: List<Pair<Float, Float>> = emptyList()
@@ -6587,11 +6594,12 @@ class InkCanvasView(context: Context) : View(context) {
     private fun beginV5DryGesture(event: MotionEvent, pointerIndex: Int, normalizedX: Float, normalizedY: Float): Boolean {
         val definition = v5DryDefinition() ?: return false
         val surface = rasterTileSurfaceFor(activeLayerId) ?: return false
+        val selection = selectionMaskForRasterTools()?.takeUnless { it.isEmpty }
         val result = v5DryStrokeController.begin(
             layerId = activeLayerId,
             surface = surface,
             definition = definition,
-            selection = selectionMaskForRasterTools(),
+            selection = selection,
             sample = v5DocumentSample(event, pointerIndex, normalizedX, normalizedY, historicalIndex = null),
         )
         v5DryGestureCount++

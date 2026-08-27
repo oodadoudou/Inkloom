@@ -253,10 +253,16 @@ class InkloomPinchThenWriteTest {
         )
 
         sendScreenStylusStroke(screenX, screenY, screenX + 32f, screenY + 14f)
-        composeRule.waitUntil(10_000) { findInkCanvasView()?.lastCommittedStrokePacket != null }
-        val stroke = findInkCanvasView()?.lastCommittedStrokePacket?.strokes?.single()
-        assertEquals("Zoomed stylus X must inverse-map once", expected.first / view.width, stroke?.points?.first()?.x ?: Float.NaN, .004f)
-        assertEquals("Zoomed stylus Y must inverse-map once", expected.second / view.height, stroke?.points?.first()?.y ?: Float.NaN, .004f)
+        composeRule.waitUntil(10_000) {
+            findInkCanvasView()?.let { it.v5LastCommittedNormalizedPoints().isNotEmpty() || it.lastCommittedStrokePacket != null } == true
+        }
+        val committed = requireNotNull(findInkCanvasView()).let { canvas ->
+            canvas.v5LastCommittedNormalizedPoints().ifEmpty {
+                canvas.lastCommittedStrokePacket?.strokes?.single()?.points?.map { it.x to it.y }.orEmpty()
+            }
+        }
+        assertEquals("Zoomed stylus X must inverse-map once", expected.first / view.width, committed.first().first, .004f)
+        assertEquals("Zoomed stylus Y must inverse-map once", expected.second / view.height, committed.first().second, .004f)
     }
 
     @Test fun zoomedEraserHoverAndContactShareTheExactPenCoordinate() {
@@ -364,9 +370,14 @@ class InkloomPinchThenWriteTest {
                 proxy.onTouchEvent(it); it.recycle()
             }
         }
-        composeRule.waitUntil(10_000) { findInkCanvasView()?.lastCommittedStrokePacket != null }
-        val stroke = findInkCanvasView()?.lastCommittedStrokePacket?.strokes?.single()
-        val points = requireNotNull(stroke).points
+        composeRule.waitUntil(10_000) {
+            findInkCanvasView()?.let { it.v5LastCommittedNormalizedPoints().isNotEmpty() || it.lastCommittedStrokePacket != null } == true
+        }
+        val points = requireNotNull(findInkCanvasView()).let { canvas ->
+            canvas.v5LastCommittedNormalizedPoints().ifEmpty {
+                canvas.lastCommittedStrokePacket?.strokes?.single()?.points?.map { it.x to it.y }.orEmpty()
+            }
+        }
         samples.forEach { screen ->
             val expected = ViewportTransform.viewToPage(
                 screen.first + (view.width - proxy.width) / 2f,
@@ -374,10 +385,10 @@ class InkloomPinchThenWriteTest {
                 view.width.toFloat(), view.height.toFloat(), viewport,
             )
             assertTrue(
-                "Every current/historical sample must remain on the rotated pen trajectory: screen=$screen expected=(${expected.first / view.width},${expected.second / view.height}) actual=${points.map { it.x to it.y }}",
+                "Every current/historical sample must remain on the rotated pen trajectory: screen=$screen expected=(${expected.first / view.width},${expected.second / view.height}) actual=$points",
                 points.any { point ->
-                    kotlin.math.abs(point.x - expected.first / view.width) < .004f &&
-                        kotlin.math.abs(point.y - expected.second / view.height) < .004f
+                    kotlin.math.abs(point.first - expected.first / view.width) < .004f &&
+                        kotlin.math.abs(point.second - expected.second / view.height) < .004f
                 },
             )
         }
@@ -392,7 +403,9 @@ class InkloomPinchThenWriteTest {
             moveTo(0, center + Offset(0f, 320f), delayMillis = 30)
             up(0)
         }
-        composeRule.waitUntil(10_000) { findInkCanvasView()?.lastCommittedStrokePacket != null }
+        composeRule.waitUntil(10_000) {
+            findInkCanvasView()?.let { it.v5DryPublishedGeneration >= 0L || it.lastCommittedStrokePacket != null } == true
+        }
         composeRule.waitForIdle()
         android.os.SystemClock.sleep(500)
 
@@ -645,13 +658,21 @@ class InkloomPinchThenWriteTest {
             ViewportState(scale, panX, panY),
         )
         val packetSequenceBeforeOverflow = view.lastCommittedStrokePacket?.sequence ?: -1L
+        val v5GesturesBeforeOverflow = view.v5DryGestureCount
         sendScreenFingerStroke(overflowX, overflowY, overflowX + 28f, overflowY + 12f)
         composeRule.waitUntil(10_000) {
-            (findInkCanvasView()?.lastCommittedStrokePacket?.sequence ?: -1L) > packetSequenceBeforeOverflow
+            findInkCanvasView()?.let { canvas ->
+                (canvas.lastCommittedStrokePacket?.sequence ?: -1L) > packetSequenceBeforeOverflow ||
+                    canvas.v5DryGestureCount > v5GesturesBeforeOverflow
+            } == true
         }
-        val overflowStroke = findInkCanvasView()?.lastCommittedStrokePacket?.strokes?.firstOrNull()
-        assertEquals("Overflow writing must inverse-map to the physical contact X", expectedPagePoint.first / view.width, overflowStroke?.points?.first()?.x ?: Float.NaN, .004f)
-        assertEquals("Overflow writing must inverse-map to the physical contact Y", expectedPagePoint.second / view.height, overflowStroke?.points?.first()?.y ?: Float.NaN, .004f)
+        val overflowPoints = requireNotNull(findInkCanvasView()).let { canvas ->
+            canvas.v5LastCommittedNormalizedPoints().ifEmpty {
+                canvas.lastCommittedStrokePacket?.strokes?.firstOrNull()?.points?.map { it.x to it.y }.orEmpty()
+            }
+        }
+        assertEquals("Overflow writing must inverse-map to the physical contact X", expectedPagePoint.first / view.width, overflowPoints.first().first, .004f)
+        assertEquals("Overflow writing must inverse-map to the physical contact Y", expectedPagePoint.second / view.height, overflowPoints.first().second, .004f)
     }
 
     private fun sendScreenFingerStroke(startX: Float, startY: Float, endX: Float, endY: Float) {

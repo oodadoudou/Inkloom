@@ -54,14 +54,6 @@ class DryInkPaintOp(
     private val definition: DryInkDefinition,
     private val selection: MaskTileSurfaceSnapshot? = null,
 ) : PaintOp {
-    init {
-        selection?.let {
-            require(it.logicalWidth == document.logicalWidth && it.logicalHeight == document.logicalHeight) {
-                "Selection and document dimensions differ"
-            }
-        }
-    }
-
     override val capabilities = PaintOpCapabilities(
         kind = when {
             definition.blend == DryBlend.DESTINATION_OUT -> PaintOpKind.ERASER
@@ -186,7 +178,13 @@ class DryInkPaintOp(
                         val footprint = segmentCoverage(x + .5f, y + .5f, start, end, startRadius, endRadius)
                         var coverage = footprint.coverage
                         if (coverage <= 0f) continue
-                        selection?.let { coverage *= it.alphaAt(x, y) / 255f }
+                        selection?.let { mask ->
+                            val selectionX = ((x + .5f) * mask.logicalWidth / document.logicalWidth)
+                                .toInt().coerceIn(0, mask.logicalWidth - 1)
+                            val selectionY = ((y + .5f) * mask.logicalHeight / document.logicalHeight)
+                                .toInt().coerceIn(0, mask.logicalHeight - 1)
+                            coverage *= mask.alphaAt(selectionX, selectionY) / 255f
+                        }
                         if (coverage <= 0f) continue
                         if (definition.pencilGrain > 0f) coverage *= grain(x, y)
                         val index = (y - tileTop) * stride + x - tileLeft

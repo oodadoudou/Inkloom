@@ -25,9 +25,11 @@ class RealtimeDryStrokeController {
     private var nextTransactionId = 1L
     private var nextInputSequence = 0L
     private var active: Active? = null
+    private var lastPublishedSamples: List<RawDocumentSample> = emptyList()
 
     val isActive: Boolean get() = active != null
     val activeLayerId: String? get() = active?.layerId
+    fun lastPublishedSamples(): List<RawDocumentSample> = lastPublishedSamples.toList()
 
     fun begin(
         layerId: String,
@@ -42,13 +44,14 @@ class RealtimeDryStrokeController {
         val paint = DryInkPaintOp(surface, definition, selection).begin(
             PaintOpContext(transactionId, surface.revision, layerId),
         ) as DryInkPaintOp.Session
-        active = Active(layerId, surface, stroke, paint)
+        active = Active(layerId, surface, stroke, paint, mutableListOf(sample))
         return paint.apply(stroke.begin(input(sample, InputPhase.DOWN)))
     }
 
     fun append(samples: List<RawDocumentSample>): PaintResult? {
         val gesture = active ?: return null
         if (samples.isEmpty()) return null
+        gesture.samples.addAll(samples)
         val batch = InputSampleBatch.owned(samples.map { input(it, InputPhase.MOVE) })
         return gesture.paint.apply(gesture.stroke.append(batch))
     }
@@ -56,9 +59,10 @@ class RealtimeDryStrokeController {
     fun finish(sample: RawDocumentSample?): PublishedPaintDelta? {
         val gesture = active ?: return null
         return try {
+            sample?.let(gesture.samples::add)
             val finalBatch = gesture.stroke.finish(sample?.let { input(it, InputPhase.UP) })
             gesture.paint.finish(finalBatch)
-            gesture.paint.publish()
+            gesture.paint.publish().also { lastPublishedSamples = gesture.samples.toList() }
         } finally {
             active = null
         }
@@ -92,6 +96,7 @@ class RealtimeDryStrokeController {
         val surface: PixelTileSurface,
         val stroke: DirectStrokeSession,
         val paint: DryInkPaintOp.Session,
+        val samples: MutableList<RawDocumentSample>,
     )
 }
 

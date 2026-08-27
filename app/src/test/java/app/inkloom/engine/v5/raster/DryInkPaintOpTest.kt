@@ -77,6 +77,29 @@ class DryInkPaintOpTest {
         assertEquals(0, surface.pixelAt(96, 64))
     }
 
+    @Test fun `selection is sampled proportionally when its resolution differs from the layer`() {
+        val surface = PixelTileSurface(256, 128, 64)
+        val selection = MaskTileSurface(64, 32, 64)
+        selection.beginWrite("left half").use { tx ->
+            tx.replaceAlpha(
+                app.inkloom.engine.v5.surface.PixelRect(0, 0, 32, 32),
+                ByteArray(32 * 32) { 0xff.toByte() },
+            )
+            tx.commit().close()
+        }
+        val stroke = DirectStrokeSession(4L, 16f)
+        val paint = DryInkPaintOp(
+            surface,
+            DryInkDefinition(32f, 0xff000000.toInt(), minimumPressureScale = 1f),
+            selection.snapshot(),
+        ).begin(PaintOpContext(4L, 0L, "scaled-selection")) as DryInkPaintOp.Session
+        paint.apply(stroke.begin(sample(0, InputPhase.DOWN, 16f, 64f)))
+        paint.finish(stroke.finish(sample(1, InputPhase.UP, 240f, 64f)))
+        paint.publish().record.close()
+        assertNotEquals(0, surface.pixelAt(64, 64))
+        assertEquals(0, surface.pixelAt(192, 64))
+    }
+
     @Test fun `pencil grain is document anchored across separate batches`() {
         fun render(split: Boolean): IntArray {
             val surface = PixelTileSurface(128, 64, 64)
