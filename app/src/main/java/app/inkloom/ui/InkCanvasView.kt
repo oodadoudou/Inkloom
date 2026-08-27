@@ -51,6 +51,10 @@ import app.inkloom.engine.v5.raster.DryInkDefinition
 import app.inkloom.engine.v5.raster.PaintResult
 import app.inkloom.engine.v5.runtime.RawDocumentSample
 import app.inkloom.engine.v5.runtime.RealtimeDryStrokeController
+import app.inkloom.engine.v5.coordinates.DocumentPoint
+import app.inkloom.engine.v5.selection.CanonicalLassoContour
+import app.inkloom.engine.v5.selection.LassoSession
+import app.inkloom.engine.v5.selection.SelectionMaskRasterizer
 import java.util.LinkedHashMap
 import java.util.concurrent.Executors
 import app.inkloom.document.InkStroke
@@ -344,6 +348,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var eraserMaskBatch: MutableMap<String, MutableList<StrokeMaskDab>>? = null
     private var strokeHistoryKey: String? = null
     private val lassoPoints = mutableListOf<StrokePoint>()
+    private var v5LassoSession: LassoSession? = null
     private var shapeStart: ShapePoint? = null
     private var shapeEnd: ShapePoint? = null
     private val shapeFreeformPoints = mutableListOf<ShapePoint>()
@@ -3493,12 +3498,12 @@ class InkCanvasView(context: Context) : View(context) {
                 }
                 if (activeTool == EditorTool.SELECT) {
                     if (selectionShape == SelectionShape.SMART_BORDER || selectionShape == SelectionShape.MAGIC_WAND) {
-                        lassoPoints.clear(); selectionGestureBefore = null; selectionMoved = false; movingSelection = false
+                        clearLassoInput(); selectionGestureBefore = null; selectionMoved = false; movingSelection = false
                         appendSelectionPoint(normalizedX, normalizedY)
                         invalidate(); return true
                     }
                     if (!selectionTransformArmed) {
-                        lassoPoints.clear(); selectionGestureBefore = null; selectionMoved = false; movingSelection = false
+                        clearLassoInput(); selectionGestureBefore = null; selectionMoved = false; movingSelection = false
                         appendSelectionPoint(normalizedX, normalizedY)
                         lastX = normalizedX; lastY = normalizedY
                         invalidate(); return true
@@ -3527,7 +3532,7 @@ class InkCanvasView(context: Context) : View(context) {
                         }
                     }
                     val hit = strokes.getOrNull(findStroke(normalizedX, normalizedY, .035f))
-                    lassoPoints.clear(); selectionGestureBefore = null; selectionMoved = false
+                    clearLassoInput(); selectionGestureBefore = null; selectionMoved = false
                     val hitRasterSelection = selectionMaskForRasterTools()?.let { mask ->
                         mask.alphaAt(
                             (normalizedX * mask.logicalWidth).toInt().coerceIn(0, mask.logicalWidth - 1),
@@ -3814,7 +3819,7 @@ class InkCanvasView(context: Context) : View(context) {
                     if (activeTool == EditorTool.ERASER) cancelEraserGesture()
                     selectionGestureBefore?.let { restoreStrokeSnapshot(it) }
                     cancelRasterSelectionTransform()
-                    lassoPoints.clear(); movingSelection = false; selectionMoved = false; selectionGestureBefore = null; selectionTransformMode = TRANSFORM_NONE
+                    clearLassoInput(); movingSelection = false; selectionMoved = false; selectionGestureBefore = null; selectionTransformMode = TRANSFORM_NONE
                 } else if (finishV5DryGesture(event, pointerIndex, normalizedX, normalizedY)) {
                     finishActiveStrokePreview()
                 } else if (activeTool == EditorTool.FILL) {
@@ -3936,12 +3941,19 @@ class InkCanvasView(context: Context) : View(context) {
                     } else if (!movingSelection && selectionTransformMode == TRANSFORM_NONE) {
                         if (selectionShape == SelectionShape.SMART_BORDER || selectionShape == SelectionShape.MAGIC_WAND) {
                             selectAutomaticRegion(normalizedX, normalizedY, selectionShape == SelectionShape.SMART_BORDER)
+                        } else if (selectionShape == SelectionShape.FREEFORM) {
+                            v5LassoSession?.finish(
+                                DocumentPoint(
+                                    normalizedX * pageModelWidth.coerceAtLeast(1f),
+                                    normalizedY * pageModelHeight.coerceAtLeast(1f),
+                                ),
+                            )?.let(::selectWithCanonicalLasso)
                         } else {
                             appendSelectionPoint(normalizedX, normalizedY)
                             selectWithLasso(selectionPolygon())
                         }
                     }
-                    lassoPoints.clear(); movingSelection = false; selectionMoved = false; selectionGestureBefore = null; selectionTransformMode = TRANSFORM_NONE
+                    clearLassoInput(); movingSelection = false; selectionMoved = false; selectionGestureBefore = null; selectionTransformMode = TRANSFORM_NONE
                 } else if (activeTool == EditorTool.SHAPE) {
                     val shape = if (shapeKind == ShapeKind.FREEFORM) {
                         appendShapePoint(normalizedX, normalizedY)
@@ -4338,7 +4350,7 @@ class InkCanvasView(context: Context) : View(context) {
         if (activeTool == EditorTool.ERASER) cancelEraserGesture()
         selectionGestureBefore?.let(::restoreStrokeSnapshot)
         cancelRasterSelectionTransform()
-        lassoPoints.clear()
+        clearLassoInput()
         movingSelection = false
         selectionMoved = false
         selectionGestureBefore = null
@@ -5036,9 +5048,36 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun appendLassoPoint(x: Float, y: Float) {
+        if (selectionShape == SelectionShape.FREEFORM) {
+            val session = v5LassoSession?.takeIf(LassoSession::isActive) ?: LassoSession(
+                documentWidth = pageModelWidth.coerceAtLeast(1f),
+                documentHeight = pageModelHeight.coerceAtLeast(1f),
+            ).also { v5LassoSession = it }
+            if (session.append(DocumentPoint(
+                    x.coerceIn(0f, 1f) * pageModelWidth.coerceAtLeast(1f),
+                    y.coerceIn(0f, 1f) * pageModelHeight.coerceAtLeast(1f),
+                ))
+            ) syncLassoPreview(session.preview())
+            return
+        }
         val point = StrokePoint(x.coerceIn(0f, 1f), y.coerceIn(0f, 1f))
         val previous = lassoPoints.lastOrNull()
         if (previous == null || hypot((point.x - previous.x).toDouble(), (point.y - previous.y).toDouble()) > .0015) lassoPoints += point
+    }
+
+    private fun syncLassoPreview(contour: CanonicalLassoContour) {
+        lassoPoints.clear()
+        val width = pageModelWidth.coerceAtLeast(1f)
+        val height = pageModelHeight.coerceAtLeast(1f)
+        contour.points.mapTo(lassoPoints) { point ->
+            StrokePoint((point.x / width).coerceIn(0f, 1f), (point.y / height).coerceIn(0f, 1f))
+        }
+    }
+
+    private fun clearLassoInput() {
+        v5LassoSession?.cancel()
+        v5LassoSession = null
+        lassoPoints.clear()
     }
 
     private fun appendSelectionPoint(x: Float, y: Float) {
@@ -5123,13 +5162,39 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun selectWithLasso(polygon: List<StrokePoint>) {
+        selectWithLasso(polygon, exactMask = null)
+    }
+
+    private fun selectWithCanonicalLasso(contour: CanonicalLassoContour) {
+        val logicalWidth = documentSelectionState?.logicalWidth
+            ?: SelectionMaskCompositor.maskSize(pageModelWidth, pageModelHeight)?.width
+            ?: return
+        val logicalHeight = documentSelectionState?.logicalHeight
+            ?: SelectionMaskCompositor.maskSize(pageModelWidth, pageModelHeight)?.height
+            ?: return
+        val exact = SelectionMaskRasterizer.rasterize(
+            contour = contour,
+            documentWidth = pageModelWidth.coerceAtLeast(1f),
+            documentHeight = pageModelHeight.coerceAtLeast(1f),
+            logicalWidth = logicalWidth,
+            logicalHeight = logicalHeight,
+        )?.let(SparseAlphaMask::fromSnapshot)
+        val width = pageModelWidth.coerceAtLeast(1f)
+        val height = pageModelHeight.coerceAtLeast(1f)
+        val polygon = contour.points.map { point -> StrokePoint(point.x / width, point.y / height) }
+        selectWithLasso(polygon, exact)
+    }
+
+    private fun selectWithLasso(polygon: List<StrokePoint>, exactMask: SparseAlphaMask?) {
         if (polygon.size < 3) return
         val selectionState = documentSelectionState
         val beforeAlpha = selectionState?.snapshot()
         val beforeIds = selectedStrokeIds.toSet()
         val beforeRegions = selectedMaskRegions.map(List<StrokePoint>::toList)
-        val exactMask = SparseAlphaMask.polygon(polygon, pageModelWidth, pageModelHeight)
-        composeSelectionAlpha(exactMask, selectionMode)
+        composeSelectionAlpha(
+            exactMask ?: SparseAlphaMask.polygon(polygon, pageModelWidth, pageModelHeight),
+            selectionMode,
+        )
         // A selection is a mask, not a document edit. Never split/rewrite artwork while merely
         // selecting it; vector consumers use these ids while raster consumers use the same alpha.
         val hits = strokes.asSequence().filter { stroke ->
@@ -7763,7 +7828,7 @@ class InkCanvasView(context: Context) : View(context) {
         isolatedTestSelectionAlphaMask?.close(); isolatedTestSelectionAlphaMask = null
         selectionBoundaryMask?.close(); selectionBoundaryMask = null
         selectionFeatherPixels = 0f
-        lassoPoints.clear()
+        clearLassoInput()
         movingSelection = false
         selectionMoved = false
         selectionTransformArmed = false
@@ -7818,7 +7883,7 @@ class InkCanvasView(context: Context) : View(context) {
         selectedStrokeIds += inverted
         selectedMaskRegions = emptyList()
         replaceSelectionAlphaMask(invertedAlpha, resetFeather = false)
-        lassoPoints.clear()
+        clearLassoInput()
         movingSelection = false
         selectionFeatherBase = null
         recordSelectionHistory(selectionState, beforeAlpha, beforeIds, beforeRegions)
@@ -7848,7 +7913,7 @@ class InkCanvasView(context: Context) : View(context) {
         movingSelection = false
         selectionMoved = false
         selectionGestureBefore = null
-        lassoPoints.clear()
+        clearLassoInput()
         invalidate()
     }
 
@@ -7856,7 +7921,7 @@ class InkCanvasView(context: Context) : View(context) {
      * preserved so the host can leave the Selection tool without losing the user's work. */
     fun cancelSelectionInput() {
         if (activeTool != null) cancelActiveGestureForNavigation()
-        lassoPoints.clear()
+        clearLassoInput()
         movingSelection = false
         selectionMoved = false
         selectionGestureBefore = null
@@ -7876,7 +7941,7 @@ class InkCanvasView(context: Context) : View(context) {
         selectedStrokeIds.clear()
         selectedMaskRegions = emptyList()
         replaceSelectionAlphaMask(null, resetFeather = true)
-        lassoPoints.clear()
+        clearLassoInput()
         movingSelection = false
         selectionTransformArmed = false
         invalidate()
