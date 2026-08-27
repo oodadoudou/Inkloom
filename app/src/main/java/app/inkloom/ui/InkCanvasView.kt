@@ -69,7 +69,6 @@ import java.util.concurrent.Executors
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
 import app.inkloom.document.ViewportState
-import app.inkloom.settings.PaintingPipelineMode
 import app.inkloom.document.StrokeMaskDab
 import app.inkloom.document.StrokeMaskRenderer
 import app.inkloom.document.BrushCurvePoint
@@ -239,7 +238,6 @@ class InkCanvasView(context: Context) : View(context) {
     private val currentPoints = mutableListOf<StrokePoint>()
     private var currentStrokeId = java.util.UUID.randomUUID().toString()
     private var activeStrokeTemplate: InkStroke? = null
-    var paintingPipelineMode: PaintingPipelineMode = PaintingPipelineMode.CURRENT_LOW_LATENCY
 
     /** Debug-only stroke handoff overlay and [StrokeTrace] gate. No-op in release builds. */
     var showStrokeTraceOverlay: Boolean = false
@@ -2359,24 +2357,6 @@ class InkCanvasView(context: Context) : View(context) {
             (layerBlendModes[layerId] ?: LayerBlendMode.NORMAL) == LayerBlendMode.NORMAL &&
             layerId !in clippedLayers && layerId !in alphaLockedLayers && layerMasks[layerId]?.enabled != true &&
             layerElementBitmaps.isEmpty() && rasterLayerTileSurfaces.isEmpty()
-    }
-
-    internal fun requiresCompleteActiveReplay(strokes: List<InkStroke>): Boolean = synchronized(renderLock) {
-        val liveTaperReplay = strokes.any { stroke ->
-            StrokeTaper.endTaperEnabled(stroke) &&
-                StrokeTaper.pathLengthPx(stroke.points, pageModelWidth, pageModelHeight) <= StrokeTaper.FULL_TAPER_LIVE_REPLAY_MAX_PX
-        }
-        val wholeTextureStrokes = strokes.filter { !it.grainApplyPerPlot && it.grainAssetPath != null && it.grainDensity > 0f }
-        val dualStrokes = strokes.filter(InkStroke::dualBrush)
-        paintingPipelineMode == PaintingPipelineMode.FRONT_BUFFER_MIRROR_ONLY ||
-            liveTaperReplay ||
-            wholeTextureStrokes.isNotEmpty() &&
-            (strokes.size != 1 || wholeTextureStrokes.size != 1 || !canIncrementallyReplaceWholeStrokeTexture(wholeTextureStrokes.single())) ||
-            dualStrokes.isNotEmpty() && (
-                strokes.size != 1 ||
-                    dualStrokes.single().opacity < .999f ||
-                    ProcreateBrushBlend.normalize(dualStrokes.single().procreateBrushBlendMode) != ProcreateBrushBlend.NORMAL
-                )
     }
 
     private fun drawStampedStroke(
@@ -6332,25 +6312,6 @@ class InkCanvasView(context: Context) : View(context) {
     private fun makeStroke(points: List<StrokePoint>): InkStroke =
         activeStrokeTemplate?.copy(points = points.toList())
             ?: withCurrentBrushBehavior(buildStroke(points)).copy(width = gestureBrushSize)
-
-    private fun diagnosticStrokeTemplate(stroke: InkStroke): InkStroke {
-        if (!BuildConfig.PAINTING_DIAGNOSTICS || paintingPipelineMode != PaintingPipelineMode.MATERIAL_DISABLED) return stroke
-        return stroke.copy(
-            tipAssetPath = null,
-            tipAssetPaths = emptyList(),
-            grainAssetPath = null,
-            dualBrush = false,
-            spray = false,
-            watercolor = false,
-            procreateWetMix = ProcreateWetMix(),
-            proceduralPaperGrainEnabled = false,
-            blur = 0f,
-            randomRotationDegrees = 0f,
-            strokeRotationJitterDegrees = 0f,
-            strokePathJitter = 0f,
-            strokePathLongitudinalJitter = 0f,
-        )
-    }
 
     private fun withCurrentBrushBehavior(stroke: InkStroke): InkStroke = stroke.copy(
         renderSeed = brushRenderSeed,

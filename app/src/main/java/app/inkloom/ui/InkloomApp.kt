@@ -117,7 +117,6 @@ import app.inkloom.engine.v5.tools.RasterLayerPatch
 import app.inkloom.settings.AppSettings
 import app.inkloom.settings.AppSettingsBackupCodec
 import app.inkloom.settings.AppSettingsStore
-import app.inkloom.settings.PaintingPipelineMode
 import app.inkloom.settings.AxisShortcutBinding
 import app.inkloom.settings.BuiltInWorkspace
 import app.inkloom.settings.BuiltInWorkspaces
@@ -2197,10 +2196,7 @@ private fun EditorScreen(
                     assets = assets,
                     selectionRuntime = selectionRuntime,
                     settings = settings,
-                    viewportState = if (
-                        app.inkloom.BuildConfig.PAINTING_DIAGNOSTICS &&
-                        settings.paintingPipelineMode == PaintingPipelineMode.IDENTITY_VIEW_TRANSFORM
-                    ) ViewportState(1f, 0f, 0f, 0f) else ViewportState(zoom, panX, panY, viewRotation),
+                    viewportState = ViewportState(zoom, panX, panY, viewRotation),
                     onZoom = { factor, focusX, focusY ->
                         val view = canvasView ?: return@PaperCanvas
                         val current = ViewportState(view.viewportScale, view.viewportPanX, view.viewportPanY, view.viewportRotationDegrees)
@@ -4987,9 +4983,6 @@ internal fun InkCanvasView.applyBrushConfiguration(
     val activeBrush = if (selectedTool == EditorTool.ERASER) selectedBrush?.takeIf(BrushRoleClassifier::isEraser) else selectedBrush
     switchInputConfiguration(selectedTool, activeBrush?.id)
     fingerDrawingEnabled = settings.fingerDrawing
-    paintingPipelineMode = if (app.inkloom.BuildConfig.PAINTING_DIAGNOSTICS) {
-        settings.paintingPipelineMode
-    } else PaintingPipelineMode.CURRENT_LOW_LATENCY
     singleFingerDoubleTapUndo = settings.singleFingerDoubleTapUndo
     twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo
     threeFingerTapRedo = settings.threeFingerTapRedo
@@ -10060,32 +10053,7 @@ private fun SettingsDialog(
                 item { SettingSwitch(tr("Two-finger canvas rotation", "双指旋转画布"), tr("Pinch, pan, and twist the canvas naturally.", "用双指自然地缩放、平移和旋转画布。"), settings.twoFingerRotation) { onChange(settings.copy(twoFingerRotation = it)) } }
                 item { SettingSwitch(tr("Show input diagnostics", "显示输入诊断"), tr("Displays stylus data plus Toolbox keys, scan codes, rotary axes, pointer buttons, source and device identity.", "显示手写笔数据，以及 Toolbox 的按键、扫描码、旋钮轴、侧键、来源和设备标识。"), settings.showInputDiagnostics) { onChange(settings.copy(showInputDiagnostics = it)) } }
                 if (app.inkloom.BuildConfig.PAINTING_DIAGNOSTICS) {
-                    item { SettingSwitch(tr("Show stroke handoff overlay", "显示落笔链路叠加层"), tr("Debug only: shows whether the front buffer (FB) or the committed V3 projection (V3) owns the current frame, active tile transactions (TX), projection generation (GEN) and the active stroke id (SID).", "仅调试版：显示当前帧由前缓冲(FB)还是已提交的 V3 投影(V3)负责、进行中的瓦片事务(TX)、投影代数(GEN)与当前笔画 ID(SID)。"), settings.showStrokeTraceOverlay) { onChange(settings.copy(showStrokeTraceOverlay = it)) } }
-                    item {
-                        Column {
-                            Text(tr("Painting pipeline diagnostic", "绘画链路诊断"), fontSize = 13.sp)
-                            Text(
-                                tr("A/B isolation only. Current low latency is the normal product path.", "仅用于 A/B 隔离；“当前低延迟”是正常产品路径。"),
-                                color = MutedInk,
-                                fontSize = 10.sp,
-                            )
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                items(PaintingPipelineMode.entries, key = { it.name }) { mode ->
-                                    FilterChip(
-                                        selected = settings.paintingPipelineMode == mode,
-                                        onClick = { onChange(settings.copy(paintingPipelineMode = mode)) },
-                                        label = { Text(when (mode) {
-                                            PaintingPipelineMode.CURRENT_LOW_LATENCY -> tr("Current", "当前低延迟")
-                                            PaintingPipelineMode.FRONT_BUFFER_DISABLED -> tr("No front buffer", "关闭前缓冲")
-                                            PaintingPipelineMode.FRONT_BUFFER_MIRROR_ONLY -> tr("Full replay", "前缓冲整笔重放")
-                                            PaintingPipelineMode.MATERIAL_DISABLED -> tr("No material", "关闭材质")
-                                            PaintingPipelineMode.IDENTITY_VIEW_TRANSFORM -> tr("Identity view", "单位画布变换")
-                                        }) },
-                                    )
-                                }
-                            }
-                        }
-                    }
+                    item { SettingSwitch(tr("Show V5 stroke diagnostics", "显示 V5 落笔诊断"), tr("Debug only: shows the active V5 transaction, stable generation, dirty tiles and frame counters.", "仅调试版：显示 V5 活动事务、稳定代数、脏瓦片与帧计数。"), settings.showStrokeTraceOverlay) { onChange(settings.copy(showStrokeTraceOverlay = it)) } }
                 }
                 item { Text("${tr("Pressure sensitivity", "压感灵敏度")}  ${"%.2f".format(settings.pressureSensitivity)}×") }
                 item { Slider(settings.pressureSensitivity, { onChange(settings.copy(pressureSensitivity = it)) }, valueRange = .25f..2.5f) }
