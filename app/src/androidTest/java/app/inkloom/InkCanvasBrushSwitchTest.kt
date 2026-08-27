@@ -11,6 +11,7 @@ import app.inkloom.document.LiquifyMode
 import app.inkloom.document.ProcreateTaper
 import app.inkloom.document.StrokeInputKind
 import app.inkloom.engine.v3.render.ActiveStrokeCompositor
+import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.EditorTool
@@ -240,18 +241,12 @@ class InkCanvasBrushSwitchTest {
     @Test
     fun eraserModeCannotPaintWithAStaleNormalBrushDescriptor() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val committed = mutableListOf<InkStroke>()
-        val replacements = mutableListOf<InkStroke>()
-        val original = InkStroke(
-            id = "target",
-            width = 18f,
-            points = listOf(app.inkloom.document.StrokePoint(.1f, .5f), app.inkloom.document.StrokePoint(.9f, .5f)),
-        )
+        val surface = PixelTileSurface(1200, 1200).also {
+            it.beginWrite("eraser target").run { setPixel(600, 600, Color.BLACK); commit().close() }
+        }
         val view = InkCanvasView(instrumentation.targetContext).apply {
             layout(0, 0, 1200, 1200)
-            setDocumentStrokes(listOf(original), "eraser-stale-brush")
-            onStrokeCommitted = committed::add
-            onStrokesReplaced = { _, added, _ -> replacements += added }
+            setRasterLayerSurfaces(mapOf(app.inkloom.document.LayerIds.INK to surface))
         }
 
         instrumentation.runOnMainSync {
@@ -259,18 +254,17 @@ class InkCanvasBrushSwitchTest {
             drawStroke(view, 1L, 600f)
         }
 
-        assertTrue("Eraser mode must never commit black paint", committed.isEmpty())
-        assertTrue("The existing stroke should receive an eraser mask", replacements.any { it.id == original.id && it.masks.isNotEmpty() })
+        assertEquals("V5 eraser must remove destination pixels instead of creating black paint", 0, Color.alpha(surface.pixelAt(600, 600)))
     }
 
     @Test
     fun palmDownBeforeStylusStartsAtThePenAndNeverCreatesTopLeftArtifacts() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val committed = mutableListOf<InkStroke>()
+        val surface = PixelTileSurface(1200, 1200)
         val view = InkCanvasView(instrumentation.targetContext).apply {
             layout(0, 0, 1200, 1200)
+            setRasterLayerSurfaces(mapOf(app.inkloom.document.LayerIds.INK to surface))
             applyBrushConfiguration(EditorTool.PEN, AppSettings(), brush("palm-safe", "Palm safe"), 18f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
-            onStrokeCommitted = committed::add
         }
 
         instrumentation.runOnMainSync {
@@ -280,8 +274,8 @@ class InkCanvasBrushSwitchTest {
             view.onTouchEvent(palmAndStylusEvent(MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), 980f, 740f, 4L))
         }
 
-        assertEquals(1, committed.size)
-        assertTrue(committed.single().points.all { it.x > .5f && it.y > .45f })
+        assertEquals(1, view.v5DryGestureCount)
+        assertTrue(view.v5LastCommittedNormalizedPoints().all { it.first > .5f && it.second > .45f })
     }
 
     @Test

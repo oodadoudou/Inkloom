@@ -3,23 +3,15 @@ package app.inkloom.ui
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Matrix
 import android.graphics.Paint
-import android.graphics.PorterDuff
 import android.view.MotionEvent
 import android.view.PointerIcon
 import android.widget.FrameLayout
 import androidx.annotation.WorkerThread
 import androidx.graphics.lowlatency.LowLatencyCanvasView
-import app.inkloom.document.InkStroke
-import app.inkloom.engine.v3.api.ActiveStrokeCompositor
-import app.inkloom.engine.v3.api.ActiveStrokeTailPlanner
-import app.inkloom.engine.v3.api.StrokeTrace
-import app.inkloom.engine.v3.api.PaintingTruthDiagnostics
 import app.inkloom.document.BrushCursorGeometry
-import app.inkloom.engine.v3.api.ViewportFrame
-import app.inkloom.engine.v3.api.PointerPacketMapper
-import app.inkloom.engine.v3.render.StrokeRenderPacket
+import app.inkloom.engine.v5.coordinates.ViewportFrame
+import app.inkloom.engine.v5.input.PointerPacketMapper
 import kotlin.math.atan2
 
 /**
@@ -29,40 +21,26 @@ import kotlin.math.atan2
  * those bounds. Android hit testing does not follow the page transform into its visible overflow,
  * so this proxy maps the complete event through the actual source and destination View matrices.
  */
-class InkViewportTouchProxy(context: Context) : FrameLayout(context), ActiveStrokeCompositor {
+class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
     var target: InkCanvasView? = null
         set(value) {
             if (field === value) return
             field?.apply {
                 externalHoverCursor = false
                 onHoverCursorStyleChanged = null
-                if (activeStrokeSurface === this@InkViewportTouchProxy) activeStrokeSurface = null
             }
             field = value
             value?.apply {
                 externalHoverCursor = true
                 onHoverCursorStyleChanged = { refreshCursorStyle() }
-                // Active ink and the physical cursor must share the same stable viewport Surface.
-                // A page-local Surface nested under Compose graphicsLayer can be presented with a
-                // different transform/frame than the RenderNode-backed committed page.
-                activeStrokeSurface = this@InkViewportTouchProxy
             }
             activeDrawingFrame = null
-            cancel()
             clearHoverCursor()
         }
 
     private val coordinateMapper = PointerPacketMapper()
-    private val activeInkSurface = LowLatencyCanvasView(context)
     private val cursorSurface = LowLatencyCanvasView(context)
-    @Volatile private var activePacket: StrokeRenderPacket? = null
-    @Volatile private var lastRenderedPacket: StrokeRenderPacket? = null
-    @Volatile private var activeTransform: ViewportFrame? = null
     @Volatile private var activeDrawingFrame: ViewportFrame? = null
-    @Volatile private var pendingCommittedSequence: Long? = null
-    private val activeLock = Any()
-    private val activeTailPlanner = ActiveStrokeTailPlanner()
-    private val activeRenderMatrix = Matrix()
     private val hoverPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     @Volatile private var hoverVisible = false
     @Volatile private var hoverX = 0f
@@ -82,19 +60,6 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context), ActiveStro
         isClickable = true
         clipChildren = true
         clipToPadding = true
-        activeInkSurface.apply {
-            setBackgroundColor(Color.TRANSPARENT)
-            isClickable = false
-            isFocusable = false
-            pointerIcon = PointerIcon.getSystemIcon(context, PointerIcon.TYPE_NULL)
-            setRenderCallback(object : LowLatencyCanvasView.Callback {
-                @WorkerThread
-                override fun onRedrawRequested(canvas: Canvas, width: Int, height: Int) = drawCompleteActiveInk(canvas)
-
-                @WorkerThread
-                override fun onDrawFrontBufferedLayer(canvas: Canvas, width: Int, height: Int) = drawIncrementalActiveInk(canvas)
-            })
-        }
         cursorSurface.apply {
             setBackgroundColor(Color.TRANSPARENT)
             isClickable = false
@@ -108,106 +73,11 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context), ActiveStro
                 override fun onDrawFrontBufferedLayer(canvas: Canvas, width: Int, height: Int) = drawCursor(canvas)
             })
         }
-        addView(activeInkSurface, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(cursorSurface, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-    }
-
-    override val hasActiveInk: Boolean
-        get() = activePacket?.strokes?.isNotEmpty() == true
-
-    override fun render(packet: StrokeRenderPacket) {
-        val canvas = target ?: return
-        activeTransform = resolvePacketFrame(packet, canvas)
-        activePacket = packet
-        lastRenderedPacket = packet
-        activeInkSurface.renderFrontBufferedLayer()
-    }
-
-    override fun commit(packet: StrokeRenderPacket) {
-        val canvas = target ?: return
-        PaintingTruthDiagnostics.compareHandoff(lastRenderedPacket, packet)
-        activeTransform = resolvePacketFrame(packet, canvas)
-        activePacket = packet
-        pendingCommittedSequence = packet.sequence
-        activeInkSurface.renderFrontBufferedLayer()
-        // The packet is already committed to the target's V3 document surface. Keeping this as a
-        // transient overlay avoids a second persistent HWUI copy and the one-frame dark flash.
-        traceFrontBufferCommit(packet)
-    }
-
-    override fun onDocumentFramePresented(packetSequence: Long) {
-        if (pendingCommittedSequence != packetSequence) return
-        val packet = activePacket?.takeIf { it.sequence == packetSequence } ?: return
-        pendingCommittedSequence = null
-        activePacket = null
-        synchronized(activeLock) { activeTailPlanner.reset() }
-        activeInkSurface.clear()
-        traceTransientHidden(packet)
-        target?.resetActiveRenderState()
-    }
-
-    override fun cancel() {
-        activePacket = null
-        lastRenderedPacket = null
-        activeTransform = null
-        pendingCommittedSequence = null
-        synchronized(activeLock) { activeTailPlanner.reset() }
-        activeInkSurface.clear()
-        target?.resetActiveRenderState()
-    }
-
-    @WorkerThread
-    private fun drawCompleteActiveInk(canvas: Canvas) {
-        canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
-        val view = target ?: return
-        val strokes = activePacket?.strokes.orEmpty()
-        val transform = activeTransform ?: return
-        view.resetActiveRenderState()
-        if (strokes.isNotEmpty()) drawActiveInk(canvas, view, transform, strokes, incrementalStampDraw = false, completeRedraw = true)
-        synchronized(activeLock) { activeTailPlanner.complete(strokes) }
-    }
-
-    @WorkerThread
-    private fun drawIncrementalActiveInk(canvas: Canvas) {
-        val view = target ?: return
-        val strokes = activePacket?.strokes.orEmpty()
-        val transform = activeTransform ?: return
-        if (strokes.isEmpty()) return
-        val forceComplete = view.requiresCompleteActiveReplay(strokes)
-        val plan = synchronized(activeLock) {
-            if (forceComplete) activeTailPlanner.complete(strokes) else activeTailPlanner.incremental(strokes)
-        }
-        if (plan.clearBeforeDraw) canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
-        if (plan.strokes.isNotEmpty()) drawActiveInk(canvas, view, transform, plan.strokes, plan.incrementalStampDraw)
-    }
-
-    @WorkerThread
-    private fun drawActiveInk(
-        canvas: Canvas,
-        view: InkCanvasView,
-        transform: ViewportFrame,
-        strokes: List<InkStroke>,
-        incrementalStampDraw: Boolean,
-        completeRedraw: Boolean = false,
-    ) {
-        val checkpoint = canvas.save()
-        canvas.concat(transform.pageToViewportMatrix(activeRenderMatrix))
-        canvas.clipRect(0f, 0f, view.width.toFloat(), view.height.toFloat())
-        view.drawActiveStrokes(canvas, strokes, incrementalStampDraw, completeRedraw)
-        canvas.restoreToCount(checkpoint)
     }
 
     private fun currentFrame(canvas: InkCanvasView): ViewportFrame? =
         coordinateMapper.snapshot(this, canvas, canvas.viewportState())
-
-    private fun resolvePacketFrame(packet: StrokeRenderPacket, canvas: InkCanvasView): ViewportFrame? {
-        val frozen = activeDrawingFrame
-        if (packet.transformFrameId != null && frozen?.id == packet.transformFrameId) return frozen
-        if (packet.transformFrameId != null && frozen != null && frozen.id != packet.transformFrameId) {
-            PaintingTruthDiagnostics.recordTransformMismatch()
-        }
-        return frozen ?: currentFrame(canvas)
-    }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         val stylusIndex = event.stylusPointerIndex(activeStylusPointerId)
@@ -313,7 +183,6 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context), ActiveStro
     }
 
     override fun onDetachedFromWindow() {
-        cancel()
         target = null
         super.onDetachedFromWindow()
     }
@@ -371,14 +240,6 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context), ActiveStro
         hoverDynamicRotationDegrees = 0f
         hoverDirectionDegrees = 0f
         cursorSurface.clear()
-    }
-
-    private fun traceFrontBufferCommit(packet: StrokeRenderPacket) {
-        packet.primaryStrokeId?.let { id -> StrokeTrace.mark(id, StrokeTrace.STAGE_FRONT_BUFFER_COMMIT) }
-    }
-
-    private fun traceTransientHidden(packet: StrokeRenderPacket) {
-        packet.primaryStrokeId?.let { id -> StrokeTrace.mark(id, StrokeTrace.STAGE_TRANSIENT_HIDDEN) }
     }
 
     private fun refreshCursorStyle() {
