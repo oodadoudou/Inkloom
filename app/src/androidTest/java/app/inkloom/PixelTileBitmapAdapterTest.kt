@@ -4,7 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.ColorSpace
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
+import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v5.surface.PixelRect
 import app.inkloom.engine.v5.surface.LinearRgba
 import app.inkloom.engine.v5.surface.PixelTileFormat

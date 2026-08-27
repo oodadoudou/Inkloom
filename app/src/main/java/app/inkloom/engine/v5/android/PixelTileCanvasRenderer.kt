@@ -1,4 +1,4 @@
-package app.inkloom.engine.v3.android
+package app.inkloom.engine.v5.android
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -18,7 +18,7 @@ import kotlin.math.floor
  *
  * Android bitmaps are retained per immutable tile generation. A document transaction therefore
  * invalidates only the tiles whose generation changed, while pan/zoom merely changes their target
- * rectangles. This is the Android edge adapter for the V3 tile renderer; document truth remains in
+ * rectangles. This is the Android edge adapter for the V5 tile renderer; document truth remains in
  * [PixelTileSurfaceSnapshot].
  */
 internal class PixelTileCanvasRenderer(
@@ -182,7 +182,7 @@ internal class PixelTileCanvasRenderer(
     ) {
         val bitmap = cached.bitmap
         val node = cached.hardwareNode?.takeIf(RenderNode::hasDisplayList) ?: RenderNode(
-            "Inkloom.V3.PixelTile.${surfaceId.take(8)}.${key.column}.${key.row}.$generation",
+            "Inkloom.V5.PixelTile.${surfaceId.take(8)}.${key.column}.${key.row}.$generation",
         ).also { created ->
             created.setPosition(0, 0, bitmap.width, bitmap.height)
             created.setHasOverlappingRendering(false)

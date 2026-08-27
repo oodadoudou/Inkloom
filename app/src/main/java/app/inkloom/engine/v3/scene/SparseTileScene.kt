@@ -9,10 +9,10 @@ import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokeTileIndex
 import app.inkloom.document.StrokeTileKey
 import app.inkloom.document.StrokeTileRect
-import app.inkloom.engine.v3.android.PixelMemoryPressure
-import app.inkloom.engine.v3.android.PixelMemoryPressureCoordinator
-import app.inkloom.engine.v3.android.PixelMemoryTrimResult
-import app.inkloom.engine.v3.android.PixelMemoryTrimmable
+import app.inkloom.engine.v5.android.PixelMemoryPressure
+import app.inkloom.engine.v5.android.PixelMemoryPressureCoordinator
+import app.inkloom.engine.v5.android.PixelMemoryTrimResult
+import app.inkloom.engine.v5.android.PixelMemoryTrimmable
 
 /**
  * Sparse retained scene for committed vector ink. Hardware canvases draw independently recorded

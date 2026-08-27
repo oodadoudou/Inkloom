@@ -12,7 +12,7 @@ import app.inkloom.document.StrokePoint
 import app.inkloom.document.StrokeTileKey
 import app.inkloom.engine.v3.render.ActiveStrokeCompositor
 import app.inkloom.engine.v3.scene.SparseTileScene
-import app.inkloom.engine.v3.android.PixelMemoryPressure
+import app.inkloom.engine.v5.android.PixelMemoryPressure
 import app.inkloom.model.EditorTool
 import app.inkloom.model.SymmetryMode
 import app.inkloom.ui.InkCanvasView

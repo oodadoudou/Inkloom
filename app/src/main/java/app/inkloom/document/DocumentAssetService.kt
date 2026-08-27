@@ -20,8 +20,8 @@ import app.inkloom.engine.v3.brush.BrushProgramRuntime
 import app.inkloom.engine.v3.render.BrushProgramBatchRenderer
 import app.inkloom.engine.v3.brush.ProceduralBrushTip
 import app.inkloom.engine.v3.storage.DocumentCheckpointCodec
-import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
-import app.inkloom.engine.v3.android.PixelTileCanvasRenderer
+import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
+import app.inkloom.engine.v5.android.PixelTileCanvasRenderer
 import app.inkloom.engine.v3.composite.PixelLayerProjectionCache
 import app.inkloom.engine.v3.composite.PixelLayerProjectionInput
 import app.inkloom.engine.v3.storage.PixelTileArchiveStore
@@ -1192,7 +1192,7 @@ class DocumentAssetService(private val context: Context) {
                 })
                 val sparse = mask.surface?.let { runCatching { loadMaskTileSurface(it).snapshot() }.getOrNull() }
                 if (mask.enabled && sparse != null) {
-                    app.inkloom.engine.v3.android.MaskTileCanvasRenderer.draw(
+                    app.inkloom.engine.v5.android.MaskTileCanvasRenderer.draw(
                         sparse,
                         canvas,
                         RectF(0f, 0f, width.toFloat(), height.toFloat()),

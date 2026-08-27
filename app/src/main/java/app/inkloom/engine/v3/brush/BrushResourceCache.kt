@@ -6,10 +6,10 @@ import app.inkloom.document.CspAntiAlias
 import app.inkloom.document.CspTextureComposite
 import app.inkloom.document.CspTextureMaterial
 import app.inkloom.document.ProcreateFiltering
-import app.inkloom.engine.v3.android.PixelMemoryPressure
-import app.inkloom.engine.v3.android.PixelMemoryPressureCoordinator
-import app.inkloom.engine.v3.android.PixelMemoryTrimResult
-import app.inkloom.engine.v3.android.PixelMemoryTrimmable
+import app.inkloom.engine.v5.android.PixelMemoryPressure
+import app.inkloom.engine.v5.android.PixelMemoryPressureCoordinator
+import app.inkloom.engine.v5.android.PixelMemoryTrimResult
+import app.inkloom.engine.v5.android.PixelMemoryTrimmable
 import java.util.LinkedHashMap
 
 /** Immutable description of one decoded render tip. Format importers are deliberately absent:

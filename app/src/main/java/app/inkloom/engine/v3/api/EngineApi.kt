@@ -44,7 +44,7 @@ internal typealias SelectionAffineTransform = app.inkloom.engine.v3.tools.Select
 internal typealias MaskTileSurfaceSnapshot = app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot
 
 internal fun importPixelTileSurface(bitmap: android.graphics.Bitmap): PixelTileSurface =
-    app.inkloom.engine.v3.android.PixelTileBitmapAdapter.import(bitmap)
+    app.inkloom.engine.v5.android.PixelTileBitmapAdapter.import(bitmap)
 
 internal inline fun <T> traceEngineV3(section: String, block: () -> T): T =
     app.inkloom.engine.v3.diagnostics.traceEngineV3(section, block)

@@ -7,8 +7,8 @@ import android.graphics.ColorSpace
 import android.graphics.RectF
 import android.graphics.RenderNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import app.inkloom.engine.v3.android.PixelTileCanvasRenderer
-import app.inkloom.engine.v3.android.PixelMemoryPressure
+import app.inkloom.engine.v5.android.PixelTileCanvasRenderer
+import app.inkloom.engine.v5.android.PixelMemoryPressure
 import app.inkloom.engine.v5.surface.PixelRect
 import app.inkloom.engine.v5.surface.LinearRgba
 import app.inkloom.engine.v5.surface.PixelTileFormat

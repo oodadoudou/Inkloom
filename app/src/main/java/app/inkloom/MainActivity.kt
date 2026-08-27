@@ -6,7 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.core.view.WindowCompat
 import app.inkloom.ui.InkloomApp
 import app.inkloom.ui.theme.InkloomTheme
-import app.inkloom.engine.v3.android.PixelMemoryPressureCoordinator
+import app.inkloom.engine.v5.android.PixelMemoryPressureCoordinator
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {

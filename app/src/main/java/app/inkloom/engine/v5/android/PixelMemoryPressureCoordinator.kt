@@ -1,4 +1,4 @@
-package app.inkloom.engine.v3.android
+package app.inkloom.engine.v5.android
 
 import java.lang.ref.WeakReference
 import java.util.concurrent.atomic.AtomicLong
@@ -16,7 +16,7 @@ internal interface PixelMemoryTrimmable {
     fun trimPixelMemory(pressure: PixelMemoryPressure): PixelMemoryTrimResult
 }
 
-/** Process-wide dispatcher for rebuildable V3 cache memory. Document truth is never registered. */
+/** Process-wide dispatcher for rebuildable V5 presentation cache memory. Document truth is never registered. */
 internal object PixelMemoryPressureCoordinator {
     private data class Entry(
         val id: Long,

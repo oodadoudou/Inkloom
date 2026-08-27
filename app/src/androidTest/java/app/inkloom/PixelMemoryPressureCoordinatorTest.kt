@@ -4,11 +4,11 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.RectF
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import app.inkloom.engine.v3.android.MaskTileCanvasRenderer
-import app.inkloom.engine.v3.android.PixelMemoryPressure
-import app.inkloom.engine.v3.android.PixelMemoryPressureCoordinator
-import app.inkloom.engine.v3.android.PixelMemoryTrimResult
-import app.inkloom.engine.v3.android.PixelMemoryTrimmable
+import app.inkloom.engine.v5.android.MaskTileCanvasRenderer
+import app.inkloom.engine.v5.android.PixelMemoryPressure
+import app.inkloom.engine.v5.android.PixelMemoryPressureCoordinator
+import app.inkloom.engine.v5.android.PixelMemoryTrimResult
+import app.inkloom.engine.v5.android.PixelMemoryTrimmable
 import app.inkloom.engine.v5.surface.MaskTileSurface
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

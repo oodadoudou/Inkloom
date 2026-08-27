@@ -6976,7 +6976,7 @@ private fun LayerMaskThumbnailView(mask: LayerMask, modifier: Modifier = Modifie
             .border(1.dp, OutlineSoft, RoundedCornerShape(2.dp)),
     ) {
         drawIntoCanvas { composeCanvas ->
-            app.inkloom.engine.v3.android.MaskTileCanvasRenderer.draw(
+            app.inkloom.engine.v5.android.MaskTileCanvasRenderer.draw(
                 snapshot,
                 composeCanvas.nativeCanvas,
                 android.graphics.RectF(0f, 0f, size.width, size.height),

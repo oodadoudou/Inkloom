@@ -5,7 +5,7 @@ import android.graphics.Color
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.engine.v3.tools.RasterTileBlendSession
 import app.inkloom.engine.v3.tools.RasterAbyssPolicy
-import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
+import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v5.surface.PixelTileSurface.HistoryDirection
 import app.inkloom.engine.v5.surface.PixelTileSurface
 import org.junit.Assert.assertEquals

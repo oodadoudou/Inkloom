@@ -12,7 +12,7 @@ import app.inkloom.document.InkPage
 import app.inkloom.document.LayerContentKind
 import app.inkloom.document.LayerRole
 import app.inkloom.document.RasterTileSurfaceRef
-import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
+import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
 import app.inkloom.model.EditorTool
 import java.io.File
 import org.junit.Assert.assertEquals
