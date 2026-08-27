@@ -1,6 +1,6 @@
 package app.inkloom.engine.v3.brush
 
-import app.inkloom.engine.v3.geometry.DocumentPoint
+import app.inkloom.engine.v5.coordinates.DocumentPoint
 
 enum class MaterialCoordinateSpace { DOCUMENT, BRUSH_LOCAL, STROKE }
 

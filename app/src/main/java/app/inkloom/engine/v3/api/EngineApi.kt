@@ -3,9 +3,9 @@ package app.inkloom.engine.v3.api
 /** The single application-facing surface of Engine V3. Implementation packages stay replaceable
  * without allowing UI code to couple itself to renderer, scene, input or tool internals. */
 internal typealias NativeStrokeSession = app.inkloom.engine.v5.input.NativeStrokeSession
-internal typealias PointerPacketMapper = app.inkloom.engine.v3.input.PointerPacketMapper
-internal typealias ViewportFrame = app.inkloom.engine.v3.geometry.ViewportFrame
-internal typealias ViewportFrameId = app.inkloom.engine.v3.geometry.ViewportFrameId
+internal typealias PointerPacketMapper = app.inkloom.engine.v5.input.PointerPacketMapper
+internal typealias ViewportFrame = app.inkloom.engine.v5.coordinates.ViewportFrame
+internal typealias ViewportFrameId = app.inkloom.engine.v5.coordinates.ViewportFrameId
 
 internal typealias BrushProgram = app.inkloom.engine.v3.brush.BrushProgram
 internal typealias BrushProgramRuntime = app.inkloom.engine.v3.brush.BrushProgramRuntime

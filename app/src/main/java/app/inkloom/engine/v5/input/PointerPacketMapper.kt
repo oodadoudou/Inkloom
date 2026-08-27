@@ -1,12 +1,12 @@
-package app.inkloom.engine.v3.input
+package app.inkloom.engine.v5.input
 
 import android.graphics.Matrix
 import android.view.MotionEvent
 import android.view.View
 import app.inkloom.document.ViewportState
-import app.inkloom.engine.v3.geometry.PagePoint
-import app.inkloom.engine.v3.geometry.ViewportFrame
-import app.inkloom.engine.v3.geometry.ViewportFrameId
+import app.inkloom.engine.v5.coordinates.PagePoint
+import app.inkloom.engine.v5.coordinates.ViewportFrame
+import app.inkloom.engine.v5.coordinates.ViewportFrameId
 import java.util.concurrent.atomic.AtomicLong
 
 /**

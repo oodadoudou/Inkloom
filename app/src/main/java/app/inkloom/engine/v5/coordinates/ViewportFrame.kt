@@ -1,4 +1,4 @@
-package app.inkloom.engine.v3.geometry
+package app.inkloom.engine.v5.coordinates
 
 import android.graphics.Matrix
 import app.inkloom.document.ViewportState
@@ -10,7 +10,6 @@ value class ViewportFrameId(val value: Long)
 
 data class ViewportPoint(val x: Float, val y: Float)
 data class PagePoint(val x: Float, val y: Float)
-data class DocumentPoint(val x: Float, val y: Float)
 data class TilePoint(val x: Int, val y: Int)
 data class NormalizedPagePoint(val x: Float, val y: Float)
 

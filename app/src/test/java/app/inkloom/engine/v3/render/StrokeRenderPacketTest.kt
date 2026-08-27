@@ -2,7 +2,7 @@ package app.inkloom.engine.v3.render
 
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
-import app.inkloom.engine.v3.geometry.ViewportFrameId
+import app.inkloom.engine.v5.coordinates.ViewportFrameId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Test

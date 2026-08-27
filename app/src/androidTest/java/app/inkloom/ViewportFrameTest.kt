@@ -10,10 +10,10 @@ import app.inkloom.document.ViewportTransform
 import app.inkloom.document.GraphiteFootprint
 import app.inkloom.document.InkStroke
 import app.inkloom.engine.v3.brush.MaterialCoordinateContext
-import app.inkloom.engine.v3.geometry.PagePoint
-import app.inkloom.engine.v3.geometry.ViewportFrame
-import app.inkloom.engine.v3.geometry.ViewportFrameId
-import app.inkloom.engine.v3.input.PointerPacketMapper
+import app.inkloom.engine.v5.coordinates.PagePoint
+import app.inkloom.engine.v5.coordinates.ViewportFrame
+import app.inkloom.engine.v5.coordinates.ViewportFrameId
+import app.inkloom.engine.v5.input.PointerPacketMapper
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -87,7 +87,7 @@ class ViewportFrameTest {
 
         mapper.map(event, frozen).use { packet ->
             assertEquals(frozen.id, packet.frame.id)
-            val page = frozen.viewportToPage(app.inkloom.engine.v3.geometry.ViewportPoint(510f, 390f))
+            val page = frozen.viewportToPage(app.inkloom.engine.v5.coordinates.ViewportPoint(510f, 390f))
             assertEquals(page.x, packet.event.x, .01f)
             assertEquals(page.y, packet.event.y, .01f)
         }

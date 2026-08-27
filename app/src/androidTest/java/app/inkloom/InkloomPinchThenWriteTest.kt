@@ -195,7 +195,7 @@ class InkloomPinchThenWriteTest {
             app.inkloom.document.ViewportState(view.viewportScale, view.viewportPanX, view.viewportPanY, view.viewportRotationDegrees),
         ))
         fun viewportPoint(x: Float, y: Float) = frame.pageToViewport(
-            app.inkloom.engine.v3.geometry.PagePoint(view.width * x, view.height * y),
+            app.inkloom.engine.v5.coordinates.PagePoint(view.width * x, view.height * y),
         )
         val topLeft = viewportPoint(.38f, .38f)
         val topRight = viewportPoint(.62f, .38f)
