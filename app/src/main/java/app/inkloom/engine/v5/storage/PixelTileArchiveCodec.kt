@@ -1,4 +1,4 @@
-package app.inkloom.engine.v3.storage
+package app.inkloom.engine.v5.storage
 
 import app.inkloom.engine.v5.surface.PixelTileKey
 import app.inkloom.engine.v5.surface.PixelTileFormat
@@ -23,8 +23,8 @@ import java.util.zip.Inflater
  * atomic publication are intentionally owned by the document asset store, not this pure codec.
  */
 internal object PixelTileArchiveCodec {
-    private const val FORMAT = "inkloom-pixel-tiles"
-    private const val SCHEMA_VERSION = 3
+    private const val FORMAT = "inkloom-pixel-tiles-v5"
+    private const val SCHEMA_VERSION = 5
     private const val RGBA8_CODEC = "zlib-int32-le"
     private const val F16_CODEC = "zlib-rgba-half4-le"
     private const val MAX_LOGICAL_DIMENSION = 65_536
@@ -222,7 +222,7 @@ internal object PixelTileArchiveCodec {
     private fun verifiedManifest(manifestText: String): Manifest {
         val envelope = json.decodeFromString<Envelope>(manifestText)
         require(envelope.format == FORMAT) { "Unsupported tile manifest format ${envelope.format}" }
-        require(envelope.schemaVersion in 1..SCHEMA_VERSION) {
+        require(envelope.schemaVersion == SCHEMA_VERSION) {
             "Unsupported tile manifest schema ${envelope.schemaVersion}"
         }
         require(envelope.checksum == crc32(envelope.payload.encodeToByteArray())) {

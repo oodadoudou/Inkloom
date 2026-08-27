@@ -1,20 +1,17 @@
-package app.inkloom.engine.v3.storage
+package app.inkloom.engine.v5.storage
 
 import app.inkloom.document.InkDocument
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import java.util.zip.CRC32
 
-/** Versioned, integrity-checked V3 document checkpoint with direct legacy-document migration. */
+/** Exact, integrity-checked V5 document checkpoint. Legacy documents are intentionally rejected. */
 internal object DocumentCheckpointCodec {
-    private const val FORMAT = "inkloom-document"
-    private const val SCHEMA_VERSION = 1
-    private const val ENGINE_VERSION = 3
+    private const val FORMAT = "inkloom-document-v5"
+    private const val SCHEMA_VERSION = 5
+    private const val ENGINE_VERSION = 5
 
     private val json = Json {
         prettyPrint = true
@@ -40,15 +37,12 @@ internal object DocumentCheckpointCodec {
     }
 
     fun decode(content: String): InkDocument {
-        val root = json.parseToJsonElement(content).jsonObject
-        if (root["format"]?.jsonPrimitive?.contentOrNull != FORMAT) {
-            return json.decodeFromString<InkDocument>(content)
-        }
         val checkpoint = json.decodeFromString<Checkpoint>(content)
-        require(checkpoint.schemaVersion in 1..SCHEMA_VERSION) {
+        require(checkpoint.format == FORMAT) { "Unsupported document format ${checkpoint.format}" }
+        require(checkpoint.schemaVersion == SCHEMA_VERSION) {
             "Unsupported document schema ${checkpoint.schemaVersion}"
         }
-        require(checkpoint.engineVersion in 1..ENGINE_VERSION) {
+        require(checkpoint.engineVersion == ENGINE_VERSION) {
             "Unsupported engine version ${checkpoint.engineVersion}"
         }
         val payload = canonicalJson.encodeToString(checkpoint.document)

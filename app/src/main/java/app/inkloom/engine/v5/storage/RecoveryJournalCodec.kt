@@ -1,19 +1,16 @@
-package app.inkloom.engine.v3.storage
+package app.inkloom.engine.v5.storage
 
 import app.inkloom.document.JournalEntry
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import java.util.zip.CRC32
 
-/** Ordered V3 recovery records. The exact serialized payload is checksummed before decoding. */
+/** Ordered V5 recovery records. Older/raw records are intentionally rejected. */
 internal object RecoveryJournalCodec {
-    private const val FORMAT = "inkloom-v3-journal"
-    private const val SCHEMA_VERSION = 1
+    private const val FORMAT = "inkloom-journal-v5"
+    private const val SCHEMA_VERSION = 5
     private val json = Json { ignoreUnknownKeys = true; classDiscriminator = "type" }
 
     @Serializable
@@ -34,12 +31,9 @@ internal object RecoveryJournalCodec {
     }
 
     fun decode(line: String): Decoded {
-        val root = json.parseToJsonElement(line).jsonObject
-        if (root["format"]?.jsonPrimitive?.contentOrNull != FORMAT) {
-            return Decoded(json.decodeFromString<JournalEntry>(line), null)
-        }
         val record = json.decodeFromString<Record>(line)
-        require(record.schemaVersion in 1..SCHEMA_VERSION) {
+        require(record.format == FORMAT) { "Unsupported recovery journal format ${record.format}" }
+        require(record.schemaVersion == SCHEMA_VERSION) {
             "Unsupported recovery journal schema ${record.schemaVersion}"
         }
         require(record.sequence > 0L) { "Recovery journal sequence must be positive" }

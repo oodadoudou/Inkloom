@@ -4,7 +4,7 @@ package app.inkloom.document
 
 import app.inkloom.model.ImportedBrush
 import app.inkloom.importer.BrushGroupOperations
-import app.inkloom.engine.v3.storage.PixelTileArchiveStore
+import app.inkloom.engine.v5.storage.PixelTileArchiveStore
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream

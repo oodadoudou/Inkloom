@@ -9,21 +9,22 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 class FileDocumentStoreTest {
-    @Test fun `checkpoints use the versioned v3 envelope and reload`() {
-        val root = Files.createTempDirectory("inkloom-v3-checkpoint").toFile()
+    @Test fun `checkpoints use the exact v5 envelope and reload`() {
+        val root = Files.createTempDirectory("inkloom-v5-checkpoint").toFile()
         val store = FileDocumentStore(root)
-        val document = InkDocument(title = "V3 checkpoint")
+        val document = InkDocument(title = "V5 checkpoint")
 
         store.save(document)
 
         val checkpoint = root.resolve("documents/${document.id}.json").readText()
-        assertTrue(checkpoint.contains("\"format\": \"inkloom-document\""))
-        assertTrue(checkpoint.contains("\"engineVersion\": 3"))
+        assertTrue(checkpoint.contains("\"format\": \"inkloom-document-v5\""))
+        assertTrue(checkpoint.contains("\"schemaVersion\": 5"))
+        assertTrue(checkpoint.contains("\"engineVersion\": 5"))
         assertTrue(checkpoint.contains("\"checksum\""))
         assertEquals(document, FileDocumentStore(root).get(document.id))
     }
 
-    @Test fun `legacy bare document checkpoint migrates without data loss`() {
+    @Test fun `legacy bare document checkpoint is rejected without migration`() {
         val root = Files.createTempDirectory("inkloom-legacy-checkpoint").toFile()
         val document = InkDocument(title = "Legacy checkpoint")
         val json = Json { prettyPrint = true; classDiscriminator = "type"; ignoreUnknownKeys = true }
@@ -32,7 +33,7 @@ class FileDocumentStoreTest {
 
         val restored = FileDocumentStore(root).get(document.id)
 
-        assertEquals(document, restored)
+        assertNull(restored)
     }
 
     @Test fun `truncated journal tail preserves every verified prior operation`() {
@@ -43,7 +44,7 @@ class FileDocumentStoreTest {
         repeat(2) { index ->
             store.append(JournalEntry.StrokeAdded(document.id, document.pages.single().id, InkStroke(id = "safe-$index", points = emptyList())))
         }
-        root.resolve("journal.jsonl").appendText("{\"format\":\"inkloom-v3-journal\",\"payload\":")
+        root.resolve("journal.jsonl").appendText("{\"format\":\"inkloom-journal-v5\",\"payload\":")
 
         val restored = FileDocumentStore(root).get(document.id)!!
 

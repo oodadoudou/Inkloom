@@ -1,4 +1,4 @@
-package app.inkloom.engine.v3.storage
+package app.inkloom.engine.v5.storage
 
 import app.inkloom.engine.v5.surface.PixelTileKey
 import app.inkloom.engine.v5.surface.PixelTileFormat
@@ -100,6 +100,17 @@ class PixelTileArchiveCodecTest {
 
         assertThrows(IllegalArgumentException::class.java) {
             PixelTileArchiveCodec.decode(changed, encoded.blobs::get)
+        }
+    }
+
+    @Test fun preV5ManifestIsRejectedRatherThanMigrated() {
+        val encoded = fixtureArchive()
+        val legacy = encoded.manifest
+            .replace("inkloom-pixel-tiles-v5", "inkloom-pixel-tiles")
+            .replace("\"schemaVersion\":5", "\"schemaVersion\":3")
+
+        assertThrows(IllegalArgumentException::class.java) {
+            PixelTileArchiveCodec.decode(legacy, encoded.blobs::get)
         }
     }
 

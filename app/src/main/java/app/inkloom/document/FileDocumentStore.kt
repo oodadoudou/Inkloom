@@ -1,7 +1,7 @@
 package app.inkloom.document
 
-import app.inkloom.engine.v3.storage.DocumentCheckpointCodec
-import app.inkloom.engine.v3.storage.RecoveryJournalCodec
+import app.inkloom.engine.v5.storage.DocumentCheckpointCodec
+import app.inkloom.engine.v5.storage.RecoveryJournalCodec
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.ExecutorService

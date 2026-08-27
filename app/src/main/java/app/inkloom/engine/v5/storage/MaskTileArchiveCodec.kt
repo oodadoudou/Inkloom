@@ -1,4 +1,4 @@
-package app.inkloom.engine.v3.storage
+package app.inkloom.engine.v5.storage
 
 import app.inkloom.engine.v5.surface.MaskTileSurface
 import app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot
@@ -14,8 +14,8 @@ import java.util.zip.InflaterInputStream
 
 /** Bounded, versioned persistence for sparse one-byte alpha surfaces. */
 internal object MaskTileArchiveCodec {
-    private const val MAGIC = 0x494D534B // IMSK
-    private const val VERSION = 1
+    private const val MAGIC = 0x4956354D // IV5M
+    private const val VERSION = 5
     private const val MAX_DIMENSION = 65_536
     private const val MAX_TILE_COUNT = 262_144
 

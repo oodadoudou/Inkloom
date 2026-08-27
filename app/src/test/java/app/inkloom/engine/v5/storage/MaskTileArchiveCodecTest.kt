@@ -1,7 +1,8 @@
-package app.inkloom.engine.v3.storage
+package app.inkloom.engine.v5.storage
 
 import app.inkloom.engine.v5.surface.MaskTileSurface
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -33,5 +34,19 @@ class MaskTileArchiveCodecTest {
             .onSuccess { error("Trailing bytes must be rejected") }
         runCatching { MaskTileArchiveCodec.decode(valid.copyOf(valid.size - 1)) }
             .onSuccess { error("Truncated bytes must be rejected") }
+    }
+
+    @Test fun preV5MaskMagicIsRejectedRatherThanMigrated() {
+        val source = MaskTileSurface(256, 256)
+        val legacy = MaskTileArchiveCodec.encode(source.snapshot()).copyOf().also { bytes ->
+            bytes[0] = 0x49
+            bytes[1] = 0x4d
+            bytes[2] = 0x53
+            bytes[3] = 0x4b
+        }
+
+        assertFalse(MaskTileArchiveCodec.isSparseMask(legacy))
+        runCatching { MaskTileArchiveCodec.decode(legacy) }
+            .onSuccess { error("Pre-V5 mask magic must be rejected") }
     }
 }
