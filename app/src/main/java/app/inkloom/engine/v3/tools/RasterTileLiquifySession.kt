@@ -13,6 +13,7 @@ import app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot
 import app.inkloom.engine.v3.surface.PixelRect
 import app.inkloom.engine.v3.surface.PixelTileSurface
 import app.inkloom.engine.v3.surface.PixelTileTransactionRecord
+import app.inkloom.engine.v3.surface.PixelTileSurfaceSnapshot
 import kotlin.math.hypot
 
 /**
@@ -24,22 +25,19 @@ import kotlin.math.hypot
  */
 class RasterTileLiquifySession private constructor(
     surface: PixelTileSurface,
-    displayBitmap: Bitmap,
     private val selection: RasterSelectionMask,
 ) : AutoCloseable {
-    constructor(surface: PixelTileSurface, displayBitmap: Bitmap) : this(
+    constructor(surface: PixelTileSurface) : this(
         surface,
-        displayBitmap,
         RasterSelectionMask(null, surface.logicalWidth, surface.logicalHeight),
     )
 
-    internal constructor(surface: PixelTileSurface, displayBitmap: Bitmap, selectionMask: MaskTileSurfaceSnapshot?) : this(
+    internal constructor(surface: PixelTileSurface, selectionMask: MaskTileSurfaceSnapshot?) : this(
         surface,
-        displayBitmap,
         RasterSelectionMask(selectionMask, surface.logicalWidth, surface.logicalHeight),
     )
 
-    private val edits = RasterTileEditSession(surface, displayBitmap, "raster liquify")
+    private val edits = RasterTileEditSession(surface, "raster liquify")
     private val displacement = SparseDisplacementField(surface.logicalWidth, surface.logicalHeight)
     private var warpBitmap: Bitmap? = null
     private var warpCanvas: Canvas? = null
@@ -72,6 +70,7 @@ class RasterTileLiquifySession private constructor(
     internal val displacementByteSize: Long get() = displacement.retainedByteSize
     internal val processedStampCount: Int get() = displacement.processedStampCount
     internal val lastRoiPlan: RasterRoiPlan? get() = edits.lastRoiPlan
+    fun previewSnapshot(): PixelTileSurfaceSnapshot = edits.previewSnapshot()
 
     fun deform(
         previousX: Float,

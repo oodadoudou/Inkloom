@@ -12,6 +12,8 @@ import app.inkloom.document.CorrectLineMode
 import app.inkloom.document.InkStroke
 import app.inkloom.document.LayerIds
 import app.inkloom.document.StrokePoint
+import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
+import app.inkloom.engine.v3.surface.PixelRect
 import app.inkloom.model.EditorTool
 import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertFalse
@@ -38,16 +40,19 @@ class InkCanvasProfessionalToolsTest {
     }
 
     @Test fun rasterLiquifyCommitsOneSurfaceWithoutReplacingVectorStrokes() {
-        val surface = Bitmap.createBitmap(200, 200, Bitmap.Config.ARGB_8888).apply {
+        val seed = Bitmap.createBitmap(200, 200, Bitmap.Config.ARGB_8888).apply {
             for (y in 65 until 135) for (x in 35 until 90) setPixel(x, y, Color.RED)
         }
-        val beforePixels = IntArray(surface.width * surface.height).also { surface.getPixels(it, 0, surface.width, 0, 0, surface.width, surface.height) }
+        val surface = PixelTileBitmapAdapter.import(seed)
+        seed.recycle()
+        val wholePage = PixelRect(0, 0, surface.logicalWidth, surface.logicalHeight)
+        val beforePixels = surface.snapshot().copyPremultipliedPixels(wholePage)
         var rasterCommits = 0
         var vectorReplacements = 0
         val view = canvas(EditorTool.LIQUIFY, line("untouched-vector", listOf(StrokePoint(.05f, .05f), StrokePoint(.1f, .05f)))) {
             activeLayerId = "raster"
             baseWidth = 360f
-            setRasterLayerBitmaps(mapOf("raster" to surface))
+            setRasterLayerSurfaces(mapOf("raster" to surface))
             onRasterLayerCommitted = { patch -> rasterCommits++; patch.close() }
             onStrokesReplaced = { _, _, _ -> vectorReplacements++ }
         }
@@ -56,9 +61,8 @@ class InkCanvasProfessionalToolsTest {
         send(view, MotionEvent.ACTION_UP, 625f, 500f, 40L)
         assertEquals(1, rasterCommits)
         assertEquals(0, vectorReplacements)
-        val afterPixels = IntArray(surface.width * surface.height).also { surface.getPixels(it, 0, surface.width, 0, 0, surface.width, surface.height) }
+        val afterPixels = surface.snapshot().copyPremultipliedPixels(wholePage)
         assertFalse("Raster Liquify must deform the committed surface", beforePixels.contentEquals(afterPixels))
-        surface.recycle()
     }
 
     @Test fun stationaryLiquifyModesApplyAfterLongPress() {

@@ -331,7 +331,6 @@ class InkCanvasView(context: Context) : View(context) {
     private var lastEraserX: Float? = null
     private var lastEraserY: Float? = null
     private var rasterTileEraserSession: RasterTileEraserSession? = null
-    private var rasterEraserBitmap: Bitmap? = null
     private var rasterEraserChanged = false
     private var rasterEraserDirtyBounds: Rect? = null
     private val rasterEraserPoints = mutableListOf<StrokePoint>()
@@ -367,9 +366,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var smudgeChanged = false
     private var smudgeDirtyBounds: Rect? = null
     private var rasterTileBlendSession: RasterTileBlendSession? = null
-    private var rasterBlendBitmap: Bitmap? = null
     private var rasterPaintSession: RasterTilePaintSession? = null
-    private var rasterWetPaintBitmap: Bitmap? = null
     private var wetPaintDirtyBounds: Rect? = null
     private val rasterFrontPatchPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private var wetPaintLastPositions: List<Pair<Float, Float>> = emptyList()
@@ -388,7 +385,6 @@ class InkCanvasView(context: Context) : View(context) {
     }
     private var liquifyBefore: List<InkStroke>? = null
     private var rasterTileLiquifySession: RasterTileLiquifySession? = null
-    private var rasterLiquifyBitmap: Bitmap? = null
     private var liquifyLastX = 0f
     private var liquifyLastY = 0f
     private var liquifyChanged = false
@@ -1090,17 +1086,6 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun publishRasterSelectionEdit(layerId: String, surface: PixelTileSurface, bounds: PixelRect) {
-        val bitmap = rasterEditBitmapFor(layerId)
-        if (bitmap != null && !bitmap.isRecycled) {
-            val rendered = PixelTileBitmapAdapter.render(surface.snapshot(), bounds)
-            try {
-                Canvas(bitmap).drawBitmap(rendered, bounds.left.toFloat(), bounds.top.toFloat(), Paint().apply {
-                    blendMode = BlendMode.SRC
-                })
-            } finally {
-                rendered.recycle()
-            }
-        }
         commitRasterLayerPatch(surface, Rect(bounds.left, bounds.top, bounds.right, bounds.bottom), layerId)
         val displayLeft = (bounds.left * width.toFloat() / surface.logicalWidth).toInt() - 2
         val displayTop = (bounds.top * height.toFloat() / surface.logicalHeight).toInt() - 2
@@ -1352,10 +1337,7 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
-    /** External mirrors exist only for the legacy/test adapter. Production supplies tile surfaces. */
-    private var rasterLayerBitmaps: Map<String, Bitmap> = emptyMap()
     private val rasterLayerTileSurfaces = mutableMapOf<String, PixelTileSurface>()
-    private val ownedRasterEditBitmaps = mutableMapOf<String, Bitmap>()
     private val rasterTileRenderer = PixelTileCanvasRenderer()
     private var rasterLayerProjectionCache: PixelLayerProjectionCache? = null
     private var rasterLayerProjectionGeometry: RasterProjectionGeometry? = null
@@ -1367,63 +1349,29 @@ class InkCanvasView(context: Context) : View(context) {
         val changedLayerIds = (rasterLayerTileSurfaces.keys + value.keys).filterTo(mutableSetOf()) { layerId ->
             rasterLayerTileSurfaces[layerId] !== value[layerId]
         }
-        if (changedLayerIds.isEmpty() && rasterLayerBitmaps.isEmpty()) return
+        if (changedLayerIds.isEmpty()) return
         changedLayerIds.forEach { layerId ->
-            ownedRasterEditBitmaps.remove(layerId)?.let { bitmap -> if (!bitmap.isRecycled) bitmap.recycle() }
             rasterLayerTileSurfaces[layerId]?.let { previous ->
                 if (previous !== value[layerId]) rasterTileRenderer.releaseSurface(previous.surfaceId)
             }
         }
-        rasterLayerBitmaps = emptyMap()
         rasterLayerTileSurfaces.clear()
         rasterLayerTileSurfaces.putAll(value)
         if (value.isEmpty()) releaseRasterLayerProjection()
         resetStrokeTiles()
     }
 
-    /** One-way compatibility adapter for focused Android tests and legacy callers. */
-    fun setRasterLayerBitmaps(value: Map<String, Bitmap>) {
-        if (rasterLayerBitmaps != value) {
-            val previous = rasterLayerBitmaps
-            ownedRasterEditBitmaps.values.forEach { bitmap -> if (!bitmap.isRecycled) bitmap.recycle() }
-            ownedRasterEditBitmaps.clear()
-            rasterLayerTileSurfaces.keys.retainAll(value.keys)
-            value.forEach { (layerId, bitmap) ->
-                if (previous[layerId] !== bitmap || rasterLayerTileSurfaces[layerId] == null) {
-                    rasterLayerTileSurfaces[layerId]?.let { rasterTileRenderer.releaseSurface(it.surfaceId) }
-                    rasterLayerTileSurfaces[layerId] = importPixelTileSurface(bitmap)
-                }
-            }
-            rasterLayerBitmaps = value
-            releaseRasterLayerProjection()
-            resetStrokeTiles()
-        }
-    }
-
     private fun rasterTileSurfaceFor(layerId: String): PixelTileSurface? = rasterLayerTileSurfaces[layerId]
 
-    /** A mutable Android front buffer is retained only for the active raster layer. */
-    private fun rasterEditBitmapFor(layerId: String): Bitmap? {
-        rasterLayerBitmaps[layerId]?.takeUnless(Bitmap::isRecycled)?.let { return it }
-        ownedRasterEditBitmaps[layerId]?.takeUnless(Bitmap::isRecycled)?.let { return it }
-        val surface = rasterLayerTileSurfaces[layerId] ?: return null
-        val immutableProjection = PixelTileBitmapAdapter.render(surface.snapshot())
-        return try {
-            requireNotNull(immutableProjection.copy(Bitmap.Config.ARGB_8888, true))
-                .also { ownedRasterEditBitmaps[layerId] = it }
-        } finally {
-            immutableProjection.recycle()
-        }
-    }
-
-    private fun releaseOwnedRasterEditBitmap(layerId: String) {
-        ownedRasterEditBitmaps.remove(layerId)?.let { bitmap -> if (!bitmap.isRecycled) bitmap.recycle() }
-    }
-
-    /** Prewarms the sole mutable front buffer on layer activation, never on the first pen packet. */
-    fun prepareRasterLayerForEditing(layerId: String) {
-        ownedRasterEditBitmaps.keys.filter { it != layerId }.toList().forEach(::releaseOwnedRasterEditBitmap)
-        rasterEditBitmapFor(layerId)
+    /** One gesture-scoped sparse preview; it is presentation only and never document truth. */
+    private fun liveRasterPreviewSnapshot(layerId: String): app.inkloom.engine.v3.surface.PixelTileSurfaceSnapshot? {
+        if (layerId != activeLayerId) return null
+        return runCatching {
+            rasterTileEraserSession?.previewSnapshot()
+                ?: rasterTileBlendSession?.previewSnapshot()
+                ?: rasterTileLiquifySession?.previewSnapshot()
+                ?: rasterPaintSession?.previewSnapshot()
+        }.getOrNull()
     }
 
     /** Toggles direct grayscale mask editing. The layer pixels remain untouched. */
@@ -1780,8 +1728,6 @@ class InkCanvasView(context: Context) : View(context) {
         brushResources = BrushResourceCache()
         wholeStrokeTextureBitmap?.recycle(); wholeStrokeTextureBitmap = null
         activeWholeTextureCoverageBitmap?.recycle(); activeWholeTextureCoverageBitmap = null
-        ownedRasterEditBitmaps.values.forEach { bitmap -> if (!bitmap.isRecycled) bitmap.recycle() }
-        ownedRasterEditBitmaps.clear()
         releaseRasterLayerProjection()
         rasterTileRenderer.close()
         super.onDetachedFromWindow()
@@ -1947,7 +1893,7 @@ class InkCanvasView(context: Context) : View(context) {
         layerFilter: Set<String>?,
     ): Boolean {
         if (!includeElements || layerFilter != null || value.isNotEmpty()) return false
-        if (layerElementBitmaps.isNotEmpty() || rasterLayerBitmaps.isNotEmpty()) return false
+        if (layerElementBitmaps.isNotEmpty()) return false
         if (rasterLayerTileSurfaces.isEmpty()) return false
         if (layerMasks.any { (layerId, mask) ->
                 layerId in rasterLayerTileSurfaces && mask.enabled && layerMaskSurfaces[layerId] == null
@@ -1987,7 +1933,7 @@ class InkCanvasView(context: Context) : View(context) {
         val update = cache.update(orderedIds.map { layerId ->
             PixelLayerProjectionInput(
                 layerId = layerId,
-                pixels = rasterLayerTileSurfaces.getValue(layerId).snapshot(),
+                pixels = liveRasterPreviewSnapshot(layerId) ?: rasterLayerTileSurfaces.getValue(layerId).snapshot(),
                 opacity = layerOpacities[layerId] ?: 1f,
                 blendMode = (layerBlendModes[layerId] ?: LayerBlendMode.NORMAL).toPixelBlendMode(),
                 mask = layerMasks[layerId]?.takeIf(LayerMask::enabled)?.let { layerMaskSurfaces[layerId] },
@@ -2020,14 +1966,11 @@ class InkCanvasView(context: Context) : View(context) {
         dualStampStartIndex: Int,
     ) {
         val elements = if (includeElements) layerElementBitmaps[layerId] else null
-        // The mutable full-page bitmap is an editing/sampling workspace only. Production display
-        // truth is the sparse surface, so a committed generation cannot diverge from what is shown.
-        val raster = rasterLayerBitmaps[layerId]
         val rasterSurface = rasterLayerTileSurfaces[layerId]
         val baseIds = alphaLockBaseContentIds[layerId].orEmpty()
         val hasCapturedAlpha = layerId in alphaLockedLayers && baseIds.isNotEmpty()
         if (!hasCapturedAlpha) {
-            drawRasterLayer(canvas, rasterSurface, raster)
+            drawRasterLayer(canvas, layerId, rasterSurface)
             layerStrokes.forEach { drawStroke(canvas, it, primaryStampStartIndex, dualStampStartIndex) }
             drawElementBitmap(canvas, elements?.base)
             drawElementBitmap(canvas, elements?.additions)
@@ -2036,7 +1979,7 @@ class InkCanvasView(context: Context) : View(context) {
         val baseStrokes = layerStrokes.filter { it.id in baseIds }
         val addedStrokes = layerStrokes.filterNot { it.id in baseIds }
         fun drawBase() {
-            drawRasterLayer(canvas, rasterSurface, raster)
+            drawRasterLayer(canvas, layerId, rasterSurface)
             baseStrokes.forEach { drawStroke(canvas, it, primaryStampStartIndex, dualStampStartIndex) }
             drawElementBitmap(canvas, elements?.base)
         }
@@ -2059,13 +2002,13 @@ class InkCanvasView(context: Context) : View(context) {
         canvas.drawBitmap(bitmap, null, backgroundDestination, null)
     }
 
-    private fun drawRasterLayer(canvas: Canvas, surface: PixelTileSurface?, editBitmap: Bitmap?) {
-        if (editBitmap != null && !editBitmap.isRecycled) {
-            drawElementBitmap(canvas, editBitmap)
-            return
-        }
+    private fun drawRasterLayer(canvas: Canvas, layerId: String, surface: PixelTileSurface?) {
         surface ?: return
-        rasterTileRenderer.draw(canvas, surface.snapshot(), RectF(0f, 0f, width.toFloat(), height.toFloat()))
+        rasterTileRenderer.draw(
+            canvas,
+            liveRasterPreviewSnapshot(layerId) ?: surface.snapshot(),
+            RectF(0f, 0f, width.toFloat(), height.toFloat()),
+        )
     }
 
     private data class RasterProjectionGeometry(
@@ -3877,10 +3820,10 @@ class InkCanvasView(context: Context) : View(context) {
                     val finalPacket = strokeRenderPacket(newStrokes)
                     lastCommittedStrokePacket = finalPacket
                     pendingMaterialBarrierSequence = finalPacket.sequence
-                    val raster = rasterEditBitmapFor(activeLayerId)
-                    val incrementalRasterCommit = if (raster != null) {
+                    val rasterSurface = rasterTileSurfaceFor(activeLayerId)
+                    val incrementalRasterCommit = if (rasterSurface != null) {
                         commitIncrementalRasterStampGesture(finalPacket.strokes).also { committedIncrementally ->
-                            if (!committedIncrementally) commitRasterPaintStrokes(raster, finalPacket.strokes)
+                            if (!committedIncrementally) commitRasterPaintStrokes(rasterSurface, finalPacket.strokes)
                         }
                     } else {
                         strokes.addAll(finalPacket.strokes)
@@ -5709,13 +5652,10 @@ class InkCanvasView(context: Context) : View(context) {
         hasPendingSmudge = false
         rasterTileBlendSession?.close()
         rasterTileBlendSession = null
-        rasterBlendBitmap = rasterEditBitmapFor(activeLayerId)
-        val raster = rasterBlendBitmap
         val surface = rasterTileSurfaceFor(activeLayerId)
-        if (raster != null && surface != null) {
+        if (surface != null) {
             rasterTileBlendSession = RasterTileBlendSession(
                 surface,
-                raster,
                 selectionMaskForRasterTools(),
                 preserveDestinationAlpha = activeLayerId in alphaLockedLayers,
             )
@@ -5750,15 +5690,17 @@ class InkCanvasView(context: Context) : View(context) {
     private fun extendSmudge(normalizedX: Float, normalizedY: Float) {
         val x = normalizedX.coerceIn(0f, 1f)
         val y = normalizedY.coerceIn(0f, 1f)
-        val raster = rasterBlendBitmap
         val tileSession = rasterTileBlendSession
-        if (raster != null && tileSession != null) {
-            val radius = (gestureBrushSize.coerceIn(.01f, 800f) / REFERENCE_WIDTH * raster.width).coerceAtLeast(.125f)
+        val surface = rasterTileSurfaceFor(activeLayerId)
+        if (surface != null && tileSession != null) {
+            val rasterWidth = surface.logicalWidth
+            val rasterHeight = surface.logicalHeight
+            val radius = (gestureBrushSize.coerceIn(.01f, 800f) / REFERENCE_WIDTH * rasterWidth).coerceAtLeast(.125f)
             val dirty = tileSession.blend(
-                smudgeLastX * raster.width,
-                smudgeLastY * raster.height,
-                x * raster.width,
-                y * raster.height,
+                smudgeLastX * rasterWidth,
+                smudgeLastY * rasterHeight,
+                x * rasterWidth,
+                y * rasterHeight,
                 radius,
                 (.3f + brushColorMix.coerceIn(0f, 1f) * .7f),
                 brushHardness,
@@ -5767,10 +5709,10 @@ class InkCanvasView(context: Context) : View(context) {
                 smudgeChanged = true
                 smudgeDirtyBounds = mergeDirtyBounds(smudgeDirtyBounds, dirty)
                 invalidate(
-                    (dirty.left * width.toFloat() / raster.width).toInt() - 2,
-                    (dirty.top * height.toFloat() / raster.height).toInt() - 2,
-                    (dirty.right * width.toFloat() / raster.width).toInt() + 2,
-                    (dirty.bottom * height.toFloat() / raster.height).toInt() + 2,
+                    (dirty.left * width.toFloat() / rasterWidth).toInt() - 2,
+                    (dirty.top * height.toFloat() / rasterHeight).toInt() - 2,
+                    (dirty.right * width.toFloat() / rasterWidth).toInt() + 2,
+                    (dirty.bottom * height.toFloat() / rasterHeight).toInt() + 2,
                 )
             }
             smudgeLastX = x
@@ -5810,9 +5752,8 @@ class InkCanvasView(context: Context) : View(context) {
         removeCallbacks(smudgeFrame)
         smudgeFrameScheduled = false
         hasPendingSmudge = false
-        val raster = rasterBlendBitmap
         val tileSession = rasterTileBlendSession
-        if (raster != null && tileSession != null) {
+        if (tileSession != null) {
             if (smudgeChanged) {
                 tileSession.commit().close()
                 rasterTileSurfaceFor(activeLayerId)?.let { commitRasterLayerPatch(it, smudgeDirtyBounds) }
@@ -5823,7 +5764,6 @@ class InkCanvasView(context: Context) : View(context) {
             if (before != null && smudgeChanged) commitStrokeEdit(before, strokes)
         }
         rasterTileBlendSession = null
-        rasterBlendBitmap = null
         smudgeBefore = null
         smudgeChanged = false
         smudgeDirtyBounds = null
@@ -5845,7 +5785,6 @@ class InkCanvasView(context: Context) : View(context) {
             if (before != null && smudgeChanged) restoreStrokeSnapshot(before)
         }
         rasterTileBlendSession = null
-        rasterBlendBitmap = null
         smudgeBefore = null
         smudgeChanged = false
         smudgeDirtyBounds = null
@@ -5861,11 +5800,9 @@ class InkCanvasView(context: Context) : View(context) {
         hasPendingLiquify = false
         rasterTileLiquifySession?.close()
         rasterTileLiquifySession = null
-        rasterLiquifyBitmap = rasterEditBitmapFor(activeLayerId)
-        val raster = rasterLiquifyBitmap
         val surface = rasterTileSurfaceFor(activeLayerId)
-        if (raster != null && surface != null) {
-            rasterTileLiquifySession = RasterTileLiquifySession(surface, raster, selectionMaskForRasterTools())
+        if (surface != null) {
+            rasterTileLiquifySession = RasterTileLiquifySession(surface, selectionMaskForRasterTools())
             liquifyBefore = null
             localToolStrokeIndices.clear()
         } else {
@@ -5918,15 +5855,17 @@ class InkCanvasView(context: Context) : View(context) {
     private fun extendLiquify(x: Float, y: Float, pressure: Float = liquifyPressure) {
         val nextX = x.coerceIn(0f, 1f)
         val nextY = y.coerceIn(0f, 1f)
-        val raster = rasterLiquifyBitmap
         val tileSession = rasterTileLiquifySession
-        if (raster != null && tileSession != null) {
-            val radius = (gestureBrushSize.coerceIn(.01f, 800f) / REFERENCE_WIDTH * raster.width).coerceAtLeast(.125f)
+        val surface = rasterTileSurfaceFor(activeLayerId)
+        if (surface != null && tileSession != null) {
+            val rasterWidth = surface.logicalWidth
+            val rasterHeight = surface.logicalHeight
+            val radius = (gestureBrushSize.coerceIn(.01f, 800f) / REFERENCE_WIDTH * rasterWidth).coerceAtLeast(.125f)
             val dirty = tileSession.deform(
-                liquifyLastX * raster.width,
-                liquifyLastY * raster.height,
-                nextX * raster.width,
-                nextY * raster.height,
+                liquifyLastX * rasterWidth,
+                liquifyLastY * rasterHeight,
+                nextX * rasterWidth,
+                nextY * rasterHeight,
                 radius,
                 liquifyStrength * pressure.coerceIn(0f, 1f),
                 liquifyHardness,
@@ -6028,9 +5967,8 @@ class InkCanvasView(context: Context) : View(context) {
         removeCallbacks(liquifyHoldFrame)
         liquifyFrameScheduled = false
         hasPendingLiquify = false
-        val raster = rasterLiquifyBitmap
         val tileSession = rasterTileLiquifySession
-        if (raster != null && tileSession != null) {
+        if (tileSession != null) {
             if (liquifyChanged) {
                 tileSession.commit().close()
                 rasterTileSurfaceFor(activeLayerId)?.let { commitRasterLayerPatch(it, liquifyDirtyBounds) }
@@ -6041,7 +5979,6 @@ class InkCanvasView(context: Context) : View(context) {
             if (before != null && liquifyChanged) commitStrokeEdit(before, strokes)
         }
         rasterTileLiquifySession = null
-        rasterLiquifyBitmap = null
         liquifyBefore = null
         liquifyHoldEligible = false
         liquifyChanged = false
@@ -6066,7 +6003,6 @@ class InkCanvasView(context: Context) : View(context) {
             if (before != null && liquifyChanged) restoreStrokeSnapshot(before)
         }
         rasterTileLiquifySession = null
-        rasterLiquifyBitmap = null
         liquifyBefore = null
         liquifyHoldEligible = false
         liquifyChanged = false
@@ -6258,11 +6194,10 @@ class InkCanvasView(context: Context) : View(context) {
     private fun beginRasterSelectionTransform(): Boolean {
         cancelRasterSelectionTransform()
         val surface = rasterTileSurfaceFor(activeLayerId) ?: return false
-        val bitmap = rasterEditBitmapFor(activeLayerId) ?: return false
         val selection = selectionMaskForRasterTools()?.takeUnless(MaskTileSurfaceSnapshot::isEmpty) ?: return false
         return runCatching {
             rasterSelectionTransformOriginalMask = selection
-            rasterSelectionTransformSession = RasterSelectionTransformSession(surface, bitmap, selection)
+            rasterSelectionTransformSession = RasterSelectionTransformSession(surface, selection)
             true
         }.getOrElse {
             rasterSelectionTransformOriginalMask = null
@@ -6545,7 +6480,9 @@ class InkCanvasView(context: Context) : View(context) {
                 stroke.id != gestureStrokeId && !stroke.id.startsWith("$gestureStrokeId-sym-")
             }
         ) return false
-        val raster = rasterWetPaintBitmap?.takeUnless(Bitmap::isRecycled) ?: return false
+        val surface = rasterTileSurfaceFor(activeLayerId) ?: return false
+        val rasterWidth = surface.logicalWidth
+        val rasterHeight = surface.logicalHeight
         val session = rasterPaintSession ?: return false
         val increments = mutableListOf<RasterStampIncrement>()
         rasterIncrementalRendering = true
@@ -6581,10 +6518,10 @@ class InkCanvasView(context: Context) : View(context) {
             val changedPoints = increments.flatMap(RasterStampIncrement::changedPoints)
             val maximumWidth = increments.maxOf { increment ->
                 val stroke = increment.stroke
-                val base = stroke.width.coerceAtLeast(1f) / REFERENCE_WIDTH * raster.width
+                val base = stroke.width.coerceAtLeast(1f) / REFERENCE_WIDTH * rasterWidth
                 val particle = if (stroke.spray && !stroke.sprayParticleSizeSyncBrushSize) {
                     when (stroke.sprayParticleSizeUnit) {
-                        1 -> stroke.sprayParticleSize / REFERENCE_WIDTH * raster.width
+                        1 -> stroke.sprayParticleSize / REFERENCE_WIDTH * rasterWidth
                         else -> base * stroke.sprayParticleSize.coerceAtLeast(1f) / 100f
                     }
                 } else base
@@ -6596,10 +6533,10 @@ class InkCanvasView(context: Context) : View(context) {
                 maxOf(base, particle) * maxOf(1f, stroke.thickness.coerceIn(.05f, 2f)) * 1.5f + spread + pathJitter + blur
             }
             val padding = (maximumWidth * 1.5f + 12f).coerceAtLeast(12f)
-            val patchLeft = kotlin.math.floor(changedPoints.minOf(StrokePoint::x) * raster.width - padding).toInt().coerceIn(0, raster.width - 1)
-            val patchTop = kotlin.math.floor(changedPoints.minOf(StrokePoint::y) * raster.height - padding).toInt().coerceIn(0, raster.height - 1)
-            val patchRight = kotlin.math.ceil(changedPoints.maxOf(StrokePoint::x) * raster.width + padding).toInt().coerceIn(patchLeft + 1, raster.width)
-            val patchBottom = kotlin.math.ceil(changedPoints.maxOf(StrokePoint::y) * raster.height + padding).toInt().coerceIn(patchTop + 1, raster.height)
+            val patchLeft = kotlin.math.floor(changedPoints.minOf(StrokePoint::x) * rasterWidth - padding).toInt().coerceIn(0, rasterWidth - 1)
+            val patchTop = kotlin.math.floor(changedPoints.minOf(StrokePoint::y) * rasterHeight - padding).toInt().coerceIn(0, rasterHeight - 1)
+            val patchRight = kotlin.math.ceil(changedPoints.maxOf(StrokePoint::x) * rasterWidth + padding).toInt().coerceIn(patchLeft + 1, rasterWidth)
+            val patchBottom = kotlin.math.ceil(changedPoints.maxOf(StrokePoint::y) * rasterHeight + padding).toInt().coerceIn(patchTop + 1, rasterHeight)
             val patchWidth = patchRight - patchLeft
             val patchHeight = patchBottom - patchTop
             val patch = obtainRasterIncrementalPatchBitmap(patchWidth, patchHeight)
@@ -6608,8 +6545,8 @@ class InkCanvasView(context: Context) : View(context) {
                 val patchClip = target.save()
                 target.clipRect(0, 0, patchWidth, patchHeight)
                 target.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
-                val scaleX = raster.width / width.coerceAtLeast(1).toFloat()
-                val scaleY = raster.height / height.coerceAtLeast(1).toFloat()
+                val scaleX = rasterWidth / width.coerceAtLeast(1).toFloat()
+                val scaleY = rasterHeight / height.coerceAtLeast(1).toFloat()
                 val checkpoint = target.save()
                 target.scale(scaleX, scaleY)
                 target.translate(-patchLeft / scaleX, -patchTop / scaleY)
@@ -6625,7 +6562,7 @@ class InkCanvasView(context: Context) : View(context) {
                 }
                 target.restoreToCount(checkpoint)
                 selectionMaskForRasterTools()?.let { selection ->
-                    RasterSelectionMask(selection, raster.width, raster.height).apply(
+                    RasterSelectionMask(selection, rasterWidth, rasterHeight).apply(
                         patch,
                         Rect(patchLeft, patchTop, patchRight, patchBottom),
                     )
@@ -6639,10 +6576,10 @@ class InkCanvasView(context: Context) : View(context) {
                     patch,
                     Rect(0, 0, patchWidth, patchHeight),
                     RectF(
-                        patchLeft * width.toFloat() / raster.width,
-                        patchTop * height.toFloat() / raster.height,
-                        patchRight * width.toFloat() / raster.width,
-                        patchBottom * height.toFloat() / raster.height,
+                        patchLeft * width.toFloat() / rasterWidth,
+                        patchTop * height.toFloat() / rasterHeight,
+                        patchRight * width.toFloat() / rasterWidth,
+                        patchBottom * height.toFloat() / rasterHeight,
                     ),
                     rasterFrontPatchPaint,
                 )
@@ -6688,27 +6625,29 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
-    private fun renderRasterStrokePatch(raster: Bitmap, newStrokes: List<InkStroke>): RasterStrokePatch? {
-        if (newStrokes.isEmpty() || raster.isRecycled) return null
+    private fun renderRasterStrokePatch(surface: PixelTileSurface, newStrokes: List<InkStroke>): RasterStrokePatch? {
+        if (newStrokes.isEmpty()) return null
+        val rasterWidth = surface.logicalWidth
+        val rasterHeight = surface.logicalHeight
         val allPoints = newStrokes.flatMap(InkStroke::points)
         if (allPoints.isEmpty()) return null
         val maximumWidth = newStrokes.maxOf { stroke ->
             val spread = if (stroke.spray) 1f + stroke.spraySpread.coerceAtLeast(0f) else 1f
             val blur = 1f + stroke.blur.coerceAtLeast(0f) / 50f
-            stroke.width.coerceAtLeast(1f) / REFERENCE_WIDTH * raster.width * spread * blur
+            stroke.width.coerceAtLeast(1f) / REFERENCE_WIDTH * rasterWidth * spread * blur
         }
         val padding = (maximumWidth * 1.25f + 6f).coerceAtLeast(6f)
-        val patchLeft = kotlin.math.floor(allPoints.minOf(StrokePoint::x) * raster.width - padding).toInt().coerceIn(0, raster.width - 1)
-        val patchTop = kotlin.math.floor(allPoints.minOf(StrokePoint::y) * raster.height - padding).toInt().coerceIn(0, raster.height - 1)
-        val patchRight = kotlin.math.ceil(allPoints.maxOf(StrokePoint::x) * raster.width + padding).toInt().coerceIn(patchLeft + 1, raster.width)
-        val patchBottom = kotlin.math.ceil(allPoints.maxOf(StrokePoint::y) * raster.height + padding).toInt().coerceIn(patchTop + 1, raster.height)
+        val patchLeft = kotlin.math.floor(allPoints.minOf(StrokePoint::x) * rasterWidth - padding).toInt().coerceIn(0, rasterWidth - 1)
+        val patchTop = kotlin.math.floor(allPoints.minOf(StrokePoint::y) * rasterHeight - padding).toInt().coerceIn(0, rasterHeight - 1)
+        val patchRight = kotlin.math.ceil(allPoints.maxOf(StrokePoint::x) * rasterWidth + padding).toInt().coerceIn(patchLeft + 1, rasterWidth)
+        val patchBottom = kotlin.math.ceil(allPoints.maxOf(StrokePoint::y) * rasterHeight + padding).toInt().coerceIn(patchTop + 1, rasterHeight)
         val patchWidth = patchRight - patchLeft
         val patchHeight = patchBottom - patchTop
         val paintSurface = Bitmap.createBitmap(patchWidth, patchHeight, Bitmap.Config.ARGB_8888)
         val target = Canvas(paintSurface)
         target.save()
-        val scaleX = raster.width / width.coerceAtLeast(1).toFloat()
-        val scaleY = raster.height / height.coerceAtLeast(1).toFloat()
+        val scaleX = rasterWidth / width.coerceAtLeast(1).toFloat()
+        val scaleY = rasterHeight / height.coerceAtLeast(1).toFloat()
         target.scale(scaleX, scaleY)
         target.translate(-patchLeft / scaleX, -patchTop / scaleY)
         val previousSynchronousDecode = forceSynchronousTipDecode
@@ -6720,35 +6659,41 @@ class InkCanvasView(context: Context) : View(context) {
         }
         target.restore()
         selectionMaskForRasterTools()?.let { selection ->
-            RasterSelectionMask(selection, raster.width, raster.height).apply(
+            RasterSelectionMask(selection, rasterWidth, rasterHeight).apply(
                 paintSurface,
                 Rect(patchLeft, patchTop, patchRight, patchBottom),
             )
         }
-        if (activeLayerId in alphaLockedLayers) target.drawBitmap(
-            raster,
-            android.graphics.Rect(patchLeft, patchTop, patchRight, patchBottom),
-            android.graphics.Rect(0, 0, patchWidth, patchHeight),
-            Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.DST_IN },
-        )
+        if (activeLayerId in alphaLockedLayers) {
+            val alphaSource = PixelTileBitmapAdapter.render(
+                surface.snapshot(),
+                PixelRect(patchLeft, patchTop, patchRight, patchBottom),
+            )
+            try {
+                target.drawBitmap(
+                    alphaSource,
+                    null,
+                    android.graphics.Rect(0, 0, patchWidth, patchHeight),
+                    Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.DST_IN },
+                )
+            } finally {
+                alphaSource.recycle()
+            }
+        }
         return RasterStrokePatch(paintSurface, patchLeft, patchTop)
     }
 
     private fun beginWetPaintGesture(normalizedX: Float, normalizedY: Float) = synchronized(renderLock) {
         cancelWetPaintGestureLocked()
         val template = activeStrokeTemplate ?: return@synchronized
-        val raster = rasterEditBitmapFor(activeLayerId) ?: return@synchronized
         val surface = rasterTileSurfaceFor(activeLayerId) ?: return@synchronized
         clearRasterIncrementalPaintState()
         rasterIncrementalPaintEnabled = supportsIncrementalRasterStampPaint(template)
         rasterPaintGestureStrokeId = template.id
-        rasterWetPaintBitmap = raster
         rasterPaintSession = RasterTilePaintSession(
             surface,
-            raster,
             selectionMaskForRasterTools(),
             preserveDestinationAlpha = activeLayerId in alphaLockedLayers,
-            mirrorWrites = !rasterIncrementalPaintEnabled,
         )
         wetPaintDirtyBounds = null
         if (template.procreateWetMix.isDisabled() && !template.watercolor) return@synchronized
@@ -6764,7 +6709,9 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun advanceWetPaintGesture() {
         val session = rasterPaintSession ?: return
-        val raster = rasterWetPaintBitmap?.takeUnless(Bitmap::isRecycled) ?: return
+        val surface = rasterTileSurfaceFor(activeLayerId) ?: return
+        val rasterWidth = surface.logicalWidth
+        val rasterHeight = surface.logicalHeight
         val template = activeStrokeTemplate ?: return
         if (template.procreateWetMix.isDisabled() && !template.watercolor) return
         val point = currentPoints.lastOrNull() ?: return
@@ -6775,7 +6722,7 @@ class InkCanvasView(context: Context) : View(context) {
             return
         }
         val dynamics = BrushProgramRuntime.evaluateDab(template, point)
-        val radius = (template.width.coerceIn(.5f, 800f) / REFERENCE_WIDTH * raster.width * dynamics.size * .5f).coerceAtLeast(.5f)
+        val radius = (template.width.coerceIn(.5f, 800f) / REFERENCE_WIDTH * rasterWidth * dynamics.size * .5f).coerceAtLeast(.5f)
         val cspMixing = template.watercolor && template.procreateWetMix.isDisabled()
         val amountOfPaint = if (cspMixing) app.inkloom.document.WetMixDynamics.colorMix(template, point) else 1f
         val cspPull = when (CspColorMixMode.normalize(template.cspColorMixMode)) {
@@ -6798,8 +6745,8 @@ class InkCanvasView(context: Context) : View(context) {
             template.colorMixBlurUnit,
             linkedToSize = false,
             currentDiameter = radius * 2f,
-            baseDiameter = template.width / REFERENCE_WIDTH * raster.width,
-            pageWidth = raster.width.toFloat(),
+            baseDiameter = template.width / REFERENCE_WIDTH * rasterWidth,
+            pageWidth = rasterWidth.toFloat(),
         ) else -1f
         val blur = when {
             !runningColor -> if (cspMixing) 0f else app.inkloom.document.WetMixDynamics.blurAmount(template, point)
@@ -6811,7 +6758,7 @@ class InkCanvasView(context: Context) : View(context) {
             val previous = wetPaintLastPositions[index]
             val current = currentPositions[index]
             if (cspMixing) {
-                val sampled = session.samplePigment(current.first * raster.width, current.second * raster.height, radius)
+                val sampled = session.samplePigment(current.first * rasterWidth, current.second * rasterHeight, radius)
                 val priorPickup = wetPaintPickupColors.getOrNull(index)
                 val pickup = when {
                     sampled ushr 24 == 0 -> priorPickup ?: sampled
@@ -6839,8 +6786,8 @@ class InkCanvasView(context: Context) : View(context) {
                 }
             }
             val changed = session.advanceWetTransport(
-                previous.first * raster.width, previous.second * raster.height,
-                current.first * raster.width, current.second * raster.height,
+                previous.first * rasterWidth, previous.second * rasterHeight,
+                current.first * rasterWidth, current.second * rasterHeight,
                 radius, pull, blur, template.hardness, fixedBlurRadius,
             ) ?: return@forEach
             if (dirty == null) dirty = android.graphics.Rect(changed) else dirty?.union(changed)
@@ -6849,10 +6796,10 @@ class InkCanvasView(context: Context) : View(context) {
         dirty?.let { bounds ->
             wetPaintDirtyBounds = mergeDirtyBounds(wetPaintDirtyBounds, bounds)
             invalidate(
-                (bounds.left * width.toFloat() / raster.width).toInt() - 2,
-                (bounds.top * height.toFloat() / raster.height).toInt() - 2,
-                (bounds.right * width.toFloat() / raster.width).toInt() + 2,
-                (bounds.bottom * height.toFloat() / raster.height).toInt() + 2,
+                (bounds.left * width.toFloat() / rasterWidth).toInt() - 2,
+                (bounds.top * height.toFloat() / rasterHeight).toInt() - 2,
+                (bounds.right * width.toFloat() / rasterWidth).toInt() + 2,
+                (bounds.bottom * height.toFloat() / rasterHeight).toInt() + 2,
             )
         }
     }
@@ -6865,7 +6812,6 @@ class InkCanvasView(context: Context) : View(context) {
         rasterPaintSession?.close()
         rasterPaintSession = null
         rasterPaintGestureStrokeId = null
-        rasterWetPaintBitmap = null
         wetPaintDirtyBounds = null
         wetPaintLastPositions = emptyList()
         wetPaintPickupColors.clear()
@@ -6910,13 +6856,11 @@ class InkCanvasView(context: Context) : View(context) {
         invalidate()
     }
 
-    private fun commitRasterPaintStrokes(raster: Bitmap, newStrokes: List<InkStroke>) {
+    private fun commitRasterPaintStrokes(surface: PixelTileSurface, newStrokes: List<InkStroke>) {
         rasterFullReplayCount++
-        val patch = renderRasterStrokePatch(raster, newStrokes) ?: return
-        val surface = rasterTileSurfaceFor(activeLayerId) ?: run { patch.bitmap.recycle(); return }
+        val patch = renderRasterStrokePatch(surface, newStrokes) ?: return
         val session = rasterPaintSession ?: RasterTilePaintSession(
             surface,
-            raster,
             selectionMaskForRasterTools(),
             preserveDestinationAlpha = activeLayerId in alphaLockedLayers,
         )
@@ -6994,11 +6938,9 @@ class InkCanvasView(context: Context) : View(context) {
         pendingEraserInvalidationBefore = null
         rasterTileEraserSession?.close()
         rasterTileEraserSession = null
-        rasterEraserBitmap = rasterEditBitmapFor(activeLayerId)
-        val raster = rasterEraserBitmap
         val surface = rasterTileSurfaceFor(activeLayerId)
-        if (raster != null && surface != null) {
-            rasterTileEraserSession = RasterTileEraserSession(surface, raster, selectionMaskForRasterTools())
+        if (surface != null) {
+            rasterTileEraserSession = RasterTileEraserSession(surface, selectionMaskForRasterTools())
             eraserGestureBefore = null
         } else eraserGestureBefore = strokes.toList()
         rasterEraserChanged = false
@@ -7011,15 +6953,17 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun eraseAlong(x: Float, y: Float, pressure: Float) {
-        val raster = rasterEraserBitmap
         val tileSession = rasterTileEraserSession
-        if (raster != null && tileSession != null) {
+        val surface = rasterTileSurfaceFor(activeLayerId)
+        if (surface != null && tileSession != null) {
+            val rasterWidth = surface.logicalWidth
+            val rasterHeight = surface.logicalHeight
             val targetX = x.coerceIn(0f, 1f); val targetY = y.coerceIn(0f, 1f)
             val point = StrokePoint(targetX, targetY, pressure.coerceIn(0f, 1f), android.os.SystemClock.uptimeMillis())
             if (rasterEraserPoints.lastOrNull()?.let { last -> last.x == point.x && last.y == point.y } != true) rasterEraserPoints += point
             val startX = lastEraserX ?: targetX; val startY = lastEraserY ?: targetY
-            val radius = eraserRadiusPixels(pressure) * raster.width / width.coerceAtLeast(1).toFloat()
-            val dirty = tileSession.eraseSegment(startX * raster.width, startY * raster.height, targetX * raster.width, targetY * raster.height, radius, eraserOpacity, eraserHardness)
+            val radius = eraserRadiusPixels(pressure) * rasterWidth / width.coerceAtLeast(1).toFloat()
+            val dirty = tileSession.eraseSegment(startX * rasterWidth, startY * rasterHeight, targetX * rasterWidth, targetY * rasterHeight, radius, eraserOpacity, eraserHardness)
             if (dirty != null) {
                 rasterEraserChanged = true
                 rasterEraserDirtyBounds = mergeDirtyBounds(rasterEraserDirtyBounds, dirty)
@@ -7170,9 +7114,8 @@ class InkCanvasView(context: Context) : View(context) {
         removeCallbacks(eraserInvalidationFrame)
         eraserInvalidationScheduled = false
         flushEraserInvalidation()
-        val raster = rasterEraserBitmap
         val tileSession = rasterTileEraserSession
-        if (raster != null && tileSession != null) {
+        if (tileSession != null) {
             if (rasterEraserChanged) {
                 // Discard the low-cost round preview, then authoritatively replay the imported or
                 // configured eraser descriptor into one sparse-tile transaction.
@@ -7192,7 +7135,7 @@ class InkCanvasView(context: Context) : View(context) {
                     paintMix = 0f,
                 )
                 val surface = rasterLayerTileSurfaces[activeLayerId]
-                val strokePatch = renderRasterStrokePatch(raster, listOf(eraserStroke))
+                val strokePatch = surface?.let { renderRasterStrokePatch(it, listOf(eraserStroke)) }
                 if (surface != null && strokePatch != null) {
                     val bounds = Rect(
                         strokePatch.left,
@@ -7200,8 +7143,9 @@ class InkCanvasView(context: Context) : View(context) {
                         strokePatch.left + strokePatch.bitmap.width,
                         strokePatch.top + strokePatch.bitmap.height,
                     )
-                    RasterTileEditSession(surface, raster, "authored raster eraser").use { exact ->
-                        exact.editIndependent(
+                    val exact = RasterTileEditSession(surface, "authored raster eraser")
+                    exact.use {
+                        it.editIndependent(
                             app.inkloom.engine.v3.surface.PixelRect(bounds.left, bounds.top, bounds.right, bounds.bottom),
                         ) { destination, unit ->
                             val source = Rect(
@@ -7214,7 +7158,7 @@ class InkCanvasView(context: Context) : View(context) {
                                 blendMode = android.graphics.BlendMode.DST_OUT
                             })
                         }
-                        exact.commit().close()
+                        it.commit().close()
                     }
                     rasterEraserDirtyBounds = bounds
                     strokePatch.bitmap.recycle()
@@ -7227,7 +7171,7 @@ class InkCanvasView(context: Context) : View(context) {
             }
             tileSession.close()
         } else eraserGestureBefore?.let { commitStrokeEdit(it, strokes) }
-        rasterTileEraserSession = null; rasterEraserBitmap = null; rasterEraserChanged = false; rasterEraserDirtyBounds = null
+        rasterTileEraserSession = null; rasterEraserChanged = false; rasterEraserDirtyBounds = null
         rasterEraserPoints.clear()
         eraserGestureBefore = null
         lastEraserX = null
@@ -7248,7 +7192,7 @@ class InkCanvasView(context: Context) : View(context) {
             session.close()
             invalidate()
         } ?: eraserGestureBefore?.let(::restoreStrokeSnapshot)
-        rasterTileEraserSession = null; rasterEraserBitmap = null; rasterEraserChanged = false; rasterEraserDirtyBounds = null
+        rasterTileEraserSession = null; rasterEraserChanged = false; rasterEraserDirtyBounds = null
         rasterEraserPoints.clear()
         eraserGestureBefore = null
         lastEraserX = null

@@ -9,25 +9,22 @@ import android.graphics.Rect
 import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v3.surface.PixelRect
 import app.inkloom.engine.v3.surface.PixelTileSurface
+import app.inkloom.engine.v3.surface.PixelTileSurfaceSnapshot
 import app.inkloom.engine.v3.surface.PixelTileTransactionRecord
 
 /**
  * One atomic raster-tool gesture over the authoritative sparse tile surface.
  *
  * Android bitmaps are bounded scratch/rendering resources only. Every edit samples the active
- * transaction, writes the changed rectangle back into copy-on-write tiles, and mirrors that small
- * rectangle to [displayBitmap] for immediate Canvas rendering.
+ * transaction and writes the changed rectangle back into copy-on-write tiles. Production presents
+ * [previewSnapshot] directly; no page-sized mutable display mirror exists.
  */
 class RasterTileEditSession(
     private val surface: PixelTileSurface,
-    private val displayBitmap: Bitmap,
     label: String,
-    private val mirrorWrites: Boolean = true,
-    private val publishDirtyOnCommit: Boolean = !mirrorWrites,
 ) : AutoCloseable {
     private val original: app.inkloom.engine.v3.surface.PixelTileSurfaceSnapshot
     private val transaction: app.inkloom.engine.v3.surface.PixelTileWriteTransaction
-    private val displayCanvas: Canvas?
     private val sourcePaint = Paint().apply {
         xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC)
     }
@@ -38,13 +35,8 @@ class RasterTileEditSession(
     private var dirty: PixelRect? = null
 
     init {
-        require(!displayBitmap.isRecycled) { "Display bitmap has been recycled" }
-        require(displayBitmap.width == surface.logicalWidth && displayBitmap.height == surface.logicalHeight) {
-            "Display bitmap and tile surface dimensions must match"
-        }
         original = surface.snapshot()
         transaction = surface.beginWrite(label)
-        displayCanvas = if (mirrorWrites || publishDirtyOnCommit) Canvas(displayBitmap) else null
     }
 
     val dirtyBounds: PixelRect? get() = dirty
@@ -53,7 +45,13 @@ class RasterTileEditSession(
     internal var lastRoiPlan: RasterRoiPlan? = null
         private set
 
-    /** Edits [bounds] in region-local coordinates and publishes it to the display mirror. */
+    /** Current private gesture pixels for real-time presentation; document truth stays atomic. */
+    fun previewSnapshot(): PixelTileSurfaceSnapshot {
+        requireActive()
+        return transaction.previewSnapshot()
+    }
+
+    /** Edits [bounds] in region-local coordinates. */
     fun edit(bounds: PixelRect, operation: (Bitmap) -> Unit): PixelRect? {
         requireActive()
         val plan = RasterRoiPlan.writeOnly(
@@ -69,9 +67,6 @@ class RasterTileEditSession(
         try {
             operation(scratch)
             PixelTileBitmapAdapter.replaceRegion(transaction, clipped, scratch)
-            if (mirrorWrites) displayCanvas?.drawBitmap(
-                scratch, null, Rect(clipped.left, clipped.top, clipped.right, clipped.bottom), sourcePaint,
-            )
         } finally {
             scratch.recycle()
         }
@@ -109,12 +104,6 @@ class RasterTileEditSession(
                 batch.forEach { unit ->
                     val bitmap = requireNotNull(scratch[unit])
                     PixelTileBitmapAdapter.replaceRegion(transaction, unit.writeBounds, bitmap)
-                    if (mirrorWrites) displayCanvas?.drawBitmap(
-                        bitmap,
-                        null,
-                        Rect(unit.writeBounds.left, unit.writeBounds.top, unit.writeBounds.right, unit.writeBounds.bottom),
-                        sourcePaint,
-                    )
                     dirty = dirty?.union(unit.writeBounds) ?: unit.writeBounds
                 }
             } finally {
@@ -141,18 +130,20 @@ class RasterTileEditSession(
         try {
             operation(sample, requestedRead, output)
             PixelTileBitmapAdapter.replaceRegion(transaction, plan.writeBounds, output)
-            if (mirrorWrites) displayCanvas?.drawBitmap(
-                output,
-                null,
-                Rect(plan.writeBounds.left, plan.writeBounds.top, plan.writeBounds.right, plan.writeBounds.bottom),
-                sourcePaint,
-            )
         } finally {
             sample.recycle()
             output.recycle()
         }
         dirty = dirty?.union(plan.writeBounds) ?: plan.writeBounds
         return plan.writeBounds
+    }
+
+    /** Materializes only a bounded region of the current private transaction for sampling. */
+    internal fun sampleCurrent(bounds: PixelRect): Bitmap? {
+        requireActive()
+        val clipped = bounds.intersect(PixelRect(0, 0, surface.logicalWidth, surface.logicalHeight))
+        if (clipped.isEmpty) return null
+        return PixelTileBitmapAdapter.render(transaction, clipped)
     }
 
     private fun materializeRead(plan: RasterRoiPlan, generation: RasterSampleGeneration): Bitmap {
@@ -272,38 +263,12 @@ class RasterTileEditSession(
     fun commit(): PixelTileTransactionRecord {
         requireActive()
         state = State.COMMITTED
-        val record = transaction.commit()
-        if (publishDirtyOnCommit) dirty?.takeUnless(PixelRect::isEmpty)?.let { changed ->
-            val published = PixelTileBitmapAdapter.render(surface.snapshot(), changed)
-            try {
-                displayCanvas?.drawBitmap(
-                    published, null,
-                    Rect(changed.left, changed.top, changed.right, changed.bottom),
-                    sourcePaint,
-                )
-            } finally {
-                published.recycle()
-            }
-        }
-        return record
+        return transaction.commit()
     }
 
     fun cancel() {
         requireActive()
         transaction.cancel()
-        if (mirrorWrites) dirty?.takeUnless(PixelRect::isEmpty)?.let { changed ->
-            val restored = PixelTileBitmapAdapter.render(original, changed)
-            try {
-                displayCanvas?.drawBitmap(
-                    restored,
-                    null,
-                    Rect(changed.left, changed.top, changed.right, changed.bottom),
-                    sourcePaint,
-                )
-            } finally {
-                restored.recycle()
-            }
-        }
         state = State.CANCELLED
     }
 

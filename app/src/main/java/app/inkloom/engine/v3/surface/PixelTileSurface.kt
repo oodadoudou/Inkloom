@@ -299,6 +299,35 @@ class PixelTileSurface(
         )
     }
 
+    /**
+     * Immutable presentation snapshot of an active transaction. Published document generations
+     * remain untouched; only the transaction's bounded working tiles are copied. Preview
+     * generations use negative ids so generation-keyed render caches can never confuse them with
+     * durable generations or with an earlier MOVE frame.
+     */
+    internal fun preview(transaction: PixelTileWriteTransaction): PixelTileSurfaceSnapshot = synchronized(monitor) {
+        requireActive(transaction)
+        val previewTiles = generations.toMutableMap()
+        transaction.workingTiles.forEach { (key, working) ->
+            val pixels = working.pixels.copyBuffer()
+            val nonTransparent = pixels.nonTransparentPixelCount()
+            if (nonTransparent == 0) previewTiles.remove(key) else previewTiles[key] = PixelTileGeneration(
+                id = previewGenerationIds.getAndDecrement(),
+                pixels = pixels,
+                nonTransparentPixelCount = nonTransparent,
+            )
+        }
+        PixelTileSurfaceSnapshot(
+            surfaceId = surfaceId,
+            logicalWidth = logicalWidth,
+            logicalHeight = logicalHeight,
+            tileSize = tileSize,
+            pixelFormat = pixelFormat,
+            revision = revisionValue,
+            tiles = previewTiles,
+        )
+    }
+
     fun beginWrite(label: String): PixelTileWriteTransaction {
         require(label.isNotBlank()) { "A tile transaction needs a diagnostic label" }
         return synchronized(monitor) {
@@ -428,6 +457,7 @@ class PixelTileSurface(
 
         private val transactionIds = AtomicLong(0L)
         private val generationIds = AtomicLong(0L)
+        private val previewGenerationIds = AtomicLong(-1L)
         private const val MAX_RESTORED_GENERATION = Long.MAX_VALUE / 2L
 
         /** Restores immutable published tiles from a verified persistence boundary. */
@@ -531,6 +561,9 @@ class PixelTileWriteTransaction internal constructor(
 ) : AutoCloseable {
     internal val workingTiles = linkedMapOf<PixelTileKey, WorkingPixelTile>()
     private var state = State.ACTIVE
+    private var mutationVersion = 0L
+    private var previewVersion = -1L
+    private var cachedPreview: PixelTileSurfaceSnapshot? = null
 
     val touchedTileCount: Int get() = workingTiles.size
     val workingByteSize: Long
@@ -666,6 +699,16 @@ class PixelTileWriteTransaction internal constructor(
         }
     }
 
+    /** Bounded immutable presentation state; never publishes or changes undo history. */
+    fun previewSnapshot(): PixelTileSurfaceSnapshot {
+        requireActive()
+        cachedPreview?.takeIf { previewVersion == mutationVersion }?.let { return it }
+        return surface.preview(this).also { preview ->
+            cachedPreview = preview
+            previewVersion = mutationVersion
+        }
+    }
+
     /**
      * Mutates a tile-local rectangle. The array is valid only during [block] and must not be
      * retained. Edge tiles still use a full fixed-size allocation; writes outside logical bounds
@@ -739,11 +782,13 @@ class PixelTileWriteTransaction internal constructor(
     internal fun markCommitted() {
         state = State.COMMITTED
         workingTiles.clear()
+        cachedPreview = null
     }
 
     internal fun markCancelled() {
         state = State.CANCELLED
         workingTiles.clear()
+        cachedPreview = null
     }
 
     private fun writableTile(key: PixelTileKey): WorkingPixelTile = workingTiles.getOrPut(key) {
@@ -756,6 +801,8 @@ class PixelTileWriteTransaction internal constructor(
 
     private fun markDirty(tile: WorkingPixelTile, rect: PixelRect) {
         tile.dirtyRect = tile.dirtyRect?.union(rect) ?: rect
+        mutationVersion++
+        cachedPreview = null
     }
 
     private fun requireActive() {

@@ -126,6 +126,39 @@ class PixelTileSurfaceTest {
         assertEquals(1, surface.tileCount)
     }
 
+    @Test fun transactionPreviewIsImmutableCachedAndNeverPublishesGesturePixels() {
+        val surface = PixelTileSurface(8192, 8192, tileSize = 128)
+        surface.beginWrite("seed").run {
+            setPixel(8, 8, 0xff010203.toInt())
+            commit().close()
+        }
+        val publishedRevision = surface.revision
+        val transaction = surface.beginWrite("private gesture")
+        transaction.setPixel(4096, 4096, 0xff112233.toInt())
+
+        val firstPreview = transaction.previewSnapshot()
+        val cachedPreview = transaction.previewSnapshot()
+        assertTrue("An unchanged frame must reuse its immutable preview", firstPreview === cachedPreview)
+        assertEquals(publishedRevision, firstPreview.revision)
+        assertEquals(0xff010203.toInt(), firstPreview.pixelAt(8, 8))
+        assertEquals(0xff112233.toInt(), firstPreview.pixelAt(4096, 4096))
+        assertEquals("Preview pixels must not leak into document truth", 0, surface.pixelAt(4096, 4096))
+        assertTrue(firstPreview.tileInfo.first { it.key == PixelTileKey(32, 32) }.generation < 0L)
+
+        transaction.setPixel(4224, 4096, 0xff445566.toInt())
+        val nextPreview = transaction.previewSnapshot()
+        assertTrue("A mutation must publish a new private preview", firstPreview !== nextPreview)
+        assertEquals(0, firstPreview.pixelAt(4224, 4096))
+        assertEquals(0xff445566.toInt(), nextPreview.pixelAt(4224, 4096))
+        assertEquals(0, surface.pixelAt(4224, 4096))
+
+        transaction.cancel()
+        assertEquals(publishedRevision, surface.revision)
+        assertEquals(0, surface.pixelAt(4096, 4096))
+        assertEquals(0xff112233.toInt(), firstPreview.pixelAt(4096, 4096))
+        assertThrows(IllegalStateException::class.java) { transaction.previewSnapshot() }
+    }
+
     @Test fun writesAcrossBoundariesCreateExactlyOneDeltaPerTouchedTile() {
         val surface = PixelTileSurface(512, 512, tileSize = 128)
         val transaction = surface.beginWrite("cross boundary")

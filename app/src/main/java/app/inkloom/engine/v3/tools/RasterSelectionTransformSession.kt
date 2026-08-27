@@ -1,12 +1,5 @@
 package app.inkloom.engine.v3.tools
 
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.PorterDuff
-import android.graphics.PorterDuffXfermode
-import android.graphics.Rect
-import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v3.surface.MaskTileSurface
 import app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot
 import app.inkloom.engine.v3.surface.PixelRect
@@ -51,27 +44,21 @@ data class RasterSelectionTransformResult(
  */
 class RasterSelectionTransformSession(
     private val surface: PixelTileSurface,
-    private val displayBitmap: Bitmap,
     private val originalSelection: MaskTileSurfaceSnapshot,
 ) : AutoCloseable {
     private val originalPixels: PixelTileSurfaceSnapshot = surface.snapshot()
     private val sourceBounds = requireNotNull(originalSelection.nonZeroBounds()) { "Selection is empty" }
     private var previewRecord: PixelTileTransactionRecord? = null
     private var previewDirty: PixelRect? = null
-    private var previewKeys: Set<PixelTileKey> = emptySet()
     private var previewSelection: MaskTileSurfaceSnapshot = originalSelection
     private var closed = false
-    private val displayCanvas = Canvas(displayBitmap)
-    private val sourcePaint = Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC) }
 
     init {
         require(surface.logicalWidth == originalSelection.logicalWidth && surface.logicalHeight == originalSelection.logicalHeight)
-        require(displayBitmap.width == surface.logicalWidth && displayBitmap.height == surface.logicalHeight)
     }
 
     fun update(transform: SelectionAffineTransform): RasterSelectionTransformResult {
         check(!closed) { "Transform session is closed" }
-        val previousKeys = previewKeys
         previewRecord?.let { record ->
             surface.apply(record, PixelTileSurface.HistoryDirection.UNDO)
             record.close()
@@ -120,9 +107,7 @@ class RasterSelectionTransformSession(
             throw failure
         }
         previewDirty = dirty
-        previewKeys = affectedKeys
         previewSelection = transformMask(originalSelection, destinationKeys, transform)
-        mirror(previousKeys + affectedKeys)
         return RasterSelectionTransformResult(previewSelection, dirty)
     }
 
@@ -131,7 +116,6 @@ class RasterSelectionTransformSession(
         val dirty = previewDirty ?: return null
         val record = previewRecord ?: return null
         previewRecord = null
-        previewKeys = emptySet()
         closed = true
         return RasterSelectionTransformResult(previewSelection, dirty, record)
     }
@@ -143,32 +127,10 @@ class RasterSelectionTransformSession(
             record.close()
         }
         previewRecord = null
-        mirror(previewKeys)
-        previewKeys = emptySet()
         closed = true
     }
 
     override fun close() = cancel()
-
-    private fun mirror(keys: Set<PixelTileKey>) {
-        if (keys.isEmpty()) return
-        val snapshot = surface.snapshot()
-        keys.forEach { key ->
-            val tile = PixelRect(
-                key.column * surface.tileSize,
-                key.row * surface.tileSize,
-                minOf((key.column + 1) * surface.tileSize, surface.logicalWidth),
-                minOf((key.row + 1) * surface.tileSize, surface.logicalHeight),
-            )
-            if (tile.isEmpty) return@forEach
-            val bitmap = PixelTileBitmapAdapter.render(snapshot, tile)
-            try {
-                displayCanvas.drawBitmap(bitmap, null, Rect(tile.left, tile.top, tile.right, tile.bottom), sourcePaint)
-            } finally {
-                bitmap.recycle()
-            }
-        }
-    }
 
     private fun transformMask(
         source: MaskTileSurfaceSnapshot,

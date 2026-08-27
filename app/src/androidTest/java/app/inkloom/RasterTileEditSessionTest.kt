@@ -33,7 +33,7 @@ class RasterTileEditSessionTest {
             abyssPolicy = RasterAbyssPolicy.TRANSPARENT,
         )
 
-        RasterTileEditSession(surface, display, "transparent abyss").use { session ->
+        RasterTileEditSession(surface, "transparent abyss").use { session ->
             session.editWithRoi(plan) { sample, global, _ ->
                 assertEquals(PixelRect(-2, -1, 2, 2), global)
                 assertEquals(4, sample.width)
@@ -59,7 +59,7 @@ class RasterTileEditSessionTest {
             abyssPolicy = RasterAbyssPolicy.CLAMP_TO_EDGE,
         )
 
-        RasterTileEditSession(surface, display, "clamped abyss").use { session ->
+        RasterTileEditSession(surface, "clamped abyss").use { session ->
             session.editWithRoi(plan) { sample, global, _ ->
                 assertEquals(PixelRect(1, 5, 3, 7), global)
                 assertEquals(display.getPixel(1, 3), sample.getPixel(0, 0))
@@ -75,7 +75,7 @@ class RasterTileEditSessionTest {
         val display = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
         val surface = PixelTileBitmapAdapter.import(display)
         val callbackThreads = Collections.synchronizedSet(mutableSetOf<String>())
-        val session = RasterTileEditSession(surface, display, "independent kernel")
+        val session = RasterTileEditSession(surface, "independent kernel")
 
         session.editIndependent(PixelRect(0, 0, 512, 512)) { bitmap, _ ->
             callbackThreads += Thread.currentThread().name
@@ -85,7 +85,7 @@ class RasterTileEditSessionTest {
         assertEquals(RasterExecutionMode.PARALLEL, session.lastRoiPlan?.executionMode)
         assertTrue(callbackThreads.isNotEmpty())
         assertTrue(callbackThreads.all { it == "Inkloom-RasterROI" })
-        assertEquals(Color.BLUE, display.getPixel(300, 300))
+        assertEquals(Color.BLUE, session.previewSnapshot().pixelAt(300, 300))
 
         val record = session.commit()
         assertEquals(16, record.changedTileCount)
@@ -103,7 +103,7 @@ class RasterTileEditSessionTest {
         }
         val surface = PixelTileBitmapAdapter.import(display)
         val before = surface.snapshot().copyPremultipliedPixels(PixelRect(0, 0, 192, 192))
-        val record = RasterTileEditSession(surface, display, "no-op round trip").use { session ->
+        val record = RasterTileEditSession(surface, "no-op round trip").use { session ->
             session.edit(PixelRect(23, 29, 171, 177)) { }
             session.commit()
         }
@@ -118,12 +118,12 @@ class RasterTileEditSessionTest {
         val display = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
         val surface = PixelTileBitmapAdapter.import(display)
         val bounds = PixelRect(110, 120, 190, 210)
-        val session = RasterTileEditSession(surface, display, "tile paint")
+        val session = RasterTileEditSession(surface, "tile paint")
 
         session.edit(bounds) { scratch ->
             Canvas(scratch).drawColor(Color.BLUE)
         }
-        assertEquals("Display mirror updates before commit", Color.BLUE, display.getPixel(150, 160))
+        assertEquals("Private sparse preview updates before commit", Color.BLUE, session.previewSnapshot().pixelAt(150, 160))
         assertEquals("Published tile surface stays atomic", Color.RED, surface.pixelAt(150, 160))
         assertTrue("Only intersecting tiles are copied", session.touchedTileCount <= 4)
 
@@ -136,38 +136,17 @@ class RasterTileEditSessionTest {
         display.recycle()
     }
 
-    @Test fun cancelRestoresTheDisplayMirrorAndLeavesTheSurfaceUnpublished() {
+    @Test fun cancelDropsThePrivatePreviewAndLeavesTheSurfaceUnpublished() {
         val display = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.GREEN) }
         val surface = PixelTileBitmapAdapter.import(display)
-        RasterTileEditSession(surface, display, "cancelled tile edit").use { session ->
+        RasterTileEditSession(surface, "cancelled tile edit").use { session ->
             session.edit(PixelRect(20, 30, 100, 110)) { scratch ->
                 Canvas(scratch).drawRect(0f, 0f, scratch.width.toFloat(), scratch.height.toFloat(), Paint().apply { color = Color.MAGENTA })
             }
-            assertEquals(Color.MAGENTA, display.getPixel(50, 50))
+            assertEquals(Color.MAGENTA, session.previewSnapshot().pixelAt(50, 50))
         }
 
-        assertEquals(Color.GREEN, display.getPixel(50, 50))
         assertEquals(Color.GREEN, surface.pixelAt(50, 50))
         display.recycle()
-    }
-
-    @Test fun deferredMirrorPublishesOnlyAfterTheAtomicTileCommit() {
-        val display = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
-        val surface = PixelTileBitmapAdapter.import(display)
-        val session = RasterTileEditSession(
-            surface,
-            display,
-            "front-buffered paint",
-            mirrorWrites = false,
-            publishDirtyOnCommit = true,
-        )
-        session.edit(PixelRect(110, 120, 190, 210)) { scratch -> Canvas(scratch).drawColor(Color.BLUE) }
-
-        assertEquals("The stable display must not double-composite live front-buffer ink", Color.RED, display.getPixel(150, 160))
-        assertEquals("The published surface remains atomic until commit", Color.RED, surface.pixelAt(150, 160))
-        val record = session.commit()
-        assertEquals(Color.BLUE, surface.pixelAt(150, 160))
-        assertEquals("Commit publishes just the dirty projection into the stable display", Color.BLUE, display.getPixel(150, 160))
-        record.close(); session.close(); display.recycle()
     }
 }

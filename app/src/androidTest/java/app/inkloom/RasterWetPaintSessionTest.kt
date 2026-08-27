@@ -6,6 +6,8 @@ import android.graphics.Color
 import android.graphics.Paint
 import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection
+import app.inkloom.engine.v3.surface.PixelRect
+import app.inkloom.engine.v3.surface.PixelTileSurface
 import app.inkloom.engine.v3.tools.RasterTilePaintSession
 import app.inkloom.engine.v3.tools.RasterAbyssPolicy
 import app.inkloom.engine.v3.scene.SparseAlphaMask
@@ -18,12 +20,11 @@ import org.junit.Test
 
 class RasterWetPaintSessionTest {
     private fun paintSession(
-        bitmap: Bitmap,
+        surface: PixelTileSurface,
         selection: Bitmap? = null,
         preserveDestinationAlpha: Boolean = false,
     ) = RasterTilePaintSession(
-        surface = PixelTileBitmapAdapter.import(bitmap),
-        displayBitmap = bitmap,
+        surface = surface,
         selectionMask = selection?.let(SparseAlphaMask::fromBitmap)?.surface?.snapshot(),
         preserveDestinationAlpha = preserveDestinationAlpha,
     )
@@ -32,7 +33,7 @@ class RasterWetPaintSessionTest {
         val bitmap = Bitmap.createBitmap(128, 96, Bitmap.Config.ARGB_8888)
         Canvas(bitmap).drawCircle(38f, 48f, 14f, Paint().apply { color = Color.RED })
         val surface = PixelTileBitmapAdapter.import(bitmap)
-        val session = RasterTilePaintSession(surface, bitmap)
+        val session = RasterTilePaintSession(surface)
         session.advanceWetTransport(38f, 48f, 70f, 48f, 20f, pull = 1f, blur = .2f, hardness = .75f)
         assertEquals(RasterAbyssPolicy.TRANSPARENT, session.lastRoiPlan?.abyssPolicy)
         val patch = Bitmap.createBitmap(24, 24, Bitmap.Config.ARGB_8888).apply {
@@ -58,7 +59,7 @@ class RasterWetPaintSessionTest {
         Canvas(bitmap).drawCircle(2048f, 2048f, 36f, Paint().apply { color = Color.BLUE })
         val surface = PixelTileBitmapAdapter.import(bitmap)
         val started = android.os.SystemClock.elapsedRealtimeNanos()
-        RasterTilePaintSession(surface, bitmap).use { session ->
+        RasterTilePaintSession(surface).use { session ->
             val elapsedMs = (android.os.SystemClock.elapsedRealtimeNanos() - started) / 1_000_000f
             assertTrue("Wet Mix pen-down initialization was ${elapsedMs}ms", elapsedMs < 8f)
             assertEquals("Pen-down must not allocate writable tiles", 0L, session.workingByteSize)
@@ -71,8 +72,9 @@ class RasterWetPaintSessionTest {
     @Test fun boundedWetFramesStayWithinTabletFrameBudget() {
         val bitmap = Bitmap.createBitmap(1200, 900, Bitmap.Config.ARGB_8888)
         Canvas(bitmap).drawRect(80f, 300f, 1120f, 600f, Paint().apply { color = Color.rgb(80, 120, 220) })
+        val surface = PixelTileBitmapAdapter.import(bitmap)
         val elapsed = ArrayList<Long>(80)
-        paintSession(bitmap).use { session ->
+        paintSession(surface).use { session ->
             repeat(88) { index ->
                 val x = 120f + index * 10f
                 val started = android.os.SystemClock.elapsedRealtimeNanos()
@@ -91,20 +93,22 @@ class RasterWetPaintSessionTest {
         val bitmap = Bitmap.createBitmap(128, 96, Bitmap.Config.ARGB_8888)
         Canvas(bitmap).drawCircle(38f, 48f, 14f, Paint().apply { color = Color.RED })
         val before = Color.alpha(bitmap.getPixel(67, 48))
+        val surface = PixelTileBitmapAdapter.import(bitmap)
 
-        paintSession(bitmap).use { session ->
+        paintSession(surface).use { session ->
             assertNotNull(session.advanceWetTransport(38f, 48f, 70f, 48f, 20f, pull = 1f, blur = 0f, hardness = .75f))
             session.commit().close()
         }
 
-        assertTrue(Color.alpha(bitmap.getPixel(67, 48)) > before)
+        assertTrue(Color.alpha(surface.pixelAt(67, 48)) > before)
         bitmap.recycle()
     }
 
     @Test fun pickupWellSamplesExistingPigmentBeforePenUp() {
         val bitmap = Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888)
         Canvas(bitmap).drawCircle(48f, 48f, 18f, Paint().apply { color = Color.rgb(32, 160, 224) })
-        paintSession(bitmap).use { session ->
+        val surface = PixelTileBitmapAdapter.import(bitmap)
+        paintSession(surface).use { session ->
             val sampled = session.samplePigment(48f, 48f, 12f)
             assertTrue(Color.alpha(sampled) > 0)
             assertTrue(Color.blue(sampled) > Color.red(sampled))
@@ -115,11 +119,12 @@ class RasterWetPaintSessionTest {
     @Test fun fixedRunningColorBlurUsesAbsolutePixelRadius() {
         val bitmap = Bitmap.createBitmap(128, 96, Bitmap.Config.ARGB_8888)
         Canvas(bitmap).drawRect(42f, 35f, 48f, 61f, Paint().apply { color = Color.BLUE })
-        paintSession(bitmap).use { session ->
+        val surface = PixelTileBitmapAdapter.import(bitmap)
+        paintSession(surface).use { session ->
             assertNotNull(session.advanceWetTransport(48f, 48f, 49f, 48f, 28f, pull = 0f, blur = .4f, hardness = .2f, absoluteBlurRadiusPixels = 12f))
             session.commit().close()
         }
-        val spread = bitmap.getPixel(58, 48)
+        val spread = surface.pixelAt(58, 48)
         assertTrue("Expected fixed blur to reach x=58 but color was ${Integer.toHexString(spread)}", Color.alpha(spread) > 0)
         bitmap.recycle()
     }
@@ -127,13 +132,14 @@ class RasterWetPaintSessionTest {
     @Test fun blurSoftensPigmentWithoutInjectingTheBrushColor() {
         val bitmap = Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888)
         Canvas(bitmap).drawRect(30f, 30f, 48f, 66f, Paint().apply { color = Color.BLUE })
+        val surface = PixelTileBitmapAdapter.import(bitmap)
 
-        paintSession(bitmap).use { session ->
+        paintSession(surface).use { session ->
             assertNotNull(session.advanceWetTransport(48f, 48f, 52f, 48f, 25f, pull = 0f, blur = 1f, hardness = .2f))
             session.commit().close()
         }
 
-        val spread = bitmap.getPixel(53, 48)
+        val spread = surface.pixelAt(53, 48)
         assertTrue(Color.alpha(spread) > 0)
         assertTrue(Color.blue(spread) > Color.red(spread))
         bitmap.recycle()
@@ -142,14 +148,16 @@ class RasterWetPaintSessionTest {
     @Test fun cancellationRestoresTheExactRasterSurface() {
         val bitmap = Bitmap.createBitmap(80, 80, Bitmap.Config.ARGB_8888)
         Canvas(bitmap).drawCircle(28f, 40f, 12f, Paint().apply { color = Color.MAGENTA })
-        val before = IntArray(bitmap.width * bitmap.height).also { bitmap.getPixels(it, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height) }
+        val surface = PixelTileBitmapAdapter.import(bitmap)
+        val wholePage = PixelRect(0, 0, surface.logicalWidth, surface.logicalHeight)
+        val before = surface.snapshot().copyPremultipliedPixels(wholePage)
 
-        paintSession(bitmap).use { session ->
+        paintSession(surface).use { session ->
             session.advanceWetTransport(28f, 40f, 58f, 40f, 18f, pull = 1f, blur = .6f, hardness = .5f)
             session.restoreOriginal()
         }
 
-        val after = IntArray(bitmap.width * bitmap.height).also { bitmap.getPixels(it, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height) }
+        val after = surface.snapshot().copyPremultipliedPixels(wholePage)
         assertEquals(before.toList(), after.toList())
         bitmap.recycle()
     }
@@ -160,13 +168,14 @@ class RasterWetPaintSessionTest {
         val selection = Bitmap.createBitmap(32, 24, Bitmap.Config.ARGB_8888)
         Canvas(selection).drawRect(0f, 0f, 13.75f, 24f, Paint().apply { color = Color.WHITE })
         val outsideBefore = bitmap.getPixel(65, 48)
+        val surface = PixelTileBitmapAdapter.import(bitmap)
 
-        paintSession(bitmap, selection).use { session ->
+        paintSession(surface, selection).use { session ->
             session.advanceWetTransport(40f, 48f, 72f, 48f, 22f, pull = 1f, blur = .5f, hardness = .4f)
             session.commit().close()
         }
 
-        assertEquals(outsideBefore, bitmap.getPixel(65, 48))
+        assertEquals(outsideBefore, surface.pixelAt(65, 48))
         assertTrue("The immutable selection remains owned by the canvas", !selection.isRecycled)
         bitmap.recycle()
         selection.recycle()
@@ -176,13 +185,14 @@ class RasterWetPaintSessionTest {
         val bitmap = Bitmap.createBitmap(128, 96, Bitmap.Config.ARGB_8888)
         Canvas(bitmap).drawCircle(40f, 48f, 16f, Paint().apply { color = Color.argb(120, 255, 0, 0) })
         val beforeAlpha = IntArray(bitmap.width * bitmap.height) { index -> Color.alpha(bitmap.getPixel(index % bitmap.width, index / bitmap.width)) }
+        val surface = PixelTileBitmapAdapter.import(bitmap)
 
-        paintSession(bitmap, preserveDestinationAlpha = true).use { session ->
+        paintSession(surface, preserveDestinationAlpha = true).use { session ->
             session.advanceWetTransport(40f, 48f, 74f, 48f, 24f, pull = 1f, blur = .5f, hardness = .4f)
             session.commit().close()
         }
 
-        val afterAlpha = IntArray(bitmap.width * bitmap.height) { index -> Color.alpha(bitmap.getPixel(index % bitmap.width, index / bitmap.width)) }
+        val afterAlpha = IntArray(bitmap.width * bitmap.height) { index -> Color.alpha(surface.pixelAt(index % bitmap.width, index / bitmap.width)) }
         assertEquals(beforeAlpha.toList(), afterAlpha.toList())
         bitmap.recycle()
     }

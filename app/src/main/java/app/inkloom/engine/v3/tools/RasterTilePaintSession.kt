@@ -12,6 +12,7 @@ import app.inkloom.document.InkStroke
 import app.inkloom.engine.v3.surface.PixelRect
 import app.inkloom.engine.v3.surface.PixelTileSurface
 import app.inkloom.engine.v3.surface.PixelTileTransactionRecord
+import app.inkloom.engine.v3.surface.PixelTileSurfaceSnapshot
 import app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -27,45 +28,29 @@ import kotlin.math.min
  */
 class RasterTilePaintSession private constructor(
     surface: PixelTileSurface,
-    private val displayBitmap: Bitmap,
     private val preserveDestinationAlpha: Boolean = false,
-    mirrorWrites: Boolean = true,
     private val selection: RasterSelectionMask,
 ) : AutoCloseable {
     constructor(
         surface: PixelTileSurface,
-        displayBitmap: Bitmap,
         preserveDestinationAlpha: Boolean = false,
-        mirrorWrites: Boolean = true,
     ) : this(
         surface,
-        displayBitmap,
         preserveDestinationAlpha,
-        mirrorWrites,
         RasterSelectionMask(null, surface.logicalWidth, surface.logicalHeight),
     )
 
     internal constructor(
         surface: PixelTileSurface,
-        displayBitmap: Bitmap,
         selectionMask: MaskTileSurfaceSnapshot?,
         preserveDestinationAlpha: Boolean = false,
-        mirrorWrites: Boolean = true,
     ) : this(
         surface,
-        displayBitmap,
         preserveDestinationAlpha,
-        mirrorWrites,
         RasterSelectionMask(selectionMask, surface.logicalWidth, surface.logicalHeight),
     )
 
-    private val edits = RasterTileEditSession(
-        surface,
-        displayBitmap,
-        "raster paint",
-        mirrorWrites = mirrorWrites,
-        publishDirtyOnCommit = !mirrorWrites,
-    )
+    private val edits = RasterTileEditSession(surface, "raster paint")
     private var sourceBitmap: Bitmap? = null
     private var sourceCanvas: Canvas? = null
     private var sampleBitmap: Bitmap? = null
@@ -101,10 +86,11 @@ class RasterTilePaintSession private constructor(
     val touchedTileCount: Int get() = edits.touchedTileCount
     val workingByteSize: Long get() = edits.workingByteSize
     internal val lastRoiPlan: RasterRoiPlan? get() = edits.lastRoiPlan
+    fun previewSnapshot(): PixelTileSurfaceSnapshot = edits.previewSnapshot()
 
-    /** Bounded native downsample from the up-to-date display mirror. */
+    /** Bounded native downsample from the current private tile transaction. */
     fun samplePigment(centerX: Float, centerY: Float, radiusPixels: Float): Int {
-        if (completed || displayBitmap.isRecycled) return Color.TRANSPARENT
+        if (completed) return Color.TRANSPARENT
         val radius = (radiusPixels * .32f).coerceAtLeast(1f)
         pickupSource.set(
             floor(centerX - radius).toInt().coerceIn(0, logicalWidth - 1),
@@ -113,8 +99,14 @@ class RasterTilePaintSession private constructor(
             ceil(centerY + radius).toInt().coerceIn(1, logicalHeight),
         )
         if (pickupSource.isEmpty) return Color.TRANSPARENT
-        pickupCanvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
-        pickupCanvas.drawBitmap(displayBitmap, pickupSource, pickupDestination, sourcePaint)
+        val bounds = PixelRect(pickupSource.left, pickupSource.top, pickupSource.right, pickupSource.bottom)
+        val source = edits.sampleCurrent(bounds) ?: return Color.TRANSPARENT
+        try {
+            pickupCanvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+            pickupCanvas.drawBitmap(source, null, pickupDestination, sourcePaint)
+        } finally {
+            source.recycle()
+        }
         return pickupBitmap.getPixel(0, 0)
     }
 
@@ -130,7 +122,7 @@ class RasterTilePaintSession private constructor(
         absoluteBlurRadiusPixels: Float = -1f,
     ): Rect? {
         check(!completed) { "Raster tile paint session is complete" }
-        if (displayBitmap.isRecycled || radiusPixels <= .25f) return null
+        if (radiusPixels <= .25f) return null
         val safePull = pull.coerceIn(0f, 1f)
         val safeBlur = blur.coerceIn(0f, 1f)
         if (safePull <= .001f && safeBlur <= .001f) return null

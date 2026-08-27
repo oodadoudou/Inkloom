@@ -108,9 +108,8 @@ class V3RasterProjectionProductionTest {
                 setDocumentStrokes(emptyList(), "v3-authoritative-display")
                 setRasterLayerSurfaces(mapOf("paint" to surface))
                 layerOrder = listOf("paint")
-                prepareRasterLayerForEditing("paint")
             }
-            surface.beginWrite("committed after prewarm").run {
+            surface.beginWrite("committed after binding").run {
                 editTile(PixelTileKey(0, 0), PixelRect(0, 0, 64, 64)) { pixels, _ -> pixels.fill(Color.MAGENTA) }
                 commit().close()
             }

@@ -1,6 +1,7 @@
 package app.inkloom
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
 import android.view.InputDevice
 import android.view.MotionEvent
@@ -10,6 +11,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.engine.v3.tools.RasterTileEraserSession
 import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection
+import app.inkloom.engine.v3.surface.PixelTileSurface
 import app.inkloom.model.EditorTool
 import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertEquals
@@ -19,13 +21,31 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class RasterEraserSessionTest {
+    @Test fun surfaceOnlyEraserUsesBoundedTilesAndPublishesWithoutADisplayMirror() {
+        val surface = PixelTileSurface(8192, 8192)
+        surface.beginWrite("seed local pigment").use { seed ->
+            for (y in 3950 until 4050) for (x in 3950 until 4050) seed.setPixel(x, y, Color.BLACK)
+            seed.commit().close()
+        }
+        val originalTiles = surface.tileCount
+        RasterTileEraserSession(surface).use { session ->
+            assertTrue(session.eraseSegment(3980f, 4000f, 4020f, 4000f, 24f, 1f, 1f) != null)
+            assertTrue(session.touchedTileCount in 1..4)
+            assertEquals("Published pixels stay atomic during preview", 255, Color.alpha(surface.pixelAt(4000, 4000)))
+            assertEquals("Sparse preview exposes live erasing", 0, Color.alpha(session.previewSnapshot().pixelAt(4000, 4000)))
+            session.commit().close()
+        }
+        assertEquals(0, Color.alpha(surface.pixelAt(4000, 4000)))
+        assertTrue(surface.tileCount <= originalTiles + 4)
+    }
+
     @Test fun tileEraserPublishesOneUndoableSparseTransaction() {
         val display = Bitmap.createBitmap(1024, 1024, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLACK) }
         val surface = PixelTileBitmapAdapter.import(display)
-        val session = RasterTileEraserSession(surface, display)
+        val session = RasterTileEraserSession(surface)
         session.eraseSegment(420f, 500f, 600f, 500f, 48f, 1f, 1f)
 
-        assertEquals("The display mirror is real-time", 0, Color.alpha(display.getPixel(500, 500)))
+        assertEquals("The private sparse preview is real-time", 0, Color.alpha(session.previewSnapshot().pixelAt(500, 500)))
         assertEquals("The authoritative surface publishes atomically", 255, Color.alpha(surface.pixelAt(500, 500)))
         assertTrue("A local eraser cannot touch the whole 8x8 tile grid", session.touchedTileCount < 64)
 
@@ -43,7 +63,7 @@ class RasterEraserSessionTest {
             eraseColor(Color.BLACK)
         }
         val surface = PixelTileBitmapAdapter.import(bitmap)
-        val session = RasterTileEraserSession(surface, bitmap)
+        val session = RasterTileEraserSession(surface)
 
         assertEquals(0L, session.workingByteSize)
         session.eraseSegment(200f, 200f, 240f, 240f, 20f, 1f, 1f)
@@ -58,12 +78,12 @@ class RasterEraserSessionTest {
             setPixel(120, 100, Color.RED)
         }
         val surface = PixelTileBitmapAdapter.import(bitmap)
-        RasterTileEraserSession(surface, bitmap).use { session ->
+        RasterTileEraserSession(surface).use { session ->
             session.eraseSegment(100f, 100f, 140f, 100f, 30f, 1f, 1f)
-            assertEquals(0, Color.alpha(bitmap.getPixel(120, 100)))
+            assertEquals(0, Color.alpha(session.previewSnapshot().pixelAt(120, 100)))
             session.restoreOriginal()
-            assertEquals(Color.RED, bitmap.getPixel(120, 100))
-            assertEquals(0, Color.alpha(bitmap.getPixel(100, 80)))
+            assertEquals(Color.RED, surface.pixelAt(120, 100))
+            assertEquals(0, Color.alpha(surface.pixelAt(100, 80)))
         }
         bitmap.recycle()
     }
@@ -81,24 +101,26 @@ class RasterEraserSessionTest {
             }
         }
         val surface = PixelTileBitmapAdapter.import(bitmap)
-        RasterTileEraserSession(surface, bitmap, selection.snapshot()).use { session ->
+        RasterTileEraserSession(surface, selection.snapshot()).use { session ->
             session.eraseSegment(30f, 50f, 130f, 50f, 24f, .65f, .35f)
             session.commit().close()
         }
-        assertTrue("Soft eraser creates partial alpha", Color.alpha(bitmap.getPixel(80, 38)) in 1..254)
-        assertEquals("Selection excludes the lower half", 255, Color.alpha(bitmap.getPixel(80, 62)))
+        assertTrue("Soft eraser creates partial alpha", Color.alpha(surface.pixelAt(80, 38)) in 1..254)
+        assertEquals("Selection excludes the lower half", 255, Color.alpha(surface.pixelAt(80, 62)))
         bitmap.recycle()
     }
 
     @Test fun rasterEraserGestureCommitsOneSurfaceAndKeepsOtherLayersOut() {
-        val surface = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLACK) }
+        val seed = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLACK) }
+        val surface = PixelTileBitmapAdapter.import(seed)
+        seed.recycle()
         var commits = 0
         lateinit var view: InkCanvasView
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             view = InkCanvasView(ApplicationProvider.getApplicationContext()).apply {
                 layout(0, 0, 400, 400); fingerDrawingEnabled = true; tool = EditorTool.ERASER
                 activeLayerId = "pixels"; eraserWidth = 180f; eraserHardness = 1f; eraserOpacity = 1f
-                setRasterLayerBitmaps(mapOf("pixels" to surface))
+                setRasterLayerSurfaces(mapOf("pixels" to surface))
                 onRasterLayerCommitted = { patch -> assertEquals("pixels", patch.layerId); commits++; patch.close() }
             }
         }
@@ -106,15 +128,50 @@ class RasterEraserSessionTest {
         send(view, MotionEvent.ACTION_MOVE, 320f, 200f, 20L)
         send(view, MotionEvent.ACTION_UP, 320f, 200f, 40L)
         assertEquals(1, commits)
-        assertEquals(0, Color.alpha(surface.getPixel(200, 200)))
-        surface.recycle()
+        assertEquals(0, Color.alpha(surface.pixelAt(200, 200)))
+    }
+
+    @Test fun productionSurfaceEraserPresentsPrivatePixelsBeforeActionUp() {
+        val surface = PixelTileSurface(400, 400)
+        surface.beginWrite("seed visible area").use { seed ->
+            for (y in 120 until 280) for (x in 120 until 280) seed.setPixel(x, y, Color.BLACK)
+            seed.commit().close()
+        }
+        lateinit var view: InkCanvasView
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view = InkCanvasView(ApplicationProvider.getApplicationContext()).apply {
+                layout(0, 0, 400, 400)
+                fingerDrawingEnabled = true
+                tool = EditorTool.ERASER
+                activeLayerId = "pixels"
+                eraserWidth = 180f
+                eraserHardness = 1f
+                eraserOpacity = 1f
+                setRasterLayerSurfaces(mapOf("pixels" to surface))
+            }
+        }
+
+        send(view, MotionEvent.ACTION_DOWN, 160f, 200f, 0L)
+        send(view, MotionEvent.ACTION_MOVE, 240f, 200f, 20L)
+        assertEquals("Private gesture must not publish before ACTION_UP", 255, Color.alpha(surface.pixelAt(200, 200)))
+
+        val frame = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
+        try {
+            InstrumentationRegistry.getInstrumentation().runOnMainSync { view.draw(Canvas(frame)) }
+            assertEquals("Stable canvas must present the sparse private eraser transaction", 0, Color.alpha(frame.getPixel(200, 200)))
+        } finally {
+            frame.recycle()
+        }
+
+        send(view, MotionEvent.ACTION_UP, 240f, 200f, 40L)
+        assertEquals(0, Color.alpha(surface.pixelAt(200, 200)))
     }
 
     @Test fun rasterEraserSegmentMeetsRealtimeBudget() {
         val bitmap = Bitmap.createBitmap(1200, 900, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLACK) }
         val times = ArrayList<Long>(96)
         val surface = PixelTileBitmapAdapter.import(bitmap)
-        RasterTileEraserSession(surface, bitmap).use { session ->
+        RasterTileEraserSession(surface).use { session ->
             var x = 180f
             repeat(96) { index ->
                 val next = x + 4f

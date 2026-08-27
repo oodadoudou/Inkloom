@@ -1,9 +1,7 @@
 package app.inkloom
 
-import android.graphics.Bitmap
 import android.graphics.Color
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v3.surface.MaskComposeMode
 import app.inkloom.engine.v3.surface.MaskTileSurface
 import app.inkloom.engine.v3.surface.PixelRect
@@ -22,52 +20,41 @@ class RasterSelectionTransformV3Test {
     @Test fun translationPreviewAlwaysResamplesGestureStartAndCancelRestoresPixelsAndMask() {
         val surface = selectedSquareSurface()
         val selection = squareSelection().snapshot()
-        val display = PixelTileBitmapAdapter.render(surface.snapshot()).copy(Bitmap.Config.ARGB_8888, true)
-        try {
-            val session = RasterSelectionTransformSession(surface, display, selection)
-            val first = session.update(SelectionAffineTransform(12f, 12f, translateX = 16f))
-            assertEquals(Color.TRANSPARENT, surface.pixelAt(10, 10))
-            assertEquals(Color.RED, surface.pixelAt(26, 10))
-            assertEquals(0, first.selection.alphaAt(10, 10))
-            assertEquals(255, first.selection.alphaAt(26, 10))
+        val session = RasterSelectionTransformSession(surface, selection)
+        val first = session.update(SelectionAffineTransform(12f, 12f, translateX = 16f))
+        assertEquals(Color.TRANSPARENT, surface.pixelAt(10, 10))
+        assertEquals(Color.RED, surface.pixelAt(26, 10))
+        assertEquals(0, first.selection.alphaAt(10, 10))
+        assertEquals(255, first.selection.alphaAt(26, 10))
 
-            val second = session.update(SelectionAffineTransform(12f, 12f, translateX = 24f))
-            assertEquals(Color.TRANSPARENT, surface.pixelAt(26, 10))
-            assertEquals(Color.RED, surface.pixelAt(34, 10))
-            assertEquals(0, second.selection.alphaAt(26, 10))
-            assertEquals(255, second.selection.alphaAt(34, 10))
+        val second = session.update(SelectionAffineTransform(12f, 12f, translateX = 24f))
+        assertEquals(Color.TRANSPARENT, surface.pixelAt(26, 10))
+        assertEquals(Color.RED, surface.pixelAt(34, 10))
+        assertEquals(0, second.selection.alphaAt(26, 10))
+        assertEquals(255, second.selection.alphaAt(34, 10))
 
-            session.cancel()
-            assertEquals(Color.RED, surface.pixelAt(10, 10))
-            assertEquals(Color.TRANSPARENT, surface.pixelAt(34, 10))
-            assertEquals(Color.RED, display.getPixel(10, 10))
-        } finally {
-            display.recycle()
-        }
+        session.cancel()
+        assertEquals(Color.RED, surface.pixelAt(10, 10))
+        assertEquals(Color.TRANSPARENT, surface.pixelAt(34, 10))
     }
 
     @Test fun scaleRotateAndCommitMoveRasterAndSparseAlphaTogether() {
         val surface = selectedSquareSurface()
-        val display = PixelTileBitmapAdapter.render(surface.snapshot()).copy(Bitmap.Config.ARGB_8888, true)
-        try {
-            val session = RasterSelectionTransformSession(surface, display, squareSelection().snapshot())
-            val result = session.update(
-                SelectionAffineTransform(centerX = 12f, centerY = 12f, scaleX = 2f, scaleY = 1f, rotationDegrees = 90f),
-            )
-            session.commit()
-            assertTrue(result.dirtyBounds.width <= 24 && result.dirtyBounds.height <= 24)
-            assertTrue(result.selection.nonZeroBounds() != null)
-            val selected = result.selection.nonZeroBounds()!!
-            assertEquals(selected, surface.snapshot().let { pixels ->
-                var left = 64; var top = 64; var right = 0; var bottom = 0
-                for (y in 0 until 64) for (x in 0 until 64) if (pixels.pixelAt(x, y) ushr 24 != 0) {
-                    left = minOf(left, x); top = minOf(top, y); right = maxOf(right, x + 1); bottom = maxOf(bottom, y + 1)
-                }
-                PixelRect(left, top, right, bottom)
-            })
-        } finally {
-            display.recycle()
-        }
+        val session = RasterSelectionTransformSession(surface, squareSelection().snapshot())
+        val result = session.update(
+            SelectionAffineTransform(centerX = 12f, centerY = 12f, scaleX = 2f, scaleY = 1f, rotationDegrees = 90f),
+        )
+        session.commit()
+        assertTrue(result.dirtyBounds.width <= 24 && result.dirtyBounds.height <= 24)
+        assertTrue(result.selection.nonZeroBounds() != null)
+        val selected = result.selection.nonZeroBounds()!!
+        assertEquals(selected, surface.snapshot().let { pixels ->
+            var left = 64; var top = 64; var right = 0; var bottom = 0
+            for (y in 0 until 64) for (x in 0 until 64) if (pixels.pixelAt(x, y) ushr 24 != 0) {
+                left = minOf(left, x); top = minOf(top, y); right = maxOf(right, x + 1); bottom = maxOf(bottom, y + 1)
+            }
+            PixelRect(left, top, right, bottom)
+        })
     }
 
     @Test fun fragmentedTwoKSelectionTransformStaysWithinInteractiveGateWithoutFullMaskBitmap() {
@@ -82,18 +69,13 @@ class RasterSelectionTransformV3Test {
             }
             commit().close()
         }
-        val display = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        try {
-            val elapsedMs = measureNanoTime {
-                RasterSelectionTransformSession(surface, display, mask.snapshot()).use { session ->
-                    session.update(SelectionAffineTransform(1024f, 1024f, translateX = 12f, translateY = 8f))
-                    session.commit()
-                }
-            } / 1_000_000f
-            assertTrue("Fragmented 2K selection transform took ${elapsedMs}ms", elapsedMs < 750f)
-        } finally {
-            display.recycle()
-        }
+        val elapsedMs = measureNanoTime {
+            RasterSelectionTransformSession(surface, mask.snapshot()).use { session ->
+                session.update(SelectionAffineTransform(1024f, 1024f, translateX = 12f, translateY = 8f))
+                session.commit()
+            }
+        } / 1_000_000f
+        assertTrue("Fragmented 2K selection transform took ${elapsedMs}ms", elapsedMs < 750f)
     }
 
     private fun selectedSquareSurface(): PixelTileSurface = PixelTileSurface(64, 64, tileSize = 64).also { surface ->

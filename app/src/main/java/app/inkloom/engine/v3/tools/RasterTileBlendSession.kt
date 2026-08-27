@@ -11,6 +11,7 @@ import android.graphics.Rect
 import app.inkloom.engine.v3.surface.PixelRect
 import app.inkloom.engine.v3.surface.PixelTileSurface
 import app.inkloom.engine.v3.surface.PixelTileTransactionRecord
+import app.inkloom.engine.v3.surface.PixelTileSurfaceSnapshot
 import app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -19,34 +20,29 @@ import kotlin.math.hypot
 /** Pigment transport directly over one sparse tile transaction. */
 class RasterTileBlendSession private constructor(
     surface: PixelTileSurface,
-    displayBitmap: Bitmap,
     private val selection: RasterSelectionMask,
     private val preserveDestinationAlpha: Boolean,
 ) : AutoCloseable {
     constructor(
         surface: PixelTileSurface,
-        displayBitmap: Bitmap,
         preserveDestinationAlpha: Boolean = false,
     ) : this(
         surface,
-        displayBitmap,
         RasterSelectionMask(null, surface.logicalWidth, surface.logicalHeight),
         preserveDestinationAlpha,
     )
 
     internal constructor(
         surface: PixelTileSurface,
-        displayBitmap: Bitmap,
         selectionMask: MaskTileSurfaceSnapshot?,
         preserveDestinationAlpha: Boolean = false,
     ) : this(
         surface,
-        displayBitmap,
         RasterSelectionMask(selectionMask, surface.logicalWidth, surface.logicalHeight),
         preserveDestinationAlpha,
     )
 
-    private val edits = RasterTileEditSession(surface, displayBitmap, "raster blend")
+    private val edits = RasterTileEditSession(surface, "raster blend")
     private var transportBitmap: Bitmap? = null
     private var transportCanvas: Canvas? = null
     private var coverageBitmap: Bitmap? = null
@@ -76,6 +72,7 @@ class RasterTileBlendSession private constructor(
     internal val pigmentBucketCount: Int get() = reservoir.bucketCount
     internal val pigmentReservoirByteSize: Long get() = reservoir.retainedByteSize
     internal val lastRoiPlan: RasterRoiPlan? get() = edits.lastRoiPlan
+    fun previewSnapshot(): PixelTileSurfaceSnapshot = edits.previewSnapshot()
 
     fun blend(
         previousX: Float,

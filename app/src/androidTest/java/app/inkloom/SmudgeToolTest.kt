@@ -12,6 +12,7 @@ import app.inkloom.ui.InkCanvasView
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
 import app.inkloom.document.LayerIds
+import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -89,8 +90,10 @@ class SmudgeToolTest {
     }
 
     @Test fun rasterLayerBlendCommitsOnePixelSurfaceAndDoesNotRewriteVectorStrokes() {
-        val surface = Bitmap.createBitmap(200, 200, Bitmap.Config.ARGB_8888)
-        for (y in 70 until 130) for (x in 30 until 80) surface.setPixel(x, y, Color.RED)
+        val seed = Bitmap.createBitmap(200, 200, Bitmap.Config.ARGB_8888)
+        for (y in 70 until 130) for (x in 30 until 80) seed.setPixel(x, y, Color.RED)
+        val surface = PixelTileBitmapAdapter.import(seed)
+        seed.recycle()
         var rasterCommits = 0
         var vectorReplacements = 0
         val view = canvas {
@@ -98,7 +101,7 @@ class SmudgeToolTest {
             fingerDrawingEnabled = true
             baseWidth = 320f
             activeLayerId = "raster"
-            setRasterLayerBitmaps(mapOf("raster" to surface))
+            setRasterLayerSurfaces(mapOf("raster" to surface))
             onRasterLayerCommitted = { patch ->
                 assertEquals("raster", patch.layerId)
                 rasterCommits++
@@ -112,8 +115,7 @@ class SmudgeToolTest {
 
         assertEquals("One blend gesture creates one raster transaction", 1, rasterCommits)
         assertEquals(0, vectorReplacements)
-        assertTrue(Color.alpha(surface.getPixel(105, 100)) > 0)
-        surface.recycle()
+        assertTrue(Color.alpha(surface.pixelAt(105, 100)) > 0)
     }
 
     @Test fun blendingBlankPaperDoesNotCreatePigment() {

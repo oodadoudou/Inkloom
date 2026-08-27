@@ -87,7 +87,6 @@ class SelectionTransformTest {
             setRasterLayerSurfaces(mapOf("raster" to surface))
             bindDocumentSelectionState(runtime.stateFor("document", "page", 64, 64))
             replaceSelectionFromMask(mask.snapshot())
-            prepareRasterLayerForEditing("raster")
             assertTrue(enterFreeTransform())
         }
 

@@ -20,11 +20,42 @@ import kotlin.math.ceil
 import kotlin.math.floor
 
 /**
- * A deterministic migration baseline. Timings are diagnostic rather than pass/fail gates; the
+ * Deterministic migration and regression gates. Interactive timings are enforced as pass/fail;
  * structural assertions prevent the replacement tile path from silently becoming page-sized.
  */
 @RunWith(AndroidJUnit4::class)
 class PixelTileSurfaceBenchmarkTest {
+    @Test fun sparsePrivatePreviewFramesStayInsideTheRealtimeBudget() {
+        val surface = PixelTileSurface(8192, 8192)
+        surface.beginWrite("seed preview pigment").use { seed ->
+            for (y in 3970 until 4030) for (x in 3900 until 4300) seed.setPixel(x, y, 0xff7080a0.toInt())
+            seed.commit().close()
+        }
+        val times = ArrayList<Long>(72)
+        RasterTileEraserSession(surface).use { session ->
+            var x = 3960f
+            repeat(72) { index ->
+                val next = x + 3f
+                val started = SystemClock.elapsedRealtimeNanos()
+                session.eraseSegment(x, 4000f, next, 4000f + index % 5, 36f, .7f, .55f)
+                val preview = session.previewSnapshot()
+                assertEquals(surface.logicalWidth, preview.logicalWidth)
+                times += SystemClock.elapsedRealtimeNanos() - started
+                x = next
+            }
+            val sorted = times.drop(8).sorted()
+            val p95Ms = sorted[(sorted.size * 95 / 100).coerceAtMost(sorted.lastIndex)] / 1_000_000f
+            Log.i(
+                TAG,
+                "kind=sparse_private_preview canvas=8192 p95_ms=$p95Ms " +
+                    "touched_tiles=${session.touchedTileCount} working_bytes=${session.workingByteSize}",
+            )
+            assertTrue("Sparse private preview p95 was ${p95Ms}ms", p95Ms < 16.7f)
+            assertTrue(session.touchedTileCount < 16)
+            assertTrue(session.workingByteSize < 1_000_000L)
+        }
+    }
+
     @Test fun directTileToolFramesStayLocalAndInsideTheRealtimeBudget() {
         fun fixture(): Pair<Bitmap, PixelTileSurface> {
             val bitmap = Bitmap.createBitmap(1200, 900, Bitmap.Config.ARGB_8888).apply { eraseColor(0xff7080a0.toInt()) }
@@ -40,7 +71,7 @@ class PixelTileSurfaceBenchmarkTest {
 
         fixture().let { (bitmap, surface) ->
             val times = ArrayList<Long>(72)
-            RasterTileEraserSession(surface, bitmap).use { session ->
+            RasterTileEraserSession(surface).use { session ->
                 var x = 220f
                 repeat(72) { index ->
                     val next = x + 3f
@@ -56,7 +87,7 @@ class PixelTileSurfaceBenchmarkTest {
         }
         fixture().let { (bitmap, surface) ->
             val times = ArrayList<Long>(72)
-            RasterTileBlendSession(surface, bitmap).use { session ->
+            RasterTileBlendSession(surface).use { session ->
                 var x = 220f
                 repeat(72) { index ->
                     val next = x + 3f
@@ -72,7 +103,7 @@ class PixelTileSurfaceBenchmarkTest {
         }
         fixture().let { (bitmap, surface) ->
             val times = ArrayList<Long>(72)
-            RasterTileLiquifySession(surface, bitmap).use { session ->
+            RasterTileLiquifySession(surface).use { session ->
                 var x = 220f
                 repeat(72) { index ->
                     val next = x + 3f

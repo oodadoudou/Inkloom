@@ -4895,7 +4895,6 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.setLayerElementBitmaps(layerElementBitmaps)
                 view.setRasterLayerSurfaces(rasterLayerSurfaces)
                 view.activeLayerId = activeLayerId
-                view.prepareRasterLayerForEditing(activeLayerId)
                 view.layerOpacities = layerOpacities
                 view.layerBlendModes = layerBlendModes
                 view.alphaLockedLayers = page.layers.filter { it.alphaLock }.mapTo(mutableSetOf()) { it.id }
