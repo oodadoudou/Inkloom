@@ -1,0 +1,46 @@
+package app.inkloom.engine.v5.stroke
+
+import app.inkloom.engine.v5.coordinates.DocumentPoint
+import app.inkloom.engine.v5.input.InputPhase
+import app.inkloom.engine.v5.input.InputSample
+import app.inkloom.engine.v5.input.InputSampleBatch
+import app.inkloom.engine.v5.input.InputTool
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class DirectStrokeSessionTest {
+    @Test fun `each physical sample is emitted exactly once and finish does no replay`() {
+        val session = DirectStrokeSession(91L, maximumRadius = 3f)
+        val down = session.begin(sample(0, InputPhase.DOWN))
+        val move = session.append(InputSampleBatch.owned(listOf(sample(1, InputPhase.MOVE), sample(2, InputPhase.MOVE))))
+        val up = session.finish(sample(3, InputPhase.UP))
+        assertEquals(listOf(0L), down.samples.map(StrokeSample::inputSequence))
+        assertEquals(listOf(1L, 2L), move.samples.map(StrokeSample::inputSequence))
+        assertEquals(listOf(3L), up.samples.map(StrokeSample::inputSequence))
+        assertTrue(up.terminal)
+    }
+
+    @Test fun `predicted samples never become document paint batches`() {
+        val session = DirectStrokeSession(12L, maximumRadius = 1f)
+        session.begin(sample(0, InputPhase.DOWN))
+        val result = session.append(InputSampleBatch.owned(listOf(sample(1, InputPhase.MOVE, predicted = true))))
+        assertTrue(result.samples.isEmpty())
+        assertFalse(result.terminal)
+    }
+
+    private fun sample(sequence: Long, phase: InputPhase, predicted: Boolean = false) = InputSample(
+        sequence,
+        phase,
+        InputTool.STYLUS,
+        DocumentPoint(sequence.toFloat(), sequence.toFloat()),
+        sequence,
+        sequence,
+        .5f,
+        0f,
+        0f,
+        predicted,
+    )
+}
+
