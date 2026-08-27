@@ -726,9 +726,6 @@ fun InkloomApp(initialIntent: Intent?) {
             onDuplicateLayer = viewModel::duplicateLayer,
             onMergeLayerDown = viewModel::mergeLayerDown,
             onDeleteLayer = viewModel::deleteLayer,
-            onStroke = viewModel::addStroke,
-            onRemoveStroke = viewModel::removeStroke,
-            onStrokesReplaced = viewModel::replaceStrokes,
             onElement = viewModel::addElement,
             onRemoveElement = viewModel::removeElement,
             onDuplicateElement = viewModel::duplicateElement,
@@ -1032,9 +1029,6 @@ private fun EditorScreen(
     onDuplicateLayer: (String, String, String) -> String?,
     onMergeLayerDown: (String, String, String) -> String?,
     onDeleteLayer: (String, String, String) -> Unit,
-    onStroke: (String, String, InkStroke) -> Unit,
-    onRemoveStroke: (String, String, String) -> Unit,
-    onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit,
     onElement: (String, String, PageElement) -> Unit,
     onRemoveElement: (String, String, String) -> Unit,
     onDuplicateElement: (String, String, String) -> Unit,
@@ -2192,9 +2186,6 @@ private fun EditorScreen(
                     },
                     page = selectedPage,
                     documentId = document.id,
-                    onStroke = onStroke,
-                    onRemoveStroke = onRemoveStroke,
-                    onStrokesReplaced = onStrokesReplaced,
                     onSetLayerRasterAsset = onSetLayerRasterAsset,
                     onSetLayerRasterTileSurface = onSetLayerRasterTileSurface,
                     onElement = onElement,
@@ -4533,7 +4524,7 @@ private fun pageTemplateKind(template: PageTemplate): String = when (template.ba
 }
 
 @Composable
-private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onStroke: (String, String, InkStroke) -> Unit, onRemoveStroke: (String, String, String) -> Unit, onStrokesReplaced: (String, String, List<String>, List<InkStroke>, List<Int>) -> Unit, onSetLayerRasterAsset: (String, String, String, String?, Int) -> Unit, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
+private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterAsset: (String, String, String, String?, Int) -> Unit, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val selectionMaskSize = remember(renderedPage.width, renderedPage.height) {
         requireNotNull(SelectionMaskCompositor.maskSize(renderedPage.width, renderedPage.height))
@@ -4824,13 +4815,13 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.viewportPanX = viewportState.panX
                 view.viewportPanY = viewportState.panY
                 view.viewportRotationDegrees = viewportState.rotationDegrees
-                view.onStrokeCommitted = { onStroke(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
+                view.onStrokeCommitted = {}
                 view.onShapeCommitted = { onElement(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
                 view.onGradientCommitted = commitGradient
                 installFillCommit(view)
                 installRasterCommit(view)
-                view.onStrokeRemoved = { onRemoveStroke(documentId, page.id, it) }
-                view.onStrokesReplaced = { removed, replacements, indices -> onStrokesReplaced(documentId, page.id, removed, replacements.map { PageCropTransform.unproject(it, page.crop) }, indices) }
+                view.onStrokeRemoved = {}
+                view.onStrokesReplaced = { _, _, _ -> }
                 view.onViewportScale = onZoom
                 view.onViewportPinch = onPinch
                 view.onViewportPan = onPan
@@ -4910,13 +4901,13 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.shapeKind = shapeKind
                 view.pageModelWidth = renderedPage.width
                 view.pageModelHeight = renderedPage.height
-                view.onStrokeCommitted = { onStroke(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
+                view.onStrokeCommitted = {}
                 view.onShapeCommitted = { onElement(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
                 view.onGradientCommitted = commitGradient
                 installFillCommit(view)
                 installRasterCommit(view)
-                view.onStrokeRemoved = { onRemoveStroke(documentId, page.id, it) }
-                view.onStrokesReplaced = { removed, replacements, indices -> onStrokesReplaced(documentId, page.id, removed, replacements.map { PageCropTransform.unproject(it, page.crop) }, indices) }
+                view.onStrokeRemoved = {}
+                view.onStrokesReplaced = { _, _, _ -> }
                 view.applyBrushConfiguration(tool, settings, activeBrush, brushSize, brushOpacity, brushColor, eraserPreset, secondaryBrushColor)
                 view.onViewportScale = onZoom
                 view.onViewportPinch = onPinch
