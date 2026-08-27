@@ -54,7 +54,7 @@ class V5RealtimeStampPerformanceTest {
                 tipAssetPaths = listOf(tip.absolutePath)
                 inkColor = Color.BLACK
                 setRasterLayerSurfaces(mapOf("paint" to surface))
-                onRasterLayerCommitted = { patch -> commits++; patch.close() }
+                onRasterLayerCommitted = { commits++ }
             }
         }
 
@@ -147,4 +147,3 @@ class V5RealtimeStampPerformanceTest {
         return false
     }
 }
-

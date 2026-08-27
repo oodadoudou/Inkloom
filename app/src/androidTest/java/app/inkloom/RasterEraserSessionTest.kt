@@ -121,7 +121,7 @@ class RasterEraserSessionTest {
                 layout(0, 0, 400, 400); fingerDrawingEnabled = true; tool = EditorTool.ERASER
                 activeLayerId = "pixels"; eraserWidth = 180f; eraserHardness = 1f; eraserOpacity = 1f
                 setRasterLayerSurfaces(mapOf("pixels" to surface))
-                onRasterLayerCommitted = { patch -> assertEquals("pixels", patch.layerId); commits++; patch.close() }
+                onRasterLayerCommitted = { commit -> assertEquals("pixels", commit.layerId); commits++ }
             }
         }
         send(view, MotionEvent.ACTION_DOWN, 80f, 200f, 0L)

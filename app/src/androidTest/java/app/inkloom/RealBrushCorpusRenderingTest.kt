@@ -16,7 +16,8 @@ import app.inkloom.model.EditorTool
 import app.inkloom.model.ImportedBrush
 import app.inkloom.settings.AppSettings
 import app.inkloom.settings.EraserPreset
-import app.inkloom.engine.v3.render.ActiveStrokeCompositor
+import app.inkloom.engine.v5.surface.PixelTileSurface
+import app.inkloom.engine.v5.tools.RasterLayerPatch
 import app.inkloom.ui.InkCanvasView
 import app.inkloom.ui.applyBrushConfiguration
 import java.io.File
@@ -74,17 +75,15 @@ class RealBrushCorpusRenderingTest {
     private fun assertSutBrushKeepsRealTimePreview(brush: ImportedBrush) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val bitmap = Bitmap.createBitmap(1000, 1000, Bitmap.Config.ARGB_8888)
+        val surface = PixelTileSurface(1000, 1000)
+        var committed: RasterLayerPatch? = null
         val view = InkCanvasView(instrumentation.targetContext).apply {
             layout(0, 0, 1000, 1000)
+            activeLayerId = "paint"
+            setRasterLayerSurfaces(mapOf("paint" to surface))
+            onRasterLayerCommitted = { commit -> committed = commit.capturePatch() }
             applyBrushConfiguration(EditorTool.PEN, AppSettings(), brush, brush.defaultSize.coerceIn(20f, 140f), 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
             prepareBrushAssetsNow()
-        }
-        view.activeStrokeSurface = object : ActiveStrokeCompositor {
-            override fun render(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) {
-                view.drawActiveStrokes(Canvas(bitmap), packet.strokes, incrementalStampDraw = true)
-            }
-            override fun commit(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) = Unit
-            override fun cancel() { bitmap.eraseColor(Color.TRANSPARENT) }
         }
         try {
             val frameTimes = ArrayList<Long>(90)
@@ -93,14 +92,17 @@ class RealBrushCorpusRenderingTest {
                 repeat(90) { index ->
                     view.onTouchEvent(stylusEvent(MotionEvent.ACTION_MOVE, 128f + index * 8f, 620f + (index % 7) * 3f, 110L + index))
                     val started = android.os.SystemClock.elapsedRealtimeNanos()
-                    view.flushActiveStrokeFrame()
+                    bitmap.eraseColor(Color.TRANSPARENT)
+                    view.draw(Canvas(bitmap))
                     if (index >= 8) frameTimes += android.os.SystemClock.elapsedRealtimeNanos() - started
                 }
+                assertTrue("Real SUT ${brush.name} must present pixels before pen-up", bitmap.hasVisibleAlpha())
                 view.onTouchEvent(stylusEvent(MotionEvent.ACTION_UP, 860f, 640f, 220L))
             }
             val sorted = frameTimes.sorted()
             val p95Ms = sorted[(sorted.size * 95 / 100).coerceAtMost(sorted.lastIndex)] / 1_000_000f
             assertTrue("Real SUT ${brush.name} preview p95 was ${p95Ms}ms", p95Ms < 16.7f)
+            requireNotNull(committed).close()
         } finally {
             bitmap.recycle()
         }
@@ -108,37 +110,34 @@ class RealBrushCorpusRenderingTest {
 
     private fun assertBrushCommitsAndRenders(brush: ImportedBrush) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
-        var committed: app.inkloom.document.InkStroke? = null
+        val surface = PixelTileSurface(1000, 1000)
+        var committed: RasterLayerPatch? = null
         val view = InkCanvasView(instrumentation.targetContext).apply {
             layout(0, 0, 1000, 1000)
-            onStrokeCommitted = { committed = it }
+            activeLayerId = "paint"
+            setRasterLayerSurfaces(mapOf("paint" to surface))
+            onRasterLayerCommitted = { commit -> committed = commit.capturePatch() }
             applyBrushConfiguration(EditorTool.PEN, AppSettings(), brush, brush.defaultSize.coerceAtLeast(20f), 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
+            prepareBrushAssetsNow()
         }
         instrumentation.runOnMainSync {
             view.onTouchEvent(stylusEvent(MotionEvent.ACTION_DOWN, 250f, 500f, 1L))
             view.onTouchEvent(stylusEvent(MotionEvent.ACTION_MOVE, 500f, 500f, 2L))
             view.onTouchEvent(stylusEvent(MotionEvent.ACTION_UP, 750f, 500f, 3L))
         }
-        val stroke = committed
-        assertNotNull("${brush.format} ${brush.name} did not commit a stroke", stroke)
-        assertEquals(brush.id, stroke!!.brushId)
-        assertEquals("${brush.format} Taper changed during activation/commit", brush.procreateTaper, stroke.procreateTaper)
-        assertEquals("${brush.format} texture mode changed during activation/commit", brush.grainCompositeMode, stroke.grainCompositeMode)
-        assertEquals("${brush.format} TextureForPlot changed during activation/commit", brush.grainApplyPerPlot, stroke.grainApplyPerPlot)
-        assertEquals("${brush.format} Touch Rotation changed during activation/commit", brush.shapeTouchRotation, stroke.shapeTouchRotation, .0001f)
-        assertEquals("${brush.format} Dual Touch Rotation changed during activation/commit", brush.dualShapeTouchRotation, stroke.dualShapeTouchRotation, .0001f)
-        assertTrue("${brush.format} stroke lost its points", stroke.points.size >= 2)
-
-        view.setDocumentStrokes(listOf(stroke), "real-${brush.id}")
+        val patch = requireNotNull(committed) { "${brush.format} ${brush.name} did not commit V5 pixels" }
         val bitmap = Bitmap.createBitmap(1000, 1000, Bitmap.Config.ARGB_8888)
-        bitmap.eraseColor(Color.WHITE)
         view.draw(Canvas(bitmap))
-        var foundInk = false
-        for (y in 430..570 step 5) for (x in 200..800 step 5) {
-            if (bitmap.getPixel(x, y) != Color.WHITE) { foundInk = true; break }
-        }
+        val foundInk = bitmap.hasVisibleAlpha() && surface.tileCount > 0
         bitmap.recycle()
+        patch.close()
         assertTrue("${brush.format} ${brush.name} committed but rendered no ink", foundInk)
+    }
+
+    private fun Bitmap.hasVisibleAlpha(): Boolean {
+        val pixels = IntArray(width * height)
+        getPixels(pixels, 0, width, 0, 0, width, height)
+        return pixels.any { Color.alpha(it) > 0 }
     }
 
     private fun stylusEvent(action: Int, x: Float, y: Float, time: Long): MotionEvent {

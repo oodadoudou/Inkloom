@@ -59,6 +59,7 @@ import app.inkloom.engine.v5.raster.StampBrushDefinition
 import app.inkloom.engine.v5.raster.StampPaintOp
 import app.inkloom.engine.v5.runtime.RawDocumentSample
 import app.inkloom.engine.v5.runtime.RealtimeStrokeController
+import app.inkloom.engine.v5.storage.RasterLayerCommit
 import app.inkloom.engine.v5.coordinates.DocumentPoint
 import app.inkloom.engine.v5.selection.CanonicalLassoContour
 import app.inkloom.engine.v5.selection.LassoSession
@@ -238,12 +239,7 @@ class InkCanvasView(context: Context) : View(context) {
     private val currentPoints = mutableListOf<StrokePoint>()
     private var currentStrokeId = java.util.UUID.randomUUID().toString()
     private var activeStrokeTemplate: InkStroke? = null
-    internal var activeStrokeSurface: ActiveStrokeCompositor? = null
     var paintingPipelineMode: PaintingPipelineMode = PaintingPipelineMode.CURRENT_LOW_LATENCY
-    private var activeViewportFrameId: ViewportFrameId? = null
-    private var strokePacketSequence = 0L
-    @VisibleForTesting internal var lastCommittedStrokePacket: StrokeRenderPacket? = null
-        private set
 
     /** Debug-only stroke handoff overlay and [StrokeTrace] gate. No-op in release builds. */
     var showStrokeTraceOverlay: Boolean = false
@@ -261,7 +257,6 @@ class InkCanvasView(context: Context) : View(context) {
         }
     private var pendingProjectionStrokeId: String? = null
     private var pendingStableFrameStrokeId: String? = null
-    private var pendingStableFramePacketSequence: Long? = null
     private var pendingMaterialBarrierSequence: Long? = null
     private var lastCommittedFrameDrawn = false
     private val strokeTraceOverlayPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -272,8 +267,6 @@ class InkCanvasView(context: Context) : View(context) {
     private val strokeTraceOverlayBackground = Paint().apply {
         color = Color.argb(190, 20, 20, 20)
     }
-    private var activeSurfaceFrameScheduled = false
-    private var activeSurfaceCommitted = false
     private data class DeferredTipCompletion(
         val cache: BrushResourceCache,
         val request: BrushTipRequest,
@@ -308,21 +301,6 @@ class InkCanvasView(context: Context) : View(context) {
         private set
     @VisibleForTesting internal var rasterFullReplayCount: Int = 0
         private set
-    private val activeSurfaceFrame = Runnable {
-        activeSurfaceFrameScheduled = false
-        if (activeTool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) || currentPoints.isEmpty()) return@Runnable
-        advanceWetPaintGesture()
-        val surface = activeStrokeSurface
-        if (usesViewActivePreview() || surface == null) {
-            surface?.cancel()
-            postInvalidateOnAnimation()
-            return@Runnable
-        }
-        // The active presenter may optimize how it draws the packet, but it must never receive a
-        // second geometry/material interpretation. In particular, do not strip end taper from a
-        // long live stroke and add it back on UP: that was a visible pen-up shape replacement.
-        surface.render(strokeRenderPacket(symmetryStrokes(currentPoints)))
-    }
     private var backgroundBitmap: Bitmap? = null
     private val selectedStrokeIds = linkedSetOf<String>()
     private var selectedMaskRegions: List<List<StrokePoint>> = emptyList()
@@ -1100,8 +1078,8 @@ class InkCanvasView(context: Context) : View(context) {
      *  The host persists the mask and creates a [PageElement.Fill]. */
     var onFillCommitted: ((mask: Bitmap, x: Float, y: Float, width: Float, height: Float, colorArgb: Long, opacity: Float) -> Unit)? = null
     var onSparseFillCommitted: ((mask: MaskTileSurfaceSnapshot, colorArgb: Long, opacity: Float) -> Unit)? = null
-    /** The callback owns the immutable dirty patch and must close it after saving. */
-    var onRasterLayerCommitted: ((RasterLayerPatch) -> Unit)? = null
+    /** Immutable generation handoff; bitmap materialization belongs on a persistence worker. */
+    var onRasterLayerCommitted: ((RasterLayerCommit) -> Unit)? = null
     var onLayerMaskSurfaceCommitted: (layerId: String, mask: MaskTileSurfaceSnapshot) -> Unit = { _, _ -> }
 
     private fun mergeDirtyBounds(current: Rect?, changed: Rect): Rect =
@@ -1113,9 +1091,11 @@ class InkCanvasView(context: Context) : View(context) {
         layerId: String = activeLayerId,
     ) {
         val dirty = dirtyBounds ?: return
-        val patch = RasterLayerPatch.capture(layerId, surface.snapshot(), dirty) ?: return
-        val callback = onRasterLayerCommitted
-        if (callback == null) patch.close() else callback(patch)
+        val snapshot = surface.snapshot()
+        val clipped = PixelRect(dirty.left, dirty.top, dirty.right, dirty.bottom).intersect(
+            PixelRect(0, 0, snapshot.logicalWidth, snapshot.logicalHeight),
+        )
+        if (!clipped.isEmpty) onRasterLayerCommitted?.invoke(RasterLayerCommit(layerId, snapshot, clipped))
     }
 
     private fun publishRasterSelectionEdit(layerId: String, surface: PixelTileSurface, bounds: PixelRect) {
@@ -1405,18 +1385,9 @@ class InkCanvasView(context: Context) : View(context) {
                 ?: rasterTileEraserSession?.previewSnapshot()
                 ?: rasterTileBlendSession?.previewSnapshot()
                 ?: rasterTileLiquifySession?.previewSnapshot()
-                ?: rasterPaintSession?.takeUnless { rasterPaintPreviewOwnedByFrontBuffer() }?.previewSnapshot()
+                ?: rasterPaintSession?.previewSnapshot()
         }.getOrNull()
     }
-
-    /**
-     * A source-over paint gesture is already visible in [activeStrokeSurface]. Projecting its
-     * private transaction into the stable child as well draws the same pigment twice and makes the
-     * whole touched tile flash when the transaction generation becomes durable on pen-up.
-     */
-    private fun rasterPaintPreviewOwnedByFrontBuffer(): Boolean =
-        rasterPaintSession != null && rasterIncrementalPaintEnabled && activeStrokeSurface != null &&
-            !usesViewActivePreview()
 
     /** Toggles direct grayscale mask editing. The layer pixels remain untouched. */
     fun toggleLayerMaskEditing(layerId: String): Boolean {
@@ -1570,23 +1541,19 @@ class InkCanvasView(context: Context) : View(context) {
                 generation = committedScene.generation,
             )
         }
-        pendingStableFramePacketSequence?.let { sequence ->
-            pendingStableFramePacketSequence = null
-            activeStrokeSurface?.onDocumentFramePresented(sequence)
-        }
         pendingMaterialBarrierSequence = null
         flushDeferredTipCompletions()
         if (showStrokeTraceOverlay && BuildConfig.PAINTING_DIAGNOSTICS) drawStrokeTraceOverlay(canvas)
     }
 
     private fun drawStrokeTraceOverlay(canvas: Canvas) {
-        val fb = activeStrokeSurface?.hasActiveInk == true
+        val active = v5StrokeController.isActive
         val v3 = lastCommittedFrameDrawn
         val tx = committedScene.dirtyTileCount
         val gen = committedScene.generation
         val sid = currentStrokeId.take(8)
         val truth = PaintingTruthDiagnostics.snapshot()
-        val line = "FB=${if (fb) "1" else "0"}  V3=${if (v3) "1" else "0"}  TX=$tx  GEN=$gen  DIFF=${truth.totalMismatchCount}  GAP=${truth.presentationGapCount}  FULL=${truth.fullCanvasInvalidationCount}  SID=$sid"
+        val line = "ACT=${if (active) "1" else "0"}  STABLE=${if (v3) "1" else "0"}  TX=$tx  GEN=$gen  DIFF=${truth.totalMismatchCount}  GAP=${truth.presentationGapCount}  FULL=${truth.fullCanvasInvalidationCount}  SID=$sid"
         val baseline = 38f
         val widthPx = strokeTraceOverlayPaint.measureText(line) + 24f
         strokeTraceOverlayBackground.setShadowLayer(6f, 0f, 0f, Color.BLACK)
@@ -1640,17 +1607,6 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun drawPageContent(canvas: Canvas, includeInteractionOverlays: Boolean = true, referencedLayerIds: Set<String>? = null) {
-        val stableRasterPaintPreview = includeInteractionOverlays && rasterPaintSession != null &&
-            !rasterPaintPreviewOwnedByFrontBuffer()
-        if (stableRasterPaintPreview && rasterIncrementalPaintEnabled && currentPoints.isNotEmpty()) {
-            // Destination-dependent pigment must be deposited before the projection snapshot is
-            // requested. The per-stroke stamp counters make repeated View draws idempotent.
-            renderIncrementalRasterPaintPatch(
-                frontCanvas = null,
-                strokes = symmetryStrokes(currentPoints),
-                finalCompleteInput = false,
-            )
-        }
         backgroundBitmap?.let { bitmap -> backgroundDestination.set(0, 0, width, height); canvas.drawBitmap(bitmap, null, backgroundDestination, null) }
             ?: pagePaperColor?.let { color ->
                 paperFillPaint.color = color
@@ -1664,15 +1620,6 @@ class InkCanvasView(context: Context) : View(context) {
             includeElements = true,
             layerFilter = referencedLayerIds,
         )
-        if (
-            includeInteractionOverlays &&
-            usesViewActivePreview() &&
-            activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) &&
-            currentPoints.isNotEmpty() &&
-            !(stableRasterPaintPreview && rasterIncrementalPaintEnabled)
-        ) {
-            drawLayeredStrokes(canvas, symmetryStrokes(currentPoints))
-        }
         if (!includeInteractionOverlays) return
         var selectionLeft = Float.POSITIVE_INFINITY
         var selectionTop = Float.POSITIVE_INFINITY
@@ -1779,8 +1726,6 @@ class InkCanvasView(context: Context) : View(context) {
         releaseActiveStrokePreview()
         resetSelectionViewBinding(clearReselect = true, unbindDocument = true)
         editHistory.clear()
-        removeCallbacks(activeSurfaceFrame)
-        activeSurfaceFrameScheduled = false
         recycleDeferredTipCompletions()
         strokeInputModeler.close()
         brushResources.close()
@@ -2103,32 +2048,19 @@ class InkCanvasView(context: Context) : View(context) {
     )
 
     private fun beginActiveStrokePreview() {
-        removeCallbacks(activeSurfaceFrame)
-        activeSurfaceFrameScheduled = false
-        activeSurfaceCommitted = false
-        activeStrokeSurface?.cancel()
         activePrimaryStampCounts.clear()
         activeDualStampCounts.clear()
         clearActiveStampRandoms()
     }
 
     private fun finishActiveStrokePreview() {
-        removeCallbacks(activeSurfaceFrame)
-        activeSurfaceFrameScheduled = false
-        if (!activeSurfaceCommitted) activeStrokeSurface?.cancel()
-        activeSurfaceCommitted = false
         activeStrokeTemplate = null
     }
 
     private fun releaseActiveStrokePreview() {
-        val v5OwnedContact = v5StrokeController.isActive || v5RejectedContact
         v5StrokeController.cancel()
         v5RejectedContact = false
         if (rasterPaintSession != null) cancelWetPaintGesture()
-        removeCallbacks(activeSurfaceFrame)
-        activeSurfaceFrameScheduled = false
-        activeSurfaceCommitted = false
-        if (!v5OwnedContact) activeStrokeSurface?.cancel()
         activeStrokeTemplate = null
         activePrimaryStampCounts.clear()
         activeDualStampCounts.clear()
@@ -3641,26 +3573,10 @@ class InkCanvasView(context: Context) : View(context) {
                     return true
                 }
                 if (beginV5PaintGesture(event, pointerIndex, normalizedX, normalizedY)) return true
-                clearActiveStrokeInput()
-                beginActiveStrokePreview()
-                currentStrokeId = java.util.UUID.randomUUID().toString()
-                StrokeTrace.begin(currentStrokeId)
-                // Freeze the many brush-engine parameters once per contact. Live rendering then
-                // copies only the changing point list instead of rebuilding the full descriptor
-                // several times per display frame.
-                activeStrokeTemplate = diagnosticStrokeTemplate(
-                    withCurrentBrushBehavior(buildStroke(emptyList())).copy(width = gestureBrushSize),
-                )
-                StrokeTrace.mark(currentStrokeId, StrokeTrace.STAGE_RUNTIME_CREATED)
-                beginWetPaintGesture(normalizedX, normalizedY)
-                activePerspectiveSnapConstraint = null
-                activeSpecialRulerConstraint = null
-                activeCanvasSnapConstraint = if (!rulerEnabled && (!perspectiveGuideState.assisted || perspectiveGuideState.mode == PerspectiveGuideMode.NONE) && (!specialRulerState.assisted || specialRulerState.mode == SpecialRulerMode.NONE) && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
-                    CanvasGuides.constraintAt(canvasGuideState, normalizedX, normalizedY, pageModelWidth, pageModelHeight, width.toFloat(), height.toFloat(), GUIDE_SNAP_TOLERANCE_DP * resources.displayMetrics.density)
-                } else null
-                updateContinuousPlotInput(normalizedX, normalizedY, event.getPressure(pointerIndex), event.getAxisValue(MotionEvent.AXIS_TILT, pointerIndex), event.getOrientation(pointerIndex))
-                addPoint(normalizedX, normalizedY, event.getPressure(pointerIndex), event.eventTime, event.getAxisValue(MotionEvent.AXIS_TILT, pointerIndex), event.getOrientation(pointerIndex))
-                if (brushContinuousPlot && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) startContinuousPlot()
+                onPaintCapabilityRejected("This canvas tool is not available in Paint Engine V5")
+                activeTool = null
+                parent?.requestDisallowInterceptTouchEvent(false)
+                return true
             }
             MotionEvent.ACTION_MOVE -> {
                 if (appendV5PaintGesture(event, pointerIndex)) return true
@@ -3838,13 +3754,12 @@ class InkCanvasView(context: Context) : View(context) {
                 stopContinuousPlot()
                 if (event.actionMasked == MotionEvent.ACTION_UP) performClick()
                 if (event.actionMasked == MotionEvent.ACTION_CANCEL || event.flags and MotionEvent.FLAG_CANCELED != 0) {
-                    val v5OwnedContact = v5StrokeController.isActive || v5RejectedContact
                     v5StrokeController.cancel()
                     v5RejectedContact = false
                     StrokeTrace.abandon(currentStrokeId)
                     cancelWetPaintGesture()
                     clearActiveStrokeInput()
-                    if (!v5OwnedContact) finishActiveStrokePreview()
+                    finishActiveStrokePreview()
                     pendingMaterialBarrierSequence = null
                     flushDeferredTipCompletions()
                     if (activeTool == EditorTool.LASER) laserTrail.cancelActive()
@@ -3892,86 +3807,6 @@ class InkCanvasView(context: Context) : View(context) {
                 } else if (activeTool == EditorTool.ERASER) {
                     eraseAlong(normalizedX, normalizedY, event.getPressure(pointerIndex))
                     finishEraserGesture()
-                } else if (activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) && currentPoints.isNotEmpty()) {
-                    StrokeTrace.mark(currentStrokeId, StrokeTrace.STAGE_ACTION_UP)
-                    // ACTION_UP can carry the only sample produced by a very fast final motion.
-                    // Settle the modeled tail onto the physical pen before committing so the
-                    // stored trajectory and its live cursor share the same endpoint.
-                    addPoint(
-                        normalizedX,
-                        normalizedY,
-                        event.getPressure(pointerIndex),
-                        event.eventTime,
-                        event.getAxisValue(MotionEvent.AXIS_TILT, pointerIndex),
-                        event.getOrientation(pointerIndex),
-                        force = true,
-                    )
-                    // Publish the final pickup-well color before freezing the committed points.
-                    // Otherwise the live preview is correct but the last dab replays as fresh paint.
-                    advanceWetPaintGesture()
-                    val before = strokes.toList()
-                    val newStrokes = symmetryStrokes(currentPoints).map { stroke ->
-                        StrokePostCorrection.apply(
-                            stroke.copy(grainCompositeMode = grainCompositeMode),
-                            postCorrection,
-                            postCorrectionAdjustBySpeed,
-                            postCorrectionAdjustByScale,
-                            viewportScale,
-                            pageModelWidth,
-                            pageModelHeight,
-                            postCorrectionBezier,
-                            correctionSharpAngles,
-                            maxDisplacementPx = StrokePostCorrection.screenBoundMaxDisplacement(
-                                StrokePostCorrection.POST_CORRECTION_MAX_SCREEN_PX,
-                                pageModelWidth,
-                                width,
-                                viewportScale,
-                            ),
-                        )
-                    }
-                    // Freeze one final geometry/material product. The tile writer and transient
-                    // presenter below consume this same packet; neither may reconstruct from the
-                    // raw MotionEvent or a newer viewport transform.
-                    val finalPacket = strokeRenderPacket(newStrokes)
-                    lastCommittedStrokePacket = finalPacket
-                    pendingMaterialBarrierSequence = finalPacket.sequence
-                    val rasterSurface = rasterTileSurfaceFor(activeLayerId)
-                    val incrementalRasterCommit = if (rasterSurface != null) {
-                        commitIncrementalRasterStampGesture(finalPacket.strokes).also { committedIncrementally ->
-                            if (!committedIncrementally) commitRasterPaintStrokes(rasterSurface, finalPacket.strokes)
-                        }
-                    } else {
-                        strokes.addAll(finalPacket.strokes)
-                        invalidateStrokeCache(emptyList(), finalPacket.strokes)
-                        commitStrokeEdit(before, strokes)
-                        false
-                    }
-                    StrokeTrace.markTransaction(
-                        currentStrokeId,
-                        currentPoints.size,
-                        newStrokes.firstOrNull()?.points?.size ?: currentPoints.size,
-                    )
-                    pendingStableFrameStrokeId = currentStrokeId
-                    lastCommittedFrameDrawn = false
-                    finishWetPaintGesture()
-                    val previewSurface = activeStrokeSurface?.takeUnless { usesViewActivePreview() }
-                    previewSurface?.let { surface ->
-                        pendingStableFramePacketSequence = finalPacket.sequence
-                        // Keep the exact final transient pixels until onDraw proves that the
-                        // corresponding durable V3/vector frame has been drawn. This closes the
-                        // previous ACTION_UP -> clear -> later stable-frame presentation gap.
-                        surface.render(finalPacket)
-                        surface.commit(finalPacket)
-                        if (!surface.hasActiveInk) PaintingTruthDiagnostics.recordPresentationGap()
-                    }
-                    activeStrokeSurface?.takeIf { previewSurface == null }?.let { surface ->
-                        surface.cancel()
-                        StrokeTrace.mark(currentStrokeId, StrokeTrace.STAGE_TRANSIENT_HIDDEN)
-                    }
-                    activeSurfaceCommitted = previewSurface != null
-                    postInvalidatePacket(finalPacket)
-                    clearActiveStrokeInput()
-                    finishActiveStrokePreview()
                 } else if (activeTool == EditorTool.SELECT) {
                     if ((movingSelection || selectionTransformMode != TRANSFORM_NONE) && selectionMoved) {
                         selectionGestureBefore?.let { commitStrokeEdit(it, strokes) }
@@ -4023,7 +3858,7 @@ class InkCanvasView(context: Context) : View(context) {
             releaseHeldStylusButtons()
             lastStylusButtonState = 0
         }
-        if (activeStrokeSurface == null || activeTool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) postInvalidateOnAnimation()
+        postInvalidateOnAnimation()
         return true
     }
 
@@ -4349,12 +4184,11 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun cancelActiveGestureForNavigation() {
         stopContinuousPlot()
-        val v5OwnedContact = v5StrokeController.isActive || v5RejectedContact
         v5StrokeController.cancel()
         v5RejectedContact = false
         cancelWetPaintGesture()
         clearActiveStrokeInput()
-        if (!v5OwnedContact) finishActiveStrokePreview()
+        finishActiveStrokePreview()
         pendingMaterialBarrierSequence = null
         flushDeferredTipCompletions()
         laserTrail.cancelActive()
@@ -5453,37 +5287,13 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun requestActiveSurfaceFrame() {
-        if (activeSurfaceFrameScheduled) return
-        if (usesViewActivePreview() || activeStrokeSurface == null) {
-            PaintingTruthDiagnostics.recordFullCanvasInvalidation()
-        }
-        activeSurfaceFrameScheduled = true
-        postOnAnimation(activeSurfaceFrame)
+        postInvalidateOnAnimation()
     }
-
-    /** The low-latency surface is composited source-over by Android. Masks, wet pigment and
-     * non-Normal whole-stroke blend modes must preview in the stable scene so they can see the
-     * destination exactly once. */
-    private fun usesViewActivePreview(): Boolean =
-        paintingPipelineMode == PaintingPipelineMode.FRONT_BUFFER_DISABLED ||
-            layerMasks[activeLayerId]?.enabled == true ||
-            brushWatercolor || !procreateWetMix.isDisabled() ||
-            brushColorMix > .001f || brushPaintMix > .001f ||
-            ProcreateBrushBlend.normalize(procreateBrushBlendMode) != ProcreateBrushBlend.NORMAL ||
-            (waterEdgeEnabled || tiltBleed > .001f) &&
-                ProcreateBrushBlend.normalize(procreateBurntEdgeBlendMode) != ProcreateBrushBlend.NORMAL
 
     private fun usesDestinationDependentBrushBlend(stroke: InkStroke): Boolean =
         ProcreateBrushBlend.normalize(stroke.procreateBrushBlendMode) != ProcreateBrushBlend.NORMAL ||
             (stroke.waterEdgeEnabled || stroke.tiltBleed > .001f) &&
                 ProcreateBrushBlend.normalize(stroke.procreateBurntEdgeBlendMode) != ProcreateBrushBlend.NORMAL
-
-    @VisibleForTesting
-    internal fun flushActiveStrokeFrame() {
-        if (!activeSurfaceFrameScheduled) return
-        removeCallbacks(activeSurfaceFrame)
-        activeSurfaceFrame.run()
-    }
 
     @VisibleForTesting
     internal fun simulateActiveMaterialDecodeCompletion() {
@@ -5600,32 +5410,6 @@ class InkCanvasView(context: Context) : View(context) {
         viewportRotationDegrees,
     )
 
-    /** Installed by the stable viewport proxy before dispatching the mapped packet. */
-    internal fun setActiveViewportFrame(frameId: ViewportFrameId?) {
-        activeViewportFrameId = frameId
-    }
-
-    private fun strokeRenderPacket(strokes: List<InkStroke>): StrokeRenderPacket =
-        StrokeRenderPacket.createOwned(
-            sequence = ++strokePacketSequence,
-            transformFrameId = activeViewportFrameId,
-            strokes = strokes,
-        )
-
-    private fun postInvalidatePacket(packet: StrokeRenderPacket) {
-        val bounds = packet.documentBounds
-        if (bounds.isEmpty) {
-            postInvalidateOnAnimation()
-            return
-        }
-        val padding = 3
-        postInvalidateOnAnimation(
-            (bounds.left * width).toInt() - padding,
-            (bounds.top * height).toInt() - padding,
-            (bounds.right * width).toInt() + padding,
-            (bounds.bottom * height).toInt() + padding,
-        )
-    }
 
     private fun updateContinuousPlotInput(x: Float, y: Float, pressure: Float, tilt: Float, orientation: Float) {
         continuousPlotX = x.coerceIn(0f, 1f)

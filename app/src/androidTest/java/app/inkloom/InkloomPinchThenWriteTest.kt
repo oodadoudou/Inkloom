@@ -254,13 +254,9 @@ class InkloomPinchThenWriteTest {
 
         sendScreenStylusStroke(screenX, screenY, screenX + 32f, screenY + 14f)
         composeRule.waitUntil(10_000) {
-            findInkCanvasView()?.let { it.v5LastCommittedNormalizedPoints().isNotEmpty() || it.lastCommittedStrokePacket != null } == true
+            findInkCanvasView()?.v5LastCommittedNormalizedPoints()?.isNotEmpty() == true
         }
-        val committed = requireNotNull(findInkCanvasView()).let { canvas ->
-            canvas.v5LastCommittedNormalizedPoints().ifEmpty {
-                canvas.lastCommittedStrokePacket?.strokes?.single()?.points?.map { it.x to it.y }.orEmpty()
-            }
-        }
+        val committed = requireNotNull(findInkCanvasView()).v5LastCommittedNormalizedPoints()
         assertEquals("Zoomed stylus X must inverse-map once", expected.first / view.width, committed.first().first, .004f)
         assertEquals("Zoomed stylus Y must inverse-map once", expected.second / view.height, committed.first().second, .004f)
     }
@@ -287,20 +283,26 @@ class InkloomPinchThenWriteTest {
         val targetScreenX = proxyX - proxy.width / 2f + view.width / 2f
         val targetScreenY = proxyY - proxy.height / 2f + view.height / 2f
         val expected = ViewportTransform.viewToPage(targetScreenX, targetScreenY, view.width.toFloat(), view.height.toFloat(), viewport)
-        val expectedNormalizedX = expected.first / view.width
-        val expectedNormalizedY = expected.second / view.height
-        val crossingStroke = app.inkloom.document.InkStroke(
-            id = "eraser-target",
-            width = 18f,
-            points = listOf(
-                app.inkloom.document.StrokePoint(expectedNormalizedX - .03f, expectedNormalizedY),
-                app.inkloom.document.StrokePoint(expectedNormalizedX + .03f, expectedNormalizedY),
-            ),
-        )
+        lateinit var rasterSurface: app.inkloom.engine.v5.surface.PixelTileSurface
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            view.setRasterLayerSurfaces(emptyMap())
-            view.setDocumentStrokes(listOf(crossingStroke), "eraser-coordinate-test")
+            val seed = android.graphics.Bitmap.createBitmap(view.width, view.height, android.graphics.Bitmap.Config.ARGB_8888)
+            android.graphics.Canvas(seed).drawLine(
+                expected.first - 40f,
+                expected.second,
+                expected.first + 40f,
+                expected.second,
+                android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                    color = android.graphics.Color.BLACK
+                    strokeWidth = 18f
+                    strokeCap = android.graphics.Paint.Cap.ROUND
+                },
+            )
+            rasterSurface = app.inkloom.engine.v5.android.PixelTileBitmapAdapter.import(seed)
+            seed.recycle()
+            view.activeLayerId = "ink"
+            view.setRasterLayerSurfaces(mapOf("ink" to rasterSurface))
+            view.onRasterLayerCommitted = { }
             view.setProtectedStrokeIds(emptySet())
             view.setProtectedLayerIds(emptySet())
             view.localEraser = false
@@ -322,7 +324,11 @@ class InkloomPinchThenWriteTest {
                 stylusEvent(android.view.MotionEvent.ACTION_UP, proxyX, proxyY + 8f, android.view.MotionEvent.TOOL_TYPE_ERASER, downTime, downTime + 24L),
             ).forEach { event -> proxy.onTouchEvent(event); event.recycle() }
         }
-        assertTrue("Zoomed eraser contact must hit the stroke directly under its cursor", (reflectField(view, "strokes") as? List<*>)?.isEmpty() == true)
+        assertEquals(
+            "Zoomed eraser contact must clear the V5 pixel directly under its cursor",
+            0,
+            android.graphics.Color.alpha(rasterSurface.pixelAt(expected.first.toInt(), expected.second.toInt())),
+        )
     }
 
     @Test fun rotatedViewportCursorAndEveryStrokeSampleShareOneTrajectory() {
@@ -371,13 +377,9 @@ class InkloomPinchThenWriteTest {
             }
         }
         composeRule.waitUntil(10_000) {
-            findInkCanvasView()?.let { it.v5LastCommittedNormalizedPoints().isNotEmpty() || it.lastCommittedStrokePacket != null } == true
+            findInkCanvasView()?.v5LastCommittedNormalizedPoints()?.isNotEmpty() == true
         }
-        val points = requireNotNull(findInkCanvasView()).let { canvas ->
-            canvas.v5LastCommittedNormalizedPoints().ifEmpty {
-                canvas.lastCommittedStrokePacket?.strokes?.single()?.points?.map { it.x to it.y }.orEmpty()
-            }
-        }
+        val points = requireNotNull(findInkCanvasView()).v5LastCommittedNormalizedPoints()
         samples.forEach { screen ->
             val expected = ViewportTransform.viewToPage(
                 screen.first + (view.width - proxy.width) / 2f,
@@ -396,7 +398,7 @@ class InkloomPinchThenWriteTest {
 
     @Test fun strokeRendersAtZoom1() {
         openEditor()
-        composeRule.waitUntil(5_000) { findInkCanvasView()?.lastCommittedStrokePacket == null }
+        composeRule.waitUntil(5_000) { findInkCanvasView()?.v5DryPublishedGeneration == -1L }
 
         composeRule.onRoot().performTouchInput {
             down(0, center + Offset(0f, 250f))
@@ -404,7 +406,7 @@ class InkloomPinchThenWriteTest {
             up(0)
         }
         composeRule.waitUntil(10_000) {
-            findInkCanvasView()?.let { it.v5DryPublishedGeneration >= 0L || it.lastCommittedStrokePacket != null } == true
+            findInkCanvasView()?.v5DryPublishedGeneration?.let { it >= 0L } == true
         }
         composeRule.waitForIdle()
         android.os.SystemClock.sleep(500)
@@ -450,13 +452,9 @@ class InkloomPinchThenWriteTest {
         // the original AndroidView bounds, which is the clipping regression this test protects.
         val startDy = view.height * .24f
         val endDy = view.height * .30f
-        var setupStrokes = emptyList<app.inkloom.document.InkStroke>()
-
         // The native pinch/write test covers proxy routing. Here a local stylus stream creates a
         // deterministic stroke whose transformed rendering is then checked outside layout bounds.
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            view.setRasterLayerSurfaces(emptyMap())
-            view.onStrokesReplaced = { _, replacements, _ -> setupStrokes = replacements }
             val downTime = android.os.SystemClock.uptimeMillis()
             fun dispatch(action: Int, y: Float, elapsed: Long) {
                 val event = android.view.MotionEvent.obtain(
@@ -482,9 +480,9 @@ class InkloomPinchThenWriteTest {
             dispatch(android.view.MotionEvent.ACTION_DOWN, startDy, 0)
             dispatch(android.view.MotionEvent.ACTION_MOVE, endDy, 20)
             dispatch(android.view.MotionEvent.ACTION_UP, endDy, 21)
-            assertEquals("The local main canvas must commit the setup stroke", 1, (reflectField(view, "strokes") as? List<*>)?.size)
+            assertTrue("The local main canvas must commit the V5 setup stroke", view.v5DryPublishedGeneration >= 0L)
         }
-        assertEquals("The setup stroke must leave the input engine", 1, setupStrokes.size)
+        assertTrue("The setup stroke must leave the V5 input engine", view.v5LastCommittedNormalizedPoints().isNotEmpty())
 
         fun screenshot(): android.graphics.Bitmap {
             val pfd = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("screencap -p")
@@ -576,12 +574,6 @@ class InkloomPinchThenWriteTest {
             up(0)
         }
         composeRule.waitForIdle()
-        // Viewport recomposition reloads the document scene. Reinstall this local fixture so this
-        // test remains focused on transformed overflow rendering; persistence is covered above.
-        InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            view.setDocumentStrokes(setupStrokes, "overflow-render-fixture")
-        }
-
         val scale = reflectField(view, "viewportScale") as Float
         val panX = reflectField(view, "viewportPanX") as Float
         val panY = reflectField(view, "viewportPanY") as Float
@@ -657,20 +649,14 @@ class InkloomPinchThenWriteTest {
             view.height.toFloat(),
             ViewportState(scale, panX, panY),
         )
-        val packetSequenceBeforeOverflow = view.lastCommittedStrokePacket?.sequence ?: -1L
         val v5GesturesBeforeOverflow = view.v5DryGestureCount
         sendScreenFingerStroke(overflowX, overflowY, overflowX + 28f, overflowY + 12f)
         composeRule.waitUntil(10_000) {
             findInkCanvasView()?.let { canvas ->
-                (canvas.lastCommittedStrokePacket?.sequence ?: -1L) > packetSequenceBeforeOverflow ||
-                    canvas.v5DryGestureCount > v5GesturesBeforeOverflow
+                canvas.v5DryGestureCount > v5GesturesBeforeOverflow
             } == true
         }
-        val overflowPoints = requireNotNull(findInkCanvasView()).let { canvas ->
-            canvas.v5LastCommittedNormalizedPoints().ifEmpty {
-                canvas.lastCommittedStrokePacket?.strokes?.firstOrNull()?.points?.map { it.x to it.y }.orEmpty()
-            }
-        }
+        val overflowPoints = requireNotNull(findInkCanvasView()).v5LastCommittedNormalizedPoints()
         assertEquals("Overflow writing must inverse-map to the physical contact X", expectedPagePoint.first / view.width, overflowPoints.first().first, .004f)
         assertEquals("Overflow writing must inverse-map to the physical contact Y", expectedPagePoint.second / view.height, overflowPoints.first().second, .004f)
     }

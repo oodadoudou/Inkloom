@@ -105,7 +105,6 @@ class SmudgeToolTest {
             onRasterLayerCommitted = { patch ->
                 assertEquals("raster", patch.layerId)
                 rasterCommits++
-                patch.close()
             }
             onStrokesReplaced = { _, _, _ -> vectorReplacements++ }
         }

@@ -1,6 +1,5 @@
 package app.inkloom.engine.v3.diagnostics
 
-import app.inkloom.engine.v3.render.StrokeRenderPacket
 import java.util.concurrent.atomic.AtomicInteger
 
 internal object PaintingTruthDiagnostics {
@@ -20,12 +19,6 @@ internal object PaintingTruthDiagnostics {
     private val transformMismatch = AtomicInteger()
     private val presentationGap = AtomicInteger()
     private val fullCanvasInvalidation = AtomicInteger()
-
-    fun compareHandoff(rendered: StrokeRenderPacket?, committed: StrokeRenderPacket) {
-        if (rendered?.geometryFingerprint != committed.geometryFingerprint) geometryMismatch.incrementAndGet()
-        if (rendered?.materialFingerprint != committed.materialFingerprint) materialMismatch.incrementAndGet()
-        if (rendered?.transformFrameId != committed.transformFrameId) transformMismatch.incrementAndGet()
-    }
 
     fun recordTransformMismatch() {
         transformMismatch.incrementAndGet()

@@ -166,12 +166,10 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
             activeDrawingFrame = packet.frame
         }
         return try {
-            if (retainDrawingFrame && usesPageCoordinates) canvas.setActiveViewportFrame(packet.frame.id)
             dispatch(canvas, packet.event)
         } finally {
             packet.close()
             if (retainDrawingFrame && terminal) {
-                canvas.setActiveViewportFrame(null)
                 activeDrawingFrame = null
             }
         }

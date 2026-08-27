@@ -374,7 +374,7 @@ class InkCanvasLassoTest {
             val surface = PixelTileSurface(size.width, size.height)
             view.setRasterLayerSurfaces(mapOf(LayerIds.INK to surface))
             view.activeLayerId = LayerIds.INK
-            view.onRasterLayerCommitted = { it.close() }
+            view.onRasterLayerCommitted = { }
             view.drawSquareLasso()
             assertTrue(view.hasActiveSelection())
             val selectedMask = requireNotNull(view.selectionMaskSurfaceSnapshot())

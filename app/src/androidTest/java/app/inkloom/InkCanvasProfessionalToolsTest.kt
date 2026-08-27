@@ -53,7 +53,7 @@ class InkCanvasProfessionalToolsTest {
             activeLayerId = "raster"
             baseWidth = 360f
             setRasterLayerSurfaces(mapOf("raster" to surface))
-            onRasterLayerCommitted = { patch -> rasterCommits++; patch.close() }
+            onRasterLayerCommitted = { rasterCommits++ }
             onStrokesReplaced = { _, _, _ -> vectorReplacements++ }
         }
         send(view, MotionEvent.ACTION_DOWN, 275f, 500f, 0L)

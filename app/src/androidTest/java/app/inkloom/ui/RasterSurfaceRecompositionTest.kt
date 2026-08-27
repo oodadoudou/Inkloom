@@ -44,7 +44,7 @@ class RasterSurfaceRecompositionTest {
             view.baseWidth = 24f
             view.sizePressureEnabled = false
             view.setRasterLayerSurfaces(firstMap)
-            view.onRasterLayerCommitted = { patch -> patch.close() }
+            view.onRasterLayerCommitted = { }
         }
 
         repeat(12) { index ->

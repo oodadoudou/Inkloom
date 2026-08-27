@@ -10,7 +10,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.model.EditorTool
 import app.inkloom.model.SystemBrushCatalog
-import app.inkloom.engine.v3.render.ActiveStrokeCompositor
 import app.inkloom.engine.v5.tools.RasterLayerPatch
 import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v5.surface.PixelRect
@@ -32,12 +31,12 @@ class RasterPaintCommitTest {
             val brush = requireNotNull(SystemBrushCatalog.byId(brushId))
             val surface = PixelTileSurface(600, 600)
             val display = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
-            var committed: RasterLayerPatch? = null
+            var committed = false
             val frameTimesMs = mutableListOf<Float>()
             val view = createCanvas {
                 activeLayerId = "paint"
                 setRasterLayerSurfaces(mapOf("paint" to surface))
-                onRasterLayerCommitted = { patch -> committed = patch }
+                onRasterLayerCommitted = { committed = true }
                 applyBrushConfiguration(
                     EditorTool.PEN,
                     AppSettings(),
@@ -70,7 +69,7 @@ class RasterPaintCommitTest {
 
             sendStylus(view, MotionEvent.ACTION_UP, 300f, 150f, start + 30L)
             assertTrue("$brushId must publish sparse tiles on pen-up", surface.tileCount > 0)
-            requireNotNull(committed).close()
+            assertTrue(committed)
             display.recycle()
         }
     }
@@ -84,7 +83,7 @@ class RasterPaintCommitTest {
             baseWidth = 24f
             inkColor = Color.BLACK
             setRasterLayerSurfaces(mapOf("paint" to surface))
-            onRasterLayerCommitted = { patch -> committed = patch }
+            onRasterLayerCommitted = { commit -> committed = commit.capturePatch() }
         }
 
         assertEquals("Activating an 8K raster layer must allocate no page pixels", 0L, surface.retainedByteSize)
@@ -109,7 +108,6 @@ class RasterPaintCommitTest {
         val surface = PixelTileSurface(600, 600)
         val display = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
         var committed: RasterLayerPatch? = null
-        var legacyFrontBufferCalls = 0
         val frameTimesMs = mutableListOf<Float>()
         lateinit var view: InkCanvasView
         view = createCanvas {
@@ -120,16 +118,8 @@ class RasterPaintCommitTest {
             tipAssetPath = tipFile.absolutePath
             tipAssetPaths = listOf(tipFile.absolutePath)
             setRasterLayerSurfaces(mapOf("paint" to surface))
-            onRasterLayerCommitted = { patch -> committed = patch }
+            onRasterLayerCommitted = { commit -> committed = commit.capturePatch() }
         }
-        view.activeStrokeSurface = object : ActiveStrokeCompositor {
-            override fun render(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) {
-                legacyFrontBufferCalls++
-            }
-            override fun commit(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) = Unit
-            override fun cancel() = Unit
-        }
-
         send(view, MotionEvent.ACTION_DOWN, 80f, 200f, 0L)
         repeat(32) { index ->
             val started = android.os.SystemClock.elapsedRealtimeNanos()
@@ -145,7 +135,6 @@ class RasterPaintCommitTest {
         val activePixels = IntArray(display.width * display.height).also {
             display.getPixels(it, 0, display.width, 0, 0, display.width, display.height)
         }
-        assertEquals("V5 stamped paint must never call the legacy front-buffer renderer", 0, legacyFrontBufferCalls)
         assertEquals("Private dabs must not publish before pen-up", 0, Color.alpha(surface.pixelAt(225, 300)))
         val p95 = frameTimesMs.sorted()[(frameTimesMs.size * .95f).toInt().coerceIn(0, frameTimesMs.lastIndex)]
         android.util.Log.i("InkloomPerf", "raster_imported_direct_deposit_p95_ms=$p95")
@@ -177,8 +166,6 @@ class RasterPaintCommitTest {
         Canvas(seed).drawCircle(90f, 300f, 24f, android.graphics.Paint().apply { color = Color.BLUE })
         val surface = PixelTileBitmapAdapter.import(seed)
         seed.recycle()
-        val front = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
-        var activeInk = false
         var committed: RasterLayerPatch? = null
         lateinit var view: InkCanvasView
         view = createCanvas {
@@ -187,26 +174,13 @@ class RasterPaintCommitTest {
             baseWidth = 36f
             sizePressureEnabled = false
             setRasterLayerSurfaces(mapOf("paint" to surface))
-            onRasterLayerCommitted = { patch -> committed = patch }
+            onRasterLayerCommitted = { commit -> committed = commit.capturePatch() }
         }
-        view.activeStrokeSurface = object : ActiveStrokeCompositor {
-            override val hasActiveInk: Boolean get() = activeInk
-            override fun render(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) {
-                activeInk = true
-                view.drawActiveStrokes(Canvas(front), packet.strokes, incrementalStampDraw = true)
-            }
-            override fun commit(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) { activeInk = true }
-            override fun onDocumentFramePresented(packetSequence: Long) { activeInk = false }
-            override fun cancel() { activeInk = false; front.eraseColor(Color.TRANSPARENT) }
-        }
-
         send(view, MotionEvent.ACTION_DOWN, 230f, 200f, 0L)
         send(view, MotionEvent.ACTION_MOVE, 300f, 200f, 5L)
-        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.flushActiveStrokeFrame() }
         val duringContact = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
         InstrumentationRegistry.getInstrumentation().runOnMainSync { view.draw(Canvas(duringContact)) }
         assertEquals("V5 dry ink owns the production gesture", 1, view.v5DryGestureCount)
-        assertEquals("V5 must not create a second front-buffer interpretation", 0, Color.alpha(front.getPixel(260, 200)))
         assertTrue("The private V5 sparse delta must be visible before pen-up", Color.alpha(duringContact.getPixel(260, 200)) > 0)
         assertEquals("Previously published pixels must remain byte-identical during another stroke", Color.BLUE, duringContact.getPixel(60, 200))
         assertEquals(
@@ -226,13 +200,12 @@ class RasterPaintCommitTest {
         assertEquals("Landing a stroke must not alter an unrelated committed pixel", Color.BLUE, landed.getPixel(60, 200))
         assertTrue("The stroke becomes visible in the stable document only after commit", Color.alpha(landed.getPixel(280, 200)) > 0)
         requireNotNull(committed).close()
-        front.recycle(); duringContact.recycle(); landed.recycle()
+        duringContact.recycle(); landed.recycle()
     }
 
     @Test fun wetPaintDepositsDuringContactAndPenUpDoesNotReplayTheStroke() {
         val surface = PixelTileSurface(1200, 900)
         val preview = Bitmap.createBitmap(800, 600, Bitmap.Config.ARGB_8888)
-        var frontBufferRenders = 0
         var committed: RasterLayerPatch? = null
         val frameTimesMs = mutableListOf<Float>()
         val transportTimesMs = mutableListOf<Float>()
@@ -256,21 +229,14 @@ class RasterPaintCommitTest {
             waterEdgeOpacity = .35f
             waterEdgeBlur = 2f
             setRasterLayerSurfaces(mapOf("paint" to surface))
-            onRasterLayerCommitted = { patch -> committed = patch }
+            onRasterLayerCommitted = { commit -> committed = commit.capturePatch() }
         }
-        view.activeStrokeSurface = object : ActiveStrokeCompositor {
-            override fun render(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) { frontBufferRenders++ }
-            override fun commit(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) = Unit
-            override fun cancel() = Unit
-        }
-
         send(view, MotionEvent.ACTION_DOWN, 100f, 300f, 0L)
         repeat(48) { index ->
             send(view, MotionEvent.ACTION_MOVE, 108f + index * 10f, 300f + index % 3, 5L + index)
             val started = android.os.SystemClock.elapsedRealtimeNanos()
             InstrumentationRegistry.getInstrumentation().runOnMainSync {
                 val transportStarted = android.os.SystemClock.elapsedRealtimeNanos()
-                view.flushActiveStrokeFrame()
                 transportTimesMs += (android.os.SystemClock.elapsedRealtimeNanos() - transportStarted) / 1_000_000f
                 preview.eraseColor(Color.TRANSPARENT)
                 val presentationStarted = android.os.SystemClock.elapsedRealtimeNanos()
@@ -279,7 +245,6 @@ class RasterPaintCommitTest {
             }
             frameTimesMs += (android.os.SystemClock.elapsedRealtimeNanos() - started) / 1_000_000f
         }
-        assertEquals("Destination-dependent wet pigment must not also enter the source-over front buffer", 0, frontBufferRenders)
         assertTrue("Wet pigment must be visible before pen-up", Color.alpha(preview.getPixel(300, 300)) > 0)
 
         val started = android.os.SystemClock.elapsedRealtimeNanos()
@@ -311,7 +276,7 @@ class RasterPaintCommitTest {
             baseWidth = 42f
             inkColor = Color.MAGENTA
             setRasterLayerSurfaces(mapOf("paint" to tileSurface))
-            onRasterLayerCommitted = { patch -> committed = patch }
+            onRasterLayerCommitted = { commit -> committed = commit.capturePatch() }
         }
 
         send(view, MotionEvent.ACTION_DOWN, 80f, 200f, 0L)
@@ -348,16 +313,9 @@ class RasterPaintCommitTest {
             procreateWetMix = app.inkloom.document.ProcreateWetMix(dilution = .9f, charge = .6f, attack = .7f, pull = 1f, blur = .25f)
             setRasterLayerSurfaces(mapOf("paint" to surface))
         }
-        view.activeStrokeSurface = object : ActiveStrokeCompositor {
-            override fun render(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) = Unit
-            override fun commit(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) = Unit
-            override fun cancel() = Unit
-        }
-
         send(view, MotionEvent.ACTION_DOWN, 100f, 200f, 0L)
         repeat(8) { index ->
             send(view, MotionEvent.ACTION_MOVE, 115f + index * 15f, 200f, 5L + index)
-            InstrumentationRegistry.getInstrumentation().runOnMainSync { view.flushActiveStrokeFrame() }
         }
         val preview = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
         InstrumentationRegistry.getInstrumentation().runOnMainSync { view.draw(Canvas(preview)) }
@@ -383,7 +341,7 @@ class RasterPaintCommitTest {
             baseWidth = 42f
             inkColor = Color.MAGENTA
             setRasterLayerSurfaces(mapOf("paint" to surface))
-            onRasterLayerCommitted = { patch -> rasterCommits++; committed = patch }
+            onRasterLayerCommitted = { commit -> rasterCommits++; committed = commit.capturePatch() }
             onStrokeCommitted = { vectorCommits++ }
         }
         send(view, MotionEvent.ACTION_DOWN, 80f, 200f, 0L)
@@ -405,7 +363,7 @@ class RasterPaintCommitTest {
             activeLayerId = "paint"
             baseWidth = 28f
             setRasterLayerSurfaces(mapOf("paint" to surface))
-            onRasterLayerCommitted = { patch -> patch.close() }
+            onRasterLayerCommitted = { }
         }
         send(view, MotionEvent.ACTION_DOWN, 120f, 300f, 0L)
         repeat(72) { index -> send(view, MotionEvent.ACTION_MOVE, 125f + index * 7f, 300f + index % 5, 5L + index) }
@@ -441,7 +399,7 @@ class RasterPaintCommitTest {
             eraserPressureSize = false
             eraserTipAssetPath = tipFile.absolutePath
             setRasterLayerSurfaces(mapOf("paint" to surface))
-            onRasterLayerCommitted = { patch -> committed = patch }
+            onRasterLayerCommitted = { commit -> committed = commit.capturePatch() }
         }
 
         send(view, MotionEvent.ACTION_DOWN, 200f, 200f, 0L)
@@ -450,8 +408,8 @@ class RasterPaintCommitTest {
         val result = requireNotNull(committed)
         assertTrue("The authored black tip core must erase the raster", Color.alpha(result.colorAtSource(300, 300)) < 16)
         assertTrue(
-            "Pixels inside the round preview proxy but outside the narrow authored tip must be restored",
-            Color.alpha(result.colorAtSource(340, 300)) > 240,
+            "Pixels outside the authored narrow tip must remain untouched in the document surface",
+            Color.alpha(surface.pixelAt(400, 300)) > 240,
         )
         result.close(); tipFile.delete()
     }
@@ -478,7 +436,7 @@ class RasterPaintCommitTest {
                 grainMovement = movement
                 grainZoom = 0f
                 setRasterLayerSurfaces(mapOf("paint" to surface))
-                onRasterLayerCommitted = { patch -> committed = patch }
+                onRasterLayerCommitted = { commit -> committed = commit.capturePatch() }
             }
             send(view, MotionEvent.ACTION_DOWN, 125f, 200f, 0L)
             send(view, MotionEvent.ACTION_UP, 125f, 200f, 5L)

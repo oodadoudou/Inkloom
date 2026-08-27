@@ -113,6 +113,7 @@ import app.inkloom.importer.BrushVersion
 import app.inkloom.importer.BrushVersionHistoryStore
 import app.inkloom.model.*
 import app.inkloom.engine.v5.selection.DocumentSelectionRuntime
+import app.inkloom.engine.v5.tools.RasterLayerPatch
 import app.inkloom.settings.AppSettings
 import app.inkloom.settings.AppSettingsBackupCodec
 import app.inkloom.settings.AppSettingsStore
@@ -4643,18 +4644,20 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
         }
     }
     fun installRasterCommit(view: InkCanvasView) {
-        view.onRasterLayerCommitted = commit@{ patch ->
-            val layerId = patch.layerId
+        view.onRasterLayerCommitted = commit@{ commit ->
+            val layerId = commit.layerId
             val capturedPage = page
             val layer = capturedPage.layers.firstOrNull { it.id == layerId && it.contentKind == LayerContentKind.RASTER }
             if (layer == null || gradientCommitScope.coroutineContext[Job]?.isActive != true) {
-                patch.close()
                 return@commit
             }
             gradientCommitScope.launch(NonCancellable) {
                 var newReference: RasterTileSurfaceRef? = null
+                var patch: RasterLayerPatch? = null
                 try {
                     rasterCommitMutex.withLock {
+                        patch = withContext(Dispatchers.Default) { commit.capturePatch() }
+                        val capturedPatch = requireNotNull(patch)
                         val previous = latestRasterAssets[layerId] ?: Triple(
                             layer.rasterTileSurface,
                             layer.rasterAssetPath,
@@ -4671,11 +4674,11 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                             assets.composeVisibleRasterTilePatch(
                                 page = effectivePage,
                                 layerId = layerId,
-                                patch = patch.bitmap,
-                                patchLeft = patch.left,
-                                patchTop = patch.top,
-                                visibleSourceWidth = patch.sourceWidth,
-                                visibleSourceHeight = patch.sourceHeight,
+                                patch = capturedPatch.bitmap,
+                                patchLeft = capturedPatch.left,
+                                patchTop = capturedPatch.top,
+                                visibleSourceWidth = capturedPatch.sourceWidth,
+                                visibleSourceHeight = capturedPatch.sourceHeight,
                             )
                         }
                         newReference = withContext(Dispatchers.IO) {
@@ -4723,7 +4726,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                     }
                 } finally {
                     assets.releaseRasterTileReservation(newReference)
-                    patch.close()
+                    patch?.close()
                 }
             }
         }

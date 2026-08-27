@@ -10,7 +10,6 @@ import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.LiquifyMode
 import app.inkloom.document.ProcreateTaper
 import app.inkloom.document.StrokeInputKind
-import app.inkloom.engine.v3.render.ActiveStrokeCompositor
 import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
@@ -136,46 +135,6 @@ class InkCanvasBrushSwitchTest {
             view.applyBrushConfiguration(EditorTool.PEN, settings, system, 12f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
             assertEquals("System brushes retain the user's global fallback", .81f, view.postCorrection, .0001f)
         }
-    }
-
-    @Test
-    fun zeroCorrectionPaperTraceCommitsTheExactFinalPreviewPath() {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        var callbackStroke: InkStroke? = null
-        val surface = RecordingActiveSurface()
-        val view = InkCanvasView(instrumentation.targetContext).apply {
-            layout(0, 0, 1_200, 1_200)
-            activeStrokeSurface = surface
-            onStrokeCommitted = { callbackStroke = it }
-        }
-        val noCorrection = brush("paper-trace", "Paper trace").copy(
-            stabilization = 0f,
-            streamLine = 0f,
-            procreateStabilization = 0f,
-            motionFiltering = 0f,
-            postCorrectionEnabled = false,
-            // Real SUT files can retain these values while their master switch is disabled.
-            postCorrection = .95f,
-            postCorrectionBezier = true,
-            correctionSharpAngles = true,
-        )
-
-        instrumentation.runOnMainSync {
-            view.applyBrushConfiguration(EditorTool.PEN, AppSettings(), noCorrection, 12f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
-            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_DOWN, 143.25f, 211.5f, 1L))
-            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_MOVE, 391.75f, 517.25f, 5L))
-            view.flushActiveStrokeFrame()
-            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_UP, 927.5f, 836.75f, 9L))
-        }
-
-        val committedToSurface = requireNotNull(surface.committed.singleOrNull()).single()
-        val committedToDocument = requireNotNull(callbackStroke)
-        assertEquals("Pen-up must commit the exact point sequence shown in the final preview", surface.rendered.last().single().points, committedToSurface.points)
-        assertEquals(committedToSurface.points, committedToDocument.points)
-        assertEquals(143.25f / 1_200f, committedToDocument.points.first().x, .00001f)
-        assertEquals(211.5f / 1_200f, committedToDocument.points.first().y, .00001f)
-        assertEquals(927.5f / 1_200f, committedToDocument.points.last().x, .00001f)
-        assertEquals(836.75f / 1_200f, committedToDocument.points.last().y, .00001f)
     }
 
     @Test
@@ -495,14 +454,6 @@ class InkCanvasBrushSwitchTest {
         sizeBytes = 0L,
         report = emptyList(),
     )
-
-    private class RecordingActiveSurface : ActiveStrokeCompositor {
-        val rendered = mutableListOf<List<InkStroke>>()
-        val committed = mutableListOf<List<InkStroke>>()
-        override fun render(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) { rendered += packet.strokes.map { it.copy(points = it.points.toList()) } }
-        override fun commit(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) { committed += packet.strokes.map { it.copy(points = it.points.toList()) } }
-        override fun cancel() = Unit
-    }
 
     private fun drawStroke(view: InkCanvasView, startTime: Long, y: Float) {
         view.onTouchEvent(stylusEvent(MotionEvent.ACTION_DOWN, 250f, y, startTime))

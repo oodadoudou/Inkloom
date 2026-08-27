@@ -36,7 +36,7 @@ class V5RealtimeDryPaintPerformanceTest {
                 inkColor = Color.BLACK
                 fingerDrawingEnabled = true
                 setRasterLayerSurfaces(mapOf("paint" to surface))
-                onRasterLayerCommitted = { patch -> commits++; patch.close() }
+                onRasterLayerCommitted = { commits++ }
             }
         }
 
