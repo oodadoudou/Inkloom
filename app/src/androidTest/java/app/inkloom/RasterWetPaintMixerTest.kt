@@ -9,7 +9,7 @@ import app.inkloom.document.ProcreateRenderingMode
 import app.inkloom.document.ProcreateWetMix
 import app.inkloom.document.CspColorMixMode
 import app.inkloom.document.WetMixDynamics
-import app.inkloom.engine.v3.tools.RasterWetPaintMixer
+import app.inkloom.engine.v5.tools.RasterWetPaintMixer
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith

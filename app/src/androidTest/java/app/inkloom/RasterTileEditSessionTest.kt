@@ -8,11 +8,11 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v5.surface.PixelRect
 import app.inkloom.engine.v5.surface.PixelTileSurface.HistoryDirection
-import app.inkloom.engine.v3.tools.RasterAbyssPolicy
-import app.inkloom.engine.v3.tools.RasterDependency
-import app.inkloom.engine.v3.tools.RasterExecutionMode
-import app.inkloom.engine.v3.tools.RasterRoiPlan
-import app.inkloom.engine.v3.tools.RasterTileEditSession
+import app.inkloom.engine.v5.tools.RasterAbyssPolicy
+import app.inkloom.engine.v5.tools.RasterDependency
+import app.inkloom.engine.v5.tools.RasterExecutionMode
+import app.inkloom.engine.v5.tools.RasterRoiPlan
+import app.inkloom.engine.v5.tools.RasterTileEditSession
 import java.util.Collections
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

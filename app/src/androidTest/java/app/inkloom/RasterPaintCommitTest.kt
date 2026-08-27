@@ -10,7 +10,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.model.EditorTool
 import app.inkloom.engine.v3.render.ActiveStrokeCompositor
-import app.inkloom.engine.v3.tools.RasterLayerPatch
+import app.inkloom.engine.v5.tools.RasterLayerPatch
 import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v5.surface.PixelRect
 import app.inkloom.engine.v5.surface.PixelTileSurface

@@ -8,8 +8,8 @@ import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v5.surface.PixelTileSurface.HistoryDirection
 import app.inkloom.engine.v5.surface.PixelRect
 import app.inkloom.engine.v5.surface.PixelTileSurface
-import app.inkloom.engine.v3.tools.RasterTilePaintSession
-import app.inkloom.engine.v3.tools.RasterAbyssPolicy
+import app.inkloom.engine.v5.tools.RasterTilePaintSession
+import app.inkloom.engine.v5.tools.RasterAbyssPolicy
 import app.inkloom.engine.v5.selection.SparseAlphaMask
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint

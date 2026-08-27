@@ -1,4 +1,4 @@
-package app.inkloom.engine.v3.tools
+package app.inkloom.engine.v5.tools
 
 import android.graphics.Bitmap
 import android.graphics.BlurMaskFilter
@@ -17,7 +17,7 @@ import app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot
 import kotlin.math.hypot
 
 /**
- * One atomic V3 Liquify gesture.
+ * One atomic V5 Liquify gesture.
  *
  * Input appends to a sparse displacement field. Every live frame then samples the immutable
  * gesture-start pixel generation, so pixels are never recursively resampled and Reconstruct can

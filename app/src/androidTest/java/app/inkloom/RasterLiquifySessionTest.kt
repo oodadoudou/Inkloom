@@ -6,8 +6,8 @@ import android.graphics.Color
 import android.graphics.Paint
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.document.LiquifyMode
-import app.inkloom.engine.v3.tools.RasterTileLiquifySession
-import app.inkloom.engine.v3.tools.RasterAbyssPolicy
+import app.inkloom.engine.v5.tools.RasterTileLiquifySession
+import app.inkloom.engine.v5.tools.RasterAbyssPolicy
 import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v5.surface.PixelTileSurface.HistoryDirection
 import app.inkloom.engine.v5.surface.PixelTileSurface

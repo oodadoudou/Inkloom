@@ -31,16 +31,16 @@ internal typealias PixelTileSurface = app.inkloom.engine.v5.surface.PixelTileSur
 internal typealias PixelTileTransactionRecord = app.inkloom.engine.v5.surface.PixelTileTransactionRecord
 
 internal typealias NativeRasterOps = app.inkloom.engine.v5.tools.NativeRasterOps
-internal typealias RasterTileBlendSession = app.inkloom.engine.v3.tools.RasterTileBlendSession
-internal typealias RasterTileEraserSession = app.inkloom.engine.v3.tools.RasterTileEraserSession
-internal typealias RasterTileLiquifySession = app.inkloom.engine.v3.tools.RasterTileLiquifySession
-internal typealias RasterLayerPatch = app.inkloom.engine.v3.tools.RasterLayerPatch
-internal typealias RasterTileEditSession = app.inkloom.engine.v3.tools.RasterTileEditSession
-internal typealias RasterWetPaintMixer = app.inkloom.engine.v3.tools.RasterWetPaintMixer
-internal typealias RasterTilePaintSession = app.inkloom.engine.v3.tools.RasterTilePaintSession
-internal typealias RasterSelectionMask = app.inkloom.engine.v3.tools.RasterSelectionMask
-internal typealias RasterSelectionTransformSession = app.inkloom.engine.v3.tools.RasterSelectionTransformSession
-internal typealias SelectionAffineTransform = app.inkloom.engine.v3.tools.SelectionAffineTransform
+internal typealias RasterTileBlendSession = app.inkloom.engine.v5.tools.RasterTileBlendSession
+internal typealias RasterTileEraserSession = app.inkloom.engine.v5.tools.RasterTileEraserSession
+internal typealias RasterTileLiquifySession = app.inkloom.engine.v5.tools.RasterTileLiquifySession
+internal typealias RasterLayerPatch = app.inkloom.engine.v5.tools.RasterLayerPatch
+internal typealias RasterTileEditSession = app.inkloom.engine.v5.tools.RasterTileEditSession
+internal typealias RasterWetPaintMixer = app.inkloom.engine.v5.tools.RasterWetPaintMixer
+internal typealias RasterTilePaintSession = app.inkloom.engine.v5.tools.RasterTilePaintSession
+internal typealias RasterSelectionMask = app.inkloom.engine.v5.tools.RasterSelectionMask
+internal typealias RasterSelectionTransformSession = app.inkloom.engine.v5.tools.RasterSelectionTransformSession
+internal typealias SelectionAffineTransform = app.inkloom.engine.v5.tools.SelectionAffineTransform
 internal typealias MaskTileSurfaceSnapshot = app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot
 
 internal fun importPixelTileSurface(bitmap: android.graphics.Bitmap): PixelTileSurface =

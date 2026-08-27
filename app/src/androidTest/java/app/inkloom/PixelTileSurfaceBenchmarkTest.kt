@@ -8,9 +8,9 @@ import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v5.surface.PixelRect
 import app.inkloom.engine.v5.surface.PixelTileKey
 import app.inkloom.engine.v5.surface.PixelTileSurface
-import app.inkloom.engine.v3.tools.RasterTileBlendSession
-import app.inkloom.engine.v3.tools.RasterTileEraserSession
-import app.inkloom.engine.v3.tools.RasterTileLiquifySession
+import app.inkloom.engine.v5.tools.RasterTileBlendSession
+import app.inkloom.engine.v5.tools.RasterTileEraserSession
+import app.inkloom.engine.v5.tools.RasterTileLiquifySession
 import app.inkloom.document.LiquifyMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

@@ -7,8 +7,8 @@ import app.inkloom.engine.v5.surface.MaskTileSurface
 import app.inkloom.engine.v5.surface.PixelRect
 import app.inkloom.engine.v5.surface.PixelTileKey
 import app.inkloom.engine.v5.surface.PixelTileSurface
-import app.inkloom.engine.v3.tools.RasterSelectionTransformSession
-import app.inkloom.engine.v3.tools.SelectionAffineTransform
+import app.inkloom.engine.v5.tools.RasterSelectionTransformSession
+import app.inkloom.engine.v5.tools.SelectionAffineTransform
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

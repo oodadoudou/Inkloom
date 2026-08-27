@@ -6,7 +6,7 @@ import android.graphics.Rect
 import android.os.SystemClock
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.engine.v5.surface.MaskTileSurface
-import app.inkloom.engine.v3.tools.RasterSelectionMask
+import app.inkloom.engine.v5.tools.RasterSelectionMask
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

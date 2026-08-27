@@ -6,7 +6,7 @@ import android.graphics.Rect
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import android.os.SystemClock
 import android.util.Log
-import app.inkloom.engine.v3.tools.RasterLayerPatch
+import app.inkloom.engine.v5.tools.RasterLayerPatch
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull

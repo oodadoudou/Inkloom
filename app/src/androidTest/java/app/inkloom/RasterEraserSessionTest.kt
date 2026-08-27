@@ -8,7 +8,7 @@ import android.view.MotionEvent
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import app.inkloom.engine.v3.tools.RasterTileEraserSession
+import app.inkloom.engine.v5.tools.RasterTileEraserSession
 import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v5.surface.PixelTileSurface.HistoryDirection
 import app.inkloom.engine.v5.surface.PixelTileSurface

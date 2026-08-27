@@ -1,4 +1,4 @@
-package app.inkloom.engine.v3.tools
+package app.inkloom.engine.v5.tools
 
 import app.inkloom.engine.v5.surface.MaskTileSurface
 import app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot
@@ -35,7 +35,7 @@ data class RasterSelectionTransformResult(
 )
 
 /**
- * One interactive free-transform over sparse V3 pixels and sparse selection alpha.
+ * One interactive free-transform over sparse V5 pixels and sparse selection alpha.
  *
  * Every preview is rebuilt from the immutable gesture-start generations. Previous previews are
  * undone by generation swap, so repeated MOVE packets never resample already transformed pixels.
