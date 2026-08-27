@@ -20,9 +20,9 @@ internal typealias BrushProgramBatchRenderer = app.inkloom.engine.v3.render.Brus
 internal typealias StrokeTrace = app.inkloom.engine.v3.diagnostics.StrokeTrace
 internal typealias PaintingTruthDiagnostics = app.inkloom.engine.v3.diagnostics.PaintingTruthDiagnostics
 
-internal typealias EngineStrokeTransaction = app.inkloom.engine.v3.scene.EngineTransaction.Strokes
-internal typealias EngineExternalTransaction = app.inkloom.engine.v3.scene.EngineTransaction.External
-internal typealias EngineTransactionJournal = app.inkloom.engine.v3.scene.EngineTransactionJournal
+internal typealias EngineStrokeTransaction = app.inkloom.engine.v5.history.EngineTransaction.Strokes
+internal typealias EngineExternalTransaction = app.inkloom.engine.v5.history.EngineTransaction.External
+internal typealias EngineTransactionJournal = app.inkloom.engine.v5.history.EngineTransactionJournal
 internal typealias SparseAlphaMask = app.inkloom.engine.v5.selection.SparseAlphaMask
 internal typealias DocumentSelectionState = app.inkloom.engine.v5.selection.DocumentSelectionState
 internal typealias SparseTileScene = app.inkloom.engine.v3.scene.SparseTileScene

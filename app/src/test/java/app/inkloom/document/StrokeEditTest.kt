@@ -2,8 +2,8 @@ package app.inkloom.document
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
-import app.inkloom.engine.v3.scene.EngineTransaction
-import app.inkloom.engine.v3.scene.EngineTransactionJournal
+import app.inkloom.engine.v5.history.EngineTransaction
+import app.inkloom.engine.v5.history.EngineTransactionJournal
 import org.junit.Test
 
 class StrokeEditTest {

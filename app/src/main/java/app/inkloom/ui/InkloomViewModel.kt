@@ -7,7 +7,7 @@ import androidx.lifecycle.viewModelScope
 import app.inkloom.document.*
 import app.inkloom.model.ImportedBrush
 import app.inkloom.engine.v5.selection.DocumentSelectionRuntime
-import app.inkloom.engine.v3.scene.LayerMaskRuntime
+import app.inkloom.engine.v5.selection.LayerMaskRuntime
 import app.inkloom.engine.v5.surface.MaskTileSurface
 import app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot
 import kotlinx.coroutines.Dispatchers
