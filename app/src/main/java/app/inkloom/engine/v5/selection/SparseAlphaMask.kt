@@ -192,25 +192,6 @@ internal class SparseAlphaMask private constructor(
     companion object {
         const val DEFAULT_TILE_SIZE = 256
 
-        fun polygon(points: List<StrokePoint>, pageWidth: Float, pageHeight: Float): SparseAlphaMask? {
-            if (points.size < 3) return null
-            val size = SelectionMaskCompositor.maskSize(pageWidth, pageHeight) ?: return null
-            val left = kotlin.math.floor(points.minOf(StrokePoint::x).coerceIn(0f, 1f) * size.width - 2f).toInt().coerceIn(0, size.width - 1)
-            val top = kotlin.math.floor(points.minOf(StrokePoint::y).coerceIn(0f, 1f) * size.height - 2f).toInt().coerceIn(0, size.height - 1)
-            val right = ceil(points.maxOf(StrokePoint::x).coerceIn(0f, 1f) * size.width + 2f).toInt().coerceIn(left + 1, size.width)
-            val bottom = ceil(points.maxOf(StrokePoint::y).coerceIn(0f, 1f) * size.height + 2f).toInt().coerceIn(top + 1, size.height)
-            val bitmap = Bitmap.createBitmap(right - left, bottom - top, Bitmap.Config.ARGB_8888)
-            val path = Path().apply {
-                moveTo(points.first().x.coerceIn(0f, 1f) * size.width - left, points.first().y.coerceIn(0f, 1f) * size.height - top)
-                points.drop(1).forEach { point ->
-                    lineTo(point.x.coerceIn(0f, 1f) * size.width - left, point.y.coerceIn(0f, 1f) * size.height - top)
-                }
-                close()
-            }
-            Canvas(bitmap).drawPath(path, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE })
-            return try { fromBitmapRegion(bitmap, left, top, size.width, size.height) } finally { bitmap.recycle() }
-        }
-
         fun fromStrokes(strokes: List<InkStroke>, pageWidth: Float, pageHeight: Float): SparseAlphaMask? {
             if (strokes.isEmpty()) return null
             val size = SelectionMaskCompositor.maskSize(pageWidth, pageHeight) ?: return null

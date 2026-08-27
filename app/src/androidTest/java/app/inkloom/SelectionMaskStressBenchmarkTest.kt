@@ -9,6 +9,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.document.StrokePoint
 import app.inkloom.document.FloodFill
 import app.inkloom.engine.v5.selection.SparseAlphaMask
+import app.inkloom.engine.v5.coordinates.DocumentPoint
+import app.inkloom.engine.v5.selection.CanonicalLassoContour
+import app.inkloom.engine.v5.selection.SelectionMaskRasterizer
 import app.inkloom.engine.v5.surface.MaskComposeMode
 import app.inkloom.engine.v5.surface.MaskTileSurface
 import app.inkloom.engine.v5.surface.PixelRect
@@ -99,7 +102,18 @@ class SelectionMaskStressBenchmarkTest {
             StrokePoint((.5 + cos(angle) * radius).toFloat(), (.5 + sin(angle) * radius).toFloat())
         }
         val lassoStarted = SystemClock.elapsedRealtimeNanos()
-        val lasso = requireNotNull(SparseAlphaMask.polygon(complex, 8192f, 8192f))
+        val lasso = requireNotNull(
+            SelectionMaskRasterizer.rasterize(
+                contour = CanonicalLassoContour(
+                    complex.map { point -> DocumentPoint(point.x * 8192f, point.y * 8192f) },
+                    closed = true,
+                ),
+                documentWidth = 8192f,
+                documentHeight = 8192f,
+                logicalWidth = 1600,
+                logicalHeight = 1600,
+            )?.let(SparseAlphaMask::fromSnapshot),
+        )
         val lassoMs = elapsedMs(lassoStarted)
         assertTrue(lasso.tileCount > 1)
         assertTrue(lasso.retainedPixels < 2_000_000L)
