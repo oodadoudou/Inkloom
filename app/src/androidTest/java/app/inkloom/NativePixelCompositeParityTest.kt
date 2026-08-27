@@ -7,10 +7,10 @@ import app.inkloom.engine.v3.composite.PixelTileCompositor
 import app.inkloom.engine.v3.composite.PixelLayerProjectionCache
 import app.inkloom.engine.v3.composite.PixelLayerProjectionInput
 import app.inkloom.engine.v3.composite.PremultipliedRgba
-import app.inkloom.engine.v3.surface.LinearRgba
-import app.inkloom.engine.v3.surface.PixelTileFormat
-import app.inkloom.engine.v3.surface.PixelTileSurface
-import app.inkloom.engine.v3.surface.MaskTileSurface
+import app.inkloom.engine.v5.surface.LinearRgba
+import app.inkloom.engine.v5.surface.PixelTileFormat
+import app.inkloom.engine.v5.surface.PixelTileSurface
+import app.inkloom.engine.v5.surface.MaskTileSurface
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith

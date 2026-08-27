@@ -1,12 +1,12 @@
 package app.inkloom.engine.v3.composite
 
-import app.inkloom.engine.v3.surface.PackedRgbaF16
-import app.inkloom.engine.v3.surface.PixelRect
-import app.inkloom.engine.v3.surface.PixelTileFormat
-import app.inkloom.engine.v3.surface.PixelTileKey
-import app.inkloom.engine.v3.surface.PixelTileSurface
-import app.inkloom.engine.v3.surface.PixelTileSurfaceSnapshot
-import app.inkloom.engine.v3.surface.PixelTileTransactionRecord
+import app.inkloom.engine.v5.surface.PackedRgbaF16
+import app.inkloom.engine.v5.surface.PixelRect
+import app.inkloom.engine.v5.surface.PixelTileFormat
+import app.inkloom.engine.v5.surface.PixelTileKey
+import app.inkloom.engine.v5.surface.PixelTileSurface
+import app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot
+import app.inkloom.engine.v5.surface.PixelTileTransactionRecord
 
 /** Pixel coverage used by layer masks, clipping bases, and selections. */
 fun interface CompositeCoverage {

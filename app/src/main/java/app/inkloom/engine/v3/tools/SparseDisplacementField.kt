@@ -1,8 +1,8 @@
 package app.inkloom.engine.v3.tools
 
 import app.inkloom.document.LiquifyMode
-import app.inkloom.engine.v3.surface.PixelRect
-import app.inkloom.engine.v3.surface.PixelTileKey
+import app.inkloom.engine.v5.surface.PixelRect
+import app.inkloom.engine.v5.surface.PixelTileKey
 import kotlin.math.atan2
 import kotlin.math.ceil
 import kotlin.math.cos

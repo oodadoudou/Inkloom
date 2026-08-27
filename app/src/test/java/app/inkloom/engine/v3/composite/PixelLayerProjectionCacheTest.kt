@@ -1,8 +1,8 @@
 package app.inkloom.engine.v3.composite
 
-import app.inkloom.engine.v3.surface.PixelTileKey
-import app.inkloom.engine.v3.surface.PixelTileSurface
-import app.inkloom.engine.v3.surface.MaskTileSurface
+import app.inkloom.engine.v5.surface.PixelTileKey
+import app.inkloom.engine.v5.surface.PixelTileSurface
+import app.inkloom.engine.v5.surface.MaskTileSurface
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue

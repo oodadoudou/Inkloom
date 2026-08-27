@@ -1025,7 +1025,7 @@ private fun EditorScreen(
     onToggleLayerClippedToBelow: (String, String, String) -> Unit,
     onToggleLayerReference: (String, String, String) -> Unit,
     onToggleLayerDraft: (String, String, String) -> Unit,
-    onLayerMaskCommand: (String, String, String, LayerMaskCommand, app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot?) -> Unit,
+    onLayerMaskCommand: (String, String, String, LayerMaskCommand, app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot?) -> Unit,
     onMoveLayerToFolder: (String, String, String, String?) -> Unit,
     onToggleLayerFolderCollapsed: (String, String, String) -> Unit,
     onMoveLayer: (String, String, String, Int) -> Unit,
@@ -4570,7 +4570,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
         }
     }
     val gradientSaveFailure = tr("The gradient mask could not be saved", "渐变蒙版保存失败")
-    val commitGradient: (Float, Float, Float, Float, GradientDefinition, app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot?) -> Unit = commit@{ sx, sy, ex, ey, definition, selectionMask ->
+    val commitGradient: (Float, Float, Float, Float, GradientDefinition, app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot?) -> Unit = commit@{ sx, sy, ex, ey, definition, selectionMask ->
         if (gradientCommitScope.coroutineContext[Job]?.isActive != true) {
             return@commit
         }

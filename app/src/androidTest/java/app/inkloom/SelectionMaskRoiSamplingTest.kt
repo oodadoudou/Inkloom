@@ -5,7 +5,7 @@ import android.graphics.Color
 import android.graphics.Rect
 import android.os.SystemClock
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import app.inkloom.engine.v3.surface.MaskTileSurface
+import app.inkloom.engine.v5.surface.MaskTileSurface
 import app.inkloom.engine.v3.tools.RasterSelectionMask
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -18,7 +18,7 @@ class SelectionMaskRoiSamplingTest {
         val selection = MaskTileSurface(100, 100, tileSize = 64)
         selection.beginWrite("left half").run {
             val alpha = ByteArray(50 * 100) { 255.toByte() }
-            replaceAlpha(app.inkloom.engine.v3.surface.PixelRect(0, 0, 50, 100), alpha)
+            replaceAlpha(app.inkloom.engine.v5.surface.PixelRect(0, 0, 50, 100), alpha)
             commit().close()
         }
         val target = Bitmap.createBitmap(20, 20, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
@@ -34,7 +34,7 @@ class SelectionMaskRoiSamplingTest {
     @Test fun eightKSelectionDirtyRoiSamplingStaysInsideFrameBudget() {
         val selection = MaskTileSurface(8192, 8192, tileSize = 128)
         selection.beginWrite("local island").run {
-            editTile(app.inkloom.engine.v3.surface.PixelTileKey(32, 32)) { alpha, _ -> alpha.fill(255.toByte()) }
+            editTile(app.inkloom.engine.v5.surface.PixelTileKey(32, 32)) { alpha, _ -> alpha.fill(255.toByte()) }
             commit().close()
         }
         val sampler = RasterSelectionMask(selection.snapshot(), 8192, 8192)

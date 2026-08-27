@@ -5,9 +5,9 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
-import app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot
-import app.inkloom.engine.v3.surface.PixelRect
-import app.inkloom.engine.v3.surface.PixelTileKey
+import app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot
+import app.inkloom.engine.v5.surface.PixelRect
+import app.inkloom.engine.v5.surface.PixelTileKey
 import java.util.LinkedHashMap
 
 /** Android presentation adapter with a bounded generation cache for animated selection overlays. */

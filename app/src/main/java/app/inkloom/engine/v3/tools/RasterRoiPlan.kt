@@ -1,7 +1,7 @@
 package app.inkloom.engine.v3.tools
 
-import app.inkloom.engine.v3.surface.PixelRect
-import app.inkloom.engine.v3.surface.PixelTileKey
+import app.inkloom.engine.v5.surface.PixelRect
+import app.inkloom.engine.v5.surface.PixelTileKey
 
 internal enum class RasterAbyssPolicy { TRANSPARENT, CLAMP_TO_EDGE }
 internal enum class RasterDependency { SEQUENTIAL, INDEPENDENT }

@@ -26,11 +26,11 @@ import app.inkloom.engine.v3.composite.PixelLayerProjectionCache
 import app.inkloom.engine.v3.composite.PixelLayerProjectionInput
 import app.inkloom.engine.v3.storage.PixelTileArchiveStore
 import app.inkloom.engine.v3.storage.MaskTileArchiveCodec
-import app.inkloom.engine.v3.surface.MaskTileSurface
-import app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot
+import app.inkloom.engine.v5.surface.MaskTileSurface
+import app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot
 import app.inkloom.engine.v3.scene.SparseAlphaMask
-import app.inkloom.engine.v3.surface.PixelTileSurface
-import app.inkloom.engine.v3.surface.PixelRect
+import app.inkloom.engine.v5.surface.PixelTileSurface
+import app.inkloom.engine.v5.surface.PixelRect
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Build

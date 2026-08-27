@@ -12,8 +12,8 @@ import app.inkloom.model.EditorTool
 import app.inkloom.engine.v3.render.ActiveStrokeCompositor
 import app.inkloom.engine.v3.tools.RasterLayerPatch
 import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
-import app.inkloom.engine.v3.surface.PixelRect
-import app.inkloom.engine.v3.surface.PixelTileSurface
+import app.inkloom.engine.v5.surface.PixelRect
+import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.ui.InkCanvasView
 import java.io.File
 import org.junit.Assert.assertEquals

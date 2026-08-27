@@ -16,9 +16,9 @@ import app.inkloom.document.PageElement
 import app.inkloom.document.SelectionMaskRenderer
 import app.inkloom.document.ShapeKind
 import app.inkloom.document.StrokePoint
-import app.inkloom.engine.v3.surface.MaskComposeMode
-import app.inkloom.engine.v3.surface.MaskTileSurface
-import app.inkloom.engine.v3.surface.PixelRect
+import app.inkloom.engine.v5.surface.MaskComposeMode
+import app.inkloom.engine.v5.surface.MaskTileSurface
+import app.inkloom.engine.v5.surface.PixelRect
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue

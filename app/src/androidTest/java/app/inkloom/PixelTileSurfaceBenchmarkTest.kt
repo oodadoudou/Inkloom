@@ -5,9 +5,9 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
-import app.inkloom.engine.v3.surface.PixelRect
-import app.inkloom.engine.v3.surface.PixelTileKey
-import app.inkloom.engine.v3.surface.PixelTileSurface
+import app.inkloom.engine.v5.surface.PixelRect
+import app.inkloom.engine.v5.surface.PixelTileKey
+import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.engine.v3.tools.RasterTileBlendSession
 import app.inkloom.engine.v3.tools.RasterTileEraserSession
 import app.inkloom.engine.v3.tools.RasterTileLiquifySession
@@ -205,7 +205,7 @@ class PixelTileSurfaceBenchmarkTest {
 
         intArrayOf(100, 500, 1000).forEach { transactionCount ->
             val surface = PixelTileSurface(8192, 8192, tileSize = 64)
-            val records = ArrayList<app.inkloom.engine.v3.surface.PixelTileTransactionRecord>(transactionCount)
+            val records = ArrayList<app.inkloom.engine.v5.surface.PixelTileTransactionRecord>(transactionCount)
             val writeStart = SystemClock.elapsedRealtimeNanos()
             repeat(transactionCount) { index ->
                 records += surface.beginWrite("undo benchmark $index").run {
@@ -231,7 +231,7 @@ class PixelTileSurfaceBenchmarkTest {
     }
 
     private fun paintCircle(
-        transaction: app.inkloom.engine.v3.surface.PixelTileWriteTransaction,
+        transaction: app.inkloom.engine.v5.surface.PixelTileWriteTransaction,
         surface: PixelTileSurface,
         centerX: Int,
         centerY: Int,

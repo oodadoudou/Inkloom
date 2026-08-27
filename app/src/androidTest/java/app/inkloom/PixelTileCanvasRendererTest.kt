@@ -9,11 +9,11 @@ import android.graphics.RenderNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.engine.v3.android.PixelTileCanvasRenderer
 import app.inkloom.engine.v3.android.PixelMemoryPressure
-import app.inkloom.engine.v3.surface.PixelRect
-import app.inkloom.engine.v3.surface.LinearRgba
-import app.inkloom.engine.v3.surface.PixelTileFormat
-import app.inkloom.engine.v3.surface.PixelTileKey
-import app.inkloom.engine.v3.surface.PixelTileSurface
+import app.inkloom.engine.v5.surface.PixelRect
+import app.inkloom.engine.v5.surface.LinearRgba
+import app.inkloom.engine.v5.surface.PixelTileFormat
+import app.inkloom.engine.v5.surface.PixelTileKey
+import app.inkloom.engine.v5.surface.PixelTileSurface
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

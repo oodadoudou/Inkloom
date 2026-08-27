@@ -5,7 +5,7 @@ import app.inkloom.document.InkPage
 import app.inkloom.document.LayerContentKind
 import app.inkloom.document.LayerRole
 import app.inkloom.document.RasterTileSurfaceRef
-import app.inkloom.engine.v3.surface.PixelTileSurface
+import app.inkloom.engine.v5.surface.PixelTileSurface
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertSame

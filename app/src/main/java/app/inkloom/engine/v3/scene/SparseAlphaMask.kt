@@ -8,11 +8,11 @@ import android.graphics.Path
 import android.graphics.RectF
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
-import app.inkloom.engine.v3.surface.MaskComposeMode
-import app.inkloom.engine.v3.surface.MaskTileSurface
-import app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot
-import app.inkloom.engine.v3.surface.PixelRect
-import app.inkloom.engine.v3.surface.PixelTileKey
+import app.inkloom.engine.v5.surface.MaskComposeMode
+import app.inkloom.engine.v5.surface.MaskTileSurface
+import app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot
+import app.inkloom.engine.v5.surface.PixelRect
+import app.inkloom.engine.v5.surface.PixelTileKey
 import app.inkloom.engine.v3.android.MaskTileCanvasRenderer
 import app.inkloom.engine.v3.tools.NativeRasterOps
 import app.inkloom.document.SelectionMaskCompositor

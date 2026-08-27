@@ -1,11 +1,11 @@
 package app.inkloom.engine.v3.composite
 
-import app.inkloom.engine.v3.surface.LinearRgba
-import app.inkloom.engine.v3.surface.PixelRect
-import app.inkloom.engine.v3.surface.PixelTileFormat
-import app.inkloom.engine.v3.surface.PixelTileKey
-import app.inkloom.engine.v3.surface.PixelTileSurface
-import app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection
+import app.inkloom.engine.v5.surface.LinearRgba
+import app.inkloom.engine.v5.surface.PixelRect
+import app.inkloom.engine.v5.surface.PixelTileFormat
+import app.inkloom.engine.v5.surface.PixelTileKey
+import app.inkloom.engine.v5.surface.PixelTileSurface
+import app.inkloom.engine.v5.surface.PixelTileSurface.HistoryDirection
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

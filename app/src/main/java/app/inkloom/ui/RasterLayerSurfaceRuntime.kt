@@ -6,7 +6,7 @@ import app.inkloom.document.LayerContentKind
 import app.inkloom.document.LayerHierarchy
 import app.inkloom.document.PageCropTransform
 import app.inkloom.document.RasterTileSurfaceRef
-import app.inkloom.engine.v3.surface.PixelTileSurface
+import app.inkloom.engine.v5.surface.PixelTileSurface
 
 /**
  * Page-scoped owner of the editable raster surfaces used by the production canvas.

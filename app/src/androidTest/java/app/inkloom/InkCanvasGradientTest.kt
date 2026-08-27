@@ -113,7 +113,7 @@ class InkCanvasGradientTest {
     }
 
     @Test fun committedGradientIncludesFeatheredGeometryOnlySelectionMask() {
-        var committedMask: app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot? = null
+        var committedMask: app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot? = null
         val view = InkCanvasView(ApplicationProvider.getApplicationContext()).apply {
             layout(0, 0, 1_000, 1_000)
             tool = EditorTool.GRADIENT
@@ -141,7 +141,7 @@ class InkCanvasGradientTest {
     }
 
     @Test fun magicWandGradientMaskRetainsTheFloodFilledIrregularRegion() {
-        var committedMask: app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot? = null
+        var committedMask: app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot? = null
         val background = Bitmap.createBitmap(1_000, 1_000, Bitmap.Config.ARGB_8888).apply {
             eraseColor(Color.BLACK)
             Canvas(this).apply {

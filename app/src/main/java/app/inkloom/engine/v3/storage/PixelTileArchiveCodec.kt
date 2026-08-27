@@ -1,9 +1,9 @@
 package app.inkloom.engine.v3.storage
 
-import app.inkloom.engine.v3.surface.PixelTileKey
-import app.inkloom.engine.v3.surface.PixelTileFormat
-import app.inkloom.engine.v3.surface.PixelTileSurface
-import app.inkloom.engine.v3.surface.PixelTileSurfaceSnapshot
+import app.inkloom.engine.v5.surface.PixelTileKey
+import app.inkloom.engine.v5.surface.PixelTileFormat
+import app.inkloom.engine.v5.surface.PixelTileSurface
+import app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -104,7 +104,7 @@ internal object PixelTileArchiveCodec {
         var encodedTileCount = 0
         var reusedTileCount = 0
         val tileEntries = snapshot.tileInfo
-            .sortedWith(compareBy<app.inkloom.engine.v3.surface.PixelTileInfo> { it.key.row }.thenBy { it.key.column })
+            .sortedWith(compareBy<app.inkloom.engine.v5.surface.PixelTileInfo> { it.key.row }.thenBy { it.key.column })
             .map { info ->
                 previousEntries[info.key]?.takeIf { entry -> entry.generation == info.generation }?.let { entry ->
                     reusedTileCount++

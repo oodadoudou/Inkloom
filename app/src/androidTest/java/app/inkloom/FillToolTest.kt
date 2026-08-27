@@ -168,7 +168,7 @@ class FillToolTest {
     }
 
     @Test fun bucketTapWithActiveSelectionFillsTheWholeSelectionRegardlessOfSeed() {
-        var committedMask: app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot? = null
+        var committedMask: app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot? = null
         val view = canvas {
             pageModelWidth = 200f
             pageModelHeight = 200f

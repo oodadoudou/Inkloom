@@ -17,7 +17,7 @@ import app.inkloom.engine.v3.scene.AlphaMaskOperation
 import app.inkloom.engine.v3.scene.DocumentSelectionRuntime
 import app.inkloom.document.SelectionMaskCompositor
 import app.inkloom.document.LayerIds
-import app.inkloom.engine.v3.surface.PixelTileSurface
+import app.inkloom.engine.v5.surface.PixelTileSurface
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -225,7 +225,7 @@ class InkCanvasLassoTest {
             view.dispatchStylus(MotionEvent.ACTION_MOVE, 100f, 20f, 70L)
             view.dispatchStylus(MotionEvent.ACTION_CANCEL, 100f, 100f, 80L)
 
-            var selection: app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot? = null
+            var selection: app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot? = null
             view.onSparseFillCommitted = { mask, _, _ -> selection = mask }
             assertTrue(view.fillSelection())
             val mask = requireNotNull(selection)
@@ -241,7 +241,7 @@ class InkCanvasLassoTest {
 
             assertTrue(view.borderSelection(80f))
             assertTrue(view.selectionMaskRegions().isNotEmpty())
-            var mask: app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot? = null
+            var mask: app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot? = null
             view.onGradientCommitted = { _, _, _, _, _, value -> mask = value }
             view.tool = EditorTool.GRADIENT
             view.dispatchStylus(MotionEvent.ACTION_DOWN, 100f, 500f, 60L)

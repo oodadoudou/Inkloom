@@ -15,11 +15,11 @@ import app.inkloom.document.LayerMask
 import app.inkloom.document.PageBackground
 import app.inkloom.document.StrokePoint
 import app.inkloom.document.defaultInkLayers
-import app.inkloom.engine.v3.surface.PixelRect
-import app.inkloom.engine.v3.surface.PixelTileKey
-import app.inkloom.engine.v3.surface.PixelTileSurface
-import app.inkloom.engine.v3.surface.MaskTileSurface
-import app.inkloom.engine.v3.surface.MaskComposeMode
+import app.inkloom.engine.v5.surface.PixelRect
+import app.inkloom.engine.v5.surface.PixelTileKey
+import app.inkloom.engine.v5.surface.PixelTileSurface
+import app.inkloom.engine.v5.surface.MaskTileSurface
+import app.inkloom.engine.v5.surface.MaskComposeMode
 import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

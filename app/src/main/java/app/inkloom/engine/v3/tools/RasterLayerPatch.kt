@@ -5,8 +5,8 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Rect
 import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
-import app.inkloom.engine.v3.surface.PixelRect
-import app.inkloom.engine.v3.surface.PixelTileSurfaceSnapshot
+import app.inkloom.engine.v5.surface.PixelRect
+import app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot
 
 /**
  * Immutable ownership-transfer object for one edited rectangle of a visible raster layer.

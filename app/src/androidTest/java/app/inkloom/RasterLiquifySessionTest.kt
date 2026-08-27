@@ -9,9 +9,9 @@ import app.inkloom.document.LiquifyMode
 import app.inkloom.engine.v3.tools.RasterTileLiquifySession
 import app.inkloom.engine.v3.tools.RasterAbyssPolicy
 import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
-import app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection
-import app.inkloom.engine.v3.surface.PixelTileSurface
-import app.inkloom.engine.v3.surface.PixelTileSurfaceSnapshot
+import app.inkloom.engine.v5.surface.PixelTileSurface.HistoryDirection
+import app.inkloom.engine.v5.surface.PixelTileSurface
+import app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -159,12 +159,12 @@ class RasterLiquifySessionTest {
     @Test fun selectionAlphaClipsEveryLiquifyCompositeToTheActiveRegion() {
         val bitmap = fixture()
         val originalBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, false)
-        val selection = app.inkloom.engine.v3.surface.MaskTileSurface(48, 36, tileSize = 64).also { mask ->
+        val selection = app.inkloom.engine.v5.surface.MaskTileSurface(48, 36, tileSize = 64).also { mask ->
             mask.beginWrite("upper selection").run {
                 composeAlpha(
-                    app.inkloom.engine.v3.surface.PixelRect(0, 0, 48, 18),
+                    app.inkloom.engine.v5.surface.PixelRect(0, 0, 48, 18),
                     ByteArray(48 * 18) { 255.toByte() },
-                    mode = app.inkloom.engine.v3.surface.MaskComposeMode.REPLACE,
+                    mode = app.inkloom.engine.v5.surface.MaskComposeMode.REPLACE,
                 )
                 commit().close()
             }

@@ -5,12 +5,12 @@ import android.graphics.Canvas
 import android.graphics.ColorSpace
 import android.graphics.Paint
 import android.graphics.Rect
-import app.inkloom.engine.v3.surface.PixelRect
-import app.inkloom.engine.v3.surface.PixelTileKey
-import app.inkloom.engine.v3.surface.PixelTileFormat
-import app.inkloom.engine.v3.surface.PixelTileSurface
-import app.inkloom.engine.v3.surface.PixelTileSurfaceSnapshot
-import app.inkloom.engine.v3.surface.PixelTileWriteTransaction
+import app.inkloom.engine.v5.surface.PixelRect
+import app.inkloom.engine.v5.surface.PixelTileKey
+import app.inkloom.engine.v5.surface.PixelTileFormat
+import app.inkloom.engine.v5.surface.PixelTileSurface
+import app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot
+import app.inkloom.engine.v5.surface.PixelTileWriteTransaction
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.floor
@@ -128,7 +128,7 @@ internal object PixelTileBitmapAdapter {
                             .coerceIn(clipped.left, clipped.right - 1)
                         val color = snapshot.linearPixelAt(sourceX, sourceY)
                         scaled[targetY * targetWidth + targetX] =
-                            app.inkloom.engine.v3.surface.PackedRgbaF16.packPremultiplied(
+                            app.inkloom.engine.v5.surface.PackedRgbaF16.packPremultiplied(
                                 color.red,
                                 color.green,
                                 color.blue,

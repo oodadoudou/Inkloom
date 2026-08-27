@@ -2,11 +2,11 @@ package app.inkloom
 
 import android.graphics.Color
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import app.inkloom.engine.v3.surface.MaskComposeMode
-import app.inkloom.engine.v3.surface.MaskTileSurface
-import app.inkloom.engine.v3.surface.PixelRect
-import app.inkloom.engine.v3.surface.PixelTileKey
-import app.inkloom.engine.v3.surface.PixelTileSurface
+import app.inkloom.engine.v5.surface.MaskComposeMode
+import app.inkloom.engine.v5.surface.MaskTileSurface
+import app.inkloom.engine.v5.surface.PixelRect
+import app.inkloom.engine.v5.surface.PixelTileKey
+import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.engine.v3.tools.RasterSelectionTransformSession
 import app.inkloom.engine.v3.tools.SelectionAffineTransform
 import org.junit.Assert.assertEquals

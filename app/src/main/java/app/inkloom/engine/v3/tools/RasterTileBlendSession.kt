@@ -8,11 +8,11 @@ import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
-import app.inkloom.engine.v3.surface.PixelRect
-import app.inkloom.engine.v3.surface.PixelTileSurface
-import app.inkloom.engine.v3.surface.PixelTileTransactionRecord
-import app.inkloom.engine.v3.surface.PixelTileSurfaceSnapshot
-import app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot
+import app.inkloom.engine.v5.surface.PixelRect
+import app.inkloom.engine.v5.surface.PixelTileSurface
+import app.inkloom.engine.v5.surface.PixelTileTransactionRecord
+import app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot
+import app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.hypot

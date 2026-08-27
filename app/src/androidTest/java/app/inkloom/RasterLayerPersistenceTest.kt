@@ -12,9 +12,9 @@ import app.inkloom.document.LayerContentKind
 import app.inkloom.document.PageGeometry
 import app.inkloom.document.PageCrop
 import app.inkloom.document.defaultInkLayers
-import app.inkloom.engine.v3.surface.LinearRgba
-import app.inkloom.engine.v3.surface.PixelTileFormat
-import app.inkloom.engine.v3.surface.PixelTileSurface
+import app.inkloom.engine.v5.surface.LinearRgba
+import app.inkloom.engine.v5.surface.PixelTileFormat
+import app.inkloom.engine.v5.surface.PixelTileSurface
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File

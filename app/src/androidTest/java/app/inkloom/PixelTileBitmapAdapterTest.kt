@@ -5,10 +5,10 @@ import android.graphics.Color
 import android.graphics.ColorSpace
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
-import app.inkloom.engine.v3.surface.PixelRect
-import app.inkloom.engine.v3.surface.LinearRgba
-import app.inkloom.engine.v3.surface.PixelTileFormat
-import app.inkloom.engine.v3.surface.PixelTileSurface
+import app.inkloom.engine.v5.surface.PixelRect
+import app.inkloom.engine.v5.surface.LinearRgba
+import app.inkloom.engine.v5.surface.PixelTileFormat
+import app.inkloom.engine.v5.surface.PixelTileSurface
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -79,7 +79,7 @@ class PixelTileBitmapAdapterTest {
     }
 
     @Test fun replacingRotatedRegionWritesAndClearsTheCorrectDocumentPixels() {
-        val surface = app.inkloom.engine.v3.surface.PixelTileSurface(80, 40)
+        val surface = app.inkloom.engine.v5.surface.PixelTileSurface(80, 40)
         surface.beginWrite("existing pixel").run {
             setPixel(0, 39, Color.RED)
             commit().close()

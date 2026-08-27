@@ -10,8 +10,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.engine.v3.tools.RasterTileEraserSession
 import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
-import app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection
-import app.inkloom.engine.v3.surface.PixelTileSurface
+import app.inkloom.engine.v5.surface.PixelTileSurface.HistoryDirection
+import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.model.EditorTool
 import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertEquals
@@ -90,12 +90,12 @@ class RasterEraserSessionTest {
 
     @Test fun softEraserPreservesPartialAlphaAndSelectionIsolation() {
         val bitmap = Bitmap.createBitmap(160, 100, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
-        val selection = app.inkloom.engine.v3.surface.MaskTileSurface(40, 20, tileSize = 64).also { mask ->
+        val selection = app.inkloom.engine.v5.surface.MaskTileSurface(40, 20, tileSize = 64).also { mask ->
             mask.beginWrite("upper selection").run {
                 composeAlpha(
-                    app.inkloom.engine.v3.surface.PixelRect(0, 0, 40, 10),
+                    app.inkloom.engine.v5.surface.PixelRect(0, 0, 40, 10),
                     ByteArray(40 * 10) { 255.toByte() },
-                    mode = app.inkloom.engine.v3.surface.MaskComposeMode.REPLACE,
+                    mode = app.inkloom.engine.v5.surface.MaskComposeMode.REPLACE,
                 )
                 commit().close()
             }

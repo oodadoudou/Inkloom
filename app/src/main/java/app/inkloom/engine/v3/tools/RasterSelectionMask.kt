@@ -3,7 +3,7 @@ package app.inkloom.engine.v3.tools
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Rect
-import app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot
+import app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot
 
 /** Read-only selection alpha sampled directly into a tool's dirty raster region. */
 internal class RasterSelectionMask(

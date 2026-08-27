@@ -5,9 +5,9 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
-import app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection
-import app.inkloom.engine.v3.surface.PixelRect
-import app.inkloom.engine.v3.surface.PixelTileSurface
+import app.inkloom.engine.v5.surface.PixelTileSurface.HistoryDirection
+import app.inkloom.engine.v5.surface.PixelRect
+import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.engine.v3.tools.RasterTilePaintSession
 import app.inkloom.engine.v3.tools.RasterAbyssPolicy
 import app.inkloom.engine.v3.scene.SparseAlphaMask

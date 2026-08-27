@@ -6,8 +6,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.engine.v3.tools.RasterTileBlendSession
 import app.inkloom.engine.v3.tools.RasterAbyssPolicy
 import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
-import app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection
-import app.inkloom.engine.v3.surface.PixelTileSurface
+import app.inkloom.engine.v5.surface.PixelTileSurface.HistoryDirection
+import app.inkloom.engine.v5.surface.PixelTileSurface
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -121,12 +121,12 @@ class RasterBlendSessionTest {
         val bitmap = Bitmap.createBitmap(80, 40, Bitmap.Config.ARGB_8888)
         for (y in 8 until 32) for (x in 8 until 30) bitmap.setPixel(x, y, Color.GREEN)
         val original = bitmap.copy(Bitmap.Config.ARGB_8888, false)
-        val selection = app.inkloom.engine.v3.surface.MaskTileSurface(20, 10, tileSize = 64).also { mask ->
+        val selection = app.inkloom.engine.v5.surface.MaskTileSurface(20, 10, tileSize = 64).also { mask ->
             mask.beginWrite("upper selection").run {
                 composeAlpha(
-                    app.inkloom.engine.v3.surface.PixelRect(0, 0, 20, 5),
+                    app.inkloom.engine.v5.surface.PixelRect(0, 0, 20, 5),
                     ByteArray(20 * 5) { 255.toByte() },
-                    mode = app.inkloom.engine.v3.surface.MaskComposeMode.REPLACE,
+                    mode = app.inkloom.engine.v5.surface.MaskComposeMode.REPLACE,
                 )
                 commit().close()
             }

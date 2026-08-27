@@ -9,7 +9,7 @@ import app.inkloom.engine.v3.android.PixelMemoryPressure
 import app.inkloom.engine.v3.android.PixelMemoryPressureCoordinator
 import app.inkloom.engine.v3.android.PixelMemoryTrimResult
 import app.inkloom.engine.v3.android.PixelMemoryTrimmable
-import app.inkloom.engine.v3.surface.MaskTileSurface
+import app.inkloom.engine.v5.surface.MaskTileSurface
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test

@@ -8,8 +8,8 @@ import app.inkloom.document.*
 import app.inkloom.model.ImportedBrush
 import app.inkloom.engine.v3.scene.DocumentSelectionRuntime
 import app.inkloom.engine.v3.scene.LayerMaskRuntime
-import app.inkloom.engine.v3.surface.MaskTileSurface
-import app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot
+import app.inkloom.engine.v5.surface.MaskTileSurface
+import app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay

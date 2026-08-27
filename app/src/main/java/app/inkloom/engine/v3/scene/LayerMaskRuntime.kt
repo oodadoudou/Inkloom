@@ -1,10 +1,10 @@
 package app.inkloom.engine.v3.scene
 
-import app.inkloom.engine.v3.surface.MaskComposeMode
-import app.inkloom.engine.v3.surface.MaskTileSurface
-import app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot
-import app.inkloom.engine.v3.surface.MaskTileTransactionRecord
-import app.inkloom.engine.v3.surface.PixelRect
+import app.inkloom.engine.v5.surface.MaskComposeMode
+import app.inkloom.engine.v5.surface.MaskTileSurface
+import app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot
+import app.inkloom.engine.v5.surface.MaskTileTransactionRecord
+import app.inkloom.engine.v5.surface.PixelRect
 
 data class LayerMaskEdit(
     val snapshot: MaskTileSurfaceSnapshot,
@@ -118,7 +118,7 @@ class LayerMaskRuntime(
 
     private inline fun edit(
         label: String,
-        block: app.inkloom.engine.v3.surface.MaskTileWriteTransaction.() -> Unit,
+        block: app.inkloom.engine.v5.surface.MaskTileWriteTransaction.() -> Unit,
     ): LayerMaskEdit? {
         val transaction = surface.beginWrite(label)
         return try {

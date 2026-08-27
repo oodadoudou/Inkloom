@@ -1,11 +1,11 @@
 package app.inkloom.engine.v3.composite
 
-import app.inkloom.engine.v3.surface.PixelRect
-import app.inkloom.engine.v3.surface.PixelTileFormat
-import app.inkloom.engine.v3.surface.PixelTileKey
-import app.inkloom.engine.v3.surface.PixelTileSurface
-import app.inkloom.engine.v3.surface.PixelTileSurfaceSnapshot
-import app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot
+import app.inkloom.engine.v5.surface.PixelRect
+import app.inkloom.engine.v5.surface.PixelTileFormat
+import app.inkloom.engine.v5.surface.PixelTileKey
+import app.inkloom.engine.v5.surface.PixelTileSurface
+import app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot
+import app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot
 import java.util.UUID
 
 data class PixelLayerProjectionInput(
@@ -278,7 +278,7 @@ class PixelLayerProjectionCache(
                     var index = localY * stride
                     var coverageIndex = offset + index
                     repeat(bounds.width) {
-                        val alpha = (app.inkloom.engine.v3.surface.PackedRgbaF16.alpha(pixels[index++]).coerceIn(0f, 1f) * 255f + .5f).toInt()
+                        val alpha = (app.inkloom.engine.v5.surface.PackedRgbaF16.alpha(pixels[index++]).coerceIn(0f, 1f) * 255f + .5f).toInt()
                         batchCoverage[coverageIndex] = multiplyByte(batchCoverage[coverageIndex], alpha)
                         batchCoverage[coverageIndex] = multiplyByte(batchCoverage[coverageIndex], baseOpacityByte)
                         coverageIndex++

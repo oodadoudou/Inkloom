@@ -37,14 +37,14 @@ import app.inkloom.engine.v3.android.MaskTileCanvasRenderer
 import app.inkloom.engine.v3.composite.PixelLayerProjectionCache
 import app.inkloom.engine.v3.composite.PixelLayerProjectionInput
 import app.inkloom.engine.v3.scene.AlphaMaskOperation
-import app.inkloom.engine.v3.surface.MaskComposeMode
-import app.inkloom.engine.v3.surface.MaskTileSurface
-import app.inkloom.engine.v3.surface.MaskTileTransactionRecord
-import app.inkloom.engine.v3.surface.MaskTileWriteTransaction
-import app.inkloom.engine.v3.surface.PixelRect
-import app.inkloom.engine.v3.surface.PixelTileFormat
-import app.inkloom.engine.v3.surface.RasterSelectionClipboard
-import app.inkloom.engine.v3.surface.RasterSelectionContent
+import app.inkloom.engine.v5.surface.MaskComposeMode
+import app.inkloom.engine.v5.surface.MaskTileSurface
+import app.inkloom.engine.v5.surface.MaskTileTransactionRecord
+import app.inkloom.engine.v5.surface.MaskTileWriteTransaction
+import app.inkloom.engine.v5.surface.PixelRect
+import app.inkloom.engine.v5.surface.PixelTileFormat
+import app.inkloom.engine.v5.surface.RasterSelectionClipboard
+import app.inkloom.engine.v5.surface.RasterSelectionContent
 import java.util.LinkedHashMap
 import java.util.concurrent.Executors
 import app.inkloom.document.InkStroke
@@ -1364,7 +1364,7 @@ class InkCanvasView(context: Context) : View(context) {
     private fun rasterTileSurfaceFor(layerId: String): PixelTileSurface? = rasterLayerTileSurfaces[layerId]
 
     /** One gesture-scoped sparse preview; it is presentation only and never document truth. */
-    private fun liveRasterPreviewSnapshot(layerId: String): app.inkloom.engine.v3.surface.PixelTileSurfaceSnapshot? {
+    private fun liveRasterPreviewSnapshot(layerId: String): app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot? {
         if (layerId != activeLayerId) return null
         return runCatching {
             rasterTileEraserSession?.previewSnapshot()
@@ -6287,7 +6287,7 @@ class InkCanvasView(context: Context) : View(context) {
             publishRasterSelectionEdit(layerId, surface, result.dirtyBounds)
             recordExternalEdit(
                 undo = {
-                    surface.apply(record, app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection.UNDO)
+                    surface.apply(record, app.inkloom.engine.v5.surface.PixelTileSurface.HistoryDirection.UNDO)
                     originalSelection?.let { original ->
                         documentSelectionState?.replaceFrom(original)
                             ?: replaceSelectionAlphaMask(SparseAlphaMask.fromSnapshot(original), resetFeather = false)
@@ -6296,7 +6296,7 @@ class InkCanvasView(context: Context) : View(context) {
                     publishRasterSelectionEdit(layerId, surface, result.dirtyBounds)
                 },
                 redo = {
-                    surface.apply(record, app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection.REDO)
+                    surface.apply(record, app.inkloom.engine.v5.surface.PixelTileSurface.HistoryDirection.REDO)
                     documentSelectionState?.replaceFrom(result.selection)
                         ?: replaceSelectionAlphaMask(SparseAlphaMask.fromSnapshot(result.selection), resetFeather = false)
                     rebuildSelectionDerivedState()
@@ -7211,7 +7211,7 @@ class InkCanvasView(context: Context) : View(context) {
                     val exact = RasterTileEditSession(surface, "authored raster eraser")
                     exact.use {
                         it.editIndependent(
-                            app.inkloom.engine.v3.surface.PixelRect(bounds.left, bounds.top, bounds.right, bounds.bottom),
+                            app.inkloom.engine.v5.surface.PixelRect(bounds.left, bounds.top, bounds.right, bounds.bottom),
                         ) { destination, unit ->
                             val source = Rect(
                                 unit.left - bounds.left,
@@ -7405,8 +7405,8 @@ class InkCanvasView(context: Context) : View(context) {
             val layerId = activeLayerId
             publishRasterSelectionEdit(layerId, rasterSurface, edit.dirtyBounds)
             recordExternalEdit(
-                undo = { rasterSurface.apply(edit.record, app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection.UNDO); publishRasterSelectionEdit(layerId, rasterSurface, edit.dirtyBounds) },
-                redo = { rasterSurface.apply(edit.record, app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection.REDO); publishRasterSelectionEdit(layerId, rasterSurface, edit.dirtyBounds) },
+                undo = { rasterSurface.apply(edit.record, app.inkloom.engine.v5.surface.PixelTileSurface.HistoryDirection.UNDO); publishRasterSelectionEdit(layerId, rasterSurface, edit.dirtyBounds) },
+                redo = { rasterSurface.apply(edit.record, app.inkloom.engine.v5.surface.PixelTileSurface.HistoryDirection.REDO); publishRasterSelectionEdit(layerId, rasterSurface, edit.dirtyBounds) },
                 dispose = edit.record::close,
             )
             val pastedSelection = RasterSelectionContent.selectionAt(
@@ -7782,8 +7782,8 @@ class InkCanvasView(context: Context) : View(context) {
                 val layerId = activeLayerId
                 publishRasterSelectionEdit(layerId, rasterSurface, edit.dirtyBounds)
                 recordExternalEdit(
-                    undo = { rasterSurface.apply(edit.record, app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection.UNDO); publishRasterSelectionEdit(layerId, rasterSurface, edit.dirtyBounds) },
-                    redo = { rasterSurface.apply(edit.record, app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection.REDO); publishRasterSelectionEdit(layerId, rasterSurface, edit.dirtyBounds) },
+                    undo = { rasterSurface.apply(edit.record, app.inkloom.engine.v5.surface.PixelTileSurface.HistoryDirection.UNDO); publishRasterSelectionEdit(layerId, rasterSurface, edit.dirtyBounds) },
+                    redo = { rasterSurface.apply(edit.record, app.inkloom.engine.v5.surface.PixelTileSurface.HistoryDirection.REDO); publishRasterSelectionEdit(layerId, rasterSurface, edit.dirtyBounds) },
                     dispose = edit.record::close,
                 )
                 return

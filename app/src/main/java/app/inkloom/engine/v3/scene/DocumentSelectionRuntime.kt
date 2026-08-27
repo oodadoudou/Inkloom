@@ -1,8 +1,8 @@
 package app.inkloom.engine.v3.scene
 
-import app.inkloom.engine.v3.surface.MaskTileSurface
-import app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot
-import app.inkloom.engine.v3.surface.MaskComposeMode
+import app.inkloom.engine.v5.surface.MaskTileSurface
+import app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot
+import app.inkloom.engine.v5.surface.MaskComposeMode
 
 data class DocumentPageKey(val documentId: String, val pageId: String) {
     init {

@@ -13,7 +13,7 @@ import app.inkloom.document.InkStroke
 import app.inkloom.document.LayerIds
 import app.inkloom.document.StrokePoint
 import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
-import app.inkloom.engine.v3.surface.PixelRect
+import app.inkloom.engine.v5.surface.PixelRect
 import app.inkloom.model.EditorTool
 import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertFalse

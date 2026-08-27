@@ -1,7 +1,7 @@
 package app.inkloom.document
 
 import app.inkloom.engine.v3.storage.PixelTileArchiveStore
-import app.inkloom.engine.v3.surface.PixelTileSurface
+import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush

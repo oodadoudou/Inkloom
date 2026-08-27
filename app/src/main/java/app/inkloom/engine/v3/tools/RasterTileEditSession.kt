@@ -7,10 +7,10 @@ import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
 import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
-import app.inkloom.engine.v3.surface.PixelRect
-import app.inkloom.engine.v3.surface.PixelTileSurface
-import app.inkloom.engine.v3.surface.PixelTileSurfaceSnapshot
-import app.inkloom.engine.v3.surface.PixelTileTransactionRecord
+import app.inkloom.engine.v5.surface.PixelRect
+import app.inkloom.engine.v5.surface.PixelTileSurface
+import app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot
+import app.inkloom.engine.v5.surface.PixelTileTransactionRecord
 
 /**
  * One atomic raster-tool gesture over the authoritative sparse tile surface.
@@ -23,8 +23,8 @@ class RasterTileEditSession(
     private val surface: PixelTileSurface,
     label: String,
 ) : AutoCloseable {
-    private val original: app.inkloom.engine.v3.surface.PixelTileSurfaceSnapshot
-    private val transaction: app.inkloom.engine.v3.surface.PixelTileWriteTransaction
+    private val original: app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot
+    private val transaction: app.inkloom.engine.v5.surface.PixelTileWriteTransaction
     private val sourcePaint = Paint().apply {
         xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC)
     }

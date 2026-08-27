@@ -6,8 +6,8 @@ import android.graphics.Color
 import android.graphics.Paint
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.engine.v3.android.PixelTileBitmapAdapter
-import app.inkloom.engine.v3.surface.PixelRect
-import app.inkloom.engine.v3.surface.PixelTileSurface.HistoryDirection
+import app.inkloom.engine.v5.surface.PixelRect
+import app.inkloom.engine.v5.surface.PixelTileSurface.HistoryDirection
 import app.inkloom.engine.v3.tools.RasterAbyssPolicy
 import app.inkloom.engine.v3.tools.RasterDependency
 import app.inkloom.engine.v3.tools.RasterExecutionMode

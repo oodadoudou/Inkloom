@@ -17,7 +17,7 @@ import org.junit.runner.RunWith
 class FreeLassoInteractionTest {
     @Test fun oneFingerDrawsFreeLassoInsteadOfMovingCanvasWhenFingerInkIsDisabled() {
         var panDistance = 0f
-        var selectionMask: app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot? = null
+        var selectionMask: app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot? = null
         val view = InkCanvasView(ApplicationProvider.getApplicationContext()).apply {
             layout(0, 0, 400, 400)
             pageModelWidth = 400f
@@ -46,7 +46,7 @@ class FreeLassoInteractionTest {
 
     @Test fun lassoStillOwnsFingerImmediatelyAfterStylusContact() {
         var panDistance = 0f
-        var selectionMask: app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot? = null
+        var selectionMask: app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot? = null
         val view = InkCanvasView(ApplicationProvider.getApplicationContext()).apply {
             layout(0, 0, 400, 400)
             pageModelWidth = 400f

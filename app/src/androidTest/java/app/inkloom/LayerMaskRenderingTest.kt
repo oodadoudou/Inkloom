@@ -18,9 +18,9 @@ import app.inkloom.document.PageBackground
 import app.inkloom.document.StrokePoint
 import app.inkloom.document.defaultInkLayers
 import app.inkloom.ui.InkCanvasView
-import app.inkloom.engine.v3.surface.MaskComposeMode
-import app.inkloom.engine.v3.surface.MaskTileSurface
-import app.inkloom.engine.v3.surface.PixelRect
+import app.inkloom.engine.v5.surface.MaskComposeMode
+import app.inkloom.engine.v5.surface.MaskTileSurface
+import app.inkloom.engine.v5.surface.PixelRect
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertEquals
 import org.junit.Test

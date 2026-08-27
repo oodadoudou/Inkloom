@@ -27,8 +27,8 @@ internal typealias SparseAlphaMask = app.inkloom.engine.v3.scene.SparseAlphaMask
 internal typealias DocumentSelectionState = app.inkloom.engine.v3.scene.DocumentSelectionState
 internal typealias SparseTileScene = app.inkloom.engine.v3.scene.SparseTileScene
 internal typealias SparseTileDebugSnapshot = app.inkloom.engine.v3.scene.SparseTileScene.DebugSnapshot
-internal typealias PixelTileSurface = app.inkloom.engine.v3.surface.PixelTileSurface
-internal typealias PixelTileTransactionRecord = app.inkloom.engine.v3.surface.PixelTileTransactionRecord
+internal typealias PixelTileSurface = app.inkloom.engine.v5.surface.PixelTileSurface
+internal typealias PixelTileTransactionRecord = app.inkloom.engine.v5.surface.PixelTileTransactionRecord
 
 internal typealias NativeRasterOps = app.inkloom.engine.v3.tools.NativeRasterOps
 internal typealias RasterTileBlendSession = app.inkloom.engine.v3.tools.RasterTileBlendSession
@@ -41,7 +41,7 @@ internal typealias RasterTilePaintSession = app.inkloom.engine.v3.tools.RasterTi
 internal typealias RasterSelectionMask = app.inkloom.engine.v3.tools.RasterSelectionMask
 internal typealias RasterSelectionTransformSession = app.inkloom.engine.v3.tools.RasterSelectionTransformSession
 internal typealias SelectionAffineTransform = app.inkloom.engine.v3.tools.SelectionAffineTransform
-internal typealias MaskTileSurfaceSnapshot = app.inkloom.engine.v3.surface.MaskTileSurfaceSnapshot
+internal typealias MaskTileSurfaceSnapshot = app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot
 
 internal fun importPixelTileSurface(bitmap: android.graphics.Bitmap): PixelTileSurface =
     app.inkloom.engine.v3.android.PixelTileBitmapAdapter.import(bitmap)
