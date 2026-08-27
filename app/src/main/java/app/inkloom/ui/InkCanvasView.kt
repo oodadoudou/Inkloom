@@ -292,11 +292,11 @@ class InkCanvasView(context: Context) : View(context) {
         private set
     private val activeSurfaceFrame = Runnable {
         activeSurfaceFrameScheduled = false
-        val surface = activeStrokeSurface ?: return@Runnable
         if (activeTool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) || currentPoints.isEmpty()) return@Runnable
         advanceWetPaintGesture()
-        if (usesViewActivePreview()) {
-            surface.cancel()
+        val surface = activeStrokeSurface
+        if (usesViewActivePreview() || surface == null) {
+            surface?.cancel()
             postInvalidateOnAnimation()
             return@Runnable
         }
@@ -1370,9 +1370,18 @@ class InkCanvasView(context: Context) : View(context) {
             rasterTileEraserSession?.previewSnapshot()
                 ?: rasterTileBlendSession?.previewSnapshot()
                 ?: rasterTileLiquifySession?.previewSnapshot()
-                ?: rasterPaintSession?.previewSnapshot()
+                ?: rasterPaintSession?.takeUnless { rasterPaintPreviewOwnedByFrontBuffer() }?.previewSnapshot()
         }.getOrNull()
     }
+
+    /**
+     * A source-over paint gesture is already visible in [activeStrokeSurface]. Projecting its
+     * private transaction into the stable child as well draws the same pigment twice and makes the
+     * whole touched tile flash when the transaction generation becomes durable on pen-up.
+     */
+    private fun rasterPaintPreviewOwnedByFrontBuffer(): Boolean =
+        rasterPaintSession != null && rasterIncrementalPaintEnabled && activeStrokeSurface != null &&
+            !usesViewActivePreview()
 
     /** Toggles direct grayscale mask editing. The layer pixels remain untouched. */
     fun toggleLayerMaskEditing(layerId: String): Boolean {
@@ -1593,6 +1602,17 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun drawPageContent(canvas: Canvas, includeInteractionOverlays: Boolean = true, referencedLayerIds: Set<String>? = null) {
+        val stableRasterPaintPreview = includeInteractionOverlays && rasterPaintSession != null &&
+            !rasterPaintPreviewOwnedByFrontBuffer()
+        if (stableRasterPaintPreview && rasterIncrementalPaintEnabled && currentPoints.isNotEmpty()) {
+            // Destination-dependent pigment must be deposited before the projection snapshot is
+            // requested. The per-stroke stamp counters make repeated View draws idempotent.
+            renderIncrementalRasterPaintPatch(
+                frontCanvas = null,
+                strokes = symmetryStrokes(currentPoints),
+                finalCompleteInput = false,
+            )
+        }
         backgroundBitmap?.let { bitmap -> backgroundDestination.set(0, 0, width, height); canvas.drawBitmap(bitmap, null, backgroundDestination, null) }
             ?: pagePaperColor?.let { color ->
                 paperFillPaint.color = color
@@ -1610,7 +1630,8 @@ class InkCanvasView(context: Context) : View(context) {
             includeInteractionOverlays &&
             usesViewActivePreview() &&
             activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) &&
-            currentPoints.isNotEmpty()
+            currentPoints.isNotEmpty() &&
+            !(stableRasterPaintPreview && rasterIncrementalPaintEnabled)
         ) {
             drawLayeredStrokes(canvas, symmetryStrokes(currentPoints))
         }
@@ -1904,6 +1925,30 @@ class InkCanvasView(context: Context) : View(context) {
                 rasterLayerTileSurfaces.keys.filterNot(layerOrder::contains)
             ).distinct()
         if (orderedIds.isEmpty()) return false
+        val directSourceOverStack = orderedIds.all { layerId ->
+            (layerOpacities[layerId] ?: 1f) >= .999f &&
+                (layerBlendModes[layerId] ?: LayerBlendMode.NORMAL) == LayerBlendMode.NORMAL &&
+                layerMasks[layerId]?.enabled != true && layerId !in clippedLayers
+        }
+        if (directSourceOverStack) {
+            // Skia/HWUI already composites normal premultiplied layers. Sending this common case
+            // through PixelLayerProjectionCache needlessly copies every changed tile and replaces
+            // its RenderNode generation while a pen is moving, which is both slower and the source
+            // of the visible "old ink refreshed" sensation. Immutable layer tiles can be retained
+            // and drawn directly; non-Normal/masked/clipped stacks still use the projection below.
+            releaseRasterLayerProjection()
+            val destination = RectF(0f, 0f, width.toFloat(), height.toFloat())
+            orderedIds.forEach { layerId ->
+                rasterTileRenderer.draw(
+                    canvas,
+                    liveRasterPreviewSnapshot(layerId) ?: rasterLayerTileSurfaces.getValue(layerId).snapshot(),
+                    destination,
+                )
+            }
+            lastRasterProjectionRecomposedTileCount = 0
+            v3RasterProjectionDrawCount++
+            return true
+        }
         val firstSurface = rasterLayerTileSurfaces.getValue(orderedIds.first())
         val geometry = RasterProjectionGeometry(
             firstSurface.logicalWidth,
@@ -5249,21 +5294,22 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun requestActiveSurfaceFrame() {
-        if (usesViewActivePreview()) {
+        if (activeSurfaceFrameScheduled) return
+        if (usesViewActivePreview() || activeStrokeSurface == null) {
             PaintingTruthDiagnostics.recordFullCanvasInvalidation()
-            postInvalidateOnAnimation()
-            return
         }
-        if (activeStrokeSurface == null || activeSurfaceFrameScheduled) return
         activeSurfaceFrameScheduled = true
         postOnAnimation(activeSurfaceFrame)
     }
 
-    /** The low-latency surface is composited source-over by Android. Masks and non-Normal
-     * whole-stroke blend modes must preview in the stable scene so they can see destination pixels. */
+    /** The low-latency surface is composited source-over by Android. Masks, wet pigment and
+     * non-Normal whole-stroke blend modes must preview in the stable scene so they can see the
+     * destination exactly once. */
     private fun usesViewActivePreview(): Boolean =
         paintingPipelineMode == PaintingPipelineMode.FRONT_BUFFER_DISABLED ||
             layerMasks[activeLayerId]?.enabled == true ||
+            brushWatercolor || !procreateWetMix.isDisabled() ||
+            brushColorMix > .001f || brushPaintMix > .001f ||
             ProcreateBrushBlend.normalize(procreateBrushBlendMode) != ProcreateBrushBlend.NORMAL ||
             (waterEdgeEnabled || tiltBleed > .001f) &&
                 ProcreateBrushBlend.normalize(procreateBurntEdgeBlendMode) != ProcreateBrushBlend.NORMAL
@@ -6439,24 +6485,26 @@ class InkCanvasView(context: Context) : View(context) {
         val resultingRawPointCount: Int = 0,
     )
 
+    private fun usesWetPaintComposite(stroke: InkStroke): Boolean =
+        stroke.watercolor || !stroke.procreateWetMix.isDisabled() ||
+            stroke.colorMix > .001f || stroke.paintMix > .001f
+
     /**
-     * The safe associative subset is deposited once per sampled dab. More complex whole-stroke,
-     * wet, dual-tip and destination-dependent programs keep the exact pen-up fallback until their
-     * own retained transaction compositor exists.
+     * Programs whose geometry is append-only are deposited once per sampled dab. Ordinary paint
+     * is associative source-over; wet paint is non-associative but remains correct because each
+     * fresh dab is composed exactly once, in input order, into one retained private transaction.
      */
     private fun supportsIncrementalRasterStampPaint(stroke: InkStroke): Boolean {
         val layerId = stroke.layerId
+        val wetPaint = usesWetPaintComposite(stroke)
         val incrementalGeometry = usesStampedRenderer(stroke) || stroke.brushId != "system-ps19"
         return incrementalGeometry && !stroke.dualBrush &&
-            stroke.masks.isEmpty() && stroke.opacity >= .999f &&
+            stroke.masks.isEmpty() && (stroke.opacity >= .999f || wetPaint) &&
             ProcreateBrushBlend.normalize(stroke.procreateBrushBlendMode) == ProcreateBrushBlend.NORMAL &&
             !stroke.blendTipsWithDarken &&
             (stroke.grainAssetPath == null || stroke.grainDensity <= 0f || stroke.grainApplyPerPlot) &&
             stroke.strokeFalloff <= .0001f && !stroke.taperStartEnabled && !stroke.taperEndEnabled &&
             stroke.procreateTaper.isDisabled() &&
-            stroke.procreateWetMix.isDisabled() && !stroke.watercolor &&
-            stroke.colorMix <= .0001f && stroke.paintMix <= .0001f &&
-            !stroke.waterEdgeEnabled && stroke.tiltBleed <= .0001f &&
             postCorrection <= .0001f &&
             (layerOpacities[layerId] ?: 1f) >= .999f &&
             (layerBlendModes[layerId] ?: LayerBlendMode.NORMAL) == LayerBlendMode.NORMAL &&
@@ -6530,7 +6578,14 @@ class InkCanvasView(context: Context) : View(context) {
                     maxOf(base, particle), stroke.strokePathJitter, stroke.strokePathLongitudinalJitter,
                 )
                 val blur = base * stroke.blur.coerceAtLeast(0f) / 25f
-                maxOf(base, particle) * maxOf(1f, stroke.thickness.coerceIn(.05f, 2f)) * 1.5f + spread + pathJitter + blur
+                val viewToRaster = rasterWidth / width.coerceAtLeast(1).toFloat()
+                val waterEdge = if (stroke.waterEdgeEnabled) {
+                    (WaterEdge.distancePixels(stroke.waterEdgeRadius, stroke.waterEdgeRadiusUnit, width.toFloat()) +
+                        WaterEdge.distancePixels(stroke.waterEdgeBlur, stroke.waterEdgeBlurUnit, width.toFloat())) * viewToRaster
+                } else 0f
+                val tiltEdge = base * stroke.tiltBleed.coerceIn(0f, 1f) * .3f
+                maxOf(base, particle) * maxOf(1f, stroke.thickness.coerceIn(.05f, 2f)) * 1.5f +
+                    spread + pathJitter + blur + waterEdge + tiltEdge
             }
             val padding = (maximumWidth * 1.5f + 12f).coerceAtLeast(12f)
             val patchLeft = kotlin.math.floor(changedPoints.minOf(StrokePoint::x) * rasterWidth - padding).toInt().coerceIn(0, rasterWidth - 1)
@@ -6568,7 +6623,11 @@ class InkCanvasView(context: Context) : View(context) {
                     )
                 }
                 val changed = session.compositePaintPatch(
-                    patch, patchLeft, patchTop, increments.map(RasterStampIncrement::stroke), wetComposite = false,
+                    patch,
+                    patchLeft,
+                    patchTop,
+                    increments.map(RasterStampIncrement::stroke),
+                    wetComposite = increments.any { usesWetPaintComposite(it.stroke) },
                     contentWidth = patchWidth, contentHeight = patchHeight,
                 )
                 if (changed != null) wetPaintDirtyBounds = mergeDirtyBounds(wetPaintDirtyBounds, changed)
@@ -6634,7 +6693,13 @@ class InkCanvasView(context: Context) : View(context) {
         val maximumWidth = newStrokes.maxOf { stroke ->
             val spread = if (stroke.spray) 1f + stroke.spraySpread.coerceAtLeast(0f) else 1f
             val blur = 1f + stroke.blur.coerceAtLeast(0f) / 50f
-            stroke.width.coerceAtLeast(1f) / REFERENCE_WIDTH * rasterWidth * spread * blur
+            val base = stroke.width.coerceAtLeast(1f) / REFERENCE_WIDTH * rasterWidth
+            val viewToRaster = rasterWidth / width.coerceAtLeast(1).toFloat()
+            val waterEdge = if (stroke.waterEdgeEnabled) {
+                (WaterEdge.distancePixels(stroke.waterEdgeRadius, stroke.waterEdgeRadiusUnit, width.toFloat()) +
+                    WaterEdge.distancePixels(stroke.waterEdgeBlur, stroke.waterEdgeBlurUnit, width.toFloat())) * viewToRaster
+            } else 0f
+            base * spread * blur + waterEdge + base * stroke.tiltBleed.coerceIn(0f, 1f) * .3f
         }
         val padding = (maximumWidth * 1.25f + 6f).coerceAtLeast(6f)
         val patchLeft = kotlin.math.floor(allPoints.minOf(StrokePoint::x) * rasterWidth - padding).toInt().coerceIn(0, rasterWidth - 1)

@@ -11,12 +11,21 @@ import app.inkloom.document.InkStroke
 import app.inkloom.document.ProcreateRendering
 import app.inkloom.document.WetMixDynamics
 
-/** One bounded native pigment-composite pass for a completed wet stroke. */
+/** One bounded native pigment-composite pass for an ordered wet-stroke increment. */
 object RasterWetPaintMixer {
-    fun composite(base: Bitmap, paintPatch: Bitmap, left: Int, top: Int, strokes: List<InkStroke>): Boolean {
+    fun composite(
+        base: Bitmap,
+        paintPatch: Bitmap,
+        left: Int,
+        top: Int,
+        strokes: List<InkStroke>,
+        contentWidth: Int = paintPatch.width,
+        contentHeight: Int = paintPatch.height,
+    ): Boolean {
         if (base.isRecycled || paintPatch.isRecycled || strokes.isEmpty()) return false
-        val right = (left + paintPatch.width).coerceAtMost(base.width)
-        val bottom = (top + paintPatch.height).coerceAtMost(base.height)
+        if (contentWidth !in 1..paintPatch.width || contentHeight !in 1..paintPatch.height) return false
+        val right = (left + contentWidth).coerceAtMost(base.width)
+        val bottom = (top + contentHeight).coerceAtMost(base.height)
         val width = right - left
         val height = bottom - top
         if (width <= 0 || height <= 0) return false
@@ -59,9 +68,14 @@ object RasterWetPaintMixer {
                     .takeIf { it > 0 } ?: CspBrightnessCorrection.NEUTRAL) - CspBrightnessCorrection.NEUTRAL.toFloat(),
             )
         }.getOrElse {
-            Canvas(base).drawBitmap(paintPatch, left.toFloat(), top.toFloat(), Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_OVER)
-            })
+            Canvas(base).drawBitmap(
+                paintPatch,
+                android.graphics.Rect(0, 0, width, height),
+                android.graphics.Rect(left, top, left + width, top + height),
+                Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_OVER)
+                },
+            )
             true
         }
     }

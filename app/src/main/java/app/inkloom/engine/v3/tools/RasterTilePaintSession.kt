@@ -240,10 +240,15 @@ class RasterTilePaintSession private constructor(
         val bounds = PixelRect(left, top, left + contentWidth, top + contentHeight)
         val changed = edits.edit(bounds) { output ->
             if (wetComposite) {
-                require(contentWidth == paintPatch.width && contentHeight == paintPatch.height) {
-                    "Wet paint patches must use their complete backing bitmap"
-                }
-                RasterWetPaintMixer.composite(output, paintPatch, 0, 0, strokes)
+                RasterWetPaintMixer.composite(
+                    output,
+                    paintPatch,
+                    0,
+                    0,
+                    strokes,
+                    contentWidth = contentWidth,
+                    contentHeight = contentHeight,
+                )
             } else {
                 localRect.set(0, 0, contentWidth, contentHeight)
                 Canvas(output).drawBitmap(paintPatch, localRect, localRect, compositePaint)

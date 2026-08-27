@@ -143,11 +143,17 @@ class PixelTileSurfaceTest {
         assertEquals(0xff010203.toInt(), firstPreview.pixelAt(8, 8))
         assertEquals(0xff112233.toInt(), firstPreview.pixelAt(4096, 4096))
         assertEquals("Preview pixels must not leak into document truth", 0, surface.pixelAt(4096, 4096))
-        assertTrue(firstPreview.tileInfo.first { it.key == PixelTileKey(32, 32) }.generation < 0L)
+        val firstTileGeneration = firstPreview.tileInfo.first { it.key == PixelTileKey(32, 32) }.generation
+        assertTrue(firstTileGeneration < 0L)
 
         transaction.setPixel(4224, 4096, 0xff445566.toInt())
         val nextPreview = transaction.previewSnapshot()
         assertTrue("A mutation must publish a new private preview", firstPreview !== nextPreview)
+        assertEquals(
+            "A later edit in another tile must retain the immutable generation already presented",
+            firstTileGeneration,
+            nextPreview.tileInfo.first { it.key == PixelTileKey(32, 32) }.generation,
+        )
         assertEquals(0, firstPreview.pixelAt(4224, 4096))
         assertEquals(0xff445566.toInt(), nextPreview.pixelAt(4224, 4096))
         assertEquals(0, surface.pixelAt(4224, 4096))

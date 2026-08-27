@@ -113,6 +113,133 @@ class RasterPaintCommitTest {
         front.recycle(); completeReplay.recycle(); tipFile.delete()
     }
 
+    @Test fun ordinaryRasterPaintHasOneLivePresentationOwnerAndLeavesStablePixelsFixed() {
+        val seed = Bitmap.createBitmap(600, 600, Bitmap.Config.ARGB_8888)
+        Canvas(seed).drawCircle(90f, 300f, 24f, android.graphics.Paint().apply { color = Color.BLUE })
+        val surface = PixelTileBitmapAdapter.import(seed)
+        seed.recycle()
+        val front = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
+        var activeInk = false
+        var committed: RasterLayerPatch? = null
+        lateinit var view: InkCanvasView
+        view = createCanvas {
+            tool = EditorTool.PEN
+            activeLayerId = "paint"
+            baseWidth = 36f
+            sizePressureEnabled = false
+            setRasterLayerSurfaces(mapOf("paint" to surface))
+            onRasterLayerCommitted = { patch -> committed = patch }
+        }
+        view.activeStrokeSurface = object : ActiveStrokeCompositor {
+            override val hasActiveInk: Boolean get() = activeInk
+            override fun render(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) {
+                activeInk = true
+                view.drawActiveStrokes(Canvas(front), packet.strokes, incrementalStampDraw = true)
+            }
+            override fun commit(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) { activeInk = true }
+            override fun onDocumentFramePresented(packetSequence: Long) { activeInk = false }
+            override fun cancel() { activeInk = false; front.eraseColor(Color.TRANSPARENT) }
+        }
+
+        send(view, MotionEvent.ACTION_DOWN, 230f, 200f, 0L)
+        send(view, MotionEvent.ACTION_MOVE, 300f, 200f, 5L)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.flushActiveStrokeFrame() }
+        assertTrue("The active stroke must be visible in the low-latency owner", Color.alpha(front.getPixel(260, 200)) > 0)
+
+        val duringContact = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.draw(Canvas(duringContact)) }
+        assertEquals("Previously published pixels must remain byte-identical during another stroke", Color.BLUE, duringContact.getPixel(60, 200))
+        assertEquals(
+            "Normal opaque raster layers must bypass CPU projection and retain their tile RenderNodes",
+            0,
+            view.lastRasterProjectionRecomposedTileCount,
+        )
+        assertEquals(
+            "The stable child must not also project front-buffer-owned pigment",
+            0,
+            Color.alpha(duringContact.getPixel(260, 200)),
+        )
+
+        send(view, MotionEvent.ACTION_UP, 320f, 200f, 10L)
+        val landed = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.draw(Canvas(landed)) }
+        assertEquals("Landing a stroke must not alter an unrelated committed pixel", Color.BLUE, landed.getPixel(60, 200))
+        assertTrue("The stroke becomes visible in the stable document only after commit", Color.alpha(landed.getPixel(280, 200)) > 0)
+        requireNotNull(committed).close()
+        front.recycle(); duringContact.recycle(); landed.recycle()
+    }
+
+    @Test fun wetPaintDepositsDuringContactAndPenUpDoesNotReplayTheStroke() {
+        val surface = PixelTileSurface(1200, 900)
+        val preview = Bitmap.createBitmap(800, 600, Bitmap.Config.ARGB_8888)
+        var frontBufferRenders = 0
+        var committed: RasterLayerPatch? = null
+        val frameTimesMs = mutableListOf<Float>()
+        val transportTimesMs = mutableListOf<Float>()
+        val presentationTimesMs = mutableListOf<Float>()
+        val view = createCanvas {
+            layout(0, 0, 800, 600)
+            tool = EditorTool.PEN
+            activeLayerId = "paint"
+            baseWidth = 52f
+            brushHardness = .7f
+            sizePressureEnabled = false
+            procreateWetMix = app.inkloom.document.ProcreateWetMix(
+                dilution = .45f,
+                charge = .75f,
+                attack = .8f,
+                pull = .35f,
+                blur = .12f,
+            )
+            waterEdgeEnabled = true
+            waterEdgeRadius = 4f
+            waterEdgeOpacity = .35f
+            waterEdgeBlur = 2f
+            setRasterLayerSurfaces(mapOf("paint" to surface))
+            onRasterLayerCommitted = { patch -> committed = patch }
+        }
+        view.activeStrokeSurface = object : ActiveStrokeCompositor {
+            override fun render(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) { frontBufferRenders++ }
+            override fun commit(packet: app.inkloom.engine.v3.render.StrokeRenderPacket) = Unit
+            override fun cancel() = Unit
+        }
+
+        send(view, MotionEvent.ACTION_DOWN, 100f, 300f, 0L)
+        repeat(48) { index ->
+            send(view, MotionEvent.ACTION_MOVE, 108f + index * 10f, 300f + index % 3, 5L + index)
+            val started = android.os.SystemClock.elapsedRealtimeNanos()
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                val transportStarted = android.os.SystemClock.elapsedRealtimeNanos()
+                view.flushActiveStrokeFrame()
+                transportTimesMs += (android.os.SystemClock.elapsedRealtimeNanos() - transportStarted) / 1_000_000f
+                preview.eraseColor(Color.TRANSPARENT)
+                val presentationStarted = android.os.SystemClock.elapsedRealtimeNanos()
+                view.draw(Canvas(preview))
+                presentationTimesMs += (android.os.SystemClock.elapsedRealtimeNanos() - presentationStarted) / 1_000_000f
+            }
+            frameTimesMs += (android.os.SystemClock.elapsedRealtimeNanos() - started) / 1_000_000f
+        }
+        assertEquals("Destination-dependent wet pigment must not also enter the source-over front buffer", 0, frontBufferRenders)
+        assertTrue("Wet pigment must be visible before pen-up", Color.alpha(preview.getPixel(300, 300)) > 0)
+
+        val started = android.os.SystemClock.elapsedRealtimeNanos()
+        send(view, MotionEvent.ACTION_UP, 590f, 302f, 70L)
+        val penUpMs = (android.os.SystemClock.elapsedRealtimeNanos() - started) / 1_000_000f
+        val p95 = frameTimesMs.sorted()[(frameTimesMs.size * .95f).toInt().coerceIn(0, frameTimesMs.lastIndex)]
+        val transportP95 = transportTimesMs.sorted()[(transportTimesMs.size * .95f).toInt().coerceIn(0, transportTimesMs.lastIndex)]
+        val presentationP95 = presentationTimesMs.sorted()[(presentationTimesMs.size * .95f).toInt().coerceIn(0, presentationTimesMs.lastIndex)]
+        android.util.Log.i(
+            "InkloomPerf",
+            "raster_wet_live_p95_ms=$p95 transport_p95_ms=$transportP95 presentation_p95_ms=$presentationP95 raster_wet_commit_ms=$penUpMs",
+        )
+        assertTrue("Wet paint must be deposited in multiple retained transaction patches", view.rasterIncrementalPatchCount >= 4)
+        assertEquals("Pen-up must publish retained wet tiles instead of replaying the whole stroke", 0, view.rasterFullReplayCount)
+        assertTrue("Wet live frame p95 was ${p95}ms", p95 < 33.4f)
+        assertTrue("Wet pen-up commit was ${penUpMs}ms", penUpMs < 33.4f)
+        requireNotNull(committed).close()
+        preview.recycle()
+    }
+
     @Test fun productionTileSurfacePaintsWithoutAnExternalBitmapMirror() {
         val seed = Bitmap.createBitmap(600, 600, Bitmap.Config.ARGB_8888)
         val tileSurface = PixelTileBitmapAdapter.import(seed)

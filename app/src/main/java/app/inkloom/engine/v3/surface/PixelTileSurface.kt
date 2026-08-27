@@ -309,13 +309,21 @@ class PixelTileSurface(
         requireActive(transaction)
         val previewTiles = generations.toMutableMap()
         transaction.workingTiles.forEach { (key, working) ->
-            val pixels = working.pixels.copyBuffer()
-            val nonTransparent = pixels.nonTransparentPixelCount()
-            if (nonTransparent == 0) previewTiles.remove(key) else previewTiles[key] = PixelTileGeneration(
-                id = previewGenerationIds.getAndDecrement(),
-                pixels = pixels,
-                nonTransparentPixelCount = nonTransparent,
-            )
+            val previewGeneration = if (working.previewVersion == working.mutationVersion) {
+                working.cachedPreviewGeneration
+            } else {
+                val pixels = working.pixels.copyBuffer()
+                val nonTransparent = pixels.nonTransparentPixelCount()
+                val generation = if (nonTransparent == 0) null else PixelTileGeneration(
+                    id = previewGenerationIds.getAndDecrement(),
+                    pixels = pixels,
+                    nonTransparentPixelCount = nonTransparent,
+                )
+                working.cachedPreviewGeneration = generation
+                working.previewVersion = working.mutationVersion
+                generation
+            }
+            if (previewGeneration == null) previewTiles.remove(key) else previewTiles[key] = previewGeneration
         }
         PixelTileSurfaceSnapshot(
             surfaceId = surfaceId,
@@ -551,6 +559,9 @@ internal data class WorkingPixelTile(
     val before: PixelTileGeneration?,
     val pixels: PixelTileBuffer,
     var dirtyRect: PixelRect? = null,
+    var mutationVersion: Long = 0L,
+    var previewVersion: Long = -1L,
+    var cachedPreviewGeneration: PixelTileGeneration? = null,
 )
 
 /** Mutable working set for one [PixelTileSurface] transaction. */
@@ -801,6 +812,8 @@ class PixelTileWriteTransaction internal constructor(
 
     private fun markDirty(tile: WorkingPixelTile, rect: PixelRect) {
         tile.dirtyRect = tile.dirtyRect?.union(rect) ?: rect
+        tile.mutationVersion++
+        tile.cachedPreviewGeneration = null
         mutationVersion++
         cachedPreview = null
     }
