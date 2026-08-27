@@ -750,15 +750,15 @@ class InkloomLaunchTest {
         assertEquals("Changing a docked brush must retain the shared foreground color", selectedColor, view.inkColor)
 
         var elapsedMs = Long.MAX_VALUE
-        val transactionPacketsBefore = view.rasterIncrementalPatchCount
+        val v5GesturesBefore = view.v5DryGestureCount
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val started = SystemClock.elapsedRealtime()
             repeat(6) { index -> dispatchStylusStroke(view, index) }
             elapsedMs = SystemClock.elapsedRealtime() - started
         }
         assertTrue(
-            "Every rapid contact must commit immediately to V3 tiles",
-            view.rasterIncrementalPatchCount - transactionPacketsBefore >= 6,
+            "Every rapid contact must enter the V5 sparse-tile production path",
+            view.v5DryGestureCount - v5GesturesBefore >= 6,
         )
         assertTrue("Six short strokes must not block the input thread ($elapsedMs ms)", elapsedMs < 1_500L)
     }

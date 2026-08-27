@@ -1,6 +1,5 @@
 package app.inkloom.engine.v5.storage
 
-import app.inkloom.document.JournalEntry
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -22,11 +21,11 @@ internal object RecoveryJournalCodec {
         val payload: String,
     )
 
-    data class Decoded(val entry: JournalEntry, val sequence: Long?)
+    data class Decoded(val entry: RecoveryJournalEntry, val sequence: Long)
 
-    fun encode(sequence: Long, entry: JournalEntry): String {
+    fun encode(sequence: Long, entry: RecoveryJournalEntry): String {
         require(sequence > 0L)
-        val payload = json.encodeToString<JournalEntry>(entry)
+        val payload = json.encodeToString<RecoveryJournalEntry>(entry)
         return json.encodeToString(Record(FORMAT, SCHEMA_VERSION, sequence, crc32(payload), payload))
     }
 
@@ -38,7 +37,7 @@ internal object RecoveryJournalCodec {
         }
         require(record.sequence > 0L) { "Recovery journal sequence must be positive" }
         require(record.checksum == crc32(record.payload)) { "Recovery journal checksum mismatch" }
-        return Decoded(json.decodeFromString<JournalEntry>(record.payload), record.sequence)
+        return Decoded(json.decodeFromString<RecoveryJournalEntry>(record.payload), record.sequence)
     }
 
     private fun crc32(content: String): String = CRC32().run {

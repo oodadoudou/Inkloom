@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import app.inkloom.document.*
 import app.inkloom.model.ImportedBrush
 import app.inkloom.engine.v5.selection.DocumentSelectionRuntime
+import app.inkloom.engine.v5.storage.RecoveryJournalEntry
 import app.inkloom.engine.v5.selection.LayerMaskRuntime
 import app.inkloom.engine.v5.surface.MaskTileSurface
 import app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot
@@ -456,13 +457,13 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     fun addElement(documentId: String, pageId: String, element: PageElement) {
         val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return
         if (page.layers.none { it.id == element.layerId && it.visible && !it.locked }) return
-        store.append(JournalEntry.ElementUpserted(documentId, pageId, element)); refreshSelection()
+        store.append(RecoveryJournalEntry.ElementUpserted(documentId, pageId, element)); refreshSelection()
     }
     fun removeElement(documentId: String, pageId: String, elementId: String) {
         val page = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return
         val element = page.elements.firstOrNull { it.id == elementId } ?: return
         if (page.layers.firstOrNull { it.id == element.layerId }?.locked == true) return
-        store.append(JournalEntry.ElementRemoved(documentId, pageId, elementId)); refreshSelection()
+        store.append(RecoveryJournalEntry.ElementRemoved(documentId, pageId, elementId)); refreshSelection()
         scheduleAssetGarbageCollection()
     }
 
@@ -486,7 +487,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         val source = page.elements.firstOrNull { it.id == elementId } ?: return
         if (page.layers.firstOrNull { it.id == source.layerId }?.locked == true) return
         val copy = copyElement(source).offsetBy(.03f, .03f)
-        store.append(JournalEntry.ElementUpserted(documentId, pageId, copy)); refreshSelection()
+        store.append(RecoveryJournalEntry.ElementUpserted(documentId, pageId, copy)); refreshSelection()
     }
 
     fun currentDocument(): InkDocument? = mutableState.value.selectedDocumentId?.let(store::get)

@@ -9,6 +9,7 @@ import java.util.zip.CRC32
 
 /** Exact, integrity-checked V5 document checkpoint. Legacy documents are intentionally rejected. */
 internal object DocumentCheckpointCodec {
+    const val LEGACY_ENGINE_ERROR = "This document was created by an unsupported legacy Inkloom engine."
     private const val FORMAT = "inkloom-document-v5"
     private const val SCHEMA_VERSION = 5
     private const val ENGINE_VERSION = 5
@@ -32,6 +33,7 @@ internal object DocumentCheckpointCodec {
     )
 
     fun encode(document: InkDocument): String {
+        requireV5Document(document)
         val payload = canonicalJson.encodeToString(document)
         return json.encodeToString(Checkpoint(FORMAT, SCHEMA_VERSION, ENGINE_VERSION, crc32(payload), document))
     }
@@ -47,7 +49,12 @@ internal object DocumentCheckpointCodec {
         }
         val payload = canonicalJson.encodeToString(checkpoint.document)
         require(checkpoint.checksum == crc32(payload)) { "Document checkpoint failed integrity verification" }
+        requireV5Document(checkpoint.document)
         return checkpoint.document
+    }
+
+    private fun requireV5Document(document: InkDocument) {
+        require(document.pages.all { it.strokes.isEmpty() }) { LEGACY_ENGINE_ERROR }
     }
 
     private fun crc32(content: String): String = CRC32().run {

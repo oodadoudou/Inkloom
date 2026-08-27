@@ -2,7 +2,7 @@ package app.inkloom.engine.v5.storage
 
 import app.inkloom.document.InkDocument
 import app.inkloom.document.InkStroke
-import app.inkloom.document.JournalEntry
+import app.inkloom.document.PageElement
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
@@ -30,10 +30,10 @@ class V5StorageFormatContractTest {
 
     @Test fun journalUsesExactV5IdentityAndRejectsV3Envelope() {
         val document = InkDocument(title = "V5")
-        val entry = JournalEntry.StrokeAdded(
+        val entry = RecoveryJournalEntry.ElementUpserted(
             documentId = document.id,
             pageId = document.pages.single().id,
-            stroke = InkStroke(id = "stroke", points = emptyList()),
+            element = PageElement.Text(x = 0f, y = 0f, text = "V5 object"),
         )
         val encoded = RecoveryJournalCodec.encode(sequence = 1L, entry = entry)
 
@@ -42,5 +42,17 @@ class V5StorageFormatContractTest {
         assertThrows(IllegalArgumentException::class.java) {
             RecoveryJournalCodec.decode(encoded.replace("inkloom-journal-v5", "inkloom-v3-journal"))
         }
+    }
+
+    @Test fun checkpointRejectsLegacyVectorStrokePayloads() {
+        val legacy = InkDocument(
+            title = "legacy vector",
+            pages = listOf(app.inkloom.document.InkPage(strokes = listOf(InkStroke(points = emptyList())))),
+        )
+
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            DocumentCheckpointCodec.encode(legacy)
+        }
+        assertEquals(DocumentCheckpointCodec.LEGACY_ENGINE_ERROR, error.message)
     }
 }

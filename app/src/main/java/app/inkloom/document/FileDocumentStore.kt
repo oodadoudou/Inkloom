@@ -1,11 +1,10 @@
 package app.inkloom.document
 
 import app.inkloom.engine.v5.storage.DocumentCheckpointCodec
+import app.inkloom.engine.v5.storage.RecoveryJournalEntry
 import app.inkloom.engine.v5.storage.RecoveryJournalCodec
 import java.io.File
 import java.io.FileOutputStream
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
 
 class FileDocumentStore(private val root: File) {
     private val documentsDir = File(root, "documents")
@@ -15,11 +14,6 @@ class FileDocumentStore(private val root: File) {
     private var observedDocumentFiles = emptyMap<String, Pair<Long, Long>>()
     private var observedJournalLength = 0L
     private var nextJournalSequence = 1L
-    private val realtimeJournalWriter: ExecutorService by lazy {
-        Executors.newSingleThreadExecutor { operation ->
-            Thread(operation, "Inkloom-journal-writer").apply { isDaemon = true }
-        }
-    }
 
     init {
         documentsDir.mkdirs()
@@ -60,8 +54,7 @@ class FileDocumentStore(private val root: File) {
         return documentFile(id).delete().also { captureObservedFiles() }
     }
 
-    fun append(entry: JournalEntry) {
-        awaitRealtimeWrites()
+    internal fun append(entry: RecoveryJournalEntry) {
         synchronized(this) {
             persistJournalEntry(entry)
             applyEntry(entry)
@@ -69,23 +62,7 @@ class FileDocumentStore(private val root: File) {
         }
     }
 
-    /**
-     * Applies high-frequency ink edits to the in-memory document immediately and serializes them
-     * on one ordered writer thread. Imported brushes carry large immutable parameter snapshots;
-     * encoding those snapshots during ACTION_UP used to block the next stylus contact.
-     */
-    fun appendRealtime(entry: JournalEntry) {
-        synchronized(this) {
-            applyEntry(entry)
-            pendingJournalEntries++
-        }
-        realtimeJournalWriter.execute {
-            synchronized(this) { persistJournalEntry(entry) }
-        }
-    }
-
     fun recover(): Int {
-        awaitRealtimeWrites()
         return synchronized(this) {
             val recovered = pendingJournalEntries
             if (recovered == 0) return@synchronized 0
@@ -98,13 +75,10 @@ class FileDocumentStore(private val root: File) {
     }
 
     fun compactJournal() {
-        awaitRealtimeWrites()
         synchronized(this) { compactJournalNow() }
     }
 
-    internal fun awaitRealtimeWrites() {
-        if (!realtimeJournalWriter.isShutdown) realtimeJournalWriter.submit {}.get()
-    }
+    internal fun awaitRealtimeWrites() = Unit
 
     private fun compactJournalNow() {
         atomicWrite(journalFile, "")
@@ -113,7 +87,7 @@ class FileDocumentStore(private val root: File) {
         observedJournalLength = journalFile.length()
     }
 
-    private fun persistJournalEntry(entry: JournalEntry) {
+    private fun persistJournalEntry(entry: RecoveryJournalEntry) {
         journalFile.parentFile?.mkdirs()
         val bytes = (RecoveryJournalCodec.encode(nextJournalSequence++, entry) + "\n").encodeToByteArray()
         FileOutputStream(journalFile, true).use { output ->
@@ -123,18 +97,16 @@ class FileDocumentStore(private val root: File) {
         observedJournalLength = journalFile.length()
     }
 
-    private fun readJournal(): List<JournalEntry> {
+    private fun readJournal(): List<RecoveryJournalEntry> {
         if (!journalFile.isFile) return emptyList()
-        val entries = arrayListOf<JournalEntry>()
+        val entries = arrayListOf<RecoveryJournalEntry>()
         var lastSequence = 0L
         for (line in journalFile.readLines()) {
             if (line.isBlank()) continue
             val decoded = runCatching { RecoveryJournalCodec.decode(line) }.getOrNull() ?: break
             val sequence = decoded.sequence
-            if (sequence != null) {
-                if (sequence <= lastSequence) break
-                lastSequence = sequence
-            }
+            if (sequence <= lastSequence) break
+            lastSequence = sequence
             entries += decoded.entry
         }
         nextJournalSequence = lastSequence + 1L
@@ -168,26 +140,12 @@ class FileDocumentStore(private val root: File) {
         .orEmpty()
         .associate { file -> file.name to (file.lastModified() to file.length()) }
 
-    private fun applyEntry(entry: JournalEntry): InkDocument? {
+    private fun applyEntry(entry: RecoveryJournalEntry): InkDocument? {
         val document = documents[entry.documentId] ?: return null
         val pages = document.pages.map { page ->
             if (page.id != entry.pageId) page else when (entry) {
-                is JournalEntry.StrokeAdded -> if (page.strokes.any { it.id == entry.stroke.id }) page else page.copy(strokes = page.strokes + entry.stroke)
-                is JournalEntry.StrokeRemoved -> page.copy(strokes = page.strokes.filterNot { it.id == entry.strokeId })
-                is JournalEntry.StrokesReplaced -> {
-                    val replacedIds = entry.removedStrokeIds.toSet() + entry.strokes.map(InkStroke::id)
-                    val remaining = page.strokes.filterNot { it.id in replacedIds }.toMutableList()
-                    if (entry.replacementIndices.size == entry.strokes.size) {
-                        entry.strokes.zip(entry.replacementIndices)
-                            .sortedBy { (_, index) -> index }
-                            .forEach { (stroke, index) -> remaining.add(index.coerceIn(0, remaining.size), stroke) }
-                    } else {
-                        remaining += entry.strokes
-                    }
-                    page.copy(strokes = remaining)
-                }
-                is JournalEntry.ElementUpserted -> page.copy(elements = page.elements.filterNot { it.id == entry.element.id } + entry.element)
-                is JournalEntry.ElementRemoved -> page.copy(elements = page.elements.filterNot { it.id == entry.elementId })
+                is RecoveryJournalEntry.ElementUpserted -> page.copy(elements = page.elements.filterNot { it.id == entry.element.id } + entry.element)
+                is RecoveryJournalEntry.ElementRemoved -> page.copy(elements = page.elements.filterNot { it.id == entry.elementId })
             }
         }
         return document.copy(pages = pages, updatedAt = entry.timestamp).also { documents[it.id] = it }

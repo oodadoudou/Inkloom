@@ -784,28 +784,3 @@ data class PixelBounds(val x: Int, val y: Int, val width: Int, val height: Int)
 
 @Serializable
 data class InkFolder(val id: String = UUID.randomUUID().toString(), val name: String, val parentId: String? = null)
-
-@Serializable
-sealed interface JournalEntry {
-    val documentId: String
-    val pageId: String
-    val timestamp: Long
-
-    @Serializable @SerialName("stroke_added")
-    data class StrokeAdded(override val documentId: String, override val pageId: String, val stroke: InkStroke, @EncodeDefault(EncodeDefault.Mode.ALWAYS) override val timestamp: Long = System.currentTimeMillis()) : JournalEntry
-    @Serializable @SerialName("stroke_removed")
-    data class StrokeRemoved(override val documentId: String, override val pageId: String, val strokeId: String, @EncodeDefault(EncodeDefault.Mode.ALWAYS) override val timestamp: Long = System.currentTimeMillis()) : JournalEntry
-    @Serializable @SerialName("strokes_replaced")
-    data class StrokesReplaced(
-        override val documentId: String,
-        override val pageId: String,
-        val removedStrokeIds: List<String>,
-        val strokes: List<InkStroke>,
-        val replacementIndices: List<Int> = emptyList(),
-        @EncodeDefault(EncodeDefault.Mode.ALWAYS) override val timestamp: Long = System.currentTimeMillis(),
-    ) : JournalEntry
-    @Serializable @SerialName("element_upserted")
-    data class ElementUpserted(override val documentId: String, override val pageId: String, val element: PageElement, @EncodeDefault(EncodeDefault.Mode.ALWAYS) override val timestamp: Long = System.currentTimeMillis()) : JournalEntry
-    @Serializable @SerialName("element_removed")
-    data class ElementRemoved(override val documentId: String, override val pageId: String, val elementId: String, @EncodeDefault(EncodeDefault.Mode.ALWAYS) override val timestamp: Long = System.currentTimeMillis()) : JournalEntry
-}
