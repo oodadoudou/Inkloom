@@ -1,4 +1,4 @@
-package app.inkloom.engine.v3.composite
+package app.inkloom.engine.v5.composite
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue

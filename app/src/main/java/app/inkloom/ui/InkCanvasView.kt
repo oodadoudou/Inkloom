@@ -34,8 +34,8 @@ import app.inkloom.engine.v3.api.*
 import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v5.android.PixelTileCanvasRenderer
 import app.inkloom.engine.v5.android.MaskTileCanvasRenderer
-import app.inkloom.engine.v3.composite.PixelLayerProjectionCache
-import app.inkloom.engine.v3.composite.PixelLayerProjectionInput
+import app.inkloom.engine.v5.composite.PixelLayerProjectionCache
+import app.inkloom.engine.v5.composite.PixelLayerProjectionInput
 import app.inkloom.engine.v3.scene.AlphaMaskOperation
 import app.inkloom.engine.v5.surface.MaskComposeMode
 import app.inkloom.engine.v5.surface.MaskTileSurface

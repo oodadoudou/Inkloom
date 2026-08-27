@@ -1,7 +1,7 @@
 package app.inkloom.document
 
 import android.graphics.Bitmap
-import app.inkloom.engine.v3.tools.NativeRasterOps
+import app.inkloom.engine.v5.tools.NativeRasterOps
 
 /** Decoded CSP paper material retained separately from the brush-tip cache. */
 data class CspTextureMaterial(

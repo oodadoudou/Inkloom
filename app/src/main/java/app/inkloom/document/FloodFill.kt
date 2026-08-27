@@ -2,7 +2,7 @@ package app.inkloom.document
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import app.inkloom.engine.v3.tools.NativeRasterOps
+import app.inkloom.engine.v5.tools.NativeRasterOps
 
 /** Native scanline flood fill used by the paint-bucket, ColorDrop and automatic-selection tools.
  * [tolerance] is the maximum per-channel difference (0..255) from the touched source pixel. */

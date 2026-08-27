@@ -1,6 +1,6 @@
 package app.inkloom.document
 
-import app.inkloom.engine.v3.composite.PixelBlendMode
+import app.inkloom.engine.v5.composite.PixelBlendMode
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

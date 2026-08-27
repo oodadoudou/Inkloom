@@ -1,4 +1,4 @@
-package app.inkloom.engine.v3.composite
+package app.inkloom.engine.v5.composite
 
 import app.inkloom.engine.v5.surface.LinearRgba
 import app.inkloom.engine.v5.surface.PixelRect

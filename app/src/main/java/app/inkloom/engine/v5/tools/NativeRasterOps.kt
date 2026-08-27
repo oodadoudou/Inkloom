@@ -1,4 +1,4 @@
-package app.inkloom.engine.v3.tools
+package app.inkloom.engine.v5.tools
 
 import android.graphics.Bitmap
 import android.graphics.Rect
@@ -244,6 +244,6 @@ internal object NativeRasterOps {
         ?.let { Rect(it[0], it[1], it[2], it[3]) }
 
     init {
-        System.loadLibrary("inkloom_engine_v3")
+        System.loadLibrary("inkloom_engine_v5")
     }
 }

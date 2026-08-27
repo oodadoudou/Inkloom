@@ -2,7 +2,7 @@ package app.inkloom.engine.v3.api
 
 /** The single application-facing surface of Engine V3. Implementation packages stay replaceable
  * without allowing UI code to couple itself to renderer, scene, input or tool internals. */
-internal typealias NativeStrokeSession = app.inkloom.engine.v3.input.NativeStrokeSession
+internal typealias NativeStrokeSession = app.inkloom.engine.v5.input.NativeStrokeSession
 internal typealias PointerPacketMapper = app.inkloom.engine.v3.input.PointerPacketMapper
 internal typealias ViewportFrame = app.inkloom.engine.v3.geometry.ViewportFrame
 internal typealias ViewportFrameId = app.inkloom.engine.v3.geometry.ViewportFrameId
@@ -30,7 +30,7 @@ internal typealias SparseTileDebugSnapshot = app.inkloom.engine.v3.scene.SparseT
 internal typealias PixelTileSurface = app.inkloom.engine.v5.surface.PixelTileSurface
 internal typealias PixelTileTransactionRecord = app.inkloom.engine.v5.surface.PixelTileTransactionRecord
 
-internal typealias NativeRasterOps = app.inkloom.engine.v3.tools.NativeRasterOps
+internal typealias NativeRasterOps = app.inkloom.engine.v5.tools.NativeRasterOps
 internal typealias RasterTileBlendSession = app.inkloom.engine.v3.tools.RasterTileBlendSession
 internal typealias RasterTileEraserSession = app.inkloom.engine.v3.tools.RasterTileEraserSession
 internal typealias RasterTileLiquifySession = app.inkloom.engine.v3.tools.RasterTileLiquifySession

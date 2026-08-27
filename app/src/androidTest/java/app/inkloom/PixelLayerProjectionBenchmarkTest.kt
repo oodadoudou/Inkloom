@@ -5,9 +5,9 @@ import android.graphics.Canvas
 import android.graphics.Color
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import app.inkloom.engine.v3.composite.PixelBlendMode
-import app.inkloom.engine.v3.composite.PixelLayerProjectionCache
-import app.inkloom.engine.v3.composite.PixelLayerProjectionInput
+import app.inkloom.engine.v5.composite.PixelBlendMode
+import app.inkloom.engine.v5.composite.PixelLayerProjectionCache
+import app.inkloom.engine.v5.composite.PixelLayerProjectionInput
 import app.inkloom.engine.v5.surface.PixelRect
 import app.inkloom.engine.v5.surface.PixelTileKey
 import app.inkloom.engine.v5.surface.PixelTileSurface

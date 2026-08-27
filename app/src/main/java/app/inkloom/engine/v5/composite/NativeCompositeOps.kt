@@ -1,8 +1,8 @@
-package app.inkloom.engine.v3.composite
+package app.inkloom.engine.v5.composite
 
 /** Android acceleration for bounded separable blend modes. JVM tests use the Kotlin reference. */
 internal object NativeCompositeOps {
-    private val available = runCatching { System.loadLibrary("inkloom_engine_v3") }.isSuccess
+    private val available = runCatching { System.loadLibrary("inkloom_engine_v5") }.isSuccess
     val isAvailable: Boolean get() = available
 
     fun compositeRgba8(

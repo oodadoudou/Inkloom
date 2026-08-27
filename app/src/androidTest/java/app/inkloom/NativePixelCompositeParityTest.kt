@@ -1,12 +1,12 @@
 package app.inkloom
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import app.inkloom.engine.v3.composite.PixelBlendMath
-import app.inkloom.engine.v3.composite.PixelBlendMode
-import app.inkloom.engine.v3.composite.PixelTileCompositor
-import app.inkloom.engine.v3.composite.PixelLayerProjectionCache
-import app.inkloom.engine.v3.composite.PixelLayerProjectionInput
-import app.inkloom.engine.v3.composite.PremultipliedRgba
+import app.inkloom.engine.v5.composite.PixelBlendMath
+import app.inkloom.engine.v5.composite.PixelBlendMode
+import app.inkloom.engine.v5.composite.PixelTileCompositor
+import app.inkloom.engine.v5.composite.PixelLayerProjectionCache
+import app.inkloom.engine.v5.composite.PixelLayerProjectionInput
+import app.inkloom.engine.v5.composite.PremultipliedRgba
 import app.inkloom.engine.v5.surface.LinearRgba
 import app.inkloom.engine.v5.surface.PixelTileFormat
 import app.inkloom.engine.v5.surface.PixelTileSurface

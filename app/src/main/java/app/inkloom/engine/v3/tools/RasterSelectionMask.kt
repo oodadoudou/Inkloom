@@ -1,5 +1,7 @@
 package app.inkloom.engine.v3.tools
 
+import app.inkloom.engine.v5.tools.NativeRasterOps
+
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Rect

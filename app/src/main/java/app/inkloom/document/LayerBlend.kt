@@ -1,7 +1,7 @@
 package app.inkloom.document
 
 import android.graphics.BlendMode
-import app.inkloom.engine.v3.composite.PixelBlendMode
+import app.inkloom.engine.v5.composite.PixelBlendMode
 
 /** Maps an Inkloom layer blend mode to the closest Android [BlendMode].
  *  Kept out of [DocumentModels] so the model layer stays free of Android types. */

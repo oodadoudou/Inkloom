@@ -376,7 +376,7 @@ float texture_density(float base_value, float texture_value, float strength_valu
 }  // namespace
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeCompositePigment(
+Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeCompositePigment(
     JNIEnv* env,
     jobject,
     jobject base_bitmap,
@@ -456,7 +456,7 @@ Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeCompositePigment(
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeBlur(
+Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeBlur(
     JNIEnv* env,
     jobject,
     jobject source_bitmap,
@@ -528,7 +528,7 @@ Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeBlur(
 }
 
 extern "C" JNIEXPORT jintArray JNICALL
-Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeAlphaBounds(
+Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeAlphaBounds(
     JNIEnv* env, jobject, jobject source_bitmap) {
     LockedBitmap source(env, source_bitmap);
     if (source.pixels == nullptr) return bounds_array(env, {-1, -1, -1, -1});
@@ -536,7 +536,7 @@ Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeAlphaBounds(
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeIsAlphaEmpty(
+Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeIsAlphaEmpty(
     JNIEnv* env, jobject, jobject source_bitmap) {
     LockedBitmap source(env, source_bitmap);
     if (source.pixels == nullptr) return JNI_TRUE;
@@ -548,7 +548,7 @@ Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeIsAlphaEmpty(
 }
 
 extern "C" JNIEXPORT jintArray JNICALL
-Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeNonEmptyAlphaTiles(
+Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeNonEmptyAlphaTiles(
     JNIEnv* env, jobject, jobject source_bitmap, jint tile_size_value) {
     LockedBitmap source(env, source_bitmap);
     const int tile_size = static_cast<int>(tile_size_value);
@@ -588,7 +588,7 @@ Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeNonEmptyAlphaTiles(
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeInvertAlpha(
+Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeInvertAlpha(
     JNIEnv* env, jobject, jobject source_bitmap, jobject destination_bitmap) {
     LockedBitmap source(env, source_bitmap);
     LockedBitmap destination(env, destination_bitmap);
@@ -610,7 +610,7 @@ Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeInvertAlpha(
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeBoundaryAlpha(
+Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeBoundaryAlpha(
     JNIEnv* env, jobject, jobject source_bitmap, jobject destination_bitmap) {
     LockedBitmap source(env, source_bitmap);
     LockedBitmap destination(env, destination_bitmap);
@@ -640,7 +640,7 @@ Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeBoundaryAlpha(
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeMorphAlpha(
+Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeMorphAlpha(
     JNIEnv* env, jobject, jobject source_bitmap, jobject destination_bitmap, jint radius_value, jboolean dilate) {
     LockedBitmap source(env, source_bitmap);
     LockedBitmap destination(env, destination_bitmap);
@@ -662,7 +662,7 @@ Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeMorphAlpha(
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeApplySelectionAlpha(
+Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeApplySelectionAlpha(
     JNIEnv* env,
     jobject,
     jobject target_bitmap,
@@ -715,7 +715,7 @@ Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeApplySelectionAlpha(
 }
 
 extern "C" JNIEXPORT jintArray JNICALL
-Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeFloodFill(
+Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeFloodFill(
     JNIEnv* env,
     jobject,
     jobject source_bitmap,
@@ -831,7 +831,7 @@ Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeFloodFill(
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeCompositeDualBrush(
+Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeCompositeDualBrush(
     JNIEnv* env,
     jobject,
     jobject primary_bitmap,
@@ -944,7 +944,7 @@ Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeCompositeDualBrush(
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_app_inkloom_engine_v3_tools_NativeRasterOps_nativeApplyCspStrokeTexture(
+Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeApplyCspStrokeTexture(
     JNIEnv* env,
     jobject,
     jobject stroke_bitmap,

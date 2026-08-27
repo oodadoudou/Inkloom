@@ -2,7 +2,7 @@ package app.inkloom
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.document.StrokeStabilization
-import app.inkloom.engine.v3.input.NativeStrokeSession
+import app.inkloom.engine.v5.input.NativeStrokeSession
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

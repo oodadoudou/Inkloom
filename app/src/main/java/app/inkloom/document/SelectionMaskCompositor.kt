@@ -9,7 +9,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.RectF
-import app.inkloom.engine.v3.tools.NativeRasterOps
+import app.inkloom.engine.v5.tools.NativeRasterOps
 import app.inkloom.settings.SelectionMode
 import kotlin.math.ceil
 import kotlin.math.sqrt

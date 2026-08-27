@@ -22,8 +22,8 @@ import app.inkloom.engine.v3.brush.ProceduralBrushTip
 import app.inkloom.engine.v3.storage.DocumentCheckpointCodec
 import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v5.android.PixelTileCanvasRenderer
-import app.inkloom.engine.v3.composite.PixelLayerProjectionCache
-import app.inkloom.engine.v3.composite.PixelLayerProjectionInput
+import app.inkloom.engine.v5.composite.PixelLayerProjectionCache
+import app.inkloom.engine.v5.composite.PixelLayerProjectionInput
 import app.inkloom.engine.v3.storage.PixelTileArchiveStore
 import app.inkloom.engine.v3.storage.MaskTileArchiveCodec
 import app.inkloom.engine.v5.surface.MaskTileSurface

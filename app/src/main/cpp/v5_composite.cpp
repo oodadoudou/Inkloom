@@ -454,7 +454,7 @@ void composite_flat_rgba8_layers_with_coverage(
 }  // namespace
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_app_inkloom_engine_v3_composite_NativeCompositeOps_nativeCompositeRgba8(
+Java_app_inkloom_engine_v5_composite_NativeCompositeOps_nativeCompositeRgba8(
     JNIEnv* env,
     jobject,
     jintArray source,
@@ -472,7 +472,7 @@ Java_app_inkloom_engine_v3_composite_NativeCompositeOps_nativeCompositeRgba8(
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_app_inkloom_engine_v3_composite_NativeCompositeOps_nativeCompositeF16(
+Java_app_inkloom_engine_v5_composite_NativeCompositeOps_nativeCompositeF16(
     JNIEnv* env,
     jobject,
     jlongArray source,
@@ -490,7 +490,7 @@ Java_app_inkloom_engine_v3_composite_NativeCompositeOps_nativeCompositeF16(
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_app_inkloom_engine_v3_composite_NativeCompositeOps_nativeCompositeRgba8Layers(
+Java_app_inkloom_engine_v5_composite_NativeCompositeOps_nativeCompositeRgba8Layers(
     JNIEnv* env,
     jobject,
     jintArray sources,
@@ -534,7 +534,7 @@ Java_app_inkloom_engine_v3_composite_NativeCompositeOps_nativeCompositeRgba8Laye
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_app_inkloom_engine_v3_composite_NativeCompositeOps_nativeCompositeF16Layers(
+Java_app_inkloom_engine_v5_composite_NativeCompositeOps_nativeCompositeF16Layers(
     JNIEnv* env,
     jobject,
     jlongArray sources,
@@ -579,7 +579,7 @@ Java_app_inkloom_engine_v3_composite_NativeCompositeOps_nativeCompositeF16Layers
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_app_inkloom_engine_v3_composite_NativeCompositeOps_nativeCompositeRgba8LayersWithCoverage(
+Java_app_inkloom_engine_v5_composite_NativeCompositeOps_nativeCompositeRgba8LayersWithCoverage(
     JNIEnv* env,
     jobject,
     jintArray sources,
@@ -626,7 +626,7 @@ Java_app_inkloom_engine_v3_composite_NativeCompositeOps_nativeCompositeRgba8Laye
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_app_inkloom_engine_v3_composite_NativeCompositeOps_nativeCompositeF16LayersWithCoverage(
+Java_app_inkloom_engine_v5_composite_NativeCompositeOps_nativeCompositeF16LayersWithCoverage(
     JNIEnv* env,
     jobject,
     jlongArray sources,

@@ -2,7 +2,7 @@ package app.inkloom.document
 
 import android.graphics.Bitmap
 import android.graphics.Rect
-import app.inkloom.engine.v3.tools.NativeRasterOps
+import app.inkloom.engine.v5.tools.NativeRasterOps
 import kotlin.math.max
 import kotlin.math.min
 
