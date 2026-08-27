@@ -22,6 +22,7 @@ data class DryInkDefinition(
     val opacity: Float = 1f,
     val minimumPressureScale: Float = .15f,
     val opacityPressureMinimum: Float = 1f,
+    val flowPressureMinimum: Float = 1f,
     val hardness: Float = 1f,
     val blend: DryBlend = DryBlend.SOURCE_OVER,
     val pencilGrain: Float = 0f,
@@ -32,6 +33,7 @@ data class DryInkDefinition(
         require(opacity.isFinite() && opacity in 0f..1f)
         require(minimumPressureScale.isFinite() && minimumPressureScale in 0f..1f)
         require(opacityPressureMinimum.isFinite() && opacityPressureMinimum in 0f..1f)
+        require(flowPressureMinimum.isFinite() && flowPressureMinimum in 0f..1f)
         require(hardness.isFinite() && hardness in 0f..1f)
         require(pencilGrain.isFinite() && pencilGrain in 0f..1f)
     }
@@ -240,7 +242,9 @@ class DryInkPaintOp(
         private fun sourceOver(destination: Int, coverage: Float, pressure: Float): Int {
             val pressureOpacity = definition.opacityPressureMinimum +
                 (1f - definition.opacityPressureMinimum) * pressure.coerceIn(0f, 1f)
-            val sourceAlpha = (((definition.colorArgb ushr 24) and 0xff) * definition.opacity * pressureOpacity * coverage)
+            val pressureFlow = definition.flowPressureMinimum +
+                (1f - definition.flowPressureMinimum) * pressure.coerceIn(0f, 1f)
+            val sourceAlpha = (((definition.colorArgb ushr 24) and 0xff) * definition.opacity * pressureOpacity * pressureFlow * coverage)
                 .toInt().coerceIn(0, 255)
             if (sourceAlpha == 0) return destination
             val inverse = 255 - sourceAlpha

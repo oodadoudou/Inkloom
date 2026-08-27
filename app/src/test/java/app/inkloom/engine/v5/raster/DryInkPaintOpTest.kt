@@ -119,14 +119,36 @@ class DryInkPaintOpTest {
         assertTrue(render(false).contentEquals(render(true)))
     }
 
-    private fun sample(sequence: Long, phase: InputPhase, x: Float, y: Float) = InputSample(
+    @Test fun `opacity and flow pressure remain independent`() {
+        fun alpha(pressure: Float): Int {
+            val surface = PixelTileSurface(64, 64, 64)
+            val stroke = DirectStrokeSession(8L, 10f)
+            val paint = DryInkPaintOp(
+                surface,
+                DryInkDefinition(
+                    diameterPixels = 20f,
+                    colorArgb = 0xff000000.toInt(),
+                    minimumPressureScale = 1f,
+                    opacityPressureMinimum = .2f,
+                    flowPressureMinimum = .5f,
+                ),
+            ).begin(PaintOpContext(8L, 0L, "pressure")) as DryInkPaintOp.Session
+            paint.apply(stroke.begin(sample(0, InputPhase.DOWN, 32f, 32f, pressure)))
+            paint.finish(stroke.finish())
+            paint.publish().record.close()
+            return surface.pixelAt(32, 32) ushr 24
+        }
+        assertTrue(alpha(.25f) < alpha(.75f))
+    }
+
+    private fun sample(sequence: Long, phase: InputPhase, x: Float, y: Float, pressure: Float = .75f) = InputSample(
         sequence,
         phase,
         InputTool.STYLUS,
         DocumentPoint(x, y),
         sequence,
         sequence,
-        .75f,
+        pressure,
         0f,
         0f,
     )

@@ -6573,18 +6573,13 @@ class InkCanvasView(context: Context) : View(context) {
             "pencil" in brushId -> .12f
             else -> 0f
         }
-        val pressureOpacityMinimum = when {
-            opacityPressureEnabled && flowPressureEnabled -> opacityPressureMinimum * flowPressureMinimum
-            opacityPressureEnabled -> opacityPressureMinimum
-            flowPressureEnabled -> flowPressureMinimum
-            else -> 1f
-        }
         return DryInkDefinition(
             diameterPixels = diameterPixels,
             colorArgb = inkColor,
             opacity = (inkOpacity * brushFlow).coerceIn(0f, 1f),
             minimumPressureScale = if (sizePressureEnabled) sizePressureMinimum.coerceIn(0f, 1f) else 1f,
-            opacityPressureMinimum = pressureOpacityMinimum.coerceIn(0f, 1f),
+            opacityPressureMinimum = if (opacityPressureEnabled) opacityPressureMinimum.coerceIn(0f, 1f) else 1f,
+            flowPressureMinimum = if (flowPressureEnabled) flowPressureMinimum.coerceIn(0f, 1f) else 1f,
             hardness = brushHardness.coerceIn(0f, 1f),
             pencilGrain = pencilGrain,
             grainSeed = brushRenderSeed,
