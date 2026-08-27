@@ -7,7 +7,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.model.EditorTool
 import app.inkloom.ui.InkCanvasView
-import app.inkloom.engine.v3.scene.DocumentSelectionRuntime
+import app.inkloom.engine.v5.selection.DocumentSelectionRuntime
 import app.inkloom.engine.v5.surface.MaskComposeMode
 import app.inkloom.engine.v5.surface.MaskTileSurface
 import app.inkloom.engine.v5.surface.PixelRect

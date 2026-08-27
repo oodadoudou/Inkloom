@@ -1,4 +1,4 @@
-package app.inkloom.engine.v3.scene
+package app.inkloom.engine.v5.selection
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -19,7 +19,7 @@ import app.inkloom.document.SelectionMaskCompositor
 import kotlin.math.ceil
 
 /**
- * Android compatibility facade over the V3 one-byte [MaskTileSurface].
+ * Android presentation/producer facade over the V5 one-byte [MaskTileSurface].
  *
  * The sparse surface is authoritative. Full [Bitmap] values are created only by explicit legacy
  * display/export boundaries while those consumers are migrated to bounded tile reads.

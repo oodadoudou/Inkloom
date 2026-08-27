@@ -112,7 +112,7 @@ import app.inkloom.importer.BrushSemanticMapper
 import app.inkloom.importer.BrushVersion
 import app.inkloom.importer.BrushVersionHistoryStore
 import app.inkloom.model.*
-import app.inkloom.engine.v3.scene.DocumentSelectionRuntime
+import app.inkloom.engine.v5.selection.DocumentSelectionRuntime
 import app.inkloom.settings.AppSettings
 import app.inkloom.settings.AppSettingsBackupCodec
 import app.inkloom.settings.AppSettingsStore

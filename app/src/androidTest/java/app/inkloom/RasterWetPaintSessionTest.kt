@@ -10,7 +10,7 @@ import app.inkloom.engine.v5.surface.PixelRect
 import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.engine.v3.tools.RasterTilePaintSession
 import app.inkloom.engine.v3.tools.RasterAbyssPolicy
-import app.inkloom.engine.v3.scene.SparseAlphaMask
+import app.inkloom.engine.v5.selection.SparseAlphaMask
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
 import org.junit.Assert.assertEquals

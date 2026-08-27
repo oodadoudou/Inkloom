@@ -28,7 +28,7 @@ import app.inkloom.engine.v5.storage.PixelTileArchiveStore
 import app.inkloom.engine.v5.storage.MaskTileArchiveCodec
 import app.inkloom.engine.v5.surface.MaskTileSurface
 import app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot
-import app.inkloom.engine.v3.scene.SparseAlphaMask
+import app.inkloom.engine.v5.selection.SparseAlphaMask
 import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.engine.v5.surface.PixelRect
 import android.graphics.pdf.PdfRenderer

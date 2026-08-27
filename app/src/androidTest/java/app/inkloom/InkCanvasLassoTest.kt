@@ -12,9 +12,9 @@ import app.inkloom.document.StrokeMaskDab
 import app.inkloom.document.StrokePoint
 import app.inkloom.model.EditorTool
 import app.inkloom.ui.InkCanvasView
-import app.inkloom.engine.v3.scene.SparseAlphaMask
-import app.inkloom.engine.v3.scene.AlphaMaskOperation
-import app.inkloom.engine.v3.scene.DocumentSelectionRuntime
+import app.inkloom.engine.v5.selection.SparseAlphaMask
+import app.inkloom.engine.v5.selection.AlphaMaskOperation
+import app.inkloom.engine.v5.selection.DocumentSelectionRuntime
 import app.inkloom.document.SelectionMaskCompositor
 import app.inkloom.document.LayerIds
 import app.inkloom.engine.v5.surface.PixelTileSurface
