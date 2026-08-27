@@ -1,5 +1,6 @@
 package app.inkloom.engine.v5.raster
 
+import app.inkloom.engine.v5.surface.PixelRect
 import app.inkloom.engine.v5.stroke.PaintBatch
 
 enum class PaintOpKind { DRY_INK, PENCIL, ERASER, AIRBRUSH, DECORATION, WET, SMUDGE, LIQUIFY }
@@ -22,6 +23,8 @@ data class PaintResult(
     val transactionId: Long,
     val batchOrdinal: Long,
     val changed: Boolean,
+    /** Exact document-pixel damage produced by this batch; null means no pixels changed. */
+    val dirtyBounds: PixelRect? = null,
     val documentGeneration: Long? = null,
 )
 
@@ -47,4 +50,3 @@ interface PaintOpSession {
     fun finish(batch: PaintBatch): PaintResult
     fun cancel()
 }
-

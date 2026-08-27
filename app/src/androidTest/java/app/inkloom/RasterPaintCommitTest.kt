@@ -144,10 +144,11 @@ class RasterPaintCommitTest {
         send(view, MotionEvent.ACTION_DOWN, 230f, 200f, 0L)
         send(view, MotionEvent.ACTION_MOVE, 300f, 200f, 5L)
         InstrumentationRegistry.getInstrumentation().runOnMainSync { view.flushActiveStrokeFrame() }
-        assertTrue("The active stroke must be visible in the low-latency owner", Color.alpha(front.getPixel(260, 200)) > 0)
-
         val duringContact = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
         InstrumentationRegistry.getInstrumentation().runOnMainSync { view.draw(Canvas(duringContact)) }
+        assertEquals("V5 dry ink owns the production gesture", 1, view.v5DryGestureCount)
+        assertEquals("V5 must not create a second front-buffer interpretation", 0, Color.alpha(front.getPixel(260, 200)))
+        assertTrue("The private V5 sparse delta must be visible before pen-up", Color.alpha(duringContact.getPixel(260, 200)) > 0)
         assertEquals("Previously published pixels must remain byte-identical during another stroke", Color.BLUE, duringContact.getPixel(60, 200))
         assertEquals(
             "Normal opaque raster layers must bypass CPU projection and retain their tile RenderNodes",
@@ -155,9 +156,9 @@ class RasterPaintCommitTest {
             view.lastRasterProjectionRecomposedTileCount,
         )
         assertEquals(
-            "The stable child must not also project front-buffer-owned pigment",
+            "The immutable committed surface must not publish before pen-up",
             0,
-            Color.alpha(duringContact.getPixel(260, 200)),
+            Color.alpha(surface.pixelAt(390, 300)),
         )
 
         send(view, MotionEvent.ACTION_UP, 320f, 200f, 10L)

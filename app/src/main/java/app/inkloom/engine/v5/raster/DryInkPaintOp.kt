@@ -21,6 +21,7 @@ data class DryInkDefinition(
     val colorArgb: Int,
     val opacity: Float = 1f,
     val minimumPressureScale: Float = .15f,
+    val opacityPressureMinimum: Float = 1f,
     val hardness: Float = 1f,
     val blend: DryBlend = DryBlend.SOURCE_OVER,
     val pencilGrain: Float = 0f,
@@ -30,6 +31,7 @@ data class DryInkDefinition(
         require(diameterPixels.isFinite() && diameterPixels in .1f..4096f)
         require(opacity.isFinite() && opacity in 0f..1f)
         require(minimumPressureScale.isFinite() && minimumPressureScale in 0f..1f)
+        require(opacityPressureMinimum.isFinite() && opacityPressureMinimum in 0f..1f)
         require(hardness.isFinite() && hardness in 0f..1f)
         require(pencilGrain.isFinite() && pencilGrain in 0f..1f)
     }
@@ -40,6 +42,8 @@ data class PublishedPaintDelta(
     val snapshot: PixelTileSurfaceSnapshot,
     val dirtyBounds: PixelRect?,
 )
+
+private data class SegmentFootprint(val coverage: Float, val pressure: Float)
 
 /**
  * Incremental dry ink/pencil/eraser PaintOp. Each batch rasterizes only new segments into one
@@ -122,6 +126,7 @@ class DryInkPaintOp(
             require(finishing == batch.terminal) { "Terminal batch and finish call disagree" }
             lastOrdinal = batch.ordinal
             var changed = false
+            var batchDirtyBounds: PixelRect? = null
             batch.samples.forEach { sample ->
                 val previous = lastSample
                 val repeatedEndpoint = previous != null && previous.point == sample.point &&
@@ -129,6 +134,7 @@ class DryInkPaintOp(
                     previous.orientationRadians == sample.orientationRadians
                 if (!repeatedEndpoint) rasterizeSegment(previous ?: sample, sample)?.let { bounds ->
                     dirtyBounds = dirtyBounds?.union(bounds) ?: bounds
+                    batchDirtyBounds = batchDirtyBounds?.union(bounds) ?: bounds
                     changed = true
                 }
                 lastSample = sample
@@ -138,6 +144,7 @@ class DryInkPaintOp(
                 transactionId = context.transactionId,
                 batchOrdinal = batch.ordinal,
                 changed = changed,
+                dirtyBounds = batchDirtyBounds,
             )
         }
 
@@ -176,14 +183,15 @@ class DryInkPaintOp(
                 )
                 delta.editTile(PixelTileKey(column, row), local) { pixels, stride ->
                     for (y in overlap.top until overlap.bottom) for (x in overlap.left until overlap.right) {
-                        var coverage = segmentCoverage(x + .5f, y + .5f, start, end, startRadius, endRadius)
+                        val footprint = segmentCoverage(x + .5f, y + .5f, start, end, startRadius, endRadius)
+                        var coverage = footprint.coverage
                         if (coverage <= 0f) continue
                         selection?.let { coverage *= it.alphaAt(x, y) / 255f }
                         if (coverage <= 0f) continue
                         if (definition.pencilGrain > 0f) coverage *= grain(x, y)
                         val index = (y - tileTop) * stride + x - tileLeft
                         pixels[index] = when (definition.blend) {
-                            DryBlend.SOURCE_OVER -> sourceOver(pixels[index], coverage)
+                            DryBlend.SOURCE_OVER -> sourceOver(pixels[index], coverage, footprint.pressure)
                             DryBlend.DESTINATION_OUT -> destinationOut(pixels[index], coverage)
                         }
                     }
@@ -205,7 +213,7 @@ class DryInkPaintOp(
             end: StrokeSample,
             startRadius: Float,
             endRadius: Float,
-        ): Float {
+        ): SegmentFootprint {
             val dx = end.point.x - start.point.x
             val dy = end.point.y - start.point.y
             val lengthSquared = dx * dx + dy * dy
@@ -216,7 +224,10 @@ class DryInkPaintOp(
             val radius = startRadius + (endRadius - startRadius) * t
             val distance = sqrt((x - centerX) * (x - centerX) + (y - centerY) * (y - centerY))
             val edge = maxOf(1f, radius * (1f - definition.hardness) * .85f)
-            return ((radius + .5f - distance) / edge).coerceIn(0f, 1f)
+            return SegmentFootprint(
+                coverage = ((radius + .5f - distance) / edge).coerceIn(0f, 1f),
+                pressure = start.pressure + (end.pressure - start.pressure) * t,
+            )
         }
 
         private fun grain(x: Int, y: Int): Float {
@@ -228,8 +239,10 @@ class DryInkPaintOp(
             return 1f - definition.pencilGrain * (.25f + noise * .75f)
         }
 
-        private fun sourceOver(destination: Int, coverage: Float): Int {
-            val sourceAlpha = (((definition.colorArgb ushr 24) and 0xff) * definition.opacity * coverage)
+        private fun sourceOver(destination: Int, coverage: Float, pressure: Float): Int {
+            val pressureOpacity = definition.opacityPressureMinimum +
+                (1f - definition.opacityPressureMinimum) * pressure.coerceIn(0f, 1f)
+            val sourceAlpha = (((definition.colorArgb ushr 24) and 0xff) * definition.opacity * pressureOpacity * coverage)
                 .toInt().coerceIn(0, 255)
             if (sourceAlpha == 0) return destination
             val inverse = 255 - sourceAlpha

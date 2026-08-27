@@ -45,6 +45,12 @@ import app.inkloom.engine.v5.surface.PixelRect
 import app.inkloom.engine.v5.surface.PixelTileFormat
 import app.inkloom.engine.v5.surface.RasterSelectionClipboard
 import app.inkloom.engine.v5.surface.RasterSelectionContent
+import app.inkloom.engine.v5.input.InputTool
+import app.inkloom.engine.v5.raster.DryBlend
+import app.inkloom.engine.v5.raster.DryInkDefinition
+import app.inkloom.engine.v5.raster.PaintResult
+import app.inkloom.engine.v5.runtime.RawDocumentSample
+import app.inkloom.engine.v5.runtime.RealtimeDryStrokeController
 import java.util.LinkedHashMap
 import java.util.concurrent.Executors
 import app.inkloom.document.InkStroke
@@ -367,6 +373,11 @@ class InkCanvasView(context: Context) : View(context) {
     private var smudgeDirtyBounds: Rect? = null
     private var rasterTileBlendSession: RasterTileBlendSession? = null
     private var rasterPaintSession: RasterTilePaintSession? = null
+    private val v5DryStrokeController = RealtimeDryStrokeController()
+    @VisibleForTesting internal var v5DryGestureCount: Int = 0
+        private set
+    @VisibleForTesting internal var v5DryPublishedGeneration: Long = -1L
+        private set
     private var wetPaintDirtyBounds: Rect? = null
     private val rasterFrontPatchPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private var wetPaintLastPositions: List<Pair<Float, Float>> = emptyList()
@@ -1367,7 +1378,8 @@ class InkCanvasView(context: Context) : View(context) {
     private fun liveRasterPreviewSnapshot(layerId: String): app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot? {
         if (layerId != activeLayerId) return null
         return runCatching {
-            rasterTileEraserSession?.previewSnapshot()
+            v5DryStrokeController.previewSnapshot(layerId)
+                ?: rasterTileEraserSession?.previewSnapshot()
                 ?: rasterTileBlendSession?.previewSnapshot()
                 ?: rasterTileLiquifySession?.previewSnapshot()
                 ?: rasterPaintSession?.takeUnless { rasterPaintPreviewOwnedByFrontBuffer() }?.previewSnapshot()
@@ -2082,6 +2094,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun releaseActiveStrokePreview() {
+        v5DryStrokeController.cancel()
         if (rasterPaintSession != null) cancelWetPaintGesture()
         removeCallbacks(activeSurfaceFrame)
         activeSurfaceFrameScheduled = false
@@ -3461,6 +3474,8 @@ class InkCanvasView(context: Context) : View(context) {
                     return true
                 }
                 if (activeTool == EditorTool.ERASER) {
+                    currentStrokeId = java.util.UUID.randomUUID().toString()
+                    if (beginV5DryGesture(event, pointerIndex, normalizedX, normalizedY)) return true
                     beginEraserGesture()
                     eraseAlong(normalizedX, normalizedY, event.getPressure(pointerIndex))
                     return true
@@ -3588,6 +3603,7 @@ class InkCanvasView(context: Context) : View(context) {
                     withCurrentBrushBehavior(buildStroke(emptyList())).copy(width = gestureBrushSize),
                 )
                 StrokeTrace.mark(currentStrokeId, StrokeTrace.STAGE_RUNTIME_CREATED)
+                if (beginV5DryGesture(event, pointerIndex, normalizedX, normalizedY)) return true
                 beginWetPaintGesture(normalizedX, normalizedY)
                 activePerspectiveSnapConstraint = null
                 activeSpecialRulerConstraint = null
@@ -3599,6 +3615,7 @@ class InkCanvasView(context: Context) : View(context) {
                 if (brushContinuousPlot && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) startContinuousPlot()
             }
             MotionEvent.ACTION_MOVE -> {
+                if (appendV5DryGesture(event, pointerIndex)) return true
                 if (layerMaskGesture != null) {
                     for (i in 0 until event.historySize) {
                         val point = historicalCanvasPoint(event, pointerIndex, i)
@@ -3773,6 +3790,7 @@ class InkCanvasView(context: Context) : View(context) {
                 stopContinuousPlot()
                 if (event.actionMasked == MotionEvent.ACTION_UP) performClick()
                 if (event.actionMasked == MotionEvent.ACTION_CANCEL || event.flags and MotionEvent.FLAG_CANCELED != 0) {
+                    v5DryStrokeController.cancel()
                     StrokeTrace.abandon(currentStrokeId)
                     cancelWetPaintGesture()
                     clearActiveStrokeInput()
@@ -3790,6 +3808,8 @@ class InkCanvasView(context: Context) : View(context) {
                     selectionGestureBefore?.let { restoreStrokeSnapshot(it) }
                     cancelRasterSelectionTransform()
                     lassoPoints.clear(); movingSelection = false; selectionMoved = false; selectionGestureBefore = null; selectionTransformMode = TRANSFORM_NONE
+                } else if (finishV5DryGesture(event, pointerIndex, normalizedX, normalizedY)) {
+                    finishActiveStrokePreview()
                 } else if (activeTool == EditorTool.FILL) {
                     if (fillSubTool == FillSubTool.BUCKET) commitFillGesture() else {
                         fillGesturePoints += StrokePoint(normalizedX, normalizedY, event.getPressure(pointerIndex), event.eventTime)
@@ -4272,6 +4292,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun cancelActiveGestureForNavigation() {
         stopContinuousPlot()
+        v5DryStrokeController.cancel()
         cancelWetPaintGesture()
         clearActiveStrokeInput()
         finishActiveStrokePreview()
@@ -6488,6 +6509,192 @@ class InkCanvasView(context: Context) : View(context) {
     private fun usesWetPaintComposite(stroke: InkStroke): Boolean =
         stroke.watercolor || !stroke.procreateWetMix.isDisabled() ||
             stroke.colorMix > .001f || stroke.paintMix > .001f
+
+    /**
+     * V5 is intentionally capability-gated. Unsupported material semantics stay on their
+     * explicit migration path; they are never silently approximated by the round dry renderer.
+     */
+    private fun v5DryDefinition(): DryInkDefinition? {
+        val active = activeTool ?: return null
+        if (active !in setOf(EditorTool.PEN, EditorTool.ERASER)) return null
+        val surface = rasterTileSurfaceFor(activeLayerId) ?: return null
+        if (surface.pixelFormat != PixelTileFormat.PREMULTIPLIED_SRGB_8888) return null
+        if (activeLayerId in protectedLayerIds || activeLayerId in alphaLockedLayers ||
+            activeLayerId in clippedLayers || layerMasks[activeLayerId]?.enabled == true
+        ) return null
+        if ((layerOpacities[activeLayerId] ?: 1f) < .999f ||
+            (layerBlendModes[activeLayerId] ?: LayerBlendMode.NORMAL) != LayerBlendMode.NORMAL
+        ) return null
+        if (symmetryMode != SymmetryMode.NONE || rulerEnabled ||
+            (perspectiveGuideState.assisted && perspectiveGuideState.mode != PerspectiveGuideMode.NONE) ||
+            (specialRulerState.assisted && specialRulerState.mode != SpecialRulerMode.NONE) ||
+            canvasGuideState.gridSnapEnabled || canvasGuideState.alignmentGuidesEnabled
+        ) return null
+        if (stabilization > .0001f || streamLine > .0001f || procreateStabilization > .0001f ||
+            motionFiltering > .0001f || postCorrection > .0001f
+        ) return null
+
+        val diameter = if (active == EditorTool.ERASER) gestureEraserSize else gestureBrushSize
+        val diameterPixels = (diameter.coerceIn(.01f, 800f) / REFERENCE_WIDTH * surface.logicalWidth)
+            .coerceAtLeast(.1f)
+        if (active == EditorTool.ERASER) {
+            if (eraserTipAssetPath != null || tipAssetPath != null || tipAssetPaths.isNotEmpty()) return null
+            return DryInkDefinition(
+                diameterPixels = diameterPixels,
+                colorArgb = Color.TRANSPARENT,
+                opacity = eraserOpacity.coerceIn(0f, 1f),
+                minimumPressureScale = if (eraserPressureSize) .15f else 1f,
+                hardness = eraserHardness.coerceIn(0f, 1f),
+                blend = DryBlend.DESTINATION_OUT,
+            )
+        }
+
+        if (tipAssetPath != null || tipAssetPaths.isNotEmpty() || grainAssetPath != null ||
+            brushDual || brushSpray || brushContinuousPlot || brushRibbon || brushWatercolor ||
+            !procreateWetMix.isDisabled() || brushColorMix > .001f || brushPaintMix > .001f ||
+            brushBlur > .001f || taperStartEnabled || taperEndEnabled || !procreateTaper.isDisabled() ||
+            strokeFalloff > .0001f || strokePathJitter > .0001f || strokePathLongitudinalJitter > .0001f ||
+            randomRotationDegrees != 0f || strokeRotationJitterDegrees != 0f || stampCount != 1 ||
+            colorJitterHueDegrees != 0f || colorJitterSaturation != 0f || colorJitterValue != 0f ||
+            sizePressureCurve.isNotEmpty() || opacityPressureCurve.isNotEmpty() || flowPressureCurve.isNotEmpty()
+        ) return null
+        val pencilGrain = when {
+            "6b-pencil" in brushId -> .38f
+            "2b-pencil" in brushId -> .30f
+            "hb-pencil" in brushId -> .22f
+            "h-pencil" in brushId -> .16f
+            "pencil" in brushId -> .12f
+            else -> 0f
+        }
+        val pressureOpacityMinimum = when {
+            opacityPressureEnabled && flowPressureEnabled -> opacityPressureMinimum * flowPressureMinimum
+            opacityPressureEnabled -> opacityPressureMinimum
+            flowPressureEnabled -> flowPressureMinimum
+            else -> 1f
+        }
+        return DryInkDefinition(
+            diameterPixels = diameterPixels,
+            colorArgb = inkColor,
+            opacity = (inkOpacity * brushFlow).coerceIn(0f, 1f),
+            minimumPressureScale = if (sizePressureEnabled) sizePressureMinimum.coerceIn(0f, 1f) else 1f,
+            opacityPressureMinimum = pressureOpacityMinimum.coerceIn(0f, 1f),
+            hardness = brushHardness.coerceIn(0f, 1f),
+            pencilGrain = pencilGrain,
+            grainSeed = brushRenderSeed,
+        )
+    }
+
+    private fun beginV5DryGesture(event: MotionEvent, pointerIndex: Int, normalizedX: Float, normalizedY: Float): Boolean {
+        val definition = v5DryDefinition() ?: return false
+        val surface = rasterTileSurfaceFor(activeLayerId) ?: return false
+        val result = v5DryStrokeController.begin(
+            layerId = activeLayerId,
+            surface = surface,
+            definition = definition,
+            selection = selectionMaskForRasterTools(),
+            sample = v5DocumentSample(event, pointerIndex, normalizedX, normalizedY, historicalIndex = null),
+        )
+        v5DryGestureCount++
+        invalidateV5Damage(surface, result)
+        return true
+    }
+
+    private fun appendV5DryGesture(event: MotionEvent, pointerIndex: Int): Boolean {
+        if (!v5DryStrokeController.isActive) return false
+        val samples = buildList(event.historySize + 1) {
+            for (index in 0 until event.historySize) {
+                val point = historicalCanvasPoint(event, pointerIndex, index)
+                add(v5DocumentSample(
+                    event,
+                    pointerIndex,
+                    point.first / width.coerceAtLeast(1),
+                    point.second / height.coerceAtLeast(1),
+                    historicalIndex = index,
+                ))
+            }
+            val point = canvasPoint(event, pointerIndex)
+            add(v5DocumentSample(
+                event,
+                pointerIndex,
+                point.first / width.coerceAtLeast(1),
+                point.second / height.coerceAtLeast(1),
+                historicalIndex = null,
+            ))
+        }
+        val surface = rasterTileSurfaceFor(activeLayerId) ?: return false
+        v5DryStrokeController.append(samples)?.let { invalidateV5Damage(surface, it) }
+        return true
+    }
+
+    private fun finishV5DryGesture(event: MotionEvent, pointerIndex: Int, normalizedX: Float, normalizedY: Float): Boolean {
+        if (!v5DryStrokeController.isActive) return false
+        val surface = rasterTileSurfaceFor(activeLayerId) ?: run {
+            v5DryStrokeController.cancel()
+            return true
+        }
+        val published = v5DryStrokeController.finish(
+            v5DocumentSample(event, pointerIndex, normalizedX, normalizedY, historicalIndex = null),
+        ) ?: return true
+        try {
+            v5DryPublishedGeneration = published.snapshot.revision
+            published.dirtyBounds?.let { bounds ->
+                commitRasterLayerPatch(
+                    surface,
+                    Rect(bounds.left, bounds.top, bounds.right, bounds.bottom),
+                )
+                invalidateV5Damage(surface, bounds)
+            }
+        } finally {
+            published.record.close()
+        }
+        return true
+    }
+
+    private fun v5DocumentSample(
+        event: MotionEvent,
+        pointerIndex: Int,
+        normalizedX: Float,
+        normalizedY: Float,
+        historicalIndex: Int?,
+    ): RawDocumentSample {
+        val surface = requireNotNull(rasterTileSurfaceFor(activeLayerId))
+        val pressure = if (historicalIndex == null) event.getPressure(pointerIndex)
+            else event.getHistoricalPressure(pointerIndex, historicalIndex)
+        val timeMillis = if (historicalIndex == null) event.eventTime else event.getHistoricalEventTime(historicalIndex)
+        val tilt = if (historicalIndex == null) event.getAxisValue(MotionEvent.AXIS_TILT, pointerIndex)
+            else event.getHistoricalAxisValue(MotionEvent.AXIS_TILT, pointerIndex, historicalIndex)
+        val orientation = if (historicalIndex == null) event.getOrientation(pointerIndex)
+            else event.getHistoricalOrientation(pointerIndex, historicalIndex)
+        return RawDocumentSample(
+            x = normalizedX.coerceIn(0f, 1f) * surface.logicalWidth,
+            y = normalizedY.coerceIn(0f, 1f) * surface.logicalHeight,
+            eventTimeNanos = timeMillis.coerceAtLeast(0L) * 1_000_000L,
+            enqueuedTimeNanos = SystemClock.uptimeMillis() * 1_000_000L,
+            pressure = PressureCalibration.apply(
+                pressure,
+                pressureMinimumInput,
+                pressureMaximumInput,
+                pressureSensitivity,
+                pressureResponseCurve,
+            ),
+            tiltRadians = tilt.takeIf(Float::isFinite) ?: 0f,
+            orientationRadians = orientation.takeIf(Float::isFinite) ?: 0f,
+            tool = if (activeTool == EditorTool.ERASER) InputTool.STYLUS_ERASER else InputTool.STYLUS,
+        )
+    }
+
+    private fun invalidateV5Damage(surface: PixelTileSurface, result: PaintResult) {
+        result.dirtyBounds?.let { invalidateV5Damage(surface, it) }
+    }
+
+    private fun invalidateV5Damage(surface: PixelTileSurface, bounds: PixelRect) {
+        postInvalidateOnAnimation(
+            (bounds.left * width.toFloat() / surface.logicalWidth).toInt() - 2,
+            (bounds.top * height.toFloat() / surface.logicalHeight).toInt() - 2,
+            (bounds.right * width.toFloat() / surface.logicalWidth).toInt() + 2,
+            (bounds.bottom * height.toFloat() / surface.logicalHeight).toInt() + 2,
+        )
+    }
 
     /**
      * Programs whose geometry is append-only are deposited once per sampled dab. Ordinary paint
