@@ -2,6 +2,7 @@ package app.inkloom.engine.v5.runtime
 
 import app.inkloom.engine.v5.coordinates.DocumentPoint
 import app.inkloom.engine.v5.input.InputPhase
+import app.inkloom.engine.v5.input.InputBackpressureController
 import app.inkloom.engine.v5.input.InputSample
 import app.inkloom.engine.v5.input.InputSampleBatch
 import app.inkloom.engine.v5.input.InputTool
@@ -26,10 +27,12 @@ class RealtimeStrokeController {
     private var active: Active? = null
     private var landed: Landed? = null
     private var lastPublishedSamples: List<RawDocumentSample> = emptyList()
+    private var lastBackpressureSnapshot = InputBackpressureController.Snapshot(0, 0, 0L, 0L)
 
     val isActive: Boolean get() = active != null
     val activeLayerId: String? get() = active?.layerId
     fun lastPublishedSamples(): List<RawDocumentSample> = lastPublishedSamples.toList()
+    fun backpressureSnapshot(): InputBackpressureController.Snapshot = lastBackpressureSnapshot
 
     fun begin(
         layerId: String,
@@ -46,25 +49,48 @@ class RealtimeStrokeController {
         val paint = paintOp.begin(
             PaintOpContext(transactionId, surface.revision, brushRuntimeId),
         ) as? PublishablePaintOpSession ?: error("Production PaintOp must publish its active delta")
-        active = Active(layerId, surface, stroke, paint, mutableListOf(sample))
+        active = Active(
+            layerId,
+            surface,
+            stroke,
+            paint,
+            InputBackpressureController(),
+            ArrayDeque<RawDocumentSample>(TRACE_SAMPLE_LIMIT).apply { addLast(sample) },
+        )
         return paint.apply(stroke.begin(input(sample, InputPhase.DOWN)))
     }
 
     fun append(samples: List<RawDocumentSample>): PaintResult? {
         val gesture = active ?: return null
         if (samples.isEmpty()) return null
-        gesture.samples.addAll(samples)
-        val batch = InputSampleBatch.owned(samples.map { input(it, InputPhase.MOVE) })
-        return gesture.paint.apply(gesture.stroke.append(batch))
+        samples.forEach(gesture::rememberForDiagnostics)
+        var result: PaintResult? = null
+        samples.chunked(MAX_PROCESSING_BATCH_SAMPLES).forEach { sourceChunk ->
+            gesture.mailbox.enqueue(InputSampleBatch.owned(sourceChunk.map { input(it, InputPhase.MOVE) }))
+            while (true) {
+                val pending = gesture.mailbox.drain(MAX_PROCESSING_BATCH_SAMPLES) ?: break
+                val next = gesture.paint.apply(gesture.stroke.append(pending))
+                result = result?.merge(next) ?: next
+            }
+        }
+        lastBackpressureSnapshot = gesture.mailbox.snapshot(samples.last().enqueuedTimeNanos)
+        return result
     }
 
     fun finish(sample: RawDocumentSample?): PublishedPaintDelta? {
         val gesture = active ?: return null
         return try {
-            sample?.let(gesture.samples::add)
+            sample?.let(gesture::rememberForDiagnostics)
+            while (true) {
+                val pending = gesture.mailbox.drain(MAX_PROCESSING_BATCH_SAMPLES) ?: break
+                gesture.paint.apply(gesture.stroke.append(pending))
+            }
             val finalBatch = gesture.stroke.finish(sample?.let { input(it, InputPhase.UP) })
             gesture.paint.finish(finalBatch)
             gesture.paint.publish().also { published ->
+                lastBackpressureSnapshot = gesture.mailbox.snapshot(
+                    sample?.enqueuedTimeNanos ?: gesture.samples.lastOrNull()?.enqueuedTimeNanos ?: 0L,
+                )
                 lastPublishedSamples = gesture.samples.toList()
                 landed = Landed(gesture.layerId, published.snapshot.revision, published.snapshot)
             }
@@ -112,14 +138,37 @@ class RealtimeStrokeController {
         val surface: PixelTileSurface,
         val stroke: DirectStrokeSession,
         val paint: PublishablePaintOpSession,
-        val samples: MutableList<RawDocumentSample>,
-    )
+        val mailbox: InputBackpressureController,
+        val samples: ArrayDeque<RawDocumentSample>,
+    ) {
+        fun rememberForDiagnostics(sample: RawDocumentSample) {
+            if (samples.size == TRACE_SAMPLE_LIMIT) samples.removeFirst()
+            samples.addLast(sample)
+        }
+    }
 
     private data class Landed(
         val layerId: String,
         val generation: Long,
         val snapshot: PixelTileSurfaceSnapshot,
     )
+
+    private fun PaintResult.merge(other: PaintResult): PaintResult {
+        require(transactionId == other.transactionId)
+        return other.copy(
+            changed = changed || other.changed,
+            dirtyBounds = when {
+                dirtyBounds == null -> other.dirtyBounds
+                other.dirtyBounds == null -> dirtyBounds
+                else -> dirtyBounds.union(other.dirtyBounds)
+            },
+        )
+    }
+
+    private companion object {
+        const val MAX_PROCESSING_BATCH_SAMPLES = 64
+        const val TRACE_SAMPLE_LIMIT = 512
+    }
 }
 
 data class RawDocumentSample(
