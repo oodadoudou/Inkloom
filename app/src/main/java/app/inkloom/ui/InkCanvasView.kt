@@ -5192,7 +5192,7 @@ class InkCanvasView(context: Context) : View(context) {
         val beforeIds = selectedStrokeIds.toSet()
         val beforeRegions = selectedMaskRegions.map(List<StrokePoint>::toList)
         composeSelectionAlpha(
-            exactMask ?: SparseAlphaMask.polygon(polygon, pageModelWidth, pageModelHeight),
+            exactMask ?: rasterizeSelectionPolygonV5(polygon),
             selectionMode,
         )
         // A selection is a mask, not a document edit. Never split/rewrite artwork while merely
@@ -5220,6 +5220,32 @@ class InkCanvasView(context: Context) : View(context) {
         if (selectionMode == SelectionMode.REPLACE) selectionFeatherPixels = 0f
         recordSelectionHistory(selectionState, beforeAlpha, beforeIds, beforeRegions)
         invalidate()
+    }
+
+    private fun rasterizeSelectionPolygonV5(polygon: List<StrokePoint>): SparseAlphaMask? {
+        if (polygon.size < 3) return null
+        val logicalWidth = documentSelectionState?.logicalWidth
+            ?: SelectionMaskCompositor.maskSize(pageModelWidth, pageModelHeight)?.width
+            ?: return null
+        val logicalHeight = documentSelectionState?.logicalHeight
+            ?: SelectionMaskCompositor.maskSize(pageModelWidth, pageModelHeight)?.height
+            ?: return null
+        val contour = CanonicalLassoContour(
+            points = polygon.map { point ->
+                DocumentPoint(
+                    point.x.coerceIn(0f, 1f) * pageModelWidth.coerceAtLeast(1f),
+                    point.y.coerceIn(0f, 1f) * pageModelHeight.coerceAtLeast(1f),
+                )
+            },
+            closed = true,
+        )
+        return SelectionMaskRasterizer.rasterize(
+            contour = contour,
+            documentWidth = pageModelWidth.coerceAtLeast(1f),
+            documentHeight = pageModelHeight.coerceAtLeast(1f),
+            logicalWidth = logicalWidth,
+            logicalHeight = logicalHeight,
+        )?.let(SparseAlphaMask::fromSnapshot)
     }
 
     private fun recordSelectionHistory(
