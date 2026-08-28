@@ -33,6 +33,7 @@ class RealtimeStrokeControllerTest {
         assertEquals(previewPixel, published.snapshot.pixelAt(50, 20))
         assertFalse(controller.isActive)
         assertEquals(published.snapshot.revision, controller.awaitingPresentationGeneration())
+        assertEquals(published.record.transactionId, controller.awaitingPresentationTransactionId())
         assertEquals(previewPixel, controller.previewSnapshot("ink")?.pixelAt(50, 20))
         assertTrue(controller.onDocumentGenerationPresented("ink", published.snapshot.revision))
         assertEquals(null, controller.previewSnapshot("ink"))

@@ -109,7 +109,12 @@ class RealtimeStrokeController {
                     sample?.enqueuedTimeNanos ?: gesture.samples.lastOrNull()?.enqueuedTimeNanos ?: 0L,
                 )
                 lastPublishedSamples = gesture.samples.toList()
-                landed = Landed(gesture.layerId, published.snapshot.revision, published.snapshot)
+                landed = Landed(
+                    gesture.layerId,
+                    published.snapshot.revision,
+                    published.record.transactionId,
+                    published.snapshot,
+                )
             }
         } finally {
             active = null
@@ -157,6 +162,7 @@ class RealtimeStrokeController {
     }
 
     fun awaitingPresentationGeneration(): Long? = landed?.generation
+    fun awaitingPresentationTransactionId(): Long? = landed?.transactionId
 
     private fun input(sample: RawDocumentSample, phase: InputPhase): InputSample = InputSample(
         sequence = nextInputSequence++,
@@ -195,6 +201,7 @@ class RealtimeStrokeController {
     private data class Landed(
         val layerId: String,
         val generation: Long,
+        val transactionId: Long,
         val snapshot: PixelTileSurfaceSnapshot,
     )
 

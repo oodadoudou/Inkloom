@@ -176,6 +176,9 @@ class RasterPaintCommitTest {
         send(view, MotionEvent.ACTION_MOVE, 300f, 200f, 5L)
         val duringContact = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
         InstrumentationRegistry.getInstrumentation().runOnMainSync { view.draw(Canvas(duringContact)) }
+        val frameDamage = requireNotNull(view.lastV5FrameInvalidation)
+        assertTrue("Active paint damage must remain smaller than the document", frameDamage.dirtyBounds.width < surface.logicalWidth)
+        assertTrue("Active paint damage must remain smaller than the document", frameDamage.dirtyBounds.height < surface.logicalHeight)
         assertEquals("V5 dry ink owns the production gesture", 1, view.v5DryGestureCount)
         assertTrue("The private V5 sparse delta must be visible before pen-up", Color.alpha(duringContact.getPixel(260, 200)) > 0)
         assertEquals("Previously published pixels must remain byte-identical during another stroke", Color.BLUE, duringContact.getPixel(60, 200))

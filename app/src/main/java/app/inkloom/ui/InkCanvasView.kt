@@ -77,6 +77,11 @@ import app.inkloom.engine.v5.runtime.RawDocumentSample
 import app.inkloom.engine.v5.runtime.RealtimeStrokeController
 import app.inkloom.engine.v5.runtime.ActiveStrokePresentation
 import app.inkloom.engine.v5.runtime.ActiveStrokePresentationBlend
+import app.inkloom.engine.v5.presentation.FrameInvalidationScheduler
+import app.inkloom.engine.v5.presentation.InvalidationReason
+import app.inkloom.engine.v5.presentation.InvalidationRequest
+import app.inkloom.engine.v5.presentation.PresentationGenerationBarrier
+import app.inkloom.engine.v5.coordinates.DocumentRect
 import app.inkloom.engine.v5.storage.RasterLayerCommit
 import app.inkloom.engine.v5.coordinates.DocumentPoint
 import app.inkloom.engine.v5.selection.CanonicalLassoContour
@@ -321,6 +326,10 @@ class InkCanvasView(context: Context) : View(context) {
     private var smudgeDirtyBounds: Rect? = null
     private var rasterTileBlendSession: RasterTileBlendSession? = null
     private val v5StrokeController = RealtimeStrokeController()
+    private val v5FrameInvalidationScheduler = FrameInvalidationScheduler()
+    private val v5PresentationBarrier = PresentationGenerationBarrier()
+    @VisibleForTesting internal var lastV5FrameInvalidation: InvalidationRequest? = null
+        private set
     private val v5BrushTipMasks = BrushTipMaskCache()
     private var v5RejectedContact = false
     @VisibleForTesting internal var v5DryGestureCount: Int = 0
@@ -1443,8 +1452,15 @@ class InkCanvasView(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         synchronized(renderLock) { drawPageContent(canvas) }
+        lastV5FrameInvalidation = v5FrameInvalidationScheduler.takeForFrame()
         rasterTileSurfaceFor(activeLayerId)?.let { surface ->
-            v5StrokeController.onDocumentGenerationPresented(activeLayerId, surface.revision)
+            val transactionId = v5StrokeController.awaitingPresentationTransactionId()
+            if (transactionId != null) {
+                val released = v5PresentationBarrier.onPresented(surface.revision, longArrayOf(transactionId))
+                if (released.isNotEmpty()) {
+                    v5StrokeController.onDocumentGenerationPresented(activeLayerId, surface.revision)
+                }
+            }
         }
         pendingStableFrameStrokeId?.let { strokeId ->
             pendingStableFrameStrokeId = null
@@ -5506,6 +5522,7 @@ class InkCanvasView(context: Context) : View(context) {
             v5DocumentSample(event, pointerIndex, normalizedX, normalizedY, historicalIndex = null),
         ) ?: return true
         try {
+            v5PresentationBarrier.awaitVisible(published.snapshot.revision, published.record.transactionId)
             v5DryPublishedGeneration = published.snapshot.revision
             published.dirtyBounds?.let { bounds ->
                 commitRasterLayerPatch(
@@ -5596,10 +5613,30 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun invalidateV5Damage(surface: PixelTileSurface, result: PaintResult) {
-        result.dirtyBounds?.let { invalidateV5Damage(surface, it) }
+        result.dirtyBounds?.let {
+            invalidateV5Damage(
+                surface,
+                it,
+                InvalidationReason.ACTIVE_DELTA,
+                result.transactionId,
+            )
+        }
     }
 
-    private fun invalidateV5Damage(surface: PixelTileSurface, bounds: PixelRect) {
+    private fun invalidateV5Damage(
+        surface: PixelTileSurface,
+        bounds: PixelRect,
+        reason: InvalidationReason = InvalidationReason.DOCUMENT_COMMIT,
+        transactionId: Long? = null,
+    ) {
+        v5FrameInvalidationScheduler.request(
+            InvalidationRequest(
+                reason = reason,
+                dirtyBounds = DocumentRect(bounds.left.toFloat(), bounds.top.toFloat(), bounds.right.toFloat(), bounds.bottom.toFloat()),
+                documentGeneration = surface.revision,
+                transactionId = transactionId,
+            ),
+        )
         postInvalidateOnAnimation(
             (bounds.left * width.toFloat() / surface.logicalWidth).toInt() - 2,
             (bounds.top * height.toFloat() / surface.logicalHeight).toInt() - 2,

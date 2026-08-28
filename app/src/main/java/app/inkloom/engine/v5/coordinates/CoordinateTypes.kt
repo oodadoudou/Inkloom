@@ -23,6 +23,8 @@ data class DocumentRect(val left: Float, val top: Float, val right: Float, val b
     }
 
     val isEmpty: Boolean get() = left == right || top == bottom
+    val width: Float get() = right - left
+    val height: Float get() = bottom - top
 
     fun union(other: DocumentRect): DocumentRect = DocumentRect(
         minOf(left, other.left),
