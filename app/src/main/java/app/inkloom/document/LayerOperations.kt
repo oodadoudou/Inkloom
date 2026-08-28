@@ -91,11 +91,7 @@ object LayerOperations {
 
     private fun copyElement(element: PageElement, layerId: String, nextId: () -> String): PageElement = when (element) {
         is PageElement.Text -> element.copy(id = nextId(), layerId = layerId)
-        is PageElement.Sticky -> element.copy(
-            id = nextId(),
-            layerId = layerId,
-            strokes = element.strokes.map { it.copy(id = nextId()) },
-        )
+        is PageElement.Sticky -> element.copy(id = nextId(), layerId = layerId)
         is PageElement.Shape -> element.copy(id = nextId(), layerId = layerId)
         is PageElement.Image -> element.copy(id = nextId(), layerId = layerId)
         is PageElement.Fill -> element.copy(id = nextId(), layerId = layerId)

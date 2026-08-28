@@ -11,10 +11,9 @@ class LayerOperationsTest {
     @Test fun duplicateDeepCopiesLayerContentAndPreservesBrushAppearance() {
         val source = InkLayer(id = "sketch", name = "Sketch", locked = true, reference = true, draft = true)
         val stroke = InkStroke(id = "stroke", renderSeed = 912, layerId = source.id, points = listOf(StrokePoint(.2f, .3f)), masks = listOf(StrokeMaskDab(.2f, .3f, .01f, .02f)))
-        val stickyStroke = InkStroke(id = "sticky-stroke", renderSeed = 411, points = listOf(StrokePoint(.4f, .5f)))
-        val sticky = PageElement.Sticky(id = "sticky", x = .2f, y = .2f, layerId = source.id, text = "Draft", strokes = listOf(stickyStroke))
+        val sticky = PageElement.Sticky(id = "sticky", x = .2f, y = .2f, layerId = source.id, text = "Draft")
         val page = InkPage(layers = defaultInkLayers() + source, strokes = listOf(stroke), elements = listOf(sticky))
-        val ids = ArrayDeque(listOf("copy-layer", "copy-stroke", "copy-sticky", "copy-sticky-stroke"))
+        val ids = ArrayDeque(listOf("copy-layer", "copy-stroke", "copy-sticky"))
 
         val result = LayerOperations.duplicate(page, source.id, ids::removeFirst)!!
 
@@ -33,8 +32,6 @@ class LayerOperationsTest {
         val copiedSticky = result.page.elements.last() as PageElement.Sticky
         assertEquals("copy-sticky", copiedSticky.id)
         assertEquals(copiedLayer.id, copiedSticky.layerId)
-        assertEquals("copy-sticky-stroke", copiedSticky.strokes.single().id)
-        assertEquals(stickyStroke.renderSeed, copiedSticky.strokes.single().renderSeed)
         assertNotEquals(sticky.id, copiedSticky.id)
     }
 

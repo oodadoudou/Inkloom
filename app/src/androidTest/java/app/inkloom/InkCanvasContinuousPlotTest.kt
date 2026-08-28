@@ -64,6 +64,7 @@ class InkCanvasContinuousPlotTest {
                 fingerDrawingEnabled = false
                 brushContinuousPlot = true
                 setRasterLayerSurfaces(mapOf(LayerIds.INK to surface))
+                installV5TestInk(continuousPlot = true)
             }
             activity.addContentView(view, ViewGroup.LayoutParams(1000, 1000))
         }

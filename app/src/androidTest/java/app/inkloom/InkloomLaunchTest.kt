@@ -380,7 +380,7 @@ class InkloomLaunchTest {
         assertEquals(ToolboxAxisMode.BRUSH_SIZE, binding.mode)
     }
 
-    @Test fun stickyNoteDoubleTapOpensItsInkSubcanvas() {
+    @Test fun stickyNoteDoubleTapOpensTheUnifiedObjectEditor() {
         val noteText = "Sticky canvas test"
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("More").performClick()
@@ -391,8 +391,8 @@ class InkloomLaunchTest {
 
         composeRule.onNodeWithText(noteText).performTouchInput { doubleClick() }
 
-        composeRule.onNodeWithText("Write inside sticky note").assertIsDisplayed()
-        composeRule.onNodeWithText("System pen").assertIsDisplayed()
+        composeRule.onNodeWithText("Object properties").assertIsDisplayed()
+        composeRule.onAllNodesWithText(noteText).onLast().assertIsDisplayed()
     }
 
     @Test fun editorExposesUnifiedPageAndPdfSearch() {
@@ -794,9 +794,9 @@ class InkloomLaunchTest {
 
         val view = findInkCanvasView()!!
         val store = app.inkloom.document.FileDocumentStore(composeRule.activity.filesDir)
-        val activeHistoryKey = requireNotNull(reflectedField(view, "strokeHistoryKey") as? String)
-        val documentId = activeHistoryKey.substringBefore(':')
-        val pageId = activeHistoryKey.substringAfter(':')
+        val activeDocument = requireNotNull(store.list().firstOrNull())
+        val documentId = activeDocument.id
+        val pageId = activeDocument.pages.first().id
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val downTime = SystemClock.uptimeMillis()
             val properties = arrayOf(MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_STYLUS })

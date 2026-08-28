@@ -76,6 +76,7 @@ class SymmetryTest {
                 baseWidth = 18f
                 setRasterLayerSurfaces(mapOf("paint" to surface))
                 block()
+                installV5TestInk(size = baseWidth)
             }
         }
         return result

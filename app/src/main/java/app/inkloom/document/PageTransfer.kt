@@ -31,7 +31,7 @@ object PageTransfer {
 
     private fun PageElement.copyWithId(id: String, nextId: () -> String): PageElement = when (this) {
         is PageElement.Text -> copy(id = id)
-        is PageElement.Sticky -> copy(id = id, strokes = strokes.map { it.copy(id = nextId()) })
+        is PageElement.Sticky -> copy(id = id)
         is PageElement.Shape -> copy(id = id)
         is PageElement.Image -> copy(id = id)
         is PageElement.Fill -> copy(id = id)

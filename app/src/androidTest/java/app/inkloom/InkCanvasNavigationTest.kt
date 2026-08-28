@@ -693,6 +693,7 @@ class InkCanvasNavigationTest {
                 layout(0, 0, 1000, 1000)
                 activeLayerId = "paint"
                 setRasterLayerSurfaces(mapOf("paint" to surface))
+                installV5TestInk()
             }
             paintSurfaces[result] = surface
         }

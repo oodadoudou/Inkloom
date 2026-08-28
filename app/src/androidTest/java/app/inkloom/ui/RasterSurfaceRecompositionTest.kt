@@ -14,6 +14,7 @@ import app.inkloom.document.LayerRole
 import app.inkloom.document.RasterTileSurfaceRef
 import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
 import app.inkloom.model.EditorTool
+import app.inkloom.installV5TestInk
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
@@ -41,8 +42,7 @@ class RasterSurfaceRecompositionTest {
             view.fingerDrawingEnabled = true
             view.tool = EditorTool.PEN
             view.activeLayerId = PAINT
-            view.baseWidth = 24f
-            view.sizePressureEnabled = false
+            view.installV5TestInk(size = 24f)
             view.setRasterLayerSurfaces(firstMap)
             view.onRasterLayerCommitted = { }
         }
@@ -64,16 +64,12 @@ class RasterSurfaceRecompositionTest {
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             view.setRasterLayerSurfaces(afterPublication)
-            view.tipAssetPath = tipFile.absolutePath
-            view.tipAssetPaths = listOf(tipFile.absolutePath)
-            view.brushId = "imported-white-alpha"
+            view.installV5TestInk(size = 24f, tipAssetPaths = listOf(tipFile.absolutePath))
         }
         send(view, MotionEvent.ACTION_DOWN, 200f, 330f, 200L)
         send(view, MotionEvent.ACTION_UP, 260f, 330f, 206L)
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            view.tipAssetPath = null
-            view.tipAssetPaths = emptyList()
-            view.brushId = "system-pencil"
+            view.installV5TestInk(size = 24f)
         }
         send(view, MotionEvent.ACTION_DOWN, 200f, 360f, 220L)
         send(view, MotionEvent.ACTION_UP, 260f, 360f, 226L)

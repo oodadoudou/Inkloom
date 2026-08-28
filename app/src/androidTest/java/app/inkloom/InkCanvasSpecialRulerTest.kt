@@ -80,6 +80,7 @@ class InkCanvasSpecialRulerTest {
         activeLayerId = "paint"
         baseWidth = 18f
         setRasterLayerSurfaces(mapOf("paint" to surface))
+        installV5TestInk(size = 18f)
     }
 
     private fun InkCanvasView.sendStylus(action: Int, x: Float, y: Float, time: Long, pressure: Float = .7f) {

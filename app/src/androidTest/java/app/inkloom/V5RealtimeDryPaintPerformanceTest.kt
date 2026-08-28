@@ -30,10 +30,7 @@ class V5RealtimeDryPaintPerformanceTest {
                 layout(0, 0, 1024, 768)
                 tool = EditorTool.PEN
                 activeLayerId = "paint"
-                baseWidth = 12f
-                brushHardness = 1f
-                sizePressureEnabled = false
-                inkColor = Color.BLACK
+                installV5TestInk(size = 12f)
                 fingerDrawingEnabled = true
                 setRasterLayerSurfaces(mapOf("paint" to surface))
                 onRasterLayerCommitted = { commits++ }

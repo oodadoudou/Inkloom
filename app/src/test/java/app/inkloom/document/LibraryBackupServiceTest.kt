@@ -71,8 +71,7 @@ class LibraryBackupServiceTest {
             val sticky = PageElement.Sticky(
                 x = .2f,
                 y = .2f,
-                text = "nested ink",
-                strokes = listOf(InkStroke(points = listOf(StrokePoint(.1f, .1f)), brushId = brush.id, tipAssetPath = tip.absolutePath)),
+                text = "sticky note",
             )
             val maskedGradient = PageElement.Shape(
                 x = 0f,
@@ -134,7 +133,7 @@ class LibraryBackupServiceTest {
             assertEquals(restored.brushes.single().id, restoredPage.strokes.single().brushId)
             assertTrue(File(restoredPage.strokes.single().tipAssetPaths.single()).isFile)
             assertTrue(File(restoredPage.strokes.single().masks.single().tipAssetPath!!).isFile)
-            assertEquals(restored.brushes.single().id, restoredPage.elements.filterIsInstance<PageElement.Sticky>().single().strokes.single().brushId)
+            assertEquals("sticky note", restoredPage.elements.filterIsInstance<PageElement.Sticky>().single().text)
             val restoredGradient = restoredPage.elements.filterIsInstance<PageElement.Shape>().single()
             assertTrue(File(requireNotNull(restoredGradient.maskAssetPath)).isFile)
             assertTrue(File(restoredGradient.maskAssetPath).readBytes().contentEquals(gradientMask.readBytes()))

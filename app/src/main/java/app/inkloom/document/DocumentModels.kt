@@ -712,7 +712,6 @@ sealed interface PageElement {
         val text: String,
         val colorArgb: Long = 0xFFE5E5E5,
         val collapsed: Boolean = false,
-        val strokes: List<InkStroke> = emptyList(),
     ) : PageElement
 
     @Serializable @SerialName("shape")

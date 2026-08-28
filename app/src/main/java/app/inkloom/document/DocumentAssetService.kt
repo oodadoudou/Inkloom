@@ -685,7 +685,6 @@ class DocumentAssetService(private val context: Context) {
                     is PageElement.AudioMarker -> element.copy(assetPath = "assets/${File(element.assetPath).name}")
                     is PageElement.Fill -> element.copy(maskAssetPath = "assets/${File(element.maskAssetPath).name}")
                     is PageElement.Shape -> element.copy(maskAssetPath = element.maskAssetPath?.let { "assets/${File(it).name}" })
-                    is PageElement.Sticky -> element.copy(strokes = element.strokes.map { it.portableBrushAssets() })
                     else -> element
                 } },
                 ) },
@@ -701,7 +700,7 @@ class DocumentAssetService(private val context: Context) {
                 zip,
                 document.pages.flatMap(InkPage::layers).mapNotNull(InkLayer::rasterTileSurface),
             )
-            val allStrokes = document.pages.flatMap { page -> page.strokes + page.elements.filterIsInstance<PageElement.Sticky>().flatMap(PageElement.Sticky::strokes) }
+            val allStrokes = document.pages.flatMap(InkPage::strokes)
             writeDistinctFiles(zip, "brush-assets", allStrokes.flatMap { it.brushAssetPaths() })
             File(context.filesDir, "brush-sources").listFiles()?.filter(File::isFile)?.forEach { file -> zip.putNextEntry(ZipEntry("brush-sources/${file.name}")); file.inputStream().use { it.copyTo(zip) }; zip.closeEntry() }
         }
@@ -805,7 +804,6 @@ class DocumentAssetService(private val context: Context) {
                         is PageElement.AudioMarker -> element.copy(assetPath = retained(element.assetPath))
                         is PageElement.Fill -> element.copy(maskAssetPath = retained(element.maskAssetPath))
                         is PageElement.Shape -> element.copy(maskAssetPath = element.maskAssetPath?.let { retained(it) })
-                        is PageElement.Sticky -> element.copy(strokes = element.strokes.map { it.withRetainedBrushAssets(::retained) })
                         else -> element
                     } },
                 ) },
@@ -1001,9 +999,6 @@ class DocumentAssetService(private val context: Context) {
                     paint.typeface = Typeface.DEFAULT; paint.isUnderlineText = false; paint.textAlign = Paint.Align.LEFT
                 }
                 is PageElement.Sticky -> {
-                    require(element.strokes.isEmpty()) {
-                        "Paint Engine V5 cannot export a sticky note that still owns legacy InkStroke content"
-                    }
                     paint.style = Paint.Style.FILL
                     paint.color = element.colorArgb.toInt()
                     canvas.drawRect(left, top, right, bottom, paint)

@@ -95,6 +95,7 @@ class InkCanvasGuideTest {
         activeLayerId = "paint"
         baseWidth = 18f
         setRasterLayerSurfaces(mapOf("paint" to surface))
+        installV5TestInk(size = 18f)
     }
 
     private fun InkCanvasView.send(toolType: Int, action: Int, x: Float, y: Float, time: Long, pressure: Float = .7f) {

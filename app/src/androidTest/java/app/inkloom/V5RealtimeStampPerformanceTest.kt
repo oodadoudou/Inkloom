@@ -10,6 +10,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.engine.v5.surface.PixelTileSurface
+import app.inkloom.brushpresetv5.TextureGrainSettings
 import app.inkloom.model.EditorTool
 import app.inkloom.ui.InkCanvasView
 import java.io.File
@@ -60,19 +61,18 @@ class V5RealtimeStampPerformanceTest {
                 layout(0, 0, 1024, 768)
                 tool = EditorTool.PEN
                 activeLayerId = "paint"
-                baseWidth = 18f
-                brushSpacing = .1f
-                sizePressureEnabled = true
-                sizePressureMinimum = .2f
-                tipAssetPath = tip.absolutePath
-                tipAssetPaths = listOf(tip.absolutePath)
-                grainAssetPath = grain.absolutePath
-                grainDensity = .7f
-                grainScale = 86f
-                grainMovement = .72f
-                grainZoom = .35f
-                grainRotationDegrees = 17f
-                inkColor = Color.BLACK
+                installV5TestInk(
+                    size = 18f,
+                    tipAssetPaths = listOf(tip.absolutePath),
+                    textureGrain = TextureGrainSettings(
+                        assetPath = grain.absolutePath,
+                        density = .7f,
+                        scale = 86f,
+                        movement = .72f,
+                        zoom = .35f,
+                        rotationDegrees = 17f,
+                    ),
+                )
                 setRasterLayerSurfaces(mapOf("paint" to surface))
                 onRasterLayerCommitted = { commits++ }
             }

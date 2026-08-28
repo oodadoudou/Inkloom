@@ -10,6 +10,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.model.EditorTool
 import app.inkloom.model.SystemBrushCatalog
+import app.inkloom.brushpresetv5.BrushFamily
+import app.inkloom.brushpresetv5.TextureGrainSettings
+import app.inkloom.brushpresetv5.WetMixSettings
 import app.inkloom.engine.v5.tools.RasterLayerPatch
 import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v5.surface.PixelRect
@@ -80,8 +83,7 @@ class RasterPaintCommitTest {
         val view = createCanvas {
             tool = EditorTool.PEN
             activeLayerId = "paint"
-            baseWidth = 24f
-            inkColor = Color.BLACK
+            installV5TestInk(size = 24f)
             setRasterLayerSurfaces(mapOf("paint" to surface))
             onRasterLayerCommitted = { commit -> committed = commit.capturePatch() }
         }
@@ -113,10 +115,7 @@ class RasterPaintCommitTest {
         view = createCanvas {
             tool = EditorTool.PEN
             activeLayerId = "paint"
-            baseWidth = 64f
-            sizePressureEnabled = false
-            tipAssetPath = tipFile.absolutePath
-            tipAssetPaths = listOf(tipFile.absolutePath)
+            installV5TestInk(size = 64f, tipAssetPaths = listOf(tipFile.absolutePath))
             setRasterLayerSurfaces(mapOf("paint" to surface))
             onRasterLayerCommitted = { commit -> committed = commit.capturePatch() }
         }
@@ -169,8 +168,7 @@ class RasterPaintCommitTest {
         view = createCanvas {
             tool = EditorTool.PEN
             activeLayerId = "paint"
-            baseWidth = 36f
-            sizePressureEnabled = false
+            installV5TestInk(size = 36f)
             setRasterLayerSurfaces(mapOf("paint" to surface))
             onRasterLayerCommitted = { commit -> committed = commit.capturePatch() }
         }
@@ -212,20 +210,17 @@ class RasterPaintCommitTest {
             layout(0, 0, 800, 600)
             tool = EditorTool.PEN
             activeLayerId = "paint"
-            baseWidth = 52f
-            brushHardness = .7f
-            sizePressureEnabled = false
-            procreateWetMix = app.inkloom.document.ProcreateWetMix(
+            installV5TestInk(
+                size = 52f,
+                hardness = .7f,
+                family = BrushFamily.WET_PAINT,
+                wetMix = WetMixSettings(
                 dilution = .45f,
                 charge = .75f,
                 attack = .8f,
                 pull = .35f,
-                blur = .12f,
+                ),
             )
-            waterEdgeEnabled = true
-            waterEdgeRadius = 4f
-            waterEdgeOpacity = .35f
-            waterEdgeBlur = 2f
             setRasterLayerSurfaces(mapOf("paint" to surface))
             onRasterLayerCommitted = { commit -> committed = commit.capturePatch() }
         }
@@ -269,8 +264,7 @@ class RasterPaintCommitTest {
         val view = createCanvas {
             tool = EditorTool.PEN
             activeLayerId = "paint"
-            baseWidth = 42f
-            inkColor = Color.MAGENTA
+            installV5TestInk(size = 42f, color = Color.MAGENTA)
             setRasterLayerSurfaces(mapOf("paint" to tileSurface))
             onRasterLayerCommitted = { commit -> committed = commit.capturePatch() }
         }
@@ -298,9 +292,12 @@ class RasterPaintCommitTest {
         val view = createCanvas {
             tool = EditorTool.PEN
             activeLayerId = "paint"
-            baseWidth = 120f
-            brushHardness = .6f
-            procreateWetMix = app.inkloom.document.ProcreateWetMix(dilution = .9f, charge = .6f, attack = .7f, pull = 1f, blur = .25f)
+            installV5TestInk(
+                size = 120f,
+                hardness = .6f,
+                family = BrushFamily.WET_PAINT,
+                wetMix = WetMixSettings(dilution = .9f, charge = .6f, attack = .7f, pull = 1f),
+            )
             setRasterLayerSurfaces(mapOf("paint" to surface))
         }
         send(view, MotionEvent.ACTION_DOWN, 100f, 200f, 0L)
@@ -328,8 +325,7 @@ class RasterPaintCommitTest {
         val view = createCanvas {
             tool = EditorTool.PEN
             activeLayerId = "paint"
-            baseWidth = 42f
-            inkColor = Color.MAGENTA
+            installV5TestInk(size = 42f, color = Color.MAGENTA)
             setRasterLayerSurfaces(mapOf("paint" to surface))
             onRasterLayerCommitted = { commit -> rasterCommits++; committed = commit.capturePatch() }
             onStrokeCommitted = { vectorCommits++ }
@@ -351,7 +347,7 @@ class RasterPaintCommitTest {
             layout(0, 0, 800, 600)
             tool = EditorTool.PEN
             activeLayerId = "paint"
-            baseWidth = 28f
+            installV5TestInk(size = 28f)
             setRasterLayerSurfaces(mapOf("paint" to surface))
             onRasterLayerCommitted = { }
         }
@@ -415,15 +411,16 @@ class RasterPaintCommitTest {
             val view = createCanvas {
                 tool = EditorTool.PEN
                 activeLayerId = "paint"
-                baseWidth = 400f
-                sizePressureEnabled = false
-                tipAssetPath = tipFile.absolutePath
-                tipAssetPaths = listOf(tipFile.absolutePath)
-                grainAssetPath = grainFile.absolutePath
-                grainDensity = 1f
-                grainScale = 100f
-                grainMovement = movement
-                grainZoom = 0f
+                installV5TestInk(
+                    size = 400f,
+                    tipAssetPaths = listOf(tipFile.absolutePath),
+                    textureGrain = TextureGrainSettings(
+                        assetPath = grainFile.absolutePath,
+                        density = 1f,
+                        scale = 100f,
+                        movement = movement,
+                    ),
+                )
                 setRasterLayerSurfaces(mapOf("paint" to surface))
                 onRasterLayerCommitted = { commit -> committed = commit.capturePatch() }
             }

@@ -231,8 +231,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         page.copy(customNumber = customNumber?.trim()?.ifBlank { null }, tags = normalizeTags(tags))
     }
     fun clearPageInk(documentId: String, pageId: String) = updatePage(documentId, pageId) { page ->
-        val locked = page.layers.filter { LayerHierarchy.effectiveLocked(page.layers, it) }.mapTo(mutableSetOf()) { it.id }
-        page.copy(strokes = page.strokes.filter { it.layerId in locked })
+        RasterLayerDocumentOperations.clearUnlocked(page)
     }
     fun setPageCrop(documentId: String, pageId: String, crop: PageCrop) = updatePage(documentId, pageId) { page ->
         page.copy(crop = PageCropTransform.normalized(crop))
@@ -712,10 +711,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
 
     private fun copyElement(element: PageElement): PageElement = when (element) {
         is PageElement.Text -> element.copy(id = java.util.UUID.randomUUID().toString())
-        is PageElement.Sticky -> element.copy(
-            id = java.util.UUID.randomUUID().toString(),
-            strokes = element.strokes.map { it.copy(id = java.util.UUID.randomUUID().toString()) },
-        )
+        is PageElement.Sticky -> element.copy(id = java.util.UUID.randomUUID().toString())
         is PageElement.Shape -> element.copy(id = java.util.UUID.randomUUID().toString())
         is PageElement.Image -> element.copy(id = java.util.UUID.randomUUID().toString())
         is PageElement.Fill -> element.copy(id = java.util.UUID.randomUUID().toString())

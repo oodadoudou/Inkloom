@@ -4300,7 +4300,15 @@ private fun PageRail(
                         DropdownMenuItem(text = { Text(tr("Crop page", "裁剪页面")) }, onClick = { menu = false; cropDraft = page.crop; cropOpen = true })
                         DropdownMenuItem(text = { Text(tr("Rotate 90° clockwise", "顺时针旋转 90°")) }, onClick = { menu = false; onRotate(document.id, page.id) })
                         DropdownMenuItem(text = { Text(if (page.bookmarked) tr("Remove bookmark", "取消收藏") else tr("Bookmark", "收藏")) }, onClick = { menu = false; onToggleBookmark(document.id, page.id) })
-                        DropdownMenuItem(text = { Text(tr("Clear unlocked ink", "清除未锁定墨迹")) }, enabled = page.strokes.any { stroke -> page.layers.firstOrNull { it.id == stroke.layerId }?.locked != true }, onClick = { menu = false; clearOpen = true })
+                        DropdownMenuItem(
+                            text = { Text(tr("Clear unlocked paint", "清除未锁定绘画内容")) },
+                            enabled = page.layers.any { layer ->
+                                layer.contentKind == LayerContentKind.RASTER &&
+                                    !LayerHierarchy.effectiveLocked(page.layers, layer) &&
+                                    (layer.rasterTileSurface != null || layer.rasterAssetPath != null)
+                            },
+                            onClick = { menu = false; clearOpen = true },
+                        )
                         DropdownMenuItem(text = { Text(tr("Delete", "删除")) }, enabled = document.pages.size > 1, onClick = { menu = false; onDelete(document.id, page.id) })
                     }
                 }
@@ -4327,7 +4335,7 @@ private fun PageRail(
                 confirmButton = { TextButton(onClick = { onSaveAsTemplate(document.id, page.id, templateName); saveTemplateNameOpen = false }) { Text(tr("Save", "保存")) } },
                 dismissButton = { TextButton(onClick = { saveTemplateNameOpen = false }) { Text(tr("Cancel", "取消")) } },
             )
-            if (clearOpen) AlertDialog(onDismissRequest = { clearOpen = false }, title = { Text(tr("Clear page ink?", "清除页面墨迹？")) }, text = { Text(tr("All strokes on unlocked layers will be removed. Locked-layer ink is preserved.", "将删除所有未锁定图层上的笔画，锁定图层中的墨迹会保留。")) }, confirmButton = { TextButton(onClick = { onClearInk(document.id, page.id); clearOpen = false }) { Text(tr("Clear", "清除")) } }, dismissButton = { TextButton(onClick = { clearOpen = false }) { Text(tr("Cancel", "取消")) } })
+            if (clearOpen) AlertDialog(onDismissRequest = { clearOpen = false }, title = { Text(tr("Clear page paint?", "清除页面绘画内容？")) }, text = { Text(tr("All pixels on unlocked raster layers will be removed. Locked layers are preserved.", "将删除所有未锁定栅格图层中的像素，锁定图层会保留。")) }, confirmButton = { TextButton(onClick = { onClearInk(document.id, page.id); clearOpen = false }) { Text(tr("Clear", "清除")) } }, dismissButton = { TextButton(onClick = { clearOpen = false }) { Text(tr("Cancel", "取消")) } })
             if (cropOpen) AlertDialog(
                 onDismissRequest = { cropOpen = false },
                 title = { Text(tr("Crop page", "裁剪页面")) },
@@ -4378,10 +4386,6 @@ private fun PageInkPreview(page: InkPage, assets: DocumentAssetService, modifier
         )
         return
     }
-    val visibleLayerIds = remember(page.layers) {
-        page.layers.filter { LayerHierarchy.effectiveVisible(page.layers, it) && it.role != LayerRole.FOLDER }
-            .mapTo(linkedSetOf(), InkLayer::id)
-    }
     Canvas(modifier.background(Color.White)) {
         val guide = Color(0xFFE1E1E1)
         when ((page.background as? PageBackground.Paper)?.pattern) {
@@ -4393,20 +4397,6 @@ private fun PageInkPreview(page: InkPage, assets: DocumentAssetService, modifier
             PaperPattern.DOT -> { var x = 7f; while (x < size.width) { var y = 7f; while (y < size.height) { drawCircle(guide, .7f, Offset(x, y)); y += 8f }; x += 8f } }
             PaperPattern.CORNELL -> { drawLine(guide, Offset(size.width * .28f, 0f), Offset(size.width * .28f, size.height * .78f)); drawLine(guide, Offset(0f, size.height * .78f), Offset(size.width, size.height * .78f)) }
             else -> Unit
-        }
-        page.strokes.asSequence().filter { it.layerId in visibleLayerIds && it.points.isNotEmpty() }.forEach { stroke ->
-            val path = Path()
-            stroke.points.forEachIndexed { index, point ->
-                val x = point.x.coerceIn(0f, 1f) * size.width
-                val y = point.y.coerceIn(0f, 1f) * size.height
-                if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
-            }
-            drawPath(
-                path,
-                color = Color(stroke.colorArgb),
-                alpha = stroke.opacity.coerceIn(0f, 1f),
-                style = Stroke(width = (stroke.width / 1600f * size.width).coerceAtLeast(.55f), cap = StrokeCap.Round),
-            )
         }
     }
 }
@@ -4824,13 +4814,10 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.viewportPanX = viewportState.panX
                 view.viewportPanY = viewportState.panY
                 view.viewportRotationDegrees = viewportState.rotationDegrees
-                view.onStrokeCommitted = {}
                 view.onShapeCommitted = { onElement(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
                 view.onGradientCommitted = commitGradient
                 installFillCommit(view)
                 installRasterCommit(view)
-                view.onStrokeRemoved = {}
-                view.onStrokesReplaced = { _, _, _ -> }
                 view.onViewportScale = onZoom
                 view.onViewportPinch = onPinch
                 view.onViewportPan = onPan
@@ -4888,8 +4875,6 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.viewportPanX = viewportState.panX
                 view.viewportPanY = viewportState.panY
                 view.viewportRotationDegrees = viewportState.rotationDegrees
-                view.setDocumentStrokes(renderedPage.strokes.filter { it.layerId in visibleLayerIds }.sortedBy { layerOrder[it.layerId] ?: Int.MAX_VALUE }, "$documentId:${page.id}")
-                view.setProtectedStrokeIds(page.strokes.filter { it.layerId in lockedLayerIds }.mapTo(mutableSetOf()) { it.id })
                 view.setProtectedLayerIds(lockedLayerIds)
                 view.setPageBackground(background)
                 view.setLayerElementBitmaps(layerElementBitmaps)
@@ -4910,13 +4895,10 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.shapeKind = shapeKind
                 view.pageModelWidth = renderedPage.width
                 view.pageModelHeight = renderedPage.height
-                view.onStrokeCommitted = {}
                 view.onShapeCommitted = { onElement(documentId, page.id, PageCropTransform.unproject(it, page.crop)) }
                 view.onGradientCommitted = commitGradient
                 installFillCommit(view)
                 installRasterCommit(view)
-                view.onStrokeRemoved = {}
-                view.onStrokesReplaced = { _, _, _ -> }
                 view.applyBrushConfiguration(tool, settings, activeBrush, brushSize, brushOpacity, brushColor, eraserPreset, secondaryBrushColor)
                 view.onViewportScale = onZoom
                 view.onViewportPinch = onPinch
@@ -5414,7 +5396,6 @@ private fun ObjectElementView(
     var dragX by remember(element.id) { mutableFloatStateOf(0f) }
     var dragY by remember(element.id) { mutableFloatStateOf(0f) }
     var editing by remember(element.id) { mutableStateOf(false) }
-    var stickyInkEditing by remember(element.id) { mutableStateOf(false) }
     val objectWidth = (canvasWidth * (element.width / page.width)).coerceIn(54.dp, canvasWidth)
     val objectHeight = (canvasHeight * (element.height / page.height)).coerceIn(42.dp, canvasHeight)
     val gradientForHandles = (element as? PageElement.Shape)?.takeIf { selected && editable && it.gradientDefinition() != null }
@@ -5471,7 +5452,7 @@ private fun ObjectElementView(
                 onDoubleClick = {
                     onSelect()
                     when (element) {
-                        is PageElement.Sticky -> stickyInkEditing = true
+                        is PageElement.Sticky -> editing = true
                         is PageElement.Link -> if (InternalLinkTarget.isInternal(element)) {
                             val documentId = element.targetDocumentId
                             val pageId = element.targetPageId
@@ -5504,14 +5485,6 @@ private fun ObjectElementView(
                         if (element.collapsed) element.text.lineSequence().firstOrNull().orEmpty() else element.text,
                         Modifier.padding(10.dp),
                         maxLines = if (element.collapsed) 1 else 12,
-                    )
-                    if (!element.collapsed && element.strokes.isNotEmpty()) AndroidView(
-                        factory = { context -> InkCanvasView(context).apply { isEnabled = false; tool = EditorTool.SELECT } },
-                        update = { preview ->
-                            preview.setDocumentStrokes(element.strokes, "sticky-preview:${element.id}")
-                            preview.setProtectedStrokeIds(element.strokes.mapTo(mutableSetOf(), InkStroke::id))
-                        },
-                        modifier = Modifier.fillMaxSize(),
                     )
                 }
             }
@@ -5624,7 +5597,6 @@ private fun ObjectElementView(
         if (selected && editable) Surface(Modifier.align(Alignment.TopEnd).offset(y = (-38).dp), shape = RoundedCornerShape(18.dp), color = Color.White, shadowElevation = 4.dp) {
             Row {
                 if (element is PageElement.Sticky) {
-                    IconButton(onClick = { stickyInkEditing = true }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Brush, tr("Write inside sticky note", "在便签内书写"), Modifier.size(18.dp)) }
                     IconButton(onClick = { onChange(element.copy(collapsed = !element.collapsed)) }, modifier = Modifier.size(36.dp)) { Icon(if (element.collapsed) Icons.Outlined.UnfoldMore else Icons.Outlined.UnfoldLess, if (element.collapsed) tr("Expand sticky note", "展开便签") else tr("Collapse sticky note", "折叠便签"), Modifier.size(18.dp)) }
                 }
                 if (element is PageElement.Link) IconButton(onClick = {
@@ -5640,120 +5612,7 @@ private fun ObjectElementView(
         }
     }
     if (editing) ElementEditorDialog(element, onDismiss = { editing = false }, onSave = { onChange(it); editing = false })
-    if (stickyInkEditing && element is PageElement.Sticky) StickyInkEditorDialog(
-        sticky = element,
-        settings = settings,
-        activeBrush = activeBrush,
-        brushSize = brushSize,
-        brushOpacity = brushOpacity,
-        brushColor = brushColor,
-        initialEraserPreset = eraserPreset,
-        onChange = { onChange(it) },
-        onDismiss = { stickyInkEditing = false },
-    )
 }
-
-
-@Composable
-private fun StickyInkEditorDialog(
-    sticky: PageElement.Sticky,
-    settings: AppSettings,
-    activeBrush: ImportedBrush?,
-    brushSize: Float,
-    brushOpacity: Float,
-    brushColor: Int,
-    initialEraserPreset: EraserPreset,
-    onChange: (PageElement.Sticky) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var draft by remember(sticky.id) { mutableStateOf(sticky) }
-    var tool by remember(sticky.id) { mutableStateOf(EditorTool.PEN) }
-    var eraserPreset by remember(sticky.id) { mutableStateOf(initialEraserPreset) }
-    var canvasView by remember(sticky.id) { mutableStateOf<InkCanvasView?>(null) }
-    LaunchedEffect(sticky.strokes, sticky.text, sticky.collapsed) { draft = sticky }
-
-    fun persist(strokes: List<InkStroke> = draft.strokes, collapsed: Boolean = draft.collapsed) {
-        val updated = draft.copy(strokes = strokes, collapsed = collapsed)
-        draft = updated
-        onChange(updated)
-    }
-
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(
-            Modifier.fillMaxWidth(.9f).fillMaxHeight(.86f),
-            shape = RoundedCornerShape(22.dp),
-            color = Color.White,
-            shadowElevation = 12.dp,
-        ) {
-            Column(Modifier.fillMaxSize().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Column(Modifier.weight(1f)) {
-                        Text(tr("Write inside sticky note", "在便签内书写"), fontWeight = FontWeight.SemiBold)
-                        Text(activeBrush?.name ?: tr("System pen", "系统画笔"), color = MutedInk, fontSize = 11.sp, maxLines = 1)
-                    }
-                    FilterChip(selected = tool == EditorTool.PEN, onClick = { tool = EditorTool.PEN }, label = { Text(tr("Pen", "钢笔")) }, leadingIcon = { Icon(Icons.Outlined.Brush, null, Modifier.size(16.dp)) })
-                    FilterChip(selected = tool == EditorTool.HIGHLIGHTER, onClick = { tool = EditorTool.HIGHLIGHTER }, label = { Text(tr("Marker", "马克笔")) }, leadingIcon = { Icon(Icons.Outlined.BorderColor, null, Modifier.size(16.dp)) })
-                    FilterChip(selected = tool == EditorTool.ERASER, onClick = { tool = EditorTool.ERASER }, label = { Text(tr("Eraser", "橡皮擦")) }, leadingIcon = { Icon(Icons.Outlined.AutoFixOff, null, Modifier.size(16.dp)) })
-                    if (tool == EditorTool.ERASER) EraserPresetMenu(eraserPreset, { eraserPreset = it })
-                }
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { canvasView?.undo() }) { Icon(Icons.Outlined.Undo, tr("Undo sticky ink", "撤销便签笔迹")) }
-                    IconButton(onClick = { canvasView?.redo() }) { Icon(Icons.Outlined.Redo, tr("Redo sticky ink", "重做便签笔迹")) }
-                    TextButton(onClick = { persist(strokes = emptyList()) }, enabled = draft.strokes.isNotEmpty()) { Text(tr("Clear ink", "清除笔迹")) }
-                    Spacer(Modifier.weight(1f))
-                    TextButton(onClick = { persist(collapsed = !draft.collapsed) }) { Text(if (draft.collapsed) tr("Expand on page", "在页面上展开") else tr("Collapse on page", "在页面上折叠")) }
-                    Button(onClick = onDismiss) { Text(tr("Done", "完成")) }
-                }
-                HorizontalDivider()
-                Box(
-                    Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color(draft.colorArgb)).border(1.dp, Color(0xFFBDBDBD), RoundedCornerShape(12.dp)),
-                ) {
-                    Text(draft.text, Modifier.padding(14.dp), color = Color(0xFF333333), maxLines = 10)
-                    AndroidView(
-                        factory = { context -> CanvasHost(context).also { canvasView = it.canvasView } },
-                        update = { host ->
-                            val view = host.canvasView
-                            canvasView = view
-                            view.applyBrushConfiguration(tool, settings, activeBrush, brushSize, brushOpacity, brushColor, eraserPreset)
-                            view.activeLayerId = LayerIds.INK
-                            view.pageModelWidth = sticky.width
-                            view.pageModelHeight = sticky.height
-                            view.setDocumentStrokes(draft.strokes, "sticky:${sticky.id}")
-                            view.setProtectedStrokeIds(emptySet())
-                            view.onStrokeCommitted = { stroke -> persist(strokes = draft.strokes + stroke) }
-                            view.onStrokeRemoved = { strokeId -> persist(strokes = draft.strokes.filterNot { it.id == strokeId }) }
-                            view.onStrokesReplaced = { removedIds, replacements, indices ->
-                                persist(strokes = replaceStickyStrokes(draft.strokes, removedIds, replacements, indices))
-                            }
-                            view.onUndoGesture = { view.undo() }
-                        },
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-                Text(tr("Stylus writes. Fingers navigate unless finger drawing is enabled in Settings. Changes are saved after every completed stroke.", "触控笔用于书写；除非在设置中开启手指书写，否则手指仅用于导航。每笔完成后都会自动保存。"), color = MutedInk, fontSize = 11.sp)
-            }
-        }
-    }
-}
-
-private fun replaceStickyStrokes(
-    current: List<InkStroke>,
-    removedIds: List<String>,
-    replacements: List<InkStroke>,
-    replacementIndices: List<Int>,
-): List<InkStroke> {
-    val replacedIds = removedIds.toSet() + replacements.map(InkStroke::id)
-    val result = current.filterNot { it.id in replacedIds }.toMutableList()
-    if (replacementIndices.size == replacements.size) {
-        replacements.zip(replacementIndices).sortedBy { (_, index) -> index }.forEach { (stroke, index) ->
-            result.add(index.coerceIn(0, result.size), stroke)
-        }
-    } else {
-        result += replacements
-    }
-    return result
-}
-
 @Composable
 private fun ElementEditorDialog(element: PageElement, onDismiss: () -> Unit, onSave: (PageElement) -> Unit) {
     var draft by remember(element.id) { mutableStateOf(element) }
@@ -8101,9 +7960,7 @@ private fun BrushPanel(
                 )
             }
         }
-        val v5Editing = remember(brush.id) { mutableStateOf(true) }
-        if (v5Editing.value) {
-            BrushEditorV1Dialog(
+        BrushEditorV1Dialog(
                 source = owned,
                 settings = settings,
                 onDismiss = { creatingBrushId = null; editBrush = null },
@@ -8151,26 +8008,7 @@ private fun BrushPanel(
                     creatingBrushId = null
                     editBrush = null
                 },
-            )
-        } else {
-            BrushEditorDialog(
-                brush,
-                settings,
-                onDismiss = { creatingBrushId = null; editBrush = null },
-                onSave = { updated ->
-                    val mapped = BrushSemanticMapper.apply(updated)
-                    if (creatingBrushId == brush.id) {
-                        onReplaceBrushes(brushes + mapped)
-                    } else if (mapped != brush) {
-                        historyStore.record(brush)
-                        historyRevision++
-                        onUpdateBrush(mapped)
-                    }
-                    creatingBrushId = null
-                    editBrush = null
-                },
-            )
-        }
+        )
     }
     historyBrush?.let { selected ->
         val current = brushes.firstOrNull { it.id == selected.id } ?: selected
@@ -9402,715 +9240,9 @@ private fun BrushTipPreview(brush: ImportedBrush, modifier: Modifier = Modifier)
 }
 
 @Composable
-private fun BrushEditorDialog(brush: ImportedBrush, settings: AppSettings, onDismiss: () -> Unit, onSave: (ImportedBrush) -> Unit) {
-    var draft by remember(brush.id) { mutableStateOf(brush) }
-    var tagText by remember(brush.id) { mutableStateOf(brush.tags.joinToString(", ")) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Row(verticalAlignment = Alignment.CenterVertically) { BrushTipPreview(draft, Modifier.size(48.dp)); Spacer(Modifier.width(12.dp)); Column { Text(draft.name, maxLines = 1); Text(tr("Brush Studio", "笔刷工作室"), color = MutedInk, fontSize = 11.sp) } } },
-        text = {
-            LazyColumn(Modifier.widthIn(min = 360.dp, max = 520.dp).heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                item { OutlinedTextField(draft.name, { draft = draft.copy(name = it) }, label = { Text(tr("Brush name", "笔刷名称")) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
-                item { OutlinedTextField(draft.groupName, { draft = draft.copy(groupName = it.take(BrushGroupOperations.MAX_PATH_LENGTH)) }, label = { Text(tr("Group path", "分组路径")) }, supportingText = { Text(tr("Use / for nested groups; leave empty for Ungrouped", "使用 / 创建嵌套分组；留空则归入“未分组”")) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
-                item { OutlinedTextField(tagText, { tagText = it }, label = { Text(tr("Tags", "标签")) }, supportingText = { Text(tr("Separate tags with commas", "使用逗号分隔标签")) }, modifier = Modifier.fillMaxWidth()) }
-                item { BrushTestArea(draft, settings) }
-                item { BrushSettingSlider(tr("Size", "笔刷尺寸"), draft.defaultSize, .5f..400f) { draft = draft.copy(defaultSize = it) } }
-                item { SettingSwitch(tr("Specify by size on screen", "按屏幕尺寸指定"), tr("Keeps the physical brush footprint equal to its 100% view size while the canvas is zoomed.", "画布缩放时，让笔刷在屏幕上的实际覆盖范围保持为 100% 视图时的大小。"), draft.sizeSyncViewScale) { draft = draft.copy(sizeSyncViewScale = it) } }
-                item { BrushSettingSlider("StreamLine", draft.streamLine, 0f..1f) { draft = draft.copy(streamLine = it) } }
-                item { BrushSettingSlider(tr("StreamLine pressure", "StreamLine 压力平滑"), draft.streamLinePressure, 0f..1f) { draft = draft.copy(streamLinePressure = it) } }
-                item { BrushSettingSlider(tr("Procreate stabilization", "Procreate 稳定化"), draft.procreateStabilization, 0f..1f) { draft = draft.copy(procreateStabilization = it) } }
-                item { BrushSettingSlider(tr("Motion filtering", "运动过滤"), draft.motionFiltering, 0f..1f) { draft = draft.copy(motionFiltering = it) } }
-                if (draft.motionFiltering > 0f) item { BrushSettingSlider(tr("Motion filtering expression", "运动过滤表现力"), draft.motionFilteringExpression, 0f..1f) { draft = draft.copy(motionFilteringExpression = it) } }
-                item { BrushSettingSlider(tr("Stabilization", "抖动修正"), draft.stabilization, 0f..0.9f) { draft = draft.copy(stabilization = it) } }
-                item { SettingSwitch("Adjust stabilization by speed", "Uses the imported CSP correction behavior when available.", draft.stabilizationBySpeed) { draft = draft.copy(stabilizationBySpeed = it) } }
-                if (draft.stabilizationBySpeed) item { Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { FilterChip(selected = draft.stabilizationBySpeedMode == StrokeStabilization.INCREASE_WHEN_SLOW, onClick = { draft = draft.copy(stabilizationBySpeedMode = StrokeStabilization.INCREASE_WHEN_SLOW) }, label = { Text(tr("More when slow", "慢速时增强")) }); FilterChip(selected = draft.stabilizationBySpeedMode == StrokeStabilization.REDUCE_WHEN_FAST, onClick = { draft = draft.copy(stabilizationBySpeedMode = StrokeStabilization.REDUCE_WHEN_FAST) }, label = { Text(tr("Less when fast", "快速时减弱")) }) } }
-                item { SettingSwitch(tr("Post correction", "落笔后修正"), tr("Smooths the completed stroke after realtime stabilization.", "在实时防抖之后修正已经完成的笔画。"), draft.postCorrectionEnabled) { draft = draft.copy(postCorrectionEnabled = it) } }
-                if (draft.postCorrectionEnabled) item { BrushSettingSlider(tr("Post-correction strength", "落笔后修正强度"), draft.postCorrection, 0f..1f) { draft = draft.copy(postCorrection = it) } }
-                if (draft.postCorrectionEnabled) item { SettingSwitch(tr("Adjust by speed", "按速度调整"), null, draft.postCorrectionAdjustBySpeed) { draft = draft.copy(postCorrectionAdjustBySpeed = it) } }
-                if (draft.postCorrectionEnabled) item { SettingSwitch(tr("Adjust by canvas scale", "按画布缩放调整"), null, draft.postCorrectionAdjustByScale) { draft = draft.copy(postCorrectionAdjustByScale = it) } }
-                if (draft.postCorrectionEnabled) item { SettingSwitch(tr("Quadratic Bezier", "二次贝塞尔曲线"), tr("Off uses the spline correction profile.", "关闭时使用样条曲线修正。"), draft.postCorrectionBezier) { draft = draft.copy(postCorrectionBezier = it) } }
-                item { SettingSwitch(tr("Sharp angles", "尖锐角"), tr("Preserves pointed corners instead of rounding them during correction.", "修正时保留尖角，避免被平滑成圆角。"), draft.correctionSharpAngles) { draft = draft.copy(correctionSharpAngles = it) } }
-                item { BrushSettingSlider(tr("Default opacity", "默认不透明度"), draft.defaultOpacity, .01f..1f) { draft = draft.copy(defaultOpacity = it) } }
-                item { SettingSwitch("Use as eraser", "Selects the eraser tool and uses this tip shape to remove ink.", draft.isEraser) { draft = draft.copy(isEraser = it) } }
-                item { SettingSwitch("Pressure controls size", "Uses the imported CSP curve when available.", draft.sizePressureEnabled) { draft = draft.copy(sizePressureEnabled = it) } }
-                if (draft.sizePressureEnabled) item { BrushSettingSlider("Minimum size", draft.sizePressureMinimum, 0f..1f) { draft = draft.copy(sizePressureMinimum = it) } }
-                if (draft.sizePressureEnabled) item { PressureCurveEditor("Size pressure", draft.sizePressureCurve) { draft = draft.copy(sizePressureCurve = it) } }
-                item { SecondaryDynamicsEditor("Size", draft.sizeSecondaryDynamics) { draft = draft.copy(sizeSecondaryDynamics = it) } }
-                item { SettingSwitch("Pressure controls opacity", null, draft.opacityPressureEnabled) { draft = draft.copy(opacityPressureEnabled = it) } }
-                if (draft.opacityPressureEnabled) item { BrushSettingSlider("Minimum opacity", draft.opacityPressureMinimum, 0f..1f) { draft = draft.copy(opacityPressureMinimum = it) } }
-                if (draft.opacityPressureEnabled) item { PressureCurveEditor("Opacity pressure", draft.opacityPressureCurve) { draft = draft.copy(opacityPressureCurve = it) } }
-                item { SecondaryDynamicsEditor("Opacity", draft.opacitySecondaryDynamics) { draft = draft.copy(opacitySecondaryDynamics = it) } }
-                item { SettingSwitch("Pressure controls flow", null, draft.flowPressureEnabled) { draft = draft.copy(flowPressureEnabled = it) } }
-                if (draft.flowPressureEnabled) item { BrushSettingSlider("Minimum flow", draft.flowPressureMinimum, 0f..1f) { draft = draft.copy(flowPressureMinimum = it) } }
-                if (draft.flowPressureEnabled) item { PressureCurveEditor("Flow pressure", draft.flowPressureCurve) { draft = draft.copy(flowPressureCurve = it) } }
-                item { SecondaryDynamicsEditor("Flow", draft.flowSecondaryDynamics) { draft = draft.copy(flowSecondaryDynamics = it) } }
-                item { SettingSwitch("Pressure controls spacing", "Imported from CSP Interval dynamics when available.", draft.spacingPressureEnabled) { draft = draft.copy(spacingPressureEnabled = it) } }
-                if (draft.spacingPressureEnabled) item { BrushSettingSlider("Minimum spacing", draft.spacingPressureMinimum, 0f..1f) { draft = draft.copy(spacingPressureMinimum = it) } }
-                if (draft.spacingPressureEnabled) item { PressureCurveEditor("Spacing pressure", draft.spacingPressureCurve) { draft = draft.copy(spacingPressureCurve = it) } }
-                item { SecondaryDynamicsEditor("Spacing", draft.spacingSecondaryDynamics) { draft = draft.copy(spacingSecondaryDynamics = it) } }
-                item { SettingSwitch("Pressure controls thickness", null, draft.thicknessPressureEnabled) { draft = draft.copy(thicknessPressureEnabled = it) } }
-                if (draft.thicknessPressureEnabled) item { BrushSettingSlider("Minimum thickness", draft.thicknessPressureMinimum, 0f..1f) { draft = draft.copy(thicknessPressureMinimum = it) } }
-                if (draft.thicknessPressureEnabled) item { PressureCurveEditor("Thickness pressure", draft.thicknessPressureCurve) { draft = draft.copy(thicknessPressureCurve = it) } }
-                item { SecondaryDynamicsEditor("Thickness", draft.thicknessSecondaryDynamics) { draft = draft.copy(thicknessSecondaryDynamics = it) } }
-                item { SettingSwitch("Pressure controls blur", null, draft.blurPressureEnabled) { draft = draft.copy(blurPressureEnabled = it) } }
-                if (draft.blurPressureEnabled) item { BrushSettingSlider("Minimum blur", draft.blurPressureMinimum, 0f..1f) { draft = draft.copy(blurPressureMinimum = it) } }
-                if (draft.blurPressureEnabled) item { PressureCurveEditor("Blur pressure", draft.blurPressureCurve) { draft = draft.copy(blurPressureCurve = it) } }
-                item { SecondaryDynamicsEditor("Blur", draft.blurSecondaryDynamics) { draft = draft.copy(blurSecondaryDynamics = it) } }
-                item { Text(tr("TAPER", "收尖"), color = Sage, fontSize = 11.sp) }
-                if (draft.format == BrushFormat.PROCREATE || !draft.procreateTaper.isDisabled()) {
-                    item { Text(tr("Pressure Taper", "压感收尖"), style = MaterialTheme.typography.titleSmall) }
-                    item { BrushSettingSlider(tr("Pressure taper start", "压感起始长度"), draft.procreateTaper.pressureStartLength, 0f..1f) { value -> val linked = draft.procreateTaper.pressureLinked; draft = draft.copy(procreateTaper = draft.procreateTaper.copy(pressureStartLength = value, pressureEndLength = if (linked) value else draft.procreateTaper.pressureEndLength)) } }
-                    item { BrushSettingSlider(tr("Pressure taper end", "压感结束长度"), draft.procreateTaper.pressureEndLength, 0f..1f) { value -> val linked = draft.procreateTaper.pressureLinked; draft = draft.copy(procreateTaper = draft.procreateTaper.copy(pressureEndLength = value, pressureStartLength = if (linked) value else draft.procreateTaper.pressureStartLength)) } }
-                    item { SettingSwitch(tr("Link pressure tip sizes", "联动压感两端"), tr("Keeps the start and end taper lengths matched.", "保持起始与结束收尖长度一致。"), draft.procreateTaper.pressureLinked) { enabled -> draft = draft.copy(procreateTaper = draft.procreateTaper.copy(pressureLinked = enabled, pressureEndLength = if (enabled) draft.procreateTaper.pressureStartLength else draft.procreateTaper.pressureEndLength)) } }
-                    item { BrushSettingSlider(tr("Pressure taper size", "压感尺寸收尖"), draft.procreateTaper.pressureSize, 0f..1f) { draft = draft.copy(procreateTaper = draft.procreateTaper.copy(pressureSize = it)) } }
-                    item { BrushSettingSlider(tr("Pressure taper opacity", "压感透明度收尖"), draft.procreateTaper.pressureOpacity, 0f..1f) { draft = draft.copy(procreateTaper = draft.procreateTaper.copy(pressureOpacity = it)) } }
-                    item { BrushSettingSlider(tr("Pressure response", "收尖压力响应"), draft.procreateTaper.pressureResponse, 0f..1f) { draft = draft.copy(procreateTaper = draft.procreateTaper.copy(pressureResponse = it)) } }
-                    item { BrushSettingSlider(tr("Pressure tip", "压感笔尖形态"), draft.procreateTaper.pressureTip, 0f..1f) { draft = draft.copy(procreateTaper = draft.procreateTaper.copy(pressureTip = it)) } }
-                    item { Text(tr("Touch Taper", "触控收尖"), style = MaterialTheme.typography.titleSmall) }
-                    item { BrushSettingSlider(tr("Touch taper start", "触控起始长度"), draft.procreateTaper.touchStartLength, 0f..1f) { value -> val linked = draft.procreateTaper.touchLinked; draft = draft.copy(procreateTaper = draft.procreateTaper.copy(touchStartLength = value, touchEndLength = if (linked) value else draft.procreateTaper.touchEndLength)) } }
-                    item { BrushSettingSlider(tr("Touch taper end", "触控结束长度"), draft.procreateTaper.touchEndLength, 0f..1f) { value -> val linked = draft.procreateTaper.touchLinked; draft = draft.copy(procreateTaper = draft.procreateTaper.copy(touchEndLength = value, touchStartLength = if (linked) value else draft.procreateTaper.touchStartLength)) } }
-                    item { SettingSwitch(tr("Link touch tip sizes", "联动触控两端"), tr("Keeps the start and end touch taper lengths matched.", "保持触控起始与结束收尖长度一致。"), draft.procreateTaper.touchLinked) { enabled -> draft = draft.copy(procreateTaper = draft.procreateTaper.copy(touchLinked = enabled, touchEndLength = if (enabled) draft.procreateTaper.touchStartLength else draft.procreateTaper.touchEndLength)) } }
-                    item { BrushSettingSlider(tr("Touch taper size", "触控尺寸收尖"), draft.procreateTaper.touchSize, 0f..1f) { draft = draft.copy(procreateTaper = draft.procreateTaper.copy(touchSize = it)) } }
-                    item { BrushSettingSlider(tr("Touch taper opacity", "触控透明度收尖"), draft.procreateTaper.touchOpacity, 0f..1f) { draft = draft.copy(procreateTaper = draft.procreateTaper.copy(touchOpacity = it)) } }
-                    item { BrushSettingSlider(tr("Touch tip", "触控笔尖形态"), draft.procreateTaper.touchTip, 0f..1f) { draft = draft.copy(procreateTaper = draft.procreateTaper.copy(touchTip = it)) } }
-                    item { SettingSwitch(tr("Classic Taper", "经典收尖"), tr("Uses the legacy linear taper profile.", "使用旧版线性收尖曲线。"), draft.procreateTaper.classic) { draft = draft.copy(procreateTaper = draft.procreateTaper.copy(classic = it)) } }
-                } else {
-                    item { LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) { BrushTaperMode.entries.forEach { mode -> item { FilterChip(selected = draft.taperMode == mode, onClick = { val toDistance = mode == BrushTaperMode.DISTANCE && draft.taperMode != BrushTaperMode.DISTANCE; val fromDistance = mode != BrushTaperMode.DISTANCE && draft.taperMode == BrushTaperMode.DISTANCE; draft = draft.copy(taperMode = mode, taperStartEnabled = if (mode == BrushTaperMode.FADE) false else draft.taperStartEnabled, taperStartLength = when { toDistance -> draft.taperStartLength * 100f; fromDistance -> draft.taperStartLength / 100f; else -> draft.taperStartLength }, taperEndLength = when { toDistance -> draft.taperEndLength * 100f; fromDistance -> draft.taperEndLength / 100f; else -> draft.taperEndLength }) }, label = { Text(localizedTaperMode(mode)) }) } } } }
-                    if (draft.taperMode != BrushTaperMode.FADE) item { SettingSwitch("Starting taper", "Gradually grows from the configured minimum over the start of the stroke.", draft.taperStartEnabled) { draft = draft.copy(taperStartEnabled = it) } }
-                    if (draft.taperStartEnabled) item { BrushSettingSlider("Start length", draft.taperStartLength, if (draft.taperMode == BrushTaperMode.DISTANCE) 1f..400f else .01f..1f) { draft = draft.copy(taperStartLength = it) } }
-                    if (draft.taperStartEnabled && draft.taperMode == BrushTaperMode.DISTANCE) item { Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { FilterChip(selected = draft.taperStartLengthUnit == 0, onClick = { draft = draft.copy(taperStartLengthUnit = 0) }, label = { Text("px") }); FilterChip(selected = draft.taperStartLengthUnit == 2, onClick = { draft = draft.copy(taperStartLengthUnit = 2) }, label = { Text("mm") }) } }
-                    if (draft.taperStartEnabled) item { BrushSettingSlider("Start minimum size", draft.taperStartMinimum, 0f..1f) { draft = draft.copy(taperStartMinimum = it) } }
-                    item { SettingSwitch(if (draft.taperMode == BrushTaperMode.FADE) "Fade" else "Ending taper", if (draft.taperMode == BrushTaperMode.FADE) "Fades from full size toward the configured minimum." else "Gradually narrows toward the configured minimum at stroke end.", draft.taperEndEnabled) { draft = draft.copy(taperEndEnabled = it) } }
-                    if (draft.taperEndEnabled) item { BrushSettingSlider(if (draft.taperMode == BrushTaperMode.FADE) "Fade length" else "End length", draft.taperEndLength, if (draft.taperMode == BrushTaperMode.DISTANCE) 1f..400f else .01f..1f) { draft = draft.copy(taperEndLength = it) } }
-                    if (draft.taperEndEnabled && draft.taperMode == BrushTaperMode.DISTANCE) item { Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { FilterChip(selected = draft.taperEndLengthUnit == 0, onClick = { draft = draft.copy(taperEndLengthUnit = 0) }, label = { Text("px") }); FilterChip(selected = draft.taperEndLengthUnit == 2, onClick = { draft = draft.copy(taperEndLengthUnit = 2) }, label = { Text("mm") }) } }
-                    if (draft.taperEndEnabled) item { BrushSettingSlider("End minimum size", draft.taperEndMinimum, 0f..1f) { draft = draft.copy(taperEndMinimum = it) } }
-                }
-                item { BrushGapModeEditor(tr("Brush-tip gap", "笔尖间隔"), draft.spacingMode) { draft = draft.copy(spacingMode = it) } }
-                if (draft.spacingMode == CspBrushGap.FIXED) item { BrushSettingSlider("Spacing", draft.spacing, .01f..2f) { draft = draft.copy(spacing = it) } }
-                item { BrushSettingSlider(tr("Stroke fall off", "笔画渐隐"), draft.strokeFalloff, 0f..1f) { draft = draft.copy(strokeFalloff = it) } }
-                item { BrushSettingSlider(tr("Path jitter", "路径横向抖动"), draft.strokePathJitter, 0f..4f) { draft = draft.copy(strokePathJitter = it) } }
-                item { BrushSettingSlider(tr("Along-path jitter", "路径纵向抖动"), draft.strokePathLongitudinalJitter, 0f..4f) { draft = draft.copy(strokePathLongitudinalJitter = it) } }
-                item { BrushSettingSlider(tr("Flow", "墨水浓度"), draft.flow, 0f..1f) { draft = draft.copy(flow = it) } }
-                item { BrushSettingSlider(tr("Hardness", "硬度"), draft.hardness, 0f..1f) { draft = draft.copy(hardness = it) } }
-                item {
-                    Text(tr("Anti-alias", "抗锯齿"), color = MutedInk, fontSize = 11.sp)
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf(CspAntiAlias.NONE, CspAntiAlias.WEAK, CspAntiAlias.MEDIUM, CspAntiAlias.STRONG).forEach { mode ->
-                            item { FilterChip(selected = draft.antiAliasMode == mode, onClick = { draft = draft.copy(antiAliasMode = mode) }, label = { Text(when (mode) { CspAntiAlias.NONE -> tr("Off", "关闭"); CspAntiAlias.WEAK -> tr("Weak", "弱"); CspAntiAlias.STRONG -> tr("Strong", "强"); else -> tr("Medium", "中") }) }) }
-                        }
-                    }
-                }
-                item { BrushSettingSlider("Brush blur", draft.blur, 0f..80f) { draft = draft.copy(blur = it) } }
-                if (draft.blur > 0f) item { Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { FilterChip(selected = draft.blurUnit == 0, onClick = { draft = draft.copy(blurUnit = 0) }, label = { Text(tr("Blur px", "模糊 px")) }); FilterChip(selected = draft.blurUnit == 2, onClick = { draft = draft.copy(blurUnit = 2) }, label = { Text(tr("Blur mm", "模糊 mm")) }) } }
-                item { SettingSwitch("Link blur to brush size", "Scales the imported CSP blur when brush size changes.", draft.blurLinkedToSize) { draft = draft.copy(blurLinkedToSize = it) } }
-                item { BrushSettingSlider(tr("Tilt gradation", "倾斜渐变柔化"), draft.tiltGradation, 0f..1f) { draft = draft.copy(tiltGradation = it) } }
-                if (draft.tiltGradation > 0f) item { BrushSettingSlider(tr("Gradation trigger", "渐变触发角"), draft.tiltGradationStart, 0f..0.99f) { draft = draft.copy(tiltGradationStart = it) } }
-                item { BrushSettingSlider(tr("Tilt bleed", "倾斜渗色"), draft.tiltBleed, 0f..1f) { draft = draft.copy(tiltBleed = it) } }
-                if (draft.tiltBleed > 0f) item { BrushSettingSlider(tr("Bleed trigger", "渗色触发角"), draft.tiltBleedStart, 0f..0.99f) { draft = draft.copy(tiltBleedStart = it) } }
-                item { SettingSwitch(tr("Tilt size compression", "倾斜尺寸压缩"), tr("Keeps the grain from enlarging when tilt increases brush size.", "倾斜增大笔刷时保持纹理尺寸不随之放大。"), draft.tiltSizeCompression) { draft = draft.copy(tiltSizeCompression = it) } }
-                if (draft.grainPreviewPath != null) item { BrushGrainPreview(draft.grainPreviewPath!!, draft.grainDensity) }
-                if (draft.grainPreviewPath != null) item { BrushSettingSlider(tr("Paper texture density", "纸质浓度"), draft.grainDensity, 0f..1f) { draft = draft.copy(grainDensity = it) } }
-                if (draft.grainPreviewPath != null) item { BrushSettingSlider(tr("Minimum grain depth", "最低纹理深度"), draft.grainDensityMinimum.coerceAtMost(draft.grainDensity), 0f..draft.grainDensity.coerceAtLeast(.01f)) { draft = draft.copy(grainDensityMinimum = it) } }
-                if (draft.grainPreviewPath != null) item { ParameterDynamicsEditor(tr("Paper texture density dynamics", "纸张纹理密度动态"), "Paper texture density", draft.grainDensityDynamics) { draft = draft.copy(grainDensityDynamics = it) } }
-                if (draft.grainPreviewPath != null) item { BrushSettingSlider("Paper texture scale", draft.grainScale, 1f..400f) { draft = draft.copy(grainScale = it) } }
-                if (draft.grainPreviewPath != null) item { BrushSettingSlider("Grain movement: drag → roller", draft.grainMovement, 0f..1f) { draft = draft.copy(grainMovement = it) } }
-                if (draft.grainPreviewPath != null) item { BrushSettingSlider("Grain zoom: Follow Size → Cropped", draft.grainZoom, 0f..1f) { draft = draft.copy(grainZoom = it) } }
-                if (draft.grainPreviewPath != null) item { BrushSettingSlider("Paper texture rotation", draft.grainRotationDegrees, -180f..180f) { draft = draft.copy(grainRotationDegrees = it) } }
-                if (draft.grainPreviewPath != null) item { BrushSettingSlider(tr("Grain rotation: inverse → fixed → follow stroke", "纹理旋转：反向 → 固定 → 跟随笔画"), draft.grainStrokeRotation, -1f..1f) { draft = draft.copy(grainStrokeRotation = it) } }
-                if (draft.grainPreviewPath != null) item { BrushSettingSlider("Paper texture brightness", draft.grainBrightness, -100f..100f) { draft = draft.copy(grainBrightness = it) } }
-                if (draft.grainPreviewPath != null) item { BrushSettingSlider("Paper texture contrast", draft.grainContrast, -100f..100f) { draft = draft.copy(grainContrast = it) } }
-                if (draft.grainPreviewPath != null) item { SettingSwitch("Invert paper texture", null, draft.grainReversed) { draft = draft.copy(grainReversed = it) } }
-                if (draft.grainPreviewPath != null) item { SettingSwitch("Emphasize paper texture", null, draft.grainEmphasized) { draft = draft.copy(grainEmphasized = it) } }
-                if (draft.grainPreviewPath != null) item { SettingSwitch("Jitter grain origin per stroke", "Keeps each stroke deterministic while avoiding an identical repeated grain start.", draft.grainOffsetJitter) { draft = draft.copy(grainOffsetJitter = it) } }
-                if (draft.grainPreviewPath != null) item { BrushTextureCompositeEditor(draft.grainCompositeMode) { draft = draft.copy(grainCompositeMode = it) } }
-                if (draft.grainPreviewPath != null) item { SettingSwitch(tr("Apply texture by each plot", "纹理应用于每个笔尖"), tr("On repeats texture on every stamp; off applies one continuous texture after the stroke is combined.", "开启时每个笔尖独立叠加纹理；关闭时先合并整笔，再应用一次连续纹理。"), draft.grainApplyPerPlot) { draft = draft.copy(grainApplyPerPlot = it) } }
-                if (draft.grainPreviewPath != null) item { ProcreateFilteringEditor(tr("Grain filtering", "颗粒过滤"), draft.grainFilteringMode) { draft = draft.copy(grainFilteringMode = it) } }
-                item { ProcreateRenderingModeEditor(draft.procreateRenderingMode) { draft = draft.copy(procreateRenderingMode = it) } }
-                item { ProcreateBrushBlendModeEditor(tr("Brush blend mode", "整笔混合模式"), draft.procreateBrushBlendMode) { draft = draft.copy(procreateBrushBlendMode = it) } }
-                item { ProcreateBrushBlendModeEditor(tr("Burnt edges mode", "焦边混合模式"), draft.procreateBurntEdgeBlendMode) { draft = draft.copy(procreateBurntEdgeBlendMode = it) } }
-                item { SettingSwitch(tr("Luminance blending", "明度混合"), tr("Preserves Procreate's luminance-blending intent for compatible rendering paths.", "为兼容渲染路径保留 Procreate 的明度混合意图。"), draft.procreateLuminanceBlending) { draft = draft.copy(procreateLuminanceBlending = it) } }
-                item { SettingSwitch(tr("Alpha threshold", "透明度阈值"), tr("Converts the final tip coverage to fully opaque or fully transparent pixels.", "将最终笔尖覆盖转换为完全不透明或完全透明像素。"), draft.alphaThresholdEnabled) { draft = draft.copy(alphaThresholdEnabled = it) } }
-                if (draft.alphaThresholdEnabled) item { BrushSettingSlider(tr("Alpha cutoff", "透明度截止值"), draft.alphaThreshold, 0f..1f) { draft = draft.copy(alphaThreshold = it) } }
-                item { BrushSettingSlider("Thickness", draft.thickness, .05f..2f) { draft = draft.copy(thickness = it) } }
-                item { SettingSwitch("Vertical thickness", "Applies thickness along the imported tip's vertical axis.", draft.thicknessVertical) { draft = draft.copy(thicknessVertical = it) } }
-                item { BrushSettingSlider(tr("Horizontal roundness jitter", "水平真圆率抖动"), draft.shapeRoundnessHorizontalJitter, 0f..1f) { draft = draft.copy(shapeRoundnessHorizontalJitter = it) } }
-                item { BrushSettingSlider(tr("Vertical roundness jitter", "垂直真圆率抖动"), draft.shapeRoundnessVerticalJitter, 0f..1f) { draft = draft.copy(shapeRoundnessVerticalJitter = it) } }
-                item { SettingSwitch("Ribbon stroke", "Preserves the tip aspect ratio and continuously follows the stroke direction.", draft.ribbon) { draft = draft.copy(ribbon = it) } }
-                item { BrushTipFlipModeEditor(tr("Horizontal tip flip", "笔尖水平翻转"), draft.tipFlipHorizontalMode) { draft = draft.copy(tipFlipHorizontalMode = it) } }
-                item { BrushTipFlipModeEditor(tr("Vertical tip flip", "笔尖垂直翻转"), draft.tipFlipVerticalMode) { draft = draft.copy(tipFlipVerticalMode = it) } }
-                item { SettingSwitch(tr("Blend overlapping tips with Darken", "以变暗方式叠加笔尖"), tr("Matches CSP's per-stroke brush-tip overlap mode.", "匹配 CSP 的单笔画笔尖叠加模式。"), draft.blendTipsWithDarken) { draft = draft.copy(blendTipsWithDarken = it) } }
-                item { BrushSettingSlider(tr("Base shape rotation", "笔尖基础旋转"), draft.rotationDegrees, -180f..180f) { draft = draft.copy(rotationDegrees = it) } }
-                if (draft.format == BrushFormat.PROCREATE || draft.shapeTouchRotation != 0f) item { BrushSettingSlider(tr("Touch rotation: inverse → fixed → follow stroke", "触控旋转：反向 → 固定 → 跟随笔画"), draft.shapeTouchRotation, -1f..1f) { draft = draft.copy(shapeTouchRotation = it) } }
-                if (draft.format == BrushFormat.PROCREATE || draft.shapeOrientToScreen) item { SettingSwitch(tr("Orient to screen", "朝向屏幕"), tr("Keeps the shape upright to the device when the stroke begins on a rotated canvas.", "画布旋转后落笔时，保持笔尖朝向设备屏幕。"), draft.shapeOrientToScreen) { draft = draft.copy(shapeOrientToScreen = it) } }
-                item { SettingSwitch("Follow stylus orientation", "Uses the pen direction reported by Android.", draft.followStylusOrientation) { draft = draft.copy(followStylusOrientation = it) } }
-                item { SettingSwitch("Follow stroke direction", "Rotates the tip along the drawn path.", draft.followStrokeDirection) { draft = draft.copy(followStrokeDirection = it) } }
-                item { BrushSettingSlider("Random rotation", draft.randomRotationDegrees, 0f..180f) { draft = draft.copy(randomRotationDegrees = it) } }
-                item { BrushSettingSlider("Random start rotation", draft.strokeRotationJitterDegrees, 0f..180f) { draft = draft.copy(strokeRotationJitterDegrees = it) } }
-                item { BrushSettingSlider("Stamp count", draft.stampCount.toFloat(), 1f..16f) { draft = draft.copy(stampCount = it.toInt().coerceIn(1, 16)) } }
-                item { BrushSettingSlider("Stamp count jitter", draft.stampCountJitter, 0f..1f) { draft = draft.copy(stampCountJitter = it) } }
-                item { SettingSwitch(tr("Continuous spraying", "连续喷涂"), tr("Holding the stylus in one place keeps depositing the brush tip, matching CSP slow-stroke density behavior.", "笔尖停留时继续叠加笔刷印章，匹配 CSP 慢速笔画的浓淡行为。"), draft.continuousPlot) { draft = draft.copy(continuousPlot = it) } }
-                item { SettingSwitch(tr("Change brush tip color", "更改笔尖颜色"), tr("Applies CSP hue, saturation, brightness and sub-color dynamics to each plotted tip.", "对每个笔尖应用 CSP 的色相、饱和度、明度和副色动态。"), draft.colorJitterPerTipEnabled) { draft = draft.copy(colorJitterPerTipEnabled = it) } }
-                if (draft.colorJitterPerTipEnabled) {
-                    item { BrushSettingSlider(tr("Hue", "色相"), draft.colorJitterHueDegrees, -180f..180f) { draft = draft.copy(colorJitterHueDegrees = it) } }
-                    if (draft.colorJitterHueDegrees != 0f) item { ColorDynamicsEditor(tr("Hue dynamics", "色相动态"), draft.colorJitterHueDynamics) { draft = draft.copy(colorJitterHueDynamics = it) } }
-                    item { BrushSettingSlider(tr("Saturation", "饱和度"), draft.colorJitterSaturation, -100f..100f) { draft = draft.copy(colorJitterSaturation = it) } }
-                    if (draft.colorJitterSaturation != 0f) item { ColorDynamicsEditor(tr("Saturation dynamics", "饱和度动态"), draft.colorJitterSaturationDynamics) { draft = draft.copy(colorJitterSaturationDynamics = it) } }
-                    item { BrushSettingSlider(tr("Brightness", "明度"), draft.colorJitterValue, -100f..100f) { draft = draft.copy(colorJitterValue = it) } }
-                    if (draft.colorJitterValue != 0f) item { ColorDynamicsEditor(tr("Brightness dynamics", "明度动态"), draft.colorJitterValueDynamics) { draft = draft.copy(colorJitterValueDynamics = it) } }
-                    item { BrushSettingSlider(tr("Blend with sub color", "与副色混合"), draft.colorJitterSubColorMix, 0f..1f) { draft = draft.copy(colorJitterSubColorMix = it) } }
-                    if (draft.colorJitterSubColorMix > 0f) item { ParameterDynamicsEditor(tr("Sub-color blend dynamics", "副色混合动态"), tr("Blend with sub color", "与副色混合"), draft.colorJitterSubColorMixDynamics) { draft = draft.copy(colorJitterSubColorMixDynamics = it) } }
-                }
-                item { SettingSwitch(tr("Randomize per stroke", "按笔画随机变化"), tr("Chooses one deterministic color variation when the stylus goes down and holds it for the whole stroke.", "落笔时选择一次确定性的颜色变化，并在整笔中保持不变。"), draft.colorJitterPerStrokeEnabled) { draft = draft.copy(colorJitterPerStrokeEnabled = it) } }
-                if (draft.colorJitterPerStrokeEnabled) {
-                    item { BrushSettingSlider(tr("Stroke hue range", "笔画色相范围"), draft.colorJitterStrokeHueDegrees, 0f..180f) { draft = draft.copy(colorJitterStrokeHueDegrees = it) } }
-                    item { BrushSettingSlider(tr("Stroke saturation range", "笔画饱和度范围"), draft.colorJitterStrokeSaturation, 0f..100f) { draft = draft.copy(colorJitterStrokeSaturation = it) } }
-                    item { BrushSettingSlider(tr("Stroke brightness range", "笔画明度范围"), draft.colorJitterStrokeValue, 0f..100f) { draft = draft.copy(colorJitterStrokeValue = it) } }
-                    item { BrushSettingSlider(tr("Stroke sub-color range", "笔画副色混合范围"), draft.colorJitterStrokeSubColorMix, 0f..1f) { draft = draft.copy(colorJitterStrokeSubColorMix = it) } }
-                }
-                if (draft.colorJitterPerTipEnabled || draft.colorJitterPerStrokeEnabled) item { BrushColorChangeTargetEditor(draft.colorJitterTarget) { draft = draft.copy(colorJitterTarget = it) } }
-                item { ProcreateColorDynamicsEditor(draft.procreateColorDynamics) { draft = draft.copy(procreateColorDynamics = it) } }
-                if (draft.format == BrushFormat.PROCREATE || !draft.procreateWetMix.isDisabled()) {
-                    item { Text(tr("Wet Mix", "湿混合"), style = MaterialTheme.typography.titleSmall) }
-                    item { Text(tr("Existing-pigment Pull and Blur require a Raster layer; Vector layers keep editable stroke geometry.", "拖色和湿颜料模糊需要栅格图层；矢量图层会保留可编辑笔画结构。"), color = MutedInk, fontSize = 10.sp) }
-                    item { BrushSettingSlider(tr("Dilution", "稀释"), draft.procreateWetMix.dilution, 0f..1f) { value -> draft = draft.copy(procreateWetMix = draft.procreateWetMix.copy(dilution = value), watercolor = true) } }
-                    item { BrushSettingSlider(tr("Charge", "颜料储量"), draft.procreateWetMix.charge, 0f..1f) { value -> draft = draft.copy(procreateWetMix = draft.procreateWetMix.copy(charge = value), watercolor = true) } }
-                    item { BrushSettingSlider(tr("Attack", "附着量"), draft.procreateWetMix.attack, 0f..1f) { value -> draft = draft.copy(procreateWetMix = draft.procreateWetMix.copy(attack = value), watercolor = true) } }
-                    item { BrushSettingSlider(tr("Pull", "拖色强度"), draft.procreateWetMix.pull, 0f..1f) { value -> draft = draft.copy(procreateWetMix = draft.procreateWetMix.copy(pull = value), watercolor = true) } }
-                    item { BrushSettingSlider(tr("Grade", "纹理等级"), draft.procreateWetMix.grade, -1f..1f) { value -> draft = draft.copy(procreateWetMix = draft.procreateWetMix.copy(grade = value), watercolor = true) } }
-                    item { BrushSettingSlider(tr("Blur", "湿颜料模糊"), draft.procreateWetMix.blur, 0f..1f) { value -> draft = draft.copy(procreateWetMix = draft.procreateWetMix.copy(blur = value), watercolor = true) } }
-                    item { BrushSettingSlider(tr("Blur jitter", "模糊抖动"), draft.procreateWetMix.blurJitter, 0f..1f) { value -> draft = draft.copy(procreateWetMix = draft.procreateWetMix.copy(blurJitter = value), watercolor = true) } }
-                    item { BrushSettingSlider(tr("Wetness jitter", "湿度抖动"), draft.procreateWetMix.wetnessJitter, 0f..1f) { value -> draft = draft.copy(procreateWetMix = draft.procreateWetMix.copy(wetnessJitter = value), watercolor = true) } }
-                }
-                if (draft.format != BrushFormat.PROCREATE || draft.procreateWetMix.isDisabled()) {
-                    item { Text(tr("CSP Ink · Color mixing", "CSP 墨水 · 颜色混合"), style = MaterialTheme.typography.titleSmall) }
-                    item { Text(tr("Existing pigment is sampled and transported in real time on Raster layers. Vector layers keep editable geometry without pixel mixing.", "在栅格图层上实时采样并运输已有颜料；矢量图层保留可编辑几何，不执行像素混色。"), color = MutedInk, fontSize = 10.sp) }
-                    item { SettingSwitch(tr("Color mixing", "颜色混合"), tr("Matches CSP Blend, Running color and Smear behavior.", "匹配 CSP 的混合、渗色和涂抹行为。"), draft.watercolor) { draft = draft.copy(watercolor = it) } }
-                    if (draft.watercolor) item {
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            listOf(
-                                CspColorMixMode.BLEND to tr("Blend", "混合"),
-                                CspColorMixMode.RUNNING_COLOR to tr("Running color", "渗色"),
-                                CspColorMixMode.SMEAR to tr("Smear", "涂抹"),
-                            ).forEach { (mode, label) -> FilterChip(selected = draft.cspColorMixMode == mode, onClick = { draft = draft.copy(cspColorMixMode = mode) }, label = { Text(label) }) }
-                        }
-                    }
-                    if (draft.watercolor) item { BrushSettingSlider(tr("Amount of paint", "颜料量"), draft.colorMix, 0f..1f) { draft = draft.copy(colorMix = it) } }
-                    if (draft.watercolor) item { SettingSwitch(tr("Pressure controls amount", "压力控制颜料量"), null, draft.colorMixPressureEnabled) { draft = draft.copy(colorMixPressureEnabled = it) } }
-                    if (draft.watercolor && draft.colorMixPressureEnabled) item { BrushSettingSlider(tr("Minimum amount", "最小颜料量"), draft.colorMixPressureMinimum, 0f..1f) { draft = draft.copy(colorMixPressureMinimum = it) } }
-                    if (draft.watercolor && draft.colorMixPressureEnabled) item { PressureCurveEditor(tr("Amount pressure", "颜料量压力"), draft.colorMixPressureCurve) { draft = draft.copy(colorMixPressureCurve = it) } }
-                    if (draft.watercolor) item { SecondaryDynamicsEditor(tr("Amount of paint", "颜料量"), draft.colorMixSecondaryDynamics) { draft = draft.copy(colorMixSecondaryDynamics = it) } }
-                    if (draft.watercolor && draft.cspColorMixMode != CspColorMixMode.SMEAR) item { BrushSettingSlider(tr("Density of paint", "颜料浓度"), draft.paintMix, 0f..1f) { draft = draft.copy(paintMix = it) } }
-                    if (draft.watercolor && draft.cspColorMixMode != CspColorMixMode.SMEAR) item { SettingSwitch(tr("Pressure controls density", "压力控制颜料浓度"), null, draft.paintMixPressureEnabled) { draft = draft.copy(paintMixPressureEnabled = it) } }
-                    if (draft.watercolor && draft.cspColorMixMode != CspColorMixMode.SMEAR && draft.paintMixPressureEnabled) item { BrushSettingSlider(tr("Minimum density", "最小颜料浓度"), draft.paintMixPressureMinimum, 0f..1f) { draft = draft.copy(paintMixPressureMinimum = it) } }
-                    if (draft.watercolor && draft.cspColorMixMode != CspColorMixMode.SMEAR && draft.paintMixPressureEnabled) item { PressureCurveEditor(tr("Density pressure", "颜料浓度压力"), draft.paintMixPressureCurve) { draft = draft.copy(paintMixPressureCurve = it) } }
-                    if (draft.watercolor && draft.cspColorMixMode != CspColorMixMode.SMEAR) item { SecondaryDynamicsEditor(tr("Density of paint", "颜料浓度"), draft.paintMixSecondaryDynamics) { draft = draft.copy(paintMixSecondaryDynamics = it) } }
-                    if (draft.watercolor) item { BrushSettingSlider(tr("Color stretch", "色彩延伸"), draft.colorStretch, 0f..1f) { draft = draft.copy(colorStretch = it) } }
-                    if (draft.watercolor) item {
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            FilterChip(selected = draft.cspPigmentMixingMode == CspPigmentMixingMode.STANDARD, onClick = { draft = draft.copy(cspPigmentMixingMode = CspPigmentMixingMode.STANDARD) }, label = { Text(tr("Standard", "标准")) })
-                            FilterChip(selected = draft.cspPigmentMixingMode == CspPigmentMixingMode.PERCEPTUAL, onClick = { draft = draft.copy(cspPigmentMixingMode = CspPigmentMixingMode.PERCEPTUAL) }, label = { Text(tr("Perceptual", "感知")) })
-                        }
-                    }
-                    if (draft.watercolor && draft.cspPigmentMixingMode == CspPigmentMixingMode.PERCEPTUAL) item { BrushSettingSlider(tr("Brightness correction", "明度修正"), draft.cspBrightnessCorrection.toFloat(), 1f..5f) { draft = draft.copy(cspBrightnessCorrection = it.toInt().coerceIn(1, 5)) } }
-                    if (draft.watercolor && draft.cspColorMixMode == CspColorMixMode.RUNNING_COLOR) item { SettingSwitch(tr("Automatic blur intensity", "自动模糊强度"), tr("Scales blur with the current brush size.", "模糊随当前笔刷大小缩放。"), draft.colorMixBlurAutomatic) { draft = draft.copy(colorMixBlurAutomatic = it) } }
-                    if (draft.watercolor && draft.cspColorMixMode == CspColorMixMode.RUNNING_COLOR) item { BrushSettingSlider(tr("Blur intensity", "模糊强度"), draft.colorMixBlur, 0f..400f) { draft = draft.copy(colorMixBlur = it) } }
-                    if (draft.watercolor && draft.cspColorMixMode == CspColorMixMode.RUNNING_COLOR && !draft.colorMixBlurAutomatic) item { Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { FilterChip(selected = draft.colorMixBlurUnit == 0, onClick = { draft = draft.copy(colorMixBlurUnit = 0) }, label = { Text("px") }); FilterChip(selected = draft.colorMixBlurUnit == 2, onClick = { draft = draft.copy(colorMixBlurUnit = 2) }, label = { Text("mm") }) } }
-                    if (draft.watercolor && draft.cspColorMixMode == CspColorMixMode.RUNNING_COLOR) item { ParameterDynamicsEditor(tr("Blur intensity dynamics", "模糊强度动态"), tr("Blur intensity", "模糊强度"), draft.colorMixBlurDynamics) { draft = draft.copy(colorMixBlurDynamics = it) } }
-                }
-                item { SettingSwitch("Watercolor edge", "Adds the CSP-style translucent edge pass before the main stamp.", draft.waterEdgeEnabled) { draft = draft.copy(waterEdgeEnabled = it) } }
-                if (draft.waterEdgeEnabled) item { BrushSettingSlider("Edge radius", draft.waterEdgeRadius, 0f..80f) { draft = draft.copy(waterEdgeRadius = it) } }
-                if (draft.waterEdgeEnabled) item { Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { FilterChip(selected = draft.waterEdgeRadiusUnit == 0, onClick = { draft = draft.copy(waterEdgeRadiusUnit = 0) }, label = { Text("px") }); FilterChip(selected = draft.waterEdgeRadiusUnit == 2, onClick = { draft = draft.copy(waterEdgeRadiusUnit = 2) }, label = { Text("mm") }) } }
-                if (draft.waterEdgeEnabled) item { BrushSettingSlider("Edge opacity", draft.waterEdgeOpacity, 0f..1f) { draft = draft.copy(waterEdgeOpacity = it) } }
-                if (draft.waterEdgeEnabled) item { BrushSettingSlider("Edge darkness", draft.waterEdgeDarkness, 0f..1f) { draft = draft.copy(waterEdgeDarkness = it) } }
-                if (draft.waterEdgeEnabled) item { BrushSettingSlider("Edge blur", draft.waterEdgeBlur, 0f..80f) { draft = draft.copy(waterEdgeBlur = it) } }
-                if (draft.waterEdgeEnabled && draft.waterEdgeBlur > 0f) item { Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { FilterChip(selected = draft.waterEdgeBlurUnit == 0, onClick = { draft = draft.copy(waterEdgeBlurUnit = 0) }, label = { Text("Blur px") }); FilterChip(selected = draft.waterEdgeBlurUnit == 2, onClick = { draft = draft.copy(waterEdgeBlurUnit = 2) }, label = { Text("Blur mm") }) } }
-                item { SettingSwitch("Spray/scatter", null, draft.spray) { draft = draft.copy(spray = it) } }
-                if (draft.spray) item { BrushSettingSlider("Particle size", draft.sprayParticleSize, .01f..400f) { draft = draft.copy(sprayParticleSize = it) } }
-                if (draft.spray) item { SettingSwitch("Particle size follows brush", "When enabled, particle size is a percentage of the current brush size.", draft.sprayParticleSizeSyncBrushSize) { draft = draft.copy(sprayParticleSizeSyncBrushSize = it) } }
-                if (draft.spray) item { SettingSwitch("Pressure controls particle size", null, draft.sprayParticleSizePressureEnabled) { draft = draft.copy(sprayParticleSizePressureEnabled = it) } }
-                if (draft.spray && draft.sprayParticleSizePressureEnabled) item { BrushSettingSlider("Minimum particle size", draft.sprayParticleSizePressureMinimum, 0f..1f) { draft = draft.copy(sprayParticleSizePressureMinimum = it) } }
-                if (draft.spray && draft.sprayParticleSizePressureEnabled) item { PressureCurveEditor("Particle size pressure", draft.sprayParticleSizePressureCurve) { draft = draft.copy(sprayParticleSizePressureCurve = it) } }
-                if (draft.spray) item { SecondaryDynamicsEditor("Particle size", draft.sprayParticleSizeSecondaryDynamics) { draft = draft.copy(sprayParticleSizeSecondaryDynamics = it) } }
-                if (draft.spray) item { BrushSettingSlider("Particle density", draft.sprayDensity, 1f..100f) { draft = draft.copy(sprayDensity = it) } }
-                if (draft.spray) item { SettingSwitch("Pressure controls particle density", null, draft.sprayDensityPressureEnabled) { draft = draft.copy(sprayDensityPressureEnabled = it) } }
-                if (draft.spray && draft.sprayDensityPressureEnabled) item { BrushSettingSlider("Minimum particle density", draft.sprayDensityPressureMinimum, 0f..1f) { draft = draft.copy(sprayDensityPressureMinimum = it) } }
-                if (draft.spray && draft.sprayDensityPressureEnabled) item { PressureCurveEditor("Particle density pressure", draft.sprayDensityPressureCurve) { draft = draft.copy(sprayDensityPressureCurve = it) } }
-                if (draft.spray) item { SecondaryDynamicsEditor("Particle density", draft.sprayDensitySecondaryDynamics) { draft = draft.copy(sprayDensitySecondaryDynamics = it) } }
-                if (draft.spray) item { BrushSettingSlider("Spray center bias", draft.sprayBias, -100f..100f) { draft = draft.copy(sprayBias = it) } }
-                if (draft.spray) item { BrushSettingSlider("Scatter spread", draft.spraySpread, 0f..4f) { draft = draft.copy(spraySpread = it) } }
-                if (draft.spray) item { BrushSettingSlider("Particle rotation", draft.sprayParticleRotationDegrees, -180f..180f) { draft = draft.copy(sprayParticleRotationDegrees = it) } }
-                if (draft.spray) item { SettingSwitch("Particles follow stylus", "Uses the independent CSP particle-direction setting.", draft.sprayParticleFollowStylusOrientation) { draft = draft.copy(sprayParticleFollowStylusOrientation = it) } }
-                if (draft.spray) item { SettingSwitch("Particles follow stroke", "Aligns particles with the local path direction.", draft.sprayParticleFollowStrokeDirection) { draft = draft.copy(sprayParticleFollowStrokeDirection = it) } }
-                if (draft.spray) item { BrushSettingSlider("Particle random rotation", draft.sprayParticleRandomRotationDegrees, 0f..180f) { draft = draft.copy(sprayParticleRandomRotationDegrees = it) } }
-                item { SettingSwitch("Dual brush", "Uses the imported secondary tip as an independent stamp stream.", draft.dualBrush) { draft = draft.copy(dualBrush = it) } }
-                if (draft.dualBrush && draft.dualTipPreviewPaths.isNotEmpty()) item { BrushTipPreview(tr("Secondary tip · ${draft.dualTipPreviewPaths.size} material${if (draft.dualTipPreviewPaths.size == 1) "" else "s"}", "辅助笔尖 · ${draft.dualTipPreviewPaths.size} 个素材"), draft.dualTipPreviewPaths.first()) }
-                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { BrushGrainPreview(draft.dualGrainPreviewPath!!, draft.dualGrainDensity) }
-                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { BrushSettingSlider(tr("Secondary texture density", "辅助纹理浓度"), draft.dualGrainDensity, 0f..1f) { draft = draft.copy(dualGrain = draft.dualGrain.copy(density = it)) } }
-                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { BrushSettingSlider(tr("Secondary minimum grain depth", "辅助纹理最低深度"), draft.dualGrainDensityMinimum.coerceAtMost(draft.dualGrainDensity), 0f..draft.dualGrainDensity.coerceAtLeast(.01f)) { draft = draft.copy(dualGrain = draft.dualGrain.copy(densityMinimum = it)) } }
-                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { ParameterDynamicsEditor(tr("Secondary texture density dynamics", "辅助纹理浓度动态"), tr("Secondary texture density", "辅助纹理浓度"), draft.dualGrainDensityDynamics) { draft = draft.copy(dualGrain = draft.dualGrain.copy(densityDynamics = it)) } }
-                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { BrushSettingSlider(tr("Secondary texture scale", "辅助纹理比例"), draft.dualGrainScale, 1f..400f) { draft = draft.copy(dualGrain = draft.dualGrain.copy(scale = it)) } }
-                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { BrushSettingSlider(tr("Secondary grain movement", "辅助纹理移动"), draft.dualGrainMovement, 0f..1f) { draft = draft.copy(dualGrain = draft.dualGrain.copy(movement = it)) } }
-                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { BrushSettingSlider(tr("Secondary grain zoom", "辅助纹理缩放"), draft.dualGrainZoom, 0f..1f) { draft = draft.copy(dualGrain = draft.dualGrain.copy(zoom = it)) } }
-                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { BrushSettingSlider(tr("Secondary texture rotation", "辅助纹理旋转"), draft.dualGrainRotationDegrees, -180f..180f) { draft = draft.copy(dualGrain = draft.dualGrain.copy(rotationDegrees = it)) } }
-                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { BrushSettingSlider(tr("Secondary grain follows stroke", "辅助纹理跟随笔画"), draft.dualGrainStrokeRotation, -1f..1f) { draft = draft.copy(dualGrain = draft.dualGrain.copy(strokeRotation = it)) } }
-                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { BrushSettingSlider(tr("Secondary texture brightness", "辅助纹理亮度"), draft.dualGrainBrightness, -100f..100f) { draft = draft.copy(dualGrain = draft.dualGrain.copy(brightness = it)) } }
-                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { BrushSettingSlider(tr("Secondary texture contrast", "辅助纹理对比度"), draft.dualGrainContrast, -100f..100f) { draft = draft.copy(dualGrain = draft.dualGrain.copy(contrast = it)) } }
-                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { SettingSwitch(tr("Invert secondary texture", "反相辅助纹理"), null, draft.dualGrainReversed) { draft = draft.copy(dualGrain = draft.dualGrain.copy(reversed = it)) } }
-                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { SettingSwitch(tr("Emphasize secondary texture", "强调辅助纹理"), null, draft.dualGrainEmphasized) { draft = draft.copy(dualGrain = draft.dualGrain.copy(emphasized = it)) } }
-                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { SettingSwitch(tr("Jitter secondary grain origin", "随机辅助纹理原点"), null, draft.dualGrainOffsetJitter) { draft = draft.copy(dualGrain = draft.dualGrain.copy(offsetJitter = it)) } }
-                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { BrushTextureCompositeEditor(draft.dualGrainCompositeMode) { draft = draft.copy(dualGrain = draft.dualGrain.copy(compositeMode = it)) } }
-                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { SettingSwitch(tr("Apply secondary texture by each plot", "辅助纹理应用于每个笔尖"), null, draft.dualGrainApplyPerPlot) { draft = draft.copy(dualGrain = draft.dualGrain.copy(applyPerPlot = it)) } }
-                if (draft.dualBrush && draft.dualGrainPreviewPath != null) item { ProcreateFilteringEditor(tr("Secondary grain filtering", "辅助纹理过滤"), draft.dualGrainFilteringMode) { draft = draft.copy(dualGrain = draft.dualGrain.copy(filteringMode = it)) } }
-                if (draft.dualBrush) item { BrushSettingSlider("Secondary size", draft.dualSizeScale, .01f..4f) { draft = draft.copy(dualSizeScale = it) } }
-                if (draft.dualBrush) item { ParameterDynamicsEditor(tr("Secondary size dynamics", "辅助笔尖大小动态"), "Secondary size", draft.dualSizeDynamics) { draft = draft.copy(dualSizeDynamics = it) } }
-                if (draft.dualBrush) item { BrushGapModeEditor(tr("Secondary brush-tip gap", "副笔尖间隔"), draft.dualSpacingMode) { draft = draft.copy(dualSpacingMode = it) } }
-                if (draft.dualBrush && draft.dualSpacingMode == CspBrushGap.FIXED) item { BrushSettingSlider("Secondary spacing", draft.dualSpacing, .01f..2f) { draft = draft.copy(dualSpacing = it) } }
-                if (draft.dualBrush) item { ParameterDynamicsEditor(tr("Secondary spacing dynamics", "辅助笔尖间距动态"), "Secondary spacing", draft.dualSpacingDynamics) { draft = draft.copy(dualSpacingDynamics = it) } }
-                if (draft.dualBrush) item { BrushSettingSlider("Secondary flow", draft.dualFlow, 0f..1f) { draft = draft.copy(dualFlow = it) } }
-                if (draft.dualBrush) item { ParameterDynamicsEditor(tr("Secondary flow dynamics", "辅助笔尖流量动态"), "Secondary flow", draft.dualFlowDynamics) { draft = draft.copy(dualFlowDynamics = it) } }
-                if (draft.dualBrush) item { BrushSettingSlider("Secondary hardness", draft.dualHardness, 0f..1f) { draft = draft.copy(dualHardness = it) } }
-                if (draft.dualBrush) item {
-                    Text(tr("Secondary anti-alias", "辅助笔尖抗锯齿"), color = MutedInk, fontSize = 11.sp)
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf(CspAntiAlias.NONE, CspAntiAlias.WEAK, CspAntiAlias.MEDIUM, CspAntiAlias.STRONG).forEach { mode ->
-                            item { FilterChip(selected = draft.dualAntiAliasMode == mode, onClick = { draft = draft.copy(dualAntiAliasMode = mode) }, label = { Text(when (mode) { CspAntiAlias.NONE -> tr("Off", "关闭"); CspAntiAlias.WEAK -> tr("Weak", "弱"); CspAntiAlias.STRONG -> tr("Strong", "强"); else -> tr("Medium", "中") }) }) }
-                        }
-                    }
-                }
-                if (draft.dualBrush) item { BrushSettingSlider("Secondary thickness", draft.dualThickness, .05f..2f) { draft = draft.copy(dualThickness = it) } }
-                if (draft.dualBrush) item { BrushSettingSlider(tr("Secondary horizontal roundness jitter", "辅助笔尖水平真圆率抖动"), draft.dualShapeRoundnessHorizontalJitter, 0f..1f) { draft = draft.copy(dualShapeRoundnessHorizontalJitter = it) } }
-                if (draft.dualBrush) item { BrushSettingSlider(tr("Secondary vertical roundness jitter", "辅助笔尖垂直真圆率抖动"), draft.dualShapeRoundnessVerticalJitter, 0f..1f) { draft = draft.copy(dualShapeRoundnessVerticalJitter = it) } }
-                if (draft.dualBrush) item { ParameterDynamicsEditor(tr("Secondary thickness dynamics", "辅助笔尖厚度动态"), "Secondary thickness", draft.dualThicknessDynamics) { draft = draft.copy(dualThicknessDynamics = it) } }
-                if (draft.dualBrush) item { SettingSwitch("Secondary vertical thickness", null, draft.dualThicknessVertical) { draft = draft.copy(dualThicknessVertical = it) } }
-                if (draft.dualBrush) item { BrushSettingSlider(tr("Secondary base rotation", "辅助笔尖基础旋转"), draft.dualRotationDegrees, -180f..180f) { draft = draft.copy(dualRotationDegrees = it) } }
-                if (draft.dualBrush && (draft.format == BrushFormat.PROCREATE || draft.dualShapeTouchRotation != 0f)) item { BrushSettingSlider(tr("Secondary touch rotation", "辅助笔尖触控旋转"), draft.dualShapeTouchRotation, -1f..1f) { draft = draft.copy(dualShapeTouchRotation = it) } }
-                if (draft.dualBrush && (draft.format == BrushFormat.PROCREATE || draft.dualShapeOrientToScreen)) item { SettingSwitch(tr("Secondary orient to screen", "辅助笔尖朝向屏幕"), null, draft.dualShapeOrientToScreen) { draft = draft.copy(dualShapeOrientToScreen = it) } }
-                if (draft.dualBrush) item { SettingSwitch("Secondary follows stylus", null, draft.dualFollowStylusOrientation) { draft = draft.copy(dualFollowStylusOrientation = it) } }
-                if (draft.dualBrush) item { SettingSwitch("Secondary follows stroke", null, draft.dualFollowStrokeDirection) { draft = draft.copy(dualFollowStrokeDirection = it) } }
-                if (draft.dualBrush) item { BrushSettingSlider("Secondary random rotation", draft.dualRandomRotationDegrees, 0f..180f) { draft = draft.copy(dualRandomRotationDegrees = it) } }
-                if (draft.dualBrush) item { BrushSettingSlider("Secondary random start rotation", draft.dualStrokeRotationJitterDegrees, 0f..180f) { draft = draft.copy(dualStrokeRotationJitterDegrees = it) } }
-                if (draft.dualBrush) item { BrushSettingSlider("Secondary stamp count", draft.dualStampCount.toFloat(), 1f..16f) { draft = draft.copy(dualStampCount = it.toInt().coerceIn(1, 16)) } }
-                if (draft.dualBrush) item { BrushSettingSlider("Secondary count jitter", draft.dualStampCountJitter, 0f..1f) { draft = draft.copy(dualStampCountJitter = it) } }
-                if (draft.dualBrush) item { BrushSettingSlider(tr("Secondary path jitter", "辅助路径横向抖动"), draft.dualStrokePathJitter, 0f..4f) { draft = draft.copy(dualStrokePathJitter = it) } }
-                if (draft.dualBrush) item { BrushSettingSlider(tr("Secondary along-path jitter", "辅助路径纵向抖动"), draft.dualStrokePathLongitudinalJitter, 0f..4f) { draft = draft.copy(dualStrokePathLongitudinalJitter = it) } }
-                if (draft.dualBrush) item { SettingSwitch("Secondary Ribbon", null, draft.dualRibbon) { draft = draft.copy(dualRibbon = it) } }
-                if (draft.dualBrush) item { BrushTipFlipModeEditor(tr("Secondary horizontal flip", "辅助笔尖水平翻转"), draft.dualTipFlipHorizontalMode) { draft = draft.copy(dualTipFlipHorizontalMode = it) } }
-                if (draft.dualBrush) item { BrushTipFlipModeEditor(tr("Secondary vertical flip", "辅助笔尖垂直翻转"), draft.dualTipFlipVerticalMode) { draft = draft.copy(dualTipFlipVerticalMode = it) } }
-                if (draft.dualBrush) item { SettingSwitch(tr("Darken secondary tip overlaps", "辅助笔尖以变暗方式叠加"), null, draft.dualBlendTipsWithDarken) { draft = draft.copy(dualBlendTipsWithDarken = it) } }
-                if (draft.dualBrush) item { SettingSwitch("Secondary spray/scatter", null, draft.dualSpray) { draft = draft.copy(dualSpray = it) } }
-                if (draft.dualBrush && draft.dualSpray) item { BrushSettingSlider("Secondary particle size", draft.dualSprayParticleSize, .01f..400f) { draft = draft.copy(dualSprayParticleSize = it) } }
-                if (draft.dualBrush && draft.dualSpray) item { SettingSwitch("Secondary particles follow brush", null, draft.dualSprayParticleSizeSyncBrushSize) { draft = draft.copy(dualSprayParticleSizeSyncBrushSize = it) } }
-                if (draft.dualBrush && draft.dualSpray) item { ParameterDynamicsEditor(tr("Secondary particle-size dynamics", "辅助喷枪粒子大小动态"), "Secondary particle size", draft.dualSprayParticleSizeDynamics) { draft = draft.copy(dualSprayParticleSizeDynamics = it) } }
-                if (draft.dualBrush && draft.dualSpray) item { BrushSettingSlider("Secondary particle density", draft.dualSprayDensity, 1f..100f) { draft = draft.copy(dualSprayDensity = it) } }
-                if (draft.dualBrush && draft.dualSpray) item { ParameterDynamicsEditor(tr("Secondary particle-density dynamics", "辅助喷枪粒子密度动态"), "Secondary particle density", draft.dualSprayDensityDynamics) { draft = draft.copy(dualSprayDensityDynamics = it) } }
-                if (draft.dualBrush && draft.dualSpray) item { BrushSettingSlider("Secondary center bias", draft.dualSprayBias, -100f..100f) { draft = draft.copy(dualSprayBias = it) } }
-                if (draft.dualBrush && draft.dualSpray) item { BrushSettingSlider("Secondary scatter spread", draft.dualSpraySpread, 0f..4f) { draft = draft.copy(dualSpraySpread = it) } }
-                if (draft.dualBrush && draft.dualSpray) item { BrushSettingSlider("Secondary particle rotation", draft.dualSprayParticleRotationDegrees, -180f..180f) { draft = draft.copy(dualSprayParticleRotationDegrees = it) } }
-                if (draft.dualBrush && draft.dualSpray) item { SettingSwitch("Secondary particles follow stylus", null, draft.dualSprayParticleFollowStylusOrientation) { draft = draft.copy(dualSprayParticleFollowStylusOrientation = it) } }
-                if (draft.dualBrush && draft.dualSpray) item { SettingSwitch("Secondary particles follow stroke", null, draft.dualSprayParticleFollowStrokeDirection) { draft = draft.copy(dualSprayParticleFollowStrokeDirection = it) } }
-                if (draft.dualBrush && draft.dualSpray) item { BrushSettingSlider("Secondary particle random rotation", draft.dualSprayParticleRandomRotationDegrees, 0f..180f) { draft = draft.copy(dualSprayParticleRandomRotationDegrees = it) } }
-                if (draft.dualBrush) item {
-                    val mode = CspDualBrushMode.fromCode(draft.dualCompositeMode)
-                    Text(
-                        tr(
-                            "CSP composite: ${mode?.displayName ?: "Unknown ${draft.dualCompositeMode}"} · exact two-stream compositor${if (draft.dualApplyRgb) " · secondary source RGB applied" else " · density only; drawing color retained"}",
-                            "CSP 合成：${mode?.displayName ?: "未知 ${draft.dualCompositeMode}"} · 精确双笔画流合成${if (draft.dualApplyRgb) " · 应用辅助笔尖原始 RGB" else " · 仅合成浓度并保留绘画色"}",
-                        ),
-                        color = MutedInk,
-                        fontSize = 10.sp,
-                    )
-                }
-            }
-        },
-        confirmButton = { Button(onClick = { onSave(draft.copy(name = draft.name.trim().ifBlank { brush.name }, groupName = BrushGroupOperations.normalize(draft.groupName), tags = tagText.split(',').map(String::trim).filter(String::isNotBlank).distinct().take(24))) }) { Text(tr("Save preset", "保存预设")) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Cancel", "取消")) } },
-    )
-}
-
-@Composable
-private fun BrushTestArea(brush: ImportedBrush, settings: AppSettings) {
-    var strokes by remember(brush.id) { mutableStateOf(emptyList<InkStroke>()) }
-    var canvasView by remember(brush.id) { mutableStateOf<InkCanvasView?>(null) }
-    Column(
-        Modifier.fillMaxWidth().padding(vertical = 6.dp).border(1.dp, OutlineSoft, RoundedCornerShape(10.dp)).padding(8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(tr("LIVE TEST AREA", "实时试笔区"), color = Sage, fontSize = 11.sp)
-                Text(tr("Uses the current Inkloom brush engine. Test strokes are never added to the note.", "使用当前 Inkloom 笔刷引擎；试笔不会写入笔记。"), color = MutedInk, fontSize = 10.sp)
-            }
-            IconButton(onClick = { canvasView?.undo() }, enabled = strokes.isNotEmpty(), modifier = Modifier.size(34.dp)) { Icon(Icons.Outlined.Undo, tr("Undo test stroke", "撤销试笔"), Modifier.size(18.dp)) }
-            IconButton(onClick = { strokes = emptyList(); canvasView?.setDocumentStrokes(emptyList(), "brush-test:${brush.id}:clear") }, enabled = strokes.isNotEmpty(), modifier = Modifier.size(34.dp)) { Icon(Icons.Outlined.DeleteSweep, tr("Clear test area", "清空试笔区"), Modifier.size(18.dp)) }
-        }
-        AndroidView(
-            factory = { context -> CanvasHost(context).also { host ->
-                val view = host.canvasView
-                canvasView = view
-                view.activeLayerId = LayerIds.INK
-                view.pageModelWidth = 900f
-                view.pageModelHeight = 240f
-                view.onStrokeCommitted = { stroke -> strokes = strokes + stroke }
-                view.onStrokeRemoved = { id -> strokes = strokes.filterNot { it.id == id } }
-                view.onStrokesReplaced = { removed, replacements, _ -> strokes = strokes.filterNot { it.id in removed.toSet() } + replacements }
-            } },
-            update = { host ->
-                val view = host.canvasView
-                canvasView = view
-                view.applyBrushConfiguration(EditorTool.PEN, settings, brush, brush.defaultSize, brush.defaultOpacity, AndroidColor.rgb(17, 17, 17), EraserPreset.NORMAL_FREE)
-                view.activeLayerId = LayerIds.INK
-                view.pageModelWidth = 900f
-                view.pageModelHeight = 240f
-                view.setDocumentStrokes(strokes, "brush-test:${brush.id}")
-                view.setProtectedStrokeIds(emptySet())
-                view.setProtectedLayerIds(emptySet())
-                view.onStrokeCommitted = { stroke -> strokes = strokes + stroke }
-                view.onStrokeRemoved = { id -> strokes = strokes.filterNot { it.id == id } }
-                view.onStrokesReplaced = { removed, replacements, _ -> strokes = strokes.filterNot { it.id in removed.toSet() } + replacements }
-            },
-            modifier = Modifier.fillMaxWidth().height(132.dp).clip(RoundedCornerShape(8.dp)).background(Color.White),
-        )
-        Text(tr("Stylus draws here. Finger input follows the app's finger-drawing setting.", "请用触控笔在此试画；手指输入遵循应用的“手指书写”设置。"), color = MutedInk, fontSize = 10.sp)
-    }
-}
-
-@Composable
 private fun BrushSettingSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onValue: (Float) -> Unit) {
     Column { Row { Text(localizedBrushLabel(label), Modifier.weight(1f), fontSize = 12.sp); Text(if (range.endInclusive > 10f) "%.1f".format(value) else "%.2f".format(value), color = MutedInk, fontSize = 11.sp) }; Slider(value, onValue, valueRange = range) }
 }
-
-@Composable
-private fun BrushTipFlipModeEditor(label: String, value: Int, onValue: (Int) -> Unit) {
-    val modes = listOf(
-        BrushTipFlip.OFF to tr("Off", "关闭"),
-        BrushTipFlip.FLIP to tr("Flip", "翻转"),
-        BrushTipFlip.RANDOM to tr("Random", "随机"),
-        BrushTipFlip.ON_REVERSED_SEQUENCE to tr("On reverse", "反向序列时"),
-    )
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, color = MutedInk, fontSize = 11.sp)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(modes, key = { it.first }) { (mode, text) ->
-                FilterChip(selected = value == mode, onClick = { onValue(mode) }, label = { Text(text) })
-            }
-        }
-    }
-}
-
-@Composable
-private fun BrushTextureCompositeEditor(value: Int, onValue: (Int) -> Unit) {
-    val labels = mapOf(
-        CspTextureComposite.NORMAL to tr("Normal", "正常"),
-        CspTextureComposite.MULTIPLY to tr("Multiply", "正片叠底"),
-        CspTextureComposite.SUBTRACT to tr("Subtract", "减去"),
-        CspTextureComposite.COMPARE to tr("Compare", "比较"),
-        CspTextureComposite.OUTLINE to tr("Outline", "轮廓"),
-        CspTextureComposite.OVERLAY to tr("Overlay", "叠加"),
-        CspTextureComposite.COLOR_DODGE to tr("Color dodge", "颜色减淡"),
-        CspTextureComposite.HARD_MIX to tr("Hard mix", "实色混合"),
-        CspTextureComposite.HEIGHT to tr("Height", "高度"),
-    )
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(tr("Paper texture mode", "纸张纹理模式"), color = MutedInk, fontSize = 11.sp)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            CspTextureComposite.documentedModes.forEach { mode ->
-                FilterChip(selected = value == mode, onClick = { onValue(mode) }, label = { Text(labels.getValue(mode)) })
-            }
-        }
-        if (!CspTextureComposite.isDocumented(value)) Text(
-            tr("Imported mode $value is retained; edit only after comparing the preview.", "已保留导入模式 $value；请在对比预览后再修改。"),
-            color = MutedInk,
-            fontSize = 10.sp,
-        )
-    }
-}
-
-@Composable
-private fun ProcreateFilteringEditor(label: String, value: Int, onValue: (Int) -> Unit) {
-    val modes = listOf(
-        ProcreateFiltering.NONE to tr("No filtering", "无过滤"),
-        ProcreateFiltering.CLASSIC to tr("Classic", "经典"),
-        ProcreateFiltering.IMPROVED to tr("Improved", "改进"),
-    )
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, color = MutedInk, fontSize = 11.sp)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(modes, key = { it.first }) { (mode, text) ->
-                FilterChip(selected = ProcreateFiltering.normalize(value) == mode, onClick = { onValue(mode) }, label = { Text(text) })
-            }
-        }
-    }
-}
-
-@Composable
-private fun ProcreateRenderingModeEditor(value: ProcreateRenderingMode, onValue: (ProcreateRenderingMode) -> Unit) {
-    val modes = listOf(
-        ProcreateRenderingMode.LIGHT_GLAZE to tr("Light Glaze", "浅色釉染"),
-        ProcreateRenderingMode.UNIFORM_GLAZE to tr("Uniform Glaze", "均匀釉染"),
-        ProcreateRenderingMode.INTENSE_GLAZE to tr("Intense Glaze", "强烈釉染"),
-        ProcreateRenderingMode.HEAVY_GLAZE to tr("Heavy Glaze", "厚重釉染"),
-        ProcreateRenderingMode.UNIFORM_BLENDING to tr("Uniform Blending", "均匀混合"),
-        ProcreateRenderingMode.INTENSE_BLENDING to tr("Intense Blending", "强烈混合"),
-    )
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(tr("Rendering mode", "渲染模式"), color = MutedInk, fontSize = 11.sp)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(modes, key = { it.first.name }) { (mode, label) ->
-                FilterChip(selected = value == mode, onClick = { onValue(mode) }, label = { Text(label) })
-            }
-        }
-    }
-}
-
-@Composable
-private fun ProcreateBrushBlendModeEditor(label: String, value: Int, onValue: (Int) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, color = MutedInk, fontSize = 11.sp)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(ProcreateBrushBlend.artisticModes.toList(), key = { it }) { mode ->
-                FilterChip(
-                    selected = ProcreateBrushBlend.normalize(value) == mode,
-                    onClick = { onValue(mode) },
-                    label = { Text(ProcreateBrushBlend.label(mode)) },
-                )
-            }
-        }
-        if (value !in ProcreateBrushBlend.artisticModes) Text(
-            tr("Unknown imported value $value is retained and rendered as Normal.", "已保留未知导入值 $value，并安全按正常模式渲染。"),
-            color = MutedInk,
-            fontSize = 10.sp,
-        )
-    }
-}
-
-@Composable
-private fun BrushGapModeEditor(label: String, value: Int, onValue: (Int) -> Unit) {
-    val modes = listOf(
-        CspBrushGap.FIXED to tr("Fixed", "固定"),
-        CspBrushGap.WIDE to tr("Wide", "宽"),
-        CspBrushGap.NORMAL to tr("Normal", "普通"),
-        CspBrushGap.NARROW to tr("Narrow", "窄"),
-    )
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, color = MutedInk, fontSize = 11.sp)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(modes, key = { it.first }) { (mode, text) ->
-                FilterChip(selected = CspBrushGap.normalize(value) == mode, onClick = { onValue(mode) }, label = { Text(text) })
-            }
-        }
-        if (value != CspBrushGap.FIXED) Text(tr("Automatic gap ignores the saved Fixed percentage.", "自动间隔不会使用已保存的固定百分比。"), color = MutedInk, fontSize = 10.sp)
-    }
-}
-
-@Composable
-private fun BrushColorChangeTargetEditor(value: Int, onValue: (Int) -> Unit) {
-    val normalized = CspColorChangeTarget.normalize(value)
-    val targets = listOf(
-        CspColorChangeTarget.MAIN_AND_SUB to tr("Main and sub color", "主色和副色"),
-        CspColorChangeTarget.MAIN to tr("Main color", "主色"),
-        CspColorChangeTarget.SUB to tr("Sub color", "副色"),
-    )
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(tr("Change target", "更改目标"), color = MutedInk, fontSize = 11.sp)
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(targets, key = { it.first }) { (target, label) ->
-                FilterChip(selected = normalized == target, onClick = { onValue(target) }, label = { Text(label) })
-            }
-        }
-    }
-}
-
-@Composable
-private fun SecondaryDynamicsEditor(label: String, value: BrushSecondaryDynamics, onValue: (BrushSecondaryDynamics) -> Unit) {
-    val activeSources = mutableListOf<String>()
-    if (value.tiltEnabled) activeSources += localizedBrushLabel("Tilt")
-    if (value.velocityEnabled) activeSources += localizedBrushLabel("Velocity")
-    if (value.randomEnabled) activeSources += localizedBrushLabel("Random")
-    val noSecondarySource = tr("No secondary source", "无辅助输入源")
-    var expanded by remember(label) { mutableStateOf(activeSources.isNotEmpty()) }
-    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp).border(1.dp, OutlineSoft, RoundedCornerShape(10.dp)).padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Row(Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) { Text(tr("$label input dynamics", "${localizedBrushLabel(label)}输入动态"), color = Sage, fontSize = 11.sp); Text(activeSources.joinToString().ifBlank { noSecondarySource }, color = MutedInk, fontSize = 10.sp) }
-            Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, if (expanded) tr("Collapse", "折叠") else tr("Expand", "展开"))
-        }
-        if (expanded) {
-            SettingSwitch("Tilt", null, value.tiltEnabled) { onValue(value.copy(tiltEnabled = it)) }
-            if (value.tiltEnabled) BrushSettingSlider("Tilt minimum", value.tiltMinimum, 0f..1f) { onValue(value.copy(tiltMinimum = it)) }
-            if (value.tiltEnabled) BrushSettingSlider(tr("Tilt trigger angle", "倾斜触发角"), value.tiltStart, 0f..0.99f) { onValue(value.copy(tiltStart = it)) }
-            SettingSwitch("Velocity", null, value.velocityEnabled) { onValue(value.copy(velocityEnabled = it)) }
-            if (value.velocityEnabled) BrushSettingSlider("Velocity minimum", value.velocityMinimum, 0f..1f) { onValue(value.copy(velocityMinimum = it)) }
-            if (value.velocityEnabled) PressureCurveEditor("Velocity response", value.velocityCurve) { onValue(value.copy(velocityCurve = it)) }
-            SettingSwitch("Random", "Deterministic per stamp, so export matches the canvas.", value.randomEnabled) { onValue(value.copy(randomEnabled = it)) }
-            if (value.randomEnabled) BrushSettingSlider("Random minimum", value.randomMinimum, 0f..1f) { onValue(value.copy(randomMinimum = it)) }
-        }
-    }
-}
-
-@Composable
-private fun ParameterDynamicsEditor(title: String, label: String, value: BrushParameterDynamics, onValue: (BrushParameterDynamics) -> Unit) {
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(title, color = MutedInk, fontSize = 11.sp)
-        SettingSwitch(tr("Pressure", "压力"), null, value.pressureEnabled) { onValue(value.copy(pressureEnabled = it)) }
-        if (value.pressureEnabled) {
-            BrushSettingSlider(tr("Minimum pressure result", "最低压力结果"), value.pressureMinimum, 0f..1f) { onValue(value.copy(pressureMinimum = it)) }
-            PressureCurveEditor(tr("Pressure response", "压力响应"), value.pressureCurve) { onValue(value.copy(pressureCurve = it)) }
-        }
-        SecondaryDynamicsEditor(label, value.secondary) { onValue(value.copy(secondary = it)) }
-    }
-}
-
-@Composable
-private fun ColorDynamicsEditor(label: String, value: BrushColorDynamics, onValue: (BrushColorDynamics) -> Unit) {
-    val active = buildList { if (value.pressureEnabled) add(tr("Pressure", "压力")); if (value.tiltEnabled) add(tr("Tilt", "倾斜")); if (value.velocityEnabled) add(tr("Velocity", "速度")); if (value.randomEnabled) add(tr("Random", "随机")) }
-    var expanded by remember(label) { mutableStateOf(active.isNotEmpty()) }
-    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp).border(1.dp, OutlineSoft, RoundedCornerShape(10.dp)).padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Row(Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) { Text(tr("$label input dynamics", "$label 输入动态"), color = Sage, fontSize = 11.sp); Text(active.joinToString().ifBlank { tr("Constant", "固定") }, color = MutedInk, fontSize = 10.sp) }
-            Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null)
-        }
-        if (expanded) {
-            SettingSwitch(tr("Pressure", "压力"), null, value.pressureEnabled) { onValue(value.copy(pressureEnabled = it)) }
-            if (value.pressureEnabled) BrushSettingSlider(tr("Pressure minimum", "压力下限"), value.pressureMinimum, 0f..1f) { onValue(value.copy(pressureMinimum = it)) }
-            if (value.pressureEnabled) PressureCurveEditor(tr("Pressure response", "压力响应"), value.pressureCurve) { onValue(value.copy(pressureCurve = it)) }
-            SettingSwitch(tr("Tilt", "倾斜"), null, value.tiltEnabled) { onValue(value.copy(tiltEnabled = it)) }
-            if (value.tiltEnabled) BrushSettingSlider(tr("Tilt minimum", "倾斜下限"), value.tiltMinimum, 0f..1f) { onValue(value.copy(tiltMinimum = it)) }
-            if (value.tiltEnabled) BrushSettingSlider(tr("Tilt trigger angle", "倾斜触发角"), value.tiltStart, 0f..0.99f) { onValue(value.copy(tiltStart = it)) }
-            SettingSwitch(tr("Velocity", "速度"), null, value.velocityEnabled) { onValue(value.copy(velocityEnabled = it)) }
-            if (value.velocityEnabled) BrushSettingSlider(tr("Velocity minimum", "速度下限"), value.velocityMinimum, 0f..1f) { onValue(value.copy(velocityMinimum = it)) }
-            if (value.velocityEnabled) PressureCurveEditor(tr("Velocity response", "速度响应"), value.velocityCurve) { onValue(value.copy(velocityCurve = it)) }
-            SettingSwitch(tr("Random per tip", "逐笔尖随机"), tr("Uses a stable seed so canvas and export match.", "使用稳定随机种子，确保画布与导出一致。"), value.randomEnabled) { onValue(value.copy(randomEnabled = it)) }
-            if (value.randomEnabled) BrushSettingSlider(tr("Signed random minimum", "随机有符号下限"), value.randomMinimum, -1f..1f) { onValue(value.copy(randomMinimum = it)) }
-        }
-    }
-}
-
-@Composable
-private fun ProcreateColorDynamicsEditor(value: ProcreateColorDynamics, onValue: (ProcreateColorDynamics) -> Unit) {
-    var expanded by remember { mutableStateOf(!value.isDisabled()) }
-    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp).border(1.dp, OutlineSoft, RoundedCornerShape(10.dp)).padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-        Row(Modifier.fillMaxWidth().clickable { expanded = !expanded }.padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(tr("Procreate color dynamics", "Procreate 颜色动态"), color = Sage, fontSize = 11.sp)
-                Text(if (value.isDisabled()) tr("Disabled", "关闭") else tr("Stamp · Stroke · Pressure · Tilt", "印章 · 笔画 · 压力 · 倾斜"), color = MutedInk, fontSize = 10.sp)
-            }
-            Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, null)
-        }
-        if (expanded) {
-            Text(tr("STAMP COLOR JITTER", "逐印章颜色抖动"), color = Sage, fontSize = 10.sp)
-            BrushSettingSlider(tr("Hue", "色相"), value.stampHue, 0f..1f) { onValue(value.copy(stampHue = it)) }
-            BrushSettingSlider(tr("Saturation", "饱和度"), value.stampSaturation, 0f..1f) { onValue(value.copy(stampSaturation = it)) }
-            BrushSettingSlider(tr("Lightness", "变亮"), value.stampLightness, 0f..1f) { onValue(value.copy(stampLightness = it)) }
-            BrushSettingSlider(tr("Darkness", "变暗"), value.stampDarkness, 0f..1f) { onValue(value.copy(stampDarkness = it)) }
-            BrushSettingSlider(tr("Secondary color", "副色"), value.stampSecondary, 0f..1f) { onValue(value.copy(stampSecondary = it)) }
-            HorizontalDivider()
-            Text(tr("STROKE COLOR JITTER", "逐笔画颜色抖动"), color = Sage, fontSize = 10.sp)
-            BrushSettingSlider(tr("Hue", "色相"), value.strokeHue, 0f..1f) { onValue(value.copy(strokeHue = it)) }
-            BrushSettingSlider(tr("Saturation", "饱和度"), value.strokeSaturation, 0f..1f) { onValue(value.copy(strokeSaturation = it)) }
-            BrushSettingSlider(tr("Lightness", "变亮"), value.strokeLightness, 0f..1f) { onValue(value.copy(strokeLightness = it)) }
-            BrushSettingSlider(tr("Darkness", "变暗"), value.strokeDarkness, 0f..1f) { onValue(value.copy(strokeDarkness = it)) }
-            BrushSettingSlider(tr("Secondary color", "副色"), value.strokeSecondary, 0f..1f) { onValue(value.copy(strokeSecondary = it)) }
-            HorizontalDivider()
-            Text(tr("COLOR PRESSURE", "压力颜色"), color = Sage, fontSize = 10.sp)
-            BrushSettingSlider(tr("Hue", "色相"), value.pressureHue, -1f..1f) { onValue(value.copy(pressureHue = it)) }
-            if (value.pressureHue != 0f) PressureCurveEditor(tr("Hue pressure", "色相压力"), value.pressureHueCurve) { onValue(value.copy(pressureHueCurve = it)) }
-            BrushSettingSlider(tr("Saturation", "饱和度"), value.pressureSaturation, -1f..1f) { onValue(value.copy(pressureSaturation = it)) }
-            if (value.pressureSaturation != 0f) PressureCurveEditor(tr("Saturation pressure", "饱和度压力"), value.pressureSaturationCurve) { onValue(value.copy(pressureSaturationCurve = it)) }
-            BrushSettingSlider(tr("Brightness", "明度"), value.pressureBrightness, -1f..1f) { onValue(value.copy(pressureBrightness = it)) }
-            if (value.pressureBrightness != 0f) PressureCurveEditor(tr("Brightness pressure", "明度压力"), value.pressureBrightnessCurve) { onValue(value.copy(pressureBrightnessCurve = it)) }
-            BrushSettingSlider(tr("Secondary color", "副色"), value.pressureSecondary, -1f..1f) { onValue(value.copy(pressureSecondary = it)) }
-            if (value.pressureSecondary != 0f) PressureCurveEditor(tr("Secondary color pressure", "副色压力"), value.pressureSecondaryCurve) { onValue(value.copy(pressureSecondaryCurve = it)) }
-            HorizontalDivider()
-            Text(tr("COLOR TILT", "倾斜颜色"), color = Sage, fontSize = 10.sp)
-            BrushSettingSlider(tr("Hue", "色相"), value.tiltHue, -1f..1f) { onValue(value.copy(tiltHue = it)) }
-            BrushSettingSlider(tr("Saturation", "饱和度"), value.tiltSaturation, -1f..1f) { onValue(value.copy(tiltSaturation = it)) }
-            BrushSettingSlider(tr("Brightness", "明度"), value.tiltBrightness, -1f..1f) { onValue(value.copy(tiltBrightness = it)) }
-            BrushSettingSlider(tr("Secondary color", "副色"), value.tiltSecondary, -1f..1f) { onValue(value.copy(tiltSecondary = it)) }
-            BrushSettingSlider(tr("Tilt trigger angle", "倾斜触发角"), value.tiltStart, 0f..0.99f) { onValue(value.copy(tiltStart = it)) }
-        }
-    }
-}
-
-@Composable
-private fun BrushGrainPreview(path: String, density: Float) {
-    val bitmap = remember(path) { app.inkloom.document.BrushTipTextureDecoder.decodeSampled(path, 384) }
-    DisposableEffect(bitmap) { onDispose { bitmap?.recycle() } }
-    Column { Text(tr("Paper texture · ${(density * 100).toInt()}%", "纸张纹理 · ${(density * 100).toInt()}%"), fontSize = 11.sp, color = MutedInk); if (bitmap != null) androidx.compose.foundation.Image(bitmap.asImageBitmap(), tr("Paper texture", "纸张纹理"), Modifier.fillMaxWidth().height(90.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop) }
-}
-
-@Composable
-private fun BrushTipPreview(label: String, path: String) {
-    val bitmap = remember(path) { app.inkloom.document.BrushTipTextureDecoder.decodeSampled(path, 384) }
-    DisposableEffect(bitmap) { onDispose { bitmap?.recycle() } }
-    Column {
-        Text(label, fontSize = 11.sp, color = MutedInk)
-        if (bitmap != null) androidx.compose.foundation.Image(bitmap.asImageBitmap(), label, Modifier.fillMaxWidth().height(90.dp).background(Color.White, RoundedCornerShape(8.dp)).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Fit)
-    }
-}
-
-@Composable
-private fun PressureCurveEditor(label: String, points: List<BrushCurvePoint>, onPoints: (List<BrushCurvePoint>) -> Unit) {
-    val shown = points.ifEmpty { listOf(BrushCurvePoint(0f, 0f), BrushCurvePoint(1f, 1f)) }
-    val currentOnPoints by rememberUpdatedState(onPoints)
-    Column {
-        Row(verticalAlignment = Alignment.CenterVertically) { Text(tr("$label · ${shown.size} points", "${localizedBrushLabel(label)} · ${shown.size} 个控制点"), fontSize = 11.sp, color = MutedInk, modifier = Modifier.weight(1f)); TextButton(onClick = { onPoints(listOf(BrushCurvePoint(0f, 0f), BrushCurvePoint(1f, 1f))) }) { Text(tr("Linear", "线性")) }; TextButton(onClick = { onPoints(listOf(BrushCurvePoint(0f, 0f), BrushCurvePoint(.35f, .62f), BrushCurvePoint(1f, 1f))) }) { Text(tr("Soft", "柔和")) }; TextButton(onClick = { onPoints(listOf(BrushCurvePoint(0f, 0f), BrushCurvePoint(.65f, .25f), BrushCurvePoint(1f, 1f))) }) { Text(tr("Firm", "硬朗")) } }
-        Canvas(
-            Modifier.fillMaxWidth().height(180.dp).background(Workspace, RoundedCornerShape(8.dp)).padding(16.dp)
-                .semantics { contentDescription = "$label editable curve" }
-                .pointerInput(shown) {
-                    detectTapGestures { position ->
-                        val index = shown.indices.minByOrNull { candidate ->
-                            val point = shown[candidate]
-                            val dx = position.x - point.x * size.width
-                            val dy = position.y - (1f - point.y) * size.height
-                            dx * dx + dy * dy
-                        } ?: return@detectTapGestures
-                        val previousX = shown.getOrNull(index - 1)?.x?.plus(.001f) ?: 0f
-                        val nextX = shown.getOrNull(index + 1)?.x?.minus(.001f) ?: 1f
-                        val changed = shown.toMutableList()
-                        val x = if (index == 0 || index == shown.lastIndex) shown[index].x else (position.x / size.width).coerceIn(previousX, nextX)
-                        changed[index] = BrushCurvePoint(x, (1f - position.y / size.height).coerceIn(0f, 1f))
-                        currentOnPoints(changed)
-                    }
-                }
-                .pointerInput(shown) {
-                    var selected = -1
-                    detectDragGestures(
-                        onDragStart = { position ->
-                            selected = shown.indices.minByOrNull { index ->
-                                val point = shown[index]
-                                val dx = position.x - point.x * size.width
-                                val dy = position.y - (1f - point.y) * size.height
-                                dx * dx + dy * dy
-                            } ?: -1
-                        },
-                        onDragEnd = { selected = -1 },
-                        onDragCancel = { selected = -1 },
-                    ) { change, _ ->
-                        val index = selected
-                        if (index !in shown.indices) return@detectDragGestures
-                        change.consume()
-                        val previousX = shown.getOrNull(index - 1)?.x?.plus(.001f) ?: 0f
-                        val nextX = shown.getOrNull(index + 1)?.x?.minus(.001f) ?: 1f
-                        val changed = shown.toMutableList()
-                        val x = if (index == 0 || index == shown.lastIndex) shown[index].x else (change.position.x / size.width).coerceIn(previousX, nextX)
-                        val y = (1f - change.position.y / size.height).coerceIn(0f, 1f)
-                        changed[index] = BrushCurvePoint(x, y)
-                        currentOnPoints(changed)
-                    }
-                },
-        ) {
-            drawLine(OutlineSoft, Offset(0f, size.height), Offset(size.width, 0f), 1f)
-            shown.zipWithNext().forEach { (start, end) -> drawLine(Sage, Offset(start.x * size.width, (1f - start.y) * size.height), Offset(end.x * size.width, (1f - end.y) * size.height), 3f, cap = StrokeCap.Round) }
-            shown.forEach {
-                val center = Offset(it.x * size.width, (1f - it.y) * size.height)
-                drawCircle(Color.White, 16.dp.toPx(), center)
-                drawCircle(Sage, 9.dp.toPx(), center)
-            }
-        }
-        Text(tr("Drag a control point; the larger handles are optimized for pen and touch.", "拖动控制点进行编辑；加大的触控区域适合数位笔和手指。"), color = MutedInk, fontSize = 10.sp)
-    }
-}
-
 @Composable
 private fun SettingsDialog(
     settings: AppSettings,
