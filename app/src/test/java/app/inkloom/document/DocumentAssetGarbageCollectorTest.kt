@@ -11,7 +11,6 @@ class DocumentAssetGarbageCollectorTest {
         val root = Files.createTempDirectory("inkloom-asset-gc").toFile()
         try {
             val mask = root.resolve("mask.png").apply { writeText("mask") }
-            val raster = root.resolve("raster-layer.png").apply { writeText("raster") }
             val image = root.resolve("image.png").apply { writeText("image") }
             val template = root.resolve("template.pdf").apply { writeText("template") }
             val orphan = root.resolve("orphan.png").apply {
@@ -25,7 +24,6 @@ class DocumentAssetGarbageCollectorTest {
                 title = "GC",
                 coverImagePath = outside.absolutePath,
                 pages = listOf(InkPage(
-                    layers = defaultInkLayers() + InkLayer(name = "Pixels", rasterAssetPath = raster.absolutePath),
                     elements = listOf(
                     PageElement.Image(x = 0f, y = 0f, width = 10f, height = 10f, assetPath = image.absolutePath),
                     PageElement.Shape(x = 0f, y = 0f, width = 10f, height = 10f, maskAssetPath = mask.absolutePath),
@@ -35,7 +33,6 @@ class DocumentAssetGarbageCollectorTest {
 
             assertEquals(1, DocumentAssetGarbageCollector.collect(root, listOf(document), templates, setOf(pending.absolutePath)))
             assertTrue(mask.isFile)
-            assertTrue(raster.isFile)
             assertTrue(image.isFile)
             assertTrue(template.isFile)
             assertTrue(pending.isFile)

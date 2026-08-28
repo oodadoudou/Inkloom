@@ -76,7 +76,6 @@ internal class RasterLayerSurfaceRuntime(
             page,
             layer.copy(
                 rasterTileSurface = reference,
-                rasterAssetPath = null,
                 rasterRotationQuarterTurns = rotationQuarterTurns.mod(4),
             ),
             renderWidth,
@@ -92,7 +91,6 @@ internal data class RasterSurfaceSourceKey(
     val manifestPath: String?,
     val surfaceId: String?,
     val revision: Long?,
-    val legacyAssetPath: String?,
     val rotationQuarterTurns: Int,
     val cropLeftBits: Int,
     val cropTopBits: Int,
@@ -109,7 +107,6 @@ internal data class RasterSurfaceSourceKey(
                 manifestPath = reference?.manifestAssetPath,
                 surfaceId = reference?.surfaceId,
                 revision = reference?.revision,
-                legacyAssetPath = layer.rasterAssetPath,
                 rotationQuarterTurns = layer.rasterRotationQuarterTurns.mod(4),
                 cropLeftBits = crop.left.toBits(),
                 cropTopBits = crop.top.toBits(),

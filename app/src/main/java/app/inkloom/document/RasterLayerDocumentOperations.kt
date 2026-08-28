@@ -6,7 +6,7 @@ object RasterLayerDocumentOperations {
         if (!layer.isPaintSurfaceLayer() || LayerHierarchy.effectiveLocked(page.layers, layer)) {
             layer
         } else {
-            layer.copy(rasterTileSurface = null, rasterAssetPath = null, rasterRotationQuarterTurns = 0)
+            layer.copy(rasterTileSurface = null, rasterRotationQuarterTurns = 0)
         }
     })
 }

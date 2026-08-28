@@ -723,7 +723,6 @@ fun InkloomApp(initialIntent: Intent?) {
             onToggleLayerLock = viewModel::toggleLayerLock,
             onSetLayerOpacity = viewModel::setLayerOpacity,
             onSetLayerBlendMode = viewModel::setLayerBlendMode,
-            onSetLayerRasterAsset = viewModel::setLayerRasterAsset,
             onSetLayerRasterTileSurface = viewModel::setLayerRasterTileSurface,
             onToggleLayerAlphaLock = viewModel::toggleLayerAlphaLock,
             onToggleLayerClippedToBelow = viewModel::toggleLayerClippedToBelow,
@@ -1026,7 +1025,6 @@ private fun EditorScreen(
     onToggleLayerLock: (String, String, String) -> Unit,
     onSetLayerOpacity: (String, String, String, Float) -> Unit,
     onSetLayerBlendMode: (String, String, String, LayerBlendMode) -> Unit,
-    onSetLayerRasterAsset: (String, String, String, String?, Int) -> Unit,
     onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int) -> Unit,
     onToggleLayerAlphaLock: (String, String, String) -> Unit,
     onToggleLayerClippedToBelow: (String, String, String) -> Unit,
@@ -2196,7 +2194,6 @@ private fun EditorScreen(
                     },
                     page = selectedPage,
                     documentId = document.id,
-                    onSetLayerRasterAsset = onSetLayerRasterAsset,
                     onSetLayerRasterTileSurface = onSetLayerRasterTileSurface,
                     onElement = onElement,
                     onRemoveElement = onRemoveElement,
@@ -4305,7 +4302,7 @@ private fun PageRail(
                             enabled = page.layers.any { layer ->
                                 layer.isPaintSurfaceLayer() &&
                                     !LayerHierarchy.effectiveLocked(page.layers, layer) &&
-                                    (layer.rasterTileSurface != null || layer.rasterAssetPath != null)
+                                    layer.rasterTileSurface != null
                             },
                             onClick = { menu = false; clearOpen = true },
                         )
@@ -4521,7 +4518,7 @@ private fun pageTemplateKind(template: PageTemplate): String = when (template.ba
 }
 
 @Composable
-private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterAsset: (String, String, String, String?, Int) -> Unit, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
+private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val selectionMaskSize = remember(renderedPage.width, renderedPage.height) {
         requireNotNull(SelectionMaskCompositor.maskSize(renderedPage.width, renderedPage.height))
@@ -4545,16 +4542,12 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
     }
     val latestRasterAssets = remember(documentId, page.id) {
         page.layers.associate { layer ->
-            layer.id to Triple(layer.rasterTileSurface, layer.rasterAssetPath, layer.rasterRotationQuarterTurns)
+            layer.id to (layer.rasterTileSurface to layer.rasterRotationQuarterTurns)
         }.toMutableMap()
     }
     LaunchedEffect(page.layers) {
         page.layers.forEach { layer ->
-            latestRasterAssets[layer.id] = Triple(
-                layer.rasterTileSurface,
-                layer.rasterAssetPath,
-                layer.rasterRotationQuarterTurns,
-            )
+            latestRasterAssets[layer.id] = layer.rasterTileSurface to layer.rasterRotationQuarterTurns
         }
     }
     val gradientSaveFailure = tr("The gradient mask could not be saved", "渐变蒙版保存失败")
@@ -4654,16 +4647,12 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                     rasterCommitMutex.withLock {
                         patch = withContext(Dispatchers.Default) { commit.capturePatch() }
                         val capturedPatch = requireNotNull(patch)
-                        val previous = latestRasterAssets[layerId] ?: Triple(
-                            layer.rasterTileSurface,
-                            layer.rasterAssetPath,
-                            layer.rasterRotationQuarterTurns,
-                        )
+                        val previous = latestRasterAssets[layerId] ?:
+                            (layer.rasterTileSurface to layer.rasterRotationQuarterTurns)
                         val effectivePage = capturedPage.copy(layers = capturedPage.layers.map { candidate ->
                             if (candidate.id != layerId) candidate else candidate.copy(
                                 rasterTileSurface = previous.first,
-                                rasterAssetPath = previous.second,
-                                rasterRotationQuarterTurns = previous.third,
+                                rasterRotationQuarterTurns = previous.second,
                             )
                         })
                         val surface = withContext(Dispatchers.Default) {
@@ -4681,13 +4670,13 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                             assets.saveRasterTileSurface(surface, previous.first)
                         }
                         val savedReference = requireNotNull(newReference)
-                        latestRasterAssets[layerId] = Triple(savedReference, null, previous.third)
+                        latestRasterAssets[layerId] = savedReference to previous.second
                         // The live surface can already contain later gestures. Associate this
                         // checkpoint with it before publishing the document reference so the
                         // resulting Compose update cannot replace newer pixels with older disk
                         // projection data.
-                        rasterSurfaceRuntime.acceptPublished(capturedPage, layerId, savedReference, previous.third)
-                        onSetLayerRasterTileSurface(documentId, capturedPage.id, layerId, savedReference, previous.third)
+                        rasterSurfaceRuntime.acceptPublished(capturedPage, layerId, savedReference, previous.second)
+                        onSetLayerRasterTileSurface(documentId, capturedPage.id, layerId, savedReference, previous.second)
                         assets.releaseRasterTileReservation(savedReference)
                         newReference = null
                     }

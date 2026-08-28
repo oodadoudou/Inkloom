@@ -60,7 +60,7 @@ class V5StorageFormatContractTest {
         assertEquals(DocumentCheckpointCodec.LEGACY_ENGINE_ERROR, error.message)
     }
 
-    @Test fun checkpointRejectsTheRemovedMixedVectorRasterLayerSchema() {
+    @Test fun checkpointRejectsRemovedLayerCompatibilityFields() {
         val encoded = DocumentCheckpointCodec.encode(
             InkDocument(title = "legacy layers", pages = listOf(InkPage(layers = listOf(InkLayer(name = "Paint"))))),
         )
@@ -71,6 +71,7 @@ class V5StorageFormatContractTest {
         val layers = (page.getValue("layers") as JsonArray).toMutableList()
         val background = layers.first().jsonObject.toMutableMap()
         background["contentKind"] = JsonPrimitive("VECTOR")
+        background["rasterAssetPath"] = JsonPrimitive("/legacy/full-page.png")
         layers[0] = JsonObject(background)
         page["layers"] = JsonArray(layers)
         pages[0] = JsonObject(page)

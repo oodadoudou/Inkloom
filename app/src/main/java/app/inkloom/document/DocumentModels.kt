@@ -153,8 +153,6 @@ data class InkLayer(
     val role: LayerRole = LayerRole.CUSTOM,
     /** Authoritative sparse pixel surface for V5 paint layers. */
     val rasterTileSurface: RasterTileSurfaceRef? = null,
-    /** Legacy content-addressed full-page PNG. Never written after [rasterTileSurface] is attached. */
-    val rasterAssetPath: String? = null,
     /** Non-destructive page rotations applied after the raster asset was last written. */
     val rasterRotationQuarterTurns: Int = 0,
     val visible: Boolean = true,

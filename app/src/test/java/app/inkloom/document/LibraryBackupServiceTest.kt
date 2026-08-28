@@ -26,7 +26,6 @@ class LibraryBackupServiceTest {
             val documentAsset = File(sourceRoot, "document-assets/source.pdf").apply { parentFile!!.mkdirs(); writeBytes(byteArrayOf(1, 2, 3)) }
             val coverAsset = File(sourceRoot, "document-assets/cover.png").apply { writeBytes(byteArrayOf(10, 11, 12)) }
             val gradientMask = File(sourceRoot, "document-assets/gradient-mask.png").apply { writeBytes(byteArrayOf(13, 14, 15)) }
-            val rasterSurface = File(sourceRoot, "document-assets/raster-layer.png").apply { writeBytes(byteArrayOf(16, 17, 18)) }
             val layerMaskAsset = File(sourceRoot, "document-assets/layer-mask.v3").apply { writeBytes(byteArrayOf(19, 20, 21)) }
             val layerMaskReference = MaskTileSurfaceRef(
                 assetPath = layerMaskAsset.absolutePath,
@@ -85,7 +84,6 @@ class LibraryBackupServiceTest {
             val page = InkPage(
                 background = PageBackground.Pdf(documentAsset.absolutePath, 0),
                 layers = defaultInkLayers() +
-                    InkLayer(name = "Paint", rasterAssetPath = rasterSurface.absolutePath) +
                     InkLayer(name = "Sparse Paint", rasterTileSurface = sparseReference, mask = LayerMask(surface = layerMaskReference)),
                 elements = listOf(sticky, maskedGradient),
             )
@@ -118,9 +116,6 @@ class LibraryBackupServiceTest {
             assertEquals(CoverStyle.CUSTOM_IMAGE, restored.documents.single().coverStyle)
             assertTrue(File(restored.documents.single().coverImagePath!!).isFile)
             assertTrue(File((restoredPage.background as PageBackground.Pdf).assetPath).isFile)
-            val restoredRaster = restoredPage.layers.first { it.name == "Paint" }
-            assertTrue(File(requireNotNull(restoredRaster.rasterAssetPath)).isFile)
-            assertTrue(File(restoredRaster.rasterAssetPath).readBytes().contentEquals(rasterSurface.readBytes()))
             val restoredSparse = requireNotNull(restoredPage.layers.first { it.name == "Sparse Paint" }.rasterTileSurface)
             val restoredLayerMask = requireNotNull(restoredPage.layers.first { it.name == "Sparse Paint" }.mask?.surface)
             assertTrue(File(restoredLayerMask.assetPath).readBytes().contentEquals(layerMaskAsset.readBytes()))

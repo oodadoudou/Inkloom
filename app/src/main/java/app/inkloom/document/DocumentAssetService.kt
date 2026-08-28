@@ -206,10 +206,6 @@ class DocumentAssetService(private val context: Context) {
         return surface
     }
 
-    /** Persists the full-page premultiplied RGBA surface owned by a raster layer. */
-    @Deprecated("Legacy PNG persistence is read-only after a raster tile surface is attached")
-    fun saveRasterLayer(bitmap: Bitmap): String = saveDocumentPng(bitmap, "raster-layer")
-
     /** Atomically publishes an immutable sparse surface generation and reserves it until committed. */
     fun saveRasterTileSurface(
         surface: PixelTileSurface,
@@ -232,7 +228,7 @@ class DocumentAssetService(private val context: Context) {
         )
     }
 
-    /** One-way adapter for legacy full-page PNG/Bitmap raster layers. */
+    /** Imports an external bitmap into the native V5 sparse tile format. */
     fun importRasterTileSurface(bitmap: Bitmap): RasterTileSurfaceRef {
         val surface = PixelTileBitmapAdapter.import(bitmap)
         return saveRasterTileSurface(surface)
@@ -551,26 +547,6 @@ class DocumentAssetService(private val context: Context) {
         return requireNotNull(rotateQuarterTurns(materialized, turns))
     }
 
-    /** Merges an edited visible-crop surface back into a full page-oriented raster asset.
-     * Existing pixels outside the crop are preserved. The returned bitmap uses the page's current
-     * orientation, so callers must reset rasterRotationQuarterTurns when storing it. */
-    fun composeVisibleRasterLayer(page: InkPage, layerId: String, visibleSurface: Bitmap): Bitmap {
-        require(!visibleSurface.isRecycled) { "Visible raster surface has been recycled" }
-        val crop = PageCropTransform.normalized(page.crop)
-        val fullWidth = (visibleSurface.width / (crop.right - crop.left).coerceAtLeast(.01f)).toInt().coerceIn(visibleSurface.width, 4096)
-        val fullPage = renderRasterLayerBitmap(page.copy(crop = PageCrop()), layerId, fullWidth)
-        val destination = android.graphics.Rect(
-            (crop.left * fullPage.width).toInt().coerceIn(0, fullPage.width - 1),
-            (crop.top * fullPage.height).toInt().coerceIn(0, fullPage.height - 1),
-            (crop.right * fullPage.width).toInt().coerceIn(1, fullPage.width),
-            (crop.bottom * fullPage.height).toInt().coerceIn(1, fullPage.height),
-        )
-        if (destination.right > destination.left && destination.bottom > destination.top) {
-            Canvas(fullPage).drawBitmap(visibleSurface, null, destination, Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
-        }
-        return fullPage
-    }
-
     /**
      * Replaces the edited visible crop in the authoritative sparse surface. Existing pixels outside
      * the crop and the layer's non-destructive page rotation are preserved.
@@ -611,19 +587,7 @@ class DocumentAssetService(private val context: Context) {
             ?: error("Raster layer does not exist")
         val turns = layer.rasterRotationQuarterTurns.mod(4)
         val crop = PageCropTransform.normalized(page.crop)
-        val surface = when {
-            layer.rasterTileSurface != null -> loadRasterTileSurface(layer.rasterTileSurface)
-            !layer.rasterAssetPath.isNullOrBlank() -> {
-                val legacy = requireNotNull(BitmapFactory.decodeFile(layer.rasterAssetPath)) {
-                    "Legacy raster layer could not be decoded"
-                }
-                try {
-                    PixelTileBitmapAdapter.import(legacy)
-                } finally {
-                    legacy.recycle()
-                }
-            }
-            else -> {
+        val surface = layer.rasterTileSurface?.let(::loadRasterTileSurface) ?: run {
                 val rotatedWidth = (visibleSourceWidth / (crop.right - crop.left).coerceAtLeast(.01f))
                     .toInt().coerceIn(visibleSourceWidth, 4096)
                 val rotatedHeight = (visibleSourceHeight / (crop.bottom - crop.top).coerceAtLeast(.01f))
@@ -632,7 +596,6 @@ class DocumentAssetService(private val context: Context) {
                     logicalWidth = if (turns % 2 == 0) rotatedWidth else rotatedHeight,
                     logicalHeight = if (turns % 2 == 0) rotatedHeight else rotatedWidth,
                 )
-            }
         }
         val rotatedWidth = if (turns % 2 == 0) surface.logicalWidth else surface.logicalHeight
         val rotatedHeight = if (turns % 2 == 0) surface.logicalHeight else surface.logicalWidth
@@ -674,7 +637,6 @@ class DocumentAssetService(private val context: Context) {
                 },
                 layers = page.layers.map { layer -> layer.copy(
                     rasterTileSurface = portableRaster(layer.rasterTileSurface),
-                    rasterAssetPath = layer.rasterAssetPath?.let { "assets/${File(it).name}" },
                     mask = layer.mask?.copy(surface = layer.mask.surface?.let { reference ->
                         reference.copy(assetPath = "assets/${File(reference.assetPath).name}")
                     }),
@@ -691,7 +653,6 @@ class DocumentAssetService(private val context: Context) {
             zip.putNextEntry(ZipEntry("manifest.json")); zip.write(DocumentCheckpointCodec.encode(portable).encodeToByteArray()); zip.closeEntry()
             val assets = listOfNotNull(document.coverImagePath) +
                 document.pages.mapNotNull { page -> when (val background = page.background) { is PageBackground.Pdf -> background.assetPath; is PageBackground.Image -> background.assetPath; else -> null } } +
-                document.pages.flatMap(InkPage::layers).mapNotNull(InkLayer::rasterAssetPath) +
                 document.pages.flatMap(InkPage::layers).mapNotNull { it.mask?.surface?.assetPath } +
                 document.pages.flatMap { it.elements }.mapNotNull { element -> when (element) { is PageElement.Image -> element.assetPath; is PageElement.AudioMarker -> element.assetPath; is PageElement.Fill -> element.maskAssetPath; is PageElement.Shape -> element.maskAssetPath; else -> null } }
             writeDistinctFiles(zip, "assets", assets)
@@ -790,7 +751,6 @@ class DocumentAssetService(private val context: Context) {
                     },
                     layers = page.layers.map { layer -> layer.copy(
                         rasterTileSurface = retainedRaster(layer.rasterTileSurface),
-                        rasterAssetPath = layer.rasterAssetPath?.let { retained(it) },
                         mask = layer.mask?.copy(surface = layer.mask.surface?.let { reference ->
                             reference.copy(assetPath = retained(reference.assetPath))
                         }),
@@ -1093,21 +1053,6 @@ class DocumentAssetService(private val context: Context) {
                     bitmap.recycle()
                     return
                 }
-                val path = targetLayer.rasterAssetPath?.takeIf(String::isNotBlank) ?: return
-                BitmapFactory.decodeFile(path)?.let { decoded ->
-                    val bitmap = rotateQuarterTurns(decoded, targetLayer.rasterRotationQuarterTurns) ?: return@let
-                    val crop = sourcePage.crop
-                    val source = android.graphics.Rect(
-                        (crop.left.coerceIn(0f, 1f) * bitmap.width).toInt().coerceIn(0, bitmap.width - 1),
-                        (crop.top.coerceIn(0f, 1f) * bitmap.height).toInt().coerceIn(0, bitmap.height - 1),
-                        (crop.right.coerceIn(0f, 1f) * bitmap.width).toInt().coerceIn(1, bitmap.width),
-                        (crop.bottom.coerceIn(0f, 1f) * bitmap.height).toInt().coerceIn(1, bitmap.height),
-                    )
-                    if (source.right > source.left && source.bottom > source.top) {
-                        canvas.drawBitmap(bitmap, source, android.graphics.Rect(0, 0, width, height), Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
-                    }
-                    bitmap.recycle()
-                }
             }
             fun drawLayerWithAlphaLock(targetLayer: InkLayer) {
                 val capturedIds = targetLayer.alphaLockBaseContentIds.toSet()
@@ -1159,11 +1104,7 @@ class DocumentAssetService(private val context: Context) {
         }
     }
 
-    /**
-     * Export counterpart of the live V5 raster projection. Legacy PNG layers may enter through
-     * [renderRasterLayerSurface], which is the documented one-way decode adapter; composition
-     * itself never replays InkStroke geometry.
-     */
+    /** Export counterpart of the live V5 sparse-tile projection. */
     private fun drawV5RasterProjectionIfCompatible(
         canvas: Canvas,
         sourcePage: InkPage,
@@ -1180,8 +1121,7 @@ class DocumentAssetService(private val context: Context) {
         if (includedLayerIds != null || includedContentIds != null) return false
         if (projectedPage.elements.any { element -> visibleLayers.any { it.id == element.layerId } }) return false
         val rasterLayers = visibleLayers.filter { layer ->
-            layer.isPaintSurfaceLayer() &&
-                (layer.rasterTileSurface != null || !layer.rasterAssetPath.isNullOrBlank())
+            layer.isPaintSurfaceLayer() && layer.rasterTileSurface != null
         }
         if (rasterLayers.isEmpty()) return false
         if (rasterLayers.any { it.mask?.enabled == true && it.mask.surface == null }) return false

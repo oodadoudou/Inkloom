@@ -70,7 +70,6 @@ class LayerOperationsTest {
         assertFalse(LayerOperations.canMergeDown(page.copy(layers = page.layers.map { if (it.id == upper.id) it.copy(mask = LayerMask()) else it }), upper.id))
         assertFalse(LayerOperations.canMergeDown(InkPage(), LayerIds.INK))
         assertNull(LayerOperations.mergeDown(page.copy(layers = page.layers.map { if (it.id == upper.id) it.copy(locked = true) else it }), upper.id))
-        assertFalse(LayerOperations.canMergeDown(page.copy(layers = page.layers.map { if (it.id == upper.id) it.copy(rasterAssetPath = "/tmp/raster.png") else it }), upper.id))
         assertFalse(LayerOperations.canMergeDown(page.copy(layers = page.layers.map { if (it.id == upper.id) it.copy(
             rasterTileSurface = RasterTileSurfaceRef("/tmp/surface.json", "surface", 100, 100, 128, 1),
         ) else it }), upper.id))

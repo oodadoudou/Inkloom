@@ -82,7 +82,7 @@ class PageGeometryTest {
     }
 
     @Test fun rotationTracksPersistentRasterSurfaceOrientation() {
-        val raster = InkLayer(name = "Raster", rasterAssetPath = "/tmp/raster.png")
+        val raster = InkLayer(name = "Raster", rasterTileSurface = RasterTileSurfaceRef("/tmp/surface.json", "surface", 400, 200, 128, 1))
         val original = InkPage(width = 400f, height = 200f, layers = defaultInkLayers() + raster)
 
         val once = PageGeometry.rotateClockwise(original)

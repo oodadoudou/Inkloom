@@ -277,23 +277,6 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         page.copy(layers = page.layers.map { if (it.id == layerId && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) it.copy(blendMode = blendMode) else it })
     }
 
-    fun setLayerRasterAsset(
-        documentId: String,
-        pageId: String,
-        layerId: String,
-        assetPath: String?,
-        rotationQuarterTurns: Int = 0,
-    ) = updatePage(documentId, pageId) { page ->
-        page.copy(layers = page.layers.map { layer ->
-            if (layer.id != layerId || !layer.isPaintSurfaceLayer()) layer
-            else layer.copy(
-                rasterTileSurface = null,
-                rasterAssetPath = assetPath,
-                rasterRotationQuarterTurns = rotationQuarterTurns.mod(4),
-            )
-        })
-    }
-
     fun setLayerRasterTileSurface(
         documentId: String,
         pageId: String,
@@ -305,7 +288,6 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
             if (layer.id != layerId || !layer.isPaintSurfaceLayer()) layer
             else layer.copy(
                 rasterTileSurface = reference,
-                rasterAssetPath = null,
                 rasterRotationQuarterTurns = rotationQuarterTurns.mod(4),
             )
         })

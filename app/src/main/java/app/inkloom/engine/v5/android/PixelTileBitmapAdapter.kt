@@ -21,7 +21,7 @@ internal object PixelTileBitmapAdapter {
         require(!bitmap.isRecycled) { "Bitmap has been recycled" }
         if (bitmap.config == Bitmap.Config.RGBA_F16) return importF16(bitmap, tileSize)
         val surface = PixelTileSurface(bitmap.width, bitmap.height, tileSize)
-        surface.beginWrite("legacy raster import").use { write ->
+        surface.beginWrite("external bitmap import").use { write ->
             val source = IntArray(tileSize * tileSize)
             val columns = (bitmap.width + tileSize - 1) / tileSize
             val rows = (bitmap.height + tileSize - 1) / tileSize

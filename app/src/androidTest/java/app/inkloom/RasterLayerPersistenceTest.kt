@@ -93,66 +93,6 @@ class RasterLayerPersistenceTest {
         assets.releaseRasterTileReservation(restoredReference)
     }
 
-    @Test fun rasterSurfaceIsContentAddressedRenderedRotatedAndBundled() {
-        val source = Bitmap.createBitmap(40, 20, Bitmap.Config.ARGB_8888)
-        for (y in 0 until source.height) for (x in 0 until source.width) {
-            source.setPixel(x, y, if (x < source.width / 2) Color.RED else Color.BLUE)
-        }
-        val firstPath = assets.saveRasterLayer(source)
-        val secondPath = assets.saveRasterLayer(source)
-        source.recycle()
-        try {
-            assertEquals("Identical raster content must reuse one immutable asset", firstPath, secondPath)
-            val raster = InkLayer(
-                id = "raster",
-                name = "Paint",
-                rasterAssetPath = firstPath,
-            )
-            val page = InkPage(width = 40f, height = 20f, layers = defaultInkLayers() + raster)
-            val rendered = assets.renderPageBitmap(page, 400)
-            try {
-                assertTrue(Color.red(rendered.getPixel(80, 100)) > 240)
-                assertTrue(Color.blue(rendered.getPixel(320, 100)) > 240)
-            } finally {
-                rendered.recycle()
-            }
-            val liveSurface = assets.renderRasterLayerBitmap(page, raster.id, 400)
-            try {
-                assertEquals(400, liveSurface.width)
-                assertEquals(200, liveSurface.height)
-                assertTrue(Color.red(liveSurface.getPixel(80, 100)) > 240)
-                assertEquals("Live raster sources stay transparent outside their own pixels", 255, Color.alpha(liveSurface.getPixel(320, 100)))
-            } finally {
-                liveSurface.recycle()
-            }
-
-            val rotated = assets.renderPageBitmap(PageGeometry.rotateClockwise(page), 200)
-            try {
-                assertTrue("Clockwise raster rotation must move the red half to the top", Color.red(rotated.getPixel(100, 80)) > 240)
-                assertTrue("Clockwise raster rotation must move the blue half to the bottom", Color.blue(rotated.getPixel(100, 320)) > 240)
-            } finally {
-                rotated.recycle()
-            }
-
-            val bundle = ByteArrayOutputStream().also { output ->
-                assets.exportBundle(InkDocument(title = "Raster", pages = listOf(page)), output)
-            }.toByteArray()
-            val restored = assets.importBundle(ByteArrayInputStream(bundle))
-            val restoredPath = restored.pages.single().layers.first { it.name == "Paint" }.rasterAssetPath
-            assertTrue(File(requireNotNull(restoredPath)).isFile)
-            val restoredBitmap = assets.renderPageBitmap(restored.pages.single(), 400)
-            try {
-                assertTrue(Color.red(restoredBitmap.getPixel(80, 100)) > 240)
-                assertTrue(Color.blue(restoredBitmap.getPixel(320, 100)) > 240)
-            } finally {
-                restoredBitmap.recycle()
-            }
-        } finally {
-            assets.releaseAssetReservation(firstPath)
-            assets.releaseAssetReservation(secondPath)
-        }
-    }
-
     @Test fun sparseRasterSurfaceIsVerifiedReopenedAndGarbageCollectedByManifestReachability() {
         val firstBitmap = Bitmap.createBitmap(300, 200, Bitmap.Config.ARGB_8888).apply {
             setPixel(17, 19, Color.MAGENTA)
@@ -194,19 +134,18 @@ class RasterLayerPersistenceTest {
 
     @Test fun editedVisibleCropIsMergedWithoutDestroyingPixelsOutsideTheCrop() {
         val source = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
-        val path = assets.saveRasterLayer(source)
+        val reference = assets.importRasterTileSurface(source)
         source.recycle()
-        val layer = InkLayer(id = "crop-raster", name = "Paint", rasterAssetPath = path)
+        val layer = InkLayer(id = "crop-raster", name = "Paint", rasterTileSurface = reference)
         val page = InkPage(width = 100f, height = 100f, crop = PageCrop(.25f, .25f, .75f, .75f), layers = defaultInkLayers() + layer)
         val visible = Bitmap.createBitmap(200, 200, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLUE) }
-        val merged = assets.composeVisibleRasterLayer(page, layer.id, visible)
+        val merged = assets.composeVisibleRasterTileSurface(page, layer.id, visible)
         try {
-            assertTrue("Outside the active crop is preserved", Color.red(merged.getPixel(20, 20)) > 240)
-            assertTrue("The edited crop is replaced", Color.blue(merged.getPixel(merged.width / 2, merged.height / 2)) > 240)
+            assertTrue("Outside the active crop is preserved", Color.red(merged.pixelAt(20, 20)) > 240)
+            assertTrue("The edited crop is replaced", Color.blue(merged.pixelAt(merged.logicalWidth / 2, merged.logicalHeight / 2)) > 240)
         } finally {
-            merged.recycle()
             visible.recycle()
-            assets.releaseAssetReservation(path)
+            assets.releaseRasterTileReservation(reference)
         }
     }
 

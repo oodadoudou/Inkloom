@@ -114,7 +114,6 @@ class LibraryBackupService(private val filesRoot: File) {
                     },
                     layers = page.layers.map { layer -> layer.copy(
                         rasterTileSurface = registerRaster(layer.rasterTileSurface),
-                        rasterAssetPath = register(layer.rasterAssetPath, DOCUMENT_ASSETS),
                         mask = layer.mask?.copy(surface = layer.mask.surface?.let { reference ->
                             reference.copy(assetPath = register(reference.assetPath, DOCUMENT_ASSETS)!!)
                         }),
@@ -253,7 +252,6 @@ class LibraryBackupService(private val filesRoot: File) {
                             },
                             layers = page.layers.map { layer -> layer.copy(
                                 rasterTileSurface = retainedRaster(layer.rasterTileSurface),
-                                rasterAssetPath = retained(layer.rasterAssetPath, DOCUMENT_ASSETS),
                                 mask = layer.mask?.copy(surface = layer.mask.surface?.let { reference ->
                                     reference.copy(assetPath = retained(reference.assetPath, DOCUMENT_ASSETS)!!)
                                 }),

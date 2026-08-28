@@ -13,7 +13,6 @@ object HandwritingIndex {
                 digest.update(reference.revision.toString().encodeToByteArray())
                 digest.update(reference.manifestAssetPath.encodeToByteArray())
             }
-            layer.rasterAssetPath?.let { digest.update(it.encodeToByteArray()) }
             digest.update(0.toByte())
         }
         return digest.digest().take(12).joinToString("") { "%02x".format(it) }

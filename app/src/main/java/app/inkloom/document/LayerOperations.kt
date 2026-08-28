@@ -49,7 +49,6 @@ object LayerOperations {
             // A pure document mutation cannot flatten two persistent RGBA surfaces safely. Keep
             // Merge Down disabled until the asset compositor supplies the replacement bitmap.
             source.rasterTileSurface == null && target.rasterTileSurface == null &&
-            source.rasterAssetPath == null && target.rasterAssetPath == null &&
             source.visible == target.visible &&
             source.blendMode == LayerBlendMode.NORMAL &&
             target.blendMode == LayerBlendMode.NORMAL

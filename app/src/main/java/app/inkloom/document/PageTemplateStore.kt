@@ -51,7 +51,7 @@ object PageTemplateOperations {
     /** Existing page content keeps its coordinate system; an empty page adopts the template dimensions. */
     fun apply(page: InkPage, template: PageTemplate): InkPage {
         val empty = page.layers.none { layer ->
-            layer.rasterTileSurface != null || !layer.rasterAssetPath.isNullOrBlank()
+            layer.rasterTileSurface != null
         } && page.elements.isEmpty()
         return page.copy(
             width = if (empty) template.width else page.width,

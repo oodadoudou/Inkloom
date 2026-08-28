@@ -11,7 +11,6 @@ class RasterLayerDocumentOperationsTest {
             id = "unlocked",
             name = "Paint",
             rasterTileSurface = reference("unlocked"),
-            rasterAssetPath = "/legacy/unlocked.png",
             rasterRotationQuarterTurns = 3,
         )
         val locked = InkLayer(
@@ -28,7 +27,6 @@ class RasterLayerDocumentOperationsTest {
 
         val clearedLayer = cleared.layers.first { it.id == unlocked.id }
         assertNull(clearedLayer.rasterTileSurface)
-        assertNull(clearedLayer.rasterAssetPath)
         assertEquals(0, clearedLayer.rasterRotationQuarterTurns)
         assertNotNull(cleared.layers.first { it.id == locked.id }.rasterTileSurface)
         assertEquals(folder, cleared.layers.first { it.id == folder.id })

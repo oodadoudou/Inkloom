@@ -64,7 +64,8 @@ internal object DocumentCheckpointCodec {
             if (page.containsKey("strokes")) return@any true
             val layers = page["layers"] as? JsonArray ?: return@any false
             layers.any { layerElement ->
-                (layerElement as? JsonObject)?.containsKey("contentKind") == true
+                val layer = layerElement as? JsonObject
+                layer?.containsKey("contentKind") == true || layer?.containsKey("rasterAssetPath") == true
             }
         }
         require(!containsLegacyProductionState) {
