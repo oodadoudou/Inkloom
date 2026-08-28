@@ -894,27 +894,6 @@ class DocumentAssetService(private val context: Context) {
         }.getOrNull()
     }
 
-    private fun InkStroke.portableBrushAssets() = copy(
-        masks = masks.map { mask -> mask.copy(tipAssetPath = mask.tipAssetPath?.let { "brush-assets/${File(it).name}" }) },
-        tipAssetPath = tipAssetPath?.let { "brush-assets/${File(it).name}" },
-        tipAssetPaths = tipAssetPaths.map { "brush-assets/${File(it).name}" },
-        dualTipAssetPaths = dualTipAssetPaths.map { "brush-assets/${File(it).name}" },
-        dualGrainAssetPath = dualGrainAssetPath?.let { "brush-assets/${File(it).name}" },
-        grainAssetPath = grainAssetPath?.let { "brush-assets/${File(it).name}" },
-    )
-
-    private fun InkStroke.withRetainedBrushAssets(retained: (String, Boolean) -> String) = copy(
-        masks = masks.map { mask -> mask.copy(tipAssetPath = mask.tipAssetPath?.let { retained(it, true) }) },
-        tipAssetPath = tipAssetPath?.let { retained(it, true) },
-        tipAssetPaths = tipAssetPaths.map { retained(it, true) },
-        dualTipAssetPaths = dualTipAssetPaths.map { retained(it, true) },
-        dualGrainAssetPath = dualGrainAssetPath?.let { retained(it, true) },
-        grainAssetPath = grainAssetPath?.let { retained(it, true) },
-    )
-
-    private fun InkStroke.brushAssetPaths(): List<String> =
-        tipAssetPaths + dualTipAssetPaths + masks.mapNotNull(StrokeMaskDab::tipAssetPath) + listOfNotNull(tipAssetPath, grainAssetPath, dualGrainAssetPath)
-
     private fun retainFile(source: File, targetDirectory: File): File {
         val digest = MessageDigest.getInstance("SHA-256")
         source.inputStream().use { input -> val buffer = ByteArray(DEFAULT_BUFFER_SIZE); while (true) { val count = input.read(buffer); if (count < 0) break; digest.update(buffer, 0, count) } }
