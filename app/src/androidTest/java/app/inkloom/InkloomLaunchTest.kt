@@ -319,9 +319,11 @@ class InkloomLaunchTest {
 
     @Test fun settingsExposeConflictSafeFullLibraryBackup() {
         composeRule.onNodeWithContentDescription("Settings").performClick()
-        // The final item index is 45. Keeping this within the semantics collection bounds avoids
-        // racing a lazy-list recomposition while the settings screen restores persisted state.
-        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Draw with finger"))).performScrollToIndex(45)
+        composeRule.waitForIdle()
+        // The backup actions are the final two rows in the current V5-only settings schema.
+        // Scroll to the last semantics item before resolving the lazily composed labels.
+        composeRule.onNode(hasScrollAction() and hasAnyDescendant(hasText("Draw with finger")))
+            .performScrollToIndex(39)
         composeRule.onNodeWithText("Export full library backup").assertIsDisplayed()
         composeRule.onNodeWithText("Restore library backup").performScrollTo().assertIsDisplayed()
     }
