@@ -45,18 +45,23 @@ class PageSearchTest {
         assertEquals(PageSearchSource.OBJECT, PageSearch.find(page, "library.example")?.source)
     }
 
-    @Test fun recognizedHandwritingIsSearchableOnlyWhileItsStrokeSnapshotIsCurrent() {
-        val stroke = InkStroke(id = "ink-1", points = listOf(StrokePoint(.1f, .2f), StrokePoint(.2f, .2f)))
+    @Test fun recognizedHandwritingIsSearchableOnlyWhileItsRasterSnapshotIsCurrent() {
         val bounds = PdfTextBounds(.1f, .18f, .4f, .25f)
-        val indexed = InkPage(
-            strokes = listOf(stroke),
-            recognizedTextBlocks = listOf(RecognizedTextBlock(text = "离线手写识别", bounds = bounds, source = RecognizedTextSource.HANDWRITING, sourceIds = listOf(stroke.id), languageTag = "zh-Hans")),
-            handwritingIndexFingerprint = HandwritingIndex.fingerprint(listOf(stroke)),
+        val rasterRef = RasterTileSurfaceRef("/safe/page.json", "surface", 1600, 2263, 256, 7)
+        val base = InkPage(layers = defaultInkLayers().map { layer ->
+            if (layer.id == LayerIds.INK) layer.copy(contentKind = LayerContentKind.RASTER, rasterTileSurface = rasterRef) else layer
+        })
+        val indexed = base.copy(
+            recognizedTextBlocks = listOf(RecognizedTextBlock(text = "离线手写识别", bounds = bounds, source = RecognizedTextSource.HANDWRITING, sourceIds = listOf(rasterRef.surfaceId), languageTag = "zh-Hans")),
+            handwritingIndexFingerprint = HandwritingIndex.fingerprint(base),
         )
 
         val hit = PageSearch.find(indexed, "手写")
         assertEquals(PageSearchSource.HANDWRITING, hit?.source)
         assertEquals(bounds, hit?.bounds)
-        assertNull(PageSearch.find(indexed.copy(strokes = listOf(stroke.copy(id = "changed"))), "手写"))
+        val changed = indexed.copy(layers = indexed.layers.map { layer ->
+            if (layer.id == LayerIds.INK) layer.copy(rasterTileSurface = rasterRef.copy(revision = 8)) else layer
+        })
+        assertNull(PageSearch.find(changed, "手写"))
     }
 }

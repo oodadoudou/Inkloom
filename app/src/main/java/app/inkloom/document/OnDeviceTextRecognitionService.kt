@@ -4,14 +4,7 @@ import android.content.Context
 import android.graphics.BitmapFactory
 import android.net.Uri
 import com.google.android.gms.tasks.Task
-import com.google.mlkit.common.model.DownloadConditions
-import com.google.mlkit.common.model.RemoteModelManager
 import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.digitalink.recognition.DigitalInkRecognition
-import com.google.mlkit.vision.digitalink.recognition.DigitalInkRecognitionModel
-import com.google.mlkit.vision.digitalink.recognition.DigitalInkRecognitionModelIdentifier
-import com.google.mlkit.vision.digitalink.recognition.DigitalInkRecognizerOptions
-import com.google.mlkit.vision.digitalink.recognition.Ink
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
@@ -21,40 +14,8 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 class OnDeviceTextRecognitionService(private val context: Context) {
-    suspend fun recognizeHandwriting(page: InkPage, languageTag: String): List<RecognizedTextBlock> {
-        val identifier = DigitalInkRecognitionModelIdentifier.fromLanguageTag(languageTag)
-            ?: error("No handwriting model is available for $languageTag")
-        val model = DigitalInkRecognitionModel.builder(identifier).build()
-        val manager = RemoteModelManager.getInstance()
-        if (!manager.isModelDownloaded(model).await()) {
-            manager.download(model, DownloadConditions.Builder().build()).await()
-        }
-        val recognizer = DigitalInkRecognition.getClient(DigitalInkRecognizerOptions.builder(model).build())
-        return try {
-            HandwritingIndex.groups(page.strokes).mapNotNull { group ->
-                val ink = Ink.builder().apply {
-                    group.strokes.forEach { sourceStroke ->
-                        val stroke = Ink.Stroke.builder()
-                        sourceStroke.points.forEach { point ->
-                            stroke.addPoint(Ink.Point.create(point.x * page.width, point.y * page.height, point.timeMs))
-                        }
-                        addStroke(stroke.build())
-                    }
-                }.build()
-                val result = recognizer.recognize(ink).await()
-                result.candidates.firstOrNull()?.text?.trim()?.takeIf(String::isNotBlank)?.let { text ->
-                    RecognizedTextBlock(
-                        text = text,
-                        bounds = group.bounds,
-                        source = RecognizedTextSource.HANDWRITING,
-                        sourceIds = group.strokeIds,
-                        languageTag = languageTag,
-                    )
-                }
-            }
-        } finally {
-            recognizer.close()
-        }
+    suspend fun recognizeHandwriting(@Suppress("UNUSED_PARAMETER") page: InkPage, @Suppress("UNUSED_PARAMETER") languageTag: String): List<RecognizedTextBlock> {
+        error("Paint Engine V5 stores handwriting as raster pixels; vector-ink recognition is unavailable.")
     }
 
     suspend fun recognizeImage(file: File, sourceId: String, languageTag: String): List<RecognizedTextBlock> {

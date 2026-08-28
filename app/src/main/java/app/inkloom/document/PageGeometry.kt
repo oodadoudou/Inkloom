@@ -9,26 +9,6 @@ object PageGeometry {
             height = oldWidth,
             backgroundRotationQuarterTurns = (page.backgroundRotationQuarterTurns + 1).mod(4),
             crop = PageCropTransform.rotateClockwise(page.crop),
-            strokes = page.strokes.map { stroke ->
-                stroke.copy(
-                    points = stroke.points.map { point ->
-                        point.copy(
-                            x = (1f - point.y).coerceIn(0f, 1f),
-                            y = point.x.coerceIn(0f, 1f),
-                            orientation = point.orientation + (Math.PI / 2).toFloat(),
-                        )
-                    },
-                    masks = stroke.masks.map { mask ->
-                        mask.copy(
-                            x = 1f - mask.y,
-                            y = mask.x,
-                            radiusX = mask.radiusX * oldWidth / oldHeight,
-                            radiusY = mask.radiusY * oldHeight / oldWidth,
-                            rotationDegrees = mask.rotationDegrees + 90f,
-                        )
-                    },
-                )
-            },
             layers = page.layers.map { layer ->
                 layer.copy(
                     rasterRotationQuarterTurns = if (layer.contentKind == LayerContentKind.RASTER) {

@@ -25,16 +25,12 @@ object LayerOperations {
             role = LayerRole.CUSTOM,
         )
         val layers = page.layers.toMutableList().apply { add(sourceIndex + 1, duplicate) }
-        val copiedStrokes = page.strokes.filter { it.layerId == sourceLayerId }.map { stroke ->
-            stroke.copy(id = nextId(), layerId = duplicateId)
-        }
         val copiedElements = page.elements.filter { it.layerId == sourceLayerId }.map { element ->
             copyElement(element, duplicateId, nextId)
         }
         return LayerMutation(
             page = page.copy(
                 layers = layers,
-                strokes = page.strokes + copiedStrokes,
                 elements = page.elements + copiedElements,
             ),
             activeLayerId = duplicateId,
@@ -64,16 +60,12 @@ object LayerOperations {
         val sourceIndex = page.layers.indexOfFirst { it.id == sourceLayerId }
         val source = page.layers[sourceIndex]
         val target = page.layers[sourceIndex - 1]
-        val mergedStrokes = page.strokes.filterNot { it.layerId == sourceLayerId || it.layerId == target.id } +
-            page.strokes.filter { it.layerId == target.id }.map { it.copy(opacity = it.opacity * target.opacity) } +
-            page.strokes.filter { it.layerId == sourceLayerId }.map { it.copy(layerId = target.id, opacity = it.opacity * source.opacity) }
         val mergedElements = page.elements.filterNot { it.layerId == sourceLayerId || it.layerId == target.id } +
             page.elements.filter { it.layerId == target.id }.map { it.withOpacity(it.opacity * target.opacity) } +
             page.elements.filter { it.layerId == sourceLayerId }.map { it.withLayer(target.id).withOpacity(it.opacity * source.opacity) }
         return LayerMutation(
             page = page.copy(
                 layers = page.layers.filterNot { it.id == sourceLayerId }.map { if (it.id == target.id) it.copy(opacity = 1f) else it },
-                strokes = mergedStrokes,
                 elements = mergedElements,
             ),
             activeLayerId = target.id,

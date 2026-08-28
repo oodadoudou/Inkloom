@@ -33,7 +33,7 @@ object PageSearch {
         page.recognizedTextBlocks.asSequence()
             .filter { block ->
                 when (block.source) {
-                    RecognizedTextSource.HANDWRITING -> page.handwritingIndexFingerprint == HandwritingIndex.fingerprint(page.strokes)
+                    RecognizedTextSource.HANDWRITING -> page.handwritingIndexFingerprint == HandwritingIndex.fingerprint(page)
                     RecognizedTextSource.IMAGE_OCR -> page.imageOcrFingerprint == ImageOcrIndex.fingerprint(page)
                 }
             }

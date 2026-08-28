@@ -5,6 +5,9 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
 import java.util.zip.CRC32
 
 /** Exact, integrity-checked V5 document checkpoint. Legacy documents are intentionally rejected. */
@@ -33,12 +36,12 @@ internal object DocumentCheckpointCodec {
     )
 
     fun encode(document: InkDocument): String {
-        requireV5Document(document)
         val payload = canonicalJson.encodeToString(document)
         return json.encodeToString(Checkpoint(FORMAT, SCHEMA_VERSION, ENGINE_VERSION, crc32(payload), document))
     }
 
     fun decode(content: String): InkDocument {
+        rejectLegacyStrokePayload(content)
         val checkpoint = json.decodeFromString<Checkpoint>(content)
         require(checkpoint.format == FORMAT) { "Unsupported document format ${checkpoint.format}" }
         require(checkpoint.schemaVersion == SCHEMA_VERSION) {
@@ -49,12 +52,16 @@ internal object DocumentCheckpointCodec {
         }
         val payload = canonicalJson.encodeToString(checkpoint.document)
         require(checkpoint.checksum == crc32(payload)) { "Document checkpoint failed integrity verification" }
-        requireV5Document(checkpoint.document)
         return checkpoint.document
     }
 
-    private fun requireV5Document(document: InkDocument) {
-        require(document.pages.all { it.strokes.isEmpty() }) { LEGACY_ENGINE_ERROR }
+    private fun rejectLegacyStrokePayload(content: String) {
+        val root = runCatching { json.parseToJsonElement(content).jsonObject }.getOrNull() ?: return
+        val document = root["document"] as? JsonObject ?: return
+        val pages = document["pages"] as? JsonArray ?: return
+        require(pages.none { page -> (page as? JsonObject)?.containsKey("strokes") == true }) {
+            LEGACY_ENGINE_ERROR
+        }
     }
 
     private fun crc32(content: String): String = CRC32().run {

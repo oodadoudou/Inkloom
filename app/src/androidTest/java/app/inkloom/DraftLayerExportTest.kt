@@ -6,10 +6,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.document.DocumentAssetService
 import app.inkloom.document.InkLayer
 import app.inkloom.document.InkPage
-import app.inkloom.document.InkStroke
 import app.inkloom.document.PageElement
 import app.inkloom.document.ShapeKind
-import app.inkloom.document.StrokePoint
 import app.inkloom.document.defaultInkLayers
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -23,15 +21,6 @@ class DraftLayerExportTest {
             width = 200f,
             height = 200f,
             layers = defaultInkLayers() + draft,
-            strokes = listOf(
-                InkStroke(
-                    id = "draft-line",
-                    layerId = draft.id,
-                    colorArgb = 0xFF000000,
-                    width = 30f,
-                    points = listOf(StrokePoint(.25f, .5f), StrokePoint(.75f, .5f)),
-                ),
-            ),
             elements = listOf(
                 PageElement.Shape(
                     id = "draft-box",

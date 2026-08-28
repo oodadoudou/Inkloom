@@ -87,7 +87,6 @@ class LibraryBackupServiceTest {
                 layers = defaultInkLayers() +
                     InkLayer(name = "Paint", contentKind = LayerContentKind.RASTER, rasterAssetPath = rasterSurface.absolutePath) +
                     InkLayer(name = "Sparse Paint", contentKind = LayerContentKind.RASTER, rasterTileSurface = sparseReference, mask = LayerMask(surface = layerMaskReference)),
-                strokes = listOf(InkStroke(points = listOf(StrokePoint(.1f, .2f)), brushId = brush.id, tipAssetPaths = listOf(tip.absolutePath), masks = listOf(StrokeMaskDab(.2f, .2f, .04f, .04f, tipAssetPath = tip.absolutePath)))),
                 elements = listOf(sticky, maskedGradient),
             )
             val folder = InkFolder(id = "folder-1", name = "School")
@@ -101,8 +100,8 @@ class LibraryBackupServiceTest {
                     .first { it.name == "manifest.json" }
                 zip.readBytes().decodeToString()
             }
-            assertTrue(manifestText.contains("\"formatVersion\": 4"))
-            assertTrue(manifestText.contains("\"engineVersion\": 4"))
+            assertTrue(manifestText.contains("\"formatVersion\": 5"))
+            assertTrue(manifestText.contains("\"engineVersion\": 5"))
 
             val restored = LibraryBackupService(restoreRoot).restore(ByteArrayInputStream(bytes))
 
@@ -130,9 +129,6 @@ class LibraryBackupServiceTest {
                 0xff556677.toInt(),
                 restoredTileStore.load(File(restoredSparse.manifestAssetPath)).pixelAt(301, 207),
             )
-            assertEquals(restored.brushes.single().id, restoredPage.strokes.single().brushId)
-            assertTrue(File(restoredPage.strokes.single().tipAssetPaths.single()).isFile)
-            assertTrue(File(restoredPage.strokes.single().masks.single().tipAssetPath!!).isFile)
             assertEquals("sticky note", restoredPage.elements.filterIsInstance<PageElement.Sticky>().single().text)
             val restoredGradient = restoredPage.elements.filterIsInstance<PageElement.Shape>().single()
             assertTrue(File(requireNotNull(restoredGradient.maskAssetPath)).isFile)

@@ -21,7 +21,6 @@ object PageCropTransform {
             width = page.width * width(crop),
             height = page.height * height(crop),
             crop = PageCrop(),
-            strokes = page.strokes.map { stroke -> stroke.copy(points = stroke.points.map { point -> project(point, crop) }, masks = stroke.masks.map { mask -> mask.copy(x = (mask.x - crop.left) / width(crop), y = (mask.y - crop.top) / height(crop), radiusX = mask.radiusX / width(crop), radiusY = mask.radiusY / height(crop)) }) },
             layers = page.layers.map { layer ->
                 layer.copy(mask = layer.mask?.copy(regions = layer.mask.regions.map { region ->
                     region.copy(points = region.points.map { point -> project(point, crop) })
@@ -32,11 +31,6 @@ object PageCropTransform {
                 link.copy(bounds = link.bounds.mapNotNull { project(it, crop) }).takeIf { it.bounds.isNotEmpty() }
             },
         )
-    }
-
-    fun unproject(stroke: InkStroke, cropValue: PageCrop): InkStroke {
-        val crop = normalized(cropValue)
-        return stroke.copy(points = stroke.points.map { point -> unproject(point, crop) }, masks = stroke.masks.map { mask -> mask.copy(x = crop.left + mask.x * width(crop), y = crop.top + mask.y * height(crop), radiusX = mask.radiusX * width(crop), radiusY = mask.radiusY * height(crop)) })
     }
 
     fun unproject(element: PageElement, cropValue: PageCrop): PageElement {
@@ -66,19 +60,14 @@ object PageCropTransform {
         return normalized(PageCrop(1f - crop.bottom, crop.left, 1f - crop.top, crop.right))
     }
 
-    private fun project(point: StrokePoint, crop: PageCrop) = point.copy(
-        x = (point.x - crop.left) / width(crop),
-        y = (point.y - crop.top) / height(crop),
-    )
-
-    private fun unproject(point: StrokePoint, crop: PageCrop) = point.copy(
-        x = crop.left + point.x * width(crop),
-        y = crop.top + point.y * height(crop),
-    )
-
     private fun project(element: PageElement, crop: PageCrop): PageElement = element.withPosition(
         (element.x - crop.left) / width(crop),
         (element.y - crop.top) / height(crop),
+    )
+
+    private fun project(point: StrokePoint, crop: PageCrop) = point.copy(
+        x = (point.x - crop.left) / width(crop),
+        y = (point.y - crop.top) / height(crop),
     )
 
     private fun PageElement.withPosition(x: Float, y: Float): PageElement = when (this) {

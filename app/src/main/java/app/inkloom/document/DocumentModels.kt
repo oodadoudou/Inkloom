@@ -41,7 +41,6 @@ data class InkPage(
     val backgroundRotationQuarterTurns: Int = 0,
     val crop: PageCrop = PageCrop(),
     val layers: List<InkLayer> = defaultInkLayers(),
-    val strokes: List<InkStroke> = emptyList(),
     val elements: List<PageElement> = emptyList(),
     val bookmarked: Boolean = false,
     val pdfTextBlocks: List<PdfTextBlock> = emptyList(),

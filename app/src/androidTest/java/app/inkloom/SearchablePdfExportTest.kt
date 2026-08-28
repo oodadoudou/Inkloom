@@ -21,7 +21,8 @@ class SearchablePdfExportTest {
     @Test
     fun recognizedTextRemainsSearchableAfterPdfExport() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
-        val page = InkPage(
+        val pageBase = InkPage()
+        val page = pageBase.copy(
             recognizedTextBlocks = listOf(
                 RecognizedTextBlock(
                     text = "Inkloom searchable handwriting",
@@ -29,7 +30,7 @@ class SearchablePdfExportTest {
                     source = RecognizedTextSource.HANDWRITING,
                 ),
             ),
-            handwritingIndexFingerprint = HandwritingIndex.fingerprint(emptyList()),
+            handwritingIndexFingerprint = HandwritingIndex.fingerprint(pageBase),
         )
         val output = File(context.cacheDir, "searchable-export-${System.nanoTime()}.pdf")
         try {

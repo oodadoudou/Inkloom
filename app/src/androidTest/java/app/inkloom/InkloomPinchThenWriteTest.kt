@@ -104,13 +104,6 @@ class InkloomPinchThenWriteTest {
         activeDocumentId = store.list().first { it.id !in documentIdsBeforeCreate }.id
     }
 
-    private fun strokeCount(): Int {
-        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
-        val store = FileDocumentStore(context.filesDir)
-        val doc = activeDocumentId?.let(store::get)
-        return doc?.pages?.sumOf { it.strokes.size } ?: 0
-    }
-
     private fun rasterTruthToken(): String? {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val document = activeDocumentId?.let { FileDocumentStore(context.filesDir).get(it) } ?: return null
@@ -438,7 +431,7 @@ class InkloomPinchThenWriteTest {
 
     @Test fun zoomedPageRendersBeyondLayoutBounds() {
         openEditor()
-        composeRule.waitUntil(5_000) { strokeCount() == 0 }
+        composeRule.waitUntil(5_000) { rasterTruthToken() == null }
 
         val view = findInkCanvasView()
         val location = IntArray(2)
@@ -538,9 +531,7 @@ class InkloomPinchThenWriteTest {
         val scale = reflectField(view, "viewportScale") as Float
         val panX = reflectField(view, "viewportPanX") as Float
         val panY = reflectField(view, "viewportPanY") as Float
-        val canvasStrokeCount = (reflectField(view, "strokes") as? List<*>)?.size
-        val diskCount = strokeCount()
-        System.err.println("RENDER STATE scale=$scale pan=($panX,$panY) canvasStrokes=$canvasStrokeCount diskStrokes=$diskCount")
+        System.err.println("RENDER STATE scale=$scale pan=($panX,$panY) rasterTruth=${rasterTruthToken()}")
         assertTrue("Pinch must zoom the viewport (scale=$scale)", scale > 1.5f)
 
         // The whole PaperCanvas is physically transformed, so both its white paper and its ink

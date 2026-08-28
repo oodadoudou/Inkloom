@@ -25,7 +25,6 @@ import app.inkloom.engine.v5.surface.MaskComposeMode
 import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -98,29 +97,6 @@ class V5RasterProjectionProductionTest {
             assets.releaseRasterTileReservation(lowerReference)
             assets.releaseRasterTileReservation(upperReference)
         }
-    }
-
-    @Test fun pageExportRejectsLegacyVectorReplayInsteadOfSilentlyFallingBack() {
-        val assets = DocumentAssetService(InstrumentationRegistry.getInstrumentation().targetContext)
-        val page = InkPage(
-            width = 64f,
-            height = 64f,
-            strokes = listOf(
-                InkStroke(
-                    id = "legacy",
-                    layerId = "ink",
-                    points = listOf(StrokePoint(.1f, .1f), StrokePoint(.9f, .9f)),
-                ),
-            ),
-        )
-
-        try {
-            assets.renderPageBitmap(page, 256).recycle()
-            fail("V5 export must reject legacy InkStroke content")
-        } catch (expected: IllegalArgumentException) {
-            assertTrue(expected.message.orEmpty().contains("legacy InkStroke"))
-        }
-        assertEquals(0, assets.v5RasterProjectionExportCount)
     }
 
     @Test fun rasterAndPageElementsExportWithoutAHiddenVectorRenderer() {

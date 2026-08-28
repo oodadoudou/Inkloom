@@ -119,7 +119,6 @@ class LibraryBackupService(private val filesRoot: File) {
                             reference.copy(assetPath = register(reference.assetPath, DOCUMENT_ASSETS)!!)
                         }),
                     ) },
-                    strokes = page.strokes.map { it.portable(::register) },
                     elements = page.elements.map { element -> when (element) {
                         is PageElement.Image -> element.copy(assetPath = register(element.assetPath, DOCUMENT_ASSETS)!!)
                         is PageElement.AudioMarker -> element.copy(assetPath = register(element.assetPath, DOCUMENT_ASSETS)!!)
@@ -172,8 +171,8 @@ class LibraryBackupService(private val filesRoot: File) {
             val manifestFile = File(staging, MANIFEST)
             require(manifestFile.isFile && manifestFile.length() <= MAX_MANIFEST_BYTES) { "Backup has no valid manifest" }
             val manifest = json.decodeFromString<LibraryBackupManifest>(manifestFile.readText())
-            require(manifest.formatVersion in 1..FORMAT_VERSION) { "Backup version ${manifest.formatVersion} is not supported" }
-            require(manifest.engineVersion in 1..ENGINE_VERSION) { "Backup engine version ${manifest.engineVersion} is not supported" }
+            require(manifest.formatVersion == FORMAT_VERSION) { "Backup version ${manifest.formatVersion} is not supported" }
+            require(manifest.engineVersion == ENGINE_VERSION) { "Backup engine version ${manifest.engineVersion} is not supported" }
             require(manifest.documents.size <= MAX_DOCUMENTS && manifest.folders.size <= MAX_FOLDERS && manifest.brushes.size <= MAX_BRUSHES && manifest.brushGroups.size <= MAX_BRUSH_GROUPS && manifest.pageTemplates.customTemplates.size <= MAX_PAGE_TEMPLATES) { "Backup manifest exceeds library limits" }
 
             fun retained(relativePath: String?, folder: String): String? {
@@ -259,7 +258,6 @@ class LibraryBackupService(private val filesRoot: File) {
                                     reference.copy(assetPath = retained(reference.assetPath, DOCUMENT_ASSETS)!!)
                                 }),
                             ) },
-                            strokes = page.strokes.map { it.restored(brushIds, ::retained) },
                             elements = page.elements.map { element -> when (element) {
                                 is PageElement.Image -> element.copy(assetPath = retained(element.assetPath, DOCUMENT_ASSETS)!!)
                                 is PageElement.AudioMarker -> element.copy(assetPath = retained(element.assetPath, DOCUMENT_ASSETS)!!)
@@ -349,25 +347,6 @@ class LibraryBackupService(private val filesRoot: File) {
         return normalized
     }
 
-    private fun InkStroke.portable(register: (String?, String) -> String?) = copy(
-        masks = masks.map { mask -> mask.copy(tipAssetPath = register(mask.tipAssetPath, BRUSH_ASSETS)) },
-        tipAssetPath = register(tipAssetPath, BRUSH_ASSETS),
-        tipAssetPaths = tipAssetPaths.mapNotNull { register(it, BRUSH_ASSETS) },
-        dualTipAssetPaths = dualTipAssetPaths.mapNotNull { register(it, BRUSH_ASSETS) },
-        dualGrainAssetPath = register(dualGrainAssetPath, BRUSH_ASSETS),
-        grainAssetPath = register(grainAssetPath, BRUSH_ASSETS),
-    )
-
-    private fun InkStroke.restored(brushIds: Map<String, String>, retained: (String?, String) -> String?) = copy(
-        brushId = brushIds[brushId] ?: brushId,
-        masks = masks.map { mask -> mask.copy(tipAssetPath = retained(mask.tipAssetPath, BRUSH_ASSETS)) },
-        tipAssetPath = retained(tipAssetPath, BRUSH_ASSETS),
-        tipAssetPaths = tipAssetPaths.mapNotNull { retained(it, BRUSH_ASSETS) },
-        dualTipAssetPaths = dualTipAssetPaths.mapNotNull { retained(it, BRUSH_ASSETS) },
-        dualGrainAssetPath = retained(dualGrainAssetPath, BRUSH_ASSETS),
-        grainAssetPath = retained(grainAssetPath, BRUSH_ASSETS),
-    )
-
     private fun sha256(file: File): String {
         val digest = MessageDigest.getInstance("SHA-256")
         file.inputStream().use { input ->
@@ -395,8 +374,8 @@ class LibraryBackupService(private val filesRoot: File) {
     )
 
     private companion object {
-        const val FORMAT_VERSION = 4
-        const val ENGINE_VERSION = 4
+        const val FORMAT_VERSION = 5
+        const val ENGINE_VERSION = 5
         const val MANIFEST = "manifest.json"
         const val PREFERENCES = "preferences.json"
         const val DOCUMENT_ASSETS = "document-assets"

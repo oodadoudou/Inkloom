@@ -18,7 +18,6 @@ object PageTransfer {
         val transferred = if (copy) page.copy(
             id = nextId(),
             title = "${page.title} copy",
-            strokes = page.strokes.map { it.copy(id = nextId()) },
             elements = page.elements.map { it.copyWithId(nextId(), nextId) },
         ) else page
         val updatedTarget = target.copy(pages = target.pages + transferred, updatedAt = now)

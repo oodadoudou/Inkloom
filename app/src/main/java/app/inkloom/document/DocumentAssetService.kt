@@ -417,7 +417,7 @@ class DocumentAssetService(private val context: Context) {
         }
         val validRecognized = page.recognizedTextBlocks.filter { block ->
             when (block.source) {
-                RecognizedTextSource.HANDWRITING -> page.handwritingIndexFingerprint == HandwritingIndex.fingerprint(page.strokes)
+                RecognizedTextSource.HANDWRITING -> page.handwritingIndexFingerprint == HandwritingIndex.fingerprint(page)
                 RecognizedTextSource.IMAGE_OCR -> page.imageOcrFingerprint == ImageOcrIndex.fingerprint(page)
             }
         }.map { it.text to it.bounds }
@@ -679,7 +679,6 @@ class DocumentAssetService(private val context: Context) {
                         reference.copy(assetPath = "assets/${File(reference.assetPath).name}")
                     }),
                 ) },
-                strokes = page.strokes.map { it.portableBrushAssets() },
                 elements = page.elements.map { element -> when (element) {
                     is PageElement.Image -> element.copy(assetPath = "assets/${File(element.assetPath).name}")
                     is PageElement.AudioMarker -> element.copy(assetPath = "assets/${File(element.assetPath).name}")
@@ -700,8 +699,6 @@ class DocumentAssetService(private val context: Context) {
                 zip,
                 document.pages.flatMap(InkPage::layers).mapNotNull(InkLayer::rasterTileSurface),
             )
-            val allStrokes = document.pages.flatMap(InkPage::strokes)
-            writeDistinctFiles(zip, "brush-assets", allStrokes.flatMap { it.brushAssetPaths() })
             File(context.filesDir, "brush-sources").listFiles()?.filter(File::isFile)?.forEach { file -> zip.putNextEntry(ZipEntry("brush-sources/${file.name}")); file.inputStream().use { it.copyTo(zip) }; zip.closeEntry() }
         }
     }
@@ -798,7 +795,6 @@ class DocumentAssetService(private val context: Context) {
                             reference.copy(assetPath = retained(reference.assetPath))
                         }),
                     ) },
-                    strokes = page.strokes.map { it.withRetainedBrushAssets(::retained) },
                     elements = page.elements.map { element -> when (element) {
                         is PageElement.Image -> element.copy(assetPath = retained(element.assetPath))
                         is PageElement.AudioMarker -> element.copy(assetPath = retained(element.assetPath))
@@ -1203,9 +1199,6 @@ class DocumentAssetService(private val context: Context) {
     ): Boolean {
         if (!includeRaster || !applyLayerEffects) return false
         if (includedLayerIds != null || includedContentIds != null) return false
-        require(projectedPage.strokes.none { stroke -> visibleLayers.any { it.id == stroke.layerId } }) {
-            "Paint Engine V5 cannot export a page that still owns legacy InkStroke content"
-        }
         if (projectedPage.elements.any { element -> visibleLayers.any { it.id == element.layerId } }) return false
         val rasterLayers = visibleLayers.filter { layer ->
             layer.contentKind == LayerContentKind.RASTER &&

@@ -109,7 +109,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     fun duplicateDocument(documentId: String) {
         val source = store.get(documentId) ?: return
         val pageIds = source.pages.associate { it.id to java.util.UUID.randomUUID().toString() }
-        val copiedPages = source.pages.map { page -> page.copy(id = pageIds.getValue(page.id), strokes = page.strokes.map { it.copy(id = java.util.UUID.randomUUID().toString()) }, elements = page.elements.map(::copyElement)) }
+        val copiedPages = source.pages.map { page -> page.copy(id = pageIds.getValue(page.id), elements = page.elements.map(::copyElement)) }
         val copy = source.copy(id = java.util.UUID.randomUUID().toString(), title = "${source.title} copy", createdAt = System.currentTimeMillis(), updatedAt = System.currentTimeMillis(), pages = PdfGotoLinkNavigation.remapDestinations(copiedPages, pageIds))
         store.save(copy); refresh()
     }
@@ -135,7 +135,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         val source = document.pages.first { it.id == pageId }
         val copiedPageId = java.util.UUID.randomUUID().toString()
         val copy = PdfGotoLinkNavigation.remapDestinations(
-            listOf(source.copy(id = copiedPageId, title = "${source.title} copy", strokes = source.strokes.map { it.copy(id = java.util.UUID.randomUUID().toString()) }, elements = source.elements.map(::copyElement))),
+            listOf(source.copy(id = copiedPageId, title = "${source.title} copy", elements = source.elements.map(::copyElement))),
             mapOf(source.id to copiedPageId),
         ).single()
         val index = document.pages.indexOf(source) + 1
@@ -314,7 +314,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun toggleLayerAlphaLock(documentId: String, pageId: String, layerId: String) = updatePage(documentId, pageId) { page ->
-        val existingContentIds = page.strokes.filter { it.layerId == layerId }.map(InkStroke::id) + page.elements.filter { it.layerId == layerId }.map(PageElement::id)
+        val existingContentIds = page.elements.filter { it.layerId == layerId }.map(PageElement::id)
         page.copy(layers = page.layers.map { layer ->
             if (layer.id != layerId || layer.role in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) layer
             else if (layer.alphaLock) layer.copy(alphaLock = false, alphaLockBaseContentIds = emptyList())
@@ -446,7 +446,6 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
             LayerRole.FOLDER -> LayerHierarchy.removeFolder(page, layerId)
             LayerRole.CUSTOM -> page.copy(
                 layers = page.layers.filterNot { it.id == layerId },
-                strokes = page.strokes.map { if (it.layerId == layerId) it.copy(layerId = LayerIds.INK) else it },
                 elements = page.elements.map { element -> if (element.layerId == layerId) element.withLayer(LayerIds.OBJECTS) else element },
             )
             else -> page
@@ -574,9 +573,9 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
                 runCatching { textRecognition.recognizeHandwriting(snapshot, languageTag) }
             }
             result.getOrNull()?.let { blocks ->
-                val fingerprint = HandwritingIndex.fingerprint(snapshot.strokes)
+                val fingerprint = HandwritingIndex.fingerprint(snapshot)
                 updatePage(documentId, pageId) { current ->
-                    if (HandwritingIndex.fingerprint(current.strokes) != fingerprint) current
+                    if (HandwritingIndex.fingerprint(current) != fingerprint) current
                     else current.copy(
                         recognizedTextBlocks = current.recognizedTextBlocks.filterNot { it.source == RecognizedTextSource.HANDWRITING } + blocks,
                         handwritingIndexFingerprint = fingerprint,
@@ -632,7 +631,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     snapshot.pages.associate { page ->
-                        val handwriting = if (page.strokes.isEmpty()) emptyList() else textRecognition.recognizeHandwriting(page, languageTag)
+                        val handwriting = emptyList<RecognizedTextBlock>()
                         val images = recognizeImages(page, languageTag)
                         page.id to (handwriting to images)
                     }
@@ -643,9 +642,9 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
                     current.copy(pages = current.pages.map { page ->
                         val snapshotPage = snapshot.pages.firstOrNull { it.id == page.id } ?: return@map page
                         val recognized = recognizedPages[page.id] ?: return@map page
-                        val handwritingFingerprint = HandwritingIndex.fingerprint(snapshotPage.strokes)
+                        val handwritingFingerprint = HandwritingIndex.fingerprint(snapshotPage)
                         val imageFingerprint = ImageOcrIndex.fingerprint(snapshotPage)
-                        val handwritingStillCurrent = HandwritingIndex.fingerprint(page.strokes) == handwritingFingerprint
+                        val handwritingStillCurrent = HandwritingIndex.fingerprint(page) == handwritingFingerprint
                         val imagesStillCurrent = ImageOcrIndex.fingerprint(page) == imageFingerprint
                         page.copy(
                             recognizedTextBlocks = page.recognizedTextBlocks.filterNot { block ->
@@ -678,12 +677,10 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
                 text = block.text,
                 textSize = ((bounds.bottom - bounds.top) * page.height * .72f).coerceIn(24f, 96f),
             )
-            val remainingStrokes = if (replaceInk) page.strokes.filterNot { it.id in block.sourceIds } else page.strokes
             page.copy(
-                strokes = remainingStrokes,
                 elements = page.elements + element,
                 recognizedTextBlocks = page.recognizedTextBlocks.filterNot { it.id == blockId },
-                handwritingIndexFingerprint = if (replaceInk) HandwritingIndex.fingerprint(remainingStrokes) else page.handwritingIndexFingerprint,
+                handwritingIndexFingerprint = page.handwritingIndexFingerprint,
             )
         }
     }

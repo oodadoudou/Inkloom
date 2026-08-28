@@ -50,15 +50,20 @@ class PageTemplateStoreTest {
 
     @Test
     fun `applying template preserves populated page content coordinates`() {
-        val stroke = InkStroke(points = listOf(StrokePoint(20f, 30f)))
-        val page = InkPage(width = 1600f, height = 2263f, strokes = listOf(stroke))
+        val raster = defaultInkLayers().map { layer ->
+            if (layer.id == LayerIds.INK) layer.copy(
+                contentKind = LayerContentKind.RASTER,
+                rasterTileSurface = RasterTileSurfaceRef("/safe/page.json", "surface", 1600, 2263, 256, 4),
+            ) else layer
+        }
+        val page = InkPage(width = 1600f, height = 2263f, layers = raster)
         val template = PageTemplate(name = "Wide", width = 3000f, height = 2000f, background = PageBackground.Image("/safe/wide.png"))
 
         val applied = PageTemplateOperations.apply(page, template)
 
         assertEquals(1600f, applied.width)
         assertEquals(2263f, applied.height)
-        assertEquals(listOf(stroke), applied.strokes)
+        assertEquals(raster, applied.layers)
         assertEquals(template.background, applied.background)
     }
 

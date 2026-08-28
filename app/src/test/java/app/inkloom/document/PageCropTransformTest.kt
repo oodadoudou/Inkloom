@@ -22,33 +22,6 @@ class PageCropTransformTest {
     }
 
     @Test
-    fun projectAndUnprojectPreserveStrokeCoordinates() {
-        val crop = PageCrop(.2f, .1f, .8f, .9f)
-        val original = InkStroke(
-            points = listOf(StrokePoint(.35f, .5f), StrokePoint(.75f, .8f)),
-            masks = listOf(StrokeMaskDab(.35f, .5f, .03f, .04f, 22f)),
-        )
-        val projected = PageCropTransform.project(InkPage(crop = crop, strokes = listOf(original))).strokes.single()
-        val restored = PageCropTransform.unproject(projected, crop)
-
-        assertEquals(.25f, projected.points.first().x, .0001f)
-        assertEquals(.5f, projected.points.first().y, .0001f)
-        assertEquals(.25f, projected.masks.single().x, .0001f)
-        assertEquals(.5f, projected.masks.single().y, .0001f)
-        assertEquals(.05f, projected.masks.single().radiusX, .0001f)
-        assertEquals(.05f, projected.masks.single().radiusY, .0001f)
-        assertEquals(22f, projected.masks.single().rotationDegrees, .0001f)
-        assertEquals(original.points.first().x, restored.points.first().x, .0001f)
-        assertEquals(original.points.last().y, restored.points.last().y, .0001f)
-        val restoredMask = restored.masks.single()
-        assertEquals(original.masks.single().x, restoredMask.x, .0001f)
-        assertEquals(original.masks.single().y, restoredMask.y, .0001f)
-        assertEquals(original.masks.single().radiusX, restoredMask.radiusX, .0001f)
-        assertEquals(original.masks.single().radiusY, restoredMask.radiusY, .0001f)
-        assertEquals(original.masks.single().rotationDegrees, restoredMask.rotationDegrees, .0001f)
-    }
-
-    @Test
     fun projectPreservesPhysicalObjectSizeAndChangesVisiblePageSize() {
         val image = PageElement.Image(x = .25f, y = .2f, width = 400f, height = 300f, assetPath = "asset")
         val projected = PageCropTransform.project(InkPage(width = 1600f, height = 2000f, crop = PageCrop(.2f, .1f, .7f, .9f), elements = listOf(image)))

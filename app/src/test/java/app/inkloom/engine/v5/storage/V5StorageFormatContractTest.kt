@@ -1,7 +1,6 @@
 package app.inkloom.engine.v5.storage
 
 import app.inkloom.document.InkDocument
-import app.inkloom.document.InkStroke
 import app.inkloom.document.PageElement
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -45,13 +44,11 @@ class V5StorageFormatContractTest {
     }
 
     @Test fun checkpointRejectsLegacyVectorStrokePayloads() {
-        val legacy = InkDocument(
-            title = "legacy vector",
-            pages = listOf(app.inkloom.document.InkPage(strokes = listOf(InkStroke(points = emptyList())))),
-        )
+        val encoded = DocumentCheckpointCodec.encode(InkDocument(title = "legacy vector"))
+        val legacy = encoded.replaceFirst("\"pages\": [\n            {", "\"pages\": [\n            {\n                \"strokes\": [],")
 
         val error = assertThrows(IllegalArgumentException::class.java) {
-            DocumentCheckpointCodec.encode(legacy)
+            DocumentCheckpointCodec.decode(legacy)
         }
         assertEquals(DocumentCheckpointCodec.LEGACY_ENGINE_ERROR, error.message)
     }
