@@ -350,8 +350,8 @@ data class ImportedBrush(
     val renderSeed: Int? = null,
     /** Factory lineage for Reset; null for imported/from-scratch brushes. */
     val derivedFromFactoryId: String? = null,
-    /** Canonical V4 payload. Legacy fields remain as the production compatibility projection. */
-    val v4PresetJson: String? = null,
+    /** Canonical Brush Preset Format V5 payload. Production V5 never derives this at contact time. */
+    val v5PresetJson: String? = null,
 ) {
     val dualGrainPreviewPath get() = dualGrain.previewPath
     val dualGrainDensity get() = dualGrain.density

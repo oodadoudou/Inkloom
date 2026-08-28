@@ -81,7 +81,7 @@ object PresetReverseMigrator {
             renderSeed = v4.renderSeed,
             derivedFromFactoryId = source.derivedFromFactoryId
                 ?: identity.renderBrushId.takeIf { it != identity.id && it.startsWith("system-") },
-            v4PresetJson = BrushPresetV4Codec.encode(v4),
+            v5PresetJson = source.v5PresetJson,
         )
     }
 }

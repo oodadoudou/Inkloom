@@ -453,7 +453,7 @@ class BrushMetadataStore(
                         renderBrushId = item.optString("renderBrushId").takeIf(String::isNotBlank),
                         renderSeed = item.opt("renderSeed")?.takeUnless { it == JSONObject.NULL }?.let { item.optInt("renderSeed") },
                         derivedFromFactoryId = item.optString("derivedFromFactoryId").takeIf(String::isNotBlank),
-                        v4PresetJson = item.optString("v4PresetJson").takeIf(String::isNotBlank),
+                        v5PresetJson = item.optString("v5PresetJson").takeIf(String::isNotBlank),
                     ),
                 )
             }
@@ -731,7 +731,7 @@ class BrushMetadataStore(
                     .put("renderBrushId", brush.renderBrushId)
                     .put("renderSeed", brush.renderSeed)
                     .put("derivedFromFactoryId", brush.derivedFromFactoryId)
-                    .put("v4PresetJson", brush.v4PresetJson)
+                    .put("v5PresetJson", brush.v5PresetJson)
                     .put("semanticMappings", semanticMappingsJson(brush.semanticMappings)),
             )
         }

@@ -1,5 +1,8 @@
 package app.inkloom.brushpresetv5
 
+import app.inkloom.model.BrushFormat
+import app.inkloom.model.Compatibility
+import app.inkloom.model.ImportedBrush
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -55,6 +58,24 @@ class BrushPresetV5FoundationTest {
         assertEquals(factory.preset.renderSeed, edited.preset.renderSeed)
         assertEquals(20f, edited.preset.tip.size)
         assertEquals(7f, factory.preset.tip.size)
+    }
+
+    @Test fun importBoundaryWritesV5AndRejectsLegacyInkloomPackage() {
+        val decodedAbr = ImportedBrush(
+            id = "abr-1",
+            name = "Round",
+            format = BrushFormat.ABR,
+            compatibility = Compatibility.HIGH,
+            sizeBytes = 120,
+            report = emptyList(),
+            defaultSize = 18f,
+        )
+        val converted = BrushPresetV5Import.convertOrReject(decodedAbr)
+        val oldInkloom = BrushPresetV5Import.convertOrReject(decodedAbr.copy(format = BrushFormat.INKLOOM))
+
+        assertEquals(5, BrushPresetV5Import.requirePreset(converted).schemaVersion)
+        assertEquals(Compatibility.FAILED, oldInkloom.compatibility)
+        assertEquals(null, oldInkloom.v5PresetJson)
     }
 
     private fun referencePencil() = BrushPresetV5(

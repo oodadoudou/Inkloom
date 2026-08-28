@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import app.inkloom.model.ImportedBrush
+import app.inkloom.brushpresetv5.BrushPresetV5Import
 import java.io.File
 import java.security.MessageDigest
 
@@ -59,7 +60,7 @@ class BrushImportRepository(context: Context) {
             app.inkloom.model.BrushFormat.PROCREATE -> procreateParser.enrich(target, hash, retained)
             app.inkloom.model.BrushFormat.INKLOOM -> listOf(inkloomPackage.read(target, hash, retained))
             else -> listOf(retained)
-        }.map(BrushSemanticMapper::apply)
+        }.map(BrushSemanticMapper::apply).map(BrushPresetV5Import::convertOrReject)
     }
 
     fun export(brush: ImportedBrush, uri: Uri): Result<Unit> = runCatching {
@@ -77,6 +78,6 @@ class BrushImportRepository(context: Context) {
             brush.format == app.inkloom.model.BrushFormat.PROCREATE && brush.parserVersion < ProcreateBrushParser.CURRENT_VERSION -> procreateParser.enrich(source, hash, brush)
             brush.format == app.inkloom.model.BrushFormat.INKLOOM && brush.parserVersion < InkloomBrushPackage.CURRENT_VERSION -> listOf(inkloomPackage.read(source, hash, brush))
             else -> listOf(brush)
-        }.map(BrushSemanticMapper::apply)
+        }.map(BrushSemanticMapper::apply).map(BrushPresetV5Import::convertOrReject)
     }
 }

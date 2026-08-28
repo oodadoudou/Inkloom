@@ -1,5 +1,7 @@
 package app.inkloom.model
 
+import app.inkloom.brushpresetv5.BrushPresetV5Import
+
 /**
  * First-party brush presets. These stay separate from imported/user brushes so selecting,
  * resizing, grouping, and deleting user content can never mutate the factory catalog.
@@ -83,7 +85,7 @@ internal object SystemBrushCatalog {
         systemBrush(id = "system-liquify-crystals", name = "Crystals", group = "Liquify", size = 135f, flow = .58f, hardness = .72f, tags = listOf("liquify", "crystals")),
         systemBrush(id = "system-liquify-edge", name = "Edge", group = "Liquify", size = 130f, flow = .65f, hardness = .58f, tags = listOf("liquify", "edge")),
         systemBrush(id = "system-liquify-reconstruct", name = "Reconstruct", group = "Liquify", size = 140f, flow = .7f, hardness = .5f, tags = listOf("liquify", "reconstruct")),
-    )
+    ).map(BrushPresetV5Import::createFactoryRecord)
 
     fun byId(id: String): ImportedBrush? = brushes.firstOrNull { it.id == id }
 
