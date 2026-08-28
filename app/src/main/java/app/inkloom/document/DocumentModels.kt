@@ -176,19 +176,10 @@ fun InkLayer.isPaintSurfaceLayer(): Boolean = role !in setOf(LayerRole.BACKGROUN
 @Serializable
 data class LayerMask(
     val baseVisible: Boolean = true,
-    val regions: List<LayerMaskRegion> = emptyList(),
     val enabled: Boolean = true,
     val linked: Boolean = true,
-    /** Authoritative V3 alpha. [regions] is a read-only legacy import/render fallback and no
-     * production command writes it. */
+    /** Authoritative V5 sparse alpha surface. */
     val surface: MaskTileSurfaceRef? = null,
-)
-
-@Serializable
-data class LayerMaskRegion(
-    val points: List<StrokePoint>,
-    val reveal: Boolean,
-    val opacity: Float = 1f,
 )
 
 @Serializable

@@ -4,21 +4,15 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class PageCropTransformTest {
-    @Test fun `crop projects editable layer mask regions with the page`() {
-        val mask = LayerMask(
-            baseVisible = false,
-            regions = listOf(LayerMaskRegion(listOf(
-                StrokePoint(.2f, .1f), StrokePoint(.5f, .1f), StrokePoint(.5f, .7f), StrokePoint(.2f, .7f),
-            ), reveal = true)),
-        )
+    @Test fun `crop retains authoritative sparse layer mask reference`() {
+        val reference = MaskTileSurfaceRef("/tmp/mask.v5", "mask", 100, 200, 64, 1, 0, 1)
+        val mask = LayerMask(baseVisible = false, surface = reference)
         val projected = PageCropTransform.project(InkPage(
             crop = PageCrop(.2f, .1f, .8f, .7f),
             layers = defaultInkLayers().map { if (it.id == LayerIds.INK) it.copy(mask = mask) else it },
         ))
 
-        val points = requireNotNull(projected.layers.first { it.id == LayerIds.INK }.mask).regions.single().points
-        assertEquals(0f, points.minOf(StrokePoint::x), .0001f)
-        assertEquals(1f, points.maxOf(StrokePoint::y), .0001f)
+        assertEquals(reference, projected.layers.first { it.id == LayerIds.INK }.mask?.surface)
     }
 
     @Test

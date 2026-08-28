@@ -145,7 +145,6 @@ import app.inkloom.document.LassoGeometry
 import app.inkloom.document.SelectionMaskCompositor
 import app.inkloom.document.LayerBlendMode
 import app.inkloom.document.LayerMask
-import app.inkloom.document.LayerMaskRenderer
 import app.inkloom.document.toBlendMode
 import app.inkloom.document.toPixelBlendMode
 import app.inkloom.document.LaserTrail
@@ -1597,7 +1596,7 @@ class InkCanvasView(context: Context) : View(context) {
             val clipped = layerId in clippedLayers
             val lowerLayerId = previousLayerId
             if (!clipped || lowerLayerId != null) {
-                val hasEnabledMask = layerMasks[layerId]?.enabled == true
+                val hasEnabledMask = layerMasks[layerId]?.enabled == true && layerMaskSurfaces[layerId] != null
                 if (opacity >= .999f && layerBlendMode == LayerBlendMode.NORMAL && !clipped && !hasEnabledMask) {
                     // Normal CSP-style paint layers are the dominant live path. Allocating a
                     // full-canvas saveLayer here made every front-buffer packet pay an offscreen
@@ -1611,12 +1610,10 @@ class InkCanvasView(context: Context) : View(context) {
                     this.blendMode = layerBlendMode.toBlendMode()
                 })
                 drawV5RawLayerContent(canvas, layerId, includeElements)
-                layerMasks[layerId]?.let { mask ->
+                layerMasks[layerId]?.takeIf { it.enabled }?.let {
+                    val sparse = layerMaskSurfaces[layerId] ?: return@let
                     val maskCheckpoint = canvas.saveLayer(compositionBounds, Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.DST_IN })
-                    val sparse = layerMaskSurfaces[layerId]
-                    if (mask.enabled && sparse != null) {
-                        MaskTileCanvasRenderer.draw(sparse, canvas, RectF(0f, 0f, width.toFloat(), height.toFloat()))
-                    } else LayerMaskRenderer.draw(canvas, mask, width, height)
+                    MaskTileCanvasRenderer.draw(sparse, canvas, RectF(0f, 0f, width.toFloat(), height.toFloat()))
                     canvas.restoreToCount(maskCheckpoint)
                 }
                 if (clipped && lowerLayerId != null) {

@@ -14,15 +14,6 @@ object PageGeometry {
                     rasterRotationQuarterTurns = if (layer.isPaintSurfaceLayer()) {
                         (layer.rasterRotationQuarterTurns + 1).mod(4)
                     } else layer.rasterRotationQuarterTurns,
-                    mask = layer.mask?.copy(regions = layer.mask.regions.map { region ->
-                        region.copy(points = region.points.map { point ->
-                            point.copy(
-                                x = (1f - point.y).coerceIn(0f, 1f),
-                                y = point.x.coerceIn(0f, 1f),
-                                orientation = point.orientation + (Math.PI / 2).toFloat(),
-                            )
-                        })
-                    }),
                 )
             },
             elements = page.elements.map { rotateElementClockwise(it, oldWidth, oldHeight) },

@@ -329,7 +329,6 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
             val reference = assets.saveMaskTileSurface(snapshot)
             val updated = (layer.mask ?: LayerMask()).copy(
                 baseVisible = reference.defaultAlpha > 0,
-                regions = emptyList(),
                 surface = reference,
             )
             return@updatePage page.copy(layers = page.layers.map { if (it.id == layerId) it.copy(mask = updated) else it })
@@ -386,7 +385,6 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         val reference = assets.saveMaskTileSurface(result)
         val updatedMask = (layer.mask ?: LayerMask()).copy(
             baseVisible = reference.defaultAlpha > 0,
-            regions = emptyList(),
             surface = reference,
         )
         page.copy(layers = page.layers.map { if (it.id == layerId) it.copy(mask = updatedMask) else it })

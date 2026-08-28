@@ -21,11 +21,6 @@ object PageCropTransform {
             width = page.width * width(crop),
             height = page.height * height(crop),
             crop = PageCrop(),
-            layers = page.layers.map { layer ->
-                layer.copy(mask = layer.mask?.copy(regions = layer.mask.regions.map { region ->
-                    region.copy(points = region.points.map { point -> project(point, crop) })
-                }))
-            },
             elements = page.elements.map { project(it, crop) },
             pdfGotoLinks = page.pdfGotoLinks.mapNotNull { link ->
                 link.copy(bounds = link.bounds.mapNotNull { project(it, crop) }).takeIf { it.bounds.isNotEmpty() }

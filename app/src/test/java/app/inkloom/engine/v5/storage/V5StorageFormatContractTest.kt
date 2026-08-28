@@ -72,6 +72,7 @@ class V5StorageFormatContractTest {
         val background = layers.first().jsonObject.toMutableMap()
         background["contentKind"] = JsonPrimitive("VECTOR")
         background["rasterAssetPath"] = JsonPrimitive("/legacy/full-page.png")
+        background["mask"] = JsonObject(mapOf("regions" to JsonArray(emptyList())))
         layers[0] = JsonObject(background)
         page["layers"] = JsonArray(layers)
         pages[0] = JsonObject(page)

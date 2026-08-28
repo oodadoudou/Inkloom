@@ -1076,18 +1076,17 @@ class DocumentAssetService(private val context: Context) {
                 }
             }
             drawLayerWithAlphaLock(layer)
-            if (applyLayerEffects) layer.mask?.let { mask ->
+            if (applyLayerEffects) layer.mask?.takeIf { it.enabled }?.surface?.let { reference ->
+                val sparse = runCatching { loadMaskTileSurface(reference).snapshot() }.getOrNull()
+                    ?: return@let
                 val maskCheckpoint = canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     blendMode = android.graphics.BlendMode.DST_IN
                 })
-                val sparse = mask.surface?.let { runCatching { loadMaskTileSurface(it).snapshot() }.getOrNull() }
-                if (mask.enabled && sparse != null) {
-                    app.inkloom.engine.v5.android.MaskTileCanvasRenderer.draw(
-                        sparse,
-                        canvas,
-                        RectF(0f, 0f, width.toFloat(), height.toFloat()),
-                    )
-                } else LayerMaskRenderer.draw(canvas, mask, width, height)
+                app.inkloom.engine.v5.android.MaskTileCanvasRenderer.draw(
+                    sparse,
+                    canvas,
+                    RectF(0f, 0f, width.toFloat(), height.toFloat()),
+                )
                 canvas.restoreToCount(maskCheckpoint)
             }
             if (applyLayerEffects && layer.clippedToBelow) {
