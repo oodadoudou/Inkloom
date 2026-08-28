@@ -4951,10 +4951,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     // discarded at this boundary and the selected system eraser preset is used instead.
     val activeBrush = if (selectedTool == EditorTool.ERASER) selectedBrush?.takeIf(BrushRoleClassifier::isEraser) else selectedBrush
     val paintTool = selectedTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER)
-    val nativePreset = when {
-        !paintTool -> null
-        activeBrush != null -> BrushPresetV5Codec.decodeOrNull(activeBrush.v5PresetJson)
-        else -> BrushPresetV5(
+    val defaultPreset = if (paintTool && activeBrush == null) BrushPresetV5(
             identity = PresetIdentity(
                 id = when (selectedTool) {
                     EditorTool.ERASER -> "system-default-eraser"
@@ -4994,10 +4991,14 @@ internal fun InkCanvasView.applyBrushConfiguration(
                 ),
                 tilt = TiltMappings(),
             ),
-        )
+        ) else null
+    val compiledProgram = when {
+        !paintTool -> null
+        activeBrush != null -> compiledBrushProgramV5Cache.resolveEncoded(activeBrush.v5PresetJson)
+        else -> compiledBrushProgramV5Cache.resolvePreset(requireNotNull(defaultPreset))
     }
     setCompiledBrushProgramV5(
-        nativePreset?.let(CompiledBrushProgramV5::compile),
+        compiledProgram,
         required = paintTool,
     )
     switchInputConfiguration(selectedTool, activeBrush?.id)

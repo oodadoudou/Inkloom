@@ -30,6 +30,7 @@ import app.inkloom.BuildConfig
 import app.inkloom.brushpresetv5.BrushFamily as BrushFamilyV5
 import app.inkloom.brushpresetv5.BrushOutput as BrushOutputV5
 import app.inkloom.brushpresetv5.CompiledBrushProgramV5
+import app.inkloom.brushpresetv5.CompiledBrushProgramV5Cache
 import app.inkloom.brushpresetv5.RenderBackend as RenderBackendV5
 import app.inkloom.engine.v5.diagnostics.PaintingTruthDiagnostics
 import app.inkloom.engine.v5.diagnostics.StrokeTrace
@@ -566,6 +567,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var configuredInputTool: EditorTool? = null
     private var configuredInputBrushId: String? = null
     private var compiledBrushProgramV5: CompiledBrushProgramV5? = null
+    internal val compiledBrushProgramV5Cache = CompiledBrushProgramV5Cache()
     private var compiledBrushProgramV5Required: Boolean = false
     private var prewarmedBrushSignature: String? = null
     private val protectedLayerIds = mutableSetOf<String>()
