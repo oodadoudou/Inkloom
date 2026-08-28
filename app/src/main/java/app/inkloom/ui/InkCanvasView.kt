@@ -30,6 +30,9 @@ import android.view.ViewConfiguration
 import androidx.annotation.WorkerThread
 import androidx.annotation.VisibleForTesting
 import app.inkloom.BuildConfig
+import app.inkloom.brushpresetv5.BrushFamily as BrushFamilyV5
+import app.inkloom.brushpresetv5.CompiledBrushProgramV5
+import app.inkloom.brushpresetv5.RenderBackend as RenderBackendV5
 import app.inkloom.engine.v5.diagnostics.PaintingTruthDiagnostics
 import app.inkloom.engine.v5.diagnostics.StrokeTrace
 import app.inkloom.engine.v5.diagnostics.traceEngineV5
@@ -589,6 +592,7 @@ class InkCanvasView(context: Context) : View(context) {
     internal var onHoverCursorStyleChanged: (() -> Unit)? = null
     private var configuredInputTool: EditorTool? = null
     private var configuredInputBrushId: String? = null
+    private var compiledBrushProgramV5: CompiledBrushProgramV5? = null
     private var prewarmedBrushSignature: String? = null
     private val protectedStrokeIds = mutableSetOf<String>()
     private val protectedLayerIds = mutableSetOf<String>()
@@ -1929,6 +1933,22 @@ class InkCanvasView(context: Context) : View(context) {
         configuredInputTool = nextTool
         configuredInputBrushId = nextBrushId
         tool = nextTool
+    }
+
+    /** Installs an immutable V5 program for the next contact; null returns to library configuration. */
+    fun setCompiledBrushProgramV5(program: CompiledBrushProgramV5?) {
+        if (compiledBrushProgramV5 === program) return
+        if (activeTool != null) cancelActiveGestureForNavigation()
+        compiledBrushProgramV5 = program
+        program?.let {
+            brushId = it.renderBrushId
+            brushRenderSeed = it.renderSeed
+            it.tip.tipTexture?.assetPath?.let { path ->
+                v5BrushTipMasks.resolve(BrushTipMaskRequest(path, it.tip.hardness.coerceIn(0f, 1f)))
+            }
+            prewarmedBrushSignature = null
+        }
+        notifyHoverCursorStyleChanged()
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -4930,6 +4950,122 @@ class InkCanvasView(context: Context) : View(context) {
             dynamics.tiltStart,
             dynamics.tiltCurve.map { it.x to it.y },
         )
+        compiledBrushProgramV5?.takeIf { active != EditorTool.ERASER }?.let { program ->
+            if (program.strokeShaping.smoothing > .0001f || program.strokeShaping.postCorrection > .0001f ||
+                program.strokeShaping.taperStartEnabled || program.strokeShaping.taperEndEnabled
+            ) return null
+            val sizeResponse = PressureResponse(
+                program.pressure.widthEnabled,
+                program.pressure.widthMinimum,
+                program.pressure.widthCurve.map { it.x to it.y },
+            )
+            val opacityResponse = PressureResponse(
+                program.pressure.depositionEnabled,
+                program.pressure.depositionMinimum,
+                program.pressure.depositionCurve.map { it.x to it.y },
+            )
+            val flowResponse = PressureResponse(
+                program.pressure.flowEnabled,
+                program.pressure.flowMinimum,
+                program.pressure.flowCurve.map { it.x to it.y },
+            )
+            val tipAsset = program.tip.tipTexture?.assetPath
+            if (tipAsset != null) {
+                val mask = v5BrushTipMasks.resolve(
+                    BrushTipMaskRequest(tipAsset, program.tip.hardness.coerceIn(0f, 1f)),
+                ) ?: return null
+                val stamp = StampBrushDefinition(
+                    kind = when (program.backend) {
+                        RenderBackendV5.AIRBRUSH -> PaintOpKind.AIRBRUSH
+                        RenderBackendV5.ASSET_STAMP -> PaintOpKind.DECORATION
+                        RenderBackendV5.PROCEDURAL_STAMP -> PaintOpKind.PENCIL
+                        else -> PaintOpKind.DRY_INK
+                    },
+                    diameterPixels = diameterPixels,
+                    colorArgb = inkColor,
+                    opacity = (inkOpacity * program.deposition.opacity).coerceIn(0f, 1f),
+                    flow = program.deposition.flow.coerceIn(0f, 1f),
+                    spacingRatio = program.spacingPolicy?.value?.coerceIn(.01f, 2f) ?: .12f,
+                    tips = listOf(mask),
+                    sizePressure = sizeResponse,
+                    opacityPressure = opacityResponse,
+                    flowPressure = flowResponse,
+                    roundness = program.tip.aspect.coerceIn(.01f, 1f),
+                    rotationRadians = Math.toRadians(program.tip.rotationDegrees.toDouble()).toFloat(),
+                    renderSeed = program.renderSeed,
+                )
+                return V5PaintConfiguration(
+                    StampPaintOp(surface, stamp, selection, sampleTransforms = sampleTransforms),
+                    diameterPixels * .5f + 2f,
+                    "preset-v5:stamp:${program.identity.id}",
+                )
+            }
+            when (program.backend) {
+                RenderBackendV5.AIRBRUSH -> {
+                    val stamp = StampBrushDefinition(
+                        kind = PaintOpKind.AIRBRUSH,
+                        diameterPixels = diameterPixels,
+                        colorArgb = inkColor,
+                        opacity = (inkOpacity * program.deposition.opacity).coerceIn(0f, 1f),
+                        flow = program.deposition.flow.coerceIn(0f, 1f),
+                        spacingRatio = program.spacingPolicy?.value?.coerceIn(.01f, 2f) ?: .12f,
+                        tips = listOf(BrushTipMask.solidCircle(96, program.tip.hardness.coerceIn(0f, 1f))),
+                        sizePressure = sizeResponse,
+                        opacityPressure = opacityResponse,
+                        flowPressure = flowResponse,
+                        renderSeed = program.renderSeed,
+                    )
+                    return V5PaintConfiguration(
+                        StampPaintOp(surface, stamp, selection, sampleTransforms = sampleTransforms),
+                        diameterPixels * .5f + 2f,
+                        "preset-v5:airbrush:${program.identity.id}",
+                    )
+                }
+                RenderBackendV5.WET_PAINT -> {
+                    val wet = WetPaintDefinition(
+                        diameterPixels = diameterPixels,
+                        colorArgb = inkColor,
+                        opacity = (inkOpacity * program.deposition.opacity).coerceIn(0f, 1f),
+                        hardness = program.tip.hardness.coerceIn(0f, 1f),
+                        dilution = .35f,
+                        charge = program.deposition.flow.coerceIn(.15f, 1f),
+                        attack = .7f,
+                        pull = .35f,
+                        sizePressure = sizeResponse,
+                    )
+                    return V5PaintConfiguration(
+                        WetPaintOp(surface, wet, selection, sampleTransforms),
+                        diameterPixels * .5f + 2f,
+                        "preset-v5:wet:${program.identity.id}",
+                    )
+                }
+                RenderBackendV5.ASSET_STAMP -> return null
+                RenderBackendV5.CONTINUOUS_RIBBON, RenderBackendV5.PROCEDURAL_STAMP -> {
+                    val pencilGrain = if (program.identity.family == BrushFamilyV5.PENCIL) {
+                        (program.grainSampler?.strength ?: program.tip.hardness).coerceIn(0f, 1f) * .4f
+                    } else 0f
+                    val dry = DryInkDefinition(
+                        diameterPixels = diameterPixels,
+                        colorArgb = inkColor,
+                        opacity = (inkOpacity * program.deposition.opacity * program.deposition.flow).coerceIn(0f, 1f),
+                        minimumPressureScale = if (program.pressure.widthEnabled) program.pressure.widthMinimum.coerceIn(0f, 1f) else 1f,
+                        opacityPressureMinimum = if (program.pressure.depositionEnabled) program.pressure.depositionMinimum.coerceIn(0f, 1f) else 1f,
+                        flowPressureMinimum = if (program.pressure.flowEnabled) program.pressure.flowMinimum.coerceIn(0f, 1f) else 1f,
+                        hardness = program.tip.hardness.coerceIn(0f, 1f),
+                        pencilGrain = pencilGrain,
+                        grainSeed = program.renderSeed,
+                        sizePressure = sizeResponse,
+                        opacityPressure = opacityResponse,
+                        flowPressure = flowResponse,
+                    )
+                    return V5PaintConfiguration(
+                        DryInkPaintOp(surface, dry, selection, sampleTransforms),
+                        diameterPixels * .5f + 2f,
+                        "preset-v5:dry:${program.identity.id}",
+                    )
+                }
+            }
+        }
         if (active == EditorTool.ERASER) {
             val eraserTip = eraserTipAssetPath
             if (eraserTip != null) {

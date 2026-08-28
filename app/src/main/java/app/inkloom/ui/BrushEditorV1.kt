@@ -34,19 +34,15 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import app.inkloom.brushpresetv4.BrushOptionDescriptor
-import app.inkloom.brushpresetv4.BrushOptionDescriptors
-import app.inkloom.brushpresetv4.BrushPresetV4
-import app.inkloom.brushpresetv4.CompiledBrushProgram
-import app.inkloom.brushpresetv4.EditorWorkingCopy
-import app.inkloom.brushpresetv4.OwnedBrushPreset
-import app.inkloom.brushpresetv4.PresetReverseMigrator
-import app.inkloom.brushpresetv4.PressureCurveShape
-import app.inkloom.brushpresetv4.ScratchPadTrajectories
+import app.inkloom.brushpresetv5.BrushOptionDescriptor
+import app.inkloom.brushpresetv5.BrushOptionDescriptors
+import app.inkloom.brushpresetv5.BrushPresetV5
+import app.inkloom.brushpresetv5.EditorWorkingCopy
+import app.inkloom.brushpresetv5.OwnedBrushPreset
+import app.inkloom.brushpresetv5.PressureCurveShape
 import app.inkloom.document.LayerIds
-import app.inkloom.model.EditorTool
+import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.settings.AppSettings
-import app.inkloom.settings.EraserPreset
 
 private fun brTr(language: String, english: String, simplifiedChinese: String): String =
     if (language.startsWith("zh")) simplifiedChinese else english
@@ -55,15 +51,14 @@ private fun brTr(language: String, english: String, simplifiedChinese: String): 
 private fun currentLanguage(): String = LocalConfiguration.current.locales[0].language
 
 /**
- * Brush Editor V1 — the capability-driven editor over [BrushPresetV4].
+ * Brush Editor V1 — the capability-driven editor over [BrushPresetV5].
  *
  * Editing flow:
  *
  *   Selected preset (factory or user)
  *     -> EditorWorkingCopy (source immutable until Save)
- *     -> BrushPresetV4 being edited
- *     -> compile() -> CompiledBrushProgram
- *     -> Scratch Pad (production renderer)
+ *     -> BrushPresetV5 being edited
+ *     -> compile() -> immutable V5 program used by the next contact
  *
  * Panels are derived purely from the family's capability set; no brush-name branching.
  * Save follows ownership: factory -> Save As (new user copy), user -> Save / Save As / Reset /
@@ -74,8 +69,8 @@ fun BrushEditorV1Dialog(
     source: OwnedBrushPreset,
     settings: AppSettings,
     onDismiss: () -> Unit,
-    onSaveAs: (BrushPresetV4) -> Unit,
-    onSaveInPlace: (BrushPresetV4) -> Unit,
+    onSaveAs: (BrushPresetV5) -> Unit,
+    onSaveInPlace: (BrushPresetV5) -> Unit,
     onResetToFactory: (() -> Unit)?,
     onDelete: () -> Unit,
 ) {
@@ -108,7 +103,7 @@ fun BrushEditorV1Dialog(
                     }
                 }
                 if (showScratchPad) {
-                    V4ScratchPad(preset = session.current, settings = settings, lang = lang)
+                    V5ScratchPad(preset = session.current, settings = settings, lang = lang)
                 }
                 LazyColumn(
                     Modifier.fillMaxWidth().heightIn(max = 420.dp),
@@ -151,8 +146,8 @@ fun BrushEditorV1Dialog(
 private fun CapabilityPanel(
     groupName: String,
     options: List<BrushOptionDescriptor>,
-    value: BrushPresetV4,
-    onValue: (BrushPresetV4) -> Unit,
+    value: BrushPresetV5,
+    onValue: (BrushPresetV5) -> Unit,
 ) {
     val lang = currentLanguage()
     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0x0DFFFFFF))) {
@@ -168,8 +163,8 @@ private fun CapabilityPanel(
 @Composable
 private fun BrushOptionRow(
     option: BrushOptionDescriptor,
-    value: BrushPresetV4,
-    onValue: (BrushPresetV4) -> Unit,
+    value: BrushPresetV5,
+    onValue: (BrushPresetV5) -> Unit,
 ) {
     val current = option.get(value)
     if (option.id.endsWith("CurveShape")) {
@@ -207,22 +202,14 @@ private fun BrushOptionRow(
 }
 
 /**
- * Scratch Pad — renders through the production renderer.
- *
- * Preset test trajectories go through BrushPresetV4 -> compile -> InkStroke ->
- * setDocumentStrokes on a real InkCanvasView, i.e. the exact same renderer the real canvas uses
- * (BrushPresetV4EditorCanvasParityTest proves the configured canvas fields equal the compiled
- * stroke's). Free drawing is driven by the canvas's own input path on the reverse-migrated
- * preset, so there is no editor-specific preview renderer.
+ * Scratch Pad — accepts real V5 canvas input only. There is no synthesized InkStroke replay.
  */
 @Composable
-private fun V4ScratchPad(
-    preset: BrushPresetV4,
+private fun V5ScratchPad(
+    preset: BrushPresetV5,
     settings: AppSettings,
     lang: String,
 ) {
-    var trajectory by remember(preset.renderSeed) { mutableStateOf("straight") }
-
     Column(
         Modifier
             .fillMaxWidth()
@@ -232,52 +219,26 @@ private fun V4ScratchPad(
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text(brTr(lang, "SCRATCH PAD", "试笔板"), color = Color(0xFF9AC8A0), fontSize = 11.sp)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            ScratchPadTrajectories.all.forEach { name ->
-                TextButton(onClick = { trajectory = name }, modifier = Modifier.height(30.dp)) {
-                    Text(trTrajectory(lang, name), fontSize = 11.sp)
-                }
-            }
-        }
         AndroidView(
             factory = { ctx ->
                 InkCanvasView(ctx).apply {
                     activeLayerId = LayerIds.INK
                     pageModelWidth = 900f
                     pageModelHeight = 240f
+                    setRasterLayerSurfaces(mapOf(LayerIds.INK to PixelTileSurface(900, 240)))
+                    layerOrder = listOf(LayerIds.INK)
+                    pagePaperColor = AndroidColor.WHITE
                 }
             },
             update = { view ->
                 view.activeLayerId = LayerIds.INK
                 view.pageModelWidth = 900f
                 view.pageModelHeight = 240f
-                view.applyBrushConfiguration(
-                    selectedTool = EditorTool.PEN,
-                    settings = settings,
-                    selectedBrush = PresetReverseMigrator.toV3(preset),
-                    brushSize = preset.tip.size,
-                    brushOpacity = preset.deposition.opacity,
-                    brushColor = AndroidColor.rgb(17, 17, 17),
-                    eraserPreset = EraserPreset.NORMAL_FREE,
-                )
-                val stroke = CompiledBrushProgram.compile(preset).toInkStroke(
-                    0xFF111111L,
-                    ScratchPadTrajectories.byName(trajectory),
-                )
-                view.setDocumentStrokes(listOf(stroke), "v4scratch:$trajectory:${preset.renderSeed}")
+                view.applyBrushPresetV5Configuration(preset, settings)
             },
             modifier = Modifier.fillMaxWidth().height(132.dp).clip(RoundedCornerShape(8.dp)).background(Color.White),
         )
     }
-}
-
-private fun trTrajectory(lang: String, name: String): String = when (name) {
-    "straight" -> brTr(lang, "Straight", "直线")
-    "pressureRamp" -> brTr(lang, "Pressure Ramp", "压力渐变")
-    "tiltRamp" -> brTr(lang, "Tilt Ramp", "侧锋渐变")
-    "circle" -> brTr(lang, "Circle", "圆")
-    "sCurve" -> brTr(lang, "S-Curve", "S 曲线")
-    else -> name
 }
 
 private fun trGroup(lang: String, group: String): String = when (group) {

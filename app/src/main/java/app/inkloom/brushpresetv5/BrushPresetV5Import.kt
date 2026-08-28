@@ -40,6 +40,12 @@ object BrushPresetV5Import {
         return writePreset(source, fromDecodedSource(source), BrushFormat.SYSTEM)
     }
 
+    /** Creates a native user preset authored inside Inkloom. */
+    fun createUserRecord(source: ImportedBrush): ImportedBrush {
+        require(source.format == BrushFormat.INKLOOM)
+        return writePreset(source, fromDecodedSource(source), BrushFormat.INKLOOM)
+    }
+
     fun requirePreset(record: ImportedBrush): BrushPresetV5 =
         BrushPresetV5Codec.decodeOrNull(record.v5PresetJson)
             ?: error("This brush was created by an unsupported legacy Inkloom engine.")

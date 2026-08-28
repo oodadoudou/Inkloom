@@ -98,11 +98,12 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.core.content.FileProvider
 import app.inkloom.document.*
-import app.inkloom.brushpresetv4.OwnedBrushPreset
-import app.inkloom.brushpresetv4.PresetMigrator
-import app.inkloom.brushpresetv4.PresetOwnership
-import app.inkloom.brushpresetv4.PresetOwnershipOperations
-import app.inkloom.brushpresetv4.PresetReverseMigrator
+import app.inkloom.brushpresetv5.OwnedBrushPreset
+import app.inkloom.brushpresetv5.BrushPresetV5Import
+import app.inkloom.brushpresetv5.BrushPresetV5
+import app.inkloom.brushpresetv5.CompiledBrushProgramV5
+import app.inkloom.brushpresetv5.PresetOwnership
+import app.inkloom.brushpresetv5.PresetOwnershipOperations
 import app.inkloom.importer.BrushImportRepository
 import app.inkloom.importer.BrushGroupOperations
 import app.inkloom.importer.BrushGroupStore
@@ -4967,6 +4968,43 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
     }
 }
 
+internal fun InkCanvasView.applyBrushPresetV5Configuration(
+    preset: BrushPresetV5,
+    settings: AppSettings,
+    brushSize: Float = preset.tip.size,
+    brushOpacity: Float = preset.deposition.opacity,
+    brushColor: Int = AndroidColor.rgb(17, 17, 17),
+) {
+    val compiled = CompiledBrushProgramV5.compile(preset)
+    switchInputConfiguration(EditorTool.PEN, preset.identity.id)
+    setCompiledBrushProgramV5(compiled)
+    fingerDrawingEnabled = settings.fingerDrawing
+    singleFingerDoubleTapUndo = settings.singleFingerDoubleTapUndo
+    twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo
+    threeFingerTapRedo = settings.threeFingerTapRedo
+    pressureSensitivity = settings.pressureSensitivity
+    pressureMinimumInput = settings.pressureMinimumInput
+    pressureMaximumInput = settings.pressureMaximumInput
+    pressureResponseCurve = settings.pressureResponseCurve
+    primaryButtonAction = settings.stylusPrimaryButton
+    secondaryButtonAction = settings.stylusSecondaryButton
+    primaryButtonTrigger = settings.stylusPrimaryTrigger
+    secondaryButtonTrigger = settings.stylusSecondaryTrigger
+    streamLine = 0f
+    streamLinePressure = 0f
+    procreateStabilization = 0f
+    motionFiltering = 0f
+    motionFilteringExpression = 0f
+    stabilization = 0f
+    postCorrection = 0f
+    baseWidth = brushSize
+    inkOpacity = brushOpacity
+    inkColor = brushColor
+    brushId = preset.identity.renderBrushId
+    brushRenderSeed = preset.renderSeed
+    notifyHoverCursorStyleChanged()
+}
+
 internal fun InkCanvasView.applyBrushConfiguration(
     selectedTool: EditorTool,
     settings: AppSettings,
@@ -4977,6 +5015,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     eraserPreset: EraserPreset,
     secondaryBrushColor: Int = AndroidColor.WHITE,
 ) {
+    setCompiledBrushProgramV5(null)
     // A delayed Compose frame or hardware-button transition must never carry a normal paint
     // descriptor into eraser mode. Imported erasers remain full brush presets; other brushes are
     // discarded at this boundary and the selected system eraser preset is used instead.
@@ -7679,7 +7718,7 @@ private fun BrushPanel(
                         leadingIcon = { Icon(Icons.Outlined.Brush, null) },
                         onClick = {
                             addMenu = false
-                            val created = ImportedBrush(
+                            val created = BrushPresetV5Import.createUserRecord(ImportedBrush(
                                 name = newBrushName,
                                 format = BrushFormat.INKLOOM,
                                 compatibility = Compatibility.COMPLETE,
@@ -7687,7 +7726,7 @@ private fun BrushPanel(
                                 report = listOf(createdInInkloomReport),
                                 groupName = selectedGroup?.takeUnless { it == UNGROUPED_BRUSH_FILTER }.orEmpty(),
                                 sortOrder = (brushes.maxOfOrNull { it.sortOrder } ?: -1) + 1,
-                            )
+                            ))
                             creatingBrushId = created.id
                             editBrush = created
                         },
@@ -7992,26 +8031,26 @@ private fun BrushPanel(
         val owned = remember(brush.id) {
             if (brush.format == BrushFormat.SYSTEM) {
                 OwnedBrushPreset(
-                    preset = PresetMigrator.toV4(brush),
+                    preset = BrushPresetV5Import.requirePreset(brush),
                     ownership = PresetOwnership.Factory(brush.id),
                 )
             } else {
                 val derivedFactoryId = brush.derivedFromFactoryId
                     ?: brush.renderBrushId?.takeIf { renderId -> systemBrushes.any { it.id == renderId } }
                 OwnedBrushPreset(
-                    preset = PresetMigrator.toV4(brush),
+                    preset = BrushPresetV5Import.requirePreset(brush),
                     ownership = PresetOwnership.User(userId = brush.id, derivedFromFactoryId = derivedFactoryId),
                 )
             }
         }
-        val v4Editing = remember(brush.id) { mutableStateOf(true) }
-        if (v4Editing.value) {
+        val v5Editing = remember(brush.id) { mutableStateOf(true) }
+        if (v5Editing.value) {
             BrushEditorV1Dialog(
                 source = owned,
                 settings = settings,
                 onDismiss = { creatingBrushId = null; editBrush = null },
-                onSaveAs = { v4 ->
-                    val updated = BrushSemanticMapper.apply(PresetReverseMigrator.toV3(v4, BrushFormat.INKLOOM, base = brush))
+                onSaveAs = { v5 ->
+                    val updated = BrushPresetV5Import.writePreset(brush, v5, BrushFormat.INKLOOM)
                     if (creatingBrushId == brush.id) {
                         onReplaceBrushes(brushes + updated)
                     } else {
@@ -8022,8 +8061,8 @@ private fun BrushPanel(
                     creatingBrushId = null
                     editBrush = null
                 },
-                onSaveInPlace = { v4 ->
-                    val updated = BrushSemanticMapper.apply(PresetReverseMigrator.toV3(v4, BrushFormat.INKLOOM, base = brush))
+                onSaveInPlace = { v5 ->
+                    val updated = BrushPresetV5Import.writePreset(brush, v5, BrushFormat.INKLOOM)
                     if (creatingBrushId == brush.id) {
                         onReplaceBrushes(brushes + updated)
                     } else if (updated != brush) {
@@ -8036,16 +8075,14 @@ private fun BrushPanel(
                 },
                 onResetToFactory = (owned.ownership as? PresetOwnership.User)?.derivedFromFactoryId
                     ?.let { factoryId -> systemBrushes.firstOrNull { it.id == factoryId } }
-                    ?.let(PresetMigrator::toV4)
+                    ?.let(BrushPresetV5Import::requirePreset)
                     ?.let { factoryPreset ->
                         {
                             PresetOwnershipOperations.resetToFactory(owned, factoryPreset)?.let { reset ->
                                 historyStore.record(brush)
                                 historyRevision++
                                 onUpdateBrush(
-                                    BrushSemanticMapper.apply(
-                                        PresetReverseMigrator.toV3(reset.preset, BrushFormat.INKLOOM, base = brush),
-                                    ),
+                                    BrushPresetV5Import.writePreset(brush, reset.preset, BrushFormat.INKLOOM),
                                 )
                                 editBrush = null
                             }
@@ -8483,7 +8520,7 @@ private fun ProcreateBrushLibrary(
                         DropdownMenuItem(text = { Text(tr("Create new brush", "新建笔刷")) }, leadingIcon = { Icon(Icons.Outlined.Brush, null) }, onClick = {
                             addMenu = false
                             val group = selectedCategory.takeIf { it in systemCategories || it in importedCategories }
-                            val created = ImportedBrush(name = newBrushName, format = BrushFormat.INKLOOM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = listOf(createdInInkloom), groupName = group.orEmpty())
+                            val created = BrushPresetV5Import.createUserRecord(ImportedBrush(name = newBrushName, format = BrushFormat.INKLOOM, compatibility = Compatibility.COMPLETE, sizeBytes = 0L, report = listOf(createdInInkloom), groupName = group.orEmpty()))
                             onReplaceBrushes(brushes + created)
                             editBrush = created
                         })
@@ -8773,14 +8810,14 @@ private fun ProcreateBrushLibrary(
         val owned = remember(brush.id) {
             if (brush.format == BrushFormat.SYSTEM) {
                 OwnedBrushPreset(
-                    preset = PresetMigrator.toV4(brush),
+                    preset = BrushPresetV5Import.requirePreset(brush),
                     ownership = PresetOwnership.Factory(brush.id),
                 )
             } else {
                 val derivedFactoryId = brush.derivedFromFactoryId
                     ?: brush.renderBrushId?.takeIf { renderId -> systemBrushes.any { it.id == renderId } }
                 OwnedBrushPreset(
-                    preset = PresetMigrator.toV4(brush),
+                    preset = BrushPresetV5Import.requirePreset(brush),
                     ownership = PresetOwnership.User(userId = brush.id, derivedFromFactoryId = derivedFactoryId),
                 )
             }
@@ -8789,26 +8826,24 @@ private fun ProcreateBrushLibrary(
             source = owned,
             settings = settings,
             onDismiss = { editBrush = null },
-            onSaveAs = { v4 ->
-                val updated = BrushSemanticMapper.apply(PresetReverseMigrator.toV3(v4, BrushFormat.INKLOOM, base = brush))
+            onSaveAs = { v5 ->
+                val updated = BrushPresetV5Import.writePreset(brush, v5, BrushFormat.INKLOOM)
                 if (brushes.any { it.id == updated.id }) onUpdateBrush(updated) else onReplaceBrushes(brushes + updated)
                 editBrush = null
             },
-            onSaveInPlace = { v4 ->
-                val updated = BrushSemanticMapper.apply(PresetReverseMigrator.toV3(v4, BrushFormat.INKLOOM, base = brush))
+            onSaveInPlace = { v5 ->
+                val updated = BrushPresetV5Import.writePreset(brush, v5, BrushFormat.INKLOOM)
                 if (brushes.any { it.id == updated.id }) onUpdateBrush(updated) else onReplaceBrushes(brushes + updated)
                 editBrush = null
             },
             onResetToFactory = (owned.ownership as? PresetOwnership.User)?.derivedFromFactoryId
                 ?.let { factoryId -> systemBrushes.firstOrNull { it.id == factoryId } }
-                ?.let(PresetMigrator::toV4)
+                ?.let(BrushPresetV5Import::requirePreset)
                 ?.let { factoryPreset ->
                     {
                         PresetOwnershipOperations.resetToFactory(owned, factoryPreset)?.let { reset ->
                             onUpdateBrush(
-                                BrushSemanticMapper.apply(
-                                    PresetReverseMigrator.toV3(reset.preset, BrushFormat.INKLOOM, base = brush),
-                                ),
+                                BrushPresetV5Import.writePreset(brush, reset.preset, BrushFormat.INKLOOM),
                             )
                             editBrush = null
                         }
