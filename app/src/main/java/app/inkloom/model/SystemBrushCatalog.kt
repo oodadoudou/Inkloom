@@ -37,7 +37,7 @@ internal object SystemBrushCatalog {
 
         // Deterministic procedural graphite tips make these visibly different, not just renamed
         // copies of one round line renderer. (PENCIL_RENDERER_V4 runtime semantics — tilt->width,
-        // tilt->grain, procedural paper grain — are available on the InkStroke/ImportedBrush model
+        // tilt-to-grain and procedural paper grain are compiled into native V5 programs
         // and covered by the V4 golden tests; the factory presets intentionally stay on the fast
         // stamped batch path until BrushPreset V4 migrates them.)
         systemBrush(id = "system-technical-pencil", name = "Technical Pencil", group = "Pencil", size = 4.5f, hardness = .9f, spacing = 1f, flow = .82f, sizePressureMinimum = .42f, opacityPressureEnabled = true, opacityPressureMinimum = .35f, tags = listOf("pencil", "mechanical", "hard")),

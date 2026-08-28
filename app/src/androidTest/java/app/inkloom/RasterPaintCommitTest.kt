@@ -323,7 +323,6 @@ class RasterPaintCommitTest {
     @Test fun penPaintsTheActiveRasterSurfaceWithoutAddingAVectorStroke() {
         val surface = PixelTileSurface(600, 600)
         var rasterCommits = 0
-        var vectorCommits = 0
         var committed: RasterLayerPatch? = null
         val view = createCanvas {
             tool = EditorTool.PEN
@@ -331,14 +330,12 @@ class RasterPaintCommitTest {
             installV5TestInk(size = 42f, color = Color.MAGENTA)
             setRasterLayerSurfaces(mapOf("paint" to surface))
             onRasterLayerCommitted = { commit -> rasterCommits++; committed = commit.capturePatch() }
-            onStrokeCommitted = { vectorCommits++ }
         }
         send(view, MotionEvent.ACTION_DOWN, 80f, 200f, 0L)
         repeat(20) { index -> send(view, MotionEvent.ACTION_MOVE, 85f + index * 12f, 200f + index % 3, 5L + index) }
         send(view, MotionEvent.ACTION_UP, 330f, 200f, 30L)
 
         assertEquals("One raster paint gesture is one durable surface commit", 1, rasterCommits)
-        assertEquals("Raster paint must not leak a vector stroke into the document", 0, vectorCommits)
         assertTrue(requireNotNull(committed).hasAlphaInSourceRegion(80, 270, 260, 340))
         assertTrue("Pen-up must transfer a local patch, not the complete raster", requireNotNull(committed).bitmap.byteCount < 600 * 600 * 4)
         committed?.close()

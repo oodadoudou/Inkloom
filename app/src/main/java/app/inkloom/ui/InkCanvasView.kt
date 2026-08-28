@@ -96,14 +96,10 @@ import app.inkloom.engine.v5.tools.RasterTileBlendSession
 import app.inkloom.engine.v5.tools.RasterTileEditSession
 import app.inkloom.engine.v5.tools.RasterTileLiquifySession
 import app.inkloom.engine.v5.tools.SelectionAffineTransform
-import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
 import app.inkloom.document.ViewportState
-import app.inkloom.document.StrokeMaskDab
-import app.inkloom.document.StrokeMaskRenderer
 import app.inkloom.document.BrushCurvePoint
 import app.inkloom.document.BrushCursorGeometry
-import app.inkloom.document.BrushEngineKind
 import app.inkloom.document.BrushColorDynamics
 import app.inkloom.document.BrushSensorFlags
 import app.inkloom.document.ProcreateColorDynamics
@@ -113,14 +109,11 @@ import app.inkloom.document.ProcreateRenderingMode
 import app.inkloom.document.ProcreateRendering
 import app.inkloom.document.ProcreateWetMix
 import app.inkloom.document.ProcreateTaper
-import app.inkloom.document.StrokeInputKind
 import app.inkloom.document.BrushParameterDynamics
-import app.inkloom.document.BrushColorJitter
 import app.inkloom.document.BrushBlur
 import app.inkloom.document.BrushDynamics
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.BrushStampCount
-import app.inkloom.document.BrushStampRotation
 import app.inkloom.document.BrushSizeDrag
 import app.inkloom.document.BrushTipSequence
 import app.inkloom.document.BrushTipFlip
@@ -144,7 +137,6 @@ import app.inkloom.document.CanvasSnapConstraint
 import app.inkloom.document.GrainBehavior
 import app.inkloom.document.GrainOffset
 import app.inkloom.document.FillSubTool
-import app.inkloom.document.GrainDynamics
 import app.inkloom.document.GradientColorStop
 import app.inkloom.document.GradientDefinition
 import app.inkloom.document.GradientGeometry
@@ -180,18 +172,9 @@ import app.inkloom.document.ShapeKind
 import app.inkloom.document.ShapePoint
 import app.inkloom.document.SingleFingerDoubleTapUndoGesture
 import app.inkloom.document.SprayGeometry
-import app.inkloom.document.SprayDynamics
-import app.inkloom.document.StrokeEdit
-import app.inkloom.document.StrokeTileIndex
-import app.inkloom.document.StrokeEdits
-import app.inkloom.document.StrokeEraser
 import app.inkloom.document.CorrectLineMode
-import app.inkloom.document.StrokeCorrection
-import app.inkloom.document.StrokePostCorrection
 import app.inkloom.document.StrokeStampSampler
 import app.inkloom.document.StrokeStabilization
-import app.inkloom.document.StrokeTaper
-import app.inkloom.document.StrokeTileKey
 import app.inkloom.document.StylusInputClassifier
 import app.inkloom.document.TwoFingerTapUndoGesture
 import app.inkloom.document.TwoPointerRotationGesture
@@ -241,11 +224,9 @@ data class CanvasColorDrop(val color: Int)
 class InkCanvasView(context: Context) : View(context) {
     private val renderLock = Any()
     private val strokeInputModeler = NativeStrokeSession()
-    private val strokes = mutableListOf<InkStroke>()
     private val editHistory = EngineTransactionJournal()
     private val currentPoints = mutableListOf<StrokePoint>()
     private var currentStrokeId = java.util.UUID.randomUUID().toString()
-    private var activeStrokeTemplate: InkStroke? = null
 
     /** Debug-only stroke handoff overlay and [StrokeTrace] gate. No-op in release builds. */
     var showStrokeTraceOverlay: Boolean = false
@@ -284,7 +265,6 @@ class InkCanvasView(context: Context) : View(context) {
     var selectionFeatherPixels: Float = 0f
         private set
     private var selectionFeatherBase: MaskTileSurfaceSnapshot? = null
-    private var strokeHistoryKey: String? = null
     private val lassoPoints = mutableListOf<StrokePoint>()
     private var v5LassoSession: LassoSession? = null
     private var shapeStart: ShapePoint? = null
@@ -383,13 +363,6 @@ class InkCanvasView(context: Context) : View(context) {
         removeCallbacks(liquifyHoldFrame)
     }
     private fun liquifyGestureActive(): Boolean = rasterTileLiquifySession != null
-    private var correctionBefore: List<InkStroke>? = null
-    private var correctionStrokeId: String? = null
-    private var correctionStartX = 0f
-    private var correctionEndX = 0f
-    private var correctionEndY = 0f
-    private var correctionPointIndex = -1
-    private var correctionChanged = false
     private var movingSelection = false
     private var selectionMoved = false
     private var selectionTransformMode = TRANSFORM_NONE
@@ -601,7 +574,6 @@ class InkCanvasView(context: Context) : View(context) {
     private var compiledBrushProgramV5: CompiledBrushProgramV5? = null
     private var compiledBrushProgramV5Required: Boolean = false
     private var prewarmedBrushSignature: String? = null
-    private val protectedStrokeIds = mutableSetOf<String>()
     private val protectedLayerIds = mutableSetOf<String>()
 
     var tool: EditorTool = EditorTool.PEN
@@ -996,7 +968,6 @@ class InkCanvasView(context: Context) : View(context) {
         set(value) { field = value.coerceIn(0f, 1f) }
     var pageModelWidth: Float = 1600f
     var pageModelHeight: Float = 2263f
-    var onStrokeCommitted: (InkStroke) -> Unit = {}
     var onShapeCommitted: (PageElement.Shape) -> Unit = {}
     var onGradientCommitted: (startX: Float, startY: Float, endX: Float, endY: Float, definition: GradientDefinition, selectionMask: MaskTileSurfaceSnapshot?) -> Unit = { _, _, _, _, _, _ -> }
     var gradientDefinition: GradientDefinition = GradientDefinition(stops = listOf(GradientColorStop(0f, 0xFF111111L), GradientColorStop(1f, 0xFFFFFFFFL)))
@@ -1054,8 +1025,6 @@ class InkCanvasView(context: Context) : View(context) {
     var fillAreaScalingPixels: Float = 0f
         set(value) { field = value.coerceIn(-64f, 64f) }
     var symmetryMode: SymmetryMode = SymmetryMode.NONE
-    var onStrokeRemoved: (String) -> Unit = {}
-    var onStrokesReplaced: (List<String>, List<InkStroke>, List<Int>) -> Unit = { removed, replacements, _ -> removed.forEach(onStrokeRemoved); replacements.forEach(onStrokeCommitted) }
     var onViewportScale: (Float, Float, Float) -> Unit = { _, _, _ -> }
     var onViewportPan: (Float, Float) -> Unit = { _, _ -> }
     var onViewportPinch: ((Float, Float, Float, Float, Float) -> Unit)? = null
@@ -1214,20 +1183,6 @@ class InkCanvasView(context: Context) : View(context) {
         else -> false
     }
 
-    fun setDocumentStrokes(value: List<InkStroke>, historyKey: String) {
-        if (strokeHistoryKey != historyKey) {
-            strokeHistoryKey = historyKey
-            editHistory.clear()
-            resetSelectionViewBinding(clearReselect = true, unbindDocument = false)
-        }
-        if (strokes != value) {
-            editHistory.clear()
-            strokes.clear()
-            strokes.addAll(value)
-            invalidateStrokeCache()
-        }
-    }
-
     /** Binds selection alpha to the document runtime before any page content is installed. */
     internal fun bindDocumentSelectionState(state: DocumentSelectionState) {
         if (documentSelectionState === state) return
@@ -1236,11 +1191,6 @@ class InkCanvasView(context: Context) : View(context) {
         if (isolated != null && state.isEmpty) state.replaceFrom(isolated.surface.snapshot())
         isolatedTestSelectionAlphaMask = null
         rebuildSelectionDerivedState()
-    }
-
-    fun setProtectedStrokeIds(value: Set<String>) {
-        protectedStrokeIds.clear()
-        protectedStrokeIds.addAll(value)
     }
 
     fun setProtectedLayerIds(value: Set<String>) {
@@ -1626,16 +1576,6 @@ class InkCanvasView(context: Context) : View(context) {
         invalidate()
     }
 
-    private fun invalidateStrokeCache() = invalidateLayerComposition()
-
-    private fun invalidateStrokeCache(before: Collection<InkStroke>, after: Collection<InkStroke>) {
-        if (StrokeTrace.enabled) StrokeTrace.primaryStrokeId(after.toList())?.let { id ->
-            pendingProjectionStrokeId = id
-            StrokeTrace.mark(id, StrokeTrace.STAGE_PROJECTION_INVALIDATED)
-        }
-        invalidateLayerComposition()
-    }
-
     /** The only document presentation path: immutable V5 raster tiles plus page elements. */
     private fun drawV5LayerComposition(
         canvas: Canvas,
@@ -1873,14 +1813,11 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun beginActiveStrokePreview() = Unit
 
-    private fun finishActiveStrokePreview() {
-        activeStrokeTemplate = null
-    }
+    private fun finishActiveStrokePreview() = Unit
 
     private fun releaseActiveStrokePreview() {
         v5StrokeController.cancel()
         v5RejectedContact = false
-        activeStrokeTemplate = null
     }
 
     private fun drawPaperPattern(canvas: Canvas, pattern: PaperPattern) {
@@ -2418,8 +2355,9 @@ class InkCanvasView(context: Context) : View(context) {
                     return true
                 }
                 if (activeTool == EditorTool.CORRECT_LINE) {
-                    parent?.requestDisallowInterceptTouchEvent(true)
-                    beginCorrectLineGesture(normalizedX, normalizedY)
+                    onPaintCapabilityRejected("Correct Line requires a native Paint Engine V5 implementation")
+                    activeTool = null
+                    parent?.requestDisallowInterceptTouchEvent(false)
                     return true
                 }
                 if (beginV5PaintGesture(event, pointerIndex, normalizedX, normalizedY)) return true
@@ -2474,9 +2412,6 @@ class InkCanvasView(context: Context) : View(context) {
                 }
                 else if (activeTool == EditorTool.LIQUIFY) {
                     scheduleLiquify(normalizedX, normalizedY, event.getPressure(pointerIndex))
-                }
-                else if (activeTool == EditorTool.CORRECT_LINE) {
-                    updateCorrectLineGesture(normalizedX, normalizedY)
                 }
                 else if (activeTool == EditorTool.EYEDROPPER) {
                     onColorSampled(sampleRenderedColor(inputPoint.first, inputPoint.second))
@@ -2581,12 +2516,10 @@ class InkCanvasView(context: Context) : View(context) {
                     if (activeTool == EditorTool.GRADIENT) { gradientStart = null; gradientEnd = null }
                     if (activeTool == EditorTool.SMUDGE) cancelSmudgeGesture()
                     if (activeTool == EditorTool.LIQUIFY) cancelLiquifyGesture()
-                    if (activeTool == EditorTool.CORRECT_LINE) cancelCorrectLineGesture()
                     shapeStart = null; shapeEnd = null; shapeFreeformPoints.clear()
                     cancelRasterSelectionTransform()
                     clearLassoInput(); movingSelection = false; selectionMoved = false; selectionTransformMode = TRANSFORM_NONE
                 } else if (finishV5PaintGesture(event, pointerIndex, normalizedX, normalizedY)) {
-                    activeStrokeTemplate = null
                 } else if (activeTool == EditorTool.FILL) {
                     if (fillSubTool == FillSubTool.BUCKET) commitFillGesture() else {
                         fillGesturePoints += StrokePoint(normalizedX, normalizedY, event.getPressure(pointerIndex), event.eventTime)
@@ -2610,9 +2543,6 @@ class InkCanvasView(context: Context) : View(context) {
                     flushLiquifyFrame()
                     if (normalizedX != liquifyLastX || normalizedY != liquifyLastY) extendLiquify(normalizedX, normalizedY, event.getPressure(pointerIndex))
                     finishLiquifyGesture()
-                    parent?.requestDisallowInterceptTouchEvent(false)
-                } else if (activeTool == EditorTool.CORRECT_LINE) {
-                    finishCorrectLineGesture()
                     parent?.requestDisallowInterceptTouchEvent(false)
                 } else if (activeTool == EditorTool.EYEDROPPER) {
                     onColorSampled(sampleRenderedColor(inputPoint.first, inputPoint.second))
@@ -2988,7 +2918,6 @@ class InkCanvasView(context: Context) : View(context) {
         cancelFillGesture()
         cancelSmudgeGesture()
         cancelLiquifyGesture()
-        cancelCorrectLineGesture()
         rulerGestureStart?.let { rulerGuide = it }
         rulerGestureMode = null
         rulerGestureStart = null
@@ -4159,7 +4088,9 @@ class InkCanvasView(context: Context) : View(context) {
         val bitmap = Bitmap.createBitmap(pageWidth, pageHeight, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.scale(pageWidth / width.coerceAtLeast(1).toFloat(), pageHeight / height.coerceAtLeast(1).toFloat())
-        val availableLayers = layerOrder.ifEmpty { strokes.map(InkStroke::layerId).distinct() }
+        val availableLayers = layerOrder.ifEmpty {
+            (rasterLayerTileSurfaces.keys + layerElementBitmaps.keys).distinct()
+        }
         val visibleNonDraft = availableLayers.filterNotTo(linkedSetOf()) { it in draftLayerIds }
         val referenced = when (referenceTarget) {
             ReferenceTarget.ALL_VISIBLE -> visibleNonDraft
@@ -4359,10 +4290,11 @@ class InkCanvasView(context: Context) : View(context) {
         if (tileSession != null) {
             if (smudgeChanged) {
                 val record = tileSession.commit()
-                if (record.changedTileCount > 0) {
-                    rasterTileSurfaceFor(activeLayerId)?.let { commitRasterLayerPatch(it, smudgeDirtyBounds) }
-                }
-                record.close()
+                val surface = rasterTileSurfaceFor(activeLayerId)
+                val bounds = smudgeDirtyBounds
+                if (record.changedTileCount > 0 && surface != null && bounds != null) {
+                    recordRasterToolTransaction(activeLayerId, surface, record, bounds)
+                } else record.close()
             } else tileSession.restoreOriginal()
             tileSession.close()
         }
@@ -4486,10 +4418,11 @@ class InkCanvasView(context: Context) : View(context) {
         if (tileSession != null) {
             if (liquifyChanged) {
                 val record = tileSession.commit()
-                if (record.changedTileCount > 0) {
-                    rasterTileSurfaceFor(activeLayerId)?.let { commitRasterLayerPatch(it, liquifyDirtyBounds) }
-                }
-                record.close()
+                val surface = rasterTileSurfaceFor(activeLayerId)
+                val bounds = liquifyDirtyBounds
+                if (record.changedTileCount > 0 && surface != null && bounds != null) {
+                    recordRasterToolTransaction(activeLayerId, surface, record, bounds)
+                } else record.close()
             } else tileSession.restoreOriginal()
             tileSession.close()
         }
@@ -4519,130 +4452,27 @@ class InkCanvasView(context: Context) : View(context) {
         invalidate()
     }
 
-    private fun beginCorrectLineGesture(x: Float, y: Float) {
-        val index = if (correctLineMode == CorrectLineMode.CONNECT) findNearestEndpointStroke(x, y, null, .06f) else findStroke(x, y, .05f)
-        val target = strokes.getOrNull(index)
-        if (target == null || target.id in protectedStrokeIds || target.layerId in protectedLayerIds) {
-            correctionBefore = null
-            correctionStrokeId = null
-            return
-        }
-        correctionBefore = strokes.toList()
-        correctionStrokeId = target.id
-        correctionStartX = x
-        correctionEndX = x
-        correctionEndY = y
-        correctionPointIndex = target.points.indices.minByOrNull { pointIndex ->
-            val point = target.points[pointIndex]
-            hypot(((point.x - x) * pageModelWidth).toDouble(), ((point.y - y) * pageModelHeight).toDouble())
-        } ?: -1
-        correctionChanged = false
-        if (correctLineMode !in setOf(CorrectLineMode.CONNECT, CorrectLineMode.CONTROL_POINTS)) updateCorrectLine(correctLineAmount)
-    }
-
-    private fun updateCorrectLineGesture(x: Float, y: Float) {
-        if (correctionBefore == null || correctionStrokeId == null) return
-        correctionEndX = x
-        correctionEndY = y
-        if (correctLineMode == CorrectLineMode.CONTROL_POINTS) {
-            val id = correctionStrokeId ?: return
-            val strokeIndex = strokes.indexOfFirst { it.id == id }
-            val current = strokes.getOrNull(strokeIndex) ?: return
-            if (correctionPointIndex !in current.points.indices) return
-            val changed = current.copy(points = current.points.mapIndexed { index, point -> if (index == correctionPointIndex) point.copy(x = x.coerceIn(0f, 1f), y = y.coerceIn(0f, 1f)) else point })
-            strokes[strokeIndex] = changed
-            correctionChanged = true
-            invalidateStrokeCache(listOf(current), listOf(changed))
-            invalidate()
-        } else if (correctLineMode != CorrectLineMode.CONNECT) {
-            updateCorrectLine((correctLineAmount + (x - correctionStartX) * 1.5f).coerceIn(0f, 1f))
-        }
-    }
-
-    private fun updateCorrectLine(amount: Float) {
-        val before = correctionBefore ?: return
-        val id = correctionStrokeId ?: return
-        val original = before.firstOrNull { it.id == id } ?: return
-        val corrected = StrokeCorrection.apply(original, correctLineMode, amount, pageModelWidth, pageModelHeight)
-        val index = strokes.indexOfFirst { it.id == id }
-        if (index < 0) return
-        val previous = strokes[index]
-        strokes[index] = corrected
-        correctionChanged = corrected != original
-        invalidateStrokeCache(listOf(previous), listOf(corrected))
-        invalidate()
-    }
-
-    private fun finishCorrectLineGesture() {
-        val before = correctionBefore
-        if (before != null && correctLineMode == CorrectLineMode.CONNECT) connectCorrectionStrokes()
-        if (before != null && correctionChanged) commitStrokeEdit(before, strokes)
-        correctionBefore = null
-        correctionStrokeId = null
-        correctionChanged = false
-        correctionPointIndex = -1
-        invalidate()
-    }
-
-    private fun connectCorrectionStrokes() {
-        val sourceId = correctionStrokeId ?: return
-        val source = strokes.firstOrNull { it.id == sourceId } ?: return
-        val targetIndex = findNearestEndpointStroke(correctionEndX, correctionEndY, sourceId, .06f)
-        val target = strokes.getOrNull(targetIndex)?.takeIf { it.id != sourceId && it.layerId == source.layerId && it.id !in protectedStrokeIds } ?: return
-        if (source.points.isEmpty() || target.points.isEmpty()) return
-        val candidates = listOf(
-            Triple(source.points, target.points, pointDistance(source.points.last(), target.points.first())),
-            Triple(source.points, target.points.reversed(), pointDistance(source.points.last(), target.points.last())),
-            Triple(source.points.reversed(), target.points, pointDistance(source.points.first(), target.points.first())),
-            Triple(source.points.reversed(), target.points.reversed(), pointDistance(source.points.first(), target.points.last())),
-        )
-        val best = candidates.minBy { it.third }
-        if (best.third > maxOf(source.width, target.width, 48f) * 2f) return
-        val merged = source.copy(points = best.first + best.second.drop(1))
-        val sourceIndex = strokes.indexOfFirst { it.id == source.id }
-        val removed = listOf(source, target)
-        strokes.removeAll { it.id == source.id || it.id == target.id }
-        strokes.add(sourceIndex.coerceIn(0, strokes.size), merged)
-        correctionChanged = true
-        invalidateStrokeCache(removed, listOf(merged))
-    }
-
-    private fun pointDistance(first: StrokePoint, second: StrokePoint): Float = hypot(
-        ((first.x - second.x) * pageModelWidth).toDouble(),
-        ((first.y - second.y) * pageModelHeight).toDouble(),
-    ).toFloat()
-
-    private fun findNearestEndpointStroke(x: Float, y: Float, excludingId: String?, threshold: Float): Int = strokes.indices
-        .filter { index ->
-            val stroke = strokes[index]
-            stroke.id != excludingId && stroke.id !in protectedStrokeIds && stroke.points.isNotEmpty()
-        }
-        .minByOrNull { index ->
-            val stroke = strokes[index]
-            minOf(
-                hypot((stroke.points.first().x - x).toDouble(), (stroke.points.first().y - y).toDouble()),
-                hypot((stroke.points.last().x - x).toDouble(), (stroke.points.last().y - y).toDouble()),
-            )
-        }
-        ?.takeIf { index ->
-            val stroke = strokes[index]
-            minOf(
-                hypot((stroke.points.first().x - x).toDouble(), (stroke.points.first().y - y).toDouble()),
-                hypot((stroke.points.last().x - x).toDouble(), (stroke.points.last().y - y).toDouble()),
-            ) <= threshold
-        } ?: -1
-
-    private fun cancelCorrectLineGesture() {
-        val before = correctionBefore
-        if (before != null && correctionChanged) restoreStrokeSnapshot(before)
-        correctionBefore = null
-        correctionStrokeId = null
-        correctionChanged = false
-        correctionPointIndex = -1
-        invalidate()
-    }
-
     private fun normalizeAngleDelta(first: Float, second: Float): Float = ((first - second + 180f).mod(360f)) - 180f
+
+    private fun recordRasterToolTransaction(
+        layerId: String,
+        surface: PixelTileSurface,
+        record: app.inkloom.engine.v5.surface.PixelTileTransactionRecord,
+        dirtyBounds: Rect,
+    ) {
+        commitRasterLayerPatch(surface, dirtyBounds, layerId)
+        recordExternalEdit(
+            undo = {
+                surface.apply(record, PixelTileSurface.HistoryDirection.UNDO)
+                commitRasterLayerPatch(surface, dirtyBounds, layerId)
+            },
+            redo = {
+                surface.apply(record, PixelTileSurface.HistoryDirection.REDO)
+                commitRasterLayerPatch(surface, dirtyBounds, layerId)
+            },
+            dispose = record::close,
+        )
+    }
 
     private fun selectionBounds(): android.graphics.RectF? {
         val maskBounds = selectionMaskForRasterTools()?.nonZeroBounds() ?: return null
@@ -5488,84 +5318,19 @@ class InkCanvasView(context: Context) : View(context) {
         )
     }
 
-    /**
-     * Programs whose geometry is append-only are deposited once per sampled dab. Ordinary paint
-     * is associative source-over; wet paint is non-associative but remains correct because each
-     * fresh dab is composed exactly once, in input order, into one retained private transaction.
-     */
-    private fun findStroke(x: Float, y: Float, threshold: Float): Int = strokes.indexOfLast { stroke ->
-        stroke.id !in protectedStrokeIds && StrokeEraser.intersects(stroke, x, y, threshold, threshold)
-    }
-
     fun undo() {
         val edit = editHistory.takeUndo() ?: return
-        when (edit) {
-            is EngineTransaction.Strokes -> {
-                if (editTouchesProtectedLayer(edit.edit)) {
-                    editHistory.restoreUndo(edit)
-                    return
-                }
-                applyStrokeEdit(edit.edit, forward = false)
-            }
-            is EngineTransaction.External -> edit.undo()
-        }
+        edit.undo()
     }
 
     fun redo() {
         val edit = editHistory.takeRedo() ?: return
-        when (edit) {
-            is EngineTransaction.Strokes -> {
-                if (editTouchesProtectedLayer(edit.edit)) {
-                    editHistory.restoreRedo(edit)
-                    return
-                }
-                applyStrokeEdit(edit.edit, forward = true)
-            }
-            is EngineTransaction.External -> edit.redo()
-        }
+        edit.redo()
     }
 
     /** Adds a host-owned page mutation to the same chronological stream as ink edits. */
     fun recordExternalEdit(undo: () -> Unit, redo: () -> Unit, dispose: () -> Unit = {}) {
-        editHistory.record(EngineTransaction.External(undo, redo, dispose))
-    }
-
-    private fun commitStrokeEdit(before: List<InkStroke>, after: List<InkStroke>) {
-        val edit = StrokeEdits.difference(before, after) ?: return
-        editHistory.record(EngineTransaction.Strokes(edit))
-        persistStrokeTransition(edit.before, edit.after)
-    }
-
-    private fun applyStrokeEdit(edit: StrokeEdit, forward: Boolean) {
-        val remove = if (forward) edit.before else edit.after
-        val insert = if (forward) edit.after else edit.before
-        val updated = StrokeEdits.apply(strokes, remove, insert)
-        restoreStrokeSnapshot(updated)
-        persistStrokeTransition(remove, insert)
-    }
-
-    private fun editTouchesProtectedLayer(edit: StrokeEdit): Boolean {
-        val protectedLayers = protectedLayerIds + strokes.filter { it.id in protectedStrokeIds }.map(InkStroke::layerId)
-        return (edit.before + edit.after).any { it.stroke.layerId in protectedLayers }
-    }
-
-    private fun persistStrokeTransition(
-        remove: List<app.inkloom.document.PositionedStroke>,
-        insert: List<app.inkloom.document.PositionedStroke>,
-    ) {
-        onStrokesReplaced(
-            remove.map { it.stroke.id },
-            insert.map { it.stroke },
-            insert.map { it.index },
-        )
-    }
-
-    private fun restoreStrokeSnapshot(snapshot: List<InkStroke>) {
-        val before = strokes.toList()
-        strokes.clear()
-        strokes.addAll(snapshot)
-        val edit = StrokeEdits.difference(before, snapshot)
-        invalidateStrokeCache(edit?.before.orEmpty().map { it.stroke }, edit?.after.orEmpty().map { it.stroke })
+        editHistory.record(EngineTransaction(undo, redo, dispose))
     }
 
     fun scaleSelection(factor: Float) = transformSelection(factor, 0f)

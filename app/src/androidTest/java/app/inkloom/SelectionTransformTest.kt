@@ -60,7 +60,6 @@ class SelectionTransformTest {
             activeLayerId = "raster"
             tool = EditorTool.SELECT
             fingerDrawingEnabled = true
-            setDocumentStrokes(emptyList(), "raster-selection-transform")
             setRasterLayerSurfaces(mapOf("raster" to surface))
             bindDocumentSelectionState(runtime.stateFor("document", "page", 64, 64))
             replaceSelectionFromMask(mask.snapshot())

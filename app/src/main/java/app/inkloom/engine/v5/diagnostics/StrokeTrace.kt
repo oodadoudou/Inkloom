@@ -1,7 +1,6 @@
 package app.inkloom.engine.v5.diagnostics
 
 import android.util.Log
-import app.inkloom.document.InkStroke
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -146,10 +145,6 @@ internal object StrokeTrace {
             return result
         }
     }
-
-    /** The traceable id of a stroke batch, excluding mirror/symmetry copies. */
-    fun primaryStrokeId(strokes: List<InkStroke>): String? =
-        strokes.firstOrNull { !it.id.contains("-sym-") }?.id ?: strokes.firstOrNull()?.id
 
     /** Maps a mirror copy id back to the base stroke session it belongs to. */
     fun traceBaseId(strokeId: String): String {

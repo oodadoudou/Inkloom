@@ -139,7 +139,6 @@ class PixelLayerProjectionBenchmarkTest {
             val view = InkCanvasView(InstrumentationRegistry.getInstrumentation().targetContext).apply {
                 layout(0, 0, 1024, 1024)
                 pagePaperColor = Color.WHITE
-                setDocumentStrokes(emptyList(), "production-projection-benchmark")
                 setRasterLayerSurfaces(layers.mapIndexed { index, surface -> "layer-$index" to surface }.toMap())
                 layerOrder = layers.indices.map { "layer-$it" }
                 layerBlendModes = layers.indices.associate { index ->

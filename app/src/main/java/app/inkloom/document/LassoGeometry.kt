@@ -1,19 +1,9 @@
 package app.inkloom.document
 
-import java.util.UUID
 import kotlin.math.PI
-import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.hypot
-import kotlin.math.roundToLong
 import kotlin.math.sin
-
-data class LassoStrokePiece(val stroke: InkStroke, val selected: Boolean)
-
-data class LassoStrokePartition(
-    val pieces: List<LassoStrokePiece>,
-    val changed: Boolean,
-)
 
 object LassoGeometry {
     fun rectangle(start: StrokePoint, end: StrokePoint, minimumExtent: Float = MINIMUM_RECTANGLE_EXTENT): List<StrokePoint> {
@@ -90,92 +80,5 @@ object LassoGeometry {
         return inside
     }
 
-    fun selects(polygon: List<StrokePoint>, stroke: InkStroke): Boolean = partition(polygon, stroke) { "selection-piece" }.pieces.any(LassoStrokePiece::selected)
-
-    fun partition(
-        polygon: List<StrokePoint>,
-        stroke: InkStroke,
-        nextId: () -> String = { UUID.randomUUID().toString() },
-    ): LassoStrokePartition {
-        if (polygon.size < 3 || stroke.points.isEmpty()) return LassoStrokePartition(listOf(LassoStrokePiece(stroke, false)), changed = false)
-        if (stroke.points.size == 1) return LassoStrokePartition(listOf(LassoStrokePiece(stroke, contains(polygon, stroke.points.single()))), changed = false)
-
-        val drafts = mutableListOf<Pair<Boolean, MutableList<StrokePoint>>>()
-        stroke.points.zipWithNext().forEach { (start, end) ->
-            val parameters = boundaryParameters(start, end, polygon)
-            parameters.zipWithNext().forEach intervalLoop@{ (from, to) ->
-                if (to - from <= PARAMETER_EPSILON) return@intervalLoop
-                val selected = contains(polygon, interpolate(start, end, (from + to) / 2f))
-                val intervalStart = interpolate(start, end, from)
-                val intervalEnd = interpolate(start, end, to)
-                val current = drafts.lastOrNull()
-                if (current == null || current.first != selected) {
-                    drafts += selected to mutableListOf(intervalStart, intervalEnd)
-                } else {
-                    appendDistinct(current.second, intervalStart)
-                    appendDistinct(current.second, intervalEnd)
-                }
-            }
-        }
-
-        val usable = drafts.mapNotNull { (selected, points) -> if (points.isNotEmpty()) selected to points else null }
-        if (usable.size <= 1) {
-            val selected = usable.singleOrNull()?.first ?: contains(polygon, stroke.points.first())
-            return LassoStrokePartition(listOf(LassoStrokePiece(stroke, selected)), changed = false)
-        }
-        return LassoStrokePartition(
-            pieces = usable.map { (selected, points) -> LassoStrokePiece(stroke.copy(id = nextId(), points = points), selected) },
-            changed = true,
-        )
-    }
-
-    private fun boundaryParameters(start: StrokePoint, end: StrokePoint, polygon: List<StrokePoint>): List<Float> {
-        val parameters = mutableListOf(0f, 1f)
-        val segmentX = end.x - start.x
-        val segmentY = end.y - start.y
-        polygon.indices.forEach { index ->
-            val edgeStart = polygon[index]
-            val edgeEnd = polygon[(index + 1) % polygon.size]
-            val edgeX = edgeEnd.x - edgeStart.x
-            val edgeY = edgeEnd.y - edgeStart.y
-            val denominator = cross(segmentX, segmentY, edgeX, edgeY)
-            if (abs(denominator) <= GEOMETRY_EPSILON) return@forEach
-            val offsetX = edgeStart.x - start.x
-            val offsetY = edgeStart.y - start.y
-            val segmentAmount = cross(offsetX, offsetY, edgeX, edgeY) / denominator
-            val edgeAmount = cross(offsetX, offsetY, segmentX, segmentY) / denominator
-            if (segmentAmount in -GEOMETRY_EPSILON..(1f + GEOMETRY_EPSILON) && edgeAmount in -GEOMETRY_EPSILON..(1f + GEOMETRY_EPSILON)) {
-                parameters += segmentAmount.coerceIn(0f, 1f)
-            }
-        }
-        return parameters.sorted().fold(mutableListOf()) { result, value ->
-            if (result.isEmpty() || abs(result.last() - value) > PARAMETER_EPSILON) result += value
-            result
-        }
-    }
-
-    private fun interpolate(start: StrokePoint, end: StrokePoint, amount: Float): StrokePoint {
-        val t = amount.coerceIn(0f, 1f)
-        fun lerp(first: Float, second: Float) = first + (second - first) * t
-        val orientationDelta = ((end.orientation - start.orientation + PI.toFloat()).mod((PI * 2).toFloat())) - PI.toFloat()
-        return StrokePoint(
-            x = lerp(start.x, end.x),
-            y = lerp(start.y, end.y),
-            pressure = lerp(start.pressure, end.pressure),
-            timeMs = (start.timeMs + (end.timeMs - start.timeMs).toDouble() * t).roundToLong(),
-            tilt = lerp(start.tilt, end.tilt),
-            orientation = start.orientation + orientationDelta * t,
-            velocity = lerp(start.velocity, end.velocity),
-        )
-    }
-
-    private fun appendDistinct(points: MutableList<StrokePoint>, point: StrokePoint) {
-        if (points.lastOrNull()?.let { abs(it.x - point.x) <= GEOMETRY_EPSILON && abs(it.y - point.y) <= GEOMETRY_EPSILON } != true) points += point
-    }
-
-    private fun cross(firstX: Float, firstY: Float, secondX: Float, secondY: Float) = firstX * secondY - firstY * secondX
-
-    private const val GEOMETRY_EPSILON = 0.000001f
-    private const val PARAMETER_EPSILON = 0.00001f
     private const val MINIMUM_RECTANGLE_EXTENT = 0.0005f
 }

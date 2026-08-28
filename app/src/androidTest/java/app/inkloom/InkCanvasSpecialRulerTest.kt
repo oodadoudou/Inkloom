@@ -36,19 +36,18 @@ class InkCanvasSpecialRulerTest {
 
     @Test fun stylusMovesRulerHandleWithoutCommittingInk() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            var committed = 0
+            val surface = PixelTileSurface(1_000, 1_000)
             val changes = mutableListOf<SpecialRulerState>()
-            val view = canvas().apply {
+            val view = canvas(surface).apply {
                 specialRulerState = SpecialRulerState.defaultFor(SpecialRulerMode.RADIAL)
                 onSpecialRulerChanged = changes::add
-                onStrokeCommitted = { committed++ }
             }
 
             view.sendStylus(MotionEvent.ACTION_DOWN, 500f, 500f, 100L)
             view.sendStylus(MotionEvent.ACTION_MOVE, 650f, 350f, 120L)
             view.sendStylus(MotionEvent.ACTION_UP, 650f, 350f, 140L)
 
-            assertEquals(0, committed)
+            assertEquals(0, surface.snapshot().tileCount)
             assertEquals(.65f, changes.last().centerX, .001f)
             assertEquals(.35f, changes.last().centerY, .001f)
         }

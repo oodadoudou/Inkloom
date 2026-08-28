@@ -8,8 +8,6 @@ import android.view.InputDevice
 import android.view.MotionEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import app.inkloom.document.InkStroke
-import app.inkloom.document.StrokePoint
 import app.inkloom.engine.v5.selection.DocumentSelectionRuntime
 import app.inkloom.document.LayerIds
 import app.inkloom.engine.v5.surface.PixelTileSurface
@@ -53,7 +51,7 @@ class LassoSelectionModesTest {
                 }
             }
             val selection = DocumentSelectionRuntime().stateFor("document", "page", 1_000, 1_000)
-            val view = configuredView(emptyList(), mutableListOf()).apply {
+            val view = configuredView().apply {
                 pageModelWidth = 1_000f
                 pageModelHeight = 1_000f
                 pagePaperColor = Color.WHITE
@@ -96,7 +94,7 @@ class LassoSelectionModesTest {
                     commit().close()
                 }
             }
-            val view = configuredView(emptyList(), mutableListOf()).apply {
+            val view = configuredView().apply {
                 selectionShape = SelectionShape.RECTANGLE
                 activeLayerId = LayerIds.INK
                 setRasterLayerSurfaces(mapOf(LayerIds.INK to surface))
@@ -115,7 +113,7 @@ class LassoSelectionModesTest {
     @Test fun rectangleGestureDrawsAClosedLivePreview() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
-            val view = configuredView(emptyList(), mutableListOf()).apply { selectionShape = SelectionShape.RECTANGLE }
+            val view = configuredView().apply { selectionShape = SelectionShape.RECTANGLE }
             view.dispatchStylus(MotionEvent.ACTION_DOWN, 200f, 250f, 10L)
             view.dispatchStylus(MotionEvent.ACTION_MOVE, 800f, 750f, 20L)
             val bitmap = Bitmap.createBitmap(1_000, 1_000, Bitmap.Config.ARGB_8888)
@@ -135,7 +133,7 @@ class LassoSelectionModesTest {
     @Test fun freeLassoLivePreviewClosesToItsVisibleOrigin() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
-            val view = configuredView(emptyList(), mutableListOf()).apply { selectionShape = SelectionShape.FREEFORM }
+            val view = configuredView().apply { selectionShape = SelectionShape.FREEFORM }
             view.dispatchStylus(MotionEvent.ACTION_DOWN, 200f, 200f, 10L)
             view.dispatchStylus(MotionEvent.ACTION_MOVE, 800f, 200f, 20L)
             view.dispatchStylus(MotionEvent.ACTION_MOVE, 800f, 800f, 30L)
@@ -155,7 +153,7 @@ class LassoSelectionModesTest {
     @Test fun committedLassoRendersPersistentHighContrastBoundaryOnEverySide() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
-            val view = configuredView(emptyList(), mutableListOf()).apply { selectionShape = SelectionShape.FREEFORM }
+            val view = configuredView().apply { selectionShape = SelectionShape.FREEFORM }
             view.lasso(.2f, .2f, .8f, .8f)
             val bitmap = Bitmap.createBitmap(1_000, 1_000, Bitmap.Config.ARGB_8888)
             try {
@@ -188,7 +186,7 @@ class LassoSelectionModesTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
             listOf(.25f, 12f).forEach { scale ->
-                val view = configuredView(emptyList(), mutableListOf()).apply {
+                val view = configuredView().apply {
                     selectionShape = SelectionShape.FREEFORM
                     viewportScale = scale
                 }
@@ -214,7 +212,7 @@ class LassoSelectionModesTest {
     @Test fun committedSelectionOverlayStaysWithinInteractiveFrameBudget() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
-            val view = configuredView(emptyList(), mutableListOf()).apply { selectionShape = SelectionShape.FREEFORM }
+            val view = configuredView().apply { selectionShape = SelectionShape.FREEFORM }
             view.lasso(.2f, .2f, .8f, .8f)
             val bitmap = Bitmap.createBitmap(1_000, 1_000, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bitmap)
@@ -246,7 +244,7 @@ class LassoSelectionModesTest {
     @Test fun replaceAddSubtractAndIntersectComposePredictably() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
-            val view = configuredView(emptyList(), mutableListOf())
+            val view = configuredView()
 
             view.selectionMode = SelectionMode.REPLACE
             view.lasso(.2f, .2f, .8f, .4f)
@@ -265,7 +263,7 @@ class LassoSelectionModesTest {
     @Test fun cancellingSelectionInputPreservesCommittedSelectionAndDisarmsTransientMode() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
-            val view = configuredView(emptyList(), mutableListOf()).apply { selectionShape = SelectionShape.FREEFORM }
+            val view = configuredView().apply { selectionShape = SelectionShape.FREEFORM }
             view.lasso(.2f, .2f, .8f, .8f)
             view.dispatchStylus(MotionEvent.ACTION_DOWN, 50f, 50f, 70L)
             view.dispatchStylus(MotionEvent.ACTION_MOVE, 150f, 50f, 80L)
@@ -297,7 +295,7 @@ class LassoSelectionModesTest {
                     commit().close()
                 }
             }
-            val view = configuredView(emptyList(), mutableListOf()).apply {
+            val view = configuredView().apply {
                 activeLayerId = "target-layer"
                 selectionFilter = SelectionFilter.ACTIVE_LAYER
                 setRasterLayerSurfaces(mapOf("target-layer" to target, "other-layer" to other))
@@ -312,17 +310,13 @@ class LassoSelectionModesTest {
         }
     }
 
-    private fun configuredView(strokes: List<InkStroke>, edits: MutableList<CapturedEdit>): InkCanvasView {
+    private fun configuredView(): InkCanvasView {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         return InkCanvasView(context).apply {
             layout(0, 0, 1_000, 1_000)
             tool = EditorTool.SELECT
-            setDocumentStrokes(strokes, "selection-modes")
-            onStrokesReplaced = { removed, replacements, indices -> edits += CapturedEdit(removed, replacements, indices) }
         }
     }
-
-    private fun stroke(id: String, y: Float, layer: String) = InkStroke(id = id, layerId = layer, brushId = "brush", colorArgb = 0xFF111111, points = listOf(StrokePoint(.35f, y), StrokePoint(.65f, y)))
 
     private fun InkCanvasView.lasso(left: Float, top: Float, right: Float, bottom: Float) {
         dispatchStylus(MotionEvent.ACTION_DOWN, left * 1_000f, top * 1_000f, 10L)
@@ -352,5 +346,4 @@ class LassoSelectionModesTest {
 
     private fun opaque(color: Int): Boolean = Color.alpha(color) != 0
 
-    private data class CapturedEdit(val removedIds: List<String>, val replacements: List<InkStroke>, val indices: List<Int>)
 }

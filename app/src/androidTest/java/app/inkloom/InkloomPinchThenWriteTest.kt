@@ -296,7 +296,6 @@ class InkloomPinchThenWriteTest {
             view.activeLayerId = "ink"
             view.setRasterLayerSurfaces(mapOf("ink" to rasterSurface))
             view.onRasterLayerCommitted = { }
-            view.setProtectedStrokeIds(emptySet())
             view.setProtectedLayerIds(emptySet())
             view.eraserWidth = 80f
             val hover = stylusEvent(android.view.MotionEvent.ACTION_HOVER_MOVE, proxyX, proxyY, android.view.MotionEvent.TOOL_TYPE_ERASER, 1L, 2L)

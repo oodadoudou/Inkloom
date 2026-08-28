@@ -40,7 +40,6 @@ class LayerMaskProductionEditingTest {
                 activeLayerId = "paint"
                 tool = EditorTool.PEN
                 baseWidth = 12f
-                setDocumentStrokes(emptyList(), "layer-mask-production")
                 setRasterLayerSurfaces(mapOf("paint" to raster))
                 layerMasks = mapOf("paint" to LayerMask(enabled = true))
                 layerMaskSurfaces = mapOf("paint" to mask.snapshot())
@@ -87,7 +86,6 @@ class LayerMaskProductionEditingTest {
                 activeLayerId = "paint"
                 tool = EditorTool.PEN
                 baseWidth = 64f
-                setDocumentStrokes(emptyList(), "layer-mask-production-8k")
                 layerMasks = mapOf("paint" to LayerMask(enabled = true))
                 layerMaskSurfaces = mapOf("paint" to mask.snapshot())
                 onLayerMaskSurfaceCommitted = { _, snapshot -> committed = snapshot }

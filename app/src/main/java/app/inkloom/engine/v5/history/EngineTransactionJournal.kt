@@ -1,23 +1,11 @@
 package app.inkloom.engine.v5.history
 
-import app.inkloom.document.StrokeEdit
-
-/** One chronological undo stream for vector strokes and host-owned page elements such as fills. */
-sealed interface EngineTransaction {
-    val affectedLayerIds: Set<String>
-
-    data class Strokes(val edit: StrokeEdit) : EngineTransaction {
-        override val affectedLayerIds: Set<String> =
-            (edit.before + edit.after).mapTo(linkedSetOf()) { it.stroke.layerId }
-    }
-
-    class External(
-        val undo: () -> Unit,
-        val redo: () -> Unit,
-        val dispose: () -> Unit = {},
-        override val affectedLayerIds: Set<String> = emptySet(),
-    ) : EngineTransaction
-}
+/** One chronological undo entry over authoritative V5 document state. */
+class EngineTransaction(
+    val undo: () -> Unit,
+    val redo: () -> Unit,
+    val dispose: () -> Unit = {},
+)
 
 class EngineTransactionJournal(private val capacity: Int = 100) {
     private val undo = ArrayDeque<EngineTransaction>()
@@ -62,7 +50,5 @@ class EngineTransactionJournal(private val capacity: Int = 100) {
         released.forEach(::release)
     }
 
-    private fun release(edit: EngineTransaction) {
-        if (edit is EngineTransaction.External) edit.dispose()
-    }
+    private fun release(edit: EngineTransaction) = edit.dispose()
 }

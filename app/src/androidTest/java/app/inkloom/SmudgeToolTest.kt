@@ -44,7 +44,6 @@ class SmudgeToolTest {
         val surface = PixelTileBitmapAdapter.import(seed)
         seed.recycle()
         var rasterCommits = 0
-        var vectorReplacements = 0
         val view = canvas {
             tool = EditorTool.SMUDGE
             fingerDrawingEnabled = true
@@ -52,14 +51,12 @@ class SmudgeToolTest {
             activeLayerId = "paint"
             setRasterLayerSurfaces(mapOf("paint" to surface))
             onRasterLayerCommitted = { rasterCommits++ }
-            onStrokesReplaced = { _, _, _ -> vectorReplacements++ }
         }
         send(view, 0L, MotionEvent.ACTION_DOWN, 60f, 100f)
         send(view, 20L, MotionEvent.ACTION_MOVE, 100f, 100f)
         send(view, 40L, MotionEvent.ACTION_MOVE, 140f, 100f)
         send(view, 60L, MotionEvent.ACTION_UP, 140f, 100f)
         assertEquals(1, rasterCommits)
-        assertEquals(0, vectorReplacements)
         assertTrue("Blend must transport existing pigment", Color.alpha(surface.pixelAt(118, 100)) > 0)
     }
 
@@ -87,13 +84,12 @@ class SmudgeToolTest {
         assertEquals(inactiveRevision, inactive.revision)
     }
 
-    @Test fun rasterLayerBlendCommitsOnePixelSurfaceAndDoesNotRewriteVectorStrokes() {
+    @Test fun rasterLayerBlendCommitsOnePixelSurface() {
         val seed = Bitmap.createBitmap(200, 200, Bitmap.Config.ARGB_8888)
         for (y in 70 until 130) for (x in 30 until 80) seed.setPixel(x, y, Color.RED)
         val surface = PixelTileBitmapAdapter.import(seed)
         seed.recycle()
         var rasterCommits = 0
-        var vectorReplacements = 0
         val view = canvas {
             tool = EditorTool.SMUDGE
             fingerDrawingEnabled = true
@@ -104,14 +100,12 @@ class SmudgeToolTest {
                 assertEquals("raster", patch.layerId)
                 rasterCommits++
             }
-            onStrokesReplaced = { _, _, _ -> vectorReplacements++ }
         }
         send(view, 0L, MotionEvent.ACTION_DOWN, 60f, 100f)
         send(view, 20L, MotionEvent.ACTION_MOVE, 105f, 100f)
         send(view, 40L, MotionEvent.ACTION_UP, 105f, 100f)
 
         assertEquals("One blend gesture creates one raster transaction", 1, rasterCommits)
-        assertEquals(0, vectorReplacements)
         assertTrue(Color.alpha(surface.pixelAt(105, 100)) > 0)
     }
 

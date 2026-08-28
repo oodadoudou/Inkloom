@@ -8,7 +8,6 @@ import android.view.InputDevice
 import android.view.MotionEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import app.inkloom.document.InkStroke
 import app.inkloom.document.LaserTrail
 import app.inkloom.model.EditorTool
 import app.inkloom.ui.InkCanvasView
@@ -23,12 +22,10 @@ class InkCanvasLaserPointerTest {
     @Test fun stylusLaserRendersTemporarilyWithoutCommittingInk() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
-            val committed = mutableListOf<InkStroke>()
             val view = InkCanvasView(instrumentation.targetContext).apply {
                 layout(0, 0, 500, 500)
                 tool = EditorTool.LASER
                 pagePaperColor = Color.WHITE
-                onStrokeCommitted = committed::add
             }
             val downTime = SystemClock.uptimeMillis()
             view.sendStylus(downTime, downTime, MotionEvent.ACTION_DOWN, 100f, 120f)
@@ -36,7 +33,6 @@ class InkCanvasLaserPointerTest {
             view.sendStylus(downTime, downTime + 40L, MotionEvent.ACTION_UP, 400f, 380f)
 
             assertTrue(view.hasVisibleLaserTrail(downTime + 40L))
-            assertEquals(emptyList<InkStroke>(), committed)
             val bitmap = Bitmap.createBitmap(500, 500, Bitmap.Config.ARGB_8888)
             try {
                 view.draw(Canvas(bitmap))

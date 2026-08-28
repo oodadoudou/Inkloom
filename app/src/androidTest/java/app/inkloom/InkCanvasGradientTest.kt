@@ -14,7 +14,6 @@ import app.inkloom.ui.InkCanvasView
 import app.inkloom.document.GradientColorStop
 import app.inkloom.document.GradientDefinition
 import app.inkloom.document.GradientKind
-import app.inkloom.document.InkStroke
 import app.inkloom.document.PageElement
 import app.inkloom.document.StrokePoint
 import app.inkloom.settings.SelectionShape
@@ -118,7 +117,6 @@ class InkCanvasGradientTest {
             layout(0, 0, 1_000, 1_000)
             tool = EditorTool.GRADIENT
             selectionShape = app.inkloom.settings.SelectionShape.RECTANGLE
-            setDocumentStrokes(listOf(InkStroke(id = "ink", points = listOf(StrokePoint(.18f, .18f), StrokePoint(.22f, .22f)), width = 24f)), "gradient-selection")
             onGradientCommitted = { _, _, _, _, _, mask ->
                 committedMask = mask
             }
@@ -155,7 +153,6 @@ class InkCanvasGradientTest {
             pageModelWidth = 1_000f
             pageModelHeight = 1_000f
             setPageBackground(background)
-            setDocumentStrokes(emptyList(), "magic-gradient")
             selectionShape = SelectionShape.MAGIC_WAND
             onGradientCommitted = { _, _, _, _, _, mask -> committedMask = mask }
         }
@@ -180,7 +177,6 @@ class InkCanvasGradientTest {
             layout(0, 0, 1_000, 1_000)
             pageModelWidth = 1_000f
             pageModelHeight = 1_000f
-            setDocumentStrokes(emptyList(), "gradient-preview-selection")
             selectionShape = SelectionShape.RECTANGLE
         }
         val rendered = Bitmap.createBitmap(1_000, 1_000, Bitmap.Config.ARGB_8888)

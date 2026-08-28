@@ -38,19 +38,18 @@ class InkCanvasPerspectiveGuideTest {
 
     @Test fun stylusCanMoveAnEditableVanishingPointWithoutLeavingInk() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            var committed = 0
+            val surface = PixelTileSurface(1_000, 1_000)
             val changes = mutableListOf<PerspectiveGuideState>()
-            val view = canvas().apply {
+            val view = canvas(surface).apply {
                 perspectiveGuideState = PerspectiveGuideState.defaultFor(PerspectiveGuideMode.ONE_POINT).copy(editing = true)
                 onPerspectiveGuideChanged = changes::add
-                onStrokeCommitted = { committed++ }
             }
 
             view.send(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.ACTION_DOWN, 500f, 420f, 100L)
             view.send(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.ACTION_MOVE, 620f, 360f, 120L)
             view.send(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.ACTION_UP, 620f, 360f, 140L)
 
-            assertEquals(0, committed)
+            assertEquals(0, surface.snapshot().tileCount)
             assertEquals(.62f, changes.last().points[0].x, .001f)
             assertEquals(.36f, changes.last().points[0].y, .001f)
         }

@@ -8,14 +8,12 @@ import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.document.DocumentAssetService
 import app.inkloom.document.InkLayer
 import app.inkloom.document.InkPage
-import app.inkloom.document.InkStroke
 import app.inkloom.document.LayerBlendMode
 import app.inkloom.document.LayerContentKind
 import app.inkloom.document.LayerMask
 import app.inkloom.document.PageBackground
 import app.inkloom.document.PageElement
 import app.inkloom.document.ShapeKind
-import app.inkloom.document.StrokePoint
 import app.inkloom.document.defaultInkLayers
 import app.inkloom.engine.v5.surface.PixelRect
 import app.inkloom.engine.v5.surface.PixelTileKey
@@ -37,7 +35,6 @@ class V5RasterProjectionProductionTest {
             val view = InkCanvasView(InstrumentationRegistry.getInstrumentation().targetContext).apply {
                 layout(0, 0, 256, 256)
                 pagePaperColor = Color.WHITE
-                setDocumentStrokes(emptyList(), "v3-raster-production")
                 setRasterLayerSurfaces(linkedMapOf("lower" to lower, "upper" to upper))
                 layerOrder = listOf("lower", "upper")
                 layerOpacities = mapOf("lower" to 1f, "upper" to .5f)
@@ -148,7 +145,6 @@ class V5RasterProjectionProductionTest {
                 layout(0, 0, 256, 256)
                 pagePaperColor = Color.WHITE
                 activeLayerId = "paint"
-                setDocumentStrokes(emptyList(), "v3-authoritative-display")
                 setRasterLayerSurfaces(mapOf("paint" to surface))
                 layerOrder = listOf("paint")
             }
@@ -167,25 +163,11 @@ class V5RasterProjectionProductionTest {
         }
     }
 
-    @Test fun vectorCompatibilityContentIsIgnoredWhileSparseMasksUseV5() {
+    @Test fun sparseLayerMasksUseV5Projection() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val surface = solidSurface("raster", Color.YELLOW)
-            val vector = InkStroke(
-                id = "vector",
-                layerId = "vector",
-                width = 24f,
-                colorArgb = 0xFF000000,
-                points = listOf(StrokePoint(.2f, .5f), StrokePoint(.8f, .5f)),
-            )
-            val mixed = InkCanvasView(InstrumentationRegistry.getInstrumentation().targetContext).apply {
-                layout(0, 0, 256, 256)
-                setDocumentStrokes(listOf(vector), "v3-mixed-boundary")
-                setRasterLayerSurfaces(mapOf("raster" to surface))
-                layerOrder = listOf("raster", "vector")
-            }
             val masked = InkCanvasView(InstrumentationRegistry.getInstrumentation().targetContext).apply {
                 layout(0, 0, 256, 256)
-                setDocumentStrokes(emptyList(), "v3-mask-boundary")
                 setRasterLayerSurfaces(mapOf("raster" to surface))
                 layerOrder = listOf("raster")
                 layerMasks = mapOf("raster" to LayerMask(enabled = true))
@@ -198,7 +180,6 @@ class V5RasterProjectionProductionTest {
             }
             val sparseMasked = InkCanvasView(InstrumentationRegistry.getInstrumentation().targetContext).apply {
                 layout(0, 0, 256, 256)
-                setDocumentStrokes(emptyList(), "v3-sparse-mask")
                 setRasterLayerSurfaces(mapOf("raster" to surface))
                 layerOrder = listOf("raster")
                 layerMasks = mapOf("raster" to LayerMask(enabled = true))
@@ -206,8 +187,6 @@ class V5RasterProjectionProductionTest {
             }
             val output = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888)
             try {
-                mixed.draw(Canvas(output))
-                assertEquals(1, mixed.v5RasterProjectionDrawCount)
                 masked.draw(Canvas(output))
                 assertEquals(0, masked.v5RasterProjectionDrawCount)
                 output.eraseColor(Color.TRANSPARENT)

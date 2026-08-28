@@ -10,7 +10,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.document.PageElement
 import app.inkloom.document.FillSubTool
-import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
 import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.model.EditorTool
@@ -157,13 +156,7 @@ class FillToolTest {
 
     @Test fun fillSelectionCommitsTheSelectionMaskInsteadOfFloodingAroundInk() {
         var committed = false
-        val selectedStroke = InkStroke(
-            id = "selected",
-            width = 80f,
-            points = listOf(StrokePoint(.25f, .5f), StrokePoint(.75f, .5f)),
-        )
         val view = canvas {
-            setDocumentStrokes(listOf(selectedStroke), "selection-fill")
             onSparseFillCommitted = { mask, _, _ ->
                 committed = mask.logicalWidth > 1 && mask.logicalHeight > 1 &&
                     mask.alphaAt(mask.logicalWidth / 2, mask.logicalHeight / 2) > 0
