@@ -18,11 +18,13 @@ class PageTemplateStoreTest {
             store.add(listOf(custom))
             store.toggleFavorite(custom.id)
             store.setNotebookDefault("notebook-1", custom.id)
+            store.setNotebookPaperColor("notebook-1", PaperColorCatalog.SOFT_GREEN)
 
             val restored = PageTemplateStore(root).load()
             assertEquals(custom, restored.template(custom.id))
             assertTrue(custom.id in restored.favoriteIds)
             assertEquals(custom.id, restored.notebookDefaults["notebook-1"])
+            assertEquals(PaperColorCatalog.SOFT_GREEN, restored.notebookPaperColors["notebook-1"])
         } finally {
             root.deleteRecursively()
         }
@@ -77,5 +79,24 @@ class PageTemplateStoreTest {
         assertEquals(2048f, applied.height)
         assertEquals(2048f, added.width)
         assertEquals(template.background, added.background)
+    }
+
+    @Test
+    fun `paper color override keeps the selected pattern and becomes the notebook default`() {
+        val root = Files.createTempDirectory("inkloom-paper-colors").toFile()
+        try {
+            val store = PageTemplateStore(root)
+            store.setNotebookDefault("notebook-1", "builtin-grid")
+            store.setNotebookPaperColor("notebook-1", PaperColorCatalog.WARM_IVORY)
+
+            val selected = store.load().defaultFor("notebook-1")
+
+            assertEquals(
+                PageBackground.Paper(PaperColorCatalog.WARM_IVORY, PaperPattern.GRID),
+                selected.background,
+            )
+        } finally {
+            root.deleteRecursively()
+        }
     }
 }

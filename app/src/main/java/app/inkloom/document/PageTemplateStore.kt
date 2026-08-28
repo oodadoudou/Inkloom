@@ -21,10 +21,36 @@ data class PageTemplateLibrary(
     val customTemplates: List<PageTemplate> = emptyList(),
     val favoriteIds: Set<String> = emptySet(),
     val notebookDefaults: Map<String, String> = emptyMap(),
+    val notebookPaperColors: Map<String, Long> = emptyMap(),
 ) {
     fun allTemplates(): List<PageTemplate> = PageTemplateCatalog.builtIns + customTemplates
     fun template(id: String?): PageTemplate? = id?.let { wanted -> allTemplates().firstOrNull { it.id == wanted } }
-    fun defaultFor(documentId: String): PageTemplate = template(notebookDefaults[documentId]) ?: PageTemplateCatalog.blank
+    fun defaultFor(documentId: String): PageTemplate = PageTemplateOperations.withPaperColor(
+        template(notebookDefaults[documentId]) ?: PageTemplateCatalog.blank,
+        notebookPaperColors[documentId],
+    )
+}
+
+data class PaperColorOption(val id: String, val colorArgb: Long)
+
+object PaperColorCatalog {
+    const val WHITE = 0xFFFFFFFF
+    const val WARM_IVORY = 0xFFFFFBF2
+    const val SOFT_GREEN = 0xFFF2F7F0
+    const val SOFT_BLUE = 0xFFF1F6FA
+    const val SOFT_GRAY = 0xFFF3F3F1
+
+    val options: List<PaperColorOption> = listOf(
+        PaperColorOption("white", WHITE),
+        PaperColorOption("warm-ivory", WARM_IVORY),
+        PaperColorOption("soft-green", SOFT_GREEN),
+        PaperColorOption("soft-blue", SOFT_BLUE),
+        PaperColorOption("soft-gray", SOFT_GRAY),
+    )
+
+    fun normalize(colorArgb: Long?): Long? = colorArgb?.takeIf { color ->
+        color in 0L..0xFFFFFFFFL && (color ushr 24) == 0xFFL
+    }
 }
 
 object PageTemplateCatalog {
@@ -41,6 +67,12 @@ object PageTemplateCatalog {
 }
 
 object PageTemplateOperations {
+    fun withPaperColor(template: PageTemplate, colorArgb: Long?): PageTemplate {
+        val color = PaperColorCatalog.normalize(colorArgb) ?: return template
+        val paper = template.background as? PageBackground.Paper ?: return template
+        return template.copy(background = paper.copy(colorArgb = color))
+    }
+
     fun newPage(template: PageTemplate, title: String): InkPage = InkPage(
         title = title,
         width = template.width,
@@ -121,6 +153,14 @@ class PageTemplateStore(private val root: File) {
     }
 
     @Synchronized
+    fun setNotebookPaperColor(documentId: String, colorArgb: Long?): PageTemplateLibrary {
+        val current = load()
+        val colors = current.notebookPaperColors.toMutableMap()
+        PaperColorCatalog.normalize(colorArgb)?.let { colors[documentId] = it } ?: colors.remove(documentId)
+        return save(current.copy(notebookPaperColors = colors))
+    }
+
+    @Synchronized
     fun delete(templateId: String): PageTemplateLibrary {
         if (PageTemplateCatalog.isBuiltIn(templateId)) return load()
         val current = load()
@@ -147,6 +187,12 @@ class PageTemplateStore(private val root: File) {
                 .filter { (documentId, templateId) -> documentId.isNotBlank() && templateId in ids }
                 .take(MAX_NOTEBOOK_DEFAULTS)
                 .associate { it.toPair() },
+            notebookPaperColors = source.notebookPaperColors.entries.asSequence()
+                .mapNotNull { (documentId, color) ->
+                    PaperColorCatalog.normalize(color)?.takeIf { documentId.isNotBlank() }?.let { documentId to it }
+                }
+                .take(MAX_NOTEBOOK_DEFAULTS)
+                .associate { it },
         )
     }
 
