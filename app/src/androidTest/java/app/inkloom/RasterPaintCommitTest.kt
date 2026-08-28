@@ -360,6 +360,31 @@ class RasterPaintCommitTest {
         assertTrue("Raster pen-up commit was ${elapsedMs}ms", elapsedMs < 16.7f)
     }
 
+    @Test fun oneV5PaintGestureIsOneByteExactUndoAndRedoTransaction() {
+        val surface = PixelTileSurface(600, 600)
+        val view = createCanvas {
+            tool = EditorTool.PEN
+            activeLayerId = "paint"
+            installV5TestInk(size = 42f, color = Color.MAGENTA)
+            setRasterLayerSurfaces(mapOf("paint" to surface))
+        }
+
+        send(view, MotionEvent.ACTION_DOWN, 80f, 200f, 0L)
+        send(view, MotionEvent.ACTION_MOVE, 200f, 200f, 5L)
+        send(view, MotionEvent.ACTION_UP, 280f, 200f, 10L)
+        val page = PixelRect(0, 0, 600, 600)
+        val committed = surface.snapshot().copyPremultipliedPixels(page)
+        assertTrue("The gesture must publish visible pixels", committed.any { it.toInt() != 0 })
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.undo() }
+        val undone = surface.snapshot().copyPremultipliedPixels(page)
+        assertTrue("Undo must remove the complete gesture atomically", undone.all { it.toInt() == 0 })
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.redo() }
+        val redone = surface.snapshot().copyPremultipliedPixels(page)
+        assertTrue("Redo must restore the exact committed tile bytes", committed.contentEquals(redone))
+    }
+
     @Test fun importedEraserCommitsItsAuthoredTipInsteadOfTheLiveRoundProxy() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val tipFile = File(context.cacheDir, "raster-imported-eraser-tall-tip.png")

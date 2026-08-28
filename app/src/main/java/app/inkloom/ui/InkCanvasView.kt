@@ -4460,15 +4460,22 @@ class InkCanvasView(context: Context) : View(context) {
         record: app.inkloom.engine.v5.surface.PixelTileTransactionRecord,
         dirtyBounds: Rect,
     ) {
-        commitRasterLayerPatch(surface, dirtyBounds, layerId)
+        fun publish() {
+            commitRasterLayerPatch(surface, dirtyBounds, layerId)
+            invalidateV5Damage(
+                surface,
+                PixelRect(dirtyBounds.left, dirtyBounds.top, dirtyBounds.right, dirtyBounds.bottom),
+            )
+        }
+        publish()
         recordExternalEdit(
             undo = {
                 surface.apply(record, PixelTileSurface.HistoryDirection.UNDO)
-                commitRasterLayerPatch(surface, dirtyBounds, layerId)
+                publish()
             },
             redo = {
                 surface.apply(record, PixelTileSurface.HistoryDirection.REDO)
-                commitRasterLayerPatch(surface, dirtyBounds, layerId)
+                publish()
             },
             dispose = record::close,
         )
@@ -5198,14 +5205,16 @@ class InkCanvasView(context: Context) : View(context) {
             v5DryPublishedGeneration = published.snapshot.revision
             published.dirtyBounds?.takeIf { published.record.changedTileCount > 0 }?.let { bounds ->
                 v5PresentationBarrier.awaitVisible(published.snapshot.revision, published.record.transactionId)
-                commitRasterLayerPatch(
+                recordRasterToolTransaction(
+                    activeLayerId,
                     surface,
+                    published.record,
                     Rect(bounds.left, bounds.top, bounds.right, bounds.bottom),
                 )
-                invalidateV5Damage(surface, bounds)
-            }
-        } finally {
+            } ?: published.record.close()
+        } catch (failure: Throwable) {
             published.record.close()
+            throw failure
         }
         return true
     }
