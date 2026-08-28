@@ -12,6 +12,7 @@ import app.inkloom.document.PageElement
 import app.inkloom.document.FillSubTool
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
+import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.model.EditorTool
 import app.inkloom.settings.ReferenceTarget
 import app.inkloom.ui.InkCanvasView
@@ -117,32 +118,41 @@ class FillToolTest {
 
     @Test fun referenceTargetConfinesFillToMarkedLineArtLayer() {
         var committedWidth = 0f
-        val border = InkStroke(
-            id = "border",
-            layerId = "line-art",
-            width = 14f,
-            colorArgb = 0xFF000000,
-            points = listOf(
-                StrokePoint(.25f, .25f), StrokePoint(.75f, .25f), StrokePoint(.75f, .75f),
-                StrokePoint(.25f, .75f), StrokePoint(.25f, .25f),
-            ),
-        )
+        val color = PixelTileSurface(200, 200)
+        val lineArt = PixelTileSurface(200, 200).also { surface ->
+            surface.beginWrite("V5 reference border").use { transaction ->
+                for (offset in -4..4) {
+                    for (coordinate in 50..150) {
+                        transaction.setPixel(coordinate, 50 + offset, Color.BLACK)
+                        transaction.setPixel(coordinate, 150 + offset, Color.BLACK)
+                        transaction.setPixel(50 + offset, coordinate, Color.BLACK)
+                        transaction.setPixel(150 + offset, coordinate, Color.BLACK)
+                    }
+                }
+                transaction.commit().close()
+            }
+        }
         val view = canvas {
             tool = EditorTool.FILL
             fingerDrawingEnabled = true
             pagePaperColor = Color.WHITE
+            pageModelWidth = 200f
+            pageModelHeight = 200f
             activeLayerId = "color"
             referenceTarget = ReferenceTarget.REFERENCE_LAYERS
             referenceLayerIds = setOf("line-art")
             layerOrder = listOf("color", "line-art")
-            setDocumentStrokes(listOf(border), "reference-fill")
-            onFillCommitted = { _, _, _, width, _, _, _ -> committedWidth = width }
+            setRasterLayerSurfaces(mapOf("color" to color, "line-art" to lineArt))
+            onFillCommitted = { mask, _, _, width, _, _, _ ->
+                committedWidth = width
+                mask.recycle()
+            }
         }
 
         send(view, 0L, MotionEvent.ACTION_DOWN, 100f, 100f)
         send(view, 50L, MotionEvent.ACTION_UP, 100f, 100f)
 
-        assertTrue("Reference line art should keep the fill inside its boundary", committedWidth in 400f..1_200f)
+        assertTrue("V5 reference line art should keep the fill inside its boundary", committedWidth in 80f..120f)
     }
 
     @Test fun fillSelectionCommitsTheSelectionMaskInsteadOfFloodingAroundInk() {

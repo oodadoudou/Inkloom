@@ -7,9 +7,12 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.document.DocumentAssetService
 import app.inkloom.document.InkPage
-import app.inkloom.document.InkStroke
+import app.inkloom.document.InkLayer
+import app.inkloom.document.LayerContentKind
+import app.inkloom.document.LayerIds
+import app.inkloom.document.LayerRole
 import app.inkloom.document.PageBackground
-import app.inkloom.document.StrokePoint
+import app.inkloom.engine.v5.surface.PixelTileSurface
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -30,13 +33,30 @@ class PdfPageThumbnailTest {
         source.outputStream().use(pdf::writeTo)
         pdf.close()
 
-        val ink = InkStroke(
-            points = listOf(StrokePoint(.2f, .8f), StrokePoint(.8f, .8f)),
-            colorArgb = Color.BLUE.toUInt().toLong(),
-            width = 48f,
-        )
-        val rendered = DocumentAssetService(context).renderPageBitmap(
-            InkPage(width = 400f, height = 600f, background = PageBackground.Pdf(source.absolutePath, 0), strokes = listOf(ink)),
+        val assets = DocumentAssetService(context)
+        val ink = PixelTileSurface(400, 600).also { surface ->
+            surface.beginWrite("thumbnail ink").use { transaction ->
+                for (y in 468..492) for (x in 80..320) transaction.setPixel(x, y, Color.BLUE)
+                transaction.commit().close()
+            }
+        }
+        val reference = assets.saveRasterTileSurface(ink)
+        val rendered = assets.renderPageBitmap(
+            InkPage(
+                width = 400f,
+                height = 600f,
+                background = PageBackground.Pdf(source.absolutePath, 0),
+                layers = listOf(
+                    InkLayer(LayerIds.BACKGROUND, "Background", LayerRole.BACKGROUND, locked = true),
+                    InkLayer(
+                        id = LayerIds.INK,
+                        name = "Notes",
+                        role = LayerRole.INK,
+                        contentKind = LayerContentKind.RASTER,
+                        rasterTileSurface = reference,
+                    ),
+                ),
+            ),
             200,
         )
         try {
@@ -45,6 +65,7 @@ class PdfPageThumbnailTest {
             assertEquals("Ink must be composited over the PDF preview", Color.BLUE, rendered.getPixel(100, 240))
         } finally {
             rendered.recycle()
+            assets.releaseRasterTileReservation(reference)
             source.delete()
         }
     }
