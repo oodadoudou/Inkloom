@@ -78,6 +78,33 @@ class BrushPresetV5FoundationTest {
         assertEquals(null, oldInkloom.v5PresetJson)
     }
 
+    @Test fun importBoundaryPreservesEraserMultiTipSprayAndWetProgramsInV5Truth() {
+        val decoded = ImportedBrush(
+            id = "sut-native",
+            name = "Native SUT",
+            format = BrushFormat.SUT,
+            compatibility = Compatibility.HIGH,
+            sizeBytes = 42,
+            report = emptyList(),
+            isEraser = true,
+            tipPreviewPath = "/tips/primary.png",
+            tipPreviewPaths = listOf("/tips/primary.png", "/tips/alternate.png"),
+            spray = true,
+            sprayParticleSize = 18f,
+            sprayDensity = 2.5f,
+            spraySpread = .8f,
+            stampCount = 3,
+        )
+
+        val preset = BrushPresetV5Import.requirePreset(BrushPresetV5Import.convertDecodedSource(decoded))
+
+        assertEquals(BrushOutput.ERASE, preset.output)
+        assertEquals(listOf("/tips/primary.png", "/tips/alternate.png"), preset.tipTexture?.assetPaths)
+        assertEquals(3, preset.stamp?.particlesPerPlot)
+        assertEquals(18f, preset.stamp?.spray?.particleSize)
+        assertEquals(2.5f, preset.stamp?.spray?.density)
+    }
+
     private fun referencePencil() = BrushPresetV5(
         identity = PresetIdentity(
             id = "system-hb-pencil",

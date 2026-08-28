@@ -27,6 +27,8 @@ data class BrushPresetV5(
      * operation replaces it.
      */
     val renderSeed: Int,
+    /** Paint deposits the foreground colour; erase removes destination alpha with the same tip. */
+    val output: BrushOutput = BrushOutput.PAINT,
     val tip: TipSettings,
     val deposition: DepositionSettings,
     /** Present for stamped families that expose spacing. */
@@ -38,9 +40,16 @@ data class BrushPresetV5(
     val tipTexture: TipTextureSettings? = null,
     /** Present only for families that support taper / smoothing. */
     val stroke: StrokeSettings? = null,
+    /** Raster stamp emission semantics; null selects the family's continuous depositor. */
+    val stamp: StampSettings? = null,
+    /** Pigment pickup/deposition semantics for wet families. */
+    val wetMix: WetMixSettings? = null,
     /** Reserved for family-specific knobs that are not part of the common contract. */
     val engineOptions: EngineOptions = EngineOptions(),
 )
+
+@Serializable
+enum class BrushOutput { PAINT, ERASE }
 
 @Serializable
 data class PresetIdentity(
@@ -154,6 +163,8 @@ data class TipTextureSettings(
     val procedural: Boolean = true,
     /** Imported tip asset path (when procedural is false). */
     val assetPath: String? = null,
+    /** Ordered multi-tip sequence. Empty uses [assetPath] for presets authored before this field. */
+    val assetPaths: List<String> = emptyList(),
     /** Per-grade tooth strength for procedural graphite tips (0..1). */
     val toothStrength: Float = .8f,
 )
@@ -166,6 +177,39 @@ data class StrokeSettings(
     val taperEndEnabled: Boolean = false,
     val taperEndLength: Float = .2f,
     val postCorrection: Float = 0f,
+)
+
+@Serializable
+data class StampSettings(
+    val followStrokeDirection: Boolean = false,
+    val followStylusOrientation: Boolean = false,
+    val randomRotationDegrees: Float = 0f,
+    val particlesPerPlot: Int = 1,
+    val continuousPlot: Boolean = false,
+    val spray: SpraySettings? = null,
+)
+
+@Serializable
+data class SpraySettings(
+    val particleSize: Float = 100f,
+    /** 0 = relative percent of brush diameter; 1 = document-reference pixels. */
+    val particleSizeUnit: Int = 0,
+    val particleSizeTracksBrush: Boolean = true,
+    val density: Float = 1f,
+    val bias: Float = 0f,
+    val spread: Float = 1f,
+    val particleRotationDegrees: Float = 0f,
+    val followStrokeDirection: Boolean = false,
+    val followStylusOrientation: Boolean = false,
+    val randomRotationDegrees: Float = 0f,
+)
+
+@Serializable
+data class WetMixSettings(
+    val dilution: Float = 0f,
+    val charge: Float = 0f,
+    val attack: Float = 0f,
+    val pull: Float = 0f,
 )
 
 @Serializable

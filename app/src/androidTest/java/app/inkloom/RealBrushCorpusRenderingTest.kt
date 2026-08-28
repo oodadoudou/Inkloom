@@ -10,6 +10,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.importer.AbrBrushParser
 import app.inkloom.importer.ProcreateBrushParser
 import app.inkloom.importer.SutBrushParser
+import app.inkloom.brushpresetv5.BrushPresetV5Import
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.EditorTool
@@ -63,7 +64,7 @@ class RealBrushCorpusRenderingTest {
             }
             val representatives = listOf(BrushFormat.PROCREATE, BrushFormat.SUT, BrushFormat.ABR).map { format ->
                 parsed.firstOrNull { it.format == format }.also { assertNotNull("No $format brush parsed from the real corpus", it) }!!
-            }
+            }.map(BrushPresetV5Import::convertDecodedSource)
             representatives.forEach { brush -> assertBrushCommitsAndRenders(brush) }
             assertSutBrushKeepsRealTimePreview(representatives.first { it.format == BrushFormat.SUT })
             assertEquals(setOf(BrushFormat.PROCREATE, BrushFormat.SUT, BrushFormat.ABR), representatives.mapTo(linkedSetOf(), ImportedBrush::format))

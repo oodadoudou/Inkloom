@@ -13,6 +13,7 @@ import app.inkloom.document.BrushCurvePoint
  */
 class CompiledBrushProgramV5 private constructor(
     val preset: BrushPresetV5,
+    val output: BrushOutput,
     val capabilities: Set<BrushCapability>,
     val backend: RenderBackend,
     val tip: CompiledTip,
@@ -22,6 +23,8 @@ class CompiledBrushProgramV5 private constructor(
     val tilt: CompiledTilt,
     val grainSampler: CompiledGrainSampler?,
     val strokeShaping: CompiledStrokeShaping,
+    val stamp: StampSettings?,
+    val wetMix: WetMixSettings?,
 ) {
     /** The preset a stroke was compiled from (identity only; not editable mid-stroke). */
     val identity: PresetIdentity get() = preset.identity
@@ -43,6 +46,7 @@ class CompiledBrushProgramV5 private constructor(
     data class CompiledTipTexture(
         val procedural: Boolean,
         val assetPath: String?,
+        val assetPaths: List<String>,
         val toothStrength: Float,
     )
 
@@ -99,11 +103,25 @@ class CompiledBrushProgramV5 private constructor(
             }
             require(preset.tip.size.isFinite() && preset.tip.size > 0f) { "Brush size must be finite and positive" }
             require(preset.tip.aspect.isFinite() && preset.tip.aspect > 0f) { "Tip aspect must be finite and positive" }
+            preset.stamp?.let { stamp ->
+                require(stamp.randomRotationDegrees.isFinite() && stamp.randomRotationDegrees >= 0f)
+                require(stamp.particlesPerPlot in 1..32)
+                stamp.spray?.let { spray ->
+                    require(spray.particleSize.isFinite() && spray.particleSize > 0f)
+                    require(spray.density.isFinite() && spray.density > 0f)
+                    require(spray.bias.isFinite() && spray.bias in -100f..100f)
+                    require(spray.spread.isFinite() && spray.spread >= 0f)
+                }
+            }
             val family = preset.identity.family
             val capabilities = BrushCapabilities.of(family)
-            val hasImportedTip = preset.tipTexture?.assetPath != null
+            val importedTipPaths = preset.tipTexture?.let { texture ->
+                texture.assetPaths.ifEmpty { listOfNotNull(texture.assetPath) }
+            }.orEmpty().distinct()
+            val hasImportedTip = importedTipPaths.isNotEmpty()
             return CompiledBrushProgramV5(
                 preset = preset,
+                output = preset.output,
                 capabilities = capabilities,
                 backend = BrushCapabilities.backend(family, hasImportedTip),
                 tip = CompiledTip(
@@ -112,7 +130,12 @@ class CompiledBrushProgramV5 private constructor(
                     rotationDegrees = preset.tip.rotationDegrees,
                     hardness = preset.tip.hardness,
                     tipTexture = preset.tipTexture?.let {
-                        CompiledTipTexture(it.procedural, it.assetPath, it.toothStrength)
+                        CompiledTipTexture(
+                            procedural = it.procedural,
+                            assetPath = importedTipPaths.firstOrNull(),
+                            assetPaths = importedTipPaths,
+                            toothStrength = it.toothStrength,
+                        )
                     },
                 ),
                 deposition = CompiledDeposition(preset.deposition.opacity, preset.deposition.flow, preset.deposition.buildup),
@@ -147,6 +170,8 @@ class CompiledBrushProgramV5 private constructor(
                     taperEndLength = preset.stroke?.taperEndLength ?: .2f,
                     postCorrection = preset.stroke?.postCorrection ?: 0f,
                 ),
+                stamp = preset.stamp,
+                wetMix = preset.wetMix,
             )
         }
     }

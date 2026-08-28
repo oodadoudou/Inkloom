@@ -4,6 +4,7 @@ import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
 import app.inkloom.model.ImportedBrushGraphite
+import app.inkloom.document.CspBrushGap
 
 /**
  * Import-boundary conversion from decoded third-party brush semantics into Brush Preset V5.
@@ -103,10 +104,13 @@ object BrushPresetV5Import {
                 renderBrushId = source.renderBrushId ?: source.id,
             ),
             renderSeed = source.renderSeed ?: (source.renderBrushId ?: source.id).hashCode(),
+            output = if (source.isEraser) BrushOutput.ERASE else BrushOutput.PAINT,
             tip = TipSettings(source.defaultSize, source.thickness, source.rotationDegrees, source.hardness),
             deposition = DepositionSettings(source.defaultOpacity, source.flow),
-            spacing = if (family in setOf(BrushFamily.PENCIL, BrushFamily.AIRBRUSH, BrushFamily.DECORATION)) {
-                SpacingSettings(SpacingMode.RELATIVE, source.spacing)
+            spacing = if (family in setOf(BrushFamily.PENCIL, BrushFamily.AIRBRUSH, BrushFamily.DECORATION) ||
+                source.tipPreviewPath != null || source.tipPreviewPaths.isNotEmpty() || source.continuousPlot
+            ) {
+                SpacingSettings(SpacingMode.RELATIVE, CspBrushGap.ratio(source.spacingMode, source.spacing))
             } else null,
             dynamics = DynamicsSettings(
                 pressure = PressureMappings(
@@ -133,8 +137,16 @@ object BrushPresetV5Import {
                 PaperGrainSettings(it.proceduralPaperGrainScale, it.proceduralPaperGrainDensity, it.proceduralPaperGrainStrength)
             },
             tipTexture = when {
-                source.tipPreviewPath != null -> TipTextureSettings(false, source.tipPreviewPath, source.hardness)
-                family == BrushFamily.PENCIL -> TipTextureSettings(true, null, source.hardness)
+                source.tipPreviewPaths.isNotEmpty() || source.tipPreviewPath != null -> TipTextureSettings(
+                    procedural = false,
+                    assetPath = source.tipPreviewPath,
+                    assetPaths = source.tipPreviewPaths.ifEmpty { listOfNotNull(source.tipPreviewPath) },
+                    toothStrength = source.hardness,
+                )
+                family == BrushFamily.PENCIL -> TipTextureSettings(
+                    procedural = true,
+                    toothStrength = source.hardness,
+                )
                 else -> null
             },
             stroke = StrokeSettings(
@@ -145,6 +157,46 @@ object BrushPresetV5Import {
                 taperEndLength = source.taperEndLength,
                 postCorrection = source.postCorrection.takeIf { source.postCorrectionEnabled } ?: 0f,
             ),
+            stamp = source.takeIf {
+                family in setOf(BrushFamily.PENCIL, BrushFamily.AIRBRUSH, BrushFamily.DECORATION) ||
+                    it.tipPreviewPath != null || it.tipPreviewPaths.isNotEmpty() || it.continuousPlot || it.spray
+            }?.let {
+                StampSettings(
+                    followStrokeDirection = it.followStrokeDirection,
+                    followStylusOrientation = it.followStylusOrientation,
+                    randomRotationDegrees = kotlin.math.abs(it.randomRotationDegrees),
+                    particlesPerPlot = it.stampCount.coerceIn(1, 32),
+                    continuousPlot = it.continuousPlot,
+                    spray = it.takeIf(ImportedBrush::spray)?.let { spray ->
+                        SpraySettings(
+                            particleSize = spray.sprayParticleSize.coerceAtLeast(.01f),
+                            particleSizeUnit = spray.sprayParticleSizeUnit,
+                            particleSizeTracksBrush = spray.sprayParticleSizeSyncBrushSize,
+                            density = spray.sprayDensity.coerceAtLeast(.01f),
+                            bias = spray.sprayBias.coerceIn(-100f, 100f),
+                            spread = spray.spraySpread.coerceAtLeast(0f),
+                            particleRotationDegrees = spray.sprayParticleRotationDegrees,
+                            followStrokeDirection = spray.sprayParticleFollowStrokeDirection,
+                            followStylusOrientation = spray.sprayParticleFollowStylusOrientation,
+                            randomRotationDegrees = kotlin.math.abs(spray.sprayParticleRandomRotationDegrees),
+                        )
+                    },
+                )
+            },
+            wetMix = source.takeIf { family == BrushFamily.WET_PAINT }?.let {
+                val authored = it.procreateWetMix
+                if (!authored.isDisabled()) WetMixSettings(
+                    authored.dilution,
+                    authored.charge,
+                    authored.attack,
+                    authored.pull,
+                ) else WetMixSettings(
+                    dilution = it.colorMix,
+                    charge = it.paintMix.coerceAtLeast(.15f),
+                    attack = .7f,
+                    pull = it.colorMix,
+                )
+            },
         )
     }
 

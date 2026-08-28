@@ -101,6 +101,15 @@ import app.inkloom.document.*
 import app.inkloom.brushpresetv5.OwnedBrushPreset
 import app.inkloom.brushpresetv5.BrushPresetV5Import
 import app.inkloom.brushpresetv5.BrushPresetV5
+import app.inkloom.brushpresetv5.BrushPresetV5Codec
+import app.inkloom.brushpresetv5.BrushFamily
+import app.inkloom.brushpresetv5.BrushOutput
+import app.inkloom.brushpresetv5.DepositionSettings
+import app.inkloom.brushpresetv5.DynamicsSettings
+import app.inkloom.brushpresetv5.PresetIdentity
+import app.inkloom.brushpresetv5.PressureMappings
+import app.inkloom.brushpresetv5.TiltMappings
+import app.inkloom.brushpresetv5.TipSettings
 import app.inkloom.brushpresetv5.CompiledBrushProgramV5
 import app.inkloom.brushpresetv5.PresetOwnership
 import app.inkloom.brushpresetv5.PresetOwnershipOperations
@@ -5015,11 +5024,60 @@ internal fun InkCanvasView.applyBrushConfiguration(
     eraserPreset: EraserPreset,
     secondaryBrushColor: Int = AndroidColor.WHITE,
 ) {
-    setCompiledBrushProgramV5(null)
     // A delayed Compose frame or hardware-button transition must never carry a normal paint
     // descriptor into eraser mode. Imported erasers remain full brush presets; other brushes are
     // discarded at this boundary and the selected system eraser preset is used instead.
     val activeBrush = if (selectedTool == EditorTool.ERASER) selectedBrush?.takeIf(BrushRoleClassifier::isEraser) else selectedBrush
+    val paintTool = selectedTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER)
+    val nativePreset = when {
+        !paintTool -> null
+        activeBrush != null -> BrushPresetV5Codec.decodeOrNull(activeBrush.v5PresetJson)
+        else -> BrushPresetV5(
+            identity = PresetIdentity(
+                id = when (selectedTool) {
+                    EditorTool.ERASER -> "system-default-eraser"
+                    EditorTool.HIGHLIGHTER -> "system-default-highlighter"
+                    else -> "system-default-pen"
+                },
+                name = when (selectedTool) {
+                    EditorTool.ERASER -> "Default Eraser"
+                    EditorTool.HIGHLIGHTER -> "Default Highlighter"
+                    else -> "Default Pen"
+                },
+                family = BrushFamily.INK,
+                renderBrushId = when (selectedTool) {
+                    EditorTool.ERASER -> "system-default-eraser"
+                    EditorTool.HIGHLIGHTER -> "system-highlighter"
+                    else -> "system-pen"
+                },
+            ),
+            renderSeed = when (selectedTool) {
+                EditorTool.ERASER -> 0x45A5E
+                EditorTool.HIGHLIGHTER -> 0x41A11
+                else -> 0x1A9E
+            },
+            output = if (selectedTool == EditorTool.ERASER) BrushOutput.ERASE else BrushOutput.PAINT,
+            tip = TipSettings(
+                size = brushSize,
+                hardness = if (selectedTool == EditorTool.ERASER) eraserPreset.hardness else 1f,
+            ),
+            deposition = DepositionSettings(
+                opacity = if (selectedTool == EditorTool.ERASER) eraserPreset.opacity else brushOpacity,
+                flow = 1f,
+            ),
+            dynamics = DynamicsSettings(
+                pressure = PressureMappings(
+                    widthEnabled = if (selectedTool == EditorTool.ERASER) eraserPreset.pressureSize else selectedTool == EditorTool.PEN,
+                    widthMinimum = .35f,
+                ),
+                tilt = TiltMappings(),
+            ),
+        )
+    }
+    setCompiledBrushProgramV5(
+        nativePreset?.let(CompiledBrushProgramV5::compile),
+        required = paintTool,
+    )
     switchInputConfiguration(selectedTool, activeBrush?.id)
     fingerDrawingEnabled = settings.fingerDrawing
     singleFingerDoubleTapUndo = settings.singleFingerDoubleTapUndo

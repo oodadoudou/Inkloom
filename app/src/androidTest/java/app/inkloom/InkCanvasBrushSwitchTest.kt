@@ -7,6 +7,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.LiquifyMode
+import app.inkloom.brushpresetv5.BrushPresetV5Import
 import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
@@ -36,8 +37,8 @@ class InkCanvasBrushSwitchTest {
                 tiltEnabled = true,
                 tiltMinimum = .5f,
             ),
-        )
-        val fixed = brush("fixed-cursor", "Fixed cursor").copy(sizePressureEnabled = false)
+        ).v5()
+        val fixed = brush("fixed-cursor", "Fixed cursor").copy(sizePressureEnabled = false).v5()
 
         instrumentation.runOnMainSync {
             view.applyBrushConfiguration(EditorTool.PEN, AppSettings(), dynamic, 100f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
@@ -61,9 +62,9 @@ class InkCanvasBrushSwitchTest {
             viewportScale = 4f
             setRasterLayerSurfaces(mapOf(app.inkloom.document.LayerIds.INK to surface))
         }
-        val synchronized = brush("csp-screen-size", "Screen size").copy(sizeSyncViewScale = true, sizePressureEnabled = false)
-        val documentSized = brush("csp-document-size", "Document size").copy(sizePressureEnabled = false)
-        val synchronizedEraser = brush("csp-screen-eraser", "Screen eraser").copy(sizeSyncViewScale = true, sizePressureEnabled = false, isEraser = true)
+        val synchronized = brush("csp-screen-size", "Screen size").copy(sizeSyncViewScale = true, sizePressureEnabled = false).v5()
+        val documentSized = brush("csp-document-size", "Document size").copy(sizePressureEnabled = false).v5()
+        val synchronizedEraser = brush("csp-screen-eraser", "Screen eraser").copy(sizeSyncViewScale = true, sizePressureEnabled = false, isEraser = true).v5()
 
         instrumentation.runOnMainSync {
             view.applyBrushConfiguration(EditorTool.PEN, AppSettings(), synchronized, 40f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
@@ -134,8 +135,8 @@ class InkCanvasBrushSwitchTest {
             layout(0, 0, 1200, 1200)
             setRasterLayerSurfaces(mapOf(app.inkloom.document.LayerIds.INK to surface))
         }
-        val first = brush("first", "First")
-        val second = brush("second", "Second")
+        val first = brush("first", "First").v5()
+        val second = brush("second", "Second").v5()
 
         instrumentation.runOnMainSync {
             view.applyBrushConfiguration(EditorTool.PEN, AppSettings(), first, 16f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
@@ -178,7 +179,7 @@ class InkCanvasBrushSwitchTest {
         val view = InkCanvasView(instrumentation.targetContext).apply {
             layout(0, 0, 1200, 1200)
             setRasterLayerSurfaces(mapOf(app.inkloom.document.LayerIds.INK to surface))
-            applyBrushConfiguration(EditorTool.PEN, AppSettings(), brush("palm-safe", "Palm safe"), 18f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
+            applyBrushConfiguration(EditorTool.PEN, AppSettings(), brush("palm-safe", "Palm safe").v5(), 18f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
         }
 
         instrumentation.runOnMainSync {
@@ -228,7 +229,7 @@ class InkCanvasBrushSwitchTest {
             colorMix = .42f,
             paintMix = .63f,
             colorStretch = .71f,
-        )
+        ).v5()
         val view = InkCanvasView(instrumentation.targetContext).apply {
             layout(0, 0, 1200, 1200)
             setRasterLayerSurfaces(mapOf(app.inkloom.document.LayerIds.INK to surface))
@@ -257,6 +258,8 @@ class InkCanvasBrushSwitchTest {
         sizeBytes = 0L,
         report = emptyList(),
     )
+
+    private fun ImportedBrush.v5(): ImportedBrush = BrushPresetV5Import.convertDecodedSource(this)
 
     private fun drawStroke(view: InkCanvasView, startTime: Long, y: Float) {
         view.onTouchEvent(stylusEvent(MotionEvent.ACTION_DOWN, 250f, y, startTime))

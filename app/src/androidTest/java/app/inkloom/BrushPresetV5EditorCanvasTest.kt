@@ -15,8 +15,14 @@ import app.inkloom.brushpresetv5.PressureMappings
 import app.inkloom.brushpresetv5.TiltMappings
 import app.inkloom.brushpresetv5.TipSettings
 import app.inkloom.engine.v5.surface.PixelTileSurface
+import app.inkloom.model.BrushFormat
+import app.inkloom.model.Compatibility
+import app.inkloom.model.EditorTool
+import app.inkloom.model.ImportedBrush
 import app.inkloom.settings.AppSettings
+import app.inkloom.settings.EraserPreset
 import app.inkloom.ui.InkCanvasView
+import app.inkloom.ui.applyBrushConfiguration
 import app.inkloom.ui.applyBrushPresetV5Configuration
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -46,6 +52,68 @@ class BrushPresetV5EditorCanvasTest {
         assertTrue(surface.tileCount > 0)
         assertEquals(1, view.v5DryGestureCount)
         assertTrue(surface.snapshot().tileInfo.sumOf { it.nonTransparentPixelCount } > 0)
+    }
+
+    @Test fun semanticallyEqualComposeUpdateDoesNotCancelAnActiveV5Stroke() {
+        val surface = PixelTileSurface(600, 600)
+        val preset = referenceInk()
+        lateinit var view: InkCanvasView
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view = InkCanvasView(ApplicationProvider.getApplicationContext()).apply {
+                layout(0, 0, 400, 400)
+                activeLayerId = "paint"
+                setRasterLayerSurfaces(mapOf("paint" to surface))
+                applyBrushPresetV5Configuration(preset, AppSettings(), brushColor = Color.BLACK)
+            }
+        }
+
+        sendStylus(view, MotionEvent.ACTION_DOWN, 60f, 180f, 1L)
+        sendStylus(view, MotionEvent.ACTION_MOVE, 180f, 180f, 4L)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            // This compiles a new immutable object, as AndroidView update does during recomposition.
+            view.applyBrushPresetV5Configuration(preset.copy(), AppSettings(), brushColor = Color.BLACK)
+        }
+        sendStylus(view, MotionEvent.ACTION_MOVE, 280f, 180f, 7L)
+        sendStylus(view, MotionEvent.ACTION_UP, 340f, 180f, 10L)
+
+        assertEquals(1L, surface.revision)
+        assertTrue(surface.tileCount > 0)
+    }
+
+    @Test fun productionSelectionWithoutV5PayloadIsRejectedInsteadOfFallingBack() {
+        val surface = PixelTileSurface(600, 600)
+        var rejection: String? = null
+        lateinit var view: InkCanvasView
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view = InkCanvasView(ApplicationProvider.getApplicationContext()).apply {
+                layout(0, 0, 400, 400)
+                activeLayerId = "paint"
+                setRasterLayerSurfaces(mapOf("paint" to surface))
+                onPaintCapabilityRejected = { rejection = it }
+                applyBrushConfiguration(
+                    EditorTool.PEN,
+                    AppSettings(),
+                    ImportedBrush(
+                        id = "retired-payload",
+                        name = "Retired payload",
+                        format = BrushFormat.INKLOOM,
+                        compatibility = Compatibility.FAILED,
+                        sizeBytes = 0,
+                        report = emptyList(),
+                    ),
+                    20f,
+                    1f,
+                    Color.BLACK,
+                    EraserPreset.NORMAL_FREE,
+                )
+            }
+        }
+
+        sendStylus(view, MotionEvent.ACTION_DOWN, 60f, 220f, 1L)
+        sendStylus(view, MotionEvent.ACTION_UP, 300f, 220f, 5L)
+
+        assertEquals(0L, surface.revision)
+        assertTrue(rejection?.contains("V5") == true)
     }
 
     private fun referenceInk() = BrushPresetV5(

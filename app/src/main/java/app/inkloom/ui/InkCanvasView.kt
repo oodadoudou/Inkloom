@@ -31,6 +31,7 @@ import androidx.annotation.WorkerThread
 import androidx.annotation.VisibleForTesting
 import app.inkloom.BuildConfig
 import app.inkloom.brushpresetv5.BrushFamily as BrushFamilyV5
+import app.inkloom.brushpresetv5.BrushOutput as BrushOutputV5
 import app.inkloom.brushpresetv5.CompiledBrushProgramV5
 import app.inkloom.brushpresetv5.RenderBackend as RenderBackendV5
 import app.inkloom.engine.v5.diagnostics.PaintingTruthDiagnostics
@@ -542,7 +543,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var activeSpecialRulerConstraint: SpecialRulerConstraint? = null
     private val continuousPlotRunnable = object : Runnable {
         override fun run() {
-            if (!continuousPlotActive || !brushContinuousPlot || activeTool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) return
+            if (!continuousPlotActive || !continuousPlotEnabled() || activeTool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) return
             val surface = rasterTileSurfaceFor(activeLayerId)
             if (surface != null && v5StrokeController.isActive) {
                 val now = SystemClock.uptimeMillis() * 1_000_000L
@@ -564,6 +565,8 @@ class InkCanvasView(context: Context) : View(context) {
             postDelayed(this, CONTINUOUS_PLOT_INTERVAL_MS)
         }
     }
+    private fun continuousPlotEnabled(): Boolean =
+        compiledBrushProgramV5?.stamp?.continuousPlot ?: brushContinuousPlot
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
@@ -593,6 +596,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var configuredInputTool: EditorTool? = null
     private var configuredInputBrushId: String? = null
     private var compiledBrushProgramV5: CompiledBrushProgramV5? = null
+    private var compiledBrushProgramV5Required: Boolean = false
     private var prewarmedBrushSignature: String? = null
     private val protectedStrokeIds = mutableSetOf<String>()
     private val protectedLayerIds = mutableSetOf<String>()
@@ -1936,14 +1940,18 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     /** Installs an immutable V5 program for the next contact; null returns to library configuration. */
-    fun setCompiledBrushProgramV5(program: CompiledBrushProgramV5?) {
-        if (compiledBrushProgramV5 === program) return
+    fun setCompiledBrushProgramV5(program: CompiledBrushProgramV5?, required: Boolean = program != null) {
+        // Compose may decode the same durable preset on every AndroidView update. Semantic
+        // equality is the stroke boundary: never cancel an active contact merely because the
+        // immutable program was re-instantiated.
+        if (compiledBrushProgramV5?.preset == program?.preset && compiledBrushProgramV5Required == required) return
         if (activeTool != null) cancelActiveGestureForNavigation()
         compiledBrushProgramV5 = program
+        compiledBrushProgramV5Required = required
         program?.let {
             brushId = it.renderBrushId
             brushRenderSeed = it.renderSeed
-            it.tip.tipTexture?.assetPath?.let { path ->
+            it.tip.tipTexture?.assetPaths.orEmpty().forEach { path ->
                 v5BrushTipMasks.resolve(BrushTipMaskRequest(path, it.tip.hardness.coerceIn(0f, 1f)))
             }
             prewarmedBrushSignature = null
@@ -4950,7 +4958,9 @@ class InkCanvasView(context: Context) : View(context) {
             dynamics.tiltStart,
             dynamics.tiltCurve.map { it.x to it.y },
         )
-        compiledBrushProgramV5?.takeIf { active != EditorTool.ERASER }?.let { program ->
+        compiledBrushProgramV5
+            ?.takeIf { active != EditorTool.ERASER || it.output == BrushOutputV5.ERASE }
+            ?.let { program ->
             if (program.strokeShaping.smoothing > .0001f || program.strokeShaping.postCorrection > .0001f ||
                 program.strokeShaping.taperStartEnabled || program.strokeShaping.taperEndEnabled
             ) return null
@@ -4969,43 +4979,83 @@ class InkCanvasView(context: Context) : View(context) {
                 program.pressure.flowMinimum,
                 program.pressure.flowCurve.map { it.x to it.y },
             )
-            val tipAsset = program.tip.tipTexture?.assetPath
-            if (tipAsset != null) {
-                val mask = v5BrushTipMasks.resolve(
-                    BrushTipMaskRequest(tipAsset, program.tip.hardness.coerceIn(0f, 1f)),
-                ) ?: return null
+            val erase = program.output == BrushOutputV5.ERASE
+            val stampProgram = program.stamp
+            val sprayProgram = stampProgram?.spray
+            val tipAssets = program.tip.tipTexture?.assetPaths.orEmpty()
+            if (tipAssets.isNotEmpty()) {
+                val masks = tipAssets.map { tipAsset ->
+                    v5BrushTipMasks.resolve(
+                        BrushTipMaskRequest(tipAsset, program.tip.hardness.coerceIn(0f, 1f)),
+                    ) ?: return null
+                }
+                val particleDiameter = sprayProgram?.let { spray ->
+                    SprayGeometry.particleDiameter(
+                        diameterPixels,
+                        spray.particleSize,
+                        spray.particleSizeUnit,
+                        spray.particleSizeTracksBrush,
+                        surface.logicalWidth.toFloat(),
+                    )
+                } ?: diameterPixels
+                val scatterRadius = sprayProgram?.let { diameterPixels * .5f * it.spread.coerceIn(0f, 4f) } ?: 0f
                 val stamp = StampBrushDefinition(
-                    kind = when (program.backend) {
+                    kind = if (erase) PaintOpKind.ERASER else when (program.backend) {
                         RenderBackendV5.AIRBRUSH -> PaintOpKind.AIRBRUSH
                         RenderBackendV5.ASSET_STAMP -> PaintOpKind.DECORATION
                         RenderBackendV5.PROCEDURAL_STAMP -> PaintOpKind.PENCIL
-                        else -> PaintOpKind.DRY_INK
+                        // Asset tips always use the stamp executor even when the semantic family
+                        // is Ink or Wet; DRY_INK is a continuous depositor and is not a stamp kind.
+                        else -> PaintOpKind.PENCIL
                     },
-                    diameterPixels = diameterPixels,
-                    colorArgb = inkColor,
+                    diameterPixels = particleDiameter.coerceIn(.1f, 4096f),
+                    spacingReferencePixels = diameterPixels,
+                    colorArgb = if (erase) Color.TRANSPARENT else inkColor,
                     opacity = (inkOpacity * program.deposition.opacity).coerceIn(0f, 1f),
                     flow = program.deposition.flow.coerceIn(0f, 1f),
                     spacingRatio = program.spacingPolicy?.value?.coerceIn(.01f, 2f) ?: .12f,
-                    tips = listOf(mask),
+                    tips = masks,
                     sizePressure = sizeResponse,
                     opacityPressure = opacityResponse,
                     flowPressure = flowResponse,
                     roundness = program.tip.aspect.coerceIn(.01f, 1f),
                     rotationRadians = Math.toRadians(program.tip.rotationDegrees.toDouble()).toFloat(),
+                    followStrokeDirection = stampProgram?.followStrokeDirection == true || sprayProgram?.followStrokeDirection == true,
+                    followStylusOrientation = stampProgram?.followStylusOrientation == true || sprayProgram?.followStylusOrientation == true,
                     renderSeed = program.renderSeed,
+                    particlesPerPlot = sprayProgram?.let { SprayGeometry.particlesPerPlot(it.density) }
+                        ?: stampProgram?.particlesPerPlot ?: 1,
+                    scatterRadiusPixels = scatterRadius,
+                    scatterBias = (sprayProgram?.bias?.div(100f) ?: 0f).coerceIn(-1f, 1f),
+                    randomRotationRadians = Math.toRadians(
+                        ((stampProgram?.randomRotationDegrees ?: 0f) + (sprayProgram?.randomRotationDegrees ?: 0f)).toDouble(),
+                    ).toFloat(),
+                    repeatStationarySamples = stampProgram?.continuousPlot == true,
+                    blend = if (erase) DryBlend.DESTINATION_OUT else DryBlend.SOURCE_OVER,
                 )
                 return V5PaintConfiguration(
                     StampPaintOp(surface, stamp, selection, sampleTransforms = sampleTransforms),
-                    diameterPixels * .5f + 2f,
+                    particleDiameter * .5f + scatterRadius + 2f,
                     "preset-v5:stamp:${program.identity.id}",
                 )
             }
             when (program.backend) {
                 RenderBackendV5.AIRBRUSH -> {
+                    val particleDiameter = sprayProgram?.let { spray ->
+                        SprayGeometry.particleDiameter(
+                            diameterPixels,
+                            spray.particleSize,
+                            spray.particleSizeUnit,
+                            spray.particleSizeTracksBrush,
+                            surface.logicalWidth.toFloat(),
+                        )
+                    } ?: diameterPixels
+                    val scatterRadius = sprayProgram?.let { diameterPixels * .5f * it.spread.coerceIn(0f, 4f) } ?: 0f
                     val stamp = StampBrushDefinition(
                         kind = PaintOpKind.AIRBRUSH,
-                        diameterPixels = diameterPixels,
-                        colorArgb = inkColor,
+                        diameterPixels = particleDiameter.coerceIn(.1f, 4096f),
+                        spacingReferencePixels = diameterPixels,
+                        colorArgb = if (erase) Color.TRANSPARENT else inkColor,
                         opacity = (inkOpacity * program.deposition.opacity).coerceIn(0f, 1f),
                         flow = program.deposition.flow.coerceIn(0f, 1f),
                         spacingRatio = program.spacingPolicy?.value?.coerceIn(.01f, 2f) ?: .12f,
@@ -5013,24 +5063,38 @@ class InkCanvasView(context: Context) : View(context) {
                         sizePressure = sizeResponse,
                         opacityPressure = opacityResponse,
                         flowPressure = flowResponse,
+                        rotationRadians = Math.toRadians((sprayProgram?.particleRotationDegrees ?: 0f).toDouble()).toFloat(),
+                        followStrokeDirection = sprayProgram?.followStrokeDirection == true,
+                        followStylusOrientation = sprayProgram?.followStylusOrientation == true,
                         renderSeed = program.renderSeed,
+                        particlesPerPlot = sprayProgram?.let { SprayGeometry.particlesPerPlot(it.density) }
+                            ?: stampProgram?.particlesPerPlot ?: 1,
+                        scatterRadiusPixels = scatterRadius,
+                        scatterBias = (sprayProgram?.bias?.div(100f) ?: 0f).coerceIn(-1f, 1f),
+                        randomRotationRadians = Math.toRadians(
+                            ((stampProgram?.randomRotationDegrees ?: 0f) + (sprayProgram?.randomRotationDegrees ?: 0f)).toDouble(),
+                        ).toFloat(),
+                        repeatStationarySamples = stampProgram?.continuousPlot == true,
+                        blend = if (erase) DryBlend.DESTINATION_OUT else DryBlend.SOURCE_OVER,
                     )
                     return V5PaintConfiguration(
                         StampPaintOp(surface, stamp, selection, sampleTransforms = sampleTransforms),
-                        diameterPixels * .5f + 2f,
+                        particleDiameter * .5f + scatterRadius + 2f,
                         "preset-v5:airbrush:${program.identity.id}",
                     )
                 }
                 RenderBackendV5.WET_PAINT -> {
+                    if (erase) return null
+                    val authored = program.wetMix ?: return null
                     val wet = WetPaintDefinition(
                         diameterPixels = diameterPixels,
                         colorArgb = inkColor,
                         opacity = (inkOpacity * program.deposition.opacity).coerceIn(0f, 1f),
                         hardness = program.tip.hardness.coerceIn(0f, 1f),
-                        dilution = .35f,
-                        charge = program.deposition.flow.coerceIn(.15f, 1f),
-                        attack = .7f,
-                        pull = .35f,
+                        dilution = authored.dilution.coerceIn(0f, 1f),
+                        charge = authored.charge.coerceIn(0f, 1f),
+                        attack = authored.attack.coerceIn(0f, 1f),
+                        pull = authored.pull.coerceIn(0f, 1f),
                         sizePressure = sizeResponse,
                     )
                     return V5PaintConfiguration(
@@ -5039,14 +5103,41 @@ class InkCanvasView(context: Context) : View(context) {
                         "preset-v5:wet:${program.identity.id}",
                     )
                 }
-                RenderBackendV5.ASSET_STAMP -> return null
+                RenderBackendV5.ASSET_STAMP -> {
+                    val stamp = StampBrushDefinition(
+                        kind = if (erase) PaintOpKind.ERASER else PaintOpKind.DECORATION,
+                        diameterPixels = diameterPixels,
+                        colorArgb = if (erase) Color.TRANSPARENT else inkColor,
+                        opacity = (inkOpacity * program.deposition.opacity).coerceIn(0f, 1f),
+                        flow = program.deposition.flow.coerceIn(0f, 1f),
+                        spacingRatio = program.spacingPolicy?.value?.coerceIn(.01f, 2f) ?: .12f,
+                        tips = listOf(BrushTipMask.solidCircle(96, program.tip.hardness.coerceIn(0f, 1f))),
+                        sizePressure = sizeResponse,
+                        opacityPressure = opacityResponse,
+                        flowPressure = flowResponse,
+                        roundness = program.tip.aspect.coerceIn(.01f, 1f),
+                        rotationRadians = Math.toRadians(program.tip.rotationDegrees.toDouble()).toFloat(),
+                        followStrokeDirection = stampProgram?.followStrokeDirection == true,
+                        followStylusOrientation = stampProgram?.followStylusOrientation == true,
+                        renderSeed = program.renderSeed,
+                        particlesPerPlot = stampProgram?.particlesPerPlot ?: 1,
+                        randomRotationRadians = Math.toRadians((stampProgram?.randomRotationDegrees ?: 0f).toDouble()).toFloat(),
+                        repeatStationarySamples = stampProgram?.continuousPlot == true,
+                        blend = if (erase) DryBlend.DESTINATION_OUT else DryBlend.SOURCE_OVER,
+                    )
+                    return V5PaintConfiguration(
+                        StampPaintOp(surface, stamp, selection, sampleTransforms = sampleTransforms),
+                        diameterPixels * .5f + 2f,
+                        "preset-v5:procedural-stamp:${program.identity.id}",
+                    )
+                }
                 RenderBackendV5.CONTINUOUS_RIBBON, RenderBackendV5.PROCEDURAL_STAMP -> {
                     val pencilGrain = if (program.identity.family == BrushFamilyV5.PENCIL) {
                         (program.grainSampler?.strength ?: program.tip.hardness).coerceIn(0f, 1f) * .4f
                     } else 0f
                     val dry = DryInkDefinition(
                         diameterPixels = diameterPixels,
-                        colorArgb = inkColor,
+                        colorArgb = if (erase) Color.TRANSPARENT else inkColor,
                         opacity = (inkOpacity * program.deposition.opacity * program.deposition.flow).coerceIn(0f, 1f),
                         minimumPressureScale = if (program.pressure.widthEnabled) program.pressure.widthMinimum.coerceIn(0f, 1f) else 1f,
                         opacityPressureMinimum = if (program.pressure.depositionEnabled) program.pressure.depositionMinimum.coerceIn(0f, 1f) else 1f,
@@ -5057,6 +5148,7 @@ class InkCanvasView(context: Context) : View(context) {
                         sizePressure = sizeResponse,
                         opacityPressure = opacityResponse,
                         flowPressure = flowResponse,
+                        blend = if (erase) DryBlend.DESTINATION_OUT else DryBlend.SOURCE_OVER,
                     )
                     return V5PaintConfiguration(
                         DryInkPaintOp(surface, dry, selection, sampleTransforms),
@@ -5066,6 +5158,8 @@ class InkCanvasView(context: Context) : View(context) {
                 }
             }
         }
+        // A physical stylus eraser temporarily overrides the selected paint preset. It is still a
+        // native V5 raster op, but uses the user's independent default eraser configuration.
         if (active == EditorTool.ERASER) {
             val eraserTip = eraserTipAssetPath
             if (eraserTip != null) {
@@ -5101,6 +5195,9 @@ class InkCanvasView(context: Context) : View(context) {
                 "eraser:round",
             )
         }
+        // A V5 library selection is never allowed to drop into the retired field-by-field brush
+        // descriptor below. Invalid or unsupported preset payloads reject the contact explicitly.
+        if (compiledBrushProgramV5Required) return null
 
         // CSP files retain non-zero mix/density values while Color mixing is switched off. The
         // parser preserves those values for editing, so only the authored enable bit (watercolor)
@@ -5395,7 +5492,7 @@ class InkCanvasView(context: Context) : View(context) {
         )
         v5DryGestureCount++
         invalidateV5Damage(surface, result)
-        if (brushContinuousPlot && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
+        if (continuousPlotEnabled() && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
             updateContinuousPlotInput(
                 normalizedX,
                 normalizedY,
@@ -5464,7 +5561,7 @@ class InkCanvasView(context: Context) : View(context) {
             ))
         }
         val surface = rasterTileSurfaceFor(activeLayerId) ?: return false
-        if (brushContinuousPlot) {
+        if (continuousPlotEnabled()) {
             val last = samples.last()
             updateContinuousPlotInput(
                 last.x / surface.logicalWidth,

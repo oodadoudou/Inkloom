@@ -24,6 +24,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.importer.BrushGroupStore
 import app.inkloom.importer.BrushMetadataStore
+import app.inkloom.brushpresetv5.BrushPresetV5Import
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
@@ -45,7 +46,7 @@ class BrushBatchManagementTest {
         brush("batch-b", "Batch B", "Source", 1),
         brush("target-c", "Target C", "Target", 0),
         brush("nested-d", "Nested Ink", "Source/Ink/Pens", 0),
-    )
+    ).map(BrushPresetV5Import::convertDecodedSource)
 
     private val preloadRule = TestRule { base, _ ->
         object : Statement() {
