@@ -5042,8 +5042,6 @@ internal fun InkCanvasView.applyBrushConfiguration(
     brushSizeSyncViewScale = activeBrush?.sizeSyncViewScale ?: false
     val importedEraser = activeBrush?.takeIf { selectedTool == EditorTool.ERASER && BrushRoleClassifier.isEraser(it) }
     eraserWidth = if (importedEraser != null) brushSize else settings.eraserSize
-    this.localEraser = if (importedEraser != null) false else eraserPreset.splitsStroke
-    nonDestructiveEraser = if (importedEraser != null) true else eraserPreset.usesMask
     eraserHardness = importedEraser?.hardness ?: eraserPreset.hardness
     eraserOpacity = importedEraser?.let { brushOpacity * it.flow }?.coerceIn(.01f, 1f) ?: eraserPreset.opacity
     eraserPressureSize = importedEraser?.sizePressureEnabled ?: eraserPreset.pressureSize

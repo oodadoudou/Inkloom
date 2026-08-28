@@ -899,8 +899,6 @@ class InkCanvasView(context: Context) : View(context) {
     var blurPressureMinimum: Float = 0f
     var blurPressureCurve: List<BrushCurvePoint> = emptyList()
     var blurSecondaryDynamics: BrushSecondaryDynamics = BrushSecondaryDynamics()
-    var localEraser: Boolean = false
-    var nonDestructiveEraser: Boolean = false
     var eraserWidth: Float = 24f
         set(value) {
             field = value

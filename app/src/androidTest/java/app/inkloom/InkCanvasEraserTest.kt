@@ -1,11 +1,11 @@
 package app.inkloom
 
+import android.graphics.Color
 import android.view.InputDevice
 import android.view.MotionEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import app.inkloom.document.InkStroke
-import app.inkloom.document.StrokePoint
+import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.model.EditorTool
 import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertEquals
@@ -15,207 +15,90 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class InkCanvasEraserTest {
-    @Test
-    fun maskEraserKeepsOriginalStrokeIdentityAndUndoRemovesMask() {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        instrumentation.runOnMainSync {
-            val original = horizontalStroke("masked", .5f)
-            val edits = mutableListOf<CapturedEdit>()
-            val view = configuredView(original, edits).apply { nonDestructiveEraser = true }
-
-            view.dispatchStylus(MotionEvent.ACTION_DOWN, 500f, 500f, 10L)
-            view.dispatchStylus(MotionEvent.ACTION_UP, 500f, 500f, 20L)
-
-            assertEquals(listOf("masked"), edits.single().removedIds)
-            val masked = edits.single().replacements.single()
-            assertEquals("masked", masked.id)
-            assertEquals(1, masked.masks.size)
-            assertEquals(original.points, masked.points)
-
-            view.undo()
-            assertEquals(listOf(original), edits.last().replacements)
+    @Test fun canceledV5EraserContactRollsBackWithoutPublishing() {
+        val surface = opaqueSurface(400, 400)
+        val initialRevision = surface.revision
+        var commits = 0
+        val view = configuredView(mapOf("paint" to surface)).apply {
+            onRasterLayerCommitted = { commits++ }
         }
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view.dispatchStylus(MotionEvent.ACTION_DOWN, 80f, 200f, 10L)
+            view.dispatchStylus(MotionEvent.ACTION_MOVE, 320f, 200f, 20L)
+            view.dispatchStylus(MotionEvent.ACTION_CANCEL, 320f, 200f, 30L)
+        }
+
+        assertEquals(initialRevision, surface.revision)
+        assertEquals(255, Color.alpha(surface.pixelAt(200, 200)))
+        assertEquals(0, commits)
     }
 
-    @Test
-    fun localEraserCommitsOneAtomicEditAndUndoRestoresOriginal() {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        instrumentation.runOnMainSync {
-            val original = horizontalStroke("original", .5f)
-            val edits = mutableListOf<CapturedEdit>()
-            val view = configuredView(original, edits)
-            view.localEraser = true
-
-            view.dispatchStylus(MotionEvent.ACTION_DOWN, 500f, 500f, 10L)
-            view.dispatchStylus(MotionEvent.ACTION_UP, 500f, 500f, 20L)
-
-            assertEquals(1, edits.size)
-            assertEquals(listOf("original"), edits[0].removedIds)
-            assertEquals(2, edits[0].replacements.size)
-            assertEquals(listOf(0, 1), edits[0].indices)
-            assertTrue(edits[0].replacements.first().points.last().x < .5f)
-            assertTrue(edits[0].replacements.last().points.first().x > .5f)
-
-            view.undo()
-            assertEquals(2, edits.size)
-            assertEquals(edits[0].replacements.map(InkStroke::id), edits[1].removedIds)
-            assertEquals(listOf(original), edits[1].replacements)
-            assertEquals(listOf(0), edits[1].indices)
-
-            view.redo()
-            assertEquals(3, edits.size)
-            assertEquals(listOf("original"), edits[2].removedIds)
-            assertEquals(edits[0].replacements, edits[2].replacements)
+    @Test fun eraserPublishesOnlyTheActiveRasterLayer() {
+        val note = opaqueSurface(400, 400)
+        val highlight = opaqueSurface(400, 400)
+        val committedLayers = mutableListOf<String>()
+        val view = configuredView(mapOf("note" to note, "highlight" to highlight)).apply {
+            activeLayerId = "highlight"
+            onRasterLayerCommitted = { committedLayers += it.layerId }
         }
+
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view.dispatchStylus(MotionEvent.ACTION_DOWN, 80f, 200f, 10L)
+            view.dispatchStylus(MotionEvent.ACTION_MOVE, 320f, 200f, 20L)
+            view.dispatchStylus(MotionEvent.ACTION_UP, 320f, 200f, 30L)
+        }
+
+        assertEquals(listOf("highlight"), committedLayers)
+        assertEquals(0, Color.alpha(highlight.pixelAt(200, 200)))
+        assertEquals(255, Color.alpha(note.pixelAt(200, 200)))
     }
 
-    @Test
-    fun eraserCancellationRestoresTheGestureWithoutPersistence() {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        instrumentation.runOnMainSync {
-            val edits = mutableListOf<CapturedEdit>()
-            val view = configuredView(horizontalStroke("original", .5f), edits)
-            view.localEraser = true
-
-            view.dispatchStylus(MotionEvent.ACTION_DOWN, 500f, 500f, 10L)
-            view.dispatchStylus(MotionEvent.ACTION_CANCEL, 500f, 500f, 20L)
-            view.undo()
-
-            assertTrue(edits.isEmpty())
-        }
-    }
-
-    @Test
-    fun wholeStrokeEraserRemovesEveryIntersectingUnlockedStroke() {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        instrumentation.runOnMainSync {
-            val first = horizontalStroke("first", .48f)
-            val second = horizontalStroke("second", .52f)
-            val locked = horizontalStroke("locked", .5f)
-            val edits = mutableListOf<CapturedEdit>()
-            val view = configuredView(listOf(first, second, locked), edits)
-            view.setProtectedStrokeIds(setOf(locked.id))
-            view.localEraser = false
-
-            view.dispatchStylus(MotionEvent.ACTION_DOWN, 500f, 500f, 10L)
-            view.dispatchStylus(MotionEvent.ACTION_UP, 500f, 500f, 20L)
-
-            assertEquals(1, edits.size)
-            assertEquals(setOf("first", "second"), edits.single().removedIds.toSet())
-            assertTrue(edits.single().replacements.isEmpty())
-        }
-    }
-
-    @Test
-    fun eraserOnlyChangesTheActiveLayerEvenWhenLayersOverlap() {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        instrumentation.runOnMainSync {
-            val note = horizontalStroke("note", .5f).copy(layerId = "note")
-            val highlight = horizontalStroke("highlight", .5f).copy(layerId = "highlight")
-            listOf(true, false).forEach { usesMask ->
-                val edits = mutableListOf<CapturedEdit>()
-                val view = configuredView(listOf(note, highlight), edits).apply {
-                    activeLayerId = "highlight"
-                    nonDestructiveEraser = usesMask
-                    localEraser = usesMask
-                }
-                view.dispatchStylus(MotionEvent.ACTION_DOWN, 500f, 500f, 10L)
-                view.dispatchStylus(MotionEvent.ACTION_UP, 500f, 500f, 20L)
-
-                assertEquals("note layer must remain untouched", listOf("highlight"), edits.single().removedIds)
-                assertTrue(edits.single().replacements.none { it.layerId == "note" })
-            }
-        }
-    }
-
-    @Test
-    fun undoDoesNotModifyALayerThatBecameProtected() {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        instrumentation.runOnMainSync {
-            val edits = mutableListOf<CapturedEdit>()
-            val view = configuredView(horizontalStroke("original", .5f), edits)
-            view.localEraser = true
-
-            view.dispatchStylus(MotionEvent.ACTION_DOWN, 500f, 500f, 10L)
-            view.dispatchStylus(MotionEvent.ACTION_UP, 500f, 500f, 20L)
-            assertEquals(1, edits.size)
-
-            view.setProtectedStrokeIds(edits.single().replacements.mapTo(mutableSetOf(), InkStroke::id))
-            view.undo()
-
-            assertEquals(1, edits.size)
-        }
-    }
-
-    @Test
-    fun maskEraserKeepsRapidInputPacketsInsideOneDisplayFrame() {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        instrumentation.runOnMainSync {
-            val page = List(3_000) { index ->
-                val row = index / 60
-                val column = index % 60
-                InkStroke(
-                    id = "perf-$index",
-                    width = 4f,
-                    points = listOf(
-                        StrokePoint(column / 60f, (row + .35f) / 50f),
-                        StrokePoint((column + .9f) / 60f, (row + .65f) / 50f),
-                    ),
-                )
-            }
-            val view = configuredView(page, mutableListOf()).apply {
-                nonDestructiveEraser = true
-                eraserWidth = 72f
-            }
+    @Test fun rapidProductionEraserPacketsStayInsideOne120HzFrameAtP95() {
+        val surface = opaqueSurface(1_000, 1_000)
+        val view = configuredView(mapOf("paint" to surface)).apply { eraserWidth = 72f }
+        val packetTimes = ArrayList<Long>(120)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
             view.dispatchStylus(MotionEvent.ACTION_DOWN, 80f, 500f, 10L)
-            val packetTimes = ArrayList<Long>(120)
             repeat(120) { index ->
                 val started = android.os.SystemClock.elapsedRealtimeNanos()
-                view.dispatchStylus(MotionEvent.ACTION_MOVE, 84f + index * 7f, 500f + (index % 5), 20L + index)
+                view.dispatchStylus(MotionEvent.ACTION_MOVE, 84f + index * 7f, 500f + index % 5, 20L + index)
                 packetTimes += android.os.SystemClock.elapsedRealtimeNanos() - started
             }
             view.dispatchStylus(MotionEvent.ACTION_UP, 930f, 500f, 200L)
-
-            val sorted = packetTimes.sorted()
-            val p95Ms = sorted[(sorted.size * 95 / 100).coerceAtMost(sorted.lastIndex)] / 1_000_000f
-            assertTrue("Mask eraser input p95 was ${p95Ms}ms", p95Ms < 16.7f)
         }
+
+        val sorted = packetTimes.drop(8).sorted()
+        val p95Ms = sorted[(sorted.size * 95 / 100).coerceAtMost(sorted.lastIndex)] / 1_000_000f
+        android.util.Log.i("InkloomPerf", "v5_production_eraser_input_p95_ms=$p95Ms")
+        assertTrue("V5 production eraser p95 was ${p95Ms}ms", p95Ms < 8.33f)
     }
 
-    private fun configuredView(stroke: InkStroke, edits: MutableList<CapturedEdit>) = configuredView(listOf(stroke), edits)
-
-    private fun configuredView(strokes: List<InkStroke>, edits: MutableList<CapturedEdit>): InkCanvasView {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        return InkCanvasView(context).apply {
-            layout(0, 0, 1000, 1000)
-            tool = EditorTool.ERASER
-            eraserWidth = 160f
-            setDocumentStrokes(strokes, "document:page")
-            onStrokesReplaced = { removed, replacements, indices -> edits += CapturedEdit(removed, replacements, indices) }
-        }
-    }
-
-    private fun horizontalStroke(id: String, y: Float) = InkStroke(
-        id = id,
-        width = 5f,
-        points = listOf(StrokePoint(.1f, y), StrokePoint(.9f, y)),
-    )
-
-    private fun InkCanvasView.dispatchStylus(action: Int, x: Float, y: Float, time: Long) {
-        stylusEvent(action, x, y, time).also { event ->
-            try {
-                onTouchEvent(event)
-            } finally {
-                event.recycle()
+    private fun configuredView(surfaces: Map<String, PixelTileSurface>): InkCanvasView {
+        lateinit var view: InkCanvasView
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view = InkCanvasView(InstrumentationRegistry.getInstrumentation().targetContext).apply {
+                layout(0, 0, surfaces.values.first().logicalWidth, surfaces.values.first().logicalHeight)
+                tool = EditorTool.ERASER
+                eraserWidth = 160f
+                eraserHardness = 1f
+                eraserOpacity = 1f
+                activeLayerId = surfaces.keys.first()
+                setRasterLayerSurfaces(surfaces)
             }
         }
+        return view
     }
 
-    private fun stylusEvent(action: Int, x: Float, y: Float, time: Long): MotionEvent {
-        val properties = MotionEvent.PointerProperties().apply {
-            id = 0
-            toolType = MotionEvent.TOOL_TYPE_STYLUS
+    private fun opaqueSurface(width: Int, height: Int) = PixelTileSurface(width, height).also { surface ->
+        surface.beginWrite("seed eraser fixture").use { transaction ->
+            for (y in 0 until height) for (x in 0 until width) transaction.setPixel(x, y, Color.BLACK)
+            transaction.commit().close()
         }
+    }
+
+    private fun InkCanvasView.dispatchStylus(action: Int, x: Float, y: Float, time: Long) {
+        val properties = MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_STYLUS }
         val coordinates = MotionEvent.PointerCoords().apply {
             this.x = x
             this.y = y
@@ -223,7 +106,7 @@ class InkCanvasEraserTest {
             size = .01f
             touchMajor = 1f
         }
-        return MotionEvent.obtain(
+        MotionEvent.obtain(
             10L,
             time,
             action,
@@ -238,12 +121,6 @@ class InkCanvasEraserTest {
             0,
             InputDevice.SOURCE_STYLUS,
             0,
-        )
+        ).also { event -> try { onTouchEvent(event) } finally { event.recycle() } }
     }
-
-    private data class CapturedEdit(
-        val removedIds: List<String>,
-        val replacements: List<InkStroke>,
-        val indices: List<Int>,
-    )
 }

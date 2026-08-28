@@ -305,8 +305,6 @@ class InkloomPinchThenWriteTest {
             view.onRasterLayerCommitted = { }
             view.setProtectedStrokeIds(emptySet())
             view.setProtectedLayerIds(emptySet())
-            view.localEraser = false
-            view.nonDestructiveEraser = false
             view.eraserWidth = 80f
             val hover = stylusEvent(android.view.MotionEvent.ACTION_HOVER_MOVE, proxyX, proxyY, android.view.MotionEvent.TOOL_TYPE_ERASER, 1L, 2L)
             assertTrue(proxy.onHoverEvent(hover))
