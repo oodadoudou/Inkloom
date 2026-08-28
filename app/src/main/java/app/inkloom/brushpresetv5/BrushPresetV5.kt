@@ -36,6 +36,8 @@ data class BrushPresetV5(
     val dynamics: DynamicsSettings,
     /** Present only for families that support document-space paper grain. */
     val paperGrain: PaperGrainSettings? = null,
+    /** Imported document/tip texture sampled by stamp programs. */
+    val textureGrain: TextureGrainSettings? = null,
     /** Present only for families that support tip texture. */
     val tipTexture: TipTextureSettings? = null,
     /** Present only for families that support taper / smoothing. */
@@ -44,6 +46,8 @@ data class BrushPresetV5(
     val stamp: StampSettings? = null,
     /** Pigment pickup/deposition semantics for wet families. */
     val wetMix: WetMixSettings? = null,
+    /** Optional second independently-authored stamp stream. */
+    val dual: DualBrushSettings? = null,
     /** Reserved for family-specific knobs that are not part of the common contract. */
     val engineOptions: EngineOptions = EngineOptions(),
 )
@@ -158,6 +162,21 @@ data class PaperGrainSettings(
 )
 
 @Serializable
+data class TextureGrainSettings(
+    val assetPath: String,
+    val density: Float = 0f,
+    val scale: Float = 100f,
+    val movement: Float = 0f,
+    val zoom: Float = 0f,
+    val rotationDegrees: Float = 0f,
+    val brightness: Float = 0f,
+    val contrast: Float = 0f,
+    val reversed: Boolean = false,
+    val emphasized: Boolean = false,
+    val offsetJitter: Boolean = false,
+)
+
+@Serializable
 data class TipTextureSettings(
     /** True = deterministic procedural tooth; false = imported tip asset. */
     val procedural: Boolean = true,
@@ -211,6 +230,41 @@ data class WetMixSettings(
     val attack: Float = 0f,
     val pull: Float = 0f,
 )
+
+@Serializable
+data class DualBrushSettings(
+    val tipAssetPaths: List<String>,
+    val sizeScale: Float = 1f,
+    val spacing: SpacingSettings = SpacingSettings(),
+    val flow: Float = 1f,
+    val hardness: Float = 1f,
+    val aspect: Float = 1f,
+    val rotationDegrees: Float = 0f,
+    val followStrokeDirection: Boolean = false,
+    val followStylusOrientation: Boolean = false,
+    val randomRotationDegrees: Float = 0f,
+    /** The two brush-density streams are combined before a single deposit reaches the layer. */
+    val compositeMode: DualCompositeMode = DualCompositeMode.NORMAL,
+    val textureGrain: TextureGrainSettings? = null,
+    val spray: SpraySettings? = null,
+)
+
+@Serializable
+enum class DualCompositeMode {
+    NORMAL,
+    MULTIPLY,
+    ADD_GLOW,
+    SUBTRACT,
+    DARKEN,
+    LIGHTEN,
+    SCREEN,
+    OVERLAY,
+    COLOR_DODGE,
+    COLOR_BURN,
+    LINEAR_BURN,
+    HARD_MIX,
+    HEIGHT_LINEAR,
+}
 
 @Serializable
 data class EngineOptions(

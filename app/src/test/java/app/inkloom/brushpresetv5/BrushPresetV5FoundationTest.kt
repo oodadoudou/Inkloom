@@ -3,6 +3,7 @@ package app.inkloom.brushpresetv5
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
+import app.inkloom.model.ImportedBrushGrain
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -94,6 +95,18 @@ class BrushPresetV5FoundationTest {
             sprayDensity = 2.5f,
             spraySpread = .8f,
             stampCount = 3,
+            grainPreviewPath = "/grains/primary.png",
+            grainDensity = .65f,
+            grainScale = 175f,
+            dualBrush = true,
+            dualTipPreviewPaths = listOf("/tips/secondary.png"),
+            dualSizeScale = .7f,
+            dualCompositeMode = 2,
+            dualGrain = ImportedBrushGrain(
+                previewPath = "/grains/secondary.png",
+                density = .42f,
+                scale = 130f,
+            ),
         )
 
         val preset = BrushPresetV5Import.requirePreset(BrushPresetV5Import.convertDecodedSource(decoded))
@@ -103,6 +116,31 @@ class BrushPresetV5FoundationTest {
         assertEquals(3, preset.stamp?.particlesPerPlot)
         assertEquals(18f, preset.stamp?.spray?.particleSize)
         assertEquals(2.5f, preset.stamp?.spray?.density)
+        assertEquals("/grains/primary.png", preset.textureGrain?.assetPath)
+        assertEquals(.65f, preset.textureGrain?.density)
+        assertEquals(listOf("/tips/secondary.png"), preset.dual?.tipAssetPaths)
+        assertEquals(.7f, preset.dual?.sizeScale)
+        assertEquals(DualCompositeMode.MULTIPLY, preset.dual?.compositeMode)
+        assertEquals("/grains/secondary.png", preset.dual?.textureGrain?.assetPath)
+    }
+
+    @Test fun importBoundaryRejectsUnsupportedDualRgbInsteadOfFallingBack() {
+        val rejected = BrushPresetV5Import.convertOrReject(
+            ImportedBrush(
+                name = "RGB dual",
+                format = BrushFormat.SUT,
+                compatibility = Compatibility.HIGH,
+                sizeBytes = 12,
+                report = emptyList(),
+                dualBrush = true,
+                dualTipPreviewPaths = listOf("/tips/secondary.png"),
+                dualApplyRgb = true,
+            ),
+        )
+
+        assertEquals(Compatibility.FAILED, rejected.compatibility)
+        assertEquals(null, rejected.v5PresetJson)
+        assertTrue(rejected.report.any { it.contains("RGB compositing") })
     }
 
     private fun referencePencil() = BrushPresetV5(

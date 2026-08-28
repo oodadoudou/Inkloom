@@ -14,6 +14,29 @@ import org.junit.Test
 
 class StampPaintOpTest {
     @Test
+    fun dualBrushCombinesTwoPersistentCoverageStreamsBeforeOneLayerDeposit() {
+        val surface = PixelTileSurface(64, 64)
+        val primary = definition().copy(diameterPixels = 20f, opacity = .4f, spacingRatio = .5f)
+        val secondary = primary.copy(opacity = .6f, renderSeed = 92)
+        val session = StampPaintOp(
+            surface,
+            primary,
+            secondaryDefinitions = listOf(secondary),
+            dualComposite = DualBrushCompositeDefinition(DualBrushCompositeMode.MULTIPLY),
+        ).begin(PaintOpContext(191, 0, "dual")) as StampPaintOp.Session
+
+        session.apply(batch(191, 0, false, sample(0, 32f, 32f)))
+        session.finish(PaintBatch.empty(191, 1, terminal = true))
+        val published = session.publish()
+        val alpha = published.snapshot.pixelAt(32, 32) ushr 24 and 0xff
+        val expected = StampPaintOp.combineDualCoverage((.4f * 255f + .5f).toInt(), (.6f * 255f + .5f).toInt(), DualBrushCompositeMode.MULTIPLY)
+
+        assertTrue("expected dual density $expected but was $alpha", kotlin.math.abs(expected - alpha) <= 1)
+        assertTrue("dual result must not be sequential source-over", alpha < 100)
+        published.record.close()
+    }
+
+    @Test
     fun activePreviewAndPublicationShareExactlyOneSparseTransaction() {
         val surface = PixelTileSurface(160, 80)
         val definition = definition()

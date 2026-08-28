@@ -136,6 +136,21 @@ object BrushPresetV5Import {
             paperGrain = source.takeIf { family == BrushFamily.PENCIL && it.proceduralPaperGrainEnabled }?.let {
                 PaperGrainSettings(it.proceduralPaperGrainScale, it.proceduralPaperGrainDensity, it.proceduralPaperGrainStrength)
             },
+            textureGrain = source.grainPreviewPath?.takeIf { source.grainDensity > .0001f }?.let { path ->
+                TextureGrainSettings(
+                    assetPath = path,
+                    density = source.grainDensity.coerceIn(0f, 1f),
+                    scale = source.grainScale.coerceIn(1f, 4000f),
+                    movement = source.grainMovement.coerceIn(0f, 1f),
+                    zoom = source.grainZoom.coerceIn(0f, 1f),
+                    rotationDegrees = source.grainRotationDegrees,
+                    brightness = source.grainBrightness,
+                    contrast = source.grainContrast,
+                    reversed = source.grainReversed,
+                    emphasized = source.grainEmphasized,
+                    offsetJitter = source.grainOffsetJitter,
+                )
+            },
             tipTexture = when {
                 source.tipPreviewPaths.isNotEmpty() || source.tipPreviewPath != null -> TipTextureSettings(
                     procedural = false,
@@ -197,6 +212,59 @@ object BrushPresetV5Import {
                     pull = it.colorMix,
                 )
             },
+            dual = source.takeIf(ImportedBrush::dualBrush)?.let {
+                require(it.dualTipPreviewPaths.isNotEmpty()) {
+                    "Dual brush is enabled but its secondary tip asset is missing"
+                }
+                require(!it.dualApplyRgb) {
+                    "Dual brush RGB compositing is not supported by Paint Engine V5"
+                }
+                DualBrushSettings(
+                    tipAssetPaths = it.dualTipPreviewPaths,
+                    sizeScale = it.dualSizeScale.coerceIn(.01f, 8f),
+                    spacing = SpacingSettings(
+                        SpacingMode.RELATIVE,
+                        CspBrushGap.ratio(it.dualSpacingMode, it.dualSpacing),
+                    ),
+                    flow = it.dualFlow.coerceIn(0f, 1f),
+                    hardness = it.dualHardness.coerceIn(0f, 1f),
+                    aspect = it.dualThickness.coerceIn(.01f, 1f),
+                    rotationDegrees = it.dualRotationDegrees,
+                    followStrokeDirection = it.dualFollowStrokeDirection,
+                    followStylusOrientation = it.dualFollowStylusOrientation,
+                    randomRotationDegrees = kotlin.math.abs(it.dualRandomRotationDegrees),
+                    compositeMode = dualCompositeMode(it.dualCompositeMode),
+                    textureGrain = it.dualGrainPreviewPath?.takeIf { _ -> it.dualGrainDensity > .0001f }?.let { path ->
+                        TextureGrainSettings(
+                            assetPath = path,
+                            density = it.dualGrainDensity.coerceIn(0f, 1f),
+                            scale = it.dualGrainScale.coerceIn(1f, 4000f),
+                            movement = it.dualGrainMovement.coerceIn(0f, 1f),
+                            zoom = it.dualGrainZoom.coerceIn(0f, 1f),
+                            rotationDegrees = it.dualGrainRotationDegrees,
+                            brightness = it.dualGrainBrightness,
+                            contrast = it.dualGrainContrast,
+                            reversed = it.dualGrainReversed,
+                            emphasized = it.dualGrainEmphasized,
+                            offsetJitter = it.dualGrainOffsetJitter,
+                        )
+                    },
+                    spray = it.takeIf(ImportedBrush::dualSpray)?.let { dualSpray ->
+                        SpraySettings(
+                            particleSize = dualSpray.dualSprayParticleSize.coerceAtLeast(.01f),
+                            particleSizeUnit = dualSpray.dualSprayParticleSizeUnit,
+                            particleSizeTracksBrush = dualSpray.dualSprayParticleSizeSyncBrushSize,
+                            density = dualSpray.dualSprayDensity.coerceAtLeast(.01f),
+                            bias = dualSpray.dualSprayBias.coerceIn(-100f, 100f),
+                            spread = dualSpray.dualSpraySpread.coerceAtLeast(0f),
+                            particleRotationDegrees = dualSpray.dualSprayParticleRotationDegrees,
+                            followStrokeDirection = dualSpray.dualSprayParticleFollowStrokeDirection,
+                            followStylusOrientation = dualSpray.dualSprayParticleFollowStylusOrientation,
+                            randomRotationDegrees = kotlin.math.abs(dualSpray.dualSprayParticleRandomRotationDegrees),
+                        )
+                    },
+                )
+            },
         )
     }
 
@@ -206,5 +274,22 @@ object BrushPresetV5Import {
         source.id.startsWith("system-decoration-") || source.groupName.contains("decoration", true) -> BrushFamily.DECORATION
         source.proceduralPaperGrainEnabled || source.graphiteTiltWidth > .0001f || source.id.contains("pencil", true) -> BrushFamily.PENCIL
         else -> BrushFamily.INK
+    }
+
+    private fun dualCompositeMode(code: Int): DualCompositeMode = when (code) {
+        0, 1 -> DualCompositeMode.NORMAL
+        2 -> DualCompositeMode.MULTIPLY
+        3 -> DualCompositeMode.ADD_GLOW
+        4 -> DualCompositeMode.SUBTRACT
+        5 -> DualCompositeMode.DARKEN
+        6 -> DualCompositeMode.LIGHTEN
+        7 -> DualCompositeMode.SCREEN
+        8 -> DualCompositeMode.OVERLAY
+        9 -> DualCompositeMode.COLOR_DODGE
+        10 -> DualCompositeMode.COLOR_BURN
+        11 -> DualCompositeMode.LINEAR_BURN
+        12 -> DualCompositeMode.HARD_MIX
+        13 -> DualCompositeMode.HEIGHT_LINEAR
+        else -> error("Unsupported dual brush composite mode $code")
     }
 }

@@ -19,6 +19,24 @@ import kotlin.math.hypot
 import kotlin.math.sin
 import kotlin.math.pow
 
+enum class DualBrushCompositeMode {
+    NORMAL,
+    MULTIPLY,
+    ADD_GLOW,
+    SUBTRACT,
+    DARKEN,
+    LIGHTEN,
+    SCREEN,
+    OVERLAY,
+    COLOR_DODGE,
+    COLOR_BURN,
+    LINEAR_BURN,
+    HARD_MIX,
+    HEIGHT_LINEAR,
+}
+
+data class DualBrushCompositeDefinition(val mode: DualBrushCompositeMode = DualBrushCompositeMode.NORMAL)
+
 data class StampBrushDefinition(
     val kind: PaintOpKind = PaintOpKind.DECORATION,
     val diameterPixels: Float,
@@ -84,11 +102,18 @@ class StampPaintOp(
     private val selection: MaskTileSurfaceSnapshot? = null,
     secondaryDefinitions: List<StampBrushDefinition> = emptyList(),
     private val sampleTransforms: List<PaintSampleTransform> = listOf(PaintSampleTransform.Identity),
+    dualComposite: DualBrushCompositeDefinition? = null,
 ) : PaintOp {
     private val streams = (listOf(definition) + secondaryDefinitions).map(::StreamRuntime)
+    private val dualComposite = dualComposite ?: secondaryDefinitions.singleOrNull()?.let {
+        DualBrushCompositeDefinition()
+    }
 
     init {
         require(sampleTransforms.isNotEmpty())
+        require(this.dualComposite == null || secondaryDefinitions.size == 1) {
+            "Dual brush compositing requires exactly one secondary stream"
+        }
     }
 
     override val capabilities = PaintOpCapabilities(
@@ -108,9 +133,13 @@ class StampPaintOp(
         private val context: PaintOpContext,
         private val delta: ActiveDeltaSurface,
     ) : PublishablePaintOpSession, AutoCloseable {
+        private val backdrop = document.snapshot()
         private var state = State.ACTIVE
         private var lastOrdinal = -1L
         private val streamStates = sampleTransforms.map { streams.map { StreamState() } }
+        private val dualCoverage = if (dualComposite != null) {
+            List(2) { linkedMapOf<PixelTileKey, ByteArray>() }
+        } else emptyList()
         private var dirtyBounds: PixelRect? = null
 
         override fun apply(batch: PaintBatch): PaintResult = applyInternal(batch, finishing = false)
@@ -147,10 +176,11 @@ class StampPaintOp(
             lastOrdinal = batch.ordinal
 
             var batchDirty: PixelRect? = null
+            val dualDabs = if (dualComposite != null) List(2) { mutableListOf<ResolvedDab>() } else emptyList()
             sampleTransforms.forEachIndexed { transformIndex, transform ->
                 streams.forEachIndexed { streamIndex, stream ->
                     val streamState = streamStates[transformIndex][streamIndex]
-                    val dabs = mutableListOf<ResolvedDab>()
+                    val dabs = dualDabs.getOrNull(streamIndex) ?: mutableListOf()
                     batch.samples.forEach { input ->
                         val sample = transform.apply(input)
                         val previous = streamState.lastSample
@@ -164,9 +194,22 @@ class StampPaintOp(
                         }
                         streamState.lastSample = sample
                     }
-                    rasterize(dabs, stream)?.let { bounds ->
-                        batchDirty = batchDirty?.union(bounds) ?: bounds
+                    if (dualComposite == null) {
+                        rasterize(dabs, stream)?.let { bounds ->
+                            batchDirty = batchDirty?.union(bounds) ?: bounds
+                        }
                     }
+                }
+            }
+            if (dualComposite != null) {
+                val dirtyTiles = linkedMapOf<PixelTileKey, PixelRect>()
+                dualDabs.forEachIndexed { streamIndex, dabs ->
+                    rasterizeCoverage(dabs, streams[streamIndex], dualCoverage[streamIndex]).forEach { (key, dirty) ->
+                        dirtyTiles[key] = dirtyTiles[key]?.union(dirty) ?: dirty
+                    }
+                }
+                compositeDualCoverage(dirtyTiles)?.let { bounds ->
+                    batchDirty = batchDirty?.union(bounds) ?: bounds
                 }
             }
             if (batchDirty != null) dirtyBounds = dirtyBounds?.union(batchDirty) ?: batchDirty
@@ -310,20 +353,7 @@ class StampPaintOp(
                             )
                         )
                         for (y in overlap.top until overlap.bottom) for (x in overlap.left until overlap.right) {
-                            var coverage = dab.coverageAt(x + .5f, y + .5f) * dab.depositedAlpha
-                            definition.grain?.let { grain ->
-                                val movement = definition.grainMovement
-                                val grainX = x + .5f - dab.centerX * (1f - movement)
-                                val grainY = y + .5f - dab.centerY * (1f - movement)
-                                val rotatedX = stream.grainCosine * grainX + stream.grainSine * grainY
-                                val rotatedY = -stream.grainSine * grainX + stream.grainCosine * grainY
-                                fun repeat(value: Float): Float = value - kotlin.math.floor(value)
-                                val sampled = grain.coverageAt(
-                                    repeat(rotatedX / stream.grainWavelength + definition.grainPhaseX),
-                                    repeat(rotatedY / stream.grainWavelength + definition.grainPhaseY),
-                                )
-                                coverage *= 1f - definition.grainDensity + sampled * definition.grainDensity
-                            }
+                            var coverage = coverageAt(dab, definition, stream, x, y)
                             if (coverage <= 0f) continue
                             selection?.let { mask ->
                                 val selectionX = ((x + .5f) * mask.logicalWidth / document.logicalWidth)
@@ -343,6 +373,139 @@ class StampPaintOp(
                 }
             }
             return allDirty
+        }
+
+        private fun rasterizeCoverage(
+            dabs: List<ResolvedDab>,
+            stream: StreamRuntime,
+            coverageTiles: MutableMap<PixelTileKey, ByteArray>,
+        ): Map<PixelTileKey, PixelRect> {
+            if (dabs.isEmpty()) return emptyMap()
+            val definition = stream.definition
+            val byTile = linkedMapOf<PixelTileKey, MutableList<ResolvedDab>>()
+            val dirtyByTile = linkedMapOf<PixelTileKey, PixelRect>()
+            dabs.forEach { dab ->
+                val bounds = dab.bounds(document.logicalWidth, document.logicalHeight)
+                if (bounds.isEmpty) return@forEach
+                for (row in bounds.top / document.tileSize..(bounds.bottom - 1) / document.tileSize) {
+                    for (column in bounds.left / document.tileSize..(bounds.right - 1) / document.tileSize) {
+                        val key = PixelTileKey(column, row)
+                        val tileLeft = column * document.tileSize
+                        val tileTop = row * document.tileSize
+                        val tileBounds = PixelRect(
+                            tileLeft,
+                            tileTop,
+                            minOf(tileLeft + document.tileSize, document.logicalWidth),
+                            minOf(tileTop + document.tileSize, document.logicalHeight),
+                        )
+                        val overlap = bounds.intersect(tileBounds)
+                        if (overlap.isEmpty) continue
+                        byTile.getOrPut(key, ::mutableListOf) += dab
+                        val local = PixelRect(
+                            overlap.left - tileLeft,
+                            overlap.top - tileTop,
+                            overlap.right - tileLeft,
+                            overlap.bottom - tileTop,
+                        )
+                        dirtyByTile[key] = dirtyByTile[key]?.union(local) ?: local
+                    }
+                }
+            }
+            byTile.forEach { (key, tileDabs) ->
+                val tileLeft = key.column * document.tileSize
+                val tileTop = key.row * document.tileSize
+                val localDirty = requireNotNull(dirtyByTile[key])
+                val alpha = coverageTiles.getOrPut(key) { ByteArray(document.tileSize * document.tileSize) }
+                tileDabs.forEach { dab ->
+                    val overlap = dab.bounds(document.logicalWidth, document.logicalHeight).intersect(
+                        PixelRect(
+                            tileLeft + localDirty.left,
+                            tileTop + localDirty.top,
+                            tileLeft + localDirty.right,
+                            tileTop + localDirty.bottom,
+                        ),
+                    )
+                    for (y in overlap.top until overlap.bottom) for (x in overlap.left until overlap.right) {
+                        val incoming = (coverageAt(dab, definition, stream, x, y) * 255f + .5f).toInt().coerceIn(0, 255)
+                        if (incoming == 0) continue
+                        val index = (y - tileTop) * document.tileSize + x - tileLeft
+                        val existing = alpha[index].toInt() and 0xff
+                        alpha[index] = (incoming + existing * (255 - incoming) / 255).coerceAtMost(255).toByte()
+                    }
+                }
+            }
+            return dirtyByTile
+        }
+
+        private fun compositeDualCoverage(dirtyTiles: Map<PixelTileKey, PixelRect>): PixelRect? {
+            if (dirtyTiles.isEmpty()) return null
+            val composite = requireNotNull(dualComposite)
+            var allDirty: PixelRect? = null
+            dirtyTiles.forEach { (key, localDirty) ->
+                val tileLeft = key.column * document.tileSize
+                val tileTop = key.row * document.tileSize
+                val primary = dualCoverage[0][key]
+                val secondary = dualCoverage[1][key]
+                delta.editTile(key, localDirty) { pixels, stride ->
+                    for (localY in localDirty.top until localDirty.bottom) {
+                        for (localX in localDirty.left until localDirty.right) {
+                            val x = tileLeft + localX
+                            val y = tileTop + localY
+                            val index = localY * stride + localX
+                            val alphaIndex = localY * document.tileSize + localX
+                            var coverage = combineDualCoverage(
+                                (primary?.get(alphaIndex)?.toInt() ?: 0) and 0xff,
+                                (secondary?.get(alphaIndex)?.toInt() ?: 0) and 0xff,
+                                composite.mode,
+                            ) / 255f
+                            selection?.let { mask ->
+                                val selectionX = ((x + .5f) * mask.logicalWidth / document.logicalWidth)
+                                    .toInt().coerceIn(0, mask.logicalWidth - 1)
+                                val selectionY = ((y + .5f) * mask.logicalHeight / document.logicalHeight)
+                                    .toInt().coerceIn(0, mask.logicalHeight - 1)
+                                coverage *= mask.alphaAt(selectionX, selectionY) / 255f
+                            }
+                            val base = backdrop.pixelAt(x, y)
+                            pixels[index] = when (definition.blend) {
+                                DryBlend.SOURCE_OVER -> sourceOver(base, definition.colorArgb, coverage)
+                                DryBlend.DESTINATION_OUT -> destinationOut(base, coverage)
+                            }
+                        }
+                    }
+                }
+                val documentDirty = PixelRect(
+                    tileLeft + localDirty.left,
+                    tileTop + localDirty.top,
+                    tileLeft + localDirty.right,
+                    tileTop + localDirty.bottom,
+                )
+                allDirty = allDirty?.union(documentDirty) ?: documentDirty
+            }
+            return allDirty
+        }
+
+        private fun coverageAt(
+            dab: ResolvedDab,
+            definition: StampBrushDefinition,
+            stream: StreamRuntime,
+            x: Int,
+            y: Int,
+        ): Float {
+            var coverage = dab.coverageAt(x + .5f, y + .5f) * dab.depositedAlpha
+            definition.grain?.let { grain ->
+                val movement = definition.grainMovement
+                val grainX = x + .5f - dab.centerX * (1f - movement)
+                val grainY = y + .5f - dab.centerY * (1f - movement)
+                val rotatedX = stream.grainCosine * grainX + stream.grainSine * grainY
+                val rotatedY = -stream.grainSine * grainX + stream.grainCosine * grainY
+                fun repeat(value: Float): Float = value - kotlin.math.floor(value)
+                val sampled = grain.coverageAt(
+                    repeat(rotatedX / stream.grainWavelength + definition.grainPhaseX),
+                    repeat(rotatedY / stream.grainWavelength + definition.grainPhaseY),
+                )
+                coverage *= 1f - definition.grainDensity + sampled * definition.grainDensity
+            }
+            return coverage.coerceIn(0f, 1f)
         }
 
         private fun requireActiveOrFinished() = check(state == State.ACTIVE || state == State.FINISHED)
@@ -399,6 +562,35 @@ class StampPaintOp(
     private enum class State { ACTIVE, FINISHED, PUBLISHED, CANCELED }
 
     companion object {
+        internal fun combineDualCoverage(primary: Int, secondary: Int, mode: DualBrushCompositeMode): Int {
+            val base = primary.coerceIn(0, 255) / 255f
+            val blend = secondary.coerceIn(0, 255) / 255f
+            val value = when (mode) {
+                DualBrushCompositeMode.NORMAL -> blend + base * (1f - blend)
+                DualBrushCompositeMode.MULTIPLY -> base * blend
+                DualBrushCompositeMode.ADD_GLOW -> minOf(1f, base + blend)
+                DualBrushCompositeMode.SUBTRACT -> maxOf(0f, base - blend)
+                DualBrushCompositeMode.DARKEN -> minOf(base, blend)
+                DualBrushCompositeMode.LIGHTEN -> maxOf(base, blend)
+                DualBrushCompositeMode.SCREEN -> 1f - (1f - base) * (1f - blend)
+                DualBrushCompositeMode.OVERLAY -> if (base <= .5f) 2f * base * blend else 1f - 2f * (1f - base) * (1f - blend)
+                DualBrushCompositeMode.COLOR_DODGE -> if (blend >= 1f - DUAL_EPSILON) {
+                    if (base <= DUAL_EPSILON) 0f else 1f
+                } else minOf(1f, base / (1f - blend))
+                DualBrushCompositeMode.COLOR_BURN -> if (base >= 1f - DUAL_EPSILON) {
+                    1f
+                } else if (blend <= DUAL_EPSILON) {
+                    0f
+                } else 1f - minOf(1f, (1f - base) / blend)
+                DualBrushCompositeMode.LINEAR_BURN -> maxOf(0f, base + blend - 1f)
+                DualBrushCompositeMode.HARD_MIX -> if (base + blend >= 1f) 1f else 0f
+                DualBrushCompositeMode.HEIGHT_LINEAR -> base * (1f - blend)
+            }
+            return (value.coerceIn(0f, 1f) * 255f + .5f).toInt()
+        }
+
+        private const val DUAL_EPSILON = 1f / 65_535f
+
         private fun deterministicTipIndex(sequence: Long, seed: Int, count: Int): Int {
             if (count == 1) return 0
             var value = sequence xor seed.toLong().shl(32)

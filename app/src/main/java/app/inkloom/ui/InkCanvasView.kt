@@ -62,6 +62,8 @@ import app.inkloom.engine.v5.material.GrainMaskRequest
 import app.inkloom.engine.v5.material.PressureResponse
 import app.inkloom.engine.v5.material.TiltResponse
 import app.inkloom.engine.v5.raster.DryBlend
+import app.inkloom.engine.v5.raster.DualBrushCompositeDefinition
+import app.inkloom.engine.v5.raster.DualBrushCompositeMode
 import app.inkloom.engine.v5.raster.DryInkDefinition
 import app.inkloom.engine.v5.raster.DryInkPaintOp
 import app.inkloom.engine.v5.raster.PaintResult
@@ -136,6 +138,7 @@ import app.inkloom.document.CanvasGuideState
 import app.inkloom.document.CanvasGuides
 import app.inkloom.document.CanvasSnapConstraint
 import app.inkloom.document.GrainBehavior
+import app.inkloom.document.GrainOffset
 import app.inkloom.document.FillSubTool
 import app.inkloom.document.GrainDynamics
 import app.inkloom.document.GradientColorStop
@@ -1953,6 +1956,21 @@ class InkCanvasView(context: Context) : View(context) {
             brushRenderSeed = it.renderSeed
             it.tip.tipTexture?.assetPaths.orEmpty().forEach { path ->
                 v5BrushTipMasks.resolve(BrushTipMaskRequest(path, it.tip.hardness.coerceIn(0f, 1f)))
+            }
+            it.textureGrain?.let { grain ->
+                v5BrushTipMasks.resolveGrain(
+                    GrainMaskRequest(grain.assetPath, grain.brightness, grain.contrast, grain.reversed, grain.emphasized),
+                )
+            }
+            it.dual?.let { dual ->
+                dual.tipAssetPaths.forEach { path ->
+                    v5BrushTipMasks.resolve(BrushTipMaskRequest(path, dual.hardness.coerceIn(0f, 1f)))
+                }
+                dual.textureGrain?.let { grain ->
+                    v5BrushTipMasks.resolveGrain(
+                        GrainMaskRequest(grain.assetPath, grain.brightness, grain.contrast, grain.reversed, grain.emphasized),
+                    )
+                }
             }
             prewarmedBrushSignature = null
         }
@@ -4983,12 +5001,29 @@ class InkCanvasView(context: Context) : View(context) {
             val stampProgram = program.stamp
             val sprayProgram = stampProgram?.spray
             val tipAssets = program.tip.tipTexture?.assetPaths.orEmpty()
-            if (tipAssets.isNotEmpty()) {
-                val masks = tipAssets.map { tipAsset ->
+            fun resolveTextureGrain(
+                settings: app.inkloom.brushpresetv5.TextureGrainSettings?,
+                seed: Int,
+            ): Pair<BrushTipMask?, GrainOffset> {
+                if (settings == null) return null to GrainOffset(0f, 0f)
+                val mask = v5BrushTipMasks.resolveGrain(
+                    GrainMaskRequest(
+                        settings.assetPath,
+                        settings.brightness,
+                        settings.contrast,
+                        settings.reversed,
+                        settings.emphasized,
+                    ),
+                ) ?: return null to GrainOffset(0f, 0f)
+                return mask to GrainBehavior.offset(seed, settings.offsetJitter)
+            }
+            if (tipAssets.isNotEmpty() || program.dual != null) {
+                val masks = if (tipAssets.isNotEmpty()) tipAssets.map { tipAsset ->
                     v5BrushTipMasks.resolve(
                         BrushTipMaskRequest(tipAsset, program.tip.hardness.coerceIn(0f, 1f)),
                     ) ?: return null
-                }
+                } else listOf(BrushTipMask.solidCircle(96, program.tip.hardness.coerceIn(0f, 1f)))
+                val (grain, grainOffset) = resolveTextureGrain(program.textureGrain, program.renderSeed)
                 val particleDiameter = sprayProgram?.let { spray ->
                     SprayGeometry.particleDiameter(
                         diameterPixels,
@@ -5015,6 +5050,14 @@ class InkCanvasView(context: Context) : View(context) {
                     flow = program.deposition.flow.coerceIn(0f, 1f),
                     spacingRatio = program.spacingPolicy?.value?.coerceIn(.01f, 2f) ?: .12f,
                     tips = masks,
+                    grain = grain,
+                    grainDensity = program.textureGrain?.density ?: 0f,
+                    grainScalePercent = program.textureGrain?.scale ?: 100f,
+                    grainMovement = program.textureGrain?.movement ?: 0f,
+                    grainZoom = program.textureGrain?.zoom ?: 0f,
+                    grainRotationRadians = Math.toRadians((program.textureGrain?.rotationDegrees ?: 0f).toDouble()).toFloat(),
+                    grainPhaseX = grainOffset.x,
+                    grainPhaseY = grainOffset.y,
                     sizePressure = sizeResponse,
                     opacityPressure = opacityResponse,
                     flowPressure = flowResponse,
@@ -5033,9 +5076,94 @@ class InkCanvasView(context: Context) : View(context) {
                     repeatStationarySamples = stampProgram?.continuousPlot == true,
                     blend = if (erase) DryBlend.DESTINATION_OUT else DryBlend.SOURCE_OVER,
                 )
+                val secondaryDefinitions = program.dual?.let { dual ->
+                    val dualMasks = dual.tipAssetPaths.map { path ->
+                        v5BrushTipMasks.resolve(
+                            BrushTipMaskRequest(path, dual.hardness.coerceIn(0f, 1f)),
+                        ) ?: return null
+                    }
+                    val (dualGrain, dualGrainOffset) = resolveTextureGrain(
+                        dual.textureGrain,
+                        program.renderSeed xor 0x4D2A61C7,
+                    )
+                    val dualDiameter = (diameterPixels * dual.sizeScale).coerceIn(.1f, 4096f)
+                    val dualSpray = dual.spray
+                    val dualParticleDiameter = dualSpray?.let { spray ->
+                        SprayGeometry.particleDiameter(
+                            dualDiameter,
+                            spray.particleSize,
+                            spray.particleSizeUnit,
+                            spray.particleSizeTracksBrush,
+                            surface.logicalWidth.toFloat(),
+                        )
+                    } ?: dualDiameter
+                    val dualScatter = dualSpray?.let { dualDiameter * .5f * it.spread.coerceIn(0f, 4f) } ?: 0f
+                    listOf(
+                        StampBrushDefinition(
+                            kind = if (erase) PaintOpKind.ERASER else if (dualSpray != null) PaintOpKind.AIRBRUSH else PaintOpKind.DECORATION,
+                            diameterPixels = dualParticleDiameter,
+                            spacingReferencePixels = dualDiameter,
+                            colorArgb = if (erase) Color.TRANSPARENT else inkColor,
+                            opacity = (inkOpacity * program.deposition.opacity).coerceIn(0f, 1f),
+                            flow = dual.flow,
+                            spacingRatio = dual.spacing.value.coerceIn(.01f, 2f),
+                            tips = dualMasks,
+                            grain = dualGrain,
+                            grainDensity = dual.textureGrain?.density ?: 0f,
+                            grainScalePercent = dual.textureGrain?.scale ?: 100f,
+                            grainMovement = dual.textureGrain?.movement ?: 0f,
+                            grainZoom = dual.textureGrain?.zoom ?: 0f,
+                            grainRotationRadians = Math.toRadians((dual.textureGrain?.rotationDegrees ?: 0f).toDouble()).toFloat(),
+                            grainPhaseX = dualGrainOffset.x,
+                            grainPhaseY = dualGrainOffset.y,
+                            roundness = dual.aspect,
+                            rotationRadians = Math.toRadians(dual.rotationDegrees.toDouble()).toFloat(),
+                            followStrokeDirection = dual.followStrokeDirection || dualSpray?.followStrokeDirection == true,
+                            followStylusOrientation = dual.followStylusOrientation || dualSpray?.followStylusOrientation == true,
+                            renderSeed = program.renderSeed xor 0x35A71C9E,
+                            particlesPerPlot = dualSpray?.let { SprayGeometry.particlesPerPlot(it.density) } ?: 1,
+                            scatterRadiusPixels = dualScatter,
+                            scatterBias = (dualSpray?.bias?.div(100f) ?: 0f).coerceIn(-1f, 1f),
+                            randomRotationRadians = Math.toRadians(
+                                (dual.randomRotationDegrees + (dualSpray?.randomRotationDegrees ?: 0f)).toDouble(),
+                            ).toFloat(),
+                            repeatStationarySamples = stampProgram?.continuousPlot == true,
+                            blend = if (erase) DryBlend.DESTINATION_OUT else DryBlend.SOURCE_OVER,
+                        ),
+                    )
+                }.orEmpty()
+                val maximumDiameter = secondaryDefinitions.maxOfOrNull(StampBrushDefinition::diameterPixels)
+                    ?.coerceAtLeast(particleDiameter) ?: particleDiameter
+                val maximumScatter = secondaryDefinitions.maxOfOrNull(StampBrushDefinition::scatterRadiusPixels)
+                    ?.coerceAtLeast(scatterRadius) ?: scatterRadius
                 return V5PaintConfiguration(
-                    StampPaintOp(surface, stamp, selection, sampleTransforms = sampleTransforms),
-                    particleDiameter * .5f + scatterRadius + 2f,
+                    StampPaintOp(
+                        surface,
+                        stamp,
+                        selection,
+                        secondaryDefinitions,
+                        sampleTransforms,
+                        program.dual?.let { dual ->
+                            DualBrushCompositeDefinition(
+                                when (dual.compositeMode) {
+                                    app.inkloom.brushpresetv5.DualCompositeMode.NORMAL -> DualBrushCompositeMode.NORMAL
+                                    app.inkloom.brushpresetv5.DualCompositeMode.MULTIPLY -> DualBrushCompositeMode.MULTIPLY
+                                    app.inkloom.brushpresetv5.DualCompositeMode.ADD_GLOW -> DualBrushCompositeMode.ADD_GLOW
+                                    app.inkloom.brushpresetv5.DualCompositeMode.SUBTRACT -> DualBrushCompositeMode.SUBTRACT
+                                    app.inkloom.brushpresetv5.DualCompositeMode.DARKEN -> DualBrushCompositeMode.DARKEN
+                                    app.inkloom.brushpresetv5.DualCompositeMode.LIGHTEN -> DualBrushCompositeMode.LIGHTEN
+                                    app.inkloom.brushpresetv5.DualCompositeMode.SCREEN -> DualBrushCompositeMode.SCREEN
+                                    app.inkloom.brushpresetv5.DualCompositeMode.OVERLAY -> DualBrushCompositeMode.OVERLAY
+                                    app.inkloom.brushpresetv5.DualCompositeMode.COLOR_DODGE -> DualBrushCompositeMode.COLOR_DODGE
+                                    app.inkloom.brushpresetv5.DualCompositeMode.COLOR_BURN -> DualBrushCompositeMode.COLOR_BURN
+                                    app.inkloom.brushpresetv5.DualCompositeMode.LINEAR_BURN -> DualBrushCompositeMode.LINEAR_BURN
+                                    app.inkloom.brushpresetv5.DualCompositeMode.HARD_MIX -> DualBrushCompositeMode.HARD_MIX
+                                    app.inkloom.brushpresetv5.DualCompositeMode.HEIGHT_LINEAR -> DualBrushCompositeMode.HEIGHT_LINEAR
+                                },
+                            )
+                        },
+                    ),
+                    maximumDiameter * .5f + maximumScatter + 2f,
                     "preset-v5:stamp:${program.identity.id}",
                 )
             }

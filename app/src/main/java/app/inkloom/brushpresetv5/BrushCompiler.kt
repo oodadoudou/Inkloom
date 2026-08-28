@@ -22,9 +22,11 @@ class CompiledBrushProgramV5 private constructor(
     val pressure: CompiledPressure,
     val tilt: CompiledTilt,
     val grainSampler: CompiledGrainSampler?,
+    val textureGrain: TextureGrainSettings?,
     val strokeShaping: CompiledStrokeShaping,
     val stamp: StampSettings?,
     val wetMix: WetMixSettings?,
+    val dual: DualBrushSettings?,
 ) {
     /** The preset a stroke was compiled from (identity only; not editable mid-stroke). */
     val identity: PresetIdentity get() = preset.identity
@@ -106,12 +108,19 @@ class CompiledBrushProgramV5 private constructor(
             preset.stamp?.let { stamp ->
                 require(stamp.randomRotationDegrees.isFinite() && stamp.randomRotationDegrees >= 0f)
                 require(stamp.particlesPerPlot in 1..32)
-                stamp.spray?.let { spray ->
-                    require(spray.particleSize.isFinite() && spray.particleSize > 0f)
-                    require(spray.density.isFinite() && spray.density > 0f)
-                    require(spray.bias.isFinite() && spray.bias in -100f..100f)
-                    require(spray.spread.isFinite() && spray.spread >= 0f)
-                }
+                stamp.spray?.let(::requireValidSpray)
+            }
+            preset.textureGrain?.let(::requireValidTextureGrain)
+            preset.dual?.let { dual ->
+                require(dual.tipAssetPaths.isNotEmpty() && dual.tipAssetPaths.none(String::isBlank))
+                require(dual.sizeScale.isFinite() && dual.sizeScale in .01f..8f)
+                require(dual.flow.isFinite() && dual.flow in 0f..1f)
+                require(dual.hardness.isFinite() && dual.hardness in 0f..1f)
+                require(dual.aspect.isFinite() && dual.aspect in .01f..1f)
+                require(dual.randomRotationDegrees.isFinite() && dual.randomRotationDegrees >= 0f)
+                require(dual.spacing.value.isFinite() && dual.spacing.value in .005f..4f)
+                dual.textureGrain?.let(::requireValidTextureGrain)
+                dual.spray?.let(::requireValidSpray)
             }
             val family = preset.identity.family
             val capabilities = BrushCapabilities.of(family)
@@ -162,6 +171,7 @@ class CompiledBrushProgramV5 private constructor(
                 grainSampler = preset.paperGrain?.let {
                     CompiledGrainSampler(it.scale, it.density, it.strength)
                 },
+                textureGrain = preset.textureGrain,
                 strokeShaping = CompiledStrokeShaping(
                     smoothing = preset.stroke?.smoothing ?: 0f,
                     taperStartEnabled = preset.stroke?.taperStartEnabled ?: false,
@@ -172,7 +182,24 @@ class CompiledBrushProgramV5 private constructor(
                 ),
                 stamp = preset.stamp,
                 wetMix = preset.wetMix,
+                dual = preset.dual,
             )
+        }
+
+        private fun requireValidTextureGrain(grain: TextureGrainSettings) {
+            require(grain.assetPath.isNotBlank())
+            require(grain.density.isFinite() && grain.density in 0f..1f)
+            require(grain.scale.isFinite() && grain.scale in 1f..4000f)
+            require(grain.movement.isFinite() && grain.movement in 0f..1f)
+            require(grain.zoom.isFinite() && grain.zoom in 0f..1f)
+            require(grain.rotationDegrees.isFinite())
+        }
+
+        private fun requireValidSpray(spray: SpraySettings) {
+            require(spray.particleSize.isFinite() && spray.particleSize > 0f)
+            require(spray.density.isFinite() && spray.density > 0f)
+            require(spray.bias.isFinite() && spray.bias in -100f..100f)
+            require(spray.spread.isFinite() && spray.spread >= 0f)
         }
     }
 }
