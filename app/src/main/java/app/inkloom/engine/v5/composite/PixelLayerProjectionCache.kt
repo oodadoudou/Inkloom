@@ -51,6 +51,10 @@ class PixelLayerProjectionCache(
     private var maskCoverageScratch = ByteArray(0)
     private var batchModes = IntArray(0)
     private var batchOpacities = FloatArray(0)
+    private val rgba8Underlays = object : LinkedHashMap<PixelTileKey, Rgba8Underlay>(16, .75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<PixelTileKey, Rgba8Underlay>?): Boolean =
+            size > MAX_CACHED_UNDERLAY_TILES
+    }
 
     val snapshot: PixelTileSurfaceSnapshot get() = projection.snapshot()
 
@@ -78,7 +82,15 @@ class PixelLayerProjectionCache(
                 when (projection.pixelFormat) {
                     PixelTileFormat.PREMULTIPLIED_SRGB_8888 -> write.editTile(key, dirtyLocal) { output, stride ->
                         output.fill(0)
-                        compositeRgba8Layers(prepared, key, output, stride, bounds, scratch)
+                        compositeRgba8Layers(
+                            prepared,
+                            key,
+                            output,
+                            stride,
+                            bounds,
+                            scratch,
+                            nextSignatures[key],
+                        )
                     }
                     PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16 ->
                         write.editTileF16(key, dirtyLocal) { output, stride ->
@@ -107,9 +119,35 @@ class PixelLayerProjectionCache(
         stride: Int,
         bounds: PixelRect,
         scratch: FloatArray,
+        signature: TileSignature?,
     ) {
         val contributors = layers.filter { it.contributes(key) }
         if (contributors.isEmpty()) return
+        if (contributors.size >= UNDERLAY_LAYER_THRESHOLD && signature != null) {
+            val prefixSignature = TileSignature(signature.layers.dropLast(1))
+            val cached = rgba8Underlays[key]
+            if (cached?.signature == prefixSignature && cached.pixels.size == output.size) {
+                cached.pixels.copyInto(output)
+                compositeRgba8Contributors(contributors.takeLast(1), key, output, stride, bounds, scratch)
+                return
+            }
+            compositeRgba8Contributors(contributors.dropLast(1), key, output, stride, bounds, scratch)
+            rgba8Underlays[key] = Rgba8Underlay(prefixSignature, output.copyOf())
+            compositeRgba8Contributors(contributors.takeLast(1), key, output, stride, bounds, scratch)
+            return
+        }
+        rgba8Underlays.remove(key)
+        compositeRgba8Contributors(contributors, key, output, stride, bounds, scratch)
+    }
+
+    private fun compositeRgba8Contributors(
+        contributors: List<PreparedLayer>,
+        key: PixelTileKey,
+        output: IntArray,
+        stride: Int,
+        bounds: PixelRect,
+        scratch: FloatArray,
+    ) {
         var index = 0
         while (index < contributors.size) {
             val layer = contributors[index]
@@ -471,6 +509,11 @@ class PixelLayerProjectionCache(
 
     private data class TileSignature(val layers: List<LayerDependency>)
 
+    private data class Rgba8Underlay(
+        val signature: TileSignature,
+        val pixels: IntArray,
+    )
+
     private data class LayerDependency(
         val layerId: String,
         val surfaceId: String,
@@ -493,6 +536,8 @@ class PixelLayerProjectionCache(
     )
 
     companion object {
+        private const val UNDERLAY_LAYER_THRESHOLD = 8
+        private const val MAX_CACHED_UNDERLAY_TILES = 256
         private val ZERO_COVERAGE = CompositeCoverage { _, _ -> 0f }
 
         private fun alphaAt(snapshot: PixelTileSurfaceSnapshot, x: Int, y: Int): Float =

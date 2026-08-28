@@ -152,6 +152,43 @@ class PixelLayerProjectionCacheTest {
         assertEquals(0xff0000ff.toInt(), update.snapshot.pixelAt(130, 10))
     }
 
+    @Test fun cachedUnderlayMatchesFreshProjectionAfterTopAndMiddleLayerChanges() {
+        val surfaces = MutableList(10) { index ->
+            layerSurface(
+                0x30000000 or ((index * 23) shl 16) or ((index * 17) shl 8) or (index * 11),
+                10,
+                10,
+            )
+        }
+        fun inputs() = surfaces.mapIndexed { index, surface ->
+            PixelLayerProjectionInput(
+                layerId = "layer-$index",
+                pixels = surface.snapshot(),
+                blendMode = if (index % 3 == 0) PixelBlendMode.MULTIPLY else PixelBlendMode.NORMAL,
+            )
+        }
+        val cached = PixelLayerProjectionCache(256, 128, tileSize = 64)
+        cached.update(inputs())
+
+        surfaces.last().beginWrite("edit top layer").run {
+            setPixel(10, 10, 0xa0408020.toInt())
+            commit().close()
+        }
+        val topChanged = cached.update(inputs()).snapshot.pixelAt(10, 10)
+        val freshAfterTop = PixelLayerProjectionCache(256, 128, tileSize = 64)
+            .update(inputs()).snapshot.pixelAt(10, 10)
+        assertEquals(freshAfterTop, topChanged)
+
+        surfaces[4].beginWrite("edit middle layer").run {
+            setPixel(10, 10, 0x90902070.toInt())
+            commit().close()
+        }
+        val middleChanged = cached.update(inputs()).snapshot.pixelAt(10, 10)
+        val freshAfterMiddle = PixelLayerProjectionCache(256, 128, tileSize = 64)
+            .update(inputs()).snapshot.pixelAt(10, 10)
+        assertEquals(freshAfterMiddle, middleChanged)
+    }
+
     private fun layerSurface(color: Int, x: Int, y: Int): PixelTileSurface =
         PixelTileSurface(256.coerceAtLeast(x + 1), 128.coerceAtLeast(y + 1), tileSize = 64).also { surface ->
             surface.beginWrite("layer fixture").run { setPixel(x, y, color); commit().close() }
