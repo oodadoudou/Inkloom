@@ -5282,7 +5282,6 @@ internal fun InkCanvasView.applyBrushConfiguration(
     blurPressureMinimum = activeBrush?.blurPressureMinimum ?: 0f
     blurPressureCurve = activeBrush?.blurPressureCurve.orEmpty()
     blurSecondaryDynamics = activeBrush?.blurSecondaryDynamics ?: BrushSecondaryDynamics()
-    prepareConfiguredBrushProgram()
     prewarmBrushAssets()
     notifyHoverCursorStyleChanged()
 }

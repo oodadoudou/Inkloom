@@ -30,7 +30,12 @@ import android.view.ViewConfiguration
 import androidx.annotation.WorkerThread
 import androidx.annotation.VisibleForTesting
 import app.inkloom.BuildConfig
-import app.inkloom.engine.v3.api.*
+import app.inkloom.engine.v5.diagnostics.PaintingTruthDiagnostics
+import app.inkloom.engine.v5.diagnostics.StrokeTrace
+import app.inkloom.engine.v5.diagnostics.traceEngineV5
+import app.inkloom.engine.v5.history.EngineTransaction
+import app.inkloom.engine.v5.history.EngineTransactionJournal
+import app.inkloom.engine.v5.input.NativeStrokeSession
 import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v5.android.PixelTileCanvasRenderer
 import app.inkloom.engine.v5.android.MaskTileCanvasRenderer
@@ -64,8 +69,18 @@ import app.inkloom.engine.v5.coordinates.DocumentPoint
 import app.inkloom.engine.v5.selection.CanonicalLassoContour
 import app.inkloom.engine.v5.selection.LassoSession
 import app.inkloom.engine.v5.selection.SelectionMaskRasterizer
-import java.util.LinkedHashMap
-import java.util.concurrent.Executors
+import app.inkloom.engine.v5.selection.DocumentSelectionState
+import app.inkloom.engine.v5.selection.SparseAlphaMask
+import app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot
+import app.inkloom.engine.v5.surface.PixelTileSurface
+import app.inkloom.engine.v5.tools.NativeRasterOps
+import app.inkloom.engine.v5.tools.RasterLayerPatch
+import app.inkloom.engine.v5.tools.RasterSelectionMask
+import app.inkloom.engine.v5.tools.RasterSelectionTransformSession
+import app.inkloom.engine.v5.tools.RasterTileBlendSession
+import app.inkloom.engine.v5.tools.RasterTileEditSession
+import app.inkloom.engine.v5.tools.RasterTileLiquifySession
+import app.inkloom.engine.v5.tools.SelectionAffineTransform
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
 import app.inkloom.document.ViewportState
@@ -212,24 +227,6 @@ data class LayerElementBitmaps(val base: Bitmap?, val additions: Bitmap?) {
 
 data class CanvasColorDrop(val color: Int)
 
-private class ActiveCspDualBrushSurface(val width: Int, val height: Int, val applyRgb: Boolean) {
-    val primary: Bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-    val secondary: Bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-    val output: Bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-
-    fun clear() {
-        primary.eraseColor(Color.TRANSPARENT)
-        secondary.eraseColor(Color.TRANSPARENT)
-        output.eraseColor(Color.TRANSPARENT)
-    }
-
-    fun recycle() {
-        primary.recycle()
-        secondary.recycle()
-        output.recycle()
-    }
-}
-
 class InkCanvasView(context: Context) : View(context) {
     private val renderLock = Any()
     private val strokeInputModeler = NativeStrokeSession()
@@ -265,40 +262,6 @@ class InkCanvasView(context: Context) : View(context) {
     private val strokeTraceOverlayBackground = Paint().apply {
         color = Color.argb(190, 20, 20, 20)
     }
-    private data class DeferredTipCompletion(
-        val cache: BrushResourceCache,
-        val request: BrushTipRequest,
-        val bitmap: Bitmap?,
-    )
-    private val deferredTipCompletions = mutableListOf<DeferredTipCompletion>()
-    private var forceSynchronousTipDecode = false
-    private val activePrimaryStampCounts = mutableMapOf<String, Int>()
-    private val activeDualStampCounts = mutableMapOf<String, Int>()
-    private val activePrimarySamples = mutableMapOf<String, app.inkloom.document.StrokeStampSampler.Incremental>()
-    private val activeDualSamples = mutableMapOf<String, app.inkloom.document.StrokeStampSampler.Incremental>()
-    private val activePrimaryScatterRandoms = mutableMapOf<String, java.util.Random>()
-    private val activePrimaryRotationRandoms = mutableMapOf<String, java.util.Random>()
-    private val activeDualScatterRandoms = mutableMapOf<String, java.util.Random>()
-    private val activeDualRotationRandoms = mutableMapOf<String, java.util.Random>()
-    private val activeCspDualBrushSurfaces = mutableMapOf<String, ActiveCspDualBrushSurface>()
-    /**
-     * Authoritative raster sampling cannot share the low-latency surface's replay state. Android
-     * may request a complete front-buffer redraw at any time; resetting that visual cache must not
-     * make already-transactional dabs deposit for a second time.
-     */
-    private val rasterPrimaryStampCounts = mutableMapOf<String, Int>()
-    private val rasterRawPointCounts = mutableMapOf<String, Int>()
-    private val rasterPrimarySamples = mutableMapOf<String, app.inkloom.document.StrokeStampSampler.Incremental>()
-    private val rasterPrimaryScatterRandoms = mutableMapOf<String, java.util.Random>()
-    private val rasterPrimaryRotationRandoms = mutableMapOf<String, java.util.Random>()
-    private var rasterIncrementalPatchBitmap: Bitmap? = null
-    private var rasterIncrementalRendering = false
-    private var rasterIncrementalPaintEnabled = false
-    private var rasterPaintGestureStrokeId: String? = null
-    @VisibleForTesting internal var rasterIncrementalPatchCount: Int = 0
-        private set
-    @VisibleForTesting internal var rasterFullReplayCount: Int = 0
-        private set
     private var backgroundBitmap: Bitmap? = null
     private val selectedStrokeIds = linkedSetOf<String>()
     private var selectedMaskRegions: List<List<StrokePoint>> = emptyList()
@@ -315,21 +278,6 @@ class InkCanvasView(context: Context) : View(context) {
         private set
     private var selectionFeatherBase: MaskTileSurfaceSnapshot? = null
     private var selectionGestureBefore: List<InkStroke>? = null
-    private var eraserGestureBefore: List<InkStroke>? = null
-    private var pendingEraserInvalidationBefore: List<InkStroke>? = null
-    private var eraserInvalidationScheduled = false
-    private val eraserInvalidationFrame = Runnable {
-        eraserInvalidationScheduled = false
-        flushEraserInvalidation()
-    }
-    private var lastEraserX: Float? = null
-    private var lastEraserY: Float? = null
-    private var rasterTileEraserSession: RasterTileEraserSession? = null
-    private var rasterEraserChanged = false
-    private var rasterEraserDirtyBounds: Rect? = null
-    private val rasterEraserPoints = mutableListOf<StrokePoint>()
-    private val eraserStrokeIndices = mutableMapOf<String, Int>()
-    private var eraserMaskBatch: MutableMap<String, MutableList<StrokeMaskDab>>? = null
     private var strokeHistoryKey: String? = null
     private val lassoPoints = mutableListOf<StrokePoint>()
     private var v5LassoSession: LassoSession? = null
@@ -361,7 +309,6 @@ class InkCanvasView(context: Context) : View(context) {
     private var smudgeChanged = false
     private var smudgeDirtyBounds: Rect? = null
     private var rasterTileBlendSession: RasterTileBlendSession? = null
-    private var rasterPaintSession: RasterTilePaintSession? = null
     private val v5StrokeController = RealtimeStrokeController()
     private val v5BrushTipMasks = BrushTipMaskCache()
     private var v5RejectedContact = false
@@ -376,10 +323,6 @@ class InkCanvasView(context: Context) : View(context) {
             sample.x / surface.logicalWidth to sample.y / surface.logicalHeight
         }
     }
-    private var wetPaintDirtyBounds: Rect? = null
-    private val rasterFrontPatchPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-    private var wetPaintLastPositions: List<Pair<Float, Float>> = emptyList()
-    private var wetPaintPickupColors: MutableList<Int?> = mutableListOf()
     private val localToolStrokeIndices = mutableMapOf<String, Int>()
     private var pendingSmudgeX = 0f
     private var pendingSmudgeY = 0f
@@ -617,15 +560,6 @@ class InkCanvasView(context: Context) : View(context) {
     // Stamped brushes can deposit hundreds of dabs per display frame. Reusing these objects keeps
     // the input/render hot path out of ART's allocator and prevents GC pauses under the pen.
     private val primaryStampMatrix = Matrix()
-    private val secondaryStampMatrix = Matrix()
-    private val dualCompositeOutputPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-    private val edgeStampMatrix = Matrix()
-    private val srcInColorFilters = object : LinkedHashMap<Int, PorterDuffColorFilter>(32, .75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, PorterDuffColorFilter>): Boolean = size > MAX_COLOR_FILTER_CACHE_ENTRIES
-    }
-    private val blurMaskFilters = object : LinkedHashMap<Int, BlurMaskFilter>(24, .75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, BlurMaskFilter>): Boolean = size > MAX_BLUR_MASK_CACHE_ENTRIES
-    }
     private val paperFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val brushSizePreviewPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val brushSizePreviewTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 30f; typeface = android.graphics.Typeface.DEFAULT_BOLD }
@@ -646,26 +580,9 @@ class InkCanvasView(context: Context) : View(context) {
     internal var onHoverCursorStyleChanged: (() -> Unit)? = null
     private var configuredInputTool: EditorTool? = null
     private var configuredInputBrushId: String? = null
-    private var configuredBrushTemplate: InkStroke? = null
-    private var configuredBrushProgram: BrushProgram? = null
-    private var brushResources = BrushResourceCache()
-    private var wholeStrokeTextureBitmap: Bitmap? = null
-    private var activeWholeTextureCoverageBitmap: Bitmap? = null
-    private var activeWholeTextureStrokeId: String? = null
-    private var activeWholeTextureProgram: InkStroke? = null
-    private var activeWholeTexturePointCount: Int = 0
-    private var activeWholeTexturePageWidth: Int = 0
-    private var activeWholeTexturePageHeight: Int = 0
-    private var incrementalActiveDraw: Boolean = false
-    private val wholeStrokeReplacementPaint = Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC) }
     private var prewarmedBrushSignature: String? = null
     private val protectedStrokeIds = mutableSetOf<String>()
     private val protectedLayerIds = mutableSetOf<String>()
-    private val committedScene = SparseTileScene(MAX_CACHE_PIXELS)
-    internal var onTileRendered: ((StrokeTileKey, Int) -> Unit)?
-        get() = hostedTileRendered
-        set(value) { hostedTileRendered = value }
-    private var hostedTileRendered: ((StrokeTileKey, Int) -> Unit)? = null
 
     var tool: EditorTool = EditorTool.PEN
         set(value) {
@@ -1168,20 +1085,6 @@ class InkCanvasView(context: Context) : View(context) {
                 else -> true
             }
         }
-        committedScene.onTileRendered = { key, count ->
-            if (StrokeTrace.enabled) {
-                pendingProjectionStrokeId?.let { id ->
-                    pendingProjectionStrokeId = null
-                    StrokeTrace.markOnce(
-                        id,
-                        StrokeTrace.STAGE_PROJECTION_GENERATED,
-                        tileCount = committedScene.dirtyTileCount,
-                        generation = committedScene.generation,
-                    )
-                }
-            }
-            hostedTileRendered?.invoke(key, count)
-        }
     }
 
     fun setContinueFilling(enabled: Boolean, color: Int = inkColor) {
@@ -1298,7 +1201,6 @@ class InkCanvasView(context: Context) : View(context) {
             strokeHistoryKey = historyKey
             editHistory.clear()
             selectionGestureBefore = null
-            eraserGestureBefore = null
             resetSelectionViewBinding(clearReselect = true, unbindDocument = false)
         }
         if (strokes != value) {
@@ -1353,8 +1255,7 @@ class InkCanvasView(context: Context) : View(context) {
     private val rasterTileRenderer = PixelTileCanvasRenderer()
     private var rasterLayerProjectionCache: PixelLayerProjectionCache? = null
     private var rasterLayerProjectionGeometry: RasterProjectionGeometry? = null
-    @VisibleForTesting internal var v3RasterProjectionDrawCount: Int = 0
-    @VisibleForTesting internal var legacyLayerCompositionDrawCount: Int = 0
+    @VisibleForTesting internal var v5RasterProjectionDrawCount: Int = 0
     @VisibleForTesting internal var lastRasterProjectionRecomposedTileCount: Int = 0
 
     fun setRasterLayerSurfaces(value: Map<String, PixelTileSurface>) {
@@ -1380,10 +1281,8 @@ class InkCanvasView(context: Context) : View(context) {
         if (layerId != activeLayerId) return null
         return runCatching {
             v5StrokeController.previewSnapshot(layerId)
-                ?: rasterTileEraserSession?.previewSnapshot()
                 ?: rasterTileBlendSession?.previewSnapshot()
                 ?: rasterTileLiquifySession?.previewSnapshot()
-                ?: rasterPaintSession?.previewSnapshot()
         }.getOrNull()
     }
 
@@ -1526,32 +1425,23 @@ class InkCanvasView(context: Context) : View(context) {
         pendingStableFrameStrokeId?.let { strokeId ->
             pendingStableFrameStrokeId = null
             lastCommittedFrameDrawn = true
-            StrokeTrace.markOnce(
-                strokeId,
-                StrokeTrace.STAGE_RENDERER_DRAW,
-                tileCount = committedScene.dirtyTileCount,
-                generation = committedScene.generation,
-            )
-            StrokeTrace.markOnce(
-                strokeId,
-                StrokeTrace.STAGE_STABLE_FRAME,
-                tileCount = committedScene.dirtyTileCount,
-                generation = committedScene.generation,
-            )
+            val stable = rasterTileSurfaceFor(activeLayerId)?.snapshot()
+            StrokeTrace.markOnce(strokeId, StrokeTrace.STAGE_RENDERER_DRAW, tileCount = stable?.tileCount, generation = stable?.revision)
+            StrokeTrace.markOnce(strokeId, StrokeTrace.STAGE_STABLE_FRAME, tileCount = stable?.tileCount, generation = stable?.revision)
         }
         pendingMaterialBarrierSequence = null
-        flushDeferredTipCompletions()
         if (showStrokeTraceOverlay && BuildConfig.PAINTING_DIAGNOSTICS) drawStrokeTraceOverlay(canvas)
     }
 
     private fun drawStrokeTraceOverlay(canvas: Canvas) {
         val active = v5StrokeController.isActive
-        val v3 = lastCommittedFrameDrawn
-        val tx = committedScene.dirtyTileCount
-        val gen = committedScene.generation
+        val stablePresented = lastCommittedFrameDrawn
+        val stable = rasterTileSurfaceFor(activeLayerId)?.snapshot()
+        val tx = stable?.tileCount ?: 0
+        val gen = stable?.revision ?: 0L
         val sid = currentStrokeId.take(8)
         val truth = PaintingTruthDiagnostics.snapshot()
-        val line = "ACT=${if (active) "1" else "0"}  STABLE=${if (v3) "1" else "0"}  TX=$tx  GEN=$gen  DIFF=${truth.totalMismatchCount}  GAP=${truth.presentationGapCount}  FULL=${truth.fullCanvasInvalidationCount}  SID=$sid"
+        val line = "ACT=${if (active) "1" else "0"}  STABLE=${if (stablePresented) "1" else "0"}  TX=$tx  GEN=$gen  DIFF=${truth.totalMismatchCount}  GAP=${truth.presentationGapCount}  FULL=${truth.fullCanvasInvalidationCount}  SID=$sid"
         val baseline = 38f
         val widthPx = strokeTraceOverlayPaint.measureText(line) + 24f
         strokeTraceOverlayBackground.setShadowLayer(6f, 0f, 0f, Color.BLACK)
@@ -1612,12 +1502,7 @@ class InkCanvasView(context: Context) : View(context) {
                 pagePaperPattern?.let { drawPaperPattern(canvas, it) }
             }
         if (includeInteractionOverlays) drawSnapGrid(canvas)
-        if (referencedLayerIds == null && drawStrokeTiles(canvas)) Unit else drawLayeredStrokes(
-            canvas,
-            if (referencedLayerIds == null) strokes else strokes.filter { it.layerId in referencedLayerIds },
-            includeElements = true,
-            layerFilter = referencedLayerIds,
-        )
+        drawV5LayerComposition(canvas, includeElements = true, layerFilter = referencedLayerIds)
         if (!includeInteractionOverlays) return
         var selectionLeft = Float.POSITIVE_INFINITY
         var selectionTop = Float.POSITIVE_INFINITY
@@ -1710,7 +1595,7 @@ class InkCanvasView(context: Context) : View(context) {
         super.onSizeChanged(width, height, oldWidth, oldHeight)
         if (width != oldWidth || height != oldHeight) {
             releaseActiveStrokePreview()
-            resetStrokeTiles()
+            invalidateLayerComposition()
         }
     }
 
@@ -1720,133 +1605,48 @@ class InkCanvasView(context: Context) : View(context) {
         lastStylusButtonState = 0
         stopContinuousPlot()
         laserTrail.clear()
-        recycleStrokeTiles()
         releaseActiveStrokePreview()
         resetSelectionViewBinding(clearReselect = true, unbindDocument = true)
         editHistory.clear()
-        recycleDeferredTipCompletions()
         strokeInputModeler.close()
-        brushResources.close()
-        brushResources = BrushResourceCache()
         v5BrushTipMasks.clear()
-        wholeStrokeTextureBitmap?.recycle(); wholeStrokeTextureBitmap = null
-        activeWholeTextureCoverageBitmap?.recycle(); activeWholeTextureCoverageBitmap = null
         releaseRasterLayerProjection()
         rasterTileRenderer.close()
         super.onDetachedFromWindow()
     }
 
-    private fun drawStrokeTiles(canvas: Canvas): Boolean {
-        if (layerBlendModes.values.any { it != LayerBlendMode.NORMAL }) return false
-        if (strokes.any(::usesDestinationDependentBrushBlend)) return false
-        if (alphaLockedLayers.isNotEmpty() || clippedLayers.isNotEmpty() || layerMasks.isNotEmpty()) return false
-        if (layerElementBitmaps.isNotEmpty() || rasterLayerTileSurfaces.isNotEmpty()) return false
-        val drew = committedScene.draw(
-            canvas,
-            strokes,
-            width,
-            height,
-            independentStrokes = canAppendCommittedInkToTiles(),
-        ) { target, candidates ->
-            drawLayeredStrokes(target, candidates)
-        }
-        return drew
-    }
+    private fun resetStrokeTiles() = invalidateLayerComposition()
 
-    private fun resetStrokeTiles() {
-        committedScene.reset(strokes, width, height)
+    private fun invalidateLayerComposition() {
+        releaseRasterLayerProjection()
         invalidate()
     }
 
-    private fun recycleStrokeTiles() = committedScene.close()
-
-    private fun invalidateStrokeCache() = resetStrokeTiles()
+    private fun invalidateStrokeCache() = invalidateLayerComposition()
 
     private fun invalidateStrokeCache(before: Collection<InkStroke>, after: Collection<InkStroke>) {
-        if (StrokeTrace.enabled) {
-            StrokeTrace.primaryStrokeId(after.toList())?.let { id ->
-                var bounds: RectF? = null
-                after.forEach { stroke ->
-                    committedScene.pixelBoundsFor(stroke, width, height)?.let { rect ->
-                        if (bounds == null) bounds = RectF(rect.left.toFloat(), rect.top.toFloat(), rect.right.toFloat(), rect.bottom.toFloat())
-                        else bounds!!.union(rect.left.toFloat(), rect.top.toFloat(), rect.right.toFloat(), rect.bottom.toFloat())
-                    }
-                }
-                pendingProjectionStrokeId = id
-                StrokeTrace.mark(
-                    id,
-                    StrokeTrace.STAGE_PROJECTION_INVALIDATED,
-                    rect = bounds?.let { "${it.left.toInt()},${it.top.toInt()},${it.right.toInt()},${it.bottom.toInt()}" },
-                    tileCount = committedScene.dirtyTileCount,
-                    generation = committedScene.generation,
-                )
-            }
+        if (StrokeTrace.enabled) StrokeTrace.primaryStrokeId(after.toList())?.let { id ->
+            pendingProjectionStrokeId = id
+            StrokeTrace.mark(id, StrokeTrace.STAGE_PROJECTION_INVALIDATED)
         }
-        committedScene.invalidate(
-            before,
-            after,
-            strokes,
-            width,
-            height,
-            appendCompatible = canAppendCommittedInkToTiles(),
-        ) { target, candidates ->
-            drawLayeredStrokes(target, candidates)
-        }
-        invalidate()
+        invalidateLayerComposition()
     }
 
-    /** Normal, fully opaque layers are associative, so newly committed ink can be composed once
-     * into clean tiles instead of replaying every earlier stroke before the next pen contact. */
-    private fun canAppendCommittedInkToTiles(): Boolean =
-        layerBlendModes.values.all { it == LayerBlendMode.NORMAL } &&
-            strokes.none(::usesDestinationDependentBrushBlend) &&
-            layerOpacities.values.all { it >= .999f } &&
-            alphaLockedLayers.isEmpty() && clippedLayers.isEmpty() && layerMasks.isEmpty() &&
-            layerElementBitmaps.isEmpty() && rasterLayerTileSurfaces.isEmpty()
-
-    private fun drawLayeredStrokes(
+    /** The only document presentation path: immutable V5 raster tiles plus page elements. */
+    private fun drawV5LayerComposition(
         canvas: Canvas,
-        value: List<InkStroke>,
-        primaryStampStartIndex: Int = 0,
-        dualStampStartIndex: Int = 0,
         includeElements: Boolean = false,
         layerFilter: Set<String>? = null,
     ) {
-        if (drawV3RasterLayerProjection(canvas, value, includeElements, layerFilter)) return
-        legacyLayerCompositionDrawCount++
-        drawLegacyMixedLayerComposition(
-            canvas,
-            value,
-            primaryStampStartIndex,
-            dualStampStartIndex,
-            includeElements,
-            layerFilter,
-        )
-    }
-
-    /**
-     * Compatibility boundary for scenes that still require Android Canvas layer replay: vector
-     * strokes/elements, the legacy Bitmap test adapter, and document masks that have not yet been
-     * rasterized into a V3 alpha surface. Pure raster documents never enter this path.
-     */
-    private fun drawLegacyMixedLayerComposition(
-        canvas: Canvas,
-        value: List<InkStroke>,
-        primaryStampStartIndex: Int,
-        dualStampStartIndex: Int,
-        includeElements: Boolean,
-        layerFilter: Set<String>?,
-    ) {
-        val groupedStrokes = value.groupBy(InkStroke::layerId)
+        if (drawV5RasterLayerProjection(canvas, includeElements, layerFilter)) return
         val elementLayerIds = if (includeElements) layerElementBitmaps.keys.filter { layerFilter == null || it in layerFilter } else emptyList()
         val rasterLayerIds = rasterLayerTileSurfaces.keys.filter { layerFilter == null || it in layerFilter }
-        val availableLayerIds = groupedStrokes.keys + elementLayerIds + rasterLayerIds
+        val availableLayerIds = elementLayerIds + rasterLayerIds
         val orderedLayerIds = (layerOrder.filter { it in availableLayerIds } + availableLayerIds.filterNot { it in layerOrder }).distinct()
         val compositionBounds = RectF(canvas.clipBounds)
         if (compositionBounds.isEmpty) return
         var previousLayerId: String? = null
         orderedLayerIds.forEach { layerId ->
-            val layerStrokes = groupedStrokes[layerId].orEmpty()
             val opacity = (layerOpacities[layerId] ?: 1f).coerceIn(0f, 1f)
             if (opacity <= 0f) return@forEach
             val layerBlendMode = layerBlendModes[layerId] ?: LayerBlendMode.NORMAL
@@ -1858,7 +1658,7 @@ class InkCanvasView(context: Context) : View(context) {
                     // Normal CSP-style paint layers are the dominant live path. Allocating a
                     // full-canvas saveLayer here made every front-buffer packet pay an offscreen
                     // composition cost even though direct drawing is pixel-identical.
-                    drawRawLayerContent(canvas, layerId, layerStrokes, includeElements, primaryStampStartIndex, dualStampStartIndex)
+                    drawV5RawLayerContent(canvas, layerId, includeElements)
                     previousLayerId = layerId
                     return@forEach
                 }
@@ -1866,7 +1666,7 @@ class InkCanvasView(context: Context) : View(context) {
                     alpha = (opacity * 255f).toInt().coerceIn(0, 255)
                     this.blendMode = layerBlendMode.toBlendMode()
                 })
-                drawRawLayerContent(canvas, layerId, layerStrokes, includeElements, primaryStampStartIndex, dualStampStartIndex)
+                drawV5RawLayerContent(canvas, layerId, includeElements)
                 layerMasks[layerId]?.let { mask ->
                     val maskCheckpoint = canvas.saveLayer(compositionBounds, Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.DST_IN })
                     val sparse = layerMaskSurfaces[layerId]
@@ -1877,7 +1677,7 @@ class InkCanvasView(context: Context) : View(context) {
                 }
                 if (clipped && lowerLayerId != null) {
                     val maskCheckpoint = canvas.saveLayer(compositionBounds, Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.DST_IN })
-                    drawRawLayerContent(canvas, lowerLayerId, groupedStrokes[lowerLayerId].orEmpty(), includeElements, primaryStampStartIndex, dualStampStartIndex)
+                    drawV5RawLayerContent(canvas, lowerLayerId, includeElements)
                     canvas.restoreToCount(maskCheckpoint)
                 }
                 canvas.restoreToCount(checkpoint)
@@ -1886,16 +1686,15 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
-    /** Production V3 path for paint documents whose visible content is entirely sparse raster
+    /** Production V5 path for paint documents whose visible content is entirely sparse raster
      * layers. Layer opacity, blend modes, and clipping are resolved once per dirty tile; HWUI then
      * draws the immutable projection without allocating a full-canvas saveLayer. */
-    private fun drawV3RasterLayerProjection(
+    private fun drawV5RasterLayerProjection(
         canvas: Canvas,
-        value: List<InkStroke>,
         includeElements: Boolean,
         layerFilter: Set<String>?,
     ): Boolean {
-        if (!includeElements || layerFilter != null || value.isNotEmpty()) return false
+        if (!includeElements || layerFilter != null) return false
         if (layerElementBitmaps.isNotEmpty()) return false
         if (rasterLayerTileSurfaces.isEmpty()) return false
         if (layerMasks.any { (layerId, mask) ->
@@ -1928,7 +1727,7 @@ class InkCanvasView(context: Context) : View(context) {
                 )
             }
             lastRasterProjectionRecomposedTileCount = 0
-            v3RasterProjectionDrawCount++
+            v5RasterProjectionDrawCount++
             return true
         }
         val firstSurface = rasterLayerTileSurfaces.getValue(orderedIds.first())
@@ -1968,7 +1767,7 @@ class InkCanvasView(context: Context) : View(context) {
             )
         })
         lastRasterProjectionRecomposedTileCount = update.recomposedTileCount
-        v3RasterProjectionDrawCount++
+        v5RasterProjectionDrawCount++
         rasterTileRenderer.draw(
             canvas,
             update.snapshot,
@@ -1984,13 +1783,10 @@ class InkCanvasView(context: Context) : View(context) {
         lastRasterProjectionRecomposedTileCount = 0
     }
 
-    private fun drawRawLayerContent(
+    private fun drawV5RawLayerContent(
         canvas: Canvas,
         layerId: String,
-        layerStrokes: List<InkStroke>,
         includeElements: Boolean,
-        primaryStampStartIndex: Int,
-        dualStampStartIndex: Int,
     ) {
         val elements = if (includeElements) layerElementBitmaps[layerId] else null
         val rasterSurface = rasterLayerTileSurfaces[layerId]
@@ -1998,23 +1794,18 @@ class InkCanvasView(context: Context) : View(context) {
         val hasCapturedAlpha = layerId in alphaLockedLayers && baseIds.isNotEmpty()
         if (!hasCapturedAlpha) {
             drawRasterLayer(canvas, layerId, rasterSurface)
-            layerStrokes.forEach { drawStroke(canvas, it, primaryStampStartIndex, dualStampStartIndex) }
             drawElementBitmap(canvas, elements?.base)
             drawElementBitmap(canvas, elements?.additions)
             return
         }
-        val baseStrokes = layerStrokes.filter { it.id in baseIds }
-        val addedStrokes = layerStrokes.filterNot { it.id in baseIds }
         fun drawBase() {
             drawRasterLayer(canvas, layerId, rasterSurface)
-            baseStrokes.forEach { drawStroke(canvas, it, primaryStampStartIndex, dualStampStartIndex) }
             drawElementBitmap(canvas, elements?.base)
         }
         drawBase()
-        if (addedStrokes.isNotEmpty() || elements?.additions != null) {
+        if (elements?.additions != null) {
             val compositionBounds = RectF(canvas.clipBounds)
             val additionsCheckpoint = canvas.saveLayer(compositionBounds, null)
-            addedStrokes.forEach { drawStroke(canvas, it, primaryStampStartIndex, dualStampStartIndex) }
             drawElementBitmap(canvas, elements?.additions)
             val maskCheckpoint = canvas.saveLayer(compositionBounds, Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.DST_IN })
             drawBase()
@@ -2045,11 +1836,7 @@ class InkCanvasView(context: Context) : View(context) {
         val pixelFormat: PixelTileFormat,
     )
 
-    private fun beginActiveStrokePreview() {
-        activePrimaryStampCounts.clear()
-        activeDualStampCounts.clear()
-        clearActiveStampRandoms()
-    }
+    private fun beginActiveStrokePreview() = Unit
 
     private fun finishActiveStrokePreview() {
         activeStrokeTemplate = null
@@ -2058,38 +1845,7 @@ class InkCanvasView(context: Context) : View(context) {
     private fun releaseActiveStrokePreview() {
         v5StrokeController.cancel()
         v5RejectedContact = false
-        if (rasterPaintSession != null) cancelWetPaintGesture()
         activeStrokeTemplate = null
-        activePrimaryStampCounts.clear()
-        activeDualStampCounts.clear()
-        clearActiveStampRandoms()
-    }
-
-    private fun drawStroke(canvas: Canvas, stroke: InkStroke, primaryStampStartIndex: Int = 0, dualStampStartIndex: Int = 0) {
-        val brushBlendMode = ProcreateBrushBlend.normalize(stroke.procreateBrushBlendMode)
-        val compositeCheckpoint = if (stroke.opacity < .999f || brushBlendMode != ProcreateBrushBlend.NORMAL) {
-            canvas.saveLayer(null, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                alpha = (stroke.opacity.coerceIn(0f, 1f) * 255).toInt()
-                blendMode = ProcreateBrushBlend.resolve(brushBlendMode)
-            })
-        } else -1
-        if (stroke.masks.isEmpty()) {
-            drawStrokeContent(canvas, stroke, primaryStampStartIndex, dualStampStartIndex)
-            if (compositeCheckpoint >= 0) canvas.restoreToCount(compositeCheckpoint)
-            resetAntiAliasPaint()
-            return
-        }
-        val checkpoint = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null)
-        drawStrokeContent(canvas, stroke, primaryStampStartIndex, dualStampStartIndex)
-        StrokeMaskRenderer.draw(canvas, paint, stroke.masks, width, height)
-        canvas.restoreToCount(checkpoint)
-        if (compositeCheckpoint >= 0) canvas.restoreToCount(compositeCheckpoint)
-        resetAntiAliasPaint()
-    }
-
-    private fun resetAntiAliasPaint() {
-        paint.isAntiAlias = true
-        paint.isFilterBitmap = true
     }
 
     private fun drawPaperPattern(canvas: Canvas, pattern: PaperPattern) {
@@ -2103,1012 +1859,65 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
-    private fun drawStrokeContent(
-        canvas: Canvas,
-        stroke: InkStroke,
-        primaryStampStartIndex: Int = 0,
-        dualStampStartIndex: Int = 0,
-    ) {
-        if (stroke.points.isEmpty()) return
-        if (stroke.grainAssetPath != null && stroke.grainDensity > 0f && !stroke.grainApplyPerPlot &&
-            drawWholeStrokeTexture(canvas, stroke, primaryStampStartIndex, dualStampStartIndex)
-        ) return
-        paint.isAntiAlias = CspAntiAlias.enabled(stroke.antiAliasMode)
-        paint.isFilterBitmap = CspAntiAlias.enabled(stroke.antiAliasMode)
-        val tipPaths = stroke.tipAssetPaths.ifEmpty { listOfNotNull(stroke.tipAssetPath) }
-        val grainOffset = GrainBehavior.offset(stroke.renderSeed, stroke.grainOffsetJitter)
-        val decodedTips = tipPaths.mapNotNull { loadTip(it, stroke.hardness, stroke.grainAssetPath, stroke.grainDensity, stroke.grainScale, stroke.grainRotationDegrees, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized, grainOffset.x, grainOffset.y, stroke.grainCompositeMode, stroke.grainFilteringMode, stroke.antiAliasMode, stroke.alphaThresholdEnabled, stroke.alphaThreshold) }
-        val tips = decodedTips.ifEmpty {
-            if (!ProceduralBrushTip.supports(stroke)) emptyList()
-            else {
-                val proceduralKey = "${stroke.brushId}:${stroke.alphaThresholdEnabled}:${(stroke.alphaThreshold.coerceIn(0f, 1f) * 255f).toInt()}"
-                listOfNotNull(brushResources.proceduralTip(proceduralKey) { ProceduralBrushTip.create(stroke) })
-            }
-        }
-        if (tips.isNotEmpty()) {
-            val dualGrainOffset = GrainBehavior.offset(stroke.renderSeed xor DUAL_GRAIN_SEED, stroke.dualGrainOffsetJitter)
-            val dualTips = if (stroke.dualBrush) stroke.dualTipAssetPaths.mapNotNull { loadTip(it, stroke.dualHardness, stroke.dualGrainAssetPath.takeIf { _ -> stroke.dualGrainApplyPerPlot }, stroke.dualGrainDensity, stroke.dualGrainScale, stroke.dualGrainRotationDegrees, stroke.dualGrainBrightness, stroke.dualGrainContrast, stroke.dualGrainReversed, stroke.dualGrainEmphasized, dualGrainOffset.x, dualGrainOffset.y, stroke.dualGrainCompositeMode, stroke.dualGrainFilteringMode, stroke.dualAntiAliasMode, stroke.alphaThresholdEnabled, stroke.alphaThreshold, stroke.dualApplyRgb) }.ifEmpty { tipPaths.mapNotNull { loadTip(it, stroke.dualHardness, stroke.dualGrainAssetPath.takeIf { _ -> stroke.dualGrainApplyPerPlot }, stroke.dualGrainDensity, stroke.dualGrainScale, stroke.dualGrainRotationDegrees, stroke.dualGrainBrightness, stroke.dualGrainContrast, stroke.dualGrainReversed, stroke.dualGrainEmphasized, dualGrainOffset.x, dualGrainOffset.y, stroke.dualGrainCompositeMode, stroke.dualGrainFilteringMode, stroke.dualAntiAliasMode, stroke.alphaThresholdEnabled, stroke.alphaThreshold, stroke.dualApplyRgb) } } else emptyList()
-            drawStampedStroke(canvas, stroke, tips, dualTips, tipPaths, grainOffset.x, grainOffset.y, primaryStampStartIndex, dualStampStartIndex)
-            return
-        }
-        if (usesContinuousRibbon(stroke)) {
-            drawContinuousRoundStroke(canvas, stroke)
-            return
-        }
-        paint.color = stroke.colorArgb.toInt()
-        paint.colorFilter = null
-        val scale = width.coerceAtLeast(1) / REFERENCE_WIDTH
-        val taper = strokeTaperFactors(stroke, stroke.points)
-        val falloff = app.inkloom.document.StrokeFalloff.factors(stroke.points, width.toFloat(), height.toFloat(), stroke.width * scale, stroke.strokeFalloff)
-        val contentClip = canvas.clipBounds
-        if (stroke.points.size == 1) {
-            val point = stroke.points.first(); paint.color = (point.pigmentArgb ?: stroke.colorArgb).toInt(); val dynamics = BrushProgramRuntime.evaluateDab(stroke, point); val strokeWidth = stroke.width * scale * (taper?.size?.firstOrNull() ?: 1f) * dynamics.size; val alpha = (ProcreateRendering.depositedAlpha(stroke.procreateRenderingMode, stroke.flow * dynamics.depositedAlpha * (falloff?.firstOrNull() ?: 1f) * (taper?.opacity?.firstOrNull() ?: 1f)) * 255).toInt().coerceIn(0, 255); drawLinePoint(canvas, stroke, point, point.x * width, point.y * height, strokeWidth, alpha)
-        } else for (index in 0 until stroke.points.lastIndex) {
-            val start = stroke.points[index]
-            val end = stroke.points[index + 1]
-            val point = midpoint(start, end)
-            paint.color = mixArgb(start.pigmentArgb ?: stroke.colorArgb, end.pigmentArgb ?: stroke.colorArgb, .5f).toInt()
-            val taperFactor = taper?.size?.let { (it[index] + it[index + 1]) / 2f } ?: 1f
-            val taperOpacity = taper?.opacity?.let { (it[index] + it[index + 1]) / 2f } ?: 1f
-            val dynamics = BrushProgramRuntime.evaluateDab(stroke, point)
-            val strokeWidth = stroke.width * scale * taperFactor * dynamics.size
-            val falloffFactor = falloff?.let { (it[index] + it[index + 1]) / 2f } ?: 1f
-            val alpha = (ProcreateRendering.depositedAlpha(stroke.procreateRenderingMode, stroke.flow * dynamics.depositedAlpha * falloffFactor * taperOpacity) * 255).toInt().coerceIn(0, 255)
-            val startX = start.x * width
-            val startY = start.y * height
-            val endX = end.x * width
-            val endY = end.y * height
-            val influenceRadius = strokeWidth + BrushBlur.radiusPixels(stroke.blur, stroke.blurUnit, stroke.blurLinkedToSize, strokeWidth, stroke.width * scale, width.toFloat()) +
-                if (stroke.waterEdgeEnabled) WaterEdge.distancePixels(stroke.waterEdgeRadius, stroke.waterEdgeRadiusUnit, width.toFloat()) else 0f
-            if (maxOf(startX, endX) + influenceRadius < contentClip.left || minOf(startX, endX) - influenceRadius > contentClip.right ||
-                maxOf(startY, endY) + influenceRadius < contentClip.top || minOf(startY, endY) - influenceRadius > contentClip.bottom
-            ) continue
-            drawLineSegment(canvas, stroke, point, startX, startY, endX, endY, strokeWidth, alpha)
-        }
-    }
 
-    /** CSP Texture with Apply by each plot disabled is a post-process over the union of all stamp
-     * coverage. Rendering a textured tip repeatedly would make overlap regions progressively
-     * darker, which is precisely the behavior the switch disables. */
-    private fun drawWholeStrokeTexture(
-        canvas: Canvas,
-        stroke: InkStroke,
-        primaryStampStartIndex: Int,
-        dualStampStartIndex: Int,
-    ): Boolean {
-        if (incrementalActiveDraw && canIncrementallyReplaceWholeStrokeTexture(stroke)) {
-            return drawIncrementalWholeStrokeTexture(canvas, stroke, primaryStampStartIndex, dualStampStartIndex)
-        }
-        val grainPath = stroke.grainAssetPath ?: return false
-        val material = brushResources.grainMaterial(grainPath) ?: return false
-        val strokeBounds = committedScene.pixelBoundsFor(stroke, width, height) ?: return false
-        val clip = canvas.clipBounds
-        val left = maxOf(strokeBounds.left, clip.left, 0)
-        val top = maxOf(strokeBounds.top, clip.top, 0)
-        val right = minOf(strokeBounds.right, clip.right, width)
-        val bottom = minOf(strokeBounds.bottom, clip.bottom, height)
-        if (right <= left || bottom <= top) return true
-        val contentWidth = right - left
-        val contentHeight = bottom - top
-        val existing = wholeStrokeTextureBitmap
-        val scratch = if (existing == null || existing.isRecycled || existing.width < contentWidth || existing.height < contentHeight) {
-            existing?.recycle()
-            runCatching {
-                Bitmap.createBitmap(
-                    maxOf(contentWidth, existing?.width ?: 0),
-                    maxOf(contentHeight, existing?.height ?: 0),
-                    Bitmap.Config.ARGB_8888,
-                )
-            }.getOrNull()?.also { wholeStrokeTextureBitmap = it }
-        } else existing
-        scratch ?: return false
-        val scratchCanvas = Canvas(scratch)
-        val checkpoint = scratchCanvas.save()
-        scratchCanvas.clipRect(0, 0, contentWidth, contentHeight)
-        scratchCanvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
-        scratchCanvas.translate(-left.toFloat(), -top.toFloat())
-        drawStrokeContent(
-            scratchCanvas,
-            stroke.copy(
-                grainAssetPath = null,
-                grainDensity = 0f,
-                grainApplyPerPlot = true,
-                alphaThresholdEnabled = false,
-            ),
-            primaryStampStartIndex,
-            dualStampStartIndex,
+    private fun v5TipRequest(path: String, secondary: Boolean = false, eraser: Boolean = false): BrushTipMaskRequest {
+        if (eraser) return BrushTipMaskRequest(
+            path = path,
+            hardness = eraserHardness.coerceIn(0f, 1f),
+            antiAliasMode = brushAntiAliasMode,
         )
-        scratchCanvas.restoreToCount(checkpoint)
-        val grainOffset = GrainBehavior.offset(stroke.renderSeed, stroke.grainOffsetJitter)
-        CspStrokeTextureCompositor.applyInPlace(
-            strokeBitmap = scratch,
-            contentWidth = contentWidth,
-            contentHeight = contentHeight,
-            originX = left,
-            originY = top,
-            pageWidth = width,
-            pageHeight = height,
-            material = material,
-            density = stroke.grainDensity,
-            scalePercent = stroke.grainScale,
-            rotationDegrees = stroke.grainRotationDegrees,
-            offsetX = grainOffset.x,
-            offsetY = grainOffset.y,
-            filteringMode = stroke.grainFilteringMode,
-            brightness = stroke.grainBrightness,
-            contrast = stroke.grainContrast,
-            reversed = stroke.grainReversed,
-            emphasized = stroke.grainEmphasized,
-            compositeMode = stroke.grainCompositeMode,
-            alphaThresholdEnabled = stroke.alphaThresholdEnabled,
-            alphaThreshold = stroke.alphaThreshold,
-        )
-        canvas.drawBitmap(scratch, Rect(0, 0, contentWidth, contentHeight), Rect(left, top, right, bottom), null)
-        return true
-    }
-
-    /** Maintains the untextured union for the active stroke and replaces only pixels touched by
-     * newly plotted tips. This keeps CSP's per-stroke semantics without quadratically replaying the
-     * entire history on every input packet. The front buffer persists between callbacks, so SRC is
-     * intentional: a threshold/Outline result is allowed to become less opaque after union update. */
-    private fun drawIncrementalWholeStrokeTexture(
-        canvas: Canvas,
-        stroke: InkStroke,
-        primaryStampStartIndex: Int,
-        dualStampStartIndex: Int,
-    ): Boolean {
-        val grainPath = stroke.grainAssetPath ?: return false
-        val material = brushResources.grainMaterial(grainPath) ?: return false
-        val program = stroke.copy(points = emptyList(), masks = emptyList())
-        val existingCoverage = activeWholeTextureCoverageBitmap
-        val coverage = if (existingCoverage == null || existingCoverage.isRecycled || existingCoverage.width < width || existingCoverage.height < height) {
-            existingCoverage?.recycle()
-            runCatching {
-                Bitmap.createBitmap(
-                    maxOf(width, existingCoverage?.width ?: 0),
-                    maxOf(height, existingCoverage?.height ?: 0),
-                    Bitmap.Config.ARGB_8888,
-                )
-            }.getOrNull()?.also { activeWholeTextureCoverageBitmap = it }
-        } else existingCoverage
-        coverage ?: return false
-        val reset = activeWholeTextureStrokeId != stroke.id ||
-            activeWholeTextureProgram != program ||
-            activeWholeTexturePageWidth != width || activeWholeTexturePageHeight != height ||
-            primaryStampStartIndex <= 0 || activeWholeTexturePointCount > stroke.points.size
-        val coverageCanvas = Canvas(coverage)
-        if (reset) {
-            val clearCheckpoint = coverageCanvas.save()
-            coverageCanvas.clipRect(0, 0, width, height)
-            coverageCanvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
-            coverageCanvas.restoreToCount(clearCheckpoint)
-        }
-        val firstDirtyPoint = if (reset) 0 else (activeWholeTexturePointCount - 1).coerceIn(0, stroke.points.lastIndex)
-        val dirtyStroke = if (firstDirtyPoint == 0) stroke else stroke.copy(points = stroke.points.subList(firstDirtyPoint, stroke.points.size))
-        val dirty = committedScene.pixelBoundsFor(dirtyStroke, width, height) ?: return false
-        val coverageCheckpoint = coverageCanvas.save()
-        coverageCanvas.clipRect(dirty.left, dirty.top, dirty.right, dirty.bottom)
-        drawStrokeContent(
-            coverageCanvas,
-            stroke.copy(
-                grainAssetPath = null,
-                grainDensity = 0f,
-                grainApplyPerPlot = true,
-                alphaThresholdEnabled = false,
-            ),
-            if (reset) 0 else primaryStampStartIndex,
-            if (reset) 0 else dualStampStartIndex,
-        )
-        coverageCanvas.restoreToCount(coverageCheckpoint)
-        activeWholeTextureStrokeId = stroke.id
-        activeWholeTextureProgram = program
-        activeWholeTexturePointCount = stroke.points.size
-        activeWholeTexturePageWidth = width
-        activeWholeTexturePageHeight = height
-
-        val contentWidth = dirty.width
-        val contentHeight = dirty.height
-        val existingScratch = wholeStrokeTextureBitmap
-        val scratch = if (existingScratch == null || existingScratch.isRecycled || existingScratch.width < contentWidth || existingScratch.height < contentHeight) {
-            existingScratch?.recycle()
-            runCatching {
-                Bitmap.createBitmap(
-                    maxOf(contentWidth, existingScratch?.width ?: 0),
-                    maxOf(contentHeight, existingScratch?.height ?: 0),
-                    Bitmap.Config.ARGB_8888,
-                )
-            }.getOrNull()?.also { wholeStrokeTextureBitmap = it }
-        } else existingScratch
-        scratch ?: return false
-        val scratchCanvas = Canvas(scratch)
-        val scratchCheckpoint = scratchCanvas.save()
-        scratchCanvas.clipRect(0, 0, contentWidth, contentHeight)
-        scratchCanvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
-        scratchCanvas.drawBitmap(
-            coverage,
-            Rect(dirty.left, dirty.top, dirty.right, dirty.bottom),
-            Rect(0, 0, contentWidth, contentHeight),
-            null,
-        )
-        scratchCanvas.restoreToCount(scratchCheckpoint)
-        val grainOffset = GrainBehavior.offset(stroke.renderSeed, stroke.grainOffsetJitter)
-        CspStrokeTextureCompositor.applyInPlace(
-            scratch, contentWidth, contentHeight, dirty.left, dirty.top, width, height, material,
-            stroke.grainDensity, stroke.grainScale, stroke.grainRotationDegrees,
-            grainOffset.x, grainOffset.y, stroke.grainFilteringMode,
-            stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed,
-            stroke.grainEmphasized, stroke.grainCompositeMode,
-            stroke.alphaThresholdEnabled, stroke.alphaThreshold,
-        )
-        canvas.drawBitmap(
-            scratch,
-            Rect(0, 0, contentWidth, contentHeight),
-            Rect(dirty.left, dirty.top, dirty.right, dirty.bottom),
-            wholeStrokeReplacementPaint,
-        )
-        return true
-    }
-
-    private fun canIncrementallyReplaceWholeStrokeTexture(stroke: InkStroke): Boolean {
-        val layerId = stroke.layerId
-        return stroke.masks.isEmpty() && stroke.opacity >= .999f &&
-            ProcreateBrushBlend.normalize(stroke.procreateBrushBlendMode) == ProcreateBrushBlend.NORMAL &&
-            (layerOpacities[layerId] ?: 1f) >= .999f &&
-            (layerBlendModes[layerId] ?: LayerBlendMode.NORMAL) == LayerBlendMode.NORMAL &&
-            layerId !in clippedLayers && layerId !in alphaLockedLayers && layerMasks[layerId]?.enabled != true &&
-            layerElementBitmaps.isEmpty() && rasterLayerTileSurfaces.isEmpty()
-    }
-
-    private fun drawStampedStroke(
-        canvas: Canvas,
-        stroke: InkStroke,
-        tips: List<Bitmap>,
-        dualTips: List<Bitmap>,
-        tipPaths: List<String>,
-        grainOffsetX: Float,
-        grainOffsetY: Float,
-        stampStartIndex: Int = 0,
-        dualStampStartIndex: Int = 0,
-    ) {
-        if (stroke.dualBrush && dualTips.isNotEmpty()) {
-            drawCspDualBrushStroke(
-                canvas,
-                stroke,
-                tips,
-                dualTips,
-                tipPaths,
-                grainOffsetX,
-                grainOffsetY,
-                stampStartIndex,
-                dualStampStartIndex,
+        return if (secondary) {
+            BrushTipMaskRequest(
+                path = path,
+                hardness = dualHardness.coerceIn(0f, 1f),
+                grainPath = dualGrainAssetPath.takeIf { dualGrainApplyPerPlot },
+                grainDensity = dualGrainDensity.coerceIn(0f, 1f),
+                grainScale = dualGrainScale,
+                grainRotation = dualGrainRotationDegrees,
+                grainBrightness = dualGrainBrightness,
+                grainContrast = dualGrainContrast,
+                grainReversed = dualGrainReversed,
+                grainEmphasized = dualGrainEmphasized,
+                grainCompositeMode = dualGrainCompositeMode,
+                grainFilteringMode = dualGrainFilteringMode,
+                antiAliasMode = dualAntiAliasMode,
+                alphaThresholdEnabled = alphaThresholdEnabled,
+                alphaThreshold = alphaThreshold,
             )
-            return
-        }
-        // A CSP Dual Brush combines its two stamp streams first, then deposits
-        // that single result. Isolating the stroke prevents the secondary mode
-        // from accidentally blending with older strokes or the page itself.
-        val isolateStroke = stroke.blendTipsWithDarken || stroke.dualBrush && dualTips.isNotEmpty()
-        val compositeLayer = if (isolateStroke) canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null) else -1
-        paint.isFilterBitmap = CspAntiAlias.enabled(stroke.antiAliasMode)
-        paint.blendMode = if (stroke.blendTipsWithDarken) BlendMode.DARKEN else null
-        val referenceScale = width.coerceAtLeast(1) / REFERENCE_WIDTH
-        val sampledPoints = primaryStampedPoints(stroke)
-        val falloff = app.inkloom.document.StrokeFalloff.factors(sampledPoints, width.toFloat(), height.toFloat(), stroke.width * referenceScale, stroke.strokeFalloff)
-        val safeStart = stampStartIndex.coerceIn(0, sampledPoints.size)
-        val containsLocalPigment = stroke.points.any { it.pigmentArgb != null }
-        if (tips.size == 1 && BrushProgramBatchRenderer.draw(
-                canvas,
-                paint,
-                stroke,
-                tips.single(),
-                sampledPoints,
-                safeStart,
-                width.toFloat(),
-                height.toFloat(),
-                containsLocalPigment,
-            )) {
-            paint.blendMode = null
-            if (compositeLayer >= 0) canvas.restoreToCount(compositeLayer)
-            paint.colorFilter = null
-            return
-        }
-        val reuseRandomState = isCurrentActiveStroke(stroke) && safeStart > 0
-        val scatterStates = if (rasterIncrementalRendering) rasterPrimaryScatterRandoms else activePrimaryScatterRandoms
-        val rotationStates = if (rasterIncrementalRendering) rasterPrimaryRotationRandoms else activePrimaryRotationRandoms
-        val scatterRandom = (if (reuseRandomState) scatterStates[stroke.id] else null)
-            ?: java.util.Random(stroke.renderSeed.toLong())
-        val rotationRandom = (if (reuseRandomState) rotationStates[stroke.id] else null)
-            ?: java.util.Random(stroke.renderSeed.toLong() xor 0x49A2B31DL)
-        if (!reuseRandomState || stroke.id !in scatterStates || stroke.id !in rotationStates) {
-            advanceStampRandoms(scatterRandom, rotationRandom, stroke, sampledPoints, safeStart, dual = false)
-        }
-        val taper = strokeTaperFactors(stroke, sampledPoints)
-        val clipBounds = canvas.clipBounds
-        for (index in safeStart until sampledPoints.size) {
-            val point = sampledPoints[index]
-            val stampsAtPoint = BrushStampCount.resolve(stroke.stampCount, stroke.stampCountJitter, stroke.renderSeed, index)
-            val x = point.x * width
-            val y = point.y * height
-            val dynamics = BrushProgramRuntime.evaluateDab(stroke, point)
-            val brushDiameter = (stroke.width * referenceScale * (taper?.size?.get(index) ?: 1f) * dynamics.size).coerceAtLeast(.25f)
-            val diameter = if (stroke.spray) SprayGeometry.particleDiameter(brushDiameter, SprayDynamics.particleSize(stroke, point), stroke.sprayParticleSizeUnit, stroke.sprayParticleSizeSyncBrushSize, width.toFloat()) else brushDiameter
-            val scatterRadius = if (stroke.spray) brushDiameter / 2f * stroke.spraySpread.coerceIn(0f, 4f) else 0f
-            val transformedDiameter = diameter * maxOf(1f, stroke.thickness.coerceIn(.05f, 2f) * dynamics.thickness) * 1.5f
-            val influenceRadius = scatterRadius + transformedDiameter +
-                app.inkloom.document.StrokePathJitter.maximumRadius(diameter, stroke.strokePathJitter, stroke.strokePathLongitudinalJitter) +
-                BrushBlur.radiusPixels(stroke.blur * dynamics.blur, stroke.blurUnit, stroke.blurLinkedToSize, diameter, stroke.width * referenceScale, width.toFloat()) +
-                if (stroke.waterEdgeEnabled) WaterEdge.distancePixels(stroke.waterEdgeRadius, stroke.waterEdgeRadiusUnit, width.toFloat()) else 0f
-            if (x + influenceRadius < clipBounds.left || x - influenceRadius > clipBounds.right ||
-                y + influenceRadius < clipBounds.top || y - influenceRadius > clipBounds.bottom
-            ) {
-                repeat(stampsAtPoint) {
-                    if (stroke.spray) { scatterRandom.nextFloat(); scatterRandom.nextFloat() }
-                    rotationRandom.nextFloat()
-                }
-                continue
-            }
-            val followsStroke = BrushStampRotation.followsStroke(stroke, dual = false)
-            val hasPathJitter = stroke.strokePathJitter > .0001f || stroke.strokePathLongitudinalJitter > .0001f
-            val graphiteTiltWidth = app.inkloom.document.GraphiteFootprint.tiltWidthFactor(stroke, point)
-            val needsStrokeDirection = followsStroke || hasPathJitter || graphiteTiltWidth > 1.0001f
-            val strokeDirection = if (needsStrokeDirection) StrokeStampSampler.directionDegrees(sampledPoints, index, width.toFloat(), height.toFloat()) else 0f
-            repeat(stampsAtPoint) stamp@ { repeatIndex ->
-            val sequenceIndex = index * 16 + repeatIndex
-            val tipIndex = BrushTipSequence.index(stroke.tipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed, stroke.ribbon) ?: return@stamp
-            val offset = if (stroke.spray) SprayGeometry.offset(brushDiameter / 2f * stroke.spraySpread.coerceIn(0f, 4f), scatterRandom.nextFloat(), scatterRandom.nextFloat(), stroke.sprayBias) else app.inkloom.document.SprayOffset(0f, 0f)
-            val pathOffset = app.inkloom.document.StrokePathJitter.offset(stroke.renderSeed, sequenceIndex, strokeDirection, diameter, stroke.strokePathJitter, stroke.strokePathLongitudinalJitter)
-            val drawX = x + offset.x + app.inkloom.document.StrokePathJitter.unpackX(pathOffset)
-            val drawY = y + offset.y + app.inkloom.document.StrokePathJitter.unpackY(pathOffset)
-            val spatialGrain = stroke.grainAssetPath != null && (GrainBehavior.requiresPerDabSampling(stroke.grainMovement, stroke.grainZoom) || GrainBehavior.requiresPerDabRotation(stroke.grainStrokeRotation) || stroke.tiltSizeCompression)
-            val grainSample = if (spatialGrain) GrainBehavior.sample(
-                baseOffset = app.inkloom.document.GrainOffset(grainOffsetX, grainOffsetY),
-                movement = stroke.grainMovement,
-                zoom = if (stroke.tiltSizeCompression) 1f else stroke.grainZoom,
-                scalePercent = stroke.grainScale,
-                centerX = drawX,
-                centerY = drawY,
-                diameter = if (stroke.tiltSizeCompression) stroke.width * referenceScale else diameter,
-            ) else null
-            val grainRotation = GrainBehavior.rotationDegrees(stroke.grainRotationDegrees, stroke.grainStrokeRotation, strokeDirection)
-            val tip = if (stroke.grainAssetPath != null && (GrainDynamics.isDynamic(stroke) || spatialGrain)) {
-                tipPaths.getOrNull(tipIndex)?.let { path ->
-                    loadTip(path, stroke.hardness, stroke.grainAssetPath, GrainDynamics.density(stroke, point), grainSample?.scalePercent ?: stroke.grainScale, grainRotation, stroke.grainBrightness, stroke.grainContrast, stroke.grainReversed, stroke.grainEmphasized, grainSample?.offset?.x ?: grainOffsetX, grainSample?.offset?.y ?: grainOffsetY, stroke.grainCompositeMode, stroke.grainFilteringMode, stroke.antiAliasMode, stroke.alphaThresholdEnabled, stroke.alphaThreshold)
-                } ?: tips[tipIndex]
-            } else tips[tipIndex]
-            val thicknessScale = stroke.thickness.coerceIn(.05f, 2f) * dynamics.thickness
-            val roundness = ShapeRoundnessJitter.factors(stroke.renderSeed, sequenceIndex, stroke.shapeRoundnessHorizontalJitter, stroke.shapeRoundnessVerticalJitter)
-            val tipScale = BrushTipTransform.scale(tip.width, tip.height, diameter, thicknessScale, stroke.thicknessVertical, roundness.horizontal, roundness.vertical)
-            val flip = BrushTipFlip.signs(stroke.tipFlipHorizontalMode, stroke.tipFlipVerticalMode, stroke.tipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed)
-            val scaleX = tipScale.x * flip.x
-            val scaleY = tipScale.y * flip.y * graphiteTiltWidth
-            val angle = if (graphiteTiltWidth > 1.0001f) strokeDirection else BrushStampRotation.degrees(
-                stroke = stroke,
-                dual = false,
-                stylusOrientationRadians = point.orientation,
-                strokeDirectionDegrees = if (followsStroke) strokeDirection else 0f,
-                randomUnit = rotationRandom.nextFloat(),
+        } else {
+            BrushTipMaskRequest(
+                path = path,
+                hardness = brushHardness.coerceIn(0f, 1f),
+                grainPath = grainAssetPath.takeIf { grainApplyPerPlot },
+                grainDensity = grainDensity.coerceIn(0f, 1f),
+                grainScale = grainScale,
+                grainRotation = grainRotationDegrees,
+                grainBrightness = grainBrightness,
+                grainContrast = grainContrast,
+                grainReversed = grainReversed,
+                grainEmphasized = grainEmphasized,
+                grainCompositeMode = grainCompositeMode,
+                grainFilteringMode = grainFilteringMode,
+                antiAliasMode = brushAntiAliasMode,
+                alphaThresholdEnabled = alphaThresholdEnabled,
+                alphaThreshold = alphaThreshold,
             )
-            val matrix = primaryStampMatrix.apply {
-                reset()
-                postTranslate(-tip.width / 2f, -tip.height / 2f)
-                postScale(scaleX, scaleY)
-                postRotate(angle)
-                postTranslate(drawX, drawY)
-            }
-            val jitteredColor = BrushColorJitter.argb(stroke, point, sequenceIndex)
-            paint.colorFilter = srcInColorFilter(jitteredColor)
-            // PENCIL_RENDERER_V4: procedural paper grain anchored in document coordinates modulates
-            // each dab's deposition by the grain value at the dab's document position. It is a
-            // separate concept from the brush-tip tooth (which stays in the tip bitmap). Consecutive
-            // fixed-spacing dabs land on decorrelated paper grain, so the authored dab spacing no
-            // longer reads as the dominant visible periodicity.
-            val grainAlpha = app.inkloom.document.GraphiteFootprint.paperGrainAlpha(
-                stroke,
-                app.inkloom.engine.v3.brush.MaterialCoordinateContext.document(drawX, drawY),
-            ) * app.inkloom.document.GraphiteFootprint.tiltGrainDensity(stroke, point)
-            val mainAlpha = (ProcreateRendering.depositedAlpha(stroke.procreateRenderingMode, stroke.flow * dynamics.depositedAlpha * grainAlpha * (falloff?.get(index) ?: 1f) * (taper?.opacity?.get(index) ?: 1f)) * 255f).toInt()
-            val tiltBleedAmount = stroke.tiltBleed.coerceIn(0f, 1f) * app.inkloom.document.BrushTilt.response(point, stroke.tiltBleedStart)
-            if ((stroke.waterEdgeEnabled && stroke.waterEdgeOpacity > 0f) || tiltBleedAmount > .001f) {
-                val edgeRadius = WaterEdge.distancePixels(stroke.waterEdgeRadius, stroke.waterEdgeRadiusUnit, width.toFloat()) + diameter * tiltBleedAmount * .18f
-                val edgeTipScale = BrushTipTransform.scale(tip.width, tip.height, diameter + edgeRadius * 2f, thicknessScale, stroke.thicknessVertical, roundness.horizontal, roundness.vertical)
-                val edgeMatrix = edgeStampMatrix.apply { reset(); postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(edgeTipScale.x * flip.x, edgeTipScale.y * flip.y); postRotate(angle); postTranslate(drawX, drawY) }
-                paint.colorFilter = srcInColorFilter(WaterEdge.darkenArgb(jitteredColor, stroke.waterEdgeDarkness))
-                paint.alpha = (mainAlpha * maxOf(stroke.waterEdgeOpacity.coerceIn(0f, 1f), tiltBleedAmount * .55f)).toInt().coerceIn(1, 255)
-                val blur = WaterEdge.distancePixels(stroke.waterEdgeBlur, stroke.waterEdgeBlurUnit, width.toFloat()) + diameter * tiltBleedAmount * .08f
-                paint.maskFilter = cachedBlurMask(blur)
-                paint.blendMode = ProcreateBrushBlend.resolve(stroke.procreateBurntEdgeBlendMode)
-                canvas.drawBitmap(tip, edgeMatrix, paint)
-                paint.blendMode = if (stroke.blendTipsWithDarken) BlendMode.DARKEN else null
-                paint.maskFilter = null
-            }
-            paint.colorFilter = srcInColorFilter(jitteredColor)
-            paint.alpha = mainAlpha
-            paint.maskFilter = brushBlurMask(stroke, point, diameter, stroke.width * referenceScale, width.toFloat())
-            canvas.drawBitmap(tip, matrix, paint)
-            paint.maskFilter = null
-            }
-        }
-        paint.blendMode = null
-        if (isCurrentActiveStroke(stroke)) {
-            scatterStates[stroke.id] = scatterRandom
-            rotationStates[stroke.id] = rotationRandom
-        }
-        if (compositeLayer >= 0) canvas.restoreToCount(compositeLayer)
-        paint.colorFilter = null
-    }
-
-    /**
-     * Sampling remains global for a live stamped stroke. That lets a cached prefix and a freshly
-     * drawn tail share exactly the same spacing, sequence index and random stream as the final
-     * committed stroke, rather than visibly changing shape on pen-up.
-     */
-    private fun primaryStampedPoints(stroke: InkStroke): List<StrokePoint> {
-        if (isCurrentActiveStroke(stroke)) {
-            val samplers = if (rasterIncrementalRendering) rasterPrimarySamples else activePrimarySamples
-            val sampler = samplers.getOrPut(stroke.id) {
-                StrokeTrace.markOnce(StrokeTrace.traceBaseId(stroke.id), StrokeTrace.STAGE_FIRST_DAB)
-                BrushProgramRuntime.newIncrementalSampler(stroke, width.toFloat(), height.toFloat(), dual = false)
-            }
-            return BrushProgramRuntime.updateIncrementalSampler(sampler, stroke, width.toFloat(), dual = false)
-        }
-        return BrushProgramRuntime.sampleStampPoints(stroke, width.toFloat(), height.toFloat(), dual = false)
-    }
-
-    private fun dualStampedPoints(stroke: InkStroke): List<StrokePoint> {
-        if (isCurrentActiveStroke(stroke)) {
-            val sampler = activeDualSamples.getOrPut(stroke.id) {
-                StrokeTrace.markOnce(StrokeTrace.traceBaseId(stroke.id), StrokeTrace.STAGE_FIRST_DAB)
-                BrushProgramRuntime.newIncrementalSampler(stroke, width.toFloat(), height.toFloat(), dual = true)
-            }
-            return BrushProgramRuntime.updateIncrementalSampler(sampler, stroke, width.toFloat(), dual = true)
-        }
-        return BrushProgramRuntime.sampleStampPoints(stroke, width.toFloat(), height.toFloat(), dual = true)
-    }
-
-    private fun isCurrentActiveStroke(stroke: InkStroke): Boolean =
-        activeTool != null && (stroke.id == currentStrokeId || stroke.id.startsWith("$currentStrokeId-sym-"))
-
-    private fun advanceStampRandoms(
-        scatterRandom: java.util.Random,
-        rotationRandom: java.util.Random,
-        stroke: InkStroke,
-        sampledPoints: List<StrokePoint>,
-        startIndex: Int,
-        dual: Boolean,
-    ) {
-        for (index in 0 until startIndex.coerceAtMost(sampledPoints.size)) {
-            val stampCount = if (dual) {
-                BrushStampCount.resolve(stroke.dualStampCount, stroke.dualStampCountJitter, stroke.renderSeed, index, dual = true)
-            } else {
-                BrushStampCount.resolve(stroke.stampCount, stroke.stampCountJitter, stroke.renderSeed, index)
-            }
-            repeat(stampCount) {
-                if (if (dual) stroke.dualSpray else stroke.spray) {
-                    scatterRandom.nextFloat()
-                    scatterRandom.nextFloat()
-                }
-                rotationRandom.nextFloat()
-            }
         }
     }
 
-    private fun drawCspDualBrushStroke(
-        canvas: Canvas,
-        stroke: InkStroke,
-        primaryTips: List<Bitmap>,
-        secondaryTips: List<Bitmap>,
-        tipPaths: List<String>,
-        grainOffsetX: Float,
-        grainOffsetY: Float,
-        primaryStartIndex: Int,
-        secondaryStartIndex: Int,
-    ) {
-        if (isCurrentActiveStroke(stroke) && incrementalActiveDraw &&
-            (stroke.dualGrainAssetPath == null || stroke.dualGrainDensity <= 0f || stroke.dualGrainApplyPerPlot)
-        ) {
-            drawActiveCspDualBrushStroke(
-                canvas,
-                stroke,
-                primaryTips,
-                secondaryTips,
-                tipPaths,
-                grainOffsetX,
-                grainOffsetY,
-                primaryStartIndex,
-                secondaryStartIndex,
-            )
-            return
-        }
-        val bounds = dualBrushBounds(stroke) ?: return
-        val primary = Bitmap.createBitmap(bounds.width(), bounds.height(), Bitmap.Config.ARGB_8888)
-        val secondary = Bitmap.createBitmap(bounds.width(), bounds.height(), Bitmap.Config.ARGB_8888)
-        val output = Bitmap.createBitmap(bounds.width(), bounds.height(), Bitmap.Config.ARGB_8888)
-        try {
-            Canvas(primary).apply { translate(-bounds.left.toFloat(), -bounds.top.toFloat()) }.also { primaryCanvas ->
-                drawStampedStroke(
-                    primaryCanvas,
-                    stroke.copy(dualBrush = false),
-                    primaryTips,
-                    emptyList(),
-                    tipPaths,
-                    grainOffsetX,
-                    grainOffsetY,
-                    primaryStartIndex,
-                    0,
-                )
-            }
-            paint.isFilterBitmap = CspAntiAlias.enabled(stroke.dualAntiAliasMode)
-            Canvas(secondary).apply { translate(-bounds.left.toFloat(), -bounds.top.toFloat()) }.also { secondaryCanvas ->
-                drawDualStampStream(secondaryCanvas, stroke, secondaryTips, secondaryStartIndex)
-            }
-            applyDualWholeStrokeTexture(secondary, bounds.left, bounds.top, stroke)
-            val localBounds = Rect(0, 0, output.width, output.height)
-            CspDualBrushCompositor.compositeRegion(primary, secondary, output, localBounds, stroke.dualCompositeMode, stroke.dualApplyRgb)
-            canvas.drawBitmap(output, bounds.left.toFloat(), bounds.top.toFloat(), dualCompositeOutputPaint)
-        } finally {
-            primary.recycle()
-            secondary.recycle()
-            output.recycle()
-            paint.blendMode = null
-            paint.colorFilter = null
-            paint.maskFilter = null
-        }
-    }
-
-    /**
-     * The front buffer keeps the two source streams independently. New dabs update only their
-     * conservative dirty rectangle, so non-associative CSP modes remain exact without replaying a
-     * growing imported stroke on every display frame.
-     */
-    private fun drawActiveCspDualBrushStroke(
-        canvas: Canvas,
-        stroke: InkStroke,
-        primaryTips: List<Bitmap>,
-        secondaryTips: List<Bitmap>,
-        tipPaths: List<String>,
-        grainOffsetX: Float,
-        grainOffsetY: Float,
-        primaryStartIndex: Int,
-        secondaryStartIndex: Int,
-    ) {
-        val surface = activeCspDualBrushSurface(stroke)
-        if (primaryStartIndex == 0 && secondaryStartIndex == 0) surface.clear()
-        val dirty = activeDualBrushDirtyBounds(stroke, primaryStartIndex, secondaryStartIndex) ?: return
-        drawStampedStroke(
-            Canvas(surface.primary),
-            stroke.copy(dualBrush = false),
-            primaryTips,
-            emptyList(),
-            tipPaths,
-            grainOffsetX,
-            grainOffsetY,
-            primaryStartIndex,
-            0,
-        )
-        paint.isFilterBitmap = CspAntiAlias.enabled(stroke.dualAntiAliasMode)
-        drawDualStampStream(Canvas(surface.secondary), stroke, secondaryTips, secondaryStartIndex)
-        CspDualBrushCompositor.compositeRegion(
-            surface.primary,
-            surface.secondary,
-            surface.output,
-            dirty,
-            stroke.dualCompositeMode,
-            stroke.dualApplyRgb,
-        )
-        val checkpoint = canvas.save()
-        canvas.clipRect(dirty)
-        if (incrementalActiveDraw) canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
-        canvas.drawBitmap(surface.output, dirty, dirty, dualCompositeOutputPaint)
-        canvas.restoreToCount(checkpoint)
-        paint.blendMode = null
-        paint.colorFilter = null
-        paint.maskFilter = null
-    }
-
-    private fun activeCspDualBrushSurface(stroke: InkStroke): ActiveCspDualBrushSurface {
-        val existing = activeCspDualBrushSurfaces[stroke.id]
-        if (existing != null && existing.width == width && existing.height == height && existing.applyRgb == stroke.dualApplyRgb) return existing
-        existing?.recycle()
-        return ActiveCspDualBrushSurface(width.coerceAtLeast(1), height.coerceAtLeast(1), stroke.dualApplyRgb).also {
-            activeCspDualBrushSurfaces[stroke.id] = it
-        }
-    }
-
-    private fun applyDualWholeStrokeTexture(target: Bitmap, pageLeft: Int, pageTop: Int, stroke: InkStroke) {
-        if (stroke.dualGrainApplyPerPlot || stroke.dualGrainDensity <= 0f) return
-        val material = stroke.dualGrainAssetPath?.let(brushResources::grainMaterial) ?: return
-        val grainOffset = GrainBehavior.offset(stroke.renderSeed xor DUAL_GRAIN_SEED, stroke.dualGrainOffsetJitter)
-        CspStrokeTextureCompositor.applyInPlace(
-            target, target.width, target.height, pageLeft, pageTop, width, height, material,
-            stroke.dualGrainDensity, stroke.dualGrainScale, stroke.dualGrainRotationDegrees,
-            grainOffset.x, grainOffset.y, stroke.dualGrainFilteringMode,
-            stroke.dualGrainBrightness, stroke.dualGrainContrast, stroke.dualGrainReversed,
-            stroke.dualGrainEmphasized, stroke.dualGrainCompositeMode,
-            stroke.alphaThresholdEnabled, stroke.alphaThreshold,
-        )
-    }
-
-    private fun activeDualBrushDirtyBounds(stroke: InkStroke, primaryStartIndex: Int, secondaryStartIndex: Int): Rect? {
-        val primaryPoints = primaryStampedPoints(stroke)
-        val secondaryPoints = dualStampedPoints(stroke)
-        val affected = buildList {
-            addAll(primaryPoints.subList(primaryStartIndex.coerceIn(0, primaryPoints.size), primaryPoints.size))
-            addAll(secondaryPoints.subList(secondaryStartIndex.coerceIn(0, secondaryPoints.size), secondaryPoints.size))
-        }
-        if (affected.isEmpty()) return null
-        val boundsIndex = StrokeTileIndex().apply { rebuild(emptyList(), width, height) }
-        val expansion = boundsIndex.influenceRadiusPixels(stroke) + 4f
-        val left = kotlin.math.floor(affected.minOf(StrokePoint::x) * width - expansion).toInt().coerceIn(0, width)
-        val top = kotlin.math.floor(affected.minOf(StrokePoint::y) * height - expansion).toInt().coerceIn(0, height)
-        val right = ceil(affected.maxOf(StrokePoint::x) * width + expansion).toInt().coerceIn(left, width)
-        val bottom = ceil(affected.maxOf(StrokePoint::y) * height + expansion).toInt().coerceIn(top, height)
-        return Rect(left, top, right, bottom).takeUnless(Rect::isEmpty)
-    }
-
-    private fun dualBrushBounds(stroke: InkStroke): Rect? {
-        val index = StrokeTileIndex().apply { rebuild(listOf(stroke), width, height) }
-        val bounds = index.pixelBoundsFor(stroke) ?: return null
-        return Rect(bounds.left, bounds.top, bounds.right, bounds.bottom)
-    }
-
-    /** Draws only the secondary stream. CSP composition happens after both retained streams exist. */
-    private fun drawDualStampStream(canvas: Canvas, stroke: InkStroke, tips: List<Bitmap>, stampStartIndex: Int = 0) {
-        paint.blendMode = if (stroke.dualBlendTipsWithDarken) BlendMode.DARKEN else null
-        val referenceScale = width.coerceAtLeast(1) / REFERENCE_WIDTH
-        val sampledPoints = dualStampedPoints(stroke)
-        val falloff = app.inkloom.document.StrokeFalloff.factors(sampledPoints, width.toFloat(), height.toFloat(), stroke.width * referenceScale, stroke.strokeFalloff)
-        val safeStart = stampStartIndex.coerceIn(0, sampledPoints.size)
-        val reuseRandomState = isCurrentActiveStroke(stroke) && safeStart > 0
-        val scatterRandom = (if (reuseRandomState) activeDualScatterRandoms[stroke.id] else null)
-            ?: java.util.Random(stroke.renderSeed.toLong() xor DUAL_SCATTER_SEED)
-        val rotationRandom = (if (reuseRandomState) activeDualRotationRandoms[stroke.id] else null)
-            ?: java.util.Random(stroke.renderSeed.toLong() xor DUAL_ROTATION_SEED)
-        if (!reuseRandomState || stroke.id !in activeDualScatterRandoms || stroke.id !in activeDualRotationRandoms) {
-            advanceStampRandoms(scatterRandom, rotationRandom, stroke, sampledPoints, safeStart, dual = true)
-        }
-        val taper = strokeTaperFactors(stroke, sampledPoints)
-        val dualTipPaths = stroke.dualTipAssetPaths.ifEmpty { stroke.tipAssetPaths.ifEmpty { listOfNotNull(stroke.tipAssetPath) } }
-        val dualGrainOffset = GrainBehavior.offset(stroke.renderSeed xor DUAL_GRAIN_SEED, stroke.dualGrainOffsetJitter)
-        val clipBounds = canvas.clipBounds
-        for (index in safeStart until sampledPoints.size) {
-            val point = sampledPoints[index]
-            val stampsAtPoint = BrushStampCount.resolve(stroke.dualStampCount, stroke.dualStampCountJitter, stroke.renderSeed, index, dual = true)
-            val dynamics = BrushProgramRuntime.evaluateDab(stroke, point, dual = true)
-            val brushDiameter = (stroke.width * referenceScale * stroke.dualSizeScale.coerceIn(.01f, 8f) * (taper?.size?.get(index) ?: 1f) * dynamics.size).coerceAtLeast(.25f)
-            val diameter = if (stroke.dualSpray) SprayGeometry.particleDiameter(brushDiameter, SprayDynamics.dualParticleSize(stroke, point), stroke.dualSprayParticleSizeUnit, stroke.dualSprayParticleSizeSyncBrushSize, width.toFloat()) else brushDiameter
-            val x = point.x * width
-            val y = point.y * height
-            val scatterRadius = if (stroke.dualSpray) brushDiameter / 2f * stroke.dualSpraySpread.coerceIn(0f, 4f) else 0f
-            val transformedDiameter = diameter * maxOf(1f, stroke.dualThickness.coerceIn(.05f, 2f) * dynamics.thickness) * 1.5f
-            val influenceRadius = scatterRadius + transformedDiameter +
-                app.inkloom.document.StrokePathJitter.maximumRadius(diameter, stroke.dualStrokePathJitter, stroke.dualStrokePathLongitudinalJitter) +
-                BrushBlur.radiusPixels(stroke.blur * dynamics.blur, stroke.blurUnit, stroke.blurLinkedToSize, diameter, stroke.width * referenceScale * stroke.dualSizeScale.coerceIn(.01f, 8f), width.toFloat())
-            if (x + influenceRadius < clipBounds.left || x - influenceRadius > clipBounds.right ||
-                y + influenceRadius < clipBounds.top || y - influenceRadius > clipBounds.bottom
-            ) {
-                repeat(stampsAtPoint) {
-                    if (stroke.dualSpray) { scatterRandom.nextFloat(); scatterRandom.nextFloat() }
-                    rotationRandom.nextFloat()
-                }
-                continue
-            }
-            val followsStroke = BrushStampRotation.followsStroke(stroke, dual = true)
-            val hasPathJitter = stroke.dualStrokePathJitter > .0001f || stroke.dualStrokePathLongitudinalJitter > .0001f
-            val strokeDirection = if (followsStroke || hasPathJitter) StrokeStampSampler.directionDegrees(sampledPoints, index, width.toFloat(), height.toFloat()) else 0f
-            repeat(stampsAtPoint) stamp@ { repeatIndex ->
-            val sequenceIndex = index * 16 + repeatIndex
-            val tipIndex = BrushTipSequence.index(stroke.dualTipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed xor DUAL_SEQUENCE_SEED, stroke.dualRibbon) ?: return@stamp
-            val baseTip = tips[tipIndex]
-            val offset = if (stroke.dualSpray) SprayGeometry.offset(brushDiameter / 2f * stroke.dualSpraySpread.coerceIn(0f, 4f), scatterRandom.nextFloat(), scatterRandom.nextFloat(), stroke.dualSprayBias) else app.inkloom.document.SprayOffset(0f, 0f)
-            val pathOffset = app.inkloom.document.StrokePathJitter.offset(stroke.renderSeed, sequenceIndex, strokeDirection, diameter, stroke.dualStrokePathJitter, stroke.dualStrokePathLongitudinalJitter, dual = true)
-            val drawX = x + offset.x + app.inkloom.document.StrokePathJitter.unpackX(pathOffset)
-            val drawY = y + offset.y + app.inkloom.document.StrokePathJitter.unpackY(pathOffset)
-            val spatialGrain = stroke.dualGrainAssetPath != null &&
-                (GrainBehavior.requiresPerDabSampling(stroke.dualGrainMovement, stroke.dualGrainZoom) ||
-                    GrainBehavior.requiresPerDabRotation(stroke.dualGrainStrokeRotation))
-            val grainSample = if (spatialGrain) GrainBehavior.sample(
-                dualGrainOffset, stroke.dualGrainMovement, stroke.dualGrainZoom, stroke.dualGrainScale,
-                drawX, drawY, diameter,
-            ) else null
-            val grainRotation = GrainBehavior.rotationDegrees(stroke.dualGrainRotationDegrees, stroke.dualGrainStrokeRotation, strokeDirection)
-            val tip = if (stroke.dualGrainApplyPerPlot && stroke.dualGrainAssetPath != null &&
-                (GrainDynamics.isDualDynamic(stroke) || spatialGrain)
-            ) {
-                dualTipPaths.getOrNull(tipIndex)?.let { path ->
-                    loadTip(
-                        path, stroke.dualHardness, stroke.dualGrainAssetPath, GrainDynamics.dualDensity(stroke, point),
-                        grainSample?.scalePercent ?: stroke.dualGrainScale, grainRotation,
-                        stroke.dualGrainBrightness, stroke.dualGrainContrast, stroke.dualGrainReversed,
-                        stroke.dualGrainEmphasized, grainSample?.offset?.x ?: dualGrainOffset.x,
-                        grainSample?.offset?.y ?: dualGrainOffset.y, stroke.dualGrainCompositeMode,
-                        stroke.dualGrainFilteringMode, stroke.dualAntiAliasMode,
-                        stroke.alphaThresholdEnabled, stroke.alphaThreshold, stroke.dualApplyRgb,
-                    )
-                } ?: baseTip
-            } else baseTip
-            val roundness = ShapeRoundnessJitter.factors(stroke.renderSeed, sequenceIndex, stroke.dualShapeRoundnessHorizontalJitter, stroke.dualShapeRoundnessVerticalJitter, dual = true)
-            val tipScale = BrushTipTransform.scale(tip.width, tip.height, diameter, stroke.dualThickness.coerceIn(.05f, 2f) * dynamics.thickness, stroke.dualThicknessVertical, roundness.horizontal, roundness.vertical)
-            val flip = BrushTipFlip.signs(stroke.dualTipFlipHorizontalMode, stroke.dualTipFlipVerticalMode, stroke.dualTipSequenceMode, sequenceIndex, tips.size, stroke.renderSeed, dual = true)
-            val angle = BrushStampRotation.degrees(
-                stroke = stroke,
-                dual = true,
-                stylusOrientationRadians = point.orientation,
-                strokeDirectionDegrees = if (followsStroke) strokeDirection else 0f,
-                randomUnit = rotationRandom.nextFloat(),
-            )
-            val matrix = secondaryStampMatrix.apply { reset(); postTranslate(-tip.width / 2f, -tip.height / 2f); postScale(tipScale.x * flip.x, tipScale.y * flip.y); postRotate(angle); postTranslate(drawX, drawY) }
-            paint.colorFilter = if (stroke.dualApplyRgb) null else srcInColorFilter(BrushColorJitter.argb(stroke, point, sequenceIndex))
-            paint.alpha = (stroke.dualFlow.coerceIn(0f, 1f) * dynamics.depositedAlpha * (falloff?.get(index) ?: 1f) * (taper?.opacity?.get(index) ?: 1f)).coerceIn(0f, 1f).times(255).toInt()
-            paint.maskFilter = brushBlurMask(stroke, point, diameter, stroke.width * referenceScale * stroke.dualSizeScale.coerceIn(.01f, 8f), width.toFloat())
-            canvas.drawBitmap(tip, matrix, paint)
-            paint.maskFilter = null
-            }
-        }
-        paint.blendMode = null
-        if (isCurrentActiveStroke(stroke)) {
-            activeDualScatterRandoms[stroke.id] = scatterRandom
-            activeDualRotationRandoms[stroke.id] = rotationRandom
-        }
-    }
-
-    private fun strokeTaperFactors(stroke: InkStroke, points: List<StrokePoint>): StrokeTaper.DabFactors? =
-        if (!stroke.taperStartEnabled && !stroke.taperEndEnabled && stroke.procreateTaper.isDisabled()) null
-        else StrokeTaper.evaluate(stroke, points, width.toFloat(), height.toFloat())
-
-    private fun drawLinePoint(canvas: Canvas, stroke: InkStroke, point: StrokePoint, x: Float, y: Float, strokeWidth: Float, alpha: Int) {
-        val jitteredColor = BrushColorJitter.argb(stroke, point, point.timeMs.toInt())
-        if (hasWaterEdge(stroke, point)) {
-            configureWaterEdge(stroke, point, strokeWidth, alpha, jitteredColor)
-            paint.blendMode = ProcreateBrushBlend.resolve(stroke.procreateBurntEdgeBlendMode)
-            canvas.drawPoint(x, y, paint)
-            paint.blendMode = null
-        }
-        paint.maskFilter = brushBlurMask(stroke, point, strokeWidth, stroke.width * width.coerceAtLeast(1) / REFERENCE_WIDTH, width.toFloat()); paint.color = jitteredColor; paint.strokeWidth = strokeWidth; paint.alpha = alpha
-        canvas.drawPoint(x, y, paint)
-        paint.maskFilter = null
-    }
-
-    /** Photoshop's classic hard round brush is a continuous deposit. Drawing every input pair as
-     * an independently alpha-blended round-capped line creates a dark bead at every join. Build a
-     * single pressure-width ribbon instead, so joins are rasterized once and remain seamless. */
-    private fun drawContinuousRoundStroke(canvas: Canvas, stroke: InkStroke) {
-        val points = stroke.points
-        val scale = width.coerceAtLeast(1) / REFERENCE_WIDTH
-        val taper = strokeTaperFactors(stroke, points)
-        val radii = FloatArray(points.size)
-        var alphaSum = 0f
-        points.forEachIndexed { index, point ->
-            val dynamics = BrushProgramRuntime.evaluateDab(stroke, point)
-            radii[index] = stroke.width * scale * (taper?.size?.get(index) ?: 1f) * dynamics.size * .5f
-            alphaSum += stroke.flow * dynamics.depositedAlpha * (taper?.opacity?.get(index) ?: 1f)
-        }
-        val path = Path()
-        fun edge(index: Int, side: Float): Pair<Float, Float> {
-            val previous = points[(index - 1).coerceAtLeast(0)]
-            val next = points[(index + 1).coerceAtMost(points.lastIndex)]
-            val dx = (next.x - previous.x) * width
-            val dy = (next.y - previous.y) * height
-            val length = hypot(dx.toDouble(), dy.toDouble()).toFloat().coerceAtLeast(.001f)
-            val radius = radii[index]
-            return points[index].x * width - dy / length * radius * side to
-                points[index].y * height + dx / length * radius * side
-        }
-        points.indices.forEach { index ->
-            val edge = edge(index, 1f)
-            if (index == 0) path.moveTo(edge.first, edge.second) else path.lineTo(edge.first, edge.second)
-        }
-        points.indices.reversed().forEach { index ->
-            val edge = edge(index, -1f)
-            path.lineTo(edge.first, edge.second)
-        }
-        path.close()
-        val first = points.first()
-        val last = points.last()
-        path.addCircle(first.x * width, first.y * height, radii.first(), Path.Direction.CW)
-        path.addCircle(last.x * width, last.y * height, radii.last(), Path.Direction.CW)
-        val previousStyle = paint.style
-        paint.style = Paint.Style.FILL
-        paint.color = stroke.colorArgb.toInt()
-        paint.colorFilter = null
-        paint.maskFilter = null
-        paint.alpha = (alphaSum / points.size * 255f).toInt().coerceIn(0, 255)
-        canvas.drawPath(path, paint)
-        paint.style = previousStyle
-        paint.alpha = 255
-    }
-
-    /** Default Ink (and the classic PS No. 19) render as ONE uniform-deposit filled ribbon rather
-     * than independent BUTT-capped segment compositing, which scalloped at every join on curves
-     * (see CurveScallopingProfileTest / ContinuousVsSegmentTest). The ribbon cannot reproduce
-     * per-segment color jitter, blur, water edge, opacity/flow dynamics or opacity taper, so
-     * strokes carrying those features keep the per-segment path. */
-    private fun usesContinuousRibbon(stroke: InkStroke): Boolean {
-        if (stroke.brushId != "system-ps19" && stroke.brushId != "system-pen") return false
-        if (stroke.points.size <= 1 || stroke.strokeFalloff > .0001f) return false
-        if (stroke.opacityPressureEnabled || stroke.flowPressureEnabled) return false
-        // The ribbon emitter carries flow/opacity into the single filled ribbon (alphaSum), so a
-        // partial-flow classic round brush (PS19) still renders seamlessly. The full-flow gates
-        // below are kept for system-pen only, where a sub-100% deposit would be a visual surprise.
-        if (stroke.brushId == "system-pen" && (stroke.opacity < .999f || stroke.flow < .999f)) return false
-        if (stroke.blur > .0001f || stroke.waterEdgeEnabled || stroke.tiltBleed > .0001f) return false
-        if (stroke.colorJitterHueDegrees != 0f || stroke.colorJitterSaturation != 0f || stroke.colorJitterValue != 0f) return false
-        if (stroke.colorJitterPerStrokeEnabled ||
-            stroke.colorJitterStrokeHueDegrees != 0f || stroke.colorJitterStrokeSaturation != 0f || stroke.colorJitterStrokeValue != 0f
-        ) return false
-        if (!stroke.procreateColorDynamics.isDisabled()) return false
-        if (stroke.taperStartEnabled || stroke.taperEndEnabled || !stroke.procreateTaper.isDisabled()) return false
-        return true
-    }
-
-    private fun drawLineSegment(canvas: Canvas, stroke: InkStroke, point: StrokePoint, startX: Float, startY: Float, endX: Float, endY: Float, strokeWidth: Float, alpha: Int) {
-        val jitteredColor = BrushColorJitter.argb(stroke, point, point.timeMs.toInt())
-        if (hasWaterEdge(stroke, point)) {
-            configureWaterEdge(stroke, point, strokeWidth, alpha, jitteredColor)
-            paint.blendMode = ProcreateBrushBlend.resolve(stroke.procreateBurntEdgeBlendMode)
-            canvas.drawLine(startX, startY, endX, endY, paint)
-            paint.blendMode = null
-        }
-        paint.maskFilter = brushBlurMask(stroke, point, strokeWidth, stroke.width * width.coerceAtLeast(1) / REFERENCE_WIDTH, width.toFloat()); paint.color = jitteredColor; paint.strokeWidth = strokeWidth; paint.alpha = alpha
-        canvas.drawLine(startX, startY, endX, endY, paint)
-        paint.maskFilter = null
-    }
-
-    private fun brushBlurMask(stroke: InkStroke, point: StrokePoint, diameter: Float, baseDiameter: Float, pageWidth: Float): BlurMaskFilter? {
-        val gradation = stroke.tiltGradation.coerceIn(0f, 1f) * app.inkloom.document.BrushTilt.response(point, stroke.tiltGradationStart)
-        val radius = BrushBlur.radiusPixels(stroke.blur, stroke.blurUnit, stroke.blurLinkedToSize, diameter, baseDiameter, pageWidth) *
-            BrushProgramRuntime.evaluateDab(stroke, point).blur + diameter * gradation * .22f +
-            diameter * app.inkloom.document.WetMixDynamics.blurAmount(stroke, point) * .18f
-        return cachedBlurMask(radius)
-    }
-
-    private fun hasWaterEdge(stroke: InkStroke, point: StrokePoint): Boolean =
-        (stroke.waterEdgeEnabled && stroke.waterEdgeOpacity > 0f) ||
-            (stroke.tiltBleed > 0f && app.inkloom.document.BrushTilt.response(point, stroke.tiltBleedStart) > .001f)
-
-    private fun configureWaterEdge(stroke: InkStroke, point: StrokePoint, strokeWidth: Float, alpha: Int, color: Int) {
-        val tiltBleedAmount = stroke.tiltBleed.coerceIn(0f, 1f) * app.inkloom.document.BrushTilt.response(point, stroke.tiltBleedStart)
-        val radius = WaterEdge.distancePixels(stroke.waterEdgeRadius, stroke.waterEdgeRadiusUnit, width.toFloat()) + strokeWidth * tiltBleedAmount * .18f
-        paint.color = WaterEdge.darkenArgb(color, stroke.waterEdgeDarkness)
-        paint.strokeWidth = strokeWidth + radius * 2f
-        paint.alpha = (alpha * maxOf(stroke.waterEdgeOpacity.coerceIn(0f, 1f), tiltBleedAmount * .55f)).toInt().coerceIn(1, 255)
-        val blur = WaterEdge.distancePixels(stroke.waterEdgeBlur, stroke.waterEdgeBlurUnit, width.toFloat()) + strokeWidth * tiltBleedAmount * .08f
-        paint.maskFilter = cachedBlurMask(blur)
-    }
-
-    private fun srcInColorFilter(color: Int): PorterDuffColorFilter =
-        srcInColorFilters[color] ?: PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN).also { srcInColorFilters[color] = it }
-
-    /** BlurMaskFilter construction is native-backed and expensive. Quarter-pixel buckets are
-     * visually indistinguishable at tablet density while turning per-dab allocation into reuse. */
-    private fun cachedBlurMask(radius: Float): BlurMaskFilter? {
-        if (!radius.isFinite() || radius <= .01f) return null
-        val quantizedRadius = BrushBlur.quantizedRadius(radius, MAX_CACHED_BLUR_RADIUS_PX)
-        if (quantizedRadius <= 0f) return null
-        val bucket = (quantizedRadius * 4f).toInt()
-        return blurMaskFilters[bucket] ?: BlurMaskFilter(quantizedRadius, BlurMaskFilter.Blur.NORMAL).also { blurMaskFilters[bucket] = it }
-    }
-
-    private fun loadTip(path: String, hardness: Float, grainPath: String?, grainDensity: Float, grainScale: Float = 100f, grainRotation: Float = 0f, grainBrightness: Float = 0f, grainContrast: Float = 0f, grainReversed: Boolean = false, grainEmphasized: Boolean = false, grainOffsetX: Float = 0f, grainOffsetY: Float = 0f, grainCompositeMode: Int = CspTextureComposite.MULTIPLY, grainFilteringMode: Int = ProcreateFiltering.NONE, antiAliasMode: Int = CspAntiAlias.MEDIUM, alphaThresholdEnabled: Boolean = false, alphaThreshold: Float = 0f, preserveRgb: Boolean = false): Bitmap? {
-        val request = tipRequest(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainOffsetX, grainOffsetY, grainCompositeMode, grainFilteringMode, antiAliasMode, alphaThresholdEnabled, alphaThreshold, preserveRgb)
-        brushResources.tip(request)?.let { return it }
-        if (brushResources.isLoading(request)) return null
-        // Dynamic grain can request many density buckets while a stroke is moving. Disk/bitmap
-        // decoding those variants on this path blocks MotionEvent delivery, so schedule them and
-        // let the caller use the already decoded base tip for this frame. A missing base tip may
-        // still decode once (normally it was prewarmed on selection); otherwise the first stroke
-        // would visibly switch from a fallback line to its real shape on pen-up.
-        val isDynamicVariant = grainPath != null && (
-            kotlin.math.abs(grainDensity - this.grainDensity) >= .025f ||
-                kotlin.math.abs(grainScale - this.grainScale) >= 2.5f ||
-                kotlin.math.abs(grainRotation - this.grainRotationDegrees) >= 7.5f ||
-                kotlin.math.abs(grainOffsetX) > .0001f || kotlin.math.abs(grainOffsetY) > .0001f
-            )
-        if (activeTool != null && isDynamicVariant && !forceSynchronousTipDecode) {
-            prewarmTip(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainOffsetX, grainOffsetY, grainCompositeMode, grainFilteringMode, antiAliasMode, alphaThresholdEnabled, alphaThreshold, preserveRgb)
-            return null
-        }
-        return brushResources.decodeNow(request)
-    }
-
-    private fun tipRequest(path: String, hardness: Float, grainPath: String?, grainDensity: Float, grainScale: Float, grainRotation: Float, grainBrightness: Float, grainContrast: Float, grainReversed: Boolean, grainEmphasized: Boolean, grainOffsetX: Float, grainOffsetY: Float, grainCompositeMode: Int, grainFilteringMode: Int, antiAliasMode: Int, alphaThresholdEnabled: Boolean, alphaThreshold: Float, preserveRgb: Boolean = false): BrushTipRequest =
-        BrushTipRequest(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainOffsetX, grainOffsetY, grainCompositeMode, grainFilteringMode, antiAliasMode, alphaThresholdEnabled, alphaThreshold, preserveRgb)
-
-    private fun prewarmTip(path: String, hardness: Float, grainPath: String?, grainDensity: Float, grainScale: Float = 100f, grainRotation: Float = 0f, grainBrightness: Float = 0f, grainContrast: Float = 0f, grainReversed: Boolean = false, grainEmphasized: Boolean = false, grainOffsetX: Float = 0f, grainOffsetY: Float = 0f, grainCompositeMode: Int = CspTextureComposite.MULTIPLY, grainFilteringMode: Int = ProcreateFiltering.NONE, antiAliasMode: Int = CspAntiAlias.MEDIUM, alphaThresholdEnabled: Boolean = false, alphaThreshold: Float = 0f, preserveRgb: Boolean = false) {
-        val request = tipRequest(path, hardness, grainPath, grainDensity, grainScale, grainRotation, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainOffsetX, grainOffsetY, grainCompositeMode, grainFilteringMode, antiAliasMode, alphaThresholdEnabled, alphaThreshold, preserveRgb)
-        val resources = brushResources
-        if (!resources.beginLoad(request)) return
-        TIP_DECODE_EXECUTOR.execute {
-            val decoded = request.decode()
-            post {
-                if (currentPoints.isNotEmpty() || pendingMaterialBarrierSequence != null) {
-                    // Resource availability is part of a stroke's material truth. A decode that
-                    // finishes between DOWN and the first durable frame must not change either the
-                    // live packet or its committed replacement. Admit it only after that frame.
-                    deferredTipCompletions += DeferredTipCompletion(resources, request, decoded)
-                } else if (resources.completeLoad(request, decoded)) {
-                    notifyHoverCursorStyleChanged()
-                }
-            }
-        }
-    }
-
-    private fun flushDeferredTipCompletions() {
-        if (currentPoints.isNotEmpty() || pendingMaterialBarrierSequence != null || deferredTipCompletions.isEmpty()) return
-        val completions = deferredTipCompletions.toList()
-        deferredTipCompletions.clear()
-        var changed = false
-        completions.forEach { completion ->
-            changed = completion.cache.completeLoad(completion.request, completion.bitmap) || changed
-        }
-        if (changed) notifyHoverCursorStyleChanged()
-    }
-
-    private fun recycleDeferredTipCompletions() {
-        deferredTipCompletions.forEach { completion ->
-            completion.cache.completeLoad(completion.request, null)
-            completion.bitmap?.takeUnless(Bitmap::isRecycled)?.recycle()
-        }
-        deferredTipCompletions.clear()
-    }
-
-    /** Decodes a newly selected imported tip before the first pen contact. */
-    fun prewarmBrushAssets() {
-        val primary = tipAssetPaths.ifEmpty { listOfNotNull(tipAssetPath) }
-        val secondary = if (brushDual) dualTipAssetPaths.ifEmpty { primary } else emptyList()
-        if (primary.isEmpty() && secondary.isEmpty()) return
-        val signature = "${primary.joinToString()}|${secondary.joinToString()}|$brushHardness|$dualHardness|$grainAssetPath|$grainDensity|$grainScale|$grainMovement|$grainZoom|$grainRotationDegrees|$grainStrokeRotation|$grainBrightness|$grainContrast|$grainReversed|$grainEmphasized|$grainCompositeMode|$grainFilteringMode|$dualGrainAssetPath|$dualGrainDensity|$dualGrainScale|$dualGrainMovement|$dualGrainZoom|$dualGrainRotationDegrees|$dualGrainStrokeRotation|$dualGrainBrightness|$dualGrainContrast|$dualGrainReversed|$dualGrainEmphasized|$dualGrainCompositeMode|$dualGrainFilteringMode|$brushAntiAliasMode|$dualAntiAliasMode|$dualApplyRgb|$alphaThresholdEnabled|$alphaThreshold"
-        if (signature == prewarmedBrushSignature) return
-        prewarmedBrushSignature = signature
-        primary.forEach { prewarmTip(it, brushHardness, grainAssetPath, grainDensity, grainScale, grainRotationDegrees, grainBrightness, grainContrast, grainReversed, grainEmphasized, grainCompositeMode = grainCompositeMode, grainFilteringMode = grainFilteringMode, antiAliasMode = brushAntiAliasMode, alphaThresholdEnabled = alphaThresholdEnabled, alphaThreshold = alphaThreshold) }
-        secondary.forEach { prewarmTip(it, dualHardness, dualGrainAssetPath.takeIf { dualGrainApplyPerPlot }, dualGrainDensity, dualGrainScale, dualGrainRotationDegrees, dualGrainBrightness, dualGrainContrast, dualGrainReversed, dualGrainEmphasized, grainCompositeMode = dualGrainCompositeMode, grainFilteringMode = dualGrainFilteringMode, antiAliasMode = dualAntiAliasMode, alphaThresholdEnabled = alphaThresholdEnabled, alphaThreshold = alphaThreshold, preserveRgb = dualApplyRgb) }
-    }
-
-    /** Selection must hand back a brush that can draw on the very next input packet. Imported tip
-     * images are decoded once at selection time; live rendering never waits on an async prewarm. */
+    /** Resolve imported material before DOWN. Live input may only read immutable V5 masks. */
     fun prepareBrushAssetsNow() {
-        val primary = tipAssetPaths.ifEmpty { listOfNotNull(tipAssetPath) }
-        val secondary = if (brushDual) dualTipAssetPaths.ifEmpty { primary } else emptyList()
-        primary.forEach { path ->
-            val request = tipRequest(path, brushHardness, grainAssetPath, grainDensity, grainScale, grainRotationDegrees, grainBrightness, grainContrast, grainReversed, grainEmphasized, 0f, 0f, grainCompositeMode, grainFilteringMode, brushAntiAliasMode, alphaThresholdEnabled, alphaThreshold)
-            brushResources.decodeNow(request)
-            v5BrushTipMasks.resolve(
-                BrushTipMaskRequest(
-                    path = path,
-                    hardness = brushHardness,
-                    grainPath = grainAssetPath.takeIf { grainApplyPerPlot },
-                    grainDensity = grainDensity,
-                    grainScale = grainScale,
-                    grainRotation = grainRotationDegrees,
-                    grainBrightness = grainBrightness,
-                    grainContrast = grainContrast,
-                    grainReversed = grainReversed,
-                    grainEmphasized = grainEmphasized,
-                    grainCompositeMode = grainCompositeMode,
-                    grainFilteringMode = grainFilteringMode,
-                    antiAliasMode = brushAntiAliasMode,
-                    alphaThresholdEnabled = alphaThresholdEnabled,
-                    alphaThreshold = alphaThreshold,
-                ),
-            )
+        tipAssetPaths.ifEmpty { listOfNotNull(tipAssetPath) }
+            .forEach { path -> v5BrushTipMasks.resolve(v5TipRequest(path)) }
+        if (brushDual) {
+            dualTipAssetPaths.ifEmpty { tipAssetPaths.ifEmpty { listOfNotNull(tipAssetPath) } }
+                .forEach { path -> v5BrushTipMasks.resolve(v5TipRequest(path, secondary = true)) }
         }
-        secondary.forEach { path ->
-            val grain = dualGrainAssetPath.takeIf { dualGrainApplyPerPlot }
-            val request = tipRequest(path, dualHardness, grain, dualGrainDensity, dualGrainScale, dualGrainRotationDegrees, dualGrainBrightness, dualGrainContrast, dualGrainReversed, dualGrainEmphasized, 0f, 0f, dualGrainCompositeMode, dualGrainFilteringMode, dualAntiAliasMode, alphaThresholdEnabled, alphaThreshold, dualApplyRgb)
-            brushResources.decodeNow(request)
-        }
+        eraserTipAssetPath?.let { path -> v5BrushTipMasks.resolve(v5TipRequest(path, eraser = true)) }
     }
 
-    /** Freezes the format-neutral cursor/dynamics program when a preset is selected. The next
-     * physical contact therefore performs neither compilation nor format-specific work. */
-    fun prepareConfiguredBrushProgram() {
-        val template = withCurrentBrushBehavior(buildStroke(emptyList()))
-        configuredBrushTemplate = template
-        configuredBrushProgram = BrushProgramRuntime.compile(template)
-    }
+    fun prewarmBrushAssets() = prepareBrushAssetsNow()
 
-    /** A palette/tool tap can interrupt a contact stream before Android delivers its final UP.
-     * Treat each tool or preset change as a hard input boundary so that stale navigation,
-     * eraser, stylus-button, or drawing state cannot consume every later contact. */
     fun switchInputConfiguration(nextTool: EditorTool, nextBrushId: String?) {
         if (configuredInputTool == nextTool && configuredInputBrushId == nextBrushId) return
         cancelActiveGestureForNavigation()
@@ -3436,8 +2245,9 @@ class InkCanvasView(context: Context) : View(context) {
                 if (activeTool == EditorTool.ERASER) {
                     currentStrokeId = java.util.UUID.randomUUID().toString()
                     if (beginV5PaintGesture(event, pointerIndex, normalizedX, normalizedY)) return true
-                    beginEraserGesture()
-                    eraseAlong(normalizedX, normalizedY, event.getPressure(pointerIndex))
+                    onPaintCapabilityRejected("This eraser configuration is not available in Paint Engine V5")
+                    activeTool = null
+                    parent?.requestDisallowInterceptTouchEvent(false)
                     return true
                 }
                 if (activeTool == EditorTool.EYEDROPPER) {
@@ -3611,9 +2421,6 @@ class InkCanvasView(context: Context) : View(context) {
                 else if (activeTool == EditorTool.EYEDROPPER) {
                     onColorSampled(sampleRenderedColor(inputPoint.first, inputPoint.second))
                 }
-                else if (activeTool == EditorTool.ERASER) {
-                    eraseMotionEvent(event, pointerIndex)
-                }
                 else if (activeTool == EditorTool.SELECT) {
                     if (selectionTransformMode == TRANSFORM_SCALE) {
                         val dx = (normalizedX - selectionTransformCenterX) * pageModelWidth
@@ -3737,11 +2544,9 @@ class InkCanvasView(context: Context) : View(context) {
                     v5StrokeController.cancel()
                     v5RejectedContact = false
                     StrokeTrace.abandon(currentStrokeId)
-                    cancelWetPaintGesture()
                     clearActiveStrokeInput()
                     finishActiveStrokePreview()
                     pendingMaterialBarrierSequence = null
-                    flushDeferredTipCompletions()
                     if (activeTool == EditorTool.LASER) laserTrail.cancelActive()
                     if (activeTool == EditorTool.FILL) cancelFillGesture()
                     if (activeTool == EditorTool.GRADIENT) { gradientStart = null; gradientEnd = null }
@@ -3749,7 +2554,6 @@ class InkCanvasView(context: Context) : View(context) {
                     if (activeTool == EditorTool.LIQUIFY) cancelLiquifyGesture()
                     if (activeTool == EditorTool.CORRECT_LINE) cancelCorrectLineGesture()
                     shapeStart = null; shapeEnd = null; shapeFreeformPoints.clear()
-                    if (activeTool == EditorTool.ERASER) cancelEraserGesture()
                     selectionGestureBefore?.let { restoreStrokeSnapshot(it) }
                     cancelRasterSelectionTransform()
                     clearLassoInput(); movingSelection = false; selectionMoved = false; selectionGestureBefore = null; selectionTransformMode = TRANSFORM_NONE
@@ -3784,9 +2588,6 @@ class InkCanvasView(context: Context) : View(context) {
                     parent?.requestDisallowInterceptTouchEvent(false)
                 } else if (activeTool == EditorTool.EYEDROPPER) {
                     onColorSampled(sampleRenderedColor(inputPoint.first, inputPoint.second))
-                } else if (activeTool == EditorTool.ERASER) {
-                    eraseAlong(normalizedX, normalizedY, event.getPressure(pointerIndex))
-                    finishEraserGesture()
                 } else if (activeTool == EditorTool.SELECT) {
                     if ((movingSelection || selectionTransformMode != TRANSFORM_NONE) && selectionMoved) {
                         selectionGestureBefore?.let { commitStrokeEdit(it, strokes) }
@@ -4019,36 +2820,22 @@ class InkCanvasView(context: Context) : View(context) {
             pressureSensitivity,
             pressureResponseCurve,
         )
-        val cursorPoint = StrokePoint(
-            x = 0f,
-            y = 0f,
-            pressure = calibratedPressure,
-            tilt = hoverCursorTilt,
-            orientation = hoverCursorOrientationRadians,
-        )
-        val configuredDynamics = configuredBrushTemplate?.let { template ->
-            configuredBrushProgram?.evaluateDab(template, cursorPoint, dual = false)
-        }
         if (hoverCursorUsesEraser) {
-            val pressure = if (configuredInputTool == EditorTool.ERASER && configuredDynamics != null) {
-                configuredDynamics.size
-            } else if (eraserPressureSize) calibratedPressure.coerceIn(.15f, 1f) else 1f
+            val pressure = if (eraserPressureSize) calibratedPressure.coerceIn(.15f, 1f) else 1f
             val diameter = documentEraserSize().coerceIn(.01f, 800f) * scale * pressure
-            val tip = activeCursorTip(eraserTipAssetPath)
+            val tip = activeCursorTip(eraserTipAssetPath, eraser = true)
             val footprint = BrushCursorGeometry.footprint(
                 diameter = diameter,
                 tipWidth = tip?.width,
                 tipHeight = tip?.height,
-                thickness = if (tip == null) 1f else brushThickness * (configuredDynamics?.thickness ?: 1f),
+                thickness = if (tip == null) 1f else brushThickness,
                 thicknessVertical = brushThicknessVertical,
             )
             return footprint.width to footprint.height
         }
-        val pressure = configuredDynamics?.size
-            ?: BrushDynamics.pressure(sizePressureEnabled, sizePressureMinimum, sizePressureCurve, calibratedPressure)
+        val pressure = BrushDynamics.pressure(sizePressureEnabled, sizePressureMinimum, sizePressureCurve, calibratedPressure)
         val diameter = documentBrushSize().coerceIn(.01f, 800f) * scale * pressure
-        val thicknessPressure = configuredDynamics?.thickness
-            ?: BrushDynamics.pressure(thicknessPressureEnabled, thicknessPressureMinimum, thicknessPressureCurve, calibratedPressure)
+        val thicknessPressure = BrushDynamics.pressure(thicknessPressureEnabled, thicknessPressureMinimum, thicknessPressureCurve, calibratedPressure)
         val tip = activeCursorTip(tipAssetPaths.firstOrNull() ?: tipAssetPath)
         val footprint = BrushCursorGeometry.footprint(
             diameter = diameter,
@@ -4060,14 +2847,9 @@ class InkCanvasView(context: Context) : View(context) {
         return footprint.width to footprint.height
     }
 
-    private fun activeCursorTip(path: String?): Bitmap? {
+    private fun activeCursorTip(path: String?, eraser: Boolean = false): BrushTipMask? {
         path ?: return null
-        val exactRequest = tipRequest(
-            path, brushHardness, grainAssetPath, grainDensity, grainScale, grainRotationDegrees,
-            grainBrightness, grainContrast, grainReversed, grainEmphasized, 0f, 0f,
-            grainCompositeMode, grainFilteringMode, brushAntiAliasMode, alphaThresholdEnabled, alphaThreshold,
-        )
-        return brushResources.tip(exactRequest) ?: brushResources.tipForPath(path)
+        return v5BrushTipMasks.resolve(v5TipRequest(path, eraser = eraser))
     }
 
     private fun updateHoverCursorPacket(
@@ -4166,11 +2948,9 @@ class InkCanvasView(context: Context) : View(context) {
         stopContinuousPlot()
         v5StrokeController.cancel()
         v5RejectedContact = false
-        cancelWetPaintGesture()
         clearActiveStrokeInput()
         finishActiveStrokePreview()
         pendingMaterialBarrierSequence = null
-        flushDeferredTipCompletions()
         laserTrail.cancelActive()
         cancelFillGesture()
         cancelSmudgeGesture()
@@ -4201,7 +2981,6 @@ class InkCanvasView(context: Context) : View(context) {
         gradientStart = null
         gradientEnd = null
         shapeFreeformPoints.clear()
-        if (activeTool == EditorTool.ERASER) cancelEraserGesture()
         selectionGestureBefore?.let(::restoreStrokeSnapshot)
         cancelRasterSelectionTransform()
         clearLassoInput()
@@ -5127,7 +3906,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun addPoint(x: Float, y: Float, pressure: Float, time: Long, tilt: Float, orientation: Float, force: Boolean = false) {
-        traceEngineV3("Inkloom.V3.InputModel") {
+        traceEngineV5("Inkloom.V5.InputModel") {
             addModeledPoint(x, y, pressure, time, tilt, orientation, force)
         }
     }
@@ -5142,7 +3921,7 @@ class InkCanvasView(context: Context) : View(context) {
     /** Copies every historical and current sample into one direct-buffer batch. The event-to-model
      * boundary now incurs one JNI call instead of one call per sample. */
     private fun addMotionEventPoints(event: MotionEvent, pointerIndex: Int) {
-        traceEngineV3("Inkloom.V3.InputModelBatch") {
+        traceEngineV5("Inkloom.V5.InputModelBatch") {
             val total = event.historySize + 1
             var sourceIndex = 0
             while (sourceIndex < total) {
@@ -5270,100 +4049,16 @@ class InkCanvasView(context: Context) : View(context) {
         postInvalidateOnAnimation()
     }
 
-    private fun usesDestinationDependentBrushBlend(stroke: InkStroke): Boolean =
-        ProcreateBrushBlend.normalize(stroke.procreateBrushBlendMode) != ProcreateBrushBlend.NORMAL ||
-            (stroke.waterEdgeEnabled || stroke.tiltBleed > .001f) &&
-                ProcreateBrushBlend.normalize(stroke.procreateBurntEdgeBlendMode) != ProcreateBrushBlend.NORMAL
-
-    @VisibleForTesting
-    internal fun simulateActiveMaterialDecodeCompletion() {
-        // Decode completion is deliberately inert until the current packet has a durable frame.
-        // Tests use this hook to assert that the active compositor is never cleared or replayed.
-        flushDeferredTipCompletions()
-    }
-
     @VisibleForTesting
     internal fun flushRealtimeToolFrame() {
         if (smudgeFrameScheduled || hasPendingSmudge) flushSmudgeFrame()
         if (liquifyFrameScheduled || hasPendingLiquify) flushLiquifyFrame()
     }
 
-    @WorkerThread
-    internal fun drawActiveStrokes(
-        canvas: Canvas,
-        strokes: List<InkStroke>,
-        incrementalStampDraw: Boolean = false,
-        completeRedraw: Boolean = false,
-    ) {
-        traceEngineV3("Inkloom.V3.ActiveStrokeDraw") {
-            StrokeTrace.primaryStrokeId(strokes)?.let { id ->
-                StrokeTrace.mark(id, StrokeTrace.STAGE_FRONT_BUFFER_DRAW)
-            }
-            synchronized(renderLock) {
-                if (rasterIncrementalPaintEnabled && !completeRedraw &&
-                    renderIncrementalRasterPaintPatch(canvas, strokes, finalCompleteInput = false)
-                ) return@synchronized
-                incrementalActiveDraw = incrementalStampDraw
-                try {
-                    if (!incrementalStampDraw) {
-                        drawLayeredStrokes(canvas, strokes)
-                        strokes.filter(::usesStampedRenderer).forEach { stroke ->
-                            activePrimaryStampCounts[stroke.id] = primaryStampedPoints(stroke).size
-                            activeDualStampCounts[stroke.id] = if (stroke.dualBrush) dualStampedPoints(stroke).size else 0
-                        }
-                    } else {
-                        strokes.forEach { stroke ->
-                            val primaryCount = primaryStampedPoints(stroke).size
-                            val dualCount = if (stroke.dualBrush) dualStampedPoints(stroke).size else 0
-                            val primaryStart = activePrimaryStampCounts[stroke.id] ?: 0
-                            val dualStart = activeDualStampCounts[stroke.id] ?: 0
-                            drawLayeredStrokes(canvas, listOf(stroke), primaryStart, dualStart)
-                            activePrimaryStampCounts[stroke.id] = primaryCount
-                            activeDualStampCounts[stroke.id] = dualCount
-                        }
-                    }
-                } finally {
-                    incrementalActiveDraw = false
-                }
-            }
-        }
-    }
-
-    internal fun resetActiveRenderState() {
-        synchronized(renderLock) {
-            activePrimaryStampCounts.clear()
-            activeDualStampCounts.clear()
-            activePrimarySamples.clear()
-            activeDualSamples.clear()
-            clearActiveStampRandoms()
-            activeCspDualBrushSurfaces.values.forEach(ActiveCspDualBrushSurface::recycle)
-            activeCspDualBrushSurfaces.clear()
-            activeWholeTextureStrokeId = null
-            activeWholeTextureProgram = null
-            activeWholeTexturePointCount = 0
-            activeWholeTexturePageWidth = 0
-            activeWholeTexturePageHeight = 0
-        }
-    }
-
-    private fun clearActiveStampRandoms() {
-        activePrimaryScatterRandoms.clear()
-        activePrimaryRotationRandoms.clear()
-        activeDualScatterRandoms.clear()
-        activeDualRotationRandoms.clear()
-    }
-
-    private fun usesStampedRenderer(stroke: InkStroke): Boolean =
-        stroke.tipAssetPath != null || stroke.tipAssetPaths.isNotEmpty() || ProceduralBrushTip.supports(stroke)
-
     private fun clearActiveStrokeInput() {
         currentPoints.clear()
         strokeInputModeler.reset()
     }
-
-    @VisibleForTesting
-    internal fun committedTileSnapshot(): SparseTileDebugSnapshot =
-        committedScene.debugSnapshot()
 
     /** The full-screen proxy receives screen-space contacts. Drawing contacts are mapped into the
      * page once, while navigation remains in screen space so pan deltas do not shrink with zoom. */
@@ -5906,21 +4601,13 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun localToolCandidates(startX: Float, startY: Float, endX: Float, endY: Float, radius: Float): List<InkStroke> {
-        committedScene.ensureIndex(strokes, width, height)
         val aspect = pageModelWidth.coerceAtLeast(1f) / pageModelHeight.coerceAtLeast(1f)
-        val radiusX = radius * width.coerceAtLeast(1)
-        val radiusY = radius * aspect * height.coerceAtLeast(1)
-        val candidateIds = committedScene.candidates(
-            minOf(startX, endX) * width - radiusX,
-            minOf(startY, endY) * height - radiusY,
-            maxOf(startX, endX) * width + radiusX,
-            maxOf(startY, endY) * height + radiusY,
-        )
-        if (candidateIds.isEmpty()) return emptyList()
-        return candidateIds
-            .mapNotNull(localToolStrokeIndices::get)
-            .sorted()
-            .map(strokes::get)
+        val radiusY = radius * aspect
+        val left = minOf(startX, endX) - radius
+        val top = minOf(startY, endY) - radiusY
+        val right = maxOf(startX, endX) + radius
+        val bottom = maxOf(startY, endY) + radiusY
+        return strokes.filter { stroke -> stroke.points.any { point -> point.x in left..right && point.y in top..bottom } }
     }
 
     private fun replaceLocalToolCandidates(replacements: List<InkStroke>) {
@@ -6309,90 +4996,6 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
-    private fun makeStroke(points: List<StrokePoint>): InkStroke =
-        activeStrokeTemplate?.copy(points = points.toList())
-            ?: withCurrentBrushBehavior(buildStroke(points)).copy(width = gestureBrushSize)
-
-    private fun withCurrentBrushBehavior(stroke: InkStroke): InkStroke = stroke.copy(
-        renderSeed = brushRenderSeed,
-        secondaryColorArgb = secondaryInkColor.toUInt().toLong(),
-        procreateColorDynamics = procreateColorDynamics,
-        procreateTaper = procreateTaper,
-        inputKind = if (activeInputWasStylus) StrokeInputKind.STYLUS else StrokeInputKind.TOUCH,
-        shapeTouchRotation = shapeTouchRotation,
-        dualShapeTouchRotation = dualShapeTouchRotation,
-        shapeScreenRotationDegrees = if (shapeOrientToScreen) -viewportRotationDegrees else 0f,
-        dualShapeScreenRotationDegrees = if (dualShapeOrientToScreen) -viewportRotationDegrees else 0f,
-        grainFilteringMode = grainFilteringMode,
-        dualGrainAssetPath = dualGrainAssetPath,
-        dualGrainDensity = dualGrainDensity,
-        dualGrainDensityMinimum = dualGrainDensityMinimum,
-        dualGrainDensityDynamics = dualGrainDensityDynamics,
-        dualGrainScale = dualGrainScale,
-        dualGrainMovement = dualGrainMovement,
-        dualGrainZoom = dualGrainZoom,
-        dualGrainRotationDegrees = dualGrainRotationDegrees,
-        dualGrainStrokeRotation = dualGrainStrokeRotation,
-        dualGrainBrightness = dualGrainBrightness,
-        dualGrainContrast = dualGrainContrast,
-        dualGrainReversed = dualGrainReversed,
-        dualGrainEmphasized = dualGrainEmphasized,
-        dualGrainOffsetJitter = dualGrainOffsetJitter,
-        dualGrainCompositeMode = dualGrainCompositeMode,
-        dualGrainApplyPerPlot = dualGrainApplyPerPlot,
-        dualGrainFilteringMode = dualGrainFilteringMode,
-        procreateRenderingMode = procreateRenderingMode,
-        procreateBrushBlendMode = procreateBrushBlendMode,
-        procreateBurntEdgeBlendMode = procreateBurntEdgeBlendMode,
-        procreateLuminanceBlending = procreateLuminanceBlending,
-        alphaThresholdEnabled = alphaThresholdEnabled,
-        alphaThreshold = alphaThreshold,
-        grainDensityMinimum = grainDensityMinimum,
-        shapeRoundnessHorizontalJitter = shapeRoundnessHorizontalJitter,
-        shapeRoundnessVerticalJitter = shapeRoundnessVerticalJitter,
-        dualShapeRoundnessHorizontalJitter = dualShapeRoundnessHorizontalJitter,
-        dualShapeRoundnessVerticalJitter = dualShapeRoundnessVerticalJitter,
-        grainMovement = grainMovement,
-        grainZoom = grainZoom,
-        grainStrokeRotation = grainStrokeRotation,
-        grainCompositeMode = grainCompositeMode,
-        grainApplyPerPlot = grainApplyPerPlot,
-        tiltGradation = tiltGradation,
-        tiltGradationStart = tiltGradationStart,
-        tiltBleed = tiltBleed,
-        tiltBleedStart = tiltBleedStart,
-        tiltSizeCompression = tiltSizeCompression,
-        graphiteTiltWidth = graphiteTiltWidth,
-        graphiteTiltWidthStart = graphiteTiltWidthStart,
-        graphiteTiltGrain = graphiteTiltGrain,
-        graphiteTiltGrainStart = graphiteTiltGrainStart,
-        proceduralPaperGrainEnabled = proceduralPaperGrainEnabled,
-        proceduralPaperGrainScale = proceduralPaperGrainScale,
-        proceduralPaperGrainDensity = proceduralPaperGrainDensity,
-        proceduralPaperGrainStrength = proceduralPaperGrainStrength,
-        strokeFalloff = strokeFalloff,
-        strokePathJitter = strokePathJitter,
-        strokePathLongitudinalJitter = strokePathLongitudinalJitter,
-        dualStrokePathJitter = dualStrokePathJitter,
-        dualStrokePathLongitudinalJitter = dualStrokePathLongitudinalJitter,
-    )
-
-    private fun buildStroke(points: List<StrokePoint>) = InkStroke(id = currentStrokeId, engineKind = activeBrushEngineKind(), points = points.toList(), colorArgb = inkColor.toUInt().toLong(), width = baseWidth, opacity = inkOpacity, brushId = brushId, layerId = activeLayerId, tipAssetPath = tipAssetPath, tipAssetPaths = tipAssetPaths.ifEmpty { listOfNotNull(tipAssetPath) }, dualTipAssetPaths = dualTipAssetPaths, grainAssetPath = grainAssetPath, grainDensity = grainDensity, grainDensityDynamics = grainDensityDynamics, grainScale = grainScale, grainRotationDegrees = grainRotationDegrees, grainBrightness = grainBrightness, grainContrast = grainContrast, grainReversed = grainReversed, grainEmphasized = grainEmphasized, grainOffsetJitter = grainOffsetJitter, spacing = brushSpacing, spacingMode = brushSpacingMode, flow = brushFlow, hardness = brushHardness, antiAliasMode = brushAntiAliasMode, blur = brushBlur, blurUnit = brushBlurUnit, blurLinkedToSize = brushBlurLinkedToSize, thickness = brushThickness, thicknessVertical = brushThicknessVertical, rotationDegrees = brushRotation, followStylusOrientation = followStylusOrientation, followStrokeDirection = followStrokeDirection, randomRotationDegrees = randomRotationDegrees, strokeRotationJitterDegrees = strokeRotationJitterDegrees, stampCount = stampCount, stampCountJitter = stampCountJitter, continuousPlot = brushContinuousPlot, colorJitterHueDegrees = colorJitterHueDegrees, colorJitterSaturation = colorJitterSaturation, colorJitterValue = colorJitterValue, colorJitterTarget = colorJitterTarget, colorJitterPerTipEnabled = colorJitterPerTipEnabled, colorJitterHueDynamics = colorJitterHueDynamics, colorJitterSaturationDynamics = colorJitterSaturationDynamics, colorJitterValueDynamics = colorJitterValueDynamics, colorJitterSubColorMix = colorJitterSubColorMix, colorJitterSubColorMixDynamics = colorJitterSubColorMixDynamics, colorJitterPerStrokeEnabled = colorJitterPerStrokeEnabled, colorJitterStrokeHueDegrees = colorJitterStrokeHueDegrees, colorJitterStrokeSaturation = colorJitterStrokeSaturation, colorJitterStrokeValue = colorJitterStrokeValue, colorJitterStrokeSubColorMix = colorJitterStrokeSubColorMix, procreateColorDynamics = procreateColorDynamics, procreateWetMix = procreateWetMix, watercolor = brushWatercolor, cspColorMixMode = cspColorMixMode, colorMix = brushColorMix, colorMixPressureEnabled = colorMixPressureEnabled, colorMixPressureMinimum = colorMixPressureMinimum, colorMixPressureCurve = colorMixPressureCurve, colorMixSecondaryDynamics = colorMixSecondaryDynamics, paintMix = brushPaintMix, paintMixPressureEnabled = paintMixPressureEnabled, paintMixPressureMinimum = paintMixPressureMinimum, paintMixPressureCurve = paintMixPressureCurve, paintMixSecondaryDynamics = paintMixSecondaryDynamics, colorStretch = colorStretch, cspPigmentMixingMode = cspPigmentMixingMode, cspBrightnessCorrection = cspBrightnessCorrection, colorMixBlur = colorMixBlur, colorMixBlurUnit = colorMixBlurUnit, colorMixBlurAutomatic = colorMixBlurAutomatic, colorMixBlurDynamics = colorMixBlurDynamics, spray = brushSpray, sprayParticleSize = sprayParticleSize, sprayParticleSizeUnit = sprayParticleSizeUnit, sprayParticleSizeSyncBrushSize = sprayParticleSizeSyncBrushSize, sprayParticleSizePressureEnabled = sprayParticleSizePressureEnabled, sprayParticleSizePressureMinimum = sprayParticleSizePressureMinimum, sprayParticleSizePressureCurve = sprayParticleSizePressureCurve, sprayParticleSizeSecondaryDynamics = sprayParticleSizeSecondaryDynamics, sprayDensity = sprayDensity, sprayDensityPressureEnabled = sprayDensityPressureEnabled, sprayDensityPressureMinimum = sprayDensityPressureMinimum, sprayDensityPressureCurve = sprayDensityPressureCurve, sprayDensitySecondaryDynamics = sprayDensitySecondaryDynamics, sprayBias = sprayBias, spraySpread = spraySpread, sprayParticleRotationDegrees = sprayParticleRotationDegrees, sprayParticleFollowStylusOrientation = sprayParticleFollowStylusOrientation, sprayParticleFollowStrokeDirection = sprayParticleFollowStrokeDirection, sprayParticleRandomRotationDegrees = sprayParticleRandomRotationDegrees, ribbon = brushRibbon, tipSequenceMode = brushTipSequenceMode, tipFlipHorizontalMode = tipFlipHorizontalMode, tipFlipVerticalMode = tipFlipVerticalMode, blendTipsWithDarken = blendTipsWithDarken, dualBrush = brushDual, dualSizeScale = dualSizeScale, dualSizeDynamics = dualSizeDynamics, dualSpacing = dualSpacing, dualSpacingMode = dualSpacingMode, dualSpacingDynamics = dualSpacingDynamics, dualFlow = dualFlow, dualFlowDynamics = dualFlowDynamics, dualHardness = dualHardness, dualAntiAliasMode = dualAntiAliasMode, dualThickness = dualThickness, dualThicknessDynamics = dualThicknessDynamics, dualThicknessVertical = dualThicknessVertical, dualRotationDegrees = dualRotationDegrees, dualFollowStylusOrientation = dualFollowStylusOrientation, dualFollowStrokeDirection = dualFollowStrokeDirection, dualRandomRotationDegrees = dualRandomRotationDegrees, dualStrokeRotationJitterDegrees = dualStrokeRotationJitterDegrees, dualStampCount = dualStampCount, dualStampCountJitter = dualStampCountJitter, dualRibbon = dualRibbon, dualSpray = dualSpray, dualSprayParticleSize = dualSprayParticleSize, dualSprayParticleSizeUnit = dualSprayParticleSizeUnit, dualSprayParticleSizeSyncBrushSize = dualSprayParticleSizeSyncBrushSize, dualSprayParticleSizeDynamics = dualSprayParticleSizeDynamics, dualSprayDensity = dualSprayDensity, dualSprayDensityDynamics = dualSprayDensityDynamics, dualSprayBias = dualSprayBias, dualSpraySpread = dualSpraySpread, dualSprayParticleRotationDegrees = dualSprayParticleRotationDegrees, dualSprayParticleFollowStylusOrientation = dualSprayParticleFollowStylusOrientation, dualSprayParticleFollowStrokeDirection = dualSprayParticleFollowStrokeDirection, dualSprayParticleRandomRotationDegrees = dualSprayParticleRandomRotationDegrees, dualTipSequenceMode = dualTipSequenceMode, dualTipFlipHorizontalMode = dualTipFlipHorizontalMode, dualTipFlipVerticalMode = dualTipFlipVerticalMode, dualBlendTipsWithDarken = dualBlendTipsWithDarken, dualCompositeMode = dualCompositeMode, dualApplyRgb = dualApplyRgb, taperMode = taperMode, taperStartEnabled = taperStartEnabled, taperStartLength = taperStartLength, taperStartLengthUnit = taperStartLengthUnit, taperStartMinimum = taperStartMinimum, taperEndEnabled = taperEndEnabled, taperEndLength = taperEndLength, taperEndLengthUnit = taperEndLengthUnit, taperEndMinimum = taperEndMinimum, waterEdgeEnabled = waterEdgeEnabled, waterEdgeRadius = waterEdgeRadius, waterEdgeRadiusUnit = waterEdgeRadiusUnit, waterEdgeOpacity = waterEdgeOpacity, waterEdgeDarkness = waterEdgeDarkness, waterEdgeBlur = waterEdgeBlur, waterEdgeBlurUnit = waterEdgeBlurUnit, sizePressureEnabled = sizePressureEnabled, sizePressureMinimum = sizePressureMinimum, sizePressureCurve = sizePressureCurve, sizeSecondaryDynamics = sizeSecondaryDynamics, opacityPressureEnabled = opacityPressureEnabled, opacityPressureMinimum = opacityPressureMinimum, opacityPressureCurve = opacityPressureCurve, opacitySecondaryDynamics = opacitySecondaryDynamics, flowPressureEnabled = flowPressureEnabled, flowPressureMinimum = flowPressureMinimum, flowPressureCurve = flowPressureCurve, flowSecondaryDynamics = flowSecondaryDynamics, spacingPressureEnabled = spacingPressureEnabled, spacingPressureMinimum = spacingPressureMinimum, spacingPressureCurve = spacingPressureCurve, spacingSecondaryDynamics = spacingSecondaryDynamics, thicknessPressureEnabled = thicknessPressureEnabled, thicknessPressureMinimum = thicknessPressureMinimum, thicknessPressureCurve = thicknessPressureCurve, thicknessSecondaryDynamics = thicknessSecondaryDynamics, blurPressureEnabled = blurPressureEnabled, blurPressureMinimum = blurPressureMinimum, blurPressureCurve = blurPressureCurve, blurSecondaryDynamics = blurSecondaryDynamics)
-
-    private data class RasterStrokePatch(val bitmap: Bitmap, val left: Int, val top: Int)
-
-    private data class RasterStampIncrement(
-        val stroke: InkStroke,
-        val startIndex: Int,
-        val changedPoints: List<StrokePoint>,
-        val stamped: Boolean,
-        val resultingRawPointCount: Int = 0,
-    )
-
-    private fun usesWetPaintComposite(stroke: InkStroke): Boolean =
-        stroke.watercolor || !stroke.procreateWetMix.isDisabled() ||
-            stroke.colorMix > .001f || stroke.paintMix > .001f
-
     private data class V5PaintConfiguration(
         val paintOp: app.inkloom.engine.v5.raster.PaintOp,
         val maximumRadius: Float,
@@ -6748,778 +5351,6 @@ class InkCanvasView(context: Context) : View(context) {
      * is associative source-over; wet paint is non-associative but remains correct because each
      * fresh dab is composed exactly once, in input order, into one retained private transaction.
      */
-    private fun supportsIncrementalRasterStampPaint(stroke: InkStroke): Boolean {
-        val layerId = stroke.layerId
-        val wetPaint = usesWetPaintComposite(stroke)
-        val incrementalGeometry = usesStampedRenderer(stroke) || stroke.brushId != "system-ps19"
-        return incrementalGeometry && !stroke.dualBrush &&
-            stroke.masks.isEmpty() && (stroke.opacity >= .999f || wetPaint) &&
-            ProcreateBrushBlend.normalize(stroke.procreateBrushBlendMode) == ProcreateBrushBlend.NORMAL &&
-            !stroke.blendTipsWithDarken &&
-            (stroke.grainAssetPath == null || stroke.grainDensity <= 0f || stroke.grainApplyPerPlot) &&
-            stroke.strokeFalloff <= .0001f && !stroke.taperStartEnabled && !stroke.taperEndEnabled &&
-            stroke.procreateTaper.isDisabled() &&
-            postCorrection <= .0001f &&
-            (layerOpacities[layerId] ?: 1f) >= .999f &&
-            (layerBlendModes[layerId] ?: LayerBlendMode.NORMAL) == LayerBlendMode.NORMAL &&
-            layerId !in alphaLockedLayers && layerId !in clippedLayers &&
-            layerMasks[layerId]?.enabled != true
-    }
-
-    /**
-     * Renders only newly sampled stamps into one bounded patch. That exact patch is presented on
-     * the low-latency surface and appended to the still-private tile transaction; no stable bitmap
-     * is touched until the atomic gesture commit.
-     */
-    private fun renderIncrementalRasterPaintPatch(
-        frontCanvas: Canvas?,
-        strokes: List<InkStroke>,
-        finalCompleteInput: Boolean,
-    ): Boolean {
-        if (!rasterIncrementalPaintEnabled || strokes.isEmpty() || strokes.any { !supportsIncrementalRasterStampPaint(it) }) return false
-        val gestureStrokeId = rasterPaintGestureStrokeId ?: return false
-        if (strokes.any { stroke ->
-                stroke.id != gestureStrokeId && !stroke.id.startsWith("$gestureStrokeId-sym-")
-            }
-        ) return false
-        val surface = rasterTileSurfaceFor(activeLayerId) ?: return false
-        val rasterWidth = surface.logicalWidth
-        val rasterHeight = surface.logicalHeight
-        val session = rasterPaintSession ?: return false
-        val increments = mutableListOf<RasterStampIncrement>()
-        rasterIncrementalRendering = true
-        try {
-            strokes.forEach { stroke ->
-                if (usesStampedRenderer(stroke)) {
-                    val sampled = primaryStampedPoints(stroke)
-                    val start = (rasterPrimaryStampCounts[stroke.id] ?: 0).coerceIn(0, sampled.size)
-                    if (start < sampled.size) increments += RasterStampIncrement(
-                        stroke, start, sampled.subList(start, sampled.size), stamped = true,
-                    )
-                } else {
-                    val previousCount = rasterRawPointCounts[stroke.id] ?: 0
-                    val fullCount = if (finalCompleteInput) stroke.points.size else {
-                        if (previousCount == 0) stroke.points.size else previousCount + (stroke.points.size - 1).coerceAtLeast(0)
-                    }
-                    val tail = when {
-                        finalCompleteInput && stroke.points.size == 1 && previousCount <= 1 -> stroke.points
-                        finalCompleteInput && stroke.points.size > previousCount -> stroke.points.subList((previousCount - 1).coerceAtLeast(0), stroke.points.size)
-                        !finalCompleteInput && stroke.points.size >= 2 -> stroke.points
-                        else -> emptyList()
-                    }
-                    if (tail.isNotEmpty()) increments += RasterStampIncrement(
-                        stroke.copy(points = tail), 0, tail, stamped = false, resultingRawPointCount = fullCount,
-                    ) else if (!finalCompleteInput && previousCount == 0 && stroke.points.size == 1) {
-                        // Show the contact dot through the ordinary front-buffer renderer, but do
-                        // not make it durable until UP proves this was a tap instead of a segment.
-                        rasterRawPointCounts[stroke.id] = 1
-                    }
-                }
-            }
-            if (increments.isEmpty()) return finalCompleteInput
-            val changedPoints = increments.flatMap(RasterStampIncrement::changedPoints)
-            val maximumWidth = increments.maxOf { increment ->
-                val stroke = increment.stroke
-                val base = stroke.width.coerceAtLeast(1f) / REFERENCE_WIDTH * rasterWidth
-                val particle = if (stroke.spray && !stroke.sprayParticleSizeSyncBrushSize) {
-                    when (stroke.sprayParticleSizeUnit) {
-                        1 -> stroke.sprayParticleSize / REFERENCE_WIDTH * rasterWidth
-                        else -> base * stroke.sprayParticleSize.coerceAtLeast(1f) / 100f
-                    }
-                } else base
-                val spread = if (stroke.spray) base * stroke.spraySpread.coerceIn(0f, 4f) else 0f
-                val pathJitter = app.inkloom.document.StrokePathJitter.maximumRadius(
-                    maxOf(base, particle), stroke.strokePathJitter, stroke.strokePathLongitudinalJitter,
-                )
-                val blur = base * stroke.blur.coerceAtLeast(0f) / 25f
-                val viewToRaster = rasterWidth / width.coerceAtLeast(1).toFloat()
-                val waterEdge = if (stroke.waterEdgeEnabled) {
-                    (WaterEdge.distancePixels(stroke.waterEdgeRadius, stroke.waterEdgeRadiusUnit, width.toFloat()) +
-                        WaterEdge.distancePixels(stroke.waterEdgeBlur, stroke.waterEdgeBlurUnit, width.toFloat())) * viewToRaster
-                } else 0f
-                val tiltEdge = base * stroke.tiltBleed.coerceIn(0f, 1f) * .3f
-                maxOf(base, particle) * maxOf(1f, stroke.thickness.coerceIn(.05f, 2f)) * 1.5f +
-                    spread + pathJitter + blur + waterEdge + tiltEdge
-            }
-            val padding = (maximumWidth * 1.5f + 12f).coerceAtLeast(12f)
-            val patchLeft = kotlin.math.floor(changedPoints.minOf(StrokePoint::x) * rasterWidth - padding).toInt().coerceIn(0, rasterWidth - 1)
-            val patchTop = kotlin.math.floor(changedPoints.minOf(StrokePoint::y) * rasterHeight - padding).toInt().coerceIn(0, rasterHeight - 1)
-            val patchRight = kotlin.math.ceil(changedPoints.maxOf(StrokePoint::x) * rasterWidth + padding).toInt().coerceIn(patchLeft + 1, rasterWidth)
-            val patchBottom = kotlin.math.ceil(changedPoints.maxOf(StrokePoint::y) * rasterHeight + padding).toInt().coerceIn(patchTop + 1, rasterHeight)
-            val patchWidth = patchRight - patchLeft
-            val patchHeight = patchBottom - patchTop
-            val patch = obtainRasterIncrementalPatchBitmap(patchWidth, patchHeight)
-            run {
-                val target = Canvas(patch)
-                val patchClip = target.save()
-                target.clipRect(0, 0, patchWidth, patchHeight)
-                target.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
-                val scaleX = rasterWidth / width.coerceAtLeast(1).toFloat()
-                val scaleY = rasterHeight / height.coerceAtLeast(1).toFloat()
-                val checkpoint = target.save()
-                target.scale(scaleX, scaleY)
-                target.translate(-patchLeft / scaleX, -patchTop / scaleY)
-                val previousSynchronousDecode = forceSynchronousTipDecode
-                val previousIncrementalDraw = incrementalActiveDraw
-                forceSynchronousTipDecode = true
-                incrementalActiveDraw = true
-                try {
-                    increments.forEach { increment -> drawStroke(target, increment.stroke, increment.startIndex, 0) }
-                } finally {
-                    incrementalActiveDraw = previousIncrementalDraw
-                    forceSynchronousTipDecode = previousSynchronousDecode
-                }
-                target.restoreToCount(checkpoint)
-                selectionMaskForRasterTools()?.let { selection ->
-                    RasterSelectionMask(selection, rasterWidth, rasterHeight).apply(
-                        patch,
-                        Rect(patchLeft, patchTop, patchRight, patchBottom),
-                    )
-                }
-                val changed = session.compositePaintPatch(
-                    patch,
-                    patchLeft,
-                    patchTop,
-                    increments.map(RasterStampIncrement::stroke),
-                    wetComposite = increments.any { usesWetPaintComposite(it.stroke) },
-                    contentWidth = patchWidth, contentHeight = patchHeight,
-                )
-                if (changed != null) wetPaintDirtyBounds = mergeDirtyBounds(wetPaintDirtyBounds, changed)
-                frontCanvas?.drawBitmap(
-                    patch,
-                    Rect(0, 0, patchWidth, patchHeight),
-                    RectF(
-                        patchLeft * width.toFloat() / rasterWidth,
-                        patchTop * height.toFloat() / rasterHeight,
-                        patchRight * width.toFloat() / rasterWidth,
-                        patchBottom * height.toFloat() / rasterHeight,
-                    ),
-                    rasterFrontPatchPaint,
-                )
-                target.restoreToCount(patchClip)
-                increments.forEach { increment ->
-                    if (increment.stamped) {
-                        rasterPrimaryStampCounts[increment.stroke.id] = increment.startIndex + increment.changedPoints.size
-                    } else {
-                        rasterRawPointCounts[increment.stroke.id] = increment.resultingRawPointCount
-                    }
-                }
-                rasterIncrementalPatchCount++
-            }
-            return true
-        } finally {
-            rasterIncrementalRendering = false
-        }
-    }
-
-    private fun clearRasterIncrementalPaintState() {
-        rasterIncrementalPaintEnabled = false
-        rasterIncrementalRendering = false
-        rasterPrimaryStampCounts.clear()
-        rasterRawPointCounts.clear()
-        rasterPrimarySamples.clear()
-        rasterPrimaryScatterRandoms.clear()
-        rasterPrimaryRotationRandoms.clear()
-        rasterIncrementalPatchBitmap?.recycle()
-        rasterIncrementalPatchBitmap = null
-    }
-
-    private fun obtainRasterIncrementalPatchBitmap(requiredWidth: Int, requiredHeight: Int): Bitmap {
-        val existing = rasterIncrementalPatchBitmap
-        if (existing != null && !existing.isRecycled && existing.width >= requiredWidth && existing.height >= requiredHeight) return existing
-        existing?.takeUnless(Bitmap::isRecycled)?.recycle()
-        fun bucket(value: Int): Int {
-            var result = 64
-            while (result < value && result < 4096) result *= 2
-            return maxOf(value, result)
-        }
-        return Bitmap.createBitmap(bucket(requiredWidth), bucket(requiredHeight), Bitmap.Config.ARGB_8888).also {
-            rasterIncrementalPatchBitmap = it
-        }
-    }
-
-    private fun renderRasterStrokePatch(surface: PixelTileSurface, newStrokes: List<InkStroke>): RasterStrokePatch? {
-        if (newStrokes.isEmpty()) return null
-        val rasterWidth = surface.logicalWidth
-        val rasterHeight = surface.logicalHeight
-        val allPoints = newStrokes.flatMap(InkStroke::points)
-        if (allPoints.isEmpty()) return null
-        val maximumWidth = newStrokes.maxOf { stroke ->
-            val spread = if (stroke.spray) 1f + stroke.spraySpread.coerceAtLeast(0f) else 1f
-            val blur = 1f + stroke.blur.coerceAtLeast(0f) / 50f
-            val base = stroke.width.coerceAtLeast(1f) / REFERENCE_WIDTH * rasterWidth
-            val viewToRaster = rasterWidth / width.coerceAtLeast(1).toFloat()
-            val waterEdge = if (stroke.waterEdgeEnabled) {
-                (WaterEdge.distancePixels(stroke.waterEdgeRadius, stroke.waterEdgeRadiusUnit, width.toFloat()) +
-                    WaterEdge.distancePixels(stroke.waterEdgeBlur, stroke.waterEdgeBlurUnit, width.toFloat())) * viewToRaster
-            } else 0f
-            base * spread * blur + waterEdge + base * stroke.tiltBleed.coerceIn(0f, 1f) * .3f
-        }
-        val padding = (maximumWidth * 1.25f + 6f).coerceAtLeast(6f)
-        val patchLeft = kotlin.math.floor(allPoints.minOf(StrokePoint::x) * rasterWidth - padding).toInt().coerceIn(0, rasterWidth - 1)
-        val patchTop = kotlin.math.floor(allPoints.minOf(StrokePoint::y) * rasterHeight - padding).toInt().coerceIn(0, rasterHeight - 1)
-        val patchRight = kotlin.math.ceil(allPoints.maxOf(StrokePoint::x) * rasterWidth + padding).toInt().coerceIn(patchLeft + 1, rasterWidth)
-        val patchBottom = kotlin.math.ceil(allPoints.maxOf(StrokePoint::y) * rasterHeight + padding).toInt().coerceIn(patchTop + 1, rasterHeight)
-        val patchWidth = patchRight - patchLeft
-        val patchHeight = patchBottom - patchTop
-        val paintSurface = Bitmap.createBitmap(patchWidth, patchHeight, Bitmap.Config.ARGB_8888)
-        val target = Canvas(paintSurface)
-        target.save()
-        val scaleX = rasterWidth / width.coerceAtLeast(1).toFloat()
-        val scaleY = rasterHeight / height.coerceAtLeast(1).toFloat()
-        target.scale(scaleX, scaleY)
-        target.translate(-patchLeft / scaleX, -patchTop / scaleY)
-        val previousSynchronousDecode = forceSynchronousTipDecode
-        forceSynchronousTipDecode = true
-        try {
-            newStrokes.forEach { stroke -> drawStroke(target, stroke) }
-        } finally {
-            forceSynchronousTipDecode = previousSynchronousDecode
-        }
-        target.restore()
-        selectionMaskForRasterTools()?.let { selection ->
-            RasterSelectionMask(selection, rasterWidth, rasterHeight).apply(
-                paintSurface,
-                Rect(patchLeft, patchTop, patchRight, patchBottom),
-            )
-        }
-        if (activeLayerId in alphaLockedLayers) {
-            val alphaSource = PixelTileBitmapAdapter.render(
-                surface.snapshot(),
-                PixelRect(patchLeft, patchTop, patchRight, patchBottom),
-            )
-            try {
-                target.drawBitmap(
-                    alphaSource,
-                    null,
-                    android.graphics.Rect(0, 0, patchWidth, patchHeight),
-                    Paint(Paint.ANTI_ALIAS_FLAG).apply { blendMode = android.graphics.BlendMode.DST_IN },
-                )
-            } finally {
-                alphaSource.recycle()
-            }
-        }
-        return RasterStrokePatch(paintSurface, patchLeft, patchTop)
-    }
-
-    private fun beginWetPaintGesture(normalizedX: Float, normalizedY: Float) = synchronized(renderLock) {
-        cancelWetPaintGestureLocked()
-        val template = activeStrokeTemplate ?: return@synchronized
-        val surface = rasterTileSurfaceFor(activeLayerId) ?: return@synchronized
-        clearRasterIncrementalPaintState()
-        rasterIncrementalPaintEnabled = supportsIncrementalRasterStampPaint(template)
-        rasterPaintGestureStrokeId = template.id
-        rasterPaintSession = RasterTilePaintSession(
-            surface,
-            selectionMaskForRasterTools(),
-            preserveDestinationAlpha = activeLayerId in alphaLockedLayers,
-        )
-        wetPaintDirtyBounds = null
-        if (template.procreateWetMix.isDisabled() && !template.watercolor) return@synchronized
-        val initial = StrokePoint(normalizedX, normalizedY)
-        wetPaintLastPositions = wetPaintPositions(initial)
-        wetPaintPickupColors = MutableList(wetPaintLastPositions.size) { null }
-    }
-
-    private fun wetPaintPositions(point: StrokePoint): List<Pair<Float, Float>> = buildList {
-        add(point.x to point.y)
-        symmetryMirrors(listOf(point)).forEach { mirrored -> mirrored.firstOrNull()?.let { add(it.x to it.y) } }
-    }
-
-    private fun advanceWetPaintGesture() {
-        val session = rasterPaintSession ?: return
-        val surface = rasterTileSurfaceFor(activeLayerId) ?: return
-        val rasterWidth = surface.logicalWidth
-        val rasterHeight = surface.logicalHeight
-        val template = activeStrokeTemplate ?: return
-        if (template.procreateWetMix.isDisabled() && !template.watercolor) return
-        val point = currentPoints.lastOrNull() ?: return
-        val currentPositions = wetPaintPositions(point)
-        if (currentPositions.size != wetPaintLastPositions.size) {
-            wetPaintLastPositions = currentPositions
-            wetPaintPickupColors = MutableList(currentPositions.size) { null }
-            return
-        }
-        val dynamics = BrushProgramRuntime.evaluateDab(template, point)
-        val radius = (template.width.coerceIn(.5f, 800f) / REFERENCE_WIDTH * rasterWidth * dynamics.size * .5f).coerceAtLeast(.5f)
-        val cspMixing = template.watercolor && template.procreateWetMix.isDisabled()
-        val amountOfPaint = if (cspMixing) app.inkloom.document.WetMixDynamics.colorMix(template, point) else 1f
-        val cspPull = when (CspColorMixMode.normalize(template.cspColorMixMode)) {
-            CspColorMixMode.RUNNING_COLOR -> template.colorStretch * (.55f + .45f * (1f - amountOfPaint))
-            CspColorMixMode.SMEAR -> template.colorStretch * (1f - amountOfPaint * .3f)
-            else -> template.colorStretch * (1f - amountOfPaint) * .8f
-        }.coerceIn(0f, 1f)
-        val pull = if (cspMixing) cspPull else app.inkloom.document.WetMixDynamics.pullStrength(template, point)
-        val runningColor = cspMixing && CspColorMixMode.normalize(template.cspColorMixMode) == CspColorMixMode.RUNNING_COLOR
-        val blurDynamics = if (runningColor) {
-            BrushDynamics.pressure(
-                template.colorMixBlurDynamics.pressureEnabled,
-                template.colorMixBlurDynamics.pressureMinimum,
-                template.colorMixBlurDynamics.pressureCurve,
-                point.pressure,
-            ) * BrushDynamics.secondary(template.colorMixBlurDynamics.secondary, point, template.renderSeed, 223)
-        } else 0f
-        val fixedBlurRadius = if (runningColor && !template.colorMixBlurAutomatic) BrushBlur.radiusPixels(
-            template.colorMixBlur * blurDynamics,
-            template.colorMixBlurUnit,
-            linkedToSize = false,
-            currentDiameter = radius * 2f,
-            baseDiameter = template.width / REFERENCE_WIDTH * rasterWidth,
-            pageWidth = rasterWidth.toFloat(),
-        ) else -1f
-        val blur = when {
-            !runningColor -> if (cspMixing) 0f else app.inkloom.document.WetMixDynamics.blurAmount(template, point)
-            template.colorMixBlurAutomatic -> (template.colorMixBlur / 100f * blurDynamics).coerceIn(0f, 1f)
-            else -> (fixedBlurRadius / radius.coerceAtLeast(1f)).coerceIn(0f, 1f)
-        }
-        var dirty: android.graphics.Rect? = null
-        currentPositions.indices.forEach { index ->
-            val previous = wetPaintLastPositions[index]
-            val current = currentPositions[index]
-            if (cspMixing) {
-                val sampled = session.samplePigment(current.first * rasterWidth, current.second * rasterHeight, radius)
-                val priorPickup = wetPaintPickupColors.getOrNull(index)
-                val pickup = when {
-                    sampled ushr 24 == 0 -> priorPickup ?: sampled
-                    priorPickup == null || priorPickup ushr 24 == 0 -> sampled
-                    else -> CspPigmentMixer.mixArgb(
-                        sampled,
-                        priorPickup,
-                        template.colorStretch.coerceIn(0f, 1f),
-                        template.cspPigmentMixingMode,
-                        template.cspBrightnessCorrection,
-                    )
-                }
-                if (index < wetPaintPickupColors.size) wetPaintPickupColors[index] = pickup
-                if (index == 0 && currentPoints.isNotEmpty()) {
-                    val fresh = template.colorArgb.toInt()
-                    val pigment = if (pickup ushr 24 == 0) fresh else CspPigmentMixer.mixArgb(
-                        pickup,
-                        fresh,
-                        amountOfPaint,
-                        template.cspPigmentMixingMode,
-                        template.cspBrightnessCorrection,
-                    )
-                    val last = currentPoints.lastIndex
-                    currentPoints[last] = currentPoints[last].copy(pigmentArgb = pigment.toUInt().toLong())
-                }
-            }
-            val changed = session.advanceWetTransport(
-                previous.first * rasterWidth, previous.second * rasterHeight,
-                current.first * rasterWidth, current.second * rasterHeight,
-                radius, pull, blur, template.hardness, fixedBlurRadius,
-            ) ?: return@forEach
-            if (dirty == null) dirty = android.graphics.Rect(changed) else dirty?.union(changed)
-        }
-        wetPaintLastPositions = currentPositions
-        dirty?.let { bounds ->
-            wetPaintDirtyBounds = mergeDirtyBounds(wetPaintDirtyBounds, bounds)
-            invalidate(
-                (bounds.left * width.toFloat() / rasterWidth).toInt() - 2,
-                (bounds.top * height.toFloat() / rasterHeight).toInt() - 2,
-                (bounds.right * width.toFloat() / rasterWidth).toInt() + 2,
-                (bounds.bottom * height.toFloat() / rasterHeight).toInt() + 2,
-            )
-        }
-    }
-
-    private fun finishWetPaintGesture() = synchronized(renderLock) {
-        finishWetPaintGestureLocked()
-    }
-
-    private fun finishWetPaintGestureLocked() {
-        rasterPaintSession?.close()
-        rasterPaintSession = null
-        rasterPaintGestureStrokeId = null
-        wetPaintDirtyBounds = null
-        wetPaintLastPositions = emptyList()
-        wetPaintPickupColors.clear()
-        clearRasterIncrementalPaintState()
-    }
-
-    private fun commitIncrementalRasterStampGesture(newStrokes: List<InkStroke>): Boolean = synchronized(renderLock) {
-        if (!rasterIncrementalPaintEnabled) return@synchronized false
-        val gestureStrokeId = rasterPaintGestureStrokeId ?: return@synchronized false
-        if (newStrokes.any { stroke ->
-                stroke.id != gestureStrokeId && !stroke.id.startsWith("$gestureStrokeId-sym-")
-            }
-        ) return@synchronized false
-        val surface = rasterTileSurfaceFor(activeLayerId) ?: return@synchronized false
-        val session = rasterPaintSession ?: return@synchronized false
-        val rendered = renderIncrementalRasterPaintPatch(null, newStrokes, finalCompleteInput = true)
-        if (!rendered) return@synchronized false
-        try {
-            val dirty = wetPaintDirtyBounds
-            if (dirty != null) {
-                session.commit().close()
-                commitRasterLayerPatch(surface, dirty)
-            } else {
-                session.restoreOriginal()
-            }
-        } finally {
-            session.close()
-            if (rasterPaintSession === session) rasterPaintSession = null
-            if (rasterPaintGestureStrokeId == gestureStrokeId) rasterPaintGestureStrokeId = null
-        }
-        invalidate()
-        true
-    }
-
-    private fun cancelWetPaintGesture() = synchronized(renderLock) {
-        cancelWetPaintGestureLocked()
-    }
-
-    private fun cancelWetPaintGestureLocked() {
-        rasterPaintSession?.restoreOriginal()
-        finishWetPaintGestureLocked()
-        invalidate()
-    }
-
-    private fun commitRasterPaintStrokes(surface: PixelTileSurface, newStrokes: List<InkStroke>) {
-        rasterFullReplayCount++
-        val patch = renderRasterStrokePatch(surface, newStrokes) ?: return
-        val session = rasterPaintSession ?: RasterTilePaintSession(
-            surface,
-            selectionMaskForRasterTools(),
-            preserveDestinationAlpha = activeLayerId in alphaLockedLayers,
-        )
-        try {
-            val painted = session.compositePaintPatch(
-                patch.bitmap,
-                patch.left,
-                patch.top,
-                newStrokes,
-                wetComposite = newStrokes.any { stroke ->
-                    stroke.watercolor || !stroke.procreateWetMix.isDisabled() || stroke.colorMix > .001f || stroke.paintMix > .001f
-                },
-            )
-            val dirtyBounds = painted?.let { mergeDirtyBounds(wetPaintDirtyBounds, it) } ?: wetPaintDirtyBounds
-            if (dirtyBounds != null) {
-                session.commit().close()
-                commitRasterLayerPatch(surface, dirtyBounds)
-            } else {
-                session.restoreOriginal()
-            }
-        } finally {
-            patch.bitmap.recycle()
-            session.close()
-            if (rasterPaintSession === session) rasterPaintSession = null
-        }
-        invalidate()
-    }
-
-    private fun activeBrushEngineKind(): BrushEngineKind = when {
-        activeTool == EditorTool.SMUDGE || brushWatercolor || !procreateWetMix.isDisabled() || brushColorMix > 0f || brushPaintMix > 0f -> BrushEngineKind.WET_SMUDGE
-        brushContinuousPlot || brushSpray -> BrushEngineKind.AIRBRUSH
-        tipAssetPath != null || tipAssetPaths.isNotEmpty() || brushDual || grainAssetPath != null -> BrushEngineKind.STAMP_RASTER
-        else -> BrushEngineKind.MESH_INK
-    }
-
-    /** The original stroke plus deterministic mirror ids. Stable ids let the front buffer append
-     * each mirrored tail instead of treating every display frame as unrelated new ink. */
-    private fun symmetryStrokes(points: List<StrokePoint>): List<InkStroke> {
-        val base = makeStroke(points)
-        if (symmetryMode == SymmetryMode.NONE) return listOf(base)
-        return listOf(base) + symmetryMirrors(points).mapIndexed { index, mirrored ->
-            makeStroke(mirrored).copy(id = "$currentStrokeId-sym-$index")
-        }
-    }
-
-    private fun symmetryMirrors(points: List<StrokePoint>): List<List<StrokePoint>> {
-        val mirrorX: (StrokePoint) -> StrokePoint = { it.copy(x = (1f - it.x).coerceIn(0f, 1f)) }
-        val mirrorY: (StrokePoint) -> StrokePoint = { it.copy(y = (1f - it.y).coerceIn(0f, 1f)) }
-        return when (symmetryMode) {
-            SymmetryMode.NONE -> emptyList()
-            SymmetryMode.HORIZONTAL -> listOf(points.map(mirrorY))
-            SymmetryMode.VERTICAL -> listOf(points.map(mirrorX))
-            SymmetryMode.QUADRANT -> listOf(points.map(mirrorX), points.map(mirrorY), points.map(mirrorX).map(mirrorY))
-            SymmetryMode.RADIAL_4, SymmetryMode.RADIAL_6, SymmetryMode.RADIAL_8 -> {
-                val n = when (symmetryMode) { SymmetryMode.RADIAL_4 -> 4; SymmetryMode.RADIAL_6 -> 6; SymmetryMode.RADIAL_8 -> 8; else -> 4 }
-                (1 until n).map { k -> points.map { rotateAroundCenter(it, 360f / n * k) } }
-            }
-        }
-    }
-
-    private fun rotateAroundCenter(point: StrokePoint, rotationDegrees: Float): StrokePoint {
-        val radians = Math.toRadians(rotationDegrees.toDouble())
-        val cos = kotlin.math.cos(radians).toFloat()
-        val sin = kotlin.math.sin(radians).toFloat()
-        val safeWidth = pageModelWidth.coerceAtLeast(.0001f)
-        val safeHeight = pageModelHeight.coerceAtLeast(.0001f)
-        val dx = (point.x - .5f) * safeWidth
-        val dy = (point.y - .5f) * safeHeight
-        return point.copy(x = .5f + (dx * cos - dy * sin) / safeWidth, y = .5f + (dx * sin + dy * cos) / safeHeight)
-    }
-
-    private fun beginEraserGesture() {
-        removeCallbacks(eraserInvalidationFrame)
-        eraserInvalidationScheduled = false
-        pendingEraserInvalidationBefore = null
-        rasterTileEraserSession?.close()
-        rasterTileEraserSession = null
-        val surface = rasterTileSurfaceFor(activeLayerId)
-        if (surface != null) {
-            rasterTileEraserSession = RasterTileEraserSession(surface, selectionMaskForRasterTools())
-            eraserGestureBefore = null
-        } else eraserGestureBefore = strokes.toList()
-        rasterEraserChanged = false
-        rasterEraserDirtyBounds = null
-        rasterEraserPoints.clear()
-        lastEraserX = null
-        lastEraserY = null
-        eraserStrokeIndices.clear()
-        if (nonDestructiveEraser) strokes.forEachIndexed { index, stroke -> eraserStrokeIndices[stroke.id] = index }
-    }
-
-    private fun eraseAlong(x: Float, y: Float, pressure: Float) {
-        val tileSession = rasterTileEraserSession
-        val surface = rasterTileSurfaceFor(activeLayerId)
-        if (surface != null && tileSession != null) {
-            val rasterWidth = surface.logicalWidth
-            val rasterHeight = surface.logicalHeight
-            val targetX = x.coerceIn(0f, 1f); val targetY = y.coerceIn(0f, 1f)
-            val point = StrokePoint(targetX, targetY, pressure.coerceIn(0f, 1f), android.os.SystemClock.uptimeMillis())
-            if (rasterEraserPoints.lastOrNull()?.let { last -> last.x == point.x && last.y == point.y } != true) rasterEraserPoints += point
-            val startX = lastEraserX ?: targetX; val startY = lastEraserY ?: targetY
-            val radius = eraserRadiusPixels(pressure) * rasterWidth / width.coerceAtLeast(1).toFloat()
-            val dirty = tileSession.eraseSegment(startX * rasterWidth, startY * rasterHeight, targetX * rasterWidth, targetY * rasterHeight, radius, eraserOpacity, eraserHardness)
-            if (dirty != null) {
-                rasterEraserChanged = true
-                rasterEraserDirtyBounds = mergeDirtyBounds(rasterEraserDirtyBounds, dirty)
-                postInvalidateOnAnimation()
-            }
-            lastEraserX = targetX; lastEraserY = targetY
-            return
-        }
-        val before = captureEraserInvalidationBefore()
-        beginEraserMaskBatch()
-        eraseAlongUnchecked(x, y, pressure)
-        if (!nonDestructiveEraser) flushEraserMaskBatch()
-        invalidateEraserEvent(before)
-    }
-
-    /** The latest point plus segment interpolation already covers the full path. Replaying every
-     * historical point makes dense Android input packets erase the same area repeatedly. */
-    private fun eraseMotionEvent(event: MotionEvent, pointerIndex: Int) {
-        if (rasterTileEraserSession != null) {
-            eraseAlong(event.getX(pointerIndex) / width.coerceAtLeast(1), event.getY(pointerIndex) / height.coerceAtLeast(1), event.getPressure(pointerIndex))
-            return
-        }
-        val before = captureEraserInvalidationBefore()
-        beginEraserMaskBatch()
-        eraseAlongUnchecked(
-            event.getX(pointerIndex) / width.coerceAtLeast(1),
-            event.getY(pointerIndex) / height.coerceAtLeast(1),
-            event.getPressure(pointerIndex),
-        )
-        if (!nonDestructiveEraser) flushEraserMaskBatch()
-        invalidateEraserEvent(before)
-    }
-
-    private fun beginEraserMaskBatch() {
-        if (nonDestructiveEraser && eraserMaskBatch == null) eraserMaskBatch = linkedMapOf()
-    }
-
-    private fun flushEraserMaskBatch() {
-        val batch = eraserMaskBatch ?: return
-        batch.forEach { (strokeId, additions) ->
-            val index = eraserStrokeIndices[strokeId] ?: return@forEach
-            val stroke = strokes.getOrNull(index)?.takeIf { it.id == strokeId } ?: return@forEach
-            if (additions.isNotEmpty()) strokes[index] = stroke.copy(masks = stroke.masks + additions)
-        }
-        eraserMaskBatch = null
-    }
-
-    private fun invalidateEraserEvent(before: List<InkStroke>) {
-        if (nonDestructiveEraser) {
-            if (!eraserInvalidationScheduled) {
-                eraserInvalidationScheduled = true
-                postOnAnimation(eraserInvalidationFrame)
-            }
-            return
-        }
-        val edit = StrokeEdits.difference(before, strokes) ?: return
-        invalidateStrokeCache(edit.before.map { it.stroke }, edit.after.map { it.stroke })
-    }
-
-    /** Mask erasers do not change stroke bounds, so all samples received during one display frame
-     * can share a single tile diff. This removes a full stroke-list comparison from every input
-     * packet while preserving immediate model updates and one-frame visual feedback. */
-    private fun captureEraserInvalidationBefore(): List<InkStroke> {
-        if (!nonDestructiveEraser) return strokes.toList()
-        if (pendingEraserInvalidationBefore == null) pendingEraserInvalidationBefore = strokes.toList()
-        return emptyList()
-    }
-
-    private fun flushEraserInvalidation() {
-        val before = pendingEraserInvalidationBefore ?: return
-        pendingEraserInvalidationBefore = null
-        flushEraserMaskBatch()
-        val edit = StrokeEdits.difference(before, strokes) ?: return
-        invalidateStrokeCache(edit.before.map { it.stroke }, edit.after.map { it.stroke })
-    }
-
-    private fun eraseAlongUnchecked(x: Float, y: Float, pressure: Float) {
-        val targetX = x.coerceIn(0f, 1f)
-        val targetY = y.coerceIn(0f, 1f)
-        val startX = lastEraserX
-        val startY = lastEraserY
-        if (startX == null || startY == null) {
-            eraseAt(targetX, targetY, pressure)
-        } else {
-            val distancePixels = hypot(((targetX - startX) * width).toDouble(), ((targetY - startY) * height).toDouble()).toFloat()
-            // Overlapping dabs at 75% of the radius remain continuous, while the former 45%
-            // spacing generated hundreds of redundant stroke intersections per input packet.
-            val spacing = (eraserRadiusPixels(pressure) * .75f).coerceAtLeast(1.5f)
-            val steps = ceil(distancePixels / spacing).toInt().coerceIn(1, MAX_ERASER_SAMPLES_PER_EVENT)
-            for (step in 1..steps) {
-                val amount = step / steps.toFloat()
-                eraseAt(startX + (targetX - startX) * amount, startY + (targetY - startY) * amount, pressure)
-            }
-        }
-        lastEraserX = targetX
-        lastEraserY = targetY
-    }
-
-    private fun eraseAt(x: Float, y: Float, pressure: Float) {
-        val eraserRadius = eraserRadiusPixels(pressure)
-        committedScene.ensureIndex(strokes, width, height)
-        val candidateIds = committedScene.candidates(
-            x * width - eraserRadius,
-            y * height - eraserRadius,
-            x * width + eraserRadius,
-            y * height + eraserRadius,
-        )
-        val candidateIndices: Sequence<Int> = if (nonDestructiveEraser) {
-            candidateIds.asSequence().mapNotNull(eraserStrokeIndices::get).sortedDescending()
-        } else {
-            strokes.indices.reversed().asSequence().filter { strokes[it].id in candidateIds }
-        }
-        for (index in candidateIndices) {
-            val stroke = strokes.getOrNull(index) ?: continue
-            if (stroke.layerId != activeLayerId) continue
-            if (stroke.id in protectedStrokeIds) continue
-            val strokeRadius = stroke.width.coerceIn(.1f, 800f) * width.coerceAtLeast(1) / REFERENCE_WIDTH / 2f
-            val combinedRadius = eraserRadius + strokeRadius
-            val radiusX = combinedRadius / width.coerceAtLeast(1)
-            val radiusY = combinedRadius / height.coerceAtLeast(1)
-            if (!StrokeEraser.intersects(stroke, x, y, radiusX, radiusY)) continue
-            if (nonDestructiveEraser) {
-                val dab = StrokeMaskDab(x, y, eraserRadius / width.coerceAtLeast(1), eraserRadius / height.coerceAtLeast(1), hardness = eraserHardness, opacity = eraserOpacity, tipAssetPath = eraserTipAssetPath)
-                val pending = eraserMaskBatch?.getOrPut(stroke.id, ::mutableListOf)
-                val previous = pending?.lastOrNull() ?: stroke.masks.lastOrNull()
-                if (previous?.let { kotlin.math.abs(it.x - dab.x) < .00001f && kotlin.math.abs(it.y - dab.y) < .00001f } == true) continue
-                if (pending != null) pending += dab else strokes[index] = stroke.copy(masks = stroke.masks + dab)
-                continue
-            }
-            val pieces = if (localEraser) {
-                StrokeEraser.erase(stroke, x, y, radiusX, radiusY)?.replacements ?: continue
-            } else {
-                emptyList()
-            }
-            strokes.removeAt(index)
-            selectedStrokeIds.remove(stroke.id)
-            if (localEraser) strokes.addAll(index, pieces)
-        }
-    }
-
-    private fun eraserRadiusPixels(pressure: Float): Float {
-        val pressureFactor = if (eraserPressureSize) PressureCalibration.apply(pressure, pressureMinimumInput, pressureMaximumInput, pressureSensitivity, pressureResponseCurve).coerceIn(.15f, 1f) else 1f
-        return (gestureEraserSize.coerceIn(.01f, 400f) * pressureFactor * width.coerceAtLeast(1) / REFERENCE_WIDTH / 2f)
-            .coerceAtLeast(1f / viewportScale.coerceAtLeast(1f))
-    }
-
-    private fun finishEraserGesture() {
-        removeCallbacks(eraserInvalidationFrame)
-        eraserInvalidationScheduled = false
-        flushEraserInvalidation()
-        val tileSession = rasterTileEraserSession
-        if (tileSession != null) {
-            if (rasterEraserChanged) {
-                // Discard the low-cost round preview, then authoritatively replay the imported or
-                // configured eraser descriptor into one sparse-tile transaction.
-                tileSession.restoreOriginal()
-                rasterEraserDirtyBounds = null
-                val eraserStroke = withCurrentBrushBehavior(buildStroke(rasterEraserPoints)).copy(
-                    engineKind = BrushEngineKind.ERASE_MASK,
-                    grainMovement = grainMovement,
-                    grainZoom = grainZoom,
-                    width = gestureEraserSize,
-                    opacity = eraserOpacity,
-                    hardness = eraserHardness,
-                    tipAssetPath = eraserTipAssetPath ?: tipAssetPath,
-                    tipAssetPaths = listOfNotNull(eraserTipAssetPath ?: tipAssetPath).ifEmpty { tipAssetPaths },
-                    watercolor = false,
-                    colorMix = 0f,
-                    paintMix = 0f,
-                )
-                val surface = rasterLayerTileSurfaces[activeLayerId]
-                val strokePatch = surface?.let { renderRasterStrokePatch(it, listOf(eraserStroke)) }
-                if (surface != null && strokePatch != null) {
-                    val bounds = Rect(
-                        strokePatch.left,
-                        strokePatch.top,
-                        strokePatch.left + strokePatch.bitmap.width,
-                        strokePatch.top + strokePatch.bitmap.height,
-                    )
-                    val exact = RasterTileEditSession(surface, "authored raster eraser")
-                    exact.use {
-                        it.editIndependent(
-                            app.inkloom.engine.v5.surface.PixelRect(bounds.left, bounds.top, bounds.right, bounds.bottom),
-                        ) { destination, unit ->
-                            val source = Rect(
-                                unit.left - bounds.left,
-                                unit.top - bounds.top,
-                                unit.right - bounds.left,
-                                unit.bottom - bounds.top,
-                            )
-                            Canvas(destination).drawBitmap(strokePatch.bitmap, source, Rect(0, 0, destination.width, destination.height), Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                                blendMode = android.graphics.BlendMode.DST_OUT
-                            })
-                        }
-                        it.commit().close()
-                    }
-                    rasterEraserDirtyBounds = bounds
-                    strokePatch.bitmap.recycle()
-                    commitRasterLayerPatch(surface, bounds)
-                } else {
-                    strokePatch?.bitmap?.recycle()
-                }
-            } else {
-                tileSession.restoreOriginal()
-            }
-            tileSession.close()
-        } else eraserGestureBefore?.let { commitStrokeEdit(it, strokes) }
-        rasterTileEraserSession = null; rasterEraserChanged = false; rasterEraserDirtyBounds = null
-        rasterEraserPoints.clear()
-        eraserGestureBefore = null
-        lastEraserX = null
-        lastEraserY = null
-        eraserStrokeIndices.clear()
-        eraserMaskBatch = null
-        if (selectedMaskRegions.isEmpty() && selectedStrokeIds.isNotEmpty() && hasSelection()) {
-            syncSelectionAlphaFromSelectedStrokes(resetFeather = false)
-        }
-    }
-
-    private fun cancelEraserGesture() {
-        removeCallbacks(eraserInvalidationFrame)
-        eraserInvalidationScheduled = false
-        pendingEraserInvalidationBefore = null
-        rasterTileEraserSession?.let { session ->
-            if (rasterEraserChanged) session.restoreOriginal()
-            session.close()
-            invalidate()
-        } ?: eraserGestureBefore?.let(::restoreStrokeSnapshot)
-        rasterTileEraserSession = null; rasterEraserChanged = false; rasterEraserDirtyBounds = null
-        rasterEraserPoints.clear()
-        eraserGestureBefore = null
-        lastEraserX = null
-        lastEraserY = null
-        eraserStrokeIndices.clear()
-        eraserMaskBatch = null
-    }
-
     private fun findStroke(x: Float, y: Float, threshold: Float): Int = strokes.indexOfLast { stroke ->
         stroke.id !in protectedStrokeIds && StrokeEraser.intersects(stroke, x, y, threshold, threshold)
     }
@@ -7527,39 +5358,39 @@ class InkCanvasView(context: Context) : View(context) {
     fun undo() {
         val edit = editHistory.takeUndo() ?: return
         when (edit) {
-            is EngineStrokeTransaction -> {
+            is EngineTransaction.Strokes -> {
                 if (editTouchesProtectedLayer(edit.edit)) {
                     editHistory.restoreUndo(edit)
                     return
                 }
                 applyStrokeEdit(edit.edit, forward = false)
             }
-            is EngineExternalTransaction -> edit.undo()
+            is EngineTransaction.External -> edit.undo()
         }
     }
 
     fun redo() {
         val edit = editHistory.takeRedo() ?: return
         when (edit) {
-            is EngineStrokeTransaction -> {
+            is EngineTransaction.Strokes -> {
                 if (editTouchesProtectedLayer(edit.edit)) {
                     editHistory.restoreRedo(edit)
                     return
                 }
                 applyStrokeEdit(edit.edit, forward = true)
             }
-            is EngineExternalTransaction -> edit.redo()
+            is EngineTransaction.External -> edit.redo()
         }
     }
 
     /** Adds a host-owned page mutation to the same chronological stream as ink edits. */
     fun recordExternalEdit(undo: () -> Unit, redo: () -> Unit, dispose: () -> Unit = {}) {
-        editHistory.record(EngineExternalTransaction(undo, redo, dispose))
+        editHistory.record(EngineTransaction.External(undo, redo, dispose))
     }
 
     private fun commitStrokeEdit(before: List<InkStroke>, after: List<InkStroke>) {
         val edit = StrokeEdits.difference(before, after) ?: return
-        editHistory.record(EngineStrokeTransaction(edit))
+        editHistory.record(EngineTransaction.Strokes(edit))
         persistStrokeTransition(edit.before, edit.after)
     }
 
@@ -8102,7 +5933,6 @@ class InkCanvasView(context: Context) : View(context) {
         @Volatile var rasterSelectionClipboard: RasterSelectionClipboard? = null
         const val REFERENCE_WIDTH = 1600f
         private const val SMALL_CURSOR_MARK_THRESHOLD_PX = 8f
-        const val MAX_CACHE_PIXELS = 16_000_000L
         const val FILL_MAX_SAMPLE_DIMENSION = 1_600f
         const val FILL_PREVIEW_THROTTLE_MS = 32L
         const val MAX_ERASER_SAMPLES_PER_EVENT = 128
@@ -8126,16 +5956,8 @@ class InkCanvasView(context: Context) : View(context) {
         const val GUIDE_CAPTURE_MOVEMENT_DP = 3f
         const val PERSPECTIVE_TOUCH_RADIUS_DP = 28f
         const val SPECIAL_RULER_ROTATION_HANDLE_DP = 72f
-        const val DUAL_SEQUENCE_SEED = 0x35A71C9E
-        const val DUAL_GRAIN_SEED = 0x4D2A61C7
-        const val MAX_COLOR_FILTER_CACHE_ENTRIES = 64
-        const val MAX_BLUR_MASK_CACHE_ENTRIES = 48
-        const val MAX_CACHED_BLUR_RADIUS_PX = 256f
         const val STYLUS_BUTTON_MASK = MotionEvent.BUTTON_STYLUS_PRIMARY or MotionEvent.BUTTON_STYLUS_SECONDARY
         const val POINTER_BUTTON_MASK = MotionEvent.BUTTON_PRIMARY or MotionEvent.BUTTON_SECONDARY or MotionEvent.BUTTON_TERTIARY or MotionEvent.BUTTON_BACK or MotionEvent.BUTTON_FORWARD
-        val TIP_DECODE_EXECUTOR = Executors.newFixedThreadPool(2) { runnable ->
-            Thread(runnable, "inkloom-brush-tip").apply { isDaemon = true }
-        }
     }
 
     private fun midpoint(start: StrokePoint, end: StrokePoint) = StrokePoint(

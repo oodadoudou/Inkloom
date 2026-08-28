@@ -1,4 +1,4 @@
-package app.inkloom.engine.v3.diagnostics
+package app.inkloom.engine.v5.diagnostics
 
 import org.junit.After
 import org.junit.Assert.assertEquals

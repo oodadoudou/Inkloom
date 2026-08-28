@@ -208,7 +208,6 @@ class BrushBatchManagementTest {
         val view = findInkCanvasView()!!
         composeRule.waitUntil(5_000) { view.brushId == "batch-a" }
         composeRule.onNodeWithContentDescription("Close brushes panel").performClick()
-        val transactionPacketsBefore = view.rasterIncrementalPatchCount
         val v5GesturesBefore = view.v5DryGestureCount
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
@@ -216,8 +215,7 @@ class BrushBatchManagementTest {
         }
         assertTrue(
             "Every rapid pen contact must enter exactly one realtime paint transaction",
-            (view.v5DryGestureCount - v5GesturesBefore) +
-                (view.rasterIncrementalPatchCount - transactionPacketsBefore) >= 6,
+            view.v5DryGestureCount - v5GesturesBefore >= 6,
         )
     }
 

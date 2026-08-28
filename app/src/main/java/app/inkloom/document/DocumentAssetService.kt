@@ -53,7 +53,7 @@ class DocumentAssetService(private val context: Context) {
     private val pendingDocumentAssets = linkedSetOf<String>()
     private val pendingRasterTileManifests = linkedSetOf<String>()
     @androidx.annotation.VisibleForTesting
-    internal var v3RasterProjectionExportCount: Int = 0
+    internal var v5RasterProjectionExportCount: Int = 0
 
     fun importPdf(uri: Uri, title: String, indexText: Boolean = true): InkDocument {
         val asset = copyAsset(uri, "pdf")
@@ -962,7 +962,7 @@ class DocumentAssetService(private val context: Context) {
         } else canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
         val visibleLayers = page.layers.filter { LayerHierarchy.effectiveVisible(page.layers, it) && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) && (includeDraftLayers || !it.draft) && (includedLayerIds == null || it.id in includedLayerIds) }
-        if (drawV3RasterProjectionIfCompatible(
+        if (drawV5RasterProjectionIfCompatible(
                 canvas = canvas,
                 sourcePage = sourcePage,
                 projectedPage = page,
@@ -1220,7 +1220,7 @@ class DocumentAssetService(private val context: Context) {
      * V3 pixel surfaces. Legacy PNG layers may enter through [renderRasterLayerSurface], which is
      * the documented one-way decode adapter; composition itself never falls back to saveLayer.
      */
-    private fun drawV3RasterProjectionIfCompatible(
+    private fun drawV5RasterProjectionIfCompatible(
         canvas: Canvas,
         sourcePage: InkPage,
         projectedPage: InkPage,
@@ -1272,7 +1272,7 @@ class DocumentAssetService(private val context: Context) {
         PixelTileCanvasRenderer().use { renderer ->
             renderer.draw(canvas, update.snapshot, RectF(0f, 0f, width.toFloat(), height.toFloat()))
         }
-        v3RasterProjectionExportCount++
+        v5RasterProjectionExportCount++
         return true
     }
 

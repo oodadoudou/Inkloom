@@ -154,8 +154,6 @@ class RasterPaintCommitTest {
         assertTrue("The active and landed generations must be pixel-identical", activePixels.contentEquals(landedPixels))
         assertTrue("Releasing the generation barrier must not flash or replace pixels", landedPixels.contentEquals(stablePixels))
 
-        assertEquals("V5 must not enter the legacy incremental stamp transaction", 0, view.rasterIncrementalPatchCount)
-        assertEquals("V5 must not replay the complete path on pen-up", 0, view.rasterFullReplayCount)
         assertTrue(Color.alpha(surface.pixelAt(225, 300)) > 0)
         requireNotNull(committed).close()
         display.recycle(); tipFile.delete()
@@ -257,8 +255,6 @@ class RasterPaintCommitTest {
             "InkloomPerf",
             "raster_wet_live_p95_ms=$p95 transport_p95_ms=$transportP95 presentation_p95_ms=$presentationP95 raster_wet_commit_ms=$penUpMs",
         )
-        assertTrue("Wet paint must be deposited in multiple retained transaction patches", view.rasterIncrementalPatchCount >= 4)
-        assertEquals("Pen-up must publish retained wet tiles instead of replaying the whole stroke", 0, view.rasterFullReplayCount)
         assertTrue("Wet live frame p95 was ${p95}ms", p95 < 33.4f)
         assertTrue("Wet pen-up commit was ${penUpMs}ms", penUpMs < 33.4f)
         requireNotNull(committed).close()
@@ -285,15 +281,9 @@ class RasterPaintCommitTest {
 
         assertTrue(requireNotNull(committed).hasAlphaInSourceRegion(80, 270, 260, 340))
         assertTrue("The authoritative surface must receive the same committed pigment", Color.alpha(tileSurface.pixelAt(180, 300)) > 0)
-        val legacyDrawsBeforeStableFrame = view.legacyLayerCompositionDrawCount
         val stableFrame = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
         view.draw(Canvas(stableFrame))
-        assertTrue("The post-stylus frame must use the production V3 projection", view.v3RasterProjectionDrawCount > 0)
-        assertEquals(
-            "Stable raster display must not re-enter mixed-scene compatibility composition",
-            legacyDrawsBeforeStableFrame,
-            view.legacyLayerCompositionDrawCount,
-        )
+        assertTrue("The post-stylus frame must use the production V5 projection", view.v5RasterProjectionDrawCount > 0)
         stableFrame.recycle()
         committed?.close()
     }
@@ -371,7 +361,6 @@ class RasterPaintCommitTest {
         send(view, MotionEvent.ACTION_UP, 635f, 302f, 90L)
         val elapsedMs = (android.os.SystemClock.elapsedRealtimeNanos() - started) / 1_000_000f
         android.util.Log.i("InkloomPerf", "raster_standard_pen_commit_ms=$elapsedMs")
-        assertEquals("The standard pen belongs to the direct tile-deposit path", 0, view.rasterFullReplayCount)
         assertTrue("Raster pen-up commit was ${elapsedMs}ms", elapsedMs < 16.7f)
     }
 

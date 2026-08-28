@@ -27,8 +27,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
-class V3RasterProjectionProductionTest {
-    @Test fun productionCanvasCompositesPureRasterLayersThroughV3Projection() {
+class V5RasterProjectionProductionTest {
+    @Test fun productionCanvasCompositesPureRasterLayersThroughV5Projection() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val lower = solidSurface("lower", Color.RED)
             val upper = solidSurface("upper", Color.BLUE)
@@ -47,12 +47,11 @@ class V3RasterProjectionProductionTest {
                 val pixel = output.getPixel(128, 128)
                 assertTrue("Expected 50% blue Multiply over red, got ${Integer.toHexString(pixel)}", Color.red(pixel) in 125..130)
                 assertTrue(Color.green(pixel) <= 2 && Color.blue(pixel) <= 2)
-                assertEquals(1, view.v3RasterProjectionDrawCount)
-                assertEquals(0, view.legacyLayerCompositionDrawCount)
+                assertEquals(1, view.v5RasterProjectionDrawCount)
                 assertEquals(1, view.lastRasterProjectionRecomposedTileCount)
 
                 view.draw(Canvas(output))
-                assertEquals(2, view.v3RasterProjectionDrawCount)
+                assertEquals(2, view.v5RasterProjectionDrawCount)
                 assertEquals(0, view.lastRasterProjectionRecomposedTileCount)
             } finally {
                 output.recycle()
@@ -60,7 +59,7 @@ class V3RasterProjectionProductionTest {
         }
     }
 
-    @Test fun pageExportUsesTheSameV3RasterProjectionContract() {
+    @Test fun pageExportUsesTheSameSparseRasterProjectionContract() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val assets = DocumentAssetService(context)
         val lowerReference = assets.saveRasterTileSurface(solidSurface("export-lower", Color.RED))
@@ -88,9 +87,9 @@ class V3RasterProjectionProductionTest {
         val output = assets.renderPageBitmap(page, 256)
         try {
             val pixel = output.getPixel(128, 128)
-            assertTrue("Export must share V3 blend output, got ${Integer.toHexString(pixel)}", Color.red(pixel) in 125..130)
+            assertTrue("Export must share V5 blend output, got ${Integer.toHexString(pixel)}", Color.red(pixel) in 125..130)
             assertTrue(Color.green(pixel) <= 2 && Color.blue(pixel) <= 2)
-            assertEquals(1, assets.v3RasterProjectionExportCount)
+            assertEquals(1, assets.v5RasterProjectionExportCount)
         } finally {
             output.recycle()
             assets.releaseRasterTileReservation(lowerReference)
@@ -117,14 +116,14 @@ class V3RasterProjectionProductionTest {
             try {
                 view.draw(Canvas(output))
                 assertEquals(Color.MAGENTA, output.getPixel(128, 128))
-                assertEquals(1, view.v3RasterProjectionDrawCount)
+                assertEquals(1, view.v5RasterProjectionDrawCount)
             } finally {
                 output.recycle()
             }
         }
     }
 
-    @Test fun mixedVectorAndLegacyMaskScenesAreExplicitlyIsolatedWhileSparseMasksUseV3() {
+    @Test fun vectorCompatibilityContentIsIgnoredWhileSparseMasksUseV5() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val surface = solidSurface("raster", Color.YELLOW)
             val vector = InkStroke(
@@ -164,15 +163,12 @@ class V3RasterProjectionProductionTest {
             val output = Bitmap.createBitmap(256, 256, Bitmap.Config.ARGB_8888)
             try {
                 mixed.draw(Canvas(output))
-                assertEquals(0, mixed.v3RasterProjectionDrawCount)
-                assertEquals(1, mixed.legacyLayerCompositionDrawCount)
+                assertEquals(1, mixed.v5RasterProjectionDrawCount)
                 masked.draw(Canvas(output))
-                assertEquals(0, masked.v3RasterProjectionDrawCount)
-                assertEquals(1, masked.legacyLayerCompositionDrawCount)
+                assertEquals(0, masked.v5RasterProjectionDrawCount)
                 output.eraseColor(Color.TRANSPARENT)
                 sparseMasked.draw(Canvas(output))
-                assertEquals(1, sparseMasked.v3RasterProjectionDrawCount)
-                assertEquals(0, sparseMasked.legacyLayerCompositionDrawCount)
+                assertEquals(1, sparseMasked.v5RasterProjectionDrawCount)
                 assertEquals(Color.YELLOW, output.getPixel(64, 128))
                 assertEquals(Color.TRANSPARENT, output.getPixel(192, 128))
             } finally {

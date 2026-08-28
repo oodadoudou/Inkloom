@@ -1,4 +1,4 @@
-package app.inkloom.engine.v3.diagnostics
+package app.inkloom.engine.v5.diagnostics
 
 import android.util.Log
 import app.inkloom.document.InkStroke
@@ -7,8 +7,8 @@ import java.util.concurrent.ConcurrentHashMap
 /**
  * Debug-only per-stroke timeline for the realtime landing pipeline.
  *
- * Threads one strokeId through input, front-buffer and V3 projection stages, then derives
- * end-to-end latencies (DOWN→first transient pixel, DOWN→first V3 pixel, UP→commit, ...) and
+ * Threads one strokeId through V5 input, transactional deposition, and stable presentation, then
+ * derives end-to-end latencies without relying on a compatibility renderer.
  * aggregates P50/P95/P99/MAX across sessions. Every call is a no-op while [enabled] is false so
  * release builds pay nothing. Diagnostics can only be enabled from a debug build.
  */

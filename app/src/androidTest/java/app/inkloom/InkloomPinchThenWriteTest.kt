@@ -186,8 +186,8 @@ class InkloomPinchThenWriteTest {
         assertTrue("Selection pinch must not fly vertically", kotlin.math.abs(view.viewportPanY) < 2_500f)
 
         val proxy = requireNotNull(findInkViewportProxy())
-        val frame = requireNotNull(app.inkloom.engine.v3.api.ViewportFrame.create(
-            app.inkloom.engine.v3.api.ViewportFrameId(1L),
+        val frame = requireNotNull(app.inkloom.engine.v5.coordinates.ViewportFrame.create(
+            app.inkloom.engine.v5.coordinates.ViewportFrameId(1L),
             proxy.width.toFloat(),
             proxy.height.toFloat(),
             view.width.toFloat(),
@@ -503,44 +503,7 @@ class InkloomPinchThenWriteTest {
 
         android.os.SystemClock.sleep(500)
         var viewDark = 0
-        var strokesAtDraw = -1
-        var tilesAtDraw = -1
-        var dirtyAtDraw = -1
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            strokesAtDraw = (reflectField(view, "strokes") as? List<*>)?.size ?: -1
-            val stroke0 = (reflectField(view, "strokes") as? List<*>)?.firstOrNull()
-            val strokeWidth = stroke0?.let { reflectField(it, "width") as? Float }
-            val strokePoints = stroke0?.let { (reflectField(it, "points") as? List<*>)?.size } ?: -1
-            val firstPoint = stroke0?.let { (reflectField(it, "points") as? List<*>)?.firstOrNull() }
-            val firstX = firstPoint?.let { reflectField(it, "x") as? Float }
-            val firstY = firstPoint?.let { reflectField(it, "y") as? Float }
-            System.err.println("RENDER stroke width=$strokeWidth points=$strokePoints first=($firstX,$firstY)")
-            val committedScene = view.committedTileSnapshot()
-            tilesAtDraw = committedScene.tileCount
-            dirtyAtDraw = committedScene.dirtyTileCount
-            var tileDark = 0
-            committedScene.tiles.forEach { bmp ->
-                for (y in 0 until bmp.height) for (x in 0 until bmp.width step 2) {
-                    val pixel = bmp.getPixel(x, y)
-                    if (android.graphics.Color.alpha(pixel) > 0 && android.graphics.Color.red(pixel) + android.graphics.Color.green(pixel) + android.graphics.Color.blue(pixel) < 600) tileDark++
-                }
-            }
-            System.err.println("RENDER beforeZoom tileDark=$tileDark tiles=${committedScene.tileCount}")
-            val firstTile = committedScene.tiles.firstOrNull()
-            if (firstTile != null) {
-                val sb = StringBuilder("TILE0 (${firstTile.width}x${firstTile.height})")
-                for (ry in 0 until 16) {
-                    val y0 = firstTile.height * ry / 16
-                    sb.append("\n")
-                    for (rx in 0 until 32) {
-                        val x0 = firstTile.width * rx / 32
-                        val px = firstTile.getPixel(x0, y0)
-                        val lum = android.graphics.Color.red(px) + android.graphics.Color.green(px) + android.graphics.Color.blue(px)
-                        sb.append(if (lum < 600) "#" else if (android.graphics.Color.alpha(px) == 0) " " else ".")
-                    }
-                }
-                System.err.println(sb.toString())
-            }
             val bmp = android.graphics.Bitmap.createBitmap(view.width, view.height, android.graphics.Bitmap.Config.ARGB_8888)
             val c = android.graphics.Canvas(bmp)
             view.draw(c)
@@ -556,7 +519,7 @@ class InkloomPinchThenWriteTest {
             System.err.println("RENDER viewDraw white=$white transparent=$transparent dark=$viewDark darkBbox=($dMinX,$dMinY)-($dMaxX,$dMaxY)")
             bmp.recycle()
         }
-        System.err.println("RENDER beforeZoom strokes=$strokesAtDraw tiles=$tilesAtDraw dirty=$dirtyAtDraw viewOnDrawDark=$viewDark")
+        System.err.println("RENDER beforeZoom viewOnDrawDark=$viewDark")
         val before = screenshot()
         val beforeDark = darkInColumn(before, (paperCentreX * (before.width / 2560f)).toInt(), (1080 * (before.height / 1600f)).toInt(), (1220 * (before.height / 1600f)).toInt())
         System.err.println("RENDER beforeZoom darkInStrokeBand=$beforeDark")

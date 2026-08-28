@@ -1,4 +1,4 @@
-package app.inkloom.engine.v3.diagnostics
+package app.inkloom.engine.v5.diagnostics
 
 import java.util.concurrent.atomic.AtomicInteger
 

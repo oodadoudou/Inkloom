@@ -73,8 +73,6 @@ class V5RealtimeStampPerformanceTest {
             times += (SystemClock.elapsedRealtimeNanos() - started) / 1_000_000f
         }
         assertTrue("Imported V5 delta must be visible before UP", hasInk(display))
-        assertEquals(0, view.rasterIncrementalPatchCount)
-        assertEquals(0, view.rasterFullReplayCount)
 
         val lastX = 84f + 239 * 3.4f
         val lastY = 260f + kotlin.math.sin(239 * .12f) * 16f

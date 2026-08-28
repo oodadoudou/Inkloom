@@ -1,8 +1,8 @@
-package app.inkloom.engine.v3.diagnostics
+package app.inkloom.engine.v5.diagnostics
 
 import android.os.Trace
 
-internal inline fun <T> traceEngineV3(section: String, block: () -> T): T {
+internal inline fun <T> traceEngineV5(section: String, block: () -> T): T {
     if (!Trace.isEnabled()) return block()
     Trace.beginSection(section)
     return try {

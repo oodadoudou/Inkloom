@@ -172,7 +172,6 @@ class PixelLayerProjectionBenchmarkTest {
                 }.sorted()
                 val p95 = changedTimes[p95Index(changedTimes.size)]
                 android.util.Log.i("InkloomPerf", "production_raster_projection_50_layer_8k_changed_tile_p95_ms=$p95")
-                assertEquals(0, view.legacyLayerCompositionDrawCount)
                 assertTrue("Production projection draw p95 was ${p95}ms", p95 < 16.7f)
             } finally {
                 output.recycle()
