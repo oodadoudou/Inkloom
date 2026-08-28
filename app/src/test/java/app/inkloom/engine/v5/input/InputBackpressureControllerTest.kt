@@ -37,16 +37,42 @@ class InputBackpressureControllerTest {
         assertTrue(controller.snapshot(13L).coalescedMoveCount > 0)
     }
 
-    private fun sample(sequence: Long, phase: InputPhase, time: Long, x: Float) = InputSample(
+    @Test fun `overload coalesces distant collinear reports but preserves corners and pressure extrema`() {
+        val controller = InputBackpressureController(softLimit = 4, hardLimit = 32)
+        val values = buildList {
+            add(sample(0, InputPhase.DOWN, 0L, 0f))
+            for (index in 1L..20L) add(sample(index, InputPhase.MOVE, index, index * 10f))
+            add(sample(21, InputPhase.MOVE, 21L, 200f, y = 40f))
+            add(sample(22, InputPhase.MOVE, 22L, 210f, y = 80f, pressure = 1f))
+            add(sample(23, InputPhase.MOVE, 23L, 220f, y = 120f))
+            add(sample(24, InputPhase.UP, 24L, 230f, y = 160f))
+        }
+
+        controller.enqueue(InputSampleBatch.owned(values))
+        val drained = generateSequence { controller.drain(32) }.flatMap { it.samples.asSequence() }.toList()
+
+        assertTrue("Straight high-speed reports should be bounded", drained.size < values.size)
+        assertTrue("The direction corner must survive", drained.any { it.point.x == 200f && it.point.y == 40f })
+        assertTrue("The pressure maximum must survive", drained.any { it.pressure == 1f })
+        assertEquals(InputPhase.UP, drained.last().phase)
+    }
+
+    private fun sample(
+        sequence: Long,
+        phase: InputPhase,
+        time: Long,
+        x: Float,
+        y: Float = 0f,
+        pressure: Float = .5f,
+    ) = InputSample(
         sequence,
         phase,
         InputTool.STYLUS,
-        DocumentPoint(x, 0f),
+        DocumentPoint(x, y),
         time,
         time,
-        .5f,
+        pressure,
         0f,
         0f,
     )
 }
-
