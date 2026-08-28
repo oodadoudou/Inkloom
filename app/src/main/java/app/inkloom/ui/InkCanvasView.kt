@@ -1150,7 +1150,10 @@ class InkCanvasView(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         synchronized(renderLock) { drawPageContent(canvas) }
-        lastV5FrameInvalidation = v5FrameInvalidationScheduler.takeForFrame()
+        // Keep the last consumed request observable across extra diagnostic/test draws. A draw
+        // with no pending damage must not erase evidence of the bounded frame that HWUI may have
+        // already submitted between input dispatch and inspection.
+        v5FrameInvalidationScheduler.takeForFrame()?.let { lastV5FrameInvalidation = it }
         rasterTileSurfaceFor(activeLayerId)?.let { surface ->
             val transactionId = v5StrokeController.awaitingPresentationTransactionId()
             if (transactionId != null) {
@@ -2168,9 +2171,11 @@ class InkCanvasView(context: Context) : View(context) {
                 }
                 else if (activeTool == EditorTool.SMUDGE) {
                     scheduleSmudge(normalizedX, normalizedY)
+                    v5PaintFinishedWithDamageInvalidation = true
                 }
                 else if (activeTool == EditorTool.LIQUIFY) {
                     scheduleLiquify(normalizedX, normalizedY, event.getPressure(pointerIndex))
+                    v5PaintFinishedWithDamageInvalidation = true
                 }
                 else if (activeTool == EditorTool.EYEDROPPER) {
                     onColorSampled(sampleRenderedColor(inputPoint.first, inputPoint.second))
@@ -2269,6 +2274,9 @@ class InkCanvasView(context: Context) : View(context) {
                     if (activeTool == EditorTool.GRADIENT) { gradientStart = null; gradientEnd = null }
                     if (activeTool == EditorTool.SMUDGE) cancelSmudgeGesture()
                     if (activeTool == EditorTool.LIQUIFY) cancelLiquifyGesture()
+                    if (activeTool in setOf(EditorTool.SMUDGE, EditorTool.LIQUIFY)) {
+                        v5PaintFinishedWithDamageInvalidation = true
+                    }
                     shapeStart = null; shapeEnd = null; shapeFreeformPoints.clear()
                     cancelRasterSelectionTransform()
                     clearLassoInput(); movingSelection = false; selectionMoved = false; selectionTransformMode = TRANSFORM_NONE
@@ -2295,11 +2303,13 @@ class InkCanvasView(context: Context) : View(context) {
                     flushSmudgeFrame()
                     if (normalizedX != smudgeLastX || normalizedY != smudgeLastY) extendSmudge(normalizedX, normalizedY)
                     commitSmudgeGesture()
+                    v5PaintFinishedWithDamageInvalidation = true
                     parent?.requestDisallowInterceptTouchEvent(false)
                 } else if (activeTool == EditorTool.LIQUIFY) {
                     flushLiquifyFrame()
                     if (normalizedX != liquifyLastX || normalizedY != liquifyLastY) extendLiquify(normalizedX, normalizedY, event.getPressure(pointerIndex))
                     finishLiquifyGesture()
+                    v5PaintFinishedWithDamageInvalidation = true
                     parent?.requestDisallowInterceptTouchEvent(false)
                 } else if (activeTool == EditorTool.EYEDROPPER) {
                     onColorSampled(sampleRenderedColor(inputPoint.first, inputPoint.second))
@@ -3934,11 +3944,10 @@ class InkCanvasView(context: Context) : View(context) {
             if (dirty != null) {
                 smudgeChanged = true
                 smudgeDirtyBounds = mergeDirtyBounds(smudgeDirtyBounds, dirty)
-                invalidate(
-                    (dirty.left * width.toFloat() / rasterWidth).toInt() - 2,
-                    (dirty.top * height.toFloat() / rasterHeight).toInt() - 2,
-                    (dirty.right * width.toFloat() / rasterWidth).toInt() + 2,
-                    (dirty.bottom * height.toFloat() / rasterHeight).toInt() + 2,
+                invalidateV5Damage(
+                    surface,
+                    PixelRect(dirty.left, dirty.top, dirty.right, dirty.bottom),
+                    InvalidationReason.ACTIVE_DELTA,
                 )
             }
             smudgeLastX = x
@@ -3967,7 +3976,6 @@ class InkCanvasView(context: Context) : View(context) {
         rasterTileBlendSession = null
         smudgeChanged = false
         smudgeDirtyBounds = null
-        invalidate()
     }
 
     private fun cancelSmudgeGesture() {
@@ -3975,15 +3983,20 @@ class InkCanvasView(context: Context) : View(context) {
         smudgeFrameScheduled = false
         hasPendingSmudge = false
         val tileSession = rasterTileBlendSession
+        val surface = rasterTileSurfaceFor(activeLayerId)
+        val dirty = smudgeDirtyBounds
         if (tileSession != null) {
             if (smudgeChanged) tileSession.restoreOriginal()
             tileSession.close()
-            invalidate()
         }
         rasterTileBlendSession = null
         smudgeChanged = false
         smudgeDirtyBounds = null
-        invalidate()
+        if (surface != null && dirty != null) invalidateV5Damage(
+            surface,
+            PixelRect(dirty.left, dirty.top, dirty.right, dirty.bottom),
+            InvalidationReason.ACTIVE_DELTA,
+        )
     }
 
     private fun beginLiquifyGesture(x: Float, y: Float, pressure: Float): Boolean {
@@ -4064,7 +4077,11 @@ class InkCanvasView(context: Context) : View(context) {
             if (dirty != null) {
                 liquifyChanged = true
                 liquifyDirtyBounds = mergeDirtyBounds(liquifyDirtyBounds, dirty)
-                postInvalidateOnAnimation()
+                invalidateV5Damage(
+                    surface,
+                    PixelRect(dirty.left, dirty.top, dirty.right, dirty.bottom),
+                    InvalidationReason.ACTIVE_DELTA,
+                )
             }
             liquifyLastX = nextX
             liquifyLastY = nextY
@@ -4096,7 +4113,6 @@ class InkCanvasView(context: Context) : View(context) {
         liquifyHoldEligible = false
         liquifyChanged = false
         liquifyDirtyBounds = null
-        invalidate()
     }
 
     private fun cancelLiquifyGesture() {
@@ -4106,16 +4122,21 @@ class InkCanvasView(context: Context) : View(context) {
         liquifyFrameScheduled = false
         hasPendingLiquify = false
         val tileSession = rasterTileLiquifySession
+        val surface = rasterTileSurfaceFor(activeLayerId)
+        val dirty = liquifyDirtyBounds
         if (tileSession != null) {
             if (liquifyChanged) tileSession.restoreOriginal()
             tileSession.close()
-            invalidate()
         }
         rasterTileLiquifySession = null
         liquifyHoldEligible = false
         liquifyChanged = false
         liquifyDirtyBounds = null
-        invalidate()
+        if (surface != null && dirty != null) invalidateV5Damage(
+            surface,
+            PixelRect(dirty.left, dirty.top, dirty.right, dirty.bottom),
+            InvalidationReason.ACTIVE_DELTA,
+        )
     }
 
     private fun normalizeAngleDelta(first: Float, second: Float): Float = ((first - second + 180f).mod(360f)) - 180f

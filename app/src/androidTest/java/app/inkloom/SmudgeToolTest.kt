@@ -1,6 +1,7 @@
 package app.inkloom
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
 import android.view.InputDevice
 import android.view.MotionEvent
@@ -11,6 +12,7 @@ import app.inkloom.model.EditorTool
 import app.inkloom.ui.InkCanvasView
 import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v5.surface.PixelTileSurface
+import app.inkloom.engine.v5.presentation.InvalidationReason
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -58,6 +60,42 @@ class SmudgeToolTest {
         send(view, 60L, MotionEvent.ACTION_UP, 140f, 100f)
         assertEquals(1, rasterCommits)
         assertTrue("Blend must transport existing pigment", Color.alpha(surface.pixelAt(118, 100)) > 0)
+    }
+
+    @Test fun blendAndLiquifyUseBoundedV5DamageForLiveAndCommittedFrames() {
+        listOf(EditorTool.SMUDGE, EditorTool.LIQUIFY).forEach { selectedTool ->
+            val seed = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888).apply {
+                for (y in 120 until 280) for (x in 80 until 180) setPixel(x, y, Color.RED)
+            }
+            val surface = PixelTileBitmapAdapter.import(seed)
+            seed.recycle()
+            val output = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
+            val view = canvas {
+                layout(0, 0, 400, 400)
+                tool = selectedTool
+                fingerDrawingEnabled = true
+                baseWidth = 96f
+                activeLayerId = "paint"
+                setRasterLayerSurfaces(mapOf("paint" to surface))
+            }
+
+            send(view, 0L, MotionEvent.ACTION_DOWN, 140f, 200f)
+            send(view, 10L, MotionEvent.ACTION_MOVE, 220f, 200f)
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                view.flushRealtimeToolFrame()
+                view.draw(Canvas(output))
+            }
+            val live = requireNotNull(view.lastV5FrameInvalidation)
+            assertEquals(InvalidationReason.ACTIVE_DELTA, live.reason)
+            assertTrue("$selectedTool live damage must stay local", live.dirtyBounds.width < 400f && live.dirtyBounds.height < 400f)
+
+            send(view, 20L, MotionEvent.ACTION_UP, 220f, 200f)
+            InstrumentationRegistry.getInstrumentation().runOnMainSync { view.draw(Canvas(output)) }
+            val committed = requireNotNull(view.lastV5FrameInvalidation)
+            assertEquals(InvalidationReason.DOCUMENT_COMMIT, committed.reason)
+            assertTrue("$selectedTool commit damage must stay local", committed.dirtyBounds.width < 400f && committed.dirtyBounds.height < 400f)
+            output.recycle()
+        }
     }
 
     @Test fun blendOnlyModifiesTheActiveLayer() {
