@@ -127,7 +127,10 @@ data class PressureMappings(
 data class TiltMappings(
     /** Tilt widens the footprint perpendicular to the stroke (width/aspect). */
     val widthEnabled: Boolean = false,
+    /** Footprint multiplier while the pen is upright. */
+    val widthMinimum: Float = 1f,
     val widthStart: Float = 0f,
+    val widthCurve: List<BrushCurvePoint> = emptyList(),
     /** Max extra width multiplier at full tilt (0..3). */
     val widthMaximum: Float = 0f,
     /** Tilt boosts document-space paper grain density. */

@@ -2719,15 +2719,19 @@ class InkCanvasView(context: Context) : View(context) {
 
     internal fun hoverCursorSnapshot(): FloatArray {
         val footprint = hoverCursorFootprint()
+        val cursorProgram = hoverCursorV5Program()
+        val rotation = cursorProgram?.tip?.rotationDegrees ?: if (hoverCursorUsesEraser) 0f else brushRotation
+        val followStylus = cursorProgram?.let(::v5CursorFollowsStylus) ?: (!hoverCursorUsesEraser && followStylusOrientation)
+        val followStroke = cursorProgram?.let(::v5CursorFollowsStroke) ?: (!hoverCursorUsesEraser && followStrokeDirection)
         return floatArrayOf(
             if (hoverCursorVisible) 1f else 0f,
             hoverCursorX,
             hoverCursorY,
             footprint.first,
             footprint.second,
-            if (hoverCursorUsesEraser) 0f else BrushCursorGeometry.fixedScreenRotation(brushRotation, viewportRotationDegrees, shapeOrientToScreen),
-            if (!hoverCursorUsesEraser && followStylusOrientation) 1f else 0f,
-            if (!hoverCursorUsesEraser && followStrokeDirection) 1f else if (!hoverCursorUsesEraser) shapeTouchRotation.coerceIn(-1f, 1f) else 0f,
+            BrushCursorGeometry.fixedScreenRotation(rotation, viewportRotationDegrees, orientToScreen = false),
+            if (followStylus) 1f else 0f,
+            if (followStroke) 1f else 0f,
         )
     }
 
@@ -2768,6 +2772,37 @@ class InkCanvasView(context: Context) : View(context) {
             pressureSensitivity,
             pressureResponseCurve,
         )
+        val cursorProgram = hoverCursorV5Program()
+        if (cursorProgram != null) {
+            val pressure = PressureResponse(
+                cursorProgram.pressure.widthEnabled,
+                cursorProgram.pressure.widthMinimum,
+                cursorProgram.pressure.widthCurve.map { it.x to it.y },
+            ).evaluate(calibratedPressure)
+            val tilt = TiltResponse(
+                cursorProgram.tilt.widthEnabled,
+                cursorProgram.tilt.widthMinimum,
+                cursorProgram.tilt.widthStart,
+                cursorProgram.tilt.widthCurve.map { it.x to it.y },
+            ).evaluate(hoverCursorTilt)
+            val authoredDiameter = if (cursorProgram.output == BrushOutputV5.ERASE) documentEraserSize() else documentBrushSize()
+            val diameter = authoredDiameter.coerceIn(.01f, 800f) * scale * pressure * tilt
+            val mask = cursorProgram.tip.tipTexture?.assetPaths?.firstOrNull()?.let { path ->
+                v5BrushTipMasks.resolve(BrushTipMaskRequest(path, cursorProgram.tip.hardness.coerceIn(0f, 1f)))
+            }
+            val stamped = mask != null || cursorProgram.backend == RenderBackendV5.ASSET_STAMP
+            val footprint = if (stamped) {
+                BrushCursorGeometry.stampFootprint(
+                    diameter = diameter,
+                    tipWidth = mask?.width,
+                    tipHeight = mask?.height,
+                    roundness = cursorProgram.tip.aspect,
+                )
+            } else {
+                app.inkloom.document.BrushCursorFootprint(diameter, diameter)
+            }
+            return footprint.width to footprint.height
+        }
         if (hoverCursorUsesEraser) {
             val pressure = if (eraserPressureSize) calibratedPressure.coerceIn(.15f, 1f) else 1f
             val diameter = documentEraserSize().coerceIn(.01f, 800f) * scale * pressure
@@ -2838,16 +2873,30 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun hoverCursorPageRotation(): Float {
-        if (hoverCursorUsesEraser) return 0f
-        val fixed = brushRotation + if (shapeOrientToScreen) -viewportRotationDegrees else 0f
+        val cursorProgram = hoverCursorV5Program()
+        val fixed = cursorProgram?.tip?.rotationDegrees ?: if (hoverCursorUsesEraser) 0f else brushRotation
         val dynamic = when {
-            followStylusOrientation -> Math.toDegrees(hoverCursorOrientationRadians.toDouble()).toFloat()
-            hoverCursorHasDirection && followStrokeDirection -> hoverCursorDirectionDegrees
-            hoverCursorHasDirection -> hoverCursorDirectionDegrees * shapeTouchRotation.coerceIn(-1f, 1f)
+            cursorProgram?.let(::v5CursorFollowsStylus) == true -> Math.toDegrees(hoverCursorOrientationRadians.toDouble()).toFloat()
+            cursorProgram?.let(::v5CursorFollowsStroke) == true && hoverCursorHasDirection -> hoverCursorDirectionDegrees
+            cursorProgram == null && !hoverCursorUsesEraser && followStylusOrientation -> Math.toDegrees(hoverCursorOrientationRadians.toDouble()).toFloat()
+            cursorProgram == null && !hoverCursorUsesEraser && hoverCursorHasDirection && followStrokeDirection -> hoverCursorDirectionDegrees
+            cursorProgram == null && !hoverCursorUsesEraser && hoverCursorHasDirection -> hoverCursorDirectionDegrees * shapeTouchRotation.coerceIn(-1f, 1f)
             else -> 0f
         }
         return BrushCursorGeometry.normalizeDegrees(fixed, dynamic)
     }
+
+    /** Selected paint and brush-shaped erasers share the exact immutable V5 program used by the
+     * renderer. A physical pen-tail eraser deliberately uses the independent default eraser. */
+    private fun hoverCursorV5Program(): CompiledBrushProgramV5? = compiledBrushProgramV5?.takeIf { program ->
+        !hoverCursorUsesEraser || program.output == BrushOutputV5.ERASE
+    }
+
+    private fun v5CursorFollowsStylus(program: CompiledBrushProgramV5): Boolean =
+        program.stamp?.followStylusOrientation == true || program.stamp?.spray?.followStylusOrientation == true
+
+    private fun v5CursorFollowsStroke(program: CompiledBrushProgramV5): Boolean =
+        program.stamp?.followStrokeDirection == true || program.stamp?.spray?.followStrokeDirection == true
 
     private fun drawSmallCursorOrigin(canvas: Canvas, screenWidth: Float, screenHeight: Float, zoom: Float) {
         if (minOf(screenWidth, screenHeight) >= SMALL_CURSOR_MARK_THRESHOLD_PX) return
@@ -4585,6 +4634,12 @@ class InkCanvasView(context: Context) : View(context) {
                 program.pressure.widthMinimum,
                 program.pressure.widthCurve.map { it.x to it.y },
             )
+            val sizeTiltResponse = TiltResponse(
+                program.tilt.widthEnabled,
+                program.tilt.widthMinimum,
+                program.tilt.widthStart,
+                program.tilt.widthCurve.map { it.x to it.y },
+            )
             val opacityResponse = PressureResponse(
                 program.pressure.depositionEnabled,
                 program.pressure.depositionMinimum,
@@ -4660,6 +4715,7 @@ class InkCanvasView(context: Context) : View(context) {
                     grainPhaseX = grainOffset.x,
                     grainPhaseY = grainOffset.y,
                     sizePressure = sizeResponse,
+                    sizeTilt = sizeTiltResponse,
                     opacityPressure = opacityResponse,
                     flowPressure = flowResponse,
                     roundness = program.tip.aspect.coerceIn(.01f, 1f),
@@ -4717,6 +4773,8 @@ class InkCanvasView(context: Context) : View(context) {
                             grainRotationRadians = Math.toRadians((dual.textureGrain?.rotationDegrees ?: 0f).toDouble()).toFloat(),
                             grainPhaseX = dualGrainOffset.x,
                             grainPhaseY = dualGrainOffset.y,
+                            sizePressure = sizeResponse,
+                            sizeTilt = sizeTiltResponse,
                             roundness = dual.aspect,
                             rotationRadians = Math.toRadians(dual.rotationDegrees.toDouble()).toFloat(),
                             followStrokeDirection = dual.followStrokeDirection || dualSpray?.followStrokeDirection == true,
@@ -4791,6 +4849,7 @@ class InkCanvasView(context: Context) : View(context) {
                         spacingRatio = program.spacingPolicy?.value?.coerceIn(.01f, 2f) ?: .12f,
                         tips = listOf(BrushTipMask.solidCircle(96, program.tip.hardness.coerceIn(0f, 1f))),
                         sizePressure = sizeResponse,
+                        sizeTilt = sizeTiltResponse,
                         opacityPressure = opacityResponse,
                         flowPressure = flowResponse,
                         rotationRadians = Math.toRadians((sprayProgram?.particleRotationDegrees ?: 0f).toDouble()).toFloat(),
@@ -4827,6 +4886,7 @@ class InkCanvasView(context: Context) : View(context) {
                         attack = authored.attack.coerceIn(0f, 1f),
                         pull = authored.pull.coerceIn(0f, 1f),
                         sizePressure = sizeResponse,
+                        sizeTilt = sizeTiltResponse,
                     )
                     return V5PaintConfiguration(
                         WetPaintOp(surface, wet, selection, sampleTransforms),
@@ -4845,6 +4905,7 @@ class InkCanvasView(context: Context) : View(context) {
                         spacingRatio = program.spacingPolicy?.value?.coerceIn(.01f, 2f) ?: .12f,
                         tips = listOf(BrushTipMask.solidCircle(96, program.tip.hardness.coerceIn(0f, 1f))),
                         sizePressure = sizeResponse,
+                        sizeTilt = sizeTiltResponse,
                         opacityPressure = opacityResponse,
                         flowPressure = flowResponse,
                         roundness = program.tip.aspect.coerceIn(.01f, 1f),
@@ -4879,6 +4940,7 @@ class InkCanvasView(context: Context) : View(context) {
                         pencilGrain = pencilGrain,
                         grainSeed = program.renderSeed,
                         sizePressure = sizeResponse,
+                        sizeTilt = sizeTiltResponse,
                         opacityPressure = opacityResponse,
                         flowPressure = flowResponse,
                         blend = if (erase) DryBlend.DESTINATION_OUT else DryBlend.SOURCE_OVER,

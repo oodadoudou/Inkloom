@@ -11,6 +11,26 @@ data class BrushCursorFootprint(
 )
 
 object BrushCursorGeometry {
+    /** Mirrors StampPaintOp's resolved footprint: the source mask keeps its aspect ratio and the
+     * authored V5 roundness compresses the local Y axis. */
+    fun stampFootprint(
+        diameter: Float,
+        tipWidth: Int?,
+        tipHeight: Int?,
+        roundness: Float,
+    ): BrushCursorFootprint {
+        val safeDiameter = diameter.takeIf(Float::isFinite)?.coerceAtLeast(.1f) ?: .1f
+        val width = tipWidth?.coerceAtLeast(1) ?: 1
+        val height = tipHeight?.coerceAtLeast(1) ?: 1
+        val aspect = width.toFloat() / height
+        return BrushCursorFootprint(
+            width = (if (aspect >= 1f) safeDiameter else safeDiameter * aspect).coerceAtLeast(.1f),
+            height = (if (aspect <= 1f) safeDiameter else safeDiameter / aspect)
+                .times(roundness.takeIf(Float::isFinite)?.coerceIn(.01f, 1f) ?: 1f)
+                .coerceAtLeast(.1f),
+        )
+    }
+
     fun footprint(
         diameter: Float,
         tipWidth: Int?,

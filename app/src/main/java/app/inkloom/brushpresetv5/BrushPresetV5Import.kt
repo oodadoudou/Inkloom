@@ -125,8 +125,10 @@ object BrushPresetV5Import {
                     source.flowPressureCurve,
                 ),
                 tilt = TiltMappings(
-                    source.graphiteTiltWidth > .0001f,
-                    source.graphiteTiltWidthStart,
+                    source.sizeSecondaryDynamics.tiltEnabled || source.graphiteTiltWidth > .0001f,
+                    if (source.sizeSecondaryDynamics.tiltEnabled) source.sizeSecondaryDynamics.tiltMinimum else 1f,
+                    if (source.sizeSecondaryDynamics.tiltEnabled) source.sizeSecondaryDynamics.tiltStart else source.graphiteTiltWidthStart,
+                    source.sizeSecondaryDynamics.tiltCurve,
                     source.graphiteTiltWidth,
                     source.graphiteTiltGrain > .0001f,
                     source.graphiteTiltGrainStart,

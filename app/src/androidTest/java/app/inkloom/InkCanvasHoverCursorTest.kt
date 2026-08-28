@@ -5,8 +5,19 @@ import android.view.InputDevice
 import android.view.MotionEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import app.inkloom.brushpresetv5.BrushFamily
+import app.inkloom.brushpresetv5.BrushPresetV5
+import app.inkloom.brushpresetv5.DepositionSettings
+import app.inkloom.brushpresetv5.DynamicsSettings
+import app.inkloom.brushpresetv5.PresetIdentity
+import app.inkloom.brushpresetv5.PressureMappings
+import app.inkloom.brushpresetv5.TiltMappings
+import app.inkloom.brushpresetv5.TipSettings
+import app.inkloom.brushpresetv5.TipTextureSettings
 import app.inkloom.model.EditorTool
+import app.inkloom.settings.AppSettings
 import app.inkloom.ui.InkCanvasView
+import app.inkloom.ui.applyBrushPresetV5Configuration
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -32,12 +43,11 @@ class InkCanvasHoverCursorTest {
     fun stylusHoverUsesCurrentBrushDiameterAndTracksZoomedCoordinates() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val view = InkCanvasView(instrumentation.targetContext).apply {
-            tool = EditorTool.PEN
-            baseWidth = 160f
             viewportScale = 2f
             viewportPanX = 100f
             viewportPanY = -50f
             layout(0, 0, 1600, 1200)
+            applyBrushPresetV5Configuration(preset("hover-size", 160f, widthPressure = false), AppSettings())
         }
 
         instrumentation.runOnMainSync {
@@ -60,11 +70,8 @@ class InkCanvasHoverCursorTest {
     fun pressedStylusCursorFollowsEveryRawMoveAndReflectsPressureSize() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val view = InkCanvasView(instrumentation.targetContext).apply {
-            tool = EditorTool.PEN
-            baseWidth = 200f
-            sizePressureEnabled = true
-            sizePressureMinimum = .25f
             layout(0, 0, 1600, 1200)
+            applyBrushPresetV5Configuration(preset("pressure-cursor", 200f, widthMinimum = .25f), AppSettings())
         }
 
         instrumentation.runOnMainSync {
@@ -87,13 +94,10 @@ class InkCanvasHoverCursorTest {
     fun cursorKeepsFollowingStylusWhenPalmIsPointerZeroAndUsesGlobalPressureCurve() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val view = InkCanvasView(instrumentation.targetContext).apply {
-            tool = EditorTool.PEN
-            baseWidth = 200f
-            sizePressureEnabled = true
-            sizePressureMinimum = .25f
+            layout(0, 0, 1600, 1200)
+            applyBrushPresetV5Configuration(preset("calibrated-cursor", 200f, widthMinimum = .25f), AppSettings())
             pressureMinimumInput = .2f
             pressureMaximumInput = 1f
-            layout(0, 0, 1600, 1200)
         }
 
         instrumentation.runOnMainSync {
@@ -118,13 +122,13 @@ class InkCanvasHoverCursorTest {
             bitmap.recycle()
         }
         val view = InkCanvasView(instrumentation.targetContext).apply {
-            tool = EditorTool.PEN
-            baseWidth = 160f
-            tipAssetPath = tip.absolutePath
-            tipAssetPaths = listOf(tip.absolutePath)
-            brushThickness = 1f
             layout(0, 0, 1600, 1200)
-            prepareBrushAssetsNow()
+            applyBrushPresetV5Configuration(
+                preset("asymmetric-cursor", 160f, widthPressure = false).copy(
+                    tipTexture = TipTextureSettings(procedural = false, assetPath = tip.absolutePath, assetPaths = listOf(tip.absolutePath)),
+                ),
+                AppSettings(),
+            )
         }
 
         instrumentation.runOnMainSync {
@@ -137,24 +141,38 @@ class InkCanvasHoverCursorTest {
     }
 
     @Test
-    fun cursorRotationFollowsCanvasUnlessBrushIsOrientedToScreen() {
+    fun cursorRotationComesFromTheSameV5TipAsTheRenderer() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val view = InkCanvasView(instrumentation.targetContext).apply {
-            tool = EditorTool.PEN
-            brushRotation = 30f
             viewportRotationDegrees = 37f
             layout(0, 0, 1600, 1200)
+            applyBrushPresetV5Configuration(
+                preset("rotated-cursor", 40f, widthPressure = false).copy(tip = TipSettings(size = 40f, rotationDegrees = 30f)),
+                AppSettings(),
+            )
         }
 
         instrumentation.runOnMainSync {
             stylusHover(800f, 600f).also { assertTrue(view.onHoverEvent(it)); it.recycle() }
         }
         assertEquals(67f, view.hoverCursorSnapshot()[5], .01f)
-
-        view.shapeOrientToScreen = true
-        view.notifyHoverCursorStyleChanged()
-        assertEquals(30f, view.hoverCursorSnapshot()[5], .01f)
     }
+
+    private fun preset(
+        id: String,
+        size: Float,
+        widthPressure: Boolean = true,
+        widthMinimum: Float = .35f,
+    ) = BrushPresetV5(
+        identity = PresetIdentity(id = id, name = id, family = BrushFamily.INK, renderBrushId = id),
+        renderSeed = id.hashCode(),
+        tip = TipSettings(size = size),
+        deposition = DepositionSettings(),
+        dynamics = DynamicsSettings(
+            pressure = PressureMappings(widthEnabled = widthPressure, widthMinimum = widthMinimum),
+            tilt = TiltMappings(),
+        ),
+    )
 
     private fun stylusHover(x: Float, y: Float): MotionEvent {
         val properties = arrayOf(MotionEvent.PointerProperties().apply {

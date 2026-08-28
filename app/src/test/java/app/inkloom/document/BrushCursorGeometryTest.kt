@@ -6,6 +6,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BrushCursorGeometryTest {
+    @Test fun v5StampFootprintMatchesTheRasterDabAspectAndRoundness() {
+        val portrait = BrushCursorGeometry.stampFootprint(160f, 40, 100, 1f)
+        val landscapeCompressed = BrushCursorGeometry.stampFootprint(160f, 100, 40, .5f)
+
+        assertEquals(64f, portrait.width, .001f)
+        assertEquals(160f, portrait.height, .001f)
+        assertEquals(160f, landscapeCompressed.width, .001f)
+        assertEquals(32f, landscapeCompressed.height, .001f)
+    }
+
     @Test fun cursorPreservesTheDecodedTipAspectRatio() {
         val footprint = BrushCursorGeometry.footprint(
             diameter = 160f,

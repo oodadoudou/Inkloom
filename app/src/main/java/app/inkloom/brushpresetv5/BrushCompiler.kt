@@ -70,7 +70,9 @@ class CompiledBrushProgramV5 private constructor(
 
     data class CompiledTilt(
         val widthEnabled: Boolean,
+        val widthMinimum: Float,
         val widthStart: Float,
+        val widthCurve: List<BrushCurvePoint>,
         val widthMaximum: Float,
         val grainEnabled: Boolean,
         val grainStart: Float,
@@ -162,7 +164,9 @@ class CompiledBrushProgramV5 private constructor(
                 ),
                 tilt = CompiledTilt(
                     widthEnabled = preset.dynamics.tilt.widthEnabled,
+                    widthMinimum = preset.dynamics.tilt.widthMinimum,
                     widthStart = preset.dynamics.tilt.widthStart,
+                    widthCurve = preset.dynamics.tilt.widthCurve.toList(),
                     widthMaximum = preset.dynamics.tilt.widthMaximum,
                     grainEnabled = preset.dynamics.tilt.grainEnabled,
                     grainStart = preset.dynamics.tilt.grainStart,
