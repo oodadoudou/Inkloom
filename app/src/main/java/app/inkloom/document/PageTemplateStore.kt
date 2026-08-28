@@ -107,7 +107,12 @@ object PageTemplateOperations {
 }
 
 class PageTemplateStore(private val root: File) {
-    private val json = Json { prettyPrint = true; ignoreUnknownKeys = true; classDiscriminator = "type" }
+    private val json = Json {
+        prettyPrint = true
+        ignoreUnknownKeys = true
+        classDiscriminator = "type"
+        encodeDefaults = true
+    }
     private val file = File(root, "page-templates.json")
 
     @Synchronized
