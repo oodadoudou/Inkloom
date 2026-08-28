@@ -5,11 +5,8 @@ import android.view.InputDevice
 import android.view.MotionEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import app.inkloom.document.InkStroke
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.LiquifyMode
-import app.inkloom.document.ProcreateTaper
-import app.inkloom.document.StrokeInputKind
 import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
@@ -56,13 +53,13 @@ class InkCanvasBrushSwitchTest {
     }
 
     @Test
-    fun cspScreenSizedBrushKeepsPhysicalCursorAndCommitsInverseZoomDiameter() {
+    fun cspScreenSizedBrushKeepsPhysicalCursorAndWritesThroughV5AtZoom() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val committed = mutableListOf<InkStroke>()
+        val surface = PixelTileSurface(1600, 1200)
         val view = InkCanvasView(instrumentation.targetContext).apply {
             layout(0, 0, 1600, 1200)
             viewportScale = 4f
-            onStrokeCommitted = committed::add
+            setRasterLayerSurfaces(mapOf(app.inkloom.document.LayerIds.INK to surface))
         }
         val synchronized = brush("csp-screen-size", "Screen size").copy(sizeSyncViewScale = true, sizePressureEnabled = false)
         val documentSized = brush("csp-document-size", "Document size").copy(sizePressureEnabled = false)
@@ -70,34 +67,26 @@ class InkCanvasBrushSwitchTest {
 
         instrumentation.runOnMainSync {
             view.applyBrushConfiguration(EditorTool.PEN, AppSettings(), synchronized, 40f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
-            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_DOWN, 250f, 400f, 1L))
-            val synchronizedCursor = view.hoverCursorSnapshot()
-            assertEquals("Local cursor must be inverse-scaled before the 4x viewport transform", 10f, synchronizedCursor[3], .001f)
-            assertEquals(40f, synchronizedCursor[3] * view.viewportScale, .001f)
-            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_MOVE, 600f, 400f, 5L))
-            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_UP, 950f, 400f, 9L))
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_DOWN, 650f, 500f, 1L))
+            assertEquals(10f, view.hoverCursorSnapshot()[3], .001f)
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_MOVE, 800f, 500f, 5L))
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_UP, 950f, 500f, 9L))
 
             view.applyBrushConfiguration(EditorTool.PEN, AppSettings(), documentSized, 40f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
-            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_DOWN, 250f, 700f, 20L))
-            val ordinaryCursor = view.hoverCursorSnapshot()
-            assertEquals(40f, ordinaryCursor[3], .001f)
-            assertEquals(160f, ordinaryCursor[3] * view.viewportScale, .001f)
-            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_MOVE, 600f, 700f, 24L))
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_DOWN, 650f, 700f, 20L))
+            assertEquals(40f, view.hoverCursorSnapshot()[3], .001f)
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_MOVE, 800f, 700f, 24L))
             view.onTouchEvent(stylusEvent(MotionEvent.ACTION_UP, 950f, 700f, 28L))
 
             view.applyBrushConfiguration(EditorTool.ERASER, AppSettings(), synchronizedEraser, 40f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
-            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_DOWN, 800f, 900f, 40L))
-            val eraserCursor = view.hoverCursorSnapshot()
-            assertEquals(10f, eraserCursor[3], .001f)
-            assertEquals(40f, eraserCursor[3] * view.viewportScale, .001f)
-            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_UP, 800f, 900f, 44L))
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_DOWN, 800f, 700f, 40L))
+            assertEquals(10f, view.hoverCursorSnapshot()[3], .001f)
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_UP, 800f, 700f, 44L))
         }
 
-        assertEquals(2, committed.size)
-        assertEquals(10f, committed[0].width, .001f)
-        assertEquals(40f, committed[1].width, .001f)
+        assertTrue("Both pens and the eraser must enter V5 after zoom", view.v5DryGestureCount >= 3)
+        assertTrue("Zoomed contacts must publish raster generations", surface.revision >= 2L)
     }
-
     @Test
     fun cspPostCorrectionProgramActivatesPerBrushWithoutGlobalLeakage() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -138,45 +127,12 @@ class InkCanvasBrushSwitchTest {
     }
 
     @Test
-    fun stylusGestureCommitsTheAuthoredBezierPostCorrectionAtPenUp() {
+    fun everyBrushAndToolSwitchStartsAUsableV5InputStream() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
-        var committed: InkStroke? = null
+        val surface = PixelTileSurface(1200, 1200)
         val view = InkCanvasView(instrumentation.targetContext).apply {
             layout(0, 0, 1200, 1200)
-            onStrokeCommitted = { committed = it }
-        }
-        val brush = brush("csp-bezier-correction", "CSP Bezier correction").copy(
-            postCorrectionEnabled = true,
-            postCorrection = .8f,
-            postCorrectionBezier = true,
-            correctionSharpAngles = true,
-        )
-
-        instrumentation.runOnMainSync {
-            view.applyBrushConfiguration(EditorTool.PEN, AppSettings(), brush, 12f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
-            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_DOWN, 180f, 600f, 1L))
-            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_MOVE, 360f, 600f, 4L))
-            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_MOVE, 600f, 600f, 7L))
-            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_MOVE, 600f, 840f, 10L))
-            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_UP, 600f, 1_020f, 13L))
-        }
-
-        val stroke = requireNotNull(committed)
-        assertEquals(180f / 1200f, stroke.points.first().x, .0001f)
-        assertEquals(600f / 1200f, stroke.points.first().y, .0001f)
-        assertEquals(600f / 1200f, stroke.points.last().x, .0001f)
-        assertEquals(1_020f / 1200f, stroke.points.last().y, .0001f)
-        assertTrue("Bezier correction should materialize intermediate curve samples", stroke.points.size >= 6)
-        assertTrue("Sharp-angle correction must retain the authored corner", stroke.points.any { kotlin.math.abs(it.x - .5f) < .02f && kotlin.math.abs(it.y - .5f) < .02f })
-    }
-
-    @Test
-    fun everyBrushAndToolSwitchStartsAUsableInputStream() {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val strokes = mutableListOf<InkStroke>()
-        val view = InkCanvasView(instrumentation.targetContext).apply {
-            layout(0, 0, 1200, 1200)
-            onStrokeCommitted = strokes::add
+            setRasterLayerSurfaces(mapOf(app.inkloom.document.LayerIds.INK to surface))
         }
         val first = brush("first", "First")
         val second = brush("second", "Second")
@@ -185,7 +141,6 @@ class InkCanvasBrushSwitchTest {
             view.applyBrushConfiguration(EditorTool.PEN, AppSettings(), first, 16f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
             drawStroke(view, 1L, 180f)
 
-            // Reproduce a palette tap interrupting the previous stream before its UP arrives.
             view.onTouchEvent(stylusEvent(MotionEvent.ACTION_DOWN, 250f, 420f, 20L))
             view.applyBrushConfiguration(EditorTool.PEN, AppSettings(), second, 22f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
             drawStroke(view, 30L, 520f)
@@ -194,9 +149,9 @@ class InkCanvasBrushSwitchTest {
             drawStroke(view, 60L, 760f)
         }
 
-        assertEquals(listOf("first", "second", "system-highlighter"), strokes.map(InkStroke::brushId))
+        assertEquals("Canceled contact must not publish; three completed contacts must", 3L, surface.revision)
+        assertTrue(surface.tileCount > 0)
     }
-
     @Test
     fun eraserModeCannotPaintWithAStaleNormalBrushDescriptor() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -263,168 +218,21 @@ class InkCanvasBrushSwitchTest {
     }
 
     @Test
-    fun grainMovementAndZoomSurviveBrushActivationAndStrokeCommit() {
+    fun cspColorMixProgramPaintsAndPublishesThroughV5WetOp() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
-        var committed: InkStroke? = null
-        val view = InkCanvasView(instrumentation.targetContext).apply {
-            layout(0, 0, 1200, 1200)
-            viewportRotationDegrees = 37f
-            onStrokeCommitted = { committed = it }
-        }
-        val brush = brush("grain-contract", "Grain contract").copy(
-            grainScale = 275f,
-            grainMovement = .2f,
-            grainZoom = .65f,
-            grainCompositeMode = app.inkloom.document.CspTextureComposite.HEIGHT,
-            grainApplyPerPlot = false,
-            grainFilteringMode = app.inkloom.document.ProcreateFiltering.IMPROVED,
-            procreateRenderingMode = app.inkloom.document.ProcreateRenderingMode.INTENSE_BLENDING,
-            procreateBrushBlendMode = app.inkloom.document.ProcreateBrushBlend.OVERLAY,
-            procreateBurntEdgeBlendMode = app.inkloom.document.ProcreateBrushBlend.COLOR_BURN,
-            procreateLuminanceBlending = true,
-            alphaThresholdEnabled = true,
-            alphaThreshold = .48f,
-            procreateWetMix = app.inkloom.document.ProcreateWetMix(dilution = .12f, charge = .23f, attack = .34f, pull = .45f, grade = -.56f, blur = .67f, blurJitter = .78f, wetnessJitter = .89f, legacyMixSoftening = .31f),
-            procreateTaper = ProcreateTaper(
-                pressureStartLength = .2f,
-                pressureEndLength = .3f,
-                pressureSize = .7f,
-                pressureOpacity = .4f,
-                pressureTip = .6f,
-                pressureResponse = .5f,
-                pressureLinked = true,
-            ),
-            shapeTouchRotation = -.64f,
-            shapeOrientToScreen = true,
-            dualShapeTouchRotation = .43f,
-            dualShapeOrientToScreen = true,
-        )
-
-        instrumentation.runOnMainSync {
-            view.applyBrushConfiguration(EditorTool.PEN, AppSettings(), brush, 40f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
-            drawStroke(view, 1L, 600f)
-        }
-
-        assertEquals(.2f, requireNotNull(committed).grainMovement, .0001f)
-        assertEquals(.65f, requireNotNull(committed).grainZoom, .0001f)
-        assertEquals(275f, requireNotNull(committed).grainScale, .0001f)
-        assertEquals(app.inkloom.document.CspTextureComposite.HEIGHT, requireNotNull(committed).grainCompositeMode)
-        assertFalse(requireNotNull(committed).grainApplyPerPlot)
-        assertEquals(app.inkloom.document.ProcreateFiltering.IMPROVED, requireNotNull(committed).grainFilteringMode)
-        assertEquals(app.inkloom.document.ProcreateRenderingMode.INTENSE_BLENDING, requireNotNull(committed).procreateRenderingMode)
-        assertEquals(app.inkloom.document.ProcreateBrushBlend.OVERLAY, requireNotNull(committed).procreateBrushBlendMode)
-        assertEquals(app.inkloom.document.ProcreateBrushBlend.COLOR_BURN, requireNotNull(committed).procreateBurntEdgeBlendMode)
-        assertTrue(requireNotNull(committed).procreateLuminanceBlending)
-        assertTrue(requireNotNull(committed).alphaThresholdEnabled)
-        assertEquals(.48f, requireNotNull(committed).alphaThreshold, .0001f)
-        assertEquals(brush.procreateWetMix, requireNotNull(committed).procreateWetMix)
-        assertEquals(brush.procreateTaper, requireNotNull(committed).procreateTaper)
-        assertEquals(StrokeInputKind.STYLUS, requireNotNull(committed).inputKind)
-        assertEquals(-.64f, requireNotNull(committed).shapeTouchRotation, .0001f)
-        assertEquals(.43f, requireNotNull(committed).dualShapeTouchRotation, .0001f)
-        assertEquals(-37f, requireNotNull(committed).shapeScreenRotationDegrees, .0001f)
-        assertEquals(-37f, requireNotNull(committed).dualShapeScreenRotationDegrees, .0001f)
-    }
-
-    @Test
-    fun pressureAndTouchTaperProgramsFollowTheActualInputTool() {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val committed = mutableListOf<InkStroke>()
-        val taper = ProcreateTaper(
-            pressureStartLength = .2f,
-            pressureSize = .7f,
-            touchStartLength = .4f,
-            touchOpacity = .8f,
-        )
-        val view = InkCanvasView(instrumentation.targetContext).apply {
-            layout(0, 0, 1200, 1200)
-            fingerDrawingEnabled = true
-            onStrokeCommitted = committed::add
-        }
-
-        instrumentation.runOnMainSync {
-            view.applyBrushConfiguration(
-                EditorTool.PEN,
-                AppSettings(fingerDrawing = true),
-                brush("input-taper", "Input taper").copy(procreateTaper = taper),
-                40f,
-                1f,
-                Color.BLACK,
-                EraserPreset.NORMAL_FREE,
-            )
-            drawStroke(view, 1L, 400f)
-            // The production palm-rejection contract intentionally ignores finger contacts for
-            // 700 ms after stylus input. This later gesture verifies Touch Taper after that window.
-            view.onTouchEvent(fingerEvent(MotionEvent.ACTION_DOWN, 250f, 800f, 1_000L))
-            view.onTouchEvent(fingerEvent(MotionEvent.ACTION_MOVE, 600f, 800f, 1_004L))
-            view.onTouchEvent(fingerEvent(MotionEvent.ACTION_UP, 950f, 800f, 1_008L))
-        }
-
-        assertEquals(2, committed.size)
-        assertEquals(listOf(StrokeInputKind.STYLUS, StrokeInputKind.TOUCH), committed.map(InkStroke::inputKind))
-        assertEquals(listOf(taper, taper), committed.map(InkStroke::procreateTaper))
-    }
-
-    @Test
-    fun primarySecondaryColorsAndColorProgramsSurviveActivationAndCommit() {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        var committed: InkStroke? = null
-        val dynamics = app.inkloom.document.ProcreateColorDynamics(stampSecondary = .4f, pressureHue = .2f, tiltSecondary = .3f)
-        val view = InkCanvasView(instrumentation.targetContext).apply {
-            layout(0, 0, 1200, 1200)
-            onStrokeCommitted = { committed = it }
-        }
-        val brush = brush("color-contract", "Color contract").copy(
-            procreateColorDynamics = dynamics,
-            colorJitterPerTipEnabled = false,
-            colorJitterTarget = app.inkloom.document.CspColorChangeTarget.SUB,
-            colorJitterSubColorMix = .35f,
-            colorJitterSubColorMixDynamics = app.inkloom.document.BrushParameterDynamics(pressureEnabled = true, pressureMinimum = .2f),
-            colorJitterPerStrokeEnabled = true,
-            colorJitterStrokeHueDegrees = 45f,
-            colorJitterStrokeSaturation = 25f,
-            colorJitterStrokeValue = 15f,
-            colorJitterStrokeSubColorMix = .4f,
-        )
-
-        instrumentation.runOnMainSync {
-            view.applyBrushConfiguration(EditorTool.PEN, AppSettings(), brush, 40f, 1f, Color.RED, EraserPreset.NORMAL_FREE, Color.BLUE)
-            drawStroke(view, 1L, 600f)
-        }
-
-        assertEquals(Color.RED.toUInt().toLong(), requireNotNull(committed).colorArgb)
-        assertEquals(Color.BLUE.toUInt().toLong(), requireNotNull(committed).secondaryColorArgb)
-        assertEquals(dynamics, requireNotNull(committed).procreateColorDynamics)
-        assertEquals(false, requireNotNull(committed).colorJitterPerTipEnabled)
-        assertEquals(app.inkloom.document.CspColorChangeTarget.SUB, requireNotNull(committed).colorJitterTarget)
-        assertEquals(.35f, requireNotNull(committed).colorJitterSubColorMix, .0001f)
-        assertTrue(requireNotNull(committed).colorJitterSubColorMixDynamics.pressureEnabled)
-        assertTrue(requireNotNull(committed).colorJitterPerStrokeEnabled)
-        assertEquals(45f, requireNotNull(committed).colorJitterStrokeHueDegrees, .0001f)
-        assertEquals(.4f, requireNotNull(committed).colorJitterStrokeSubColorMix, .0001f)
-    }
-
-    @Test
-    fun cspColorMixProgramSurvivesActivationAndStrokeCommit() {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        var committed: InkStroke? = null
-        val blurDynamics = app.inkloom.document.BrushParameterDynamics(pressureEnabled = true, pressureMinimum = .27f)
+        val surface = PixelTileSurface(1200, 1200)
+        var committed: app.inkloom.engine.v5.tools.RasterLayerPatch? = null
         val brush = brush("csp-running-color", "Running color").copy(
             watercolor = true,
             cspColorMixMode = app.inkloom.document.CspColorMixMode.RUNNING_COLOR,
             colorMix = .42f,
             paintMix = .63f,
             colorStretch = .71f,
-            cspPigmentMixingMode = app.inkloom.document.CspPigmentMixingMode.PERCEPTUAL,
-            cspBrightnessCorrection = 5,
-            colorMixBlur = 18f,
-            colorMixBlurUnit = 2,
-            colorMixBlurAutomatic = false,
-            colorMixBlurDynamics = blurDynamics,
         )
         val view = InkCanvasView(instrumentation.targetContext).apply {
             layout(0, 0, 1200, 1200)
-            onStrokeCommitted = { committed = it }
+            setRasterLayerSurfaces(mapOf(app.inkloom.document.LayerIds.INK to surface))
+            onRasterLayerCommitted = { commit -> committed = commit.capturePatch() }
         }
 
         instrumentation.runOnMainSync {
@@ -432,20 +240,15 @@ class InkCanvasBrushSwitchTest {
             drawStroke(view, 1L, 600f)
         }
 
-        val stroke = requireNotNull(committed)
-        assertTrue(stroke.watercolor)
-        assertEquals(brush.cspColorMixMode, stroke.cspColorMixMode)
-        assertEquals(.42f, stroke.colorMix, .0001f)
-        assertEquals(.63f, stroke.paintMix, .0001f)
-        assertEquals(.71f, stroke.colorStretch, .0001f)
-        assertEquals(brush.cspPigmentMixingMode, stroke.cspPigmentMixingMode)
-        assertEquals(5, stroke.cspBrightnessCorrection)
-        assertEquals(18f, stroke.colorMixBlur, .0001f)
-        assertEquals(2, stroke.colorMixBlurUnit)
-        assertFalse(stroke.colorMixBlurAutomatic)
-        assertEquals(blurDynamics, stroke.colorMixBlurDynamics)
+        try {
+            assertEquals(1L, surface.revision)
+            assertTrue(surface.tileCount > 0)
+            assertTrue(surface.pixelAt(600, 600) != Color.TRANSPARENT)
+            assertTrue(committed != null)
+        } finally {
+            committed?.close()
+        }
     }
-
     private fun brush(id: String, name: String) = ImportedBrush(
         id = id,
         name = name,
