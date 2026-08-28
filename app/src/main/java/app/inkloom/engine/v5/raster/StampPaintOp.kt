@@ -49,6 +49,7 @@ data class StampBrushDefinition(
     val scatterRadiusPixels: Float = 0f,
     val scatterBias: Float = 0f,
     val randomRotationRadians: Float = 0f,
+    val repeatStationarySamples: Boolean = false,
     val blend: DryBlend = DryBlend.SOURCE_OVER,
 ) {
     init {
@@ -151,6 +152,8 @@ class StampPaintOp(
                         streamState.distanceToNextDab = spacingFor(sample, stream.definition)
                     } else if (!sameSample(previous, sample)) {
                         emitSegment(previous, sample, dabs, stream, streamState)
+                    } else if (stream.definition.repeatStationarySamples) {
+                        resolveDabs(sample, stream.definition.rotationRadians, dabs, stream, streamState)
                     }
                     streamState.lastSample = sample
                 }

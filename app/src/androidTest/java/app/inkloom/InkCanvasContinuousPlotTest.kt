@@ -7,7 +7,8 @@ import android.view.ViewGroup
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import app.inkloom.document.InkStroke
+import app.inkloom.document.LayerIds
+import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.model.EditorTool
 import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertEquals
@@ -18,9 +19,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class InkCanvasContinuousPlotTest {
     @Test fun holdingStylusDepositsStationaryPointsUntilLift() {
-        withAttachedCanvas { view ->
-            val committed = mutableListOf<InkStroke>()
-            view.onStrokeCommitted = { committed += it }
+        withAttachedCanvas { view, surface ->
             val downTime = SystemClock.uptimeMillis()
 
             sendStylus(view, downTime, downTime, MotionEvent.ACTION_DOWN)
@@ -28,19 +27,16 @@ class InkCanvasContinuousPlotTest {
             val upTime = SystemClock.uptimeMillis()
             sendStylus(view, downTime, upTime, MotionEvent.ACTION_UP)
 
-            assertEquals(1, committed.size)
-            val stroke = committed.single()
-            assertTrue(stroke.continuousPlot)
-            assertTrue("A 125 ms hold should add multiple 32 ms plot samples", stroke.points.size >= 3)
-            assertTrue(stroke.points.all { it.x == .5f && it.y == .5f })
-            assertTrue(stroke.points.zipWithNext().all { (left, right) -> right.timeMs >= left.timeMs })
+            assertEquals(1L, surface.revision)
+            assertTrue(surface.tileCount > 0)
+            val samples = view.v5LastCommittedNormalizedPoints()
+            assertTrue("A 125 ms hold should add multiple 32 ms V5 plot samples", samples.size >= 3)
+            assertTrue(samples.all { (x, y) -> x == .5f && y == .5f })
         }
     }
 
     @Test fun cancellationStopsTimerAndDiscardsThePendingStroke() {
-        withAttachedCanvas { view ->
-            val committed = mutableListOf<InkStroke>()
-            view.onStrokeCommitted = { committed += it }
+        withAttachedCanvas { view, surface ->
             val downTime = SystemClock.uptimeMillis()
 
             sendStylus(view, downTime, downTime, MotionEvent.ACTION_DOWN)
@@ -48,29 +44,32 @@ class InkCanvasContinuousPlotTest {
             sendStylus(view, downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_CANCEL)
             SystemClock.sleep(70L)
 
-            assertTrue(committed.isEmpty())
+            assertEquals(0L, surface.revision)
+            assertEquals(0, surface.tileCount)
         }
     }
 
-    private fun withAttachedCanvas(block: (InkCanvasView) -> Unit) {
+    private fun withAttachedCanvas(block: (InkCanvasView, PixelTileSurface) -> Unit) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val activity = instrumentation.startActivitySync(
             android.content.Intent(instrumentation.targetContext, MainActivity::class.java)
                 .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
         )
         lateinit var view: InkCanvasView
+        val surface = PixelTileSurface(1000, 1000)
         instrumentation.runOnMainSync {
             view = InkCanvasView(ApplicationProvider.getApplicationContext()).apply {
                 layout(0, 0, 1000, 1000)
                 tool = EditorTool.PEN
                 fingerDrawingEnabled = false
                 brushContinuousPlot = true
+                setRasterLayerSurfaces(mapOf(LayerIds.INK to surface))
             }
             activity.addContentView(view, ViewGroup.LayoutParams(1000, 1000))
         }
         instrumentation.waitForIdleSync()
         try {
-            block(view)
+            block(view, surface)
         } finally {
             instrumentation.runOnMainSync {
                 (view.parent as? ViewGroup)?.removeView(view)

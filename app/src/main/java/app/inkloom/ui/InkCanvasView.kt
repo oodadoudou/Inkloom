@@ -538,16 +538,24 @@ class InkCanvasView(context: Context) : View(context) {
     private val continuousPlotRunnable = object : Runnable {
         override fun run() {
             if (!continuousPlotActive || !brushContinuousPlot || activeTool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) return
-            addPoint(
-                continuousPlotX,
-                continuousPlotY,
-                continuousPlotPressure,
-                SystemClock.uptimeMillis(),
-                continuousPlotTilt,
-                continuousPlotOrientation,
-                force = true,
-            )
-            postInvalidateOnAnimation()
+            val surface = rasterTileSurfaceFor(activeLayerId)
+            if (surface != null && v5StrokeController.isActive) {
+                val now = SystemClock.uptimeMillis() * 1_000_000L
+                v5StrokeController.append(
+                    listOf(
+                        RawDocumentSample(
+                            continuousPlotX * surface.logicalWidth,
+                            continuousPlotY * surface.logicalHeight,
+                            now,
+                            now,
+                            continuousPlotPressure,
+                            continuousPlotTilt,
+                            continuousPlotOrientation,
+                            InputTool.STYLUS,
+                        ),
+                    ),
+                )?.let { invalidateV5Damage(surface, it) }
+            }
             postDelayed(this, CONTINUOUS_PLOT_INTERVAL_MS)
         }
     }
@@ -5044,7 +5052,7 @@ class InkCanvasView(context: Context) : View(context) {
                     colorJitterStrokeHueDegrees != 0f || colorJitterStrokeSaturation != 0f ||
                         colorJitterStrokeValue != 0f || colorJitterStrokeSubColorMix != 0f
                     ))
-        if (brushContinuousPlot || brushRibbon || brushWatercolor || !procreateWetMix.isDisabled() ||
+        if (brushRibbon || brushWatercolor || !procreateWetMix.isDisabled() ||
             brushBlur > .001f || taperStartEnabled || taperEndEnabled || !procreateTaper.isDisabled() ||
             strokeFalloff > .0001f || strokePathJitter > .0001f || strokePathLongitudinalJitter > .0001f ||
             strokeRotationJitterDegrees != 0f || stampCount != 1 || unsupportedColorJitter
@@ -5090,6 +5098,7 @@ class InkCanvasView(context: Context) : View(context) {
                 randomRotationRadians = kotlin.math.abs(Math.toRadians(
                     (randomRotationDegrees + if (brushSpray) sprayParticleRandomRotationDegrees else 0f).toDouble(),
                 ).toFloat()),
+                repeatStationarySamples = brushContinuousPlot,
             )
             val secondaryDefinitions = if (brushDual) {
                 val dualMasks = dualTipAssetPaths.map { path ->
@@ -5140,6 +5149,7 @@ class InkCanvasView(context: Context) : View(context) {
                         randomRotationRadians = kotlin.math.abs(Math.toRadians(
                             (dualRandomRotationDegrees + if (dualSpray) dualSprayParticleRandomRotationDegrees else 0f).toDouble(),
                         ).toFloat()),
+                        repeatStationarySamples = brushContinuousPlot,
                     ),
                 )
             } else emptyList()
@@ -5154,6 +5164,27 @@ class InkCanvasView(context: Context) : View(context) {
             )
         }
         if (grainAssetPath != null) return null
+        if (brushContinuousPlot) {
+            val definition = StampBrushDefinition(
+                diameterPixels = diameterPixels,
+                colorArgb = inkColor,
+                opacity = inkOpacity.coerceIn(0f, 1f),
+                flow = brushFlow.coerceIn(0f, 1f),
+                spacingRatio = CspBrushGap.ratio(brushSpacingMode, brushSpacing),
+                tips = listOf(BrushTipMask.solidCircle(96, brushHardness.coerceIn(0f, 1f))),
+                sizePressure = pressure(sizePressureEnabled, sizePressureMinimum, sizePressureCurve),
+                sizeTilt = tilt(sizeSecondaryDynamics),
+                opacityPressure = pressure(opacityPressureEnabled, opacityPressureMinimum, opacityPressureCurve),
+                flowPressure = pressure(flowPressureEnabled, flowPressureMinimum, flowPressureCurve),
+                renderSeed = brushRenderSeed,
+                repeatStationarySamples = true,
+            )
+            return V5PaintConfiguration(
+                StampPaintOp(surface, definition, selection),
+                diameterPixels * .5f + 2f,
+                "continuous:$brushId",
+            )
+        }
         val pencilGrain = when {
             "6b-pencil" in brushId -> .38f
             "2b-pencil" in brushId -> .30f
@@ -5209,16 +5240,27 @@ class InkCanvasView(context: Context) : View(context) {
             )
             return true
         }
+        val initialSample = v5DocumentSample(event, pointerIndex, normalizedX, normalizedY, historicalIndex = null)
         val result = v5StrokeController.begin(
             layerId = activeLayerId,
             surface = surface,
             paintOp = configuration.paintOp,
             maximumRadius = configuration.maximumRadius,
             brushRuntimeId = configuration.runtimeId,
-            sample = v5DocumentSample(event, pointerIndex, normalizedX, normalizedY, historicalIndex = null),
+            sample = initialSample,
         )
         v5DryGestureCount++
         invalidateV5Damage(surface, result)
+        if (brushContinuousPlot && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
+            updateContinuousPlotInput(
+                normalizedX,
+                normalizedY,
+                initialSample.pressure,
+                initialSample.tiltRadians,
+                initialSample.orientationRadians,
+            )
+            startContinuousPlot()
+        }
         return true
     }
 
@@ -5246,6 +5288,16 @@ class InkCanvasView(context: Context) : View(context) {
             ))
         }
         val surface = rasterTileSurfaceFor(activeLayerId) ?: return false
+        if (brushContinuousPlot) {
+            val last = samples.last()
+            updateContinuousPlotInput(
+                last.x / surface.logicalWidth,
+                last.y / surface.logicalHeight,
+                last.pressure,
+                last.tiltRadians,
+                last.orientationRadians,
+            )
+        }
         v5StrokeController.append(samples)?.let { invalidateV5Damage(surface, it) }
         return true
     }
