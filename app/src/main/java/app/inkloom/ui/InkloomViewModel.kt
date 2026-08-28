@@ -153,9 +153,12 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         saveFolders(mutableState.value.folders.filterNot { it.id == folderId || it.parentId == folderId }); refresh()
     }
 
-    fun addPage(documentId: String, templateId: String? = null) = update(documentId) { document ->
+    fun addPage(documentId: String, templateId: String? = null, paperColorArgb: Long? = null) = update(documentId) { document ->
         val library = mutablePageTemplates.value
-        val template = library.template(templateId) ?: library.defaultFor(documentId)
+        val template = PageTemplateOperations.withPaperColor(
+            library.template(templateId) ?: library.defaultFor(documentId),
+            paperColorArgb,
+        )
         val page = PageTemplateOperations.newPage(template, "Page ${document.pages.size + 1}")
         mutableState.value = mutableState.value.copy(selectedPageId = page.id)
         document.copy(pages = document.pages + page, updatedAt = System.currentTimeMillis())
@@ -210,8 +213,11 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         mutableState.value = mutableState.value.copy(selectedDocumentId = targetDocumentId, selectedPageId = result.transferredPageId)
     }
 
-    fun applyPageTemplate(documentId: String, pageId: String, templateId: String) = update(documentId) { document ->
-        val template = mutablePageTemplates.value.template(templateId) ?: return@update document
+    fun applyPageTemplate(documentId: String, pageId: String, templateId: String, paperColorArgb: Long? = null) = update(documentId) { document ->
+        val template = PageTemplateOperations.withPaperColor(
+            mutablePageTemplates.value.template(templateId) ?: return@update document,
+            paperColorArgb,
+        )
         document.copy(
             pages = document.pages.map { page -> if (page.id == pageId) PageTemplateOperations.apply(page, template) else page },
             updatedAt = System.currentTimeMillis(),
@@ -233,8 +239,9 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         mutablePageTemplates.value = pageTemplateStore.toggleFavorite(templateId)
     }
 
-    fun setNotebookDefaultTemplate(documentId: String, templateId: String?) {
+    fun setNotebookDefaultTemplate(documentId: String, templateId: String?, paperColorArgb: Long? = null) {
         mutablePageTemplates.value = pageTemplateStore.setNotebookDefault(documentId, templateId)
+        mutablePageTemplates.value = pageTemplateStore.setNotebookPaperColor(documentId, paperColorArgb)
     }
 
     fun deletePageTemplate(templateId: String) {

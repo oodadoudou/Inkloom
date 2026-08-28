@@ -704,7 +704,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onDismissError = { importError = null },
             onSelectPage = viewModel::selectPage,
             pageTemplates = pageTemplates,
-            onAddPage = { templateId -> libraryState.selectedDocumentId?.let { viewModel.addPage(it, templateId) } },
+            onAddPage = { templateId, paperColor -> libraryState.selectedDocumentId?.let { viewModel.addPage(it, templateId, paperColor) } },
             onDuplicatePage = { documentId, pageId -> viewModel.duplicatePage(documentId, pageId) },
             onDeletePage = { documentId, pageId -> viewModel.deletePage(documentId, pageId) },
             onMovePage = viewModel::movePage,
@@ -1047,16 +1047,16 @@ private fun EditorScreen(
     onDismissError: () -> Unit,
     onSelectPage: (String) -> Unit,
     pageTemplates: PageTemplateLibrary,
-    onAddPage: (String) -> Unit,
+    onAddPage: (String, Long?) -> Unit,
     onDuplicatePage: (String, String) -> Unit,
     onDeletePage: (String, String) -> Unit,
     onMovePage: (String, String, Int) -> Unit,
     onReorderPages: (String, List<String>) -> Unit,
     onTransferPage: (String, String, String, Boolean) -> Unit,
-    onApplyPageTemplate: (String, String, String) -> Unit,
+    onApplyPageTemplate: (String, String, String, Long?) -> Unit,
     onImportPageTemplates: () -> Unit,
     onTogglePageTemplateFavorite: (String) -> Unit,
-    onSetNotebookDefaultTemplate: (String, String?) -> Unit,
+    onSetNotebookDefaultTemplate: (String, String?, Long?) -> Unit,
     onSavePageAsTemplate: (String, String, String) -> PageTemplate?,
     onDeletePageTemplate: (String) -> Unit,
     onToggleBookmark: (String, String) -> Unit,
@@ -4106,16 +4106,16 @@ private fun PageRail(
     pageTemplates: PageTemplateLibrary,
     onSelect: (String) -> Unit,
     onOpenLayers: (String) -> Unit,
-    onAdd: (String) -> Unit,
+    onAdd: (String, Long?) -> Unit,
     onDuplicate: (String, String) -> Unit,
     onDelete: (String, String) -> Unit,
     onMove: (String, String, Int) -> Unit,
     onReorder: (String, List<String>) -> Unit,
     onTransfer: (String, String, String, Boolean) -> Unit,
-    onApplyTemplate: (String, String, String) -> Unit,
+    onApplyTemplate: (String, String, String, Long?) -> Unit,
     onImportTemplates: () -> Unit,
     onToggleTemplateFavorite: (String) -> Unit,
-    onSetDefaultTemplate: (String, String?) -> Unit,
+    onSetDefaultTemplate: (String, String?, Long?) -> Unit,
     onSaveAsTemplate: (String, String, String) -> PageTemplate?,
     onDeleteTemplate: (String) -> Unit,
     onToggleBookmark: (String, String) -> Unit,
@@ -4201,10 +4201,10 @@ private fun PageRail(
                 title = tr("Choose template for new page", "选择新页面模板"),
                 currentBackground = null,
                 onDismiss = { addTemplateOpen = false },
-                onChoose = { template -> onAdd(template.id); addTemplateOpen = false },
+                onChoose = { template, paperColor -> onAdd(template.id, paperColor); addTemplateOpen = false },
                 onImport = onImportTemplates,
                 onToggleFavorite = onToggleTemplateFavorite,
-                onSetDefault = { onSetDefaultTemplate(document.id, it) },
+                onSetDefault = { templateId, paperColor -> onSetDefaultTemplate(document.id, templateId, paperColor) },
                 onDelete = onDeleteTemplate,
             )
         }
@@ -4377,10 +4377,10 @@ private fun PageRail(
                 title = tr("Choose page template", "选择页面模板"),
                 currentBackground = page.background,
                 onDismiss = { templateOpen = false },
-                onChoose = { template -> onApplyTemplate(document.id, page.id, template.id); templateOpen = false },
+                onChoose = { template, paperColor -> onApplyTemplate(document.id, page.id, template.id, paperColor); templateOpen = false },
                 onImport = onImportTemplates,
                 onToggleFavorite = onToggleTemplateFavorite,
-                onSetDefault = { onSetDefaultTemplate(document.id, it) },
+                onSetDefault = { templateId, paperColor -> onSetDefaultTemplate(document.id, templateId, paperColor) },
                 onSaveCurrent = { templateName = page.title; templateOpen = false; saveTemplateNameOpen = true },
                 onDelete = onDeleteTemplate,
             )
@@ -4464,16 +4464,23 @@ private fun PageTemplatePickerDialog(
     title: String,
     currentBackground: PageBackground?,
     onDismiss: () -> Unit,
-    onChoose: (PageTemplate) -> Unit,
+    onChoose: (PageTemplate, Long?) -> Unit,
     onImport: () -> Unit,
     onToggleFavorite: (String) -> Unit,
-    onSetDefault: (String?) -> Unit,
+    onSetDefault: (String?, Long?) -> Unit,
     onDelete: (String) -> Unit,
     onSaveCurrent: (() -> Unit)? = null,
 ) {
     val all = library.allTemplates()
     val ordered = all.filter { it.id in library.favoriteIds } + all.filterNot { it.id in library.favoriteIds }
     val defaultId = library.notebookDefaults[documentId] ?: PageTemplateCatalog.blank.id
+    var paperColor by remember(documentId, currentBackground) {
+        mutableLongStateOf(
+            (currentBackground as? PageBackground.Paper)?.colorArgb
+                ?: library.notebookPaperColors[documentId]
+                ?: PaperColorCatalog.WHITE,
+        )
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
@@ -4491,9 +4498,25 @@ private fun PageTemplatePickerDialog(
                     OutlinedButton(onClick = onImport) { Icon(Icons.Outlined.FileOpen, null); Spacer(Modifier.width(6.dp)); Text(tr("Import image/PDF", "导入图片/PDF")) }
                     if (onSaveCurrent != null) OutlinedButton(onClick = onSaveCurrent) { Icon(Icons.Outlined.BookmarkAdd, null); Spacer(Modifier.width(6.dp)); Text(tr("Save current", "保存当前页")) }
                 }
+                Text(tr("Paper color", "纸张颜色"), color = MutedInk, fontSize = 12.sp)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    PaperColorCatalog.options.forEach { option ->
+                        val label = paperColorName(option)
+                        val description = tr("Paper color $label", "纸张颜色 $label")
+                        Box(
+                            Modifier
+                                .size(32.dp)
+                                .background(Color(option.colorArgb), CircleShape)
+                                .border(if (paperColor == option.colorArgb) 2.dp else 1.dp, if (paperColor == option.colorArgb) Ink else OutlineSoft, CircleShape)
+                                .clickable { paperColor = option.colorArgb }
+                                .semantics { contentDescription = description },
+                        )
+                    }
+                }
                 LazyColumn(Modifier.heightIn(max = 430.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     items(ordered, key = { it.id }) { template ->
-                        val selected = currentBackground == template.background
+                        val displayedTemplate = PageTemplateOperations.withPaperColor(template, paperColor)
+                        val selected = currentBackground == displayedTemplate.background
                         val builtIn = PageTemplateCatalog.isBuiltIn(template.id)
                         val isDefault = template.id == defaultId
                         val displayName = pageTemplateName(template)
@@ -4509,19 +4532,19 @@ private fun PageTemplatePickerDialog(
                                     fontSize = 11.sp,
                                 )
                             },
-                            leadingContent = { PageTemplatePreview(template, selected) },
+                            leadingContent = { PageTemplatePreview(displayedTemplate, selected) },
                             trailingContent = {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     IconButton(onClick = { onToggleFavorite(template.id) }, modifier = Modifier.size(34.dp).semantics { contentDescription = favoriteDescription }) {
                                         Icon(if (template.id in library.favoriteIds) Icons.Filled.Star else Icons.Outlined.StarBorder, null, tint = Ink)
                                     }
-                                    IconButton(onClick = { onSetDefault(if (isDefault) null else template.id) }, modifier = Modifier.size(34.dp).semantics { contentDescription = defaultDescription }) {
+                                    IconButton(onClick = { onSetDefault(if (isDefault) null else template.id, (displayedTemplate.background as? PageBackground.Paper)?.colorArgb) }, modifier = Modifier.size(34.dp).semantics { contentDescription = defaultDescription }) {
                                         Icon(if (isDefault) Icons.Filled.Home else Icons.Outlined.Home, null, tint = Ink)
                                     }
                                     if (!builtIn) IconButton(onClick = { onDelete(template.id) }, modifier = Modifier.size(34.dp)) {
                                         Icon(Icons.Outlined.Delete, tr("Delete template", "删除模板"), tint = MutedInk)
                                     }
-                                    TextButton(onClick = { onChoose(template) }, modifier = Modifier.semantics { contentDescription = useDescription }) { Text(if (selected) tr("Selected", "已选择") else tr("Use", "使用")) }
+                                    TextButton(onClick = { onChoose(template, (displayedTemplate.background as? PageBackground.Paper)?.colorArgb) }, modifier = Modifier.semantics { contentDescription = useDescription }) { Text(if (selected) tr("Selected", "已选择") else tr("Use", "使用")) }
                                 }
                             },
                             colors = ListItemDefaults.colors(containerColor = if (selected) Workspace else Color.Transparent),
