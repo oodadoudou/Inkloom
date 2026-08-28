@@ -99,4 +99,23 @@ class PageTemplateStoreTest {
             root.deleteRecursively()
         }
     }
+
+    @Test
+    fun `batch template replacement changes only selected backgrounds and preserves content`() {
+        val content = PageElement.Text(x = 24f, y = 48f, text = "keep me")
+        val first = InkPage(title = "First", elements = listOf(content))
+        val second = InkPage(title = "Second")
+        val third = InkPage(title = "Third")
+        val template = PageTemplate(
+            name = "Green ruled",
+            background = PageBackground.Paper(PaperColorCatalog.SOFT_GREEN, PaperPattern.RULED),
+        )
+
+        val result = PageTemplateOperations.applyToPages(listOf(first, second, third), setOf(first.id, third.id), template)
+
+        assertEquals(template.background, result[0].background)
+        assertEquals(listOf(content), result[0].elements)
+        assertEquals(second, result[1])
+        assertEquals(template.background, result[2].background)
+    }
 }

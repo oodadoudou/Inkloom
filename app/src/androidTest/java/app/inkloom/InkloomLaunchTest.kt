@@ -494,6 +494,27 @@ class InkloomLaunchTest {
         composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasText("/4", substring = true)).fetchSemanticsNodes().isNotEmpty() }
     }
 
+    @Test fun pageManagementBatchReplacesTemplatesAndPaperColor() {
+        createNotebookAndOpenEditor()
+        composeRule.onNodeWithContentDescription("Add page").performClick()
+        composeRule.onNodeWithContentDescription("Use Grid template").performClick()
+        composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasContentDescription("Open layers for this page")).fetchSemanticsNodes().size == 2 }
+
+        composeRule.onNodeWithContentDescription("Page 1. Long press to manage.").performTouchInput { longClick() }
+        composeRule.onNodeWithText("All").performClick()
+        composeRule.onNodeWithContentDescription("Replace selected page templates").performClick()
+        composeRule.onNodeWithText("Replace template on 2 pages").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Paper color Soft green").performClick()
+        composeRule.onNodeWithContentDescription("Use Ruled template").performClick()
+        composeRule.waitForIdle()
+
+        val document = FileDocumentStore(composeRule.activity.filesDir).list().maxBy { it.createdAt }
+        assertEquals(2, document.pages.size)
+        assertTrue(document.pages.all {
+            it.background == PageBackground.Paper(PaperColorCatalog.SOFT_GREEN, PaperPattern.RULED)
+        })
+    }
+
     @Test fun pagePreviewUsesMostOfTheNarrowPagesPanelWidth() {
         createNotebookAndOpenEditor()
         composeRule.waitUntil(10_000) {

@@ -711,6 +711,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onReorderPages = viewModel::reorderPages,
             onTransferPage = viewModel::transferPage,
             onApplyPageTemplate = viewModel::applyPageTemplate,
+            onApplyPageTemplates = viewModel::applyPageTemplateToPages,
             onImportPageTemplates = { pageTemplatePicker.launch(arrayOf("application/pdf", "image/*")) },
             onTogglePageTemplateFavorite = viewModel::togglePageTemplateFavorite,
             onSetNotebookDefaultTemplate = viewModel::setNotebookDefaultTemplate,
@@ -1054,6 +1055,7 @@ private fun EditorScreen(
     onReorderPages: (String, List<String>) -> Unit,
     onTransferPage: (String, String, String, Boolean) -> Unit,
     onApplyPageTemplate: (String, String, String, Long?) -> Unit,
+    onApplyPageTemplates: (String, Set<String>, String, Long?) -> Unit,
     onImportPageTemplates: () -> Unit,
     onTogglePageTemplateFavorite: (String) -> Unit,
     onSetNotebookDefaultTemplate: (String, String?, Long?) -> Unit,
@@ -2170,7 +2172,7 @@ private fun EditorScreen(
                 onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
                 pageTemplates = pageTemplates,
                 onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> setLayersPanelOpen(true, pageId) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onReorder = onReorderPages, onTransfer = onTransferPage,
-                onApplyTemplate = onApplyPageTemplate, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
+                onApplyTemplate = onApplyPageTemplate, onApplyTemplates = onApplyPageTemplates, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
                 onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate,
                 onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
                 onClearPageInk, onSetPageCrop, onRotatePage,
@@ -2883,7 +2885,7 @@ private fun EditorScreen(
                 onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
                 pageTemplates = pageTemplates,
                 onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> setLayersPanelOpen(true, pageId) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onReorder = onReorderPages, onTransfer = onTransferPage,
-                onApplyTemplate = onApplyPageTemplate, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
+                onApplyTemplate = onApplyPageTemplate, onApplyTemplates = onApplyPageTemplates, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
                 onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate,
                 onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
                 onClearPageInk, onSetPageCrop, onRotatePage,
@@ -2965,7 +2967,7 @@ private fun EditorScreen(
                     onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
                     pageTemplates = pageTemplates,
                     onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> setLayersPanelOpen(true, pageId) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onReorder = onReorderPages, onTransfer = onTransferPage,
-                    onApplyTemplate = onApplyPageTemplate, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
+                    onApplyTemplate = onApplyPageTemplate, onApplyTemplates = onApplyPageTemplates, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
                     onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate,
                     onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
                     onClearPageInk, onSetPageCrop, onRotatePage,
@@ -3066,7 +3068,7 @@ private fun EditorScreen(
                 onClose = { onSettingsChange(settings.copy(showPageRail = false)) },
                 pageTemplates = pageTemplates,
                 onSelect = ::selectPageWithViewport, onOpenLayers = { pageId -> setLayersPanelOpen(true, pageId) }, onAdd = onAddPage, onDuplicate = onDuplicatePage, onDelete = onDeletePage, onMove = onMovePage, onReorder = onReorderPages, onTransfer = onTransferPage,
-                onApplyTemplate = onApplyPageTemplate, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
+                onApplyTemplate = onApplyPageTemplate, onApplyTemplates = onApplyPageTemplates, onImportTemplates = onImportPageTemplates, onToggleTemplateFavorite = onTogglePageTemplateFavorite,
                 onSetDefaultTemplate = onSetNotebookDefaultTemplate, onSaveAsTemplate = onSavePageAsTemplate, onDeleteTemplate = onDeletePageTemplate,
                 onToggleBookmark, onChangePageOutlineLevel, onTogglePageOutlineCollapsed, onRenamePage, onSetPageMetadata,
                 onClearPageInk, onSetPageCrop, onRotatePage,
@@ -4113,6 +4115,7 @@ private fun PageRail(
     onReorder: (String, List<String>) -> Unit,
     onTransfer: (String, String, String, Boolean) -> Unit,
     onApplyTemplate: (String, String, String, Long?) -> Unit,
+    onApplyTemplates: (String, Set<String>, String, Long?) -> Unit,
     onImportTemplates: () -> Unit,
     onToggleTemplateFavorite: (String) -> Unit,
     onSetDefaultTemplate: (String, String?, Long?) -> Unit,
@@ -4157,6 +4160,7 @@ private fun PageRail(
     val currentPanelDragEnd by rememberUpdatedState(onPanelDragEnd)
     val currentPanelDragCancel by rememberUpdatedState(onPanelDragCancel)
     var addTemplateOpen by remember(document.id) { mutableStateOf(false) }
+    var batchTemplateOpen by remember(document.id) { mutableStateOf(false) }
     var managingPages by remember(document.id) { mutableStateOf(false) }
     var selectedPageIds by remember(document.id) { mutableStateOf(emptySet<String>()) }
     val currentSelectedPageIds by rememberUpdatedState(selectedPageIds)
@@ -4216,6 +4220,9 @@ private fun PageRail(
                     TextButton(onClick = { selectedPageIds = document.pages.mapTo(linkedSetOf(), InkPage::id) }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text(tr("All", "全选"), fontSize = 9.sp) }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    IconButton(onClick = { batchTemplateOpen = true }, enabled = selectedPageIds.isNotEmpty(), modifier = Modifier.size(28.dp)) {
+                        Icon(Icons.Outlined.Description, tr("Replace selected page templates", "批量替换所选页面模板"), Modifier.size(16.dp))
+                    }
                     IconButton(onClick = { document.pages.filter { it.id in selectedPageIds }.forEach { onDuplicate(document.id, it.id) }; managingPages = false; selectedPageIds = emptySet() }, enabled = selectedPageIds.isNotEmpty(), modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.ContentCopy, tr("Duplicate selected pages", "复制所选页面"), Modifier.size(16.dp)) }
                     IconButton(onClick = {
                         document.pages.filter { it.id in selectedPageIds }.take((document.pages.size - 1).coerceAtLeast(0)).forEach { onDelete(document.id, it.id) }
@@ -4426,6 +4433,23 @@ private fun PageRail(
             )
         }
     }
+    if (batchTemplateOpen) PageTemplatePickerDialog(
+        library = pageTemplates,
+        documentId = document.id,
+        title = tr("Replace template on ${selectedPageIds.size} pages", "替换 ${selectedPageIds.size} 页的模板"),
+        currentBackground = null,
+        onDismiss = { batchTemplateOpen = false },
+        onChoose = { template, paperColor ->
+            onApplyTemplates(document.id, selectedPageIds, template.id, paperColor)
+            batchTemplateOpen = false
+            managingPages = false
+            selectedPageIds = emptySet()
+        },
+        onImport = onImportTemplates,
+        onToggleFavorite = onToggleTemplateFavorite,
+        onSetDefault = { templateId, paperColor -> onSetDefaultTemplate(document.id, templateId, paperColor) },
+        onDelete = onDeleteTemplate,
+    )
 }
 
 @Composable

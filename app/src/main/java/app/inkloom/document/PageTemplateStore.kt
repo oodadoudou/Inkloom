@@ -98,6 +98,11 @@ object PageTemplateOperations {
         )
     }
 
+    fun applyToPages(pages: List<InkPage>, pageIds: Set<String>, template: PageTemplate): List<InkPage> {
+        if (pageIds.isEmpty()) return pages
+        return pages.map { page -> if (page.id in pageIds) apply(page, template) else page }
+    }
+
     fun fromPage(page: InkPage, name: String): PageTemplate = PageTemplate(
         name = name.trim().take(MAX_TEMPLATE_NAME_LENGTH).ifBlank { "My template" },
         width = page.width,

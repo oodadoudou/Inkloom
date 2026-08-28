@@ -224,6 +224,24 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         )
     }
 
+    fun applyPageTemplateToPages(
+        documentId: String,
+        pageIds: Set<String>,
+        templateId: String,
+        paperColorArgb: Long? = null,
+    ) = update(documentId) { document ->
+        val targets = pageIds.intersect(document.pages.mapTo(linkedSetOf(), InkPage::id))
+        if (targets.isEmpty()) return@update document
+        val template = PageTemplateOperations.withPaperColor(
+            mutablePageTemplates.value.template(templateId) ?: return@update document,
+            paperColorArgb,
+        )
+        document.copy(
+            pages = PageTemplateOperations.applyToPages(document.pages, targets, template),
+            updatedAt = System.currentTimeMillis(),
+        )
+    }
+
     fun importPageTemplates(uri: Uri, displayName: String): List<PageTemplate> = assets.importPageTemplates(uri, displayName).also { imported ->
         mutablePageTemplates.value = pageTemplateStore.add(imported)
     }
