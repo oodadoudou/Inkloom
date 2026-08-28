@@ -20,6 +20,39 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class V5RealtimeDryPaintPerformanceTest {
     @Test
+    fun maximumRealtimeSmoothingStillKeepsVisibleInkAtThePhysicalTip() {
+        val surface = PixelTileSurface(2048, 1536)
+        val display = Bitmap.createBitmap(1024, 768, Bitmap.Config.ARGB_8888)
+        lateinit var view: InkCanvasView
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view = InkCanvasView(ApplicationProvider.getApplicationContext()).apply {
+                layout(0, 0, 1024, 768)
+                tool = EditorTool.PEN
+                activeLayerId = "paint"
+                installV5TestInk(size = 12f, smoothing = 1f)
+                fingerDrawingEnabled = true
+                setRasterLayerSurfaces(mapOf("paint" to surface))
+            }
+        }
+
+        val downTime = SystemClock.uptimeMillis()
+        dispatch(view, MotionEvent.ACTION_DOWN, 80f, 260f, downTime, downTime)
+        dispatch(view, MotionEvent.ACTION_MOVE, 900f, 260f, downTime, downTime + 4L)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            display.eraseColor(Color.TRANSPARENT)
+            view.draw(Canvas(display))
+        }
+
+        var visibleAtTip = false
+        for (y in 252..268) for (x in 892..904) {
+            if (Color.alpha(display.getPixel(x, y)) > 0) visibleAtTip = true
+        }
+        assertTrue("Explicit smoothing may soften the path but must not visibly trail the stylus", visibleAtTip)
+        dispatch(view, MotionEvent.ACTION_UP, 900f, 260f, downTime, downTime + 8L)
+        display.recycle()
+    }
+
+    @Test
     fun threeHundredHertzInputRemainsVisibleBeforeUpAndMeetsTheFrameGate() {
         val surface = PixelTileSurface(2048, 1536)
         val display = Bitmap.createBitmap(1024, 768, Bitmap.Config.ARGB_8888)

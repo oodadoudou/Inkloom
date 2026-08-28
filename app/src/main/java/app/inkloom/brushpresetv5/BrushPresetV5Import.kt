@@ -32,7 +32,14 @@ object BrushPresetV5Import {
             require(BrushPresetV5Codec.decodeOrNull(encoded) != null) { "Invalid Brush Preset Format V5 payload" }
             return source
         }
-        return writePreset(source, fromDecodedSource(source), source.format)
+        val auditedSource = if (source.postCorrectionEnabled && source.postCorrection > 0f) {
+            source.copy(
+                report = (source.report +
+                    "Post-correction was not imported: Paint Engine V5 never rewrites a completed stroke. Use realtime Smoothing explicitly instead.")
+                    .distinct(),
+            )
+        } else source
+        return writePreset(auditedSource, fromDecodedSource(source), source.format)
     }
 
     /** Creates a first-party V5 preset at catalog construction, not through legacy migration. */
@@ -172,14 +179,14 @@ object BrushPresetV5Import {
                     source.streamLine,
                     source.procreateStabilization,
                     source.motionFiltering,
-                    source.postCorrection.takeIf { source.postCorrectionEnabled } ?: 0f,
                 ).coerceIn(0f, 1f),
                 taperStartEnabled = source.taperStartEnabled,
                 taperStartLength = source.taperStartLength,
                 taperEndEnabled = source.taperEndEnabled,
                 taperEndLength = source.taperEndLength,
-                // V5 never replays an entire stroke after pen-up. Imported post-correction is
-                // therefore compiled into the causal correction above at the import boundary.
+                // V5 never replays an entire stroke after pen-up. Post-correction is intentionally
+                // not disguised as realtime smoothing because the two controls have different
+                // latency and geometry semantics.
                 postCorrection = 0f,
             ),
             stamp = source.takeIf {

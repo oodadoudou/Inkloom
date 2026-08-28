@@ -59,6 +59,10 @@ class CausalStrokeSession(
     }
 
     private val response = (1f - smoothing * .85f).coerceIn(.15f, 1f)
+    /** Professional realtime correction may soften jitter but must never trail the physical tip
+     * by an unbounded distance. This document-space cap keeps even maximum smoothing within a
+     * small, predictable tail instead of accumulating the error of an unconstrained EMA. */
+    private val maximumLagPixels = .5f + smoothing * 3.5f
     private var state = State.NEW
     private var ordinal = 0L
     private var lastSequence = -1L
@@ -94,10 +98,19 @@ class CausalStrokeSession(
         inputs.lastOrNull()?.let { lastSequence = it.sequence }
         val output = inputs.map { input ->
             val previous = filteredPoint
-            val point = if (previous == null) input.point else DocumentPoint(
-                previous.x + (input.point.x - previous.x) * response,
-                previous.y + (input.point.y - previous.y) * response,
-            )
+            val point = if (previous == null) input.point else {
+                val candidateX = previous.x + (input.point.x - previous.x) * response
+                val candidateY = previous.y + (input.point.y - previous.y) * response
+                val lagX = candidateX - input.point.x
+                val lagY = candidateY - input.point.y
+                val lag = kotlin.math.hypot(lagX, lagY)
+                if (lag <= maximumLagPixels || lag <= 1e-6f) {
+                    DocumentPoint(candidateX, candidateY)
+                } else {
+                    val scale = maximumLagPixels / lag
+                    DocumentPoint(input.point.x + lagX * scale, input.point.y + lagY * scale)
+                }
+            }
             filteredPoint = point
             StrokeSample(
                 input.sequence,

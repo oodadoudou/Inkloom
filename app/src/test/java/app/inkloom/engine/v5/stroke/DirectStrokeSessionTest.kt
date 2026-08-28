@@ -39,11 +39,28 @@ class DirectStrokeSessionTest {
         val up = session.finish(sample(30, InputPhase.UP))
 
         assertEquals(DocumentPoint(0f, 0f), down.samples.single().point)
-        assertTrue(emittedBeforeUp.point.x in 5f..<10f)
+        assertTrue(emittedBeforeUp.point.x < 10f)
+        assertTrue(kotlin.math.hypot(10f - emittedBeforeUp.point.x, 10f - emittedBeforeUp.point.y) <= 2.251f)
         assertEquals(emittedBeforeUp, firstMove.samples.single())
         assertEquals(listOf(20L), secondMove.samples.map(StrokeSample::inputSequence))
         assertEquals(listOf(30L), up.samples.map(StrokeSample::inputSequence))
         assertTrue(up.terminal)
+    }
+
+    @Test fun `causal smoothing has a strict spatial lag bound during a fast stroke`() {
+        val session = CausalStrokeSession(14L, maximumRadius = 200f, smoothing = 1f)
+        session.begin(sample(0, InputPhase.DOWN))
+
+        val output = session.append(InputSampleBatch.owned(listOf(
+            sample(1_000, InputPhase.MOVE),
+            sample(2_000, InputPhase.MOVE),
+            sample(3_000, InputPhase.MOVE),
+        )))
+
+        output.samples.forEach { emitted ->
+            val raw = emitted.inputSequence.toFloat()
+            assertTrue("Realtime correction trailed by ${raw - emitted.point.x}px", raw - emitted.point.x <= 4.001f)
+        }
     }
 
     private fun sample(sequence: Long, phase: InputPhase, predicted: Boolean = false) = InputSample(

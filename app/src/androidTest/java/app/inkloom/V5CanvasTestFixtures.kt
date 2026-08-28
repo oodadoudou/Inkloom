@@ -10,6 +10,7 @@ import app.inkloom.brushpresetv5.PresetIdentity
 import app.inkloom.brushpresetv5.PressureMappings
 import app.inkloom.brushpresetv5.SpacingSettings
 import app.inkloom.brushpresetv5.StampSettings
+import app.inkloom.brushpresetv5.StrokeSettings
 import app.inkloom.brushpresetv5.TiltMappings
 import app.inkloom.brushpresetv5.TipSettings
 import app.inkloom.brushpresetv5.TipTextureSettings
@@ -30,6 +31,7 @@ internal fun InkCanvasView.installV5TestInk(
     textureGrain: TextureGrainSettings? = null,
     continuousPlot: Boolean = false,
     wetMix: WetMixSettings? = null,
+    smoothing: Float = 0f,
 ): InkCanvasView = apply {
     val drawWithFinger = fingerDrawingEnabled
     val singleFingerUndo = singleFingerDoubleTapUndo
@@ -60,6 +62,7 @@ internal fun InkCanvasView.installV5TestInk(
                 StampSettings(continuousPlot = continuousPlot)
             },
             wetMix = wetMix,
+            stroke = StrokeSettings(smoothing = smoothing),
         ),
         AppSettings(),
         brushColor = color,
