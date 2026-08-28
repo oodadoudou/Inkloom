@@ -18,6 +18,8 @@ import app.inkloom.settings.ShortcutPhase
 import app.inkloom.settings.ShortcutTrigger
 import app.inkloom.settings.StylusButtonAction
 import app.inkloom.ui.InkCanvasView
+import app.inkloom.engine.v5.surface.PixelTileSurface
+import java.util.IdentityHashMap
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -26,6 +28,7 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class InkCanvasNavigationTest {
+    private val paintSurfaces = IdentityHashMap<InkCanvasView, PixelTileSurface>()
     @Test fun oneStationaryTwoFingerTapTriggersOneUndo() {
         val view = canvas().apply {
             fingerDrawingEnabled = false
@@ -59,8 +62,6 @@ class InkCanvasNavigationTest {
 
     @Test fun partiallyObscuredStylusEventsRemainDrawable() {
         val view = canvas().apply { tool = EditorTool.PEN }
-        var committed = 0
-        view.onStrokeCommitted = { committed++ }
         obscuredStylusEvent(MotionEvent.ACTION_DOWN, 120f, 160f).also { event ->
             try { assertTrue(view.onFilterTouchEventForSecurity(event)) } finally { event.recycle() }
         }
@@ -69,20 +70,18 @@ class InkCanvasNavigationTest {
         sendStylus(view, 20L, MotionEvent.ACTION_MOVE, 200f, 230f, flags = MotionEvent.FLAG_WINDOW_IS_PARTIALLY_OBSCURED)
         sendStylus(view, 40L, MotionEvent.ACTION_UP, 200f, 230f, flags = MotionEvent.FLAG_WINDOW_IS_PARTIALLY_OBSCURED)
 
-        assertEquals(1, committed)
+        assertEquals(1L, paintSurface(view).revision)
     }
 
     @Test fun floatingWindowFocusLossDoesNotCancelDeliveredStylusStream() {
         val view = canvas().apply { tool = EditorTool.PEN }
-        var committed = 0
-        view.onStrokeCommitted = { committed++ }
 
         sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 120f, 160f)
         InstrumentationRegistry.getInstrumentation().runOnMainSync { view.onWindowFocusChanged(false) }
         sendStylus(view, 20L, MotionEvent.ACTION_MOVE, 200f, 230f)
         sendStylus(view, 40L, MotionEvent.ACTION_UP, 200f, 230f)
 
-        assertEquals(1, committed)
+        assertEquals(1L, paintSurface(view).revision)
     }
     @Test fun enabledSingleFingerDoubleTapOnBlankCanvasTriggersUndoOnce() {
         val view = canvas().apply {
@@ -159,8 +158,6 @@ class InkCanvasNavigationTest {
         val view = canvas().apply { fingerDrawingEnabled = false }
         val geometry = ViewportGeometry(1000f, 1000f, 700f, 900f)
         var state = ViewportState(1f, 0f, 0f)
-        var committed = 0
-        view.onStrokeCommitted = { committed++ }
         view.onViewportScale = { factor, focusX, focusY ->
             state = ViewportTransform.zoomAroundScreen(state, factor, focusX - 500f, focusY - 500f, geometry = geometry)
         }
@@ -186,7 +183,7 @@ class InkCanvasNavigationTest {
         assertEquals(1f, state.scale, .001f)
         assertEquals(0f, state.panX, .001f)
         assertEquals(0f, state.panY, .001f)
-        assertEquals("Navigation sequence must never commit ink", 0, committed)
+        assertEquals("Navigation sequence must never commit ink", 0L, paintSurface(view).revision)
     }
 
     @Test fun twoFingerScreenTranslationIsNotMultipliedAtHighZoom() {
@@ -215,19 +212,13 @@ class InkCanvasNavigationTest {
             viewportPanX = 100f
             viewportPanY = -40f
         }
-        var firstX = Float.NaN
-        var firstY = Float.NaN
-        view.onStrokeCommitted = { stroke ->
-            firstX = stroke.points.first().x
-            firstY = stroke.points.first().y
-        }
-
         sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 700f, 660f)
         sendStylus(view, 20L, MotionEvent.ACTION_MOVE, 720f, 680f)
         sendStylus(view, 40L, MotionEvent.ACTION_UP, 720f, 680f)
 
-        assertEquals("View dispatch already maps the contact into page-local X", .70f, firstX, .002f)
-        assertEquals("View dispatch already maps the contact into page-local Y", .66f, firstY, .002f)
+        val first = view.v5LastCommittedNormalizedPoints().first()
+        assertEquals("View dispatch already maps the contact into page-local X", .70f, first.first, .002f)
+        assertEquals("View dispatch already maps the contact into page-local Y", .66f, first.second, .002f)
     }
 
     @Test fun stylusWritesAfterAnExternalPinchWasInterrupted() {
@@ -241,8 +232,6 @@ class InkCanvasNavigationTest {
             viewportPanY = state.panY
             viewportRotationDegrees = state.rotationDegrees
         }
-        var strokePoint: Pair<Float, Float>? = null
-        view.onStrokeCommitted = { stroke -> strokePoint = stroke.points.first().x to stroke.points.first().y }
 
         // This intentionally omits the final finger UP. Compose may consume it while owning
         // the gesture, so the following stylus DOWN is the recovery boundary we must honour.
@@ -255,8 +244,9 @@ class InkCanvasNavigationTest {
         sendStylus(view, 60L, MotionEvent.ACTION_MOVE, targetX * 1000f + 9f, targetY * 1000f + 7f)
         sendStylus(view, 80L, MotionEvent.ACTION_UP, targetX * 1000f + 9f, targetY * 1000f + 7f)
 
-        assertEquals("A stylus DOWN after pinch must begin a stroke", targetX, strokePoint?.first ?: Float.NaN, .003f)
-        assertEquals("The recovered stream must preserve page-local coordinates", targetY, strokePoint?.second ?: Float.NaN, .003f)
+        val strokePoint = view.v5LastCommittedNormalizedPoints().first()
+        assertEquals("A stylus DOWN after pinch must begin a stroke", targetX, strokePoint.first, .003f)
+        assertEquals("The recovered stream must preserve page-local coordinates", targetY, strokePoint.second, .003f)
     }
 
     @Test fun nativePinchCompletesAndTheNextStylusStrokeUsesTheNewViewport() {
@@ -278,8 +268,6 @@ class InkCanvasNavigationTest {
             synchronize(ViewportTransform.zoomAroundScreen(state, factor, focusX - 500f, focusY - 500f, geometry = geometry))
         }
         view.onViewportPan = { dx, dy -> synchronize(ViewportTransform.panByScreen(state, dx, dy, geometry = geometry)) }
-        var strokePoint: Pair<Float, Float>? = null
-        view.onStrokeCommitted = { stroke -> strokePoint = stroke.points.first().x to stroke.points.first().y }
 
         send(view, 0L, MotionEvent.ACTION_DOWN, point(0, 350f, 500f))
         send(view, 10L, MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), point(0, 350f, 500f), point(1, 650f, 500f))
@@ -294,8 +282,9 @@ class InkCanvasNavigationTest {
         sendStylus(view, 100L, MotionEvent.ACTION_MOVE, targetX * 1000f + 6f, targetY * 1000f + 4f)
         sendStylus(view, 120L, MotionEvent.ACTION_UP, targetX * 1000f + 6f, targetY * 1000f + 4f)
 
-        assertEquals("Stylus must write immediately after pinch", targetX, strokePoint?.first ?: Float.NaN, .003f)
-        assertEquals("The post-pinch local stroke must remain writable", targetY, strokePoint?.second ?: Float.NaN, .003f)
+        val strokePoint = view.v5LastCommittedNormalizedPoints().first()
+        assertEquals("Stylus must write immediately after pinch", targetX, strokePoint.first, .003f)
+        assertEquals("The post-pinch local stroke must remain writable", targetY, strokePoint.second, .003f)
     }
 
     @Test fun secondFingerCancelsAnInProgressFingerStrokeBeforeNavigation() {
@@ -303,8 +292,6 @@ class InkCanvasNavigationTest {
             tool = EditorTool.PEN
             fingerDrawingEnabled = true
         }
-        var committed = 0
-        view.onStrokeCommitted = { committed++ }
 
         send(view, 0L, MotionEvent.ACTION_DOWN, point(0, 100f, 100f))
         send(view, 10L, MotionEvent.ACTION_MOVE, point(0, 150f, 150f))
@@ -313,7 +300,7 @@ class InkCanvasNavigationTest {
         send(view, 60L, MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), point(0, 180f, 170f), point(1, 330f, 170f))
         send(view, 70L, MotionEvent.ACTION_UP, point(0, 180f, 170f))
 
-        assertEquals("The interrupted finger stroke must not leave ink", 0, committed)
+        assertEquals("The interrupted finger stroke must not leave ink", 0L, paintSurface(view).revision)
     }
 
     @Test fun remainingFingerAfterPinchStaysNavigationUntilEveryFingerIsUp() {
@@ -323,9 +310,7 @@ class InkCanvasNavigationTest {
         }
         var panX = 0f
         var panY = 0f
-        var committed = 0
         view.onViewportPan = { dx, dy -> panX += dx; panY += dy }
-        view.onStrokeCommitted = { committed++ }
 
         send(view, 0L, MotionEvent.ACTION_DOWN, point(0, 100f, 100f))
         send(view, 10L, MotionEvent.ACTION_MOVE, point(0, 130f, 100f))
@@ -335,14 +320,14 @@ class InkCanvasNavigationTest {
         send(view, 80L, MotionEvent.ACTION_MOVE, point(0, 180f, 150f))
         send(view, 100L, MotionEvent.ACTION_UP, point(0, 180f, 150f))
 
-        assertEquals("Neither the interrupted stroke nor the remaining navigation finger may leave ink", 0, committed)
+        assertEquals("Neither the interrupted stroke nor the remaining navigation finger may leave ink", 0L, paintSurface(view).revision)
         assertTrue("The remaining finger should continue panning after POINTER_UP", panX >= 79f)
         assertTrue("The remaining finger should continue panning vertically", panY >= 49f)
 
         send(view, 120L, MotionEvent.ACTION_DOWN, point(0, 240f, 260f))
         send(view, 140L, MotionEvent.ACTION_MOVE, point(0, 300f, 320f))
         send(view, 160L, MotionEvent.ACTION_UP, point(0, 300f, 320f))
-        assertEquals("A fresh finger stream must write immediately after the completed pinch", 1, committed)
+        assertEquals("A fresh finger stream must write immediately after the completed pinch", 1L, paintSurface(view).revision)
     }
 
     @Test fun twoFingerNavigationOverridesAnActiveAlignmentGuideDrag() {
@@ -352,9 +337,7 @@ class InkCanvasNavigationTest {
             canvasGuideState = app.inkloom.document.CanvasGuideState(alignmentGuidesEnabled = true, verticalGuideX = .5f, horizontalGuideY = .5f)
         }
         var scale = 1f
-        var committed = 0
         view.onViewportScale = { factor, _, _ -> scale *= factor }
-        view.onStrokeCommitted = { committed++ }
 
         // The first finger intentionally lands on the vertical guide handle.
         send(view, 0L, MotionEvent.ACTION_DOWN, point(0, 500f, 200f))
@@ -364,7 +347,7 @@ class InkCanvasNavigationTest {
         send(view, 80L, MotionEvent.ACTION_UP, point(0, 400f, 220f))
 
         assertTrue("A guide hit must never block a later two-finger pinch", scale > 1.9f)
-        assertEquals(0, committed)
+        assertEquals(0L, paintSurface(view).revision)
         assertEquals(.5f, view.canvasGuideState.verticalGuideX, .001f)
     }
 
@@ -401,9 +384,7 @@ class InkCanvasNavigationTest {
             fingerDrawingEnabled = false
             twoFingerRotationEnabled = true
         }
-        var committed = 0
         var rotation = 0f
-        view.onStrokeCommitted = { committed++ }
         view.onViewportRotate = { rotation += it }
 
         send(view, 0L, MotionEvent.ACTION_DOWN, point(0, 100f, 100f))
@@ -413,7 +394,7 @@ class InkCanvasNavigationTest {
         send(view, 60L, MotionEvent.ACTION_MOVE, point(0, 230f, 30f))
         send(view, 70L, MotionEvent.ACTION_UP, point(0, 230f, 30f))
 
-        assertEquals("Navigation gestures must never leave ink", 0, committed)
+        assertEquals("Navigation gestures must never leave ink", 0L, paintSurface(view).revision)
         assertEquals(90f, rotation, .001f)
     }
 
@@ -436,9 +417,7 @@ class InkCanvasNavigationTest {
             threeFingerTapRedo = true
         }
         var redoCount = 0
-        var committed = 0
         view.onRedoGesture = { redoCount++ }
-        view.onStrokeCommitted = { committed++ }
 
         send(view, 0L, MotionEvent.ACTION_DOWN, point(0, 100f, 100f))
         send(view, 20L, MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), point(0, 100f, 100f), point(1, 220f, 100f))
@@ -448,7 +427,7 @@ class InkCanvasNavigationTest {
         send(view, 140L, MotionEvent.ACTION_UP, point(0, 100f, 100f))
 
         assertEquals(1, redoCount)
-        assertEquals("Three-finger navigation must never leave ink", 0, committed)
+        assertEquals("Three-finger navigation must never leave ink", 0L, paintSurface(view).revision)
     }
 
     @Test fun holdShortcutEmitsPressAndReleaseForTemporaryToolSwitching() {
@@ -472,16 +451,14 @@ class InkCanvasNavigationTest {
             primaryButtonAction = StylusButtonAction.UNDO
         }
         var undoCount = 0
-        var committed = 0
         view.onUndoGesture = { undoCount++ }
-        view.onStrokeCommitted = { committed++ }
 
         sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 120f, 160f, MotionEvent.BUTTON_STYLUS_PRIMARY)
         sendStylus(view, 20L, MotionEvent.ACTION_MOVE, 200f, 230f)
         sendStylus(view, 40L, MotionEvent.ACTION_UP, 200f, 230f)
 
         assertEquals(1, undoCount)
-        assertEquals("A stylus command button must never leave ink", 0, committed)
+        assertEquals("A stylus command button must never leave ink", 0L, paintSurface(view).revision)
     }
 
     @Test fun heldStylusEraserButtonEmitsOnePressAndOneReleaseWithoutInk() {
@@ -491,9 +468,7 @@ class InkCanvasNavigationTest {
             primaryButtonTrigger = ShortcutTrigger.HOLD
         }
         val activations = mutableListOf<ShortcutActivation>()
-        var committed = 0
         view.onShortcutAction = activations::add
-        view.onStrokeCommitted = { committed++ }
 
         sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 120f, 160f, MotionEvent.BUTTON_STYLUS_PRIMARY)
         sendStylus(view, 20L, MotionEvent.ACTION_MOVE, 200f, 230f, MotionEvent.BUTTON_STYLUS_PRIMARY)
@@ -501,7 +476,7 @@ class InkCanvasNavigationTest {
 
         assertEquals(listOf(ShortcutPhase.PRESS, ShortcutPhase.RELEASE), activations.map(ShortcutActivation::phase))
         assertTrue(activations.all { it.action == ShortcutAction.TOGGLE_ERASER && it.trigger == ShortcutTrigger.HOLD })
-        assertEquals(0, committed)
+        assertEquals(0L, paintSurface(view).revision)
     }
 
     @Test fun tapStylusButtonSwitchesOnceAndNeverEmitsRelease() {
@@ -526,15 +501,13 @@ class InkCanvasNavigationTest {
             primaryButtonTrigger = ShortcutTrigger.HOLD
         }
         val activations = mutableListOf<ShortcutActivation>()
-        var committed = 0
         view.onShortcutAction = activations::add
-        view.onStrokeCommitted = { committed++ }
 
         sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 120f, 160f)
         sendStylus(view, 20L, MotionEvent.ACTION_MOVE, 200f, 230f, MotionEvent.BUTTON_STYLUS_PRIMARY)
         sendStylus(view, 40L, MotionEvent.ACTION_CANCEL, 200f, 230f, MotionEvent.BUTTON_STYLUS_PRIMARY)
 
-        assertEquals(0, committed)
+        assertEquals(0L, paintSurface(view).revision)
         assertEquals(listOf(ShortcutPhase.PRESS, ShortcutPhase.RELEASE), activations.map(ShortcutActivation::phase))
     }
 
@@ -545,9 +518,7 @@ class InkCanvasNavigationTest {
             primaryButtonTrigger = ShortcutTrigger.HOLD
         }
         val activations = mutableListOf<ShortcutActivation>()
-        var committed = 0
         view.onShortcutAction = activations::add
-        view.onStrokeCommitted = { committed++ }
 
         sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 120f, 160f, MotionEvent.BUTTON_STYLUS_PRIMARY)
         InstrumentationRegistry.getInstrumentation().runOnMainSync { view.onWindowFocusChanged(false) }
@@ -555,7 +526,7 @@ class InkCanvasNavigationTest {
         sendStylus(view, 20L, MotionEvent.ACTION_UP, 120f, 160f)
 
         assertEquals(listOf(ShortcutPhase.PRESS, ShortcutPhase.RELEASE), activations.map(ShortcutActivation::phase))
-        assertEquals(0, committed)
+        assertEquals(0L, paintSurface(view).revision)
     }
 
     @Test fun secondaryStylusButtonCanTriggerRedoOnce() {
@@ -578,16 +549,14 @@ class InkCanvasNavigationTest {
             primaryButtonAction = StylusButtonAction.HAND
         }
         var panX = 0f
-        var committed = 0
         view.onViewportPan = { dx, _ -> panX += dx }
-        view.onStrokeCommitted = { committed++ }
 
         sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 120f, 160f, MotionEvent.BUTTON_STYLUS_PRIMARY)
         sendStylus(view, 20L, MotionEvent.ACTION_MOVE, 220f, 160f, MotionEvent.BUTTON_STYLUS_PRIMARY)
         sendStylus(view, 40L, MotionEvent.ACTION_UP, 220f, 160f)
 
         assertTrue("The held stylus Hand button must pan", panX >= 99f)
-        assertEquals("Stylus Hand navigation must never leave ink", 0, committed)
+        assertEquals("Stylus Hand navigation must never leave ink", 0L, paintSurface(view).revision)
     }
 
     @Test fun pressingStylusHandButtonMidContactReanchorsWithoutJumping() {
@@ -596,9 +565,7 @@ class InkCanvasNavigationTest {
             primaryButtonAction = StylusButtonAction.HAND
         }
         var panX = 0f
-        var committed = 0
         view.onViewportPan = { dx, _ -> panX += dx }
-        view.onStrokeCommitted = { committed++ }
 
         sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 120f, 160f)
         sendStylus(view, 20L, MotionEvent.ACTION_MOVE, 200f, 160f, MotionEvent.BUTTON_STYLUS_PRIMARY)
@@ -606,7 +573,7 @@ class InkCanvasNavigationTest {
         sendStylus(view, 60L, MotionEvent.ACTION_UP, 240f, 160f)
 
         assertEquals("The first Hand-button event must establish a new anchor", 40f, panX, .001f)
-        assertEquals("Switching to Hand mid-contact must cancel the partial stroke", 0, committed)
+        assertEquals("Switching to Hand mid-contact must cancel the partial stroke", 0L, paintSurface(view).revision)
     }
 
     @Test fun forcedHandNavigationPansWithAStylusWithoutCommittingInk() {
@@ -614,17 +581,15 @@ class InkCanvasNavigationTest {
             tool = EditorTool.PEN
             forceNavigation = true
         }
-        var committed = 0
         var panX = 0f
         var panY = 0f
-        view.onStrokeCommitted = { committed++ }
         view.onViewportPan = { dx, dy -> panX += dx; panY += dy }
 
         sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 120f, 160f)
         sendStylus(view, 20L, MotionEvent.ACTION_MOVE, 200f, 230f)
         sendStylus(view, 40L, MotionEvent.ACTION_UP, 200f, 230f)
 
-        assertEquals("Hand navigation must never leave stylus ink", 0, committed)
+        assertEquals("Hand navigation must never leave stylus ink", 0L, paintSurface(view).revision)
         assertTrue("Stylus hand navigation should pan horizontally", panX >= 79f)
         assertTrue("Stylus hand navigation should pan vertically", panY >= 69f)
     }
@@ -636,15 +601,13 @@ class InkCanvasNavigationTest {
             pagePaperColor = sampledRed
         }
         var sampled: Int? = null
-        var committed = 0
         view.onColorSampled = { sampled = it }
-        view.onStrokeCommitted = { committed++ }
 
         sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 120f, 160f)
         sendStylus(view, 20L, MotionEvent.ACTION_UP, 120f, 160f)
 
         assertEquals(sampledRed, sampled)
-        assertEquals("Eyedropper input must never leave ink", 0, committed)
+        assertEquals("Eyedropper input must never leave ink", 0L, paintSurface(view).revision)
     }
 
     @Test fun ctrlAltStylusDragAdjustsBrushSizeWithoutCommittingInk() {
@@ -653,9 +616,7 @@ class InkCanvasNavigationTest {
             baseWidth = 10f
         }
         var adjusted = 10f
-        var committed = 0
         view.onBrushSizeAdjusted = { adjusted = it }
-        view.onStrokeCommitted = { committed++ }
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             view.onKeyDown(KeyEvent.KEYCODE_CTRL_LEFT, KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_CTRL_LEFT))
@@ -666,7 +627,7 @@ class InkCanvasNavigationTest {
         sendStylus(view, 40L, MotionEvent.ACTION_UP, 300f, 160f)
 
         assertEquals(20f, adjusted, .001f)
-        assertEquals("Brush-size drag must never leave ink", 0, committed)
+        assertEquals("Brush-size drag must never leave ink", 0L, paintSurface(view).revision)
     }
 
     @Test fun cancellingBrushSizeDragRestoresTheStartingSize() {
@@ -692,16 +653,14 @@ class InkCanvasNavigationTest {
             forceNavigation = true
             rotateNavigation = true
         }
-        var committed = 0
         var rotation = 0f
-        view.onStrokeCommitted = { committed++ }
         view.onViewportRotate = { rotation += it }
 
         sendStylus(view, 0L, MotionEvent.ACTION_DOWN, 120f, 160f)
         sendStylus(view, 20L, MotionEvent.ACTION_MOVE, 200f, 230f)
         sendStylus(view, 40L, MotionEvent.ACTION_UP, 200f, 230f)
 
-        assertEquals("Rotate navigation must never leave stylus ink", 0, committed)
+        assertEquals("Rotate navigation must never leave stylus ink", 0L, paintSurface(view).revision)
         assertEquals(20f, rotation, .001f)
     }
 
@@ -729,10 +688,18 @@ class InkCanvasNavigationTest {
     private fun canvas(): InkCanvasView {
         lateinit var result: InkCanvasView
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            result = InkCanvasView(ApplicationProvider.getApplicationContext()).apply { layout(0, 0, 1000, 1000) }
+            val surface = PixelTileSurface(1000, 1000)
+            result = InkCanvasView(ApplicationProvider.getApplicationContext()).apply {
+                layout(0, 0, 1000, 1000)
+                activeLayerId = "paint"
+                setRasterLayerSurfaces(mapOf("paint" to surface))
+            }
+            paintSurfaces[result] = surface
         }
         return result
     }
+
+    private fun paintSurface(view: InkCanvasView): PixelTileSurface = requireNotNull(paintSurfaces[view])
 
     private fun point(id: Int, x: Float, y: Float): Pair<MotionEvent.PointerProperties, MotionEvent.PointerCoords> =
         MotionEvent.PointerProperties().apply { this.id = id; toolType = MotionEvent.TOOL_TYPE_FINGER } to
