@@ -142,7 +142,9 @@ class LassoSelectionModesTest {
                 view.draw(Canvas(bitmap))
 
                 assertTrue("Free lasso did not preview its closing edge", pixelsNear(bitmap, 500, 500, 6).any(::opaque))
-                assertTrue("Free lasso origin was not marked", pixelsNear(bitmap, 200, 200, 9).count(::opaque) > 80)
+                val originPixels = pixelsNear(bitmap, 200, 200, 6).count(::opaque)
+                assertTrue("Free lasso origin was not marked", originPixels >= 8)
+                assertTrue("Free lasso origin must stay subtle: $originPixels pixels", originPixels <= 72)
             } finally {
                 bitmap.recycle()
                 view.dispatchStylus(MotionEvent.ACTION_CANCEL, 800f, 800f, 40L)
@@ -167,14 +169,16 @@ class LassoSelectionModesTest {
                         addAll(pixelsNear(bitmap, 800, position, 3))
                     }
                 }.filter(::opaque)
-                assertTrue("Committed selection boundary was too sparse", boundaryPixels.size > 8_000)
+                assertTrue("Committed selection boundary was too sparse", boundaryPixels.size > 2_000)
                 assertTrue("Committed selection boundary had no black contrast pixels", boundaryPixels.any { Color.red(it) < 24 })
-                assertTrue("Committed selection boundary had no white marching-ant pixels", boundaryPixels.any { Color.red(it) > 230 })
-                assertEquals("Selection interior must remain unobscured", 0, Color.alpha(bitmap.getPixel(500, 500)))
                 assertTrue(
-                    "Selection mode must distinguish the protected exterior",
-                    pixelsNear(bitmap, 100, 100, 16).any { Color.alpha(it) in 16..80 },
+                    "Committed selection boundary had no white marching-ant pixels; reds=${boundaryPixels.map(Color::red).distinct().sorted()}",
+                    boundaryPixels.any { Color.red(it) > 200 },
                 )
+                assertEquals("Selection interior must remain unobscured", 0, Color.alpha(bitmap.getPixel(500, 500)))
+                assertEquals("Committed selection must not hatch the protected exterior", 0, Color.alpha(bitmap.getPixel(100, 100)))
+                val horizontalThickness = (190..210).count { x -> Color.alpha(bitmap.getPixel(x, 500)) > 0 }
+                assertTrue("Committed selection boundary must be a fine 1-3 px line: $horizontalThickness", horizontalThickness in 1..3)
             } finally {
                 bitmap.recycle()
                 view.clearSelection()
@@ -188,18 +192,18 @@ class LassoSelectionModesTest {
             listOf(.25f, 12f).forEach { scale ->
                 val view = configuredView().apply {
                     selectionShape = SelectionShape.FREEFORM
-                    viewportScale = scale
                 }
                 view.lasso(.2f, .2f, .8f, .8f)
+                view.viewportScale = scale
                 val bitmap = Bitmap.createBitmap(1_000, 1_000, Bitmap.Config.ARGB_8888)
                 try {
                     view.draw(Canvas(bitmap))
                     val boundary = pixelsNear(bitmap, 200, 500, if (scale < 1f) 12 else 3).filter(::opaque)
-                    assertTrue("Selection boundary disappeared at viewport scale $scale", boundary.size > 16)
                     assertTrue(
-                        "Protected exterior disappeared at viewport scale $scale",
-                        pixelsNear(bitmap, 100, 100, 16).any { Color.alpha(it) in 16..80 },
+                        "Selection boundary must stay fine and visible at viewport scale $scale: ${boundary.size}",
+                        boundary.size in 4..75,
                     )
+                    assertEquals("Selection exterior must remain unobscured at viewport scale $scale", 0, Color.alpha(bitmap.getPixel(100, 100)))
                     assertEquals("Selection interior was obscured at viewport scale $scale", 0, Color.alpha(bitmap.getPixel(500, 500)))
                 } finally {
                     bitmap.recycle()

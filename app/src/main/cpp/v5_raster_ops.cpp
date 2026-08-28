@@ -625,16 +625,14 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeBoundaryAlpha(
     bool non_empty = false;
     for (int y = 0; y < height; ++y) for (int x = 0; x < width; ++x) {
         const bool inside = selected(x, y);
-        if (selected(x - 1, y) == inside && selected(x + 1, y) == inside &&
-            selected(x, y - 1) == inside && selected(x, y + 1) == inside) continue;
-        for (int dy = -1; dy <= 1; ++dy) for (int dx = -1; dx <= 1; ++dx) {
-            const int target_x = x + dx;
-            const int target_y = y + dy;
-            if (target_x < 0 || target_x >= width || target_y < 0 || target_y >= height) continue;
-            auto* pixel = destination.pixels + static_cast<std::size_t>(target_y) * destination.info.stride + target_x * 4;
-            std::fill_n(pixel, 4, 255);
-            non_empty = true;
-        }
+        // Selection feedback is a display boundary, not a morphology operation. Keep exactly the
+        // one-pixel inner edge; expanding every transition to a 3x3 block produced a 4-6 px halo
+        // after scaling and made the marching ants obscure fine artwork.
+        if (!inside || (selected(x - 1, y) && selected(x + 1, y) &&
+            selected(x, y - 1) && selected(x, y + 1))) continue;
+        auto* pixel = destination.pixels + static_cast<std::size_t>(y) * destination.info.stride + x * 4;
+        std::fill_n(pixel, 4, 255);
+        non_empty = true;
     }
     return non_empty ? JNI_TRUE : JNI_FALSE;
 }

@@ -412,26 +412,6 @@ class InkCanvasView(context: Context) : View(context) {
         shader = selectionAntShader
         blendMode = BlendMode.SRC_IN
     }
-    private val selectionProtectedPattern = Bitmap.createBitmap(16, 16, Bitmap.Config.ARGB_8888).apply {
-        val patternPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.argb(44, 32, 32, 32)
-            strokeWidth = 2f
-        }
-        Canvas(this).apply {
-            drawLine(-8f, 16f, 8f, 0f, patternPaint)
-            drawLine(0f, 24f, 24f, 0f, patternPaint)
-            drawLine(8f, 24f, 24f, 8f, patternPaint)
-        }
-    }
-    private val selectionProtectedShader = BitmapShader(selectionProtectedPattern, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
-    private val selectionProtectedMatrix = Matrix()
-    private val selectionProtectedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL
-        shader = selectionProtectedShader
-    }
-    private val selectionCutoutPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
-        blendMode = BlendMode.DST_OUT
-    }
     private val liveSelectionOutlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
@@ -1249,12 +1229,12 @@ class InkCanvasView(context: Context) : View(context) {
             liveSelectionOutlinePaint.pathEffect = null
             liveSelectionOutlinePaint.color = Color.BLACK
             liveSelectionOutlinePaint.alpha = 255
-            liveSelectionOutlinePaint.strokeWidth = 4f / overlayScale
+            liveSelectionOutlinePaint.strokeWidth = 1.5f / overlayScale
             canvas.drawPath(lassoPath, liveSelectionOutlinePaint)
             liveSelectionOutlinePaint.color = Color.WHITE
-            liveSelectionOutlinePaint.strokeWidth = 2f / overlayScale
+            liveSelectionOutlinePaint.strokeWidth = .75f / overlayScale
             liveSelectionOutlinePaint.pathEffect = DashPathEffect(
-                floatArrayOf(6f / overlayScale, 4f / overlayScale),
+                floatArrayOf(4f / overlayScale, 4f / overlayScale),
                 selectionAntPhase() / overlayScale,
             )
             canvas.drawPath(lassoPath, liveSelectionOutlinePaint)
@@ -1262,9 +1242,9 @@ class InkCanvasView(context: Context) : View(context) {
             val originX = selectionPreview.first().x * width
             val originY = selectionPreview.first().y * height
             liveSelectionOriginPaint.color = Color.BLACK
-            canvas.drawCircle(originX, originY, 9f / overlayScale, liveSelectionOriginPaint)
+            canvas.drawCircle(originX, originY, 3f / overlayScale, liveSelectionOriginPaint)
             liveSelectionOriginPaint.color = Color.WHITE
-            canvas.drawCircle(originX, originY, 4.5f / overlayScale, liveSelectionOriginPaint)
+            canvas.drawCircle(originX, originY, 1.5f / overlayScale, liveSelectionOriginPaint)
             postInvalidateDelayed(SELECTION_ANTS_FRAME_MS)
         }
         drawCommittedSelectionBoundary(canvas)
@@ -1289,17 +1269,6 @@ class InkCanvasView(context: Context) : View(context) {
     private fun drawCommittedSelectionBoundary(canvas: Canvas) {
         val boundary = selectionBoundaryMask ?: return
         selectionBoundaryRect.set(0f, 0f, width.toFloat(), height.toFloat())
-        if (tool == EditorTool.SELECT) {
-            currentSelectionAlphaMask()?.let { selected ->
-                val protectedCheckpoint = canvas.saveLayer(selectionBoundaryRect, null)
-                selectionProtectedMatrix.reset()
-                selectionProtectedMatrix.setTranslate(selectionAntPhase() * .5f, selectionAntPhase() * .5f)
-                selectionProtectedShader.setLocalMatrix(selectionProtectedMatrix)
-                canvas.drawRect(selectionBoundaryRect, selectionProtectedPaint)
-                selected.draw(canvas, selectionBoundaryRect, selectionCutoutPaint)
-                canvas.restoreToCount(protectedCheckpoint)
-            }
-        }
         boundary.draw(canvas, selectionBoundaryRect, selectionBoundaryPaint)
 
         val checkpoint = canvas.saveLayer(selectionBoundaryRect, null)
