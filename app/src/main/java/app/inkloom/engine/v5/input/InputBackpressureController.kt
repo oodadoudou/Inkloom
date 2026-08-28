@@ -3,6 +3,50 @@ package app.inkloom.engine.v5.input
 import app.inkloom.engine.v5.coordinates.DocumentPoint
 import java.util.ArrayDeque
 
+/** Shared geometry policy for every queue before the ordered stroke modeler. */
+internal object GeometricMoveCoalescer {
+    fun canReplace(
+        before: DocumentPoint,
+        middle: DocumentPoint,
+        after: DocumentPoint,
+        beforePressure: Float,
+        middlePressure: Float,
+        afterPressure: Float,
+        beforeTilt: Float,
+        middleTilt: Float,
+        afterTilt: Float,
+    ): Boolean {
+        val totalDistance = kotlin.math.sqrt(distanceSquared(after, before))
+        if (totalDistance <= 1e-3f) return false
+        val middleFraction = (kotlin.math.sqrt(distanceSquared(middle, before)) / totalDistance)
+            .coerceIn(0f, 1f)
+        val pressureExpected = beforePressure + (afterPressure - beforePressure) * middleFraction
+        if (kotlin.math.abs(middlePressure - pressureExpected) > .025f) return false
+        val tiltExpected = beforeTilt + (afterTilt - beforeTilt) * middleFraction
+        if (kotlin.math.abs(middleTilt - tiltExpected) > .025f) return false
+
+        // Geometric error, not report spacing, is the quality boundary. Fast straight motion can
+        // span many pixels without carrying extra shape information; a real corner cannot.
+        val dx = after.x - before.x
+        val dy = after.y - before.y
+        val lengthSquared = dx * dx + dy * dy
+        if (lengthSquared <= 1e-6f) return false
+        val projection = (((middle.x - before.x) * dx + (middle.y - before.y) * dy) / lengthSquared)
+        if (projection !in 0f..1f) return false
+        val errorX = middle.x - (before.x + dx * projection)
+        val errorY = middle.y - (before.y + dy * projection)
+        return errorX * errorX + errorY * errorY <= MAX_COALESCE_ERROR_SQUARED
+    }
+
+    fun distanceSquared(left: DocumentPoint, right: DocumentPoint): Float {
+        val dx = left.x - right.x
+        val dy = left.y - right.y
+        return dx * dx + dy * dy
+    }
+
+    private const val MAX_COALESCE_ERROR_SQUARED = .75f * .75f
+}
+
 /**
  * Bounded input mailbox. It never drops contact boundaries or pressure/direction extrema. When an
  * overwhelmed producer provides consecutive ordinary MOVE samples, only the middle of that run is
@@ -75,47 +119,19 @@ class InputBackpressureController(
         previous ?: return false
         if (phase != InputPhase.MOVE || previous.phase != InputPhase.MOVE) return false
         if (predicted != previous.predicted || tool != previous.tool) return false
-        beforePrevious ?: return point.distanceSquared(previous.point) < .25f
+        beforePrevious ?: return GeometricMoveCoalescer.distanceSquared(point, previous.point) < .25f
         if (beforePrevious.phase != InputPhase.MOVE || beforePrevious.tool != tool) return false
 
-        // Preserve local pressure/tilt extrema. A middle report may disappear only when its
-        // dynamics are already represented by linear interpolation of the two retained reports.
-        val totalDistance = kotlin.math.sqrt(point.distanceSquared(beforePrevious.point))
-        if (totalDistance <= 1e-3f) return false
-        val middleFraction = (kotlin.math.sqrt(previous.point.distanceSquared(beforePrevious.point)) / totalDistance)
-            .coerceIn(0f, 1f)
-        val pressureExpected = beforePrevious.pressure + (pressure - beforePrevious.pressure) * middleFraction
-        if (kotlin.math.abs(previous.pressure - pressureExpected) > .025f) return false
-        val tiltExpected = beforePrevious.tiltRadians +
-            (tiltRadians - beforePrevious.tiltRadians) * middleFraction
-        if (kotlin.math.abs(previous.tiltRadians - tiltExpected) > .025f) return false
-
-        // Geometric error, not report spacing, is the quality boundary. Fast straight motion can
-        // span many pixels without carrying extra shape information; a real corner cannot.
-        val ax = beforePrevious.point.x
-        val ay = beforePrevious.point.y
-        val bx = point.x
-        val by = point.y
-        val px = previous.point.x
-        val py = previous.point.y
-        val dx = bx - ax
-        val dy = by - ay
-        val lengthSquared = dx * dx + dy * dy
-        if (lengthSquared <= 1e-6f) return false
-        val projection = (((px - ax) * dx + (py - ay) * dy) / lengthSquared)
-        if (projection !in 0f..1f) return false
-        val errorX = px - (ax + dx * projection)
-        val errorY = py - (ay + dy * projection)
-        return errorX * errorX + errorY * errorY <= MAX_COALESCE_ERROR_SQUARED
-    }
-
-    private fun DocumentPoint.distanceSquared(other: DocumentPoint): Float {
-        val dx = x - other.x
-        val dy = y - other.y
-        return dx * dx + dy * dy
-    }
-
-    private companion object {
-        const val MAX_COALESCE_ERROR_SQUARED = .75f * .75f
+        return GeometricMoveCoalescer.canReplace(
+            before = beforePrevious.point,
+            middle = previous.point,
+            after = point,
+            beforePressure = beforePrevious.pressure,
+            middlePressure = previous.pressure,
+            afterPressure = pressure,
+            beforeTilt = beforePrevious.tiltRadians,
+            middleTilt = previous.tiltRadians,
+            afterTilt = tiltRadians,
+        )
     }
 }

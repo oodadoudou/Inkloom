@@ -303,6 +303,7 @@ class InkCanvasView(context: Context) : View(context) {
         private set
     private val v5BrushTipMasks = BrushTipMaskCache()
     private var v5RejectedContact = false
+    private var v5InputOverloadReported = false
     @VisibleForTesting internal var v5DryGestureCount: Int = 0
         private set
     @VisibleForTesting internal var v5DryPublishedGeneration: Long = -1L
@@ -4803,6 +4804,7 @@ class InkCanvasView(context: Context) : View(context) {
             onPaintCapabilityRejected("A V5 paint contact is already active")
             return true
         }
+        v5InputOverloadReported = false
         v5DryGestureCount++
         if (continuousPlotEnabled() && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
             updateContinuousPlotInput(
@@ -4883,7 +4885,10 @@ class InkCanvasView(context: Context) : View(context) {
                 last.orientationRadians,
             )
         }
-        v5StrokeController.append(samples)
+        if (!v5StrokeController.append(samples) && !v5InputOverloadReported) {
+            v5InputOverloadReported = true
+            onPaintCapabilityRejected("Paint Engine V5 input queue reached its safety limit; the current stroke was bounded")
+        }
         return true
     }
 
@@ -4902,6 +4907,7 @@ class InkCanvasView(context: Context) : View(context) {
         v5StrokeController.finish(sample) { published ->
             v5MainHandler.post { acceptV5PublishedGesture(layerId, surface, published) }
         }
+        v5InputOverloadReported = false
         return true
     }
 

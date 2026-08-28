@@ -77,12 +77,66 @@ class RealtimeStrokeDispatcherTest {
         }
     }
 
-    private fun sample(x: Float, y: Float, time: Long) = RawDocumentSample(
+    @Test
+    fun blockedWorkerKeepsThirtySecondThreeHundredRpsProductionQueueBounded() {
+        val surface = PixelTileSurface(10_000, 32)
+        val workerStarted = CountDownLatch(1)
+        val releaseWorker = CountDownLatch(1)
+        val published = CountDownLatch(1)
+        RealtimeStrokeDispatcher(onDamageReady = { _, _ ->
+            if (workerStarted.count == 1L) {
+                workerStarted.countDown()
+                assertTrue(releaseWorker.await(2, TimeUnit.SECONDS))
+            }
+        }).use { dispatcher ->
+            assertTrue(dispatcher.begin(
+                layerId = "ink",
+                surface = surface,
+                paintOp = DryInkPaintOp(surface, DryInkDefinition(1f, 0xff000000.toInt())),
+                maximumRadius = 1f,
+                brushRuntimeId = "blocked-worker-backpressure",
+                sample = sample(0f, 16f, 0L),
+            ))
+            assertTrue(workerStarted.await(2, TimeUnit.SECONDS))
+
+            var sequence = 1L
+            repeat(30 * 60) {
+                val reports = List(5) {
+                    val extremum = sequence == 4_500L
+                    sample(
+                        sequence.toFloat(),
+                        if (extremum) 24f else 16f,
+                        sequence * 3_333_333L,
+                        pressure = if (extremum) 1f else .5f,
+                    ).also { sequence++ }
+                }
+                assertTrue("Smooth physical reports must coalesce without rejection", dispatcher.append(reports))
+            }
+            val queued = dispatcher.queueSnapshot()
+            assertTrue(queued.pendingMoveSamples <= 256)
+            assertTrue(queued.peakPendingMoveSamples <= 256)
+            assertTrue("The production queue must coalesce the 9,000-report backlog", queued.coalescedMoveCount > 8_000)
+            assertEquals(0L, queued.rejectedMoveCount)
+
+            assertTrue(dispatcher.finish(sample(9_001f, 16f, sequence * 3_333_333L, pressure = .5f)) { result ->
+                result.record.close()
+                published.countDown()
+            })
+            releaseWorker.countDown()
+            assertTrue(published.await(2, TimeUnit.SECONDS))
+            assertEquals(1L, surface.revision)
+            assertTrue("A pressure/direction extremum must survive queue coalescing", dispatcher.lastPublishedSamples().any {
+                it.x == 4_500f && it.y == 24f && it.pressure == 1f
+            })
+        }
+    }
+
+    private fun sample(x: Float, y: Float, time: Long, pressure: Float = 1f) = RawDocumentSample(
         x = x,
         y = y,
         eventTimeNanos = time,
         enqueuedTimeNanos = time,
-        pressure = 1f,
+        pressure = pressure,
         tiltRadians = 0f,
         orientationRadians = 0f,
         tool = InputTool.STYLUS,
