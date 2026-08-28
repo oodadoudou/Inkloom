@@ -42,6 +42,9 @@ class MaskTileSurfaceSnapshot internal constructor(
     val defaultAlpha: Int,
     private val tiles: Map<PixelTileKey, MaskTileGeneration>,
 ) {
+    /** Internal immutable generation lookup used by frame-time caches. */
+    internal fun generationAt(key: PixelTileKey): Long? = tiles[key]?.id
+
     val isEmpty: Boolean get() = defaultAlpha == 0 && tiles.isEmpty()
     val tileCount: Int get() = tiles.size
     val retainedByteSize: Long get() = tiles.size.toLong() * tileSize * tileSize

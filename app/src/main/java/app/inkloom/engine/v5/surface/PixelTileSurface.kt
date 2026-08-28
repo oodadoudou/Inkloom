@@ -135,6 +135,10 @@ class PixelTileSurfaceSnapshot internal constructor(
     val revision: Long,
     private val tiles: Map<PixelTileKey, PixelTileGeneration>,
 ) {
+    /** Internal immutable views used by frame-time caches without allocating metadata lists. */
+    internal val tileKeys: Set<PixelTileKey> get() = tiles.keys
+    internal fun generationAt(key: PixelTileKey): Long? = tiles[key]?.id
+
     val tileCount: Int get() = tiles.size
     val retainedByteSize: Long get() = tiles.size.toLong() * tileSize * tileSize * pixelFormat.bytesPerPixel
     val tileInfo: List<PixelTileInfo> get() = tiles.map { (key, tile) ->

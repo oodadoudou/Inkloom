@@ -49,6 +49,8 @@ class PixelLayerProjectionCache(
     private var f16BatchPixels = LongArray(0)
     private var batchCoverage = ByteArray(0)
     private var maskCoverageScratch = ByteArray(0)
+    private var batchModes = IntArray(0)
+    private var batchOpacities = FloatArray(0)
 
     val snapshot: PixelTileSurfaceSnapshot get() = projection.snapshot()
 
@@ -149,6 +151,8 @@ class PixelLayerProjectionCache(
         if (rgba8BatchPixels.size < required) rgba8BatchPixels = IntArray(required)
         val hasCoverage = contributors.any { it.coverage != null }
         if (hasCoverage && batchCoverage.size < required) batchCoverage = ByteArray(required)
+        if (batchModes.size != contributors.size) batchModes = IntArray(contributors.size)
+        if (batchOpacities.size != contributors.size) batchOpacities = FloatArray(contributors.size)
         var copiedLayers = 0
         contributors.forEachIndexed { layerIndex, layer ->
             layer.input.pixels.readRgba8Tile(key) {
@@ -156,17 +160,17 @@ class PixelLayerProjectionCache(
                 copiedLayers++
             }
             if (hasCoverage) writeCoverage(layer, key, layerIndex * layerStride, stride, bounds)
+            batchModes[layerIndex] = layer.input.blendMode.ordinal
+            batchOpacities[layerIndex] = layer.opacity
         }
-        val modes = IntArray(contributors.size) { contributors[it].input.blendMode.ordinal }
-        val opacities = FloatArray(contributors.size) { contributors[it].opacity }
         val nativeComplete = copiedLayers == contributors.size && if (hasCoverage) {
             NativeCompositeOps.compositeRgba8LayersWithCoverage(
                 rgba8BatchPixels, batchCoverage, layerStride, contributors.size, output, stride,
-                0, 0, bounds.width, bounds.height, modes, opacities,
+                0, 0, bounds.width, bounds.height, batchModes, batchOpacities,
             )
         } else NativeCompositeOps.compositeRgba8Layers(
             rgba8BatchPixels, layerStride, contributors.size, output, stride,
-            0, 0, bounds.width, bounds.height, modes, opacities,
+            0, 0, bounds.width, bounds.height, batchModes, batchOpacities,
         )
         check(nativeComplete) { "Native RGBA8 layer compositor rejected valid tile batch" }
         return true
@@ -223,6 +227,8 @@ class PixelLayerProjectionCache(
         if (f16BatchPixels.size < required) f16BatchPixels = LongArray(required)
         val hasCoverage = contributors.any { it.coverage != null }
         if (hasCoverage && batchCoverage.size < required) batchCoverage = ByteArray(required)
+        if (batchModes.size != contributors.size) batchModes = IntArray(contributors.size)
+        if (batchOpacities.size != contributors.size) batchOpacities = FloatArray(contributors.size)
         var copiedLayers = 0
         contributors.forEachIndexed { layerIndex, layer ->
             layer.input.pixels.readF16Tile(key) {
@@ -230,17 +236,17 @@ class PixelLayerProjectionCache(
                 copiedLayers++
             }
             if (hasCoverage) writeCoverage(layer, key, layerIndex * layerStride, stride, bounds)
+            batchModes[layerIndex] = layer.input.blendMode.ordinal
+            batchOpacities[layerIndex] = layer.opacity
         }
-        val modes = IntArray(contributors.size) { contributors[it].input.blendMode.ordinal }
-        val opacities = FloatArray(contributors.size) { contributors[it].opacity }
         val nativeComplete = copiedLayers == contributors.size && if (hasCoverage) {
             NativeCompositeOps.compositeF16LayersWithCoverage(
                 f16BatchPixels, batchCoverage, layerStride, contributors.size, output, stride,
-                0, 0, bounds.width, bounds.height, modes, opacities,
+                0, 0, bounds.width, bounds.height, batchModes, batchOpacities,
             )
         } else NativeCompositeOps.compositeF16Layers(
             f16BatchPixels, layerStride, contributors.size, output, stride,
-            0, 0, bounds.width, bounds.height, modes, opacities,
+            0, 0, bounds.width, bounds.height, batchModes, batchOpacities,
         )
         check(nativeComplete) { "Native F16 layer compositor rejected valid tile batch" }
         return true
@@ -357,12 +363,7 @@ class PixelLayerProjectionCache(
             PreparedLayer(
                 input = input,
                 opacity = if (input.visible) opacity else 0f,
-                sourceGenerations = input.pixels.tileInfo.associate { it.key to it.generation },
-                maskDependencies = maskDependencies(input.mask, input.pixels.tileInfo.mapTo(linkedSetOf()) { it.key }),
                 clippingBase = base,
-                clippingBaseGenerations = base?.pixels?.tileInfo?.associate { it.key to it.generation }.orEmpty(),
-                clippingBaseMaskDependencies = if (base == null) emptyMap() else
-                    maskDependencies(base.mask, input.pixels.tileInfo.mapTo(linkedSetOf()) { it.key }),
                 coverage = coverage,
                 zeroCoverage = zeroCoverage,
             )
@@ -372,7 +373,7 @@ class PixelLayerProjectionCache(
     private fun buildSignatures(layers: List<PreparedLayer>): Map<PixelTileKey, TileSignature> {
         val keys = layers.asSequence()
             .filter { it.opacity > 0f }
-            .flatMap { it.sourceGenerations.keys.asSequence() }
+            .flatMap { it.input.pixels.tileKeys.asSequence() }
             .toCollection(linkedSetOf())
         return keys.associateWith { key ->
             TileSignature(layers.mapNotNull { layer -> layer.dependency(key) })
@@ -393,13 +394,12 @@ class PixelLayerProjectionCache(
         }
     }
 
-    private fun maskDependencies(
+    private fun maskDependency(
         mask: MaskTileSurfaceSnapshot?,
-        sourceKeys: Set<PixelTileKey>,
-    ): Map<PixelTileKey, Long> {
-        if (mask == null) return emptyMap()
-        val generations = mask.tileInfo.associate { it.key to it.generation }
-        return sourceKeys.associateWith { sourceKey ->
+        sourceKey: PixelTileKey,
+    ): Long? {
+        if (mask == null) return null
+        return run {
             val bounds = tileBounds(sourceKey)
             val left = (bounds.left.toLong() * mask.logicalWidth / projection.logicalWidth).toInt()
             val top = (bounds.top.toLong() * mask.logicalHeight / projection.logicalHeight).toInt()
@@ -411,7 +411,7 @@ class PixelLayerProjectionCache(
             if (right > left && bottom > top) {
                 for (row in top / mask.tileSize..(bottom - 1) / mask.tileSize) {
                     for (column in left / mask.tileSize..(right - 1) / mask.tileSize) {
-                        val generation = generations[PixelTileKey(column, row)] ?: 0L
+                        val generation = mask.generationAt(PixelTileKey(column, row)) ?: 0L
                         fingerprint = fingerprint * 1_000_003L + generation
                     }
                 }
@@ -431,25 +431,21 @@ class PixelLayerProjectionCache(
         )
     }
 
-    private data class PreparedLayer(
+    private inner class PreparedLayer(
         val input: PixelLayerProjectionInput,
         val opacity: Float,
-        val sourceGenerations: Map<PixelTileKey, Long>,
-        val maskDependencies: Map<PixelTileKey, Long>,
         val clippingBase: PixelLayerProjectionInput?,
-        val clippingBaseGenerations: Map<PixelTileKey, Long>,
-        val clippingBaseMaskDependencies: Map<PixelTileKey, Long>,
         val coverage: CompositeCoverage?,
         val zeroCoverage: Boolean,
     ) {
-        fun contributes(key: PixelTileKey): Boolean = opacity > 0f && sourceGenerations[key] != null
+        fun contributes(key: PixelTileKey): Boolean = opacity > 0f && input.pixels.generationAt(key) != null
 
         val requiresCoverage: Boolean get() = zeroCoverage || input.mask != null || clippingBase != null
 
         fun isNativeBatchCompatible(): Boolean = input.blendMode.ordinal <= PixelBlendMode.EXCLUSION.ordinal
 
         fun dependency(key: PixelTileKey): LayerDependency? {
-            val sourceGeneration = sourceGenerations[key] ?: return null
+            val sourceGeneration = input.pixels.generationAt(key) ?: return null
             return LayerDependency(
                 layerId = input.layerId,
                 surfaceId = input.pixels.surfaceId,
@@ -458,16 +454,16 @@ class PixelLayerProjectionCache(
                 opacityBits = opacity.toRawBits(),
                 blendMode = input.blendMode,
                 maskSurfaceId = input.mask?.surfaceId,
-                maskGeneration = maskDependencies[key],
+                maskGeneration = maskDependency(input.mask, key),
                 maskDefaultAlpha = input.mask?.defaultAlpha,
                 clipToBaseBelow = input.clipToBaseBelow,
                 baseLayerId = clippingBase?.layerId,
                 baseSurfaceId = clippingBase?.pixels?.surfaceId,
-                baseGeneration = clippingBaseGenerations[key],
+                baseGeneration = clippingBase?.pixels?.generationAt(key),
                 baseVisible = clippingBase?.visible,
                 baseOpacityBits = clippingBase?.opacity?.toRawBits(),
                 baseMaskSurfaceId = clippingBase?.mask?.surfaceId,
-                baseMaskGeneration = clippingBaseMaskDependencies[key],
+                baseMaskGeneration = maskDependency(clippingBase?.mask, key),
                 baseMaskDefaultAlpha = clippingBase?.mask?.defaultAlpha,
             )
         }
