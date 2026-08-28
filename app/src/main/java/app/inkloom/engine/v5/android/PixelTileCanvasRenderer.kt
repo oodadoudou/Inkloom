@@ -60,6 +60,10 @@ internal class PixelTileCanvasRenderer(
     val approximateGpuDisplayListBytes: Long
         get() = cache.values.sumOf { it.hardwareNode?.computeApproximateMemoryUsage() ?: 0L }
     internal val hardwareNodeBuildCount: Int get() = builtHardwareNodes
+    internal var lastCandidateTileCount: Int = 0
+        private set
+    internal var lastDrawnTileCount: Int = 0
+        private set
 
     @Synchronized
     fun draw(
@@ -67,6 +71,8 @@ internal class PixelTileCanvasRenderer(
         snapshot: PixelTileSurfaceSnapshot,
         destination: RectF,
     ) {
+        lastCandidateTileCount = 0
+        lastDrawnTileCount = 0
         if (destination.isEmpty || snapshot.tileCount == 0) return
         val clip = canvas.clipBounds
         val visibleDestination = RectF(destination).apply {
@@ -83,11 +89,19 @@ internal class PixelTileCanvasRenderer(
         )
         if (visibleSource.isEmpty) return
 
-        snapshot.tileInfo.forEach { info ->
-            val source = tileBounds(snapshot, info.key).intersect(visibleSource)
-            if (source.isEmpty) return@forEach
-            val fullTile = tileBounds(snapshot, info.key)
-            val cached = tileFor(snapshot, info.key, info.generation, fullTile)
+        val firstColumn = visibleSource.left / snapshot.tileSize
+        val lastColumn = (visibleSource.right - 1) / snapshot.tileSize
+        val firstRow = visibleSource.top / snapshot.tileSize
+        val lastRow = (visibleSource.bottom - 1) / snapshot.tileSize
+        for (row in firstRow..lastRow) for (column in firstColumn..lastColumn) {
+            lastCandidateTileCount++
+            val key = PixelTileKey(column, row)
+            val generation = snapshot.generationAt(key) ?: continue
+            val fullTile = tileBounds(snapshot, key)
+            val source = fullTile.intersect(visibleSource)
+            if (source.isEmpty) continue
+            lastDrawnTileCount++
+            val cached = tileFor(snapshot, key, generation, fullTile)
             val bitmap = cached.bitmap
             if (canvas.isHardwareAccelerated) {
                 val fullTarget = RectF(
@@ -96,8 +110,8 @@ internal class PixelTileCanvasRenderer(
                     destination.left + fullTile.right * scaleX,
                     destination.top + fullTile.bottom * scaleY,
                 )
-                drawHardwareTile(canvas, cached, fullTarget, snapshot.surfaceId, info.key, info.generation)
-                return@forEach
+                drawHardwareTile(canvas, cached, fullTarget, snapshot.surfaceId, key, generation)
+                continue
             }
             val sourceInBitmap = android.graphics.Rect(
                 source.left - fullTile.left,

@@ -185,6 +185,30 @@ class PixelTileCanvasRendererTest {
         output.recycle()
     }
 
+    @Test fun clippedDamageQueriesOnlyIntersectingTileCoordinates() {
+        val surface = PixelTileSurface(8192, 8192, tileSize = 128)
+        surface.beginWrite("large committed document").use { write ->
+            repeat(64) { index -> write.setPixel(index * 128 + 2, index * 128 + 2, Color.BLACK) }
+            for (row in 6..7) for (column in 4..5) write.setPixel(column * 128 + 2, row * 128 + 2, Color.BLACK)
+            write.commit().close()
+        }
+        val renderer = PixelTileCanvasRenderer(maximumCacheBytes = 4L * 128 * 128 * 4)
+        val output = RenderNode("Inkloom.V5.ClippedDamage").apply { setPosition(0, 0, 8192, 8192) }
+        val canvas = output.beginRecording(8192, 8192)
+        try {
+            canvas.clipRect(512, 768, 768, 1024)
+            renderer.draw(canvas, surface.snapshot(), RectF(0f, 0f, 8192f, 8192f))
+        } finally {
+            output.endRecording()
+        }
+
+        assertEquals("A 256px damage clip spans exactly four 128px tiles", 4, renderer.lastCandidateTileCount)
+        assertEquals(4, renderer.lastDrawnTileCount)
+        assertEquals("Offscreen committed tiles must not enter the frame cache", 4, renderer.retainedTileCount)
+        output.discardDisplayList()
+        renderer.close()
+    }
+
     @Test fun changedGenerationReplacesOnlyItsCachedTile() {
         val surface = PixelTileSurface(256, 128, tileSize = 128)
         surface.beginWrite("initial").use { write ->
