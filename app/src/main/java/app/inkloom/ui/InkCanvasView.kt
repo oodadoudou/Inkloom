@@ -62,6 +62,8 @@ import app.inkloom.engine.v5.raster.PaintResult
 import app.inkloom.engine.v5.raster.PaintOpKind
 import app.inkloom.engine.v5.raster.StampBrushDefinition
 import app.inkloom.engine.v5.raster.StampPaintOp
+import app.inkloom.engine.v5.raster.WetPaintDefinition
+import app.inkloom.engine.v5.raster.WetPaintOp
 import app.inkloom.engine.v5.runtime.RawDocumentSample
 import app.inkloom.engine.v5.runtime.RealtimeStrokeController
 import app.inkloom.engine.v5.storage.RasterLayerCommit
@@ -5028,6 +5030,11 @@ class InkCanvasView(context: Context) : View(context) {
         val diameterPixels = (diameter.coerceIn(.01f, 800f) / REFERENCE_WIDTH * surface.logicalWidth)
             .coerceAtLeast(.1f)
         val selection = selectionMaskForRasterTools()?.takeUnless { it.isEmpty }
+        fun pressure(enabled: Boolean, minimum: Float, curve: List<BrushCurvePoint>) = PressureResponse(
+            enabled,
+            minimum,
+            curve.map { it.x to it.y },
+        )
         if (active == EditorTool.ERASER) {
             val eraserTip = eraserTipAssetPath
             if (eraserTip != null) {
@@ -5064,15 +5071,32 @@ class InkCanvasView(context: Context) : View(context) {
             )
         }
 
+        val wetEnabled = brushWatercolor || !procreateWetMix.isDisabled() ||
+            brushColorMix > .001f || brushPaintMix > .001f
+        if (wetEnabled && !brushDual && !brushSpray && tipAssetPath == null && tipAssetPaths.isEmpty()) {
+            val authored = procreateWetMix
+            val definition = WetPaintDefinition(
+                diameterPixels = diameterPixels,
+                colorArgb = inkColor,
+                opacity = inkOpacity.coerceIn(0f, 1f),
+                hardness = brushHardness.coerceIn(0f, 1f),
+                dilution = if (authored.isDisabled()) brushColorMix.coerceIn(0f, 1f) else authored.dilution.coerceIn(0f, 1f),
+                charge = if (authored.isDisabled()) brushPaintMix.coerceIn(.15f, 1f) else authored.charge.coerceIn(0f, 1f),
+                attack = if (authored.isDisabled()) .7f else authored.attack.coerceIn(0f, 1f),
+                pull = if (authored.isDisabled()) brushColorMix.coerceIn(0f, 1f) else authored.pull.coerceIn(0f, 1f),
+                sizePressure = pressure(sizePressureEnabled, sizePressureMinimum, sizePressureCurve),
+            )
+            return V5PaintConfiguration(
+                WetPaintOp(surface, definition, selection),
+                diameterPixels * .5f + 2f,
+                "wet:$brushId",
+            )
+        }
+
         val isAirbrush = brushId.contains("airbrush", ignoreCase = true)
         if (isAirbrush && !brushDual && !brushWatercolor && procreateWetMix.isDisabled() &&
             brushColorMix <= .001f && brushPaintMix <= .001f && !taperStartEnabled && !taperEndEnabled
         ) {
-            fun pressure(enabled: Boolean, minimum: Float, curve: List<BrushCurvePoint>) = PressureResponse(
-                enabled,
-                minimum,
-                curve.map { it.x to it.y },
-            )
             val particleDiameter = if (brushSpray) {
                 SprayGeometry.particleDiameter(
                     diameterPixels,
@@ -5149,11 +5173,6 @@ class InkCanvasView(context: Context) : View(context) {
                     ),
                 ) ?: return null
             }
-            fun pressure(enabled: Boolean, minimum: Float, curve: List<BrushCurvePoint>) = PressureResponse(
-                enabled,
-                minimum,
-                curve.map { it.x to it.y },
-            )
             val definition = StampBrushDefinition(
                 diameterPixels = diameterPixels,
                 colorArgb = inkColor,
