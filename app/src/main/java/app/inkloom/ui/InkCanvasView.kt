@@ -2211,6 +2211,7 @@ class InkCanvasView(context: Context) : View(context) {
         if (effectiveAction == MotionEvent.ACTION_DOWN) singleFingerDoubleTapUndoGesture.cancel()
         val normalizedX = (inputPoint.first / width.coerceAtLeast(1)).coerceIn(0f, 1f)
         val normalizedY = (inputPoint.second / height.coerceAtLeast(1)).coerceIn(0f, 1f)
+        var v5PaintFinishedWithDamageInvalidation = false
         when (effectiveAction) {
             MotionEvent.ACTION_DOWN -> {
                 parent?.requestDisallowInterceptTouchEvent(true)
@@ -2516,6 +2517,10 @@ class InkCanvasView(context: Context) : View(context) {
                     cancelRasterSelectionTransform()
                     clearLassoInput(); movingSelection = false; selectionMoved = false; selectionTransformMode = TRANSFORM_NONE
                 } else if (finishV5PaintGesture(event, pointerIndex, normalizedX, normalizedY)) {
+                    // Publishing already invalidated the exact document-space damage. A second
+                    // full-view invalidation here made every immutable backdrop tile participate
+                    // in the pen-up frame and looked like old ink briefly "refreshed".
+                    v5PaintFinishedWithDamageInvalidation = true
                 } else if (activeTool == EditorTool.FILL) {
                     if (fillSubTool == FillSubTool.BUCKET) commitFillGesture() else {
                         fillGesturePoints += StrokePoint(normalizedX, normalizedY, event.getPressure(pointerIndex), event.eventTime)
@@ -2592,7 +2597,7 @@ class InkCanvasView(context: Context) : View(context) {
             releaseHeldStylusButtons()
             lastStylusButtonState = 0
         }
-        postInvalidateOnAnimation()
+        if (!v5PaintFinishedWithDamageInvalidation) postInvalidateOnAnimation()
         return true
     }
 
@@ -4802,7 +4807,10 @@ class InkCanvasView(context: Context) : View(context) {
                     diameterPixels = particleDiameter.coerceIn(.1f, 4096f),
                     spacingReferencePixels = diameterPixels,
                     colorArgb = if (erase) Color.TRANSPARENT else inkColor,
-                    opacity = (inkOpacity * program.deposition.opacity).coerceIn(0f, 1f),
+                    // inkOpacity is the current preset master opacity shown in the UI. The preset
+                    // value initialized that control, so multiplying it again would square the
+                    // authored opacity and make pigment appear only after repeated dabs.
+                    opacity = inkOpacity.coerceIn(0f, 1f),
                     flow = program.deposition.flow.coerceIn(0f, 1f),
                     spacingRatio = program.spacingPolicy?.value?.coerceIn(.01f, 2f) ?: .12f,
                     tips = masks,
@@ -4860,7 +4868,7 @@ class InkCanvasView(context: Context) : View(context) {
                             diameterPixels = dualParticleDiameter,
                             spacingReferencePixels = dualDiameter,
                             colorArgb = if (erase) Color.TRANSPARENT else inkColor,
-                            opacity = (inkOpacity * program.deposition.opacity).coerceIn(0f, 1f),
+                            opacity = inkOpacity.coerceIn(0f, 1f),
                             flow = dual.flow,
                             spacingRatio = dual.spacing.value.coerceIn(.01f, 2f),
                             tips = dualMasks,
@@ -4940,7 +4948,7 @@ class InkCanvasView(context: Context) : View(context) {
                         diameterPixels = particleDiameter.coerceIn(.1f, 4096f),
                         spacingReferencePixels = diameterPixels,
                         colorArgb = if (erase) Color.TRANSPARENT else inkColor,
-                        opacity = (inkOpacity * program.deposition.opacity).coerceIn(0f, 1f),
+                        opacity = inkOpacity.coerceIn(0f, 1f),
                         flow = program.deposition.flow.coerceIn(0f, 1f),
                         spacingRatio = program.spacingPolicy?.value?.coerceIn(.01f, 2f) ?: .12f,
                         tips = listOf(BrushTipMask.solidCircle(96, program.tip.hardness.coerceIn(0f, 1f))),
@@ -4973,7 +4981,7 @@ class InkCanvasView(context: Context) : View(context) {
                     val wet = WetPaintDefinition(
                         diameterPixels = diameterPixels,
                         colorArgb = inkColor,
-                        opacity = (inkOpacity * program.deposition.opacity).coerceIn(0f, 1f),
+                        opacity = (inkOpacity * program.deposition.flow).coerceIn(0f, 1f),
                         hardness = program.tip.hardness.coerceIn(0f, 1f),
                         dilution = authored.dilution.coerceIn(0f, 1f),
                         charge = authored.charge.coerceIn(0f, 1f),
@@ -4992,7 +5000,7 @@ class InkCanvasView(context: Context) : View(context) {
                         kind = if (erase) PaintOpKind.ERASER else PaintOpKind.DECORATION,
                         diameterPixels = diameterPixels,
                         colorArgb = if (erase) Color.TRANSPARENT else inkColor,
-                        opacity = (inkOpacity * program.deposition.opacity).coerceIn(0f, 1f),
+                        opacity = inkOpacity.coerceIn(0f, 1f),
                         flow = program.deposition.flow.coerceIn(0f, 1f),
                         spacingRatio = program.spacingPolicy?.value?.coerceIn(.01f, 2f) ?: .12f,
                         tips = listOf(BrushTipMask.solidCircle(96, program.tip.hardness.coerceIn(0f, 1f))),
@@ -5022,7 +5030,7 @@ class InkCanvasView(context: Context) : View(context) {
                     val dry = DryInkDefinition(
                         diameterPixels = diameterPixels,
                         colorArgb = if (erase) Color.TRANSPARENT else inkColor,
-                        opacity = (inkOpacity * program.deposition.opacity * program.deposition.flow).coerceIn(0f, 1f),
+                        opacity = (inkOpacity * program.deposition.flow).coerceIn(0f, 1f),
                         minimumPressureScale = if (program.pressure.widthEnabled) program.pressure.widthMinimum.coerceIn(0f, 1f) else 1f,
                         opacityPressureMinimum = if (program.pressure.depositionEnabled) program.pressure.depositionMinimum.coerceIn(0f, 1f) else 1f,
                         flowPressureMinimum = if (program.pressure.flowEnabled) program.pressure.flowMinimum.coerceIn(0f, 1f) else 1f,

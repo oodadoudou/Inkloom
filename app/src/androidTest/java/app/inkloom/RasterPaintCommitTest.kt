@@ -29,6 +29,22 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class RasterPaintCommitTest {
+    @Test fun presetMasterOpacityIsAppliedOnceInsteadOfSquared() {
+        val surface = PixelTileSurface(600, 600)
+        val view = createCanvas {
+            tool = EditorTool.PEN
+            activeLayerId = "paint"
+            installV5TestInk(size = 48f, opacity = .5f, hardness = 1f)
+            setRasterLayerSurfaces(mapOf("paint" to surface))
+        }
+
+        sendStylus(view, MotionEvent.ACTION_DOWN, 200f, 200f, 0L)
+        sendStylus(view, MotionEvent.ACTION_UP, 200f, 200f, 8L)
+
+        val alpha = Color.alpha(surface.pixelAt(300, 300))
+        assertTrue("50% master opacity must stay near 50%, not be squared: alpha=$alpha", alpha in 116..140)
+    }
+
     @Test fun factoryAirbrushesUseTheV5ParticlePathBeforePenUp() {
         listOf("system-soft-airbrush", "system-spray-airbrush").forEachIndexed { brushIndex, brushId ->
             val brush = requireNotNull(SystemBrushCatalog.byId(brushId))
@@ -229,11 +245,11 @@ class RasterPaintCommitTest {
         }
         send(view, MotionEvent.ACTION_DOWN, 100f, 300f, 0L)
         repeat(48) { index ->
-            send(view, MotionEvent.ACTION_MOVE, 108f + index * 10f, 300f + index % 3, 5L + index)
             val started = android.os.SystemClock.elapsedRealtimeNanos()
+            val transportStarted = android.os.SystemClock.elapsedRealtimeNanos()
+            send(view, MotionEvent.ACTION_MOVE, 108f + index * 10f, 300f + index % 3, 5L + index)
+            transportTimesMs += (android.os.SystemClock.elapsedRealtimeNanos() - transportStarted) / 1_000_000f
             InstrumentationRegistry.getInstrumentation().runOnMainSync {
-                val transportStarted = android.os.SystemClock.elapsedRealtimeNanos()
-                transportTimesMs += (android.os.SystemClock.elapsedRealtimeNanos() - transportStarted) / 1_000_000f
                 preview.eraseColor(Color.TRANSPARENT)
                 val presentationStarted = android.os.SystemClock.elapsedRealtimeNanos()
                 view.draw(Canvas(preview))
@@ -253,8 +269,9 @@ class RasterPaintCommitTest {
             "InkloomPerf",
             "raster_wet_live_p95_ms=$p95 transport_p95_ms=$transportP95 presentation_p95_ms=$presentationP95 raster_wet_commit_ms=$penUpMs",
         )
-        assertTrue("Wet live frame p95 was ${p95}ms", p95 < 33.4f)
-        assertTrue("Wet pen-up commit was ${penUpMs}ms", penUpMs < 33.4f)
+        assertTrue("Wet input + presentation p95 was ${p95}ms", p95 < 16.7f)
+        assertTrue("Wet input transport p95 was ${transportP95}ms", transportP95 < 12f)
+        assertTrue("Wet pen-up commit was ${penUpMs}ms", penUpMs < 16.7f)
         requireNotNull(committed).close()
         preview.recycle()
     }

@@ -166,6 +166,15 @@ class WetPaintOp(
             val lastColumn = (bounds.right - 1) / document.tileSize
             val firstRow = bounds.top / document.tileSize
             val lastRow = (bounds.bottom - 1) / document.tileSize
+            val outerRadius = radius + .5f
+            val outerRadiusSquared = outerRadius * outerRadius
+            val edge = maxOf(1f, radius * (1f - definition.hardness) * .85f)
+            val innerRadius = (outerRadius - edge).coerceAtLeast(0f)
+            val innerRadiusSquared = innerRadius * innerRadius
+            val inverseEdge = 1f / edge
+            val baseDeposition = definition.opacity * definition.attack * (.3f + .7f * definition.charge)
+            val selectionScaleX = selection?.let { it.logicalWidth.toFloat() / document.logicalWidth } ?: 1f
+            val selectionScaleY = selection?.let { it.logicalHeight.toFloat() / document.logicalHeight } ?: 1f
             for (row in firstRow..lastRow) for (column in firstColumn..lastColumn) {
                 val tileLeft = column * document.tileSize
                 val tileTop = row * document.tileSize
@@ -181,17 +190,22 @@ class WetPaintOp(
                     for (y in overlap.top until overlap.bottom) for (x in overlap.left until overlap.right) {
                         val dx = x + .5f - sample.point.x
                         val dy = y + .5f - sample.point.y
-                        val distance = sqrt(dx * dx + dy * dy)
-                        val edge = maxOf(1f, radius * (1f - definition.hardness) * .85f)
-                        var coverage = ((radius + .5f - distance) / edge).coerceIn(0f, 1f)
+                        val distanceSquared = dx * dx + dy * dy
+                        if (distanceSquared >= outerRadiusSquared) continue
+                        // Most pixels in a hard or medium-hard dab are fully covered. Avoiding a
+                        // sqrt for that interior is material on large wet brushes and preserves the
+                        // exact previous feather equation only for the narrow edge band.
+                        var coverage = if (distanceSquared <= innerRadiusSquared) 1f else {
+                            (outerRadius - sqrt(distanceSquared)) * inverseEdge
+                        }
                         if (coverage <= 0f) continue
                         selection?.let { mask ->
-                            val sx = ((x + .5f) * mask.logicalWidth / document.logicalWidth).toInt().coerceIn(0, mask.logicalWidth - 1)
-                            val sy = ((y + .5f) * mask.logicalHeight / document.logicalHeight).toInt().coerceIn(0, mask.logicalHeight - 1)
+                            val sx = ((x + .5f) * selectionScaleX).toInt().coerceIn(0, mask.logicalWidth - 1)
+                            val sy = ((y + .5f) * selectionScaleY).toInt().coerceIn(0, mask.logicalHeight - 1)
                             coverage *= mask.alphaAt(sx, sy) / 255f
                         }
                         if (coverage <= 0f) continue
-                        val deposition = definition.opacity * definition.attack * (.3f + .7f * definition.charge) * coverage
+                        val deposition = baseDeposition * coverage
                         val index = (y - tileTop) * stride + x - tileLeft
                         pixels[index] = track.reservoir.sourceOver(pixels[index], deposition)
                     }
