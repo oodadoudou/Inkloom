@@ -1702,6 +1702,7 @@ class InkCanvasView(context: Context) : View(context) {
                 activeDelta = active?.delta,
                 activeDeltaBlend = when (active?.blend) {
                     ActiveStrokePresentationBlend.DESTINATION_OUT -> PixelActiveDeltaBlend.DESTINATION_OUT
+                    ActiveStrokePresentationBlend.SOURCE_ATOP -> PixelActiveDeltaBlend.SOURCE_ATOP
                     else -> PixelActiveDeltaBlend.SOURCE_OVER
                 },
             )
@@ -1800,6 +1801,19 @@ class InkCanvasView(context: Context) : View(context) {
                 rasterTileRenderer.draw(canvas, active.delta, destination)
                 canvas.restoreToCount(erase)
                 canvas.restoreToCount(replacement)
+            }
+            ActiveStrokePresentationBlend.SOURCE_ATOP -> {
+                rasterTileRenderer.draw(canvas, active.backdrop, destination)
+                val dirty = RectF(
+                    destination.left + active.dirtyBounds.left * destination.width() / active.backdrop.logicalWidth,
+                    destination.top + active.dirtyBounds.top * destination.height() / active.backdrop.logicalHeight,
+                    destination.left + active.dirtyBounds.right * destination.width() / active.backdrop.logicalWidth,
+                    destination.top + active.dirtyBounds.bottom * destination.height() / active.backdrop.logicalHeight,
+                )
+                val atop = canvas.saveLayer(dirty, Paint().apply { blendMode = BlendMode.SRC_ATOP })
+                canvas.clipRect(dirty)
+                rasterTileRenderer.draw(canvas, active.delta, destination)
+                canvas.restoreToCount(atop)
             }
         }
     }
@@ -4610,9 +4624,11 @@ class InkCanvasView(context: Context) : View(context) {
         val surface = rasterTileSurfaceFor(activeLayerId) ?: return null
         if (surface.pixelFormat != PixelTileFormat.PREMULTIPLIED_SRGB_8888) return null
         // Opacity, blend, clipping and layer masks are projection properties. They must never
-        // disable edits to the layer's own pixel surface. Alpha lock is different: until its
-        // preserve-alpha blend is migrated, reject it explicitly instead of corrupting alpha.
-        if (activeLayerId in protectedLayerIds || activeLayerId in alphaLockedLayers) return null
+        // disable edits to the layer's own pixel surface. Paint on an alpha-locked layer publishes
+        // with SOURCE_ATOP below; erasing is rejected because it cannot preserve destination alpha.
+        if (activeLayerId in protectedLayerIds ||
+            (activeLayerId in alphaLockedLayers && active == EditorTool.ERASER)
+        ) return null
         val diameter = if (active == EditorTool.ERASER) gestureEraserSize else gestureBrushSize
         val diameterPixels = (diameter.coerceIn(.01f, 800f) / REFERENCE_WIDTH * surface.logicalWidth)
             .coerceAtLeast(.1f)
@@ -4657,6 +4673,11 @@ class InkCanvasView(context: Context) : View(context) {
                 program.pressure.flowCurve.map { it.x to it.y },
             )
             val erase = program.output == BrushOutputV5.ERASE
+            val paintBlend = when {
+                erase -> DryBlend.DESTINATION_OUT
+                activeLayerId in alphaLockedLayers -> DryBlend.SOURCE_ATOP
+                else -> DryBlend.SOURCE_OVER
+            }
             val stampProgram = program.stamp
             val sprayProgram = stampProgram?.spray
             val tipAssets = program.tip.tipTexture?.assetPaths.orEmpty()
@@ -4737,7 +4758,7 @@ class InkCanvasView(context: Context) : View(context) {
                         ((stampProgram?.randomRotationDegrees ?: 0f) + (sprayProgram?.randomRotationDegrees ?: 0f)).toDouble(),
                     ).toFloat(),
                     repeatStationarySamples = stampProgram?.continuousPlot == true,
-                    blend = if (erase) DryBlend.DESTINATION_OUT else DryBlend.SOURCE_OVER,
+                    blend = paintBlend,
                 )
                 val secondaryDefinitions = program.dual?.let { dual ->
                     val dualMasks = dual.tipAssetPaths.map { path ->
@@ -4793,7 +4814,7 @@ class InkCanvasView(context: Context) : View(context) {
                                 (dual.randomRotationDegrees + (dualSpray?.randomRotationDegrees ?: 0f)).toDouble(),
                             ).toFloat(),
                             repeatStationarySamples = stampProgram?.continuousPlot == true,
-                            blend = if (erase) DryBlend.DESTINATION_OUT else DryBlend.SOURCE_OVER,
+                            blend = paintBlend,
                         ),
                     )
                 }.orEmpty()
@@ -4870,7 +4891,7 @@ class InkCanvasView(context: Context) : View(context) {
                             ((stampProgram?.randomRotationDegrees ?: 0f) + (sprayProgram?.randomRotationDegrees ?: 0f)).toDouble(),
                         ).toFloat(),
                         repeatStationarySamples = stampProgram?.continuousPlot == true,
-                        blend = if (erase) DryBlend.DESTINATION_OUT else DryBlend.SOURCE_OVER,
+                        blend = paintBlend,
                     )
                     return V5PaintConfiguration(
                         StampPaintOp(surface, stamp, selection, sampleTransforms = sampleTransforms),
@@ -4893,6 +4914,7 @@ class InkCanvasView(context: Context) : View(context) {
                         pull = authored.pull.coerceIn(0f, 1f),
                         sizePressure = sizeResponse,
                         sizeTilt = sizeTiltResponse,
+                        blend = paintBlend,
                     )
                     return V5PaintConfiguration(
                         WetPaintOp(surface, wet, selection, sampleTransforms),
@@ -4922,7 +4944,7 @@ class InkCanvasView(context: Context) : View(context) {
                         particlesPerPlot = stampProgram?.particlesPerPlot ?: 1,
                         randomRotationRadians = Math.toRadians((stampProgram?.randomRotationDegrees ?: 0f).toDouble()).toFloat(),
                         repeatStationarySamples = stampProgram?.continuousPlot == true,
-                        blend = if (erase) DryBlend.DESTINATION_OUT else DryBlend.SOURCE_OVER,
+                        blend = paintBlend,
                     )
                     return V5PaintConfiguration(
                         StampPaintOp(surface, stamp, selection, sampleTransforms = sampleTransforms),
@@ -4949,7 +4971,7 @@ class InkCanvasView(context: Context) : View(context) {
                         sizeTilt = sizeTiltResponse,
                         opacityPressure = opacityResponse,
                         flowPressure = flowResponse,
-                        blend = if (erase) DryBlend.DESTINATION_OUT else DryBlend.SOURCE_OVER,
+                        blend = paintBlend,
                     )
                     return V5PaintConfiguration(
                         DryInkPaintOp(surface, dry, selection, sampleTransforms),

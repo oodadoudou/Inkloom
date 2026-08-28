@@ -19,7 +19,7 @@ import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot
 import app.inkloom.engine.v5.surface.PixelRect
 
-enum class ActiveStrokePresentationBlend { SOURCE_OVER, DESTINATION_OUT }
+enum class ActiveStrokePresentationBlend { SOURCE_OVER, DESTINATION_OUT, SOURCE_ATOP }
 
 data class ActiveStrokePresentation(
     val backdrop: PixelTileSurfaceSnapshot,
@@ -75,6 +75,7 @@ class RealtimeStrokeController {
             paint,
             when (paint.presentationKind) {
                 PaintPresentationKind.ERASE_COVERAGE -> ActiveStrokePresentationBlend.DESTINATION_OUT
+                PaintPresentationKind.SOURCE_ATOP_DELTA -> ActiveStrokePresentationBlend.SOURCE_ATOP
                 else -> ActiveStrokePresentationBlend.SOURCE_OVER
             },
             InputBackpressureController(),

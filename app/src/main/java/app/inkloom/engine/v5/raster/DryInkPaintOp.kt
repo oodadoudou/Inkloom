@@ -17,7 +17,7 @@ import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.sqrt
 
-enum class DryBlend { SOURCE_OVER, DESTINATION_OUT }
+enum class DryBlend { SOURCE_OVER, DESTINATION_OUT, SOURCE_ATOP }
 
 data class DryInkDefinition(
     val diameterPixels: Float,
@@ -87,8 +87,11 @@ class DryInkPaintOp(
             ActiveStrokeDeltaTileSurface(
                 document,
                 "V5 ${capabilities.kind}",
-                if (definition.blend == DryBlend.DESTINATION_OUT) ActiveStrokeDeltaBlend.DESTINATION_OUT
-                else ActiveStrokeDeltaBlend.SOURCE_OVER,
+                when (definition.blend) {
+                    DryBlend.SOURCE_OVER -> ActiveStrokeDeltaBlend.SOURCE_OVER
+                    DryBlend.DESTINATION_OUT -> ActiveStrokeDeltaBlend.DESTINATION_OUT
+                    DryBlend.SOURCE_ATOP -> ActiveStrokeDeltaBlend.SOURCE_ATOP
+                },
             ),
         )
     }
@@ -98,8 +101,11 @@ class DryInkPaintOp(
         private val delta: ActiveStrokeDeltaTileSurface,
     ) : PublishablePaintOpSession, AutoCloseable {
         override val presentationKind: PaintPresentationKind =
-            if (definition.blend == DryBlend.DESTINATION_OUT) PaintPresentationKind.ERASE_COVERAGE
-            else PaintPresentationKind.SOURCE_DELTA
+            when (definition.blend) {
+                DryBlend.SOURCE_OVER -> PaintPresentationKind.SOURCE_DELTA
+                DryBlend.DESTINATION_OUT -> PaintPresentationKind.ERASE_COVERAGE
+                DryBlend.SOURCE_ATOP -> PaintPresentationKind.SOURCE_ATOP_DELTA
+            }
         private val lastSamples = MutableList<StrokeSample?>(sampleTransforms.size) { null }
         private var lastOrdinal = -1L
         private var dirtyBounds: PixelRect? = null
@@ -218,6 +224,7 @@ class DryInkPaintOp(
                         pixels[index] = when (definition.blend) {
                             DryBlend.SOURCE_OVER -> sourceOver(pixels[index], coverage, footprint.pressure)
                             DryBlend.DESTINATION_OUT -> eraseCoverageOver(pixels[index], coverage)
+                            DryBlend.SOURCE_ATOP -> sourceOver(pixels[index], coverage, footprint.pressure)
                         }
                     }
                 }

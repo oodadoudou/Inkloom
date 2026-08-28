@@ -52,4 +52,24 @@ class ActiveStrokeDeltaTileSurfaceTest {
         assertEquals(0xff102030.toInt(), document.pixelAt(19, 20))
         published.close()
     }
+
+    @Test fun `source atop changes colour but preserves every destination alpha`() {
+        val document = PixelTileSurface(64, 64, 64)
+        document.beginWrite("partial alpha").run {
+            setPixel(20, 20, 0x80400000.toInt())
+            commit().close()
+        }
+        val active = ActiveStrokeDeltaTileSurface(document, "alpha locked paint", ActiveStrokeDeltaBlend.SOURCE_ATOP)
+        active.editTile(PixelTileKey(0, 0), PixelRect(20, 20, 22, 21)) { pixels, _ ->
+            pixels[20 * 64 + 20] = 0xff008000.toInt()
+            pixels[20 * 64 + 21] = 0xff008000.toInt()
+        }
+
+        assertEquals(128, active.compositedPixelAt(20, 20) ushr 24)
+        assertEquals(0, active.compositedPixelAt(21, 20))
+        val published = active.publish()
+        assertEquals(128, document.pixelAt(20, 20) ushr 24)
+        assertEquals(0, document.pixelAt(21, 20))
+        published.close()
+    }
 }

@@ -27,6 +27,7 @@ data class WetPaintDefinition(
     val pull: Float = .35f,
     val sizePressure: PressureResponse = PressureResponse.CONSTANT,
     val sizeTilt: TiltResponse = TiltResponse.CONSTANT,
+    val blend: DryBlend = DryBlend.SOURCE_OVER,
 ) {
     init {
         require(diameterPixels.isFinite() && diameterPixels in .1f..4096f)
@@ -64,7 +65,12 @@ class WetPaintOp(
         require(context.backdropGeneration == document.revision)
         return Session(
             context,
-            ActiveStrokeDeltaTileSurface(document, "V5 wet paint", ActiveStrokeDeltaBlend.SOURCE_OVER),
+            ActiveStrokeDeltaTileSurface(
+                document,
+                "V5 wet paint",
+                if (definition.blend == DryBlend.SOURCE_ATOP) ActiveStrokeDeltaBlend.SOURCE_ATOP
+                else ActiveStrokeDeltaBlend.SOURCE_OVER,
+            ),
         )
     }
 
@@ -72,7 +78,9 @@ class WetPaintOp(
         private val context: PaintOpContext,
         private val delta: ActiveStrokeDeltaTileSurface,
     ) : PublishablePaintOpSession, AutoCloseable {
-        override val presentationKind: PaintPresentationKind = PaintPresentationKind.SOURCE_DELTA
+        override val presentationKind: PaintPresentationKind =
+            if (definition.blend == DryBlend.SOURCE_ATOP) PaintPresentationKind.SOURCE_ATOP_DELTA
+            else PaintPresentationKind.SOURCE_DELTA
         private var state = State.ACTIVE
         private var lastOrdinal = -1L
         private val tracks = sampleTransforms.map { WetTrack() }

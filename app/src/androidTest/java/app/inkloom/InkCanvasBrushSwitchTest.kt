@@ -260,6 +260,41 @@ class InkCanvasBrushSwitchTest {
             frame.recycle()
         }
     }
+
+    @Test
+    fun alphaLockedV5PaintPreservesExistingAlphaAndCannotCreateNewCoverage() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val surface = PixelTileSurface(1200, 1200).also { pixels ->
+            pixels.beginWrite("partial alpha fixture").run {
+                setPixel(600, 600, 0x80800000.toInt())
+                commit().close()
+            }
+        }
+        val view = InkCanvasView(instrumentation.targetContext).apply {
+            layout(0, 0, 1200, 1200)
+            activeLayerId = "paint"
+            setRasterLayerSurfaces(mapOf("paint" to surface))
+            alphaLockedLayers = setOf("paint")
+        }
+
+        instrumentation.runOnMainSync {
+            view.applyBrushConfiguration(
+                EditorTool.PEN,
+                AppSettings(),
+                brush("alpha-lock-paint", "Alpha lock paint").v5(),
+                100f,
+                1f,
+                Color.BLUE,
+                EraserPreset.NORMAL_FREE,
+            )
+            drawStroke(view, 1L, 600f)
+        }
+
+        assertEquals(128, Color.alpha(surface.pixelAt(600, 600)))
+        assertTrue("The locked pixel colour should still be editable", surface.pixelAt(600, 600) != 0x80800000.toInt())
+        assertEquals("Source-atop cannot create pixels outside existing alpha", 0, surface.pixelAt(400, 600))
+        assertEquals(1, view.v5DryGestureCount)
+    }
     @Test
     fun eraserModeCannotPaintWithAStaleNormalBrushDescriptor() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()

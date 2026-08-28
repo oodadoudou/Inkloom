@@ -132,8 +132,11 @@ class StampPaintOp(
             ActiveStrokeDeltaTileSurface(
                 document,
                 "V5 ${capabilities.kind} stamp",
-                if (definition.blend == DryBlend.DESTINATION_OUT) ActiveStrokeDeltaBlend.DESTINATION_OUT
-                else ActiveStrokeDeltaBlend.SOURCE_OVER,
+                when (definition.blend) {
+                    DryBlend.SOURCE_OVER -> ActiveStrokeDeltaBlend.SOURCE_OVER
+                    DryBlend.DESTINATION_OUT -> ActiveStrokeDeltaBlend.DESTINATION_OUT
+                    DryBlend.SOURCE_ATOP -> ActiveStrokeDeltaBlend.SOURCE_ATOP
+                },
             ),
         )
     }
@@ -143,8 +146,11 @@ class StampPaintOp(
         private val delta: ActiveStrokeDeltaTileSurface,
     ) : PublishablePaintOpSession, AutoCloseable {
         override val presentationKind: PaintPresentationKind =
-            if (definition.blend == DryBlend.DESTINATION_OUT) PaintPresentationKind.ERASE_COVERAGE
-            else PaintPresentationKind.SOURCE_DELTA
+            when (definition.blend) {
+                DryBlend.SOURCE_OVER -> PaintPresentationKind.SOURCE_DELTA
+                DryBlend.DESTINATION_OUT -> PaintPresentationKind.ERASE_COVERAGE
+                DryBlend.SOURCE_ATOP -> PaintPresentationKind.SOURCE_ATOP_DELTA
+            }
         private var state = State.ACTIVE
         private var lastOrdinal = -1L
         private val streamStates = sampleTransforms.map { streams.map { StreamState() } }
@@ -378,6 +384,7 @@ class StampPaintOp(
                             pixels[index] = when (definition.blend) {
                                 DryBlend.SOURCE_OVER -> sourceOver(pixels[index], definition.colorArgb, coverage)
                                 DryBlend.DESTINATION_OUT -> eraseCoverageOver(pixels[index], coverage)
+                                DryBlend.SOURCE_ATOP -> sourceOver(pixels[index], definition.colorArgb, coverage)
                             }
                         }
                     }
@@ -479,6 +486,7 @@ class StampPaintOp(
                             pixels[index] = when (definition.blend) {
                                 DryBlend.SOURCE_OVER -> sourcePixel(definition.colorArgb, coverage)
                                 DryBlend.DESTINATION_OUT -> coveragePixel(coverage)
+                                DryBlend.SOURCE_ATOP -> sourcePixel(definition.colorArgb, coverage)
                             }
                         }
                     }

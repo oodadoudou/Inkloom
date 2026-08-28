@@ -62,4 +62,4 @@ interface PublishablePaintOpSession : PaintOpSession {
     fun publish(): PublishedPaintDelta
 }
 
-enum class PaintPresentationKind { COMPOSITE_REPLACEMENT, SOURCE_DELTA, ERASE_COVERAGE }
+enum class PaintPresentationKind { COMPOSITE_REPLACEMENT, SOURCE_DELTA, ERASE_COVERAGE, SOURCE_ATOP_DELTA }

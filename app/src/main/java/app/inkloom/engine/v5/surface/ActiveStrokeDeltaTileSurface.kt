@@ -1,7 +1,7 @@
 package app.inkloom.engine.v5.surface
 
 /** How the immutable active contribution is applied to its pinned committed layer. */
-enum class ActiveStrokeDeltaBlend { SOURCE_OVER, DESTINATION_OUT }
+enum class ActiveStrokeDeltaBlend { SOURCE_OVER, DESTINATION_OUT, SOURCE_ATOP }
 
 /**
  * Gesture-local sparse pixels that never contain or mutate the committed backdrop.
@@ -51,6 +51,7 @@ class ActiveStrokeDeltaTileSurface(
         return when (blend) {
             ActiveStrokeDeltaBlend.SOURCE_OVER -> sourceOver(backdropSnapshot.pixelAt(x, y), contribution)
             ActiveStrokeDeltaBlend.DESTINATION_OUT -> destinationOut(backdropSnapshot.pixelAt(x, y), contribution ushr 24)
+            ActiveStrokeDeltaBlend.SOURCE_ATOP -> sourceAtop(backdropSnapshot.pixelAt(x, y), contribution)
         }
     }
 
@@ -80,6 +81,7 @@ class ActiveStrokeDeltaTileSurface(
                                 destination[index] = when (blend) {
                                     ActiveStrokeDeltaBlend.SOURCE_OVER -> sourceOver(destination[index], source[index])
                                     ActiveStrokeDeltaBlend.DESTINATION_OUT -> destinationOut(destination[index], source[index] ushr 24)
+                                    ActiveStrokeDeltaBlend.SOURCE_ATOP -> sourceAtop(destination[index], source[index])
                                 }
                             }
                         }
@@ -133,6 +135,18 @@ class ActiveStrokeDeltaTileSurface(
                 ((((destination ushr 16) and 0xff) * keep / 255) shl 16) or
                 ((((destination ushr 8) and 0xff) * keep / 255) shl 8) or
                 ((destination and 0xff) * keep / 255)
+        }
+
+        fun sourceAtop(destination: Int, source: Int): Int {
+            val destinationAlpha = destination ushr 24 and 0xff
+            if (destinationAlpha == 0) return destination
+            val sourceAlpha = source ushr 24 and 0xff
+            if (sourceAlpha == 0) return destination
+            val inverse = 255 - sourceAlpha
+            return (destinationAlpha shl 24) or
+                (((((source ushr 16) and 0xff) * destinationAlpha + ((destination ushr 16) and 0xff) * inverse) / 255).coerceAtMost(destinationAlpha) shl 16) or
+                (((((source ushr 8) and 0xff) * destinationAlpha + ((destination ushr 8) and 0xff) * inverse) / 255).coerceAtMost(destinationAlpha) shl 8) or
+                ((((source and 0xff) * destinationAlpha + (destination and 0xff) * inverse) / 255).coerceAtMost(destinationAlpha))
         }
     }
 }
