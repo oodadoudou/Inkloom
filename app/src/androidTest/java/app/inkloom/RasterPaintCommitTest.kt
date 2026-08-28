@@ -45,6 +45,34 @@ class RasterPaintCommitTest {
         assertTrue("50% master opacity must stay near 50%, not be squared: alpha=$alpha", alpha in 116..140)
     }
 
+    @Test fun reconfiguringTheActiveProductionBrushChangesCommittedAlpha() {
+        val brush = requireNotNull(SystemBrushCatalog.byId("system-monoline"))
+        fun drawAt(opacity: Float): Int {
+            val surface = PixelTileSurface(600, 600)
+            val view = createCanvas {
+                activeLayerId = "paint"
+                setRasterLayerSurfaces(mapOf("paint" to surface))
+                applyBrushConfiguration(
+                    EditorTool.PEN,
+                    AppSettings(),
+                    brush,
+                    48f,
+                    opacity,
+                    Color.BLACK,
+                    EraserPreset.NORMAL_FREE,
+                )
+            }
+            sendStylus(view, MotionEvent.ACTION_DOWN, 200f, 200f, 0L)
+            sendStylus(view, MotionEvent.ACTION_UP, 200f, 200f, 8L)
+            return Color.alpha(surface.pixelAt(300, 300))
+        }
+
+        val opaque = drawAt(1f)
+        val translucent = drawAt(.2f)
+        assertTrue("Full opacity must remain visibly opaque: $opaque", opaque >= 245)
+        assertTrue("The active brush master opacity must affect document pixels: $translucent", translucent in 42..62)
+    }
+
     @Test fun factoryAirbrushesUseTheV5ParticlePathBeforePenUp() {
         listOf("system-soft-airbrush", "system-spray-airbrush").forEachIndexed { brushIndex, brushId ->
             val brush = requireNotNull(SystemBrushCatalog.byId(brushId))

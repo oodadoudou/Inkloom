@@ -564,6 +564,18 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription("Drag toolbar").assertIsDisplayed()
     }
 
+    @Test fun procreateSidebarPublishesOpacityToTheCanvasImmediately() {
+        createNotebookAndOpenEditor()
+        composeRule.waitUntil(5_000) { findInkCanvasView() != null }
+        val canvas = requireNotNull(findInkCanvasView())
+
+        composeRule.onNodeWithContentDescription("Brush opacity").performTouchInput {
+            click(Offset(width / 2f, height * .95f))
+        }
+
+        assertTrue("The canvas must not wait for another panel or tool event", canvas.inkOpacity < .12f)
+    }
+
     @Test fun brushPopoverNeverChangesTheUsableCanvasInPortrait() {
         createNotebookAndOpenEditor()
         composeRule.activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT

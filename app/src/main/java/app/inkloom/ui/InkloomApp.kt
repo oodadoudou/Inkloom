@@ -1105,6 +1105,19 @@ private fun EditorScreen(
             else -> Unit
         }
     }
+    fun changeCurrentBrushOpacity(raw: Float) {
+        val value = raw.takeIf(Float::isFinite)?.coerceIn(.05f, 1f) ?: .05f
+        brushOpacity = value
+        // The sidebar and pen-down can occur in the same display frame. V5 resolves its immutable
+        // PaintOp at contact start, so publish the live master opacity without waiting for the
+        // AndroidView update/recomposition pass.
+        canvasView?.inkOpacity = value
+        when (tool) {
+            EditorTool.PEN -> if (activeBrush == null) onSettingsChange(settings.copy(penOpacity = value))
+            EditorTool.HIGHLIGHTER -> onSettingsChange(settings.copy(highlighterOpacity = value))
+            else -> Unit
+        }
+    }
     // Foreground color belongs to the document workspace, not to an individual brush. Keeping it
     // saveable prevents panel re-layouts and activity recreation from silently restoring black.
     var brushColor by rememberSaveable(document.id) { mutableIntStateOf(AndroidColor.rgb(17, 17, 17)) }
@@ -2318,13 +2331,7 @@ private fun EditorScreen(
                         }
 
                         fun updateBrushOpacity(delta: Float) {
-                            val value = (brushOpacity + delta).coerceIn(.05f, 1f)
-                            brushOpacity = value
-                            when (tool) {
-                                EditorTool.PEN -> if (activeBrush == null) onSettingsChange(settings.copy(penOpacity = value))
-                                EditorTool.HIGHLIGHTER -> onSettingsChange(settings.copy(highlighterOpacity = value))
-                                else -> Unit
-                            }
+                            changeCurrentBrushOpacity(brushOpacity + delta)
                         }
 
                         fun rememberDrawingSelection() {
@@ -2763,13 +2770,7 @@ private fun EditorScreen(
                 }, onBrushPreset = ::selectWorkspaceBrush, onSize = { raw ->
                     changeCurrentBrushSize(raw)
                 }, onOpacity = { raw ->
-                    val value = raw.coerceIn(.05f, 1f)
-                    brushOpacity = value
-                    when (tool) {
-                        EditorTool.PEN -> if (activeBrush == null) onSettingsChange(settings.copy(penOpacity = value))
-                        EditorTool.HIGHLIGHTER -> onSettingsChange(settings.copy(highlighterOpacity = value))
-                        else -> Unit
-                    }
+                    changeCurrentBrushOpacity(raw)
                 }, onColor = ::changeBrushColor, symmetryMode = settings.symmetryMode, onSymmetryMode = { onSettingsChange(settings.copy(symmetryMode = it)) }, gradientControls = { GradientToolControls(settings, brushColor, ::changeBrushColor, onSettingsChange) }, modifier = Modifier.align(dockAlignment).padding(dockPadding).graphicsLayer(translationX = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.xDp.dp.toPx() } else 0f, translationY = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.yDp.dp.toPx() } else 0f))
                 if (tool == EditorTool.SELECT) SelectionInputBar(
                     shape = settings.selectionShape,
@@ -3128,14 +3129,23 @@ private fun EditorScreen(
                 brushSize = brushSize,
                 brushOpacity = brushOpacity,
                 onBrushSizeChange = ::changeCurrentBrushSize,
-                onBrushOpacityChange = { brushOpacity = it.coerceIn(.05f, 1f) },
+                onBrushOpacityChange = ::changeCurrentBrushOpacity,
                 dock = WorkspacePanelDock.FREE,
                 onDock = {},
                 onClose = { if (brushesOpen) onToggleBrushes() },
                 onBrushSelected = ::selectWorkspaceBrush,
                 onImportBrushes = onImportBrushes,
                 onExportBrush = onExportBrush,
-                onUpdateBrush = { updated -> onUpdateBrush(updated); if (activeBrush?.id == updated.id) { activeBrush = updated; brushSize = savedBrushSize(updated, updated.defaultSize) } },
+                onUpdateBrush = { updated ->
+                    onUpdateBrush(updated)
+                    if (activeBrush?.id == updated.id) {
+                        val opacityChanged = activeBrush?.defaultOpacity != updated.defaultOpacity
+                        activeBrush = updated
+                        brushSize = savedBrushSize(updated, updated.defaultSize)
+                        if (opacityChanged) brushOpacity = updated.defaultOpacity.coerceIn(.05f, 1f)
+                        syncCanvasInput(prepareAssets = true)
+                    }
+                },
                 onReplaceBrushes = { updated ->
                     onReplaceBrushes(updated)
                     activeBrush = activeBrush?.let { current -> updated.firstOrNull { it.id == current.id } }
