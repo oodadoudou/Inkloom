@@ -6,7 +6,7 @@ object HandwritingIndex {
     /** V5 handwriting truth is the raster-layer generation, never serialized vector strokes. */
     fun fingerprint(page: InkPage): String {
         val digest = MessageDigest.getInstance("SHA-256")
-        page.layers.filter { it.contentKind == LayerContentKind.RASTER }.forEach { layer ->
+        page.layers.filter(InkLayer::isPaintSurfaceLayer).forEach { layer ->
             digest.update(layer.id.encodeToByteArray())
             layer.rasterTileSurface?.let { reference ->
                 digest.update(reference.surfaceId.encodeToByteArray())

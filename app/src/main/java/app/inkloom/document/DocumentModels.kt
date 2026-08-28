@@ -107,11 +107,6 @@ object LayerIds {
 @Serializable
 enum class LayerRole { BACKGROUND, INK, HIGHLIGHT, OBJECTS, CUSTOM, FOLDER }
 
-/** Vector layers retain editable stroke geometry. Raster layers own a persistent RGBA paint
- * surface and are the only layer kind on which pixel-sampling tools such as Blend operate. */
-@Serializable
-enum class LayerContentKind { VECTOR, RASTER }
-
 @Serializable
 enum class LayerBlendMode {
     NORMAL, MULTIPLY, SCREEN, ADD,
@@ -156,11 +151,7 @@ data class InkLayer(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
     val role: LayerRole = LayerRole.CUSTOM,
-    val contentKind: LayerContentKind = LayerContentKind.VECTOR,
-    /**
-     * Authoritative sparse pixel surface for newly migrated raster layers. When present, readers
-     * must ignore [rasterAssetPath]; that legacy PNG is retained only for one-way migration.
-     */
+    /** Authoritative sparse pixel surface for V5 paint layers. */
     val rasterTileSurface: RasterTileSurfaceRef? = null,
     /** Legacy content-addressed full-page PNG. Never written after [rasterTileSurface] is attached. */
     val rasterAssetPath: String? = null,
@@ -180,6 +171,9 @@ data class InkLayer(
     val parentId: String? = null,
     val collapsed: Boolean = false,
 )
+
+/** V5 has one paint-layer truth. Backgrounds and folders are structural, all other layers own pixels. */
+fun InkLayer.isPaintSurfaceLayer(): Boolean = role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)
 
 @Serializable
 data class LayerMask(
@@ -222,9 +216,7 @@ enum class FillSubTool { BUCKET, ENCLOSE_AND_FILL, LASSO_FILL, LEFTOVER_PEN }
 
 fun defaultInkLayers(): List<InkLayer> = listOf(
     InkLayer(LayerIds.BACKGROUND, "Background", LayerRole.BACKGROUND, locked = true),
-    // New documents enter the authoritative V3 tile path from the first contact. Existing
-    // documents that explicitly deserialize VECTOR remain an isolated compatibility boundary.
-    InkLayer(LayerIds.INK, "Notes", LayerRole.INK, contentKind = LayerContentKind.RASTER),
+    InkLayer(LayerIds.INK, "Notes", LayerRole.INK),
 )
 
 @Serializable

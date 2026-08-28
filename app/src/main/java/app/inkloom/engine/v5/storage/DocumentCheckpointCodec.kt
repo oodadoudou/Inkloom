@@ -59,7 +59,15 @@ internal object DocumentCheckpointCodec {
         val root = runCatching { json.parseToJsonElement(content).jsonObject }.getOrNull() ?: return
         val document = root["document"] as? JsonObject ?: return
         val pages = document["pages"] as? JsonArray ?: return
-        require(pages.none { page -> (page as? JsonObject)?.containsKey("strokes") == true }) {
+        val containsLegacyProductionState = pages.any { pageElement ->
+            val page = pageElement as? JsonObject ?: return@any false
+            if (page.containsKey("strokes")) return@any true
+            val layers = page["layers"] as? JsonArray ?: return@any false
+            layers.any { layerElement ->
+                (layerElement as? JsonObject)?.containsKey("contentKind") == true
+            }
+        }
+        require(!containsLegacyProductionState) {
             LEGACY_ENGINE_ERROR
         }
     }

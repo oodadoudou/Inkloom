@@ -1,9 +1,15 @@
 package app.inkloom.engine.v5.storage
 
 import app.inkloom.document.InkDocument
+import app.inkloom.document.InkLayer
+import app.inkloom.document.InkPage
 import app.inkloom.document.PageElement
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -18,6 +24,7 @@ class V5StorageFormatContractTest {
         assertTrue(encoded.contains("\"format\": \"inkloom-document-v5\""))
         assertTrue(encoded.contains("\"schemaVersion\": 5"))
         assertTrue(encoded.contains("\"engineVersion\": 5"))
+        assertTrue(!encoded.contains("\"contentKind\""))
         assertEquals(document, DocumentCheckpointCodec.decode(encoded))
     }
 
@@ -50,6 +57,31 @@ class V5StorageFormatContractTest {
         val error = assertThrows(IllegalArgumentException::class.java) {
             DocumentCheckpointCodec.decode(legacy)
         }
+        assertEquals(DocumentCheckpointCodec.LEGACY_ENGINE_ERROR, error.message)
+    }
+
+    @Test fun checkpointRejectsTheRemovedMixedVectorRasterLayerSchema() {
+        val encoded = DocumentCheckpointCodec.encode(
+            InkDocument(title = "legacy layers", pages = listOf(InkPage(layers = listOf(InkLayer(name = "Paint"))))),
+        )
+        val root = Json.parseToJsonElement(encoded).jsonObject.toMutableMap()
+        val document = root.getValue("document").jsonObject.toMutableMap()
+        val pages = (document.getValue("pages") as JsonArray).toMutableList()
+        val page = pages.first().jsonObject.toMutableMap()
+        val layers = (page.getValue("layers") as JsonArray).toMutableList()
+        val background = layers.first().jsonObject.toMutableMap()
+        background["contentKind"] = JsonPrimitive("VECTOR")
+        layers[0] = JsonObject(background)
+        page["layers"] = JsonArray(layers)
+        pages[0] = JsonObject(page)
+        document["pages"] = JsonArray(pages)
+        root["document"] = JsonObject(document)
+        val legacy = JsonObject(root).toString()
+
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            DocumentCheckpointCodec.decode(legacy)
+        }
+
         assertEquals(DocumentCheckpointCodec.LEGACY_ENGINE_ERROR, error.message)
     }
 }

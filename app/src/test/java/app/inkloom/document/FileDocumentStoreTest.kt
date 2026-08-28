@@ -146,7 +146,7 @@ class FileDocumentStoreTest {
 
     @Test fun layersAndObjectOwnershipRoundTrip() {
         val store = FileDocumentStore(Files.createTempDirectory("inkloom-layers").toFile())
-        val custom = InkLayer(name = "Diagrams", contentKind = LayerContentKind.RASTER)
+        val custom = InkLayer(name = "Diagrams")
         val page = InkPage(
             layers = defaultInkLayers() + custom,
             elements = listOf(PageElement.Text(x = .2f, y = .3f, layerId = custom.id, text = "Layered")),

@@ -10,7 +10,6 @@ class RasterLayerDocumentOperationsTest {
         val unlocked = InkLayer(
             id = "unlocked",
             name = "Paint",
-            contentKind = LayerContentKind.RASTER,
             rasterTileSurface = reference("unlocked"),
             rasterAssetPath = "/legacy/unlocked.png",
             rasterRotationQuarterTurns = 3,
@@ -18,14 +17,13 @@ class RasterLayerDocumentOperationsTest {
         val locked = InkLayer(
             id = "locked",
             name = "Locked",
-            contentKind = LayerContentKind.RASTER,
             rasterTileSurface = reference("locked"),
             locked = true,
         )
-        val vector = InkLayer(id = "vector", name = "Objects", contentKind = LayerContentKind.VECTOR)
+        val folder = InkLayer(id = "folder", name = "Folder", role = LayerRole.FOLDER)
 
         val cleared = RasterLayerDocumentOperations.clearUnlocked(
-            InkPage(layers = listOf(unlocked, locked, vector)),
+            InkPage(layers = listOf(unlocked, locked, folder)),
         )
 
         val clearedLayer = cleared.layers.first { it.id == unlocked.id }
@@ -33,7 +31,7 @@ class RasterLayerDocumentOperationsTest {
         assertNull(clearedLayer.rasterAssetPath)
         assertEquals(0, clearedLayer.rasterRotationQuarterTurns)
         assertNotNull(cleared.layers.first { it.id == locked.id }.rasterTileSurface)
-        assertEquals(vector, cleared.layers.first { it.id == vector.id })
+        assertEquals(folder, cleared.layers.first { it.id == folder.id })
     }
 
     private fun reference(id: String) = RasterTileSurfaceRef(

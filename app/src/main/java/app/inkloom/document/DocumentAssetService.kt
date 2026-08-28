@@ -607,7 +607,7 @@ class DocumentAssetService(private val context: Context) {
         require(patchLeft >= 0 && patchTop >= 0 &&
             patchLeft + patch.width <= visibleSourceWidth && patchTop + patch.height <= visibleSourceHeight
         ) { "Raster patch must fit inside the visible source" }
-        val layer = page.layers.firstOrNull { it.id == layerId && it.contentKind == LayerContentKind.RASTER }
+        val layer = page.layers.firstOrNull { it.id == layerId && it.isPaintSurfaceLayer() }
             ?: error("Raster layer does not exist")
         val turns = layer.rasterRotationQuarterTurns.mod(4)
         val crop = PageCropTransform.normalized(page.crop)
@@ -1080,7 +1080,7 @@ class DocumentAssetService(private val context: Context) {
             }
             }
             fun drawRasterSurface(targetLayer: InkLayer) {
-                if (!includeRaster || targetLayer.contentKind != LayerContentKind.RASTER) return
+                if (!includeRaster || !targetLayer.isPaintSurfaceLayer()) return
                 targetLayer.rasterTileSurface?.let { reference ->
                     val bitmap = renderRasterTileReference(
                         reference,
@@ -1180,7 +1180,7 @@ class DocumentAssetService(private val context: Context) {
         if (includedLayerIds != null || includedContentIds != null) return false
         if (projectedPage.elements.any { element -> visibleLayers.any { it.id == element.layerId } }) return false
         val rasterLayers = visibleLayers.filter { layer ->
-            layer.contentKind == LayerContentKind.RASTER &&
+            layer.isPaintSurfaceLayer() &&
                 (layer.rasterTileSurface != null || !layer.rasterAssetPath.isNullOrBlank())
         }
         if (rasterLayers.isEmpty()) return false

@@ -49,7 +49,7 @@ class PageSearchTest {
         val bounds = PdfTextBounds(.1f, .18f, .4f, .25f)
         val rasterRef = RasterTileSurfaceRef("/safe/page.json", "surface", 1600, 2263, 256, 7)
         val base = InkPage(layers = defaultInkLayers().map { layer ->
-            if (layer.id == LayerIds.INK) layer.copy(contentKind = LayerContentKind.RASTER, rasterTileSurface = rasterRef) else layer
+            if (layer.id == LayerIds.INK) layer.copy(rasterTileSurface = rasterRef) else layer
         })
         val indexed = base.copy(
             recognizedTextBlocks = listOf(RecognizedTextBlock(text = "离线手写识别", bounds = bounds, source = RecognizedTextSource.HANDWRITING, sourceIds = listOf(rasterRef.surfaceId), languageTag = "zh-Hans")),

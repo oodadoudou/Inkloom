@@ -9,7 +9,6 @@ import app.inkloom.document.DocumentAssetService
 import app.inkloom.document.InkLayer
 import app.inkloom.document.InkPage
 import app.inkloom.document.LayerBlendMode
-import app.inkloom.document.LayerContentKind
 import app.inkloom.document.LayerMask
 import app.inkloom.document.PageBackground
 import app.inkloom.document.PageElement
@@ -66,13 +65,11 @@ class V5RasterProjectionProductionTest {
         val lower = InkLayer(
             id = "export-lower",
             name = "Lower",
-            contentKind = LayerContentKind.RASTER,
             rasterTileSurface = lowerReference,
         )
         val upper = InkLayer(
             id = "export-upper",
             name = "Upper",
-            contentKind = LayerContentKind.RASTER,
             rasterTileSurface = upperReference,
             opacity = .5f,
             blendMode = LayerBlendMode.MULTIPLY,
@@ -103,7 +100,6 @@ class V5RasterProjectionProductionTest {
         val raster = InkLayer(
             id = "raster-with-element",
             name = "Raster",
-            contentKind = LayerContentKind.RASTER,
             rasterTileSurface = reference,
         )
         val shape = PageElement.Shape(

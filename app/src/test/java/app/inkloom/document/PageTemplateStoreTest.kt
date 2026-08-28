@@ -52,7 +52,6 @@ class PageTemplateStoreTest {
     fun `applying template preserves populated page content coordinates`() {
         val raster = defaultInkLayers().map { layer ->
             if (layer.id == LayerIds.INK) layer.copy(
-                contentKind = LayerContentKind.RASTER,
                 rasterTileSurface = RasterTileSurfaceRef("/safe/page.json", "surface", 1600, 2263, 256, 4),
             ) else layer
         }

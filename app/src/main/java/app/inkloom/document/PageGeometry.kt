@@ -11,7 +11,7 @@ object PageGeometry {
             crop = PageCropTransform.rotateClockwise(page.crop),
             layers = page.layers.map { layer ->
                 layer.copy(
-                    rasterRotationQuarterTurns = if (layer.contentKind == LayerContentKind.RASTER) {
+                    rasterRotationQuarterTurns = if (layer.isPaintSurfaceLayer()) {
                         (layer.rasterRotationQuarterTurns + 1).mod(4)
                     } else layer.rasterRotationQuarterTurns,
                     mask = layer.mask?.copy(regions = layer.mask.regions.map { region ->

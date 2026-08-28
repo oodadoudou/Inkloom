@@ -85,8 +85,8 @@ class LibraryBackupServiceTest {
             val page = InkPage(
                 background = PageBackground.Pdf(documentAsset.absolutePath, 0),
                 layers = defaultInkLayers() +
-                    InkLayer(name = "Paint", contentKind = LayerContentKind.RASTER, rasterAssetPath = rasterSurface.absolutePath) +
-                    InkLayer(name = "Sparse Paint", contentKind = LayerContentKind.RASTER, rasterTileSurface = sparseReference, mask = LayerMask(surface = layerMaskReference)),
+                    InkLayer(name = "Paint", rasterAssetPath = rasterSurface.absolutePath) +
+                    InkLayer(name = "Sparse Paint", rasterTileSurface = sparseReference, mask = LayerMask(surface = layerMaskReference)),
                 elements = listOf(sticky, maskedGradient),
             )
             val folder = InkFolder(id = "folder-1", name = "School")

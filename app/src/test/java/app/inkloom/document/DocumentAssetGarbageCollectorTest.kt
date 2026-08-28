@@ -25,7 +25,7 @@ class DocumentAssetGarbageCollectorTest {
                 title = "GC",
                 coverImagePath = outside.absolutePath,
                 pages = listOf(InkPage(
-                    layers = defaultInkLayers() + InkLayer(name = "Pixels", contentKind = LayerContentKind.RASTER, rasterAssetPath = raster.absolutePath),
+                    layers = defaultInkLayers() + InkLayer(name = "Pixels", rasterAssetPath = raster.absolutePath),
                     elements = listOf(
                     PageElement.Image(x = 0f, y = 0f, width = 10f, height = 10f, assetPath = image.absolutePath),
                     PageElement.Shape(x = 0f, y = 0f, width = 10f, height = 10f, maskAssetPath = mask.absolutePath),

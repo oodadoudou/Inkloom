@@ -8,7 +8,6 @@ import app.inkloom.document.DocumentAssetService
 import app.inkloom.document.InkDocument
 import app.inkloom.document.InkLayer
 import app.inkloom.document.InkPage
-import app.inkloom.document.LayerContentKind
 import app.inkloom.document.PageGeometry
 import app.inkloom.document.PageCrop
 import app.inkloom.document.defaultInkLayers
@@ -76,7 +75,6 @@ class RasterLayerPersistenceTest {
             title = "HDR",
             pages = listOf(InkPage(layers = defaultInkLayers() + InkLayer(
                 name = "HDR paint",
-                contentKind = LayerContentKind.RASTER,
                 rasterTileSurface = reference,
             ))),
         )
@@ -108,7 +106,6 @@ class RasterLayerPersistenceTest {
             val raster = InkLayer(
                 id = "raster",
                 name = "Paint",
-                contentKind = LayerContentKind.RASTER,
                 rasterAssetPath = firstPath,
             )
             val page = InkPage(width = 40f, height = 20f, layers = defaultInkLayers() + raster)
@@ -172,7 +169,6 @@ class RasterLayerPersistenceTest {
 
         val layer = InkLayer(
             name = "Sparse pixels",
-            contentKind = LayerContentKind.RASTER,
             rasterTileSurface = retained,
         )
         val document = InkDocument(title = "Sparse", pages = listOf(InkPage(layers = defaultInkLayers() + layer)))
@@ -200,7 +196,7 @@ class RasterLayerPersistenceTest {
         val source = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.RED) }
         val path = assets.saveRasterLayer(source)
         source.recycle()
-        val layer = InkLayer(id = "crop-raster", name = "Paint", contentKind = LayerContentKind.RASTER, rasterAssetPath = path)
+        val layer = InkLayer(id = "crop-raster", name = "Paint", rasterAssetPath = path)
         val page = InkPage(width = 100f, height = 100f, crop = PageCrop(.25f, .25f, .75f, .75f), layers = defaultInkLayers() + layer)
         val visible = Bitmap.createBitmap(200, 200, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLUE) }
         val merged = assets.composeVisibleRasterLayer(page, layer.id, visible)
@@ -224,7 +220,6 @@ class RasterLayerPersistenceTest {
         val layer = InkLayer(
             id = "sparse-render",
             name = "Sparse Render",
-            contentKind = LayerContentKind.RASTER,
             rasterTileSurface = reference,
         )
         val page = InkPage(width = 100f, height = 60f, layers = defaultInkLayers() + layer)
@@ -259,7 +254,6 @@ class RasterLayerPersistenceTest {
         val layer = InkLayer(
             id = "patch-raster",
             name = "Patch raster",
-            contentKind = LayerContentKind.RASTER,
             rasterTileSurface = reference,
         )
         val page = InkPage(
@@ -294,7 +288,6 @@ class RasterLayerPersistenceTest {
         val layer = InkLayer(
             id = "rotated-patch-raster",
             name = "Rotated patch raster",
-            contentKind = LayerContentKind.RASTER,
             rasterTileSurface = reference,
             rasterRotationQuarterTurns = 1,
         )

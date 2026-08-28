@@ -2,10 +2,10 @@ package app.inkloom.ui
 
 import app.inkloom.document.InkLayer
 import app.inkloom.document.InkPage
-import app.inkloom.document.LayerContentKind
 import app.inkloom.document.LayerHierarchy
 import app.inkloom.document.PageCropTransform
 import app.inkloom.document.RasterTileSurfaceRef
+import app.inkloom.document.isPaintSurfaceLayer
 import app.inkloom.engine.v5.surface.PixelTileSurface
 
 /**
@@ -33,7 +33,7 @@ internal class RasterLayerSurfaceRuntime(
     @Synchronized
     fun reconcile(page: InkPage): Map<String, PixelTileSurface> {
         val visibleLayers = page.layers.filter { layer ->
-            layer.contentKind == LayerContentKind.RASTER && LayerHierarchy.effectiveVisible(page.layers, layer)
+            layer.isPaintSurfaceLayer() && LayerHierarchy.effectiveVisible(page.layers, layer)
         }
         val visibleIds = visibleLayers.mapTo(mutableSetOf(), InkLayer::id)
         (surfaces.keys - visibleIds).forEach { layerId ->
@@ -71,7 +71,7 @@ internal class RasterLayerSurfaceRuntime(
     @Synchronized
     fun acceptPublished(page: InkPage, layerId: String, reference: RasterTileSurfaceRef, rotationQuarterTurns: Int) {
         if (layerId !in surfaces) return
-        val layer = page.layers.firstOrNull { it.id == layerId && it.contentKind == LayerContentKind.RASTER } ?: return
+        val layer = page.layers.firstOrNull { it.id == layerId && it.isPaintSurfaceLayer() } ?: return
         locallyPublishedKeys[layerId] = RasterSurfaceSourceKey.from(
             page,
             layer.copy(

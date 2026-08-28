@@ -8,7 +8,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.document.DocumentAssetService
 import app.inkloom.document.InkPage
 import app.inkloom.document.InkLayer
-import app.inkloom.document.LayerContentKind
 import app.inkloom.document.LayerIds
 import app.inkloom.document.LayerRole
 import app.inkloom.document.PageBackground
@@ -52,7 +51,6 @@ class PdfPageThumbnailTest {
                         id = LayerIds.INK,
                         name = "Notes",
                         role = LayerRole.INK,
-                        contentKind = LayerContentKind.RASTER,
                         rasterTileSurface = reference,
                     ),
                 ),

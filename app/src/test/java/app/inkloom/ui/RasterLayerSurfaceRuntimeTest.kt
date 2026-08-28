@@ -2,7 +2,6 @@ package app.inkloom.ui
 
 import app.inkloom.document.InkLayer
 import app.inkloom.document.InkPage
-import app.inkloom.document.LayerContentKind
 import app.inkloom.document.LayerRole
 import app.inkloom.document.RasterTileSurfaceRef
 import app.inkloom.engine.v5.surface.PixelTileSurface
@@ -62,7 +61,7 @@ class RasterLayerSurfaceRuntimeTest {
     private fun page(reference: RasterTileSurfaceRef?) = InkPage(
         layers = listOf(
             InkLayer("background", "Background", LayerRole.BACKGROUND),
-            InkLayer(PAINT, "Notes", LayerRole.INK, LayerContentKind.RASTER, rasterTileSurface = reference),
+            InkLayer(PAINT, "Notes", LayerRole.INK, rasterTileSurface = reference),
         ),
     )
 

@@ -1019,7 +1019,7 @@ private fun EditorScreen(
     onClearPageInk: (String, String) -> Unit,
     onSetPageCrop: (String, String, PageCrop) -> Unit,
     onRotatePage: (String, String) -> Unit,
-    onAddLayer: (String, String, String, LayerContentKind) -> Unit,
+    onAddLayer: (String, String, String) -> Unit,
     onAddLayerFolder: (String, String) -> Unit,
     onRenameLayer: (String, String, String, String) -> Unit,
     onToggleLayerVisibility: (String, String, String) -> Unit,
@@ -2138,7 +2138,7 @@ private fun EditorScreen(
                 onClose = { layersOpen = false; onSettingsChange(settings.copy(showLayerPanel = false)) },
                 onColor = ::changeBrushColor,
                 onSelect = { activeLayerId = it },
-                onAdd = { kind -> onAddLayer(document.id, selectedPage.id, "Layer", kind) },
+                onAdd = { onAddLayer(document.id, selectedPage.id, "Layer") },
                 onAddFolder = { onAddLayerFolder(document.id, selectedPage.id) },
                 onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
                 onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
@@ -2480,7 +2480,7 @@ private fun EditorScreen(
                             ShortcutAction.DESELECT -> finishSelectionTool(deselect = true)
                             ShortcutAction.UNDO -> canvasView?.undo()
                             ShortcutAction.REDO -> canvasView?.redo()
-                            ShortcutAction.NEW_LAYER -> onAddLayer(document.id, selectedPage.id, "Layer", LayerContentKind.RASTER)
+                            ShortcutAction.NEW_LAYER -> onAddLayer(document.id, selectedPage.id, "Layer")
                             ShortcutAction.MERGE_LAYER_DOWN -> onMergeLayerDown(document.id, selectedPage.id, activeLayerId)?.let { activeLayerId = it }
                             ShortcutAction.SELECT_LAYER_ABOVE -> LayerShortcutSelection.adjacentEditable(selectedPage.layers, activeLayerId, 1)?.let { activeLayerId = it }
                             ShortcutAction.SELECT_LAYER_BELOW -> LayerShortcutSelection.adjacentEditable(selectedPage.layers, activeLayerId, -1)?.let { activeLayerId = it }
@@ -2864,7 +2864,7 @@ private fun EditorScreen(
                 onClose = { layersOpen = false; onSettingsChange(settings.copy(showLayerPanel = false)) },
                 onColor = ::changeBrushColor,
                 onSelect = { activeLayerId = it },
-                onAdd = { kind -> onAddLayer(document.id, selectedPage.id, "Layer", kind) },
+                onAdd = { onAddLayer(document.id, selectedPage.id, "Layer") },
                 onAddFolder = { onAddLayerFolder(document.id, selectedPage.id) },
                 onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
                 onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
@@ -2941,7 +2941,7 @@ private fun EditorScreen(
                     onClose = { layersOpen = false; onSettingsChange(settings.copy(showLayerPanel = false)) },
                     onColor = ::changeBrushColor,
                     onSelect = { activeLayerId = it },
-                    onAdd = { kind -> onAddLayer(document.id, selectedPage.id, "Layer", kind) },
+                    onAdd = { onAddLayer(document.id, selectedPage.id, "Layer") },
                     onAddFolder = { onAddLayerFolder(document.id, selectedPage.id) },
                     onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
                     onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
@@ -3068,7 +3068,7 @@ private fun EditorScreen(
                 onClose = { layersOpen = false; onSettingsChange(settings.copy(showLayerPanel = false)) },
                 onColor = ::changeBrushColor,
                 onSelect = { activeLayerId = it },
-                onAdd = { kind -> onAddLayer(document.id, selectedPage.id, "Layer", kind) },
+                onAdd = { onAddLayer(document.id, selectedPage.id, "Layer") },
                 onAddFolder = { onAddLayerFolder(document.id, selectedPage.id) },
                 onRename = { layerId, name -> onRenameLayer(document.id, selectedPage.id, layerId, name) },
                 onVisibility = { onToggleLayerVisibility(document.id, selectedPage.id, it) },
@@ -4303,7 +4303,7 @@ private fun PageRail(
                         DropdownMenuItem(
                             text = { Text(tr("Clear unlocked paint", "清除未锁定绘画内容")) },
                             enabled = page.layers.any { layer ->
-                                layer.contentKind == LayerContentKind.RASTER &&
+                                layer.isPaintSurfaceLayer() &&
                                     !LayerHierarchy.effectiveLocked(page.layers, layer) &&
                                     (layer.rasterTileSurface != null || layer.rasterAssetPath != null)
                             },
@@ -4643,7 +4643,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
         view.onRasterLayerCommitted = commit@{ commit ->
             val layerId = commit.layerId
             val capturedPage = page
-            val layer = capturedPage.layers.firstOrNull { it.id == layerId && it.contentKind == LayerContentKind.RASTER }
+            val layer = capturedPage.layers.firstOrNull { it.id == layerId && it.isPaintSurfaceLayer() }
             if (layer == null || gradientCommitScope.coroutineContext[Job]?.isActive != true) {
                 return@commit
             }
@@ -6900,26 +6900,6 @@ private fun LayerMaskThumbnailView(mask: LayerMask, modifier: Modifier = Modifie
 }
 
 @Composable
-private fun LayerKindMenu(
-    expanded: Boolean,
-    onDismiss: () -> Unit,
-    onSelect: (LayerContentKind) -> Unit,
-) {
-    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
-        DropdownMenuItem(
-            text = { Text(tr("Raster layer", "栅格图层")) },
-            leadingIcon = { Icon(Icons.Outlined.GridOn, null) },
-            onClick = { onSelect(LayerContentKind.RASTER) },
-        )
-        DropdownMenuItem(
-            text = { Text(tr("Vector layer", "矢量图层")) },
-            leadingIcon = { Icon(Icons.Outlined.Gesture, null) },
-            onClick = { onSelect(LayerContentKind.VECTOR) },
-        )
-    }
-}
-
-@Composable
 private fun LayerPanel(
     page: InkPage,
     activeLayerId: String,
@@ -6929,7 +6909,7 @@ private fun LayerPanel(
     onClose: () -> Unit,
     onColor: (Int) -> Unit,
     onSelect: (String) -> Unit,
-    onAdd: (LayerContentKind) -> Unit,
+    onAdd: () -> Unit,
     onAddFolder: () -> Unit,
     onRename: (String, String) -> Unit,
     onVisibility: (String) -> Unit,
@@ -7010,7 +6990,6 @@ private fun LayerPanel(
     var renameLayer by remember { mutableStateOf<InkLayer?>(null) }
     var renameValue by remember { mutableStateOf("") }
     var blendModeMenu by remember { mutableStateOf(false) }
-    var addLayerMenu by remember { mutableStateOf(false) }
     var layerSearch by rememberSaveable { mutableStateOf("") }
     var selectedLayerIds by remember { mutableStateOf(emptySet<String>()) }
     val filteredLayers = LayerHierarchy.panelOrder(page.layers).filter { layerSearch.isBlank() || it.name.contains(layerSearch.trim(), ignoreCase = true) }
@@ -7054,10 +7033,7 @@ private fun LayerPanel(
             }
             WorkspacePanelDockMenu(dock, onDock, tr("Change layers panel docking", "更改图层面板停靠方式"), Modifier.size(24.dp), panelMode, panelLocked, onPanelMode, onPanelLocked)
             IconButton(onClick = onAddFolder, modifier = Modifier.size(24.dp)) { Icon(Icons.Outlined.CreateNewFolder, tr("Add layer folder", "添加图层文件夹"), Modifier.size(14.dp)) }
-            Box {
-                IconButton(onClick = { addLayerMenu = true }, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Add, tr("Add layer", "添加图层"), Modifier.size(14.dp)) }
-                LayerKindMenu(addLayerMenu, { addLayerMenu = false }) { kind -> addLayerMenu = false; onAdd(kind) }
-            }
+            IconButton(onClick = onAdd, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Add, tr("Add paint layer", "添加绘画图层"), Modifier.size(14.dp)) }
             IconButton(onClick = onClose, modifier = Modifier.size(24.dp)) { Icon(Icons.Outlined.Close, tr("Close layers panel", "关闭图层面板"), Modifier.size(14.dp)) }
         }
         Spacer(Modifier.height(2.dp))
@@ -7145,7 +7121,7 @@ private fun LayerPanel(
                                 when (layer.role) {
                                     LayerRole.BACKGROUND -> tr("Background", "背景")
                                     LayerRole.FOLDER -> tr("Folder", "文件夹")
-                                    else -> if (layer.contentKind == LayerContentKind.RASTER) tr("Raster layer", "栅格图层") else tr("Vector layer", "矢量图层")
+                                    else -> tr("Paint layer", "绘画图层")
                                 },
                                 fontSize = 8.sp,
                                 color = MutedInk,
@@ -7221,7 +7197,7 @@ private fun ProcreateLayerPanel(
     onPanelLocked: (Boolean) -> Unit,
     onClose: () -> Unit,
     onSelect: (String) -> Unit,
-    onAdd: (LayerContentKind) -> Unit,
+    onAdd: () -> Unit,
     onAddFolder: () -> Unit,
     onRename: (String, String) -> Unit,
     onVisibility: (String) -> Unit,
@@ -7246,7 +7222,6 @@ private fun ProcreateLayerPanel(
     var renameLayer by remember { mutableStateOf<InkLayer?>(null) }
     var renameValue by remember { mutableStateOf("") }
     var blendMenu by remember { mutableStateOf(false) }
-    var addLayerMenu by remember { mutableStateOf(false) }
     var layerSearch by rememberSaveable { mutableStateOf("") }
     var selectedLayerIds by remember { mutableStateOf(emptySet<String>()) }
     val activeLayer = page.layers.firstOrNull { it.id == activeLayerId }
@@ -7291,10 +7266,7 @@ private fun ProcreateLayerPanel(
                 )
                 WorkspacePanelDockMenu(dock, onDock, tr("Change layers panel docking", "更改图层面板停靠方式"), Modifier.size(36.dp), panelMode, panelLocked, onPanelMode, onPanelLocked)
                 IconButton(onClick = onAddFolder, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.CreateNewFolder, tr("Add layer group", "添加图层组"), tint = Ink) }
-                Box {
-                    IconButton(onClick = { addLayerMenu = true }, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Add, tr("Add layer", "添加图层"), tint = Ink) }
-                    LayerKindMenu(addLayerMenu, { addLayerMenu = false }) { kind -> addLayerMenu = false; onAdd(kind) }
-                }
+                IconButton(onClick = onAdd, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Add, tr("Add paint layer", "添加绘画图层"), tint = Ink) }
                 IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Close, tr("Close layers panel", "关闭图层面板"), tint = Ink) }
             }
             HorizontalDivider(color = OutlineSoft)
@@ -7364,8 +7336,7 @@ private fun ProcreateLayerPanel(
                                 when {
                                     layer.role == LayerRole.FOLDER -> tr("Group", "组")
                                     layer.role == LayerRole.BACKGROUND -> tr("Background", "背景")
-                                    layer.contentKind == LayerContentKind.RASTER -> tr("Raster · ", "栅格 · ") + layer.blendMode.name.first()
-                                    else -> tr("Vector · ", "矢量 · ") + layer.blendMode.name.first()
+                                    else -> tr("Paint · ", "绘画 · ") + layer.blendMode.name.first()
                                 },
                                 fontSize = 9.sp,
                                 color = MutedInk,

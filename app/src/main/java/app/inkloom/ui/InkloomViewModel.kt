@@ -245,12 +245,10 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         documentId: String,
         pageId: String,
         name: String = "Layer",
-        contentKind: LayerContentKind = LayerContentKind.RASTER,
     ) = updatePage(documentId, pageId) { page ->
         val suffix = page.layers.count { it.role == LayerRole.CUSTOM } + 1
         page.copy(layers = page.layers + InkLayer(
             name = if (name == "Layer") "Layer $suffix" else name.trim().ifBlank { "Layer $suffix" },
-            contentKind = contentKind,
         ))
     }
 
@@ -287,7 +285,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         rotationQuarterTurns: Int = 0,
     ) = updatePage(documentId, pageId) { page ->
         page.copy(layers = page.layers.map { layer ->
-            if (layer.id != layerId || layer.contentKind != LayerContentKind.RASTER) layer
+            if (layer.id != layerId || !layer.isPaintSurfaceLayer()) layer
             else layer.copy(
                 rasterTileSurface = null,
                 rasterAssetPath = assetPath,
@@ -304,7 +302,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         rotationQuarterTurns: Int = 0,
     ) = updatePage(documentId, pageId) { page ->
         page.copy(layers = page.layers.map { layer ->
-            if (layer.id != layerId || layer.contentKind != LayerContentKind.RASTER) layer
+            if (layer.id != layerId || !layer.isPaintSurfaceLayer()) layer
             else layer.copy(
                 rasterTileSurface = reference,
                 rasterAssetPath = null,
