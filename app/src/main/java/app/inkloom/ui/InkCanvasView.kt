@@ -33,10 +33,8 @@ import app.inkloom.brushpresetv5.CompiledBrushProgramV5
 import app.inkloom.brushpresetv5.RenderBackend as RenderBackendV5
 import app.inkloom.engine.v5.diagnostics.PaintingTruthDiagnostics
 import app.inkloom.engine.v5.diagnostics.StrokeTrace
-import app.inkloom.engine.v5.diagnostics.traceEngineV5
 import app.inkloom.engine.v5.history.EngineTransaction
 import app.inkloom.engine.v5.history.EngineTransactionJournal
-import app.inkloom.engine.v5.input.NativeStrokeSession
 import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
 import app.inkloom.engine.v5.android.PixelTileCanvasRenderer
 import app.inkloom.engine.v5.android.MaskTileCanvasRenderer
@@ -101,7 +99,6 @@ import app.inkloom.document.ViewportState
 import app.inkloom.document.BrushCurvePoint
 import app.inkloom.document.BrushCursorGeometry
 import app.inkloom.document.BrushColorDynamics
-import app.inkloom.document.BrushSensorFlags
 import app.inkloom.document.ProcreateColorDynamics
 import app.inkloom.document.ProcreateBrushBlend
 import app.inkloom.document.ProcreateFiltering
@@ -222,9 +219,7 @@ data class CanvasColorDrop(val color: Int)
 
 class InkCanvasView(context: Context) : View(context) {
     private val renderLock = Any()
-    private val strokeInputModeler = NativeStrokeSession()
     private val editHistory = EngineTransactionJournal()
-    private val currentPoints = mutableListOf<StrokePoint>()
     private var currentStrokeId = java.util.UUID.randomUUID().toString()
 
     /** Debug-only stroke handoff overlay and [StrokeTrace] gate. No-op in release builds. */
@@ -1560,7 +1555,6 @@ class InkCanvasView(context: Context) : View(context) {
         releaseActiveStrokePreview()
         resetSelectionViewBinding(clearReselect = true, unbindDocument = true)
         editHistory.clear()
-        strokeInputModeler.close()
         v5BrushTipMasks.clear()
         releaseRasterLayerProjection()
         rasterTileRenderer.close()
@@ -2481,11 +2475,6 @@ class InkCanvasView(context: Context) : View(context) {
                     ) }
                     laserTrail.append(normalizedX, normalizedY, event.eventTime)
                 }
-                else {
-                    if (activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) StrokeTrace.mark(currentStrokeId, StrokeTrace.STAGE_LAST_MOVE)
-                    updateContinuousPlotInput(normalizedX, normalizedY, event.getPressure(pointerIndex), event.getAxisValue(MotionEvent.AXIS_TILT, pointerIndex), event.getOrientation(pointerIndex))
-                    addMotionEventPoints(event, pointerIndex)
-                }
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (layerMaskGesture != null) {
@@ -2505,7 +2494,6 @@ class InkCanvasView(context: Context) : View(context) {
                     v5StrokeController.cancel()
                     v5RejectedContact = false
                     StrokeTrace.abandon(currentStrokeId)
-                    clearActiveStrokeInput()
                     finishActiveStrokePreview()
                     pendingMaterialBarrierSequence = null
                     if (activeTool == EditorTool.LASER) laserTrail.cancelActive()
@@ -2912,7 +2900,6 @@ class InkCanvasView(context: Context) : View(context) {
         stopContinuousPlot()
         v5StrokeController.cancel()
         v5RejectedContact = false
-        clearActiveStrokeInput()
         finishActiveStrokePreview()
         pendingMaterialBarrierSequence = null
         laserTrail.cancelActive()
@@ -3805,159 +3792,10 @@ class InkCanvasView(context: Context) : View(context) {
         )
     }
 
-    private fun addPoint(x: Float, y: Float, pressure: Float, time: Long, tilt: Float, orientation: Float, force: Boolean = false) {
-        traceEngineV5("Inkloom.V5.InputModel") {
-            addModeledPoint(x, y, pressure, time, tilt, orientation, force)
-        }
-    }
-
-    private fun addModeledPoint(x: Float, y: Float, pressure: Float, time: Long, tilt: Float, orientation: Float, force: Boolean) {
-        stageNativeInput(0, x, y, pressure, time, tilt, orientation, force)
-        if (strokeInputModeler.appendBatch(1, modeledViewportWidth(), modeledViewportHeight(), stabilization, stabilizationBySpeed, stabilizationBySpeedMode, streamLine, streamLinePressure, procreateStabilization, motionFiltering, motionFilteringExpression) != 1) return
-        appendNativeOutput(0)
-        requestActiveSurfaceFrame()
-    }
-
-    /** Copies every historical and current sample into one direct-buffer batch. The event-to-model
-     * boundary now incurs one JNI call instead of one call per sample. */
-    private fun addMotionEventPoints(event: MotionEvent, pointerIndex: Int) {
-        traceEngineV5("Inkloom.V5.InputModelBatch") {
-            val total = event.historySize + 1
-            var sourceIndex = 0
-            while (sourceIndex < total) {
-                val count = minOf(strokeInputModeler.batchCapacity, total - sourceIndex)
-                for (batchIndex in 0 until count) {
-                    val eventIndex = sourceIndex + batchIndex
-                    val historical = eventIndex < event.historySize
-                    val x = if (historical) event.getHistoricalX(pointerIndex, eventIndex) else event.getX(pointerIndex)
-                    val y = if (historical) event.getHistoricalY(pointerIndex, eventIndex) else event.getY(pointerIndex)
-                    val pressure = if (historical) event.getHistoricalPressure(pointerIndex, eventIndex) else event.getPressure(pointerIndex)
-                    val time = if (historical) event.getHistoricalEventTime(eventIndex) else event.eventTime
-                    val tilt = if (historical) event.getHistoricalAxisValue(MotionEvent.AXIS_TILT, pointerIndex, eventIndex) else event.getAxisValue(MotionEvent.AXIS_TILT, pointerIndex)
-                    val orientation = if (historical) event.getHistoricalOrientation(pointerIndex, eventIndex) else event.getOrientation(pointerIndex)
-                    stageNativeInput(
-                        batchIndex,
-                        x / width.coerceAtLeast(1),
-                        y / height.coerceAtLeast(1),
-                        pressure,
-                        time,
-                        tilt,
-                        orientation,
-                        force = false,
-                    )
-                }
-                val accepted = strokeInputModeler.appendBatch(
-                    count,
-                    modeledViewportWidth(),
-                    modeledViewportHeight(),
-                    stabilization,
-                    stabilizationBySpeed,
-                    stabilizationBySpeedMode,
-                    streamLine,
-                    streamLinePressure,
-                    procreateStabilization,
-                    motionFiltering,
-                    motionFilteringExpression,
-                )
-                for (outputIndex in 0 until accepted) appendNativeOutput(outputIndex)
-                sourceIndex += count
-            }
-        }
-        requestActiveSurfaceFrame()
-    }
-
-    /** Sampling density and velocity are physical-screen properties. At 8x zoom, using the fitted
-     * page dimensions would discard points roughly eight times farther apart on screen and turn a
-     * smooth pen path into visible chords. */
-    private fun modeledViewportWidth(): Int =
-        (width.coerceAtLeast(1) * viewportScale.coerceIn(1f, ViewportTransform.MAXIMUM_SCALE)).toInt().coerceAtLeast(1)
-
-    private fun modeledViewportHeight(): Int =
-        (height.coerceAtLeast(1) * viewportScale.coerceIn(1f, ViewportTransform.MAXIMUM_SCALE)).toInt().coerceAtLeast(1)
-
-    private fun stageNativeInput(index: Int, x: Float, y: Float, pressure: Float, time: Long, tilt: Float, orientation: Float, force: Boolean) {
-        val adjustedPressure = PressureCalibration.apply(pressure, pressureMinimumInput, pressureMaximumInput, pressureSensitivity, pressureResponseCurve)
-        if (!rulerEnabled && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) && activePerspectiveSnapConstraint == null) {
-            currentPoints.firstOrNull()?.let { start ->
-                activePerspectiveSnapConstraint = PerspectiveGuides.constraintAt(
-                    perspectiveGuideState,
-                    start.x,
-                    start.y,
-                    x,
-                    y,
-                    width.toFloat(),
-                    height.toFloat(),
-                    GUIDE_CAPTURE_MOVEMENT_DP * resources.displayMetrics.density,
-                )
-            }
-        }
-        if (!rulerEnabled && perspectiveGuideState.mode == PerspectiveGuideMode.NONE && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) && activeSpecialRulerConstraint == null) {
-            currentPoints.firstOrNull()?.let { start ->
-                activeSpecialRulerConstraint = SpecialRulers.constraintAt(
-                    specialRulerState,
-                    start.x,
-                    start.y,
-                    x,
-                    y,
-                    width.toFloat(),
-                    height.toFloat(),
-                    GUIDE_CAPTURE_MOVEMENT_DP * resources.displayMetrics.density,
-                )
-            }
-        }
-        val constrained = if (rulerEnabled && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
-            RulerGuide.project(rulerGuide, x, y, width.toFloat(), height.toFloat())
-        } else activePerspectiveSnapConstraint?.apply(x, y) ?: activeSpecialRulerConstraint?.apply(x, y) ?: activeCanvasSnapConstraint?.apply(x, y)
-        strokeInputModeler.putSample(
-            index,
-            (constrained?.x ?: x).coerceIn(0f, 1f),
-            (constrained?.y ?: y).coerceIn(0f, 1f),
-            adjustedPressure,
-            time,
-            tilt,
-            orientation,
-            force,
-        )
-    }
-
-    private fun appendNativeOutput(index: Int) {
-        val x = strokeInputModeler.x(index)
-        val y = strokeInputModeler.y(index)
-        val previous = currentPoints.lastOrNull()
-        if (previous == null) StrokeTrace.markOnce(currentStrokeId, StrokeTrace.STAGE_FIRST_SAMPLE)
-        val pathDistance = (previous?.pathDistance ?: 0f) + if (previous == null) 0f else hypot(
-            ((x - previous.x) * pageModelWidth).toDouble(),
-            ((y - previous.y) * pageModelHeight).toDouble(),
-        ).toFloat() / REFERENCE_WIDTH
-        currentPoints += StrokePoint(
-            x = x,
-            y = y,
-            pressure = strokeInputModeler.pressure(index),
-            timeMs = strokeInputModeler.timeMs(index),
-            tilt = strokeInputModeler.tilt(index),
-            orientation = strokeInputModeler.orientation(index),
-            velocity = strokeInputModeler.velocity(index),
-            pathDistance = pathDistance,
-            // The first modeled sample has no history: velocity is 0 by construction and
-            // tilt/orientation are often device defaults. Marking it not-established lets brush
-            // dynamics treat the sensors as neutral instead of feeding zero through a curve.
-            sensorFlags = if (previous == null) 0 else BrushSensorFlags.ALL,
-        )
-    }
-
-    private fun requestActiveSurfaceFrame() {
-        postInvalidateOnAnimation()
-    }
-
     @VisibleForTesting
     internal fun flushRealtimeToolFrame() {
         if (smudgeFrameScheduled || hasPendingSmudge) flushSmudgeFrame()
         if (liquifyFrameScheduled || hasPendingLiquify) flushLiquifyFrame()
-    }
-
-    private fun clearActiveStrokeInput() {
-        currentPoints.clear()
-        strokeInputModeler.reset()
     }
 
     /** The full-screen proxy receives screen-space contacts. Drawing contacts are mapped into the

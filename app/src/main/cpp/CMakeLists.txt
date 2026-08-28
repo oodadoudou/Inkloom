@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 3.22.1)
 project(inkloom_engine_v5 LANGUAGES CXX)
 
 add_library(inkloom_engine_v5 SHARED
-    v5_input_session.cpp
     v5_composite.cpp
     v5_raster_ops.cpp
 )
