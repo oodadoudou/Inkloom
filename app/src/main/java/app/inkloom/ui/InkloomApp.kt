@@ -599,10 +599,12 @@ fun InkloomApp(initialIntent: Intent?) {
         }.onFailure { importError = it.message }
     }
     var pendingCoverTitle by remember { mutableStateOf("Untitled Note") }
+    var pendingCoverTemplateId by remember { mutableStateOf(PageTemplateCatalog.blank.id) }
+    var pendingCoverPaperColor by remember { mutableLongStateOf(PaperColorCatalog.WHITE) }
     val coverImagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) runCatching {
             context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            viewModel.createNoteWithCover(uri, pendingCoverTitle)
+            viewModel.createNoteWithCover(uri, pendingCoverTitle, pendingCoverTemplateId, pendingCoverPaperColor)
             destination = AppDestination.EDITOR
         }.onFailure { importError = it.message }
     }
@@ -638,9 +640,15 @@ fun InkloomApp(initialIntent: Intent?) {
         AppDestination.LIBRARY -> LibraryScreen(
             documents = libraryState.documents,
             folders = libraryState.folders,
+            pageTemplates = pageTemplates,
             onOpen = { viewModel.select(it.id); destination = AppDestination.EDITOR },
-            onNewNote = { title, style -> viewModel.createNote(title, style); destination = AppDestination.EDITOR },
-            onImportCover = { title -> pendingCoverTitle = title; coverImagePicker.launch(arrayOf("image/*")) },
+            onNewNote = { title, style, templateId, paperColor -> viewModel.createNote(title, style, templateId, paperColor); destination = AppDestination.EDITOR },
+            onImportCover = { title, templateId, paperColor ->
+                pendingCoverTitle = title
+                pendingCoverTemplateId = templateId
+                pendingCoverPaperColor = paperColor
+                coverImagePicker.launch(arrayOf("image/*"))
+            },
             onImport = { documentPicker.launch(arrayOf("application/pdf", "image/*", "application/zip")) },
             onFavorite = viewModel::toggleFavorite,
             onArchive = viewModel::toggleArchive,
@@ -778,7 +786,7 @@ fun InkloomApp(initialIntent: Intent?) {
 private enum class LibraryFilter { ALL, FAVORITES, ARCHIVED, TRASH, PDF }
 
 @Composable
-private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>, onOpen: (InkDocument) -> Unit, onNewNote: (String, CoverStyle) -> Unit, onImportCover: (String) -> Unit, onImport: () -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, onCreateFolder: (String, String?) -> Unit, onMoveToFolder: (String, String?) -> Unit, onDeleteFolder: (String) -> Unit, onSettings: () -> Unit) {
+private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>, pageTemplates: PageTemplateLibrary, onOpen: (InkDocument) -> Unit, onNewNote: (String, CoverStyle, String, Long) -> Unit, onImportCover: (String, String, Long) -> Unit, onImport: () -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, onCreateFolder: (String, String?) -> Unit, onMoveToFolder: (String, String?) -> Unit, onDeleteFolder: (String) -> Unit, onSettings: () -> Unit) {
     var filter by remember { mutableStateOf(LibraryFilter.ALL) }
     var search by remember { mutableStateOf("") }
     var folderId by remember { mutableStateOf<String?>(null) }
@@ -786,6 +794,8 @@ private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>
     val untitledNoteLabel = tr("Untitled Note", "未命名笔记")
     var newNoteTitle by remember { mutableStateOf(untitledNoteLabel) }
     var newNoteCover by remember { mutableStateOf(CoverStyle.BLACK) }
+    var newNoteTemplateId by remember { mutableStateOf(PageTemplateCatalog.blank.id) }
+    var newNotePaperColor by remember { mutableLongStateOf(PaperColorCatalog.WHITE) }
     val visible = documents.filter { document ->
         val matchesSearch = search.isBlank() || document.title.contains(search, true) || document.tags.any { it.contains(search, true) } || document.pages.any { PageSearch.matches(it, search) }
         matchesSearch && (folderId == null || document.folderId == folderId) && when (filter) {
@@ -864,14 +874,53 @@ private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>
                         ) { NotebookCover(InkDocument(title = newNoteTitle, coverStyle = style, coverArgb = if (style in setOf(CoverStyle.WHITE, CoverStyle.WHITE_GRID)) 0xFFF4F4F4 else 0xFF202020), Modifier.fillMaxSize()) }
                     }
                 }
-                OutlinedButton(onClick = { newNoteOpen = false; onImportCover(newNoteTitle) }, modifier = Modifier.fillMaxWidth()) {
+                Text(tr("Page template", "页面模板"), color = MutedInk, fontSize = 12.sp)
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(pageTemplates.allTemplates(), key = { it.id }) { template ->
+                        val selected = template.id == newNoteTemplateId
+                        val name = pageTemplateName(template)
+                        val templateDescription = tr("New note template $name", "新笔记模板 $name")
+                        Column(
+                            Modifier
+                                .width(76.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .border(if (selected) 2.dp else 1.dp, if (selected) Ink else OutlineSoft, RoundedCornerShape(8.dp))
+                                .clickable { newNoteTemplateId = template.id }
+                                .semantics { contentDescription = templateDescription }
+                                .padding(7.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            PageTemplatePreview(PageTemplateOperations.withPaperColor(template, newNotePaperColor), selected)
+                            Spacer(Modifier.height(4.dp))
+                            Text(name, fontSize = 9.sp, maxLines = 1)
+                        }
+                    }
+                }
+                if (pageTemplates.template(newNoteTemplateId)?.background is PageBackground.Paper) {
+                    Text(tr("Paper color", "纸张颜色"), color = MutedInk, fontSize = 12.sp)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        PaperColorCatalog.options.forEach { option ->
+                            val label = paperColorName(option)
+                            val colorDescription = tr("New note paper color $label", "新笔记纸张颜色 $label")
+                            Box(
+                                Modifier
+                                    .size(34.dp)
+                                    .background(Color(option.colorArgb), CircleShape)
+                                    .border(if (newNotePaperColor == option.colorArgb) 2.dp else 1.dp, if (newNotePaperColor == option.colorArgb) Ink else OutlineSoft, CircleShape)
+                                    .clickable { newNotePaperColor = option.colorArgb }
+                                    .semantics { contentDescription = colorDescription },
+                            )
+                        }
+                    }
+                }
+                OutlinedButton(onClick = { newNoteOpen = false; onImportCover(newNoteTitle, newNoteTemplateId, newNotePaperColor) }, modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Outlined.AddPhotoAlternate, null)
                     Spacer(Modifier.width(8.dp))
                     Text(tr("Import image as cover", "导入图片作为封面"))
                 }
             }
         },
-        confirmButton = { Button(onClick = { newNoteOpen = false; onNewNote(newNoteTitle, newNoteCover) }) { Text(tr("Create", "创建")) } },
+        confirmButton = { Button(onClick = { newNoteOpen = false; onNewNote(newNoteTitle, newNoteCover, newNoteTemplateId, newNotePaperColor) }) { Text(tr("Create", "创建")) } },
         dismissButton = { TextButton(onClick = { newNoteOpen = false }) { Text(tr("Cancel", "取消")) } },
     )
 }
@@ -4489,8 +4538,9 @@ private fun PageTemplatePickerDialog(
 @Composable
 private fun PageTemplatePreview(template: PageTemplate, selected: Boolean) {
     val borderColor = if (selected) Ink else OutlineSoft
+    val pageColor = (template.background as? PageBackground.Paper)?.colorArgb?.let(::Color) ?: Color.White
     Box(
-        Modifier.size(42.dp, 54.dp).background(Color.White, RoundedCornerShape(4.dp)).border(if (selected) 2.dp else 1.dp, borderColor, RoundedCornerShape(4.dp)),
+        Modifier.size(42.dp, 54.dp).background(pageColor, RoundedCornerShape(4.dp)).border(if (selected) 2.dp else 1.dp, borderColor, RoundedCornerShape(4.dp)),
         contentAlignment = Alignment.Center,
     ) {
         when (val background = template.background) {
@@ -4508,6 +4558,16 @@ private fun PageTemplatePreview(template: PageTemplate, selected: Boolean) {
             is PageBackground.Pdf -> Text("PDF", color = Ink, fontSize = 9.sp, fontWeight = FontWeight.Bold)
         }
     }
+}
+
+@Composable
+private fun paperColorName(option: PaperColorOption): String = when (option.id) {
+    "white" -> tr("White", "白色")
+    "warm-ivory" -> tr("Warm ivory", "暖象牙色")
+    "soft-green" -> tr("Soft green", "柔和绿色")
+    "soft-blue" -> tr("Soft blue", "柔和蓝色")
+    "soft-gray" -> tr("Soft gray", "柔和灰色")
+    else -> option.id
 }
 
 @Composable

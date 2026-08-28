@@ -39,6 +39,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsActions
 import app.inkloom.importer.BrushGroupStore
 import app.inkloom.document.PageTemplateStore
+import app.inkloom.document.PageBackground
+import app.inkloom.document.PaperColorCatalog
+import app.inkloom.document.PaperPattern
 import app.inkloom.document.PageElement
 import app.inkloom.document.FileDocumentStore
 import app.inkloom.document.SpecialRulerMode
@@ -147,6 +150,25 @@ class InkloomLaunchTest {
 
     @Test fun libraryScreenLaunches() {
         composeRule.onNodeWithText("Inkloom").assertIsDisplayed()
+    }
+
+    @Test fun creatingNotebookAppliesChosenPaperTemplateAndComfortColor() {
+        val title = "Warm grid creation test"
+        composeRule.onNodeWithText("New Note").performClick()
+        composeRule.onAllNodes(hasSetTextAction()).onLast().performTextClearance()
+        composeRule.onAllNodes(hasSetTextAction()).onLast().performTextInput(title)
+        composeRule.onNodeWithContentDescription("New note template Grid").performClick()
+        composeRule.onNodeWithContentDescription("New note paper color Warm ivory").performClick()
+        composeRule.onNodeWithText("Create").performClick()
+        composeRule.waitForIdle()
+
+        val created = FileDocumentStore(composeRule.activity.filesDir).list().first { it.title == title }
+        assertEquals(
+            PageBackground.Paper(PaperColorCatalog.WARM_IVORY, PaperPattern.GRID),
+            created.pages.single().background,
+        )
+        assertEquals("builtin-grid", PageTemplateStore(composeRule.activity.filesDir).load().notebookDefaults[created.id])
+        assertEquals(PaperColorCatalog.WARM_IVORY, PageTemplateStore(composeRule.activity.filesDir).load().notebookPaperColors[created.id])
     }
 
     @Test fun rulerIsReachableFromCompactToolbarAndPersists() {

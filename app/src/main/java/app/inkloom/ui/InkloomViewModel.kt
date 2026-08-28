@@ -67,16 +67,46 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         scheduleAssetGarbageCollection(delayMillis = 0L)
     }
 
-    fun createNote(title: String = "Untitled Note", coverStyle: CoverStyle = CoverStyle.BLACK): InkDocument = InkDocument(
-        title = title.trim().ifBlank { "Untitled Note" },
-        coverStyle = coverStyle,
-        coverArgb = if (coverStyle in setOf(CoverStyle.WHITE, CoverStyle.WHITE_GRID)) 0xFFF4F4F4 else 0xFF202020,
-    ).also { store.save(it); refresh(); select(it.id) }
-    fun createNoteWithCover(uri: Uri, title: String = "Untitled Note"): InkDocument = InkDocument(
-        title = title.trim().ifBlank { "Untitled Note" },
-        coverStyle = CoverStyle.CUSTOM_IMAGE,
-        coverImagePath = assets.importCoverImage(uri),
-    ).also { store.save(it); refresh(); select(it.id) }
+    fun createNote(
+        title: String = "Untitled Note",
+        coverStyle: CoverStyle = CoverStyle.BLACK,
+        templateId: String = PageTemplateCatalog.blank.id,
+        paperColorArgb: Long = PaperColorCatalog.WHITE,
+    ): InkDocument = createNoteDocument(title, coverStyle, null, templateId, paperColorArgb)
+
+    fun createNoteWithCover(
+        uri: Uri,
+        title: String = "Untitled Note",
+        templateId: String = PageTemplateCatalog.blank.id,
+        paperColorArgb: Long = PaperColorCatalog.WHITE,
+    ): InkDocument = createNoteDocument(title, CoverStyle.CUSTOM_IMAGE, assets.importCoverImage(uri), templateId, paperColorArgb)
+
+    private fun createNoteDocument(
+        title: String,
+        coverStyle: CoverStyle,
+        coverImagePath: String?,
+        templateId: String,
+        paperColorArgb: Long,
+    ): InkDocument {
+        val baseTemplate = mutablePageTemplates.value.template(templateId) ?: PageTemplateCatalog.blank
+        val template = PageTemplateOperations.withPaperColor(baseTemplate, paperColorArgb)
+        val document = InkDocument(
+            title = title.trim().ifBlank { "Untitled Note" },
+            coverStyle = coverStyle,
+            coverArgb = if (coverStyle in setOf(CoverStyle.WHITE, CoverStyle.WHITE_GRID)) 0xFFF4F4F4 else 0xFF202020,
+            coverImagePath = coverImagePath,
+            pages = listOf(PageTemplateOperations.newPage(template, "Page 1")),
+        )
+        store.save(document)
+        mutablePageTemplates.value = pageTemplateStore.setNotebookDefault(document.id, baseTemplate.id)
+        mutablePageTemplates.value = pageTemplateStore.setNotebookPaperColor(
+            document.id,
+            (template.background as? PageBackground.Paper)?.colorArgb,
+        )
+        refresh()
+        select(document.id)
+        return document
+    }
     fun importPdf(uri: Uri, title: String) = assets.importPdf(uri, title, indexText = false).also { document ->
         store.save(document)
         refresh()
