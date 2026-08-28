@@ -124,6 +124,33 @@ class BrushPresetV5FoundationTest {
         assertEquals("/grains/secondary.png", preset.dual?.textureGrain?.assetPath)
     }
 
+    @Test fun importBoundaryCompilesAllRealtimeCorrectionIntoOneCausalV5Program() {
+        val decoded = ImportedBrush(
+            id = "sut-smoothed",
+            name = "Smoothed SUT",
+            format = BrushFormat.SUT,
+            compatibility = Compatibility.HIGH,
+            sizeBytes = 42,
+            report = emptyList(),
+            stabilization = .2f,
+            streamLine = .55f,
+            procreateStabilization = .35f,
+            motionFiltering = .4f,
+            postCorrectionEnabled = true,
+            postCorrection = .72f,
+        )
+
+        val preset = BrushPresetV5Import.requirePreset(BrushPresetV5Import.convertDecodedSource(decoded))
+
+        assertEquals(.72f, preset.stroke?.smoothing ?: 0f, .0001f)
+        assertEquals(
+            "V5 may not request a second full-stroke pass after pen-up",
+            0f,
+            preset.stroke?.postCorrection ?: -1f,
+            .0001f,
+        )
+    }
+
     @Test fun importBoundaryRejectsUnsupportedDualRgbInsteadOfFallingBack() {
         val rejected = BrushPresetV5Import.convertOrReject(
             ImportedBrush(

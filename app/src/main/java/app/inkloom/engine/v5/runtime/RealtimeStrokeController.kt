@@ -13,6 +13,8 @@ import app.inkloom.engine.v5.raster.PaintResult
 import app.inkloom.engine.v5.raster.PublishablePaintOpSession
 import app.inkloom.engine.v5.raster.PublishedPaintDelta
 import app.inkloom.engine.v5.stroke.DirectStrokeSession
+import app.inkloom.engine.v5.stroke.CausalStrokeSession
+import app.inkloom.engine.v5.stroke.StrokeSession
 import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot
 import app.inkloom.engine.v5.surface.PixelRect
@@ -52,11 +54,16 @@ class RealtimeStrokeController {
         maximumRadius: Float,
         brushRuntimeId: String,
         sample: RawDocumentSample,
+        smoothing: Float = 0f,
     ): PaintResult {
         check(active == null) { "A V5 paint gesture is already active" }
         landed = null
         val transactionId = nextTransactionId++
-        val stroke = DirectStrokeSession(transactionId, maximumRadius)
+        val stroke: StrokeSession = if (smoothing > 0f) {
+            CausalStrokeSession(transactionId, maximumRadius, smoothing.coerceIn(0f, 1f))
+        } else {
+            DirectStrokeSession(transactionId, maximumRadius)
+        }
         val paint = paintOp.begin(
             PaintOpContext(transactionId, surface.revision, brushRuntimeId),
         ) as? PublishablePaintOpSession ?: error("Production PaintOp must publish its active delta")
@@ -182,7 +189,7 @@ class RealtimeStrokeController {
         val layerId: String,
         val surface: PixelTileSurface,
         val backdrop: PixelTileSurfaceSnapshot,
-        val stroke: DirectStrokeSession,
+        val stroke: StrokeSession,
         val paint: PublishablePaintOpSession,
         val presentationBlend: ActiveStrokePresentationBlend,
         val mailbox: InputBackpressureController,

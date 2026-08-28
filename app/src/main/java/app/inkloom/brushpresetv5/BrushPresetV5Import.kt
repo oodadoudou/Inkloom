@@ -165,12 +165,20 @@ object BrushPresetV5Import {
                 else -> null
             },
             stroke = StrokeSettings(
-                smoothing = source.stabilization,
+                smoothing = maxOf(
+                    source.stabilization,
+                    source.streamLine,
+                    source.procreateStabilization,
+                    source.motionFiltering,
+                    source.postCorrection.takeIf { source.postCorrectionEnabled } ?: 0f,
+                ).coerceIn(0f, 1f),
                 taperStartEnabled = source.taperStartEnabled,
                 taperStartLength = source.taperStartLength,
                 taperEndEnabled = source.taperEndEnabled,
                 taperEndLength = source.taperEndLength,
-                postCorrection = source.postCorrection.takeIf { source.postCorrectionEnabled } ?: 0f,
+                // V5 never replays an entire stroke after pen-up. Imported post-correction is
+                // therefore compiled into the causal correction above at the import boundary.
+                postCorrection = 0f,
             ),
             stamp = source.takeIf {
                 family in setOf(BrushFamily.PENCIL, BrushFamily.AIRBRUSH, BrushFamily.DECORATION) ||

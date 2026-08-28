@@ -4542,6 +4542,7 @@ class InkCanvasView(context: Context) : View(context) {
         val paintOp: app.inkloom.engine.v5.raster.PaintOp,
         val maximumRadius: Float,
         val runtimeId: String,
+        val smoothing: Float = 0f,
     )
 
     /** Resolves every resource and scalar before contact work starts. Null means explicitly
@@ -4557,10 +4558,6 @@ class InkCanvasView(context: Context) : View(context) {
         if ((layerOpacities[activeLayerId] ?: 1f) < .999f ||
             (layerBlendModes[activeLayerId] ?: LayerBlendMode.NORMAL) != LayerBlendMode.NORMAL
         ) return null
-        if (stabilization > .0001f || streamLine > .0001f || procreateStabilization > .0001f ||
-            motionFiltering > .0001f || postCorrection > .0001f
-        ) return null
-
         val diameter = if (active == EditorTool.ERASER) gestureEraserSize else gestureBrushSize
         val diameterPixels = (diameter.coerceIn(.01f, 800f) / REFERENCE_WIDTH * surface.logicalWidth)
             .coerceAtLeast(.1f)
@@ -4580,8 +4577,8 @@ class InkCanvasView(context: Context) : View(context) {
         compiledBrushProgramV5
             ?.takeIf { active != EditorTool.ERASER || it.output == BrushOutputV5.ERASE }
             ?.let { program ->
-            if (program.strokeShaping.smoothing > .0001f || program.strokeShaping.postCorrection > .0001f ||
-                program.strokeShaping.taperStartEnabled || program.strokeShaping.taperEndEnabled
+            if (program.strokeShaping.postCorrection > .0001f || program.strokeShaping.taperStartEnabled ||
+                program.strokeShaping.taperEndEnabled
             ) return null
             val sizeResponse = PressureResponse(
                 program.pressure.widthEnabled,
@@ -4769,6 +4766,7 @@ class InkCanvasView(context: Context) : View(context) {
                     ),
                     maximumDiameter * .5f + maximumScatter + 2f,
                     "preset-v5:stamp:${program.identity.id}",
+                    program.strokeShaping.smoothing.coerceIn(0f, 1f),
                 )
             }
             when (program.backend) {
@@ -4813,6 +4811,7 @@ class InkCanvasView(context: Context) : View(context) {
                         StampPaintOp(surface, stamp, selection, sampleTransforms = sampleTransforms),
                         particleDiameter * .5f + scatterRadius + 2f,
                         "preset-v5:airbrush:${program.identity.id}",
+                        program.strokeShaping.smoothing.coerceIn(0f, 1f),
                     )
                 }
                 RenderBackendV5.WET_PAINT -> {
@@ -4833,6 +4832,7 @@ class InkCanvasView(context: Context) : View(context) {
                         WetPaintOp(surface, wet, selection, sampleTransforms),
                         diameterPixels * .5f + 2f,
                         "preset-v5:wet:${program.identity.id}",
+                        program.strokeShaping.smoothing.coerceIn(0f, 1f),
                     )
                 }
                 RenderBackendV5.ASSET_STAMP -> {
@@ -4861,6 +4861,7 @@ class InkCanvasView(context: Context) : View(context) {
                         StampPaintOp(surface, stamp, selection, sampleTransforms = sampleTransforms),
                         diameterPixels * .5f + 2f,
                         "preset-v5:procedural-stamp:${program.identity.id}",
+                        program.strokeShaping.smoothing.coerceIn(0f, 1f),
                     )
                 }
                 RenderBackendV5.CONTINUOUS_RIBBON, RenderBackendV5.PROCEDURAL_STAMP -> {
@@ -4886,6 +4887,7 @@ class InkCanvasView(context: Context) : View(context) {
                         DryInkPaintOp(surface, dry, selection, sampleTransforms),
                         diameterPixels * .5f + 2f,
                         "preset-v5:dry:${program.identity.id}",
+                        program.strokeShaping.smoothing.coerceIn(0f, 1f),
                     )
                 }
             }
@@ -4966,6 +4968,7 @@ class InkCanvasView(context: Context) : View(context) {
             maximumRadius = configuration.maximumRadius,
             brushRuntimeId = configuration.runtimeId,
             sample = initialSample,
+            smoothing = configuration.smoothing,
         )
         v5DryGestureCount++
         invalidateV5Damage(surface, result)

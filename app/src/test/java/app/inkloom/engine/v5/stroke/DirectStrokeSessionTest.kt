@@ -30,6 +30,22 @@ class DirectStrokeSessionTest {
         assertFalse(result.terminal)
     }
 
+    @Test fun `causal smoothing emits each sample once and never rewrites earlier geometry`() {
+        val session = CausalStrokeSession(13L, maximumRadius = 2f, smoothing = .5f)
+        val down = session.begin(sample(0, InputPhase.DOWN))
+        val firstMove = session.append(InputSampleBatch.owned(listOf(sample(10, InputPhase.MOVE))))
+        val emittedBeforeUp = firstMove.samples.single()
+        val secondMove = session.append(InputSampleBatch.owned(listOf(sample(20, InputPhase.MOVE))))
+        val up = session.finish(sample(30, InputPhase.UP))
+
+        assertEquals(DocumentPoint(0f, 0f), down.samples.single().point)
+        assertTrue(emittedBeforeUp.point.x in 5f..<10f)
+        assertEquals(emittedBeforeUp, firstMove.samples.single())
+        assertEquals(listOf(20L), secondMove.samples.map(StrokeSample::inputSequence))
+        assertEquals(listOf(30L), up.samples.map(StrokeSample::inputSequence))
+        assertTrue(up.terminal)
+    }
+
     private fun sample(sequence: Long, phase: InputPhase, predicted: Boolean = false) = InputSample(
         sequence,
         phase,
@@ -43,4 +59,3 @@ class DirectStrokeSessionTest {
         predicted,
     )
 }
-

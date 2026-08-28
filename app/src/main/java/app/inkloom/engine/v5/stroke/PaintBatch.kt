@@ -42,6 +42,86 @@ interface StrokeSession {
     fun cancel()
 }
 
+/**
+ * Optional causal correction for an explicitly authored smoothing value. Unlike post-correction,
+ * this session never revisits an emitted point and never rebuilds the trajectory at pen-up. A zero
+ * value is represented by [DirectStrokeSession] so the default path remains byte-for-byte raw.
+ */
+class CausalStrokeSession(
+    override val transactionId: Long,
+    private val maximumRadius: Float,
+    smoothing: Float,
+) : StrokeSession {
+    init {
+        require(transactionId > 0L)
+        require(maximumRadius.isFinite() && maximumRadius >= 0f)
+        require(smoothing.isFinite() && smoothing in 0f..1f)
+    }
+
+    private val response = (1f - smoothing * .85f).coerceIn(.15f, 1f)
+    private var state = State.NEW
+    private var ordinal = 0L
+    private var lastSequence = -1L
+    private var filteredPoint: DocumentPoint? = null
+
+    override fun begin(sample: InputSample): PaintBatch {
+        check(state == State.NEW)
+        check(sample.phase == app.inkloom.engine.v5.input.InputPhase.DOWN)
+        state = State.ACTIVE
+        return emit(listOf(sample), terminal = false)
+    }
+
+    override fun append(samples: InputSampleBatch): PaintBatch {
+        check(state == State.ACTIVE)
+        check(samples.samples.none { it.phase != app.inkloom.engine.v5.input.InputPhase.MOVE })
+        return emit(samples.samples.filterNot(InputSample::predicted), terminal = false)
+    }
+
+    override fun finish(sample: InputSample?): PaintBatch {
+        check(state == State.ACTIVE)
+        check(sample == null || sample.phase == app.inkloom.engine.v5.input.InputPhase.UP)
+        state = State.FINISHED
+        return emit(listOfNotNull(sample), terminal = true)
+    }
+
+    override fun cancel() {
+        check(state != State.FINISHED)
+        state = State.CANCELED
+    }
+
+    private fun emit(inputs: List<InputSample>, terminal: Boolean): PaintBatch {
+        require(inputs.all { it.sequence > lastSequence })
+        inputs.lastOrNull()?.let { lastSequence = it.sequence }
+        val output = inputs.map { input ->
+            val previous = filteredPoint
+            val point = if (previous == null) input.point else DocumentPoint(
+                previous.x + (input.point.x - previous.x) * response,
+                previous.y + (input.point.y - previous.y) * response,
+            )
+            filteredPoint = point
+            StrokeSample(
+                input.sequence,
+                point,
+                input.eventTimeNanos,
+                input.pressure,
+                input.tiltRadians,
+                input.orientationRadians,
+            )
+        }
+        val bounds = output.takeIf(List<StrokeSample>::isNotEmpty)?.let { values ->
+            DocumentRect(
+                values.minOf { it.point.x },
+                values.minOf { it.point.y },
+                values.maxOf { it.point.x },
+                values.maxOf { it.point.y },
+            ).outset(maximumRadius)
+        }
+        return PaintBatch(transactionId, ordinal++, output, bounds, terminal)
+    }
+
+    private enum class State { NEW, ACTIVE, FINISHED, CANCELED }
+}
+
 /** No-correction reference session. The committed trajectory is byte-for-byte the emitted one. */
 class DirectStrokeSession(
     override val transactionId: Long,
@@ -107,4 +187,3 @@ class DirectStrokeSession(
 
     private enum class State { NEW, ACTIVE, FINISHED, CANCELED }
 }
-

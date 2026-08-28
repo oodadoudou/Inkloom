@@ -153,6 +153,36 @@ class InkCanvasBrushSwitchTest {
         assertEquals("Canceled contact must not publish; three completed contacts must", 3L, surface.revision)
         assertTrue(surface.tileCount > 0)
     }
+
+    @Test
+    fun importedCorrectionBrushPaintsThroughV5WithoutPenUpTrajectoryReplay() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val surface = PixelTileSurface(1200, 1200)
+        val corrected = brush("corrected-sut", "Corrected SUT").copy(
+            format = BrushFormat.SUT,
+            stabilization = .35f,
+            streamLine = .6f,
+            postCorrectionEnabled = true,
+            postCorrection = .8f,
+        ).v5()
+        val view = InkCanvasView(instrumentation.targetContext).apply {
+            layout(0, 0, 1200, 1200)
+            setRasterLayerSurfaces(mapOf(app.inkloom.document.LayerIds.INK to surface))
+        }
+
+        instrumentation.runOnMainSync {
+            view.applyBrushConfiguration(EditorTool.PEN, AppSettings(), corrected, 20f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_DOWN, 200f, 500f, 1L))
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_MOVE, 450f, 520f, 5L))
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_MOVE, 700f, 480f, 9L))
+            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_UP, 950f, 500f, 13L))
+        }
+
+        assertEquals("One contact publishes exactly one immutable generation", 1L, surface.revision)
+        assertEquals(1, view.v5DryGestureCount)
+        assertEquals("Every real input sample is emitted once; pen-up does not replay the path", 4, view.v5LastCommittedNormalizedPoints().size)
+        assertTrue(surface.tileCount > 0)
+    }
     @Test
     fun eraserModeCannotPaintWithAStaleNormalBrushDescriptor() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
