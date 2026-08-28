@@ -2,6 +2,7 @@ package app.inkloom.engine.v5.raster
 
 import app.inkloom.engine.v5.coordinates.DocumentRect
 import app.inkloom.engine.v5.material.PressureResponse
+import app.inkloom.engine.v5.material.TiltResponse
 import app.inkloom.engine.v5.stroke.PaintBatch
 import app.inkloom.engine.v5.stroke.StrokeSample
 import app.inkloom.engine.v5.surface.ActiveDeltaSurface
@@ -29,6 +30,7 @@ data class DryInkDefinition(
     val pencilGrain: Float = 0f,
     val grainSeed: Int = 0,
     val sizePressure: PressureResponse? = null,
+    val sizeTilt: TiltResponse = TiltResponse.CONSTANT,
     val opacityPressure: PressureResponse? = null,
     val flowPressure: PressureResponse? = null,
 ) {
@@ -147,8 +149,8 @@ class DryInkPaintOp(
         }
 
         private fun rasterizeSegment(start: StrokeSample, end: StrokeSample): PixelRect? {
-            val startRadius = radius(start.pressure)
-            val endRadius = radius(end.pressure)
+            val startRadius = radius(start.pressure, start.tiltRadians)
+            val endRadius = radius(end.pressure, end.tiltRadians)
             val padding = maxOf(startRadius, endRadius) + 1.5f
             val bounds = PixelRect(
                 floor(minOf(start.point.x, end.point.x) - padding).toInt().coerceIn(0, document.logicalWidth),
@@ -204,10 +206,10 @@ class DryInkPaintOp(
             return bounds
         }
 
-        private fun radius(pressure: Float): Float {
+        private fun radius(pressure: Float, tiltRadians: Float): Float {
             val scale = definition.sizePressure?.evaluate(pressure) ?: (definition.minimumPressureScale +
                 (1f - definition.minimumPressureScale) * pressure.coerceIn(0f, 1f))
-            return definition.diameterPixels * scale * .5f
+            return definition.diameterPixels * scale * definition.sizeTilt.evaluate(tiltRadians) * .5f
         }
 
         private fun segmentCoverage(

@@ -2,6 +2,7 @@ package app.inkloom.engine.v5.raster
 
 import app.inkloom.engine.v5.material.BrushTipMask
 import app.inkloom.engine.v5.material.PressureResponse
+import app.inkloom.engine.v5.material.TiltResponse
 import app.inkloom.engine.v5.stroke.PaintBatch
 import app.inkloom.engine.v5.stroke.StrokeSample
 import app.inkloom.engine.v5.surface.ActiveDeltaSurface
@@ -36,6 +37,7 @@ data class StampBrushDefinition(
     val grainPhaseX: Float = 0f,
     val grainPhaseY: Float = 0f,
     val sizePressure: PressureResponse = PressureResponse.CONSTANT,
+    val sizeTilt: TiltResponse = TiltResponse.CONSTANT,
     val opacityPressure: PressureResponse = PressureResponse.CONSTANT,
     val flowPressure: PressureResponse = PressureResponse.CONSTANT,
     val roundness: Float = 1f,
@@ -186,7 +188,8 @@ class StampPaintOp(
         }
 
         private fun resolveDab(sample: StrokeSample, directionRadians: Float, particle: Int): ResolvedDab {
-            val size = definition.diameterPixels * definition.sizePressure.evaluate(sample.pressure)
+            val size = definition.diameterPixels * definition.sizePressure.evaluate(sample.pressure) *
+                definition.sizeTilt.evaluate(sample.tiltRadians)
             val tipIndex = deterministicTipIndex(dabSequence, definition.renderSeed, definition.tips.size)
             val tip = definition.tips[tipIndex]
             val aspect = tip.width.toFloat() / tip.height

@@ -56,6 +56,7 @@ import app.inkloom.engine.v5.material.BrushTipMaskRequest
 import app.inkloom.engine.v5.material.BrushTipMask
 import app.inkloom.engine.v5.material.GrainMaskRequest
 import app.inkloom.engine.v5.material.PressureResponse
+import app.inkloom.engine.v5.material.TiltResponse
 import app.inkloom.engine.v5.raster.DryBlend
 import app.inkloom.engine.v5.raster.DryInkDefinition
 import app.inkloom.engine.v5.raster.DryInkPaintOp
@@ -2830,7 +2831,13 @@ class InkCanvasView(context: Context) : View(context) {
             return footprint.width to footprint.height
         }
         val pressure = BrushDynamics.pressure(sizePressureEnabled, sizePressureMinimum, sizePressureCurve, calibratedPressure)
-        val diameter = documentBrushSize().coerceIn(.01f, 800f) * scale * pressure
+        val tilt = TiltResponse(
+            sizeSecondaryDynamics.tiltEnabled,
+            sizeSecondaryDynamics.tiltMinimum,
+            sizeSecondaryDynamics.tiltStart,
+            sizeSecondaryDynamics.tiltCurve.map { it.x to it.y },
+        ).evaluate(hoverCursorTilt)
+        val diameter = documentBrushSize().coerceIn(.01f, 800f) * scale * pressure * tilt
         val thicknessPressure = BrushDynamics.pressure(thicknessPressureEnabled, thicknessPressureMinimum, thicknessPressureCurve, calibratedPressure)
         val tip = activeCursorTip(tipAssetPaths.firstOrNull() ?: tipAssetPath)
         val footprint = BrushCursorGeometry.footprint(
@@ -2874,7 +2881,7 @@ class InkCanvasView(context: Context) : View(context) {
         hoverCursorY = y
         hoverCursorUsesEraser = usesEraser
         hoverCursorPressure = pressure
-        hoverCursorTilt = tilt.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: 0f
+        hoverCursorTilt = tilt.takeIf(Float::isFinite)?.coerceIn(0f, (Math.PI / 2.0).toFloat()) ?: 0f
         hoverCursorOrientationRadians = orientationRadians.takeIf(Float::isFinite) ?: 0f
         hoverCursorVisible = true
     }
@@ -4912,6 +4919,12 @@ class InkCanvasView(context: Context) : View(context) {
             minimum,
             curve.map { it.x to it.y },
         )
+        fun tilt(dynamics: BrushSecondaryDynamics) = TiltResponse(
+            dynamics.tiltEnabled,
+            dynamics.tiltMinimum,
+            dynamics.tiltStart,
+            dynamics.tiltCurve.map { it.x to it.y },
+        )
         if (active == EditorTool.ERASER) {
             val eraserTip = eraserTipAssetPath
             if (eraserTip != null) {
@@ -4962,6 +4975,7 @@ class InkCanvasView(context: Context) : View(context) {
                 attack = if (authored.isDisabled()) .7f else authored.attack.coerceIn(0f, 1f),
                 pull = if (authored.isDisabled()) brushColorMix.coerceIn(0f, 1f) else authored.pull.coerceIn(0f, 1f),
                 sizePressure = pressure(sizePressureEnabled, sizePressureMinimum, sizePressureCurve),
+                sizeTilt = tilt(sizeSecondaryDynamics),
             )
             return V5PaintConfiguration(
                 WetPaintOp(surface, definition, selection),
@@ -5001,6 +5015,7 @@ class InkCanvasView(context: Context) : View(context) {
                 spacingRatio = CspBrushGap.ratio(brushSpacingMode, brushSpacing),
                 tips = listOf(BrushTipMask.solidCircle(96, brushHardness.coerceIn(0f, 1f))),
                 sizePressure = particleSizePressure,
+                sizeTilt = tilt(sizeSecondaryDynamics),
                 opacityPressure = pressure(opacityPressureEnabled, opacityPressureMinimum, opacityPressureCurve),
                 flowPressure = pressure(flowPressureEnabled, flowPressureMinimum, flowPressureCurve),
                 rotationRadians = Math.toRadians(sprayParticleRotationDegrees.toDouble()).toFloat(),
@@ -5053,6 +5068,7 @@ class InkCanvasView(context: Context) : View(context) {
                 grainPhaseX = grainOffset.x,
                 grainPhaseY = grainOffset.y,
                 sizePressure = pressure(sizePressureEnabled, sizePressureMinimum, sizePressureCurve),
+                sizeTilt = tilt(sizeSecondaryDynamics),
                 opacityPressure = pressure(opacityPressureEnabled, opacityPressureMinimum, opacityPressureCurve),
                 flowPressure = pressure(flowPressureEnabled, flowPressureMinimum, flowPressureCurve),
                 roundness = brushThickness.coerceIn(.01f, 1f),
@@ -5091,6 +5107,7 @@ class InkCanvasView(context: Context) : View(context) {
                 sizePressureMinimum,
                 sizePressureCurve.map { it.x to it.y },
             ),
+            sizeTilt = tilt(sizeSecondaryDynamics),
             opacityPressure = PressureResponse(
                 opacityPressureEnabled,
                 opacityPressureMinimum,

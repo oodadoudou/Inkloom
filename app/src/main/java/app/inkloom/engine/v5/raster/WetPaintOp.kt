@@ -1,6 +1,7 @@
 package app.inkloom.engine.v5.raster
 
 import app.inkloom.engine.v5.material.PressureResponse
+import app.inkloom.engine.v5.material.TiltResponse
 import app.inkloom.engine.v5.stroke.PaintBatch
 import app.inkloom.engine.v5.stroke.StrokeSample
 import app.inkloom.engine.v5.surface.ActiveDeltaSurface
@@ -24,6 +25,7 @@ data class WetPaintDefinition(
     val attack: Float = .7f,
     val pull: Float = .35f,
     val sizePressure: PressureResponse = PressureResponse.CONSTANT,
+    val sizeTilt: TiltResponse = TiltResponse.CONSTANT,
 ) {
     init {
         require(diameterPixels.isFinite() && diameterPixels in .1f..4096f)
@@ -129,7 +131,8 @@ class WetPaintOp(
         }
 
         private fun deposit(sample: StrokeSample): PixelRect? {
-            val radius = definition.diameterPixels * definition.sizePressure.evaluate(sample.pressure) * .5f
+            val radius = definition.diameterPixels * definition.sizePressure.evaluate(sample.pressure) *
+                definition.sizeTilt.evaluate(sample.tiltRadians) * .5f
             if (radius <= .05f) return null
             val snapshot = delta.previewSnapshot()
             val picked = sampleColour(snapshot, sample.point.x, sample.point.y, radius)

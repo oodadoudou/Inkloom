@@ -8,6 +8,7 @@ import app.inkloom.engine.v5.input.InputTool
 import app.inkloom.engine.v5.stroke.DirectStrokeSession
 import app.inkloom.engine.v5.surface.MaskTileSurface
 import app.inkloom.engine.v5.surface.PixelTileSurface
+import app.inkloom.engine.v5.material.TiltResponse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -141,7 +142,37 @@ class DryInkPaintOpTest {
         assertTrue(alpha(.25f) < alpha(.75f))
     }
 
-    private fun sample(sequence: Long, phase: InputPhase, x: Float, y: Float, pressure: Float = .75f) = InputSample(
+    @Test fun `tilt size response is applied during incremental rasterization`() {
+        fun pixelAtOffset(tilt: Float): Int {
+            val surface = PixelTileSurface(80, 80, 64)
+            val stroke = DirectStrokeSession(12L, 20f)
+            val paint = DryInkPaintOp(
+                surface,
+                DryInkDefinition(
+                    diameterPixels = 40f,
+                    colorArgb = 0xff000000.toInt(),
+                    minimumPressureScale = 1f,
+                    sizeTilt = TiltResponse(true, minimum = .5f),
+                ),
+            ).begin(PaintOpContext(12L, 0L, "tilt")) as DryInkPaintOp.Session
+            paint.apply(stroke.begin(sample(0, InputPhase.DOWN, 40f, 40f, pressure = 1f, tilt = tilt)))
+            paint.finish(stroke.finish())
+            paint.publish().record.close()
+            return surface.pixelAt(55, 40)
+        }
+
+        assertEquals(0, pixelAtOffset(0f))
+        assertNotEquals(0, pixelAtOffset((Math.PI / 2.0).toFloat()))
+    }
+
+    private fun sample(
+        sequence: Long,
+        phase: InputPhase,
+        x: Float,
+        y: Float,
+        pressure: Float = .75f,
+        tilt: Float = 0f,
+    ) = InputSample(
         sequence,
         phase,
         InputTool.STYLUS,
@@ -149,7 +180,7 @@ class DryInkPaintOpTest {
         sequence,
         sequence,
         pressure,
-        0f,
+        tilt,
         0f,
     )
 }
