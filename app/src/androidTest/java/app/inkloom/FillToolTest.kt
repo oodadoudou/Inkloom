@@ -8,7 +8,6 @@ import android.graphics.Color
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import app.inkloom.document.PageElement
 import app.inkloom.document.FillSubTool
 import app.inkloom.document.StrokePoint
 import app.inkloom.engine.v5.surface.PixelTileSurface
@@ -30,9 +29,8 @@ class FillToolTest {
                 fillSubTool = subTool
                 fingerDrawingEnabled = true
                 pagePaperColor = Color.WHITE
-                onFillCommitted = { mask, _, _, width, height, _, _ ->
-                    committed = mask.width > 0 && mask.height > 0 && width > 0f && height > 0f
-                    mask.recycle()
+                onSparseFillCommitted = { mask, _, _ ->
+                    committed = !mask.isEmpty && mask.nonZeroBounds() != null
                 }
             }
             send(view, 0L, MotionEvent.ACTION_DOWN, 40f, 40f)
@@ -60,17 +58,16 @@ class FillToolTest {
     }
 
     @Test fun tappingWithTheFillToolCommitsAFillElement() {
-        var committed: PageElement.Fill? = null
+        var committed = false
         val view = canvas {
             tool = EditorTool.FILL
             fingerDrawingEnabled = true
             pagePaperColor = android.graphics.Color.WHITE
-            onFillCommitted = { _, x, y, _, _, _, _ -> committed = PageElement.Fill(x = x, y = y, width = 10f, height = 10f, maskAssetPath = "test") }
+            onSparseFillCommitted = { mask, _, _ -> committed = !mask.isEmpty }
         }
         send(view, 0L, MotionEvent.ACTION_DOWN, 100f, 100f)
         send(view, 50L, MotionEvent.ACTION_UP, 100f, 100f)
-        assertTrue("A fill must be committed on tap", committed != null)
-        assertTrue("Fill x should be within the page", (committed?.x ?: -1f) in 0f..1f)
+        assertTrue("A fill must be committed on tap", committed)
     }
 
     @Test fun draggingAdjustsSensitivityAndCommitsOneFill() {
@@ -79,7 +76,7 @@ class FillToolTest {
             tool = EditorTool.FILL
             fingerDrawingEnabled = true
             pagePaperColor = android.graphics.Color.WHITE
-            onFillCommitted = { _, _, _, _, _, _, _ -> commitCount++ }
+            onSparseFillCommitted = { _, _, _ -> commitCount++ }
         }
         send(view, 0L, MotionEvent.ACTION_DOWN, 100f, 100f)
         send(view, 50L, MotionEvent.ACTION_MOVE, 160f, 100f)
@@ -93,7 +90,7 @@ class FillToolTest {
             tool = EditorTool.FILL
             fingerDrawingEnabled = false
             pagePaperColor = Color.WHITE
-            onFillCommitted = { _, _, _, _, _, _, _ -> commitCount++ }
+            onSparseFillCommitted = { _, _, _ -> commitCount++ }
         }
         send(view, 0L, MotionEvent.ACTION_DOWN, 100f, 100f)
         send(view, 50L, MotionEvent.ACTION_UP, 100f, 100f)
@@ -142,9 +139,8 @@ class FillToolTest {
             referenceLayerIds = setOf("line-art")
             layerOrder = listOf("color", "line-art")
             setRasterLayerSurfaces(mapOf("color" to color, "line-art" to lineArt))
-            onFillCommitted = { mask, _, _, width, _, _, _ ->
-                committedWidth = width
-                mask.recycle()
+            onSparseFillCommitted = { mask, _, _ ->
+                committedWidth = mask.nonZeroBounds()?.width?.toFloat() ?: 0f
             }
         }
 
@@ -205,8 +201,7 @@ class FillToolTest {
             tool = EditorTool.FILL
             fingerDrawingEnabled = true
             pagePaperColor = Color.WHITE
-            onFillCommitted = { mask, _, _, _, _, _, _ ->
-                mask.recycle()
+            onSparseFillCommitted = { _, _, _ ->
                 visibleFills++
                 view.recordExternalEdit(undo = { visibleFills-- }, redo = { visibleFills++ })
             }

@@ -86,4 +86,19 @@ class V5StorageFormatContractTest {
 
         assertEquals(DocumentCheckpointCodec.LEGACY_ENGINE_ERROR, error.message)
     }
+
+    @Test fun checkpointRejectsLegacyPngFillMasksBeforeWriting() {
+        val document = InkDocument(
+            title = "legacy fill",
+            pages = listOf(InkPage(elements = listOf(
+                PageElement.Fill(x = 0f, y = 0f, width = 10f, height = 10f, maskAssetPath = "/legacy/mask.png"),
+            ))),
+        )
+
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            DocumentCheckpointCodec.encode(document)
+        }
+
+        assertEquals(DocumentCheckpointCodec.LEGACY_ENGINE_ERROR, error.message)
+    }
 }

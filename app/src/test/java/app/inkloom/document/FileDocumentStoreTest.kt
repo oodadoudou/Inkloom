@@ -104,7 +104,7 @@ class FileDocumentStoreTest {
                 GradientColorStop(.37f, 0xFF445566L),
                 GradientColorStop(1f, 0xFFABCDEF),
             ),
-            maskAssetPath = "/private/document-assets/gradient-mask.png",
+            maskAssetPath = "/private/document-assets/gradient.fill-mask.v5",
         )
         val document = InkDocument(title = "Gradient", pages = listOf(InkPage(elements = listOf(gradient))))
 

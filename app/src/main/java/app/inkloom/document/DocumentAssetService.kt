@@ -172,15 +172,12 @@ class DocumentAssetService(private val context: Context) {
         return PageElement.Image(x = .18f, y = .2f, width = width, height = height, assetPath = asset.absolutePath)
     }
 
-    /** Persists a paint-bucket fill mask PNG and returns its absolute path. */
-    fun saveFillMask(mask: Bitmap): String = saveDocumentPng(mask, "fill-mask")
-
-    /** Persists a selection-derived mask without materializing a page-sized Bitmap. */
+    /** Persists authoritative V5 sparse fill alpha without materializing a page-sized bitmap. */
     fun saveFillMask(mask: MaskTileSurfaceSnapshot): String =
-        saveDocumentBytes(MaskTileArchiveCodec.encode(mask), "fill-mask.v3")
+        saveDocumentBytes(MaskTileArchiveCodec.encode(mask), "fill-mask.v5")
 
     fun saveMaskTileSurface(mask: MaskTileSurfaceSnapshot): MaskTileSurfaceRef {
-        val path = saveDocumentBytes(MaskTileArchiveCodec.encode(mask), "layer-mask.v3")
+        val path = saveDocumentBytes(MaskTileArchiveCodec.encode(mask), "layer-mask.v5")
         return MaskTileSurfaceRef(
             assetPath = path,
             surfaceId = mask.surfaceId,
@@ -253,30 +250,6 @@ class DocumentAssetService(private val context: Context) {
         return pixelTileStore.referencedFiles(File(reference.manifestAssetPath))
     }
 
-    private fun saveDocumentPng(bitmap: Bitmap, kind: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        val temporary = File(directory, ".${System.nanoTime()}.tmp")
-        try {
-            temporary.outputStream().use { out ->
-                check(bitmap.compress(Bitmap.CompressFormat.PNG, 0, out)) { "Could not encode $kind" }
-                out.flush()
-            }
-            temporary.inputStream().use { input ->
-                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                while (true) { val count = input.read(buffer); if (count < 0) break; digest.update(buffer, 0, count) }
-            }
-            val hash = digest.digest().joinToString("") { "%02x".format(it) }
-            val target = File(directory, "$hash.$kind.png")
-            synchronized(assetLifecycleLock) {
-                if (target.exists()) temporary.delete() else check(temporary.renameTo(target)) { "Could not retain $kind" }
-                pendingDocumentAssets += target.canonicalPath
-            }
-            return target.absolutePath
-        } finally {
-            temporary.delete()
-        }
-    }
-
     private fun saveDocumentBytes(bytes: ByteArray, kind: String): String {
         require(bytes.isNotEmpty()) { "Could not encode $kind" }
         val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
@@ -309,28 +282,19 @@ class DocumentAssetService(private val context: Context) {
         }
     }
 
-    /** Loads a fill mask PNG, or null if it cannot be decoded. */
-    fun loadFillMask(maskAssetPath: String): Bitmap? = runCatching { BitmapFactory.decodeFile(maskAssetPath) }.getOrNull()
-
     fun loadSparseFillMask(maskAssetPath: String): MaskTileSurface? = runCatching {
         val bytes = File(maskAssetPath).readBytes()
         if (MaskTileArchiveCodec.isSparseMask(bytes)) MaskTileArchiveCodec.decode(bytes) else null
     }.getOrNull()
 
-    /** Draws either a V3 sparse mask or a read-only legacy PNG without changing document truth. */
+    /** Draws one authoritative V5 sparse alpha mask. */
     fun drawFillMask(canvas: Canvas, maskAssetPath: String, destination: RectF, paint: Paint): Boolean {
         loadSparseFillMask(maskAssetPath)?.let { surface ->
             val mask = SparseAlphaMask.fromSurface(surface) ?: return false
             mask.draw(canvas, destination, paint)
             return true
         }
-        val bitmap = loadFillMask(maskAssetPath) ?: return false
-        return try {
-            canvas.drawBitmap(bitmap, null, destination, paint)
-            true
-        } finally {
-            bitmap.recycle()
-        }
+        return false
     }
 
     /** Removes only private document assets that are no longer referenced by a document or template. */

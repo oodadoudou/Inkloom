@@ -31,7 +31,7 @@ class PageCropTransformTest {
     @Test
     fun cropProjectionKeepsFreeformLocalGeometry() {
         val path = listOf(ShapeVertex(0f, .5f), ShapeVertex(.5f, 0f), ShapeVertex(1f, 1f))
-        val original = PageElement.Shape(x = .3f, y = .25f, width = 420f, height = 310f, kind = ShapeKind.FREEFORM, path = path, maskAssetPath = "/private/mask.png")
+        val original = PageElement.Shape(x = .3f, y = .25f, width = 420f, height = 310f, kind = ShapeKind.FREEFORM, path = path, maskAssetPath = "/private/mask.fill-mask.v5")
         val crop = PageCrop(.2f, .1f, .8f, .9f)
 
         val projected = PageCropTransform.project(InkPage(crop = crop, elements = listOf(original))).elements.single() as PageElement.Shape

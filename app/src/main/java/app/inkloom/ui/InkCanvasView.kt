@@ -979,7 +979,6 @@ class InkCanvasView(context: Context) : View(context) {
     /** Paint-bucket fill: receives the fill mask bitmap (page-local pixels) plus the
      *  mask's bounding box in normalized page coordinates, the fill color and opacity.
      *  The host persists the mask and creates a [PageElement.Fill]. */
-    var onFillCommitted: ((mask: Bitmap, x: Float, y: Float, width: Float, height: Float, colorArgb: Long, opacity: Float) -> Unit)? = null
     var onSparseFillCommitted: ((mask: MaskTileSurfaceSnapshot, colorArgb: Long, opacity: Float) -> Unit)? = null
     /** Immutable generation handoff; bitmap materialization belongs on a persistence worker. */
     var onRasterLayerCommitted: ((RasterLayerCommit) -> Unit)? = null
@@ -4114,17 +4113,13 @@ class InkCanvasView(context: Context) : View(context) {
         val mask = fillPreviewMask
         try {
             if (mask != null && fillPreviewWidth > 0f && fillPreviewHeight > 0f) {
-                val committedMask = mask.copy(Bitmap.Config.ARGB_8888, false)
-                val callback = onFillCommitted
-                if (callback != null) callback(
-                    committedMask,
+                publishBoundedFillMask(
+                    mask,
                     fillPreviewLeft,
                     fillPreviewTop,
-                    fillPreviewWidth * pageModelWidth,
-                    fillPreviewHeight * pageModelHeight,
-                    inkColor.toUInt().toLong(),
-                    inkOpacity,
-                ) else committedMask.recycle()
+                    fillPreviewWidth,
+                    fillPreviewHeight,
+                )
             }
         } finally {
             mask?.recycle()
@@ -4181,20 +4176,51 @@ class InkCanvasView(context: Context) : View(context) {
         }
         NativeRasterOps.alphaBounds(drawnMask)?.let { bounds ->
             val cropped = Bitmap.createBitmap(drawnMask, bounds.left, bounds.top, bounds.width(), bounds.height())
-            val callback = onFillCommitted
-            if (callback != null) callback(
-                cropped,
-                (left + bounds.left) / bitmapWidth.toFloat(),
-                (top + bounds.top) / bitmapHeight.toFloat(),
-                bounds.width() / bitmapWidth.toFloat() * pageModelWidth,
-                bounds.height() / bitmapHeight.toFloat() * pageModelHeight,
-                inkColor.toUInt().toLong(),
-                inkOpacity,
-            ) else cropped.recycle()
+            try {
+                publishBoundedFillMask(
+                    cropped,
+                    (left + bounds.left) / bitmapWidth.toFloat(),
+                    (top + bounds.top) / bitmapHeight.toFloat(),
+                    bounds.width() / bitmapWidth.toFloat(),
+                    bounds.height() / bitmapHeight.toFloat(),
+                )
+            } finally {
+                cropped.recycle()
+            }
         }
         drawnMask.recycle()
         fillGesturePoints.clear()
         invalidate()
+    }
+
+    /** Converts only the bounded operation mask into the document's authoritative sparse alpha. */
+    private fun publishBoundedFillMask(
+        source: Bitmap,
+        normalizedLeft: Float,
+        normalizedTop: Float,
+        normalizedWidth: Float,
+        normalizedHeight: Float,
+    ): Boolean {
+        val callback = onSparseFillCommitted ?: return false
+        val selectionSize = selectionMaskForRasterTools()?.let { it.logicalWidth to it.logicalHeight }
+            ?: SelectionMaskCompositor.maskSize(pageModelWidth, pageModelHeight)?.let { it.width to it.height }
+            ?: return false
+        val logicalWidth = selectionSize.first
+        val logicalHeight = selectionSize.second
+        val left = kotlin.math.floor(normalizedLeft.coerceIn(0f, 1f) * logicalWidth).toInt().coerceIn(0, logicalWidth - 1)
+        val top = kotlin.math.floor(normalizedTop.coerceIn(0f, 1f) * logicalHeight).toInt().coerceIn(0, logicalHeight - 1)
+        val right = kotlin.math.ceil((normalizedLeft + normalizedWidth).coerceIn(0f, 1f) * logicalWidth).toInt().coerceIn(left + 1, logicalWidth)
+        val bottom = kotlin.math.ceil((normalizedTop + normalizedHeight).coerceIn(0f, 1f) * logicalHeight).toInt().coerceIn(top + 1, logicalHeight)
+        val scaled = if (source.width == right - left && source.height == bottom - top) source else
+            Bitmap.createScaledBitmap(source, right - left, bottom - top, true)
+        return try {
+            val snapshot = SparseAlphaMask.fromBitmapRegion(scaled, left, top, logicalWidth, logicalHeight)
+                ?.surface?.snapshot() ?: return false
+            callback(snapshot, inkColor.toUInt().toLong(), inkOpacity)
+            true
+        } finally {
+            if (scaled !== source) scaled.recycle()
+        }
     }
 
     private fun cancelFillGesture() {

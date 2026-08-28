@@ -18,8 +18,8 @@ import kotlin.math.ceil
 /**
  * Android presentation/producer facade over the V5 one-byte [MaskTileSurface].
  *
- * The sparse surface is authoritative. Full [Bitmap] values are created only by explicit legacy
- * display/export boundaries while those consumers are migrated to bounded tile reads.
+ * The sparse surface is authoritative. Platform bitmaps exist only at bounded Android operation
+ * boundaries and are converted into sparse document coverage before publication.
  */
 internal class SparseAlphaMask private constructor(
     internal val surface: MaskTileSurface,
@@ -250,9 +250,16 @@ internal class SparseAlphaMask private constructor(
         fun fromSnapshot(snapshot: MaskTileSurfaceSnapshot): SparseAlphaMask? =
             snapshot.takeUnless(MaskTileSurfaceSnapshot::isEmpty)?.let { SparseAlphaMask(copySurface(it)) }
 
-        private fun fromBitmapRegion(source: Bitmap, left: Int, top: Int, width: Int, height: Int): SparseAlphaMask? {
+        internal fun fromBitmapRegion(source: Bitmap, left: Int, top: Int, width: Int, height: Int): SparseAlphaMask? {
             val alpha = bitmapAlpha(source)
             if (alpha.none { it.toInt() != 0 }) return null
+            if (left == 0 && top == 0 && source.width == width && source.height == height &&
+                alpha.all { it.toInt().and(0xff) == 255 }
+            ) {
+                return SparseAlphaMask(
+                    MaskTileSurface(width, height, DEFAULT_TILE_SIZE, initialDefaultAlpha = 255),
+                )
+            }
             val surface = MaskTileSurface(width, height, DEFAULT_TILE_SIZE)
             surface.beginWrite("import bounded platform selection").run {
                 composeAlpha(PixelRect(left, top, left + source.width, top + source.height), alpha, mode = MaskComposeMode.ADD)

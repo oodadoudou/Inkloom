@@ -19,6 +19,7 @@ import app.inkloom.document.StrokePoint
 import app.inkloom.engine.v5.surface.MaskComposeMode
 import app.inkloom.engine.v5.surface.MaskTileSurface
 import app.inkloom.engine.v5.surface.PixelRect
+import app.inkloom.engine.v5.selection.SparseAlphaMask
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -77,7 +78,7 @@ class GradientRenderingTest {
             400f,
         )
         requireNotNull(mask)
-        val maskPath = assets.saveFillMask(mask)
+        val maskPath = assets.saveFillMask(requireNotNull(SparseAlphaMask.fromBitmap(mask)).surface.snapshot())
         mask.recycle()
         val bitmap = render(element = element().copy(maskAssetPath = maskPath))
         try {
@@ -89,7 +90,7 @@ class GradientRenderingTest {
         }
     }
 
-    @Test fun sparseV3ShapeMaskPersistsAndClipsWithoutAFullSelectionBitmap() {
+    @Test fun sparseV5ShapeMaskPersistsAndClipsWithoutAFullSelectionBitmap() {
         val mask = MaskTileSurface(400, 400, tileSize = 128)
         mask.beginWrite("selection rectangle").run {
             composeAlpha(PixelRect(100, 100, 300, 300), ByteArray(200 * 200) { 255.toByte() }, mode = MaskComposeMode.REPLACE)
@@ -115,7 +116,7 @@ class GradientRenderingTest {
             400f,
             400f,
         ))
-        val originalMaskPath = assets.saveFillMask(mask)
+        val originalMaskPath = assets.saveFillMask(requireNotNull(SparseAlphaMask.fromBitmap(mask)).surface.snapshot())
         mask.recycle()
         val document = InkDocument(title = "Masked gradient", pages = listOf(InkPage(width = 400f, height = 400f, elements = listOf(element().copy(maskAssetPath = originalMaskPath)))))
         try {

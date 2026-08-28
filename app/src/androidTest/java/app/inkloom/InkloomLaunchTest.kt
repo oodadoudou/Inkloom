@@ -700,9 +700,6 @@ class InkloomLaunchTest {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Layers").performClick()
         composeRule.onNodeWithContentDescription("Add layer").performClick()
-        // The existing Notes row also exposes its content kind as "Vector layer". The add-layer
-        // menu is the last semantics node while its popup is open.
-        composeRule.onAllNodesWithText("Vector layer").onLast().performClick()
         composeRule.onAllNodes(hasContentDescription("Layer actions")).onFirst().performClick()
         composeRule.onNodeWithText("Duplicate layer").performClick()
 
@@ -857,7 +854,6 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription("Layers").performClick()
         composeRule.onNodeWithContentDescription("Add layer folder").performClick()
         composeRule.onNodeWithContentDescription("Add layer").performClick()
-        composeRule.onAllNodesWithText("Vector layer").onLast().performClick()
 
         composeRule.onNodeWithText("Folder 1").assertIsDisplayed()
         composeRule.onNodeWithText("Layer 1").assertIsDisplayed()
@@ -870,14 +866,13 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("Folder 1").assertIsDisplayed()
     }
 
-    @Test fun layerPanelCreatesAnExplicitRasterLayer() {
+    @Test fun layerPanelCreatesTheSingleV5PaintLayerKind() {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Layers").performClick()
         composeRule.onNodeWithContentDescription("Add layer").performClick()
-        composeRule.onAllNodesWithText("Raster layer").onLast().performClick()
 
         composeRule.onNodeWithText("Layer 1").assertIsDisplayed()
-        composeRule.onAllNodesWithText("Raster layer").onLast().assertIsDisplayed()
+        composeRule.onAllNodesWithText("Paint layer").onLast().assertIsDisplayed()
     }
 
     private fun findInkCanvasView(): InkCanvasView? {

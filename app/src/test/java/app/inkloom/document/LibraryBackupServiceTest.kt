@@ -26,7 +26,7 @@ class LibraryBackupServiceTest {
             val documentAsset = File(sourceRoot, "document-assets/source.pdf").apply { parentFile!!.mkdirs(); writeBytes(byteArrayOf(1, 2, 3)) }
             val coverAsset = File(sourceRoot, "document-assets/cover.png").apply { writeBytes(byteArrayOf(10, 11, 12)) }
             val gradientMask = File(sourceRoot, "document-assets/gradient-mask.png").apply { writeBytes(byteArrayOf(13, 14, 15)) }
-            val layerMaskAsset = File(sourceRoot, "document-assets/layer-mask.v3").apply { writeBytes(byteArrayOf(19, 20, 21)) }
+            val layerMaskAsset = File(sourceRoot, "document-assets/layer-mask.v5").apply { writeBytes(byteArrayOf(19, 20, 21)) }
             val layerMaskReference = MaskTileSurfaceRef(
                 assetPath = layerMaskAsset.absolutePath,
                 surfaceId = "backup-mask",

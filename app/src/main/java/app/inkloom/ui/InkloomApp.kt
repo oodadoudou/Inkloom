@@ -4591,26 +4591,6 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
         }
     }
     fun installFillCommit(view: InkCanvasView) {
-        view.onFillCommitted = { mask, fx, fy, fw, fh, color, opacity ->
-            val maskPath = try { assets.saveFillMask(mask) } finally { mask.recycle() }
-            val projected = PageElement.Fill(
-                x = fx,
-                y = fy,
-                width = fw,
-                height = fh,
-                colorArgb = color,
-                opacity = opacity,
-                layerId = activeLayerId,
-                maskAssetPath = maskPath,
-            )
-            val fill = PageCropTransform.unproject(projected, page.crop)
-            onElement(documentId, page.id, fill)
-            view.recordExternalEdit(
-                undo = { onRemoveElement(documentId, page.id, fill.id) },
-                redo = { onElement(documentId, page.id, fill) },
-                dispose = { assets.releaseAssetReservation(maskPath) },
-            )
-        }
         view.onSparseFillCommitted = { mask, color, opacity ->
             val maskPath = assets.saveFillMask(mask)
             val projected = PageElement.Fill(
@@ -7022,7 +7002,7 @@ private fun LayerPanel(
             }
             WorkspacePanelDockMenu(dock, onDock, tr("Change layers panel docking", "更改图层面板停靠方式"), Modifier.size(24.dp), panelMode, panelLocked, onPanelMode, onPanelLocked)
             IconButton(onClick = onAddFolder, modifier = Modifier.size(24.dp)) { Icon(Icons.Outlined.CreateNewFolder, tr("Add layer folder", "添加图层文件夹"), Modifier.size(14.dp)) }
-            IconButton(onClick = onAdd, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Add, tr("Add paint layer", "添加绘画图层"), Modifier.size(14.dp)) }
+            IconButton(onClick = onAdd, modifier = Modifier.size(24.dp)) { Icon(Icons.Default.Add, tr("Add layer", "添加图层"), Modifier.size(14.dp)) }
             IconButton(onClick = onClose, modifier = Modifier.size(24.dp)) { Icon(Icons.Outlined.Close, tr("Close layers panel", "关闭图层面板"), Modifier.size(14.dp)) }
         }
         Spacer(Modifier.height(2.dp))
@@ -7255,7 +7235,7 @@ private fun ProcreateLayerPanel(
                 )
                 WorkspacePanelDockMenu(dock, onDock, tr("Change layers panel docking", "更改图层面板停靠方式"), Modifier.size(36.dp), panelMode, panelLocked, onPanelMode, onPanelLocked)
                 IconButton(onClick = onAddFolder, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.CreateNewFolder, tr("Add layer group", "添加图层组"), tint = Ink) }
-                IconButton(onClick = onAdd, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Add, tr("Add paint layer", "添加绘画图层"), tint = Ink) }
+                IconButton(onClick = onAdd, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Add, tr("Add layer", "添加图层"), tint = Ink) }
                 IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) { Icon(Icons.Outlined.Close, tr("Close layers panel", "关闭图层面板"), tint = Ink) }
             }
             HorizontalDivider(color = OutlineSoft)

@@ -36,6 +36,7 @@ internal object DocumentCheckpointCodec {
     )
 
     fun encode(document: InkDocument): String {
+        requireNativeV5Assets(document)
         val payload = canonicalJson.encodeToString(document)
         return json.encodeToString(Checkpoint(FORMAT, SCHEMA_VERSION, ENGINE_VERSION, crc32(payload), document))
     }
@@ -50,9 +51,26 @@ internal object DocumentCheckpointCodec {
         require(checkpoint.engineVersion == ENGINE_VERSION) {
             "Unsupported engine version ${checkpoint.engineVersion}"
         }
+        requireNativeV5Assets(checkpoint.document)
         val payload = canonicalJson.encodeToString(checkpoint.document)
         require(checkpoint.checksum == crc32(payload)) { "Document checkpoint failed integrity verification" }
         return checkpoint.document
+    }
+
+    private fun requireNativeV5Assets(document: InkDocument) {
+        val nativeMasks = document.pages.all { page ->
+            page.layers.all { layer ->
+                layer.mask?.surface?.assetPath?.endsWith(".layer-mask.v5") != false
+            } && page.elements.all { element ->
+                when (element) {
+                    is app.inkloom.document.PageElement.Fill -> element.maskAssetPath.endsWith(".fill-mask.v5")
+                    is app.inkloom.document.PageElement.Shape ->
+                        element.maskAssetPath?.endsWith(".fill-mask.v5") != false
+                    else -> true
+                }
+            }
+        }
+        require(nativeMasks) { LEGACY_ENGINE_ERROR }
     }
 
     private fun rejectLegacyStrokePayload(content: String) {
