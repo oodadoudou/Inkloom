@@ -4601,12 +4601,10 @@ class InkCanvasView(context: Context) : View(context) {
         if (active !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER)) return null
         val surface = rasterTileSurfaceFor(activeLayerId) ?: return null
         if (surface.pixelFormat != PixelTileFormat.PREMULTIPLIED_SRGB_8888) return null
-        if (activeLayerId in protectedLayerIds || activeLayerId in alphaLockedLayers ||
-            activeLayerId in clippedLayers || layerMasks[activeLayerId]?.enabled == true
-        ) return null
-        if ((layerOpacities[activeLayerId] ?: 1f) < .999f ||
-            (layerBlendModes[activeLayerId] ?: LayerBlendMode.NORMAL) != LayerBlendMode.NORMAL
-        ) return null
+        // Opacity, blend, clipping and layer masks are projection properties. They must never
+        // disable edits to the layer's own pixel surface. Alpha lock is different: until its
+        // preserve-alpha blend is migrated, reject it explicitly instead of corrupting alpha.
+        if (activeLayerId in protectedLayerIds || activeLayerId in alphaLockedLayers) return null
         val diameter = if (active == EditorTool.ERASER) gestureEraserSize else gestureBrushSize
         val diameterPixels = (diameter.coerceIn(.01f, 800f) / REFERENCE_WIDTH * surface.logicalWidth)
             .coerceAtLeast(.1f)
@@ -5001,12 +4999,10 @@ class InkCanvasView(context: Context) : View(context) {
         v5RejectedContact = false
         val surface = rasterTileSurfaceFor(activeLayerId)
         val configuration = v5PaintConfiguration()
-        val exactActiveComposition = activeLayerSupportsV5Delta()
-        if (surface == null || configuration == null || !exactActiveComposition) {
+        if (surface == null || configuration == null) {
             v5RejectedContact = true
             onPaintCapabilityRejected(
                 if (surface == null) "V5 requires a raster layer surface"
-                else if (!exactActiveComposition) "This layer configuration cannot present an exact realtime V5 delta"
                 else "This brush configuration is not yet supported by Paint Engine V5",
             )
             return true
@@ -5046,13 +5042,6 @@ class InkCanvasView(context: Context) : View(context) {
         }
         return true
     }
-
-    private fun activeLayerSupportsV5Delta(): Boolean =
-        (layerOpacities[activeLayerId] ?: 1f) >= .999f &&
-            (layerBlendModes[activeLayerId] ?: LayerBlendMode.NORMAL) == LayerBlendMode.NORMAL &&
-            layerMasks[activeLayerId]?.enabled != true &&
-            activeLayerId !in clippedLayers &&
-            activeLayerId !in alphaLockedLayers
 
     private fun v5SampleTransforms(surface: PixelTileSurface): List<PaintSampleTransform> = when (symmetryMode) {
         SymmetryMode.NONE -> listOf(PaintSampleTransform.Identity)

@@ -7,6 +7,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.document.BrushSecondaryDynamics
 import app.inkloom.document.LiquifyMode
+import app.inkloom.document.LayerBlendMode
+import app.inkloom.document.LayerMask
 import app.inkloom.brushpresetv5.BrushPresetV5Import
 import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.model.BrushFormat
@@ -181,6 +183,38 @@ class InkCanvasBrushSwitchTest {
         assertEquals("One contact publishes exactly one immutable generation", 1L, surface.revision)
         assertEquals(1, view.v5DryGestureCount)
         assertEquals("Every real input sample is emitted once; pen-up does not replay the path", 4, view.v5LastCommittedNormalizedPoints().size)
+        assertTrue(surface.tileCount > 0)
+    }
+
+    @Test
+    fun projectionPropertiesNeverDisableEditingTheLayerPixelSurface() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val surface = PixelTileSurface(1200, 1200)
+        val view = InkCanvasView(instrumentation.targetContext).apply {
+            layout(0, 0, 1200, 1200)
+            activeLayerId = "paint"
+            setRasterLayerSurfaces(mapOf("paint" to surface))
+            layerOpacities = mapOf("paint" to .35f)
+            layerBlendModes = mapOf("paint" to LayerBlendMode.MULTIPLY)
+            clippedLayers = setOf("paint")
+            layerMasks = mapOf("paint" to LayerMask(enabled = true))
+        }
+
+        instrumentation.runOnMainSync {
+            view.applyBrushConfiguration(
+                EditorTool.PEN,
+                AppSettings(),
+                brush("projected-layer", "Projected layer").v5(),
+                24f,
+                1f,
+                Color.BLACK,
+                EraserPreset.NORMAL_FREE,
+            )
+            drawStroke(view, 1L, 600f)
+        }
+
+        assertEquals(1, view.v5DryGestureCount)
+        assertEquals(1L, surface.revision)
         assertTrue(surface.tileCount > 0)
     }
     @Test
