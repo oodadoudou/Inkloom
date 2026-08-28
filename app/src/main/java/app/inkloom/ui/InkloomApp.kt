@@ -4688,36 +4688,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                         // projection data.
                         rasterSurfaceRuntime.acceptPublished(capturedPage, layerId, savedReference, previous.third)
                         onSetLayerRasterTileSurface(documentId, capturedPage.id, layerId, savedReference, previous.third)
-                        if (view.isAttachedToWindow) {
-                            fun applyRevision(revision: Triple<RasterTileSurfaceRef?, String?, Int>) {
-                                val tileReference = revision.first
-                                if (tileReference != null) {
-                                    onSetLayerRasterTileSurface(
-                                        documentId,
-                                        capturedPage.id,
-                                        layerId,
-                                        tileReference,
-                                        revision.third,
-                                    )
-                                } else {
-                                    onSetLayerRasterAsset(
-                                        documentId,
-                                        capturedPage.id,
-                                        layerId,
-                                        revision.second,
-                                        revision.third,
-                                    )
-                                }
-                                latestRasterAssets[layerId] = revision
-                            }
-                            view.recordExternalEdit(
-                                undo = { applyRevision(previous) },
-                                redo = { applyRevision(Triple(savedReference, null, previous.third)) },
-                                dispose = { assets.releaseRasterTileReservation(savedReference) },
-                            )
-                        } else {
-                            assets.releaseRasterTileReservation(savedReference)
-                        }
+                        assets.releaseRasterTileReservation(savedReference)
                         newReference = null
                     }
                 } finally {
