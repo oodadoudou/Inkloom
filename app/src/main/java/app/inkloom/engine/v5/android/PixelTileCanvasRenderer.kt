@@ -93,13 +93,11 @@ internal class PixelTileCanvasRenderer(
         val lastColumn = (visibleSource.right - 1) / snapshot.tileSize
         val firstRow = visibleSource.top / snapshot.tileSize
         val lastRow = (visibleSource.bottom - 1) / snapshot.tileSize
-        for (row in firstRow..lastRow) for (column in firstColumn..lastColumn) {
+        fun drawCandidate(key: PixelTileKey, generation: Long) {
             lastCandidateTileCount++
-            val key = PixelTileKey(column, row)
-            val generation = snapshot.generationAt(key) ?: continue
             val fullTile = tileBounds(snapshot, key)
             val source = fullTile.intersect(visibleSource)
-            if (source.isEmpty) continue
+            if (source.isEmpty) return
             lastDrawnTileCount++
             val cached = tileFor(snapshot, key, generation, fullTile)
             val bitmap = cached.bitmap
@@ -111,7 +109,7 @@ internal class PixelTileCanvasRenderer(
                     destination.top + fullTile.bottom * scaleY,
                 )
                 drawHardwareTile(canvas, cached, fullTarget, snapshot.surfaceId, key, generation)
-                continue
+                return
             }
             val sourceInBitmap = android.graphics.Rect(
                 source.left - fullTile.left,
@@ -126,6 +124,24 @@ internal class PixelTileCanvasRenderer(
                 destination.top + source.bottom * scaleY,
             )
             canvas.drawBitmap(bitmap, sourceInBitmap, target, paint)
+        }
+
+        val coordinateCount = (lastColumn - firstColumn + 1L) * (lastRow - firstRow + 1L)
+        if (snapshot.tileCount.toLong() < coordinateCount) {
+            // A zoomed-out sparse page may expose thousands of empty coordinates. Iterate the
+            // immutable allocated-key view and reject off-clip keys instead of probing every hole.
+            snapshot.tileKeys.forEach { key ->
+                if (key.column in firstColumn..lastColumn && key.row in firstRow..lastRow) {
+                    snapshot.generationAt(key)?.let { generation -> drawCandidate(key, generation) }
+                }
+            }
+        } else {
+            // A small damage clip is cheaper to query directly than scanning all document tiles.
+            for (row in firstRow..lastRow) for (column in firstColumn..lastColumn) {
+                val key = PixelTileKey(column, row)
+                val generation = snapshot.generationAt(key)
+                if (generation == null) lastCandidateTileCount++ else drawCandidate(key, generation)
+            }
         }
     }
 
