@@ -112,11 +112,13 @@ class RealBrushCorpusRenderingTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val surface = PixelTileSurface(1000, 1000)
         var committed: RasterLayerPatch? = null
+        var rejection: String? = null
         val view = InkCanvasView(instrumentation.targetContext).apply {
             layout(0, 0, 1000, 1000)
             activeLayerId = "paint"
             setRasterLayerSurfaces(mapOf("paint" to surface))
             onRasterLayerCommitted = { commit -> committed = commit.capturePatch() }
+            onPaintCapabilityRejected = { rejection = it }
             applyBrushConfiguration(EditorTool.PEN, AppSettings(), brush, brush.defaultSize.coerceAtLeast(20f), 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
             prepareBrushAssetsNow()
         }
@@ -125,7 +127,9 @@ class RealBrushCorpusRenderingTest {
             view.onTouchEvent(stylusEvent(MotionEvent.ACTION_MOVE, 500f, 500f, 2L))
             view.onTouchEvent(stylusEvent(MotionEvent.ACTION_UP, 750f, 500f, 3L))
         }
-        val patch = requireNotNull(committed) { "${brush.format} ${brush.name} did not commit V5 pixels" }
+        val patch = requireNotNull(committed) {
+            "${brush.format} ${brush.name} did not commit V5 pixels; rejection=$rejection; preset=$brush"
+        }
         val bitmap = Bitmap.createBitmap(1000, 1000, Bitmap.Config.ARGB_8888)
         view.draw(Canvas(bitmap))
         val foundInk = bitmap.hasVisibleAlpha() && surface.tileCount > 0

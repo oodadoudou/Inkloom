@@ -4961,8 +4961,10 @@ class InkCanvasView(context: Context) : View(context) {
             )
         }
 
-        val wetEnabled = brushWatercolor || !procreateWetMix.isDisabled() ||
-            brushColorMix > .001f || brushPaintMix > .001f
+        // CSP files retain non-zero mix/density values while Color mixing is switched off. The
+        // parser preserves those values for editing, so only the authored enable bit (watercolor)
+        // or an active Procreate Wet Mix program may select the V5 wet op.
+        val wetEnabled = brushWatercolor || !procreateWetMix.isDisabled()
         if (wetEnabled && !brushDual && !brushSpray && tipAssetPath == null && tipAssetPaths.isEmpty()) {
             val authored = procreateWetMix
             val definition = WetPaintDefinition(
@@ -5034,12 +5036,18 @@ class InkCanvasView(context: Context) : View(context) {
             )
         }
 
-        if (brushDual || brushSpray || brushContinuousPlot || brushRibbon || brushWatercolor ||
-            !procreateWetMix.isDisabled() || brushColorMix > .001f || brushPaintMix > .001f ||
+        val unsupportedColorJitter =
+            (colorJitterPerTipEnabled && (
+                colorJitterHueDegrees != 0f || colorJitterSaturation != 0f || colorJitterValue != 0f
+                )) ||
+                (colorJitterPerStrokeEnabled && (
+                    colorJitterStrokeHueDegrees != 0f || colorJitterStrokeSaturation != 0f ||
+                        colorJitterStrokeValue != 0f || colorJitterStrokeSubColorMix != 0f
+                    ))
+        if (brushContinuousPlot || brushRibbon || brushWatercolor || !procreateWetMix.isDisabled() ||
             brushBlur > .001f || taperStartEnabled || taperEndEnabled || !procreateTaper.isDisabled() ||
             strokeFalloff > .0001f || strokePathJitter > .0001f || strokePathLongitudinalJitter > .0001f ||
-            randomRotationDegrees != 0f || strokeRotationJitterDegrees != 0f || stampCount != 1 ||
-            colorJitterHueDegrees != 0f || colorJitterSaturation != 0f || colorJitterValue != 0f
+            strokeRotationJitterDegrees != 0f || stampCount != 1 || unsupportedColorJitter
         ) return null
         val tipPaths = tipAssetPaths.ifEmpty { listOfNotNull(tipAssetPath) }
         if (tipPaths.isNotEmpty()) {
@@ -5076,11 +5084,73 @@ class InkCanvasView(context: Context) : View(context) {
                 followStrokeDirection = followStrokeDirection,
                 followStylusOrientation = followStylusOrientation,
                 renderSeed = brushRenderSeed,
+                particlesPerPlot = if (brushSpray) SprayGeometry.particlesPerPlot(sprayDensity) else 1,
+                scatterRadiusPixels = if (brushSpray) diameterPixels * .5f * spraySpread.coerceIn(0f, 4f) else 0f,
+                scatterBias = (sprayBias / 100f).coerceIn(-1f, 1f),
+                randomRotationRadians = kotlin.math.abs(Math.toRadians(
+                    (randomRotationDegrees + if (brushSpray) sprayParticleRandomRotationDegrees else 0f).toDouble(),
+                ).toFloat()),
             )
+            val secondaryDefinitions = if (brushDual) {
+                val dualMasks = dualTipAssetPaths.map { path ->
+                    v5BrushTipMasks.resolve(
+                        BrushTipMaskRequest(path, dualHardness.coerceIn(0f, 1f), antiAliasMode = dualAntiAliasMode),
+                    ) ?: return null
+                }
+                if (dualMasks.isEmpty()) return null
+                val dualGrain = dualGrainAssetPath?.takeIf { dualGrainDensity > .0001f }?.let { path ->
+                    v5BrushTipMasks.resolveGrain(
+                        GrainMaskRequest(
+                            path,
+                            dualGrainBrightness,
+                            dualGrainContrast,
+                            dualGrainReversed,
+                            dualGrainEmphasized,
+                        ),
+                    ) ?: return null
+                }
+                val dualGrainOffset = GrainBehavior.offset(brushRenderSeed xor 0x4D2A61C7, dualGrainOffsetJitter)
+                val dualDiameter = (diameterPixels * dualSizeScale.coerceIn(.01f, 8f)).coerceIn(.1f, 4096f)
+                listOf(
+                    StampBrushDefinition(
+                        kind = if (dualSpray) PaintOpKind.AIRBRUSH else PaintOpKind.DECORATION,
+                        diameterPixels = dualDiameter,
+                        spacingReferencePixels = dualDiameter,
+                        colorArgb = inkColor,
+                        opacity = inkOpacity.coerceIn(0f, 1f),
+                        flow = dualFlow.coerceIn(0f, 1f),
+                        spacingRatio = CspBrushGap.ratio(dualSpacingMode, dualSpacing),
+                        tips = dualMasks,
+                        grain = dualGrain,
+                        grainDensity = dualGrainDensity.coerceIn(0f, 1f),
+                        grainScalePercent = dualGrainScale.coerceIn(1f, 4000f),
+                        grainMovement = dualGrainMovement.coerceIn(0f, 1f),
+                        grainZoom = dualGrainZoom.coerceIn(0f, 1f),
+                        grainRotationRadians = Math.toRadians(dualGrainRotationDegrees.toDouble()).toFloat(),
+                        grainPhaseX = dualGrainOffset.x,
+                        grainPhaseY = dualGrainOffset.y,
+                        roundness = dualThickness.coerceIn(.01f, 1f),
+                        rotationRadians = Math.toRadians(dualRotationDegrees.toDouble()).toFloat(),
+                        followStrokeDirection = dualFollowStrokeDirection,
+                        followStylusOrientation = dualFollowStylusOrientation,
+                        renderSeed = brushRenderSeed xor 0x35A71C9E,
+                        particlesPerPlot = if (dualSpray) SprayGeometry.particlesPerPlot(dualSprayDensity) else 1,
+                        scatterRadiusPixels = if (dualSpray) dualDiameter * .5f * dualSpraySpread.coerceIn(0f, 4f) else 0f,
+                        scatterBias = (dualSprayBias / 100f).coerceIn(-1f, 1f),
+                        randomRotationRadians = kotlin.math.abs(Math.toRadians(
+                            (dualRandomRotationDegrees + if (dualSpray) dualSprayParticleRandomRotationDegrees else 0f).toDouble(),
+                        ).toFloat()),
+                    ),
+                )
+            } else emptyList()
+            val maximumDiameter = secondaryDefinitions.maxOfOrNull(StampBrushDefinition::diameterPixels)
+                ?.coerceAtLeast(diameterPixels) ?: diameterPixels
+            val maximumScatter = secondaryDefinitions.maxOfOrNull(StampBrushDefinition::scatterRadiusPixels)
+                ?.coerceAtLeast(definition.scatterRadiusPixels) ?: definition.scatterRadiusPixels
             return V5PaintConfiguration(
-                StampPaintOp(surface, definition, selection),
-                diameterPixels * .5f + 2f,
-                "stamp:$brushId:${masks.joinToString { it.contentHash().toString(16) }}",
+                StampPaintOp(surface, definition, selection, secondaryDefinitions),
+                maximumDiameter * .5f + maximumScatter + 2f,
+                "stamp:$brushId:${masks.joinToString { it.contentHash().toString(16) }}:dual=${secondaryDefinitions.size}",
             )
         }
         if (grainAssetPath != null) return null

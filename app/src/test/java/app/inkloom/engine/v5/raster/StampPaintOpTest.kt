@@ -113,6 +113,26 @@ class StampPaintOpTest {
     }
 
     @Test
+    fun dualStampStreamsShareOneTransactionAndRemainBatchInvariant() {
+        val primary = definition().copy(diameterPixels = 8f, colorArgb = 0xff000000.toInt())
+        val secondary = definition().copy(
+            diameterPixels = 20f,
+            colorArgb = 0xffcc3300.toInt(),
+            spacingRatio = .18f,
+            renderSeed = 991,
+            particlesPerPlot = 2,
+            scatterRadiusPixels = 4f,
+        )
+        val points = listOf(sample(1, 42f, 28f), sample(2, 76f, 35f), sample(3, 122f, 24f))
+
+        val once = draw(listOf(points), primary, listOf(secondary))
+        val split = draw(points.map(::listOf), primary, listOf(secondary))
+
+        assertArrayEquals(once, split)
+        assertTrue("Secondary stream must enlarge the authored footprint", once.count { it != 0 } > draw(listOf(points), primary).count { it != 0 })
+    }
+
+    @Test
     fun movingGrainTravelsWithTipWhileTexturizedGrainIsAnchoredToDocument() {
         val base = definition().copy(
             diameterPixels = 18f,
@@ -132,9 +152,11 @@ class StampPaintOpTest {
     private fun draw(
         moveBatches: List<List<StrokeSample>>,
         brush: StampBrushDefinition = definition(),
+        secondary: List<StampBrushDefinition> = emptyList(),
     ): IntArray {
         val surface = PixelTileSurface(144, 64)
-        val session = StampPaintOp(surface, brush).begin(PaintOpContext(1, 0, "stamp")) as StampPaintOp.Session
+        val session = StampPaintOp(surface, brush, secondaryDefinitions = secondary)
+            .begin(PaintOpContext(1, 0, "stamp")) as StampPaintOp.Session
         session.apply(batch(1, 0, false, sample(0, 12f, 30f)))
         moveBatches.forEachIndexed { index, samples -> session.apply(batch(1, index + 1L, false, *samples.toTypedArray())) }
         session.finish(PaintBatch.empty(1, moveBatches.size + 1L, terminal = true))

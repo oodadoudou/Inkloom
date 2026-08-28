@@ -81,13 +81,9 @@ class StampPaintOp(
     private val document: PixelTileSurface,
     private val definition: StampBrushDefinition,
     private val selection: MaskTileSurfaceSnapshot? = null,
+    secondaryDefinitions: List<StampBrushDefinition> = emptyList(),
 ) : PaintOp {
-    private val grainCosine = cos(definition.grainRotationRadians)
-    private val grainSine = sin(definition.grainRotationRadians)
-    private val grainWavelength = (
-        definition.diameterPixels * definition.grainScalePercent / 100f *
-            (100f / definition.diameterPixels.coerceAtLeast(.1f)).pow(definition.grainZoom)
-        ).coerceAtLeast(1f)
+    private val streams = (listOf(definition) + secondaryDefinitions).map(::StreamRuntime)
 
     override val capabilities = PaintOpCapabilities(
         kind = if (definition.blend == DryBlend.DESTINATION_OUT) PaintOpKind.ERASER else definition.kind,
@@ -108,9 +104,7 @@ class StampPaintOp(
     ) : PublishablePaintOpSession, AutoCloseable {
         private var state = State.ACTIVE
         private var lastOrdinal = -1L
-        private var lastSample: StrokeSample? = null
-        private var distanceToNextDab = 0f
-        private var dabSequence = 0L
+        private val streamStates = streams.map { StreamState() }
         private var dirtyBounds: PixelRect? = null
 
         override fun apply(batch: PaintBatch): PaintResult = applyInternal(batch, finishing = false)
@@ -146,48 +140,74 @@ class StampPaintOp(
             require(finishing == batch.terminal)
             lastOrdinal = batch.ordinal
 
-            val dabs = mutableListOf<ResolvedDab>()
-            batch.samples.forEach { sample ->
-                val previous = lastSample
-                if (previous == null) {
-                    resolveDabs(sample, directionRadians = definition.rotationRadians, dabs)
-                    distanceToNextDab = spacingFor(sample)
-                } else if (!sameSample(previous, sample)) {
-                    emitSegment(previous, sample, dabs)
+            var batchDirty: PixelRect? = null
+            streams.forEachIndexed { index, stream ->
+                val streamState = streamStates[index]
+                val dabs = mutableListOf<ResolvedDab>()
+                batch.samples.forEach { sample ->
+                    val previous = streamState.lastSample
+                    if (previous == null) {
+                        resolveDabs(sample, directionRadians = stream.definition.rotationRadians, dabs, stream, streamState)
+                        streamState.distanceToNextDab = spacingFor(sample, stream.definition)
+                    } else if (!sameSample(previous, sample)) {
+                        emitSegment(previous, sample, dabs, stream, streamState)
+                    }
+                    streamState.lastSample = sample
                 }
-                lastSample = sample
+                rasterize(dabs, stream)?.let { bounds ->
+                    batchDirty = batchDirty?.union(bounds) ?: bounds
+                }
             }
-            val batchDirty = rasterize(dabs)
             if (batchDirty != null) dirtyBounds = dirtyBounds?.union(batchDirty) ?: batchDirty
             if (finishing) state = State.FINISHED
             return PaintResult(context.transactionId, batch.ordinal, batchDirty != null, batchDirty)
         }
 
-        private fun emitSegment(start: StrokeSample, end: StrokeSample, output: MutableList<ResolvedDab>) {
+        private fun emitSegment(
+            start: StrokeSample,
+            end: StrokeSample,
+            output: MutableList<ResolvedDab>,
+            stream: StreamRuntime,
+            streamState: StreamState,
+        ) {
             val dx = end.point.x - start.point.x
             val dy = end.point.y - start.point.y
             val length = hypot(dx, dy)
             if (length <= 1e-4f) return
             val direction = atan2(dy, dx)
             var travelled = 0f
-            var remaining = distanceToNextDab.coerceAtLeast(.05f)
+            var remaining = streamState.distanceToNextDab.coerceAtLeast(.05f)
             while (travelled + remaining <= length) {
                 travelled += remaining
                 val t = (travelled / length).coerceIn(0f, 1f)
                 val sample = interpolate(start, end, t)
-                resolveDabs(sample, direction, output)
-                remaining = spacingFor(sample)
+                resolveDabs(sample, direction, output, stream, streamState)
+                remaining = spacingFor(sample, stream.definition)
             }
-            distanceToNextDab = (remaining - (length - travelled)).coerceAtLeast(.05f)
+            streamState.distanceToNextDab = (remaining - (length - travelled)).coerceAtLeast(.05f)
         }
 
-        private fun resolveDabs(sample: StrokeSample, directionRadians: Float, output: MutableList<ResolvedDab>) {
-            repeat(definition.particlesPerPlot) { particle ->
-                output += resolveDab(sample, directionRadians, particle)
+        private fun resolveDabs(
+            sample: StrokeSample,
+            directionRadians: Float,
+            output: MutableList<ResolvedDab>,
+            stream: StreamRuntime,
+            streamState: StreamState,
+        ) {
+            repeat(stream.definition.particlesPerPlot) { particle ->
+                output += resolveDab(sample, directionRadians, particle, stream, streamState)
             }
         }
 
-        private fun resolveDab(sample: StrokeSample, directionRadians: Float, particle: Int): ResolvedDab {
+        private fun resolveDab(
+            sample: StrokeSample,
+            directionRadians: Float,
+            particle: Int,
+            stream: StreamRuntime,
+            streamState: StreamState,
+        ): ResolvedDab {
+            val definition = stream.definition
+            val dabSequence = streamState.dabSequence
             val size = definition.diameterPixels * definition.sizePressure.evaluate(sample.pressure) *
                 definition.sizeTilt.evaluate(sample.tiltRadians)
             val tipIndex = deterministicTipIndex(dabSequence, definition.renderSeed, definition.tips.size)
@@ -221,16 +241,18 @@ class StampPaintOp(
                     definition.opacityPressure.evaluate(sample.pressure) *
                     definition.flowPressure.evaluate(sample.pressure),
                 tip = tip,
-                sequence = dabSequence++,
+                sequence = dabSequence,
             )
+                .also { streamState.dabSequence++ }
         }
 
-        private fun spacingFor(sample: StrokeSample): Float =
+        private fun spacingFor(sample: StrokeSample, definition: StampBrushDefinition): Float =
             (definition.spacingReferencePixels * definition.sizePressure.evaluate(sample.pressure) * definition.spacingRatio)
                 .coerceAtLeast(.25f)
 
-        private fun rasterize(dabs: List<ResolvedDab>): PixelRect? {
+        private fun rasterize(dabs: List<ResolvedDab>, stream: StreamRuntime): PixelRect? {
             if (dabs.isEmpty()) return null
+            val definition = stream.definition
             val byTile = linkedMapOf<PixelTileKey, MutableList<ResolvedDab>>()
             val tileDirty = linkedMapOf<PixelTileKey, PixelRect>()
             var allDirty: PixelRect? = null
@@ -282,12 +304,12 @@ class StampPaintOp(
                                 val movement = definition.grainMovement
                                 val grainX = x + .5f - dab.centerX * (1f - movement)
                                 val grainY = y + .5f - dab.centerY * (1f - movement)
-                                val rotatedX = grainCosine * grainX + grainSine * grainY
-                                val rotatedY = -grainSine * grainX + grainCosine * grainY
+                                val rotatedX = stream.grainCosine * grainX + stream.grainSine * grainY
+                                val rotatedY = -stream.grainSine * grainX + stream.grainCosine * grainY
                                 fun repeat(value: Float): Float = value - kotlin.math.floor(value)
                                 val sampled = grain.coverageAt(
-                                    repeat(rotatedX / grainWavelength + definition.grainPhaseX),
-                                    repeat(rotatedY / grainWavelength + definition.grainPhaseY),
+                                    repeat(rotatedX / stream.grainWavelength + definition.grainPhaseX),
+                                    repeat(rotatedY / stream.grainWavelength + definition.grainPhaseY),
                                 )
                                 coverage *= 1f - definition.grainDensity + sampled * definition.grainDensity
                             }
@@ -313,6 +335,21 @@ class StampPaintOp(
         }
 
         private fun requireActiveOrFinished() = check(state == State.ACTIVE || state == State.FINISHED)
+    }
+
+    private class StreamState {
+        var lastSample: StrokeSample? = null
+        var distanceToNextDab: Float = 0f
+        var dabSequence: Long = 0L
+    }
+
+    private data class StreamRuntime(val definition: StampBrushDefinition) {
+        val grainCosine = cos(definition.grainRotationRadians)
+        val grainSine = sin(definition.grainRotationRadians)
+        val grainWavelength = (
+            definition.diameterPixels * definition.grainScalePercent / 100f *
+                (100f / definition.diameterPixels.coerceAtLeast(.1f)).pow(definition.grainZoom)
+            ).coerceAtLeast(1f)
     }
 
     private data class ResolvedDab(
