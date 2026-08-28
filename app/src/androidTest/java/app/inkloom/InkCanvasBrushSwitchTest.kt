@@ -1,6 +1,8 @@
 package app.inkloom
 
 import android.graphics.Color
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.view.InputDevice
 import android.view.MotionEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -216,6 +218,47 @@ class InkCanvasBrushSwitchTest {
         assertEquals(1, view.v5DryGestureCount)
         assertEquals(1L, surface.revision)
         assertTrue(surface.tileCount > 0)
+    }
+
+    @Test
+    fun complexLayerProjectionDisplaysTheActiveSparseDeltaBeforePenUp() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val surface = PixelTileSurface(1200, 1200)
+        val frame = Bitmap.createBitmap(1200, 1200, Bitmap.Config.ARGB_8888)
+        val view = InkCanvasView(instrumentation.targetContext).apply {
+            layout(0, 0, 1200, 1200)
+            activeLayerId = "paint"
+            setRasterLayerSurfaces(mapOf("paint" to surface))
+            layerOrder = listOf("paint")
+            layerOpacities = mapOf("paint" to .5f)
+        }
+
+        try {
+            instrumentation.runOnMainSync {
+                view.applyBrushConfiguration(
+                    EditorTool.PEN,
+                    AppSettings(),
+                    brush("active-projection", "Active projection").v5(),
+                    80f,
+                    1f,
+                    Color.BLACK,
+                    EraserPreset.NORMAL_FREE,
+                )
+                view.onTouchEvent(stylusEvent(MotionEvent.ACTION_DOWN, 600f, 600f, 1L))
+                view.draw(Canvas(frame))
+            }
+
+            assertEquals("Committed layer stays immutable before UP", 0L, surface.revision)
+            assertTrue("Active delta must be visible through the incremental projection", Color.alpha(frame.getPixel(600, 600)) > 0)
+            assertTrue(view.v5RasterProjectionDrawCount > 0)
+
+            instrumentation.runOnMainSync {
+                view.onTouchEvent(stylusEvent(MotionEvent.ACTION_UP, 600f, 600f, 5L))
+            }
+            assertEquals(1L, surface.revision)
+        } finally {
+            frame.recycle()
+        }
     }
     @Test
     fun eraserModeCannotPaintWithAStaleNormalBrushDescriptor() {

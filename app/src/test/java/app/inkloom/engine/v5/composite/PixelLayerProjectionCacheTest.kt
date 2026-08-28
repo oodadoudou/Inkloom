@@ -66,6 +66,58 @@ class PixelLayerProjectionCacheTest {
         )
     }
 
+    @Test fun activeSparseDeltaIsProjectedWithoutMaterializingOrMutatingTheLayer() {
+        val backdrop = PixelTileSurface(256, 128, tileSize = 64)
+        val delta = layerSurface(0xffff0000.toInt(), 10, 10)
+        val cache = PixelLayerProjectionCache(256, 128, tileSize = 64)
+
+        val first = cache.update(listOf(PixelLayerProjectionInput(
+            layerId = "paint",
+            pixels = backdrop.snapshot(),
+            opacity = .5f,
+            activeDelta = delta.snapshot(),
+        )))
+
+        assertEquals(1, first.recomposedTileCount)
+        assertTrue(first.snapshot.pixelAt(10, 10) != 0)
+        assertEquals("Active presentation must not mutate committed truth", 0, backdrop.pixelAt(10, 10))
+
+        delta.beginWrite("next active tile").run { setPixel(130, 10, 0xff00ff00.toInt()); commit().close() }
+        val second = cache.update(listOf(PixelLayerProjectionInput(
+            layerId = "paint",
+            pixels = backdrop.snapshot(),
+            opacity = .5f,
+            activeDelta = delta.snapshot(),
+        )))
+        assertEquals(1, second.recomposedTileCount)
+        assertEquals(1, second.reusedTileCount)
+    }
+
+    @Test fun activeEraseAndSourceAtopUseTheSameTileProjectionContractAsPublication() {
+        val backdrop = layerSurface(0x80800000.toInt(), 10, 10)
+        val coverage = layerSurface(0x80ffffff.toInt(), 10, 10)
+
+        val erased = PixelLayerProjectionCache(256, 128, tileSize = 64).update(listOf(
+            PixelLayerProjectionInput(
+                "erase",
+                backdrop.snapshot(),
+                activeDelta = coverage.snapshot(),
+                activeDeltaBlend = PixelActiveDeltaBlend.DESTINATION_OUT,
+            ),
+        )).snapshot.pixelAt(10, 10)
+        val atop = PixelLayerProjectionCache(256, 128, tileSize = 64).update(listOf(
+            PixelLayerProjectionInput(
+                "alpha-lock",
+                backdrop.snapshot(),
+                activeDelta = coverage.snapshot(),
+                activeDeltaBlend = PixelActiveDeltaBlend.SOURCE_ATOP,
+            ),
+        )).snapshot.pixelAt(10, 10)
+
+        assertEquals(63, erased ushr 24)
+        assertEquals("Source-atop must preserve the backdrop alpha", 128, atop ushr 24)
+    }
+
     @Test fun removingTheLastSourcePixelInvalidatesAndPrunesTheOldProjectionTile() {
         val layer = layerSurface(0xffffffff.toInt(), 70, 10)
         val cache = PixelLayerProjectionCache(256, 128, tileSize = 64)

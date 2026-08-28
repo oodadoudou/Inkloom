@@ -41,6 +41,7 @@ import app.inkloom.engine.v5.android.PixelTileCanvasRenderer
 import app.inkloom.engine.v5.android.MaskTileCanvasRenderer
 import app.inkloom.engine.v5.composite.PixelLayerProjectionCache
 import app.inkloom.engine.v5.composite.PixelLayerProjectionInput
+import app.inkloom.engine.v5.composite.PixelActiveDeltaBlend
 import app.inkloom.engine.v5.selection.AlphaMaskOperation
 import app.inkloom.engine.v5.surface.MaskComposeMode
 import app.inkloom.engine.v5.surface.MaskTileSurface
@@ -1689,13 +1690,20 @@ class InkCanvasView(context: Context) : View(context) {
             rasterLayerProjectionGeometry = geometry
         }
         val update = cache.update(orderedIds.map { layerId ->
+            val active = activeV5PaintPresentation(layerId)
             PixelLayerProjectionInput(
                 layerId = layerId,
-                pixels = liveRasterPreviewSnapshot(layerId) ?: rasterLayerTileSurfaces.getValue(layerId).snapshot(),
+                pixels = active?.backdrop ?: liveRasterPreviewSnapshot(layerId)
+                    ?: rasterLayerTileSurfaces.getValue(layerId).snapshot(),
                 opacity = layerOpacities[layerId] ?: 1f,
                 blendMode = (layerBlendModes[layerId] ?: LayerBlendMode.NORMAL).toPixelBlendMode(),
                 mask = layerMasks[layerId]?.takeIf(LayerMask::enabled)?.let { layerMaskSurfaces[layerId] },
                 clipToBaseBelow = layerId in clippedLayers,
+                activeDelta = active?.delta,
+                activeDeltaBlend = when (active?.blend) {
+                    ActiveStrokePresentationBlend.DESTINATION_OUT -> PixelActiveDeltaBlend.DESTINATION_OUT
+                    else -> PixelActiveDeltaBlend.SOURCE_OVER
+                },
             )
         })
         lastRasterProjectionRecomposedTileCount = update.recomposedTileCount

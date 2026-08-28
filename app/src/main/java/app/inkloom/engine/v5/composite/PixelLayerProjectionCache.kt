@@ -16,7 +16,13 @@ data class PixelLayerProjectionInput(
     val blendMode: PixelBlendMode = PixelBlendMode.NORMAL,
     val mask: MaskTileSurfaceSnapshot? = null,
     val clipToBaseBelow: Boolean = false,
+    /** Gesture-local sparse contribution pinned to [pixels]. It participates in signatures and
+     * composition without materializing a full-layer preview surface. */
+    val activeDelta: PixelTileSurfaceSnapshot? = null,
+    val activeDeltaBlend: PixelActiveDeltaBlend = PixelActiveDeltaBlend.SOURCE_OVER,
 )
+
+enum class PixelActiveDeltaBlend { SOURCE_OVER, DESTINATION_OUT, SOURCE_ATOP }
 
 data class PixelLayerProjectionUpdate(
     val snapshot: PixelTileSurfaceSnapshot,
@@ -51,6 +57,7 @@ class PixelLayerProjectionCache(
     private var maskCoverageScratch = ByteArray(0)
     private var batchModes = IntArray(0)
     private var batchOpacities = FloatArray(0)
+    private var activeRgba8Scratch = IntArray(0)
     private val rgba8Underlays = object : LinkedHashMap<PixelTileKey, Rgba8Underlay>(16, .75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<PixelTileKey, Rgba8Underlay>?): Boolean =
             size > MAX_CACHED_UNDERLAY_TILES
@@ -159,7 +166,7 @@ class PixelLayerProjectionCache(
                     continue
                 }
             }
-            layer.input.pixels.readRgba8Tile(key) { source ->
+            layer.readRgba8Tile(key) { source ->
                 PixelTileCompositor.compositeRgba8Tile(
                     source,
                     output,
@@ -193,7 +200,7 @@ class PixelLayerProjectionCache(
         if (batchOpacities.size != contributors.size) batchOpacities = FloatArray(contributors.size)
         var copiedLayers = 0
         contributors.forEachIndexed { layerIndex, layer ->
-            layer.input.pixels.readRgba8Tile(key) {
+            layer.readRgba8Tile(key) {
                 it.copyInto(rgba8BatchPixels, layerIndex * layerStride)
                 copiedLayers++
             }
@@ -235,7 +242,7 @@ class PixelLayerProjectionCache(
                     continue
                 }
             }
-            layer.input.pixels.readF16Tile(key) { source ->
+            layer.readF16Tile(key) { source ->
                 PixelTileCompositor.compositeF16Tile(
                     source,
                     output,
@@ -269,7 +276,7 @@ class PixelLayerProjectionCache(
         if (batchOpacities.size != contributors.size) batchOpacities = FloatArray(contributors.size)
         var copiedLayers = 0
         contributors.forEachIndexed { layerIndex, layer ->
-            layer.input.pixels.readF16Tile(key) {
+            layer.readF16Tile(key) {
                 it.copyInto(f16BatchPixels, layerIndex * layerStride)
                 copiedLayers++
             }
@@ -304,7 +311,7 @@ class PixelLayerProjectionCache(
         val base = layer.clippingBase ?: return
         val baseOpacityByte = ((if (base.opacity.isFinite()) base.opacity else 0f).coerceIn(0f, 1f) * 255f + .5f).toInt()
         val baseTilePresent = when (base.pixels.pixelFormat) {
-            PixelTileFormat.PREMULTIPLIED_SRGB_8888 -> base.pixels.readRgba8Tile(key) { pixels ->
+            PixelTileFormat.PREMULTIPLIED_SRGB_8888 -> readResolvedRgba8Tile(base, key) { pixels ->
                 for (localY in 0 until bounds.height) {
                     var index = localY * stride
                     var coverageIndex = offset + index
@@ -376,6 +383,74 @@ class PixelLayerProjectionCache(
     private fun multiplyByte(current: Byte, factor: Int): Byte =
         ((current.toInt().and(0xff) * factor.coerceIn(0, 255) + 127) / 255).toByte()
 
+    private fun <T> readResolvedRgba8Tile(
+        input: PixelLayerProjectionInput,
+        key: PixelTileKey,
+        block: (IntArray) -> T,
+    ): T? {
+        val delta = input.activeDelta
+        if (delta?.generationAt(key) == null) return input.pixels.readRgba8Tile(key, block)
+        val required = projection.tileSize * projection.tileSize
+        if (activeRgba8Scratch.size < required) activeRgba8Scratch = IntArray(required)
+        activeRgba8Scratch.fill(0)
+        input.pixels.readRgba8Tile(key) { it.copyInto(activeRgba8Scratch) }
+        delta.readRgba8Tile(key) { source ->
+            source.indices.forEach { index ->
+                activeRgba8Scratch[index] = activeDeltaPixel(
+                    activeRgba8Scratch[index],
+                    source[index],
+                    input.activeDeltaBlend,
+                )
+            }
+        }
+        return block(activeRgba8Scratch)
+    }
+
+    private fun alphaAt(input: PixelLayerProjectionInput, x: Int, y: Int): Float {
+        val destination = input.pixels.pixelAt(x, y)
+        val source = input.activeDelta?.pixelAt(x, y) ?: 0
+        val resolved = if (source == 0) destination else activeDeltaPixel(destination, source, input.activeDeltaBlend)
+        return (resolved ushr 24 and 0xff) / 255f
+    }
+
+    private fun activeDeltaPixel(destination: Int, source: Int, blend: PixelActiveDeltaBlend): Int = when (blend) {
+        PixelActiveDeltaBlend.SOURCE_OVER -> sourceOver(destination, source)
+        PixelActiveDeltaBlend.DESTINATION_OUT -> destinationOut(destination, source ushr 24 and 0xff)
+        PixelActiveDeltaBlend.SOURCE_ATOP -> sourceAtop(destination, source)
+    }
+
+    private fun sourceOver(destination: Int, source: Int): Int {
+        val sourceAlpha = source ushr 24 and 0xff
+        if (sourceAlpha == 0) return destination
+        if (sourceAlpha == 255) return source
+        val inverse = 255 - sourceAlpha
+        val destinationAlpha = destination ushr 24 and 0xff
+        return ((sourceAlpha + destinationAlpha * inverse / 255).coerceAtMost(255) shl 24) or
+            ((((source ushr 16) and 0xff) + ((destination ushr 16) and 0xff) * inverse / 255).coerceAtMost(255) shl 16) or
+            ((((source ushr 8) and 0xff) + ((destination ushr 8) and 0xff) * inverse / 255).coerceAtMost(255) shl 8) or
+            (((source and 0xff) + (destination and 0xff) * inverse / 255).coerceAtMost(255))
+    }
+
+    private fun destinationOut(destination: Int, sourceAlpha: Int): Int {
+        val keep = 255 - sourceAlpha.coerceIn(0, 255)
+        return ((((destination ushr 24) and 0xff) * keep / 255) shl 24) or
+            ((((destination ushr 16) and 0xff) * keep / 255) shl 16) or
+            ((((destination ushr 8) and 0xff) * keep / 255) shl 8) or
+            ((destination and 0xff) * keep / 255)
+    }
+
+    private fun sourceAtop(destination: Int, source: Int): Int {
+        val destinationAlpha = destination ushr 24 and 0xff
+        if (destinationAlpha == 0) return destination
+        val sourceAlpha = source ushr 24 and 0xff
+        if (sourceAlpha == 0) return destination
+        val inverse = 255 - sourceAlpha
+        return (destinationAlpha shl 24) or
+            (((((source ushr 16) and 0xff) * destinationAlpha + ((destination ushr 16) and 0xff) * inverse) / 255).coerceAtMost(destinationAlpha) shl 16) or
+            (((((source ushr 8) and 0xff) * destinationAlpha + ((destination ushr 8) and 0xff) * inverse) / 255).coerceAtMost(destinationAlpha) shl 8) or
+            ((((source and 0xff) * destinationAlpha + (destination and 0xff) * inverse) / 255).coerceAtMost(destinationAlpha))
+    }
+
     private fun prepare(layers: List<PixelLayerProjectionInput>): List<PreparedLayer> {
         var currentBase: PixelLayerProjectionInput? = null
         return layers.map { input ->
@@ -393,7 +468,7 @@ class PixelLayerProjectionCache(
                     val baseAlpha = base?.let {
                         val baseOpacity = if (it.opacity.isFinite()) it.opacity.coerceIn(0f, 1f) else 0f
                         val baseMask = it.mask?.let { mask -> alphaAt(mask, x, y, projection.logicalWidth, projection.logicalHeight) } ?: 1f
-                        alphaAt(it.pixels, x, y) * baseMask * baseOpacity
+                        alphaAt(it, x, y) * baseMask * baseOpacity
                     } ?: 1f
                     maskAlpha * baseAlpha
                 }
@@ -411,7 +486,7 @@ class PixelLayerProjectionCache(
     private fun buildSignatures(layers: List<PreparedLayer>): Map<PixelTileKey, TileSignature> {
         val keys = layers.asSequence()
             .filter { it.opacity > 0f }
-            .flatMap { it.input.pixels.tileKeys.asSequence() }
+            .flatMap { layer -> (layer.input.pixels.tileKeys + layer.input.activeDelta?.tileKeys.orEmpty()).asSequence() }
             .toCollection(linkedSetOf())
         return keys.associateWith { key ->
             TileSignature(layers.mapNotNull { layer -> layer.dependency(key) })
@@ -428,6 +503,14 @@ class PixelLayerProjectionCache(
         input.mask?.let { mask ->
             require(mask.logicalWidth > 0 && mask.logicalHeight > 0) {
                 "Layer ${input.layerId} mask geometry is invalid"
+            }
+        }
+        input.activeDelta?.let { delta ->
+            require(delta.logicalWidth == projection.logicalWidth && delta.logicalHeight == projection.logicalHeight &&
+                delta.tileSize == projection.tileSize && delta.pixelFormat == projection.pixelFormat
+            ) { "Layer ${input.layerId} active delta is incompatible with the projection surface" }
+            require(delta.pixelFormat == PixelTileFormat.PREMULTIPLIED_SRGB_8888) {
+                "Realtime active deltas currently require premultiplied RGBA8"
             }
         }
     }
@@ -476,18 +559,31 @@ class PixelLayerProjectionCache(
         val coverage: CompositeCoverage?,
         val zeroCoverage: Boolean,
     ) {
-        fun contributes(key: PixelTileKey): Boolean = opacity > 0f && input.pixels.generationAt(key) != null
+        fun contributes(key: PixelTileKey): Boolean = opacity > 0f &&
+            (input.pixels.generationAt(key) != null || input.activeDelta?.generationAt(key) != null)
 
         val requiresCoverage: Boolean get() = zeroCoverage || input.mask != null || clippingBase != null
 
-        fun isNativeBatchCompatible(): Boolean = input.blendMode.ordinal <= PixelBlendMode.EXCLUSION.ordinal
+        fun isNativeBatchCompatible(): Boolean = input.activeDelta == null &&
+            input.blendMode.ordinal <= PixelBlendMode.EXCLUSION.ordinal
+
+        fun <T> readRgba8Tile(key: PixelTileKey, block: (IntArray) -> T): T? =
+            readResolvedRgba8Tile(input, key, block)
+
+        fun <T> readF16Tile(key: PixelTileKey, block: (LongArray) -> T): T? =
+            input.pixels.readF16Tile(key, block)
 
         fun dependency(key: PixelTileKey): LayerDependency? {
-            val sourceGeneration = input.pixels.generationAt(key) ?: return null
+            val sourceGeneration = input.pixels.generationAt(key)
+            val deltaGeneration = input.activeDelta?.generationAt(key)
+            if (sourceGeneration == null && deltaGeneration == null) return null
             return LayerDependency(
                 layerId = input.layerId,
                 surfaceId = input.pixels.surfaceId,
                 sourceGeneration = sourceGeneration,
+                activeDeltaSurfaceId = input.activeDelta?.surfaceId,
+                activeDeltaGeneration = deltaGeneration,
+                activeDeltaBlend = input.activeDeltaBlend,
                 visible = input.visible,
                 opacityBits = opacity.toRawBits(),
                 blendMode = input.blendMode,
@@ -498,6 +594,9 @@ class PixelLayerProjectionCache(
                 baseLayerId = clippingBase?.layerId,
                 baseSurfaceId = clippingBase?.pixels?.surfaceId,
                 baseGeneration = clippingBase?.pixels?.generationAt(key),
+                baseActiveDeltaSurfaceId = clippingBase?.activeDelta?.surfaceId,
+                baseActiveDeltaGeneration = clippingBase?.activeDelta?.generationAt(key),
+                baseActiveDeltaBlend = clippingBase?.activeDeltaBlend,
                 baseVisible = clippingBase?.visible,
                 baseOpacityBits = clippingBase?.opacity?.toRawBits(),
                 baseMaskSurfaceId = clippingBase?.mask?.surfaceId,
@@ -517,7 +616,10 @@ class PixelLayerProjectionCache(
     private data class LayerDependency(
         val layerId: String,
         val surfaceId: String,
-        val sourceGeneration: Long,
+        val sourceGeneration: Long?,
+        val activeDeltaSurfaceId: String?,
+        val activeDeltaGeneration: Long?,
+        val activeDeltaBlend: PixelActiveDeltaBlend,
         val visible: Boolean,
         val opacityBits: Int,
         val blendMode: PixelBlendMode,
@@ -528,6 +630,9 @@ class PixelLayerProjectionCache(
         val baseLayerId: String?,
         val baseSurfaceId: String?,
         val baseGeneration: Long?,
+        val baseActiveDeltaSurfaceId: String?,
+        val baseActiveDeltaGeneration: Long?,
+        val baseActiveDeltaBlend: PixelActiveDeltaBlend?,
         val baseVisible: Boolean?,
         val baseOpacityBits: Int?,
         val baseMaskSurfaceId: String?,
