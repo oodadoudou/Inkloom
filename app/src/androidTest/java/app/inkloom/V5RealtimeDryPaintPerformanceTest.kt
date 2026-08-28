@@ -10,6 +10,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.engine.v5.surface.PixelTileSurface
+import app.inkloom.engine.v5.surface.PixelTileKey
 import app.inkloom.model.EditorTool
 import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertEquals
@@ -19,6 +20,75 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class V5RealtimeDryPaintPerformanceTest {
+    @Test
+    fun committedPixelsStayByteAndFrameIdenticalWhileAnotherStrokeIsActive() {
+        val surface = PixelTileSurface(2048, 1536)
+        surface.beginWrite("stable old ink fixture").run {
+            for (y in 32 until 112) for (x in 32 until 112) setPixel(x, y, Color.RED)
+            commit().close()
+        }
+        val stableKey = PixelTileKey(0, 0)
+        val before = surface.snapshot()
+        val beforeGeneration = requireNotNull(before.tileInfo.single { it.key == stableKey }.generation)
+        val beforeBytes = requireNotNull(before.copyTilePixels(stableKey))
+        val display = Bitmap.createBitmap(1024, 768, Bitmap.Config.ARGB_8888)
+        lateinit var view: InkCanvasView
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view = InkCanvasView(ApplicationProvider.getApplicationContext()).apply {
+                layout(0, 0, 1024, 768)
+                tool = EditorTool.PEN
+                activeLayerId = "paint"
+                installV5TestInk(size = 18f)
+                setRasterLayerSurfaces(mapOf("paint" to surface))
+            }
+            display.eraseColor(Color.TRANSPARENT)
+            view.draw(Canvas(display))
+        }
+        val stableFrameRegion = display.copyRegion(0, 0, 300, display.height)
+
+        val downTime = SystemClock.uptimeMillis()
+        dispatch(view, MotionEvent.ACTION_DOWN, 650f, 500f, downTime, downTime)
+        listOf(710f to 510f, 780f to 490f, 850f to 515f, 920f to 500f).forEachIndexed { index, point ->
+            dispatch(view, MotionEvent.ACTION_MOVE, point.first, point.second, downTime, downTime + 4L + index * 4L)
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                display.eraseColor(Color.TRANSPARENT)
+                view.draw(Canvas(display))
+            }
+            assertTrue(
+                "Active frame $index changed pixels outside the new stroke damage",
+                stableFrameRegion.contentEquals(display.copyRegion(0, 0, 300, display.height)),
+            )
+        }
+        dispatch(view, MotionEvent.ACTION_UP, 920f, 500f, downTime, downTime + 24L)
+
+        val after = surface.snapshot()
+        assertEquals(
+            "A disjoint commit must not replace the old tile generation",
+            beforeGeneration,
+            requireNotNull(after.tileInfo.single { it.key == stableKey }.generation),
+        )
+        assertTrue(
+            "A disjoint commit must leave old committed tile bytes unchanged",
+            beforeBytes.contentEquals(requireNotNull(after.copyTilePixels(stableKey))),
+        )
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            display.eraseColor(Color.TRANSPARENT)
+            view.draw(Canvas(display))
+        }
+        val firstCommittedFrame = display.copyRegion(0, 0, display.width, display.height)
+        repeat(3) {
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                display.eraseColor(Color.TRANSPARENT)
+                view.draw(Canvas(display))
+            }
+            assertTrue(
+                "Dry ink must not evolve after ACTION_UP",
+                firstCommittedFrame.contentEquals(display.copyRegion(0, 0, display.width, display.height)),
+            )
+        }
+        display.recycle()
+    }
+
     @Test
     fun maximumRealtimeSmoothingStillKeepsVisibleInkAtThePhysicalTip() {
         val surface = PixelTileSurface(2048, 1536)
@@ -151,4 +221,7 @@ class V5RealtimeDryPaintPerformanceTest {
         }
         return false
     }
+
+    private fun Bitmap.copyRegion(left: Int, top: Int, width: Int, height: Int): IntArray =
+        IntArray(width * height).also { getPixels(it, 0, width, left, top, width, height) }
 }
