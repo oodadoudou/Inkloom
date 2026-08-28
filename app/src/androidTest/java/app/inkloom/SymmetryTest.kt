@@ -1,26 +1,82 @@
 package app.inkloom
 
+import android.graphics.Color
 import android.view.InputDevice
 import android.view.MotionEvent
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import app.inkloom.document.LayerIds
-import app.inkloom.document.InkStroke
-import app.inkloom.document.StrokePoint
+import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.model.EditorTool
 import app.inkloom.model.SymmetryMode
 import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class SymmetryTest {
-    private fun canvas(block: InkCanvasView.() -> Unit): InkCanvasView {
+    @Test fun horizontalSymmetryPaintsOriginalAndMirrorInOneRasterCommit() {
+        val surface = PixelTileSurface(400, 400)
+        var commits = 0
+        val view = canvas(surface) {
+            symmetryMode = SymmetryMode.HORIZONTAL
+            onRasterLayerCommitted = { commits++ }
+        }
+
+        send(view, 0L, MotionEvent.ACTION_DOWN, 100f, 100f)
+        send(view, 20L, MotionEvent.ACTION_MOVE, 150f, 100f)
+        send(view, 40L, MotionEvent.ACTION_UP, 150f, 100f)
+
+        assertEquals(1, commits)
+        assertTrue(Color.alpha(surface.pixelAt(125, 100)) > 0)
+        assertTrue(Color.alpha(surface.pixelAt(125, 300)) > 0)
+        assertEquals(0, Color.alpha(surface.pixelAt(125, 200)))
+    }
+
+    @Test fun noSymmetryPublishesOnlyTheAuthoredTrajectory() {
+        val surface = PixelTileSurface(400, 400)
+        val view = canvas(surface) {}
+
+        send(view, 0L, MotionEvent.ACTION_DOWN, 100f, 100f)
+        send(view, 20L, MotionEvent.ACTION_MOVE, 150f, 100f)
+        send(view, 40L, MotionEvent.ACTION_UP, 150f, 100f)
+
+        assertTrue(Color.alpha(surface.pixelAt(125, 100)) > 0)
+        assertEquals(0, Color.alpha(surface.pixelAt(125, 300)))
+    }
+
+    @Test fun radialSymmetryUsesDocumentPixelAspectRatio() {
+        val surface = PixelTileSurface(100, 200)
+        val view = canvas(surface) {
+            pageModelWidth = 100f
+            pageModelHeight = 200f
+            symmetryMode = SymmetryMode.RADIAL_4
+        }
+
+        send(view, 0L, MotionEvent.ACTION_DOWN, 300f, 200f)
+        send(view, 20L, MotionEvent.ACTION_MOVE, 320f, 200f)
+        send(view, 40L, MotionEvent.ACTION_UP, 320f, 200f)
+
+        assertTrue(Color.alpha(surface.pixelAt(75, 100)) > 0)
+        assertTrue(Color.alpha(surface.pixelAt(50, 125)) > 0)
+        assertTrue(Color.alpha(surface.pixelAt(25, 100)) > 0)
+        assertTrue(Color.alpha(surface.pixelAt(50, 75)) > 0)
+    }
+
+    private fun canvas(surface: PixelTileSurface, block: InkCanvasView.() -> Unit): InkCanvasView {
         lateinit var result: InkCanvasView
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            result = InkCanvasView(ApplicationProvider.getApplicationContext()).apply { layout(0, 0, 400, 400); block() }
+            result = InkCanvasView(ApplicationProvider.getApplicationContext()).apply {
+                layout(0, 0, 400, 400)
+                tool = EditorTool.PEN
+                fingerDrawingEnabled = true
+                activeLayerId = "paint"
+                baseWidth = 18f
+                setRasterLayerSurfaces(mapOf("paint" to surface))
+                block()
+            }
         }
         return result
     }
@@ -32,55 +88,7 @@ class SymmetryTest {
     }
 
     private fun send(view: InkCanvasView, time: Long, action: Int, x: Float, y: Float) {
-        val e = event(time, action, x, y)
-        try { InstrumentationRegistry.getInstrumentation().runOnMainSync { view.onTouchEvent(e) } } finally { e.recycle() }
-    }
-
-    @Test fun horizontalSymmetryCommitsMirrorStrokes() {
-        val committed = mutableListOf<InkStroke>()
-        val view = canvas {
-            tool = EditorTool.PEN
-            fingerDrawingEnabled = true
-            symmetryMode = SymmetryMode.HORIZONTAL
-            onStrokeCommitted = committed::add
-        }
-        send(view, 0L, MotionEvent.ACTION_DOWN, 100f, 100f)
-        send(view, 20L, MotionEvent.ACTION_MOVE, 150f, 100f)
-        send(view, 40L, MotionEvent.ACTION_UP, 150f, 100f)
-        // Original + 1 horizontal mirror = 2 strokes.
-        assertEquals("Horizontal symmetry should commit the original plus one mirror", 2, committed.size)
-        assertEquals(.25f, committed[1].points.first().x, .01f)
-        assertEquals(.75f, committed[1].points.first().y, .01f)
-    }
-
-    @Test fun noSymmetryCommitsASingleStroke() {
-        var committed = 0
-        val view = canvas {
-            tool = EditorTool.PEN
-            fingerDrawingEnabled = true
-            onStrokeCommitted = { committed++ }
-        }
-        send(view, 0L, MotionEvent.ACTION_DOWN, 100f, 200f)
-        send(view, 20L, MotionEvent.ACTION_MOVE, 150f, 200f)
-        send(view, 40L, MotionEvent.ACTION_UP, 150f, 200f)
-        assertEquals(1, committed)
-    }
-
-    @Test fun radialSymmetryUsesPhysicalPageAspectRatio() {
-        val committed = mutableListOf<InkStroke>()
-        val view = canvas {
-            tool = EditorTool.PEN
-            fingerDrawingEnabled = true
-            symmetryMode = SymmetryMode.RADIAL_4
-            pageModelWidth = 100f
-            pageModelHeight = 200f
-            onStrokeCommitted = committed::add
-        }
-        send(view, 0L, MotionEvent.ACTION_DOWN, 300f, 200f)
-        send(view, 20L, MotionEvent.ACTION_MOVE, 320f, 200f)
-        send(view, 40L, MotionEvent.ACTION_UP, 320f, 200f)
-        assertEquals(4, committed.size)
-        assertEquals(.5f, committed[1].points.first().x, .01f)
-        assertEquals(.625f, committed[1].points.first().y, .01f)
+        val event = event(time, action, x, y)
+        try { InstrumentationRegistry.getInstrumentation().runOnMainSync { view.onTouchEvent(event) } } finally { event.recycle() }
     }
 }

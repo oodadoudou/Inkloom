@@ -2,9 +2,11 @@ package app.inkloom
 
 import android.view.InputDevice
 import android.view.MotionEvent
+import android.graphics.Color
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import app.inkloom.document.InkStroke
+import app.inkloom.document.PerspectiveGuides
+import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.document.PerspectiveGuideMode
 import app.inkloom.document.PerspectiveGuideState
 import app.inkloom.model.EditorTool
@@ -13,30 +15,24 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
-import kotlin.math.abs
 
 @RunWith(AndroidJUnit4::class)
 class InkCanvasPerspectiveGuideTest {
     @Test fun drawingAssistLocksStylusStrokeToOnePerspectiveDirection() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            var committed: InkStroke? = null
-            val view = canvas().apply {
-                perspectiveGuideState = PerspectiveGuideState.defaultFor(PerspectiveGuideMode.ONE_POINT).copy(editing = false)
-                onStrokeCommitted = { committed = it }
-            }
+            val surface = PixelTileSurface(1_000, 1_000)
+            val guide = PerspectiveGuideState.defaultFor(PerspectiveGuideMode.ONE_POINT).copy(editing = false)
+            val view = canvas(surface).apply { perspectiveGuideState = guide }
 
             view.send(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.ACTION_DOWN, 200f, 800f, 10L)
             view.send(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.ACTION_MOVE, 250f, 735f, 20L)
             view.send(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.ACTION_MOVE, 700f, 900f, 30L)
             view.send(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.ACTION_UP, 900f, 900f, 40L)
 
-            val points = requireNotNull(committed).points
-            assertTrue(points.size >= 2)
-            val expectedSlope = (.42f - .8f) / (.5f - .2f)
-            points.drop(1).forEach { point ->
-                val actualSlope = (point.y - .8f) / (point.x - .2f).takeUnless { abs(it) < .0001f }!!
-                assertEquals(expectedSlope, actualSlope, .03f)
-            }
+            val constraint = requireNotNull(PerspectiveGuides.constraintAt(guide, .2f, .8f, .25f, .735f, 1_000f, 1_000f))
+            val projected = constraint.apply(.7f, .9f)
+            assertTrue(Color.alpha(surface.pixelAt((projected.x * 1_000).toInt(), (projected.y * 1_000).toInt())) > 0)
+            assertEquals(0, Color.alpha(surface.pixelAt(700, 900)))
         }
     }
 
@@ -60,10 +56,13 @@ class InkCanvasPerspectiveGuideTest {
         }
     }
 
-    private fun canvas() = InkCanvasView(InstrumentationRegistry.getInstrumentation().targetContext).apply {
+    private fun canvas(surface: PixelTileSurface = PixelTileSurface(1_000, 1_000)) = InkCanvasView(InstrumentationRegistry.getInstrumentation().targetContext).apply {
         layout(0, 0, 1_000, 1_000)
         tool = EditorTool.PEN
         fingerDrawingEnabled = false
+        activeLayerId = "paint"
+        baseWidth = 18f
+        setRasterLayerSurfaces(mapOf("paint" to surface))
     }
 
     private fun InkCanvasView.send(toolType: Int, action: Int, x: Float, y: Float, time: Long) {

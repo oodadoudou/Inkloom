@@ -2,9 +2,10 @@ package app.inkloom
 
 import android.view.InputDevice
 import android.view.MotionEvent
+import android.graphics.Color
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import app.inkloom.document.InkStroke
+import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.document.RulerGuide
 import app.inkloom.document.RulerGuideState
 import app.inkloom.model.EditorTool
@@ -19,17 +20,16 @@ class InkCanvasRulerTest {
     @Test fun stylusStrokeIsConstrainedToRulerWithoutLosingPressure() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
-            var committed: InkStroke? = null
-            val view = rulerCanvas().apply { onStrokeCommitted = { committed = it } }
+            val surface = PixelTileSurface(1_000, 1_000)
+            val view = rulerCanvas(surface)
 
             view.send(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.ACTION_DOWN, 100f, 200f, 10L, .4f)
             view.send(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.ACTION_MOVE, 500f, 800f, 20L, .7f)
             view.send(MotionEvent.TOOL_TYPE_STYLUS, MotionEvent.ACTION_UP, 900f, 300f, 30L, .9f)
 
-            val stroke = requireNotNull(committed)
-            assertTrue(stroke.points.size >= 2)
-            assertTrue(stroke.points.all { kotlin.math.abs(it.y - .5f) < .0001f })
-            assertTrue(stroke.points.last().pressure > stroke.points.first().pressure)
+            assertTrue(Color.alpha(surface.pixelAt(500, 500)) > 0)
+            assertTrue(Color.alpha(surface.pixelAt(850, 500)) > 0)
+            assertEquals(0, Color.alpha(surface.pixelAt(500, 800)))
         }
     }
 
@@ -71,12 +71,15 @@ class InkCanvasRulerTest {
         }
     }
 
-    private fun rulerCanvas() = InkCanvasView(InstrumentationRegistry.getInstrumentation().targetContext).apply {
+    private fun rulerCanvas(surface: PixelTileSurface = PixelTileSurface(1_000, 1_000)) = InkCanvasView(InstrumentationRegistry.getInstrumentation().targetContext).apply {
         layout(0, 0, 1_000, 1_000)
         tool = EditorTool.PEN
         fingerDrawingEnabled = false
         rulerEnabled = true
         rulerGuide = RulerGuideState(centerX = .5f, centerY = .5f, angleDegrees = 0f, snapDegrees = 15f)
+        activeLayerId = "paint"
+        baseWidth = 18f
+        setRasterLayerSurfaces(mapOf("paint" to surface))
     }
 
     private fun InkCanvasView.send(toolType: Int, action: Int, x: Float, y: Float, time: Long, pressure: Float = .7f) {

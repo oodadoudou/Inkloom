@@ -62,6 +62,7 @@ import app.inkloom.engine.v5.raster.DryInkDefinition
 import app.inkloom.engine.v5.raster.DryInkPaintOp
 import app.inkloom.engine.v5.raster.PaintResult
 import app.inkloom.engine.v5.raster.PaintOpKind
+import app.inkloom.engine.v5.raster.PaintSampleTransform
 import app.inkloom.engine.v5.raster.StampBrushDefinition
 import app.inkloom.engine.v5.raster.StampPaintOp
 import app.inkloom.engine.v5.raster.WetPaintDefinition
@@ -527,6 +528,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var canvasGuideGestureMode: CanvasGuideGestureMode? = null
     private var canvasGuideGestureStart: CanvasGuideState? = null
     private var activeCanvasSnapConstraint: CanvasSnapConstraint? = null
+    private var v5GestureStartNormalized: Pair<Float, Float>? = null
     private val perspectiveGuidePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(55, 116, 220); alpha = 140; style = Paint.Style.STROKE; strokeWidth = 1.5f }
     private val perspectiveHandlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; alpha = 250; style = Paint.Style.FILL }
     private var perspectiveGuideGesturePoint: Int? = null
@@ -2974,6 +2976,7 @@ class InkCanvasView(context: Context) : View(context) {
         canvasGuideGestureMode = null
         canvasGuideGestureStart = null
         activeCanvasSnapConstraint = null
+        v5GestureStartNormalized = null
         perspectiveGuideGestureStart?.let { perspectiveGuideState = it }
         perspectiveGuideGesturePoint = null
         perspectiveGuideGestureStart = null
@@ -4909,11 +4912,6 @@ class InkCanvasView(context: Context) : View(context) {
         if ((layerOpacities[activeLayerId] ?: 1f) < .999f ||
             (layerBlendModes[activeLayerId] ?: LayerBlendMode.NORMAL) != LayerBlendMode.NORMAL
         ) return null
-        if (symmetryMode != SymmetryMode.NONE || rulerEnabled ||
-            (perspectiveGuideState.assisted && perspectiveGuideState.mode != PerspectiveGuideMode.NONE) ||
-            (specialRulerState.assisted && specialRulerState.mode != SpecialRulerMode.NONE) ||
-            canvasGuideState.gridSnapEnabled || canvasGuideState.alignmentGuidesEnabled
-        ) return null
         if (stabilization > .0001f || streamLine > .0001f || procreateStabilization > .0001f ||
             motionFiltering > .0001f || postCorrection > .0001f
         ) return null
@@ -4922,6 +4920,7 @@ class InkCanvasView(context: Context) : View(context) {
         val diameterPixels = (diameter.coerceIn(.01f, 800f) / REFERENCE_WIDTH * surface.logicalWidth)
             .coerceAtLeast(.1f)
         val selection = selectionMaskForRasterTools()?.takeUnless { it.isEmpty }
+        val sampleTransforms = v5SampleTransforms(surface)
         fun pressure(enabled: Boolean, minimum: Float, curve: List<BrushCurvePoint>) = PressureResponse(
             enabled,
             minimum,
@@ -4949,7 +4948,7 @@ class InkCanvasView(context: Context) : View(context) {
                     blend = DryBlend.DESTINATION_OUT,
                 )
                 return V5PaintConfiguration(
-                    StampPaintOp(surface, definition, selection),
+                    StampPaintOp(surface, definition, selection, sampleTransforms = sampleTransforms),
                     diameterPixels * .5f + 2f,
                     "eraser:$eraserTip",
                 )
@@ -4963,7 +4962,7 @@ class InkCanvasView(context: Context) : View(context) {
                     blend = DryBlend.DESTINATION_OUT,
                 )
             return V5PaintConfiguration(
-                DryInkPaintOp(surface, definition, selection),
+                DryInkPaintOp(surface, definition, selection, sampleTransforms),
                 diameterPixels * .5f + 2f,
                 "eraser:round",
             )
@@ -4988,7 +4987,7 @@ class InkCanvasView(context: Context) : View(context) {
                 sizeTilt = tilt(sizeSecondaryDynamics),
             )
             return V5PaintConfiguration(
-                WetPaintOp(surface, definition, selection),
+                WetPaintOp(surface, definition, selection, sampleTransforms),
                 diameterPixels * .5f + 2f,
                 "wet:$brushId",
             )
@@ -5038,7 +5037,7 @@ class InkCanvasView(context: Context) : View(context) {
                 randomRotationRadians = Math.toRadians(sprayParticleRandomRotationDegrees.toDouble()).toFloat(),
             )
             return V5PaintConfiguration(
-                StampPaintOp(surface, definition, selection),
+                StampPaintOp(surface, definition, selection, sampleTransforms = sampleTransforms),
                 scatterRadius + particleDiameter * .5f + 2f,
                 "airbrush:$brushId",
             )
@@ -5158,7 +5157,7 @@ class InkCanvasView(context: Context) : View(context) {
             val maximumScatter = secondaryDefinitions.maxOfOrNull(StampBrushDefinition::scatterRadiusPixels)
                 ?.coerceAtLeast(definition.scatterRadiusPixels) ?: definition.scatterRadiusPixels
             return V5PaintConfiguration(
-                StampPaintOp(surface, definition, selection, secondaryDefinitions),
+                StampPaintOp(surface, definition, selection, secondaryDefinitions, sampleTransforms),
                 maximumDiameter * .5f + maximumScatter + 2f,
                 "stamp:$brushId:${masks.joinToString { it.contentHash().toString(16) }}:dual=${secondaryDefinitions.size}",
             )
@@ -5180,7 +5179,7 @@ class InkCanvasView(context: Context) : View(context) {
                 repeatStationarySamples = true,
             )
             return V5PaintConfiguration(
-                StampPaintOp(surface, definition, selection),
+                StampPaintOp(surface, definition, selection, sampleTransforms = sampleTransforms),
                 diameterPixels * .5f + 2f,
                 "continuous:$brushId",
             )
@@ -5221,7 +5220,7 @@ class InkCanvasView(context: Context) : View(context) {
             ),
         )
         return V5PaintConfiguration(
-            DryInkPaintOp(surface, definition, selection),
+            DryInkPaintOp(surface, definition, selection, sampleTransforms),
             diameterPixels * .5f + 2f,
             "dry:$brushId",
         )
@@ -5240,6 +5239,17 @@ class InkCanvasView(context: Context) : View(context) {
             )
             return true
         }
+        v5GestureStartNormalized = normalizedX to normalizedY
+        activeCanvasSnapConstraint = CanvasGuides.constraintAt(
+            canvasGuideState,
+            normalizedX,
+            normalizedY,
+            pageModelWidth,
+            pageModelHeight,
+            width.toFloat(),
+            height.toFloat(),
+            GUIDE_SNAP_TOLERANCE_DP * resources.displayMetrics.density,
+        )
         val initialSample = v5DocumentSample(event, pointerIndex, normalizedX, normalizedY, historicalIndex = null)
         val result = v5StrokeController.begin(
             layerId = activeLayerId,
@@ -5262,6 +5272,38 @@ class InkCanvasView(context: Context) : View(context) {
             startContinuousPlot()
         }
         return true
+    }
+
+    private fun v5SampleTransforms(surface: PixelTileSurface): List<PaintSampleTransform> = when (symmetryMode) {
+        SymmetryMode.NONE -> listOf(PaintSampleTransform.Identity)
+        SymmetryMode.HORIZONTAL -> listOf(
+            PaintSampleTransform.Identity,
+            PaintSampleTransform.horizontalAxis(surface.logicalHeight.toFloat()),
+        )
+        SymmetryMode.VERTICAL -> listOf(
+            PaintSampleTransform.Identity,
+            PaintSampleTransform.verticalAxis(surface.logicalWidth.toFloat()),
+        )
+        SymmetryMode.QUADRANT -> listOf(
+            PaintSampleTransform.Identity,
+            PaintSampleTransform.horizontalAxis(surface.logicalHeight.toFloat()),
+            PaintSampleTransform.verticalAxis(surface.logicalWidth.toFloat()),
+            PaintSampleTransform.bothAxes(surface.logicalWidth.toFloat(), surface.logicalHeight.toFloat()),
+        )
+        SymmetryMode.RADIAL_4, SymmetryMode.RADIAL_6, SymmetryMode.RADIAL_8 -> {
+            val count = when (symmetryMode) {
+                SymmetryMode.RADIAL_4 -> 4
+                SymmetryMode.RADIAL_6 -> 6
+                else -> 8
+            }
+            List(count) { index ->
+                PaintSampleTransform.rotation(
+                    (Math.PI * 2.0 * index / count).toFloat(),
+                    surface.logicalWidth * .5f,
+                    surface.logicalHeight * .5f,
+                )
+            }
+        }
     }
 
     private fun appendV5PaintGesture(event: MotionEvent, pointerIndex: Int): Boolean {
@@ -5345,9 +5387,10 @@ class InkCanvasView(context: Context) : View(context) {
             else event.getHistoricalAxisValue(MotionEvent.AXIS_TILT, pointerIndex, historicalIndex)
         val orientation = if (historicalIndex == null) event.getOrientation(pointerIndex)
             else event.getHistoricalOrientation(pointerIndex, historicalIndex)
+        val constrained = v5ConstrainedNormalizedPoint(normalizedX, normalizedY)
         return RawDocumentSample(
-            x = normalizedX.coerceIn(0f, 1f) * surface.logicalWidth,
-            y = normalizedY.coerceIn(0f, 1f) * surface.logicalHeight,
+            x = constrained.first * surface.logicalWidth,
+            y = constrained.second * surface.logicalHeight,
             eventTimeNanos = timeMillis.coerceAtLeast(0L) * 1_000_000L,
             enqueuedTimeNanos = SystemClock.uptimeMillis() * 1_000_000L,
             pressure = PressureCalibration.apply(
@@ -5361,6 +5404,47 @@ class InkCanvasView(context: Context) : View(context) {
             orientationRadians = orientation.takeIf(Float::isFinite) ?: 0f,
             tool = if (activeTool == EditorTool.ERASER) InputTool.STYLUS_ERASER else InputTool.STYLUS,
         )
+    }
+
+    private fun v5ConstrainedNormalizedPoint(x: Float, y: Float): Pair<Float, Float> {
+        val start = v5GestureStartNormalized
+        if (!rulerEnabled && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) &&
+            activePerspectiveSnapConstraint == null && start != null
+        ) {
+            activePerspectiveSnapConstraint = PerspectiveGuides.constraintAt(
+                perspectiveGuideState,
+                start.first,
+                start.second,
+                x,
+                y,
+                width.toFloat(),
+                height.toFloat(),
+                GUIDE_CAPTURE_MOVEMENT_DP * resources.displayMetrics.density,
+            )
+        }
+        if (!rulerEnabled && perspectiveGuideState.mode == PerspectiveGuideMode.NONE &&
+            activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) &&
+            activeSpecialRulerConstraint == null && start != null
+        ) {
+            activeSpecialRulerConstraint = SpecialRulers.constraintAt(
+                specialRulerState,
+                start.first,
+                start.second,
+                x,
+                y,
+                width.toFloat(),
+                height.toFloat(),
+                GUIDE_CAPTURE_MOVEMENT_DP * resources.displayMetrics.density,
+            )
+        }
+        val result = if (rulerEnabled && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
+            RulerGuide.project(rulerGuide, x, y, width.toFloat(), height.toFloat())
+        } else {
+            activePerspectiveSnapConstraint?.apply(x, y)
+                ?: activeSpecialRulerConstraint?.apply(x, y)
+                ?: activeCanvasSnapConstraint?.apply(x, y)
+        }
+        return (result?.x ?: x).coerceIn(0f, 1f) to (result?.y ?: y).coerceIn(0f, 1f)
     }
 
     private fun invalidateV5Damage(surface: PixelTileSurface, result: PaintResult) {

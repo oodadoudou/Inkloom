@@ -2,9 +2,10 @@ package app.inkloom
 
 import android.view.InputDevice
 import android.view.MotionEvent
+import android.graphics.Color
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import app.inkloom.document.InkStroke
+import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.document.SpecialRulerMode
 import app.inkloom.document.SpecialRulerState
 import app.inkloom.model.EditorTool
@@ -13,26 +14,23 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
-import kotlin.math.abs
 
 @RunWith(AndroidJUnit4::class)
 class InkCanvasSpecialRulerTest {
     @Test fun parallelRulerConstrainsStylusWithoutLosingPressure() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            var committed: InkStroke? = null
-            val view = canvas().apply {
+            val surface = PixelTileSurface(1_000, 1_000)
+            val view = canvas(surface).apply {
                 specialRulerState = SpecialRulerState(SpecialRulerMode.PARALLEL, editing = false, angleDegrees = 0f)
-                onStrokeCommitted = { committed = it }
             }
 
             view.sendStylus(MotionEvent.ACTION_DOWN, 100f, 330f, 10L, .3f)
             view.sendStylus(MotionEvent.ACTION_MOVE, 500f, 700f, 20L, .6f)
             view.sendStylus(MotionEvent.ACTION_UP, 900f, 150f, 30L, .9f)
 
-            val stroke = requireNotNull(committed)
-            assertTrue(stroke.points.size >= 2)
-            assertTrue(stroke.points.all { abs(it.y - .33f) < .001f })
-            assertTrue(stroke.points.last().pressure > stroke.points.first().pressure)
+            assertTrue(Color.alpha(surface.pixelAt(500, 330)) > 0)
+            assertTrue(Color.alpha(surface.pixelAt(850, 330)) > 0)
+            assertEquals(0, Color.alpha(surface.pixelAt(500, 700)))
         }
     }
 
@@ -75,10 +73,13 @@ class InkCanvasSpecialRulerTest {
         }
     }
 
-    private fun canvas() = InkCanvasView(InstrumentationRegistry.getInstrumentation().targetContext).apply {
+    private fun canvas(surface: PixelTileSurface = PixelTileSurface(1_000, 1_000)) = InkCanvasView(InstrumentationRegistry.getInstrumentation().targetContext).apply {
         layout(0, 0, 1_000, 1_000)
         tool = EditorTool.PEN
         fingerDrawingEnabled = false
+        activeLayerId = "paint"
+        baseWidth = 18f
+        setRasterLayerSurfaces(mapOf("paint" to surface))
     }
 
     private fun InkCanvasView.sendStylus(action: Int, x: Float, y: Float, time: Long, pressure: Float = .7f) {

@@ -83,8 +83,13 @@ class StampPaintOp(
     private val definition: StampBrushDefinition,
     private val selection: MaskTileSurfaceSnapshot? = null,
     secondaryDefinitions: List<StampBrushDefinition> = emptyList(),
+    private val sampleTransforms: List<PaintSampleTransform> = listOf(PaintSampleTransform.Identity),
 ) : PaintOp {
     private val streams = (listOf(definition) + secondaryDefinitions).map(::StreamRuntime)
+
+    init {
+        require(sampleTransforms.isNotEmpty())
+    }
 
     override val capabilities = PaintOpCapabilities(
         kind = if (definition.blend == DryBlend.DESTINATION_OUT) PaintOpKind.ERASER else definition.kind,
@@ -105,7 +110,7 @@ class StampPaintOp(
     ) : PublishablePaintOpSession, AutoCloseable {
         private var state = State.ACTIVE
         private var lastOrdinal = -1L
-        private val streamStates = streams.map { StreamState() }
+        private val streamStates = sampleTransforms.map { streams.map { StreamState() } }
         private var dirtyBounds: PixelRect? = null
 
         override fun apply(batch: PaintBatch): PaintResult = applyInternal(batch, finishing = false)
@@ -142,23 +147,26 @@ class StampPaintOp(
             lastOrdinal = batch.ordinal
 
             var batchDirty: PixelRect? = null
-            streams.forEachIndexed { index, stream ->
-                val streamState = streamStates[index]
-                val dabs = mutableListOf<ResolvedDab>()
-                batch.samples.forEach { sample ->
-                    val previous = streamState.lastSample
-                    if (previous == null) {
-                        resolveDabs(sample, directionRadians = stream.definition.rotationRadians, dabs, stream, streamState)
-                        streamState.distanceToNextDab = spacingFor(sample, stream.definition)
-                    } else if (!sameSample(previous, sample)) {
-                        emitSegment(previous, sample, dabs, stream, streamState)
-                    } else if (stream.definition.repeatStationarySamples) {
-                        resolveDabs(sample, stream.definition.rotationRadians, dabs, stream, streamState)
+            sampleTransforms.forEachIndexed { transformIndex, transform ->
+                streams.forEachIndexed { streamIndex, stream ->
+                    val streamState = streamStates[transformIndex][streamIndex]
+                    val dabs = mutableListOf<ResolvedDab>()
+                    batch.samples.forEach { input ->
+                        val sample = transform.apply(input)
+                        val previous = streamState.lastSample
+                        if (previous == null) {
+                            resolveDabs(sample, directionRadians = stream.definition.rotationRadians, dabs, stream, streamState)
+                            streamState.distanceToNextDab = spacingFor(sample, stream.definition)
+                        } else if (!sameSample(previous, sample)) {
+                            emitSegment(previous, sample, dabs, stream, streamState)
+                        } else if (stream.definition.repeatStationarySamples) {
+                            resolveDabs(sample, stream.definition.rotationRadians, dabs, stream, streamState)
+                        }
+                        streamState.lastSample = sample
                     }
-                    streamState.lastSample = sample
-                }
-                rasterize(dabs, stream)?.let { bounds ->
-                    batchDirty = batchDirty?.union(bounds) ?: bounds
+                    rasterize(dabs, stream)?.let { bounds ->
+                        batchDirty = batchDirty?.union(bounds) ?: bounds
+                    }
                 }
             }
             if (batchDirty != null) dirtyBounds = dirtyBounds?.union(batchDirty) ?: batchDirty

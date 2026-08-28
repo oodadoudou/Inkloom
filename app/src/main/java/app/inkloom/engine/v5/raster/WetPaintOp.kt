@@ -47,7 +47,11 @@ class WetPaintOp(
     private val document: PixelTileSurface,
     private val definition: WetPaintDefinition,
     private val selection: MaskTileSurfaceSnapshot? = null,
+    private val sampleTransforms: List<PaintSampleTransform> = listOf(PaintSampleTransform.Identity),
 ) : PaintOp {
+    init {
+        require(sampleTransforms.isNotEmpty())
+    }
     override val capabilities = PaintOpCapabilities(
         kind = PaintOpKind.WET,
         destinationSampling = true,
@@ -66,10 +70,7 @@ class WetPaintOp(
     ) : PublishablePaintOpSession, AutoCloseable {
         private var state = State.ACTIVE
         private var lastOrdinal = -1L
-        private var lastSample: StrokeSample? = null
-        private var distanceToNextDab = 0f
-        private var reservoir = PremultipliedColor.fromStraight(definition.colorArgb)
-        private var reservoirInitialized = false
+        private val tracks = sampleTransforms.map { WetTrack() }
         private var dirtyBounds: PixelRect? = null
 
         override fun apply(batch: PaintBatch): PaintResult = applyInternal(batch, finishing = false)
@@ -104,48 +105,52 @@ class WetPaintOp(
             require(finishing == batch.terminal)
             lastOrdinal = batch.ordinal
             var batchDirty: PixelRect? = null
-            batch.samples.forEach { sample ->
-                val previous = lastSample
-                if (previous == null) {
-                    deposit(sample)?.let { batchDirty = batchDirty?.union(it) ?: it }
-                    distanceToNextDab = spacing(sample)
-                } else if (!sameSample(previous, sample)) {
-                    val dx = sample.point.x - previous.point.x
-                    val dy = sample.point.y - previous.point.y
-                    val length = hypot(dx, dy)
-                    var travelled = 0f
-                    var remaining = distanceToNextDab.coerceAtLeast(.25f)
-                    while (travelled + remaining <= length) {
-                        travelled += remaining
-                        val resolved = interpolate(previous, sample, travelled / length)
-                        deposit(resolved)?.let { batchDirty = batchDirty?.union(it) ?: it }
-                        remaining = spacing(resolved)
+            sampleTransforms.forEachIndexed { transformIndex, transform ->
+                val track = tracks[transformIndex]
+                batch.samples.forEach { input ->
+                    val sample = transform.apply(input)
+                    val previous = track.lastSample
+                    if (previous == null) {
+                        deposit(sample, track)?.let { batchDirty = batchDirty?.union(it) ?: it }
+                        track.distanceToNextDab = spacing(sample)
+                    } else if (!sameSample(previous, sample)) {
+                        val dx = sample.point.x - previous.point.x
+                        val dy = sample.point.y - previous.point.y
+                        val length = hypot(dx, dy)
+                        var travelled = 0f
+                        var remaining = track.distanceToNextDab.coerceAtLeast(.25f)
+                        while (travelled + remaining <= length) {
+                            travelled += remaining
+                            val resolved = interpolate(previous, sample, travelled / length)
+                            deposit(resolved, track)?.let { batchDirty = batchDirty?.union(it) ?: it }
+                            remaining = spacing(resolved)
+                        }
+                        track.distanceToNextDab = (remaining - (length - travelled)).coerceAtLeast(.25f)
                     }
-                    distanceToNextDab = (remaining - (length - travelled)).coerceAtLeast(.25f)
+                    track.lastSample = sample
                 }
-                lastSample = sample
             }
             if (batchDirty != null) dirtyBounds = dirtyBounds?.union(batchDirty!!) ?: batchDirty
             if (finishing) state = State.FINISHED
             return PaintResult(context.transactionId, batch.ordinal, batchDirty != null, batchDirty)
         }
 
-        private fun deposit(sample: StrokeSample): PixelRect? {
+        private fun deposit(sample: StrokeSample, track: WetTrack): PixelRect? {
             val radius = definition.diameterPixels * definition.sizePressure.evaluate(sample.pressure) *
                 definition.sizeTilt.evaluate(sample.tiltRadians) * .5f
             if (radius <= .05f) return null
             val snapshot = delta.previewSnapshot()
             val picked = sampleColour(snapshot, sample.point.x, sample.point.y, radius)
-            if (!reservoirInitialized) {
-                if (picked.a > .001f) reservoir = picked
-                reservoirInitialized = true
+            if (!track.reservoirInitialized) {
+                if (picked.a > .001f) track.reservoir = picked
+                track.reservoirInitialized = true
             } else if (picked.a > .001f) {
                 val pickup = definition.pull * (1f - definition.dilution * .5f)
-                reservoir = reservoir.mix(picked, pickup)
+                track.reservoir = track.reservoir.mix(picked, pickup)
             }
             val fresh = PremultipliedColor.fromStraight(definition.colorArgb)
             val freshRatio = definition.charge * (1f - definition.dilution)
-            reservoir = reservoir.mix(fresh, freshRatio)
+            track.reservoir = track.reservoir.mix(fresh, freshRatio)
             val bounds = PixelRect(
                 floor(sample.point.x - radius - 1f).toInt().coerceIn(0, document.logicalWidth),
                 floor(sample.point.y - radius - 1f).toInt().coerceIn(0, document.logicalHeight),
@@ -184,7 +189,7 @@ class WetPaintOp(
                         if (coverage <= 0f) continue
                         val deposition = definition.opacity * definition.attack * (.3f + .7f * definition.charge) * coverage
                         val index = (y - tileTop) * stride + x - tileLeft
-                        pixels[index] = reservoir.sourceOver(pixels[index], deposition)
+                        pixels[index] = track.reservoir.sourceOver(pixels[index], deposition)
                     }
                 }
             }
@@ -216,6 +221,13 @@ class WetPaintOp(
             (definition.diameterPixels * definition.sizePressure.evaluate(sample.pressure) * .16f).coerceAtLeast(.75f)
 
         private fun requireActiveOrFinished() = check(state == State.ACTIVE || state == State.FINISHED)
+
+        private inner class WetTrack {
+            var lastSample: StrokeSample? = null
+            var distanceToNextDab = 0f
+            var reservoir = PremultipliedColor.fromStraight(definition.colorArgb)
+            var reservoirInitialized = false
+        }
     }
 
     private enum class State { ACTIVE, FINISHED, PUBLISHED, CANCELED }

@@ -61,7 +61,11 @@ class DryInkPaintOp(
     private val document: PixelTileSurface,
     private val definition: DryInkDefinition,
     private val selection: MaskTileSurfaceSnapshot? = null,
+    private val sampleTransforms: List<PaintSampleTransform> = listOf(PaintSampleTransform.Identity),
 ) : PaintOp {
+    init {
+        require(sampleTransforms.isNotEmpty())
+    }
     override val capabilities = PaintOpCapabilities(
         kind = when {
             definition.blend == DryBlend.DESTINATION_OUT -> PaintOpKind.ERASER
@@ -84,7 +88,7 @@ class DryInkPaintOp(
         private val context: PaintOpContext,
         private val delta: ActiveDeltaSurface,
     ) : PublishablePaintOpSession, AutoCloseable {
-        private var lastSample: StrokeSample? = null
+        private val lastSamples = MutableList<StrokeSample?>(sampleTransforms.size) { null }
         private var lastOrdinal = -1L
         private var dirtyBounds: PixelRect? = null
         private var state = State.ACTIVE
@@ -127,17 +131,20 @@ class DryInkPaintOp(
             lastOrdinal = batch.ordinal
             var changed = false
             var batchDirtyBounds: PixelRect? = null
-            batch.samples.forEach { sample ->
-                val previous = lastSample
-                val repeatedEndpoint = previous != null && previous.point == sample.point &&
-                    previous.pressure == sample.pressure && previous.tiltRadians == sample.tiltRadians &&
-                    previous.orientationRadians == sample.orientationRadians
-                if (!repeatedEndpoint) rasterizeSegment(previous ?: sample, sample)?.let { bounds ->
-                    dirtyBounds = dirtyBounds?.union(bounds) ?: bounds
-                    batchDirtyBounds = batchDirtyBounds?.union(bounds) ?: bounds
-                    changed = true
+            sampleTransforms.forEachIndexed { transformIndex, transform ->
+                batch.samples.forEach { input ->
+                    val sample = transform.apply(input)
+                    val previous = lastSamples[transformIndex]
+                    val repeatedEndpoint = previous != null && previous.point == sample.point &&
+                        previous.pressure == sample.pressure && previous.tiltRadians == sample.tiltRadians &&
+                        previous.orientationRadians == sample.orientationRadians
+                    if (!repeatedEndpoint) rasterizeSegment(previous ?: sample, sample)?.let { bounds ->
+                        dirtyBounds = dirtyBounds?.union(bounds) ?: bounds
+                        batchDirtyBounds = batchDirtyBounds?.union(bounds) ?: bounds
+                        changed = true
+                    }
+                    lastSamples[transformIndex] = sample
                 }
-                lastSample = sample
             }
             if (finishing) state = State.FINISHED
             return PaintResult(
