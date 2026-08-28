@@ -204,4 +204,23 @@ class MaskTileSurfaceTest {
         assertEquals(0, destination.alphaAt(200, 200))
         assertEquals(1, destination.tileCount)
     }
+
+    @Test fun compositionMapsDifferentTileSizesThroughDocumentCoordinates() {
+        val source = MaskTileSurface(1_000, 1_000, tileSize = 256)
+        source.beginWrite("source island in lower half of large tile").run {
+            for (y in 490..510) for (x in 350..650) setAlpha(x, y, 255)
+            commit().close()
+        }
+        val destination = MaskTileSurface(1_000, 1_000, tileSize = 128)
+
+        destination.beginWrite("cross-granularity replace").run {
+            composeSurface(source.snapshot(), MaskComposeMode.ADD)
+            commit().close()
+        }
+
+        assertEquals(255, destination.alphaAt(500, 500))
+        assertEquals(255, destination.alphaAt(640, 500))
+        assertEquals(0, destination.alphaAt(500, 750))
+        assertEquals(PixelRect(350, 490, 651, 511), destination.snapshot().nonZeroBounds())
+    }
 }

@@ -10,6 +10,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.document.InkStroke
 import app.inkloom.document.StrokePoint
+import app.inkloom.engine.v5.selection.DocumentSelectionRuntime
+import app.inkloom.document.LayerIds
+import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.model.EditorTool
 import app.inkloom.settings.SelectionFilter
 import app.inkloom.settings.SelectionMode
@@ -42,19 +45,45 @@ class LassoSelectionModesTest {
     @Test fun magicWandTapSelectsConnectedRenderedInk() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
-            val target = stroke("target", .5f, "ink").copy(width = 18f)
-            val distant = stroke("distant", .75f, "ink").copy(width = 18f)
-            val edits = mutableListOf<CapturedEdit>()
-            val view = configuredView(listOf(target, distant), edits).apply {
+            val surface = PixelTileSurface(1_000, 1_000).also { pixels ->
+                pixels.beginWrite("magic wand connected islands").use { transaction ->
+                    for (y in 490..510) for (x in 350..650) transaction.setPixel(x, y, Color.BLACK)
+                    for (y in 740..760) for (x in 350..650) transaction.setPixel(x, y, Color.BLACK)
+                    transaction.commit().close()
+                }
+            }
+            val selection = DocumentSelectionRuntime().stateFor("document", "page", 1_000, 1_000)
+            val view = configuredView(emptyList(), mutableListOf()).apply {
+                pageModelWidth = 1_000f
+                pageModelHeight = 1_000f
+                pagePaperColor = Color.WHITE
+                activeLayerId = LayerIds.INK
+                layerOrder = listOf(LayerIds.INK)
+                setRasterLayerSurfaces(mapOf(LayerIds.INK to surface))
+                bindDocumentSelectionState(selection)
+                onRasterLayerCommitted = { }
                 selectionShape = SelectionShape.MAGIC_WAND
                 selectionThreshold = .2f
             }
+            val rendered = Bitmap.createBitmap(1_000, 1_000, Bitmap.Config.ARGB_8888)
+            view.draw(Canvas(rendered))
+            assertTrue("V5 selection source must include active raster pixels", Color.alpha(rendered.getPixel(500, 500)) > 0)
+            assertTrue("V5 selection source must preserve the authored black island", Color.red(rendered.getPixel(500, 500)) < 16)
+            rendered.recycle()
 
             view.dispatchStylus(MotionEvent.ACTION_DOWN, 500f, 500f, 10L)
             view.dispatchStylus(MotionEvent.ACTION_UP, 500f, 500f, 20L)
+            val selected = requireNotNull(view.selectionMaskSurfaceSnapshot())
+            val targetAlpha = (492..508).maxOf { y -> (492..508).maxOf { x -> selected.alphaAt(x, y) } }
+            assertTrue(
+                "Magic wand mask must contain the touched island; bounds=${selected.nonZeroBounds()}",
+                targetAlpha > 0,
+            )
+            assertEquals("Magic wand mask must exclude the disconnected island", 0, selected.alphaAt(500, 750))
             view.deleteSelection()
 
-            assertEquals(listOf("target"), edits.single().removedIds)
+            assertEquals(0, Color.alpha(surface.pixelAt(500, 500)))
+            assertEquals(255, Color.alpha(surface.pixelAt(500, 750)))
         }
     }
 

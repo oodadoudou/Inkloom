@@ -452,6 +452,10 @@ class MaskTileWriteTransaction internal constructor(
         }
         val destinationDefault = workingDefaultAlpha
         val resultDefault = compose(destinationDefault, source.defaultAlpha, mode)
+        if (source.tileSize != surface.tileSize) {
+            composeResampledSurface(source, mode, destinationDefault, resultDefault)
+            return
+        }
         val keys = linkedSetOf<PixelTileKey>().apply {
             addAll(surface.publishedKeys())
             addAll(workingTiles.keys)
@@ -469,6 +473,63 @@ class MaskTileWriteTransaction internal constructor(
                     sourceAlpha?.get(index)?.toInt()?.and(0xff) ?: source.defaultAlpha,
                     mode,
                 ).toByte()
+            }
+            markDirty(tile, surface.fullTileRect())
+        }
+        workingDefaultAlpha = resultDefault
+    }
+
+    /** Tile size is storage geometry, not document geometry. Selection producers are free to use
+     * a different sparse granularity from the document-owned mask, so compose through document
+     * coordinates whenever those granularities differ. */
+    private fun composeResampledSurface(
+        source: MaskTileSurfaceSnapshot,
+        mode: MaskComposeMode,
+        destinationDefault: Int,
+        resultDefault: Int,
+    ) {
+        val keys = linkedSetOf<PixelTileKey>().apply {
+            addAll(surface.publishedKeys())
+            addAll(workingTiles.keys)
+            source.tileInfo.forEach { info ->
+                val sourceBounds = logicalTileRect(
+                    info.key.column,
+                    info.key.row,
+                    source.tileSize,
+                    source.logicalWidth,
+                    source.logicalHeight,
+                )
+                if (!sourceBounds.isEmpty) {
+                    val firstColumn = sourceBounds.left / surface.tileSize
+                    val lastColumn = (sourceBounds.right - 1) / surface.tileSize
+                    val firstRow = sourceBounds.top / surface.tileSize
+                    val lastRow = (sourceBounds.bottom - 1) / surface.tileSize
+                    for (row in firstRow..lastRow) for (column in firstColumn..lastColumn) {
+                        add(PixelTileKey(column, row))
+                    }
+                }
+            }
+        }
+        keys.forEach { key ->
+            val targetBefore = workingTiles[key]?.alpha?.copyOf()
+                ?: surface.publishedTile(key)?.alpha?.copyOf()
+                ?: ByteArray(surface.tileSize * surface.tileSize) { destinationDefault.toByte() }
+            val tile = writableTile(key)
+            val tileLeft = key.column * surface.tileSize
+            val tileTop = key.row * surface.tileSize
+            for (localY in 0 until surface.tileSize) for (localX in 0 until surface.tileSize) {
+                val x = tileLeft + localX
+                val y = tileTop + localY
+                val index = localY * surface.tileSize + localX
+                tile.alpha[index] = if (x in 0 until surface.logicalWidth && y in 0 until surface.logicalHeight) {
+                    compose(
+                        targetBefore[index].toInt().and(0xff),
+                        source.alphaAt(x, y),
+                        mode,
+                    ).toByte()
+                } else {
+                    resultDefault.toByte()
+                }
             }
             markDirty(tile, surface.fullTileRect())
         }
