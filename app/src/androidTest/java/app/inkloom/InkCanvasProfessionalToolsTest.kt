@@ -25,18 +25,20 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class InkCanvasProfessionalToolsTest {
-    @Test fun liquifyCommitsAReversibleExistingStrokeEdit() {
-        var replacement: InkStroke? = null
-        val original = line("liquify", listOf(StrokePoint(.45f, .5f), StrokePoint(.55f, .5f)))
-        val view = canvas(EditorTool.LIQUIFY, original) {
-            baseWidth = 500f
-            onStrokesReplaced = { _, changed, _ -> replacement = changed.firstOrNull() }
+    @Test fun liquifyCommitsOneReversibleRasterTransaction() {
+        val (view, surface) = rasterLiquifyCanvas()
+        val wholePage = PixelRect(0, 0, surface.logicalWidth, surface.logicalHeight)
+        val before = surface.snapshot().copyPremultipliedPixels(wholePage)
+        var commits = 0
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view.onRasterLayerCommitted = { commits++ }
         }
         send(view, MotionEvent.ACTION_DOWN, 500f, 500f, 0L)
         send(view, MotionEvent.ACTION_MOVE, 650f, 500f, 10L)
         send(view, MotionEvent.ACTION_UP, 650f, 500f, 20L)
 
-        assertNotEquals(original.points, requireNotNull(replacement).points)
+        assertEquals(1, commits)
+        assertFalse(before.contentEquals(surface.snapshot().copyPremultipliedPixels(wholePage)))
     }
 
     @Test fun rasterLiquifyCommitsOneSurfaceWithoutReplacingVectorStrokes() {
@@ -66,19 +68,20 @@ class InkCanvasProfessionalToolsTest {
     }
 
     @Test fun stationaryLiquifyModesApplyAfterLongPress() {
-        var replacement: InkStroke? = null
-        val original = line("liquify-hold", listOf(StrokePoint(.45f, .5f), StrokePoint(.55f, .5f)))
-        val view = canvas(EditorTool.LIQUIFY, original) {
-            baseWidth = 500f
+        val (view, surface) = rasterLiquifyCanvas {
             liquifyMode = app.inkloom.document.LiquifyMode.EXPAND
-            onStrokesReplaced = { _, changed, _ -> replacement = changed.firstOrNull() }
         }
+        val wholePage = PixelRect(0, 0, surface.logicalWidth, surface.logicalHeight)
+        val before = surface.snapshot().copyPremultipliedPixels(wholePage)
 
         send(view, MotionEvent.ACTION_DOWN, 500f, 500f, 0L)
         InstrumentationRegistry.getInstrumentation().runOnMainSync { view.runLiquifyLongPressFrameForTest() }
         send(view, MotionEvent.ACTION_UP, 500f, 500f, 100L)
 
-        assertNotEquals("Long-press Expand must change geometry without a drag", original.points, requireNotNull(replacement).points)
+        assertFalse(
+            "Long-press Expand must change committed pixels without a drag",
+            before.contentEquals(surface.snapshot().copyPremultipliedPixels(wholePage)),
+        )
     }
 
     @Test fun correctLineSmoothsAndCommitsTheTargetLine() {
@@ -187,6 +190,27 @@ class InkCanvasProfessionalToolsTest {
             }
         }
         return view
+    }
+
+    private fun rasterLiquifyCanvas(block: InkCanvasView.() -> Unit = {}): Pair<InkCanvasView, app.inkloom.engine.v5.surface.PixelTileSurface> {
+        val seed = Bitmap.createBitmap(200, 200, Bitmap.Config.ARGB_8888).apply {
+            for (y in 65 until 135) for (x in 70 until 115) setPixel(x, y, Color.RED)
+        }
+        val surface = PixelTileBitmapAdapter.import(seed)
+        seed.recycle()
+        lateinit var view: InkCanvasView
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            view = InkCanvasView(ApplicationProvider.getApplicationContext()).apply {
+                layout(0, 0, 1_000, 1_000)
+                tool = EditorTool.LIQUIFY
+                fingerDrawingEnabled = true
+                activeLayerId = "paint"
+                baseWidth = 500f
+                setRasterLayerSurfaces(mapOf("paint" to surface))
+                block()
+            }
+        }
+        return view to surface
     }
 
     private fun line(id: String, points: List<StrokePoint>) = InkStroke(id = id, points = points, width = 18f, colorArgb = 0xFF111111, layerId = LayerIds.INK)

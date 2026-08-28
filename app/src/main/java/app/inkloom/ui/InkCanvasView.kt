@@ -189,8 +189,6 @@ import app.inkloom.document.ThreeFingerTapRedoGesture
 import app.inkloom.document.ViewportTransform
 import app.inkloom.document.FloodFill
 import app.inkloom.document.LiquifyMode
-import app.inkloom.document.VectorLiquify
-import app.inkloom.document.VectorBlend
 import app.inkloom.document.WaterEdge
 import app.inkloom.model.EditorTool
 import app.inkloom.model.SymmetryMode
@@ -306,7 +304,6 @@ class InkCanvasView(context: Context) : View(context) {
     private var fillPreviewHeight = 0f
     private val fillGesturePoints = mutableListOf<StrokePoint>()
     private val fillPreviewPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { colorFilter = PorterDuffColorFilter(Color.BLACK, PorterDuff.Mode.SRC_IN) }
-    private var smudgeBefore: List<InkStroke>? = null
     private var smudgeLastX = 0f
     private var smudgeLastY = 0f
     private var smudgeChanged = false
@@ -326,7 +323,6 @@ class InkCanvasView(context: Context) : View(context) {
             sample.x / surface.logicalWidth to sample.y / surface.logicalHeight
         }
     }
-    private val localToolStrokeIndices = mutableMapOf<String, Int>()
     private var pendingSmudgeX = 0f
     private var pendingSmudgeY = 0f
     private var hasPendingSmudge = false
@@ -338,7 +334,6 @@ class InkCanvasView(context: Context) : View(context) {
             extendSmudge(pendingSmudgeX, pendingSmudgeY)
         }
     }
-    private var liquifyBefore: List<InkStroke>? = null
     private var rasterTileLiquifySession: RasterTileLiquifySession? = null
     private var liquifyLastX = 0f
     private var liquifyLastY = 0f
@@ -378,7 +373,7 @@ class InkCanvasView(context: Context) : View(context) {
         liquifyHoldStart.run()
         removeCallbacks(liquifyHoldFrame)
     }
-    private fun liquifyGestureActive(): Boolean = liquifyBefore != null || rasterTileLiquifySession != null
+    private fun liquifyGestureActive(): Boolean = rasterTileLiquifySession != null
     private var correctionBefore: List<InkStroke>? = null
     private var correctionStrokeId: String? = null
     private var correctionStartX = 0f
@@ -2340,13 +2335,21 @@ class InkCanvasView(context: Context) : View(context) {
                 }
                 if (activeTool == EditorTool.SMUDGE) {
                     parent?.requestDisallowInterceptTouchEvent(true)
-                    beginSmudgeGesture(normalizedX, normalizedY)
+                    if (!beginSmudgeGesture(normalizedX, normalizedY)) {
+                        onPaintCapabilityRejected("Blend requires a writable Paint Engine V5 raster layer")
+                        activeTool = null
+                        parent?.requestDisallowInterceptTouchEvent(false)
+                    }
                     invalidate()
                     return true
                 }
                 if (activeTool == EditorTool.LIQUIFY) {
                     parent?.requestDisallowInterceptTouchEvent(true)
-                    beginLiquifyGesture(normalizedX, normalizedY, event.getPressure(pointerIndex))
+                    if (!beginLiquifyGesture(normalizedX, normalizedY, event.getPressure(pointerIndex))) {
+                        onPaintCapabilityRejected("Liquify requires a writable Paint Engine V5 raster layer")
+                        activeTool = null
+                        parent?.requestDisallowInterceptTouchEvent(false)
+                    }
                     invalidate()
                     return true
                 }
@@ -4303,29 +4306,25 @@ class InkCanvasView(context: Context) : View(context) {
         invalidate()
     }
 
-    private fun beginSmudgeGesture(normalizedX: Float, normalizedY: Float) {
+    private fun beginSmudgeGesture(normalizedX: Float, normalizedY: Float): Boolean {
         removeCallbacks(smudgeFrame)
         smudgeFrameScheduled = false
         hasPendingSmudge = false
         rasterTileBlendSession?.close()
         rasterTileBlendSession = null
         val surface = rasterTileSurfaceFor(activeLayerId)
-        if (surface != null) {
-            rasterTileBlendSession = RasterTileBlendSession(
-                surface,
-                selectionMaskForRasterTools(),
-                preserveDestinationAlpha = activeLayerId in alphaLockedLayers,
-            )
-            smudgeBefore = null
-            localToolStrokeIndices.clear()
-        } else {
-            smudgeBefore = strokes.toList()
-            prepareLocalToolStrokeIndex()
-        }
+            ?.takeUnless { activeLayerId in protectedLayerIds }
+            ?: return false
+        rasterTileBlendSession = RasterTileBlendSession(
+            surface,
+            selectionMaskForRasterTools(),
+            preserveDestinationAlpha = activeLayerId in alphaLockedLayers,
+        )
         smudgeLastX = normalizedX.coerceIn(0f, 1f)
         smudgeLastY = normalizedY.coerceIn(0f, 1f)
         smudgeChanged = false
         smudgeDirtyBounds = null
+        return true
     }
 
     private fun scheduleSmudge(x: Float, y: Float) {
@@ -4376,33 +4375,7 @@ class InkCanvasView(context: Context) : View(context) {
             smudgeLastY = y
             return
         }
-        val radius = (gestureBrushSize.coerceIn(.01f, 800f) / REFERENCE_WIDTH).coerceAtLeast(.0001f)
-        val beforeStep = localToolCandidates(smudgeLastX, smudgeLastY, x, y, radius)
-        if (beforeStep.isEmpty()) {
-            smudgeLastX = x
-            smudgeLastY = y
-            return
-        }
-        val changed = VectorBlend.apply(
-            strokes = beforeStep,
-            centerX = x,
-            centerY = y,
-            deltaX = x - smudgeLastX,
-            deltaY = y - smudgeLastY,
-            radius = radius,
-            strength = (.3f + brushColorMix.coerceIn(0f, 1f) * .7f),
-            hardness = brushHardness,
-            pageWidth = pageModelWidth,
-            pageHeight = pageModelHeight,
-        ) { stroke -> stroke.layerId == activeLayerId && stroke.id !in protectedStrokeIds && stroke.layerId !in protectedLayerIds }
-        if (changed != beforeStep) {
-            replaceLocalToolCandidates(changed)
-            smudgeChanged = true
-            invalidateStrokeCache(beforeStep, changed)
-        }
-        smudgeLastX = x
-        smudgeLastY = y
-        invalidate()
+        cancelSmudgeGesture()
     }
 
     private fun commitSmudgeGesture() {
@@ -4412,19 +4385,17 @@ class InkCanvasView(context: Context) : View(context) {
         val tileSession = rasterTileBlendSession
         if (tileSession != null) {
             if (smudgeChanged) {
-                tileSession.commit().close()
-                rasterTileSurfaceFor(activeLayerId)?.let { commitRasterLayerPatch(it, smudgeDirtyBounds) }
+                val record = tileSession.commit()
+                if (record.changedTileCount > 0) {
+                    rasterTileSurfaceFor(activeLayerId)?.let { commitRasterLayerPatch(it, smudgeDirtyBounds) }
+                }
+                record.close()
             } else tileSession.restoreOriginal()
             tileSession.close()
-        } else {
-            val before = smudgeBefore
-            if (before != null && smudgeChanged) commitStrokeEdit(before, strokes)
         }
         rasterTileBlendSession = null
-        smudgeBefore = null
         smudgeChanged = false
         smudgeDirtyBounds = null
-        localToolStrokeIndices.clear()
         invalidate()
     }
 
@@ -4437,19 +4408,14 @@ class InkCanvasView(context: Context) : View(context) {
             if (smudgeChanged) tileSession.restoreOriginal()
             tileSession.close()
             invalidate()
-        } else {
-            val before = smudgeBefore
-            if (before != null && smudgeChanged) restoreStrokeSnapshot(before)
         }
         rasterTileBlendSession = null
-        smudgeBefore = null
         smudgeChanged = false
         smudgeDirtyBounds = null
-        localToolStrokeIndices.clear()
         invalidate()
     }
 
-    private fun beginLiquifyGesture(x: Float, y: Float, pressure: Float) {
+    private fun beginLiquifyGesture(x: Float, y: Float, pressure: Float): Boolean {
         removeCallbacks(liquifyFrame)
         removeCallbacks(liquifyHoldStart)
         removeCallbacks(liquifyHoldFrame)
@@ -4458,14 +4424,9 @@ class InkCanvasView(context: Context) : View(context) {
         rasterTileLiquifySession?.close()
         rasterTileLiquifySession = null
         val surface = rasterTileSurfaceFor(activeLayerId)
-        if (surface != null) {
-            rasterTileLiquifySession = RasterTileLiquifySession(surface, selectionMaskForRasterTools())
-            liquifyBefore = null
-            localToolStrokeIndices.clear()
-        } else {
-            liquifyBefore = strokes.toList()
-            prepareLocalToolStrokeIndex()
-        }
+            ?.takeUnless { activeLayerId in protectedLayerIds }
+            ?: return false
+        rasterTileLiquifySession = RasterTileLiquifySession(surface, selectionMaskForRasterTools())
         liquifyLastX = x.coerceIn(0f, 1f)
         liquifyLastY = y.coerceIn(0f, 1f)
         liquifyDownX = liquifyLastX
@@ -4483,6 +4444,7 @@ class InkCanvasView(context: Context) : View(context) {
         if (liquifyHoldEligible) postDelayed(liquifyHoldStart, liquifyLongPressDelayMs.coerceAtLeast(0L))
         liquifyChanged = false
         liquifyDirtyBounds = null
+        return true
     }
 
     private fun scheduleLiquify(x: Float, y: Float, pressure: Float) {
@@ -4538,76 +4500,7 @@ class InkCanvasView(context: Context) : View(context) {
             liquifyPressure = pressure.coerceIn(0f, 1f)
             return
         }
-        val radius = (gestureBrushSize.coerceIn(.01f, 800f) / REFERENCE_WIDTH).coerceAtLeast(.0001f)
-        val beforeStep = localToolCandidates(liquifyLastX, liquifyLastY, nextX, nextY, radius)
-        if (beforeStep.isEmpty()) {
-            liquifyLastX = nextX
-            liquifyLastY = nextY
-            return
-        }
-        val effectiveStrength = liquifyStrength * pressure.coerceIn(0f, 1f)
-        val eligible: (InkStroke) -> Boolean = { stroke -> stroke.layerId == activeLayerId && stroke.id !in protectedStrokeIds && stroke.layerId !in protectedLayerIds }
-        val warped = if (liquifyMode == LiquifyMode.RECONSTRUCT) {
-            VectorLiquify.reconstruct(
-                current = beforeStep,
-                original = liquifyBefore.orEmpty(),
-                centerX = nextX,
-                centerY = nextY,
-                radius = radius,
-                strength = effectiveStrength,
-                hardness = liquifyHardness,
-                pageWidth = pageModelWidth,
-                pageHeight = pageModelHeight,
-                eligible = eligible,
-            )
-        } else {
-            VectorLiquify.apply(
-                strokes = beforeStep,
-                centerX = nextX,
-                centerY = nextY,
-                deltaX = nextX - liquifyLastX,
-                deltaY = nextY - liquifyLastY,
-                radius = radius,
-                strength = effectiveStrength,
-                hardness = liquifyHardness,
-                pageWidth = pageModelWidth,
-                pageHeight = pageModelHeight,
-                mode = liquifyMode,
-                eligible = eligible,
-            )
-        }
-        if (warped != beforeStep) {
-            replaceLocalToolCandidates(warped)
-            liquifyChanged = true
-            invalidateStrokeCache(beforeStep, warped)
-        }
-        liquifyLastX = nextX
-        liquifyLastY = nextY
-        liquifyPressure = pressure.coerceIn(0f, 1f)
-    }
-
-    /** Blend and Liquify are local tools. Restricting each input sample to spatial-index hits keeps
-     * latency proportional to the touched region instead of to every stroke and point on a page. */
-    private fun prepareLocalToolStrokeIndex() {
-        localToolStrokeIndices.clear()
-        strokes.forEachIndexed { index, stroke -> localToolStrokeIndices[stroke.id] = index }
-    }
-
-    private fun localToolCandidates(startX: Float, startY: Float, endX: Float, endY: Float, radius: Float): List<InkStroke> {
-        val aspect = pageModelWidth.coerceAtLeast(1f) / pageModelHeight.coerceAtLeast(1f)
-        val radiusY = radius * aspect
-        val left = minOf(startX, endX) - radius
-        val top = minOf(startY, endY) - radiusY
-        val right = maxOf(startX, endX) + radius
-        val bottom = maxOf(startY, endY) + radiusY
-        return strokes.filter { stroke -> stroke.points.any { point -> point.x in left..right && point.y in top..bottom } }
-    }
-
-    private fun replaceLocalToolCandidates(replacements: List<InkStroke>) {
-        if (replacements.isEmpty()) return
-        replacements.forEach { replacement ->
-            localToolStrokeIndices[replacement.id]?.let { index -> strokes[index] = replacement }
-        }
+        cancelLiquifyGesture()
     }
 
     private fun finishLiquifyGesture() {
@@ -4619,20 +4512,18 @@ class InkCanvasView(context: Context) : View(context) {
         val tileSession = rasterTileLiquifySession
         if (tileSession != null) {
             if (liquifyChanged) {
-                tileSession.commit().close()
-                rasterTileSurfaceFor(activeLayerId)?.let { commitRasterLayerPatch(it, liquifyDirtyBounds) }
+                val record = tileSession.commit()
+                if (record.changedTileCount > 0) {
+                    rasterTileSurfaceFor(activeLayerId)?.let { commitRasterLayerPatch(it, liquifyDirtyBounds) }
+                }
+                record.close()
             } else tileSession.restoreOriginal()
             tileSession.close()
-        } else {
-            val before = liquifyBefore
-            if (before != null && liquifyChanged) commitStrokeEdit(before, strokes)
         }
         rasterTileLiquifySession = null
-        liquifyBefore = null
         liquifyHoldEligible = false
         liquifyChanged = false
         liquifyDirtyBounds = null
-        localToolStrokeIndices.clear()
         invalidate()
     }
 
@@ -4647,16 +4538,11 @@ class InkCanvasView(context: Context) : View(context) {
             if (liquifyChanged) tileSession.restoreOriginal()
             tileSession.close()
             invalidate()
-        } else {
-            val before = liquifyBefore
-            if (before != null && liquifyChanged) restoreStrokeSnapshot(before)
         }
         rasterTileLiquifySession = null
-        liquifyBefore = null
         liquifyHoldEligible = false
         liquifyChanged = false
         liquifyDirtyBounds = null
-        localToolStrokeIndices.clear()
         invalidate()
     }
 

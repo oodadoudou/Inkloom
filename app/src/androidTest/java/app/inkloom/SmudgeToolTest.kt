@@ -9,10 +9,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.model.EditorTool
 import app.inkloom.ui.InkCanvasView
-import app.inkloom.document.InkStroke
-import app.inkloom.document.StrokePoint
-import app.inkloom.document.LayerIds
 import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
+import app.inkloom.engine.v5.surface.PixelTileSurface
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -39,54 +37,54 @@ class SmudgeToolTest {
         try { InstrumentationRegistry.getInstrumentation().runOnMainSync { view.onTouchEvent(e) } } finally { e.recycle() }
     }
 
-    @Test fun draggingBlendMixesExistingPigmentWithoutAddingAStroke() {
-        var removed = 0
-        var replacements = 0
-        var mixedStrokes = emptyList<InkStroke>()
-        val view = canvas {
-            tool = EditorTool.SMUDGE
-            fingerDrawingEnabled = true
-            baseWidth = 400f
-            activeLayerId = LayerIds.INK
-            setDocumentStrokes(
-                listOf(
-                    InkStroke(id = "red", colorArgb = 0xFFFF0000, width = 30f, layerId = LayerIds.INK, points = listOf(StrokePoint(.3f, .49f), StrokePoint(.7f, .49f))),
-                    InkStroke(id = "blue", colorArgb = 0xFF0000FF, width = 30f, layerId = LayerIds.INK, points = listOf(StrokePoint(.3f, .51f), StrokePoint(.7f, .51f))),
-                ),
-                "blend-page",
-            )
-            onStrokesReplaced = { deleted, changed, _ -> removed = deleted.size; replacements = changed.size; mixedStrokes = changed }
+    @Test fun draggingBlendPublishesOneRasterPigmentTransaction() {
+        val seed = Bitmap.createBitmap(200, 200, Bitmap.Config.ARGB_8888).apply {
+            for (y in 70 until 130) for (x in 35 until 90) setPixel(x, y, Color.RED)
         }
-        send(view, 0L, MotionEvent.ACTION_DOWN, 60f, 100f)
-        send(view, 20L, MotionEvent.ACTION_MOVE, 100f, 100f)
-        send(view, 40L, MotionEvent.ACTION_MOVE, 140f, 100f)
-        send(view, 60L, MotionEvent.ACTION_UP, 140f, 100f)
-        assertEquals(2, removed)
-        assertEquals("Blend edits the two existing strokes; it must not paint a third stroke", 2, replacements)
-        assertTrue("Blend must create local mixed pigment", mixedStrokes.flatMap(InkStroke::points).any { it.pigmentArgb != null })
-    }
-
-    @Test fun blendOnlyModifiesTheActiveLayer() {
-        var changed = emptyList<InkStroke>()
+        val surface = PixelTileBitmapAdapter.import(seed)
+        seed.recycle()
+        var rasterCommits = 0
+        var vectorReplacements = 0
         val view = canvas {
             tool = EditorTool.SMUDGE
             fingerDrawingEnabled = true
             baseWidth = 400f
             activeLayerId = "paint"
-            setDocumentStrokes(
-                listOf(
-                    InkStroke(id = "notes", colorArgb = 0xFF000000, width = 30f, layerId = "notes", points = listOf(StrokePoint(.3f, .5f), StrokePoint(.7f, .5f))),
-                    InkStroke(id = "paint", colorArgb = 0xFFFF0000, width = 30f, layerId = "paint", points = listOf(StrokePoint(.3f, .5f), StrokePoint(.7f, .5f))),
-                ),
-                "blend-layers",
-            )
-            onStrokesReplaced = { _, replacements, _ -> changed = replacements }
+            setRasterLayerSurfaces(mapOf("paint" to surface))
+            onRasterLayerCommitted = { rasterCommits++ }
+            onStrokesReplaced = { _, _, _ -> vectorReplacements++ }
+        }
+        send(view, 0L, MotionEvent.ACTION_DOWN, 60f, 100f)
+        send(view, 20L, MotionEvent.ACTION_MOVE, 100f, 100f)
+        send(view, 40L, MotionEvent.ACTION_MOVE, 140f, 100f)
+        send(view, 60L, MotionEvent.ACTION_UP, 140f, 100f)
+        assertEquals(1, rasterCommits)
+        assertEquals(0, vectorReplacements)
+        assertTrue("Blend must transport existing pigment", Color.alpha(surface.pixelAt(118, 100)) > 0)
+    }
+
+    @Test fun blendOnlyModifiesTheActiveLayer() {
+        val activeSeed = Bitmap.createBitmap(200, 200, Bitmap.Config.ARGB_8888).apply {
+            for (y in 70 until 130) for (x in 35 until 90) setPixel(x, y, Color.RED)
+        }
+        val inactiveSeed = activeSeed.copy(Bitmap.Config.ARGB_8888, false)
+        val active = PixelTileBitmapAdapter.import(activeSeed)
+        val inactive = PixelTileBitmapAdapter.import(inactiveSeed)
+        activeSeed.recycle(); inactiveSeed.recycle()
+        val inactiveRevision = inactive.revision
+        val view = canvas {
+            tool = EditorTool.SMUDGE
+            fingerDrawingEnabled = true
+            baseWidth = 400f
+            activeLayerId = "paint"
+            setRasterLayerSurfaces(mapOf("paint" to active, "notes" to inactive))
         }
         send(view, 0L, MotionEvent.ACTION_DOWN, 60f, 100f)
         send(view, 20L, MotionEvent.ACTION_MOVE, 140f, 100f)
         send(view, 40L, MotionEvent.ACTION_UP, 140f, 100f)
 
-        assertEquals(listOf("paint"), changed.map(InkStroke::id))
+        assertTrue(active.revision > 1L)
+        assertEquals(inactiveRevision, inactive.revision)
     }
 
     @Test fun rasterLayerBlendCommitsOnePixelSurfaceAndDoesNotRewriteVectorStrokes() {
@@ -119,10 +117,13 @@ class SmudgeToolTest {
 
     @Test fun blendingBlankPaperDoesNotCreatePigment() {
         var committed = 0
+        val surface = PixelTileSurface(200, 200)
         val view = canvas {
             tool = EditorTool.SMUDGE
             fingerDrawingEnabled = true
-            onStrokeCommitted = { committed++ }
+            activeLayerId = "paint"
+            setRasterLayerSurfaces(mapOf("paint" to surface))
+            onRasterLayerCommitted = { committed++ }
         }
         send(view, 0L, MotionEvent.ACTION_DOWN, 20f, 100f)
         for (step in 1..16) send(view, step * 10L, MotionEvent.ACTION_MOVE, 20f + step * 10f, 100f)
@@ -131,27 +132,19 @@ class SmudgeToolTest {
     }
 
     @Test fun blendAndLiquifyKeepLargePageInputInsideAFrameBudget() {
-        val page = List(3_000) { index ->
-            val column = index % 60
-            val row = index / 60
-            InkStroke(
-                id = "perf-$index",
-                width = 5f,
-                layerId = LayerIds.INK,
-                points = listOf(
-                    StrokePoint((column + .1f) / 60f, (row + .25f) / 50f),
-                    StrokePoint((column + .9f) / 60f, (row + .75f) / 50f),
-                ),
-            )
-        }
         listOf(EditorTool.SMUDGE, EditorTool.LIQUIFY).forEach { tool ->
+            val seed = Bitmap.createBitmap(1000, 1000, Bitmap.Config.ARGB_8888).apply {
+                for (y in 80 until 140) for (x in 320 until 650) setPixel(x, y, Color.RED)
+            }
+            val surface = PixelTileBitmapAdapter.import(seed)
+            seed.recycle()
             val view = canvas {
                 layout(0, 0, 1000, 1000)
                 this.tool = tool
                 fingerDrawingEnabled = true
                 baseWidth = 96f
-                activeLayerId = LayerIds.INK
-                setDocumentStrokes(page, "${tool.name.lowercase()}-performance")
+                activeLayerId = "paint"
+                setRasterLayerSurfaces(mapOf("paint" to surface))
             }
             val frameTimes = ArrayList<Long>(90)
             InstrumentationRegistry.getInstrumentation().runOnMainSync {
