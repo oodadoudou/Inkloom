@@ -28,18 +28,6 @@ import java.io.FileOutputStream
 @RunWith(AndroidJUnit4::class)
 class InkCanvasHoverCursorTest {
     @Test
-    fun freshCanvasDefaultsToTruthfulUncorrectedInput() {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val view = InkCanvasView(instrumentation.targetContext)
-
-        assertEquals(0f, view.stabilization, 0f)
-        assertEquals(0f, view.streamLine, 0f)
-        assertEquals(0f, view.procreateStabilization, 0f)
-        assertEquals(0f, view.motionFiltering, 0f)
-        assertEquals(0f, view.postCorrection, 0f)
-    }
-
-    @Test
     fun stylusHoverUsesCurrentBrushDiameterAndTracksZoomedCoordinates() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val view = InkCanvasView(instrumentation.targetContext).apply {

@@ -4921,13 +4921,6 @@ internal fun InkCanvasView.applyBrushPresetV5Configuration(
     secondaryButtonAction = settings.stylusSecondaryButton
     primaryButtonTrigger = settings.stylusPrimaryTrigger
     secondaryButtonTrigger = settings.stylusSecondaryTrigger
-    streamLine = 0f
-    streamLinePressure = 0f
-    procreateStabilization = 0f
-    motionFiltering = 0f
-    motionFilteringExpression = 0f
-    stabilization = 0f
-    postCorrection = 0f
     baseWidth = brushSize
     inkOpacity = brushOpacity
     inkColor = brushColor
@@ -5010,24 +5003,6 @@ internal fun InkCanvasView.applyBrushConfiguration(
     pressureMinimumInput = settings.pressureMinimumInput
     pressureMaximumInput = settings.pressureMaximumInput
     pressureResponseCurve = settings.pressureResponseCurve
-    streamLine = activeBrush?.streamLine ?: 0f
-    streamLinePressure = activeBrush?.streamLinePressure ?: 0f
-    procreateStabilization = activeBrush?.procreateStabilization ?: 0f
-    motionFiltering = activeBrush?.motionFiltering ?: 0f
-    motionFilteringExpression = activeBrush?.motionFilteringExpression ?: 0f
-    stabilization = maxOf(settings.stabilization, activeBrush?.stabilization ?: 0f)
-    stabilizationBySpeed = activeBrush?.stabilizationBySpeed ?: false
-    stabilizationBySpeedMode = activeBrush?.stabilizationBySpeedMode ?: StrokeStabilization.REDUCE_WHEN_FAST
-    val authoredCorrection = activeBrush?.takeUnless { it.format == BrushFormat.SYSTEM }
-    postCorrection = authoredCorrection?.postCorrection?.takeIf { authoredCorrection.postCorrectionEnabled } ?: settings.postCorrection.takeIf { authoredCorrection == null } ?: 0f
-    postCorrectionAdjustBySpeed = authoredCorrection?.postCorrectionAdjustBySpeed ?: settings.postCorrectionAdjustBySpeed
-    postCorrectionAdjustByScale = authoredCorrection?.postCorrectionAdjustByScale ?: settings.postCorrectionAdjustByScale
-    // CSP's Sharp angles and Bezier options belong to the Post correction program. A SUT may
-    // retain stale values while its BrushUseRevision switch is off; applying those values alone
-    // reshapes the line at pen-up even though the user explicitly disabled correction.
-    val postCorrectionProgramEnabled = authoredCorrection?.postCorrectionEnabled ?: (settings.postCorrection > 0f)
-    postCorrectionBezier = postCorrectionProgramEnabled && authoredCorrection?.postCorrectionBezier == true
-    correctionSharpAngles = postCorrectionProgramEnabled && authoredCorrection?.correctionSharpAngles == true
     primaryButtonAction = settings.stylusPrimaryButton
     secondaryButtonAction = settings.stylusSecondaryButton
     primaryButtonTrigger = settings.stylusPrimaryTrigger

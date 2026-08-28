@@ -172,7 +172,6 @@ import app.inkloom.document.SingleFingerDoubleTapUndoGesture
 import app.inkloom.document.SprayGeometry
 import app.inkloom.document.CorrectLineMode
 import app.inkloom.document.StrokeStampSampler
-import app.inkloom.document.StrokeStabilization
 import app.inkloom.document.StylusInputClassifier
 import app.inkloom.document.TwoFingerTapUndoGesture
 import app.inkloom.document.TwoPointerRotationGesture
@@ -699,22 +698,6 @@ class InkCanvasView(context: Context) : View(context) {
     var pressureMinimumInput: Float = 0f
     var pressureMaximumInput: Float = 1f
     var pressureResponseCurve: List<Float> = app.inkloom.document.PressureResponseCurve.LINEAR
-    var streamLine: Float = 0f
-    var streamLinePressure: Float = 0f
-    var procreateStabilization: Float = 0f
-    var motionFiltering: Float = 0f
-    var motionFilteringExpression: Float = 0f
-    // Correction is opt-in. A fresh host must preserve the physical stylus trajectory even before
-    // Compose has delivered the selected brush/settings configuration.
-    var stabilization: Float = 0f
-    var stabilizationBySpeed: Boolean = false
-    var stabilizationBySpeedMode: Int = StrokeStabilization.REDUCE_WHEN_FAST
-    var postCorrection: Float = 0f
-        set(value) { field = value.coerceIn(0f, 1f) }
-    var postCorrectionAdjustBySpeed: Boolean = false
-    var postCorrectionAdjustByScale: Boolean = true
-    var postCorrectionBezier: Boolean = false
-    var correctionSharpAngles: Boolean = false
     var primaryButtonAction: StylusButtonAction = StylusButtonAction.ERASER
     var secondaryButtonAction: StylusButtonAction = StylusButtonAction.LASSO
     var primaryButtonTrigger: ShortcutTrigger = ShortcutTrigger.HOLD

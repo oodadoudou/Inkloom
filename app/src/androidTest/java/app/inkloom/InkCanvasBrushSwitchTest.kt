@@ -23,7 +23,6 @@ import app.inkloom.settings.EraserPreset
 import app.inkloom.ui.InkCanvasView
 import app.inkloom.ui.applyBrushConfiguration
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -92,45 +91,6 @@ class InkCanvasBrushSwitchTest {
         assertTrue("Both pens and the eraser must enter V5 after zoom", view.v5DryGestureCount >= 3)
         assertTrue("Zoomed contacts must publish raster generations", surface.revision >= 2L)
     }
-    @Test
-    fun cspPostCorrectionProgramActivatesPerBrushWithoutGlobalLeakage() {
-        val instrumentation = InstrumentationRegistry.getInstrumentation()
-        val view = InkCanvasView(instrumentation.targetContext)
-        val settings = AppSettings(postCorrection = .81f, postCorrectionAdjustBySpeed = false, postCorrectionAdjustByScale = true)
-        val disabled = brush("disabled-correction", "Disabled correction").copy(
-            postCorrectionEnabled = false,
-            postCorrection = .62f,
-            postCorrectionBezier = true,
-            correctionSharpAngles = true,
-        )
-        val enabled = brush("enabled-correction", "Enabled correction").copy(
-            postCorrectionEnabled = true,
-            postCorrection = .37f,
-            postCorrectionAdjustBySpeed = true,
-            postCorrectionAdjustByScale = false,
-            postCorrectionBezier = true,
-            correctionSharpAngles = true,
-        )
-
-        instrumentation.runOnMainSync {
-            view.applyBrushConfiguration(EditorTool.PEN, settings, disabled, 12f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
-            assertEquals("A disabled imported SUT must not inherit the app-wide correction", 0f, view.postCorrection, .0001f)
-            assertFalse("A stale sharp-angle flag must not reshape a correction-disabled brush", view.correctionSharpAngles)
-            assertFalse("A stale Bezier flag must not reshape a correction-disabled brush", view.postCorrectionBezier)
-
-            view.applyBrushConfiguration(EditorTool.PEN, settings, enabled, 12f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
-            assertEquals(.37f, view.postCorrection, .0001f)
-            assertTrue(view.postCorrectionAdjustBySpeed)
-            assertFalse(view.postCorrectionAdjustByScale)
-            assertTrue(view.postCorrectionBezier)
-            assertTrue(view.correctionSharpAngles)
-
-            val system = requireNotNull(SystemBrushCatalog.byId("system-g-pen"))
-            view.applyBrushConfiguration(EditorTool.PEN, settings, system, 12f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
-            assertEquals("System brushes retain the user's global fallback", .81f, view.postCorrection, .0001f)
-        }
-    }
-
     @Test
     fun everyBrushAndToolSwitchStartsAUsableV5InputStream() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
