@@ -537,8 +537,7 @@ class InkCanvasView(context: Context) : View(context) {
             postDelayed(this, CONTINUOUS_PLOT_INTERVAL_MS)
         }
     }
-    private fun continuousPlotEnabled(): Boolean =
-        compiledBrushProgramV5?.stamp?.continuousPlot ?: brushContinuousPlot
+    private fun continuousPlotEnabled(): Boolean = compiledBrushProgramV5?.stamp?.continuousPlot == true
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
@@ -570,7 +569,6 @@ class InkCanvasView(context: Context) : View(context) {
     private var compiledBrushProgramV5: CompiledBrushProgramV5? = null
     internal val compiledBrushProgramV5Cache = CompiledBrushProgramV5Cache()
     private var compiledBrushProgramV5Required: Boolean = false
-    private var prewarmedBrushSignature: String? = null
     private val protectedLayerIds = mutableSetOf<String>()
 
     var tool: EditorTool = EditorTool.PEN
@@ -651,234 +649,11 @@ class InkCanvasView(context: Context) : View(context) {
         set(value) { if (field != value) { field = value; invalidate() } }
     var pagePaperPattern: PaperPattern? = null
         set(value) { if (field != value) { field = value; invalidate() } }
-    var tipAssetPath: String? = null
-    var tipAssetPaths: List<String> = emptyList()
-    var dualTipAssetPaths: List<String> = emptyList()
-    var dualGrainAssetPath: String? = null
-    var dualGrainDensity: Float = 0f
-    var dualGrainDensityMinimum: Float = 0f
-    var dualGrainDensityDynamics: BrushParameterDynamics = BrushParameterDynamics()
-    var dualGrainScale: Float = 100f
-    var dualGrainMovement: Float = 0f
-    var dualGrainZoom: Float = 0f
-    var dualGrainRotationDegrees: Float = 0f
-    var dualGrainStrokeRotation: Float = 0f
-    var dualGrainBrightness: Float = 0f
-    var dualGrainContrast: Float = 0f
-    var dualGrainReversed: Boolean = false
-    var dualGrainEmphasized: Boolean = false
-    var dualGrainOffsetJitter: Boolean = false
-    var dualGrainCompositeMode: Int = CspTextureComposite.MULTIPLY
-    var dualGrainApplyPerPlot: Boolean = true
-    var dualGrainFilteringMode: Int = ProcreateFiltering.NONE
-    var grainAssetPath: String? = null
-    var grainDensity: Float = 0f
-    var grainDensityMinimum: Float = 0f
-    var grainDensityDynamics: BrushParameterDynamics = BrushParameterDynamics()
-    var grainScale: Float = 100f
-    var grainMovement: Float = 0f
-    var grainZoom: Float = 0f
-    var grainRotationDegrees: Float = 0f
-    var grainStrokeRotation: Float = 0f
-    var grainBrightness: Float = 0f
-    var grainContrast: Float = 0f
-    var grainReversed: Boolean = false
-    var grainEmphasized: Boolean = false
-    var grainOffsetJitter: Boolean = false
-    var grainCompositeMode: Int = CspTextureComposite.MULTIPLY
-    var grainApplyPerPlot: Boolean = true
-    var grainFilteringMode: Int = ProcreateFiltering.NONE
-    var procreateRenderingMode: ProcreateRenderingMode = ProcreateRenderingMode.UNIFORM_GLAZE
-    var procreateBrushBlendMode: Int = ProcreateBrushBlend.NORMAL
-    var procreateBurntEdgeBlendMode: Int = ProcreateBrushBlend.MULTIPLY
-    var procreateLuminanceBlending: Boolean = false
-    var alphaThresholdEnabled: Boolean = false
-    var alphaThreshold: Float = 0f
     var brushSpacing: Float = .12f
-    var strokeFalloff: Float = 0f
-    var strokePathJitter: Float = 0f
-    var strokePathLongitudinalJitter: Float = 0f
     var brushSpacingMode: Int = CspBrushGap.FIXED
-    var brushFlow: Float = 1f
-    var brushHardness: Float = 1f
     var brushAntiAliasMode: Int = CspAntiAlias.MEDIUM
-    var brushBlur: Float = 0f
-    var brushBlurUnit: Int = 0
-    var brushBlurLinkedToSize: Boolean = false
-    var tiltGradation: Float = 0f
-    var tiltGradationStart: Float = 0f
-    var tiltBleed: Float = 0f
-    var tiltBleedStart: Float = 0f
-    var tiltSizeCompression: Boolean = false
-    var graphiteTiltWidth: Float = 0f
-    var graphiteTiltWidthStart: Float = 0f
-    var graphiteTiltGrain: Float = 0f
-    var graphiteTiltGrainStart: Float = 0f
-    var proceduralPaperGrainEnabled: Boolean = false
-    var proceduralPaperGrainScale: Float = 100f
-    var proceduralPaperGrainDensity: Float = .5f
-    var proceduralPaperGrainStrength: Float = 1f
-    var brushThickness: Float = 1f
-    var brushThicknessVertical: Boolean = false
-    var shapeRoundnessHorizontalJitter: Float = 0f
-    var shapeRoundnessVerticalJitter: Float = 0f
-    var brushRotation: Float = 0f
-    var shapeTouchRotation: Float = 0f
-    var shapeOrientToScreen: Boolean = false
-    var followStylusOrientation: Boolean = false
-    var followStrokeDirection: Boolean = false
-    var randomRotationDegrees: Float = 0f
-    var strokeRotationJitterDegrees: Float = 0f
-    var stampCount: Int = 1
-    var stampCountJitter: Float = 0f
-    var brushContinuousPlot: Boolean = false
-    var colorJitterHueDegrees: Float = 0f
-    var colorJitterSaturation: Float = 0f
-    var colorJitterValue: Float = 0f
-    var colorJitterTarget: Int = 0
-    var colorJitterPerTipEnabled: Boolean = true
-    var colorJitterHueDynamics: BrushColorDynamics = BrushColorDynamics()
-    var colorJitterSaturationDynamics: BrushColorDynamics = BrushColorDynamics()
-    var colorJitterValueDynamics: BrushColorDynamics = BrushColorDynamics()
-    var colorJitterSubColorMix: Float = 0f
-    var colorJitterSubColorMixDynamics: BrushParameterDynamics = BrushParameterDynamics()
-    var colorJitterPerStrokeEnabled: Boolean = false
-    var colorJitterStrokeHueDegrees: Float = 0f
-    var colorJitterStrokeSaturation: Float = 0f
-    var colorJitterStrokeValue: Float = 0f
-    var colorJitterStrokeSubColorMix: Float = 0f
-    var procreateColorDynamics: ProcreateColorDynamics = ProcreateColorDynamics()
-    var procreateWetMix: ProcreateWetMix = ProcreateWetMix()
-    var procreateTaper: ProcreateTaper = ProcreateTaper()
-    var brushWatercolor: Boolean = false
-    var cspColorMixMode: Int = CspColorMixMode.BLEND
     var brushColorMix: Float = 0f
-    var colorMixPressureEnabled: Boolean = false
-    var colorMixPressureMinimum: Float = 0f
-    var colorMixPressureCurve: List<BrushCurvePoint> = emptyList()
-    var colorMixSecondaryDynamics: BrushSecondaryDynamics = BrushSecondaryDynamics()
-    var brushPaintMix: Float = 0f
-    var paintMixPressureEnabled: Boolean = false
-    var paintMixPressureMinimum: Float = 0f
-    var paintMixPressureCurve: List<BrushCurvePoint> = emptyList()
-    var paintMixSecondaryDynamics: BrushSecondaryDynamics = BrushSecondaryDynamics()
-    var colorStretch: Float = 0f
-    var cspPigmentMixingMode: Int = CspPigmentMixingMode.STANDARD
-    var cspBrightnessCorrection: Int = CspBrightnessCorrection.NEUTRAL
-    var colorMixBlur: Float = 0f
-    var colorMixBlurUnit: Int = 0
-    var colorMixBlurAutomatic: Boolean = true
-    var colorMixBlurDynamics: BrushParameterDynamics = BrushParameterDynamics()
-    var brushSpray: Boolean = false
-    var sprayParticleSize: Float = 100f
-    var sprayParticleSizeUnit: Int = 0
-    var sprayParticleSizeSyncBrushSize: Boolean = true
-    var sprayParticleSizePressureEnabled: Boolean = false
-    var sprayParticleSizePressureMinimum: Float = 0f
-    var sprayParticleSizePressureCurve: List<BrushCurvePoint> = emptyList()
-    var sprayParticleSizeSecondaryDynamics: BrushSecondaryDynamics = BrushSecondaryDynamics()
-    var sprayDensity: Float = 1f
-    var sprayDensityPressureEnabled: Boolean = false
-    var sprayDensityPressureMinimum: Float = 0f
-    var sprayDensityPressureCurve: List<BrushCurvePoint> = emptyList()
-    var sprayDensitySecondaryDynamics: BrushSecondaryDynamics = BrushSecondaryDynamics()
-    var sprayBias: Float = 0f
-    var spraySpread: Float = 1f
-    var sprayParticleRotationDegrees: Float = 0f
-    var sprayParticleFollowStylusOrientation: Boolean = false
-    var sprayParticleFollowStrokeDirection: Boolean = false
-    var sprayParticleRandomRotationDegrees: Float = 0f
-    var brushRibbon: Boolean = false
-    var brushTipSequenceMode: Int = 0
-    var tipFlipHorizontalMode: Int = 0
-    var tipFlipVerticalMode: Int = 0
-    var blendTipsWithDarken: Boolean = false
-    var brushDual: Boolean = false
-    var dualSizeScale: Float = 1f
-    var dualSizeDynamics: BrushParameterDynamics = BrushParameterDynamics()
-    var dualSpacing: Float = .12f
-    var dualSpacingMode: Int = CspBrushGap.FIXED
-    var dualSpacingDynamics: BrushParameterDynamics = BrushParameterDynamics()
-    var dualFlow: Float = 1f
-    var dualFlowDynamics: BrushParameterDynamics = BrushParameterDynamics()
-    var dualHardness: Float = 1f
-    var dualAntiAliasMode: Int = CspAntiAlias.MEDIUM
-    var dualThickness: Float = 1f
-    var dualShapeRoundnessHorizontalJitter: Float = 0f
-    var dualShapeRoundnessVerticalJitter: Float = 0f
-    var dualThicknessDynamics: BrushParameterDynamics = BrushParameterDynamics()
-    var dualThicknessVertical: Boolean = false
-    var dualRotationDegrees: Float = 0f
-    var dualShapeTouchRotation: Float = 0f
-    var dualShapeOrientToScreen: Boolean = false
-    var dualFollowStylusOrientation: Boolean = false
-    var dualFollowStrokeDirection: Boolean = false
-    var dualRandomRotationDegrees: Float = 0f
-    var dualStrokeRotationJitterDegrees: Float = 0f
-    var dualStampCount: Int = 1
-    var dualStampCountJitter: Float = 0f
-    var dualStrokePathJitter: Float = 0f
-    var dualStrokePathLongitudinalJitter: Float = 0f
-    var dualRibbon: Boolean = false
-    var dualSpray: Boolean = false
-    var dualSprayParticleSize: Float = 100f
-    var dualSprayParticleSizeUnit: Int = 0
-    var dualSprayParticleSizeSyncBrushSize: Boolean = true
-    var dualSprayParticleSizeDynamics: BrushParameterDynamics = BrushParameterDynamics()
-    var dualSprayDensity: Float = 1f
-    var dualSprayDensityDynamics: BrushParameterDynamics = BrushParameterDynamics()
-    var dualSprayBias: Float = 0f
-    var dualSpraySpread: Float = 1f
-    var dualSprayParticleRotationDegrees: Float = 0f
-    var dualSprayParticleFollowStylusOrientation: Boolean = false
-    var dualSprayParticleFollowStrokeDirection: Boolean = false
-    var dualSprayParticleRandomRotationDegrees: Float = 0f
-    var dualTipSequenceMode: Int = 0
-    var dualTipFlipHorizontalMode: Int = 0
-    var dualTipFlipVerticalMode: Int = 0
-    var dualBlendTipsWithDarken: Boolean = false
-    var dualCompositeMode: Int = 0
-    var dualApplyRgb: Boolean = false
-    var taperMode: BrushTaperMode = BrushTaperMode.PERCENTAGE
-    var taperStartEnabled: Boolean = false
-    var taperStartLength: Float = .2f
-    var taperStartLengthUnit: Int = 0
-    var taperStartMinimum: Float = .3f
-    var taperEndEnabled: Boolean = false
-    var taperEndLength: Float = .2f
-    var taperEndLengthUnit: Int = 0
-    var taperEndMinimum: Float = .3f
-    var waterEdgeEnabled: Boolean = false
-    var waterEdgeRadius: Float = 3f
-    var waterEdgeRadiusUnit: Int = 0
-    var waterEdgeOpacity: Float = .2f
-    var waterEdgeDarkness: Float = 0f
-    var waterEdgeBlur: Float = 0f
-    var waterEdgeBlurUnit: Int = 0
-    var sizePressureEnabled: Boolean = true
-    var sizePressureMinimum: Float = .35f
-    var sizePressureCurve: List<BrushCurvePoint> = emptyList()
-    var sizeSecondaryDynamics: BrushSecondaryDynamics = BrushSecondaryDynamics()
-    var opacityPressureEnabled: Boolean = false
-    var opacityPressureMinimum: Float = 0f
-    var opacityPressureCurve: List<BrushCurvePoint> = emptyList()
-    var opacitySecondaryDynamics: BrushSecondaryDynamics = BrushSecondaryDynamics()
-    var flowPressureEnabled: Boolean = false
-    var flowPressureMinimum: Float = 0f
-    var flowPressureCurve: List<BrushCurvePoint> = emptyList()
-    var flowSecondaryDynamics: BrushSecondaryDynamics = BrushSecondaryDynamics()
-    var spacingPressureEnabled: Boolean = false
-    var spacingPressureMinimum: Float = 0f
-    var spacingPressureCurve: List<BrushCurvePoint> = emptyList()
-    var spacingSecondaryDynamics: BrushSecondaryDynamics = BrushSecondaryDynamics()
-    var thicknessPressureEnabled: Boolean = false
-    var thicknessPressureMinimum: Float = 0f
-    var thicknessPressureCurve: List<BrushCurvePoint> = emptyList()
-    var thicknessSecondaryDynamics: BrushSecondaryDynamics = BrushSecondaryDynamics()
-    var blurPressureEnabled: Boolean = false
-    var blurPressureMinimum: Float = 0f
-    var blurPressureCurve: List<BrushCurvePoint> = emptyList()
-    var blurSecondaryDynamics: BrushSecondaryDynamics = BrushSecondaryDynamics()
+    var smudgeHardness: Float = .5f
     var eraserWidth: Float = 24f
         set(value) {
             field = value
@@ -1846,50 +1621,16 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
 
-    private fun v5TipRequest(path: String, secondary: Boolean = false, eraser: Boolean = false): BrushTipMaskRequest {
-        if (eraser) return BrushTipMaskRequest(
-            path = path,
-            hardness = eraserHardness.coerceIn(0f, 1f),
-            antiAliasMode = brushAntiAliasMode,
-        )
-        return if (secondary) {
-            BrushTipMaskRequest(
-                path = path,
-                hardness = dualHardness.coerceIn(0f, 1f),
-                antiAliasMode = dualAntiAliasMode,
-                alphaThresholdEnabled = alphaThresholdEnabled,
-                alphaThreshold = alphaThreshold,
-            )
-        } else {
-            BrushTipMaskRequest(
-                path = path,
-                hardness = brushHardness.coerceIn(0f, 1f),
-                antiAliasMode = brushAntiAliasMode,
-                alphaThresholdEnabled = alphaThresholdEnabled,
-                alphaThreshold = alphaThreshold,
-            )
-        }
-    }
+    private fun v5EraserTipRequest(path: String): BrushTipMaskRequest = BrushTipMaskRequest(
+        path = path,
+        hardness = eraserHardness.coerceIn(0f, 1f),
+        antiAliasMode = brushAntiAliasMode,
+    )
 
-    /** Resolve imported material before DOWN. Live input may only read immutable V5 masks. */
+    /** Resolve immutable V5 material before DOWN. There is no field-by-field material fallback. */
     fun prepareBrushAssetsNow() {
-        tipAssetPaths.ifEmpty { listOfNotNull(tipAssetPath) }
-            .forEach { path -> v5BrushTipMasks.resolve(v5TipRequest(path)) }
-        grainAssetPath?.let { path ->
-            v5BrushTipMasks.resolveGrain(
-                GrainMaskRequest(path, grainBrightness, grainContrast, grainReversed, grainEmphasized),
-            )
-        }
-        if (brushDual) {
-            dualTipAssetPaths.ifEmpty { tipAssetPaths.ifEmpty { listOfNotNull(tipAssetPath) } }
-                .forEach { path -> v5BrushTipMasks.resolve(v5TipRequest(path, secondary = true)) }
-            dualGrainAssetPath?.let { path ->
-                v5BrushTipMasks.resolveGrain(
-                    GrainMaskRequest(path, dualGrainBrightness, dualGrainContrast, dualGrainReversed, dualGrainEmphasized),
-                )
-            }
-        }
-        eraserTipAssetPath?.let { path -> v5BrushTipMasks.resolve(v5TipRequest(path, eraser = true)) }
+        compiledBrushProgramV5?.let(::prepareCompiledBrushAssets)
+        eraserTipAssetPath?.let { path -> v5BrushTipMasks.resolve(v5EraserTipRequest(path)) }
     }
 
     fun prewarmBrushAssets() = prepareBrushAssetsNow()
@@ -1922,27 +1663,30 @@ class InkCanvasView(context: Context) : View(context) {
         program?.let {
             brushId = it.renderBrushId
             brushRenderSeed = it.renderSeed
-            it.tip.tipTexture?.assetPaths.orEmpty().forEach { path ->
-                v5BrushTipMasks.resolve(BrushTipMaskRequest(path, it.tip.hardness.coerceIn(0f, 1f)))
+            prepareCompiledBrushAssets(it)
+        }
+        notifyHoverCursorStyleChanged()
+    }
+
+    private fun prepareCompiledBrushAssets(program: CompiledBrushProgramV5) {
+        program.tip.tipTexture?.assetPaths.orEmpty().forEach { path ->
+            v5BrushTipMasks.resolve(BrushTipMaskRequest(path, program.tip.hardness.coerceIn(0f, 1f)))
+        }
+        program.textureGrain?.let { grain ->
+            v5BrushTipMasks.resolveGrain(
+                GrainMaskRequest(grain.assetPath, grain.brightness, grain.contrast, grain.reversed, grain.emphasized),
+            )
+        }
+        program.dual?.let { dual ->
+            dual.tipAssetPaths.forEach { path ->
+                v5BrushTipMasks.resolve(BrushTipMaskRequest(path, dual.hardness.coerceIn(0f, 1f)))
             }
-            it.textureGrain?.let { grain ->
+            dual.textureGrain?.let { grain ->
                 v5BrushTipMasks.resolveGrain(
                     GrainMaskRequest(grain.assetPath, grain.brightness, grain.contrast, grain.reversed, grain.emphasized),
                 )
             }
-            it.dual?.let { dual ->
-                dual.tipAssetPaths.forEach { path ->
-                    v5BrushTipMasks.resolve(BrushTipMaskRequest(path, dual.hardness.coerceIn(0f, 1f)))
-                }
-                dual.textureGrain?.let { grain ->
-                    v5BrushTipMasks.resolveGrain(
-                        GrainMaskRequest(grain.assetPath, grain.brightness, grain.contrast, grain.reversed, grain.emphasized),
-                    )
-                }
-            }
-            prewarmedBrushSignature = null
         }
-        notifyHoverCursorStyleChanged()
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -2742,9 +2486,9 @@ class InkCanvasView(context: Context) : View(context) {
     internal fun hoverCursorSnapshot(): FloatArray {
         val footprint = hoverCursorFootprint()
         val cursorProgram = hoverCursorV5Program()
-        val rotation = cursorProgram?.tip?.rotationDegrees ?: if (hoverCursorUsesEraser) 0f else brushRotation
-        val followStylus = cursorProgram?.let(::v5CursorFollowsStylus) ?: (!hoverCursorUsesEraser && followStylusOrientation)
-        val followStroke = cursorProgram?.let(::v5CursorFollowsStroke) ?: (!hoverCursorUsesEraser && followStrokeDirection)
+        val rotation = cursorProgram?.tip?.rotationDegrees ?: 0f
+        val followStylus = cursorProgram?.let(::v5CursorFollowsStylus) == true
+        val followStroke = cursorProgram?.let(::v5CursorFollowsStroke) == true
         return floatArrayOf(
             if (hoverCursorVisible) 1f else 0f,
             hoverCursorX,
@@ -2828,39 +2572,25 @@ class InkCanvasView(context: Context) : View(context) {
         if (hoverCursorUsesEraser) {
             val pressure = if (eraserPressureSize) calibratedPressure.coerceIn(.15f, 1f) else 1f
             val diameter = documentEraserSize().coerceIn(.01f, 800f) * scale * pressure
-            val tip = activeCursorTip(eraserTipAssetPath, eraser = true)
+            val tip = activeEraserCursorTip(eraserTipAssetPath)
             val footprint = BrushCursorGeometry.footprint(
                 diameter = diameter,
                 tipWidth = tip?.width,
                 tipHeight = tip?.height,
-                thickness = if (tip == null) 1f else brushThickness,
-                thicknessVertical = brushThicknessVertical,
+                thickness = 1f,
+                thicknessVertical = false,
             )
             return footprint.width to footprint.height
         }
-        val pressure = BrushDynamics.pressure(sizePressureEnabled, sizePressureMinimum, sizePressureCurve, calibratedPressure)
-        val tilt = TiltResponse(
-            sizeSecondaryDynamics.tiltEnabled,
-            sizeSecondaryDynamics.tiltMinimum,
-            sizeSecondaryDynamics.tiltStart,
-            sizeSecondaryDynamics.tiltCurve.map { it.x to it.y },
-        ).evaluate(hoverCursorTilt)
-        val diameter = documentBrushSize().coerceIn(.01f, 800f) * scale * pressure * tilt
-        val thicknessPressure = BrushDynamics.pressure(thicknessPressureEnabled, thicknessPressureMinimum, thicknessPressureCurve, calibratedPressure)
-        val tip = activeCursorTip(tipAssetPaths.firstOrNull() ?: tipAssetPath)
-        val footprint = BrushCursorGeometry.footprint(
-            diameter = diameter,
-            tipWidth = tip?.width,
-            tipHeight = tip?.height,
-            thickness = if (tip == null && tipAssetPath == null && tipAssetPaths.isEmpty()) 1f else brushThickness * thicknessPressure,
-            thicknessVertical = brushThicknessVertical,
-        )
-        return footprint.width to footprint.height
+        // Non-paint tools do not own brush-preset material. Their cursor is an explicit round
+        // tool-size indicator, never a reconstruction from stale paint fields.
+        val diameter = documentBrushSize().coerceIn(.01f, 800f) * scale
+        return diameter to diameter
     }
 
-    private fun activeCursorTip(path: String?, eraser: Boolean = false): BrushTipMask? {
+    private fun activeEraserCursorTip(path: String?): BrushTipMask? {
         path ?: return null
-        return v5BrushTipMasks.resolve(v5TipRequest(path, eraser = eraser))
+        return v5BrushTipMasks.resolve(v5EraserTipRequest(path))
     }
 
     private fun updateHoverCursorPacket(
@@ -2896,13 +2626,10 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun hoverCursorPageRotation(): Float {
         val cursorProgram = hoverCursorV5Program()
-        val fixed = cursorProgram?.tip?.rotationDegrees ?: if (hoverCursorUsesEraser) 0f else brushRotation
+        val fixed = cursorProgram?.tip?.rotationDegrees ?: 0f
         val dynamic = when {
             cursorProgram?.let(::v5CursorFollowsStylus) == true -> Math.toDegrees(hoverCursorOrientationRadians.toDouble()).toFloat()
             cursorProgram?.let(::v5CursorFollowsStroke) == true && hoverCursorHasDirection -> hoverCursorDirectionDegrees
-            cursorProgram == null && !hoverCursorUsesEraser && followStylusOrientation -> Math.toDegrees(hoverCursorOrientationRadians.toDouble()).toFloat()
-            cursorProgram == null && !hoverCursorUsesEraser && hoverCursorHasDirection && followStrokeDirection -> hoverCursorDirectionDegrees
-            cursorProgram == null && !hoverCursorUsesEraser && hoverCursorHasDirection -> hoverCursorDirectionDegrees * shapeTouchRotation.coerceIn(-1f, 1f)
             else -> 0f
         }
         return BrushCursorGeometry.normalizeDegrees(fixed, dynamic)
@@ -4202,7 +3929,7 @@ class InkCanvasView(context: Context) : View(context) {
                 y * rasterHeight,
                 radius,
                 (.3f + brushColorMix.coerceIn(0f, 1f) * .7f),
-                brushHardness,
+                smudgeHardness,
             )
             if (dirty != null) {
                 smudgeChanged = true

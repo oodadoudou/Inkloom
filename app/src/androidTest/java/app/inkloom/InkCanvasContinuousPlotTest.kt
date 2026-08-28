@@ -62,7 +62,6 @@ class InkCanvasContinuousPlotTest {
                 layout(0, 0, 1000, 1000)
                 tool = EditorTool.PEN
                 fingerDrawingEnabled = false
-                brushContinuousPlot = true
                 setRasterLayerSurfaces(mapOf(LayerIds.INK to surface))
                 installV5TestInk(continuousPlot = true)
             }
