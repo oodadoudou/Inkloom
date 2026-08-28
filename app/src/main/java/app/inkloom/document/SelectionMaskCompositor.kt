@@ -78,30 +78,6 @@ object SelectionMaskCompositor {
         }
     }
 
-    fun fromStrokes(strokes: List<InkStroke>, pageWidth: Float, pageHeight: Float): Bitmap? {
-        if (strokes.isEmpty()) return null
-        val size = maskSize(pageWidth, pageHeight) ?: return null
-        val bitmap = Bitmap.createBitmap(size.width, size.height, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        strokes.forEach { stroke ->
-            if (stroke.points.isEmpty()) return@forEach
-            val paint = whitePaint().apply {
-                style = Paint.Style.STROKE
-                strokeCap = Paint.Cap.ROUND
-                strokeJoin = Paint.Join.ROUND
-                strokeWidth = (stroke.width * size.width / pageWidth.coerceAtLeast(1f)).coerceAtLeast(1f)
-            }
-            val path = Path().apply {
-                moveTo(stroke.points.first().x * size.width, stroke.points.first().y * size.height)
-                stroke.points.drop(1).forEach { lineTo(it.x * size.width, it.y * size.height) }
-            }
-            if (stroke.points.size == 1) {
-                canvas.drawCircle(stroke.points.first().x * size.width, stroke.points.first().y * size.height, paint.strokeWidth / 2f, whitePaint())
-            } else canvas.drawPath(path, paint)
-        }
-        return bitmap.takeUnless(::isEmpty) ?: run { bitmap.recycle(); null }
-    }
-
     /** Returns a new owned bitmap. Inputs remain owned by their callers. */
     fun compose(base: Bitmap?, region: Bitmap?, mode: SelectionMode): Bitmap? {
         if (region == null || region.isRecycled) return if (mode == SelectionMode.REPLACE || mode == SelectionMode.INTERSECT) null else base?.copy(Bitmap.Config.ARGB_8888, true)

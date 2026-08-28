@@ -87,25 +87,28 @@ class LassoSelectionModesTest {
         }
     }
 
-    @Test fun rectangleGestureDefersContentSplittingUntilDelete() {
+    @Test fun rectangleGestureDeletesOnlySelectedRasterPixels() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
-            val crossing = InkStroke(
-                id = "crossing",
-                points = listOf(StrokePoint(.1f, .5f), StrokePoint(.9f, .5f)),
-            )
-            val edits = mutableListOf<CapturedEdit>()
-            val view = configuredView(listOf(crossing), edits).apply { selectionShape = SelectionShape.RECTANGLE }
+            val surface = PixelTileSurface(1_000, 1_000).also { pixels ->
+                pixels.beginWrite("crossing raster line").run {
+                    for (x in 100..900) setPixel(x, 500, Color.BLACK)
+                    commit().close()
+                }
+            }
+            val view = configuredView(emptyList(), mutableListOf()).apply {
+                selectionShape = SelectionShape.RECTANGLE
+                activeLayerId = LayerIds.INK
+                setRasterLayerSurfaces(mapOf(LayerIds.INK to surface))
+                onRasterLayerCommitted = { }
+            }
 
             view.rectangle(.4f, .3f, .6f, .7f)
-
-            assertTrue("Creating a rectangle selection must not rewrite the stroke", edits.isEmpty())
-
+            assertEquals(Color.BLACK, surface.pixelAt(500, 500))
             view.deleteSelection()
-            assertEquals(listOf("crossing"), edits.single().removedIds)
-            assertEquals(2, edits.single().replacements.size)
-            assertEquals(.4f, edits.single().replacements.first().points.last().x, .001f)
-            assertEquals(.6f, edits.single().replacements.last().points.first().x, .001f)
+            assertEquals(Color.TRANSPARENT, surface.pixelAt(500, 500))
+            assertEquals(Color.BLACK, surface.pixelAt(300, 500))
+            assertEquals(Color.BLACK, surface.pixelAt(700, 500))
         }
     }
 
@@ -243,10 +246,7 @@ class LassoSelectionModesTest {
     @Test fun replaceAddSubtractAndIntersectComposePredictably() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
-            val first = stroke("first", .3f, "ink")
-            val second = stroke("second", .6f, "ink")
-            val edits = mutableListOf<CapturedEdit>()
-            val view = configuredView(listOf(first, second), edits)
+            val view = configuredView(emptyList(), mutableListOf())
 
             view.selectionMode = SelectionMode.REPLACE
             view.lasso(.2f, .2f, .8f, .4f)
@@ -256,10 +256,9 @@ class LassoSelectionModesTest {
             view.lasso(.2f, .2f, .8f, .4f)
             view.selectionMode = SelectionMode.INTERSECT
             view.lasso(.2f, .5f, .8f, .7f)
-            view.deleteSelection()
-
-            assertEquals(1, edits.size)
-            assertEquals(listOf("second"), edits.single().removedIds)
+            val mask = requireNotNull(view.selectionMaskSurfaceSnapshot())
+            assertEquals(0, mask.alphaAt(mask.logicalWidth / 2, mask.logicalHeight * 3 / 10))
+            assertTrue(mask.alphaAt(mask.logicalWidth / 2, mask.logicalHeight * 6 / 10) > 0)
         }
     }
 
@@ -290,18 +289,26 @@ class LassoSelectionModesTest {
     @Test fun activeLayerFilterLeavesOverlappingOtherLayerInkUntouched() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
-            val target = stroke("target", .5f, "target-layer")
-            val other = stroke("other", .5f, "other-layer")
-            val edits = mutableListOf<CapturedEdit>()
-            val view = configuredView(listOf(target, other), edits).apply {
+            val target = PixelTileSurface(1_000, 1_000)
+            val other = PixelTileSurface(1_000, 1_000)
+            listOf(target, other).forEach { surface ->
+                surface.beginWrite("overlapping layer fixture").run {
+                    setPixel(500, 500, Color.BLACK)
+                    commit().close()
+                }
+            }
+            val view = configuredView(emptyList(), mutableListOf()).apply {
                 activeLayerId = "target-layer"
                 selectionFilter = SelectionFilter.ACTIVE_LAYER
+                setRasterLayerSurfaces(mapOf("target-layer" to target, "other-layer" to other))
+                onRasterLayerCommitted = { }
             }
 
             view.lasso(.2f, .3f, .8f, .7f)
             view.deleteSelection()
 
-            assertEquals(listOf("target"), edits.single().removedIds)
+            assertEquals(Color.TRANSPARENT, target.pixelAt(500, 500))
+            assertEquals(Color.BLACK, other.pixelAt(500, 500))
         }
     }
 

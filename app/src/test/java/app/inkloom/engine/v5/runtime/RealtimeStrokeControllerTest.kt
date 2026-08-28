@@ -58,6 +58,27 @@ class RealtimeStrokeControllerTest {
     }
 
     @Test
+    fun emptyPublishDoesNotCreateAPresentationBarrier() {
+        val surface = PixelTileSurface(64, 64)
+        val controller = RealtimeStrokeController()
+        controller.begin(
+            "ink",
+            surface,
+            DryInkPaintOp(surface, DryInkDefinition(10f, 0x00000000, opacity = 0f)),
+            7f,
+            "transparent",
+            sample(20f, 20f, 1),
+        )
+
+        val published = requireNotNull(controller.finish(sample(20f, 20f, 2)))
+        assertEquals(0, published.record.changedTileCount)
+        assertEquals(null, controller.awaitingPresentationGeneration())
+        assertEquals(null, controller.awaitingPresentationTransactionId())
+        assertEquals(null, controller.previewSnapshot("ink"))
+        published.record.close()
+    }
+
+    @Test
     fun activePresentationPinsCommittedPixelsAndExposesOnlyTheNewContribution() {
         val surface = PixelTileSurface(128, 64, 64)
         surface.beginWrite("old ink").run {

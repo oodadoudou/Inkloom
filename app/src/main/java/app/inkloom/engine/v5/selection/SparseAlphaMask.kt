@@ -4,10 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.Path
 import android.graphics.RectF
-import app.inkloom.document.InkStroke
-import app.inkloom.document.StrokePoint
 import app.inkloom.engine.v5.surface.MaskComposeMode
 import app.inkloom.engine.v5.surface.MaskTileSurface
 import app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot
@@ -192,37 +189,6 @@ internal class SparseAlphaMask private constructor(
     companion object {
         const val DEFAULT_TILE_SIZE = 256
 
-        fun fromStrokes(strokes: List<InkStroke>, pageWidth: Float, pageHeight: Float): SparseAlphaMask? {
-            if (strokes.isEmpty()) return null
-            val size = SelectionMaskCompositor.maskSize(pageWidth, pageHeight) ?: return null
-            var result: SparseAlphaMask? = null
-            strokes.forEach { stroke ->
-                if (stroke.points.isEmpty()) return@forEach
-                val radius = (stroke.width * size.width / pageWidth.coerceAtLeast(1f) / 2f).coerceAtLeast(.5f)
-                val left = kotlin.math.floor(stroke.points.minOf(StrokePoint::x) * size.width - radius - 2f).toInt().coerceIn(0, size.width - 1)
-                val top = kotlin.math.floor(stroke.points.minOf(StrokePoint::y) * size.height - radius - 2f).toInt().coerceIn(0, size.height - 1)
-                val right = ceil(stroke.points.maxOf(StrokePoint::x) * size.width + radius + 2f).toInt().coerceIn(left + 1, size.width)
-                val bottom = ceil(stroke.points.maxOf(StrokePoint::y) * size.height + radius + 2f).toInt().coerceIn(top + 1, size.height)
-                val bitmap = Bitmap.createBitmap(right - left, bottom - top, Bitmap.Config.ARGB_8888)
-                val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    color = Color.WHITE
-                    style = Paint.Style.STROKE
-                    strokeCap = Paint.Cap.ROUND
-                    strokeJoin = Paint.Join.ROUND
-                    strokeWidth = radius * 2f
-                }
-                val path = Path().apply {
-                    moveTo(stroke.points.first().x * size.width - left, stroke.points.first().y * size.height - top)
-                    stroke.points.drop(1).forEach { point -> lineTo(point.x * size.width - left, point.y * size.height - top) }
-                }
-                if (stroke.points.size == 1) Canvas(bitmap).drawCircle(pathPointX(stroke.points.first(), size.width, left), pathPointY(stroke.points.first(), size.height, top), radius, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE })
-                else Canvas(bitmap).drawPath(path, paint)
-                val addition = try { fromBitmapRegion(bitmap, left, top, size.width, size.height) } finally { bitmap.recycle() }
-                result = result?.composed(addition, AlphaMaskOperation.ADD) ?: addition
-            }
-            return result
-        }
-
         fun fromFloodFill(
             source: Bitmap,
             sourceLeft: Int,
@@ -294,9 +260,6 @@ internal class SparseAlphaMask private constructor(
             }
             return surface.takeUnless(MaskTileSurface::isEmpty)?.let(::SparseAlphaMask)
         }
-
-        private fun pathPointX(point: StrokePoint, width: Int, left: Int) = point.x * width - left
-        private fun pathPointY(point: StrokePoint, height: Int, top: Int) = point.y * height - top
 
         private fun copySurface(source: MaskTileSurfaceSnapshot): MaskTileSurface =
             MaskTileSurface(

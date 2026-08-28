@@ -109,12 +109,14 @@ class RealtimeStrokeController {
                     sample?.enqueuedTimeNanos ?: gesture.samples.lastOrNull()?.enqueuedTimeNanos ?: 0L,
                 )
                 lastPublishedSamples = gesture.samples.toList()
-                landed = Landed(
-                    gesture.layerId,
-                    published.snapshot.revision,
-                    published.record.transactionId,
-                    published.snapshot,
-                )
+                landed = if (published.record.changedTileCount > 0 && published.record.transactionId > 0L) {
+                    Landed(
+                        gesture.layerId,
+                        published.snapshot.revision,
+                        published.record.transactionId,
+                        published.snapshot,
+                    )
+                } else null
             }
         } finally {
             active = null

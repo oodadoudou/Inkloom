@@ -40,29 +40,6 @@ class SelectionTransformTest {
         try { InstrumentationRegistry.getInstrumentation().runOnMainSync { view.onTouchEvent(e) } } finally { e.recycle() }
     }
 
-    @Test fun draggingACornerHandleScalesTheSelectedStroke() {
-        var committed = 0
-        val view = canvas {
-            tool = EditorTool.SELECT
-            fingerDrawingEnabled = true
-            onStrokesReplaced = { _, _, _ -> committed++ }
-        }
-        // Plant a stroke near the centre so the selection bbox + handle exist.
-        InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            view.setDocumentStrokes(listOf(app.inkloom.document.InkStroke(id = "a", points = listOf(app.inkloom.document.StrokePoint(.5f, .5f)), colorArgb = 0xFF111111L, width = 6f, brushId = "pen", layerId = app.inkloom.document.LayerIds.INK)), "test")
-        }
-        // Selection drawing and content transformation are separate modes, matching Procreate.
-        InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            assertTrue(view.selectAllEditableStrokes())
-            assertTrue(view.enterFreeTransform())
-        }
-        // The top-right corner handle sits at (0.5, 0.5) in normalized -> (200,200) screen. Drag it outward to scale up.
-        send(view, 20L, MotionEvent.ACTION_DOWN, 200f, 200f)
-        send(view, 40L, MotionEvent.ACTION_MOVE, 300f, 300f)
-        send(view, 50L, MotionEvent.ACTION_UP, 300f, 300f)
-        assertTrue("Scaling a selection should commit a stroke edit", committed > 0)
-    }
-
     @Test fun productionFreeTransformMovesAlphaOnlyRasterSelectionAndKeepsMaskAligned() {
         val surface = PixelTileSurface(64, 64, tileSize = 64)
         surface.beginWrite("raster square").run {
