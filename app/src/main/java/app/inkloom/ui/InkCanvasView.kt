@@ -54,6 +54,7 @@ import app.inkloom.engine.v5.input.InputTool
 import app.inkloom.engine.v5.material.BrushTipMaskCache
 import app.inkloom.engine.v5.material.BrushTipMaskRequest
 import app.inkloom.engine.v5.material.BrushTipMask
+import app.inkloom.engine.v5.material.GrainMaskRequest
 import app.inkloom.engine.v5.material.PressureResponse
 import app.inkloom.engine.v5.raster.DryBlend
 import app.inkloom.engine.v5.raster.DryInkDefinition
@@ -1872,16 +1873,6 @@ class InkCanvasView(context: Context) : View(context) {
             BrushTipMaskRequest(
                 path = path,
                 hardness = dualHardness.coerceIn(0f, 1f),
-                grainPath = dualGrainAssetPath.takeIf { dualGrainApplyPerPlot },
-                grainDensity = dualGrainDensity.coerceIn(0f, 1f),
-                grainScale = dualGrainScale,
-                grainRotation = dualGrainRotationDegrees,
-                grainBrightness = dualGrainBrightness,
-                grainContrast = dualGrainContrast,
-                grainReversed = dualGrainReversed,
-                grainEmphasized = dualGrainEmphasized,
-                grainCompositeMode = dualGrainCompositeMode,
-                grainFilteringMode = dualGrainFilteringMode,
                 antiAliasMode = dualAntiAliasMode,
                 alphaThresholdEnabled = alphaThresholdEnabled,
                 alphaThreshold = alphaThreshold,
@@ -1890,16 +1881,6 @@ class InkCanvasView(context: Context) : View(context) {
             BrushTipMaskRequest(
                 path = path,
                 hardness = brushHardness.coerceIn(0f, 1f),
-                grainPath = grainAssetPath.takeIf { grainApplyPerPlot },
-                grainDensity = grainDensity.coerceIn(0f, 1f),
-                grainScale = grainScale,
-                grainRotation = grainRotationDegrees,
-                grainBrightness = grainBrightness,
-                grainContrast = grainContrast,
-                grainReversed = grainReversed,
-                grainEmphasized = grainEmphasized,
-                grainCompositeMode = grainCompositeMode,
-                grainFilteringMode = grainFilteringMode,
                 antiAliasMode = brushAntiAliasMode,
                 alphaThresholdEnabled = alphaThresholdEnabled,
                 alphaThreshold = alphaThreshold,
@@ -1911,9 +1892,19 @@ class InkCanvasView(context: Context) : View(context) {
     fun prepareBrushAssetsNow() {
         tipAssetPaths.ifEmpty { listOfNotNull(tipAssetPath) }
             .forEach { path -> v5BrushTipMasks.resolve(v5TipRequest(path)) }
+        grainAssetPath?.let { path ->
+            v5BrushTipMasks.resolveGrain(
+                GrainMaskRequest(path, grainBrightness, grainContrast, grainReversed, grainEmphasized),
+            )
+        }
         if (brushDual) {
             dualTipAssetPaths.ifEmpty { tipAssetPaths.ifEmpty { listOfNotNull(tipAssetPath) } }
                 .forEach { path -> v5BrushTipMasks.resolve(v5TipRequest(path, secondary = true)) }
+            dualGrainAssetPath?.let { path ->
+                v5BrushTipMasks.resolveGrain(
+                    GrainMaskRequest(path, dualGrainBrightness, dualGrainContrast, dualGrainReversed, dualGrainEmphasized),
+                )
+            }
         }
         eraserTipAssetPath?.let { path -> v5BrushTipMasks.resolve(v5TipRequest(path, eraser = true)) }
     }
@@ -5151,28 +5142,15 @@ class InkCanvasView(context: Context) : View(context) {
         ) return null
         val tipPaths = tipAssetPaths.ifEmpty { listOfNotNull(tipAssetPath) }
         if (tipPaths.isNotEmpty()) {
-            if (grainAssetPath != null && !grainApplyPerPlot) return null
             val masks = tipPaths.map { path ->
-                v5BrushTipMasks.resolve(
-                    BrushTipMaskRequest(
-                        path = path,
-                        hardness = brushHardness.coerceIn(0f, 1f),
-                        grainPath = grainAssetPath,
-                        grainDensity = grainDensity.coerceIn(0f, 1f),
-                        grainScale = grainScale,
-                        grainRotation = grainRotationDegrees,
-                        grainBrightness = grainBrightness,
-                        grainContrast = grainContrast,
-                        grainReversed = grainReversed,
-                        grainEmphasized = grainEmphasized,
-                        grainCompositeMode = grainCompositeMode,
-                        grainFilteringMode = grainFilteringMode,
-                        antiAliasMode = brushAntiAliasMode,
-                        alphaThresholdEnabled = alphaThresholdEnabled,
-                        alphaThreshold = alphaThreshold,
-                    ),
+                v5BrushTipMasks.resolve(v5TipRequest(path)) ?: return null
+            }
+            val grain = grainAssetPath?.takeIf { grainDensity > .0001f }?.let { path ->
+                v5BrushTipMasks.resolveGrain(
+                    GrainMaskRequest(path, grainBrightness, grainContrast, grainReversed, grainEmphasized),
                 ) ?: return null
             }
+            val grainOffset = GrainBehavior.offset(brushRenderSeed, grainOffsetJitter)
             val definition = StampBrushDefinition(
                 diameterPixels = diameterPixels,
                 colorArgb = inkColor,
@@ -5180,6 +5158,14 @@ class InkCanvasView(context: Context) : View(context) {
                 flow = brushFlow.coerceIn(0f, 1f),
                 spacingRatio = CspBrushGap.ratio(brushSpacingMode, brushSpacing),
                 tips = masks,
+                grain = grain,
+                grainDensity = grainDensity.coerceIn(0f, 1f),
+                grainScalePercent = grainScale.coerceIn(1f, 4000f),
+                grainMovement = grainMovement.coerceIn(0f, 1f),
+                grainZoom = grainZoom.coerceIn(0f, 1f),
+                grainRotationRadians = Math.toRadians(grainRotationDegrees.toDouble()).toFloat(),
+                grainPhaseX = grainOffset.x,
+                grainPhaseY = grainOffset.y,
                 sizePressure = pressure(sizePressureEnabled, sizePressureMinimum, sizePressureCurve),
                 opacityPressure = pressure(opacityPressureEnabled, opacityPressureMinimum, opacityPressureCurve),
                 flowPressure = pressure(flowPressureEnabled, flowPressureMinimum, flowPressureCurve),

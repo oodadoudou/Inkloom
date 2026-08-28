@@ -24,6 +24,7 @@ class V5RealtimeStampPerformanceTest {
     fun importedTipConsumesThreeHundredHertzIncrementallyWithoutLegacyReplay() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val tip = File(context.cacheDir, "v5-performance-tip.png")
+        val grain = File(context.cacheDir, "v5-performance-grain.png")
         Bitmap.createBitmap(
             IntArray(32 * 32) { index ->
                 val x = index % 32
@@ -35,6 +36,19 @@ class V5RealtimeStampPerformanceTest {
             Bitmap.Config.ARGB_8888,
         ).also { bitmap ->
             tip.outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+            bitmap.recycle()
+        }
+        Bitmap.createBitmap(
+            IntArray(32 * 32) { index ->
+                val x = index % 32
+                val y = index / 32
+                if ((x / 3 + y / 5) % 2 == 0) Color.BLACK else Color.WHITE
+            },
+            32,
+            32,
+            Bitmap.Config.ARGB_8888,
+        ).also { bitmap ->
+            grain.outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
             bitmap.recycle()
         }
         val surface = PixelTileSurface(2048, 1536)
@@ -52,6 +66,12 @@ class V5RealtimeStampPerformanceTest {
                 sizePressureMinimum = .2f
                 tipAssetPath = tip.absolutePath
                 tipAssetPaths = listOf(tip.absolutePath)
+                grainAssetPath = grain.absolutePath
+                grainDensity = .7f
+                grainScale = 86f
+                grainMovement = .72f
+                grainZoom = .35f
+                grainRotationDegrees = 17f
                 inkColor = Color.BLACK
                 setRasterLayerSurfaces(mapOf("paint" to surface))
                 onRasterLayerCommitted = { commits++ }
@@ -87,6 +107,7 @@ class V5RealtimeStampPerformanceTest {
         assertTrue(surface.tileCount > 0)
         display.recycle()
         tip.delete()
+        grain.delete()
     }
 
     private fun dispatch(

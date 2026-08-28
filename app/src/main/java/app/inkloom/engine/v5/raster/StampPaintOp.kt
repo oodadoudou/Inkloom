@@ -27,6 +27,14 @@ data class StampBrushDefinition(
     val spacingRatio: Float = .12f,
     val spacingReferencePixels: Float = diameterPixels,
     val tips: List<BrushTipMask>,
+    val grain: BrushTipMask? = null,
+    val grainDensity: Float = 0f,
+    val grainScalePercent: Float = 100f,
+    val grainMovement: Float = 0f,
+    val grainZoom: Float = 0f,
+    val grainRotationRadians: Float = 0f,
+    val grainPhaseX: Float = 0f,
+    val grainPhaseY: Float = 0f,
     val sizePressure: PressureResponse = PressureResponse.CONSTANT,
     val opacityPressure: PressureResponse = PressureResponse.CONSTANT,
     val flowPressure: PressureResponse = PressureResponse.CONSTANT,
@@ -48,6 +56,11 @@ data class StampBrushDefinition(
         require(spacingRatio.isFinite() && spacingRatio in .005f..4f)
         require(spacingReferencePixels.isFinite() && spacingReferencePixels in .1f..4096f)
         require(tips.isNotEmpty())
+        require(grainDensity.isFinite() && grainDensity in 0f..1f)
+        require(grainScalePercent.isFinite() && grainScalePercent in 1f..4000f)
+        require(grainMovement.isFinite() && grainMovement in 0f..1f)
+        require(grainZoom.isFinite() && grainZoom in 0f..1f)
+        require(grainRotationRadians.isFinite())
         require(roundness.isFinite() && roundness in .01f..1f)
         require(rotationRadians.isFinite())
         require(particlesPerPlot in 1..32)
@@ -67,6 +80,13 @@ class StampPaintOp(
     private val definition: StampBrushDefinition,
     private val selection: MaskTileSurfaceSnapshot? = null,
 ) : PaintOp {
+    private val grainCosine = cos(definition.grainRotationRadians)
+    private val grainSine = sin(definition.grainRotationRadians)
+    private val grainWavelength = (
+        definition.diameterPixels * definition.grainScalePercent / 100f *
+            (100f / definition.diameterPixels.coerceAtLeast(.1f)).pow(definition.grainZoom)
+        ).coerceAtLeast(1f)
+
     override val capabilities = PaintOpCapabilities(
         kind = if (definition.blend == DryBlend.DESTINATION_OUT) PaintOpKind.ERASER else definition.kind,
         destinationSampling = definition.blend == DryBlend.DESTINATION_OUT,
@@ -255,6 +275,19 @@ class StampPaintOp(
                         )
                         for (y in overlap.top until overlap.bottom) for (x in overlap.left until overlap.right) {
                             var coverage = dab.coverageAt(x + .5f, y + .5f) * dab.depositedAlpha
+                            definition.grain?.let { grain ->
+                                val movement = definition.grainMovement
+                                val grainX = x + .5f - dab.centerX * (1f - movement)
+                                val grainY = y + .5f - dab.centerY * (1f - movement)
+                                val rotatedX = grainCosine * grainX + grainSine * grainY
+                                val rotatedY = -grainSine * grainX + grainCosine * grainY
+                                fun repeat(value: Float): Float = value - kotlin.math.floor(value)
+                                val sampled = grain.coverageAt(
+                                    repeat(rotatedX / grainWavelength + definition.grainPhaseX),
+                                    repeat(rotatedY / grainWavelength + definition.grainPhaseY),
+                                )
+                                coverage *= 1f - definition.grainDensity + sampled * definition.grainDensity
+                            }
                             if (coverage <= 0f) continue
                             selection?.let { mask ->
                                 val selectionX = ((x + .5f) * mask.logicalWidth / document.logicalWidth)

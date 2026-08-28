@@ -95,6 +95,40 @@ class StampPaintOpTest {
         })
     }
 
+    @Test
+    fun runtimeGrainIsInvariantToMotionEventBatchBoundaries() {
+        val grainBrush = definition().copy(
+            grain = checkerGrain(),
+            grainDensity = .8f,
+            grainScalePercent = 73f,
+            grainMovement = .65f,
+            grainZoom = .4f,
+            grainRotationRadians = .37f,
+            grainPhaseX = .125f,
+            grainPhaseY = .625f,
+        )
+        val points = listOf(sample(1, 42f, 28f), sample(2, 76f, 35f), sample(3, 122f, 24f))
+
+        assertArrayEquals(draw(listOf(points), grainBrush), draw(points.map(::listOf), grainBrush))
+    }
+
+    @Test
+    fun movingGrainTravelsWithTipWhileTexturizedGrainIsAnchoredToDocument() {
+        val base = definition().copy(
+            diameterPixels = 18f,
+            grain = checkerGrain(),
+            grainDensity = 1f,
+            grainScalePercent = 100f,
+        )
+        val movingAt30 = tapCrop(base.copy(grainMovement = 0f), 30)
+        val movingAt71 = tapCrop(base.copy(grainMovement = 0f), 71)
+        val fixedAt30 = tapCrop(base.copy(grainMovement = 1f), 30)
+        val fixedAt71 = tapCrop(base.copy(grainMovement = 1f), 71)
+
+        assertArrayEquals("Moving grain must retain brush-local phase", movingAt30, movingAt71)
+        assertTrue("Texturized grain must retain document phase", !fixedAt30.contentEquals(fixedAt71))
+    }
+
     private fun draw(
         moveBatches: List<List<StrokeSample>>,
         brush: StampBrushDefinition = definition(),
@@ -115,6 +149,25 @@ class StampPaintOpTest {
         tips = listOf(BrushTipMask.solidCircle(32, .8f)),
         renderSeed = 43,
     )
+
+    private fun tapCrop(brush: StampBrushDefinition, centerX: Int): IntArray {
+        val surface = PixelTileSurface(128, 64)
+        val session = StampPaintOp(surface, brush).begin(PaintOpContext(81, 0, "grain")) as StampPaintOp.Session
+        session.apply(batch(81, 0, false, sample(0, centerX.toFloat(), 32f)))
+        session.finish(PaintBatch.empty(81, 1, terminal = true))
+        val published = session.publish()
+        return published.snapshot.copyPremultipliedPixels(PixelRect(centerX - 10, 22, centerX + 10, 42))
+            .also { published.record.close() }
+    }
+
+    private fun checkerGrain(): BrushTipMask {
+        val alpha = ByteArray(8 * 8) { index ->
+            val x = index % 8
+            val y = index / 8
+            if ((x / 2 + y / 2) % 2 == 0) 255.toByte() else 40.toByte()
+        }
+        return BrushTipMask(8, 8, alpha)
+    }
 
     private fun sample(sequence: Long, x: Float, y: Float) = StrokeSample(
         sequence,
