@@ -4,7 +4,8 @@ import app.inkloom.engine.v5.material.PressureResponse
 import app.inkloom.engine.v5.material.TiltResponse
 import app.inkloom.engine.v5.stroke.PaintBatch
 import app.inkloom.engine.v5.stroke.StrokeSample
-import app.inkloom.engine.v5.surface.ActiveDeltaSurface
+import app.inkloom.engine.v5.surface.ActiveStrokeDeltaBlend
+import app.inkloom.engine.v5.surface.ActiveStrokeDeltaTileSurface
 import app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot
 import app.inkloom.engine.v5.surface.PixelRect
 import app.inkloom.engine.v5.surface.PixelTileKey
@@ -61,13 +62,17 @@ class WetPaintOp(
 
     override fun begin(context: PaintOpContext): PaintOpSession {
         require(context.backdropGeneration == document.revision)
-        return Session(context, ActiveDeltaSurface(document, "V5 wet paint"))
+        return Session(
+            context,
+            ActiveStrokeDeltaTileSurface(document, "V5 wet paint", ActiveStrokeDeltaBlend.SOURCE_OVER),
+        )
     }
 
     inner class Session internal constructor(
         private val context: PaintOpContext,
-        private val delta: ActiveDeltaSurface,
+        private val delta: ActiveStrokeDeltaTileSurface,
     ) : PublishablePaintOpSession, AutoCloseable {
+        override val presentationKind: PaintPresentationKind = PaintPresentationKind.SOURCE_DELTA
         private var state = State.ACTIVE
         private var lastOrdinal = -1L
         private val tracks = sampleTransforms.map { WetTrack() }
@@ -139,8 +144,7 @@ class WetPaintOp(
             val radius = definition.diameterPixels * definition.sizePressure.evaluate(sample.pressure) *
                 definition.sizeTilt.evaluate(sample.tiltRadians) * .5f
             if (radius <= .05f) return null
-            val snapshot = delta.previewSnapshot()
-            val picked = sampleColour(snapshot, sample.point.x, sample.point.y, radius)
+            val picked = sampleColour(sample.point.x, sample.point.y, radius)
             if (!track.reservoirInitialized) {
                 if (picked.a > .001f) track.reservoir = picked
                 track.reservoirInitialized = true
@@ -196,7 +200,7 @@ class WetPaintOp(
             return bounds
         }
 
-        private fun sampleColour(snapshot: PixelTileSurfaceSnapshot, cx: Float, cy: Float, radius: Float): PremultipliedColor {
+        private fun sampleColour(cx: Float, cy: Float, radius: Float): PremultipliedColor {
             val offset = maxOf(1, (radius * .22f).toInt())
             val positions = arrayOf(
                 cx.toInt() to cy.toInt(),
@@ -208,7 +212,8 @@ class WetPaintOp(
             var total = PremultipliedColor.ZERO
             var count = 0
             positions.forEach { (x, y) ->
-                val value = snapshot.pixelAt(x, y)
+                if (x !in 0 until document.logicalWidth || y !in 0 until document.logicalHeight) return@forEach
+                val value = delta.compositedPixelAt(x, y)
                 if ((value ushr 24) != 0) {
                     total += PremultipliedColor.fromPremultiplied(value)
                     count++

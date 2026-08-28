@@ -57,6 +57,34 @@ class RealtimeStrokeControllerTest {
     }
 
     @Test
+    fun activePresentationPinsCommittedPixelsAndExposesOnlyTheNewContribution() {
+        val surface = PixelTileSurface(128, 64, 64)
+        surface.beginWrite("old ink").run {
+            editTile(app.inkloom.engine.v5.surface.PixelTileKey(0, 0), app.inkloom.engine.v5.surface.PixelRect(0, 0, 64, 64)) { pixels, _ ->
+                pixels[8 * 64 + 8] = 0xff556677.toInt()
+            }
+            commit().close()
+        }
+        val controller = RealtimeStrokeController()
+        controller.begin(
+            "ink",
+            surface,
+            DryInkPaintOp(surface, DryInkDefinition(12f, 0xff102030.toInt(), minimumPressureScale = 1f)),
+            8f,
+            "pinned",
+            sample(80f, 32f, 1),
+        )
+
+        val presentation = requireNotNull(controller.activePresentation("ink"))
+        assertEquals(0xff556677.toInt(), presentation.backdrop.pixelAt(8, 8))
+        assertEquals(0, presentation.delta.pixelAt(8, 8))
+        assertEquals(1L, presentation.backdrop.revision)
+        assertEquals(1L, surface.revision)
+        controller.cancel()
+        assertEquals(0xff556677.toInt(), surface.pixelAt(8, 8))
+    }
+
+    @Test
     fun productionControllerKeepsThirtySecondThreeHundredRpsInputBounded() {
         val surface = PixelTileSurface(32, 32)
         val controller = RealtimeStrokeController()

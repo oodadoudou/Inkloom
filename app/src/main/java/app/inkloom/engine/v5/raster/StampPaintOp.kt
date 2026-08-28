@@ -5,7 +5,8 @@ import app.inkloom.engine.v5.material.PressureResponse
 import app.inkloom.engine.v5.material.TiltResponse
 import app.inkloom.engine.v5.stroke.PaintBatch
 import app.inkloom.engine.v5.stroke.StrokeSample
-import app.inkloom.engine.v5.surface.ActiveDeltaSurface
+import app.inkloom.engine.v5.surface.ActiveStrokeDeltaBlend
+import app.inkloom.engine.v5.surface.ActiveStrokeDeltaTileSurface
 import app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot
 import app.inkloom.engine.v5.surface.PixelRect
 import app.inkloom.engine.v5.surface.PixelTileKey
@@ -126,14 +127,24 @@ class StampPaintOp(
     override fun begin(context: PaintOpContext): PaintOpSession {
         require(document.pixelFormat == app.inkloom.engine.v5.surface.PixelTileFormat.PREMULTIPLIED_SRGB_8888)
         require(context.backdropGeneration == document.revision)
-        return Session(context, ActiveDeltaSurface(document, "V5 ${capabilities.kind} stamp"))
+        return Session(
+            context,
+            ActiveStrokeDeltaTileSurface(
+                document,
+                "V5 ${capabilities.kind} stamp",
+                if (definition.blend == DryBlend.DESTINATION_OUT) ActiveStrokeDeltaBlend.DESTINATION_OUT
+                else ActiveStrokeDeltaBlend.SOURCE_OVER,
+            ),
+        )
     }
 
     inner class Session internal constructor(
         private val context: PaintOpContext,
-        private val delta: ActiveDeltaSurface,
+        private val delta: ActiveStrokeDeltaTileSurface,
     ) : PublishablePaintOpSession, AutoCloseable {
-        private val backdrop = document.snapshot()
+        override val presentationKind: PaintPresentationKind =
+            if (definition.blend == DryBlend.DESTINATION_OUT) PaintPresentationKind.ERASE_COVERAGE
+            else PaintPresentationKind.SOURCE_DELTA
         private var state = State.ACTIVE
         private var lastOrdinal = -1L
         private val streamStates = sampleTransforms.map { streams.map { StreamState() } }
@@ -366,7 +377,7 @@ class StampPaintOp(
                             val index = (y - tileTop) * stride + x - tileLeft
                             pixels[index] = when (definition.blend) {
                                 DryBlend.SOURCE_OVER -> sourceOver(pixels[index], definition.colorArgb, coverage)
-                                DryBlend.DESTINATION_OUT -> destinationOut(pixels[index], coverage)
+                                DryBlend.DESTINATION_OUT -> eraseCoverageOver(pixels[index], coverage)
                             }
                         }
                     }
@@ -465,10 +476,9 @@ class StampPaintOp(
                                     .toInt().coerceIn(0, mask.logicalHeight - 1)
                                 coverage *= mask.alphaAt(selectionX, selectionY) / 255f
                             }
-                            val base = backdrop.pixelAt(x, y)
                             pixels[index] = when (definition.blend) {
-                                DryBlend.SOURCE_OVER -> sourceOver(base, definition.colorArgb, coverage)
-                                DryBlend.DESTINATION_OUT -> destinationOut(base, coverage)
+                                DryBlend.SOURCE_OVER -> sourcePixel(definition.colorArgb, coverage)
+                                DryBlend.DESTINATION_OUT -> coveragePixel(coverage)
                             }
                         }
                     }
@@ -638,12 +648,23 @@ class StampPaintOp(
                 (sourceBlue + (destination and 0xff) * inverse / 255).coerceAtMost(255)
         }
 
-        private fun destinationOut(destination: Int, alpha: Float): Int {
-            val keep = 255 - (255f * alpha).toInt().coerceIn(0, 255)
-            return ((((destination ushr 24) and 0xff) * keep / 255) shl 24) or
-                ((((destination ushr 16) and 0xff) * keep / 255) shl 16) or
-                ((((destination ushr 8) and 0xff) * keep / 255) shl 8) or
-                ((destination and 0xff) * keep / 255)
+        private fun eraseCoverageOver(destination: Int, alpha: Float): Int {
+            val incoming = (255f * alpha).toInt().coerceIn(0, 255)
+            val existing = (destination ushr 24) and 0xff
+            return coveragePixel((incoming + existing * (255 - incoming) / 255) / 255f)
+        }
+
+        private fun coveragePixel(alpha: Float): Int {
+            val value = (alpha.coerceIn(0f, 1f) * 255f + .5f).toInt()
+            return (value shl 24) or (value shl 16) or (value shl 8) or value
+        }
+
+        private fun sourcePixel(color: Int, alpha: Float): Int {
+            val value = (((color ushr 24) and 0xff) * alpha.coerceIn(0f, 1f) + .5f).toInt().coerceIn(0, 255)
+            return (value shl 24) or
+                ((((color ushr 16) and 0xff) * value / 255) shl 16) or
+                ((((color ushr 8) and 0xff) * value / 255) shl 8) or
+                ((color and 0xff) * value / 255)
         }
     }
 }

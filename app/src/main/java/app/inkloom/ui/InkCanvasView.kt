@@ -75,6 +75,8 @@ import app.inkloom.engine.v5.raster.WetPaintDefinition
 import app.inkloom.engine.v5.raster.WetPaintOp
 import app.inkloom.engine.v5.runtime.RawDocumentSample
 import app.inkloom.engine.v5.runtime.RealtimeStrokeController
+import app.inkloom.engine.v5.runtime.ActiveStrokePresentation
+import app.inkloom.engine.v5.runtime.ActiveStrokePresentationBlend
 import app.inkloom.engine.v5.storage.RasterLayerCommit
 import app.inkloom.engine.v5.coordinates.DocumentPoint
 import app.inkloom.engine.v5.selection.CanonicalLassoContour
@@ -1298,11 +1300,15 @@ class InkCanvasView(context: Context) : View(context) {
     private fun liveRasterPreviewSnapshot(layerId: String): app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot? {
         if (layerId != activeLayerId) return null
         return runCatching {
-            v5StrokeController.previewSnapshot(layerId)
+            v5StrokeController.activeCompositeSnapshot(layerId)
+                ?: v5StrokeController.landedSnapshot(layerId)
                 ?: rasterTileBlendSession?.previewSnapshot()
                 ?: rasterTileLiquifySession?.previewSnapshot()
         }.getOrNull()
     }
+
+    private fun activeV5PaintPresentation(layerId: String): ActiveStrokePresentation? =
+        runCatching { v5StrokeController.activePresentation(layerId) }.getOrNull()
 
     /** Toggles direct grayscale mask editing. The layer pixels remain untouched. */
     fun toggleLayerMaskEditing(layerId: String): Boolean {
@@ -1738,11 +1744,7 @@ class InkCanvasView(context: Context) : View(context) {
             releaseRasterLayerProjection()
             val destination = RectF(0f, 0f, width.toFloat(), height.toFloat())
             orderedIds.forEach { layerId ->
-                rasterTileRenderer.draw(
-                    canvas,
-                    liveRasterPreviewSnapshot(layerId) ?: rasterLayerTileSurfaces.getValue(layerId).snapshot(),
-                    destination,
-                )
+                drawRasterLayerPresentation(canvas, layerId, rasterLayerTileSurfaces.getValue(layerId), destination)
             }
             lastRasterProjectionRecomposedTileCount = 0
             v5RasterProjectionDrawCount++
@@ -1840,11 +1842,46 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun drawRasterLayer(canvas: Canvas, layerId: String, surface: PixelTileSurface?) {
         surface ?: return
-        rasterTileRenderer.draw(
-            canvas,
-            liveRasterPreviewSnapshot(layerId) ?: surface.snapshot(),
-            RectF(0f, 0f, width.toFloat(), height.toFloat()),
-        )
+        drawRasterLayerPresentation(canvas, layerId, surface, RectF(0f, 0f, width.toFloat(), height.toFloat()))
+    }
+
+    private fun drawRasterLayerPresentation(
+        canvas: Canvas,
+        layerId: String,
+        surface: PixelTileSurface,
+        destination: RectF,
+    ) {
+        val active = activeV5PaintPresentation(layerId)
+        if (active == null) {
+            rasterTileRenderer.draw(canvas, liveRasterPreviewSnapshot(layerId) ?: surface.snapshot(), destination)
+            return
+        }
+        when (active.blend) {
+            ActiveStrokePresentationBlend.SOURCE_OVER -> {
+                rasterTileRenderer.draw(canvas, active.backdrop, destination)
+                rasterTileRenderer.draw(canvas, active.delta, destination)
+            }
+            ActiveStrokePresentationBlend.DESTINATION_OUT -> {
+                val dirty = RectF(
+                    destination.left + active.dirtyBounds.left * destination.width() / active.backdrop.logicalWidth,
+                    destination.top + active.dirtyBounds.top * destination.height() / active.backdrop.logicalHeight,
+                    destination.left + active.dirtyBounds.right * destination.width() / active.backdrop.logicalWidth,
+                    destination.top + active.dirtyBounds.bottom * destination.height() / active.backdrop.logicalHeight,
+                )
+                val outside = canvas.save()
+                canvas.clipOutRect(dirty)
+                rasterTileRenderer.draw(canvas, active.backdrop, destination)
+                canvas.restoreToCount(outside)
+
+                val replacement = canvas.saveLayer(dirty, null)
+                canvas.clipRect(dirty)
+                rasterTileRenderer.draw(canvas, active.backdrop, destination)
+                val erase = canvas.saveLayer(dirty, Paint().apply { blendMode = BlendMode.DST_OUT })
+                rasterTileRenderer.draw(canvas, active.delta, destination)
+                canvas.restoreToCount(erase)
+                canvas.restoreToCount(replacement)
+            }
+        }
     }
 
     private data class RasterProjectionGeometry(
@@ -5333,10 +5370,12 @@ class InkCanvasView(context: Context) : View(context) {
         v5RejectedContact = false
         val surface = rasterTileSurfaceFor(activeLayerId)
         val configuration = v5PaintConfiguration()
-        if (surface == null || configuration == null) {
+        val exactActiveComposition = activeLayerSupportsV5Delta()
+        if (surface == null || configuration == null || !exactActiveComposition) {
             v5RejectedContact = true
             onPaintCapabilityRejected(
                 if (surface == null) "V5 requires a raster layer surface"
+                else if (!exactActiveComposition) "This layer configuration cannot present an exact realtime V5 delta"
                 else "This brush configuration is not yet supported by Paint Engine V5",
             )
             return true
@@ -5375,6 +5414,13 @@ class InkCanvasView(context: Context) : View(context) {
         }
         return true
     }
+
+    private fun activeLayerSupportsV5Delta(): Boolean =
+        (layerOpacities[activeLayerId] ?: 1f) >= .999f &&
+            (layerBlendModes[activeLayerId] ?: LayerBlendMode.NORMAL) == LayerBlendMode.NORMAL &&
+            layerMasks[activeLayerId]?.enabled != true &&
+            activeLayerId !in clippedLayers &&
+            activeLayerId !in alphaLockedLayers
 
     private fun v5SampleTransforms(surface: PixelTileSurface): List<PaintSampleTransform> = when (symmetryMode) {
         SymmetryMode.NONE -> listOf(PaintSampleTransform.Identity)

@@ -57,6 +57,9 @@ interface PaintOpSession {
  * commits. Implementations must not construct a second render product in [publish].
  */
 interface PublishablePaintOpSession : PaintOpSession {
+    val presentationKind: PaintPresentationKind get() = PaintPresentationKind.COMPOSITE_REPLACEMENT
     fun previewSnapshot(): PixelTileSurfaceSnapshot
     fun publish(): PublishedPaintDelta
 }
+
+enum class PaintPresentationKind { COMPOSITE_REPLACEMENT, SOURCE_DELTA, ERASE_COVERAGE }

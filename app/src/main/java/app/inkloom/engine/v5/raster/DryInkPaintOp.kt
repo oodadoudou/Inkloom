@@ -5,7 +5,8 @@ import app.inkloom.engine.v5.material.PressureResponse
 import app.inkloom.engine.v5.material.TiltResponse
 import app.inkloom.engine.v5.stroke.PaintBatch
 import app.inkloom.engine.v5.stroke.StrokeSample
-import app.inkloom.engine.v5.surface.ActiveDeltaSurface
+import app.inkloom.engine.v5.surface.ActiveStrokeDeltaBlend
+import app.inkloom.engine.v5.surface.ActiveStrokeDeltaTileSurface
 import app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot
 import app.inkloom.engine.v5.surface.PixelRect
 import app.inkloom.engine.v5.surface.PixelTileKey
@@ -81,13 +82,24 @@ class DryInkPaintOp(
         require(context.backdropGeneration == document.revision) {
             "Backdrop changed before PaintOp began"
         }
-        return Session(context, ActiveDeltaSurface(document, "V5 ${capabilities.kind}"))
+        return Session(
+            context,
+            ActiveStrokeDeltaTileSurface(
+                document,
+                "V5 ${capabilities.kind}",
+                if (definition.blend == DryBlend.DESTINATION_OUT) ActiveStrokeDeltaBlend.DESTINATION_OUT
+                else ActiveStrokeDeltaBlend.SOURCE_OVER,
+            ),
+        )
     }
 
     inner class Session internal constructor(
         private val context: PaintOpContext,
-        private val delta: ActiveDeltaSurface,
+        private val delta: ActiveStrokeDeltaTileSurface,
     ) : PublishablePaintOpSession, AutoCloseable {
+        override val presentationKind: PaintPresentationKind =
+            if (definition.blend == DryBlend.DESTINATION_OUT) PaintPresentationKind.ERASE_COVERAGE
+            else PaintPresentationKind.SOURCE_DELTA
         private val lastSamples = MutableList<StrokeSample?>(sampleTransforms.size) { null }
         private var lastOrdinal = -1L
         private var dirtyBounds: PixelRect? = null
@@ -205,7 +217,7 @@ class DryInkPaintOp(
                         val index = (y - tileTop) * stride + x - tileLeft
                         pixels[index] = when (definition.blend) {
                             DryBlend.SOURCE_OVER -> sourceOver(pixels[index], coverage, footprint.pressure)
-                            DryBlend.DESTINATION_OUT -> destinationOut(pixels[index], coverage)
+                            DryBlend.DESTINATION_OUT -> eraseCoverageOver(pixels[index], coverage)
                         }
                     }
                 }
@@ -275,13 +287,11 @@ class DryInkPaintOp(
                 outputBlue.coerceAtMost(255)
         }
 
-        private fun destinationOut(destination: Int, coverage: Float): Int {
+        private fun eraseCoverageOver(destination: Int, coverage: Float): Int {
             val eraseAlpha = (255f * definition.opacity * coverage).toInt().coerceIn(0, 255)
-            val keep = 255 - eraseAlpha
-            return (((destination ushr 24) and 0xff) * keep / 255 shl 24) or
-                (((destination ushr 16) and 0xff) * keep / 255 shl 16) or
-                (((destination ushr 8) and 0xff) * keep / 255 shl 8) or
-                ((destination and 0xff) * keep / 255)
+            val existing = (destination ushr 24) and 0xff
+            val accumulated = (eraseAlpha + existing * (255 - eraseAlpha) / 255).coerceAtMost(255)
+            return (accumulated shl 24) or (accumulated shl 16) or (accumulated shl 8) or accumulated
         }
 
         private fun requireActive() = check(state == State.ACTIVE) { "PaintOp session is $state" }

@@ -8,12 +8,23 @@ import app.inkloom.engine.v5.input.InputSampleBatch
 import app.inkloom.engine.v5.input.InputTool
 import app.inkloom.engine.v5.raster.PaintOp
 import app.inkloom.engine.v5.raster.PaintOpContext
+import app.inkloom.engine.v5.raster.PaintPresentationKind
 import app.inkloom.engine.v5.raster.PaintResult
 import app.inkloom.engine.v5.raster.PublishablePaintOpSession
 import app.inkloom.engine.v5.raster.PublishedPaintDelta
 import app.inkloom.engine.v5.stroke.DirectStrokeSession
 import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot
+import app.inkloom.engine.v5.surface.PixelRect
+
+enum class ActiveStrokePresentationBlend { SOURCE_OVER, DESTINATION_OUT }
+
+data class ActiveStrokePresentation(
+    val backdrop: PixelTileSurfaceSnapshot,
+    val delta: PixelTileSurfaceSnapshot,
+    val blend: ActiveStrokePresentationBlend,
+    val dirtyBounds: PixelRect,
+)
 
 /**
  * Production coordinator for one V5 realtime paint stroke.
@@ -52,12 +63,17 @@ class RealtimeStrokeController {
         active = Active(
             layerId,
             surface,
+            surface.snapshot(),
             stroke,
             paint,
+            when (paint.presentationKind) {
+                PaintPresentationKind.ERASE_COVERAGE -> ActiveStrokePresentationBlend.DESTINATION_OUT
+                else -> ActiveStrokePresentationBlend.SOURCE_OVER
+            },
             InputBackpressureController(),
             ArrayDeque<RawDocumentSample>(TRACE_SAMPLE_LIMIT).apply { addLast(sample) },
         )
-        return paint.apply(stroke.begin(input(sample, InputPhase.DOWN)))
+        return paint.apply(stroke.begin(input(sample, InputPhase.DOWN))).also { active?.include(it.dirtyBounds) }
     }
 
     fun append(samples: List<RawDocumentSample>): PaintResult? {
@@ -70,6 +86,7 @@ class RealtimeStrokeController {
             while (true) {
                 val pending = gesture.mailbox.drain(MAX_PROCESSING_BATCH_SAMPLES) ?: break
                 val next = gesture.paint.apply(gesture.stroke.append(pending))
+                gesture.include(next.dirtyBounds)
                 result = result?.merge(next) ?: next
             }
         }
@@ -86,7 +103,7 @@ class RealtimeStrokeController {
                 gesture.paint.apply(gesture.stroke.append(pending))
             }
             val finalBatch = gesture.stroke.finish(sample?.let { input(it, InputPhase.UP) })
-            gesture.paint.finish(finalBatch)
+            gesture.include(gesture.paint.finish(finalBatch).dirtyBounds)
             gesture.paint.publish().also { published ->
                 lastBackpressureSnapshot = gesture.mailbox.snapshot(
                     sample?.enqueuedTimeNanos ?: gesture.samples.lastOrNull()?.enqueuedTimeNanos ?: 0L,
@@ -110,6 +127,26 @@ class RealtimeStrokeController {
     fun previewSnapshot(layerId: String): PixelTileSurfaceSnapshot? =
         active?.takeIf { it.layerId == layerId }?.paint?.previewSnapshot()
             ?: landed?.takeIf { it.layerId == layerId }?.snapshot
+
+    fun activePresentation(layerId: String): ActiveStrokePresentation? {
+        val gesture = active?.takeIf { it.layerId == layerId } ?: return null
+        if (gesture.paint.presentationKind == PaintPresentationKind.COMPOSITE_REPLACEMENT) return null
+        val dirty = gesture.dirtyBounds ?: return null
+        return ActiveStrokePresentation(
+            backdrop = gesture.backdrop,
+            delta = gesture.paint.previewSnapshot(),
+            blend = gesture.presentationBlend,
+            dirtyBounds = dirty,
+        )
+    }
+
+    fun landedSnapshot(layerId: String): PixelTileSurfaceSnapshot? =
+        landed?.takeIf { it.layerId == layerId }?.snapshot
+
+    fun activeCompositeSnapshot(layerId: String): PixelTileSurfaceSnapshot? =
+        active?.takeIf {
+            it.layerId == layerId && it.paint.presentationKind == PaintPresentationKind.COMPOSITE_REPLACEMENT
+        }?.paint?.previewSnapshot()
 
     /** Releases the landed owner only after the stable View has submitted that generation. */
     fun onDocumentGenerationPresented(layerId: String, generation: Long): Boolean {
@@ -136,11 +173,19 @@ class RealtimeStrokeController {
     private data class Active(
         val layerId: String,
         val surface: PixelTileSurface,
+        val backdrop: PixelTileSurfaceSnapshot,
         val stroke: DirectStrokeSession,
         val paint: PublishablePaintOpSession,
+        val presentationBlend: ActiveStrokePresentationBlend,
         val mailbox: InputBackpressureController,
         val samples: ArrayDeque<RawDocumentSample>,
     ) {
+        var dirtyBounds: PixelRect? = null
+
+        fun include(bounds: PixelRect?) {
+            if (bounds != null) dirtyBounds = dirtyBounds?.union(bounds) ?: bounds
+        }
+
         fun rememberForDiagnostics(sample: RawDocumentSample) {
             if (samples.size == TRACE_SAMPLE_LIMIT) samples.removeFirst()
             samples.addLast(sample)
