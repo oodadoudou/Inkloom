@@ -52,6 +52,7 @@ class RasterSurfaceRecompositionTest {
             send(view, MotionEvent.ACTION_MOVE, 160f, y, index * 10L + 3L)
             send(view, MotionEvent.ACTION_UP, 280f, y, index * 10L + 6L)
         }
+        settlePublishedStrokes(view)
         val alphaBeforeSwitch = live.snapshot().tileInfo.sumOf { it.nonTransparentPixelCount }
         assertTrue(alphaBeforeSwitch > 0)
 
@@ -72,11 +73,17 @@ class RasterSurfaceRecompositionTest {
         }
         send(view, MotionEvent.ACTION_DOWN, 200f, 360f, 220L)
         send(view, MotionEvent.ACTION_UP, 260f, 360f, 226L)
+        settlePublishedStrokes(view)
 
         val alphaAfterSwitch = live.snapshot().tileInfo.sumOf { it.nonTransparentPixelCount }
         assertTrue("Switching an imported preset must preserve all earlier live pixels", alphaAfterSwitch >= alphaBeforeSwitch)
         assertTrue("The transparent-white imported tip must deposit pigment", Color.alpha(live.pixelAt(345, 495)) > 0)
         tipFile.delete()
+    }
+
+    private fun settlePublishedStrokes(view: InkCanvasView) {
+        view.awaitV5StrokeWorkerIdleForTest()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { }
     }
 
     private fun page(reference: RasterTileSurfaceRef?) = InkPage(

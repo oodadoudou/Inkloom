@@ -4789,7 +4789,7 @@ class InkCanvasView(context: Context) : View(context) {
             GUIDE_SNAP_TOLERANCE_DP * resources.displayMetrics.density,
         )
         val initialSample = v5DocumentSample(event, pointerIndex, normalizedX, normalizedY, historicalIndex = null)
-        val result = v5StrokeController.begin(
+        val started = v5StrokeController.begin(
             layerId = activeLayerId,
             surface = surface,
             paintOp = configuration.paintOp,
@@ -4798,8 +4798,12 @@ class InkCanvasView(context: Context) : View(context) {
             sample = initialSample,
             smoothing = configuration.smoothing,
         )
+        if (!started) {
+            v5RejectedContact = true
+            onPaintCapabilityRejected("A V5 paint contact is already active")
+            return true
+        }
         v5DryGestureCount++
-        invalidateV5Damage(surface, result)
         if (continuousPlotEnabled() && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
             updateContinuousPlotInput(
                 normalizedX,

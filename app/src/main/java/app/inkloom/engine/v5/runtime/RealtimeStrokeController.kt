@@ -46,8 +46,6 @@ class RealtimeStrokeController {
     val activeLayerId: String? get() = active?.layerId
     fun lastPublishedSamples(): List<RawDocumentSample> = lastPublishedSamples.toList()
     fun backpressureSnapshot(): InputBackpressureController.Snapshot = lastBackpressureSnapshot
-    fun hasPendingInput(): Boolean = active?.mailbox?.snapshot(System.nanoTime())?.depth?.let { it > 0 } == true
-
     fun begin(
         layerId: String,
         surface: PixelTileSurface,

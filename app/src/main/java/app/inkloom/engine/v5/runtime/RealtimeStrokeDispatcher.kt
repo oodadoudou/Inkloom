@@ -13,10 +13,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Production thread boundary for realtime paint.
  *
- * DOWN deposits the first point synchronously so contact feedback is immediate. MOVE only copies
- * immutable samples into the controller mailbox and returns; one ordered worker drains bounded
- * batches and publishes immutable preview snapshots. UP only appends an ordered publish command;
- * the worker drains the bounded mailbox and atomically publishes the same delta off the UI thread.
+ * The input thread only appends immutable commands. One worker consumes DOWN/MOVE/UP in order,
+ * drains bounded MOVE batches and publishes immutable preview snapshots. Even rapid consecutive
+ * contacts therefore cannot make a later DOWN wait for the previous stroke's pen-up raster work.
  */
 class RealtimeStrokeDispatcher(
     private val onDamageReady: (PixelTileSurface, PaintResult) -> Unit,
@@ -28,12 +27,34 @@ class RealtimeStrokeDispatcher(
             isDaemon = true
         }
     }
-    private val drainScheduled = AtomicBoolean(false)
-    @Volatile private var activeSurface: PixelTileSurface? = null
+    private sealed interface Command {
+        data class Start(
+            val layerId: String,
+            val surface: PixelTileSurface,
+            val paintOp: PaintOp,
+            val maximumRadius: Float,
+            val brushRuntimeId: String,
+            val sample: RawDocumentSample,
+            val smoothing: Float,
+        ) : Command
+
+        data class Move(val samples: List<RawDocumentSample>) : Command
+        data class Finish(
+            val sample: RawDocumentSample?,
+            val onPublished: (PublishedPaintDelta) -> Unit,
+        ) : Command
+        data object Cancel : Command
+    }
+
+    private val queueLock = Any()
+    private val commands = ArrayDeque<Command>()
+    private val pumpScheduled = AtomicBoolean(false)
+    private val contactOpen = AtomicBoolean(false)
+    @Volatile private var contactLayerId: String? = null
     @Volatile private var closed = false
 
-    val isActive: Boolean get() = controller.isActive
-    val activeLayerId: String? get() = controller.activeLayerId
+    val isActive: Boolean get() = contactOpen.get()
+    val activeLayerId: String? get() = contactLayerId ?: controller.activeLayerId
 
     fun begin(
         layerId: String,
@@ -43,34 +64,33 @@ class RealtimeStrokeDispatcher(
         brushRuntimeId: String,
         sample: RawDocumentSample,
         smoothing: Float = 0f,
-    ): PaintResult {
+    ): Boolean {
         check(!closed) { "Stroke dispatcher is closed" }
-        awaitIdle()
-        activeSurface = surface
-        return controller.begin(layerId, surface, paintOp, maximumRadius, brushRuntimeId, sample, smoothing)
+        if (!contactOpen.compareAndSet(false, true)) return false
+        contactLayerId = layerId
+        enqueue(Command.Start(layerId, surface, paintOp, maximumRadius, brushRuntimeId, sample, smoothing))
+        return true
     }
 
     fun append(samples: List<RawDocumentSample>): Boolean {
-        if (closed || samples.isEmpty() || !controller.enqueue(samples)) return false
-        scheduleDrain()
+        if (closed || samples.isEmpty() || !contactOpen.get()) return false
+        enqueue(Command.Move(samples.toList()))
         return true
     }
 
     fun finish(sample: RawDocumentSample?, onPublished: (PublishedPaintDelta) -> Unit): Boolean {
-        if (closed || !controller.isActive) return false
-        worker.execute {
-            val result = controller.finish(sample)
-            activeSurface = null
-            result?.let(onPublished)
-        }
+        if (closed || !contactOpen.compareAndSet(true, false)) return false
+        contactLayerId = null
+        enqueue(Command.Finish(sample, onPublished))
         return true
     }
 
     fun cancel(): Boolean {
-        if (closed || !controller.isActive) return false
-        val result = submitAndWait(controller::cancel)
-        activeSurface = null
-        return result
+        if (closed || !contactOpen.compareAndSet(true, false)) return false
+        contactLayerId = null
+        enqueue(Command.Cancel)
+        awaitIdle()
+        return true
     }
 
     fun previewSnapshot(layerId: String) = controller.previewSnapshot(layerId)
@@ -91,27 +111,76 @@ class RealtimeStrokeDispatcher(
 
     override fun close() {
         if (closed) return
-        if (controller.isActive) cancel()
+        if (contactOpen.get()) cancel() else awaitIdle()
+        if (controller.isActive) submitAndWait(controller::cancel)
         closed = true
         worker.shutdownNow()
     }
 
-    private fun scheduleDrain() {
-        if (!drainScheduled.compareAndSet(false, true)) return
+    private fun enqueue(command: Command) {
+        synchronized(queueLock) { commands.addLast(command) }
+        schedulePump()
+    }
+
+    private fun schedulePump() {
+        if (!pumpScheduled.compareAndSet(false, true)) return
         worker.execute {
             try {
                 while (true) {
-                    val result = controller.drainPending() ?: break
-                    activeSurface?.let { surface -> onDamageReady(surface, result) }
+                    val command = synchronized(queueLock) {
+                        if (commands.isEmpty()) null else commands.removeFirst()
+                    } ?: break
+                    when (command) {
+                        is Command.Start -> {
+                            workerSurface = command.surface
+                            val result = controller.begin(
+                                command.layerId,
+                                command.surface,
+                                command.paintOp,
+                                command.maximumRadius,
+                                command.brushRuntimeId,
+                                command.sample,
+                                command.smoothing,
+                            )
+                            onDamageReady(command.surface, result)
+                        }
+                        is Command.Move -> consumeMoves(command)
+                        is Command.Finish -> {
+                            controller.finish(command.sample)?.let(command.onPublished)
+                            workerSurface = null
+                        }
+                        Command.Cancel -> {
+                            controller.cancel()
+                            workerSurface = null
+                        }
+                    }
                 }
             } finally {
-                drainScheduled.set(false)
-                // An enqueue can race with the empty observation above. Re-arm after releasing the
-                // flag so the last report can never remain stranded until ACTION_UP.
-                if (controller.hasPendingInput() && !closed) scheduleDrain()
+                pumpScheduled.set(false)
+                // A producer can append after the empty observation and before the flag release.
+                // Re-arm only after publishing false so no command can remain stranded.
+                if (synchronized(queueLock) { commands.isNotEmpty() } && !closed) schedulePump()
             }
         }
     }
+
+    private fun consumeMoves(first: Command.Move) {
+        val samples = ArrayList<RawDocumentSample>(MAX_WORKER_MOVE_BATCH)
+        samples.addAll(first.samples)
+        while (samples.size < MAX_WORKER_MOVE_BATCH) {
+            val next = synchronized(queueLock) {
+                val candidate = commands.firstOrNull() as? Command.Move ?: return@synchronized null
+                if (samples.size + candidate.samples.size > MAX_WORKER_MOVE_BATCH) null
+                else commands.removeFirst() as Command.Move
+            } ?: break
+            samples.addAll(next.samples)
+        }
+        val result = controller.append(samples)
+        if (result != null) workerSurface?.let { onDamageReady(it, result) }
+    }
+
+    /** Worker-owned surface retained only between the consumed Start and Finish/Cancel commands. */
+    private var workerSurface: PixelTileSurface? = null
 
     private fun <T> submitAndWait(block: () -> T): T {
         val future: Future<T> = worker.submit<T> { block() }
@@ -120,5 +189,9 @@ class RealtimeStrokeDispatcher(
         } catch (failure: ExecutionException) {
             throw failure.cause ?: failure
         }
+    }
+
+    private companion object {
+        const val MAX_WORKER_MOVE_BATCH = 256
     }
 }

@@ -395,6 +395,37 @@ class RasterPaintCommitTest {
         settlePublishedStroke(view)
     }
 
+    @Test fun rapidConsecutiveContactsDoNotWaitForThePreviousPublicationOnDown() {
+        val surface = PixelTileSurface(1200, 900)
+        var commits = 0
+        val view = createCanvas {
+            layout(0, 0, 800, 600)
+            tool = EditorTool.PEN
+            activeLayerId = "paint"
+            installV5TestInk(size = 24f)
+            setRasterLayerSurfaces(mapOf("paint" to surface))
+            onRasterLayerCommitted = { commits++ }
+        }
+        val downTimes = ArrayList<Float>(32)
+
+        repeat(32) { index ->
+            val x = 90f + (index % 8) * 82f
+            val y = 90f + (index / 8) * 120f
+            val started = android.os.SystemClock.elapsedRealtimeNanos()
+            send(view, MotionEvent.ACTION_DOWN, x, y, index * 4L, awaitPublication = false)
+            downTimes += (android.os.SystemClock.elapsedRealtimeNanos() - started) / 1_000_000f
+            send(view, MotionEvent.ACTION_UP, x + 2f, y + 2f, index * 4L + 2L, awaitPublication = false)
+        }
+        settlePublishedStroke(view)
+
+        val ordered = downTimes.sorted()
+        val p95 = ordered[(ordered.size * .95f).toInt().coerceAtMost(ordered.lastIndex)]
+        android.util.Log.i("InkloomPerf", "v5_rapid_contact_down_p95_ms=$p95")
+        assertTrue("A new DOWN must never wait for the prior publish: p95=${p95}ms", p95 < 8.33f)
+        assertEquals("Every physical contact publishes once", 32, commits)
+        assertEquals(32L, surface.revision)
+    }
+
     @Test fun oneV5PaintGestureIsOneByteExactUndoAndRedoTransaction() {
         val surface = PixelTileSurface(600, 600)
         val view = createCanvas {

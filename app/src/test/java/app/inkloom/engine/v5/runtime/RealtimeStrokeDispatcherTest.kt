@@ -51,6 +51,32 @@ class RealtimeStrokeDispatcherTest {
         }
     }
 
+    @Test
+    fun consecutiveContactsQueueWithoutWaitingForThePreviousPublish() {
+        val surface = PixelTileSurface(256, 128)
+        val published = CountDownLatch(2)
+        RealtimeStrokeDispatcher(onDamageReady = { _, _ -> }).use { dispatcher ->
+            repeat(2) { index ->
+                assertTrue(dispatcher.begin(
+                    layerId = "ink",
+                    surface = surface,
+                    paintOp = DryInkPaintOp(surface, DryInkDefinition(14f, 0xff000000.toInt())),
+                    maximumRadius = 9f,
+                    brushRuntimeId = "rapid-$index",
+                    sample = sample(30f + index * 100f, 60f, index * 3L + 1L),
+                ))
+                assertTrue(dispatcher.finish(sample(32f + index * 100f, 60f, index * 3L + 2L)) { result ->
+                    result.record.close()
+                    published.countDown()
+                })
+            }
+
+            assertTrue(published.await(2, TimeUnit.SECONDS))
+            dispatcher.awaitIdle()
+            assertEquals(2L, surface.revision)
+        }
+    }
+
     private fun sample(x: Float, y: Float, time: Long) = RawDocumentSample(
         x = x,
         y = y,
