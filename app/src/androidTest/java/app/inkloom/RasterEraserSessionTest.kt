@@ -193,5 +193,9 @@ class RasterEraserSessionTest {
         val coordinates = MotionEvent.PointerCoords().apply { this.x = x; this.y = y; pressure = 1f; size = .1f }
         val event = MotionEvent.obtain(0L, time, action, 1, arrayOf(properties), arrayOf(coordinates), 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
         try { InstrumentationRegistry.getInstrumentation().runOnMainSync { view.onTouchEvent(event) } } finally { event.recycle() }
+        if (action == MotionEvent.ACTION_MOVE || action == MotionEvent.ACTION_UP) {
+            view.awaitV5StrokeWorkerIdleForTest()
+            InstrumentationRegistry.getInstrumentation().runOnMainSync { }
+        }
     }
 }

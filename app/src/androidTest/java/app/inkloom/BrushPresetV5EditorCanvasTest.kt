@@ -204,5 +204,9 @@ class BrushPresetV5EditorCanvasTest {
         } finally {
             event.recycle()
         }
+        if (action == MotionEvent.ACTION_UP) {
+            view.awaitV5StrokeWorkerIdleForTest()
+            InstrumentationRegistry.getInstrumentation().runOnMainSync { }
+        }
     }
 }

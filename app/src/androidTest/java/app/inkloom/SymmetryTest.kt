@@ -91,5 +91,9 @@ class SymmetryTest {
     private fun send(view: InkCanvasView, time: Long, action: Int, x: Float, y: Float) {
         val event = event(time, action, x, y)
         try { InstrumentationRegistry.getInstrumentation().runOnMainSync { view.onTouchEvent(event) } } finally { event.recycle() }
+        if (action == MotionEvent.ACTION_UP) {
+            view.awaitV5StrokeWorkerIdleForTest()
+            InstrumentationRegistry.getInstrumentation().runOnMainSync { }
+        }
     }
 }

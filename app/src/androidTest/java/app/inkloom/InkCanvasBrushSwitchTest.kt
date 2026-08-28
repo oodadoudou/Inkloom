@@ -54,6 +54,7 @@ class InkCanvasBrushSwitchTest {
             assertEquals("Switching presets must replace the precompiled cursor program", 100f, view.hoverCursorSnapshot()[3], .75f)
             view.onTouchEvent(stylusEventWithDynamics(MotionEvent.ACTION_UP, 600f, 400f, 4L, pressure = .75f, tilt = 0f))
         }
+        settlePublishedStroke(view)
     }
 
     @Test
@@ -87,6 +88,7 @@ class InkCanvasBrushSwitchTest {
             assertEquals(10f, view.hoverCursorSnapshot()[3], .001f)
             view.onTouchEvent(stylusEvent(MotionEvent.ACTION_UP, 800f, 700f, 44L))
         }
+        settlePublishedStroke(view)
 
         assertTrue("Both pens and the eraser must enter V5 after zoom", view.v5DryGestureCount >= 3)
         assertTrue("Zoomed contacts must publish raster generations", surface.revision >= 2L)
@@ -113,6 +115,7 @@ class InkCanvasBrushSwitchTest {
             view.applyBrushConfiguration(EditorTool.HIGHLIGHTER, AppSettings(), null, 28f, .35f, Color.YELLOW, EraserPreset.NORMAL_FREE)
             drawStroke(view, 60L, 760f)
         }
+        settlePublishedStroke(view)
 
         assertEquals("Canceled contact must not publish; three completed contacts must", 3L, surface.revision)
         assertTrue(surface.tileCount > 0)
@@ -141,6 +144,7 @@ class InkCanvasBrushSwitchTest {
             view.onTouchEvent(stylusEvent(MotionEvent.ACTION_MOVE, 700f, 480f, 9L))
             view.onTouchEvent(stylusEvent(MotionEvent.ACTION_UP, 950f, 500f, 13L))
         }
+        settlePublishedStroke(view)
 
         assertEquals("One contact publishes exactly one immutable generation", 1L, surface.revision)
         assertEquals(1, view.v5DryGestureCount)
@@ -174,6 +178,7 @@ class InkCanvasBrushSwitchTest {
             )
             drawStroke(view, 1L, 600f)
         }
+        settlePublishedStroke(view)
 
         assertEquals(1, view.v5DryGestureCount)
         assertEquals(1L, surface.revision)
@@ -215,6 +220,7 @@ class InkCanvasBrushSwitchTest {
             instrumentation.runOnMainSync {
                 view.onTouchEvent(stylusEvent(MotionEvent.ACTION_UP, 600f, 600f, 5L))
             }
+            settlePublishedStroke(view)
             assertEquals(1L, surface.revision)
         } finally {
             frame.recycle()
@@ -249,6 +255,7 @@ class InkCanvasBrushSwitchTest {
             )
             drawStroke(view, 1L, 600f)
         }
+        settlePublishedStroke(view)
 
         assertEquals(128, Color.alpha(surface.pixelAt(600, 600)))
         assertTrue("The locked pixel colour should still be editable", surface.pixelAt(600, 600) != 0x80800000.toInt())
@@ -270,6 +277,7 @@ class InkCanvasBrushSwitchTest {
             view.applyBrushConfiguration(EditorTool.ERASER, AppSettings(eraserSize = 80f), brush("normal", "Ink pen"), 80f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
             drawStroke(view, 1L, 600f)
         }
+        settlePublishedStroke(view)
 
         assertEquals("V5 eraser must remove destination pixels instead of creating black paint", 0, Color.alpha(surface.pixelAt(600, 600)))
     }
@@ -290,6 +298,7 @@ class InkCanvasBrushSwitchTest {
             view.onTouchEvent(palmAndStylusEvent(MotionEvent.ACTION_MOVE, 900f, 700f, 3L))
             view.onTouchEvent(palmAndStylusEvent(MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), 980f, 740f, 4L))
         }
+        settlePublishedStroke(view)
 
         assertEquals(1, view.v5DryGestureCount)
         assertTrue(view.v5LastCommittedNormalizedPoints().all { it.first > .5f && it.second > .45f })
@@ -342,6 +351,7 @@ class InkCanvasBrushSwitchTest {
             view.applyBrushConfiguration(EditorTool.PEN, AppSettings(), brush, 40f, 1f, Color.RED, EraserPreset.NORMAL_FREE)
             drawStroke(view, 1L, 600f)
         }
+        settlePublishedStroke(view)
 
         try {
             assertEquals(1L, surface.revision)
@@ -367,6 +377,11 @@ class InkCanvasBrushSwitchTest {
         view.onTouchEvent(stylusEvent(MotionEvent.ACTION_DOWN, 250f, y, startTime))
         view.onTouchEvent(stylusEvent(MotionEvent.ACTION_MOVE, 600f, y, startTime + 4))
         view.onTouchEvent(stylusEvent(MotionEvent.ACTION_UP, 950f, y, startTime + 8))
+    }
+
+    private fun settlePublishedStroke(view: InkCanvasView) {
+        view.awaitV5StrokeWorkerIdleForTest()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { }
     }
 
     private fun stylusEvent(action: Int, x: Float, y: Float, time: Long): MotionEvent {

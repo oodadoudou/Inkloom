@@ -48,6 +48,7 @@ class InkCanvasEraserTest {
             view.dispatchStylus(MotionEvent.ACTION_MOVE, 320f, 200f, 20L)
             view.dispatchStylus(MotionEvent.ACTION_UP, 320f, 200f, 30L)
         }
+        settlePublishedStroke(view)
 
         assertEquals(listOf("highlight"), committedLayers)
         assertEquals(0, Color.alpha(highlight.pixelAt(200, 200)))
@@ -67,6 +68,7 @@ class InkCanvasEraserTest {
             }
             view.dispatchStylus(MotionEvent.ACTION_UP, 930f, 500f, 200L)
         }
+        settlePublishedStroke(view)
 
         val sorted = packetTimes.drop(8).sorted()
         val p95Ms = sorted[(sorted.size * 95 / 100).coerceAtMost(sorted.lastIndex)] / 1_000_000f
@@ -88,6 +90,11 @@ class InkCanvasEraserTest {
             }
         }
         return view
+    }
+
+    private fun settlePublishedStroke(view: InkCanvasView) {
+        view.awaitV5StrokeWorkerIdleForTest()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { }
     }
 
     private fun opaqueSurface(width: Int, height: Int) = PixelTileSurface(width, height).also { surface ->

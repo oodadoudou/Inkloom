@@ -97,9 +97,16 @@ class RealBrushCorpusRenderingTest {
                     view.draw(Canvas(bitmap))
                     if (index >= 8) frameTimes += android.os.SystemClock.elapsedRealtimeNanos() - started
                 }
+            }
+            view.awaitV5StrokeWorkerIdleForTest()
+            instrumentation.runOnMainSync {
+                bitmap.eraseColor(Color.TRANSPARENT)
+                view.draw(Canvas(bitmap))
                 assertTrue("Real SUT ${brush.name} must present pixels before pen-up", bitmap.hasVisibleAlpha())
                 view.onTouchEvent(stylusEvent(MotionEvent.ACTION_UP, 860f, 640f, 220L))
             }
+            view.awaitV5StrokeWorkerIdleForTest()
+            instrumentation.runOnMainSync { }
             val sorted = frameTimes.sorted()
             val p95Ms = sorted[(sorted.size * 95 / 100).coerceAtMost(sorted.lastIndex)] / 1_000_000f
             assertTrue("Real SUT ${brush.name} preview p95 was ${p95Ms}ms", p95Ms < 16.7f)
@@ -128,6 +135,8 @@ class RealBrushCorpusRenderingTest {
             view.onTouchEvent(stylusEvent(MotionEvent.ACTION_MOVE, 500f, 500f, 2L))
             view.onTouchEvent(stylusEvent(MotionEvent.ACTION_UP, 750f, 500f, 3L))
         }
+        view.awaitV5StrokeWorkerIdleForTest()
+        instrumentation.runOnMainSync { }
         val patch = requireNotNull(committed) {
             "${brush.format} ${brush.name} did not commit V5 pixels; rejection=$rejection; preset=$brush"
         }

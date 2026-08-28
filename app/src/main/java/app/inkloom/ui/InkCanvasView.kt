@@ -17,6 +17,8 @@ import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.DragEvent
@@ -71,7 +73,7 @@ import app.inkloom.engine.v5.raster.StampPaintOp
 import app.inkloom.engine.v5.raster.WetPaintDefinition
 import app.inkloom.engine.v5.raster.WetPaintOp
 import app.inkloom.engine.v5.runtime.RawDocumentSample
-import app.inkloom.engine.v5.runtime.RealtimeStrokeController
+import app.inkloom.engine.v5.runtime.RealtimeStrokeDispatcher
 import app.inkloom.engine.v5.runtime.ActiveStrokePresentation
 import app.inkloom.engine.v5.runtime.ActiveStrokePresentationBlend
 import app.inkloom.engine.v5.presentation.FrameInvalidationScheduler
@@ -289,7 +291,12 @@ class InkCanvasView(context: Context) : View(context) {
     private var smudgeChanged = false
     private var smudgeDirtyBounds: Rect? = null
     private var rasterTileBlendSession: RasterTileBlendSession? = null
-    private val v5StrokeController = RealtimeStrokeController()
+    private val v5MainHandler = Handler(Looper.getMainLooper())
+    private val v5StrokeController = RealtimeStrokeDispatcher(
+        onDamageReady = { surface, result ->
+            v5MainHandler.post { invalidateV5Damage(surface, result) }
+        },
+    )
     private val v5FrameInvalidationScheduler = FrameInvalidationScheduler()
     private val v5PresentationBarrier = PresentationGenerationBarrier()
     @VisibleForTesting internal var lastV5FrameInvalidation: InvalidationRequest? = null
@@ -307,6 +314,8 @@ class InkCanvasView(context: Context) : View(context) {
             sample.x / surface.logicalWidth to sample.y / surface.logicalHeight
         }
     }
+    @VisibleForTesting
+    internal fun awaitV5StrokeWorkerIdleForTest() = v5StrokeController.awaitIdle()
     private var pendingSmudgeX = 0f
     private var pendingSmudgeY = 0f
     private var hasPendingSmudge = false
@@ -531,7 +540,7 @@ class InkCanvasView(context: Context) : View(context) {
                             InputTool.STYLUS,
                         ),
                     ),
-                )?.let { invalidateV5Damage(surface, it) }
+                )
             }
             postDelayed(this, CONTINUOUS_PLOT_INTERVAL_MS)
         }
@@ -4870,7 +4879,7 @@ class InkCanvasView(context: Context) : View(context) {
                 last.orientationRadians,
             )
         }
-        v5StrokeController.append(samples)?.let { invalidateV5Damage(surface, it) }
+        v5StrokeController.append(samples)
         return true
     }
 
@@ -4884,15 +4893,25 @@ class InkCanvasView(context: Context) : View(context) {
             v5StrokeController.cancel()
             return true
         }
-        val published = v5StrokeController.finish(
-            v5DocumentSample(event, pointerIndex, normalizedX, normalizedY, historicalIndex = null),
-        ) ?: return true
+        val layerId = activeLayerId
+        val sample = v5DocumentSample(event, pointerIndex, normalizedX, normalizedY, historicalIndex = null)
+        v5StrokeController.finish(sample) { published ->
+            v5MainHandler.post { acceptV5PublishedGesture(layerId, surface, published) }
+        }
+        return true
+    }
+
+    private fun acceptV5PublishedGesture(
+        layerId: String,
+        surface: PixelTileSurface,
+        published: app.inkloom.engine.v5.raster.PublishedPaintDelta,
+    ) {
         try {
             v5DryPublishedGeneration = published.snapshot.revision
             published.dirtyBounds?.takeIf { published.record.changedTileCount > 0 }?.let { bounds ->
                 v5PresentationBarrier.awaitVisible(published.snapshot.revision, published.record.transactionId)
                 recordRasterToolTransaction(
-                    activeLayerId,
+                    layerId,
                     surface,
                     published.record,
                     Rect(bounds.left, bounds.top, bounds.right, bounds.bottom),
@@ -4902,7 +4921,6 @@ class InkCanvasView(context: Context) : View(context) {
             published.record.close()
             throw failure
         }
-        return true
     }
 
     private fun v5DocumentSample(

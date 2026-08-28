@@ -732,6 +732,7 @@ class InkCanvasNavigationTest {
         } finally {
             event.recycle()
         }
+        if (action == MotionEvent.ACTION_UP) settlePublishedStroke(view)
     }
 
     private fun sendStylus(view: InkCanvasView, time: Long, action: Int, x: Float, y: Float, buttonState: Int = 0, flags: Int = 0) {
@@ -741,6 +742,12 @@ class InkCanvasNavigationTest {
         } finally {
             event.recycle()
         }
+        if (action == MotionEvent.ACTION_UP) settlePublishedStroke(view)
+    }
+
+    private fun settlePublishedStroke(view: InkCanvasView) {
+        view.awaitV5StrokeWorkerIdleForTest()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { }
     }
 
     private fun obscuredStylusEvent(action: Int, x: Float, y: Float): MotionEvent =

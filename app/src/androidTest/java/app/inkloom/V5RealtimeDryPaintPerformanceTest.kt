@@ -50,6 +50,7 @@ class V5RealtimeDryPaintPerformanceTest {
         dispatch(view, MotionEvent.ACTION_DOWN, 650f, 500f, downTime, downTime)
         listOf(710f to 510f, 780f to 490f, 850f to 515f, 920f to 500f).forEachIndexed { index, point ->
             dispatch(view, MotionEvent.ACTION_MOVE, point.first, point.second, downTime, downTime + 4L + index * 4L)
+            view.awaitV5StrokeWorkerIdleForTest()
             InstrumentationRegistry.getInstrumentation().runOnMainSync {
                 display.eraseColor(Color.TRANSPARENT)
                 view.draw(Canvas(display))
@@ -60,6 +61,7 @@ class V5RealtimeDryPaintPerformanceTest {
             )
         }
         dispatch(view, MotionEvent.ACTION_UP, 920f, 500f, downTime, downTime + 24L)
+        settlePublishedStroke(view)
 
         val after = surface.snapshot()
         assertEquals(
@@ -108,6 +110,7 @@ class V5RealtimeDryPaintPerformanceTest {
         val downTime = SystemClock.uptimeMillis()
         dispatch(view, MotionEvent.ACTION_DOWN, 80f, 260f, downTime, downTime)
         dispatch(view, MotionEvent.ACTION_MOVE, 900f, 260f, downTime, downTime + 4L)
+        view.awaitV5StrokeWorkerIdleForTest()
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             display.eraseColor(Color.TRANSPARENT)
             view.draw(Canvas(display))
@@ -119,6 +122,7 @@ class V5RealtimeDryPaintPerformanceTest {
         }
         assertTrue("Explicit smoothing may soften the path but must not visibly trail the stylus", visibleAtTip)
         dispatch(view, MotionEvent.ACTION_UP, 900f, 260f, downTime, downTime + 8L)
+        settlePublishedStroke(view)
         display.recycle()
     }
 
@@ -154,6 +158,11 @@ class V5RealtimeDryPaintPerformanceTest {
             }
             frameTimesMs += (SystemClock.elapsedRealtimeNanos() - started) / 1_000_000f
         }
+        view.awaitV5StrokeWorkerIdleForTest()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            display.eraseColor(Color.TRANSPARENT)
+            view.draw(Canvas(display))
+        }
 
         assertEquals("The committed surface is immutable until publication", 0, Color.alpha(surface.pixelAt(900, 520)))
         assertTrue("The private active delta must be visible before UP", displayHasInk(display))
@@ -163,6 +172,7 @@ class V5RealtimeDryPaintPerformanceTest {
         val lastX = 84f + 239 * 3.4f
         val lastY = 260f + kotlin.math.sin(239 * .12f) * 16f
         dispatch(view, MotionEvent.ACTION_UP, lastX, lastY, downTime, downTime + 730L)
+        settlePublishedStroke(view)
         display.eraseColor(Color.TRANSPARENT)
         InstrumentationRegistry.getInstrumentation().runOnMainSync { view.draw(Canvas(display)) }
         val committedPixels = IntArray(display.width * display.height)
@@ -178,6 +188,11 @@ class V5RealtimeDryPaintPerformanceTest {
         assertTrue("ACTION_UP must not replace the visible render product", previewPixels.contentEquals(committedPixels))
         assertTrue("The published document must contain the stroke", surface.tileCount > 0)
         display.recycle()
+    }
+
+    private fun settlePublishedStroke(view: InkCanvasView) {
+        view.awaitV5StrokeWorkerIdleForTest()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { }
     }
 
     private fun dispatch(view: InkCanvasView, action: Int, x: Float, y: Float, downTime: Long, eventTime: Long) {

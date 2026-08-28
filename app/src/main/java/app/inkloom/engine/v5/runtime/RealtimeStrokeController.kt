@@ -37,8 +37,8 @@ data class ActiveStrokePresentation(
 class RealtimeStrokeController {
     private var nextTransactionId = 1L
     private var nextInputSequence = 0L
-    private var active: Active? = null
-    private var landed: Landed? = null
+    @Volatile private var active: Active? = null
+    @Volatile private var landed: Landed? = null
     private var lastPublishedSamples: List<RawDocumentSample> = emptyList()
     private var lastBackpressureSnapshot = InputBackpressureController.Snapshot(0, 0, 0L, 0L)
 
@@ -46,6 +46,7 @@ class RealtimeStrokeController {
     val activeLayerId: String? get() = active?.layerId
     fun lastPublishedSamples(): List<RawDocumentSample> = lastPublishedSamples.toList()
     fun backpressureSnapshot(): InputBackpressureController.Snapshot = lastBackpressureSnapshot
+    fun hasPendingInput(): Boolean = active?.mailbox?.snapshot(System.nanoTime())?.depth?.let { it > 0 } == true
 
     fun begin(
         layerId: String,
@@ -81,24 +82,43 @@ class RealtimeStrokeController {
             InputBackpressureController(),
             ArrayDeque<RawDocumentSample>(TRACE_SAMPLE_LIMIT).apply { addLast(sample) },
         )
-        return paint.apply(stroke.begin(input(sample, InputPhase.DOWN))).also { active?.include(it.dirtyBounds) }
+        return paint.apply(stroke.begin(input(sample, InputPhase.DOWN))).also { result ->
+            active?.apply {
+                include(result.dirtyBounds)
+                publishPreview()
+            }
+        }
+    }
+
+    /** Enqueues immutable document samples without doing geometry or raster work on the caller. */
+    fun enqueue(samples: List<RawDocumentSample>): Boolean {
+        val gesture = active ?: return false
+        if (samples.isEmpty()) return false
+        samples.forEach(gesture::rememberForDiagnostics)
+        samples.chunked(MAX_PROCESSING_BATCH_SAMPLES).forEach { sourceChunk ->
+            gesture.mailbox.enqueue(InputSampleBatch.owned(sourceChunk.map { input(it, InputPhase.MOVE) }))
+        }
+        return true
+    }
+
+    /** Consumes at most one bounded mailbox batch. This is the Stroke Worker entry point. */
+    fun drainPending(): PaintResult? {
+        val gesture = active ?: return null
+        val pending = gesture.mailbox.drain(MAX_PROCESSING_BATCH_SAMPLES) ?: return null
+        return gesture.paint.apply(gesture.stroke.append(pending)).also { result ->
+            gesture.include(result.dirtyBounds)
+            gesture.publishPreview()
+            lastBackpressureSnapshot = gesture.mailbox.snapshot(pending.samples.last().enqueuedTimeNanos)
+        }
     }
 
     fun append(samples: List<RawDocumentSample>): PaintResult? {
-        val gesture = active ?: return null
-        if (samples.isEmpty()) return null
-        samples.forEach(gesture::rememberForDiagnostics)
+        if (!enqueue(samples)) return null
         var result: PaintResult? = null
-        samples.chunked(MAX_PROCESSING_BATCH_SAMPLES).forEach { sourceChunk ->
-            gesture.mailbox.enqueue(InputSampleBatch.owned(sourceChunk.map { input(it, InputPhase.MOVE) }))
-            while (true) {
-                val pending = gesture.mailbox.drain(MAX_PROCESSING_BATCH_SAMPLES) ?: break
-                val next = gesture.paint.apply(gesture.stroke.append(pending))
-                gesture.include(next.dirtyBounds)
-                result = result?.merge(next) ?: next
-            }
+        while (true) {
+            val next = drainPending() ?: break
+            result = result?.merge(next) ?: next
         }
-        lastBackpressureSnapshot = gesture.mailbox.snapshot(samples.last().enqueuedTimeNanos)
         return result
     }
 
@@ -107,11 +127,11 @@ class RealtimeStrokeController {
         return try {
             sample?.let(gesture::rememberForDiagnostics)
             while (true) {
-                val pending = gesture.mailbox.drain(MAX_PROCESSING_BATCH_SAMPLES) ?: break
-                gesture.paint.apply(gesture.stroke.append(pending))
+                drainPending() ?: break
             }
             val finalBatch = gesture.stroke.finish(sample?.let { input(it, InputPhase.UP) })
             gesture.include(gesture.paint.finish(finalBatch).dirtyBounds)
+            gesture.publishPreview()
             gesture.paint.publish().also { published ->
                 lastBackpressureSnapshot = gesture.mailbox.snapshot(
                     sample?.enqueuedTimeNanos ?: gesture.samples.lastOrNull()?.enqueuedTimeNanos ?: 0L,
@@ -140,16 +160,16 @@ class RealtimeStrokeController {
     }
 
     fun previewSnapshot(layerId: String): PixelTileSurfaceSnapshot? =
-        active?.takeIf { it.layerId == layerId }?.paint?.previewSnapshot()
+        active?.takeIf { it.layerId == layerId }?.previewSnapshot()
             ?: landed?.takeIf { it.layerId == layerId }?.snapshot
 
     fun activePresentation(layerId: String): ActiveStrokePresentation? {
         val gesture = active?.takeIf { it.layerId == layerId } ?: return null
         if (gesture.paint.presentationKind == PaintPresentationKind.COMPOSITE_REPLACEMENT) return null
-        val dirty = gesture.dirtyBounds ?: return null
+        val dirty = gesture.currentDirtyBounds() ?: return null
         return ActiveStrokePresentation(
             backdrop = gesture.backdrop,
-            delta = gesture.paint.previewSnapshot(),
+            delta = gesture.previewSnapshot(),
             blend = gesture.presentationBlend,
             dirtyBounds = dirty,
         )
@@ -161,7 +181,7 @@ class RealtimeStrokeController {
     fun activeCompositeSnapshot(layerId: String): PixelTileSurfaceSnapshot? =
         active?.takeIf {
             it.layerId == layerId && it.paint.presentationKind == PaintPresentationKind.COMPOSITE_REPLACEMENT
-        }?.paint?.previewSnapshot()
+        }?.previewSnapshot()
 
     /** Releases the landed owner only after the stable View has submitted that generation. */
     fun onDocumentGenerationPresented(layerId: String, generation: Long): Boolean {
@@ -196,12 +216,24 @@ class RealtimeStrokeController {
         val mailbox: InputBackpressureController,
         val samples: ArrayDeque<RawDocumentSample>,
     ) {
-        var dirtyBounds: PixelRect? = null
+        @Volatile private var dirtyBounds: PixelRect? = null
+        @Volatile private var latestPreview: PixelTileSurfaceSnapshot = paint.previewSnapshot()
 
+        @Synchronized
         fun include(bounds: PixelRect?) {
             if (bounds != null) dirtyBounds = dirtyBounds?.union(bounds) ?: bounds
         }
 
+        fun currentDirtyBounds(): PixelRect? = dirtyBounds
+
+        /** Called only by the ordered stroke worker after a complete batch. */
+        fun publishPreview() {
+            latestPreview = paint.previewSnapshot()
+        }
+
+        fun previewSnapshot(): PixelTileSurfaceSnapshot = latestPreview
+
+        @Synchronized
         fun rememberForDiagnostics(sample: RawDocumentSample) {
             if (samples.size == TRACE_SAMPLE_LIMIT) samples.removeFirst()
             samples.addLast(sample)

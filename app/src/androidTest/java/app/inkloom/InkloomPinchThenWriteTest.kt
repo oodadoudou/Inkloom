@@ -314,6 +314,8 @@ class InkloomPinchThenWriteTest {
                 stylusEvent(android.view.MotionEvent.ACTION_UP, proxyX, proxyY + 8f, android.view.MotionEvent.TOOL_TYPE_ERASER, downTime, downTime + 24L),
             ).forEach { event -> proxy.onTouchEvent(event); event.recycle() }
         }
+        view.awaitV5StrokeWorkerIdleForTest()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { }
         assertEquals(
             "Zoomed eraser contact must clear the V5 pixel directly under its cursor",
             0,
@@ -470,8 +472,10 @@ class InkloomPinchThenWriteTest {
             dispatch(android.view.MotionEvent.ACTION_DOWN, startDy, 0)
             dispatch(android.view.MotionEvent.ACTION_MOVE, endDy, 20)
             dispatch(android.view.MotionEvent.ACTION_UP, endDy, 21)
-            assertTrue("The local main canvas must commit the V5 setup stroke", view.v5DryPublishedGeneration >= 0L)
         }
+        view.awaitV5StrokeWorkerIdleForTest()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { }
+        assertTrue("The local main canvas must commit the V5 setup stroke", view.v5DryPublishedGeneration >= 0L)
         assertTrue("The setup stroke must leave the V5 input engine", view.v5LastCommittedNormalizedPoints().isNotEmpty())
 
         fun screenshot(): android.graphics.Bitmap {

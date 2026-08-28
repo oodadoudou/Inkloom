@@ -92,11 +92,18 @@ class V5RealtimeStampPerformanceTest {
             }
             times += (SystemClock.elapsedRealtimeNanos() - started) / 1_000_000f
         }
+        view.awaitV5StrokeWorkerIdleForTest()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            display.eraseColor(Color.TRANSPARENT)
+            view.draw(Canvas(display))
+        }
         assertTrue("Imported V5 delta must be visible before UP", hasInk(display))
 
         val lastX = 84f + 239 * 3.4f
         val lastY = 260f + kotlin.math.sin(239 * .12f) * 16f
         dispatch(view, MotionEvent.ACTION_UP, lastX, lastY, downTime, downTime + 730L, .8f)
+        view.awaitV5StrokeWorkerIdleForTest()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { }
         val ordered = times.sorted()
         val p95 = ordered[(ordered.size * .95f).toInt().coerceIn(0, ordered.lastIndex)]
         val p99 = ordered[(ordered.size * .99f).toInt().coerceIn(0, ordered.lastIndex)]

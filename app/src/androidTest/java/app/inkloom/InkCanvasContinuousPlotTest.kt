@@ -110,5 +110,9 @@ class InkCanvasContinuousPlotTest {
         } finally {
             event.recycle()
         }
+        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+            view.awaitV5StrokeWorkerIdleForTest()
+            InstrumentationRegistry.getInstrumentation().runOnMainSync { }
+        }
     }
 }

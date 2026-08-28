@@ -78,6 +78,11 @@ class RasterPaintCommitTest {
                 }
                 frameTimesMs += (android.os.SystemClock.elapsedRealtimeNanos() - frameStarted) / 1_000_000f
             }
+            view.awaitV5StrokeWorkerIdleForTest()
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                display.eraseColor(Color.TRANSPARENT)
+                view.draw(Canvas(display))
+            }
 
             assertEquals("$brushId must be owned by one V5 gesture", gestureCountBefore + 1, view.v5DryGestureCount)
             assertTrue("$brushId must present deposited pixels before pen-up", display.hasVisibleAlpha())
@@ -145,6 +150,11 @@ class RasterPaintCommitTest {
             }
             frameTimesMs += (android.os.SystemClock.elapsedRealtimeNanos() - started) / 1_000_000f
         }
+        view.awaitV5StrokeWorkerIdleForTest()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            display.eraseColor(Color.TRANSPARENT)
+            view.draw(Canvas(display))
+        }
 
         assertTrue("The exact V5 active delta must be visible before pen-up", Color.alpha(display.getPixel(150, 200)) > 0)
         val activePixels = IntArray(display.width * display.height).also {
@@ -190,6 +200,7 @@ class RasterPaintCommitTest {
         }
         send(view, MotionEvent.ACTION_DOWN, 230f, 200f, 0L)
         send(view, MotionEvent.ACTION_MOVE, 300f, 200f, 5L)
+        view.awaitV5StrokeWorkerIdleForTest()
         val duringContact = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
         InstrumentationRegistry.getInstrumentation().runOnMainSync { view.draw(Canvas(duringContact)) }
         val frameDamage = requireNotNull(view.lastV5FrameInvalidation)
@@ -256,6 +267,11 @@ class RasterPaintCommitTest {
                 presentationTimesMs += (android.os.SystemClock.elapsedRealtimeNanos() - presentationStarted) / 1_000_000f
             }
             frameTimesMs += (android.os.SystemClock.elapsedRealtimeNanos() - started) / 1_000_000f
+        }
+        view.awaitV5StrokeWorkerIdleForTest()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            preview.eraseColor(Color.TRANSPARENT)
+            view.draw(Canvas(preview))
         }
         assertTrue("Wet pigment must be visible before pen-up", Color.alpha(preview.getPixel(300, 300)) > 0)
 
@@ -324,6 +340,7 @@ class RasterPaintCommitTest {
         repeat(8) { index ->
             send(view, MotionEvent.ACTION_MOVE, 115f + index * 15f, 200f, 5L + index)
         }
+        view.awaitV5StrokeWorkerIdleForTest()
         val preview = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
         InstrumentationRegistry.getInstrumentation().runOnMainSync { view.draw(Canvas(preview)) }
         assertTrue(
@@ -371,10 +388,11 @@ class RasterPaintCommitTest {
         send(view, MotionEvent.ACTION_DOWN, 120f, 300f, 0L)
         repeat(72) { index -> send(view, MotionEvent.ACTION_MOVE, 125f + index * 7f, 300f + index % 5, 5L + index) }
         val started = android.os.SystemClock.elapsedRealtimeNanos()
-        send(view, MotionEvent.ACTION_UP, 635f, 302f, 90L)
+        send(view, MotionEvent.ACTION_UP, 635f, 302f, 90L, awaitPublication = false)
         val elapsedMs = (android.os.SystemClock.elapsedRealtimeNanos() - started) / 1_000_000f
         android.util.Log.i("InkloomPerf", "raster_standard_pen_commit_ms=$elapsedMs")
         assertTrue("Raster pen-up commit was ${elapsedMs}ms", elapsedMs < 16.7f)
+        settlePublishedStroke(view)
     }
 
     @Test fun oneV5PaintGestureIsOneByteExactUndoAndRedoTransaction() {
@@ -496,11 +514,19 @@ class RasterPaintCommitTest {
         return result
     }
 
-    private fun send(view: InkCanvasView, action: Int, x: Float, y: Float, time: Long) {
+    private fun send(
+        view: InkCanvasView,
+        action: Int,
+        x: Float,
+        y: Float,
+        time: Long,
+        awaitPublication: Boolean = true,
+    ) {
         val properties = MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_FINGER }
         val coordinates = MotionEvent.PointerCoords().apply { this.x = x; this.y = y; pressure = .8f; size = .1f }
         val event = MotionEvent.obtain(0L, time, action, 1, arrayOf(properties), arrayOf(coordinates), 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
         try { InstrumentationRegistry.getInstrumentation().runOnMainSync { view.onTouchEvent(event) } } finally { event.recycle() }
+        if (awaitPublication && action == MotionEvent.ACTION_UP) settlePublishedStroke(view)
     }
 
     private fun sendStylus(view: InkCanvasView, action: Int, x: Float, y: Float, time: Long) {
@@ -508,6 +534,12 @@ class RasterPaintCommitTest {
         val coordinates = MotionEvent.PointerCoords().apply { this.x = x; this.y = y; pressure = .8f; size = .01f }
         val event = MotionEvent.obtain(0L, time, action, 1, arrayOf(properties), arrayOf(coordinates), 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_STYLUS, 0)
         try { InstrumentationRegistry.getInstrumentation().runOnMainSync { view.onTouchEvent(event) } } finally { event.recycle() }
+        if (action == MotionEvent.ACTION_UP) settlePublishedStroke(view)
+    }
+
+    private fun settlePublishedStroke(view: InkCanvasView) {
+        view.awaitV5StrokeWorkerIdleForTest()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { }
     }
 
     private fun Bitmap.hasVisibleAlpha(): Boolean {

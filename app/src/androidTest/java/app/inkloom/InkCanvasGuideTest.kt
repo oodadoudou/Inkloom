@@ -107,5 +107,8 @@ class InkCanvasGuideTest {
             if (toolType == MotionEvent.TOOL_TYPE_FINGER) InputDevice.SOURCE_TOUCHSCREEN else InputDevice.SOURCE_STYLUS,
             0,
         ).also { event -> try { onTouchEvent(event) } finally { event.recycle() } }
+        if (toolType == MotionEvent.TOOL_TYPE_STYLUS && action == MotionEvent.ACTION_UP) {
+            awaitV5StrokeWorkerIdleForTest()
+        }
     }
 }

@@ -86,6 +86,7 @@ class InkCanvasSpecialRulerTest {
         val properties = MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_STYLUS }
         val coordinates = MotionEvent.PointerCoords().apply { this.x = x; this.y = y; this.pressure = pressure; size = .01f; touchMajor = 1f }
         send(time, action, properties to coordinates, source = InputDevice.SOURCE_STYLUS)
+        if (action == MotionEvent.ACTION_UP) awaitV5StrokeWorkerIdleForTest()
     }
 
     private fun finger(id: Int, x: Float, y: Float): Pair<MotionEvent.PointerProperties, MotionEvent.PointerCoords> =
