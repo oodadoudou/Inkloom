@@ -78,13 +78,16 @@ class SelectionMaskCompositorTest {
         }
     }
 
-    @Test fun boundaryMaskIsAClosedTwoSidedRingWithTransparentInterior() {
+    @Test fun boundaryMaskIsAClosedOnePixelInnerContourWithTransparentInterior() {
         val selection = rectangle(.2f, .2f, .8f, .8f)
         val boundary = SelectionMaskCompositor.boundaryMask(selection)
         try {
-            assertSelected(boundary, .2f, .5f)
+            // Canvas rasterization starts the filled rectangle at pixel 20, while normalized
+            // sampling maps .2 through (width - 1) to pixel 19. Sample one pixel inward so this
+            // asserts the production one-pixel inner contour instead of the old exterior halo.
+            assertSelected(boundary, .21f, .5f)
             assertSelected(boundary, .8f, .5f)
-            assertSelected(boundary, .5f, .2f)
+            assertSelected(boundary, .5f, .21f)
             assertSelected(boundary, .5f, .8f)
             assertNotSelected(boundary, .5f, .5f)
             assertNotSelected(boundary, .05f, .05f)
