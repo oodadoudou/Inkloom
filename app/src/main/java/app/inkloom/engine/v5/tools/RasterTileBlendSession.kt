@@ -86,11 +86,43 @@ class RasterTileBlendSession private constructor(
         check(!completed) { "Raster tile blend session is complete" }
         if (radiusPixels <= .25f) return null
         val radius = radiusPixels.coerceIn(.5f, minOf(width, height).toFloat())
+        val deltaX = currentX - previousX
+        val deltaY = currentY - previousY
+        val distance = hypot(deltaX, deltaY)
+        val targetChunkLength = maxOf(8f, radius * .75f)
+        val chunkCount = kotlin.math.ceil(distance / targetChunkLength).toInt().coerceIn(1, MAX_SEGMENT_CHUNKS)
+        var dirty: Rect? = null
+        var chunkStartX = previousX
+        var chunkStartY = previousY
+        for (chunk in 1..chunkCount) {
+            val t = chunk / chunkCount.toFloat()
+            val chunkEndX = previousX + deltaX * t
+            val chunkEndY = previousY + deltaY * t
+            blendSegment(chunkStartX, chunkStartY, chunkEndX, chunkEndY, radius, strength, hardness)?.let { changed ->
+                dirty = dirty?.apply { union(changed) } ?: Rect(changed)
+            }
+            chunkStartX = chunkEndX
+            chunkStartY = chunkEndY
+        }
+        return dirty
+    }
+
+    /** One bounded capsule of pigment transport. Long input packets are split by [blend] so this
+     * operation never allocates a gesture- or page-sized scratch surface. */
+    private fun blendSegment(
+        previousX: Float,
+        previousY: Float,
+        currentX: Float,
+        currentY: Float,
+        radius: Float,
+        strength: Float,
+        hardness: Float,
+    ): Rect? {
         val destination = PixelRect(
-            floor(currentX - radius - 2f).toInt().coerceIn(0, width),
-            floor(currentY - radius - 2f).toInt().coerceIn(0, height),
-            ceil(currentX + radius + 2f).toInt().coerceIn(0, width),
-            ceil(currentY + radius + 2f).toInt().coerceIn(0, height),
+            floor(minOf(previousX, currentX) - radius - 2f).toInt().coerceIn(0, width),
+            floor(minOf(previousY, currentY) - radius - 2f).toInt().coerceIn(0, height),
+            ceil(maxOf(previousX, currentX) + radius + 2f).toInt().coerceIn(0, width),
+            ceil(maxOf(previousY, currentY) + radius + 2f).toInt().coerceIn(0, height),
         )
         if (destination.isEmpty) return null
         val deltaX = currentX - previousX
@@ -156,12 +188,18 @@ class RasterTileBlendSession private constructor(
                 transport.drawBitmap(reservoirBitmap, null, reservoirDestination, reservoirPaint)
                 reservoirPaint.alpha = 255
             }
+            val localPreviousX = previousX - destination.left
+            val localPreviousY = previousY - destination.top
             val localCenterX = currentX - destination.left
             val localCenterY = currentY - destination.top
             val hardRadius = radius * hardness.coerceIn(0f, 1f)
             val featherRadius = (radius - hardRadius).coerceAtLeast(0f)
+            coveragePaint.style = Paint.Style.STROKE
+            coveragePaint.strokeCap = Paint.Cap.ROUND
+            coveragePaint.strokeJoin = Paint.Join.ROUND
+            coveragePaint.strokeWidth = hardRadius.coerceAtLeast(.5f) * 2f
             coveragePaint.maskFilter = if (featherRadius <= .01f) null else cachedBlur(featherRadius)
-            coverage.drawCircle(localCenterX, localCenterY, hardRadius.coerceAtLeast(.5f), coveragePaint)
+            coverage.drawLine(localPreviousX, localPreviousY, localCenterX, localCenterY, coveragePaint)
             coveragePaint.maskFilter = null
             localRect.set(0, 0, destination.width, destination.height)
             transport.drawBitmap(requireNotNull(coverageBitmap), localRect, localRect, maskPaint)
@@ -265,5 +303,6 @@ class RasterTileBlendSession private constructor(
         const val PICKUP_RATE_MAX = .42f
         const val PICKUP_RATE_RANGE = .24f
         const val RESERVOIR_DEPOSIT_ALPHA = .72f
+        const val MAX_SEGMENT_CHUNKS = 64
     }
 }

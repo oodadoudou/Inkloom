@@ -117,6 +117,24 @@ class RasterBlendSessionTest {
         bitmap.recycle()
     }
 
+    @Test fun oneFastCoalescedInputProducesAContinuousSmudgeCapsule() {
+        val bitmap = Bitmap.createBitmap(256, 64, Bitmap.Config.ARGB_8888)
+        for (y in 18 until 46) for (x in 8 until 38) bitmap.setPixel(x, y, Color.MAGENTA)
+        val surface = PixelTileBitmapAdapter.import(bitmap)
+        RasterTileBlendSession(surface).use { session ->
+            val started = android.os.SystemClock.elapsedRealtimeNanos()
+            val dirty = session.blend(26f, 32f, 220f, 32f, 18f, 1f, .72f)
+            val elapsedMs = (android.os.SystemClock.elapsedRealtimeNanos() - started) / 1_000_000f
+            assertTrue(dirty != null)
+            assertTrue("A 194px coalesced smudge segment took ${elapsedMs}ms", elapsedMs < 16.7f)
+            session.commit().close()
+        }
+        for (x in 40..216 step 8) {
+            assertTrue("Fast Blend left a gap at x=$x", Color.alpha(surface.pixelAt(x, 32)) > 0)
+        }
+        bitmap.recycle()
+    }
+
     @Test fun selectionAlphaClipsBlendAndCancellationRestoresTheSurface() {
         val bitmap = Bitmap.createBitmap(80, 40, Bitmap.Config.ARGB_8888)
         for (y in 8 until 32) for (x in 8 until 30) bitmap.setPixel(x, y, Color.GREEN)
