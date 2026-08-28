@@ -8947,12 +8947,6 @@ private fun SettingsDialog(
                 item { Text("${tr("Full pressure point", "满压位置")}  ${(settings.pressureMaximumInput * 100).toInt()}%", color = MutedInk, fontSize = 12.sp) }
                 item { Slider(settings.pressureMaximumInput, { value -> onChange(settings.copy(pressureMaximumInput = value.coerceAtLeast(settings.pressureMinimumInput + .05f))) }, valueRange = 0.05f..1f) }
                 item { PressureCurveEditor(settings.pressureResponseCurve) { onChange(settings.copy(pressureResponseCurve = it)) } }
-                item { Text("${tr("Stroke stabilization", "笔触防抖")}  ${(settings.stabilization * 100).toInt()}%") }
-                item { Slider(settings.stabilization, { onChange(settings.copy(stabilization = it)) }, valueRange = 0f..0.9f) }
-                item { Text("${tr("Post correction", "落笔后修正")}  ${(settings.postCorrection * 100).toInt()}%") }
-                item { Slider(settings.postCorrection, { onChange(settings.copy(postCorrection = it)) }, valueRange = 0f..1f) }
-                item { SettingSwitch(tr("Adjust post correction by speed", "按速度调整落笔后修正"), tr("Preserves fast expressive strokes while cleaning slower handwriting.", "保留快速笔势，同时整理较慢的手写线条。"), settings.postCorrectionAdjustBySpeed) { onChange(settings.copy(postCorrectionAdjustBySpeed = it)) } }
-                item { SettingSwitch(tr("Adjust post correction by canvas scale", "按画布缩放调整落笔后修正"), tr("Reduces correction while zoomed in for detailed edits.", "放大精修时降低修正强度。"), settings.postCorrectionAdjustByScale) { onChange(settings.copy(postCorrectionAdjustByScale = it)) } }
                 item { Text(tr("DEFAULT TOOL PRESETS", "默认工具预设"), color = Sage, fontSize = 12.sp) }
                 item { BrushSettingSlider(tr("Pen size", "钢笔大小"), settings.penSize, .5f..400f) { onChange(settings.copy(penSize = it)) } }
                 item { BrushSettingSlider(tr("Pen opacity", "钢笔不透明度"), settings.penOpacity, .05f..1f) { onChange(settings.copy(penOpacity = it)) } }

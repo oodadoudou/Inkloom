@@ -105,10 +105,6 @@ data class AppSettings(
     val pressureMinimumInput: Float = 0f,
     val pressureMaximumInput: Float = 1f,
     val pressureResponseCurve: List<Float> = PressureResponseCurve.LINEAR,
-    val stabilization: Float = 0f,
-    val postCorrection: Float = 0f,
-    val postCorrectionAdjustBySpeed: Boolean = false,
-    val postCorrectionAdjustByScale: Boolean = true,
     val showInputDiagnostics: Boolean = false,
     val showStrokeTraceOverlay: Boolean = false,
     val penSize: Float = 5f,
@@ -169,11 +165,6 @@ class AppSettingsStore(context: Context) {
     fun load(): AppSettings {
         val savedInputVersion = preferences.getInt(INPUT_GESTURES_VERSION_KEY, 0)
         val migrateCanvasRotation = savedInputVersion < 2
-        // An earlier engine release shipped a hidden 12% global smoother and later changed the numeric
-        // meaning of smoothing when Procreate's independent filters were added. Reset those global
-        // values once; per-brush CSP/Procreate settings remain explicit and untouched.
-        val migrateLegacyCorrection = savedInputVersion < INPUT_GESTURES_VERSION
-        val savedStabilization = preferences.getFloat("stabilization", .12f).coerceIn(0f, .9f)
         val pressureMinimum = preferences.getFloat("pressureMinimumInput", 0f).coerceIn(0f, .95f)
         val pressureMaximum = preferences.getFloat("pressureMaximumInput", 1f).coerceIn(pressureMinimum + .05f, 1f)
         val loaded = AppSettings(
@@ -275,10 +266,6 @@ class AppSettingsStore(context: Context) {
             pressureMinimumInput = pressureMinimum,
             pressureMaximumInput = pressureMaximum,
             pressureResponseCurve = PressureResponseCurve.decode(preferences.getString("pressureResponseCurve", null)),
-            stabilization = if (migrateLegacyCorrection) 0f else savedStabilization,
-            postCorrection = if (migrateLegacyCorrection) 0f else preferences.getFloat("postCorrection", 0f).coerceIn(0f, 1f),
-            postCorrectionAdjustBySpeed = preferences.getBoolean("postCorrectionAdjustBySpeed", false),
-            postCorrectionAdjustByScale = preferences.getBoolean("postCorrectionAdjustByScale", true),
             showInputDiagnostics = preferences.getBoolean("showInputDiagnostics", false),
             showStrokeTraceOverlay = preferences.getBoolean("showStrokeTraceOverlay", false),
             penSize = preferences.getFloat("penSize", 5f).coerceIn(.5f, 400f),
@@ -308,11 +295,17 @@ class AppSettingsStore(context: Context) {
             workspaceLayouts = WorkspaceLayoutProfilesCodec.decode(preferences.getString("workspaceLayouts", null)),
         )
         val selected = loaded.withWorkspaceFor(orientation)
-        if (migrateLegacyCorrection) preferences.edit {
+        if (savedInputVersion < INPUT_GESTURES_VERSION) preferences.edit {
             if (migrateCanvasRotation) putBoolean("twoFingerRotation", true)
-            putFloat("stabilization", selected.stabilization)
-            putFloat("postCorrection", selected.postCorrection)
             putInt(INPUT_GESTURES_VERSION_KEY, INPUT_GESTURES_VERSION)
+        }
+        if (listOf("stabilization", "postCorrection", "postCorrectionAdjustBySpeed", "postCorrectionAdjustByScale")
+                .any(preferences::contains)
+        ) preferences.edit {
+            remove("stabilization")
+            remove("postCorrection")
+            remove("postCorrectionAdjustBySpeed")
+            remove("postCorrectionAdjustByScale")
         }
         if (preferences.getInt(STUDIO_WORKSPACE_VERSION_KEY, 0) < STUDIO_WORKSPACE_VERSION) {
             return save(BuiltInWorkspaces.unified(selected))
@@ -418,10 +411,6 @@ class AppSettingsStore(context: Context) {
             .putFloat("pressureMinimumInput", persisted.pressureMinimumInput)
             .putFloat("pressureMaximumInput", persisted.pressureMaximumInput)
             .putString("pressureResponseCurve", PressureResponseCurve.encode(persisted.pressureResponseCurve))
-            .putFloat("stabilization", persisted.stabilization)
-            .putFloat("postCorrection", persisted.postCorrection.coerceIn(0f, 1f))
-            .putBoolean("postCorrectionAdjustBySpeed", persisted.postCorrectionAdjustBySpeed)
-            .putBoolean("postCorrectionAdjustByScale", persisted.postCorrectionAdjustByScale)
             .putBoolean("showInputDiagnostics", persisted.showInputDiagnostics)
             .putBoolean("showStrokeTraceOverlay", persisted.showStrokeTraceOverlay)
             .putFloat("penSize", persisted.penSize)

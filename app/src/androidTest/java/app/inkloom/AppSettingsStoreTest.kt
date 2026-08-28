@@ -34,7 +34,7 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class AppSettingsStoreTest {
-    @Test fun legacyGlobalCorrectionIsResetOnceButExplicitValuesRemainEditable() {
+    @Test fun legacyGlobalCorrectionKeysAreDeletedByTheV5HardCut() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
         preferences.edit().clear()
@@ -45,12 +45,9 @@ class AppSettingsStoreTest {
             .commit()
         try {
             val store = AppSettingsStore(context)
-            val migrated = store.load()
-            assertEquals(0f, migrated.stabilization)
-            assertEquals(0f, migrated.postCorrection)
-            store.save(migrated.copy(stabilization = .31f, postCorrection = .42f))
-            assertEquals(.31f, store.load().stabilization)
-            assertEquals(.42f, store.load().postCorrection)
+            store.load()
+            assertFalse(preferences.contains("stabilization"))
+            assertFalse(preferences.contains("postCorrection"))
         } finally {
             preferences.edit().clear().commit()
         }
@@ -66,22 +63,6 @@ class AppSettingsStoreTest {
             val restored = AppSettingsStore(context).load()
             assertEquals(CorrectLineMode.SIMPLIFY, restored.correctLineMode)
             assertEquals(.78f, restored.correctLineAmount)
-        } finally {
-            preferences.edit().clear().commit()
-        }
-    }
-
-    @Test fun postStrokeCorrectionSurvivesReload() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
-        preferences.edit().clear().commit()
-        try {
-            AppSettingsStore(context).save(AppSettings(postCorrection = .64f, postCorrectionAdjustBySpeed = true, postCorrectionAdjustByScale = false))
-
-            val restored = AppSettingsStore(context).load()
-            assertEquals(.64f, restored.postCorrection)
-            assertTrue(restored.postCorrectionAdjustBySpeed)
-            assertFalse(restored.postCorrectionAdjustByScale)
         } finally {
             preferences.edit().clear().commit()
         }
