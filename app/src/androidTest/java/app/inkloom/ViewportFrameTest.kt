@@ -7,9 +7,6 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.document.ViewportState
 import app.inkloom.document.ViewportTransform
-import app.inkloom.document.GraphiteFootprint
-import app.inkloom.document.InkStroke
-import app.inkloom.engine.v3.brush.MaterialCoordinateContext
 import app.inkloom.engine.v5.coordinates.PagePoint
 import app.inkloom.engine.v5.coordinates.ViewportFrame
 import app.inkloom.engine.v5.coordinates.ViewportFrameId
@@ -92,40 +89,6 @@ class ViewportFrameTest {
             assertEquals(page.y, packet.event.y, .01f)
         }
         event.recycle()
-    }
-
-    @Test fun documentAnchoredPaperMaterialIsInvariantAcrossViewportFrames() {
-        val stroke = InkStroke(
-            id = "paper-grain-parity",
-            points = emptyList(),
-            renderSeed = 913,
-            proceduralPaperGrainEnabled = true,
-            proceduralPaperGrainScale = 37f,
-            proceduralPaperGrainDensity = .72f,
-            proceduralPaperGrainStrength = .84f,
-        )
-        val pagePoint = PagePoint(523.25f, 317.75f)
-        val expected = GraphiteFootprint.paperGrainAlpha(
-            stroke,
-            MaterialCoordinateContext.document(pagePoint.x, pagePoint.y),
-        )
-        var generation = 0L
-        listOf(.25f, 1f, 4f, 8f).forEach { scale ->
-            listOf(0f, 30f, 90f, 180f).forEach { rotation ->
-                listOf(0f to 0f, 231.5f to -178.25f).forEach { pan ->
-                    val frame = requireNotNull(ViewportFrame.create(
-                        ViewportFrameId(++generation), 1_824f, 1_104f, 742f, 1_050f,
-                        ViewportState(scale, pan.first, pan.second, rotation),
-                    ))
-                    val roundTrip = frame.viewportToPage(frame.pageToViewport(pagePoint))
-                    val actual = GraphiteFootprint.paperGrainAlpha(
-                        stroke,
-                        MaterialCoordinateContext.document(roundTrip.x, roundTrip.y),
-                    )
-                    assertEquals("material at scale=$scale rotation=$rotation pan=$pan", expected, actual, 1e-5f)
-                }
-            }
-        }
     }
 
     private fun movePacket(samples: List<Pair<Float, Float>>): MotionEvent {

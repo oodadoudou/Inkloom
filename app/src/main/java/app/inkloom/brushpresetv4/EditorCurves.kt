@@ -7,10 +7,9 @@ import app.inkloom.document.BrushDynamics
  * Pressure-curve presets for the Brush Editor.
  *
  * The editor must preview with the exact same evaluator the production renderer uses, so the
- * applied curve is always evaluated through [app.inkloom.document.BrushDynamics.curve] — the same
- * function [app.inkloom.engine.v3.brush.BrushProgramRuntime] consumes for size/opacity/flow
- * pressure channels. Linear is the empty control-point list, which the evaluator treats as
- * identity (`curve([], x) == x`).
+ * applied curve is evaluated with the same piecewise-linear contract consumed by
+ * [app.inkloom.engine.v5.material.PressureResponse]. Linear is the empty control-point list, which
+ * the evaluator treats as identity (`curve([], x) == x`).
  */
 enum class PressureCurveShape(val label: String) {
     LINEAR("Linear"),

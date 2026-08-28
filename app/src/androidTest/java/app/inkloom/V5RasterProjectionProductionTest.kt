@@ -13,6 +13,8 @@ import app.inkloom.document.LayerBlendMode
 import app.inkloom.document.LayerContentKind
 import app.inkloom.document.LayerMask
 import app.inkloom.document.PageBackground
+import app.inkloom.document.PageElement
+import app.inkloom.document.ShapeKind
 import app.inkloom.document.StrokePoint
 import app.inkloom.document.defaultInkLayers
 import app.inkloom.engine.v5.surface.PixelRect
@@ -23,6 +25,7 @@ import app.inkloom.engine.v5.surface.MaskComposeMode
 import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -94,6 +97,71 @@ class V5RasterProjectionProductionTest {
             output.recycle()
             assets.releaseRasterTileReservation(lowerReference)
             assets.releaseRasterTileReservation(upperReference)
+        }
+    }
+
+    @Test fun pageExportRejectsLegacyVectorReplayInsteadOfSilentlyFallingBack() {
+        val assets = DocumentAssetService(InstrumentationRegistry.getInstrumentation().targetContext)
+        val page = InkPage(
+            width = 64f,
+            height = 64f,
+            strokes = listOf(
+                InkStroke(
+                    id = "legacy",
+                    layerId = "ink",
+                    points = listOf(StrokePoint(.1f, .1f), StrokePoint(.9f, .9f)),
+                ),
+            ),
+        )
+
+        try {
+            assets.renderPageBitmap(page, 256).recycle()
+            fail("V5 export must reject legacy InkStroke content")
+        } catch (expected: IllegalArgumentException) {
+            assertTrue(expected.message.orEmpty().contains("legacy InkStroke"))
+        }
+        assertEquals(0, assets.v5RasterProjectionExportCount)
+    }
+
+    @Test fun rasterAndPageElementsExportWithoutAHiddenVectorRenderer() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val assets = DocumentAssetService(context)
+        val reference = assets.saveRasterTileSurface(solidSurface("raster-with-element", Color.YELLOW))
+        val raster = InkLayer(
+            id = "raster-with-element",
+            name = "Raster",
+            contentKind = LayerContentKind.RASTER,
+            rasterTileSurface = reference,
+        )
+        val shape = PageElement.Shape(
+            id = "shape",
+            x = .25f,
+            y = .25f,
+            width = 32f,
+            height = 32f,
+            layerId = raster.id,
+            kind = ShapeKind.RECTANGLE,
+            colorArgb = 0xFF0000FF,
+            fillArgb = 0xFF0000FF,
+            strokeWidth = 0f,
+        )
+        val output = assets.renderPageBitmap(
+            InkPage(
+                width = 64f,
+                height = 64f,
+                background = PageBackground.Paper(0xFFFFFFFF),
+                layers = defaultInkLayers() + raster,
+                elements = listOf(shape),
+            ),
+            256,
+        )
+        try {
+            assertEquals(Color.BLUE, output.getPixel(128, 128))
+            assertEquals(Color.YELLOW, output.getPixel(16, 16))
+            assertEquals(0, assets.v5RasterProjectionExportCount)
+        } finally {
+            output.recycle()
+            assets.releaseRasterTileReservation(reference)
         }
     }
 
