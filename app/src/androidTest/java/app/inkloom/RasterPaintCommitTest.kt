@@ -72,6 +72,7 @@ class RasterPaintCommitTest {
             repeat(24) { index ->
                 val frameStarted = android.os.SystemClock.elapsedRealtimeNanos()
                 sendStylus(view, MotionEvent.ACTION_MOVE, 78f + index * 9f, 150f, start + index + 1L)
+                view.awaitV5StrokeWorkerIdleForTest()
                 InstrumentationRegistry.getInstrumentation().runOnMainSync {
                     display.eraseColor(Color.TRANSPARENT)
                     view.draw(Canvas(display))
@@ -144,6 +145,7 @@ class RasterPaintCommitTest {
         repeat(32) { index ->
             val started = android.os.SystemClock.elapsedRealtimeNanos()
             send(view, MotionEvent.ACTION_MOVE, 95f + index * 7f, 200f, 5L + index)
+            view.awaitV5StrokeWorkerIdleForTest()
             InstrumentationRegistry.getInstrumentation().runOnMainSync {
                 display.eraseColor(Color.TRANSPARENT)
                 view.draw(Canvas(display))
@@ -260,6 +262,7 @@ class RasterPaintCommitTest {
             val transportStarted = android.os.SystemClock.elapsedRealtimeNanos()
             send(view, MotionEvent.ACTION_MOVE, 108f + index * 10f, 300f + index % 3, 5L + index)
             transportTimesMs += (android.os.SystemClock.elapsedRealtimeNanos() - transportStarted) / 1_000_000f
+            view.awaitV5StrokeWorkerIdleForTest()
             InstrumentationRegistry.getInstrumentation().runOnMainSync {
                 preview.eraseColor(Color.TRANSPARENT)
                 val presentationStarted = android.os.SystemClock.elapsedRealtimeNanos()

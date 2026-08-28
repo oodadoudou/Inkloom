@@ -3,6 +3,7 @@ package app.inkloom
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.util.Log
 import android.view.InputDevice
 import android.view.MotionEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -91,8 +92,9 @@ class RealBrushCorpusRenderingTest {
             instrumentation.runOnMainSync {
                 view.onTouchEvent(stylusEvent(MotionEvent.ACTION_DOWN, 120f, 620f, 100L))
                 repeat(90) { index ->
-                    view.onTouchEvent(stylusEvent(MotionEvent.ACTION_MOVE, 128f + index * 8f, 620f + (index % 7) * 3f, 110L + index))
                     val started = android.os.SystemClock.elapsedRealtimeNanos()
+                    view.onTouchEvent(stylusEvent(MotionEvent.ACTION_MOVE, 128f + index * 8f, 620f + (index % 7) * 3f, 110L + index))
+                    view.awaitV5StrokeWorkerIdleForTest()
                     bitmap.eraseColor(Color.TRANSPARENT)
                     view.draw(Canvas(bitmap))
                     if (index >= 8) frameTimes += android.os.SystemClock.elapsedRealtimeNanos() - started
@@ -109,6 +111,12 @@ class RealBrushCorpusRenderingTest {
             instrumentation.runOnMainSync { }
             val sorted = frameTimes.sorted()
             val p95Ms = sorted[(sorted.size * 95 / 100).coerceAtMost(sorted.lastIndex)] / 1_000_000f
+            Log.i(
+                "InkloomV5Perf",
+                "real_sut=${brush.name} p95_ms=$p95Ms size=${brush.defaultSize} spacing=${brush.spacing} " +
+                    "spacing_mode=${brush.spacingMode} flow=${brush.flow} tips=${brush.tipPreviewPaths.size} " +
+                    "grain=${brush.grainDensity} dual=${brush.dualTipPreviewPaths.size}",
+            )
             assertTrue("Real SUT ${brush.name} preview p95 was ${p95Ms}ms", p95Ms < 16.7f)
             requireNotNull(committed).close()
         } finally {

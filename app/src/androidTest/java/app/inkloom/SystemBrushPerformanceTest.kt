@@ -90,19 +90,21 @@ class SystemBrushPerformanceTest {
             val travel = if (cycle % 2 == 0) within else 79 - within
             terminalX = 120f + travel * 9.5f
             terminalY = centerY + kotlin.math.sin(index * .16f) * 52f
+            val started = android.os.SystemClock.elapsedRealtimeNanos()
             view.dispatchStylus(
                 MotionEvent.ACTION_MOVE,
                 terminalX,
                 terminalY,
                 startTime + 10L + index,
             )
-            val started = android.os.SystemClock.elapsedRealtimeNanos()
+            view.awaitV5StrokeWorkerIdleForTest()
             live.eraseColor(Color.TRANSPARENT)
             view.draw(Canvas(live))
             frameTimes += android.os.SystemClock.elapsedRealtimeNanos() - started
         }
         val commitStarted = android.os.SystemClock.elapsedRealtimeNanos()
         view.dispatchStylus(MotionEvent.ACTION_UP, terminalX, terminalY, startTime + POINTS + 20L)
+        view.awaitV5StrokeWorkerIdleForTest()
         return StrokeTiming(frameTimes, (android.os.SystemClock.elapsedRealtimeNanos() - commitStarted) / 1_000_000f)
     }
 

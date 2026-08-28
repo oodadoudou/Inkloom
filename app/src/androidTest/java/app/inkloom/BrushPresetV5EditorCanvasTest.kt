@@ -74,6 +74,7 @@ class BrushPresetV5EditorCanvasTest {
             repeat(60) { index ->
                 val started = android.os.SystemClock.elapsedRealtimeNanos()
                 sendStylus(view, MotionEvent.ACTION_MOVE, 74f + index * 4f, 180f + (index % 3), 2L + index)
+                view.awaitV5StrokeWorkerIdleForTest()
                 if (index >= 8) moveTimes += android.os.SystemClock.elapsedRealtimeNanos() - started
             }
             sendStylus(view, MotionEvent.ACTION_UP, 330f, 180f, 70L)

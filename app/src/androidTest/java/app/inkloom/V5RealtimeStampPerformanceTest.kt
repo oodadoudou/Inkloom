@@ -87,6 +87,7 @@ class V5RealtimeStampPerformanceTest {
             val started = SystemClock.elapsedRealtimeNanos()
             InstrumentationRegistry.getInstrumentation().runOnMainSync {
                 dispatchDirect(view, MotionEvent.ACTION_MOVE, x, y, downTime, downTime + 1L + index * 3L, .3f + index % 7 * .1f)
+                view.awaitV5StrokeWorkerIdleForTest()
                 display.eraseColor(Color.TRANSPARENT)
                 view.draw(Canvas(display))
             }

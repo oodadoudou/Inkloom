@@ -1,7 +1,5 @@
 package app.inkloom.engine.v5.material
 
-import kotlin.math.floor
-
 /** Immutable renderer-owned alpha coverage for one resolved brush shape. */
 class BrushTipMask(
     val width: Int,
@@ -20,24 +18,30 @@ class BrushTipMask(
     /** Bilinear coverage at normalized brush-local coordinates. Outside the shape is transparent. */
     fun coverageAt(u: Float, v: Float): Float {
         if (!u.isFinite() || !v.isFinite() || u < 0f || u > 1f || v < 0f || v > 1f) return 0f
-        val x = u * (width - 1).coerceAtLeast(0)
-        val y = v * (height - 1).coerceAtLeast(0)
-        val x0 = floor(x).toInt().coerceIn(0, width - 1)
-        val y0 = floor(y).toInt().coerceIn(0, height - 1)
-        val x1 = (x0 + 1).coerceAtMost(width - 1)
-        val y1 = (y0 + 1).coerceAtMost(height - 1)
+        // u/v are non-negative after the guard, so Float.toInt() is the same floor operation
+        // without the Math.floor/coerce chain that used to run for every stamp pixel.
+        val x = u * (width - 1)
+        val y = v * (height - 1)
+        val x0 = x.toInt()
+        val y0 = y.toInt()
+        val x1 = if (x0 + 1 < width) x0 + 1 else x0
+        val y1 = if (y0 + 1 < height) y0 + 1 else y0
         val tx = x - x0
         val ty = y - y0
-        val top = alphaAt(x0, y0) + (alphaAt(x1, y0) - alphaAt(x0, y0)) * tx
-        val bottom = alphaAt(x0, y1) + (alphaAt(x1, y1) - alphaAt(x0, y1)) * tx
-        return top + (bottom - top) * ty
+        val topLeft = coverage[y0 * width + x0].toInt() and 0xff
+        val topRight = coverage[y0 * width + x1].toInt() and 0xff
+        val bottomLeft = coverage[y1 * width + x0].toInt() and 0xff
+        val bottomRight = coverage[y1 * width + x1].toInt() and 0xff
+        val top = topLeft + (topRight - topLeft) * tx
+        val bottom = bottomLeft + (bottomRight - bottomLeft) * tx
+        return (top + (bottom - top) * ty) * BYTE_TO_UNIT
     }
 
     fun contentHash(): Int = coverage.contentHashCode()
 
-    private fun alphaAt(x: Int, y: Int): Float = (coverage[y * width + x].toInt() and 0xff) / 255f
-
     companion object {
+        private const val BYTE_TO_UNIT = 1f / 255f
+
         fun solidCircle(size: Int = 64, hardness: Float = 1f): BrushTipMask {
             require(size in 2..1024)
             require(hardness.isFinite() && hardness in 0f..1f)
@@ -55,4 +59,3 @@ class BrushTipMask(
         }
     }
 }
-
