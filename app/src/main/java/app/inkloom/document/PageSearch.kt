@@ -23,7 +23,6 @@ object PageSearch {
             val text = when (element) {
                 is PageElement.Text -> element.text
                 is PageElement.Sticky -> element.text
-                is PageElement.AudioMarker -> element.title
                 is PageElement.Link -> "${element.title}\n${element.url}"
                 else -> null
             }

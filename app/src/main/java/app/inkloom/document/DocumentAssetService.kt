@@ -607,7 +607,6 @@ class DocumentAssetService(private val context: Context) {
                 ) },
                 elements = page.elements.map { element -> when (element) {
                     is PageElement.Image -> element.copy(assetPath = "assets/${File(element.assetPath).name}")
-                    is PageElement.AudioMarker -> element.copy(assetPath = "assets/${File(element.assetPath).name}")
                     is PageElement.Fill -> element.copy(maskAssetPath = "assets/${File(element.maskAssetPath).name}")
                     is PageElement.Shape -> element.copy(maskAssetPath = element.maskAssetPath?.let { "assets/${File(it).name}" })
                     else -> element
@@ -618,7 +617,7 @@ class DocumentAssetService(private val context: Context) {
             val assets = listOfNotNull(document.coverImagePath) +
                 document.pages.mapNotNull { page -> when (val background = page.background) { is PageBackground.Pdf -> background.assetPath; is PageBackground.Image -> background.assetPath; else -> null } } +
                 document.pages.flatMap(InkPage::layers).mapNotNull { it.mask?.surface?.assetPath } +
-                document.pages.flatMap { it.elements }.mapNotNull { element -> when (element) { is PageElement.Image -> element.assetPath; is PageElement.AudioMarker -> element.assetPath; is PageElement.Fill -> element.maskAssetPath; is PageElement.Shape -> element.maskAssetPath; else -> null } }
+                document.pages.flatMap { it.elements }.mapNotNull { element -> when (element) { is PageElement.Image -> element.assetPath; is PageElement.Fill -> element.maskAssetPath; is PageElement.Shape -> element.maskAssetPath; else -> null } }
             writeDistinctFiles(zip, "assets", assets)
             writeRasterTileFiles(
                 zip,
@@ -721,7 +720,6 @@ class DocumentAssetService(private val context: Context) {
                     ) },
                     elements = page.elements.map { element -> when (element) {
                         is PageElement.Image -> element.copy(assetPath = retained(element.assetPath))
-                        is PageElement.AudioMarker -> element.copy(assetPath = retained(element.assetPath))
                         is PageElement.Fill -> element.copy(maskAssetPath = retained(element.maskAssetPath))
                         is PageElement.Shape -> element.copy(maskAssetPath = element.maskAssetPath?.let { retained(it) })
                         else -> element
@@ -986,7 +984,6 @@ class DocumentAssetService(private val context: Context) {
                     colorPaint.alpha = (element.opacity.coerceIn(0f, 1f) * 255).toInt()
                     drawFillMask(canvas, element.maskAssetPath, destination, colorPaint)
                 }
-                is PageElement.AudioMarker -> { paint.style = Paint.Style.FILL; paint.color = 0xFFE7E7E7.toInt(); canvas.drawRoundRect(left, top, right, bottom, 18f, 18f, paint); paint.color = 0xFF111111.toInt(); paint.textSize = 28f; canvas.drawText("Audio · ${formatDuration(element.durationMs)}", left + 20, top + 42, paint); paint.textSize = 22f; canvas.drawText(element.title, left + 20, top + 76, paint) }
                 is PageElement.Link -> {
                     paint.style = Paint.Style.FILL
                     paint.color = 0xFFE7E7E7.toInt()
@@ -1181,8 +1178,6 @@ class DocumentAssetService(private val context: Context) {
         if (scaled !== cropped) cropped.recycle()
         return scaled
     }
-
-    private fun formatDuration(durationMs: Long): String { val total = durationMs / 1000; return "%d:%02d".format(total / 60, total % 60) }
 
     private fun midpoint(start: StrokePoint, end: StrokePoint) = StrokePoint(
         x = (start.x + end.x) / 2f, y = (start.y + end.y) / 2f,

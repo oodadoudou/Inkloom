@@ -745,7 +745,6 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         is PageElement.Shape -> element.copy(id = java.util.UUID.randomUUID().toString())
         is PageElement.Image -> element.copy(id = java.util.UUID.randomUUID().toString())
         is PageElement.Fill -> element.copy(id = java.util.UUID.randomUUID().toString())
-        is PageElement.AudioMarker -> element.copy(id = java.util.UUID.randomUUID().toString())
         is PageElement.Link -> element.copy(id = java.util.UUID.randomUUID().toString())
     }
 
@@ -755,7 +754,6 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         is PageElement.Shape -> copy(layerId = layerId)
         is PageElement.Image -> copy(layerId = layerId)
         is PageElement.Fill -> copy(layerId = layerId)
-        is PageElement.AudioMarker -> copy(layerId = layerId)
         is PageElement.Link -> copy(layerId = layerId)
     }
 
@@ -765,7 +763,6 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         is PageElement.Shape -> copy(x = (x + dx).coerceIn(0f, .95f), y = (y + dy).coerceIn(0f, .95f))
         is PageElement.Image -> copy(x = (x + dx).coerceIn(0f, .95f), y = (y + dy).coerceIn(0f, .95f))
         is PageElement.Fill -> copy(x = (x + dx).coerceIn(0f, .95f), y = (y + dy).coerceIn(0f, .95f))
-        is PageElement.AudioMarker -> copy(x = (x + dx).coerceIn(0f, .95f), y = (y + dy).coerceIn(0f, .95f))
         is PageElement.Link -> copy(x = (x + dx).coerceIn(0f, .95f), y = (y + dy).coerceIn(0f, .95f))
     }
 

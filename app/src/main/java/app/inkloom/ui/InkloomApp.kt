@@ -1,9 +1,7 @@
 package app.inkloom.ui
 
-import android.Manifest
 import android.content.ClipData
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.graphics.Color as AndroidColor
 import android.graphics.Canvas as AndroidCanvas
@@ -179,7 +177,6 @@ import app.inkloom.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -1115,7 +1112,6 @@ private fun EditorScreen(
     if (document == null) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }; return }
     val context = LocalContext.current
     val editorHostView = LocalView.current
-    val audioRecorder = remember { AudioNoteRecorder(context) }
     val brushPresetSizeStore = remember { BrushPresetSizeStore(context) }
     val selectedPage = document.pages.firstOrNull { it.id == selectedPageId } ?: document.pages.first()
     var tool by remember { mutableStateOf(EditorTool.PEN) }
@@ -1344,14 +1340,6 @@ private fun EditorScreen(
     var insertLinkPageId by remember(document.id) { mutableStateOf(selectedPage.id) }
     var insertShape by remember { mutableStateOf(ShapeKind.RECTANGLE) }
     var selectedElementId by remember(selectedPage.id) { mutableStateOf<String?>(null) }
-    var audioOpen by remember { mutableStateOf(false) }
-    var recording by remember { mutableStateOf(false) }
-    val defaultAudioTitle = tr("Audio note", "音频笔记")
-    val microphonePermissionError = tr("Microphone permission is required to record an audio note.", "录制音频笔记需要麦克风权限。")
-    var audioTitle by remember { mutableStateOf(defaultAudioTitle) }
-    var audioError by remember { mutableStateOf<String?>(null) }
-    val audioPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> if (granted) audioOpen = true else audioError = microphonePermissionError }
-    DisposableEffect(audioRecorder) { onDispose { audioRecorder.cancel() } }
     var layersOpen by remember { mutableStateOf(settings.showLayerPanel) }
     LaunchedEffect(settings.showLayerPanel) { layersOpen = settings.showLayerPanel }
     LaunchedEffect(brushesOpen, settings.brushPanelDock, settings.brushPanelMode, settings.brushPanelLocked) {
@@ -1655,7 +1643,6 @@ private fun EditorScreen(
                                 EditorTool.NOTE -> { insertText = ""; stickyInsertOpen = true }
                                 EditorTool.LINK -> { insertLinkTitle = ""; insertLinkUrl = ""; linkInsertOpen = true }
                                 EditorTool.IMAGE -> { imageInsertOpen = true; tool = EditorTool.SELECT; canvasView?.tool = EditorTool.SELECT }
-                                EditorTool.AUDIO -> if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) audioOpen = true else audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                                 EditorTool.SMUDGE -> systemBrushCatalog().firstOrNull(BrushRoleClassifier::isBlend)?.let(::selectWorkspaceBrush)
                                 EditorTool.LIQUIFY -> systemBrushCatalog().firstOrNull(BrushRoleClassifier::isLiquify)?.let(::selectWorkspaceBrush)
                                 else -> Unit
@@ -2511,7 +2498,6 @@ private fun EditorScreen(
                             ShortcutAction.NOTE_TOOL -> { exitCanvasNavigation(); tool = EditorTool.NOTE; insertText = ""; stickyInsertOpen = true }
                             ShortcutAction.LINK_TOOL -> { exitCanvasNavigation(); tool = EditorTool.LINK; insertLinkTitle = ""; insertLinkUrl = ""; linkInsertOpen = true }
                             ShortcutAction.IMAGE_TOOL -> { exitCanvasNavigation(); imageInsertOpen = true; tool = EditorTool.SELECT }
-                            ShortcutAction.AUDIO_TOOL -> { exitCanvasNavigation(); if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) audioOpen = true else audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) }
                             ShortcutAction.LASER_TOOL -> if (activation.trigger == ShortcutTrigger.HOLD) {
                                 rememberDrawingSelection()
                                 exitCanvasNavigation()
@@ -2790,7 +2776,6 @@ private fun EditorScreen(
                         EditorTool.NOTE -> { insertText = ""; stickyInsertOpen = true }
                         EditorTool.LINK -> { insertLinkTitle = ""; insertLinkUrl = ""; linkInsertOpen = true }
                         EditorTool.IMAGE -> { imageInsertOpen = true; tool = EditorTool.SELECT }
-                        EditorTool.AUDIO -> if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) audioOpen = true else audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                         else -> Unit
                     }
                     syncCanvasInput(prepareAssets = activeBrush != null)
@@ -3313,17 +3298,6 @@ private fun EditorScreen(
         confirmButton = { Button(onClick = { imageInsertOpen = false; onScanImage() }) { Icon(Icons.Outlined.DocumentScanner, null); Spacer(Modifier.width(6.dp)); Text(tr("Scan page", "扫描页面")) } },
         dismissButton = { Row { TextButton(onClick = { imageInsertOpen = false }) { Text(tr("Cancel", "取消")) }; TextButton(onClick = { imageInsertOpen = false; onInsertImage() }) { Text(tr("Import image", "导入图片")) } } },
     )
-    if (audioOpen) AlertDialog(
-        onDismissRequest = { if (recording) audioRecorder.cancel(); recording = false; audioOpen = false },
-        title = { Text(if (recording) tr("Recording audio…", "正在录音…") else tr("Audio note", "音频笔记")) },
-        text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { OutlinedTextField(audioTitle, { audioTitle = it }, label = { Text(tr("Title", "标题")) }, singleLine = true, enabled = !recording); Text(if (recording) tr("Recording locally. Tap Stop and insert when finished.", "正在本机录音。完成后点按“停止并插入”。") else tr("Audio remains on this device and is included in editable Inkloom backups.", "音频保存在此设备，并会包含在可编辑的 Inkloom 备份中。"), color = MutedInk) } },
-        confirmButton = {
-            if (!recording) Button(onClick = { runCatching { audioRecorder.start() }.onSuccess { recording = true }.onFailure { audioError = it.message } }) { Icon(Icons.Default.Mic, null); Spacer(Modifier.width(6.dp)); Text(tr("Start", "开始")) }
-            else Button(onClick = { runCatching { audioRecorder.stop(audioTitle) }.onSuccess { marker -> onElement(document.id, selectedPage.id, marker); recording = false; audioOpen = false; tool = EditorTool.SELECT }.onFailure { audioError = it.message; recording = false } }) { Icon(Icons.Default.Stop, null); Spacer(Modifier.width(6.dp)); Text(tr("Stop and insert", "停止并插入")) }
-        },
-        dismissButton = { TextButton(onClick = { if (recording) audioRecorder.cancel(); recording = false; audioOpen = false }) { Text(tr("Cancel", "取消")) } },
-    )
-    audioError?.let { message -> AlertDialog(onDismissRequest = { audioError = null }, title = { Text(tr("Audio issue", "音频问题")) }, text = { Text(message) }, confirmButton = { TextButton(onClick = { audioError = null }) { Text(tr("OK", "确定")) } }) }
     if (outlineOpen) {
         val visibleOutlinePages = PageOutline.visiblePages(document.pages)
         AlertDialog(
@@ -5384,7 +5358,6 @@ private fun ObjectElementView(
                     }
                 }
             }
-            is PageElement.AudioMarker -> AudioMarkerCard(element)
             is PageElement.Link -> Card(Modifier.fillMaxSize(), colors = CardDefaults.cardColors(containerColor = Color(0xFFE7E7E7))) {
                 Row(Modifier.fillMaxSize().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Surface(shape = CircleShape, color = Color.White) { Icon(Icons.Outlined.Link, null, Modifier.padding(10.dp), tint = Color(0xFF111111)) }
@@ -5471,10 +5444,6 @@ private fun ElementEditorDialog(element: PageElement, onDismiss: () -> Unit, onS
                     item { BrushSettingSlider("Bottom", current.crop.bottom, 0.05f..1f) { draft = current.copy(crop = current.crop.copy(bottom = it).normalized()) } }
                     item { OutlinedButton(onClick = { draft = current.copy(crop = ImageCrop()) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.RestartAlt, null); Spacer(Modifier.width(8.dp)); Text(tr("Reset crop", "重置裁剪")) } }
                 }
-                is PageElement.AudioMarker -> {
-                    item { OutlinedTextField(current.title, { draft = current.copy(title = it) }, label = { Text(tr("Title", "标题")) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
-                    item { Text(tr("Duration ${formatDuration(current.durationMs)} · audio is included in editable backups", "时长 ${formatDuration(current.durationMs)} · 音频会包含在可编辑备份中"), color = MutedInk, fontSize = 12.sp) }
-                }
                 is PageElement.Link -> {
                     item { OutlinedTextField(current.title, { draft = current.copy(title = it) }, label = { Text(tr("Title", "标题")) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
                     if (InternalLinkTarget.isInternal(current)) item {
@@ -5510,15 +5479,14 @@ private fun moveElement(element: PageElement, dx: Float, dy: Float): PageElement
     is PageElement.Shape -> element.copy(x = (element.x + dx).coerceIn(0f, .98f), y = (element.y + dy).coerceIn(0f, .98f))
     is PageElement.Image -> element.copy(x = (element.x + dx).coerceIn(0f, .98f), y = (element.y + dy).coerceIn(0f, .98f))
     is PageElement.Fill -> element.copy(x = (element.x + dx).coerceIn(0f, .98f), y = (element.y + dy).coerceIn(0f, .98f))
-    is PageElement.AudioMarker -> element.copy(x = (element.x + dx).coerceIn(0f, .98f), y = (element.y + dy).coerceIn(0f, .98f))
     is PageElement.Link -> element.copy(x = (element.x + dx).coerceIn(0f, .98f), y = (element.y + dy).coerceIn(0f, .98f))
 }
 
 private fun resizeElement(element: PageElement, factor: Float): PageElement = setElementSize(element, (element.width * factor).coerceIn(40f, 1600f), (element.height * factor).coerceIn(40f, 2263f))
 private fun rotateElement(element: PageElement, delta: Float): PageElement = setElementRotation(element, ((element.rotationDegrees + delta + 180f) % 360f) - 180f)
-private fun setElementSize(element: PageElement, width: Float, height: Float): PageElement = when (element) { is PageElement.Text -> element.copy(width = width, height = height); is PageElement.Sticky -> element.copy(width = width, height = height); is PageElement.Shape -> element.copy(width = width, height = height); is PageElement.Image -> element.copy(width = width, height = height); is PageElement.Fill -> element.copy(width = width, height = height); is PageElement.AudioMarker -> element.copy(width = width, height = height); is PageElement.Link -> element.copy(width = width, height = height) }
-private fun setElementRotation(element: PageElement, value: Float): PageElement = when (element) { is PageElement.Text -> element.copy(rotationDegrees = value); is PageElement.Sticky -> element.copy(rotationDegrees = value); is PageElement.Shape -> element.copy(rotationDegrees = value); is PageElement.Image -> element.copy(rotationDegrees = value); is PageElement.Fill -> element.copy(rotationDegrees = value); is PageElement.AudioMarker -> element.copy(rotationDegrees = value); is PageElement.Link -> element.copy(rotationDegrees = value) }
-private fun setElementOpacity(element: PageElement, value: Float): PageElement = when (element) { is PageElement.Text -> element.copy(opacity = value); is PageElement.Sticky -> element.copy(opacity = value); is PageElement.Shape -> element.copy(opacity = value); is PageElement.Image -> element.copy(opacity = value); is PageElement.Fill -> element.copy(opacity = value); is PageElement.AudioMarker -> element.copy(opacity = value); is PageElement.Link -> element.copy(opacity = value) }
+private fun setElementSize(element: PageElement, width: Float, height: Float): PageElement = when (element) { is PageElement.Text -> element.copy(width = width, height = height); is PageElement.Sticky -> element.copy(width = width, height = height); is PageElement.Shape -> element.copy(width = width, height = height); is PageElement.Image -> element.copy(width = width, height = height); is PageElement.Fill -> element.copy(width = width, height = height); is PageElement.Link -> element.copy(width = width, height = height) }
+private fun setElementRotation(element: PageElement, value: Float): PageElement = when (element) { is PageElement.Text -> element.copy(rotationDegrees = value); is PageElement.Sticky -> element.copy(rotationDegrees = value); is PageElement.Shape -> element.copy(rotationDegrees = value); is PageElement.Image -> element.copy(rotationDegrees = value); is PageElement.Fill -> element.copy(rotationDegrees = value); is PageElement.Link -> element.copy(rotationDegrees = value) }
+private fun setElementOpacity(element: PageElement, value: Float): PageElement = when (element) { is PageElement.Text -> element.copy(opacity = value); is PageElement.Sticky -> element.copy(opacity = value); is PageElement.Shape -> element.copy(opacity = value); is PageElement.Image -> element.copy(opacity = value); is PageElement.Fill -> element.copy(opacity = value); is PageElement.Link -> element.copy(opacity = value) }
 
 private fun openLink(context: android.content.Context, rawUrl: String, language: UiLanguage) {
     val url = LinkTarget.normalize(rawUrl)
@@ -5532,63 +5500,6 @@ private fun openLink(context: android.content.Context, rawUrl: String, language:
         Toast.makeText(context, language.text("No app can open this link.", "没有应用可以打开此链接。"), Toast.LENGTH_SHORT).show()
     }
 }
-
-@Composable
-private fun AudioMarkerCard(element: PageElement.AudioMarker) {
-    val language = LocalUiLanguage.current
-    val player = remember(element.assetPath) { preparedAudioPlayer(element.assetPath) }
-    var playing by remember(element.assetPath) { mutableStateOf(false) }
-    var positionMs by remember(element.assetPath) { mutableLongStateOf(0L) }
-    var scrubbing by remember(element.assetPath) { mutableStateOf(false) }
-    val durationMs = (player?.duration?.toLong()?.takeIf { it > 0L } ?: element.durationMs).coerceAtLeast(1L)
-    DisposableEffect(player) {
-        player?.setOnCompletionListener { playing = false; positionMs = 0L; runCatching { it.seekTo(0) } }
-        onDispose { player?.release() }
-    }
-    LaunchedEffect(player, playing, scrubbing) {
-        while (playing) {
-            if (!scrubbing) positionMs = runCatching { player?.currentPosition?.toLong() ?: 0L }.getOrDefault(0L).coerceIn(0L, durationMs)
-            delay(100)
-        }
-    }
-    Card(Modifier.fillMaxSize(), colors = CardDefaults.cardColors(containerColor = Color(0xFFE7E7E7))) {
-        Column(Modifier.fillMaxSize().padding(horizontal = 7.dp, vertical = 3.dp), verticalArrangement = Arrangement.Center) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(
-                    enabled = player != null,
-                    onClick = {
-                        player ?: return@IconButton
-                        if (playing) { player.pause(); playing = false; positionMs = player.currentPosition.toLong() }
-                        else { if (positionMs >= durationMs) { player.seekTo(0); positionMs = 0L }; player.start(); playing = true }
-                    },
-                    modifier = Modifier.size(30.dp),
-                ) { Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, if (playing) language.text("Pause audio", "暂停音频") else language.text("Play audio", "播放音频"), Modifier.size(18.dp)) }
-                Spacer(Modifier.width(5.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(element.title, maxLines = 1, fontSize = 12.sp)
-                    Text("${formatDuration(positionMs)} / ${formatDuration(durationMs)}", color = MutedInk, fontSize = 10.sp)
-                }
-            }
-            Slider(
-                value = positionMs.toFloat().coerceIn(0f, durationMs.toFloat()),
-                onValueChange = { scrubbing = true; positionMs = it.toLong() },
-                onValueChangeFinished = { player?.seekTo(positionMs.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()); scrubbing = false },
-                valueRange = 0f..durationMs.toFloat(),
-                enabled = player != null,
-                modifier = Modifier.fillMaxWidth().height(18.dp).semantics { contentDescription = language.text("Audio timeline", "音频时间轴") },
-            )
-        }
-    }
-}
-
-private fun preparedAudioPlayer(path: String): android.media.MediaPlayer? {
-    var player: android.media.MediaPlayer? = null
-    return runCatching {
-        android.media.MediaPlayer().also { created -> player = created; created.setDataSource(path); created.prepare() }
-    }.onFailure { player?.release() }.getOrNull()
-}
-
-private fun formatDuration(durationMs: Long): String { val total = durationMs / 1000; return "%d:%02d".format(total / 60, total % 60) }
 
 @Composable
 private fun EraserPreset.displayName(): String = when (this) {
@@ -5992,7 +5903,7 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
         HorizontalDivider(Modifier.width(30.dp).padding(vertical = 2.dp), color = OutlineSoft)
     }
     Box {
-        CompactToolbarIconButton(onClick = { onMoreToolsOpen(true) }, description = tr("More tools", "更多工具"), selected = rulerEnabled || gridSnapEnabled || alignmentGuidesEnabled || tool in setOf(EditorTool.EYEDROPPER, EditorTool.FILL, EditorTool.GRADIENT, EditorTool.SMUDGE, EditorTool.LIQUIFY, EditorTool.CORRECT_LINE, EditorTool.SHAPE, EditorTool.TEXT, EditorTool.NOTE, EditorTool.LINK, EditorTool.IMAGE, EditorTool.AUDIO, EditorTool.LASER)) { Icon(Icons.Outlined.Apps, null, Modifier.size(20.dp)) }
+        CompactToolbarIconButton(onClick = { onMoreToolsOpen(true) }, description = tr("More tools", "更多工具"), selected = rulerEnabled || gridSnapEnabled || alignmentGuidesEnabled || tool in setOf(EditorTool.EYEDROPPER, EditorTool.FILL, EditorTool.GRADIENT, EditorTool.SMUDGE, EditorTool.LIQUIFY, EditorTool.CORRECT_LINE, EditorTool.SHAPE, EditorTool.TEXT, EditorTool.NOTE, EditorTool.LINK, EditorTool.IMAGE, EditorTool.LASER)) { Icon(Icons.Outlined.Apps, null, Modifier.size(20.dp)) }
         DropdownMenu(expanded = moreToolsOpen, onDismissRequest = { onMoreToolsOpen(false) }) {
             val unsortedTools = listOf(
                 Triple(EditorTool.SELECT, Icons.Outlined.TouchApp, tr("Operation", "对象操作")),
@@ -6007,7 +5918,6 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
                 Triple(EditorTool.NOTE, Icons.Outlined.StickyNote2, tr("Note", "便笺")),
                 Triple(EditorTool.LINK, Icons.Outlined.Link, tr("Link", "链接")),
                 Triple(EditorTool.IMAGE, Icons.Outlined.Image, tr("Image", "图片")),
-                Triple(EditorTool.AUDIO, Icons.Outlined.Mic, tr("Audio", "音频")),
                 Triple(EditorTool.LASER, Icons.Outlined.TrackChanges, tr("Laser pointer", "激光笔")),
             )
             val displayedTools = if (toolLibrarySort == ToolLibrarySort.NAME) unsortedTools.sortedBy { it.third.lowercase() } else unsortedTools
@@ -9085,7 +8995,7 @@ private fun SettingsDialog(
                 if (settings.toolbarDock == ToolbarDock.FREE) item { SettingSwitch(tr("Vertical toolbar", "垂直工具栏"), tr("Useful on a wide tablet canvas.", "适合宽屏平板画布。"), settings.verticalToolbar) { onChange(settings.copy(verticalToolbar = it)) } }
                 item { OutlinedButton(onClick = { onChange(settings.copy(toolbarDock = ToolbarDock.FREE, toolbarOffsetXDp = 16f, toolbarOffsetYDp = 16f)) }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.CenterFocusStrong, null); Spacer(Modifier.width(8.dp)); Text(tr("Reset toolbar position", "重置工具栏位置")) } }
                 item { Text(tr("DATA & BACKUP", "数据与备份"), color = Sage, fontSize = 12.sp) }
-                item { Text(tr("A full backup includes notes, folders, imported brushes and sources, PDFs, images, audio, input settings, panel layouts, Toolbox shortcuts, quick slots and the custom color palette. Content is restored with new IDs so existing work is never overwritten.", "完整备份包含笔记、文件夹、导入笔刷及源文件、PDF、图片、音频、输入设置、面板布局、Toolbox 快捷键、快速槽与自定义色板。内容恢复时会生成新 ID，不覆盖现有作品。"), color = MutedInk, fontSize = 12.sp) }
+                item { Text(tr("A full backup includes notes, folders, imported brushes and sources, PDFs, images, input settings, panel layouts, Toolbox shortcuts, quick slots and the custom color palette. Content is restored with new IDs so existing work is never overwritten.", "完整备份包含笔记、文件夹、导入笔刷及源文件、PDF、图片、输入设置、面板布局、Toolbox 快捷键、快速槽与自定义色板。内容恢复时会生成新 ID，不覆盖现有作品。"), color = MutedInk, fontSize = 12.sp) }
                 item { Button(onClick = onExportBackup, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Backup, null); Spacer(Modifier.width(8.dp)); Text(tr("Export full library backup", "导出完整资料库备份")) } }
                 item { OutlinedButton(onClick = onRestoreBackup, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.Restore, null); Spacer(Modifier.width(8.dp)); Text(tr("Restore library backup", "恢复资料库备份")) } }
             }
@@ -9542,7 +9452,6 @@ private fun shortcutActionLabel(action: ShortcutAction, language: UiLanguage): S
     ShortcutAction.NOTE_TOOL -> language.text("Sticky note", "便笺")
     ShortcutAction.LINK_TOOL -> language.text("Link", "链接")
     ShortcutAction.IMAGE_TOOL -> language.text("Insert image", "插入图片")
-    ShortcutAction.AUDIO_TOOL -> language.text("Record audio note", "录音笔记")
     ShortcutAction.LASER_TOOL -> language.text("Laser pointer", "激光笔")
     ShortcutAction.BRUSH_SIZE_DECREASE -> language.text("Decrease brush size", "减小笔刷大小")
     ShortcutAction.BRUSH_SIZE_INCREASE -> language.text("Increase brush size", "增大笔刷大小")

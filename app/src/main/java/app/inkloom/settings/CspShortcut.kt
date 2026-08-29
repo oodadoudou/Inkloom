@@ -18,7 +18,6 @@ enum class ShortcutAction {
     NOTE_TOOL,
     LINK_TOOL,
     IMAGE_TOOL,
-    AUDIO_TOOL,
     LASER_TOOL,
     BRUSH_SIZE_DECREASE,
     BRUSH_SIZE_INCREASE,
@@ -72,7 +71,7 @@ fun ShortcutAction.category(): ShortcutCategory = when (this) {
     ShortcutAction.PREVIOUS_BRUSH, ShortcutAction.NEXT_BRUSH -> ShortcutCategory.BRUSH_GROUPS
     ShortcutAction.TOGGLE_ERASER, ShortcutAction.HIGHLIGHTER_TOOL, ShortcutAction.SELECT_TOOL, ShortcutAction.HAND_TOOL,
     ShortcutAction.ROTATE_VIEW_TOOL, ShortcutAction.EYEDROPPER_TOOL, ShortcutAction.SHAPE_TOOL, ShortcutAction.TEXT_TOOL,
-    ShortcutAction.NOTE_TOOL, ShortcutAction.LINK_TOOL, ShortcutAction.IMAGE_TOOL, ShortcutAction.AUDIO_TOOL,
+    ShortcutAction.NOTE_TOOL, ShortcutAction.LINK_TOOL, ShortcutAction.IMAGE_TOOL,
     ShortcutAction.LASER_TOOL -> ShortcutCategory.TOOLS
     ShortcutAction.BRUSH_SIZE_DECREASE, ShortcutAction.BRUSH_SIZE_INCREASE, ShortcutAction.OPACITY_DECREASE,
     ShortcutAction.OPACITY_INCREASE -> ShortcutCategory.BRUSH_ADJUSTMENTS

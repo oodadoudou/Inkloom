@@ -71,7 +71,6 @@ object PageCropTransform {
         is PageElement.Shape -> copy(x = x, y = y)
         is PageElement.Image -> copy(x = x, y = y)
         is PageElement.Fill -> copy(x = x, y = y)
-        is PageElement.AudioMarker -> copy(x = x, y = y)
         is PageElement.Link -> copy(x = x, y = y)
     }
 

@@ -34,7 +34,6 @@ object PageTransfer {
         is PageElement.Shape -> copy(id = id)
         is PageElement.Image -> copy(id = id)
         is PageElement.Fill -> copy(id = id)
-        is PageElement.AudioMarker -> copy(id = id)
         is PageElement.Link -> copy(id = id)
     }
 }

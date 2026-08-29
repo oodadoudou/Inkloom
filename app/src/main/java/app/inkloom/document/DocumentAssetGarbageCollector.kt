@@ -32,7 +32,6 @@ object DocumentAssetGarbageCollector {
                 }
                 page.elements.forEach { element -> when (element) {
                     is PageElement.Image -> retain(element.assetPath)
-                    is PageElement.AudioMarker -> retain(element.assetPath)
                     is PageElement.Fill -> retain(element.maskAssetPath)
                     is PageElement.Shape -> retain(element.maskAssetPath)
                     else -> Unit

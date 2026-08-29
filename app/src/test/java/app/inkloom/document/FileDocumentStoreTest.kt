@@ -181,18 +181,6 @@ class FileDocumentStoreTest {
         assertTrue(store.get(document.id)!!.pages.single().elements.isEmpty())
     }
 
-    @Test fun audioMarkersPersistAsPortablePageObjects() {
-        val store = FileDocumentStore(Files.createTempDirectory("inkloom-audio").toFile())
-        val marker = PageElement.AudioMarker(x = .15f, y = .2f, assetPath = "/data/audio/note.m4a", title = "Lecture", durationMs = 65_000)
-        val document = InkDocument(title = "Audio", pages = listOf(InkPage(elements = listOf(marker))))
-        store.save(document)
-
-        val restored = store.get(document.id)!!.pages.single().elements.single() as PageElement.AudioMarker
-        assertEquals("Lecture", restored.title)
-        assertEquals(65_000, restored.durationMs)
-        assertEquals(LayerIds.INK, restored.layerId)
-    }
-
     @Test fun richTextPropertiesRoundTrip() {
         val store = FileDocumentStore(Files.createTempDirectory("inkloom-rich-text").toFile())
         val text = PageElement.Text(
