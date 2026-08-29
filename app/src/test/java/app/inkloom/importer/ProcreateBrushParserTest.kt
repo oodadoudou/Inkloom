@@ -196,6 +196,7 @@ class ProcreateBrushParserTest {
             val brush = ProcreateBrushParser(File(root, "assets")).enrich(source, "unsafe", fallback(source)).single()
 
             assertTrue(brush.report.any { it.contains("unsafe path") })
+            assertEquals(Compatibility.FAILED, brush.compatibility)
             assertFalse(File(root, "Shape.png").exists())
         } finally {
             root.deleteRecursively()

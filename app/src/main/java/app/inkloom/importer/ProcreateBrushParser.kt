@@ -58,11 +58,16 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             }
         }
     }.getOrElse { failure ->
+        val causeChain = generateSequence(failure as Throwable?) { it.cause }
+            .take(6)
+            .joinToString(" -> ") { cause ->
+                "${cause::class.java.simpleName}: ${cause.message ?: "no message"}"
+            }
         listOf(
             fallback.copy(
-                compatibility = Compatibility.BASIC,
+                compatibility = Compatibility.FAILED,
                 parserVersion = CURRENT_VERSION,
-                report = (fallback.report + "Procreate parsing failed safely: ${failure.message ?: failure::class.java.simpleName}").distinct(),
+                report = (fallback.report + "Procreate parsing failed safely: $causeChain").distinct(),
             ),
         )
     }
@@ -662,6 +667,9 @@ internal class ProcreateKeyedArchive(bytes: ByteArray) {
     }
 
     private companion object {
-        val POINT_PATTERN = Regex("\\{\\s*([-+0-9.eE]+)\\s*,\\s*([-+0-9.eE]+)\\s*}")
+        // Android's ICU regex compiler requires the closing brace to be escaped. The JVM accepts
+        // the unescaped form, which previously let unit tests pass while every real Android
+        // Procreate import failed during ProcreateKeyedArchive class initialization.
+        val POINT_PATTERN = Regex("\\{\\s*([-+0-9.eE]+)\\s*,\\s*([-+0-9.eE]+)\\s*\\}")
     }
 }
