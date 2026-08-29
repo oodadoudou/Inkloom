@@ -27,6 +27,7 @@ until [[ "$("$INKLOOM_ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d 
 done
 
 cd "$INKLOOM_PROJECT_DIR"
+./scripts/stage_user_brush_corpus.sh
 ./gradlew connectedDebugAndroidTest
 ./scripts/install_debug_apk.sh
 

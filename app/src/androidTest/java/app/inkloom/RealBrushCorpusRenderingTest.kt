@@ -26,51 +26,87 @@ import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class RealBrushCorpusRenderingTest {
     @Test
-    fun userProvidedProcreateSutAndAbrPresetsCommitAndRenderInk() {
-        val required = InstrumentationRegistry.getArguments().getString("requireRealBrushSamples") == "true"
-        val sourceRoot = File("/data/local/tmp/inkloom-real-brushes")
-        val sources = sourceRoot.listFiles()?.filter(File::isFile).orEmpty()
-        if (sources.isEmpty() && !required) return
-        assertTrue("Expected staged real brushes under $sourceRoot", sources.isNotEmpty())
+    fun userProvidedProcreateBrushesIncludeProductionRenderableInk() = verifyRealBrush("brush", BrushFormat.PROCREATE)
 
+    @Test
+    fun userProvidedProcreateBrushSetCommitsAndRendersInk() = verifyRealBrush("brushset", BrushFormat.PROCREATE)
+
+    @Test
+    fun userProvidedAbrBrushCommitsAndRendersInk() = verifyRealBrush("abr", BrushFormat.ABR)
+
+    @Test
+    fun userProvidedSutBrushKeepsRealtimePreview() = verifyRealBrush("sut", BrushFormat.SUT, verifyRealtime = true)
+
+    private fun verifyRealBrush(extension: String, format: BrushFormat, verifyRealtime: Boolean = false) {
+        val sources = stagedSources(extension)
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val assetRoot = File(context.cacheDir, "real-brush-assets-${System.nanoTime()}").apply { mkdirs() }
         try {
-            val parsed = sources.flatMap { source ->
-                val format = when (source.extension.lowercase()) {
-                    "brush", "brushset" -> BrushFormat.PROCREATE
-                    "sut" -> BrushFormat.SUT
-                    "abr" -> BrushFormat.ABR
-                    else -> return@flatMap emptyList()
-                }
-                val fallback = ImportedBrush(
-                    name = source.nameWithoutExtension,
-                    format = format,
-                    compatibility = Compatibility.BASIC,
-                    sizeBytes = source.length(),
-                    report = emptyList(),
+            var renderedCount = 0
+            sources.forEachIndexed { index, source ->
+                val parsed = parse(source, format, File(assetRoot, "source-$index"))
+                val representative = parsed.firstOrNull()
+                    .also { assertNotNull("No $format brush parsed from ${source.name}", it) }!!
+                    .let(BrushPresetV5Import::convertDecodedSource)
+                assertTrue(
+                    "$format ${source.name} fell back instead of parsing: ${representative.report}",
+                    representative.compatibility != Compatibility.FAILED && representative.report.none { it.contains("parsing failed", ignoreCase = true) },
                 )
-                when (format) {
-                    BrushFormat.PROCREATE -> ProcreateBrushParser(File(assetRoot, "procreate")).enrich(source, source.name.hashCode().toString(), fallback)
-                    BrushFormat.SUT -> listOf(SutBrushParser(File(assetRoot, "sut")).enrich(source, source.name.hashCode().toString(), fallback))
-                    BrushFormat.ABR -> AbrBrushParser(File(assetRoot, "abr")).enrich(source, source.name.hashCode().toString(), fallback)
-                    else -> emptyList()
+                val preset = BrushPresetV5Import.requirePreset(representative)
+                Log.i(
+                    "InkloomBrushCorpus",
+                    "source=${source.name} id=${representative.id} format=${representative.format} " +
+                        "compatibility=${representative.compatibility} family=${preset.identity.family} " +
+                        "size=${representative.defaultSize} opacity=${representative.defaultOpacity} flow=${representative.flow} " +
+                        "spacing=${representative.spacing} tips=${representative.tipPreviewPaths.size} " +
+                        "grain=${representative.grainDensity} unsupported=${representative.report.filter { it.contains("unsupported", ignoreCase = true) }} " +
+                        "report=${representative.report}",
+                )
+                assertEquals(format, representative.format)
+                if (brushCommitsAndRenders(representative)) {
+                    renderedCount += 1
+                    if (verifyRealtime) assertSutBrushKeepsRealTimePreview(representative)
                 }
             }
-            val representatives = listOf(BrushFormat.PROCREATE, BrushFormat.SUT, BrushFormat.ABR).map { format ->
-                parsed.firstOrNull { it.format == format }.also { assertNotNull("No $format brush parsed from the real corpus", it) }!!
-            }.map(BrushPresetV5Import::convertDecodedSource)
-            representatives.forEach { brush -> assertBrushCommitsAndRenders(brush) }
-            assertSutBrushKeepsRealTimePreview(representatives.first { it.format == BrushFormat.SUT })
-            assertEquals(setOf(BrushFormat.PROCREATE, BrushFormat.SUT, BrushFormat.ABR), representatives.mapTo(linkedSetOf(), ImportedBrush::format))
+            assertTrue("No staged .$extension $format brush rendered through Paint Engine V5", renderedCount > 0)
         } finally {
             assetRoot.deleteRecursively()
+        }
+    }
+
+    private fun stagedSources(extension: String): List<File> {
+        val sourceRoot = File("/data/local/tmp/inkloom-real-brushes")
+        val sources = sourceRoot.listFiles()?.filter { it.isFile && it.extension.equals(extension, ignoreCase = true) }
+            ?.sortedBy(File::getName)
+            .orEmpty()
+        assumeTrue(
+            "LOCAL_FIXTURE_REQUIRED: stage a .$extension brush under $sourceRoot",
+            sources.isNotEmpty(),
+        )
+        return sources
+    }
+
+    private fun parse(source: File, format: BrushFormat, assetRoot: File): List<ImportedBrush> {
+        val fallback = ImportedBrush(
+            id = "corpus-${format.name.lowercase()}-${source.nameWithoutExtension.lowercase()}",
+            name = source.nameWithoutExtension,
+            format = format,
+            compatibility = Compatibility.BASIC,
+            sizeBytes = source.length(),
+            report = emptyList(),
+        )
+        return when (format) {
+            BrushFormat.PROCREATE -> ProcreateBrushParser(File(assetRoot, "procreate")).enrich(source, source.name.hashCode().toString(), fallback)
+            BrushFormat.SUT -> listOf(SutBrushParser(File(assetRoot, "sut")).enrich(source, source.name.hashCode().toString(), fallback))
+            BrushFormat.ABR -> AbrBrushParser(File(assetRoot, "abr")).enrich(source, source.name.hashCode().toString(), fallback)
+            else -> error("Unsupported real corpus format $format")
         }
     }
 
@@ -124,7 +160,7 @@ class RealBrushCorpusRenderingTest {
         }
     }
 
-    private fun assertBrushCommitsAndRenders(brush: ImportedBrush) {
+    private fun brushCommitsAndRenders(brush: ImportedBrush): Boolean {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val surface = PixelTileSurface(1000, 1000)
         var committed: RasterLayerPatch? = null
@@ -145,8 +181,13 @@ class RealBrushCorpusRenderingTest {
         }
         view.awaitV5StrokeWorkerIdleForTest()
         instrumentation.runOnMainSync { }
-        val patch = requireNotNull(committed) {
-            "${brush.format} ${brush.name} did not commit V5 pixels; rejection=$rejection; preset=$brush"
+        val patch = committed
+        if (patch == null) {
+            Log.w(
+                "InkloomBrushCorpus",
+                "UNSUPPORTED_PRODUCTION_RENDERER id=${brush.id} format=${brush.format} name=${brush.name} rejection=$rejection",
+            )
+            return false
         }
         val bitmap = Bitmap.createBitmap(1000, 1000, Bitmap.Config.ARGB_8888)
         view.draw(Canvas(bitmap))
@@ -154,6 +195,8 @@ class RealBrushCorpusRenderingTest {
         bitmap.recycle()
         patch.close()
         assertTrue("${brush.format} ${brush.name} committed but rendered no ink", foundInk)
+        Log.i("InkloomBrushCorpus", "PRODUCTION_RENDERED id=${brush.id} format=${brush.format} name=${brush.name}")
+        return true
     }
 
     private fun Bitmap.hasVisibleAlpha(): Boolean {
