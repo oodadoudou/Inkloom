@@ -28,6 +28,15 @@
 - Split large UI orchestration by real product domains such as `LibraryWorkspace`, `NotebookWorkspace`, and the core `PaintingWorkspace`; do not introduce speculative service abstractions for cloud, collaboration, accounts, or future SaaS needs.
 - Prefer a small number of explicit local components over extensibility that has no current Inkloom use case.
 
+## Active scope cleanup
+
+- Scope control is active cleanup, not only a ban on future features. Audit existing modules as `CORE_PAINTING`, `CORE_NOTEBOOK`, `REQUIRED_PLATFORM_INFRA`, `DELETE_CANDIDATE`, or `UNCERTAIN`.
+- Delete confirmed non-core production code instead of hiding it behind disabled UI, feature flags, unused interfaces, compatibility wrappers, or future-facing TODOs.
+- A deletion must remove its source, tests, resources, navigation, dependencies, persistence/schema state, adapters, fixtures, and stale documentation when those artifacts have no remaining owner.
+- Prefer a direct local implementation when there is only one production backend. Do not keep repository, sync, cloud, remote, account, marketplace, plugin, or multi-tenant abstractions for hypothetical future implementations.
+- Keep `tasks/SCOPE_CLEANUP_AUDIT.md` as the current repository-wide scope ledger with only `KEEP`, `SIMPLIFY`, `DELETE`, or `NEEDS_REVIEW` recommendations. Start with independently verifiable `DELETE NOW` items.
+- Scope deletion commits must remain separate from painting or notebook feature commits.
+
 ## Product behavior research
 
 - Before implementing or changing a drawing, selection, brush-library, layer, canvas-navigation, or stylus interaction, research the equivalent behavior in at least two current mainstream drawing or handwriting products.
@@ -40,5 +49,8 @@
 - Every input or canvas change must test stylus drawing, stylus hover, erasing, brush switching, two-finger zoom/pan, and drawing after zoom.
 - Every reorder interaction must have both operation-level tests and an Android interaction test for the actual long-press/drag path.
 - Imported brush changes must be exercised with SUT, ABR, and Procreate fixtures when they are available locally.
-- Ship only after JVM tests and the Android 15 instrumented suite pass.
+- Treat `/Users/doudouda/Downloads/2/` as the primary authorized real-brush fixture root. Maintain an ignored `tasks/USER_BRUSH_CORPUS.md` manifest without committing proprietary brush files. A required real-fixture test must report `LOCAL_FIXTURE_REQUIRED` when its corpus is unavailable; absence must not silently pass.
+- Every production change must pass JVM tests, relevant Android instrumented tests, an Android 15 emulator smoke run, relevant visual/raster regressions, lint, and `git diff --check` before delivery. Painting changes additionally run the affected stylus, pressure, tilt, hover, eraser, brush-switch, zoom/rotate-then-draw, active-delta, generation-barrier, selection/mask/clipping, import/editor, and persistence gates.
+- Emulator success is not hardware verification. Mark MovinkPad-specific behavior `DEVICE_PENDING` until the user validates it on the primary device, then and only then mark it `DEVICE_VERIFIED`.
 - Commit and push incrementally: one small feature, fix, migration step, or mechanical cleanup per reversible commit. Do not accumulate a multi-feature or whole-phase mega-commit.
+- Each commit must compile and be independently revertible; do not create a commit that requires an uncommitted follow-up to restore a buildable repository.
