@@ -298,6 +298,50 @@ class ProcreateBrushParserTest {
         }
     }
 
+    @Test fun auditsEveryAuthorizedProcreateBrushSemanticWhenConfigured() {
+        val sampleRoot = System.getProperty("procreate.samples.dir")?.let(::File)
+        assumeTrue(sampleRoot != null && sampleRoot.isDirectory)
+        val sources = sampleRoot!!.walkTopDown().filter { source ->
+            source.isFile && source.extension.lowercase() in setOf("brush", "brushset")
+        }.sortedBy(File::getAbsolutePath).toList()
+        assumeTrue(sources.isNotEmpty())
+        val root = temporaryDirectory("semantic-corpus")
+        try {
+            val clusters = linkedMapOf<String, Int>()
+            var discovered = 0
+            var usable = 0
+            var rejected = 0
+            var failed = 0
+            sources.forEachIndexed { index, source ->
+                val parsed = ProcreateBrushParser(File(root, "assets-$index"))
+                    .enrich(source, "corpus-${source.absolutePath.hashCode()}", fallback(source))
+                discovered += parsed.size
+                parsed.forEach { brush ->
+                    BrushSemanticMapper.describe(brush)
+                        .filter { it.executionDisposition != app.inkloom.model.SemanticExecutionDisposition.SUPPORTED_AND_EXECUTED }
+                        .map { it.sourceSemantic.substringAfter('.') }
+                        .distinct()
+                        .forEach { semantic -> clusters[semantic] = (clusters[semantic] ?: 0) + 1 }
+                    val terminal = app.inkloom.brushpresetv5.BrushPresetV5Import.convertOrReject(brush)
+                    when {
+                        terminal.v5PresetJson != null -> usable += 1
+                        terminal.report.any { it.contains("parsing failed", ignoreCase = true) } -> failed += 1
+                        else -> rejected += 1
+                    }
+                }
+            }
+            println(
+                "PROCREATE_SEMANTIC_CORPUS files=${sources.size} brushes=$discovered usable=$usable " +
+                    "rejected=$rejected failed=$failed clusters=${clusters.entries.sortedByDescending { it.value }}",
+            )
+            assertEquals("Authorized corpus source-file golden changed", 11, sources.size)
+            assertEquals("Authorized corpus source-brush golden changed", 391, discovered)
+            assertEquals("Every discovered brush needs exactly one terminal state", discovered, usable + rejected + failed)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     private fun fallback(source: File) = ImportedBrush(
         name = source.nameWithoutExtension,
         format = BrushFormat.PROCREATE,
