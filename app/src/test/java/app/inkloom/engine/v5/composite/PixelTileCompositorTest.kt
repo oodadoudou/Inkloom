@@ -100,7 +100,7 @@ class PixelTileCompositorTest {
         record.close()
     }
 
-    @Test fun snapshotAlphaCoverageProvidesClippingMaskSemantics() {
+    @Test fun compositeCoverageProvidesClippingMaskSemantics() {
         val source = PixelTileSurface(64, 64, tileSize = 64)
         val mask = PixelTileSurface(64, 64, tileSize = 64)
         val destination = PixelTileSurface(64, 64, tileSize = 64)
@@ -111,10 +111,11 @@ class PixelTileCompositorTest {
         }
         mask.beginWrite("base alpha").run { setPixel(1, 1, 0x80808080.toInt()); commit().close() }
 
+        val maskSnapshot = mask.snapshot()
         PixelTileCompositor.composite(
             source.snapshot(),
             destination,
-            coverage = SnapshotAlphaCoverage(mask.snapshot()),
+            coverage = CompositeCoverage { x, y -> (maskSnapshot.pixelAt(x, y) ushr 24 and 0xff) / 255f },
         ).close()
 
         assertEquals(128, destination.pixelAt(1, 1) ushr 24)

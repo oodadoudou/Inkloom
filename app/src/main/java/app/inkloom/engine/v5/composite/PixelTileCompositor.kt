@@ -13,15 +13,6 @@ fun interface CompositeCoverage {
     fun coverageAt(x: Int, y: Int): Float
 }
 
-class SnapshotAlphaCoverage(
-    private val snapshot: PixelTileSurfaceSnapshot,
-) : CompositeCoverage {
-    override fun coverageAt(x: Int, y: Int): Float = when (snapshot.pixelFormat) {
-        PixelTileFormat.PREMULTIPLIED_SRGB_8888 -> (snapshot.pixelAt(x, y) ushr 24 and 0xff) / 255f
-        PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16 -> snapshot.linearPixelAt(x, y).alpha
-    }.coerceIn(0f, 1f)
-}
-
 /**
  * Composites immutable source generations into one sparse destination transaction.
  *
