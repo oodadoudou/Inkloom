@@ -1,15 +1,9 @@
 package app.inkloom.settings
 
-/**
- * STUDIO is the one editor surface for notes, PDFs and drawing. NOTE and DRAWING remain as
- * compatibility aliases for saved Toolbox profiles created by earlier versions.
- */
-enum class BuiltInWorkspace { STUDIO, NOTE, DRAWING, READING, MINIMAL, RESET }
+/** Layout presets for the one editor surface shared by notes, PDFs and drawing. */
+enum class BuiltInWorkspace { STUDIO, READING, MINIMAL }
 
 object BuiltInWorkspaces {
-    fun apply(settings: AppSettings, workspace: BuiltInWorkspace): AppSettings =
-        settings.applyToolboxWorkspace(snapshot(workspace))
-
     /** Upgrades both orientations without touching input, brush or document preferences. */
     fun unified(settings: AppSettings): AppSettings {
         val studio = snapshot(BuiltInWorkspace.STUDIO)
@@ -21,11 +15,7 @@ object BuiltInWorkspaces {
     fun snapshot(workspace: BuiltInWorkspace): ToolboxWorkspaceSnapshot {
         val defaults = AppSettings()
         return when (workspace) {
-            BuiltInWorkspace.STUDIO,
-            // Existing shortcuts/profile files can still request either legacy name. They now
-            // intentionally resolve to the same unified Procreate-style desk.
-            BuiltInWorkspace.NOTE,
-            BuiltInWorkspace.DRAWING -> defaults.copy(
+            BuiltInWorkspace.STUDIO -> defaults.copy(
                 showPageRail = false,
                 showBrushPanel = false,
                 showLayerPanel = false,
@@ -51,7 +41,6 @@ object BuiltInWorkspaces {
                 toolbarDock = ToolbarDock.TOP,
                 verticalToolbar = false,
             )
-            BuiltInWorkspace.RESET -> defaults
         }.captureToolboxWorkspace()
     }
 }
