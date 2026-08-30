@@ -44,6 +44,19 @@ docs/
 /*.docx
 /*.pdf
 
+# User-owned brush corpus and local compatibility reports
+real-brush-fixtures/
+brush-corpus/
+.local-brush-corpus/
+*compatibility-report*.json
+*compatibility-report*.txt
+*compatibility-report*.md
+*.sut
+*.abr
+*.brush
+*.brushset
+*.procreate
+
 # Packaged binaries are reproducible from source
 dist/*.apk
 dist/*.aab
