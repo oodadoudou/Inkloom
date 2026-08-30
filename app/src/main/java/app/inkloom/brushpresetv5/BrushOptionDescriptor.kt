@@ -276,6 +276,35 @@ object BrushOptionDescriptors {
         }
     }
 
+    /**
+     * Panels that are safe to expose for this concrete production preset.
+     *
+     * Family capabilities describe semantic relevance, while
+     * [BrushExecutionCapabilityResolver] is the final renderer contract. An option is visible only
+     * when a representative edit still compiles to a program the production dispatcher can
+     * execute. This prevents the editor from offering controls such as realtime taper before the
+     * corresponding PaintOp exists.
+     */
+    fun productionPanels(preset: BrushPresetV5): List<Pair<BrushOptionGroup, List<BrushOptionDescriptor>>> =
+        panels(preset.identity.family).mapNotNull { (group, options) ->
+            val executable = options.filter { option -> option.hasExecutableEdit(preset) }
+            if (executable.isEmpty()) null else group to executable
+        }
+
+    private fun BrushOptionDescriptor.hasExecutableEdit(preset: BrushPresetV5): Boolean {
+        val current = get(preset)
+        val probe = when {
+            id.endsWith("Enabled") -> if (current >= .5f) 0f else 1f
+            id.endsWith("CurveShape") -> ((current.toInt() + 1) % PressureCurveShape.entries.size).toFloat()
+            current != valueRange.endInclusive -> valueRange.endInclusive
+            current != valueRange.start -> valueRange.start
+            else -> defaultValue
+        }
+        val candidate = apply(preset, probe)
+        return BrushExecutionCapabilityResolver.resolve(CompiledBrushProgramV5.compile(candidate)) ==
+            BrushExecutionCapabilityResolution.Supported
+    }
+
     fun byId(id: String): BrushOptionDescriptor? = ALL[id]
 
     fun option(id: String): BrushOptionDescriptor = requireNotNull(byId(id)) { "Unknown option: $id" }

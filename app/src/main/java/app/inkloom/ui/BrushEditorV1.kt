@@ -19,6 +19,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -77,11 +78,44 @@ fun BrushEditorV1Dialog(
     var session by remember(source.id) {
         mutableStateOf(EditorWorkingCopy.start(source))
     }
-    var showScratchPad by remember { mutableStateOf(true) }
     val lang = currentLanguage()
+    var showScratchPad by remember { mutableStateOf(true) }
+    var saveAsOpen by remember { mutableStateOf(false) }
+    var saveAsName by remember(source.id) {
+        mutableStateOf(session.current.identity.name + brTr(lang, " - Copy", " - 副本"))
+    }
 
     val family = session.current.identity.family
-    val panels = remember(family) { BrushOptionDescriptors.panels(family) }
+    val panels = remember(session.current) { BrushOptionDescriptors.productionPanels(session.current) }
+
+    if (saveAsOpen) {
+        AlertDialog(
+            onDismissRequest = { saveAsOpen = false },
+            title = { Text(brTr(lang, "Save brush as", "笔刷另存为")) },
+            text = {
+                OutlinedTextField(
+                    value = saveAsName,
+                    onValueChange = { saveAsName = it },
+                    label = { Text(brTr(lang, "Brush name", "笔刷名称")) },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = saveAsName.isNotBlank(),
+                    onClick = {
+                        val result = if (source.isFactory) session.commit(saveAsName.trim())
+                        else session.commitAsNew(saveAsName.trim())
+                        onSaveAs(result.preset)
+                    },
+                ) { Text(brTr(lang, "Save", "保存")) }
+            },
+            dismissButton = {
+                TextButton(onClick = { saveAsOpen = false }) { Text(brTr(lang, "Cancel", "取消")) }
+            },
+        )
+        return
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -127,12 +161,16 @@ fun BrushEditorV1Dialog(
                     onResetToFactory?.let { reset ->
                         TextButton(onClick = reset) { Text(brTr(lang, "Reset", "重置")) }
                     }
+                    TextButton(onClick = {
+                        val duplicateName = session.current.identity.name + brTr(lang, " - Copy", " - 副本")
+                        onSaveAs(session.commitAsNew(duplicateName).preset)
+                    }) { Text(brTr(lang, "Duplicate", "复制")) }
+                    TextButton(onClick = { saveAsOpen = true }) { Text(brTr(lang, "Save As", "另存为")) }
                 }
                 TextButton(onClick = onDismiss) { Text(brTr(lang, "Cancel", "取消")) }
                 TextButton(onClick = {
                     if (source.isFactory) {
-                        val result = session.commit()
-                        onSaveAs(result.preset)
+                        saveAsOpen = true
                     } else {
                         onSaveInPlace(session.current)
                     }
