@@ -802,8 +802,6 @@ fun InkloomApp(initialIntent: Intent?) {
     }
 }
 
-private enum class LibraryFilter { ALL, FAVORITES, ARCHIVED, TRASH, PDF }
-
 @Composable
 private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>, pageTemplates: PageTemplateLibrary, onOpen: (InkDocument) -> Unit, onNewNote: (String, CoverStyle, String, Long) -> Unit, onImportCover: (String, String, Long) -> Unit, onImport: () -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, onCreateFolder: (String, String?) -> Unit, onMoveToFolder: (String, String?) -> Unit, onDeleteFolder: (String) -> Unit, onSettings: () -> Unit) {
     var filter by remember { mutableStateOf(LibraryFilter.ALL) }
@@ -815,15 +813,8 @@ private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>
     var newNoteCover by remember { mutableStateOf(CoverStyle.BLACK) }
     var newNoteTemplateId by remember { mutableStateOf(PageTemplateCatalog.blank.id) }
     var newNotePaperColor by remember { mutableLongStateOf(PaperColorCatalog.WHITE) }
-    val visible = documents.filter { document ->
-        val matchesSearch = search.isBlank() || document.title.contains(search, true) || document.tags.any { it.contains(search, true) } || document.pages.any { PageSearch.matches(it, search) }
-        matchesSearch && (folderId == null || document.folderId == folderId) && when (filter) {
-            LibraryFilter.ALL -> document.trashedAt == null && document.archivedAt == null
-            LibraryFilter.FAVORITES -> document.favorite && document.trashedAt == null && document.archivedAt == null
-            LibraryFilter.ARCHIVED -> document.archivedAt != null && document.trashedAt == null
-            LibraryFilter.TRASH -> document.trashedAt != null
-            LibraryFilter.PDF -> document.pages.any { it.background is PageBackground.Pdf } && document.trashedAt == null && document.archivedAt == null
-        }
+    val visible = remember(documents, filter, folderId, search) {
+        LibraryDocumentQuery.visible(documents, filter, folderId, search)
     }
     BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         val compact = maxWidth < 700.dp
@@ -836,6 +827,7 @@ private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>
             if (compact) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     item { FilterChip(selected = filter == LibraryFilter.ALL, onClick = { filter = LibraryFilter.ALL }, label = { Text(tr("Library", "资料库")) }) }
+                    item { FilterChip(selected = filter == LibraryFilter.RECENT, onClick = { filter = LibraryFilter.RECENT }, label = { Text(tr("Recents", "最近使用")) }) }
                     item { FilterChip(selected = filter == LibraryFilter.FAVORITES, onClick = { filter = LibraryFilter.FAVORITES }, label = { Text(tr("Favorites", "收藏")) }) }
                     item { FilterChip(selected = filter == LibraryFilter.ARCHIVED, onClick = { filter = LibraryFilter.ARCHIVED }, label = { Text(tr("Archive", "归档")) }) }
                     item { FilterChip(selected = filter == LibraryFilter.TRASH, onClick = { filter = LibraryFilter.TRASH }, label = { Text(tr("Trash", "废纸篓")) }) }
@@ -857,14 +849,15 @@ private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>
             Spacer(Modifier.height(26.dp))
             OutlinedTextField(value = search, onValueChange = { search = it }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, placeholder = { Text(tr("Search notes", "搜索笔记")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(20.dp))
-            Text(tr("Recents", "最近使用"), fontSize = 22.sp)
-            Spacer(Modifier.height(14.dp))
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                items(visible.take(4)) { NotebookCard(it, Modifier.width(230.dp).height(215.dp), onOpen, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, folders, onMoveToFolder) }
-            }
-            Spacer(Modifier.height(28.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(tr("All Notes", "全部笔记"), fontSize = 22.sp, modifier = Modifier.weight(1f))
+                Text(when (filter) {
+                    LibraryFilter.ALL -> tr("All Notes", "全部笔记")
+                    LibraryFilter.RECENT -> tr("Recents", "最近使用")
+                    LibraryFilter.FAVORITES -> tr("Favorites", "收藏")
+                    LibraryFilter.ARCHIVED -> tr("Archive", "归档")
+                    LibraryFilter.TRASH -> tr("Trash", "废纸篓")
+                    LibraryFilter.PDF -> "PDF"
+                }, fontSize = 22.sp, modifier = Modifier.weight(1f))
                 FilterChip(selected = filter == LibraryFilter.ALL, onClick = { filter = LibraryFilter.ALL }, label = { Text(tr("All", "全部")) })
                 Spacer(Modifier.width(8.dp))
                 FilterChip(selected = filter == LibraryFilter.FAVORITES, onClick = { filter = LibraryFilter.FAVORITES }, label = { Text(tr("Favorites", "收藏")) })
@@ -952,7 +945,7 @@ private fun LibraryRail(filter: LibraryFilter, onFilter: (LibraryFilter) -> Unit
         BrandMark(tr("Library", "资料库"))
         Spacer(Modifier.height(34.dp))
         RailItem(Icons.Outlined.Book, tr("Library", "资料库"), filter == LibraryFilter.ALL) { onFilter(LibraryFilter.ALL) }
-        RailItem(Icons.Outlined.History, tr("Recents", "最近使用"), filter == LibraryFilter.ALL) { onFilter(LibraryFilter.ALL) }
+        RailItem(Icons.Outlined.History, tr("Recents", "最近使用"), filter == LibraryFilter.RECENT) { onFilter(LibraryFilter.RECENT) }
         RailItem(Icons.Outlined.StarBorder, tr("Favorites", "收藏"), filter == LibraryFilter.FAVORITES) { onFilter(LibraryFilter.FAVORITES) }
         RailItem(Icons.Outlined.Archive, tr("Archive", "归档"), filter == LibraryFilter.ARCHIVED) { onFilter(LibraryFilter.ARCHIVED) }
         RailItem(Icons.Outlined.Delete, tr("Trash", "废纸篓"), filter == LibraryFilter.TRASH) { onFilter(LibraryFilter.TRASH) }

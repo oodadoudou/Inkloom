@@ -153,6 +153,13 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("Inkloom").assertIsDisplayed()
     }
 
+    @Test fun recentsIsAnIndependentLibraryFilterInsteadOfADuplicateShelf() {
+        assertEquals(1, composeRule.onAllNodesWithText("Recents").fetchSemanticsNodes().size)
+        composeRule.onNodeWithText("Recents").performClick()
+        composeRule.onNodeWithText("All Notes").assertDoesNotExist()
+        assertEquals(2, composeRule.onAllNodesWithText("Recents").fetchSemanticsNodes().size)
+    }
+
     @Test fun creatingNotebookAppliesChosenPaperTemplateAndComfortColor() {
         val title = "Warm grid creation test"
         composeRule.onNodeWithText("New Note").performClick()
