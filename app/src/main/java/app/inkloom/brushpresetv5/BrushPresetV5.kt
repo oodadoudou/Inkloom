@@ -189,6 +189,8 @@ data class TipTextureSettings(
     val assetPaths: List<String> = emptyList(),
     /** Per-grade tooth strength for procedural graphite tips (0..1). */
     val toothStrength: Float = .8f,
+    /** Null disables thresholding; otherwise source alpha is binarized at this normalized cutoff. */
+    val alphaThreshold: Float? = null,
 )
 
 @Serializable
@@ -209,7 +211,19 @@ data class StampSettings(
     val particlesPerPlot: Int = 1,
     val continuousPlot: Boolean = false,
     val spray: SpraySettings? = null,
+    val transferMode: DabTransferMode = DabTransferMode.UNIFORM_GLAZE,
 )
+
+/** Per-dab transfer behavior reconstructed from Procreate's archived rendering flags. */
+@Serializable
+enum class DabTransferMode {
+    LIGHT_GLAZE,
+    UNIFORM_GLAZE,
+    INTENSE_GLAZE,
+    HEAVY_GLAZE,
+    UNIFORM_BLENDING,
+    INTENSE_BLENDING,
+}
 
 @Serializable
 data class SpraySettings(

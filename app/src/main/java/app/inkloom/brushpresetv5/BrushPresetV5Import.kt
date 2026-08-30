@@ -5,6 +5,7 @@ import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
 import app.inkloom.model.ImportedBrushGraphite
 import app.inkloom.document.CspBrushGap
+import app.inkloom.document.ProcreateRenderingMode
 import app.inkloom.importer.BrushSemanticMapper
 
 /**
@@ -187,6 +188,7 @@ object BrushPresetV5Import {
                     assetPath = source.tipPreviewPath,
                     assetPaths = source.tipPreviewPaths.ifEmpty { listOfNotNull(source.tipPreviewPath) },
                     toothStrength = source.hardness,
+                    alphaThreshold = source.alphaThreshold.takeIf { source.alphaThresholdEnabled },
                 )
                 family == BrushFamily.PENCIL -> TipTextureSettings(
                     procedural = true,
@@ -223,6 +225,9 @@ object BrushPresetV5Import {
                     randomRotationDegrees = kotlin.math.abs(it.randomRotationDegrees),
                     particlesPerPlot = it.stampCount.coerceIn(1, 32),
                     continuousPlot = it.continuousPlot,
+                    transferMode = if (source.format == BrushFormat.PROCREATE) {
+                        source.procreateRenderingMode.toV5TransferMode()
+                    } else DabTransferMode.UNIFORM_GLAZE,
                     spray = it.takeIf(ImportedBrush::spray)?.let { spray ->
                         SpraySettings(
                             particleSize = spray.sprayParticleSize.coerceAtLeast(.01f),
@@ -323,6 +328,15 @@ object BrushPresetV5Import {
         source.id.startsWith("system-decoration-") || source.groupName.contains("decoration", true) -> BrushFamily.DECORATION
         source.proceduralPaperGrainEnabled || source.graphiteTiltWidth > .0001f || source.id.contains("pencil", true) -> BrushFamily.PENCIL
         else -> BrushFamily.INK
+    }
+
+    private fun ProcreateRenderingMode.toV5TransferMode(): DabTransferMode = when (this) {
+        ProcreateRenderingMode.LIGHT_GLAZE -> DabTransferMode.LIGHT_GLAZE
+        ProcreateRenderingMode.UNIFORM_GLAZE -> DabTransferMode.UNIFORM_GLAZE
+        ProcreateRenderingMode.INTENSE_GLAZE -> DabTransferMode.INTENSE_GLAZE
+        ProcreateRenderingMode.HEAVY_GLAZE -> DabTransferMode.HEAVY_GLAZE
+        ProcreateRenderingMode.UNIFORM_BLENDING -> DabTransferMode.UNIFORM_BLENDING
+        ProcreateRenderingMode.INTENSE_BLENDING -> DabTransferMode.INTENSE_BLENDING
     }
 
     private fun dualCompositeMode(code: Int): DualCompositeMode = when (code) {

@@ -134,10 +134,15 @@ object BrushSemanticMapper {
         if (brush.blur > 0f || brush.blurPressureEnabled || secondary(brush.blurSecondaryDynamics)) {
             preserved("$prefix.blur", "Brush-tip blur and its dynamics are retained but not executed by V5.")
         }
-        if (brush.alphaThresholdEnabled) preserved("$prefix.alphaThreshold", "Alpha-threshold metadata is retained; the V5 tip program does not execute it.")
+        if (brush.alphaThresholdEnabled) executed("$prefix.alphaThreshold", "TipTextureSettings.alphaThreshold")
         if (brush.antiAliasMode != CspAntiAlias.MEDIUM) preserved("$prefix.antiAlias", "Source anti-alias mode is retained; V5 owns its tip sampling policy.")
         if (brush.format == BrushFormat.PROCREATE && brush.procreateRenderingMode != ProcreateRenderingMode.UNIFORM_GLAZE) {
-            preserved("PROCREATE.renderingMode", "The proprietary rendering mode is retained but not executed by V5.")
+            executed(
+                "PROCREATE.renderingMode",
+                "StampSettings.transferMode",
+                SemanticFidelity.APPROXIMATE,
+                "V5 reconstructs the archived maximum/modulated/recursive transfer flags as deterministic per-dab alpha transfer.",
+            )
         }
         if (brush.format == BrushFormat.PROCREATE &&
             (brush.procreateBrushBlendMode != ProcreateBrushBlend.NORMAL || brush.procreateBurntEdgeBlendMode != ProcreateBrushBlend.MULTIPLY || brush.procreateLuminanceBlending)

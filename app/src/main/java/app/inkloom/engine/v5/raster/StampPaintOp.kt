@@ -12,6 +12,7 @@ import app.inkloom.engine.v5.surface.PixelRect
 import app.inkloom.engine.v5.surface.PixelTileKey
 import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot
+import app.inkloom.brushpresetv5.DabTransferMode
 import kotlin.math.atan2
 import kotlin.math.ceil
 import kotlin.math.cos
@@ -69,6 +70,7 @@ data class StampBrushDefinition(
     val scatterBias: Float = 0f,
     val randomRotationRadians: Float = 0f,
     val repeatStationarySamples: Boolean = false,
+    val transferMode: DabTransferMode = DabTransferMode.UNIFORM_GLAZE,
     val blend: DryBlend = DryBlend.SOURCE_OVER,
 ) {
     init {
@@ -370,7 +372,7 @@ class StampPaintOp(
                             )
                         )
                         for (y in overlap.top until overlap.bottom) for (x in overlap.left until overlap.right) {
-                            var coverage = coverageAt(dab, definition, stream, x, y)
+                            var coverage = transferredCoverage(coverageAt(dab, definition, stream, x, y), definition.transferMode)
                             if (coverage <= 0f) continue
                             selection?.let { mask ->
                                 val selectionX = ((x + .5f) * mask.logicalWidth / document.logicalWidth)
@@ -382,7 +384,9 @@ class StampPaintOp(
                             if (coverage <= 0f) continue
                             val index = (y - tileTop) * stride + x - tileLeft
                             pixels[index] = when (definition.blend) {
-                                DryBlend.SOURCE_OVER -> sourceOver(pixels[index], definition.colorArgb, coverage)
+                                DryBlend.SOURCE_OVER -> if (definition.transferMode.usesMaximumTransfer()) {
+                                    maximumTransfer(pixels[index], definition.colorArgb, coverage)
+                                } else sourceOver(pixels[index], definition.colorArgb, coverage)
                                 DryBlend.DESTINATION_OUT -> eraseCoverageOver(pixels[index], coverage)
                                 DryBlend.SOURCE_ATOP -> sourceOver(pixels[index], definition.colorArgb, coverage)
                             }
@@ -580,6 +584,26 @@ class StampPaintOp(
     private enum class State { ACTIVE, FINISHED, PUBLISHED, CANCELED }
 
     companion object {
+        internal fun transferredCoverage(alpha: Float, mode: DabTransferMode): Float {
+            val exponent = when (mode) {
+                DabTransferMode.LIGHT_GLAZE -> .65f
+                DabTransferMode.UNIFORM_GLAZE -> 1f
+                DabTransferMode.INTENSE_GLAZE -> 1.25f
+                DabTransferMode.HEAVY_GLAZE -> 1.5f
+                DabTransferMode.UNIFORM_BLENDING -> 1.75f
+                DabTransferMode.INTENSE_BLENDING -> 2f
+            }
+            return (1f - (1f - alpha.coerceIn(0f, 1f)).pow(exponent)).coerceIn(0f, 1f)
+        }
+
+        private fun DabTransferMode.usesMaximumTransfer(): Boolean =
+            this == DabTransferMode.LIGHT_GLAZE || this == DabTransferMode.HEAVY_GLAZE
+
+        private fun maximumTransfer(destination: Int, colorArgb: Int, coverage: Float): Int {
+            val incoming = sourcePixel(colorArgb, coverage)
+            return if ((incoming ushr 24) > (destination ushr 24)) incoming else destination
+        }
+
         internal fun combineDualCoverage(primary: Int, secondary: Int, mode: DualBrushCompositeMode): Int {
             val base = primary.coerceIn(0, 255) / 255f
             val blend = secondary.coerceIn(0, 255) / 255f

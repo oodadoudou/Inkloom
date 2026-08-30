@@ -1,5 +1,6 @@
 package app.inkloom.engine.v5.raster
 
+import app.inkloom.brushpresetv5.DabTransferMode
 import app.inkloom.engine.v5.coordinates.DocumentPoint
 import app.inkloom.engine.v5.material.BrushTipMask
 import app.inkloom.engine.v5.stroke.PaintBatch
@@ -13,6 +14,20 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class StampPaintOpTest {
+    @Test
+    fun procreateRenderingModesProduceOrderedDeterministicDabTransfer() {
+        val alpha = .35f
+        val light = StampPaintOp.transferredCoverage(alpha, DabTransferMode.LIGHT_GLAZE)
+        val uniform = StampPaintOp.transferredCoverage(alpha, DabTransferMode.UNIFORM_GLAZE)
+        val intense = StampPaintOp.transferredCoverage(alpha, DabTransferMode.INTENSE_GLAZE)
+        val blending = StampPaintOp.transferredCoverage(alpha, DabTransferMode.INTENSE_BLENDING)
+
+        assertTrue(light < uniform)
+        assertTrue(uniform < intense)
+        assertTrue(intense < blending)
+        assertEquals(uniform, StampPaintOp.transferredCoverage(alpha, DabTransferMode.UNIFORM_GLAZE), .000001f)
+    }
+
     @Test
     fun dualBrushCombinesTwoPersistentCoverageStreamsBeforeOneLayerDeposit() {
         val surface = PixelTileSurface(64, 64)

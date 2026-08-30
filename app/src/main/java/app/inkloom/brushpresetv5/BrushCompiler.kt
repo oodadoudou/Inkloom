@@ -50,6 +50,7 @@ class CompiledBrushProgramV5 private constructor(
         val assetPath: String?,
         val assetPaths: List<String>,
         val toothStrength: Float,
+        val alphaThreshold: Float?,
     )
 
     data class CompiledDeposition(val opacity: Float, val flow: Float, val buildup: Float)
@@ -112,6 +113,9 @@ class CompiledBrushProgramV5 private constructor(
                 require(stamp.particlesPerPlot in 1..32)
                 stamp.spray?.let(::requireValidSpray)
             }
+            preset.tipTexture?.alphaThreshold?.let { threshold ->
+                require(threshold.isFinite() && threshold in 0f..1f)
+            }
             preset.textureGrain?.let(::requireValidTextureGrain)
             preset.dual?.let { dual ->
                 require(dual.tipAssetPaths.isNotEmpty() && dual.tipAssetPaths.none(String::isBlank))
@@ -146,6 +150,7 @@ class CompiledBrushProgramV5 private constructor(
                             assetPath = importedTipPaths.firstOrNull(),
                             assetPaths = importedTipPaths,
                             toothStrength = it.toothStrength,
+                            alphaThreshold = it.alphaThreshold,
                         )
                     },
                 ),

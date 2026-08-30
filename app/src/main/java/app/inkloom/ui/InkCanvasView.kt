@@ -4465,9 +4465,14 @@ class InkCanvasView(context: Context) : View(context) {
                 return mask to GrainBehavior.offset(seed, settings.offsetJitter)
             }
             if (program.backend != RenderBackendV5.WET_PAINT && (tipAssets.isNotEmpty() || program.dual != null)) {
-                val masks = if (tipAssets.isNotEmpty()) tipAssets.map { tipAsset ->
-                    v5BrushTipMasks.resolve(
-                        BrushTipMaskRequest(tipAsset, program.tip.hardness.coerceIn(0f, 1f)),
+                    val masks = if (tipAssets.isNotEmpty()) tipAssets.map { tipAsset ->
+                        v5BrushTipMasks.resolve(
+                            BrushTipMaskRequest(
+                                tipAsset,
+                                program.tip.hardness.coerceIn(0f, 1f),
+                                alphaThresholdEnabled = program.tip.tipTexture?.alphaThreshold != null,
+                                alphaThreshold = program.tip.tipTexture?.alphaThreshold ?: 0f,
+                            ),
                     ) ?: return null
                 } else listOf(BrushTipMask.solidCircle(96, program.tip.hardness.coerceIn(0f, 1f)))
                 val (grain, grainOffset) = resolveTextureGrain(program.textureGrain, program.renderSeed)
@@ -4525,6 +4530,7 @@ class InkCanvasView(context: Context) : View(context) {
                         ((stampProgram?.randomRotationDegrees ?: 0f) + (sprayProgram?.randomRotationDegrees ?: 0f)).toDouble(),
                     ).toFloat(),
                     repeatStationarySamples = stampProgram?.continuousPlot == true,
+                    transferMode = stampProgram?.transferMode ?: app.inkloom.brushpresetv5.DabTransferMode.UNIFORM_GLAZE,
                     blend = paintBlend,
                 )
                 val secondaryDefinitions = program.dual?.let { dual ->
@@ -4672,7 +4678,12 @@ class InkCanvasView(context: Context) : View(context) {
                     val authored = program.wetMix ?: return null
                     val wetTips = tipAssets.map { tipAsset ->
                         v5BrushTipMasks.resolve(
-                            BrushTipMaskRequest(tipAsset, program.tip.hardness.coerceIn(0f, 1f)),
+                            BrushTipMaskRequest(
+                                tipAsset,
+                                program.tip.hardness.coerceIn(0f, 1f),
+                                alphaThresholdEnabled = program.tip.tipTexture?.alphaThreshold != null,
+                                alphaThreshold = program.tip.tipTexture?.alphaThreshold ?: 0f,
+                            ),
                         ) ?: return null
                     }
                     val wet = WetPaintDefinition(
@@ -4698,6 +4709,8 @@ class InkCanvasView(context: Context) : View(context) {
                         sizePressure = sizeResponse,
                         sizeTilt = sizeTiltResponse,
                         blend = paintBlend,
+                        transferMode = stampProgram?.transferMode
+                            ?: app.inkloom.brushpresetv5.DabTransferMode.UNIFORM_GLAZE,
                     )
                     return V5PaintConfiguration(
                         WetPaintOp(surface, wet, selection, sampleTransforms),

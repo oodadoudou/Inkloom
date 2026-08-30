@@ -1,5 +1,6 @@
 package app.inkloom.engine.v5.raster
 
+import app.inkloom.brushpresetv5.DabTransferMode
 import app.inkloom.engine.v5.material.PressureResponse
 import app.inkloom.engine.v5.material.TiltResponse
 import app.inkloom.engine.v5.material.BrushTipMask
@@ -41,6 +42,7 @@ data class WetPaintDefinition(
     val sizePressure: PressureResponse = PressureResponse.CONSTANT,
     val sizeTilt: TiltResponse = TiltResponse.CONSTANT,
     val blend: DryBlend = DryBlend.SOURCE_OVER,
+    val transferMode: DabTransferMode = DabTransferMode.UNIFORM_GLAZE,
 ) {
     init {
         require(diameterPixels.isFinite() && diameterPixels in .1f..4096f)
@@ -276,7 +278,10 @@ class WetPaintOp(
                             coverage *= mask.alphaAt(sx, sy) / 255f
                         }
                         if (coverage <= 0f) continue
-                        val deposition = baseDeposition * coverage
+                        val deposition = StampPaintOp.transferredCoverage(
+                            baseDeposition * coverage,
+                            definition.transferMode,
+                        )
                         val index = (y - tileTop) * stride + x - tileLeft
                         pixels[index] = track.reservoir.sourceOver(pixels[index], deposition)
                     }
