@@ -125,7 +125,6 @@ import app.inkloom.document.CspDualBrushCompositor
 import app.inkloom.document.CspAntiAlias
 import app.inkloom.document.CspBrushGap
 import app.inkloom.document.CspTextureComposite
-import app.inkloom.document.CspStrokeTextureCompositor
 import app.inkloom.document.CspColorMixMode
 import app.inkloom.document.CspPigmentMixingMode
 import app.inkloom.document.CspBrightnessCorrection
