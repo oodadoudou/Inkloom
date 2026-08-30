@@ -57,6 +57,27 @@ class RasterSelectionTransformV5Test {
         })
     }
 
+    @Test fun negativeScaleFlipsSelectedPixelsAndMaskWithoutChangingBounds() {
+        val surface = selectedSquareSurface().also { pixels ->
+            pixels.beginWrite("asymmetric colors").run {
+                editTile(PixelTileKey(0, 0), PixelRect(8, 8, 16, 16)) { tile, stride ->
+                    for (y in 8 until 16) for (x in 8 until 16) {
+                        tile[y * stride + x] = if (x < 12) Color.RED else Color.BLUE
+                    }
+                }
+                commit().close()
+            }
+        }
+        RasterSelectionTransformSession(surface, squareSelection().snapshot()).use { session ->
+            val preview = session.update(SelectionAffineTransform(12f, 12f, scaleX = -1f))
+            assertEquals(PixelRect(8, 8, 16, 16), preview.selection.nonZeroBounds())
+            session.commit()
+        }
+
+        assertEquals(Color.BLUE, surface.pixelAt(9, 10))
+        assertEquals(Color.RED, surface.pixelAt(14, 10))
+    }
+
     @Test fun fragmentedTwoKSelectionTransformStaysWithinInteractiveGateWithoutFullMaskBitmap() {
         val size = 2048
         val surface = PixelTileSurface(size, size, tileSize = 128)

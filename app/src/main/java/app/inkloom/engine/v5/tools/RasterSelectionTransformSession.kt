@@ -23,7 +23,7 @@ data class SelectionAffineTransform(
 ) {
     init {
         require(centerX.isFinite() && centerY.isFinite())
-        require(scaleX.isFinite() && scaleX > 0f && scaleY.isFinite() && scaleY > 0f)
+        require(scaleX.isFinite() && scaleX != 0f && scaleY.isFinite() && scaleY != 0f)
         require(rotationDegrees.isFinite() && translateX.isFinite() && translateY.isFinite())
     }
 }

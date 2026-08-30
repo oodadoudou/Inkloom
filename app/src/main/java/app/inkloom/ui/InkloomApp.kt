@@ -2877,6 +2877,8 @@ private fun EditorScreen(
                     onFeather = { value -> if (canvasView?.featherSelection(value) == true) selectionFeather = value },
                     onFill = { canvasView?.fillSelection() },
                     onTransform = { canvasView?.enterFreeTransform() },
+                    onFlipHorizontal = { canvasView?.flipSelection(horizontal = true) },
+                    onFlipVertical = { canvasView?.flipSelection(horizontal = false) },
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 52.dp),
                 )
                 if (tool == EditorTool.FILL) FillOptionsLauncher(
@@ -9983,6 +9985,8 @@ private fun SelectionLauncher(
     onFeather: (Float) -> Unit,
     onFill: () -> Unit,
     onTransform: () -> Unit,
+    onFlipHorizontal: () -> Unit,
+    onFlipVertical: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var settingsOpen by remember { mutableStateOf(false) }
@@ -10016,6 +10020,8 @@ private fun SelectionLauncher(
             SelectionLauncherButton(Icons.Outlined.DeleteOutline, tr("Delete selection", "删除选区"), onDelete)
             VerticalDivider(Modifier.height(22.dp), color = OutlineSoft)
             SelectionLauncherButton(Icons.Outlined.Transform, tr("Free transform", "自由变换"), onTransform)
+            SelectionLauncherButton(Icons.Outlined.Flip, tr("Flip horizontal", "水平翻转"), onFlipHorizontal)
+            SelectionLauncherButton(Icons.Outlined.Flip, tr("Flip vertical", "垂直翻转"), onFlipVertical)
             Box {
                 SelectionLauncherButton(Icons.Outlined.Tune, tr("Selection settings", "选区设置")) { settingsOpen = true }
                 DropdownMenu(settingsOpen, { settingsOpen = false }, Modifier.width(264.dp)) {

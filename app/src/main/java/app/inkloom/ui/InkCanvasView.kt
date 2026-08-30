@@ -4253,8 +4253,8 @@ class InkCanvasView(context: Context) : View(context) {
             SelectionAffineTransform(
                 centerX = selectionTransformCenterX * pageModelWidth,
                 centerY = selectionTransformCenterY * pageModelHeight,
-                scaleX = scaleX.coerceAtLeast(.01f),
-                scaleY = scaleY.coerceAtLeast(.01f),
+                scaleX = scaleX.nonZeroTransformScale(),
+                scaleY = scaleY.nonZeroTransformScale(),
                 rotationDegrees = rotation,
                 translateX = translateX,
                 translateY = translateY,
@@ -5159,6 +5159,21 @@ class InkCanvasView(context: Context) : View(context) {
 
     fun rotateSelection(degrees: Float) = transformSelection(1f, degrees)
 
+    fun flipSelection(horizontal: Boolean): Boolean {
+        val bounds = selectionBounds() ?: return false
+        selectionTransformCenterX = bounds.centerX()
+        selectionTransformCenterY = bounds.centerY()
+        if (!beginRasterSelectionTransform()) return false
+        updateRasterSelectionTransform(
+            scaleX = if (horizontal) -1f else 1f,
+            scaleY = if (horizontal) 1f else -1f,
+            rotation = 0f,
+            translateX = 0f,
+            translateY = 0f,
+        )
+        return finishRasterSelectionTransform()
+    }
+
     fun copySelection() {
         if (copySelectionToClipboard()) pasteSelectionFromClipboard()
     }
@@ -5492,6 +5507,11 @@ class InkCanvasView(context: Context) : View(context) {
         if (!beginRasterSelectionTransform()) return
         updateRasterSelectionTransform(scale, scale, rotationDegrees, 0f, 0f)
         finishRasterSelectionTransform()
+    }
+
+    private fun Float.nonZeroTransformScale(): Float = when {
+        this >= 0f -> coerceAtLeast(.01f)
+        else -> coerceAtMost(-.01f)
     }
 
     private companion object {
