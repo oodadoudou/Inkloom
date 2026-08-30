@@ -20,6 +20,10 @@ object BrushPresetV5Import {
     fun convertOrReject(source: ImportedBrush): ImportedBrush {
         val audited = BrushSemanticMapper.apply(source)
         return runCatching {
+            require(audited.compatibility != Compatibility.FAILED) {
+                audited.report.firstOrNull { it.contains("failed", ignoreCase = true) }
+                    ?: "SOURCE_DECODE_OR_ASSET_VALIDATION_FAILED"
+            }
             requireFullyExecutableSemantics(audited)
             val converted = convertDecodedSource(audited)
             when (val capability = BrushExecutionCapabilityResolver.resolve(
