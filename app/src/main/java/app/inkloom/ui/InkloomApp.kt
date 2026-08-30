@@ -812,6 +812,11 @@ private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>
     var search by remember { mutableStateOf("") }
     var folderId by remember { mutableStateOf<String?>(null) }
     var newNoteOpen by remember { mutableStateOf(false) }
+    var draggingDocumentId by remember { mutableStateOf<String?>(null) }
+    var documentDragPosition by remember { mutableStateOf<Offset?>(null) }
+    val documentCardBounds = remember { mutableStateMapOf<String, Rect>() }
+    val folderDropBounds = remember { mutableStateMapOf<String, Rect>() }
+    val libraryLanguage = LocalUiLanguage.current
     val untitledNoteLabel = tr("Untitled Note", "未命名笔记")
     var newNoteTitle by remember { mutableStateOf(untitledNoteLabel) }
     var newNoteCover by remember { mutableStateOf(CoverStyle.BLACK) }
@@ -820,11 +825,58 @@ private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>
     val visible = remember(documents, filter, folderId, search) {
         LibraryDocumentQuery.visible(documents, filter, folderId, search)
     }
+    fun finishDocumentDrag() {
+        val documentId = draggingDocumentId
+        val position = documentDragPosition
+        val targetFolderId = position?.let { point -> folderDropBounds.entries.firstOrNull { (_, bounds) -> bounds.contains(point) }?.key }
+        if (documentId != null && targetFolderId != null) onMoveToFolder(documentId, targetFolderId)
+        draggingDocumentId = null
+        documentDragPosition = null
+    }
+    fun Modifier.libraryDocumentDrag(document: InkDocument): Modifier = this
+        .onGloballyPositioned { coordinates -> documentCardBounds[document.id] = coordinates.boundsInWindow() }
+        .graphicsLayer { alpha = if (draggingDocumentId == document.id) .66f else 1f }
+        .semantics {
+            contentDescription = libraryLanguage.text(
+                "Notebook ${document.title}. Long press to move.",
+                "笔记本 ${document.title}。长按移动。",
+            )
+        }
+        .pointerInput(document.id) {
+            detectDragGesturesAfterLongPress(
+                onDragStart = { local ->
+                    draggingDocumentId = document.id
+                    documentDragPosition = documentCardBounds[document.id]?.topLeft?.plus(local)
+                },
+                onDrag = { change, _ ->
+                    change.consume()
+                    documentDragPosition = documentCardBounds[document.id]?.topLeft?.plus(change.position)
+                },
+                onDragEnd = ::finishDocumentDrag,
+                onDragCancel = {
+                    draggingDocumentId = null
+                    documentDragPosition = null
+                },
+            )
+        }
     BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         val compact = maxWidth < 700.dp
         Row(Modifier.fillMaxSize()) {
             if (!compact) {
-        LibraryRail(filter, { filter = it; folderId = null }, folders, folderId, { folderId = it; filter = LibraryFilter.ALL }, onCreateFolder, onRenameFolder, onDeleteFolder, onSettings)
+        LibraryRail(
+            filter,
+            { filter = it; folderId = null },
+            folders,
+            folderId,
+            { folderId = it; filter = LibraryFilter.ALL },
+            onCreateFolder,
+            onRenameFolder,
+            onDeleteFolder,
+            onSettings,
+            draggingDocument = draggingDocumentId != null,
+            dragPosition = documentDragPosition,
+            onFolderBounds = { id, bounds -> folderDropBounds[id] = bounds },
+        )
                 VerticalDivider(color = OutlineSoft)
             }
             Column(Modifier.weight(1f).fillMaxHeight().padding(horizontal = if (compact) 16.dp else 32.dp, vertical = 22.dp)) {
@@ -884,7 +936,7 @@ private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>
             Spacer(Modifier.height(12.dp))
             when (layout) {
                 LibraryLayout.LIST -> LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(visible, key = { it.id }) { NotebookCard(it, Modifier.fillMaxWidth().height(220.dp), onOpen, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, folders, onMoveToFolder) }
+                    items(visible, key = { it.id }) { NotebookCard(it, Modifier.libraryDocumentDrag(it).fillMaxWidth().height(220.dp), onOpen, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, folders, onMoveToFolder) }
                 }
                 LibraryLayout.GRID, LibraryLayout.COMPACT_GRID -> LazyVerticalGrid(
                     columns = GridCells.Adaptive(if (layout == LibraryLayout.COMPACT_GRID) 140.dp else 180.dp),
@@ -892,7 +944,7 @@ private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>
                     verticalArrangement = Arrangement.spacedBy(if (layout == LibraryLayout.COMPACT_GRID) 10.dp else 16.dp),
                 ) {
                     items(visible, key = { it.id }) {
-                        NotebookCard(it, Modifier.height(if (layout == LibraryLayout.COMPACT_GRID) 210.dp else 250.dp), onOpen, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, folders, onMoveToFolder)
+                        NotebookCard(it, Modifier.libraryDocumentDrag(it).height(if (layout == LibraryLayout.COMPACT_GRID) 210.dp else 250.dp), onOpen, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, folders, onMoveToFolder)
                     }
                 }
             }
@@ -966,12 +1018,13 @@ private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>
 }
 
 @Composable
-private fun LibraryRail(filter: LibraryFilter, onFilter: (LibraryFilter) -> Unit, folders: List<InkFolder>, folderId: String?, onFolder: (String?) -> Unit, onCreateFolder: (String, String?) -> Unit, onRenameFolder: (String, String) -> Unit, onDeleteFolder: (String) -> Unit, onSettings: () -> Unit) {
+private fun LibraryRail(filter: LibraryFilter, onFilter: (LibraryFilter) -> Unit, folders: List<InkFolder>, folderId: String?, onFolder: (String?) -> Unit, onCreateFolder: (String, String?) -> Unit, onRenameFolder: (String, String) -> Unit, onDeleteFolder: (String) -> Unit, onSettings: () -> Unit, draggingDocument: Boolean, dragPosition: Offset?, onFolderBounds: (String, Rect) -> Unit) {
     var newFolderOpen by remember { mutableStateOf(false) }
     var folderName by remember { mutableStateOf("") }
     var folderMenuId by remember { mutableStateOf<String?>(null) }
     var renameFolderId by remember { mutableStateOf<String?>(null) }
     var renameFolderName by remember { mutableStateOf("") }
+    val language = LocalUiLanguage.current
     Column(Modifier.width(198.dp).fillMaxHeight().padding(16.dp)) {
         BrandMark(tr("Library", "资料库"))
         Spacer(Modifier.height(34.dp))
@@ -985,7 +1038,18 @@ private fun LibraryRail(filter: LibraryFilter, onFilter: (LibraryFilter) -> Unit
         Spacer(Modifier.height(10.dp))
         folders.filter { it.parentId == null }.forEach { folder ->
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f)) { RailItem(Icons.Outlined.Folder, folder.name, folderId == folder.id) { onFolder(folder.id) } }
+                Box(Modifier.weight(1f)) {
+                    var bounds by remember(folder.id) { mutableStateOf<Rect?>(null) }
+                    val hovered = draggingDocument && dragPosition?.let { bounds?.contains(it) } == true
+                    RailItem(
+                        Icons.Outlined.Folder,
+                        folder.name,
+                        folderId == folder.id || hovered,
+                        modifier = Modifier
+                            .onGloballyPositioned { coordinates -> coordinates.boundsInWindow().also { measured -> bounds = measured; onFolderBounds(folder.id, measured) } }
+                            .semantics { contentDescription = language.text("Folder ${folder.name}. Drop notebook here.", "文件夹 ${folder.name}。拖放笔记到这里。") },
+                    ) { onFolder(folder.id) }
+                }
                 Box {
                     IconButton(onClick = { folderMenuId = folder.id }, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.MoreVert, tr("Folder actions", "文件夹操作"), modifier = Modifier.size(14.dp)) }
                     DropdownMenu(expanded = folderMenuId == folder.id, onDismissRequest = { folderMenuId = null }) {
@@ -996,7 +1060,18 @@ private fun LibraryRail(filter: LibraryFilter, onFilter: (LibraryFilter) -> Unit
             }
             folders.filter { it.parentId == folder.id }.forEach { child ->
                 Row(Modifier.padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.weight(1f)) { RailItem(Icons.Outlined.FolderOpen, child.name, folderId == child.id) { onFolder(child.id) } }
+                    Box(Modifier.weight(1f)) {
+                        var bounds by remember(child.id) { mutableStateOf<Rect?>(null) }
+                        val hovered = draggingDocument && dragPosition?.let { bounds?.contains(it) } == true
+                        RailItem(
+                            Icons.Outlined.FolderOpen,
+                            child.name,
+                            folderId == child.id || hovered,
+                            modifier = Modifier
+                                .onGloballyPositioned { coordinates -> coordinates.boundsInWindow().also { measured -> bounds = measured; onFolderBounds(child.id, measured) } }
+                                .semantics { contentDescription = language.text("Folder ${child.name}. Drop notebook here.", "文件夹 ${child.name}。拖放笔记到这里。") },
+                        ) { onFolder(child.id) }
+                    }
                     Box {
                         IconButton(onClick = { folderMenuId = child.id }, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.MoreVert, tr("Folder actions", "文件夹操作"), modifier = Modifier.size(14.dp)) }
                         DropdownMenu(expanded = folderMenuId == child.id, onDismissRequest = { folderMenuId = null }) {
@@ -1008,7 +1083,7 @@ private fun LibraryRail(filter: LibraryFilter, onFilter: (LibraryFilter) -> Unit
             }
         }
         Spacer(Modifier.weight(1f))
-        RailItem(Icons.Outlined.Settings, tr("Settings", "设置"), false, onSettings)
+        RailItem(Icons.Outlined.Settings, tr("Settings", "设置"), false, onClick = onSettings)
     }
     if (newFolderOpen) AlertDialog(onDismissRequest = { newFolderOpen = false }, title = { Text(tr("New folder", "新建文件夹")) }, text = { OutlinedTextField(value = folderName, onValueChange = { folderName = it }, singleLine = true) }, confirmButton = { TextButton(onClick = { onCreateFolder(folderName, folderId); folderName = ""; newFolderOpen = false }) { Text(tr("Create", "创建")) } }, dismissButton = { TextButton(onClick = { newFolderOpen = false }) { Text(tr("Cancel", "取消")) } })
     if (renameFolderId != null) AlertDialog(
@@ -1021,8 +1096,8 @@ private fun LibraryRail(filter: LibraryFilter, onFilter: (LibraryFilter) -> Unit
 }
 
 @Composable
-private fun RailItem(icon: ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (selected) Workspace else Color.Transparent).clickable(onClick = onClick).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+private fun RailItem(icon: ImageVector, label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Row(modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (selected) Workspace else Color.Transparent).clickable(onClick = onClick).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, null, tint = if (selected) Sage else Ink); Spacer(Modifier.width(12.dp)); Text(label, color = if (selected) Sage else Ink)
     }
 }

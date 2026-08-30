@@ -185,6 +185,36 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("Reference").assertDoesNotExist()
     }
 
+    @Test fun longPressDragMovesNotebookIntoFolderAtomically() {
+        val title = "Dragged notebook"
+        composeRule.onNodeWithText("New Note").performClick()
+        composeRule.onAllNodes(hasSetTextAction()).onLast().performTextClearance()
+        composeRule.onAllNodes(hasSetTextAction()).onLast().performTextInput(title)
+        composeRule.onNodeWithText("Create").performClick()
+        composeRule.onNodeWithText("Gallery").performClick()
+
+        composeRule.onNodeWithContentDescription("New folder").performClick()
+        composeRule.onAllNodes(hasSetTextAction()).onLast().performTextInput("Dragged target")
+        composeRule.onNodeWithText("Create").performClick()
+
+        val source = composeRule.onNodeWithContentDescription("Notebook $title. Long press to move.")
+        val sourceBounds = source.fetchSemanticsNode().boundsInRoot
+        val targetBounds = composeRule.onNodeWithContentDescription("Folder Dragged target. Drop notebook here.").fetchSemanticsNode().boundsInRoot
+        source.performTouchInput {
+            down(center)
+            advanceEventTime(700)
+            moveBy(targetBounds.center - sourceBounds.center, 300)
+            up()
+        }
+
+        composeRule.waitUntil(5_000) {
+            FileDocumentStore(composeRule.activity.filesDir).list().firstOrNull { it.title == title }?.folderId != null
+        }
+        val moved = FileDocumentStore(composeRule.activity.filesDir).list().first { it.title == title }
+        assertTrue("Drop must update the existing notebook rather than duplicate it", moved.folderId != null)
+        assertEquals(1, FileDocumentStore(composeRule.activity.filesDir).list().count { it.id == moved.id })
+    }
+
     @Test fun creatingNotebookAppliesChosenPaperTemplateAndComfortColor() {
         val title = "Warm grid creation test"
         composeRule.onNodeWithText("New Note").performClick()
