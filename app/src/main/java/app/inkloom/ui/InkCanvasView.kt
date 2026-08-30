@@ -116,7 +116,6 @@ import app.inkloom.document.BrushParameterDynamics
 import app.inkloom.document.BrushBlur
 import app.inkloom.document.BrushDynamics
 import app.inkloom.document.BrushSecondaryDynamics
-import app.inkloom.document.BrushStampCount
 import app.inkloom.document.BrushSizeDrag
 import app.inkloom.document.BrushTipSequence
 import app.inkloom.document.BrushTipFlip
