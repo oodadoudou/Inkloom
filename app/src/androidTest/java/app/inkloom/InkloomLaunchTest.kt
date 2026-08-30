@@ -424,7 +424,7 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription("Search this note").performClick()
 
         composeRule.onNodeWithText("Page, handwriting, image, or PDF text").assertIsDisplayed()
-        composeRule.onNodeWithText("Recognize ink").assertIsDisplayed()
+        composeRule.onNodeWithText("Recognize ink").assertDoesNotExist()
         composeRule.onNodeWithText("Recognize images").assertIsDisplayed()
         composeRule.onNodeWithText("Index the whole notebook").assertIsDisplayed()
     }

@@ -14,10 +14,6 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 class OnDeviceTextRecognitionService(private val context: Context) {
-    suspend fun recognizeHandwriting(@Suppress("UNUSED_PARAMETER") page: InkPage, @Suppress("UNUSED_PARAMETER") languageTag: String): List<RecognizedTextBlock> {
-        error("Paint Engine V5 stores handwriting as raster pixels; vector-ink recognition is unavailable.")
-    }
-
     suspend fun recognizeImage(file: File, sourceId: String, languageTag: String): List<RecognizedTextBlock> {
         require(file.isFile) { "Image source is unavailable" }
         val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }

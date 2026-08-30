@@ -754,9 +754,7 @@ fun InkloomApp(initialIntent: Intent?) {
             settings = settings,
             pdfIndexing = libraryState.selectedDocumentId in libraryState.pdfIndexingDocumentIds,
             onIndexPdfText = viewModel::indexPdfText,
-            handwritingRecognizing = libraryState.selectedPageId in libraryState.handwritingRecognitionPageIds,
             imageOcrRecognizing = libraryState.selectedPageId in libraryState.imageOcrPageIds,
-            onRecognizeHandwriting = viewModel::recognizePageHandwriting,
             onRecognizeImages = viewModel::recognizePageImages,
             documentRecognizing = libraryState.selectedDocumentId in libraryState.textRecognitionDocumentIds,
             onRecognizeDocument = viewModel::recognizeDocumentText,
@@ -1098,9 +1096,7 @@ private fun EditorScreen(
     settings: AppSettings,
     pdfIndexing: Boolean,
     onIndexPdfText: (String) -> Unit,
-    handwritingRecognizing: Boolean,
     imageOcrRecognizing: Boolean,
-    onRecognizeHandwriting: (String, String, String, (Result<Int>) -> Unit) -> Unit,
     onRecognizeImages: (String, String, String, (Result<Int>) -> Unit) -> Unit,
     documentRecognizing: Boolean,
     onRecognizeDocument: (String, String, (Result<Int>) -> Unit) -> Unit,
@@ -3384,22 +3380,6 @@ private fun EditorScreen(
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(
-                        enabled = !handwritingRecognizing,
-                        onClick = {
-                            recognitionMessage = null
-                            onRecognizeHandwriting(document.id, selectedPage.id, recognitionLanguageTag) { result ->
-                                recognitionMessage = result.fold(
-                                    onSuccess = { count -> if (settings.language == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "已识别 $count 行手写内容。" else "Recognized $count handwriting lines." },
-                                    onFailure = { error -> error.message ?: if (settings.language == app.inkloom.settings.UiLanguage.SIMPLIFIED_CHINESE) "手写识别失败。" else "Handwriting recognition failed." },
-                                )
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        if (handwritingRecognizing) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp) else Icon(Icons.Outlined.Draw, null)
-                        Spacer(Modifier.width(6.dp)); Text(tr("Recognize ink", "识别手写"))
-                    }
-                    OutlinedButton(
                         enabled = !imageOcrRecognizing,
                         onClick = {
                             recognitionMessage = null
@@ -3417,7 +3397,7 @@ private fun EditorScreen(
                     }
                 }
                 OutlinedButton(
-                    enabled = !documentRecognizing && !handwritingRecognizing && !imageOcrRecognizing,
+                    enabled = !documentRecognizing && !imageOcrRecognizing,
                     onClick = {
                         recognitionMessage = null
                         onRecognizeDocument(document.id, recognitionLanguageTag) { result ->

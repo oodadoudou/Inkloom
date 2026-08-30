@@ -29,7 +29,6 @@ data class LibraryUiState(
     val selectedPageId: String? = null,
     val recoveredOperations: Int = 0,
     val pdfIndexingDocumentIds: Set<String> = emptySet(),
-    val handwritingRecognitionPageIds: Set<String> = emptySet(),
     val imageOcrPageIds: Set<String> = emptySet(),
     val textRecognitionDocumentIds: Set<String> = emptySet(),
 )
@@ -590,38 +589,6 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun recognizePageHandwriting(
-        documentId: String,
-        pageId: String,
-        languageTag: String,
-        onComplete: (Result<Int>) -> Unit = {},
-    ) {
-        if (pageId in mutableState.value.handwritingRecognitionPageIds) return
-        val snapshot = store.get(documentId)?.pages?.firstOrNull { it.id == pageId } ?: return
-        mutableState.value = mutableState.value.copy(
-            handwritingRecognitionPageIds = mutableState.value.handwritingRecognitionPageIds + pageId,
-        )
-        viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { textRecognition.recognizeHandwriting(snapshot, languageTag) }
-            }
-            result.getOrNull()?.let { blocks ->
-                val fingerprint = HandwritingIndex.fingerprint(snapshot)
-                updatePage(documentId, pageId) { current ->
-                    if (HandwritingIndex.fingerprint(current) != fingerprint) current
-                    else current.copy(
-                        recognizedTextBlocks = current.recognizedTextBlocks.filterNot { it.source == RecognizedTextSource.HANDWRITING } + blocks,
-                        handwritingIndexFingerprint = fingerprint,
-                    )
-                }
-            }
-            mutableState.value = mutableState.value.copy(
-                handwritingRecognitionPageIds = mutableState.value.handwritingRecognitionPageIds - pageId,
-            )
-            onComplete(result.map(List<RecognizedTextBlock>::size))
-        }
-    }
-
     fun recognizePageImages(
         documentId: String,
         pageId: String,
@@ -664,9 +631,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     snapshot.pages.associate { page ->
-                        val handwriting = emptyList<RecognizedTextBlock>()
-                        val images = recognizeImages(page, languageTag)
-                        page.id to (handwriting to images)
+                        page.id to recognizeImages(page, languageTag)
                     }
                 }
             }
@@ -675,24 +640,19 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
                     current.copy(pages = current.pages.map { page ->
                         val snapshotPage = snapshot.pages.firstOrNull { it.id == page.id } ?: return@map page
                         val recognized = recognizedPages[page.id] ?: return@map page
-                        val handwritingFingerprint = HandwritingIndex.fingerprint(snapshotPage)
                         val imageFingerprint = ImageOcrIndex.fingerprint(snapshotPage)
-                        val handwritingStillCurrent = HandwritingIndex.fingerprint(page) == handwritingFingerprint
                         val imagesStillCurrent = ImageOcrIndex.fingerprint(page) == imageFingerprint
                         page.copy(
                             recognizedTextBlocks = page.recognizedTextBlocks.filterNot { block ->
-                                (block.source == RecognizedTextSource.HANDWRITING && handwritingStillCurrent) ||
-                                    (block.source == RecognizedTextSource.IMAGE_OCR && imagesStillCurrent)
-                            } + (if (handwritingStillCurrent) recognized.first else emptyList()) +
-                                (if (imagesStillCurrent) recognized.second else emptyList()),
-                            handwritingIndexFingerprint = if (handwritingStillCurrent) handwritingFingerprint else page.handwritingIndexFingerprint,
+                                block.source == RecognizedTextSource.IMAGE_OCR && imagesStillCurrent
+                            } + (if (imagesStillCurrent) recognized else emptyList()),
                             imageOcrFingerprint = if (imagesStillCurrent) imageFingerprint else page.imageOcrFingerprint,
                         )
                     }, updatedAt = System.currentTimeMillis())
                 }
             }
             mutableState.value = mutableState.value.copy(textRecognitionDocumentIds = mutableState.value.textRecognitionDocumentIds - documentId)
-            onComplete(result.map { pages -> pages.values.sumOf { (handwriting, images) -> handwriting.size + images.size } })
+            onComplete(result.map { pages -> pages.values.sumOf(List<RecognizedTextBlock>::size) })
         }
     }
 
