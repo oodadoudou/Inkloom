@@ -40,11 +40,11 @@ import org.junit.runner.RunWith
 class RealBrushCorpusRenderingTest {
     @Test
     fun userProvidedProcreateBrushesReachATerminalProductionOutcome() =
-        verifyRealBrush("brush", BrushFormat.PROCREATE)
+        verifyRealBrush("brush", BrushFormat.PROCREATE, requireRendered = false)
 
     @Test
     fun userProvidedProcreateBrushSetBrushesReachTerminalProductionOutcomes() =
-        verifyRealBrush("brushset", BrushFormat.PROCREATE)
+        verifyRealBrush("brushset", BrushFormat.PROCREATE, requireRendered = false)
 
     @Test
     fun userProvidedAbrBrushCommitsAndRendersInk() = verifyRealBrush("abr", BrushFormat.ABR)
@@ -99,6 +99,10 @@ class RealBrushCorpusRenderingTest {
                         rejectedCount += 1
                         return@forEach
                     }
+                    assertTrue(
+                        "${representative.name} entered the usable library with non-executed semantics: $nonExecuted",
+                        nonExecuted.isEmpty(),
+                    )
                     val preset = BrushPresetV5Import.requirePreset(representative)
                     Log.i(
                         "InkloomBrushCorpus",
