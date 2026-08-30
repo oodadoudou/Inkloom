@@ -74,6 +74,34 @@ class BrushSemanticMapperTest {
         )
     }
 
+    @Test fun wetGrainDualAndTaperAreReportedSourceOnlyInsteadOfBlockingThePrimaryWetProgram() {
+        val brush = ImportedBrush(
+            name = "Wet imported",
+            format = BrushFormat.PROCREATE,
+            compatibility = Compatibility.BASIC,
+            sizeBytes = 42,
+            report = emptyList(),
+            watercolor = true,
+            procreateWetMix = ProcreateWetMix(dilution = .5f, charge = .4f),
+            grainPreviewPath = "/grain.png",
+            grainDensity = .8f,
+            dualBrush = true,
+            dualTipPreviewPaths = listOf("/dual.png"),
+            taperStartEnabled = true,
+            taperEndEnabled = true,
+        )
+
+        val mappings = BrushSemanticMapper.describe(brush).associateBy { it.sourceSemantic }
+
+        listOf("PROCREATE.grain.basic", "PROCREATE.dualBrush.basic", "PROCREATE.taper.basic").forEach { semantic ->
+            assertEquals(SemanticExecutionDisposition.PRESERVED_SOURCE_ONLY, mappings.getValue(semantic).executionDisposition)
+        }
+        assertEquals(
+            SemanticExecutionDisposition.SUPPORTED_AND_EXECUTED,
+            mappings.getValue("PROCREATE.wetMix.basic").executionDisposition,
+        )
+    }
+
     @Test fun fatalDualSemanticCarriesStableExplicitRejection() {
         val brush = ImportedBrush(
             name = "RGB dual",

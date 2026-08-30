@@ -139,7 +139,12 @@ object BrushPresetV5Import {
                 ),
                 tilt = TiltMappings(
                     source.sizeSecondaryDynamics.tiltEnabled || source.graphiteTiltWidth > .0001f,
-                    if (source.sizeSecondaryDynamics.tiltEnabled) source.sizeSecondaryDynamics.tiltMinimum else 1f,
+                    if (source.sizeSecondaryDynamics.tiltEnabled && source.format == BrushFormat.PROCREATE) {
+                        // Procreate's Tilt Size is an influence around the authored base footprint,
+                        // not permission for an upright stylus to collapse the entire dab to zero.
+                        // Keep a bounded upright footprint while preserving the imported curve.
+                        source.sizeSecondaryDynamics.tiltMinimum.coerceAtLeast(.2f)
+                    } else if (source.sizeSecondaryDynamics.tiltEnabled) source.sizeSecondaryDynamics.tiltMinimum else 1f,
                     if (source.sizeSecondaryDynamics.tiltEnabled) source.sizeSecondaryDynamics.tiltStart else source.graphiteTiltWidthStart,
                     source.sizeSecondaryDynamics.tiltCurve,
                     source.graphiteTiltWidth,
@@ -151,7 +156,9 @@ object BrushPresetV5Import {
             paperGrain = source.takeIf { family == BrushFamily.PENCIL && it.proceduralPaperGrainEnabled }?.let {
                 PaperGrainSettings(it.proceduralPaperGrainScale, it.proceduralPaperGrainDensity, it.proceduralPaperGrainStrength)
             },
-            textureGrain = source.grainPreviewPath?.takeIf { source.grainDensity > .0001f }?.let { path ->
+            textureGrain = source.grainPreviewPath?.takeIf {
+                family != BrushFamily.WET_PAINT && source.grainDensity > .0001f
+            }?.let { path ->
                 TextureGrainSettings(
                     assetPath = path,
                     density = source.grainDensity.coerceIn(0f, 1f),
@@ -186,9 +193,12 @@ object BrushPresetV5Import {
                     source.procreateStabilization,
                     source.motionFiltering,
                 ).coerceIn(0f, 1f),
-                taperStartEnabled = source.taperStartEnabled,
+                // Imported geometric taper is retained in ImportedBrush and reported source-only.
+                // It must not enter the executable program until an append-only realtime taper
+                // implementation exists; otherwise one optional semantic rejects the whole brush.
+                taperStartEnabled = false,
                 taperStartLength = source.taperStartLength,
-                taperEndEnabled = source.taperEndEnabled,
+                taperEndEnabled = false,
                 taperEndLength = source.taperEndLength,
                 // V5 never replays an entire stroke after pen-up. Post-correction is intentionally
                 // not disguised as realtime smoothing because the two controls have different
@@ -223,19 +233,27 @@ object BrushPresetV5Import {
             },
             wetMix = source.takeIf { family == BrushFamily.WET_PAINT }?.let {
                 val authored = it.procreateWetMix
-                if (!authored.isDisabled()) WetMixSettings(
-                    authored.dilution,
-                    authored.charge,
-                    authored.attack,
-                    authored.pull,
-                ) else WetMixSettings(
+                if (!authored.isDisabled()) {
+                    // Some real Procreate paint presets encode only wet accumulation/pull while
+                    // their proprietary rendering mode supplies color transfer. V5 does not
+                    // execute that rendering mode, so a zero required coefficient would create a
+                    // misleading supported brush that can never deposit a pixel. Preserve every
+                    // authored non-zero value and independently supply each coefficient required
+                    // by V5 deposition when the source leaves that coefficient at zero.
+                    WetMixSettings(
+                        authored.dilution,
+                        authored.charge.takeIf { value -> value > .0001f } ?: .15f,
+                        authored.attack.takeIf { value -> value > .0001f } ?: .7f,
+                        authored.pull,
+                    )
+                } else WetMixSettings(
                     dilution = it.colorMix,
                     charge = it.paintMix.coerceAtLeast(.15f),
                     attack = .7f,
                     pull = it.colorMix,
                 )
             },
-            dual = source.takeIf(ImportedBrush::dualBrush)?.let {
+            dual = source.takeIf { family != BrushFamily.WET_PAINT && it.dualBrush }?.let {
                 require(it.dualTipPreviewPaths.isNotEmpty()) {
                     "Dual brush is enabled but its secondary tip asset is missing"
                 }

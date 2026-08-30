@@ -24,6 +24,8 @@ import app.inkloom.settings.AppSettings
 import app.inkloom.settings.EraserPreset
 import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.engine.v5.tools.RasterLayerPatch
+import app.inkloom.engine.v5.material.AndroidBrushTipMaskDecoder
+import app.inkloom.engine.v5.material.BrushTipMaskRequest
 import app.inkloom.ui.InkCanvasView
 import app.inkloom.ui.applyBrushConfiguration
 import java.io.File
@@ -38,11 +40,11 @@ import org.junit.runner.RunWith
 class RealBrushCorpusRenderingTest {
     @Test
     fun userProvidedProcreateBrushesReachATerminalProductionOutcome() =
-        verifyRealBrush("brush", BrushFormat.PROCREATE, requireRendered = false)
+        verifyRealBrush("brush", BrushFormat.PROCREATE)
 
     @Test
     fun userProvidedProcreateBrushSetBrushesReachTerminalProductionOutcomes() =
-        verifyRealBrush("brushset", BrushFormat.PROCREATE, requireRendered = false)
+        verifyRealBrush("brushset", BrushFormat.PROCREATE)
 
     @Test
     fun userProvidedAbrBrushCommitsAndRendersInk() = verifyRealBrush("abr", BrushFormat.ABR)
@@ -60,10 +62,13 @@ class RealBrushCorpusRenderingTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val assetRoot = File(context.cacheDir, "real-brush-assets-${System.nanoTime()}").apply { mkdirs() }
         try {
+            var discoveredCount = 0
             var renderedCount = 0
+            var rejectedCount = 0
             sources.forEachIndexed { index, source ->
                 val parsed = parse(source, format, File(assetRoot, "source-$index"))
                 assertNotNull("No $format brush parsed from ${source.name}", parsed.firstOrNull())
+                discoveredCount += parsed.size
                 parsed.forEach { decoded ->
                     val representative = BrushPresetV5Import.convertOrReject(decoded)
                     assertTrue(
@@ -91,6 +96,7 @@ class RealBrushCorpusRenderingTest {
                             "InkloomBrushCorpus",
                             "IMPORT_REJECTED source=${source.name} id=${representative.id} reasons=${representative.report}",
                         )
+                        rejectedCount += 1
                         return@forEach
                     }
                     val preset = BrushPresetV5Import.requirePreset(representative)
@@ -100,7 +106,11 @@ class RealBrushCorpusRenderingTest {
                             "compatibility=${representative.compatibility} family=${preset.identity.family} " +
                             "size=${representative.defaultSize} opacity=${representative.defaultOpacity} flow=${representative.flow} " +
                             "spacing=${representative.spacing} tips=${representative.tipPreviewPaths.size} " +
-                            "grain=${representative.grainDensity} unsupported=${representative.report.filter { it.contains("unsupported", ignoreCase = true) }} " +
+                            "grain=${representative.grainDensity} pressure=${preset.dynamics.pressure} tilt=${preset.dynamics.tilt} wet=${preset.wetMix} " +
+                            "output=${preset.output} smoothing=${preset.stroke?.smoothing} " +
+                            "tipAspect=${preset.tip.aspect} tipRotation=${preset.tip.rotationDegrees} hardness=${preset.tip.hardness} " +
+                            "tipMax=${preset.tipTexture?.assetPaths.orEmpty().map { path -> AndroidBrushTipMaskDecoder.decode(BrushTipMaskRequest(path, preset.tip.hardness))?.maximumCoverage }} " +
+                            "unsupported=${representative.report.filter { it.contains("unsupported", ignoreCase = true) }} " +
                             "semanticOutcomes=${representative.semanticMappings.groupingBy { it.executionDisposition }.eachCount()} " +
                             "report=${representative.report}",
                     )
@@ -118,9 +128,21 @@ class RealBrushCorpusRenderingTest {
                     if (brushCommitsAndRenders(representative)) {
                         renderedCount += 1
                         if (verifyRealtime) assertSutBrushKeepsRealTimePreview(representative)
+                    } else {
+                        rejectedCount += 1
                     }
                 }
             }
+            assertEquals(
+                "$format .$extension corpus terminal outcomes must conserve every discovered brush",
+                discoveredCount,
+                renderedCount + rejectedCount,
+            )
+            Log.i(
+                "InkloomBrushCorpus",
+                "CORPUS_SUMMARY format=$format extension=$extension filesScanned=${sources.size} " +
+                    "brushesDiscovered=$discoveredCount rendered=$renderedCount rejected=$rejectedCount",
+            )
             if (requireRendered) {
                 assertTrue("No staged .$extension $format brush rendered through Paint Engine V5", renderedCount > 0)
             }

@@ -14,6 +14,7 @@ class BrushTipMask(
     }
 
     val byteSize: Long get() = coverage.size.toLong()
+    val maximumCoverage: Float get() = (coverage.maxOfOrNull { it.toInt() and 0xff } ?: 0) * BYTE_TO_UNIT
 
     /** Bilinear coverage at normalized brush-local coordinates. Outside the shape is transparent. */
     fun coverageAt(u: Float, v: Float): Float {

@@ -25,6 +25,7 @@ object BrushSemanticMapper {
 
     fun describe(brush: ImportedBrush): List<BrushSemanticMapping> = buildList {
         val prefix = brush.format.name
+        val wetPrimary = brush.watercolor || brush.paintMix > .0001f
         fun executed(
             source: String,
             target: String,
@@ -59,11 +60,26 @@ object BrushSemanticMapper {
         if (brush.tipPreviewPaths.isNotEmpty() || brush.tipPreviewPath != null) {
             executed("$prefix.shape", "StampPaintOp.tipTexture")
         }
-        if (brush.grainPreviewPath != null) executed("$prefix.grain.basic", "StampPaintOp.textureGrain")
-        if (brush.dualGrainPreviewPath != null) executed("$prefix.dualGrain.basic", "StampPaintOp.dual.textureGrain")
+        if (brush.grainPreviewPath != null) {
+            if (wetPrimary) preserved(
+                "$prefix.grain.basic",
+                "The source grain is retained; the V5 wet PaintOp currently executes the primary tip and pigment program without texture grain.",
+            ) else executed("$prefix.grain.basic", "StampPaintOp.textureGrain")
+        }
+        if (brush.dualGrainPreviewPath != null) {
+            if (wetPrimary) preserved(
+                "$prefix.dualGrain.basic",
+                "The wet secondary grain is retained but is not part of the V5 primary wet PaintOp.",
+            ) else executed("$prefix.dualGrain.basic", "StampPaintOp.dual.textureGrain")
+        }
         if (brush.continuousPlot) executed("$prefix.continuousPlot", "StampPaintOp.continuousPlot")
         if (brush.spray) executed("$prefix.spray.basic", "StampPaintOp.spray")
-        if (brush.dualBrush && !brush.dualApplyRgb) executed("$prefix.dualBrush.basic", "StampPaintOp.dual")
+        if (brush.dualBrush && !brush.dualApplyRgb) {
+            if (wetPrimary) preserved(
+                "$prefix.dualBrush.basic",
+                "The secondary wet stream is retained; V5 executes the primary wet tip and pigment program.",
+            ) else executed("$prefix.dualBrush.basic", "StampPaintOp.dual")
+        }
         if (brush.isEraser) executed("$prefix.eraser", "BrushPresetV5.output.ERASE")
 
         if (brush.sizePressureEnabled) executed("$prefix.pressure.size", "CompiledBrushProgramV5.pressure.width")
@@ -73,11 +89,9 @@ object BrushSemanticMapper {
         if (brush.graphiteTiltGrain > 0f) executed("$prefix.tilt.grain", "CompiledBrushProgramV5.tilt.grain")
         if (brush.proceduralPaperGrainEnabled) executed("$prefix.paperGrain", "CompiledBrushProgramV5.grainSampler")
         if (brush.taperStartEnabled || brush.taperEndEnabled) {
-            executed(
+            preserved(
                 "$prefix.taper.basic",
-                "CompiledBrushProgramV5.strokeShaping",
-                SemanticFidelity.APPROXIMATE,
-                "V5 executes start/end length; source-specific minimum, units and touch programs remain source-only.",
+                "Start/end taper is retained but not executed because the current append-only renderer never rewrites the completed stroke.",
             )
         }
 
@@ -139,7 +153,7 @@ object BrushSemanticMapper {
         ) preserved("$prefix.tipSequence", "Ribbon, ordered tip selection, flip and darken-composite semantics remain source-only.")
         if (brush.waterEdgeEnabled) preserved("$prefix.waterEdge", "Water-edge radius, opacity, darkness and blur remain source-only.")
 
-        if (brush.dualBrush) {
+        if (brush.dualBrush && !wetPrimary) {
             if (brush.dualTipPreviewPaths.isEmpty()) rejected("$prefix.dualBrush.asset", "Dual brush is enabled but its secondary tip asset is missing.")
             if (brush.dualApplyRgb) rejected("$prefix.dualBrush.rgb", "Dual-brush RGB compositing is not supported by Paint Engine V5.")
             if (hasAdvancedDual(brush)) preserved("$prefix.dualBrush.advanced", "Dual dynamics, jitter, ribbon, sequence and flip semantics remain source-only.")

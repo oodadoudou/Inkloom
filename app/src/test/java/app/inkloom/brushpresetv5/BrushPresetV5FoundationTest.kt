@@ -154,6 +154,96 @@ class BrushPresetV5FoundationTest {
         })
     }
 
+    @Test fun importBoundaryExecutesWetPrimaryWithoutClaimingTaperGrainOrDualSupport() {
+        val converted = BrushPresetV5Import.convertDecodedSource(
+            ImportedBrush(
+                id = "procreate-wet-primary",
+                name = "Wet primary",
+                format = BrushFormat.PROCREATE,
+                compatibility = Compatibility.BASIC,
+                sizeBytes = 42,
+                report = emptyList(),
+                watercolor = true,
+                procreateWetMix = app.inkloom.document.ProcreateWetMix(pull = .4f),
+                tipPreviewPath = "/tips/primary.png",
+                tipPreviewPaths = listOf("/tips/primary.png"),
+                grainPreviewPath = "/grain.png",
+                grainDensity = .8f,
+                dualBrush = true,
+                dualTipPreviewPaths = listOf("/tips/secondary.png"),
+                taperStartEnabled = true,
+                taperEndEnabled = true,
+            ),
+        )
+        val preset = BrushPresetV5Import.requirePreset(converted)
+
+        assertEquals(BrushFamily.WET_PAINT, preset.identity.family)
+        assertEquals(null, preset.textureGrain)
+        assertEquals(null, preset.dual)
+        assertEquals(.15f, preset.wetMix?.charge ?: 0f, .0001f)
+        assertEquals(.7f, preset.wetMix?.attack ?: 0f, .0001f)
+        assertFalse(preset.stroke?.taperStartEnabled == true)
+        assertFalse(preset.stroke?.taperEndEnabled == true)
+        assertEquals(
+            BrushExecutionCapabilityResolution.Supported,
+            BrushExecutionCapabilityResolver.resolve(CompiledBrushProgramV5.compile(preset)),
+        )
+        listOf("PROCREATE.taper.basic", "PROCREATE.grain.basic", "PROCREATE.dualBrush.basic").forEach { semantic ->
+            assertTrue(converted.report.any {
+                it.startsWith("SEMANTIC_CAPABILITY:PRESERVED_SOURCE_ONLY:$semantic:")
+            })
+        }
+    }
+
+    @Test fun importBoundarySuppliesWetDepositionIndependentlyFromAuthoredCharge() {
+        val converted = BrushPresetV5Import.convertDecodedSource(
+            ImportedBrush(
+                id = "procreate-wet-charge-only",
+                name = "Wet charge only",
+                format = BrushFormat.PROCREATE,
+                compatibility = Compatibility.BASIC,
+                sizeBytes = 42,
+                report = emptyList(),
+                watercolor = true,
+                procreateWetMix = app.inkloom.document.ProcreateWetMix(
+                    charge = .5f,
+                    attack = 0f,
+                    pull = .75f,
+                ),
+            ),
+        )
+        val preset = BrushPresetV5Import.requirePreset(converted)
+
+        assertEquals(.5f, preset.wetMix?.charge ?: 0f, .0001f)
+        assertEquals(.7f, preset.wetMix?.attack ?: 0f, .0001f)
+    }
+
+    @Test fun importBoundaryKeepsAnUprightFootprintForMaximumTiltDynamics() {
+        val converted = BrushPresetV5Import.convertDecodedSource(
+            ImportedBrush(
+                id = "procreate-maximum-tilt",
+                name = "Maximum tilt",
+                format = BrushFormat.PROCREATE,
+                compatibility = Compatibility.BASIC,
+                sizeBytes = 42,
+                report = emptyList(),
+                sizeSecondaryDynamics = app.inkloom.document.BrushSecondaryDynamics(
+                    tiltEnabled = true,
+                    tiltMinimum = 0f,
+                    tiltStart = .1f,
+                    tiltCurve = listOf(
+                        app.inkloom.document.BrushCurvePoint(0f, 0f),
+                        app.inkloom.document.BrushCurvePoint(1f, 1f),
+                    ),
+                ),
+            ),
+        )
+        val preset = BrushPresetV5Import.requirePreset(converted)
+
+        assertEquals(.2f, preset.dynamics.tilt.widthMinimum, .0001f)
+        assertTrue(preset.dynamics.tilt.widthEnabled)
+    }
+
     @Test fun importBoundaryRejectsUnsupportedDualRgbInsteadOfFallingBack() {
         val rejected = BrushPresetV5Import.convertOrReject(
             ImportedBrush(
