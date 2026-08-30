@@ -819,7 +819,7 @@ private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>
     val libraryLanguage = LocalUiLanguage.current
     val untitledNoteLabel = tr("Untitled Note", "未命名笔记")
     var newNoteTitle by remember { mutableStateOf(untitledNoteLabel) }
-    var newNoteCover by remember { mutableStateOf(CoverStyle.BLACK) }
+    var newNoteCover by remember { mutableStateOf(CoverStyle.MINIMAL) }
     var newNoteTemplateId by remember { mutableStateOf(PageTemplateCatalog.blank.id) }
     var newNotePaperColor by remember { mutableLongStateOf(PaperColorCatalog.WHITE) }
     val visible = remember(documents, filter, folderId, search) {
@@ -959,11 +959,15 @@ private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>
                 OutlinedTextField(newNoteTitle, { newNoteTitle = it.take(120) }, label = { Text(tr("Title", "标题")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Text(tr("Cover template", "封面模板"), color = MutedInk, fontSize = 12.sp)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(CoverStyle.entries.filterNot { it == CoverStyle.CUSTOM_IMAGE }) { style ->
-                        Card(
-                            Modifier.size(92.dp, 120.dp).clickable { newNoteCover = style },
-                            border = if (newNoteCover == style) androidx.compose.foundation.BorderStroke(2.dp, Ink) else CardDefaults.outlinedCardBorder(),
-                        ) { NotebookCover(InkDocument(title = newNoteTitle, coverStyle = style, coverArgb = if (style in setOf(CoverStyle.WHITE, CoverStyle.WHITE_GRID)) 0xFFF4F4F4 else 0xFF202020), Modifier.fillMaxSize()) }
+                    items(NotebookCoverCatalog.creationStyles) { style ->
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Card(
+                                Modifier.size(92.dp, 120.dp).clickable { newNoteCover = style },
+                                border = if (newNoteCover == style) androidx.compose.foundation.BorderStroke(2.dp, Ink) else CardDefaults.outlinedCardBorder(),
+                            ) { NotebookCover(InkDocument(title = newNoteTitle, coverStyle = style, coverArgb = NotebookCoverCatalog.defaultArgb(style)), Modifier.fillMaxSize()) }
+                            Spacer(Modifier.height(4.dp))
+                            Text(NotebookCoverCatalog.displayName(style, LocalUiLanguage.current), fontSize = 9.sp)
+                        }
                     }
                 }
                 Text(tr("Page template", "页面模板"), color = MutedInk, fontSize = 12.sp)
@@ -1123,7 +1127,10 @@ private fun NotebookCard(document: InkDocument, modifier: Modifier, onOpen: (Ink
             NotebookCover(document, Modifier.fillMaxSize())
             if (document.pages.any { it.background is PageBackground.Pdf }) Surface(Modifier.padding(12.dp), shape = RoundedCornerShape(4.dp), color = Color.White) { Text("PDF", Modifier.padding(7.dp, 4.dp), fontSize = 10.sp) }
             Box(Modifier.align(Alignment.TopEnd)) {
-                IconButton(onClick = { menu = true }) { Icon(Icons.Default.MoreVert, tr("Document actions", "笔记操作")) }
+                IconButton(
+                    onClick = { menu = true },
+                    modifier = Modifier.padding(6.dp).size(36.dp).background(Color.Black.copy(alpha = .48f), CircleShape),
+                ) { Icon(Icons.Default.MoreVert, tr("Document actions", "笔记操作"), tint = Color.White) }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     if (document.trashedAt == null) {
                         DropdownMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { menu = false; renameOpen = true })
@@ -1155,13 +1162,32 @@ private fun NotebookCard(document: InkDocument, modifier: Modifier, onOpen: (Ink
 private fun NotebookCover(document: InkDocument, modifier: Modifier = Modifier) {
     val coverBitmap = remember(document.coverImagePath) { document.coverImagePath?.let { path -> runCatching { BitmapFactory.decodeFile(path) }.getOrNull() } }
     DisposableEffect(coverBitmap) { onDispose { coverBitmap?.recycle() } }
-    val light = document.coverStyle in setOf(CoverStyle.WHITE, CoverStyle.WHITE_GRID)
+    val light = document.coverStyle in setOf(CoverStyle.MINIMAL, CoverStyle.PAPER, CoverStyle.GRID, CoverStyle.WHITE, CoverStyle.WHITE_GRID)
     Box(modifier.background(if (light) Color(0xFFF4F4F4) else Color(document.coverArgb))) {
         if (document.coverStyle == CoverStyle.CUSTOM_IMAGE && coverBitmap != null) {
             Image(coverBitmap.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         } else Canvas(Modifier.fillMaxSize().padding(14.dp)) {
             val line = if (light) Color.Black.copy(alpha = .42f) else Color.White.copy(alpha = .7f)
             when (document.coverStyle) {
+                CoverStyle.MINIMAL -> {
+                    drawLine(line, Offset(size.width * .18f, size.height * .38f), Offset(size.width * .82f, size.height * .38f), strokeWidth = 1.5f)
+                    drawLine(line.copy(alpha = .24f), Offset(size.width * .30f, size.height * .48f), Offset(size.width * .70f, size.height * .48f), strokeWidth = 1f)
+                }
+                CoverStyle.DARK -> {
+                    drawRoundRect(Color.White.copy(alpha = .14f), topLeft = Offset(size.width * .08f, size.height * .12f), size = androidx.compose.ui.geometry.Size(size.width * .84f, size.height * .76f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(12f, 12f), style = Stroke(width = 2f))
+                }
+                CoverStyle.PAPER -> {
+                    var y = 16f
+                    while (y < size.height) { drawLine(line.copy(alpha = .28f), Offset(0f, y), Offset(size.width, y), 1f); y += 18f }
+                    drawLine(Color(0xFFB46A6A).copy(alpha = .45f), Offset(18f, 0f), Offset(18f, size.height), 1f)
+                }
+                CoverStyle.GRID -> {
+                    var x = 0f
+                    while (x < size.width) { drawLine(line.copy(alpha = .25f), Offset(x, 0f), Offset(x, size.height), 1f); x += 18f }
+                    var y = 0f
+                    while (y < size.height) { drawLine(line.copy(alpha = .25f), Offset(0f, y), Offset(size.width, y), 1f); y += 18f }
+                }
+                CoverStyle.SOLID -> drawCircle(Color.White.copy(alpha = .2f), radius = size.minDimension * .16f, center = center)
                 CoverStyle.BLACK, CoverStyle.WHITE -> repeat(3) { index -> drawLine(line, Offset(0f, 18f + index * 12f), Offset(size.width * (.9f - index * .08f), 18f + index * 12f), strokeWidth = 2f, cap = StrokeCap.Round) }
                 CoverStyle.BLACK_BAND -> { drawRect(Color.White, Offset(0f, size.height * .58f), androidx.compose.ui.geometry.Size(size.width, size.height * .18f)); drawLine(Color.Black, Offset(12f, size.height * .67f), Offset(size.width - 12f, size.height * .67f), strokeWidth = 2f) }
                 CoverStyle.WHITE_GRID -> { var x = 0f; while (x < size.width) { drawLine(line, Offset(x, 0f), Offset(x, size.height), 1f); x += 18f }; var y = 0f; while (y < size.height) { drawLine(line, Offset(0f, y), Offset(size.width, y), 1f); y += 18f } }

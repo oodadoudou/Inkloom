@@ -25,7 +25,18 @@ data class InkDocument(
 )
 
 @Serializable
-enum class CoverStyle { BLACK, WHITE, BLACK_BAND, WHITE_GRID, CUSTOM_IMAGE }
+enum class CoverStyle {
+    MINIMAL,
+    DARK,
+    PAPER,
+    GRID,
+    SOLID,
+    BLACK,
+    WHITE,
+    BLACK_BAND,
+    WHITE_GRID,
+    CUSTOM_IMAGE,
+}
 
 @Serializable
 data class InkPage(

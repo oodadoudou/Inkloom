@@ -234,6 +234,17 @@ class InkloomLaunchTest {
         assertEquals(PaperColorCatalog.WARM_IVORY, PageTemplateStore(composeRule.activity.filesDir).load().notebookPaperColors[created.id])
     }
 
+    @Test fun notebookCreationOffersPersonalCoverFamilies() {
+        composeRule.onNodeWithText("New Note").performClick()
+        listOf("Minimal", "Dark", "Paper", "Grid", "Solid").forEach { label ->
+            composeRule.onAllNodesWithText(label).onFirst().assertIsDisplayed()
+        }
+        composeRule.onNodeWithText("Dark").performClick()
+        composeRule.onNodeWithText("Create").performClick()
+        composeRule.onNodeWithText("Gallery").performClick()
+        composeRule.onAllNodesWithContentDescription("Document actions").onFirst().assertIsDisplayed()
+    }
+
     @Test fun rulerIsReachableFromCompactToolbarAndPersists() {
         createNotebookAndOpenEditor()
 

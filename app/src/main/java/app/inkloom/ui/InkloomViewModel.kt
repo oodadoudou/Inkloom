@@ -92,7 +92,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         val document = InkDocument(
             title = title.trim().ifBlank { "Untitled Note" },
             coverStyle = coverStyle,
-            coverArgb = if (coverStyle in setOf(CoverStyle.WHITE, CoverStyle.WHITE_GRID)) 0xFFF4F4F4 else 0xFF202020,
+            coverArgb = NotebookCoverCatalog.defaultArgb(coverStyle),
             coverImagePath = coverImagePath,
             pages = listOf(PageTemplateOperations.newPage(template, "Page 1")),
         )
