@@ -16,7 +16,7 @@ import org.junit.runner.RunWith
 import kotlin.system.measureNanoTime
 
 @RunWith(AndroidJUnit4::class)
-class RasterSelectionTransformV3Test {
+class RasterSelectionTransformV5Test {
     @Test fun translationPreviewAlwaysResamplesGestureStartAndCancelRestoresPixelsAndMask() {
         val surface = selectedSquareSurface()
         val selection = squareSelection().snapshot()

@@ -7617,7 +7617,7 @@ private fun BrushPanel(
                     brush.report.forEach { Text("• $it", modifier = Modifier.padding(vertical = 3.dp)) }
                     if (brush.semanticMappings.isNotEmpty()) {
                         Spacer(Modifier.height(12.dp))
-                        Text(tr("ENGINE V3 SEMANTIC MAP", "ENGINE V3 语义映射"), fontSize = 11.sp, color = MutedInk)
+                        Text(tr("ENGINE V5 SEMANTIC MAP", "ENGINE V5 语义映射"), fontSize = 11.sp, color = MutedInk)
                         brush.semanticMappings.forEach { mapping ->
                             val fidelity = when (mapping.fidelity) {
                                 app.inkloom.model.SemanticFidelity.EXACT -> tr("Exact", "完整")

@@ -29,7 +29,7 @@ class PixelTileCanvasRendererTest {
             commit().close()
         }
         val renderer = PixelTileCanvasRenderer(maximumCacheBytes = 4L * 128 * 128 * 4)
-        val output = RenderNode("Inkloom.V3.PressureTest").apply { setPosition(0, 0, 256, 128) }
+        val output = RenderNode("Inkloom.V5.PressureTest").apply { setPosition(0, 0, 256, 128) }
         fun record() {
             val canvas = output.beginRecording()
             try { renderer.draw(canvas, surface.snapshot(), RectF(0f, 0f, 256f, 128f)) }
@@ -98,7 +98,7 @@ class PixelTileCanvasRendererTest {
         }
         val snapshots = surfaces.map(PixelTileSurface::snapshot)
         val renderer = PixelTileCanvasRenderer(maximumCacheBytes = 8L * 1024L * 1024L)
-        val output = RenderNode("Inkloom.V3.FiftyLayerPixelProjection").apply { setPosition(0, 0, 8192, 8192) }
+        val output = RenderNode("Inkloom.V5.FiftyLayerPixelProjection").apply { setPosition(0, 0, 8192, 8192) }
         fun record(): Float {
             val started = android.os.SystemClock.elapsedRealtimeNanos()
             val canvas = output.beginRecording(8192, 8192)
@@ -131,7 +131,7 @@ class PixelTileCanvasRendererTest {
             write.commit().close()
         }
         val renderer = PixelTileCanvasRenderer(maximumCacheBytes = 4L * 128 * 128 * 4)
-        val output = RenderNode("Inkloom.V3.PixelTileProjectionTest").apply { setPosition(0, 0, 512, 256) }
+        val output = RenderNode("Inkloom.V5.PixelTileProjectionTest").apply { setPosition(0, 0, 512, 256) }
         fun record() {
             val canvas = output.beginRecording(512, 256)
             try {

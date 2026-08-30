@@ -4323,7 +4323,7 @@ class InkCanvasView(context: Context) : View(context) {
     )
 
     /** Resolves every resource and scalar before contact work starts. Null means explicitly
-     * unsupported by V5; callers must consume the gesture instead of falling back to V3/V4. */
+     * unsupported by V5; callers must consume the gesture instead of invoking an obsolete engine. */
     private fun v5PaintConfiguration(): V5PaintConfiguration? {
         val active = activeTool ?: return null
         if (active !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER)) return null

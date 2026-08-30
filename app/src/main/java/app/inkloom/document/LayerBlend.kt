@@ -25,7 +25,7 @@ fun LayerBlendMode.toBlendMode(): BlendMode = when (this) {
     LayerBlendMode.LUMINOSITY -> BlendMode.LUMINOSITY
 }
 
-/** Platform-independent V3 mapping shared by live projection and export. */
+/** Platform-independent V5 mapping shared by live projection and export. */
 fun LayerBlendMode.toPixelBlendMode(): PixelBlendMode = when (this) {
     LayerBlendMode.NORMAL -> PixelBlendMode.NORMAL
     LayerBlendMode.MULTIPLY -> PixelBlendMode.MULTIPLY

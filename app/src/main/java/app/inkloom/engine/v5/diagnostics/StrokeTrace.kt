@@ -127,7 +127,7 @@ internal object StrokeTrace {
             if (commit != null) {
                 val projection = first(STAGE_PROJECTION_GENERATED)
                 if (projection == null || projection.nanoTime > commit.nanoTime) {
-                    result += "HANDOFF_BEFORE_PROJECTION front buffer committed before the V3 projection was generated"
+                    result += "HANDOFF_BEFORE_PROJECTION front buffer committed before the V5 projection was generated"
                 }
             }
             if (hasStage(STAGE_ACTION_UP) && !hasStage(STAGE_FRONT_BUFFER_DRAW)) {
@@ -252,7 +252,7 @@ internal object StrokeTrace {
 
     internal val derivedMetrics = listOf(
         Metric("DOWN→first transient", STAGE_ACTION_DOWN, STAGE_FRONT_BUFFER_DRAW),
-        Metric("DOWN→first V3", STAGE_ACTION_DOWN, STAGE_PROJECTION_GENERATED),
+        Metric("DOWN→first V5 projection", STAGE_ACTION_DOWN, STAGE_PROJECTION_GENERATED),
         Metric("DOWN→stable", STAGE_ACTION_DOWN, STAGE_STABLE_FRAME),
         Metric("last MOVE→stable", STAGE_LAST_MOVE, STAGE_STABLE_FRAME, fromFirst = false),
         Metric("UP→transaction commit", STAGE_ACTION_UP, STAGE_TRANSACTION_COMMIT),

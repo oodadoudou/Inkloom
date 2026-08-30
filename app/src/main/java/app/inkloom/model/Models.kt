@@ -54,7 +54,7 @@ data class ImportedBrushGrain(
     val filteringMode: Int = ProcreateFiltering.NONE,
 )
 
-/** PENCIL_RENDERER_V4 graphite runtime semantics, separate from the brush-tip texture. */
+/** Graphite runtime semantics, separate from the brush-tip texture. */
 @Serializable
 data class ImportedBrushGraphite(
     val tiltWidth: Float = 0f,
@@ -68,7 +68,7 @@ data class ImportedBrushGraphite(
     val paperGrainStrength: Float = 1f,
 )
 
-/** A durable, user-auditable source-semantic to Engine V3 runtime mapping. */
+/** A durable, user-auditable source-semantic mapping recorded during V5 import. */
 @Serializable
 data class BrushSemanticMapping(
     val sourceSemantic: String,
@@ -140,7 +140,7 @@ data class ImportedBrush(
     val tiltBleedStart: Float = 0f,
     /** Keeps grain wavelength fixed while tilt increases the brush diameter. */
     val tiltSizeCompression: Boolean = false,
-    /** PENCIL_RENDERER_V4 graphite runtime semantics (tilt->width, tilt->grain, procedural paper
+    /** Graphite runtime semantics (tilt->width, tilt->grain, procedural paper
      * grain). Kept as a nested struct so the ImportedBrush constructor stays under the JVM
      * 255-argument method-signature limit. */
     val graphite: ImportedBrushGraphite = ImportedBrushGraphite(),

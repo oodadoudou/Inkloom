@@ -36,10 +36,8 @@ internal object SystemBrushCatalog {
         systemBrush(id = "system-monoline", name = "Monoline", group = "Pen", size = 18f, hardness = 1f, spacing = .05f, sizePressureEnabled = false, tags = listOf("pen", "monoline")),
 
         // Deterministic procedural graphite tips make these visibly different, not just renamed
-        // copies of one round line renderer. (PENCIL_RENDERER_V4 runtime semantics — tilt->width,
-        // tilt-to-grain and procedural paper grain are compiled into native V5 programs
-        // and covered by the V4 golden tests; the factory presets intentionally stay on the fast
-        // stamped batch path until BrushPreset V4 migrates them.)
+        // copies of one round line renderer. Graphite tilt-to-width, tilt-to-grain and procedural
+        // paper grain are compiled into native V5 programs and covered by V5 golden tests.
         systemBrush(id = "system-technical-pencil", name = "Technical Pencil", group = "Pencil", size = 4.5f, hardness = .9f, spacing = 1f, flow = .82f, sizePressureMinimum = .42f, opacityPressureEnabled = true, opacityPressureMinimum = .35f, tags = listOf("pencil", "mechanical", "hard")),
         systemBrush(id = "system-h-pencil", name = "H Pencil", group = "Pencil", size = 5f, hardness = .8f, spacing = .5f, flow = .74f, sizePressureMinimum = .35f, opacityPressureEnabled = true, opacityPressureMinimum = .25f, tags = listOf("pencil", "graphite", "hard")),
         systemBrush(id = "system-hb-pencil", name = "HB Pencil", group = "Pencil", size = 7f, hardness = .64f, spacing = .26f, flow = .68f, sizePressureMinimum = .3f, opacityPressureEnabled = true, opacityPressureMinimum = .2f, tags = listOf("pencil", "graphite", "hb")),
