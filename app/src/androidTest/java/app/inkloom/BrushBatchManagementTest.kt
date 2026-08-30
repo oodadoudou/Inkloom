@@ -110,9 +110,10 @@ class BrushBatchManagementTest {
         composeRule.onNodeWithText("Ink").assertIsDisplayed()
     }
 
-    @Test fun longPressBrushSelectsAndMovesItToAnotherGroup() {
+    @Test fun explicitManagementSelectsAndMovesABrushToAnotherGroup() {
         openBrushes()
-        composeRule.onNodeWithContentDescription("Brush preset Batch A").performTouchInput { longClick() }
+        composeRule.onNodeWithContentDescription("Select multiple brushes").performClick()
+        composeRule.onNodeWithContentDescription("Brush preset Batch A").performClick()
         composeRule.onNodeWithText("Move").performClick()
         composeRule.onAllNodesWithText("Target").onLast().performClick()
         composeRule.onNodeWithText("Move selected").performClick()
@@ -122,9 +123,10 @@ class BrushBatchManagementTest {
         assertEquals("Target", store.load().single { it.id == "batch-a" }.groupName)
     }
 
-    @Test fun longPressEntersManagementAndMovesMultipleSelectedBrushes() {
+    @Test fun explicitManagementMovesMultipleSelectedBrushes() {
         openBrushes()
-        composeRule.onNodeWithContentDescription("Brush preset Batch A").performTouchInput { longClick() }
+        composeRule.onNodeWithContentDescription("Select multiple brushes").performClick()
+        composeRule.onNodeWithContentDescription("Brush preset Batch A").performClick()
         composeRule.onNodeWithContentDescription("Brush management: 1 selected").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Brush preset Batch B").performClick()
         composeRule.onNodeWithContentDescription("Brush management: 2 selected").assertIsDisplayed()
@@ -140,6 +142,13 @@ class BrushBatchManagementTest {
             setOf("batch-a", "batch-b"),
             store.load().filter { it.groupName == "Target" && it.id.startsWith("batch-") }.mapTo(linkedSetOf(), ImportedBrush::id),
         )
+    }
+
+    @Test fun stationaryLongPressOpensTheProductionBrushEditor() {
+        openBrushes()
+        composeRule.onNodeWithContentDescription("Brush preset Batch A").performTouchInput { longClick() }
+        composeRule.onNodeWithText("Brush Editor", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("SCRATCH PAD").assertIsDisplayed()
     }
 
     @Test fun longPressGroupRenamesItsWholeSubtree() {

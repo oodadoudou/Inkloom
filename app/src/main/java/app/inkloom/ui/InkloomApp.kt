@@ -7618,7 +7618,6 @@ private fun BrushPanel(
                                 multiSelecting = multiSelecting,
                                 multiSelected = brush.id in selectedBrushIds,
                                 onToggleSelection = { if (brush.format != BrushFormat.SYSTEM) selectedBrushIds = if (brush.id in selectedBrushIds) selectedBrushIds - brush.id else selectedBrushIds + brush.id },
-                                onBeginSelection = { if (brush.format != BrushFormat.SYSTEM) { multiSelecting = true; selectedBrushIds = selectedBrushIds + brush.id } },
                                 onSelect = { onBrushSelected(brush) },
                                 onReport = { reportBrush = brush },
                                 onEdit = { editBrush = brush },
@@ -7655,7 +7654,6 @@ private fun BrushPanel(
                                     multiSelecting = multiSelecting,
                                     multiSelected = brush.id in selectedBrushIds,
                                     onToggleSelection = { if (brush.format != BrushFormat.SYSTEM) selectedBrushIds = if (brush.id in selectedBrushIds) selectedBrushIds - brush.id else selectedBrushIds + brush.id },
-                                    onBeginSelection = { if (brush.format != BrushFormat.SYSTEM) { multiSelecting = true; selectedBrushIds = selectedBrushIds + brush.id } },
                                     onSelect = { onBrushSelected(brush) },
                                     onReport = { reportBrush = brush },
                                     onEdit = { editBrush = brush },
@@ -8086,16 +8084,16 @@ private fun ProcreateBrushLibrary(
     fun moveBrushIntoGroup(brush: ImportedBrush, group: String) {
         applyBrushGroupOperation(setOf(brush.id), group, copy = false)
     }
-    fun Modifier.longPressBrushDrag(brush: ImportedBrush): Modifier = this
+    fun Modifier.brushDrag(brush: ImportedBrush): Modifier = this
         .onGloballyPositioned { coordinates ->
             val bounds = coordinates.boundsInWindow()
             if (brushDragBounds[brush.id] != bounds) brushDragBounds = brushDragBounds + (brush.id to bounds)
         }
         .pointerInput(brush.id, groupDropBounds) {
-            detectDragGesturesAfterLongPress(
+            detectDragGestures(
                 onDragStart = { local ->
                     managingBrushes = true
-                    selectedBrushIds = selectedBrushIds + brush.id
+                    selectedBrushIds = currentSelectedBrushIds + brush.id
                     draggingBrush = brush
                     brushDragPosition = brushDragBounds[brush.id]?.topLeft?.plus(local)
                 },
@@ -8192,6 +8190,16 @@ private fun ProcreateBrushLibrary(
                 )
                 IconButton(onClick = { gridLayout = !gridLayout }, modifier = Modifier.size(38.dp)) {
                     Icon(if (gridLayout) Icons.Outlined.ViewList else Icons.Outlined.GridView, if (gridLayout) tr("List view", "列表视图") else tr("Grid view", "网格视图"), tint = Ink)
+                }
+                IconButton(
+                    onClick = { if (managingBrushes) finishBrushManagement() else managingBrushes = true },
+                    modifier = Modifier.size(38.dp),
+                ) {
+                    Icon(
+                        if (managingBrushes) Icons.Outlined.Close else Icons.Outlined.Checklist,
+                        if (managingBrushes) tr("Exit brush management", "退出笔刷管理") else tr("Select multiple brushes", "批量选择笔刷"),
+                        tint = Ink,
+                    )
                 }
                 IconButton(onClick = { manageGroups = true }, modifier = Modifier.size(38.dp)) {
                     Icon(Icons.Outlined.CreateNewFolder, tr("Manage brush groups", "管理笔刷分组"), tint = Ink)
@@ -8357,10 +8365,10 @@ private fun ProcreateBrushLibrary(
                         val brushPresetDescription = tr("Brush preset ${brush.name}", "笔刷预设 ${brush.name}")
                         val interaction = if (managingBrushes) Modifier.clickable {
                             selectedBrushIds = if (brush.id in currentSelectedBrushIds) currentSelectedBrushIds - brush.id else currentSelectedBrushIds + brush.id
-                        } else Modifier.longPressBrushDrag(brush).combinedClickable(
+                        } else Modifier.brushDrag(brush).combinedClickable(
                             onClick = { onBrushSelected(brush) },
-                            onDoubleClick = { if (brush.format != BrushFormat.SYSTEM) editBrush = brush },
-                            onLongClick = { managingBrushes = true; selectedBrushIds = currentSelectedBrushIds + brush.id },
+                            onDoubleClick = { editBrush = brush },
+                            onLongClick = { editBrush = brush },
                         )
                         Column(
                             Modifier.fillMaxWidth().height(112.dp).semantics { contentDescription = brushPresetDescription }.then(interaction).clip(RoundedCornerShape(6.dp)).background(if (batchSelected) Color(0xFFDDE8F7) else if (selected) Color(0xFFE1E1E1) else Color.White).border(1.dp, if (batchSelected || selected) Ink else OutlineSoft, RoundedCornerShape(6.dp)).padding(7.dp),
@@ -8383,10 +8391,10 @@ private fun ProcreateBrushLibrary(
                         val brushPresetDescription = tr("Brush preset ${brush.name}", "笔刷预设 ${brush.name}")
                         val interaction = if (managingBrushes) Modifier.clickable {
                             selectedBrushIds = if (brush.id in currentSelectedBrushIds) currentSelectedBrushIds - brush.id else currentSelectedBrushIds + brush.id
-                        } else Modifier.longPressBrushDrag(brush).combinedClickable(
+                        } else Modifier.brushDrag(brush).combinedClickable(
                             onClick = { onBrushSelected(brush) },
-                            onDoubleClick = { if (brush.format != BrushFormat.SYSTEM) editBrush = brush },
-                            onLongClick = { managingBrushes = true; selectedBrushIds = currentSelectedBrushIds + brush.id },
+                            onDoubleClick = { editBrush = brush },
+                            onLongClick = { editBrush = brush },
                         )
                         Row(
                             Modifier.fillMaxWidth().height(68.dp).semantics { contentDescription = brushPresetDescription }.then(interaction).background(if (batchSelected) Color(0xFFDDE8F7) else if (selected) Color(0xFFE1E1E1) else Color.White).padding(horizontal = 10.dp, vertical = 6.dp),
@@ -8784,7 +8792,6 @@ private fun ImportedBrushTile(
     multiSelecting: Boolean,
     multiSelected: Boolean,
     onToggleSelection: () -> Unit,
-    onBeginSelection: () -> Unit,
     onSelect: () -> Unit,
     onReport: () -> Unit,
     onEdit: () -> Unit,
@@ -8808,7 +8815,7 @@ private fun ImportedBrushTile(
             .semantics { contentDescription = tileDescription }
             .combinedClickable(
                 onClick = { if (multiSelecting && editable) onToggleSelection() else onSelect() },
-                onLongClick = if (editable) onBeginSelection else null,
+                onLongClick = onEdit,
             ),
         colors = CardDefaults.cardColors(containerColor = if (active) Color(0xFFE1E1E1) else Color(0xFFF8F8F8)),
         border = CardDefaults.outlinedCardBorder().copy(
@@ -8880,7 +8887,6 @@ private fun ImportedBrushRow(
     multiSelecting: Boolean,
     multiSelected: Boolean,
     onToggleSelection: () -> Unit,
-    onBeginSelection: () -> Unit,
     onSelect: () -> Unit,
     onReport: () -> Unit,
     onEdit: () -> Unit,
@@ -8898,7 +8904,7 @@ private fun ImportedBrushRow(
     Card(
         modifier = Modifier.fillMaxWidth().semantics { contentDescription = rowDescription }.combinedClickable(
             onClick = { if (multiSelecting && editable) onToggleSelection() else onSelect() },
-            onLongClick = if (editable) onBeginSelection else null,
+            onLongClick = onEdit,
         ),
         shape = RoundedCornerShape(0.dp),
         colors = CardDefaults.cardColors(containerColor = if (selected || multiSelected) Color(0xFFD6DCE8) else Color(0xFFF4F4F4)),
