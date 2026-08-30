@@ -31,6 +31,8 @@ import androidx.annotation.VisibleForTesting
 import app.inkloom.BuildConfig
 import app.inkloom.brushpresetv5.BrushFamily as BrushFamilyV5
 import app.inkloom.brushpresetv5.BrushOutput as BrushOutputV5
+import app.inkloom.brushpresetv5.BrushExecutionCapabilityResolver
+import app.inkloom.brushpresetv5.BrushExecutionCapabilityResolution
 import app.inkloom.brushpresetv5.CompiledBrushProgramV5
 import app.inkloom.brushpresetv5.CompiledBrushProgramV5Cache
 import app.inkloom.brushpresetv5.RenderBackend as RenderBackendV5
@@ -4738,12 +4740,22 @@ class InkCanvasView(context: Context) : View(context) {
         if (activeTool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER)) return false
         v5RejectedContact = false
         val surface = rasterTileSurfaceFor(activeLayerId)
+        val semanticCapability = compiledBrushProgramV5?.let(BrushExecutionCapabilityResolver::resolve)
+        if (semanticCapability is BrushExecutionCapabilityResolution.Unsupported) {
+            v5RejectedContact = true
+            onPaintCapabilityRejected(
+                "UNSUPPORTED_WITH_EXPLICIT_REASON: " +
+                    semanticCapability.reasons.joinToString(",") { it.name },
+            )
+            return true
+        }
         val configuration = v5PaintConfiguration()
         if (surface == null || configuration == null) {
             v5RejectedContact = true
             onPaintCapabilityRejected(
-                if (surface == null) "V5 requires a raster layer surface"
-                else "This brush configuration is not yet supported by Paint Engine V5",
+                if (surface == null) "UNSUPPORTED_WITH_EXPLICIT_REASON: RASTER_LAYER_SURFACE_REQUIRED"
+                else if (compiledBrushProgramV5 == null) "UNSUPPORTED_WITH_EXPLICIT_REASON: COMPILED_BRUSH_PROGRAM_REQUIRED"
+                else "UNSUPPORTED_WITH_EXPLICIT_REASON: RUNTIME_RESOURCE_OR_LAYER_CONFIGURATION",
             )
             return true
         }
@@ -4895,7 +4907,10 @@ class InkCanvasView(context: Context) : View(context) {
                     published.record,
                     Rect(bounds.left, bounds.top, bounds.right, bounds.bottom),
                 )
-            } ?: published.record.close()
+            } ?: run {
+                published.record.close()
+                onPaintCapabilityRejected("UNSUPPORTED_WITH_EXPLICIT_REASON: EMPTY_RENDER_RESULT")
+            }
         } catch (failure: Throwable) {
             published.record.close()
             throw failure

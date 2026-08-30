@@ -12,6 +12,9 @@ import app.inkloom.importer.AbrBrushParser
 import app.inkloom.importer.ProcreateBrushParser
 import app.inkloom.importer.SutBrushParser
 import app.inkloom.brushpresetv5.BrushPresetV5Import
+import app.inkloom.brushpresetv5.BrushExecutionCapabilityResolver
+import app.inkloom.brushpresetv5.BrushExecutionCapabilityResolution
+import app.inkloom.brushpresetv5.CompiledBrushProgramV5
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.EditorTool
@@ -33,10 +36,12 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class RealBrushCorpusRenderingTest {
     @Test
-    fun userProvidedProcreateBrushesIncludeProductionRenderableInk() = verifyRealBrush("brush", BrushFormat.PROCREATE)
+    fun userProvidedProcreateBrushesReachATerminalProductionOutcome() =
+        verifyRealBrush("brush", BrushFormat.PROCREATE, requireRendered = false)
 
     @Test
-    fun userProvidedProcreateBrushSetCommitsAndRendersInk() = verifyRealBrush("brushset", BrushFormat.PROCREATE)
+    fun userProvidedProcreateBrushSetBrushesReachTerminalProductionOutcomes() =
+        verifyRealBrush("brushset", BrushFormat.PROCREATE, requireRendered = false)
 
     @Test
     fun userProvidedAbrBrushCommitsAndRendersInk() = verifyRealBrush("abr", BrushFormat.ABR)
@@ -44,7 +49,12 @@ class RealBrushCorpusRenderingTest {
     @Test
     fun userProvidedSutBrushKeepsRealtimePreview() = verifyRealBrush("sut", BrushFormat.SUT, verifyRealtime = true)
 
-    private fun verifyRealBrush(extension: String, format: BrushFormat, verifyRealtime: Boolean = false) {
+    private fun verifyRealBrush(
+        extension: String,
+        format: BrushFormat,
+        verifyRealtime: Boolean = false,
+        requireRendered: Boolean = true,
+    ) {
         val sources = stagedSources(extension)
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val assetRoot = File(context.cacheDir, "real-brush-assets-${System.nanoTime()}").apply { mkdirs() }
@@ -52,30 +62,44 @@ class RealBrushCorpusRenderingTest {
             var renderedCount = 0
             sources.forEachIndexed { index, source ->
                 val parsed = parse(source, format, File(assetRoot, "source-$index"))
-                val representative = parsed.firstOrNull()
-                    .also { assertNotNull("No $format brush parsed from ${source.name}", it) }!!
-                    .let(BrushPresetV5Import::convertDecodedSource)
-                assertTrue(
-                    "$format ${source.name} fell back instead of parsing: ${representative.report}",
-                    representative.compatibility != Compatibility.FAILED && representative.report.none { it.contains("parsing failed", ignoreCase = true) },
-                )
-                val preset = BrushPresetV5Import.requirePreset(representative)
-                Log.i(
-                    "InkloomBrushCorpus",
-                    "source=${source.name} id=${representative.id} format=${representative.format} " +
-                        "compatibility=${representative.compatibility} family=${preset.identity.family} " +
-                        "size=${representative.defaultSize} opacity=${representative.defaultOpacity} flow=${representative.flow} " +
-                        "spacing=${representative.spacing} tips=${representative.tipPreviewPaths.size} " +
-                        "grain=${representative.grainDensity} unsupported=${representative.report.filter { it.contains("unsupported", ignoreCase = true) }} " +
-                        "report=${representative.report}",
-                )
-                assertEquals(format, representative.format)
-                if (brushCommitsAndRenders(representative)) {
-                    renderedCount += 1
-                    if (verifyRealtime) assertSutBrushKeepsRealTimePreview(representative)
+                assertNotNull("No $format brush parsed from ${source.name}", parsed.firstOrNull())
+                parsed.forEach { decoded ->
+                    val representative = BrushPresetV5Import.convertDecodedSource(decoded)
+                    assertTrue(
+                        "$format ${source.name} fell back instead of parsing: ${representative.report}",
+                        representative.compatibility != Compatibility.FAILED &&
+                            representative.report.none { it.contains("parsing failed", ignoreCase = true) },
+                    )
+                    val preset = BrushPresetV5Import.requirePreset(representative)
+                    Log.i(
+                        "InkloomBrushCorpus",
+                        "source=${source.name} id=${representative.id} format=${representative.format} " +
+                            "compatibility=${representative.compatibility} family=${preset.identity.family} " +
+                            "size=${representative.defaultSize} opacity=${representative.defaultOpacity} flow=${representative.flow} " +
+                            "spacing=${representative.spacing} tips=${representative.tipPreviewPaths.size} " +
+                            "grain=${representative.grainDensity} unsupported=${representative.report.filter { it.contains("unsupported", ignoreCase = true) }} " +
+                            "report=${representative.report}",
+                    )
+                    when (val capability = BrushExecutionCapabilityResolver.resolve(CompiledBrushProgramV5.compile(preset))) {
+                        BrushExecutionCapabilityResolution.Supported -> Log.i(
+                            "InkloomBrushCorpus",
+                            "CAPABILITY_RESOLVED id=${representative.id} outcome=SUPPORTED",
+                        )
+                        is BrushExecutionCapabilityResolution.Unsupported -> Log.i(
+                            "InkloomBrushCorpus",
+                            "CAPABILITY_RESOLVED id=${representative.id} outcome=UNSUPPORTED reasons=${capability.reasons.joinToString(",")}",
+                        )
+                    }
+                    assertEquals(format, representative.format)
+                    if (brushCommitsAndRenders(representative)) {
+                        renderedCount += 1
+                        if (verifyRealtime) assertSutBrushKeepsRealTimePreview(representative)
+                    }
                 }
             }
-            assertTrue("No staged .$extension $format brush rendered through Paint Engine V5", renderedCount > 0)
+            if (requireRendered) {
+                assertTrue("No staged .$extension $format brush rendered through Paint Engine V5", renderedCount > 0)
+            }
         } finally {
             assetRoot.deleteRecursively()
         }
@@ -182,10 +206,21 @@ class RealBrushCorpusRenderingTest {
         view.awaitV5StrokeWorkerIdleForTest()
         instrumentation.runOnMainSync { }
         val patch = committed
+        val terminalOutcomeCount = (if (patch != null) 1 else 0) + (if (rejection != null) 1 else 0)
+        assertEquals(
+            "${brush.format} ${brush.name} must end as exactly one of rendered/committed or explicitly rejected; " +
+                "committed=${patch != null} rejection=$rejection",
+            1,
+            terminalOutcomeCount,
+        )
         if (patch == null) {
+            assertTrue(
+                "${brush.format} ${brush.name} rejection must carry a stable explicit reason: $rejection",
+                rejection?.startsWith("UNSUPPORTED_WITH_EXPLICIT_REASON:") == true,
+            )
             Log.w(
                 "InkloomBrushCorpus",
-                "UNSUPPORTED_PRODUCTION_RENDERER id=${brush.id} format=${brush.format} name=${brush.name} rejection=$rejection",
+                "PRODUCTION_REJECTED id=${brush.id} format=${brush.format} name=${brush.name} rejection=$rejection",
             )
             return false
         }

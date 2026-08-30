@@ -1,0 +1,82 @@
+package app.inkloom.brushpresetv5
+
+/**
+ * Stable production capability reasons for a compiled V5 brush.
+ *
+ * Parsing and compiling preserve source semantics. This resolver is the single boundary that
+ * decides whether the current production renderer can execute those semantics without silently
+ * dropping authored behavior.
+ */
+enum class BrushExecutionCapabilityReason {
+    REALTIME_TAPER_REQUIRED,
+    POST_CORRECTION_NOT_REALTIME_SAFE,
+    WET_PAINT_SETTINGS_REQUIRED,
+    WET_PAINT_ERASER_UNSUPPORTED,
+    WET_PAINT_TEXTURED_TIP_REQUIRED,
+    WET_PAINT_DUAL_BRUSH_REQUIRED,
+    WET_PAINT_TEXTURE_GRAIN_REQUIRED,
+    WET_PAINT_STAMP_DYNAMICS_REQUIRED,
+    ASSET_STAMP_TIP_REQUIRED,
+    TEXTURE_GRAIN_REQUIRES_STAMP_BACKEND,
+    STAMP_DYNAMICS_REQUIRE_STAMP_BACKEND,
+}
+
+sealed interface BrushExecutionCapabilityResolution {
+    data object Supported : BrushExecutionCapabilityResolution
+
+    data class Unsupported(
+        val reasons: Set<BrushExecutionCapabilityReason>,
+    ) : BrushExecutionCapabilityResolution {
+        init {
+            require(reasons.isNotEmpty())
+        }
+    }
+}
+
+object BrushExecutionCapabilityResolver {
+    fun resolve(program: CompiledBrushProgramV5): BrushExecutionCapabilityResolution {
+        val reasons = linkedSetOf<BrushExecutionCapabilityReason>()
+        val hasAssetTip = program.tip.tipTexture?.assetPaths?.isNotEmpty() == true
+        val hasTaper = program.strokeShaping.taperStartEnabled || program.strokeShaping.taperEndEnabled
+
+        if (hasTaper) reasons += BrushExecutionCapabilityReason.REALTIME_TAPER_REQUIRED
+        if (program.strokeShaping.postCorrection > .0001f) {
+            reasons += BrushExecutionCapabilityReason.POST_CORRECTION_NOT_REALTIME_SAFE
+        }
+
+        when (program.backend) {
+            RenderBackend.WET_PAINT -> {
+                if (program.wetMix == null) reasons += BrushExecutionCapabilityReason.WET_PAINT_SETTINGS_REQUIRED
+                if (program.output == BrushOutput.ERASE) {
+                    reasons += BrushExecutionCapabilityReason.WET_PAINT_ERASER_UNSUPPORTED
+                }
+                if (hasAssetTip) reasons += BrushExecutionCapabilityReason.WET_PAINT_TEXTURED_TIP_REQUIRED
+                if (program.dual != null) reasons += BrushExecutionCapabilityReason.WET_PAINT_DUAL_BRUSH_REQUIRED
+                if (program.textureGrain != null) {
+                    reasons += BrushExecutionCapabilityReason.WET_PAINT_TEXTURE_GRAIN_REQUIRED
+                }
+                if (program.stamp != null) {
+                    reasons += BrushExecutionCapabilityReason.WET_PAINT_STAMP_DYNAMICS_REQUIRED
+                }
+            }
+
+            RenderBackend.ASSET_STAMP -> {
+                if (!hasAssetTip) reasons += BrushExecutionCapabilityReason.ASSET_STAMP_TIP_REQUIRED
+            }
+
+            RenderBackend.CONTINUOUS_RIBBON -> {
+                if (program.textureGrain != null && !hasAssetTip) {
+                    reasons += BrushExecutionCapabilityReason.TEXTURE_GRAIN_REQUIRES_STAMP_BACKEND
+                }
+                if (program.stamp != null && !hasAssetTip) {
+                    reasons += BrushExecutionCapabilityReason.STAMP_DYNAMICS_REQUIRE_STAMP_BACKEND
+                }
+            }
+
+            RenderBackend.PROCEDURAL_STAMP, RenderBackend.AIRBRUSH -> Unit
+        }
+
+        return if (reasons.isEmpty()) BrushExecutionCapabilityResolution.Supported
+        else BrushExecutionCapabilityResolution.Unsupported(reasons)
+    }
+}
