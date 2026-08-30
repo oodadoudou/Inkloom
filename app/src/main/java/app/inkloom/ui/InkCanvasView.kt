@@ -120,7 +120,6 @@ import app.inkloom.document.BrushSizeDrag
 import app.inkloom.document.BrushTipSequence
 import app.inkloom.document.BrushTipFlip
 import app.inkloom.document.BrushTipTransform
-import app.inkloom.document.ShapeRoundnessJitter
 import app.inkloom.document.BrushTaperMode
 import app.inkloom.document.CspDualBrushCompositor
 import app.inkloom.document.CspAntiAlias
