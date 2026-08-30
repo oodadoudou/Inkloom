@@ -111,6 +111,13 @@ class CompiledBrushProgramV5 private constructor(
             preset.stamp?.let { stamp ->
                 require(stamp.randomRotationDegrees.isFinite() && stamp.randomRotationDegrees >= 0f)
                 require(stamp.particlesPerPlot in 1..32)
+                require(stamp.lateralPathJitter.isFinite() && stamp.lateralPathJitter in 0f..4f)
+                require(stamp.longitudinalPathJitter.isFinite() && stamp.longitudinalPathJitter in 0f..4f)
+                require(stamp.horizontalRoundnessJitter.isFinite() && stamp.horizontalRoundnessJitter in 0f..1f)
+                require(stamp.verticalRoundnessJitter.isFinite() && stamp.verticalRoundnessJitter in 0f..1f)
+                require(stamp.directionRotationFactor.isFinite() && stamp.directionRotationFactor in -1f..1f)
+                require(stamp.strokeRotationJitterDegrees.isFinite() && stamp.strokeRotationJitterDegrees in 0f..180f)
+                require(stamp.particlesPerPlotJitter.isFinite() && stamp.particlesPerPlotJitter in 0f..1f)
                 stamp.spray?.let(::requireValidSpray)
             }
             preset.tipTexture?.alphaThreshold?.let { threshold ->

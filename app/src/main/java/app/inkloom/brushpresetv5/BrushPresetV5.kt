@@ -212,6 +212,13 @@ data class StampSettings(
     val continuousPlot: Boolean = false,
     val spray: SpraySettings? = null,
     val transferMode: DabTransferMode = DabTransferMode.UNIFORM_GLAZE,
+    val lateralPathJitter: Float = 0f,
+    val longitudinalPathJitter: Float = 0f,
+    val horizontalRoundnessJitter: Float = 0f,
+    val verticalRoundnessJitter: Float = 0f,
+    val directionRotationFactor: Float = 0f,
+    val strokeRotationJitterDegrees: Float = 0f,
+    val particlesPerPlotJitter: Float = 0f,
 )
 
 /** Per-dab transfer behavior reconstructed from Procreate's archived rendering flags. */

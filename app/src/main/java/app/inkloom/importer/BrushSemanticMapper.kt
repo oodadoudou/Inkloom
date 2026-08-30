@@ -117,13 +117,17 @@ object BrushSemanticMapper {
 
         if (brush.strokeFalloff != 0f) preserved("$prefix.strokeFalloff", "Distance-based stroke falloff is parsed but not executed by V5.")
         if (brush.strokePathJitter != 0f || brush.strokePathLongitudinalJitter != 0f) {
-            preserved("$prefix.pathJitter", "Perpendicular and longitudinal path jitter are parsed but not executed by V5.")
+            if (wetPrimary) preserved("$prefix.pathJitter", "Wet Paint path jitter is retained but not executed by the wet depositor.")
+            else executed("$prefix.pathJitter", "StampSettings.lateralPathJitter/longitudinalPathJitter")
         }
-        if (brush.shapeRoundnessHorizontalJitter != 0f || brush.shapeRoundnessVerticalJitter != 0f ||
-            brush.shapeTouchRotation != 0f || brush.shapeOrientToScreen
-        ) preserved("$prefix.shapeDynamics", "Roundness jitter, touch rotation and screen orientation are retained but not executed by V5.")
+        if (brush.shapeRoundnessHorizontalJitter != 0f || brush.shapeRoundnessVerticalJitter != 0f || brush.shapeTouchRotation != 0f) {
+            if (wetPrimary) preserved("$prefix.shapeDynamics", "Wet Paint shape jitter is retained but not executed by the wet depositor.")
+            else executed("$prefix.shapeDynamics", "StampSettings.roundnessJitter/directionRotationFactor")
+        }
+        if (brush.shapeOrientToScreen) preserved("$prefix.orientToScreen", "Screen-locked tip orientation is retained but not yet projected through the viewport rotation.")
         if (brush.strokeRotationJitterDegrees != 0f || brush.stampCountJitter != 0f) {
-            preserved("$prefix.stampJitter", "Stroke-rotation and stamp-count jitter are retained but not executed by V5.")
+            if (wetPrimary) preserved("$prefix.stampJitter", "Wet Paint stamp jitter is retained but not executed by the wet depositor.")
+            else executed("$prefix.stampJitter", "StampSettings.strokeRotationJitter/particlesPerPlotJitter")
         }
         if (hasColorDynamics(brush)) preserved("$prefix.colorDynamics", "Stamp, stroke, pressure, tilt and secondary-color dynamics are retained but not executed by V5.")
         if (hasAdvancedMainDynamics(brush)) preserved("$prefix.advancedDynamics", "Spacing, thickness, velocity, random and non-graphite tilt dynamics are retained but not executed by V5.")
@@ -147,9 +151,9 @@ object BrushSemanticMapper {
         if (brush.format == BrushFormat.PROCREATE &&
             (brush.procreateBrushBlendMode != ProcreateBrushBlend.NORMAL || brush.procreateBurntEdgeBlendMode != ProcreateBrushBlend.MULTIPLY || brush.procreateLuminanceBlending)
         ) preserved("PROCREATE.blendModes", "Brush/burnt-edge blend and luminance behavior are retained but not executed by V5.")
-        if (!brush.procreateTaper.isDisabled() || brush.taperStartMinimum != .3f || brush.taperEndMinimum != .3f ||
+        if (!brush.procreateTaper.isDisabled() && (brush.taperStartMinimum != .3f || brush.taperEndMinimum != .3f ||
             brush.taperStartLengthUnit != 0 || brush.taperEndLengthUnit != 0
-        ) preserved("$prefix.taper.advanced", "Pressure/touch programs, minimums and units are retained beyond V5's basic taper.")
+        )) preserved("$prefix.taper.advanced", "Pressure/touch programs, minimums and units are retained beyond V5's basic taper.")
         if (hasAdvancedColorMix(brush)) preserved("$prefix.wetMix.advancedCsp", "CSP mix mode, dynamics, stretch, pigment, brightness and blur controls remain source-only.")
         if (hasAdvancedGrain(brush)) preserved("$prefix.grain.advanced", "Minimum/dynamic depth, stroke rotation, composite, filtering and per-plot grain behavior remain source-only.")
         if (hasAdvancedSpray(brush)) preserved("$prefix.spray.dynamics", "Pressure/tilt/velocity/random spray size and density programs remain source-only.")

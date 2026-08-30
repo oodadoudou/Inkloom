@@ -4531,6 +4531,13 @@ class InkCanvasView(context: Context) : View(context) {
                     ).toFloat(),
                     repeatStationarySamples = stampProgram?.continuousPlot == true,
                     transferMode = stampProgram?.transferMode ?: app.inkloom.brushpresetv5.DabTransferMode.UNIFORM_GLAZE,
+                    lateralPathJitterPixels = diameterPixels * (stampProgram?.lateralPathJitter ?: 0f),
+                    longitudinalPathJitterPixels = diameterPixels * (stampProgram?.longitudinalPathJitter ?: 0f),
+                    horizontalRoundnessJitter = stampProgram?.horizontalRoundnessJitter ?: 0f,
+                    verticalRoundnessJitter = stampProgram?.verticalRoundnessJitter ?: 0f,
+                    directionRotationFactor = stampProgram?.directionRotationFactor ?: 0f,
+                    strokeRotationJitterRadians = Math.toRadians((stampProgram?.strokeRotationJitterDegrees ?: 0f).toDouble()).toFloat(),
+                    particlesPerPlotJitter = stampProgram?.particlesPerPlotJitter ?: 0f,
                     blend = paintBlend,
                 )
                 val secondaryDefinitions = program.dual?.let { dual ->
@@ -4593,8 +4600,9 @@ class InkCanvasView(context: Context) : View(context) {
                 }.orEmpty()
                 val maximumDiameter = secondaryDefinitions.maxOfOrNull(StampBrushDefinition::diameterPixels)
                     ?.coerceAtLeast(particleDiameter) ?: particleDiameter
-                val maximumScatter = secondaryDefinitions.maxOfOrNull(StampBrushDefinition::scatterRadiusPixels)
-                    ?.coerceAtLeast(scatterRadius) ?: scatterRadius
+                val pathJitter = stamp.lateralPathJitterPixels + stamp.longitudinalPathJitterPixels
+                val maximumScatter = (secondaryDefinitions.maxOfOrNull(StampBrushDefinition::scatterRadiusPixels)
+                    ?.coerceAtLeast(scatterRadius) ?: scatterRadius) + pathJitter
                 return V5PaintConfiguration(
                     StampPaintOp(
                         surface,

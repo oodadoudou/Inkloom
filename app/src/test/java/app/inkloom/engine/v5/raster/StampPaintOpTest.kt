@@ -29,6 +29,25 @@ class StampPaintOpTest {
     }
 
     @Test
+    fun importedPathAndShapeDynamicsAreDeterministicAndChangeTheFootprint() {
+        val base = definition().copy(diameterPixels = 16f, particlesPerPlot = 4)
+        val dynamic = base.copy(
+            lateralPathJitterPixels = 12f,
+            longitudinalPathJitterPixels = 7f,
+            horizontalRoundnessJitter = .6f,
+            verticalRoundnessJitter = .4f,
+            directionRotationFactor = .75f,
+            strokeRotationJitterRadians = 1.2f,
+            particlesPerPlotJitter = .5f,
+        )
+        val points = listOf(sample(1, 42f, 28f), sample(2, 76f, 35f), sample(3, 122f, 24f))
+        val first = draw(listOf(points), dynamic)
+
+        assertArrayEquals(first, draw(points.map(::listOf), dynamic))
+        assertTrue(!first.contentEquals(draw(listOf(points), base)))
+    }
+
+    @Test
     fun dualBrushCombinesTwoPersistentCoverageStreamsBeforeOneLayerDeposit() {
         val surface = PixelTileSurface(64, 64)
         val primary = definition().copy(diameterPixels = 20f, opacity = .4f, spacingRatio = .5f)

@@ -63,14 +63,20 @@ class BrushSemanticMapperTest {
             .toSet()
 
         assertTrue("PROCREATE.strokeFalloff" in preservedFamilies)
-        assertTrue("PROCREATE.pathJitter" in preservedFamilies)
-        assertTrue("PROCREATE.shapeDynamics" in preservedFamilies)
         assertTrue("PROCREATE.colorDynamics" in preservedFamilies)
         assertTrue("PROCREATE.wetMix.advanced" in preservedFamilies)
         assertTrue(mappings.filter { it.sourceSemantic in preservedFamilies }.all { it.fidelity == SemanticFidelity.UNSUPPORTED })
         assertEquals(
             SemanticExecutionDisposition.SUPPORTED_AND_EXECUTED,
             mappings.single { it.sourceSemantic == "PROCREATE.wetMix.basic" }.executionDisposition,
+        )
+        assertEquals(
+            SemanticExecutionDisposition.SUPPORTED_AND_EXECUTED,
+            mappings.single { it.sourceSemantic == "PROCREATE.pathJitter" }.executionDisposition,
+        )
+        assertEquals(
+            SemanticExecutionDisposition.SUPPORTED_AND_EXECUTED,
+            mappings.single { it.sourceSemantic == "PROCREATE.shapeDynamics" }.executionDisposition,
         )
     }
 

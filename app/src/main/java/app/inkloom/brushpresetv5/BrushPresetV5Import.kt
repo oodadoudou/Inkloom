@@ -228,6 +228,13 @@ object BrushPresetV5Import {
                     transferMode = if (source.format == BrushFormat.PROCREATE) {
                         source.procreateRenderingMode.toV5TransferMode()
                     } else DabTransferMode.UNIFORM_GLAZE,
+                    lateralPathJitter = it.strokePathJitter.coerceIn(0f, 4f),
+                    longitudinalPathJitter = it.strokePathLongitudinalJitter.coerceIn(0f, 4f),
+                    horizontalRoundnessJitter = it.shapeRoundnessHorizontalJitter.coerceIn(0f, 1f),
+                    verticalRoundnessJitter = it.shapeRoundnessVerticalJitter.coerceIn(0f, 1f),
+                    directionRotationFactor = it.shapeTouchRotation.coerceIn(-1f, 1f),
+                    strokeRotationJitterDegrees = kotlin.math.abs(it.strokeRotationJitterDegrees).coerceIn(0f, 180f),
+                    particlesPerPlotJitter = it.stampCountJitter.coerceIn(0f, 1f),
                     spray = it.takeIf(ImportedBrush::spray)?.let { spray ->
                         SpraySettings(
                             particleSize = spray.sprayParticleSize.coerceAtLeast(.01f),

@@ -71,6 +71,13 @@ data class StampBrushDefinition(
     val randomRotationRadians: Float = 0f,
     val repeatStationarySamples: Boolean = false,
     val transferMode: DabTransferMode = DabTransferMode.UNIFORM_GLAZE,
+    val lateralPathJitterPixels: Float = 0f,
+    val longitudinalPathJitterPixels: Float = 0f,
+    val horizontalRoundnessJitter: Float = 0f,
+    val verticalRoundnessJitter: Float = 0f,
+    val directionRotationFactor: Float = 0f,
+    val strokeRotationJitterRadians: Float = 0f,
+    val particlesPerPlotJitter: Float = 0f,
     val blend: DryBlend = DryBlend.SOURCE_OVER,
 ) {
     init {
@@ -91,6 +98,13 @@ data class StampBrushDefinition(
         require(scatterRadiusPixels.isFinite() && scatterRadiusPixels >= 0f)
         require(scatterBias.isFinite() && scatterBias in -1f..1f)
         require(randomRotationRadians.isFinite() && randomRotationRadians >= 0f)
+        require(lateralPathJitterPixels.isFinite() && lateralPathJitterPixels >= 0f)
+        require(longitudinalPathJitterPixels.isFinite() && longitudinalPathJitterPixels >= 0f)
+        require(horizontalRoundnessJitter.isFinite() && horizontalRoundnessJitter in 0f..1f)
+        require(verticalRoundnessJitter.isFinite() && verticalRoundnessJitter in 0f..1f)
+        require(directionRotationFactor.isFinite() && directionRotationFactor in -1f..1f)
+        require(strokeRotationJitterRadians.isFinite() && strokeRotationJitterRadians >= 0f)
+        require(particlesPerPlotJitter.isFinite() && particlesPerPlotJitter in 0f..1f)
         require(kind in setOf(PaintOpKind.PENCIL, PaintOpKind.ERASER, PaintOpKind.AIRBRUSH, PaintOpKind.DECORATION))
     }
 }
@@ -267,7 +281,13 @@ class StampPaintOp(
             stream: StreamRuntime,
             streamState: StreamState,
         ) {
-            repeat(stream.definition.particlesPerPlot) { particle ->
+            val definition = stream.definition
+            val jitter = definition.particlesPerPlotJitter
+            val count = if (jitter <= 0f || definition.particlesPerPlot == 1) definition.particlesPerPlot else {
+                val variation = (randomUnit(streamState.dabSequence, 71, definition.renderSeed) * 2f - 1f) * jitter
+                (definition.particlesPerPlot * (1f + variation)).toInt().coerceIn(1, 32)
+            }
+            repeat(count) { particle ->
                 output += resolveDab(sample, directionRadians, particle, stream, streamState)
             }
         }
@@ -286,9 +306,13 @@ class StampPaintOp(
             val tipIndex = deterministicTipIndex(dabSequence, definition.renderSeed, definition.tips.size)
             val tip = definition.tips[tipIndex]
             val aspect = tip.width.toFloat() / tip.height
-            val radiusX = (if (aspect >= 1f) size * .5f else size * aspect * .5f).coerceAtLeast(.05f)
+            val horizontalRoundness = 1f - randomUnit(dabSequence, particle * 13 + 7, definition.renderSeed) *
+                definition.horizontalRoundnessJitter
+            val verticalRoundness = 1f - randomUnit(dabSequence, particle * 13 + 8, definition.renderSeed) *
+                definition.verticalRoundnessJitter
+            val radiusX = ((if (aspect >= 1f) size * .5f else size * aspect * .5f) * horizontalRoundness).coerceAtLeast(.05f)
             val radiusY = (if (aspect <= 1f) size * .5f else size / aspect * .5f)
-                .times(definition.roundness).coerceAtLeast(.05f)
+                .times(definition.roundness * verticalRoundness).coerceAtLeast(.05f)
             val scatterAngle = randomUnit(dabSequence, particle * 2, definition.renderSeed) * (Math.PI * 2.0).toFloat()
             val scatterUnit = randomUnit(dabSequence, particle * 2 + 1, definition.renderSeed)
             val scatterExponent = if (definition.scatterBias >= 0f) {
@@ -299,14 +323,23 @@ class StampPaintOp(
             val scatterDistance = scatterUnit.pow(scatterExponent) * definition.scatterRadiusPixels
             val randomRotation = (randomUnit(dabSequence, particle * 2 + 2, definition.renderSeed) * 2f - 1f) *
                 definition.randomRotationRadians
+            val strokeRotation = streamState.strokeRotationRadians ?: (
+                (randomUnit(0L, 89, definition.renderSeed) * 2f - 1f) * definition.strokeRotationJitterRadians
+                ).also { streamState.strokeRotationRadians = it }
             val angle = definition.rotationRadians + randomRotation + when {
                 definition.followStylusOrientation -> sample.orientationRadians
                 definition.followStrokeDirection -> directionRadians
-                else -> 0f
-            }
+                else -> directionRadians * definition.directionRotationFactor
+            } + strokeRotation
+            val lateral = (randomUnit(dabSequence, particle * 17 + 11, definition.renderSeed) * 2f - 1f) *
+                definition.lateralPathJitterPixels
+            val longitudinal = (randomUnit(dabSequence, particle * 17 + 12, definition.renderSeed) * 2f - 1f) *
+                definition.longitudinalPathJitterPixels
             return ResolvedDab(
-                centerX = sample.point.x + cos(scatterAngle) * scatterDistance,
-                centerY = sample.point.y + sin(scatterAngle) * scatterDistance,
+                centerX = sample.point.x + cos(scatterAngle) * scatterDistance +
+                    cos(directionRadians) * longitudinal - sin(directionRadians) * lateral,
+                centerY = sample.point.y + sin(scatterAngle) * scatterDistance +
+                    sin(directionRadians) * longitudinal + cos(directionRadians) * lateral,
                 radiusX = radiusX,
                 radiusY = radiusY,
                 angleRadians = angle,
@@ -537,6 +570,7 @@ class StampPaintOp(
         var lastSample: StrokeSample? = null
         var distanceToNextDab: Float = 0f
         var dabSequence: Long = 0L
+        var strokeRotationRadians: Float? = null
     }
 
     private data class StreamRuntime(val definition: StampBrushDefinition) {
