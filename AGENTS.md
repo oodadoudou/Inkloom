@@ -46,6 +46,7 @@
 
 ## Regression requirements
 
+- No silent runtime gap: every imported brush, tool, or operation that reaches a production dispatcher must terminate as exactly one of `SUPPORTED_AND_EXECUTED` or `UNSUPPORTED_WITH_EXPLICIT_REASON`. A parsed or recognized feature must never produce no commit, no rejection, or an empty result without an explicit terminal reason.
 - Every input or canvas change must test stylus drawing, stylus hover, erasing, brush switching, two-finger zoom/pan, and drawing after zoom.
 - Every reorder interaction must have both operation-level tests and an Android interaction test for the actual long-press/drag path.
 - Imported brush changes must be exercised with SUT, ABR, and Procreate fixtures when they are available locally.
