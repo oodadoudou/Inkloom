@@ -11,9 +11,8 @@ import app.inkloom.document.GradientKind
 import app.inkloom.document.InkPage
 import app.inkloom.document.InkDocument
 import app.inkloom.document.PageBackground
-import app.inkloom.document.MaskRegion
 import app.inkloom.document.PageElement
-import app.inkloom.document.SelectionMaskRenderer
+import app.inkloom.document.SelectionMaskCompositor
 import app.inkloom.document.ShapeKind
 import app.inkloom.document.StrokePoint
 import app.inkloom.engine.v5.surface.MaskComposeMode
@@ -71,11 +70,9 @@ class GradientRenderingTest {
     }
 
     @Test fun shapeMaskClipsGradientToTheSelectionRegion() {
-        val mask = SelectionMaskRenderer.render(
-            listOf(MaskRegion(listOf(StrokePoint(.25f, .25f), StrokePoint(.75f, .25f), StrokePoint(.75f, .75f), StrokePoint(.25f, .75f)))),
-            0f,
-            400f,
-            400f,
+        val mask = selectionMask(
+            listOf(StrokePoint(.25f, .25f), StrokePoint(.75f, .25f), StrokePoint(.75f, .75f), StrokePoint(.25f, .75f)),
+            featherPixels = 0f,
         )
         requireNotNull(mask)
         val maskPath = assets.saveFillMask(requireNotNull(SparseAlphaMask.fromBitmap(mask)).surface.snapshot())
@@ -110,12 +107,10 @@ class GradientRenderingTest {
     }
 
     @Test fun maskedGradientSurvivesDocumentBundleRoundTrip() {
-        val mask = requireNotNull(SelectionMaskRenderer.render(
-            listOf(MaskRegion(listOf(StrokePoint(.2f, .2f), StrokePoint(.8f, .2f), StrokePoint(.8f, .8f), StrokePoint(.2f, .8f)))),
-            12f,
-            400f,
-            400f,
-        ))
+        val mask = selectionMask(
+            listOf(StrokePoint(.2f, .2f), StrokePoint(.8f, .2f), StrokePoint(.8f, .8f), StrokePoint(.2f, .8f)),
+            featherPixels = 12f,
+        )
         val originalMaskPath = assets.saveFillMask(requireNotNull(SparseAlphaMask.fromBitmap(mask)).surface.snapshot())
         mask.recycle()
         val document = InkDocument(title = "Masked gradient", pages = listOf(InkPage(width = 400f, height = 400f, elements = listOf(element().copy(maskAssetPath = originalMaskPath)))))
@@ -156,6 +151,15 @@ class GradientRenderingTest {
     private fun render(kind: GradientKind = GradientKind.LINEAR, edge: GradientEdgeMode = GradientEdgeMode.CLAMP, element: PageElement.Shape? = null): Bitmap {
         val gradient = element ?: element().copy(gradientKind = kind, gradientEdgeMode = edge, gradientStops = stops)
         return assets.renderPageBitmap(InkPage(width = 400f, height = 400f, background = PageBackground.Paper(), elements = listOf(gradient)), 400)
+    }
+
+    private fun selectionMask(points: List<StrokePoint>, featherPixels: Float): Bitmap {
+        val hardMask = requireNotNull(SelectionMaskCompositor.polygon(points, 400f, 400f))
+        return try {
+            requireNotNull(SelectionMaskCompositor.feather(hardMask, featherPixels, 400f))
+        } finally {
+            hardMask.recycle()
+        }
     }
 
     private fun signature(bitmap: Bitmap): Long {
