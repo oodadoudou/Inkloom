@@ -41,7 +41,9 @@ stage_smallest() {
   rm -f "$candidates"
 }
 
-stage_smallest brush 10
-stage_smallest brushset
-stage_smallest abr
-stage_smallest sut
+# The local corpus currently contains 22 source containers. Stage every supported container so a
+# green compatibility run cannot hide behind one convenient representative from each format.
+stage_smallest brush 100
+stage_smallest brushset 100
+stage_smallest abr 100
+stage_smallest sut 100

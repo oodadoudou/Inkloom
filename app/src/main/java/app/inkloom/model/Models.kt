@@ -33,6 +33,14 @@ enum class Compatibility(val label: String) {
 @Serializable
 enum class SemanticFidelity { EXACT, APPROXIMATE, UNSUPPORTED }
 
+/** Terminal production disposition for one parsed source-semantic family. */
+@Serializable
+enum class SemanticExecutionDisposition {
+    SUPPORTED_AND_EXECUTED,
+    UNSUPPORTED_WITH_EXPLICIT_REASON,
+    PRESERVED_SOURCE_ONLY,
+}
+
 @Serializable
 data class ImportedBrushGrain(
     val previewPath: String? = null,
@@ -75,6 +83,8 @@ data class BrushSemanticMapping(
     val targetRuntime: String,
     val fidelity: SemanticFidelity,
     val note: String = "",
+    val executionDisposition: SemanticExecutionDisposition =
+        SemanticExecutionDisposition.PRESERVED_SOURCE_ONLY,
 )
 
 @Serializable

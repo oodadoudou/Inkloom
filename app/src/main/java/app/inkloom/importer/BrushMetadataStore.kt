@@ -13,6 +13,7 @@ import app.inkloom.model.ImportedBrushGrain
 import app.inkloom.model.ImportedBrushGraphite
 import app.inkloom.model.BrushSemanticMapping
 import app.inkloom.model.SemanticFidelity
+import app.inkloom.model.SemanticExecutionDisposition
 import app.inkloom.document.BrushCurvePoint
 import app.inkloom.document.BrushColorDynamics
 import app.inkloom.document.BrushParameterDynamics
@@ -47,12 +48,16 @@ class BrushMetadataStore(
                     for (mappingIndex in 0 until semanticArray.length()) {
                         val mapping = semanticArray.optJSONObject(mappingIndex) ?: continue
                         val fidelity = runCatching { SemanticFidelity.valueOf(mapping.optString("fidelity")) }.getOrNull() ?: continue
+                        val executionDisposition = runCatching {
+                            SemanticExecutionDisposition.valueOf(mapping.optString("executionDisposition"))
+                        }.getOrDefault(SemanticExecutionDisposition.PRESERVED_SOURCE_ONLY)
                         add(
                             BrushSemanticMapping(
                                 sourceSemantic = mapping.optString("sourceSemantic"),
                                 targetRuntime = mapping.optString("targetRuntime"),
                                 fidelity = fidelity,
                                 note = mapping.optString("note"),
+                                executionDisposition = executionDisposition,
                             ),
                         )
                     }
@@ -458,9 +463,7 @@ class BrushMetadataStore(
                 )
             }
         }
-    }.getOrDefault(emptyList()).map { brush ->
-        if (brush.semanticMappings.isEmpty()) BrushSemanticMapper.apply(brush) else brush
-    }
+    }.getOrDefault(emptyList()).map(BrushSemanticMapper::apply)
 
     fun save(brushes: List<ImportedBrush>) {
         val array = JSONArray()
@@ -790,6 +793,7 @@ class BrushMetadataStore(
                     .put("sourceSemantic", mapping.sourceSemantic)
                     .put("targetRuntime", mapping.targetRuntime)
                     .put("fidelity", mapping.fidelity.name)
+                    .put("executionDisposition", mapping.executionDisposition.name)
                     .put("note", mapping.note),
             )
         }

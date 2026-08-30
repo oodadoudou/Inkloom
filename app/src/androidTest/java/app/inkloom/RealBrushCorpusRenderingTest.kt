@@ -19,6 +19,7 @@ import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.EditorTool
 import app.inkloom.model.ImportedBrush
+import app.inkloom.model.SemanticExecutionDisposition
 import app.inkloom.settings.AppSettings
 import app.inkloom.settings.EraserPreset
 import app.inkloom.engine.v5.surface.PixelTileSurface
@@ -64,12 +65,34 @@ class RealBrushCorpusRenderingTest {
                 val parsed = parse(source, format, File(assetRoot, "source-$index"))
                 assertNotNull("No $format brush parsed from ${source.name}", parsed.firstOrNull())
                 parsed.forEach { decoded ->
-                    val representative = BrushPresetV5Import.convertDecodedSource(decoded)
+                    val representative = BrushPresetV5Import.convertOrReject(decoded)
                     assertTrue(
                         "$format ${source.name} fell back instead of parsing: ${representative.report}",
-                        representative.compatibility != Compatibility.FAILED &&
-                            representative.report.none { it.contains("parsing failed", ignoreCase = true) },
+                        representative.report.none { it.contains("parsing failed", ignoreCase = true) },
                     )
+                    val nonExecuted = representative.semanticMappings.filter {
+                        it.executionDisposition != SemanticExecutionDisposition.SUPPORTED_AND_EXECUTED
+                    }
+                    nonExecuted.forEach { mapping ->
+                        assertTrue(
+                            "${representative.name} silently retained ${mapping.sourceSemantic} without a compatibility report",
+                            representative.report.any {
+                                it.startsWith("SEMANTIC_CAPABILITY:${mapping.executionDisposition.name}:${mapping.sourceSemantic}:")
+                            },
+                        )
+                    }
+                    if (representative.compatibility == Compatibility.FAILED) {
+                        assertEquals(null, representative.v5PresetJson)
+                        assertTrue(
+                            "$format ${source.name} import rejection must carry a stable explicit reason",
+                            representative.report.any { it.startsWith("UNSUPPORTED_WITH_EXPLICIT_REASON:") },
+                        )
+                        Log.w(
+                            "InkloomBrushCorpus",
+                            "IMPORT_REJECTED source=${source.name} id=${representative.id} reasons=${representative.report}",
+                        )
+                        return@forEach
+                    }
                     val preset = BrushPresetV5Import.requirePreset(representative)
                     Log.i(
                         "InkloomBrushCorpus",
@@ -78,6 +101,7 @@ class RealBrushCorpusRenderingTest {
                             "size=${representative.defaultSize} opacity=${representative.defaultOpacity} flow=${representative.flow} " +
                             "spacing=${representative.spacing} tips=${representative.tipPreviewPaths.size} " +
                             "grain=${representative.grainDensity} unsupported=${representative.report.filter { it.contains("unsupported", ignoreCase = true) }} " +
+                            "semanticOutcomes=${representative.semanticMappings.groupingBy { it.executionDisposition }.eachCount()} " +
                             "report=${representative.report}",
                     )
                     when (val capability = BrushExecutionCapabilityResolver.resolve(CompiledBrushProgramV5.compile(preset))) {

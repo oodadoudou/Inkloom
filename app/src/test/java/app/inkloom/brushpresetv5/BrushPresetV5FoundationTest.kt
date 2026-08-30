@@ -150,7 +150,7 @@ class BrushPresetV5FoundationTest {
             .0001f,
         )
         assertTrue(decoded.let(BrushPresetV5Import::convertDecodedSource).report.any {
-            it.contains("Post-correction was not imported")
+            it.contains("SEMANTIC_CAPABILITY:PRESERVED_SOURCE_ONLY:SUT.postCorrection:")
         })
     }
 
@@ -171,6 +171,25 @@ class BrushPresetV5FoundationTest {
         assertEquals(Compatibility.FAILED, rejected.compatibility)
         assertEquals(null, rejected.v5PresetJson)
         assertTrue(rejected.report.any { it.contains("RGB compositing") })
+    }
+
+    @Test fun importBoundaryRejectsRecognizedContainerWithoutExecutableSemantics() {
+        val rejected = BrushPresetV5Import.convertOrReject(
+            ImportedBrush(
+                name = "Opaque container",
+                format = BrushFormat.UNKNOWN,
+                compatibility = Compatibility.EXTRACTED,
+                sizeBytes = 12,
+                report = emptyList(),
+            ),
+        )
+
+        assertEquals(Compatibility.FAILED, rejected.compatibility)
+        assertEquals(null, rejected.v5PresetJson)
+        assertTrue(rejected.report.any { it.startsWith("UNSUPPORTED_WITH_EXPLICIT_REASON:") })
+        assertTrue(rejected.semanticMappings.any {
+            it.executionDisposition == app.inkloom.model.SemanticExecutionDisposition.UNSUPPORTED_WITH_EXPLICIT_REASON
+        })
     }
 
     private fun referencePencil() = BrushPresetV5(

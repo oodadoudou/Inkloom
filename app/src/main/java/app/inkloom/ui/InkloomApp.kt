@@ -7624,7 +7624,12 @@ private fun BrushPanel(
                                 app.inkloom.model.SemanticFidelity.APPROXIMATE -> tr("Approximate", "近似")
                                 app.inkloom.model.SemanticFidelity.UNSUPPORTED -> tr("Unsupported", "不支持")
                             }
-                            Text("• ${mapping.sourceSemantic} → ${mapping.targetRuntime} · $fidelity", modifier = Modifier.padding(top = 5.dp))
+                            val disposition = when (mapping.executionDisposition) {
+                                app.inkloom.model.SemanticExecutionDisposition.SUPPORTED_AND_EXECUTED -> tr("Executed", "已执行")
+                                app.inkloom.model.SemanticExecutionDisposition.UNSUPPORTED_WITH_EXPLICIT_REASON -> tr("Rejected", "已明确拒绝")
+                                app.inkloom.model.SemanticExecutionDisposition.PRESERVED_SOURCE_ONLY -> tr("Source only", "仅保留源参数")
+                            }
+                            Text("• ${mapping.sourceSemantic} → ${mapping.targetRuntime} · $fidelity · $disposition", modifier = Modifier.padding(top = 5.dp))
                             if (mapping.note.isNotBlank()) Text(mapping.note, color = MutedInk, fontSize = 11.sp)
                         }
                     }

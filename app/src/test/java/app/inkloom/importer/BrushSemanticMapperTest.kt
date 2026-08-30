@@ -1,53 +1,94 @@
 package app.inkloom.importer
 
+import app.inkloom.document.ProcreateColorDynamics
+import app.inkloom.document.ProcreateWetMix
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
+import app.inkloom.model.SemanticExecutionDisposition
 import app.inkloom.model.SemanticFidelity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BrushSemanticMapperTest {
-    @Test fun importedTextureBrushGetsExecutableV3Mappings() {
-        val brush = ImportedBrush(
-            name = "Mapped",
-            format = BrushFormat.PROCREATE,
-            compatibility = Compatibility.HIGH,
-            sizeBytes = 42,
-            report = emptyList(),
-            tipPreviewPath = "/shape.png",
-            tipPreviewPaths = listOf("/shape.png"),
-            grainPreviewPath = "/grain.png",
-            continuousPlot = true,
-            dualBrush = true,
-            dualTipPreviewPaths = listOf("/dual.png"),
+    @Test fun executableV5FamiliesAreReportedAsSupportedAndExecuted() {
+        val mapped = BrushSemanticMapper.apply(
+            ImportedBrush(
+                name = "Mapped",
+                format = BrushFormat.PROCREATE,
+                compatibility = Compatibility.HIGH,
+                sizeBytes = 42,
+                report = emptyList(),
+                tipPreviewPath = "/shape.png",
+                tipPreviewPaths = listOf("/shape.png"),
+                grainPreviewPath = "/grain.png",
+                continuousPlot = true,
+                dualBrush = true,
+                dualTipPreviewPaths = listOf("/dual.png"),
+            ),
         )
 
-        val mapped = BrushSemanticMapper.apply(brush)
-        val targets = mapped.semanticMappings.map { it.targetRuntime }.toSet()
+        val executed = mapped.semanticMappings
+            .filter { it.executionDisposition == SemanticExecutionDisposition.SUPPORTED_AND_EXECUTED }
+            .map { it.targetRuntime }
+            .toSet()
 
-        assertTrue("StampRasterEngine.tipTexture" in targets)
-        assertTrue("StampRasterEngine.grainTexture" in targets)
-        assertTrue("AirbrushEngine.timeSampler" in targets)
-        assertTrue("StampRasterEngine.secondaryCoat" in targets)
-        assertEquals(SemanticFidelity.APPROXIMATE, mapped.semanticMappings.single { it.sourceSemantic == "PROCREATE.renderingMode" }.fidelity)
-        assertTrue(mapped.semanticMappings.filterNot { it.sourceSemantic == "PROCREATE.renderingMode" }.all { it.fidelity == SemanticFidelity.EXACT })
+        assertTrue("StampPaintOp.tipTexture" in executed)
+        assertTrue("StampPaintOp.textureGrain" in executed)
+        assertTrue("StampPaintOp.continuousPlot" in executed)
+        assertTrue("StampPaintOp.dual" in executed)
+        assertTrue(mapped.semanticMappings.all { it.executionDisposition in SemanticExecutionDisposition.entries })
     }
 
-    @Test fun wetMixIsExplicitlyReportedAsApproximate() {
+    @Test fun parsedButUnexecutedFamiliesAreNeverReportedAsExactRuntimeSupport() {
         val brush = ImportedBrush(
-            name = "Wet",
+            name = "Advanced",
+            format = BrushFormat.PROCREATE,
+            compatibility = Compatibility.BASIC,
+            sizeBytes = 42,
+            report = emptyList(),
+            strokeFalloff = .4f,
+            strokePathJitter = .3f,
+            shapeRoundnessHorizontalJitter = .2f,
+            colorJitterHueDegrees = 15f,
+            procreateColorDynamics = ProcreateColorDynamics(stampHue = .2f),
+            procreateWetMix = ProcreateWetMix(dilution = .5f, charge = .4f, grade = .3f),
+        )
+
+        val mappings = BrushSemanticMapper.describe(brush)
+        val preservedFamilies = mappings
+            .filter { it.executionDisposition == SemanticExecutionDisposition.PRESERVED_SOURCE_ONLY }
+            .map { it.sourceSemantic }
+            .toSet()
+
+        assertTrue("PROCREATE.strokeFalloff" in preservedFamilies)
+        assertTrue("PROCREATE.pathJitter" in preservedFamilies)
+        assertTrue("PROCREATE.shapeDynamics" in preservedFamilies)
+        assertTrue("PROCREATE.colorDynamics" in preservedFamilies)
+        assertTrue("PROCREATE.wetMix.advanced" in preservedFamilies)
+        assertTrue(mappings.filter { it.sourceSemantic in preservedFamilies }.all { it.fidelity == SemanticFidelity.UNSUPPORTED })
+        assertEquals(
+            SemanticExecutionDisposition.SUPPORTED_AND_EXECUTED,
+            mappings.single { it.sourceSemantic == "PROCREATE.wetMix.basic" }.executionDisposition,
+        )
+    }
+
+    @Test fun fatalDualSemanticCarriesStableExplicitRejection() {
+        val brush = ImportedBrush(
+            name = "RGB dual",
             format = BrushFormat.SUT,
             compatibility = Compatibility.BASIC,
             sizeBytes = 42,
             report = emptyList(),
-            watercolor = true,
+            dualBrush = true,
+            dualTipPreviewPaths = listOf("/dual.png"),
+            dualApplyRgb = true,
         )
 
-        val wet = BrushSemanticMapper.describe(brush).single { it.sourceSemantic.endsWith("wetMix") }
+        val mapping = BrushSemanticMapper.describe(brush).single { it.sourceSemantic == "SUT.dualBrush.rgb" }
 
-        assertEquals(SemanticFidelity.APPROXIMATE, wet.fidelity)
-        assertTrue(wet.note.isNotBlank())
+        assertEquals(SemanticExecutionDisposition.UNSUPPORTED_WITH_EXPLICIT_REASON, mapping.executionDisposition)
+        assertTrue(mapping.note.isNotBlank())
     }
 }

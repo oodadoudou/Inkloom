@@ -5,6 +5,7 @@ import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
 import app.inkloom.model.ImportedBrushGraphite
 import app.inkloom.document.CspBrushGap
+import app.inkloom.importer.BrushSemanticMapper
 
 /**
  * Import-boundary conversion from decoded third-party brush semantics into Brush Preset V5.
@@ -14,32 +15,37 @@ import app.inkloom.document.CspBrushGap
  * payload remain unsupported instead of being silently migrated at runtime.
  */
 object BrushPresetV5Import {
-    fun convertOrReject(source: ImportedBrush): ImportedBrush = runCatching {
-        convertDecodedSource(source)
-    }.getOrElse { failure ->
-        source.copy(
-            compatibility = Compatibility.FAILED,
-            report = (source.report + (failure.message ?: "Brush Preset Format V5 conversion failed")).distinct(),
-            v5PresetJson = null,
-        )
+    fun convertOrReject(source: ImportedBrush): ImportedBrush {
+        val audited = BrushSemanticMapper.apply(source)
+        return runCatching {
+            convertDecodedSource(audited)
+        }.getOrElse { failure ->
+            audited.copy(
+                compatibility = Compatibility.FAILED,
+                report = (audited.report + BrushSemanticMapper.compatibilityReport(audited) +
+                    "UNSUPPORTED_WITH_EXPLICIT_REASON:${failure.message ?: "Brush Preset Format V5 conversion failed"}")
+                    .distinct(),
+                v5PresetJson = null,
+            )
+        }
     }
 
     fun convertDecodedSource(source: ImportedBrush): ImportedBrush {
-        require(source.format != BrushFormat.INKLOOM || source.v5PresetJson != null) {
+        val audited = BrushSemanticMapper.apply(source)
+        require(audited.format != BrushFormat.INKLOOM || audited.v5PresetJson != null) {
             "This brush was created by an unsupported legacy Inkloom engine."
         }
-        source.v5PresetJson?.let { encoded ->
-            require(BrushPresetV5Codec.decodeOrNull(encoded) != null) { "Invalid Brush Preset Format V5 payload" }
-            return source
+        require(audited.format != BrushFormat.UNKNOWN) {
+            "The brush container was recognized, but no executable source semantics were decoded."
         }
-        val auditedSource = if (source.postCorrectionEnabled && source.postCorrection > 0f) {
-            source.copy(
-                report = (source.report +
-                    "Post-correction was not imported: Paint Engine V5 never rewrites a completed stroke. Use realtime Smoothing explicitly instead.")
-                    .distinct(),
-            )
-        } else source
-        return writePreset(auditedSource, fromDecodedSource(source), source.format)
+        audited.v5PresetJson?.let { encoded ->
+            require(BrushPresetV5Codec.decodeOrNull(encoded) != null) { "Invalid Brush Preset Format V5 payload" }
+            return audited
+        }
+        val auditedSource = audited.copy(
+            report = (audited.report + BrushSemanticMapper.compatibilityReport(audited)).distinct(),
+        )
+        return writePreset(auditedSource, fromDecodedSource(audited), audited.format)
     }
 
     /** Creates a first-party V5 preset at catalog construction, not through legacy migration. */
