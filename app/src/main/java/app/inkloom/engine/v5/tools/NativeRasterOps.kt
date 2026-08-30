@@ -87,25 +87,6 @@ internal object NativeRasterOps {
         areaScalingPixels,
     ).toRectOrNull()
 
-    fun compositeDualBrush(
-        primary: Bitmap,
-        secondary: Bitmap,
-        output: Bitmap,
-        region: Rect,
-        modeCode: Int,
-        applyRgb: Boolean,
-    ): Boolean = nativeCompositeDualBrush(
-        primary,
-        secondary,
-        output,
-        region.left,
-        region.top,
-        region.right,
-        region.bottom,
-        modeCode,
-        applyRgb,
-    )
-
     private external fun nativeCompositePigment(
         base: Bitmap,
         fresh: Bitmap,
@@ -153,17 +134,6 @@ internal object NativeRasterOps {
         closeGapPixels: Int,
         areaScalingPixels: Int,
     ): IntArray
-    private external fun nativeCompositeDualBrush(
-        primary: Bitmap,
-        secondary: Bitmap,
-        output: Bitmap,
-        left: Int,
-        top: Int,
-        right: Int,
-        bottom: Int,
-        modeCode: Int,
-        applyRgb: Boolean,
-    ): Boolean
     private fun IntArray.toRectOrNull(): Rect? = takeIf { size == 4 && it[0] >= 0 && it[1] >= 0 && it[2] > it[0] && it[3] > it[1] }
         ?.let { Rect(it[0], it[1], it[2], it[3]) }
 

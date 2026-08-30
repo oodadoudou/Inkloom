@@ -121,7 +121,6 @@ import app.inkloom.document.BrushTipSequence
 import app.inkloom.document.BrushTipFlip
 import app.inkloom.document.BrushTipTransform
 import app.inkloom.document.BrushTaperMode
-import app.inkloom.document.CspDualBrushCompositor
 import app.inkloom.document.CspAntiAlias
 import app.inkloom.document.CspBrushGap
 import app.inkloom.document.CspTextureComposite
