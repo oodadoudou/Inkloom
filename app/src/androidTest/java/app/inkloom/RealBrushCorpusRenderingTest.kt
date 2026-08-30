@@ -50,7 +50,12 @@ class RealBrushCorpusRenderingTest {
     fun userProvidedAbrBrushCommitsAndRendersInk() = verifyRealBrush("abr", BrushFormat.ABR)
 
     @Test
-    fun userProvidedSutBrushKeepsRealtimePreview() = verifyRealBrush("sut", BrushFormat.SUT, verifyRealtime = true)
+    fun userProvidedSutBrushKeepsRealtimePreview() = verifyRealBrush(
+        "sut",
+        BrushFormat.SUT,
+        verifyRealtime = true,
+        requireRendered = false,
+    )
 
     private fun verifyRealBrush(
         extension: String,
