@@ -16,6 +16,7 @@ class BrushImportRepository(context: Context) {
     private val abrParser = AbrBrushParser(File(context.filesDir, "abr-assets"))
     private val procreateParser = ProcreateBrushParser(File(context.filesDir, "procreate-assets"))
     private val inkloomPackage = InkloomBrushPackage(File(context.filesDir, "inkloom-brush-assets"))
+    private val productionRenderProbe = ProductionBrushRenderProbe(context)
 
     fun import(uri: Uri): Result<ImportedBrush> = importAll(uri).map { it.first() }
 
@@ -63,7 +64,7 @@ class BrushImportRepository(context: Context) {
             app.inkloom.model.BrushFormat.INKLOOM -> listOf(inkloomPackage.read(target, hash, retained))
             else -> listOf(retained)
         }.map(BrushSemanticMapper::apply).map(BrushPresetV5Import::convertOrReject)
-            .let { brushes -> BrushImportBatch.classify(filesScanned = 1, brushes) }
+            .let { brushes -> BrushImportBatch.classify(filesScanned = 1, brushes, productionRenderProbe::probe) }
     }
 
     fun export(brush: ImportedBrush, uri: Uri): Result<Unit> = runCatching {

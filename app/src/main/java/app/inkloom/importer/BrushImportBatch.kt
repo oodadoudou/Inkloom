@@ -42,6 +42,11 @@ data class BrushImportRecord(
     }
 }
 
+sealed interface BrushRenderProbeResult {
+    data object Succeeded : BrushRenderProbeResult
+    data class Failed(val reason: String) : BrushRenderProbeResult
+}
+
 /** Immutable source-of-truth for a complete import session. */
 data class BrushImportLedger(
     val sourceFilesScanned: Int,
@@ -74,7 +79,7 @@ data class BrushImportLedger(
         groupsDiscovered = records.asSequence().map(BrushImportRecord::sourceGroup)
             .map(String::trim).filter(String::isNotEmpty).distinct().count(),
         groupsCreated = groupsCreated,
-    )
+)
 
     fun withGroupsCreated(value: Int) = copy(groupsCreated = value)
 
@@ -83,11 +88,14 @@ data class BrushImportLedger(
             filesScanned: Int,
             brushes: List<ImportedBrush>,
             assetValidator: (String) -> Boolean = { path -> File(path).isFile && File(path).length() > 0L },
+            renderProbe: (ImportedBrush) -> BrushRenderProbeResult = {
+                BrushRenderProbeResult.Failed("PRODUCTION_RENDER_PROBE_REQUIRED")
+            },
         ): BrushImportLedger = BrushImportLedger(
             sourceFilesScanned = filesScanned,
             sourceContainers = brushes.mapNotNull(ImportedBrush::sha256).distinct().size
                 .coerceAtLeast(if (filesScanned > 0) 1 else 0),
-            records = brushes.map { classifyBrush(it, assetValidator) },
+            records = brushes.map { classifyBrush(it, assetValidator, renderProbe) },
         )
 
         fun combine(ledgers: List<BrushImportLedger>): BrushImportLedger = BrushImportLedger(
@@ -98,7 +106,11 @@ data class BrushImportLedger(
         )
 
         @Suppress("LongMethod")
-        private fun classifyBrush(brush: ImportedBrush, assetValidator: (String) -> Boolean): BrushImportRecord {
+        private fun classifyBrush(
+            brush: ImportedBrush,
+            assetValidator: (String) -> Boolean,
+            renderProbe: (ImportedBrush) -> BrushRenderProbeResult,
+        ): BrushImportRecord {
             val parserFailure = brush.report.firstOrNull { line ->
                 line.contains("parsing failed", ignoreCase = true) || line.contains("could not be decoded", ignoreCase = true)
             }
@@ -179,12 +191,21 @@ data class BrushImportLedger(
                 )
             }
             return when (val capability = BrushExecutionCapabilityResolver.resolve(program)) {
-                BrushExecutionCapabilityResolution.Supported -> record(
-                    BrushImportFinalState.IMPORTED_USABLE, BrushImportStageStatus.SUCCEEDED,
-                    assetSuccess, BrushImportStageStatus.SUCCEEDED, BrushImportStageStatus.SUCCEEDED,
-                    BrushImportStageStatus.SUCCEEDED, BrushImportStageStatus.SUCCEEDED,
-                    BrushImportStageStatus.SUCCEEDED, presetId = brush.id, admitted = brush,
-                )
+                BrushExecutionCapabilityResolution.Supported -> when (val probe = runCatching { renderProbe(brush) }
+                    .getOrElse { BrushRenderProbeResult.Failed(it.message ?: "Production render probe failed") }) {
+                    BrushRenderProbeResult.Succeeded -> record(
+                        BrushImportFinalState.IMPORTED_USABLE, BrushImportStageStatus.SUCCEEDED,
+                        assetSuccess, BrushImportStageStatus.SUCCEEDED, BrushImportStageStatus.SUCCEEDED,
+                        BrushImportStageStatus.SUCCEEDED, BrushImportStageStatus.SUCCEEDED,
+                        BrushImportStageStatus.SUCCEEDED, presetId = brush.id, admitted = brush,
+                    )
+                    is BrushRenderProbeResult.Failed -> record(
+                        BrushImportFinalState.FAILED_RENDER, BrushImportStageStatus.SUCCEEDED,
+                        assetSuccess, BrushImportStageStatus.SUCCEEDED, BrushImportStageStatus.SUCCEEDED,
+                        BrushImportStageStatus.SUCCEEDED, BrushImportStageStatus.FAILED,
+                        BrushImportStageStatus.NOT_REQUIRED, setOf(probe.reason), admitted = brush,
+                    )
+                }
                 is BrushExecutionCapabilityResolution.Unsupported -> record(
                     BrushImportFinalState.REJECTED_UNSUPPORTED, BrushImportStageStatus.SUCCEEDED,
                     assetSuccess, BrushImportStageStatus.SUCCEEDED, BrushImportStageStatus.UNSUPPORTED,
@@ -229,7 +250,12 @@ data class BrushImportBatch(val ledger: BrushImportLedger) {
     val summary: BrushImportSummary get() = ledger.summary
 
     companion object {
-        fun classify(filesScanned: Int, brushes: List<ImportedBrush>): BrushImportBatch =
-            BrushImportBatch(BrushImportLedger.classify(filesScanned, brushes))
+        fun classify(
+            filesScanned: Int,
+            brushes: List<ImportedBrush>,
+            renderProbe: (ImportedBrush) -> BrushRenderProbeResult,
+        ): BrushImportBatch = BrushImportBatch(
+            BrushImportLedger.classify(filesScanned, brushes, renderProbe = renderProbe),
+        )
     }
 }

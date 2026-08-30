@@ -20,7 +20,7 @@ class BrushImportBatchTest {
             report = listOf("Procreate parsing failed: truncated archive"),
         )
 
-        val batch = BrushImportBatch.classify(1, listOf(renderable, rejected, failed))
+        val batch = BrushImportBatch.classify(1, listOf(renderable, rejected, failed)) { BrushRenderProbeResult.Succeeded }
 
         assertEquals(listOf(renderable), batch.renderableBrushes)
         assertEquals(listOf(rejected), batch.rejectedBrushes)
@@ -41,7 +41,7 @@ class BrushImportBatchTest {
     @Test fun containerAndAssetCountsNeverBecomeBrushCounts() {
         val first = BrushPresetV5Import.convertDecodedSource(brush("one", Compatibility.HIGH).copy(sha256 = "same"))
         val second = BrushPresetV5Import.convertDecodedSource(brush("two", Compatibility.HIGH).copy(sha256 = "same"))
-        val ledger = BrushImportLedger.classify(1, listOf(first, second))
+        val ledger = BrushImportLedger.classify(1, listOf(first, second), renderProbe = { BrushRenderProbeResult.Succeeded })
 
         assertEquals(1, ledger.summary.sourceFilesScanned)
         assertEquals(1, ledger.summary.sourceContainers)
@@ -53,7 +53,7 @@ class BrushImportBatchTest {
         val converted = BrushPresetV5Import.convertDecodedSource(
             brush("missing", Compatibility.HIGH).copy(tipPreviewPath = "/not/present/shape.png"),
         )
-        val ledger = BrushImportLedger.classify(1, listOf(converted)) { false }
+        val ledger = BrushImportLedger.classify(1, listOf(converted), assetValidator = { false })
 
         assertEquals(BrushImportFinalState.FAILED_ASSET, ledger.records.single().finalState)
         assertEquals(1, ledger.summary.failedAsset)
@@ -63,7 +63,18 @@ class BrushImportBatchTest {
     @Test(expected = IllegalArgumentException::class)
     fun duplicateSourceRecordsAreRejected() {
         val source = BrushPresetV5Import.convertDecodedSource(brush("same", Compatibility.HIGH))
-        BrushImportLedger.classify(1, listOf(source, source))
+        BrushImportLedger.classify(1, listOf(source, source), renderProbe = { BrushRenderProbeResult.Succeeded })
+    }
+
+    @Test fun compileSuccessWithoutAProductionProbeIsNotImportedUsable() {
+        val converted = BrushPresetV5Import.convertDecodedSource(brush("unprobed", Compatibility.HIGH))
+
+        val ledger = BrushImportLedger.classify(1, listOf(converted))
+
+        assertEquals(BrushImportFinalState.FAILED_RENDER, ledger.records.single().finalState)
+        assertEquals(BrushImportStageStatus.FAILED, ledger.records.single().renderProbeStatus)
+        assertEquals(0, ledger.summary.importedUsable)
+        assertEquals(1, ledger.summary.failedRender)
     }
 
     private fun brush(

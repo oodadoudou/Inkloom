@@ -11,6 +11,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.importer.AbrBrushParser
 import app.inkloom.importer.ProcreateBrushParser
 import app.inkloom.importer.SutBrushParser
+import app.inkloom.importer.ProductionBrushRenderProbe
+import app.inkloom.importer.BrushRenderProbeResult
 import app.inkloom.brushpresetv5.BrushPresetV5Import
 import app.inkloom.brushpresetv5.BrushExecutionCapabilityResolver
 import app.inkloom.brushpresetv5.BrushExecutionCapabilityResolution
@@ -38,6 +40,26 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class RealBrushCorpusRenderingTest {
+    @Test
+    fun importLedgerProductionProbeCommitsPaintAndEraserThroughTheRealCanvasPath() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        listOf(false, true).forEach { eraser ->
+            val converted = BrushPresetV5Import.convertOrReject(
+                ImportedBrush(
+                    id = "probe-$eraser",
+                    name = "Production probe $eraser",
+                    format = BrushFormat.ABR,
+                    compatibility = Compatibility.HIGH,
+                    sizeBytes = 1,
+                    report = emptyList(),
+                    isEraser = eraser,
+                ),
+            )
+
+            assertEquals(BrushRenderProbeResult.Succeeded, ProductionBrushRenderProbe(context).probe(converted))
+        }
+    }
+
     @Test
     fun userProvidedProcreateBrushesReachATerminalProductionOutcome() =
         verifyRealBrush("brush", BrushFormat.PROCREATE, requireRendered = false)
