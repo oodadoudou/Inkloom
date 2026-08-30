@@ -73,6 +73,8 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.stylusHoverIcon
 import androidx.compose.ui.focus.FocusRequester
@@ -10045,26 +10047,58 @@ private fun SelectionLauncher(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SelectionLauncherButton(icon: ImageVector, description: String, onClick: () -> Unit) {
-    IconButton(
-        onClick = onClick,
-        modifier = Modifier.size(32.dp).semantics { contentDescription = description },
-    ) { Icon(icon, null, Modifier.size(17.dp), tint = Ink) }
+    val tooltipState = rememberTooltipState()
+    val tooltipScope = rememberCoroutineScope()
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+        tooltip = { PlainTooltip { Text(description, fontSize = 11.sp) } },
+        state = tooltipState,
+    ) {
+        IconButton(
+            onClick = onClick,
+            modifier = Modifier
+                .size(32.dp)
+                .semantics { contentDescription = description }
+                .pointerInput(tooltipState) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            when (event.type) {
+                                PointerEventType.Enter, PointerEventType.Move -> if (event.changes.none { it.pressed } && !tooltipState.isVisible) {
+                                    tooltipScope.launch { tooltipState.show() }
+                                }
+                                PointerEventType.Exit -> tooltipState.dismiss()
+                                else -> Unit
+                            }
+                        }
+                    }
+                },
+        ) { Icon(icon, null, Modifier.size(17.dp), tint = Ink) }
+    }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SelectionSettingsAction(icon: ImageVector, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    TextButton(
-        onClick = onClick,
-        modifier = modifier.height(30.dp),
-        shape = RoundedCornerShape(2.dp),
-        contentPadding = PaddingValues(horizontal = 3.dp),
-        colors = ButtonDefaults.textButtonColors(contentColor = Ink),
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+        tooltip = { PlainTooltip { Text(label, fontSize = 11.sp) } },
+        state = rememberTooltipState(),
     ) {
-        Icon(icon, null, Modifier.size(14.dp))
-        Spacer(Modifier.width(3.dp))
-        Text(label, fontSize = 9.sp, maxLines = 1)
+        TextButton(
+            onClick = onClick,
+            modifier = modifier.height(30.dp),
+            shape = RoundedCornerShape(2.dp),
+            contentPadding = PaddingValues(horizontal = 3.dp),
+            colors = ButtonDefaults.textButtonColors(contentColor = Ink),
+        ) {
+            Icon(icon, null, Modifier.size(14.dp))
+            Spacer(Modifier.width(3.dp))
+            Text(label, fontSize = 9.sp, maxLines = 1)
+        }
     }
 }
 

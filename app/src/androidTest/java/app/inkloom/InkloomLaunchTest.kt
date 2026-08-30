@@ -747,6 +747,32 @@ class InkloomLaunchTest {
         }
 
         composeRule.onNodeWithContentDescription("Active selection launcher").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Flip horizontal").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Flip vertical").assertIsDisplayed()
+        val transformCenter = composeRule.onNodeWithContentDescription("Free transform")
+            .fetchSemanticsNode().boundsInRoot.center
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val now = SystemClock.uptimeMillis()
+            val properties = arrayOf(MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_STYLUS })
+            val coordinates = arrayOf(MotionEvent.PointerCoords().apply {
+                x = transformCenter.x
+                y = transformCenter.y
+                pressure = 0f
+                setAxisValue(MotionEvent.AXIS_DISTANCE, .2f)
+            })
+            listOf(MotionEvent.ACTION_HOVER_ENTER, MotionEvent.ACTION_HOVER_MOVE).forEachIndexed { index, action ->
+                MotionEvent.obtain(
+                    now, now + index * 8L, action, 1, properties, coordinates,
+                    0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_STYLUS, 0,
+                ).let { event ->
+                    try { composeRule.activity.window.decorView.dispatchGenericMotionEvent(event) }
+                    finally { event.recycle() }
+                }
+            }
+        }
+        composeRule.waitUntil(3_000) {
+            composeRule.onAllNodesWithText("Free transform").fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithContentDescription("Deselect").performClick()
         assertTrue(composeRule.onAllNodesWithContentDescription("Active selection launcher").fetchSemanticsNodes().isEmpty())
         composeRule.waitUntil(5_000) {
