@@ -116,6 +116,7 @@ import app.inkloom.brushpresetv5.PresetOwnershipOperations
 import app.inkloom.importer.BrushImportRepository
 import app.inkloom.importer.BrushImportBatch
 import app.inkloom.importer.BrushImportLedger
+import app.inkloom.importer.BrushLibraryInventory
 import app.inkloom.importer.BrushGroupOperations
 import app.inkloom.importer.BrushGroupStore
 import app.inkloom.importer.BrushMetadataStore
@@ -7461,7 +7462,8 @@ private fun BrushPanel(
     var collapsedGroupPaths by remember { mutableStateOf(emptySet<String>()) }
     val copiedBrushSuffix = tr("copy", "副本")
     val systemBrushes = remember { systemBrushCatalog() }
-    val libraryBrushes = remember(brushes) { brushes.filterNot { imported -> systemBrushes.any { it.id == imported.id } } + systemBrushes }
+    val libraryBrushes = remember(brushes, systemBrushes) { BrushLibraryInventory.selectable(systemBrushes, brushes) }
+    val inventorySummary = remember(brushes, systemBrushes) { BrushLibraryInventory.summarize(systemBrushes, brushes) }
     val systemGroups = remember(systemBrushes) { BrushGroupOperations.names(systemBrushes) }
     val groups = BrushGroupOperations.names(libraryBrushes)
     val groupTree = BrushGroupOperations.treePaths(libraryBrushes, registeredGroups + systemGroups)
@@ -7711,7 +7713,12 @@ private fun BrushPanel(
         }
         if (libraryBrushes.isNotEmpty()) {
             Row(Modifier.fillMaxWidth().height(36.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("${tr("BRUSHES", "笔刷")} (${visibleBrushes.size}/${libraryBrushes.size})", fontSize = 11.sp, color = MutedInk, modifier = Modifier.weight(1f))
+                Text(
+                    "${tr("BRUSHES", "笔刷")} (${visibleBrushes.size}/${inventorySummary.total} · ${tr("imported", "已导入")} ${inventorySummary.imported})",
+                    fontSize = 11.sp,
+                    color = MutedInk,
+                    modifier = Modifier.weight(1f),
+                )
                 listOf(
                     BrushLibraryLayout.AUTO to (Icons.Outlined.AutoAwesome to tr("Automatic layout", "自动布局")),
                     BrushLibraryLayout.COMPACT to (Icons.Outlined.DensitySmall to tr("Compact layout", "紧凑布局")),
@@ -8132,7 +8139,8 @@ private fun ProcreateBrushLibrary(
 ) {
     val systemBrushes = remember { systemBrushCatalog() }
     val systemCategories = listOf("Pen", "Pencil", "Brush", "Erasers", "Airbrush", "Decoration", "Blend", "Liquify")
-    val importedCategories = BrushGroupOperations.treePaths(brushes, registeredGroups)
+    val usableImportedBrushes = remember(brushes) { BrushLibraryInventory.importedUsable(brushes) }
+    val importedCategories = BrushGroupOperations.treePaths(usableImportedBrushes, registeredGroups)
     val manageableCategories = importedCategories.filterNot { category -> systemCategories.any { it.equals(category, true) } }
     var collapsedGroupPaths by remember { mutableStateOf(emptySet<String>()) }
     val visibleImportedCategories = importedCategories.filter { path ->
@@ -8282,7 +8290,10 @@ private fun ProcreateBrushLibrary(
     LaunchedEffect(requestedGroup, selectedBrushId) {
         requestedGroup?.let { requested -> allCategories.firstOrNull { it.equals(requested, true) }?.let { selectedCategory = it } }
     }
-    val displayed = (systemBrushes + brushes.filterNot(ImportedBrush::hidden)).filter { brush ->
+    val usableLibraryBrushes = remember(systemBrushes, usableImportedBrushes) {
+        BrushLibraryInventory.selectable(systemBrushes, usableImportedBrushes)
+    }
+    val displayed = usableLibraryBrushes.filterNot(ImportedBrush::hidden).filter { brush ->
         when (selectedCategory) {
             allLabel -> true
             ungroupedLabel -> brush.format != BrushFormat.SYSTEM
@@ -8290,7 +8301,7 @@ private fun ProcreateBrushLibrary(
         }
     }
     LaunchedEffect(brushes) {
-        val availableIds = (systemBrushes + brushes).mapTo(linkedSetOf(), ImportedBrush::id)
+        val availableIds = usableLibraryBrushes.mapTo(linkedSetOf(), ImportedBrush::id)
         selectedBrushIds = selectedBrushIds.intersect(availableIds)
         if (managingBrushes && selectedBrushIds.isEmpty()) managingBrushes = false
     }
@@ -8457,7 +8468,12 @@ private fun ProcreateBrushLibrary(
                                 } else Spacer(Modifier.width(24.dp))
                                 Text(visibleCategoryLabel, color = Ink, fontSize = 11.sp, maxLines = 1, modifier = Modifier.weight(1f))
                                 Text(
-                                    (systemBrushes.count { it.groupName.equals(category, true) } + brushes.count { BrushGroupOperations.isWithin(it.groupName, category) }).toString(),
+                                    when (category) {
+                                        allLabel -> usableLibraryBrushes.size
+                                        ungroupedLabel -> usableImportedBrushes.size
+                                        else -> systemBrushes.count { it.groupName.equals(category, true) } +
+                                            usableImportedBrushes.count { BrushGroupOperations.isWithin(it.groupName, category) }
+                                    }.toString(),
                                     color = MutedInk,
                                     fontSize = 9.sp,
                                 )
