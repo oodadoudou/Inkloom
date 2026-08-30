@@ -213,25 +213,8 @@ private class ColorDropDragShadow(private val color: Int) : View.DragShadowBuild
 private fun tr(english: String, simplifiedChinese: String): String = LocalUiLanguage.current.text(english, simplifiedChinese)
 
 @Composable
-private fun layerBlendModeLabel(mode: LayerBlendMode): String = when (mode) {
-    LayerBlendMode.NORMAL -> tr("Normal", "正常")
-    LayerBlendMode.MULTIPLY -> tr("Multiply", "正片叠底")
-    LayerBlendMode.SCREEN -> tr("Screen", "滤色")
-    LayerBlendMode.ADD -> tr("Add", "添加")
-    LayerBlendMode.OVERLAY -> tr("Overlay", "叠加")
-    LayerBlendMode.SOFT_LIGHT -> tr("Soft Light", "柔光")
-    LayerBlendMode.HARD_LIGHT -> tr("Hard Light", "强光")
-    LayerBlendMode.COLOR_DODGE -> tr("Color Dodge", "颜色减淡")
-    LayerBlendMode.COLOR_BURN -> tr("Color Burn", "颜色加深")
-    LayerBlendMode.LIGHTEN -> tr("Lighten", "变亮")
-    LayerBlendMode.DARKEN -> tr("Darken", "变暗")
-    LayerBlendMode.DIFFERENCE -> tr("Difference", "差值")
-    LayerBlendMode.EXCLUSION -> tr("Exclusion", "排除")
-    LayerBlendMode.HUE -> tr("Hue", "色相")
-    LayerBlendMode.SATURATION -> tr("Saturation", "饱和度")
-    LayerBlendMode.COLOR -> tr("Color", "颜色")
-    LayerBlendMode.LUMINOSITY -> tr("Luminosity", "明度")
-}
+private fun layerBlendModeLabel(mode: LayerBlendMode): String =
+    LayerBlendModeDisplayName.of(mode, LocalUiLanguage.current)
 
 @Composable
 private fun localizedShapeKind(kind: ShapeKind): String = when (kind) {
@@ -7141,11 +7124,11 @@ private fun ProcreateLayerPanel(
                 Box {
                     Row(Modifier.fillMaxWidth().height(34.dp).clickable { blendMenu = true }.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(tr("Blend mode", "混合模式"), Modifier.weight(1f), color = MutedInk, fontSize = 10.sp)
-                        Text(layer.blendMode.name.lowercase().replaceFirstChar(Char::uppercase), fontSize = 10.sp)
+                        Text(layerBlendModeLabel(layer.blendMode), fontSize = 10.sp)
                         Icon(Icons.Outlined.ExpandMore, null, Modifier.size(18.dp), tint = Ink)
                     }
                     DropdownMenu(blendMenu, { blendMenu = false }) {
-                        LayerBlendMode.entries.forEach { mode -> DropdownMenuItem(text = { Text(mode.name.lowercase().replaceFirstChar(Char::uppercase)) }, onClick = { blendMenu = false; onBlendMode(layer.id, mode) }) }
+                        LayerBlendMode.entries.forEach { mode -> DropdownMenuItem(text = { Text(layerBlendModeLabel(mode)) }, onClick = { blendMenu = false; onBlendMode(layer.id, mode) }) }
                     }
                 }
                 HorizontalDivider(color = OutlineSoft)
