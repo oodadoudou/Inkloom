@@ -4770,7 +4770,9 @@ class InkCanvasView(context: Context) : View(context) {
             v5RejectedContact = true
             onPaintCapabilityRejected(
                 if (surface == null) "UNSUPPORTED_WITH_EXPLICIT_REASON: RASTER_LAYER_SURFACE_REQUIRED"
-                else if (compiledBrushProgramV5 == null) "UNSUPPORTED_WITH_EXPLICIT_REASON: COMPILED_BRUSH_PROGRAM_REQUIRED"
+                else if (compiledBrushProgramV5 == null) {
+                    "UNSUPPORTED_WITH_EXPLICIT_REASON: COMPILED_BRUSH_PROGRAM_REQUIRED (Paint Engine V5)"
+                }
                 else "UNSUPPORTED_WITH_EXPLICIT_REASON: RUNTIME_RESOURCE_OR_LAYER_CONFIGURATION",
             )
             return true

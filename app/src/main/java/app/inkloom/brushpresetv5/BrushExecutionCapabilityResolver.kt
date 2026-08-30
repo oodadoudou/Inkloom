@@ -62,7 +62,12 @@ object BrushExecutionCapabilityResolver {
                 if (program.textureGrain != null && !hasAssetTip) {
                     reasons += BrushExecutionCapabilityReason.TEXTURE_GRAIN_REQUIRES_STAMP_BACKEND
                 }
-                if (program.stamp != null && !hasAssetTip) {
+                val unsupportedStampDynamics = program.stamp?.let { stamp ->
+                    stamp.followStrokeDirection || stamp.followStylusOrientation ||
+                        stamp.randomRotationDegrees > .0001f || stamp.particlesPerPlot > 1 ||
+                        stamp.spray != null
+                } == true
+                if (unsupportedStampDynamics && !hasAssetTip) {
                     reasons += BrushExecutionCapabilityReason.STAMP_DYNAMICS_REQUIRE_STAMP_BACKEND
                 }
             }

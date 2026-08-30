@@ -47,6 +47,16 @@ class BrushExecutionCapabilityResolverTest {
         assertEquals(setOf(BrushExecutionCapabilityReason.ASSET_STAMP_TIP_REQUIRED), reasons)
     }
 
+    @Test fun continuousPlotIsSupportedByTheDryProductionTimerWithoutAnAssetTip() {
+        val program = CompiledBrushProgramV5.compile(
+            preset(stamp = StampSettings(continuousPlot = true)),
+        )
+        assertEquals(
+            BrushExecutionCapabilityResolution.Supported,
+            BrushExecutionCapabilityResolver.resolve(program),
+        )
+    }
+
     private fun preset(
         family: BrushFamily = BrushFamily.INK,
         tipTexture: TipTextureSettings? = null,

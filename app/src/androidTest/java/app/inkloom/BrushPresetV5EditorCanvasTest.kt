@@ -171,7 +171,7 @@ class BrushPresetV5EditorCanvasTest {
         sendStylus(view, MotionEvent.ACTION_UP, 300f, 220f, 5L)
 
         assertEquals(0L, surface.revision)
-        assertTrue(rejection?.contains("V5") == true)
+        assertTrue("Expected an explicit V5 rejection, received: $rejection", rejection?.contains("V5") == true)
     }
 
     private fun referenceInk() = BrushPresetV5(
