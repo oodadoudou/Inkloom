@@ -581,12 +581,11 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeFloodFill(
         for (std::size_t index = 0; index < count; ++index) fillable[index] = distance[index] > close_gap;
     }
 
-    covered.assign(count, 0);
     stack.clear();
     if (stack.capacity() < std::min<std::size_t>(count, 4096)) stack.reserve(std::min<std::size_t>(count, 4096));
     auto push = [&](int x, int y) {
         const int index = y * width + x;
-        if (covered[index] || fillable[index] != 1) return;
+        if (fillable[index] != 1) return;
         stack.push_back(index);
         fillable[index] = 2;
     };
@@ -594,22 +593,22 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeFloodFill(
     while (!stack.empty()) {
         const int index = stack.back();
         stack.pop_back();
-        if (covered[index]) continue;
+        if (fillable[index] == 3) continue;
         const int y = index / width;
         int x = index % width;
-        while (x >= 0 && !covered[y * width + x] && fillable[y * width + x] != 0) --x;
+        while (x >= 0 && fillable[y * width + x] != 0 && fillable[y * width + x] != 3) --x;
         ++x;
         bool span_up = false;
         bool span_down = false;
-        while (x < width && !covered[y * width + x] && fillable[y * width + x] != 0) {
-            covered[y * width + x] = 1;
+        while (x < width && fillable[y * width + x] != 0 && fillable[y * width + x] != 3) {
+            fillable[y * width + x] = 3;
             if (y > 0) {
-                const bool candidate = !covered[(y - 1) * width + x] && fillable[(y - 1) * width + x] == 1;
+                const bool candidate = fillable[(y - 1) * width + x] == 1;
                 if (!span_up && candidate) { push(x, y - 1); span_up = true; }
                 else if (span_up && !candidate) span_up = false;
             }
             if (y + 1 < height) {
-                const bool candidate = !covered[(y + 1) * width + x] && fillable[(y + 1) * width + x] == 1;
+                const bool candidate = fillable[(y + 1) * width + x] == 1;
                 if (!span_down && candidate) { push(x, y + 1); span_down = true; }
                 else if (span_down && !candidate) span_down = false;
             }
@@ -618,6 +617,8 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeFloodFill(
     }
     const int scaling = std::clamp(static_cast<int>(area_scaling_value), -64, 64);
     if (scaling != 0) {
+        covered.resize(count);
+        for (std::size_t index = 0; index < count; ++index) covered[index] = fillable[index] == 3;
         morph_mask(covered, width, height, std::abs(scaling), scaling > 0, scratch_mask, distance);
         covered.swap(scratch_mask);
     }
@@ -628,7 +629,9 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeFloodFill(
     for (int y = 0; y < height; ++y) {
         auto* row = destination.pixels + static_cast<std::size_t>(y) * destination.info.stride;
         for (int x = 0; x < width; ++x) {
-            const std::uint8_t value = covered[static_cast<std::size_t>(y) * width + x] ? 255 : 0;
+            const std::size_t index = static_cast<std::size_t>(y) * width + x;
+            const bool selected = scaling == 0 ? fillable[index] == 3 : covered[index] != 0;
+            const std::uint8_t value = selected ? 255 : 0;
             row[x * 4] = value;
             row[x * 4 + 1] = value;
             row[x * 4 + 2] = value;

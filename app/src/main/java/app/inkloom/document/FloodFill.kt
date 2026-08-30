@@ -1,7 +1,6 @@
 package app.inkloom.document
 
 import android.graphics.Bitmap
-import android.graphics.Canvas
 import app.inkloom.engine.v5.tools.NativeRasterOps
 
 /** Native scanline flood fill used by the paint-bucket, ColorDrop and automatic-selection tools.
@@ -38,11 +37,10 @@ object FloodFill {
             return empty()
         }
         // Threshold dragging recomputes this mask many times per second. Retain the full-size JNI
-        // destination per worker thread and allocate only the bounded result owned by the caller;
-        // otherwise periodic 2-5 MB Bitmap churn creates visible GC stalls despite fast native
-        // scanline work. Canvas copy also guarantees the returned bitmap never aliases scratch.
-        val cropped = Bitmap.createBitmap(bounds.width(), bounds.height(), Bitmap.Config.ARGB_8888)
-        Canvas(cropped).drawBitmap(fullMask, -bounds.left.toFloat(), -bounds.top.toFloat(), null)
+        // destination per worker thread and copy only the bounded result owned by the caller.
+        // Bitmap's native subset copy avoids routing a pure pixel transfer through Canvas.
+        val subset = Bitmap.createBitmap(fullMask, bounds.left, bounds.top, bounds.width(), bounds.height())
+        val cropped = if (subset === fullMask) fullMask.copy(Bitmap.Config.ARGB_8888, true) else subset
         return Result(cropped, bounds.left, bounds.top, bounds.right - 1, bounds.bottom - 1)
     }
 
