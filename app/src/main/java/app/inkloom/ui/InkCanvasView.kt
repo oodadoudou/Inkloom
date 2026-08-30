@@ -129,7 +129,6 @@ import app.inkloom.document.CspStrokeTextureCompositor
 import app.inkloom.document.CspColorMixMode
 import app.inkloom.document.CspPigmentMixingMode
 import app.inkloom.document.CspBrightnessCorrection
-import app.inkloom.document.CspPigmentMixer
 import app.inkloom.document.CspScreenBrushSize
 import app.inkloom.document.CanvasGuideGestureMode
 import app.inkloom.document.CanvasGuideState
