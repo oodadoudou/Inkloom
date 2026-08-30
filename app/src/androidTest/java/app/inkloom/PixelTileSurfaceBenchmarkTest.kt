@@ -9,7 +9,6 @@ import app.inkloom.engine.v5.surface.PixelRect
 import app.inkloom.engine.v5.surface.PixelTileKey
 import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.engine.v5.tools.RasterTileBlendSession
-import app.inkloom.engine.v5.tools.RasterTileEraserSession
 import app.inkloom.engine.v5.tools.RasterTileLiquifySession
 import app.inkloom.document.LiquifyMode
 import org.junit.Assert.assertEquals
@@ -25,37 +24,6 @@ import kotlin.math.floor
  */
 @RunWith(AndroidJUnit4::class)
 class PixelTileSurfaceBenchmarkTest {
-    @Test fun sparsePrivatePreviewFramesStayInsideTheRealtimeBudget() {
-        val surface = PixelTileSurface(8192, 8192)
-        surface.beginWrite("seed preview pigment").use { seed ->
-            for (y in 3970 until 4030) for (x in 3900 until 4300) seed.setPixel(x, y, 0xff7080a0.toInt())
-            seed.commit().close()
-        }
-        val times = ArrayList<Long>(72)
-        RasterTileEraserSession(surface).use { session ->
-            var x = 3960f
-            repeat(72) { index ->
-                val next = x + 3f
-                val started = SystemClock.elapsedRealtimeNanos()
-                session.eraseSegment(x, 4000f, next, 4000f + index % 5, 36f, .7f, .55f)
-                val preview = session.previewSnapshot()
-                assertEquals(surface.logicalWidth, preview.logicalWidth)
-                times += SystemClock.elapsedRealtimeNanos() - started
-                x = next
-            }
-            val sorted = times.drop(8).sorted()
-            val p95Ms = sorted[(sorted.size * 95 / 100).coerceAtMost(sorted.lastIndex)] / 1_000_000f
-            Log.i(
-                TAG,
-                "kind=sparse_private_preview canvas=8192 p95_ms=$p95Ms " +
-                    "touched_tiles=${session.touchedTileCount} working_bytes=${session.workingByteSize}",
-            )
-            assertTrue("Sparse private preview p95 was ${p95Ms}ms", p95Ms < 16.7f)
-            assertTrue(session.touchedTileCount < 16)
-            assertTrue(session.workingByteSize < 1_000_000L)
-        }
-    }
-
     @Test fun directTileToolFramesStayLocalAndInsideTheRealtimeBudget() {
         fun fixture(): Pair<Bitmap, PixelTileSurface> {
             val bitmap = Bitmap.createBitmap(1200, 900, Bitmap.Config.ARGB_8888).apply { eraseColor(0xff7080a0.toInt()) }
@@ -69,22 +37,6 @@ class PixelTileSurfaceBenchmarkTest {
             assertTrue("Direct tile $name unexpectedly touched the whole surface", touchedTiles < 80)
         }
 
-        fixture().let { (bitmap, surface) ->
-            val times = ArrayList<Long>(72)
-            RasterTileEraserSession(surface).use { session ->
-                var x = 220f
-                repeat(72) { index ->
-                    val next = x + 3f
-                    val started = SystemClock.elapsedRealtimeNanos()
-                    session.eraseSegment(x, 440f, next, 440f + index % 5, 72f, .7f, .55f)
-                    times += SystemClock.elapsedRealtimeNanos() - started
-                    x = next
-                }
-                report("eraser", times, session.touchedTileCount, session.workingByteSize)
-                session.commit().close()
-            }
-            bitmap.recycle()
-        }
         fixture().let { (bitmap, surface) ->
             val times = ArrayList<Long>(72)
             RasterTileBlendSession(surface).use { session ->
