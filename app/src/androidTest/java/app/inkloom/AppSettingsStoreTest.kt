@@ -25,6 +25,7 @@ import app.inkloom.settings.WorkspacePanelMode
 import app.inkloom.settings.WorkspacePanelKind
 import app.inkloom.settings.WorkspaceOrientation
 import app.inkloom.settings.ReferenceTarget
+import app.inkloom.settings.LibraryLayout
 import app.inkloom.document.CorrectLineMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -34,6 +35,18 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class AppSettingsStoreTest {
+    @Test fun libraryLayoutSurvivesReload() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
+        preferences.edit().clear().commit()
+        try {
+            AppSettingsStore(context).save(AppSettings(libraryLayout = LibraryLayout.COMPACT_GRID))
+            assertEquals(LibraryLayout.COMPACT_GRID, AppSettingsStore(context).load().libraryLayout)
+        } finally {
+            preferences.edit().clear().commit()
+        }
+    }
+
     @Test fun legacyGlobalCorrectionKeysAreDeletedByTheV5HardCut() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)

@@ -145,6 +145,7 @@ import app.inkloom.settings.ShortcutActivation
 import app.inkloom.settings.ShortcutCategory
 import app.inkloom.settings.CspShortcutResolver
 import app.inkloom.settings.KeyInputDiagnostic
+import app.inkloom.settings.LibraryLayout
 import app.inkloom.settings.MotionInputDiagnostic
 import app.inkloom.settings.ShortcutChord
 import app.inkloom.settings.ShortcutMatchMode
@@ -661,6 +662,8 @@ fun InkloomApp(initialIntent: Intent?) {
             documents = libraryState.documents,
             folders = libraryState.folders,
             pageTemplates = pageTemplates,
+            layout = settings.libraryLayout,
+            onLayout = { updateSettings(settings.copy(libraryLayout = it)) },
             onOpen = { viewModel.select(it.id); destination = AppDestination.EDITOR },
             onNewNote = { title, style, templateId, paperColor -> viewModel.createNote(title, style, templateId, paperColor); destination = AppDestination.EDITOR },
             onImportCover = { title, templateId, paperColor ->
@@ -803,7 +806,7 @@ fun InkloomApp(initialIntent: Intent?) {
 }
 
 @Composable
-private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>, pageTemplates: PageTemplateLibrary, onOpen: (InkDocument) -> Unit, onNewNote: (String, CoverStyle, String, Long) -> Unit, onImportCover: (String, String, Long) -> Unit, onImport: () -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, onCreateFolder: (String, String?) -> Unit, onMoveToFolder: (String, String?) -> Unit, onDeleteFolder: (String) -> Unit, onSettings: () -> Unit) {
+private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>, pageTemplates: PageTemplateLibrary, layout: LibraryLayout, onLayout: (LibraryLayout) -> Unit, onOpen: (InkDocument) -> Unit, onNewNote: (String, CoverStyle, String, Long) -> Unit, onImportCover: (String, String, Long) -> Unit, onImport: () -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, onCreateFolder: (String, String?) -> Unit, onMoveToFolder: (String, String?) -> Unit, onDeleteFolder: (String) -> Unit, onSettings: () -> Unit) {
     var filter by remember { mutableStateOf(LibraryFilter.ALL) }
     var search by remember { mutableStateOf("") }
     var folderId by remember { mutableStateOf<String?>(null) }
@@ -863,10 +866,34 @@ private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>
                 FilterChip(selected = filter == LibraryFilter.FAVORITES, onClick = { filter = LibraryFilter.FAVORITES }, label = { Text(tr("Favorites", "收藏")) })
                 Spacer(Modifier.width(8.dp))
                 FilterChip(selected = filter == LibraryFilter.PDF, onClick = { filter = LibraryFilter.PDF }, label = { Text("PDF") })
+                Spacer(Modifier.width(12.dp))
+                listOf(
+                    Triple(LibraryLayout.GRID, Icons.Outlined.GridView, tr("Grid layout", "网格布局")),
+                    Triple(LibraryLayout.LIST, Icons.Outlined.ViewList, tr("List layout", "列表布局")),
+                    Triple(LibraryLayout.COMPACT_GRID, Icons.Outlined.DensitySmall, tr("Compact grid", "紧凑网格")),
+                ).forEach { (candidate, icon, description) ->
+                    IconButton(
+                        onClick = { onLayout(candidate) },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .background(if (layout == candidate) Workspace else Color.Transparent, RoundedCornerShape(8.dp)),
+                    ) { Icon(icon, description, Modifier.size(19.dp), tint = if (layout == candidate) Sage else Ink) }
+                }
             }
             Spacer(Modifier.height(12.dp))
-            LazyVerticalGrid(columns = GridCells.Adaptive(180.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                items(visible, key = { it.id }) { NotebookCard(it, Modifier.height(250.dp), onOpen, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, folders, onMoveToFolder) }
+            when (layout) {
+                LibraryLayout.LIST -> LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    items(visible, key = { it.id }) { NotebookCard(it, Modifier.fillMaxWidth().height(220.dp), onOpen, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, folders, onMoveToFolder) }
+                }
+                LibraryLayout.GRID, LibraryLayout.COMPACT_GRID -> LazyVerticalGrid(
+                    columns = GridCells.Adaptive(if (layout == LibraryLayout.COMPACT_GRID) 140.dp else 180.dp),
+                    horizontalArrangement = Arrangement.spacedBy(if (layout == LibraryLayout.COMPACT_GRID) 10.dp else 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(if (layout == LibraryLayout.COMPACT_GRID) 10.dp else 16.dp),
+                ) {
+                    items(visible, key = { it.id }) {
+                        NotebookCard(it, Modifier.height(if (layout == LibraryLayout.COMPACT_GRID) 210.dp else 250.dp), onOpen, onFavorite, onArchive, onTags, onTrash, onRestore, onDelete, onRename, onDuplicate, folders, onMoveToFolder)
+                    }
+                }
             }
         }
         }

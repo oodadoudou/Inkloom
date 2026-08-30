@@ -131,6 +131,7 @@ class InkloomLaunchTest {
                     .remove("gradientAngleSnapEnabled")
                     .remove("gradientAngleSnapDegrees")
                     .remove("gradientStops")
+                    .remove("libraryLayout")
                     .commit()
                 BrushGroupStore(ApplicationProvider.getApplicationContext()).save(
                     listOf("Toolbox/Pens", "Toolbox/Pencils", "Toolbox/Brushes"),
@@ -158,6 +159,13 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("Recents").performClick()
         composeRule.onNodeWithText("All Notes").assertDoesNotExist()
         assertEquals(2, composeRule.onAllNodesWithText("Recents").fetchSemanticsNodes().size)
+    }
+
+    @Test fun libraryLayoutChoicePersistsLocally() {
+        composeRule.onNodeWithContentDescription("List layout").performClick()
+        assertEquals("LIST", AppSettingsStore(composeRule.activity).load().libraryLayout.name)
+        composeRule.onNodeWithContentDescription("Compact grid").performClick()
+        assertEquals("COMPACT_GRID", AppSettingsStore(composeRule.activity).load().libraryLayout.name)
     }
 
     @Test fun creatingNotebookAppliesChosenPaperTemplateAndComfortColor() {

@@ -15,6 +15,7 @@ import app.inkloom.document.GradientStopCodec
 
 data class AppSettings(
     val language: UiLanguage = UiLanguage.ENGLISH,
+    val libraryLayout: LibraryLayout = LibraryLayout.GRID,
     val fingerDrawing: Boolean = false,
     val fillSensitivity: Float = .25f,
     val fillCloseGapPixels: Float = 0f,
@@ -130,6 +131,8 @@ data class AppSettings(
     val workspaceLayouts: WorkspaceLayoutProfiles = WorkspaceLayoutProfiles(),
 )
 
+enum class LibraryLayout { GRID, LIST, COMPACT_GRID }
+
 enum class StylusButtonAction {
     ERASER,
     LASSO,
@@ -169,6 +172,7 @@ class AppSettingsStore(context: Context) {
         val pressureMaximum = preferences.getFloat("pressureMaximumInput", 1f).coerceIn(pressureMinimum + .05f, 1f)
         val loaded = AppSettings(
             language = enumValue(preferences.getString("language", null), systemLanguage),
+            libraryLayout = enumValue(preferences.getString("libraryLayout", null), LibraryLayout.GRID),
             fingerDrawing = preferences.getBoolean("fingerDrawing", false),
             fillSensitivity = preferences.getFloat("fillSensitivity", .25f),
             fillCloseGapPixels = preferences.getFloat("fillCloseGapPixels", 0f).coerceIn(0f, 64f),
@@ -320,6 +324,7 @@ class AppSettingsStore(context: Context) {
         val persisted = value.recordWorkspaceFor(orientation)
         preferences.edit()
             .putString("language", persisted.language.name)
+            .putString("libraryLayout", persisted.libraryLayout.name)
             .putInt(INPUT_GESTURES_VERSION_KEY, INPUT_GESTURES_VERSION)
             .putBoolean("fingerDrawing", persisted.fingerDrawing)
             .putFloat("fillSensitivity", persisted.fillSensitivity)
