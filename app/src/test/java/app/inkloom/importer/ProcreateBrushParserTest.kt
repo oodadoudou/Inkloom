@@ -203,6 +203,30 @@ class ProcreateBrushParserTest {
         }
     }
 
+    @Test fun brushsetKeepsOneTerminalRecordPerPayloadAndStableSourceIds() {
+        val root = temporaryDirectory("conservation")
+        try {
+            val source = File(root, "mixed.brushset")
+            val good = "11111111-1111-1111-1111-111111111111"
+            val bad = "22222222-2222-2222-2222-222222222222"
+            ZipOutputStream(source.outputStream()).use { zip ->
+                zip.putNextEntry(ZipEntry("$good/Brush.archive")); zip.write(Base64.getDecoder().decode(SYNTHETIC_ARCHIVE)); zip.closeEntry()
+                zip.putNextEntry(ZipEntry("$good/Shape.png")); zip.write(SYNTHETIC_PNG); zip.closeEntry()
+                zip.putNextEntry(ZipEntry("$bad/Brush.archive")); zip.write(byteArrayOf(1, 2, 3)); zip.closeEntry()
+            }
+            val parser = ProcreateBrushParser(File(root, "assets"))
+            val first = parser.enrich(source, "stable-hash", fallback(source))
+            val second = parser.enrich(source, "stable-hash", fallback(source))
+
+            assertEquals(2, first.size)
+            assertEquals(first.map(ImportedBrush::id), second.map(ImportedBrush::id))
+            assertEquals(1, first.count { it.compatibility == Compatibility.FAILED })
+            assertTrue(first.single { it.compatibility == Compatibility.FAILED }.report.any { it.contains("brush 2/2") })
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun parsesAuthorizedRealBrushsetWhenConfigured() {
         val sampleRoot = System.getProperty("procreate.samples.dir")?.let(::File)
         assumeTrue(sampleRoot != null && sampleRoot.isDirectory)

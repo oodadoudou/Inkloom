@@ -448,7 +448,7 @@ fun InkloomApp(initialIntent: Intent?) {
 
     LaunchedEffect(Unit) {
         val refreshed = withContext(Dispatchers.IO) {
-            importedBrushes.flatMap(repository::refreshMetadataAll)
+            repository.refreshMetadataLibrary(importedBrushes)
                 .filter { brush -> brush.compatibility != Compatibility.FAILED && brush.v5PresetJson != null }
         }.distinctBy(ImportedBrush::id)
         if (refreshed != importedBrushes) { importedBrushes = refreshed; brushStore.save(refreshed) }

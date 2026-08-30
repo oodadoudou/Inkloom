@@ -17,6 +17,7 @@ import app.inkloom.model.ImportedBrush
 import app.inkloom.model.ImportedBrushGrain
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.nio.charset.StandardCharsets
 import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
@@ -35,26 +36,41 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             require(brushPrefixes.isNotEmpty()) { "Procreate container has no Brush.archive payload" }
             val outputDirectory = File(assetDirectory, hash).apply { mkdirs() }
             brushPrefixes.mapIndexed { index, prefix ->
-                val archiveEntry = byName[path(prefix, "Brush.archive")]
-                    ?: error("Procreate brush ${prefix.ifBlank { "root" }} has no Brush.archive")
-                val metadata = ProcreateKeyedArchive(readBounded(archive, archiveEntry, MAX_METADATA_BYTES))
-                val shape = byName[path(prefix, "Shape.png")]?.let { extract(archive, it, File(outputDirectory, "brush-${index + 1}-shape.png")) }
-                val grain = byName[path(prefix, "Grain.png")]?.let { extract(archive, it, File(outputDirectory, "brush-${index + 1}-grain.png")) }
-                val dualPrefix = path(prefix, "Sub01")
-                val dualArchive = byName[path(dualPrefix, "Brush.archive")]?.let { ProcreateKeyedArchive(readBounded(archive, it, MAX_METADATA_BYTES)) }
-                val dualShape = byName[path(dualPrefix, "Shape.png")]?.let { extract(archive, it, File(outputDirectory, "brush-${index + 1}-dual-shape.png")) }
-                val dualGrain = byName[path(dualPrefix, "Grain.png")]?.let { extract(archive, it, File(outputDirectory, "brush-${index + 1}-dual-grain.png")) }
-                mapBrush(
-                    fallback = fallback.copy(id = if (index == 0) fallback.id else UUID.randomUUID().toString()),
-                    metadata = metadata,
-                    shape = shape,
-                    grain = grain,
-                    dualMetadata = dualArchive,
-                    dualShape = dualShape,
-                    dualGrain = dualGrain,
-                    position = index + 1,
-                    total = brushPrefixes.size,
-                )
+                val sourceBrushId = UUID.nameUUIDFromBytes(
+                    "procreate:$hash:${prefix.ifBlank { "root" }}".toByteArray(StandardCharsets.UTF_8),
+                ).toString()
+                runCatching {
+                    val archiveEntry = byName[path(prefix, "Brush.archive")]
+                        ?: error("Procreate brush ${prefix.ifBlank { "root" }} has no Brush.archive")
+                    val metadata = ProcreateKeyedArchive(readBounded(archive, archiveEntry, MAX_METADATA_BYTES))
+                    val shape = byName[path(prefix, "Shape.png")]?.let { extract(archive, it, File(outputDirectory, "brush-${index + 1}-shape.png")) }
+                    val grain = byName[path(prefix, "Grain.png")]?.let { extract(archive, it, File(outputDirectory, "brush-${index + 1}-grain.png")) }
+                    val dualPrefix = path(prefix, "Sub01")
+                    val dualArchive = byName[path(dualPrefix, "Brush.archive")]?.let { ProcreateKeyedArchive(readBounded(archive, it, MAX_METADATA_BYTES)) }
+                    val dualShape = byName[path(dualPrefix, "Shape.png")]?.let { extract(archive, it, File(outputDirectory, "brush-${index + 1}-dual-shape.png")) }
+                    val dualGrain = byName[path(dualPrefix, "Grain.png")]?.let { extract(archive, it, File(outputDirectory, "brush-${index + 1}-dual-grain.png")) }
+                    mapBrush(
+                        fallback = fallback.copy(id = sourceBrushId),
+                        metadata = metadata,
+                        shape = shape,
+                        grain = grain,
+                        dualMetadata = dualArchive,
+                        dualShape = dualShape,
+                        dualGrain = dualGrain,
+                        position = index + 1,
+                        total = brushPrefixes.size,
+                    )
+                }.getOrElse { failure ->
+                    val reason = generateSequence(failure as Throwable?) { it.cause }.take(6)
+                        .joinToString(" -> ") { "${it::class.java.simpleName}: ${it.message ?: "no message"}" }
+                    fallback.copy(
+                        id = sourceBrushId,
+                        name = "${fallback.name} ${index + 1}",
+                        compatibility = Compatibility.FAILED,
+                        parserVersion = CURRENT_VERSION,
+                        report = (fallback.report + "Procreate parsing failed safely for brush ${index + 1}/${brushPrefixes.size}: $reason").distinct(),
+                    )
+                }
             }
         }
     }.getOrElse { failure ->
@@ -607,7 +623,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
     )
 
     companion object {
-        const val CURRENT_VERSION = 27
+        const val CURRENT_VERSION = 28
         private const val MAX_ENTRIES = 4_096
         private const val MAX_ENTRY_BYTES = 32L * 1024L * 1024L
         private const val MAX_EXPANDED_BYTES = 384L * 1024L * 1024L

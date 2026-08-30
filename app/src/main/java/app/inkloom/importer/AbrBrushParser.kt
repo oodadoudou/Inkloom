@@ -5,6 +5,7 @@ import android.graphics.Color
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
 import java.io.File
+import java.nio.charset.StandardCharsets
 import java.util.UUID
 
 class AbrBrushParser(private val assetDirectory: File) {
@@ -20,7 +21,7 @@ class AbrBrushParser(private val assetDirectory: File) {
             val output = File(outputDirectory, "tip-${(index + 1).toString().padStart(3, '0')}.png")
             if (!output.isFile) writeTip(sample, output)
             fallback.copy(
-                id = if (index == 0) fallback.id else UUID.randomUUID().toString(),
+                id = UUID.nameUUIDFromBytes("abr:$hash:${sample.id}:$index".toByteArray(StandardCharsets.UTF_8)).toString(),
                 name = if (samples.size == 1) fallback.name else "${fallback.name} ${index + 1}",
                 compatibility = Compatibility.EXTRACTED,
                 tipPreviewPath = output.absolutePath,
@@ -70,5 +71,5 @@ class AbrBrushParser(private val assetDirectory: File) {
         }
     }
 
-    companion object { const val CURRENT_VERSION = 1 }
+    companion object { const val CURRENT_VERSION = 2 }
 }

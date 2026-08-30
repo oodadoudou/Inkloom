@@ -83,4 +83,34 @@ class BrushImportRepository(context: Context) {
             else -> listOf(brush)
         }.map(BrushSemanticMapper::apply).map(BrushPresetV5Import::convertOrReject)
     }
+
+    /** Refreshes each retained source container exactly once. A brushset with N brushes must not
+     * be reparsed N times into N² records, and user-owned group/order metadata must survive. */
+    fun refreshMetadataLibrary(brushes: List<ImportedBrush>): List<ImportedBrush> = brushes
+        .groupBy { brush -> brush.sha256?.let { "sha:$it" } ?: brush.sourcePath?.let { "path:$it" } ?: "id:${brush.id}" }
+        .values
+        .flatMap { sourceBrushes ->
+            val representative = sourceBrushes.minByOrNull(ImportedBrush::parserVersion) ?: return@flatMap emptyList()
+            if (sourceBrushes.none(::needsMetadataRefresh)) return@flatMap sourceBrushes
+            refreshMetadataAll(representative).map { refreshed ->
+                val prior = sourceBrushes.firstOrNull { old ->
+                    old.tipPreviewPath?.let(::File)?.name == refreshed.tipPreviewPath?.let(::File)?.name
+                } ?: sourceBrushes.firstOrNull { old -> old.name == refreshed.name }
+                prior?.let { old -> refreshed.copy(
+                    groupName = old.groupName,
+                    favorite = old.favorite,
+                    hidden = old.hidden,
+                    sortOrder = old.sortOrder,
+                    lastUsedAt = old.lastUsedAt,
+                ) } ?: refreshed
+            }
+        }
+
+    private fun needsMetadataRefresh(brush: ImportedBrush): Boolean = when (brush.format) {
+        app.inkloom.model.BrushFormat.SUT -> brush.parserVersion < SutBrushParser.CURRENT_VERSION
+        app.inkloom.model.BrushFormat.ABR -> brush.parserVersion < AbrBrushParser.CURRENT_VERSION
+        app.inkloom.model.BrushFormat.PROCREATE -> brush.parserVersion < ProcreateBrushParser.CURRENT_VERSION
+        app.inkloom.model.BrushFormat.INKLOOM -> brush.parserVersion < InkloomBrushPackage.CURRENT_VERSION
+        else -> false
+    }
 }
