@@ -4,6 +4,7 @@ import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
 import app.inkloom.model.ImportedBrushGraphite
+import app.inkloom.model.SemanticExecutionDisposition
 import app.inkloom.document.CspBrushGap
 import app.inkloom.document.ProcreateRenderingMode
 import app.inkloom.importer.BrushSemanticMapper
@@ -19,6 +20,7 @@ object BrushPresetV5Import {
     fun convertOrReject(source: ImportedBrush): ImportedBrush {
         val audited = BrushSemanticMapper.apply(source)
         return runCatching {
+            requireFullyExecutableSemantics(audited)
             val converted = convertDecodedSource(audited)
             when (val capability = BrushExecutionCapabilityResolver.resolve(
                 CompiledBrushProgramV5.compile(requirePreset(converted)),
@@ -36,6 +38,23 @@ object BrushPresetV5Import {
                     .distinct(),
                 v5PresetJson = null,
             )
+        }
+    }
+
+    /**
+     * External formats are admitted only when every decoded semantic reaches a production
+     * consumer. Keeping a source field for a future renderer is useful for diagnostics, but it
+     * must never turn a behaviorally partial brush into a selectable library preset.
+     */
+    private fun requireFullyExecutableSemantics(source: ImportedBrush) {
+        if (source.format in setOf(BrushFormat.SYSTEM, BrushFormat.INKLOOM)) return
+        val gaps = source.semanticMappings
+            .filter { it.executionDisposition != SemanticExecutionDisposition.SUPPORTED_AND_EXECUTED }
+            .map { it.sourceSemantic }
+            .distinct()
+            .sorted()
+        require(gaps.isEmpty()) {
+            "DECODED_BUT_NOT_EXECUTED:${gaps.joinToString(",")}"
         }
     }
 

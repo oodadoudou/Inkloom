@@ -7,6 +7,7 @@ import app.inkloom.brushpresetv5.CompiledBrushProgramV5
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
+import app.inkloom.model.SemanticExecutionDisposition
 
 /** Counts only live, selectable presets admitted to a production V5 backend. */
 object BrushLibraryInventory {
@@ -14,6 +15,11 @@ object BrushLibraryInventory {
 
     fun executable(brush: ImportedBrush): Boolean {
         if (brush.compatibility == Compatibility.FAILED) return false
+        if (brush.format !in setOf(BrushFormat.SYSTEM, BrushFormat.INKLOOM) &&
+            (brush.semanticMappings.isEmpty() || brush.semanticMappings.any {
+                it.executionDisposition != SemanticExecutionDisposition.SUPPORTED_AND_EXECUTED
+            })
+        ) return false
         val preset = brush.v5PresetJson?.let(BrushPresetV5Codec::decodeOrNull) ?: return false
         val program = runCatching { CompiledBrushProgramV5.compile(preset) }.getOrNull() ?: return false
         return BrushExecutionCapabilityResolver.resolve(program) == BrushExecutionCapabilityResolution.Supported

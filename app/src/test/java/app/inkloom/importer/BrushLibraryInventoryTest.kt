@@ -6,6 +6,7 @@ import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BrushLibraryInventoryTest {
@@ -29,6 +30,23 @@ class BrushLibraryInventoryTest {
         assertEquals(1, summary.imported)
         assertEquals(1, summary.userCreated)
         assertFalse(BrushLibraryInventory.executable(rejected))
+    }
+
+    @Test fun excludesOldExternalPresetWithSourceOnlyOrMissingSemanticAudit() {
+        val executablePayload = native("old", BrushFormat.PROCREATE)
+        val unaudited = executablePayload.copy(semanticMappings = emptyList())
+        val sourceOnly = executablePayload.copy(
+            semanticMappings = executablePayload.semanticMappings + app.inkloom.model.BrushSemanticMapping(
+                sourceSemantic = "PROCREATE.grain.advanced",
+                targetRuntime = "ImportedBrush.retainedSourceSemantic",
+                fidelity = app.inkloom.model.SemanticFidelity.UNSUPPORTED,
+                executionDisposition = app.inkloom.model.SemanticExecutionDisposition.PRESERVED_SOURCE_ONLY,
+            ),
+        )
+
+        assertTrue(BrushLibraryInventory.executable(executablePayload))
+        assertFalse(BrushLibraryInventory.executable(unaudited))
+        assertFalse(BrushLibraryInventory.executable(sourceOnly))
     }
 
     private fun native(id: String, format: BrushFormat): ImportedBrush {

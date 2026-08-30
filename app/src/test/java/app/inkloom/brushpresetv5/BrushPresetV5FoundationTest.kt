@@ -263,6 +263,26 @@ class BrushPresetV5FoundationTest {
         assertTrue(rejected.report.any { it.contains("RGB compositing") })
     }
 
+    @Test fun importBoundaryRejectsDecodedButUnexecutedSourceSemantics() {
+        val rejected = BrushPresetV5Import.convertOrReject(
+            ImportedBrush(
+                id = "procreate-source-only",
+                name = "Source-only color dynamics",
+                format = BrushFormat.PROCREATE,
+                compatibility = Compatibility.HIGH,
+                sizeBytes = 12,
+                report = emptyList(),
+                colorJitterHueDegrees = 15f,
+            ),
+        )
+
+        assertEquals(Compatibility.FAILED, rejected.compatibility)
+        assertEquals(null, rejected.v5PresetJson)
+        assertTrue(rejected.report.any {
+            it == "UNSUPPORTED_WITH_EXPLICIT_REASON:DECODED_BUT_NOT_EXECUTED:PROCREATE.colorDynamics"
+        })
+    }
+
     @Test fun importBoundaryRejectsAnEncodedPresetThatProductionCannotExecute() {
         val unsupported = referencePencil().copy(
             stroke = StrokeSettings(taperStartEnabled = true),
