@@ -440,6 +440,7 @@ fun InkloomApp(initialIntent: Intent?) {
     var importError by remember { mutableStateOf<String?>(null) }
     var settingsOpen by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val importScope = rememberCoroutineScope()
     val viewModel: InkloomViewModel = viewModel()
     val libraryState by viewModel.state.collectAsState()
     val pageTemplates by viewModel.pageTemplates.collectAsState()
@@ -457,26 +458,63 @@ fun InkloomApp(initialIntent: Intent?) {
     var pendingBrushImportGroup by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
-        val refreshed = withContext(Dispatchers.IO) { importedBrushes.flatMap(repository::refreshMetadataAll) }.distinctBy(ImportedBrush::id)
+        val refreshed = withContext(Dispatchers.IO) {
+            importedBrushes.flatMap(repository::refreshMetadataAll)
+                .filter { brush -> brush.compatibility != Compatibility.FAILED && brush.v5PresetJson != null }
+        }.distinctBy(ImportedBrush::id)
         if (refreshed != importedBrushes) { importedBrushes = refreshed; brushStore.save(refreshed) }
         val reconciledGroups = BrushGroupOperations.reconcileRegisteredGroups(brushGroups, refreshed)
         if (reconciledGroups != brushGroups) { brushGroups = reconciledGroups; brushGroupStore.save(reconciledGroups) }
     }
 
     val brushPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        val results = uris.map { uri ->
-            runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-            repository.importAll(uri)
-        }
-        val additions = results.flatMap { it.getOrNull().orEmpty() }.let { brushes ->
-            pendingBrushImportGroup?.let { group -> brushes.map { BrushGroupOperations.assign(it, group) } } ?: brushes
-        }
+        val targetGroup = pendingBrushImportGroup
         pendingBrushImportGroup = null
-        importedBrushes = BrushGroupOperations.mergeImports(importedBrushes, additions)
-        brushStore.save(importedBrushes)
-        brushGroups = BrushGroupOperations.reconcileRegisteredGroups(brushGroups, importedBrushes)
-        brushGroupStore.save(brushGroups)
-        importError = results.firstNotNullOfOrNull { it.exceptionOrNull()?.message }
+        importScope.launch {
+            val results = withContext(Dispatchers.IO) {
+                uris.map { uri ->
+                    runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                    repository.importDetailed(uri)
+                }
+            }
+            val batches = results.mapNotNull { it.getOrNull() }
+            val additions = batches.flatMap { it.renderableBrushes }.let { brushes ->
+                targetGroup?.let { group -> brushes.map { BrushGroupOperations.assign(it, group) } } ?: brushes
+            }
+            val existingGroupKeys = brushGroups.map { it.trim().lowercase() }.toSet()
+            val groupsCreated = additions.map(ImportedBrush::groupName).map(String::trim)
+                .filter(String::isNotEmpty).distinctBy(String::lowercase)
+                .count { it.lowercase() !in existingGroupKeys }
+            importedBrushes = BrushGroupOperations.mergeImports(importedBrushes, additions)
+            brushStore.save(importedBrushes)
+            brushGroups = BrushGroupOperations.reconcileRegisteredGroups(brushGroups, importedBrushes)
+            brushGroupStore.save(brushGroups)
+            val discovered = batches.sumOf { it.summary.brushesDiscovered }
+            val parsed = batches.sumOf { it.summary.parsed }
+            val renderable = batches.sumOf { it.summary.renderable }
+            val rejected = batches.sumOf { it.summary.rejected }
+            val failed = batches.sumOf { it.summary.failed }
+            val skipped = batches.sumOf { it.summary.skipped }
+            val fileFailures = results.count { it.isFailure }
+            val summary = settings.language.text(
+                "Files scanned: ${uris.size}; brushes discovered: $discovered; parsed: $parsed; " +
+                    "imported/renderable: $renderable; rejected: $rejected; failed: $failed; " +
+                    "skipped: $skipped; groups created: $groupsCreated; file errors: $fileFailures.",
+                "扫描文件：${uris.size}；发现笔刷：$discovered；已解析：$parsed；" +
+                    "已导入/可绘制：$renderable；已拒绝：$rejected；失败：$failed；" +
+                    "已跳过：$skipped；创建分组：$groupsCreated；文件错误：$fileFailures。",
+            )
+            if (rejected > 0 || failed > 0 || fileFailures > 0) {
+                val reasons = (batches.flatMap { it.rejectedBrushes + it.failedBrushes }
+                    .flatMap(ImportedBrush::report)
+                    .filter { line -> line.startsWith("UNSUPPORTED_WITH_EXPLICIT_REASON:") || line.contains("failed", true) } +
+                    results.mapNotNull { it.exceptionOrNull()?.message })
+                    .distinct().take(5)
+                importError = listOf(summary, reasons.joinToString("\n")).filter(String::isNotBlank).joinToString("\n\n")
+            } else {
+                Toast.makeText(context, summary, Toast.LENGTH_LONG).show()
+            }
+        }
     }
     val documentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) runCatching {

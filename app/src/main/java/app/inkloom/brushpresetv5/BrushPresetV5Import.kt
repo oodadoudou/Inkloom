@@ -18,7 +18,15 @@ object BrushPresetV5Import {
     fun convertOrReject(source: ImportedBrush): ImportedBrush {
         val audited = BrushSemanticMapper.apply(source)
         return runCatching {
-            convertDecodedSource(audited)
+            val converted = convertDecodedSource(audited)
+            when (val capability = BrushExecutionCapabilityResolver.resolve(
+                CompiledBrushProgramV5.compile(requirePreset(converted)),
+            )) {
+                BrushExecutionCapabilityResolution.Supported -> converted
+                is BrushExecutionCapabilityResolution.Unsupported -> error(
+                    capability.reasons.joinToString(",") { it.name },
+                )
+            }
         }.getOrElse { failure ->
             audited.copy(
                 compatibility = Compatibility.FAILED,

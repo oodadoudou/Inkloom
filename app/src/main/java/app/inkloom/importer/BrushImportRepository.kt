@@ -19,7 +19,9 @@ class BrushImportRepository(context: Context) {
 
     fun import(uri: Uri): Result<ImportedBrush> = importAll(uri).map { it.first() }
 
-    fun importAll(uri: Uri): Result<List<ImportedBrush>> = runCatching {
+    fun importAll(uri: Uri): Result<List<ImportedBrush>> = importDetailed(uri).map(BrushImportBatch::renderableBrushes)
+
+    fun importDetailed(uri: Uri): Result<BrushImportBatch> = runCatching {
         val metadata = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)
             ?.use { cursor ->
                 if (!cursor.moveToFirst()) null else {
@@ -61,6 +63,7 @@ class BrushImportRepository(context: Context) {
             app.inkloom.model.BrushFormat.INKLOOM -> listOf(inkloomPackage.read(target, hash, retained))
             else -> listOf(retained)
         }.map(BrushSemanticMapper::apply).map(BrushPresetV5Import::convertOrReject)
+            .let { brushes -> BrushImportBatch.classify(filesScanned = 1, brushes) }
     }
 
     fun export(brush: ImportedBrush, uri: Uri): Result<Unit> = runCatching {

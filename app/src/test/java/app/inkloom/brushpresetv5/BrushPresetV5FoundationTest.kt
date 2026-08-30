@@ -263,6 +263,26 @@ class BrushPresetV5FoundationTest {
         assertTrue(rejected.report.any { it.contains("RGB compositing") })
     }
 
+    @Test fun importBoundaryRejectsAnEncodedPresetThatProductionCannotExecute() {
+        val unsupported = referencePencil().copy(
+            stroke = StrokeSettings(taperStartEnabled = true),
+        )
+        val rejected = BrushPresetV5Import.convertOrReject(
+            ImportedBrush(
+                name = "Encoded unsupported taper",
+                format = BrushFormat.INKLOOM,
+                compatibility = Compatibility.COMPLETE,
+                sizeBytes = 12,
+                report = emptyList(),
+                v5PresetJson = BrushPresetV5Codec.encode(unsupported),
+            ),
+        )
+
+        assertEquals(Compatibility.FAILED, rejected.compatibility)
+        assertEquals(null, rejected.v5PresetJson)
+        assertTrue(rejected.report.any { it.contains("REALTIME_TAPER_REQUIRED") })
+    }
+
     @Test fun importBoundaryRejectsRecognizedContainerWithoutExecutableSemantics() {
         val rejected = BrushPresetV5Import.convertOrReject(
             ImportedBrush(
