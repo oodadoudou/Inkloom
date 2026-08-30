@@ -173,7 +173,6 @@ import app.inkloom.document.ShapePoint
 import app.inkloom.document.SingleFingerDoubleTapUndoGesture
 import app.inkloom.document.SprayGeometry
 import app.inkloom.document.CorrectLineMode
-import app.inkloom.document.StrokeStampSampler
 import app.inkloom.document.StylusInputClassifier
 import app.inkloom.document.TwoFingerTapUndoGesture
 import app.inkloom.document.TwoPointerRotationGesture
