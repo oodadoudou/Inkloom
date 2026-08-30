@@ -45,6 +45,7 @@ import app.inkloom.document.PaperPattern
 import app.inkloom.document.PageElement
 import app.inkloom.document.FileDocumentStore
 import app.inkloom.document.SpecialRulerMode
+import app.inkloom.engine.v5.diagnostics.ColorPickerInteractionTrace
 import app.inkloom.settings.AppSettingsStore
 import app.inkloom.settings.ShortcutAction
 import app.inkloom.settings.ShortcutCategory
@@ -817,6 +818,50 @@ class InkloomLaunchTest {
             view.v5DryGestureCount - v5GesturesBefore >= 6,
         )
         assertTrue("Six short strokes must not block the input thread ($elapsedMs ms)", elapsedMs < 1_500L)
+    }
+
+    @Test fun colorWheelFirstHueContactRespondsWithoutChangingTheDrawingTool() {
+        createNotebookAndOpenEditor()
+        composeRule.waitUntil(5_000) { findInkCanvasView() != null }
+        val view = requireNotNull(findInkCanvasView())
+        val brushBefore = view.brushId
+        val toolBefore = view.tool
+
+        // Seed a saturated color, close the panel, then verify that the hue ring is the first
+        // target touched in the newly opened picker. A neutral seed would hide a hue-only change.
+        composeRule.onNodeWithContentDescription("Colors").performClick()
+        composeRule.onNodeWithContentDescription("Saturation and brightness field").performTouchInput {
+            click(Offset(width * .82f, height * .2f))
+        }
+        composeRule.onNodeWithContentDescription("Colors").performClick()
+        val seededColor = view.inkColor
+
+        composeRule.onNodeWithContentDescription("Colors").performClick()
+        ColorPickerInteractionTrace.reset()
+        ColorPickerInteractionTrace.enabled = true
+        try {
+            val started = SystemClock.elapsedRealtime()
+            composeRule.onNodeWithContentDescription("Hue ring").performTouchInput {
+                down(Offset(width * .5f, height * .04f))
+                moveTo(Offset(width * .04f, height * .5f), delayMillis = 120)
+                up()
+            }
+            composeRule.waitUntil(2_000) { view.inkColor != seededColor }
+            composeRule.waitForIdle()
+            val elapsedMs = SystemClock.elapsedRealtime() - started
+            val trace = ColorPickerInteractionTrace.snapshot()
+
+            assertEquals("Color interaction must not replace the active brush", brushBefore, view.brushId)
+            assertEquals("Color interaction must not replace the active tool", toolBefore, view.tool)
+            assertTrue("A direct hue-ring contact must update promptly ($elapsedMs ms)", elapsedMs < 1_000L)
+            assertTrue("The drag must publish transient samples", trace.pointerSamples > 1)
+            assertEquals("A drag must commit workspace state exactly once", 1L, trace.workspaceCommits)
+            assertEquals("The immutable hue ring must not be reallocated during a drag", 0L, trace.hueRingAllocations)
+            assertTrue("Picker recomposition must not exceed preview writes by an unbounded amount", trace.panelCompositions <= trace.previewWrites + 3)
+        } finally {
+            ColorPickerInteractionTrace.enabled = false
+            ColorPickerInteractionTrace.reset()
+        }
     }
 
     @Test fun gradientToolControlsExposeProfessionalOptionsAndPersist() {

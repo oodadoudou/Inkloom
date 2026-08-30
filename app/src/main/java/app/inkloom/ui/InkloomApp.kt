@@ -121,6 +121,7 @@ import app.inkloom.importer.BrushVersion
 import app.inkloom.importer.BrushVersionHistoryStore
 import app.inkloom.model.*
 import app.inkloom.engine.v5.selection.DocumentSelectionRuntime
+import app.inkloom.engine.v5.diagnostics.ColorPickerInteractionTrace
 import app.inkloom.engine.v5.tools.RasterLayerPatch
 import app.inkloom.settings.AppSettings
 import app.inkloom.settings.AppSettingsBackupCodec
@@ -177,7 +178,6 @@ import app.inkloom.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -1580,7 +1580,15 @@ private fun EditorScreen(
                             Icon(Icons.Outlined.SwapHoriz, tr("Swap foreground and background colors", "交换前景色和背景色"), Modifier.size(18.dp))
                         }
                     }
-                    CspColorPanel(if (editSecondaryColor) backgroundColor else brushColor, if (editSecondaryColor) ::changeBackgroundColor else ::changeBrushColor, onResizeWidth = { delta -> colorPanelWidth = (colorPanelWidth + delta).coerceIn(320f, 680f) })
+                    CspColorPanel(
+                        color = if (editSecondaryColor) backgroundColor else brushColor,
+                        onColorPreview = { preview ->
+                            if (editSecondaryColor) canvasView?.secondaryInkColor = preview
+                            else canvasView?.inkColor = preview
+                        },
+                        onColorCommit = if (editSecondaryColor) ::changeBackgroundColor else ::changeBrushColor,
+                        onResizeWidth = { delta -> colorPanelWidth = (colorPanelWidth + delta).coerceIn(320f, 680f) },
+                    )
                 }
             }
             Box {
@@ -6285,27 +6293,50 @@ private fun hslToColor(alpha: Int, hue: Float, saturation: Float, lightness: Flo
 }
 
 @Composable
-private fun CspColorPanel(color: Int, onColor: (Int) -> Unit, initiallyExpanded: Boolean = true, onResizeWidth: ((Float) -> Unit)? = null) {
+private fun CspColorPanel(
+    color: Int,
+    onColorPreview: (Int) -> Unit,
+    onColorCommit: (Int) -> Unit,
+    initiallyExpanded: Boolean = true,
+    onResizeWidth: ((Float) -> Unit)? = null,
+) {
+    SideEffect { ColorPickerInteractionTrace.panelComposition() }
     var expanded by rememberSaveable(initiallyExpanded) { mutableStateOf(initiallyExpanded) }
     var channelMode by rememberSaveable { mutableStateOf("HSV") }
     var pickerHeight by rememberSaveable { mutableFloatStateOf(148f) }
     var draftColor by remember { mutableIntStateOf(color) }
-    val latestOnColor by rememberUpdatedState(onColor)
+    val latestDraftColor by rememberUpdatedState(draftColor)
+    val latestOnColorPreview by rememberUpdatedState(onColorPreview)
+    val latestOnColorCommit by rememberUpdatedState(onColorCommit)
     LaunchedEffect(color) { if (draftColor != color) draftColor = color }
-    // Raw pointer input can run much faster than Compose/AndroidView recomposition. Keep marker
-    // motion local and publish at most once per display frame so the picker remains responsive.
-    LaunchedEffect(Unit) {
-        snapshotFlow { draftColor }.collect { next ->
-            withFrameNanos { }
-            latestOnColor(next)
-        }
-    }
     val hsv = remember(draftColor) { FloatArray(3).also { AndroidColor.colorToHSV(draftColor, it) } }
     val hueColor = Color(AndroidColor.HSVToColor(floatArrayOf(hsv[0], 1f, 1f)))
+    val hueRingBrush = remember {
+        ColorPickerInteractionTrace.hueRingAllocation()
+        Brush.sweepGradient(listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red))
+    }
+    val saturationBrush = remember(hueColor) {
+        ColorPickerInteractionTrace.saturationGradientAllocation()
+        Brush.horizontalGradient(listOf(Color.White, hueColor))
+    }
+    val valueBrush = remember {
+        Brush.verticalGradient(listOf(Color.Transparent, Color.Black))
+    }
+    val hueRingDescription = tr("Hue ring", "色相环")
     val saturationValueDescription = tr("Saturation and brightness field", "饱和度和明度区域")
     val resizeColorPickerDescription = tr("Resize color picker", "调整色环大小")
+    fun updateDraft(next: Int) {
+        if (draftColor == next) return
+        draftColor = next
+        ColorPickerInteractionTrace.previewWrite()
+        latestOnColorPreview(next)
+    }
     fun publish(hue: Float = hsv[0], saturation: Float = hsv[1], value: Float = hsv[2]) {
-        draftColor = AndroidColor.HSVToColor(AndroidColor.alpha(draftColor), floatArrayOf(hue.coerceIn(0f, 360f), saturation.coerceIn(0f, 1f), value.coerceIn(0f, 1f)))
+        updateDraft(AndroidColor.HSVToColor(AndroidColor.alpha(draftColor), floatArrayOf(hue.coerceIn(0f, 360f), saturation.coerceIn(0f, 1f), value.coerceIn(0f, 1f))))
+    }
+    fun commitDraft() {
+        ColorPickerInteractionTrace.workspaceCommit()
+        latestOnColorCommit(draftColor)
     }
     Surface(
         Modifier.fillMaxWidth(),
@@ -6331,29 +6362,49 @@ private fun CspColorPanel(color: Int, onColor: (Int) -> Unit, initiallyExpanded:
                         Modifier
                             .fillMaxHeight()
                             .aspectRatio(1f)
+                            .semantics { contentDescription = hueRingDescription }
                             .pointerInput(Unit) {
-                                fun update(point: Offset) {
-                                    val dx = point.x - size.width / 2f
-                                    val dy = point.y - size.height / 2f
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    val dx = down.position.x - size.width / 2f
+                                    val dy = down.position.y - size.height / 2f
                                     val distance = kotlin.math.hypot(dx, dy)
                                     val outer = minOf(size.width, size.height) / 2f
                                     val inner = outer * .66f
-                                    if (distance !in inner..outer * 1.12f) return
-                                    var degrees = Math.toDegrees(kotlin.math.atan2(dy.toDouble(), dx.toDouble())).toFloat()
-                                    if (degrees < 0f) degrees += 360f
-                                    val current = FloatArray(3).also { AndroidColor.colorToHSV(draftColor, it) }
-                                    draftColor = AndroidColor.HSVToColor(AndroidColor.alpha(draftColor), floatArrayOf(degrees, current[1], current[2]))
+                                    if (distance !in inner..outer * 1.12f) return@awaitEachGesture
+                                    val values = FloatArray(3).also { AndroidColor.colorToHSV(latestDraftColor, it) }
+                                    var gestureColor = latestDraftColor
+                                    fun update(point: Offset) {
+                                        ColorPickerInteractionTrace.pointerSample()
+                                        var degrees = Math.toDegrees(kotlin.math.atan2(
+                                            (point.y - size.height / 2f).toDouble(),
+                                            (point.x - size.width / 2f).toDouble(),
+                                        )).toFloat()
+                                        if (degrees < 0f) degrees += 360f
+                                        values[0] = degrees
+                                        gestureColor = AndroidColor.HSVToColor(AndroidColor.alpha(gestureColor), values)
+                                        updateDraft(gestureColor)
+                                    }
+                                    down.consume()
+                                    update(down.position)
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                        if (!change.pressed) {
+                                            ColorPickerInteractionTrace.workspaceCommit()
+                                            latestOnColorCommit(gestureColor)
+                                            break
+                                        }
+                                        change.consume()
+                                        update(change.position)
+                                    }
                                 }
-                                detectDragGestures(
-                                    onDragStart = ::update,
-                                    onDrag = { change, _ -> change.consume(); update(change.position) },
-                                )
                             },
                     ) {
                         val ring = size.minDimension * .15f
                         val radius = size.minDimension / 2f - ring / 2f
                         drawCircle(
-                            Brush.sweepGradient(listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red)),
+                            hueRingBrush,
                             radius = radius,
                             style = Stroke(ring),
                         )
@@ -6370,26 +6421,39 @@ private fun CspColorPanel(color: Int, onColor: (Int) -> Unit, initiallyExpanded:
                             .fillMaxHeight()
                             .semantics { contentDescription = saturationValueDescription }
                             .pointerInput(Unit) {
-                                fun update(point: Offset) {
-                                    val width = size.width.coerceAtLeast(1).toFloat()
-                                    val height = size.height.coerceAtLeast(1).toFloat()
-                                    val saturation = (point.x / width).coerceIn(0f, 1f)
-                                    val value = (1f - point.y / height).coerceIn(0f, 1f)
-                                    val current = FloatArray(3).also { AndroidColor.colorToHSV(draftColor, it) }
-                                    draftColor = AndroidColor.HSVToColor(AndroidColor.alpha(draftColor), floatArrayOf(current[0], saturation, value))
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    val values = FloatArray(3).also { AndroidColor.colorToHSV(latestDraftColor, it) }
+                                    var gestureColor = latestDraftColor
+                                    fun update(point: Offset) {
+                                        ColorPickerInteractionTrace.pointerSample()
+                                        values[1] = (point.x / size.width.coerceAtLeast(1)).coerceIn(0f, 1f)
+                                        values[2] = (1f - point.y / size.height.coerceAtLeast(1)).coerceIn(0f, 1f)
+                                        gestureColor = AndroidColor.HSVToColor(AndroidColor.alpha(gestureColor), values)
+                                        updateDraft(gestureColor)
+                                    }
+                                    down.consume()
+                                    update(down.position)
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                        if (!change.pressed) {
+                                            ColorPickerInteractionTrace.workspaceCommit()
+                                            latestOnColorCommit(gestureColor)
+                                            break
+                                        }
+                                        change.consume()
+                                        update(change.position)
+                                    }
                                 }
-                                detectDragGestures(
-                                    onDragStart = ::update,
-                                    onDrag = { change, _ -> change.consume(); update(change.position) },
-                                )
                             },
                     ) {
                         // The rendered field and the inverse pointer mapping intentionally use the
                         // same rectangular HSV model: X is saturation, Y is inverse value. The old
                         // triangular barycentric mapping was applied to a rectangular gradient,
                         // so the selected S/V numbers could not match the color under the cursor.
-                        drawRect(Brush.horizontalGradient(listOf(Color.White, hueColor)))
-                        drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black)))
+                        drawRect(saturationBrush)
+                        drawRect(valueBrush)
                         drawRect(Ink, style = Stroke(1f))
                         val marker = Offset(hsv[1] * size.width, (1f - hsv[2]) * size.height)
                         drawCircle(Color.White, 5f, marker)
@@ -6407,16 +6471,20 @@ private fun CspColorPanel(color: Int, onColor: (Int) -> Unit, initiallyExpanded:
                         )
                     }
                     Spacer(Modifier.weight(1f))
-                    BrushColorPicker(draftColor, { draftColor = it }, square = true)
+                    BrushColorPicker(draftColor, { selected ->
+                        updateDraft(selected)
+                        ColorPickerInteractionTrace.workspaceCommit()
+                        latestOnColorCommit(selected)
+                    }, square = true)
                 }
                 if (channelMode == "RGB") {
-                    CspColorChannel("R", AndroidColor.red(draftColor)) { draftColor = AndroidColor.argb(AndroidColor.alpha(draftColor), it, AndroidColor.green(draftColor), AndroidColor.blue(draftColor)) }
-                    CspColorChannel("G", AndroidColor.green(draftColor)) { draftColor = AndroidColor.argb(AndroidColor.alpha(draftColor), AndroidColor.red(draftColor), it, AndroidColor.blue(draftColor)) }
-                    CspColorChannel("B", AndroidColor.blue(draftColor)) { draftColor = AndroidColor.argb(AndroidColor.alpha(draftColor), AndroidColor.red(draftColor), AndroidColor.green(draftColor), it) }
+                    CspColorChannel("R", AndroidColor.red(draftColor), { updateDraft(AndroidColor.argb(AndroidColor.alpha(draftColor), it, AndroidColor.green(draftColor), AndroidColor.blue(draftColor))) }, ::commitDraft)
+                    CspColorChannel("G", AndroidColor.green(draftColor), { updateDraft(AndroidColor.argb(AndroidColor.alpha(draftColor), AndroidColor.red(draftColor), it, AndroidColor.blue(draftColor))) }, ::commitDraft)
+                    CspColorChannel("B", AndroidColor.blue(draftColor), { updateDraft(AndroidColor.argb(AndroidColor.alpha(draftColor), AndroidColor.red(draftColor), AndroidColor.green(draftColor), it)) }, ::commitDraft)
                 } else {
-                    CspFloatColorChannel("H", hsv[0], 0f..360f, "${hsv[0].toInt()}°") { publish(hue = it) }
-                    CspFloatColorChannel("S", hsv[1], 0f..1f, "${(hsv[1] * 100f).toInt()}%") { publish(saturation = it) }
-                    CspFloatColorChannel("V", hsv[2], 0f..1f, "${(hsv[2] * 100f).toInt()}%") { publish(value = it) }
+                    CspFloatColorChannel("H", hsv[0], 0f..360f, "${hsv[0].toInt()}°", { publish(hue = it) }, ::commitDraft)
+                    CspFloatColorChannel("S", hsv[1], 0f..1f, "${(hsv[1] * 100f).toInt()}%", { publish(saturation = it) }, ::commitDraft)
+                    CspFloatColorChannel("V", hsv[2], 0f..1f, "${(hsv[2] * 100f).toInt()}%", { publish(value = it) }, ::commitDraft)
                 }
                 Row(
                     Modifier.fillMaxWidth().height(26.dp).semantics { contentDescription = resizeColorPickerDescription }
@@ -6438,19 +6506,19 @@ private fun CspColorPanel(color: Int, onColor: (Int) -> Unit, initiallyExpanded:
 }
 
 @Composable
-private fun CspFloatColorChannel(label: String, value: Float, range: ClosedFloatingPointRange<Float>, display: String, onValue: (Float) -> Unit) {
+private fun CspFloatColorChannel(label: String, value: Float, range: ClosedFloatingPointRange<Float>, display: String, onValue: (Float) -> Unit, onFinished: () -> Unit) {
     Row(Modifier.fillMaxWidth().height(20.dp).padding(horizontal = 7.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(label, Modifier.width(18.dp), color = MutedInk, fontSize = 9.sp)
-        Slider(value.coerceIn(range.start, range.endInclusive), onValue, Modifier.weight(1f).height(19.dp), valueRange = range)
+        Slider(value.coerceIn(range.start, range.endInclusive), onValue, Modifier.weight(1f).height(19.dp), onValueChangeFinished = onFinished, valueRange = range)
         Text(display, Modifier.width(34.dp), color = MutedInk, fontSize = 9.sp, textAlign = TextAlign.End)
     }
 }
 
 @Composable
-private fun CspColorChannel(label: String, value: Int, onValue: (Int) -> Unit) {
+private fun CspColorChannel(label: String, value: Int, onValue: (Int) -> Unit, onFinished: () -> Unit) {
     Row(Modifier.fillMaxWidth().height(20.dp).padding(horizontal = 7.dp), verticalAlignment = Alignment.CenterVertically) {
         Text(label, Modifier.width(18.dp), color = MutedInk, fontSize = 9.sp)
-        Slider(value.toFloat(), { onValue(it.toInt().coerceIn(0, 255)) }, Modifier.weight(1f).height(19.dp), valueRange = 0f..255f)
+        Slider(value.toFloat(), { onValue(it.toInt().coerceIn(0, 255)) }, Modifier.weight(1f).height(19.dp), onValueChangeFinished = onFinished, valueRange = 0f..255f)
         Text(value.toString(), Modifier.width(28.dp), color = MutedInk, fontSize = 9.sp, textAlign = TextAlign.End)
     }
 }
@@ -6728,7 +6796,12 @@ private fun LayerPanel(
     val currentPanelDragEnd by rememberUpdatedState(onPanelDragEnd)
     val currentPanelDragCancel by rememberUpdatedState(onPanelDragCancel)
     Column(modifier) {
-        CspColorPanel(brushColor, onColor, initiallyExpanded = dock != WorkspacePanelDock.BOTTOM)
+        CspColorPanel(
+            color = brushColor,
+            onColorPreview = onColor,
+            onColorCommit = onColor,
+            initiallyExpanded = dock != WorkspacePanelDock.BOTTOM,
+        )
         Spacer(Modifier.height(2.dp))
         Row(Modifier.fillMaxWidth().height(27.dp).background(Color(0xFFE3E3E3)).border(1.dp, OutlineSoft), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.Menu, null, Modifier.size(19.dp).padding(3.dp), tint = MutedInk)
