@@ -88,6 +88,7 @@ import app.inkloom.engine.v5.coordinates.DocumentPoint
 import app.inkloom.engine.v5.selection.CanonicalLassoContour
 import app.inkloom.engine.v5.selection.LassoSession
 import app.inkloom.engine.v5.selection.SelectionMaskRasterizer
+import app.inkloom.engine.v5.diagnostics.EraserLifecycleTrace
 import app.inkloom.engine.v5.selection.DocumentSelectionState
 import app.inkloom.engine.v5.selection.SparseAlphaMask
 import app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot
@@ -311,6 +312,7 @@ class InkCanvasView(context: Context) : View(context) {
             sample.x / surface.logicalWidth to sample.y / surface.logicalHeight
         }
     }
+    @VisibleForTesting internal fun currentStrokeIdForTest(): String = currentStrokeId
     @VisibleForTesting
     internal fun awaitV5StrokeWorkerIdleForTest() = v5StrokeController.awaitIdle()
     private var pendingSmudgeX = 0f
@@ -785,6 +787,7 @@ class InkCanvasView(context: Context) : View(context) {
     var shortcutButtonBindings: List<ButtonShortcutBinding> = emptyList()
     private val shortcutAxisAccumulator = ShortcutAxisAccumulator()
     private val heldMotionButtons = mutableMapOf<Pair<String?, Int>, ButtonShortcutBinding>()
+    private val deferredStylusButtonReleases = mutableListOf<StylusButtonTransition>()
 
     private val backgroundDestination = android.graphics.Rect()
     private val lassoPath = Path()
@@ -1692,7 +1695,7 @@ class InkCanvasView(context: Context) : View(context) {
             cancelActiveGestureForNavigation()
             if (pressedContactSwitch) stylusCommandConsumesContact = true
         }
-        dispatchStylusButtonTransitions(buttonTransitions)
+        dispatchOrDeferStylusButtonTransitions(buttonTransitions)
         if (stylusButtonAction.isCommand) stylusCommandConsumesContact = true
         if (StylusButtonAction.HAND in pressedButtonActions) {
             navigationX = event.x
@@ -2216,6 +2219,7 @@ class InkCanvasView(context: Context) : View(context) {
                         finishLayerMaskGesture()
                     }
                     activeTool = null
+                    flushDeferredStylusButtonReleases()
                     parent?.requestDisallowInterceptTouchEvent(false)
                     return true
                 }
@@ -2313,6 +2317,7 @@ class InkCanvasView(context: Context) : View(context) {
                 activeCanvasSnapConstraint = null
                 activePerspectiveSnapConstraint = null
                 activeSpecialRulerConstraint = null
+                flushDeferredStylusButtonReleases()
                 activeTool = null
                 activeInputWasStylus = false
             }
@@ -2666,6 +2671,17 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun cancelActiveGestureForNavigation() {
         stopContinuousPlot()
+        if (activeTool == EditorTool.ERASER && v5StrokeController.isActive) {
+            EraserLifecycleTrace.record(
+                EraserLifecycleTrace.Event(
+                    strokeId = currentStrokeId,
+                    stage = EraserLifecycleTrace.Stage.CANCELLED,
+                    persistentTool = tool.name,
+                    effectiveTool = EditorTool.ERASER.name,
+                    beforeGeneration = rasterTileSurfaceFor(activeLayerId)?.revision,
+                ),
+            )
+        }
         v5StrokeController.cancel()
         v5RejectedContact = false
         finishActiveStrokePreview()
@@ -3281,6 +3297,51 @@ class InkCanvasView(context: Context) : View(context) {
                 StylusButtonShortcut.activation(transition.action, transition.trigger, transition.phase)?.let(onShortcutAction)
             }
         }
+    }
+
+    /**
+     * A HOLD release may be reported on the same packet as the contact's ACTION_UP. Restoring the
+     * persistent tool before the active gesture sees that UP used to route the erase transaction
+     * through [cancelActiveGestureForNavigation]. Presses stay immediate; releases wait until the
+     * gesture has reached finish/cancel.
+     */
+    private fun dispatchOrDeferStylusButtonTransitions(transitions: List<StylusButtonTransition>) {
+        transitions.forEach { transition ->
+            if (transition.phase == ShortcutPhase.RELEASE && activeTool != null) {
+                deferredStylusButtonReleases += transition
+                if (activeTool == EditorTool.ERASER) {
+                    EraserLifecycleTrace.record(
+                        EraserLifecycleTrace.Event(
+                            strokeId = currentStrokeId,
+                            stage = EraserLifecycleTrace.Stage.RESTORE_DEFERRED,
+                            persistentTool = tool.name,
+                            effectiveTool = activeTool?.name.orEmpty(),
+                            beforeGeneration = rasterTileSurfaceFor(activeLayerId)?.revision,
+                        ),
+                    )
+                }
+            } else {
+                dispatchStylusButtonTransitions(listOf(transition))
+            }
+        }
+    }
+
+    private fun flushDeferredStylusButtonReleases() {
+        if (deferredStylusButtonReleases.isEmpty()) return
+        val releases = deferredStylusButtonReleases.toList()
+        deferredStylusButtonReleases.clear()
+        if (activeTool == EditorTool.ERASER) {
+            EraserLifecycleTrace.record(
+                EraserLifecycleTrace.Event(
+                    strokeId = currentStrokeId,
+                    stage = EraserLifecycleTrace.Stage.RESTORE_DISPATCHED,
+                    persistentTool = tool.name,
+                    effectiveTool = activeTool?.name.orEmpty(),
+                    beforeGeneration = rasterTileSurfaceFor(activeLayerId)?.revision,
+                ),
+            )
+        }
+        dispatchStylusButtonTransitions(releases)
     }
 
     private fun releaseHeldStylusButtons() {
@@ -4797,6 +4858,17 @@ class InkCanvasView(context: Context) : View(context) {
             onPaintCapabilityRejected("A V5 paint contact is already active")
             return true
         }
+        if (activeTool == EditorTool.ERASER) {
+            EraserLifecycleTrace.record(
+                EraserLifecycleTrace.Event(
+                    strokeId = currentStrokeId,
+                    stage = EraserLifecycleTrace.Stage.BEGIN,
+                    persistentTool = tool.name,
+                    effectiveTool = activeTool?.name.orEmpty(),
+                    beforeGeneration = surface.revision,
+                ),
+            )
+        }
         v5InputOverloadReported = false
         v5DryGestureCount++
         if (continuousPlotEnabled() && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
@@ -4897,8 +4969,23 @@ class InkCanvasView(context: Context) : View(context) {
         }
         val layerId = activeLayerId
         val sample = v5DocumentSample(event, pointerIndex, normalizedX, normalizedY, historicalIndex = null)
-        v5StrokeController.finish(sample) { published ->
-            v5MainHandler.post { acceptV5PublishedGesture(layerId, surface, published) }
+        val finishingEraser = activeTool == EditorTool.ERASER
+        val finishingStrokeId = currentStrokeId
+        val accepted = v5StrokeController.finish(sample) { published ->
+            v5MainHandler.post {
+                acceptV5PublishedGesture(layerId, surface, published, finishingStrokeId, finishingEraser)
+            }
+        }
+        if (finishingEraser && accepted) {
+            EraserLifecycleTrace.record(
+                EraserLifecycleTrace.Event(
+                    strokeId = currentStrokeId,
+                    stage = EraserLifecycleTrace.Stage.FINISH_QUEUED,
+                    persistentTool = tool.name,
+                    effectiveTool = EditorTool.ERASER.name,
+                    beforeGeneration = surface.revision,
+                ),
+            )
         }
         v5InputOverloadReported = false
         return true
@@ -4908,10 +4995,26 @@ class InkCanvasView(context: Context) : View(context) {
         layerId: String,
         surface: PixelTileSurface,
         published: app.inkloom.engine.v5.raster.PublishedPaintDelta,
+        strokeId: String,
+        wasEraser: Boolean,
     ) {
         try {
             v5DryPublishedGeneration = published.snapshot.revision
             published.dirtyBounds?.takeIf { published.record.changedTileCount > 0 }?.let { bounds ->
+                if (wasEraser) {
+                    EraserLifecycleTrace.record(
+                        EraserLifecycleTrace.Event(
+                            strokeId = strokeId,
+                            stage = EraserLifecycleTrace.Stage.COMMITTED,
+                            persistentTool = tool.name,
+                            effectiveTool = EditorTool.ERASER.name,
+                            transactionId = published.record.transactionId,
+                            touchedTiles = published.record.changedTileCount,
+                            beforeGeneration = (published.snapshot.revision - 1L).coerceAtLeast(0L),
+                            afterGeneration = published.snapshot.revision,
+                        ),
+                    )
+                }
                 v5PresentationBarrier.awaitVisible(published.snapshot.revision, published.record.transactionId)
                 recordRasterToolTransaction(
                     layerId,

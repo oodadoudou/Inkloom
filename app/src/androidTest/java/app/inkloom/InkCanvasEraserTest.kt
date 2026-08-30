@@ -6,7 +6,10 @@ import android.view.MotionEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.engine.v5.surface.PixelTileSurface
+import app.inkloom.engine.v5.diagnostics.EraserLifecycleTrace
 import app.inkloom.model.EditorTool
+import app.inkloom.settings.ShortcutAction
+import app.inkloom.settings.ShortcutPhase
 import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -15,6 +18,48 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class InkCanvasEraserTest {
+    @Test fun holdButtonReleaseFinishesEraseBeforeRestoringPersistentBrush() {
+        val surface = opaqueSurface(400, 400)
+        var releaseCount = 0
+        val view = configuredView(mapOf("paint" to surface)).apply {
+            switchInputConfiguration(EditorTool.PEN, null)
+            onShortcutAction = { activation ->
+                if (activation.action == ShortcutAction.TOGGLE_ERASER) {
+                    if (activation.phase == ShortcutPhase.PRESS) {
+                        switchInputConfiguration(EditorTool.ERASER, null)
+                    } else {
+                        releaseCount++
+                        switchInputConfiguration(EditorTool.PEN, null)
+                    }
+                }
+            }
+        }
+        EraserLifecycleTrace.reset()
+        EraserLifecycleTrace.enabled = true
+
+        try {
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                view.dispatchStylus(MotionEvent.ACTION_DOWN, 80f, 200f, 10L, MotionEvent.BUTTON_STYLUS_PRIMARY)
+                view.dispatchStylus(MotionEvent.ACTION_MOVE, 320f, 200f, 20L, MotionEvent.BUTTON_STYLUS_PRIMARY)
+                view.dispatchStylus(MotionEvent.ACTION_UP, 320f, 200f, 30L, 0)
+            }
+            settlePublishedStroke(view)
+
+            assertEquals(1, releaseCount)
+            assertEquals("The completed temporary eraser gesture must remain erased", 0, Color.alpha(surface.pixelAt(200, 200)))
+            val trace = EraserLifecycleTrace.timeline(view.currentStrokeIdForTest())
+            val stages = trace.map(EraserLifecycleTrace.Event::stage)
+            assertTrue(stages.contains(EraserLifecycleTrace.Stage.RESTORE_DEFERRED))
+            assertTrue(stages.contains(EraserLifecycleTrace.Stage.FINISH_QUEUED))
+            assertTrue(stages.contains(EraserLifecycleTrace.Stage.COMMITTED))
+            assertTrue(stages.contains(EraserLifecycleTrace.Stage.RESTORE_DISPATCHED))
+            assertTrue("Temporary-tool restore must never cancel the completed erase", EraserLifecycleTrace.Stage.CANCELLED !in stages)
+        } finally {
+            EraserLifecycleTrace.enabled = false
+            EraserLifecycleTrace.reset()
+        }
+    }
+
     @Test fun canceledV5EraserContactRollsBackWithoutPublishing() {
         val surface = opaqueSurface(400, 400)
         val initialRevision = surface.revision
@@ -104,7 +149,7 @@ class InkCanvasEraserTest {
         }
     }
 
-    private fun InkCanvasView.dispatchStylus(action: Int, x: Float, y: Float, time: Long) {
+    private fun InkCanvasView.dispatchStylus(action: Int, x: Float, y: Float, time: Long, buttonState: Int = 0) {
         val properties = MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_STYLUS }
         val coordinates = MotionEvent.PointerCoords().apply {
             this.x = x
@@ -121,7 +166,7 @@ class InkCanvasEraserTest {
             arrayOf(properties),
             arrayOf(coordinates),
             0,
-            0,
+            buttonState,
             1f,
             1f,
             0,
