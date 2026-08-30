@@ -72,6 +72,7 @@ class InkloomLaunchTest {
             override fun evaluate() {
                 val context = ApplicationProvider.getApplicationContext<android.content.Context>()
                 java.io.File(context.filesDir, "page-templates.json").delete()
+                java.io.File(context.filesDir, "library.json").delete()
                 context
                     .getSharedPreferences("inkloom_settings", android.content.Context.MODE_PRIVATE)
                     .edit()
@@ -166,6 +167,22 @@ class InkloomLaunchTest {
         assertEquals("LIST", AppSettingsStore(composeRule.activity).load().libraryLayout.name)
         composeRule.onNodeWithContentDescription("Compact grid").performClick()
         assertEquals("COMPACT_GRID", AppSettingsStore(composeRule.activity).load().libraryLayout.name)
+    }
+
+    @Test fun libraryFolderCanBeCreatedAndRenamedFromItsActionMenu() {
+        composeRule.onNodeWithContentDescription("New folder").performClick()
+        composeRule.onAllNodes(hasSetTextAction()).onLast().performTextInput("Reference")
+        composeRule.onNodeWithText("Create").performClick()
+        composeRule.onNodeWithText("Reference").assertIsDisplayed()
+
+        composeRule.onNodeWithContentDescription("Folder actions").performClick()
+        composeRule.onNodeWithText("Rename").performClick()
+        composeRule.onAllNodes(hasSetTextAction()).onLast().performTextClearance()
+        composeRule.onAllNodes(hasSetTextAction()).onLast().performTextInput("Studies")
+        composeRule.onNodeWithText("Save").performClick()
+
+        composeRule.onNodeWithText("Studies").assertIsDisplayed()
+        composeRule.onNodeWithText("Reference").assertDoesNotExist()
     }
 
     @Test fun creatingNotebookAppliesChosenPaperTemplateAndComfortColor() {

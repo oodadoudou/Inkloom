@@ -142,14 +142,23 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         val copy = source.copy(id = java.util.UUID.randomUUID().toString(), title = "${source.title} copy", createdAt = System.currentTimeMillis(), updatedAt = System.currentTimeMillis(), pages = PdfGotoLinkNavigation.remapDestinations(copiedPages, pageIds))
         store.save(copy); refresh()
     }
-    fun moveToFolder(documentId: String, folderId: String?) = update(documentId) { it.copy(folderId = folderId, updatedAt = System.currentTimeMillis()) }
+    fun moveToFolder(documentId: String, folderId: String?) = update(documentId) {
+        LibraryFolderOperations.moveDocument(it, mutableState.value.folders, folderId)
+    }
     fun createFolder(name: String, parentId: String? = null) {
-        if (name.isBlank()) return
-        saveFolders(mutableState.value.folders + InkFolder(name = name.trim(), parentId = parentId)); refresh()
+        val updated = LibraryFolderOperations.create(mutableState.value.folders, name, parentId)
+        if (updated == mutableState.value.folders) return
+        saveFolders(updated); refresh()
+    }
+    fun renameFolder(folderId: String, name: String) {
+        val updated = LibraryFolderOperations.rename(mutableState.value.folders, folderId, name)
+        if (updated == mutableState.value.folders) return
+        saveFolders(updated); refresh()
     }
     fun deleteFolder(folderId: String) {
-        store.list().filter { it.folderId == folderId }.forEach { store.save(it.copy(folderId = null)) }
-        saveFolders(mutableState.value.folders.filterNot { it.id == folderId || it.parentId == folderId }); refresh()
+        val result = LibraryFolderOperations.remove(mutableState.value.folders, store.list(), folderId)
+        result.documents.filter { document -> store.get(document.id) != document }.forEach(store::save)
+        saveFolders(result.folders); refresh()
     }
 
     fun addPage(documentId: String, templateId: String? = null, paperColorArgb: Long? = null) = update(documentId) { document ->

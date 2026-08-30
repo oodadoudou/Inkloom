@@ -682,6 +682,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onRename = viewModel::rename,
             onDuplicate = viewModel::duplicateDocument,
             onCreateFolder = viewModel::createFolder,
+            onRenameFolder = viewModel::renameFolder,
             onMoveToFolder = viewModel::moveToFolder,
             onDeleteFolder = viewModel::deleteFolder,
             onSettings = { settingsOpen = true },
@@ -806,7 +807,7 @@ fun InkloomApp(initialIntent: Intent?) {
 }
 
 @Composable
-private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>, pageTemplates: PageTemplateLibrary, layout: LibraryLayout, onLayout: (LibraryLayout) -> Unit, onOpen: (InkDocument) -> Unit, onNewNote: (String, CoverStyle, String, Long) -> Unit, onImportCover: (String, String, Long) -> Unit, onImport: () -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, onCreateFolder: (String, String?) -> Unit, onMoveToFolder: (String, String?) -> Unit, onDeleteFolder: (String) -> Unit, onSettings: () -> Unit) {
+private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>, pageTemplates: PageTemplateLibrary, layout: LibraryLayout, onLayout: (LibraryLayout) -> Unit, onOpen: (InkDocument) -> Unit, onNewNote: (String, CoverStyle, String, Long) -> Unit, onImportCover: (String, String, Long) -> Unit, onImport: () -> Unit, onFavorite: (String) -> Unit, onArchive: (String) -> Unit, onTags: (String, List<String>) -> Unit, onTrash: (String) -> Unit, onRestore: (String) -> Unit, onDelete: (String) -> Unit, onRename: (String, String) -> Unit, onDuplicate: (String) -> Unit, onCreateFolder: (String, String?) -> Unit, onRenameFolder: (String, String) -> Unit, onMoveToFolder: (String, String?) -> Unit, onDeleteFolder: (String) -> Unit, onSettings: () -> Unit) {
     var filter by remember { mutableStateOf(LibraryFilter.ALL) }
     var search by remember { mutableStateOf("") }
     var folderId by remember { mutableStateOf<String?>(null) }
@@ -823,7 +824,7 @@ private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>
         val compact = maxWidth < 700.dp
         Row(Modifier.fillMaxSize()) {
             if (!compact) {
-        LibraryRail(filter, { filter = it; folderId = null }, folders, folderId, { folderId = it; filter = LibraryFilter.ALL }, onCreateFolder, onDeleteFolder, onSettings)
+        LibraryRail(filter, { filter = it; folderId = null }, folders, folderId, { folderId = it; filter = LibraryFilter.ALL }, onCreateFolder, onRenameFolder, onDeleteFolder, onSettings)
                 VerticalDivider(color = OutlineSoft)
             }
             Column(Modifier.weight(1f).fillMaxHeight().padding(horizontal = if (compact) 16.dp else 32.dp, vertical = 22.dp)) {
@@ -965,9 +966,12 @@ private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>
 }
 
 @Composable
-private fun LibraryRail(filter: LibraryFilter, onFilter: (LibraryFilter) -> Unit, folders: List<InkFolder>, folderId: String?, onFolder: (String?) -> Unit, onCreateFolder: (String, String?) -> Unit, onDeleteFolder: (String) -> Unit, onSettings: () -> Unit) {
+private fun LibraryRail(filter: LibraryFilter, onFilter: (LibraryFilter) -> Unit, folders: List<InkFolder>, folderId: String?, onFolder: (String?) -> Unit, onCreateFolder: (String, String?) -> Unit, onRenameFolder: (String, String) -> Unit, onDeleteFolder: (String) -> Unit, onSettings: () -> Unit) {
     var newFolderOpen by remember { mutableStateOf(false) }
     var folderName by remember { mutableStateOf("") }
+    var folderMenuId by remember { mutableStateOf<String?>(null) }
+    var renameFolderId by remember { mutableStateOf<String?>(null) }
+    var renameFolderName by remember { mutableStateOf("") }
     Column(Modifier.width(198.dp).fillMaxHeight().padding(16.dp)) {
         BrandMark(tr("Library", "资料库"))
         Spacer(Modifier.height(34.dp))
@@ -980,13 +984,40 @@ private fun LibraryRail(filter: LibraryFilter, onFilter: (LibraryFilter) -> Unit
         Row(verticalAlignment = Alignment.CenterVertically) { Text(tr("FOLDERS", "文件夹"), fontSize = 11.sp, color = MutedInk, modifier = Modifier.weight(1f)); IconButton(onClick = { newFolderOpen = true }, modifier = Modifier.size(30.dp)) { Icon(Icons.Default.Add, tr("New folder", "新建文件夹")) } }
         Spacer(Modifier.height(10.dp))
         folders.filter { it.parentId == null }.forEach { folder ->
-            Row(verticalAlignment = Alignment.CenterVertically) { Box(Modifier.weight(1f)) { RailItem(Icons.Outlined.Folder, folder.name, folderId == folder.id) { onFolder(folder.id) } }; IconButton(onClick = { onDeleteFolder(folder.id) }, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.Close, tr("Delete folder", "删除文件夹"), modifier = Modifier.size(14.dp)) } }
-            folders.filter { it.parentId == folder.id }.forEach { child -> Box(Modifier.padding(start = 16.dp)) { RailItem(Icons.Outlined.FolderOpen, child.name, folderId == child.id) { onFolder(child.id) } } }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) { RailItem(Icons.Outlined.Folder, folder.name, folderId == folder.id) { onFolder(folder.id) } }
+                Box {
+                    IconButton(onClick = { folderMenuId = folder.id }, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.MoreVert, tr("Folder actions", "文件夹操作"), modifier = Modifier.size(14.dp)) }
+                    DropdownMenu(expanded = folderMenuId == folder.id, onDismissRequest = { folderMenuId = null }) {
+                        DropdownMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { folderMenuId = null; renameFolderId = folder.id; renameFolderName = folder.name })
+                        DropdownMenuItem(text = { Text(tr("Delete folder", "删除文件夹")) }, onClick = { folderMenuId = null; onDeleteFolder(folder.id) })
+                    }
+                }
+            }
+            folders.filter { it.parentId == folder.id }.forEach { child ->
+                Row(Modifier.padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.weight(1f)) { RailItem(Icons.Outlined.FolderOpen, child.name, folderId == child.id) { onFolder(child.id) } }
+                    Box {
+                        IconButton(onClick = { folderMenuId = child.id }, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.MoreVert, tr("Folder actions", "文件夹操作"), modifier = Modifier.size(14.dp)) }
+                        DropdownMenu(expanded = folderMenuId == child.id, onDismissRequest = { folderMenuId = null }) {
+                            DropdownMenuItem(text = { Text(tr("Rename", "重命名")) }, onClick = { folderMenuId = null; renameFolderId = child.id; renameFolderName = child.name })
+                            DropdownMenuItem(text = { Text(tr("Delete folder", "删除文件夹")) }, onClick = { folderMenuId = null; onDeleteFolder(child.id) })
+                        }
+                    }
+                }
+            }
         }
         Spacer(Modifier.weight(1f))
         RailItem(Icons.Outlined.Settings, tr("Settings", "设置"), false, onSettings)
     }
     if (newFolderOpen) AlertDialog(onDismissRequest = { newFolderOpen = false }, title = { Text(tr("New folder", "新建文件夹")) }, text = { OutlinedTextField(value = folderName, onValueChange = { folderName = it }, singleLine = true) }, confirmButton = { TextButton(onClick = { onCreateFolder(folderName, folderId); folderName = ""; newFolderOpen = false }) { Text(tr("Create", "创建")) } }, dismissButton = { TextButton(onClick = { newFolderOpen = false }) { Text(tr("Cancel", "取消")) } })
+    if (renameFolderId != null) AlertDialog(
+        onDismissRequest = { renameFolderId = null },
+        title = { Text(tr("Rename folder", "重命名文件夹")) },
+        text = { OutlinedTextField(renameFolderName, { renameFolderName = it }, singleLine = true) },
+        confirmButton = { TextButton(onClick = { renameFolderId?.let { onRenameFolder(it, renameFolderName) }; renameFolderId = null }) { Text(tr("Save", "保存")) } },
+        dismissButton = { TextButton(onClick = { renameFolderId = null }) { Text(tr("Cancel", "取消")) } },
+    )
 }
 
 @Composable
