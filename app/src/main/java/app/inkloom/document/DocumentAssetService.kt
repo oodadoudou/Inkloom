@@ -42,10 +42,8 @@ class DocumentAssetService(private val context: Context) {
     private val directory = File(context.filesDir, "document-assets").apply { mkdirs() }
     private val pixelTileDirectory = File(directory, "pixel-tiles")
     private val pixelTileStore = PixelTileArchiveStore(pixelTileDirectory)
+    private val assetLifecycle = DocumentAssetLifecycle(directory, pixelTileStore)
     private val brushAssetDirectory = File(context.filesDir, "brush-assets").apply { mkdirs() }
-    private val assetLifecycleLock = Any()
-    private val pendingDocumentAssets = linkedSetOf<String>()
-    private val pendingRasterTileManifests = linkedSetOf<String>()
     @androidx.annotation.VisibleForTesting
     internal var v5RasterProjectionExportCount: Int = 0
 
@@ -174,10 +172,10 @@ class DocumentAssetService(private val context: Context) {
 
     /** Persists authoritative V5 sparse fill alpha without materializing a page-sized bitmap. */
     fun saveFillMask(mask: MaskTileSurfaceSnapshot): String =
-        saveDocumentBytes(MaskTileArchiveCodec.encode(mask), "fill-mask.v5")
+        assetLifecycle.saveBytes(MaskTileArchiveCodec.encode(mask), "fill-mask.v5")
 
     fun saveMaskTileSurface(mask: MaskTileSurfaceSnapshot): MaskTileSurfaceRef {
-        val path = saveDocumentBytes(MaskTileArchiveCodec.encode(mask), "layer-mask.v5")
+        val path = assetLifecycle.saveBytes(MaskTileArchiveCodec.encode(mask), "layer-mask.v5")
         return MaskTileSurfaceRef(
             assetPath = path,
             surfaceId = mask.surfaceId,
@@ -207,23 +205,7 @@ class DocumentAssetService(private val context: Context) {
     fun saveRasterTileSurface(
         surface: PixelTileSurface,
         previousReference: RasterTileSurfaceRef? = null,
-    ): RasterTileSurfaceRef = synchronized(assetLifecycleLock) {
-        val manifest = pixelTileStore.save(
-            surface.snapshot(),
-            previousReference?.manifestAssetPath?.let(::File),
-        )
-        val metadata = pixelTileStore.inspect(manifest)
-        pendingRasterTileManifests += manifest.canonicalPath
-        RasterTileSurfaceRef(
-            manifestAssetPath = manifest.absolutePath,
-            surfaceId = metadata.surfaceId,
-            logicalWidth = metadata.logicalWidth,
-            logicalHeight = metadata.logicalHeight,
-            tileSize = metadata.tileSize,
-            revision = metadata.revision,
-            pixelFormat = metadata.pixelFormat.manifestId,
-        )
-    }
+    ): RasterTileSurfaceRef = assetLifecycle.saveRasterTileSurface(surface, previousReference)
 
     /** Imports an external bitmap into the native V5 sparse tile format. */
     fun importRasterTileSurface(bitmap: Bitmap): RasterTileSurfaceRef {
@@ -250,37 +232,10 @@ class DocumentAssetService(private val context: Context) {
         return pixelTileStore.referencedFiles(File(reference.manifestAssetPath))
     }
 
-    private fun saveDocumentBytes(bytes: ByteArray, kind: String): String {
-        require(bytes.isNotEmpty()) { "Could not encode $kind" }
-        val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
-        val target = File(directory, "$hash.$kind")
-        val temporary = File(directory, ".${System.nanoTime()}.tmp")
-        try {
-            if (!target.exists()) {
-                temporary.outputStream().use { output -> output.write(bytes); output.flush() }
-                check(temporary.renameTo(target)) { "Could not retain $kind" }
-            }
-            synchronized(assetLifecycleLock) { pendingDocumentAssets += target.canonicalPath }
-            return target.absolutePath
-        } finally {
-            temporary.delete()
-        }
-    }
+    fun releaseAssetReservation(path: String?) = assetLifecycle.releaseAssetReservation(path)
 
-    fun releaseAssetReservation(path: String?) {
-        if (path.isNullOrBlank()) return
-        synchronized(assetLifecycleLock) {
-            runCatching { File(path).canonicalPath }.getOrNull()?.let(pendingDocumentAssets::remove)
-        }
-    }
-
-    fun releaseRasterTileReservation(reference: RasterTileSurfaceRef?) {
-        if (reference == null) return
-        synchronized(assetLifecycleLock) {
-            runCatching { File(reference.manifestAssetPath).canonicalPath }.getOrNull()
-                ?.let(pendingRasterTileManifests::remove)
-        }
-    }
+    fun releaseRasterTileReservation(reference: RasterTileSurfaceRef?) =
+        assetLifecycle.releaseRasterTileReservation(reference)
 
     fun loadSparseFillMask(maskAssetPath: String): MaskTileSurface? = runCatching {
         val bytes = File(maskAssetPath).readBytes()
@@ -301,21 +256,7 @@ class DocumentAssetService(private val context: Context) {
     fun garbageCollectUnreferencedAssets(
         documents: List<InkDocument>,
         pageTemplates: PageTemplateLibrary = PageTemplateLibrary(),
-    ): Int = synchronized(assetLifecycleLock) {
-        val legacyRemoved = DocumentAssetGarbageCollector.collect(
-            directory,
-            documents,
-            pageTemplates,
-            pendingDocumentAssets.toSet(),
-        )
-        val retainedManifests = documents.flatMap { document ->
-            document.pages.flatMap { page ->
-                page.layers.mapNotNull { layer -> layer.rasterTileSurface?.manifestAssetPath }
-            }
-        }.map(::File) + pendingRasterTileManifests.map(::File)
-        val tileResult = pixelTileStore.garbageCollect(retainedManifests)
-        legacyRemoved + tileResult.manifestsDeleted + tileResult.blobsDeleted
-    }
+    ): Int = assetLifecycle.garbageCollect(documents, pageTemplates)
 
     fun importCoverImage(uri: Uri): String {
         val extension = context.contentResolver.getType(uri)?.substringAfterLast('/')?.take(8).orEmpty().ifBlank { "image" }
@@ -684,11 +625,9 @@ class DocumentAssetService(private val context: Context) {
                 require(sourceManifest.canonicalPath.startsWith(temporaryRoot.canonicalPath + File.separator) &&
                     sourceManifest.isFile
                 ) { "Bundle is missing $relative" }
-                val importedManifest = synchronized(assetLifecycleLock) {
-                    pixelTileStore.import(sourceManifest.readText()) { hash ->
-                        File(temporaryRoot, "pixel-tiles/blobs/$hash.tile")
-                            .takeIf(File::isFile)?.readBytes()
-                    }.also { pendingRasterTileManifests += it.canonicalPath }
+                val importedManifest = assetLifecycle.importRasterTileManifest(sourceManifest.readText()) { hash ->
+                    File(temporaryRoot, "pixel-tiles/blobs/$hash.tile")
+                        .takeIf(File::isFile)?.readBytes()
                 }
                 val metadata = pixelTileStore.inspect(importedManifest)
                 require(metadata.surfaceId == reference.surfaceId &&
