@@ -114,6 +114,8 @@ import app.inkloom.brushpresetv5.CompiledBrushProgramV5
 import app.inkloom.brushpresetv5.PresetOwnership
 import app.inkloom.brushpresetv5.PresetOwnershipOperations
 import app.inkloom.importer.BrushImportRepository
+import app.inkloom.importer.BrushImportBatch
+import app.inkloom.importer.BrushImportLedger
 import app.inkloom.importer.BrushGroupOperations
 import app.inkloom.importer.BrushGroupStore
 import app.inkloom.importer.BrushMetadataStore
@@ -475,25 +477,26 @@ fun InkloomApp(initialIntent: Intent?) {
             brushStore.save(importedBrushes)
             brushGroups = BrushGroupOperations.reconcileRegisteredGroups(brushGroups, importedBrushes)
             brushGroupStore.save(brushGroups)
-            val discovered = batches.sumOf { it.summary.brushesDiscovered }
-            val parsed = batches.sumOf { it.summary.parsed }
-            val renderable = batches.sumOf { it.summary.renderable }
-            val rejected = batches.sumOf { it.summary.rejected }
-            val failed = batches.sumOf { it.summary.failed }
-            val skipped = batches.sumOf { it.summary.skipped }
+            val importLedger = BrushImportLedger.combine(batches.map(BrushImportBatch::ledger))
+                .withGroupsCreated(groupsCreated)
+            val importSummary = importLedger.summary
             val fileFailures = results.count { it.isFailure }
             val summary = settings.language.text(
-                "Files scanned: ${uris.size}; brushes discovered: $discovered; parsed: $parsed; " +
-                    "imported/renderable: $renderable; rejected: $rejected; failed: $failed; " +
-                    "skipped: $skipped; groups created: $groupsCreated; file errors: $fileFailures.",
-                "扫描文件：${uris.size}；发现笔刷：$discovered；已解析：$parsed；" +
-                    "已导入/可绘制：$renderable；已拒绝：$rejected；失败：$failed；" +
-                    "已跳过：$skipped；创建分组：$groupsCreated；文件错误：$fileFailures。",
+                "Source files: ${importSummary.sourceFilesScanned}; containers: ${importSummary.sourceContainers}; " +
+                    "brushes discovered: ${importSummary.brushesDiscovered}; parsed: ${importSummary.parsed}; " +
+                    "mapped: ${importSummary.mapped}; renderable: ${importSummary.renderable}; " +
+                    "imported usable: ${importSummary.importedUsable}; rejected: ${importSummary.rejectedUnsupported}; " +
+                    "failed: ${importSummary.failed}; groups discovered: ${importSummary.groupsDiscovered}; " +
+                    "groups created: ${importSummary.groupsCreated}; file errors: $fileFailures.",
+                "源文件：${importSummary.sourceFilesScanned}；容器：${importSummary.sourceContainers}；" +
+                    "发现笔刷：${importSummary.brushesDiscovered}；已解析：${importSummary.parsed}；" +
+                    "已映射：${importSummary.mapped}；可渲染：${importSummary.renderable}；" +
+                    "已导入可用：${importSummary.importedUsable}；已拒绝：${importSummary.rejectedUnsupported}；" +
+                    "失败：${importSummary.failed}；发现分组：${importSummary.groupsDiscovered}；" +
+                    "创建分组：${importSummary.groupsCreated}；文件错误：$fileFailures。",
             )
-            if (rejected > 0 || failed > 0 || fileFailures > 0) {
-                val reasons = (batches.flatMap { it.rejectedBrushes + it.failedBrushes }
-                    .flatMap(ImportedBrush::report)
-                    .filter { line -> line.startsWith("UNSUPPORTED_WITH_EXPLICIT_REASON:") || line.contains("failed", true) } +
+            if (importSummary.rejectedUnsupported > 0 || importSummary.failed > 0 || fileFailures > 0) {
+                val reasons = (importLedger.records.flatMap { record -> record.rejectionReasons } +
                     results.mapNotNull { it.exceptionOrNull()?.message })
                     .distinct().take(5)
                 importError = listOf(summary, reasons.joinToString("\n")).filter(String::isNotBlank).joinToString("\n\n")
