@@ -12,10 +12,8 @@ enum class BrushExecutionCapabilityReason {
     POST_CORRECTION_NOT_REALTIME_SAFE,
     WET_PAINT_SETTINGS_REQUIRED,
     WET_PAINT_ERASER_UNSUPPORTED,
-    WET_PAINT_TEXTURED_TIP_REQUIRED,
     WET_PAINT_DUAL_BRUSH_REQUIRED,
     WET_PAINT_TEXTURE_GRAIN_REQUIRED,
-    WET_PAINT_STAMP_DYNAMICS_REQUIRED,
     ASSET_STAMP_TIP_REQUIRED,
     TEXTURE_GRAIN_REQUIRES_STAMP_BACKEND,
     STAMP_DYNAMICS_REQUIRE_STAMP_BACKEND,
@@ -50,13 +48,9 @@ object BrushExecutionCapabilityResolver {
                 if (program.output == BrushOutput.ERASE) {
                     reasons += BrushExecutionCapabilityReason.WET_PAINT_ERASER_UNSUPPORTED
                 }
-                if (hasAssetTip) reasons += BrushExecutionCapabilityReason.WET_PAINT_TEXTURED_TIP_REQUIRED
                 if (program.dual != null) reasons += BrushExecutionCapabilityReason.WET_PAINT_DUAL_BRUSH_REQUIRED
                 if (program.textureGrain != null) {
                     reasons += BrushExecutionCapabilityReason.WET_PAINT_TEXTURE_GRAIN_REQUIRED
-                }
-                if (program.stamp != null) {
-                    reasons += BrushExecutionCapabilityReason.WET_PAINT_STAMP_DYNAMICS_REQUIRED
                 }
             }
 

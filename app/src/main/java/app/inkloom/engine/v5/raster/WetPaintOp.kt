@@ -2,6 +2,7 @@ package app.inkloom.engine.v5.raster
 
 import app.inkloom.engine.v5.material.PressureResponse
 import app.inkloom.engine.v5.material.TiltResponse
+import app.inkloom.engine.v5.material.BrushTipMask
 import app.inkloom.engine.v5.stroke.PaintBatch
 import app.inkloom.engine.v5.stroke.StrokeSample
 import app.inkloom.engine.v5.surface.ActiveStrokeDeltaBlend
@@ -12,8 +13,11 @@ import app.inkloom.engine.v5.surface.PixelTileKey
 import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot
 import kotlin.math.ceil
+import kotlin.math.atan2
+import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.hypot
+import kotlin.math.sin
 import kotlin.math.sqrt
 
 data class WetPaintDefinition(
@@ -25,6 +29,15 @@ data class WetPaintDefinition(
     val charge: Float = .65f,
     val attack: Float = .7f,
     val pull: Float = .35f,
+    val tips: List<BrushTipMask> = emptyList(),
+    val spacingRatio: Float = .16f,
+    val roundness: Float = 1f,
+    val rotationRadians: Float = 0f,
+    val followStrokeDirection: Boolean = false,
+    val followStylusOrientation: Boolean = false,
+    val randomRotationRadians: Float = 0f,
+    val renderSeed: Int = 0,
+    val particlesPerPlot: Int = 1,
     val sizePressure: PressureResponse = PressureResponse.CONSTANT,
     val sizeTilt: TiltResponse = TiltResponse.CONSTANT,
     val blend: DryBlend = DryBlend.SOURCE_OVER,
@@ -37,6 +50,11 @@ data class WetPaintDefinition(
         require(charge.isFinite() && charge in 0f..1f)
         require(attack.isFinite() && attack in 0f..1f)
         require(pull.isFinite() && pull in 0f..1f)
+        require(spacingRatio.isFinite() && spacingRatio in .005f..4f)
+        require(roundness.isFinite() && roundness in .01f..1f)
+        require(rotationRadians.isFinite())
+        require(randomRotationRadians.isFinite() && randomRotationRadians >= 0f)
+        require(particlesPerPlot in 1..32)
     }
 }
 
@@ -124,18 +142,21 @@ class WetPaintOp(
                     val sample = transform.apply(input)
                     val previous = track.lastSample
                     if (previous == null) {
-                        deposit(sample, track)?.let { batchDirty = batchDirty?.union(it) ?: it }
+                        deposit(sample, track, definition.rotationRadians)?.let {
+                            batchDirty = batchDirty?.union(it) ?: it
+                        }
                         track.distanceToNextDab = spacing(sample)
                     } else if (!sameSample(previous, sample)) {
                         val dx = sample.point.x - previous.point.x
                         val dy = sample.point.y - previous.point.y
                         val length = hypot(dx, dy)
+                        val direction = atan2(dy, dx)
                         var travelled = 0f
                         var remaining = track.distanceToNextDab.coerceAtLeast(.25f)
                         while (travelled + remaining <= length) {
                             travelled += remaining
                             val resolved = interpolate(previous, sample, travelled / length)
-                            deposit(resolved, track)?.let { batchDirty = batchDirty?.union(it) ?: it }
+                            deposit(resolved, track, direction)?.let { batchDirty = batchDirty?.union(it) ?: it }
                             remaining = spacing(resolved)
                         }
                         track.distanceToNextDab = (remaining - (length - travelled)).coerceAtLeast(.25f)
@@ -148,11 +169,11 @@ class WetPaintOp(
             return PaintResult(context.transactionId, batch.ordinal, batchDirty != null, batchDirty)
         }
 
-        private fun deposit(sample: StrokeSample, track: WetTrack): PixelRect? {
-            val radius = definition.diameterPixels * definition.sizePressure.evaluate(sample.pressure) *
-                definition.sizeTilt.evaluate(sample.tiltRadians) * .5f
-            if (radius <= .05f) return null
-            val picked = sampleColour(sample.point.x, sample.point.y, radius)
+        private fun deposit(sample: StrokeSample, track: WetTrack, directionRadians: Float): PixelRect? {
+            val diameter = definition.diameterPixels * definition.sizePressure.evaluate(sample.pressure) *
+                definition.sizeTilt.evaluate(sample.tiltRadians)
+            if (diameter <= .1f) return null
+            val picked = sampleColour(sample.point.x, sample.point.y, diameter * .5f)
             if (!track.reservoirInitialized) {
                 if (picked.a > .001f) track.reservoir = picked
                 track.reservoirInitialized = true
@@ -163,17 +184,54 @@ class WetPaintOp(
             val fresh = PremultipliedColor.fromStraight(definition.colorArgb)
             val freshRatio = definition.charge * (1f - definition.dilution)
             track.reservoir = track.reservoir.mix(fresh, freshRatio)
+            var dirty: PixelRect? = null
+            repeat(definition.particlesPerPlot) { particle ->
+                rasterizeDeposit(sample, track, directionRadians, diameter, particle)?.let { bounds ->
+                    dirty = dirty?.union(bounds) ?: bounds
+                }
+            }
+            track.dabSequence++
+            return dirty
+        }
+
+        private fun rasterizeDeposit(
+            sample: StrokeSample,
+            track: WetTrack,
+            directionRadians: Float,
+            diameter: Float,
+            particle: Int,
+        ): PixelRect? {
+            val tip = definition.tips.takeIf { it.isNotEmpty() }?.let { tips ->
+                tips[deterministicTipIndex(track.dabSequence, definition.renderSeed, tips.size)]
+            }
+            val tipAspect = tip?.let { it.width.toFloat() / it.height } ?: 1f
+            val radiusX = (if (tipAspect >= 1f) diameter * .5f else diameter * tipAspect * .5f)
+                .coerceAtLeast(.05f)
+            val radiusY = (if (tipAspect <= 1f) diameter * .5f else diameter / tipAspect * .5f)
+                .times(definition.roundness).coerceAtLeast(.05f)
+            val randomRotation = (randomUnit(track.dabSequence, particle, definition.renderSeed) * 2f - 1f) *
+                definition.randomRotationRadians
+            val angle = definition.rotationRadians + randomRotation + when {
+                definition.followStylusOrientation -> sample.orientationRadians
+                definition.followStrokeDirection -> directionRadians
+                else -> 0f
+            }
+            val cosine = cos(angle)
+            val sine = sin(angle)
+            val extentX = kotlin.math.abs(cosine * radiusX) + kotlin.math.abs(sine * radiusY) + 1f
+            val extentY = kotlin.math.abs(sine * radiusX) + kotlin.math.abs(cosine * radiusY) + 1f
             val bounds = PixelRect(
-                floor(sample.point.x - radius - 1f).toInt().coerceIn(0, document.logicalWidth),
-                floor(sample.point.y - radius - 1f).toInt().coerceIn(0, document.logicalHeight),
-                ceil(sample.point.x + radius + 1f).toInt().coerceIn(0, document.logicalWidth),
-                ceil(sample.point.y + radius + 1f).toInt().coerceIn(0, document.logicalHeight),
+                floor(sample.point.x - extentX).toInt().coerceIn(0, document.logicalWidth),
+                floor(sample.point.y - extentY).toInt().coerceIn(0, document.logicalHeight),
+                ceil(sample.point.x + extentX).toInt().coerceIn(0, document.logicalWidth),
+                ceil(sample.point.y + extentY).toInt().coerceIn(0, document.logicalHeight),
             )
             if (bounds.isEmpty) return null
             val firstColumn = bounds.left / document.tileSize
             val lastColumn = (bounds.right - 1) / document.tileSize
             val firstRow = bounds.top / document.tileSize
             val lastRow = (bounds.bottom - 1) / document.tileSize
+            val radius = minOf(radiusX, radiusY)
             val outerRadius = radius + .5f
             val outerRadiusSquared = outerRadius * outerRadius
             val edge = maxOf(1f, radius * (1f - definition.hardness) * .85f)
@@ -198,13 +256,18 @@ class WetPaintOp(
                     for (y in overlap.top until overlap.bottom) for (x in overlap.left until overlap.right) {
                         val dx = x + .5f - sample.point.x
                         val dy = y + .5f - sample.point.y
-                        val distanceSquared = dx * dx + dy * dy
-                        if (distanceSquared >= outerRadiusSquared) continue
-                        // Most pixels in a hard or medium-hard dab are fully covered. Avoiding a
-                        // sqrt for that interior is material on large wet brushes and preserves the
-                        // exact previous feather equation only for the narrow edge band.
-                        var coverage = if (distanceSquared <= innerRadiusSquared) 1f else {
-                            (outerRadius - sqrt(distanceSquared)) * inverseEdge
+                        var coverage = if (tip != null) {
+                            val localX = cosine * dx + sine * dy
+                            val localY = -sine * dx + cosine * dy
+                            tip.coverageAt((localX / radiusX + 1f) * .5f, (localY / radiusY + 1f) * .5f)
+                        } else {
+                            val distanceSquared = dx * dx + dy * dy
+                            if (distanceSquared >= outerRadiusSquared) continue
+                            // Most pixels in a hard or medium-hard dab are fully covered. Avoiding
+                            // a sqrt for the interior preserves the original round-tip fast path.
+                            if (distanceSquared <= innerRadiusSquared) 1f else {
+                                (outerRadius - sqrt(distanceSquared)) * inverseEdge
+                            }
                         }
                         if (coverage <= 0f) continue
                         selection?.let { mask ->
@@ -245,7 +308,8 @@ class WetPaintOp(
         }
 
         private fun spacing(sample: StrokeSample): Float =
-            (definition.diameterPixels * definition.sizePressure.evaluate(sample.pressure) * .16f).coerceAtLeast(.75f)
+            (definition.diameterPixels * definition.sizePressure.evaluate(sample.pressure) * definition.spacingRatio)
+                .coerceAtLeast(.25f)
 
         private fun requireActiveOrFinished() = check(state == State.ACTIVE || state == State.FINISHED)
 
@@ -254,10 +318,28 @@ class WetPaintOp(
             var distanceToNextDab = 0f
             var reservoir = PremultipliedColor.fromStraight(definition.colorArgb)
             var reservoirInitialized = false
+            var dabSequence = 0L
         }
     }
 
     private enum class State { ACTIVE, FINISHED, PUBLISHED, CANCELED }
+
+    private fun deterministicTipIndex(sequence: Long, seed: Int, count: Int): Int {
+        if (count == 1) return 0
+        var value = sequence xor seed.toLong().shl(32)
+        value = (value xor (value ushr 30)) * -4658895280553007687L
+        value = (value xor (value ushr 27)) * -7723592293110705685L
+        value = value xor (value ushr 31)
+        return ((value and Long.MAX_VALUE) % count).toInt()
+    }
+
+    private fun randomUnit(sequence: Long, channel: Int, seed: Int): Float {
+        var value = sequence xor seed.toLong().shl(32) xor (channel.toLong() * -7046029254386353131L)
+        value = (value xor (value ushr 30)) * -4658895280553007687L
+        value = (value xor (value ushr 27)) * -7723592293110705685L
+        value = value xor (value ushr 31)
+        return ((value ushr 40) and 0xffffff).toFloat() / 0xffffff
+    }
 }
 
 private data class PremultipliedColor(val a: Float, val r: Float, val g: Float, val b: Float) {

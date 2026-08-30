@@ -4409,7 +4409,7 @@ class InkCanvasView(context: Context) : View(context) {
                 ) ?: return null to GrainOffset(0f, 0f)
                 return mask to GrainBehavior.offset(seed, settings.offsetJitter)
             }
-            if (tipAssets.isNotEmpty() || program.dual != null) {
+            if (program.backend != RenderBackendV5.WET_PAINT && (tipAssets.isNotEmpty() || program.dual != null)) {
                 val masks = if (tipAssets.isNotEmpty()) tipAssets.map { tipAsset ->
                     v5BrushTipMasks.resolve(
                         BrushTipMaskRequest(tipAsset, program.tip.hardness.coerceIn(0f, 1f)),
@@ -4615,6 +4615,11 @@ class InkCanvasView(context: Context) : View(context) {
                 RenderBackendV5.WET_PAINT -> {
                     if (erase) return null
                     val authored = program.wetMix ?: return null
+                    val wetTips = tipAssets.map { tipAsset ->
+                        v5BrushTipMasks.resolve(
+                            BrushTipMaskRequest(tipAsset, program.tip.hardness.coerceIn(0f, 1f)),
+                        ) ?: return null
+                    }
                     val wet = WetPaintDefinition(
                         diameterPixels = diameterPixels,
                         colorArgb = inkColor,
@@ -4624,6 +4629,17 @@ class InkCanvasView(context: Context) : View(context) {
                         charge = authored.charge.coerceIn(0f, 1f),
                         attack = authored.attack.coerceIn(0f, 1f),
                         pull = authored.pull.coerceIn(0f, 1f),
+                        tips = wetTips,
+                        spacingRatio = program.spacingPolicy?.value?.coerceIn(.005f, 4f) ?: .16f,
+                        roundness = program.tip.aspect.coerceIn(.01f, 1f),
+                        rotationRadians = Math.toRadians(program.tip.rotationDegrees.toDouble()).toFloat(),
+                        followStrokeDirection = stampProgram?.followStrokeDirection == true,
+                        followStylusOrientation = stampProgram?.followStylusOrientation == true,
+                        randomRotationRadians = Math.toRadians(
+                            (stampProgram?.randomRotationDegrees ?: 0f).toDouble(),
+                        ).toFloat(),
+                        renderSeed = program.renderSeed,
+                        particlesPerPlot = stampProgram?.particlesPerPlot ?: 1,
                         sizePressure = sizeResponse,
                         sizeTilt = sizeTiltResponse,
                         blend = paintBlend,

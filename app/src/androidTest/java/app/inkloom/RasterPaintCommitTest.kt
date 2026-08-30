@@ -29,6 +29,47 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class RasterPaintCommitTest {
+    @Test fun texturedWetPaintUsesItsAssetTipInTheProductionPathWithinFrameBudget() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val tipFile = File(context.cacheDir, "v5-textured-wet-tip.png")
+        writePng(tipFile, IntArray(64) { index -> if (index % 8 < 4) Color.BLACK else Color.WHITE })
+        val surface = PixelTileSurface(600, 600)
+        var committed: RasterLayerPatch? = null
+        var rejection: String? = null
+        val frameTimesMs = mutableListOf<Float>()
+        val view = createCanvas {
+            tool = EditorTool.PEN
+            activeLayerId = "paint"
+            installV5TestInk(
+                size = 80f,
+                family = BrushFamily.WET_PAINT,
+                tipAssetPaths = listOf(tipFile.absolutePath),
+                wetMix = WetMixSettings(dilution = .25f, charge = .8f, attack = .9f, pull = .3f),
+            )
+            setRasterLayerSurfaces(mapOf("paint" to surface))
+            onRasterLayerCommitted = { commit -> committed = commit.capturePatch() }
+            onPaintCapabilityRejected = { rejection = it }
+        }
+
+        send(view, MotionEvent.ACTION_DOWN, 100f, 200f, 0L)
+        repeat(32) { index ->
+            val started = android.os.SystemClock.elapsedRealtimeNanos()
+            send(view, MotionEvent.ACTION_MOVE, 106f + index * 5f, 200f, 5L + index)
+            view.awaitV5StrokeWorkerIdleForTest()
+            frameTimesMs += (android.os.SystemClock.elapsedRealtimeNanos() - started) / 1_000_000f
+        }
+        send(view, MotionEvent.ACTION_UP, 266f, 200f, 45L)
+
+        val p95 = frameTimesMs.sorted()[(frameTimesMs.size * .95f).toInt().coerceIn(0, frameTimesMs.lastIndex)]
+        android.util.Log.i("InkloomPerf", "raster_textured_wet_p95_ms=$p95")
+        assertTrue("Textured wet production p95 was ${p95}ms", p95 < 16.7f)
+        assertEquals("The textured wet family must not be rejected", null, rejection)
+        assertTrue("Textured wet stroke must commit", committed != null)
+        assertTrue("Textured wet stroke must publish visible pigment", surface.tileCount > 0)
+        committed?.close()
+        tipFile.delete()
+    }
+
     @Test fun presetMasterOpacityIsAppliedOnceInsteadOfSquared() {
         val surface = PixelTileSurface(600, 600)
         val view = createCanvas {

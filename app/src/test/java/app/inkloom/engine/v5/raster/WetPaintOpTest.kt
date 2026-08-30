@@ -1,5 +1,6 @@
 package app.inkloom.engine.v5.raster
 
+import app.inkloom.engine.v5.material.BrushTipMask
 import app.inkloom.engine.v5.coordinates.DocumentPoint
 import app.inkloom.engine.v5.input.InputPhase
 import app.inkloom.engine.v5.input.InputSample
@@ -14,6 +15,35 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WetPaintOpTest {
+    @Test fun texturedWetTipControlsPigmentCoverage() {
+        val surface = PixelTileSurface(160, 160)
+        val leftHalf = BrushTipMask(
+            4,
+            4,
+            ByteArray(16) { index -> if (index % 4 < 2) 0xff.toByte() else 0 },
+        )
+        val paint = WetPaintOp(
+            surface,
+            WetPaintDefinition(
+                diameterPixels = 48f,
+                colorArgb = 0xff2040a0.toInt(),
+                charge = 1f,
+                attack = 1f,
+                dilution = 0f,
+                tips = listOf(leftHalf),
+                spacingRatio = .25f,
+            ),
+        ).begin(PaintOpContext(40L, surface.revision, "wet-textured-tip")) as WetPaintOp.Session
+        val stroke = DirectStrokeSession(40L, 24f)
+
+        paint.apply(stroke.begin(sample(0, InputPhase.DOWN, 80f, 80f)))
+        paint.finish(stroke.finish(sample(1, InputPhase.UP, 80f, 80f)))
+        paint.publish().record.close()
+
+        assertTrue("Opaque half of wet tip must deposit pigment", surface.pixelAt(68, 80) ushr 24 > 0)
+        assertEquals("Transparent half of wet tip must remain empty", 0, surface.pixelAt(92, 80) ushr 24)
+    }
+
     @Test fun `picked pigment is carried along the live path`() {
         val surface = PixelTileSurface(256, 128, 64)
         surface.beginWrite("red source").use { tx ->

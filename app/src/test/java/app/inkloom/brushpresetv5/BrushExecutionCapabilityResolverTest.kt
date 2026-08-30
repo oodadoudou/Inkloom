@@ -12,7 +12,7 @@ class BrushExecutionCapabilityResolverTest {
         )
     }
 
-    @Test fun wetImportedTipReportsTheWholeMissingCapabilityFamily() {
+    @Test fun texturedWetTipAndStampDynamicsAreSupportedButRemainingFamiliesStayExplicit() {
         val program = CompiledBrushProgramV5.compile(
             preset(
                 family = BrushFamily.WET_PAINT,
@@ -29,9 +29,7 @@ class BrushExecutionCapabilityResolverTest {
             BrushExecutionCapabilityResolution.Unsupported).reasons
 
         assertTrue(BrushExecutionCapabilityReason.REALTIME_TAPER_REQUIRED in reasons)
-        assertTrue(BrushExecutionCapabilityReason.WET_PAINT_TEXTURED_TIP_REQUIRED in reasons)
         assertTrue(BrushExecutionCapabilityReason.WET_PAINT_TEXTURE_GRAIN_REQUIRED in reasons)
-        assertTrue(BrushExecutionCapabilityReason.WET_PAINT_STAMP_DYNAMICS_REQUIRED in reasons)
         assertTrue(BrushExecutionCapabilityReason.WET_PAINT_DUAL_BRUSH_REQUIRED in reasons)
     }
 
