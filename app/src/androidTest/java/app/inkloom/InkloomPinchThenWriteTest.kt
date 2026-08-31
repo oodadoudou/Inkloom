@@ -405,10 +405,17 @@ class InkloomPinchThenWriteTest {
 
         val view = findInkCanvasView()!!
         var white = 0; var dark = 0; var transparent = 0
+        var visibleInk = 0
         val ascii = StringBuilder("\nVIEWBITMAP")
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val bmp = android.graphics.Bitmap.createBitmap(view.width, view.height, android.graphics.Bitmap.Config.ARGB_8888)
             view.draw(android.graphics.Canvas(bmp))
+            val pixels = IntArray(bmp.width * bmp.height)
+            bmp.getPixels(pixels, 0, bmp.width, 0, 0, bmp.width, bmp.height)
+            visibleInk = pixels.count { pixel ->
+                android.graphics.Color.alpha(pixel) > 0 &&
+                    android.graphics.Color.red(pixel) + android.graphics.Color.green(pixel) + android.graphics.Color.blue(pixel) < 735
+            }
             for (ry in 0 until 24) {
                 ascii.append("\n")
                 for (rx in 0 until 40) {
@@ -425,9 +432,14 @@ class InkloomPinchThenWriteTest {
             }
             bmp.recycle()
         }
-        System.err.println("VIEWBITMAP white=$white dark=$dark transparent=$transparent")
+        System.err.println("VIEWBITMAP white=$white sampledDark=$dark visibleInk=$visibleInk transparent=$transparent")
         System.err.println(ascii.toString())
-        assertTrue("The committed stroke must render on the canvas (dark=$dark)", dark > 0)
+        val raster = view.activeRasterSnapshotForTest()
+        val rasterPixels = raster?.tileInfo?.sumOf { it.nonTransparentPixelCount } ?: 0
+        assertTrue(
+            "The committed stroke must render visibly on the canvas (visibleInk=$visibleInk, rasterTiles=${raster?.tileCount}, rasterPixels=$rasterPixels)",
+            visibleInk > 0 && rasterPixels > 0,
+        )
     }
 
     @Test fun zoomedPageRendersBeyondLayoutBounds() {
