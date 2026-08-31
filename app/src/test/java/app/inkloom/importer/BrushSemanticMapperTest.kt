@@ -125,4 +125,25 @@ class BrushSemanticMapperTest {
         assertEquals(SemanticExecutionDisposition.UNSUPPORTED_WITH_EXPLICIT_REASON, mapping.executionDisposition)
         assertTrue(mapping.note.isNotBlank())
     }
+
+    @Test fun unavailableProcreateSourceLibraryAssetsAreRejectedInsteadOfReplacedByCircles() {
+        val brush = ImportedBrush(
+            name = "Source-library brush",
+            format = BrushFormat.PROCREATE,
+            compatibility = Compatibility.BASIC,
+            sizeBytes = 42,
+            report = emptyList(),
+            grainDensity = .6f,
+            dualGrain = app.inkloom.model.ImportedBrushGrain(
+                sourceTipReference = "Brush-Preset-Flat-Brush.jpg",
+                sourceGrainReference = "Texture-Preset-Canvas.jpg",
+            ),
+        )
+
+        val rejected = BrushSemanticMapper.describe(brush)
+            .filter { it.executionDisposition == SemanticExecutionDisposition.UNSUPPORTED_WITH_EXPLICIT_REASON }
+            .map { it.sourceSemantic }
+
+        assertEquals(listOf("PROCREATE.shape.asset", "PROCREATE.grain.asset"), rejected)
+    }
 }

@@ -272,6 +272,8 @@ class BrushPresetV5FoundationTest {
                 compatibility = Compatibility.HIGH,
                 sizeBytes = 12,
                 report = emptyList(),
+                tipPreviewPath = "/shape.png",
+                tipPreviewPaths = listOf("/shape.png"),
                 colorJitterHueDegrees = 15f,
             ),
         )

@@ -60,6 +60,13 @@ data class ImportedBrushGrain(
     val compositeMode: Int = CspTextureComposite.MULTIPLY,
     val applyPerPlot: Boolean = true,
     val filteringMode: Int = ProcreateFiltering.NONE,
+    /** External source-library references named by a preset but absent from its container. These
+     * stay in the existing nested resource descriptor so ImportedBrush remains below the JVM
+     * method-parameter limit. */
+    val sourceTipReference: String? = null,
+    val sourceGrainReference: String? = null,
+    val dualSourceTipReference: String? = null,
+    val dualSourceGrainReference: String? = null,
 )
 
 /** Graphite runtime semantics, separate from the brush-tip texture. */

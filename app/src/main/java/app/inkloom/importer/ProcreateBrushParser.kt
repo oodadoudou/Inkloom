@@ -211,6 +211,10 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         val motionFiltering = metadata.float("plotFFTSmoothingAmount").coerceIn(0f, 1f)
         val motionFilteringExpression = metadata.float("plotFFTSmoothingBias").coerceIn(0f, 1f)
         val dualMapped = dualMetadata?.let { mapSecondary(it) }
+        val sourceTipReference = sourceAssetReference(metadata.string("bundledShapePath"), shape)
+        val sourceGrainReference = sourceAssetReference(metadata.string("bundledGrainPath"), grain)
+        val dualSourceTipReference = dualMetadata?.let { sourceAssetReference(it.string("bundledShapePath"), dualShape) }
+        val dualSourceGrainReference = dualMetadata?.let { sourceAssetReference(it.string("bundledGrainPath"), dualGrain) }
         val dualGrainDepth = dualMetadata?.float("grainDepth", if (dualGrain != null) 1f else 0f)?.coerceIn(0f, 1f) ?: 0f
         val dualGrainDepthMinimum = dualMetadata?.float("grainDepthMinimum")?.coerceIn(0f, dualGrainDepth) ?: 0f
         val dualGrainDepthJitter = dualMetadata?.float("grainDepthJitter")?.coerceIn(0f, 1f) ?: 0f
@@ -244,6 +248,10 @@ class ProcreateBrushParser(private val assetDirectory: File) {
                 reversed = dualMetadata?.boolean("textureInverted") == true,
                 offsetJitter = dualMetadata?.boolean("textureOffsetJitter") == true,
                 filteringMode = dualMetadata?.let { ProcreateFiltering.fromArchive(it.boolean("textureFilter", true), it.int("textureFilterMode")) } ?: ProcreateFiltering.NONE,
+                sourceTipReference = sourceTipReference,
+                sourceGrainReference = sourceGrainReference,
+                dualSourceTipReference = dualSourceTipReference,
+                dualSourceGrainReference = dualSourceGrainReference,
             ),
             grainPreviewPath = grain?.absolutePath,
             grainDensity = grainDepth,
@@ -373,7 +381,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             parserVersion = CURRENT_VERSION,
             report = buildList {
                 add("Procreate brush $position/$total decoded from NSKeyedArchive version ${metadata.int("version")}")
-                add(if (shape != null) "Procreate Shape.png extracted as the real stamp source" else "Shape source was missing; line fallback retained")
+                add(if (shape != null) "Procreate Shape.png extracted as the real stamp source" else "Procreate shape bitmap unavailable from source reference ${sourceTipReference ?: "<missing>"}")
                 if (grain != null) add("Procreate Grain.png extracted with independent movement, scale, zoom, rotation, depth dynamics, brightness, contrast, invert and per-stroke offset settings")
                 add("Stroke spacing, smoothing, size/opacity limits, shape angle, roundness, azimuth and direction behavior mapped")
                 if (!procreateTaper.isDisabled()) add("Procreate Pressure and Touch Taper retained independently with size, opacity, tip, pressure, link, and classic controls")
@@ -594,6 +602,12 @@ class ProcreateBrushParser(private val assetDirectory: File) {
 
     private fun path(prefix: String, child: String): String = if (prefix.isBlank()) child else "$prefix/$child"
 
+    /** `$null` means the bitmap is embedded as Shape.png/Grain.png. Any other archive value is a
+     * reference into Procreate's proprietary source library and cannot be substituted by a circle
+     * or by the preview without changing the brush identity. */
+    private fun sourceAssetReference(value: String?, extracted: File?): String? =
+        value?.trim()?.takeIf { extracted == null && it.isNotBlank() && it != "\$null" }
+
     private data class SecondaryBrush(
         val sizeScale: Float,
         val spacing: Float,
@@ -623,7 +637,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
     )
 
     companion object {
-        const val CURRENT_VERSION = 28
+        const val CURRENT_VERSION = 29
         private const val MAX_ENTRIES = 4_096
         private const val MAX_ENTRY_BYTES = 32L * 1024L * 1024L
         private const val MAX_EXPANDED_BYTES = 384L * 1024L * 1024L

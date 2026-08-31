@@ -216,6 +216,10 @@ class BrushMetadataStore(
                             compositeMode = item.optInt("dualGrainCompositeMode", CspTextureComposite.MULTIPLY).coerceIn(0, 64),
                             applyPerPlot = item.optBoolean("dualGrainApplyPerPlot", true),
                             filteringMode = ProcreateFiltering.normalize(item.optInt("dualGrainFilteringMode", ProcreateFiltering.NONE)),
+                            sourceTipReference = item.optString("sourceTipAssetReference").takeIf { it.isNotBlank() },
+                            sourceGrainReference = item.optString("sourceGrainAssetReference").takeIf { it.isNotBlank() },
+                            dualSourceTipReference = item.optString("dualSourceTipAssetReference").takeIf { it.isNotBlank() },
+                            dualSourceGrainReference = item.optString("dualSourceGrainAssetReference").takeIf { it.isNotBlank() },
                         ),
                         grainPreviewPath = item.optString("grainPreviewPath").takeIf { it.isNotBlank() },
                         grainDensity = item.optDouble("grainDensity", 0.0).toFloat(),
@@ -480,7 +484,9 @@ class BrushMetadataStore(
                     .put("sha256", brush.sha256)
                     .put("tipPreviewPath", brush.tipPreviewPath)
                     .put("tipPreviewPaths", JSONArray(brush.tipPreviewPaths))
+                    .put("sourceTipAssetReference", brush.dualGrain.sourceTipReference)
                     .put("dualTipPreviewPaths", JSONArray(brush.dualTipPreviewPaths))
+                    .put("dualSourceTipAssetReference", brush.dualGrain.dualSourceTipReference)
                     .put("dualGrainPreviewPath", brush.dualGrainPreviewPath)
                     .put("dualGrainDensity", brush.dualGrainDensity)
                     .put("dualGrainDensityMinimum", brush.dualGrainDensityMinimum)
@@ -499,6 +505,8 @@ class BrushMetadataStore(
                     .put("dualGrainApplyPerPlot", brush.dualGrainApplyPerPlot)
                     .put("dualGrainFilteringMode", brush.dualGrainFilteringMode)
                     .put("grainPreviewPath", brush.grainPreviewPath)
+                    .put("sourceGrainAssetReference", brush.dualGrain.sourceGrainReference)
+                    .put("dualSourceGrainAssetReference", brush.dualGrain.dualSourceGrainReference)
                     .put("grainDensity", brush.grainDensity)
                     .put("grainDensityMinimum", brush.grainDensityMinimum)
                     .put("grainDensityDynamics", parameterDynamicsJson(brush.grainDensityDynamics))

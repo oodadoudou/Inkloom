@@ -230,7 +230,9 @@ class ProcreateBrushParserTest {
     @Test fun parsesAuthorizedRealBrushsetWhenConfigured() {
         val sampleRoot = System.getProperty("procreate.samples.dir")?.let(::File)
         assumeTrue(sampleRoot != null && sampleRoot.isDirectory)
-        val source = sampleRoot!!.walkTopDown().firstOrNull { it.isFile && it.extension.equals("brushset", true) }
+        val source = sampleRoot!!.walkTopDown().firstOrNull {
+            it.isFile && it.extension.equals("brushset", true) && it.name.contains("速写笔全家桶")
+        }
         assumeTrue(source != null)
         val root = temporaryDirectory("real")
         try {

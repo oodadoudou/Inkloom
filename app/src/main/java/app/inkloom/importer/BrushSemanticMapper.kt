@@ -59,7 +59,18 @@ object BrushSemanticMapper {
 
         if (brush.tipPreviewPaths.isNotEmpty() || brush.tipPreviewPath != null) {
             executed("$prefix.shape", "StampPaintOp.tipTexture")
+        } else if (brush.format == BrushFormat.PROCREATE) {
+            rejected(
+                "PROCREATE.shape.asset",
+                "The brush references ${brush.dualGrain.sourceTipReference ?: "a missing shape"}, but the source container does not embed Shape.png.",
+            )
         }
+        if (brush.format == BrushFormat.PROCREATE && brush.grainPreviewPath == null &&
+            (brush.dualGrain.sourceGrainReference != null || brush.grainDensity > .0001f)
+        ) rejected(
+            "PROCREATE.grain.asset",
+            "The brush references ${brush.dualGrain.sourceGrainReference ?: "a missing grain"}, but the source container does not embed Grain.png.",
+        )
         if (brush.grainPreviewPath != null) {
             if (wetPrimary) preserved(
                 "$prefix.grain.basic",
@@ -164,6 +175,9 @@ object BrushSemanticMapper {
 
         if (brush.dualBrush && !wetPrimary) {
             if (brush.dualTipPreviewPaths.isEmpty()) rejected("$prefix.dualBrush.asset", "Dual brush is enabled but its secondary tip asset is missing.")
+            if (brush.dualGrainPreviewPath == null &&
+                (brush.dualGrain.dualSourceGrainReference != null || brush.dualGrainDensity > .0001f)
+            ) rejected("$prefix.dualGrain.asset", "Dual brush grain is referenced but not embedded in the source container.")
             if (brush.dualApplyRgb) rejected("$prefix.dualBrush.rgb", "Dual-brush RGB compositing is not supported by Paint Engine V5.")
             if (hasAdvancedDual(brush)) preserved("$prefix.dualBrush.advanced", "Dual dynamics, jitter, ribbon, sequence and flip semantics remain source-only.")
         }
