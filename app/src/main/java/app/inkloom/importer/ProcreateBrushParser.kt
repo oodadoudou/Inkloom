@@ -24,7 +24,12 @@ import java.util.zip.ZipFile
 import kotlin.math.abs
 import kotlin.math.max
 
-class ProcreateBrushParser(private val assetDirectory: File) {
+class ProcreateBrushParser(
+    private val assetDirectory: File,
+    localResourcePack: File? = null,
+    allowProceduralApproximation: Boolean = false,
+) {
+    private val resourceResolver = ProcreateResourceResolver(localResourcePack, allowProceduralApproximation)
     init { assetDirectory.mkdirs() }
 
     fun enrich(source: File, hash: String, fallback: ImportedBrush): List<ImportedBrush> = runCatching {
@@ -44,23 +49,52 @@ class ProcreateBrushParser(private val assetDirectory: File) {
                     val archiveEntry = byName[path(prefix, "Brush.archive")]
                         ?: error("Procreate brush ${prefix.ifBlank { "root" }} has no Brush.archive")
                     val metadata = ProcreateKeyedArchive(readBounded(archive, archiveEntry, MAX_METADATA_BYTES))
-                    val shape = byName[path(prefix, "Shape.png")]?.let { extract(archive, it, File(outputDirectory, "brush-${index + 1}-shape.png")) }
-                    val grain = byName[path(prefix, "Grain.png")]?.let { extract(archive, it, File(outputDirectory, "brush-${index + 1}-grain.png")) }
+                    val embeddedShape = byName[path(prefix, "Shape.png")]?.let { extract(archive, it, File(outputDirectory, "brush-${index + 1}-shape.png")) }
+                    val embeddedGrain = byName[path(prefix, "Grain.png")]?.let { extract(archive, it, File(outputDirectory, "brush-${index + 1}-grain.png")) }
                     val dualPrefix = path(prefix, "Sub01")
                     val dualArchive = byName[path(dualPrefix, "Brush.archive")]?.let { ProcreateKeyedArchive(readBounded(archive, it, MAX_METADATA_BYTES)) }
-                    val dualShape = byName[path(dualPrefix, "Shape.png")]?.let { extract(archive, it, File(outputDirectory, "brush-${index + 1}-dual-shape.png")) }
-                    val dualGrain = byName[path(dualPrefix, "Grain.png")]?.let { extract(archive, it, File(outputDirectory, "brush-${index + 1}-dual-grain.png")) }
+                    val embeddedDualShape = byName[path(dualPrefix, "Shape.png")]?.let { extract(archive, it, File(outputDirectory, "brush-${index + 1}-dual-shape.png")) }
+                    val embeddedDualGrain = byName[path(dualPrefix, "Grain.png")]?.let { extract(archive, it, File(outputDirectory, "brush-${index + 1}-dual-grain.png")) }
+                    val shape = resourceResolver.resolve(
+                        embeddedShape, metadata.string("bundledShapePath"), ProcreateResourceRole.SHAPE,
+                        File(outputDirectory, "brush-${index + 1}-resolved-shape.png"),
+                    )
+                    val grain = resourceResolver.resolve(
+                        embeddedGrain, metadata.string("bundledGrainPath"), ProcreateResourceRole.GRAIN,
+                        File(outputDirectory, "brush-${index + 1}-resolved-grain.png"),
+                    )
+                    val dualShape = dualArchive?.let {
+                        resourceResolver.resolve(
+                            embeddedDualShape, it.string("bundledShapePath"), ProcreateResourceRole.SHAPE,
+                            File(outputDirectory, "brush-${index + 1}-resolved-dual-shape.png"),
+                        )
+                    }
+                    val dualGrain = dualArchive?.let {
+                        resourceResolver.resolve(
+                            embeddedDualGrain, it.string("bundledGrainPath"), ProcreateResourceRole.GRAIN,
+                            File(outputDirectory, "brush-${index + 1}-resolved-dual-grain.png"),
+                        )
+                    }
                     mapBrush(
                         fallback = fallback.copy(id = sourceBrushId),
                         metadata = metadata,
-                        shape = shape,
-                        grain = grain,
+                        shape = shape.file,
+                        grain = grain.file,
                         dualMetadata = dualArchive,
-                        dualShape = dualShape,
-                        dualGrain = dualGrain,
+                        dualShape = dualShape?.file,
+                        dualGrain = dualGrain?.file,
                         position = index + 1,
                         total = brushPrefixes.size,
                         sourceGroup = sourceGroup,
+                        resourceReports = listOfNotNull(
+                            "shape" to shape,
+                            "grain" to grain,
+                            dualShape?.let { "dualShape" to it },
+                            dualGrain?.let { "dualGrain" to it },
+                        ).filter { (_, resolved) -> resolved.sourceReference != null || resolved.file != null }
+                            .map { (role, resolved) ->
+                                "${resolved.state.name}:$role:${resolved.sourceReference ?: "<embedded>"}"
+                            },
                     )
                 }.getOrElse { failure ->
                     val reason = generateSequence(failure as Throwable?) { it.cause }.take(6)
@@ -119,6 +153,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         position: Int,
         total: Int,
         sourceGroup: String,
+        resourceReports: List<String>,
     ): ImportedBrush {
         val pressureSize = metadata.float("dynamicsPressureSize")
         val pressureOpacity = metadata.float("dynamicsPressureOpacity")
@@ -387,6 +422,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             opacitySecondaryDynamics = secondaryDynamics(tiltOpacity, speedOpacity, jitterOpacity, tiltOpacityStart),
             parserVersion = CURRENT_VERSION,
             report = buildList {
+                addAll(resourceReports)
                 add("Procreate brush $position/$total decoded from NSKeyedArchive version ${metadata.int("version")}")
                 add(if (shape != null) "Procreate Shape.png extracted as the real stamp source" else "Procreate shape bitmap unavailable from source reference ${sourceTipReference ?: "<missing>"}")
                 if (grain != null) add("Procreate Grain.png extracted with independent movement, scale, zoom, rotation, depth dynamics, brightness, contrast, invert and per-stroke offset settings")

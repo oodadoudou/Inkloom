@@ -14,7 +14,10 @@ class BrushImportRepository(context: Context) {
     private val sourceDirectory = File(context.filesDir, "brush-sources").apply { mkdirs() }
     private val sutParser = SutBrushParser(File(context.filesDir, "brush-assets"))
     private val abrParser = AbrBrushParser(File(context.filesDir, "abr-assets"))
-    private val procreateParser = ProcreateBrushParser(File(context.filesDir, "procreate-assets"))
+    private val procreateParser = ProcreateBrushParser(
+        assetDirectory = File(context.filesDir, "procreate-assets"),
+        localResourcePack = File(context.filesDir, "procreate-resource-pack"),
+    )
     private val inkloomPackage = InkloomBrushPackage(File(context.filesDir, "inkloom-brush-assets"))
     private val productionRenderProbe = ProductionBrushRenderProbe(context)
 

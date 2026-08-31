@@ -50,6 +50,12 @@ object BrushSemanticMapper {
                 SemanticExecutionDisposition.UNSUPPORTED_WITH_EXPLICIT_REASON,
             ),
         )
+        fun importedResourceFidelity(role: String): SemanticFidelity =
+            if (brush.report.any { it.startsWith("APPROXIMATED_RESOURCE:$role:") }) {
+                SemanticFidelity.APPROXIMATE
+            } else {
+                SemanticFidelity.EXACT
+            }
 
         executed("$prefix.tipGeometry", "BrushPresetV5.tip")
         executed("$prefix.opacity", "BrushPresetV5.deposition.opacity")
@@ -58,7 +64,12 @@ object BrushSemanticMapper {
         executed("$prefix.output", "BrushPresetV5.output")
 
         if (brush.tipPreviewPaths.isNotEmpty() || brush.tipPreviewPath != null) {
-            executed("$prefix.shape", "StampPaintOp.tipTexture")
+            executed(
+                "$prefix.shape",
+                "StampPaintOp.tipTexture",
+                importedResourceFidelity("shape"),
+                brush.report.firstOrNull { it.startsWith("APPROXIMATED_RESOURCE:shape:") }.orEmpty(),
+            )
         } else if (brush.format == BrushFormat.PROCREATE) {
             rejected(
                 "PROCREATE.shape.asset",
@@ -75,6 +86,8 @@ object BrushSemanticMapper {
             executed(
                 "$prefix.grain.basic",
                 if (wetPrimary) "WetPaintOp.textureGrain" else "StampPaintOp.textureGrain",
+                importedResourceFidelity("grain"),
+                brush.report.firstOrNull { it.startsWith("APPROXIMATED_RESOURCE:grain:") }.orEmpty(),
             )
         }
         if (brush.dualGrainPreviewPath != null) {
