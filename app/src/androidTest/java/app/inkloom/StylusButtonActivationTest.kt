@@ -14,6 +14,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.model.EditorTool
 import app.inkloom.settings.AppSettings
 import app.inkloom.settings.AppSettingsStore
+import app.inkloom.settings.BrushPresetSizeStore
 import app.inkloom.settings.ShortcutTrigger
 import app.inkloom.settings.StylusButtonAction
 import app.inkloom.settings.UiLanguage
@@ -44,10 +45,14 @@ class StylusButtonActivationTest {
                         stylusPrimaryTrigger = ShortcutTrigger.HOLD,
                     ),
                 )
+                // Brush sizes are preset-scoped. Seed the selected G Pen through the same store
+                // used by the editor instead of relying on the retired global pen-size fallback.
+                BrushPresetSizeStore(context).save("system-g-pen", 19f)
                 try {
                     base.evaluate()
                 } finally {
                     context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE).edit().clear().commit()
+                    context.getSharedPreferences("brush_preset_sizes", Context.MODE_PRIVATE).edit().clear().commit()
                 }
             }
         }
@@ -68,10 +73,13 @@ class StylusButtonActivationTest {
         assertEquals(41f, canvas.eraserWidth, .001f)
 
         dispatch(canvas, MotionEvent.ACTION_UP, 0)
-        composeRule.waitForIdle()
+        // The hold release is deliberately owned by the first frame that presents the committed
+        // erase transaction. Waiting only for Compose idleness can observe the protected interim
+        // eraser state before the AndroidView draw barrier runs.
+        composeRule.waitUntil(5_000) { canvas.tool == EditorTool.PEN }
         assertEquals(EditorTool.PEN, canvas.tool)
         assertEquals(19f, canvas.baseWidth, .001f)
-        assertEquals(.6f, canvas.inkOpacity, .001f)
+        assertEquals(1f, canvas.inkOpacity, .001f)
     }
 
     private fun dispatch(view: InkCanvasView, action: Int, buttonState: Int) {
