@@ -38,11 +38,11 @@ internal object SystemBrushCatalog {
         // Deterministic procedural graphite tips make these visibly different, not just renamed
         // copies of one round line renderer. Graphite tilt-to-width, tilt-to-grain and procedural
         // paper grain are compiled into native V5 programs and covered by V5 golden tests.
-        systemBrush(id = "system-technical-pencil", name = "Technical Pencil", group = "Pencil", size = 4.5f, hardness = .9f, spacing = 1f, flow = .82f, sizePressureMinimum = .42f, opacityPressureEnabled = true, opacityPressureMinimum = .35f, tags = listOf("pencil", "mechanical", "hard")),
-        systemBrush(id = "system-h-pencil", name = "H Pencil", group = "Pencil", size = 5f, hardness = .8f, spacing = .5f, flow = .74f, sizePressureMinimum = .35f, opacityPressureEnabled = true, opacityPressureMinimum = .25f, tags = listOf("pencil", "graphite", "hard")),
-        systemBrush(id = "system-hb-pencil", name = "HB Pencil", group = "Pencil", size = 7f, hardness = .64f, spacing = .26f, flow = .68f, sizePressureMinimum = .3f, opacityPressureEnabled = true, opacityPressureMinimum = .2f, tags = listOf("pencil", "graphite", "hb")),
-        systemBrush(id = "system-2b-pencil", name = "2B Pencil", group = "Pencil", size = 9f, hardness = .48f, spacing = .2f, flow = .63f, sizePressureMinimum = .25f, opacityPressureEnabled = true, opacityPressureMinimum = .16f, thickness = .92f, tags = listOf("pencil", "graphite", "2b")),
-        systemBrush(id = "system-6b-pencil", name = "6B Pencil", group = "Pencil", size = 13f, hardness = .3f, spacing = .18f, flow = .56f, sizePressureMinimum = .2f, opacityPressureEnabled = true, opacityPressureMinimum = .1f, thickness = .84f, tags = listOf("pencil", "graphite", "6b", "soft")),
+        systemBrush(id = "system-technical-pencil", name = "Technical Pencil", group = "Pencil", size = 4.5f, hardness = .9f, spacing = 1f, flow = .82f, sizePressureMinimum = .42f, opacityPressureEnabled = true, opacityPressureMinimum = .35f, graphiteTiltWidth = .12f, graphiteTiltWidthStart = .55f, graphiteTiltGrain = .12f, graphiteTiltGrainStart = .5f, proceduralPaperGrainEnabled = true, proceduralPaperGrainScale = 42f, proceduralPaperGrainDensity = .82f, proceduralPaperGrainStrength = .18f, tags = listOf("pencil", "mechanical", "hard")),
+        systemBrush(id = "system-h-pencil", name = "H Pencil", group = "Pencil", size = 5f, hardness = .8f, spacing = .5f, flow = .74f, sizePressureMinimum = .35f, opacityPressureEnabled = true, opacityPressureMinimum = .25f, graphiteTiltWidth = .22f, graphiteTiltWidthStart = .45f, graphiteTiltGrain = .22f, graphiteTiltGrainStart = .42f, proceduralPaperGrainEnabled = true, proceduralPaperGrainScale = 58f, proceduralPaperGrainDensity = .72f, proceduralPaperGrainStrength = .3f, tags = listOf("pencil", "graphite", "hard")),
+        systemBrush(id = "system-hb-pencil", name = "HB Pencil", group = "Pencil", size = 7f, hardness = .64f, spacing = .26f, flow = .68f, sizePressureMinimum = .3f, opacityPressureEnabled = true, opacityPressureMinimum = .2f, graphiteTiltWidth = .38f, graphiteTiltWidthStart = .36f, graphiteTiltGrain = .38f, graphiteTiltGrainStart = .34f, proceduralPaperGrainEnabled = true, proceduralPaperGrainScale = 74f, proceduralPaperGrainDensity = .62f, proceduralPaperGrainStrength = .48f, tags = listOf("pencil", "graphite", "hb")),
+        systemBrush(id = "system-2b-pencil", name = "2B Pencil", group = "Pencil", size = 9f, hardness = .48f, spacing = .2f, flow = .63f, sizePressureMinimum = .25f, opacityPressureEnabled = true, opacityPressureMinimum = .16f, thickness = .92f, graphiteTiltWidth = .52f, graphiteTiltWidthStart = .3f, graphiteTiltGrain = .52f, graphiteTiltGrainStart = .28f, proceduralPaperGrainEnabled = true, proceduralPaperGrainScale = 88f, proceduralPaperGrainDensity = .54f, proceduralPaperGrainStrength = .58f, tags = listOf("pencil", "graphite", "2b")),
+        systemBrush(id = "system-6b-pencil", name = "6B Pencil", group = "Pencil", size = 13f, hardness = .3f, spacing = .18f, flow = .56f, sizePressureMinimum = .2f, opacityPressureEnabled = true, opacityPressureMinimum = .1f, thickness = .84f, graphiteTiltWidth = .68f, graphiteTiltWidthStart = .22f, graphiteTiltGrain = .68f, graphiteTiltGrainStart = .2f, proceduralPaperGrainEnabled = true, proceduralPaperGrainScale = 112f, proceduralPaperGrainDensity = .46f, proceduralPaperGrainStrength = .7f, tags = listOf("pencil", "graphite", "6b", "soft")),
 
         // Photoshop's legacy No. 19 is the 19 px round “Airbrush Pen Opacity Flow” preset.
         systemBrush(
@@ -60,6 +60,7 @@ internal object SystemBrushCatalog {
             flowPressureMinimum = .18f,
             tags = listOf("brush", "photoshop", "ps19", "round"),
         ),
+        systemBrush(id = "system-dry-painting-brush", name = "Dry Painting Brush", group = "Brush", size = 30f, opacity = .88f, hardness = .42f, flow = .54f, sizePressureMinimum = .2f, opacityPressureEnabled = true, opacityPressureMinimum = .28f, tags = listOf("brush", "painting", "dry")),
         systemBrush(id = "system-watercolor", name = "Round Watercolor", group = "Brush", size = 42f, opacity = .62f, hardness = .42f, watercolor = true, colorMix = .58f, paintMix = .18f, tags = listOf("brush", "watercolor")),
         systemBrush(id = "system-oil-paint", name = "Thick Oil", group = "Brush", size = 48f, hardness = .78f, colorMix = .35f, paintMix = .7f, thickness = .72f, tags = listOf("brush", "oil")),
         systemBrush(id = "system-marker", name = "Studio Marker", group = "Brush", size = 34f, opacity = .68f, hardness = .7f, sizePressureEnabled = false, tags = listOf("brush", "marker")),
@@ -125,6 +126,7 @@ internal object SystemBrushCatalog {
         proceduralPaperGrainEnabled: Boolean = false,
         proceduralPaperGrainScale: Float = 100f,
         proceduralPaperGrainDensity: Float = .5f,
+        proceduralPaperGrainStrength: Float = 1f,
         isEraser: Boolean = false,
         tags: List<String> = emptyList(),
     ) = ImportedBrush(
@@ -170,6 +172,7 @@ internal object SystemBrushCatalog {
             paperGrainEnabled = proceduralPaperGrainEnabled,
             paperGrainScale = proceduralPaperGrainScale,
             paperGrainDensity = proceduralPaperGrainDensity,
+            paperGrainStrength = proceduralPaperGrainStrength,
         ),
         isEraser = isEraser,
         tags = tags,

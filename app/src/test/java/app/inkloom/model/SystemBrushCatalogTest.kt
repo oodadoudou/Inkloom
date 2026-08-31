@@ -1,5 +1,8 @@
 package app.inkloom.model
 
+import app.inkloom.brushpresetv5.BrushPresetV5Codec
+import app.inkloom.brushpresetv5.BrushPresetV5Import
+import app.inkloom.brushpresetv5.CompiledBrushProgramV5
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -12,7 +15,7 @@ class SystemBrushCatalogTest {
 
         assertTrue(namesByGroup.getValue("Pen").containsAll(listOf("G Pen", "Painting Pen")))
         assertTrue(namesByGroup.getValue("Pencil").containsAll(listOf("Technical Pencil", "H Pencil", "HB Pencil", "2B Pencil", "6B Pencil")))
-        assertTrue(namesByGroup.getValue("Brush").contains("Classic PS No. 19"))
+        assertTrue(namesByGroup.getValue("Brush").containsAll(listOf("Classic PS No. 19", "Dry Painting Brush")))
         assertEquals(19f, SystemBrushCatalog.byId("system-ps19")!!.defaultSize)
     }
 
@@ -24,6 +27,7 @@ class SystemBrushCatalogTest {
         assertEquals(graphite.size, graphite.map { listOf(it.defaultSize, it.hardness, it.flow, it.spacing) }.distinct().size)
         assertNotEquals(SystemBrushCatalog.byId("system-g-pen"), SystemBrushCatalog.byId("system-painting-pen"))
         assertTrue(SystemBrushCatalog.brushes.all { it.format == BrushFormat.SYSTEM && it.compatibility == Compatibility.COMPLETE })
+        assertTrue(graphite.all { it.proceduralPaperGrainEnabled && it.proceduralPaperGrainStrength > 0f })
     }
 
     @Test
@@ -33,6 +37,22 @@ class SystemBrushCatalogTest {
             assertEquals("${brush.name} StreamLine", 0f, brush.streamLine, .00001f)
             assertEquals("${brush.name} moving-average stabilization", 0f, brush.procreateStabilization, .00001f)
             assertEquals("${brush.name} motion filtering", 0f, brush.motionFiltering, .00001f)
+        }
+    }
+
+    @Test
+    fun referenceBrushSemanticsSurvivePresetPersistence() {
+        listOf("system-g-pen", "system-hb-pencil", "system-dry-painting-brush").forEach { id ->
+            val source = requireNotNull(SystemBrushCatalog.byId(id))
+            val first = CompiledBrushProgramV5.compile(BrushPresetV5Import.requirePreset(source))
+            val restored = requireNotNull(BrushPresetV5Codec.decodeOrNull(requireNotNull(source.v5PresetJson)))
+            val second = CompiledBrushProgramV5.compile(restored)
+
+            assertEquals("$id backend changed after persistence", first.backend, second.backend)
+            assertEquals("$id tip changed after persistence", first.tip, second.tip)
+            assertEquals("$id deposition changed after persistence", first.deposition, second.deposition)
+            assertEquals("$id paper grain changed after persistence", first.grainSampler, second.grainSampler)
+            assertEquals("$id tilt changed after persistence", first.tilt, second.tilt)
         }
     }
 
