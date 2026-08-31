@@ -208,9 +208,23 @@ class WetPaintOp(
             track.reservoir = track.reservoir.mix(fresh, freshRatio)
             var dirty: PixelRect? = null
             repeat(definition.particlesPerPlot) { particle ->
-                rasterizeDeposit(sample, track, directionRadians, diameter, particle)?.let { bounds ->
+                rasterizeDeposit(sample, track, directionRadians, diameter, particle, grainFloor = 0f)?.let { bounds ->
                     dirty = dirty?.union(bounds) ?: bounds
                 }
+            }
+            // Sparse stamp/grain combinations can legitimately sample an all-zero patch at the
+            // first contact. Professional brush engines still leave a visible tap instead of
+            // silently accepting a stroke with an empty transaction. Retry only that first dab,
+            // preserving the authored tip and grain while applying a very small grain floor.
+            if (dirty == null && track.dabSequence == 0L && definition.grain != null) {
+                dirty = rasterizeDeposit(
+                    sample,
+                    track,
+                    directionRadians,
+                    diameter,
+                    particle = 0,
+                    grainFloor = FIRST_DAB_GRAIN_FLOOR,
+                )
             }
             track.dabSequence++
             return dirty
@@ -222,6 +236,7 @@ class WetPaintOp(
             directionRadians: Float,
             diameter: Float,
             particle: Int,
+            grainFloor: Float,
         ): PixelRect? {
             val tip = definition.tips.takeIf { it.isNotEmpty() }?.let { tips ->
                 tips[deterministicTipIndex(track.dabSequence, definition.renderSeed, tips.size)]
@@ -263,6 +278,8 @@ class WetPaintOp(
             val baseDeposition = definition.opacity * definition.attack * (.3f + .7f * definition.charge)
             val selectionScaleX = selection?.let { it.logicalWidth.toFloat() / document.logicalWidth } ?: 1f
             val selectionScaleY = selection?.let { it.logicalHeight.toFloat() / document.logicalHeight } ?: 1f
+            val tipLevel = tip?.levelForOutput(radiusX * 2f, radiusY * 2f) ?: 0
+            var wrotePixel = false
             for (row in firstRow..lastRow) for (column in firstColumn..lastColumn) {
                 val tileLeft = column * document.tileSize
                 val tileTop = row * document.tileSize
@@ -281,7 +298,11 @@ class WetPaintOp(
                         var coverage = if (tip != null) {
                             val localX = cosine * dx + sine * dy
                             val localY = -sine * dx + cosine * dy
-                            tip.coverageAt((localX / radiusX + 1f) * .5f, (localY / radiusY + 1f) * .5f)
+                            tip.coverageAtLevel(
+                                (localX / radiusX + 1f) * .5f,
+                                (localY / radiusY + 1f) * .5f,
+                                tipLevel,
+                            )
                         } else {
                             val distanceSquared = dx * dx + dy * dy
                             if (distanceSquared >= outerRadiusSquared) continue
@@ -302,7 +323,8 @@ class WetPaintOp(
                                 repeat(rotatedX / grainWavelength + definition.grainPhaseX),
                                 repeat(rotatedY / grainWavelength + definition.grainPhaseY),
                             )
-                            coverage *= 1f - definition.grainDensity + sampled * definition.grainDensity
+                            coverage *= 1f - definition.grainDensity +
+                                maxOf(sampled, grainFloor) * definition.grainDensity
                         }
                         if (coverage <= 0f) continue
                         selection?.let { mask ->
@@ -316,11 +338,16 @@ class WetPaintOp(
                             definition.transferMode,
                         )
                         val index = (y - tileTop) * stride + x - tileLeft
-                        pixels[index] = track.reservoir.sourceOver(pixels[index], deposition)
+                        val before = pixels[index]
+                        val after = track.reservoir.sourceOver(before, deposition)
+                        if (after != before) {
+                            pixels[index] = after
+                            wrotePixel = true
+                        }
                     }
                 }
             }
-            return bounds
+            return bounds.takeIf { wrotePixel }
         }
 
         private fun sampleColour(cx: Float, cy: Float, radius: Float): PremultipliedColor {
@@ -361,6 +388,10 @@ class WetPaintOp(
     }
 
     private enum class State { ACTIVE, FINISHED, PUBLISHED, CANCELED }
+
+    private companion object {
+        const val FIRST_DAB_GRAIN_FLOOR = .04f
+    }
 
     private fun deterministicTipIndex(sequence: Long, seed: Int, count: Int): Int {
         if (count == 1) return 0

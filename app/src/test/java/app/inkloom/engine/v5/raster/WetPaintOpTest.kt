@@ -15,6 +15,34 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WetPaintOpTest {
+    @Test fun `first tap remains visible when grain samples an empty patch`() {
+        val surface = PixelTileSurface(160, 160)
+        val emptyGrain = BrushTipMask(4, 4, ByteArray(16))
+        val paint = WetPaintOp(
+            surface,
+            WetPaintDefinition(
+                diameterPixels = 48f,
+                colorArgb = 0xff2040a0.toInt(),
+                charge = 1f,
+                attack = 1f,
+                dilution = 0f,
+                tips = listOf(BrushTipMask.solidCircle(16)),
+                grain = emptyGrain,
+                grainDensity = 1f,
+                spacingRatio = 2f,
+            ),
+        ).begin(PaintOpContext(38L, surface.revision, "wet-empty-grain-tap")) as WetPaintOp.Session
+        val stroke = DirectStrokeSession(38L, 24f)
+
+        paint.apply(stroke.begin(sample(0, InputPhase.DOWN, 80f, 80f)))
+        paint.finish(stroke.finish(sample(1, InputPhase.UP, 84f, 80f)))
+        val published = paint.publish()
+
+        assertTrue("A supported wet stamp may not silently commit an empty first tap", published.record.changedTileCount > 0)
+        assertTrue((surface.pixelAt(80, 80) ushr 24) > 0)
+        published.record.close()
+    }
+
     @Test fun textureGrainModulatesWetPigmentInsideTheTip() {
         val surface = PixelTileSurface(160, 160)
         val stripes = BrushTipMask(

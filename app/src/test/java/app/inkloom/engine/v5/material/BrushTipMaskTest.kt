@@ -1,9 +1,19 @@
 package app.inkloom.engine.v5.material
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BrushTipMaskTest {
+    @Test fun `prefiltered lookup preserves a sparse mark when rendered small`() {
+        val alpha = ByteArray(64 * 64)
+        alpha[32 * 64 + 32] = 0xff.toByte()
+        val mask = BrushTipMask(64, 64, alpha)
+
+        assertTrue(mask.coverageAtForOutput(.5f, .5f, 8f, 8f) > 0f)
+        assertTrue(mask.byteSize > 64L * 64L)
+    }
+
     @Test
     fun bilinearSamplingPreservesCornersCentreAndTransparentExterior() {
         val mask = BrushTipMask(

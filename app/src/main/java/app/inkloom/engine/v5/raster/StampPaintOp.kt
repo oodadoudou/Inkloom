@@ -594,6 +594,7 @@ class StampPaintOp(
     ) {
         private val cosine = cos(angleRadians)
         private val sine = sin(angleRadians)
+        private val tipLevel = tip.levelForOutput(radiusX * 2f, radiusY * 2f)
 
         fun bounds(width: Int, height: Int): PixelRect {
             val extentX = kotlin.math.abs(cosine * radiusX) + kotlin.math.abs(sine * radiusY) + 1f
@@ -611,7 +612,11 @@ class StampPaintOp(
             val dy = y - centerY
             val localX = cosine * dx + sine * dy
             val localY = -sine * dx + cosine * dy
-            return tip.coverageAt((localX / radiusX + 1f) * .5f, (localY / radiusY + 1f) * .5f)
+            return tip.coverageAtLevel(
+                (localX / radiusX + 1f) * .5f,
+                (localY / radiusY + 1f) * .5f,
+                tipLevel,
+            )
         }
     }
 

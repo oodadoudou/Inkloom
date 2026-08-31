@@ -70,6 +70,21 @@ class RealBrushCorpusRenderingTest {
         verifyRealBrush("brushset", BrushFormat.PROCREATE)
 
     @Test
+    fun sparseProcreateWetStampCommitsItsFirstTap() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val assetRoot = File(context.cacheDir, "sparse-wet-stamp-${System.nanoTime()}").apply { mkdirs() }
+        try {
+            val brush = stagedSources("brushset").asSequence().flatMapIndexed { index, source ->
+                parse(source, BrushFormat.PROCREATE, File(assetRoot, "source-$index")).asSequence()
+            }.map(BrushPresetV5Import::convertOrReject).firstOrNull { it.name == "X Freckles" }
+            assumeTrue("LOCAL_FIXTURE_REQUIRED: X Freckles must be present in the staged corpus", brush != null)
+            assertTrue("X Freckles must commit every behavior probe including the first tap", brushCommitsAndRenders(brush!!))
+        } finally {
+            assetRoot.deleteRecursively()
+        }
+    }
+
+    @Test
     fun userProvidedAbrBrushCommitsAndRendersInk() = verifyRealBrush("abr", BrushFormat.ABR)
 
     @Test

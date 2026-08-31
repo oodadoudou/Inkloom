@@ -7,32 +7,64 @@ class BrushTipMask(
     alpha: ByteArray,
 ) {
     private val coverage = alpha.copyOf()
+    private val mipLevels: List<MaskLevel>
 
     init {
         require(width > 0 && height > 0)
         require(coverage.size == Math.multiplyExact(width, height))
+        mipLevels = buildMipLevels(width, height, coverage)
     }
 
-    val byteSize: Long get() = coverage.size.toLong()
+    val byteSize: Long get() = mipLevels.sumOf { it.coverage.size.toLong() }
     val maximumCoverage: Float get() = (coverage.maxOfOrNull { it.toInt() and 0xff } ?: 0) * BYTE_TO_UNIT
 
     /** Bilinear coverage at normalized brush-local coordinates. Outside the shape is transparent. */
     fun coverageAt(u: Float, v: Float): Float {
+        return sample(mipLevels.first(), u, v)
+    }
+
+    /**
+     * Area-preserving lookup for a source mask rendered smaller than its decoded dimensions.
+     * Selecting a prefiltered level prevents thin freckles, fibres, and decoration marks from
+     * disappearing between bilinear sample points at tablet-sized brush diameters.
+     */
+    fun coverageAtForOutput(u: Float, v: Float, outputWidthPixels: Float, outputHeightPixels: Float): Float {
+        return coverageAtLevel(u, v, levelForOutput(outputWidthPixels, outputHeightPixels))
+    }
+
+    internal fun levelForOutput(outputWidthPixels: Float, outputHeightPixels: Float): Int {
+        if (!outputWidthPixels.isFinite() || !outputHeightPixels.isFinite() ||
+            outputWidthPixels <= 0f || outputHeightPixels <= 0f
+        ) return 0
+        val reduction = maxOf(width / outputWidthPixels, height / outputHeightPixels)
+        var levelIndex = 0
+        var scale = 1f
+        while (levelIndex + 1 < mipLevels.size && scale * 2f <= reduction) {
+            levelIndex++
+            scale *= 2f
+        }
+        return levelIndex
+    }
+
+    internal fun coverageAtLevel(u: Float, v: Float, levelIndex: Int): Float =
+        sample(mipLevels[levelIndex.coerceIn(0, mipLevels.lastIndex)], u, v)
+
+    private fun sample(level: MaskLevel, u: Float, v: Float): Float {
         if (!u.isFinite() || !v.isFinite() || u < 0f || u > 1f || v < 0f || v > 1f) return 0f
         // u/v are non-negative after the guard, so Float.toInt() is the same floor operation
         // without the Math.floor/coerce chain that used to run for every stamp pixel.
-        val x = u * (width - 1)
-        val y = v * (height - 1)
+        val x = u * (level.width - 1)
+        val y = v * (level.height - 1)
         val x0 = x.toInt()
         val y0 = y.toInt()
-        val x1 = if (x0 + 1 < width) x0 + 1 else x0
-        val y1 = if (y0 + 1 < height) y0 + 1 else y0
+        val x1 = if (x0 + 1 < level.width) x0 + 1 else x0
+        val y1 = if (y0 + 1 < level.height) y0 + 1 else y0
         val tx = x - x0
         val ty = y - y0
-        val topLeft = coverage[y0 * width + x0].toInt() and 0xff
-        val topRight = coverage[y0 * width + x1].toInt() and 0xff
-        val bottomLeft = coverage[y1 * width + x0].toInt() and 0xff
-        val bottomRight = coverage[y1 * width + x1].toInt() and 0xff
+        val topLeft = level.coverage[y0 * level.width + x0].toInt() and 0xff
+        val topRight = level.coverage[y0 * level.width + x1].toInt() and 0xff
+        val bottomLeft = level.coverage[y1 * level.width + x0].toInt() and 0xff
+        val bottomRight = level.coverage[y1 * level.width + x1].toInt() and 0xff
         val top = topLeft + (topRight - topLeft) * tx
         val bottom = bottomLeft + (bottomRight - bottomLeft) * tx
         return (top + (bottom - top) * ty) * BYTE_TO_UNIT
@@ -40,8 +72,37 @@ class BrushTipMask(
 
     fun contentHash(): Int = coverage.contentHashCode()
 
+    private data class MaskLevel(val width: Int, val height: Int, val coverage: ByteArray)
+
     companion object {
         private const val BYTE_TO_UNIT = 1f / 255f
+
+        private fun buildMipLevels(width: Int, height: Int, base: ByteArray): List<MaskLevel> = buildList {
+            var current = MaskLevel(width, height, base)
+            add(current)
+            while (current.width > 1 || current.height > 1) {
+                val nextWidth = (current.width + 1) / 2
+                val nextHeight = (current.height + 1) / 2
+                val next = ByteArray(nextWidth * nextHeight)
+                for (y in 0 until nextHeight) for (x in 0 until nextWidth) {
+                    var sum = 0
+                    var count = 0
+                    for (offsetY in 0..1) for (offsetX in 0..1) {
+                        val sourceX = x * 2 + offsetX
+                        val sourceY = y * 2 + offsetY
+                        if (sourceX < current.width && sourceY < current.height) {
+                            sum += current.coverage[sourceY * current.width + sourceX].toInt() and 0xff
+                            count++
+                        }
+                    }
+                    // Round up non-zero area coverage so a sub-pixel authored mark remains
+                    // representable instead of being quantized to transparent in deeper levels.
+                    next[y * nextWidth + x] = ((sum + count - 1) / count).toByte()
+                }
+                current = MaskLevel(nextWidth, nextHeight, next)
+                add(current)
+            }
+        }
 
         fun solidCircle(size: Int = 64, hardness: Float = 1f): BrushTipMask {
             require(size in 2..1024)
