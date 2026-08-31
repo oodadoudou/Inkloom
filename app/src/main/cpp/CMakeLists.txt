@@ -7,7 +7,11 @@ add_library(inkloom_engine_v5 SHARED
 )
 
 target_compile_features(inkloom_engine_v5 PRIVATE cxx_std_20)
-target_compile_options(inkloom_engine_v5 PRIVATE -fvisibility=hidden)
+# The native raster engine is part of the realtime production path even in debug builds. CMake's
+# default Debug preset uses -O0, which turns bounded pixel loops into multi-frame operations and
+# makes the debug APK exercise a materially different engine from Profile. Keep symbols/debugging,
+# but compile the hot native implementation with the same baseline optimizer used in production.
+target_compile_options(inkloom_engine_v5 PRIVATE -fvisibility=hidden -O2)
 
 find_library(android_log log)
 find_library(android_bitmap jnigraphics)
