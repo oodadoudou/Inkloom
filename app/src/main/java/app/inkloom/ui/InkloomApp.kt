@@ -468,7 +468,12 @@ fun InkloomApp(initialIntent: Intent?) {
             }
             val batches = results.mapNotNull { it.getOrNull() }
             val additions = batches.flatMap { it.renderableBrushes }.let { brushes ->
-                targetGroup?.let { group -> brushes.map { BrushGroupOperations.assign(it, group) } } ?: brushes
+                targetGroup?.let { group ->
+                    brushes.map { brush ->
+                        val nestedGroup = BrushGroupOperations.nest(group, brush.groupName)
+                        BrushGroupOperations.assign(brush, nestedGroup)
+                    }
+                } ?: brushes
             }
             val existingGroupKeys = brushGroups.map { it.trim().lowercase() }.toSet()
             val groupsCreated = additions.map(ImportedBrush::groupName).map(String::trim)

@@ -57,6 +57,12 @@ object BrushGroupOperations {
 
     fun assign(brush: ImportedBrush, groupName: String): ImportedBrush = brush.copy(groupName = normalize(groupName))
 
+    fun nest(parentGroup: String, childGroup: String): String = listOf(parentGroup, childGroup)
+        .map(::normalize)
+        .filter(String::isNotBlank)
+        .joinToString("/")
+        .let(::normalize)
+
     fun assignMany(brushes: List<ImportedBrush>, brushIds: Set<String>, groupName: String): List<ImportedBrush> {
         if (brushIds.isEmpty()) return brushes
         val normalized = normalize(groupName)

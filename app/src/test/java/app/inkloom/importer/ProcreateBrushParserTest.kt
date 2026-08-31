@@ -220,6 +220,8 @@ class ProcreateBrushParserTest {
 
             assertEquals(2, first.size)
             assertEquals(first.map(ImportedBrush::id), second.map(ImportedBrush::id))
+            assertEquals(listOf("mixed", "mixed"), first.map(ImportedBrush::groupName))
+            assertEquals(listOf(0, 1), first.map(ImportedBrush::sortOrder))
             assertEquals(1, first.count { it.compatibility == Compatibility.FAILED })
             assertTrue(first.single { it.compatibility == Compatibility.FAILED }.report.any { it.contains("brush 2/2") })
         } finally {

@@ -34,6 +34,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
             val byName = entries.associateBy(ZipEntry::getName)
             val brushPrefixes = brushPrefixes(archive, byName)
             require(brushPrefixes.isNotEmpty()) { "Procreate container has no Brush.archive payload" }
+            val sourceGroup = fallback.name.takeIf { source.extension.equals("brushset", ignoreCase = true) }.orEmpty()
             val outputDirectory = File(assetDirectory, hash).apply { mkdirs() }
             brushPrefixes.mapIndexed { index, prefix ->
                 val sourceBrushId = UUID.nameUUIDFromBytes(
@@ -59,6 +60,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
                         dualGrain = dualGrain,
                         position = index + 1,
                         total = brushPrefixes.size,
+                        sourceGroup = sourceGroup,
                     )
                 }.getOrElse { failure ->
                     val reason = generateSequence(failure as Throwable?) { it.cause }.take(6)
@@ -66,6 +68,8 @@ class ProcreateBrushParser(private val assetDirectory: File) {
                     fallback.copy(
                         id = sourceBrushId,
                         name = "${fallback.name} ${index + 1}",
+                        groupName = sourceGroup,
+                        sortOrder = index,
                         compatibility = Compatibility.FAILED,
                         parserVersion = CURRENT_VERSION,
                         report = (fallback.report + "Procreate parsing failed safely for brush ${index + 1}/${brushPrefixes.size}: $reason").distinct(),
@@ -114,6 +118,7 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         dualGrain: File?,
         position: Int,
         total: Int,
+        sourceGroup: String,
     ): ImportedBrush {
         val pressureSize = metadata.float("dynamicsPressureSize")
         val pressureOpacity = metadata.float("dynamicsPressureOpacity")
@@ -231,6 +236,8 @@ class ProcreateBrushParser(private val assetDirectory: File) {
         return fallback.copy(
             name = metadata.string("name").orEmpty().trim().ifBlank { fallback.name },
             compatibility = compatibility,
+            groupName = sourceGroup,
+            sortOrder = position - 1,
             tipPreviewPath = shape?.absolutePath,
             tipPreviewPaths = listOfNotNull(shape?.absolutePath),
             dualTipPreviewPaths = listOfNotNull(dualShape?.absolutePath),

@@ -21,6 +21,13 @@ class BrushGroupOperationsTest {
         assertEquals(listOf("Watercolor", "Inking"), BrushGroupOperations.names(brushes))
     }
 
+    @Test fun importedContainerGroupCanNestUnderTheChosenDestination() {
+        val brush = brush("A", "My Brushset")
+        val destination = BrushGroupOperations.nest("Pencil", brush.groupName)
+
+        assertEquals("Pencil/My Brushset", BrushGroupOperations.assign(brush, destination).groupName)
+    }
+
     @Test fun assignRenameMergeAndUngroupPreserveUnrelatedBrushes() {
         val first = BrushGroupOperations.assign(brush("A", ""), "  Sketch   tools ")
         val second = brush("B", "Paint")
