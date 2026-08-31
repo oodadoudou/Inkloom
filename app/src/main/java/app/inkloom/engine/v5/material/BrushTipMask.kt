@@ -58,5 +58,49 @@ class BrushTipMask(
             }
             return BrushTipMask(size, size, values)
         }
+
+        /** Stable graphite tooth: irregular edge plus sparse internal deposition gaps. */
+        fun graphite(size: Int = 96, seed: Int, toothStrength: Float): BrushTipMask {
+            require(size in 8..1024)
+            require(toothStrength.isFinite() && toothStrength in 0f..1f)
+            val values = ByteArray(size * size)
+            val radius = size * .5f
+            for (y in 0 until size) for (x in 0 until size) {
+                val dx = (x + .5f - radius) / radius
+                val dy = (y + .5f - radius) / radius
+                val radial = kotlin.math.sqrt(dx * dx + dy * dy)
+                val edge = ((1.04f - radial) / .14f).coerceIn(0f, 1f)
+                val noise = noise01(x, y, seed)
+                val tooth = (1f - toothStrength * (.18f + noise * .72f)).coerceIn(0f, 1f)
+                values[y * size + x] = (255f * edge * tooth + .5f).toInt().toByte()
+            }
+            return BrushTipMask(size, size, values)
+        }
+
+        /** Directional multi-fibre footprint for the first-party dry painting brush. */
+        fun bristle(size: Int = 96, seed: Int): BrushTipMask {
+            require(size in 8..1024)
+            val values = ByteArray(size * size)
+            val radius = size * .5f
+            for (y in 0 until size) for (x in 0 until size) {
+                val nx = (x + .5f - radius) / radius
+                val ny = (y + .5f - radius) / radius
+                val body = ((1f - maxOf(kotlin.math.abs(nx), kotlin.math.abs(ny))) / .16f).coerceIn(0f, 1f)
+                val fibre = .34f + .66f * kotlin.math.abs(
+                    kotlin.math.sin((x + seed.and(31)) * .43f + noise01(x / 5, 0, seed) * 2.1f),
+                )
+                val brokenEdge = (.7f + .3f * noise01(x, y / 4, seed xor 0x51A7)).coerceIn(0f, 1f)
+                values[y * size + x] = (255f * body * fibre * brokenEdge + .5f).toInt().toByte()
+            }
+            return BrushTipMask(size, size, values)
+        }
+
+        private fun noise01(x: Int, y: Int, seed: Int): Float {
+            var value = x * 0x1f1f1f1f + y * 0x45d9f3b + seed
+            value = value xor (value ushr 16)
+            value *= 0x45d9f3b
+            value = value xor (value ushr 16)
+            return (value and 0xffff) / 65535f
+        }
     }
 }

@@ -48,8 +48,16 @@ object BrushCapabilities {
      * Resolves the execution [RenderBackend] for a family + tip. A PENCIL with a procedural tip
      * stamps procedurally; the same family with an imported tip asset stamps the asset.
      */
-    fun backend(family: BrushFamily, hasImportedTip: Boolean): RenderBackend = when (family) {
-        BrushFamily.INK -> RenderBackend.CONTINUOUS_RIBBON
+    fun backend(
+        family: BrushFamily,
+        hasImportedTip: Boolean,
+        hasProceduralTip: Boolean = false,
+    ): RenderBackend = when (family) {
+        BrushFamily.INK -> when {
+            hasImportedTip -> RenderBackend.ASSET_STAMP
+            hasProceduralTip -> RenderBackend.PROCEDURAL_STAMP
+            else -> RenderBackend.CONTINUOUS_RIBBON
+        }
         BrushFamily.PENCIL -> if (hasImportedTip) RenderBackend.ASSET_STAMP else RenderBackend.PROCEDURAL_STAMP
         BrushFamily.AIRBRUSH -> RenderBackend.AIRBRUSH
         BrushFamily.DECORATION -> RenderBackend.ASSET_STAMP

@@ -36,6 +36,7 @@ import app.inkloom.brushpresetv5.BrushExecutionCapabilityResolution
 import app.inkloom.brushpresetv5.CompiledBrushProgramV5
 import app.inkloom.brushpresetv5.CompiledBrushProgramV5Cache
 import app.inkloom.brushpresetv5.RenderBackend as RenderBackendV5
+import app.inkloom.brushpresetv5.ProceduralTipKind
 import app.inkloom.engine.v5.diagnostics.PaintingTruthDiagnostics
 import app.inkloom.engine.v5.diagnostics.StrokeTrace
 import app.inkloom.engine.v5.diagnostics.BrushExecutionFingerprint
@@ -4494,7 +4495,7 @@ class InkCanvasView(context: Context) : View(context) {
                 ) ?: return null to GrainOffset(0f, 0f)
                 return mask to GrainBehavior.offset(seed, settings.offsetJitter)
             }
-            if (program.backend != RenderBackendV5.WET_PAINT && (tipAssets.isNotEmpty() || program.dual != null)) {
+            if (program.backend in setOf(RenderBackendV5.ASSET_STAMP, RenderBackendV5.PROCEDURAL_STAMP) || program.dual != null) {
                     val masks = if (tipAssets.isNotEmpty()) tipAssets.map { tipAsset ->
                         v5BrushTipMasks.resolve(
                             BrushTipMaskRequest(
@@ -4504,7 +4505,17 @@ class InkCanvasView(context: Context) : View(context) {
                                 alphaThreshold = program.tip.tipTexture?.alphaThreshold ?: 0f,
                             ),
                     ) ?: return null
-                } else listOf(BrushTipMask.solidCircle(96, program.tip.hardness.coerceIn(0f, 1f)))
+                } else listOf(
+                    when (program.tip.tipTexture?.proceduralKind ?: ProceduralTipKind.ROUND) {
+                        ProceduralTipKind.ROUND -> BrushTipMask.solidCircle(96, program.tip.hardness.coerceIn(0f, 1f))
+                        ProceduralTipKind.GRAPHITE -> BrushTipMask.graphite(
+                            96,
+                            program.renderSeed,
+                            program.tip.tipTexture?.toothStrength?.coerceIn(0f, 1f) ?: .8f,
+                        )
+                        ProceduralTipKind.BRISTLE -> BrushTipMask.bristle(96, program.renderSeed)
+                    },
+                )
                 val (grain, grainOffset) = resolveTextureGrain(program.textureGrain, program.renderSeed)
                 val particleDiameter = sprayProgram?.let { spray ->
                     SprayGeometry.particleDiameter(
@@ -4520,7 +4531,9 @@ class InkCanvasView(context: Context) : View(context) {
                     kind = if (erase) PaintOpKind.ERASER else when (program.backend) {
                         RenderBackendV5.AIRBRUSH -> PaintOpKind.AIRBRUSH
                         RenderBackendV5.ASSET_STAMP -> PaintOpKind.DECORATION
-                        RenderBackendV5.PROCEDURAL_STAMP -> PaintOpKind.PENCIL
+                        RenderBackendV5.PROCEDURAL_STAMP -> if (
+                            program.tip.tipTexture?.proceduralKind == ProceduralTipKind.BRISTLE
+                        ) PaintOpKind.DRY_BRUSH else PaintOpKind.PENCIL
                         // Asset tips always use the stamp executor even when the semantic family
                         // is Ink or Wet; DRY_INK is a continuous depositor and is not a stamp kind.
                         else -> PaintOpKind.PENCIL

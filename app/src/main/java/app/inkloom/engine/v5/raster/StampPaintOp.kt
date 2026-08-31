@@ -105,7 +105,7 @@ data class StampBrushDefinition(
         require(directionRotationFactor.isFinite() && directionRotationFactor in -1f..1f)
         require(strokeRotationJitterRadians.isFinite() && strokeRotationJitterRadians >= 0f)
         require(particlesPerPlotJitter.isFinite() && particlesPerPlotJitter in 0f..1f)
-        require(kind in setOf(PaintOpKind.PENCIL, PaintOpKind.ERASER, PaintOpKind.AIRBRUSH, PaintOpKind.DECORATION))
+        require(kind in setOf(PaintOpKind.PENCIL, PaintOpKind.DRY_BRUSH, PaintOpKind.ERASER, PaintOpKind.AIRBRUSH, PaintOpKind.DECORATION))
     }
 }
 

@@ -47,6 +47,7 @@ class CompiledBrushProgramV5 private constructor(
 
     data class CompiledTipTexture(
         val procedural: Boolean,
+        val proceduralKind: ProceduralTipKind,
         val assetPath: String?,
         val assetPaths: List<String>,
         val toothStrength: Float,
@@ -141,11 +142,12 @@ class CompiledBrushProgramV5 private constructor(
                 texture.assetPaths.ifEmpty { listOfNotNull(texture.assetPath) }
             }.orEmpty().distinct()
             val hasImportedTip = importedTipPaths.isNotEmpty()
+            val hasProceduralTip = preset.tipTexture?.procedural == true
             return CompiledBrushProgramV5(
                 preset = preset,
                 output = preset.output,
                 capabilities = capabilities,
-                backend = BrushCapabilities.backend(family, hasImportedTip),
+                backend = BrushCapabilities.backend(family, hasImportedTip, hasProceduralTip),
                 tip = CompiledTip(
                     size = preset.tip.size,
                     aspect = preset.tip.aspect,
@@ -154,6 +156,7 @@ class CompiledBrushProgramV5 private constructor(
                     tipTexture = preset.tipTexture?.let {
                         CompiledTipTexture(
                             procedural = it.procedural,
+                            proceduralKind = it.proceduralKind,
                             assetPath = importedTipPaths.firstOrNull(),
                             assetPaths = importedTipPaths,
                             toothStrength = it.toothStrength,

@@ -3,6 +3,8 @@ package app.inkloom.model
 import app.inkloom.brushpresetv5.BrushPresetV5Codec
 import app.inkloom.brushpresetv5.BrushPresetV5Import
 import app.inkloom.brushpresetv5.CompiledBrushProgramV5
+import app.inkloom.brushpresetv5.ProceduralTipKind
+import app.inkloom.brushpresetv5.RenderBackend
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -54,6 +56,25 @@ class SystemBrushCatalogTest {
             assertEquals("$id paper grain changed after persistence", first.grainSampler, second.grainSampler)
             assertEquals("$id tilt changed after persistence", first.tilt, second.tilt)
         }
+    }
+
+    @Test
+    fun referenceFamiliesCompileToTheirActualProductionModels() {
+        val ink = compiled("system-g-pen")
+        val pencil = compiled("system-hb-pencil")
+        val painting = compiled("system-dry-painting-brush")
+
+        assertEquals(RenderBackend.CONTINUOUS_RIBBON, ink.backend)
+        assertEquals(RenderBackend.PROCEDURAL_STAMP, pencil.backend)
+        assertEquals(ProceduralTipKind.GRAPHITE, pencil.tip.tipTexture?.proceduralKind)
+        assertEquals(RenderBackend.PROCEDURAL_STAMP, painting.backend)
+        assertEquals(ProceduralTipKind.BRISTLE, painting.tip.tipTexture?.proceduralKind)
+        assertTrue(painting.stamp?.followStrokeDirection == true)
+    }
+
+    private fun compiled(id: String): CompiledBrushProgramV5 {
+        val source = requireNotNull(SystemBrushCatalog.byId(id))
+        return CompiledBrushProgramV5.compile(BrushPresetV5Import.requirePreset(source))
     }
 
     @Test

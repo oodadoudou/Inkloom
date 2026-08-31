@@ -1,6 +1,11 @@
 package app.inkloom.model
 
 import app.inkloom.brushpresetv5.BrushPresetV5Import
+import app.inkloom.brushpresetv5.ProceduralTipKind
+import app.inkloom.brushpresetv5.SpacingMode
+import app.inkloom.brushpresetv5.SpacingSettings
+import app.inkloom.brushpresetv5.StampSettings
+import app.inkloom.brushpresetv5.TipTextureSettings
 
 /**
  * First-party brush presets. These stay separate from imported/user brushes so selecting,
@@ -60,7 +65,7 @@ internal object SystemBrushCatalog {
             flowPressureMinimum = .18f,
             tags = listOf("brush", "photoshop", "ps19", "round"),
         ),
-        systemBrush(id = "system-dry-painting-brush", name = "Dry Painting Brush", group = "Brush", size = 30f, opacity = .88f, hardness = .42f, flow = .54f, sizePressureMinimum = .2f, opacityPressureEnabled = true, opacityPressureMinimum = .28f, tags = listOf("brush", "painting", "dry")),
+        systemBrush(id = "system-dry-painting-brush", name = "Dry Painting Brush", group = "Brush", size = 30f, opacity = .88f, hardness = .42f, spacing = .075f, flow = .54f, sizePressureMinimum = .2f, opacityPressureEnabled = true, opacityPressureMinimum = .28f, thickness = .36f, tags = listOf("brush", "painting", "dry", "bristle")),
         systemBrush(id = "system-watercolor", name = "Round Watercolor", group = "Brush", size = 42f, opacity = .62f, hardness = .42f, watercolor = true, colorMix = .58f, paintMix = .18f, tags = listOf("brush", "watercolor")),
         systemBrush(id = "system-oil-paint", name = "Thick Oil", group = "Brush", size = 48f, hardness = .78f, colorMix = .35f, paintMix = .7f, thickness = .72f, tags = listOf("brush", "oil")),
         systemBrush(id = "system-marker", name = "Studio Marker", group = "Brush", size = 34f, opacity = .68f, hardness = .7f, sizePressureEnabled = false, tags = listOf("brush", "marker")),
@@ -84,9 +89,29 @@ internal object SystemBrushCatalog {
         systemBrush(id = "system-liquify-crystals", name = "Crystals", group = "Liquify", size = 135f, flow = .58f, hardness = .72f, tags = listOf("liquify", "crystals")),
         systemBrush(id = "system-liquify-edge", name = "Edge", group = "Liquify", size = 130f, flow = .65f, hardness = .58f, tags = listOf("liquify", "edge")),
         systemBrush(id = "system-liquify-reconstruct", name = "Reconstruct", group = "Liquify", size = 140f, flow = .7f, hardness = .5f, tags = listOf("liquify", "reconstruct")),
-    ).map(BrushPresetV5Import::createFactoryRecord)
+    ).map(::createFactoryRecord)
 
     fun byId(id: String): ImportedBrush? = brushes.firstOrNull { it.id == id }
+
+    /** Factory material semantics are authored explicitly instead of inferred from display tags. */
+    private fun createFactoryRecord(source: ImportedBrush): ImportedBrush {
+        val record = BrushPresetV5Import.createFactoryRecord(source)
+        if (source.id != "system-dry-painting-brush") return record
+        val preset = BrushPresetV5Import.requirePreset(record).copy(
+            tip = BrushPresetV5Import.requirePreset(record).tip.copy(rotationDegrees = 90f),
+            spacing = SpacingSettings(SpacingMode.RELATIVE, source.spacing),
+            tipTexture = TipTextureSettings(
+                procedural = true,
+                proceduralKind = ProceduralTipKind.BRISTLE,
+                toothStrength = .82f,
+            ),
+            stamp = StampSettings(
+                followStrokeDirection = true,
+                transferMode = app.inkloom.brushpresetv5.DabTransferMode.UNIFORM_GLAZE,
+            ),
+        )
+        return BrushPresetV5Import.writePreset(record, preset, BrushFormat.SYSTEM)
+    }
 
     private fun systemBrush(
         id: String,

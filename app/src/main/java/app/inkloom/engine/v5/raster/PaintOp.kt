@@ -4,7 +4,7 @@ import app.inkloom.engine.v5.surface.PixelRect
 import app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot
 import app.inkloom.engine.v5.stroke.PaintBatch
 
-enum class PaintOpKind { DRY_INK, PENCIL, ERASER, AIRBRUSH, DECORATION, WET, SMUDGE, LIQUIFY }
+enum class PaintOpKind { DRY_INK, PENCIL, DRY_BRUSH, ERASER, AIRBRUSH, DECORATION, WET, SMUDGE, LIQUIFY }
 
 data class PaintOpCapabilities(
     val kind: PaintOpKind,
@@ -14,7 +14,7 @@ data class PaintOpCapabilities(
 ) {
     init {
         require(maximumHaloPixels >= 0)
-        if (kind in setOf(PaintOpKind.DRY_INK, PaintOpKind.PENCIL, PaintOpKind.ERASER)) {
+        if (kind in setOf(PaintOpKind.DRY_INK, PaintOpKind.PENCIL, PaintOpKind.DRY_BRUSH, PaintOpKind.ERASER)) {
             require(!evolvesAfterInput) { "$kind cannot evolve after input" }
         }
     }

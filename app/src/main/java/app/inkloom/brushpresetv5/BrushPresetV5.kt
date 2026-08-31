@@ -183,6 +183,8 @@ data class TextureGrainSettings(
 data class TipTextureSettings(
     /** True = deterministic procedural tooth; false = imported tip asset. */
     val procedural: Boolean = true,
+    /** Exact first-party procedural footprint. It is persisted and participates in compilation. */
+    val proceduralKind: ProceduralTipKind = ProceduralTipKind.ROUND,
     /** Imported tip asset path (when procedural is false). */
     val assetPath: String? = null,
     /** Ordered multi-tip sequence. Empty uses [assetPath] for presets authored before this field. */
@@ -192,6 +194,9 @@ data class TipTextureSettings(
     /** Null disables thresholding; otherwise source alpha is binarized at this normalized cutoff. */
     val alphaThreshold: Float? = null,
 )
+
+@Serializable
+enum class ProceduralTipKind { ROUND, GRAPHITE, BRISTLE }
 
 @Serializable
 data class StrokeSettings(

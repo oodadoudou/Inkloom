@@ -221,6 +221,7 @@ object BrushPresetV5Import {
                 )
                 family == BrushFamily.PENCIL -> TipTextureSettings(
                     procedural = true,
+                    proceduralKind = ProceduralTipKind.GRAPHITE,
                     toothStrength = source.hardness,
                 )
                 else -> null
