@@ -263,8 +263,8 @@ class BrushPresetV5FoundationTest {
         assertTrue(rejected.report.any { it.contains("RGB compositing") })
     }
 
-    @Test fun importBoundaryRejectsDecodedButUnexecutedSourceSemantics() {
-        val rejected = BrushPresetV5Import.convertOrReject(
+    @Test fun importBoundaryAdmitsExecutableCoreAndReportsNonBlockingSourceSemantics() {
+        val converted = BrushPresetV5Import.convertOrReject(
             ImportedBrush(
                 id = "procreate-source-only",
                 name = "Source-only color dynamics",
@@ -276,11 +276,15 @@ class BrushPresetV5FoundationTest {
             ),
         )
 
-        assertEquals(Compatibility.FAILED, rejected.compatibility)
-        assertEquals(null, rejected.v5PresetJson)
-        assertTrue(rejected.report.any {
-            it == "UNSUPPORTED_WITH_EXPLICIT_REASON:DECODED_BUT_NOT_EXECUTED:PROCREATE.colorDynamics"
+        assertTrue(converted.compatibility != Compatibility.FAILED)
+        assertTrue(converted.v5PresetJson != null)
+        assertTrue(converted.report.any {
+            it.startsWith("SEMANTIC_CAPABILITY:PRESERVED_SOURCE_ONLY:PROCREATE.colorDynamics:")
         })
+        assertEquals(
+            BrushExecutionCapabilityResolution.Supported,
+            BrushExecutionCapabilityResolver.resolve(CompiledBrushProgramV5.compile(BrushPresetV5Import.requirePreset(converted))),
+        )
     }
 
     @Test fun importBoundaryRejectsAnEncodedPresetThatProductionCannotExecute() {

@@ -24,7 +24,7 @@ object BrushPresetV5Import {
                 audited.report.firstOrNull { it.contains("failed", ignoreCase = true) }
                     ?: "SOURCE_DECODE_OR_ASSET_VALIDATION_FAILED"
             }
-            requireFullyExecutableSemantics(audited)
+            requireNoBlockingSemanticGaps(audited)
             val converted = convertDecodedSource(audited)
             when (val capability = BrushExecutionCapabilityResolver.resolve(
                 CompiledBrushProgramV5.compile(requirePreset(converted)),
@@ -46,19 +46,25 @@ object BrushPresetV5Import {
     }
 
     /**
-     * External formats are admitted only when every decoded semantic reaches a production
-     * consumer. Keeping a source field for a future renderer is useful for diagnostics, but it
-     * must never turn a behaviorally partial brush into a selectable library preset.
+     * External formats are admitted only when every decoded semantic has an explicit outcome and
+     * no semantic marked as fatal is left without a production implementation. Source-only
+     * semantics remain visible in the compatibility report; they are not silently claimed as
+     * executed, but they also do not erase an otherwise executable primary tip/grain program.
+     *
+     * This is deliberately different from requiring byte-for-byte feature parity. The latter
+     * made every real Procreate brush fail when even one optional source control (for example
+     * color jitter) had no V5 consumer, despite the primary shape, grain and pressure program
+     * being executable. Fatal mappings are the single admission boundary.
      */
-    private fun requireFullyExecutableSemantics(source: ImportedBrush) {
+    private fun requireNoBlockingSemanticGaps(source: ImportedBrush) {
         if (source.format in setOf(BrushFormat.SYSTEM, BrushFormat.INKLOOM)) return
         val gaps = source.semanticMappings
-            .filter { it.executionDisposition != SemanticExecutionDisposition.SUPPORTED_AND_EXECUTED }
+            .filter { it.executionDisposition == SemanticExecutionDisposition.UNSUPPORTED_WITH_EXPLICIT_REASON }
             .map { it.sourceSemantic }
             .distinct()
             .sorted()
         require(gaps.isEmpty()) {
-            "DECODED_BUT_NOT_EXECUTED:${gaps.joinToString(",")}"
+            "BLOCKING_UNSUPPORTED_SEMANTICS:${gaps.joinToString(",")}"
         }
     }
 

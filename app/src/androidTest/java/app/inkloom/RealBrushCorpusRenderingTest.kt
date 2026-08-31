@@ -126,10 +126,14 @@ class RealBrushCorpusRenderingTest {
                         rejectedCount += 1
                         return@forEach
                     }
-                    assertTrue(
-                        "${representative.name} entered the usable library with non-executed semantics: $nonExecuted",
-                        nonExecuted.isEmpty(),
-                    )
+                    nonExecuted.forEach { mapping ->
+                        assertEquals(
+                            "A usable brush may retain an explicitly reported non-blocking source semantic, " +
+                                "but it may not carry a fatal runtime gap: ${mapping.sourceSemantic}",
+                            SemanticExecutionDisposition.PRESERVED_SOURCE_ONLY,
+                            mapping.executionDisposition,
+                        )
+                    }
                     val preset = BrushPresetV5Import.requirePreset(representative)
                     Log.i(
                         "InkloomBrushCorpus",
