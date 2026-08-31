@@ -1,5 +1,7 @@
 package app.inkloom
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
 import android.view.InputDevice
 import android.view.MotionEvent
@@ -54,6 +56,10 @@ class InkCanvasEraserTest {
             assertTrue(stages.contains(EraserLifecycleTrace.Stage.COMMITTED))
             assertTrue(stages.contains(EraserLifecycleTrace.Stage.RESTORE_DISPATCHED))
             assertTrue("Temporary-tool restore must never cancel the completed erase", EraserLifecycleTrace.Stage.CANCELLED !in stages)
+            assertTrue(
+                "Temporary-tool restore must happen after the committed generation is presented: $stages",
+                stages.indexOf(EraserLifecycleTrace.Stage.RESTORE_DISPATCHED) > stages.indexOf(EraserLifecycleTrace.Stage.COMMITTED),
+            )
         } finally {
             EraserLifecycleTrace.enabled = false
             EraserLifecycleTrace.reset()
@@ -121,6 +127,27 @@ class InkCanvasEraserTest {
         assertTrue("V5 production eraser p95 was ${p95Ms}ms", p95Ms < 8.33f)
     }
 
+    @Test fun firstAndOneHundredConsecutiveEraseGesturesNeverRestoreCommittedAlpha() {
+        val surface = opaqueSurface(512, 256)
+        var commits = 0
+        val view = configuredView(mapOf("paint" to surface)).apply {
+            eraserWidth = 18f
+            onRasterLayerCommitted = { commits++ }
+        }
+
+        repeat(100) { index ->
+            val y = 3f + index * 2.45f
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                view.dispatchStylus(MotionEvent.ACTION_DOWN, 32f, y, 100L + index * 4L)
+                view.dispatchStylus(MotionEvent.ACTION_MOVE, 480f, y, 101L + index * 4L)
+                view.dispatchStylus(MotionEvent.ACTION_UP, 480f, y, 102L + index * 4L)
+            }
+            settlePublishedStroke(view)
+            assertEquals("Erase gesture ${index + 1} restored its committed alpha", 0, Color.alpha(surface.pixelAt(256, y.toInt())))
+        }
+        assertEquals("Every completed erase gesture must commit exactly once", 100, commits)
+    }
+
     private fun configuredView(surfaces: Map<String, PixelTileSurface>): InkCanvasView {
         lateinit var view: InkCanvasView
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
@@ -139,7 +166,10 @@ class InkCanvasEraserTest {
 
     private fun settlePublishedStroke(view: InkCanvasView) {
         view.awaitV5StrokeWorkerIdleForTest()
-        InstrumentationRegistry.getInstrumentation().runOnMainSync { }
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val frame = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+            try { view.draw(Canvas(frame)) } finally { frame.recycle() }
+        }
     }
 
     private fun opaqueSurface(width: Int, height: Int) = PixelTileSurface(width, height).also { surface ->

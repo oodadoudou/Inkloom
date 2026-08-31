@@ -788,6 +788,8 @@ class InkCanvasView(context: Context) : View(context) {
     private val shortcutAxisAccumulator = ShortcutAxisAccumulator()
     private val heldMotionButtons = mutableMapOf<Pair<String?, Int>, ButtonShortcutBinding>()
     private val deferredStylusButtonReleases = mutableListOf<StylusButtonTransition>()
+    /** A temporary eraser release is owned by the committed frame, not by ACTION_UP. */
+    private var deferredEraserReleaseStrokeId: String? = null
 
     private val backgroundDestination = android.graphics.Rect()
     private val lassoPath = Path()
@@ -1132,6 +1134,10 @@ class InkCanvasView(context: Context) : View(context) {
                 val released = v5PresentationBarrier.onPresented(surface.revision, longArrayOf(transactionId))
                 if (released.isNotEmpty()) {
                     v5StrokeController.onDocumentGenerationPresented(activeLayerId, surface.revision)
+                    deferredEraserReleaseStrokeId?.let { strokeId ->
+                        deferredEraserReleaseStrokeId = null
+                        flushDeferredStylusButtonReleases(strokeId)
+                    }
                 }
             }
         }
@@ -2317,7 +2323,7 @@ class InkCanvasView(context: Context) : View(context) {
                 activeCanvasSnapConstraint = null
                 activePerspectiveSnapConstraint = null
                 activeSpecialRulerConstraint = null
-                flushDeferredStylusButtonReleases()
+                if (deferredEraserReleaseStrokeId == null) flushDeferredStylusButtonReleases()
                 activeTool = null
                 activeInputWasStylus = false
             }
@@ -3326,14 +3332,14 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
-    private fun flushDeferredStylusButtonReleases() {
+    private fun flushDeferredStylusButtonReleases(eraserStrokeId: String? = null) {
         if (deferredStylusButtonReleases.isEmpty()) return
         val releases = deferredStylusButtonReleases.toList()
         deferredStylusButtonReleases.clear()
-        if (activeTool == EditorTool.ERASER) {
+        if (activeTool == EditorTool.ERASER || eraserStrokeId != null) {
             EraserLifecycleTrace.record(
                 EraserLifecycleTrace.Event(
-                    strokeId = currentStrokeId,
+                    strokeId = eraserStrokeId ?: currentStrokeId,
                     stage = EraserLifecycleTrace.Stage.RESTORE_DISPATCHED,
                     persistentTool = tool.name,
                     effectiveTool = activeTool?.name.orEmpty(),
@@ -4998,6 +5004,9 @@ class InkCanvasView(context: Context) : View(context) {
             }
         }
         if (finishingEraser && accepted) {
+            if (deferredStylusButtonReleases.isNotEmpty()) {
+                deferredEraserReleaseStrokeId = finishingStrokeId
+            }
             EraserLifecycleTrace.record(
                 EraserLifecycleTrace.Event(
                     strokeId = currentStrokeId,
@@ -5045,6 +5054,10 @@ class InkCanvasView(context: Context) : View(context) {
                 )
             } ?: run {
                 published.record.close()
+                if (deferredEraserReleaseStrokeId == strokeId) {
+                    deferredEraserReleaseStrokeId = null
+                    flushDeferredStylusButtonReleases(strokeId)
+                }
                 onPaintCapabilityRejected("UNSUPPORTED_WITH_EXPLICIT_REASON: EMPTY_RENDER_RESULT")
             }
         } catch (failure: Throwable) {
