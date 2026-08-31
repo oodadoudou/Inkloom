@@ -86,6 +86,9 @@ tasks.withType<Test>().configureEach {
     providers.gradleProperty("procreateSamplesDir").orNull?.let {
         systemProperty("procreate.samples.dir", it)
     }
+    providers.gradleProperty("inkloomAuditOutputDir").orNull?.let {
+        systemProperty("inkloom.audit.output.dir", it)
+    }
 }
 
 dependencies {
