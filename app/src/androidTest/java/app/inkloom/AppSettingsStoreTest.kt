@@ -27,6 +27,7 @@ import app.inkloom.settings.WorkspaceOrientation
 import app.inkloom.settings.ReferenceTarget
 import app.inkloom.settings.LibraryLayout
 import app.inkloom.document.CorrectLineMode
+import app.inkloom.model.EditorTool
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -35,6 +36,25 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class AppSettingsStoreTest {
+    @Test fun persistentDrawingSelectionSurvivesReload() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)
+        preferences.edit().clear().commit()
+        try {
+            AppSettingsStore(context).save(
+                AppSettings(
+                    persistentDrawingTool = EditorTool.PEN,
+                    persistentBrushPresetId = "system-hb-pencil",
+                ),
+            )
+            val restored = AppSettingsStore(context).load()
+            assertEquals(EditorTool.PEN, restored.persistentDrawingTool)
+            assertEquals("system-hb-pencil", restored.persistentBrushPresetId)
+        } finally {
+            preferences.edit().clear().commit()
+        }
+    }
+
     @Test fun libraryLayoutSurvivesReload() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val preferences = context.getSharedPreferences("inkloom_settings", Context.MODE_PRIVATE)

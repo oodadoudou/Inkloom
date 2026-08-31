@@ -12,6 +12,7 @@ import app.inkloom.document.GradientColorStop
 import app.inkloom.document.GradientEdgeMode
 import app.inkloom.document.GradientKind
 import app.inkloom.document.GradientStopCodec
+import app.inkloom.model.EditorTool
 
 data class AppSettings(
     val language: UiLanguage = UiLanguage.ENGLISH,
@@ -110,6 +111,9 @@ data class AppSettings(
     val showStrokeTraceOverlay: Boolean = false,
     val penSize: Float = 5f,
     val penOpacity: Float = 1f,
+    /** Durable drawing selection. Temporary stylus-button/tool overrides never mutate these. */
+    val persistentDrawingTool: EditorTool = EditorTool.PEN,
+    val persistentBrushPresetId: String = "system-g-pen",
     val highlighterSize: Float = 28f,
     val highlighterOpacity: Float = .35f,
     val eraserSize: Float = 24f,
@@ -274,6 +278,12 @@ class AppSettingsStore(context: Context) {
             showStrokeTraceOverlay = preferences.getBoolean("showStrokeTraceOverlay", false),
             penSize = preferences.getFloat("penSize", 5f).coerceIn(.5f, 400f),
             penOpacity = preferences.getFloat("penOpacity", 1f).coerceIn(.05f, 1f),
+            persistentDrawingTool = enumValue(
+                preferences.getString("persistentDrawingTool", null),
+                EditorTool.PEN,
+            ),
+            persistentBrushPresetId = preferences.getString("persistentBrushPresetId", "system-g-pen")
+                ?.trim()?.take(160).orEmpty().ifBlank { "system-g-pen" },
             highlighterSize = preferences.getFloat("highlighterSize", 28f).coerceIn(.5f, 400f),
             highlighterOpacity = preferences.getFloat("highlighterOpacity", .35f).coerceIn(.05f, 1f),
             eraserSize = preferences.getFloat("eraserSize", 24f).coerceIn(.5f, 400f),
@@ -420,6 +430,8 @@ class AppSettingsStore(context: Context) {
             .putBoolean("showStrokeTraceOverlay", persisted.showStrokeTraceOverlay)
             .putFloat("penSize", persisted.penSize)
             .putFloat("penOpacity", persisted.penOpacity)
+            .putString("persistentDrawingTool", persisted.persistentDrawingTool.name)
+            .putString("persistentBrushPresetId", persisted.persistentBrushPresetId.trim().take(160))
             .putFloat("highlighterSize", persisted.highlighterSize)
             .putFloat("highlighterOpacity", persisted.highlighterOpacity)
             .putFloat("eraserSize", persisted.eraserSize)

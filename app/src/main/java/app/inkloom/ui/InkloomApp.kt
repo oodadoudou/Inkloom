@@ -1294,12 +1294,24 @@ private fun EditorScreen(
     val editorHostView = LocalView.current
     val brushPresetSizeStore = remember { BrushPresetSizeStore(context) }
     val selectedPage = document.pages.firstOrNull { it.id == selectedPageId } ?: document.pages.first()
-    var tool by remember { mutableStateOf(EditorTool.PEN) }
+    val availableBrushes = remember(brushes) { (systemBrushCatalog() + brushes).distinctBy(ImportedBrush::id) }
+    val persistedBrush = availableBrushes.firstOrNull {
+        it.id == settings.persistentBrushPresetId && !it.hidden
+    }
+    val persistedTool = persistedBrush?.let(BrushRoleClassifier::editorTool) ?: settings.persistentDrawingTool
+    var tool by remember(document.id) { mutableStateOf(persistedTool) }
     var canvasView by remember { mutableStateOf<InkCanvasView?>(null) }
-    var selectedBrushId by remember { mutableStateOf<String?>(null) }
-    var activeBrush by remember { mutableStateOf<ImportedBrush?>(null) }
-    var brushSize by remember { mutableFloatStateOf(settings.penSize) }
-    var brushOpacity by remember { mutableFloatStateOf(settings.penOpacity) }
+    var selectedBrushId by remember(document.id) { mutableStateOf(persistedBrush?.id) }
+    var activeBrush by remember(document.id) { mutableStateOf(persistedBrush) }
+    var brushSize by remember(document.id) {
+        mutableFloatStateOf(
+            brushPresetSizeStore.load(
+                persistedBrush?.id ?: "system:${persistedTool.name.lowercase()}",
+                persistedBrush?.defaultSize ?: settings.penSize,
+            ),
+        )
+    }
+    var brushOpacity by remember(document.id) { mutableFloatStateOf(persistedBrush?.defaultOpacity ?: settings.penOpacity) }
     var selectionFeather by remember { mutableFloatStateOf(0f) }
     var selectionActive by remember(document.id, selectedPage.id) { mutableStateOf(false) }
     fun performLayerMaskCommand(layerId: String, command: LayerMaskCommand) {
@@ -1565,7 +1577,7 @@ private fun EditorScreen(
         changeBrushColor(previousDrawingColor)
         syncCanvasInput(prepareAssets = restoredBrush != null)
     }
-    fun selectWorkspaceBrush(brush: ImportedBrush) {
+    fun activateWorkspaceBrush(brush: ImportedBrush, persistSelection: Boolean) {
         exitCanvasNavigation()
         val usedBrush = brush.copy(lastUsedAt = System.currentTimeMillis())
         onUpdateBrush(usedBrush)
@@ -1575,11 +1587,34 @@ private fun EditorScreen(
         brushSize = savedBrushSize(usedBrush, usedBrush.defaultSize, chosenTool)
         brushOpacity = usedBrush.defaultOpacity
         tool = chosenTool
+        if (persistSelection) {
+            onSettingsChange(
+                settings.copy(
+                    persistentDrawingTool = chosenTool,
+                    persistentBrushPresetId = usedBrush.id,
+                ),
+            )
+        }
         if (chosenTool == EditorTool.PEN && activeLayerId in setOf(LayerIds.HIGHLIGHT, LayerIds.OBJECTS)) activeLayerId = LayerIds.INK
         // Apply the complete descriptor synchronously. A panel click and the next pen-down can
         // occur before Compose's AndroidView update block; partial field assignment here used to
         // leave the input configuration in a stale state and made docked brush selection appear
         // to disable writing.
+        syncCanvasInput(prepareAssets = true)
+    }
+    fun selectWorkspaceBrush(brush: ImportedBrush) = activateWorkspaceBrush(brush, persistSelection = true)
+
+    LaunchedEffect(settings.persistentBrushPresetId, brushes) {
+        if (activeBrush?.id == settings.persistentBrushPresetId) return@LaunchedEffect
+        val restored = (systemBrushCatalog() + brushes).firstOrNull {
+            it.id == settings.persistentBrushPresetId && !it.hidden
+        } ?: return@LaunchedEffect
+        val restoredTool = BrushRoleClassifier.editorTool(restored)
+        activeBrush = restored
+        selectedBrushId = restored.id
+        tool = restoredTool
+        brushSize = savedBrushSize(restored, restored.defaultSize, restoredTool)
+        brushOpacity = restored.defaultOpacity
         syncCanvasInput(prepareAssets = true)
     }
     fun setLayersPanelOpen(open: Boolean, pageId: String? = null) {
@@ -1720,11 +1755,14 @@ private fun EditorScreen(
                 val alreadySelected = tool == EditorTool.PEN
                 tool = EditorTool.PEN
                 val remembered = activeBrush?.takeUnless(BrushRoleClassifier::isEraser)
-                    ?: brushes.filterNot(BrushRoleClassifier::isEraser).maxByOrNull(ImportedBrush::lastUsedAt)
+                    ?: availableBrushes.filterNot(BrushRoleClassifier::isEraser).maxByOrNull(ImportedBrush::lastUsedAt)
                 activeBrush = remembered
                 selectedBrushId = remembered?.id
                 brushSize = savedBrushSize(remembered, remembered?.defaultSize ?: settings.penSize, EditorTool.PEN)
                 brushOpacity = remembered?.defaultOpacity ?: settings.penOpacity
+                remembered?.let { selected ->
+                    onSettingsChange(settings.copy(persistentDrawingTool = EditorTool.PEN, persistentBrushPresetId = selected.id))
+                }
                 syncCanvasInput(prepareAssets = remembered != null)
                 if (alreadySelected || !brushesOpen) onToggleBrushes()
             })
@@ -2548,8 +2586,8 @@ private fun EditorScreen(
                     },
                     onShortcutAction = { activation ->
                         val action = activation.action
-                        fun selectImportedBrush(brush: ImportedBrush) {
-                            selectWorkspaceBrush(brush)
+                        fun selectImportedBrush(brush: ImportedBrush, persistent: Boolean = true) {
+                            activateWorkspaceBrush(brush, persistSelection = persistent)
                         }
 
                         fun updateBrushSize(multiplier: Float) {
@@ -2591,17 +2629,22 @@ private fun EditorScreen(
                             syncCanvasInput(prepareAssets = eraser != null)
                         }
 
-                        fun selectBrushGroup(group: ShortcutBrushGroup, fallbackToSystemPen: Boolean = false) {
+                        fun selectBrushGroup(
+                            group: ShortcutBrushGroup,
+                            fallbackToSystemPen: Boolean = false,
+                            persistent: Boolean = true,
+                        ) {
                             val targetPath = settings.shortcutBrushGroupTargets.forGroup(group)
-                            ShortcutBrushSelection.preferred(brushes, group, targetPath)?.let(::selectImportedBrush) ?: if (fallbackToSystemPen) {
-                                selectedBrushId = null
-                                activeBrush = null
-                                tool = EditorTool.PEN
-                                brushSize = savedBrushSize(null, settings.penSize, EditorTool.PEN)
-                                brushOpacity = settings.penOpacity
-                                syncCanvasInput()
+                            ShortcutBrushSelection.preferred(availableBrushes, group, targetPath)?.let {
+                                selectImportedBrush(it, persistent)
+                            } ?: if (fallbackToSystemPen) {
+                                requireNotNull(SystemBrushCatalog.byId("system-g-pen")).let {
+                                    selectImportedBrush(it, persistent)
+                                }
                             } else {
-                                brushes.filterNot { it.hidden }.maxByOrNull { it.lastUsedAt }?.let(::selectImportedBrush)
+                                availableBrushes.filterNot { it.hidden }.maxByOrNull { it.lastUsedAt }?.let {
+                                    selectImportedBrush(it, persistent)
+                                }
                             }
                         }
 
@@ -2611,7 +2654,9 @@ private fun EditorScreen(
                                 ToolboxQuickSlotKind.EMPTY -> Unit
                                 ToolboxQuickSlotKind.BRUSH, ToolboxQuickSlotKind.BRUSH_GROUP -> {
                                     if (temporary) rememberDrawingSelection()
-                                    ToolboxQuickSlots.preferredBrush(slot, brushes)?.let(::selectImportedBrush)
+                                    ToolboxQuickSlots.preferredBrush(slot, availableBrushes)?.let {
+                                        selectImportedBrush(it, persistent = !temporary)
+                                    }
                                 }
                                 ToolboxQuickSlotKind.TOOL_PRESET -> {
                                     if (temporary) rememberDrawingSelection()
@@ -2621,7 +2666,7 @@ private fun EditorScreen(
                                         activeBrush = null
                                         tool = EditorTool.PEN
                                         activeLayerId = LayerIds.INK
-                                    } else selected?.let(::selectImportedBrush) ?: return
+                                    } else selected?.let { selectImportedBrush(it, persistent = !temporary) } ?: return
                                     brushSize = slot.size
                                     brushOpacity = slot.opacity
                                     changeBrushColor(slot.colorArgb)
@@ -2650,11 +2695,11 @@ private fun EditorScreen(
                                 exitCanvasNavigation()
                                 if (activation.trigger == ShortcutTrigger.HOLD) rememberDrawingSelection()
                                 val target = if (ShortcutBrushSelection.matches(activeBrush, ShortcutBrushGroup.PEN)) ShortcutBrushGroup.PENCIL else ShortcutBrushGroup.PEN
-                                selectBrushGroup(target, fallbackToSystemPen = true)
+                                selectBrushGroup(target, fallbackToSystemPen = true, persistent = activation.trigger != ShortcutTrigger.HOLD)
                             }
-                            ShortcutAction.PEN_GROUP -> { exitCanvasNavigation(); if (activation.trigger == ShortcutTrigger.HOLD) rememberDrawingSelection(); selectBrushGroup(ShortcutBrushGroup.PEN, fallbackToSystemPen = true) }
-                            ShortcutAction.PENCIL_GROUP -> { exitCanvasNavigation(); if (activation.trigger == ShortcutTrigger.HOLD) rememberDrawingSelection(); selectBrushGroup(ShortcutBrushGroup.PENCIL, fallbackToSystemPen = true) }
-                            ShortcutAction.BRUSH_GROUP -> { exitCanvasNavigation(); if (activation.trigger == ShortcutTrigger.HOLD) rememberDrawingSelection(); selectBrushGroup(ShortcutBrushGroup.BRUSH) }
+                            ShortcutAction.PEN_GROUP -> { exitCanvasNavigation(); if (activation.trigger == ShortcutTrigger.HOLD) rememberDrawingSelection(); selectBrushGroup(ShortcutBrushGroup.PEN, fallbackToSystemPen = true, persistent = activation.trigger != ShortcutTrigger.HOLD) }
+                            ShortcutAction.PENCIL_GROUP -> { exitCanvasNavigation(); if (activation.trigger == ShortcutTrigger.HOLD) rememberDrawingSelection(); selectBrushGroup(ShortcutBrushGroup.PENCIL, fallbackToSystemPen = true, persistent = activation.trigger != ShortcutTrigger.HOLD) }
+                            ShortcutAction.BRUSH_GROUP -> { exitCanvasNavigation(); if (activation.trigger == ShortcutTrigger.HOLD) rememberDrawingSelection(); selectBrushGroup(ShortcutBrushGroup.BRUSH, persistent = activation.trigger != ShortcutTrigger.HOLD) }
                             ShortcutAction.TOGGLE_ERASER -> if (activation.trigger == ShortcutTrigger.HOLD) {
                                 exitCanvasNavigation()
                                 if (tool != EditorTool.ERASER) enterEraser()
@@ -2978,19 +3023,8 @@ private fun EditorScreen(
                     onSettingsChange(settings.copy(toolbarDock = ToolbarDock.FREE, toolbarOffsetXDp = toolbarX, toolbarOffsetYDp = toolbarY))
                 }, onDock = { dock -> onSettingsChange(settings.copy(toolbarDock = dock, verticalToolbar = when (dock) { ToolbarDock.LEFT, ToolbarDock.RIGHT -> true; ToolbarDock.TOP, ToolbarDock.BOTTOM -> false; ToolbarDock.FREE -> dockVertical })) }, brushSize = brushSize, brushOpacity = brushOpacity, brushColor = brushColor, brushes = brushes, selectedBrushId = selectedBrushId, onSystemPreset = { presetTool ->
                     exitCanvasNavigation()
-                    activeBrush = null
-                    selectedBrushId = null
-                    tool = presetTool
-                    canvasView?.tool = presetTool
-                    if (presetTool == EditorTool.PEN) {
-                        brushSize = savedBrushSize(null, settings.penSize, EditorTool.PEN)
-                        brushOpacity = settings.penOpacity
-                        if (activeLayerId == LayerIds.HIGHLIGHT || activeLayerId == LayerIds.OBJECTS) activeLayerId = LayerIds.INK
-                    } else {
-                        brushSize = savedBrushSize(null, settings.eraserSize, EditorTool.ERASER)
-                        brushOpacity = 1f
-                    }
-                    syncCanvasInput()
+                    val presetId = if (presetTool == EditorTool.ERASER) "system-hard-eraser" else "system-g-pen"
+                    selectWorkspaceBrush(requireNotNull(SystemBrushCatalog.byId(presetId)))
                 }, onBrushPreset = ::selectWorkspaceBrush, onSize = { raw ->
                     changeCurrentBrushSize(raw)
                 }, onOpacity = { raw ->
