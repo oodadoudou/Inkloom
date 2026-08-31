@@ -236,7 +236,10 @@ class RealBrushCorpusRenderingTest {
             report = emptyList(),
         )
         return when (format) {
-            BrushFormat.PROCREATE -> ProcreateBrushParser(File(assetRoot, "procreate")).enrich(source, source.name.hashCode().toString(), fallback)
+            BrushFormat.PROCREATE -> ProcreateBrushParser(
+                assetDirectory = File(assetRoot, "procreate"),
+                allowProceduralApproximation = true,
+            ).enrich(source, source.name.hashCode().toString(), fallback)
             BrushFormat.SUT -> listOf(SutBrushParser(File(assetRoot, "sut")).enrich(source, source.name.hashCode().toString(), fallback))
             BrushFormat.ABR -> AbrBrushParser(File(assetRoot, "abr")).enrich(source, source.name.hashCode().toString(), fallback)
             else -> error("Unsupported real corpus format $format")
