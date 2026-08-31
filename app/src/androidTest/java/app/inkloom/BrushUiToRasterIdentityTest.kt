@@ -96,6 +96,18 @@ class BrushUiToRasterIdentityTest {
             "UI-selected Pencil and Painting Brush still look collapsed at raster level",
             alignedAlphaMismatch(snapshot, .50f, .72f) > .25f,
         )
+
+        composeRule.activityRule.scenario.recreate()
+        val restoredView = waitForCanvas()
+        composeRule.waitUntil(5_000) { restoredView.brushId == "system-dry-painting-brush" }
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            dispatchCanonicalStroke(restoredView, .84f)
+        }
+        restoredView.awaitV5StrokeWorkerIdleForTest()
+        composeRule.waitUntil(5_000) {
+            restoredView.lastBrushExecutionFingerprint?.presetId == "system-dry-painting-brush"
+        }
+        assertEquals("system-dry-painting-brush", restoredView.lastBrushExecutionFingerprint?.presetId)
     }
 
     private fun selectAndDraw(
