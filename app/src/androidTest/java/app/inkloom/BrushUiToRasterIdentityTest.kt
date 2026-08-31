@@ -3,6 +3,7 @@ package app.inkloom
 import android.content.Context
 import android.graphics.Bitmap
 import android.os.SystemClock
+import android.os.ParcelFileDescriptor
 import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.ViewGroup
@@ -87,6 +88,11 @@ class BrushUiToRasterIdentityTest {
             bitmap.recycle()
         }
         android.util.Log.i("InkloomBrushExecution", "UI raster artifact=${output.absolutePath}")
+        ParcelFileDescriptor.AutoCloseInputStream(
+            InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(
+                "cp ${output.absolutePath} /data/local/tmp/inkloom-default-brush-ui-raster.png",
+            ),
+        ).use { it.readBytes() }
         val ink = alphaProfile(snapshot, .28f)
         val graphite = alphaProfile(snapshot, .50f)
         val dryPaint = alphaProfile(snapshot, .72f)
@@ -101,7 +107,7 @@ class BrushUiToRasterIdentityTest {
         val restoredView = waitForCanvas()
         composeRule.waitUntil(5_000) { restoredView.brushId == "system-dry-painting-brush" }
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            dispatchCanonicalStroke(restoredView, .84f)
+            dispatchBehaviorPattern(restoredView, .84f)
         }
         restoredView.awaitV5StrokeWorkerIdleForTest()
         composeRule.waitUntil(5_000) {
@@ -126,7 +132,7 @@ class BrushUiToRasterIdentityTest {
         // Hold nominal size constant so only each selected program's material semantics differ.
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             view.baseWidth = 42f
-            dispatchCanonicalStroke(view, row)
+            dispatchBehaviorPattern(view, row)
         }
         view.awaitV5StrokeWorkerIdleForTest()
         composeRule.waitUntil(5_000) { view.lastBrushExecutionFingerprint?.presetId == expectedId }
@@ -150,7 +156,12 @@ class BrushUiToRasterIdentityTest {
         return found
     }
 
-    private fun dispatchCanonicalStroke(view: InkCanvasView, row: Float) {
+    /**
+     * Fixed black-box behavior row: tap, pressure ramp, tilt ramp, then two
+     * overlapping passes. Every event still enters through View dispatch and
+     * the production StrokeSession/Active Delta/PixelTileSurface path.
+     */
+    private fun dispatchBehaviorPattern(view: InkCanvasView, row: Float) {
         val downTime = SystemClock.uptimeMillis()
         val properties = arrayOf(MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_STYLUS })
         fun event(action: Int, x: Float, y: Float, elapsed: Long, pressure: Float, tilt: Float): MotionEvent =
@@ -169,13 +180,46 @@ class BrushUiToRasterIdentityTest {
                 }),
                 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_STYLUS, 0,
             )
+        fun stroke(points: List<FloatArray>) {
+            points.forEachIndexed { index, point ->
+                val action = when (index) {
+                    0 -> MotionEvent.ACTION_DOWN
+                    points.lastIndex -> MotionEvent.ACTION_UP
+                    else -> MotionEvent.ACTION_MOVE
+                }
+                event(action, point[0], point[1], point[2].toLong(), point[3], point[4]).also { motion ->
+                    try { view.dispatchTouchEvent(motion) } finally { motion.recycle() }
+                }
+            }
+        }
+        val w = view.width.toFloat()
         val y = view.height * row
-        listOf(
-            event(MotionEvent.ACTION_DOWN, view.width * .20f, y, 0, .20f, .05f),
-            event(MotionEvent.ACTION_MOVE, view.width * .38f, y - 12f, 8, .45f, .25f),
-            event(MotionEvent.ACTION_MOVE, view.width * .56f, y + 10f, 16, .72f, .55f),
-            event(MotionEvent.ACTION_UP, view.width * .76f, y, 24, 1f, .75f),
-        ).forEach { motion -> try { view.dispatchTouchEvent(motion) } finally { motion.recycle() } }
+        // A short two-event stroke is used instead of DOWN/UP at one coordinate
+        // so both ribbon and stamp backends expose a visible tip footprint.
+        stroke(listOf(
+            floatArrayOf(w * .08f, y, 0f, .65f, .10f),
+            floatArrayOf(w * .085f, y, 4f, .65f, .10f),
+        ))
+        stroke(listOf(
+            floatArrayOf(w * .14f, y, 10f, .12f, .12f),
+            floatArrayOf(w * .24f, y - 10f, 18f, .35f, .12f),
+            floatArrayOf(w * .34f, y + 8f, 26f, .68f, .12f),
+            floatArrayOf(w * .44f, y, 34f, 1f, .12f),
+        ))
+        stroke(listOf(
+            floatArrayOf(w * .49f, y, 40f, .72f, .02f),
+            floatArrayOf(w * .58f, y - 10f, 48f, .72f, .28f),
+            floatArrayOf(w * .67f, y + 8f, 56f, .72f, .55f),
+            floatArrayOf(w * .76f, y, 64f, .72f, .82f),
+        ))
+        repeat(2) { pass ->
+            val offset = pass * 5f
+            stroke(listOf(
+                floatArrayOf(w * .80f, y - 10f + offset, 70f + pass * 18f, .58f, .40f),
+                floatArrayOf(w * .86f, y + 10f + offset, 78f + pass * 18f, .58f, .40f),
+                floatArrayOf(w * .92f, y - 4f + offset, 86f + pass * 18f, .58f, .40f),
+            ))
+        }
     }
 
     /** mean alpha, intermediate-alpha ratio, opaque ratio, occupied ratio */

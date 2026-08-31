@@ -48,7 +48,7 @@ class RealBrushContactSheetTest {
                     1f, Color.BLACK, EraserPreset.NORMAL_FREE,
                 )
                 view.prepareBrushAssetsNow()
-                stroke(view, row)
+                behaviorPattern(view, row)
             }
             view.awaitV5StrokeWorkerIdleForTest()
             instrumentation.runOnMainSync { }
@@ -91,22 +91,48 @@ class RealBrushContactSheetTest {
             }.map(BrushPresetV5Import::convertOrReject).firstOrNull { it.v5PresetJson != null }
     }
 
-    private fun stroke(view: InkCanvasView, row: Float) {
+    private fun behaviorPattern(view: InkCanvasView, row: Float) {
         val properties = arrayOf(MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_STYLUS })
-        fun event(action: Int, x: Float, y: Float, time: Long, pressure: Float) = MotionEvent.obtain(
+        fun event(action: Int, x: Float, y: Float, time: Long, pressure: Float, tilt: Float) = MotionEvent.obtain(
             1L, time, action, 1, properties,
             arrayOf(MotionEvent.PointerCoords().apply {
                 this.x = x; this.y = y; this.pressure = pressure; size = .02f
-                setAxisValue(MotionEvent.AXIS_TILT, .45f)
+                setAxisValue(MotionEvent.AXIS_TILT, tilt)
             }),
             0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_STYLUS, 0,
         )
+        fun stroke(points: List<FloatArray>) {
+            points.forEachIndexed { index, point ->
+                val action = when (index) {
+                    0 -> MotionEvent.ACTION_DOWN
+                    points.lastIndex -> MotionEvent.ACTION_UP
+                    else -> MotionEvent.ACTION_MOVE
+                }
+                event(action, point[0], point[1], point[2].toLong(), point[3], point[4]).also { motion ->
+                    try { view.dispatchTouchEvent(motion) } finally { motion.recycle() }
+                }
+            }
+        }
+        val w = view.width.toFloat()
         val y = view.height * row
-        listOf(
-            event(MotionEvent.ACTION_DOWN, 180f, y, 1L, .2f),
-            event(MotionEvent.ACTION_MOVE, 440f, y - 18f, 9L, .5f),
-            event(MotionEvent.ACTION_MOVE, 700f, y + 15f, 17L, .75f),
-            event(MotionEvent.ACTION_UP, 990f, y, 25L, 1f),
-        ).forEach { event -> try { view.dispatchTouchEvent(event) } finally { event.recycle() } }
+        stroke(listOf(
+            floatArrayOf(w * .08f, y, 0f, .65f, .10f), floatArrayOf(w * .085f, y, 4f, .65f, .10f),
+        ))
+        stroke(listOf(
+            floatArrayOf(w * .14f, y, 10f, .12f, .12f), floatArrayOf(w * .24f, y - 10f, 18f, .35f, .12f),
+            floatArrayOf(w * .34f, y + 8f, 26f, .68f, .12f), floatArrayOf(w * .44f, y, 34f, 1f, .12f),
+        ))
+        stroke(listOf(
+            floatArrayOf(w * .49f, y, 40f, .72f, .02f), floatArrayOf(w * .58f, y - 10f, 48f, .72f, .28f),
+            floatArrayOf(w * .67f, y + 8f, 56f, .72f, .55f), floatArrayOf(w * .76f, y, 64f, .72f, .82f),
+        ))
+        repeat(2) { pass ->
+            val offset = pass * 5f
+            stroke(listOf(
+                floatArrayOf(w * .80f, y - 10f + offset, 70f + pass * 18f, .58f, .40f),
+                floatArrayOf(w * .86f, y + 10f + offset, 78f + pass * 18f, .58f, .40f),
+                floatArrayOf(w * .92f, y - 4f + offset, 86f + pass * 18f, .58f, .40f),
+            ))
+        }
     }
 }
