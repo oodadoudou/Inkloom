@@ -17,6 +17,7 @@ class BrushImportRepository(context: Context) {
     private val procreateParser = ProcreateBrushParser(
         assetDirectory = File(context.filesDir, "procreate-assets"),
         localResourcePack = File(context.filesDir, "procreate-resource-pack"),
+        allowProceduralApproximation = true,
     )
     private val inkloomPackage = InkloomBrushPackage(File(context.filesDir, "inkloom-brush-assets"))
     private val productionRenderProbe = ProductionBrushRenderProbe(context)

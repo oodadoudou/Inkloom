@@ -22,11 +22,34 @@ class ProcreateResourceDependencyAuditTest {
         }.sortedBy(File::getAbsolutePath).toList()
         assumeTrue(sources.isNotEmpty())
         val assets = File(System.getProperty("java.io.tmpdir"), "inkloom-procreate-resource-audit-${System.nanoTime()}")
-        val rows = mutableListOf<Row>()
         try {
-            sources.forEachIndexed { sourceIndex, source ->
+            val rows = parseRows(sources, File(assets, "exact"), allowProceduralApproximation = false)
+            val productionRows = parseRows(sources, File(assets, "production"), allowProceduralApproximation = true)
+            assertEquals(391, rows.size)
+            assertEquals(rows.size, rows.groupingBy(Row::status).eachCount().values.sum())
+            assertEquals(391, productionRows.size)
+            assertEquals(productionRows.size, productionRows.groupingBy(Row::status).eachCount().values.sum())
+            output?.let {
+                val directory = it.apply(File::mkdirs)
+                writeDependencyReport(directory, rows)
+                writeLedgerAndSummary(directory, productionRows)
+            }
+        } finally {
+            assets.deleteRecursively()
+        }
+    }
+
+    private fun parseRows(
+        sources: List<File>,
+        assets: File,
+        allowProceduralApproximation: Boolean,
+    ): List<Row> = buildList {
+        sources.forEachIndexed { sourceIndex, source ->
                 val hash = sha256(source)
-                val parsed = ProcreateBrushParser(File(assets, "source-$sourceIndex")).enrich(
+                val parsed = ProcreateBrushParser(
+                    assetDirectory = File(assets, "source-$sourceIndex"),
+                    allowProceduralApproximation = allowProceduralApproximation,
+                ).enrich(
                     source,
                     hash,
                     ImportedBrush(
@@ -52,12 +75,15 @@ class ProcreateResourceDependencyAuditTest {
                         .distinct()
                         .sorted()
                     val status = when {
+                        terminal.v5PresetJson != null && terminal.report.any {
+                            it.startsWith("APPROXIMATED_RESOURCE:")
+                        } -> "PRODUCT_USABLE_APPROXIMATED"
                         terminal.v5PresetJson != null -> "PRODUCT_USABLE_EXACT"
                         terminal.report.any { it.contains("parsing failed", ignoreCase = true) } -> "FAILED"
                         missing.isNotEmpty() -> "UNSUPPORTED_MISSING_RESOURCE"
                         else -> "UNSUPPORTED_SEMANTICS"
                     }
-                    rows += Row(
+                    add(Row(
                         brushset = source.name,
                         brushName = brush.name,
                         sourceBrushId = brush.id,
@@ -75,20 +101,12 @@ class ProcreateResourceDependencyAuditTest {
                             it.startsWith("UNSUPPORTED_WITH_EXPLICIT_REASON") ||
                                 it.contains("parsing failed", ignoreCase = true)
                         }.orEmpty(),
-                    )
+                    ))
                 }
             }
-
-            assertEquals(391, rows.size)
-            assertEquals(rows.size, rows.groupingBy(Row::status).eachCount().values.sum())
-            output?.let { writeReports(it.apply(File::mkdirs), rows) }
-        } finally {
-            assets.deleteRecursively()
-        }
     }
 
-    private fun writeReports(output: File, rows: List<Row>) {
-        val counts = rows.groupingBy(Row::status).eachCount().toSortedMap()
+    private fun writeDependencyReport(output: File, rows: List<Row>) {
         val missing = rows.flatMap(Row::missing).groupingBy { it }.eachCount()
             .entries.sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
         output.resolve("PROCREATE_RESOURCE_DEPENDENCY_REPORT.md").writeText(buildString {
@@ -116,6 +134,10 @@ class ProcreateResourceDependencyAuditTest {
                 )
             }
         })
+    }
+
+    private fun writeLedgerAndSummary(output: File, rows: List<Row>) {
+        val counts = rows.groupingBy(Row::status).eachCount().toSortedMap()
         output.resolve("PROCREATE_IMPORT_LEDGER.json").writeText(
             rows.joinToString(",\n", prefix = "[\n", postfix = "\n]\n") { row ->
                 "  {\"brushset\":${json(row.brushset)},\"brushName\":${json(row.brushName)}," +

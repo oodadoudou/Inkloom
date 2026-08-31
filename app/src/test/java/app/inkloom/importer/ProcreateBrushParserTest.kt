@@ -346,6 +346,41 @@ class ProcreateBrushParserTest {
         }
     }
 
+    @Test fun admitsMissingNamedSourceResourcesOnlyAsExplicitApproximationWhenConfigured() {
+        val sampleRoot = System.getProperty("procreate.samples.dir")?.let(::File)
+        assumeTrue(sampleRoot != null && sampleRoot.isDirectory)
+        val sources = sampleRoot!!.walkTopDown().filter { source ->
+            source.isFile && source.extension.lowercase() in setOf("brush", "brushset")
+        }.sortedBy(File::getAbsolutePath).toList()
+        assumeTrue(sources.isNotEmpty())
+        val root = temporaryDirectory("approximated-corpus")
+        try {
+            val terminal = sources.flatMapIndexed { index, source ->
+                ProcreateBrushParser(
+                    assetDirectory = File(root, "assets-$index"),
+                    allowProceduralApproximation = true,
+                ).enrich(source, "approx-${source.absolutePath.hashCode()}", fallback(source))
+                    .map(app.inkloom.brushpresetv5.BrushPresetV5Import::convertOrReject)
+            }
+            val approximated = terminal.filter { brush ->
+                brush.v5PresetJson != null && brush.report.any { it.startsWith("APPROXIMATED_RESOURCE:") }
+            }
+            assertEquals(391, terminal.size)
+            assertTrue("The real corpus must exercise explicit source-resource approximation", approximated.isNotEmpty())
+            assertTrue(approximated.all { brush ->
+                brush.semanticMappings.filter { it.sourceSemantic in setOf("PROCREATE.shape", "PROCREATE.grain.basic") }
+                    .any { it.fidelity == app.inkloom.model.SemanticFidelity.APPROXIMATE }
+            })
+            assertTrue(terminal.none { brush ->
+                brush.v5PresetJson != null &&
+                    brush.report.any { it.startsWith("APPROXIMATED_RESOURCE:") } &&
+                    brush.semanticMappings.none { it.fidelity == app.inkloom.model.SemanticFidelity.APPROXIMATE }
+            })
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     private fun fallback(source: File) = ImportedBrush(
         name = source.nameWithoutExtension,
         format = BrushFormat.PROCREATE,
