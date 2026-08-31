@@ -299,33 +299,31 @@ class RealBrushCorpusRenderingTest {
     private fun brushCommitsAndRenders(brush: ImportedBrush): Boolean {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val surface = PixelTileSurface(1000, 1000)
-        var committed: RasterLayerPatch? = null
+        val committed = mutableListOf<RasterLayerPatch>()
         var rejection: String? = null
         val view = InkCanvasView(instrumentation.targetContext).apply {
             layout(0, 0, 1000, 1000)
             activeLayerId = "paint"
             setRasterLayerSurfaces(mapOf("paint" to surface))
-            onRasterLayerCommitted = { commit -> committed = commit.capturePatch() }
+            onRasterLayerCommitted = { commit -> committed += commit.capturePatch() }
             onPaintCapabilityRejected = { rejection = it }
             applyBrushConfiguration(EditorTool.PEN, AppSettings(), brush, brush.defaultSize.coerceAtLeast(20f), 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
             prepareBrushAssetsNow()
         }
         instrumentation.runOnMainSync {
-            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_DOWN, 250f, 500f, 1L))
-            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_MOVE, 500f, 500f, 2L))
-            view.onTouchEvent(stylusEvent(MotionEvent.ACTION_UP, 750f, 500f, 3L))
+            dispatchBehaviorProbe(view)
         }
         view.awaitV5StrokeWorkerIdleForTest()
         instrumentation.runOnMainSync { }
-        val patch = committed
-        val terminalOutcomeCount = (if (patch != null) 1 else 0) + (if (rejection != null) 1 else 0)
+        val rendered = committed.isNotEmpty()
+        val terminalOutcomeCount = (if (rendered) 1 else 0) + (if (rejection != null) 1 else 0)
         assertEquals(
             "${brush.format} ${brush.name} must end as exactly one of rendered/committed or explicitly rejected; " +
-                "committed=${patch != null} rejection=$rejection",
+                "commits=${committed.size} rejection=$rejection",
             1,
             terminalOutcomeCount,
         )
-        if (patch == null) {
+        if (!rendered) {
             assertTrue(
                 "${brush.format} ${brush.name} rejection must carry a stable explicit reason: $rejection",
                 rejection?.startsWith("UNSUPPORTED_WITH_EXPLICIT_REASON:") == true,
@@ -336,14 +334,70 @@ class RealBrushCorpusRenderingTest {
             )
             return false
         }
+        assertEquals(
+            "${brush.format} ${brush.name} must commit every canonical behavior probe " +
+                "(tap, constant pressure, pressure ramp, tilt ramp, slow, fast, direction changes, overlap)",
+            EXPECTED_BEHAVIOR_PROBE_COMMITS,
+            committed.size,
+        )
         val bitmap = Bitmap.createBitmap(1000, 1000, Bitmap.Config.ARGB_8888)
         view.draw(Canvas(bitmap))
         val foundInk = bitmap.hasVisibleAlpha() && surface.tileCount > 0
         bitmap.recycle()
-        patch.close()
+        committed.forEach(RasterLayerPatch::close)
         assertTrue("${brush.format} ${brush.name} committed but rendered no ink", foundInk)
-        Log.i("InkloomBrushCorpus", "PRODUCTION_RENDERED id=${brush.id} format=${brush.format} name=${brush.name}")
+        Log.i(
+            "InkloomBrushCorpus",
+            "BEHAVIOR_PROBE_RENDERED id=${brush.id} format=${brush.format} name=${brush.name} " +
+                "probes=$EXPECTED_BEHAVIOR_PROBE_COMMITS tileCount=${surface.tileCount}",
+        )
         return true
+    }
+
+    private fun dispatchBehaviorProbe(view: InkCanvasView) {
+        fun stroke(points: List<ProbePoint>) {
+            val downTime = points.first().time
+            points.forEachIndexed { index, point ->
+                val action = when (index) {
+                    0 -> MotionEvent.ACTION_DOWN
+                    points.lastIndex -> MotionEvent.ACTION_UP
+                    else -> MotionEvent.ACTION_MOVE
+                }
+                stylusEvent(action, point.x, point.y, point.time, point.pressure, point.tilt, downTime).also { event ->
+                    try { view.onTouchEvent(event) } finally { event.recycle() }
+                }
+            }
+        }
+        var time = 10L
+        stroke(listOf(ProbePoint(80f, 100f, .65f, .10f, time), ProbePoint(86f, 100f, .65f, .10f, time + 4)))
+        time += 20
+        stroke((0..12).map { index -> ProbePoint(120f + index * 58f, 200f, .55f, .12f, time + index * 8L) })
+        time += 120
+        stroke((0..12).map { index -> ProbePoint(120f + index * 58f, 310f, .10f + index / 12f * .88f, .12f, time + index * 8L) })
+        time += 120
+        stroke((0..12).map { index -> ProbePoint(120f + index * 58f, 420f, .72f, .02f + index / 12f * .82f, time + index * 8L) })
+        time += 120
+        stroke((0..14).map { index -> ProbePoint(100f + index * 55f, 530f + (index % 3 - 1) * 8f, .62f, .35f, time + index * 22L) })
+        time += 340
+        stroke((0..14).map { index -> ProbePoint(100f + index * 55f, 625f + (index % 3 - 1) * 8f, .62f, .35f, time + index) })
+        time += 40
+        val circle = (0..24).map { index ->
+            val angle = Math.PI.toFloat() * 2f * index / 24f
+            ProbePoint(
+                x = 500f + kotlin.math.cos(angle) * 115f,
+                y = 770f + kotlin.math.sin(angle) * 75f,
+                pressure = .58f,
+                tilt = .42f,
+                time = time + index * 7L,
+            )
+        }
+        stroke(circle)
+        time += 190
+        repeat(2) { pass ->
+            stroke((0..10).map { index ->
+                ProbePoint(180f + index * 64f, 900f + pass * 5f, .56f, .38f, time + pass * 90L + index * 7L)
+            })
+        }
     }
 
     private fun Bitmap.hasVisibleAlpha(): Boolean {
@@ -352,9 +406,35 @@ class RealBrushCorpusRenderingTest {
         return pixels.any { Color.alpha(it) > 0 }
     }
 
-    private fun stylusEvent(action: Int, x: Float, y: Float, time: Long): MotionEvent {
+    private fun stylusEvent(
+        action: Int,
+        x: Float,
+        y: Float,
+        time: Long,
+        pressure: Float = .8f,
+        tilt: Float = 0f,
+        downTime: Long = 1L,
+    ): MotionEvent {
         val properties = arrayOf(MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_STYLUS })
-        val coordinates = arrayOf(MotionEvent.PointerCoords().apply { this.x = x; this.y = y; pressure = .8f; size = .1f })
-        return MotionEvent.obtain(1L, time, action, 1, properties, coordinates, 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_STYLUS, 0)
+        val coordinates = arrayOf(MotionEvent.PointerCoords().apply {
+            this.x = x
+            this.y = y
+            this.pressure = pressure
+            size = .1f
+            setAxisValue(MotionEvent.AXIS_TILT, tilt)
+        })
+        return MotionEvent.obtain(downTime, time, action, 1, properties, coordinates, 0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_STYLUS, 0)
+    }
+
+    private data class ProbePoint(
+        val x: Float,
+        val y: Float,
+        val pressure: Float,
+        val tilt: Float,
+        val time: Long,
+    )
+
+    private companion object {
+        const val EXPECTED_BEHAVIOR_PROBE_COMMITS = 9
     }
 }
