@@ -15,6 +15,37 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WetPaintOpTest {
+    @Test fun textureGrainModulatesWetPigmentInsideTheTip() {
+        val surface = PixelTileSurface(160, 160)
+        val stripes = BrushTipMask(
+            4,
+            4,
+            ByteArray(16) { index -> if (index % 4 < 2) 0xff.toByte() else 0 },
+        )
+        val paint = WetPaintOp(
+            surface,
+            WetPaintDefinition(
+                diameterPixels = 64f,
+                colorArgb = 0xff2040a0.toInt(),
+                charge = 1f,
+                attack = 1f,
+                dilution = 0f,
+                grain = stripes,
+                grainDensity = 1f,
+                grainScalePercent = 100f,
+            ),
+        ).begin(PaintOpContext(39L, surface.revision, "wet-texture-grain")) as WetPaintOp.Session
+        val stroke = DirectStrokeSession(39L, 24f)
+
+        paint.apply(stroke.begin(sample(0, InputPhase.DOWN, 80f, 80f)))
+        paint.finish(stroke.finish(sample(1, InputPhase.UP, 80f, 80f)))
+        paint.publish().record.close()
+
+        val row = (52..108).map { x -> surface.pixelAt(x, 80) ushr 24 }
+        assertTrue("Wet grain must retain opaque material bands", row.maxOrNull()!! > 0)
+        assertTrue("Wet grain must cut visible gaps inside the same tip", row.count { it == 0 } > 4)
+    }
+
     @Test fun texturedWetTipControlsPigmentCoverage() {
         val surface = PixelTileSurface(160, 160)
         val leftHalf = BrushTipMask(

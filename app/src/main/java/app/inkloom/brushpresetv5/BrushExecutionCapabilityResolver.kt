@@ -13,7 +13,6 @@ enum class BrushExecutionCapabilityReason {
     WET_PAINT_SETTINGS_REQUIRED,
     WET_PAINT_ERASER_UNSUPPORTED,
     WET_PAINT_DUAL_BRUSH_REQUIRED,
-    WET_PAINT_TEXTURE_GRAIN_REQUIRED,
     ASSET_STAMP_TIP_REQUIRED,
     TEXTURE_GRAIN_REQUIRES_STAMP_BACKEND,
     STAMP_DYNAMICS_REQUIRE_STAMP_BACKEND,
@@ -49,9 +48,6 @@ object BrushExecutionCapabilityResolver {
                     reasons += BrushExecutionCapabilityReason.WET_PAINT_ERASER_UNSUPPORTED
                 }
                 if (program.dual != null) reasons += BrushExecutionCapabilityReason.WET_PAINT_DUAL_BRUSH_REQUIRED
-                if (program.textureGrain != null) {
-                    reasons += BrushExecutionCapabilityReason.WET_PAINT_TEXTURE_GRAIN_REQUIRED
-                }
             }
 
             RenderBackend.ASSET_STAMP -> {

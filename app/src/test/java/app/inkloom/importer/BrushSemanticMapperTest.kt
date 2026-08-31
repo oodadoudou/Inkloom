@@ -99,9 +99,13 @@ class BrushSemanticMapperTest {
 
         val mappings = BrushSemanticMapper.describe(brush).associateBy { it.sourceSemantic }
 
-        listOf("PROCREATE.grain.basic", "PROCREATE.dualBrush.basic", "PROCREATE.taper.basic").forEach { semantic ->
+        listOf("PROCREATE.dualBrush.basic", "PROCREATE.taper.basic").forEach { semantic ->
             assertEquals(SemanticExecutionDisposition.PRESERVED_SOURCE_ONLY, mappings.getValue(semantic).executionDisposition)
         }
+        assertEquals(
+            SemanticExecutionDisposition.SUPPORTED_AND_EXECUTED,
+            mappings.getValue("PROCREATE.grain.basic").executionDisposition,
+        )
         assertEquals(
             SemanticExecutionDisposition.SUPPORTED_AND_EXECUTED,
             mappings.getValue("PROCREATE.wetMix.basic").executionDisposition,

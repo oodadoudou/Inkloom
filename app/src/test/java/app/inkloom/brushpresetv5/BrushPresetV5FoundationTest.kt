@@ -178,7 +178,7 @@ class BrushPresetV5FoundationTest {
         val preset = BrushPresetV5Import.requirePreset(converted)
 
         assertEquals(BrushFamily.WET_PAINT, preset.identity.family)
-        assertEquals(null, preset.textureGrain)
+        assertEquals("/grain.png", preset.textureGrain?.assetPath)
         assertEquals(null, preset.dual)
         assertEquals(.15f, preset.wetMix?.charge ?: 0f, .0001f)
         assertEquals(.7f, preset.wetMix?.attack ?: 0f, .0001f)
@@ -188,11 +188,15 @@ class BrushPresetV5FoundationTest {
             BrushExecutionCapabilityResolution.Supported,
             BrushExecutionCapabilityResolver.resolve(CompiledBrushProgramV5.compile(preset)),
         )
-        listOf("PROCREATE.taper.basic", "PROCREATE.grain.basic", "PROCREATE.dualBrush.basic").forEach { semantic ->
+        listOf("PROCREATE.taper.basic", "PROCREATE.dualBrush.basic").forEach { semantic ->
             assertTrue(converted.report.any {
                 it.startsWith("SEMANTIC_CAPABILITY:PRESERVED_SOURCE_ONLY:$semantic:")
             })
         }
+        assertTrue(converted.semanticMappings.any {
+            it.sourceSemantic == "PROCREATE.grain.basic" &&
+                it.executionDisposition == app.inkloom.model.SemanticExecutionDisposition.SUPPORTED_AND_EXECUTED
+        })
     }
 
     @Test fun importBoundarySuppliesWetDepositionIndependentlyFromAuthoredCharge() {

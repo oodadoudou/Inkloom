@@ -195,7 +195,7 @@ object BrushPresetV5Import {
                 PaperGrainSettings(it.proceduralPaperGrainScale, it.proceduralPaperGrainDensity, it.proceduralPaperGrainStrength)
             },
             textureGrain = source.grainPreviewPath?.takeIf {
-                family != BrushFamily.WET_PAINT && source.grainDensity > .0001f
+                source.grainDensity > .0001f
             }?.let { path ->
                 TextureGrainSettings(
                     assetPath = path,

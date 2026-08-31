@@ -72,10 +72,10 @@ object BrushSemanticMapper {
             "The brush references ${brush.dualGrain.sourceGrainReference ?: "a missing grain"}, but the source container does not embed Grain.png.",
         )
         if (brush.grainPreviewPath != null) {
-            if (wetPrimary) preserved(
+            executed(
                 "$prefix.grain.basic",
-                "The source grain is retained; the V5 wet PaintOp currently executes the primary tip and pigment program without texture grain.",
-            ) else executed("$prefix.grain.basic", "StampPaintOp.textureGrain")
+                if (wetPrimary) "WetPaintOp.textureGrain" else "StampPaintOp.textureGrain",
+            )
         }
         if (brush.dualGrainPreviewPath != null) {
             if (wetPrimary) preserved(

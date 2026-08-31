@@ -29,7 +29,6 @@ class BrushExecutionCapabilityResolverTest {
             BrushExecutionCapabilityResolution.Unsupported).reasons
 
         assertTrue(BrushExecutionCapabilityReason.REALTIME_TAPER_REQUIRED in reasons)
-        assertTrue(BrushExecutionCapabilityReason.WET_PAINT_TEXTURE_GRAIN_REQUIRED in reasons)
         assertTrue(BrushExecutionCapabilityReason.WET_PAINT_DUAL_BRUSH_REQUIRED in reasons)
     }
 

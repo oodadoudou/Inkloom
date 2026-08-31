@@ -4700,6 +4700,7 @@ class InkCanvasView(context: Context) : View(context) {
                             ),
                         ) ?: return null
                     }
+                    val (wetGrain, wetGrainOffset) = resolveTextureGrain(program.textureGrain, program.renderSeed)
                     val wet = WetPaintDefinition(
                         diameterPixels = diameterPixels,
                         colorArgb = inkColor,
@@ -4710,6 +4711,14 @@ class InkCanvasView(context: Context) : View(context) {
                         attack = authored.attack.coerceIn(0f, 1f),
                         pull = authored.pull.coerceIn(0f, 1f),
                         tips = wetTips,
+                        grain = wetGrain,
+                        grainDensity = program.textureGrain?.density ?: 0f,
+                        grainScalePercent = program.textureGrain?.scale ?: 100f,
+                        grainMovement = program.textureGrain?.movement ?: 0f,
+                        grainZoom = program.textureGrain?.zoom ?: 0f,
+                        grainRotationRadians = Math.toRadians((program.textureGrain?.rotationDegrees ?: 0f).toDouble()).toFloat(),
+                        grainPhaseX = wetGrainOffset.x,
+                        grainPhaseY = wetGrainOffset.y,
                         spacingRatio = program.spacingPolicy?.value?.coerceIn(.005f, 4f) ?: .16f,
                         roundness = program.tip.aspect.coerceIn(.01f, 1f),
                         rotationRadians = Math.toRadians(program.tip.rotationDegrees.toDouble()).toFloat(),

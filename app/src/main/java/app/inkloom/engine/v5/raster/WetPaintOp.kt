@@ -20,6 +20,7 @@ import kotlin.math.floor
 import kotlin.math.hypot
 import kotlin.math.sin
 import kotlin.math.sqrt
+import kotlin.math.pow
 
 data class WetPaintDefinition(
     val diameterPixels: Float,
@@ -31,6 +32,14 @@ data class WetPaintDefinition(
     val attack: Float = .7f,
     val pull: Float = .35f,
     val tips: List<BrushTipMask> = emptyList(),
+    val grain: BrushTipMask? = null,
+    val grainDensity: Float = 0f,
+    val grainScalePercent: Float = 100f,
+    val grainMovement: Float = 0f,
+    val grainZoom: Float = 0f,
+    val grainRotationRadians: Float = 0f,
+    val grainPhaseX: Float = 0f,
+    val grainPhaseY: Float = 0f,
     val spacingRatio: Float = .16f,
     val roundness: Float = 1f,
     val rotationRadians: Float = 0f,
@@ -53,6 +62,11 @@ data class WetPaintDefinition(
         require(attack.isFinite() && attack in 0f..1f)
         require(pull.isFinite() && pull in 0f..1f)
         require(spacingRatio.isFinite() && spacingRatio in .005f..4f)
+        require(grainDensity.isFinite() && grainDensity in 0f..1f)
+        require(grainScalePercent.isFinite() && grainScalePercent in 1f..4000f)
+        require(grainMovement.isFinite() && grainMovement in 0f..1f)
+        require(grainZoom.isFinite() && grainZoom in 0f..1f)
+        require(grainRotationRadians.isFinite())
         require(roundness.isFinite() && roundness in .01f..1f)
         require(rotationRadians.isFinite())
         require(randomRotationRadians.isFinite() && randomRotationRadians >= 0f)
@@ -71,6 +85,12 @@ class WetPaintOp(
     private val selection: MaskTileSurfaceSnapshot? = null,
     private val sampleTransforms: List<PaintSampleTransform> = listOf(PaintSampleTransform.Identity),
 ) : PaintOp {
+    private val grainCosine = cos(definition.grainRotationRadians)
+    private val grainSine = sin(definition.grainRotationRadians)
+    private val grainWavelength = (
+        definition.diameterPixels * definition.grainScalePercent / 100f *
+            (100f / definition.diameterPixels.coerceAtLeast(.1f)).pow(definition.grainZoom)
+        ).coerceAtLeast(1f)
     init {
         require(sampleTransforms.isNotEmpty())
     }
@@ -270,6 +290,19 @@ class WetPaintOp(
                             if (distanceSquared <= innerRadiusSquared) 1f else {
                                 (outerRadius - sqrt(distanceSquared)) * inverseEdge
                             }
+                        }
+                        if (coverage <= 0f) continue
+                        definition.grain?.let { grain ->
+                            val grainX = x + .5f - sample.point.x * (1f - definition.grainMovement)
+                            val grainY = y + .5f - sample.point.y * (1f - definition.grainMovement)
+                            val rotatedX = grainCosine * grainX + grainSine * grainY
+                            val rotatedY = -grainSine * grainX + grainCosine * grainY
+                            fun repeat(value: Float): Float = value - floor(value)
+                            val sampled = grain.coverageAt(
+                                repeat(rotatedX / grainWavelength + definition.grainPhaseX),
+                                repeat(rotatedY / grainWavelength + definition.grainPhaseY),
+                            )
+                            coverage *= 1f - definition.grainDensity + sampled * definition.grainDensity
                         }
                         if (coverage <= 0f) continue
                         selection?.let { mask ->
