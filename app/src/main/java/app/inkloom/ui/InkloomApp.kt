@@ -5258,6 +5258,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     setCompiledBrushProgramV5(
         compiledProgram,
         required = paintTool,
+        sourceBrush = activeBrush,
     )
     switchInputConfiguration(selectedTool, activeBrush?.id)
     fingerDrawingEnabled = settings.fingerDrawing

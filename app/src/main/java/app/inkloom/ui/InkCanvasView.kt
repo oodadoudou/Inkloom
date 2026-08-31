@@ -38,6 +38,9 @@ import app.inkloom.brushpresetv5.CompiledBrushProgramV5Cache
 import app.inkloom.brushpresetv5.RenderBackend as RenderBackendV5
 import app.inkloom.engine.v5.diagnostics.PaintingTruthDiagnostics
 import app.inkloom.engine.v5.diagnostics.StrokeTrace
+import app.inkloom.engine.v5.diagnostics.BrushExecutionFingerprint
+import app.inkloom.engine.v5.diagnostics.BrushExecutionFingerprints
+import app.inkloom.engine.v5.diagnostics.BrushExecutionIdentity
 import app.inkloom.engine.v5.history.EngineTransaction
 import app.inkloom.engine.v5.history.EngineTransactionJournal
 import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
@@ -180,6 +183,7 @@ import app.inkloom.document.FloodFill
 import app.inkloom.document.LiquifyMode
 import app.inkloom.document.WaterEdge
 import app.inkloom.model.EditorTool
+import app.inkloom.model.ImportedBrush
 import app.inkloom.model.SymmetryMode
 import app.inkloom.settings.CspShortcutResolver
 import app.inkloom.settings.AxisShortcutBinding
@@ -315,6 +319,8 @@ class InkCanvasView(context: Context) : View(context) {
     @VisibleForTesting internal fun currentStrokeIdForTest(): String = currentStrokeId
     @VisibleForTesting
     internal fun awaitV5StrokeWorkerIdleForTest() = v5StrokeController.awaitIdle()
+    @VisibleForTesting
+    internal fun activeRasterSnapshotForTest() = rasterTileSurfaceFor(activeLayerId)?.snapshot()
     private var pendingSmudgeX = 0f
     private var pendingSmudgeY = 0f
     private var hasPendingSmudge = false
@@ -554,6 +560,10 @@ class InkCanvasView(context: Context) : View(context) {
     private var configuredInputTool: EditorTool? = null
     private var configuredInputBrushId: String? = null
     private var compiledBrushProgramV5: CompiledBrushProgramV5? = null
+    private var brushExecutionIdentity: BrushExecutionIdentity? = null
+    @VisibleForTesting internal var lastBrushExecutionFingerprint: BrushExecutionFingerprint? = null
+        private set
+    private var activeV5Execution: Pair<BrushExecutionIdentity, String>? = null
     internal val compiledBrushProgramV5Cache = CompiledBrushProgramV5Cache()
     private var compiledBrushProgramV5Required: Boolean = false
     private val protectedLayerIds = mutableSetOf<String>()
@@ -1622,14 +1632,21 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     /** Installs an immutable V5 program for the next contact; null returns to library configuration. */
-    fun setCompiledBrushProgramV5(program: CompiledBrushProgramV5?, required: Boolean = program != null) {
+    fun setCompiledBrushProgramV5(
+        program: CompiledBrushProgramV5?,
+        required: Boolean = program != null,
+        sourceBrush: ImportedBrush? = null,
+    ) {
         // Compose may decode the same durable preset on every AndroidView update. Semantic
         // equality is the stroke boundary: never cancel an active contact merely because the
         // immutable program was re-instantiated.
-        if (compiledBrushProgramV5?.preset == program?.preset && compiledBrushProgramV5Required == required) return
+        if (compiledBrushProgramV5?.preset == program?.preset && compiledBrushProgramV5Required == required &&
+            brushExecutionIdentity?.sourceBrushId == (sourceBrush?.id ?: program?.identity?.id)
+        ) return
         if (activeTool != null) cancelActiveGestureForNavigation()
         compiledBrushProgramV5 = program
         compiledBrushProgramV5Required = required
+        brushExecutionIdentity = program?.let { BrushExecutionFingerprints.identity(it, sourceBrush) }
         program?.let {
             brushId = it.renderBrushId
             brushRenderSeed = it.renderSeed
@@ -1949,6 +1966,9 @@ class InkCanvasView(context: Context) : View(context) {
                 parent?.requestDisallowInterceptTouchEvent(true)
                 activeTool = resolveTool(event, eventToolType)
                 activeInputWasStylus = isStylus
+                if (activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER)) {
+                    currentStrokeId = java.util.UUID.randomUUID().toString()
+                }
                 // Freeze CSP's screen-size conversion at contact start. A viewport update cannot
                 // change an in-progress stroke/tool footprint halfway through the gesture.
                 gestureBrushSize = documentBrushSize()
@@ -1969,7 +1989,6 @@ class InkCanvasView(context: Context) : View(context) {
                     return true
                 }
                 if (activeTool == EditorTool.ERASER) {
-                    currentStrokeId = java.util.UUID.randomUUID().toString()
                     if (beginV5PaintGesture(event, pointerIndex, normalizedX, normalizedY)) return true
                     onPaintCapabilityRejected("This eraser configuration is not available in Paint Engine V5")
                     activeTool = null
@@ -2689,6 +2708,7 @@ class InkCanvasView(context: Context) : View(context) {
             )
         }
         v5StrokeController.cancel()
+        activeV5Execution = null
         v5RejectedContact = false
         finishActiveStrokePreview()
         pendingMaterialBarrierSequence = null
@@ -4387,6 +4407,7 @@ class InkCanvasView(context: Context) : View(context) {
         val maximumRadius: Float,
         val runtimeId: String,
         val smoothing: Float = 0f,
+        val executionIdentity: BrushExecutionIdentity? = null,
     )
 
     /** Resolves every resource and scalar before contact work starts. Null means explicitly
@@ -4421,6 +4442,9 @@ class InkCanvasView(context: Context) : View(context) {
         compiledBrushProgramV5
             ?.takeIf { active != EditorTool.ERASER || it.output == BrushOutputV5.ERASE }
             ?.let { program ->
+            val executionIdentity = requireNotNull(brushExecutionIdentity) {
+                "Compiled brush ${program.identity.id} has no execution identity"
+            }
             if (program.strokeShaping.postCorrection > .0001f || program.strokeShaping.taperStartEnabled ||
                 program.strokeShaping.taperEndEnabled
             ) return null
@@ -4639,6 +4663,7 @@ class InkCanvasView(context: Context) : View(context) {
                     maximumDiameter * .5f + maximumScatter + 2f,
                     "preset-v5:stamp:${program.identity.id}",
                     program.strokeShaping.smoothing.coerceIn(0f, 1f),
+                    executionIdentity,
                 )
             }
             when (program.backend) {
@@ -4685,6 +4710,7 @@ class InkCanvasView(context: Context) : View(context) {
                         particleDiameter * .5f + scatterRadius + 2f,
                         "preset-v5:airbrush:${program.identity.id}",
                         program.strokeShaping.smoothing.coerceIn(0f, 1f),
+                        executionIdentity,
                     )
                 }
                 RenderBackendV5.WET_PAINT -> {
@@ -4740,6 +4766,7 @@ class InkCanvasView(context: Context) : View(context) {
                         diameterPixels * .5f + 2f,
                         "preset-v5:wet:${program.identity.id}",
                         program.strokeShaping.smoothing.coerceIn(0f, 1f),
+                        executionIdentity,
                     )
                 }
                 RenderBackendV5.ASSET_STAMP -> {
@@ -4770,6 +4797,7 @@ class InkCanvasView(context: Context) : View(context) {
                         diameterPixels * .5f + 2f,
                         "preset-v5:procedural-stamp:${program.identity.id}",
                         program.strokeShaping.smoothing.coerceIn(0f, 1f),
+                        executionIdentity,
                     )
                 }
                 RenderBackendV5.CONTINUOUS_RIBBON, RenderBackendV5.PROCEDURAL_STAMP -> {
@@ -4797,6 +4825,7 @@ class InkCanvasView(context: Context) : View(context) {
                         diameterPixels * .5f + 2f,
                         "preset-v5:dry:${program.identity.id}",
                         program.strokeShaping.smoothing.coerceIn(0f, 1f),
+                        executionIdentity,
                     )
                 }
             }
@@ -4868,6 +4897,12 @@ class InkCanvasView(context: Context) : View(context) {
             )
             return true
         }
+        configuration.executionIdentity?.let { identity ->
+            val expectedPresetId = configuredInputBrushId ?: compiledBrushProgramV5?.identity?.id
+            check(expectedPresetId == identity.presetId) {
+                "UI selected preset $expectedPresetId but StrokeSession uses ${identity.presetId}"
+            }
+        }
         v5GestureStartNormalized = normalizedX to normalizedY
         activeCanvasSnapConstraint = CanvasGuides.constraintAt(
             canvasGuideState,
@@ -4894,6 +4929,7 @@ class InkCanvasView(context: Context) : View(context) {
             onPaintCapabilityRejected("A V5 paint contact is already active")
             return true
         }
+        activeV5Execution = configuration.executionIdentity?.let { it to configuration.paintOp.javaClass.name }
         if (activeTool == EditorTool.ERASER) {
             EraserLifecycleTrace.record(
                 EraserLifecycleTrace.Event(
@@ -5007,9 +5043,18 @@ class InkCanvasView(context: Context) : View(context) {
         val sample = v5DocumentSample(event, pointerIndex, normalizedX, normalizedY, historicalIndex = null)
         val finishingEraser = activeTool == EditorTool.ERASER
         val finishingStrokeId = currentStrokeId
+        val finishingExecution = activeV5Execution
+        activeV5Execution = null
         val accepted = v5StrokeController.finish(sample) { published ->
             v5MainHandler.post {
-                acceptV5PublishedGesture(layerId, surface, published, finishingStrokeId, finishingEraser)
+                acceptV5PublishedGesture(
+                    layerId,
+                    surface,
+                    published,
+                    finishingStrokeId,
+                    finishingEraser,
+                    finishingExecution,
+                )
             }
         }
         if (finishingEraser && accepted) {
@@ -5036,9 +5081,20 @@ class InkCanvasView(context: Context) : View(context) {
         published: app.inkloom.engine.v5.raster.PublishedPaintDelta,
         strokeId: String,
         wasEraser: Boolean,
+        execution: Pair<BrushExecutionIdentity, String>?,
     ) {
         try {
             v5DryPublishedGeneration = published.snapshot.revision
+            if (BuildConfig.PAINTING_DIAGNOSTICS && execution != null) {
+                lastBrushExecutionFingerprint = BrushExecutionFingerprints.committed(
+                    execution.first,
+                    execution.second,
+                    strokeId,
+                    published.record,
+                    published.snapshot,
+                )
+                android.util.Log.i("InkloomBrushExecution", lastBrushExecutionFingerprint.toString())
+            }
             published.dirtyBounds?.takeIf { published.record.changedTileCount > 0 }?.let { bounds ->
                 if (wasEraser) {
                     EraserLifecycleTrace.record(
