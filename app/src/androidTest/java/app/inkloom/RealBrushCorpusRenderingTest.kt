@@ -307,7 +307,9 @@ class RealBrushCorpusRenderingTest {
             setRasterLayerSurfaces(mapOf("paint" to surface))
             onRasterLayerCommitted = { commit -> committed += commit.capturePatch() }
             onPaintCapabilityRejected = { rejection = it }
-            applyBrushConfiguration(EditorTool.PEN, AppSettings(), brush, brush.defaultSize.coerceAtLeast(20f), 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
+            // A fixed bounded diameter makes cross-brush behavior probes comparable and prevents
+            // giant authored defaults from turning the gate into a fill-rate benchmark.
+            applyBrushConfiguration(EditorTool.PEN, AppSettings(), brush, brush.defaultSize.coerceIn(20f, 64f), 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
             prepareBrushAssetsNow()
         }
         instrumentation.runOnMainSync {
