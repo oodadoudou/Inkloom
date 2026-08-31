@@ -371,6 +371,9 @@ class ProcreateBrushParserTest {
                 brush.semanticMappings.filter { it.sourceSemantic in setOf("PROCREATE.shape", "PROCREATE.grain.basic") }
                     .any { it.fidelity == app.inkloom.model.SemanticFidelity.APPROXIMATE }
             })
+            assertTrue(approximated.all { brush ->
+                brush.report.none { it.contains("extracted as the real", ignoreCase = true) }
+            })
             assertTrue(terminal.none { brush ->
                 brush.v5PresetJson != null &&
                     brush.report.any { it.startsWith("APPROXIMATED_RESOURCE:") } &&

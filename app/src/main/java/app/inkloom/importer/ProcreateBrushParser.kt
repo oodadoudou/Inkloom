@@ -424,8 +424,19 @@ class ProcreateBrushParser(
             report = buildList {
                 addAll(resourceReports)
                 add("Procreate brush $position/$total decoded from NSKeyedArchive version ${metadata.int("version")}")
-                add(if (shape != null) "Procreate Shape.png extracted as the real stamp source" else "Procreate shape bitmap unavailable from source reference ${sourceTipReference ?: "<missing>"}")
-                if (grain != null) add("Procreate Grain.png extracted with independent movement, scale, zoom, rotation, depth dynamics, brightness, contrast, invert and per-stroke offset settings")
+                add(when {
+                    resourceReports.any { it.startsWith("APPROXIMATED_RESOURCE:shape:") } ->
+                        "Inkloom procedural shape substitute is active; this is not the original Procreate Source Library bitmap"
+                    shape != null -> "Procreate Shape.png resolved as the exact stamp source"
+                    else -> "Procreate shape bitmap unavailable from source reference ${sourceTipReference ?: "<missing>"}"
+                })
+                if (grain != null) add(
+                    if (resourceReports.any { it.startsWith("APPROXIMATED_RESOURCE:grain:") }) {
+                        "Inkloom procedural grain substitute is active with the decoded movement, scale, zoom, rotation, depth, brightness, contrast, invert and offset program"
+                    } else {
+                        "Procreate Grain.png resolved exactly with independent movement, scale, zoom, rotation, depth dynamics, brightness, contrast, invert and per-stroke offset settings"
+                    },
+                )
                 add("Stroke spacing, smoothing, size/opacity limits, shape angle, roundness, azimuth and direction behavior mapped")
                 if (!procreateTaper.isDisabled()) add("Procreate Pressure and Touch Taper retained independently with size, opacity, tip, pressure, link, and classic controls")
                 if (streamLine > DYNAMIC_EPSILON || streamLinePressure > DYNAMIC_EPSILON || procreateStabilization > DYNAMIC_EPSILON || motionFiltering > DYNAMIC_EPSILON) add("Procreate StreamLine, pressure smoothing, moving-average stabilization and motion filtering preserved independently")
