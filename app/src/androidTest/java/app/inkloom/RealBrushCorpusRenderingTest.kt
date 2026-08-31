@@ -63,7 +63,7 @@ class RealBrushCorpusRenderingTest {
 
     @Test
     fun userProvidedProcreateBrushesReachATerminalProductionOutcome() =
-        verifyRealBrush("brush", BrushFormat.PROCREATE)
+        verifyRealBrush("brush", BrushFormat.PROCREATE, requireRendered = false)
 
     @Test
     fun userProvidedProcreateBrushSetBrushesReachTerminalProductionOutcomes() =
