@@ -13,6 +13,7 @@ import app.inkloom.importer.ProcreateBrushParser
 import app.inkloom.importer.SutBrushParser
 import app.inkloom.importer.ProductionBrushRenderProbe
 import app.inkloom.importer.BrushRenderProbeResult
+import app.inkloom.importer.BrushMetadataStore
 import app.inkloom.brushpresetv5.BrushPresetV5Import
 import app.inkloom.brushpresetv5.BrushExecutionCapabilityResolver
 import app.inkloom.brushpresetv5.BrushExecutionCapabilityResolution
@@ -62,11 +63,11 @@ class RealBrushCorpusRenderingTest {
 
     @Test
     fun userProvidedProcreateBrushesReachATerminalProductionOutcome() =
-        verifyRealBrush("brush", BrushFormat.PROCREATE, requireRendered = false)
+        verifyRealBrush("brush", BrushFormat.PROCREATE)
 
     @Test
     fun userProvidedProcreateBrushSetBrushesReachTerminalProductionOutcomes() =
-        verifyRealBrush("brushset", BrushFormat.PROCREATE, requireRendered = false)
+        verifyRealBrush("brushset", BrushFormat.PROCREATE)
 
     @Test
     fun userProvidedAbrBrushCommitsAndRendersInk() = verifyRealBrush("abr", BrushFormat.ABR)
@@ -92,6 +93,7 @@ class RealBrushCorpusRenderingTest {
             var discoveredCount = 0
             var renderedCount = 0
             var rejectedCount = 0
+            val renderedBrushes = mutableListOf<ImportedBrush>()
             sources.forEachIndexed { index, source ->
                 val parsed = parse(source, format, File(assetRoot, "source-$index"))
                 assertNotNull("No $format brush parsed from ${source.name}", parsed.firstOrNull())
@@ -162,6 +164,7 @@ class RealBrushCorpusRenderingTest {
                     assertEquals(format, representative.format)
                     if (brushCommitsAndRenders(representative)) {
                         renderedCount += 1
+                        renderedBrushes += representative
                         if (verifyRealtime) assertSutBrushKeepsRealTimePreview(representative)
                     } else {
                         rejectedCount += 1
@@ -180,9 +183,34 @@ class RealBrushCorpusRenderingTest {
             )
             if (requireRendered) {
                 assertTrue("No staged .$extension $format brush rendered through Paint Engine V5", renderedCount > 0)
+                assertPersistenceReloadRemainsExecutable(extension, renderedBrushes)
             }
         } finally {
             assetRoot.deleteRecursively()
+        }
+    }
+
+    private fun assertPersistenceReloadRemainsExecutable(
+        extension: String,
+        renderedBrushes: List<ImportedBrush>,
+    ) {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val preferenceName = "real-brush-$extension-${System.nanoTime()}"
+        val store = BrushMetadataStore(context, preferenceName)
+        try {
+            store.save(renderedBrushes)
+            val reloaded = BrushMetadataStore(context, preferenceName).load()
+
+            assertEquals(renderedBrushes.map(ImportedBrush::id), reloaded.map(ImportedBrush::id))
+            assertEquals(renderedBrushes.map(ImportedBrush::groupName), reloaded.map(ImportedBrush::groupName))
+            assertEquals(renderedBrushes.map(ImportedBrush::sortOrder), reloaded.map(ImportedBrush::sortOrder))
+            assertEquals(
+                "Reloaded .$extension brush must still execute through the production renderer",
+                BrushRenderProbeResult.Succeeded,
+                ProductionBrushRenderProbe(context).probe(reloaded.first()),
+            )
+        } finally {
+            context.getSharedPreferences(preferenceName, android.content.Context.MODE_PRIVATE).edit().clear().commit()
         }
     }
 
