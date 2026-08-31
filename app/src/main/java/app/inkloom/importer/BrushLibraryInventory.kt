@@ -15,11 +15,24 @@ object BrushLibraryInventory {
 
     fun executable(brush: ImportedBrush): Boolean {
         if (brush.compatibility == Compatibility.FAILED) return false
-        if (brush.format !in setOf(BrushFormat.SYSTEM, BrushFormat.INKLOOM) &&
-            (brush.semanticMappings.isEmpty() || brush.semanticMappings.any {
-                it.executionDisposition != SemanticExecutionDisposition.SUPPORTED_AND_EXECUTED
-            })
-        ) return false
+        if (brush.format !in setOf(BrushFormat.SYSTEM, BrushFormat.INKLOOM)) {
+            if (brush.semanticMappings.isEmpty()) return false
+            if (brush.semanticMappings.any {
+                    it.executionDisposition == SemanticExecutionDisposition.UNSUPPORTED_WITH_EXPLICIT_REASON
+                }
+            ) return false
+            val preserved = brush.semanticMappings.filter {
+                it.executionDisposition == SemanticExecutionDisposition.PRESERVED_SOURCE_ONLY
+            }
+            if (preserved.any { mapping ->
+                    brush.report.none { report ->
+                        report.startsWith(
+                            "SEMANTIC_CAPABILITY:${SemanticExecutionDisposition.PRESERVED_SOURCE_ONLY.name}:${mapping.sourceSemantic}:",
+                        )
+                    }
+                }
+            ) return false
+        }
         val preset = brush.v5PresetJson?.let(BrushPresetV5Codec::decodeOrNull) ?: return false
         val program = runCatching { CompiledBrushProgramV5.compile(preset) }.getOrNull() ?: return false
         return BrushExecutionCapabilityResolver.resolve(program) == BrushExecutionCapabilityResolution.Supported
