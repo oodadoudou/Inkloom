@@ -51,6 +51,7 @@ class PixelLayerProjectionCache(
         pixelFormat = pixelFormat,
     )
     private var signatures: Map<PixelTileKey, TileSignature> = emptyMap()
+    private var lastInputState: List<ProjectionInputState>? = null
     private var rgba8BatchPixels = IntArray(0)
     private var f16BatchPixels = LongArray(0)
     private var batchCoverage = ByteArray(0)
@@ -66,6 +67,14 @@ class PixelLayerProjectionCache(
     val snapshot: PixelTileSurfaceSnapshot get() = projection.snapshot()
 
     fun update(layers: List<PixelLayerProjectionInput>): PixelLayerProjectionUpdate {
+        val inputState = layers.map(ProjectionInputState::from)
+        if (inputState == lastInputState) {
+            return PixelLayerProjectionUpdate(
+                snapshot = projection.snapshot(),
+                recomposedTileCount = 0,
+                reusedTileCount = signatures.size,
+            )
+        }
         layers.forEach(::requireCompatible)
         val prepared = prepare(layers)
         val nextSignatures = buildSignatures(prepared)
@@ -73,6 +82,7 @@ class PixelLayerProjectionCache(
             signatures[key] != nextSignatures[key]
         }
         if (dirtyKeys.isEmpty()) {
+            lastInputState = inputState
             return PixelLayerProjectionUpdate(
                 snapshot = projection.snapshot(),
                 recomposedTileCount = 0,
@@ -108,6 +118,7 @@ class PixelLayerProjectionCache(
             }
             write.commit().close()
             signatures = nextSignatures
+            lastInputState = inputState
         } catch (failure: Throwable) {
             write.cancel()
             throw failure
@@ -676,6 +687,45 @@ class PixelLayerProjectionCache(
         val baseMaskGeneration: Long?,
         val baseMaskDefaultAlpha: Int?,
     )
+
+    /**
+     * Complete layer-level dependency for the zero-dirty-frame fast path. Tile generation changes
+     * advance their owning surface revision, while every non-pixel value that affects composition
+     * is retained explicitly. Equality therefore cannot turn a real edit into a reused frame.
+     */
+    private data class ProjectionInputState(
+        val layerId: String,
+        val surfaceId: String,
+        val surfaceRevision: Long,
+        val visible: Boolean,
+        val opacityBits: Int,
+        val blendMode: PixelBlendMode,
+        val maskSurfaceId: String?,
+        val maskRevision: Long?,
+        val maskDefaultAlpha: Int?,
+        val clipToBaseBelow: Boolean,
+        val activeDeltaSurfaceId: String?,
+        val activeDeltaRevision: Long?,
+        val activeDeltaBlend: PixelActiveDeltaBlend,
+    ) {
+        companion object {
+            fun from(input: PixelLayerProjectionInput): ProjectionInputState = ProjectionInputState(
+                layerId = input.layerId,
+                surfaceId = input.pixels.surfaceId,
+                surfaceRevision = input.pixels.revision,
+                visible = input.visible,
+                opacityBits = input.opacity.toRawBits(),
+                blendMode = input.blendMode,
+                maskSurfaceId = input.mask?.surfaceId,
+                maskRevision = input.mask?.revision,
+                maskDefaultAlpha = input.mask?.defaultAlpha,
+                clipToBaseBelow = input.clipToBaseBelow,
+                activeDeltaSurfaceId = input.activeDelta?.surfaceId,
+                activeDeltaRevision = input.activeDelta?.revision,
+                activeDeltaBlend = input.activeDeltaBlend,
+            )
+        }
+    }
 
     companion object {
         private const val UNDERLAY_LAYER_THRESHOLD = 8
