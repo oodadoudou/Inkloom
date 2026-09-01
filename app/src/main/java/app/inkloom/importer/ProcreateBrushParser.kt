@@ -691,7 +691,7 @@ class ProcreateBrushParser(
     )
 
     companion object {
-        const val CURRENT_VERSION = 29
+        const val CURRENT_VERSION = 30
         private const val MAX_ENTRIES = 4_096
         private const val MAX_ENTRY_BYTES = 32L * 1024L * 1024L
         private const val MAX_EXPANDED_BYTES = 384L * 1024L * 1024L

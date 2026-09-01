@@ -44,6 +44,32 @@ class ProcreateResourceResolverTest {
         assertTrue(first.readBytes().take(8).toByteArray().contentEquals(PNG_SIGNATURE))
     }
 
+    @Test fun missingDefaultSourceStillGetsAnExplicitDeterministicApproximation() = withTempDirectory { root ->
+        val resolver = ProcreateResourceResolver(allowProceduralApproximation = true)
+        val shape = resolver.resolve(null, null, ProcreateResourceRole.SHAPE, File(root, "shape.png"))
+        val grain = resolver.resolve(null, "\$null", ProcreateResourceRole.GRAIN, File(root, "grain.png"))
+
+        assertEquals(ProcreateResourceState.APPROXIMATED_RESOURCE, shape.state)
+        assertEquals(ProcreateResourceState.APPROXIMATED_RESOURCE, grain.state)
+        assertTrue(requireNotNull(shape.file).length() > 0L)
+        assertTrue(requireNotNull(grain.file).length() > 0L)
+        assertTrue(shape.sourceReference!!.contains("Default-Hard-Shape"))
+        assertTrue(grain.sourceReference!!.contains("Default-Blank-Grain"))
+    }
+
+    @Test fun opaqueSourceLibraryIdentifiersAreSafeApproximationSeeds() = withTempDirectory { root ->
+        val output = File(root, "shape.png")
+        val result = ProcreateResourceResolver(allowProceduralApproximation = true).resolve(
+            embedded = null,
+            sourceReference = "asset-library://shape/专用笔尖?revision=4",
+            role = ProcreateResourceRole.SHAPE,
+            output = output,
+        )
+
+        assertEquals(ProcreateResourceState.APPROXIMATED_RESOURCE, result.state)
+        assertTrue(output.length() > 0L)
+    }
+
     private fun withTempDirectory(block: (File) -> Unit) {
         val root = Files.createTempDirectory("inkloom-procreate-resource").toFile()
         try {

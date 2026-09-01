@@ -43,19 +43,33 @@ class ProcreateResourceResolver(
         if (embedded?.isFile == true && embedded.length() > 0L) {
             return ProcreateResolvedResource(embedded, ProcreateResourceState.EXACT_EMBEDDED, null)
         }
-        val reference = sourceReference?.trim()?.takeIf { it.isNotBlank() && it != "\$null" }
-            ?: return ProcreateResolvedResource(null, ProcreateResourceState.UNSUPPORTED_MISSING_RESOURCE, null)
-        resolveFromLocalPack(reference)?.let { source ->
+        val sourceReferenceValue = sourceReference?.trim()?.takeIf { it.isNotBlank() && it != "\$null" }
+        sourceReferenceValue?.let(::resolveFromLocalPack)?.let { source ->
             output.parentFile?.mkdirs()
             source.copyTo(output, overwrite = true)
-            return ProcreateResolvedResource(output, ProcreateResourceState.EXACT_LOCAL_RESOURCE_PACK, reference)
+            return ProcreateResolvedResource(output, ProcreateResourceState.EXACT_LOCAL_RESOURCE_PACK, sourceReferenceValue)
         }
-        if (allowProceduralApproximation && REFERENCE_PATTERN.matches(reference.substringAfterLast('/'))) {
+        if (allowProceduralApproximation) {
+            // A Procreate archive may refer to a Source Library item instead of embedding its
+            // bytes. Some archives also omit the reference for the default hard shape/blank
+            // grain. Neither case makes the decoded brush program unusable: create an original,
+            // deterministic Inkloom substitute and report it as approximate. The reference is
+            // used only as a bounded hash seed; it is never interpreted as a filesystem path.
+            val approximationSeed = sourceReferenceValue
+                ?.take(MAX_REFERENCE_SEED_LENGTH)
+                ?: when (role) {
+                    ProcreateResourceRole.SHAPE -> DEFAULT_SHAPE_SEED
+                    ProcreateResourceRole.GRAIN -> DEFAULT_GRAIN_SEED
+                }
             output.parentFile?.mkdirs()
-            ProcreateProceduralResource.write(output, reference, role)
-            return ProcreateResolvedResource(output, ProcreateResourceState.APPROXIMATED_RESOURCE, reference)
+            ProcreateProceduralResource.write(output, approximationSeed, role)
+            return ProcreateResolvedResource(
+                output,
+                ProcreateResourceState.APPROXIMATED_RESOURCE,
+                sourceReferenceValue ?: approximationSeed,
+            )
         }
-        return ProcreateResolvedResource(null, ProcreateResourceState.UNSUPPORTED_MISSING_RESOURCE, reference)
+        return ProcreateResolvedResource(null, ProcreateResourceState.UNSUPPORTED_MISSING_RESOURCE, sourceReferenceValue)
     }
 
     private fun resolveFromLocalPack(reference: String): File? {
@@ -75,7 +89,9 @@ class ProcreateResourceResolver(
         private const val MAX_PACK_DEPTH = 8
         private const val MAX_MATCHES = 8
         private const val MAX_RESOURCE_BYTES = 16L * 1024L * 1024L
-        private val REFERENCE_PATTERN = Regex("[A-Za-z0-9][A-Za-z0-9._ ()#-]{0,180}\\.(png|jpe?g)", RegexOption.IGNORE_CASE)
+        private const val MAX_REFERENCE_SEED_LENGTH = 512
+        private const val DEFAULT_SHAPE_SEED = "Inkloom-Procreate-Default-Hard-Shape.png"
+        private const val DEFAULT_GRAIN_SEED = "Inkloom-Procreate-Default-Blank-Grain.png"
     }
 }
 

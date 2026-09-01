@@ -366,8 +366,20 @@ class ProcreateBrushParserTest {
                 brush.v5PresetJson != null && brush.report.any { it.startsWith("APPROXIMATED_RESOURCE:") }
             }
             assertEquals(391, terminal.size)
+            assertEquals(
+                "Every decoded corpus brush must end as a selectable V5 program when production " +
+                    "resource approximation is enabled",
+                terminal.size,
+                terminal.count { it.v5PresetJson != null },
+            )
             assertTrue("The real corpus must exercise explicit source-resource approximation", approximated.isNotEmpty())
-            assertTrue(approximated.all { brush ->
+            val approximatedPrimary = approximated.filter { brush ->
+                brush.report.any { line ->
+                    line.startsWith("APPROXIMATED_RESOURCE:shape:") ||
+                        line.startsWith("APPROXIMATED_RESOURCE:grain:")
+                }
+            }
+            assertTrue(approximatedPrimary.all { brush ->
                 brush.semanticMappings.filter { it.sourceSemantic in setOf("PROCREATE.shape", "PROCREATE.grain.basic") }
                     .any { it.fidelity == app.inkloom.model.SemanticFidelity.APPROXIMATE }
             })
