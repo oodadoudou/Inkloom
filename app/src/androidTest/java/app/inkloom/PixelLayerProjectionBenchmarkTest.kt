@@ -188,8 +188,4 @@ class PixelLayerProjectionBenchmarkTest {
         }
     }
 
-    /** Nearest-rank p95. The previous floor-without-minus-one formula selected the maximum for a
-     * 20-sample window, so a single emulator scheduling pause was incorrectly reported as p95. */
-    private fun p95Index(size: Int): Int =
-        (kotlin.math.ceil(size * .95).toInt() - 1).coerceIn(0, size - 1)
 }

@@ -49,7 +49,7 @@ class RasterLayerPersistenceTest {
             reference = next
         }
         val sorted = elapsed.drop(4).sorted()
-        val p95Ms = sorted[(sorted.size * 95 / 100).coerceAtMost(sorted.lastIndex)] / 1_000_000f
+        val p95Ms = sorted[p95Index(sorted.size)] / 1_000_000f
         android.util.Log.i("InkloomPerf", "incremental_tile_writeback_p95_ms=$p95Ms")
         assertTrue("Incremental dirty-tile writeback p95 was ${p95Ms}ms", p95Ms < 100f)
         assertEquals(Color.rgb(43, 80, 160), assets.loadRasterTileSurface(reference).pixelAt(31, 8))

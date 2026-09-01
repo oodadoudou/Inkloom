@@ -61,7 +61,7 @@ class SystemBrushPerformanceTest {
                         measureStroke(view, live, 750f, 3_000L),
                     )
                     val sorted = steady.flatMap(StrokeTiming::frameTimes).sorted()
-                    val p95Ms = sorted[(sorted.size * 95 / 100).coerceAtMost(sorted.lastIndex)] / 1_000_000f
+                    val p95Ms = sorted[p95Index(sorted.size)] / 1_000_000f
                     val commits = steady.map(StrokeTiming::commitMs).sorted()
                     val medianCommitMs = commits[commits.size / 2]
                     val worstCommitMs = commits.last()

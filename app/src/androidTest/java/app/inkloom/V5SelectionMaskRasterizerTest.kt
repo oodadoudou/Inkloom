@@ -47,13 +47,13 @@ class V5SelectionMaskRasterizerTest {
             closed = true,
         )
         repeat(2) { SelectionMaskRasterizer.rasterize(contour, 1_600f, 2_263f, 1_600, 2_263) }
-        val samples = LongArray(12) {
+        val samples = LongArray(20) {
             val started = System.nanoTime()
             val mask = SelectionMaskRasterizer.rasterize(contour, 1_600f, 2_263f, 1_600, 2_263)
             assertNotNull(mask)
             System.nanoTime() - started
         }.sorted()
-        val p95Millis = samples[(samples.size * 95 / 100).coerceAtMost(samples.lastIndex)] / 1_000_000.0
+        val p95Millis = samples[p95Index(samples.size)] / 1_000_000.0
 
         println("V5 lasso 720-point 1600x2263 p95=${p95Millis}ms")
         assertTrue("final lasso mask p95 ${p95Millis}ms exceeded 150ms", p95Millis < 150.0)
