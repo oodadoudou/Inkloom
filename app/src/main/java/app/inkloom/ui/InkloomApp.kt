@@ -440,7 +440,10 @@ fun InkloomApp(initialIntent: Intent?) {
     val settingsStore = remember { AppSettingsStore(context) }
     val colorPaletteStore = remember { ColorPaletteStore(context) }
     var settings by remember { mutableStateOf(settingsStore.load()) }
-    var brushesOpen by remember { mutableStateOf(settings.showBrushPanel) }
+    // The persisted setting is the single source of truth. Keeping a second mutable flag here
+    // allowed workspace changes and the toolbar click to observe different open states in the
+    // same frame, so a click could close an invisible panel instead of opening Brushes.
+    val brushesOpen = settings.showBrushPanel
     fun updateSettings(value: AppSettings) { settings = settingsStore.save(value) }
     var importedBrushes by remember { mutableStateOf(brushStore.load()) }
     var brushGroups by remember { mutableStateOf(BrushGroupOperations.reconcileRegisteredGroups(brushGroupStore.load(), importedBrushes)) }
@@ -550,7 +553,6 @@ fun InkloomApp(initialIntent: Intent?) {
                         val restoredSettings = preferences.settings.copy(
                             toolboxQuickSlots = ToolboxQuickSlots.remapBrushIds(preferences.settings.toolboxQuickSlots, restored.brushIdMappings),
                         )
-                        brushesOpen = restoredSettings.showBrushPanel
                         updateSettings(restoredSettings)
                         colorPaletteStore.replace(preferences.colorPalette)
                     }.onFailure { error ->
@@ -658,7 +660,6 @@ fun InkloomApp(initialIntent: Intent?) {
             brushStore.save(importedBrushes)
             brushGroups = BrushGroupOperations.reconcileRegisteredGroups(brushGroups, importedBrushes)
             brushGroupStore.save(brushGroups)
-            brushesOpen = true
             updateSettings(settings.copy(showBrushPanel = true))
             destination = AppDestination.EDITOR
         }
@@ -706,9 +707,7 @@ fun InkloomApp(initialIntent: Intent?) {
             importError = importError,
             onBack = { destination = AppDestination.LIBRARY },
             onToggleBrushes = {
-                val open = !brushesOpen
-                brushesOpen = open
-                updateSettings(settings.copy(showBrushPanel = open))
+                updateSettings(settings.copy(showBrushPanel = !settings.showBrushPanel))
             },
             onImportBrushes = { group ->
                 pendingBrushImportGroup = group?.let(BrushGroupOperations::normalize)?.takeIf(String::isNotBlank)
@@ -1636,7 +1635,6 @@ private fun EditorScreen(
         if (active == null || LayerHierarchy.effectiveLocked(selectedPage.layers, active) || !LayerHierarchy.effectiveVisible(selectedPage.layers, active) || active.role in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER)) activeLayerId = selectedPage.layers.firstOrNull { LayerHierarchy.effectiveVisible(selectedPage.layers, it) && !LayerHierarchy.effectiveLocked(selectedPage.layers, it) && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) }?.id ?: LayerIds.INK
     }
     fun applyWorkspaceSettings(restored: AppSettings) {
-        if (brushesOpen != restored.showBrushPanel) onToggleBrushes()
         layersOpen = restored.showLayerPanel
         onSettingsChange(restored)
     }
