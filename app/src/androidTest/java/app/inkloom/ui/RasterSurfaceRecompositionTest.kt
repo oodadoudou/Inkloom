@@ -12,6 +12,7 @@ import app.inkloom.document.InkPage
 import app.inkloom.document.LayerRole
 import app.inkloom.document.RasterTileSurfaceRef
 import app.inkloom.engine.v5.android.PixelTileBitmapAdapter
+import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.model.EditorTool
 import app.inkloom.installV5TestInk
 import java.io.File
@@ -23,6 +24,32 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class RasterSurfaceRecompositionTest {
+    @Test
+    fun queuedCheckpointRecompositionsNeverRestoreErasedPixels() {
+        var loads = 0
+        val runtime = RasterLayerSurfaceRuntime(600) { _, _, _ ->
+            opaqueSurface().also { loads++ }
+        }
+        val initial = page(reference("initial-opaque", 1))
+        val live = runtime.reconcile(initial).getValue(PAINT)
+        live.beginWrite("erase before queued checkpoints").use { write ->
+            write.setPixel(300, 300, Color.TRANSPARENT)
+            write.commit().close()
+        }
+        assertEquals(0, Color.alpha(live.pixelAt(300, 300)))
+
+        val first = reference("local-first", 2)
+        val second = reference("local-second", 3)
+        runtime.acceptPublished(initial, PAINT, first, 0)
+        runtime.acceptPublished(initial, PAINT, second, 0)
+
+        assertSame(live, runtime.reconcile(page(first)).getValue(PAINT))
+        assertEquals("Intermediate checkpoint restored erased pigment", 0, Color.alpha(live.pixelAt(300, 300)))
+        assertSame(live, runtime.reconcile(page(second)).getValue(PAINT))
+        assertEquals(0, Color.alpha(live.pixelAt(300, 300)))
+        assertEquals("No local checkpoint may trigger a disk reload", 1, loads)
+    }
+
     @Test
     fun manyStrokesSurviveCheckpointPublicationAndImportedBrushSwitch() {
         val seed = Bitmap.createBitmap(600, 600, Bitmap.Config.ARGB_8888)
@@ -122,6 +149,15 @@ class RasterSurfaceRecompositionTest {
         Bitmap.createBitmap(pixels, 8, 8, Bitmap.Config.ARGB_8888).also { bitmap ->
             file.outputStream().use { output -> check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) }
             bitmap.recycle()
+        }
+    }
+
+    private fun opaqueSurface() = PixelTileSurface(600, 600).also { surface ->
+        surface.beginWrite("opaque persistence fixture").use { write ->
+            for (row in 0 until 600) for (column in 0 until 600) {
+                write.setPixel(column, row, Color.BLACK)
+            }
+            write.commit().close()
         }
     }
 

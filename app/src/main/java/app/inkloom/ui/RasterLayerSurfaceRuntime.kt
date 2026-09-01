@@ -27,7 +27,7 @@ internal class RasterLayerSurfaceRuntime(
 
     private val surfaces = linkedMapOf<String, PixelTileSurface>()
     private val sourceKeys = mutableMapOf<String, RasterSurfaceSourceKey>()
-    private val locallyPublishedKeys = mutableMapOf<String, RasterSurfaceSourceKey>()
+    private val locallyPublishedKeys = mutableMapOf<String, LinkedHashSet<RasterSurfaceSourceKey>>()
 
     /** Returns stable live surfaces while bringing external document revisions into the runtime. */
     @Synchronized
@@ -52,10 +52,12 @@ internal class RasterLayerSurfaceRuntime(
                     sourceKeys[layer.id] = incoming
                     locallyPublishedKeys.remove(layer.id)
                 }
-                incoming == currentSource || incoming == published -> {
+                incoming == currentSource || published?.contains(incoming) == true -> {
                     // The disk checkpoint may lag newer gestures already present in current.
                     sourceKeys[layer.id] = incoming
-                    if (incoming == published) locallyPublishedKeys.remove(layer.id)
+                    if (published?.remove(incoming) == true && published.isEmpty()) {
+                        locallyPublishedKeys.remove(layer.id)
+                    }
                 }
                 else -> {
                     surfaces[layer.id] = loader(page, layer.id, renderWidth)
@@ -72,7 +74,7 @@ internal class RasterLayerSurfaceRuntime(
     fun acceptPublished(page: InkPage, layerId: String, reference: RasterTileSurfaceRef, rotationQuarterTurns: Int) {
         if (layerId !in surfaces) return
         val layer = page.layers.firstOrNull { it.id == layerId && it.isPaintSurfaceLayer() } ?: return
-        locallyPublishedKeys[layerId] = RasterSurfaceSourceKey.from(
+        val key = RasterSurfaceSourceKey.from(
             page,
             layer.copy(
                 rasterTileSurface = reference,
@@ -80,6 +82,7 @@ internal class RasterLayerSurfaceRuntime(
             ),
             renderWidth,
         )
+        locallyPublishedKeys.getOrPut(layerId, ::linkedSetOf).add(key)
     }
 
     @Synchronized

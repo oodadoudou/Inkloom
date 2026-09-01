@@ -44,6 +44,32 @@ class RasterLayerSurfaceRuntimeTest {
     }
 
     @Test
+    fun intermediateLocalCheckpointCannotReloadOverANewerLiveErase() {
+        var loads = 0
+        val runtime = RasterLayerSurfaceRuntime(1200) { _, _, width ->
+            PixelTileSurface(width, 800, surfaceId = "load-${++loads}")
+        }
+        val initial = page(reference("initial", 1))
+        val live = runtime.reconcile(initial).getValue(PAINT)
+        live.beginWrite("newer live erase").use { write ->
+            write.setPixel(48, 48, 0)
+            write.commit().close()
+        }
+        val firstCheckpoint = reference("first-checkpoint", 2)
+        val secondCheckpoint = reference("second-checkpoint", 3)
+
+        // Persistence may finish both gestures before Compose consumes the first document state.
+        runtime.acceptPublished(initial, PAINT, firstCheckpoint, 0)
+        runtime.acceptPublished(initial, PAINT, secondCheckpoint, 0)
+        val afterIntermediate = runtime.reconcile(page(firstCheckpoint)).getValue(PAINT)
+        val afterLatest = runtime.reconcile(page(secondCheckpoint)).getValue(PAINT)
+
+        assertSame("An intermediate local checkpoint must not replace newer erased pixels", live, afterIntermediate)
+        assertSame(live, afterLatest)
+        assertEquals(1, loads)
+    }
+
+    @Test
     fun externalRevisionStillReloadsUndoClearAndLayerReplacement() {
         var loads = 0
         val runtime = RasterLayerSurfaceRuntime(1200) { _, _, width ->
