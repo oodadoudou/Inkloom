@@ -293,8 +293,10 @@ class WetPaintOp(
                 if (overlap.isEmpty) continue
                 val local = PixelRect(overlap.left - tileLeft, overlap.top - tileTop, overlap.right - tileLeft, overlap.bottom - tileTop)
                 delta.editTile(PixelTileKey(column, row), local) { pixels, stride ->
-                    if (tip == null && definition.grain == null && selection == null) {
-                        val nativeResult = NativeRasterOps.depositRoundWet(
+                    if (selection == null) {
+                        val tipLevelData = tip?.nativeLevel(tipLevel)
+                        val grainLevelData = definition.grain?.nativeLevel(0)
+                        val nativeResult = if (tipLevelData == null && grainLevelData == null) NativeRasterOps.depositRoundWet(
                             destination = pixels,
                             stride = stride,
                             tileLeft = tileLeft,
@@ -308,6 +310,44 @@ class WetPaintOp(
                             outerRadius = outerRadius,
                             innerRadius = innerRadius,
                             inverseEdge = inverseEdge,
+                            baseDeposition = baseDeposition,
+                            transferMode = definition.transferMode.ordinal,
+                            reservoirAlpha = track.reservoir.a,
+                            reservoirRed = track.reservoir.r,
+                            reservoirGreen = track.reservoir.g,
+                            reservoirBlue = track.reservoir.b,
+                        ) else NativeRasterOps.depositTexturedWet(
+                            destination = pixels,
+                            stride = stride,
+                            tileLeft = tileLeft,
+                            tileTop = tileTop,
+                            left = overlap.left,
+                            top = overlap.top,
+                            right = overlap.right,
+                            bottom = overlap.bottom,
+                            centerX = sample.point.x,
+                            centerY = sample.point.y,
+                            radiusX = radiusX,
+                            radiusY = radiusY,
+                            cosine = cosine,
+                            sine = sine,
+                            outerRadius = outerRadius,
+                            innerRadius = innerRadius,
+                            inverseEdge = inverseEdge,
+                            tip = tipLevelData?.coverage,
+                            tipWidth = tipLevelData?.width ?: 0,
+                            tipHeight = tipLevelData?.height ?: 0,
+                            grain = grainLevelData?.coverage,
+                            grainWidth = grainLevelData?.width ?: 0,
+                            grainHeight = grainLevelData?.height ?: 0,
+                            grainDensity = definition.grainDensity,
+                            grainCosine = grainCosine,
+                            grainSine = grainSine,
+                            grainWavelength = grainWavelength,
+                            grainMovement = definition.grainMovement,
+                            grainPhaseX = definition.grainPhaseX,
+                            grainPhaseY = definition.grainPhaseY,
+                            grainFloor = grainFloor,
                             baseDeposition = baseDeposition,
                             transferMode = definition.transferMode.ordinal,
                             reservoirAlpha = track.reservoir.a,

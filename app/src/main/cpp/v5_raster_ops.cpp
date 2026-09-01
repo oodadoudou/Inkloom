@@ -188,6 +188,26 @@ std::uint8_t unpremultiplied_channel(const std::uint8_t* pixel, int channel) {
     return static_cast<std::uint8_t>(std::clamp((pixel[channel] * 255 + alpha / 2) / alpha, 0, 255));
 }
 
+float sample_alpha_mask(const jbyte* alpha, int width, int height, float u, float v) {
+    if (alpha == nullptr || width <= 0 || height <= 0 || !std::isfinite(u) || !std::isfinite(v) ||
+        u < 0.0f || u > 1.0f || v < 0.0f || v > 1.0f) return 0.0f;
+    const float px = u * (width - 1);
+    const float py = v * (height - 1);
+    const int x0 = static_cast<int>(px);
+    const int y0 = static_cast<int>(py);
+    const int x1 = std::min(x0 + 1, width - 1);
+    const int y1 = std::min(y0 + 1, height - 1);
+    const float tx = px - x0;
+    const float ty = py - y0;
+    const float top_left = static_cast<std::uint8_t>(alpha[y0 * width + x0]);
+    const float top_right = static_cast<std::uint8_t>(alpha[y0 * width + x1]);
+    const float bottom_left = static_cast<std::uint8_t>(alpha[y1 * width + x0]);
+    const float bottom_right = static_cast<std::uint8_t>(alpha[y1 * width + x1]);
+    const float top_value = top_left + (top_right - top_left) * tx;
+    const float bottom_value = bottom_left + (bottom_right - bottom_left) * tx;
+    return (top_value + (bottom_value - top_value) * ty) / 255.0f;
+}
+
 }  // namespace
 
 extern "C" JNIEXPORT jboolean JNICALL
@@ -346,6 +366,137 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeDepositRoundWet(
             }
         }
     }
+    env->ReleasePrimitiveArrayCritical(destination_array, destination, 0);
+    return changed ? 1 : 0;
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeDepositTexturedWet(
+    JNIEnv* env,
+    jobject,
+    jintArray destination_array,
+    jint stride,
+    jint tile_left,
+    jint tile_top,
+    jint left,
+    jint top,
+    jint right,
+    jint bottom,
+    jfloat center_x,
+    jfloat center_y,
+    jfloat radius_x,
+    jfloat radius_y,
+    jfloat cosine,
+    jfloat sine,
+    jfloat outer_radius,
+    jfloat inner_radius,
+    jfloat inverse_edge,
+    jbyteArray tip_array,
+    jint tip_width,
+    jint tip_height,
+    jbyteArray grain_array,
+    jint grain_width,
+    jint grain_height,
+    jfloat grain_density,
+    jfloat grain_cosine,
+    jfloat grain_sine,
+    jfloat grain_wavelength,
+    jfloat grain_movement,
+    jfloat grain_phase_x,
+    jfloat grain_phase_y,
+    jfloat grain_floor,
+    jfloat base_deposition,
+    jint transfer_mode,
+    jfloat reservoir_alpha,
+    jfloat reservoir_red,
+    jfloat reservoir_green,
+    jfloat reservoir_blue) {
+    const bool has_tip = tip_array != nullptr;
+    const bool has_grain = grain_array != nullptr;
+    if (destination_array == nullptr || stride <= 0 || left < tile_left || top < tile_top ||
+        right <= left || bottom <= top || right - tile_left > stride || bottom - tile_top > stride ||
+        radius_x <= 0.0f || radius_y <= 0.0f || outer_radius <= 0.0f || inner_radius < 0.0f ||
+        inverse_edge <= 0.0f || transfer_mode < 0 || transfer_mode > 5 ||
+        (has_tip && (tip_width <= 0 || tip_height <= 0 ||
+            env->GetArrayLength(tip_array) < static_cast<std::int64_t>(tip_width) * tip_height)) ||
+        (has_grain && (grain_width <= 0 || grain_height <= 0 || grain_wavelength <= 0.0f ||
+            env->GetArrayLength(grain_array) < static_cast<std::int64_t>(grain_width) * grain_height))) return -1;
+    if (env->GetArrayLength(destination_array) < stride * stride) return -1;
+
+    auto* destination = static_cast<jint*>(env->GetPrimitiveArrayCritical(destination_array, nullptr));
+    if (destination == nullptr) return -1;
+    auto* tip = has_tip ? static_cast<jbyte*>(env->GetPrimitiveArrayCritical(tip_array, nullptr)) : nullptr;
+    if (has_tip && tip == nullptr) {
+        env->ReleasePrimitiveArrayCritical(destination_array, destination, JNI_ABORT);
+        return -1;
+    }
+    auto* grain = has_grain ? static_cast<jbyte*>(env->GetPrimitiveArrayCritical(grain_array, nullptr)) : nullptr;
+    if (has_grain && grain == nullptr) {
+        if (tip != nullptr) env->ReleasePrimitiveArrayCritical(tip_array, tip, JNI_ABORT);
+        env->ReleasePrimitiveArrayCritical(destination_array, destination, JNI_ABORT);
+        return -1;
+    }
+
+    static constexpr float exponents[] = {0.65f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f};
+    const float exponent = exponents[transfer_mode];
+    const float outer_squared = outer_radius * outer_radius;
+    const float inner_squared = inner_radius * inner_radius;
+    bool changed = false;
+    for (int y = top; y < bottom; ++y) {
+        const int local_y = y - tile_top;
+        for (int x = left; x < right; ++x) {
+            const float dx = x + 0.5f - center_x;
+            const float dy = y + 0.5f - center_y;
+            float coverage;
+            if (has_tip) {
+                const float local_x = cosine * dx + sine * dy;
+                const float local_y = -sine * dx + cosine * dy;
+                coverage = sample_alpha_mask(
+                    tip, tip_width, tip_height,
+                    (local_x / radius_x + 1.0f) * 0.5f,
+                    (local_y / radius_y + 1.0f) * 0.5f);
+            } else {
+                const float distance_squared = dx * dx + dy * dy;
+                if (distance_squared >= outer_squared) continue;
+                coverage = distance_squared <= inner_squared ? 1.0f :
+                    (outer_radius - std::sqrt(distance_squared)) * inverse_edge;
+            }
+            if (coverage <= 0.0f) continue;
+            if (has_grain) {
+                const float grain_x = x + 0.5f - center_x * (1.0f - grain_movement);
+                const float grain_y = y + 0.5f - center_y * (1.0f - grain_movement);
+                const float rotated_x = grain_cosine * grain_x + grain_sine * grain_y;
+                const float rotated_y = -grain_sine * grain_x + grain_cosine * grain_y;
+                const float raw_u = rotated_x / grain_wavelength + grain_phase_x;
+                const float raw_v = rotated_y / grain_wavelength + grain_phase_y;
+                const float sampled = sample_alpha_mask(
+                    grain, grain_width, grain_height, raw_u - std::floor(raw_u), raw_v - std::floor(raw_v));
+                coverage *= 1.0f - grain_density + std::max(sampled, grain_floor) * grain_density;
+            }
+            if (coverage <= 0.0f) continue;
+            const float alpha = clamp01(base_deposition * coverage);
+            const float deposition = clamp01(1.0f - std::pow(1.0f - alpha, exponent));
+            if (deposition <= 0.0f) continue;
+            const int index = local_y * stride + x - tile_left;
+            const std::uint32_t before = static_cast<std::uint32_t>(destination[index]);
+            const float source_alpha = clamp01(reservoir_alpha * deposition);
+            const float inverse = 1.0f - source_alpha;
+            const auto to_byte = [](float value) -> std::uint32_t {
+                return static_cast<std::uint32_t>(std::clamp(static_cast<int>(value * 255.0f + 0.5f), 0, 255));
+            };
+            const std::uint32_t after =
+                (to_byte(source_alpha + ((before >> 24) & 0xff) / 255.0f * inverse) << 24) |
+                (to_byte(reservoir_red * deposition + ((before >> 16) & 0xff) / 255.0f * inverse) << 16) |
+                (to_byte(reservoir_green * deposition + ((before >> 8) & 0xff) / 255.0f * inverse) << 8) |
+                to_byte(reservoir_blue * deposition + (before & 0xff) / 255.0f * inverse);
+            if (after != before) {
+                destination[index] = static_cast<jint>(after);
+                changed = true;
+            }
+        }
+    }
+    if (grain != nullptr) env->ReleasePrimitiveArrayCritical(grain_array, grain, JNI_ABORT);
+    if (tip != nullptr) env->ReleasePrimitiveArrayCritical(tip_array, tip, JNI_ABORT);
     env->ReleasePrimitiveArrayCritical(destination_array, destination, 0);
     return changed ? 1 : 0;
 }

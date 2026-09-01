@@ -49,6 +49,12 @@ class BrushTipMask(
     internal fun coverageAtLevel(u: Float, v: Float, levelIndex: Int): Float =
         sample(mipLevels[levelIndex.coerceIn(0, mipLevels.lastIndex)], u, v)
 
+    /** Zero-copy immutable view used only while a bounded native raster call is active. */
+    internal fun nativeLevel(levelIndex: Int): NativeLevel =
+        mipLevels[levelIndex.coerceIn(0, mipLevels.lastIndex)].let {
+            NativeLevel(it.width, it.height, it.coverage)
+        }
+
     private fun sample(level: MaskLevel, u: Float, v: Float): Float {
         if (!u.isFinite() || !v.isFinite() || u < 0f || u > 1f || v < 0f || v > 1f) return 0f
         // u/v are non-negative after the guard, so Float.toInt() is the same floor operation
@@ -73,6 +79,7 @@ class BrushTipMask(
     fun contentHash(): Int = coverage.contentHashCode()
 
     private data class MaskLevel(val width: Int, val height: Int, val coverage: ByteArray)
+    internal data class NativeLevel(val width: Int, val height: Int, val coverage: ByteArray)
 
     companion object {
         private const val BYTE_TO_UNIT = 1f / 255f
