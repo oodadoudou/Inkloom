@@ -208,6 +208,48 @@ float sample_alpha_mask(const jbyte* alpha, int width, int height, float u, floa
     return (top_value + (bottom_value - top_value) * ty) / 255.0f;
 }
 
+std::uint32_t composite_premultiplied_pixel(
+    std::uint32_t destination_pixel,
+    std::uint32_t source_pixel,
+    int blend_mode) {
+    const int source_alpha = static_cast<int>(source_pixel >> 24);
+    if (blend_mode == 0) {
+        if (source_alpha == 255) return source_pixel;
+        if (source_alpha == 0) return destination_pixel;
+        const int inverse = 255 - source_alpha;
+        const int destination_alpha = static_cast<int>(destination_pixel >> 24);
+        const int alpha = std::min(255, source_alpha + destination_alpha * inverse / 255);
+        const int red = std::min(255, static_cast<int>((source_pixel >> 16) & 0xff) +
+            static_cast<int>((destination_pixel >> 16) & 0xff) * inverse / 255);
+        const int green = std::min(255, static_cast<int>((source_pixel >> 8) & 0xff) +
+            static_cast<int>((destination_pixel >> 8) & 0xff) * inverse / 255);
+        const int blue = std::min(255, static_cast<int>(source_pixel & 0xff) +
+            static_cast<int>(destination_pixel & 0xff) * inverse / 255);
+        return static_cast<std::uint32_t>((alpha << 24) | (red << 16) | (green << 8) | blue);
+    }
+    if (blend_mode == 1) {
+        const int keep = 255 - source_alpha;
+        return static_cast<std::uint32_t>(
+            ((((destination_pixel >> 24) & 0xff) * keep / 255) << 24) |
+            ((((destination_pixel >> 16) & 0xff) * keep / 255) << 16) |
+            ((((destination_pixel >> 8) & 0xff) * keep / 255) << 8) |
+            ((destination_pixel & 0xff) * keep / 255));
+    }
+    const int destination_alpha = static_cast<int>(destination_pixel >> 24);
+    if (destination_alpha == 0 || source_alpha == 0) return destination_pixel;
+    const int inverse = 255 - source_alpha;
+    const int red = std::min(destination_alpha,
+        (static_cast<int>((source_pixel >> 16) & 0xff) * destination_alpha +
+         static_cast<int>((destination_pixel >> 16) & 0xff) * inverse) / 255);
+    const int green = std::min(destination_alpha,
+        (static_cast<int>((source_pixel >> 8) & 0xff) * destination_alpha +
+         static_cast<int>((destination_pixel >> 8) & 0xff) * inverse) / 255);
+    const int blue = std::min(destination_alpha,
+        (static_cast<int>(source_pixel & 0xff) * destination_alpha +
+         static_cast<int>(destination_pixel & 0xff) * inverse) / 255);
+    return static_cast<std::uint32_t>((destination_alpha << 24) | (red << 16) | (green << 8) | blue);
+}
+
 }  // namespace
 
 extern "C" JNIEXPORT jboolean JNICALL
@@ -292,6 +334,54 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeCompositePremultipliedTil
     env->ReleasePrimitiveArrayCritical(source_array, source, JNI_ABORT);
     env->ReleasePrimitiveArrayCritical(destination_array, destination, 0);
     return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeMaterializePremultipliedTile(
+    JNIEnv* env,
+    jobject,
+    jintArray contribution_array,
+    jintArray backdrop_array,
+    jint stride,
+    jint left,
+    jint top,
+    jint right,
+    jint bottom,
+    jint blend_mode) {
+    if (contribution_array == nullptr || backdrop_array == nullptr || stride <= 0 ||
+        left < 0 || top < 0 || right <= left || bottom <= top || right > stride ||
+        blend_mode < 0 || blend_mode > 2) return -1;
+    const jsize contribution_size = env->GetArrayLength(contribution_array);
+    if (contribution_size != env->GetArrayLength(backdrop_array) ||
+        contribution_size < stride * stride || bottom > stride) return -1;
+
+    auto* contribution = static_cast<jint*>(env->GetPrimitiveArrayCritical(contribution_array, nullptr));
+    if (contribution == nullptr) return -1;
+    auto* backdrop = static_cast<jint*>(env->GetPrimitiveArrayCritical(backdrop_array, nullptr));
+    if (backdrop == nullptr) {
+        env->ReleasePrimitiveArrayCritical(contribution_array, contribution, JNI_ABORT);
+        return -1;
+    }
+
+    bool changed = false;
+    int non_transparent = 0;
+    for (int y = 0; y < stride; ++y) {
+        const int row = y * stride;
+        for (int x = 0; x < stride; ++x) {
+            const int index = row + x;
+            const std::uint32_t before = static_cast<std::uint32_t>(backdrop[index]);
+            const std::uint32_t after = x >= left && x < right && y >= top && y < bottom
+                ? composite_premultiplied_pixel(
+                    before, static_cast<std::uint32_t>(contribution[index]), blend_mode)
+                : before;
+            contribution[index] = static_cast<jint>(after);
+            changed = changed || after != before;
+            non_transparent += (after >> 24) != 0;
+        }
+    }
+    env->ReleasePrimitiveArrayCritical(backdrop_array, backdrop, JNI_ABORT);
+    env->ReleasePrimitiveArrayCritical(contribution_array, contribution, 0);
+    return (changed ? (1 << 30) : 0) | non_transparent;
 }
 
 extern "C" JNIEXPORT jint JNICALL

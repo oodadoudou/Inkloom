@@ -31,6 +31,24 @@ internal object NativeRasterOps {
         blendMode,
     )
 
+    /**
+     * Turns an owned contribution tile into a complete immutable document tile in place.
+     * The low bits contain the alpha pixel count and [MATERIALIZE_CHANGED_FLAG] reports whether
+     * the result differs from the backdrop. -1 means the native path is unavailable.
+     */
+    fun materializePremultipliedTile(
+        contribution: IntArray,
+        backdrop: IntArray,
+        stride: Int,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
+        blendMode: Int,
+    ): Int = if (nativeLibraryLoaded) nativeMaterializePremultipliedTile(
+        contribution, backdrop, stride, left, top, right, bottom, blendMode,
+    ) else -1
+
     /** -1 means unavailable/invalid, 0 means executed without a changed pixel, 1 means changed. */
     fun depositRoundWet(
         destination: IntArray,
@@ -332,9 +350,21 @@ internal object NativeRasterOps {
         reservoirGreen: Float,
         reservoirBlue: Float,
     ): Int
+    private external fun nativeMaterializePremultipliedTile(
+        contribution: IntArray,
+        backdrop: IntArray,
+        stride: Int,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
+        blendMode: Int,
+    ): Int
     private external fun nativeUnpremultiplyInPlace(pixels: IntArray): Boolean
     private external fun nativeNonTransparentPixelCount(pixels: IntArray): Int
     private external fun nativeHashPremultipliedPixels(pixels: IntArray): Long
+
+    const val MATERIALIZE_CHANGED_FLAG: Int = 1 shl 30
     private fun IntArray.toRectOrNull(): Rect? = takeIf { size == 4 && it[0] >= 0 && it[1] >= 0 && it[2] > it[0] && it[3] > it[1] }
         ?.let { Rect(it[0], it[1], it[2], it[3]) }
 

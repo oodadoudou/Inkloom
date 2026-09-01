@@ -1,5 +1,6 @@
 package app.inkloom.engine.v5.surface
 
+import app.inkloom.engine.v5.tools.NativeRasterOps
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 
@@ -419,6 +420,130 @@ class PixelTileSurface(
             PixelTileTransactionRecord(surfaceId, transaction.id, transaction.label, deltas)
         }
 
+    /**
+     * Publishes ownership-transferred active-stroke tiles in one atomic document transaction.
+     * Source-over pixels may be adopted when the destination tile is empty; every other case is
+     * composited into a private generation so undo/redo snapshots remain immutable.
+     */
+    internal fun publishFrozenRgba8Tiles(
+        label: String,
+        tiles: List<FrozenRgba8Tile>,
+        adoptOnEmpty: Boolean,
+        blendMode: Int,
+    ): PixelTileTransactionRecord = synchronized(monitor) {
+        require(pixelFormat == PixelTileFormat.PREMULTIPLIED_SRGB_8888)
+        require(blendMode in 0..2)
+        check(activeTransactionId == null) { "Cannot publish an active delta while a write is active" }
+        val transactionId = transactionIds.incrementAndGet()
+        val deltas = tiles.mapNotNull { tile ->
+            val before = generations[tile.key]
+            val afterPixels: IntArray
+            val nonTransparent: Int
+            if (adoptOnEmpty && before == null) {
+                if (tile.nonTransparentPixelCount == 0) return@mapNotNull null
+                afterPixels = tile.pixels
+                nonTransparent = tile.nonTransparentPixelCount
+            } else {
+                if (before == null) return@mapNotNull null
+                afterPixels = tile.pixels
+                val backdrop = (before.pixels as Argb8888TileBuffer).values
+                val nativeResult = NativeRasterOps.materializePremultipliedTile(
+                    contribution = afterPixels,
+                    backdrop = backdrop,
+                    stride = tileSize,
+                    left = tile.dirtyRect.left,
+                    top = tile.dirtyRect.top,
+                    right = tile.dirtyRect.right,
+                    bottom = tile.dirtyRect.bottom,
+                    blendMode = blendMode,
+                )
+                val result = if (nativeResult >= 0) nativeResult else materializeReference(
+                    afterPixels,
+                    backdrop,
+                    tileSize,
+                    tile.dirtyRect,
+                    blendMode,
+                )
+                if (result and NativeRasterOps.MATERIALIZE_CHANGED_FLAG == 0) return@mapNotNull null
+                nonTransparent = result and NativeRasterOps.MATERIALIZE_CHANGED_FLAG.inv()
+            }
+            val after = if (nonTransparent == 0) null else PixelTileGeneration(
+                id = generationIds.incrementAndGet(),
+                pixels = Argb8888TileBuffer(afterPixels),
+                nonTransparentPixelCount = nonTransparent,
+            )
+            PixelTileDelta(
+                key = tile.key,
+                dirtyLocalRect = tile.dirtyRect,
+                before = before,
+                after = after,
+                pixelCapacity = tileSize * tileSize,
+                bytesPerPixel = pixelFormat.bytesPerPixel,
+            )
+        }
+        deltas.forEach { delta ->
+            if (delta.after == null) generations.remove(delta.key) else generations[delta.key] = delta.after
+        }
+        if (deltas.isNotEmpty()) revisionValue++
+        PixelTileTransactionRecord(surfaceId, transactionId, label, deltas)
+    }
+
+    private fun materializeReference(
+        contribution: IntArray,
+        backdrop: IntArray,
+        stride: Int,
+        dirtyRect: PixelRect,
+        blendMode: Int,
+    ): Int {
+        var changed = false
+        var nonTransparent = 0
+        contribution.indices.forEach { index ->
+            val x = index % stride
+            val y = index / stride
+            val before = backdrop[index]
+            val after = if (x in dirtyRect.left until dirtyRect.right && y in dirtyRect.top until dirtyRect.bottom) {
+                compositePixel(before, contribution[index], blendMode)
+            } else before
+            contribution[index] = after
+            changed = changed || after != before
+            if (after ushr 24 != 0) nonTransparent++
+        }
+        return (if (changed) NativeRasterOps.MATERIALIZE_CHANGED_FLAG else 0) or nonTransparent
+    }
+
+    private fun compositePixel(destination: Int, source: Int, blendMode: Int): Int {
+        val sourceAlpha = source ushr 24 and 0xff
+        return when (blendMode) {
+            0 -> {
+                if (sourceAlpha == 0) destination else if (sourceAlpha == 255) source else {
+                    val inverse = 255 - sourceAlpha
+                    val destinationAlpha = destination ushr 24 and 0xff
+                    ((sourceAlpha + destinationAlpha * inverse / 255).coerceAtMost(255) shl 24) or
+                        ((((source ushr 16) and 0xff) + ((destination ushr 16) and 0xff) * inverse / 255).coerceAtMost(255) shl 16) or
+                        ((((source ushr 8) and 0xff) + ((destination ushr 8) and 0xff) * inverse / 255).coerceAtMost(255) shl 8) or
+                        (((source and 0xff) + (destination and 0xff) * inverse / 255).coerceAtMost(255))
+                }
+            }
+            1 -> {
+                val keep = 255 - sourceAlpha
+                ((((destination ushr 24) and 0xff) * keep / 255) shl 24) or
+                    ((((destination ushr 16) and 0xff) * keep / 255) shl 16) or
+                    ((((destination ushr 8) and 0xff) * keep / 255) shl 8) or
+                    ((destination and 0xff) * keep / 255)
+            }
+            else -> {
+                val destinationAlpha = destination ushr 24 and 0xff
+                if (destinationAlpha == 0 || sourceAlpha == 0) destination else {
+                    val inverse = 255 - sourceAlpha
+                    (destinationAlpha shl 24) or
+                        (((((source ushr 16) and 0xff) * destinationAlpha + ((destination ushr 16) and 0xff) * inverse) / 255).coerceAtMost(destinationAlpha) shl 16) or
+                        (((((source ushr 8) and 0xff) * destinationAlpha + ((destination ushr 8) and 0xff) * inverse) / 255).coerceAtMost(destinationAlpha) shl 8) or
+                        ((((source and 0xff) * destinationAlpha + (destination and 0xff) * inverse) / 255).coerceAtMost(destinationAlpha))
+                }
+            }
+        }
+    }
+
     internal fun cancel(transaction: PixelTileWriteTransaction) {
         synchronized(monitor) {
             requireActive(transaction)
@@ -568,6 +693,14 @@ internal data class WorkingPixelTile(
     var cachedPreviewGeneration: PixelTileGeneration? = null,
 )
 
+/** Ownership-transferred active-stroke pixels. [pixels] must not be mutated after publication. */
+internal data class FrozenRgba8Tile(
+    val key: PixelTileKey,
+    val dirtyRect: PixelRect,
+    val pixels: IntArray,
+    val nonTransparentPixelCount: Int,
+)
+
 /** Mutable working set for one [PixelTileSurface] transaction. */
 class PixelTileWriteTransaction internal constructor(
     private val surface: PixelTileSurface,
@@ -583,6 +716,23 @@ class PixelTileWriteTransaction internal constructor(
     val touchedTileCount: Int get() = workingTiles.size
     val workingByteSize: Long
         get() = workingTiles.size.toLong() * surface.tileSize * surface.tileSize * surface.pixelFormat.bytesPerPixel
+
+    /** Freezes this gesture-local transaction and transfers ownership of its RGBA8 tile arrays. */
+    internal fun freezeRgba8WorkingTiles(): List<FrozenRgba8Tile> {
+        require(surface.pixelFormat == PixelTileFormat.PREMULTIPLIED_SRGB_8888)
+        requireActive()
+        val frozen = workingTiles.map { (key, working) ->
+            FrozenRgba8Tile(
+                key = key,
+                dirtyRect = working.dirtyRect ?: surface.fullTileRect(),
+                pixels = (working.pixels as Argb8888TileBuffer).values,
+                nonTransparentPixelCount = working.cachedPreviewGeneration?.nonTransparentPixelCount
+                    ?: working.pixels.nonTransparentPixelCount(),
+            )
+        }
+        surface.cancel(this)
+        return frozen
+    }
 
     fun pixelAt(x: Int, y: Int): Int {
         surface.requireLogicalCoordinate(x, y)

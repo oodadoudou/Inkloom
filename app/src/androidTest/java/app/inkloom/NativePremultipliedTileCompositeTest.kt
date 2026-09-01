@@ -90,6 +90,47 @@ class NativePremultipliedTileCompositeTest {
         }
     }
 
+    @Test fun nativeMaterializationProducesCompleteOwnedTileForEveryBlend() {
+        val backdrop = intArrayOf(
+            0x00000000, 0xff203040.toInt(), 0x80402010.toInt(), 0x40201008,
+            0xff102030.toInt(), 0x80800000.toInt(), 0x40002000, 0x20000010,
+            0x7f3f2010, 0xff102030.toInt(), 0x80402010.toInt(), 0x40201008,
+            0xff101010.toInt(), 0x00000000, 0xffeeeeee.toInt(), 0x80101010.toInt(),
+        )
+        val contribution = intArrayOf(
+            0xffffffff.toInt(), 0xffffffff.toInt(), 0x80400000.toInt(), 0x20000800,
+            0xff204060.toInt(), 0x80400000.toInt(), 0x40002000, 0x20000010,
+            0x7f3f2010, 0xff102030.toInt(), 0x80402010.toInt(), 0x40201008,
+            0xffffffff.toInt(), 0xffffffff.toInt(), 0xffffffff.toInt(), 0xffffffff.toInt(),
+        )
+
+        repeat(3) { blendMode ->
+            val expected = backdrop.copyOf()
+            for (y in 1 until 3) for (x in 1 until 4) {
+                val index = y * 4 + x
+                expected[index] = reference(backdrop[index], contribution[index], blendMode)
+            }
+            val actual = contribution.copyOf()
+            val status = NativeRasterOps.materializePremultipliedTile(
+                actual,
+                backdrop,
+                stride = 4,
+                left = 1,
+                top = 1,
+                right = 4,
+                bottom = 3,
+                blendMode = blendMode,
+            )
+            assertTrue(status >= 0)
+            assertTrue(status and NativeRasterOps.MATERIALIZE_CHANGED_FLAG != 0)
+            assertTrue(
+                status and NativeRasterOps.MATERIALIZE_CHANGED_FLAG.inv() ==
+                    expected.count { it ushr 24 != 0 },
+            )
+            assertArrayEquals("blendMode=$blendMode", expected, actual)
+        }
+    }
+
     private fun reference(destination: Int, source: Int, mode: Int): Int {
         val sourceAlpha = source ushr 24 and 0xff
         return when (mode) {

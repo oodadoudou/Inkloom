@@ -1,7 +1,5 @@
 package app.inkloom.engine.v5.surface
 
-import app.inkloom.engine.v5.tools.NativeRasterOps
-
 /** How the immutable active contribution is applied to its pinned committed layer. */
 enum class ActiveStrokeDeltaBlend { SOURCE_OVER, DESTINATION_OUT, SOURCE_ATOP }
 
@@ -68,37 +66,19 @@ class ActiveStrokeDeltaTileSurface(
         check(document.revision == backdropSnapshot.revision) {
             "Committed layer changed during active stroke"
         }
-        val deltaRecord = transaction.commit()
+        val frozen = transaction.freezeRgba8WorkingTiles()
         return try {
-            val delta = deltaSurface.snapshot()
-            val publication = document.beginWrite(label)
-            try {
-                deltaRecord.deltaInfo.forEach { info ->
-                    val source = delta.copyTilePixels(info.key) ?: return@forEach
-                    publication.editTile(info.key, info.dirtyLocalRect) { destination, stride ->
-                        val compositedNatively = NativeRasterOps.compositePremultipliedTile(
-                            destination = destination,
-                            source = source,
-                            stride = stride,
-                            left = info.dirtyLocalRect.left,
-                            top = info.dirtyLocalRect.top,
-                            right = info.dirtyLocalRect.right,
-                            bottom = info.dirtyLocalRect.bottom,
-                            blendMode = blend.ordinal,
-                        )
-                        if (!compositedNatively) {
-                            compositeReference(destination, source, stride, info.dirtyLocalRect, blend)
-                        }
-                    }
-                }
+            document.publishFrozenRgba8Tiles(
+                label = label,
+                tiles = frozen,
+                adoptOnEmpty = blend == ActiveStrokeDeltaBlend.SOURCE_OVER,
+                blendMode = blend.ordinal,
+            ).also {
                 state = State.PUBLISHED
-                publication.commit()
-            } catch (failure: Throwable) {
-                publication.cancel()
-                throw failure
             }
-        } finally {
-            deltaRecord.close()
+        } catch (failure: Throwable) {
+            state = State.ROLLED_BACK
+            throw failure
         }
     }
 
