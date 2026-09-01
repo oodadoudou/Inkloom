@@ -434,6 +434,14 @@ class MaskTileWriteTransaction internal constructor(
             val overlap = logicalTileRect(column, row, surface.tileSize, surface.logicalWidth, surface.logicalHeight).intersect(destination)
             val dirty = PixelRect(overlap.left - tileLeft, overlap.top - tileTop, overlap.right - tileLeft, overlap.bottom - tileTop)
             editTile(key, dirty) { target, targetStride ->
+                if (mode == MaskComposeMode.REPLACE) {
+                    for (y in overlap.top until overlap.bottom) {
+                        val sourceIndex = (y - destination.top) * rowStride + overlap.left - destination.left
+                        val targetIndex = (y - tileTop) * targetStride + overlap.left - tileLeft
+                        alpha.copyInto(target, targetIndex, sourceIndex, sourceIndex + overlap.width)
+                    }
+                    return@editTile
+                }
                 for (y in overlap.top until overlap.bottom) {
                     var sourceIndex = (y - destination.top) * rowStride + overlap.left - destination.left
                     var targetIndex = (y - tileTop) * targetStride + overlap.left - tileLeft
