@@ -137,6 +137,24 @@ internal object NativeCompositeOps {
         left, top, right, bottom, modes, opacities,
     )
 
+    fun multiplyCoverageByRgba8Alpha(
+        coverage: ByteArray,
+        coverageOffset: Int,
+        pixels: IntArray,
+        stride: Int,
+        width: Int,
+        height: Int,
+        opacityByte: Int,
+    ): Boolean = available && nativeMultiplyCoverageByRgba8Alpha(
+        coverage,
+        coverageOffset,
+        pixels,
+        stride,
+        width,
+        height,
+        opacityByte,
+    )
+
     private external fun nativeCompositeRgba8(
         source: IntArray,
         destination: IntArray,
@@ -217,5 +235,14 @@ internal object NativeCompositeOps {
         bottom: Int,
         modes: IntArray,
         opacities: FloatArray,
+    ): Boolean
+    private external fun nativeMultiplyCoverageByRgba8Alpha(
+        coverage: ByteArray,
+        coverageOffset: Int,
+        pixels: IntArray,
+        stride: Int,
+        width: Int,
+        height: Int,
+        opacityByte: Int,
     ): Boolean
 }

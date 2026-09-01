@@ -58,9 +58,9 @@ class PixelLayerProjectionCache(
     private var batchModes = IntArray(0)
     private var batchOpacities = FloatArray(0)
     private var activeRgba8Scratch = IntArray(0)
-    private val rgba8Underlays = object : LinkedHashMap<PixelTileKey, Rgba8Underlay>(16, .75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<PixelTileKey, Rgba8Underlay>?): Boolean =
-            size > MAX_CACHED_UNDERLAY_TILES
+    private val rgba8Checkpoints = object : LinkedHashMap<ProjectionCheckpointKey, Rgba8Underlay>(32, .75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<ProjectionCheckpointKey, Rgba8Underlay>?): Boolean =
+            size > MAX_CACHED_UNDERLAY_CHECKPOINTS
     }
 
     val snapshot: PixelTileSurfaceSnapshot get() = projection.snapshot()
@@ -131,19 +131,38 @@ class PixelLayerProjectionCache(
         val contributors = layers.filter { it.contributes(key) }
         if (contributors.isEmpty()) return
         if (contributors.size >= UNDERLAY_LAYER_THRESHOLD && signature != null) {
-            val prefixSignature = TileSignature(signature.layers.dropLast(1))
-            val cached = rgba8Underlays[key]
-            if (cached?.signature == prefixSignature && cached.pixels.size == output.size) {
-                cached.pixels.copyInto(output)
-                compositeRgba8Contributors(contributors.takeLast(1), key, output, stride, bounds, scratch)
-                return
+            val contributorSignature = TileSignature(contributors.mapNotNull { it.dependency(key) })
+            val reusable = rgba8Checkpoints.entries.asSequence()
+                .filter { (checkpoint, cached) ->
+                    checkpoint.key == key && checkpoint.layerCount <= contributorSignature.layers.size &&
+                        cached.pixels.size == output.size &&
+                        cached.signature.layers == contributorSignature.layers.take(checkpoint.layerCount)
+                }
+                .maxByOrNull { it.key.layerCount }
+            var composedLayers = reusable?.key?.layerCount ?: 0
+            reusable?.value?.pixels?.copyInto(output)
+            while (composedLayers < contributors.size) {
+                val end = minOf(composedLayers + UNDERLAY_CHECKPOINT_INTERVAL, contributors.size)
+                compositeRgba8Contributors(
+                    contributors.subList(composedLayers, end),
+                    key,
+                    output,
+                    stride,
+                    bounds,
+                    scratch,
+                )
+                composedLayers = end
+                if (composedLayers < contributors.size) {
+                    val checkpointKey = ProjectionCheckpointKey(key, composedLayers)
+                    rgba8Checkpoints[checkpointKey] = Rgba8Underlay(
+                        TileSignature(contributorSignature.layers.take(composedLayers)),
+                        output.copyOf(),
+                    )
+                }
             }
-            compositeRgba8Contributors(contributors.dropLast(1), key, output, stride, bounds, scratch)
-            rgba8Underlays[key] = Rgba8Underlay(prefixSignature, output.copyOf())
-            compositeRgba8Contributors(contributors.takeLast(1), key, output, stride, bounds, scratch)
             return
         }
-        rgba8Underlays.remove(key)
+        rgba8Checkpoints.keys.removeAll { it.key == key }
         compositeRgba8Contributors(contributors, key, output, stride, bounds, scratch)
     }
 
@@ -312,14 +331,25 @@ class PixelLayerProjectionCache(
         val baseOpacityByte = ((if (base.opacity.isFinite()) base.opacity else 0f).coerceIn(0f, 1f) * 255f + .5f).toInt()
         val baseTilePresent = when (base.pixels.pixelFormat) {
             PixelTileFormat.PREMULTIPLIED_SRGB_8888 -> readResolvedRgba8Tile(base, key) { pixels ->
-                for (localY in 0 until bounds.height) {
-                    var index = localY * stride
-                    var coverageIndex = offset + index
-                    repeat(bounds.width) {
-                        val alpha = pixels[index++] ushr 24 and 0xff
-                        batchCoverage[coverageIndex] = multiplyByte(batchCoverage[coverageIndex], alpha)
-                        batchCoverage[coverageIndex] = multiplyByte(batchCoverage[coverageIndex], baseOpacityByte)
-                        coverageIndex++
+                if (!NativeCompositeOps.multiplyCoverageByRgba8Alpha(
+                        batchCoverage,
+                        offset,
+                        pixels,
+                        stride,
+                        bounds.width,
+                        bounds.height,
+                        baseOpacityByte,
+                    )
+                ) {
+                    for (localY in 0 until bounds.height) {
+                        var index = localY * stride
+                        var coverageIndex = offset + index
+                        repeat(bounds.width) {
+                            val alpha = pixels[index++] ushr 24 and 0xff
+                            batchCoverage[coverageIndex] = multiplyByte(batchCoverage[coverageIndex], alpha)
+                            batchCoverage[coverageIndex] = multiplyByte(batchCoverage[coverageIndex], baseOpacityByte)
+                            coverageIndex++
+                        }
                     }
                 }
                 true
@@ -349,6 +379,11 @@ class PixelLayerProjectionCache(
         bounds: PixelRect,
     ) {
         if (mask == null) return
+        if (mask.tileCount == 0 && mask.defaultAlpha == 255) return
+        if (mask.tileCount == 0 && mask.defaultAlpha == 0) {
+            batchCoverage.fill(0, offset, offset + stride * stride)
+            return
+        }
         val required = stride * stride
         if (maskCoverageScratch.size < required) maskCoverageScratch = ByteArray(required)
         if (mask.logicalWidth == projection.logicalWidth && mask.logicalHeight == projection.logicalHeight) {
@@ -613,6 +648,8 @@ class PixelLayerProjectionCache(
         val pixels: IntArray,
     )
 
+    private data class ProjectionCheckpointKey(val key: PixelTileKey, val layerCount: Int)
+
     private data class LayerDependency(
         val layerId: String,
         val surfaceId: String,
@@ -642,7 +679,8 @@ class PixelLayerProjectionCache(
 
     companion object {
         private const val UNDERLAY_LAYER_THRESHOLD = 8
-        private const val MAX_CACHED_UNDERLAY_TILES = 256
+        private const val UNDERLAY_CHECKPOINT_INTERVAL = 8
+        private const val MAX_CACHED_UNDERLAY_CHECKPOINTS = 64
         private val ZERO_COVERAGE = CompositeCoverage { _, _ -> 0f }
 
         private fun alphaAt(snapshot: PixelTileSurfaceSnapshot, x: Int, y: Int): Float =

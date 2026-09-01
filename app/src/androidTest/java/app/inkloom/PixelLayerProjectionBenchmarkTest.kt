@@ -52,6 +52,16 @@ class PixelLayerProjectionBenchmarkTest {
         cache.update(inputs())
 
         val untouchedGeneration = cache.snapshot.tileInfo.single { it.key == PixelTileKey(21, 20) }.generation
+        // Exercise the exact middle-mask invalidation path before measuring steady interaction.
+        // Debug ART otherwise compiles checkpoint/signature code inside the first percentile
+        // window; cold startup is covered separately by launch/profile tests.
+        repeat(5) { iteration ->
+            masks[25].beginWrite("local mask benchmark warmup").run {
+                setAlpha(20 * 64 + 48 + iteration, 20 * 64 + 48 + iteration, 96 + iteration)
+                commit().close()
+            }
+            assertEquals(1, cache.update(inputs()).recomposedTileCount)
+        }
         val changedTimes = List(20) { iteration ->
             masks[25].beginWrite("local mask benchmark edit").run {
                 setAlpha(20 * 64 + iteration, 20 * 64 + iteration, iteration * 11 and 0xff)

@@ -672,3 +672,43 @@ Java_app_inkloom_engine_v5_composite_NativeCompositeOps_nativeCompositeF16Layers
     env->ReleaseLongArrayElements(sources, source_values, JNI_ABORT);
     return JNI_TRUE;
 }
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_app_inkloom_engine_v5_composite_NativeCompositeOps_nativeMultiplyCoverageByRgba8Alpha(
+    JNIEnv* env,
+    jobject,
+    jbyteArray coverage_array,
+    jint coverage_offset,
+    jintArray pixels_array,
+    jint stride,
+    jint width,
+    jint height,
+    jint opacity_byte) {
+    if (coverage_array == nullptr || pixels_array == nullptr || coverage_offset < 0 ||
+        stride <= 0 || width <= 0 || height <= 0 || width > stride || opacity_byte < 0 ||
+        opacity_byte > 255) return JNI_FALSE;
+    const jsize coverage_size = env->GetArrayLength(coverage_array);
+    const jsize pixels_size = env->GetArrayLength(pixels_array);
+    const std::int64_t required = static_cast<std::int64_t>(height - 1) * stride + width;
+    if (coverage_offset + required > coverage_size || required > pixels_size) return JNI_FALSE;
+    auto* coverage = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(coverage_array, nullptr));
+    if (coverage == nullptr) return JNI_FALSE;
+    auto* pixels = static_cast<jint*>(env->GetPrimitiveArrayCritical(pixels_array, nullptr));
+    if (pixels == nullptr) {
+        env->ReleasePrimitiveArrayCritical(coverage_array, coverage, JNI_ABORT);
+        return JNI_FALSE;
+    }
+    for (int y = 0; y < height; ++y) {
+        int pixel_index = y * stride;
+        int coverage_index = coverage_offset + pixel_index;
+        for (int x = 0; x < width; ++x, ++pixel_index, ++coverage_index) {
+            const int current = static_cast<std::uint8_t>(coverage[coverage_index]);
+            const int alpha = static_cast<std::uint32_t>(pixels[pixel_index]) >> 24;
+            const int masked = (current * alpha + 127) / 255;
+            coverage[coverage_index] = static_cast<jbyte>((masked * opacity_byte + 127) / 255);
+        }
+    }
+    env->ReleasePrimitiveArrayCritical(pixels_array, pixels, JNI_ABORT);
+    env->ReleasePrimitiveArrayCritical(coverage_array, coverage, 0);
+    return JNI_TRUE;
+}
