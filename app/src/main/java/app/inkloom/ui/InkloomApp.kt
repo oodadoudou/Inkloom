@@ -4947,13 +4947,16 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                             assets.saveRasterTileSurface(surface, previous.first)
                         }
                         val savedReference = requireNotNull(newReference)
-                        latestRasterAssets[layerId] = savedReference to previous.second
-                        // The live surface can already contain later gestures. Associate this
-                        // checkpoint with it before publishing the document reference so the
-                        // resulting Compose update cannot replace newer pixels with older disk
-                        // projection data.
-                        rasterSurfaceRuntime.acceptPublished(capturedPage, layerId, savedReference, previous.second)
-                        onSetLayerRasterTileSurface(documentId, capturedPage.id, layerId, savedReference, previous.second)
+                        withContext(Dispatchers.Main.immediate) {
+                            latestRasterAssets[layerId] = savedReference to previous.second
+                            // The live surface can already contain later gestures. Associate this
+                            // checkpoint with it before publishing the document reference so the
+                            // resulting Compose update cannot replace newer pixels with older disk
+                            // projection data. Document/Compose state is always published on main,
+                            // even when a test or future host supplies a non-main parent scope.
+                            rasterSurfaceRuntime.acceptPublished(capturedPage, layerId, savedReference, previous.second)
+                            onSetLayerRasterTileSurface(documentId, capturedPage.id, layerId, savedReference, previous.second)
+                        }
                         assets.releaseRasterTileReservation(savedReference)
                         newReference = null
                     }
