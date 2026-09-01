@@ -86,6 +86,8 @@ class InkloomLaunchTest {
                     .putBoolean("rulerEnabled", false)
                     .putBoolean("gridSnapEnabled", false)
                     .putBoolean("alignmentGuidesEnabled", false)
+                    .putString("persistentDrawingTool", "PEN")
+                    .putString("persistentBrushPresetId", "system-g-pen")
                     .putString("pagePanelDock", "LEFT")
                     .putString("brushPanelDock", "RIGHT")
                     .putString("layerPanelDock", "RIGHT")
