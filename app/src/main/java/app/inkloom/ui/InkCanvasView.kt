@@ -259,6 +259,7 @@ class InkCanvasView(context: Context) : View(context) {
     /** Explicitly isolated adapter for view-only tests which do not install a document runtime. */
     private var isolatedTestSelectionAlphaMask: SparseAlphaMask? = null
     private var selectionBoundaryMask: SparseAlphaMask? = null
+    private var selectionBoundaryPageBounds: PixelRect? = null
     private var isolatedTestLastDeselectedAlphaMask: SparseAlphaMask? = null
     private var lastDeselectedFeatherPixels = 0f
     private var lastReportedSelectionActive: Boolean? = null
@@ -1288,12 +1289,19 @@ class InkCanvasView(context: Context) : View(context) {
         selectionBoundaryRect.set(0f, 0f, width.toFloat(), height.toFloat())
         boundary.draw(canvas, selectionBoundaryRect, selectionBoundaryPaint)
 
-        val checkpoint = canvas.saveLayer(selectionBoundaryRect, null)
+        val content = selectionBoundaryPageBounds ?: return
+        val clip = android.graphics.RectF(
+            content.left * width.toFloat() / boundary.width,
+            content.top * height.toFloat() / boundary.height,
+            content.right * width.toFloat() / boundary.width,
+            content.bottom * height.toFloat() / boundary.height,
+        )
+        val checkpoint = canvas.saveLayer(clip, null)
         boundary.draw(canvas, selectionBoundaryRect, selectionMaskPaint)
         selectionAntMatrix.reset()
         selectionAntMatrix.setTranslate(selectionAntPhase(), 0f)
         selectionAntShader.setLocalMatrix(selectionAntMatrix)
-        canvas.drawRect(selectionBoundaryRect, selectionAntPaint)
+        canvas.drawRect(clip, selectionAntPaint)
         canvas.restoreToCount(checkpoint)
         postInvalidateDelayed(SELECTION_ANTS_FRAME_MS)
     }
@@ -5401,8 +5409,10 @@ class InkCanvasView(context: Context) : View(context) {
         val base = currentSelectionAlphaMask()
         if (base == null) {
             selectionBoundaryMask = null
+            selectionBoundaryPageBounds = null
         } else {
             selectionBoundaryMask = base.boundary()
+            selectionBoundaryPageBounds = selectionBoundaryMask?.surface?.snapshot()?.nonZeroBounds()
         }
         notifySelectionActiveChanged()
         invalidate()
@@ -5440,7 +5450,7 @@ class InkCanvasView(context: Context) : View(context) {
      */
     private fun resetSelectionViewBinding(clearReselect: Boolean, unbindDocument: Boolean) {
         isolatedTestSelectionAlphaMask?.close(); isolatedTestSelectionAlphaMask = null
-        selectionBoundaryMask?.close(); selectionBoundaryMask = null
+        selectionBoundaryMask?.close(); selectionBoundaryMask = null; selectionBoundaryPageBounds = null
         selectionFeatherPixels = 0f
         clearLassoInput()
         movingSelection = false
