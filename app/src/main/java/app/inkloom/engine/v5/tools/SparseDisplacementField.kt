@@ -2,7 +2,6 @@ package app.inkloom.engine.v5.tools
 
 import app.inkloom.document.LiquifyMode
 import app.inkloom.engine.v5.surface.PixelRect
-import app.inkloom.engine.v5.surface.PixelTileKey
 import kotlin.math.atan2
 import kotlin.math.ceil
 import kotlin.math.cos
@@ -29,7 +28,7 @@ internal class SparseDisplacementField(
         require(tileNodes in 8..128)
     }
 
-    private val tiles = linkedMapOf<PixelTileKey, FloatArray>()
+    private val tiles = PrimitiveTileMap()
     private var stamps = 0
     private var maximumDisplacement = 0f
 
@@ -81,7 +80,19 @@ internal class SparseDisplacementField(
     }
 
     fun displacementAt(x: Float, y: Float): Pair<Float, Float> {
-        if (!x.isFinite() || !y.isFinite()) return 0f to 0f
+        val output = FloatArray(2)
+        writeDisplacementAt(x, y, output, 0)
+        return output[0] to output[1]
+    }
+
+    /** Allocation-free mesh sampling for the realtime liquify renderer. */
+    fun writeDisplacementAt(x: Float, y: Float, output: FloatArray, offset: Int) {
+        require(offset >= 0 && offset + 1 < output.size)
+        if (!x.isFinite() || !y.isFinite()) {
+            output[offset] = 0f
+            output[offset + 1] = 0f
+            return
+        }
         val gx = (x / nodeSpacing).coerceIn(0f, maxGridX().toFloat())
         val gy = (y / nodeSpacing).coerceIn(0f, maxGridY().toFloat())
         val x0 = floor(gx).toInt()
@@ -90,15 +101,20 @@ internal class SparseDisplacementField(
         val y1 = (y0 + 1).coerceAtMost(maxGridY())
         val tx = gx - x0
         val ty = gy - y0
-        val p00 = nodeAt(x0, y0)
-        val p10 = nodeAt(x1, y0)
-        val p01 = nodeAt(x0, y1)
-        val p11 = nodeAt(x1, y1)
-        val topX = p00.first + (p10.first - p00.first) * tx
-        val topY = p00.second + (p10.second - p00.second) * tx
-        val bottomX = p01.first + (p11.first - p01.first) * tx
-        val bottomY = p01.second + (p11.second - p01.second) * tx
-        return topX + (bottomX - topX) * ty to topY + (bottomY - topY) * ty
+        val p00x = nodeComponent(x0, y0, 0)
+        val p00y = nodeComponent(x0, y0, 1)
+        val p10x = nodeComponent(x1, y0, 0)
+        val p10y = nodeComponent(x1, y0, 1)
+        val p01x = nodeComponent(x0, y1, 0)
+        val p01y = nodeComponent(x0, y1, 1)
+        val p11x = nodeComponent(x1, y1, 0)
+        val p11y = nodeComponent(x1, y1, 1)
+        val topX = p00x + (p10x - p00x) * tx
+        val topY = p00y + (p10y - p00y) * tx
+        val bottomX = p01x + (p11x - p01x) * tx
+        val bottomY = p01y + (p11y - p01y) * tx
+        output[offset] = topX + (bottomX - topX) * ty
+        output[offset + 1] = topY + (bottomY - topY) * ty
     }
 
     private fun stamp(
@@ -130,20 +146,27 @@ internal class SparseDisplacementField(
         for (gridY in minGridY..maxGridY) for (gridX in minGridX..maxGridX) {
             val sourceX = (gridX * nodeSpacing).toFloat().coerceAtMost(logicalWidth - 1f)
             val sourceY = (gridY * nodeSpacing).toFloat().coerceAtMost(logicalHeight - 1f)
-            val old = nodeAt(gridX, gridY)
-            val deformedX = sourceX + old.first
-            val deformedY = sourceY + old.second
+            val oldX = nodeComponent(gridX, gridY, 0)
+            val oldY = nodeComponent(gridX, gridY, 1)
+            val deformedX = sourceX + oldX
+            val deformedY = sourceY + oldY
             val relativeX = deformedX - centerX
             val relativeY = deformedY - centerY
             val distance = hypot(relativeX, relativeY)
             if (distance >= radius) continue
             val falloff = (1f - distance / radius).coerceIn(0f, 1f).pow(exponent) * strength
             if (falloff <= .0001f) continue
-            val next = when (mode) {
-                LiquifyMode.PUSH -> old.first + deltaX * falloff to old.second + deltaY * falloff
+            var nextX: Float
+            var nextY: Float
+            when (mode) {
+                LiquifyMode.PUSH -> {
+                    nextX = oldX + deltaX * falloff
+                    nextY = oldY + deltaY * falloff
+                }
                 LiquifyMode.PUSH_LEFT, LiquifyMode.PUSH_RIGHT -> {
                     val direction = if (mode == LiquifyMode.PUSH_LEFT) 1f else -1f
-                    old.first - deltaY * falloff * direction to old.second + deltaX * falloff * direction
+                    nextX = oldX - deltaY * falloff * direction
+                    nextY = oldY + deltaX * falloff * direction
                 }
                 LiquifyMode.TWIRL_CLOCKWISE, LiquifyMode.TWIRL_COUNTERCLOCKWISE -> {
                     val direction = if (mode == LiquifyMode.TWIRL_CLOCKWISE) 1f else -1f
@@ -152,37 +175,42 @@ internal class SparseDisplacementField(
                     val sine = sin(angle)
                     val targetX = centerX + relativeX * cosine - relativeY * sine
                     val targetY = centerY + relativeX * sine + relativeY * cosine
-                    targetX - sourceX to targetY - sourceY
+                    nextX = targetX - sourceX
+                    nextY = targetY - sourceY
                 }
                 LiquifyMode.PINCH, LiquifyMode.EXPAND -> {
                     val scale = (if (mode == LiquifyMode.PINCH) 1f - falloff * .12f else 1f + falloff * .12f)
                         .coerceAtLeast(.2f)
-                    centerX + relativeX * scale - sourceX to centerY + relativeY * scale - sourceY
+                    nextX = centerX + relativeX * scale - sourceX
+                    nextY = centerY + relativeY * scale - sourceY
                 }
                 LiquifyMode.CRYSTALS -> {
                     val sector = (Math.PI / 8.0).toFloat()
                     val shard = (atan2(relativeY, relativeX) / sector).toInt() * sector
                     val push = radius * .13f * falloff
-                    old.first + cos(shard) * push to old.second + sin(shard) * push
+                    nextX = oldX + cos(shard) * push
+                    nextY = oldY + sin(shard) * push
                 }
                 LiquifyMode.EDGE -> {
                     val perpendicular = relativeX * -tangentY + relativeY * tangentX
-                    old.first + tangentY * perpendicular * falloff to old.second - tangentX * perpendicular * falloff
+                    nextX = oldX + tangentY * perpendicular * falloff
+                    nextY = oldY - tangentX * perpendicular * falloff
                 }
                 LiquifyMode.RECONSTRUCT -> {
                     val retain = (1f - falloff).coerceIn(0f, 1f)
-                    old.first * retain to old.second * retain
+                    nextX = oldX * retain
+                    nextY = oldY * retain
                 }
             }
-            if (kotlin.math.abs(next.first - old.first) < EPSILON &&
-                kotlin.math.abs(next.second - old.second) < EPSILON
+            if (kotlin.math.abs(nextX - oldX) < EPSILON &&
+                kotlin.math.abs(nextY - oldY) < EPSILON
             ) continue
-            setNode(gridX, gridY, next.first, next.second)
-            maximumDisplacement = maxOf(maximumDisplacement, hypot(next.first, next.second))
-            left = minOf(left, sourceX + minOf(old.first, next.first), sourceX)
-            top = minOf(top, sourceY + minOf(old.second, next.second), sourceY)
-            right = maxOf(right, sourceX + maxOf(old.first, next.first), sourceX)
-            bottom = maxOf(bottom, sourceY + maxOf(old.second, next.second), sourceY)
+            setNode(gridX, gridY, nextX, nextY)
+            maximumDisplacement = maxOf(maximumDisplacement, hypot(nextX, nextY))
+            left = minOf(left, sourceX + minOf(oldX, nextX), sourceX)
+            top = minOf(top, sourceY + minOf(oldY, nextY), sourceY)
+            right = maxOf(right, sourceX + maxOf(oldX, nextX), sourceX)
+            bottom = maxOf(bottom, sourceY + maxOf(oldY, nextY), sourceY)
             changed = true
         }
         if (!changed) return null
@@ -196,25 +224,88 @@ internal class SparseDisplacementField(
     }
 
     private fun nodeAt(gridX: Int, gridY: Int): Pair<Float, Float> {
-        val key = PixelTileKey(gridX / tileNodes, gridY / tileNodes)
-        val tile = tiles[key] ?: return 0f to 0f
+        val tile = tiles[tileKey(gridX, gridY)] ?: return 0f to 0f
         val index = ((gridY % tileNodes) * tileNodes + gridX % tileNodes) * 2
         return tile[index] to tile[index + 1]
     }
 
+    private fun nodeComponent(gridX: Int, gridY: Int, component: Int): Float {
+        val tile = tiles[tileKey(gridX, gridY)] ?: return 0f
+        return tile[((gridY % tileNodes) * tileNodes + gridX % tileNodes) * 2 + component]
+    }
+
     private fun setNode(gridX: Int, gridY: Int, x: Float, y: Float) {
-        val key = PixelTileKey(gridX / tileNodes, gridY / tileNodes)
+        val key = tileKey(gridX, gridY)
         val tile = tiles.getOrPut(key) { FloatArray(tileNodes * tileNodes * 2) }
         val index = ((gridY % tileNodes) * tileNodes + gridX % tileNodes) * 2
         tile[index] = if (kotlin.math.abs(x) < EPSILON) 0f else x
         tile[index + 1] = if (kotlin.math.abs(y) < EPSILON) 0f else y
     }
 
+    private fun tileKey(gridX: Int, gridY: Int): Long =
+        (gridY / tileNodes).toLong() shl 32 or (gridX / tileNodes).toLong().and(0xffffffffL)
+
+    /** Gesture-local primitive map; avoids boxing thousands of lookup keys per input frame. */
+    private class PrimitiveTileMap {
+        private var keys = LongArray(16) { EMPTY }
+        private var values = arrayOfNulls<FloatArray>(16)
+        var size: Int = 0
+            private set
+
+        operator fun get(key: Long): FloatArray? {
+            var slot = slot(key, keys.size)
+            while (true) {
+                val stored = keys[slot]
+                if (stored == EMPTY) return null
+                if (stored == key) return values[slot]
+                slot = (slot + 1) and (keys.size - 1)
+            }
+        }
+
+        fun getOrPut(key: Long, create: () -> FloatArray): FloatArray {
+            get(key)?.let { return it }
+            if ((size + 1) * 10 >= keys.size * 7) resize(keys.size * 2)
+            var slot = slot(key, keys.size)
+            while (keys[slot] != EMPTY) slot = (slot + 1) and (keys.size - 1)
+            return create().also {
+                keys[slot] = key
+                values[slot] = it
+                size++
+            }
+        }
+
+        private fun resize(capacity: Int) {
+            val oldKeys = keys
+            val oldValues = values
+            keys = LongArray(capacity) { EMPTY }
+            values = arrayOfNulls(capacity)
+            oldKeys.indices.forEach { index ->
+                val key = oldKeys[index]
+                if (key == EMPTY) return@forEach
+                var slot = slot(key, capacity)
+                while (keys[slot] != EMPTY) slot = (slot + 1) and (capacity - 1)
+                keys[slot] = key
+                values[slot] = oldValues[index]
+            }
+        }
+
+        private fun slot(key: Long, capacity: Int): Int {
+            var mixed = key xor (key ushr 33)
+            mixed *= -49064778989728563L
+            mixed = mixed xor (mixed ushr 33)
+            return mixed.toInt() and (capacity - 1)
+        }
+
+        private companion object { const val EMPTY = Long.MIN_VALUE }
+    }
+
     private fun maxGridX(): Int = ceil((logicalWidth - 1) / nodeSpacing.toFloat()).toInt()
     private fun maxGridY(): Int = ceil((logicalHeight - 1) / nodeSpacing.toFloat()).toInt()
 
     private companion object {
-        const val DEFAULT_NODE_SPACING = 4
+        // Bilinear 12 px nodes preserve sub-node continuity while avoiding the redundant 4 px
+        // field that was resampled onto a much coarser presentation mesh every MOVE.
+        const val DEFAULT_NODE_SPACING = 12
         const val DEFAULT_TILE_NODES = 64
         const val STAMP_SPACING_FACTOR = .12f
         const val EPSILON = .0001f

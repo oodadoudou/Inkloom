@@ -33,6 +33,8 @@ class RasterTileEditSession(
     }
     private var state = State.ACTIVE
     private var dirty: PixelRect? = null
+    private val reusableSamples = scratchCache()
+    private val reusableOutputs = scratchCache()
 
     init {
         original = surface.snapshot()
@@ -134,6 +136,35 @@ class RasterTileEditSession(
             sample.recycle()
             output.recycle()
         }
+        dirty = dirty?.union(plan.writeBounds) ?: plan.writeBounds
+        return plan.writeBounds
+    }
+
+    /** Allocation-stable sampled edit for high-frequency tools whose ROI remains on-page. */
+    internal fun editWithReusableRoi(
+        plan: RasterRoiPlan,
+        sampleGeneration: RasterSampleGeneration = RasterSampleGeneration.CURRENT,
+        operation: (sample: Bitmap, sampleGlobalBounds: PixelRect, output: Bitmap) -> Unit,
+    ): PixelRect? {
+        requireActive()
+        val requestedRead = requireNotNull(plan.requestedReadBounds)
+        val clippedRead = plan.clippedReadBounds
+        if (clippedRead != requestedRead) return editWithRoi(plan, sampleGeneration, operation)
+        lastRoiPlan = plan
+        if (plan.writeBounds.isEmpty) return null
+        val sample = scratch(reusableSamples, requestedRead.width, requestedRead.height)
+        when (sampleGeneration) {
+            RasterSampleGeneration.CURRENT -> PixelTileBitmapAdapter.renderInto(
+                transaction, requestedRead, sample.bitmap, sample.pixels,
+            )
+            RasterSampleGeneration.ORIGINAL -> PixelTileBitmapAdapter.renderInto(
+                original, requestedRead, sample.bitmap, sample.pixels,
+            )
+        }
+        val output = scratch(reusableOutputs, plan.writeBounds.width, plan.writeBounds.height)
+        PixelTileBitmapAdapter.renderInto(transaction, plan.writeBounds, output.bitmap, output.pixels)
+        operation(sample.bitmap, requestedRead, output.bitmap)
+        PixelTileBitmapAdapter.replaceRegion(transaction, plan.writeBounds, output.bitmap, output.pixels)
         dirty = dirty?.union(plan.writeBounds) ?: plan.writeBounds
         return plan.writeBounds
     }
@@ -274,6 +305,10 @@ class RasterTileEditSession(
 
     override fun close() {
         if (state == State.ACTIVE) cancel()
+        reusableSamples.values.forEach { if (!it.bitmap.isRecycled) it.bitmap.recycle() }
+        reusableOutputs.values.forEach { if (!it.bitmap.isRecycled) it.bitmap.recycle() }
+        reusableSamples.clear()
+        reusableOutputs.clear()
     }
 
     private fun requireActive() {
@@ -281,6 +316,32 @@ class RasterTileEditSession(
     }
 
     private enum class State { ACTIVE, COMMITTED, CANCELLED }
+
+    private data class BitmapScratch(val bitmap: Bitmap, val pixels: IntArray)
+
+    private fun scratch(
+        cache: MutableMap<Long, BitmapScratch>,
+        width: Int,
+        height: Int,
+    ): BitmapScratch {
+        val key = (width.toLong() shl 32) or height.toLong()
+        return cache[key] ?: BitmapScratch(
+            Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888),
+            IntArray(width * height),
+        ).also { cache[key] = it }
+    }
+
+    private fun scratchCache() = object : LinkedHashMap<Long, BitmapScratch>(8, .75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, BitmapScratch>?): Boolean {
+            val remove = size > MAX_REUSABLE_SCRATCHES
+            if (remove) eldest?.value?.bitmap?.takeUnless(Bitmap::isRecycled)?.recycle()
+            return remove
+        }
+    }
+
+    private companion object {
+        const val MAX_REUSABLE_SCRATCHES = 12
+    }
 }
 
 internal enum class RasterSampleGeneration { CURRENT, ORIGINAL }

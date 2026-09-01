@@ -236,6 +236,32 @@ internal object PixelTileBitmapAdapter {
         }
     }
 
+    fun renderInto(
+        snapshot: PixelTileSurfaceSnapshot,
+        source: PixelRect,
+        bitmap: Bitmap,
+        pixels: IntArray,
+    ) {
+        require(bitmap.width == source.width && bitmap.height == source.height)
+        require(pixels.size == source.width * source.height)
+        snapshot.copyPremultipliedPixels(source, pixels)
+        unpremultiplyPixels(pixels)
+        bitmap.setPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
+    }
+
+    fun renderInto(
+        transaction: PixelTileWriteTransaction,
+        source: PixelRect,
+        bitmap: Bitmap,
+        pixels: IntArray,
+    ) {
+        require(bitmap.width == source.width && bitmap.height == source.height)
+        require(pixels.size == source.width * source.height)
+        transaction.copyPremultipliedPixels(source, pixels)
+        unpremultiplyPixels(pixels)
+        bitmap.setPixels(pixels, 0, source.width, 0, 0, source.width, source.height)
+    }
+
     /** Writes an Android bitmap into an active tile transaction without per-pixel JNI calls. */
     fun replaceRegion(
         transaction: PixelTileWriteTransaction,
@@ -254,6 +280,32 @@ internal object PixelTileBitmapAdapter {
             index++
         }
         transaction.replacePremultipliedPixels(destination, pixels)
+    }
+
+    fun replaceRegion(
+        transaction: PixelTileWriteTransaction,
+        destination: PixelRect,
+        bitmap: Bitmap,
+        pixels: IntArray,
+    ) {
+        require(bitmap.width == destination.width && bitmap.height == destination.height)
+        require(pixels.size == bitmap.width * bitmap.height)
+        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        var index = 0
+        while (index < pixels.size) {
+            pixels[index] = premultiply(pixels[index])
+            index++
+        }
+        transaction.replacePremultipliedPixels(destination, pixels)
+    }
+
+    private fun unpremultiplyPixels(pixels: IntArray) {
+        if (NativeRasterOps.unpremultiplyInPlace(pixels)) return
+        var index = 0
+        while (index < pixels.size) {
+            pixels[index] = unpremultiply(pixels[index])
+            index++
+        }
     }
 
     /**

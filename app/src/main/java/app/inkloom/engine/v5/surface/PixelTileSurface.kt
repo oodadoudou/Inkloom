@@ -214,6 +214,28 @@ class PixelTileSurfaceSnapshot internal constructor(
         return output
     }
 
+    internal fun copyPremultipliedPixels(source: PixelRect, output: IntArray) {
+        require(pixelFormat == PixelTileFormat.PREMULTIPLIED_SRGB_8888) { "ARGB copy requires an RGBA8 surface" }
+        require(source == source.intersect(PixelRect(0, 0, logicalWidth, logicalHeight)) && !source.isEmpty)
+        require(output.size >= source.width * source.height)
+        output.fill(0, 0, source.width * source.height)
+        tiles.forEach { (key, tile) ->
+            val tileLeft = key.column * tileSize
+            val tileTop = key.row * tileSize
+            val overlap = PixelRect(
+                tileLeft, tileTop, minOf(tileLeft + tileSize, logicalWidth), minOf(tileTop + tileSize, logicalHeight),
+            ).intersect(source)
+            if (overlap.isEmpty) return@forEach
+            for (y in overlap.top until overlap.bottom) {
+                val sourceOffset = (y - tileTop) * tileSize + overlap.left - tileLeft
+                val destinationOffset = (y - source.top) * source.width + overlap.left - source.left
+                (tile.pixels as Argb8888TileBuffer).values.copyInto(
+                    output, destinationOffset, sourceOffset, sourceOffset + overlap.width,
+                )
+            }
+        }
+    }
+
     fun copyPremultipliedF16(source: PixelRect): LongArray {
         require(pixelFormat == PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16) { "F16 copy requires a linear F16 surface" }
         val clipped = source.intersect(PixelRect(0, 0, logicalWidth, logicalHeight))
@@ -816,6 +838,34 @@ class PixelTileWriteTransaction internal constructor(
             }
         }
         return output
+    }
+
+    internal fun copyPremultipliedPixels(source: PixelRect, output: IntArray) {
+        requireActive()
+        require(surface.pixelFormat == PixelTileFormat.PREMULTIPLIED_SRGB_8888)
+        require(source == source.intersect(PixelRect(0, 0, surface.logicalWidth, surface.logicalHeight)) && !source.isEmpty)
+        require(output.size >= source.width * source.height)
+        output.fill(0, 0, source.width * source.height)
+        val firstColumn = source.left / surface.tileSize
+        val lastColumn = (source.right - 1) / surface.tileSize
+        val firstRow = source.top / surface.tileSize
+        val lastRow = (source.bottom - 1) / surface.tileSize
+        for (row in firstRow..lastRow) for (column in firstColumn..lastColumn) {
+            val key = PixelTileKey(column, row)
+            val pixels = (workingTiles[key]?.pixels ?: surface.publishedTile(key)?.pixels ?: continue) as Argb8888TileBuffer
+            val tileLeft = column * surface.tileSize
+            val tileTop = row * surface.tileSize
+            val overlap = PixelRect(
+                tileLeft, tileTop,
+                minOf(tileLeft + surface.tileSize, surface.logicalWidth),
+                minOf(tileTop + surface.tileSize, surface.logicalHeight),
+            ).intersect(source)
+            for (y in overlap.top until overlap.bottom) {
+                val tileOffset = (y - tileTop) * surface.tileSize + overlap.left - tileLeft
+                val outputOffset = (y - source.top) * source.width + overlap.left - source.left
+                pixels.values.copyInto(output, outputOffset, tileOffset, tileOffset + overlap.width)
+            }
+        }
     }
 
     /** Replaces [destination] from a premultiplied row-major buffer using tile-row copies. */

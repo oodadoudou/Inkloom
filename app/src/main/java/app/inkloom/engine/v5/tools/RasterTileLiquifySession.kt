@@ -1,7 +1,6 @@
 package app.inkloom.engine.v5.tools
 
 import android.graphics.Bitmap
-import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -55,9 +54,6 @@ class RasterTileLiquifySession private constructor(
     private val maskPaint = Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN) }
     private val clearPaint = Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT) }
     private val localRect = Rect()
-    private val blurFilters = object : LinkedHashMap<Int, BlurMaskFilter>(16, .75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, BlurMaskFilter>): Boolean = size > 24
-    }
     private val width = surface.logicalWidth
     private val height = surface.logicalHeight
     private val tileSize = surface.tileSize
@@ -112,12 +108,13 @@ class RasterTileLiquifySession private constructor(
             surfaces.coverage.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
             surfaces.warp.drawBitmapMesh(original, meshWidth, meshHeight, vertices, 0, null, 0, bitmapPaint)
 
-            val hardRadius = radius * hardness.coerceIn(0f, 1f)
-            val featherRadius = (radius - hardRadius).coerceAtLeast(0f)
             val pathPad = hypot(currentX - previousX, currentY - previousY).coerceAtMost(radius)
-            coveragePaint.strokeWidth = hardRadius.coerceAtLeast(.5f) * 2f + pathPad
+            // The displacement field already applies the hardness-dependent continuous falloff.
+            // A second BlurMaskFilter here only blurred an ROI-sized bitmap on every MOVE and did
+            // not improve deformation continuity; use a hard ownership mask around that field.
+            coveragePaint.strokeWidth = radius * 2f + pathPad
             coveragePaint.alpha = 255
-            coveragePaint.maskFilter = if (featherRadius <= .01f) null else cachedBlur(featherRadius)
+            coveragePaint.maskFilter = null
             surfaces.coverage.drawLine(
                 previousX - destination.left,
                 previousY - destination.top,
@@ -147,7 +144,7 @@ class RasterTileLiquifySession private constructor(
             readCore = destination,
             abyssPolicy = RasterAbyssPolicy.CLAMP_TO_EDGE,
         )
-        val changed = edits.editWithRoi(roi, RasterSampleGeneration.ORIGINAL, operation) ?: return null
+        val changed = edits.editWithReusableRoi(roi, RasterSampleGeneration.ORIGINAL, operation) ?: return null
         return Rect(changed.left, changed.top, changed.right, changed.bottom)
     }
 
@@ -171,9 +168,10 @@ class RasterTileLiquifySession private constructor(
             for (column in 0..meshWidth) {
                 val localX = destination.width * column / meshWidth.toFloat()
                 val globalX = destination.left + localX
-                val offset = displacement.displacementAt(globalX, globalY)
-                vertices[index++] = localX + offset.first
-                vertices[index++] = localY + offset.second
+                displacement.writeDisplacementAt(globalX, globalY, vertices, index)
+                vertices[index] += localX
+                vertices[index + 1] += localY
+                index += 2
             }
         }
     }
@@ -204,18 +202,12 @@ class RasterTileLiquifySession private constructor(
         if (vertices.size < size) vertices = FloatArray(size)
     }
 
-    private fun cachedBlur(radius: Float): BlurMaskFilter {
-        val bucket = (radius.coerceAtMost(256f) * 4f + .5f).toInt().coerceAtLeast(1)
-        return blurFilters[bucket] ?: BlurMaskFilter(bucket / 4f, BlurMaskFilter.Blur.NORMAL).also { blurFilters[bucket] = it }
-    }
-
     override fun close() {
         if (!completed) restoreOriginal()
         edits.close()
         warpBitmap?.recycle()
         coverageBitmap?.recycle()
         vertices = FloatArray(0)
-        blurFilters.clear()
     }
 
     private fun PixelRect.expand(amount: Int): PixelRect = PixelRect(
@@ -230,7 +222,9 @@ class RasterTileLiquifySession private constructor(
     private data class Surfaces(val warp: Canvas, val coverage: Canvas)
 
     private companion object {
-        const val MESH_CELL_PIXELS = 8
+        // The displacement field is bilinearly sampled, so a 16 px presentation mesh preserves
+        // its continuous falloff while leaving headroom for a 120 Hz input/presentation budget.
+        const val MESH_CELL_PIXELS = 16
         const val MIN_MESH_SEGMENTS = 8
         const val MAX_MESH_SEGMENTS = 64
         const val FIELD_RENDER_PAD = 6
