@@ -72,7 +72,9 @@ class RasterSelectionTransformSession(
         val affectedKeys = sourceKeys + destinationKeys
         val transaction = surface.beginWrite("transform sparse selection")
         try {
-            affectedKeys.forEach { key ->
+            // An empty paint layer has no selected pixels to clear or move. Keep an empty
+            // transaction for the unified undo contract, but do not scan every sparse mask tile.
+            if (originalPixels.tileCount > 0) affectedKeys.forEach { key ->
                 val tileLeft = key.column * surface.tileSize
                 val tileTop = key.row * surface.tileSize
                 val tileBounds = PixelRect(
@@ -107,7 +109,9 @@ class RasterSelectionTransformSession(
             throw failure
         }
         previewDirty = dirty
-        previewSelection = transformMask(originalSelection, destinationKeys, transform)
+        previewSelection = integerTranslation(transform)?.let { (dx, dy) ->
+            transformMaskTranslation(originalSelection, sourceKeys, dx, dy)
+        } ?: transformMask(originalSelection, destinationKeys, transform)
         return RasterSelectionTransformResult(previewSelection, dirty)
     }
 
@@ -168,6 +172,71 @@ class RasterSelectionTransformSession(
             throw failure
         }
         return destination.snapshot()
+    }
+
+    private fun transformMaskTranslation(
+        source: MaskTileSurfaceSnapshot,
+        sourceKeys: Set<PixelTileKey>,
+        dx: Int,
+        dy: Int,
+    ): MaskTileSurfaceSnapshot {
+        val destination = MaskTileSurface(source.logicalWidth, source.logicalHeight, source.tileSize)
+        if (sourceKeys.isEmpty()) return destination.snapshot()
+        val transaction = destination.beginWrite("translate sparse selection alpha")
+        try {
+            sourceKeys.forEach { key ->
+                val sourceBounds = PixelRect(
+                    key.column * source.tileSize,
+                    key.row * source.tileSize,
+                    minOf((key.column + 1) * source.tileSize, source.logicalWidth),
+                    minOf((key.row + 1) * source.tileSize, source.logicalHeight),
+                )
+                val shifted = PixelRect(
+                    sourceBounds.left + dx,
+                    sourceBounds.top + dy,
+                    sourceBounds.right + dx,
+                    sourceBounds.bottom + dy,
+                )
+                val clipped = shifted.intersect(PixelRect(0, 0, source.logicalWidth, source.logicalHeight))
+                if (clipped.isEmpty) return@forEach
+                val alpha = ByteArray(sourceBounds.width * sourceBounds.height)
+                source.copyAlpha(sourceBounds, alpha, destinationOffset = 0, destinationRowStride = sourceBounds.width)
+                val sourceLeft = clipped.left - shifted.left
+                val sourceTop = clipped.top - shifted.top
+                val clippedAlpha = if (clipped.width == sourceBounds.width && clipped.height == sourceBounds.height) {
+                    alpha
+                } else ByteArray(clipped.width * clipped.height).also { cropped ->
+                    for (row in 0 until clipped.height) {
+                        alpha.copyInto(
+                            cropped,
+                            destinationOffset = row * clipped.width,
+                            startIndex = (sourceTop + row) * sourceBounds.width + sourceLeft,
+                            endIndex = (sourceTop + row) * sourceBounds.width + sourceLeft + clipped.width,
+                        )
+                    }
+                }
+                transaction.composeAlpha(
+                    clipped,
+                    clippedAlpha,
+                    mode = app.inkloom.engine.v5.surface.MaskComposeMode.ADD,
+                )
+            }
+            transaction.commit().close()
+        } catch (failure: Throwable) {
+            transaction.close()
+            throw failure
+        }
+        return destination.snapshot()
+    }
+
+    private fun integerTranslation(transform: SelectionAffineTransform): Pair<Int, Int>? {
+        if (transform.scaleX != 1f || transform.scaleY != 1f || transform.rotationDegrees.mod(360f) != 0f) return null
+        val dx = transform.translateX.toInt()
+        val dy = transform.translateY.toInt()
+        return (dx to dy).takeIf {
+            kotlin.math.abs(transform.translateX - dx) < .0001f &&
+                kotlin.math.abs(transform.translateY - dy) < .0001f
+        }
     }
 
     private fun sourceTileKeys(selection: MaskTileSurfaceSnapshot): Set<PixelTileKey> {
