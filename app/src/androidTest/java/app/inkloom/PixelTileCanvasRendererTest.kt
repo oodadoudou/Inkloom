@@ -4,8 +4,11 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.ColorSpace
+import android.graphics.HardwareRenderer
+import android.graphics.PixelFormat
 import android.graphics.RectF
 import android.graphics.RenderNode
+import android.media.ImageReader
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.inkloom.engine.v5.android.PixelTileCanvasRenderer
 import app.inkloom.engine.v5.android.PixelMemoryPressure
@@ -15,6 +18,7 @@ import app.inkloom.engine.v5.surface.PixelTileFormat
 import app.inkloom.engine.v5.surface.PixelTileKey
 import app.inkloom.engine.v5.surface.PixelTileSurface
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -38,11 +42,9 @@ class PixelTileCanvasRendererTest {
 
         record()
         assertEquals(2, renderer.retainedTileCount)
-        assertEquals(2, renderer.retainedHardwareTileCount)
         val hidden = renderer.trimPixelMemory(PixelMemoryPressure.UI_HIDDEN)
         assertEquals(2, renderer.retainedTileCount)
-        assertEquals(0, renderer.retainedHardwareTileCount)
-        assertTrue(hidden.releasedGpuBytes > 0L)
+        assertEquals(0L, hidden.releasedGpuBytes)
         assertEquals(Color.RED, surface.pixelAt(16, 16))
 
         record()
@@ -84,7 +86,7 @@ class PixelTileCanvasRendererTest {
         output.recycle()
     }
 
-    @Test fun fiftyLayer8192ProjectionReusesGpuTilesWithinFrameBudget() {
+    @Test fun fiftyLayer8192ProjectionRecordsStrictTileDrawsWithinFrameBudget() {
         val surfaces = List(50) { index ->
             PixelTileSurface(8192, 8192, tileSize = 128).also { surface ->
                 val key = PixelTileKey(index % 10, index / 10)
@@ -114,16 +116,14 @@ class PixelTileCanvasRendererTest {
         val frameTimes = List(30) { record() }.sorted()
         val p95 = frameTimes[(frameTimes.size * .95f).toInt().coerceAtMost(frameTimes.lastIndex)]
         android.util.Log.i("InkloomPerf", "pixel_tile_gpu_50_layer_8k_p95_ms=$p95")
-        assertEquals(50, renderer.retainedHardwareTileCount)
-        assertEquals(50, renderer.hardwareNodeBuildCount)
+        assertEquals(50, renderer.retainedTileCount)
         assertTrue(renderer.retainedByteSize < 4L * 1024L * 1024L)
-        assertTrue(renderer.approximateGpuDisplayListBytes in 1 until 16L * 1024L * 1024L)
         assertTrue("50-layer 8K GPU projection p95 was ${p95}ms", p95 < 16.7f)
 
         renderer.close(); output.discardDisplayList()
     }
 
-    @Test fun hardwareProjectionRetainsOneRenderNodePerImmutableTileGeneration() {
+    @Test fun hardwareProjectionRetainsOnlyImmutableBitmapGenerations() {
         val surface = PixelTileSurface(256, 128, tileSize = 128)
         surface.beginWrite("initial GPU tiles").use { write ->
             write.editTile(PixelTileKey(0, 0), PixelRect(0, 0, 128, 128)) { pixels, _ -> pixels.fill(premultiplied(Color.RED)) }
@@ -143,24 +143,72 @@ class PixelTileCanvasRendererTest {
         }
 
         record()
-        assertEquals(2, renderer.retainedHardwareTileCount)
-        assertEquals(2, renderer.hardwareNodeBuildCount)
-        assertTrue(renderer.approximateGpuDisplayListBytes > 0L)
+        assertEquals(2, renderer.retainedTileCount)
         record()
-        assertEquals("Pan/zoom redraw must reuse immutable tile display lists", 2, renderer.hardwareNodeBuildCount)
+        assertEquals("Pan/zoom redraw must reuse immutable tile bitmaps", 2, renderer.retainedTileCount)
 
         surface.beginWrite("replace one GPU tile").use { write ->
             write.editTile(PixelTileKey(0, 0), PixelRect(0, 0, 128, 128)) { pixels, _ -> pixels.fill(premultiplied(Color.GREEN)) }
             write.commit().close()
         }
         record()
-        assertEquals("Only the changed tile generation may be re-recorded", 3, renderer.hardwareNodeBuildCount)
-        assertEquals(2, renderer.retainedHardwareTileCount)
+        assertEquals("Only current tile generations may stay cached", 2, renderer.retainedTileCount)
 
         renderer.releaseSurface(surface.surfaceId)
-        assertEquals(0, renderer.retainedHardwareTileCount)
-        assertEquals(0L, renderer.approximateGpuDisplayListBytes)
+        assertEquals(0, renderer.retainedTileCount)
         renderer.close(); output.discardDisplayList()
+    }
+
+    @Test fun fractionalHardwareScaleDoesNotExposePaperAtTileBoundaries() {
+        val surface = PixelTileSurface(384, 384, tileSize = 128)
+        surface.beginWrite("opaque 3 by 3 seam fixture").use { write ->
+            for (row in 0..2) for (column in 0..2) {
+                write.editTile(PixelTileKey(column, row), PixelRect(0, 0, 128, 128)) { pixels, _ ->
+                    pixels.fill(premultiplied(Color.rgb(52, 67, 58)))
+                }
+            }
+            write.commit().close()
+        }
+        val outputWidth = 503
+        val outputHeight = 497
+        val root = RenderNode("Inkloom.V5.TileSeamRegression").apply {
+            setPosition(0, 0, outputWidth, outputHeight)
+        }
+        PixelTileCanvasRenderer(maximumCacheBytes = 9L * 128 * 128 * 4).use { renderer ->
+            val recording = root.beginRecording(outputWidth, outputHeight)
+            try {
+                recording.drawColor(Color.WHITE)
+                renderer.draw(
+                    recording,
+                    surface.snapshot(),
+                    RectF(.35f, .65f, outputWidth - .4f, outputHeight - .2f),
+                )
+            } finally {
+                root.endRecording()
+            }
+        }
+
+        val bitmap = renderHardware(root, outputWidth, outputHeight)
+        try {
+            val expected = Color.rgb(52, 67, 58)
+            val seamXs = listOf(168, 169, 335, 336)
+            val seamYs = listOf(165, 166, 331, 332)
+            seamXs.forEach { x ->
+                for (y in 4 until outputHeight - 4) {
+                    assertFalse("Paper leaked at vertical tile boundary ($x,$y)", isNearlyWhite(bitmap.getPixel(x, y)))
+                    assertColorNear(expected, bitmap.getPixel(x, y))
+                }
+            }
+            seamYs.forEach { y ->
+                for (x in 4 until outputWidth - 4) {
+                    assertFalse("Paper leaked at horizontal tile boundary ($x,$y)", isNearlyWhite(bitmap.getPixel(x, y)))
+                    assertColorNear(expected, bitmap.getPixel(x, y))
+                }
+            }
+        } finally {
+            bitmap.recycle()
+            root.discardDisplayList()
+        }
     }
 
     @Test fun drawsSparseTilesIntoScaledDestinationWithoutMaterializingThePage() {
@@ -241,5 +289,47 @@ class PixelTileCanvasRendererTest {
             (Color.green(color) * alpha + 127) / 255,
             (Color.blue(color) * alpha + 127) / 255,
         )
+    }
+
+    private fun renderHardware(root: RenderNode, width: Int, height: Int): Bitmap {
+        val reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
+        val renderer = HardwareRenderer()
+        try {
+            renderer.setName("Inkloom tile seam regression")
+            renderer.setSurface(reader.surface)
+            renderer.setContentRoot(root)
+            renderer.start()
+            val result = renderer.createRenderRequest().setWaitForPresent(true).syncAndDraw()
+            assertTrue("HardwareRenderer failed with sync result $result", result >= 0)
+            val image = requireNotNull(reader.acquireLatestImage())
+            image.use {
+                val plane = it.planes.single()
+                val output = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                val rowPadding = plane.rowStride - plane.pixelStride * width
+                val padded = Bitmap.createBitmap(
+                    width + rowPadding / plane.pixelStride,
+                    height,
+                    Bitmap.Config.ARGB_8888,
+                )
+                padded.copyPixelsFromBuffer(plane.buffer)
+                Canvas(output).drawBitmap(padded, 0f, 0f, null)
+                padded.recycle()
+                return output
+            }
+        } finally {
+            renderer.stop()
+            renderer.destroy()
+            reader.close()
+        }
+    }
+
+    private fun isNearlyWhite(color: Int): Boolean =
+        Color.red(color) > 245 && Color.green(color) > 245 && Color.blue(color) > 245
+
+    private fun assertColorNear(expected: Int, actual: Int) {
+        val distance = kotlin.math.abs(Color.red(expected) - Color.red(actual)) +
+            kotlin.math.abs(Color.green(expected) - Color.green(actual)) +
+            kotlin.math.abs(Color.blue(expected) - Color.blue(actual))
+        assertTrue("Tile seam changed $expected to $actual (RGB distance $distance)", distance <= 24)
     }
 }

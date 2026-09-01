@@ -1,10 +1,12 @@
 package app.inkloom.engine.v5.android
 
 import android.graphics.Bitmap
+import android.graphics.BitmapShader
 import android.graphics.Canvas
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RectF
-import android.graphics.RenderNode
+import android.graphics.Shader
 import app.inkloom.engine.v5.surface.PixelRect
 import app.inkloom.engine.v5.surface.PixelTileKey
 import app.inkloom.engine.v5.surface.PixelTileFormat
@@ -35,31 +37,28 @@ internal class PixelTileCanvasRenderer(
         val generation: Long,
     )
 
-    private data class CachedTile(
+    private class CachedTile(
         val bitmap: Bitmap,
-        var hardwareNode: RenderNode? = null,
     ) {
+        val shader = BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).apply {
+            setFilterMode(BitmapShader.FILTER_MODE_LINEAR)
+        }
+
         fun close() {
-            hardwareNode?.discardDisplayList()
-            hardwareNode = null
             if (!bitmap.isRecycled) bitmap.recycle()
         }
     }
 
     private val cache = LinkedHashMap<CacheKey, CachedTile>(16, .75f, true)
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+    private val shaderPaint = Paint().apply { isAntiAlias = false }
+    private val shaderMatrix = Matrix()
     private var retainedBytes = 0L
-    private var builtHardwareNodes = 0
     private val memoryRegistration = PixelMemoryPressureCoordinator.register(this)
 
     override val memoryTrimPriority: Int get() = 10
 
     val retainedByteSize: Long get() = retainedBytes
     val retainedTileCount: Int get() = cache.size
-    val retainedHardwareTileCount: Int get() = cache.values.count { it.hardwareNode?.hasDisplayList() == true }
-    val approximateGpuDisplayListBytes: Long
-        get() = cache.values.sumOf { it.hardwareNode?.computeApproximateMemoryUsage() ?: 0L }
-    internal val hardwareNodeBuildCount: Int get() = builtHardwareNodes
     internal var lastCandidateTileCount: Int = 0
         private set
     internal var lastDrawnTileCount: Int = 0
@@ -101,29 +100,23 @@ internal class PixelTileCanvasRenderer(
             lastDrawnTileCount++
             val cached = tileFor(snapshot, key, generation, fullTile)
             val bitmap = cached.bitmap
-            if (canvas.isHardwareAccelerated) {
-                val fullTarget = RectF(
-                    destination.left + fullTile.left * scaleX,
-                    destination.top + fullTile.top * scaleY,
-                    destination.left + fullTile.right * scaleX,
-                    destination.top + fullTile.bottom * scaleY,
-                )
-                drawHardwareTile(canvas, cached, fullTarget, snapshot.surfaceId, key, generation)
-                return
-            }
-            val sourceInBitmap = android.graphics.Rect(
-                source.left - fullTile.left,
-                source.top - fullTile.top,
-                source.right - fullTile.left,
-                source.bottom - fullTile.top,
+            val fullTarget = RectF(
+                destination.left + fullTile.left * scaleX,
+                destination.top + fullTile.top * scaleY,
+                destination.left + fullTile.right * scaleX,
+                destination.top + fullTile.bottom * scaleY,
             )
-            val target = RectF(
-                destination.left + source.left * scaleX,
-                destination.top + source.top * scaleY,
-                destination.left + source.right * scaleX,
-                destination.top + source.bottom * scaleY,
-            )
-            canvas.drawBitmap(bitmap, sourceInBitmap, target, paint)
+            // A CLAMP shader supplies a real edge texel to Skia's linear filter. drawBitmap and
+            // child RenderNode paths both use transparent DECAL pixels just outside an isolated
+            // tile; at fractional zoom those samples exposed the paper as a regular 128 px grid.
+            // Rect edges are deliberately not anti-aliased so adjacent tile coverage is exact.
+            shaderMatrix.reset()
+            shaderMatrix.setScale(fullTarget.width() / bitmap.width, fullTarget.height() / bitmap.height)
+            shaderMatrix.postTranslate(fullTarget.left, fullTarget.top)
+            cached.shader.setLocalMatrix(shaderMatrix)
+            shaderPaint.shader = cached.shader
+            canvas.drawRect(fullTarget, shaderPaint)
+            shaderPaint.shader = null
         }
 
         val coordinateCount = (lastColumn - firstColumn + 1L) * (lastRow - firstRow + 1L)
@@ -168,18 +161,16 @@ internal class PixelTileCanvasRenderer(
     @Synchronized
     override fun trimPixelMemory(pressure: PixelMemoryPressure): PixelMemoryTrimResult {
         val beforeCpu = retainedBytes
-        val beforeGpu = approximateGpuDisplayListBytes
         when (pressure) {
-            PixelMemoryPressure.UI_HIDDEN -> discardHardwareDisplayLists()
+            PixelMemoryPressure.UI_HIDDEN -> Unit
             PixelMemoryPressure.MODERATE -> {
-                discardHardwareDisplayLists()
                 trimToBytes((maximumCacheBytes / 4L).coerceAtLeast(1L))
             }
             PixelMemoryPressure.CRITICAL -> clearCache()
         }
         return PixelMemoryTrimResult(
             releasedCpuBytes = (beforeCpu - retainedBytes).coerceAtLeast(0L),
-            releasedGpuBytes = (beforeGpu - approximateGpuDisplayListBytes).coerceAtLeast(0L),
+            releasedGpuBytes = 0L,
         )
     }
 
@@ -198,38 +189,6 @@ internal class PixelTileCanvasRenderer(
         retainedBytes += bitmap.allocationByteCount.toLong()
         trimToBytes(maximumCacheBytes)
         return cached
-    }
-
-    /** Records an immutable tile generation once. Pan and zoom then change only the parent
-     * transform; HWUI/Skia retains and composites the tile display list on RenderThread. */
-    private fun drawHardwareTile(
-        canvas: Canvas,
-        cached: CachedTile,
-        target: RectF,
-        surfaceId: String,
-        key: PixelTileKey,
-        generation: Long,
-    ) {
-        val bitmap = cached.bitmap
-        val node = cached.hardwareNode?.takeIf(RenderNode::hasDisplayList) ?: RenderNode(
-            "Inkloom.V5.PixelTile.${surfaceId.take(8)}.${key.column}.${key.row}.$generation",
-        ).also { created ->
-            created.setPosition(0, 0, bitmap.width, bitmap.height)
-            created.setHasOverlappingRendering(false)
-            val recording = created.beginRecording(bitmap.width, bitmap.height)
-            try {
-                recording.drawBitmap(bitmap, 0f, 0f, paint)
-            } finally {
-                created.endRecording()
-            }
-            cached.hardwareNode = created
-            builtHardwareNodes++
-        }
-        val checkpoint = canvas.save()
-        canvas.translate(target.left, target.top)
-        canvas.scale(target.width() / bitmap.width, target.height() / bitmap.height)
-        canvas.drawRenderNode(node)
-        canvas.restoreToCount(checkpoint)
     }
 
     private fun removeObsoleteGeneration(surfaceId: String, key: PixelTileKey, generation: Long) {
@@ -251,13 +210,6 @@ internal class PixelTileCanvasRenderer(
             retainedBytes -= entry.value.bitmap.allocationByteCount.toLong()
             entry.value.close()
             iterator.remove()
-        }
-    }
-
-    private fun discardHardwareDisplayLists() {
-        cache.values.forEach { cached ->
-            cached.hardwareNode?.discardDisplayList()
-            cached.hardwareNode = null
         }
     }
 
