@@ -1,5 +1,7 @@
 package app.inkloom.engine.v5.surface
 
+import app.inkloom.engine.v5.tools.NativeRasterOps
+
 internal sealed interface PixelTileBuffer {
     val format: PixelTileFormat
     val size: Int
@@ -17,7 +19,9 @@ internal class Argb8888TileBuffer(val values: IntArray) : PixelTileBuffer {
     override fun copyBuffer(): PixelTileBuffer = Argb8888TileBuffer(values.copyOf())
     override fun contentEquals(other: PixelTileBuffer): Boolean =
         other is Argb8888TileBuffer && values.contentEquals(other.values)
-    override fun nonTransparentPixelCount(): Int = values.count { it ushr 24 != 0 }
+    override fun nonTransparentPixelCount(): Int =
+        NativeRasterOps.nonTransparentPixelCount(values).takeIf { it >= 0 }
+            ?: values.count { it ushr 24 != 0 }
     override fun premultipliedArgbAt(index: Int): Int = values[index]
     override fun premultipliedLinearAt(index: Int): LinearRgba =
         PackedRgbaF16.premultiplied(PackedRgbaF16.fromPremultipliedArgb8888(values[index]))

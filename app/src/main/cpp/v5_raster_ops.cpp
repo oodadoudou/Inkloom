@@ -191,6 +191,226 @@ std::uint8_t unpremultiplied_channel(const std::uint8_t* pixel, int channel) {
 }  // namespace
 
 extern "C" JNIEXPORT jboolean JNICALL
+Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeCompositePremultipliedTile(
+    JNIEnv* env,
+    jobject,
+    jintArray destination_array,
+    jintArray source_array,
+    jint stride,
+    jint left,
+    jint top,
+    jint right,
+    jint bottom,
+    jint blend_mode) {
+    if (destination_array == nullptr || source_array == nullptr || stride <= 0 ||
+        left < 0 || top < 0 || right <= left || bottom <= top || right > stride ||
+        blend_mode < 0 || blend_mode > 2) return JNI_FALSE;
+    const jsize destination_size = env->GetArrayLength(destination_array);
+    const jsize source_size = env->GetArrayLength(source_array);
+    const std::int64_t required = static_cast<std::int64_t>(bottom - 1) * stride + right;
+    if (required > destination_size || required > source_size) return JNI_FALSE;
+
+    auto* destination = static_cast<jint*>(env->GetPrimitiveArrayCritical(destination_array, nullptr));
+    if (destination == nullptr) return JNI_FALSE;
+    auto* source = static_cast<jint*>(env->GetPrimitiveArrayCritical(source_array, nullptr));
+    if (source == nullptr) {
+        env->ReleasePrimitiveArrayCritical(destination_array, destination, JNI_ABORT);
+        return JNI_FALSE;
+    }
+
+    for (int y = top; y < bottom; ++y) {
+        const int row = y * stride;
+        for (int x = left; x < right; ++x) {
+            const int index = row + x;
+            const std::uint32_t destination_pixel = static_cast<std::uint32_t>(destination[index]);
+            const std::uint32_t source_pixel = static_cast<std::uint32_t>(source[index]);
+            const int source_alpha = static_cast<int>(source_pixel >> 24);
+            std::uint32_t output = destination_pixel;
+            if (blend_mode == 0) {
+                if (source_alpha == 255) {
+                    output = source_pixel;
+                } else if (source_alpha != 0) {
+                    const int inverse = 255 - source_alpha;
+                    const int destination_alpha = static_cast<int>(destination_pixel >> 24);
+                    const int alpha = std::min(255, source_alpha + destination_alpha * inverse / 255);
+                    const int red = std::min(255, static_cast<int>((source_pixel >> 16) & 0xff) +
+                        static_cast<int>((destination_pixel >> 16) & 0xff) * inverse / 255);
+                    const int green = std::min(255, static_cast<int>((source_pixel >> 8) & 0xff) +
+                        static_cast<int>((destination_pixel >> 8) & 0xff) * inverse / 255);
+                    const int blue = std::min(255, static_cast<int>(source_pixel & 0xff) +
+                        static_cast<int>(destination_pixel & 0xff) * inverse / 255);
+                    output = static_cast<std::uint32_t>((alpha << 24) | (red << 16) | (green << 8) | blue);
+                }
+            } else if (blend_mode == 1) {
+                const int keep = 255 - source_alpha;
+                output = static_cast<std::uint32_t>(
+                    ((((destination_pixel >> 24) & 0xff) * keep / 255) << 24) |
+                    ((((destination_pixel >> 16) & 0xff) * keep / 255) << 16) |
+                    ((((destination_pixel >> 8) & 0xff) * keep / 255) << 8) |
+                    ((destination_pixel & 0xff) * keep / 255));
+            } else {
+                const int destination_alpha = static_cast<int>(destination_pixel >> 24);
+                if (destination_alpha != 0 && source_alpha != 0) {
+                    const int inverse = 255 - source_alpha;
+                    const int red = std::min(destination_alpha,
+                        (static_cast<int>((source_pixel >> 16) & 0xff) * destination_alpha +
+                         static_cast<int>((destination_pixel >> 16) & 0xff) * inverse) / 255);
+                    const int green = std::min(destination_alpha,
+                        (static_cast<int>((source_pixel >> 8) & 0xff) * destination_alpha +
+                         static_cast<int>((destination_pixel >> 8) & 0xff) * inverse) / 255);
+                    const int blue = std::min(destination_alpha,
+                        (static_cast<int>(source_pixel & 0xff) * destination_alpha +
+                         static_cast<int>(destination_pixel & 0xff) * inverse) / 255);
+                    output = static_cast<std::uint32_t>((destination_alpha << 24) |
+                                                        (red << 16) | (green << 8) | blue);
+                }
+            }
+            destination[index] = static_cast<jint>(output);
+        }
+    }
+
+    env->ReleasePrimitiveArrayCritical(source_array, source, JNI_ABORT);
+    env->ReleasePrimitiveArrayCritical(destination_array, destination, 0);
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeDepositRoundWet(
+    JNIEnv* env,
+    jobject,
+    jintArray destination_array,
+    jint stride,
+    jint tile_left,
+    jint tile_top,
+    jint left,
+    jint top,
+    jint right,
+    jint bottom,
+    jfloat center_x,
+    jfloat center_y,
+    jfloat outer_radius,
+    jfloat inner_radius,
+    jfloat inverse_edge,
+    jfloat base_deposition,
+    jint transfer_mode,
+    jfloat reservoir_alpha,
+    jfloat reservoir_red,
+    jfloat reservoir_green,
+    jfloat reservoir_blue) {
+    if (destination_array == nullptr || stride <= 0 || left < tile_left || top < tile_top ||
+        right <= left || bottom <= top || right - tile_left > stride || bottom - tile_top > stride ||
+        !std::isfinite(center_x) || !std::isfinite(center_y) || outer_radius <= 0.0f ||
+        inner_radius < 0.0f || inverse_edge <= 0.0f || transfer_mode < 0 || transfer_mode > 5) return -1;
+    const jsize destination_size = env->GetArrayLength(destination_array);
+    if (destination_size < stride * stride) return -1;
+    auto* destination = static_cast<jint*>(env->GetPrimitiveArrayCritical(destination_array, nullptr));
+    if (destination == nullptr) return -1;
+
+    static constexpr float exponents[] = {0.65f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f};
+    const float exponent = exponents[transfer_mode];
+    const float outer_squared = outer_radius * outer_radius;
+    const float inner_squared = inner_radius * inner_radius;
+    bool changed = false;
+    for (int y = top; y < bottom; ++y) {
+        const int local_y = y - tile_top;
+        for (int x = left; x < right; ++x) {
+            const float dx = x + 0.5f - center_x;
+            const float dy = y + 0.5f - center_y;
+            const float distance_squared = dx * dx + dy * dy;
+            if (distance_squared >= outer_squared) continue;
+            const float coverage = distance_squared <= inner_squared ? 1.0f :
+                (outer_radius - std::sqrt(distance_squared)) * inverse_edge;
+            if (coverage <= 0.0f) continue;
+            const float alpha = clamp01(base_deposition * coverage);
+            const float deposition = clamp01(1.0f - std::pow(1.0f - alpha, exponent));
+            if (deposition <= 0.0f) continue;
+            const int index = local_y * stride + x - tile_left;
+            const std::uint32_t before = static_cast<std::uint32_t>(destination[index]);
+            const float source_alpha = clamp01(reservoir_alpha * deposition);
+            const float inverse = 1.0f - source_alpha;
+            const float destination_alpha = static_cast<float>((before >> 24) & 0xff) / 255.0f;
+            const float destination_red = static_cast<float>((before >> 16) & 0xff) / 255.0f;
+            const float destination_green = static_cast<float>((before >> 8) & 0xff) / 255.0f;
+            const float destination_blue = static_cast<float>(before & 0xff) / 255.0f;
+            const auto to_byte = [](float value) -> std::uint32_t {
+                return static_cast<std::uint32_t>(std::clamp(static_cast<int>(value * 255.0f + 0.5f), 0, 255));
+            };
+            const std::uint32_t after =
+                (to_byte(source_alpha + destination_alpha * inverse) << 24) |
+                (to_byte(reservoir_red * deposition + destination_red * inverse) << 16) |
+                (to_byte(reservoir_green * deposition + destination_green * inverse) << 8) |
+                to_byte(reservoir_blue * deposition + destination_blue * inverse);
+            if (after != before) {
+                destination[index] = static_cast<jint>(after);
+                changed = true;
+            }
+        }
+    }
+    env->ReleasePrimitiveArrayCritical(destination_array, destination, 0);
+    return changed ? 1 : 0;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeUnpremultiplyInPlace(
+    JNIEnv* env,
+    jobject,
+    jintArray pixels_array) {
+    if (pixels_array == nullptr) return JNI_FALSE;
+    const jsize size = env->GetArrayLength(pixels_array);
+    auto* pixels = static_cast<jint*>(env->GetPrimitiveArrayCritical(pixels_array, nullptr));
+    if (pixels == nullptr) return JNI_FALSE;
+    for (jsize index = 0; index < size; ++index) {
+        const std::uint32_t pixel = static_cast<std::uint32_t>(pixels[index]);
+        const int alpha = static_cast<int>(pixel >> 24);
+        if (alpha == 0 || alpha == 255) continue;
+        const int red = std::min(255, (static_cast<int>((pixel >> 16) & 0xff) * 255 + alpha / 2) / alpha);
+        const int green = std::min(255, (static_cast<int>((pixel >> 8) & 0xff) * 255 + alpha / 2) / alpha);
+        const int blue = std::min(255, (static_cast<int>(pixel & 0xff) * 255 + alpha / 2) / alpha);
+        pixels[index] = static_cast<jint>((alpha << 24) | (red << 16) | (green << 8) | blue);
+    }
+    env->ReleasePrimitiveArrayCritical(pixels_array, pixels, 0);
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeNonTransparentPixelCount(
+    JNIEnv* env,
+    jobject,
+    jintArray pixels_array) {
+    if (pixels_array == nullptr) return -1;
+    const jsize size = env->GetArrayLength(pixels_array);
+    auto* pixels = static_cast<jint*>(env->GetPrimitiveArrayCritical(pixels_array, nullptr));
+    if (pixels == nullptr) return -1;
+    int count = 0;
+    for (jsize index = 0; index < size; ++index) {
+        count += static_cast<std::uint32_t>(pixels[index]) >> 24 != 0;
+    }
+    env->ReleasePrimitiveArrayCritical(pixels_array, pixels, JNI_ABORT);
+    return count;
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeHashPremultipliedPixels(
+    JNIEnv* env,
+    jobject,
+    jintArray pixels_array) {
+    if (pixels_array == nullptr) return 0;
+    const jsize size = env->GetArrayLength(pixels_array);
+    auto* pixels = static_cast<jint*>(env->GetPrimitiveArrayCritical(pixels_array, nullptr));
+    if (pixels == nullptr) return 0;
+    std::uint64_t hash = 14695981039346656037ULL;
+    for (jsize index = 0; index < size; ++index) {
+        const std::uint32_t pixel = static_cast<std::uint32_t>(pixels[index]);
+        for (int shift = 24; shift >= 0; shift -= 8) {
+            hash ^= (pixel >> shift) & 0xff;
+            hash *= 1099511628211ULL;
+        }
+    }
+    env->ReleasePrimitiveArrayCritical(pixels_array, pixels, JNI_ABORT);
+    return static_cast<jlong>(hash);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
 Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeCompositePigment(
     JNIEnv* env,
     jobject,

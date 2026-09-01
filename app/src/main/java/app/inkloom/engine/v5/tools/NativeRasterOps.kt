@@ -6,6 +6,85 @@ import android.graphics.Rect
 /** Coarse-grained JNI entry points for bounded raster work that Android's software Canvas cannot
  * execute with RuntimeShader. Pixel buffers never cross into Kotlin. */
 internal object NativeRasterOps {
+    /**
+     * Composites one dirty rectangle from an immutable premultiplied source tile into a mutable
+     * premultiplied destination tile. Returning false lets host-side JVM tests use the exact
+     * Kotlin reference implementation when the Android native library is unavailable.
+     */
+    fun compositePremultipliedTile(
+        destination: IntArray,
+        source: IntArray,
+        stride: Int,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
+        blendMode: Int,
+    ): Boolean = nativeLibraryLoaded && nativeCompositePremultipliedTile(
+        destination,
+        source,
+        stride,
+        left,
+        top,
+        right,
+        bottom,
+        blendMode,
+    )
+
+    /** -1 means unavailable/invalid, 0 means executed without a changed pixel, 1 means changed. */
+    fun depositRoundWet(
+        destination: IntArray,
+        stride: Int,
+        tileLeft: Int,
+        tileTop: Int,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
+        centerX: Float,
+        centerY: Float,
+        outerRadius: Float,
+        innerRadius: Float,
+        inverseEdge: Float,
+        baseDeposition: Float,
+        transferMode: Int,
+        reservoirAlpha: Float,
+        reservoirRed: Float,
+        reservoirGreen: Float,
+        reservoirBlue: Float,
+    ): Int = if (nativeLibraryLoaded) nativeDepositRoundWet(
+        destination,
+        stride,
+        tileLeft,
+        tileTop,
+        left,
+        top,
+        right,
+        bottom,
+        centerX,
+        centerY,
+        outerRadius,
+        innerRadius,
+        inverseEdge,
+        baseDeposition,
+        transferMode,
+        reservoirAlpha,
+        reservoirRed,
+        reservoirGreen,
+        reservoirBlue,
+    ) else -1
+
+    fun unpremultiplyInPlace(pixels: IntArray): Boolean =
+        nativeLibraryLoaded && nativeUnpremultiplyInPlace(pixels)
+
+    /** Returns -1 when native execution is unavailable. */
+    fun nonTransparentPixelCount(pixels: IntArray): Int =
+        if (nativeLibraryLoaded) nativeNonTransparentPixelCount(pixels) else -1
+
+    /** Stable architecture-independent A,R,G,B FNV-1a hash, or null off Android. */
+    fun hashPremultipliedPixels(pixels: IntArray): Long? =
+        if (nativeLibraryLoaded) nativeHashPremultipliedPixels(pixels) else null
+
     fun compositePigment(
         base: Bitmap,
         fresh: Bitmap,
@@ -134,10 +213,44 @@ internal object NativeRasterOps {
         closeGapPixels: Int,
         areaScalingPixels: Int,
     ): IntArray
+    private external fun nativeCompositePremultipliedTile(
+        destination: IntArray,
+        source: IntArray,
+        stride: Int,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
+        blendMode: Int,
+    ): Boolean
+    private external fun nativeDepositRoundWet(
+        destination: IntArray,
+        stride: Int,
+        tileLeft: Int,
+        tileTop: Int,
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
+        centerX: Float,
+        centerY: Float,
+        outerRadius: Float,
+        innerRadius: Float,
+        inverseEdge: Float,
+        baseDeposition: Float,
+        transferMode: Int,
+        reservoirAlpha: Float,
+        reservoirRed: Float,
+        reservoirGreen: Float,
+        reservoirBlue: Float,
+    ): Int
+    private external fun nativeUnpremultiplyInPlace(pixels: IntArray): Boolean
+    private external fun nativeNonTransparentPixelCount(pixels: IntArray): Int
+    private external fun nativeHashPremultipliedPixels(pixels: IntArray): Long
     private fun IntArray.toRectOrNull(): Rect? = takeIf { size == 4 && it[0] >= 0 && it[1] >= 0 && it[2] > it[0] && it[3] > it[1] }
         ?.let { Rect(it[0], it[1], it[2], it[3]) }
 
-    init {
+    private val nativeLibraryLoaded = runCatching {
         System.loadLibrary("inkloom_engine_v5")
-    }
+    }.isSuccess
 }

@@ -1,5 +1,7 @@
 package app.inkloom.engine.v5.surface
 
+import app.inkloom.engine.v5.tools.NativeRasterOps
+
 /** How the immutable active contribution is applied to its pinned committed layer. */
 enum class ActiveStrokeDeltaBlend { SOURCE_OVER, DESTINATION_OUT, SOURCE_ATOP }
 
@@ -74,16 +76,18 @@ class ActiveStrokeDeltaTileSurface(
                 deltaRecord.deltaInfo.forEach { info ->
                     val source = delta.copyTilePixels(info.key) ?: return@forEach
                     publication.editTile(info.key, info.dirtyLocalRect) { destination, stride ->
-                        for (y in info.dirtyLocalRect.top until info.dirtyLocalRect.bottom) {
-                            val row = y * stride
-                            for (x in info.dirtyLocalRect.left until info.dirtyLocalRect.right) {
-                                val index = row + x
-                                destination[index] = when (blend) {
-                                    ActiveStrokeDeltaBlend.SOURCE_OVER -> sourceOver(destination[index], source[index])
-                                    ActiveStrokeDeltaBlend.DESTINATION_OUT -> destinationOut(destination[index], source[index] ushr 24)
-                                    ActiveStrokeDeltaBlend.SOURCE_ATOP -> sourceAtop(destination[index], source[index])
-                                }
-                            }
+                        val compositedNatively = NativeRasterOps.compositePremultipliedTile(
+                            destination = destination,
+                            source = source,
+                            stride = stride,
+                            left = info.dirtyLocalRect.left,
+                            top = info.dirtyLocalRect.top,
+                            right = info.dirtyLocalRect.right,
+                            bottom = info.dirtyLocalRect.bottom,
+                            blendMode = blend.ordinal,
+                        )
+                        if (!compositedNatively) {
+                            compositeReference(destination, source, stride, info.dirtyLocalRect, blend)
                         }
                     }
                 }
@@ -147,6 +151,26 @@ class ActiveStrokeDeltaTileSurface(
                 (((((source ushr 16) and 0xff) * destinationAlpha + ((destination ushr 16) and 0xff) * inverse) / 255).coerceAtMost(destinationAlpha) shl 16) or
                 (((((source ushr 8) and 0xff) * destinationAlpha + ((destination ushr 8) and 0xff) * inverse) / 255).coerceAtMost(destinationAlpha) shl 8) or
                 ((((source and 0xff) * destinationAlpha + (destination and 0xff) * inverse) / 255).coerceAtMost(destinationAlpha))
+        }
+
+        private fun compositeReference(
+            destination: IntArray,
+            source: IntArray,
+            stride: Int,
+            dirtyRect: PixelRect,
+            blend: ActiveStrokeDeltaBlend,
+        ) {
+            for (y in dirtyRect.top until dirtyRect.bottom) {
+                val row = y * stride
+                for (x in dirtyRect.left until dirtyRect.right) {
+                    val index = row + x
+                    destination[index] = when (blend) {
+                        ActiveStrokeDeltaBlend.SOURCE_OVER -> sourceOver(destination[index], source[index])
+                        ActiveStrokeDeltaBlend.DESTINATION_OUT -> destinationOut(destination[index], source[index] ushr 24)
+                        ActiveStrokeDeltaBlend.SOURCE_ATOP -> sourceAtop(destination[index], source[index])
+                    }
+                }
+            }
         }
     }
 }

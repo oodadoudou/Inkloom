@@ -11,6 +11,7 @@ import app.inkloom.engine.v5.surface.PixelTileFormat
 import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot
 import app.inkloom.engine.v5.surface.PixelTileWriteTransaction
+import app.inkloom.engine.v5.tools.NativeRasterOps
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.floor
@@ -100,10 +101,12 @@ internal object PixelTileBitmapAdapter {
                 }
             }
         }
-        var outputIndex = 0
-        while (outputIndex < output.size) {
-            output[outputIndex] = unpremultiply(output[outputIndex])
-            outputIndex++
+        if (!NativeRasterOps.unpremultiplyInPlace(output)) {
+            var outputIndex = 0
+            while (outputIndex < output.size) {
+                output[outputIndex] = unpremultiply(output[outputIndex])
+                outputIndex++
+            }
         }
         return Bitmap.createBitmap(output, targetWidth, targetHeight, Bitmap.Config.ARGB_8888)
     }
@@ -221,10 +224,12 @@ internal object PixelTileBitmapAdapter {
     /** Materializes current unpublished gesture pixels from a write transaction. */
     fun render(transaction: PixelTileWriteTransaction, source: PixelRect): Bitmap {
         val output = transaction.copyPremultipliedPixels(source)
-        var index = 0
-        while (index < output.size) {
-            output[index] = unpremultiply(output[index])
-            index++
+        if (!NativeRasterOps.unpremultiplyInPlace(output)) {
+            var index = 0
+            while (index < output.size) {
+                output[index] = unpremultiply(output[index])
+                index++
+            }
         }
         return Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888).also { bitmap ->
             bitmap.setPixels(output, 0, source.width, 0, 0, source.width, source.height)

@@ -129,7 +129,8 @@ class RealtimeStrokeController {
             }
             val finalBatch = gesture.stroke.finish(sample?.let { input(it, InputPhase.UP) })
             gesture.include(gesture.paint.finish(finalBatch).dirtyBounds)
-            gesture.publishPreview()
+            // No frame can consume another active preview between this worker-owned finish and
+            // publication. Avoid cloning/counting all dirty delta tiles a second time on pen-up.
             gesture.paint.publish().also { published ->
                 lastBackpressureSnapshot = gesture.mailbox.snapshot(
                     sample?.enqueuedTimeNanos ?: gesture.samples.lastOrNull()?.enqueuedTimeNanos ?: 0L,

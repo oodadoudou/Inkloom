@@ -13,6 +13,7 @@ import app.inkloom.engine.v5.surface.PixelRect
 import app.inkloom.engine.v5.surface.PixelTileKey
 import app.inkloom.engine.v5.surface.PixelTileSurface
 import app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot
+import app.inkloom.engine.v5.tools.NativeRasterOps
 import kotlin.math.ceil
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -292,6 +293,33 @@ class WetPaintOp(
                 if (overlap.isEmpty) continue
                 val local = PixelRect(overlap.left - tileLeft, overlap.top - tileTop, overlap.right - tileLeft, overlap.bottom - tileTop)
                 delta.editTile(PixelTileKey(column, row), local) { pixels, stride ->
+                    if (tip == null && definition.grain == null && selection == null) {
+                        val nativeResult = NativeRasterOps.depositRoundWet(
+                            destination = pixels,
+                            stride = stride,
+                            tileLeft = tileLeft,
+                            tileTop = tileTop,
+                            left = overlap.left,
+                            top = overlap.top,
+                            right = overlap.right,
+                            bottom = overlap.bottom,
+                            centerX = sample.point.x,
+                            centerY = sample.point.y,
+                            outerRadius = outerRadius,
+                            innerRadius = innerRadius,
+                            inverseEdge = inverseEdge,
+                            baseDeposition = baseDeposition,
+                            transferMode = definition.transferMode.ordinal,
+                            reservoirAlpha = track.reservoir.a,
+                            reservoirRed = track.reservoir.r,
+                            reservoirGreen = track.reservoir.g,
+                            reservoirBlue = track.reservoir.b,
+                        )
+                        if (nativeResult >= 0) {
+                            if (nativeResult > 0) wrotePixel = true
+                            return@editTile
+                        }
+                    }
                     for (y in overlap.top until overlap.bottom) for (x in overlap.left until overlap.right) {
                         val dx = x + .5f - sample.point.x
                         val dy = y + .5f - sample.point.y
