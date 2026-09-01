@@ -40,9 +40,7 @@ internal class PixelTileCanvasRenderer(
     private class CachedTile(
         val bitmap: Bitmap,
     ) {
-        val shader = BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).apply {
-            setFilterMode(BitmapShader.FILTER_MODE_LINEAR)
-        }
+        val shader = BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
 
         fun close() {
             if (!bitmap.isRecycled) bitmap.recycle()
@@ -50,7 +48,7 @@ internal class PixelTileCanvasRenderer(
     }
 
     private val cache = LinkedHashMap<CacheKey, CachedTile>(16, .75f, true)
-    private val shaderPaint = Paint().apply { isAntiAlias = false }
+    private val shaderPaint = Paint(Paint.FILTER_BITMAP_FLAG).apply { isAntiAlias = false }
     private val shaderMatrix = Matrix()
     private var retainedBytes = 0L
     private val memoryRegistration = PixelMemoryPressureCoordinator.register(this)
