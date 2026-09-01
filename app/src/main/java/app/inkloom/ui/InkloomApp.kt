@@ -469,48 +469,50 @@ fun InkloomApp(initialIntent: Intent?) {
                     repository.importDetailed(uri)
                 }
             }
-            val batches = results.mapNotNull { it.getOrNull() }
-            val additions = batches.flatMap { it.renderableBrushes }.let { brushes ->
-                targetGroup?.let { group ->
-                    brushes.map { brush ->
-                        val nestedGroup = BrushGroupOperations.nest(group, brush.groupName)
-                        BrushGroupOperations.assign(brush, nestedGroup)
-                    }
-                } ?: brushes
-            }
-            val existingGroupKeys = brushGroups.map { it.trim().lowercase() }.toSet()
-            val groupsCreated = additions.map(ImportedBrush::groupName).map(String::trim)
-                .filter(String::isNotEmpty).distinctBy(String::lowercase)
-                .count { it.lowercase() !in existingGroupKeys }
-            importedBrushes = BrushGroupOperations.mergeImports(importedBrushes, additions)
-            brushStore.save(importedBrushes)
-            brushGroups = BrushGroupOperations.reconcileRegisteredGroups(brushGroups, importedBrushes)
-            brushGroupStore.save(brushGroups)
-            val importLedger = BrushImportLedger.combine(batches.map(BrushImportBatch::ledger))
-                .withGroupsCreated(groupsCreated)
-            val importSummary = importLedger.summary
-            val fileFailures = results.count { it.isFailure }
-            val summary = settings.language.text(
-                "Source files: ${importSummary.sourceFilesScanned}; containers: ${importSummary.sourceContainers}; " +
-                    "brushes discovered: ${importSummary.brushesDiscovered}; parsed: ${importSummary.parsed}; " +
-                    "mapped: ${importSummary.mapped}; renderable: ${importSummary.renderable}; " +
-                    "imported usable: ${importSummary.importedUsable}; rejected: ${importSummary.rejectedUnsupported}; " +
-                    "failed: ${importSummary.failed}; groups discovered: ${importSummary.groupsDiscovered}; " +
-                    "groups created: ${importSummary.groupsCreated}; file errors: $fileFailures.",
-                "源文件：${importSummary.sourceFilesScanned}；容器：${importSummary.sourceContainers}；" +
-                    "发现笔刷：${importSummary.brushesDiscovered}；已解析：${importSummary.parsed}；" +
-                    "已映射：${importSummary.mapped}；可渲染：${importSummary.renderable}；" +
-                    "已导入可用：${importSummary.importedUsable}；已拒绝：${importSummary.rejectedUnsupported}；" +
-                    "失败：${importSummary.failed}；发现分组：${importSummary.groupsDiscovered}；" +
-                    "创建分组：${importSummary.groupsCreated}；文件错误：$fileFailures。",
-            )
-            if (importSummary.rejectedUnsupported > 0 || importSummary.failed > 0 || fileFailures > 0) {
-                val reasons = (importLedger.records.flatMap { record -> record.rejectionReasons } +
-                    results.mapNotNull { it.exceptionOrNull()?.message })
-                    .distinct().take(5)
-                importError = listOf(summary, reasons.joinToString("\n")).filter(String::isNotBlank).joinToString("\n\n")
-            } else {
-                Toast.makeText(context, summary, Toast.LENGTH_LONG).show()
+            withContext(Dispatchers.Main.immediate) {
+                val batches = results.mapNotNull { it.getOrNull() }
+                val additions = batches.flatMap { it.renderableBrushes }.let { brushes ->
+                    targetGroup?.let { group ->
+                        brushes.map { brush ->
+                            val nestedGroup = BrushGroupOperations.nest(group, brush.groupName)
+                            BrushGroupOperations.assign(brush, nestedGroup)
+                        }
+                    } ?: brushes
+                }
+                val existingGroupKeys = brushGroups.map { it.trim().lowercase() }.toSet()
+                val groupsCreated = additions.map(ImportedBrush::groupName).map(String::trim)
+                    .filter(String::isNotEmpty).distinctBy(String::lowercase)
+                    .count { it.lowercase() !in existingGroupKeys }
+                importedBrushes = BrushGroupOperations.mergeImports(importedBrushes, additions)
+                brushStore.save(importedBrushes)
+                brushGroups = BrushGroupOperations.reconcileRegisteredGroups(brushGroups, importedBrushes)
+                brushGroupStore.save(brushGroups)
+                val importLedger = BrushImportLedger.combine(batches.map(BrushImportBatch::ledger))
+                    .withGroupsCreated(groupsCreated)
+                val importSummary = importLedger.summary
+                val fileFailures = results.count { it.isFailure }
+                val summary = settings.language.text(
+                    "Source files: ${importSummary.sourceFilesScanned}; containers: ${importSummary.sourceContainers}; " +
+                        "brushes discovered: ${importSummary.brushesDiscovered}; parsed: ${importSummary.parsed}; " +
+                        "mapped: ${importSummary.mapped}; renderable: ${importSummary.renderable}; " +
+                        "imported usable: ${importSummary.importedUsable}; rejected: ${importSummary.rejectedUnsupported}; " +
+                        "failed: ${importSummary.failed}; groups discovered: ${importSummary.groupsDiscovered}; " +
+                        "groups created: ${importSummary.groupsCreated}; file errors: $fileFailures.",
+                    "源文件：${importSummary.sourceFilesScanned}；容器：${importSummary.sourceContainers}；" +
+                        "发现笔刷：${importSummary.brushesDiscovered}；已解析：${importSummary.parsed}；" +
+                        "已映射：${importSummary.mapped}；可渲染：${importSummary.renderable}；" +
+                        "已导入可用：${importSummary.importedUsable}；已拒绝：${importSummary.rejectedUnsupported}；" +
+                        "失败：${importSummary.failed}；发现分组：${importSummary.groupsDiscovered}；" +
+                        "创建分组：${importSummary.groupsCreated}；文件错误：$fileFailures。",
+                )
+                if (importSummary.rejectedUnsupported > 0 || importSummary.failed > 0 || fileFailures > 0) {
+                    val reasons = (importLedger.records.flatMap { record -> record.rejectionReasons } +
+                        results.mapNotNull { it.exceptionOrNull()?.message })
+                        .distinct().take(5)
+                    importError = listOf(summary, reasons.joinToString("\n")).filter(String::isNotBlank).joinToString("\n\n")
+                } else {
+                    Toast.makeText(context, summary, Toast.LENGTH_LONG).show()
+                }
             }
         }
     }
@@ -8234,6 +8236,7 @@ private fun ProcreateBrushLibrary(
     val currentPanelDragCancel by rememberUpdatedState(onPanelDragCancel)
     val dragDescription = tr("Drag brushes panel", "拖动笔刷面板")
     val brushManagementDescription = tr("Brush management: ${selectedBrushIds.size} selected", "笔刷管理：已选择 ${selectedBrushIds.size} 支")
+    val brushListDescription = tr("Brush presets", "笔刷预设列表")
     val allLabel = tr("All", "全部")
     val groupCopySuffix = tr("copy", "副本")
     @Composable fun categoryLabel(category: String): String = when (category) {
@@ -8553,7 +8556,7 @@ private fun ProcreateBrushLibrary(
                 }
                 if (gridLayout) LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    modifier = Modifier.weight(1f).fillMaxHeight().semantics { contentDescription = brushListDescription },
                     contentPadding = PaddingValues(8.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -8581,7 +8584,7 @@ private fun ProcreateBrushLibrary(
                         }
                     }
                 } else LazyColumn(
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    modifier = Modifier.weight(1f).fillMaxHeight().semantics { contentDescription = brushListDescription },
                     contentPadding = PaddingValues(vertical = 6.dp),
                 ) {
                     items(displayed, key = { it.id }) { brush ->

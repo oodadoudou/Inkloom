@@ -14,6 +14,8 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.hasContentDescription
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.engine.v5.diagnostics.BrushExecutionFingerprint
@@ -128,6 +130,8 @@ class ProcreateBrushsetUiImportTest {
         expectedId: String,
         row: Float,
     ): BrushExecutionFingerprint {
+        composeRule.onNodeWithContentDescription("Brush presets")
+            .performScrollToNode(hasContentDescription("Brush preset $name"))
         composeRule.onNodeWithContentDescription("Brush preset $name").performClick()
         composeRule.waitUntil(10_000) { view.brushId == expectedId }
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
