@@ -4,9 +4,11 @@ import app.inkloom.brushpresetv5.BrushPresetV5Codec
 import app.inkloom.brushpresetv5.CompiledBrushProgramV5
 import app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot
 import app.inkloom.engine.v5.surface.PixelTileTransactionRecord
+import app.inkloom.engine.v5.tools.NativeRasterOps
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.ImportedBrush
 import java.io.File
+import java.nio.ByteBuffer
 import java.security.MessageDigest
 
 /** Immutable identity of the exact brush program installed for the next contact. */
@@ -171,11 +173,16 @@ object BrushExecutionFingerprints {
         val digest = MessageDigest.getInstance("SHA-256")
         record.deltaInfo.sortedWith(compareBy({ it.key.row }, { it.key.column })).forEach { delta ->
             digest.update("${delta.key.column},${delta.key.row}".toByteArray())
-            snapshot.copyTilePixels(delta.key)?.forEach { pixel ->
-                digest.update((pixel ushr 24).toByte())
-                digest.update((pixel ushr 16).toByte())
-                digest.update((pixel ushr 8).toByte())
-                digest.update(pixel.toByte())
+            snapshot.readRgba8Tile(delta.key) { pixels ->
+                val nativeHash = NativeRasterOps.hashPremultipliedPixels(pixels)
+                if (nativeHash != null) {
+                    digest.update(ByteBuffer.allocate(Long.SIZE_BYTES).putLong(nativeHash).array())
+                } else {
+                    // ByteBuffer is big-endian by default, preserving the JVM A,R,G,B stream.
+                    val bytes = ByteBuffer.allocate(pixels.size * Int.SIZE_BYTES)
+                    bytes.asIntBuffer().put(pixels)
+                    digest.update(bytes.array())
+                }
             }
         }
         return digest.digest().hex()

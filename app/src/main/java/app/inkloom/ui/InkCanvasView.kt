@@ -206,6 +206,7 @@ import app.inkloom.settings.SelectionFilter
 import app.inkloom.settings.SelectionMode
 import app.inkloom.settings.SelectionShape
 import app.inkloom.settings.ReferenceTarget
+import java.util.concurrent.Executors
 import kotlin.math.ceil
 import kotlin.math.atan2
 import kotlin.math.hypot
@@ -562,7 +563,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var configuredInputBrushId: String? = null
     private var compiledBrushProgramV5: CompiledBrushProgramV5? = null
     private var brushExecutionIdentity: BrushExecutionIdentity? = null
-    @VisibleForTesting internal var lastBrushExecutionFingerprint: BrushExecutionFingerprint? = null
+    @Volatile @VisibleForTesting internal var lastBrushExecutionFingerprint: BrushExecutionFingerprint? = null
         private set
     private var activeV5Execution: Pair<BrushExecutionIdentity, String>? = null
     internal val compiledBrushProgramV5Cache = CompiledBrushProgramV5Cache()
@@ -5099,14 +5100,17 @@ class InkCanvasView(context: Context) : View(context) {
         try {
             v5DryPublishedGeneration = published.snapshot.revision
             if (BuildConfig.PAINTING_DIAGNOSTICS && execution != null) {
-                lastBrushExecutionFingerprint = BrushExecutionFingerprints.committed(
-                    execution.first,
-                    execution.second,
-                    strokeId,
-                    published.record,
-                    published.snapshot,
-                )
-                android.util.Log.i("InkloomBrushExecution", lastBrushExecutionFingerprint.toString())
+                // Fingerprint generation is diagnostic evidence, not document work. Hashing must
+                // never extend pen-up latency or delay the next physical contact.
+                brushFingerprintWorker.execute {
+                    lastBrushExecutionFingerprint = BrushExecutionFingerprints.committed(
+                        execution.first,
+                        execution.second,
+                        strokeId,
+                        published.record,
+                        published.snapshot,
+                    )
+                }
             }
             published.dirtyBounds?.takeIf { published.record.changedTileCount > 0 }?.let { bounds ->
                 if (wasEraser) {
@@ -5628,6 +5632,9 @@ class InkCanvasView(context: Context) : View(context) {
 
     private companion object {
         @Volatile var rasterSelectionClipboard: RasterSelectionClipboard? = null
+        val brushFingerprintWorker = Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "Inkloom-Brush-Fingerprint").apply { isDaemon = true }
+        }
         const val REFERENCE_WIDTH = 1600f
         private const val SMALL_CURSOR_MARK_THRESHOLD_PX = 8f
         const val FILL_MAX_SAMPLE_DIMENSION = 1_600f
