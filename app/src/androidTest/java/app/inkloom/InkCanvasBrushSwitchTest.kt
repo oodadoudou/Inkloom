@@ -1,5 +1,8 @@
 package app.inkloom
 
+import app.inkloom.model.BrushToolBinding
+import app.inkloom.model.BrushToolRole
+
 import android.graphics.Color
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -68,7 +71,7 @@ class InkCanvasBrushSwitchTest {
         }
         val synchronized = brush("csp-screen-size", "Screen size").copy(sizeSyncViewScale = true, sizePressureEnabled = false).v5()
         val documentSized = brush("csp-document-size", "Document size").copy(sizePressureEnabled = false).v5()
-        val synchronizedEraser = brush("csp-screen-eraser", "Screen eraser").copy(sizeSyncViewScale = true, sizePressureEnabled = false, isEraser = true).v5()
+        val synchronizedEraser = brush("csp-screen-eraser", "Screen eraser").copy(sizeSyncViewScale = true, sizePressureEnabled = false, toolBinding = BrushToolBinding(BrushToolRole.ERASE)).v5()
 
         instrumentation.runOnMainSync {
             view.applyBrushConfiguration(EditorTool.PEN, AppSettings(), synchronized, 40f, 1f, Color.BLACK, EraserPreset.NORMAL_FREE)

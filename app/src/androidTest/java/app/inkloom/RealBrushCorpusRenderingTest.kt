@@ -1,5 +1,8 @@
 package app.inkloom
 
+import app.inkloom.model.BrushToolBinding
+import app.inkloom.model.BrushToolRole
+
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -53,7 +56,7 @@ class RealBrushCorpusRenderingTest {
                     compatibility = Compatibility.HIGH,
                     sizeBytes = 1,
                     report = emptyList(),
-                    isEraser = eraser,
+                    toolBinding = BrushToolBinding(if (eraser) BrushToolRole.ERASE else BrushToolRole.PAINT),
                 ),
             )
 

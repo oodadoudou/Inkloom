@@ -10,6 +10,7 @@ import app.inkloom.document.ProcreateRenderingMode
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.BrushSemanticMapping
 import app.inkloom.model.ImportedBrush
+import app.inkloom.model.BrushToolRole
 import app.inkloom.model.SemanticExecutionDisposition
 import app.inkloom.model.SemanticFidelity
 
@@ -104,7 +105,7 @@ object BrushSemanticMapper {
                 "The secondary wet stream is retained; V5 executes the primary wet tip and pigment program.",
             ) else executed("$prefix.dualBrush.basic", "StampPaintOp.dual")
         }
-        if (brush.isEraser) executed("$prefix.eraser", "BrushPresetV5.output.ERASE")
+        if (brush.toolBinding.role == BrushToolRole.ERASE) executed("$prefix.eraser", "BrushPresetV5.output.ERASE")
 
         if (brush.sizePressureEnabled) executed("$prefix.pressure.size", "CompiledBrushProgramV5.pressure.width")
         if (brush.opacityPressureEnabled) executed("$prefix.pressure.opacity", "CompiledBrushProgramV5.pressure.deposition")

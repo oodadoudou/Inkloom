@@ -1579,6 +1579,10 @@ private fun EditorScreen(
         syncCanvasInput(prepareAssets = restoredBrush != null)
     }
     fun activateWorkspaceBrush(brush: ImportedBrush, persistSelection: Boolean) {
+        if (!brush.toolBinding.isSupported) {
+            android.widget.Toast.makeText(context, brush.toolBinding.unsupportedReason ?: "Unsupported brush tool", android.widget.Toast.LENGTH_LONG).show()
+            return
+        }
         exitCanvasNavigation()
         val usedBrush = brush.copy(lastUsedAt = System.currentTimeMillis())
         onUpdateBrush(usedBrush)
@@ -5288,7 +5292,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
             ),
         ) else null
     val compiledProgram = when {
-        !paintTool -> null
+        !paintTool || activeBrush?.toolBinding?.isSupported == false -> null
         activeBrush != null -> compiledBrushProgramV5Cache.resolveEncoded(activeBrush.v5PresetJson)
         else -> compiledBrushProgramV5Cache.resolvePreset(requireNotNull(defaultPreset))
     }
@@ -5313,18 +5317,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     selectionShape = settings.selectionShape
     selectionBrushSize = settings.selectionBrushSize
     selectionThreshold = settings.selectionThreshold
-    liquifyMode = when {
-        activeBrush?.tags?.any { it.equals("push-left", true) } == true -> LiquifyMode.PUSH_LEFT
-        activeBrush?.tags?.any { it.equals("push-right", true) } == true -> LiquifyMode.PUSH_RIGHT
-        activeBrush?.tags?.any { it.equals("twirl-left", true) } == true -> LiquifyMode.TWIRL_COUNTERCLOCKWISE
-        activeBrush?.tags?.any { it.equals("twirl-right", true) || it.equals("twirl", true) } == true -> LiquifyMode.TWIRL_CLOCKWISE
-        activeBrush?.tags?.any { it.equals("pinch", true) } == true -> LiquifyMode.PINCH
-        activeBrush?.tags?.any { it.equals("expand", true) } == true -> LiquifyMode.EXPAND
-        activeBrush?.tags?.any { it.equals("crystals", true) } == true -> LiquifyMode.CRYSTALS
-        activeBrush?.tags?.any { it.equals("edge", true) } == true -> LiquifyMode.EDGE
-        activeBrush?.tags?.any { it.equals("reconstruct", true) } == true -> LiquifyMode.RECONSTRUCT
-        else -> LiquifyMode.PUSH
-    }
+    liquifyMode = activeBrush?.toolBinding?.liquifyMode ?: LiquifyMode.PUSH
     liquifyStrength = activeBrush?.flow ?: .55f
     liquifyHardness = activeBrush?.hardness ?: .5f
     selectionMode = settings.selectionMode

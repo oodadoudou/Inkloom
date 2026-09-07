@@ -329,7 +329,7 @@ data class ImportedBrush(
     val waterEdgeBlurUnit: Int = 0,
     val favorite: Boolean = false,
     val hidden: Boolean = false,
-    val isEraser: Boolean = false,
+    val toolBinding: BrushToolBinding = BrushToolBinding(),
     val groupName: String = "",
     val tags: List<String> = emptyList(),
     val lastUsedAt: Long = 0L,

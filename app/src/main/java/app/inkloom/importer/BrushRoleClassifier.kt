@@ -1,32 +1,20 @@
 package app.inkloom.importer
 
+import app.inkloom.model.BrushToolRole
 import app.inkloom.model.ImportedBrush
 import app.inkloom.model.EditorTool
 
+/** Reads declared tool semantics; display metadata is never a dispatch input. */
 object BrushRoleClassifier {
-    fun isEraser(brush: ImportedBrush?): Boolean {
-        if (brush == null) return false
-        val searchable = "${brush.name} ${brush.groupName}".lowercase()
-        return brush.isEraser || listOf("eraser", "橡皮", "消しゴム").any(searchable::contains)
-    }
+    fun isEraser(brush: ImportedBrush?): Boolean = brush?.toolBinding?.role == BrushToolRole.ERASE
+    fun isBlend(brush: ImportedBrush?): Boolean = brush?.toolBinding?.role == BrushToolRole.SMUDGE
+    fun isLiquify(brush: ImportedBrush?): Boolean = brush?.toolBinding?.role == BrushToolRole.LIQUIFY
 
-    fun isBlend(brush: ImportedBrush?): Boolean = hasRole(brush, "blend", "smudge", "混色", "涂抹")
-
-    fun isLiquify(brush: ImportedBrush?): Boolean = hasRole(brush, "liquify", "液化")
-
-    fun editorTool(brush: ImportedBrush?): EditorTool = when {
-        isEraser(brush) -> EditorTool.ERASER
-        isBlend(brush) -> EditorTool.SMUDGE
-        isLiquify(brush) -> EditorTool.LIQUIFY
+    fun editorTool(brush: ImportedBrush?): EditorTool = when (brush?.toolBinding?.role) {
+        BrushToolRole.ERASE -> EditorTool.ERASER
+        BrushToolRole.SMUDGE -> EditorTool.SMUDGE
+        BrushToolRole.LIQUIFY -> EditorTool.LIQUIFY
+        // Unsupported records have no executable payload and are rejected at selection/contact.
         else -> EditorTool.PEN
-    }
-
-    private fun hasRole(brush: ImportedBrush?, vararg terms: String): Boolean {
-        if (brush == null) return false
-        val searchable = buildString {
-            append(brush.name).append(' ').append(brush.groupName).append(' ')
-            append(brush.tags.joinToString(" "))
-        }.lowercase()
-        return terms.any(searchable::contains)
     }
 }

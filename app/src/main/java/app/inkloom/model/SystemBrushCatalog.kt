@@ -1,5 +1,6 @@
 package app.inkloom.model
 
+import app.inkloom.document.LiquifyMode
 import app.inkloom.brushpresetv5.BrushPresetV5Import
 import app.inkloom.brushpresetv5.ProceduralTipKind
 import app.inkloom.brushpresetv5.SpacingMode
@@ -75,20 +76,20 @@ internal object SystemBrushCatalog {
         systemBrush(id = "system-decoration-sparkle", name = "Sparkle Scatter", group = "Decoration", size = 54f, spacing = .34f, spray = true, sprayParticleSize = 10f, sprayDensity = 1.4f, spraySpread = .9f, stampCount = 3, randomRotationDegrees = 180f, tags = listOf("decoration", "effect")),
         systemBrush(id = "system-decoration-hatching", name = "Cross Hatching", group = "Decoration", size = 18f, spacing = .18f, stampCount = 4, stampCountJitter = .3f, strokeRotationJitterDegrees = 90f, tags = listOf("decoration", "hatching")),
 
-        systemBrush(id = "system-hard-eraser", name = "Hard Eraser", group = "Erasers", size = 24f, hardness = 1f, isEraser = true, tags = listOf("eraser", "hard")),
-        systemBrush(id = "system-soft-eraser", name = "Soft Eraser", group = "Erasers", size = 68f, hardness = .12f, blur = .28f, isEraser = true, tags = listOf("eraser", "soft")),
-        systemBrush(id = "system-blend-smear", name = "Finger Smear", group = "Blend", size = 56f, colorMix = .82f, paintMix = 0f, tags = listOf("blend", "smear")),
-        systemBrush(id = "system-blend-soft", name = "Soft Blend", group = "Blend", size = 82f, hardness = .08f, blur = .48f, colorMix = .62f, tags = listOf("blend", "blur")),
-        systemBrush(id = "system-liquify-push", name = "Push", group = "Liquify", size = 120f, flow = .72f, hardness = .55f, tags = listOf("liquify", "push")),
-        systemBrush(id = "system-liquify-push-left", name = "Push Left", group = "Liquify", size = 120f, flow = .72f, hardness = .55f, tags = listOf("liquify", "push-left")),
-        systemBrush(id = "system-liquify-push-right", name = "Push Right", group = "Liquify", size = 120f, flow = .72f, hardness = .55f, tags = listOf("liquify", "push-right")),
-        systemBrush(id = "system-liquify-twirl-right", name = "Twirl Right", group = "Liquify", size = 140f, flow = .68f, hardness = .45f, tags = listOf("liquify", "twirl-right")),
-        systemBrush(id = "system-liquify-twirl-left", name = "Twirl Left", group = "Liquify", size = 140f, flow = .68f, hardness = .45f, tags = listOf("liquify", "twirl-left")),
-        systemBrush(id = "system-liquify-pinch", name = "Pinch", group = "Liquify", size = 150f, flow = .62f, hardness = .42f, tags = listOf("liquify", "pinch")),
-        systemBrush(id = "system-liquify-expand", name = "Expand", group = "Liquify", size = 150f, flow = .62f, hardness = .42f, tags = listOf("liquify", "expand")),
-        systemBrush(id = "system-liquify-crystals", name = "Crystals", group = "Liquify", size = 135f, flow = .58f, hardness = .72f, tags = listOf("liquify", "crystals")),
-        systemBrush(id = "system-liquify-edge", name = "Edge", group = "Liquify", size = 130f, flow = .65f, hardness = .58f, tags = listOf("liquify", "edge")),
-        systemBrush(id = "system-liquify-reconstruct", name = "Reconstruct", group = "Liquify", size = 140f, flow = .7f, hardness = .5f, tags = listOf("liquify", "reconstruct")),
+        systemBrush(id = "system-hard-eraser", name = "Hard Eraser", group = "Erasers", size = 24f, hardness = 1f, toolBinding = BrushToolBinding(BrushToolRole.ERASE), tags = listOf("eraser", "hard")),
+        systemBrush(id = "system-soft-eraser", name = "Soft Eraser", group = "Erasers", size = 68f, hardness = .12f, blur = .28f, toolBinding = BrushToolBinding(BrushToolRole.ERASE), tags = listOf("eraser", "soft")),
+        systemBrush(id = "system-blend-smear", toolBinding = BrushToolBinding(BrushToolRole.SMUDGE), name = "Finger Smear", group = "Blend", size = 56f, colorMix = .82f, paintMix = 0f, tags = listOf("blend", "smear")),
+        systemBrush(id = "system-blend-soft", toolBinding = BrushToolBinding(BrushToolRole.SMUDGE), name = "Soft Blend", group = "Blend", size = 82f, hardness = .08f, blur = .48f, colorMix = .62f, tags = listOf("blend", "blur")),
+        systemBrush(id = "system-liquify-push", toolBinding = BrushToolBinding(BrushToolRole.LIQUIFY, LiquifyMode.PUSH), name = "Push", group = "Liquify", size = 120f, flow = .72f, hardness = .55f, tags = listOf("liquify", "push")),
+        systemBrush(id = "system-liquify-push-left", toolBinding = BrushToolBinding(BrushToolRole.LIQUIFY, LiquifyMode.PUSH_LEFT), name = "Push Left", group = "Liquify", size = 120f, flow = .72f, hardness = .55f, tags = listOf("liquify", "push-left")),
+        systemBrush(id = "system-liquify-push-right", toolBinding = BrushToolBinding(BrushToolRole.LIQUIFY, LiquifyMode.PUSH_RIGHT), name = "Push Right", group = "Liquify", size = 120f, flow = .72f, hardness = .55f, tags = listOf("liquify", "push-right")),
+        systemBrush(id = "system-liquify-twirl-right", toolBinding = BrushToolBinding(BrushToolRole.LIQUIFY, LiquifyMode.TWIRL_CLOCKWISE), name = "Twirl Right", group = "Liquify", size = 140f, flow = .68f, hardness = .45f, tags = listOf("liquify", "twirl-right")),
+        systemBrush(id = "system-liquify-twirl-left", toolBinding = BrushToolBinding(BrushToolRole.LIQUIFY, LiquifyMode.TWIRL_COUNTERCLOCKWISE), name = "Twirl Left", group = "Liquify", size = 140f, flow = .68f, hardness = .45f, tags = listOf("liquify", "twirl-left")),
+        systemBrush(id = "system-liquify-pinch", toolBinding = BrushToolBinding(BrushToolRole.LIQUIFY, LiquifyMode.PINCH), name = "Pinch", group = "Liquify", size = 150f, flow = .62f, hardness = .42f, tags = listOf("liquify", "pinch")),
+        systemBrush(id = "system-liquify-expand", toolBinding = BrushToolBinding(BrushToolRole.LIQUIFY, LiquifyMode.EXPAND), name = "Expand", group = "Liquify", size = 150f, flow = .62f, hardness = .42f, tags = listOf("liquify", "expand")),
+        systemBrush(id = "system-liquify-crystals", toolBinding = BrushToolBinding(BrushToolRole.LIQUIFY, LiquifyMode.CRYSTALS), name = "Crystals", group = "Liquify", size = 135f, flow = .58f, hardness = .72f, tags = listOf("liquify", "crystals")),
+        systemBrush(id = "system-liquify-edge", toolBinding = BrushToolBinding(BrushToolRole.LIQUIFY, LiquifyMode.EDGE), name = "Edge", group = "Liquify", size = 130f, flow = .65f, hardness = .58f, tags = listOf("liquify", "edge")),
+        systemBrush(id = "system-liquify-reconstruct", toolBinding = BrushToolBinding(BrushToolRole.LIQUIFY, LiquifyMode.RECONSTRUCT), name = "Reconstruct", group = "Liquify", size = 140f, flow = .7f, hardness = .5f, tags = listOf("liquify", "reconstruct")),
     ).map(::createFactoryRecord)
 
     fun byId(id: String): ImportedBrush? = brushes.firstOrNull { it.id == id }
@@ -152,7 +153,7 @@ internal object SystemBrushCatalog {
         proceduralPaperGrainScale: Float = 100f,
         proceduralPaperGrainDensity: Float = .5f,
         proceduralPaperGrainStrength: Float = 1f,
-        isEraser: Boolean = false,
+        toolBinding: BrushToolBinding = BrushToolBinding(),
         tags: List<String> = emptyList(),
     ) = ImportedBrush(
         id = id,
@@ -199,7 +200,7 @@ internal object SystemBrushCatalog {
             paperGrainDensity = proceduralPaperGrainDensity,
             paperGrainStrength = proceduralPaperGrainStrength,
         ),
-        isEraser = isEraser,
+        toolBinding = toolBinding,
         tags = tags,
     )
 }

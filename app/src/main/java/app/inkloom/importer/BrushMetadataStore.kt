@@ -1,6 +1,7 @@
 package app.inkloom.importer
 
 import android.content.Context
+import app.inkloom.model.BrushToolBinding
 import app.inkloom.document.CspTextureComposite
 import app.inkloom.document.CspAntiAlias
 import app.inkloom.document.CspBrightnessCorrection
@@ -185,14 +186,18 @@ class BrushMetadataStore(
                 val dualTipPaths = buildList { for (pathIndex in 0 until dualTipPathsArray.length()) dualTipPathsArray.optString(pathIndex).takeIf(String::isNotBlank)?.let(::add) }
                 val taperMode = runCatching { BrushTaperMode.valueOf(item.optString("taperMode", BrushTaperMode.PERCENTAGE.name)) }.getOrDefault(BrushTaperMode.PERCENTAGE)
                 fun taperLength(key: String, fallback: Float): Float = item.optDouble(key, fallback.toDouble()).toFloat().let { value -> if (taperMode == BrushTaperMode.DISTANCE) value.coerceIn(.1f, 4000f) else value.coerceIn(.001f, 1f) }
+                val binding = readToolBinding(item)
                 add(
                     ImportedBrush(
                         id = item.getString("id"),
                         name = item.getString("name"),
                         format = BrushFormat.valueOf(item.getString("format")),
-                        compatibility = Compatibility.valueOf(item.getString("compatibility")),
+                        compatibility = if (binding.isSupported) Compatibility.valueOf(item.getString("compatibility")) else Compatibility.FAILED,
                         sizeBytes = item.getLong("sizeBytes"),
-                        report = buildList { for (reportIndex in 0 until reportArray.length()) add(reportArray.getString(reportIndex)) },
+                        report = buildList {
+                            for (reportIndex in 0 until reportArray.length()) add(reportArray.getString(reportIndex))
+                            binding.unsupportedReason?.let { add("UNSUPPORTED_WITH_EXPLICIT_REASON:$it") }
+                        }.distinct(),
                         sourcePath = item.optString("sourcePath").takeIf { it.isNotBlank() },
                         sha256 = item.optString("sha256").takeIf { it.isNotBlank() },
                         tipPreviewPath = legacyTipPath,
@@ -427,7 +432,7 @@ class BrushMetadataStore(
                         ),
                         favorite = item.optBoolean("favorite", false),
                         hidden = item.optBoolean("hidden", false),
-                        isEraser = item.optBoolean("isEraser", false),
+                        toolBinding = binding,
                         groupName = BrushGroupOperations.normalize(item.optString("groupName", "")),
                         tags = buildList { for (tagIndex in 0 until tagsArray.length()) add(tagsArray.getString(tagIndex)) },
                         lastUsedAt = item.optLong("lastUsedAt", 0L),
@@ -462,12 +467,32 @@ class BrushMetadataStore(
                         renderBrushId = item.optString("renderBrushId").takeIf(String::isNotBlank),
                         renderSeed = item.opt("renderSeed")?.takeUnless { it == JSONObject.NULL }?.let { item.optInt("renderSeed") },
                         derivedFromFactoryId = item.optString("derivedFromFactoryId").takeIf(String::isNotBlank),
-                        v5PresetJson = item.optString("v5PresetJson").takeIf(String::isNotBlank),
+                        v5PresetJson = item.optString("v5PresetJson").takeIf { binding.isSupported && it.isNotBlank() },
                     ),
                 )
             }
         }
     }.getOrDefault(emptyList()).map(BrushSemanticMapper::apply)
+
+    /** Read old explicit semantics once; never infer executable roles from editable labels. */
+    private fun readToolBinding(item: JSONObject): BrushToolBinding {
+        if (item.has("toolBinding")) {
+            val value = item.optJSONObject("toolBinding")
+                ?: return BrushToolBinding.unavailable("Malformed stored brush tool binding")
+            return BrushToolBinding.decode(
+                value.optString("role"),
+                value.optString("liquifyMode", "PUSH"),
+                value.optString("unsupportedReason").takeIf(String::isNotBlank),
+            )
+        }
+        val factoryId = item.optString("derivedFromFactoryId").takeIf(String::isNotBlank)
+            ?: item.optString("id").takeIf { item.optString("format") in setOf(BrushFormat.SYSTEM.name, BrushFormat.INKLOOM.name) }
+        return BrushToolBindingMigration.fromLegacy(
+            item.optBoolean("isEraser", false),
+            item.optString("v5PresetJson").takeIf(String::isNotBlank),
+            factoryId,
+        )
+    }
 
     fun save(brushes: List<ImportedBrush>) {
         val array = JSONArray()
@@ -708,7 +733,10 @@ class BrushMetadataStore(
                     .put("waterEdgeBlurUnit", brush.waterEdgeBlurUnit)
                     .put("favorite", brush.favorite)
                     .put("hidden", brush.hidden)
-                    .put("isEraser", brush.isEraser)
+                    .put("toolBinding", JSONObject()
+                        .put("role", brush.toolBinding.role.name)
+                        .put("liquifyMode", brush.toolBinding.liquifyMode.name)
+                        .put("unsupportedReason", brush.toolBinding.unsupportedReason))
                     .put("groupName", BrushGroupOperations.normalize(brush.groupName))
                     .put("tags", JSONArray(brush.tags))
                     .put("lastUsedAt", brush.lastUsedAt)

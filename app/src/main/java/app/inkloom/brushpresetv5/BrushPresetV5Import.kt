@@ -3,6 +3,8 @@ package app.inkloom.brushpresetv5
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
+import app.inkloom.model.BrushToolBinding
+import app.inkloom.model.BrushToolRole
 import app.inkloom.model.ImportedBrushGraphite
 import app.inkloom.model.SemanticExecutionDisposition
 import app.inkloom.document.CspBrushGap
@@ -70,6 +72,7 @@ object BrushPresetV5Import {
 
     fun convertDecodedSource(source: ImportedBrush): ImportedBrush {
         val audited = BrushSemanticMapper.apply(source)
+        require(audited.toolBinding.isSupported) { audited.toolBinding.unsupportedReason ?: "Unsupported brush tool" }
         require(audited.format != BrushFormat.INKLOOM || audited.v5PresetJson != null) {
             "This brush was created by an unsupported legacy Inkloom engine."
         }
@@ -110,6 +113,11 @@ object BrushPresetV5Import {
             id = preset.identity.id,
             name = preset.identity.name,
             format = format,
+            toolBinding = when {
+                preset.output == BrushOutput.ERASE -> BrushToolBinding(BrushToolRole.ERASE)
+                base.toolBinding.role == BrushToolRole.ERASE -> BrushToolBinding()
+                else -> base.toolBinding
+            },
             compatibility = if (base.compatibility == Compatibility.FAILED) Compatibility.FAILED else base.compatibility,
             defaultSize = preset.tip.size,
             defaultOpacity = preset.deposition.opacity,
@@ -155,7 +163,7 @@ object BrushPresetV5Import {
                 renderBrushId = source.renderBrushId ?: source.id,
             ),
             renderSeed = source.renderSeed ?: (source.renderBrushId ?: source.id).hashCode(),
-            output = if (source.isEraser) BrushOutput.ERASE else BrushOutput.PAINT,
+            output = if (source.toolBinding.role == BrushToolRole.ERASE) BrushOutput.ERASE else BrushOutput.PAINT,
             tip = TipSettings(source.defaultSize, source.thickness, source.rotationDegrees, source.hardness),
             deposition = DepositionSettings(source.defaultOpacity, source.flow),
             spacing = if (family in setOf(BrushFamily.PENCIL, BrushFamily.AIRBRUSH, BrushFamily.DECORATION) ||

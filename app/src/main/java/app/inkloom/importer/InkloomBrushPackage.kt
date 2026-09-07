@@ -21,9 +21,17 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.encodeToJsonElement
+import kotlinx.serialization.json.decodeFromJsonElement
 
 @Serializable
 private data class InkloomBrushManifest(
@@ -35,6 +43,7 @@ class InkloomBrushPackage(private val assetDirectory: File) {
     init { assetDirectory.mkdirs() }
 
     fun write(brush: ImportedBrush, output: OutputStream) {
+        require(brush.toolBinding.isSupported) { brush.toolBinding.unsupportedReason ?: "Unsupported brush tool binding" }
         val sourcePaths = linkedSetOf<String>().apply {
             brush.tipPreviewPath?.let(::add)
             addAll(brush.tipPreviewPaths)
@@ -91,8 +100,27 @@ class InkloomBrushPackage(private val assetDirectory: File) {
             validate(entries)
             val byName = entries.associateBy(ZipEntry::getName)
             val manifestEntry = byName[MANIFEST_PATH] ?: error("Inkloom brush manifest is missing")
-            val manifest = JSON.decodeFromString<InkloomBrushManifest>(readBounded(zip, manifestEntry, MAX_MANIFEST_BYTES).decodeToString())
-            require(manifest.schemaVersion == CURRENT_VERSION) { "Unsupported Inkloom brush schema ${manifest.schemaVersion}" }
+            val sourceManifest = JSON.parseToJsonElement(readBounded(zip, manifestEntry, MAX_MANIFEST_BYTES).decodeToString()).jsonObject
+            val sourceVersion = sourceManifest.getValue("schemaVersion").jsonPrimitive.int
+            require(sourceVersion in 1..CURRENT_VERSION) { "Unsupported Inkloom brush schema $sourceVersion" }
+            val normalized = if (sourceVersion == 1) {
+                val oldBrush = sourceManifest.getValue("brush").jsonObject
+                val factoryId = oldBrush["derivedFromFactoryId"]?.jsonPrimitive?.contentOrNull
+                    ?: oldBrush["id"]?.jsonPrimitive?.contentOrNull?.takeIf {
+                        oldBrush["format"]?.jsonPrimitive?.contentOrNull in setOf(BrushFormat.SYSTEM.name, BrushFormat.INKLOOM.name)
+                    }
+                val binding = BrushToolBindingMigration.fromLegacy(
+                    oldBrush["isEraser"]?.jsonPrimitive?.boolean ?: false,
+                    oldBrush["v5PresetJson"]?.jsonPrimitive?.contentOrNull,
+                    factoryId,
+                )
+                JsonObject(sourceManifest + ("schemaVersion" to JsonPrimitive(CURRENT_VERSION)) +
+                    ("brush" to JsonObject((oldBrush - "isEraser") + ("toolBinding" to JSON.encodeToJsonElement(binding)))))
+            } else sourceManifest
+            val manifest = JSON.decodeFromJsonElement<InkloomBrushManifest>(normalized)
+            require(manifest.brush.toolBinding.isSupported) {
+                manifest.brush.toolBinding.unsupportedReason ?: "Unsupported brush tool binding"
+            }
             val referenced = linkedSetOf<String>().apply {
                 manifest.brush.tipPreviewPath?.let(::add)
                 addAll(manifest.brush.tipPreviewPaths)
@@ -124,7 +152,7 @@ class InkloomBrushPackage(private val assetDirectory: File) {
                     hidden = false,
                     lastUsedAt = 0L,
                     parserVersion = CURRENT_VERSION,
-                    report = (manifest.brush.report + "Portable Inkloom preset verified and materialized from schema $CURRENT_VERSION").distinct(),
+                    report = (manifest.brush.report + "Portable Inkloom preset verified and materialized from schema $sourceVersion").distinct(),
                 ),
             )
         }
@@ -448,7 +476,7 @@ class InkloomBrushPackage(private val assetDirectory: File) {
     private fun finite(value: Float, fallback: Float): Float = value.takeIf(Float::isFinite) ?: fallback
 
     companion object {
-        const val CURRENT_VERSION = 1
+        const val CURRENT_VERSION = 2
         private const val MANIFEST_PATH = "manifest.json"
         private const val MAX_ENTRIES = 128
         private const val MAX_ENTRY_BYTES = 32L * 1024L * 1024L

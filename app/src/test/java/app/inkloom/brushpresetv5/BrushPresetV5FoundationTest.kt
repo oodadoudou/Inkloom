@@ -1,5 +1,8 @@
 package app.inkloom.brushpresetv5
 
+import app.inkloom.model.BrushToolBinding
+import app.inkloom.model.BrushToolRole
+
 import app.inkloom.model.BrushFormat
 import app.inkloom.model.Compatibility
 import app.inkloom.model.ImportedBrush
@@ -87,7 +90,7 @@ class BrushPresetV5FoundationTest {
             compatibility = Compatibility.HIGH,
             sizeBytes = 42,
             report = emptyList(),
-            isEraser = true,
+            toolBinding = BrushToolBinding(BrushToolRole.ERASE),
             tipPreviewPath = "/tips/primary.png",
             tipPreviewPaths = listOf("/tips/primary.png", "/tips/alternate.png"),
             spray = true,

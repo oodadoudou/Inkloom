@@ -20,6 +20,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.engine.v5.diagnostics.BrushExecutionFingerprint
 import app.inkloom.engine.v5.surface.PixelRect
+import app.inkloom.model.EditorTool
 import app.inkloom.ui.InkCanvasView
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -56,7 +57,11 @@ class ProcreateBrushsetUiImportTest {
     @get:Rule
     val rules: RuleChain = RuleChain.outerRule(cleanRule).around(composeRule)
 
-    @Test fun realBrushsetImportsSelectsRendersAndPersistsThroughVisibleUi() {
+    @Test fun realBrushsetImportsSelectsRendersAndPersistsThroughVisibleUi() = assertVisibleImport(null)
+
+    @Test fun ordinaryBrushsetImportedUnderErasersStillPaintsAndPersists() = assertVisibleImport("Erasers")
+
+    private fun assertVisibleImport(targetGroup: String?) {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.uiAutomation.serviceInfo = instrumentation.uiAutomation.serviceInfo.apply {
             flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
@@ -65,6 +70,9 @@ class ProcreateBrushsetUiImportTest {
         composeRule.onNodeWithText("Create").performClick()
         val view = waitForCanvas()
         composeRule.onNodeWithContentDescription("Brushes").performClick()
+        if (targetGroup != null) {
+            composeRule.onNodeWithContentDescription("Brush category $targetGroup").performClick()
+        }
         composeRule.onNodeWithContentDescription("Add brush or group").performClick()
         val importLabel = if (composeRule.onAllNodesWithText("Import brushes").fetchSemanticsNodes().isNotEmpty()) {
             "Import brushes"
@@ -77,10 +85,13 @@ class ProcreateBrushsetUiImportTest {
         // so a previous manual import cannot silently change this fixture's starting location.
         val roots = waitForAccessibilityNode(3_000) { it.contentDescription?.toString() == "Show roots" }
         assertTrue("System picker roots control missing", roots != null && clickNodeOrAncestor(roots))
+        // The drawer list can rebind while providers finish loading. A node found in one
+        // accessibility snapshot may already be stale when clicked; wait for an accepted click.
         val downloads = waitForAccessibilityNode(3_000) {
-            it.text?.toString() == "Downloads" && it.viewIdResourceName == "android:id/title"
+            it.text?.toString() == "Downloads" && it.viewIdResourceName == "android:id/title" &&
+                it.isVisibleToUser && clickNodeOrAncestor(it)
         }
-        assertTrue("Downloads root missing", downloads != null && clickNodeOrAncestor(downloads))
+        assertTrue("Downloads root did not accept a click", downloads != null)
         val fileNode = waitForAccessibilityNode(10_000) { it.text?.contains("Inkloom-P0-Test") == true }
         assertTrue("System picker did not show staged real brushset", fileNode != null)
         assertTrue("Staged brushset row was not clickable", clickNodeOrAncestor(fileNode!!))
@@ -129,6 +140,7 @@ class ProcreateBrushsetUiImportTest {
         composeRule.activityRule.scenario.recreate()
         val restored = waitForCanvas()
         composeRule.waitUntil(10_000) { restored.brushId == paint.presetId }
+        assertEquals(EditorTool.PEN, restored.tool)
         instrumentation.runOnMainSync { dispatchBehaviorPattern(restored, .88f) }
         restored.awaitV5StrokeWorkerIdleForTest()
         composeRule.waitUntil(10_000) { restored.lastBrushExecutionFingerprint?.presetId == paint.presetId }
@@ -145,6 +157,7 @@ class ProcreateBrushsetUiImportTest {
             .performScrollToNode(hasContentDescription("Brush preset $name"))
         composeRule.onNodeWithContentDescription("Brush preset $name").performClick()
         composeRule.waitUntil(10_000) { view.brushId == expectedId }
+        assertEquals("Library group must not turn a paint brush into an eraser", EditorTool.PEN, view.tool)
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             view.baseWidth = 46f
             dispatchBehaviorPattern(view, row)
