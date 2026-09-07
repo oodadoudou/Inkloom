@@ -142,7 +142,7 @@ import app.inkloom.settings.SelectionFilter
 import app.inkloom.settings.SelectionMode
 import app.inkloom.settings.SelectionShape
 import app.inkloom.settings.ReferenceTarget
-import app.inkloom.settings.BrushPresetSizeStore
+import app.inkloom.settings.BrushMasterSettingsStore
 import app.inkloom.settings.DrawingColorStore
 import app.inkloom.settings.DrawingColors
 import app.inkloom.settings.ShortcutAction
@@ -1295,7 +1295,7 @@ private fun EditorScreen(
     if (document == null) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }; return }
     val context = LocalContext.current
     val editorHostView = LocalView.current
-    val brushPresetSizeStore = remember { BrushPresetSizeStore(context) }
+    val brushMasterSettingsStore = remember { BrushMasterSettingsStore(context) }
     val selectedPage = document.pages.firstOrNull { it.id == selectedPageId } ?: document.pages.first()
     val availableBrushes = remember(brushes) { (systemBrushCatalog() + brushes).distinctBy(ImportedBrush::id) }
     val persistedBrush = availableBrushes.firstOrNull {
@@ -1308,13 +1308,27 @@ private fun EditorScreen(
     var activeBrush by remember(document.id) { mutableStateOf(persistedBrush) }
     var brushSize by remember(document.id) {
         mutableFloatStateOf(
-            brushPresetSizeStore.load(
+            brushMasterSettingsStore.loadSize(
+                persistedTool,
                 persistedBrush?.id ?: "system:${persistedTool.name.lowercase()}",
-                persistedBrush?.defaultSize ?: settings.penSize,
+                persistedBrush?.defaultSize ?: when (persistedTool) {
+                    EditorTool.ERASER -> settings.eraserSize
+                    EditorTool.HIGHLIGHTER -> settings.highlighterSize
+                    else -> settings.penSize
+                },
             ),
         )
     }
-    var brushOpacity by remember(document.id) { mutableFloatStateOf(persistedBrush?.defaultOpacity ?: settings.penOpacity) }
+    var brushOpacity by remember(document.id) {
+        mutableFloatStateOf(brushMasterSettingsStore.loadOpacity(
+            persistedTool, persistedBrush?.id ?: "system:${persistedTool.name.lowercase()}",
+            persistedBrush?.defaultOpacity ?: when (persistedTool) {
+                EditorTool.ERASER -> settings.eraserPreset.opacity
+                EditorTool.HIGHLIGHTER -> settings.highlighterOpacity
+                else -> settings.penOpacity
+            },
+        ))
+    }
     var selectionFeather by remember { mutableFloatStateOf(0f) }
     var selectionActive by remember(document.id, selectedPage.id) { mutableStateOf(false) }
     fun performLayerMaskCommand(layerId: String, command: LayerMaskCommand) {
@@ -1334,12 +1348,19 @@ private fun EditorScreen(
         }
         onLayerMaskCommand(document.id, selectedPage.id, layerId, command, canvasView?.selectionMaskSurfaceSnapshot())
     }
-    fun brushSizeKey(brush: ImportedBrush?, selectedTool: EditorTool = tool): String = brush?.id ?: "system:${selectedTool.name.lowercase()}"
+    fun brushMasterKey(brush: ImportedBrush?, selectedTool: EditorTool = tool): String = brush?.id ?: "system:${selectedTool.name.lowercase()}"
     fun savedBrushSize(brush: ImportedBrush?, fallback: Float, selectedTool: EditorTool = tool): Float =
-        brushPresetSizeStore.load(brushSizeKey(brush, selectedTool), fallback)
+        brushMasterSettingsStore.loadSize(selectedTool, brushMasterKey(brush, selectedTool), fallback)
+    fun savedBrushOpacity(brush: ImportedBrush?, fallback: Float, selectedTool: EditorTool = tool): Float =
+        brushMasterSettingsStore.loadOpacity(selectedTool, brushMasterKey(brush, selectedTool), fallback)
     fun changeCurrentBrushSize(raw: Float) {
-        val value = brushPresetSizeStore.save(brushSizeKey(activeBrush), raw)
+        val value = brushMasterSettingsStore.saveSize(tool, brushMasterKey(activeBrush), raw)
         brushSize = value
+        canvasView?.let { view ->
+            view.baseWidth = value
+            if (tool == EditorTool.ERASER) view.eraserWidth = value
+            view.notifyHoverCursorStyleChanged()
+        }
         when (tool) {
             EditorTool.PEN -> if (activeBrush == null) onSettingsChange(settings.copy(penSize = value))
             EditorTool.HIGHLIGHTER -> onSettingsChange(settings.copy(highlighterSize = value))
@@ -1348,12 +1369,15 @@ private fun EditorScreen(
         }
     }
     fun changeCurrentBrushOpacity(raw: Float) {
-        val value = raw.takeIf(Float::isFinite)?.coerceIn(.05f, 1f) ?: .05f
+        val value = brushMasterSettingsStore.saveOpacity(tool, brushMasterKey(activeBrush), raw)
         brushOpacity = value
         // The sidebar and pen-down can occur in the same display frame. V5 resolves its immutable
         // PaintOp at contact start, so publish the live master opacity without waiting for the
         // AndroidView update/recomposition pass.
-        canvasView?.inkOpacity = value
+        canvasView?.let { view ->
+            view.inkOpacity = value
+            if (tool == EditorTool.ERASER) view.eraserOpacity = value * (activeBrush?.flow ?: 1f)
+        }
         when (tool) {
             EditorTool.PEN -> if (activeBrush == null) onSettingsChange(settings.copy(penOpacity = value))
             EditorTool.HIGHLIGHTER -> onSettingsChange(settings.copy(highlighterOpacity = value))
@@ -1588,7 +1612,7 @@ private fun EditorScreen(
         activeBrush = usedBrush
         val chosenTool = BrushRoleClassifier.editorTool(usedBrush)
         brushSize = savedBrushSize(usedBrush, usedBrush.defaultSize, chosenTool)
-        brushOpacity = usedBrush.defaultOpacity
+        brushOpacity = savedBrushOpacity(usedBrush, usedBrush.defaultOpacity, chosenTool)
         tool = chosenTool
         if (persistSelection) {
             rememberDrawingSelection()
@@ -1618,7 +1642,7 @@ private fun EditorScreen(
         selectedBrushId = restored.id
         tool = restoredTool
         brushSize = savedBrushSize(restored, restored.defaultSize, restoredTool)
-        brushOpacity = restored.defaultOpacity
+        brushOpacity = savedBrushOpacity(restored, restored.defaultOpacity, restoredTool)
         syncCanvasInput(prepareAssets = true)
     }
     fun setLayersPanelOpen(open: Boolean, pageId: String? = null) {
@@ -1767,7 +1791,7 @@ private fun EditorScreen(
                 activeBrush = remembered
                 selectedBrushId = remembered?.id
                 brushSize = savedBrushSize(remembered, remembered?.defaultSize ?: settings.penSize, EditorTool.PEN)
-                brushOpacity = remembered?.defaultOpacity ?: settings.penOpacity
+                brushOpacity = savedBrushOpacity(remembered, remembered?.defaultOpacity ?: settings.penOpacity, EditorTool.PEN)
                 remembered?.let { selected ->
                     onSettingsChange(settings.copy(persistentDrawingTool = EditorTool.PEN, persistentBrushPresetId = selected.id))
                 }
@@ -2614,7 +2638,7 @@ private fun EditorScreen(
                             selectedBrushId = eraser?.id
                             tool = EditorTool.ERASER
                             brushSize = savedBrushSize(eraser, eraser?.defaultSize ?: settings.eraserSize, EditorTool.ERASER)
-                            brushOpacity = eraser?.defaultOpacity ?: 1f
+                            brushOpacity = savedBrushOpacity(eraser, eraser?.defaultOpacity ?: settings.eraserPreset.opacity, EditorTool.ERASER)
                             syncCanvasInput(prepareAssets = eraser != null)
                         }
 
@@ -2700,7 +2724,7 @@ private fun EditorScreen(
                                 activeBrush = null
                                 tool = EditorTool.HIGHLIGHTER
                                 brushSize = savedBrushSize(null, settings.highlighterSize, EditorTool.HIGHLIGHTER)
-                                brushOpacity = settings.highlighterOpacity
+                                brushOpacity = savedBrushOpacity(null, settings.highlighterOpacity, EditorTool.HIGHLIGHTER)
                                 activeLayerId = LayerIds.HIGHLIGHT
                                 syncCanvasInput()
                             }
@@ -2952,7 +2976,7 @@ private fun EditorScreen(
                         onSettingsChange(settings.copy(toolbarOffsetXDp = toolbarX, toolbarOffsetYDp = toolbarY))
                     }
                 }
-                if (settings.showToolbar) ToolDock(tool = tool, onTool = { chosen ->
+                if (settings.showToolbar) key(tool, selectedBrushId) { ToolDock(tool = tool, onTool = { chosen ->
                     exitCanvasNavigation()
                     if (chosen == EditorTool.SELECT) rememberSelectionReturnTarget()
                     if (chosen == EditorTool.EYEDROPPER && tool != EditorTool.EYEDROPPER) {
@@ -2965,29 +2989,29 @@ private fun EditorScreen(
                                 ?: brushes.filterNot(BrushRoleClassifier::isEraser).maxByOrNull(ImportedBrush::lastUsedAt)
                             activeBrush = remembered
                             selectedBrushId = remembered?.id
-                            brushOpacity = remembered?.defaultOpacity ?: settings.penOpacity
+                            brushOpacity = savedBrushOpacity(remembered, remembered?.defaultOpacity ?: settings.penOpacity, EditorTool.PEN)
                             brushSize = savedBrushSize(remembered, remembered?.defaultSize ?: settings.penSize, EditorTool.PEN)
                             if (activeLayerId == LayerIds.HIGHLIGHT || activeLayerId == LayerIds.OBJECTS) activeLayerId = LayerIds.INK
                         }
-                        EditorTool.HIGHLIGHTER -> { activeBrush = null; selectedBrushId = null; brushOpacity = settings.highlighterOpacity; brushSize = savedBrushSize(null, settings.highlighterSize, EditorTool.HIGHLIGHTER); activeLayerId = LayerIds.HIGHLIGHT }
+                        EditorTool.HIGHLIGHTER -> { activeBrush = null; selectedBrushId = null; brushOpacity = savedBrushOpacity(null, settings.highlighterOpacity, EditorTool.HIGHLIGHTER); brushSize = savedBrushSize(null, settings.highlighterSize, EditorTool.HIGHLIGHTER); activeLayerId = LayerIds.HIGHLIGHT }
                         EditorTool.ERASER -> {
                             val remembered = activeBrush?.takeIf(BrushRoleClassifier::isEraser)
                                 ?: brushes.filter(BrushRoleClassifier::isEraser).maxByOrNull(ImportedBrush::lastUsedAt)
                             activeBrush = remembered
                             selectedBrushId = remembered?.id
-                            brushOpacity = remembered?.defaultOpacity ?: 1f
+                            brushOpacity = savedBrushOpacity(remembered, remembered?.defaultOpacity ?: settings.eraserPreset.opacity, EditorTool.ERASER)
                             brushSize = savedBrushSize(remembered, remembered?.defaultSize ?: settings.eraserSize, EditorTool.ERASER)
                         }
                         EditorTool.SMUDGE -> {
                             val remembered = activeBrush?.takeIf(BrushRoleClassifier::isBlend) ?: systemBrushCatalog().first(BrushRoleClassifier::isBlend)
                             activeBrush = remembered; selectedBrushId = remembered.id
-                            brushOpacity = remembered.defaultOpacity
+                            brushOpacity = savedBrushOpacity(remembered, remembered.defaultOpacity, EditorTool.SMUDGE)
                             brushSize = savedBrushSize(remembered, remembered.defaultSize, EditorTool.SMUDGE)
                         }
                         EditorTool.LIQUIFY -> {
                             val remembered = activeBrush?.takeIf(BrushRoleClassifier::isLiquify) ?: systemBrushCatalog().first(BrushRoleClassifier::isLiquify)
                             activeBrush = remembered; selectedBrushId = remembered.id
-                            brushOpacity = 1f
+                            brushOpacity = savedBrushOpacity(remembered, 1f, EditorTool.LIQUIFY)
                             brushSize = savedBrushSize(remembered, remembered.defaultSize, EditorTool.LIQUIFY)
                         }
                         EditorTool.SHAPE -> shapeInsertOpen = true
@@ -3015,7 +3039,7 @@ private fun EditorScreen(
                     changeCurrentBrushSize(raw)
                 }, onOpacity = { raw ->
                     changeCurrentBrushOpacity(raw)
-                }, onColor = ::changeBrushColor, symmetryMode = settings.symmetryMode, onSymmetryMode = { onSettingsChange(settings.copy(symmetryMode = it)) }, gradientControls = { GradientToolControls(settings, brushColor, ::changeBrushColor, onSettingsChange) }, modifier = Modifier.align(dockAlignment).padding(dockPadding).graphicsLayer(translationX = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.xDp.dp.toPx() } else 0f, translationY = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.yDp.dp.toPx() } else 0f))
+                }, onColor = ::changeBrushColor, symmetryMode = settings.symmetryMode, onSymmetryMode = { onSettingsChange(settings.copy(symmetryMode = it)) }, gradientControls = { GradientToolControls(settings, brushColor, ::changeBrushColor, onSettingsChange) }, modifier = Modifier.align(dockAlignment).padding(dockPadding).graphicsLayer(translationX = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.xDp.dp.toPx() } else 0f, translationY = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.yDp.dp.toPx() } else 0f)) }
                 if (tool == EditorTool.SELECT) SelectionInputBar(
                     shape = settings.selectionShape,
                     mode = settings.selectionMode,
@@ -3385,7 +3409,9 @@ private fun EditorScreen(
                         brushes.map { if (it.id == committed.id) committed else it }
                     } else brushes + committed)
                     // A quick author edit keeps the live master size/opacity and foreground.
-                    if (currentId != committed.id) brushPresetSizeStore.save(committed.id, brushSize)
+                    if (currentId != committed.id) brushMasterSettingsStore.save(
+                        BrushRoleClassifier.editorTool(committed), committed.id, brushSize, brushOpacity,
+                    )
                     exitCanvasNavigation()
                     activeBrush = committed
                     selectedBrushId = committed.id
@@ -3397,10 +3423,9 @@ private fun EditorScreen(
                 onUpdateBrush = { updated ->
                     onUpdateBrush(updated)
                     if (activeBrush?.id == updated.id) {
-                        val opacityChanged = activeBrush?.defaultOpacity != updated.defaultOpacity
                         activeBrush = updated
                         brushSize = savedBrushSize(updated, updated.defaultSize)
-                        if (opacityChanged) brushOpacity = updated.defaultOpacity.coerceIn(.05f, 1f)
+                        brushOpacity = savedBrushOpacity(updated, updated.defaultOpacity)
                         syncCanvasInput(prepareAssets = true)
                     }
                 },
@@ -5983,10 +6008,13 @@ private fun ProcreateSidebar(
                 drawRoundRect(Color(0xFF777777), Offset(size.width * .22f, size.height * .35f), androidx.compose.ui.geometry.Size(size.width * .56f, 2f), androidx.compose.ui.geometry.CornerRadius(1f))
             }
         }
-        ProcreateVerticalSlider(
+        BrushMasterSlider(
             progress = sizeProgress,
             description = tr("Brush size", "笔刷大小"),
-            display = if (brushSize < 10f) "%.1f".format(brushSize) else brushSize.toInt().toString(),
+            display = { progress ->
+                val value = .5f + progress * progress * 399.5f
+                if (value < 10f) "%.1f".format(value) else value.toInt().toString()
+            },
             onProgress = { onSize(.5f + it * it * 399.5f) },
         )
         IconButton(onClick = onModify, modifier = Modifier.size(32.dp)) {
@@ -6003,64 +6031,14 @@ private fun ProcreateSidebar(
                 }
             }
         }
-        ProcreateVerticalSlider(
+        BrushMasterSlider(
             progress = ((brushOpacity.coerceIn(.05f, 1f) - .05f) / .95f),
             description = tr("Brush opacity", "笔刷不透明度"),
-            display = "${(brushOpacity * 100).toInt()}%",
+            display = { "${((.05f + it * .95f) * 100).toInt()}%" },
             onProgress = { onOpacity(.05f + it * .95f) },
         )
         IconButton(onClick = onUndo, modifier = Modifier.size(34.dp)) { Icon(Icons.Outlined.Undo, tr("Undo", "撤销"), Modifier.size(20.dp), tint = Ink) }
         IconButton(onClick = onRedo, modifier = Modifier.size(34.dp)) { Icon(Icons.Outlined.Redo, tr("Redo", "重做"), Modifier.size(20.dp), tint = Ink) }
-    }
-}
-
-@Composable
-private fun ProcreateVerticalSlider(
-    progress: Float,
-    description: String,
-    display: String,
-    onProgress: (Float) -> Unit,
-) {
-    var showValue by remember { mutableStateOf(false) }
-    Box {
-        Canvas(
-            Modifier
-                .width(34.dp)
-                .height(118.dp)
-                .semantics { contentDescription = description }
-                .pointerInput(description) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        showValue = true
-                        fun update(y: Float) = onProgress((1f - y / size.height.coerceAtLeast(1)).coerceIn(0f, 1f))
-                        update(down.position.y)
-                        var active = true
-                        while (active) {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                            update(change.position.y)
-                            change.consume()
-                            active = change.pressed
-                        }
-                        showValue = false
-                    }
-                },
-        ) {
-            val centerX = size.width / 2f
-            val top = 10f
-            val bottom = size.height - 10f
-            drawRoundRect(Color(0xFFD4D4D4), Offset(centerX - 4f, top), androidx.compose.ui.geometry.Size(8f, bottom - top), androidx.compose.ui.geometry.CornerRadius(4f))
-            val thumbY = bottom - (bottom - top) * progress.coerceIn(0f, 1f)
-            drawRoundRect(Ink, Offset(centerX - 4f, thumbY), androidx.compose.ui.geometry.Size(8f, bottom - thumbY), androidx.compose.ui.geometry.CornerRadius(4f))
-            drawCircle(Color.White, 7f, Offset(centerX, thumbY))
-            drawCircle(Color(0xFF262626), 7f, Offset(centerX, thumbY), style = Stroke(1.5f))
-        }
-        if (showValue) Surface(
-            Modifier.align(Alignment.CenterEnd).graphicsLayer(translationX = 62f),
-            shape = RoundedCornerShape(12.dp),
-            color = Color.White,
-            border = CardDefaults.outlinedCardBorder(),
-        ) { Text(display, Modifier.padding(horizontal = 10.dp, vertical = 5.dp), color = Ink, fontSize = 11.sp) }
     }
 }
 

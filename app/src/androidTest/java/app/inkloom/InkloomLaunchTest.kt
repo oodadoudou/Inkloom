@@ -71,6 +71,8 @@ class InkloomLaunchTest {
         object : Statement() {
             override fun evaluate() {
                 val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+                // Live masters now survive editor sessions; this fixture requires default brushes.
+                context.getSharedPreferences("brush_preset_sizes", android.content.Context.MODE_PRIVATE).edit().clear().commit()
                 java.io.File(context.filesDir, "page-templates.json").delete()
                 java.io.File(context.filesDir, "library.json").delete()
                 context
@@ -139,7 +141,8 @@ class InkloomLaunchTest {
                 BrushGroupStore(ApplicationProvider.getApplicationContext()).save(
                     listOf("Toolbox/Pens", "Toolbox/Pencils", "Toolbox/Brushes"),
                 )
-                base.evaluate()
+                try { base.evaluate() }
+                finally { context.getSharedPreferences("brush_preset_sizes", android.content.Context.MODE_PRIVATE).edit().clear().commit() }
             }
         }
     }

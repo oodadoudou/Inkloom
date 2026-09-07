@@ -34,8 +34,10 @@ class BrushQuickPropertiesWindowTest {
                 .putBoolean("showBrushPanel", false).putBoolean("showLayerPanel", false)
                 .putBoolean("showPageRail", false).commit()
             context.getSharedPreferences("inkloom_brushes", Context.MODE_PRIVATE).edit().clear().commit()
+            context.getSharedPreferences("brush_preset_sizes", Context.MODE_PRIVATE).edit().clear().commit()
             context.filesDir.resolve("library.json").delete()
-            base.evaluate()
+            try { base.evaluate() }
+            finally { context.getSharedPreferences("brush_preset_sizes", Context.MODE_PRIVATE).edit().clear().commit() }
         }
     } }
     @get:Rule val rules: RuleChain = RuleChain.outerRule(clean).around(compose)
@@ -98,6 +100,7 @@ class BrushQuickPropertiesWindowTest {
         compose.waitForIdle()
         compose.waitUntil(5_000) { canvas().activeRasterSnapshotForTest()?.tileInfo?.isNotEmpty() == true }
         val afterReload = pixels()
+        assertEquals(masters, Triple(canvas().baseWidth, canvas().inkOpacity, canvas().inkColor))
         assertTrue("Reopening must preserve exact committed paint pixels: ${beforeReload.indices.count { beforeReload[it] != afterReload[it] }} changed",
             beforeReload.contentEquals(afterReload))
         drawAt(.56f)

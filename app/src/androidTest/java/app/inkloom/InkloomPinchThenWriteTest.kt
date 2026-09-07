@@ -43,6 +43,8 @@ class InkloomPinchThenWriteTest {
         object : Statement() {
             override fun evaluate() {
                 val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+                // Live masters now survive editor sessions; this fixture requires default brushes.
+                context.getSharedPreferences("brush_preset_sizes", android.content.Context.MODE_PRIVATE).edit().clear().commit()
                 context.getSharedPreferences("inkloom_settings", android.content.Context.MODE_PRIVATE)
                     .edit()
                     .clear()
@@ -80,7 +82,8 @@ class InkloomPinchThenWriteTest {
                 documentsDir.listFiles()?.forEach { it.delete() }
                 File(context.filesDir, "journal.jsonl").delete()
                 activeDocumentId = null
-                base.evaluate()
+                try { base.evaluate() }
+                finally { context.getSharedPreferences("brush_preset_sizes", android.content.Context.MODE_PRIVATE).edit().clear().commit() }
             }
         }
     }

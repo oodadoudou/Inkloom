@@ -14,7 +14,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.model.EditorTool
 import app.inkloom.settings.AppSettings
 import app.inkloom.settings.AppSettingsStore
-import app.inkloom.settings.BrushPresetSizeStore
+import app.inkloom.settings.BrushMasterSettingsStore
 import app.inkloom.settings.ShortcutTrigger
 import app.inkloom.settings.StylusButtonAction
 import app.inkloom.settings.UiLanguage
@@ -47,7 +47,7 @@ class StylusButtonActivationTest {
                 )
                 // Brush sizes are preset-scoped. Seed the selected G Pen through the same store
                 // used by the editor instead of relying on the retired global pen-size fallback.
-                BrushPresetSizeStore(context).save("system-g-pen", 19f)
+                BrushMasterSettingsStore(context).save(EditorTool.PEN, "system-g-pen", 19f, .43f)
                 try {
                     base.evaluate()
                 } finally {
@@ -79,7 +79,7 @@ class StylusButtonActivationTest {
         composeRule.waitUntil(5_000) { canvas.tool == EditorTool.PEN }
         assertEquals(EditorTool.PEN, canvas.tool)
         assertEquals(19f, canvas.baseWidth, .001f)
-        assertEquals(1f, canvas.inkOpacity, .001f)
+        assertEquals(.43f, canvas.inkOpacity, .001f)
     }
 
     private fun dispatch(view: InkCanvasView, action: Int, buttonState: Int) {
