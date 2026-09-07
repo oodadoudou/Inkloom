@@ -143,6 +143,8 @@ import app.inkloom.settings.SelectionMode
 import app.inkloom.settings.SelectionShape
 import app.inkloom.settings.ReferenceTarget
 import app.inkloom.settings.BrushPresetSizeStore
+import app.inkloom.settings.DrawingColorStore
+import app.inkloom.settings.DrawingColors
 import app.inkloom.settings.ShortcutAction
 import app.inkloom.settings.ShortcutActivation
 import app.inkloom.settings.ShortcutCategory
@@ -1358,28 +1360,25 @@ private fun EditorScreen(
             else -> Unit
         }
     }
-    // Foreground color belongs to the document workspace, not to an individual brush. Keeping it
-    // saveable prevents panel re-layouts and activity recreation from silently restoring black.
-    var brushColor by rememberSaveable(document.id) { mutableIntStateOf(AndroidColor.rgb(17, 17, 17)) }
-    var backgroundColor by rememberSaveable(document.id) { mutableIntStateOf(AndroidColor.WHITE) }
+    val drawingColorStore = remember { DrawingColorStore(context) }
+    var drawingColors by remember(document.id) { mutableStateOf(drawingColorStore.load(document.id)) }
+    val brushColor = drawingColors.foreground
+    val backgroundColor = drawingColors.background
     var offeredContinueFillColor by remember { mutableStateOf<Int?>(null) }
     var continueFilling by remember { mutableStateOf(false) }
     var continueFillStartedWithTool by remember { mutableStateOf<EditorTool?>(null) }
-    fun changeBrushColor(value: Int) {
-        brushColor = value
-        // Do not wait for an AndroidView recomposition: the next pen sample may arrive in the
-        // same display frame as the picker input.
-        canvasView?.inkColor = value
+    fun commitDrawingColors(colors: DrawingColors) {
+        drawingColors = colors
+        // The next pen sample can arrive before AndroidView recomposes.
+        canvasView?.inkColor = colors.foreground
+        canvasView?.secondaryInkColor = colors.background
+        drawingColorStore.save(document.id, colors)
     }
-    fun changeBackgroundColor(value: Int) {
-        backgroundColor = value
-        canvasView?.secondaryInkColor = value
-    }
-    fun swapDrawingColors() {
-        val foreground = brushColor
-        changeBrushColor(backgroundColor)
-        changeBackgroundColor(foreground)
-    }
+    fun changeBrushColor(value: Int) = commitDrawingColors(drawingColors.copy(foreground = value))
+    fun changeBackgroundColor(value: Int) = commitDrawingColors(drawingColors.copy(background = value))
+    fun swapDrawingColors() = commitDrawingColors(
+        drawingColors.let { it.copy(foreground = it.background, background = it.foreground) },
+    )
     fun stopContinueFilling() {
         continueFilling = false
         offeredContinueFillColor = null

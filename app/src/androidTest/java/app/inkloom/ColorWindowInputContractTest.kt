@@ -8,6 +8,8 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.ui.InkCanvasView
@@ -116,6 +118,64 @@ class ColorWindowInputContractTest {
         })
     }
 
+    @Test fun colorPairSurvivesLeavingTheEditorAndStaysIndependentPerNotebook() {
+        val title = "Color recovery ${SystemClock.uptimeMillis()}"
+        tap("New Note")
+        compose.onNodeWithText("Title").performTextReplacement(title)
+        instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        compose.waitForIdle()
+        tap("Create")
+        tap("Brushes")
+        tap("Brush category Pencil")
+        tap("Brush preset HB Pencil")
+        tap("Close brushes panel")
+        tap("Colors")
+        val ring = bounds("Hue ring")
+        tapAt(Offset(ring.exactCenterX(), ring.top + ring.height() * .07f))
+        compose.waitForIdle()
+        val field = bounds("Saturation and brightness field")
+        tapAt(Offset(field.left + field.width() * .8f, field.top + field.height() * .3f))
+        compose.waitForIdle()
+        val violet = canvas().inkColor
+        tap("Swap foreground and background colors")
+        assertEquals(android.graphics.Color.WHITE, canvas().inkColor)
+        assertEquals(violet, canvas().secondaryInkColor)
+        instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        tap("Gallery")
+        tap("Notebook $title. Long press to move.")
+        val restored = canvas()
+        assertEquals("Foreground must survive disposing EditorScreen", android.graphics.Color.WHITE, restored.inkColor)
+        assertEquals("Secondary must survive disposing EditorScreen", violet, restored.secondaryInkColor)
+        assertEquals("system-hb-pencil", restored.brushId)
+        tap("Colors")
+        tap("Swap foreground and background colors")
+        instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        compose.waitForIdle()
+        val location = IntArray(2)
+        instrumentation.runOnMainSync { restored.getLocationOnScreen(location) }
+        val start = Offset(location[0] + restored.width * .15f, location[1] + restored.height * .4f)
+        stroke(start, Offset(location[0] + restored.width * .55f, start.y))
+        compose.waitUntil(10_000) { restored.lastBrushExecutionFingerprint != null }
+        assertEquals("system-hb-pencil", restored.lastBrushExecutionFingerprint?.presetId)
+        val snapshot = requireNotNull(restored.activeRasterSnapshotForTest())
+        val pixels = snapshot.copyPremultipliedPixels(app.inkloom.engine.v5.surface.PixelRect(0, 0, snapshot.logicalWidth, snapshot.logicalHeight))
+        assertTrue("Restored secondary swapped to foreground must reach actual violet pixels", pixels.any {
+            (it ushr 24 and 255) > 20 && android.graphics.Color.blue(it) > android.graphics.Color.red(it) && android.graphics.Color.red(it) > android.graphics.Color.green(it)
+        })
+        tap("Gallery")
+        tap("New Note")
+        compose.onNodeWithText("Title").performTextReplacement("Other $title")
+        instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+        compose.waitForIdle()
+        tap("Create")
+        assertEquals("A new notebook must not inherit another notebook's foreground", 0xff111111.toInt(), canvas().inkColor)
+        assertEquals(android.graphics.Color.WHITE, canvas().secondaryInkColor)
+        tap("Gallery")
+        tap("Notebook $title. Long press to move.")
+        assertEquals(violet, canvas().inkColor)
+        assertEquals(android.graphics.Color.WHITE, canvas().secondaryInkColor)
+    }
+
     @Test fun saturatedHueDragKeepsWorkspaceWritesAtTheGestureBoundary() {
         tap("New Note")
         tap("Create")
@@ -127,6 +187,11 @@ class ColorWindowInputContractTest {
         val brushBefore = canvas.brushId
         val trace = app.inkloom.engine.v5.diagnostics.ColorPickerInteractionTrace
         val context = ApplicationProvider.getApplicationContext<Context>()
+        val colorPreferences = context.getSharedPreferences("inkloom_drawing_colors", Context.MODE_PRIVATE)
+        val persistedBeforeDrag = colorPreferences.all.toMap()
+        var colorWrites = 0
+        val colorListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> colorWrites++ }
+        colorPreferences.registerOnSharedPreferenceChangeListener(colorListener)
         val sampleMethods = InstrumentationRegistry.getArguments().getString("colorMethodTrace") == "true"
         val allocatedBefore = android.os.Debug.getRuntimeStat("art.gc.bytes-allocated")?.toLongOrNull()
         val ioBefore = java.io.File("/proc/self/io").readText()
@@ -139,7 +204,7 @@ class ColorWindowInputContractTest {
             val ring = bounds("Hue ring")
             val down = SystemClock.uptimeMillis()
             fun point(index: Int): Offset {
-                val angle = Math.toRadians((270 + index * 3).toDouble())
+                val angle = Math.toRadians((270 + index * 2).toDouble())
                 return Offset(ring.exactCenterX() + kotlin.math.cos(angle).toFloat() * ring.width() * .43f,
                     ring.exactCenterY() + kotlin.math.sin(angle).toFloat() * ring.height() * .43f)
             }
@@ -149,16 +214,21 @@ class ColorWindowInputContractTest {
                 event(MotionEvent.ACTION_MOVE, point(index + 1), down, MotionEvent.TOOL_TYPE_FINGER)
             }
             assertEquals("MOVE must not persist a workspace color", 0L, trace.snapshot().workspaceCommits)
+            assertEquals("MOVE must not change persistent color values", persistedBeforeDrag, colorPreferences.all)
+            assertEquals(0, colorWrites)
             event(MotionEvent.ACTION_UP, point(30), down, MotionEvent.TOOL_TYPE_FINGER)
             compose.waitForIdle()
             val snapshot = trace.snapshot()
             assertEquals(1L, snapshot.workspaceCommits)
+            assertEquals("UP must persist the color once", 1, colorWrites)
+            assertTrue("The committed endpoint must differ from the color before the drag", persistedBeforeDrag != colorPreferences.all)
             assertTrue(snapshot.pointerSamples > 1)
             assertEquals(0L, snapshot.hueRingAllocations)
             assertEquals(brushBefore, canvas.brushId)
             val allocatedAfter = android.os.Debug.getRuntimeStat("art.gc.bytes-allocated")?.toLongOrNull()
             android.util.Log.i("InkloomColorProfile", "snapshot=$snapshot allocatedBytes=${if (allocatedBefore != null && allocatedAfter != null) allocatedAfter - allocatedBefore else null}; ioBefore=$ioBefore; ioAfter=${java.io.File("/proc/self/io").readText()}; methodSampling=$sampleMethods")
         } finally {
+            colorPreferences.unregisterOnSharedPreferenceChangeListener(colorListener)
             if (sampleMethods) android.os.Debug.stopMethodTracing()
             trace.enabled = false
             trace.reset()

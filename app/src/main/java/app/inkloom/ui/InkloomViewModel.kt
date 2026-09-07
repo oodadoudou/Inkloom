@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.inkloom.document.*
 import app.inkloom.model.ImportedBrush
+import app.inkloom.settings.DrawingColorStore
 import app.inkloom.engine.v5.selection.DocumentSelectionRuntime
 import app.inkloom.engine.v5.storage.RecoveryJournalEntry
 import app.inkloom.engine.v5.selection.LayerMaskRuntime
@@ -132,6 +133,7 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     fun deletePermanently(documentId: String) {
         selectionRuntime.releaseDocument(documentId)
         store.deletePermanently(documentId)
+        DrawingColorStore(getApplication()).remove(documentId)
         refresh()
         scheduleAssetGarbageCollection()
     }
