@@ -3367,10 +3367,6 @@ private fun EditorScreen(
                 selectedBrushId = selectedBrushId,
                 requestedGroup = activeBrush?.groupName ?: if (tool == EditorTool.ERASER) "Erasers" else null,
                 settings = settings,
-                brushSize = brushSize,
-                brushOpacity = brushOpacity,
-                onBrushSizeChange = ::changeCurrentBrushSize,
-                onBrushOpacityChange = ::changeCurrentBrushOpacity,
                 dock = WorkspacePanelDock.FREE,
                 onDock = {},
                 onClose = { if (brushesOpen) onToggleBrushes() },
@@ -7379,10 +7375,6 @@ private fun BrushPanel(
     selectedBrushId: String?,
     requestedGroup: String?,
     settings: AppSettings,
-    brushSize: Float,
-    brushOpacity: Float,
-    onBrushSizeChange: (Float) -> Unit,
-    onBrushOpacityChange: (Float) -> Unit,
     dock: WorkspacePanelDock,
     onDock: (WorkspacePanelDock) -> Unit,
     onClose: () -> Unit,
@@ -7839,22 +7831,7 @@ private fun BrushPanel(
             }
             Spacer(Modifier.weight(1f))
         }
-        val selectedToolBrush = libraryBrushes.firstOrNull { it.id == selectedBrushId }
-        BrushToolProperties(
-            brush = selectedToolBrush,
-            size = brushSize,
-            opacity = brushOpacity,
-            compact = bottomDocked,
-            onSize = onBrushSizeChange,
-            onOpacity = onBrushOpacityChange,
-            onFlow = { value -> selectedToolBrush?.let { onUpdateBrush(it.copy(flow = value)) } },
-            onStabilization = { value -> selectedToolBrush?.let { onUpdateBrush(it.copy(stabilization = value)) } },
-            onRotation = { value -> selectedToolBrush?.let { onUpdateBrush(it.copy(rotationDegrees = value)) } },
-            onHardness = { value -> selectedToolBrush?.let { onUpdateBrush(it.copy(hardness = value)) } },
-            onGrainDensity = { value -> selectedToolBrush?.let { onUpdateBrush(it.copy(grainDensity = value)) } },
-            onPressure = { enabled -> selectedToolBrush?.let { onUpdateBrush(it.copy(sizePressureEnabled = enabled)) } },
-            onEdit = { brushes.firstOrNull { it.id == selectedBrushId }?.let { editBrush = it } },
-        )
+
     }
     reportBrush?.let { brush ->
         AlertDialog(
@@ -8860,102 +8837,6 @@ private fun BrushVersionHistoryDialog(
 }
 
 private fun Float.oneDecimal(): String = String.format(java.util.Locale.ROOT, "%.1f", this)
-
-@Composable
-private fun BrushToolProperties(
-    brush: ImportedBrush?,
-    size: Float,
-    opacity: Float,
-    compact: Boolean,
-    onSize: (Float) -> Unit,
-    onOpacity: (Float) -> Unit,
-    onFlow: (Float) -> Unit,
-    onStabilization: (Float) -> Unit,
-    onRotation: (Float) -> Unit,
-    onHardness: (Float) -> Unit,
-    onGrainDensity: (Float) -> Unit,
-    onPressure: (Boolean) -> Unit,
-    onEdit: () -> Unit,
-) {
-    val normalizedSize = ((size.coerceIn(.5f, 400f) - .5f) / 399.5f).coerceIn(0f, 1f)
-    val sizeSliderPosition = Math.cbrt(normalizedSize.toDouble()).toFloat()
-    var moreProperties by rememberSaveable(brush?.id) { mutableStateOf(false) }
-    Surface(
-        modifier = Modifier.fillMaxWidth().padding(top = 5.dp),
-        color = Color(0xFFF0F0F0),
-        border = CardDefaults.outlinedCardBorder(),
-        shape = RoundedCornerShape(6.dp),
-    ) {
-        Column(Modifier.fillMaxWidth()) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 7.dp, vertical = if (compact) 3.dp else 5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (brush != null) BrushTipPreview(brush, Modifier.size(if (compact) 36.dp else 43.dp))
-            else Box(
-                Modifier.size(if (compact) 36.dp else 43.dp).clip(RoundedCornerShape(7.dp)).background(Color.White).border(1.dp, OutlineSoft, RoundedCornerShape(7.dp)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Canvas(Modifier.fillMaxSize().padding(7.dp)) {
-                    drawLine(Ink, Offset(1f, this.size.height * .72f), Offset(this.size.width - 1f, this.size.height * .28f), strokeWidth = 6f, cap = StrokeCap.Round)
-                }
-            }
-            Spacer(Modifier.width(7.dp))
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(brush?.name ?: tr("System pen", "系统钢笔"), maxLines = 1, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                    Text("${size.oneDecimal()} px", color = MutedInk, fontSize = 9.sp)
-                }
-                Slider(
-                    value = sizeSliderPosition,
-                    onValueChange = { position -> onSize(.5f + position * position * position * 399.5f) },
-                    valueRange = 0f..1f,
-                    modifier = Modifier.fillMaxWidth().height(26.dp),
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(tr("Opacity", "不透明度"), color = MutedInk, fontSize = 9.sp, modifier = Modifier.width(49.dp))
-                    Slider(value = opacity.coerceIn(.05f, 1f), onValueChange = onOpacity, valueRange = .05f..1f, modifier = Modifier.weight(1f).height(25.dp))
-                    Text("${(opacity * 100f).toInt()}%", color = MutedInk, fontSize = 9.sp, modifier = Modifier.width(31.dp), textAlign = TextAlign.End)
-                }
-            }
-            IconButton(onClick = onEdit, enabled = brush != null, modifier = Modifier.size(34.dp)) {
-                Icon(Icons.Outlined.Tune, tr("Open sub tool detail", "打开子工具详情"), Modifier.size(18.dp))
-            }
-        }
-        if (brush != null && !compact) {
-            HorizontalDivider(color = OutlineSoft)
-            CspBrushQuickSlider(tr("Ink density", "墨水浓淡"), brush.flow.coerceIn(.01f, 1f), "${(brush.flow * 100f).toInt()}%", onFlow)
-            CspBrushQuickSlider(tr("Stabilization", "抖动修正"), (brush.stabilization / .9f).coerceIn(0f, 1f), "${(brush.stabilization / .9f * 100f).toInt()}%") { onStabilization(it * .9f) }
-            Row(
-                Modifier.fillMaxWidth().height(27.dp).clickable { moreProperties = !moreProperties }.padding(horizontal = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(tr("More brush properties", "更多笔刷属性"), Modifier.weight(1f), color = MutedInk, fontSize = 9.sp)
-                Icon(if (moreProperties) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, if (moreProperties) tr("Collapse brush properties", "收起笔刷属性") else tr("Expand brush properties", "展开笔刷属性"), Modifier.size(16.dp))
-            }
-            if (moreProperties) {
-                CspBrushQuickSlider(tr("Direction", "方向"), ((brush.rotationDegrees + 180f) / 360f).coerceIn(0f, 1f), "${brush.rotationDegrees.toInt()}°") { onRotation(it * 360f - 180f) }
-                CspBrushQuickSlider(tr("Hardness", "硬度"), brush.hardness.coerceIn(0f, 1f), "${(brush.hardness * 100f).toInt()}%", onHardness)
-                CspBrushQuickSlider(tr("Paper density", "纸质浓度"), brush.grainDensity.coerceIn(0f, 1f), "${(brush.grainDensity * 100f).toInt()}%", onGrainDensity)
-            }
-            Row(Modifier.fillMaxWidth().height(30.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(tr("Pen pressure", "笔压"), Modifier.weight(1f), color = MutedInk, fontSize = 9.sp)
-                Switch(brush.sizePressureEnabled, onPressure, Modifier.height(24.dp))
-                IconButton(onClick = onEdit, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.ChevronRight, tr("Edit pressure curve and advanced dynamics", "编辑压力曲线与高级动态"), Modifier.size(16.dp)) }
-            }
-        }
-        }
-    }
-}
-
-@Composable
-private fun CspBrushQuickSlider(label: String, value: Float, display: String, onValue: (Float) -> Unit) {
-    Row(Modifier.fillMaxWidth().height(27.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, Modifier.width(72.dp), color = MutedInk, fontSize = 9.sp, maxLines = 1)
-        Slider(value, onValue, Modifier.weight(1f).height(24.dp), valueRange = 0f..1f)
-        Text(display, Modifier.width(32.dp), color = MutedInk, fontSize = 9.sp, textAlign = TextAlign.End)
-    }
-}
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
