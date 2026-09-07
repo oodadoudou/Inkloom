@@ -108,6 +108,14 @@ class ProcreateBrushsetUiImportTest {
                     .fetchSemanticsNodes().isNotEmpty()
         }
         if (composeRule.onAllNodesWithText("OK").fetchSemanticsNodes().isNotEmpty()) {
+            val report = mutableListOf<String>()
+            fun collect(node: AccessibilityNodeInfo?) {
+                if (node == null) return
+                node.text?.toString()?.let(report::add)
+                repeat(node.childCount) { collect(node.getChild(it)) }
+            }
+            collect(instrumentation.uiAutomation.rootInActiveWindow)
+            report.joinToString(" | ").chunked(3_000).forEach { android.util.Log.i("InkloomImportUI", it) }
             composeRule.onNodeWithText("OK").performClick()
         }
         composeRule.waitUntil(10_000) {

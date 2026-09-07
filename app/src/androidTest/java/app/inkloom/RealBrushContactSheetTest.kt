@@ -52,6 +52,13 @@ class RealBrushContactSheetTest {
             }
             view.awaitV5StrokeWorkerIdleForTest()
             instrumentation.runOnMainSync { }
+            // Publication and its diagnostic hash use different workers. Wait for this preset's
+            // fingerprint instead of reading null (or the previous row) immediately after publish.
+            val deadline = android.os.SystemClock.uptimeMillis() + 5_000
+            while (view.lastBrushExecutionFingerprint?.presetId != brush.id && android.os.SystemClock.uptimeMillis() < deadline) {
+                android.os.SystemClock.sleep(10)
+            }
+            org.junit.Assert.assertEquals(brush.id, view.lastBrushExecutionFingerprint?.presetId)
         }
         render(requireNotNull(sut), .34f)
         val sutFingerprint = requireNotNull(view.lastBrushExecutionFingerprint)
