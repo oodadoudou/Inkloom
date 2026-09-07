@@ -58,6 +58,9 @@ class ProcreateBrushsetUiImportTest {
 
     @Test fun realBrushsetImportsSelectsRendersAndPersistsThroughVisibleUi() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.uiAutomation.serviceInfo = instrumentation.uiAutomation.serviceInfo.apply {
+            flags = flags or android.accessibilityservice.AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
+        }
         composeRule.onNodeWithText("New Note").performClick()
         composeRule.onNodeWithText("Create").performClick()
         val view = waitForCanvas()
@@ -70,6 +73,14 @@ class ProcreateBrushsetUiImportTest {
         }
         composeRule.onNodeWithText(importLabel).performClick()
 
+        // DocumentsUI remembers the last directory per caller. Navigate through its real UI
+        // so a previous manual import cannot silently change this fixture's starting location.
+        val roots = waitForAccessibilityNode(3_000) { it.contentDescription?.toString() == "Show roots" }
+        assertTrue("System picker roots control missing", roots != null && clickNodeOrAncestor(roots))
+        val downloads = waitForAccessibilityNode(3_000) {
+            it.text?.toString() == "Downloads" && it.viewIdResourceName == "android:id/title"
+        }
+        assertTrue("Downloads root missing", downloads != null && clickNodeOrAncestor(downloads))
         val fileNode = waitForAccessibilityNode(10_000) { it.text?.contains("Inkloom-P0-Test") == true }
         assertTrue("System picker did not show staged real brushset", fileNode != null)
         assertTrue("Staged brushset row was not clickable", clickNodeOrAncestor(fileNode!!))
