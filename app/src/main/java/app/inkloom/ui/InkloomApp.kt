@@ -8568,8 +8568,9 @@ private fun ProcreateBrushLibrary(
                         val interaction = if (managingBrushes) Modifier.clickable {
                             selectedBrushIds = if (brush.id in currentSelectedBrushIds) currentSelectedBrushIds - brush.id else currentSelectedBrushIds + brush.id
                         } else Modifier.brushDrag(brush).combinedClickable(
+                            // A completed tap must select before the next canvas contact.
+                            // Double-click detection delays onClick and lets the old preset draw.
                             onClick = { onBrushSelected(brush) },
-                            onDoubleClick = { editBrush = brush },
                             onLongClick = { editBrush = brush },
                         )
                         Column(
@@ -8594,8 +8595,9 @@ private fun ProcreateBrushLibrary(
                         val interaction = if (managingBrushes) Modifier.clickable {
                             selectedBrushIds = if (brush.id in currentSelectedBrushIds) currentSelectedBrushIds - brush.id else currentSelectedBrushIds + brush.id
                         } else Modifier.brushDrag(brush).combinedClickable(
+                            // A completed tap must select before the next canvas contact.
+                            // Double-click detection delays onClick and lets the old preset draw.
                             onClick = { onBrushSelected(brush) },
-                            onDoubleClick = { editBrush = brush },
                             onLongClick = { editBrush = brush },
                         )
                         Row(
