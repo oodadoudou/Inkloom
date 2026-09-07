@@ -1389,11 +1389,9 @@ private fun EditorScreen(
     LaunchedEffect(tool) {
         if (continueFilling && continueFillStartedWithTool != null && tool != continueFillStartedWithTool) stopContinueFilling()
     }
-    var previousDrawingTool by remember { mutableStateOf(EditorTool.PEN) }
-    var previousDrawingBrushId by remember { mutableStateOf<String?>(null) }
-    var previousDrawingSize by remember { mutableFloatStateOf(settings.penSize) }
-    var previousDrawingOpacity by remember { mutableFloatStateOf(settings.penOpacity) }
-    var previousDrawingColor by remember { mutableIntStateOf(AndroidColor.rgb(17, 17, 17)) }
+    var drawingReturnTarget by remember(document.id) {
+        mutableStateOf(DrawingToolReturnTarget(persistedTool, persistedBrush, brushSize, brushOpacity))
+    }
     var handToolEnabled by remember { mutableStateOf(false) }
     var handToolHeld by remember { mutableStateOf(false) }
     var rotateToolEnabled by remember { mutableStateOf(false) }
@@ -1553,13 +1551,22 @@ private fun EditorScreen(
             view.requestFocus()
         }
     }
+    fun rememberDrawingSelection() {
+        drawingReturnTarget = DrawingToolReturnTarget(tool, activeBrush, brushSize, brushOpacity)
+    }
     fun rememberSelectionReturnTarget() {
-        if (tool == EditorTool.SELECT) return
-        previousDrawingTool = tool
-        previousDrawingBrushId = activeBrush?.id
-        previousDrawingSize = brushSize
-        previousDrawingOpacity = brushOpacity
-        previousDrawingColor = brushColor
+        if (tool != EditorTool.SELECT) rememberDrawingSelection()
+    }
+    fun restorePreviousDrawingTool(finishingSelection: Boolean = false) {
+        val target = drawingReturnTarget
+        tool = if (finishingSelection && target.tool == EditorTool.SELECT) {
+            BrushRoleClassifier.editorTool(target.brush)
+        } else target.tool
+        activeBrush = target.brush
+        selectedBrushId = target.brush?.id
+        brushSize = target.size
+        brushOpacity = target.opacity
+        syncCanvasInput(prepareAssets = target.brush != null)
     }
     fun finishSelectionTool(deselect: Boolean) {
         selectionMenuOpen = false
@@ -1568,15 +1575,7 @@ private fun EditorScreen(
             selectedElementId = null
             if (canvasView?.clearSelection() == true) selectionFeather = 0f
         }
-        val restoredTool = previousDrawingTool.takeUnless { it == EditorTool.SELECT } ?: EditorTool.PEN
-        val restoredBrush = previousDrawingBrushId?.let { id -> brushes.firstOrNull { it.id == id && !it.hidden } }
-        tool = restoredTool
-        activeBrush = restoredBrush
-        selectedBrushId = restoredBrush?.id
-        brushSize = previousDrawingSize
-        brushOpacity = previousDrawingOpacity
-        changeBrushColor(previousDrawingColor)
-        syncCanvasInput(prepareAssets = restoredBrush != null)
+        restorePreviousDrawingTool(finishingSelection = true)
     }
     fun activateWorkspaceBrush(brush: ImportedBrush, persistSelection: Boolean) {
         if (!brush.toolBinding.isSupported) {
@@ -1593,6 +1592,7 @@ private fun EditorScreen(
         brushOpacity = usedBrush.defaultOpacity
         tool = chosenTool
         if (persistSelection) {
+            rememberDrawingSelection()
             onSettingsChange(
                 settings.copy(
                     persistentDrawingTool = chosenTool,
@@ -2602,25 +2602,6 @@ private fun EditorScreen(
                             changeCurrentBrushOpacity(brushOpacity + delta)
                         }
 
-                        fun rememberDrawingSelection() {
-                            previousDrawingTool = tool
-                            previousDrawingBrushId = activeBrush?.id
-                            previousDrawingSize = brushSize
-                            previousDrawingOpacity = brushOpacity
-                            previousDrawingColor = brushColor
-                        }
-
-                        fun restorePreviousDrawingTool() {
-                            tool = previousDrawingTool
-                            val restoredBrush = previousDrawingBrushId?.let { id -> brushes.firstOrNull { it.id == id && !it.hidden } }
-                            activeBrush = restoredBrush
-                            selectedBrushId = restoredBrush?.id
-                            brushSize = previousDrawingSize
-                            brushOpacity = previousDrawingOpacity
-                            changeBrushColor(previousDrawingColor)
-                            syncCanvasInput(prepareAssets = restoredBrush != null)
-                        }
-
                         fun enterEraser() {
                             rememberDrawingSelection()
                             val eraser = activeBrush?.takeIf(BrushRoleClassifier::isEraser)
@@ -2971,10 +2952,7 @@ private fun EditorScreen(
                     exitCanvasNavigation()
                     if (chosen == EditorTool.SELECT) rememberSelectionReturnTarget()
                     if (chosen == EditorTool.EYEDROPPER && tool != EditorTool.EYEDROPPER) {
-                        previousDrawingTool = tool
-                        previousDrawingBrushId = activeBrush?.id
-                        previousDrawingSize = brushSize
-                        previousDrawingOpacity = brushOpacity
+                        rememberDrawingSelection()
                     }
                     tool = chosen; canvasView?.tool = chosen
                     when (chosen) {
