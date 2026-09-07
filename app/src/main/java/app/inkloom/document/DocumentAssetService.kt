@@ -504,18 +504,26 @@ class DocumentAssetService(private val context: Context) {
         }
         val rotatedWidth = if (turns % 2 == 0) surface.logicalWidth else surface.logicalHeight
         val rotatedHeight = if (turns % 2 == 0) surface.logicalHeight else surface.logicalWidth
-        val cropWidth = crop.right - crop.left
-        val cropHeight = crop.bottom - crop.top
-        val normalizedLeft = crop.left + patchLeft.toFloat() / visibleSourceWidth * cropWidth
-        val normalizedTop = crop.top + patchTop.toFloat() / visibleSourceHeight * cropHeight
-        val normalizedRight = crop.left + (patchLeft + patch.width).toFloat() / visibleSourceWidth * cropWidth
-        val normalizedBottom = crop.top + (patchTop + patch.height).toFloat() / visibleSourceHeight * cropHeight
-        val destination = PixelRect(
-            kotlin.math.floor(normalizedLeft * rotatedWidth).toInt().coerceIn(0, rotatedWidth - 1),
-            kotlin.math.floor(normalizedTop * rotatedHeight).toInt().coerceIn(0, rotatedHeight - 1),
-            kotlin.math.ceil(normalizedRight * rotatedWidth).toInt().coerceIn(1, rotatedWidth),
-            kotlin.math.ceil(normalizedBottom * rotatedHeight).toInt().coerceIn(1, rotatedHeight),
-        )
+        val destination = if (crop == PageCrop() &&
+            rotatedWidth == visibleSourceWidth && rotatedHeight == visibleSourceHeight
+        ) {
+            // Preserve integer patch bounds at 1:1. A float normalization round trip can turn
+            // 49 into 48.999996, expand the dirty rect, and resample a stroke during saving.
+            PixelRect(patchLeft, patchTop, patchLeft + patch.width, patchTop + patch.height)
+        } else {
+            val cropWidth = crop.right - crop.left
+            val cropHeight = crop.bottom - crop.top
+            val normalizedLeft = crop.left + patchLeft.toFloat() / visibleSourceWidth * cropWidth
+            val normalizedTop = crop.top + patchTop.toFloat() / visibleSourceHeight * cropHeight
+            val normalizedRight = crop.left + (patchLeft + patch.width).toFloat() / visibleSourceWidth * cropWidth
+            val normalizedBottom = crop.top + (patchTop + patch.height).toFloat() / visibleSourceHeight * cropHeight
+            PixelRect(
+                kotlin.math.floor(normalizedLeft * rotatedWidth).toInt().coerceIn(0, rotatedWidth - 1),
+                kotlin.math.floor(normalizedTop * rotatedHeight).toInt().coerceIn(0, rotatedHeight - 1),
+                kotlin.math.ceil(normalizedRight * rotatedWidth).toInt().coerceIn(1, rotatedWidth),
+                kotlin.math.ceil(normalizedBottom * rotatedHeight).toInt().coerceIn(1, rotatedHeight),
+            )
+        }
         PixelTileBitmapAdapter.replaceRotatedRegion(surface, destination, turns, patch)
         return surface
     }

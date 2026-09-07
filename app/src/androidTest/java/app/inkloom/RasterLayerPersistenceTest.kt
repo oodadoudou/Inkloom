@@ -27,6 +27,41 @@ class RasterLayerPersistenceTest {
     private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
     private val assets = DocumentAssetService(context)
 
+    @Test fun unscaledDirtyPatchPreservesExactPixelCoordinatesAcrossSaveAndReload() {
+        val surface = PixelTileSurface(1200, 1697)
+        val region = app.inkloom.engine.v5.surface.PixelRect(49, 63, 89, 121)
+        surface.beginWrite("translucent textured patch").use { write ->
+            for (y in region.top until region.bottom) for (x in region.left until region.right) {
+                val alpha = 20 + (x * 7 + y * 13) % 200
+                write.setPixel(x, y, Color.argb(alpha,
+                    (140 * alpha + 127) / 255, (20 * alpha + 127) / 255, (200 * alpha + 127) / 255))
+            }
+            write.commit().close()
+        }
+        repeat(4) { turns ->
+            val page = InkPage(width = 1200f, height = 1697f,
+                layers = defaultInkLayers() + InkLayer(id = "paint", name = "Paint", rasterRotationQuarterTurns = turns))
+            app.inkloom.engine.v5.storage.RasterLayerCommit("paint", surface.snapshot(), region).capturePatch().use { patch ->
+                val saved = assets.composeVisibleRasterTilePatch(page, "paint", patch.bitmap, patch.left, patch.top,
+                    patch.sourceWidth, patch.sourceHeight)
+                val whole = app.inkloom.engine.v5.surface.PixelRect(0, 0, 1200, 1697)
+                val expected = surface.snapshot().copyPremultipliedPixels(whole)
+                if (turns == 0) {
+                    val actual = saved.snapshot().copyPremultipliedPixels(whole)
+                    assertTrue("Unscaled dirty patch changed ${expected.indices.count { expected[it] != actual[it] }} pixels",
+                        expected.contentEquals(actual))
+                }
+                val reference = assets.saveRasterTileSurface(saved)
+                try {
+                    val restored = assets.renderRasterLayerSurface(page.copy(layers = page.layers.map {
+                        if (it.id == "paint") it.copy(rasterTileSurface = reference) else it
+                    }), "paint", 1200).snapshot().copyPremultipliedPixels(whole)
+                    assertTrue("Reload must not resample an unscaled dirty patch at rotation $turns", expected.contentEquals(restored))
+                } finally { assets.releaseRasterTileReservation(reference) }
+            }
+        }
+    }
+
     @Test fun incrementalDirtyTileWritebackStaysInsideTheBackgroundIoGate() {
         val surface = PixelTileSurface(2048, 2048, tileSize = 128, surfaceId = "writeback-gate")
         surface.beginWrite("seed 64 sparse tiles").run {
