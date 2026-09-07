@@ -15,6 +15,7 @@ enum class BrushExecutionCapabilityReason {
     WET_PAINT_DUAL_BRUSH_REQUIRED,
     ASSET_STAMP_TIP_REQUIRED,
     TEXTURE_GRAIN_REQUIRES_STAMP_BACKEND,
+    PAPER_GRAIN_REQUIRES_STAMP_BACKEND,
     STAMP_DYNAMICS_REQUIRE_STAMP_BACKEND,
 }
 
@@ -39,6 +40,12 @@ object BrushExecutionCapabilityResolver {
         if (hasTaper) reasons += BrushExecutionCapabilityReason.REALTIME_TAPER_REQUIRED
         if (program.strokeShaping.postCorrection > .0001f) {
             reasons += BrushExecutionCapabilityReason.POST_CORRECTION_NOT_REALTIME_SAFE
+        }
+
+        if (program.grainSampler != null && program.dual == null &&
+            program.backend !in setOf(RenderBackend.ASSET_STAMP, RenderBackend.PROCEDURAL_STAMP)
+        ) {
+            reasons += BrushExecutionCapabilityReason.PAPER_GRAIN_REQUIRES_STAMP_BACKEND
         }
 
         when (program.backend) {

@@ -31,6 +31,32 @@ class BrushTipMaskTest {
         assertEquals(0f, mask.coverageAt(.5f, 1.001f), EPSILON)
     }
 
+    @Test fun proceduralHardnessSoftensEdgesWithoutChangingCentreTextureOrSeed() {
+        val generators: List<(Float) -> BrushTipMask> = listOf(
+            { hardness -> BrushTipMask.graphite(seed = 42, toothStrength = .7f, hardness = hardness) },
+            { hardness -> BrushTipMask.bristle(seed = 42, hardness = hardness) },
+        )
+        generators.forEach { generate ->
+            val soft = generate(.05f)
+            val medium = generate(.5f)
+            val hard = generate(1f)
+            val repeated = generate(.05f)
+            var lower = 0
+            for (y in 0..95) for (x in 0..95) {
+                val u = x / 95f
+                val v = y / 95f
+                val a = soft.coverageAt(u, v)
+                val b = medium.coverageAt(u, v)
+                val c = hard.coverageAt(u, v)
+                assertTrue(a <= b + EPSILON && b <= c + EPSILON)
+                assertEquals(a, repeated.coverageAt(u, v), 0f)
+                if (c - a > .1f) lower++
+            }
+            assertTrue("Softness must affect the edge", lower > 100)
+            assertEquals(hard.coverageAt(.5f, .5f), soft.coverageAt(.5f, .5f), 0f)
+        }
+    }
+
     private companion object {
         const val EPSILON = 1e-6f
     }

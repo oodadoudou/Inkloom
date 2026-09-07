@@ -1756,6 +1756,11 @@ private fun EditorScreen(
             ProcreateTopButton(Icons.Outlined.Brush, tr("Brushes", "笔刷"), selected = tool == EditorTool.PEN, onClick = {
                 exitCanvasNavigation()
                 val alreadySelected = tool == EditorTool.PEN
+                if (alreadySelected && activeBrush != null) {
+                    // Opening the library is not a brush selection. Keep the live masters.
+                    onToggleBrushes()
+                    return@ProcreateTopButton
+                }
                 tool = EditorTool.PEN
                 val remembered = activeBrush?.takeUnless(BrushRoleClassifier::isEraser)
                     ?: availableBrushes.filterNot(BrushRoleClassifier::isEraser).maxByOrNull(ImportedBrush::lastUsedAt)
@@ -3373,6 +3378,22 @@ private fun EditorScreen(
                 onBrushSelected = ::selectWorkspaceBrush,
                 onImportBrushes = onImportBrushes,
                 onExportBrush = onExportBrush,
+                onQuickBrushCommit = { updated ->
+                    val committed = updated.copy(lastUsedAt = System.currentTimeMillis())
+                    val currentId = activeBrush?.id
+                    onReplaceBrushes(if (brushes.any { it.id == committed.id }) {
+                        brushes.map { if (it.id == committed.id) committed else it }
+                    } else brushes + committed)
+                    // A quick author edit keeps the live master size/opacity and foreground.
+                    if (currentId != committed.id) brushPresetSizeStore.save(committed.id, brushSize)
+                    exitCanvasNavigation()
+                    activeBrush = committed
+                    selectedBrushId = committed.id
+                    tool = BrushRoleClassifier.editorTool(committed)
+                    rememberDrawingSelection()
+                    onSettingsChange(settings.copy(persistentDrawingTool = tool, persistentBrushPresetId = committed.id))
+                    syncCanvasInput(prepareAssets = true)
+                },
                 onUpdateBrush = { updated ->
                     onUpdateBrush(updated)
                     if (activeBrush?.id == updated.id) {
@@ -7381,6 +7402,7 @@ private fun BrushPanel(
     onBrushSelected: (ImportedBrush) -> Unit,
     onImportBrushes: (String?) -> Unit,
     onExportBrush: (ImportedBrush) -> Unit,
+    onQuickBrushCommit: (ImportedBrush) -> Unit,
     onUpdateBrush: (ImportedBrush) -> Unit,
     onReplaceBrushes: (List<ImportedBrush>) -> Unit,
     onReplaceGroups: (List<String>) -> Unit,
@@ -7427,6 +7449,7 @@ private fun BrushPanel(
             onBrushSelected = onBrushSelected,
             onImportBrushes = onImportBrushes,
             onExportBrush = onExportBrush,
+            onQuickBrushCommit = onQuickBrushCommit,
             onUpdateBrush = onUpdateBrush,
             onReplaceBrushes = onReplaceBrushes,
             onReplaceGroups = onReplaceGroups,
@@ -8116,6 +8139,7 @@ private fun ProcreateBrushLibrary(
     onBrushSelected: (ImportedBrush) -> Unit,
     onImportBrushes: (String?) -> Unit,
     onExportBrush: (ImportedBrush) -> Unit,
+    onQuickBrushCommit: (ImportedBrush) -> Unit,
     onUpdateBrush: (ImportedBrush) -> Unit,
     onReplaceBrushes: (List<ImportedBrush>) -> Unit,
     onReplaceGroups: (List<String>) -> Unit,
@@ -8296,6 +8320,8 @@ private fun ProcreateBrushLibrary(
         selectedBrushIds = selectedBrushIds.intersect(availableIds)
         if (managingBrushes && selectedBrushIds.isEmpty()) managingBrushes = false
     }
+    var quickPropertiesOpen by remember { mutableStateOf(false) }
+    val quickBrush = usableLibraryBrushes.firstOrNull { it.id == selectedBrushId }
     val panelShape = RoundedCornerShape(14.dp)
     Surface(
         modifier = modifier.shadow(12.dp, panelShape),
@@ -8332,6 +8358,19 @@ private fun ProcreateBrushLibrary(
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 15.sp,
                 )
+                Box {
+                    IconButton(onClick = { quickPropertiesOpen = !quickPropertiesOpen }, enabled = quickBrush != null,
+                        modifier = Modifier.size(38.dp)) {
+                        Icon(Icons.Outlined.Tune, tr("Quick brush properties", "笔刷快捷参数"), tint = Ink)
+                    }
+                    DropdownMenu(expanded = quickPropertiesOpen && quickBrush != null,
+                        onDismissRequest = { quickPropertiesOpen = false }) {
+                        quickBrush?.let { selected ->
+                            BrushQuickProperties(selected, settings.language, onCommit = onQuickBrushCommit,
+                                onEdit = { quickPropertiesOpen = false; editBrush = selected })
+                        }
+                    }
+                }
                 IconButton(onClick = { gridLayout = !gridLayout }, modifier = Modifier.size(38.dp)) {
                     Icon(if (gridLayout) Icons.Outlined.ViewList else Icons.Outlined.GridView, if (gridLayout) tr("List view", "列表视图") else tr("Grid view", "网格视图"), tint = Ink)
                 }

@@ -1,5 +1,6 @@
 package app.inkloom.engine.v5.raster
 
+import app.inkloom.engine.v5.material.DocumentPaperGrain
 import app.inkloom.engine.v5.material.BrushTipMask
 import app.inkloom.engine.v5.material.PressureResponse
 import app.inkloom.engine.v5.material.TiltResponse
@@ -49,6 +50,7 @@ data class StampBrushDefinition(
     val spacingReferencePixels: Float = diameterPixels,
     val tips: List<BrushTipMask>,
     val grain: BrushTipMask? = null,
+    val paperGrain: DocumentPaperGrain? = null,
     val grainDensity: Float = 0f,
     val grainScalePercent: Float = 100f,
     val grainMovement: Float = 0f,
@@ -347,6 +349,7 @@ class StampPaintOp(
                     definition.opacityPressure.evaluate(sample.pressure) *
                     definition.flowPressure.evaluate(sample.pressure),
                 tip = tip,
+                paperAttenuation = definition.paperGrain?.strengthAt(sample.tiltRadians) ?: 0f,
                 sequence = dabSequence,
             )
                 .also { streamState.dabSequence++ }
@@ -547,6 +550,10 @@ class StampPaintOp(
             y: Int,
         ): Float {
             var coverage = dab.coverageAt(x + .5f, y + .5f) * dab.depositedAlpha
+            if (coverage <= 0f) return 0f
+            definition.paperGrain?.let { paper ->
+                coverage *= paper.coverageAt(x + .5f, y + .5f, dab.paperAttenuation)
+            }
             definition.grain?.let { grain ->
                 val movement = definition.grainMovement
                 val grainX = x + .5f - dab.centerX * (1f - movement)
@@ -590,6 +597,7 @@ class StampPaintOp(
         val angleRadians: Float,
         val depositedAlpha: Float,
         val tip: BrushTipMask,
+        val paperAttenuation: Float,
         val sequence: Long,
     ) {
         private val cosine = cos(angleRadians)

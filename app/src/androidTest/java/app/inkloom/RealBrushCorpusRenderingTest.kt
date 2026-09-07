@@ -98,6 +98,51 @@ class RealBrushCorpusRenderingTest {
         requireRendered = false,
     )
 
+    @Test
+    fun realImportedQuickEditsKeepCanonicalIdentityAndReachProduction() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val assetRoot = File(context.cacheDir, "quick-real-brush-${System.nanoTime()}").apply { mkdirs() }
+        try {
+            for ((extension, format) in listOf("sut" to BrushFormat.SUT, "abr" to BrushFormat.ABR,
+                "brush" to BrushFormat.PROCREATE, "brushset" to BrushFormat.PROCREATE)) {
+                var rendered = 0
+                var rejected = 0
+                val sources = stagedSources(extension)
+                for ((index, source) in sources.withIndex()) {
+                    val candidates = parse(source, format, File(assetRoot, "$extension-$index"))
+                    assertTrue("No $format records parsed from ${source.name}", candidates.isNotEmpty())
+                    for (decoded in candidates) {
+                        val imported = BrushPresetV5Import.convertOrReject(decoded)
+                        val attempt = runCatching { app.inkloom.brushpresetv5.QuickBrushEditSession.start(imported) }
+                        if (attempt.isFailure) {
+                            assertTrue("An unsupported real brush must give a terminal reason", !attempt.exceptionOrNull()?.message.isNullOrBlank())
+                            rejected++
+                            continue
+                        }
+                        val draft = attempt.getOrThrow()
+                        val flow = if (draft.current.deposition.flow > .4f) .3f else .7f
+                        val edited = draft.change("flow", flow).commit()
+                        val program = BrushPresetV5Import.requirePreset(edited)
+                        assertEquals(imported.id, edited.id)
+                        assertEquals(imported.id, program.identity.id)
+                        assertEquals(flow, program.deposition.flow, 0f)
+                        assertEquals(draft.current.renderSeed, program.renderSeed)
+                        assertEquals(draft.current.identity.renderBrushId, program.identity.renderBrushId)
+                        assertEquals("Edited .$extension brush must actually paint", BrushRenderProbeResult.Succeeded,
+                            ProductionBrushRenderProbe(context).probe(edited))
+                        rendered++
+                        break
+                    }
+                    if (rendered > 0) break
+                }
+                // The supplied standalone Procreate brushes currently have only explicitly rejected semantics.
+                if (extension != "brush") assertTrue("No executable .$extension quick-edit fixture: rejected=$rejected", rendered > 0)
+                else assertTrue("No terminal .$extension outcome", rendered + rejected > 0)
+                Log.i("InkloomQuickCorpus", "$extension rendered=$rendered rejected=$rejected")
+            }
+        } finally { assetRoot.deleteRecursively() }
+    }
+
     private fun verifyRealBrush(
         extension: String,
         format: BrushFormat,

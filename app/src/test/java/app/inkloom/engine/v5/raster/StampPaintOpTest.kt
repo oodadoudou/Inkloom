@@ -14,6 +14,18 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class StampPaintOpTest {
+    @Test fun documentPaperChangesCoverageAndRemainsInvariantToBatchBoundaries() {
+        fun brush(density: Float, strength: Float = .8f) = definition().copy(
+            paperGrain = app.inkloom.engine.v5.material.DocumentPaperGrain(100f, density, strength, 42),
+        )
+        val points = listOf(sample(1, 42f, 28f), sample(2, 76f, 35f), sample(3, 122f, 24f))
+        val light = draw(listOf(points), brush(.1f))
+        val dense = draw(listOf(points), brush(.9f))
+        assertTrue(light.sumOf { (it ushr 24).toLong() } < dense.sumOf { (it ushr 24).toLong() })
+        assertArrayEquals(light, draw(points.map(::listOf), brush(.1f)))
+        assertArrayEquals(draw(listOf(points), definition()), draw(listOf(points), brush(.1f, 0f)))
+    }
+
     @Test
     fun procreateRenderingModesProduceOrderedDeterministicDabTransfer() {
         val alpha = .35f
@@ -73,7 +85,9 @@ class StampPaintOpTest {
     @Test
     fun activePreviewAndPublicationShareExactlyOneSparseTransaction() {
         val surface = PixelTileSurface(160, 80)
-        val definition = definition()
+        val definition = definition().copy(
+            paperGrain = app.inkloom.engine.v5.material.DocumentPaperGrain(80f, .4f, .6f, 42),
+        )
         val session = StampPaintOp(surface, definition).begin(PaintOpContext(1, 0, "stamp")) as StampPaintOp.Session
         session.apply(batch(1, 0, false, sample(0, 12f, 35f)))
         session.apply(batch(1, 1, false, sample(1, 120f, 35f)))

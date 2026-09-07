@@ -128,16 +128,18 @@ class BrushTipMask(
         }
 
         /** Stable graphite tooth: irregular edge plus sparse internal deposition gaps. */
-        fun graphite(size: Int = 96, seed: Int, toothStrength: Float): BrushTipMask {
+        fun graphite(size: Int = 96, seed: Int, toothStrength: Float, hardness: Float = 1f): BrushTipMask {
             require(size in 8..1024)
             require(toothStrength.isFinite() && toothStrength in 0f..1f)
+            require(hardness.isFinite() && hardness in 0f..1f)
+            val edgeWidth = .14f + (1f - hardness) * .72f
             val values = ByteArray(size * size)
             val radius = size * .5f
             for (y in 0 until size) for (x in 0 until size) {
                 val dx = (x + .5f - radius) / radius
                 val dy = (y + .5f - radius) / radius
                 val radial = kotlin.math.sqrt(dx * dx + dy * dy)
-                val edge = ((1.04f - radial) / .14f).coerceIn(0f, 1f)
+                val edge = ((1.04f - radial) / edgeWidth).coerceIn(0f, 1f)
                 val noise = noise01(x, y, seed)
                 val tooth = (1f - toothStrength * (.18f + noise * .72f)).coerceIn(0f, 1f)
                 values[y * size + x] = (255f * edge * tooth + .5f).toInt().toByte()
@@ -146,14 +148,16 @@ class BrushTipMask(
         }
 
         /** Directional multi-fibre footprint for the first-party dry painting brush. */
-        fun bristle(size: Int = 96, seed: Int): BrushTipMask {
+        fun bristle(size: Int = 96, seed: Int, hardness: Float = 1f): BrushTipMask {
             require(size in 8..1024)
+            require(hardness.isFinite() && hardness in 0f..1f)
+            val edgeWidth = .16f + (1f - hardness) * .7f
             val values = ByteArray(size * size)
             val radius = size * .5f
             for (y in 0 until size) for (x in 0 until size) {
                 val nx = (x + .5f - radius) / radius
                 val ny = (y + .5f - radius) / radius
-                val body = ((1f - maxOf(kotlin.math.abs(nx), kotlin.math.abs(ny))) / .16f).coerceIn(0f, 1f)
+                val body = ((1f - maxOf(kotlin.math.abs(nx), kotlin.math.abs(ny))) / edgeWidth).coerceIn(0f, 1f)
                 val fibre = .34f + .66f * kotlin.math.abs(
                     kotlin.math.sin((x + seed.and(31)) * .43f + noise01(x / 5, 0, seed) * 2.1f),
                 )

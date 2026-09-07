@@ -56,6 +56,22 @@ class BrushExecutionCapabilityResolverTest {
         )
     }
 
+    @Test fun proceduralPaperRequiresAConcreteConsumerAndValidParameters() {
+        val paper = PaperGrainSettings()
+        val unsupported = CompiledBrushProgramV5.compile(preset().copy(paperGrain = paper))
+        assertEquals(setOf(BrushExecutionCapabilityReason.PAPER_GRAIN_REQUIRES_STAMP_BACKEND),
+            (BrushExecutionCapabilityResolver.resolve(unsupported) as BrushExecutionCapabilityResolution.Unsupported).reasons)
+        val pencil = preset(family = BrushFamily.PENCIL).copy(paperGrain = paper)
+        assertEquals(BrushExecutionCapabilityResolution.Supported,
+            BrushExecutionCapabilityResolver.resolve(CompiledBrushProgramV5.compile(pencil)))
+        listOf(paper.copy(scale = 0f), paper.copy(density = Float.NaN), paper.copy(strength = 2f)).forEach {
+            val error = org.junit.Assert.assertThrows(IllegalArgumentException::class.java) {
+                CompiledBrushProgramV5.compile(pencil.copy(paperGrain = it))
+            }
+            assertTrue(error.message!!.contains("Paper grain"))
+        }
+    }
+
     private fun preset(
         family: BrushFamily = BrushFamily.INK,
         tipTexture: TipTextureSettings? = null,

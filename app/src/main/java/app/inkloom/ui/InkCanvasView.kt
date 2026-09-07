@@ -4521,8 +4521,9 @@ class InkCanvasView(context: Context) : View(context) {
                             96,
                             program.renderSeed,
                             program.tip.tipTexture?.toothStrength?.coerceIn(0f, 1f) ?: .8f,
+                            program.tip.hardness.coerceIn(0f, 1f),
                         )
-                        ProceduralTipKind.BRISTLE -> BrushTipMask.bristle(96, program.renderSeed)
+                        ProceduralTipKind.BRISTLE -> BrushTipMask.bristle(96, program.renderSeed, program.tip.hardness.coerceIn(0f, 1f))
                     },
                 )
                 val (grain, grainOffset) = resolveTextureGrain(program.textureGrain, program.renderSeed)
@@ -4557,6 +4558,12 @@ class InkCanvasView(context: Context) : View(context) {
                     flow = program.deposition.flow.coerceIn(0f, 1f),
                     spacingRatio = program.spacingPolicy?.value?.coerceIn(.01f, 2f) ?: .12f,
                     tips = masks,
+                    paperGrain = program.grainSampler?.let { paper ->
+                        app.inkloom.engine.v5.material.DocumentPaperGrain(
+                            paper.scale, paper.density, paper.strength, program.renderSeed,
+                            program.tilt.grainEnabled, program.tilt.grainStart, program.tilt.grainMaximum,
+                        )
+                    },
                     grain = grain,
                     grainDensity = program.textureGrain?.density ?: 0f,
                     grainScalePercent = program.textureGrain?.scale ?: 100f,

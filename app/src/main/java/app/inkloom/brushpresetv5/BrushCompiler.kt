@@ -124,6 +124,17 @@ class CompiledBrushProgramV5 private constructor(
             preset.tipTexture?.alphaThreshold?.let { threshold ->
                 require(threshold.isFinite() && threshold in 0f..1f)
             }
+            preset.paperGrain?.let { paper ->
+                require(paper.scale.isFinite() && paper.scale > 0f) { "Paper grain scale must be finite and positive" }
+                require(paper.density.isFinite() && paper.density in 0f..1f) { "Paper grain density must be within 0..1" }
+                require(paper.strength.isFinite() && paper.strength in 0f..1f) { "Paper grain strength must be within 0..1" }
+                require(preset.dynamics.tilt.grainStart.isFinite() && preset.dynamics.tilt.grainStart in 0f..1f) {
+                    "Paper grain tilt start must be within 0..1"
+                }
+                require(preset.dynamics.tilt.grainMaximum.isFinite() && preset.dynamics.tilt.grainMaximum >= 0f) {
+                    "Paper grain tilt maximum must be finite and nonnegative"
+                }
+            }
             preset.textureGrain?.let(::requireValidTextureGrain)
             preset.dual?.let { dual ->
                 require(dual.tipAssetPaths.isNotEmpty() && dual.tipAssetPaths.none(String::isBlank))
