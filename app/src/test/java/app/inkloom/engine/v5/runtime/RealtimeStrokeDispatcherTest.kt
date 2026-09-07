@@ -15,6 +15,44 @@ import org.junit.Test
 
 class RealtimeStrokeDispatcherTest {
     @Test
+    fun idleBarrierIncludesFinishAcrossPumpRescheduling() {
+        val published = java.util.concurrent.atomic.AtomicInteger()
+        RealtimeStrokeDispatcher(onDamageReady = { _, _ -> }).use { dispatcher ->
+            // Freeze the reachable gap after the pump observes an empty command queue but
+            // before its finally block clears pumpScheduled and rearms pending commands.
+            // Reflection keeps a scheduling hook out of the production contact path.
+            val field = RealtimeStrokeDispatcher::class.java.getDeclaredField("pumpScheduled").apply { isAccessible = true }
+            val scheduled = field.get(dispatcher) as java.util.concurrent.atomic.AtomicBoolean
+            scheduled.set(true)
+            val surface = PixelTileSurface(32, 32)
+            assertTrue(dispatcher.begin("ink", surface,
+                DryInkPaintOp(surface, DryInkDefinition(4f, 0xff102030.toInt())),
+                3f, "barrier", sample(12f, 12f, 1L)))
+            assertTrue(dispatcher.finish(sample(16f, 12f, 2L)) { result ->
+                result.record.close()
+                published.incrementAndGet()
+            })
+            val entered = CountDownLatch(1)
+            val returned = CountDownLatch(1)
+            val waiter = Thread {
+                entered.countDown()
+                dispatcher.awaitIdle()
+                returned.countDown()
+            }.apply { start() }
+            try {
+                assertTrue(entered.await(2, TimeUnit.SECONDS))
+                assertFalse("Idle barrier overtook an already queued Finish", returned.await(250, TimeUnit.MILLISECONDS))
+            } finally {
+                scheduled.set(false)
+                RealtimeStrokeDispatcher::class.java.getDeclaredMethod("schedulePump").apply { isAccessible = true }.invoke(dispatcher)
+                waiter.join(2_000)
+            }
+            assertEquals(0L, returned.count)
+            assertEquals(1, published.get())
+        }
+    }
+
+    @Test
     fun moveRasterAndPublicationRunOnTheOrderedStrokeWorker() {
         val surface = PixelTileSurface(256, 128)
         val damageThread = AtomicReference<String>()

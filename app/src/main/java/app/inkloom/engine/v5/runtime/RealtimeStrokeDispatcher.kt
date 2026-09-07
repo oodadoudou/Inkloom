@@ -8,7 +8,7 @@ import app.inkloom.engine.v5.raster.PublishedPaintDelta
 import app.inkloom.engine.v5.surface.PixelTileSurface
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
-import java.util.concurrent.Future
+import java.util.concurrent.FutureTask
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -45,6 +45,7 @@ class RealtimeStrokeDispatcher(
             val onPublished: (PublishedPaintDelta) -> Unit,
         ) : Command
         data object Cancel : Command
+        data class Barrier(val task: FutureTask<*>) : Command
     }
 
     private val queueLock = Any()
@@ -183,6 +184,7 @@ class RealtimeStrokeDispatcher(
                             controller.cancel()
                             workerSurface = null
                         }
+                        is Command.Barrier -> command.task.run()
                     }
                 }
             } finally {
@@ -272,7 +274,10 @@ class RealtimeStrokeDispatcher(
     }
 
     private fun <T> submitAndWait(block: () -> T): T {
-        val future: Future<T> = worker.submit<T> { block() }
+        // The executor can already contain this wait when an exiting pump rearms itself.
+        // Sharing the command FIFO prevents the wait from overtaking that pump's Finish.
+        val future = FutureTask<T> { block() }
+        enqueue(Command.Barrier(future))
         return try {
             future.get()
         } catch (failure: ExecutionException) {
