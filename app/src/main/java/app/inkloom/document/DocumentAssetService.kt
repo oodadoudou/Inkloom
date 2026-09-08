@@ -379,6 +379,9 @@ class DocumentAssetService(private val context: Context) {
             Canvas(bitmap), page, width, height,
             includeBackground = false,
             includedLayerIds = setOf(layerId),
+            // Editable pixel ownership excludes retained image/shape/fill objects. Those
+            // have their own compositor plane and must not be baked a second time on load.
+            includedContentIds = emptySet(),
             includeRaster = true,
             applyLayerEffects = false,
             includeDraftLayers = true,

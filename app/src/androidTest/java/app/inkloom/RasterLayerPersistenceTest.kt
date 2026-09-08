@@ -27,6 +27,21 @@ class RasterLayerPersistenceTest {
     private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
     private val assets = DocumentAssetService(context)
 
+    @Test fun editableRasterProjectionDoesNotBakePageObjectsIntoPaintPixels() {
+        val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext
+        val page = app.inkloom.document.InkPage(elements = listOf(app.inkloom.document.PageElement.Shape(
+            x = 0f, y = 0f, width = 1600f, height = 2263f,
+            kind = app.inkloom.document.ShapeKind.RECTANGLE, colorArgb = 0xFFFF0000L, fillArgb = 0xFFFF0000L,
+        )))
+        val assets = app.inkloom.document.DocumentAssetService(context)
+        val raster = assets.renderRasterLayerBitmap(page, app.inkloom.document.LayerIds.INK, 200)
+        val composite = assets.renderPageBitmap(page, 200)
+        try {
+            org.junit.Assert.assertEquals("Separate page objects must not become duplicated editable paint", 0, raster.getPixel(100, 100))
+            org.junit.Assert.assertEquals(android.graphics.Color.RED, composite.getPixel(100, 100))
+        } finally { raster.recycle(); composite.recycle() }
+    }
+
     @Test fun unscaledDirtyPatchPreservesExactPixelCoordinatesAcrossSaveAndReload() {
         val surface = PixelTileSurface(1200, 1697)
         val region = app.inkloom.engine.v5.surface.PixelRect(49, 63, 89, 121)
