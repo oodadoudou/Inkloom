@@ -737,7 +737,7 @@ class InkCanvasView(context: Context) : View(context) {
     /** Paint-bucket fill: receives the fill mask bitmap (page-local pixels) plus the
      *  mask's bounding box in normalized page coordinates, the fill color and opacity.
      *  The host persists the mask and creates a [PageElement.Fill]. */
-    var onSparseFillCommitted: ((mask: MaskTileSurfaceSnapshot, colorArgb: Long, opacity: Float) -> Unit)? = null
+    var onSparseFillCommitted: ((mask: MaskTileSurfaceSnapshot, colorArgb: Long, opacity: Float, edgeUnderpaintPixels: Int) -> Unit)? = null
     /** Immutable generation handoff; bitmap materialization belongs on a persistence worker. */
     var onRasterLayerCommitted: ((RasterLayerCommit) -> Unit)? = null
     var onLayerMaskSurfaceCommitted: (layerId: String, mask: MaskTileSurfaceSnapshot) -> Unit = { _, _ -> }
@@ -3808,7 +3808,7 @@ class InkCanvasView(context: Context) : View(context) {
         recomputeFillPreview(force = true)
         if (fillGestureUsesSelection) {
             val snapshot = selectionMaskForRasterTools()
-            if (snapshot != null) onSparseFillCommitted?.invoke(snapshot, inkColor.toUInt().toLong(), inkOpacity)
+            if (snapshot != null) onSparseFillCommitted?.invoke(snapshot, inkColor.toUInt().toLong(), inkOpacity, 0)
             fillPreviewMask?.recycle()
             fillPreviewMask = null
             fillSourceBitmap?.recycle()
@@ -3826,6 +3826,7 @@ class InkCanvasView(context: Context) : View(context) {
                     fillPreviewTop,
                     fillPreviewWidth,
                     fillPreviewHeight,
+                    edgeUnderpaintPixels = if (fillAreaScalingPixels == 0f) 2 else 0,
                 )
             }
         } finally {
@@ -3907,6 +3908,7 @@ class InkCanvasView(context: Context) : View(context) {
         normalizedTop: Float,
         normalizedWidth: Float,
         normalizedHeight: Float,
+        edgeUnderpaintPixels: Int = 0,
     ): Boolean {
         val callback = onSparseFillCommitted ?: return false
         val selectionSize = selectionMaskForRasterTools()?.let { it.logicalWidth to it.logicalHeight }
@@ -3923,7 +3925,7 @@ class InkCanvasView(context: Context) : View(context) {
         return try {
             val snapshot = SparseAlphaMask.fromBitmapRegion(scaled, left, top, logicalWidth, logicalHeight)
                 ?.surface?.snapshot() ?: return false
-            callback(snapshot, inkColor.toUInt().toLong(), inkOpacity)
+            callback(snapshot, inkColor.toUInt().toLong(), inkOpacity, edgeUnderpaintPixels)
             true
         } finally {
             if (scaled !== source) scaled.recycle()
@@ -5447,10 +5449,32 @@ class InkCanvasView(context: Context) : View(context) {
         return snapshot?.isEmpty == false
     }
 
+    fun paintFillIntoActiveRaster(mask: MaskTileSurfaceSnapshot, colorArgb: Long, opacity: Float, edgeUnderpaintPixels: Int): Boolean {
+        val layerId = activeLayerId
+        val surface = rasterTileSurfaceFor(layerId)
+        if (surface == null || layerId in protectedLayerIds || editingLayerMaskId != null) {
+            onPaintCapabilityRejected("Select an unlocked paint layer before filling")
+            return false
+        }
+        // The fill command follows any queued pen-up on the single stroke owner.
+        v5StrokeController.awaitIdle()
+        val edit = RasterSelectionContent.fill(surface, mask, colorArgb.toInt(), opacity,
+            edgeUnderpaintPixels = if (hasActiveSelection()) 0 else edgeUnderpaintPixels,
+            preserveAlpha = layerId in alphaLockedLayers)
+        if (edit == null || edit.record.changedTileCount == 0) {
+            edit?.record?.close()
+            onPaintCapabilityRejected("The fill made no change to the editable pixels")
+            return false
+        }
+        val bounds = edit.dirtyBounds
+        recordRasterToolTransaction(layerId, surface, edit.record, Rect(bounds.left, bounds.top, bounds.right, bounds.bottom))
+        return true
+    }
+
     fun fillSelection(): Boolean {
         val mask = selectionMaskForRasterTools() ?: return false
         val callback = onSparseFillCommitted ?: return false
-        callback(mask, inkColor.toUInt().toLong(), inkOpacity)
+        callback(mask, inkColor.toUInt().toLong(), inkOpacity, 0)
         return true
     }
 

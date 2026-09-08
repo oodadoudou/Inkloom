@@ -4930,26 +4930,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
         }
     }
     fun installFillCommit(view: InkCanvasView) {
-        view.onSparseFillCommitted = { mask, color, opacity ->
-            val maskPath = assets.saveFillMask(mask)
-            val projected = PageElement.Fill(
-                x = 0f,
-                y = 0f,
-                width = page.width,
-                height = page.height,
-                colorArgb = color,
-                opacity = opacity,
-                layerId = activeLayerId,
-                maskAssetPath = maskPath,
-            )
-            val fill = PageCropTransform.unproject(projected, page.crop)
-            onElement(documentId, page.id, fill)
-            view.recordExternalEdit(
-                undo = { onRemoveElement(documentId, page.id, fill.id) },
-                redo = { onElement(documentId, page.id, fill) },
-                dispose = { assets.releaseAssetReservation(maskPath) },
-            )
-        }
+        view.onSparseFillCommitted = { mask, color, opacity, edge -> view.paintFillIntoActiveRaster(mask, color, opacity, edge) }
     }
     fun installRasterCommit(view: InkCanvasView) {
         view.onRasterLayerCommitted = commit@{ commit ->

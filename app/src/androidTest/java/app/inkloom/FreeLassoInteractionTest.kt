@@ -26,7 +26,7 @@ class FreeLassoInteractionTest {
             selectionShape = SelectionShape.FREEFORM
             fingerDrawingEnabled = false
             onViewportPan = { dx, dy -> panDistance += kotlin.math.abs(dx) + kotlin.math.abs(dy) }
-            onSparseFillCommitted = { mask, _, _ -> selectionMask = mask }
+            onSparseFillCommitted = { mask, _, _, _ -> selectionMask = mask }
         }
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
@@ -55,7 +55,7 @@ class FreeLassoInteractionTest {
             selectionShape = SelectionShape.FREEFORM
             fingerDrawingEnabled = false
             onViewportPan = { dx, dy -> panDistance += kotlin.math.abs(dx) + kotlin.math.abs(dy) }
-            onSparseFillCommitted = { mask, _, _ -> selectionMask = mask }
+            onSparseFillCommitted = { mask, _, _, _ -> selectionMask = mask }
         }
 
         InstrumentationRegistry.getInstrumentation().runOnMainSync {

@@ -29,7 +29,7 @@ class FillToolTest {
                 fillSubTool = subTool
                 fingerDrawingEnabled = true
                 pagePaperColor = Color.WHITE
-                onSparseFillCommitted = { mask, _, _ ->
+                onSparseFillCommitted = { mask, _, _, _ ->
                     committed = !mask.isEmpty && mask.nonZeroBounds() != null
                 }
             }
@@ -63,7 +63,7 @@ class FillToolTest {
             tool = EditorTool.FILL
             fingerDrawingEnabled = true
             pagePaperColor = android.graphics.Color.WHITE
-            onSparseFillCommitted = { mask, _, _ -> committed = !mask.isEmpty }
+            onSparseFillCommitted = { mask, _, _, _ -> committed = !mask.isEmpty }
         }
         send(view, 0L, MotionEvent.ACTION_DOWN, 100f, 100f)
         send(view, 50L, MotionEvent.ACTION_UP, 100f, 100f)
@@ -76,7 +76,7 @@ class FillToolTest {
             tool = EditorTool.FILL
             fingerDrawingEnabled = true
             pagePaperColor = android.graphics.Color.WHITE
-            onSparseFillCommitted = { _, _, _ -> commitCount++ }
+            onSparseFillCommitted = { _, _, _, _ -> commitCount++ }
         }
         send(view, 0L, MotionEvent.ACTION_DOWN, 100f, 100f)
         send(view, 50L, MotionEvent.ACTION_MOVE, 160f, 100f)
@@ -90,7 +90,7 @@ class FillToolTest {
             tool = EditorTool.FILL
             fingerDrawingEnabled = false
             pagePaperColor = Color.WHITE
-            onSparseFillCommitted = { _, _, _ -> commitCount++ }
+            onSparseFillCommitted = { _, _, _, _ -> commitCount++ }
         }
         send(view, 0L, MotionEvent.ACTION_DOWN, 100f, 100f)
         send(view, 50L, MotionEvent.ACTION_UP, 100f, 100f)
@@ -139,7 +139,7 @@ class FillToolTest {
             referenceLayerIds = setOf("line-art")
             layerOrder = listOf("color", "line-art")
             setRasterLayerSurfaces(mapOf("color" to color, "line-art" to lineArt))
-            onSparseFillCommitted = { mask, _, _ ->
+            onSparseFillCommitted = { mask, _, _, _ ->
                 committedWidth = mask.nonZeroBounds()?.width?.toFloat() ?: 0f
             }
         }
@@ -153,7 +153,7 @@ class FillToolTest {
     @Test fun fillSelectionCommitsTheSelectionMaskInsteadOfFloodingAroundInk() {
         var committed = false
         val view = canvas {
-            onSparseFillCommitted = { mask, _, _ ->
+            onSparseFillCommitted = { mask, _, _, _ ->
                 committed = mask.logicalWidth > 1 && mask.logicalHeight > 1 &&
                     mask.alphaAt(mask.logicalWidth / 2, mask.logicalHeight / 2) > 0
             }
@@ -174,7 +174,7 @@ class FillToolTest {
             fingerDrawingEnabled = true
             pagePaperColor = Color.WHITE
             selectionShape = app.inkloom.settings.SelectionShape.RECTANGLE
-            onSparseFillCommitted = { mask, _, _ ->
+            onSparseFillCommitted = { mask, _, _, _ ->
                 committedMask = mask
             }
         }
@@ -201,7 +201,7 @@ class FillToolTest {
             tool = EditorTool.FILL
             fingerDrawingEnabled = true
             pagePaperColor = Color.WHITE
-            onSparseFillCommitted = { _, _, _ ->
+            onSparseFillCommitted = { _, _, _, _ ->
                 visibleFills++
                 view.recordExternalEdit(undo = { visibleFills-- }, redo = { visibleFills++ })
             }

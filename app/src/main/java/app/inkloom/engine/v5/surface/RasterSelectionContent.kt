@@ -53,6 +53,76 @@ object RasterSelectionContent {
         }
     }
 
+    /** Paints a fill into the editable layer, with a small underpaint fringe at antialiased edges.
+     * Underpaint leaves opaque contours intact; it never dilates source-over across line art.
+     */
+    fun fill(
+        surface: PixelTileSurface,
+        mask: MaskTileSurfaceSnapshot,
+        colorArgb: Int,
+        opacity: Float,
+        edgeUnderpaintPixels: Int = 0,
+        preserveAlpha: Boolean = false,
+    ): RasterSelectionEdit? {
+        val coreBounds = selectionBoundsInPixels(mask, surface.logicalWidth, surface.logicalHeight) ?: return null
+        val radius = if (preserveAlpha) 0 else edgeUnderpaintPixels.coerceIn(0, 3)
+        val bounds = PixelRect((coreBounds.left - radius).coerceAtLeast(0), (coreBounds.top - radius).coerceAtLeast(0),
+            (coreBounds.right + radius).coerceAtMost(surface.logicalWidth), (coreBounds.bottom + radius).coerceAtMost(surface.logicalHeight))
+        val straightAlpha = colorArgb ushr 24
+        val source = scaleArgb(scaleArgb(colorArgb or 0xFF000000.toInt(), straightAlpha),
+            ((opacity.takeIf(Float::isFinite) ?: 0f).coerceIn(0f, 1f) * 255f).toInt())
+        val sourceF16 = PackedRgbaF16.fromPremultipliedArgb8888(source)
+        fun alpha(x: Int, y: Int): Int = if (x !in 0 until surface.logicalWidth || y !in 0 until surface.logicalHeight) 0
+            else selectionAlphaAtPixel(mask, x, y, surface.logicalWidth, surface.logicalHeight)
+        fun fringeAlpha(x: Int, y: Int): Int {
+            var coverage = 0
+            for (dy in -radius..radius) for (dx in -radius..radius) {
+                if (dx * dx + dy * dy <= radius * radius) coverage = maxOf(coverage, alpha(x + dx, y + dy))
+            }
+            return coverage
+        }
+        val transaction = surface.beginWrite("fill raster region")
+        try {
+            visitTiles(bounds, surface.tileSize) { key, tileBounds, localDirty ->
+                when (surface.pixelFormat) {
+                    PixelTileFormat.PREMULTIPLIED_SRGB_8888 -> transaction.editTile(key, localDirty) { values, stride ->
+                        for (y in tileBounds.top until tileBounds.bottom) for (x in tileBounds.left until tileBounds.right) {
+                            val index = (y - key.row * surface.tileSize) * stride + x - key.column * surface.tileSize
+                            var destination = values[index]
+                            val core = alpha(x, y)
+                            if (radius > 0 && core < 255 && destination ushr 24 < 255) {
+                                val edge = fringeAlpha(x, y)
+                                if (edge > 0) destination = sourceOverArgb(destination, scaleArgb(source, edge))
+                                values[index] = destination
+                            }
+                            if (core > 0) {
+                                val pigment = scaleArgb(source, core)
+                                values[index] = if (preserveAlpha) sourceAtopArgb(pigment, destination) else sourceOverArgb(pigment, destination)
+                            }
+                        }
+                    }
+                    PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16 -> transaction.editTileF16(key, localDirty) { values, stride ->
+                        for (y in tileBounds.top until tileBounds.bottom) for (x in tileBounds.left until tileBounds.right) {
+                            val index = (y - key.row * surface.tileSize) * stride + x - key.column * surface.tileSize
+                            var destination = values[index]
+                            val core = alpha(x, y)
+                            if (radius > 0 && core < 255 && PackedRgbaF16.alpha(destination) < 1f) {
+                                val edge = fringeAlpha(x, y)
+                                if (edge > 0) destination = sourceOverF16(destination, scaleF16(sourceF16, edge / 255f))
+                                values[index] = destination
+                            }
+                            if (core > 0) {
+                                val pigment = scaleF16(sourceF16, core / 255f)
+                                values[index] = if (preserveAlpha) sourceAtopF16(pigment, destination) else sourceOverF16(pigment, destination)
+                            }
+                        }
+                    }
+                }
+            }
+            return RasterSelectionEdit(transaction.commit(), bounds)
+        } catch (failure: Throwable) { transaction.close(); throw failure }
+    }
+
     fun clear(surface: PixelTileSurface, selection: MaskTileSurfaceSnapshot): RasterSelectionEdit? {
         val bounds = selectionBoundsInPixels(selection, surface.logicalWidth, surface.logicalHeight) ?: return null
         val transaction = surface.beginWrite("clear raster selection")
@@ -198,6 +268,22 @@ object RasterSelectionContent {
         if (alpha >= 255) return value
         fun channel(shift: Int): Int = (((value ushr shift and 0xff) * alpha + 127) / 255) shl shift
         return channel(24) or channel(16) or channel(8) or channel(0)
+    }
+
+    private fun sourceAtopArgb(source: Int, destination: Int): Int {
+        val da = destination ushr 24
+        val inverse = 255 - (source ushr 24)
+        fun channel(shift: Int): Int = (((source ushr shift and 255) * da + (destination ushr shift and 255) * inverse + 127) / 255).coerceAtMost(255)
+        return (da shl 24) or (channel(16) shl 16) or (channel(8) shl 8) or channel(0)
+    }
+
+    private fun sourceAtopF16(source: Long, destination: Long): Long {
+        val alpha = PackedRgbaF16.alpha(destination)
+        val inverse = 1f - PackedRgbaF16.alpha(source).coerceIn(0f, 1f)
+        return PackedRgbaF16.packPremultiplied(
+            PackedRgbaF16.premultipliedRed(source) * alpha + PackedRgbaF16.premultipliedRed(destination) * inverse,
+            PackedRgbaF16.premultipliedGreen(source) * alpha + PackedRgbaF16.premultipliedGreen(destination) * inverse,
+            PackedRgbaF16.premultipliedBlue(source) * alpha + PackedRgbaF16.premultipliedBlue(destination) * inverse, alpha)
     }
 
     private fun sourceOverArgb(source: Int, destination: Int): Int {

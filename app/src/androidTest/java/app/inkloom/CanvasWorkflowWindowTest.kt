@@ -52,6 +52,33 @@ class CanvasWorkflowWindowTest {
         assertTrue("ColorDrop must not block two-finger zoom", view.viewportScale > before + .05f)
     }
 
+    @Test fun colorDropBecomesEditablePixelsAndErasureSurvivesReopen() {
+        tap("New Note"); tap("Create")
+        val view = canvas()
+        stroke(pagePoint(view, .3f, .4f), pagePoint(view, .5f, .4f))
+        view.awaitV5StrokeWorkerIdleForTest()
+        colorDrop(view)
+        val filled = requireNotNull(view.activeRasterSnapshotForTest())
+        val x = (filled.logicalWidth * .5f).toInt()
+        val y = (filled.logicalHeight * .7f).toInt()
+        assertEquals("ColorDrop must be editable paint pixels", view.inkColor, filled.pixelAt(x, y))
+        val contour = app.inkloom.engine.v5.surface.PixelRect((filled.logicalWidth * .25f).toInt(), (filled.logicalHeight * .35f).toInt(), (filled.logicalWidth * .55f).toInt(), (filled.logicalHeight * .45f).toInt())
+        val palePixels = filled.copyPremultipliedPixels(contour).count { it ushr 24 < 250 }
+        assertEquals("No pale antialias ring around same-color filled ink", 0, palePixels)
+        tap("Eraser")
+        stroke(pagePoint(view, .4f, .7f), pagePoint(view, .6f, .7f))
+        view.awaitV5StrokeWorkerIdleForTest()
+        compose.waitForIdle()
+        val erased = requireNotNull(view.activeRasterSnapshotForTest()).pixelAt(x, y)
+        assertTrue("Filled pigment must erase", erased ushr 24 < 50)
+        SystemClock.sleep(1500)
+        compose.activityRule.scenario.recreate()
+        compose.waitForIdle()
+        val restored = canvas()
+        compose.waitUntil(5_000) { restored.activeRasterSnapshotForTest()?.pixelAt(x, y) == erased }
+        assertEquals(erased, restored.activeRasterSnapshotForTest()?.pixelAt(x, y))
+    }
+
     @Test fun erasedInkStaysErasedAfterCheckpointAndBrushPanelChanges() {
         tap("New Note"); tap("Create")
         val view = canvas()

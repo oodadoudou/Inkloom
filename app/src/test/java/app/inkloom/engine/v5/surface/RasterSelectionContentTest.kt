@@ -5,6 +5,48 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RasterSelectionContentTest {
+    @Test fun fillUnderpaintClosesAntialiasHaloAndIsErasableAndUndoable() {
+        val pixels = PixelTileSurface(128, 64, tileSize = 64)
+        pixels.beginWrite("antialiased line").use { write ->
+            for (y in 0 until 64) { write.setPixel(63, y, 0xFF000000.toInt()); write.setPixel(62, y, 0x80000000.toInt()) }
+            write.commit().close()
+        }
+        val mask = MaskTileSurface(128, 64, tileSize = 64)
+        mask.beginWrite("outside line").use { write ->
+            for (y in 0 until 64) for (x in 0 until 128) if (x !in 62..63) write.setAlpha(x, y, 255)
+            write.commit().close()
+        }
+        val edit = requireNotNull(RasterSelectionContent.fill(pixels, mask.snapshot(), 0xFF000000.toInt(), 1f, 2))
+        assertEquals(0xFF000000.toInt(), pixels.pixelAt(62, 30))
+        assertEquals(0xFF000000.toInt(), pixels.pixelAt(64, 30))
+        pixels.apply(edit.record, PixelTileSurface.HistoryDirection.UNDO)
+        assertEquals(0x80000000.toInt(), pixels.pixelAt(62, 30))
+        pixels.apply(edit.record, PixelTileSurface.HistoryDirection.REDO)
+        val cleared = requireNotNull(RasterSelectionContent.clear(pixels, mask.snapshot()))
+        assertEquals(0, pixels.pixelAt(64, 30))
+        cleared.record.close(); edit.record.close()
+    }
+
+    @Test fun fillRespectsSoftSelectionAndLockedAlphaForBothColorFormats() {
+        for (format in PixelTileFormat.entries) {
+            val pixels = PixelTileSurface(64, 64, tileSize = 64, pixelFormat = format)
+            pixels.beginWrite("half coverage").use { write ->
+                if (format == PixelTileFormat.PREMULTIPLIED_SRGB_8888) write.setPixel(32, 32, 0x80000000.toInt())
+                else write.setLinearPixel(32, 32, LinearRgba(0f, 0f, 0f, .5f))
+                write.commit().close()
+            }
+            val mask = MaskTileSurface(64, 64, tileSize = 64)
+            mask.beginWrite("selection").use { write -> write.setAlpha(32, 32, 128); write.setAlpha(33, 32, 255); write.commit().close() }
+            val edit = requireNotNull(RasterSelectionContent.fill(pixels, mask.snapshot(), 0xFFFF0000.toInt(), 1f, preserveAlpha = true))
+            if (format == PixelTileFormat.PREMULTIPLIED_SRGB_8888) {
+                assertEquals(128, pixels.pixelAt(32, 32) ushr 24); assertEquals(0, pixels.pixelAt(33, 32))
+            } else {
+                assertEquals(.5f, pixels.linearPixelAt(32, 32).alpha, .002f); assertEquals(0f, pixels.linearPixelAt(33, 32).alpha, .002f)
+            }
+            edit.record.close()
+        }
+    }
+
     @Test fun featheredCopyClearPasteAndUndoShareTheSameAlphaMask() {
         val pixels = PixelTileSurface(256, 256, tileSize = 64)
         pixels.beginWrite("seed").run {
