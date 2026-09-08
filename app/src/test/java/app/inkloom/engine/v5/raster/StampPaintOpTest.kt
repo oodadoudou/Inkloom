@@ -12,8 +12,26 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.math.pow
+import kotlin.random.Random
 
 class StampPaintOpTest {
+    @Test fun uniformTransferPreservesFloatRoundingAcrossCoverageRange() {
+        fun verify(alpha: Float) {
+            val previous = (1f - (1f - alpha.coerceIn(0f, 1f)).pow(1f)).coerceIn(0f, 1f)
+            val current = StampPaintOp.transferredCoverage(alpha, DabTransferMode.UNIFORM_GLAZE)
+            assertEquals("Coverage bits for alpha=$alpha", previous.toBits(), current.toBits())
+        }
+        listOf(Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY,
+            -Float.MAX_VALUE, -1f, -Float.MIN_VALUE, -0f, 0f, Float.MIN_VALUE,
+            .00000001f, .05f, .35f, .5f, 1f, Float.MAX_VALUE).forEach(::verify)
+        for (value in 0..65535) verify(value / 65535f)
+        val random = Random(6028)
+        repeat(100_000) { verify(Float.fromBits(random.nextInt())) }
+        assertNotEquals("Small coverage must retain cancellation rounding", .00000001f.toBits(),
+            StampPaintOp.transferredCoverage(.00000001f, DabTransferMode.UNIFORM_GLAZE).toBits())
+    }
+
     @Test fun documentPaperChangesCoverageAndRemainsInvariantToBatchBoundaries() {
         fun brush(density: Float, strength: Float = .8f) = definition().copy(
             paperGrain = app.inkloom.engine.v5.material.DocumentPaperGrain(100f, density, strength, 42),

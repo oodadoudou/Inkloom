@@ -5,6 +5,23 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BrushTipMaskTest {
+    @Test fun allMipLevelsRejectNonFiniteCoordinatesAndPreserveClosedEdges() {
+        val mask = BrushTipMask(8, 8, ByteArray(64) { 0xff.toByte() })
+        val outside = listOf(Float.NaN, Float.fromBits(0x7f800001), Float.POSITIVE_INFINITY,
+            Float.NEGATIVE_INFINITY, -Float.MIN_VALUE, Float.fromBits(1f.toBits() + 1))
+        val inside = listOf(-0f, 0f, Float.MIN_VALUE, .5f, Float.fromBits(1f.toBits() - 1), 1f)
+        for (level in 0..3) {
+            outside.forEach { coordinate ->
+                assertEquals(0f, mask.coverageAtLevel(coordinate, .5f, level), 0f)
+                assertEquals(0f, mask.coverageAtLevel(.5f, coordinate, level), 0f)
+            }
+            inside.forEach { coordinate ->
+                assertEquals(1f, mask.coverageAtLevel(coordinate, .5f, level), 0f)
+                assertEquals(1f, mask.coverageAtLevel(.5f, coordinate, level), 0f)
+            }
+        }
+    }
+
     @Test fun `prefiltered lookup preserves a sparse mark when rendered small`() {
         val alpha = ByteArray(64 * 64)
         alpha[32 * 64 + 32] = 0xff.toByte()

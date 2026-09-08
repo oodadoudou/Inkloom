@@ -632,6 +632,11 @@ class StampPaintOp(
 
     companion object {
         internal fun transferredCoverage(alpha: Float, mode: DabTransferMode): Float {
+            if (mode == DabTransferMode.UNIFORM_GLAZE) {
+                // Preserve the original Float cancellation/rounding; returning alpha directly
+                // changes coverage for small values. pow(x, 1) itself adds no transformation.
+                return (1f - (1f - alpha.coerceIn(0f, 1f))).coerceIn(0f, 1f)
+            }
             val exponent = when (mode) {
                 DabTransferMode.LIGHT_GLAZE -> .65f
                 DabTransferMode.UNIFORM_GLAZE -> 1f

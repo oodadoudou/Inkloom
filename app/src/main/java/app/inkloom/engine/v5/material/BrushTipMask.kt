@@ -56,7 +56,9 @@ class BrushTipMask(
         }
 
     private fun sample(level: MaskLevel, u: Float, v: Float): Float {
-        if (!u.isFinite() || !v.isFinite() || u < 0f || u > 1f || v < 0f || v > 1f) return 0f
+        // Ordered comparisons reject NaN/infinity as well as the transparent exterior, without
+        // Float.isFinite's Math.abs call on every sampled pixel.
+        if (!(u >= 0f && u <= 1f && v >= 0f && v <= 1f)) return 0f
         // u/v are non-negative after the guard, so Float.toInt() is the same floor operation
         // without the Math.floor/coerce chain that used to run for every stamp pixel.
         val x = u * (level.width - 1)
