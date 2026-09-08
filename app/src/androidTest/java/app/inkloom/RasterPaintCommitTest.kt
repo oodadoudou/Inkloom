@@ -643,6 +643,35 @@ class RasterPaintCommitTest {
         moving.close(); texturized.close(); tipFile.delete(); grainFile.delete()
     }
 
+    @Test fun fillAfterPenUpPresentsTheNewPixelsOnTheFirstFrame() {
+        val surface = PixelTileSurface(600, 600)
+        val view = createCanvas {
+            activeLayerId = "paint"
+            layerOrder = listOf("paint")
+            pagePaperColor = Color.WHITE
+            installV5TestInk(size = 48f)
+            setRasterLayerSurfaces(mapOf("paint" to surface))
+        }
+        // Commit a stroke without presenting a frame, retaining its landed preview.
+        sendStylus(view, MotionEvent.ACTION_DOWN, 200f, 200f, 0L)
+        sendStylus(view, MotionEvent.ACTION_UP, 200f, 200f, 8L)
+        val mask = app.inkloom.engine.v5.surface.MaskTileSurface(600, 600, initialDefaultAlpha = 255)
+        val output = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
+        try {
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                assertTrue(view.paintFillIntoActiveRaster(mask.snapshot(), Color.BLUE.toUInt().toLong(), 1f, 0))
+                assertEquals(Color.BLUE, surface.pixelAt(75, 75))
+                view.draw(Canvas(output))
+                assertEquals("The first submitted frame must include the fill, not the previous pen-up preview",
+                    Color.BLUE, output.getPixel(50, 50))
+                view.draw(Canvas(output))
+                assertEquals(Color.BLUE, output.getPixel(50, 50))
+            }
+        } finally {
+            output.recycle()
+        }
+    }
+
     private fun createCanvas(block: InkCanvasView.() -> Unit): InkCanvasView {
         lateinit var result: InkCanvasView
         InstrumentationRegistry.getInstrumentation().runOnMainSync {

@@ -998,7 +998,12 @@ class InkCanvasView(context: Context) : View(context) {
         if (layerId != activeLayerId) return null
         return runCatching {
             v5StrokeController.activeCompositeSnapshot(layerId)
-                ?: v5StrokeController.landedSnapshot(layerId)
+                ?: v5StrokeController.landedSnapshot(layerId)?.takeIf { landed ->
+                    // A fill/transform can commit before the pen-up frame is presented.
+                    // Keep the presentation barrier, but never cover newer document pixels
+                    // with the older landed preview while waiting for that frame.
+                    landed.revision >= (rasterTileSurfaceFor(layerId)?.revision ?: 0L)
+                }
                 ?: rasterTileBlendSession?.previewSnapshot()
                 ?: rasterTileLiquifySession?.previewSnapshot()
         }.getOrNull()
