@@ -9231,6 +9231,12 @@ private fun SettingsDialog(
                 item { Text("${tr("Full pressure point", "满压位置")}  ${(settings.pressureMaximumInput * 100).toInt()}%", color = MutedInk, fontSize = 12.sp) }
                 item { Slider(settings.pressureMaximumInput, { value -> onChange(settings.copy(pressureMaximumInput = value.coerceAtLeast(settings.pressureMinimumInput + .05f))) }, valueRange = 0.05f..1f) }
                 item { PressureCurveEditor(settings.pressureResponseCurve) { onChange(settings.copy(pressureResponseCurve = it)) } }
+                item {
+                    PressureScratchpad(settings)
+                    TextButton(onClick = { onChange(settings.copy(pressureSensitivity = 1f, pressureMinimumInput = 0f, pressureMaximumInput = 1f, pressureResponseCurve = PressureResponseCurve.LINEAR)) }) {
+                        Text(tr("Reset pressure settings", "重置压感设置"))
+                    }
+                }
                 item { Text(tr("DEFAULT TOOL PRESETS", "默认工具预设"), color = Sage, fontSize = 12.sp) }
                 item { BrushSettingSlider(tr("Pen size", "钢笔大小"), settings.penSize, .5f..400f) { onChange(settings.copy(penSize = it)) } }
                 item { BrushSettingSlider(tr("Pen opacity", "钢笔不透明度"), settings.penOpacity, .05f..1f) { onChange(settings.copy(penOpacity = it)) } }
@@ -9763,6 +9769,7 @@ private fun shortcutActionDisplayLabel(action: ShortcutAction, settings: AppSett
 private fun PressureCurveEditor(values: List<Float>, onChange: (List<Float>) -> Unit) {
     val curve = PressureResponseCurve.normalize(values)
     val currentOnChange by rememberUpdatedState(onChange)
+    val currentCurve by rememberUpdatedState(curve)
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(tr("Pressure response curve", "压感响应曲线"), color = MutedInk, fontSize = 11.sp, modifier = Modifier.weight(1f))
@@ -9773,39 +9780,27 @@ private fun PressureCurveEditor(values: List<Float>, onChange: (List<Float>) -> 
         Canvas(
             Modifier.fillMaxWidth().height(210.dp).clip(RoundedCornerShape(8.dp)).background(Workspace).padding(16.dp)
                 .semantics { contentDescription = "Editable pressure curve" }
-                .pointerInput(curve) {
-                    detectTapGestures { position ->
-                        if (size.width <= 0 || size.height <= 0) return@detectTapGestures
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
                         val index = (1..3).minBy { candidate ->
-                            val dx = position.x - size.width * candidate / 4f
-                            val dy = position.y - size.height * (1f - curve[candidate])
+                            val dx = down.position.x - size.width * candidate / 4f
+                            val dy = down.position.y - size.height * (1f - currentCurve[candidate])
                             dx * dx + dy * dy
                         }
-                        val changed = curve.toMutableList()
-                        changed[index] = (1f - position.y / size.height).coerceIn(changed[index - 1], changed[index + 1])
-                        currentOnChange(PressureResponseCurve.normalize(changed))
-                    }
-                }
-                .pointerInput(curve) {
-                    var selectedIndex = -1
-                    fun update(position: Offset, choosePoint: Boolean = false) {
-                        if (size.width <= 0 || size.height <= 0) return
-                        if (choosePoint || selectedIndex !in 1..3) {
-                            selectedIndex = (1..3).minBy { index ->
-                                val dx = position.x - size.width * index / 4f
-                                val dy = position.y - size.height * (1f - curve[index])
-                                dx * dx + dy * dy
-                            }
+                        fun update(position: Offset) {
+                            val changed = currentCurve.toMutableList()
+                            changed[index] = (1f - position.y / size.height.coerceAtLeast(1)).coerceIn(changed[index - 1], changed[index + 1])
+                            currentOnChange(changed)
                         }
-                        val index = selectedIndex
-                        val output = (1f - position.y / size.height).coerceIn(0f, 1f)
-                        val changed = curve.toMutableList()
-                        changed[index] = output.coerceIn(changed[index - 1], changed[index + 1])
-                        currentOnChange(PressureResponseCurve.normalize(changed))
-                    }
-                    detectDragGestures(onDragStart = { update(it, choosePoint = true) }, onDragEnd = { selectedIndex = -1 }, onDragCancel = { selectedIndex = -1 }) { change, _ ->
-                        change.consume()
-                        update(change.position)
+                        down.consume()
+                        update(down.position)
+                        do {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            change.consume()
+                            update(change.position)
+                        } while (change.pressed)
                     }
                 },
         ) {
@@ -9818,10 +9813,11 @@ private fun PressureCurveEditor(values: List<Float>, onChange: (List<Float>) -> 
                 drawLine(OutlineSoft.copy(alpha = .45f), Offset(0f, y), Offset(size.width, y), strokeWidth = 1f)
             }
             val path = androidx.compose.ui.graphics.Path()
-            curve.forEachIndexed { index, output ->
-                val x = index.toFloat() / curve.lastIndex * size.width
-                val y = size.height - output * size.height
-                if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            for (sample in 0..160) {
+                val input = sample / 160f
+                val x = input * size.width
+                val y = size.height * (1f - PressureResponseCurve.apply(input, curve))
+                if (sample == 0) path.moveTo(x, y) else path.lineTo(x, y)
             }
             drawPath(path, Sage, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3f))
             curve.forEachIndexed { index, output ->

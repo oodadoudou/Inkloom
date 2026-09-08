@@ -71,11 +71,24 @@ object PressureResponseCurve {
 
     fun apply(input: Float, values: List<Float>): Float {
         val curve = normalize(values)
-        val position = input.coerceIn(0f, 1f) * (curve.size - 1)
-        val left = position.toInt().coerceIn(0, curve.lastIndex)
-        val right = (left + 1).coerceAtMost(curve.lastIndex)
-        val fraction = position - left
-        return curve[left] + (curve[right] - curve[left]) * fraction
+        val position = (input.takeIf(Float::isFinite) ?: 0f).coerceIn(0f, 1f) * curve.lastIndex
+        val left = position.toInt().coerceIn(0, curve.lastIndex - 1)
+        val t = position - left
+        // Monotone cubic Hermite: shared tangents are continuous at each control point.
+        // The harmonic mean prevents overshoot across a flat or steep pressure segment.
+        fun tangent(index: Int): Float {
+            if (index == 0) return curve[1] - curve[0]
+            if (index == curve.lastIndex) return curve[index] - curve[index - 1]
+            val before = curve[index] - curve[index - 1]
+            val after = curve[index + 1] - curve[index]
+            return if (before <= 0f || after <= 0f) 0f else 2f * before * after / (before + after)
+        }
+        val t2 = t * t
+        val t3 = t2 * t
+        return ((2f * t3 - 3f * t2 + 1f) * curve[left] +
+            (t3 - 2f * t2 + t) * tangent(left) +
+            (-2f * t3 + 3f * t2) * curve[left + 1] +
+            (t3 - t2) * tangent(left + 1)).coerceIn(curve[left], curve[left + 1])
     }
 
     fun encode(values: List<Float>): String = normalize(values).joinToString(",") { it.toString() }

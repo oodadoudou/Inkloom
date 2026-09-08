@@ -35,4 +35,19 @@ class PressureCalibrationTest {
         assertEquals(PressureResponseCurve.SOFT, PressureResponseCurve.decode(encoded))
         assertEquals(PressureResponseCurve.LINEAR, PressureResponseCurve.decode("broken"))
     }
+    @Test fun smoothCurveIsMonotonicAndHasContinuousTangentsAtKnots() {
+        for (curve in listOf(PressureResponseCurve.SOFT, PressureResponseCurve.FIRM, listOf(0f, .9f, .9f, .9f, 1f))) {
+            val samples = (0..1000).map { PressureResponseCurve.apply(it / 1000f, curve) }
+            assertTrue(samples.zipWithNext().all { (a, b) -> b >= a - .000001f })
+            assertEquals(0f, samples.first(), .000001f)
+            assertEquals(1f, samples.last(), .000001f)
+            for (knot in listOf(.25f, .5f, .75f)) {
+                val epsilon = .0005f
+                val at = PressureResponseCurve.apply(knot, curve)
+                val before = (at - PressureResponseCurve.apply(knot - epsilon, curve)) / epsilon
+                val after = (PressureResponseCurve.apply(knot + epsilon, curve) - at) / epsilon
+                assertEquals("Tangent must not jump at $knot", before, after, .04f)
+            }
+        }
+    }
 }
