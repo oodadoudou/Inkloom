@@ -151,7 +151,7 @@ class RasterSelectionTransformSession(
             if (interpolation == SelectionInterpolation.NEAREST) transformMaskTranslation(originalSelection, maskSourceKeys,
                 ceil(maskTranslation.translateX - .5f).toInt(), ceil(maskTranslation.translateY - .5f).toInt())
             else translateFilteredMask(maskDestinationKeys, maskTranslation.translateX, maskTranslation.translateY, interpolation)
-        } else transformMask(originalSelection, maskDestinationKeys, transform, sampler)
+        } else transformMask(originalSelection, maskDestinationKeys, transform, sampler, interpolation)
         return RasterSelectionTransformResult(previewSelection, dirty)
     }
 
@@ -269,6 +269,7 @@ class RasterSelectionTransformSession(
         destinationKeys: Set<PixelTileKey>,
         transform: SelectionAffineTransform,
         sampler: SelectionPixelSampler,
+        interpolation: SelectionInterpolation,
     ): MaskTileSurfaceSnapshot {
         val inverse = InverseAffine(transform)
         val destination = MaskTileSurface(source.logicalWidth, source.logicalHeight, source.tileSize)
@@ -285,8 +286,9 @@ class RasterSelectionTransformSession(
                     minOf(tileTop + source.tileSize, source.logicalHeight),
                 )
                 val alpha = ByteArray(tileBounds.width * tileBounds.height)
-                var nonZero = false
-                for (y in tileBounds.top until tileBounds.bottom) for (x in tileBounds.left until tileBounds.right) {
+                val nativeCount = affineMaskTile(source, tileBounds, alpha, inverse, interpolation)
+                var nonZero = nativeCount > 0
+                if (nativeCount < 0) for (y in tileBounds.top until tileBounds.bottom) for (x in tileBounds.left until tileBounds.right) {
                     // The transform is in raster pixels; mask storage has independent dimensions.
                     // Sample the original mask directly so previews never resample a previous mask.
                     val px = (x + .5f) / maskScaleX; val py = (y + .5f) / maskScaleY
@@ -302,6 +304,26 @@ class RasterSelectionTransformSession(
             throw failure
         }
         return destination.snapshot()
+    }
+
+    private fun affineMaskTile(source: MaskTileSurfaceSnapshot, tile: PixelRect, output: ByteArray,
+                               inverse: InverseAffine, interpolation: SelectionInterpolation): Int {
+        val m = inverse.coefficients.copyOf()
+        m[1] *= maskScaleX / maskScaleY; m[2] *= maskScaleY / maskScaleX
+        m[4] *= maskScaleX; m[5] *= maskScaleY
+        val points = listOf(tile.left to tile.top, tile.right to tile.top, tile.left to tile.bottom, tile.right to tile.bottom)
+        val xs = points.map { (x, y) -> m[0]*x + m[1]*y + m[4] }
+        val ys = points.map { (x, y) -> m[2]*x + m[3]*y + m[5] }
+        val halo = if (interpolation == SelectionInterpolation.BICUBIC) 2 else 1
+        val roi = PixelRect(floor(xs.min()).toInt().coerceIn(0, source.logicalWidth) - halo,
+            floor(ys.min()).toInt().coerceIn(0, source.logicalHeight) - halo,
+            ceil(xs.max()).toInt().coerceIn(0, source.logicalWidth) + halo,
+            ceil(ys.max()).toInt().coerceIn(0, source.logicalHeight) + halo)
+            .intersect(PixelRect(0, 0, source.logicalWidth, source.logicalHeight))
+        if (roi.isEmpty) return 0
+        if (roi.width.toLong() * roi.height > 1_048_576L) return -1
+        return NativeRasterOps.affineSelectionAlpha(source.copyAlpha(roi), roi.left, roi.top, roi.width, roi.height,
+            output, tile.left, tile.top, tile.width, tile.height, m, interpolation.ordinal)
     }
 
     private fun transformMaskTranslation(

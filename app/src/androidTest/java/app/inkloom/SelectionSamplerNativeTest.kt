@@ -54,6 +54,36 @@ class SelectionSamplerNativeTest {
         }
     }
 
+    @Test fun nativeAffineAlphaMatchesMaskOracleIncludingPageAndTileEdges() {
+        val source = app.inkloom.engine.v5.surface.MaskTileSurface(129, 97, 64)
+        source.beginWrite("fractional selection").use { write ->
+            for (y in 0 until 97) for (x in 0 until 129) write.setAlpha(x, y, (x*13 + y*29) % 256)
+            write.commit().close()
+        }
+        val mask = source.snapshot()
+        val pixels = app.inkloom.engine.v5.surface.PixelTileSurface(129, 97, 64).snapshot()
+        val full = app.inkloom.engine.v5.surface.PixelRect(0, 0, 129, 97)
+        for (mode in app.inkloom.engine.v5.tools.SelectionInterpolation.entries) {
+            val sampler = app.inkloom.engine.v5.tools.SelectionPixelSampler(pixels, mask, mode)
+            for (m in listOf(floatArrayOf(.75f, .35f, -.35f, .75f, -10.25f, 19.75f),
+                floatArrayOf(-1.25f, .17f, .3f, 1.5f, 130.5f, -30.25f))) {
+                val out = ByteArray(137 * 103)
+                val count = NativeRasterOps.affineSelectionAlpha(mask.copyAlpha(full), 0, 0, 129, 97,
+                    out, 0, 0, 137, 103, m, mode.ordinal)
+                assertTrue("Android must execute native affine alpha", count >= 0)
+                var nonZero = 0
+                for (y in 0 until 103) for (x in 0 until 137) {
+                    val gx = x + .5f; val gy = y + .5f
+                    val expected = sampler.maskAlpha(m[0]*gx + m[1]*gy + m[4], m[2]*gx + m[3]*gy + m[5])
+                    val actual = out[y * 137 + x].toInt() and 255
+                    assertTrue("$mode $x,$y expected $expected actual $actual", abs(expected - actual) <= 1)
+                    if (actual != 0) nonZero++
+                }
+                assertEquals(nonZero, count)
+            }
+        }
+    }
+
     @Test fun nativeAlphaFilteringMatchesThePremultipliedMaskOracle() {
         val random = Random(617)
         for (count in listOf(2, 4)) for (fraction in listOf(0f, .25f, .5f, .99f)) {

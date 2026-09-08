@@ -1141,3 +1141,50 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeTranslatedSelectionAlpha(
     env->ReleaseByteArrayElements(output_array, output, 0);
     return nonzero;
 }
+
+extern "C" JNIEXPORT jint JNICALL
+Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeAffineSelectionAlpha(
+    JNIEnv* env, jobject, jbyteArray input_array, jint source_left, jint source_top, jint source_width, jint source_height,
+    jbyteArray output_array, jint left, jint top, jint width, jint height, jfloatArray matrix_array, jint interpolation) {
+#pragma clang fp contract(off)
+    if (!input_array || !output_array || !matrix_array || source_width <= 0 || source_height <= 0 || width <= 0 || height <= 0 ||
+        interpolation < 0 || interpolation > 2 || env->GetArrayLength(matrix_array) != 6 ||
+        static_cast<std::int64_t>(source_width) * source_height > env->GetArrayLength(input_array) ||
+        static_cast<std::int64_t>(width) * height > env->GetArrayLength(output_array)) return -1;
+    float m[6]; env->GetFloatArrayRegion(matrix_array, 0, 6, m);
+    auto* input = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(input_array, nullptr));
+    if (!input) return -1;
+    auto* output = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(output_array, nullptr));
+    if (!output) { env->ReleasePrimitiveArrayCritical(input_array, input, JNI_ABORT); return -1; }
+    auto at = [&](int x, int y) -> float {
+        return x < 0 || y < 0 || x >= source_width || y >= source_height ? 0.f :
+            static_cast<std::uint8_t>(input[static_cast<std::size_t>(y) * source_width + x]);
+    };
+    auto cubic = [](float v) { const float x = std::abs(v); return x < 1 ? 1.5f*x*x*x - 2.5f*x*x + 1 : x < 2 ? -.5f*x*x*x + 2.5f*x*x - 4*x + 2 : 0; };
+    auto sample = [&](float x, float y) -> float {
+        if (!std::isfinite(x) || !std::isfinite(y) || x < -2 || y < -2 || x > source_width + 2 || y > source_height + 2) return 0;
+        if (interpolation == 0) return at(static_cast<int>(std::floor(x)), static_cast<int>(std::floor(y)));
+        const float px = x - .5f, py = y - .5f;
+        const int x0 = static_cast<int>(std::floor(px)), y0 = static_cast<int>(std::floor(py));
+        const float fx = px - x0, fy = py - y0;
+        const int first = interpolation == 2 ? -1 : 0, count = interpolation == 2 ? 4 : 2;
+        float sum = 0;
+        for (int row = 0; row < count; ++row) for (int col = 0; col < count; ++col) {
+            const float weight = interpolation == 2 ? cubic(fx - col + 1) * cubic(fy - row + 1) :
+                (col == 0 ? 1-fx : fx) * (row == 0 ? 1-fy : fy);
+            if (weight != 0) sum += at(x0 + first + col, y0 + first + row) * weight;
+        }
+        return sum;
+    };
+    int non_zero = 0;
+    for (int y = 0; y < height; ++y) for (int x = 0; x < width; ++x) {
+        const float gx = left + x + .5f, gy = top + y + .5f;
+        const float value = sample(m[0]*gx + m[1]*gy + m[4] - source_left, m[2]*gx + m[3]*gy + m[5] - source_top);
+        const auto alpha = std::clamp(static_cast<int>(std::floor(value + .5f)), 0, 255);
+        output[static_cast<std::size_t>(y) * width + x] = static_cast<jbyte>(alpha);
+        if (alpha != 0) ++non_zero;
+    }
+    env->ReleasePrimitiveArrayCritical(input_array, input, JNI_ABORT);
+    env->ReleasePrimitiveArrayCritical(output_array, output, 0);
+    return non_zero;
+}

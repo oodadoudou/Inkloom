@@ -16,6 +16,14 @@ internal object NativeRasterOps {
         inverse: FloatArray, interpolation: Int, highPrecision: Boolean): Boolean
 
     /** Applies a constant separable filter to one bounded alpha ROI. -1 selects the JVM oracle. */
+    fun affineSelectionAlpha(input: ByteArray, sourceLeft: Int, sourceTop: Int, sourceWidth: Int, sourceHeight: Int,
+                             output: ByteArray, left: Int, top: Int, width: Int, height: Int, inverse: FloatArray, interpolation: Int): Int =
+        if (nativeLibraryLoaded) nativeAffineSelectionAlpha(input, sourceLeft, sourceTop, sourceWidth, sourceHeight,
+            output, left, top, width, height, inverse, interpolation) else -1
+
+    private external fun nativeAffineSelectionAlpha(input: ByteArray, sourceLeft: Int, sourceTop: Int, sourceWidth: Int, sourceHeight: Int,
+        output: ByteArray, left: Int, top: Int, width: Int, height: Int, inverse: FloatArray, interpolation: Int): Int
+
     fun translatedSelectionAlpha(input: ByteArray, stride: Int, output: ByteArray, width: Int, height: Int,
                                  weightsX: FloatArray, weightsY: FloatArray): Int =
         if (nativeLibraryLoaded) nativeTranslatedSelectionAlpha(input, stride, output, width, height, weightsX, weightsY) else -1
