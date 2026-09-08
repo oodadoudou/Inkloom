@@ -6,7 +6,11 @@ import app.inkloom.engine.v5.storage.RecoveryJournalCodec
 import java.io.File
 import java.io.FileOutputStream
 
-class FileDocumentStore(private val root: File) {
+class FileDocumentStore internal constructor(
+    private val root: File,
+    private val replaceCheckpoint: (File, File) -> Boolean,
+) {
+    constructor(root: File) : this(root, { temporary, target -> temporary.renameTo(target) })
     private val documentsDir = File(root, "documents")
     private val journalFile = File(root, "journal.jsonl")
     private val documents = linkedMapOf<String, InkDocument>()
@@ -172,9 +176,9 @@ class FileDocumentStore(private val root: File) {
             output.write(content.encodeToByteArray())
             output.fd.sync()
         }
-        if (!temporary.renameTo(target)) {
-            target.writeText(content)
+        if (!replaceCheckpoint(temporary, target)) {
             temporary.delete()
+            throw java.io.IOException("Could not atomically replace ${target.name}; the previous checkpoint was preserved")
         }
     }
 }

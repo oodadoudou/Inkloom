@@ -10,6 +10,27 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 class FileDocumentStoreTest {
+    @Test fun `failed atomic replacement leaves the previous checkpoint and in memory document intact`() {
+        val root = Files.createTempDirectory("inkloom-failed-checkpoint").toFile()
+        var refuseReplacement = false
+        val store = FileDocumentStore(root) { temporary, target ->
+            !refuseReplacement && temporary.renameTo(target)
+        }
+        val original = InkDocument(title = "Keep this notebook")
+        store.save(original)
+        val checkpoint = root.resolve("documents/${original.id}.json")
+        val originalBytes = checkpoint.readBytes()
+        refuseReplacement = true
+        org.junit.Assert.assertThrows(java.io.IOException::class.java) {
+            store.save(original.copy(title = "Must not replace the checkpoint"))
+        }
+        org.junit.Assert.assertArrayEquals(originalBytes, checkpoint.readBytes())
+        assertEquals(original, store.get(original.id))
+        assertEquals(original, FileDocumentStore(root).get(original.id))
+        assertTrue(!root.resolve("documents/.${original.id}.json.tmp").exists())
+        root.deleteRecursively()
+    }
+
     @Test fun `checkpoints use the exact v5 envelope and reload`() {
         val root = Files.createTempDirectory("inkloom-v5-checkpoint").toFile()
         val store = FileDocumentStore(root)
