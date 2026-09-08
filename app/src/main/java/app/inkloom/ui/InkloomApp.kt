@@ -5333,10 +5333,11 @@ internal fun InkCanvasView.applyBrushPresetV5Configuration(
     brushSize: Float = preset.tip.size,
     brushOpacity: Float = preset.deposition.opacity,
     brushColor: Int = AndroidColor.rgb(17, 17, 17),
+    prepareAssets: Boolean = true,
 ) {
     val compiled = CompiledBrushProgramV5.compile(preset)
     switchInputConfiguration(EditorTool.PEN, preset.identity.id)
-    setCompiledBrushProgramV5(compiled)
+    setCompiledBrushProgramV5(compiled, prepareAssets = prepareAssets)
     fingerDrawingEnabled = settings.fingerDrawing
     drawAndHoldEnabled = settings.drawAndHoldEnabled
     drawAndHoldDelayMillis = settings.drawAndHoldDelayMillis
@@ -8817,22 +8818,16 @@ private fun ProcreateBrushLibrary(
                             onClick = { onBrushSelected(brush) },
                             onLongClick = { editBrush = brush },
                         )
-                        RecentActions(brush) { Row(
-                            Modifier.fillMaxWidth().height(68.dp).semantics { contentDescription = brushPresetDescription }.brushDropTarget(brush).then(interaction).background(if (batchSelected || draggingBrush?.id == brush.id || brushDropHovered(brush)) Color(0xFFDDE8F7) else if (selected) Color(0xFFE1E1E1) else Color.White).padding(horizontal = 10.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                        RecentActions(brush) { Column(
+                            Modifier.fillMaxWidth().height(84.dp).semantics { contentDescription = brushPresetDescription }.brushDropTarget(brush).then(interaction).background(if (batchSelected || draggingBrush?.id == brush.id || brushDropHovered(brush)) Color(0xFFDDE8F7) else if (selected) Color(0xFFE0EBE3) else Color.White).padding(horizontal = 12.dp, vertical = 5.dp),
                         ) {
-                            Surface(Modifier.width(116.dp).fillMaxHeight(), shape = RoundedCornerShape(4.dp), color = Color(0xFFF3F3F3)) {
-                                BrushTipPreview(brush, Modifier.fillMaxSize().padding(horizontal = 7.dp, vertical = 4.dp))
+                            Row(Modifier.fillMaxWidth().height(26.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(brush.name, Modifier.weight(1f), color = Ink, fontSize = 12.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                if (batchSelected) Icon(Icons.Outlined.CheckCircle, null, Modifier.size(18.dp), tint = Ink)
+                                if (brush.id in usage.pinnedIds) Icon(Icons.Outlined.PushPin, tr("Pinned brush", "已置顶笔刷"), Modifier.size(16.dp))
+                                if (!managingBrushes && selectedCategory != recentCategory) BrushMoveHandle(brush)
                             }
-                            Spacer(Modifier.width(10.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(brush.name, color = Ink, fontSize = 12.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                                Text(BrushGroupOperations.displayName(brush.groupName).ifBlank { ungroupedLabel }, color = MutedInk, fontSize = 9.sp, maxLines = 1)
-                            }
-                            if (batchSelected) Icon(Icons.Outlined.CheckCircle, null, Modifier.size(18.dp), tint = Ink)
-                            else if (selected) Icon(Icons.Outlined.Check, null, Modifier.size(18.dp), tint = Ink)
-                            if (brush.id in usage.pinnedIds) Icon(Icons.Outlined.PushPin, tr("Pinned brush", "已置顶笔刷"), Modifier.size(16.dp))
-                            if (!managingBrushes && selectedCategory != recentCategory) BrushMoveHandle(brush)
+                            BrushTipPreview(brush, Modifier.fillMaxWidth().weight(1f))
                         } }
                     }
                 }
@@ -9286,76 +9281,7 @@ private fun ImportedBrushRow(
 
 @Composable
 private fun BrushTipPreview(brush: ImportedBrush, modifier: Modifier = Modifier) {
-    val bitmap = remember(brush.tipPreviewPath) {
-        brush.tipPreviewPath?.let { app.inkloom.document.BrushTipTextureDecoder.decodeSampled(it, 256) }
-    }
-    DisposableEffect(bitmap) { onDispose { bitmap?.takeUnless(android.graphics.Bitmap::isRecycled)?.recycle() } }
-    Box(modifier.background(Color.White).border(1.dp, OutlineSoft), contentAlignment = Alignment.Center) {
-        if (bitmap != null) androidx.compose.foundation.Image(bitmap.asImageBitmap(), brush.name, Modifier.fillMaxSize().padding(4.dp))
-        else Canvas(Modifier.fillMaxSize().padding(7.dp)) {
-            val group = BrushGroupOperations.normalize(brush.groupName).substringBefore('/').lowercase()
-            val identity = brush.id.lowercase()
-            val start = Offset(2f, size.height * .68f)
-            val end = Offset(size.width - 2f, size.height * .32f)
-            val representativeWidth = (size.height * (.09f + brush.defaultSize.coerceIn(1f, 160f) / 160f * .28f)).coerceIn(1.2f, size.height * .38f)
-            when {
-                group == "liquify" -> {
-                    val path = Path().apply {
-                        moveTo(start.x, start.y)
-                        cubicTo(size.width * .28f, size.height * .12f, size.width * .58f, size.height * .88f, end.x, end.y)
-                    }
-                    drawPath(path, Ink, style = Stroke(width = 2.4f, cap = StrokeCap.Round))
-                    drawLine(Ink, end, Offset(end.x - 8f, end.y - 1f), 2.2f, StrokeCap.Round)
-                    drawLine(Ink, end, Offset(end.x - 3f, end.y + 7f), 2.2f, StrokeCap.Round)
-                }
-                identity.contains("sparkle") || group == "decoration" && brush.spray -> {
-                    listOf(.2f to .62f, .46f to .34f, .73f to .58f, .9f to .27f).forEachIndexed { index, (x, y) ->
-                        val center = Offset(size.width * x, size.height * y)
-                        val radius = 3f + index % 2 * 2f
-                        drawLine(Ink, center.copy(x = center.x - radius), center.copy(x = center.x + radius), 1.5f, StrokeCap.Round)
-                        drawLine(Ink, center.copy(y = center.y - radius), center.copy(y = center.y + radius), 1.5f, StrokeCap.Round)
-                    }
-                }
-                identity.contains("hatching") || group == "decoration" -> {
-                    repeat(7) { index ->
-                        val x = size.width * (.08f + index * .135f)
-                        drawLine(Ink, Offset(x - 8f, size.height * .8f), Offset(x + 8f, size.height * .2f), 1.4f, StrokeCap.Round)
-                        drawLine(Ink.copy(alpha = .55f), Offset(x - 6f, size.height * .24f), Offset(x + 9f, size.height * .76f), 1f, StrokeCap.Round)
-                    }
-                }
-                group == "airbrush" || brush.spray -> {
-                    val center = Offset(size.width * .52f, size.height * .5f)
-                    repeat(7) { layer ->
-                        val radius = size.height * (.44f - layer * .052f)
-                        drawCircle(Ink.copy(alpha = .025f + layer * .018f), radius.coerceAtLeast(1f), center)
-                    }
-                    if (brush.spray) repeat(9) { index ->
-                        val x = size.width * (.14f + index * .085f)
-                        val y = size.height * (.32f + (index * 37 % 5) * .095f)
-                        drawCircle(Ink.copy(alpha = .4f), 1.2f + index % 3, Offset(x, y))
-                    }
-                }
-                group == "blend" -> repeat(4) { index ->
-                    drawLine(Ink.copy(alpha = .18f + index * .13f), start.copy(y = start.y + index * 2f), end.copy(y = end.y + index * 2f), representativeWidth * (1f - index * .12f), StrokeCap.Round)
-                }
-                group == "erasers" -> {
-                    drawLine(Color(0xFFB8B8B8), start, end, representativeWidth, StrokeCap.Round)
-                    drawLine(Color.White, start.copy(x = size.width * .48f), end, representativeWidth * .58f, StrokeCap.Round)
-                }
-                brush.watercolor -> repeat(3) { index ->
-                    drawLine(Ink.copy(alpha = .16f + index * .12f), start.copy(y = start.y + index * 1.8f), end.copy(y = end.y + index * 1.8f), representativeWidth * (1.3f - index * .16f), StrokeCap.Round)
-                }
-                identity.contains("hb") -> {
-                    drawLine(Ink.copy(alpha = .7f), start, end, representativeWidth * .72f, StrokeCap.Round)
-                    drawLine(Ink.copy(alpha = .32f), start.copy(y = start.y + 2f), end.copy(y = end.y + 1f), representativeWidth * .35f, StrokeCap.Round)
-                }
-                identity.contains("technical") -> drawLine(Ink.copy(alpha = .78f), start, end, representativeWidth * .42f, StrokeCap.Round)
-                identity.contains("marker") -> drawLine(Ink.copy(alpha = brush.defaultOpacity.coerceIn(.25f, 1f)), start, end, representativeWidth * 1.2f, StrokeCap.Square)
-                identity.contains("oil") -> repeat(3) { index -> drawLine(Ink.copy(alpha = .78f), start.copy(y = start.y + index * 2f), end.copy(y = end.y - index * 1.5f), representativeWidth * .54f, StrokeCap.Round) }
-                else -> drawLine(Ink.copy(alpha = brush.defaultOpacity.coerceIn(.25f, 1f)), start, end, representativeWidth, StrokeCap.Round)
-            }
-        }
-    }
+    BrushStrokePreview(brush, LocalUiLanguage.current, modifier)
 }
 
 @Composable

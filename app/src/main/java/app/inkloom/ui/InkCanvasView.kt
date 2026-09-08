@@ -1663,6 +1663,7 @@ class InkCanvasView(context: Context) : View(context) {
         program: CompiledBrushProgramV5?,
         required: Boolean = program != null,
         sourceBrush: ImportedBrush? = null,
+        prepareAssets: Boolean = true,
     ) {
         // Compose may decode the same durable preset on every AndroidView update. Semantic
         // equality is the stroke boundary: never cancel an active contact merely because the
@@ -1677,7 +1678,7 @@ class InkCanvasView(context: Context) : View(context) {
         program?.let {
             brushId = it.renderBrushId
             brushRenderSeed = it.renderSeed
-            prepareCompiledBrushAssets(it)
+            if (prepareAssets) prepareCompiledBrushAssets(it)
         }
         notifyHoverCursorStyleChanged()
     }
@@ -4377,10 +4378,35 @@ class InkCanvasView(context: Context) : View(context) {
         val executionIdentity: BrushExecutionIdentity? = null,
     )
 
+    /** Worker-only rendering for an isolated, unattached preview view. Shares the contact factory
+     * and stroke coordinator; never guesses a mark from the preset's name or source thumbnail. */
+    internal fun renderIsolatedBrushPreview(samples: List<RawDocumentSample>): Bitmap {
+        require(!isAttachedToWindow && samples.isNotEmpty())
+        val surface = requireNotNull(rasterTileSurfaceFor(activeLayerId))
+        val configuration = requireNotNull(v5PaintConfiguration(tool, baseWidth)) {
+            "This tool does not expose a paint-stroke preview"
+        }
+        val controller = app.inkloom.engine.v5.runtime.RealtimeStrokeController()
+        try {
+            controller.begin(activeLayerId, surface, configuration.paintOp, configuration.maximumRadius,
+                configuration.runtimeId, samples.first(), configuration.smoothing)
+            if (samples.size > 2) controller.append(samples.subList(1, samples.lastIndex))
+            val published = requireNotNull(controller.finish(samples.last()))
+            published.record.close()
+            return PixelTileBitmapAdapter.render(surface.snapshot())
+        } finally {
+            controller.cancel()
+            v5BrushTipMasks.clear()
+        }
+    }
+
     /** Resolves every resource and scalar before contact work starts. Null means explicitly
      * unsupported by V5; callers must consume the gesture instead of invoking an obsolete engine. */
-    private fun v5PaintConfiguration(): V5PaintConfiguration? {
-        val active = activeTool ?: return null
+    private fun v5PaintConfiguration(
+        requestedTool: EditorTool? = activeTool,
+        requestedDiameter: Float? = null,
+    ): V5PaintConfiguration? {
+        val active = requestedTool ?: return null
         if (active !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER)) return null
         val surface = rasterTileSurfaceFor(activeLayerId) ?: return null
         if (surface.pixelFormat != PixelTileFormat.PREMULTIPLIED_SRGB_8888) return null
@@ -4390,7 +4416,7 @@ class InkCanvasView(context: Context) : View(context) {
         if (activeLayerId in protectedLayerIds ||
             (activeLayerId in alphaLockedLayers && active == EditorTool.ERASER)
         ) return null
-        val diameter = if (active == EditorTool.ERASER) gestureEraserSize else gestureBrushSize
+        val diameter = requestedDiameter ?: if (active == EditorTool.ERASER) gestureEraserSize else gestureBrushSize
         val diameterPixels = (diameter.coerceIn(.01f, 800f) / REFERENCE_WIDTH * surface.logicalWidth)
             .coerceAtLeast(.1f)
         val selection = selectionMaskForRasterTools()?.takeUnless { it.isEmpty }
