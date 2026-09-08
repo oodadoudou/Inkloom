@@ -5404,6 +5404,10 @@ private fun ObjectElementView(
     showContent: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
+    // Content is already painted by InkCanvasView. A disabled clickable still participates
+    // in Compose hit testing and used to cover the entire page after a full-page fill.
+    // Only actual object editing needs this transparent interaction plane.
+    if (!showContent && !editable && !selected) return
     val context = LocalContext.current
     val elementAssets = remember(context) { DocumentAssetService(context) }
     val language = LocalUiLanguage.current
