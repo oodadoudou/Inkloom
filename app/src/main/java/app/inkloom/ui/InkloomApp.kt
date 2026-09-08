@@ -8576,7 +8576,7 @@ private fun ProcreateBrushLibrary(
                                         tint = MutedInk,
                                     )
                                 } else Spacer(Modifier.width(24.dp))
-                                Text(visibleCategoryLabel, color = Ink, fontSize = 11.sp, maxLines = 1, modifier = Modifier.weight(1f))
+                                Text(visibleCategoryLabel, color = Ink, fontSize = 11.sp, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                                 Text(
                                     when (category) {
                                         allLabel -> usableLibraryBrushes.size
@@ -8589,7 +8589,7 @@ private fun ProcreateBrushLibrary(
                                 )
                                 if (customGroup) IconButton(onClick = { menuGroup = category }, modifier = Modifier.size(26.dp)) {
                                     Icon(Icons.Outlined.MoreVert, tr("Brush group actions $visibleCategoryLabel", "笔刷分组操作 $visibleCategoryLabel"), Modifier.size(17.dp), tint = MutedInk)
-                                } else Spacer(Modifier.width(26.dp))
+                                }
                             }
                             DropdownMenu(expanded = menuGroup == category, onDismissRequest = { menuGroup = null }) {
                                 DropdownMenuItem(text = { Text(tr("Rename group", "重命名分组")) }, onClick = {
