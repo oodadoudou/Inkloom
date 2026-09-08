@@ -36,6 +36,20 @@ internal fun BrushOptionDescriptor.localizedLabel(language: UiLanguage): String 
     "smoothing" -> "平滑"
     "taperStartEnabled" -> "起笔渐细"
     "taperEndEnabled" -> "收笔渐细"
+    "textureDepth" -> "深度"
+    "textureScale" -> "缩放"
+    "textureMovement" -> "移动"
+    "textureZoom" -> "随笔刷大小缩放"
+    "textureRotation" -> "旋转"
+    "textureBrightness" -> "亮度"
+    "textureContrast" -> "对比度"
+    "textureReverseEnabled" -> "反转纹理"
+    "textureEmphasizeEnabled" -> "强调纹理"
+    "textureOffsetJitterEnabled" -> "偏移抖动"
+    "wetDilution" -> "稀释"
+    "wetCharge" -> "蓄色"
+    "wetAttack" -> "着色"
+    "wetPull" -> "拖色"
     else -> error("Missing brush editor translation: $id")
 })
 
@@ -47,6 +61,7 @@ internal fun BrushOptionGroup.localizedLabel(language: UiLanguage): String = whe
     BrushOptionGroup.TILT -> language.text("Tilt", "倾斜")
     BrushOptionGroup.PAPER -> language.text("Grain", "颗粒")
     BrushOptionGroup.STROKE -> language.text("Stabilization & taper", "稳定与渐细")
+    BrushOptionGroup.WET_MIX -> language.text("Wet mix", "湿混")
 }
 
 internal fun BrushFamily.localizedLabel(language: UiLanguage): String = language.text(label, when (this) {

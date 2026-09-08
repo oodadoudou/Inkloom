@@ -44,7 +44,7 @@ internal fun BrushPressureCurve(id: String, preset: BrushPresetV5, language: UiL
         onValue(preset.copy(dynamics = preset.dynamics.copy(pressure = next)))
     })
     val description = language.text("Editable brush pressure curve", "可编辑的笔刷压力曲线")
-    Canvas(Modifier.fillMaxWidth().aspectRatio(1f).background(Color(0xFFF4F5F4)).padding(16.dp)
+    Canvas(Modifier.widthIn(max = 260.dp).fillMaxWidth().aspectRatio(1f).background(Color(0xFFF4F5F4)).padding(16.dp)
         .semantics { contentDescription = description }
         .pointerInput(id) {
             awaitEachGesture {

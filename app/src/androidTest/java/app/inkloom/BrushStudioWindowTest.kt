@@ -45,11 +45,13 @@ class BrushStudioWindowTest {
         compose.waitForIdle()
         event(MotionEvent.ACTION_UP, brush.exactCenterX(), brush.exactCenterY(), down)
         bounds("笔刷工作室"); val pad = bounds("试笔板")
+        capture("studio-properties")
         assertTrue("The studio must follow the app language on an English emulator", find("Brush Studio").isEmpty())
         val pressure = bounds("压力")
         assertTrue("Drawing pad must sit to the right of categories", pad.left > pressure.right)
         tap("压力")
         val curve = bounds("可编辑的笔刷压力曲线")
+        capture("studio-pressure")
         val started = SystemClock.uptimeMillis()
         event(MotionEvent.ACTION_DOWN, curve.exactCenterX(), curve.exactCenterY(), started)
         repeat(16) { index ->
@@ -81,6 +83,15 @@ class BrushStudioWindowTest {
         }
         visit(instrumentation.uiAutomation.rootInActiveWindow)
         return result.filterNot(Rect::isEmpty)
+    }
+
+    private fun capture(name: String) {
+        val screenshot = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+        val file = requireNotNull(context.getExternalFilesDir(null)).resolve("$name.png")
+        try { file.outputStream().use { screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) } }
+        finally { screenshot.recycle() }
+        android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(
+            "cp ${file.absolutePath} /data/local/tmp/inkloom-$name.png")).use { it.readBytes() }
     }
 
     private fun bounds(label: String, row: Rect? = null): Rect {

@@ -2,11 +2,13 @@ package app.inkloom.ui
 
 import android.graphics.Color as AndroidColor
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
@@ -14,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -156,6 +159,7 @@ fun BrushEditorV1Dialog(
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun BrushOptionRow(
     option: BrushOptionDescriptor,
     value: BrushPresetV5,
@@ -199,7 +203,12 @@ private fun BrushOptionRow(
         }
         Slider(current.coerceIn(option.valueRange.start, option.valueRange.endInclusive),
             { onValue(option.apply(value, it)) }, valueRange = option.valueRange,
-            modifier = Modifier.semantics { contentDescription = label })
+            modifier = Modifier.semantics { contentDescription = label },
+            thumb = { Box(Modifier.size(20.dp).shadow(2.dp, CircleShape)
+                .background(Color.White, CircleShape).border(1.dp, Color(0xFFD4D8D5), CircleShape)) },
+            track = { state -> SliderDefaults.Track(state, Modifier.height(4.dp),
+                colors = SliderDefaults.colors(activeTrackColor = Color(0xFF427658), inactiveTrackColor = Color(0xFFE1E5E2)),
+                thumbTrackGapSize = 0.dp, trackInsideCornerSize = 2.dp) })
     }
     if (numericOpen) {
         val parsed = numeric.toFloatOrNull()?.takeIf { it.isFinite() && it in option.valueRange }
