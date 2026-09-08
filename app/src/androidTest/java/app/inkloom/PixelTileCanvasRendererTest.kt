@@ -25,6 +25,61 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class PixelTileCanvasRendererTest {
+    @Test fun reusedConversionHandlesEdgeTilesWithoutMutatingEarlierBitmaps() {
+        val surface = PixelTileSurface(129, 65, tileSize = 128)
+        surface.beginWrite("conversion ownership").use { write ->
+            write.setPixel(40, 30, Color.MAGENTA)
+            write.setPixel(128, 30, Color.BLUE)
+            write.commit().close()
+        }
+        val snapshot = surface.snapshot()
+        val scratch = IntArray(128 * 128) { Color.GREEN }
+        val first = app.inkloom.engine.v5.android.PixelTileBitmapAdapter.render(
+            snapshot, PixelRect(0, 0, 128, 65), conversionScratch = scratch,
+        )
+        val before = IntArray(128 * 65)
+        first.getPixels(before, 0, 128, 0, 0, 128, 65)
+        val edge = app.inkloom.engine.v5.android.PixelTileBitmapAdapter.render(
+            snapshot, PixelRect(128, 0, 129, 65), conversionScratch = scratch,
+        )
+        assertEquals(Color.BLUE, edge.getPixel(0, 30))
+        assertEquals("Old conversion pixels must not fill transparent holes", 0, edge.getPixel(0, 0))
+        scratch.fill(Color.YELLOW)
+        val after = IntArray(before.size)
+        first.getPixels(after, 0, 128, 0, 0, 128, 65)
+        org.junit.Assert.assertArrayEquals(before, after)
+        assertEquals(Color.MAGENTA, snapshot.pixelAt(40, 30))
+        first.recycle(); edge.recycle()
+    }
+
+    @Test fun newGenerationsUseBoundedConversionAllocation() {
+        val surface = PixelTileSurface(128, 128, tileSize = 128)
+        val snapshots = (0..64).map { index ->
+            surface.beginWrite("allocation-$index").use { write ->
+                write.setPixel(index, 30, Color.RED)
+                write.commit().close()
+            }
+            surface.snapshot()
+        }
+        val bitmap = Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val destination = RectF(0f, 0f, 128f, 128f)
+        fun allocated(): Long = requireNotNull(android.os.Debug.getRuntimeStat("art.gc.bytes-allocated")) {
+            "ART allocation counter is required for the Android allocation gate"
+        }.toLong()
+        PixelTileCanvasRenderer().use { renderer ->
+            renderer.draw(canvas, snapshots.first(), destination)
+            val before = allocated()
+            snapshots.drop(1).forEach { snapshot -> renderer.draw(canvas, snapshot, destination) }
+            val bytes = allocated() - before
+            android.util.Log.i("InkloomPerf", "tile_conversion_64_generations_java_bytes=$bytes")
+            assertTrue("Tile presentation allocated ${bytes}B for 64 generations", bytes < 64L * 128 * 128 * 4 / 2)
+            assertEquals(Color.RED, bitmap.getPixel(64, 30))
+            assertEquals("Earlier snapshots stay immutable", 0, snapshots.first().pixelAt(64, 30))
+        }
+        bitmap.recycle()
+    }
+
     @Test fun memoryPressureDropsOnlyRebuildableProjectionCaches() {
         val surface = PixelTileSurface(256, 128, tileSize = 128)
         surface.beginWrite("pressure fixture").run {
@@ -52,6 +107,7 @@ class PixelTileCanvasRendererTest {
         assertTrue(renderer.retainedTileCount <= 1)
         renderer.trimPixelMemory(PixelMemoryPressure.CRITICAL)
         assertEquals(0, renderer.retainedTileCount)
+        assertEquals("Critical pressure also releases conversion storage", 0L, renderer.retainedByteSize)
         record()
         assertEquals("A trimmed renderer must reconstruct from authoritative tiles", 2, renderer.retainedTileCount)
 
@@ -276,8 +332,12 @@ class PixelTileCanvasRendererTest {
 
         assertEquals(Color.GREEN, second.getPixel(64, 64))
         assertEquals(Color.BLUE, second.getPixel(192, 64))
+        assertEquals("Later conversion must not change an earlier frame", Color.RED, first.getPixel(64, 64))
+        assertEquals(Color.BLUE, first.getPixel(192, 64))
         assertEquals("The obsolete generation is recycled instead of accumulating", 2, renderer.retainedTileCount)
-        assertTrue(renderer.retainedByteSize <= 2L * 128 * 128 * 4)
+        assertTrue(renderer.retainedBitmapByteSize <= 2L * 128 * 128 * 4)
+        assertEquals(128L * 128 * 4, renderer.retainedConversionByteSize)
+        assertEquals(renderer.retainedBitmapByteSize + renderer.retainedConversionByteSize, renderer.retainedByteSize)
         first.recycle(); second.recycle(); renderer.close()
     }
 

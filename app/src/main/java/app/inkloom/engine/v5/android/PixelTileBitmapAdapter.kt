@@ -58,6 +58,7 @@ internal object PixelTileBitmapAdapter {
         source: PixelRect = PixelRect(0, 0, snapshot.logicalWidth, snapshot.logicalHeight),
         targetWidth: Int = source.width,
         targetHeight: Int = source.height,
+        conversionScratch: IntArray? = null,
     ): Bitmap {
         val clipped = source.intersect(PixelRect(0, 0, snapshot.logicalWidth, snapshot.logicalHeight))
         require(!clipped.isEmpty) { "Source rectangle does not intersect the surface" }
@@ -68,6 +69,7 @@ internal object PixelTileBitmapAdapter {
                 clipped,
                 targetWidth,
                 targetHeight,
+                conversionScratch,
             )
             PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16 -> renderF16(
                 snapshot,
@@ -83,9 +85,15 @@ internal object PixelTileBitmapAdapter {
         clipped: PixelRect,
         targetWidth: Int,
         targetHeight: Int,
+        conversionScratch: IntArray?,
     ): Bitmap {
         val output = if (clipped.width == targetWidth && clipped.height == targetHeight) {
-            snapshot.copyPremultipliedPixels(clipped)
+            if (conversionScratch != null) {
+                snapshot.copyPremultipliedPixels(clipped, conversionScratch)
+                conversionScratch
+            } else {
+                snapshot.copyPremultipliedPixels(clipped)
+            }
         } else {
             IntArray(Math.multiplyExact(targetWidth, targetHeight)).also { scaled ->
                 val scaleX = clipped.width.toFloat() / targetWidth

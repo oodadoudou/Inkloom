@@ -51,11 +51,16 @@ internal class PixelTileCanvasRenderer(
     private val shaderPaint = Paint(Paint.FILTER_BITMAP_FLAG).apply { isAntiAlias = false }
     private val shaderMatrix = Matrix()
     private var retainedBytes = 0L
+    // Only conversion work is reused. Bitmap.createBitmap copies these pixels synchronously;
+    // immutable cached bitmaps and document generations never retain this mutable array.
+    private var conversionScratch = IntArray(0)
     private val memoryRegistration = PixelMemoryPressureCoordinator.register(this)
 
     override val memoryTrimPriority: Int get() = 10
 
-    val retainedByteSize: Long get() = retainedBytes
+    val retainedBitmapByteSize: Long get() = retainedBytes
+    val retainedConversionByteSize: Long get() = conversionScratch.size.toLong() * Int.SIZE_BYTES
+    val retainedByteSize: Long get() = retainedBitmapByteSize + retainedConversionByteSize
     val retainedTileCount: Int get() = cache.size
     internal var lastCandidateTileCount: Int = 0
         private set
@@ -158,16 +163,17 @@ internal class PixelTileCanvasRenderer(
 
     @Synchronized
     override fun trimPixelMemory(pressure: PixelMemoryPressure): PixelMemoryTrimResult {
-        val beforeCpu = retainedBytes
+        val beforeCpu = retainedByteSize
         when (pressure) {
             PixelMemoryPressure.UI_HIDDEN -> Unit
             PixelMemoryPressure.MODERATE -> {
+                conversionScratch = IntArray(0)
                 trimToBytes((maximumCacheBytes / 4L).coerceAtLeast(1L))
             }
             PixelMemoryPressure.CRITICAL -> clearCache()
         }
         return PixelMemoryTrimResult(
-            releasedCpuBytes = (beforeCpu - retainedBytes).coerceAtLeast(0L),
+            releasedCpuBytes = (beforeCpu - retainedByteSize).coerceAtLeast(0L),
             releasedGpuBytes = 0L,
         )
     }
@@ -181,7 +187,12 @@ internal class PixelTileCanvasRenderer(
         val cacheKey = CacheKey(snapshot.surfaceId, snapshot.pixelFormat, key, generation)
         cache[cacheKey]?.takeUnless { it.bitmap.isRecycled }?.let { return it }
         removeObsoleteGeneration(snapshot.surfaceId, key, generation)
-        val bitmap = PixelTileBitmapAdapter.render(snapshot, bounds)
+        val scratch = if (snapshot.pixelFormat == PixelTileFormat.PREMULTIPLIED_SRGB_8888) {
+            val required = Math.multiplyExact(bounds.width, bounds.height)
+            if (conversionScratch.size < required) conversionScratch = IntArray(required)
+            conversionScratch
+        } else null
+        val bitmap = PixelTileBitmapAdapter.render(snapshot, bounds, conversionScratch = scratch)
         val cached = CachedTile(bitmap)
         cache[cacheKey] = cached
         retainedBytes += bitmap.allocationByteCount.toLong()
@@ -215,6 +226,7 @@ internal class PixelTileCanvasRenderer(
         cache.values.forEach(CachedTile::close)
         cache.clear()
         retainedBytes = 0L
+        conversionScratch = IntArray(0)
     }
 
     private fun tileBounds(snapshot: PixelTileSurfaceSnapshot, key: PixelTileKey): PixelRect {
