@@ -55,6 +55,35 @@ class BrushWindowReturnTest {
         assertEquals("system-hb-pencil", view.brushId)
     }
 
+    @Test fun consecutiveEraserContactsSurviveBrushWindowAndActivityRecreation() {
+        tap("New Note"); tap("Create")
+        val view = canvas()
+        val rows = (0..5).map { .3f + it * .065f }
+        rows.forEach { y -> stroke(pagePoint(view, .2f, y), pagePoint(view, .6f, y)) }
+        compose.waitUntil(10_000) {
+            val snapshot = view.activeRasterSnapshotForTest() ?: return@waitUntil false
+            rows.all { y -> snapshot.pixelAt((snapshot.logicalWidth * .4f).toInt(), (snapshot.logicalHeight * y).toInt()) != 0 }
+        }
+        tap("Eraser")
+        rows.forEach { y -> stroke(pagePoint(view, .35f, y), pagePoint(view, .45f, y)) }
+        tap("Brushes"); tap("Close brushes panel")
+        val context = instrumentation.targetContext
+        val assets = app.inkloom.document.DocumentAssetService(context)
+        fun erased(snapshot: app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot): Boolean = rows.all { y ->
+            val py = (snapshot.logicalHeight * y).toInt()
+            snapshot.pixelAt((snapshot.logicalWidth * .4f).toInt(), py) == 0 &&
+                snapshot.pixelAt((snapshot.logicalWidth * .25f).toInt(), py) != 0
+        }
+        compose.waitUntil(15_000) {
+            val page = app.inkloom.document.FileDocumentStore(context.filesDir).list().firstOrNull()?.pages?.firstOrNull()
+            val reference = page?.layers?.firstOrNull { it.id == view.activeLayerId }?.rasterTileSurface
+            reference != null && erased(assets.loadRasterTileSurface(reference).snapshot())
+        }
+        assertTrue("Brush window recomposition restored erased pixels", erased(requireNotNull(view.activeRasterSnapshotForTest())))
+        compose.activityRule.scenario.recreate(); compose.waitForIdle()
+        assertTrue("Activity recreation restored erased pixels", erased(requireNotNull(canvas().activeRasterSnapshotForTest())))
+    }
+
     private fun hasLabel(label: String): Boolean {
         fun visit(node: android.view.accessibility.AccessibilityNodeInfo?): Boolean {
             if (node == null) return false
