@@ -18,6 +18,8 @@ data class AppSettings(
     val language: UiLanguage = UiLanguage.ENGLISH,
     val libraryLayout: LibraryLayout = LibraryLayout.GRID,
     val fingerDrawing: Boolean = false,
+    val drawAndHoldEnabled: Boolean = true,
+    val drawAndHoldDelayMillis: Long = 650L,
     val fillSensitivity: Float = .25f,
     val fillCloseGapPixels: Float = 0f,
     val fillAreaScalingPixels: Float = 0f,
@@ -192,6 +194,8 @@ class AppSettingsStore(context: Context) {
             language = enumValue(preferences.getString("language", null), systemLanguage),
             libraryLayout = enumValue(preferences.getString("libraryLayout", null), LibraryLayout.GRID),
             fingerDrawing = preferences.getBoolean("fingerDrawing", false),
+            drawAndHoldEnabled = preferences.getBoolean("drawAndHoldEnabled", true),
+            drawAndHoldDelayMillis = preferences.getLong("drawAndHoldDelayMillis", 650L).coerceIn(300L, 1500L),
             fillSensitivity = preferences.getFloat("fillSensitivity", .25f),
             fillCloseGapPixels = preferences.getFloat("fillCloseGapPixels", 0f).coerceIn(0f, 64f),
             fillAreaScalingPixels = preferences.getFloat("fillAreaScalingPixels", 0f).coerceIn(-64f, 64f),
@@ -347,6 +351,8 @@ class AppSettingsStore(context: Context) {
             .putString("libraryLayout", persisted.libraryLayout.name)
             .putInt(INPUT_GESTURES_VERSION_KEY, INPUT_GESTURES_VERSION)
             .putBoolean("fingerDrawing", persisted.fingerDrawing)
+            .putBoolean("drawAndHoldEnabled", persisted.drawAndHoldEnabled)
+            .putLong("drawAndHoldDelayMillis", persisted.drawAndHoldDelayMillis.coerceIn(300L, 1500L))
             .putFloat("fillSensitivity", persisted.fillSensitivity)
             .putFloat("fillCloseGapPixels", persisted.fillCloseGapPixels.coerceIn(0f, 64f))
             .putFloat("fillAreaScalingPixels", persisted.fillAreaScalingPixels.coerceIn(-64f, 64f))

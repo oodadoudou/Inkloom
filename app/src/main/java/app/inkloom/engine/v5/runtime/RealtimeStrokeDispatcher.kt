@@ -39,6 +39,7 @@ class RealtimeStrokeDispatcher(
             val smoothing: Float,
         ) : Command
 
+        data class Replace(val start: Start, val samples: List<RawDocumentSample>) : Command
         data class Move(val samples: BoundedMoveBuffer) : Command
         data class Finish(
             val sample: RawDocumentSample?,
@@ -97,6 +98,29 @@ class RealtimeStrokeDispatcher(
         return result.first.accepted
     }
 
+    /** Rebuild an uncommitted shape with the same brush, without exposing an empty frame. */
+    fun replaceActive(layerId: String, surface: PixelTileSurface, paintOp: PaintOp,
+                      maximumRadius: Float, brushRuntimeId: String, samples: List<RawDocumentSample>): Boolean {
+        if (closed || !contactOpen.get() || contactLayerId != layerId || samples.isEmpty()) return false
+        val command = Command.Replace(Command.Start(layerId, surface, paintOp, maximumRadius, brushRuntimeId, samples.first(), 0f), samples.toList())
+        synchronized(queueLock) {
+            // Endpoint dragging can outrun raster work. Only the newest not-yet-started draft
+            // is useful, while DOWN/UP and ordinary MOVE command ordering stay intact.
+            if (commands.lastOrNull() is Command.Replace) commands.removeLast()
+            commands.addLast(command)
+        }
+        schedulePump()
+        return true
+    }
+
+    private data class FrozenPresentation(
+        val layerId: String,
+        val active: ActiveStrokePresentation?,
+        val composite: app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot?,
+        val preview: app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot?,
+    )
+    @Volatile private var replacementPresentation: FrozenPresentation? = null
+
     fun finish(sample: RawDocumentSample?, onPublished: (PublishedPaintDelta) -> Unit): Boolean {
         if (closed || !contactOpen.compareAndSet(true, false)) return false
         contactLayerId = null
@@ -112,10 +136,19 @@ class RealtimeStrokeDispatcher(
         return true
     }
 
-    fun previewSnapshot(layerId: String) = controller.previewSnapshot(layerId)
-    fun activePresentation(layerId: String) = controller.activePresentation(layerId)
+    fun previewSnapshot(layerId: String): app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot? {
+        val frozen = replacementPresentation
+        return if (frozen?.layerId == layerId) frozen.preview else controller.previewSnapshot(layerId)
+    }
+    fun activePresentation(layerId: String): ActiveStrokePresentation? {
+        val frozen = replacementPresentation
+        return if (frozen?.layerId == layerId) frozen.active else controller.activePresentation(layerId)
+    }
     fun landedSnapshot(layerId: String) = controller.landedSnapshot(layerId)
-    fun activeCompositeSnapshot(layerId: String) = controller.activeCompositeSnapshot(layerId)
+    fun activeCompositeSnapshot(layerId: String): app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot? {
+        val frozen = replacementPresentation
+        return if (frozen?.layerId == layerId) frozen.composite else controller.activeCompositeSnapshot(layerId)
+    }
     fun onDocumentGenerationPresented(layerId: String, generation: Long) =
         controller.onDocumentGenerationPresented(layerId, generation)
     fun awaitingPresentationGeneration() = controller.awaitingPresentationGeneration()
@@ -175,6 +208,7 @@ class RealtimeStrokeDispatcher(
                             )
                             onDamageReady(command.surface, result)
                         }
+                        is Command.Replace -> replacePreview(command)
                         is Command.Move -> consumeMoves(command)
                         is Command.Finish -> {
                             controller.finish(command.sample)?.let(command.onPublished)
@@ -194,6 +228,23 @@ class RealtimeStrokeDispatcher(
                 if (synchronized(queueLock) { commands.isNotEmpty() } && !closed) schedulePump()
             }
         }
+    }
+
+    private fun replacePreview(command: Command.Replace) {
+        val start = command.start
+        val oldBounds = controller.activeDirtyBounds()
+        replacementPresentation = FrozenPresentation(start.layerId, controller.activePresentation(start.layerId),
+            controller.activeCompositeSnapshot(start.layerId), controller.previewSnapshot(start.layerId))
+        val result = try {
+            controller.cancel()
+            val began = controller.begin(start.layerId, start.surface, start.paintOp, start.maximumRadius,
+                start.brushRuntimeId, start.sample, start.smoothing)
+            controller.append(command.samples.drop(1)) ?: began
+        } finally {
+            replacementPresentation = null
+        }
+        val damage = oldBounds?.let { old -> result.dirtyBounds?.union(old) ?: old } ?: result.dirtyBounds
+        onDamageReady(start.surface, result.copy(changed = true, dirtyBounds = damage))
     }
 
     private fun consumeMoves(first: Command.Move) {

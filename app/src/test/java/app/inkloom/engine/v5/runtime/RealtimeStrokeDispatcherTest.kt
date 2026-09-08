@@ -169,6 +169,73 @@ class RealtimeStrokeDispatcherTest {
         }
     }
 
+    @Test
+    fun replacementKeepsOldPreviewUntilReadyAndPublishesOnlyTheLatestDraft() {
+        val surface = PixelTileSurface(256, 128)
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val begins = java.util.concurrent.atomic.AtomicInteger()
+        val published = java.util.concurrent.atomic.AtomicInteger()
+        val damage = AtomicReference<app.inkloom.engine.v5.surface.PixelRect>()
+        val base = DryInkPaintOp(surface, DryInkDefinition(6f, 0xff102030.toInt()))
+        val paint = object : app.inkloom.engine.v5.raster.PaintOp {
+            override val capabilities = base.capabilities
+            override fun begin(context: app.inkloom.engine.v5.raster.PaintOpContext): app.inkloom.engine.v5.raster.PaintOpSession {
+                if (begins.incrementAndGet() == 2) {
+                    entered.countDown()
+                    check(release.await(5, TimeUnit.SECONDS))
+                }
+                return base.begin(context)
+            }
+        }
+        RealtimeStrokeDispatcher(onDamageReady = { _, result -> damage.set(result.dirtyBounds) }).use { dispatcher ->
+            dispatcher.begin("ink", surface, paint, 5f, "same-brush", sample(20f, 25f, 1))
+            dispatcher.append(listOf(sample(200f, 25f, 2)))
+            dispatcher.awaitIdle()
+            val original = requireNotNull(dispatcher.activePresentation("ink"))
+            assertTrue(dispatcher.replaceActive("ink", surface, paint, 5f, "same-brush",
+                listOf(sample(20f, 60f, 1), sample(200f, 60f, 2))))
+            try {
+                assertTrue(entered.await(2, TimeUnit.SECONDS))
+                assertEquals(original, dispatcher.activePresentation("ink"))
+                assertEquals(0L, surface.revision)
+                repeat(30) { i ->
+                    assertTrue(dispatcher.replaceActive("ink", surface, paint, 5f, "same-brush",
+                        listOf(sample(20f, 65f + i, 1), sample(200f, 65f + i, 2))))
+                }
+                assertTrue(dispatcher.finish(null) { result -> result.record.close(); published.incrementAndGet() })
+            } finally { release.countDown() }
+            dispatcher.awaitIdle()
+            assertEquals("Only the newest queued replacement is rasterized", 3, begins.get())
+            assertEquals(1, published.get())
+            assertEquals(1L, surface.revision)
+            assertEquals(0, surface.snapshot().pixelAt(100, 25))
+            assertEquals(0, surface.snapshot().pixelAt(100, 60))
+            assertNotEquals(0, surface.snapshot().pixelAt(100, 94))
+        }
+    }
+
+    @Test
+    fun cancellingARegularizedDraftPreservesCommittedPixels() {
+        val surface = PixelTileSurface(256, 128)
+        val paint = DryInkPaintOp(surface, DryInkDefinition(6f, 0xff102030.toInt()))
+        val damage = AtomicReference<app.inkloom.engine.v5.surface.PixelRect>()
+        RealtimeStrokeDispatcher(onDamageReady = { _, result -> damage.set(result.dirtyBounds) }).use { dispatcher ->
+            dispatcher.begin("ink", surface, paint, 5f, "same", sample(20f, 25f, 1))
+            dispatcher.append(listOf(sample(200f, 25f, 2)))
+            dispatcher.awaitIdle()
+            dispatcher.replaceActive("ink", surface, paint, 5f, "same",
+                listOf(sample(20f, 90f, 1), sample(200f, 90f, 2)))
+            dispatcher.awaitIdle()
+            val bounds = requireNotNull(damage.get())
+            assertTrue("Damage clears the previous freehand preview", bounds.top <= 25 && bounds.bottom >= 90)
+            dispatcher.cancel()
+            assertEquals(0L, surface.revision)
+            assertEquals(0, surface.tileCount)
+            assertFalse(dispatcher.isActive)
+        }
+    }
+
     private fun sample(x: Float, y: Float, time: Long, pressure: Float = 1f) = RawDocumentSample(
         x = x,
         y = y,

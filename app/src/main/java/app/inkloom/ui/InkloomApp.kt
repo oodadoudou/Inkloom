@@ -5296,6 +5296,8 @@ internal fun InkCanvasView.applyBrushPresetV5Configuration(
     switchInputConfiguration(EditorTool.PEN, preset.identity.id)
     setCompiledBrushProgramV5(compiled)
     fingerDrawingEnabled = settings.fingerDrawing
+    drawAndHoldEnabled = settings.drawAndHoldEnabled
+    drawAndHoldDelayMillis = settings.drawAndHoldDelayMillis
     singleFingerDoubleTapUndo = settings.singleFingerDoubleTapUndo
     twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo
     threeFingerTapRedo = settings.threeFingerTapRedo
@@ -5383,6 +5385,8 @@ internal fun InkCanvasView.applyBrushConfiguration(
     )
     switchInputConfiguration(selectedTool, activeBrush?.id)
     fingerDrawingEnabled = settings.fingerDrawing
+    drawAndHoldEnabled = settings.drawAndHoldEnabled
+    drawAndHoldDelayMillis = settings.drawAndHoldDelayMillis
     singleFingerDoubleTapUndo = settings.singleFingerDoubleTapUndo
     twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo
     threeFingerTapRedo = settings.threeFingerTapRedo
@@ -9303,6 +9307,12 @@ private fun SettingsDialog(
                 } }
                 item { Text(tr("INPUT", "输入"), color = Sage, fontSize = 12.sp) }
                 item { SettingSwitch(tr("Draw with finger", "手指书写"), tr("Off by default. Fingers navigate and zoom.", "默认关闭；手指用于移动和缩放。"), settings.fingerDrawing) { onChange(settings.copy(fingerDrawing = it)) } }
+                item { SettingSwitch(tr("Draw and hold", "停笔规整"), tr("Hold the pen down to regularize a line or curve. Keep holding to adjust its endpoint.", "画完线条后停住笔尖，规整成直线或曲线；继续按住可调整端点。"), settings.drawAndHoldEnabled) { onChange(settings.copy(drawAndHoldEnabled = it)) } }
+                if (settings.drawAndHoldEnabled) item {
+                    Text(tr("Hold delay · ${settings.drawAndHoldDelayMillis} ms", "停笔时间 · ${settings.drawAndHoldDelayMillis} 毫秒"), fontSize = 12.sp)
+                    Slider(settings.drawAndHoldDelayMillis.toFloat(), { onChange(settings.copy(drawAndHoldDelayMillis = it.toLong())) },
+                        valueRange = 300f..1500f, steps = 23, modifier = Modifier.semantics { contentDescription = "Draw and hold delay" })
+                }
                 item { SettingSwitch(tr("Single-finger double tap to undo", "单指双击撤销"), tr("Enabled by default. Only blank-canvas taps trigger it; drawing, dragging and links are excluded.", "默认开启；仅空白画布短触生效，书写、拖动和链接均不会触发。"), settings.singleFingerDoubleTapUndo) { onChange(settings.copy(singleFingerDoubleTapUndo = it)) } }
                 item { SettingSwitch(tr("Two-finger tap to undo", "双指轻点撤销"), tr("Matches Procreate and Clip Studio Paint.", "与 Procreate 和 Clip Studio Paint 的手势一致。"), settings.twoFingerDoubleTapUndo) { onChange(settings.copy(twoFingerDoubleTapUndo = it)) } }
                 item { SettingSwitch(tr("Three-finger tap to redo", "三指轻点重做"), tr("Matches common drawing-app gestures.", "符合常见绘画应用手势。"), settings.threeFingerTapRedo) { onChange(settings.copy(threeFingerTapRedo = it)) } }

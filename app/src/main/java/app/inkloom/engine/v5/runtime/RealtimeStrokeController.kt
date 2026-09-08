@@ -164,6 +164,8 @@ class RealtimeStrokeController {
         active?.takeIf { it.layerId == layerId }?.previewSnapshot()
             ?: landed?.takeIf { it.layerId == layerId }?.snapshot
 
+    fun activeDirtyBounds(): PixelRect? = active?.currentDirtyBounds()
+
     fun activePresentation(layerId: String): ActiveStrokePresentation? {
         val gesture = active?.takeIf { it.layerId == layerId } ?: return null
         if (gesture.paint.presentationKind == PaintPresentationKind.COMPOSITE_REPLACEMENT) return null

@@ -1324,6 +1324,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     override fun onDetachedFromWindow() {
+        resetDrawAndHold()
         if (activeTool != null) cancelActiveGestureForNavigation()
         releaseHeldStylusButtons()
         lastStylusButtonState = 0
@@ -1604,6 +1605,7 @@ class InkCanvasView(context: Context) : View(context) {
     private fun finishActiveStrokePreview() = Unit
 
     private fun releaseActiveStrokePreview() {
+        resetDrawAndHold()
         v5StrokeController.cancel()
         v5RejectedContact = false
     }
@@ -2273,6 +2275,7 @@ class InkCanvasView(context: Context) : View(context) {
                 stopContinuousPlot()
                 if (event.actionMasked == MotionEvent.ACTION_UP) performClick()
                 if (event.actionMasked == MotionEvent.ACTION_CANCEL || event.flags and MotionEvent.FLAG_CANCELED != 0) {
+                    resetDrawAndHold()
                     v5StrokeController.cancel()
                     v5RejectedContact = false
                     StrokeTrace.abandon(currentStrokeId)
@@ -2729,6 +2732,7 @@ class InkCanvasView(context: Context) : View(context) {
                 ),
             )
         }
+        resetDrawAndHold()
         v5StrokeController.cancel()
         activeV5Execution = null
         v5RejectedContact = false
@@ -4431,6 +4435,66 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
+    var drawAndHoldEnabled = true
+    var drawAndHoldDelayMillis = 650L
+    private var heldPaintConfiguration: V5PaintConfiguration? = null
+    private val holdSamples = ArrayList<RawDocumentSample>()
+    private var holdAnchor: RawDocumentSample? = null
+    private var regularizedStroke: List<RawDocumentSample>? = null
+    internal var heldStrokeKind: app.inkloom.engine.v5.runtime.StrokeRegularizer.Kind? = null
+        private set
+    private val regularizeHeldStroke = Runnable {
+        if (drawAndHoldEnabled && v5StrokeController.isActive &&
+            activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
+            app.inkloom.engine.v5.runtime.StrokeRegularizer.fit(holdSamples)?.let { fitted ->
+                if (replaceHeldStroke(fitted.samples)) {
+                    regularizedStroke = fitted.samples
+                    heldStrokeKind = fitted.kind
+                    stopContinuousPlot()
+                    performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                    announceForAccessibility(if (fitted.kind == app.inkloom.engine.v5.runtime.StrokeRegularizer.Kind.LINE)
+                        "Line regularized" else "Curve regularized")
+                }
+            }
+        }
+    }
+
+    private fun resetDrawAndHold() {
+        v5MainHandler.removeCallbacks(regularizeHeldStroke)
+        heldPaintConfiguration = null
+        holdSamples.clear()
+        holdAnchor = null
+        regularizedStroke = null
+        heldStrokeKind = null
+    }
+
+    private fun trackDrawAndHold(samples: List<RawDocumentSample>, surface: PixelTileSurface) {
+        if (heldPaintConfiguration == null || regularizedStroke != null) return
+        val slop = 3f * resources.displayMetrics.density * surface.logicalWidth /
+            width.coerceAtLeast(1) / viewportScale.coerceAtLeast(.1f)
+        samples.forEach { sample ->
+            // Keep a bounded geometry trace even for a very long continuous contact.
+            if (holdSamples.size >= 4096) {
+                val reduced = holdSamples.filterIndexed { index, _ -> index == 0 || index % 2 == 1 }
+                holdSamples.clear(); holdSamples.addAll(reduced)
+            }
+            holdSamples.add(sample)
+            val anchor = holdAnchor
+            if (anchor == null || kotlin.math.hypot(sample.x - anchor.x, sample.y - anchor.y) > slop) {
+                holdAnchor = sample
+                v5MainHandler.removeCallbacks(regularizeHeldStroke)
+                v5MainHandler.postDelayed(regularizeHeldStroke, drawAndHoldDelayMillis.coerceIn(300L, 1500L))
+            }
+        }
+    }
+
+    private fun replaceHeldStroke(samples: List<RawDocumentSample>): Boolean {
+        val configuration = heldPaintConfiguration ?: return false
+        val surface = rasterTileSurfaceFor(activeLayerId) ?: return false
+        return v5StrokeController.replaceActive(activeLayerId, surface, configuration.paintOp,
+            configuration.maximumRadius, configuration.runtimeId, samples)
+    }
+
     private data class V5PaintConfiguration(
         val paintOp: app.inkloom.engine.v5.raster.PaintOp,
         val maximumRadius: Float,
@@ -4977,6 +5041,11 @@ class InkCanvasView(context: Context) : View(context) {
             onPaintCapabilityRejected("A V5 paint contact is already active")
             return true
         }
+        resetDrawAndHold()
+        if (drawAndHoldEnabled && activeTool in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER)) {
+            heldPaintConfiguration = configuration
+            trackDrawAndHold(listOf(initialSample), surface)
+        }
         activeV5Execution = configuration.executionIdentity?.let { it to configuration.paintOp.javaClass.name }
         if (activeTool == EditorTool.ERASER) {
             EraserLifecycleTrace.record(
@@ -5060,6 +5129,13 @@ class InkCanvasView(context: Context) : View(context) {
             ))
         }
         val surface = rasterTileSurfaceFor(activeLayerId) ?: return false
+        regularizedStroke?.let { regular ->
+            val endpoint = samples.last()
+            val adjusted = app.inkloom.engine.v5.runtime.StrokeRegularizer.moveEndpoint(regular, endpoint.x, endpoint.y)
+            replaceHeldStroke(adjusted)
+            return true
+        }
+        trackDrawAndHold(samples, surface)
         if (continuousPlotEnabled()) {
             val last = samples.last()
             updateContinuousPlotInput(
@@ -5084,11 +5160,15 @@ class InkCanvasView(context: Context) : View(context) {
         }
         if (!v5StrokeController.isActive) return false
         val surface = rasterTileSurfaceFor(activeLayerId) ?: run {
+            resetDrawAndHold()
             v5StrokeController.cancel()
             return true
         }
         val layerId = activeLayerId
-        val sample = v5DocumentSample(event, pointerIndex, normalizedX, normalizedY, historicalIndex = null)
+        val sample = if (regularizedStroke != null) null else
+            v5DocumentSample(event, pointerIndex, normalizedX, normalizedY, historicalIndex = null)
+        // The held geometry is already the exact preview; pen-up pressure must not add a dot.
+        resetDrawAndHold()
         val finishingEraser = activeTool == EditorTool.ERASER
         val finishingStrokeId = currentStrokeId
         val finishingExecution = activeV5Execution
