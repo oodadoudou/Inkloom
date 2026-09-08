@@ -40,6 +40,42 @@ class SelectionTransformTest {
         try { InstrumentationRegistry.getInstrumentation().runOnMainSync { view.onTouchEvent(e) } } finally { e.recycle() }
     }
 
+    @Test fun freeTransformMapsDocumentMaskAndRasterResolutions() {
+        val surface = PixelTileSurface(64, 64, tileSize = 64)
+        surface.beginWrite("raster square").run {
+            editTile(PixelTileKey(0, 0), PixelRect(8, 8, 16, 16)) { pixels, stride ->
+                for (y in 8 until 16) for (x in 8 until 16) pixels[y * stride + x] = Color.RED
+            }
+            commit().close()
+        }
+        val mask = MaskTileSurface(32, 32, tileSize = 64)
+        mask.beginWrite("alpha-only selection").run {
+            composeAlpha(PixelRect(4, 4, 8, 8), ByteArray(16) { 255.toByte() }, mode = MaskComposeMode.REPLACE)
+            commit().close()
+        }
+        val runtime = DocumentSelectionRuntime(tileSize = 64)
+        val view = canvas {
+            pageModelWidth = 128f
+            pageModelHeight = 128f
+            activeLayerId = "raster"
+            tool = EditorTool.SELECT
+            fingerDrawingEnabled = true
+            setRasterLayerSurfaces(mapOf("raster" to surface))
+            bindDocumentSelectionState(runtime.stateFor("document", "page", 32, 32))
+            replaceSelectionFromMask(mask.snapshot())
+            assertTrue(enterFreeTransform())
+        }
+
+        send(view, 20L, MotionEvent.ACTION_DOWN, 75f, 75f)
+        send(view, 40L, MotionEvent.ACTION_MOVE, 175f, 75f)
+        send(view, 50L, MotionEvent.ACTION_UP, 175f, 75f)
+
+        assertEquals(Color.TRANSPARENT, surface.pixelAt(10, 10))
+        assertEquals(Color.RED, surface.pixelAt(26, 10))
+        val movedMask = view.selectionMaskSurfaceSnapshot()!!
+        assertEquals(0, movedMask.alphaAt(5, 5))
+        assertEquals(255, movedMask.alphaAt(13, 5))
+    }
     @Test fun productionFreeTransformMovesAlphaOnlyRasterSelectionAndKeepsMaskAligned() {
         val surface = PixelTileSurface(64, 64, tileSize = 64)
         surface.beginWrite("raster square").run {

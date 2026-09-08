@@ -792,7 +792,9 @@ class InkCanvasView(context: Context) : View(context) {
     var onInputDiagnostic: (String, Float, Float, Int) -> Unit = { _, _, _, _ -> }
     var onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit = {}
     var onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit = {}
-    var onPaintCapabilityRejected: (String) -> Unit = {}
+    var onPaintCapabilityRejected: (String) -> Unit = { reason ->
+        post { android.widget.Toast.makeText(context, reason, android.widget.Toast.LENGTH_SHORT).show() }
+    }
     var onShortcutAction: (ShortcutActivation) -> Unit = {}
     var shortcutBindings: List<ShortcutBinding> = CspShortcutResolver.defaultBindings
     var shortcutAxisBindings: List<AxisShortcutBinding> = emptyList()
@@ -4224,12 +4226,13 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun selectionBounds(): android.graphics.RectF? {
-        val maskBounds = selectionMaskForRasterTools()?.nonZeroBounds() ?: return null
+        val mask = selectionMaskForRasterTools() ?: return null
+        val maskBounds = mask.nonZeroBounds() ?: return null
         return android.graphics.RectF(
-            maskBounds.left / pageModelWidth.coerceAtLeast(1f),
-            maskBounds.top / pageModelHeight.coerceAtLeast(1f),
-            maskBounds.right / pageModelWidth.coerceAtLeast(1f),
-            maskBounds.bottom / pageModelHeight.coerceAtLeast(1f),
+            maskBounds.left.toFloat() / mask.logicalWidth,
+            maskBounds.top.toFloat() / mask.logicalHeight,
+            maskBounds.right.toFloat() / mask.logicalWidth,
+            maskBounds.bottom.toFloat() / mask.logicalHeight,
         )
     }
 
@@ -4285,15 +4288,16 @@ class InkCanvasView(context: Context) : View(context) {
         translateY: Float,
     ) {
         val session = rasterSelectionTransformSession ?: return
+        val surface = rasterTileSurfaceFor(activeLayerId) ?: return
         val result = session.update(
             SelectionAffineTransform(
-                centerX = selectionTransformCenterX * pageModelWidth,
-                centerY = selectionTransformCenterY * pageModelHeight,
+                centerX = selectionTransformCenterX * surface.logicalWidth,
+                centerY = selectionTransformCenterY * surface.logicalHeight,
                 scaleX = scaleX.nonZeroTransformScale(),
                 scaleY = scaleY.nonZeroTransformScale(),
                 rotationDegrees = rotation,
-                translateX = translateX,
-                translateY = translateY,
+                translateX = translateX * surface.logicalWidth / pageModelWidth.coerceAtLeast(1f),
+                translateY = translateY * surface.logicalHeight / pageModelHeight.coerceAtLeast(1f),
             ),
         )
         documentSelectionState?.replaceFrom(result.selection)
@@ -5504,6 +5508,14 @@ class InkCanvasView(context: Context) : View(context) {
     /** Existing corner, edge and rotation handles are the free-transform mode. */
     fun enterFreeTransform(): Boolean {
         if (!hasSelection()) return false
+        val surface = rasterTileSurfaceFor(activeLayerId)
+        val rejection = when {
+            activeLayerId in protectedLayerIds -> "Unlock the active layer before transforming its selection"
+            surface == null -> "Select an editable paint layer before transforming"
+            surface.pixelFormat != PixelTileFormat.PREMULTIPLIED_SRGB_8888 -> "Selection transform is not yet available for this layer color format"
+            else -> null
+        }
+        if (rejection != null) { onPaintCapabilityRejected(rejection); return false }
         tool = EditorTool.SELECT
         selectionTransformArmed = true
         selectionTransformMode = TRANSFORM_NONE

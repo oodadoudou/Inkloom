@@ -159,7 +159,7 @@ object RasterSelectionContent {
         return surface.snapshot()
     }
 
-    private fun selectionBoundsInPixels(selection: MaskTileSurfaceSnapshot, width: Int, height: Int): PixelRect? {
+    internal fun selectionBoundsInPixels(selection: MaskTileSurfaceSnapshot, width: Int, height: Int): PixelRect? {
         val source = selection.nonZeroBounds() ?: return null
         return PixelRect(
             kotlin.math.floor(source.left.toDouble() * width / selection.logicalWidth).toInt().coerceIn(0, width),
@@ -176,7 +176,7 @@ object RasterSelectionContent {
             selectionAlphaAtPixel(selection, x, y, width, height).toByte()
         }
 
-    private fun selectionAlphaAtPixel(selection: MaskTileSurfaceSnapshot, x: Int, y: Int, width: Int, height: Int): Int =
+    internal fun selectionAlphaAtPixel(selection: MaskTileSurfaceSnapshot, x: Int, y: Int, width: Int, height: Int): Int =
         selection.alphaAt(
             ((x + .5f) * selection.logicalWidth / width).toInt().coerceIn(0, selection.logicalWidth - 1),
             ((y + .5f) * selection.logicalHeight / height).toInt().coerceIn(0, selection.logicalHeight - 1),

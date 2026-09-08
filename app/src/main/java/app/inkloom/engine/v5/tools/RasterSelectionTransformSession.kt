@@ -2,6 +2,7 @@ package app.inkloom.engine.v5.tools
 
 import app.inkloom.engine.v5.surface.MaskTileSurface
 import app.inkloom.engine.v5.surface.MaskTileSurfaceSnapshot
+import app.inkloom.engine.v5.surface.RasterSelectionContent
 import app.inkloom.engine.v5.surface.PixelRect
 import app.inkloom.engine.v5.surface.PixelTileKey
 import app.inkloom.engine.v5.surface.PixelTileSurface
@@ -47,15 +48,16 @@ class RasterSelectionTransformSession(
     private val originalSelection: MaskTileSurfaceSnapshot,
 ) : AutoCloseable {
     private val originalPixels: PixelTileSurfaceSnapshot = surface.snapshot()
-    private val sourceBounds = requireNotNull(originalSelection.nonZeroBounds()) { "Selection is empty" }
+    private val sourceBounds = requireNotNull(
+        RasterSelectionContent.selectionBoundsInPixels(originalSelection, surface.logicalWidth, surface.logicalHeight),
+    ) { "Selection is empty" }
+    private val maskScaleX = originalSelection.logicalWidth.toFloat() / surface.logicalWidth
+    private val maskScaleY = originalSelection.logicalHeight.toFloat() / surface.logicalHeight
     private var previewRecord: PixelTileTransactionRecord? = null
     private var previewDirty: PixelRect? = null
     private var previewSelection: MaskTileSurfaceSnapshot = originalSelection
     private var closed = false
 
-    init {
-        require(surface.logicalWidth == originalSelection.logicalWidth && surface.logicalHeight == originalSelection.logicalHeight)
-    }
 
     fun update(transform: SelectionAffineTransform): RasterSelectionTransformResult {
         check(!closed) { "Transform session is closed" }
@@ -67,8 +69,11 @@ class RasterSelectionTransformSession(
 
         val transformedBounds = transformedBounds(sourceBounds, transform, surface.logicalWidth, surface.logicalHeight)
         val dirty = sourceBounds.union(transformedBounds)
-        val sourceKeys = sourceTileKeys(originalSelection)
-        val destinationKeys = transformedTileKeys(sourceKeys, originalSelection.tileSize, transform, surface.logicalWidth, surface.logicalHeight)
+        val maskSourceKeys = sourceTileKeys(originalSelection)
+        val sourceKeys = mapTileKeys(maskSourceKeys, originalSelection.tileSize,
+            originalSelection.logicalWidth, originalSelection.logicalHeight,
+            surface.tileSize, surface.logicalWidth, surface.logicalHeight)
+        val destinationKeys = transformedTileKeys(sourceKeys, surface.tileSize, transform, surface.logicalWidth, surface.logicalHeight)
         val affectedKeys = sourceKeys + destinationKeys
         val transaction = surface.beginWrite("transform sparse selection")
         try {
@@ -92,12 +97,12 @@ class RasterSelectionTransformSession(
                 transaction.editTile(key, localDirty) { pixels, stride ->
                     for (y in tileBounds.top until tileBounds.bottom) for (x in tileBounds.left until tileBounds.right) {
                         val original = originalPixels.pixelAt(x, y)
-                        val retained = scalePremultiplied(original, 255 - originalSelection.alphaAt(x, y))
+                        val retained = scalePremultiplied(original, 255 - selectionAlphaAtPixel(x, y))
                         val source = inversePoint(x + .5f, y + .5f, transform)
                         val sx = floor(source.first).toInt()
                         val sy = floor(source.second).toInt()
                         val moved = if (sx in 0 until surface.logicalWidth && sy in 0 until surface.logicalHeight) {
-                            scalePremultiplied(originalPixels.pixelAt(sx, sy), originalSelection.alphaAt(sx, sy))
+                            scalePremultiplied(originalPixels.pixelAt(sx, sy), selectionAlphaAtPixel(sx, sy))
                         } else 0
                         pixels[(y - tileTop) * stride + x - tileLeft] = sourceOver(moved, retained)
                     }
@@ -109,9 +114,15 @@ class RasterSelectionTransformSession(
             throw failure
         }
         previewDirty = dirty
-        previewSelection = integerTranslation(transform)?.let { (dx, dy) ->
-            transformMaskTranslation(originalSelection, sourceKeys, dx, dy)
-        } ?: transformMask(originalSelection, destinationKeys, transform)
+        val maskTranslation = transform.copy(
+            translateX = transform.translateX * maskScaleX,
+            translateY = transform.translateY * maskScaleY,
+        )
+        previewSelection = integerTranslation(maskTranslation)?.let { (dx, dy) ->
+            transformMaskTranslation(originalSelection, maskSourceKeys, dx, dy)
+        } ?: transformMask(originalSelection,
+            mapTileKeys(destinationKeys, surface.tileSize, surface.logicalWidth, surface.logicalHeight,
+                originalSelection.tileSize, originalSelection.logicalWidth, originalSelection.logicalHeight), transform)
         return RasterSelectionTransformResult(previewSelection, dirty)
     }
 
@@ -157,9 +168,11 @@ class RasterSelectionTransformSession(
                 val alpha = ByteArray(tileBounds.width * tileBounds.height)
                 var nonZero = false
                 for (y in tileBounds.top until tileBounds.bottom) for (x in tileBounds.left until tileBounds.right) {
-                    val sourcePoint = inversePoint(x + .5f, y + .5f, transform)
-                    val sx = floor(sourcePoint.first).toInt()
-                    val sy = floor(sourcePoint.second).toInt()
+                    // The transform is in raster pixels; mask storage has independent dimensions.
+                    // Sample the original mask directly so previews never resample a previous mask.
+                    val sourcePoint = inversePoint((x + .5f) / maskScaleX, (y + .5f) / maskScaleY, transform)
+                    val sx = floor(sourcePoint.first * maskScaleX).toInt()
+                    val sy = floor(sourcePoint.second * maskScaleY).toInt()
                     val value = if (sx in 0 until source.logicalWidth && sy in 0 until source.logicalHeight) source.alphaAt(sx, sy) else 0
                     alpha[(y - tileBounds.top) * tileBounds.width + x - tileBounds.left] = value.toByte()
                     nonZero = nonZero || value != 0
@@ -236,6 +249,29 @@ class RasterSelectionTransformSession(
         return (dx to dy).takeIf {
             kotlin.math.abs(transform.translateX - dx) < .0001f &&
                 kotlin.math.abs(transform.translateY - dy) < .0001f
+        }
+    }
+
+    private fun selectionAlphaAtPixel(x: Int, y: Int): Int =
+        RasterSelectionContent.selectionAlphaAtPixel(originalSelection, x, y, surface.logicalWidth, surface.logicalHeight)
+
+    /** Map occupied tile rectangles, not a page-sized alpha bitmap, between the two grids. */
+    private fun mapTileKeys(
+        keys: Set<PixelTileKey>, sourceTileSize: Int, sourceWidth: Int, sourceHeight: Int,
+        targetTileSize: Int, targetWidth: Int, targetHeight: Int,
+    ): Set<PixelTileKey> {
+        if (sourceTileSize == targetTileSize && sourceWidth == targetWidth && sourceHeight == targetHeight) return keys
+        return buildSet {
+            keys.forEach { key ->
+                val left = floor(key.column.toDouble() * sourceTileSize * targetWidth / sourceWidth).toInt().coerceIn(0, targetWidth)
+                val top = floor(key.row.toDouble() * sourceTileSize * targetHeight / sourceHeight).toInt().coerceIn(0, targetHeight)
+                val right = ceil(minOf((key.column + 1) * sourceTileSize, sourceWidth).toDouble() * targetWidth / sourceWidth).toInt().coerceIn(0, targetWidth)
+                val bottom = ceil(minOf((key.row + 1) * sourceTileSize, sourceHeight).toDouble() * targetHeight / sourceHeight).toInt().coerceIn(0, targetHeight)
+                if (right <= left || bottom <= top) return@forEach
+                for (row in top / targetTileSize..(bottom - 1) / targetTileSize) {
+                    for (column in left / targetTileSize..(right - 1) / targetTileSize) add(PixelTileKey(column, row))
+                }
+            }
         }
     }
 
