@@ -60,3 +60,9 @@
 
 - Deliver only the latest tested Debug APK to the user. Do not build or deliver a Profile APK unless the user explicitly requests it again. This preference supersedes older milestone instructions requiring both APK variants.
 - Place the deliverable in `dist/` with the version, source commit, and `debug` in its filename, and provide a direct clickable file link in the final response. Keep the APK and its source/hash evidence consistent.
+
+## Dual-notebook workspace requirement
+
+- Support two notebooks in the Editor with two explicit modes: both panes editable, or one read-only reference pane and one editable pane. Both panes retain independent page and viewport state.
+- Treat this as core notebook/painting scope. Keep one durable store/journal owner; isolate pane input, history, tool state, and asynchronous import/export targets. Read-only must be enforced at mutation boundaries, not only by hiding controls.
+- Detailed confirmed interaction and acceptance design: `tasks/DUAL_NOTEBOOK_SPLIT_VIEW.md`. This is a requested capability, not a claim that the current APK implements it.
