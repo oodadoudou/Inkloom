@@ -6,6 +6,23 @@ import android.graphics.Rect
 /** Coarse-grained JNI entry points for bounded raster work that Android's software Canvas cannot
  * execute with RuntimeShader. Pixel buffers never cross into Kotlin. */
 internal object NativeRasterOps {
+    fun affineSelectionTile(source: Any, sourceAlpha: ByteArray, sourceLeft: Int, sourceTop: Int, sourceWidth: Int, sourceHeight: Int,
+                            destination: Any, destinationAlpha: ByteArray, tileLeft: Int, tileTop: Int, stride: Int, width: Int, height: Int,
+                            inverse: FloatArray, interpolation: Int, highPrecision: Boolean): Boolean = nativeLibraryLoaded &&
+        nativeAffineSelectionTile(source, sourceAlpha, sourceLeft, sourceTop, sourceWidth, sourceHeight, destination, destinationAlpha,
+            tileLeft, tileTop, stride, width, height, inverse, interpolation, highPrecision)
+    private external fun nativeAffineSelectionTile(source: Any, sourceAlpha: ByteArray, sourceLeft: Int, sourceTop: Int, sourceWidth: Int, sourceHeight: Int,
+        destination: Any, destinationAlpha: ByteArray, tileLeft: Int, tileTop: Int, stride: Int, width: Int, height: Int,
+        inverse: FloatArray, interpolation: Int, highPrecision: Boolean): Boolean
+
+    /** Applies a constant separable filter to one bounded alpha ROI. -1 selects the JVM oracle. */
+    fun translatedSelectionAlpha(input: ByteArray, stride: Int, output: ByteArray, width: Int, height: Int,
+                                 weightsX: FloatArray, weightsY: FloatArray): Int =
+        if (nativeLibraryLoaded) nativeTranslatedSelectionAlpha(input, stride, output, width, height, weightsX, weightsY) else -1
+
+    private external fun nativeTranslatedSelectionAlpha(input: ByteArray, stride: Int, output: ByteArray,
+        width: Int, height: Int, weightsX: FloatArray, weightsY: FloatArray): Int
+
     /**
      * Composites one dirty rectangle from an immutable premultiplied source tile into a mutable
      * premultiplied destination tile. Returning false lets host-side JVM tests use the exact

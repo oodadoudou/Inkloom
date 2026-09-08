@@ -712,3 +712,97 @@ Java_app_inkloom_engine_v5_composite_NativeCompositeOps_nativeMultiplyCoverageBy
     env->ReleasePrimitiveArrayCritical(coverage_array, coverage, 0);
     return JNI_TRUE;
 }
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeAffineSelectionTile(
+    JNIEnv* env, jobject, jobject source_array, jbyteArray source_alpha_array, jint source_left, jint source_top,
+    jint source_width, jint source_height, jobject destination_array, jbyteArray destination_alpha_array,
+    jint tile_left, jint tile_top, jint stride, jint width, jint height, jfloatArray inverse_array, jint interpolation, jboolean high_precision) {
+#pragma clang fp contract(off)
+    if (!source_array || !source_alpha_array || !destination_array || !destination_alpha_array || !inverse_array ||
+        source_width <= 0 || source_height <= 0 || width <= 0 || height <= 0 || stride < width || interpolation < 0 || interpolation > 2 ||
+        env->GetArrayLength(inverse_array) != 6) return JNI_FALSE;
+    const auto source_count = static_cast<std::int64_t>(source_width) * source_height;
+    const auto destination_count = static_cast<std::int64_t>(stride) * height;
+    if (source_count > env->GetArrayLength(static_cast<jarray>(source_array)) || source_count > env->GetArrayLength(source_alpha_array) ||
+        destination_count > env->GetArrayLength(static_cast<jarray>(destination_array)) ||
+        static_cast<std::int64_t>(width) * height > env->GetArrayLength(destination_alpha_array)) return JNI_FALSE;
+    float m[6]; env->GetFloatArrayRegion(inverse_array, 0, 6, m);
+    void* source = env->GetPrimitiveArrayCritical(static_cast<jarray>(source_array), nullptr);
+    if (!source) return JNI_FALSE;
+    void* destination = env->GetPrimitiveArrayCritical(static_cast<jarray>(destination_array), nullptr);
+    if (!destination) { env->ReleasePrimitiveArrayCritical(static_cast<jarray>(source_array), source, JNI_ABORT); return JNI_FALSE; }
+    auto* source_alpha = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(source_alpha_array, nullptr));
+    auto* destination_alpha = static_cast<jbyte*>(env->GetPrimitiveArrayCritical(destination_alpha_array, nullptr));
+    if (!source_alpha || !destination_alpha) {
+        if (source_alpha) env->ReleasePrimitiveArrayCritical(source_alpha_array, source_alpha, JNI_ABORT);
+        if (destination_alpha) env->ReleasePrimitiveArrayCritical(destination_alpha_array, destination_alpha, JNI_ABORT);
+        env->ReleasePrimitiveArrayCritical(static_cast<jarray>(source_array), source, JNI_ABORT);
+        env->ReleasePrimitiveArrayCritical(static_cast<jarray>(destination_array), destination, JNI_ABORT);
+        return JNI_FALSE;
+    }
+    auto cubic = [](float v) { const float x = std::abs(v); return x < 1 ? 1.5f*x*x*x - 2.5f*x*x + 1 : x < 2 ? -.5f*x*x*x + 2.5f*x*x - 4*x + 2 : 0; };
+    auto byte_scale = [](std::uint32_t value, int alpha) { return (value * alpha + 127) / 255; };
+    auto at = [&](int x, int y) -> PremultipliedColor {
+        if (x < 0 || y < 0 || x >= source_width || y >= source_height) return {};
+        const auto i = static_cast<std::size_t>(y) * source_width + x;
+        const int mask = static_cast<std::uint8_t>(source_alpha[i]);
+        if (high_precision) {
+            auto value = unpack_f16(static_cast<const std::uint64_t*>(source)[i]);
+            const float alpha = mask / 255.f;
+            return {value.red * alpha, value.green * alpha, value.blue * alpha, value.alpha * alpha};
+        }
+        const auto value = static_cast<const std::uint32_t*>(source)[i];
+        return {static_cast<float>(byte_scale((value >> 16) & 255, mask)), static_cast<float>(byte_scale((value >> 8) & 255, mask)),
+            static_cast<float>(byte_scale(value & 255, mask)), static_cast<float>(byte_scale(value >> 24, mask))};
+    };
+    auto sample = [&](float x, float y) -> PremultipliedColor {
+        if (!std::isfinite(x) || !std::isfinite(y) || x < -2 || y < -2 || x > source_width + 2 || y > source_height + 2) return {};
+        if (interpolation == 0) return at(static_cast<int>(std::floor(x)), static_cast<int>(std::floor(y)));
+        const float px = x - .5f, py = y - .5f;
+        const int left = static_cast<int>(std::floor(px)), top = static_cast<int>(std::floor(py));
+        const float fx = px - left, fy = py - top;
+        const int first = interpolation == 2 ? -1 : 0, count = interpolation == 2 ? 4 : 2;
+        PremultipliedColor sum{};
+        for (int row = 0; row < count; ++row) for (int col = 0; col < count; ++col) {
+            const float weight = interpolation == 2 ? cubic(fx - col + 1) * cubic(fy - row + 1) :
+                (col == 0 ? 1-fx : fx) * (row == 0 ? 1-fy : fy);
+            if (weight == 0) continue;
+            const auto value = at(left + first + col, top + first + row);
+            sum.red += value.red * weight; sum.green += value.green * weight; sum.blue += value.blue * weight; sum.alpha += value.alpha * weight;
+        }
+        return sum;
+    };
+    for (int y = 0; y < height; ++y) for (int x = 0; x < width; ++x) {
+        const float gx = tile_left + x + .5f, gy = tile_top + y + .5f;
+        auto moved = sample(m[0]*gx + m[1]*gy + m[4] - source_left, m[2]*gx + m[3]*gy + m[5] - source_top);
+        const auto index = static_cast<std::size_t>(y) * stride + x;
+        const int retained_mask = 255 - static_cast<std::uint8_t>(destination_alpha[y * width + x]);
+        if (high_precision) {
+            moved = moved.alpha <= 0 ? PremultipliedColor{} : unpack_f16(pack_f16(moved));
+            auto* pixels = static_cast<std::uint64_t*>(destination);
+            auto retained = unpack_f16(pixels[index]);
+            const float scale = retained_mask / 255.f;
+            retained = unpack_f16(pack_f16({retained.red*scale, retained.green*scale, retained.blue*scale, retained.alpha*scale}));
+            const float inverse = 1 - moved.alpha;
+            pixels[index] = pack_f16({moved.red + retained.red*inverse, moved.green + retained.green*inverse,
+                moved.blue + retained.blue*inverse, moved.alpha + retained.alpha*inverse});
+        } else {
+            const int alpha = std::clamp(static_cast<int>(std::floor(moved.alpha + .5f)), 0, 255);
+            auto* pixels = static_cast<std::uint32_t*>(destination);
+            const auto original = pixels[index];
+            auto channel = [&](float value, int shift) {
+                const auto selected = std::clamp(static_cast<int>(std::floor(value + .5f)), 0, alpha);
+                const auto retained = byte_scale((original >> shift) & 255, retained_mask);
+                return std::min(255u, selected + byte_scale(retained, 255-alpha));
+            };
+            pixels[index] = (channel(moved.alpha, 24) << 24) | (channel(moved.red, 16) << 16) |
+                (channel(moved.green, 8) << 8) | channel(moved.blue, 0);
+        }
+    }
+    env->ReleasePrimitiveArrayCritical(source_alpha_array, source_alpha, JNI_ABORT);
+    env->ReleasePrimitiveArrayCritical(destination_alpha_array, destination_alpha, JNI_ABORT);
+    env->ReleasePrimitiveArrayCritical(static_cast<jarray>(source_array), source, JNI_ABORT);
+    env->ReleasePrimitiveArrayCritical(static_cast<jarray>(destination_array), destination, 0);
+    return JNI_TRUE;
+}

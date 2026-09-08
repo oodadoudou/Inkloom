@@ -86,7 +86,11 @@ class SelectionWindowRegressionTest {
         compose.waitForIdle()
         val before = requireNotNull(view.selectionMaskSurfaceSnapshot()).nonZeroBounds()!!
         hoverThenTap(center("Free transform"))
+        val dragStarted = SystemClock.uptimeMillis()
         stroke(pagePoint(view, .4f, .4f), pagePoint(view, .4f, .6f))
+        val dragMillis = SystemClock.uptimeMillis() - dragStarted
+        println("Selection window: 24 move packets took $dragMillis ms")
+        assertTrue("Selection drag blocked input for $dragMillis ms", dragMillis < 5_000L)
         compose.waitForIdle()
         val after = requireNotNull(view.selectionMaskSurfaceSnapshot()).nonZeroBounds()!!
         assertTrue("Selected content must follow a downward drag: $before -> $after", after.top > before.top + before.height / 2)

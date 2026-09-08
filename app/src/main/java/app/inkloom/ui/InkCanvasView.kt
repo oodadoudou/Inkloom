@@ -259,6 +259,7 @@ class InkCanvasView(context: Context) : View(context) {
     /** Explicitly isolated adapter for view-only tests which do not install a document runtime. */
     private var isolatedTestSelectionAlphaMask: SparseAlphaMask? = null
     private var selectionBoundaryMask: SparseAlphaMask? = null
+    private var selectionBoundaryPreviewMatrix: android.graphics.Matrix? = null
     private var selectionBoundaryPageBounds: PixelRect? = null
     private var isolatedTestLastDeselectedAlphaMask: SparseAlphaMask? = null
     private var lastDeselectedFeatherPixels = 0f
@@ -1296,10 +1297,12 @@ class InkCanvasView(context: Context) : View(context) {
 
     private fun drawCommittedSelectionBoundary(canvas: Canvas) {
         val boundary = selectionBoundaryMask ?: return
+        val content = selectionBoundaryPageBounds ?: return
+        val previewCheckpoint = canvas.save()
+        selectionBoundaryPreviewMatrix?.let(canvas::concat)
         selectionBoundaryRect.set(0f, 0f, width.toFloat(), height.toFloat())
         boundary.draw(canvas, selectionBoundaryRect, selectionBoundaryPaint)
 
-        val content = selectionBoundaryPageBounds ?: return
         val clip = android.graphics.RectF(
             content.left * width.toFloat() / boundary.width,
             content.top * height.toFloat() / boundary.height,
@@ -1313,6 +1316,7 @@ class InkCanvasView(context: Context) : View(context) {
         selectionAntShader.setLocalMatrix(selectionAntMatrix)
         canvas.drawRect(clip, selectionAntPaint)
         canvas.restoreToCount(checkpoint)
+        canvas.restoreToCount(previewCheckpoint)
         postInvalidateDelayed(SELECTION_ANTS_FRAME_MS)
     }
 
@@ -4321,9 +4325,23 @@ class InkCanvasView(context: Context) : View(context) {
             ),
             selectionInterpolation,
         )
-        documentSelectionState?.replaceFrom(result.selection)
-            ?: replaceSelectionAlphaMask(SparseAlphaMask.fromSnapshot(result.selection), resetFeather = false)
-        rebuildSelectionDerivedState()
+        if (documentSelectionState != null) {
+            documentSelectionState?.replaceFrom(result.selection)
+            // Reuse the original marching-ants texture while dragging. Its geometry follows the
+            // same affine transform; a fresh raster boundary is needed only on commit/cancel.
+            selectionBoundaryPreviewMatrix = android.graphics.Matrix().apply {
+                val cx = selectionTransformCenterX * surface.logicalWidth
+                val cy = selectionTransformCenterY * surface.logicalHeight
+                setScale(scaleX.nonZeroTransformScale(), scaleY.nonZeroTransformScale(), cx, cy)
+                postRotate(rotation, cx, cy)
+                postTranslate(translateX * surface.logicalWidth / pageModelWidth.coerceAtLeast(1f),
+                    translateY * surface.logicalHeight / pageModelHeight.coerceAtLeast(1f))
+                preScale(surface.logicalWidth.toFloat() / width.coerceAtLeast(1), surface.logicalHeight.toFloat() / height.coerceAtLeast(1))
+                postScale(width.toFloat() / surface.logicalWidth, height.toFloat() / surface.logicalHeight)
+            }
+            notifySelectionActiveChanged()
+            invalidate()
+        } else replaceSelectionAlphaMask(SparseAlphaMask.fromSnapshot(result.selection), resetFeather = false)
     }
 
     private fun finishRasterSelectionTransform(): Boolean {
@@ -4332,6 +4350,7 @@ class InkCanvasView(context: Context) : View(context) {
         val originalSelection = rasterSelectionTransformOriginalMask
         rasterSelectionTransformOriginalMask = null
         val result = session.commit() ?: return false
+        rebuildSelectionDerivedState()
         val record = result.transactionRecord ?: return false
         rasterTileSurfaceFor(activeLayerId)?.let { surface ->
             val layerId = activeLayerId
@@ -5514,6 +5533,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun rebuildSelectionDerivedState() {
+        selectionBoundaryPreviewMatrix = null
         selectionBoundaryMask?.close()
         val base = currentSelectionAlphaMask()
         if (base == null) {

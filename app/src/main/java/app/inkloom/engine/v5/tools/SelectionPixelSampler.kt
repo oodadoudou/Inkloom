@@ -12,6 +12,7 @@ internal class SelectionPixelSampler(
     private val pixels: PixelTileSurfaceSnapshot,
     private val selection: MaskTileSurfaceSnapshot,
     private val interpolation: SelectionInterpolation,
+    private val source: SelectionSamplerSource = SelectionSamplerSource(pixels, selection),
 ) {
     fun selectedArgb(x: Float, y: Float): Int {
         if (interpolation == SelectionInterpolation.NEAREST) return atArgb(floor(x).toInt(), floor(y).toInt())
@@ -31,11 +32,11 @@ internal class SelectionPixelSampler(
     fun selectedF16(x: Float, y: Float): Long {
         if (interpolation == SelectionInterpolation.NEAREST) {
             val sx = floor(x).toInt(); val sy = floor(y).toInt()
-            return scaleF16(pixels.packedF16At(sx, sy), alpha(sx, sy) / 255f)
+            return scaleF16(source.f16(sx, sy), alpha(sx, sy) / 255f)
         }
         var a = 0f; var r = 0f; var g = 0f; var b = 0f
         weights(x, y) { sx, sy, weight ->
-            val value = pixels.packedF16At(sx, sy)
+            val value = source.f16(sx, sy)
             val coverage = alpha(sx, sy) / 255f * weight
             a += PackedRgbaF16.alpha(value) * coverage
             r += PackedRgbaF16.premultipliedRed(value) * coverage
@@ -47,15 +48,16 @@ internal class SelectionPixelSampler(
     }
 
     fun maskAlpha(x: Float, y: Float): Int {
-        if (interpolation == SelectionInterpolation.NEAREST) return selection.alphaAt(floor(x).toInt(), floor(y).toInt())
+        if (interpolation == SelectionInterpolation.NEAREST) return source.mask(floor(x).toInt(), floor(y).toInt())
         var value = 0f
-        weights(x, y) { sx, sy, weight -> value += selection.alphaAt(sx, sy) * weight }
+        weights(x, y) { sx, sy, weight -> value += source.mask(sx, sy) * weight }
         return value.roundToInt().coerceIn(0, 255)
     }
 
-    private fun atArgb(x: Int, y: Int) = scaleArgb(pixels.pixelAt(x, y), alpha(x, y))
-    private fun alpha(x: Int, y: Int): Int = if (x !in 0 until pixels.logicalWidth || y !in 0 until pixels.logicalHeight) 0
-        else RasterSelectionContent.selectionAlphaAtPixel(selection, x, y, pixels.logicalWidth, pixels.logicalHeight)
+    private fun atArgb(x: Int, y: Int) = scaleArgb(source.argb(x, y), alpha(x, y))
+    fun alpha(x: Int, y: Int): Int = if (x !in 0 until pixels.logicalWidth || y !in 0 until pixels.logicalHeight) 0
+        else source.mask(((x + .5f) * selection.logicalWidth / pixels.logicalWidth).toInt(),
+            ((y + .5f) * selection.logicalHeight / pixels.logicalHeight).toInt())
 
     private inline fun weights(x: Float, y: Float, consume: (Int, Int, Float) -> Unit) {
         val px = x - .5f; val py = y - .5f
@@ -106,5 +108,49 @@ internal class SelectionPixelSampler(
                 PackedRgbaF16.premultipliedBlue(source) + PackedRgbaF16.premultipliedBlue(destination) * inverse,
                 PackedRgbaF16.alpha(source) + PackedRgbaF16.alpha(destination) * inverse)
         }
+    }
+}
+
+/** Bounded occupied-tile copies survive successive previews. The cursor avoids allocation and
+ * hashing at every filter tap; source generations remain immutable for the whole gesture. */
+internal class SelectionSamplerSource(private val pixels: PixelTileSurfaceSnapshot, private val selection: MaskTileSurfaceSnapshot) {
+    private val rgba = HashMap<PixelTileKey, IntArray?>()
+    private val half = HashMap<PixelTileKey, LongArray?>()
+    private val masks = HashMap<PixelTileKey, ByteArray?>()
+    private var pixelColumn = -1; private var pixelRow = -1
+    private var maskColumn = -1; private var maskRow = -1
+    private var currentRgba: IntArray? = null
+    private var currentHalf: LongArray? = null
+    private var currentMask: ByteArray? = null
+    private fun visitPixel(x: Int, y: Int): Boolean {
+        if (x !in 0 until pixels.logicalWidth || y !in 0 until pixels.logicalHeight) return false
+        val col = x / pixels.tileSize; val row = y / pixels.tileSize
+        if (col != pixelColumn || row != pixelRow) {
+            pixelColumn = col; pixelRow = row
+            val key = PixelTileKey(col, row)
+            if (pixels.pixelFormat.isHighPrecision) {
+                if (!half.containsKey(key)) half[key] = pixels.copyTileF16(key)
+                currentHalf = half[key]
+            } else {
+                if (!rgba.containsKey(key)) rgba[key] = pixels.copyTilePixels(key)
+                currentRgba = rgba[key]
+            }
+        }
+        return true
+    }
+    fun argb(x: Int, y: Int): Int = if (!visitPixel(x, y)) 0 else
+        currentRgba?.get((y % pixels.tileSize) * pixels.tileSize + x % pixels.tileSize) ?: 0
+    fun f16(x: Int, y: Int): Long = if (!visitPixel(x, y)) 0L else
+        currentHalf?.get((y % pixels.tileSize) * pixels.tileSize + x % pixels.tileSize) ?: 0L
+    fun mask(x: Int, y: Int): Int {
+        if (x !in 0 until selection.logicalWidth || y !in 0 until selection.logicalHeight) return 0
+        val col = x / selection.tileSize; val row = y / selection.tileSize
+        if (col != maskColumn || row != maskRow) {
+            maskColumn = col; maskRow = row
+            val key = PixelTileKey(col, row)
+            if (!masks.containsKey(key)) masks[key] = selection.copyTileAlpha(key)
+            currentMask = masks[key]
+        }
+        return currentMask?.get((y % selection.tileSize) * selection.tileSize + x % selection.tileSize)?.toInt()?.and(255) ?: selection.defaultAlpha
     }
 }

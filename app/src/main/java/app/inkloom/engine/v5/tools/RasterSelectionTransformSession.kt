@@ -13,6 +13,7 @@ import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.sin
+import kotlin.math.roundToInt
 
 data class SelectionAffineTransform(
     val centerX: Float,
@@ -54,6 +55,8 @@ class RasterSelectionTransformSession(
     ) { "Selection is empty" }
     private val maskScaleX = originalSelection.logicalWidth.toFloat() / surface.logicalWidth
     private val maskScaleY = originalSelection.logicalHeight.toFloat() / surface.logicalHeight
+    private val samplingSource = SelectionSamplerSource(originalPixels, originalSelection)
+    private val retainedMaskSource = SelectionSamplerSource(originalPixels, originalSelection)
     private var previewRecord: PixelTileTransactionRecord? = null
     private var previewDirty: PixelRect? = null
     private var previewSelection: MaskTileSurfaceSnapshot = originalSelection
@@ -70,7 +73,8 @@ class RasterSelectionTransformSession(
 
         val identity = transform.scaleX == 1f && transform.scaleY == 1f && transform.rotationDegrees.mod(360f) == 0f &&
             transform.translateX == 0f && transform.translateY == 0f
-        val sampler = SelectionPixelSampler(originalPixels, originalSelection, interpolation)
+        val sampler = SelectionPixelSampler(originalPixels, originalSelection, interpolation, samplingSource)
+        val inverse = InverseAffine(transform)
         val halo = when (interpolation) { SelectionInterpolation.NEAREST -> 0; SelectionInterpolation.BILINEAR -> 1; SelectionInterpolation.BICUBIC -> 2 }
         val samplingBounds = PixelRect(sourceBounds.left - halo, sourceBounds.top - halo, sourceBounds.right + halo, sourceBounds.bottom + halo)
         val transformedBounds = transformedBounds(samplingBounds, transform, surface.logicalWidth, surface.logicalHeight)
@@ -80,7 +84,9 @@ class RasterSelectionTransformSession(
             originalSelection.logicalWidth, originalSelection.logicalHeight,
             surface.tileSize, surface.logicalWidth, surface.logicalHeight)
         val destinationKeys = transformedTileKeys(sourceKeys, surface.tileSize, transform, surface.logicalWidth, surface.logicalHeight, halo)
-        val affectedKeys = sourceKeys + destinationKeys
+        val occupiedSourceKeys = sourceKeys.intersect(originalPixels.tileKeys)
+        val affectedKeys = occupiedSourceKeys + transformedTileKeys(occupiedSourceKeys, surface.tileSize, transform,
+            surface.logicalWidth, surface.logicalHeight, halo)
         val transaction = surface.beginWrite("transform sparse selection")
         try {
             // An empty paint layer has no selected pixels to clear or move. Keep an empty
@@ -100,25 +106,27 @@ class RasterSelectionTransformSession(
                     tileBounds.right - tileLeft,
                     tileBounds.bottom - tileTop,
                 )
+                val nativeSource = if (identity) null else nativeSource(tileBounds, inverse, halo)
+                val retainedAlpha = nativeSource?.let { rasterAlpha(tileBounds) }
                 when (surface.pixelFormat) {
                     PixelTileFormat.PREMULTIPLIED_SRGB_8888 -> transaction.editTile(key, localDirty) { pixels, stride ->
+                        if (identity || (nativeSource != null && nativeTile(nativeSource, pixels, requireNotNull(retainedAlpha), tileBounds, stride, inverse, interpolation))) return@editTile
                         for (y in tileBounds.top until tileBounds.bottom) for (x in tileBounds.left until tileBounds.right) {
-                            val original = originalPixels.pixelAt(x, y)
+                            val original = pixels[(y - tileTop) * stride + x - tileLeft]
                             val value = if (identity) original else {
-                                val retained = scalePremultiplied(original, 255 - selectionAlphaAtPixel(x, y))
-                                val source = inversePoint(x + .5f, y + .5f, transform)
-                                sourceOver(sampler.selectedArgb(source.first, source.second), retained)
+                                val retained = scalePremultiplied(original, 255 - retainedMaskSource.mask(((x + .5f) * maskScaleX).toInt(), ((y + .5f) * maskScaleY).toInt()))
+                                sourceOver(sampler.selectedArgb(inverse.x(x + .5f, y + .5f), inverse.y(x + .5f, y + .5f)), retained)
                             }
                             pixels[(y - tileTop) * stride + x - tileLeft] = value
                         }
                     }
                     PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16 -> transaction.editTileF16(key, localDirty) { pixels, stride ->
+                        if (identity || (nativeSource != null && nativeTile(nativeSource, pixels, requireNotNull(retainedAlpha), tileBounds, stride, inverse, interpolation))) return@editTileF16
                         for (y in tileBounds.top until tileBounds.bottom) for (x in tileBounds.left until tileBounds.right) {
-                            val original = originalPixels.packedF16At(x, y)
+                            val original = pixels[(y - tileTop) * stride + x - tileLeft]
                             val value = if (identity) original else {
-                                val retained = SelectionPixelSampler.scaleF16(original, (255 - selectionAlphaAtPixel(x, y)) / 255f)
-                                val source = inversePoint(x + .5f, y + .5f, transform)
-                                SelectionPixelSampler.overF16(sampler.selectedF16(source.first, source.second), retained)
+                                val retained = SelectionPixelSampler.scaleF16(original, (255 - retainedMaskSource.mask(((x + .5f) * maskScaleX).toInt(), ((y + .5f) * maskScaleY).toInt())) / 255f)
+                                SelectionPixelSampler.overF16(sampler.selectedF16(inverse.x(x + .5f, y + .5f), inverse.y(x + .5f, y + .5f)), retained)
                             }
                             pixels[(y - tileTop) * stride + x - tileLeft] = value
                         }
@@ -135,11 +143,15 @@ class RasterSelectionTransformSession(
             translateX = transform.translateX * maskScaleX,
             translateY = transform.translateY * maskScaleY,
         )
+        val maskDestinationKeys = mapTileKeys(destinationKeys, surface.tileSize, surface.logicalWidth, surface.logicalHeight,
+            originalSelection.tileSize, originalSelection.logicalWidth, originalSelection.logicalHeight)
         previewSelection = integerTranslation(maskTranslation)?.let { (dx, dy) ->
             transformMaskTranslation(originalSelection, maskSourceKeys, dx, dy)
-        } ?: transformMask(originalSelection,
-            mapTileKeys(destinationKeys, surface.tileSize, surface.logicalWidth, surface.logicalHeight,
-                originalSelection.tileSize, originalSelection.logicalWidth, originalSelection.logicalHeight), transform, sampler)
+        } ?: if (transform.scaleX == 1f && transform.scaleY == 1f && transform.rotationDegrees.mod(360f) == 0f) {
+            if (interpolation == SelectionInterpolation.NEAREST) transformMaskTranslation(originalSelection, maskSourceKeys,
+                ceil(maskTranslation.translateX - .5f).toInt(), ceil(maskTranslation.translateY - .5f).toInt())
+            else translateFilteredMask(maskDestinationKeys, maskTranslation.translateX, maskTranslation.translateY, interpolation)
+        } else transformMask(originalSelection, maskDestinationKeys, transform, sampler)
         return RasterSelectionTransformResult(previewSelection, dirty)
     }
 
@@ -164,12 +176,101 @@ class RasterSelectionTransformSession(
 
     override fun close() = cancel()
 
+    private data class NativeSource(val bounds: PixelRect, val pixels: Any, val alpha: ByteArray)
+    private fun nativeSource(destination: PixelRect, inverse: InverseAffine, halo: Int): NativeSource? {
+        val corners = listOf(destination.left to destination.top, destination.right to destination.top,
+            destination.right to destination.bottom, destination.left to destination.bottom)
+        val xs = corners.map { inverse.x(it.first.toFloat(), it.second.toFloat()) }
+        val ys = corners.map { inverse.y(it.first.toFloat(), it.second.toFloat()) }
+        val bounds = PixelRect(floor(xs.min()).toInt().coerceIn(0, surface.logicalWidth) - halo - 1,
+            floor(ys.min()).toInt().coerceIn(0, surface.logicalHeight) - halo - 1,
+            ceil(xs.max()).toInt().coerceIn(0, surface.logicalWidth) + halo + 1,
+            ceil(ys.max()).toInt().coerceIn(0, surface.logicalHeight) + halo + 1)
+            .intersect(PixelRect(0, 0, surface.logicalWidth, surface.logicalHeight))
+        // Extreme minification stays sparse and uses the bounded per-pixel sampler instead of
+        // allocating an entire large logical page as an input ROI.
+        if (bounds.isEmpty || bounds.width.toLong() * bounds.height > 1_048_576L) return null
+        val pixels = if (surface.pixelFormat.isHighPrecision) originalPixels.copyPremultipliedF16(bounds)
+            else originalPixels.copyPremultipliedPixels(bounds)
+        return NativeSource(bounds, pixels, rasterAlpha(bounds))
+    }
+    private fun nativeTile(source: NativeSource, pixels: Any, retainedAlpha: ByteArray, destination: PixelRect,
+                           stride: Int, inverse: InverseAffine, interpolation: SelectionInterpolation): Boolean =
+        NativeRasterOps.affineSelectionTile(source.pixels, source.alpha, source.bounds.left, source.bounds.top, source.bounds.width, source.bounds.height,
+            pixels, retainedAlpha, destination.left, destination.top, stride, destination.width, destination.height, inverse.coefficients,
+            interpolation.ordinal, surface.pixelFormat.isHighPrecision)
+
+    private fun rasterAlpha(bounds: PixelRect): ByteArray {
+        val maskBounds = PixelRect(((bounds.left + .5f) * maskScaleX).toInt(), ((bounds.top + .5f) * maskScaleY).toInt(),
+            (((bounds.right - .5f) * maskScaleX).toInt() + 1).coerceAtMost(originalSelection.logicalWidth),
+            (((bounds.bottom - .5f) * maskScaleY).toInt() + 1).coerceAtMost(originalSelection.logicalHeight))
+        val input = originalSelection.copyAlpha(maskBounds)
+        if (bounds.width == maskBounds.width && bounds.height == maskBounds.height) return input
+        val xs = IntArray(bounds.width) { ((bounds.left + it + .5f) * maskScaleX).toInt() - maskBounds.left }
+        return ByteArray(bounds.width * bounds.height).also { output ->
+            for (y in 0 until bounds.height) {
+                val row = (((bounds.top + y + .5f) * maskScaleY).toInt() - maskBounds.top) * maskBounds.width
+                for (x in 0 until bounds.width) output[y * bounds.width + x] = input[row + xs[x]]
+            }
+        }
+    }
+
+    /** Translation has constant filter weights. Copy one bounded source ROI per destination tile
+     * and scan primitive arrays instead of doing four/sixteen sparse lookups for every pixel. */
+    private fun translateFilteredMask(keys: Set<PixelTileKey>, dx: Float, dy: Float, interpolation: SelectionInterpolation): MaskTileSurfaceSnapshot {
+        val source = originalSelection
+        val result = MaskTileSurface(source.logicalWidth, source.logicalHeight, source.tileSize)
+        val cubic = interpolation == SelectionInterpolation.BICUBIC
+        val first = if (cubic) -1 else 0
+        val count = if (cubic) 4 else 2
+        val offsetX = floor(-dx).toInt(); val offsetY = floor(-dy).toInt()
+        val fx = -dx - offsetX; val fy = -dy - offsetY
+        fun weight(t: Float, i: Int): Float {
+            if (!cubic) return if (i == 0) 1f - t else t
+            val x = kotlin.math.abs(t - i)
+            return when { x < 1f -> 1.5f*x*x*x - 2.5f*x*x + 1f; x < 2f -> -.5f*x*x*x + 2.5f*x*x - 4f*x + 2f; else -> 0f }
+        }
+        val wx = FloatArray(count) { weight(fx, first + it) }
+        val wy = FloatArray(count) { weight(fy, first + it) }
+        val logical = PixelRect(0, 0, source.logicalWidth, source.logicalHeight)
+        result.beginWrite("translate filtered selection alpha").use { transaction ->
+            keys.forEach { key ->
+                val destination = PixelRect(key.column * source.tileSize, key.row * source.tileSize,
+                    minOf((key.column + 1) * source.tileSize, source.logicalWidth), minOf((key.row + 1) * source.tileSize, source.logicalHeight))
+                val requested = PixelRect(destination.left + offsetX + first, destination.top + offsetY + first,
+                    destination.right + offsetX + first + count - 1, destination.bottom + offsetY + first + count - 1)
+                val clipped = requested.intersect(logical)
+                if (clipped.isEmpty) return@forEach
+                val input = ByteArray(requested.width * requested.height)
+                source.copyAlpha(clipped, input, (clipped.top - requested.top) * requested.width + clipped.left - requested.left, requested.width)
+                val output = ByteArray(destination.width * destination.height)
+                val nativeCount = NativeRasterOps.translatedSelectionAlpha(input, requested.width, output, destination.width, destination.height, wx, wy)
+                var nonZero = nativeCount > 0
+                if (nativeCount < 0) for (y in 0 until destination.height) for (x in 0 until destination.width) {
+                    var alpha = 0f
+                    for (row in 0 until count) {
+                        if (wy[row] == 0f) continue
+                        val offset = (y + row) * requested.width + x
+                        for (col in 0 until count) alpha += (input[offset + col].toInt() and 255) * wx[col] * wy[row]
+                    }
+                    val value = alpha.roundToInt().coerceIn(0, 255)
+                    output[y * destination.width + x] = value.toByte()
+                    nonZero = nonZero || value != 0
+                }
+                if (nonZero) transaction.replaceAlpha(destination, output)
+            }
+            transaction.commit().close()
+        }
+        return result.snapshot()
+    }
+
     private fun transformMask(
         source: MaskTileSurfaceSnapshot,
         destinationKeys: Set<PixelTileKey>,
         transform: SelectionAffineTransform,
         sampler: SelectionPixelSampler,
     ): MaskTileSurfaceSnapshot {
+        val inverse = InverseAffine(transform)
         val destination = MaskTileSurface(source.logicalWidth, source.logicalHeight, source.tileSize)
         if (destinationKeys.isEmpty()) return destination.snapshot()
         val transaction = destination.beginWrite("transform sparse selection alpha")
@@ -188,8 +289,8 @@ class RasterSelectionTransformSession(
                 for (y in tileBounds.top until tileBounds.bottom) for (x in tileBounds.left until tileBounds.right) {
                     // The transform is in raster pixels; mask storage has independent dimensions.
                     // Sample the original mask directly so previews never resample a previous mask.
-                    val sourcePoint = inversePoint((x + .5f) / maskScaleX, (y + .5f) / maskScaleY, transform)
-                    val value = sampler.maskAlpha(sourcePoint.first * maskScaleX, sourcePoint.second * maskScaleY)
+                    val px = (x + .5f) / maskScaleX; val py = (y + .5f) / maskScaleY
+                    val value = sampler.maskAlpha(inverse.x(px, py) * maskScaleX, inverse.y(px, py) * maskScaleY)
                     alpha[(y - tileBounds.top) * tileBounds.width + x - tileBounds.left] = value.toByte()
                     nonZero = nonZero || value != 0
                 }
@@ -268,9 +369,6 @@ class RasterSelectionTransformSession(
         }
     }
 
-    private fun selectionAlphaAtPixel(x: Int, y: Int): Int =
-        RasterSelectionContent.selectionAlphaAtPixel(originalSelection, x, y, surface.logicalWidth, surface.logicalHeight)
-
     /** Map occupied tile rectangles, not a page-sized alpha bitmap, between the two grids. */
     private fun mapTileKeys(
         keys: Set<PixelTileKey>, sourceTileSize: Int, sourceWidth: Int, sourceHeight: Int,
@@ -325,6 +423,20 @@ class RasterSelectionTransformSession(
         }
     }
 
+    private class InverseAffine(transform: SelectionAffineTransform) {
+        private val cosine = cos(Math.toRadians(transform.rotationDegrees.toDouble())).toFloat()
+        private val sine = sin(Math.toRadians(transform.rotationDegrees.toDouble())).toFloat()
+        private val a = cosine / transform.scaleX
+        private val b = sine / transform.scaleX
+        private val c = -sine / transform.scaleY
+        private val d = cosine / transform.scaleY
+        private val tx = transform.centerX - a * (transform.centerX + transform.translateX) - b * (transform.centerY + transform.translateY)
+        private val ty = transform.centerY - c * (transform.centerX + transform.translateX) - d * (transform.centerY + transform.translateY)
+        val coefficients = floatArrayOf(a, b, c, d, tx, ty)
+        fun x(x: Float, y: Float) = a * x + b * y + tx
+        fun y(x: Float, y: Float) = c * x + d * y + ty
+    }
+
     companion object {
         internal fun transformedBounds(bounds: PixelRect, transform: SelectionAffineTransform, width: Int, height: Int): PixelRect {
             val corners = arrayOf(
@@ -349,16 +461,6 @@ class RasterSelectionTransformSession(
             val dy = (y - transform.centerY) * transform.scaleY
             return transform.centerX + transform.translateX + dx * cos - dy * sin to
                 transform.centerY + transform.translateY + dx * sin + dy * cos
-        }
-
-        private fun inversePoint(x: Float, y: Float, transform: SelectionAffineTransform): Pair<Float, Float> {
-            val radians = Math.toRadians(-transform.rotationDegrees.toDouble())
-            val cos = cos(radians).toFloat()
-            val sin = sin(radians).toFloat()
-            val dx = x - transform.centerX - transform.translateX
-            val dy = y - transform.centerY - transform.translateY
-            return transform.centerX + (dx * cos - dy * sin) / transform.scaleX to
-                transform.centerY + (dx * sin + dy * cos) / transform.scaleY
         }
 
         private fun scalePremultiplied(color: Int, alpha: Int): Int {

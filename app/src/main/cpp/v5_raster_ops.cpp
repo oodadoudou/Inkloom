@@ -1106,3 +1106,38 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeFloodFill(
     }
     return bounds_array(env, max_x < min_x ? empty_bounds : std::array<int, 4>{min_x, min_y, max_x + 1, max_y + 1});
 }
+
+
+extern "C" JNIEXPORT jint JNICALL
+Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeTranslatedSelectionAlpha(
+    JNIEnv* env, jobject, jbyteArray input_array, jint stride, jbyteArray output_array,
+    jint width, jint height, jfloatArray weights_x, jfloatArray weights_y) {
+    if (!input_array || !output_array || !weights_x || !weights_y || width <= 0 || height <= 0) return -1;
+    const int count = env->GetArrayLength(weights_x);
+    if ((count != 2 && count != 4) || env->GetArrayLength(weights_y) != count || stride < width + count - 1 ||
+        static_cast<std::int64_t>(stride) * (height + count - 1) > env->GetArrayLength(input_array) ||
+        static_cast<std::int64_t>(width) * height > env->GetArrayLength(output_array)) return -1;
+    float wx[4] = {}, wy[4] = {};
+    env->GetFloatArrayRegion(weights_x, 0, count, wx);
+    env->GetFloatArrayRegion(weights_y, 0, count, wy);
+    auto* input = env->GetByteArrayElements(input_array, nullptr);
+    if (!input) return -1;
+    auto* output = env->GetByteArrayElements(output_array, nullptr);
+    if (!output) { env->ReleaseByteArrayElements(input_array, input, JNI_ABORT); return -1; }
+    int nonzero = 0;
+    for (int y = 0; y < height; ++y) for (int x = 0; x < width; ++x) {
+        float alpha = 0;
+        for (int row = 0; row < count; ++row) {
+            if (wy[row] == 0) continue;
+            const auto offset = static_cast<std::size_t>(y + row) * stride + x;
+            for (int col = 0; col < count; ++col)
+                alpha += static_cast<std::uint8_t>(input[offset + col]) * wx[col] * wy[row];
+        }
+        const auto value = std::clamp(static_cast<int>(std::floor(alpha + .5f)), 0, 255);
+        output[static_cast<std::size_t>(y) * width + x] = static_cast<jbyte>(value);
+        nonzero += value != 0;
+    }
+    env->ReleaseByteArrayElements(input_array, input, JNI_ABORT);
+    env->ReleaseByteArrayElements(output_array, output, 0);
+    return nonzero;
+}

@@ -63,6 +63,30 @@ class SelectionInterpolationTest {
         }
     }
 
+    @Test fun fractionalMaskTranslationsMatchTheGeneralSamplerAtPageAndTileBorders() {
+        val surface = PixelTileSurface(256, 128, 64)
+        val selection = MaskTileSurface(256, 128, 64).apply {
+            beginWrite("soft boundaries").use { write ->
+                for (y in 0 until 128) for (x in listOf(0, 1, 63, 64, 127, 128, 254, 255)) write.setAlpha(x, y, (x * 53 + y * 31) % 256)
+                write.commit().close()
+            }
+        }.snapshot()
+        for (mode in SelectionInterpolation.entries) for (dx in listOf(.25f, .5f, -.5f, 95.5f, -120.25f, 300.25f)) {
+            val sampler = SelectionPixelSampler(surface.snapshot(), selection, mode)
+            RasterSelectionTransformSession(surface, selection).use { session ->
+                val shifted = session.update(SelectionAffineTransform(128f, 64f, translateX = dx, translateY = -.35f), mode).selection
+                for (y in 0 until 128) for (x in 0 until 256) {
+                    val expected = sampler.maskAlpha(x + .5f - dx, y + .5f + .35f)
+                    val actual = shifted.alphaAt(x, y)
+                    // Constant weights avoid coordinate-dependent Float cancellation. The general
+                    // sampler can fall on the other side of an 8-bit half-step by one alpha unit.
+                    assertTrue("$mode at $x,$y offset $dx: $expected / $actual", kotlin.math.abs(expected - actual) <= 1)
+                    if (expected == 0) assertEquals(0, actual)
+                }
+            }
+        }
+    }
+
     @Test fun bicubicKeepsPremultipliedChannelsBoundedAndDiffersFromBilinear() {
         val surface = PixelTileSurface(256, 128, 64)
         surface.beginWrite("red").use { it.setPixel(32, 32, 0xffff0000.toInt()); it.commit().close() }
