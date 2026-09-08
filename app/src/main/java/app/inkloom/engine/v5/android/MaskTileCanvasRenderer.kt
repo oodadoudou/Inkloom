@@ -1,6 +1,9 @@
 package app.inkloom.engine.v5.android
 
 import android.graphics.Bitmap
+import android.graphics.BitmapShader
+import android.graphics.Matrix
+import android.graphics.Shader
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -19,11 +22,16 @@ internal object MaskTileCanvasRenderer : PixelMemoryTrimmable {
         val defaultAlpha: Int,
     )
 
+    private class CachedTile(val bitmap: Bitmap) {
+        val shader = BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+        fun close() { if (!bitmap.isRecycled) bitmap.recycle() }
+    }
+
     private const val MAX_CACHED_TILES = 96
-    private val cache = object : LinkedHashMap<CacheKey, Bitmap>(MAX_CACHED_TILES, .75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<CacheKey, Bitmap>?): Boolean {
+    private val cache = object : LinkedHashMap<CacheKey, CachedTile>(MAX_CACHED_TILES, .75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<CacheKey, CachedTile>?): Boolean {
             val remove = size > MAX_CACHED_TILES
-            if (remove) eldest?.value?.takeUnless(Bitmap::isRecycled)?.recycle()
+            if (remove) eldest?.value?.close()
             return remove
         }
     }
@@ -33,20 +41,23 @@ internal object MaskTileCanvasRenderer : PixelMemoryTrimmable {
     internal val retainedTileCount: Int get() = synchronized(cache) { cache.size }
 
     override fun trimPixelMemory(pressure: PixelMemoryPressure): PixelMemoryTrimResult = synchronized(cache) {
-        val before = cache.values.sumOf { it.allocationByteCount.toLong() }
+        val before = cache.values.sumOf { it.bitmap.allocationByteCount.toLong() }
         // Mask projections are cheap to reconstruct and are not authoritative selection state.
-        cache.values.forEach { bitmap -> if (!bitmap.isRecycled) bitmap.recycle() }
+        cache.values.forEach(CachedTile::close)
         cache.clear()
         PixelMemoryTrimResult(releasedCpuBytes = before)
     }
 
-    fun draw(snapshot: MaskTileSurfaceSnapshot, canvas: Canvas, destination: RectF, paint: Paint? = null) {
+    fun draw(snapshot: MaskTileSurfaceSnapshot, canvas: Canvas, destination: RectF, paint: Paint? = null) = synchronized(cache) {
+        if (destination.isEmpty || snapshot.isEmpty) return@synchronized
         if (snapshot.defaultAlpha == 255 && snapshot.tileCount == 0) {
             val requestedAlpha = paint?.alpha ?: 255
             val solid = Paint(paint ?: Paint()).apply { color = Color.WHITE; alpha = requestedAlpha }
             canvas.drawRect(destination, solid)
-            return
+            return@synchronized
         }
+        val tilePaint = Paint(paint ?: Paint()).apply { isAntiAlias = false }
+        val matrix = Matrix()
         val columns = (snapshot.logicalWidth + snapshot.tileSize - 1) / snapshot.tileSize
         val rows = (snapshot.logicalHeight + snapshot.tileSize - 1) / snapshot.tileSize
         val keys = if (snapshot.defaultAlpha == 0) snapshot.tileInfo.map { it.key } else buildList(columns * rows) {
@@ -65,18 +76,23 @@ internal object MaskTileCanvasRenderer : PixelMemoryTrimmable {
                 minOf(top + snapshot.tileSize, snapshot.logicalHeight),
             )
             val cacheKey = CacheKey(snapshot.surfaceId, generations[key] ?: -1L, key, snapshot.defaultAlpha)
-            val tile = synchronized(cache) { cache[cacheKey] ?: createTile(snapshot, bounds).also { cache[cacheKey] = it } }
-            canvas.drawBitmap(
-                tile,
-                null,
-                RectF(
-                    destination.left + bounds.left * scaleX,
-                    destination.top + bounds.top * scaleY,
-                    destination.left + bounds.right * scaleX,
-                    destination.top + bounds.bottom * scaleY,
-                ),
-                paint,
+            val tile = cache[cacheKey] ?: CachedTile(createTile(snapshot, bounds)).also { cache[cacheKey] = it }
+            val target = RectF(
+                destination.left + bounds.left * scaleX,
+                destination.top + bounds.top * scaleY,
+                destination.left + bounds.right * scaleX,
+                destination.top + bounds.bottom * scaleY,
             )
+            // Internal tile edges are coverage boundaries, not artwork contours. A CLAMP
+            // shader avoids transparent filtering outside each bitmap, and non-AA rectangles
+            // prevent adjacent fractional edges from exposing paper. Alpha/color filters and
+            // blending requested by fill, selection and layer-mask callers remain intact.
+            matrix.setScale(target.width() / tile.bitmap.width, target.height() / tile.bitmap.height)
+            matrix.postTranslate(target.left, target.top)
+            tile.shader.setLocalMatrix(matrix)
+            tilePaint.shader = tile.shader
+            canvas.drawRect(target, tilePaint)
+
         }
     }
 

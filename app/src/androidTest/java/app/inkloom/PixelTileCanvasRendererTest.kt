@@ -215,6 +215,56 @@ class PixelTileCanvasRendererTest {
         renderer.close(); output.discardDisplayList()
     }
 
+    @Test fun fractionalFillMaskDoesNotExposePaperAtTileBoundaries() {
+        val surface = app.inkloom.engine.v5.surface.MaskTileSurface(384, 384, tileSize = 128)
+        surface.beginWrite("explicit opaque fill tiles").use { write ->
+            for (y in 0 until 384) for (x in 0 until 384) write.setAlpha(x, y, 255)
+            write.commit().close()
+        }
+        val outputWidth = 503
+        val outputHeight = 497
+        val root = RenderNode("Inkloom.V5.TileSeamRegression").apply {
+            setPosition(0, 0, outputWidth, outputHeight)
+        }
+        val recording = root.beginRecording(outputWidth, outputHeight)
+        try {
+            recording.drawColor(Color.WHITE)
+            val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                colorFilter = android.graphics.PorterDuffColorFilter(
+                    Color.rgb(52, 67, 58), android.graphics.PorterDuff.Mode.SRC_IN,
+                )
+            }
+            app.inkloom.engine.v5.android.MaskTileCanvasRenderer.draw(
+                surface.snapshot(), recording,
+                RectF(.35f, .65f, outputWidth - .4f, outputHeight - .2f), paint,
+            )
+        } finally {
+            root.endRecording()
+        }
+
+        val bitmap = renderHardware(root, outputWidth, outputHeight)
+        try {
+            val expected = Color.rgb(52, 67, 58)
+            val seamXs = listOf(168, 169, 335, 336)
+            val seamYs = listOf(165, 166, 331, 332)
+            seamXs.forEach { x ->
+                for (y in 4 until outputHeight - 4) {
+                    assertFalse("Paper leaked at vertical tile boundary ($x,$y)", isNearlyWhite(bitmap.getPixel(x, y)))
+                    assertColorNear(expected, bitmap.getPixel(x, y))
+                }
+            }
+            seamYs.forEach { y ->
+                for (x in 4 until outputWidth - 4) {
+                    assertFalse("Paper leaked at horizontal tile boundary ($x,$y)", isNearlyWhite(bitmap.getPixel(x, y)))
+                    assertColorNear(expected, bitmap.getPixel(x, y))
+                }
+            }
+        } finally {
+            bitmap.recycle()
+            root.discardDisplayList()
+        }
+    }
+
     @Test fun fractionalHardwareScaleDoesNotExposePaperAtTileBoundaries() {
         val surface = PixelTileSurface(384, 384, tileSize = 128)
         surface.beginWrite("opaque 3 by 3 seam fixture").use { write ->
