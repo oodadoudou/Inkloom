@@ -55,3 +55,8 @@
 - Emulator success is not hardware verification. Mark MovinkPad-specific behavior `DEVICE_PENDING` until the user validates it on the primary device, then and only then mark it `DEVICE_VERIFIED`.
 - Commit and push incrementally: one small feature, fix, migration step, or mechanical cleanup per reversible commit. Do not accumulate a multi-feature or whole-phase mega-commit.
 - Each commit must compile and be independently revertible; do not create a commit that requires an uncommitted follow-up to restore a buildable repository.
+
+## APK delivery preference
+
+- Deliver only the latest tested Debug APK to the user. Do not build or deliver a Profile APK unless the user explicitly requests it again. This preference supersedes older milestone instructions requiring both APK variants.
+- Place the deliverable in `dist/` with the version, source commit, and `debug` in its filename, and provide a direct clickable file link in the final response. Keep the APK and its source/hash evidence consistent.
