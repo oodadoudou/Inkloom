@@ -8131,7 +8131,7 @@ private fun ProcreateBrushLibrary(
 ) {
     val systemBrushes = remember { systemBrushCatalog() }
     val systemCategories = listOf("Pen", "Pencil", "Brush", "Erasers", "Airbrush", "Decoration", "Blend", "Liquify")
-    val usableImportedBrushes = remember(brushes) { BrushLibraryInventory.importedUsable(brushes) }
+    val usableImportedBrushes = remember(brushes) { BrushGroupOperations.orderForDisplay(BrushLibraryInventory.importedUsable(brushes)) }
     val importedCategories = BrushGroupOperations.treePaths(usableImportedBrushes, registeredGroups)
     val manageableCategories = importedCategories.filterNot { category -> systemCategories.any { it.equals(category, true) } }
     var collapsedGroupPaths by remember { mutableStateOf(emptySet<String>()) }
@@ -8227,46 +8227,94 @@ private fun ProcreateBrushLibrary(
     fun moveBrushIntoGroup(brush: ImportedBrush, group: String) {
         applyBrushGroupOperation(setOf(brush.id), group, copy = false)
     }
-    fun Modifier.brushDrag(brush: ImportedBrush): Modifier = this
-        .onGloballyPositioned { coordinates ->
+    @Composable
+    fun Modifier.brushDropTarget(brush: ImportedBrush): Modifier {
+        DisposableEffect(brush.id) {
+            onDispose { brushDragBounds = brushDragBounds - brush.id }
+        }
+        return this.onGloballyPositioned { coordinates ->
             val bounds = coordinates.boundsInWindow()
             if (brushDragBounds[brush.id] != bounds) brushDragBounds = brushDragBounds + (brush.id to bounds)
         }
-        .pointerInput(brush.id, groupDropBounds) {
-            detectDragGestures(
-                onDragStart = { local ->
-                    managingBrushes = true
-                    selectedBrushIds = currentSelectedBrushIds + brush.id
-                    draggingBrush = brush
-                    brushDragPosition = brushDragBounds[brush.id]?.topLeft?.plus(local)
-                },
-                onDrag = { change, _ ->
-                    change.consume()
-                    brushDragPosition = brushDragBounds[brush.id]?.topLeft?.plus(change.position)
-                },
-                onDragEnd = {
-                    val position = brushDragPosition
-                    val target = position?.let { point -> groupDropBounds.entries.firstOrNull { (_, bounds) -> bounds.contains(point) }?.key }
-                    val targetBrushId = position?.let { point -> brushDragBounds.entries.firstOrNull { (id, bounds) -> id != brush.id && bounds.contains(point) }?.key }
-                    if (target != null) {
-                        applyBrushGroupOperation(currentSelectedBrushIds + brush.id, target, copy = false)
-                    } else if (brush.format != BrushFormat.SYSTEM && targetBrushId != null) {
-                        val peers = brushes.filter { candidate ->
-                            BrushGroupOperations.normalize(candidate.groupName).equals(BrushGroupOperations.normalize(brush.groupName), true)
-                        }.sortedWith(compareBy<ImportedBrush> { it.sortOrder }.thenBy { it.name.lowercase() })
-                        val from = peers.indexOfFirst { it.id == brush.id }
-                        val to = peers.indexOfFirst { it.id == targetBrushId }
-                        if (from >= 0 && to >= 0 && from != to) onReorderBrush(brush.id, to - from)
+    }
+
+    fun brushDropHovered(brush: ImportedBrush): Boolean {
+        val moving = draggingBrush ?: return false
+        val point = brushDragPosition ?: return false
+        return moving.id != brush.id && moving.format != BrushFormat.SYSTEM &&
+            BrushGroupOperations.normalize(moving.groupName).equals(BrushGroupOperations.normalize(brush.groupName), true) &&
+            brushDragBounds[brush.id]?.contains(point) == true
+    }
+
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    fun BrushMoveHandle(brush: ImportedBrush) {
+        var origin by remember { mutableStateOf(Offset.Zero) }
+        val description = tr("Move brush ${brush.name}", "移动笔刷 ${brush.name}")
+        val tooltipState = rememberTooltipState()
+        val tooltipScope = rememberCoroutineScope()
+        val start by rememberUpdatedState<(Offset) -> Unit>({ local ->
+            draggingBrush = brush
+            brushDragPosition = origin + local
+        })
+        val move by rememberUpdatedState<(Offset) -> Unit>({ local -> brushDragPosition = origin + local })
+        val finish by rememberUpdatedState<() -> Unit>({
+            val position = brushDragPosition
+            val target = position?.let { point -> groupDropBounds.entries.firstOrNull { (_, bounds) -> bounds.contains(point) }?.key }
+            val targetBrushId = position?.let { point -> brushDragBounds.entries.firstOrNull { (id, bounds) -> id != brush.id && bounds.contains(point) }?.key }
+            if (target != null) {
+                applyBrushGroupOperation(setOf(brush.id), target, copy = false)
+            } else if (brush.format != BrushFormat.SYSTEM && targetBrushId != null) {
+                val peers = BrushGroupOperations.orderForDisplay(brushes.filter { candidate ->
+                    BrushGroupOperations.normalize(candidate.groupName).equals(BrushGroupOperations.normalize(brush.groupName), true)
+                })
+                val from = peers.indexOfFirst { it.id == brush.id }
+                val to = peers.indexOfFirst { it.id == targetBrushId }
+                if (from >= 0 && to >= 0 && from != to) onReorderBrush(brush.id, to - from)
+            }
+            draggingBrush = null
+            brushDragPosition = null
+        })
+        val cancel by rememberUpdatedState<() -> Unit>({
+            draggingBrush = null
+            brushDragPosition = null
+        })
+        TooltipBox(
+            positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+            tooltip = { PlainTooltip { Text(tr("Hold and drag to move; tap for destinations", "按住拖动以移动；轻点选择目标分组")) } },
+            state = tooltipState,
+            enableUserInput = false,
+        ) {
+            Icon(Icons.Outlined.DragIndicator, description, tint = MutedInk,
+                modifier = Modifier.size(48.dp)
+                    .onGloballyPositioned { origin = it.localToWindow(Offset.Zero) }
+                    .clickable(role = androidx.compose.ui.semantics.Role.Button) { moveBrush = brush }
+                    .pointerInput(brush.id) {
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = { start(it) },
+                            onDrag = { change, _ -> change.consume(); move(change.position) },
+                            onDragEnd = { finish() },
+                            onDragCancel = { cancel() },
+                        )
                     }
-                    draggingBrush = null
-                    brushDragPosition = null
-                },
-                onDragCancel = {
-                    draggingBrush = null
-                    brushDragPosition = null
-                },
+                    .pointerInput(tooltipState) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                when (event.type) {
+                                    PointerEventType.Enter, PointerEventType.Move -> if (event.changes.none { it.pressed } && !tooltipState.isVisible) {
+                                        tooltipScope.launch { tooltipState.show() }
+                                    }
+                                    PointerEventType.Exit -> tooltipState.dismiss()
+                                    else -> Unit
+                                }
+                            }
+                        }
+                    }
+                    .padding(12.dp),
             )
         }
+    }
     LaunchedEffect(allCategories, pendingCategoryReveal) {
         if (pendingCategoryReveal == null && selectedCategory !in allCategories) selectedCategory = allCategories.first()
     }
@@ -8415,6 +8463,9 @@ private fun ProcreateBrushLibrary(
                         val systemGroup = category in systemCategories
                         val customGroup = category in importedCategories && !systemGroup
                         val dropGroup = systemGroup || customGroup
+                        DisposableEffect(category) {
+                            onDispose { groupDropBounds = groupDropBounds - category }
+                        }
                         val hasChildren = importedCategories.any { BrushGroupOperations.parent(it)?.equals(category, true) == true }
                         val visibleCategoryLabel = categoryLabel(category)
                         val categoryDescription = if (customGroup) tr("Brush group $visibleCategoryLabel", "笔刷分组 $visibleCategoryLabel") else tr("Brush category $visibleCategoryLabel", "笔刷类别 $visibleCategoryLabel")
@@ -8458,7 +8509,7 @@ private fun ProcreateBrushLibrary(
                                             if (groupDropBounds[category] != bounds) groupDropBounds = groupDropBounds + (category to bounds)
                                         }
                                     }
-                                    .background(if (draggingGroup == category) Color(0xFFDDE8F7) else if (draggingBrush != null && dropGroup) Color(0xFFF0F4FA) else if (selected) Color(0xFFE1E1E1) else Color.Transparent)
+                                    .background(if (draggingGroup == category) Color(0xFFDDE8F7) else if (draggingBrush != null && dropGroup && brushDragPosition?.let { groupDropBounds[category]?.contains(it) } == true) Color(0xFFDDE8F7) else if (draggingBrush != null && dropGroup) Color(0xFFF0F4FA) else if (selected) Color(0xFFE1E1E1) else Color.Transparent)
                                     .clickable { selectedCategory = category }
                                     .then(groupDragModifier)
                                     .padding(start = (10 + BrushGroupOperations.depth(category) * 12).dp, end = 4.dp),
@@ -8531,16 +8582,19 @@ private fun ProcreateBrushLibrary(
                         val brushPresetDescription = tr("Brush preset ${brush.name}", "笔刷预设 ${brush.name}")
                         val interaction = if (managingBrushes) Modifier.clickable {
                             selectedBrushIds = if (brush.id in currentSelectedBrushIds) currentSelectedBrushIds - brush.id else currentSelectedBrushIds + brush.id
-                        } else Modifier.brushDrag(brush).combinedClickable(
+                        } else Modifier.combinedClickable(
                             // A completed tap must select before the next canvas contact.
                             // Double-click detection delays onClick and lets the old preset draw.
                             onClick = { onBrushSelected(brush) },
                             onLongClick = { editBrush = brush },
                         )
                         Column(
-                            Modifier.fillMaxWidth().height(112.dp).semantics { contentDescription = brushPresetDescription }.then(interaction).clip(RoundedCornerShape(6.dp)).background(if (batchSelected) Color(0xFFDDE8F7) else if (selected) Color(0xFFE1E1E1) else Color.White).border(1.dp, if (batchSelected || selected) Ink else OutlineSoft, RoundedCornerShape(6.dp)).padding(7.dp),
+                            Modifier.fillMaxWidth().height(112.dp).semantics { contentDescription = brushPresetDescription }.brushDropTarget(brush).then(interaction).clip(RoundedCornerShape(6.dp)).background(if (batchSelected || draggingBrush?.id == brush.id || brushDropHovered(brush)) Color(0xFFDDE8F7) else if (selected) Color(0xFFE1E1E1) else Color.White).border(1.dp, if (batchSelected || selected) Ink else OutlineSoft, RoundedCornerShape(6.dp)).padding(7.dp),
                         ) {
-                            Text(brush.name, color = Ink, fontSize = 10.sp, maxLines = 1)
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text(brush.name, Modifier.weight(1f), color = Ink, fontSize = 10.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                if (!managingBrushes) BrushMoveHandle(brush)
+                            }
                             Spacer(Modifier.height(4.dp))
                             Surface(Modifier.fillMaxWidth().weight(1f), shape = RoundedCornerShape(4.dp), color = Color(0xFFF3F3F3)) {
                                 BrushTipPreview(brush, Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 3.dp))
@@ -8558,14 +8612,14 @@ private fun ProcreateBrushLibrary(
                         val brushPresetDescription = tr("Brush preset ${brush.name}", "笔刷预设 ${brush.name}")
                         val interaction = if (managingBrushes) Modifier.clickable {
                             selectedBrushIds = if (brush.id in currentSelectedBrushIds) currentSelectedBrushIds - brush.id else currentSelectedBrushIds + brush.id
-                        } else Modifier.brushDrag(brush).combinedClickable(
+                        } else Modifier.combinedClickable(
                             // A completed tap must select before the next canvas contact.
                             // Double-click detection delays onClick and lets the old preset draw.
                             onClick = { onBrushSelected(brush) },
                             onLongClick = { editBrush = brush },
                         )
                         Row(
-                            Modifier.fillMaxWidth().height(68.dp).semantics { contentDescription = brushPresetDescription }.then(interaction).background(if (batchSelected) Color(0xFFDDE8F7) else if (selected) Color(0xFFE1E1E1) else Color.White).padding(horizontal = 10.dp, vertical = 6.dp),
+                            Modifier.fillMaxWidth().height(68.dp).semantics { contentDescription = brushPresetDescription }.brushDropTarget(brush).then(interaction).background(if (batchSelected || draggingBrush?.id == brush.id || brushDropHovered(brush)) Color(0xFFDDE8F7) else if (selected) Color(0xFFE1E1E1) else Color.White).padding(horizontal = 10.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Surface(Modifier.width(116.dp).fillMaxHeight(), shape = RoundedCornerShape(4.dp), color = Color(0xFFF3F3F3)) {
@@ -8573,11 +8627,12 @@ private fun ProcreateBrushLibrary(
                             }
                             Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
-                                Text(brush.name, color = Ink, fontSize = 12.sp, maxLines = 1)
+                                Text(brush.name, color = Ink, fontSize = 12.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                                 Text(BrushGroupOperations.displayName(brush.groupName).ifBlank { ungroupedLabel }, color = MutedInk, fontSize = 9.sp, maxLines = 1)
                             }
                             if (batchSelected) Icon(Icons.Outlined.CheckCircle, null, Modifier.size(18.dp), tint = Ink)
                             else if (selected) Icon(Icons.Outlined.Check, null, Modifier.size(18.dp), tint = Ink)
+                            if (!managingBrushes) BrushMoveHandle(brush)
                         }
                     }
                 }

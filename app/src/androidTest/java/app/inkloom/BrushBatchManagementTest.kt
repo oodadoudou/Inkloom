@@ -15,6 +15,8 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
@@ -48,7 +50,7 @@ class BrushBatchManagementTest {
         brush("nested-d", "Nested Ink", "Source/Ink/Pens", 0),
     ).map(BrushPresetV5Import::convertDecodedSource)
 
-    private val preloadRule = TestRule { base, _ ->
+    private val preloadRule = TestRule { base, description ->
         object : Statement() {
             override fun evaluate() {
                 val context = ApplicationProvider.getApplicationContext<Context>()
@@ -61,7 +63,10 @@ class BrushBatchManagementTest {
                     .putString("brushPanelDock", "RIGHT")
                     .remove("workspaceLayouts")
                     .commit()
-                BrushMetadataStore(context).save(sourceBrushes)
+                val scrollingFixtures = if (description.methodName in setOf("ordinaryListAndGridSwipesOnlyScrollBrushes", "partlyClippedHandleUsesTheActualPointerDropPosition", "partlyClippedGridHandleUsesTheActualPointerDropPosition")) List(30) {
+                    brush("scroll-$it", "Scroll %02d".format(it), "Source", it + 2)
+                }.map(BrushPresetV5Import::convertDecodedSource) else emptyList()
+                BrushMetadataStore(context).save(sourceBrushes + scrollingFixtures)
                 BrushGroupStore(context).save(emptyList())
                 try {
                     base.evaluate()
@@ -142,6 +147,142 @@ class BrushBatchManagementTest {
             setOf("batch-a", "batch-b"),
             store.load().filter { it.groupName == "Target" && it.id.startsWith("batch-") }.mapTo(linkedSetOf(), ImportedBrush::id),
         )
+    }
+
+    @Test fun ordinaryListAndGridSwipesOnlyScrollBrushes() {
+        openBrushes()
+        val store = BrushMetadataStore(composeRule.activity)
+        val before = store.load()
+        repeat(2) { layout ->
+            if (layout == 1) composeRule.onNodeWithContentDescription("Grid view").performClick()
+            composeRule.onNodeWithContentDescription("Brush preset Batch A").assertIsDisplayed()
+            val card = windowBounds("Brush preset Scroll 02")
+            val list = windowBounds("Brush presets")
+            val start = Offset(card.left + card.width() * .3f, card.exactCenterY())
+            val end = Offset(start.x, maxOf(list.top + 30f, start.y - list.height() * .55f))
+            windowDrag(start, end)
+            assertEquals("Scrolling must not activate management", 0,
+                composeRule.onAllNodesWithContentDescription("Exit brush management").fetchSemanticsNodes().size)
+            assertEquals(0, composeRule.onAllNodesWithText("Brush Editor", substring = true).fetchSemanticsNodes().size)
+            assertEquals("Scrolling must not reorder or move brush records", before, store.load())
+            assertTrue("The list must actually scroll", runCatching {
+                composeRule.onNodeWithContentDescription("Brush preset Batch A").assertIsDisplayed()
+            }.isFailure)
+        }
+    }
+
+    @Test fun partlyClippedHandleUsesTheActualPointerDropPosition() = checkClippedHandle(grid = false)
+
+    @Test fun partlyClippedGridHandleUsesTheActualPointerDropPosition() = checkClippedHandle(grid = true)
+
+    private fun checkClippedHandle(grid: Boolean) {
+        openBrushes()
+        if (grid) composeRule.onNodeWithContentDescription("Grid view").performClick()
+        val handle = composeRule.onNodeWithContentDescription("Move brush Batch A")
+        val original = handle.fetchSemanticsNode().boundsInRoot
+        val list = composeRule.onNodeWithContentDescription("Brush presets")
+        val scroll = original.top - list.fetchSemanticsNode().boundsInRoot.top + original.height / 2f
+        list.performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, scroll) }
+        composeRule.waitForIdle()
+        val visible = composeRule.onNodeWithContentDescription("Move brush Batch A").fetchSemanticsNode().boundsInRoot
+        assertTrue("The fixture must expose only part of the handle", visible.height > 0f && visible.height < original.height)
+        handleDrag("Brush group Target")
+        val store = BrushMetadataStore(composeRule.activity)
+        composeRule.waitUntil(5_000) { store.load().single { it.id == "batch-a" }.groupName == "Target" }
+        assertEquals("Source", store.load().single { it.id == "batch-b" }.groupName)
+    }
+
+    @Test fun handleLongPressDragMovesTheBrushToItsGroupTarget() = checkHandleGroupDrop(grid = false)
+
+    @Test fun gridHandleLongPressDragMovesTheBrushToItsGroupTarget() = checkHandleGroupDrop(grid = true)
+
+    private fun checkHandleGroupDrop(grid: Boolean) {
+        openBrushes()
+        if (grid) composeRule.onNodeWithContentDescription("Grid view").performClick()
+        handleDrag("Brush group Target")
+        val store = BrushMetadataStore(composeRule.activity)
+        composeRule.waitUntil(5_000) { store.load().single { it.id == "batch-a" }.groupName == "Target" }
+        assertEquals("Source", store.load().single { it.id == "batch-b" }.groupName)
+        assertEquals(0, composeRule.onAllNodesWithContentDescription("Exit brush management").fetchSemanticsNodes().size)
+    }
+
+    @Test fun handleCancellationLeavesRecordsUntouchedAndPeerDropReorders() = checkHandlePeerDrop(grid = false)
+
+    @Test fun gridHandleCancellationLeavesRecordsUntouchedAndPeerDropReorders() = checkHandlePeerDrop(grid = true)
+
+    private fun checkHandlePeerDrop(grid: Boolean) {
+        openBrushes()
+        if (grid) composeRule.onNodeWithContentDescription("Grid view").performClick()
+        val store = BrushMetadataStore(composeRule.activity)
+        val before = store.load()
+        fun drag(cancel: Boolean) {
+            handleDrag("Brush preset Batch B", cancel = cancel)
+        }
+        handleDrag(null)
+        assertEquals("Dropping outside targets must not move records", before, store.load())
+        drag(cancel = true)
+        assertEquals(before, store.load())
+        assertEquals(0, composeRule.onAllNodesWithContentDescription("Exit brush management").fetchSemanticsNodes().size)
+        drag(cancel = false)
+        composeRule.waitUntil(5_000) {
+            store.load().filter { it.groupName == "Source" }.minByOrNull { it.sortOrder }?.id == "batch-b"
+        }
+        assertEquals(setOf("batch-a", "batch-b"), store.load().filter { it.groupName == "Source" }.map { it.id }.toSet())
+        val first = windowBounds("Brush preset Batch B")
+        val second = windowBounds("Brush preset Batch A")
+        assertTrue("The visible cards must follow the saved reorder", if (grid) {
+            first.top < second.top || (first.top == second.top && first.left < second.left)
+        } else first.top < second.top)
+    }
+
+    private fun handleDrag(targetLabel: String?, cancel: Boolean = false) {
+        val handle = composeRule.onNodeWithContentDescription("Move brush Batch A")
+        val origin = handle.fetchSemanticsNode().boundsInRoot
+        val target = targetLabel?.let {
+            composeRule.onNodeWithContentDescription(it).fetchSemanticsNode().boundsInRoot.center
+        } ?: Offset(30f, 300f)
+        handle.performTouchInput {
+            down(center)
+            advanceEventTime(700)
+            moveBy(target - origin.center, 300)
+            if (cancel) cancel() else up()
+        }
+        composeRule.waitForIdle()
+    }
+
+    private fun windowBounds(label: String): android.graphics.Rect {
+        var result: android.graphics.Rect? = null
+        composeRule.waitUntil(5_000) {
+            fun visit(node: android.view.accessibility.AccessibilityNodeInfo?) {
+                if (node == null) return
+                if (node.contentDescription?.toString() == label) result = android.graphics.Rect().also { node.getBoundsInScreen(it) }
+                else repeat(node.childCount) { visit(node.getChild(it)) }
+            }
+            visit(InstrumentationRegistry.getInstrumentation().uiAutomation.rootInActiveWindow)
+            result != null
+        }
+        return requireNotNull(result)
+    }
+
+    private fun windowDrag(start: Offset, end: Offset, hold: Boolean = false, cancel: Boolean = false) {
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val downTime = SystemClock.uptimeMillis()
+        fun send(action: Int, point: Offset) {
+            val event = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), action, 1,
+                arrayOf(MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_FINGER }),
+                arrayOf(MotionEvent.PointerCoords().apply { x = point.x; y = point.y; pressure = 1f; size = .01f }),
+                0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
+            try { assertTrue(automation.injectInputEvent(event, true)) } finally { event.recycle() }
+        }
+        send(MotionEvent.ACTION_DOWN, start)
+        if (hold) SystemClock.sleep(700)
+        repeat(20) {
+            SystemClock.sleep(10)
+            send(MotionEvent.ACTION_MOVE, start + (end - start) * ((it + 1) / 20f))
+        }
+        send(if (cancel) MotionEvent.ACTION_CANCEL else MotionEvent.ACTION_UP, end)
+        composeRule.waitForIdle()
+
     }
 
     @Test fun stationaryLongPressOpensTheProductionBrushEditor() {

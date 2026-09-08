@@ -193,12 +193,24 @@ object BrushGroupOperations {
         return normalizedGroups.map { path -> if (siblings.any { sibling -> isWithin(path, sibling) }) reordered.next() else path }
     }
 
+    private val savedPeerOrder = compareBy<ImportedBrush> { it.sortOrder }
+        .thenByDescending { it.favorite }
+        .thenByDescending { it.lastUsedAt }
+        .thenBy { it.name.lowercase() }
+
+    /** Orders each peer group in its existing slots; unrelated group positions stay unchanged. */
+    fun orderForDisplay(brushes: List<ImportedBrush>): List<ImportedBrush> {
+        val peers = brushes.groupBy { normalize(it.groupName).lowercase() }
+            .mapValues { (_, group) -> group.sortedWith(savedPeerOrder).iterator() }
+        return brushes.map { peers.getValue(normalize(it.groupName).lowercase()).next() }
+    }
+
     fun move(brushes: List<ImportedBrush>, brushId: String, delta: Int): List<ImportedBrush> {
         if (delta == 0) return brushes
         val moving = brushes.firstOrNull { it.id == brushId } ?: return brushes
         val group = normalize(moving.groupName)
         val peers = brushes.filter { normalize(it.groupName).equals(group, ignoreCase = true) }
-            .sortedWith(compareBy<ImportedBrush> { it.sortOrder }.thenByDescending { it.favorite }.thenByDescending { it.lastUsedAt }.thenBy { it.name.lowercase() })
+            .sortedWith(savedPeerOrder)
             .toMutableList()
         val from = peers.indexOfFirst { it.id == brushId }
         val to = (from + delta).coerceIn(0, peers.lastIndex)

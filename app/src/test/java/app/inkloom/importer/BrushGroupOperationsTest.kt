@@ -91,6 +91,18 @@ class BrushGroupOperationsTest {
         assertEquals(listOf("Pens", "Sketch/Pencil", "Painting/Oil"), promoted.map(ImportedBrush::groupName))
     }
 
+    @Test fun visiblePeerOrderMatchesReorderAndPreservesUnrelatedGroupSlots() {
+        val a = brush("A", "Pens").copy(sortOrder = 2)
+        val b = brush("B", " pens ").copy(sortOrder = 0, favorite = true)
+        val c = brush("C", "PENS").copy(sortOrder = 0, lastUsedAt = 30L)
+        val other = brush("Other", "Pencils")
+        val source = listOf(a, other, c, b)
+        assertEquals(listOf("B", "Other", "C", "A"), BrushGroupOperations.orderForDisplay(source).map { it.id })
+        val moved = BrushGroupOperations.move(source, "A", -2)
+        assertEquals(listOf("A", "Other", "B", "C"), BrushGroupOperations.orderForDisplay(moved).map { it.id })
+        assertEquals(other, moved[1])
+    }
+
     @Test fun moveReordersOnlyTheSelectedBrushGroup() {
         val brushes = listOf(brush("A", "Pens"), brush("B", "Pens"), brush("C", "Pencils"))
         val moved = BrushGroupOperations.move(brushes, "A", 1)
