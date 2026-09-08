@@ -144,6 +144,8 @@ import app.inkloom.settings.SelectionMode
 import app.inkloom.settings.SelectionShape
 import app.inkloom.settings.ReferenceTarget
 import app.inkloom.settings.BrushMasterSettingsStore
+import app.inkloom.settings.BrushUsageState
+import app.inkloom.settings.BrushUsageStore
 import app.inkloom.settings.DrawingColorStore
 import app.inkloom.settings.DrawingColors
 import app.inkloom.settings.ShortcutAction
@@ -1320,6 +1322,12 @@ private fun EditorScreen(
     val context = LocalContext.current
     val editorHostView = LocalView.current
     val brushMasterSettingsStore = remember { BrushMasterSettingsStore(context) }
+    val brushUsageStore = remember { BrushUsageStore(context) }
+    var brushUsage by remember { mutableStateOf(brushUsageStore.load()) }
+    fun changeBrushUsage(next: BrushUsageState) {
+        brushUsage = next
+        brushUsageStore.save(next)
+    }
     val selectedPage = document.pages.firstOrNull { it.id == selectedPageId } ?: document.pages.first()
     val availableBrushes = remember(brushes) { (systemBrushCatalog() + brushes).distinctBy(ImportedBrush::id) }
     val persistedBrush = availableBrushes.firstOrNull {
@@ -1678,6 +1686,7 @@ private fun EditorScreen(
         brushOpacity = savedBrushOpacity(usedBrush, usedBrush.defaultOpacity, chosenTool)
         tool = chosenTool
         if (persistSelection) {
+            changeBrushUsage(brushUsage.used(usedBrush.id))
             rememberDrawingSelection()
             onSettingsChange(
                 settings.copy(
@@ -3506,6 +3515,8 @@ private fun EditorScreen(
         ) {
             BrushPanel(
                 brushes = brushes,
+                usage = brushUsage,
+                onUsage = ::changeBrushUsage,
                 registeredGroups = brushGroups,
                 selectedBrushId = selectedBrushId,
                 requestedGroup = activeBrush?.groupName ?: if (tool == EditorTool.ERASER) "Erasers" else null,
@@ -7500,6 +7511,8 @@ private fun ProcreateLayerPanel(
 @Composable
 private fun BrushPanel(
     brushes: List<ImportedBrush>,
+    usage: BrushUsageState,
+    onUsage: (BrushUsageState) -> Unit,
     registeredGroups: List<String>,
     selectedBrushId: String?,
     requestedGroup: String?,
@@ -7543,6 +7556,8 @@ private fun BrushPanel(
     if (dock == WorkspacePanelDock.FREE) {
         ProcreateBrushLibrary(
             brushes = brushes,
+            usage = usage,
+            onUsage = onUsage,
             registeredGroups = registeredGroups,
             selectedBrushId = selectedBrushId,
             requestedGroup = requestedGroup,
@@ -8233,6 +8248,8 @@ private fun systemBrushCatalog(): List<ImportedBrush> = SystemBrushCatalog.brush
 @Composable
 private fun ProcreateBrushLibrary(
     brushes: List<ImportedBrush>,
+    usage: BrushUsageState,
+    onUsage: (BrushUsageState) -> Unit,
     registeredGroups: List<String>,
     selectedBrushId: String?,
     requestedGroup: String?,
@@ -8284,12 +8301,14 @@ private fun ProcreateBrushLibrary(
     val standaloneImportedCategories = visibleImportedCategories.filter { importedCategory ->
         systemCategories.none { systemCategory -> BrushGroupOperations.isWithin(importedCategory, systemCategory) }
     }
-    val allCategories = listOf(tr("All", "全部")) + categoriesInsideSystemRoots + standaloneImportedCategories + ungroupedLabel
+    val recentCategory = BrushUsageState.RECENT_CATEGORY
+    val allCategories = listOf(recentCategory, tr("All", "全部")) + categoriesInsideSystemRoots + standaloneImportedCategories + ungroupedLabel
     val activeInventoryBrush = (systemBrushes + usableImportedBrushes).firstOrNull { it.id == selectedBrushId }
     val activeGroup = activeInventoryBrush?.groupName?.ifBlank { ungroupedLabel } ?: requestedGroup
     var selectedCategory by rememberSaveable {
-        mutableStateOf(activeGroup?.takeIf { it in allCategories } ?: systemCategories.first())
+        mutableStateOf(usage.category?.takeIf { it in allCategories } ?: activeGroup?.takeIf { it in allCategories } ?: systemCategories.first())
     }
+    var lastObservedSelection by remember { mutableStateOf(selectedBrushId) }
     var pendingCategoryReveal by remember { mutableStateOf<String?>(null) }
     val categoryListState = rememberLazyListState()
     var addMenu by remember { mutableStateOf(false) }
@@ -8323,6 +8342,7 @@ private fun ProcreateBrushLibrary(
     val allLabel = tr("All", "全部")
     val groupCopySuffix = tr("copy", "副本")
     @Composable fun categoryLabel(category: String): String = when (category) {
+        recentCategory -> tr("Recent", "最近使用")
         "Pen" -> tr("Pen", "钢笔")
         "Pencil" -> tr("Pencil", "铅笔")
         "Brush" -> tr("Brush", "画笔")
@@ -8463,12 +8483,23 @@ private fun ProcreateBrushLibrary(
         allCategories.distinct().indexOf(selectedCategory).takeIf { it >= 0 }?.let { categoryListState.animateScrollToItem(it) }
     }
     LaunchedEffect(activeGroup, selectedBrushId) {
-        activeGroup?.let { requested -> allCategories.firstOrNull { it.equals(requested, true) }?.let { selectedCategory = it } }
+        if (lastObservedSelection != selectedBrushId && selectedCategory != recentCategory) {
+            activeGroup?.let { requested -> allCategories.firstOrNull { it.equals(requested, true) }?.let { selectedCategory = it } }
+        }
+        lastObservedSelection = selectedBrushId
+    }
+    LaunchedEffect(selectedCategory) {
+        if (usage.category != selectedCategory) onUsage(usage.copy(category = selectedCategory))
     }
     val usableLibraryBrushes = remember(systemBrushes, usableImportedBrushes) {
         BrushLibraryInventory.selectable(systemBrushes, usableImportedBrushes)
     }
-    val displayed = usableLibraryBrushes.filterNot(ImportedBrush::hidden).filter { brush ->
+    val visibleLibraryBrushes = usableLibraryBrushes.filterNot(ImportedBrush::hidden)
+    val recentBrushIds = usage.displayedIds(visibleLibraryBrushes.mapTo(linkedSetOf(), ImportedBrush::id))
+    val displayed = if (selectedCategory == recentCategory) {
+        val byId = visibleLibraryBrushes.associateBy(ImportedBrush::id)
+        recentBrushIds.mapNotNull(byId::get)
+    } else visibleLibraryBrushes.filter { brush ->
         when (selectedCategory) {
             allLabel -> true
             ungroupedLabel -> brush.format != BrushFormat.SYSTEM
@@ -8495,6 +8526,18 @@ private fun ProcreateBrushLibrary(
     }
 
     val quickBrush = usableLibraryBrushes.firstOrNull { it.id == selectedBrushId }
+    @Composable fun RecentActions(brush: ImportedBrush, content: @Composable () -> Unit) {
+        RecentBrushActions(
+            enabled = selectedCategory == recentCategory && !managingBrushes,
+            pinned = brush.id in usage.pinnedIds, language = settings.language,
+            onPin = { onUsage(if (brush.id in usage.pinnedIds) usage.unpin(brush.id) else usage.pin(brush.id)) },
+            onFind = {
+                onBrushSelected(brush)
+                selectedCategory = allCategories.firstOrNull { it.equals(brush.groupName, true) } ?: ungroupedLabel
+            },
+            onClear = { onUsage(usage.clear(brush.id)) }, content = content,
+        )
+    }
     val panelShape = RoundedCornerShape(14.dp)
     Surface(
         modifier = modifier.shadow(12.dp, panelShape),
@@ -8572,7 +8615,7 @@ private fun ProcreateBrushLibrary(
                         })
                         DropdownMenuItem(text = { Text(tr("Import from files", "从文件导入")) }, leadingIcon = { Icon(Icons.Outlined.FileDownload, null) }, onClick = {
                             addMenu = false
-                            onImportBrushes(selectedCategory.takeIf { it != allLabel && it != ungroupedLabel })
+                            onImportBrushes(selectedCategory.takeIf { it != allLabel && it != ungroupedLabel && it != recentCategory })
                         })
                         DropdownMenuItem(text = { Text(tr("Manage brush sets", "管理笔刷组")) }, leadingIcon = { Icon(Icons.Outlined.CreateNewFolder, null) }, onClick = { addMenu = false; manageGroups = true })
                     }
@@ -8675,6 +8718,7 @@ private fun ProcreateBrushLibrary(
                                 Text(visibleCategoryLabel, color = Ink, fontSize = 11.sp, maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                                 Text(
                                     when (category) {
+                                        recentCategory -> recentBrushIds.size
                                         allLabel -> usableLibraryBrushes.size
                                         ungroupedLabel -> usableImportedBrushes.size
                                         else -> systemBrushes.count { it.groupName.equals(category, true) } +
@@ -8716,7 +8760,12 @@ private fun ProcreateBrushLibrary(
                         }
                     }
                 }
-                if (gridLayout) LazyVerticalGrid(
+                if (selectedCategory == recentCategory && displayed.isEmpty()) Box(
+                    Modifier.weight(1f).fillMaxHeight().padding(20.dp), contentAlignment = Alignment.Center,
+                ) {
+                    Text(tr("Your recently used brushes appear here. Swipe a brush left to pin it.", "使用过的笔刷会显示在这里。向左滑动笔刷即可置顶。"),
+                        color = MutedInk, fontSize = 12.sp)
+                } else if (gridLayout) LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
                     state = presetGridState,
                     modifier = Modifier.weight(1f).fillMaxHeight().semantics { contentDescription = brushListDescription },
@@ -8736,19 +8785,20 @@ private fun ProcreateBrushLibrary(
                             onClick = { onBrushSelected(brush) },
                             onLongClick = { editBrush = brush },
                         )
-                        Column(
+                        RecentActions(brush) { Column(
                             Modifier.fillMaxWidth().height(112.dp).semantics { contentDescription = brushPresetDescription }.brushDropTarget(brush).then(interaction).clip(RoundedCornerShape(6.dp)).background(if (batchSelected || draggingBrush?.id == brush.id || brushDropHovered(brush)) Color(0xFFDDE8F7) else if (selected) Color(0xFFE1E1E1) else Color.White).border(1.dp, if (batchSelected || selected) Ink else OutlineSoft, RoundedCornerShape(6.dp)).padding(7.dp),
                         ) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Text(brush.name, Modifier.weight(1f), color = Ink, fontSize = 10.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                                if (!managingBrushes) BrushMoveHandle(brush)
+                                if (brush.id in usage.pinnedIds) Icon(Icons.Outlined.PushPin, tr("Pinned brush", "已置顶笔刷"), Modifier.size(16.dp))
+                                if (!managingBrushes && selectedCategory != recentCategory) BrushMoveHandle(brush)
                             }
                             Spacer(Modifier.height(4.dp))
                             Surface(Modifier.fillMaxWidth().weight(1f), shape = RoundedCornerShape(4.dp), color = Color(0xFFF3F3F3)) {
                                 BrushTipPreview(brush, Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 3.dp))
                             }
                             if (batchSelected) Icon(Icons.Outlined.CheckCircle, null, Modifier.align(Alignment.End).size(17.dp), tint = Ink)
-                        }
+                        } }
                     }
                 } else LazyColumn(
                     state = presetListState,
@@ -8767,7 +8817,7 @@ private fun ProcreateBrushLibrary(
                             onClick = { onBrushSelected(brush) },
                             onLongClick = { editBrush = brush },
                         )
-                        Row(
+                        RecentActions(brush) { Row(
                             Modifier.fillMaxWidth().height(68.dp).semantics { contentDescription = brushPresetDescription }.brushDropTarget(brush).then(interaction).background(if (batchSelected || draggingBrush?.id == brush.id || brushDropHovered(brush)) Color(0xFFDDE8F7) else if (selected) Color(0xFFE1E1E1) else Color.White).padding(horizontal = 10.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
@@ -8781,8 +8831,9 @@ private fun ProcreateBrushLibrary(
                             }
                             if (batchSelected) Icon(Icons.Outlined.CheckCircle, null, Modifier.size(18.dp), tint = Ink)
                             else if (selected) Icon(Icons.Outlined.Check, null, Modifier.size(18.dp), tint = Ink)
-                            if (!managingBrushes) BrushMoveHandle(brush)
-                        }
+                            if (brush.id in usage.pinnedIds) Icon(Icons.Outlined.PushPin, tr("Pinned brush", "已置顶笔刷"), Modifier.size(16.dp))
+                            if (!managingBrushes && selectedCategory != recentCategory) BrushMoveHandle(brush)
+                        } }
                     }
                 }
             }
