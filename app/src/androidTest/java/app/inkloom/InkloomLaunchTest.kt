@@ -12,6 +12,9 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.isDialog
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollAction
@@ -156,6 +159,12 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("Create").performClick()
     }
 
+    private fun clickTemplateAction(description: String) {
+        composeRule.onAllNodes(hasScrollAction() and hasAnyAncestor(isDialog())).onLast()
+            .performScrollToNode(hasContentDescription(description))
+        composeRule.onNodeWithContentDescription(description).performClick()
+    }
+
     @Test fun libraryScreenLaunches() {
         composeRule.onNodeWithText("Inkloom").assertIsDisplayed()
     }
@@ -225,7 +234,7 @@ class InkloomLaunchTest {
         composeRule.onNodeWithText("New Note").performClick()
         composeRule.onAllNodes(hasSetTextAction()).onLast().performTextClearance()
         composeRule.onAllNodes(hasSetTextAction()).onLast().performTextInput(title)
-        composeRule.onNodeWithContentDescription("New note template Grid").performClick()
+        composeRule.onNodeWithContentDescription("New note template Grid · Dense").performClick()
         composeRule.onNodeWithContentDescription("New note paper color Warm ivory").performClick()
         composeRule.onNodeWithText("Create").performClick()
         composeRule.waitForIdle()
@@ -537,14 +546,14 @@ class InkloomLaunchTest {
 
         composeRule.onNodeWithText("Choose template for new page").assertIsDisplayed()
         composeRule.onNodeWithText("Import image/PDF").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Favorite Grid template").performClick()
-        composeRule.onNodeWithContentDescription("Set Grid as notebook default").performClick()
+        clickTemplateAction("Favorite Grid · Dense template")
+        clickTemplateAction("Set Grid · Dense as notebook default")
 
         val library = PageTemplateStore(composeRule.activity.filesDir).load()
         assertTrue("builtin-grid" in library.favoriteIds)
         assertTrue(library.notebookDefaults.values.any { it == "builtin-grid" })
 
-        composeRule.onNodeWithContentDescription("Use Grid template").performClick()
+        clickTemplateAction("Use Grid · Dense template")
         composeRule.waitUntil(5_000) {
             composeRule.onAllNodes(hasContentDescription("Open layers for this page")).fetchSemanticsNodes().size == 2
         }
@@ -558,7 +567,7 @@ class InkloomLaunchTest {
     @Test fun longPressPagesEntersMultiSelectManagement() {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Add page").performClick()
-        composeRule.onNodeWithContentDescription("Use Grid template").performClick()
+        clickTemplateAction("Use Grid · Dense template")
         composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasContentDescription("Open layers for this page")).fetchSemanticsNodes().size == 2 }
 
         composeRule.onNodeWithContentDescription("Page 1. Long press to manage.").performTouchInput {
@@ -576,7 +585,7 @@ class InkloomLaunchTest {
     @Test fun pageManagementBatchReplacesTemplatesAndPaperColor() {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Add page").performClick()
-        composeRule.onNodeWithContentDescription("Use Grid template").performClick()
+        clickTemplateAction("Use Grid · Dense template")
         composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasContentDescription("Open layers for this page")).fetchSemanticsNodes().size == 2 }
 
         composeRule.onNodeWithContentDescription("Page 1. Long press to manage.").performTouchInput { longClick() }
@@ -584,7 +593,7 @@ class InkloomLaunchTest {
         composeRule.onNodeWithContentDescription("Replace selected page templates").performClick()
         composeRule.onNodeWithText("Replace template on 2 pages").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Paper color Soft green").performClick()
-        composeRule.onNodeWithContentDescription("Use Ruled template").performClick()
+        clickTemplateAction("Use Ruled · Dense template")
         composeRule.waitForIdle()
 
         val document = FileDocumentStore(composeRule.activity.filesDir).list().maxBy { it.createdAt }
@@ -606,7 +615,7 @@ class InkloomLaunchTest {
     @Test fun longPressDragOnPageThumbnailReordersPages() {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Add page").performClick()
-        composeRule.onNodeWithContentDescription("Use Grid template").performClick()
+        clickTemplateAction("Use Grid · Dense template")
         composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasContentDescription("Open layers for this page")).fetchSemanticsNodes().size == 2 }
         composeRule.onNodeWithContentDescription("Page 1. Long press to manage.").performClick()
         composeRule.onNodeWithText("1/2").assertIsDisplayed()
@@ -626,7 +635,7 @@ class InkloomLaunchTest {
     @Test fun pageDragHandleReordersWithoutOpeningThePageMenu() {
         createNotebookAndOpenEditor()
         composeRule.onNodeWithContentDescription("Add page").performClick()
-        composeRule.onNodeWithContentDescription("Use Grid template").performClick()
+        clickTemplateAction("Use Grid · Dense template")
         composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasContentDescription("Drag to reorder page")).fetchSemanticsNodes().size == 2 }
         composeRule.onNodeWithContentDescription("Page 1. Long press to manage.").performClick()
 
