@@ -32,6 +32,8 @@ data class LibraryUiState(
     val pdfIndexingDocumentIds: Set<String> = emptySet(),
     val imageOcrPageIds: Set<String> = emptySet(),
     val textRecognitionDocumentIds: Set<String> = emptySet(),
+    val migratingLegacyFills: Boolean = false,
+    val legacyFillMigrationError: String? = null,
 )
 
 class InkloomViewModel(application: Application) : AndroidViewModel(application) {
@@ -121,7 +123,34 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
         val crop = store.get(documentId)?.pages?.firstOrNull { it.id == pageId }?.crop ?: PageCrop()
         addElement(documentId, pageId, PageCropTransform.unproject(assets.importPageImage(uri), crop))
     }
-    fun select(documentId: String) { val document = store.get(documentId) ?: return; mutableState.value = mutableState.value.copy(selectedDocumentId = documentId, selectedPageId = document.pages.firstOrNull()?.id) }
+    fun select(documentId: String) {
+        val document = store.get(documentId) ?: return
+        val needsMigration = document.pages.any { page -> page.elements.any { it is PageElement.Fill } }
+        mutableState.value = mutableState.value.copy(selectedDocumentId = documentId,
+            selectedPageId = document.pages.firstOrNull()?.id, migratingLegacyFills = needsMigration,
+            legacyFillMigrationError = null)
+        if (!needsMigration) return
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                LegacyFillMigration(assets).migrate(document) { migrated ->
+                    synchronized(store) {
+                        check(store.get(documentId) == document) { "The notebook changed while converting fills; please reopen it to retry" }
+                        // Old element journal entries must not resurrect the converted Fill on restart.
+                        store.recover()
+                        store.save(migrated)
+                    }
+                }
+            }
+            refresh()
+            if (mutableState.value.selectedDocumentId == documentId) {
+                mutableState.value = mutableState.value.copy(migratingLegacyFills = false,
+                    legacyFillMigrationError = (result as? LegacyFillMigration.Result.Rejected)?.reason)
+            }
+        }
+    }
+    fun dismissLegacyFillMigrationError() {
+        mutableState.value = mutableState.value.copy(legacyFillMigrationError = null)
+    }
     fun selectPage(pageId: String) { mutableState.value = mutableState.value.copy(selectedPageId = pageId) }
 
     fun rename(documentId: String, title: String) = update(documentId) { it.copy(title = title.ifBlank { it.title }, updatedAt = System.currentTimeMillis()) }

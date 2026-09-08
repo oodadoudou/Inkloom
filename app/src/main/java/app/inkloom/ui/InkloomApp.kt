@@ -673,7 +673,15 @@ fun InkloomApp(initialIntent: Intent?) {
 
     CompositionLocalProvider(LocalUiLanguage provides settings.language) {
     Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-    when (destination) {
+    if (libraryState.migratingLegacyFills) {
+        Surface(Modifier.fillMaxSize(), color = Color.White) {
+            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator()
+                Spacer(Modifier.height(16.dp))
+                Text(tr("Converting old fills to editable paint…", "正在将旧填充转换为可编辑的绘画内容…"))
+            }
+        }
+    } else when (destination) {
         AppDestination.LIBRARY -> LibraryScreen(
             documents = libraryState.documents,
             folders = libraryState.folders,
@@ -805,6 +813,12 @@ fun InkloomApp(initialIntent: Intent?) {
             onSettingsChange = ::updateSettings,
         )
     }
+    }
+    libraryState.legacyFillMigrationError?.let { reason ->
+        AlertDialog(onDismissRequest = viewModel::dismissLegacyFillMigrationError,
+            title = { Text(tr("Some old fills could not be converted", "部分旧填充暂时无法转换")) },
+            text = { Text(tr("Your original notebook has been preserved.\n\n", "原笔记内容已保留。\n\n") + reason) },
+            confirmButton = { TextButton(onClick = viewModel::dismissLegacyFillMigrationError) { Text(tr("OK", "确定")) } })
     }
     if (deletionFailed) AlertDialog(
         onDismissRequest = { deletionFailed = false },
