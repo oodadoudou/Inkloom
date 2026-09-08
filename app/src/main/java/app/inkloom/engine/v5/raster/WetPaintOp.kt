@@ -51,6 +51,8 @@ data class WetPaintDefinition(
     val particlesPerPlot: Int = 1,
     val sizePressure: PressureResponse = PressureResponse.CONSTANT,
     val sizeTilt: TiltResponse = TiltResponse.CONSTANT,
+    val opacityPressure: PressureResponse = PressureResponse.CONSTANT,
+    val flowPressure: PressureResponse = PressureResponse.CONSTANT,
     val blend: DryBlend = DryBlend.SOURCE_OVER,
     val transferMode: DabTransferMode = DabTransferMode.UNIFORM_GLAZE,
 ) {
@@ -276,7 +278,8 @@ class WetPaintOp(
             val innerRadius = (outerRadius - edge).coerceAtLeast(0f)
             val innerRadiusSquared = innerRadius * innerRadius
             val inverseEdge = 1f / edge
-            val baseDeposition = definition.opacity * definition.attack * (.3f + .7f * definition.charge)
+            val baseDeposition = definition.opacity * definition.opacityPressure.evaluate(sample.pressure) *
+                definition.flowPressure.evaluate(sample.pressure) * definition.attack * (.3f + .7f * definition.charge)
             val selectionScaleX = selection?.let { it.logicalWidth.toFloat() / document.logicalWidth } ?: 1f
             val selectionScaleY = selection?.let { it.logicalHeight.toFloat() / document.logicalHeight } ?: 1f
             val tipLevel = tip?.levelForOutput(radiusX * 2f, radiusY * 2f) ?: 0

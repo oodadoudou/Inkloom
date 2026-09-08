@@ -4772,6 +4772,8 @@ class InkCanvasView(context: Context) : View(context) {
                         blend = paintBlend,
                         transferMode = stampProgram?.transferMode
                             ?: app.inkloom.brushpresetv5.DabTransferMode.UNIFORM_GLAZE,
+                        opacityPressure = opacityResponse,
+                        flowPressure = flowResponse,
                     )
                     return V5PaintConfiguration(
                         WetPaintOp(surface, wet, selection, sampleTransforms),

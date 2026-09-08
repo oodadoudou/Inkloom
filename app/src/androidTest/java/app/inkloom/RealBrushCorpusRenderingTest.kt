@@ -427,48 +427,47 @@ class RealBrushCorpusRenderingTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val surface = PixelTileSurface(1000, 1000)
         val committed = mutableListOf<RasterLayerPatch>()
-        var rejection: String? = null
+        val rejections = mutableListOf<String>()
         val view = InkCanvasView(instrumentation.targetContext).apply {
             layout(0, 0, 1000, 1000)
             activeLayerId = "paint"
             setRasterLayerSurfaces(mapOf("paint" to surface))
             onRasterLayerCommitted = { commit -> committed += commit.capturePatch() }
-            onPaintCapabilityRejected = { rejection = it }
+            onPaintCapabilityRejected = { rejections += it }
             // A fixed bounded diameter makes cross-brush behavior probes comparable and prevents
             // giant authored defaults from turning the gate into a fill-rate benchmark.
             applyBrushConfiguration(EditorTool.PEN, AppSettings(), brush, brush.defaultSize.coerceIn(20f, 64f), 1f, Color.BLACK, EraserPreset.NORMAL_FREE)
             prepareBrushAssetsNow()
         }
-        instrumentation.runOnMainSync {
-            dispatchBehaviorProbe(view)
+        var previousCommits = 0
+        var previousRejections = 0
+        var completedProbes = 0
+        dispatchBehaviorProbe(view) {
+            view.awaitV5StrokeWorkerIdleForTest()
+            instrumentation.runOnMainSync { }
+            val commits = committed.size - previousCommits
+            val rejected = rejections.size - previousRejections
+            assertEquals("${brush.name} probe $completedProbes must have exactly one terminal outcome: " +
+                "commits=$commits rejected=${rejections.drop(previousRejections)}", 1, commits + rejected)
+            rejections.drop(previousRejections).forEach { reason ->
+                assertTrue("Explicit terminal reason required: $reason", reason.startsWith("UNSUPPORTED_WITH_EXPLICIT_REASON:"))
+            }
+            Log.i("InkloomBrushCorpus", "CONTACT_OUTCOME name=${brush.name} probe=$completedProbes commits=$commits reasons=${rejections.drop(previousRejections)}")
+            previousCommits = committed.size
+            previousRejections = rejections.size
+            completedProbes++
         }
-        view.awaitV5StrokeWorkerIdleForTest()
-        instrumentation.runOnMainSync { }
+        assertEquals(EXPECTED_BEHAVIOR_PROBE_COMMITS, completedProbes)
         val rendered = committed.isNotEmpty()
-        val terminalOutcomeCount = (if (rendered) 1 else 0) + (if (rejection != null) 1 else 0)
-        assertEquals(
-            "${brush.format} ${brush.name} must end as exactly one of rendered/committed or explicitly rejected; " +
-                "commits=${committed.size} rejection=$rejection",
-            1,
-            terminalOutcomeCount,
-        )
         if (!rendered) {
-            assertTrue(
-                "${brush.format} ${brush.name} rejection must carry a stable explicit reason: $rejection",
-                rejection?.startsWith("UNSUPPORTED_WITH_EXPLICIT_REASON:") == true,
-            )
             Log.w(
                 "InkloomBrushCorpus",
-                "PRODUCTION_REJECTED id=${brush.id} format=${brush.format} name=${brush.name} rejection=$rejection",
+                "PRODUCTION_REJECTED id=${brush.id} format=${brush.format} name=${brush.name} rejections=$rejections",
             )
             return false
         }
-        assertEquals(
-            "${brush.format} ${brush.name} must commit every canonical behavior probe " +
-                "(tap, constant pressure, pressure ramp, tilt ramp, slow, fast, direction changes, overlap)",
-            EXPECTED_BEHAVIOR_PROBE_COMMITS,
-            committed.size,
-        )
+        // A zero-coverage tap may reject explicitly while later dabs cross opaque material.
+        // Do not alter source coverage merely to manufacture nine nonempty commits.
         val bitmap = Bitmap.createBitmap(1000, 1000, Bitmap.Config.ARGB_8888)
         view.draw(Canvas(bitmap))
         val foundInk = bitmap.hasVisibleAlpha() && surface.tileCount > 0
@@ -483,9 +482,10 @@ class RealBrushCorpusRenderingTest {
         return true
     }
 
-    private fun dispatchBehaviorProbe(view: InkCanvasView) {
+    private fun dispatchBehaviorProbe(view: InkCanvasView, afterStroke: () -> Unit) {
         fun stroke(points: List<ProbePoint>) {
             val downTime = points.first().time
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
             points.forEachIndexed { index, point ->
                 val action = when (index) {
                     0 -> MotionEvent.ACTION_DOWN
@@ -496,6 +496,8 @@ class RealBrushCorpusRenderingTest {
                     try { view.onTouchEvent(event) } finally { event.recycle() }
                 }
             }
+            }
+            afterStroke()
         }
         var time = 10L
         stroke(listOf(ProbePoint(80f, 100f, .65f, .10f, time), ProbePoint(86f, 100f, .65f, .10f, time + 4)))

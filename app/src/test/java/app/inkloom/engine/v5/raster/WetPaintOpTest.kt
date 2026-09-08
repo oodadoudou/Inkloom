@@ -15,6 +15,33 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WetPaintOpTest {
+    @Test fun `wet opacity and flow use their own pressure curves`() {
+        val response = app.inkloom.engine.v5.material.PressureResponse(true, .2f,
+            listOf(0f to 0f, .5f to .8f, 1f to 1f))
+        fun alpha(pressure: Float, opacity: Boolean, flow: Boolean): Int {
+            val surface = PixelTileSurface(96, 96)
+            val paint = WetPaintOp(surface, WetPaintDefinition(40f, 0xff2050a0.toInt(),
+                charge = 1f, attack = .6f, dilution = 0f,
+                opacityPressure = if (opacity) response else app.inkloom.engine.v5.material.PressureResponse.CONSTANT,
+                flowPressure = if (flow) response else app.inkloom.engine.v5.material.PressureResponse.CONSTANT))
+                .begin(PaintOpContext(43L, surface.revision, "wet-pressure")) as WetPaintOp.Session
+            val stroke = DirectStrokeSession(43L, 20f)
+            paint.apply(stroke.begin(sample(0, InputPhase.DOWN, 48f, 48f).copy(pressure = pressure)))
+            paint.finish(stroke.finish(sample(1, InputPhase.UP, 48f, 48f).copy(pressure = pressure)))
+            paint.publish().record.close()
+            return surface.pixelAt(48, 48) ushr 24
+        }
+        val fixed = alpha(.2f, false, false)
+        assertEquals(fixed, alpha(.9f, false, false))
+        val opacity = alpha(.2f, true, false)
+        val flow = alpha(.2f, false, true)
+        assertTrue(opacity in 1 until fixed)
+        assertEquals(opacity, flow)
+        assertTrue(alpha(.2f, true, true) < opacity)
+        assertTrue(alpha(.8f, true, false) > opacity)
+        assertTrue(alpha(.8f, false, true) > flow)
+    }
+
     @Test fun `first tap remains visible when grain samples an empty patch`() {
         val surface = PixelTileSurface(160, 160)
         val emptyGrain = BrushTipMask(4, 4, ByteArray(16))
