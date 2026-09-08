@@ -10,6 +10,7 @@ import android.net.Uri
 import android.view.KeyEvent
 import android.view.View
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
@@ -1564,10 +1565,39 @@ private fun EditorScreen(
     var insertShape by remember { mutableStateOf(ShapeKind.RECTANGLE) }
     var selectedElementId by remember(selectedPage.id) { mutableStateOf<String?>(null) }
     var imageTransformId by remember(selectedPage.id) { mutableStateOf<String?>(null) }
-    (selectedPage.elements.firstOrNull { it.id == imageTransformId } as? PageElement.Image)?.let { image ->
+    var imageCanvasTransform by remember(selectedPage.id) { mutableStateOf<ImageCanvasTransform?>(null) }
+    var imageCanvasPreview by remember(selectedPage.id) { mutableStateOf<PageElement.Image?>(null) }
+    var imageTransformMode by remember { mutableStateOf(ImageTransformMode.FREEFORM) }
+    val paintingPage = imageCanvasPreview?.let { preview -> selectedPage.copy(elements = selectedPage.elements.map {
+        if (it.id == preview.id) PageCropTransform.unproject(preview, selectedPage.crop) else it
+    }) } ?: selectedPage
+    SideEffect { canvasView?.imageCanvasTransform = imageCanvasTransform }
+    fun finishImageTransform(commit: Boolean) {
+        val session = imageCanvasTransform ?: return
+        val layer = selectedPage.layers.firstOrNull { it.id == session.original.layerId }
+        if (commit && layer != null && !LayerHierarchy.effectiveLocked(selectedPage.layers, layer) && session.current != session.original) {
+            val original = PageCropTransform.unproject(session.original, selectedPage.crop)
+            val changed = PageCropTransform.unproject(session.current, selectedPage.crop)
+            val targetDocument = document.id
+            val targetPage = selectedPage.id
+            onElement(targetDocument, targetPage, changed)
+            canvasView?.recordExternalEdit(undo = { onElement(targetDocument, targetPage, original) },
+                redo = { onElement(targetDocument, targetPage, changed) })
+        }
+        imageCanvasTransform = null; imageCanvasPreview = null; imageTransformId = null
+        canvasView?.imageCanvasTransform = null
+        canvasView?.invalidate()
+    }
+    BackHandler(enabled = imageCanvasTransform != null && imageTransformId == null) { finishImageTransform(false) }
+    (selectedPage.elements.firstOrNull { it.id == imageTransformId } as? PageElement.Image)?.let { original ->
+        val image = imageCanvasTransform?.current?.takeIf { it.id == original.id } ?: original
         ElementEditorDialog(image, onDismiss = { imageTransformId = null }, onSave = { changed ->
-            val layer = selectedPage.layers.firstOrNull { it.id == image.layerId }
-            if (layer != null && !LayerHierarchy.effectiveLocked(selectedPage.layers, layer)) onElement(document.id, selectedPage.id, changed)
+            val session = imageCanvasTransform
+            if (session != null && changed is PageElement.Image) session.replace(changed)
+            else {
+                val layer = selectedPage.layers.firstOrNull { it.id == image.layerId }
+                if (layer != null && !LayerHierarchy.effectiveLocked(selectedPage.layers, layer)) onElement(document.id, selectedPage.id, changed)
+            }
             imageTransformId = null
         })
     }
@@ -2518,7 +2548,7 @@ private fun EditorScreen(
                             onLayerMaskCommand(document.id, selectedPage.id, layerId, LayerMaskCommand.REPLACE_SURFACE, snapshot)
                         }
                     },
-                    page = selectedPage,
+                    page = paintingPage,
                     documentId = document.id,
                     onSetLayerRasterTileSurface = onSetLayerRasterTileSurface,
                     onElement = onElement,
@@ -2894,10 +2924,22 @@ private fun EditorScreen(
                     update = { proxy ->
                         proxy.target = canvasView
                         proxy.imageAtPoint = { x, y ->
-                            if (handToolEnabled || handToolHeld || rotateToolEnabled || rotateToolHeld || tool == EditorTool.ERASER) null
+                            if (imageCanvasTransform != null || handToolEnabled || handToolHeld || rotateToolEnabled || rotateToolHeld || tool == EditorTool.ERASER) null
                             else ImageElementHitTest.find(PageCropTransform.project(selectedPage), x, y)?.id
                         }
-                        proxy.onImageLongPress = { imageTransformId = it }
+                        proxy.onImageLongPress = { id ->
+                            stopContinueFilling()
+                            val projected = PageCropTransform.project(selectedPage)
+                            (projected.elements.firstOrNull { it.id == id } as? PageElement.Image)?.let { image ->
+                                selectedElementId = null
+                                canvasView?.clearSelection()
+                                imageCanvasPreview = image
+                                imageCanvasTransform = ImageCanvasTransform(image, projected.width, projected.height, proxy.resources.displayMetrics.density) { preview ->
+                                    imageCanvasPreview = preview
+                                    canvasView?.invalidate()
+                                }.also { it.mode = imageTransformMode }
+                            }
+                        }
                     },
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -2934,7 +2976,7 @@ private fun EditorScreen(
                                 page = interactionPage,
                                 layerOpacity = interactionLayerOpacities[element.layerId] ?: 1f,
                                 selected = selectedElementId == element.id,
-                                editable = tool == EditorTool.SELECT && element.layerId !in lockedInteractionLayers,
+                                editable = imageCanvasTransform == null && tool == EditorTool.SELECT && element.layerId !in lockedInteractionLayers,
                                 canvasWidth = maxWidth,
                                 canvasHeight = maxHeight,
                                 canvasWidthPx = interactionWidthPx,
@@ -3065,7 +3107,7 @@ private fun EditorScreen(
                 }, onOpacity = { raw ->
                     changeCurrentBrushOpacity(raw)
                 }, onColor = ::changeBrushColor, symmetryMode = settings.symmetryMode, onSymmetryMode = { onSettingsChange(settings.copy(symmetryMode = it)) }, gradientControls = { GradientToolControls(settings, brushColor, ::changeBrushColor, onSettingsChange) }, modifier = Modifier.align(dockAlignment).padding(dockPadding).graphicsLayer(translationX = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.xDp.dp.toPx() } else 0f, translationY = if (settings.toolbarDock == ToolbarDock.FREE) with(editorDensity) { boundedToolbarPosition.yDp.dp.toPx() } else 0f)) }
-                if (tool == EditorTool.SELECT) SelectionInputBar(
+                if (tool == EditorTool.SELECT && imageCanvasTransform == null) SelectionInputBar(
                     shape = settings.selectionShape,
                     mode = settings.selectionMode,
                     hasSelection = selectionActive,
@@ -3096,6 +3138,22 @@ private fun EditorScreen(
                     onFlipVertical = { canvasView?.flipSelection(horizontal = false) },
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 52.dp),
                 )
+                imageCanvasTransform?.let { session ->
+                    Surface(Modifier.align(Alignment.BottomCenter).padding(bottom = 14.dp).zIndex(4f),
+                        shape = RoundedCornerShape(14.dp), color = Color.White, shadowElevation = 5.dp) {
+                        Row(Modifier.padding(horizontal = 8.dp).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(onClick = { finishImageTransform(false) }) { Text(tr("Cancel transform", "取消变换")) }
+                            ImageTransformMode.entries.forEach { mode ->
+                                FilterChip(selected = imageTransformMode == mode, onClick = { imageTransformMode = mode; session.mode = mode },
+                                    label = { Text(if (mode == ImageTransformMode.FREEFORM) tr("Freeform", "自由变换") else tr("Uniform", "等比变换")) })
+                            }
+                            Text("${session.current.width.toInt()} × ${session.current.height.toInt()} · ${session.current.rotationDegrees.toInt()}°", Modifier.padding(8.dp), fontSize = 11.sp)
+                            TextButton(onClick = { imageTransformId = session.original.id }) { Text(tr("Properties", "属性")) }
+                            TextButton(onClick = session::reset) { Text(tr("Reset transform", "重置变换")) }
+                            TextButton(onClick = { finishImageTransform(true) }) { Text(tr("Apply transform", "应用变换")) }
+                        }
+                    }
+                }
                 if (tool == EditorTool.FILL) FillOptionsLauncher(
                     subTool = settings.fillSubTool,
                     sensitivity = settings.fillSensitivity,

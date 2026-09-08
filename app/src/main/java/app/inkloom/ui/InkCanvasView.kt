@@ -1286,7 +1286,8 @@ class InkCanvasView(context: Context) : View(context) {
         drawGradientPreview(canvas)
         drawGradientHandles(canvas)
         drawBrushSizePreview(canvas)
-        drawStylusHoverCursor(canvas)
+        if (imageCanvasTransform == null) drawStylusHoverCursor(canvas)
+        imageCanvasTransform?.draw(canvas, width, height, viewportScale)
     }
 
     private fun selectionAntPhase(): Float =
@@ -1686,6 +1687,8 @@ class InkCanvasView(context: Context) : View(context) {
         }
     }
 
+    internal var imageCanvasTransform: ImageCanvasTransform? = null
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (tool !in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER, EditorTool.ERASER, EditorTool.EYEDROPPER, EditorTool.SELECT, EditorTool.SHAPE, EditorTool.LASER, EditorTool.FILL, EditorTool.GRADIENT, EditorTool.SMUDGE, EditorTool.LIQUIFY, EditorTool.CORRECT_LINE)) return false
         val pointerIndex = event.stylusPointerIndex(activeStylusPointerId).takeIf { it >= 0 }
@@ -1753,6 +1756,11 @@ class InkCanvasView(context: Context) : View(context) {
             return true
         }
         val inputPoint = canvasPoint(event, pointerIndex)
+        if (!forceNavigation && stylusButtonAction != StylusButtonAction.HAND && !stylusHandNavigationContact &&
+            imageCanvasTransform?.touch(event, inputPoint.first, inputPoint.second, width, height, viewportScale) == true) {
+            invalidate()
+            return true
+        }
         continueFillingColor?.takeIf { event.pointerCount == 1 }?.let { fillColor ->
             inkColor = fillColor
             when (effectiveAction) {
@@ -3679,7 +3687,7 @@ class InkCanvasView(context: Context) : View(context) {
         }
         if (event.pointerCount != 1) return false
         val elapsedSinceStylus = if (lastStylusSeenAt == Long.MIN_VALUE) Long.MAX_VALUE else event.eventTime - lastStylusSeenAt
-        val selectionDrawContact = tool == EditorTool.SELECT
+        val selectionDrawContact = tool == EditorTool.SELECT || imageCanvasTransform != null
         return (fingerDrawingEnabled || selectionDrawContact) &&
             event.getTouchMajor(0) < StylusInputClassifier.PALM_TOUCH_MAJOR_PX &&
             (selectionDrawContact || elapsedSinceStylus !in 0..StylusInputClassifier.RECENT_STYLUS_WINDOW_MS)
