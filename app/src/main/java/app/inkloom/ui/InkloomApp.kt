@@ -5336,6 +5336,7 @@ internal fun InkCanvasView.applyBrushPresetV5Configuration(
     prepareAssets: Boolean = true,
 ) {
     val compiled = CompiledBrushProgramV5.compile(preset)
+    globalStrokeStabilization = settings.globalStrokeStabilization
     switchInputConfiguration(EditorTool.PEN, preset.identity.id)
     setCompiledBrushProgramV5(compiled, prepareAssets = prepareAssets)
     fingerDrawingEnabled = settings.fingerDrawing
@@ -5433,6 +5434,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     singleFingerDoubleTapUndo = settings.singleFingerDoubleTapUndo
     twoFingerDoubleTapUndo = settings.twoFingerDoubleTapUndo
     threeFingerTapRedo = settings.threeFingerTapRedo
+    globalStrokeStabilization = settings.globalStrokeStabilization
     pressureSensitivity = settings.pressureSensitivity
     pressureMinimumInput = settings.pressureMinimumInput
     pressureMaximumInput = settings.pressureMaximumInput
@@ -9329,6 +9331,14 @@ private fun SettingsDialog(
                 item { SettingSwitch(tr("Show input diagnostics", "显示输入诊断"), tr("Displays stylus data plus Toolbox keys, scan codes, rotary axes, pointer buttons, source and device identity.", "显示手写笔数据，以及 Toolbox 的按键、扫描码、旋钮轴、侧键、来源和设备标识。"), settings.showInputDiagnostics) { onChange(settings.copy(showInputDiagnostics = it)) } }
                 if (app.inkloom.BuildConfig.PAINTING_DIAGNOSTICS) {
                     item { SettingSwitch(tr("Show V5 stroke diagnostics", "显示 V5 落笔诊断"), tr("Debug only: shows the active V5 transaction, stable generation, dirty tiles and frame counters.", "仅调试版：显示 V5 活动事务、稳定代数、脏瓦片与帧计数。"), settings.showStrokeTraceOverlay) { onChange(settings.copy(showStrokeTraceOverlay = it)) } }
+                }
+                item {
+                    Text(tr("Global brush stabilization", "全局画笔防抖"), fontWeight = FontWeight.SemiBold)
+                    Text(tr("Applies before each brush’s own stabilization. Set to 0 to use only the brush setting.",
+                        "先应用全局防抖，再应用每支笔的防抖。设为 0 时，只使用笔刷自身的设置。"), fontSize = 12.sp, color = MutedInk)
+                    BrushSettingSlider(tr("Global stabilization (%)", "全局防抖强度（%）"), settings.globalStrokeStabilization * 100f, 0f..100f) {
+                        onChange(settings.copy(globalStrokeStabilization = it / 100f))
+                    }
                 }
                 item { Text("${tr("Pressure sensitivity", "压感灵敏度")}  ${"%.2f".format(settings.pressureSensitivity)}×") }
                 item { Slider(settings.pressureSensitivity, { onChange(settings.copy(pressureSensitivity = it)) }, valueRange = .25f..2.5f) }

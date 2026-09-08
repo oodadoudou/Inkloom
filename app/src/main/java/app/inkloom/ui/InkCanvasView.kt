@@ -700,6 +700,7 @@ class InkCanvasView(context: Context) : View(context) {
             invalidate()
         }
     var onSpecialRulerChanged: (SpecialRulerState) -> Unit = {}
+    var globalStrokeStabilization: Float = 0f
     var pressureSensitivity: Float = 1f
     var pressureMinimumInput: Float = 0f
     var pressureMaximumInput: Float = 1f
@@ -4389,7 +4390,7 @@ class InkCanvasView(context: Context) : View(context) {
         val controller = app.inkloom.engine.v5.runtime.RealtimeStrokeController()
         try {
             controller.begin(activeLayerId, surface, configuration.paintOp, configuration.maximumRadius,
-                configuration.runtimeId, samples.first(), configuration.smoothing)
+                configuration.runtimeId, samples.first(), configuration.smoothing, globalStrokeStabilization)
             if (samples.size > 2) controller.append(samples.subList(1, samples.lastIndex))
             val published = requireNotNull(controller.finish(samples.last()))
             published.record.close()
@@ -4937,6 +4938,7 @@ class InkCanvasView(context: Context) : View(context) {
             brushRuntimeId = configuration.runtimeId,
             sample = initialSample,
             smoothing = configuration.smoothing,
+            globalSmoothing = globalStrokeStabilization,
         )
         if (!started) {
             v5RejectedContact = true

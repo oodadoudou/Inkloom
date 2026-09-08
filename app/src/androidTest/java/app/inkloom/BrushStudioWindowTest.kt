@@ -49,6 +49,17 @@ class BrushStudioWindowTest {
         assertTrue("The studio must follow the app language on an English emulator", find("Brush Studio").isEmpty())
         val pressure = bounds("压力")
         assertTrue("Drawing pad must sit to the right of categories", pad.left > pressure.right)
+        tap("防抖修正")
+        val stabilization = bounds("此笔刷防抖 滑块")
+        val adjustment = SystemClock.uptimeMillis()
+        event(MotionEvent.ACTION_DOWN, stabilization.left + stabilization.width() * .15f, stabilization.exactCenterY(), adjustment)
+        repeat(20) { index ->
+            SystemClock.sleep(8)
+            event(MotionEvent.ACTION_MOVE, stabilization.left + stabilization.width() * (.15f + .6f * (index + 1) / 20f), stabilization.exactCenterY(), adjustment)
+        }
+        event(MotionEvent.ACTION_UP, stabilization.left + stabilization.width() * .75f, stabilization.exactCenterY(), adjustment)
+        compose.waitForIdle()
+        capture("studio-stabilization")
         tap("压力")
         val curve = bounds("可编辑的笔刷压力曲线")
         capture("studio-pressure")
@@ -65,6 +76,7 @@ class BrushStudioWindowTest {
         compose.waitUntil(5_000) { store.load().any { it.derivedFromFactoryId == "system-hb-pencil" } }
         val saved = store.load().first { it.derivedFromFactoryId == "system-hb-pencil" }
         val preset = app.inkloom.brushpresetv5.BrushPresetV5Import.requirePreset(saved)
+        assertTrue("Pencil stabilization must persist independently in its preset", (preset.stroke?.smoothing ?: 0f) > 0f)
         assertTrue("Custom curve must reach the saved compiled preset", preset.dynamics.pressure.widthCurve.any {
             it.x in .35f.. .65f && it.y > .65f
         })

@@ -32,7 +32,7 @@ internal fun PressureScratchpad(settings: AppSettings) {
             Text(label, Modifier.weight(1f))
             TextButton(onClick = { reset++ }) { Text(if (chinese) "清空试画板" else "Clear test pad") }
         }
-        Text(if (chinese) "用笔从轻到重试画，下一笔立即使用调整后的压感。" else "Draw lightly, then firmly. Changes apply to your next stroke.")
+        Text(if (chinese) "用笔从轻到重试画，下一笔使用调整后的压感和全局防抖。" else "Draw lightly, then firmly. Pressure and global stabilization changes apply to your next stroke.")
         key(reset) {
             AndroidView(
                 factory = { context ->

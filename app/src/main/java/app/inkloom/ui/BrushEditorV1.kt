@@ -125,6 +125,11 @@ fun BrushEditorV1Dialog(
                                     contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                                     item {
                                         Text(activePanel.first.localizedLabel(language), style = MaterialTheme.typography.titleMedium)
+                                        if (activePanel.first == BrushOptionGroup.STROKE) {
+                                            Text(tr("Global stabilization: ${(settings.globalStrokeStabilization * 100).toInt()}%. The brush setting is applied after it.",
+                                                "全局防抖：${(settings.globalStrokeStabilization * 100).toInt()}%。此笔刷设置在全局防抖之后生效。"),
+                                                fontSize = 12.sp, color = Color.Gray)
+                                        }
                                     }
                                     items(orderedOptions, key = { it.id }) { option ->
                                         BrushOptionRow(option, session.current, language) { session = session.withValue(it) }
@@ -193,17 +198,18 @@ private fun BrushOptionRow(
     }
     var numericOpen by remember { mutableStateOf(false) }
     var numeric by remember { mutableStateOf("") }
+    val displayScale = if (option.id == "smoothing") 100f else 1f
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(label, Modifier.weight(1f), fontSize = 13.sp)
-            TextButton(onClick = { numeric = "%.3f".format(java.util.Locale.ROOT, current).trimEnd('0').trimEnd('.'); numericOpen = true },
+            TextButton(onClick = { numeric = "%.3f".format(java.util.Locale.ROOT, current * displayScale).trimEnd('0').trimEnd('.'); numericOpen = true },
                 contentPadding = PaddingValues(horizontal = 10.dp)) {
-                Text("%.2f".format(java.util.Locale.ROOT, current), fontSize = 12.sp)
+                Text(if (displayScale == 100f) "${(current * 100).toInt()}%" else "%.2f".format(java.util.Locale.ROOT, current), fontSize = 12.sp)
             }
         }
         Slider(current.coerceIn(option.valueRange.start, option.valueRange.endInclusive),
             { onValue(option.apply(value, it)) }, valueRange = option.valueRange,
-            modifier = Modifier.semantics { contentDescription = label },
+            modifier = Modifier.fillMaxWidth().semantics { contentDescription = language.text("$label slider", "$label 滑块") },
             thumb = { Box(Modifier.size(20.dp).shadow(2.dp, CircleShape)
                 .background(Color.White, CircleShape).border(1.dp, Color(0xFFD4D8D5), CircleShape)) },
             track = { state -> SliderDefaults.Track(state, Modifier.height(4.dp),
@@ -211,12 +217,12 @@ private fun BrushOptionRow(
                 thumbTrackGapSize = 0.dp, trackInsideCornerSize = 2.dp) })
     }
     if (numericOpen) {
-        val parsed = numeric.toFloatOrNull()?.takeIf { it.isFinite() && it in option.valueRange }
+        val parsed = numeric.toFloatOrNull()?.div(displayScale)?.takeIf { it.isFinite() && it in option.valueRange }
         val apply = { if (parsed != null) { onValue(option.apply(value, parsed)); numericOpen = false } }
         AlertDialog(onDismissRequest = { numericOpen = false }, title = { Text(label) },
             text = { OutlinedTextField(numeric, { numeric = it }, singleLine = true,
                 isError = parsed == null,
-                supportingText = { Text("${option.valueRange.start} – ${option.valueRange.endInclusive}") },
+                supportingText = { Text("${option.valueRange.start * displayScale} – ${option.valueRange.endInclusive * displayScale}") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { apply() })) },
             confirmButton = { TextButton(enabled = parsed != null, onClick = apply) { Text(language.text("Apply", "应用")) } },

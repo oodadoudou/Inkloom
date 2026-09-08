@@ -51,22 +51,22 @@ class CausalStrokeSession(
     override val transactionId: Long,
     private val maximumRadius: Float,
     smoothing: Float,
+    globalSmoothing: Float = 0f,
 ) : StrokeSession {
     init {
         require(transactionId > 0L)
         require(maximumRadius.isFinite() && maximumRadius >= 0f)
         require(smoothing.isFinite() && smoothing in 0f..1f)
+        require(globalSmoothing.isFinite() && globalSmoothing in 0f..1f)
     }
 
-    private val response = (1f - smoothing * .85f).coerceIn(.15f, 1f)
+    private val filters = listOf(globalSmoothing, smoothing).filter { it > 0f }.map(::CoordinateFilter)
     /** Professional realtime correction may soften jitter but must never trail the physical tip
      * by an unbounded distance. This document-space cap keeps even maximum smoothing within a
      * small, predictable tail instead of accumulating the error of an unconstrained EMA. */
-    private val maximumLagPixels = .5f + smoothing * 3.5f
     private var state = State.NEW
     private var ordinal = 0L
     private var lastSequence = -1L
-    private var filteredPoint: DocumentPoint? = null
 
     override fun begin(sample: InputSample): PaintBatch {
         check(state == State.NEW)
@@ -97,21 +97,7 @@ class CausalStrokeSession(
         require(inputs.all { it.sequence > lastSequence })
         inputs.lastOrNull()?.let { lastSequence = it.sequence }
         val output = inputs.map { input ->
-            val previous = filteredPoint
-            val point = if (previous == null) input.point else {
-                val candidateX = previous.x + (input.point.x - previous.x) * response
-                val candidateY = previous.y + (input.point.y - previous.y) * response
-                val lagX = candidateX - input.point.x
-                val lagY = candidateY - input.point.y
-                val lag = kotlin.math.hypot(lagX, lagY)
-                if (lag <= maximumLagPixels || lag <= 1e-6f) {
-                    DocumentPoint(candidateX, candidateY)
-                } else {
-                    val scale = maximumLagPixels / lag
-                    DocumentPoint(input.point.x + lagX * scale, input.point.y + lagY * scale)
-                }
-            }
-            filteredPoint = point
+            val point = filters.fold(input.point) { point, filter -> filter.apply(point) }
             StrokeSample(
                 input.sequence,
                 point,
@@ -130,6 +116,29 @@ class CausalStrokeSession(
             ).outset(maximumRadius)
         }
         return PaintBatch(transactionId, ordinal++, output, bounds, terminal)
+    }
+
+    private class CoordinateFilter(amount: Float) {
+        private val response = (1f - amount * .85f).coerceIn(.15f, 1f)
+        private val maximumLagPixels = .5f + amount * 3.5f
+        private var previous: DocumentPoint? = null
+
+        fun apply(point: DocumentPoint): DocumentPoint {
+            val prior = previous
+            val filtered = if (prior == null) point else {
+                val x = prior.x + (point.x - prior.x) * response
+                val y = prior.y + (point.y - prior.y) * response
+                val dx = x - point.x; val dy = y - point.y
+                val lag = kotlin.math.hypot(dx, dy)
+                if (lag <= maximumLagPixels || lag <= 1e-6f) DocumentPoint(x, y)
+                else {
+                    val scale = maximumLagPixels / lag
+                    DocumentPoint(point.x + dx * scale, point.y + dy * scale)
+                }
+            }
+            previous = filtered
+            return filtered
+        }
     }
 
     private enum class State { NEW, ACTIVE, FINISHED, CANCELED }

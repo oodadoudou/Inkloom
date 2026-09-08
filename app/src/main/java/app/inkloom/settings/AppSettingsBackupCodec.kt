@@ -79,6 +79,7 @@ object AppSettingsBackupCodec {
         put("specialRulerCenterX", specialRulerCenterX); put("specialRulerCenterY", specialRulerCenterY); put("specialRulerAngleDegrees", specialRulerAngleDegrees); put("specialRulerSpacing", specialRulerSpacing)
         put("stylusPrimaryButton", stylusPrimaryButton.name); put("stylusSecondaryButton", stylusSecondaryButton.name)
         put("stylusPrimaryTrigger", stylusPrimaryTrigger.name); put("stylusSecondaryTrigger", stylusSecondaryTrigger.name)
+        put("globalStrokeStabilization", globalStrokeStabilization)
         put("pressureSensitivity", pressureSensitivity); put("pressureMinimumInput", pressureMinimumInput); put("pressureMaximumInput", pressureMaximumInput)
         put("pressureResponseCurve", buildJsonArray { PressureResponseCurve.normalize(pressureResponseCurve).forEach { add(kotlinx.serialization.json.JsonPrimitive(it)) } })
         put("showInputDiagnostics", showInputDiagnostics); put("showStrokeTraceOverlay", showStrokeTraceOverlay)
@@ -131,6 +132,7 @@ object AppSettingsBackupCodec {
             specialRulerAngleDegrees = app.inkloom.document.RulerGuideState.normalizeAngle(float("specialRulerAngleDegrees", defaults.specialRulerAngleDegrees)), specialRulerSpacing = float("specialRulerSpacing", defaults.specialRulerSpacing).coerceIn(16f, 400f),
             stylusPrimaryButton = enum("stylusPrimaryButton", defaults.stylusPrimaryButton), stylusSecondaryButton = enum("stylusSecondaryButton", defaults.stylusSecondaryButton),
             stylusPrimaryTrigger = enum("stylusPrimaryTrigger", defaults.stylusPrimaryTrigger), stylusSecondaryTrigger = enum("stylusSecondaryTrigger", defaults.stylusSecondaryTrigger),
+            globalStrokeStabilization = float("globalStrokeStabilization", defaults.globalStrokeStabilization).coerceIn(0f, 1f),
             pressureSensitivity = float("pressureSensitivity", defaults.pressureSensitivity).coerceIn(.25f, 2.5f), pressureMinimumInput = minimum, pressureMaximumInput = maximum,
             pressureResponseCurve = PressureResponseCurve.normalize(floatList("pressureResponseCurve", defaults.pressureResponseCurve)),
             showInputDiagnostics = boolean("showInputDiagnostics", defaults.showInputDiagnostics), showStrokeTraceOverlay = boolean("showStrokeTraceOverlay", defaults.showStrokeTraceOverlay),

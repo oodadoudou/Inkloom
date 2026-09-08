@@ -33,7 +33,7 @@ internal fun BrushOptionDescriptor.localizedLabel(language: UiLanguage): String 
     "paperGrainScale" -> "纸纹缩放"
     "paperGrainDensity" -> "纸纹密度"
     "paperGrainStrength" -> "纸纹强度"
-    "smoothing" -> "平滑"
+    "smoothing" -> "此笔刷防抖"
     "taperStartEnabled" -> "起笔渐细"
     "taperEndEnabled" -> "收笔渐细"
     "textureDepth" -> "深度"
@@ -60,7 +60,7 @@ internal fun BrushOptionGroup.localizedLabel(language: UiLanguage): String = whe
     BrushOptionGroup.PRESSURE -> language.text("Pressure", "压力")
     BrushOptionGroup.TILT -> language.text("Tilt", "倾斜")
     BrushOptionGroup.PAPER -> language.text("Grain", "颗粒")
-    BrushOptionGroup.STROKE -> language.text("Stabilization & taper", "稳定与渐细")
+    BrushOptionGroup.STROKE -> language.text("Stabilization", "防抖修正")
     BrushOptionGroup.WET_MIX -> language.text("Wet mix", "湿混")
 }
 

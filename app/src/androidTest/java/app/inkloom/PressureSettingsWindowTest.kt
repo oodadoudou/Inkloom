@@ -66,6 +66,20 @@ class PressureSettingsWindowTest {
             app.inkloom.settings.AppSettingsStore(instrumentation.targetContext).load().pressureResponseCurve)
     }
 
+    @Test fun globalStabilizationSliderPersistsAndReachesTheTestCanvas() {
+        tap("Settings")
+        val label = "Global stabilization (%) slider"
+        compose.onNode(hasScrollAction() and hasAnyAncestor(isDialog())).performScrollToNode(hasContentDescription(label))
+        tap(label)
+        val settings = app.inkloom.settings.AppSettingsStore(instrumentation.targetContext).load()
+        assertTrue(settings.globalStrokeStabilization > 0f)
+        compose.onNode(hasScrollAction() and hasAnyAncestor(isDialog())).performScrollToNode(hasText("Reset pressure settings"))
+        assertEquals(settings.globalStrokeStabilization, canvas().globalStrokeStabilization, 0f)
+        val view = canvas()
+        stroke(pagePoint(view, .2f, .4f), pagePoint(view, .8f, .4f))
+        compose.waitUntil(5_000) { (view.activeRasterSnapshotForTest()?.tileCount ?: 0) > 0 }
+    }
+
     private fun pagePoint(view: InkCanvasView, x: Float, y: Float): Offset {
         val location = IntArray(2)
         instrumentation.runOnMainSync { view.getLocationOnScreen(location) }

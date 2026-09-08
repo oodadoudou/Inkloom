@@ -234,8 +234,8 @@ object BrushOptionDescriptors {
 
     private val STROKE = listOf(
         BrushOptionDescriptor(
-            id = "smoothing", label = "Smoothing", group = BrushOptionGroup.STROKE,
-            valueRange = 0f..1f, defaultValue = 0f, capability = BrushCapability.TAPER,
+            id = "smoothing", label = "Brush stabilization", group = BrushOptionGroup.STROKE,
+            valueRange = 0f..1f, defaultValue = 0f, capability = null,
             get = { it.stroke?.smoothing ?: 0f },
             set = { p, v -> p.copy(stroke = (p.stroke ?: StrokeSettings()).copy(smoothing = v)) },
         ),

@@ -15,6 +15,7 @@ class AppSettingsBackupCodecTest {
         val settings = AppSettings(
             language = UiLanguage.SIMPLIFIED_CHINESE,
             fingerDrawing = true,
+            globalStrokeStabilization = .65f,
             gradientKind = GradientKind.ELLIPSE,
             gradientEdgeMode = GradientEdgeMode.MIRROR,
             gradientReverse = true,

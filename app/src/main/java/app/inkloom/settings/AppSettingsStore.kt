@@ -105,6 +105,7 @@ data class AppSettings(
     val stylusSecondaryButton: StylusButtonAction = StylusButtonAction.LASSO,
     val stylusPrimaryTrigger: ShortcutTrigger = ShortcutTrigger.HOLD,
     val stylusSecondaryTrigger: ShortcutTrigger = ShortcutTrigger.HOLD,
+    val globalStrokeStabilization: Float = 0f,
     val pressureSensitivity: Float = 1f,
     val pressureMinimumInput: Float = 0f,
     val pressureMaximumInput: Float = 1f,
@@ -285,6 +286,7 @@ class AppSettingsStore(context: Context) {
             stylusSecondaryButton = enumValue(preferences.getString("stylusSecondaryButton", null), StylusButtonAction.LASSO),
             stylusPrimaryTrigger = enumValue(preferences.getString("stylusPrimaryTrigger", null), ShortcutTrigger.HOLD),
             stylusSecondaryTrigger = enumValue(preferences.getString("stylusSecondaryTrigger", null), ShortcutTrigger.HOLD),
+            globalStrokeStabilization = preferences.getFloat("globalStrokeStabilization", 0f).takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: 0f,
             pressureSensitivity = preferences.getFloat("pressureSensitivity", 1f).coerceIn(.25f, 2.5f),
             pressureMinimumInput = pressureMinimum,
             pressureMaximumInput = pressureMaximum,
@@ -440,6 +442,7 @@ class AppSettingsStore(context: Context) {
             .putString("stylusSecondaryButton", persisted.stylusSecondaryButton.name)
             .putString("stylusPrimaryTrigger", persisted.stylusPrimaryTrigger.name)
             .putString("stylusSecondaryTrigger", persisted.stylusSecondaryTrigger.name)
+            .putFloat("globalStrokeStabilization", persisted.globalStrokeStabilization.takeIf(Float::isFinite)?.coerceIn(0f, 1f) ?: 0f)
             .putFloat("pressureSensitivity", persisted.pressureSensitivity)
             .putFloat("pressureMinimumInput", persisted.pressureMinimumInput)
             .putFloat("pressureMaximumInput", persisted.pressureMaximumInput)

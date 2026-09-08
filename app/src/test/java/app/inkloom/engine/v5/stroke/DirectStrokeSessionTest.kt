@@ -11,6 +11,34 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DirectStrokeSessionTest {
+    @Test fun `global and brush correction are independent bounded stages and preserve dynamics`() {
+        fun run(global: Float, brush: Float, batchSize: Int): List<StrokeSample> {
+            val session = CausalStrokeSession(21L, 2f, brush, global)
+            val result = mutableListOf<StrokeSample>()
+            result += session.begin(sample(0, InputPhase.DOWN)).samples
+            val moves = (1L..40L).map { index -> sample(index, InputPhase.MOVE).copy(
+                point = DocumentPoint(index.toFloat() * 2, if (index % 2L == 0L) 2f else -2f),
+                pressure = index / 40f, tiltRadians = .3f, orientationRadians = .6f) }
+            moves.chunked(batchSize).forEach { result += session.append(InputSampleBatch.owned(it)).samples }
+            result += session.finish(sample(41, InputPhase.UP)).samples
+            return result
+        }
+        val raw = run(0f, 0f, 1)
+        val global = run(.7f, 0f, 1)
+        val brush = run(0f, .7f, 1)
+        val both = run(.7f, .7f, 1)
+        assertEquals(global, brush)
+        assertFalse(raw == global)
+        assertFalse(global == both)
+        assertEquals("Android event batching must not alter stabilization", both, run(.7f, .7f, 7))
+        raw.zip(both).forEach { (input, output) ->
+            assertEquals(input.pressure, output.pressure, 0f)
+            assertEquals(input.tiltRadians, output.tiltRadians, 0f)
+            assertEquals(input.orientationRadians, output.orientationRadians, 0f)
+            assertTrue(kotlin.math.hypot(input.point.x - output.point.x, input.point.y - output.point.y) <= 5.901f)
+        }
+    }
+
     @Test fun `each physical sample is emitted exactly once and finish does no replay`() {
         val session = DirectStrokeSession(91L, maximumRadius = 3f)
         val down = session.begin(sample(0, InputPhase.DOWN))

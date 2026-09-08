@@ -37,6 +37,7 @@ class RealtimeStrokeDispatcher(
             val brushRuntimeId: String,
             val sample: RawDocumentSample,
             val smoothing: Float,
+            val globalSmoothing: Float = 0f,
         ) : Command
 
         data class Replace(val start: Start, val samples: List<RawDocumentSample>) : Command
@@ -71,11 +72,12 @@ class RealtimeStrokeDispatcher(
         brushRuntimeId: String,
         sample: RawDocumentSample,
         smoothing: Float = 0f,
+        globalSmoothing: Float = 0f,
     ): Boolean {
         check(!closed) { "Stroke dispatcher is closed" }
         if (!contactOpen.compareAndSet(false, true)) return false
         contactLayerId = layerId
-        enqueue(Command.Start(layerId, surface, paintOp, maximumRadius, brushRuntimeId, sample, smoothing))
+        enqueue(Command.Start(layerId, surface, paintOp, maximumRadius, brushRuntimeId, sample, smoothing, globalSmoothing))
         return true
     }
 
@@ -205,6 +207,7 @@ class RealtimeStrokeDispatcher(
                                 command.brushRuntimeId,
                                 command.sample,
                                 command.smoothing,
+                                command.globalSmoothing,
                             )
                             onDamageReady(command.surface, result)
                         }
