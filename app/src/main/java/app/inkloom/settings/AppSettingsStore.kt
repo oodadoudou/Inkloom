@@ -53,15 +53,15 @@ data class AppSettings(
     val panelTabOrder: String = "PAGES,BRUSHES,LAYERS",
     val pagePanelXDp: Float = 88f,
     val pagePanelYDp: Float = 18f,
-    val pagePanelWidthDp: Float = 224f,
+    val pagePanelWidthDp: Float = 176f,
     val pagePanelHeightDp: Float = 620f,
     val brushPanelXDp: Float = 1180f,
     val brushPanelYDp: Float = 18f,
-    val brushPanelWidthDp: Float = 620f,
+    val brushPanelWidthDp: Float = 400f,
     val brushPanelHeightDp: Float = 620f,
     val layerPanelXDp: Float = 1440f,
     val layerPanelYDp: Float = 18f,
-    val layerPanelWidthDp: Float = 420f,
+    val layerPanelWidthDp: Float = 288f,
     val layerPanelHeightDp: Float = 620f,
     val showToolbar: Boolean = true,
     val toolbarOffsetXDp: Float = 16f,
@@ -170,6 +170,20 @@ class AppSettingsStore(context: Context) {
     private val orientation = WorkspaceOrientation.from(context.resources.configuration)
 
     fun load(): AppSettings {
+        // Upgrade former defaults once. After this, every resize (even back to an old
+        // default width) is retained; opening settings must never reset a custom size.
+        if (!preferences.getBoolean("compactPanelDefaultsApplied", false)) {
+            preferences.edit {
+                for ((key, previous, compact) in listOf(
+                    Triple("pagePanelWidthDp", setOf(224f, 300f), 176f),
+                    Triple("brushPanelWidthDp", setOf(620f), 400f),
+                    Triple("layerPanelWidthDp", setOf(420f), 288f),
+                )) {
+                    if (!preferences.contains(key) || preferences.getFloat(key, compact) in previous) putFloat(key, compact)
+                }
+                putBoolean("compactPanelDefaultsApplied", true)
+            }
+        }
         val savedInputVersion = preferences.getInt(INPUT_GESTURES_VERSION_KEY, 0)
         val migrateCanvasRotation = savedInputVersion < 2
         val pressureMinimum = preferences.getFloat("pressureMinimumInput", 0f).coerceIn(0f, .95f)
@@ -216,19 +230,15 @@ class AppSettingsStore(context: Context) {
                 if (saved == 18f) 88f else saved
             }.coerceIn(-2400f, 2400f),
             pagePanelYDp = preferences.getFloat("pagePanelYDp", 18f).coerceIn(-2400f, 2400f),
-            pagePanelWidthDp = preferences.getFloat("pagePanelWidthDp", 224f).let { saved ->
-                // 300dp was the old oversized default. Migrate only that exact untouched value;
-                // deliberately resized panels remain user-controlled.
-                if (saved == 300f) 224f else saved
-            }.coerceIn(80f, 1200f),
+            pagePanelWidthDp = preferences.getFloat("pagePanelWidthDp", 176f).coerceIn(80f, 1200f),
             pagePanelHeightDp = preferences.getFloat("pagePanelHeightDp", 620f).coerceIn(120f, 1600f),
             brushPanelXDp = preferences.getFloat("brushPanelXDp", 1180f).coerceIn(-2400f, 2400f),
             brushPanelYDp = preferences.getFloat("brushPanelYDp", 18f).coerceIn(-2400f, 2400f),
-            brushPanelWidthDp = preferences.getFloat("brushPanelWidthDp", 620f).coerceIn(80f, 1200f),
+            brushPanelWidthDp = preferences.getFloat("brushPanelWidthDp", 400f).coerceIn(80f, 1200f),
             brushPanelHeightDp = preferences.getFloat("brushPanelHeightDp", 620f).coerceIn(120f, 1600f),
             layerPanelXDp = preferences.getFloat("layerPanelXDp", 1440f).coerceIn(-2400f, 2400f),
             layerPanelYDp = preferences.getFloat("layerPanelYDp", 18f).coerceIn(-2400f, 2400f),
-            layerPanelWidthDp = preferences.getFloat("layerPanelWidthDp", 420f).coerceIn(80f, 1200f),
+            layerPanelWidthDp = preferences.getFloat("layerPanelWidthDp", 288f).coerceIn(80f, 1200f),
             layerPanelHeightDp = preferences.getFloat("layerPanelHeightDp", 620f).coerceIn(120f, 1600f),
             showToolbar = preferences.getBoolean("showToolbar", true),
             toolbarOffsetXDp = preferences.getFloat("toolbarOffsetXDp", 16f).coerceIn(-1200f, 1200f),

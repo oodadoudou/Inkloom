@@ -142,9 +142,14 @@ class AppSettingsStoreTest {
         try {
             val store = AppSettingsStore(context)
             val migrated = store.load()
-            assertEquals(224f, migrated.pagePanelWidthDp)
+            assertEquals(176f, migrated.pagePanelWidthDp)
             store.save(migrated.copy(pagePanelWidthDp = 268f))
             assertEquals(268f, store.load().pagePanelWidthDp)
+            store.save(migrated.copy(pagePanelWidthDp = 300f, brushPanelWidthDp = 620f, layerPanelWidthDp = 420f))
+            val custom = store.load()
+            assertEquals(300f, custom.pagePanelWidthDp)
+            assertEquals(620f, custom.brushPanelWidthDp)
+            assertEquals(420f, custom.layerPanelWidthDp)
         } finally {
             preferences.edit().clear().commit()
         }

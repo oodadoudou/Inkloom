@@ -1805,7 +1805,7 @@ private fun EditorScreen(
                 syncCanvasInput(prepareAssets = remembered != null)
                 if (alreadySelected || !brushesOpen) onToggleBrushes()
             })
-            ProcreateTopButton(Icons.Outlined.AutoFixOff, tr("Eraser", "橡皮"), selected = tool == EditorTool.ERASER, onClick = {
+            ProcreateTopButton(InkloomIcons.Eraser, tr("Eraser", "橡皮"), selected = tool == EditorTool.ERASER, onClick = {
                 exitCanvasNavigation()
                 val eraser = activeBrush?.takeIf(BrushRoleClassifier::isEraser)
                     ?: brushes.filter(BrushRoleClassifier::isEraser).maxByOrNull(ImportedBrush::lastUsedAt)
@@ -6081,7 +6081,7 @@ private fun ToolDockItems(tool: EditorTool, onTool: (EditorTool) -> Unit, onUndo
     }
     BrushPresetToolButton(EditorTool.PEN, Icons.Outlined.Brush, tr("Brush", "笔刷"), tool, libraryPresets.filterNot(BrushRoleClassifier::isEraser), selectedBrushId, eraserPreset, onTool, onSystemPreset, onEraserPreset, onBrushPreset)
     ToolButton(EditorTool.HIGHLIGHTER, Icons.Outlined.BorderColor, tr("Marker", "标记笔"), tool, onTool)
-    BrushPresetToolButton(EditorTool.ERASER, Icons.Outlined.AutoFixOff, tr("Eraser", "橡皮"), tool, libraryPresets.filter(BrushRoleClassifier::isEraser), selectedBrushId, eraserPreset, onTool, onSystemPreset, onEraserPreset, onBrushPreset)
+    BrushPresetToolButton(EditorTool.ERASER, InkloomIcons.Eraser, tr("Eraser", "橡皮"), tool, libraryPresets.filter(BrushRoleClassifier::isEraser), selectedBrushId, eraserPreset, onTool, onSystemPreset, onEraserPreset, onBrushPreset)
     ToolButton(EditorTool.SELECT, Icons.Outlined.Gesture, tr("Select", "选择"), tool, onTool)
     if (vertical) {
         HorizontalDivider(Modifier.width(30.dp).padding(vertical = 2.dp), color = OutlineSoft)
@@ -8485,7 +8485,7 @@ private fun ProcreateBrushLibrary(
             }
             Row(Modifier.weight(1f)) {
                 LazyColumn(
-                    Modifier.width(154.dp).fillMaxHeight().background(Color.White).border(1.dp, OutlineSoft),
+                    Modifier.width(120.dp).fillMaxHeight().background(Color.White).border(1.dp, OutlineSoft),
                     state = categoryListState,
                     contentPadding = PaddingValues(vertical = 7.dp),
                 ) {

@@ -108,9 +108,9 @@ object WorkspaceLayoutProfilesCodec {
         boolean("leftDockStacked"), boolean("rightDockStacked"), boolean("bottomDockStacked"), boolean("freeDockStacked"),
         enum("leftDockActivePanel", WorkspacePanelKind.PAGES), enum("rightDockActivePanel", WorkspacePanelKind.BRUSHES), enum("bottomDockActivePanel", WorkspacePanelKind.PAGES), enum("freeDockActivePanel", WorkspacePanelKind.BRUSHES),
         WorkspacePanelTabs.encodeOrder(WorkspacePanelTabs.normalizeOrder(text("panelTabOrder"))),
-        float("pagePanelXDp", 18f), float("pagePanelYDp", 18f), float("pagePanelWidthDp", 300f), float("pagePanelHeightDp", 620f),
-        float("brushPanelXDp", 1180f), float("brushPanelYDp", 18f), float("brushPanelWidthDp", 620f), float("brushPanelHeightDp", 620f),
-        float("layerPanelXDp", 1440f), float("layerPanelYDp", 18f), float("layerPanelWidthDp", 420f), float("layerPanelHeightDp", 620f),
+        float("pagePanelXDp", 18f), float("pagePanelYDp", 18f), float("pagePanelWidthDp", 176f), float("pagePanelHeightDp", 620f),
+        float("brushPanelXDp", 1180f), float("brushPanelYDp", 18f), float("brushPanelWidthDp", 400f), float("brushPanelHeightDp", 620f),
+        float("layerPanelXDp", 1440f), float("layerPanelYDp", 18f), float("layerPanelWidthDp", 288f), float("layerPanelHeightDp", 620f),
         float("toolbarOffsetXDp", 16f), float("toolbarOffsetYDp", 16f), boolean("verticalToolbar", true), enum("toolbarDock", ToolbarDock.LEFT),
     ).normalizedWorkspace()
 
