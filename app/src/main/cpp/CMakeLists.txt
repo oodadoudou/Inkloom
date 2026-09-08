@@ -4,6 +4,7 @@ project(inkloom_engine_v5 LANGUAGES CXX)
 add_library(inkloom_engine_v5 SHARED
     v5_composite.cpp
     v5_raster_ops.cpp
+    v5_stamp_coverage.cpp
 )
 
 target_compile_features(inkloom_engine_v5 PRIVATE cxx_std_20)

@@ -1,5 +1,6 @@
 package app.inkloom.engine.v5.raster
 
+import app.inkloom.engine.v5.tools.NativeRasterOps
 import app.inkloom.engine.v5.material.DocumentPaperGrain
 import app.inkloom.engine.v5.material.BrushTipMask
 import app.inkloom.engine.v5.material.PressureResponse
@@ -407,6 +408,24 @@ class StampPaintOp(
                                 tileTop + localDirty.bottom,
                             )
                         )
+                        if (selection == null && definition.paperGrain == null &&
+                            definition.transferMode == DabTransferMode.UNIFORM_GLAZE &&
+                            definition.blend != DryBlend.DESTINATION_OUT
+                        ) {
+                            val tip = dab.nativeTip
+                            val grain = stream.nativeGrain
+                            if (NativeRasterOps.depositUniformStamp(
+                                pixels, stride, tileLeft, tileTop,
+                                overlap.left, overlap.top, overlap.right, overlap.bottom,
+                                dab.centerX, dab.centerY, dab.radiusX, dab.radiusY,
+                                dab.cosine, dab.sine, dab.depositedAlpha,
+                                tip.coverage, tip.width, tip.height,
+                                grain?.coverage, grain?.width ?: 0, grain?.height ?: 0,
+                                definition.grainDensity, stream.grainCosine, stream.grainSine,
+                                stream.grainWavelength, definition.grainMovement,
+                                definition.grainPhaseX, definition.grainPhaseY, definition.colorArgb,
+                            )) continue
+                        }
                         for (y in overlap.top until overlap.bottom) for (x in overlap.left until overlap.right) {
                             var coverage = transferredCoverage(coverageAt(dab, definition, stream, x, y), definition.transferMode)
                             if (coverage <= 0f) continue
@@ -474,7 +493,7 @@ class StampPaintOp(
                 val tileTop = key.row * document.tileSize
                 val localDirty = requireNotNull(dirtyByTile[key])
                 val alpha = coverageTiles.getOrPut(key) { ByteArray(document.tileSize * document.tileSize) }
-                tileDabs.forEach { dab ->
+                tileDabs.forEach dabLoop@ { dab ->
                     val overlap = dab.bounds(document.logicalWidth, document.logicalHeight).intersect(
                         PixelRect(
                             tileLeft + localDirty.left,
@@ -483,6 +502,21 @@ class StampPaintOp(
                             tileTop + localDirty.bottom,
                         ),
                     )
+                    if (definition.paperGrain == null) {
+                        val tip = dab.nativeTip
+                        val grain = stream.nativeGrain
+                        if (NativeRasterOps.accumulateStampCoverage(
+                            alpha, document.tileSize, tileLeft, tileTop,
+                            overlap.left, overlap.top, overlap.right, overlap.bottom,
+                            dab.centerX, dab.centerY, dab.radiusX, dab.radiusY,
+                            dab.cosine, dab.sine, dab.depositedAlpha,
+                            tip.coverage, tip.width, tip.height,
+                            grain?.coverage, grain?.width ?: 0, grain?.height ?: 0,
+                            definition.grainDensity, stream.grainCosine, stream.grainSine,
+                            stream.grainWavelength, definition.grainMovement,
+                            definition.grainPhaseX, definition.grainPhaseY,
+                        )) return@dabLoop
+                    }
                     for (y in overlap.top until overlap.bottom) for (x in overlap.left until overlap.right) {
                         val incoming = (coverageAt(dab, definition, stream, x, y) * 255f + .5f).toInt().coerceIn(0, 255)
                         if (incoming == 0) continue
@@ -505,6 +539,11 @@ class StampPaintOp(
                 val primary = dualCoverage[0][key]
                 val secondary = dualCoverage[1][key]
                 delta.editTile(key, localDirty) { pixels, stride ->
+                    if (selection == null && NativeRasterOps.compositeDualCoverage(
+                        pixels, primary, secondary, stride,
+                        localDirty.left, localDirty.top, localDirty.right, localDirty.bottom,
+                        composite.mode.ordinal, definition.colorArgb, definition.blend == DryBlend.DESTINATION_OUT,
+                    )) return@editTile
                     for (localY in localDirty.top until localDirty.bottom) {
                         for (localX in localDirty.left until localDirty.right) {
                             val x = tileLeft + localX
@@ -581,6 +620,7 @@ class StampPaintOp(
     }
 
     private data class StreamRuntime(val definition: StampBrushDefinition) {
+        val nativeGrain = definition.grain?.nativeLevel(0)
         val grainCosine = cos(definition.grainRotationRadians)
         val grainSine = sin(definition.grainRotationRadians)
         val grainWavelength = (
@@ -600,9 +640,10 @@ class StampPaintOp(
         val paperAttenuation: Float,
         val sequence: Long,
     ) {
-        private val cosine = cos(angleRadians)
-        private val sine = sin(angleRadians)
+        val cosine = cos(angleRadians)
+        val sine = sin(angleRadians)
         private val tipLevel = tip.levelForOutput(radiusX * 2f, radiusY * 2f)
+        val nativeTip = tip.nativeLevel(tipLevel)
 
         fun bounds(width: Int, height: Int): PixelRect {
             val extentX = kotlin.math.abs(cosine * radiusX) + kotlin.math.abs(sine * radiusY) + 1f

@@ -141,6 +141,74 @@ internal object NativeRasterOps {
         reservoirAlpha, reservoirRed, reservoirGreen, reservoirBlue,
     ) else -1
 
+    /** Exact bounded dual-stream alpha accumulation; false leaves the destination untouched. */
+    fun accumulateStampCoverage(
+        destination: ByteArray, stride: Int, tileLeft: Int, tileTop: Int,
+        left: Int, top: Int, right: Int, bottom: Int,
+        centerX: Float, centerY: Float, radiusX: Float, radiusY: Float,
+        cosine: Float, sine: Float, depositedAlpha: Float,
+        tip: ByteArray, tipWidth: Int, tipHeight: Int,
+        grain: ByteArray?, grainWidth: Int, grainHeight: Int,
+        grainDensity: Float, grainCosine: Float, grainSine: Float,
+        grainWavelength: Float, grainMovement: Float, grainPhaseX: Float, grainPhaseY: Float,
+    ): Boolean = nativeLibraryLoaded && nativeAccumulateStampCoverage(
+        destination, stride, tileLeft, tileTop, left, top, right, bottom,
+        centerX, centerY, radiusX, radiusY, cosine, sine, depositedAlpha,
+        tip, tipWidth, tipHeight, grain, grainWidth, grainHeight,
+        grainDensity, grainCosine, grainSine, grainWavelength, grainMovement, grainPhaseX, grainPhaseY,
+    )
+
+    private external fun nativeAccumulateStampCoverage(
+        destination: ByteArray, stride: Int, tileLeft: Int, tileTop: Int,
+        left: Int, top: Int, right: Int, bottom: Int,
+        centerX: Float, centerY: Float, radiusX: Float, radiusY: Float,
+        cosine: Float, sine: Float, depositedAlpha: Float,
+        tip: ByteArray, tipWidth: Int, tipHeight: Int,
+        grain: ByteArray?, grainWidth: Int, grainHeight: Int,
+        grainDensity: Float, grainCosine: Float, grainSine: Float,
+        grainWavelength: Float, grainMovement: Float, grainPhaseX: Float, grainPhaseY: Float,
+    ): Boolean
+
+    /** Exact bounded uniform-glaze source-over deposition; false leaves the destination untouched. */
+    fun depositUniformStamp(
+        destination: IntArray, stride: Int, tileLeft: Int, tileTop: Int,
+        left: Int, top: Int, right: Int, bottom: Int,
+        centerX: Float, centerY: Float, radiusX: Float, radiusY: Float,
+        cosine: Float, sine: Float, depositedAlpha: Float,
+        tip: ByteArray, tipWidth: Int, tipHeight: Int,
+        grain: ByteArray?, grainWidth: Int, grainHeight: Int,
+        grainDensity: Float, grainCosine: Float, grainSine: Float,
+        grainWavelength: Float, grainMovement: Float, grainPhaseX: Float, grainPhaseY: Float, color: Int,
+    ): Boolean = nativeLibraryLoaded && nativeDepositUniformStamp(
+        destination, stride, tileLeft, tileTop, left, top, right, bottom,
+        centerX, centerY, radiusX, radiusY, cosine, sine, depositedAlpha,
+        tip, tipWidth, tipHeight, grain, grainWidth, grainHeight,
+        grainDensity, grainCosine, grainSine, grainWavelength, grainMovement, grainPhaseX, grainPhaseY, color,
+    )
+
+    private external fun nativeDepositUniformStamp(
+        destination: IntArray, stride: Int, tileLeft: Int, tileTop: Int,
+        left: Int, top: Int, right: Int, bottom: Int,
+        centerX: Float, centerY: Float, radiusX: Float, radiusY: Float,
+        cosine: Float, sine: Float, depositedAlpha: Float,
+        tip: ByteArray, tipWidth: Int, tipHeight: Int,
+        grain: ByteArray?, grainWidth: Int, grainHeight: Int,
+        grainDensity: Float, grainCosine: Float, grainSine: Float,
+        grainWavelength: Float, grainMovement: Float, grainPhaseX: Float, grainPhaseY: Float, color: Int,
+    ): Boolean
+
+    fun compositeDualCoverage(
+        destination: IntArray, primary: ByteArray?, secondary: ByteArray?, stride: Int,
+        left: Int, top: Int, right: Int, bottom: Int, mode: Int, color: Int, erase: Boolean,
+    ): Boolean = nativeLibraryLoaded && nativeCompositeDualCoverage(
+        destination, primary, secondary, stride, left, top, right, bottom, mode, color, erase,
+    )
+
+    private external fun nativeCompositeDualCoverage(
+        destination: IntArray, primary: ByteArray?, secondary: ByteArray?, stride: Int,
+        left: Int, top: Int, right: Int, bottom: Int, mode: Int, color: Int, erase: Boolean,
+    ): Boolean
+
     fun unpremultiplyInPlace(pixels: IntArray): Boolean =
         nativeLibraryLoaded && nativeUnpremultiplyInPlace(pixels)
 
