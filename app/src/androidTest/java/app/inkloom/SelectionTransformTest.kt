@@ -40,6 +40,34 @@ class SelectionTransformTest {
         try { InstrumentationRegistry.getInstrumentation().runOnMainSync { view.onTouchEvent(e) } } finally { e.recycle() }
     }
 
+    @Test fun everyTransformEntryRejectsLockedOrUnsupportedLayersWithoutMutation() {
+        for (highPrecision in listOf(false, true)) {
+            val format = if (highPrecision) app.inkloom.engine.v5.surface.PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16
+                else app.inkloom.engine.v5.surface.PixelTileFormat.PREMULTIPLIED_SRGB_8888
+            val surface = PixelTileSurface(64, 64, tileSize = 64, pixelFormat = format)
+            val mask = MaskTileSurface(64, 64, tileSize = 64)
+            mask.beginWrite("selection").use { it.setAlpha(30, 30, 255); it.commit().close() }
+            val runtime = DocumentSelectionRuntime(tileSize = 64)
+            val reasons = mutableListOf<String>()
+            val view = canvas {
+                activeLayerId = "raster"
+                setRasterLayerSurfaces(mapOf("raster" to surface))
+                if (!highPrecision) setProtectedLayerIds(setOf("raster"))
+                bindDocumentSelectionState(runtime.stateFor("document", "page", 64, 64))
+                replaceSelectionFromMask(mask.snapshot())
+                onPaintCapabilityRejected = { reasons += it }
+                org.junit.Assert.assertFalse(enterFreeTransform())
+                org.junit.Assert.assertFalse(flipSelection(true))
+                scaleSelection(2f)
+                rotateSelection(45f)
+            }
+            assertEquals(4, reasons.size)
+            assertTrue(reasons.all { it.isNotBlank() })
+            assertEquals(0L, surface.revision)
+            assertTrue(view.hasActiveSelection())
+        }
+    }
+
     @Test fun freeTransformMapsDocumentMaskAndRasterResolutions() {
         val surface = PixelTileSurface(64, 64, tileSize = 64)
         surface.beginWrite("raster square").run {

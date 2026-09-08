@@ -4267,6 +4267,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun beginRasterSelectionTransform(): Boolean {
+        if (!validateRasterSelectionTransform()) return false
         cancelRasterSelectionTransform()
         val surface = rasterTileSurfaceFor(activeLayerId) ?: return false
         val selection = selectionMaskForRasterTools()?.takeUnless(MaskTileSurfaceSnapshot::isEmpty) ?: return false
@@ -4276,6 +4277,7 @@ class InkCanvasView(context: Context) : View(context) {
             true
         }.getOrElse {
             rasterSelectionTransformOriginalMask = null
+            onPaintCapabilityRejected("Unable to prepare this selection for transformation: ${it.message.orEmpty()}")
             false
         }
     }
@@ -5527,9 +5529,7 @@ class InkCanvasView(context: Context) : View(context) {
         return hasSelection()
     }
 
-    /** Existing corner, edge and rotation handles are the free-transform mode. */
-    fun enterFreeTransform(): Boolean {
-        if (!hasSelection()) return false
+    private fun validateRasterSelectionTransform(): Boolean {
         val surface = rasterTileSurfaceFor(activeLayerId)
         val rejection = when {
             activeLayerId in protectedLayerIds -> "Unlock the active layer before transforming its selection"
@@ -5538,6 +5538,12 @@ class InkCanvasView(context: Context) : View(context) {
             else -> null
         }
         if (rejection != null) { onPaintCapabilityRejected(rejection); return false }
+        return true
+    }
+
+    /** Existing corner, edge and rotation handles are the free-transform mode. */
+    fun enterFreeTransform(): Boolean {
+        if (!hasSelection() || !validateRasterSelectionTransform()) return false
         tool = EditorTool.SELECT
         selectionTransformArmed = true
         selectionTransformMode = TRANSFORM_NONE
