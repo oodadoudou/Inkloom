@@ -470,6 +470,41 @@ class RasterPaintCommitTest {
         settlePublishedStroke(view)
     }
 
+    @Test fun queuedPublicationRetainsEachContactsImmutableGeneration() {
+        val surface = PixelTileSurface(600, 600)
+        val committed = mutableListOf<RasterLayerCommit>()
+        val view = createCanvas {
+            tool = EditorTool.PEN
+            activeLayerId = "paint"
+            installV5TestInk(size = 24f)
+            setRasterLayerSurfaces(mapOf("paint" to surface))
+            onRasterLayerCommitted = { committed += it }
+        }
+        // Keep main-thread publication queued while the worker finishes three contacts.
+        // This models a busy presentation thread without relying on scheduler timing.
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            repeat(3) { index ->
+                val x = 80f + index * 100f
+                for (action in intArrayOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_UP)) {
+                    val event = MotionEvent.obtain(0L, index * 10L + action, action, x, 200f, 0)
+                    try { view.onTouchEvent(event) } finally { event.recycle() }
+                }
+                view.awaitV5StrokeWorkerIdleForTest()
+            }
+            assertEquals(3L, surface.revision)
+            assertTrue("Callbacks remain queued while main is occupied", committed.isEmpty())
+        }
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { }
+        assertEquals(listOf(1L, 2L, 3L), committed.map { it.snapshot.revision })
+        val bounds = PixelRect(0, 0, 600, 600)
+        val finalPixels = committed.last().snapshot.copyPremultipliedPixels(bounds)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.undo() }
+        assertEquals(4L, committed.last().snapshot.revision)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.redo() }
+        assertEquals(5L, committed.last().snapshot.revision)
+        org.junit.Assert.assertArrayEquals(finalPixels, committed.last().snapshot.copyPremultipliedPixels(bounds))
+    }
+
     @Test fun rapidConsecutiveContactsDoNotWaitForThePreviousPublicationOnDown() {
         val surface = PixelTileSurface(1200, 900)
         var commits = 0

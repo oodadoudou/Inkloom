@@ -745,12 +745,11 @@ class InkCanvasView(context: Context) : View(context) {
         current?.apply { union(changed) } ?: Rect(changed)
 
     private fun commitRasterLayerPatch(
-        surface: PixelTileSurface,
+        snapshot: app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot,
         dirtyBounds: Rect?,
         layerId: String = activeLayerId,
     ) {
         val dirty = dirtyBounds ?: return
-        val snapshot = surface.snapshot()
         val clipped = PixelRect(dirty.left, dirty.top, dirty.right, dirty.bottom).intersect(
             PixelRect(0, 0, snapshot.logicalWidth, snapshot.logicalHeight),
         )
@@ -758,7 +757,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun publishRasterSelectionEdit(layerId: String, surface: PixelTileSurface, bounds: PixelRect) {
-        commitRasterLayerPatch(surface, Rect(bounds.left, bounds.top, bounds.right, bounds.bottom), layerId)
+        commitRasterLayerPatch(surface.snapshot(), Rect(bounds.left, bounds.top, bounds.right, bounds.bottom), layerId)
         val displayLeft = (bounds.left * width.toFloat() / surface.logicalWidth).toInt() - 2
         val displayTop = (bounds.top * height.toFloat() / surface.logicalHeight).toInt() - 2
         val displayRight = (bounds.right * width.toFloat() / surface.logicalWidth).toInt() + 2
@@ -4201,23 +4200,24 @@ class InkCanvasView(context: Context) : View(context) {
         surface: PixelTileSurface,
         record: app.inkloom.engine.v5.surface.PixelTileTransactionRecord,
         dirtyBounds: Rect,
+        publishedSnapshot: app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot = surface.snapshot(),
     ) {
-        fun publish() {
-            commitRasterLayerPatch(surface, dirtyBounds, layerId)
+        fun publish(snapshot: app.inkloom.engine.v5.surface.PixelTileSurfaceSnapshot) {
+            commitRasterLayerPatch(snapshot, dirtyBounds, layerId)
             invalidateV5Damage(
                 surface,
                 PixelRect(dirtyBounds.left, dirtyBounds.top, dirtyBounds.right, dirtyBounds.bottom),
             )
         }
-        publish()
+        publish(publishedSnapshot)
         recordExternalEdit(
             undo = {
                 surface.apply(record, PixelTileSurface.HistoryDirection.UNDO)
-                publish()
+                publish(surface.snapshot())
             },
             redo = {
                 surface.apply(record, PixelTileSurface.HistoryDirection.REDO)
-                publish()
+                publish(surface.snapshot())
             },
             dispose = record::close,
         )
@@ -5148,6 +5148,7 @@ class InkCanvasView(context: Context) : View(context) {
                     surface,
                     published.record,
                     Rect(bounds.left, bounds.top, bounds.right, bounds.bottom),
+                    published.snapshot,
                 )
             } ?: run {
                 published.record.close()
