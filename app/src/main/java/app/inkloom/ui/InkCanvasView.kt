@@ -764,6 +764,7 @@ class InkCanvasView(context: Context) : View(context) {
         val displayBottom = (bounds.bottom * height.toFloat() / surface.logicalHeight).toInt() + 2
         invalidate(displayLeft, displayTop, displayRight, displayBottom)
     }
+    var onCanvasContact: () -> Unit = {}
     var onColorDropCommitted: (Int) -> Unit = {}
     var onSelectionActiveChanged: (Boolean) -> Unit = {}
         set(value) {
@@ -1705,6 +1706,10 @@ class InkCanvasView(context: Context) : View(context) {
             else -> event.actionMasked
         }
         if (effectiveAction == MotionEvent.ACTION_DOWN && !hasFocus()) requestFocus()
+        if (effectiveAction == MotionEvent.ACTION_DOWN && event.pointerCount == 1 &&
+            event.getX(pointerIndex) in 0f..width.toFloat() && event.getY(pointerIndex) in 0f..height.toFloat() &&
+            (isStylus || event.getTouchMajor(pointerIndex) < StylusInputClassifier.PALM_TOUCH_MAJOR_PX)
+        ) onCanvasContact()
         updateContactCursor(event, pointerIndex, isStylus)
         if (effectiveAction == MotionEvent.ACTION_DOWN) {
             // Every new contact stream is a hard recovery boundary. This also recovers from a

@@ -2579,6 +2579,7 @@ private fun EditorScreen(
                     },
                     onUndoGesture = { canvasView?.undo() },
                     onRedoGesture = { canvasView?.redo() },
+                    onCanvasContact = { if (brushesOpen) onToggleBrushes() },
                     onColorDropCommitted = { dropped ->
                         offeredContinueFillColor = dropped
                         continueFilling = false
@@ -4847,7 +4848,7 @@ private fun pageTemplateKind(template: PageTemplate): String = when (template.ba
 }
 
 @Composable
-private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
+private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvasView) -> Unit, page: InkPage, documentId: String, onSetLayerRasterTileSurface: (String, String, String, RasterTileSurfaceRef?, Int) -> Unit, onElement: (String, String, PageElement) -> Unit, onRemoveElement: (String, String, String) -> Unit, onDuplicateElement: (String, String, String) -> Unit, selectedElementId: String?, onSelectElement: (String?) -> Unit, assets: DocumentAssetService, selectionRuntime: DocumentSelectionRuntime, settings: AppSettings, viewportState: ViewportState, onZoom: (Float, Float, Float) -> Unit, onPinch: (Float, Float, Float, Float, Float) -> Unit, onPan: (Float, Float) -> Unit, onRotate: (Float) -> Unit, onUndoGesture: () -> Unit, onRedoGesture: () -> Unit, onCanvasContact: () -> Unit, onColorDropCommitted: (Int) -> Unit, activeBrush: ImportedBrush?, brushSize: Float, brushOpacity: Float, brushColor: Int, secondaryBrushColor: Int, shapeKind: ShapeKind, activeLayerId: String, eraserPreset: EraserPreset, forceNavigation: Boolean, rotateNavigation: Boolean, searchBounds: PdfTextBounds?, onPdfGotoLink: (PdfGotoLink) -> Unit, documents: List<InkDocument>, onOpenInternalLink: (String, String) -> Unit, onInputDiagnostic: (String, Float, Float, Int) -> Unit, onColorSampled: (Int) -> Unit, onBrushSizeAdjusted: (Float) -> Unit, onKeyInputDiagnostic: (KeyInputDiagnostic) -> Unit, onMotionInputDiagnostic: (MotionInputDiagnostic) -> Unit, onShortcutAction: (ShortcutActivation) -> Unit, onRulerGuideChange: (RulerGuideState) -> Unit, onCanvasGuideChange: (CanvasGuideState) -> Unit, onPerspectiveGuideChange: (PerspectiveGuideState) -> Unit, onSpecialRulerChange: (SpecialRulerState) -> Unit, onSelectionActiveChanged: (Boolean) -> Unit) {
     val renderedPage = remember(page) { PageCropTransform.project(page) }
     val selectionMaskSize = remember(renderedPage.width, renderedPage.height) {
         requireNotNull(SelectionMaskCompositor.maskSize(renderedPage.width, renderedPage.height))
@@ -5098,6 +5099,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onPdfGotoLink = onPdfGotoLink
                 view.onUndoGesture = onUndoGesture
                 view.onRedoGesture = onRedoGesture
+                view.onCanvasContact = onCanvasContact
                 view.onColorDropCommitted = onColorDropCommitted
                 view.onSelectionActiveChanged = onSelectionActiveChanged
                 view.singleFingerDoubleTapUndo = settings.singleFingerDoubleTapUndo
@@ -5180,6 +5182,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.onPdfGotoLink = onPdfGotoLink
                 view.onUndoGesture = onUndoGesture
                 view.onRedoGesture = onRedoGesture
+                view.onCanvasContact = onCanvasContact
                 view.onColorDropCommitted = onColorDropCommitted
                 view.onSelectionActiveChanged = onSelectionActiveChanged
                 view.singleFingerDoubleTapUndo = settings.singleFingerDoubleTapUndo
@@ -8166,7 +8169,11 @@ private fun ProcreateBrushLibrary(
         systemCategories.none { systemCategory -> BrushGroupOperations.isWithin(importedCategory, systemCategory) }
     }
     val allCategories = listOf(tr("All", "全部")) + categoriesInsideSystemRoots + standaloneImportedCategories + ungroupedLabel
-    var selectedCategory by rememberSaveable { mutableStateOf(systemCategories.first()) }
+    val activeInventoryBrush = (systemBrushes + usableImportedBrushes).firstOrNull { it.id == selectedBrushId }
+    val activeGroup = activeInventoryBrush?.groupName?.ifBlank { ungroupedLabel } ?: requestedGroup
+    var selectedCategory by rememberSaveable {
+        mutableStateOf(activeGroup?.takeIf { it in allCategories } ?: systemCategories.first())
+    }
     var pendingCategoryReveal by remember { mutableStateOf<String?>(null) }
     val categoryListState = rememberLazyListState()
     var addMenu by remember { mutableStateOf(false) }
@@ -8339,8 +8346,8 @@ private fun ProcreateBrushLibrary(
     LaunchedEffect(selectedCategory, allCategories) {
         allCategories.distinct().indexOf(selectedCategory).takeIf { it >= 0 }?.let { categoryListState.animateScrollToItem(it) }
     }
-    LaunchedEffect(requestedGroup, selectedBrushId) {
-        requestedGroup?.let { requested -> allCategories.firstOrNull { it.equals(requested, true) }?.let { selectedCategory = it } }
+    LaunchedEffect(activeGroup, selectedBrushId) {
+        activeGroup?.let { requested -> allCategories.firstOrNull { it.equals(requested, true) }?.let { selectedCategory = it } }
     }
     val usableLibraryBrushes = remember(systemBrushes, usableImportedBrushes) {
         BrushLibraryInventory.selectable(systemBrushes, usableImportedBrushes)
@@ -8358,6 +8365,19 @@ private fun ProcreateBrushLibrary(
         if (managingBrushes && selectedBrushIds.isEmpty()) managingBrushes = false
     }
     var quickPropertiesOpen by remember { mutableStateOf(false) }
+    val presetListState = rememberLazyListState()
+    val presetGridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+    LaunchedEffect(selectedBrushId, selectedCategory, gridLayout) {
+        val selectedIndex = displayed.indexOfFirst { it.id == selectedBrushId }
+        if (selectedIndex >= 0) {
+            if (gridLayout) {
+                if (presetGridState.layoutInfo.visibleItemsInfo.none { it.index == selectedIndex }) presetGridState.scrollToItem(selectedIndex)
+            } else if (presetListState.layoutInfo.visibleItemsInfo.none { it.index == selectedIndex }) {
+                presetListState.scrollToItem(selectedIndex)
+            }
+        }
+    }
+
     val quickBrush = usableLibraryBrushes.firstOrNull { it.id == selectedBrushId }
     val panelShape = RoundedCornerShape(14.dp)
     Surface(
@@ -8582,6 +8602,7 @@ private fun ProcreateBrushLibrary(
                 }
                 if (gridLayout) LazyVerticalGrid(
                     columns = GridCells.Fixed(2),
+                    state = presetGridState,
                     modifier = Modifier.weight(1f).fillMaxHeight().semantics { contentDescription = brushListDescription },
                     contentPadding = PaddingValues(8.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -8614,6 +8635,7 @@ private fun ProcreateBrushLibrary(
                         }
                     }
                 } else LazyColumn(
+                    state = presetListState,
                     modifier = Modifier.weight(1f).fillMaxHeight().semantics { contentDescription = brushListDescription },
                     contentPadding = PaddingValues(vertical = 6.dp),
                 ) {
