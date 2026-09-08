@@ -22,6 +22,53 @@ import kotlin.math.atan2
  * so this proxy maps the complete event through the actual source and destination View matrices.
  */
 class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
+    var imageAtPoint: (Float, Float) -> String? = { _, _ -> null }
+    var onImageLongPress: (String) -> Unit = {}
+    private var heldImageId: String? = null
+    private var imageHoldDown: MotionEvent? = null
+    private var imageHoldClaimed = false
+    private val imageHoldSlop = android.view.ViewConfiguration.get(context).scaledTouchSlop
+    private val imageHold = Runnable {
+        val id = heldImageId ?: return@Runnable
+        val down = imageHoldDown ?: return@Runnable
+        // Cancel any provisional ink before handing the contact to the image editor.
+        val cancel = MotionEvent.obtain(down).apply { action = MotionEvent.ACTION_CANCEL }
+        try { forward(cancel, retainDrawingFrame = true) { canvas, packet -> canvas.dispatchTouchEvent(packet) } }
+        finally { cancel.recycle() }
+        imageHoldClaimed = true
+        clearHoverCursor()
+        onImageLongPress(id)
+    }
+
+    private fun cancelImageHold() {
+        removeCallbacks(imageHold)
+        heldImageId = null
+        imageHoldDown?.recycle()
+        imageHoldDown = null
+    }
+
+    private fun updateImageHold(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            cancelImageHold()
+            imageHoldClaimed = false
+            val canvas = target ?: return false
+            if (event.getToolType(0) == MotionEvent.TOOL_TYPE_ERASER || event.buttonState != 0) return false
+            val packet = coordinateMapper.map(event, this, canvas, canvas.viewportState()) ?: return false
+            try { heldImageId = imageAtPoint(packet.event.x / canvas.width.coerceAtLeast(1), packet.event.y / canvas.height.coerceAtLeast(1)) }
+            finally { packet.close() }
+            if (heldImageId != null) {
+                imageHoldDown = MotionEvent.obtain(event)
+                postDelayed(imageHold, android.view.ViewConfiguration.getLongPressTimeout().toLong())
+            }
+        }
+        val claimed = imageHoldClaimed
+        val terminal = event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL
+        if (terminal || event.pointerCount > 1 || imageHoldDown?.let {
+                kotlin.math.hypot(event.x - it.x, event.y - it.y) > imageHoldSlop
+            } == true) cancelImageHold()
+        if (terminal) imageHoldClaimed = false
+        return claimed
+    }
     var target: InkCanvasView? = null
         set(value) {
             if (field === value) return
@@ -80,6 +127,7 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
         coordinateMapper.snapshot(this, canvas, canvas.viewportState())
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (updateImageHold(event)) return true
         val stylusIndex = event.stylusPointerIndex(activeStylusPointerId)
         if (stylusIndex >= 0 && event.actionMasked in setOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN)) {
             activeStylusPointerId = event.getPointerId(stylusIndex)
@@ -181,6 +229,8 @@ class InkViewportTouchProxy(context: Context) : FrameLayout(context) {
     }
 
     override fun onDetachedFromWindow() {
+        cancelImageHold()
+        imageHoldClaimed = false
         target = null
         super.onDetachedFromWindow()
     }

@@ -1561,6 +1561,14 @@ private fun EditorScreen(
     var insertLinkPageId by remember(document.id) { mutableStateOf(selectedPage.id) }
     var insertShape by remember { mutableStateOf(ShapeKind.RECTANGLE) }
     var selectedElementId by remember(selectedPage.id) { mutableStateOf<String?>(null) }
+    var imageTransformId by remember(selectedPage.id) { mutableStateOf<String?>(null) }
+    (selectedPage.elements.firstOrNull { it.id == imageTransformId } as? PageElement.Image)?.let { image ->
+        ElementEditorDialog(image, onDismiss = { imageTransformId = null }, onSave = { changed ->
+            val layer = selectedPage.layers.firstOrNull { it.id == image.layerId }
+            if (layer != null && !LayerHierarchy.effectiveLocked(selectedPage.layers, layer)) onElement(document.id, selectedPage.id, changed)
+            imageTransformId = null
+        })
+    }
     var layersOpen by remember { mutableStateOf(settings.showLayerPanel) }
     LaunchedEffect(settings.showLayerPanel) { layersOpen = settings.showLayerPanel }
     LaunchedEffect(brushesOpen, settings.brushPanelDock, settings.brushPanelMode, settings.brushPanelLocked) {
@@ -2881,7 +2889,14 @@ private fun EditorScreen(
                 // runaway pan. The proxy maps drawing contacts into the page exactly once.
                 AndroidView(
                     factory = { InkViewportTouchProxy(it) },
-                    update = { it.target = canvasView },
+                    update = { proxy ->
+                        proxy.target = canvasView
+                        proxy.imageAtPoint = { x, y ->
+                            if (handToolEnabled || handToolHeld || rotateToolEnabled || rotateToolHeld || tool == EditorTool.ERASER) null
+                            else ImageElementHitTest.find(PageCropTransform.project(selectedPage), x, y)?.id
+                        }
+                        proxy.onImageLongPress = { imageTransformId = it }
+                    },
                     modifier = Modifier.fillMaxSize(),
                 )
                 // Page objects need their own transformed interaction plane above the stable
@@ -5629,6 +5644,26 @@ private fun ObjectElementView(
     if (editing) ElementEditorDialog(element, onDismiss = { editing = false }, onSave = { onChange(it); editing = false })
 }
 @Composable
+private fun ImageTransformPreview(image: PageElement.Image) {
+    val crop = image.crop.normalized()
+    val bitmap = remember(image.assetPath, crop) { ImageAssetDecoder.decodeCropped(image.assetPath, crop) }
+    DisposableEffect(bitmap) { onDispose { bitmap?.recycle() } }
+    BoxWithConstraints(Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(8.dp)).background(Workspace), contentAlignment = Alignment.Center) {
+        val ratio = (image.width / image.height.coerceAtLeast(1f)).coerceIn(.01f, 100f)
+        val previewWidth = minOf(maxWidth.value * .8f, maxHeight.value * .8f * ratio)
+        val shape = when (image.mask) {
+            ImageMask.RECTANGLE -> androidx.compose.ui.graphics.RectangleShape
+            ImageMask.ROUNDED -> RoundedCornerShape((image.cornerRadius / image.width.coerceAtLeast(1f) * previewWidth).dp)
+            ImageMask.OVAL -> CircleShape
+        }
+        bitmap?.let { pixels ->
+            Image(pixels.asImageBitmap(), tr("Image transform preview", "图片变换预览"), contentScale = ContentScale.FillBounds,
+                modifier = Modifier.size(previewWidth.dp, (previewWidth / ratio).dp).graphicsLayer(rotationZ = image.rotationDegrees, alpha = image.opacity).clip(shape))
+        }
+    }
+}
+
+@Composable
 private fun ElementEditorDialog(element: PageElement, onDismiss: () -> Unit, onSave: (PageElement) -> Unit) {
     var draft by remember(element.id) { mutableStateOf(element) }
     val defaultLinkedPageTitle = tr("Linked page", "链接页面")
@@ -5636,8 +5671,15 @@ private fun ElementEditorDialog(element: PageElement, onDismiss: () -> Unit, onS
     val canSave = (draft as? PageElement.Link)?.let { InternalLinkTarget.isInternal(it) || normalizedDraftLink != null } ?: true
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(tr("Object properties", "对象属性")) },
+        title = { Text(if (element is PageElement.Image) tr("Transform image", "变换图片") else tr("Object properties", "对象属性")) },
         text = { LazyColumn(Modifier.widthIn(min = 340.dp, max = 520.dp).heightIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (draft is PageElement.Image) {
+                val image = draft as PageElement.Image
+                item { ImageTransformPreview(image) }
+                item { BrushSettingSlider("Width", image.width, 40f..3200f) { draft = image.copy(width = it) } }
+                item { BrushSettingSlider("Height", image.height, 40f..4526f) { draft = image.copy(height = it) } }
+                item { BrushSettingSlider("Rotation", image.rotationDegrees, -180f..180f) { draft = image.copy(rotationDegrees = it) } }
+            }
             when (val current = draft) {
                 is PageElement.Text -> {
                     item { OutlinedTextField(current.text, { draft = current.copy(text = it) }, label = { Text(tr("Text", "文本")) }, minLines = 3, modifier = Modifier.fillMaxWidth()) }
@@ -5688,9 +5730,11 @@ private fun ElementEditorDialog(element: PageElement, onDismiss: () -> Unit, onS
                 }
             }
             item { BrushSettingSlider("Opacity", draft.opacity, .05f..1f) { draft = setElementOpacity(draft, it) } }
-            item { BrushSettingSlider("Rotation", draft.rotationDegrees, -180f..180f) { draft = setElementRotation(draft, it) } }
-            item { BrushSettingSlider("Width", draft.width, 40f..1600f) { draft = setElementSize(draft, it, draft.height) } }
-            item { BrushSettingSlider("Height", draft.height, 40f..2263f) { draft = setElementSize(draft, draft.width, it) } }
+            if (draft !is PageElement.Image) {
+                item { BrushSettingSlider("Rotation", draft.rotationDegrees, -180f..180f) { draft = setElementRotation(draft, it) } }
+                item { BrushSettingSlider("Width", draft.width, 40f..1600f) { draft = setElementSize(draft, it, draft.height) } }
+                item { BrushSettingSlider("Height", draft.height, 40f..2263f) { draft = setElementSize(draft, draft.width, it) } }
+            }
         } },
         confirmButton = { Button(enabled = canSave, onClick = {
             val saved = (draft as? PageElement.Link)?.let { link ->
@@ -9188,7 +9232,9 @@ private fun BrushTipPreview(brush: ImportedBrush, modifier: Modifier = Modifier)
 
 @Composable
 private fun BrushSettingSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, onValue: (Float) -> Unit) {
-    Column { Row { Text(localizedBrushLabel(label), Modifier.weight(1f), fontSize = 12.sp); Text(if (range.endInclusive > 10f) "%.1f".format(value) else "%.2f".format(value), color = MutedInk, fontSize = 11.sp) }; Slider(value, onValue, valueRange = range) }
+    val name = localizedBrushLabel(label)
+    val description = tr("$name slider", "$name 滑块")
+    Column { Row { Text(name, Modifier.weight(1f), fontSize = 12.sp); Text(if (range.endInclusive > 10f) "%.1f".format(value) else "%.2f".format(value), color = MutedInk, fontSize = 11.sp) }; Slider(value, onValue, valueRange = range, modifier = Modifier.semantics { contentDescription = description }) }
 }
 @Composable
 private fun SettingsDialog(
