@@ -1007,7 +1007,9 @@ private fun LibraryScreen(documents: List<InkDocument>, folders: List<InkFolder>
                         ) {
                             PageTemplatePreview(PageTemplateOperations.withPaperColor(template, newNotePaperColor), selected)
                             Spacer(Modifier.height(4.dp))
-                            Text(name, fontSize = 9.sp, maxLines = 1)
+                            Text(name, fontSize = 9.sp, minLines = 2, maxLines = 2,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                         }
                     }
                 }
