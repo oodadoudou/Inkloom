@@ -794,7 +794,7 @@ class DocumentAssetService(private val context: Context) {
         if (includeBackground) {
             canvas.drawColor(if (backgroundVisible) paperColor else Color.WHITE)
             if (backgroundVisible) renderBackground(sourcePage.background, width, sourcePage.backgroundRotationQuarterTurns, sourcePage.crop)?.let { bitmap -> canvas.drawBitmap(bitmap, null, android.graphics.Rect(0, 0, width, height), null); bitmap.recycle() }
-            if (backgroundVisible) (page.background as? PageBackground.Paper)?.let { drawPaperPattern(canvas, it.pattern, width, height) }
+            if (backgroundVisible) (page.background as? PageBackground.Paper)?.let { PaperPatternRenderer.draw(canvas, it.pattern, it.density, width.toFloat(), height.toFloat()) }
         } else canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
         val visibleLayers = page.layers.filter { LayerHierarchy.effectiveVisible(page.layers, it) && it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) && (includeDraftLayers || !it.draft) && (includedLayerIds == null || it.id in includedLayerIds) }
@@ -1066,42 +1066,6 @@ class DocumentAssetService(private val context: Context) {
         }
         v5RasterProjectionExportCount++
         return true
-    }
-
-    private fun drawPaperPattern(canvas: Canvas, pattern: PaperPattern, width: Int, height: Int) {
-        if (pattern == PaperPattern.PLAIN) return
-        val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(227, 227, 227); strokeWidth = 1.5f; style = Paint.Style.STROKE }
-        when (pattern) {
-            PaperPattern.PLAIN -> Unit
-            PaperPattern.RULED -> {
-                var y = 36f
-                while (y < height) { canvas.drawLine(0f, y, width.toFloat(), y, linePaint); y += 36f }
-            }
-            PaperPattern.GRID -> {
-                var x = 0f
-                while (x < width) { canvas.drawLine(x, 0f, x, height.toFloat(), linePaint); x += 32f }
-                var y = 0f
-                while (y < height) { canvas.drawLine(0f, y, width.toFloat(), y, linePaint); y += 32f }
-            }
-            PaperPattern.DOT -> {
-                linePaint.style = Paint.Style.FILL
-                linePaint.color = Color.rgb(217, 217, 217)
-                var x = 8f
-                while (x < width) { var y = 8f; while (y < height) { canvas.drawCircle(x, y, 1.4f, linePaint); y += 28f }; x += 28f }
-            }
-            PaperPattern.CORNELL -> {
-                val cueX = width * .28f
-                val summaryY = height * .78f
-                linePaint.color = Color.rgb(212, 212, 212)
-                canvas.drawLine(cueX, 0f, cueX, summaryY, linePaint)
-                canvas.drawLine(0f, summaryY, width.toFloat(), summaryY, linePaint)
-                linePaint.color = Color.rgb(231, 231, 231)
-                var y = 36f
-                while (y < summaryY) { canvas.drawLine(cueX, y, width.toFloat(), y, linePaint); y += 36f }
-                y = summaryY + 36f
-                while (y < height) { canvas.drawLine(0f, y, width.toFloat(), y, linePaint); y += 36f }
-            }
-        }
     }
 
     private fun rotateQuarterTurns(source: Bitmap?, quarterTurns: Int): Bitmap? {

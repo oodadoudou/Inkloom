@@ -8,6 +8,20 @@ import org.junit.Test
 import java.nio.file.Files
 
 class PageTemplateStoreTest {
+    @Test fun threePatternDensitiesSurviveCustomTemplateRoundTrip() {
+        val root = Files.createTempDirectory("inkloom-densities").toFile()
+        try {
+            for (pattern in PaperPattern.entries.filter { it != PaperPattern.PLAIN }) {
+                val papers = PageTemplateCatalog.builtIns.mapNotNull { it.background as? PageBackground.Paper }.filter { it.pattern == pattern }
+                assertEquals(PaperDensity.entries.toSet(), papers.map { it.density }.toSet())
+            }
+            val page = InkPage(background = PageBackground.Paper(pattern = PaperPattern.DOT, density = PaperDensity.SPACIOUS))
+            val template = PageTemplateOperations.fromPage(page, "Spacious dots")
+            PageTemplateStore(root).add(listOf(template))
+            assertEquals(page.background, PageTemplateStore(root).load().template(template.id)?.background)
+        } finally { root.deleteRecursively() }
+    }
+
     @Test
     fun `custom templates favorites and defaults survive reload`() {
         val root = Files.createTempDirectory("inkloom-page-templates").toFile()

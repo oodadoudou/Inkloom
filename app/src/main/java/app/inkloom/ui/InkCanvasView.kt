@@ -647,6 +647,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var layerElementBitmaps: Map<String, LayerElementBitmaps> = emptyMap()
     var pagePaperColor: Int? = null
         set(value) { if (field != value) { field = value; invalidate() } }
+    var pagePaperDensity = app.inkloom.document.PaperDensity.DENSE
     var pagePaperPattern: PaperPattern? = null
         set(value) { if (field != value) { field = value; invalidate() } }
     var brushSpacing: Float = .12f
@@ -1602,16 +1603,8 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun drawPaperPattern(canvas: Canvas, pattern: PaperPattern) {
-        val guide = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(227, 227, 227); strokeWidth = 1.5f; style = Paint.Style.STROKE }
-        when (pattern) {
-            PaperPattern.PLAIN -> Unit
-            PaperPattern.RULED -> { var y = 36f; while (y < height) { canvas.drawLine(0f, y, width.toFloat(), y, guide); y += 36f } }
-            PaperPattern.GRID -> { var x = 0f; while (x < width) { canvas.drawLine(x, 0f, x, height.toFloat(), guide); x += 32f }; var y = 0f; while (y < height) { canvas.drawLine(0f, y, width.toFloat(), y, guide); y += 32f } }
-            PaperPattern.DOT -> { guide.style = Paint.Style.FILL; guide.color = Color.rgb(217, 217, 217); var x = 8f; while (x < width) { var y = 8f; while (y < height) { canvas.drawCircle(x, y, 1.4f, guide); y += 28f }; x += 28f } }
-            PaperPattern.CORNELL -> { val cueX = width * .28f; val summaryY = height * .78f; guide.color = Color.rgb(212, 212, 212); canvas.drawLine(cueX, 0f, cueX, summaryY, guide); canvas.drawLine(0f, summaryY, width.toFloat(), summaryY, guide); guide.color = Color.rgb(231, 231, 231); var y = 36f; while (y < summaryY) { canvas.drawLine(cueX, y, width.toFloat(), y, guide); y += 36f }; y = summaryY + 36f; while (y < height) { canvas.drawLine(0f, y, width.toFloat(), y, guide); y += 36f } }
-        }
+        app.inkloom.document.PaperPatternRenderer.draw(canvas, pattern, pagePaperDensity, width.toFloat(), height.toFloat())
     }
-
 
     private fun v5EraserTipRequest(path: String): BrushTipMaskRequest = BrushTipMaskRequest(
         path = path,

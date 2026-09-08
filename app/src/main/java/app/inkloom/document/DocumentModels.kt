@@ -222,12 +222,15 @@ fun defaultInkLayers(): List<InkLayer> = listOf(
 @Serializable
 sealed interface PageBackground {
     @Serializable @SerialName("paper")
-    data class Paper(val colorArgb: Long = 0xFFFFFFFF, val pattern: PaperPattern = PaperPattern.PLAIN) : PageBackground
+    data class Paper(val colorArgb: Long = 0xFFFFFFFF, val pattern: PaperPattern = PaperPattern.PLAIN, val density: PaperDensity = PaperDensity.DENSE) : PageBackground
     @Serializable @SerialName("pdf")
     data class Pdf(val assetPath: String, val pageIndex: Int) : PageBackground
     @Serializable @SerialName("image")
     data class Image(val assetPath: String) : PageBackground
 }
+
+@Serializable
+enum class PaperDensity(val spacingScale: Float) { DENSE(1f), MEDIUM(1.7f), SPACIOUS(2.5f) }
 
 @Serializable
 enum class PaperPattern { PLAIN, GRID, DOT, RULED, CORNELL }

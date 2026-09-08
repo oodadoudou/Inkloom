@@ -4680,16 +4680,8 @@ private fun PageInkPreview(page: InkPage, assets: DocumentAssetService, modifier
         return
     }
     Canvas(modifier.background(Color.White)) {
-        val guide = Color(0xFFE1E1E1)
-        when ((page.background as? PageBackground.Paper)?.pattern) {
-            PaperPattern.RULED -> { var y = 8f; while (y < size.height) { drawLine(guide, Offset.Zero.copy(y = y), Offset(size.width, y)); y += 8f } }
-            PaperPattern.GRID -> {
-                var x = 8f; while (x < size.width) { drawLine(guide, Offset(x, 0f), Offset(x, size.height)); x += 8f }
-                var y = 8f; while (y < size.height) { drawLine(guide, Offset(0f, y), Offset(size.width, y)); y += 8f }
-            }
-            PaperPattern.DOT -> { var x = 7f; while (x < size.width) { var y = 7f; while (y < size.height) { drawCircle(guide, .7f, Offset(x, y)); y += 8f }; x += 8f } }
-            PaperPattern.CORNELL -> { drawLine(guide, Offset(size.width * .28f, 0f), Offset(size.width * .28f, size.height * .78f)); drawLine(guide, Offset(0f, size.height * .78f), Offset(size.width, size.height * .78f)) }
-            else -> Unit
+        (page.background as? PageBackground.Paper)?.let { paper ->
+            drawIntoCanvas { canvas -> PaperPatternRenderer.draw(canvas.nativeCanvas, paper.pattern, paper.density, size.width, size.height) }
         }
     }
 }
@@ -4805,14 +4797,7 @@ private fun PageTemplatePreview(template: PageTemplate, selected: Boolean) {
     ) {
         when (val background = template.background) {
             is PageBackground.Paper -> Canvas(Modifier.fillMaxSize().padding(4.dp)) {
-                val guide = Color(0xFFD7D7D7)
-                when (background.pattern) {
-                    PaperPattern.PLAIN -> Unit
-                    PaperPattern.RULED -> { var y = 6f; while (y < size.height) { drawLine(guide, Offset(0f, y), Offset(size.width, y)); y += 7f } }
-                    PaperPattern.GRID -> { var x = 5f; while (x < size.width) { drawLine(guide, Offset(x, 0f), Offset(x, size.height)); x += 7f }; var y = 5f; while (y < size.height) { drawLine(guide, Offset(0f, y), Offset(size.width, y)); y += 7f } }
-                    PaperPattern.DOT -> { var x = 4f; while (x < size.width) { var y = 4f; while (y < size.height) { drawCircle(guide, .8f, Offset(x, y)); y += 7f }; x += 7f } }
-                    PaperPattern.CORNELL -> { drawLine(guide, Offset(size.width * .28f, 0f), Offset(size.width * .28f, size.height * .78f)); drawLine(guide, Offset(0f, size.height * .78f), Offset(size.width, size.height * .78f)) }
-                }
+                drawIntoCanvas { canvas -> PaperPatternRenderer.draw(canvas.nativeCanvas, background.pattern, background.density, size.width, size.height) }
             }
             is PageBackground.Image -> Icon(Icons.Outlined.Image, null, tint = MutedInk)
             is PageBackground.Pdf -> Text("PDF", color = Ink, fontSize = 9.sp, fontWeight = FontWeight.Bold)
@@ -4831,13 +4816,22 @@ private fun paperColorName(option: PaperColorOption): String = when (option.id) 
 }
 
 @Composable
-private fun pageTemplateName(template: PageTemplate): String = when (template.id) {
-    "builtin-plain" -> tr("Blank", "空白")
-    "builtin-ruled" -> tr("Ruled", "横线")
-    "builtin-grid" -> tr("Grid", "方格")
-    "builtin-dot" -> tr("Dot grid", "点阵")
-    "builtin-cornell" -> tr("Cornell notes", "康奈尔笔记")
-    else -> template.name
+private fun pageTemplateName(template: PageTemplate): String {
+    if (!PageTemplateCatalog.isBuiltIn(template.id)) return template.name
+    val paper = template.background as? PageBackground.Paper ?: return template.name
+    val name = when (paper.pattern) {
+        PaperPattern.PLAIN -> return tr("Blank", "空白")
+        PaperPattern.RULED -> tr("Ruled", "横线")
+        PaperPattern.GRID -> tr("Grid", "方格")
+        PaperPattern.DOT -> tr("Dot grid", "点阵")
+        PaperPattern.CORNELL -> tr("Cornell notes", "康奈尔笔记")
+    }
+    val spacing = when (paper.density) {
+        PaperDensity.DENSE -> tr("Dense", "密集")
+        PaperDensity.MEDIUM -> tr("Medium", "适中")
+        PaperDensity.SPACIOUS -> tr("Spacious", "宽松")
+    }
+    return "$name · $spacing"
 }
 
 @Composable
@@ -5165,6 +5159,7 @@ private fun PaperCanvas(modifier: Modifier, tool: EditorTool, onView: (InkCanvas
                 view.layerMaskSurfaces = layerMaskSurfaces
                 view.layerOrder = page.layers.filter { it.role !in setOf(LayerRole.BACKGROUND, LayerRole.FOLDER) && LayerHierarchy.effectiveVisible(page.layers, it) }.map(InkLayer::id)
                 view.pagePaperColor = if (renderedPage.background is PageBackground.Paper) (if (backgroundVisible) renderedPage.background.colorArgb.toInt() else AndroidColor.WHITE) else null
+                view.pagePaperDensity = (renderedPage.background as? PageBackground.Paper)?.density ?: PaperDensity.DENSE
                 view.pagePaperPattern = (renderedPage.background as? PageBackground.Paper)?.pattern?.takeIf { backgroundVisible }
                 view.shapeKind = shapeKind
                 view.pageModelWidth = renderedPage.width

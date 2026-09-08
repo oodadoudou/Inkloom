@@ -15,6 +15,31 @@ import org.junit.runner.RunWith
 class PaperTemplateExportTest {
     private val assets = DocumentAssetService(ApplicationProvider.getApplicationContext())
 
+    @Test fun densityChangesSpacingAndExportMatchesLiveCanvasAtDifferentResolutions() {
+        for (density in app.inkloom.document.PaperDensity.entries) {
+            val page = InkPage(background = PageBackground.Paper(pattern = PaperPattern.RULED, density = density))
+            val export = assets.renderPageBitmap(page, 400)
+            val live = android.graphics.Bitmap.createBitmap(export.width, export.height, android.graphics.Bitmap.Config.ARGB_8888)
+            try {
+                val view = app.inkloom.ui.InkCanvasView(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext)
+                androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                    view.layout(0, 0, live.width, live.height)
+                    view.pagePaperColor = Color.WHITE
+                    view.pagePaperPattern = PaperPattern.RULED
+                    view.pagePaperDensity = density
+                    val canvas = android.graphics.Canvas(live)
+                    canvas.drawColor(Color.WHITE)
+                    view.draw(canvas)
+                }
+                val expectedY = (12f * density.spacingScale).toInt()
+                assertNotEquals(Color.WHITE, export.getPixel(200, expectedY))
+                org.junit.Assert.assertEquals(export.getPixel(200, expectedY), live.getPixel(200, expectedY))
+                val large = assets.renderPageBitmap(page, 800)
+                try { assertNotEquals(Color.WHITE, large.getPixel(400, expectedY * 2)) } finally { large.recycle() }
+            } finally { export.recycle(); live.recycle() }
+        }
+    }
+
     @Test
     fun ruledTemplateLinesAreIncludedInRenderedExport() {
         val bitmap = assets.renderPageBitmap(InkPage(background = PageBackground.Paper(pattern = PaperPattern.RULED)), 400)

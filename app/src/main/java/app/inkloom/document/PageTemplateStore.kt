@@ -54,13 +54,18 @@ object PaperColorCatalog {
 }
 
 object PageTemplateCatalog {
-    val builtIns: List<PageTemplate> = PaperPattern.entries.map { pattern ->
-        PageTemplate(
-            id = "builtin-${pattern.name.lowercase()}",
-            name = pattern.name.lowercase().replaceFirstChar(Char::uppercase),
-            background = PageBackground.Paper(pattern = pattern),
-            createdAt = 0L,
-        )
+    val builtIns: List<PageTemplate> = PaperPattern.entries.flatMap { pattern ->
+        val densities = if (pattern == PaperPattern.PLAIN) listOf(PaperDensity.DENSE)
+            else listOf(PaperDensity.MEDIUM, PaperDensity.DENSE, PaperDensity.SPACIOUS)
+        densities.map { density ->
+            val suffix = if (density == PaperDensity.DENSE) "" else "-${density.name.lowercase()}"
+            PageTemplate(
+                id = "builtin-${pattern.name.lowercase()}$suffix",
+                name = pattern.name.lowercase().replaceFirstChar(Char::uppercase),
+                background = PageBackground.Paper(pattern = pattern, density = density),
+                createdAt = 0L,
+            )
+        }
     }
     val blank: PageTemplate = builtIns.first { it.background == PageBackground.Paper(pattern = PaperPattern.PLAIN) }
     fun isBuiltIn(id: String): Boolean = builtIns.any { it.id == id }
