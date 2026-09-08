@@ -213,6 +213,11 @@ class InkCanvasBrushSwitchTest {
                     EraserPreset.NORMAL_FREE,
                 )
                 view.onTouchEvent(stylusEvent(MotionEvent.ACTION_DOWN, 600f, 600f, 1L))
+            }
+            // DOWN is queued on the stroke worker. Observe its published active preview,
+            // still before UP, instead of racing the worker from the input callback.
+            view.awaitV5StrokeWorkerIdleForTest()
+            instrumentation.runOnMainSync {
                 view.draw(Canvas(frame))
             }
 
