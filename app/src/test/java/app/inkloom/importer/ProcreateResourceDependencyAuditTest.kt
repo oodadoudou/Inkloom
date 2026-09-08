@@ -70,15 +70,15 @@ class ProcreateResourceDependencyAuditTest {
                         refs.dualSourceGrainReference,
                     ).distinct()
                     val unsupported = BrushSemanticMapper.describe(brush)
-                        .filter { it.executionDisposition == SemanticExecutionDisposition.UNSUPPORTED_WITH_EXPLICIT_REASON }
+                        .filter { it.executionDisposition != SemanticExecutionDisposition.SUPPORTED_AND_EXECUTED }
                         .map { it.sourceSemantic }
                         .distinct()
                         .sorted()
                     val status = when {
                         terminal.v5PresetJson != null && terminal.report.any {
                             it.startsWith("APPROXIMATED_RESOURCE:")
-                        } -> "PRODUCT_USABLE_APPROXIMATED"
-                        terminal.v5PresetJson != null -> "PRODUCT_USABLE_EXACT"
+                        } -> "COMPILED_WITH_RESOURCE_APPROXIMATION"
+                        terminal.v5PresetJson != null -> "COMPILED_WITH_EMBEDDED_RESOURCES"
                         terminal.report.any { it.contains("parsing failed", ignoreCase = true) } -> "FAILED"
                         missing.isNotEmpty() -> "UNSUPPORTED_MISSING_RESOURCE"
                         else -> "UNSUPPORTED_SEMANTICS"
@@ -143,15 +143,17 @@ class ProcreateResourceDependencyAuditTest {
                 "  {\"brushset\":${json(row.brushset)},\"brushName\":${json(row.brushName)}," +
                     "\"sourceBrushId\":${json(row.sourceBrushId)},\"status\":${json(row.status)}," +
                     "\"missingResources\":[${row.missing.joinToString(",") { json(it) }}]," +
-                    "\"unsupportedSemantics\":[${row.unsupported.joinToString(",") { json(it) }}]}"
+                    "\"nonExecutedSemantics\":[${row.unsupported.joinToString(",") { json(it) }}]}"
             },
         )
         output.resolve("PROCREATE_IMPORT_SUMMARY.md").writeText(buildString {
             appendLine("# Procreate import summary")
             appendLine()
+            appendLine("Parser/compiler audit only. Embedded resources do not prove rendering fidelity, product usability or successful import through the UI. Source-only semantics remain unexecuted.")
+            appendLine()
             counts.forEach { appendLine("- `${it.key}`: ${it.value}") }
-            val usable = counts["PRODUCT_USABLE_EXACT"].orZero() + counts["PRODUCT_USABLE_APPROXIMATED"].orZero()
-            appendLine("- `UI_IMPORTED_SUCCESS_COUNT`: $usable")
+            val compiled = counts["COMPILED_WITH_EMBEDDED_RESOURCES"].orZero() + counts["COMPILED_WITH_RESOURCE_APPROXIMATION"].orZero()
+            appendLine("- `COMPILED_PRESET_COUNT`: $compiled")
             appendLine("- `DISCOVERED`: ${rows.size}")
             appendLine("- `CONSERVATION`: ${rows.size == counts.values.sum()}")
         })
