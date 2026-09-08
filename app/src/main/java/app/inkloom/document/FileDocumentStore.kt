@@ -50,8 +50,19 @@ class FileDocumentStore(private val root: File) {
 
     @Synchronized
     fun deletePermanently(id: String): Boolean {
+        // deleteIfExists distinguishes an already absent checkpoint from denied access.
+        // The durable delete must succeed before the current library forgets its record.
+        try {
+            java.nio.file.Files.deleteIfExists(documentFile(id).toPath())
+        } catch (_: java.io.IOException) {
+            return false
+        } catch (_: SecurityException) {
+            return false
+        }
+        refreshExternalChanges()
         documents.remove(id)
-        return documentFile(id).delete().also { captureObservedFiles() }
+        captureObservedFiles()
+        return true
     }
 
     internal fun append(entry: RecoveryJournalEntry) {

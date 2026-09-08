@@ -634,6 +634,7 @@ fun InkloomApp(initialIntent: Intent?) {
             ).show()
         }.onFailure { importError = it.message }
     }
+    var deletionFailed by remember { mutableStateOf(false) }
     var pendingCoverTitle by remember { mutableStateOf("Untitled Note") }
     var pendingCoverTemplateId by remember { mutableStateOf(PageTemplateCatalog.blank.id) }
     var pendingCoverPaperColor by remember { mutableLongStateOf(PaperColorCatalog.WHITE) }
@@ -692,7 +693,7 @@ fun InkloomApp(initialIntent: Intent?) {
             onTags = viewModel::setDocumentTags,
             onTrash = viewModel::trash,
             onRestore = viewModel::restore,
-            onDelete = viewModel::deletePermanently,
+            onDelete = { documentId -> deletionFailed = !viewModel.deletePermanently(documentId) },
             onRename = viewModel::rename,
             onDuplicate = viewModel::duplicateDocument,
             onCreateFolder = viewModel::createFolder,
@@ -804,6 +805,12 @@ fun InkloomApp(initialIntent: Intent?) {
         )
     }
     }
+    if (deletionFailed) AlertDialog(
+        onDismissRequest = { deletionFailed = false },
+        title = { Text(tr("Couldn’t delete notebook", "无法删除笔记")) },
+        text = { Text(tr("The notebook is still in Trash. Your pages and saved colors have been kept. Please try again.", "笔记仍在废纸篓中，页面和已保存的颜色均已保留。请重试。")) },
+        confirmButton = { TextButton(onClick = { deletionFailed = false }) { Text(tr("OK", "确定")) } },
+    )
     if (settingsOpen) SettingsDialog(
         settings,
         brushes = importedBrushes,

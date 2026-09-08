@@ -120,6 +120,67 @@ class FileDocumentStoreTest {
         assertEquals(gradient.maskAssetPath, restored.maskAssetPath)
     }
 
+    @Test fun failedPermanentDeleteKeepsTheCheckpointAndInMemoryDocument() {
+        val root = Files.createTempDirectory("inkloom-delete-failure")
+        val directory = root.resolve("documents")
+        val store = FileDocumentStore(root.toFile())
+        val document = InkDocument(title = "Keep after failed deletion")
+        store.save(document)
+        val checkpoint = directory.resolve("${document.id}.json")
+        val bytes = Files.readAllBytes(checkpoint)
+        val permissions = Files.getPosixFilePermissions(directory)
+        try {
+            Files.setPosixFilePermissions(directory, java.nio.file.attribute.PosixFilePermissions.fromString("r-x------"))
+            org.junit.Assert.assertFalse("Fault fixture must deny directory writes", Files.isWritable(directory))
+            org.junit.Assert.assertFalse(store.deletePermanently(document.id))
+            assertEquals("A failed delete must not disappear from the current library", document, store.get(document.id))
+            assertEquals(listOf(document), store.list())
+            org.junit.Assert.assertArrayEquals(bytes, Files.readAllBytes(checkpoint))
+            assertEquals(document, FileDocumentStore(root.toFile()).get(document.id))
+        } finally {
+            Files.setPosixFilePermissions(directory, permissions)
+            root.toFile().deleteRecursively()
+        }
+    }
+
+    @Test fun deletingAnAbsentCheckpointIsIdempotentAndJournalCannotResurrectIt() {
+        val root = Files.createTempDirectory("inkloom-delete-journal").toFile()
+        try {
+            val store = FileDocumentStore(root)
+            val document = InkDocument(title = "Delete with pending journal")
+            store.save(document)
+            store.append(RecoveryJournalEntry.ElementUpserted(
+                document.id, document.pages.single().id,
+                PageElement.Text(x = .1f, y = .2f, text = "Pending ink"),
+            ))
+            assertTrue(store.deletePermanently(document.id))
+            assertTrue(store.deletePermanently(document.id))
+            assertNull(store.get(document.id))
+            assertNull(FileDocumentStore(root).get(document.id))
+            store.recover()
+            assertNull(FileDocumentStore(root).get(document.id))
+            assertTrue(store.list().isEmpty())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun deleteKeepsDocumentsSavedByAnotherLocalStore() {
+        val root = Files.createTempDirectory("inkloom-delete-reader").toFile()
+        try {
+            val store = FileDocumentStore(root)
+            val removed = InkDocument(title = "Remove")
+            val kept = InkDocument(title = "Other reader saved")
+            store.save(removed)
+            FileDocumentStore(root).save(kept)
+            assertTrue(store.deletePermanently(removed.id))
+            assertEquals(listOf(kept), store.list())
+            assertEquals(listOf(kept), FileDocumentStore(root).list())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun savesListsAndDeletesDocuments() {
         val store = FileDocumentStore(Files.createTempDirectory("inkloom-store").toFile())
         val document = InkDocument(title = "Persistent note")

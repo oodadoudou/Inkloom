@@ -130,12 +130,13 @@ class InkloomViewModel(application: Application) : AndroidViewModel(application)
     fun setDocumentTags(documentId: String, tags: List<String>) = update(documentId) { it.copy(tags = normalizeTags(tags), updatedAt = System.currentTimeMillis()) }
     fun trash(documentId: String) = update(documentId) { it.copy(trashedAt = System.currentTimeMillis(), updatedAt = System.currentTimeMillis()) }
     fun restore(documentId: String) = update(documentId) { it.copy(trashedAt = null, updatedAt = System.currentTimeMillis()) }
-    fun deletePermanently(documentId: String) {
+    fun deletePermanently(documentId: String): Boolean {
+        if (!store.deletePermanently(documentId)) return false
         selectionRuntime.releaseDocument(documentId)
-        store.deletePermanently(documentId)
         DrawingColorStore(getApplication()).remove(documentId)
-        refresh()
+        refreshSelection()
         scheduleAssetGarbageCollection()
+        return true
     }
     fun duplicateDocument(documentId: String) {
         val source = store.get(documentId) ?: return
