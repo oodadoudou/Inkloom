@@ -149,7 +149,6 @@ internal object NativeRasterOps {
         grainMovement: Float,
         grainPhaseX: Float,
         grainPhaseY: Float,
-        grainFloor: Float,
         baseDeposition: Float,
         transferMode: Int,
         reservoirAlpha: Float,
@@ -162,7 +161,7 @@ internal object NativeRasterOps {
         outerRadius, innerRadius, inverseEdge,
         tip, tipWidth, tipHeight, grain, grainWidth, grainHeight,
         grainDensity, grainCosine, grainSine, grainWavelength, grainMovement,
-        grainPhaseX, grainPhaseY, grainFloor, baseDeposition, transferMode,
+        grainPhaseX, grainPhaseY, baseDeposition, transferMode,
         reservoirAlpha, reservoirRed, reservoirGreen, reservoirBlue,
     ) else -1
 
@@ -435,7 +434,6 @@ internal object NativeRasterOps {
         grainMovement: Float,
         grainPhaseX: Float,
         grainPhaseY: Float,
-        grainFloor: Float,
         baseDeposition: Float,
         transferMode: Int,
         reservoirAlpha: Float,

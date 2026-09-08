@@ -211,23 +211,9 @@ class WetPaintOp(
             track.reservoir = track.reservoir.mix(fresh, freshRatio)
             var dirty: PixelRect? = null
             repeat(definition.particlesPerPlot) { particle ->
-                rasterizeDeposit(sample, track, directionRadians, diameter, particle, grainFloor = 0f)?.let { bounds ->
+                rasterizeDeposit(sample, track, directionRadians, diameter, particle)?.let { bounds ->
                     dirty = dirty?.union(bounds) ?: bounds
                 }
-            }
-            // Sparse stamp/grain combinations can legitimately sample an all-zero patch at the
-            // first contact. Professional brush engines still leave a visible tap instead of
-            // silently accepting a stroke with an empty transaction. Retry only that first dab,
-            // preserving the authored tip and grain while applying a very small grain floor.
-            if (dirty == null && track.dabSequence == 0L && definition.grain != null) {
-                dirty = rasterizeDeposit(
-                    sample,
-                    track,
-                    directionRadians,
-                    diameter,
-                    particle = 0,
-                    grainFloor = FIRST_DAB_GRAIN_FLOOR,
-                )
             }
             track.dabSequence++
             return dirty
@@ -239,7 +225,6 @@ class WetPaintOp(
             directionRadians: Float,
             diameter: Float,
             particle: Int,
-            grainFloor: Float,
         ): PixelRect? {
             val tip = definition.tips.takeIf { it.isNotEmpty() }?.let { tips ->
                 tips[deterministicTipIndex(track.dabSequence, definition.renderSeed, tips.size)]
@@ -350,7 +335,6 @@ class WetPaintOp(
                             grainMovement = definition.grainMovement,
                             grainPhaseX = definition.grainPhaseX,
                             grainPhaseY = definition.grainPhaseY,
-                            grainFloor = grainFloor,
                             baseDeposition = baseDeposition,
                             transferMode = definition.transferMode.ordinal,
                             reservoirAlpha = track.reservoir.a,
@@ -395,7 +379,7 @@ class WetPaintOp(
                                 repeat(rotatedY / grainWavelength + definition.grainPhaseY),
                             )
                             coverage *= 1f - definition.grainDensity +
-                                maxOf(sampled, grainFloor) * definition.grainDensity
+                                sampled * definition.grainDensity
                         }
                         if (coverage <= 0f) continue
                         selection?.let { mask ->
@@ -459,10 +443,6 @@ class WetPaintOp(
     }
 
     private enum class State { ACTIVE, FINISHED, PUBLISHED, CANCELED }
-
-    private companion object {
-        const val FIRST_DAB_GRAIN_FLOOR = .04f
-    }
 
     private fun deterministicTipIndex(sequence: Long, seed: Int, count: Int): Int {
         if (count == 1) return 0

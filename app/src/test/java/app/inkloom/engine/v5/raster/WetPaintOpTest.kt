@@ -42,7 +42,7 @@ class WetPaintOpTest {
         assertTrue(alpha(.8f, false, true) > flow)
     }
 
-    @Test fun `first tap remains visible when grain samples an empty patch`() {
+    @Test fun `empty grain never invents pigment on first contact`() {
         val surface = PixelTileSurface(160, 160)
         val emptyGrain = BrushTipMask(4, 4, ByteArray(16))
         val paint = WetPaintOp(
@@ -65,8 +65,8 @@ class WetPaintOpTest {
         paint.finish(stroke.finish(sample(1, InputPhase.UP, 84f, 80f)))
         val published = paint.publish()
 
-        assertTrue("A supported wet stamp may not silently commit an empty first tap", published.record.changedTileCount > 0)
-        assertTrue((surface.pixelAt(80, 80) ushr 24) > 0)
+        assertEquals("Zero authored coverage must remain zero", 0, published.record.changedTileCount)
+        assertEquals(0, surface.pixelAt(80, 80))
         published.record.close()
     }
 

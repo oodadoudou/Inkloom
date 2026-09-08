@@ -494,7 +494,6 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeDepositTexturedWet(
     jfloat grain_movement,
     jfloat grain_phase_x,
     jfloat grain_phase_y,
-    jfloat grain_floor,
     jfloat base_deposition,
     jint transfer_mode,
     jfloat reservoir_alpha,
@@ -561,7 +560,7 @@ Java_app_inkloom_engine_v5_tools_NativeRasterOps_nativeDepositTexturedWet(
                 const float raw_v = rotated_y / grain_wavelength + grain_phase_y;
                 const float sampled = sample_alpha_mask(
                     grain, grain_width, grain_height, raw_u - std::floor(raw_u), raw_v - std::floor(raw_v));
-                coverage *= 1.0f - grain_density + std::max(sampled, grain_floor) * grain_density;
+                coverage *= 1.0f - grain_density + sampled * grain_density;
             }
             if (coverage <= 0.0f) continue;
             const float alpha = clamp01(base_deposition * coverage);
