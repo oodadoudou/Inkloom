@@ -4,6 +4,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class BrushUsageStateTest {
+    @Test fun `tool return choices remain independent even for pinned factory brushes`() {
+        val state = BrushUsageState().pin("system-hb-pencil")
+            .used("system-hb-pencil", eraser = false).used("soft-eraser", eraser = true)
+        assertEquals("system-hb-pencil", state.lastPaintBrushId)
+        assertEquals("soft-eraser", state.lastEraserBrushId)
+        assertEquals(listOf("soft-eraser"), state.recentIds)
+        assertEquals("system-hb-pencil", state.clear("system-hb-pencil").lastPaintBrushId)
+    }
+
     @Test fun `pinned collection is unlimited and does not consume recent slots`() {
         var state = BrushUsageState()
         repeat(1024) { state = state.pin("brush-$it") }

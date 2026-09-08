@@ -34,6 +34,7 @@ class BrushWindowReturnTest {
                 .putBoolean("showBrushPanel", false).putBoolean("showLayerPanel", false)
                 .putBoolean("showPageRail", false).commit()
             context.getSharedPreferences("inkloom_brushes", Context.MODE_PRIVATE).edit().clear().commit()
+            context.getSharedPreferences("inkloom_brush_usage", Context.MODE_PRIVATE).edit().clear().commit()
             context.filesDir.resolve("library.json").delete()
             base.evaluate()
         }
@@ -82,6 +83,22 @@ class BrushWindowReturnTest {
         assertTrue("Brush window recomposition restored erased pixels", erased(requireNotNull(view.activeRasterSnapshotForTest())))
         compose.activityRule.scenario.recreate(); compose.waitForIdle()
         assertTrue("Activity recreation restored erased pixels", erased(requireNotNull(canvas().activeRasterSnapshotForTest())))
+    }
+
+    @Test fun eraserToBrushRestoresFactoryPencilAndItsCategoryAfterRestart() {
+        tap("New Note"); tap("Create")
+        val view = canvas()
+        tap("Brushes"); tap("Brush category Pencil"); tap("Brush preset HB Pencil")
+        stroke(pagePoint(view, .15f, .35f), pagePoint(view, .35f, .35f))
+        tap("Eraser")
+        stroke(pagePoint(view, .2f, .3f), pagePoint(view, .2f, .4f))
+        compose.activityRule.scenario.recreate(); compose.waitForIdle()
+        tap("Brushes")
+        assertEquals("Factory brush return must use durable tool history", "system-hb-pencil", canvas().brushId)
+        compose.waitUntil(5_000) { hasLabel("Brush preset HB Pencil") }
+        val current = canvas()
+        stroke(pagePoint(current, .15f, .55f), pagePoint(current, .35f, .55f))
+        compose.waitUntil(10_000) { current.lastBrushExecutionFingerprint?.presetId == "system-hb-pencil" }
     }
 
     private fun hasLabel(label: String): Boolean {

@@ -8,9 +8,17 @@ data class BrushUsageState(
     val recentIds: List<String> = emptyList(),
     val pinnedIds: List<String> = emptyList(),
     val category: String? = null,
+    val lastPaintBrushId: String? = null,
+    val lastEraserBrushId: String? = null,
 ) {
-    fun used(id: String): BrushUsageState = if (id.isBlank() || id in pinnedIds) this else
-        copy(recentIds = (listOf(id) + recentIds).distinct().take(RECENT_COUNT))
+    fun used(id: String, eraser: Boolean? = null): BrushUsageState {
+        if (id.isBlank()) return this
+        return copy(
+            recentIds = if (id in pinnedIds) recentIds else (listOf(id) + recentIds).distinct().take(RECENT_COUNT),
+            lastPaintBrushId = if (eraser == false) id else lastPaintBrushId,
+            lastEraserBrushId = if (eraser == true) id else lastEraserBrushId,
+        )
+    }
 
     fun pin(id: String): BrushUsageState = if (id.isBlank()) this else
         copy(pinnedIds = (listOf(id) + pinnedIds).distinct(), recentIds = recentIds - id)

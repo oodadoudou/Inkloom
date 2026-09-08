@@ -1682,11 +1682,19 @@ private fun EditorScreen(
         selectedBrushId = usedBrush.id
         activeBrush = usedBrush
         val chosenTool = BrushRoleClassifier.editorTool(usedBrush)
+        val changedTool = tool != chosenTool
         brushSize = savedBrushSize(usedBrush, usedBrush.defaultSize, chosenTool)
         brushOpacity = savedBrushOpacity(usedBrush, usedBrush.defaultOpacity, chosenTool)
         tool = chosenTool
         if (persistSelection) {
-            changeBrushUsage(brushUsage.used(usedBrush.id))
+            changeBrushUsage(brushUsage.used(usedBrush.id, when (chosenTool) {
+                EditorTool.PEN, EditorTool.HIGHLIGHTER -> false
+                EditorTool.ERASER -> true
+                else -> null
+            }).let { usage ->
+                if (changedTool && usage.category != BrushUsageState.RECENT_CATEGORY) usage.copy(category = usedBrush.groupName)
+                else usage
+            })
             rememberDrawingSelection()
             onSettingsChange(
                 settings.copy(
@@ -1858,13 +1866,20 @@ private fun EditorScreen(
                     return@ProcreateTopButton
                 }
                 tool = EditorTool.PEN
-                val remembered = activeBrush?.takeUnless(BrushRoleClassifier::isEraser)
-                    ?: availableBrushes.filterNot(BrushRoleClassifier::isEraser).maxByOrNull(ImportedBrush::lastUsedAt)
+                val paintBrushes = availableBrushes.filter { !it.hidden && it.toolBinding.isSupported &&
+                    BrushRoleClassifier.editorTool(it) in setOf(EditorTool.PEN, EditorTool.HIGHLIGHTER) }
+                val remembered = activeBrush?.takeIf { active -> paintBrushes.any { it.id == active.id } }
+                    ?: paintBrushes.firstOrNull { it.id == brushUsage.lastPaintBrushId }
+                    ?: paintBrushes.maxByOrNull(ImportedBrush::lastUsedAt)
                 activeBrush = remembered
                 selectedBrushId = remembered?.id
                 brushSize = savedBrushSize(remembered, remembered?.defaultSize ?: settings.penSize, EditorTool.PEN)
                 brushOpacity = savedBrushOpacity(remembered, remembered?.defaultOpacity ?: settings.penOpacity, EditorTool.PEN)
                 remembered?.let { selected ->
+                    changeBrushUsage(brushUsage.used(selected.id, eraser = false).let { usage ->
+                        if (usage.category == BrushUsageState.RECENT_CATEGORY) usage
+                        else usage.copy(category = selected.groupName)
+                    })
                     onSettingsChange(settings.copy(persistentDrawingTool = EditorTool.PEN, persistentBrushPresetId = selected.id))
                 }
                 syncCanvasInput(prepareAssets = remembered != null)
@@ -1873,6 +1888,7 @@ private fun EditorScreen(
             ProcreateTopButton(InkloomIcons.Eraser, tr("Eraser", "橡皮"), selected = tool == EditorTool.ERASER, onClick = {
                 exitCanvasNavigation()
                 val eraser = activeBrush?.takeIf(BrushRoleClassifier::isEraser)
+                    ?: availableBrushes.firstOrNull { it.id == brushUsage.lastEraserBrushId && !it.hidden && BrushRoleClassifier.isEraser(it) }
                     ?: brushes.filter(BrushRoleClassifier::isEraser).maxByOrNull(ImportedBrush::lastUsedAt)
                     ?: systemBrushCatalog().first { BrushRoleClassifier.isEraser(it) }
                 selectWorkspaceBrush(eraser)
@@ -8308,7 +8324,9 @@ private fun ProcreateBrushLibrary(
     val allCategories = listOf(recentCategory, tr("All", "全部")) + categoriesInsideSystemRoots + standaloneImportedCategories + ungroupedLabel
     val activeInventoryBrush = (systemBrushes + usableImportedBrushes).firstOrNull { it.id == selectedBrushId }
     val activeGroup = activeInventoryBrush?.groupName?.ifBlank { ungroupedLabel } ?: requestedGroup
-    var selectedCategory by rememberSaveable {
+    // Tool return owns the durable category. A restored Compose category must not overwrite
+    // a newer Paint/Eraser selection when this window is recreated or reopened.
+    var selectedCategory by remember(usage.category) {
         mutableStateOf(usage.category?.takeIf { it in allCategories } ?: activeGroup?.takeIf { it in allCategories } ?: systemCategories.first())
     }
     var lastObservedSelection by remember { mutableStateOf(selectedBrushId) }
