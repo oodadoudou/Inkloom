@@ -37,6 +37,7 @@ data class ActiveStrokePresentation(
 class RealtimeStrokeController {
     private var nextTransactionId = 1L
     private var nextInputSequence = 0L
+    private var lastModelTimeNanos = 0L
     @Volatile private var active: Active? = null
     @Volatile private var landed: Landed? = null
     private var lastPublishedSamples: List<RawDocumentSample> = emptyList()
@@ -57,6 +58,7 @@ class RealtimeStrokeController {
     ): PaintResult {
         check(active == null) { "A V5 paint gesture is already active" }
         landed = null
+        lastModelTimeNanos = sample.eventTimeNanos
         val transactionId = nextTransactionId++
         val stroke: StrokeSession = if (smoothing > 0f) {
             CausalStrokeSession(transactionId, maximumRadius, smoothing.coerceIn(0f, 1f))
@@ -193,17 +195,25 @@ class RealtimeStrokeController {
     fun awaitingPresentationGeneration(): Long? = landed?.generation
     fun awaitingPresentationTransactionId(): Long? = landed?.transactionId
 
-    private fun input(sample: RawDocumentSample, phase: InputPhase): InputSample = InputSample(
-        sequence = nextInputSequence++,
-        phase = phase,
-        tool = sample.tool,
-        point = DocumentPoint(sample.x, sample.y),
-        eventTimeNanos = sample.eventTimeNanos,
-        enqueuedTimeNanos = maxOf(sample.eventTimeNanos, sample.enqueuedTimeNanos),
-        pressure = sample.pressure.coerceIn(0f, 1f),
-        tiltRadians = sample.tiltRadians,
-        orientationRadians = sample.orientationRadians,
-    )
+    private fun input(sample: RawDocumentSample, phase: InputPhase): InputSample {
+        // A continuous-plot timer can arrive before older MotionEvent history. Preserve arrival
+        // order and every sensor value; only the model clock is clamped. The raw diagnostic trace
+        // retains acquisition times, and a new DOWN resets this per-contact clock.
+        val modelTime = maxOf(lastModelTimeNanos, sample.eventTimeNanos)
+        lastModelTimeNanos = modelTime
+        return InputSample(
+            sequence = nextInputSequence++,
+            phase = phase,
+            tool = sample.tool,
+            point = DocumentPoint(sample.x, sample.y),
+            eventTimeNanos = sample.eventTimeNanos,
+            enqueuedTimeNanos = maxOf(sample.eventTimeNanos, sample.enqueuedTimeNanos),
+            modelTimeNanos = modelTime,
+            pressure = sample.pressure.coerceIn(0f, 1f),
+            tiltRadians = sample.tiltRadians,
+            orientationRadians = sample.orientationRadians,
+        )
+    }
 
     private data class Active(
         val layerId: String,

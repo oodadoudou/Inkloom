@@ -92,7 +92,10 @@ class InputBackpressureController(
     @Synchronized
     fun snapshot(nowNanos: Long): Snapshot {
         require(nowNanos >= 0L)
-        val oldest = pending.peekFirst()?.let { (nowNanos - it.eventTimeNanos).coerceAtLeast(0L) } ?: 0L
+        // Arrival order can interleave timer ticks with older device history. The oldest source
+        // time may therefore be inside this bounded queue rather than at its head.
+        val oldest = pending.minOfOrNull { it.eventTimeNanos }
+            ?.let { (nowNanos - it).coerceAtLeast(0L) } ?: 0L
         return Snapshot(pending.size, peakDepth, oldest, coalescedMoveCount)
     }
 

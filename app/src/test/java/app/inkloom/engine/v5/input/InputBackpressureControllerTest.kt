@@ -6,6 +6,22 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class InputBackpressureControllerTest {
+    @Test fun delayedSourceTimeRemainsVisibleToLatencyAfterModelClockCorrection() {
+        val controller = InputBackpressureController()
+        val timer = sample(0, InputPhase.MOVE, 40, 10f).copy(enqueuedTimeNanos = 45)
+        val history = sample(1, InputPhase.MOVE, 20, 30f)
+            .copy(enqueuedTimeNanos = 50, modelTimeNanos = 40)
+        val latest = sample(2, InputPhase.MOVE, 55, 50f).copy(enqueuedTimeNanos = 60)
+        controller.enqueue(InputSampleBatch.owned(listOf(timer, history, latest)))
+        assertEquals(30L, history.queueAgeNanos)
+        assertEquals("Delayed history is older than the timer at the queue head", 50L,
+            controller.snapshot(70).oldestInputAgeNanos)
+        val drained = requireNotNull(controller.drain(3)).samples
+        assertEquals(listOf(40L, 20L, 55L), drained.map { it.eventTimeNanos })
+        assertEquals(listOf(40L, 40L, 55L), drained.map { it.modelTimeNanos })
+        assertEquals(listOf(timer, history, latest), drained)
+    }
+
     @Test fun `300 samples per second for 30 seconds has bounded depth when consumer keeps pace`() {
         val controller = InputBackpressureController(softLimit = 64, hardLimit = 256)
         var sequence = 0L

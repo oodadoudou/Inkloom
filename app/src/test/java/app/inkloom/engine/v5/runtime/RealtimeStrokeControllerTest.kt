@@ -13,6 +13,50 @@ import org.junit.Test
 
 class RealtimeStrokeControllerTest {
     @Test
+    fun delayedPhysicalHistoryAfterTimerKeepsOrderSensorsAndOneCommit() {
+        val surface = PixelTileSurface(128, 64)
+        val emitted = mutableListOf<app.inkloom.engine.v5.stroke.StrokeSample>()
+        val delegate = DryInkPaintOp(surface, DryInkDefinition(8f, 0xff102030.toInt()))
+        val recording = object : app.inkloom.engine.v5.raster.PaintOp by delegate {
+            override fun begin(context: app.inkloom.engine.v5.raster.PaintOpContext): app.inkloom.engine.v5.raster.PaintOpSession {
+                val session = delegate.begin(context) as app.inkloom.engine.v5.raster.PublishablePaintOpSession
+                return object : app.inkloom.engine.v5.raster.PublishablePaintOpSession by session {
+                    override fun apply(batch: app.inkloom.engine.v5.stroke.PaintBatch): app.inkloom.engine.v5.raster.PaintResult {
+                        emitted.addAll(batch.samples)
+                        return session.apply(batch)
+                    }
+                    override fun finish(batch: app.inkloom.engine.v5.stroke.PaintBatch): app.inkloom.engine.v5.raster.PaintResult {
+                        emitted.addAll(batch.samples)
+                        return session.finish(batch)
+                    }
+                }
+            }
+        }
+        val controller = RealtimeStrokeController()
+        val raw = listOf(sample(12f, 20f, 10), sample(12f, 20f, 40),
+            sample(35f, 25f, 20).copy(pressure = .3f, tiltRadians = .4f, orientationRadians = -.2f),
+            sample(60f, 30f, 30), sample(85f, 35f, 50), sample(100f, 40f, 45))
+        controller.begin("ink", surface, recording, 5f, "timer-history", raw.first())
+        controller.append(raw.subList(1, 4))
+        controller.append(listOf(raw[4]))
+        val published = requireNotNull(controller.finish(raw.last()))
+        assertEquals(listOf(10L, 40L, 40L, 40L, 50L, 50L), emitted.map { it.eventTimeNanos })
+        assertEquals(raw.map { it.x to it.y }, emitted.map { it.point.x to it.point.y })
+        assertEquals(raw.map { it.pressure }, emitted.map { it.pressure })
+        assertEquals(raw.map { it.tiltRadians }, emitted.map { it.tiltRadians })
+        assertEquals(raw.map { it.orientationRadians }, emitted.map { it.orientationRadians })
+        assertEquals(raw, controller.lastPublishedSamples())
+        assertEquals(1L, surface.revision)
+        assertNotEquals(0, surface.pixelAt(60, 30))
+        assertFalse(controller.isActive)
+        published.record.close()
+        emitted.clear()
+        controller.begin("ink", surface, recording, 5f, "new-contact", sample(20f, 50f, 1))
+        requireNotNull(controller.finish(sample(40f, 50f, 2))).record.close()
+        assertEquals(listOf(1L, 2L), emitted.map { it.eventTimeNanos })
+    }
+
+    @Test
     fun previewAndPublishedPixelsAreTheSameRenderProduct() {
         val surface = PixelTileSurface(128, 64)
         val controller = RealtimeStrokeController()

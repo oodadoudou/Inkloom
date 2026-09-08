@@ -115,7 +115,7 @@ class CausalStrokeSession(
             StrokeSample(
                 input.sequence,
                 point,
-                input.eventTimeNanos,
+                input.modelTimeNanos,
                 input.pressure,
                 input.tiltRadians,
                 input.orientationRadians,
@@ -181,7 +181,7 @@ class DirectStrokeSession(
             StrokeSample(
                 input.sequence,
                 input.point,
-                input.eventTimeNanos,
+                input.modelTimeNanos,
                 input.pressure,
                 input.tiltRadians,
                 input.orientationRadians,

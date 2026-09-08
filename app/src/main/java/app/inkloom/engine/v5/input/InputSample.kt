@@ -18,9 +18,12 @@ data class InputSample(
     val tiltRadians: Float,
     val orientationRadians: Float,
     val predicted: Boolean = false,
+    /** Causal model clock; acquisition time above remains unchanged for latency diagnostics. */
+    val modelTimeNanos: Long = eventTimeNanos,
 ) {
     init {
         require(sequence >= 0L)
+        require(modelTimeNanos >= eventTimeNanos)
         require(eventTimeNanos >= 0L && enqueuedTimeNanos >= eventTimeNanos)
         require(pressure.isFinite() && pressure in 0f..1f)
         require(tiltRadians.isFinite() && orientationRadians.isFinite())
@@ -34,7 +37,7 @@ class InputSampleBatch private constructor(val samples: List<InputSample>) {
     init {
         require(samples.isNotEmpty())
         require(samples.zipWithNext().all { (a, b) -> a.sequence < b.sequence })
-        require(samples.zipWithNext().all { (a, b) -> a.eventTimeNanos <= b.eventTimeNanos })
+        require(samples.zipWithNext().all { (a, b) -> a.modelTimeNanos <= b.modelTimeNanos })
     }
 
     companion object {
