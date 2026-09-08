@@ -40,7 +40,7 @@ class SelectionTransformTest {
         try { InstrumentationRegistry.getInstrumentation().runOnMainSync { view.onTouchEvent(e) } } finally { e.recycle() }
     }
 
-    @Test fun everyTransformEntryRejectsLockedOrUnsupportedLayersWithoutMutation() {
+    @Test fun everyTransformEntryRejectsLockedLayersInBothColorFormatsWithoutMutation() {
         for (highPrecision in listOf(false, true)) {
             val format = if (highPrecision) app.inkloom.engine.v5.surface.PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16
                 else app.inkloom.engine.v5.surface.PixelTileFormat.PREMULTIPLIED_SRGB_8888
@@ -52,7 +52,7 @@ class SelectionTransformTest {
             val view = canvas {
                 activeLayerId = "raster"
                 setRasterLayerSurfaces(mapOf("raster" to surface))
-                if (!highPrecision) setProtectedLayerIds(setOf("raster"))
+                setProtectedLayerIds(setOf("raster"))
                 bindDocumentSelectionState(runtime.stateFor("document", "page", 64, 64))
                 replaceSelectionFromMask(mask.snapshot())
                 onPaintCapabilityRejected = { reasons += it }
@@ -66,6 +66,37 @@ class SelectionTransformTest {
             assertEquals(0L, surface.revision)
             assertTrue(view.hasActiveSelection())
         }
+    }
+
+    @Test fun highPrecisionSelectionMovesThroughNativeHandlesWithoutClippingExtendedColor() {
+        val surface = PixelTileSurface(64, 64, 64, pixelFormat = app.inkloom.engine.v5.surface.PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16)
+        surface.beginWrite("HDR square").use { write ->
+            for (y in 20 until 28) for (x in 20 until 28) write.setLinearPixel(x, y, app.inkloom.engine.v5.surface.LinearRgba(3f, -.2f, .1234f, .7f))
+            write.commit().close()
+        }
+        val original = surface.snapshot().packedF16At(24, 24)
+        val mask = MaskTileSurface(64, 64, 64)
+        mask.beginWrite("selection").use { write ->
+            write.composeAlpha(PixelRect(16, 16, 32, 32), ByteArray(256) { -1 }, mode = MaskComposeMode.REPLACE)
+            write.commit().close()
+        }
+        val runtime = DocumentSelectionRuntime(64)
+        val view = canvas {
+            activeLayerId = "raster"; pageModelWidth = 64f; pageModelHeight = 64f
+            setRasterLayerSurfaces(mapOf("raster" to surface))
+            bindDocumentSelectionState(runtime.stateFor("hdr", "page", 64, 64))
+            replaceSelectionFromMask(mask.snapshot())
+            assertTrue(enterFreeTransform())
+        }
+        send(view, 1, MotionEvent.ACTION_DOWN, 150f, 150f)
+        send(view, 2, MotionEvent.ACTION_MOVE, 250f, 250f)
+        send(view, 3, MotionEvent.ACTION_UP, 250f, 250f)
+        assertEquals(0L, surface.snapshot().packedF16At(24, 24))
+        assertEquals(original, surface.snapshot().packedF16At(40, 40))
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.undo() }
+        assertEquals(original, surface.snapshot().packedF16At(24, 24))
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.redo() }
+        assertEquals(original, surface.snapshot().packedF16At(40, 40))
     }
 
     @Test fun freeTransformMapsDocumentMaskAndRasterResolutions() {

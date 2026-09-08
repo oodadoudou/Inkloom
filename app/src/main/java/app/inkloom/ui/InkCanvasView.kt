@@ -378,6 +378,7 @@ class InkCanvasView(context: Context) : View(context) {
     private var movingSelection = false
     private var selectionMoved = false
     private var selectionTransformMode = TRANSFORM_NONE
+    var selectionInterpolation = app.inkloom.engine.v5.tools.SelectionInterpolation.BILINEAR
     private var selectionTransformArmed = false
     private var selectionTransformCenterX = 0f
     private var selectionTransformCenterY = 0f
@@ -4318,6 +4319,7 @@ class InkCanvasView(context: Context) : View(context) {
                 translateX = translateX * surface.logicalWidth / pageModelWidth.coerceAtLeast(1f),
                 translateY = translateY * surface.logicalHeight / pageModelHeight.coerceAtLeast(1f),
             ),
+            selectionInterpolation,
         )
         documentSelectionState?.replaceFrom(result.selection)
             ?: replaceSelectionAlphaMask(SparseAlphaMask.fromSnapshot(result.selection), resetFeather = false)
@@ -5627,7 +5629,6 @@ class InkCanvasView(context: Context) : View(context) {
         val rejection = when {
             activeLayerId in protectedLayerIds -> "Unlock the active layer before transforming its selection"
             surface == null -> "Select an editable paint layer before transforming"
-            surface.pixelFormat != PixelTileFormat.PREMULTIPLIED_SRGB_8888 -> "Selection transform is not yet available for this layer color format"
             else -> null
         }
         if (rejection != null) { onPaintCapabilityRejected(rejection); return false }

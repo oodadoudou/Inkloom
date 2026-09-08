@@ -3122,6 +3122,8 @@ private fun EditorScreen(
                 )
                 if (tool == EditorTool.SELECT && selectionActive) SelectionLauncher(
                     featherPixels = selectionFeather,
+                    interpolation = settings.selectionInterpolation,
+                    onInterpolation = { onSettingsChange(settings.copy(selectionInterpolation = it)) },
                     onDone = { finishSelectionTool(deselect = false) },
                     onDeselect = { finishSelectionTool(deselect = true) },
                     onInvert = { selectedElementId = null; canvasView?.invertSelection() },
@@ -5401,6 +5403,7 @@ internal fun InkCanvasView.applyBrushConfiguration(
     selectionShape = settings.selectionShape
     selectionBrushSize = settings.selectionBrushSize
     selectionThreshold = settings.selectionThreshold
+    selectionInterpolation = settings.selectionInterpolation
     liquifyMode = activeBrush?.toolBinding?.liquifyMode ?: LiquifyMode.PUSH
     liquifyStrength = activeBrush?.flow ?: .55f
     liquifyHardness = activeBrush?.hardness ?: .5f
@@ -10219,6 +10222,8 @@ private fun SelectionInputBar(
 @Composable
 private fun SelectionLauncher(
     featherPixels: Float,
+    interpolation: app.inkloom.engine.v5.tools.SelectionInterpolation,
+    onInterpolation: (app.inkloom.engine.v5.tools.SelectionInterpolation) -> Unit,
     onDone: () -> Unit,
     onDeselect: () -> Unit,
     onInvert: () -> Unit,
@@ -10272,6 +10277,18 @@ private fun SelectionLauncher(
                 SelectionLauncherButton(Icons.Outlined.Tune, tr("Selection settings", "选区设置")) { settingsOpen = true }
                 DropdownMenu(settingsOpen, { settingsOpen = false }, Modifier.width(264.dp)) {
                     Column(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(tr("Transform interpolation", "变换插值"), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        app.inkloom.engine.v5.tools.SelectionInterpolation.entries.forEach { method ->
+                            Row(Modifier.fillMaxWidth().clickable { onInterpolation(method) }.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                RadioButton(selected = interpolation == method, onClick = { onInterpolation(method) })
+                                Text(when (method) {
+                                    app.inkloom.engine.v5.tools.SelectionInterpolation.NEAREST -> tr("Nearest neighbor", "最近邻")
+                                    app.inkloom.engine.v5.tools.SelectionInterpolation.BILINEAR -> tr("Bilinear", "双线性")
+                                    app.inkloom.engine.v5.tools.SelectionInterpolation.BICUBIC -> tr("Bicubic", "双三次")
+                                }, fontSize = 12.sp)
+                            }
+                        }
+                        HorizontalDivider()
                         Text(tr("Selection modification", "选区修改"), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                         HorizontalDivider()
                         Text("${tr("Amount", "调整量")}  ${amount.toInt()} px", color = MutedInk, fontSize = 10.sp)

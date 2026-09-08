@@ -60,6 +60,22 @@ class SelectionWindowRegressionTest {
         compose.waitUntil(10_000) { view.activeRasterSnapshotForTest()?.revision != before }
     }
 
+    @Test fun interpolationChoiceReachesCanvasAndSurvivesRestart() {
+        tap("New Note"); tap("Create")
+        val view = canvas()
+        tap("Selection"); tap("Rectangle selection")
+        stroke(pagePoint(view, .2f, .3f), pagePoint(view, .6f, .6f))
+        compose.waitForIdle()
+        assertEquals(app.inkloom.engine.v5.tools.SelectionInterpolation.BILINEAR, view.selectionInterpolation)
+        tap("Selection settings")
+        tap("Bicubic")
+        compose.waitUntil(5_000) { view.selectionInterpolation == app.inkloom.engine.v5.tools.SelectionInterpolation.BICUBIC }
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK)
+        compose.waitForIdle()
+        compose.activityRule.scenario.recreate(); compose.waitForIdle()
+        assertEquals(app.inkloom.engine.v5.tools.SelectionInterpolation.BICUBIC, canvas().selectionInterpolation)
+    }
+
     @Test fun selectedLayerContentMovesThroughWindowTransformControl() {
         tap("New Note"); tap("Create")
         val view = canvas()

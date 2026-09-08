@@ -123,6 +123,7 @@ data class AppSettings(
     val selectionShape: SelectionShape = SelectionShape.FREEFORM,
     val selectionBrushSize: Float = 42f,
     val selectionThreshold: Float = .25f,
+    val selectionInterpolation: app.inkloom.engine.v5.tools.SelectionInterpolation = app.inkloom.engine.v5.tools.SelectionInterpolation.BILINEAR,
     val selectionMode: SelectionMode = SelectionMode.REPLACE,
     val selectionFilter: SelectionFilter = SelectionFilter.ALL,
     val referenceTarget: ReferenceTarget = ReferenceTarget.ALL_VISIBLE,
@@ -305,6 +306,7 @@ class AppSettingsStore(context: Context) {
             selectionShape = enumValue(preferences.getString("selectionShape", null), SelectionShape.FREEFORM),
             selectionBrushSize = preferences.getFloat("selectionBrushSize", 42f).coerceIn(4f, 300f),
             selectionThreshold = preferences.getFloat("selectionThreshold", .25f).coerceIn(0f, 1f),
+            selectionInterpolation = enumValue(preferences.getString("selectionInterpolation", null), app.inkloom.engine.v5.tools.SelectionInterpolation.BILINEAR),
             selectionMode = enumValue(preferences.getString("selectionMode", null), SelectionMode.REPLACE),
             selectionFilter = enumValue(preferences.getString("selectionFilter", null), SelectionFilter.ALL),
             referenceTarget = enumValue(preferences.getString("referenceTarget", null), ReferenceTarget.ALL_VISIBLE),
@@ -455,6 +457,7 @@ class AppSettingsStore(context: Context) {
             .putString("selectionShape", persisted.selectionShape.name)
             .putFloat("selectionBrushSize", persisted.selectionBrushSize.coerceIn(4f, 300f))
             .putFloat("selectionThreshold", persisted.selectionThreshold.coerceIn(0f, 1f))
+            .putString("selectionInterpolation", persisted.selectionInterpolation.name)
             .putString("selectionMode", persisted.selectionMode.name)
             .putString("selectionFilter", persisted.selectionFilter.name)
             .putString("referenceTarget", persisted.referenceTarget.name)

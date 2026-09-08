@@ -153,6 +153,14 @@ class PixelTileSurfaceSnapshot internal constructor(
         return tile.pixels.premultipliedArgbAt((y % tileSize) * tileSize + (x % tileSize))
     }
 
+    /** Exact native half-float bits, including extended-range RGB; never converts through 8-bit. */
+    fun packedF16At(x: Int, y: Int): Long {
+        require(pixelFormat == PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16)
+        if (x !in 0 until logicalWidth || y !in 0 until logicalHeight) return 0L
+        val tile = tiles[PixelTileKey(x / tileSize, y / tileSize)] ?: return 0L
+        return (tile.pixels as RgbaF16TileBuffer).values[(y % tileSize) * tileSize + x % tileSize]
+    }
+
     fun linearPixelAt(x: Int, y: Int): LinearRgba {
         if (x !in 0 until logicalWidth || y !in 0 until logicalHeight) return LinearRgba(0f, 0f, 0f, 0f)
         val key = PixelTileKey(x / tileSize, y / tileSize)
