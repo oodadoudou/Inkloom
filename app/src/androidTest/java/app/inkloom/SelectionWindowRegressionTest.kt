@@ -9,6 +9,9 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import app.inkloom.model.EditorTool
@@ -117,10 +120,124 @@ class SelectionWindowRegressionTest {
 
     }
 
+    @Test fun oppositeCornerCancelAndWholeSessionUndoWorkThroughWindowControls() {
+        tap("New Note"); tap("Create")
+        val view = canvas()
+        stroke(pagePoint(view, .3f, .4f), pagePoint(view, .5f, .4f))
+        compose.waitUntil(10_000) { (view.activeRasterSnapshotForTest()?.tileCount ?: 0) > 0 }
+        val initial = requireNotNull(view.activeRasterSnapshotForTest())
+        val all = app.inkloom.engine.v5.surface.PixelRect(0, 0, initial.logicalWidth, initial.logicalHeight)
+        val originalPixels = initial.copyPremultipliedPixels(all)
+        tap("Selection"); tap("Rectangle selection")
+        stroke(pagePoint(view, .2f, .3f), pagePoint(view, .6f, .5f)); compose.waitForIdle()
+        tap("Free transform"); tap("Uniform")
+        val start = requireNotNull(view.selectionTransformUiState).pose
+        val corner = start.point(0f, 0f)
+        val resizedAt = SystemClock.uptimeMillis()
+        stroke(pagePoint(view, corner.first / initial.logicalWidth, corner.second / initial.logicalHeight), pagePoint(view, .1f, .2f))
+        val resizeMillis = SystemClock.uptimeMillis() - resizedAt
+        println("Selection resize: 24 move packets took $resizeMillis ms")
+        assertTrue("Corner resize blocked input for $resizeMillis ms", resizeMillis < 5_000L)
+        compose.waitForIdle()
+        val resized = requireNotNull(view.selectionTransformUiState).pose
+        assertEquals(start.width / start.height, resized.width / resized.height, .001f)
+        assertEquals(start.point(1f, 1f).first, resized.point(1f, 1f).first, 1f)
+        assertEquals(start.point(1f, 1f).second, resized.point(1f, 1f).second, 1f)
+        assertTrue(resized.width > start.width + 20f)
+        tap("Cancel transform")
+        org.junit.Assert.assertArrayEquals(originalPixels, requireNotNull(view.activeRasterSnapshotForTest()).copyPremultipliedPixels(all))
+        tap("Free transform")
+        // Outside the bounds still moves this selection; it cannot replace it with a new lasso.
+        stroke(pagePoint(view, .75f, .4f), pagePoint(view, .8f, .4f))
+        stroke(pagePoint(view, .8f, .6f), pagePoint(view, .8f, .7f))
+        compose.waitForIdle()
+        val moved = requireNotNull(view.selectionTransformUiState).pose
+        assertEquals(start.width, moved.width, 1f)
+        assertEquals(start.centerX + initial.logicalWidth * .05f, moved.centerX, 2f)
+        assertEquals(start.centerY + initial.logicalHeight * .1f, moved.centerY, 2f)
+        tap("Transform dimensions")
+        compose.onNode(hasText("Width (px)") and hasSetTextAction()).performTextReplacement("480")
+        compose.onNode(hasText("Height (px)") and hasSetTextAction()).performTextReplacement("320")
+        compose.onNode(hasText("Rotation (degrees)") and hasSetTextAction()).performTextReplacement("30")
+        compose.waitForIdle()
+        tap("Update dimensions")
+        compose.waitUntil(5_000) { view.selectionTransformUiState?.pose?.width == 480f }
+        val numeric = requireNotNull(view.selectionTransformUiState).pose
+        assertEquals(480f, numeric.width, .01f); assertEquals(320f, numeric.height, .01f)
+        assertEquals(30f, numeric.angle, .01f)
+        tap("Apply transform")
+        val applied = requireNotNull(view.activeRasterSnapshotForTest()).copyPremultipliedPixels(all)
+        org.junit.Assert.assertFalse(originalPixels.contentEquals(applied))
+        hoverThenTap(toolbarCenter("Undo")); compose.waitForIdle()
+        org.junit.Assert.assertArrayEquals(originalPixels, requireNotNull(view.activeRasterSnapshotForTest()).copyPremultipliedPixels(all))
+        hoverThenTap(toolbarCenter("Redo")); compose.waitForIdle()
+        org.junit.Assert.assertArrayEquals(applied, requireNotNull(view.activeRasterSnapshotForTest()).copyPremultipliedPixels(all))
+        tap("Deselect")
+        org.junit.Assert.assertFalse(view.hasActiveSelection())
+    }
+
+    @Test fun pinchDuringTransformKeepsDraftAndBackCancelsBeforeDrawingAgain() {
+        tap("New Note"); tap("Create")
+        val view = canvas()
+        stroke(pagePoint(view, .3f, .4f), pagePoint(view, .5f, .4f))
+        compose.waitUntil(10_000) { (view.activeRasterSnapshotForTest()?.tileCount ?: 0) > 0 }
+        val initial = requireNotNull(view.activeRasterSnapshotForTest())
+        val all = app.inkloom.engine.v5.surface.PixelRect(0, 0, initial.logicalWidth, initial.logicalHeight)
+        val before = initial.copyPremultipliedPixels(all)
+        tap("Selection"); tap("Rectangle selection")
+        stroke(pagePoint(view, .2f, .3f), pagePoint(view, .6f, .5f)); compose.waitForIdle()
+        tap("Free transform")
+        stroke(pagePoint(view, .4f, .4f), pagePoint(view, .4f, .5f))
+        val draft = requireNotNull(view.selectionTransformUiState).pose
+        val time = SystemClock.uptimeMillis()
+        fun packet(action: Int, points: List<Offset>) {
+            val motion = MotionEvent.obtain(time, SystemClock.uptimeMillis(), action, points.size,
+                Array(points.size) { i -> MotionEvent.PointerProperties().apply { id = i; toolType = MotionEvent.TOOL_TYPE_FINGER } },
+                Array(points.size) { i -> MotionEvent.PointerCoords().apply { x = points[i].x; y = points[i].y; pressure = 1f; touchMajor = 8f } },
+                0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
+            try { assertTrue(instrumentation.uiAutomation.injectInputEvent(motion, true)) } finally { motion.recycle() }
+            SystemClock.sleep(20)
+        }
+        val a = pagePoint(view, .35f, .6f); val b = pagePoint(view, .65f, .6f)
+        val c = pagePoint(view, .2f, .6f); val d = pagePoint(view, .8f, .6f)
+        packet(MotionEvent.ACTION_DOWN, listOf(a))
+        packet(MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), listOf(a, b))
+        repeat(8) { i -> val t = (i + 1) / 8f; packet(MotionEvent.ACTION_MOVE, listOf(a + (c - a) * t, b + (d - b) * t)) }
+        packet(MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), listOf(c, d))
+        packet(MotionEvent.ACTION_UP, listOf(c))
+        compose.waitForIdle()
+        assertTrue("Pinch must navigate", view.viewportScale > 1.1f)
+        assertEquals(draft, requireNotNull(view.selectionTransformUiState).pose)
+        instrumentation.sendKeyDownUpSync(KeyEvent.KEYCODE_BACK); compose.waitForIdle()
+        org.junit.Assert.assertNull(view.selectionTransformUiState)
+        org.junit.Assert.assertArrayEquals(before, requireNotNull(view.activeRasterSnapshotForTest()).copyPremultipliedPixels(all))
+        tap("Deselect")
+        val revision = requireNotNull(view.activeRasterSnapshotForTest()).revision
+        stroke(pagePoint(view, .3f, .7f), pagePoint(view, .5f, .7f))
+        compose.waitUntil(10_000) { view.activeRasterSnapshotForTest()?.revision != revision }
+    }
+
+    private fun toolbarCenter(label: String): Offset {
+        compose.waitForIdle()
+        val bounds = mutableListOf<android.graphics.Rect>()
+        fun visit(node: android.view.accessibility.AccessibilityNodeInfo?) {
+            if (node == null) return
+            if (node.contentDescription?.toString() == label) {
+                bounds += android.graphics.Rect().also(node::getBoundsInScreen)
+            }
+            repeat(node.childCount) { visit(node.getChild(it)) }
+        }
+        visit(instrumentation.uiAutomation.rootInActiveWindow)
+        val rect = bounds.minBy { it.top }
+        return Offset(rect.exactCenterX(), rect.exactCenterY())
+    }
+
     private fun pagePoint(view: InkCanvasView, x: Float, y: Float): Offset {
-        val location = IntArray(2)
-        instrumentation.runOnMainSync { view.getLocationOnScreen(location) }
-        return Offset(location[0] + x * view.width, location[1] + y * view.height)
+        val point = floatArrayOf(x * view.width, y * view.height)
+        instrumentation.runOnMainSync {
+            android.graphics.Matrix().also { view.transformMatrixToGlobal(it); it.mapPoints(point) }
+        }
+        return Offset(point[0], point[1])
     }
 
     private fun hoverThenTap(point: Offset) {

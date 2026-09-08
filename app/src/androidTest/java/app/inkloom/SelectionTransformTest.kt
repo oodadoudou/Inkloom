@@ -40,6 +40,53 @@ class SelectionTransformTest {
         try { InstrumentationRegistry.getInstrumentation().runOnMainSync { view.onTouchEvent(e) } } finally { e.recycle() }
     }
 
+    @Test fun multipleDragsUseOriginalPixelsAndPublishOneUndoableCommit() {
+        val surface = PixelTileSurface(128, 128, 64)
+        surface.beginWrite("ink").use { write ->
+            for (y in 45 until 55) for (x in 45 until 55) write.setPixel(x, y, Color.RED)
+            write.commit().close()
+        }
+        val mask = MaskTileSurface(128, 128, 64)
+        mask.beginWrite("mask").use { write ->
+            write.composeAlpha(PixelRect(32, 32, 64, 64), ByteArray(1024) { -1 }, mode = MaskComposeMode.REPLACE)
+            write.commit().close()
+        }
+        var publications = 0
+        val view = canvas {
+            pageModelWidth = 128f; pageModelHeight = 128f; activeLayerId = "paint"
+            setRasterLayerSurfaces(mapOf("paint" to surface))
+            bindDocumentSelectionState(DocumentSelectionRuntime(64).stateFor("draft", "page", 128, 128))
+            replaceSelectionFromMask(mask.snapshot())
+            onRasterLayerCommitted = { publications++ }
+            assertTrue(enterFreeTransform())
+        }
+        // Two contacts form one draft. The second starts at the first contact's new center.
+        send(view, 1, MotionEvent.ACTION_DOWN, 150f, 150f)
+        send(view, 2, MotionEvent.ACTION_MOVE, 200f, 150f)
+        send(view, 3, MotionEvent.ACTION_UP, 200f, 150f)
+        send(view, 4, MotionEvent.ACTION_DOWN, 200f, 150f)
+        send(view, 5, MotionEvent.ACTION_MOVE, 200f, 200f)
+        send(view, 6, MotionEvent.ACTION_UP, 200f, 200f)
+        assertEquals(0, publications)
+        assertEquals(Color.RED, surface.pixelAt(65, 65))
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { assertTrue(view.finishSelectionTransform(apply = true)) }
+        assertEquals(1, publications)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.undo() }
+        assertEquals(Color.RED, surface.pixelAt(49, 49)); assertEquals(0, surface.pixelAt(65, 65))
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.redo() }
+        assertEquals(Color.RED, surface.pixelAt(65, 65))
+        // A later draft is fully reversible, including a trip entirely outside the page.
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.enterFreeTransform() }
+        val original = surface.snapshot().copyPremultipliedPixels(PixelRect(0, 0, 128, 128))
+        send(view, 7, MotionEvent.ACTION_DOWN, 200f, 200f)
+        send(view, 8, MotionEvent.ACTION_MOVE, 800f, 200f)
+        send(view, 9, MotionEvent.ACTION_UP, 800f, 200f)
+        assertEquals(0, surface.snapshot().tileCount)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { view.finishSelectionTransform(apply = false) }
+        org.junit.Assert.assertArrayEquals(original, surface.snapshot().copyPremultipliedPixels(PixelRect(0, 0, 128, 128)))
+        assertEquals(3, publications)
+    }
+
     @Test fun everyTransformEntryRejectsLockedLayersInBothColorFormatsWithoutMutation() {
         for (highPrecision in listOf(false, true)) {
             val format = if (highPrecision) app.inkloom.engine.v5.surface.PixelTileFormat.PREMULTIPLIED_LINEAR_EXTENDED_SRGB_F16

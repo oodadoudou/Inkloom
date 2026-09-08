@@ -376,23 +376,21 @@ class InkCanvasView(context: Context) : View(context) {
         removeCallbacks(liquifyHoldFrame)
     }
     private fun liquifyGestureActive(): Boolean = rasterTileLiquifySession != null
-    private var movingSelection = false
-    private var selectionMoved = false
-    private var selectionTransformMode = TRANSFORM_NONE
     var selectionInterpolation = app.inkloom.engine.v5.tools.SelectionInterpolation.BILINEAR
-    private var selectionTransformArmed = false
+        set(value) {
+            if (field == value) return
+            field = value
+            selectionCanvasTransform?.let { updateRasterSelectionTransform(it.pose.affineFrom(it.original)) }
+        }
+    private var selectionCanvasTransform: SelectionCanvasTransform? = null
+    internal var onSelectionTransformChanged: (SelectionTransformUiState?) -> Unit = {}
+    internal val selectionTransformUiState: SelectionTransformUiState?
+        get() = selectionCanvasTransform?.let { SelectionTransformUiState(it.pose, it.mode) }
+
     private var selectionTransformCenterX = 0f
     private var selectionTransformCenterY = 0f
-    private var selectionTransformStartDistance = 0f
-    private var selectionTransformStartAngle = 0f
-    private var selectionTransformStartXSpan = 0f
-    private var selectionTransformStartYSpan = 0f
-    private var selectionTransformTranslateX = 0f
-    private var selectionTransformTranslateY = 0f
     private var rasterSelectionTransformSession: RasterSelectionTransformSession? = null
     private var rasterSelectionTransformOriginalMask: MaskTileSurfaceSnapshot? = null
-    private val selectionHandlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; color = Color.WHITE }
-    private val selectionHandleStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 2f; color = Color.rgb(17, 17, 17) }
     private val selectionAntPattern = Bitmap.createBitmap(
         16,
         16,
@@ -576,8 +574,8 @@ class InkCanvasView(context: Context) : View(context) {
     var tool: EditorTool = EditorTool.PEN
         set(value) {
             if (field == value) return
+            if (value != EditorTool.SELECT) finishSelectionTransform(apply = true)
             field = value
-            if (value != EditorTool.SELECT) selectionTransformArmed = false
             if (hoverCursorVisible) {
                 hoverCursorUsesEraser = value == EditorTool.ERASER
                 invalidateInternalHoverCursor()
@@ -615,6 +613,10 @@ class InkCanvasView(context: Context) : View(context) {
     var brushId: String = "system-pencil"
     var brushRenderSeed: Int = brushId.hashCode()
     var activeLayerId: String = app.inkloom.document.LayerIds.INK
+        set(value) {
+            if (field != value) finishSelectionTransform(apply = true)
+            field = value
+        }
     var layerOpacities: Map<String, Float> = emptyMap()
         set(value) {
             val normalized = value.mapValues { (_, opacity) -> opacity.coerceIn(0f, 1f) }
@@ -949,6 +951,7 @@ class InkCanvasView(context: Context) : View(context) {
     /** Binds selection alpha to the document runtime before any page content is installed. */
     internal fun bindDocumentSelectionState(state: DocumentSelectionState) {
         if (documentSelectionState === state) return
+        finishSelectionTransform(apply = false)
         val isolated = isolatedTestSelectionAlphaMask
         documentSelectionState = state
         if (isolated != null && state.isEmpty) state.replaceFrom(isolated.surface.snapshot())
@@ -957,6 +960,10 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     fun setProtectedLayerIds(value: Set<String>) {
+        if (activeLayerId in value && selectionCanvasTransform != null) {
+            finishSelectionTransform(apply = false)
+            onPaintCapabilityRejected("The transform was cancelled because the active layer is locked")
+        }
         protectedLayerIds.clear()
         protectedLayerIds.addAll(value)
     }
@@ -982,6 +989,7 @@ class InkCanvasView(context: Context) : View(context) {
             rasterLayerTileSurfaces[layerId] !== value[layerId]
         }
         if (changedLayerIds.isEmpty()) return
+        if (activeLayerId in changedLayerIds) finishSelectionTransform(apply = false)
         changedLayerIds.forEach { layerId ->
             rasterLayerTileSurfaces[layerId]?.let { previous ->
                 if (previous !== value[layerId]) rasterTileRenderer.releaseSurface(previous.surfaceId)
@@ -1329,6 +1337,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     override fun onDetachedFromWindow() {
+        finishSelectionTransform(apply = false)
         resetDrawAndHold()
         if (activeTool != null) cancelActiveGestureForNavigation()
         releaseHeldStylusButtons()
@@ -1768,6 +1777,11 @@ class InkCanvasView(context: Context) : View(context) {
             invalidate()
             return true
         }
+        if (!forceNavigation && stylusButtonAction != StylusButtonAction.HAND && !stylusHandNavigationContact &&
+            selectionCanvasTransform?.touch(event, inputPoint.first, inputPoint.second, width, height, viewportScale) == true) {
+            invalidate()
+            return true
+        }
         continueFillingColor?.takeIf { event.pointerCount == 1 }?.let { fillColor ->
             inkColor = fillColor
             when (effectiveAction) {
@@ -2029,55 +2043,8 @@ class InkCanvasView(context: Context) : View(context) {
                     return true
                 }
                 if (activeTool == EditorTool.SELECT) {
-                    if (selectionShape == SelectionShape.SMART_BORDER || selectionShape == SelectionShape.MAGIC_WAND) {
-                        clearLassoInput(); selectionMoved = false; movingSelection = false
-                        appendSelectionPoint(normalizedX, normalizedY)
-                        invalidate(); return true
-                    }
-                    if (!selectionTransformArmed) {
-                        clearLassoInput(); selectionMoved = false; movingSelection = false
-                        appendSelectionPoint(normalizedX, normalizedY)
-                        lastX = normalizedX; lastY = normalizedY
-                        invalidate(); return true
-                    }
-                    val handleMode = hitSelectionHandle(normalizedX, normalizedY)
-                    if (handleMode != TRANSFORM_NONE) {
-                        val bounds = selectionBounds()
-                        if (bounds != null) {
-                            selectionMoved = false
-                            movingSelection = false
-                            selectionTransformMode = handleMode
-                            selectionTransformCenterX = bounds.centerX()
-                            selectionTransformCenterY = bounds.centerY()
-                            val dx = (normalizedX - selectionTransformCenterX) * pageModelWidth
-                            val dy = (normalizedY - selectionTransformCenterY) * pageModelHeight
-                            selectionTransformStartDistance = hypot(dx.toDouble(), dy.toDouble()).toFloat().coerceAtLeast(.0001f)
-                            selectionTransformStartAngle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
-                            selectionTransformStartXSpan = kotlin.math.abs(dx).coerceAtLeast(.0001f)
-                            selectionTransformStartYSpan = kotlin.math.abs(dy).coerceAtLeast(.0001f)
-                            selectionTransformTranslateX = 0f
-                            selectionTransformTranslateY = 0f
-                            beginRasterSelectionTransform()
-                            lastX = normalizedX; lastY = normalizedY
-                            invalidate(); return true
-                        }
-                    }
-                    clearLassoInput(); selectionMoved = false
-                    val hitRasterSelection = selectionMaskForRasterTools()?.let { mask ->
-                        mask.alphaAt(
-                            (normalizedX * mask.logicalWidth).toInt().coerceIn(0, mask.logicalWidth - 1),
-                            (normalizedY * mask.logicalHeight).toInt().coerceIn(0, mask.logicalHeight - 1),
-                        ) > 0
-                    } == true
-                    if (hitRasterSelection) {
-                        movingSelection = true
-                        selectionTransformTranslateX = 0f
-                        selectionTransformTranslateY = 0f
-                        beginRasterSelectionTransform()
-                    } else {
-                        movingSelection = false
-                        appendSelectionPoint(normalizedX, normalizedY)
-                    }
+                    clearLassoInput()
+                    appendSelectionPoint(normalizedX, normalizedY)
                     lastX = normalizedX; lastY = normalizedY
                     invalidate(); return true
                 }
@@ -2196,53 +2163,12 @@ class InkCanvasView(context: Context) : View(context) {
                     onColorSampled(sampleRenderedColor(inputPoint.first, inputPoint.second))
                 }
                 else if (activeTool == EditorTool.SELECT) {
-                    if (selectionTransformMode == TRANSFORM_SCALE) {
-                        val dx = (normalizedX - selectionTransformCenterX) * pageModelWidth
-                        val dy = (normalizedY - selectionTransformCenterY) * pageModelHeight
-                        val scale = (hypot(dx.toDouble(), dy.toDouble()).toFloat() / selectionTransformStartDistance).coerceAtLeast(.01f)
-                        applySelectionTransform(scale, 0f)
-                        selectionMoved = true
-                        lastX = normalizedX; lastY = normalizedY
-                        invalidate()
-                    } else if (selectionTransformMode == TRANSFORM_SCALE_X) {
-                        val dx = kotlin.math.abs((normalizedX - selectionTransformCenterX) * pageModelWidth)
-                        applySelectionTransform(dx / selectionTransformStartXSpan, 1f, 0f)
-                        selectionMoved = true
-                        lastX = normalizedX; lastY = normalizedY
-                        invalidate()
-                    } else if (selectionTransformMode == TRANSFORM_SCALE_Y) {
-                        val dy = kotlin.math.abs((normalizedY - selectionTransformCenterY) * pageModelHeight)
-                        applySelectionTransform(1f, dy / selectionTransformStartYSpan, 0f)
-                        selectionMoved = true
-                        lastX = normalizedX; lastY = normalizedY
-                        invalidate()
-                    } else if (selectionTransformMode == TRANSFORM_ROTATE) {
-                        val dx = (normalizedX - selectionTransformCenterX) * pageModelWidth
-                        val dy = (normalizedY - selectionTransformCenterY) * pageModelHeight
-                        val angle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
-                        applySelectionTransform(1f, normalizeAngleDelta(angle, selectionTransformStartAngle))
-                        selectionMoved = true
-                        lastX = normalizedX; lastY = normalizedY
-                        invalidate()
-                    } else if (movingSelection) {
-                        val dx = normalizedX - lastX; val dy = normalizedY - lastY
-                        if (hypot(dx.toDouble(), dy.toDouble()) > .0001) selectionMoved = true
-                        selectionTransformTranslateX += dx * pageModelWidth
-                        selectionTransformTranslateY += dy * pageModelHeight
-                        lastX = normalizedX; lastY = normalizedY
-                        updateRasterSelectionTransform(
-                            scaleX = 1f,
-                            scaleY = 1f,
-                            rotation = 0f,
-                            translateX = selectionTransformTranslateX,
-                            translateY = selectionTransformTranslateY,
-                        )
-                    } else {
-                        if (selectionShape == SelectionShape.FREEFORM || selectionShape == SelectionShape.BRUSH) {
-                            for (i in 0 until event.historySize) historicalCanvasPoint(event, pointerIndex, i).let { point -> appendSelectionPoint(point.first / width.coerceAtLeast(1), point.second / height.coerceAtLeast(1)) }
+                    if (selectionShape == SelectionShape.FREEFORM || selectionShape == SelectionShape.BRUSH) {
+                        for (i in 0 until event.historySize) historicalCanvasPoint(event, pointerIndex, i).let { point ->
+                            appendSelectionPoint(point.first / width.coerceAtLeast(1), point.second / height.coerceAtLeast(1))
                         }
-                        appendSelectionPoint(normalizedX, normalizedY)
                     }
+                    appendSelectionPoint(normalizedX, normalizedY)
                 }
                 else if (activeTool == EditorTool.SHAPE) {
                     if (shapeKind == ShapeKind.FREEFORM) {
@@ -2296,7 +2222,7 @@ class InkCanvasView(context: Context) : View(context) {
                     }
                     shapeStart = null; shapeEnd = null; shapeFreeformPoints.clear()
                     cancelRasterSelectionTransform()
-                    clearLassoInput(); movingSelection = false; selectionMoved = false; selectionTransformMode = TRANSFORM_NONE
+                    clearLassoInput()
                 } else if (finishV5PaintGesture(event, pointerIndex, normalizedX, normalizedY)) {
                     // Publishing already invalidated the exact document-space damage. A second
                     // full-view invalidation here made every immutable backdrop tile participate
@@ -2331,24 +2257,16 @@ class InkCanvasView(context: Context) : View(context) {
                 } else if (activeTool == EditorTool.EYEDROPPER) {
                     onColorSampled(sampleRenderedColor(inputPoint.first, inputPoint.second))
                 } else if (activeTool == EditorTool.SELECT) {
-                    if ((movingSelection || selectionTransformMode != TRANSFORM_NONE) && selectionMoved) {
-                        finishRasterSelectionTransform()
-                    } else if (!movingSelection && selectionTransformMode == TRANSFORM_NONE) {
-                        if (selectionShape == SelectionShape.SMART_BORDER || selectionShape == SelectionShape.MAGIC_WAND) {
-                            selectAutomaticRegion(normalizedX, normalizedY, selectionShape == SelectionShape.SMART_BORDER)
-                        } else if (selectionShape == SelectionShape.FREEFORM) {
-                            v5LassoSession?.finish(
-                                DocumentPoint(
-                                    normalizedX * pageModelWidth.coerceAtLeast(1f),
-                                    normalizedY * pageModelHeight.coerceAtLeast(1f),
-                                ),
-                            )?.let(::selectWithCanonicalLasso)
-                        } else {
-                            appendSelectionPoint(normalizedX, normalizedY)
-                            selectWithLasso(selectionPolygon())
-                        }
+                    if (selectionShape == SelectionShape.SMART_BORDER || selectionShape == SelectionShape.MAGIC_WAND) {
+                        selectAutomaticRegion(normalizedX, normalizedY, selectionShape == SelectionShape.SMART_BORDER)
+                    } else if (selectionShape == SelectionShape.FREEFORM) {
+                        v5LassoSession?.finish(DocumentPoint(normalizedX * pageModelWidth.coerceAtLeast(1f),
+                            normalizedY * pageModelHeight.coerceAtLeast(1f)))?.let(::selectWithCanonicalLasso)
+                    } else {
+                        appendSelectionPoint(normalizedX, normalizedY)
+                        selectWithLasso(selectionPolygon())
                     }
-                    clearLassoInput(); movingSelection = false; selectionMoved = false; selectionTransformMode = TRANSFORM_NONE
+                    clearLassoInput()
                 } else if (activeTool == EditorTool.SHAPE) {
                     val shape = if (shapeKind == ShapeKind.FREEFORM) {
                         appendShapePoint(normalizedX, normalizedY)
@@ -2773,11 +2691,9 @@ class InkCanvasView(context: Context) : View(context) {
         gradientStart = null
         gradientEnd = null
         shapeFreeformPoints.clear()
-        cancelRasterSelectionTransform()
+        if (selectionCanvasTransform != null) selectionCanvasTransform?.cancelGesture() else cancelRasterSelectionTransform()
         clearLassoInput()
-        movingSelection = false
-        selectionMoved = false
-        selectionTransformMode = TRANSFORM_NONE
+
         activeTool = null
         activeInputWasStylus = false
         parent?.requestDisallowInterceptTouchEvent(false)
@@ -4258,36 +4174,6 @@ class InkCanvasView(context: Context) : View(context) {
         )
     }
 
-    /** Returns a corner, edge, or rotation transform when the touch lands on a handle. */
-    private fun hitSelectionHandle(normalizedX: Float, normalizedY: Float): Int {
-        if (!hasSelection()) return TRANSFORM_NONE
-        val bounds = selectionBounds() ?: return TRANSFORM_NONE
-        val corners = listOf(
-            bounds.left to bounds.top, bounds.right to bounds.top,
-            bounds.right to bounds.bottom, bounds.left to bounds.bottom,
-        )
-        val boundsWidthPx = (bounds.width() * width).coerceAtLeast(0f)
-        val boundsHeightPx = (bounds.height() * height).coerceAtLeast(0f)
-        if (boundsWidthPx < 1f && boundsHeightPx < 1f) return TRANSFORM_NONE
-        val scaleHandleRadius = if (boundsWidthPx < SELECTION_HANDLE_TOUCH_PX * 2f || boundsHeightPx < SELECTION_HANDLE_TOUCH_PX * 2f) SELECTION_SMALL_HANDLE_TOUCH_PX else SELECTION_HANDLE_TOUCH_PX
-        if (corners.any { hypot(((it.first - normalizedX) * width).toDouble(), ((it.second - normalizedY) * height).toDouble()).toFloat() <= scaleHandleRadius }) return TRANSFORM_SCALE
-        val horizontalEdges = listOf(bounds.left to bounds.centerY(), bounds.right to bounds.centerY())
-        if (boundsWidthPx >= scaleHandleRadius * 2f && horizontalEdges.any { hypot(((it.first - normalizedX) * width).toDouble(), ((it.second - normalizedY) * height).toDouble()).toFloat() <= scaleHandleRadius }) return TRANSFORM_SCALE_X
-        val verticalEdges = listOf(bounds.centerX() to bounds.top, bounds.centerX() to bounds.bottom)
-        if (boundsHeightPx >= scaleHandleRadius * 2f && verticalEdges.any { hypot(((it.first - normalizedX) * width).toDouble(), ((it.second - normalizedY) * height).toDouble()).toFloat() <= scaleHandleRadius }) return TRANSFORM_SCALE_Y
-        val rotY = (bounds.top - SELECTION_ROTATE_HANDLE_OFFSET_PX / height.coerceAtLeast(1))
-        if (hypot(((bounds.centerX() - normalizedX) * width).toDouble(), ((rotY - normalizedY) * height).toDouble()).toFloat() <= SELECTION_HANDLE_TOUCH_PX) return TRANSFORM_ROTATE
-        return TRANSFORM_NONE
-    }
-
-    private fun applySelectionTransform(scale: Float, rotation: Float) {
-        applySelectionTransform(scale, scale, rotation)
-    }
-
-    private fun applySelectionTransform(scaleX: Float, scaleY: Float, rotation: Float) {
-        updateRasterSelectionTransform(scaleX, scaleY, rotation, 0f, 0f)
-    }
-
     private fun beginRasterSelectionTransform(): Boolean {
         if (!validateRasterSelectionTransform()) return false
         cancelRasterSelectionTransform()
@@ -4305,37 +4191,28 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun updateRasterSelectionTransform(
-        scaleX: Float,
-        scaleY: Float,
-        rotation: Float,
-        translateX: Float,
-        translateY: Float,
+        scaleX: Float, scaleY: Float, rotation: Float, translateX: Float, translateY: Float,
     ) {
+        val surface = rasterTileSurfaceFor(activeLayerId) ?: return
+        updateRasterSelectionTransform(SelectionAffineTransform(
+            centerX = selectionTransformCenterX * surface.logicalWidth,
+            centerY = selectionTransformCenterY * surface.logicalHeight,
+            scaleX = scaleX.nonZeroTransformScale(), scaleY = scaleY.nonZeroTransformScale(), rotationDegrees = rotation,
+            translateX = translateX * surface.logicalWidth / pageModelWidth.coerceAtLeast(1f),
+            translateY = translateY * surface.logicalHeight / pageModelHeight.coerceAtLeast(1f),
+        ))
+    }
+
+    private fun updateRasterSelectionTransform(transform: SelectionAffineTransform) {
         val session = rasterSelectionTransformSession ?: return
         val surface = rasterTileSurfaceFor(activeLayerId) ?: return
-        val result = session.update(
-            SelectionAffineTransform(
-                centerX = selectionTransformCenterX * surface.logicalWidth,
-                centerY = selectionTransformCenterY * surface.logicalHeight,
-                scaleX = scaleX.nonZeroTransformScale(),
-                scaleY = scaleY.nonZeroTransformScale(),
-                rotationDegrees = rotation,
-                translateX = translateX * surface.logicalWidth / pageModelWidth.coerceAtLeast(1f),
-                translateY = translateY * surface.logicalHeight / pageModelHeight.coerceAtLeast(1f),
-            ),
-            selectionInterpolation,
-        )
+        val result = session.update(transform, selectionInterpolation)
         if (documentSelectionState != null) {
             documentSelectionState?.replaceFrom(result.selection)
-            // Reuse the original marching-ants texture while dragging. Its geometry follows the
-            // same affine transform; a fresh raster boundary is needed only on commit/cancel.
             selectionBoundaryPreviewMatrix = android.graphics.Matrix().apply {
-                val cx = selectionTransformCenterX * surface.logicalWidth
-                val cy = selectionTransformCenterY * surface.logicalHeight
-                setScale(scaleX.nonZeroTransformScale(), scaleY.nonZeroTransformScale(), cx, cy)
-                postRotate(rotation, cx, cy)
-                postTranslate(translateX * surface.logicalWidth / pageModelWidth.coerceAtLeast(1f),
-                    translateY * surface.logicalHeight / pageModelHeight.coerceAtLeast(1f))
+                setScale(transform.scaleX, transform.scaleY, transform.centerX, transform.centerY)
+                postRotate(transform.rotationDegrees, transform.centerX, transform.centerY)
+                postTranslate(transform.translateX, transform.translateY)
                 preScale(surface.logicalWidth.toFloat() / width.coerceAtLeast(1), surface.logicalHeight.toFloat() / height.coerceAtLeast(1))
                 postScale(width.toFloat() / surface.logicalWidth, height.toFloat() / surface.logicalHeight)
             }
@@ -4349,7 +4226,7 @@ class InkCanvasView(context: Context) : View(context) {
         rasterSelectionTransformSession = null
         val originalSelection = rasterSelectionTransformOriginalMask
         rasterSelectionTransformOriginalMask = null
-        val result = session.commit() ?: return false
+        val result = session.commit() ?: run { session.close(); rebuildSelectionDerivedState(); return false }
         rebuildSelectionDerivedState()
         val record = result.transactionRecord ?: return false
         rasterTileSurfaceFor(activeLayerId)?.let { surface ->
@@ -4394,31 +4271,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun drawSelectionHandles(canvas: Canvas) {
-        if (!selectionTransformArmed || !hasSelection()) return
-        val bounds = selectionBounds() ?: return
-        val handleRadius = SELECTION_HANDLE_TOUCH_PX / 2.5f / width.coerceAtLeast(1)
-        val corners = listOf(
-            bounds.left to bounds.top, bounds.right to bounds.top,
-            bounds.right to bounds.bottom, bounds.left to bounds.bottom,
-        )
-        val rotY = bounds.top - SELECTION_ROTATE_HANDLE_OFFSET_PX / height.coerceAtLeast(1)
-        paint.style = Paint.Style.STROKE; paint.color = Color.rgb(17, 17, 17); paint.alpha = 255; paint.strokeWidth = 2f
-        canvas.drawLine(bounds.centerX() * width, bounds.top * height, bounds.centerX() * width, rotY * height, paint)
-        val edgeHandles = buildList {
-            if (bounds.width() * width >= SELECTION_HANDLE_TOUCH_PX * 2f) addAll(listOf(bounds.left to bounds.centerY(), bounds.right to bounds.centerY()))
-            if (bounds.height() * height >= SELECTION_HANDLE_TOUCH_PX * 2f) addAll(listOf(bounds.centerX() to bounds.top, bounds.centerX() to bounds.bottom))
-        }
-        val drawHandles = listOf(bounds.centerX() to rotY) + corners + edgeHandles
-        drawHandles.forEach { (hx, hy) ->
-            val cx = hx * width; val cy = hy * height
-            selectionHandlePaint.color = Color.WHITE
-            canvas.drawCircle(cx, cy, handleRadius * width, selectionHandlePaint)
-            selectionHandleStrokePaint.color = Color.rgb(17, 17, 17)
-            selectionHandleStrokePaint.strokeWidth = 3f
-            canvas.drawCircle(cx, cy, handleRadius * width, selectionHandleStrokePaint)
-            selectionHandlePaint.color = Color.rgb(17, 17, 17)
-            canvas.drawCircle(cx, cy, 3.5f, selectionHandlePaint)
-        }
+        selectionCanvasTransform?.draw(canvas, width, height, viewportScale)
     }
 
     private fun drawSymmetryGuides(canvas: Canvas) {
@@ -5393,11 +5246,13 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     fun undo() {
+        finishSelectionTransform(apply = true)
         val edit = editHistory.takeUndo() ?: return
         edit.undo()
     }
 
     fun redo() {
+        finishSelectionTransform(apply = true)
         val edit = editHistory.takeRedo() ?: return
         edit.redo()
     }
@@ -5412,6 +5267,10 @@ class InkCanvasView(context: Context) : View(context) {
     fun rotateSelection(degrees: Float) = transformSelection(1f, degrees)
 
     fun flipSelection(horizontal: Boolean): Boolean {
+        selectionCanvasTransform?.let { draft ->
+            draft.replace(if (horizontal) draft.pose.copy(flippedX = !draft.pose.flippedX) else draft.pose.copy(flippedY = !draft.pose.flippedY))
+            return true
+        }
         val bounds = selectionBounds() ?: return false
         selectionTransformCenterX = bounds.centerX()
         selectionTransformCenterY = bounds.centerY()
@@ -5431,6 +5290,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     fun copySelectionToClipboard(): Boolean {
+        finishSelectionTransform(apply = true)
         val selection = selectionMaskForRasterTools()
         val rasterSurface = rasterTileSurfaceFor(activeLayerId)
         if (selection != null && rasterSurface != null) {
@@ -5443,6 +5303,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     fun cutSelectionToClipboard(): Boolean {
+        finishSelectionTransform(apply = true)
         if (activeLayerId in protectedLayerIds) return false
         if (!copySelectionToClipboard()) return false
         deleteSelection()
@@ -5450,6 +5311,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     fun pasteSelectionFromClipboard(): Boolean {
+        finishSelectionTransform(apply = true)
         if (activeLayerId in protectedLayerIds) return false
         val rasterSurface = rasterTileSurfaceFor(activeLayerId)
         val rasterClipboard = rasterSelectionClipboard
@@ -5555,6 +5417,7 @@ class InkCanvasView(context: Context) : View(context) {
     fun selectionMaskSurfaceSnapshot(): MaskTileSurfaceSnapshot? = selectionMaskForRasterTools()
 
     fun replaceSelectionFromMask(snapshot: MaskTileSurfaceSnapshot?): Boolean {
+        finishSelectionTransform(apply = true)
         val documentState = documentSelectionState ?: return false
         if (snapshot != null && (snapshot.logicalWidth != documentState.logicalWidth || snapshot.logicalHeight != documentState.logicalHeight)) {
             return false
@@ -5589,6 +5452,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     fun fillSelection(): Boolean {
+        finishSelectionTransform(apply = true)
         val mask = selectionMaskForRasterTools() ?: return false
         val callback = onSparseFillCommitted ?: return false
         callback(mask, inkColor.toUInt().toLong(), inkOpacity, 0)
@@ -5604,10 +5468,8 @@ class InkCanvasView(context: Context) : View(context) {
         selectionBoundaryMask?.close(); selectionBoundaryMask = null; selectionBoundaryPageBounds = null
         selectionFeatherPixels = 0f
         clearLassoInput()
-        movingSelection = false
-        selectionMoved = false
-        selectionTransformArmed = false
-        selectionTransformMode = TRANSFORM_NONE
+
+
         if (clearReselect) {
             isolatedTestLastDeselectedAlphaMask?.close(); isolatedTestLastDeselectedAlphaMask = null
             lastDeselectedFeatherPixels = 0f
@@ -5620,6 +5482,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     fun selectAllEditableStrokes(): Boolean {
+        finishSelectionTransform(apply = true)
         val selectionState = documentSelectionState
         val beforeAlpha = selectionState?.snapshot()
         replaceSelectionAlphaMask(SparseAlphaMask.full(pageModelWidth, pageModelHeight), resetFeather = true)
@@ -5630,6 +5493,7 @@ class InkCanvasView(context: Context) : View(context) {
 
     /** Selects every editable stroke that is not currently selected. */
     fun invertSelection(): Boolean {
+        finishSelectionTransform(apply = true)
         val selectionState = documentSelectionState
         val beforeAlpha = selectionState?.snapshot()
         val invertedAlpha = currentSelectionAlphaMask()?.inverted() ?: run {
@@ -5637,7 +5501,7 @@ class InkCanvasView(context: Context) : View(context) {
         }
         replaceSelectionAlphaMask(invertedAlpha, resetFeather = false)
         clearLassoInput()
-        movingSelection = false
+
         selectionFeatherBase = null
         recordSelectionHistory(selectionState, beforeAlpha)
         invalidate()
@@ -5655,12 +5519,50 @@ class InkCanvasView(context: Context) : View(context) {
         return true
     }
 
-    /** Existing corner, edge and rotation handles are the free-transform mode. */
+    /** Begin one reversible transform, retaining native source pixels until Apply or Cancel. */
     fun enterFreeTransform(): Boolean {
+        if (selectionCanvasTransform != null) return true
         if (!hasSelection() || !validateRasterSelectionTransform()) return false
+        if (!beginRasterSelectionTransform()) return false
+        val surface = rasterTileSurfaceFor(activeLayerId) ?: return false
+        val bounds = requireNotNull(selectionBounds())
+        val original = app.inkloom.engine.v5.tools.SelectionTransformPose(
+            bounds.centerX() * surface.logicalWidth, bounds.centerY() * surface.logicalHeight,
+            bounds.width() * surface.logicalWidth, bounds.height() * surface.logicalHeight,
+        )
+        selectionCanvasTransform = SelectionCanvasTransform(original, surface.logicalWidth, surface.logicalHeight,
+            resources.displayMetrics.density) { pose ->
+            runCatching { updateRasterSelectionTransform(pose.affineFrom(original)) }.onFailure {
+                finishSelectionTransform(apply = false)
+                onPaintCapabilityRejected("Unable to transform this selection: ${it.message.orEmpty()}")
+            }
+            onSelectionTransformChanged(selectionTransformUiState)
+        }
         tool = EditorTool.SELECT
-        selectionTransformArmed = true
-        selectionTransformMode = TRANSFORM_NONE
+        onSelectionTransformChanged(selectionTransformUiState)
+        invalidate()
+        return true
+    }
+
+    internal fun setSelectionTransformMode(mode: app.inkloom.engine.v5.tools.SelectionTransformMode) {
+        selectionCanvasTransform?.mode = mode
+        onSelectionTransformChanged(selectionTransformUiState)
+    }
+
+    internal fun setSelectionTransformDimensions(width: Float, height: Float, angle: Float) {
+        if (!listOf(width, height, angle).all(Float::isFinite) || width < 1f || height < 1f) return
+        val draft = selectionCanvasTransform ?: return
+        draft.replace(draft.pose.copy(width = width, height = height, angle = angle.mod(360f)))
+    }
+
+    internal fun resetSelectionTransform() { selectionCanvasTransform?.reset() }
+
+    internal fun finishSelectionTransform(apply: Boolean): Boolean {
+        val draft = selectionCanvasTransform ?: return false
+        selectionCanvasTransform = null
+
+        if (apply && draft.pose != draft.original) finishRasterSelectionTransform() else cancelRasterSelectionTransform()
+        onSelectionTransformChanged(null)
         invalidate()
         return true
     }
@@ -5669,30 +5571,29 @@ class InkCanvasView(context: Context) : View(context) {
      * app is a mode command, even when the same shape is tapped twice; it must disarm a previous
      * Free Transform session so the next drag draws a new selection instead of moving content. */
     fun beginSelectionInput(shape: SelectionShape) {
+        finishSelectionTransform(apply = true)
         if (activeTool != null) cancelActiveGestureForNavigation()
         tool = EditorTool.SELECT
         selectionShape = shape
-        selectionTransformArmed = false
-        selectionTransformMode = TRANSFORM_NONE
-        movingSelection = false
-        selectionMoved = false
+
+
+
         clearLassoInput()
         invalidate()
     }
 
-    /** Cancels only the transient Selection interaction. A committed alpha/stroke selection is
-     * preserved so the host can leave the Selection tool without losing the user's work. */
+    /** Leaving Selection applies its transform draft and preserves the selection mask for paint. */
     fun cancelSelectionInput() {
+        finishSelectionTransform(apply = true)
         if (activeTool != null) cancelActiveGestureForNavigation()
         clearLassoInput()
-        movingSelection = false
-        selectionMoved = false
-        selectionTransformArmed = false
-        selectionTransformMode = TRANSFORM_NONE
+
+
         invalidate()
     }
 
     fun clearSelection(): Boolean {
+        finishSelectionTransform(apply = true)
         if (!hasSelection()) return false
         documentSelectionState?.captureForReselect()
         isolatedTestLastDeselectedAlphaMask?.close()
@@ -5700,13 +5601,13 @@ class InkCanvasView(context: Context) : View(context) {
         lastDeselectedFeatherPixels = selectionFeatherPixels
         replaceSelectionAlphaMask(null, resetFeather = true)
         clearLassoInput()
-        movingSelection = false
-        selectionTransformArmed = false
+
         invalidate()
         return true
     }
 
     fun reselect(): Boolean {
+        finishSelectionTransform(apply = true)
         val restoredDocumentAlpha = documentSelectionState?.restoreReselect() == true
         val restoredIsolatedAlpha = isolatedTestLastDeselectedAlphaMask?.isEmpty == false
         if (!restoredDocumentAlpha && !restoredIsolatedAlpha) return false
@@ -5722,6 +5623,7 @@ class InkCanvasView(context: Context) : View(context) {
     fun shrinkSelection(pixels: Float): Boolean = modifySelectionContours(-pixels.coerceAtLeast(0f))
 
     fun borderSelection(widthPixels: Float): Boolean {
+        finishSelectionTransform(apply = true)
         val selectionState = documentSelectionState
         val beforeAlpha = selectionState?.snapshot()
         val base = currentSelectionAlphaMask() ?: return false
@@ -5740,6 +5642,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     fun featherSelection(pixels: Float): Boolean {
+        finishSelectionTransform(apply = true)
         if (!hasSelection()) return false
         val requested = pixels.coerceIn(0f, minOf(pageModelWidth, pageModelHeight) / 2f)
         val stateSnapshot = selectionFeatherBase ?: selectionMaskForRasterTools()?.also { selectionFeatherBase = it } ?: return false
@@ -5757,6 +5660,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun modifySelectionContours(pixels: Float): Boolean {
+        finishSelectionTransform(apply = true)
         val selectionState = documentSelectionState
         val beforeAlpha = selectionState?.snapshot()
         val base = currentSelectionAlphaMask() ?: return false
@@ -5770,6 +5674,7 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     fun deleteSelection() {
+        finishSelectionTransform(apply = true)
         if (!hasSelection()) return
         if (activeLayerId in protectedLayerIds) return
         val selection = selectionMaskForRasterTools()
@@ -5789,6 +5694,12 @@ class InkCanvasView(context: Context) : View(context) {
     }
 
     private fun transformSelection(scale: Float, rotationDegrees: Float) {
+        selectionCanvasTransform?.let { draft ->
+            if (scale.isFinite() && scale > 0f && rotationDegrees.isFinite()) draft.replace(draft.pose.copy(
+                width = (draft.pose.width * scale).coerceAtLeast(1f), height = (draft.pose.height * scale).coerceAtLeast(1f),
+                angle = (draft.pose.angle + rotationDegrees).mod(360f)))
+            return
+        }
         val bounds = selectionBounds() ?: return
         selectionTransformCenterX = bounds.centerX()
         selectionTransformCenterY = bounds.centerY()
@@ -5814,14 +5725,6 @@ class InkCanvasView(context: Context) : View(context) {
         const val MAX_ERASER_SAMPLES_PER_EVENT = 128
         const val CONTINUOUS_PLOT_INTERVAL_MS = 32L
         const val QUICKSHAPE_HOLD_MS = 120L
-        const val TRANSFORM_NONE = 0
-        const val TRANSFORM_SCALE = 1
-        const val TRANSFORM_ROTATE = 2
-        const val TRANSFORM_SCALE_X = 3
-        const val TRANSFORM_SCALE_Y = 4
-        const val SELECTION_HANDLE_TOUCH_PX = 48f
-        const val SELECTION_SMALL_HANDLE_TOUCH_PX = 10f
-        const val SELECTION_ROTATE_HANDLE_OFFSET_PX = 64f
         const val SELECTION_ANTS_FRAME_MS = 80L
         const val DUAL_SCATTER_SEED = 0x27C4915DL
         const val DUAL_ROTATION_SEED = 0x61B8D2A3L

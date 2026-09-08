@@ -1341,6 +1341,8 @@ private fun EditorScreen(
     }
     var selectionFeather by remember { mutableFloatStateOf(0f) }
     var selectionActive by remember(document.id, selectedPage.id) { mutableStateOf(false) }
+    var selectionTransformState by remember(document.id, selectedPage.id) { mutableStateOf<SelectionTransformUiState?>(null) }
+    BackHandler(enabled = selectionTransformState != null) { canvasView?.finishSelectionTransform(apply = false) }
     fun performLayerMaskCommand(layerId: String, command: LayerMaskCommand) {
         if (command == LayerMaskCommand.EDIT) {
             canvasView?.toggleLayerMaskEditing(layerId)
@@ -2544,6 +2546,7 @@ private fun EditorScreen(
                     tool = tool,
                     onView = { view ->
                         canvasView = view
+                        view.onSelectionTransformChanged = { selectionTransformState = it }
                         view.onLayerMaskSurfaceCommitted = { layerId, snapshot ->
                             onLayerMaskCommand(document.id, selectedPage.id, layerId, LayerMaskCommand.REPLACE_SURFACE, snapshot)
                         }
@@ -3120,7 +3123,7 @@ private fun EditorScreen(
                     onDeselect = { finishSelectionTool(deselect = true) },
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp),
                 )
-                if (tool == EditorTool.SELECT && selectionActive) SelectionLauncher(
+                if (tool == EditorTool.SELECT && selectionActive && selectionTransformState == null) SelectionLauncher(
                     featherPixels = selectionFeather,
                     interpolation = settings.selectionInterpolation,
                     onInterpolation = { onSettingsChange(settings.copy(selectionInterpolation = it)) },
@@ -3140,6 +3143,18 @@ private fun EditorScreen(
                     onFlipVertical = { canvasView?.flipSelection(horizontal = false) },
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 52.dp),
                 )
+                selectionTransformState?.let { state ->
+                    SelectionTransformToolbar(state, settings.language,
+                        interpolation = settings.selectionInterpolation,
+                        onInterpolation = { onSettingsChange(settings.copy(selectionInterpolation = it)) },
+                        onMode = { canvasView?.setSelectionTransformMode(it) },
+                        onDimensions = { w, h, a -> canvasView?.setSelectionTransformDimensions(w, h, a) },
+                        onFlip = { canvasView?.flipSelection(it) },
+                        onReset = { canvasView?.resetSelectionTransform() },
+                        onFinish = { canvasView?.finishSelectionTransform(apply = it) },
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 54.dp).zIndex(4f),
+                    )
+                }
                 imageCanvasTransform?.let { session ->
                     Surface(Modifier.align(Alignment.BottomCenter).padding(bottom = 14.dp).zIndex(4f),
                         shape = RoundedCornerShape(14.dp), color = Color.White, shadowElevation = 5.dp) {
